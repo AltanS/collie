@@ -74,6 +74,11 @@ export interface LogRecord extends Placement {
    * null for a message from a phone or from another machine. A reply goes back to exactly that pane.
    */
   readonly sender: Placement | null;
+  /**
+   * When this bridge logged the message for this target: the acceptance. A held send's one clock
+   * counts from here (deliver.ts `HELD_LIMIT_MS`), so a newer receipt or a restart never moves it.
+   */
+  readonly acceptedAt: number;
 }
 
 function keyOf(id: string, target: string): string {
@@ -197,7 +202,7 @@ export class WalkyLog {
       // The first message line for a target wins; a receipt may already be waiting for it.
       if (this.records.has(key)) return;
       const accepted: WalkyReceipt = { id: line.message.id, target: line.target, state: "accepted", verified: "none", at: line.at, by: "-" };
-      this.records.set(key, { session: line.session, paneId: line.paneId, instance: line.instance, target: line.target, message: line.message, receipt: accepted, sender: line.sender ?? null });
+      this.records.set(key, { session: line.session, paneId: line.paneId, instance: line.instance, target: line.target, message: line.message, receipt: accepted, sender: line.sender ?? null, acceptedAt: line.at });
       return;
     }
     const key = keyOf(line.receipt.id, line.receipt.target);
@@ -247,7 +252,7 @@ export class WalkyLog {
     const line: MessageLine = { t: "message", at, target, session: placement.session, paneId: placement.paneId, instance: placement.instance, message };
     this.append(sender === null ? line : { ...line, sender });
     this.append({ t: "receipt", at, receipt });
-    return this.get(message.id, target) ?? { ...placement, target, message, receipt, sender };
+    return this.get(message.id, target) ?? { ...placement, target, message, receipt, sender, acceptedAt: at };
   }
 
   /** The first record of a message id, or null: what a reply and a thread walk read. */

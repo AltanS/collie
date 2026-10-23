@@ -35,7 +35,6 @@ import {
 } from "@earendil-works/pi-durable";
 import {
   AskClosed,
-  argumentsView,
   type ConversationRow,
   type HistoryProvider,
   type Item,
@@ -44,10 +43,14 @@ import {
   type ProgramEvent,
   type Progress,
   type ProgressStep,
+  type RiskWords,
   safeId,
+  summaryOf,
   type TabHandle,
   type TextAskInput,
+  toAskSpec,
 } from "../core/index.ts";
+import { clip } from "../core/ask-policy.ts";
 import { isList, isRecord, isText } from "../core/rules.ts";
 import type { Json, PermissionAskInput } from "../core/types.ts";
 
@@ -202,23 +205,8 @@ export function conversationOfPaneId(paneId: string): ConversationId | undefined
   // SAFETY: a ConversationId is Pi's brand on its own conversation number, and these digits are one paneIdOf wrote; a number Pi does not know finds no conversation.
   return match === null ? undefined : (Number(match[1]) as ConversationId);
 }
-const clip = (s: string, n = 200) => (s.length > n ? `${s.slice(0, n)}...` : s);
-
-/**
- * A tool call's arguments in words: the one text a call carries (a note, a task) as it is, else the call as
- * `name(key: value, key: value)` with each value as JSON. A person reads "Order 5521 was charged twice." where the JSON
- * would say `{"note":"Order 5521 was charged twice."}`, and `refund(order: "5521", amount: 40)` for a call with more.
- * Without a name, the arguments' JSON. Cut at 200 characters.
- */
-export function summaryOf(args: Json | undefined, name?: string): string {
-  if (isRecord(args)) {
-    const values = Object.values(args);
-    const first = values[0];
-    if (values.length === 1 && isText(first)) return clip(first);
-    if (name !== undefined) return clip(`${name}(${argumentsView(args)})`);
-  }
-  return clip(JSON.stringify(args) ?? "");
-}
+// `summaryOf` and `clip` moved to core/ask-policy.ts, so a host with no Pi can raise the same card. The export stays.
+export { summaryOf };
 
 type Block = { type: string; text?: string; thinking?: string; id?: string; name?: string; arguments?: Json };
 const textOf = (content: string | readonly Block[]): string =>
@@ -766,13 +754,7 @@ const markAsks = (pane: PaneHandle) => {
   pane.badge(open > 0 ? { count: open } : null);
 };
 
-/** The words of the question a risky call raises: its title, its notification, and the labels of its two buttons. */
-export interface RiskWords {
-  title: string;
-  push: { title: string; line: string };
-  allow: string;
-  deny: string;
-}
+export type { RiskWords };
 
 export interface Risky {
   panes: PaneRegistry;
@@ -789,10 +771,6 @@ export interface Risky {
   onTimeout?: (tool: string, title: string) => void;
 }
 
-function defaultWords(tool: string, summary: string): RiskWords {
-  return { title: `${tool} wants to run`, push: { title: `${tool} needs a yes`, line: summary }, allow: "Allow", deny: "Deny" };
-}
-
 /** An extension whose `beforeTool` hook turns a risky call into an ask and waits for the answer. */
 export function riskGuard(o: Risky): Extension {
   return defineExtension({
@@ -803,20 +781,16 @@ export function riskGuard(o: Risky): Extension {
           if (!o.risky.has(call.name)) return undefined;
           const pane = o.panes.get(api.conversationId);
           if (!pane) return { block: "no pane to ask on" }; // fail closed
-          const summary = summaryOf(call.arguments, call.name);
-          const words = o.words?.(call.name, summary) ?? defaultWords(call.name, summary);
+          // The question comes from the shared ask policy, so a host with no Pi raises the same card for the same call.
+          const spec = toAskSpec({ toolName: call.name, args: call.arguments, words: o.words });
           const input: PermissionAskInput = {
-            kind: "permission",
+            kind: spec.kind,
             toolCallId: safeId(call.id),
             itemId: safeId(call.id), // the tool item of this call, which the mapper keys the same way
-            title: words.title,
-            tool: { kind: "other", name: call.name, summary },
-            // The words of the notification (WIRE.md section 6). The pane's name goes in front of the title.
-            push: words.push,
-            options: [
-              { id: "allow", label: words.allow, effect: "allow" },
-              { id: "deny", label: words.deny, effect: "deny" },
-            ],
+            title: spec.title,
+            tool: spec.tool,
+            push: spec.push,
+            options: spec.options,
           };
           if (o.timeoutMs !== undefined) input.expiresAt = new Date(Date.now() + o.timeoutMs);
           const answer = pane.ask(input, { signal: ctx.abortSignal });
@@ -827,7 +801,7 @@ export function riskGuard(o: Risky): Extension {
           } catch (e) {
             // The clock closed the ask: a deny, and the run goes on. Any other close (a stop, an abort) still ends the call.
             if (!(e instanceof AskClosed) || e.decidedBy !== "timeout") throw e;
-            o.onTimeout?.(call.name, words.title);
+            o.onTimeout?.(call.name, spec.title);
             return { block: "timed out" };
           } finally {
             markAsks(pane);

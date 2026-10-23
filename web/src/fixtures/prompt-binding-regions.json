@@ -310,6 +310,11 @@
     "region": "● How is Claude doing this session? (optional)\n  1: Bad    2: Fine   3: Good   0: Dismiss\n                                                                                                                        ✔ Update installed · Restart to update\n─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── 1.23.0 ─\n❯ \n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────"
   },
   {
+    "fixture": "claude--v2306-transcript-survey--w153.txt",
+    "detector": "menu",
+    "region": "● Can Anthropic look at your session transcript to help us improve Claude Code?\n  Learn more: https://code.claude.com/docs/en/data-usage#session-quality-surveys\n  y: Yes    n: No     d: Don't ask again\n\n─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n❯ \n─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────"
+  },
+  {
     "fixture": "claude-lab--survey-rating-above-box--w82.txt",
     "detector": "menu",
     "region": "● How is Claude doing this session? (optional)\n  1: Bad    2: Fine   3: Good   0: Dismiss\n\n──────────────────────────────────────────────────────────────────────────────────\n❯ git add docs/lab-notes.md and commit\n──────────────────────────────────────────────────────────────────────────────────"
@@ -1118,43 +1123,109 @@
     "fixture": "kiro--v3-approval-allow-w120.txt",
     "detector": "prompt-select",
     "agent": "kiro",
-    "region": "────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Print the probe message requires approval\n shell → printf collie_approve_once_probe\n\n ❯ Allow\n   Always allow\n   Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+    "region": "↓ Shell printf collie_approve_once_probe\n    ╰ description=Print the probe message, run_in_background=false\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Print the probe message requires approval\n shell → printf collie_approve_once_probe\n\n ❯ Allow\n   Always allow\n   Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
   },
   {
     "fixture": "kiro--v3-approval-allow-w60.txt",
     "detector": "prompt-select",
     "agent": "kiro",
-    "region": "────────────────────────────────────────────────────────────\n Print the probe message requires approval\n shell → printf collie_approve_once_probe\n\n ❯ Allow\n   Always allow\n   Deny\n   Always deny\n────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+    "region": "↓ Shell printf collie_approve_once_probe\n    ╰ description=Print the probe message,\n      run_in_background=false\n\n────────────────────────────────────────────────────────────\n Print the probe message requires approval\n shell → printf collie_approve_once_probe\n\n ❯ Allow\n   Always allow\n   Deny\n   Always deny\n────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
   },
   {
     "fixture": "kiro--v3-approval-always-w120.txt",
     "detector": "prompt-select",
     "agent": "kiro",
-    "region": "────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Print the probe message requires approval\n shell → printf collie_approve_once_probe\n\n   Allow\n ❯ Always allow\n   Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · Enter to see more options"
+    "region": "↓ Shell printf collie_approve_once_probe\n    ╰ description=Print the probe message, run_in_background=false\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Print the probe message requires approval\n shell → printf collie_approve_once_probe\n\n   Allow\n ❯ Always allow\n   Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · Enter to see more options"
   },
   {
     "fixture": "kiro--v3-approval-deny-w120.txt",
     "detector": "prompt-select",
     "agent": "kiro",
-    "region": "────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Print the probe message requires approval\n shell → printf collie_approve_once_probe\n\n   Allow\n   Always allow\n ❯ Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+    "region": "↓ Shell printf collie_approve_once_probe\n    ╰ description=Print the probe message, run_in_background=false\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Print the probe message requires approval\n shell → printf collie_approve_once_probe\n\n   Allow\n   Always allow\n ❯ Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
   },
   {
     "fixture": "kiro--v3-approval-deny-w60.txt",
     "detector": "prompt-select",
     "agent": "kiro",
-    "region": "────────────────────────────────────────────────────────────\n Print the probe message requires approval\n shell → printf collie_approve_once_probe\n\n   Allow\n   Always allow\n ❯ Deny\n   Always deny\n────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+    "region": "↓ Shell printf collie_approve_once_probe\n    ╰ description=Print the probe message,\n      run_in_background=false\n\n────────────────────────────────────────────────────────────\n Print the probe message requires approval\n shell → printf collie_approve_once_probe\n\n   Allow\n   Always allow\n ❯ Deny\n   Always deny\n────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
   },
   {
     "fixture": "kiro--v3-approval-denied-request-allow-w120.txt",
     "detector": "prompt-select",
     "agent": "kiro",
-    "region": "────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Print the deny probe message requires approval\n shell → printf collie_deny_probe\n\n ❯ Allow\n   Always allow\n   Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+    "region": "↓ Shell printf collie_deny_probe\n    ╰ description=Print the deny probe message, run_in_background=false\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Print the deny probe message requires approval\n shell → printf collie_deny_probe\n\n ❯ Allow\n   Always allow\n   Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
   },
   {
     "fixture": "kiro--v3-approval-denied-request-deny-w120.txt",
     "detector": "prompt-select",
     "agent": "kiro",
-    "region": "────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Print the deny probe message requires approval\n shell → printf collie_deny_probe\n\n   Allow\n   Always allow\n ❯ Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+    "region": "↓ Shell printf collie_deny_probe\n    ╰ description=Print the deny probe message, run_in_background=false\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Print the deny probe message requires approval\n shell → printf collie_deny_probe\n\n   Allow\n   Always allow\n ❯ Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-shell-args-allow-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Shell printf collie_args_probe &\n    ╰ description=Print the args probe, cwd=sub, run_in_background=true, timeout=5000\n\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Print the args probe requires approval\n shell → printf collie_args_probe &\n\n ❯ Allow\n   Always allow\n   Deny\n   Always deny\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-shell-args-allow-w60.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Shell printf collie_args_probe &\n    ╰ description=Print the args probe, cwd=sub,\n      run_in_background=true, timeout=5000\n\n───────────────────────────────────────────────────────────\n Print the args probe requires approval\n shell → printf collie_args_probe &\n\n ❯ Allow\n   Always allow\n   Deny\n   Always deny\n───────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-shell-args-deny-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Shell printf collie_args_probe &\n    ╰ description=Print the args probe, cwd=sub, run_in_background=true, timeout=5000\n\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Print the args probe requires approval\n shell → printf collie_args_probe &\n\n   Allow\n   Always allow\n ❯ Deny\n   Always deny\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-shell-args-deny-w60.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Shell printf collie_args_probe &\n    ╰ description=Print the args probe, cwd=sub,\n      run_in_background=true, timeout=5000\n\n───────────────────────────────────────────────────────────\n Print the args probe requires approval\n shell → printf collie_args_probe &\n\n   Allow\n   Always allow\n ❯ Deny\n   Always deny\n───────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-shell-args-no-timeout-allow-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Shell printf collie_args_probe &\n    ╰ description=Print the args probe, cwd=sub, run_in_background=true\n\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Print the args probe requires approval\n shell → printf collie_args_probe &\n\n ❯ Allow\n   Always allow\n   Deny\n   Always deny\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-shell-bare-allow-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Shell printf collie_bare_probe\n    ╰ run_in_background=false\n\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Run Command requires approval\n shell → printf collie_bare_probe\n\n ❯ Allow\n   Always allow\n   Deny\n   Always deny\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-shell-bare-deny-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Shell printf collie_bare_probe\n    ╰ run_in_background=false\n\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Run Command requires approval\n shell → printf collie_bare_probe\n\n   Allow\n   Always allow\n ❯ Deny\n   Always deny\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-shell-wrapped-allow-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Shell printf '%s %s %s %s\\n' collie_wrap_probe_alpha collie_wrap_probe_bravo collie_wrap_probe_charlie\n  collie_wrap_probe_delta\n    ╰ description=Print the wrap probe, run_in_background=false\n\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Print the wrap probe requires approval\n shell → printf '%s %s %s %s\\n' collie_wrap_probe_alpha collie_wrap_probe_bravo collie_wrap_probe_charlie\n collie_wrap_probe_delta\n\n ❯ Allow\n   Always allow\n   Deny\n   Always deny\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-shell-wrapped-allow-w60.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Shell printf '%s %s %s %s\\n' collie_wrap_probe_alpha\n  collie_wrap_probe_bravo collie_wrap_probe_charlie\n  collie_wrap_probe_delta\n    ╰ description=Print the wrap probe,\n      run_in_background=false\n\n───────────────────────────────────────────────────────────\n Print the wrap probe requires approval\n shell → printf '%s %s %s %s\\n' collie_wrap_probe_alpha\n collie_wrap_probe_bravo collie_wrap_probe_charlie\n collie_wrap_probe_delta\n\n ❯ Allow\n   Always allow\n   Deny\n   Always deny\n───────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-shell-wrapped-deny-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Shell printf '%s %s %s %s\\n' collie_wrap_probe_alpha collie_wrap_probe_bravo collie_wrap_probe_charlie\n  collie_wrap_probe_delta\n    ╰ description=Print the wrap probe, run_in_background=false\n\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Print the wrap probe requires approval\n shell → printf '%s %s %s %s\\n' collie_wrap_probe_alpha collie_wrap_probe_bravo collie_wrap_probe_charlie\n collie_wrap_probe_delta\n\n   Allow\n   Always allow\n ❯ Deny\n   Always deny\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "kiro--v3-shell-wrapped-deny-w60.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": "↓ Shell printf '%s %s %s %s\\n' collie_wrap_probe_alpha\n  collie_wrap_probe_bravo collie_wrap_probe_charlie\n  collie_wrap_probe_delta\n    ╰ description=Print the wrap probe,\n      run_in_background=false\n\n───────────────────────────────────────────────────────────\n Print the wrap probe requires approval\n shell → printf '%s %s %s %s\\n' collie_wrap_probe_alpha\n collie_wrap_probe_bravo collie_wrap_probe_charlie\n collie_wrap_probe_delta\n\n   Allow\n   Always allow\n ❯ Deny\n   Always deny\n───────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
   },
   {
     "fixture": "kiro--v3-read-allow-w120.txt",
@@ -1253,6 +1324,54 @@
     "region": "↓ Write /workspace/tester/demo/sample-app/.test-files/demo-s\n  ession-fixture/files-v3/replace.txt\n    added 1 line, removed 1 line in replace.txt\n     1-  collie_before_replace\n     1+  collie_after_replace\n\n────────────────────────────────────────────────────────────\n Replace in File requires approval\n fs_write → replace.txt\n\n   Allow\n ❯ Deny\n   Always deny\n────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
   },
   {
+    "fixture": "kiro--v3-workspace-trust-continue-up-edge-w40.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": " ──────────────────────────────────────\n Trust this workspace?\n ──────────────────────────────────────\n /tmp/collie-kiro-trust-ABCDEF/new-work\n space-with-a-long-name-for-wrapped-pat\n h-capture\n\n This folder can contain hooks, agents,\n MCP servers and workflows that run\n commands on your machine. Only trust\n folders you know.\n\n Trusting lets Kiro use this\n workspace's configuration. Kiro will\n be able to read, edit, and execute\n files here.\n\n ❯ Trust, continue\n   Don't trust, exit\n ──────────────────────────────────────\n esc to exit · ↑↓ to navigate · ↵ to\n select\n\n Revoke later by removing\n workspaceTrusted from\n /home/tester/.kiro/workspace-roots/012\n 3456789abcdef/permissions.yaml"
+  },
+  {
+    "fixture": "kiro--v3-workspace-trust-continue-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": " ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Trust this workspace?\n ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n /tmp/collie-kiro-trust-ABCDEF/new-workspace-with-a-long-name-for-wrapped-path-capture\n\n This folder can contain hooks, agents, MCP servers and workflows that run commands on your machine. Only trust folders\n you know.\n\n Trusting lets Kiro use this workspace's configuration. Kiro will be able to read, edit, and execute files here.\n\n ❯ Trust, continue\n   Don't trust, exit\n ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to exit · ↑↓ to navigate · ↵ to select\n\n Revoke later by removing workspaceTrusted from /home/tester/.kiro/workspace-roots/0123456789abcdef/permissions.yaml"
+  },
+  {
+    "fixture": "kiro--v3-workspace-trust-continue-w40.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": " ──────────────────────────────────────\n Trust this workspace?\n ──────────────────────────────────────\n /tmp/collie-kiro-trust-ABCDEF/new-work\n space-with-a-long-name-for-wrapped-pat\n h-capture\n\n This folder can contain hooks, agents,\n MCP servers and workflows that run\n commands on your machine. Only trust\n folders you know.\n\n Trusting lets Kiro use this\n workspace's configuration. Kiro will\n be able to read, edit, and execute\n files here.\n\n ❯ Trust, continue\n   Don't trust, exit\n ──────────────────────────────────────\n esc to exit · ↑↓ to navigate · ↵ to\n select\n\n Revoke later by removing\n workspaceTrusted from\n /home/tester/.kiro/workspace-roots/012\n 3456789abcdef/permissions.yaml"
+  },
+  {
+    "fixture": "kiro--v3-workspace-trust-continue-w60.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": " ──────────────────────────────────────────────────────────\n Trust this workspace?\n ──────────────────────────────────────────────────────────\n /tmp/collie-kiro-trust-ABCDEF/new-workspace-with-a-long-na\n me-for-wrapped-path-capture\n\n This folder can contain hooks, agents, MCP servers and\n workflows that run commands on your machine. Only trust\n folders you know.\n\n Trusting lets Kiro use this workspace's configuration.\n Kiro will be able to read, edit, and execute files here.\n\n ❯ Trust, continue\n   Don't trust, exit\n ──────────────────────────────────────────────────────────\n esc to exit · ↑↓ to navigate · ↵ to select\n\n Revoke later by removing workspaceTrusted from\n /home/tester/.kiro/workspace-roots/0123456789abcdef/permis\n sions.yaml"
+  },
+  {
+    "fixture": "kiro--v3-workspace-trust-exit-down-edge-w40.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": " ──────────────────────────────────────\n Trust this workspace?\n ──────────────────────────────────────\n /tmp/collie-kiro-trust-ABCDEF/new-work\n space-with-a-long-name-for-wrapped-pat\n h-capture\n\n This folder can contain hooks, agents,\n MCP servers and workflows that run\n commands on your machine. Only trust\n folders you know.\n\n Trusting lets Kiro use this\n workspace's configuration. Kiro will\n be able to read, edit, and execute\n files here.\n\n   Trust, continue\n ❯ Don't trust, exit\n ──────────────────────────────────────\n esc to exit · ↑↓ to navigate · ↵ to\n select\n\n Revoke later by removing\n workspaceTrusted from\n /home/tester/.kiro/workspace-roots/012\n 3456789abcdef/permissions.yaml"
+  },
+  {
+    "fixture": "kiro--v3-workspace-trust-exit-w120.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": " ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Trust this workspace?\n ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n /tmp/collie-kiro-trust-ABCDEF/new-workspace-with-a-long-name-for-wrapped-path-capture\n\n This folder can contain hooks, agents, MCP servers and workflows that run commands on your machine. Only trust folders\n you know.\n\n Trusting lets Kiro use this workspace's configuration. Kiro will be able to read, edit, and execute files here.\n\n   Trust, continue\n ❯ Don't trust, exit\n ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to exit · ↑↓ to navigate · ↵ to select\n\n Revoke later by removing workspaceTrusted from /home/tester/.kiro/workspace-roots/0123456789abcdef/permissions.yaml"
+  },
+  {
+    "fixture": "kiro--v3-workspace-trust-exit-w40.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": " ──────────────────────────────────────\n Trust this workspace?\n ──────────────────────────────────────\n /tmp/collie-kiro-trust-ABCDEF/new-work\n space-with-a-long-name-for-wrapped-pat\n h-capture\n\n This folder can contain hooks, agents,\n MCP servers and workflows that run\n commands on your machine. Only trust\n folders you know.\n\n Trusting lets Kiro use this\n workspace's configuration. Kiro will\n be able to read, edit, and execute\n files here.\n\n   Trust, continue\n ❯ Don't trust, exit\n ──────────────────────────────────────\n esc to exit · ↑↓ to navigate · ↵ to\n select\n\n Revoke later by removing\n workspaceTrusted from\n /home/tester/.kiro/workspace-roots/012\n 3456789abcdef/permissions.yaml"
+  },
+  {
+    "fixture": "kiro--v3-workspace-trust-exit-w60.txt",
+    "detector": "prompt-select",
+    "agent": "kiro",
+    "region": " ──────────────────────────────────────────────────────────\n Trust this workspace?\n ──────────────────────────────────────────────────────────\n /tmp/collie-kiro-trust-ABCDEF/new-workspace-with-a-long-na\n me-for-wrapped-path-capture\n\n This folder can contain hooks, agents, MCP servers and\n workflows that run commands on your machine. Only trust\n folders you know.\n\n Trusting lets Kiro use this workspace's configuration.\n Kiro will be able to read, edit, and execute files here.\n\n   Trust, continue\n ❯ Don't trust, exit\n ──────────────────────────────────────────────────────────\n esc to exit · ↑↓ to navigate · ↵ to select\n\n Revoke later by removing workspaceTrusted from\n /home/tester/.kiro/workspace-roots/0123456789abcdef/permis\n sions.yaml"
+  },
+  {
     "fixture": "kiro--v3-write-allow-w120.txt",
     "detector": "prompt-select",
     "agent": "kiro",
@@ -1335,5 +1454,25 @@
     "detector": "prompt-select",
     "agent": "kiro",
     "region": "↓ Write /tmp/kiro-fixture/demo/notes.txt\n    added 1 line, removed 1 line in notes.txt\n     1\n     2-  beta\n     2+  gamma\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n Replace in File requires approval\n fs_write → notes.txt\n\n   Allow\n   Always allow\n ❯ Deny\n   Always deny\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n esc to close · ↑↓ to navigate · ↵ to select · Tab to edit"
+  },
+  {
+    "fixture": "claude--v2304-select-preview-cjk.txt",
+    "detector": "preview-select",
+    "region": "❯ Load AskUserQuestion via ToolSearch (\"select:AskUserQuestion\") if needed, then call the AskUserQuestion tool now to   \n  ask me ONE question: header \"デザイン\", question \"どのウィジェットのデザインにしますか？\", multiSelect false, with 3  \n  options: 1) label \"カード型\", description \"枠線付きの標準カード\", preview \"+----------------------+\\n| WIDGET         \n    [X] |\\n+----------------------+\\n| Status: OK           |\\n| Value:  42           |\\n+----------------------+\\n| [  \n  OK ]    [ CANCEL ] |\\n+----------------------+\"; 2) label \"コンパクト\", description \"1行の省スペース表示\", preview    \n  \"+--------------------+\\n| WIDGET : OK [ 42 ] |\\n+--------------------+\"; 3) label \"ミニマル\", description            \n  \"装飾なしのテキスト\", preview \"WIDGET: OK (42)\". Do nothing else afterward.                                           \n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n ☐ デザイン \n\nどのウィジェットのデザインにしますか？\n\n❯ 1. カード型                     ┌──────────────────────────────────────────┐\n  2. コンパクト                   │ +----------------------+                 │\n  3. ミニマル                     │ | WIDGET           [X] |                 │\n                                  │ +----------------------+                 │\n                                  │ | Status: OK           |                 │\n                                  │ | Value:  42           |                 │\n                                  │ +----------------------+                 │\n                                  │ | [ OK ]    [ CANCEL ] |                 │\n                                  │ +----------------------+                 │\n                                  └──────────────────────────────────────────┘\n\n                                  Notes: press n to add notes\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  Chat about this\n\nEnter to select · ↑/↓ to navigate · n to add notes · Esc to cancel"
+  },
+  {
+    "fixture": "claude--v2304-select-preview-cjk-moved.txt",
+    "detector": "preview-select",
+    "region": "❯ Load AskUserQuestion via ToolSearch (\"select:AskUserQuestion\") if needed, then call the AskUserQuestion tool now to   \n  ask me ONE question: header \"デザイン\", question \"どのウィジェットのデザインにしますか？\", multiSelect false, with 3  \n  options: 1) label \"カード型\", description \"枠線付きの標準カード\", preview \"+----------------------+\\n| WIDGET         \n    [X] |\\n+----------------------+\\n| Status: OK           |\\n| Value:  42           |\\n+----------------------+\\n| [  \n  OK ]    [ CANCEL ] |\\n+----------------------+\"; 2) label \"コンパクト\", description \"1行の省スペース表示\", preview    \n  \"+--------------------+\\n| WIDGET : OK [ 42 ] |\\n+--------------------+\"; 3) label \"ミニマル\", description            \n  \"装飾なしのテキスト\", preview \"WIDGET: OK (42)\". Do nothing else afterward.                                           \n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n ☐ デザイン \n\nどのウィジェットのデザインにしますか？\n\n  1. カード型                     ┌──────────────────────────────────────────┐\n❯ 2. コンパクト                   │ +--------------------+                   │\n  3. ミニマル                     │ | WIDGET : OK [ 42 ] |                   │\n                                  │ +--------------------+                   │\n                                  └──────────────────────────────────────────┘\n\n                                  Notes: press n to add notes\n\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  Chat about this\n\nEnter to select · ↑/↓ to navigate · n to add notes · Esc to cancel"
+  },
+  {
+    "fixture": "claude--v2304-ask-chip-question-mark.txt",
+    "detector": "prompt-select",
+    "region": "❯ Load AskUserQuestion via ToolSearch (\"select:AskUserQuestion\") if needed, then call the AskUserQuestion tool now to   \n  ask me ONE question with the exact text below: header \"Deploy?\", question \"The staging build passed every check. Pick \n  how to proceed with the rollout.\", multiSelect false, with 2 options: 1) label \"Deploy now (Recommended)\",            \n  description \"Promote to production immediately\"; 2) label \"Hold for review\", description \"Keep on staging until       \n  tomorrow\". Do nothing else afterward.                                                                                 \n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n ☐ Deploy? \n\nThe staging build passed every check. Pick how to proceed with the rollout.\n\n❯ 1. Deploy now (Recommended)\n     Promote to production immediately\n  2. Hold for review\n     Keep on staging until tomorrow\n  3. Type something.\n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  4. Chat about this\n\nEnter to select · ↑/↓ to navigate · Esc to cancel"
+  },
+  {
+    "fixture": "claude--v2304-ask-two-paragraph--w80.txt",
+    "detector": "prompt-select",
+    "region": "❯ Load AskUserQuestion via ToolSearch (\"select:AskUserQuestion\") if needed,     \n  then call the AskUserQuestion tool now to ask me ONE question with the exact  \n  text below: header \"Release\", question \"The staging candidate passed all 24   \n  smoke checks and the migration dry run on the replica database (see           \n  https://ci.example.test/runs/42?tab=checks for the full timing report, query  \n  plans, lock durations, and rollback verification steps across both            \n  regions).\\n\\nWhich environment should we promote this build to next, and      \n  should the rollout pause after the first region?\", multiSelect false, with 3  \n  options: 1) label \"Production\", description \"Roll out to all regions\"; 2)     \n  label \"Canary\", description \"10% traffic for 30 minutes\"; 3) label \"Hold\",    \n  description \"Keep on staging only\". Do nothing else afterward.                \n────────────────────────────────────────────────────────────────────────────────\n ☐ Release \n\n│ The staging candidate passed all 24 smoke checks and the migration dry run on \n│ the replica database (see https://ci.example.test/runs/42?tab=checks for the \n│ full timing report, query plans, lock durations, and rollback verification \n│ steps across both regions).\n│\n│ Which environment should we promote this build to next, and should the rollout\n│ pause after the first region?\n\n❯ 1. Production\n     Roll out to all regions\n  2. Canary\n     10% traffic for 30 minutes\n  3. Hold\n     Keep on staging only\n  4. Type something.\n────────────────────────────────────────────────────────────────────────────────\n  5. Chat about this\n\nEnter to select · ↑/↓ to navigate · Esc to cancel"
   }
 ]

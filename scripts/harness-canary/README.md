@@ -120,7 +120,7 @@ OpenCode restarts. Plan approval is read and never answered. A dialog the model 
 ### The harness bar (`--scenario bar`)
 
 One pane per agent. Each button of the agent's shipped harness bar (`web/src/lib/harness-bar.ts`) is
-sent through the client's own `sendGuardedReply`, which is how the phone's bar sends, then Escape
+sent through the client's own `sendText`, which is how the phone's bar sends, then Escape
 closes what it opened. Compact is left out because it spends a model turn and an empty session has
 nothing to compact; a two-tap row is left out because the phone asks before it sends one. No model
 turn is made.
@@ -385,12 +385,14 @@ The gate tells you to merge a lab branch only when that branch is in the lab clo
 
 ## The send path
 
-The client's real `sendGuardedReply` (`web/src/lib/reply-action.ts`) runs in this process. Its
+The client's real `sendText` (`web/src/lib/reply-action.ts`) runs in this process. Its
 `fetch` is replaced by a shim (`transport.ts`) that answers `GET /api/pane/:id` with the bridge's
-own `readPane`, and `POST /api/pane/:id/reply` with the bridge's own `replyPane`, both from
-`bridge/server.ts`. The shim builds a Herdr adapter on the canary session's socket. So there is no
-server, no port and no paired device. Any other route throws, because a new route means the send
-path changed. The bridge's audit lines for each send are kept in `summary.json`, with the device
+own `readPane`, and `POST /api/send` with the bridge's own `sendRoute` and Send Protocol, both from
+`bridge/server.ts`. A checkout from before M56 spec 06 sends with `sendGuardedReply` to
+`POST /api/pane/:id/reply`, and the shim still answers that route with `replyPane`. The shim builds a
+Herdr adapter on the canary session's socket. So there is no server, no port and no paired device.
+Any other route throws, because a new route means the send path changed. The bridge's audit lines for
+each send are kept in `summary.json`, with the device
 name `collie-canary`.
 
 ## Proof against 1.13.1

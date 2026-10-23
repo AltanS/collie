@@ -164,6 +164,8 @@ const AGENT_VIEW_KEYS = {
   held: true,
   // Not a crew dimension: the pane's session instance (walky talky), four characters naming the session that holds the pane id now. Absent on a machine that predates it.
   instance: true,
+  // Not a crew dimension: the pane's usage dots (bridge/usage.ts), present only while the statusLine wrapper reports them.
+  usage: true,
 } satisfies Record<keyof AgentView, true>;
 
 const DEVICE_AUTH_KEYS = {
@@ -299,6 +301,7 @@ describe("solo zero-tax — the client's mirror types carry no crew dimension", 
       "terminalTitleStale",
       "todos",
       "turnId",
+      "usage",
       "workspaceId",
       "workspaceLabel",
       "workspaceNumber",

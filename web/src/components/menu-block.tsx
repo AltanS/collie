@@ -58,7 +58,8 @@ export interface MenuBlockProps {
 // There are NO digit buttons, and there never will be: in the `/model` picker a digit confirms AND
 // persists the choice as the user's default (.adr/0009). Only footer-named keys and arrows ship. The
 // one card with digits is a notice above a live box (`liveBox`, ADR 0109): its digits are the keys
-// its own row prints as `<digit>: <label>`, never a number read off a list row.
+// its own row prints as `<digit>: <label>` (letters, under a head the profile marks `letters`), never a
+// number read off a list row.
 export function MenuBlock({ menu, lines, onAction, disabled }: MenuBlockProps) {
   useLocale();
   const [sending, setSending] = useState<string | null>(null);

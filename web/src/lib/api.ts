@@ -29,7 +29,7 @@ import { stampSend } from "./poll-intent";
 import { observeServerBuild, SERVER_BUILD_HEADER } from "./server-build";
 import { noteServerDate } from "./server-clock";
 import { mounted } from "./base-path";
-import { WALKY_LIST_LIMIT, type WalkyReceipt, type WalkyRefusals, type WalkyRow, type WalkySendBody, type WalkySkipped, type WalkyTarget, type WalkyWho } from "./walky";
+import { WALKY_LIST_LIMIT, type WalkyReceipt, type WalkyRefusals, type WalkyRow, type WalkySendBody, type WalkySkipped, type WalkyTakeBack, type WalkyTarget, type WalkyWho } from "./walky";
 import { CHAT_UNCHANGED, type ChatAnswer } from "./chat-window";
 import { decidedOf, parseAsk, type AnswerResult, type AskAnswer } from "./ask";
 import type { ColumnRange } from "./column-range";
@@ -1516,8 +1516,9 @@ export async function postProgramSend(body: SendRequestBody, scope?: Scope): Pro
 
 /**
  * GET /api/send/receipts: the last ten sends the bridge ran for a pane, newest first (M56 spec 09):
- * outcome, reason, time, keys by name and gaps. Never text and never a row of the screen. This
- * machine's own panes only: a pane on a crew member answers nothing here, and the list is empty.
+ * outcome, reason, time, keys by name and gaps, and the one line of the text the bridge kept when
+ * Sent's rule would. Never a row of the screen. This machine's own panes only: a pane on a crew
+ * member answers nothing here, and the list is empty.
  */
 export async function getSendReceipts(paneId: string, scope?: Scope): Promise<SendReceiptRow[]> {
   if (normalizeScope(scope).host) return [];
@@ -1566,6 +1567,27 @@ export async function fetchWalkyWho(signal?: AbortSignal): Promise<WalkyWho> {
     { signal },
   );
   return { targets: got.targets, skipped: got.skipped ?? [], refusals: got.refusals ?? null };
+}
+
+/**
+ * POST /api/walky/<id>/cancel (M62 spec 03): the sender takes a held operator message back. The bridge
+ * answers one result per target; a message that typed, or is going out now, keeps its receipt and the
+ * result says `already typed`. An agent's message is not the phone's to cancel (403, an error here).
+ */
+export async function cancelWalky(id: string): Promise<WalkyTakeBack[]> {
+  const got = await req<{ results?: WalkyTakeBack[] }>(`/api/walky/${encodeURIComponent(id)}/cancel`, { method: "POST" });
+  return got.results ?? [];
+}
+
+/**
+ * POST /api/pane/<pane>/walky/<id>/drop (M62 spec 03): the pane's owner drops a message held for the pane.
+ * This machine's own panes only: the route does not cross a crew link, so a pane on a member is answered
+ * here before any request goes out.
+ */
+export async function dropWalky(paneId: string, id: string, scope?: Scope): Promise<WalkyTakeBack[]> {
+  if (!isLead(scope)) throw new ApiError("A message held on a crew member is dropped on that machine.", 400);
+  const got = await req<{ results?: WalkyTakeBack[] }>(withScope(`/api/pane/${encodeURIComponent(paneId)}/walky/${encodeURIComponent(id)}/drop`, scope), { method: "POST" });
+  return got.results ?? [];
 }
 
 /**

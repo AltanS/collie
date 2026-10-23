@@ -63,7 +63,7 @@ import {
 } from "./reduce.ts";
 import { RENAME_TITLE_MAX, shortLine } from "../mux/durable/clean.ts";
 import { containedRealpath, exists, head, loadTail, readSinceFile, rootList, statFile } from "./files.ts";
-import { resolveImageUrl } from "./pi.ts";
+import { isBlobHash, resolveImageUrl } from "./pi.ts";
 import { clamp, MAX_RESULT_CHARS, MAX_TEXT_CHARS, oneLine, stripAnsi, summarizeToolInput } from "./text.ts";
 import { parseUnifiedDiff } from "./diff.ts";
 import { answerLabels, classifyToolCall, questionKey, type ToolCall } from "./tool-call.ts";
@@ -141,10 +141,18 @@ type ToolResult = NonNullable<Extract<TranscriptPart, { kind: "tool" }>["result"
  * A plain-text result carries no exit code anywhere else either: the batch item is exactly
  * `{tool_call_index, tool_call_id, text}` and no sampled row records a number beside it (failure
  * state elsewhere is categorical — `task/failed` and kin — never numeric). So none is invented.
+ * What a plain-text result CAN carry is the harness's own verdict prefix: a refused call answers
+ * `tool denied: …` (nothing went wrong, somebody said no) and a failed one answers `tool failed:
+ * …`. Those prefixes read as `denied`/`failed` — the same categorical flags the lifecycle rows
+ * already set — so Chat and History stop drawing a refusal or a failure as a success.
  */
 interface UnwrappedResult {
   text: string;
   exitCode?: number;
+  /** The harness refused the call (`tool denied: …`); never an error, never read out of prose. */
+  denied?: true;
+  /** The harness failed the call (`tool failed: …`); the categorical flag, with no code beside it. */
+  failed?: true;
 }
 
 function unwrapResultText(text: string, toolName: string): UnwrappedResult {
@@ -153,6 +161,10 @@ function unwrapResultText(text: string, toolName: string): UnwrappedResult {
     // SAFETY: `JSON.parse` output IS a JsonValue by construction.
     parsed = JSON.parse(text) as JsonValue;
   } catch {
+    // Plain text: only the harness's own verdict prefix earns a flag. Anything else — a file's
+    // first line, a command's bare output — renders verbatim with no state, as before.
+    if (text.startsWith("tool denied:")) return { text, denied: true };
+    if (text.startsWith("tool failed:")) return { text, failed: true };
     return { text };
   }
   if (!isObj(parsed)) return { text };
@@ -440,6 +452,7 @@ export function createMuseReducer(): RowReducer {
     if (payloadType === "runtime.user_intent.accepted") {
       const texts: string[] = [];
       let assets = 0;
+      const images: Extract<TranscriptPart, { kind: "image" }>[] = [];
       const messages = payload.model_messages;
       if (Array.isArray(messages)) {
         for (const message of messages) {
@@ -450,26 +463,60 @@ export function createMuseReducer(): RowReducer {
             unknown.part(kind === "" ? undefined : kind);
             if (kind === "text" && typeof block.text === "string" && block.text.trim() !== "") {
               texts.push(block.text);
-            } else if (kind === "asset") {
+            } else if (kind === "asset" && isObj(block.asset)) {
+              // A content hash, not bytes: measured logs carry only the digest (plus
+              // dimensions), no pixels and no retrievable path, and this collie's
+              // /api/blobs route serves only pi/omp attachments — a Muse digest has
+              // nowhere to load from. So the deficit stays marked in words (the
+              // "[image attached]" marker), never as a broken image. Muse's own
+              // `[Image #n]` markers already in the text stay verbatim: they are the
+              // log's own words, not invented ones. A non-image mime contributes
+              // nothing. An image mime keeps its marker even when the digest is
+              // missing or malformed: the picture was attached either way.
+              const mediaType =
+                typeof block.asset.media_type === "string" ? block.asset.media_type : undefined;
+              if (mediaType !== undefined && !mediaType.startsWith("image/")) continue;
+              // No mime type at all still needs a well-formed digest to count as a picture.
+              if (mediaType === undefined && !isBlobHash(str(block.asset.digest))) continue;
               assets += 1;
+            } else if (kind === "image") {
+              // An inline picture beside the asset references: base64 the log carried, so the
+              // pixels ARE here. A reference this build will not load contributes no part,
+              // rather than a broken <img> (the tool-image precedent below).
+              const raw =
+                typeof block.base64_data === "string"
+                  ? block.base64_data
+                  : typeof block.data === "string"
+                    ? block.data
+                    : "";
+              if (raw === "") continue;
+              const mediaType =
+                typeof block.media_type === "string"
+                  ? block.media_type
+                  : typeof block.mimeType === "string"
+                    ? block.mimeType
+                    : undefined;
+              const url = resolveImageUrl(raw, mediaType);
+              if (url === null) continue;
+              const part: Extract<TranscriptPart, { kind: "image" }> = { kind: "image", url };
+              if (mediaType !== undefined) part.mimeType = mediaType;
+              images.push(part);
             }
           }
         }
       }
-      if (texts.length === 0 && assets === 0) return NO_CHANGE;
-      // An asset is a content hash, not bytes — the picture lives outside the log and the pure
-      // parser cannot resolve it. A marked placeholder keeps the turn from rendering empty (or
-      // vanishing, for an image-only turn) without inventing pixels. Only the deficit is
-      // added: Muse's own text already carries an `[Image #n]` placeholder per pasted
-      // picture (every asset turn in the measured corpus), and naming it twice is noise.
+      if (texts.length === 0 && assets === 0 && images.length === 0) return NO_CHANGE;
+      // Only the deficit is marked: Muse's own text already carries an `[Image #n]`
+      // placeholder per pasted picture (every asset turn in the measured corpus), and
+      // naming it twice is noise.
       const alreadyNamed = texts.join("\n\n").split("[Image").length - 1;
       for (let i = alreadyNamed; i < assets; i++) texts.push("[image attached]");
-      entries.push({
-        uuid: rowId,
-        ts,
-        role: "user",
-        parts: [{ kind: "text", ...clamp(stripAnsi(texts.join("\n\n")), MAX_TEXT_CHARS) }],
-      });
+      const parts: TranscriptEntry["parts"] = [];
+      if (texts.length > 0) {
+        parts.push({ kind: "text", ...clamp(stripAnsi(texts.join("\n\n")), MAX_TEXT_CHARS) });
+      }
+      parts.push(...images);
+      entries.push({ uuid: rowId, ts, role: "user", parts });
       return reduction(entries, changed);
     }
 
@@ -561,6 +608,8 @@ export function createMuseReducer(): RowReducer {
           const unwrapped = unwrapResultText(str(item.text), target?.part.name ?? "");
           const result: ToolResult = clamp(stripAnsi(unwrapped.text), MAX_RESULT_CHARS);
           if (unwrapped.exitCode !== undefined && unwrapped.exitCode !== 0) result.isError = true;
+          if (unwrapped.failed === true) result.isError = true;
+          if (unwrapped.denied === true) result.denied = true;
           if (callId !== "" && failedCalls.has(callId)) result.isError = true;
           if (callId !== "" && deniedCalls.has(callId)) result.denied = true;
           const imageUrl = callId === "" ? undefined : imageForCall.get(callId);

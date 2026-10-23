@@ -6,7 +6,7 @@ import type { StyledLine } from "../../blocks";
 import { hasHiddenCharacter, MAX_REGION_CHARS } from "../bound-region";
 import { pointerWalk } from "../menu-hints";
 import type { PromptModel } from "../prompt-model";
-import { findReadPreview, findWritePreview, panelPath } from "./file-preview";
+import { findReadPreview, findShellPreview, findWritePreview, panelSubject } from "./tool-preview";
 import { frameRows, isDivider, readPanelTail } from "./markers";
 
 /** A complete captured approval panel and its first row in the terminal buffer. */
@@ -79,24 +79,21 @@ export function detectApprovalRegion(lines: StyledLine[]): ApprovalRegion | null
   const capability = /^ (shell|fs_read|fs_write) → \S/.exec(body[0] ?? "")?.[1];
   if (capability === undefined || body.slice(1).some((row) => / → /.test(row))) return null;
 
-  let startLine = panelTop;
-  let subject = lines.slice(bodyStart, optionStart - 1);
-  if (capability === "shell") {
-    if (!offersTrust) return null;
-  } else {
-    if (capability === "fs_read" && offersTrust) return null;
-    if (capability === "fs_read" && title !== " Read File requires approval") return null;
-    if (capability === "fs_write" && title !== " Write File requires approval" && title !== " Replace in File requires approval") return null;
-    // The permission body names only the path. Bind the pending tool's range or full diff too:
-    // a successor edit of the same file otherwise has the very same permission panel.
-    // The preview must also name the panel's own path, or a preview of another file could bind.
-    const path = panelPath(body);
-    if (path === null) return null;
-    const preview = capability === "fs_read" ? findReadPreview(rows, panelTop, path) : findWritePreview(rows, panelTop, path);
-    if (preview === null || rows.slice(preview.start, preview.end + 1).some(unsafeBody)) return null;
-    startLine = preview.start;
-    subject = [...lines.slice(preview.start, preview.end + 1), ...subject];
-  }
+  if (capability === "shell" && !offersTrust) return null;
+  if (capability === "fs_read" && offersTrust) return null;
+  if (capability === "fs_read" && title !== " Read File requires approval") return null;
+  if (capability === "fs_write" && title !== " Write File requires approval" && title !== " Replace in File requires approval") return null;
+  // The permission body names only the command or the path. Bind the pending tool's preview too:
+  // it holds the shell call's other arguments, the read range or the full diff, and a successor
+  // call that differs only there draws the very same panel. The preview must name the panel's own
+  // command or path, or a preview of another call could bind.
+  const named = panelSubject(body);
+  if (named === null) return null;
+  const preview =
+    capability === "shell" ? findShellPreview(rows, panelTop, named) : capability === "fs_read" ? findReadPreview(rows, panelTop, named) : findWritePreview(rows, panelTop, named);
+  if (preview === null || rows.slice(preview.start, preview.end + 1).some(unsafeBody)) return null;
+  const startLine = preview.start;
+  const subject = [...lines.slice(preview.start, preview.end + 1), ...lines.slice(bodyStart, optionStart - 1)];
 
   const region = rows.slice(startLine, tail.end + 1);
   const signature = region.join("\n");

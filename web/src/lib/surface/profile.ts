@@ -100,6 +100,11 @@ export interface NoticeHead {
    * indented by two spaces or more, down to the key block. Optional.
    */
   readonly body?: true;
+  /**
+   * True for a head whose key block prints single letters (`y: Yes   n: No`) instead of digits: the
+   * reader takes lettered keys under this head and no other, and digits under it no more. Optional.
+   */
+  readonly letters?: true;
 }
 
 /** A named row under the box (`idle.volatile.below.footerRows`). */
@@ -175,6 +180,15 @@ export interface CommandListRows {
    * typed in the draft's own colour stays. Optional.
    */
   readonly argumentHint?: boolean;
+  /**
+   * Once a space follows the command word the list under the box is that command's list of
+   * arguments (OMP's `/goal` lists `pause`, `resume`, ...). A pointer on exactly the argument
+   * already typed is then the typed command's own typeahead, as a pointer on the typed command
+   * is for a bare command: Enter runs what is typed. A list that holds the command word itself
+   * is the list of commands and never reads this way. A profile names it only where a lab run
+   * showed Enter run the typed text with that list open. Optional.
+   */
+  readonly argumentList?: boolean;
 }
 
 /** A side of the box a command list stands on. */
@@ -255,7 +269,15 @@ export interface FrameLayout {
    * list and a dialog's title too, and those stand apart by a blank row or run past the bound. Optional.
    */
   readonly underPainted?: boolean;
-
+  /**
+   * The interior walk only, with `rows`. True when the text in front of the draft hole on the prompt
+   * row is the box's own prompt glyph, never a dialog's pointer. On a harness that draws its dialogs in
+   * the box's place (`idle.dialogsInBox`) the modal cues read the rows from the top edge down, and there
+   * this glyph reads as blank. Without it a draft that wraps reads as a pointer on a listed row (the
+   * glyph's row, and a wrapped row in the hole's column) between two rules, which is an overlay. `rows`
+   * must name every row the box may hold, so a box with any other row inside is no box. Optional.
+   */
+  readonly ownPrompt?: boolean;
 }
 
 /** The ghost text after the cursor ({@link Profile.idle.inlineHint}). */
@@ -461,6 +483,18 @@ export interface Profile {
      * line that starts with it; a longer one names the command word. Optional.
      */
     readonly neverHeld?: readonly string[];
+    /**
+     * The command words the harness runs at once while a turn runs, as the lab measured them: the
+     * harness takes the command before its turn and acts on it, never as text that steers the turn
+     * or waits for its end (OMP's `/goal`). Such a command in a turn goes in with the command keys
+     * (`commandSubmit`, else `submit`) instead of being held, and is probed like every send into a
+     * turn. Each entry is one command word that starts with a reserved lead (`/goal`), matched alone
+     * or followed by a space (`/goal pause`, never `/goals`). Never a word in `neverHeld`. Optional:
+     * without it every command in a turn takes `commandWhileRunning` or Collie's hold.
+     */
+    readonly commandsRunInTurn?: readonly string[];
+    /** Where `commandsRunInTurn` was measured: the versions and commands the lab ran. Optional, prose only. */
+    readonly commandsRunInTurnNote?: string;
   };
   readonly collapse: {
     /** The long-paste form as a regular expression source. Group `lines` is optional. */
@@ -481,6 +515,21 @@ export interface Profile {
      * in ms, a send waits after the write before the reads that can send it. Optional.
      */
     readonly settleMs?: number;
+    /**
+     * The harness takes ONE bracketed paste of a whole multi-line text and folds a long one into its
+     * collapse form, whose `lines` group counts the paste's line breaks. Measured per harness in the
+     * lab: where it is true and the multiplexer frames a paste itself (`pasteBlock`), a send is one
+     * paste instead of a write per line, so a long dictation never grows the box past the screen.
+     */
+    readonly block?: boolean;
+    /**
+     * The token the harness draws for an image file it takes off a whole-text paste, as a regular
+     * expression source (Claude Code: `[Image #N]`). Optional, and only with `block`: without it, a
+     * send that names an image file is not modelled, so such a box stays unproven. With `block`, this
+     * token and the collapse pattern are read on the box with its white space taken out, so each
+     * writes a space as a literal space, never `\s` or `[ ]`.
+     */
+    readonly image?: string;
   };
   /** How the bridge keeps an ask (M56 spec 08). Optional: a profile without it uses the default lifetime. */
   readonly ask?: {
@@ -725,8 +774,10 @@ function commandList(value: JsonValue | undefined): CommandListRows {
   const withNamespaces = node.namespaces === undefined ? withFooter : { ...withFooter, namespaces: commandListNamespaces(node.namespaces, `${path}.namespaces`) };
   if (node.pointerBold !== undefined && node.pointerBold !== true && node.pointerBold !== false) fail(`${path}.pointerBold`, "must be true or false");
   if (node.argumentHint !== undefined && node.argumentHint !== true && node.argumentHint !== false) fail(`${path}.argumentHint`, "must be true or false");
+  if (node.argumentList !== undefined && node.argumentList !== true && node.argumentList !== false) fail(`${path}.argumentList`, "must be true or false");
   const withPointerBold = node.pointerBold === true ? { ...withNamespaces, pointerBold: true } : withNamespaces;
-  return node.argumentHint === true ? { ...withPointerBold, argumentHint: true } : withPointerBold;
+  const withArgumentHint = node.argumentHint === true ? { ...withPointerBold, argumentHint: true } : withPointerBold;
+  return node.argumentList === true ? { ...withArgumentHint, argumentList: true } : withArgumentHint;
 }
 
 /** `commandList.namespaces`: unique words with no space in them. */
@@ -775,7 +826,7 @@ function volatileBelow(node: JsonObject): Profile["idle"]["volatile"]["below"] {
   const withScreens = node.otherScreens === undefined ? withFooter : { ...withFooter, otherScreens: otherScreens(node.otherScreens) };
   return node.commandList === undefined ? withScreens : { ...withScreens, commandList: commandList(node.commandList) };
 }
-/** `idle.notices`: each an object whose head pattern compiles and cannot match a blank row, and whose `body`, when named, is true. */
+/** `idle.notices`: each an object whose head pattern compiles and cannot match a blank row, and whose `body` and `letters`, when named, are true. */
 function parseNotices(value: JsonValue | undefined): NoticeHead[] {
   const path = "idle.notices";
   return list(value, path).map((item, i) => {
@@ -783,9 +834,12 @@ function parseNotices(value: JsonValue | undefined): NoticeHead[] {
     const node = object(item, at);
     const head = pattern(field(node, "head", at), `${at}.head`);
     if (head.test("") || head.test(" ")) fail(`${at}.head`, "must not match a blank row");
-    if (node.body === undefined) return { head: head.source };
-    if (node.body !== true) fail(`${at}.body`, "must be true when named");
-    return { head: head.source, body: true };
+    if (node.body !== undefined && node.body !== true) fail(`${at}.body`, "must be true when named");
+    if (node.letters !== undefined && node.letters !== true) fail(`${at}.letters`, "must be true when named");
+    if (node.body === true && node.letters === true) return { head: head.source, body: true, letters: true };
+    if (node.body === true) return { head: head.source, body: true };
+    if (node.letters === true) return { head: head.source, letters: true };
+    return { head: head.source };
   });
 }
 
@@ -853,7 +907,7 @@ function parseFrame(frameNode: JsonObject): FrameLayout {
     maxTailRows: whole(field(frameNode, "maxTailRows", "idle.frame"), "idle.frame.maxTailRows", 0),
   };
   if (walk === "edges") {
-    for (const key of ["rows", "trailer", "continuation"] as const) {
+    for (const key of ["rows", "trailer", "continuation", "ownPrompt"] as const) {
       if (frameNode[key] !== undefined) fail(`idle.frame.${key}`, "belongs to the interior walk");
     }
     const edgeBottom = anchor(field(frameNode, "bottom", "idle.frame"), "idle.frame.bottom", null, true);
@@ -869,10 +923,13 @@ function parseFrame(frameNode: JsonObject): FrameLayout {
   }
   if (frameNode.underPainted === true && frameNode.under === undefined) fail("idle.frame.underPainted", "needs an under pattern");
   const withPainted = frameNode.underPainted === true ? { ...withUnder, underPainted: true } : withUnder;
-  if (frameNode.continuation === undefined) return withPainted;
+  if (frameNode.ownPrompt !== undefined && frameNode.ownPrompt !== true && frameNode.ownPrompt !== false) fail("idle.frame.ownPrompt", "must be true or false");
+  if (frameNode.ownPrompt === true && frameNode.rows === undefined) fail("idle.frame.ownPrompt", "needs a rows pattern");
+  const withOwnPrompt = frameNode.ownPrompt === true ? { ...withPainted, ownPrompt: true } : withPainted;
+  if (frameNode.continuation === undefined) return withOwnPrompt;
   const continuation = pattern(frameNode.continuation, "idle.frame.continuation");
   if (!continuation.source.includes("(?<text>")) fail("idle.frame.continuation", "must hold the named group text");
-  return { ...withPainted, continuation: continuation.source };
+  return { ...withOwnPrompt, continuation: continuation.source };
 }
 
 export function parseProfile(raw: JsonValue): Profile {
@@ -1026,6 +1083,19 @@ export function parseProfile(raw: JsonValue): Profile {
   const collapse = { pattern: pattern(field(collapseNode, "pattern", "collapse"), "collapse.pattern").source };
 
   const reservedLeads = textList(field(root, "reservedLeads", ""), "reservedLeads", 1);
+  // Read after the leads: each entry is one command word that starts with one of them.
+  if (keysNode.commandsRunInTurn !== undefined) {
+    const commandsRunInTurn = textList(keysNode.commandsRunInTurn, "keys.commandsRunInTurn", 1);
+    for (const entry of commandsRunInTurn) {
+      if (/\s/u.test(entry) || [...entry].length < 2) fail("keys.commandsRunInTurn", `${entry} must be one command word, with no space`);
+      if (!reservedLeads.some((lead) => entry.startsWith(lead))) fail("keys.commandsRunInTurn", `${entry} must start with a reserved lead`);
+      if (keys.neverHeld?.includes(entry) === true) fail("keys.commandsRunInTurn", `${entry} is in keys.neverHeld`);
+    }
+    keys = { ...keys, commandsRunInTurn };
+  }
+  if (keysNode.commandsRunInTurnNote !== undefined) {
+    keys = { ...keys, commandsRunInTurnNote: text(keysNode.commandsRunInTurnNote, "keys.commandsRunInTurnNote") };
+  }
 
   const probeNode = object(field(root, "probe", ""), "probe");
   const probe = {
@@ -1044,7 +1114,15 @@ export function parseProfile(raw: JsonValue): Profile {
     if (pasteNode.settleMs !== undefined && (settleMs === undefined || !Number.isInteger(settleMs) || settleMs < 1 || settleMs > 5000)) {
       fail("paste.settleMs", "must be a whole number of ms from 1 to 5000");
     }
+    const block = pasteNode.block;
+    if (block !== undefined && block !== true && block !== false) fail("paste.block", "must be true or false");
+    if (block === true && bracketed !== true) fail("paste.block", "needs paste.bracketed");
     paste = settleMs === undefined ? { bracketed: bracketed === true } : { bracketed: bracketed === true, settleMs };
+    if (block === true) paste = { ...paste, block: true };
+    if (pasteNode.image !== undefined) {
+      if (block !== true) fail("paste.image", "needs paste.block");
+      paste = { ...paste, image: pattern(pasteNode.image, "paste.image").source };
+    }
   }
 
   let ask: Profile["ask"];

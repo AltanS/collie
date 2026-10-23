@@ -30,6 +30,7 @@ import { QuickActionsContent } from "@/components/quick-actions";
 import { ActionsRow } from "@/components/actions-row";
 import { SectionLabel } from "@/components/ui/section-label";
 import { Collapse } from "@/components/ui/collapse";
+import { BottomSheet } from "@/components/ui/sheet";
 import { SendOfferStrip } from "@/components/send-offer-strip";
 import { HeldCard, type HeldAction } from "@/components/composer-held";
 import { offerMode } from "@/lib/send-protocol";
@@ -45,7 +46,7 @@ import type { IntentId } from "@/lib/durable-control";
 import { Notice, NOTICE_ACTION } from "@/components/ui/notice";
 import { ActionRow } from "@/components/action-sheet-rows";
 import { AnchoredMenu } from "@/components/ui/anchored-menu";
-import { WalkyAimStrip, WalkyNoteStrip } from "@/components/walky-composer-strip";
+import { WalkyAimStrip, WalkyHeldStrip, WalkyNoteStrip } from "@/components/walky-composer-strip";
 import { WalkyIcon } from "@/components/walky-icon";
 import { useLongPress } from "@/hooks/use-long-press";
 import { useWalkyComposer, type WalkyAim } from "@/hooks/use-walky-composer";
@@ -58,12 +59,16 @@ import {
   acceptAttribute,
   attachmentKind,
   composeLine,
+  expandAttachmentInText,
   insertMarker,
+  isCollapsiblePaste,
   limitMb,
   markerFor,
   markerMissing,
   nextMarkerNumber,
   offersFiles,
+  pasteLineCount,
+  pastePreviewName,
   PHOTO_ACCEPT,
   rejectAttachment,
   removeMarker,
@@ -181,6 +186,11 @@ interface ComposerProps {
   display: { open: boolean; onToggle: () => void };
   /** Snap the mirror to the live tail (follow + revalidate + scroll) after a successful send. */
   onSent: () => void;
+  /**
+   * Opens the pane's Messages sheet (M62 spec 03): where the held mark above the box takes a tap. Absent
+   * where the pane has no sheet, and then no mark is drawn.
+   */
+  onOpenMessages?: (() => void) | undefined;
   /**
    * The pane's held sends from the snapshot (M56 spec 15), oldest first: a send the harness could not
    * take mid-turn, kept by the bridge and sent when the pane reads free. One queued row each, above the box.
@@ -380,7 +390,7 @@ interface ClearedDraft {
 
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, instance, surface, unreachableNote, scope, agent, isShell, cwd, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, held: heldRows, chatEntries, pullHandle, draftNoticeSlot, changesPill, stale, hand = "right", screen, todos, subagents },
+  { paneId, instance, surface, unreachableNote, scope, agent, isShell, cwd, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, onOpenMessages, held: heldRows, chatEntries, pullHandle, draftNoticeSlot, changesPill, stale, hand = "right", screen, todos, subagents },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -462,6 +472,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const [attachments, setAttachments] = useState<ComposerAttachment[]>(restoredDraft?.attachments ?? []);
   const attachmentsRef = useRef<ComposerAttachment[]>(attachments);
   const nextAttachmentRef = useRef(restoredDraft?.next ?? 1);
+  const [editingPaste, setEditingPaste] = useState<{
+    paneId: string;
+    scopeId: string;
+    n: number;
+  } | null>(null);
   // Where the caret last stood in the field, so an upload that lands after the field lost focus (a
   // native picker took it) still puts its marker where the operator was. Null means "no caret
   // yet", which puts the marker at the end.
@@ -795,6 +810,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       clearComposedDraft();
       revalidator.revalidate();
     },
+    onChanged: () => revalidator.revalidate(),
   });
 
   const hasDraft = input.trim() !== "" || attachments.length > 0;
@@ -1024,12 +1040,18 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     setPendingUnknown(null);
     setProtocolOffer(null);
     setSendRefusal(null);
-    if (pendingUnknown.isDraft && inputValueRef.current === pendingUnknown.draftText) clearComposedDraftRef.current();
+    if (
+      pendingUnknown.isDraft &&
+      inputValueRef.current === pendingUnknown.draftText &&
+      composeLine(inputValueRef.current, attachmentsRef.current, isShell) === pendingUnknown.sentText
+    ) {
+      clearComposedDraftRef.current();
+    }
     if (effectiveRaw !== null && normalizeDraft(effectiveRaw) === normalizeDraft(pendingUnknown.sentText)) {
       setHandledKey(normalizeDraft(effectiveRaw));
       setPreviewLatched(false);
     }
-  }, [pendingUnknown, chatEntries, effectiveRaw]);
+  }, [pendingUnknown, chatEntries, effectiveRaw, isShell]);
 
   // Show the preview while it's latched, the host line still carries a (non-echo) draft, and the user
   // hasn't already handled this exact text. Its displayed text is the LIVE raw line — host typing
@@ -1624,6 +1646,50 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     updateInput(removeMarker(inputValueRef.current, markerFor(attachment)));
   }
 
+  function addPasteAttachment(pastedText: string) {
+    const n = nextMarkerNumber(inputValueRef.current, nextAttachmentRef.current);
+    nextAttachmentRef.current = n + 1;
+    const attachment: ComposerAttachment = {
+      n,
+      path: pastedText,
+      name: pastePreviewName(pastedText),
+      kind: "paste",
+    };
+    const field = inputRef.current;
+    const start =
+      field !== null && document.activeElement === field ? field.selectionStart : caretRef.current;
+    const end =
+      field !== null && document.activeElement === field ? field.selectionEnd : start;
+    const placed = insertMarker(inputValueRef.current, start, markerFor(attachment), end);
+    attachmentsRef.current = [...attachmentsRef.current, attachment];
+    setAttachments(attachmentsRef.current);
+    caretRef.current = placed.caret;
+    updateInput(placed.text);
+    focusInputAt(placed.caret);
+  }
+
+  function updatePasteAttachment(n: number, nextContent: string) {
+    attachmentsRef.current = attachmentsRef.current.map((a) =>
+      a.n === n && a.kind === "paste"
+        ? { ...a, path: nextContent, name: pastePreviewName(nextContent) }
+        : a,
+    );
+    setAttachments(attachmentsRef.current);
+    persistDraft();
+  }
+
+  function expandPasteAttachment(n: number) {
+    const target = attachmentsRef.current.find((a) => a.n === n && a.kind === "paste");
+    if (target === undefined) return;
+    setEditingPaste(null);
+    attachmentsRef.current = attachmentsRef.current.filter((a) => a.n !== n);
+    setAttachments(attachmentsRef.current);
+    const expanded = expandAttachmentInText(inputValueRef.current, target);
+    caretRef.current = expanded.length;
+    updateInput(expanded);
+    focusInputEnd();
+  }
+
   /** After a verified send: the text, the chips and their previews all go, and numbering restarts. */
   function clearComposedDraft() {
     for (const attachment of attachmentsRef.current) revokePreview(attachment);
@@ -1754,7 +1820,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // its contents in an editor produces the first, and neither has become the other.
   function onPasteFile(e: ClipboardEvent<HTMLTextAreaElement>) {
     if (locked || direct.active) return;
-    const items = e.clipboardData.items;
+    const items = e.clipboardData?.items ?? [];
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
       if (item.kind !== "file") continue;
@@ -1765,7 +1831,16 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       void uploadFile(file);
       return;
     }
+    const pastedText = e.clipboardData?.getData?.("text/plain") ?? "";
+    if (!isCollapsiblePaste(pastedText)) return;
+    e.preventDefault();
+    addPasteAttachment(pastedText);
   }
+
+  const activePaste =
+    editingPaste !== null && editingPaste.paneId === paneId && editingPaste.scopeId === scopeId
+      ? attachments.find((a) => a.n === editingPaste.n && a.kind === "paste")
+      : undefined;
 
   return (
     <>
@@ -2144,7 +2219,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                       // 48h store is the leak this issue asked about, and because `activate` refuses
                       // while any draft is present, which would make the offered remedy fail on the
                       // spot.
-                      updateInput("");
+                      clearComposedDraft();
                       requestDrawer(null);
                       setHandoffMask(true);
                       direct.activate();
@@ -2170,7 +2245,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           {walky.aim !== null && <WalkyAimStrip aim={walky.aim} onCancel={walky.clearAim} />}
         </Collapse>
         <Collapse open={walky.note !== null}>
-          {walky.note !== null && <WalkyNoteStrip note={walky.note} onDismiss={walky.dismissNote} />}
+          {walky.note !== null && <WalkyNoteStrip note={walky.note} onDismiss={walky.dismissNote} onCancel={walky.cancelFollowed === null ? null : () => void walky.cancelFollowed?.()} />}
+        </Collapse>
+        {/* MESSAGES HELD FOR THIS PANE (M62 spec 03): a draft in the box holds a message up to an hour, and
+            the owner of the box should know. One line, a tap opens the Messages sheet with its Drop. */}
+        <Collapse open={walky.held > 0 && onOpenMessages !== undefined}>
+          {walky.held > 0 && onOpenMessages !== undefined && <WalkyHeldStrip count={walky.held} onOpen={onOpenMessages} />}
         </Collapse>
         {/* A draft too large for the disk tier (lib/drafts.ts). It survives a pane switch — the
             memory tier holds it whole — but not the app closing, and that difference is invisible
@@ -2178,7 +2258,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             Derived at render rather than pushed through setStatus, because this is a CONDITION that
             lasts as long as the text does, and a status auto-clears in 2.5s and would re-fire on
             every keystroke. Self-clearing: trim the draft or send it and the row is simply gone. */}
-        <Collapse open={!direct.active && !fitsDraftStore(input)}>
+        <Collapse open={!direct.active && !fitsDraftStore(input, attachments)}>
           <p className="px-1 pb-1 text-xs leading-snug text-muted-foreground">
             {translate("composer.draft.tooLong")}
           </p>
@@ -2237,7 +2317,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             the dots are deleted or the draft is sent. A caution and never a block: a `••••` can be
             meant (a password placeholder in a README), and lib/draft-match.ts accepts it as a mask
             slot on purpose when it reads the pane back. */}
-        <Collapse open={!direct.active && holdsMask(input)}>
+        <Collapse
+          open={
+            !direct.active &&
+            (holdsMask(input) || attachments.some((a) => a.kind === "paste" && holdsMask(a.path)))
+          }
+        >
           <p className="px-1 pb-1 text-xs leading-snug text-muted-foreground">
             {translate("composer.draft.holdsMask")}
           </p>
@@ -2341,6 +2426,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                   key={attachment.n}
                   attachment={attachment}
                   onRemove={() => removeAttachment(attachment)}
+                  onSelect={
+                    attachment.kind === "paste"
+                      ? () => setEditingPaste({ paneId, scopeId, n: attachment.n })
+                      : undefined
+                  }
                   disabled={sending}
                   inFront={markerMissing(input, attachment)}
                 />
@@ -2678,6 +2768,38 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         onInsert={insertCommand}
         onSubmit={(t) => send(t, false)}
       />
+      {activePaste !== undefined && (
+        <BottomSheet
+          open
+          onClose={() => setEditingPaste(null)}
+          title={translate("composer.paste.sheetTitle", { n: activePaste.n })}
+        >
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+              <span>
+                {translatePlural("composer.paste.chipStats", pasteLineCount(activePaste.path), {
+                  chars: activePaste.path.length,
+                })}
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => expandPasteAttachment(activePaste.n)}
+              >
+                {translate("composer.paste.expandToInput")}
+              </Button>
+            </div>
+            <textarea
+              aria-label={translate("composer.paste.editAria", { n: activePaste.n })}
+              value={activePaste.path}
+              onChange={(e) => updatePasteAttachment(activePaste.n, e.target.value)}
+              rows={10}
+              className="max-h-[45dvh] w-full resize-y rounded-md border border-input bg-background p-2.5 font-mono text-base leading-relaxed text-foreground focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
+            />
+          </div>
+        </BottomSheet>
+      )}
     </>
   );
 });

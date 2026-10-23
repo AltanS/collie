@@ -6,7 +6,8 @@ import { readAboveNotice } from "./notice";
 import { requireProfile } from "./profile";
 
 // The notice a harness draws above its live box: a head row the profile names, up to three indented
-// continuation rows, a block of `<digit>: <label>` keys, then only blank rows down to the box.
+// continuation rows, a block of `<digit>: <label>` keys (`<letter>: <label>` under a `letters` head), then
+// only blank rows down to the box.
 
 const IDLE = requireProfile("claude").idle;
 const NOTICES = IDLE.notices ?? [];
@@ -129,6 +130,49 @@ describe("readAboveNotice", () => {
       const notice = noticeOf(screen([...survey, ...between]));
       expect(notice?.keys.map((k) => k.key), JSON.stringify(between)).toEqual(["1", "2", "3", "0"]);
     }
+  });
+
+  // 2026-10-21, Claude Code 2.1.306: the survey's second question prints letter keys, under a head the
+  // profile marks `letters`. Every phone send was refused under it until then.
+  const TRANSCRIPT = [
+    "● Can Anthropic look at your session transcript to help us improve Claude Code?",
+    "  Learn more: https://code.claude.com/docs/en/data-usage#session-quality-surveys",
+  ];
+  const LETTER_KEYS = "  y: Yes    n: No     d: Don't ask again";
+
+  it("reads the transcript question's capture with its three printed letter keys", () => {
+    const notice = noticeOf(fixtureRows("claude--v2306-transcript-survey--w153.txt"));
+    expect(notice?.text).toBe(
+      "Can Anthropic look at your session transcript to help us improve Claude Code? Learn more: https://code.claude.com/docs/en/data-usage#session-quality-surveys",
+    );
+    expect(notice?.keys).toEqual([
+      { key: "y", label: "Yes" },
+      { key: "n", label: "No" },
+      { key: "d", label: "Don't ask again" },
+    ]);
+  });
+
+  it("reads the transcript question over the update row of either wording", () => {
+    for (const word of ["update", "apply"]) {
+      const update = `${" ".repeat(20)}✔ Update installed · Restart to ${word}`;
+      expect(noticeOf(screen([...TRANSCRIPT, LETTER_KEYS, update]))?.keys.map((k) => k.key), word).toEqual(["y", "n", "d"]);
+    }
+  });
+
+  it("reads letter keys only under a `letters` head, and digits under it never", () => {
+    expect(noticeOf(screen(["● How is Claude doing this session? (optional)", LETTER_KEYS]))).toBeNull();
+    expect(noticeOf(screen([HEAD, LETTER_KEYS]))).toBeNull();
+    expect(noticeOf(screen([...TRANSCRIPT, "  1: Yes    2: No     0: Dismiss"]))).toBeNull();
+    expect(noticeOf(screen([...TRANSCRIPT, "  y: Yes    2: No     d: Don't ask again"]))).toBeNull();
+    expect(noticeOf(screen([...TRANSCRIPT, "  yes: Yes    n: No"]))).toBeNull();
+  });
+
+  it("does not read digits a `letters` head carries on its own row", () => {
+    const lettered = [{ head: "^● Can Anthropic look", letters: true as const }];
+    const rows = plainRows(["● done", "", "● Can Anthropic look   1: Yes   2: No", RULE, "❯ ", RULE, "  model · ctx 3%"]);
+    const frame = findInputFrame(rows, IDLE);
+    expect(readAboveNotice(rows.map(rowText), frame!.top, lettered, GAPS)).toBeNull();
+    expect(readAboveNotice(rows.map(rowText), frame!.top, [{ head: "^● Can Anthropic look" }], GAPS)?.keys.map((k) => k.key)).toEqual(["1", "2"]);
   });
 
   it("does not read the survey's head when the agent's prose quotes it with other rows under it", () => {

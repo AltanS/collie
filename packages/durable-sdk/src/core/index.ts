@@ -5,23 +5,28 @@
 // import here either.
 
 import { type CallInfo, type CoreState, handle } from "./handle.ts";
-import { Store, type WorkspaceHandle } from "./layout.ts";
+import { Store, type StoreSeams, type WorkspaceHandle } from "./layout.ts";
 import type { ReceiptStore } from "./receipts.ts";
 import type { Caps, HistoryProvider, ProgramHooks, RenameTarget, Starter } from "./types.ts";
 
 export type { CallInfo, CoreState } from "./handle.ts";
 export { handle, hello, versionLine } from "./handle.ts";
-export type { PaneHandle, SendContext, TabHandle, WorkspaceHandle } from "./layout.ts";
-export { AskClosed, askIdFor, cleanConversationRow, cleanItem, mintId, Store } from "./layout.ts";
+export type { AskSink, PaneHandle, PaneOptions, SendContext, SinkReply, StoreSeams, TabHandle, WorkspaceHandle } from "./layout.ts";
+export { AnswerDecided, AskClosed, askIdFor, cleanConversationRow, cleanItem, mintId, Store } from "./layout.ts";
+export type { FoldedJournal, FoldedReceipt, JournalAnswer, JournalAsk, JournalExpire, JournalReceipt, JournalRecord, SeededAsk } from "./journal.ts";
+export { foldJournal, isTerminal, parseJournal } from "./journal.ts";
 export {
+  type Claim,
   digestOf,
   type DroppedReceipt,
   HttpError,
   isDropped,
   MemoryReceiptStore,
+  PENDING_WAIT_MS,
   RECEIPTS_PER_GROUP,
   type ReceiptRecord,
   Receipts,
+  type ReceiptsOptions,
   type ReceiptStore,
   CLOSE_GROUP,
   RENAME_GROUP,
@@ -62,6 +67,7 @@ export {
   subtitleOf,
 } from "./rules.ts";
 export * from "./types.ts";
+export { type AskSpec, type RiskWords, type RiskWordsFor, summaryOf, toAskSpec } from "./ask-policy.ts";
 export { argumentsView, type Approval, type ApprovalOptions, callSummary, requireApproval } from "./approval.ts";
 export { SDK_VERSION } from "./version.ts";
 
@@ -98,6 +104,16 @@ const NO_CAPS: Required<Omit<Caps, "terminal">> = {
 
 export interface CoreOptions {
   hostName: string;
+  /**
+   * The epoch, used as is (it must follow the id rule). For a host with no process start of its own, whose epoch
+   * is a fact of its deployment and not of a start. Left out: 128 random bits per core, as always.
+   */
+  epoch?: string;
+  /**
+   * The snapshot's `rev`, read at every snapshot, for a host that derives it from its own log. A whole number from 1
+   * that never goes down while the epoch stays. Left out: the core's own counter.
+   */
+  rev?: () => number;
   /** How many raw events each pane keeps. At most 1000. Default 500. */
   tailLimit?: number;
   /**
@@ -127,7 +143,7 @@ export interface CoreOptions {
 }
 
 export interface CollieCore {
-  /** New and random for every core. A program makes one core per start. */
+  /** New and random for every core, unless `CoreOptions.epoch` named one. A program makes one core per start. */
   readonly epoch: string;
   workspace(id: string, o: { title: string; cwd?: string }): WorkspaceHandle;
   starters(list: Starter[]): void;
@@ -145,7 +161,10 @@ export interface CollieCore {
 }
 
 export function createCore(o: CoreOptions): CollieCore {
-  const store = new Store(o.tailLimit, o.receipts, o.allowAlways ?? true);
+  const seams: StoreSeams = {};
+  if (o.epoch !== undefined) seams.epoch = o.epoch;
+  if (o.rev !== undefined) seams.rev = o.rev;
+  const store = new Store(o.tailLimit, o.receipts, o.allowAlways ?? true, seams);
   // The alias fills `onRename` only when the hooks do not set it.
   const alias = o.onRename;
   const fromAlias: ProgramHooks = {};

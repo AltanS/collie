@@ -324,21 +324,27 @@ describe("sendReceiptsRoute (M56 spec 09)", () => {
     }
   });
 
-  test("answers the pane's last ten receipts newest first, with no text and no rows", async () => {
+  test("answers the pane's last ten receipts newest first, each with the line Sent would keep, and no rows", async () => {
     const dir = mkdtempSync(join(tmpdir(), "collie-route-"));
     try {
       const { rt } = runtime(true, dir);
       const { audit } = auditLines();
-      for (let n = 0; n < 12; n++) await sendRoute(rt, { id: `route-rcpt-${String(n).padStart(4, "0")}`, pane: "%1", text: `message number ${String(n)} is private` }, { audit, device: null, redact: false, acceptEncoding: null });
+      const context = { audit, device: null, redact: false, acceptEncoding: null };
+      for (let n = 0; n < 12; n++) await sendRoute(rt, { id: `route-rcpt-${String(n).padStart(4, "0")}`, pane: "%1", text: `message number ${String(n)} is plain` }, context);
       const res = sendReceiptsRoute(rt, "%1", null);
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.receipts).toHaveLength(10);
-      expect(body.receipts[0]).toMatchObject({ requestId: "route-rcpt-0011", outcome: "sent", mode: "send", harness: "claude", keys: ["Enter"] });
-      expect(Object.keys(body.receipts[0]).toSorted()).toEqual(["at", "gapsMs", "harness", "keys", "mode", "outcome", "requestId", "version"]);
-      expect(JSON.stringify(body)).not.toMatch(/private/u);
+      expect(body.receipts[0]).toMatchObject({ requestId: "route-rcpt-0011", outcome: "sent", mode: "send", harness: "claude", keys: ["Enter"], line: "message number 11 is plain" });
+      expect(Object.keys(body.receipts[0]).toSorted()).toEqual(["at", "gapsMs", "harness", "keys", "line", "mode", "outcome", "requestId", "version"]);
       const other = await sendReceiptsRoute(rt, "%9", null).json();
       expect(other.receipts).toEqual([]);
+      // A text Sent's rule refuses is listed with no line at all, and nothing of it is in the body.
+      await sendRoute(rt, { id: "route-rcpt-0012", pane: "%1", text: "the token is hunter2" }, context);
+      const after = await sendReceiptsRoute(rt, "%1", null).json();
+      expect(after.receipts[0]).toMatchObject({ requestId: "route-rcpt-0012", outcome: "sent" });
+      expect(after.receipts[0].line).toBeUndefined();
+      expect(JSON.stringify(after)).not.toMatch(/hunter2|token/u);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -365,7 +371,10 @@ describe("sendReceiptsRoute: a refusal's line and Surface words (2026-10-17 fiel
       expect(listed.receipts[1].requestId).toBe("route-ok-0001");
       expect(listed.receipts[1].detail).toBeUndefined();
       expect(listed.receipts[1].saw).toBeUndefined();
-      expect(JSON.stringify(listed)).not.toMatch(/private/u);
+      // Both rows carry their own text as a line; the draft someone typed at the desk is a screen row and never listed.
+      expect(listed.receipts[0].line).toBe("a private second message");
+      expect(listed.receipts[1].line).toBe("a private first message");
+      expect(JSON.stringify(listed)).not.toContain("half a private thought");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

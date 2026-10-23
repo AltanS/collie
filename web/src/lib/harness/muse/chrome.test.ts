@@ -7,11 +7,13 @@ import { lineText, splitLines } from "../../blocks";
 import {
   composerPrompt,
   composerReady,
+  extractAgentsFooter,
   extractInputDraft,
   extractStatusLines,
   hasComposer,
   stripChrome,
 } from "./chrome";
+import { museAdapter } from "./index";
 
 const PANES_DIR = join(import.meta.dirname, "..", "..", "..", "fixtures", "panes");
 
@@ -146,6 +148,59 @@ describe("extractStatusLines — the resurfaced statusline", () => {
       expect(lineText(rows[0]!).trim().startsWith("muse-spark-1.3"), name).toBe(true);
     }
     expect(extractStatusLines(lines("muse--trust-prompt.txt"))).toEqual([]);
+  });
+});
+
+describe("extractAgentsFooter — the background-tasks popup as app chrome", () => {
+  const footerText = (name: string) =>
+    extractAgentsFooter(lines(name)).map((l) => lineText(l).trim());
+
+  it("returns the popup header and the task row, and nothing from the statusline", () => {
+    for (const name of ["muse--tasks-popup.txt", "muse--tasks-popup-draft.txt"]) {
+      const rows = footerText(name);
+      expect(rows.length, name).toBe(2);
+      expect(rows[0], name).toMatch(/^main/);
+      expect(rows[1], name).toContain("Run sleep delay command");
+      expect(rows[1], name).toContain("running");
+      expect(rows.join("\n"), name).not.toContain("muse-spark-1.3");
+    }
+    expect(footerText("muse--tasks-popup.txt")[0]).toContain("↓ to select");
+    expect(footerText("muse--tasks-popup-draft.txt")[0]).toBe("main");
+  });
+
+  it("surfaces the popup under an approval dialog too", () => {
+    const rows = footerText("muse--tasks-popup-approval.txt");
+    expect(rows.length).toBe(2);
+    expect(rows[0]).toContain("↓ to select");
+    expect(rows[1]).toContain("Run sleep delay command");
+  });
+
+  it("keeps each row styled, as the pane painted it", () => {
+    const [header] = extractAgentsFooter(lines("muse--tasks-popup.txt"));
+    expect(header!.segments.some((s) => s.bold)).toBe(true);
+  });
+
+  it("is empty when no popup sits under the rule", () => {
+    for (const name of [
+      "muse--fresh-idle.txt",
+      "muse--done.txt",
+      "muse--approval-ls.txt",
+      "muse--ask-color.txt",
+      "muse--trust-prompt.txt",
+    ]) {
+      expect(extractAgentsFooter(lines(name)), name).toEqual([]);
+    }
+  });
+
+  it("is empty on the filter pickers, which have no tail at all", () => {
+    for (const name of ["muse--filter-effort.txt", "muse--filter-hud.txt"]) {
+      expect(extractAgentsFooter(lines(name)), name).toEqual([]);
+    }
+  });
+
+  it("is the block the adapter hands the app chrome", () => {
+    expect(museAdapter.extractAgentsFooter!(lines("muse--tasks-popup.txt")).length).toBe(2);
+    expect(museAdapter.extractAgentsFooter!(lines("muse--fresh-idle.txt"))).toEqual([]);
   });
 });
 

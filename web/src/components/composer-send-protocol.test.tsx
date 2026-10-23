@@ -116,11 +116,32 @@ describe("Composer on the Send Protocol (M56 specs 05 and 06)", () => {
     expect(strip).toHaveTextContent("Add to it");
     expect(strip).toHaveTextContent("Replace");
     expect(strip).toHaveTextContent("Cancel");
+    expect(screen.getByText("The box already holds a draft. Add to it, replace it, or cancel.")).toBeInTheDocument();
     expect(loadDraft(undefined, "w1:p1")).toBe("new words"); // a refusal keeps the draft
     await user.click(screen.getByRole("button", { name: "Replace" }));
     await waitFor(() => expect(sends).toHaveLength(2));
     expect(sends[1]).toMatchObject({ text: "new words", mode: "replace" });
     expect(sends[1]!.id).not.toBe(sends[0]!.id);
+  });
+
+  it("a slash command onto a draft offers Replace and Cancel only, says so, and Replace sends it as a replace", async () => {
+    const user = userEvent.setup();
+    const { sends } = bridge([
+      { body: { receipt: receipt("refused", "draft_present"), offers: ["replace", "cancel"] } },
+      { body: { receipt: receipt("sent"), offers: [] } },
+    ]);
+    renderComposer();
+    await user.type(screen.getByPlaceholderText(/type a reply/i), "/model");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    const strip = await screen.findByTestId("send-offers");
+    expect(sends[0]).toMatchObject({ text: "/model", mode: "command" });
+    expect(strip).not.toHaveTextContent("Add to it");
+    expect(strip).toHaveTextContent("Replace");
+    expect(strip).toHaveTextContent("Cancel");
+    expect(screen.getByText("The box already holds a draft. Replace it, or cancel.")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Replace" }));
+    await waitFor(() => expect(sends).toHaveLength(2));
+    expect(sends[1]).toMatchObject({ text: "/model", mode: "replace" });
   });
 
   it("Add to it sends the text after one space, so it does not run into the draft", async () => {

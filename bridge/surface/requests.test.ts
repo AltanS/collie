@@ -29,7 +29,7 @@ function receiptFor(record: SendRecord, outcome: SendReceipt["outcome"] = "sent"
 }
 
 describe("accept", () => {
-  test("writes the request file before anything is sent, with no text in it", () => {
+  test("writes the request file before anything is sent, with no text in it when the text looks like a secret", () => {
     const store = new RequestStore(join(dir, "sends"), () => 5000);
     const result = store.accept(input({ text: "my password is hunter2" }));
     expect(result.kind).toBe("new");
@@ -38,6 +38,35 @@ describe("accept", () => {
     const stored = JSON.parse(raw);
     expect(stored).toMatchObject({ id: ID, session: "main", paneId: "%1", paneGeneration: "g1", surfaceRevision: 4, acceptedAt: 5000, phase: "accepted", textLength: 22 });
     expect(stored.textHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(stored.line).toBeUndefined();
+    expect(result.record.line).toBeUndefined();
+  });
+
+  test("keeps the text as the line Sent would keep, and nothing of a text that rule refuses (2026-10-21)", () => {
+    const store = new RequestStore(join(dir, "sends"), () => 5000);
+    const kept = store.accept(input({ text: "ok check please it's past 2pm  " }));
+    expect(kept.record.line).toBe("ok check please it's past 2pm");
+    expect(JSON.parse(readFileSync(join(dir, "sends", `${ID}.json`), "utf8")).line).toBe("ok check please it's past 2pm");
+    // The same four refusals Sent makes: a leading space, several lines, a vendor key, a line too long.
+    const refused = [" quiet one", "first line\nsecond line", "use ghp_abcdefghijklmnopqrstuvwxyz0123456789", `x${"y".repeat(5000)}`];
+    refused.forEach((text, n) => {
+      const id = `req-000${String(n + 2)}-abcdef`;
+      const result = store.accept(input({ id, text }));
+      expect(result.record.line).toBeUndefined();
+      expect(readFileSync(join(dir, "sends", `${id}.json`), "utf8")).not.toContain(text.trim().slice(0, 8));
+    });
+  });
+
+  test("the line survives a restart, and a line that is not what it should be is dropped while the record stays", () => {
+    const first = new RequestStore(join(dir, "sends"), () => 5000);
+    first.accept(input({ text: "git status" }));
+    expect(new RequestStore(join(dir, "sends")).get(ID)?.line).toBe("git status");
+    const path = join(dir, "sends", `${ID}.json`);
+    const stored = JSON.parse(readFileSync(path, "utf8"));
+    writeFileSync(path, `${JSON.stringify({ ...stored, line: 7 })}\n`);
+    const again = new RequestStore(join(dir, "sends")).get(ID);
+    expect(again?.id).toBe(ID);
+    expect(again?.line).toBeUndefined();
   });
 
   test("the file and the directory are private", () => {
@@ -193,7 +222,8 @@ describe("phases and receipts", () => {
     const { record } = store.accept(input());
     const held: SendReceipt = { ...receiptFor(record, "held"), keys: [] };
     expect(store.hold(ID, held)).toMatchObject({ phase: "held", receipt: held });
-    expect(readFileSync(join(dir, `${ID}.json`), "utf8")).not.toContain("hello world");
+    // The hold keeps the line the accept kept, like every other phase.
+    expect(JSON.parse(readFileSync(join(dir, `${ID}.json`), "utf8")).line).toBe("hello world");
     const restarted = new RequestStore(dir, () => now);
     expect(restarted.recover(SendProtocol.crashReceipt)).toEqual([]);
     expect(restarted.get(ID)).toMatchObject({ phase: "held", receipt: { outcome: "held" } });

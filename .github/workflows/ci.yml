@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, "release-*"]
 
 # A new push to a PR supersedes the old run — don't burn a runner on the stale one.
 concurrency:
@@ -107,7 +107,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.0
+          bun-version: 1.4.4
       - name: Install (root)
         run: bun install --frozen-lockfile
       - name: Test (bridge)
@@ -137,6 +137,19 @@ jobs:
         run: cd examples/durable-member && bun run typecheck
       - name: Test (example)
         run: cd examples/durable-member && bun test
+      # The durable-harness entry (M66) is typed and tested against its own example's install: durable-harness and
+      # @workflow/* never enter the root install or durable-member's. `sdk:build` below needs it too.
+      - name: Install (durable-harness example)
+        run: cd examples/durable-harness && bun install --frozen-lockfile
+      - name: Typecheck (durable-harness example)
+        run: cd examples/durable-harness && bun run typecheck
+      # tests/real-harness.test.ts spawns Node to run a real durable-harness session; it needs Node 23.6 or later to
+      # run the SDK's TypeScript source, and skips on an older one.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+      - name: Test (durable-harness example)
+        run: cd examples/durable-harness && bun test
       - name: Test (the adapter against the example)
         run: bun test bridge/mux/durable
       # The durable SDK as the npm package a program installs (M55 spec 10, ADR 0105): build it, check the tarball's

@@ -55,6 +55,32 @@ WebSocket, so the hibernation and WebSocket features of Durable Objects do not h
 On a send, the label queued is Collie's own reading of the turn, and Pi's inbox is not shown. A task that sleeps until
 a deadline shows as idle or working, never as waiting.
 
+## A durable agent on durable-harness
+
+**Experimental.** A Pi agent on Vercel's `durable-harness` needs one wrapper around its opener and one route. It is tested
+self-hosted, in one Node process on a local World. It is untested on Vercel.
+
+```ts
+import { collieRoute, withCollie } from "@colliepwa/durable-sdk/durable-harness";
+import { resumeWith } from "durable-harness/pi-durable";
+// Harness, models, ctx and registry are your Pi agent's own.
+
+const open = resumeWith(
+  withCollie((storage, reg) => Harness.open(storage, { models, registry: reg }, ctx), {
+    registry,
+    risky: new Set(["deploy"]),
+  }),
+);
+export const collie = collieRoute({ open, token: process.env.COLLIE_TOKEN });
+```
+
+Mount `collie` under a path that ends in `/session/v1`, then attach it with
+`collie durable attach desk --url https://your-app.example.com/collie --token-env COLLIE_TOKEN`. The phone reads,
+answers, sends while the session is idle, stops and reads the history. A stop does not call back a tool that has
+started: it finishes, and does its work, while the log says it was aborted. On a local World, serve the route from the
+process that runs the queue. The steps, the cost and the limits are in the
+[Durable agents page](https://colliepwa.dev/docs/durable-agents).
+
 ## The entries
 
 | Import | What it is |
@@ -64,6 +90,7 @@ a deadline shows as idle or working, never as waiting.
 | `@colliepwa/durable-sdk/node` | The `node:http` server only. |
 | `@colliepwa/durable-sdk/pi` | The glue for a [Pi Durable](https://www.npmjs.com/package/@earendil-works/pi-durable) agent: a conversation as a pane, a risky tool call as a card, history from Pi's store. |
 | `@colliepwa/durable-sdk/core` | The layout and the wire as one function, `handle(request)`, for a durable agent that brings its own transport. |
+| `@colliepwa/durable-sdk/durable-harness` | Experimental. A Pi agent on Vercel's [durable-harness](https://www.npmjs.com/package/durable-harness): `collieRoute`, a web route that reads the wire from the World on every request, and `withCollie`, an opener whose guard asks the phone through the run's journal. Self-hosted only; Vercel is untested. |
 
 **On Node, a durable agent cannot read who connects to its socket.** Node has no way to read the caller of a Unix socket, so
 the descendant check (which refuses an answer, or any other act, from the durable agent itself or from a process it started)
@@ -72,6 +99,12 @@ the agent's tools in a sandbox that cannot reach the socket, or run the durable 
 
 `./pi` needs `@earendil-works/pi-durable`, `@earendil-works/pi-ai` and `@earendil-works/chord`, 1.1 or later and below
 2. The entry is tested with Pi Durable 1.1.0 and 1.2.0. The three are optional peer dependencies: install them yourself, and a durable agent that never imports `./pi` needs none.
+
+`./durable-harness` needs the three Pi packages and two more optional peers, at the exact versions it is tested on:
+`durable-harness` 0.0.1-beta.6 and `@workflow/world` 5.0.5 (World spec 8; tested with `@workflow/world-local` 5.1.2,
+Pi 1.2.0, Node 22 and later). A beta moves its API between releases, so the route checks the installed
+`durable-harness` and the World's spec at its first request, and answers every request 500 with one line naming both
+versions when either differs.
 
 ## Versions
 

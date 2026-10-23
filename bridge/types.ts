@@ -8,6 +8,7 @@ import type { Confidence } from "./cache/claims.ts";
 import type { PaneCache } from "./cache/engine.ts";
 import type { ApiErrorDetail, ErrorCode } from "./error-codes.ts";
 import type { GitHead } from "./git-head.ts";
+import type { PaneUsage } from "./usage.ts";
 import type { ChatBody } from "./journal/live.ts";
 import type { AgentSessionRef, TranscriptEntry } from "./journal/types.ts";
 import type { MuxCapability, MuxSpaceCapacity, MuxTopologyLatency } from "./mux/capabilities.ts";
@@ -214,6 +215,15 @@ export interface AgentView {
    * ABSENT, NEVER A PLACEHOLDER: no model, a log that names no level, or an older bridge.
    */
   effort?: string;
+  /**
+   * How full this pane's context is and how much of the subscription's windows the account has used,
+   * as the harness's own statusLine reported them (bridge/usage.ts, .adr/0115). Numbers only; the
+   * phone draws them as dots beside the model and nothing decides on them.
+   *
+   * ABSENT, NEVER A PLACEHOLDER: a harness that reports none, an operator with no statusLine to
+   * wrap, a window that has reset, or an older bridge.
+   */
+  usage?: PaneUsage;
   /**
    * What the checkout holding this pane's folder is on: a branch, or a detached head at a full
    * object name. Read off disk by `bridge/git-head.ts` (two small files, no git process, no lock) and

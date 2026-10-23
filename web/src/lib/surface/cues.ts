@@ -445,6 +445,21 @@ export function withoutCommandList(rows: readonly FrameRow[], list: CommandListR
 }
 
 /**
+ * The rows with the box's own prompt glyph read as blank ({@link Frame.ownPrompt}): the prompt row's
+ * text in front of the draft hole turns into spaces, so the columns hold. Every other row, and the
+ * rows of a frame whose layout names no own glyph, stay as they are.
+ */
+function withoutOwnPrompt(rows: readonly FrameRow[], frame: Frame): readonly FrameRow[] {
+  const mark = frame.ownPrompt;
+  if (mark === undefined) return rows;
+  return rows.map((row, i) => {
+    if (i !== mark.row) return row;
+    const text = rowText(row);
+    return { segments: [{ text: " ".repeat(Math.min(mark.end, text.length)) + text.slice(mark.end) }] };
+  });
+}
+
+/**
  * The notice the profile names over a found frame's top edge (`idle.notices`, {@link readAboveNotice}),
  * or null. Every cue read takes it ({@link readCues}) and leaves its rows out: the box keeps its keys.
  */
@@ -456,9 +471,10 @@ export function noticeOver(texts: readonly string[], frame: Frame | null, idle: 
 /**
  * The cues of a screen read under a profile: the frame's own cues, or, when the profile draws its
  * dialogs where the box stands (`idle.dialogsInBox`), the cues of the rows from the box's top edge down,
- * the box rows included, with the prompt glyph over a soft-wrapped draft read as blank ({@link softWrapped}).
- * The typed command's own list on either side of the box ({@link ownCommandList}) and a notice over the
- * box ({@link noticeOver}) are left out of both.
+ * the box rows included. The typed command's own list on either side of the box ({@link ownCommandList})
+ * and a notice over the box ({@link noticeOver}) are left out of both. The second also reads the box's
+ * own prompt glyph ({@link withoutOwnPrompt}) as blank, and the prompt glyph over a soft-wrapped draft
+ * ({@link softWrapped}).
  */
 export function readCuesFor(allRows: readonly FrameRow[], frame: Frame | null, idle: IdleProfile | null): CueRead {
   const texts = allRows.map(rowText);
@@ -466,8 +482,9 @@ export function readCuesFor(allRows: readonly FrameRow[], frame: Frame | null, i
   const plain = readCues(rows, frame, noticeOver(texts, frame, idle));
   if (idle?.dialogsInBox !== true || frame === null) return plain;
   // From the top edge down: a dialog in the box's place lies there, and the transcript above is no part of it.
+  // The box's own prompt glyph, where the layout names one (`frame.ownPrompt`), is no pointer there.
   const at = frame.top;
-  const down = readCues(withoutPromptGlyph(rows, frame).slice(at), null, null);
+  const down = readCues(withoutPromptGlyph(withoutOwnPrompt(rows, frame), frame).slice(at), null, null);
   // A weak shape inside the box is the box's own hint row (OMP draws "to change thinking effort" there).
   if (down.strength !== "strong" || plain.strength === "strong") return plain;
   return { ...down, cluster: down.cluster.map((i) => i + at), cues: down.cues.map((cue) => ({ kind: cue.kind, row: cue.row + at })) };

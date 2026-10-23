@@ -126,11 +126,20 @@ export const WALK_PAIRS: readonly WalkPair[] = [
   // pi's example permission-gate (pi 0.87.1), pi's own selector: Down at 120 columns, Up at 80.
   ["pi", "pi--v0871-permission-gate.txt", "pi--v0871-permission-gate-moved.txt"],
   ["pi", "pi--v0871-permission-gate-narrow.txt", "pi--v0871-permission-gate-narrow-moved.txt"],
+  // Kiro V3 2.33.0: the startup workspace trust dialog, before and after one Down at each width.
+  ["kiro", "kiro--v3-workspace-trust-continue-w120.txt", "kiro--v3-workspace-trust-exit-w120.txt"],
+  ["kiro", "kiro--v3-workspace-trust-continue-w60.txt", "kiro--v3-workspace-trust-exit-w60.txt"],
+  ["kiro", "kiro--v3-workspace-trust-continue-w40.txt", "kiro--v3-workspace-trust-exit-w40.txt"],
   // Kiro V3 2.32.0: the same shell request with Allow, Always allow and Deny pointed.
   ["kiro", "kiro--v3-approval-allow-w120.txt", "kiro--v3-approval-deny-w120.txt"],
   ["kiro", "kiro--v3-approval-always-w120.txt", "kiro--v3-approval-deny-w120.txt"],
   ["kiro", "kiro--v3-approval-allow-w60.txt", "kiro--v3-approval-deny-w60.txt"],
   ["kiro", "kiro--v3-approval-denied-request-allow-w120.txt", "kiro--v3-approval-denied-request-deny-w120.txt"],
+  ["kiro", "kiro--v3-shell-args-allow-w120.txt", "kiro--v3-shell-args-deny-w120.txt"],
+  ["kiro", "kiro--v3-shell-args-allow-w60.txt", "kiro--v3-shell-args-deny-w60.txt"],
+  ["kiro", "kiro--v3-shell-bare-allow-w120.txt", "kiro--v3-shell-bare-deny-w120.txt"],
+  ["kiro", "kiro--v3-shell-wrapped-allow-w120.txt", "kiro--v3-shell-wrapped-deny-w120.txt"],
+  ["kiro", "kiro--v3-shell-wrapped-allow-w60.txt", "kiro--v3-shell-wrapped-deny-w60.txt"],
   // Installed V3 file tools: Allow and Deny with the complete read/diff preview unchanged.
   ["kiro", "kiro--v3-read-allow-w120.txt", "kiro--v3-read-deny-w120.txt"],
   ["kiro", "kiro--v3-read-allow-w60.txt", "kiro--v3-read-deny-w60.txt"],

@@ -2,6 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { ThreadSidebar } from "./agent-sidebar";
+import { CrewProvider } from "./crew-provider";
 import { paneRowKey } from "@/lib/hosts";
 import { currentPins, setPinned } from "@/lib/pins";
 import { fixtureAgents, fixtureCrewAgents, fixtureServers, fixtureShellPanes } from "@/test/handlers";
@@ -764,5 +765,35 @@ describe("ThreadSidebar: subtitle and badge of a durable pane", () => {
     const { container } = render(<ThreadSidebar agents={[idleAgent]} currentPaneKey="" onSelect={vi.fn()} />);
     expect(container.querySelector('[data-slot="pane-badge"]')).toBeNull();
     expect(container.querySelector('[data-slot="pane-row-subtitle"]')).toBeNull();
+  });
+});
+
+describe("ThreadSidebar: which machine, as a glyph on the row (2026-10-21)", () => {
+  const crew = ({ children }: { children: React.ReactNode }) => (
+    <CrewProvider servers={fixtureServers}>{children}</CrewProvider>
+  );
+
+  it("marks every row of a crew with its machine's glyph, the name in the label and not on screen", () => {
+    render(
+      <ThreadSidebar agents={fixtureCrewAgents} servers={fixtureServers} currentPaneKey="" onSelect={vi.fn()} />,
+      { wrapper: crew },
+    );
+    const marks = screen.getAllByLabelText(/^host: /i);
+    expect(marks).toHaveLength(fixtureCrewAgents.length);
+    expect(marks.map((m) => m.getAttribute("aria-label"))).toEqual(
+      expect.arrayContaining([expect.stringMatching(/^host: bluefin/i), expect.stringMatching(/^host: workshop/i)]),
+    );
+    for (const m of marks) {
+      expect(m.textContent).toBe("");
+      expect(m.querySelector("svg")).not.toBeNull();
+    }
+    // Inside the place line, after the place: the row's second line ends with the machine.
+    expect(marks[0]!.parentElement!.className).toContain("text-[11px]");
+    expect(marks[0]!.closest("button")).not.toBeNull();
+  });
+
+  it("draws no machine on a one-machine install, so a solo row is unchanged", () => {
+    render(<ThreadSidebar agents={fixtureAgents} currentPaneKey="" onSelect={vi.fn()} />);
+    expect(screen.queryAllByLabelText(/^host: /i)).toHaveLength(0);
   });
 });

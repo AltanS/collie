@@ -38,7 +38,8 @@ interface PaneActionsSheetProps {
    * this device's own preference and writes nothing to the machine.
    */
   savedCopy?: boolean;
-  /** Fired after a successful rename so the parent can revalidate (the label lands on the next poll). */
+  /** Fired after a successful rename so the parent can revalidate. The sheet also stamps a topology
+   *  burst (lib/poll-intent.ts), so the label lands within a beat even when that read is early. */
   onRenamed: () => void;
   /** Fired after a successful close, with the closed pane id — the parent navigates Home if it's the
    *  pane currently open, or revalidates so it drops out of the list. */
@@ -260,6 +261,10 @@ export function PaneActionsSheet({
       const res = await api.renamePane(pane.paneId, next, scope);
       if (res.ok) {
         setStatus(next ? t("paneActions.status.renamed") : t("paneActions.status.labelCleared"), "success");
+        // The same catch-up as a close. The bridge pokes its own re-read before it answers but does
+        // not wait for it, so the revalidate below can still read the old name; the burst brings
+        // the new one within a beat instead of after a gap timed for an idle screen.
+        stampTopology();
         onRenamed();
         onClose();
       } else {

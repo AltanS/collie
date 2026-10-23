@@ -1,8 +1,10 @@
 // The last ten sends the bridge ran for a pane, on the session page (M56 spec 09). Each row is one
 // receipt: the outcome, the reason when there is one (as the composer's sentence for it, the raw code
-// in the title), and how long ago. A tap opens the row: the keys
-// the bridge sent by name and the gaps it measured between steps. That is all a receipt holds. It has
-// no text and no screen row, so nothing here can show either, and nothing here asks for them.
+// in the title), how long ago, and under them the text, as the one line the bridge kept of it when
+// Sent's rule would keep it (`SendReceiptRow.line`), cut to the row's width by CSS. A tap opens the
+// row: the whole line, then the keys the bridge sent by name and the gaps it measured between steps.
+// A row with no line (a secret-looking text, a text over several lines) reads as it did before. A
+// receipt holds no screen row, so nothing here can show one, and nothing here asks for one.
 //
 // Read once when the sheet opens. A list that polled would be a second poller on a page that has one,
 // and a receipt does not change after it is written.
@@ -55,6 +57,7 @@ export function SendReceiptsView({ rows, now = Date.now() }: { rows: readonly Se
   return (
     <section data-slot="send-receipts" className="flex flex-col gap-1.5 px-4" aria-label={t("sendReceipts.title")}>
       <h3 className="text-sm font-medium">{t("sendReceipts.title")}</h3>
+      <p className="text-xs leading-snug text-muted-foreground">{t("sendReceipts.kept")}</p>
       {rows.length === 0 ? (
         <p className="text-xs leading-snug text-muted-foreground">{t("sendReceipts.empty")}</p>
       ) : (
@@ -67,16 +70,24 @@ export function SendReceiptsView({ rows, now = Date.now() }: { rows: readonly Se
                   type="button"
                   aria-expanded={expanded}
                   onClick={() => setOpen(expanded ? null : row.requestId)}
-                  className="flex min-h-9 w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs"
+                  className="flex min-h-9 w-full flex-col gap-0.5 rounded-md px-2.5 py-1.5 text-left text-xs"
                 >
-                  <span className="font-medium">{t(receiptLabelKey(row.outcome))}</span>
-                  {sentence(row) !== null && (
-                    <span className="min-w-0 text-muted-foreground" title={row.reason}>
-                      {sentence(row)}
+                  <span className="flex w-full items-center gap-2">
+                    <span className="font-medium">{t(receiptLabelKey(row.outcome))}</span>
+                    {sentence(row) !== null && (
+                      <span className="min-w-0 text-muted-foreground" title={row.reason}>
+                        {sentence(row)}
+                      </span>
+                    )}
+                    <span className="ml-auto shrink-0 text-muted-foreground">{timeAgo(row.at, now)}</span>
+                    <ChevronDown className={cn("size-3 shrink-0 text-muted-foreground transition-transform", expanded && "rotate-180")} aria-hidden />
+                  </span>
+                  {row.line !== undefined && (
+                    // Closed: one line, cut at the row's edge. Open: the whole line, wrapped.
+                    <span data-slot="send-receipt-line" className={cn("block w-full min-w-0", expanded ? "break-words whitespace-pre-wrap" : "truncate")}>
+                      {row.line}
                     </span>
                   )}
-                  <span className="ml-auto shrink-0 text-muted-foreground">{timeAgo(row.at, now)}</span>
-                  <ChevronDown className={cn("size-3 shrink-0 text-muted-foreground transition-transform", expanded && "rotate-180")} aria-hidden />
                 </button>
                 {expanded && (
                   <div className="flex flex-col gap-0.5 px-2.5 pb-2 text-xs leading-snug text-muted-foreground">

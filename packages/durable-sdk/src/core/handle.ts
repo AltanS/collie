@@ -5,7 +5,7 @@
 // act (answer, send, abort, action, rename, close, reopen and starter) and throws 403 `caller-refused`. Reads never
 // call it.
 
-import { BadAnswer, cleanConversationRow, cleanItem, type Pane, type Store } from "./layout.ts";
+import { AnswerDecided, BadAnswer, cleanConversationRow, cleanItem, type Pane, type Store } from "./layout.ts";
 import { CLOSE_GROUP, digestOf, HttpError, RENAME_GROUP, REOPEN_GROUP, STARTER_GROUP } from "./receipts.ts";
 import {
   ANSWER_TEXT_BYTES,
@@ -359,8 +359,10 @@ async function dispatch(request: Request, state: CoreState, call: CallInfo): Pro
           }
           if (open.ask.revision !== revision) throw stale(pane, { ask: open.ask });
           try {
-            return { result: pane.answer(askId, answer) };
+            return { result: await pane.answer(askId, answer, requestId) };
           } catch (e) {
+            // A host with no process of its own: another instance decided the ask first.
+            if (e instanceof AnswerDecided) throw new HttpError(409, "decided", { outcome: e.outcome });
             if (e instanceof BadAnswer) throw new HttpError(400, e.code);
             throw e;
           }

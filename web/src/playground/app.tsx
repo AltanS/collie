@@ -85,6 +85,7 @@ export const SECTIONS: readonly SectionEntry[] = [
   { def: { id: "attention-icon", title: "Attention icon" }, load: () => import("./sections/attention-icon").then((m) => ({ default: m.AttentionIconSection })) },
   { def: { id: "left-hand", title: "Left-hand layout" }, load: () => import("./sections/left-hand").then((m) => ({ default: m.LeftHandSection })) },
   { def: { id: "dashboard-top", title: "Dashboard top" }, load: () => import("./sections/dashboard-top").then((m) => ({ default: m.DashboardTopSection })) },
+  { def: { id: "usage-row", title: "Usage row" }, load: () => import("./sections/usage-row").then((m) => ({ default: m.UsageRowSection })) },
 ];
 
 /** One `lazy` per section, made once: a fresh `lazy()` per render would suspend on every render. */

@@ -3,11 +3,15 @@ import {
   acceptAttribute,
   attachmentKind,
   composeLine,
+  expandAttachmentInText,
   extensionOf,
   insertMarker,
+  isCollapsiblePaste,
   markerFor,
   markerMissing,
   nextMarkerNumber,
+  pasteLineCount,
+  pastePreviewName,
   removeMarker,
   shortName,
   limitMb,
@@ -129,9 +133,10 @@ describe("limitMb", () => {
 
 // ADR 0060: the marker grammar that lets a chip hold its place in the draft.
 describe("markerFor", () => {
-  it("names a photo and a file the way Claude Code does", () => {
+  it("names a photo, a file, and a collapsed paste", () => {
     expect(markerFor({ n: 1, kind: "image" })).toBe("[Image #1]");
     expect(markerFor({ n: 12, kind: "file" })).toBe("[File #12]");
+    expect(markerFor({ n: 3, kind: "paste" })).toBe("[Pasted #3]");
   });
 });
 
@@ -236,12 +241,35 @@ describe("nextMarkerNumber — a new chip never twins a marker already in the te
     expect(nextMarkerNumber("see [Image #1]", 2)).toBe(2);
   });
 
-  it("steps past a marker with no chip behind it, of either kind", () => {
+  it("steps past a marker with no chip behind it, of any kind", () => {
     expect(nextMarkerNumber("look at this [Image #1]", 1)).toBe(2);
     expect(nextMarkerNumber("[File #4] and [Image #2]", 1)).toBe(5);
+    expect(nextMarkerNumber("[Pasted #6] and [File #2]", 1)).toBe(7);
   });
 
   it("ignores what is not a marker", () => {
     expect(nextMarkerNumber("[Image 3] [Image #x] Image #9", 1)).toBe(1);
+  });
+});
+
+describe("collapsible paste helpers", () => {
+  it("collapses pastes of 5+ lines or 300+ chars and leaves short pastes inline", () => {
+    expect(isCollapsiblePaste("short line")).toBe(false);
+    expect(isCollapsiblePaste("a\nb\nc\nd")).toBe(false);
+    expect(isCollapsiblePaste("a\nb\nc\nd\ne")).toBe(true);
+    expect(isCollapsiblePaste("x".repeat(299))).toBe(false);
+    expect(isCollapsiblePaste("x".repeat(300))).toBe(true);
+    expect(pasteLineCount("one\r\ntwo\nthree")).toBe(3);
+  });
+
+  it("takes the first non-empty line for pastePreviewName", () => {
+    expect(pastePreviewName("\n  \n  first real line  \nsecond line")).toBe("first real line");
+  });
+
+  it("expands a paste chip back into the text at its marker, or in front when the marker is gone", () => {
+    const chip = { n: 1, kind: "paste" as const, path: "line 1\nline 2" };
+    expect(expandAttachmentInText("check [Pasted #1] please", chip)).toBe("check line 1\nline 2 please");
+    expect(expandAttachmentInText("please check", chip)).toBe("line 1\nline 2\n\nplease check");
+    expect(expandAttachmentInText("   ", chip)).toBe("line 1\nline 2");
   });
 });

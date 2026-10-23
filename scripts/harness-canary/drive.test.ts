@@ -1,7 +1,11 @@
 // The pure parts of driving an agent: options, startup answers, draft clearing, colour answers.
 
 import { describe, expect, test } from "bun:test";
-import { resolve } from "node:path";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { herdrMuxFactory } from "../../bridge/mux/herdr/adapter";
+import { muxAck, muxOk, type MuxAdapter, type MuxGrid, type MuxOutcome } from "../../bridge/mux/types";
 import { claude } from "./agents/claude";
 import { CODEX_ARGS, codex } from "./agents/codex";
 import { kiro } from "./agents/kiro";
@@ -15,7 +19,8 @@ import { cleanEnv } from "./herdr";
 import { JOURNAL_MESSAGE, MESSAGES, README_TOKEN, NARROW_DRAFT_IDS, SEND_IDS, messageById } from "./messages";
 import { lastPointedRow } from "./dialogs";
 import { answeredBelow, opaqueTokenRead, pressableBar } from "./scenarios";
-import type { Adapter } from "./readers";
+import { loadReaders, type Adapter } from "./readers";
+import { installTransport } from "./transport";
 import { DEFAULT_SCENARIOS } from "./verdict";
 
 const ESC = String.fromCodePoint(0x1b);
@@ -287,3 +292,83 @@ describe("pressableBar", () => {
     expect(pressableBar([])).toEqual([]);
   });
 });
+
+describe("loadReaders on this checkout", () => {
+  const repoRoot = resolve(import.meta.dir, "..", "..");
+  const rule = "─".repeat(40);
+
+  test("loads draftCarriesSend and routes sendGuardedReply through /api/send", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "collie-canary-readers-"));
+    const globals = ["localStorage", "document", "fetch"] as const;
+    const saved = new Map(globals.map((k) => [k, Object.getOwnPropertyDescriptor(globalThis, k)]));
+    let box = "";
+    let revision = 1;
+    const typed: string[] = [];
+    const render = (): string =>
+      ["> earlier", "", rule, box === "" ? "❯ \u001b[2mTry something\u001b[0m" : `❯ ${box}`, rule, "  status row"].join("\n");
+    const baseMux = herdrMuxFactory.create({ endpoint: "/unused.sock", timeoutMs: 5000, options: {} });
+    const mux: MuxAdapter = {
+      ...baseMux,
+      readGrid: (paneId: string): Promise<MuxOutcome<MuxGrid>> =>
+        Promise.resolve(muxOk({ paneId, text: render(), truncated: false, revision })),
+      typeText: (_paneId: string, text: string) => {
+        typed.push(text);
+        box += text;
+        revision++;
+        return Promise.resolve(muxAck());
+      },
+      writeKeys: (_paneId: string, keys: readonly string[]) => {
+        for (const key of keys) {
+          if (key === "Enter") box = "";
+          else if (key === "Backspace") box = [...box].slice(0, -1).join("");
+        }
+        revision++;
+        return Promise.resolve(muxAck());
+      },
+    };
+    try {
+      const transport = installTransport(
+        {
+          socket: "/unused.sock",
+          isOwnedPane: (id: string) => id === "w1:p1",
+          paneInfo: () => ({ agent: "claude", status: "idle", session: null }),
+        },
+        dir,
+        { mux, versionOf: () => Promise.resolve("2.1.200") },
+      );
+      const readers = await loadReaders(repoRoot);
+      if (readers.markLive !== undefined) transport.onLiveRead(readers.markLive);
+      expect(readers.draftCarriesSend("ship it\nplease", "ship it please")).toBe(true);
+      expect(readers.draftCarriesSend("ship it", "something else")).toBe(false);
+      expect(readers.barFor?.("claude").map((i) => i.id)).toEqual(["model", "effort", "compact", "resume"]);
+
+      await transport.readScreen("w1:p1");
+      const sent = await readers.sendGuardedReply("w1:p1", "Reply with only OK.", "claude");
+      expect(sent).toEqual({ status: "sent" });
+      expect(typed).toContain("Reply with only OK.");
+      expect(transport.audit.length).toBe(1);
+
+      const bar = await readers.sendGuardedReply("w1:p1", "/model", "claude");
+      expect(bar).toEqual({ status: "sent" });
+      expect(transport.audit.length).toBe(2);
+
+      // A legacy `--readers` checkout's one-shot send posts `{ text, submit: true }` with no `id`.
+      const legacyRes = await fetch("/api/pane/w1%3Ap1/reply", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ text: "legacy one-shot", submit: true }),
+      });
+      expect(legacyRes.status).toBe(200);
+      expect(typed).toContain("legacy one-shot");
+      expect(transport.audit.length).toBe(3);
+    } finally {
+      for (const k of globals) {
+        const desc = saved.get(k);
+        if (desc !== undefined) Object.defineProperty(globalThis, k, desc);
+        else Reflect.deleteProperty(globalThis, k);
+      }
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+

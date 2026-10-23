@@ -43,10 +43,19 @@ import { resolve } from "node:path";
 const LOGIC_DIRS = ["src/lib/harness", "src/lib/surface"];
 const LOGIC = LOGIC_DIRS.map((dir) => `${dir}/**/*.{test,spec}.{ts,tsx}`);
 
+// ── NODE 25+ SHADOWS JSDOM'S localStorage ───────────────────────────────────
+// Node 25 turned its own experimental web storage on by default, and node 26.3.0 still has it. The
+// global `localStorage` it defines is a getter that returns undefined until `--localstorage-file` is
+// given, and it wins over the one jsdom installs on the test window, so every test that touches
+// `localStorage` threw "Cannot read properties of undefined" and the pre-push hook failed hundreds
+// of web tests. The flag has to reach the worker processes, where jsdom runs: the default `forks`
+// pool spawns them with `test.execArgv`, and a flag on the launcher alone never gets there. Node 22
+// and 24 accept the flag too (their web storage is off), so one config serves every node we run.
 const shared = {
   globals: true,
   css: false,
   setupFiles: ["./src/test/msw.ts"],
+  execArgv: ["--no-experimental-webstorage"],
 } as const;
 
 export default defineConfig({

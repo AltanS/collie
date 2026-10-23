@@ -37,6 +37,28 @@ describe("AgentsFooter (issue #242)", () => {
     expect(screen.getByText(/worker:fixer/)).toBeInTheDocument();
   });
 
+  it("takes Muse's `main · ↓ to select` header for the header, so the collapsed row is the first task", () => {
+    render(
+      <AgentsFooter
+        rows={rows("main · ↓ to select\n├ ⢴ build:watch  running  12s\n└ ◇ test:unit  running  4s")}
+        face={FACE}
+      />,
+    );
+    const button = screen.getByRole("button");
+    expect(button).toHaveTextContent("build:watch");
+    expect(button).toHaveTextContent("+1");
+    expect(button).not.toHaveTextContent("to select");
+    fireEvent.click(button);
+    expect(screen.getByText(/main · ↓ to select/)).toBeInTheDocument();
+    expect(screen.getByText(/test:unit/)).toBeInTheDocument();
+  });
+
+  it("keeps a single Muse task under its header as the one collapsed row", () => {
+    render(<AgentsFooter rows={rows("main\n└ ⢴ build:watch  running  12s")} face={FACE} />);
+    expect(screen.getByRole("button")).toHaveTextContent("build:watch");
+    expect(screen.getByRole("button")).not.toHaveTextContent("+");
+  });
+
   it("shows no count for a single agent", () => {
     render(<AgentsFooter rows={rows("  ● main\n  ◯ worker:scout  Reviewing tests  1m")} face={FACE} />);
     expect(screen.getByRole("button")).not.toHaveTextContent("+");

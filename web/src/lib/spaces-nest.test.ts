@@ -71,33 +71,45 @@ describe("isolateSpaces (issue #338)", () => {
   const all = [parent, child, unrelated];
 
   it("returns every space when nothing is isolated", () => {
-    expect(isolateSpaces(all, null)).toEqual(all);
+    expect(isolateSpaces(all, [])).toEqual(all);
   });
 
   it("keeps the isolated repo checkout and its worktrees, and drops the rest", () => {
-    expect(isolateSpaces(all, key("w1")).map((w) => w.workspaceId)).toEqual(["w1", "w2"]);
+    expect(isolateSpaces(all, [key("w1")]).map((w) => w.workspaceId)).toEqual(["w1", "w2"]);
   });
 
   it("keeps a lone space that has no repo", () => {
-    expect(isolateSpaces(all, key("w3")).map((w) => w.workspaceId)).toEqual(["w3"]);
+    expect(isolateSpaces(all, [key("w3")]).map((w) => w.workspaceId)).toEqual(["w3"]);
   });
 
   it("keeps only the worktree when a worktree is isolated", () => {
-    expect(isolateSpaces(all, key("w2")).map((w) => w.workspaceId)).toEqual(["w2"]);
+    expect(isolateSpaces(all, [key("w2")]).map((w) => w.workspaceId)).toEqual(["w2"]);
   });
 
   it("does not pull in worktrees of another repo", () => {
     const other = space("w5", { repoRoot: "/repo/infra", isWorktree: true });
-    expect(isolateSpaces([...all, other], key("w1")).map((w) => w.workspaceId)).toEqual(["w1", "w2"]);
+    expect(isolateSpaces([...all, other], [key("w1")]).map((w) => w.workspaceId)).toEqual(["w1", "w2"]);
   });
 
   it("matches on the machine too, so a same-named space elsewhere is not taken", () => {
     const peer = space("w1", { host: "minibuch" });
-    expect(isolateSpaces([peer, unrelated], key("w1", "bluefin"))).toEqual([peer, unrelated]);
-    expect(isolateSpaces([peer, unrelated], key("w1", "minibuch"))).toEqual([peer]);
+    expect(isolateSpaces([peer, unrelated], [key("w1", "bluefin")])).toEqual([peer, unrelated]);
+    expect(isolateSpaces([peer, unrelated], [key("w1", "minibuch")])).toEqual([peer]);
   });
 
   it("treats a stale key as no filter", () => {
-    expect(isolateSpaces(all, key("gone"))).toEqual(all);
+    expect(isolateSpaces(all, [key("gone")])).toEqual(all);
+  });
+
+  // Issue #527: the filter holds several workspaces, and the Spaces list keeps each one's spaces.
+  it("keeps the spaces of every chosen workspace, in the list's order", () => {
+    const other = space("w5", { repoRoot: "/repo/infra", isWorktree: true });
+    expect(isolateSpaces([...all, other], [key("w5"), key("w1")]).map((w) => w.workspaceId)).toEqual(["w1", "w2", "w5"]);
+    expect(isolateSpaces(all, [key("w3"), key("w2")]).map((w) => w.workspaceId)).toEqual(["w2", "w3"]);
+  });
+
+  it("ignores a stale key beside a live one, and filters nothing when every key is stale", () => {
+    expect(isolateSpaces(all, [key("gone"), key("w3")]).map((w) => w.workspaceId)).toEqual(["w3"]);
+    expect(isolateSpaces(all, [key("gone"), key("lost")])).toEqual(all);
   });
 });

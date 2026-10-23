@@ -36,13 +36,16 @@ describe("the recipe table", () => {
         "opencode:--auto",
         "grok:--always-approve",
         "agy:--dangerously-skip-permissions",
+        "muse:--yolo",
+        "muse:--approval-mode never",
+        "muse:--disable-request-user-input",
       ].toSorted(),
     );
   });
 
   test("a harness without a checked option lists none", () => {
-    // muse was not installed when the table was checked; hermes's pane goes undetected (see the header).
-    for (const id of ["hermes", "muse"]) expect(recipeOptions(id)).toEqual([]);
+    // hermes's pane goes undetected (see the header).
+    expect(recipeOptions("hermes")).toEqual([]);
     expect(recipeOptions("__proto__")).toEqual([]);
   });
 });
@@ -76,6 +79,8 @@ describe("buildRecipe", () => {
     expect(buildRecipe("claude", ["skip", "plan"])).toEqual({ ok: false, reason: "conflict" });
     expect(buildRecipe("claude", ["opus", "opus"])).toEqual({ ok: false, reason: "conflict" });
     expect(buildRecipe("codex", ["bypass", "readonly"])).toEqual({ ok: false, reason: "conflict" });
+    expect(buildRecipe("muse", ["yolo", "never"])).toEqual({ ok: false, reason: "conflict" });
+    expect(buildRecipe("muse", ["yolo", "no-questions"])).toMatchObject({ ok: true, command: "muse --yolo --disable-request-user-input" });
   });
 
   test("an unknown harness or option is refused", () => {
@@ -93,6 +98,17 @@ describe("buildRecipe", () => {
   test("a codex and an opencode recipe", () => {
     expect(buildRecipe("codex", ["never", "search"])).toMatchObject({ command: "codex --ask-for-approval never --search", noPrompts: true });
     expect(buildRecipe("opencode", ["plan"])).toMatchObject({ command: "opencode --agent plan", noPrompts: false });
+  });
+
+  test("a muse recipe", () => {
+    expect(buildRecipe("muse", [])).toEqual({ ok: true, command: "muse", label: "Muse", noPrompts: false, options: [] });
+    expect(buildRecipe("muse", ["yolo"])).toMatchObject({ ok: true, command: "muse --yolo", noPrompts: true });
+    expect(buildRecipe("muse", ["never", "no-questions"])).toMatchObject({
+      ok: true,
+      command: "muse --approval-mode never --disable-request-user-input",
+      noPrompts: true,
+    });
+    expect(buildRecipe("muse", ["--yolo"])).toEqual({ ok: false, reason: "unknown_option" });
   });
 });
 
@@ -113,6 +129,16 @@ describe("scanNoPrompts", () => {
     ["opencode --auto", true],
     ["grok --always-approve", true],
     ["hermes --yolo", true],
+    ["muse --yolo", true],
+    ["muse --disable-approval", true],
+    ["muse --disable-request-user-input", true],
+    ["muse --approval-mode never", true],
+    ["muse --approval-mode=never", true],
+    ["muse '--disable-approval'", true],
+    ["muse --approval-mode on-request", false],
+    ["muse --disable-sandbox", false],
+    ["muse --trust-workspace", false],
+    ["muse --disable-write", false],
     ["agy --dangerously-skip-permissions", true],
     ["agy --mode plan", false],
     ["kiro-cli chat --v3 --trust-all-tools", true],

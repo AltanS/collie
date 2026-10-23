@@ -36,6 +36,7 @@ import { readWalkyReport } from "./parse.ts";
 import { RateLimiter } from "./rate.ts";
 import { WalkyService, type WalkyServiceDeps } from "./service.ts";
 import type { JsonValue } from "../json.ts";
+import { parseJson } from "../../web/src/lib/json.ts";
 import { movesForward, type WalkyMessage, type WalkyReceipt } from "./types.ts";
 
 /** A value as it arrives off the wire: through JSON, so a test hands a handler exactly what a request would. */
@@ -589,8 +590,9 @@ describe("what an answer from the other side stands for", () => {
 
 describe("the outcome report", () => {
   /** A delivered receipt for a message from `desk` to this member's pane, as the log hands it to the report. */
-  function record(id: string, state: WalkyReceipt["state"] = "delivered", at = AT) {
-    return { session: "main", paneId: "w1:p9", instance: "aaaa", target: "laptop/w1:p9", message: signed(id, "desk", "laptop/w1:p9"), receipt: { id, target: "laptop/w1:p9", state, verified: "lead" as const, at, by: "laptop" }, sender: null };
+  function record(id: string, state: WalkyReceipt["state"] = "delivered", at = AT, reason?: string) {
+    const receipt: WalkyReceipt = { id, target: "laptop/w1:p9", state, verified: "lead" as const, at, by: "laptop" };
+    return { session: "main", paneId: "w1:p9", instance: "aaaa", target: "laptop/w1:p9", message: signed(id, "desk", "laptop/w1:p9"), receipt: reason === undefined ? receipt : { ...receipt, reason }, sender: null, acceptedAt: at };
   }
 
   test("holds receipts for messages from elsewhere past `accepted`, and reports them until the lead acks the cursor", async () => {
@@ -683,6 +685,60 @@ describe("the outcome report", () => {
     expect(mergeReport(lead.log, "laptop", [...forged, delivered])).toBe(1);
     expect(lead.service.status("wt_aaaaaaaaaaa1").receipts).toMatchObject([{ state: "delivered", target: "laptop/w9:p9" }]);
     expect(mergeReport(lead.log, "laptop", [delivered])).toBe(0);
+  });
+
+  test("a held receipt, `accepted` with what holds it, is reported (M62 spec 02); a bare `accepted` is not", () => {
+    const report = new WalkyReport("laptop", { epoch: "0a1b2c3d", now: () => AT });
+    report.note(record("wt_bbbbbbbbbbb1", "accepted"));
+    expect(report.report()).toBeNull();
+    report.note(record("wt_bbbbbbbbbbb1", "accepted", AT + 1, "draft present"));
+    report.note(record("wt_bbbbbbbbbbb1", "accepted", AT + 2, "turn running"));
+    expect(report.report()?.receipts).toMatchObject([{ id: "wt_bbbbbbbbbbb1", state: "accepted", reason: "turn running" }]);
+    report.note(record("wt_bbbbbbbbbbb1", "delivered", AT + 3));
+    expect(report.report()?.receipts).toMatchObject([{ id: "wt_bbbbbbbbbbb1", state: "delivered" }]);
+  });
+
+  test("under an older lead a held receipt reads as `accepted`: its reason crosses, it never goes over `unknown`, and the outcome replaces it", async () => {
+    const posted = async (memberId: string): Promise<CrewDialAnswer> => ({
+      kind: "answer",
+      status: 200,
+      body: { receipts: [{ id: "wt_aaaaaaaaaaa1", target: `${memberId}/w9:p9`, state: "accepted", verified: "lead", at: AT, by: memberId }] },
+    });
+    const lead = service("desk", [pane("w1:p1")], posted);
+    await lead.service.send({ id: "wt_aaaaaaaaaaa1", to: "laptop/w9:p9", body: "hi", replyTo: null }, { kind: "operator", label: "phone" });
+    const held: WalkyReceipt = { id: "wt_aaaaaaaaaaa1", target: "laptop/w9:p9", state: "accepted", reason: "draft present", verified: "origin", at: AT + 5, by: "laptop" };
+    // The member's snapshot sibling, off the wire, as any lead since 2026-10-18 reads it: the field is kept.
+    const offWire = readWalkyReport(parseJson(JSON.stringify({ walky: { receipts: [held], cursor: "0a1b2c3d.1" } })), "walky");
+    expect(offWire.receipts).toEqual([held]);
+    // The merge is an older lead's own rule, unchanged: a newer `accepted` replaces the dial's `accepted`.
+    expect(mergeReport(lead.log, "laptop", offWire.receipts)).toBe(1);
+    expect(lead.service.status("wt_aaaaaaaaaaa1").receipts).toMatchObject([{ state: "accepted", reason: "draft present" }]);
+    // It ranks as `accepted`: never over `unknown`, never over a finished state.
+    const unknown: WalkyReceipt = { ...held, state: "unknown", reason: "member slow", at: AT + 1 };
+    expect(movesForward(unknown, { ...held, at: AT + 9 })).toBe(false);
+    expect(movesForward({ ...held, state: "delivered" }, { ...held, at: AT + 9 })).toBe(false);
+    const delivered: WalkyReceipt = { ...held, state: "delivered", at: AT + 6 };
+    const { reason: _gone, ...done } = delivered;
+    expect(mergeReport(lead.log, "laptop", [done])).toBe(1);
+    expect(lead.service.status("wt_aaaaaaaaaaa1").receipts).toMatchObject([{ state: "delivered" }]);
+    expect(mergeReport(lead.log, "laptop", [{ ...held, at: AT + 7 }])).toBe(0);
+  });
+
+  test("the lead takes a held receipt of the same millisecond as the dial's `accepted`, once (2026-10-22 rig case 21, message 3)", async () => {
+    const posted = async (memberId: string): Promise<CrewDialAnswer> => ({
+      kind: "answer",
+      status: 200,
+      body: { receipts: [{ id: "wt_aaaaaaaaaaa2", target: `${memberId}/w9:p9`, state: "accepted", verified: "origin", at: AT, by: memberId }] },
+    });
+    const lead = service("desk", [pane("w1:p1")], posted);
+    await lead.service.send({ id: "wt_aaaaaaaaaaa2", to: "laptop/w9:p9", body: "hi", replyTo: null }, { kind: "operator", label: "phone" });
+    expect(lead.service.status("wt_aaaaaaaaaaa2").receipts).toMatchObject([{ state: "accepted", at: AT }]);
+    expect(lead.service.status("wt_aaaaaaaaaaa2").receipts[0]?.reason).toBeUndefined();
+    const held: WalkyReceipt = { id: "wt_aaaaaaaaaaa2", target: "laptop/w9:p9", state: "accepted", reason: "draft present", verified: "origin", at: AT, by: "laptop", sendId: "wt_aaaaaaaaaaa2-1659612a" };
+    expect(mergeReport(lead.log, "laptop", [held])).toBe(1);
+    expect(lead.service.status("wt_aaaaaaaaaaa2").receipts).toMatchObject([{ state: "accepted", reason: "draft present" }]);
+    // The report rides every snapshot answer until the ack: the resend writes nothing.
+    expect(mergeReport(lead.log, "laptop", [held])).toBe(0);
   });
 });
 
@@ -909,7 +965,7 @@ describe("the lead's side of the exchange (§21, added 2026-10-18)", () => {
 
   /** A log record of a message `from` sent to `target`, with its receipt at `state`. */
   function record(from: string, target: string, state: WalkyReceipt["state"] = "delivered", id = "wt_aaaaaaaaaaa1", at = AT) {
-    return { session: null, paneId: null, instance: null, target, message: signed(id, from, target), receipt: { id, target, state, verified: "origin" as const, at, by: target.split("/")[0]! }, sender: null };
+    return { session: null, paneId: null, instance: null, target, message: signed(id, from, target), receipt: { id, target, state, verified: "origin" as const, at, by: target.split("/")[0]! }, sender: null, acceptedAt: at };
   }
 
   test("a member's report is merged into the log, and its cursor is what the next dial acks", async () => {
@@ -956,6 +1012,15 @@ describe("the lead's side of the exchange (§21, added 2026-10-18)", () => {
     expect(side.pending("laptop")).toEqual([]);
     side.note(record("laptop", "all"));
     expect(side.pending("laptop")).toHaveLength(1);
+  });
+
+  test("a held receipt, `accepted` with what holds it (M62 spec 02), goes in the member's outbox; a bare `accepted` does not", () => {
+    const { side } = rig();
+    side.note(record("laptop", "other/w1:p9", "accepted"));
+    expect(side.pending("laptop")).toEqual([]);
+    const held = record("laptop", "other/w1:p9", "accepted");
+    side.note({ ...held, receipt: { ...held.receipt, reason: "draft present" } });
+    expect(side.pending("laptop")).toMatchObject([{ state: "accepted", reason: "draft present" }]);
   });
 
   test("a refused or unknown push keeps the batch for the next sweep; a 404 drops it until a new receipt settles", async () => {
@@ -1093,6 +1158,21 @@ describe("an outcome never moves backwards (§21, added 2026-10-18)", () => {
     // The same state again only when it is newer.
     expect(movesForward(receipt("unknown"), receipt("unknown"))).toBe(false);
     expect(movesForward(receipt("unknown"), receipt("unknown", AT + 1))).toBe(true);
+  });
+
+  test("a held send written in the millisecond of its bare `accepted` crosses; a resend of it does not (2026-10-22 rig case 21, message 3)", () => {
+    const bare = receipt("accepted");
+    const held: WalkyReceipt = { ...bare, reason: "draft present" };
+    expect(movesForward(bare, held)).toBe(true);
+    // The resend the report carries until the ack, and a bare `accepted` of the same millisecond.
+    expect(movesForward(held, held)).toBe(false);
+    expect(movesForward(held, bare)).toBe(false);
+    // Another reason in the same millisecond is no move: only a newer one changes the reason.
+    expect(movesForward(held, { ...bare, reason: "turn running" })).toBe(false);
+    expect(movesForward(held, { ...bare, reason: "turn running", at: AT + 1 })).toBe(true);
+    // Never over a finished state, never backwards.
+    expect(movesForward(receipt("delivered"), { ...receipt("delivered"), reason: "draft present" })).toBe(false);
+    expect(movesForward(receipt("unknown"), held)).toBe(false);
   });
 
   test("on the lead: a member's report lands during the leg, and the leg's `unknown: member slow` does not go over it", async () => {

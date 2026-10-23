@@ -263,14 +263,14 @@ describe("the held-send card", () => {
     await waitFor(() => expect(calls).toEqual(["req00001?pane=w1%3Ap1"]));
   });
 
-  it("a row that ended typed_not_submitted offers Submit and Discard; Submit posts mode submit with the row's text, then dismisses", async () => {
+  it("a row that ended typed_not_submitted offers Submit, Discard and Dismiss; Submit posts mode submit with the row's text, then dismisses", async () => {
     const user = userEvent.setup();
     const calls = fakeDelete({ body: { result: "dismissed" } });
     const sends = fakeSend((posted) => ({ receipt: { requestId: posted.id, outcome: "sent", keys: [] }, offers: [] }));
     renderComposer({ held: [row("req00001", "ended", { outcome: "typed_not_submitted" })] });
     expect(screen.getByText("Typed, not sent. The text is still in the box.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Resend the message" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Dismiss the message" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Dismiss the message" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Submit the text in the box" }));
     await waitFor(() => expect(sends).toHaveLength(1));
     expect(sends[0]).toMatchObject({ text: "text of req00001", mode: "submit" });
@@ -298,6 +298,20 @@ describe("the held-send card", () => {
     await waitFor(() => expect(sends).toHaveLength(1));
     await waitFor(() => expect(screen.getByRole("button", { name: "Submit the text in the box" })).toBeEnabled());
     expect(calls).toEqual([]);
+  });
+
+  it("a typed row whose Discard the bridge refuses (the box no longer holds the text) still goes with Dismiss, which sends nothing", async () => {
+    const user = userEvent.setup();
+    const calls = fakeDelete({ body: { result: "dismissed" } });
+    const sends = fakeSend((posted) => ({ receipt: { requestId: posted.id, outcome: "refused", reason: "not_free", keys: [] }, offers: [] }));
+    renderComposer({ held: [row("req00001", "ended", { outcome: "typed_not_submitted" })] });
+    await user.click(screen.getByRole("button", { name: "Discard the text in the box" }));
+    await waitFor(() => expect(sends).toHaveLength(1));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Dismiss the message" })).toBeEnabled());
+    expect(calls).toEqual([]);
+    await user.click(screen.getByRole("button", { name: "Dismiss the message" }));
+    await waitFor(() => expect(calls).toEqual(["req00001?pane=w1%3Ap1"]));
+    expect(sends).toHaveLength(1);
   });
 
   it("a Cancel that finds the request already sent says it went out", async () => {

@@ -808,6 +808,17 @@ export interface MuxAdapter {
   pasteText?(paneId: string, text: string): Promise<MuxAck>;
 
   /**
+   * Paste the WHOLE text into a pane as ONE bracketed paste, line breaks included, submitting nothing.
+   * OPTIONAL: only a multiplexer whose text call writes raw bytes has it (Herdr's `pane.send_text`),
+   * and there the adapter frames the text in `ESC[200~ … ESC[201~` itself, so a line break inside is
+   * pasted content and never a submit. The one exception to {@link pasteText}'s "Collie never writes
+   * the markers" rule, and the same framing `.adr/0010`'s addendum already sends to Claude. One caller:
+   * the Send Protocol, and only where the harness's profile says it takes a bracketed paste. The text
+   * carries no control byte (`sendLines` cut them, the paste markers included).
+   */
+  pasteBlock?(paneId: string, text: string): Promise<MuxAck>;
+
+  /**
    * Send keys in the contract's neutral spelling (keys.ts), applied in order. Needs `sendKeys`.
    *
    * ONE CALLER: the key gate (bridge/surface/key-gate.ts, M56 spec 05). Every route that sends keys
@@ -930,6 +941,7 @@ export type MuxOptionalMethod =
   | "controlTurn"
   | "foregroundProcesses"
   | "pasteText"
+  | "pasteBlock"
   | "renameSpace"
   | "listConversations"
   | "conversationItems"
@@ -967,6 +979,8 @@ export function muxOptionalMethods(
   if (foregroundProcesses !== undefined) methods.foregroundProcesses = foregroundProcesses;
   const pasteText = adapter.pasteText?.bind(adapter);
   if (pasteText !== undefined) methods.pasteText = pasteText;
+  const pasteBlock = adapter.pasteBlock?.bind(adapter);
+  if (pasteBlock !== undefined) methods.pasteBlock = pasteBlock;
   const renameSpace = adapter.renameSpace?.bind(adapter);
   if (renameSpace !== undefined) methods.renameSpace = renameSpace;
   // The program's history (M53 spec 11): the list, the items of one, and a reopen.

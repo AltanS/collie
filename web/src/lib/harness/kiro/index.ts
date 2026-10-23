@@ -1,25 +1,25 @@
-// The Kiro CLI V3 adapter (`kiro-cli chat --v3`, 2.32.0). Chrome, status bar and draft are read from
-// the normal composer; the shell, read, write and replace approval panels are Tier 2 `prompt-select`
-// lifts whose Allow and Deny walk the panel's pointer and confirm with Enter (probed, APPROVAL_NOTES.md).
-// Every other panel is positive modal evidence for the unread-dialog card and its Escape.
+// The Kiro CLI V3 adapter. Tool approvals (2.32.0) and startup workspace trust (2.33.0) use
+// the shared guarded pointer walk; their evidence is in APPROVAL_NOTES.md and WORKSPACE_TRUST_NOTES.md.
+// Other captured panels stay terminal-only, with Escape on the unread-dialog card.
 
 import { trimTrailingBlank, type Block, type StyledLine } from "../../blocks";
 import type { HarnessAdapter } from "../types";
 import { detectApprovalRegion } from "./approval";
 import { composerReady, extractInputDraft, extractStatusLines, stripChrome } from "./chrome";
 import { modalOnScreen } from "./markers";
+import { detectWorkspaceTrust } from "./workspace-trust";
 
-/** Kiro V3's captured shell/filesystem approvals, or its transcript with composer chrome removed. */
+/** Captured startup trust and tool approvals, or the transcript with composer chrome removed. */
 function kiroBuildBlocks(lines: StyledLine[]): Block[] {
-  const approval = detectApprovalRegion(lines);
-  if (approval === null) return [{ kind: "raw", lines: stripChrome(lines) }];
-  const before = trimTrailingBlank(lines.slice(0, approval.startLine));
+  const dialog = detectWorkspaceTrust(lines) ?? detectApprovalRegion(lines);
+  if (dialog === null) return [{ kind: "raw", lines: stripChrome(lines) }];
+  const before = trimTrailingBlank(lines.slice(0, dialog.startLine));
   const blocks: Block[] = [];
   if (before.length > 0) blocks.push({ kind: "raw", lines: before });
   blocks.push({
     kind: "prompt-select",
-    prompt: approval.model,
-    lines: lines.slice(approval.startLine),
+    prompt: dialog.model,
+    lines: lines.slice(dialog.startLine),
   });
   return blocks;
 }

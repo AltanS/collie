@@ -8,13 +8,15 @@
 //    a blank row, then up to sixty rows, each blank or indented by two spaces or more and none a key
 //    row, then the key block.
 //
-// The key block is one to six rows of `<digit>: <label>` items. Every row of it but an inline head is
-// indented by exactly two spaces, a row may hold a single key, and the whole block reads as one
-// single-key row, as the modal cues read one. Under it only blank rows and rows the profile names
-// (`idle.noticeGaps`) go down to the box's top edge. The harness reads its keys only when the box's
-// whole value is one of those digits, so the box keeps the keys and a message of any other text goes in as typed.
+// The key block is one to six rows of `<digit>: <label>` items, or of `<letter>: <label>` items under a
+// head the profile marks `letters`. Every row of it but an inline head is indented by exactly two
+// spaces, a row may hold a single key, and the whole block reads as one single-key row, as the modal
+// cues read one. Under it only blank rows and rows the profile names (`idle.noticeGaps`) go down to the
+// box's top edge. The harness reads its keys only when the box's whole value is one of those keys, so
+// the box keeps the keys and a message of any other text goes in as typed.
 //
-// The reader fails closed: any row out of that order, any key item that is not a digit and a label, a
+// The reader fails closed: any row out of that order, any key item that is not a digit (a letter under a
+// `letters` head) and a label, a
 // head the profile does not name, returns null, and the modal cues then read the rows as they always do.
 //
 // Pure, and it names no harness (no-harness-names.test.ts): the head comes from the profile.
@@ -34,6 +36,8 @@ const CONTINUATION = /^ {2}\S/u;
 const BODY_ROW = /^ {2,}\S/u;
 /** One printed key: a digit, a colon, the label. */
 const KEY_ITEM = /^(\d):\s*(\S(?:.*\S)?)$/u;
+/** One printed key under a head the profile marks `letters`: a letter, a colon, the label. */
+const LETTER_KEY_ITEM = /^([A-Za-z]):\s*(\S(?:.*\S)?)$/u;
 /** A keyed item inside a label (`Learn more 2: Knew`): one letter or digit, then a colon or a parenthesis. */
 const KEYED_IN_LABEL = /(?:^|\s)[A-Za-z0-9][:)]\s*\S/u;
 
@@ -85,12 +89,13 @@ function gapPatterns(gaps: readonly string[]): readonly RegExp[] {
 }
 
 /** The items of one row of a key block, split as the modal cues split them; null when the row holds
- *  none, or one item is not `<digit>: <label>`, or its label holds another keyed item. */
-function keyItems(text: string): string[] | null {
+ *  none, or one item is not `<digit>: <label>` (`<letter>: <label>` with `letters`), or its label holds
+ *  another keyed item. */
+function keyItems(text: string, letters: boolean): string[] | null {
   const items = keyRowItems(text);
   if (items.length === 0) return null;
   for (const item of items) {
-    const match = KEY_ITEM.exec(item);
+    const match = (letters ? LETTER_KEY_ITEM : KEY_ITEM).exec(item);
     if (match === null || KEYED_IN_LABEL.test(match[2]!)) return null;
   }
   return items;
@@ -98,12 +103,12 @@ function keyItems(text: string): string[] | null {
 
 /** The block's keys, top row first; null when it holds no row or more than {@link MAX_KEY_ROWS}, or
  *  its items, joined, do not read as one single-key row. */
-function blockKeys(block: readonly (readonly string[])[]): NoticeKey[] | null {
+function blockKeys(block: readonly (readonly string[])[], letters: boolean): NoticeKey[] | null {
   if (block.length === 0 || block.length > MAX_KEY_ROWS) return null;
   const items = block.flat();
   if (!isSingleKeyRow(items.join("   "))) return null;
   return items.map((item) => {
-    const match = KEY_ITEM.exec(item)!;
+    const match = (letters ? LETTER_KEY_ITEM : KEY_ITEM).exec(item)!;
     return { key: match[1]!, label: match[2]! };
   });
 }
@@ -113,13 +118,15 @@ function headText(text: string): string {
   return text.trim().replace(/^\S+\s+/u, "");
 }
 
-/** A head row that carries keys after the head's match: its text up to the match's end, and those keys. */
-function inlineHead(text: string, heads: readonly RegExp[]): { text: string; items: string[] } | null {
-  for (const head of heads) {
+/** A head row that carries keys after the head's match: its text up to the match's end, and those keys.
+ *  A head the profile marks `letters` never carries digits, so it is not read here. */
+function inlineHead(text: string, notices: readonly NoticeHead[]): { text: string; items: string[] } | null {
+  for (const [i, head] of headPatterns(notices).entries()) {
+    if (notices[i]!.letters === true) continue;
     const match = head.exec(text);
     if (match === null) continue;
     const end = match.index + match[0].length;
-    const items = keyItems(text.slice(end));
+    const items = keyItems(text.slice(end), false);
     if (items !== null) return { text: headText(text.slice(0, end)), items };
   }
   return null;
@@ -179,31 +186,34 @@ interface KeyRows {
   readonly rows: string[][];
 }
 
-/** The key rows indented by two spaces, walking up from `last`. */
-function keyRowsUp(texts: readonly string[], last: number): KeyRows {
+/** The key rows indented by two spaces, walking up from `last`; lettered keys with `letters`. */
+function keyRowsUp(texts: readonly string[], last: number, letters: boolean): KeyRows {
   const rows: string[][] = [];
   let top = last;
   for (; top >= 0; top--) {
     const text = texts[top]!.trimEnd();
-    const items = CONTINUATION.test(text) ? keyItems(text) : null;
+    const items = CONTINUATION.test(text) ? keyItems(text, letters) : null;
     if (items === null) break;
     rows.unshift(items);
   }
   return { top, rows };
 }
 
-/** The notice whose head stands at or over `top`, the row over its key block, read under the head's rules. */
+/** The notice whose head stands at or over `top`, the row over its key block, read under the head's
+ *  rules: a lettered key block only under a `letters` head, a block of digits only under any other. */
 function headedNotice(
   texts: readonly string[],
   top: number,
   notices: readonly NoticeHead[],
   block: Pick<AboveNotice, "last" | "end" | "keys">,
+  letters: boolean,
 ): AboveNotice | null {
   const heads = headPatterns(notices);
   const head = headRowOver(texts, top, heads);
   if (head < 0) return null;
   const headLine = texts[head]!.trimEnd();
   const notice = notices[heads.findIndex((pattern) => pattern.test(headLine))]!;
+  if ((notice.letters === true) !== letters) return null;
   const span = readSpan(texts, head, top, notice.body === true);
   if (span === null) return null;
   return { ...block, first: head, text: [headText(headLine), ...span.continuation].join(" "), body: span.body };
@@ -218,12 +228,19 @@ export function readAboveNotice(texts: readonly string[], boxTop: number, notice
   if (notices.length === 0) return null;
   const last = lastRowOver(texts, boxTop, gaps);
   if (last < 1) return null;
-  const { top, rows } = keyRowsUp(texts, last);
-  if (top < 0) return null;
-  const inline = inlineHead(texts[top]!.trimEnd(), headPatterns(notices));
-  const keys = blockKeys(inline === null ? rows : [inline.items, ...rows]);
-  if (keys === null) return null;
   const end = boxTop - 1;
-  if (inline !== null) return { first: top, last, end, text: inline.text, keys, body: null };
-  return headedNotice(texts, top, notices, { last, end, keys });
+  const digits = keyRowsUp(texts, last, false);
+  if (digits.top < 0) return null;
+  const inline = inlineHead(texts[digits.top]!.trimEnd(), notices);
+  if (inline !== null) {
+    const keys = blockKeys([inline.items, ...digits.rows], false);
+    return keys === null ? null : { first: digits.top, last, end, text: inline.text, keys, body: null };
+  }
+  const digitKeys = blockKeys(digits.rows, false);
+  if (digitKeys !== null) return headedNotice(texts, digits.top, notices, { last, end, keys: digitKeys }, false);
+  // A row of lettered keys is read only for a profile that names a `letters` head, and only under one.
+  if (!notices.some((notice) => notice.letters === true)) return null;
+  const lettered = keyRowsUp(texts, last, true);
+  const letterKeys = lettered.top < 0 ? null : blockKeys(lettered.rows, true);
+  return letterKeys === null ? null : headedNotice(texts, lettered.top, notices, { last, end, keys: letterKeys }, true);
 }

@@ -13,8 +13,8 @@ Tier 1's config ignores `e2e/rig/`.
 
 The leg is a gate. It runs in three places:
 
-- **Before every release tag**, on the release head. All thirty-four cases pass on the first tap:
-  twenty-seven on the solo leg (three harnesses with five cases each, and twelve walky talky cases) and
+- **Before every release tag**, on the release head. All thirty-seven cases pass on the first tap:
+  thirty on the solo leg (three harnesses with five cases each, fourteen walky talky cases, and case 22) and
   seven on the crew leg (below). A case that fails, or is not reached, holds the tag.
 - **Before merging a change** to a harness reader, the Surface, the Send Protocol or the ask code. Run
   it on the branch. A unit test cannot show that a tap works on a real screen.
@@ -63,7 +63,7 @@ The rules are the harness lab's (`scripts/harness-canary/lab/lab-ledger.ts`):
   rig.
 - A run that cannot finish writes `failed`. A run in which a case failed, in either leg, writes `fail`. A
   case that was not reached, or is not applicable, in either leg proves nothing, so it makes the row
-  `failed`. The row is `pass` only when both legs passed every case (27 solo cases and 7 crew cases). A
+  `failed`. The row is `pass` only when both legs passed every case (30 solo cases and 7 crew cases). A
   `fail` outranks a `failed` between the two legs.
 
 **Cannot start.** A Claude login with under 25 minutes left, no `herdr`, `bun` or `git`, under 8 GB of
@@ -89,7 +89,7 @@ a rig in `scripts/browser-leg-nightly.test.ts`, which `bun run test` runs.
 
 ## The cases
 
-Each harness runs the same five cases. The walky talky cases (6 to 11 and 16 to 21) run on the harnesses the
+Each harness runs the same five cases. The walky talky cases (6 to 11 and 16 to 23) run on the harnesses the
 last column names. Cases 12 to 15 and 19 to 21 run on the crew leg only (below).
 
 | # | Case | Harnesses | Spec |
@@ -102,7 +102,7 @@ last column names. Cases 12 to 15 and 19 to 21 run on the crew leg only (below).
 | 6 | Walky talky: hold Send, tap "Send as message". The pane gets one prompt, header and body. The receipt says `delivered`. Chat shows the "Message from" card with the operator badge | claude | `walky.spec.ts` |
 | 7 | The same operator message, to a pi pane and to an omp pane | pi, omp | `walky-harnesses.spec.ts` |
 | 8 | Agent to agent through the skill, pi to Claude and back: the receiver's pane gets a one-line nudge with no body, its `collie walky inbox <id>` output shows the body, `collie walky reply` comes back and the sender's pane shows the reply nudge; Claude's Chat draws the agent card | pi (with Claude) | `walky-harnesses.spec.ts` |
-| 9 | A message the pane cannot take: over an open permission card nothing is typed into the dialog (the Send Protocol holds the message and types it after the answer); over a draft the receipt is `inbox-only` with a reason, the draft is untouched, and the agent's `collie walky inbox` lists the message | claude | `walky.spec.ts` |
+| 9 | A message the pane cannot take now: over an open permission card nothing is typed into the dialog (the Send Protocol holds the message and types it after the answer). Over a draft the message is held too (M62 spec 02): the receipt is `accepted` with the reason `draft present` and the draft is untouched. The draft is then sent, its turn runs, and the message is typed after that turn, once, and the receipt says `delivered` | claude | `walky.spec.ts` |
 | 10 | A broadcast (`to: all`): one receipt per agent pane, each typed and answered, the shell pane skipped | claude | `walky.spec.ts` |
 | 11 | A forged header: a prompt that opens like an operator message and one that opens like an agent's nudge, both with an id the log lacks, stay plain turns with the "no log record" mark and draw no card | claude | `walky.spec.ts` |
 | 12 | Crew leg. "Message all agents" on the lead's Crew page: the sheet counts 2 agents on 2 machines, Send asks "Message 2 agents on 2 machines?", and Send there posts. Both panes get the header and body, the lead's `collie walky status` shows both receipts `delivered` (the member's through its sweep report), the member's pane opened on the phone through the lead (`?h=`) shows the header line, and both agents answer | claude (lead), pi (member) | `walky-crew.spec.ts` |
@@ -114,7 +114,10 @@ last column names. Cases 12 to 15 and 19 to 21 run on the crew leg only (below).
 | 18 | An address of a pane that closed. A second Claude starts, `who` prints its address with a token, and its pane closes. After the bridge's 30 s sweep another Claude starts. A message to the old `#token` address is refused, and the new pane gets nothing. Herdr does not give a closed pane's id to the next pane, so the refusal is `no such pane` here. `pane replaced` needs a multiplexer that reuses ids (tmux, zellij), and the unit tests carry it | claude | `walky.spec.ts` |
 | 19 | Crew leg. Member to lead. pi on the member runs `collie walky who` (which lists its own machine and points to the lead), then sends to Claude's address on the lead, taken from the lead's `who` and put in the prompt. Claude's pane gets the one-line nudge with no body, reads it with `collie walky inbox <id>` and replies. The member's `collie walky status <id>` says `delivered` (the lead pushed the outcome back), and the lead's status of the reply says `delivered` (the member's report). Case 13 is the mirror image | claude (lead), pi (member) | `walky-crew.spec.ts` |
 | 20 | Crew leg. Walky talky off on the member. The member's bridge restarts with `COLLIE_WALKY=off`. Claude on the lead sends to pi and reads `not sent: off`; the lead's status says `refused (off)`; pi's pane gets nothing. The Crew page's message to that machine (the sheet's "Send to" set to it) draws the receipt row `rig-member/all` with `not sent: off`, and the member counts the refusals in its own `refusals.json`. The lead's "Not sent on this machine" line counts only the lead's own refusals, so it stays empty. The member then restarts without the setting and is reachable | claude (lead), pi (member) | `walky-crew.spec.ts` |
-| 21 | Crew leg. The pair limit. A throwaway Claude on the lead sends seven messages to pi on the member through the CLI (`collie walky send` with that pane's markers). pi's box holds a draft, so the first six wait in its inbox (`draft present`) and cost no model turn. The seventh is refused `pair limit` on the lead and never dialled, and the draft is untouched | claude (lead), pi (member) | `walky-crew.spec.ts` |
+| 21 | Crew leg. The pair limit. A throwaway Claude on the lead sends seven messages to pi on the member through the CLI (`collie walky send` with that pane's markers). pi's box holds a draft, so the first six are held (`accepted`, and the lead reads the reason `draft present` from the member's report) and cost no model turn. Each send waits the CLI's 15 seconds for an outcome, so the six take about 90 seconds. The seventh is refused `pair limit` on the lead and never dialled, and the draft is untouched. The draft stays at the end: clearing it would type the six. This is the crew leg's last case, and the rig takes the holds down with it | claude (lead), pi (member) | `walky-crew.spec.ts` |
+| 22 | Model from the belt over a draft. A word typed into Claude's box outside the phone is a draft. The belt's Model is refused `draft_present`, and the phone offers Replace and Cancel, no Add, with the notice "Replace it, or cancel". One tap on Replace empties the box and sends `/model`: the picker opens on the pane and as a card on the phone, and the draft is gone. Escape outside the phone closes the picker. No model turn | claude | `claude.spec.ts` |
+| 23 | A held message cancelled by its sender (M62 spec 03). The operator's message over a draft is held (`accepted`, `draft present`). In the pane's Messages sheet the held row carries Cancel; a tap ends it as `inbox-only` with the reason `cancelled by sender`, the draft is untouched, and nothing is typed once the box is cleared | claude | `walky.spec.ts` |
+| 24 | A held message dropped by the pane's owner (M62 spec 03). A second Claude sends through the CLI over a draft, so the message is an agent's and held. The phone shows "1 message waits for the box to clear" above the box; a tap opens the Messages sheet on it, Drop ends it as `inbox-only` with the reason `dropped by the pane's owner`, the mark goes, and nothing is typed once the box is cleared | claude | `walky.spec.ts` |
 
 The walky talky path is the same bridge code for every harness, so Claude carries most of the cases and
 pi and omp prove that their screens take the message. The table prints a row only for a harness a case
@@ -156,7 +159,7 @@ the lead's poll (`bridge/crew/lead.ts`, CREW_PROTOCOL §10.1), the next dial is 
 failed call makes the member `unreachable` (`registry.ts` `record`). The idle poll is 12 s, so the
 case allows 90 s. It took 5 to 8 s in the runs of 2026-10-18.
 
-**Cost of one run.** About 4 minutes, 6 Claude Haiku turns (the broadcast, the send to pi, the reply
+**Cost of one run.** About 5 and a half minutes (case 21's six held sends take about 90 seconds), 6 Claude Haiku turns (the broadcast, the send to pi, the reply
 nudge, the broadcast with the member down, the reply to pi's message in case 19, the send in case 20) and
 4 pi turns on OpenRouter Haiku 4.5 (the broadcast, the nudge, and the send and the reply nudge of case 19).
 Case 21 spends no turn: its sender is a throwaway Claude that never takes a prompt, and pi's box holds a
@@ -238,10 +241,11 @@ results, and drops a screenshot whose capture held it. It prints a count, never 
 
 ## Cost of one run
 
-- Claude: 23 model turns on Haiku (the count of `turns-claude` in the run folder): the permission
+- Claude: 24 model turns on Haiku (the count of `turns-claude` in the run folder): the permission
   request, the pick-many question, the long list plus one message sent while it streams, seven prompts for the Load older history (each reads four tiny files and
-  replies with a marker), and 12 for walky talky: the operator's message (6), the nudge from pi (8), the
-  permission request, the message that waited behind it and the inbox read (9), the broadcast (10), the
+  replies with a marker), and 13 for walky talky: the operator's message (6), the nudge from pi (8), the
+  permission request, the message that waited behind it, the draft once sent and the message held behind
+  it (9), the broadcast (10), the
   forged header (11, two), the long list and the message sent during it (16), and the question and the
   message that waited behind it (17). The picker and case 18 need no turn. A run caps each harness at 25 turns (`TURN_CAP` in `leg.ts`), and every turn is logged in
   `~/.cache/collie-lab/browser-leg-state/turns.log`.

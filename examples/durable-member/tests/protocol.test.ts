@@ -23,15 +23,17 @@ const filesUnder = (dir: string): string[] =>
   readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? filesUnder(join(dir, e.name)) : [join(dir, e.name)]));
 
 describe("no token", () => {
-  test("there is no 401: an Authorization header is not read, and no code in the SDK reads a token", async () => {
+  test("there is no 401: an Authorization header is not read, and no code in the SDK reads a token but the durable-harness route's", async () => {
     const c = await openCollie({ callerCheck: "off", socket: join(tmp(), "tok.sock"), hostName: "t" });
     c.ready();
     const d = { socket: c.address, version: 1 };
     expect((await call({ ...d }, "GET", "/hello", undefined, { authorization: "Bearer nope" })).status).toBe(200);
     expect((await call(d, "GET", "/snapshot", undefined, { authorization: "Bearer nope" })).status).toBe(200);
     await c.close();
-    const code = filesUnder(new URL("../../../packages/durable-sdk/src/", import.meta.url).pathname).map((f) => readFileSync(f, "utf8")).join("\n");
-    expect(code).not.toMatch(/bearer|authorization|DM_TOKEN|timingSafeEqual|\btcp:/i);
+    // The one exception is transport 1B (M66): src/durable-harness/route.ts checks a bearer token, and no other file does.
+    const files = filesUnder(new URL("../../../packages/durable-sdk/src/", import.meta.url).pathname);
+    const token = /bearer|authorization|DM_TOKEN|timingSafeEqual|\btcp:/i;
+    expect(files.filter((f) => token.test(readFileSync(f, "utf8"))).map((f) => f.slice(f.indexOf("src/")))).toEqual(["src/durable-harness/route.ts"]);
   });
 });
 

@@ -4,8 +4,8 @@
 > later minor release. Today only Collie's own examples speak the wire. [The exit](#the-exit) says
 > what decides whether it stays. If you attach no durable agent, Collie looks and works as before.
 
-If you built a durable agent with Pi Durable or any program that serves the wire, Collie can show it
-on your phone. It gets approval prompts, history and a chat view without any UI code.
+If you built a durable agent with Pi Durable, with Vercel's durable-harness, or any program that serves
+the wire, Collie can show it on your phone. It gets approval prompts, history and a chat view without any UI code.
 
 A durable agent is one place a [session](sessions.md) can come from, and each of its conversations is one
 session. The words are in [Terminology](terminology.md). Collie holds no model key: a durable agent uses
@@ -80,6 +80,179 @@ your answer and exits.
 
 To write a durable agent of your own, read [The durable SDK](durable-sdk.md) and
 [The durable wire](durable-wire.md).
+To show an agent built on durable-harness, see
+[A durable agent on durable-harness](#a-durable-agent-on-durable-harness).
+
+## A durable agent on durable-harness
+
+If your durable agent runs on Vercel's `durable-harness`, one wrapper and one route put it on your phone.
+
+> **Experimental.** This path is tested self-hosted, in one Node process on a local World. It is untested
+> on Vercel: no preview deployment has run it yet. Until one has, treat Vercel as a plan, not
+> as a promise. The entry is `@colliepwa/durable-sdk/durable-harness`, and it serves a Pi agent only. A stop ends the turn, but a tool that is already running finishes and does its work.
+
+[durable-harness](https://www.npmjs.com/package/durable-harness) keeps a Pi agent's state in a log it
+calls a World. The agent has no process of its own to dial. So the route reads the log on every request,
+answers, and keeps nothing. Two instances behind one URL give the same answer. The questions, the answers
+and the request ids go in a second log beside each session, called the journal.
+
+There are two parts. `withCollie` wraps the function that opens your Harness, so a risky tool call asks
+your phone first. `collieRoute` is the web route that Collie dials. Both read the same World.
+
+The SDK pins `durable-harness` 0.0.1-beta.6 and `@workflow/world` 5.0.5 exactly, and tests them with
+`@workflow/world-local` 5.1.2 and Pi 1.2.0. The route checks both versions on its first request. When
+either differs, every request answers 500 with one line that names the two versions.
+
+### Self-hosted
+
+One Node process runs the agent, the queue and the route. You need Node 22.19 or later, and the Pi
+packages your agent already uses.
+
+1. Install the SDK and its pinned peers:
+
+   ```bash
+   npm install @colliepwa/durable-sdk@experimental durable-harness@0.0.1-beta.6 \
+     @workflow/world@5.0.5 @workflow/world-local@5.1.2
+   ```
+
+2. Make a token of 32 random bytes and keep it in the environment:
+
+   ```bash
+   export COLLIE_TOKEN="$(openssl rand -hex 32)"
+   ```
+
+3. Wrap your opener, and make the route. Save this as `collie.js`:
+
+   ```js
+   import { BACKGROUND_CONTEXT as ctx } from "@earendil-works/chord/context";
+   import { Harness } from "@earendil-works/pi-durable";
+   import { collieRoute, withCollie } from "@colliepwa/durable-sdk/durable-harness";
+   import { resumeWith } from "durable-harness/pi-durable";
+   // Your models, and the registry that holds your tools.
+   import { models, registry } from "./agent.js";
+
+   const open = withCollie(
+     (storage, reg) => Harness.open(storage, { models, registry: reg }, ctx),
+     { registry, risky: new Set(["deploy"]) },
+   );
+   export const opener = resumeWith(open);
+   export const collie = collieRoute({ open: opener, token: process.env.COLLIE_TOKEN });
+   ```
+
+4. Serve the route from the same process that runs the agent. Save this as `server.js`:
+
+   ```js
+   import { createServer } from "node:http";
+   import { getWorld } from "durable-harness";
+   import { collie } from "./collie.js";
+
+   // On a local World this starts the queue in this process.
+   await getWorld();
+   createServer(async (req, res) => {
+     const chunks = [];
+     for await (const chunk of req) chunks.push(chunk);
+     const headers = new Headers();
+     for (const [k, v] of Object.entries(req.headers)) {
+       if (typeof v === "string") headers.set(k, v);
+     }
+     const init = { method: req.method, headers };
+     if (chunks.length > 0) init.body = Buffer.concat(chunks);
+     const reply = await collie(new Request(`http://localhost${req.url}`, init));
+     res.writeHead(reply.status, Object.fromEntries(reply.headers));
+     res.end(Buffer.from(await reply.arrayBuffer()));
+   }).listen(8080, "127.0.0.1");
+   ```
+
+   Your own chat route starts sessions as before, with `opener`.
+
+5. Start it with the local World:
+
+   ```bash
+   WORKFLOW_TARGET_WORLD=local WORKFLOW_LOCAL_DATA_DIR=.workflow-data node server.js
+   ```
+
+6. Attach it to your Collie, then restart:
+
+   ```bash
+   collie durable attach desk --url http://127.0.0.1:8080/collie --token-env COLLIE_TOKEN
+   collie restart
+   ```
+
+Open Collie on your phone. The row `desk` shows one conversation for each session of the agent. When the
+agent calls a tool in `risky`, a card asks you first, and the tool runs only after you tap Allow.
+
+The route must run in the process that runs the queue. A local World keeps its queue in the memory of
+one process. A send that a second process writes is never picked up, until the first process restarts.
+
+### On Vercel
+
+The same code is meant to run as a function with Vercel's World in place of the local one. Nothing has run on
+Vercel yet. The steps appear here after one preview deployment has attached, listed a session, answered one card and
+sent once the session was idle.
+
+What it rests on, untested:
+
+- The queue is shared between functions, so a send from any function reaches the session.
+- The World identity (the project and environment) is the same for every function of one deployment, so the epoch is stable.
+- A function's maximum duration is longer than the time a question waits. Otherwise the silence rule hands the session to a new function after 120 s, which reruns the hook.
+- A stop's takeover commits before the function returns.
+
+### What the phone can do
+
+Read, answer, send when idle, stop, and read the history. Nothing else.
+
+| the phone can | how it works here |
+| --- | --- |
+| Answer a question | The guard writes the question in the journal. Your tap writes the answer there. The tool runs only on an Allow for the same arguments |
+| Send text | Only while the session is idle. The route takes the session over, submits the text and lets go. While the agent works, the phone does not offer Send |
+| Stop | The route takes the session over and aborts it. Every question the turn left open closes as decided by the agent. Nothing resumes the turn |
+| Read history | Every run of the agent is a conversation. A run that ended is a closed one |
+
+Anything that can write the run's journal stream in the World can write an answer, so write access to the World is approval authority; the bearer token guards the route, not the World, and the guard is not a sandbox: a tool not named in `risky` runs without asking.
+
+Steer, rename, close, reopen, belt buttons and starters are off. A conversation that the World drops
+by its retention rule leaves the list.
+
+> **Caution.** A stop does not kill a tool that is already running. The old process keeps going to the
+> end of the tool and does its side effect, while the log says the tool was aborted. A tool that has
+> started cannot be called back. A process that was killed while a tool ran is different: the next start does not run that tool again.
+
+### Why a question waits in the log
+
+A question must survive a crash, a takeover and a new function, so the guard keeps nothing in memory.
+
+On every run of a risky call the guard reads the journal. It writes the question only when the journal
+has none for this call. Then it reads the journal again, after 1 s, then 2 s, 4 s, and every 5 s, until
+you answer, the question expires or someone stops the turn. A rerun of the call finds its own question
+and waits for the same one, with the same expiry. A read that fails while it waits is tried again at the next wait, and never decides the call. If the first read fails, the call is blocked and nothing is written.
+
+durable-harness's `recoverAfterMs` is the silence after which a new process may take a session over. It belongs to
+each open, and its default is 120 s. While the hook waits, the session writes nothing, so on Vercel a
+new function may take the session after 120 s and rerun the hook; the spike proved this on a local World after a restart, not on Vercel. The rerun keeps the same tool call id. A restart
+of a self-hosted process does the same at once. The
+question stays one question. If you pass a shorter `recoverAfterMs` to your open, a second live process
+can take the session from a live owner. Keep the default.
+
+Add `timeoutMs` to `withCollie` to give the phone a deadline. Past it, the question closes as timed
+out and the call is blocked.
+
+### What it costs
+
+An open phone asks every 2 s and an idle one every 10 s. Each ask is one call to your route.
+
+| | rate | per hour | per day |
+| --- | --- | --- | --- |
+| A phone that watches | one call every 2 s | 1,800 | 43,200 |
+| A phone that does not | one call every 10 s | 360 | 8,640 |
+| One waiting question | one journal read every 5 s, after the first 7 s | about 720 | |
+
+The first two rows are arithmetic on the poll intervals, and the third on the guard's waits. None is a
+measured bill. Each call reads the list of runs and one journal for each open session from the World.
+
+What the spike measured, on a local World, with nothing cached: one session of 200 entries reads in
+96 ms at p95. Ten such sessions read in 988 ms at p95. The cost follows the number of events in a
+session, not its entries, because a streamed reply commits many partial events. Nothing is measured on
+Vercel. Check what your plan allows for the calls above.
 
 ## Attach a durable agent
 

@@ -18,6 +18,10 @@
 // {@link HOLD_BRIDGE_MAX}, and on boot a file it cannot read and a `.tmp` leftover of a write cut short
 // are deleted.
 //
+// A send its caller marks `draftHolds` (a walky talky delivery, M62 spec 02) is also held over a draft,
+// and its caller names the hold's end (`expiresAt`), so one clock runs for it. Its file then carries
+// what holds it now (`cause`), rewritten by the poll when that changes, so the caller can say why.
+//
 // No harness name lives here (bridge/surface/no-harness-names.test.ts scans this folder).
 
 import { chmodSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
@@ -39,6 +43,10 @@ export const HOLD_PANE_MAX = 32;
 export const HOLD_BRIDGE_MAX = 256;
 
 const HELD_STATES = ["held", "running", "ended"] as const satisfies readonly HeldState[];
+
+/** What holds a marked request now: a draft in the box, or a turn (or anything else the box waits on). */
+export type HoldCause = "draft_present" | "turn_running";
+const HOLD_CAUSES = ["draft_present", "turn_running"] as const satisfies readonly HoldCause[];
 
 /** One held request on disk. */
 export interface HeldEntry {
@@ -65,6 +73,10 @@ export interface HeldEntry {
    * read): it goes out only after a poll read a running turn and then a free pane, never on quiet polls.
    */
   readonly waitsForTurn?: true;
+  /** The caller asked for a draft to hold this request, not refuse it (see the header). */
+  readonly draftHolds?: true;
+  /** On a {@link draftHolds} request: what holds it now. */
+  readonly cause?: HoldCause;
 }
 
 export interface HoldInput {
@@ -79,6 +91,12 @@ export interface HoldInput {
   readonly command: boolean;
   /** See {@link HeldEntry.waitsForTurn}. */
   readonly waitsForTurn?: boolean;
+  /** See {@link HeldEntry.draftHolds}. */
+  readonly draftHolds?: boolean;
+  /** See {@link HeldEntry.cause}; kept only with {@link draftHolds}. */
+  readonly cause?: HoldCause;
+  /** The caller's own end of the hold, epoch ms: it replaces {@link HOLD_MS} and {@link HOLD_COMMAND_MS}. */
+  readonly expiresAt?: number;
 }
 
 function pick<const T extends string>(value: JsonValue | undefined, allowed: readonly T[]): T | undefined {
@@ -111,6 +129,11 @@ function parseEntry(raw: JsonValue | undefined): HeldEntry | null {
   if (reason !== undefined) entry = { ...entry, reason };
   if (endedAt !== undefined) entry = { ...entry, endedAt };
   if (node.waitsForTurn === true) entry = { ...entry, waitsForTurn: true };
+  if (node.draftHolds === true) {
+    entry = { ...entry, draftHolds: true };
+    const cause = pick(node.cause, HOLD_CAUSES);
+    if (cause !== undefined) entry = { ...entry, cause };
+  }
   return entry;
 }
 
@@ -177,9 +200,18 @@ export class HoldStore {
   /** A new request at the end of its pane's queue. */
   add(input: HoldInput): HeldEntry {
     const at = this.now();
-    const { command, waitsForTurn, ...rest } = input;
-    const entry: HeldEntry = { ...rest, heldAt: at, expiresAt: at + (command ? HOLD_COMMAND_MS : HOLD_MS), seq: this.nextSeq++, state: "held", tries: 0 };
-    return this.write(waitsForTurn === true ? { ...entry, waitsForTurn: true } : entry);
+    const { command, waitsForTurn, draftHolds, cause, expiresAt, ...rest } = input;
+    let entry: HeldEntry = { ...rest, heldAt: at, expiresAt: expiresAt ?? at + (command ? HOLD_COMMAND_MS : HOLD_MS), seq: this.nextSeq++, state: "held", tries: 0 };
+    if (waitsForTurn === true) entry = { ...entry, waitsForTurn: true };
+    if (draftHolds === true) entry = cause === undefined ? { ...entry, draftHolds: true } : { ...entry, draftHolds: true, cause };
+    return this.write(entry);
+  }
+
+  /** What holds a marked request now: the file is written only when it changed. Null when not held or not marked. */
+  setCause(id: string, cause: HoldCause): HeldEntry | null {
+    const known = this.get(id);
+    if (known === null || known.state === "ended" || known.draftHolds !== true) return null;
+    return known.cause === cause ? known : this.write({ ...known, cause });
   }
 
   get(id: string): HeldEntry | null {

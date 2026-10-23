@@ -51,11 +51,12 @@
     "notices": [
       { "head": "^✦ (?:Heads up|You should know) ·(?:\\s|$)", "body": true },
       { "head": "^● How is Claude doing this session\\? \\(optional\\)$" },
+      { "head": "^● Can Anthropic look at your session transcript to help us improve Claude Code\\?$", "letters": true },
       { "head": "^✦ Dismissed\\.(?=\\s|$)" }
     ],
     "noticeGaps": [
       "^ +You've used \\d{1,3}% of your [\\w -]+ limit(?: ·|$)",
-      "^ *✔ Update installed · Restart to update$"
+      "^ *✔ Update installed · Restart to (?:update|apply)$"
     ]
   },
   "keys": {
@@ -89,7 +90,11 @@
     "note": "M56 spec 01 lab, 2026-10-15: inert after the type and after Backspace in every dialog without a text field, on Herdr, tmux and zellij; fallback ¤"
   },
   "paste": {
-    "bracketed": true
+    "bracketed": true,
+    "block": true,
+    "image": "\\[Image #\\d+\\]",
+    "imageNote": "Lab 2026-10-21, Claude Code 2.1.305 over herdr: a whole-text paste loses each piece (cut at a newline, and at a space before an absolute path) that is an existing .png/.jpg/.jpeg/.gif/.webp file at an absolute path, any case; each shows as `[Image #N]` before the rest, and the kept pieces are joined by newlines. A missing file, a .txt, a file without extension, a `~/` or a relative path, and a path with words after it stay text.",
+    "blockNote": "Lab 2026-10-20, Claude Code 2.1.304 over herdr: one bracketed paste of the whole text folds to `[Pasted text #N +M lines]`, M the line breaks (60 lines: +59; 30 short lines: +29); 3 short lines land literally; a 700-word line folds to `[Pasted text #N]`."
   },
   "ask": {
     "lifetimeMs": 5000

@@ -41,6 +41,8 @@ interface KeyFate {
 const KEYS = new Map<string, KeyFate>([
   // ── Wiped: what a pairing leaves behind ──
   ["collie:draft:", { area: "local", prefix: true, fate: "wiped", why: "unsent words typed under the pairing" }],
+  // The draft store's second version (lib/drafts.ts, PR 560); under the first one's prefix, so its wipe covers both.
+  ["collie:draft:v2:", { area: "local", prefix: true, fate: "wiped", why: "unsent words typed under the pairing" }],
   // The token and the push endpoint are named by constants, so the scan sees them through those.
   ["collie:device-token", { area: "local", prefix: false, fate: "wiped", why: "the credential itself" }],
   ["collie:push-endpoint", { area: "local", prefix: false, fate: "wiped", why: "names this phone's push endpoint" }],

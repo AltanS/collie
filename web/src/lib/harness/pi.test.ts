@@ -24,8 +24,13 @@ describeAdapterConformance(piAdapter, {
   foreignFixtures: fixtures.filter((name) => !name.startsWith("pi--")),
   // The slash palette pushes the editor frame out of the bridge's six-row tail window. Beside OmO's
   // side panel the editor is read from rows cropped at the panel (pi/panel.ts), which the bridge
-  // cannot find on the screen, so the write goes out unbound.
+  // cannot find on the screen, so the write goes out unbound. An extension's footer of five rows under
+  // its own widget row does the same to the inset editor (issue 544); the reporter's idle and draft
+  // captures have six rows under the box, the widget row among them.
   unboundComposerFixtures: [
+    "pi--v130-powerline-editor-running--w254.txt",
+    "pi--v130-powerline-editor-idle-footer--w254.txt",
+    "pi--v130-powerline-editor-two-row-draft-footer--w254.txt",
     "pi--v110-slash-palette.txt",
     "pi--v120-slash-palette-padded.txt",
     "pi--omo-v5130-panel-draft.txt",
@@ -195,6 +200,27 @@ describe("pi adapter routing", () => {
     expect(piAdapter.modalOnScreen?.(lines)).toBe(false);
     expect(buildBlocks(lines, { agent: "pi" }).every((block) => block.kind === "raw")).toBe(true);
     if (draft !== null) expect(draftCarriesSend(draft, piAdapter.extractInputDraft(lines))).toBe(true);
+  });
+
+  // Issue 544: pi-powerline-footer's editor, one column in, under its widget row and a five-row footer.
+  it("reads an extension's inset editor as a composer and takes it off the mirror", () => {
+    const lines = load("pi--v130-powerline-editor-running--w254.txt");
+    expect(piAdapter.composerReady?.(lines)).toBe(true);
+    expect(piAdapter.extractInputDraft(lines)).toBeNull();
+    expect(piAdapter.modalOnScreen?.(lines)).toBe(false);
+    expect(piAdapter.extractStatusLines(lines)).toHaveLength(5);
+    const [block] = buildBlocks(lines, { agent: "pi" });
+    expect(block?.kind === "raw" ? block.lines.length : 0).toBe(14);
+  });
+
+  // Issue 544, live: the same editor with no footer under it, a wrapped draft, and pi's own selector.
+  it("reads the live inset editor with no footer, and never pi's selector under the extension", () => {
+    const draft = load("pi--v130-powerline-editor-walky-draft--w120.txt");
+    expect(piAdapter.composerReady?.(draft)).toBe(true);
+    expect(piAdapter.extractInputDraft(draft)).toBe("[walky-talky wt_0a1b2c3d4e5f] from operator (Phone) Reply with exactly WALKY-1 and nothing else.");
+    const selector = load("pi--v130-powerline-model-selector--w120.txt");
+    expect(piAdapter.composerReady?.(selector)).toBe(false);
+    expect(piAdapter.modalOnScreen?.(selector)).toBe(true);
   });
 
   it.each(["pi--v0871-narrow-idle.txt", "pi--v110-stock-narrow-idle.txt", "pi--v0871-question-answered.txt"])(

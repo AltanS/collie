@@ -147,11 +147,11 @@ export function HeldCard({ paneId, scope, rows, canAct, sending, onSend, onChang
             </Button>
           </>
         )}
-        {row.outcome !== "typed_not_submitted" && (
-          <Button type="button" variant="outline" size="sm" className={QUEUED_BUTTON} disabled={disabled} aria-label={t("composer.held.dismissAria")} onClick={() => void act(row, () => release(row))}>
-            {t("composer.held.dismiss")}
-          </Button>
-        )}
+        {/* A typed row keeps Dismiss too: once the box no longer holds its text (cleared at the keys, or
+            changed by the harness), Submit and Discard are refused and the row would stay for an hour. */}
+        <Button type="button" variant="outline" size="sm" className={QUEUED_BUTTON} disabled={disabled} aria-label={t("composer.held.dismissAria")} onClick={() => void act(row, () => release(row))}>
+          {t("composer.held.dismiss")}
+        </Button>
       </span>
     );
   }

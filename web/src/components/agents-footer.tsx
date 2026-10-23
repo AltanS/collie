@@ -9,7 +9,8 @@
 //
 // ONE ROW until tapped: the first agent's row, verbatim, with a `+N` for the rest. Tapping expands to
 // every row as the pane painted it. Nothing here reads the content beyond one check: a first row led
-// by "●" is the "main" header, so the collapsed row shows the agent under it instead. No new UI
+// by "●" (Claude) or Muse's `main · ↓ to select` header is the "main" header, so the collapsed row shows
+// the task under it instead. No new UI
 // string, so no translation: the button's name is the agent row itself, and `aria-expanded` carries
 // the state.
 
@@ -18,10 +19,12 @@ import { ChevronDown } from "lucide-react";
 import type { StyledLine } from "@/lib/blocks";
 import { MIRROR_INVERT, MIRROR_SPACE, segmentStyle } from "@/components/mirror-space";
 import type { MirrorFont } from "@/hooks/use-display-prefs";
+import { isTasksPopupHeader } from "@/lib/harness/muse/markers";
 import { cn } from "@/lib/utils";
 
 function isHeader(row: StyledLine): boolean {
-  return row.segments.map((s) => s.text).join("").trimStart().startsWith("●");
+  const text = row.segments.map((s) => s.text).join("").trim();
+  return text.startsWith("●") || isTasksPopupHeader(text);
 }
 
 function Row({ row, className }: { row: StyledLine; className?: string }) {
