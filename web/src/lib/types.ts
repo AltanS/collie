@@ -194,6 +194,12 @@ export interface AgentView {
    */
   effort?: string;
   /**
+   * How full the context is and how much of the subscription's windows is used, as the harness's own
+   * statusLine reported them. Mirrors `PaneWire.usage` in bridge/types.ts. **Absent, never a
+   * placeholder**: drawn as dots beside the model (components/model-tag.tsx), and nothing decides on it.
+   */
+  usage?: PaneUsage;
+  /**
    * What the checkout holding this pane's folder is on. Mirrors `PaneWire.gitHead` in bridge/types.ts.
    *
    * **Absent, never a placeholder**: a folder in no checkout, a reading the bridge has not taken yet,
@@ -1292,7 +1298,7 @@ export interface PlanTask {
 
 /**
  * What a tool call did, in the shape the thing it did suggests. Mirrors
- * `bridge/journal/tool-call.ts`, where the reasoning for the ten kinds lives (ADR 0114).
+ * `bridge/journal/tool-call.ts`, where the reasoning for the ten kinds lives (ADR 0116).
  *
  * Every branch's FIRST field is the one a person would name the call by, so a row can be drawn from
  * `kind` plus one field. A tool outside the ten is not an error, it is `other`, which still carries
@@ -1308,7 +1314,7 @@ export type ToolCall =
   | { kind: "delete" | "move"; path: string; to?: string }
   /** `agentId` names the subagent's own log. `ongoing`: a background sub-agent that has not finished, though its start result is in. */
   | { kind: "task"; agent?: string; summary: string; agentId?: string; ongoing?: true }
-  /** A task list the agent keeps rewriting (ADR 0114). On pi its updates are folded into the one card. */
+  /** A task list the agent keeps rewriting (ADR 0116). On pi its updates are folded into the one card. */
   | { kind: "plan"; name: string; tasks: readonly PlanTask[] }
   /** The agent asked the operator to choose. One entry per question the call carried. `answers[i]` is the list of chosen labels for question `i`, present only once the call completed with answers. */
   | { kind: "question"; name: string; summary: string; questions: readonly ToolQuestion[]; answers?: readonly (readonly string[])[] }
@@ -2526,3 +2532,22 @@ export type PaneProgress =
   | { kind: "percent"; value: number; label?: string };
 
 
+
+/** A subscription window, by the label the phone draws for it. Mirrors `UsageWindow` in bridge/usage.ts. */
+export type UsageWindow = "5h" | "7d";
+
+/** One subscription window's reading. Mirrors `UsageLimit` in bridge/usage.ts. */
+export interface UsageLimit {
+  window: UsageWindow;
+  /** Percent of the window used, 0 to 100. */
+  used: number;
+  /** When the window resets, epoch ms. */
+  resetsAt?: number;
+}
+
+/** A pane's usage numbers. Mirrors `PaneUsage` in bridge/usage.ts; every part absent when unreported. */
+export interface PaneUsage {
+  /** Percent of the context window used, 0 to 100. */
+  context?: number;
+  limits?: UsageLimit[];
+}

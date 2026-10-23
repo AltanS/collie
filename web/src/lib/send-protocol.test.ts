@@ -145,6 +145,10 @@ describe("readSend", () => {
 
   it("each refusal gets its own sentence, bound and not_free included, and the key pad offer is not a strip button", () => {
     expect(readSend(reply("refused", "draft_present", ["append", "replace", "cancel"]))).toMatchObject({ clear: false, note: "draft", offers: ["append", "replace", "cancel"] });
+    // A command onto a draft is offered Replace and Cancel only, and its sentence names only those.
+    expect(readSend(reply("refused", "draft_present", ["replace", "cancel"]))).toMatchObject({ clear: false, note: "draftCommand", offers: ["replace", "cancel"] });
+    // A draft the bridge found no frame for offers the key pad alone: no strip button, so the plain sentence stays.
+    expect(readSend(reply("refused", "draft_present", ["keys"]))).toMatchObject({ note: "draft", offers: [] });
     expect(readSend(reply("refused", "stale_surface", ["keys"]))).toMatchObject({ clear: false, note: "moved", offers: [] });
     expect(readSend(reply("refused", "not_free")).note).toBe("notFree");
     expect(readSend(reply("refused", "bound")).note).toBe("bound");
@@ -312,6 +316,22 @@ describe("the session page's rows (send drill 3)", () => {
     expect(rows.receipts[1]!.detail).toBeUndefined();
     expect(rows.receipts[1]!.saw).toBeUndefined();
     expect(rows.receipts[2]!.detail).toHaveLength(240);
+  });
+
+  it("reads the line of a row off the wire, and leaves out one that is empty or not a string (2026-10-21)", () => {
+    const row = { requestId: "r1abcdefgh", at: 5, mode: "send", outcome: "sent", keys: ["Enter"], gapsMs: {}, harness: "claude", version: "2.1.302" };
+    const rows = readSendReceipts({
+      receipts: [
+        { ...row, line: "ok check please it's past 2pm" },
+        { ...row, requestId: "r2abcdefgh", line: "" },
+        { ...row, requestId: "r3abcdefgh", line: 7 },
+        { ...row, requestId: "r4abcdefgh" },
+      ],
+    });
+    expect(rows.receipts[0]!.line).toBe("ok check please it's past 2pm");
+    expect(rows.receipts[1]!.line).toBeUndefined();
+    expect(rows.receipts[2]!.line).toBeUndefined();
+    expect(rows.receipts[3]!.line).toBeUndefined();
   });
 
   it("reads the cap of a row off the wire and drops one that is not whole", () => {

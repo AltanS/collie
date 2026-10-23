@@ -14,6 +14,8 @@ import { HOLD_VERB, holdCommandIn } from "./hold-entry.ts";
 import { loadProfiles } from "../web/src/lib/surface/profile.ts";
 import { compareSemver } from "../web/src/lib/semver.ts";
 import { binaryVersion } from "../bridge/surface/binary-version.ts";
+import { HOST } from "../bridge/host.ts";
+import { statusLineBehind, statusLineState, unwrapStatusLine, wrapStatusLine } from "./statusline.ts";
 
 // `collie hooks install claude` / `uninstall claude` / `status` — putting the beacon emitter into the
 // agent's own settings, and taking it back out.
@@ -445,6 +447,14 @@ export function uninstallDocument(current: JsonValue | null): HookDocument {
   return { kind: "document", document };
 }
 
+/**
+ * Whether this host wraps the statusLine. Not on Windows: Claude Code runs a statusLine there in a
+ * shell the wrapper's `/bin/sh` is not, so a wrapped command could change what the operator sees.
+ */
+function wrapsStatusLine(): boolean {
+  return HOST.platform !== "win32";
+}
+
 /** How a settings file is serialised. Two-space JSON with a trailing newline, as Claude Code writes it. */
 export function serializeSettings(document: JsonObject): string {
   return `${JSON.stringify(document, null, 2)}\n`;
@@ -622,6 +632,8 @@ export function cmdHooksInstall(deps: HooksDeps, args: readonly string[]): numbe
     return EXIT.FAIL;
   }
   let failed = false;
+  let wrappedLines = 0;
+  let plainLines = 0;
 
   for (const rawTarget of claudeSettingsTargets(deps.ctx)) {
     const resolved = resolveTarget(deps, rawTarget);
@@ -644,7 +656,14 @@ export function cmdHooksInstall(deps: HooksDeps, args: readonly string[]): numbe
       failed = true;
       continue;
     }
-    const text = serializeSettings(outcome.document);
+    // The operator's own statusLine, wrapped so the usage dots can read it (cli/statusline.ts). None
+    // is added where there is none, and none is wrapped on Windows, where the wrapper's shell is not
+    // the one Claude Code runs the command in.
+    const document = wrapsStatusLine() ? wrapStatusLine(outcome.document, binary) : outcome.document;
+    const line = statusLineState(document).kind;
+    if (line === "wrapped") wrappedLines += 1;
+    if (line === "plain") plainLines += 1;
+    const text = serializeSettings(document);
     if (text === settings.text) {
       deps.io.out(`${target.path} already has them — no bytes changed.`);
       continue;
@@ -673,6 +692,14 @@ export function cmdHooksInstall(deps: HooksDeps, args: readonly string[]): numbe
   } else {
     deps.io.out(`  No permission hold. Add \`${HOLD_FLAG}\` to hold permissions for the phone.`);
   }
+  if (wrappedLines > 0) {
+    deps.io.out(`  statusLine → \`${binary} beacon statusline\`: your own command still runs and prints as before.`);
+    deps.io.out("  The wrapper passes on the context use and the 5h and 7d limits, for the dots above the belt.");
+  } else if (!wrapsStatusLine()) {
+    if (plainLines > 0) deps.io.out("  statusLine not wrapped on Windows, so the phone shows no usage dots.");
+  } else {
+    deps.io.out("  No statusLine to wrap, so the phone shows no usage dots. Collie never adds a statusLine.");
+  }
   return EXIT.OK;
 }
 
@@ -696,7 +723,8 @@ export function cmdHooksUninstall(deps: HooksDeps, args: readonly string[]): num
     if (settings === null || settings.text === null) continue;
     const outcome = uninstallDocument(settings.value);
     if (outcome.kind === "refuse") continue;
-    const text = serializeSettings(outcome.document);
+    // The operator's own statusLine command goes back exactly as it was before the wrap.
+    const text = serializeSettings(unwrapStatusLine(outcome.document));
     if (text === settings.text) continue;
     try {
       writeSettings(deps, target, settings.text, text);
@@ -729,6 +757,8 @@ export type HookTargetState =
   | { readonly kind: "partial"; readonly at: string; readonly present: number }
   /** Ours, complete, but written by a build whose marker was a different version. */
   | { readonly kind: "stale"; readonly at: string }
+  /** Ours and complete, but the operator's statusLine is not wrapped by this build yet. */
+  | { readonly kind: "statusline"; readonly at: string }
   | { readonly kind: "installed"; readonly at: string };
 
 function targetState(deps: HooksDeps, target: HookTarget): HookTargetState {
@@ -747,9 +777,10 @@ function targetState(deps: HooksDeps, target: HookTarget): HookTargetState {
   if (present === 0) return { kind: "not-installed" };
   const at = `v${[...versions].join("/")}`;
   if (present < BEACON_HOOKS.length) return { kind: "partial", at, present };
-  return versions.has(String(HOOK_MARKER_VERSION)) && versions.size === 1
-    ? { kind: "installed", at }
-    : { kind: "stale", at };
+  if (!versions.has(String(HOOK_MARKER_VERSION)) || versions.size !== 1) return { kind: "stale", at };
+  const document = asObject(settings.value);
+  const { binary } = resolveHookCommand(deps.ctx, deps.fs);
+  return wrapsStatusLine() && document !== null && statusLineBehind(document, binary) ? { kind: "statusline", at } : { kind: "installed", at };
 }
 
 /**
@@ -764,10 +795,21 @@ function targetState(deps: HooksDeps, target: HookTarget): HookTargetState {
  * {@link BEACON_HOOKS} is compiled in and the old build's copy is exactly the stale thing.
  */
 export function hooksAreBehind(deps: HooksDeps): boolean {
-  return claudeSettingsTargets(deps.ctx)
-    .map((target) => targetState(deps, target))
-    .some((state) => state.kind === "partial" || state.kind === "stale");
+  return behindReason(deps) !== null;
 }
+
+/**
+ * WHAT is behind: the hooks themselves (a missing registration or a stale marker), or only the
+ * statusLine wrap. The hooks win when both are, because their install wraps the statusLine as well.
+ */
+export function behindReason(deps: HooksDeps): "hooks" | "statusline" | null {
+  const states = claudeSettingsTargets(deps.ctx).map((target) => targetState(deps, target));
+  if (states.some((state) => state.kind === "partial" || state.kind === "stale")) return "hooks";
+  return states.some((state) => state.kind === "statusline") ? "statusline" : null;
+}
+
+/** The one word `hooks status --check` prints when only the statusLine wrap is behind. */
+export const STATUSLINE_BEHIND_WORD = "statusline";
 
 /**
  * `collie hooks status` — READ-ONLY. It reports; it never repairs.
@@ -778,7 +820,13 @@ export function hooksAreBehind(deps: HooksDeps): boolean {
  * the existing verb means the two answers cannot drift, and it leaves `status`'s own contract alone.
  */
 export function cmdHooksStatus(deps: HooksDeps, args: readonly string[] = []): number {
-  if (args.includes("--check")) return hooksAreBehind(deps) ? EXIT.STATE : EXIT.OK;
+  if (args.includes("--check")) {
+    const reason = behindReason(deps);
+    // One word, and only for the statusLine case, so the updater can say which thing is behind. An
+    // older updater reads the exit code alone, and the code is the same for both.
+    if (reason === "statusline") deps.io.out(STATUSLINE_BEHIND_WORD);
+    return reason === null ? EXIT.OK : EXIT.STATE;
+  }
   const { binary, source } = resolveHookCommand(deps.ctx, deps.fs);
   deps.io.out(`would install: ${binary} beacon emit  (${SOURCE_NAME[source]})`);
   for (const target of claudeSettingsTargets(deps.ctx)) {
@@ -799,7 +847,16 @@ function targetHolds(deps: HooksDeps, target: HookTarget): boolean {
 
 function describeTarget(deps: HooksDeps, target: HookTarget): string {
   const base = describeBeacons(deps, target);
-  return targetHolds(deps, target) ? `${base}, holds permissions` : base;
+  const held = targetHolds(deps, target) ? `${base}, holds permissions` : base;
+  return targetWraps(deps, target) ? `${held}, wraps the statusLine` : held;
+}
+
+/** Whether one settings file's statusLine runs through the wrapper. Read-only, like every status read. */
+function targetWraps(deps: HooksDeps, target: HookTarget): boolean {
+  const resolved = resolveTarget(deps, target);
+  if (resolved.kind === "refused") return false;
+  const document = asObject(readSettings(deps, resolved.target)?.value ?? undefined);
+  return document !== null && statusLineState(document).kind === "wrapped";
 }
 
 function describeBeacons(deps: HooksDeps, target: HookTarget): string {
@@ -819,6 +876,8 @@ function describeBeacons(deps: HooksDeps, target: HookTarget): string {
       return `partly installed (${state.at}, ${state.present}/${BEACON_HOOKS.length} events) — re-run install to add the rest`;
     case "stale":
       return `installed at ${state.at} — re-run install to heal it to v${HOOK_MARKER_VERSION}`;
+    case "statusline":
+      return `installed (${state.at}), statusLine not wrapped — re-run install to wrap it`;
     case "installed":
       return `installed (${state.at})`;
   }

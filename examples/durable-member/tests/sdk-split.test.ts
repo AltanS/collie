@@ -24,24 +24,46 @@ function filesOf(dir: string): string[] {
   });
 }
 
-/** The module names a file imports or re-exports. */
+/** The module names a file imports or re-exports, a dynamic import with options (`{ with: { type: "json" } }`) included. */
 function importsOf(file: string): string[] {
   const code = readFileSync(join(SDK, file), "utf8");
-  return [...code.matchAll(/(?:^|\n)\s*(?:import|export)[^;]*?from\s+"([^"]+)"|import\(\s*"([^"]+)"\s*\)/g)].map((m) => (m[1] ?? m[2])!);
+  return [...code.matchAll(/(?:^|\n)\s*(?:import|export)[^;]*?from\s+"([^"]+)"|import\(\s*"([^"]+)"\s*[,)]/g)].map((m) => (m[1] ?? m[2])!);
 }
 
 describe("the SDK split", () => {
-  test("no pi import: no file in src/ outside src/pi imports Pi Durable or another @earendil-works or @mariozechner package", () => {
-    const outside = filesOf(SDK).filter((file) => !file.startsWith("pi/"));
+  // The allowlist per package name (M66): Pi only in src/pi/ and src/durable-harness/; durable-harness and @workflow/*
+  // only in the one World port, so a beta that moves an API moves one file.
+  const PI = /^@(earendil-works|mariozechner)\//;
+  const HARNESS = /^(durable-harness|@workflow\/)/;
+  const piAllowed = (file: string) => file.startsWith("pi/") || file.startsWith("durable-harness/");
+  const harnessAllowed = (file: string) => file === "durable-harness/world-port.ts";
+
+  test("no pi import: no file in src/ outside src/pi and src/durable-harness imports Pi Durable or another @earendil-works or @mariozechner package", () => {
+    const outside = filesOf(SDK).filter((file) => !piAllowed(file));
     expect(outside).toContain("core/index.ts");
     for (const file of outside) {
-      for (const name of importsOf(file)) expect([file, name]).toEqual([file, expect.not.stringMatching(/^@(earendil-works|mariozechner)\//)]);
+      for (const name of importsOf(file)) expect([file, name]).toEqual([file, expect.not.stringMatching(PI)]);
     }
+  });
+
+  test("durable-harness and @workflow/* are imported by src/durable-harness/world-port.ts and no other file", () => {
+    const files = filesOf(SDK);
+    expect(files).toContain("durable-harness/world-port.ts");
+    for (const file of files.filter((f) => !harnessAllowed(f))) {
+      for (const name of importsOf(file)) expect([file, name]).toEqual([file, expect.not.stringMatching(HARNESS)]);
+    }
+    expect(importsOf("durable-harness/world-port.ts").filter((name) => HARNESS.test(name)).sort()).toEqual(["@workflow/world", "durable-harness", "durable-harness/package.json", "durable-harness/pi-durable", "durable-harness/pi-durable"]);
   });
 
   test("no pi import from the example either: src/pi imports Pi and src/ only, never ../../ (the example's script)", () => {
     for (const file of filesOf(join(SDK, "pi"))) {
       for (const name of importsOf(file)) expect([file, name]).toEqual([file, expect.stringMatching(/^(@earendil-works\/|\.\.\/core\/|\.\/)/)]);
+    }
+  });
+
+  test("src/durable-harness imports Pi, the World port and src/ only, never ../../ (an example)", () => {
+    for (const file of filesOf(join(SDK, "durable-harness"))) {
+      for (const name of importsOf(file)) expect([file, name]).toEqual([file, expect.stringMatching(/^(@earendil-works\/|durable-harness|@workflow\/|\.\.\/(core|pi)\/|\.\/)/)]);
     }
   });
 

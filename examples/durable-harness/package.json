@@ -1,0 +1,24 @@
+{
+  "name": "collie-example-durable-harness",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node --import ./tests/node/register.mjs server.ts",
+    "seed": "node seed.ts",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@earendil-works/chord": "1.2.0",
+    "@earendil-works/pi-ai": "1.2.0",
+    "@earendil-works/pi-durable": "1.2.0",
+    "@workflow/world": "5.0.5",
+    "@workflow/world-local": "5.1.2",
+    "durable-harness": "0.0.1-beta.6",
+    "just-bash": "3.6.0"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.2",
+    "typescript": "5.9.3"
+  }
+}

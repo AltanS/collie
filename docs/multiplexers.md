@@ -247,6 +247,15 @@ Behavior details for Claude configuration changes:
   Project-level `.claude/settings.json` files are untouched.
 - Injects **five** hooks tagged `# collie-beacon v1` with 10-second timeouts. Existing hooks are
   preserved. `hooks uninstall claude` removes only Collie entries.
+- **Wraps your own statusLine, if you have one.** Its command becomes
+  `collie beacon statusline …`, and your script still runs and prints as before. The wrapper passes
+  the context use and the 5-hour and 7-day limits to the dots beside the model above the belt.
+  Collie never adds a statusLine, and `hooks uninstall claude` puts your command back exactly. Not
+  on Windows.
+- **To change a wrapped statusLine, unwrap it first.** Run `collie hooks uninstall claude`, edit
+  `statusLine.command`, then run `collie hooks install claude` again. The wrapped command names the
+  collie binary by its path, so if that binary moves, the statusLine prints nothing until you run
+  the install again. `collie update` reminds you when the wrapper is missing.
 - **Claude Code reloads its hooks while it runs.** This holds for 2.1.301. Restart an older Claude
   if no hook edges come.
 - **Linux only.** The agent liveness check depends on `/proc`. Other operating systems do not emit
@@ -397,9 +406,13 @@ Sends when the turn ends." The card shows the text and a Cancel button. Collie s
 pane reads free on two polls in a row, oldest first. Each later held send waits for the turn that
 the send before it started. If no turn shows, it goes after five free polls over ten seconds. A held
 command on pi, OMP or Codex sends Enter, and there Enter steers a turn. Such a command waits for a
-turn Collie sees, and so does any held command on an agent whose version Collie could not read. A
+turn Collie sees, and so does any held command on an agent whose version Collie could not read. OMP
+runs `/goal` at once during a turn, so Collie sends `/goal`, `/goal pause` or `/goal resume` right
+away with Enter. It never holds them, and they do not wait behind other held sends. A
 later message on that pane waits behind the held ones. A held text lasts 30 minutes, a held command
-10 minutes. After that the row says the message was not sent, and offers Resend. Some commands never
+10 minutes. After that the row says the message was not sent, and offers Resend. A walky talky
+message is also held over a draft, never typed into it, and its hold lasts 60 minutes
+([Walky talky](walky-talky.md)). Your own send over a draft is still refused, with Append and Replace. Some commands never
 wait, and Collie refuses them during a turn. On Claude Code these are `/clear`, `/exit`, `/quit`,
 `/logout`, `/resume`, `/branch` and every `!` line. On Codex these are `/quit`, `/exit`, `/new`,
 `/resume`, `/logout` and every `!` line. On Hermes these are `/exit`, `/quit`, `/clear`, `/new`,

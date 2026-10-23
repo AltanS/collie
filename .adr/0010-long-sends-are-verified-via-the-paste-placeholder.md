@@ -108,3 +108,42 @@ holds the submit until an adapter-declared floor has passed since the last type 
 (`submitSettleMs`, `lib/reply-action.ts`). Muse declares 350 ms. Every other adapter declares none
 and sends as before. This is one named exception to the rule above, measured on one harness, not a
 return of the fixed pacing #34 removed.
+
+## Addendum — 2026-10-21: the Send Protocol writes one paste for a long or multi-line message (#546)
+
+Status is unchanged: **Accepted**. Nothing above this line is rewritten. The 2026-10-03 addendum
+framed the paste on the phone's reply route. Since 1.22.0 a send goes through the bridge's Send
+Protocol, which types a message line by line. A long dictation then grows Claude's box past the
+pane's screen. A box whose top is off screen can never be proven, so the send ends
+`typed_not_submitted`, and Submit and Discard cannot find the box either.
+
+So the protocol writes the paste markers itself, the way the reply route does. The Herdr adapter
+gains `pasteBlock`: one `ESC[200~ … ESC[201~` around the whole text, line breaks included, with every
+other control byte cut first. The protocol uses it only where all of these hold:
+
+- the profile measured it (`paste.block`, Claude only today; Hermes, opencode, pi and Cursor keep the
+  write per line, and the one-fold reading below is off for them);
+- the text has more than one line, or more than 800 characters on one line (a phone dictation is
+  often one long line, and the first addendum shows a bare send that long loses text);
+- the text does not start with a reserved lead (`/`, `!`, `@`): a slash command, a shell line or a
+  file mention keeps the write it always had, so Claude reads the lead as typed. A lead later in the
+  text is only text inside the paste.
+
+Claude folds one paste into one `[Pasted text #N +M lines]`, M the paste's line breaks, so S1 reads
+that one token as the whole text, or else the text as it was written, never one line of it
+folded. It reads the tokens with white space taken out, since the box may wrap inside one. It does
+so only for a text written as one paste.
+
+Claude also takes image files off a paste (probed live 2026-10-21, Claude Code 2.1.305). It cuts the
+paste at each newline and at a space before an absolute path. Each piece that is an existing
+`.png/.jpg/.jpeg/.gif/.webp` file at an absolute path, in any case, becomes an `[Image #N]` before the
+rest, and the kept pieces are joined by newlines. A missing file, another extension, a `~/` or a
+relative path, and a path with words after it stay text. S1 expects one image token per piece that
+is in Collie's own upload shape (`<stateDir>/uploads/<pane>-<time>-<8 hex>.<ext>`, the shape the web
+adapter's `liftedPaste` reads, in `web/src/lib/upload-path.ts`) and still a file on the bridge's disk,
+which is the disk the pane runs on, then the kept text after them. Any other image path stays text
+to S1, as it does on the web side: if Claude takes it anyway, the box does not match and the send
+stalls rather than guessing (Altan, on the merge of #546). The image token is the profile's
+(`paste.image`).
+
+Chunking stays rejected.

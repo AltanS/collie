@@ -3553,6 +3553,13 @@ machine, past `accepted`, **that the lead has not acked yet**. At most 100, the 
 receipt goes 10 minutes after it was first held, acked or not. It is a report on the exchange, never a
 stored state (§18.5): it lives in memory only. **Absent means "nothing to report"** (§7.1).
 
+**A held send** (added 2026-10-21, M62 spec 02). The report may also carry an `accepted` receipt that
+has a `reason`: the member holds the message over a draft or a running turn, and the reason says which
+(`draft present`, `turn running`). It adds no state and no field, so it is additive-optional under
+§7.1: an older lead reads it as the `accepted` it is, and writes it over its own `accepted` as a
+newer receipt of the same state. It ranks as `accepted`, below `unknown` and every finished state, so
+it never goes over either. A bare `accepted` is still never reported.
+
 **The ack cursor** (added 2026-10-18). Each held receipt gets a sequence number, and a newer state for
 the same id and target is a new receipt with a new number. `cursor` is `<epoch>.<seq>` of the newest
 receipt in the report. `epoch` is 8 random lowercase hex characters, minted when the bridge process
@@ -3569,8 +3576,9 @@ pane on that member, for a message the lead routed there. The same receipt repor
 
 **An outcome only moves forward** (added 2026-10-18). The states rank `accepted`, then `unknown`, then
 the finished ones: `delivered`, `inbox-only`, `refused` and `expired`. A reported or pushed receipt is
-taken only when it ranks higher than the one held, or is the same state and newer; a finished state is
-never replaced. A receipt a bridge writes from its own dial (`accepted`, `unknown: member slow`, a
+taken only when it ranks higher than the one held, or is the same state and newer, or is the same
+state of the same millisecond and adds a `reason` the held one lacks (added 2026-10-22: a held send can
+be written in the millisecond of the bare `accepted` before it); a finished state is never replaced. A receipt a bridge writes from its own dial (`accepted`, `unknown: member slow`, a
 refusal) replaces only `accepted`, so a slow leg never goes over the outcome a report already brought.
 
 **A pane under a leg sent as a whole** (added 2026-10-18). A report may name a pane the lead holds no
@@ -3600,7 +3608,8 @@ receipt is still `accepted` on the member. Under an older lead it stays `accepte
 ### The outcome comes back *(added 2026-10-18)*
 
 The lead keeps an **outbox per member**, in memory only: every receipt its own log writes, past
-`accepted`, for a message whose `from.memberId` is that member and whose target is not on that member.
+`accepted` or held (an `accepted` with a `reason`, added 2026-10-21), for a message whose
+`from.memberId` is that member and whose target is not on that member.
 Both kinds of line count, the lead's own deliveries and the lines `mergeReport` writes from another
 member's report. At most 100 per member, the oldest dropped, and a receipt goes 10 minutes after the
 lead held it.

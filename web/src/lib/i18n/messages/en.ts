@@ -377,6 +377,11 @@ export const en = {
   "composer.attach.listAria": "Attachments",
   "composer.attach.removeAria": "Remove {name}",
   "composer.attach.inFront": "Its marker is gone from your text, so Send puts {name} in front.",
+  "composer.paste.chipStats.one": "{count} line · {chars} chars",
+  "composer.paste.chipStats.other": "{count} lines · {chars} chars",
+  "composer.paste.sheetTitle": "Pasted text #{n}",
+  "composer.paste.expandToInput": "Expand into input",
+  "composer.paste.editAria": "Edit pasted text #{n}",
   "composer.send.reallySend": "Really send?",
   "composer.send.dialogFirst": "Answer the dialog",
   "composer.send.stopTypingAria": "Stop typing into terminal",
@@ -440,6 +445,7 @@ export const en = {
   "composer.held.showLessAria": "Show less of the queue",
   "composer.protocol.discarded": "The text was removed from the box. Your draft is still here.",
   "composer.protocol.draft": "The box already holds a draft. Add to it, replace it, or cancel.",
+  "composer.protocol.draftCommand": "The box already holds a draft. Replace it, or cancel.",
   "composer.protocol.typed": "Your text is in the box, but Enter was not pressed. Submit it or discard it.",
   "composer.protocol.unconfirmed": "Collie cannot read this screen. Check the pane, then tap Type here.",
   "composer.protocol.noticeKey": "That message would answer the notice above the box. Check the pane, then tap Type here.",
@@ -472,6 +478,7 @@ export const en = {
   // The last ten sends for a pane, from the receipts (M56 spec 09). No text, no screen rows.
   "sendReceipts.title": "Recent sends",
   "sendReceipts.empty": "No sends to this pane yet.",
+  "sendReceipts.kept": "Collie keeps the line of a send on this machine for seven days. A line that looks like a secret is not kept.",
   "sendReceipts.outcome.sent": "Sent",
   "sendReceipts.outcome.effective": "Confirmed",
   "sendReceipts.outcome.typed_not_submitted": "Typed, not sent",
@@ -1814,6 +1821,10 @@ export const en = {
   "settings.updateCard.majorNote": "{version} is a new major.",
   "settings.updateCard.dismiss": "Remind me next digest",
   "settings.updateCard.dismissed": "Dismissed until the next digest.",
+  // On Edge there is no digest: the push waits only for a newer build (and for 09:00). Same button, same
+  // snooze, so these two say what it does there.
+  "settings.updateCard.dismissEdge": "Remind me at the next build",
+  "settings.updateCard.dismissedEdge": "Dismissed until the next Edge build.",
   "settings.updateCard.checking": "Checking this machine…",
   "settings.updateCard.details": "Details",
   "settings.updateCard.summary.checks.one": "{count} check",
@@ -2294,6 +2305,12 @@ export const en = {
   "chat.changes.label": "Files",
   // What a screen reader says for the small model label above the belt; {name} is the harness's own.
   "chat.model.aria": "Model {name}",
+  "chat.usage.context": "ctx",
+  "chat.usage.context.aria": "Context {percent}% used",
+  "chat.usage.window.5h": "5h",
+  "chat.usage.window.5h.aria": "5-hour limit {percent}% used",
+  "chat.usage.window.7d": "7d",
+  "chat.usage.window.7d.aria": "7-day limit {percent}% used",
   "files.title": "Files",
   // --- the branch a pane's folder is on (components/ui/branch-label.tsx) ---
   "branch.aria": "Branch {name}",
@@ -2746,6 +2763,9 @@ export const en = {
   "walky.state.refusedBecause": "not sent: {reason}",
   "walky.state.expired": "expired",
   "walky.state.unknown": "may have arrived, will not be sent again",
+  // A held message: `accepted` with what holds it. `{reason}` is the bridge's words ("draft present", "turn running").
+  "walky.state.held": "held: {reason}",
+  "walky.state.heldHint": "Typed when the box clears or the turn ends, up to 60 minutes. Do not send it again.",
   // The pane sheet's row and the sheet it opens.
   "walky.sheet.row": "Messages",
   "walky.sheet.title": "Messages",
@@ -2753,6 +2773,16 @@ export const en = {
   "walky.sheet.unavailable": "This machine does not keep messages yet.",
   "walky.sheet.reply": "Reply",
   "walky.sheet.replyAria": "Reply to {label}",
+  "walky.sheet.cancel": "Cancel",
+  "walky.sheet.cancelAria": "Cancel the message to {target}",
+  "walky.sheet.drop": "Drop",
+  "walky.sheet.dropAria": "Drop the message from {label}",
+  "walky.sheet.alreadyTyped": "Already typed. Nothing to take back.",
+  "walky.sheet.notHeld": "Not held. Nothing to take back.",
+  "walky.sheet.elsewhere": "Held on another machine. Take it back there. It is not cancelled.",
+  "walky.sheet.takeBackFailed": "Not taken back: {error}",
+  "walky.held.mark.one": "{count} message waits for the box to clear",
+  "walky.held.mark.other": "{count} messages wait for the box to clear",
   // The composer's long-press menu, and the strip that says where a message is going.
   "walky.composer.menu": "Send options",
   "walky.composer.sendAsMessage": "Send as message",

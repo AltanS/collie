@@ -3,6 +3,7 @@ import { Loader2, Play, TerminalSquare } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AgentIcon } from "@/components/agent-icon";
 import { CacheChip } from "@/components/cache-chip";
+import { HostChip } from "@/components/host-chip";
 import { PaneOrderToggle } from "@/components/pane-order-toggle";
 import { SectionHeader } from "@/components/section-header";
 import { StatusCounts, StatusSummaryLine } from "@/components/status-counts";
@@ -474,9 +475,9 @@ function PaneRow({
           <span className="min-w-0 truncate text-sm font-medium">{name}</span>
           <PaneBadge pane={pane} className="shrink-0 self-center" />
           {/* The cache reading trails the name, same corner as the dashboard row (agent-card.tsx,
-              via PaneMeta), but without PaneMeta's host and session chips: this sheet asked for the
-              cache reading alone, and a crew-wide switcher row is a separate call. `row`, not
-              `button` — the whole row is already a `<button>`, and a button cannot nest inside one. */}
+              via PaneMeta), but without PaneMeta's session chip. `row`, not `button` — the whole row
+              is already a `<button>`, and a button cannot nest inside one. The machine is the glyph
+              at the end of the place line below, not a chip here. */}
           <CacheChip cache={pane.cache} variant="row" className="ml-auto shrink-0" />
         </div>
         <div className="flex min-w-0 items-baseline gap-1 text-[11px] text-muted-foreground">
@@ -499,6 +500,13 @@ function PaneRow({
               </span>
             </>
           )}
+          {/* WHICH MACHINE, as its tint and its glyph alone (Altan, 2026-10-21): on a crew this sheet
+              lists every machine's panes, and in activity order there is no heading to say whose. A
+              word would be a third thing on a line that already carries the place, so the machine is
+              the one mark the dashboard row and the pane header already use for it, with the name in
+              the label. Hidden on a one-machine install by HostChip's own rule, so a solo row is
+              byte-identical. `self-center`: a glyph has no baseline to stand on. */}
+          <HostChip host={pane.host} variant="glyph" className="ml-auto self-center" />
         </div>
         {/* A durable program's own line, when it set one (WIRE.md 7.11). A third line only for such a pane. */}
         {subtitle !== null && (

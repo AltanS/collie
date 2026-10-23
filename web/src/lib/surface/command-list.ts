@@ -255,11 +255,26 @@ export function pointsAt(read: CommandListRead, typed: string, list: CommandList
   if (read.pointed === null) return false;
   if (read.pointed === text) return true;
   if (list === undefined) return false;
+  if (list.argumentList === true && pointsAtArgument(read, text, list.lead ?? "")) return true;
   const patterns = listPatterns(list);
   if (patterns.namespaces.length === 0 || !text.startsWith(patterns.lead) || read.entries.includes(text)) return false;
   const bare = text.slice(patterns.lead.length);
   if (bare.length === 0) return false;
   return patterns.namespaces.some((namespace) => !bare.startsWith(namespace) && read.pointed === patterns.lead + namespace + bare);
+}
+
+/**
+ * Whether `text`, a command word and its argument, has the pointer on that very argument
+ * (`commandList.argumentList`): `/goal pause` with the pointer on `pause`. The list must not hold
+ * the command word itself (`/goal`), or it is the list of commands, and the argument is the rest of
+ * the text to the end, so a pointer on a longer or shorter name never stands for it.
+ */
+function pointsAtArgument(read: CommandListRead, text: string, lead: string): boolean {
+  const word = /^\S+/u.exec(text)?.[0];
+  if (word === undefined || !word.startsWith(lead) || read.entries.includes(word)) return false;
+  const argument = text.slice(word.length).trim();
+  if (argument.length === 0 || read.pointed === null || !read.pointed.startsWith(lead)) return false;
+  return read.pointed.slice(lead.length) === argument;
 }
 
 /**

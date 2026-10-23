@@ -76,7 +76,9 @@ import {
   wantsMajor,
   wantsRunId,
   wantsToTag,
+  STATUSLINE_LAG_WORD,
 } from "./update.ts";
+import { STATUSLINE_BEHIND_WORD } from "./hooks.ts";
 
 // The fakes model a POSIX box and every fixture here is spelled that way (`/opt/collie`, `/inst`), but
 // the code under test builds its paths with `join`, which hands back `\opt\collie\cli\main.ts` on
@@ -201,7 +203,7 @@ function harness(
   const io = capture();
   const exec = posixExec({
     ...over,
-    answers: [...(over.answers ?? []), ["/fake/bun --version", { stdout: "1.4.0\n" }], ...ORIGIN],
+    answers: [...(over.answers ?? []), ["/fake/bun --version", { stdout: "1.4.4\n" }], ...ORIGIN],
   });
   const seed: SeededFiles = { [`${DIST}/index.html`]: "OLD", [BINARY]: "OLD BINARY" };
   if (over.installed !== undefined) {
@@ -823,7 +825,7 @@ describe("update", () => {
       installed: "0.31.1",
       absent: ["bun"],
       answers: [
-        ["/opt/bun/bin/bun --version", { stdout: "1.4.0\n" }],
+        ["/opt/bun/bin/bun --version", { stdout: "1.4.4\n" }],
         ...MANAGED,
         [`${GIT} ls-remote --tags ${TAG_REMOTE}`, { stdout: LS_REMOTE }],
         [`${GIT} rev-parse HEAD`, { stdout: "a1a1a1a1\n" }],
@@ -2370,6 +2372,17 @@ describe("the hooks nudge", () => {
     expect(h.io.stdout.join("\n")).toContain("collie hooks install claude");
   });
 
+  test("names the statusLine wrap when that is the only thing behind, and still names the command", async () => {
+    // The two spellings of the word are one fact; update.ts keeps its own to stay off hooks.ts.
+    expect(STATUSLINE_LAG_WORD).toBe(STATUSLINE_BEHIND_WORD);
+    const h = binaryHarness({ hooksCheck: { code: EXIT.STATE, stdout: `${STATUSLINE_BEHIND_WORD}\n` } });
+    expect(await runner(h, BINARY_APPLY)).toBe(EXIT.OK);
+    const out = h.io.stdout.join("\n");
+    expect(out).toContain("your settings do not carry the wrapper yet");
+    expect(out).not.toContain(NUDGE);
+    expect(out).toContain("collie hooks install claude");
+  });
+
   test("stays silent when the new binary reports nothing to do", async () => {
     const h = binaryHarness();
     expect(await runner(h, BINARY_APPLY)).toBe(EXIT.OK);
@@ -2739,7 +2752,7 @@ describe("the staged checkout path", () => {
     // operator is told the update can proceed by a check the update then contradicts.
     const h = legacyClone({
       absent: ["bun"],
-      answers: [[`${HOME}/.bun/bin/bun --version`, { stdout: "1.4.0\n" }]],
+      answers: [[`${HOME}/.bun/bin/bun --version`, { stdout: "1.4.4\n" }]],
     });
     h.files.entries.set(`${HOME}/.bun/bin/bun`, { text: "" });
     expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);

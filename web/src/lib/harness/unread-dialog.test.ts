@@ -343,6 +343,8 @@ const CARD_FIXTURES = {
       // omp 18.6.1's Models picker and settings screen (lab, 2026-10-17).
       "omp--v18-6-model-selector-empty--w120.txt",
       "omp--v18-6-settings-screen--w120.txt",
+      // omp 18.12.2's goal menu, which a bare `/goal` opens in a goal turn (lab, 2026-10-22).
+      "omp--v18-12-2-goal-bare-menu--w119.txt",
       "omp--v18-4-resume-nomatch.txt",
       "omp--v18-4-switch-nerd.txt",
       "omp--v18-4-switch-nomatch.txt",

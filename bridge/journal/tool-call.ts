@@ -9,7 +9,7 @@
 //
 // The union is deliberately SMALL and closed. Ten kinds cover every tool the seven adapters have met,
 // because tool vocabularies overlap almost completely: each harness has a read, a shell, a grep and
-// an edit under some spelling. The tenth, `plan`, is a task list the agent keeps rewriting (ADR 0114):
+// an edit under some spelling. The tenth, `plan`, is a task list the agent keeps rewriting (ADR 0116):
 // it fits none of the nine, and as `other` every update is a line that says only that the list
 // changed. A tool outside the ten is not an error, it is `other`, and it still carries a name and a
 // summary, so an unrecognised tool degrades to exactly what the view drew before this module existed.
@@ -78,7 +78,7 @@ export type ToolCall =
    * it returned before its work ended and no end notice has arrived.
    */
   | { kind: "task"; agent?: string; summary: string; agentId?: string; ongoing?: true }
-  /** A task list the agent keeps up to date (ADR 0114). The list is the whole list as of this call. */
+  /** A task list the agent keeps up to date (ADR 0116). The list is the whole list as of this call. */
   | { kind: "plan"; name: string; tasks: readonly PlanTask[] }
   /**
    * The agent asked the operator to choose. One entry per question the call carried. `answers[i]` is

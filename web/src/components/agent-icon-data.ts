@@ -2,8 +2,13 @@
 // official logo, paired with the brand's tile color. Sources (all verified against each project's
 // own favicon/site): Claude + Codex(OpenAI) via Simple Icons (CC0); pi via Simple Icons / pi.dev
 // favicon (#09090b tile); opencode via opencode.ai's site mark (#080808 tile, theme_color); agy
-// (Antigravity) via its Google-blue #1A73E8 tile, keyed under both "agy" and "antigravity"; omp via
-// omp.sh/favicon.svg (#0f0a14 tile, and the one mark whose official paint is a gradient — `grad`).
+// (Antigravity) via its Google-blue #1A73E8 tile, keyed under both "agy" and "antigravity"; omp
+// via omp.sh/favicon.svg (#0f0a14 tile, and the one mark whose official paint is a gradient,
+// `grad`); grok via grok.com/images/favicon.svg (the slashed circle its app icon also wears;
+// grok.com's page header draws a different, animated bot face, which is not the brand mark); muse
+// via muse.ai/images/landing/brand/muse-logo.svg, the Muse family's mark on the white tile of
+// muse.ai's own app icon. Muse Code itself has none (its page at dev.meta.ai/products/muse-code
+// shows only Meta's, its CLI prints only its name), and dev.meta.ai links muse.ai as Muse's site.
 // To refresh: re-run the fetch in CHANGELOG and replace the `d` strings.
 
 export interface AgentBrand {
@@ -13,7 +18,7 @@ export interface AgentBrand {
    *  future flattening would take, which for omp is the gradient's mid stop. */
   fg: string;
   /** Stops of the mark's own gradient, top-left → bottom-right, evenly spaced, for a brand whose
-   *  official mark IS a gradient (omp). Not a contrast device: flat `#9B4DFF` on omp's tile measures
+   *  official mark IS a gradient (omp, muse). Not a contrast device: flat `#9B4DFF` on omp's tile measures
    *  4.56:1 and would read fine. It is fidelity — flattening ships a mark omp itself never paints.
    *
    *  Two stops minimum, by type: one stop (or none) is a gradient that paints nothing, and a mark
@@ -72,6 +77,27 @@ export const AGENT_BRANDS = new Map<string, AgentBrand>([
       mode: "fill",
       grad: ["#ED4ABF", "#9B4DFF", "#5AD8E6"],
       d: "M1.2 0h21.6v4.8h-6v19.2h-4.8V4.8H8.4v13.2H3.6V4.8H1.2z",
+    },
+  ],
+  // Attribution: the grok mark is from grok.com/images/favicon.svg and the muse mark from
+  // muse.ai/images/landing/brand/muse-logo.svg, both copied 2026-10-15. Neither source states
+  // terms. The marks belong to their owners, and Collie shows them only to name the harness.
+  // grok: the favicon's two mark paths, its 400×400 mark box (56..456 of 512) rescaled ×0.06 to
+  // fill 24×24 — the same paths, not a redrawing. Monochrome by design, so no accent.
+  ["grok", { bg: "#050505", fg: "#FCFCFC", mode: "fill", d: "M9.269 15.406L17.248 9.263C17.639 8.962 18.198 9.079 18.384 9.547C19.365 12.014 18.927 14.978 16.976 17.014C15.024 19.049 12.308 19.496 9.826 18.479L7.115 19.788C11.004 22.56 15.726 21.875 18.677 18.795C21.018 16.354 21.743 13.026 21.065 10.025L21.071 10.032C20.088 5.624 21.313 3.862 23.822 0.258C23.881 0.173 23.941 0.088 24 0L20.699 3.443V3.432L9.267 15.408ZM7.623 16.898C4.831 14.118 5.312 9.814 7.694 7.332C9.455 5.495 12.341 4.746 14.86 5.848L17.565 4.545C17.078 4.178 16.453 3.783 15.736 3.505C12.497 2.114 8.618 2.806 5.984 5.551C3.451 8.193 2.654 12.255 4.022 15.722C5.044 18.312 3.369 20.145 1.681 21.994C1.083 22.65 0.483 23.306 0 24L7.62 16.901Z" }],
+  // muse: muse-logo.svg's one path, its 100×100 box rescaled ×0.24 and centred to 24×24 — the same
+  // path, not a redrawing. Its gradient runs dark top-left to light bottom-right; the official stops
+  // sit at 25/70/100% along a longer axis, evenly spaced here as `grad` requires.
+  [
+    "muse",
+    {
+      bg: "#FFFFFF",
+      fg: "#0064E0",
+      // The gradient's mid stop: the white tile cannot tint Collie's own ground.
+      accent: "#0064E0",
+      mode: "fill",
+      grad: ["#0040DC", "#0064E0", "#0082FB"],
+      d: "M5.91 3.869C6.777 3.869 7.396 4.546 7.396 5.607C7.396 6.669 7.225 7.626 6.941 9.659C6.738 11.084 6.389 13.258 6.243 14.162C6.523 13.628 7.178 12.378 7.294 12.144C8.666 9.375 10.096 6.901 10.508 6.246C11.054 5.372 11.535 5.021 12.278 5.021C12.664 5.022 13.124 5.217 13.352 5.477C13.66 5.829 13.725 6.398 13.714 7.019C13.698 7.97 13.574 9.486 13.405 11.177C13.33 11.929 13.185 13.466 13.087 14.496C13.965 12.925 15.591 10.035 16.246 9.025C16.817 8.146 17.392 7.579 18.164 7.579C18.83 7.579 19.651 8.05 19.603 9.302C19.531 11.149 19.264 15.174 19.143 16.979C19.96 15.79 21.033 14.029 21.436 13.367C21.842 12.698 22.26 12.157 22.894 12.139C23.544 12.12 23.979 12.562 23.999 13.244C24.019 13.927 23.612 14.694 23.072 15.565C22.486 16.511 21.831 17.523 21.033 18.468C20.236 19.413 19.502 20.131 18.384 20.131C17.382 20.131 16.677 19.465 16.628 18.246C16.602 17.607 16.723 16.234 16.814 15.16C16.92 13.917 17.048 12.717 17.137 11.923C16.256 13.535 14.402 16.912 13.568 18.23C12.752 19.52 12.355 19.974 11.493 19.975C10.631 19.975 10.253 19.354 10.241 18.42C10.227 17.407 10.988 11.324 11.246 9.297C10.828 10.191 9.801 12.385 9.157 13.69C8.534 14.953 7.489 17.135 6.73 18.393C6.184 19.298 5.57 19.975 4.66 19.975C3.75 19.975 3.236 19.363 3.236 18.379C3.236 17.395 3.521 15.756 3.827 13.723C3.98 12.739 4.155 11.667 4.352 10.53C4.496 9.708 4.746 8.26 4.9 7.371C4.2 8.461 2.941 10.423 2.558 11.014C2.131 11.671 1.749 12.15 1.115 12.15C0.416 12.15 0 11.605 0 10.971C0 10.337 0.322 9.848 0.846 8.988C1.518 7.883 2.726 6.377 3.388 5.586C4.168 4.654 4.947 3.869 5.91 3.869Z",
     },
   ],
 ]);

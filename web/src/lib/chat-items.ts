@@ -29,7 +29,7 @@ export type ChatToolStatus = "running" | "done" | "failed" | "denied";
  * The five kinds whose card can show what the call PRINTED, given the room.
  *
  * The others have nothing to print: an edit draws its diff, a read draws its range, a delete leaves
- * no output at all, and a plan's result is the list the card already draws (ADR 0114). Writing the
+ * no output at all, and a plan's result is the list the card already draws (ADR 0116). Writing the
  * union as a conditional over {@link ToolCall} rather than as a second list of branches is what stops
  * the two from drifting when another kind lands.
  */

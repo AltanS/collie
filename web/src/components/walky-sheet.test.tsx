@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { WalkyLogProvider } from "@/components/walky-log";
@@ -252,5 +252,44 @@ describe("WalkySheet with rows in both directions", () => {
   it("without a pane address every row reads as received, as before sent rows existed", () => {
     sheet(MIXED);
     expect(rowsOf().every((r) => r.getAttribute("data-direction") === "received")).toBe(true);
+  });
+});
+
+describe("a held message's two ways out (M62 spec 03)", () => {
+  const heldReceipt = (row: WalkyRow): WalkyRow => ({ ...row, receipt: { ...row.receipt, state: "accepted", reason: "draft present" } });
+  /** The operator's own message, held for this pane's box: Cancel. */
+  const operatorHeld = heldReceipt(fixtureWalkyOperator);
+  /** An agent's message held for this pane's box: the owner's Drop. */
+  const agentHeld = heldReceipt(fixtureWalkyAgent);
+  /** A message this pane sent, held at the far pane: the far pane's business, nothing here. */
+  const sentHeld = heldReceipt(fixtureWalkySent);
+
+  it("offers Cancel on the operator's held message and Drop on an agent's, nothing on a sent or settled row", () => {
+    sheet([operatorHeld, agentHeld, sentHeld, { ...fixtureWalkySent, id: "wt_s3ntaaaa0002" }], { self: fixtureWalkySelf, onCancel: vi.fn(), onDrop: vi.fn() });
+    expect(screen.getByRole("button", { name: "Cancel the message to bluefin/w1:p1" })).toHaveTextContent("Cancel");
+    expect(screen.getByRole("button", { name: "Drop the message from collie-workspace#fix-465" })).toHaveTextContent("Drop");
+    expect(screen.getAllByRole("button", { name: /^(Cancel|Drop) the message/ })).toHaveLength(2);
+    expect(screen.getAllByText("held: draft present")).toHaveLength(3);
+  });
+
+  it("hands the row to onCancel or onDrop, and shows the line the caller answers with", async () => {
+    const user = userEvent.setup();
+    const onCancel = vi.fn(async () => null);
+    const onDrop = vi.fn(async () => "Already typed. Nothing to take back.");
+    sheet([operatorHeld, agentHeld], { self: fixtureWalkySelf, onCancel, onDrop });
+    await user.click(screen.getByRole("button", { name: /^Cancel the message/ }));
+    expect(onCancel).toHaveBeenCalledExactlyOnceWith(operatorHeld);
+    expect(document.querySelector('[data-slot="walky-takeback-note"]')).toBeNull();
+    await user.click(screen.getByRole("button", { name: /^Drop the message/ }));
+    expect(onDrop).toHaveBeenCalledExactlyOnceWith(agentHeld);
+    expect(await screen.findByText("Already typed. Nothing to take back.")).toBeInTheDocument();
+  });
+
+  it("offers neither without a write (canReply false), nor without a handler", () => {
+    sheet([operatorHeld, agentHeld], { self: fixtureWalkySelf, canReply: false, onCancel: vi.fn(), onDrop: vi.fn() });
+    expect(screen.queryAllByRole("button", { name: /^(Cancel|Drop) the message/ })).toHaveLength(0);
+    cleanup();
+    sheet([operatorHeld, agentHeld], { self: fixtureWalkySelf });
+    expect(screen.queryAllByRole("button", { name: /^(Cancel|Drop) the message/ })).toHaveLength(0);
   });
 });

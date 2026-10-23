@@ -57,8 +57,10 @@ export interface WalkyReceipt {
   /**
    * Why, in the bridge's words: "no such pane", "not an agent pane", "pane busy", "box not free", "password prompt",
    * "rate limit", "off", "no terminal" (a session with no terminal is `inbox-only`, not refused),
-   * "id reused", "held past 10 minutes", "bridge restarted", "typed, not submitted", "signature",
+   * "id reused", "held past 60 minutes", "bridge restarted", "typed, not submitted", "signature",
    * "pane replaced" (the address named a session instance and the pane now holds another).
+   * On `accepted` it is a held message (M62 spec 02): "draft present" or "turn running". Collie types
+   * it when the box clears or the turn ends, up to 60 minutes, so nobody sends it again.
    */
   reason?: string;
   verified: WalkyVerified;
@@ -506,11 +508,16 @@ export function targetWord(address: string): string {
   return address === "all" ? t("walky.crew.receiptAll") : address;
 }
 
-/** Where a message stands, in words, with the bridge's reason when there is one. */
+/** A held message (M62 spec 02): `accepted`, with the reason that holds it ("draft present", "turn running"). */
+export function isHeld(receipt: WalkyReceipt): boolean {
+  return receipt.state === "accepted" && receipt.reason !== undefined && receipt.reason !== "";
+}
+
+/** Where a message stands, in words, with the bridge's reason when there is one. A held one reads "held: <reason>". */
 export function stateWord(receipt: WalkyReceipt): string {
   switch (receipt.state) {
     case "accepted":
-      return t("walky.state.accepted");
+      return isHeld(receipt) ? t("walky.state.held", { reason: receipt.reason ?? "" }) : t("walky.state.accepted");
     case "delivered":
       return t("walky.state.delivered");
     case "inbox-only":
@@ -526,6 +533,37 @@ export function stateWord(receipt: WalkyReceipt): string {
         ? t("walky.state.refused")
         : t("walky.state.refusedBecause", { reason: receipt.reason });
   }
+}
+
+/**
+ * The messages held for the pane at `self` (M62 spec 03): received, and `accepted` with the reason that
+ * holds them. What the held mark above the box counts, and what the Messages sheet offers Drop on. With
+ * no `self` nothing is held: a mount that cannot name its pane cannot tell a sent row from a received one.
+ */
+export function heldForPane(rows: readonly WalkyRow[], self: string | undefined): WalkyRow[] {
+  if (self === undefined) return [];
+  return rows.filter((row) => isHeld(row.receipt) && directionOf(row, self) === "received");
+}
+
+/** How one target's take-back ended (M62 spec 03), as the bridge's cancel and drop routes answer it. */
+export type TakeBackResult = "taken" | "repeat" | "already typed" | "not held" | "elsewhere";
+
+export interface WalkyTakeBack {
+  target: string;
+  result: TakeBackResult;
+  receipt: WalkyReceipt;
+}
+
+/**
+ * What the sheet says under a row after a take-back, or null when there is nothing to say: the hold
+ * ended (or had ended), and the row's own receipt tells the rest once the list is read again.
+ */
+export function takeBackNote(results: readonly WalkyTakeBack[]): string | null {
+  if (results.length === 0) return t("walky.sheet.notHeld");
+  if (results.some((entry) => entry.result === "taken" || entry.result === "repeat")) return null;
+  if (results.some((entry) => entry.result === "already typed")) return t("walky.sheet.alreadyTyped");
+  if (results.some((entry) => entry.result === "elsewhere")) return t("walky.sheet.elsewhere");
+  return t("walky.sheet.notHeld");
 }
 
 /** A receipt that ended with the message in a pane or the inbox, as against one the bridge turned away. */

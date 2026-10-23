@@ -3,7 +3,13 @@
 // Collie's own adapter (`DurableMux`): hello, the snapshot, one `requireApproval` card, Allow, and the receipt the
 // program prints, which must say `decidedBy: "phone"`. The shape is examples/durable-member/tests/node-child.ts.
 //
-//   bun scripts/sdk-pack-check.ts <project-dir> node|bun
+//   bun scripts/sdk-pack-check.ts <project-dir> node|bun <version>
+//   bun scripts/sdk-pack-check.ts <project-dir> node|bun <version> entries
+//
+// The second form is the ./durable-harness entry (M66 spec 04): the project also holds durable-harness, @workflow/world
+// and @workflow/world-local (installed with bun, under the example's cooldown), and a program imports `collieRoute` and
+// `withCollie` from the installed package and prints `{ step: "entries", durableHarness: true }` when both are
+// functions. It opens no session and starts no World.
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -29,6 +35,12 @@ const approval = await requireApproval("refund", { order: "5521", amount: 40 }, 
 console.log(JSON.stringify({ step: "approval", approved: approval.approved, decidedBy: approval.decidedBy }));
 await collie.close();
 console.log(JSON.stringify({ step: "closed" }));
+`;
+
+/** The program of the entry check: nothing runs, the two functions of the entry must be there. */
+export const ENTRIES_PROGRAM = `import { collieRoute, withCollie } from "@colliepwa/durable-sdk/durable-harness";
+
+console.log(JSON.stringify({ step: "entries", durableHarness: typeof collieRoute === "function" && typeof withCollie === "function" }));
 `;
 
 interface Listening {
@@ -94,11 +106,22 @@ export async function roundTrip(project: string, runtime: "node" | "bun", versio
   }
 }
 
+/** The entry check on one runtime. Throws with what went wrong; returns the line to print. */
+export async function entriesCheck(project: string, runtime: "node" | "bun"): Promise<string> {
+  writeFileSync(join(project, "entries.mjs"), ENTRIES_PROGRAM);
+  const run = Bun.spawnSync([runtime, "entries.mjs"], { cwd: project, env: process.env });
+  if (run.exitCode !== 0) throw new Error(`pack check: the ./durable-harness entry did not load on ${runtime}: ${run.stderr.toString().slice(-1500)}`);
+  const out = run.stdout.toString().trim().split("\n").at(-1) ?? "";
+  const seen: { step?: string; durableHarness?: boolean } = JSON.parse(out || "{}");
+  if (seen.step !== "entries" || seen.durableHarness !== true) throw new Error(`pack check: the ./durable-harness entry reads wrong on ${runtime}: ${out}`);
+  return `pack check: ${runtime} ${Bun.spawnSync([runtime, "--version"]).stdout.toString().trim()}: ./durable-harness exports collieRoute and withCollie`;
+}
+
 if (import.meta.main) {
-  const [project, runtime, version] = process.argv.slice(2);
-  if (project === undefined || (runtime !== "node" && runtime !== "bun") || version === undefined) {
-    console.error("usage: bun scripts/sdk-pack-check.ts <project-dir> node|bun <version>");
+  const [project, runtime, version, mode] = process.argv.slice(2);
+  if (project === undefined || (runtime !== "node" && runtime !== "bun") || version === undefined || (mode !== undefined && mode !== "entries")) {
+    console.error("usage: bun scripts/sdk-pack-check.ts <project-dir> node|bun <version> [entries]");
     process.exit(2);
   }
-  console.log(await roundTrip(project, runtime, version));
+  console.log(mode === "entries" ? await entriesCheck(project, runtime) : await roundTrip(project, runtime, version));
 }

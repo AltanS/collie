@@ -2,8 +2,9 @@
 // packages/durable-sdk/dist/, by `tsc -p packages/durable-sdk`. Then it writes dist/core/version.js from the package's
 // own package.json, so the SDK_VERSION a program reads is the version it was installed at. It never publishes.
 //
-// The `./pi` entry is built against the Pi packages of examples/durable-member (see packages/durable-sdk/tsconfig.json
-// for why), so that install comes first.
+// The `./pi` entry is built against the Pi packages of examples/durable-member, and `./durable-harness` against
+// durable-harness and @workflow/world of examples/durable-harness (see packages/durable-sdk/tsconfig.json for why), so
+// both installs come first.
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,6 +12,7 @@ import { fileURLToPath } from "node:url";
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 export const SDK_DIR = join(ROOT, "packages", "durable-sdk");
 const PI_PEERS = join(ROOT, "examples", "durable-member", "node_modules", "@earendil-works", "pi-durable");
+const HARNESS_PEERS = [join(ROOT, "examples", "durable-harness", "node_modules", "durable-harness"), join(ROOT, "examples", "durable-harness", "node_modules", "@workflow", "world")];
 
 /** A top-level string field of a package.json, read as text: the name and the version live there and nowhere else. */
 export function packageField(packageJson: string, field: "name" | "version"): string {
@@ -22,6 +24,10 @@ export function packageField(packageJson: string, field: "name" | "version"): st
 function main(): number {
   if (!existsSync(PI_PEERS)) {
     console.error("sdk build: the ./pi entry is built against the example's Pi install. Run: cd examples/durable-member && bun install --frozen-lockfile");
+    return 1;
+  }
+  if (!HARNESS_PEERS.every((dir) => existsSync(dir))) {
+    console.error("sdk build: the ./durable-harness entry is built against the example's durable-harness install. Run: cd examples/durable-harness && bun install --frozen-lockfile");
     return 1;
   }
   const dist = join(SDK_DIR, "dist");

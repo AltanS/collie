@@ -10,7 +10,7 @@ two.
 
 ## Install and entries
 
-One install gives five entries: the root import for most durable agents, and four for a narrower need.
+One install gives six entries: the root import for most durable agents, and five for a narrower need.
 
 ```bash
 npm install @colliepwa/durable-sdk@experimental
@@ -25,10 +25,15 @@ bun add @colliepwa/durable-sdk@experimental
 | `@colliepwa/durable-sdk/node` | The same API, always with the `node:http` server, plus `NO_DESCENDANT_CHECK`, the line it writes at start |
 | `@colliepwa/durable-sdk/core` | The layout and the wire as one function, `handle(request)`, for a durable agent that brings its own transport. No runtime import, so it runs wherever a web `Request` does |
 | `@colliepwa/durable-sdk/pi` | The glue for a durable agent built on Pi Durable ([The Pi helpers](#the-pi-helpers)) |
+| `@colliepwa/durable-sdk/durable-harness` | Experimental. A Pi agent on Vercel's durable-harness: a web route that reads the wire from the World on every request, and the wrapper that asks your phone before a risky tool ([The durable-harness entry](#the-durable-harness-entry)) |
 
 The package needs Node 22.19 or later, or Bun 1.4 or later, and has no runtime dependency. `./pi`
 needs `@earendil-works/pi-durable`, `@earendil-works/pi-ai` and `@earendil-works/chord`, 1.1 or later
 and below 2. The entry is tested with Pi Durable 1.1.0 and 1.2.0. The three are optional peer dependencies: a durable agent that never imports `./pi` installs none.
+`./durable-harness` needs the same three Pi packages, and two more optional peers at the exact versions it is
+tested on: `durable-harness` 0.0.1-beta.6 and `@workflow/world` 5.0.5. It is tested with
+`@workflow/world-local` 5.1.2, Pi 1.2.0 and Node 22 or later. A beta moves its API between releases, so the
+route checks both versions at its first request. When either differs, every request answers 500 with one line that names both.
 
 The runtime decides whether the durable agent can tell who answers. The descendant check refuses an act
 from the durable agent itself or from a process it started, with 403 `caller-refused`. It covers answer,
@@ -345,6 +350,54 @@ history.
 The words a card shows come in as options, so `./pi` holds no text of the example but those two
 constants. It is written against Pi Durable 1.1.0. The support desk in `examples/durable-member/`
 puts every part together.
+
+## The durable-harness entry
+
+`./durable-harness` shows a Pi agent that runs on Vercel's durable-harness. The steps are in
+[A durable agent on durable-harness](durable-agents.md#a-durable-agent-on-durable-harness).
+
+> **Experimental.** It is tested self-hosted. It is untested on Vercel until a preview deployment has run it.
+
+| export | what it does |
+| --- | --- |
+| `withCollie(open, options)` | Wraps the opener you give `resumeWith`. Each session it opens gets a guard that asks the phone before a risky call. Returns the opener |
+| `collieRoute(options)` | Returns `(request: Request) => Promise<Response>`, the wire over a bearer token. It builds its answer from the World on every request and keeps nothing |
+| `takeoverControls(open, { port })` | The route's default send and stop. They take the session over, act and let go |
+| `createRoute`, `WireSource` | The route over any source, for a source that is not Pi. `collieRoute` is `createRoute` with the Pi source |
+
+The opener you pass to `withCollie` takes `(storage, registry)`, and must open the Harness with that registry.
+An opener that does not read it makes `withCollie` throw, because no call would ask.
+
+| option of `withCollie` | what it does | default |
+| --- | --- | --- |
+| `registry` | Your registry. Required. What you install in it later reaches every open session | None |
+| `risky` | The tool names that need the phone's yes. Required | None |
+| `words` | The words of a call's question, as for `riskGuard` | "<tool> wants to run", Allow and Deny |
+| `timeoutMs` | How long the phone has. Past it the question closes as timed out and the call is blocked | No limit |
+| `onTimeout` | Called with the tool name and the question's title when a question timed out | None |
+| `journal` | The journal to use. For a test | The session's own World |
+| `pollMs` | `{ first, max }`, the first and the longest wait between two reads of the journal | `{ first: 1000, max: 5000 }` |
+
+| option of `collieRoute` | what it does | default |
+| --- | --- | --- |
+| `open` | The opener `withCollie` returned. With it, send and stop take the session over | None. Without it and without `controls`, the phone reads and answers only |
+| `token` | The bearer token. At least 32 bytes. A missing or short one matches no request | None |
+| `tokenNext` | A second token accepted while you rotate | None |
+| `name` | The name you gave `resumeWith(open, { name })` | `pi-durable` |
+| `hostName` | What Collie calls this host | The `name` |
+| `caps` | What the host declares | `asks`, `send`, `abort` and `history` |
+| `controls` | Your own `send` and `abort`, in place of the takeover ones | `takeoverControls(open)` |
+| `epoch` | The epoch to say in hello | `COLLIE_EPOCH`, else a hash of the wire version, the mapper schema, the World and the name |
+| `staleMs` | How long a GET may be answered from the last good answer while the World errs. Then 503 `starting` | 5000 |
+| `world` | The World to read | The environment's World |
+| `port` | The whole World port, for a test | One on `world` and `open` |
+
+The epoch is never random on this host. It changes only when the meaning of a cursor changes, so two
+instances of one deployment say the same one. A wrong or missing token gets a bare 401 before the World is read.
+
+The journal that holds the questions is one World stream per run, named `<runId>_collie`. The core exports
+`foldJournal` and `parseJournal` for it, and
+[`WIRE.md`](../bridge/mux/durable/WIRE.md) has the records in its appendix "A host with no process".
 
 ## Versions
 

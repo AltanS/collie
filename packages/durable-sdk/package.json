@@ -21,7 +21,8 @@
     "durable",
     "agent",
     "approval",
-    "pi-durable"
+    "pi-durable",
+    "durable-harness"
   ],
   "exports": {
     ".": {
@@ -44,6 +45,10 @@
       "types": "./dist/core/index.d.ts",
       "default": "./dist/core/index.js"
     },
+    "./durable-harness": {
+      "types": "./dist/durable-harness/index.d.ts",
+      "default": "./dist/durable-harness/index.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -55,7 +60,9 @@
   "peerDependencies": {
     "@earendil-works/chord": ">=1.1.0 <2",
     "@earendil-works/pi-ai": ">=1.1.0 <2",
-    "@earendil-works/pi-durable": ">=1.1.0 <2"
+    "@earendil-works/pi-durable": ">=1.1.0 <2",
+    "@workflow/world": "5.0.5",
+    "durable-harness": "0.0.1-beta.6"
   },
   "peerDependenciesMeta": {
     "@earendil-works/chord": {
@@ -65,6 +72,12 @@
       "optional": true
     },
     "@earendil-works/pi-durable": {
+      "optional": true
+    },
+    "@workflow/world": {
+      "optional": true
+    },
+    "durable-harness": {
       "optional": true
     }
   },

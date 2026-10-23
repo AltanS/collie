@@ -1086,7 +1086,7 @@ describe("parsePiTranscript — a message delivered while the agent works", () =
 });
 
 // Gentle Shell (gentle-pi 4.2.0) on pi 1.3.0: the row shapes below were read off real local sessions on
-// 2026-10-16 (issue #461, ADR 0114).
+// 2026-10-16 (issue #461, ADR 0116).
 describe("parsePiTranscript — Gentle Shell's tools", () => {
   /** A linear session: each row hangs off the one before, so nothing reads as a rewind. */
   const session = () => {

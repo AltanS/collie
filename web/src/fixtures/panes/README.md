@@ -2925,6 +2925,50 @@ separator draws U+E0BB and no closer. The `minimal` preset has no pi glyph and o
 | `omp--v18.11.1-slash-idle--w120.txt` | `statusLine.separator: slash`, empty box. Labelled `idle` |
 | `omp--v18.11.1-minimal-idle--w120.txt` | `statusLine.preset: minimal`, empty box. Labelled `idle` |
 | `omp--v18.11.1-ascii-idle--w120.txt` | `symbolPreset: ascii`, empty box. Labelled `idle` |
+
+## omp 18.12.2 `/goal` in a goal turn (captured 2026-10-22, real OMP, private Herdr 0.9.5, PR 577)
+
+The screens of a real OMP 18.12.2 (`omp --version` reads `omp/18.12.2`) while a goal turn streams, taken
+as Collie sends: the probe `⌁`, Backspace, the command text, then Enter, with a read between each step.
+They are the evidence behind `keys.commandsRunInTurn` in `omp.json`, and the screens
+`bridge/surface/protocol.test.ts` ("OMP 18.12.2 `/goal` in a goal turn, replayed from the real capture")
+and `command-list.test.ts` read.
+
+How they were made: a private Herdr 0.9.5 server (its own `HOME`, XDG folders and socket), one pane of
+119 columns by 40 rows (a read keeps the rows down to the last one that holds text, 20 to 34 of them). OMP ran stock
+(`--no-lsp --no-title`) from the installed binary with a scratch `HOME`, so no user credential or
+setting was used, and a config that held `goal.enabled`, `setupVersion: 2` and `startup.checkUpdate: false`.
+The model was `lab/slow`, a local OpenAI-compatible endpoint that streams one word a second and calls no
+model; it received one request. The goal was `/goal Lab objective: keep streaming ticks`, set before the
+first screen. Every file is `herdr pane read <pane> --source visible --format ansi --raw`, escapes and
+CRLF line ends kept, no row cut or changed. The only path on a screen is the lab folder, shown in the
+status line as `collie-goal-capture-lab/work`. No user, host, key or token is in any file.
+
+| Fixture | State / what's in it |
+|---|---|
+| `omp--v18-12-2-goal-turn-running--w119.txt` | Before `/goal pause`: the goal's first ticks streaming, `⎋ Working…`, the status line `⠙ 11s … 🎯 Goal 0 …`, an empty `╰─` box. The screen S0 reads. Labelled `running` |
+| `omp--v18-12-2-goal-turn-running-probe--w119.txt` | The probe `⌁` in the box. Labelled `draft` |
+| `omp--v18-12-2-goal-pause-typed--w119.txt` | The probe cleared and `/goal pause` typed: `╰─ /goal pause`, and under it the list of the command's arguments, one row `❯ pause   Pause the current goal`. Labelled `popup` |
+| `omp--v18-12-2-goal-pause-result--w119.txt` | 0.4 s after Enter: ` Goal mode paused.` over `⎋ Working…`, the status segment `⏸ Goal 0`, the stream still going. Labelled `running` |
+| `omp--v18-12-2-goal-pause-result-later--w119.txt` | 3 s after Enter: the stream has gone on (`tick 17`), `Goal mode paused.` is still the last status row. Labelled `running` |
+| `omp--v18-12-2-goal-resume-before--w119.txt` | Before `/goal resume`: paused, `⏸ Goal`, the box empty. Labelled `running` |
+| `omp--v18-12-2-goal-resume-probe--w119.txt` | The probe in the box, paused. Labelled `draft` |
+| `omp--v18-12-2-goal-resume-typed--w119.txt` | `/goal resume` typed, the argument list's row `❯ resume   Resume a paused goal`. Labelled `popup` |
+| `omp--v18-12-2-goal-resume-result--w119.txt` | After Enter: ` Goal mode resumed.`, the segment back to `🎯 Goal 0`, the stream going. Labelled `running` |
+| `omp--v18-12-2-goal-bare-before--w119.txt` | Before a bare `/goal`: resumed, `🎯 Goal`, the box empty. Labelled `running` |
+| `omp--v18-12-2-goal-bare-probe--w119.txt` | The probe in the box. Labelled `draft` |
+| `omp--v18-12-2-goal-bare-typed--w119.txt` | `/goal` typed: ten command rows under the box, the pointer on `🎯 goal   Goal: active (Lab objective: keep streaming ticks)`. Labelled `popup` |
+| `omp--v18-12-2-goal-bare-menu--w119.txt` | After Enter: the goal menu, a rounded box `Goal: Lab objective: keep streaming ticks (active)` with `❯ Show details`, `Adjust budget…`, `Pause`, `Drop` and `↑/↓ navigate  ⏎ select  ⎋ cancel`, the stream's last rows above it. It owns the keyboard. Labelled `dialog` |
+
+Each send's step after the probe (Backspace) read the same screen as the one before it, so that read
+has no file of its own. The Escape that closed the menu was the lab's own and is not in a file.
+
+What the screens show. Enter pressed during the goal turn ran the command at once and never queued or
+steered it: no `Steering` or `After yield` row came up, and the status line changed with the command.
+OMP's own words are `Goal mode paused.` and `Goal mode resumed.`. A `/goal pause` or `/goal resume` typed
+into the box brings up the list of that command's arguments under the box, with the pointer on the
+argument typed (`commandList.argumentList`, `command-list.ts`).
+
 ## Hermes corpus (captured 2026-10-16, Hermes Agent v0.22.2 classic CLI, Herdr 0.9.1, sandbox pane)
 
 `hermes--*.txt` come from one disposable Herdr pane running the installed `hermes --cli` with a

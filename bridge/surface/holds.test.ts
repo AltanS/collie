@@ -2,7 +2,7 @@
 // restart, the three states, the keep window and caps of an ended row, and the boot cleanup.
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { HOLD_BRIDGE_MAX, HOLD_COMMAND_MS, HOLD_ENDED_KEEP_MS, HOLD_ENDED_PANE_MAX, HOLD_MS, HOLD_PANE_MAX, HoldStore, heldRow, type HoldInput } from "./holds.ts";
@@ -16,6 +16,32 @@ afterEach(() => rmSync(join(dir, ".."), { recursive: true, force: true }));
 const input = (id: string, paneId = "%1", session = "main"): HoldInput => ({ id, session, paneId, harness: "agent", mode: "send", text: `text of ${id}`, revision: 3, command: false });
 
 describe("HoldStore", () => {
+  test("a marked request (M62 spec 02) keeps its caller's end, its mark and what holds it, across a restart", () => {
+    const store = new HoldStore(dir, () => 5_000);
+    const entry = store.add({ ...input("req-000001"), draftHolds: true, cause: "draft_present", expiresAt: 5_000 + 60 * 60 * 1000 });
+    expect(entry).toMatchObject({ draftHolds: true, cause: "draft_present", expiresAt: 5_000 + 60 * 60 * 1000 });
+    expect(new HoldStore(dir, () => 5_000).get("req-000001")).toMatchObject({ draftHolds: true, cause: "draft_present", expiresAt: 5_000 + 60 * 60 * 1000 });
+    // An unmarked request takes no cause, and the store's own clock.
+    const plain = store.add({ ...input("req-000002"), cause: "draft_present" });
+    expect(plain.cause).toBeUndefined();
+    expect(plain.draftHolds).toBeUndefined();
+    expect(plain.expiresAt).toBe(5_000 + HOLD_MS);
+    expect(store.setCause("req-000002", "turn_running")).toBeNull();
+  });
+
+  test("setCause writes the file only when the cause changed, and a put-back keeps it", () => {
+    const store = new HoldStore(dir, () => 5_000);
+    store.add({ ...input("req-000001"), draftHolds: true, cause: "draft_present" });
+    const path = join(dir, "req-000001.json");
+    // A field only this test writes: a rewrite from memory would drop it.
+    writeFileSync(path, `${JSON.stringify({ ...store.get("req-000001"), untouched: true })}\n`);
+    expect(store.setCause("req-000001", "draft_present")?.cause).toBe("draft_present");
+    expect(readFileSync(path, "utf8")).toContain('"untouched":true');
+    expect(store.setCause("req-000001", "turn_running")?.cause).toBe("turn_running");
+    expect(store.putBack("req-000001", false)).toMatchObject({ cause: "turn_running", draftHolds: true });
+    expect(new HoldStore(dir, () => 5_000).get("req-000001")?.cause).toBe("turn_running");
+  });
+
   test("a held request is one 0600 file in a 0700 directory, with its text, ending HOLD_MS later", () => {
     const store = new HoldStore(dir, () => 5_000);
     const entry = store.add(input("req-000001"));
