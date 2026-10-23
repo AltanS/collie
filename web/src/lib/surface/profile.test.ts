@@ -909,6 +909,7 @@ describe("parseProfile names the failing field", () => {
     ["a queued row hint that is no expression", ["keys", "queuedRow", "hint"], "[unclosed", "keys.queuedRow.hint"],
     ["a queued row gap below zero", ["keys", "queuedRow", "hintGap"], -1, "keys.queuedRow.hintGap"],
     ["a queued row hintAbove that is not a boolean", ["keys", "queuedRow", "hintAbove"], "above", "keys.queuedRow.hintAbove"],
+    ["a queued row between that matches a blank row", ["keys", "queuedRow", "between"], "^.*$", "keys.queuedRow.between"],
     ["footer rows that are no list", ["idle", "volatile", "below", "footerRows"], "● main", "idle.volatile.below.footerRows"],
     ["a footer row with no name", ["idle", "volatile", "below", "footerRows", 0, "name"], undefined, "idle.volatile.below.footerRows[0].name"],
     ["a footer row name used twice", ["idle", "volatile", "below", "footerRows", 1, "name"], "agents-panel-main", "idle.volatile.below.footerRows[1].name"],
@@ -1189,7 +1190,7 @@ describe("the steer keys (M69)", () => {
 
   it("pi: `Steering: <line>` over the edit hint after the steer, `Follow-up:` (no steer row) after the queue", () => {
     const [block] = witnesses("pi");
-    expect(block).toEqual({ pattern: "^\\s*Steering: (?<text>\\S.*?)\\s*$", hint: "^\\s*↳ Alt\\+Up to edit all queued messages\\s*$", hintGap: 0 });
+    expect(block).toEqual({ pattern: "^\\s*Steering: (?<text>\\S.*?)\\s*$", hint: "^\\s*↳ Alt\\+Up to edit all queued messages\\s*$", hintGap: 0, between: "^\\s*Follow-up: \\S" });
     const after = rowsOf("pi--v130-steer-after");
     const [at] = hits(after, block!);
     expect(at).toBeDefined();
@@ -1197,6 +1198,18 @@ describe("the steer keys (M69)", () => {
     // At 0.1 s pi has emptied the box but not drawn the row yet: no witness, so the reads go on to 2 s.
     expect(hits(rowsOf("pi--v130-steer-after-now"), block!)).toEqual([]);
     expect(hits(rowsOf("pi--v130-queue-after"), block!)).toEqual([]);
+  });
+
+  it("pi: with a follow-up already queued, its `Follow-up:` row stands between the `Steering:` row and the hint (live rerun 2026-10-23)", () => {
+    const [block] = witnesses("pi");
+    const rows = rowsOf("pi--v130-steer-after-queued");
+    const steering = rows.findIndex((row) => new RegExp(block!.pattern, "u").exec(row)?.groups?.["text"] === "say banana");
+    expect(steering).toBeGreaterThan(0);
+    // The queued follow-up `ok`, then the hint: no longer right under the Steering row.
+    expect(new RegExp(block!.between!, "u").test(rows[steering + 1]!)).toBe(true);
+    expect(new RegExp(block!.hint!, "u").test(rows[steering + 2]!)).toBe(true);
+    expect(new RegExp(block!.between!, "u").test(rows[steering]!)).toBe(false);
+    expect(new RegExp(block!.between!, "u").test("")).toBe(false);
   });
 
   it("Codex: the `Messages to be submitted after next tool call` header over `↳ <line>` at 0.1 s, the line as `› <line>` by 2 s", () => {
@@ -1257,6 +1270,9 @@ describe("the steer keys (M69)", () => {
     ["a witness block with no text group", "pi", ["keys", "steerWitness", 0, "pattern"], "^\\s*Steering: .*$", "keys.steerWitness[0].pattern"],
     ["a witness block with no gap", "pi", ["keys", "steerWitness", 0, "hintGap"], undefined, "keys.steerWitness[0].hintGap"],
     ["a witness hintAbove that is no boolean", "codex", ["keys", "steerWitness", 0, "hintAbove"], "above", "keys.steerWitness[0].hintAbove"],
+    ["a witness between that is no expression", "pi", ["keys", "steerWitness", 0, "between"], "[unclosed", "keys.steerWitness[0].between"],
+    ["a witness between that matches a blank row", "pi", ["keys", "steerWitness", 0, "between"], "^\\s*", "keys.steerWitness[0].between"],
+    ["a witness between with no hint", "omp", ["keys", "steerWitness", 0, "between"], "^\\s*x", "keys.steerWitness[0].between"],
     ["a transcript witness that is not true", "codex", ["keys", "steerWitness", 1, "transcript"], false, "keys.steerWitness[1].transcript"],
     ["a transcript witness with no text group", "codex", ["keys", "steerWitness", 1, "pattern"], "^› .*$", "keys.steerWitness[1].pattern"],
     ["a transcript witness with a hint", "codex", ["keys", "steerWitness", 0, "transcript"], true, "keys.steerWitness[0].transcript"],

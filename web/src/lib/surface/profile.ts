@@ -49,6 +49,13 @@ export interface QueuedRow {
    * Code and Codex draw it.
    */
   readonly hintAbove?: boolean;
+  /**
+   * A regular expression source for the rows of another kind of entry the harness draws in the same
+   * block, between the texts and the hint: they are passed over, with the indented rows they wrapped
+   * onto. pi 1.3.0 draws its `Follow-up: <line>` rows between its `Steering: <line>` rows and the
+   * `↳ Alt+Up` hint (live rerun 2026-10-23). Optional: without it the texts stand right by the hint.
+   */
+  readonly between?: string;
 }
 
 /**
@@ -73,6 +80,8 @@ export interface SteerWitness {
   readonly hintGap?: number;
   /** With a hint: the hint stands over the texts, as in {@link QueuedRow.hintAbove}. */
   readonly hintAbove?: boolean;
+  /** With a hint: the rows of another entry that may stand in the block, as in {@link QueuedRow.between}. */
+  readonly between?: string;
   /** The text itself as a transcript row above the box (see above). */
   readonly transcript?: true;
 }
@@ -758,10 +767,13 @@ function parseSteerWitness(value: JsonValue, path: string): SteerWitness {
       hint: pattern(node.hint, `${path}.hint`).source,
       hintGap: whole(field(node, "hintGap", path), `${path}.hintGap`, 0),
     };
-    return node.hintAbove === true ? { ...base, hintAbove: true } : base;
+    const between = betweenRows(node, path);
+    const withBetween: SteerWitness = between === undefined ? base : { ...base, between };
+    return node.hintAbove === true ? { ...withBetween, hintAbove: true } : withBetween;
   }
   if (node.hintGap !== undefined) fail(`${path}.hintGap`, "is only allowed with a hint");
   if (node.hintAbove !== undefined) fail(`${path}.hintAbove`, "is only allowed with a hint");
+  if (node.between !== undefined) fail(`${path}.between`, "is only allowed with a hint");
   if (node.transcript === true) {
     if (!holdsText) fail(`${path}.pattern`, "must hold the named group text");
     return { pattern: rowPattern.source, transcript: true };
@@ -769,6 +781,17 @@ function parseSteerWitness(value: JsonValue, path: string): SteerWitness {
   if (holdsText) fail(`${path}.pattern`, "a marker row holds no group text; set transcript or a hint");
   if (rowPattern.test("")) fail(`${path}.pattern`, "must not match a blank row");
   return { pattern: rowPattern.source };
+}
+
+/**
+ * The `between` rows of a block ({@link QueuedRow.between}), or undefined. A pattern that matches a
+ * blank row is refused: it would pass over the gap the block is bounded by.
+ */
+function betweenRows(node: JsonObject, path: string): string | undefined {
+  if (node.between === undefined) return undefined;
+  const rows = pattern(node.between, `${path}.between`);
+  if (rows.test("")) fail(`${path}.between`, "must not match a blank row");
+  return rows.source;
 }
 
 /** A regular expression source, compiled once to prove it is one. Returns the compiled form. */
@@ -1162,7 +1185,9 @@ export function parseProfile(raw: JsonValue): Profile {
       hint: pattern(field(queuedNode, "hint", "keys.queuedRow"), "keys.queuedRow.hint").source,
       hintGap: whole(field(queuedNode, "hintGap", "keys.queuedRow"), "keys.queuedRow.hintGap", 0),
     };
-    const queuedRow: QueuedRow = queuedNode.hintAbove === true ? { ...queuedBase, hintAbove: true } : queuedBase;
+    const queuedBetween = betweenRows(queuedNode, "keys.queuedRow");
+    const queuedWith: QueuedRow = queuedBetween === undefined ? queuedBase : { ...queuedBase, between: queuedBetween };
+    const queuedRow: QueuedRow = queuedNode.hintAbove === true ? { ...queuedWith, hintAbove: true } : queuedWith;
     keys = { ...keys, queuedRow };
   }
   if (keysNode.queueKey !== undefined) {

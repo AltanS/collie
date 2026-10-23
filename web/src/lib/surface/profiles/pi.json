@@ -144,7 +144,8 @@
       {
         "pattern": "^\\s*Steering: (?<text>\\S.*?)\\s*$",
         "hint": "^\\s*↳ Alt\\+Up to edit all queued messages\\s*$",
-        "hintGap": 0
+        "hintGap": 0,
+        "between": "^\\s*Follow-up: \\S"
       }
     ]
   },

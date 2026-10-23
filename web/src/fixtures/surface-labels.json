@@ -5386,6 +5386,11 @@
    "version": "1.3.0",
    "state": "running"
   },
+  "pi--v130-steer-after-queued--w120.txt": {
+   "harness": "pi",
+   "version": "1.3.0",
+   "state": "running"
+  },
   "pi--v130-steer-after-now--w120.txt": {
    "harness": "pi",
    "version": "1.3.0",

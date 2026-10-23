@@ -617,7 +617,8 @@ function markerRows(snap: Snap, source: string): number {
  */
 function steerWitnessed(before: Snap, after: Snap, witness: SteerWitness, text: string, queuedNow: boolean, letGo: boolean): boolean {
   if (witness.hint !== undefined) {
-    const base: QueuedRow = { pattern: witness.pattern, hint: witness.hint, hintGap: witness.hintGap ?? 0 };
+    const plain: QueuedRow = { pattern: witness.pattern, hint: witness.hint, hintGap: witness.hintGap ?? 0 };
+    const base: QueuedRow = witness.between === undefined ? plain : { ...plain, between: witness.between };
     const block: QueuedRow = witness.hintAbove === true ? { ...base, hintAbove: true } : base;
     return showsQueued(after, block, text) && !showsQueued(before, block, text);
   }
@@ -632,12 +633,15 @@ function steerWitnessed(before: Snap, after: Snap, witness: SteerWitness, text: 
  * queued texts — over the hint, or under it when the profile sets `hintAbove` (Muse draws its
  * `Queued input` header over the texts; lab, Muse Code 1.4.10, 2026-10-18). Each text starts on a
  * row the pattern matches, its wrapped rows indented under it. One of them, joined and
- * whitespace-free, must equal the text. Rows inside the box are never read.
+ * whitespace-free, must equal the text. A row of the profile's `between` pattern starts an entry of
+ * another kind in the same block (pi's `Follow-up:` rows between its `Steering:` rows and the hint):
+ * it and its wrapped rows are passed over. Rows inside the box are never read.
  */
 function showsQueued(snap: Snap, queuedRow: QueuedRow | undefined, text: string): boolean {
   if (queuedRow === undefined || snap.frame === null || wsFree(text).length === 0) return false;
   const start = new RegExp(queuedRow.pattern, "u");
   const hint = new RegExp(queuedRow.hint, "u");
+  const between = queuedRow.between === undefined ? null : new RegExp(queuedRow.between, "u");
   const want = wsFree(text);
   const above = snap.texts.slice(0, snap.frame.top);
   for (let at = above.length - 1; at >= 0; at--) {
@@ -647,14 +651,24 @@ function showsQueued(snap: Snap, queuedRow: QueuedRow | undefined, text: string)
       for (let gap = 0; i < above.length && gap < queuedRow.hintGap && above[i]!.trim().length === 0; gap++) i++;
       // Downward through the queued texts: an indented row belongs to the text over it.
       let parts: string[] | null = null;
+      // Inside an entry of another kind (`between`): its wrapped rows are passed over.
+      let other = false;
       for (const ceil = Math.min(above.length, i + QUEUED_SCAN_ROWS); i < ceil; i++) {
         const row = above[i]!;
         const head = start.exec(row);
         if (head !== null) {
           if (parts !== null && wsFree(parts.join("")) === want) return true;
           parts = [head.groups?.["text"] ?? ""];
+          other = false;
           continue;
         }
+        if (between?.test(row) === true) {
+          if (parts !== null && wsFree(parts.join("")) === want) return true;
+          parts = null;
+          other = true;
+          continue;
+        }
+        if (other && /^\s+\S/u.test(row)) continue;
         if (parts === null || !/^\s+\S/u.test(row)) break;
         parts.push(row.trim());
       }
@@ -670,6 +684,11 @@ function showsQueued(snap: Snap, queuedRow: QueuedRow | undefined, text: string)
       const head = start.exec(row);
       if (head !== null) {
         if (wsFree([head.groups?.["text"] ?? "", ...wrapped].join("")) === want) return true;
+        wrapped = [];
+        continue;
+      }
+      if (between?.test(row) === true) {
+        // Another entry, with the rows it wrapped onto: passed over.
         wrapped = [];
         continue;
       }

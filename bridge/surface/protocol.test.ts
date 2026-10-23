@@ -7234,6 +7234,19 @@ describe("steer or queue (M69), replayed from the real captures (lab 2026-10-23)
     neverEscape(pane);
   });
 
+  // Live rerun 2026-10-23: with a follow-up queued first, pi draws `Steering: say banana`, then
+  // `Follow-up: ok`, then the hint. The block witness read the hint right under the Steering row only,
+  // so the receipt said unknown and kept the draft, and a resend would have steered twice.
+  test("pi 1.3.0: a steer after a queued follow-up, its `Follow-up:` row between the Steering row and the hint: steered", async () => {
+    const after = capture("pi--v130-steer-after-queued");
+    expect(after.split("\n").map(plainRow).filter((row) => /^\s*(?:Steering|Follow-up): /u.test(row)).map((row) => row.trim())).toEqual(["Steering: say banana", "Follow-up: ok"]);
+    const { answer, pane } = await steerOn("pi", "1.3.0", "pi--v130-steer-typed", [capture("pi--v130-steer-after-now"), after], STEER, undefined, "say banana");
+    expect(answer.receipt).toMatchObject({ outcome: "steered", keys: ["probe", "Backspace", "Enter"], version: "1.3.0" });
+    expect(answer.receipt?.queued).toBeUndefined();
+    expect(pane.keysSeen).not.toContain("alt+Enter");
+    neverEscape(pane);
+  });
+
   test("Codex 0.164.0: one second between the text and Enter, the steer header at 0.4 s: steered", async () => {
     const { answer, pane, log } = await steerOn("codex", "0.164.0", "codex--v0164-steer-typed", [capture("codex--v0164-steer-after-now")]);
     expect(answer.receipt).toMatchObject({ outcome: "steered", keys: ["probe", "Backspace", "Enter"] });

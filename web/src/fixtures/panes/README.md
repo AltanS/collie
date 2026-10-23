@@ -3038,3 +3038,15 @@ The `<h>` is `pi--v130`, `omp--v18-6` or `codex--v0164`; every name ends in `--w
 | `<h>-queue-after-now` | Queue key pressed, read at once | pi: box empty, no row yet. OMP: box still holds the line. Codex: `Queued follow-up inputs` over `↳ <line>` |
 | `<h>-queue-after` | 2 s after the key | pi `Follow-up: <line>`. OMP `After yield · 1`, `1. <line>`. Codex `Queued follow-up inputs`, `↳ <line>`, `shift+← edit last queued message` |
 | `<h>-queue-done` | Turn ended | The agent finished the first task, then ran the line as a second turn. Idle |
+
+## Steer witness gaps from the live rerun (captured 2026-10-23, pi 1.3.0, OMP 18.6.1, Claude Code 2.1.309, scratch tmux, 120 columns)
+
+Real screens, taken after the int/edge-5 live rerun found three receipts or turn states wrong. Taken with `tmux capture-pane -p -e` in
+a private tmux server (`tmux -L`), isolated `HOME` or `CLAUDE_CONFIG_DIR`, no hooks, no Herdr. pi and OMP ran on
+`openrouter/anthropic/claude-haiku-4.5`, Claude Code on Haiku. The lab's folder was replaced with `/home/demo/sandbox/collie-labs/steer-queue-fix`,
+a path of the same length (OMP's shortened `…che/collie-lab/edge5fix-lab` became `…collie-labs/steer-queue-fix`, Claude's
+`~/.cache/collie-lab/edge5fix-lab` became `~/sandbox/collie-labs/steerq-fix`).
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `pi--v130-steer-after-queued--w120.txt` | `running` | A slow bash call runs; `ok` was queued with Alt+Enter, then `say banana` sent with Enter. pi draws `Steering: say banana`, then `Follow-up: ok`, then `↳ Alt+Up to edit all queued messages`: the queued row stands between the Steering row and the hint |
