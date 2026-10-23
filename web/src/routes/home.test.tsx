@@ -80,12 +80,12 @@ function renderHome(data: HomeData, initialPath?: string) {
   return router;
 }
 
-/** Wait for the herd list to be on screen. The workspace select (components/agent-list.tsx) is the one
+/** Wait for the herd list to be on screen. The workspace filter (components/agent-list.tsx) is the one
  *  control every render with at least one pane produces — there is no "Needs you" heading to wait
  *  on any more, since a pane no longer moves to a section of its own. */
-const settled = () => screen.findByRole("combobox", { name: "Workspace" });
+const settled = () => screen.findByRole("button", { name: /^Workspace / });
 
-/** The `<section>` a workspace heading owns, scoped away from the workspace select's own options,
+/** The `<section>` a workspace heading owns, scoped away from the workspace filter's own rows,
  *  which carry the same workspace name a heading does (agent-list.tsx). */
 const groupSection = (label: string) => screen.getByRole("heading", { name: label }).closest("section")!;
 
@@ -416,14 +416,14 @@ describe("the dashboard's footer (ADR 0066, ADR 0085)", () => {
     renderHome(data);
     await settled();
     // The Dashboard has all three, so the absence below is the tab's doing and not the fixture's.
-    expect(screen.getByRole("combobox", { name: "Workspace" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Workspace / })).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Pane order" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Pinned" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /need you/i })).toBeInTheDocument();
 
     await userEvent.click(tab(/^Crew$/));
     expect(screen.getByTestId("crew-tab")).toBeInTheDocument();
-    expect(screen.queryByRole("combobox", { name: "Workspace" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Workspace / })).not.toBeInTheDocument();
     expect(screen.queryByRole("combobox", { name: "Pane order" })).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Pinned" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /need you/i })).not.toBeInTheDocument();
@@ -432,7 +432,7 @@ describe("the dashboard's footer (ADR 0066, ADR 0085)", () => {
 
     // Back on the Dashboard the chrome is as it was left.
     await userEvent.click(tab(/^Dashboard/));
-    expect(screen.getByRole("combobox", { name: "Workspace" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Workspace / })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Pinned" })).toBeInTheDocument();
   });
 
@@ -526,9 +526,10 @@ describe("the dashboard's footer (ADR 0066, ADR 0085)", () => {
     expect(needsSwitch()).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("heading", { name: "webapp" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "collie" })).not.toBeInTheDocument();
-    // The select still offers every workspace: the filter removes rows, never places.
-    const select = screen.getByRole("combobox", { name: "Workspace" });
-    expect(within(select).getByRole("option", { name: /^collie/ })).toBeInTheDocument();
+    // The filter still offers every workspace: the switch removes rows, never places.
+    await userEvent.click(await settled());
+    expect(within(screen.getByRole("dialog", { name: "Workspaces" })).getByRole("checkbox", { name: /^collie/ })).toBeInTheDocument();
+    await userEvent.click(within(screen.getByRole("dialog", { name: "Workspaces" })).getByRole("button", { name: "Close" }));
     expect(stored().needsYouOnly).toBe(true);
     // A new mount reads it back.
     cleanup();
@@ -560,28 +561,52 @@ describe("the dashboard's footer (ADR 0066, ADR 0085)", () => {
     expect(screen.getByRole("combobox", { name: "Pane order" })).toBeInTheDocument();
   });
 
-  it("the workspace select shows one workspace alone, and the choice is remembered", async () => {
+  it("the workspace filter shows chosen workspaces alone, and the choice is remembered", async () => {
     renderHome(solo());
-    const select = await settled();
-    expect(select).toHaveValue("all");
-    expect(within(select).getAllByRole("option").map((o) => o.textContent)).toEqual([
+    await userEvent.click(await settled());
+    const sheet = () => screen.getByRole("dialog", { name: "Workspaces" });
+    expect(within(sheet()).getByRole("checkbox", { name: "All workspaces" })).toBeChecked();
+    expect(within(sheet()).getAllByRole("checkbox").map((o) => o.textContent)).toEqual([
       "All workspaces",
       expect.stringMatching(/^webapp/),
       expect.stringMatching(/^collie/),
     ]);
-    await userEvent.selectOptions(select, within(select).getByRole("option", { name: /^collie/ }));
+    await userEvent.click(within(sheet()).getByRole("checkbox", { name: /^collie/ }));
     expect(screen.queryByRole("heading", { name: "webapp" })).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "collie" })).toBeInTheDocument();
-    expect(stored().isolatedSpace).toEqual(expect.stringContaining("collie"));
+    expect(stored().isolatedSpaces).toEqual([expect.stringContaining("collie")]);
+    // A second workspace joins the first; the dashboard shows both.
+    await userEvent.click(within(sheet()).getByRole("checkbox", { name: /^webapp/ }));
+    expect(screen.getByRole("heading", { name: "webapp" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "collie" })).toBeInTheDocument();
+    expect(stored().isolatedSpaces).toHaveLength(2);
+    await userEvent.click(within(sheet()).getByRole("checkbox", { name: /^webapp/ }));
     // A new mount reads it back, and "All workspaces" clears it.
     cleanup();
     renderHome(solo());
-    const again = await settled();
-    expect(within(again).getByRole("option", { name: /^collie/ })).toHaveProperty("selected", true);
+    await userEvent.click(await settled());
+    expect(within(sheet()).getByRole("checkbox", { name: /^collie/ })).toBeChecked();
     expect(screen.queryByRole("heading", { name: "webapp" })).not.toBeInTheDocument();
-    await userEvent.selectOptions(again, "all");
+    await userEvent.click(within(sheet()).getByRole("checkbox", { name: "All workspaces" }));
     expect(screen.getByRole("heading", { name: "webapp" })).toBeInTheDocument();
-    expect(stored().isolatedSpace).toBeNull();
+    expect(stored().isolatedSpaces).toEqual([]);
+  });
+
+  it("a device that stored the single-workspace choice keeps its old filter", async () => {
+    // Learn the key the collie workspace is remembered by from a first visit.
+    renderHome(solo());
+    await userEvent.click(await settled());
+    await userEvent.click(within(screen.getByRole("dialog", { name: "Workspaces" })).getByRole("checkbox", { name: /^collie/ }));
+    const key: unknown = stored().isolatedSpaces[0];
+    expect(key).toEqual(expect.stringContaining("collie"));
+    cleanup();
+    localStorage.clear();
+    localStorage.setItem("collie:dash-prefs:v1", JSON.stringify({ isolatedSpace: key }));
+    renderHome(solo());
+    await settled();
+    expect(screen.queryByRole("heading", { name: "webapp" })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "collie" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Workspace / })).toHaveAccessibleName("Workspace collie");
   });
 
   it("the order select changes the list to one ranked list, and the choice is remembered", async () => {
@@ -606,7 +631,7 @@ describe("the dashboard's footer (ADR 0066, ADR 0085)", () => {
     const order = screen.getByRole("combobox", { name: "Pane order" });
     // One row holds the line and the switch; one row holds both selects, workspace first.
     expect(summary.parentElement).toContainElement(needsSwitch());
-    const selectRow = workspace.closest('[data-slot="select"]')!.parentElement!;
+    const selectRow = workspace.closest("div.relative")!.parentElement!;
     expect(selectRow).toContainElement(order);
     expect(selectRow).not.toContainElement(summary);
     expect(summary.compareDocumentPosition(workspace) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();

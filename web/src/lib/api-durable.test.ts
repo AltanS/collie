@@ -173,3 +173,59 @@ describe("sendToPane and abortPane", () => {
     expect(host).toBe("workshop");
   });
 });
+
+describe("abortPane on a pane with a screen (M68 spec 02)", () => {
+  it("posts the request id alone and reads each receipt", async () => {
+    const bodies: JsonValue[] = [];
+    server.use(
+      http.post<never, JsonValue>(/\/api\/pane\/s1\/abort$/, async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json({ requestId: ID, outcome: "stopped", keys: ["Escape"] });
+      }),
+      http.post(/\/api\/pane\/s2\/abort$/, () => HttpResponse.json({ requestId: ID, outcome: "pressed", keys: ["ctrl+c"] })),
+      http.post(/\/api\/pane\/s3\/abort$/, () => HttpResponse.json({ requestId: ID, outcome: "refused", reason: "draft_present" })),
+    );
+    await expect(abortPane("s1", { requestId: ID })).resolves.toEqual({ requestId: ID, outcome: "stopped", keys: ["Escape"] });
+    expect(bodies).toEqual([{ requestId: ID }]);
+    await expect(abortPane("s2", { requestId: ID })).resolves.toEqual({ requestId: ID, outcome: "pressed", keys: ["ctrl+c"] });
+    await expect(abortPane("s3", { requestId: ID })).resolves.toEqual({ requestId: ID, outcome: "refused", reason: "draft_present" });
+  });
+
+  it("reads a missing pane as pane_gone and refuses a body it cannot read", async () => {
+    server.use(
+      http.post(/\/api\/pane\/s4\/abort$/, () => HttpResponse.json({ requestId: ID, outcome: "refused", reason: "pane_gone" }, { status: 404 })),
+      http.post(/\/api\/pane\/s5\/abort$/, () => HttpResponse.json({ requestId: ID, outcome: "refused", reason: "mystery" })),
+      http.post(/\/api\/pane\/s6\/abort$/, () => HttpResponse.json({ requestId: ID, outcome: "refused", reason: "request-id-reused" }, { status: 409 })),
+    );
+    await expect(abortPane("s4", { requestId: ID })).resolves.toEqual({ requestId: ID, outcome: "refused", reason: "pane_gone" });
+    await expect(abortPane("s5", { requestId: ID })).rejects.toThrow(/cannot read/);
+    await expect(abortPane("s6", { requestId: ID })).rejects.toThrow(/cannot read/);
+  });
+
+  // Crew version skew (counsel on the Edge 5 candidate): a member before M68 has no Stop for a screen
+  // pane. Its answer is no receipt, and the phone says to update that machine; nothing was pressed.
+  it("a 404 with no receipt, an older member's not-found, and the program-only route's 400 are unsupported_build", async () => {
+    server.use(
+      http.post(/\/api\/pane\/o1\/abort$/, () => new HttpResponse("no such terminal pane", { status: 404 })),
+      http.post(/\/api\/pane\/o2\/abort$/, () => HttpResponse.json({ error: "not found" }, { status: 404 })),
+      http.post(/\/api\/pane\/o3\/abort$/, () => new HttpResponse("bad body", { status: 400 })),
+    );
+    for (const pane of ["o1", "o2", "o3"]) {
+      await expect(abortPane(pane, { requestId: ID }, { host: "laptop" })).resolves.toEqual({ requestId: ID, outcome: "refused", reason: "unsupported_build" });
+    }
+  });
+
+  it("a 404 in the bridge's error shape (an unknown host) is thrown as that refusal, not read as an old build", async () => {
+    server.use(http.post(/\/api\/pane\/u1\/abort$/, () => HttpResponse.json({ ok: false, code: "host.unknown", error: "no such host" }, { status: 404 })));
+    await expect(abortPane("u1", { requestId: ID }, { host: "gone" })).rejects.toThrow(/no such host/);
+  });
+
+  it("the lead's write_outcome_unknown (a member that did not answer in time) is the Stop's unknown, never a press claimed", async () => {
+    server.use(
+      http.post(/\/api\/pane\/t1\/abort$/, () =>
+        HttpResponse.json({ ok: false, code: "write_outcome_unknown", error: "the action was sent to host laptop but its outcome is unknown" }, { status: 504 }),
+      ),
+    );
+    await expect(abortPane("t1", { requestId: ID }, { host: "laptop" })).resolves.toEqual({ requestId: ID, outcome: "unknown" });
+  });
+});

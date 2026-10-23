@@ -1,6 +1,6 @@
 import { commandsFor } from "@/lib/agent-commands";
 import { canonicalAgent, rowsFor } from "@/lib/operator-scope";
-import type { MuxCapability, OperatorCommand, PaneAction } from "@/lib/types";
+import type { AgentView, MuxCapability, OperatorCommand, PaneAction } from "@/lib/types";
 
 // The harness bar's table: which of the running agent's own slash commands get a 44px button above
 // the key rail. One row per harness, four or five buttons, and nothing derived from the screen.
@@ -134,6 +134,48 @@ const OMP: readonly HarnessBarItem[] = [
   },
 ];
 
+// The four below were driven on live panes on 2026-10-15 (opencode 1.18.34, Grok Build 1.0.52,
+// Muse Code 1.4.8, agy 1.3.5): every Model, Effort and Resume button opened its harness's own
+// picker on Enter, and every Compact was in the harness's own `/` completion. opencode lists
+// /compact only once its session holds a turn, which is the only time it has anything to compact.
+
+// ── opencode ─────────────────────────────────────────────────────────────────
+// Its own spellings: /models for the model picker, /sessions for the session picker. No Effort
+// button, because opencode has no effort command; its variants cycle on a key.
+const OPENCODE: readonly HarnessBarItem[] = [
+  { id: "model", label: "harnessBar.model", command: "/models" },
+  { id: "compact", label: "harnessBar.compact", command: "/compact" },
+  { id: "resume", label: "harnessBar.resume", command: "/sessions" },
+];
+
+// ── Grok ─────────────────────────────────────────────────────────────────────
+// No Effort button. Grok's /model picker walks model, window and effort in turn, and a bare
+// /effort opens no picker: it leaves `/effort <level>` in the input box for an argument.
+const GROK: readonly HarnessBarItem[] = [
+  { id: "model", label: "harnessBar.model", command: "/model" },
+  { id: "compact", label: "harnessBar.compact", command: "/compact" },
+  { id: "resume", label: "harnessBar.resume", command: "/resume" },
+];
+
+// ── Muse Code ────────────────────────────────────────────────────────────────
+// Claude's four. Muse's /model picker sets the model only, and a bare /effort opens a picker of its
+// own, so Effort has a dial to reach that Model does not.
+const MUSE: readonly HarnessBarItem[] = [
+  { id: "model", label: "harnessBar.model", command: "/model" },
+  { id: "effort", label: "harnessBar.effort", command: "/effort" },
+  { id: "compact", label: "harnessBar.compact", command: "/compact" },
+  { id: "resume", label: "harnessBar.resume", command: "/resume" },
+];
+
+// ── agy (Antigravity) ────────────────────────────────────────────────────────
+// No Effort button, for Codex's reason: agy's /model picker carries the effort slider beside the
+// model list, so the one button reaches both.
+const AGY: readonly HarnessBarItem[] = [
+  { id: "model", label: "harnessBar.model", command: "/model" },
+  { id: "compact", label: "harnessBar.compact", command: "/compact" },
+  { id: "resume", label: "harnessBar.resume", command: "/resume" },
+];
+
 // ── durable ──────────────────────────────────────────────────────────────────
 // A durable program has no screen and no slash commands, so its section is not made of text the
 // phone types. Its two buttons are ACTIONS the program declared, and each row is gated by the
@@ -175,6 +217,16 @@ export function durableBarFor(declared: (cap: MuxCapability) => boolean, actions
   return [...fixed, ...actions.map((action): DurableBarItem => ({ id: "action", cap: "programActions", action }))];
 }
 
+/**
+ * Whether the belt draws Stop for a pane with a screen (M68 spec 02): its turn reads `running` AND the
+ * bridge says a Stop has a key to press (`canStop`, set from the profile's `keys.interrupt`). No harness
+ * name is asked here, and a durable pane never carries `canStop`, so it keeps `DurableBar` and nothing
+ * else. An idle or unread turn draws no Stop: the stale tap would only come back as `turn_idle`.
+ */
+export function stopFor(pane: Pick<AgentView, "surface" | "canStop"> | undefined | null): boolean {
+  return pane?.canStop === true && pane.surface?.turn === "running";
+}
+
 // A Map for the same reason the command catalog uses one: the key tested against it is Herdr's
 // agent string, so an object lookup would answer for inherited names that ship no bar at all.
 const BARS = new Map<string, readonly HarnessBarItem[]>([
@@ -182,6 +234,12 @@ const BARS = new Map<string, readonly HarnessBarItem[]>([
   ["codex", CODEX],
   ["pi", PI],
   ["omp", OMP],
+  ["opencode", OPENCODE],
+  ["grok", GROK],
+  ["muse", MUSE],
+  // Both names, as the catalog files them: canonicalAgent() folds neither onto the other.
+  ["agy", AGY],
+  ["antigravity", AGY],
 ]);
 
 /** The agent names a shipped bar is filed under — pinned in the tests. */
@@ -189,8 +247,8 @@ export const BAR_AGENTS: readonly string[] = [...BARS.keys()];
 
 /**
  * The bar for a Herdr-detected agent — the operator's own `bar = true` rows if any of them address
- * this pane, otherwise the shipped table. Returns `[]` for every other agent (grok, opencode, agy,
- * antigravity, a bare shell, a pane with no agent at all) and the row does not render.
+ * this pane, otherwise the shipped table. Returns `[]` for every other agent (hermes, a bare shell,
+ * a pane with no agent at all) and the row does not render.
  *
  * **THE REPLACEMENT RULE IS PER SURFACE.** ADR 0018 says that if any operator row addresses a pane,
  * the operator's rows ARE the catalog for that pane. This applies that rule to the BAR alone: the

@@ -1030,6 +1030,17 @@ describe("real corpus — pinned so any change to the walk shows up as a diff", 
     // statusline plus the mode row; the draft typed during the turn is read as a draft.
     { fixture: "v2301-done-shell-running--w100", statusRows: 3, draft: null, stripped: 23 },
     { fixture: "v2301-idle-after-turn--w100", statusRows: 3, draft: null, stripped: 16 },
+    // Claude Code 2.1.309 after a turn stopped with no Stop hook (live rerun 2026-10-23): Escape after a
+    // Read, and a refused Bash permission. `⎿  Interrupted · What should Claude do instead?` over an
+    // empty box, the operator's two-row statusline plus the mode row.
+    { fixture: "v2-1-309-interrupted--w120", statusRows: 3, draft: null, stripped: 22 },
+    { fixture: "v2-1-309-permission-denied--w120", statusRows: 3, draft: null, stripped: 27 },
+    // The same two in a fresh session under the fullscreen TUI (second live pass): the short transcript
+    // stands at the top, blank rows down to the box.
+    { fixture: "v2-1-309-interrupted-fresh-session--w120", statusRows: 3, draft: null, stripped: 27 },
+    { fixture: "v2-1-309-permission-denied-fresh-session--w120", statusRows: 3, draft: null, stripped: 7 },
+    // Escape before the first token in that session: the prompt goes back into the box, no Interrupted row.
+    { fixture: "v2-1-309-stopped-prompt-restored--w120", statusRows: 3, draft: "Write 700 numbered lines, one short fact about apples per line. No tools, no preamble, do not stop early.", stripped: 33 },
     { fixture: "v2301-queued-taken--w100", statusRows: 3, draft: null, stripped: 7 },
     { fixture: "v2301-spinner-no-timer--w100", statusRows: 2, draft: null, stripped: 6 },
     // The /cost and /usage panel drawn over a live box (M56 spec 15 review): the box and its footer stay.
@@ -1079,8 +1090,13 @@ describe("real corpus — pinned so any change to the walk shows up as a diff", 
     { fixture: "v2303-titled-edge-idle--w160", statusRows: 3, draft: null, stripped: 11 },
     { fixture: "v2303-titled-edge-survey--w160", statusRows: 3, draft: null, stripped: 11 },
     { fixture: "v2303-titled-edge-working--w160", statusRows: 3, draft: null, stripped: 11 },
+    { fixture: "v2306-transcript-survey--w153", statusRows: 5, draft: null, stripped: 9 },
     { fixture: "v2304-ask-no-question-mark--w135", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "v2304-ask-no-question-mark-plain--w135", statusRows: 0, draft: null, stripped: 0 },
+    { fixture: "v2304-ask-chip-question-mark", statusRows: 0, draft: null, stripped: 0 },
+    { fixture: "v2304-ask-two-paragraph--w80", statusRows: 0, draft: null, stripped: 0 },
+    { fixture: "v2304-select-preview-cjk", statusRows: 0, draft: null, stripped: 0 },
+    { fixture: "v2304-select-preview-cjk-moved", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "wizard-multiselect-checked", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "wizard-multiselect-final", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "wizard-multiselect-pointer-next", statusRows: 0, draft: null, stripped: 0 },

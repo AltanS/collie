@@ -14,8 +14,12 @@
 //      prompt from its operator. An operator's message types the header and the body. `sent` or
 //      `effective` is `delivered`; an operator's acks the inbox entry, an agent's stays unread until
 //      the agent reads it. A refusal, a
-//      typed-not-submitted, an expiry or a cancel is `inbox-only` with the reason. A send held behind
-//      a running turn is watched for 10 minutes; still held then, it is cancelled and `inbox-only`.
+//      typed-not-submitted, an expiry or a cancel is `inbox-only` with the reason. The send is marked
+//      (`draftHolds`, M62 spec 02): a draft in the box holds it, as a running turn does, and nothing is
+//      typed over the draft. A held send stays `accepted` with the reason that holds it (`draft
+//      present` or `turn running`), and is watched on one clock, 60 minutes from its acceptance, that
+//      the Send Protocol's hold is given too. Still held then, it is cancelled and `inbox-only`. Before
+//      a hold goes out the pane is checked once more: another instance there never takes it.
 //      An `unknown` stays `unknown`, and is never sent again (CREW_PROTOCOL §10.3).
 //
 // Collie never answers a message and never answers a dialog with one (decision 6): the Send
@@ -29,10 +33,16 @@ import type { LogRecord, Placement, WalkyLog } from "./log.ts";
 import { MEMBER_LIMIT, PAIR_LIMIT, pairKey, RateLimiter, senderKey } from "./rate.ts";
 import { RefusalCounter, type RefusalCounts } from "./refusals.ts";
 import { seenHash, WalkySeen } from "./seen.ts";
-import { formatEnvelope, receiptReason, type WalkyMessage, type WalkyReceipt, type WalkyReceiptState, type WalkyVerified } from "./types.ts";
+import { formatEnvelope, receiptReason, SEND_ID, type WalkyMessage, type WalkyReceipt, type WalkyReceiptState, type WalkyVerified } from "./types.ts";
 
-/** How long a held send may wait before the message is left in the inbox only. */
-export const HELD_LIMIT_MS = 10 * 60 * 1000;
+/**
+ * How long a held send may wait before the message is left in the inbox only: one clock per message,
+ * counted from its acceptance, whatever holds it (a draft, a turn). The Send Protocol's hold ends at the
+ * same moment (`holdUntil`), so no other clock runs under it.
+ */
+export const HELD_LIMIT_MS = 60 * 60 * 1000;
+/** The reason of a message whose hold outlasted {@link HELD_LIMIT_MS}. */
+export const HELD_PAST = "held past 60 minutes";
 /** How often a held send's state is read. */
 export const HELD_POLL_MS = 2000;
 /**
@@ -43,6 +53,25 @@ export const HELD_POLL_MS = 2000;
 export const LANE_WAIT_MS = 2 * 60 * 1000;
 /** The reason of a message that waited out {@link LANE_WAIT_MS}. */
 export const PANE_BUSY = "pane busy";
+/** The reason of a held message its sender took back (M62 spec 03). */
+export const CANCELLED_BY_SENDER = "cancelled by sender";
+/** The reason of a held message the target pane's owner dropped (M62 spec 03). */
+export const DROPPED_BY_OWNER = "dropped by the pane's owner";
+
+/**
+ * How one take-back of one logged message ended (M62 spec 03). `taken`: the hold ended now, and the
+ * receipt is `inbox-only` with the reason given. `repeat`: it had ended as `inbox-only` already, so
+ * nothing changed. `already typed`: the message went into the pane (`delivered`), may have (`unknown`),
+ * or is going out this moment, so the Send Protocol did not confirm the cancel; the receipt stands.
+ * `not held`: the receipt is `accepted` with no held reason (queued, not held yet), `refused` or
+ * `expired`, none of which a take-back touches. `elsewhere`: the message is held on another machine,
+ * whose own bridge must take it back.
+ */
+export interface TakeBack {
+  readonly target: string;
+  readonly result: "taken" | "repeat" | "already typed" | "not held" | "elsewhere";
+  readonly receipt: WalkyReceipt;
+}
 
 /** One pane of this bridge, as walky talky sees it. */
 export interface WalkyPane {
@@ -63,18 +92,28 @@ export interface WalkyPane {
   readonly terminal: boolean;
 }
 
-/** A Send Protocol outcome and reason, as the request store holds them. */
+/**
+ * A Send Protocol outcome and reason, as the request store holds them. On `held`, the reason is what
+ * holds the send now: `draft_present`, or `turn_running` (or none, which reads as a turn).
+ */
 export interface SendResult {
   readonly outcome: string;
   readonly reason?: string;
+}
+
+/** How a walky send asks to be held (M62 spec 02): over a draft too, until its one clock runs out. */
+export interface WalkyHold {
+  readonly draftHolds: true;
+  /** Epoch ms: the message's acceptance plus {@link HELD_LIMIT_MS}. */
+  readonly holdUntil: number;
 }
 
 /** What delivery needs of the bridge. index.ts builds it from the session registry. */
 export interface WalkyHost {
   /** Every pane of every session, in registry order (the primary first). */
   panes(): readonly WalkyPane[];
-  /** Run one send through the pane's Send Protocol. */
-  send(pane: WalkyPane, sendId: string, text: string): Promise<SendResult>;
+  /** Run one send through the pane's Send Protocol, marked to be held over a draft until `hold.holdUntil`. */
+  send(pane: WalkyPane, sendId: string, text: string, hold?: WalkyHold): Promise<SendResult>;
   /** The stored outcome of a send request, or null when the protocol never took it. */
   sendState(sendId: string): SendResult | null;
   /** Take back a held send. */
@@ -200,6 +239,11 @@ export function reasonOf(result: SendResult): string {
   if (result.reason === "not_free") return "box not free";
   if (result.reason === "pane_gone") return "no such pane";
   return (result.reason ?? "refused").replace(/_/gu, " ");
+}
+
+/** What holds a send, in the receipt's words: `draft present`, or `turn running` for anything else. */
+export function heldReason(result: SendResult): "draft present" | "turn running" {
+  return result.reason === "draft_present" ? "draft present" : "turn running";
 }
 
 export class WalkyDeliverer {
@@ -549,7 +593,7 @@ export class WalkyDeliverer {
     this.deps.log.update(this.next(record, "accepted", undefined, sendId));
     let result: SendResult;
     try {
-      result = await this.deps.host.send(pane, sendId, formatEnvelope(message));
+      result = await this.deps.host.send(pane, sendId, formatEnvelope(message), { draftHolds: true, holdUntil: record.acceptedAt + HELD_LIMIT_MS });
     } catch (err) {
       result = { outcome: "unknown", reason: err instanceof Error ? err.message : String(err) };
     }
@@ -557,31 +601,58 @@ export class WalkyDeliverer {
     await this.settle(record, pane.session, pane.paneId, pane.instance, sendId, result);
   }
 
-  /** Write the receipt an outcome stands for. A held send is watched until it ends or its 10 minutes pass. */
+  /**
+   * Write the receipt an outcome stands for. A held send is watched until it ends or its one clock runs
+   * out, {@link HELD_LIMIT_MS} from the acceptance (`acceptedAt`, never a newer receipt's time, so a
+   * restart never extends it). While held, the receipt stays `accepted` with what holds it.
+   */
   private async settle(record: LogRecord, session: string, paneId: string, instance: string | null, sendId: string, first: SendResult): Promise<void> {
     const { message } = record;
     let result = first;
     if (result.outcome === "held") {
-      const until = record.receipt.at + HELD_LIMIT_MS;
+      const until = record.acceptedAt + HELD_LIMIT_MS;
+      // The reason already on the receipt (a restart reads it back), so a repeat writes no line.
+      let said = record.receipt.state === "accepted" ? record.receipt.reason : undefined;
       while (result.outcome === "held" && this.now() < until) {
+        const why = heldReason(result);
+        if (why !== said) {
+          this.deps.log.update(this.next(record, "accepted", why, sendId));
+          said = why;
+        }
         await this.sleep(HELD_POLL_MS);
+        // A person took the message back meanwhile (`takeBack`): its receipt is written, and the Send
+        // Protocol's `cancelled` is that take-back, not a new outcome to write over it.
+        if (this.ended(record)) return;
         result = this.deps.host.sendState(sendId) ?? result;
       }
+      if (this.ended(record)) return;
       if (result.outcome === "held") {
         // Take it back, then read what the Send Protocol says now: it may have gone out at the last
         // moment, and a hold the cancel did not reach may still go out. Only a cancel it confirmed
         // means nothing was typed.
         this.deps.host.cancelHeld(session, paneId, sendId);
         const after = this.deps.host.sendState(sendId);
-        if (after?.outcome === "cancelled") {
-          this.deps.log.update(this.next(record, "inbox-only", "held past 10 minutes", sendId));
+        if (after?.outcome === "cancelled" || after?.outcome === "expired") {
+          this.deps.log.update(this.next(record, "inbox-only", HELD_PAST, sendId));
           return;
         }
         if (after === null || after.outcome === "held") {
-          this.deps.log.update(this.next(record, "unknown", "held past 10 minutes, still pending", sendId));
+          this.deps.log.update(this.next(record, "unknown", `${HELD_PAST}, still pending`, sendId));
           return;
         }
         result = after;
+      }
+      // The Send Protocol's hold ends at the same moment as this clock: its `expired` is this clock's
+      // end. The ended row goes too, so the phone offers no Resend of a walky envelope.
+      if (result.outcome === "expired" && this.now() >= until) {
+        this.deps.host.cancelHeld(session, paneId, sendId);
+        this.deps.log.update(this.next(record, "inbox-only", HELD_PAST, sendId));
+        return;
+      }
+      // The release found another instance at the pane (`stillMeant`): the message stays in the inbox.
+      if (result.outcome === "refused" && result.reason === "pane_gone" && this.replaced(record)) {
+        this.deps.log.update(this.next(record, "inbox-only", "pane replaced", sendId));
+        return;
       }
     }
     if (result.outcome === "sent" || result.outcome === "effective") {
@@ -598,12 +669,68 @@ export class WalkyDeliverer {
     this.deps.log.update(this.next(record, "inbox-only", reasonOf(result), sendId));
   }
 
+  /** Whether the log's newest receipt for this record has left `accepted`: someone else settled it. */
+  private ended(record: LogRecord): boolean {
+    const now = this.deps.log.get(record.message.id, record.target);
+    return now !== null && now.receipt.state !== "accepted";
+  }
+
+  /**
+   * Take one held message back (M62 spec 03), for its sender (`reason` {@link CANCELLED_BY_SENDER}) or
+   * for the owner of the pane it waits for ({@link DROPPED_BY_OWNER}). Only a send that is `accepted`
+   * with a held reason, and placed on a pane of this bridge, is touched: the Send Protocol's cancel
+   * is asked, and only a cancel it confirmed (`cancelled`, or `expired` on the same clock) ends the
+   * send as `inbox-only` with the reason. The hold watcher (`settle`) reads that receipt and stops,
+   * so one send id types at most once and the reason stays the person's. A message that typed, may
+   * have typed, or is going out now keeps its receipt (`already typed`), as does one not held
+   * (`not held`); a repeat answers the stored `inbox-only` receipt and changes nothing. A message
+   * held on another machine (no pane here) is `elsewhere`. The caller decided who may ask.
+   */
+  takeBack(record: LogRecord, reason: typeof CANCELLED_BY_SENDER | typeof DROPPED_BY_OWNER): TakeBack {
+    const { receipt, target } = record;
+    const answer = (result: TakeBack["result"], newer: WalkyReceipt = receipt): TakeBack => ({ target, result, receipt: newer });
+    if (receipt.state === "inbox-only") return answer("repeat");
+    if (receipt.state === "delivered" || receipt.state === "unknown") return answer("already typed");
+    if (receipt.state !== "accepted" || receipt.reason === undefined) return answer("not held");
+    if (record.session === null || record.paneId === null) return answer("elsewhere");
+    const sendId = receipt.sendId ?? sendIdOf(record.message.id, target);
+    this.deps.host.cancelHeld(record.session, record.paneId, sendId);
+    const after = this.deps.host.sendState(sendId);
+    if (after !== null && after.outcome !== "cancelled" && after.outcome !== "expired") return answer("already typed");
+    const written = this.next(record, "inbox-only", reason, sendId);
+    this.deps.log.update(written);
+    return answer("taken", this.deps.log.get(record.message.id, target)?.receipt ?? written);
+  }
+
+  /** Whether the record's pane id is held by another instance now. A record from before instances never is. */
+  private replaced(record: LogRecord): boolean {
+    if (record.instance === null || record.session === null || record.paneId === null) return false;
+    const now = this.deps.host.panes().find((pane) => pane.session === record.session && pane.paneId === record.paneId);
+    return now !== undefined && now.instance !== record.instance;
+  }
+
+  /**
+   * The Send Protocol's last check before a held send goes out (its `releaseCheck`, M62 spec 02): false
+   * when the send is a walky message of this log whose pane is gone or holds another instance now, so a
+   * replaced pane never takes it. A request this log does not know, or a record from before instances,
+   * goes ahead.
+   */
+  stillMeant(sendId: string, session: string, paneId: string): boolean {
+    if (!SEND_ID.test(sendId)) return true;
+    const id = sendId.slice(0, sendId.lastIndexOf("-"));
+    const record = this.deps.log.all(id).find((candidate) => candidate.session === session && candidate.paneId === paneId && sendIdOf(candidate.message.id, candidate.target) === sendId);
+    if (record === undefined || record.instance === null) return true;
+    const pane = this.deps.host.panes().find((candidate) => candidate.session === session && candidate.paneId === paneId);
+    return pane !== undefined && pane.instance === record.instance;
+  }
+
   /**
    * After a restart: every receipt still `accepted` is settled from what the Send Protocol stored.
    * The send id is DERIVED from the message id and the target (`sendIdOf`), never read from the
    * receipt: a crash between logging and writing the send id must not hide a send that went out. A
    * send id the protocol never took means no key went out: `inbox-only`. A held send is watched again
-   * from where it stood. Nothing here sends.
+   * from where it stood, on the same clock: it counts from the acceptance, so a restart never extends
+   * it. Nothing here sends.
    */
   recover(): number {
     let count = 0;

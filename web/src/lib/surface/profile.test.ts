@@ -15,7 +15,11 @@ import {
   resetProfileLog,
   versionFromOutput,
   type Profile,
+  type SteerWitness,
 } from "./profile";
+import { parseAnsi } from "../ansi";
+import { splitLines } from "../blocks";
+import { rowText } from "./frame";
 import { PROFILE_FILES } from "./profiles/index";
 
 const PROFILES_DIR = join(import.meta.dirname, "profiles");
@@ -79,7 +83,7 @@ describe("every profile file", () => {
     // The slice 0 lab (M56 spec 01, LAB.md table 1) named the inert character; spec 05 writes it in.
     expect(claude.probe.char).toBe("⌁");
     expect(claude.probe.status).toBe("verified");
-    expect(claude.paste).toEqual({ bracketed: true });
+    expect(claude.paste).toEqual({ bracketed: true, block: true, image: "\\[Image #\\d+\\]" });
     // M56 spec 08: an ask that left the screen is voided after this lifetime.
     expect(claude.ask).toEqual({ lifetimeMs: 5000 });
     expect(claude.hooks.PermissionRequest).toBe("ask");
@@ -255,7 +259,7 @@ describe("the codex profile (M56 spec 13)", () => {
       return { list, pointer: (text: string) => commandOf(list.pointer, text), entry: (text: string) => commandOf(list.entry, text), wrapped: (text: string) => new RegExp(list.wrapped, "u").test(text) };
     };
     const stock = read("pi");
-    expect(stock.list).toMatchObject({ lead: "/", sides: ["under"], footer: { maxRows: 4 } });
+    expect(stock.list).toMatchObject({ lead: "/", sides: ["under"], footer: { pattern: "^(?:\\S| ↳ \\S)", maxRows: 6 } });
     // Stock pi 0.87.1 and 1.3.0, pi 1.2.0 with editor padding, OmO on pi.
     expect(stock.pointer("→ model          <provider/model> — Select model (opens selector UI)")).toBe("model");
     expect(stock.pointer(" → settings       Open settings menu")).toBe("settings");
@@ -321,6 +325,14 @@ describe("the codex profile (M56 spec 13)", () => {
     expect(form.exec("[Pasted Content 1500 chars]")?.groups?.chars).toBe("1500");
   });
 
+  it("a list of commands that run at once in a turn parses with its note; omp ships /goal", () => {
+    const keys = parseProfile(change(change(rawCodex(), ["keys", "commandsRunInTurn"], ["/status", "/model"]), ["keys", "commandsRunInTurnNote"], "Lab note.")).keys;
+    expect(keys.commandsRunInTurn).toEqual(["/status", "/model"]);
+    expect(keys.commandsRunInTurnNote).toBe("Lab note.");
+    expect(parseProfile(rawCodex()).keys.commandsRunInTurn).toBeUndefined();
+    expect(loadProfiles().get("omp")?.keys.commandsRunInTurn).toEqual(["/goal"]);
+  });
+
   const cases: [string, (string | number)[], JsonValue | undefined, string][] = [
     ["codex: Escape as the queue key", ["keys", "queueKey"], "Escape", "keys.queueKey"],
     ["codex: Enter as the queue key", ["keys", "queueKey"], "Enter", "keys.queueKey"],
@@ -335,6 +347,12 @@ describe("the codex profile (M56 spec 13)", () => {
     ["codex: losesText that is not true", ["idle", "volatile", "above", "losesText"], false, "idle.volatile.above.losesText"],
     ["codex: a hint row that is no expression", ["idle", "volatile", "below", "hints", 0], "[unclosed", "idle.volatile.below.hints[0]"],
     ["codex: hint rows that are no list", ["idle", "volatile", "below", "hints"], "? for shortcuts", "idle.volatile.below.hints"],
+    ["codex: no command that runs in a turn", ["keys", "commandsRunInTurn"], [], "keys.commandsRunInTurn"],
+    ["codex: a command that runs in a turn with a space in it", ["keys", "commandsRunInTurn"], ["/goal pause"], "keys.commandsRunInTurn"],
+    ["codex: a command that runs in a turn of one character", ["keys", "commandsRunInTurn"], ["!"], "keys.commandsRunInTurn"],
+    ["codex: a command that runs in a turn with no reserved lead", ["keys", "commandsRunInTurn"], ["goal"], "keys.commandsRunInTurn"],
+    ["codex: a command that runs in a turn and is never held", ["keys", "commandsRunInTurn"], ["/quit"], "keys.commandsRunInTurn"],
+    ["codex: a note on commands that run in a turn that is no text", ["keys", "commandsRunInTurnNote"], 3, "keys.commandsRunInTurnNote"],
   ];
   for (const [name, path, value, field] of cases) {
     it(name, () => {
@@ -721,6 +739,7 @@ describe("the frame schema of the interior walk (M56 spec 14)", () => {
     ["an under row that is no expression", ["idle", "frame", "under"], "[unclosed", "idle.frame.under"],
     ["an underPainted flag that is no boolean", ["idle", "frame", "underPainted"], "yes", "idle.frame.underPainted"],
     ["an underPainted flag with no under pattern", ["idle", "frame", "underPainted"], true, "idle.frame.underPainted"],
+    ["an ownPrompt flag that is no boolean", ["idle", "frame", "ownPrompt"], "yes", "idle.frame.ownPrompt"],
     ["a dialogsInBox flag that is no boolean", ["idle", "dialogsInBox"], "yes", "idle.dialogsInBox"],
     ["a placeholder prefix list that is no list", ["idle", "placeholders", "prefixes"], "Ask", "idle.placeholders.prefixes"],
     ["an answer prompt that is no expression", ["idle", "answerPrompt"], "[unclosed", "idle.answerPrompt"],
@@ -735,6 +754,36 @@ describe("the frame schema of the interior walk (M56 spec 14)", () => {
     expect(failure(change(rawOpencode(), ["idle", "frame", "walk"], "edges")).path).toMatch(/^idle\.frame\./u);
     expect(failure(change(rawClaude(), ["idle", "frame", "rows"], "^x$")).path).toBe("idle.frame.rows");
     expect(failure(change(rawClaude(), ["idle", "frame", "bottom", "open"], true)).path).toBe("idle.frame.bottom.open");
+    expect(failure(change(rawClaude(), ["idle", "frame", "ownPrompt"], true)).path).toBe("idle.frame.ownPrompt");
+  });
+
+  it("takes the box's own prompt glyph (`ownPrompt`) only beside a rows pattern (issue 544)", () => {
+    const own = change(rawOpencode(), ["idle", "frame", "ownPrompt"], true);
+    expect(parseProfile(own).idle.frame.ownPrompt).toBe(true);
+    expect(parseProfile(change(rawOpencode(), ["idle", "frame", "ownPrompt"], false)).idle.frame.ownPrompt).toBeUndefined();
+    expect(failure(change(own, ["idle", "frame", "rows"], undefined)).path).toBe("idle.frame.ownPrompt");
+    const pi = parseProfile(parseJsonObject(readFileSync(join(PROFILES_DIR, "pi.json"), "utf8"))!);
+    expect(pi.idle.frame.ownPrompt).toBeUndefined();
+    expect(pi.idle.frameAlternates?.map((frame) => frame.ownPrompt)).toEqual([true]);
+  });
+
+  it("takes keys.interruptClearsDraft as a boolean and nothing else (M68 spec 01)", () => {
+    expect(parseProfile(rawClaude()).keys.interruptClearsDraft).toBeUndefined();
+    expect(parseProfile(change(rawClaude(), ["keys", "interruptClearsDraft"], true)).keys.interruptClearsDraft).toBe(true);
+    expect(parseProfile(change(rawClaude(), ["keys", "interruptClearsDraft"], false)).keys.interruptClearsDraft).toBe(false);
+    expect(failure(change(rawClaude(), ["keys", "interruptClearsDraft"], "yes")).path).toBe("keys.interruptClearsDraft");
+    expect(failure(change(rawClaude(), ["keys", "interruptClearsDraft"], 1)).path).toBe("keys.interruptClearsDraft");
+  });
+
+  it("names the profiles whose interrupt key clears a draft first, and the keys each one presses (M68 spec 01)", () => {
+    const clears = [...loadProfiles().values()].filter((profile) => profile.keys.interruptClearsDraft === true).map((profile) => profile.id);
+    expect(clears.toSorted()).toEqual(["cursor", "grok", "hermes", "muse"]);
+    // Claude Code's Esc does not clear a draft.
+    expect(loadProfiles().get("claude")?.keys.interruptClearsDraft).toBeUndefined();
+    // opencode needs Esc twice within 5 s (vendor doc: the first shows "again to interrupt"), so the gate presses both.
+    expect(loadProfiles().get("opencode")?.keys.interrupt).toEqual(["Escape", "Escape"]);
+    // Grok's vendor doc: "Esc never cancels the turn". Ctrl+C cancels it (and clears the draft first).
+    expect(loadProfiles().get("grok")?.keys.interrupt).toEqual(["ctrl+c"]);
   });
 
   it("names the alternate frame shape in the path of a bad field", () => {
@@ -757,6 +806,7 @@ describe("the frame schema of the interior walk (M56 spec 14)", () => {
     expect(pointer.exec("❯ ✦ skill:wrap-up   Wrap up the session")?.groups?.["command"]).toBe("skill:wrap-up");
     expect(pointer.test("> model   Switch model")).toBe(false);
     expect(list.namespaces).toEqual(["skill:"]);
+    expect(list.argumentList).toBe(true);
     expect(omp.idle.inlineHint).toEqual({ fg: ["rgb(107,114,128)"] });
   });
 
@@ -793,6 +843,7 @@ describe("the frame schema of the interior walk (M56 spec 14)", () => {
     expect(parseProfile(rawClaude()).idle.notices).toEqual([
       { head: "^✦ (?:Heads up|You should know) ·(?:\\s|$)", body: true },
       { head: "^● How is Claude doing this session\\? \\(optional\\)$" },
+      { head: "^● Can Anthropic look at your session transcript to help us improve Claude Code\\?$", letters: true },
       { head: "^✦ Dismissed\\.(?=\\s|$)" },
     ]);
     expect(parseProfile(rawOpencode()).idle.notices).toBeUndefined();
@@ -805,6 +856,16 @@ describe("the frame schema of the interior walk (M56 spec 14)", () => {
     });
     for (const bad of [false, "true", 1, null, {}]) {
       expect(failure(change(rawClaude(), ["idle", "notices", 0, "body"], bad)).path, JSON.stringify(bad)).toBe("idle.notices[0].body");
+    }
+  });
+
+  it("accepts `letters: true` on a notice head and rejects any other value", () => {
+    expect(parseProfile(change(rawClaude(), ["idle", "notices", 1, "letters"], true)).idle.notices?.[1]).toEqual({
+      head: "^● How is Claude doing this session\\? \\(optional\\)$",
+      letters: true,
+    });
+    for (const bad of [false, "true", 1, null, {}]) {
+      expect(failure(change(rawClaude(), ["idle", "notices", 0, "letters"], bad)).path, JSON.stringify(bad)).toBe("idle.notices[0].letters");
     }
   });
 
@@ -832,6 +893,8 @@ describe("parseProfile names the failing field", () => {
     ["a paste settle that is not a whole number", ["paste", "settleMs"], 1.5, "paste.settleMs"],
     ["a paste settle below its floor", ["paste", "settleMs"], 0, "paste.settleMs"],
     ["a paste settle above its ceiling", ["paste", "settleMs"], 99_999, "paste.settleMs"],
+    ["a paste image token that is no expression", ["paste", "image"], "[unclosed", "paste.image"],
+    ["a paste image token without the whole paste", ["paste", "block"], false, "paste.image"],
     ["an ask lifetime that is not a whole number", ["ask", "lifetimeMs"], 1.5, "ask.lifetimeMs"],
     ["an ask lifetime below its floor", ["ask", "lifetimeMs"], 10, "ask.lifetimeMs"],
     ["an unknown hook kind", ["hooks", "Stop"], "level", "hooks.Stop"],
@@ -846,6 +909,11 @@ describe("parseProfile names the failing field", () => {
     ["a queued row hint that is no expression", ["keys", "queuedRow", "hint"], "[unclosed", "keys.queuedRow.hint"],
     ["a queued row gap below zero", ["keys", "queuedRow", "hintGap"], -1, "keys.queuedRow.hintGap"],
     ["a queued row hintAbove that is not a boolean", ["keys", "queuedRow", "hintAbove"], "above", "keys.queuedRow.hintAbove"],
+    ["a queued row between that matches a blank row", ["keys", "queuedRow", "between"], "^.*$", "keys.queuedRow.between"],
+    ["a queued row header that matches a blank row", ["keys", "queuedRow", "header"], "^\\s*$", "keys.queuedRow.header"],
+    ["stopped rows that are no list", ["idle", "stoppedRows"], "Interrupted", "idle.stoppedRows"],
+    ["a stopped row that matches a blank row", ["idle", "stoppedRows", 0], "^\\s*$", "idle.stoppedRows[0]"],
+    ["a stopped row that is no expression", ["idle", "stoppedRows", 0], "[unclosed", "idle.stoppedRows[0]"],
     ["footer rows that are no list", ["idle", "volatile", "below", "footerRows"], "● main", "idle.volatile.below.footerRows"],
     ["a footer row with no name", ["idle", "volatile", "below", "footerRows", 0, "name"], undefined, "idle.volatile.below.footerRows[0].name"],
     ["a footer row name used twice", ["idle", "volatile", "below", "footerRows", 1, "name"], "agents-panel-main", "idle.volatile.below.footerRows[1].name"],
@@ -867,6 +935,7 @@ describe("parseProfile names the failing field", () => {
     ["a command list side named twice", ["idle", "volatile", "below", "commandList", "sides"], ["under", "under"], "idle.volatile.below.commandList.sides[1]"],
     ["a command list pointerBold that is no boolean", ["idle", "volatile", "below", "commandList", "pointerBold"], "yes", "idle.volatile.below.commandList.pointerBold"],
     ["a command list argumentHint that is no boolean", ["idle", "volatile", "below", "commandList", "argumentHint"], "yes", "idle.volatile.below.commandList.argumentHint"],
+    ["a command list argumentList that is no boolean", ["idle", "volatile", "below", "commandList", "argumentList"], "yes", "idle.volatile.below.commandList.argumentList"],
     ["a command list footer that is no object", ["idle", "volatile", "below", "commandList", "footer"], "^\\S", "idle.volatile.below.commandList.footer"],
     ["a command list footer that matches a blank row", ["idle", "volatile", "below", "commandList", "footer"], { pattern: "^\\s*$", maxRows: 2 }, "idle.volatile.below.commandList.footer.pattern"],
     ["a command list footer of no rows", ["idle", "volatile", "below", "commandList", "footer"], { pattern: "^\\S", maxRows: 0 }, "idle.volatile.below.commandList.footer.maxRows"],
@@ -1086,5 +1155,193 @@ describe("other names of a harness (M56 spec 14 review)", () => {
         claimed.set(name, profile.id);
       }
     }
+  });
+});
+
+// M69 spec 02: the steer keys. The witness patterns are pinned on the lab's captures of pi 1.3.0, Codex
+// 0.164.0 and OMP 18.6.1 (web/src/fixtures/panes/*-{steer,queue}-*--w120.txt, 2026-10-23).
+describe("the steer keys (M69)", () => {
+  const FIXTURES = join(import.meta.dirname, "../../fixtures/panes");
+  const LINE = "also say hello at the end";
+  /** The rows of a capture as plain text, the way the reader sees them. */
+  const rowsOf = (name: string): string[] => splitLines(parseAnsi(readFileSync(join(FIXTURES, `${name}--w120.txt`), "utf8"))).map((row) => rowText(row).trimEnd());
+  const raw = (id: string): JsonObject => parseJsonObject(readFileSync(join(PROFILES_DIR, `${id}.json`), "utf8"))!;
+  const witnesses = (id: string): readonly SteerWitness[] => loadProfiles().get(id)!.keys.steerWitness!;
+  /** The rows a witness's pattern takes with the line as its text (or, for a marker, at all). */
+  const hits = (rows: readonly string[], witness: SteerWitness): number[] => {
+    const re = new RegExp(witness.pattern, "u");
+    return rows.flatMap((row, i) => {
+      const hit = re.exec(row);
+      if (hit === null) return [];
+      return witness.pattern.includes("(?<text>") ? (hit.groups?.["text"] === LINE ? [i] : []) : [i];
+    });
+  };
+
+  it("pi, Codex and OMP steer with Enter; Codex waits a second first; every other profile has no steer key", () => {
+    for (const id of ["pi", "codex", "omp"]) {
+      const keys = loadProfiles().get(id)!.keys;
+      expect([id, keys.steer, keys.enterWhileRunning]).toEqual([id, ["Enter"], "steers"]);
+      expect(keys.steerWitness?.length).toBeGreaterThan(0);
+    }
+    expect(loadProfiles().get("codex")!.keys.steerDelayMs).toBe(1000);
+    expect(loadProfiles().get("pi")!.keys.steerDelayMs).toBeUndefined();
+    expect(loadProfiles().get("omp")!.keys.steerDelayMs).toBeUndefined();
+    for (const [id, profile] of loadProfiles()) {
+      if (["pi", "codex", "omp"].includes(id)) continue;
+      expect([id, profile.keys.steer, profile.keys.steerWitness]).toEqual([id, undefined, undefined]);
+    }
+  });
+
+  it("pi: `Steering: <line>` over the edit hint after the steer, `Follow-up:` (no steer row) after the queue", () => {
+    const [block] = witnesses("pi");
+    expect(block).toEqual({ pattern: "^\\s*Steering: (?<text>\\S.*?)\\s*$", hint: "^\\s*↳ Alt\\+Up to edit all queued messages\\s*$", hintGap: 0, between: "^\\s*Follow-up: \\S" });
+    const after = rowsOf("pi--v130-steer-after");
+    const [at] = hits(after, block!);
+    expect(at).toBeDefined();
+    expect(new RegExp(block!.hint!, "u").test(after[at! + 1]!)).toBe(true);
+    // At 0.1 s pi has emptied the box but not drawn the row yet: no witness, so the reads go on to 2 s.
+    expect(hits(rowsOf("pi--v130-steer-after-now"), block!)).toEqual([]);
+    expect(hits(rowsOf("pi--v130-queue-after"), block!)).toEqual([]);
+  });
+
+  it("pi: with a follow-up already queued, its `Follow-up:` row stands between the `Steering:` row and the hint (live rerun 2026-10-23)", () => {
+    const [block] = witnesses("pi");
+    const rows = rowsOf("pi--v130-steer-after-queued");
+    const steering = rows.findIndex((row) => new RegExp(block!.pattern, "u").exec(row)?.groups?.["text"] === "say banana");
+    expect(steering).toBeGreaterThan(0);
+    // The queued follow-up `ok`, then the hint: no longer right under the Steering row.
+    expect(new RegExp(block!.between!, "u").test(rows[steering + 1]!)).toBe(true);
+    expect(new RegExp(block!.hint!, "u").test(rows[steering + 2]!)).toBe(true);
+    expect(new RegExp(block!.between!, "u").test(rows[steering]!)).toBe(false);
+    expect(new RegExp(block!.between!, "u").test("")).toBe(false);
+  });
+
+  it("Codex: the `Messages to be submitted after next tool call` header over `↳ <line>` at 0.1 s, the line as `› <line>` by 2 s", () => {
+    const [block, transcript] = witnesses("codex");
+    expect(block).toEqual({ pattern: "^\\s*↳ (?<text>\\S.*?)\\s*$", hint: "^\\s*• Messages to be submitted after next tool call\\b", hintGap: 0, hintAbove: true });
+    expect(transcript).toEqual({ pattern: "^› (?<text>\\S.*?)\\s*$", transcript: true });
+    const now = rowsOf("codex--v0164-steer-after-now");
+    const header = now.findIndex((row) => new RegExp(block!.hint!, "u").test(row));
+    expect(header).toBeGreaterThan(0);
+    expect(hits(now, block!)).toEqual([header + 1]);
+    // By 2 s the header is gone and the line stands in the transcript, one row more than the box held it.
+    const after = rowsOf("codex--v0164-steer-after");
+    expect(after.some((row) => new RegExp(block!.hint!, "u").test(row))).toBe(false);
+    expect(hits(after, transcript!).length).toBe(1);
+    // The queue shows `↳ <line>` too, under its own header: the steer header is what tells them apart.
+    const queued = rowsOf("codex--v0164-queue-after");
+    expect(queued.some((row) => new RegExp(block!.hint!, "u").test(row))).toBe(false);
+    expect(queued.some((row) => /Queued follow-up inputs/u.test(row))).toBe(true);
+  });
+
+  it("Codex: the steer header is a running row, so a screen that holds only it still reads the turn running", () => {
+    const signs = loadProfiles().get("codex")!.idle.runningRows!.map((source) => new RegExp(source, "u"));
+    const header = rowsOf("codex--v0164-steer-after-now").find((row) => row.includes("Messages to be submitted after next tool call"))!;
+    expect(signs.some((sign) => sign.test(header))).toBe(true);
+    // Re-wrapped narrower, its first part still is one.
+    expect(signs.some((sign) => sign.test(header.slice(0, 60)))).toBe(true);
+    expect(signs.some((sign) => sign.test("› Messages to be submitted after next tool call"))).toBe(false);
+  });
+
+  it("OMP: `Backgrounded early to handle an incoming message` in the tool box and the line as a transcript row after the steer", () => {
+    const [marker, transcript] = witnesses("omp");
+    expect(marker).toEqual({ pattern: "^\\s*│\\s*Backgrounded early to handle an incoming message\\b" });
+    expect(transcript).toEqual({ pattern: "^ (?<text>\\S.*?)\\s*$", transcript: true });
+    const after = rowsOf("omp--v18-6-steer-after");
+    expect(hits(after, marker!).length).toBe(1);
+    expect(hits(after, transcript!).length).toBe(1);
+    // At 0.1 s the box still holds the line, and nothing above it shows a witness.
+    const now = rowsOf("omp--v18-6-steer-after-now");
+    expect(hits(now, marker!)).toEqual([]);
+    expect(hits(now, transcript!)).toEqual([]);
+    // The queue draws `After yield · 1` / `1. <line>` instead: neither witness.
+    const queued = rowsOf("omp--v18-6-queue-after");
+    expect(hits(queued, marker!)).toEqual([]);
+    expect(hits(queued, transcript!)).toEqual([]);
+  });
+
+  it("OMP: a steer that waits for the next step draws `Steering · N` over the queue's own rows and hint; only the header tells the two apart (live rerun 2026-10-23)", () => {
+    const omp = loadProfiles().get("omp")!;
+    const block = omp.keys.steerWitness![2]!;
+    expect(block).toEqual({ pattern: "^\\s*\\d+\\. (?<text>\\S.*?)\\s*$", hint: "^\\s*└ Alt\\+↑ to edit\\s*$", hintGap: 0, between: "^\\s*After yield · \\d+\\s*$", header: "^\\s*Steering · \\d+\\s*$" });
+    const queuedRow = omp.keys.queuedRow!;
+    expect(queuedRow.header).toBe("^\\s*After yield · \\d+\\s*$");
+    // Each block's header is the other's `between`: the two stack over one hint (second live pass).
+    expect(queuedRow.between).toBe(block.header);
+    expect(block.between).toBe(queuedRow.header);
+    // The same text row and hint in both captures; the header over them differs.
+    const steer = rowsOf("omp--v18-6-steer-pending-block");
+    const at = steer.findIndex((row) => new RegExp(block.pattern, "u").exec(row)?.groups?.["text"] === "say banana");
+    expect(at).toBeGreaterThan(0);
+    expect(new RegExp(block.header!, "u").test(steer[at - 1]!)).toBe(true);
+    expect(new RegExp(queuedRow.header!, "u").test(steer[at - 1]!)).toBe(false);
+    expect(new RegExp(block.hint!, "u").test(steer[at + 1]!)).toBe(true);
+    expect(new RegExp(queuedRow.pattern, "u").test(steer[at]!)).toBe(true);
+    const queued = rowsOf("omp--v18-6-queue-after");
+    const q = queued.findIndex((row) => new RegExp(queuedRow.pattern, "u").exec(row)?.groups?.["text"] === LINE);
+    expect(new RegExp(queuedRow.header!, "u").test(queued[q - 1]!)).toBe(true);
+    expect(new RegExp(block.header!, "u").test(queued[q - 1]!)).toBe(false);
+    // Both blocks over the one hint: Steering first, then After yield, then the hint.
+    const stacked = rowsOf("omp--v18-6-steer-over-queued").map((row) => row.trim()).filter((row) => row.length > 0);
+    const s0 = stacked.indexOf("Steering · 1");
+    expect(stacked.slice(s0, s0 + 5)).toEqual(["Steering · 1", "1. say banana", "After yield · 1", "1. ok", "└ Alt+↑ to edit"]);
+  });
+
+  const cases: [string, string, (string | number)[], JsonValue | undefined, string][] = [
+    ["Escape as the steer key", "pi", ["keys", "steer"], ["Escape"], "keys.steer"],
+    ["a chord that holds Escape as the steer key", "pi", ["keys", "steer"], ["alt+Escape"], "keys.steer"],
+    ["a chord that holds esc as the steer key", "omp", ["keys", "steer"], ["ctrl+esc"], "keys.steer"],
+    ["a two-key steer that holds the queue key", "codex", ["keys", "steer"], ["Enter", "Tab"], "keys.steer"],
+    ["no steer key", "pi", ["keys", "steer"], [], "keys.steer"],
+    ["the queue key as the steer key", "codex", ["keys", "steer"], ["Tab"], "keys.steer"],
+    ["the queue key of another platform as the steer key", "pi", ["keys", "steer"], ["ctrl+q"], "keys.steer"],
+    ["a steer key where Enter does not steer", "codex", ["keys", "enterWhileRunning"], "submits", "keys.steer"],
+    ["a steer key with no witness", "pi", ["keys", "steerWitness"], undefined, "keys.steerWitness"],
+    ["an empty witness list", "pi", ["keys", "steerWitness"], [], "keys.steerWitness"],
+    ["a witness block with no text group", "pi", ["keys", "steerWitness", 0, "pattern"], "^\\s*Steering: .*$", "keys.steerWitness[0].pattern"],
+    ["a witness block with no gap", "pi", ["keys", "steerWitness", 0, "hintGap"], undefined, "keys.steerWitness[0].hintGap"],
+    ["a witness hintAbove that is no boolean", "codex", ["keys", "steerWitness", 0, "hintAbove"], "above", "keys.steerWitness[0].hintAbove"],
+    ["a witness between that is no expression", "pi", ["keys", "steerWitness", 0, "between"], "[unclosed", "keys.steerWitness[0].between"],
+    ["a witness between that matches a blank row", "pi", ["keys", "steerWitness", 0, "between"], "^\\s*", "keys.steerWitness[0].between"],
+    ["a witness between with no hint", "omp", ["keys", "steerWitness", 0, "between"], "^\\s*x", "keys.steerWitness[0].between"],
+    ["a witness header with no hint", "omp", ["keys", "steerWitness", 0, "header"], "^\\s*x", "keys.steerWitness[0].header"],
+    ["a witness header that matches a blank row", "omp", ["keys", "steerWitness", 2, "header"], "^\\s*$", "keys.steerWitness[2].header"],
+    ["a witness header that is no expression", "omp", ["keys", "steerWitness", 2, "header"], "[unclosed", "keys.steerWitness[2].header"],
+    ["a witness header with the hint above", "codex", ["keys", "steerWitness", 0, "header"], "^\\s*x", "keys.steerWitness[0].header"],
+    ["a transcript witness that is not true", "codex", ["keys", "steerWitness", 1, "transcript"], false, "keys.steerWitness[1].transcript"],
+    ["a transcript witness with no text group", "codex", ["keys", "steerWitness", 1, "pattern"], "^› .*$", "keys.steerWitness[1].pattern"],
+    ["a transcript witness with a hint", "codex", ["keys", "steerWitness", 0, "transcript"], true, "keys.steerWitness[0].transcript"],
+    ["a marker witness with a text group", "omp", ["keys", "steerWitness", 0, "pattern"], "^(?<text>Backgrounded)", "keys.steerWitness[0].pattern"],
+    ["a marker witness that matches a blank row", "omp", ["keys", "steerWitness", 0, "pattern"], "^\\s*$", "keys.steerWitness[0].pattern"],
+    ["a marker witness with a gap and no hint", "omp", ["keys", "steerWitness", 0, "hintGap"], 0, "keys.steerWitness[0].hintGap"],
+    ["a steer delay over three seconds", "codex", ["keys", "steerDelayMs"], 3001, "keys.steerDelayMs"],
+    ["a steer delay below zero", "codex", ["keys", "steerDelayMs"], -1, "keys.steerDelayMs"],
+    ["a steer delay that is not whole", "codex", ["keys", "steerDelayMs"], 1.5, "keys.steerDelayMs"],
+  ];
+  for (const [name, id, path, value, field] of cases) {
+    it(`${id}: ${name}`, () => {
+      expect(failure(change(raw(id), path, value)).path).toBe(field);
+    });
+  }
+
+  it("a steer key equal to an interrupt key is refused, in any key of the list", () => {
+    const interrupt = change(raw("pi"), ["keys", "interrupt"], ["Escape", "ctrl+c"]);
+    expect(failure(change(interrupt, ["keys", "steer"], ["ctrl+c"])).path).toBe("keys.steer");
+    expect(failure(change(interrupt, ["keys", "steer"], ["Enter", "CTRL+C"])).path).toBe("keys.steer");
+    expect(parseProfile(change(interrupt, ["keys", "steer"], ["Enter"])).keys.steer).toEqual(["Enter"]);
+  });
+
+  it("a witness or a delay with no steer key is refused", () => {
+    const noSteer = change(raw("codex"), ["keys", "steer"], undefined);
+    expect(failure(noSteer).path).toBe("keys.steerWitness");
+    expect(failure(change(noSteer, ["keys", "steerWitness"], undefined)).path).toBe("keys.steerDelayMs");
+    expect(parseProfile(change(change(noSteer, ["keys", "steerWitness"], undefined), ["keys", "steerDelayMs"], undefined)).keys.steer).toBeUndefined();
+  });
+
+  it("a single witness object reads as a list of one, and a steer delay of 0 and 3000 is taken", () => {
+    const one = change(raw("pi"), ["keys", "steerWitness"], { pattern: "^\\s*Steering: (?<text>\\S.*?)\\s*$", hint: "^\\s*↳ x$", hintGap: 1 });
+    expect(parseProfile(one).keys.steerWitness).toEqual([{ pattern: "^\\s*Steering: (?<text>\\S.*?)\\s*$", hint: "^\\s*↳ x$", hintGap: 1 }]);
+    expect(parseProfile(change(raw("codex"), ["keys", "steerDelayMs"], 0)).keys.steerDelayMs).toBe(0);
+    expect(parseProfile(change(raw("codex"), ["keys", "steerDelayMs"], 3000)).keys.steerDelayMs).toBe(3000);
   });
 });

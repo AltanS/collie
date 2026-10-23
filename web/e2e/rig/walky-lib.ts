@@ -216,7 +216,7 @@ export async function operatorMessage(browser: Browser, rig: Rig, pane: string, 
 }
 
 /** Whether the agent's turn runs now, by the Surface when the harness has one, else by Herdr's status. */
-async function turnRuns(rig: Rig, pane: string): Promise<boolean> {
+export async function turnRuns(rig: Rig, pane: string): Promise<boolean> {
   const found = await rig.pane(pane).catch(() => null);
   if (found === null) return false;
   return found.surface === null ? found.status === "working" : found.surface.turn === "running";
@@ -370,13 +370,35 @@ export interface CliSend {
  * proves the sender the way it proves an agent's: the markers name the pane.
  */
 export async function cliSend(senderPane: string, to: string, text: string, machine: Machine = "lead"): Promise<CliSend> {
+  const result = await runCli(senderPane, ["send", "--json", to, text], machine);
+  const doc = asJsonObject(parseJsonLine(result.out));
+  return { code: result.code, id: asJsonString(doc?.id) ?? null, receipts: jsonRows(doc?.receipts), out: result.out.trim() };
+}
+
+export interface CliCancel {
+  /** The exit code: 0 taken back (or already in the inbox), 3 nothing to take back, 4 not the sender. */
+  readonly code: number;
+  /** One result per target: `taken`, `repeat`, `already typed`, `not held` or `elsewhere`, with the receipt. */
+  readonly results: JsonObject[];
+  readonly out: string;
+}
+
+/** `collie walky cancel <id> --json` from a pane (M62 spec 03): the bridge checks that pane sent the message. */
+export async function cliCancel(senderPane: string, id: string, machine: Machine = "lead"): Promise<CliCancel> {
+  const result = await runCli(senderPane, ["cancel", id, "--json"], machine);
+  const doc = asJsonObject(parseJsonLine(result.out));
+  return { code: result.code, results: jsonRows(doc?.results), out: result.out.trim() };
+}
+
+/** One `collie walky` verb from a pane's own environment, as `cliSend` describes it. */
+async function runCli(senderPane: string, args: readonly string[], machine: Machine): Promise<{ code: number; out: string }> {
   const run = readRun();
   const socket = machine === "lead" ? run?.socket : run?.member?.socket;
   if (socket === undefined || socket === "") throw new Error(`the rig has no ${machine} socket`);
   const dirs = machineDirs(machine);
   const env = { PATH: process.env.PATH ?? "", HOME: dirs.bridgeHome, COLLIE_STATE_DIR: dirs.state, HERDR_PANE_ID: senderPane, HERDR_SOCKET_PATH: socket };
-  const result = await new Promise<{ code: number; out: string }>((done) => {
-    const child = spawn("bun", [join(WORKTREE, "cli", "main.ts"), "walky", "send", "--json", to, text], { env, timeout: 60_000, stdio: ["ignore", "pipe", "ignore"] });
+  return new Promise<{ code: number; out: string }>((done) => {
+    const child = spawn("bun", [join(WORKTREE, "cli", "main.ts"), "walky", ...args], { env, timeout: 60_000, stdio: ["ignore", "pipe", "ignore"] });
     let out = "";
     child.stdout.setEncoding("utf8");
     child.stdout.on("data", (chunk: string) => {
@@ -385,8 +407,6 @@ export async function cliSend(senderPane: string, to: string, text: string, mach
     child.on("error", () => done({ code: 1, out }));
     child.on("close", (code) => done({ code: code ?? 1, out }));
   });
-  const doc = asJsonObject(parseJsonLine(result.out));
-  return { code: result.code, id: asJsonString(doc?.id) ?? null, receipts: jsonRows(doc?.receipts), out: result.out.trim() };
 }
 
 /** The first line of a CLI's output that is a JSON object. */

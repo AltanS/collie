@@ -438,18 +438,33 @@ export function withoutCommandList(rows: readonly FrameRow[], list: CommandListR
 }
 
 /**
+ * The rows with the box's own prompt glyph read as blank ({@link Frame.ownPrompt}): the prompt row's
+ * text in front of the draft hole turns into spaces, so the columns hold. Every other row, and the
+ * rows of a frame whose layout names no own glyph, stay as they are.
+ */
+function withoutOwnPrompt(rows: readonly FrameRow[], frame: Frame): readonly FrameRow[] {
+  const mark = frame.ownPrompt;
+  if (mark === undefined) return rows;
+  return rows.map((row, i) => {
+    if (i !== mark.row) return row;
+    const text = rowText(row);
+    return { segments: [{ text: " ".repeat(Math.min(mark.end, text.length)) + text.slice(mark.end) }] };
+  });
+}
+
+/**
  * The notice the profile names over a found frame's top edge (`idle.notices`, {@link readAboveNotice}),
  * or null. Every cue read takes it ({@link readCues}) and leaves its rows out: the box keeps its keys.
  */
-export function noticeOver(texts: readonly string[], frame: Frame | null, idle: IdleProfile | null): AboveNotice | null {
-  if (frame === null || idle === null) return null;
-  return readAboveNotice(texts, frame.top, idle.notices ?? [], idle.noticeGaps ?? []);
-}
-
 /** The prompt glyph at the start of the frame's prompt row, when one is there. */
 const PROMPT_POINTER = new RegExp(`^(\\s*)[${POINTERS}]`, "u");
 
-/** The prompt row without its anchor glyph. The draft and dialog rows keep their text. */
+/**
+ * The prompt row without its anchor glyph. The draft and dialog rows keep their text. This is the
+ * fallback for a box the layout could not name every row of ({@link Frame.ownPrompt} unset, e.g. the
+ * top rule scrolled off a phone viewport): there the generic blank ({@link withoutOwnPrompt}) never
+ * fires, and the prompt glyph plus the draft's wrapped rows read as a pointed list.
+ */
 function stripPromptPointer(row: FrameRow): FrameRow {
   const text = rowText(row);
   const match = PROMPT_POINTER.exec(text);
@@ -459,11 +474,17 @@ function stripPromptPointer(row: FrameRow): FrameRow {
   return { segments: [{ text: `${head.join("")}${text.slice(match[0].length)}` }] };
 }
 
+export function noticeOver(texts: readonly string[], frame: Frame | null, idle: IdleProfile | null): AboveNotice | null {
+  if (frame === null || idle === null) return null;
+  return readAboveNotice(texts, frame.top, idle.notices ?? [], idle.noticeGaps ?? []);
+}
+
 /**
  * The cues of a screen read under a profile: the frame's own cues, or, when the profile draws its
  * dialogs where the box stands (`idle.dialogsInBox`), the cues of the rows from the box's top edge down,
  * the box rows included. The typed command's own list on either side of the box ({@link ownCommandList})
- * and a notice over the box ({@link noticeOver}) are left out of both.
+ * and a notice over the box ({@link noticeOver}) are left out of both, and the box's own prompt glyph
+ * ({@link withoutOwnPrompt}) out of the second.
  */
 export function readCuesFor(allRows: readonly FrameRow[], frame: Frame | null, idle: IdleProfile | null): CueRead {
   const texts = allRows.map(rowText);
@@ -471,12 +492,15 @@ export function readCuesFor(allRows: readonly FrameRow[], frame: Frame | null, i
   const plain = readCues(rows, frame, noticeOver(texts, frame, idle));
   if (idle?.dialogsInBox !== true || frame === null) return plain;
   // From the top edge down: a dialog in the box's place lies there, and the transcript above is no part of it.
-  // The prompt glyph anchors the found box; it is never the pointer of a dialog list drawn under the draft.
-  // Removing only that glyph leaves a slash query or a dialog's own option rows readable, while a multiline
-  // draft's wrapped rows no longer read as the list under its pointer.
-  const withoutPromptPointer = rows.map((row, i) => (i === frame.interior.prompt ? stripPromptPointer(row) : row));
+  // The box's own prompt glyph, where the layout names one (`frame.ownPrompt`), is no pointer there.
+  // Where the layout names no own glyph (a partial frame), only the prompt row's anchor glyph goes:
+  // a full frame keeps the generic blank, so a real moved palette keeps its pointer.
   const at = frame.top;
-  const down = readCues(withoutPromptPointer.slice(at), null, null);
+  const downRows =
+    frame.ownPrompt !== undefined
+      ? withoutOwnPrompt(rows, frame).slice(at)
+      : rows.map((row, i) => (i === frame.interior.prompt ? stripPromptPointer(row) : row)).slice(at);
+  const down = readCues(downRows, null, null);
   // A weak shape inside the box is the box's own hint row (OMP draws "to change thinking effort" there).
   if (down.strength !== "strong" || plain.strength === "strong") return plain;
   return { ...down, cluster: down.cluster.map((i) => i + at), cues: down.cues.map((cue) => ({ kind: cue.kind, row: cue.row + at })) };

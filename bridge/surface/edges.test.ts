@@ -23,6 +23,8 @@ const screen = (name: string): string => readFileSync(join(PANES, name), "utf8")
 const IDLE = "claude-lab--idle-after-turn--w82.txt";
 const RUNNING = "claude--working-esc-to-interrupt.txt";
 const PERMISSION = "claude-lab--permission-bash--w82.txt";
+/** Claude Code 2.1.309 after Escape before the first token: the prompt back in the box, no Interrupted row. */
+const RESTORED = "claude--v2-1-309-stopped-prompt-restored--w120.txt";
 /** The harness the fixtures were captured under. Test files may name it. */
 const HARNESS = "claude";
 
@@ -292,6 +294,37 @@ describe("edges in the shadow", () => {
     await s.shadow.observe([agent("w1:p1")]);
     expect(isFree(s.shadow.surfaceOf("w1:p1")!)).toBe(true);
     expect(s.counted).toEqual(["prompt", "stop"]);
+  });
+
+  // Second live pass: Escape before the first token puts the prompt back into Claude Code's box, and no
+  // Stop hook fires. Collie's own `stopped` receipt is the stop the hook did not send.
+  test("a Stop receipt ends the prompt edge's block on a restored prompt; counted apart from the hooks' stop", async () => {
+    const s = shadowRig("2.1.309");
+    s.mux.set("w1:p1", RESTORED, 1);
+    await s.shadow.observe([agent("w1:p1")]);
+    s.shadow.edge("w1:p1", "prompt", s.advance(10));
+    await s.reread();
+    for (let i = 0; i < 6; i++) {
+      s.advance(3000);
+      await s.shadow.observe([agent("w1:p1")]);
+    }
+    expect(s.shadow.surfaceOf("w1:p1")).toMatchObject({ turn: "running", composer: "draft" });
+    expect(s.shadow.stopSeen("w1:p1")).toBe(true);
+    expect(s.shadow.surfaceOf("w1:p1")).toEqual({ revision: 1, turn: "idle", modal: "none", composer: "draft" });
+    expect(s.pending).toHaveLength(0);
+    expect(s.counted).toEqual(["prompt", "stop-receipt"]);
+    expect(s.shadow.stopSeen("w1:p9")).toBe(false);
+  });
+
+  test("a Stop receipt never frees a screen that still reads running", async () => {
+    const s = shadowRig();
+    s.mux.set("w1:p1", RUNNING, 1);
+    await s.shadow.observe([agent("w1:p1")]);
+    s.shadow.edge("w1:p1", "prompt", s.advance(10));
+    await s.reread();
+    s.shadow.stopSeen("w1:p1");
+    expect(s.shadow.surfaceOf("w1:p1")?.turn).toBe("running");
+    expect(isFree(s.shadow.surfaceOf("w1:p1")!)).toBe(false);
   });
 
   test("never free: no edge kind frees a dialog on screen, and each edge asks for one fresh read", async () => {

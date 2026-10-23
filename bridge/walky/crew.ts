@@ -315,8 +315,8 @@ export class WalkyCrew {
 /**
  * The member's half of the outcomes push: write each receipt its lead sent for a message THIS member
  * sent to another machine. A receipt is written only when this member's log holds a record for that
- * id and target whose message names this member as its sender, and only when it is newer or another
- * state (the `mergeReport` rule, so a resent receipt is skipped). A receipt for a pane on this
+ * id and target whose message names this member as its sender, and only when it moves forward
+ * (`movesForward`, the `mergeReport` rule, so a resent receipt is skipped). A receipt for a pane on this
  * machine is never taken: this member's own outcome is its own word. Answers how many were written.
  */
 export function writeOutcomes(log: WalkyLog, self: string, receipts: readonly WalkyReceipt[]): number {
@@ -603,6 +603,15 @@ export function mintEpoch(): string {
   return randomBytes(4).toString("hex");
 }
 
+/**
+ * Whether a receipt goes on the wire in a report or a push (§21): past `accepted`, or `accepted` with a
+ * reason, a held send (M62 spec 02, added 2026-10-21). It still ranks as `accepted` (`stateRank`), so it
+ * never goes over `unknown` or a finished state, and an older peer reads it as `accepted`.
+ */
+export function reportable(receipt: WalkyReceipt): boolean {
+  return receipt.state !== "accepted" || receipt.reason !== undefined;
+}
+
 interface HeldReceipt {
   readonly receipt: WalkyReceipt;
   readonly seq: number;
@@ -620,7 +629,7 @@ export interface WalkyReportOptions {
 
 /**
  * A member's report to its lead: the receipts it wrote, for its own panes, for messages that came
- * from another machine, past `accepted`. Filled as the log writes them. Each held receipt gets a
+ * from another machine, past `accepted` or held ({@link reportable}). Filled as the log writes them. Each held receipt gets a
  * sequence number, and the report rides every `/crew/v1/snapshot` answer with the cursor of its
  * newest receipt (`<epoch>.<seq>`) until the lead acks that cursor on a later sweep (§21, added
  * 2026-10-18). In memory only: at most {@link WALKY_REPORT_MAX}, oldest dropped, and a receipt goes
@@ -644,7 +653,10 @@ export class WalkyReport {
     this.now = options.now ?? Date.now;
   }
 
-  /** Listen on a log: every receipt for a message from elsewhere, placed on a pane here, past `accepted`. */
+  /**
+   * Listen on a log: every receipt for a message from elsewhere, placed on a pane here, past `accepted`,
+   * and a held one (`accepted` with the reason that holds it, M62 spec 02).
+   */
   listen(log: WalkyLog): void {
     log.onReceipt((record) => this.note(record));
   }
@@ -652,7 +664,7 @@ export class WalkyReport {
   /** Hold one record's newest receipt when it belongs in the report. A newer state replaces the older. */
   note(record: LogRecord): void {
     if (record.session === null || record.message.from.memberId === this.self) return;
-    if (record.receipt.state === "accepted") return;
+    if (!reportable(record.receipt)) return;
     this.held = this.held.filter((held) => !(held.receipt.id === record.receipt.id && held.receipt.target === record.receipt.target));
     this.seq += 1;
     this.held.push({ receipt: record.receipt, seq: this.seq, heldAt: this.now() });
@@ -741,7 +753,7 @@ function outboxKey(receipt: Pick<WalkyReceipt, "id" | "target">): string {
  *   dial of that member's snapshot as `X-Crew-Walky-Ack`. A lead restart starts with none, and the
  *   member's resend is harmless.
  *
- *   The outbox. Every receipt this lead's log writes, past `accepted`, for a message a member sent
+ *   The outbox. Every receipt this lead's log writes, past `accepted` or held, for a message a member sent
  *   to another machine (this lead's own deliveries, and the lines `mergeReport` writes), held for that
  *   member: at most {@link WALKY_OUTBOX_MAX}, and {@link STALE_MS} each. It is pushed with
  *   `POST /crew/v1/walky/outcomes` at once, and again on each sweep while it is not empty. A 200
@@ -797,7 +809,7 @@ export class WalkyLeadSide {
   /** Hold a record's newest receipt for its sender's machine, when it belongs there, and push at once. */
   note(record: LogRecord): void {
     const memberId = record.message.from.memberId;
-    if (memberId === null || memberId === this.deps.self || record.receipt.state === "accepted") return;
+    if (memberId === null || memberId === this.deps.self || !reportable(record.receipt)) return;
     const address = parseAddress(record.target);
     // Only for a target on another machine: the sender's own panes are the sender's word.
     if (address === null || (address.kind !== "all" && address.memberId === memberId)) return;

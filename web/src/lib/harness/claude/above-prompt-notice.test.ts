@@ -248,6 +248,26 @@ describe("the rating survey above the box", () => {
   });
 });
 
+// Claude Code 2.1.306's second survey question, keys `y`, `n`, `d`, under a head claude.json marks
+// `letters` (captured 2026-10-21, 153 columns).
+describe("the survey's transcript question above the box", () => {
+  const FIXTURE = "claude--v2306-transcript-survey--w153.txt";
+
+  it("lifts a card with Yes, No and Don't ask again, each its printed letter, and leaves the box live", () => {
+    const blocks = claudeBuildBlocks(lines(FIXTURE));
+    const card = blocks.find((b) => b.kind === "menu");
+    if (card?.kind !== "menu") throw new Error("no menu");
+    expect(card.menu.actions).toEqual([
+      { label: "Yes", keys: ["y"] },
+      { label: "No", keys: ["n"] },
+      { label: "Don't ask again", keys: ["d"] },
+    ]);
+    expect(card.menu.liveBox).toEqual({ draft: false });
+    expect(claudeAdapter.composerReady?.(lines(FIXTURE))).toBe(true);
+    expect(blocks.some(blockOwnsKeyboard)).toBe(false);
+  });
+});
+
 // Claude Code 2.1.304's follow-ups after a key on the Heads up notice: the Dismissed row, its keys on
 // the head row and wrapped under it, and the explanation after Learn more, with its own key row.
 describe("the Heads up follow-ups above the box", () => {

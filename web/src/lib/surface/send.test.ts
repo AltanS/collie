@@ -29,6 +29,11 @@ describe("offersFor", () => {
     expect(offersFor("refused", "draft_present", false)).toEqual(["keys"]);
   });
 
+  it("offers a command onto a framed draft Replace and Cancel only, and the key pad without a frame", () => {
+    expect(offersFor("refused", "draft_present", true, true)).toEqual(["replace", "cancel"]);
+    expect(offersFor("refused", "draft_present", false, true)).toEqual(["keys"]);
+  });
+
   it("offers submit and discard on every typed_not_submitted, with a frame or without", () => {
     expect(offersFor("typed_not_submitted", "changed", true)).toEqual(["submit", "discard", "keys"]);
     expect(offersFor("typed_not_submitted", "changed", false)).toEqual(["submit", "discard", "keys"]);

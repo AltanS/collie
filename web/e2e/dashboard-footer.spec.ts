@@ -112,7 +112,7 @@ test("the Crew tab starts with the machine cards, and Dashboard and Changes keep
   await page.getByRole("main").getByRole("button", { name: /^codex logo codex/u }).first().click({ button: "right" });
   await page.getByRole("dialog").getByRole("button", { name: en["paneActions.pin.label"] }).click();
   const pinned = page.getByRole("region", { name: en["home.pinned.title"] });
-  const workspaceSelect = page.getByRole("combobox", { name: en["home.workspaceFilter.aria"] });
+  const workspaceSelect = page.getByRole("button", { name: new RegExp(`^${en["home.workspaceFilter.aria"]} `, "u") });
   await expect(pinned).toBeVisible();
   await expect(workspaceSelect).toBeVisible();
 
@@ -149,8 +149,12 @@ test("the needs-you switch shows only the panes that need you, and survives a re
   await needsYou(page).click();
   await expect(page.getByRole("heading", { name: "webapp" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "collie" })).toHaveCount(0);
-  // The select still offers every workspace: a filter removes rows, it never places.
-  await expect(page.getByRole("combobox", { name: en["home.workspaceFilter.aria"] }).getByRole("option", { name: /^collie/u })).toBeAttached();
+  // The filter still offers every workspace: the switch removes rows, it never places.
+  await page.getByRole("button", { name: new RegExp(`^${en["home.workspaceFilter.aria"]} `, "u") }).click();
+  const sheet = page.getByRole("dialog", { name: en["home.workspaceFilter.title"] });
+  await expect(sheet.getByRole("checkbox", { name: /^collie/u })).toBeAttached();
+  await page.keyboard.press("Escape");
+  await expect(sheet).toHaveCount(0);
   // The mark stays on the Dashboard tab with the switch on.
   await expect(tab(page, DASHBOARD)).toContainText("1");
 

@@ -1,0 +1,40 @@
+
+ [38;2;205;154;34mWarning: tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys on` to ~/.tmux.conf
+[39m [38;2;205;154;34mand restart tmux.[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ [38;2;215;135;175m Anthropic: Claude Haiku 4.5[39m [38;5;244m[39m [38;2;108;118;123mthink:off[39m [38;5;244m[39m [38;2;0;175;175m project[39m [38;5;244m[39m  [38;2;126;136;142m0/200k (0.0%) 󰁨[39m
+ [38;2;108;118;123m──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[39m
+ [38;2;200;200;200m>[39m Use the question tool exactly once: ask "Which fruit do you like?" with the options Apple, Banana, Cherry. Do
+   nothing else.[7m [0m
+ [38;2;108;118;123m──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[39m

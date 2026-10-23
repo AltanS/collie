@@ -15,6 +15,7 @@ import { realFiles } from "./sys.ts";
 import {
   askSocket,
   cmdWalky,
+  cmdWalkyCancel,
   cmdWalkyInbox,
   cmdWalkyReply,
   cmdWalkySend,
@@ -168,6 +169,84 @@ describe("send", () => {
     ]);
   });
 
+  socketTest("a held send (M62 spec 02) prints `held: <reason>` and when it will be typed, in `send` and in `status`", async () => {
+    // The bridge's watch of the hold never wakes here: the receipt stays where the hold put it.
+    const b = await bridge({ sleep: () => new Promise<void>(() => undefined) });
+    b.answer = { outcome: "held", reason: "draft_present" };
+    let at = 0;
+    const d = deps(b, inPane("%1"), {
+      now: () => at,
+      sleep: async (ms: number) => {
+        at += ms;
+      },
+    });
+    expect(await cmdWalkySend(d, ["local/%2", "hi"])).toBe(EXIT.OK);
+    expect(d.io.stdout).toEqual([
+      "wt_aaaaaaaaaaa1",
+      "to local/%2#bbbb, agent-y, repo#two",
+      "held: draft present",
+      "typed when the box clears or the turn ends, up to 60 minutes. Do not send it again.",
+      "check later: collie walky status wt_aaaaaaaaaaa1",
+    ]);
+    const status = deps(b);
+    expect(await cmdWalkyStatus(status, ["wt_aaaaaaaaaaa1"])).toBe(EXIT.OK);
+    expect(status.io.stdout).toEqual(["wt_aaaaaaaaaaa1", "local/%2: held: draft present (this machine)", "typed when the box clears or the turn ends, up to 60 minutes. Do not send it again."]);
+  });
+
+  socketTest("cancel (M62 spec 03): the sender takes a held message back; another pane is refused; a typed one is left alone", async () => {
+    const states = new Map<string, SendResult>();
+    const heldHost: WalkyHost = {
+      panes: () => [
+        { session: "main", paneId: "%1", agent: true, harness: "agent-x", label: "repo#one", state: "idle", instance: "aaaa", terminal: true },
+        { session: "main", paneId: "%2", agent: true, harness: "agent-y", label: "repo#two", state: "working", instance: "bbbb", terminal: true },
+      ],
+      send: async (_pane, sendId): Promise<SendResult> => {
+        states.set(sendId, { outcome: "held", reason: "draft_present" });
+        return { outcome: "held", reason: "draft_present" };
+      },
+      sendState: (sendId) => states.get(sendId) ?? null,
+      cancelHeld: (_session, _paneId, sendId) => states.set(sendId, { outcome: "cancelled" }),
+    };
+    const b = await bridge({ host: heldHost, sleep: () => new Promise<void>(() => undefined) });
+    let at = 0;
+    const sender = deps(b, inPane("%1"), { now: () => at, sleep: async (ms: number) => { at += ms; } });
+    expect(await cmdWalkySend(sender, ["local/%2", "hi"])).toBe(EXIT.OK);
+    const other = deps(b, inPane("%2"));
+    expect(await cmdWalkyCancel(other, ["wt_aaaaaaaaaaa1"])).toBe(EXIT.REFUSED);
+    expect(other.io.stderr).toEqual(["walky talky: only the sender can cancel it"]);
+    const desk = deps(b);
+    expect(await cmdWalkyCancel(desk, ["wt_aaaaaaaaaaa1"])).toBe(EXIT.STATE);
+    expect(desk.io.stderr).toEqual(["walky talky: run this inside the pane that sent it, or cancel from the phone"]);
+    const mine = deps(b, inPane("%1"));
+    expect(await cmdWalkyCancel(mine, ["wt_aaaaaaaaaaa1"])).toBe(EXIT.OK);
+    expect(mine.io.stdout).toEqual(["wt_aaaaaaaaaaa1", "waiting in the inbox, not typed: cancelled by sender"]);
+    expect(b.sent).toEqual([]);
+    const again = deps(b, inPane("%1"));
+    expect(await cmdWalkyCancel(again, ["wt_aaaaaaaaaaa1"])).toBe(EXIT.OK);
+    expect(again.io.stdout).toEqual(["wt_aaaaaaaaaaa1", "waiting in the inbox, not typed: cancelled by sender"]);
+    const unknown = deps(b, inPane("%1"));
+    expect(await cmdWalkyCancel(unknown, ["wt_zzzzzzzzzzzz"])).toBe(EXIT.STATE);
+    expect(unknown.io.stderr).toEqual(["walky talky: no message wt_zzzzzzzzzzzz on this machine"]);
+    expect(await cmdWalkyCancel(deps(b), ["nope"])).toBe(EXIT.USAGE);
+    // A message that typed: nothing to take back, and the receipt stands.
+    const typedBridge = await bridge();
+    await cmdWalkySend(deps(typedBridge, inPane("%1")), ["local/%2", "hi"]);
+    const typed = deps(typedBridge, inPane("%1"));
+    expect(await cmdWalkyCancel(typed, ["wt_aaaaaaaaaaa1"])).toBe(EXIT.STATE);
+    expect(typed.io.stdout).toEqual(["wt_aaaaaaaaaaa1", "already typed, nothing to take back (typed into the pane)"]);
+    const json = deps(typedBridge, inPane("%1"));
+    await cmdWalkyCancel(json, ["wt_aaaaaaaaaaa1", "--json"]);
+    expect(JSON.parse(json.io.stdout[0]!)).toMatchObject({ id: "wt_aaaaaaaaaaa1", results: [{ result: "already typed", receipt: { state: "delivered" } }] });
+  });
+
+  test("a receipt line: `accepted` with no reason is queued, with one it is held", () => {
+    const receipt = { id: "wt_aaaaaaaaaaa1", target: "local/%2", state: "accepted" as const, verified: "local" as const, at: 1, by: "solo" };
+    expect(receiptLine(receipt, false)).toBe("queued");
+    expect(receiptLine({ ...receipt, reason: "turn running" }, false)).toBe("held: turn running");
+    // A held receipt the lead pushed back says why, not only where the outcome is known.
+    expect(receiptLine({ ...receipt, reason: "draft present" }, true, new Set(["local/%2"]))).toBe("local/%2: held: draft present");
+  });
+
   socketTest("an agent's `all` is refused: only the operator may broadcast", async () => {
     const b = await bridge();
     const d = deps(b, inPane("%1"));
@@ -300,7 +379,7 @@ describe("reply, inbox, status, who", () => {
   test("a bare `walky` prints the sub-verbs and exits USAGE", () => {
     const io = capture();
     expect(cmdWalky({ io }, [])).toBe(EXIT.USAGE);
-    expect(io.stderr[0]).toBe("usage: collie walky {who|send|reply|inbox|status}");
+    expect(io.stderr[0]).toBe("usage: collie walky {who|send|reply|inbox|status|cancel}");
   });
 });
 

@@ -15,8 +15,9 @@
 // claude--*preview*.txt), and never touches a pane or the network.
 
 import type { StyledLine } from "../../blocks";
+import { displayWidth, widePieces } from "../../text-width";
 import { classifyFooter, hasQuestionMark, isBlank, isRuleRow, lineText, questionRowText } from "./markers";
-import { parseOptionRow } from "./prompt-select";
+import { parseOptionRow, SINGLE_SELECT_CHIP } from "./prompt-select";
 import { parseStepperLine } from "./wizard";
 import type { PreviewNote, PreviewOption, PreviewSelectModel } from "../preview-model";
 import type { WizardStepChip } from "../wizard-model";
@@ -58,6 +59,52 @@ const OPTION_LABEL_START = /^\s*(?:❯\s*)?\d+\.\s+/;
 /** Leading-space count — how far into the gutter a row's text starts. */
 function indentOf(text: string): number {
   return text.length - text.trimStart().length;
+}
+
+/**
+ * Split `text` at terminal display column `col` (`left` occupies up to `col` display columns, `right`
+ * holds the remainder). Claude Code aligns the preview box at a fixed display column (`noteCol`);
+ * slicing by UTF-16 code units (`text.slice(0, noteCol)`) misaligns the split whenever the left option
+ * label contains double-width CJK characters (cutting right into the preview box) or zero-width
+ * combining marks (cutting left and leaving leading spaces on `right`).
+ */
+function splitAtDisplayColumn(text: string, col: number) {
+  let left = "";
+  let right = "";
+  let width = 0;
+  for (const piece of widePieces(text)) {
+    if (width >= col) {
+      right += piece.text;
+      continue;
+    }
+    if (!piece.wide) {
+      const take = col - width;
+      const pw = displayWidth(piece.text);
+      if (pw <= take) {
+        left += piece.text;
+        width += pw;
+      } else {
+        let cut = 0;
+        for (const ch of piece.text) {
+          const next = cut + ch.length;
+          if (displayWidth(piece.text.slice(0, next)) > take) break;
+          cut = next;
+        }
+        left += piece.text.slice(0, cut);
+        right += piece.text.slice(cut);
+        width = col;
+      }
+      continue;
+    }
+    if (width + 2 <= col) {
+      left += piece.text;
+      width += 2;
+    } else {
+      right += piece.text;
+      width = col;
+    }
+  }
+  return { left, right };
 }
 
 // Bounded windows, same philosophy as the sibling grammars: the Notes line sits within a few lines
@@ -105,10 +152,11 @@ export function detectPreviewSelectRegion(lines: StyledLine[]): PreviewSelectReg
   }
   if (notesIdx < 0) return null;
 
-  // The Notes label's column anchors the preview pane: everything left of it on the rows above is
-  // option-list territory, everything from it rightward is preview content.
-  const noteCol = texts[notesIdx]!.indexOf("Notes:");
-  const note = parseNote(texts[notesIdx]!.slice(noteCol + "Notes:".length), editing);
+  // The Notes label's display column anchors the preview pane: everything left of it on the rows
+  // above is option-list territory, everything from it rightward is preview content.
+  const noteIdx = texts[notesIdx]!.indexOf("Notes:");
+  const noteCol = displayWidth(texts[notesIdx]!.slice(0, noteIdx));
+  const note = parseNote(texts[notesIdx]!.slice(noteIdx + "Notes:".length), editing);
 
   // 3. Option rows: numbered rows 1..k, matched on the text LEFT of the preview column. Unlike the
   //    full-width grammars, this variant's left column is only ~30 wide, so a longer label WRAPS
@@ -128,7 +176,7 @@ export function detectPreviewSelectRegion(lines: StyledLine[]): PreviewSelectReg
   //     sit in the left slice and get folded into the last option's label as box-drawing garbage.
   let labelCol = -1;
   for (let i = from; i < notesIdx; i++) {
-    const left = texts[i]!.slice(0, noteCol);
+    const { left } = splitAtDisplayColumn(texts[i]!, noteCol);
     const m = OPTION_LABEL_START.exec(left);
     // Must be a REAL option row, not merely something shaped like a number and a dot: a bare "12."
     // with no label matches the prefix but carries no option, and would shift the very column that
@@ -142,7 +190,7 @@ export function detectPreviewSelectRegion(lines: StyledLine[]): PreviewSelectReg
 
   const rows: { index: number; n: number; label: string; pointed: boolean }[] = [];
   for (let i = from; i < notesIdx; i++) {
-    const left = texts[i]!.slice(0, noteCol);
+    const { left } = splitAtDisplayColumn(texts[i]!, noteCol);
     if (indentOf(left) >= labelCol) continue; // a number inside a wrapped label, not an option
     const parsed = parseOptionRow(left);
     if (parsed) rows.push({ index: i, pointed: /^\s*❯/.test(left), ...parsed });
@@ -167,7 +215,7 @@ export function detectPreviewSelectRegion(lines: StyledLine[]): PreviewSelectReg
   let lastOpt = firstOpt;
   let scan = firstOpt;
   for (; scan < notesIdx; scan++) {
-    const left = texts[scan]!.slice(0, noteCol);
+    const { left } = splitAtDisplayColumn(texts[scan]!, noteCol);
     if (isBlank(left)) break;
     if (cursor + 1 < rows.length && rows[cursor + 1]!.index === scan) {
       cursor++;
@@ -188,36 +236,37 @@ export function detectPreviewSelectRegion(lines: StyledLine[]): PreviewSelectReg
   // Below the list and above the Notes line only preview continuation (blank left column) may
   // appear — a non-blank left cell there is a layout we don't know.
   for (; scan < notesIdx; scan++) {
-    if (!isBlank(texts[scan]!.slice(0, noteCol))) return null;
+    if (!isBlank(splitAtDisplayColumn(texts[scan]!, noteCol).left)) return null;
   }
 
   // 4. The preview pane: the right column of the region's lines, verbatim (borders included).
   const preview: string[] = [];
-  for (let i = firstOpt; i < notesIdx; i++) preview.push(texts[i]!.slice(noteCol).trimEnd());
+  for (let i = firstOpt; i < notesIdx; i++) preview.push(splitAtDisplayColumn(texts[i]!, noteCol).right.trimEnd());
   while (preview.length > 0 && preview[0]!.length === 0) preview.shift();
   while (preview.length > 0 && preview[preview.length - 1]!.length === 0) preview.pop();
 
-  // 5. The question above the options (every dialog's prompt carries a "?"), bounded, stopping at
-  //    a rule so the search can't cross out of the dialog.
-  let questionIdx = -1;
-  for (let i = firstOpt - 1, seen = 0; i >= 0 && seen < DIALOG_SCAN_LIMIT; i--, seen++) {
-    const t = texts[i]!;
-    if (isRuleRow(texts, i)) break;
-    if (hasQuestionMark(t)) {
-      questionIdx = i;
-      break;
+  // 5. The question head above the options: when the dialog's top rule is within reach and its first
+  //    non-blank row is a wizard stepper or a single-question `☐` chip, that header tops the question
+  //    directly (with or without a "?" in the prompt, and without reading a "?"-ending chip into the
+  //    question). Otherwise fall back to the two-stage `questionIdx` + `readQuestionHead` scan.
+  let head = readRuleAnchoredPreviewHead(lines, texts, firstOpt);
+  if (!head) {
+    let questionIdx = -1;
+    for (let i = firstOpt - 1, seen = 0; i >= 0 && seen < DIALOG_SCAN_LIMIT; i--, seen++) {
+      const t = texts[i]!;
+      if (isRuleRow(texts, i)) break;
+      if (hasQuestionMark(t)) {
+        questionIdx = i;
+        break;
+      }
     }
+    if (questionIdx < 0) return null;
+    head = readQuestionHead(lines, texts, questionIdx);
   }
-  if (questionIdx < 0) return null;
-
-  // 6. The question paragraph, and a wizard stepper above it, which makes this a wizard step
-  //    (Left/Right navigation applies and the question joins the block region, as in the standard
-  //    wizard grammar). A lone chip line (" ☐ Design") never parses as a stepper, so single-question
-  //    dialogs get steps: null.
-  const head = readQuestionHead(lines, texts, questionIdx);
   const { steps } = head;
   const startLine = head.stepperIdx >= 0 ? head.stepperIdx : firstOpt;
   const question = joinQuestionRows(texts, head.top + 1, firstOpt);
+  if (question.length === 0) return null;
 
   const options: PreviewOption[] = rows.map((r, k) => ({
     label: labels[k]!.trim(),
@@ -270,12 +319,43 @@ function readQuestionHead(lines: StyledLine[], texts: string[], questionIdx: num
   return { top: questionIdx - 1, stepperIdx: -1, steps: null };
 }
 
+/**
+ * When the dialog's top rule is within `DIALOG_SCAN_LIMIT` and its first non-blank row is a wizard
+ * stepper or a single-question `☐ <label>` chip, return that header as `QuestionHead` so the question
+ * is read by position (matching `questionUnderChip` in `prompt-select.ts`).
+ */
+function readRuleAnchoredPreviewHead(
+  lines: StyledLine[],
+  texts: string[],
+  firstOpt: number,
+): QuestionHead | null {
+  let ruleAt = -1;
+  for (let i = firstOpt - 1, seen = 0; i >= 0 && seen < DIALOG_SCAN_LIMIT; i--, seen++) {
+    if (isRuleRow(texts, i)) {
+      ruleAt = i;
+      break;
+    }
+  }
+  if (ruleAt < 0) return null;
+  for (let i = ruleAt + 1; i < firstOpt; i++) {
+    const t = texts[i]!;
+    if (isBlank(t) || isRuleRow(texts, i)) continue;
+    const stepper = parseStepperLine(lines[i]!);
+    if (stepper) return { top: i, stepperIdx: i, steps: stepper.chips };
+    if (SINGLE_SELECT_CHIP.test(t)) return { top: i, stepperIdx: -1, steps: null };
+    return null;
+  }
+  return null;
+}
+
 /** Every non-blank row in [`from` … `to`), without the `│` gutter Claude paints down a question of
  *  more than one row, joined with one space: a long question wraps (mirrors wizard.ts). */
 function joinQuestionRows(texts: string[], from: number, to: number): string {
   const parts: string[] = [];
   for (let i = from; i < to; i++) {
-    if (!isBlank(texts[i]!)) parts.push(questionRowText(texts[i]!));
+    if (isBlank(texts[i]!)) continue;
+    const text = questionRowText(texts[i]!);
+    if (text !== "") parts.push(text);
   }
   return parts.join(" ");
 }
@@ -283,9 +363,10 @@ function joinQuestionRows(texts: string[], from: number, to: number): string {
 /**
  * The dialog's pointer/note-independent CORE SIGNATURE (see `PreviewSelectModel.coreSignature`): the
  * head lines [firstOpt − LOOKBACK … firstOpt) — the stepper/chip header, the question, and any
- * subject/preamble above the options — joined with each option row's LEFT column (`slice(0, noteCol)`,
- * `❯` normalised to a space so our own pointer move doesn't perturb it). Pure of the buffer's absolute
- * offset, so the frozen model and a fresh re-derivation of the SAME dialog produce byte-equal strings.
+ * subject/preamble above the options — joined with each option row's LEFT display column
+ * (`splitAtDisplayColumn(row, noteCol).left`, `❯` normalised to a space so our own pointer move
+ * doesn't perturb it). Pure of the buffer's absolute offset, so the frozen model and a fresh
+ * re-derivation of the SAME dialog produce byte-equal strings.
  */
 function computeCoreSignature(
   texts: string[],
@@ -296,7 +377,7 @@ function computeCoreSignature(
   const head = texts.slice(Math.max(0, firstOpt - SIGNATURE_LOOKBACK), firstOpt);
   const left: string[] = [];
   for (let i = firstOpt; i <= lastOpt; i++) {
-    left.push(texts[i]!.slice(0, noteCol).replace(/❯/g, " "));
+    left.push(splitAtDisplayColumn(texts[i]!, noteCol).left.replace(/❯/g, " "));
   }
   return [...head, ...left].join("\n");
 }

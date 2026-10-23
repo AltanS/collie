@@ -154,6 +154,9 @@ export function UpdateCard() {
   // THE URGENT MARKER (ADR 0046), or null. Read exactly as every other field on this card is read:
   // off the snapshot first, off the card's own check second, and never re-derived here.
   const urgent = snapshot?.urgent ?? check?.urgent ?? null;
+  // On Edge there is no digest to wait for: the push skips the daily and weekly windows and waits only
+  // for a newer build. The snooze is the same call, so the button and its receipt name the build.
+  const onEdge = (snapshot?.line ?? check?.line) === "edge";
   // WHAT THE RELEASES CHANGED (1.21.1). Off the card's own check only: the snapshot never carries
   // notes. The offer's notes while one is waiting, the running version's otherwise.
   const notes = notesView(check?.releaseNotes, releaseAvailable);
@@ -462,7 +465,7 @@ export function UpdateCard() {
                   a retry-only state grows no ghost row. */}
               {!dismissed && updateAvailable && (
                 <Button variant="ghost" size="sm" disabled={moving} onClick={() => void dismiss()}>
-                  {t("settings.updateCard.dismiss")}
+                  {t(onEdge ? "settings.updateCard.dismissEdge" : "settings.updateCard.dismiss")}
                 </Button>
               )}
               {/* The deciding fact, in the row that carries the tap. `ml-auto` so it settles to the
@@ -495,7 +498,7 @@ export function UpdateCard() {
             {blocked && !moving && !unreachable && (
               <p className="text-xs text-status-blocked">{blockedReason}</p>
             )}
-            {dismissed && <p className="text-xs text-muted-foreground">{t("settings.updateCard.dismissed")}</p>}
+            {dismissed && <p className="text-xs text-muted-foreground">{t(onEdge ? "settings.updateCard.dismissedEdge" : "settings.updateCard.dismissed")}</p>}
             {majorAvailable !== null && (
               <p className="text-xs text-muted-foreground">
                 {t("settings.updateCard.majorNote", { version: majorAvailable })}

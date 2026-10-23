@@ -19,7 +19,7 @@ import { t } from "./i18n";
 import { isLive } from "./liveness";
 import type { Scope } from "./scope";
 import { isCommand, readSend, type SendReading, type SendReply } from "./send-protocol";
-import type { SendMode, SendRequestBody } from "./surface/send";
+import type { SendMode, SendRequestBody, SendWhen } from "./surface/send";
 import { mintRequestId } from "./worktree-name";
 
 export interface ReplyArgs {
@@ -35,6 +35,8 @@ export interface ReplyArgs {
   readonly capAck?: boolean;
   /** A resend of an ended held row (M56 spec 15): the old request id. The text goes empty; the bridge takes the row's own. */
   readonly resendOf?: string | undefined;
+  /** M69: `steer` takes the text into the running turn. Absent is today's send, queued during a turn. */
+  readonly when?: SendWhen | undefined;
   /** The intent the last tap left without an answer: the same intent keeps its request id. */
   readonly held: IntentId | null;
   /** Test seam for the request id. */
@@ -74,10 +76,10 @@ export async function sendText(args: ReplyArgs): Promise<ReplyOutcome> {
   const capAck = args.capAck === true;
   // The extra confirm is its own intent: it must not replay the commit the cap refused.
   const resendOf = args.resendOf;
-  const intent = requestIdFor(args.held, `${mode}\u0000${rowsHash ?? ""}\u0000${capAck ? "cap" : ""}\u0000${resendOf ?? ""}\u0000${args.text}`, args.mint ?? mintRequestId);
+  const intent = requestIdFor(args.held, `${mode}\u0000${rowsHash ?? ""}\u0000${capAck ? "cap" : ""}\u0000${resendOf ?? ""}\u0000${args.when ?? ""}\u0000${args.text}`, args.mint ?? mintRequestId);
   const body: SendRequestBody = { id: intent.requestId, pane: args.paneId, text: args.text, mode };
   try {
-    const reply = await postSend({ ...body, rowsHash: rowsHash ?? undefined, capAck: capAck ? true : undefined, resendOf }, args.scope);
+    const reply = await postSend({ ...body, rowsHash: rowsHash ?? undefined, capAck: capAck ? true : undefined, resendOf, when: args.when }, args.scope);
     return { status: "answered", reply, reading: readSend(reply) };
   } catch (e) {
     return { status: "noAnswer", error: describeThrownError(e), intent };

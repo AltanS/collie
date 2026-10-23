@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import type { JsonValue } from "../json.ts";
-import { readCrewDelivery, readOutcomesPush, readReceipt, readWalkyCursor, SENDER_CERT_MAX, SIGNATURE_MAX } from "./parse.ts";
+import { parseWalkyRequest, readCrewDelivery, readOutcomesPush, readReceipt, readWalkyCursor, SENDER_CERT_MAX, SIGNATURE_MAX } from "./parse.ts";
 import type { WalkyMessage, WalkyReceipt } from "./types.ts";
 
 // The crew readers added on 2026-10-18 (CREW_PROTOCOL §21): the report's ack cursor, the delivery's
@@ -98,3 +98,18 @@ describe("a receipt's text fields (§21, added 2026-10-18)", () => {
     for (const by of ["Other", "other\u001b[0m", "", "a b", "-x", "x".repeat(64)]) expect(readReceipt({ ...base, by })).toBeNull();
   });
 });
+
+// Counsel on the Edge 5 candidate: an agent's message never steers a turn. The walky socket's send
+// carries no `when`: a line that names one is read without it, so the delivery goes on the queued path
+// (and a delivery that asked anyway is refused `steer_not_allowed` by the protocol, protocol.test.ts).
+describe("a walky send line cannot ask to steer", () => {
+  test("`when: steer` on a send line is dropped, never carried to the delivery", () => {
+    const line = JSON.stringify({ v: 1, op: "send", markers: [], id: "wt_aaaaaaaaaaa1", to: "laptop/w1:p9", body: "hi", replyTo: null, when: "steer", fromPhone: true });
+    const request = parseWalkyRequest(line);
+    expect(request).not.toBeNull();
+    expect(request).toMatchObject({ op: "send", id: "wt_aaaaaaaaaaa1", body: "hi" });
+    expect(request).not.toHaveProperty("when");
+    expect(request).not.toHaveProperty("fromPhone");
+  });
+});
+

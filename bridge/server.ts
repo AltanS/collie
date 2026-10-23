@@ -158,9 +158,10 @@ import { SURFACE_VERSION } from "../web/src/lib/surface/surface.ts";
 import { gateFor } from "./surface/key-gate.ts";
 import type { SendProtocol, SendRequest } from "./surface/protocol.ts";
 import type { AskAnswerer } from "./surface/ask.ts";
+import type { StopService } from "./surface/stop.ts";
 import type { ProgramDriver } from "./surface/durable-driver.ts";
 import { parseAnswerBody, type AskReply } from "../web/src/lib/surface/ask.ts";
-import { REQUEST_ID, reservedLead, SEND_MODES, type HeldCancelAnswer, type SendAnswer, type SendReceiptsAnswer } from "../web/src/lib/surface/send.ts";
+import { REQUEST_ID, reservedLead, SEND_MODES, SEND_WHENS, type HeldCancelAnswer, type SendAnswer, type SendReceiptsAnswer } from "../web/src/lib/surface/send.ts";
 import {
   maskChatBody,
   maskDiff,
@@ -216,8 +217,8 @@ import { parseMachineAlerts } from "./machine-parse.ts";
 import { SPARK_MAX_MINUTES } from "./machine-history.ts";
 import type { MachineSurface } from "./machines.ts";
 import { isPaneId, parseAddress } from "./walky/address.ts";
-import { parsePhoneSend } from "./walky/parse.ts";
-import type { WalkyService } from "./walky/service.ts";
+import { isWalkyId, parsePhoneSend } from "./walky/parse.ts";
+import { NOT_THE_SENDER, type TakeBackAnswer, type WalkyService } from "./walky/service.ts";
 import { olderThanWalky, type WalkyCrew } from "./walky/crew.ts";
 import type {
   ActionResponse,
@@ -430,6 +431,11 @@ export function isLoopbackPeer(address: string | null | undefined): boolean {
  * ran), `unknown` (504, the receipt stays so the same request id may be sent again), or `refused`
  * (409, `unsupported` for a pane or program that cannot take the act). A body that is not one is a
  * plain 400. Such a pane refuses `reply` and `keys` with `unsupported`. See `bridge/durable/control.ts`.
+ *
+ * `abort` on a pane with a screen (M68 spec 01) is a Stop: `POST /api/pane/:id/abort` with `{ requestId }`
+ * only. The bridge reads the Surface, presses the profile's interrupt key as a person's tap, reads back,
+ * and answers `{ requestId, outcome: "stopped" | "pressed" | "refused", reason?, keys? }` (always 200).
+ * The same request id answers the same receipt. See `bridge/surface/stop.ts`.
  */
 const PANE_ROUTE = /^\/api\/pane\/([^/]+)(?:\/(reply|keys|upload|close|rename|history|chat|changes|files|focus|answer|send|abort|action))?$/;
 
@@ -501,6 +507,15 @@ const BLOB_ROUTE = /^\/api\/blobs\/([^/]+)$/;
  * phone's reply. `bridge/crew/forward.ts` mirrors this literal one-for-one (`forward.test.ts`).
  */
 const WALKY_PANE_ROUTE = /^\/api\/pane\/([^/]+)\/walky$/;
+/**
+ * The two take-backs of a held walky talky message (M62 spec 03). `POST /api/walky/<id>/cancel`: the
+ * sender's, for an operator message, from a paired device. `POST /api/pane/<pane>/walky/<id>/drop`: the
+ * pane owner's, for a message held for that pane, on the machine that owns the pane (no `?host=`
+ * forward: a member's held message is dropped on the member). Both are writes under the browser gate.
+ */
+// The id's shape is the handler's check (`isWalkyId`), so the route table keeps one shape of segment.
+const WALKY_CANCEL_ROUTE = /^\/api\/walky\/([^/]+)\/cancel$/;
+const WALKY_DROP_ROUTE = /^\/api\/pane\/([^/]+)\/walky\/([^/]+)\/drop$/;
 
 /**
  * How long a worktree create may hold its connection open, in seconds (ADR 0089). Above Herdr's own
@@ -618,6 +633,7 @@ export function isPaneReadAction(action: string | undefined): boolean {
  * routes after which the operator watches the pane for an effect, so a landed one puts the engine
  * that owns the pane into its hot cadence (state-engine.ts § noteInput). Structural writes (close,
  * rename, focus, a new tab) settle their own topology and need no intent; an upload types nothing.
+ * Settling starts the re-read and does not wait for it (see `settleTopology`).
  */
 export function isPaneInput(pathname: string, method: string): boolean {
   if (method !== "POST") return false;
@@ -1235,6 +1251,11 @@ export function startServer(opts: {
    */
   subagents?: { get(pane: AgentView): AgentView["subagents"] };
   /**
+   * Each pane's context use and subscription windows (bridge/usage.ts), read synchronously at
+   * serialise time like `todos`. Absent means no pane carries a `usage` key.
+   */
+  usage?: { get(pane: AgentView): AgentView["usage"] };
+  /**
    * Which branch each pane's folder is on (bridge/git-head.ts), read synchronously at serialise time
    * like `cache`: it answers from memory and reads the disk in the background. Absent means no pane
    * carries a `gitHead` key, which is every test that builds this server by hand.
@@ -1582,9 +1603,12 @@ export function startServer(opts: {
       const readSubagents = opts.subagents?.get(p);
       const subagents = readSubagents !== undefined && cfg.redact ? maskSubagentList(readSubagents) : readSubagents;
       const withSubagents = subagents === undefined ? withTodos : { ...withTodos, subagents };
+      // The usage dots: numbers only, from the statusLine wrapper's file for this session.
+      const readUsage = opts.usage?.get(p);
+      const withUsage = readUsage === undefined ? withSubagents : { ...withSubagents, usage: readUsage };
       // The branch rides the same way: from memory, never a wait, and no key when there is none.
       const gitHead = gitHeads?.get(p.cwd);
-      return gitHead === undefined ? withSubagents : { ...withSubagents, gitHead };
+      return gitHead === undefined ? withUsage : { ...withUsage, gitHead };
     };
     // The one place a pane leaves the bridge: the session ref is stripped to a presence flag here,
     // so an agent-reported filesystem path never reaches a browser (see toPaneWire). The flag is
@@ -1625,18 +1649,24 @@ export function startServer(opts: {
       const surface = from.driver !== undefined ? from.driver.surfaceOf(wire.paneId) : from.surface?.surfaceOf(wire.paneId);
       const masked = surface === undefined ? wire : { ...wire, surface: cfg.redact ? maskSurface(surface) : surface };
       const surfaced = surface === undefined || from.hooks === undefined ? masked : { ...masked, hooks: from.hooks(wire.paneId) };
+      // A pane with a screen says whether Stop (M68) has a key to press: its profile names an interrupt
+      // key and is not revoked. The phone draws its Stop button from this word, never from a harness name.
+      // Only a `true` rides; absent reads as "no Stop here".
+      const stoppable = surface !== undefined && from.driver === undefined && from.surface?.canStopOf(wire.paneId) === true ? { ...surfaced, canStop: true as const } : surfaced;
       // A hook-held permission (M56 spec 12) carries its note: the tool, the input shown, the state.
       // The input is a command line, so it takes the mirror's mask like the ask's labels do. A program
       // pane (M56 spec 14) takes its asks from its driver, so it never carries a hold.
       const note = surface === undefined || from.driver !== undefined ? null : (from.hold?.(wire.paneId) ?? null);
       // The option labels are screen text too. The hash stays: the hold card's tap carries it.
-      const withHold = note === null ? surfaced : { ...surfaced, hold: cfg.redact ? { ...note, input: redactText(note.input), options: note.options.map(redactText) } : note };
+      const withHold = note === null ? stoppable : { ...stoppable, hold: cfg.redact ? { ...note, input: redactText(note.input), options: note.options.map(redactText) } : note };
       if (from.send === undefined && from.driver === undefined) return withHold;
       // The pane's held sends (M56 spec 15), only when there is one; the text takes the mirror's mask.
       // A held send is the send queue's, a hold is a permission's (spec 12): both may stand at once.
       const held = from.send?.heldOf(from.name, wire.paneId) ?? [];
       const shown = cfg.redact ? held.map((row) => ({ ...row, text: redactText(row.text) })) : held;
-      return held.length === 0 ? { ...withHold, sendProtocol: true as const } : { ...withHold, sendProtocol: true as const, held: shown };
+      // M69: a pane the phone may steer says so (paneCanSteer).
+      const marked: PaneWire = paneCanSteer(from, wire.paneId) ? { ...withHold, sendProtocol: true as const, canSteer: true as const } : { ...withHold, sendProtocol: true as const };
+      return held.length === 0 ? marked : { ...marked, held: shown };
     };
     const sources = widen ? registry.ordered() : [rt];
     const paneList = (pick: (rtx: SessionRuntime) => AgentView[]): PaneWire[] => {
@@ -2162,6 +2192,18 @@ export function startServer(opts: {
           settled: () => rt.engine.pokeNow(),
         });
         return "text" in answered ? text(answered.text, answered.status) : json(answered.body, req.headers.get("accept-encoding"), answered.status);
+      }
+      // A Stop on a pane with a screen (M68 spec 01): a person's tap presses the profile's interrupt key
+      // and answers a receipt. A pane that takes guarded controls (a program) keeps the abort below.
+      if (action === "abort" && req.method === "POST" && rt.stop !== undefined && rawInputRefusal(herdr) === null) {
+        let body: JsonValue | undefined;
+        try {
+          // SAFETY: `Request.json()` output IS a JsonValue by construction; `stopRoute` checks every field.
+          body = (await req.json()) as JsonValue;
+        } catch {
+          body = undefined;
+        }
+        return stopRoute(rt, paneId, body, { audit: audit_, device, session, acceptEncoding: req.headers.get("accept-encoding") });
       }
       // A send or an abort that names the turn or ask the phone saw (ADR 0101), or a tap on one of the
       // program's belt buttons (M53 spec 07, the turn optional). The receipt is written before the control
@@ -2700,7 +2742,8 @@ export function startServer(opts: {
         return heldCancelRoute(rt, requestId, url.searchParams.get("pane"), { audit, device: whois(req).device, acceptEncoding: req.headers.get("accept-encoding") });
       }
       // The session page's list of recent sends for one pane (M56 spec 09): outcome, reason, time, keys
-      // by name and gaps, read from the receipts. Never a row of the screen and never the text.
+      // by name and gaps, read from the receipts, and of the text only the line Sent would keep
+      // (surface/requests.ts). Never a row of the screen.
       if (pathname === "/api/send/receipts" && req.method === "GET") {
         const denied = browserGate("read");
         if (denied) return denied;
@@ -2732,6 +2775,31 @@ export function startServer(opts: {
         if (denied) return denied;
         if (host.kind === "member") return text(WALKY_LOCAL_TEXT, 400);
         return walkyWhoRoute(walky, req.headers.get("accept-encoding"));
+      }
+      // The sender takes a held operator message back (M62 spec 03). No `?host=`: the message's log
+      // record is on the bridge the phone sent it through, and a lead's record of a member's hold has
+      // no pane here, which the answer says (`elsewhere`).
+      const walkyCancel = pathname.match(WALKY_CANCEL_ROUTE);
+      if (walkyCancel && req.method === "POST") {
+        const denied = browserGate("write");
+        if (denied) return denied;
+        return walkyCancelRoute(walky, walkyCancel[1]!, { audit, device: whois(req).device, acceptEncoding: req.headers.get("accept-encoding") });
+      }
+      // The pane's owner drops a message held for the pane (M62 spec 03): this machine's own panes only.
+      const walkyDrop = pathname.match(WALKY_DROP_ROUTE);
+      if (walkyDrop && req.method === "POST") {
+        const denied = browserGate("write");
+        if (denied) return denied;
+        if (host.kind === "member") return text(WALKY_DROP_LOCAL_TEXT, 400);
+        const rt = localRuntime(sessionName, req.headers.get("accept-encoding"));
+        if (rt instanceof Response) return rt;
+        let paneId: string;
+        try {
+          paneId = decodeURIComponent(walkyDrop[1]!);
+        } catch {
+          return text("malformed URL", 400);
+        }
+        return walkyDropRoute(walky, rt.name, paneId, walkyDrop[2]!, { audit, device: whois(req).device, acceptEncoding: req.headers.get("accept-encoding") });
       }
       const walkyPane = pathname.match(WALKY_PANE_ROUTE);
       // The POST on this path is the lead's, through the crew dispatch (§21): never a phone's.
@@ -5031,7 +5099,10 @@ export async function replyThroughProtocol(
     mode: fields.mode ?? (reservedLead(words, ["/", "!", "@"]) === null ? "send" : "command"),
   });
   if (request === null) return text("bad send request", 400);
-  const { pane: target, ...sendRequest } = request;
+  const { pane: target, ...asked } = request;
+  // A request id the caller minted is the phone's, on a crew member's pane (M56 spec 06): a person's
+  // send, which may steer (M69). A caller that names no id is not the phone and never steers.
+  const sendRequest: SendRequest = fields.id === undefined ? asked : { ...asked, fromPhone: true };
   const answer = await send.protocol.handle(sendRequest, { session, paneId: target, harness });
   const receipt = answer.receipt;
   const auditDetail: AuditDetail = { mode: sendRequest.mode, submit: true, textLength: words.length };
@@ -5044,7 +5115,7 @@ export async function replyThroughProtocol(
   const shown: SendAnswer = context.redact && answer.surface !== undefined ? { ...answer, surface: maskSurface(answer.surface) } : answer;
   const outcome = receipt?.outcome;
   // A held send (M56 spec 15) is taken: Collie sends it when the turn ends.
-  if (outcome === undefined || outcome === "sent" || outcome === "effective" || outcome === "discarded" || outcome === "held") return json({ ok: true, send: shown } satisfies ReplyProtocolResponse, context.acceptEncoding);
+  if (outcome === undefined || outcome === "sent" || outcome === "effective" || outcome === "steered" || outcome === "discarded" || outcome === "held") return json({ ok: true, send: shown } satisfies ReplyProtocolResponse, context.acceptEncoding);
   const textDelivered = outcome === "typed_not_submitted" || outcome === "unknown";
   const why = answer.detail ?? `${outcome}${receipt?.reason === undefined ? "" : ` (${receipt.reason})`}`;
   const failure = outcome === "typed_not_submitted" ? apiError("reply.not_submitted") : apiError("reply.send_failed", { reason: why });
@@ -5480,6 +5551,13 @@ function promptBindingFailure(
  *
  * Cheap where it is already fresh — a pushing adapter's `refresh()` resolves immediately (see the
  * port) — so this costs a listing only on the adapters that actually needed one.
+ *
+ * IT STARTS THE ENGINE'S RE-READ AND DOES NOT WAIT FOR IT. `pokeNow()` fires a poll, so the route
+ * answers before that poll lands, and a phone that revalidates on the answer can still read the old
+ * herd. Measured on the dev lane on 2026-10-21: a new pane label reached `/api/snapshot` 100 to
+ * 117 ms after the answer, and a read sent within 100 ms of it missed the label 44 times in 44. So the
+ * phone also stamps a topology burst after a create, a close or a rename (web/src/lib/poll-intent.ts
+ * `stampTopology`), which reads again 300 ms on.
  */
 async function settleTopology(herdr: Pick<MuxAdapter, "refresh">, engine: Pick<StateEngine, "pokeNow">): Promise<void> {
   try {
@@ -7705,7 +7783,7 @@ export const SEND_MAX_TEXT = 64 * 1024;
 export function parseSendRequest(body: JsonValue | undefined): ({ pane: string; resendOf?: string } & SendRequest) | null {
   const fields = asJsonRecord(body);
   if (fields === null) return null;
-  const { id, pane, text: words, mode, rowsHash, revision, capAck, resendOf } = fields;
+  const { id, pane, text: words, mode, rowsHash, revision, capAck, resendOf, when } = fields;
   if (typeof id !== "string" || !REQUEST_ID.test(id)) return null;
   if (typeof pane !== "string" || pane.length === 0 || pane.length > 256) return null;
   if (typeof words !== "string" || words.length > SEND_MAX_TEXT) return null;
@@ -7729,6 +7807,13 @@ export function parseSendRequest(body: JsonValue | undefined): ({ pane: string; 
     if (typeof capAck !== "boolean") return null;
     Object.assign(request, { capAck });
   }
+  // M69: `steer` asks for a steer into the running turn; any other word is a bad request. Whether the
+  // caller may steer is the route's to say (`fromPhone`), never the body's.
+  if (when !== undefined && when !== null) {
+    const chosenWhen = SEND_WHENS.find((w) => w === when);
+    if (chosenWhen === undefined) return null;
+    Object.assign(request, { when: chosenWhen });
+  }
   return request;
 }
 
@@ -7738,6 +7823,15 @@ export function parseSendRequest(body: JsonValue | undefined): ({ pane: string; 
  * profile. A screenless pane refuses it the way it refuses the raw reply. Every outcome is a 200 with
  * the answer; a malformed body is a 400. One audit line per request, with the outcome and never the text.
  */
+/**
+ * Whether a pane's view says `canSteer` (M69): a screen session that runs the Send Protocol, whose
+ * Surface shadow reads the pane's harness as one it may steer ({@link SurfaceShadow.canSteer}). A
+ * program session (a durable pane, its own `driver`) never steers. Exported for its test.
+ */
+export function paneCanSteer(from: { readonly send?: unknown; readonly driver?: unknown; readonly surface?: Pick<SurfaceShadow, "canSteer"> }, paneId: string): boolean {
+  return from.driver === undefined && from.send !== undefined && from.surface?.canSteer(paneId) === true;
+}
+
 /** What `sendRoute` reads of a session runtime: a {@link SessionRuntime} is one. */
 export interface SendRouteRuntime {
   readonly send?: SendProtocol;
@@ -7767,12 +7861,16 @@ export async function sendRoute(
   const harness = replySendOf(rt).harnessOf(request.pane);
   if (harness === null) return text("no such terminal pane", 404);
   const { pane: paneId, resendOf, ...asked } = request;
-  let sendRequest: SendRequest = asked;
+  // `POST /api/send` is the phone's route: a person's send, the one caller that may steer (M69).
+  let sendRequest: SendRequest = { ...asked, fromPhone: true };
   if (resendOf !== undefined) {
     // The stored text, unmasked: never the row the phone shows, which the redact setting may mask.
     const source = rt.send.resendSource(rt.name, paneId, resendOf);
     if (source === null) return text("no such ended held send on this pane", 404);
-    sendRequest = { ...asked, text: source.text, mode: source.mode };
+    // A Resend goes on the queued path, as the held send it repeats: never a steer (M69), so `when`
+    // goes with `fromPhone`.
+    const { when: _steer, ...plain } = asked;
+    sendRequest = { ...plain, text: source.text, mode: source.mode };
   }
   const answer = await rt.send.handle(sendRequest, { session: rt.name, paneId, harness });
   const receipt = answer.receipt;
@@ -7790,6 +7888,45 @@ export async function sendRoute(
   }
   const out = context.redact && answer.surface !== undefined ? { ...answer, surface: maskSurface(answer.surface) } : answer;
   return json(out, context.acceptEncoding);
+}
+
+/** What `stopRoute` reads of a session runtime: a {@link SessionRuntime} is one. */
+export interface StopRouteRuntime extends Pick<SendRouteRuntime, "send" | "engine"> {
+  readonly stop?: StopService;
+}
+
+/**
+ * `POST /api/pane/:id/abort` on a pane with a screen (M68 spec 01): `{ requestId }` in, one receipt out
+ * (`stopped`, `pressed` or `refused` with a reason), always a 200; a body that is no request id is a 400.
+ * The same request id answers the same receipt and presses once. One audit line per tap: request id,
+ * keys by name, outcome, and never a message text.
+ */
+export async function stopRoute(
+  rt: StopRouteRuntime,
+  paneId: string,
+  body: JsonValue | undefined,
+  context: { readonly audit: AuditLog; readonly device: string | null; readonly session: string; readonly acceptEncoding: string | null },
+): Promise<Response> {
+  if (rt.stop === undefined) return text("stop is not available on this session", 404);
+  const requestId = asJsonRecord(body)?.requestId;
+  if (typeof requestId !== "string" || !REQUEST_ID.test(requestId)) return text("bad body", 400);
+  const harness = replySendOf(rt).harnessOf(paneId);
+  // A missing pane answers the Stop's own receipt, so the phone can tell it from the bare 404 of a
+  // build with no Stop for a screen pane (an older crew member: `unsupported_build` on the phone).
+  if (harness === null) return json({ requestId, outcome: "refused", reason: "pane_gone" }, context.acceptEncoding, 404);
+  const answer = await rt.stop.handle(requestId, paneId, harness);
+  if (answer.kind === "id_reused") return json({ requestId, outcome: "refused", reason: "request-id-reused" }, context.acceptEncoding, 409);
+  const { receipt } = answer;
+  const detail: AuditDetail = { requestId, outcome: receipt.outcome, replayed: answer.replayed };
+  if (receipt.reason !== undefined) detail.reason = receipt.reason;
+  if (receipt.keys !== undefined) detail.keys = [...receipt.keys];
+  context.audit.record({ action: "abort", paneId, session: context.session, device: context.device, detail });
+  // A replay pressed nothing this time; a first tap that pressed makes the engine look again soon.
+  if (receipt.keys !== undefined && !answer.replayed) {
+    rt.engine.noteInput();
+    rt.engine.pokeNow();
+  }
+  return json(receipt, context.acceptEncoding);
 }
 
 /**
@@ -7876,6 +8013,51 @@ export function walkyWhoRoute(walky: WalkyService | undefined, acceptEncoding: s
 /** The most messages one pane list answers, and the default. */
 export const WALKY_LIST_MAX = 200;
 const WALKY_LIST_DEFAULT = 50;
+
+/** What the drop route answers on a crew member: the lead's phone forwards no take-back. */
+export const WALKY_DROP_LOCAL_TEXT = "a message held on a crew member is dropped on that machine";
+
+/** A take-back's answer as the phone reads it: `{ results }` (200), or the reason in a 404 or 403. */
+function walkyTakeBackResponse(answer: TakeBackAnswer, acceptEncoding: string | null): Response {
+  if (!answer.ok) return text(answer.error, answer.error === NOT_THE_SENDER ? 403 : 404);
+  return json({ results: answer.results }, acceptEncoding);
+}
+
+/**
+ * `POST /api/walky/<id>/cancel` (M62 spec 03): the sender takes a held message back. From the phone the
+ * sender is the operator, so only an operator message is the device's to cancel; an agent's message is
+ * cancelled from its own pane (`collie walky cancel`), and the route answers 403 for it. One audit
+ * line per request, with the id and each target's result, never the body.
+ */
+export function walkyCancelRoute(walky: WalkyService | undefined, id: string, context: { readonly audit: AuditLog; readonly device: string | null; readonly acceptEncoding: string | null }): Response {
+  if (walky === undefined) return text(WALKY_OFF_TEXT, 404);
+  if (!isWalkyId(id)) return text("bad message id", 400);
+  const answer = walky.cancel(id, { kind: "operator" });
+  context.audit.record({ action: "walky.cancel", device: context.device, detail: { id, results: answer.ok ? answer.results.map((result) => `${result.target}: ${result.result}`) : answer.error } });
+  return walkyTakeBackResponse(answer, context.acceptEncoding);
+}
+
+/**
+ * `POST /api/pane/<pane>/walky/<id>/drop` (M62 spec 03): the pane's owner drops a message held for the
+ * pane's current instance. A pane this bridge does not have is a 404; a message not held for it is a
+ * 404 that says so. One audit line, never the body.
+ */
+export function walkyDropRoute(
+  walky: WalkyService | undefined,
+  session: string,
+  paneId: string,
+  id: string,
+  context: { readonly audit: AuditLog; readonly device: string | null; readonly acceptEncoding: string | null },
+): Response {
+  if (walky === undefined) return text(WALKY_OFF_TEXT, 404);
+  if (!isPaneId(paneId)) return text("bad pane", 400);
+  if (!isWalkyId(id)) return text("bad message id", 400);
+  const instance = walky.instanceOf(session, paneId);
+  if (instance === null) return text("no such pane", 404);
+  const answer = walky.drop(id, { session, paneId, instance });
+  context.audit.record({ action: "walky.drop", paneId, session, device: context.device, detail: { id, results: answer.ok ? answer.results.map((result) => `${result.target}: ${result.result}`) : answer.error } });
+  return walkyTakeBackResponse(answer, context.acceptEncoding);
+}
 
 /**
  * `GET /api/pane/:id/walky?limit=50`: the messages that reached the pane's current instance and the

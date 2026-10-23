@@ -33,7 +33,7 @@ permissions:
 jobs:
   webkit:
     name: browser (webkit)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -56,7 +56,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: ms-playwright-webkit-${{ runner.os }}-${{ steps.pw.outputs.version }}
+          key: ms-playwright-webkit-${{ runner.os }}-ubuntu-24.04-${{ steps.pw.outputs.version }}
 
       # `--with-deps` is needed on a cache HIT too: the cache carries the browsers under $HOME, never
       # the apt packages.

@@ -194,6 +194,12 @@ export interface AgentView {
    */
   effort?: string;
   /**
+   * How full the context is and how much of the subscription's windows is used, as the harness's own
+   * statusLine reported them. Mirrors `PaneWire.usage` in bridge/types.ts. **Absent, never a
+   * placeholder**: drawn as dots beside the model (components/model-tag.tsx), and nothing decides on it.
+   */
+  usage?: PaneUsage;
+  /**
    * What the checkout holding this pane's folder is on. Mirrors `PaneWire.gitHead` in bridge/types.ts.
    *
    * **Absent, never a placeholder**: a folder in no checkout, a reading the bridge has not taken yet,
@@ -246,6 +252,20 @@ export interface AgentView {
    * a crew member older than the protocol), and the composer says so (M56 spec 06).
    */
   sendProtocol?: true;
+  /**
+   * Mirrors `PaneWire.canStop` (M68): a Stop has a key to press on this pane, because its profile names an
+   * interrupt key and is not revoked. The belt draws Stop for a pane with a screen only with it, and
+   * only while `surface.turn` is `running` (`stopFor`, lib/harness-bar.ts). The bridge decides from the
+   * profile; the app holds no harness name. Absent means no Stop here, and on an older bridge.
+   */
+  canStop?: boolean;
+  /**
+   * Mirrors `PaneWire.canSteer` (M69): a send on this pane may steer the running turn (`when: "steer"`
+   * on `POST /api/send`). The composer offers Steer on the Send button's long press only when this is
+   * true and the turn reads running. Absent from an older bridge, on a durable pane and on a harness
+   * Collie cannot steer.
+   */
+  canSteer?: boolean;
   /**
    * Mirrors `PaneWire.held` (M56 spec 15): the pane's held sends, oldest first. The composer draws one
    * queued row per entry, with the text and Cancel (Resend on an ended one).
@@ -2513,3 +2533,22 @@ export type PaneProgress =
   | { kind: "percent"; value: number; label?: string };
 
 
+
+/** A subscription window, by the label the phone draws for it. Mirrors `UsageWindow` in bridge/usage.ts. */
+export type UsageWindow = "5h" | "7d";
+
+/** One subscription window's reading. Mirrors `UsageLimit` in bridge/usage.ts. */
+export interface UsageLimit {
+  window: UsageWindow;
+  /** Percent of the window used, 0 to 100. */
+  used: number;
+  /** When the window resets, epoch ms. */
+  resetsAt?: number;
+}
+
+/** A pane's usage numbers. Mirrors `PaneUsage` in bridge/usage.ts; every part absent when unreported. */
+export interface PaneUsage {
+  /** Percent of the context window used, 0 to 100. */
+  context?: number;
+  limits?: UsageLimit[];
+}

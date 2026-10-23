@@ -2,7 +2,7 @@
 
 ## Provenance
 
-Where and how every `kiro--*` capture was made, and what was substituted for publication, is in the Kiro section of the fixture corpus [README](../../../fixtures/panes/README.md).
+These notes cover the captures of the shell, read and write approval panels and of the composer. Where and how they were made, and what was substituted for publication, is in the Kiro section of the fixture corpus [README](../../../fixtures/panes/README.md). The startup workspace trust card ("Trust, continue" and "Don't trust") has its own [notes](./WORKSPACE_TRUST_NOTES.md); it is separate from a tool panel's persistent trust page.
 
 ## Verified menu keys
 
@@ -48,7 +48,7 @@ What the probe showed is in the profile's `probe.note`. Both probed sends went f
 
 The adapter uses Collie's existing `submitPromptOption` action path. A decision requires a fresh matching screen. A pointer walk sends only its bound arrows, reads back the landed selection, and then sends Enter bound to that read. The adapter implements no network or send path.
 
-The shell signature includes the full panel, request text, every option, pointer and footer. A filesystem signature additionally includes the complete visible pending tool preview. Reads include their line range; writes and replacements require all changed lines, with the visible counts matching the diff summary. The displayed subject is never shortened to fit a card.
+Every signature includes the full panel, request text, every option, pointer and footer, and the complete visible pending tool preview above it, whose header must name the panel's own command or path. A shell panel shows only the command: `description`, `cwd`, `run_in_background` and `timeout` appear only on the preview's `╰` row, and two calls that differ only in `timeout` draw the same panel (`shell-args-allow-w120` and `shell-args-no-timeout-allow-w120`). Kiro writes that row even for a call that set only the command, filling in `run_in_background=false`, so a shell panel without it stays on the terminal. Reads include their line range; writes and replacements require all changed lines, with the visible counts matching the diff summary. The displayed subject is never shortened to fit a card.
 
 Walk identity removes only the parsed pointer and normalizes the two verified pointer-dependent footer spellings. A changed command, path, read range, diff, title or option set invalidates the original decision. Unknown rows, missing previews, count mismatches, invisible controls, shortened subjects, oversized regions and wrapped unsupported footers refuse the lift. No endpoint assumption is declared for the offered button list, because persistent menu rows lie beyond it.
 
@@ -67,6 +67,7 @@ All names below have prefix `kiro--v3-` and suffix `.txt`.
 | Group | Captured behavior |
 | --- | --- |
 | `approval-*`, `approval-denied-request-*` | Shell pointer pairs at 120/60 columns, trust-highlight footer, feedback editor and clipped 40-column panel |
+| `shell-args-*`, `shell-bare-*`, `shell-wrapped-*` | Shell previews listing `cwd`, `timeout` and `run_in_background`, a call that set only the command, and a long command wrapped in both the preview and the panel |
 | `idle-*`, `draft-*` | Normal composer, literal single-line drafts and a word-wrapped draft |
 | `running-*` | A running turn: the busy prompt row, and a steered message inside the turn |
 | `idle-oneline-*`, `draft-cwd-wrapped-*` | cwd right-aligned on the bar's row, and the same cwd wrapping mid-path under a typed draft |

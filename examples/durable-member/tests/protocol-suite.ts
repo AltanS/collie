@@ -1,7 +1,7 @@
 // The protocol tests of the wire, written once and run twice: over the private socket (protocol.test.ts) and
 // straight against the core's `handle(Request)` (core.test.ts), with no socket and no server. The two runs must
 // agree, so the core is the wire and the socket is only its transport.
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test as bunTest } from "bun:test";
 import { api, call, type Dial } from "./client.ts";
 import {
   ALL_CAPS,
@@ -31,10 +31,21 @@ export interface Opened {
 }
 export interface Transport {
   name: string;
+  /**
+   * Tests this transport cannot pass by design, by title, each with the reason. They show as skipped with the reason
+   * in the title. Left out: every test runs. A title that names no test fails the suite.
+   */
+  skip?: Readonly<Record<string, string>>;
   open(o: { hostName: string; caps?: Caps; hooks?: CoreOptions["hooks"]; onRename?: CoreOptions["onRename"] }): Promise<{ collie: Opened; dial: Dial }>;
 }
 
 export function protocolSuite(transport: Transport) {
+  const titles = new Set<string>();
+  const test = (title: string, fn: Parameters<typeof bunTest>[1]) => {
+    titles.add(title);
+    const reason = transport.skip?.[title];
+    return reason === undefined ? bunTest(title, fn) : bunTest.skip(`${title} [skipped: ${reason}]`, fn);
+  };
   describe(transport.name, () => {
     let collie: Opened;
     let d: Dial;
@@ -1669,6 +1680,9 @@ export function protocolSuite(transport: Transport) {
           await off.collie.close();
         }
       });
+    });
+    bunTest("every test the transport skips exists", () => {
+      expect(Object.keys(transport.skip ?? {}).filter((title) => !titles.has(title))).toEqual([]);
     });
   });
 }

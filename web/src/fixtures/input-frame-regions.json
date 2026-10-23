@@ -490,6 +490,86 @@
   "frame": null
  },
  {
+  "fixture": "claude--v2-1-309-interrupted--w120.txt",
+  "frame": {
+   "top": 20,
+   "prompt": 21,
+   "bottom": 22,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 23,
+    "last": 25
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2-1-309-interrupted-fresh-session--w120.txt",
+  "frame": {
+   "top": 34,
+   "prompt": 35,
+   "bottom": 36,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 37,
+    "last": 39
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2-1-309-permission-denied--w120.txt",
+  "frame": {
+   "top": 15,
+   "prompt": 16,
+   "bottom": 17,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 18,
+    "last": 20
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2-1-309-permission-denied-fresh-session--w120.txt",
+  "frame": {
+   "top": 34,
+   "prompt": 35,
+   "bottom": 36,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 37,
+    "last": 39
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2-1-309-stopped-prompt-restored--w120.txt",
+  "frame": {
+   "top": 34,
+   "prompt": 35,
+   "bottom": 36,
+   "label": null,
+   "text": "Write 700 numbered lines, one short fact about apples per line. No tools, no preamble, do not stop early.",
+   "placeholder": false,
+   "status": {
+    "first": 37,
+    "last": 39
+   },
+   "footer": null
+  }
+ },
+ {
   "fixture": "claude--v2283-ask-long-question--w50.txt",
   "frame": null
  },
@@ -1570,11 +1650,19 @@
   }
  },
  {
+  "fixture": "claude--v2304-ask-chip-question-mark.txt",
+  "frame": null
+ },
+ {
   "fixture": "claude--v2304-ask-no-question-mark--w135.txt",
   "frame": null
  },
  {
   "fixture": "claude--v2304-ask-no-question-mark-plain--w135.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2304-ask-two-paragraph--w80.txt",
   "frame": null
  },
  {
@@ -1653,6 +1741,30 @@
    "status": {
     "first": 70,
     "last": 71
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2304-select-preview-cjk-moved.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2304-select-preview-cjk.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v2306-transcript-survey--w153.txt",
+  "frame": {
+   "top": 8,
+   "prompt": 9,
+   "bottom": 10,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 11,
+    "last": 15
    },
    "footer": null
   }

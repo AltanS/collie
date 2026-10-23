@@ -200,6 +200,11 @@ function isNoticeMenu(block: Block): boolean {
   return block.kind === "menu" && block.menu.liveBox !== undefined;
 }
 
+/** The notice heads a profile marks `letters`: a card lifted off one of them prints single letters, not digits. */
+const LETTERED_HEADS = [...loadProfiles().values()].flatMap((profile) =>
+  (profile.idle.notices ?? []).filter((notice) => notice.letters === true).map((notice) => new RegExp(notice.head, "u")),
+);
+
 /** A keyed item as a row prints it: a letter or a digit after a space, the row's start or a separator glyph, then a colon or a parenthesis. */
 const PRINTED_KEY = /(?:^|[\s|│·•])([A-Za-z0-9])[:)]/gu;
 
@@ -729,14 +734,18 @@ export function describeAdapterConformance(
 
       for (const name of noticeFixtures) {
         // .adr/0009 still holds: no key is synthesised. Each is one digit the notice's own key block
-        // printed as `<digit>:` (the trailing rows of the block), in the printed order. The block is
+        // printed as `<digit>:` (the trailing rows of the block), in the printed order; under a head
+        // the profile marks `letters`, one letter printed as `<letter>:` instead, and never a digit. The block is
         // parsed here on its own terms, not the reader's: every keyed item, a letter or a digit after a
         // space, the row's start or a separator glyph, so a letter key the reader dropped shows.
-        it(`${name}: a notice card's keys are the digits its key block printed`, () => {
+        it(`${name}: a notice card's keys are the digits (letters under a letters head) its key block printed`, () => {
           for (const block of adapter.buildBlocks(loadLines(name))) {
             if (block.kind !== "menu" || block.menu.liveBox === undefined) continue;
             const printed = printedNoticeKeys(block.lines.map(lineText), block.menu.title);
-            expect(printed.every((key) => /^\d$/u.test(key)), `${name}: a key row with a letter key lifted a card`).toBe(true);
+            const head = lineText(block.lines[0]!).trimEnd();
+            const lettered = LETTERED_HEADS.some((pattern) => pattern.test(head));
+            const kind = lettered ? /^[A-Za-z]$/u : /^\d$/u;
+            expect(printed.every((key) => kind.test(key)), `${name}: a key row with a ${lettered ? "digit key under a letters head" : "letter key"} lifted a card`).toBe(true);
             expect(block.menu.actions.map((a) => a.keys)).toEqual(printed.map((key) => [key]));
             expect(block.menu.nav).toEqual({ upDown: false });
           }

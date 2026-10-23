@@ -440,3 +440,31 @@ describe("HostChip — the per-host tint (glyph only)", () => {
     expect(document.body.innerHTML).not.toMatch(/host-\d/);
   });
 });
+
+describe("HostChip — the glyph variant is the machine as tint and shape alone", () => {
+  it("draws the tinted glyph and keeps the name for the label only", () => {
+    render(<HostChip host="workshop" variant="glyph" />, { wrapper: crew });
+    const run = screen.getByLabelText(/^host: workshop/i);
+    // No word on the screen: the name a screen reader hears is the whole of it.
+    expect(run.textContent).toBe("");
+    const svg = run.querySelector("svg");
+    expect(svg).not.toBeNull();
+    expect(svg!.getAttribute("class")).toMatch(/text-host-\d/);
+    // Centred like the caption, not on a baseline: a glyph has no baseline to stand on.
+    expect(run.className).toMatch(/(?:^|\s)items-center(?=\s|$)/);
+    expect(run.className).not.toMatch(/(?:^|\s)items-baseline(?=\s|$)/);
+  });
+
+  it("keeps the fault in the glyph's shape, and the alert colour", () => {
+    render(<HostChip host="attic" variant="glyph" />, { wrapper: crew });
+    const run = screen.getByLabelText(/^host: attic/i);
+    expect(run.className).toContain("text-status-blocked");
+    expect(run.querySelector("svg")).not.toBeNull();
+    expect(run.querySelector("svg")!.getAttribute("class")).not.toMatch(/text-host-\d/);
+  });
+
+  it("renders nothing on a one-machine install, like every other variant", () => {
+    render(<HostChip host="bluefin" variant="glyph" />, { wrapper: one });
+    expect(chips()).toHaveLength(0);
+  });
+});

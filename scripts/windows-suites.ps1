@@ -14,9 +14,9 @@
 #              cannot hide behind a removed one in another. A test must not be skipped just to get
 #              green, so a higher count is a failure. Raise a number only with a reason.
 #              Bridge went from 2 to 0 when M43 spec 04 checked the access list instead of the mode.
-#              Today, 142 in all, each one named, with its reason:
-#              bridge 81. 5 are the POSIX-only and engine cases below, 1 the /etc link scan, 4 are the hold socket tests, 5 the walky ones, 30 are the
-#                durable example apps, and 36 are the durable socket tests (see "Durable, bridge" below).
+#              Today, 157 in all, each one named, with its reason:
+#              bridge 91. 5 are the POSIX-only and engine cases below, 1 the /etc link scan, 4 are the hold socket tests, 5 the walky ones, 30 are the
+#                durable example apps, 10 are the durable-harness adapter test, and 36 are the durable socket tests (see "Durable, bridge" below).
 #                Of the first 5, four are in bridge/stt/local-cli.test.ts. Windows has no executable bit
 #                and no file owner check in this provider:
 #                - "commandFileProblem: regular executable passes, symlinks are followed" (the
@@ -67,7 +67,11 @@
 #                handed a socket path), asks.test.ts (a socket with nothing listening) and
 #                http-client.test.ts (the socket client sends no Authorization header), one each; and
 #                bridge/durable/log.test.ts (a mode 0755 folder put back to 0700).
-#              cli 36. 12 are every test of the "doctor durable" describe in cli/doctor.test.ts: each reads a
+#              Durable harness, bridge (10). bridge/mux/durable/example-durable-harness.test.ts returns a skip reason on
+#                win32: it starts the examples/durable-harness server with Node 24 and its Bun install, which no
+#                Windows job or VM has. The Linux job "durable example" in ci.yml runs it. The 10 are its 7 tests,
+#                the skipped placeholder, the beforeAll and the afterAll that Bun counts with them.
+#              cli 41. 12 are every test of the "doctor durable" describe in cli/doctor.test.ts: each reads a
 #                real Unix socket. Its Windows rows are tested in cli/durable-findings.test.ts with a fake
 #                platform. The other 5:
 #                "a per-call override wins over the Exec's own environment (#283) > a child
@@ -77,9 +81,13 @@
 #                "installScript from a shallow lead, run for real" in cli/remote.test.ts: they run the
 #                install leg, POSIX sh that a crew member runs over ssh, and a Windows machine cannot be a
 #                crew member (WINDOWS_CREW_SENTENCE in cli/crew.ts).
-#              Walky talky, cli (19). cli/walky.test.ts runs the verbs against a real bridge socket in a temp state
+#              The statusLine wrapper, cli (3). The "runShell stops the whole command" block in cli/statusline.test.ts is
+#                `describe.skipIf` off Linux: it signals a POSIX process group, and the wrapper is not on Windows by design
+#                (the usage row, .adr/0115). Its 3 tests are "a SIGTERM to the wrapper stops a compound command's grandchild"
+#                (2, one per group layout) and "passes the command's output and exit code through".
+#              Walky talky, cli (21). cli/walky.test.ts runs the verbs against a real bridge socket in a temp state
 #                dir, and Windows cannot bind it (the same reason as the hold socket). Each of those tests is
-#                `socketTest`, 8 in "send", 8 in "reply, inbox, status, who" and 3 in "on a crew member". The
+#                `socketTest`, 9 in "send", 8 in "reply, inbox, status, who", 1 in "cancel" and 3 in "on a crew member". The
 #                tests that never reach the socket run on Windows: the usage errors, "no bridge at all is
 #                UNREACHABLE" and "on Windows it says why and exits STATE".
 #              scripts 25: 23 are every test of scripts/install.test.ts ("scripts/install.sh > ..."):
@@ -90,8 +98,8 @@
 #                  (it needs a tmux binary, and Windows has none)
 param(
   [Parameter(Mandatory = $true)][string]$Out,
-  [int]$MaxSkipsBridge = 81,
-  [int]$MaxSkipsCli = 36,
+  [int]$MaxSkipsBridge = 91,
+  [int]$MaxSkipsCli = 41,
   [int]$MaxSkipsScripts = 25
 )
 $skipBudget = @{ bridge = $MaxSkipsBridge; cli = $MaxSkipsCli; scripts = $MaxSkipsScripts }

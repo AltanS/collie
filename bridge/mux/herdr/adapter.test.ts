@@ -302,3 +302,29 @@ describe("herdr 0.8.2: the repo is on the workspace record", () => {
     expect("repoRoot" in spaceOf(spaces, "w5")).toBe(false);
   });
 });
+
+describe("pasteBlock: one bracketed paste, framed by the adapter", () => {
+  /** A fake that keeps every `pane.send_text` payload as sent. */
+  class TextHerdr extends FakeHerdr {
+    sent: Array<[string, string]> = [];
+    override async sendPaneText(paneId: string, text: string): Promise<void> {
+      this.sent.push([paneId, text]);
+    }
+  }
+
+  test("the whole text, line breaks included, goes in ONE send_text between the paste markers", async () => {
+    const fake = new TextHerdr();
+    const ack = await new HerdrMux(fake, () => []).pasteBlock("w1:p1", "first line\nsecond line");
+    expect(ack.ok).toBe(true);
+    expect(fake.sent).toEqual([["w1:p1", "\u001b[200~first line\nsecond line\u001b[201~"]]);
+  });
+
+  test("every control byte but the line break is cut, the 8-bit CSI too, so nothing can end the paste early", async () => {
+    const fake = new TextHerdr();
+    const mux = new HerdrMux(fake, () => []);
+    await mux.pasteBlock("w1:p1", "a\u001b[201~\rb\u009b201~c\u0007\u007f\nd");
+    await mux.pasteBlock("w1:p1", "");
+    await mux.pasteBlock("w1:p1", "\u001b\u009b");
+    expect(fake.sent).toEqual([["w1:p1", "\u001b[200~a[201~b201~c\nd\u001b[201~"]]);
+  });
+});

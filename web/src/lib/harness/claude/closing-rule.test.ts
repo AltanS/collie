@@ -41,6 +41,18 @@ const PAIRS: [string, string | null, string][] = [
   ["claude-lab--menu-resume-picker-named-v2296--w40.txt", null, "prompt-select"],
 ];
 
+/**
+ * Captures of another harness whose last row is a rule straight under a dialog's key-hint row, so the
+ * rule would go if the Claude reader read them. It never does: only the Claude adapter takes the rule
+ * off. Each with the reason; every one must still be such a screen.
+ */
+const OTHER_HARNESS = new Map<string, string>([
+  [
+    "pi--v130-powerline-model-selector--w120.txt",
+    "pi's /model selector under pi-powerline-footer (issue 544): the extension draws no footer under it, so pi's closing rule is the last row",
+  ],
+]);
+
 describe("a named session's dialog reads as its unnamed twin does", () => {
   it.each(PAIRS)("%s", (named, unnamed, kind) => {
     const lines = fixtureLines(named);
@@ -178,6 +190,6 @@ describe("it fails closed", () => {
         return dropClosingRule(lines) !== lines;
       })
       .toSorted();
-    expect(changed).toEqual(PAIRS.map(([named]) => named).toSorted());
+    expect(changed).toEqual([...PAIRS.map(([named]) => named), ...OTHER_HARNESS.keys()].toSorted());
   });
 });

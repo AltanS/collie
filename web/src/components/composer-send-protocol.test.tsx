@@ -1,5 +1,5 @@
 import type { ComponentProps } from "react";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
@@ -7,7 +7,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 
 import { loadDraft } from "@/lib/drafts";
 import { markLive, resetLiveness } from "@/lib/liveness";
-import { clearStatus } from "@/lib/status";
+import { clearStatus, useStatus } from "@/lib/status";
 import { server } from "@/test/setup";
 import { Composer } from "./composer";
 
@@ -52,6 +52,7 @@ interface Posted {
   text: string;
   mode: string;
   rowsHash?: string;
+  when?: string;
 }
 
 /** One answer the fake bridge gives: a body, or a failure with this HTTP status. */
@@ -116,11 +117,32 @@ describe("Composer on the Send Protocol (M56 specs 05 and 06)", () => {
     expect(strip).toHaveTextContent("Add to it");
     expect(strip).toHaveTextContent("Replace");
     expect(strip).toHaveTextContent("Cancel");
+    expect(screen.getByText("The box already holds a draft. Add to it, replace it, or cancel.")).toBeInTheDocument();
     expect(loadDraft(undefined, "w1:p1")).toBe("new words"); // a refusal keeps the draft
     await user.click(screen.getByRole("button", { name: "Replace" }));
     await waitFor(() => expect(sends).toHaveLength(2));
     expect(sends[1]).toMatchObject({ text: "new words", mode: "replace" });
     expect(sends[1]!.id).not.toBe(sends[0]!.id);
+  });
+
+  it("a slash command onto a draft offers Replace and Cancel only, says so, and Replace sends it as a replace", async () => {
+    const user = userEvent.setup();
+    const { sends } = bridge([
+      { body: { receipt: receipt("refused", "draft_present"), offers: ["replace", "cancel"] } },
+      { body: { receipt: receipt("sent"), offers: [] } },
+    ]);
+    renderComposer();
+    await user.type(screen.getByPlaceholderText(/type a reply/i), "/model");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    const strip = await screen.findByTestId("send-offers");
+    expect(sends[0]).toMatchObject({ text: "/model", mode: "command" });
+    expect(strip).not.toHaveTextContent("Add to it");
+    expect(strip).toHaveTextContent("Replace");
+    expect(strip).toHaveTextContent("Cancel");
+    expect(screen.getByText("The box already holds a draft. Replace it, or cancel.")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Replace" }));
+    await waitFor(() => expect(sends).toHaveLength(2));
+    expect(sends[1]).toMatchObject({ text: "/model", mode: "replace" });
   });
 
   it("Add to it sends the text after one space, so it does not run into the draft", async () => {
@@ -201,5 +223,143 @@ describe("Composer on the Send Protocol (M56 specs 05 and 06)", () => {
     expect(screen.getByPlaceholderText("Sending is off on this machine")).toBeDisabled();
     expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
     expect(sends).toEqual([]);
+  });
+});
+
+// M69 spec 03: while the turn runs on a pane whose bridge says `canSteer`, the Send button's long-press
+// menu offers Steer above "Send as message", and the hint under the box names both gestures.
+describe("Steer or queue on the Send button (M69)", () => {
+  const running = { revision: 1, turn: "running", modal: "none", composer: "empty" } as const;
+  const HINT = "Send queues it for after the turn. Hold Send to steer.";
+  const STEER = "Steer: the agent takes it after its current step";
+
+  /** The header status line, where a verified send leaves its words. */
+  function StatusProbe() {
+    return <div data-testid="status">{useStatus()?.text ?? ""}</div>;
+  }
+  const status = () => screen.getByTestId("status").textContent ?? "";
+  function renderSteer(overrides: Partial<ComponentProps<typeof Composer>>) {
+    render(<StatusProbe />);
+    return renderComposer(overrides);
+  }
+
+  async function openMenu(user: ReturnType<typeof userEvent.setup>, text: string) {
+    await user.type(screen.getByPlaceholderText(/type a reply/i), text);
+    fireEvent.contextMenu(screen.getByRole("button", { name: "Send" }));
+  }
+
+  it("offers the row and the hint while the turn runs on a pane that can steer, above Send as message", async () => {
+    const user = userEvent.setup();
+    renderSteer({ surface: running, canSteer: true });
+    expect(screen.getByText(HINT)).toBeInTheDocument();
+    await openMenu(user, "look at the logs");
+    const steer = await screen.findByRole("button", { name: STEER });
+    const message = screen.getByRole("button", { name: "Send as message" });
+    expect(steer.compareDocumentPosition(message) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("offers neither row nor hint on an idle pane, even one that can steer", async () => {
+    const user = userEvent.setup();
+    renderSteer({ canSteer: true });
+    expect(screen.queryByText(HINT)).toBeNull();
+    await openMenu(user, "hello");
+    expect(await screen.findByRole("button", { name: "Send as message" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: STEER })).toBeNull();
+  });
+
+  it("offers neither row nor hint while the turn runs on a pane that cannot steer", async () => {
+    const user = userEvent.setup();
+    renderSteer({ surface: running });
+    expect(screen.queryByText(HINT)).toBeNull();
+    await openMenu(user, "hello");
+    expect(await screen.findByRole("button", { name: "Send as message" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: STEER })).toBeNull();
+  });
+
+  it("the row sends when: steer, says Steered, and clears the draft; the plain tap sends no when", async () => {
+    const user = userEvent.setup();
+    const { sends } = bridge([
+      { body: { receipt: receipt("steered"), offers: [] } },
+      { body: { receipt: { ...receipt("sent"), queued: true }, offers: [] } },
+    ]);
+    renderSteer({ surface: running, canSteer: true });
+    await openMenu(user, "use the other table");
+    await user.click(await screen.findByRole("button", { name: STEER }));
+    await waitFor(() => expect(sends).toHaveLength(1));
+    expect(sends[0]).toMatchObject({ pane: "w1:p1", text: "use the other table", mode: "send", when: "steer" });
+    await waitFor(() => expect(status()).toBe("Steered: the agent takes it after its current step."));
+    await waitFor(() => expect(loadDraft(undefined, "w1:p1") ?? "").toBe(""));
+
+    await user.type(screen.getByPlaceholderText(/type a reply/i), "and then stop");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(sends).toHaveLength(2));
+    expect(sends[1]).not.toHaveProperty("when");
+    expect(sends[1]!.id).not.toBe(sends[0]!.id);
+  });
+
+  it("a steer the harness queued reads Queued instead", async () => {
+    const user = userEvent.setup();
+    const { sends } = bridge([{ body: { receipt: { ...receipt("sent"), queued: true }, offers: [] } }]);
+    renderSteer({ surface: running, canSteer: true });
+    await openMenu(user, "change course");
+    await user.click(await screen.findByRole("button", { name: STEER }));
+    await waitFor(() => expect(sends).toHaveLength(1));
+    await waitFor(() => expect(status()).toBe("Queued instead: the agent kept it for after the turn."));
+    await waitFor(() => expect(loadDraft(undefined, "w1:p1") ?? "").toBe(""));
+  });
+
+  // Crew version skew (counsel on the Edge 5 candidate): a member that ignores `when` queues the text
+  // and answers `sent` with `queued` through the pane's reply route. The phone asked to steer and got
+  // queued: it says Queued instead, never Steered.
+  it("a steer to a crew member that queued it (a receipt with no steered) reads Queued instead, never Steered", async () => {
+    const user = userEvent.setup();
+    const posted: Pick<Posted, "text" | "when">[] = [];
+    markLive("w1:p1", Date.now(), { host: "laptop" });
+    server.use(
+      http.post(/\/api\/pane\/w1%3Ap1\/reply$/, async ({ request }) => {
+        // SAFETY: the composer under test is the only poster; the test reads two fields it then checks.
+        posted.push((await request.json()) as Pick<Posted, "text" | "when">);
+        return HttpResponse.json({ ok: true, send: { receipt: { ...receipt("sent"), queued: true }, offers: [] } });
+      }),
+    );
+    renderSteer({ surface: running, canSteer: true, scope: { host: "laptop" } });
+    await openMenu(user, "change course");
+    await user.click(await screen.findByRole("button", { name: STEER }));
+    await waitFor(() => expect(posted).toHaveLength(1));
+    expect(posted[0]).toMatchObject({ text: "change course", when: "steer" });
+    await waitFor(() => expect(status()).toBe("Queued instead: the agent kept it for after the turn."));
+    expect(status()).not.toMatch(/Steered/u);
+  });
+
+  it("steer_unsupported says nothing was sent and keeps the draft", async () => {
+    const user = userEvent.setup();
+    bridge([{ body: { receipt: receipt("refused", "steer_unsupported"), offers: [] } }]);
+    renderSteer({ surface: running, canSteer: true });
+    await openMenu(user, "change course");
+    await user.click(await screen.findByRole("button", { name: STEER }));
+    expect(await screen.findByText(/Steer is not available on this pane\. Nothing was sent\./)).toBeInTheDocument();
+    expect(loadDraft(undefined, "w1:p1")).toBe("change course");
+  });
+
+  it("steer_not_allowed says only a person at the phone can steer and keeps the draft", async () => {
+    const user = userEvent.setup();
+    bridge([{ body: { receipt: receipt("refused", "steer_not_allowed"), offers: [] } }]);
+    renderSteer({ surface: running, canSteer: true });
+    await openMenu(user, "change course");
+    await user.click(await screen.findByRole("button", { name: STEER }));
+    expect(await screen.findByText(/Only a person at the phone can steer\./)).toBeInTheDocument();
+    expect(loadDraft(undefined, "w1:p1")).toBe("change course");
+  });
+
+  it("a destructive line keeps the steer across the Really send? confirm", async () => {
+    const user = userEvent.setup();
+    const { sends } = bridge([{ body: { receipt: receipt("steered"), offers: [] } }]);
+    renderSteer({ surface: running, canSteer: true });
+    await openMenu(user, "rm -rf build");
+    await user.click(await screen.findByRole("button", { name: STEER }));
+    expect(sends).toHaveLength(0);
+    await user.click(await screen.findByRole("button", { name: "Really send?" }));
+    await waitFor(() => expect(sends).toHaveLength(1));
+    expect(sends[0]).toMatchObject({ text: "rm -rf build", when: "steer" });
   });
 });

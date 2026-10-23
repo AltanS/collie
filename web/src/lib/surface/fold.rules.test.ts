@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { agentOf, fixtureRows, idleFor, readScreen, rowsOf, SURFACE_FIXTURES_DIR } from "../../test/surface-corpus";
-import { findInputFrame, plainRows } from "./frame";
-import { endsInsideFrame, foldSurface, type ScreenInput, SURFACE_SOURCES, type SurfaceInput, surfaceOfScreen } from "./fold";
+import { findInputFrame, plainRows, rowText } from "./frame";
+import { emptyFoldState, endsInsideFrame, foldSurface, type FoldContext, readFold, type ScreenInput, stepFold, SURFACE_SOURCES, type SurfaceInput, surfaceOfScreen } from "./fold";
 import { requireProfile } from "./profile";
 import { type Ask, isFree, modalWord } from "./surface";
 import { ASK, CLAUDE, LABELS, own } from "../../test/surface-fold";
@@ -402,5 +402,139 @@ describe("a session name in the box's top edge (Claude Code 2.1.303, lane 8788, 
     expect(r.frame?.top).toBe(top);
     expect(r.frame?.label).toBe("1.23.0");
     expect(r.surface).toMatchObject({ turn: "running", modal: "none", composer: "empty" });
+  });
+});
+
+// Live rerun 2026-10-23: Claude Code fires no Stop hook when the person interrupts a turn (Escape) or
+// refuses a permission. The UserPromptSubmit edge's running block then held the turn `running` while
+// the screen read idle: until the lost-Stop reads (three free reads over ten seconds, and never with a
+// draft in the box) or the next Stop. The Stop button stayed, and a tap answered `turn_idle`. Real
+// captures of 2.1.309 on Haiku; the stopped row `⎿  Interrupted · What should Claude do instead?`
+// ends the blocks on the first read that shows it.
+describe("a turn stopped without its Stop hook (Claude Code 2.1.309, live rerun 2026-10-23)", () => {
+  const context: FoldContext = { idle: CLAUDE, pollMs: 1500, settleMs: 1500 };
+  const INTERRUPTED = fixtureRows("claude--v2-1-309-interrupted--w120.txt");
+  const DENIED = fixtureRows("claude--v2-1-309-permission-denied--w120.txt");
+  const prompt = (seq: number, at: number): SurfaceInput => ({ seq, source: "edge", at, kind: "prompt" });
+  const dialog = (seq: number, at: number): SurfaceInput => ({ seq, source: "edge", at, kind: "dialog" });
+  /** The screen as plain rows, the box's empty prompt row holding `draft`. */
+  const withDraft = (rows: ScreenInput["rows"], draft: string): ScreenInput["rows"] => {
+    const texts = rows!.map((row) => rowText(row));
+    const at = texts.findLastIndex((text) => /^❯\s*$/u.test(text));
+    expect(at).toBeGreaterThan(0);
+    texts[at] = `❯ ${draft}`;
+    return plainRows(texts);
+  };
+  const run = (log: readonly SurfaceInput[], ctx: FoldContext = context) => {
+    let state = emptyFoldState();
+    for (const input of log) state = stepFold(state, input, ctx);
+    return { state, surface: readFold(state, ctx).surface };
+  };
+
+  it("the screen alone reads both captures idle and free", () => {
+    for (const rows of [INTERRUPTED, DENIED]) expect(surfaceOfScreen(screen(1, 0, rows), CLAUDE).surface).toEqual({ revision: 1, turn: "idle", modal: "none", composer: "empty" });
+  });
+
+  it("after Escape: the prompt edge's block ends on the first read of the stopped row, no lost Stop", () => {
+    const { state, surface } = run([prompt(1, 0), screen(2, 2000, INTERRUPTED)]);
+    expect(surface).toEqual({ revision: 2, turn: "idle", modal: "none", composer: "empty" });
+    expect(state.running).toBeNull();
+    expect(state.lostStops).toBe(0);
+  });
+
+  it("without the profile's stopped rows the block holds the turn running: the defect", () => {
+    const bare: FoldContext = { ...context, idle: { ...CLAUDE, stoppedRows: undefined } };
+    expect(run([prompt(1, 0), screen(2, 2000, INTERRUPTED)], bare).surface.turn).toBe("running");
+  });
+
+  it("after a refused permission: the prompt and dialog blocks both end, the Surface reads free", () => {
+    const { state, surface } = run([prompt(1, 0), dialog(2, 8000), screen(3, 21_000, DENIED)]);
+    expect(surface).toEqual({ revision: 3, turn: "idle", modal: "none", composer: "empty" });
+    expect(isFree(surface)).toBe(true);
+    expect(state.dialog).toBeNull();
+  });
+
+  it("a draft in the box no longer keeps the turn running (the lost-Stop reads need an empty box)", () => {
+    const { surface } = run([prompt(1, 0), screen(2, 2000, withDraft(INTERRUPTED, "my draft text"))]);
+    expect(surface).toMatchObject({ turn: "idle", modal: "none", composer: "draft" });
+  });
+
+  it("a block younger than the settle time stays: the row may still stand from the turn before", () => {
+    const young = run([prompt(1, 0), screen(2, 500, INTERRUPTED)]);
+    expect(young.state.running).not.toBeNull();
+    expect(young.surface).toMatchObject({ turn: "unknown", reason: "contested" });
+    expect(run([prompt(1, 0), screen(2, 500, INTERRUPTED), screen(3, 2000, INTERRUPTED)]).surface.turn).toBe("idle");
+  });
+
+  it("the row over a new turn's running sign ends nothing: the screen reads running", () => {
+    const texts = INTERRUPTED.map((row) => rowText(row));
+    // The box's top rule: the rule right over the last `❯` row.
+    const top = texts.findLastIndex((text, i) => /^─{8,}/u.test(text) && (texts[i + 1] ?? "").startsWith("❯"));
+    expect(top).toBeGreaterThan(texts.findIndex((text) => text.includes("Interrupted")));
+    const running = plainRows([...texts.slice(0, top), "❯ next prompt", "✻ Pondering… (4s · esc to interrupt)", ...texts.slice(top)]);
+    const { state, surface } = run([prompt(1, 0), screen(2, 2000, running)]);
+    expect(surface.turn).toBe("running");
+    expect(state.running).not.toBeNull();
+  });
+
+  it("a dialog screen that still shows the row ends nothing", () => {
+    const rows = fixtureRows("claude-lab--plan-approval--w82.txt");
+    expect(rows.some((row) => rowText(row).includes("Interrupted · What should Claude do instead?"))).toBe(true);
+    const { state } = run([prompt(1, 0), screen(2, 5000, rows)]);
+    expect(state.running).not.toBeNull();
+  });
+
+  // Second live pass (2026-10-23): Collie's own Stop in a fresh session, and a refused permission in
+  // another, kept the turn running 11 to 19 s, until the lost-Stop reads (bridge journal:
+  // `surface.lost-stop pane=w76:p3` at 16:36:16 and 16:38:05). Claude Code's fullscreen TUI pins the
+  // box to the bottom; a short transcript stands at the top with blank rows down to the box, so the
+  // stopped row stood about twenty rows over it, outside the six-row band. Real captures, 120 x 40.
+  const FRESH = fixtureRows("claude--v2-1-309-interrupted-fresh-session--w120.txt");
+  const FRESH_DENIED = fixtureRows("claude--v2-1-309-permission-denied-fresh-session--w120.txt");
+  const rowsOverBox = (rows: ScreenInput["rows"]): number => {
+    const texts = rows!.map((row) => rowText(row));
+    const frame = findInputFrame(rows!, CLAUDE)!;
+    return frame.top - texts.findIndex((text) => text.includes("Interrupted · What should Claude do instead?"));
+  };
+
+  it("a fresh fullscreen session: the stopped row stands far over the box, past blank rows only, and still ends the blocks", () => {
+    expect(rowsOverBox(FRESH)).toBeGreaterThan(CLAUDE.volatile.above.maxRows);
+    expect(rowsOverBox(FRESH_DENIED)).toBeGreaterThan(CLAUDE.volatile.above.maxRows);
+    const escaped = run([prompt(1, 0), screen(2, 2000, FRESH)]);
+    expect(escaped.surface).toEqual({ revision: 2, turn: "idle", modal: "none", composer: "empty" });
+    expect(escaped.state.lostStops).toBe(0);
+    const denied = run([prompt(1, 0), dialog(2, 8000), screen(3, 21_000, FRESH_DENIED)]);
+    expect(denied.surface).toEqual({ revision: 3, turn: "idle", modal: "none", composer: "empty" });
+    expect(denied.state.dialog).toBeNull();
+    expect(denied.state.lostStops).toBe(0);
+  });
+
+  it("the blank rows are not counted, rows with text are: a stopped row under six rows of newer text ends nothing", () => {
+    const texts = INTERRUPTED.map((row) => rowText(row));
+    const at = texts.findLastIndex((text) => text.includes("Interrupted · What should Claude do instead?"));
+    const newer = Array.from({ length: CLAUDE.volatile.above.maxRows }, (_, i) => `  ${String(i + 1)}. a newer line of the transcript`);
+    const buried = plainRows([...texts.slice(0, at + 1), ...newer, ...texts.slice(at + 1)]);
+    const { state, surface } = run([prompt(1, 0), screen(2, 2000, buried)]);
+    expect(surface.turn).toBe("running");
+    expect(state.running).not.toBeNull();
+  });
+
+  // Second live pass: Collie's Stop before the first token. Claude Code takes the turn back and puts
+  // the prompt into the box: no Interrupted row, a draft, so the lost-Stop reads never count, and the
+  // turn read running 20 s and more, until the box was cleared. The Stop receipt said `stopped`; the
+  // bridge gives that to the fold as a `stop` edge (the shadow's `stopSeen`). Real capture.
+  const RESTORED = fixtureRows("claude--v2-1-309-stopped-prompt-restored--w120.txt");
+  const stop = (seq: number, at: number): SurfaceInput => ({ seq, source: "edge", at, kind: "stop" });
+
+  it("Stop before the first token: the restored prompt holds the block on every read; the Stop receipt's stop edge ends it", () => {
+    expect(surfaceOfScreen(screen(1, 0, RESTORED), CLAUDE).surface).toEqual({ revision: 1, turn: "idle", modal: "none", composer: "draft" });
+    const reads = [2000, 5000, 8000, 11_000, 14_000, 21_000].map((at, i) => screen(i + 2, at, RESTORED));
+    const held = run([prompt(1, 0), ...reads]);
+    expect(held.surface.turn).toBe("running");
+    expect(held.state.lostStops).toBe(0);
+    const { state, surface } = run([prompt(1, 0), screen(2, 2000, RESTORED), stop(3, 2400), screen(4, 3000, RESTORED)]);
+    expect(surface).toEqual({ revision: 4, turn: "idle", modal: "none", composer: "draft" });
+    expect(state.running).toBeNull();
+    expect(state.lostStops).toBe(0);
   });
 });

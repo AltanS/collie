@@ -185,10 +185,19 @@ Each harness ships its own buttons, in this order:
 | Codex | Model, Compact, Resume |
 | pi | Model, Compact, Tree, Resume |
 | omp | Model, Compact, Tree, Resume |
+| opencode | Model, Compact, Resume |
+| Grok Build | Model, Compact, Resume |
+| Muse Code | Model, Effort, Compact, Resume |
+| Antigravity (agy) | Model, Compact, Resume |
 
-Codex and pi have no Effort button. Codex's `/model` picker sets the model and the reasoning effort
-on one screen, so one button already reaches both. pi has no effort or thinking command at all;
-that dial lives inside `/settings`, a modal the keys pad cannot usefully drive.
+Codex, Grok and Antigravity have no Effort button, because their `/model` picker also sets the
+reasoning effort. A bare `/effort` in Grok opens no picker at all.
+
+pi and opencode have no effort command. pi keeps that dial inside `/settings`, a modal the keys pad
+cannot usefully drive, and opencode cycles its variants on a key.
+
+opencode spells two buttons its own way: Model sends `/models` and Resume sends `/sessions`. Its
+Compact works once the session holds a turn, because opencode offers `/compact` only then.
 
 omp's Tree button sits between Compact and Resume. It opens omp's own session tree in the mirror, a
 picker that jumps to any earlier point in the session. The same command, `/tree`, is also in omp's
@@ -226,6 +235,53 @@ device and applies the next time you open a pane.
 To verify, open a pane running Claude Code, Codex, pi or omp; the tinted segment sits at the right
 of the row above the keyboard. Turn that segment off per device in **Settings → Appearance → Harness shortcuts**;
 Collie's own controls stay.
+
+### Stop a turn
+
+While an agent works, a **Stop** button sits on the belt, on Collie's own side of it. It shows only when
+the turn runs and Collie knows the key that stops this agent. Stop does not type anything and does not
+send a message. It presses the agent's own stop key, once, and tells you what happened.
+
+A Stop needs two taps. The first tap arms the button: the word changes to **Stop?** and the button
+keeps its size. Tap it again within four seconds to stop the turn. A second tap that lands at once,
+within 0.4 seconds, counts as the same touch and is ignored. If you wait, the arm lapses and nothing is
+pressed. The arm also lapses when you open another pane or the turn ends. While the second tap is in flight the button takes no more taps, so a quick third
+tap cannot press a second Stop.
+
+Which key stops a turn is the harness's own choice, and the harness profile holds it. Most agents
+stop on Escape, some on Ctrl+C, and some need Escape twice. The profile decides, not this page.
+
+After the key goes in, Collie reads the screen again for up to three seconds and tells you one of
+three things under the box:
+
+| Receipt | What it means |
+| --- | --- |
+| **Stopped.** | The key went in, and two reads in a row show the turn over. The box is free. |
+| **Stop sent. The agent still looks busy.** | The key went in, but Collie did not see the turn over on two reads in a row. Give it a moment, then tap Stop again if you need to. |
+| A refusal | Nothing was pressed. The sentence says why. |
+
+If the stop key opened a dialog instead, Collie says so and points you to its card.
+
+Collie refuses before it presses when pressing could do harm:
+
+- **A dialog is open.** Escape would answer that dialog. Answer it on its card instead.
+- **The box holds your text, and this harness's stop key would clear it.** Clear the box, or use the
+  Keys board, then tap Stop again.
+- **Collie cannot read this pane.** It does not press a key into a screen it cannot read. This also
+  covers a screen where Collie cannot tell whether a turn runs.
+- **The turn had already ended.** There was nothing to stop, so nothing was pressed.
+- **This machine cannot stop from the phone yet.** Over a crew, the machine that runs the pane has an
+  older Collie. Update it, then stop.
+
+If no answer comes back from a crew machine in time, Collie says so. The Stop may have gone in, so
+check the pane before you tap Stop again.
+
+A Stop is always your tap. A walky talky message, a hook, the command line and a queued action never
+press one. Over a crew, the machine that runs the pane presses the key, reads the screen and sends
+the receipt back through the lead.
+
+A program that runs as a durable agent keeps the Stop it already had. It stops the turn it names,
+with its own receipt, and it does not use the arm.
 
 ## Your own key presets
 

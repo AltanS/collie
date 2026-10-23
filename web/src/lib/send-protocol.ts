@@ -131,8 +131,10 @@ const STEPS: readonly SendStep[] = ["s0", "clear", "probe", "write", "s1", "comm
 
 /**
  * The session page's list of recent sends, row by row. A row that is not whole is left out. The wire
- * carries no text and no screen row, and this reads nothing of either: outcome, reason, time, the
- * keys by name and the measured gaps, and on a refusal Collie's own line and four Surface words.
+ * carries no screen row, and this reads none: outcome, reason, time, the keys by name and the measured
+ * gaps, on a refusal Collie's own line and four Surface words, and `line`, the one line of the text
+ * the bridge kept when Sent's rule would (see {@link SendReceiptRow.line}). Any other text field is
+ * not read.
  */
 export function readSendReceipts(body: JsonValue | undefined): SendReceiptsAnswer {
   const list = asJsonObject(body)?.receipts;
@@ -168,6 +170,8 @@ export function readSendReceipts(body: JsonValue | undefined): SendReceiptsAnswe
     if (detail !== undefined && detail.length > 0) row.detail = detail.slice(0, RECEIPT_DETAIL_MAX);
     const saw = readSurfaceWords(node.saw);
     if (saw !== null) row.saw = saw;
+    const line = asJsonString(node.line);
+    if (line !== undefined && line.length > 0) row.line = line;
     receipts.push(row);
   }
   return { receipts };
@@ -194,11 +198,15 @@ export function readHeldCancelAnswer(body: JsonValue | undefined): HeldCancelAns
 export type SendNote =
   | "sent"
   | "queued"
+  | "steered"
+  | "steerUnsupported"
+  | "steerNotAllowed"
   | "held"
   | "expired"
   | "cancelled"
   | "discarded"
   | "draft"
+  | "draftCommand"
   | "typed"
   | "unconfirmed"
   | "noticeKey"
@@ -296,6 +304,10 @@ function refusalNote(reason: SendReason | null): SendNote {
       return "writeFailed";
     case "id_reused":
       return "idReused";
+    case "steer_unsupported":
+      return "steerUnsupported";
+    case "steer_not_allowed":
+      return "steerNotAllowed";
     default:
       return "refused";
   }
@@ -311,6 +323,8 @@ export function sendNote(outcome: SendOutcome | null, reason: SendReason | null)
     case "sent":
     case "effective":
       return "sent";
+    case "steered":
+      return "steered";
     case "discarded":
       return "discarded";
     case "held":
@@ -326,6 +340,26 @@ export function sendNote(outcome: SendOutcome | null, reason: SendReason | null)
     case "unknown":
     case null:
       return "unknown";
+  }
+}
+
+/**
+ * The catalog key of a note's sentence. Most are under `composer.protocol.*`; the steer ones (M69)
+ * live with their feature. `steered` is a sentence here; Recent sends wears the one word
+ * (`sendReceipts.outcome.steered`), as its other outcomes do.
+ */
+export type NoteKey = `composer.protocol.${Exclude<SendNote, "steered" | "steerUnsupported" | "steerNotAllowed">}` | "composer.steer.unsupported" | "composer.steer.notAllowed" | "composer.steer.steered";
+
+export function noteKey(note: SendNote): NoteKey {
+  switch (note) {
+    case "steered":
+      return "composer.steer.steered";
+    case "steerUnsupported":
+      return "composer.steer.unsupported";
+    case "steerNotAllowed":
+      return "composer.steer.notAllowed";
+    default:
+      return `composer.protocol.${note}`;
   }
 }
 
@@ -348,7 +382,8 @@ export function capSentence(cap: SendCap, say: (vars: { count: string; harness: 
  * no row label of its own; it wears the Discard button's word, so the list never calls it "Sent".
  */
 export function receiptLabelKey(outcome: SendOutcome): "composer.protocol.discard" | `sendReceipts.outcome.${Exclude<SendOutcome, "discarded">}` {
-  return outcome === "discarded" ? "composer.protocol.discard" : `sendReceipts.outcome.${outcome}`;
+  if (outcome === "discarded") return "composer.protocol.discard";
+  return `sendReceipts.outcome.${outcome}`;
 }
 
 /**
@@ -358,7 +393,7 @@ export function receiptLabelKey(outcome: SendOutcome): "composer.protocol.discar
  */
 export function receiptSentence(
   row: SendReceiptRow,
-  say: (key: `composer.protocol.${SendNote}` | "sendReceipts.queued", vars?: Record<string, string>) => string,
+  say: (key: NoteKey | "sendReceipts.queued", vars?: Record<string, string>) => string,
 ): string | null {
   if (row.outcome === "discarded") return say("composer.protocol.discarded");
   if (row.queued === true) return say("sendReceipts.queued");
@@ -366,7 +401,9 @@ export function receiptSentence(
   if (row.outcome === "refused" && row.reason === "unconfirmed" && row.cap !== undefined) {
     return capSentence(row.cap, (vars) => say("composer.protocol.capConfirm", vars));
   }
-  return say(`composer.protocol.${sendNote(row.outcome, row.reason)}`);
+  // A steered row wears its one word, like Sent; the sentence is the status line's under the box.
+  if (row.outcome === "steered") return null;
+  return say(noteKey(sendNote(row.outcome, row.reason)));
 }
 
 /** The verdict half of a reading: whether the draft goes, the sentence, the offers. */
@@ -382,12 +419,16 @@ function noteAndOffers(reply: SendReply, offers: readonly SendOffer[]): Verdict 
   // A discard has its own outcome: the box emptied, but nothing went to the agent, so the phone's draft stays.
   // A send queued behind the running turn went out all the same: it clears, and its sentence says it waits.
   if (note === "sent") return { clear: true, note: reply.queued ? "queued" : note, offers: [] };
+  // A steer the witness saw land: the text went into the running turn, so the draft goes like a send's.
+  if (note === "steered") return { clear: true, note, offers: [] };
   if (note === "discarded") return { clear: false, note, offers: [] };
   // A held send is the bridge's to keep: its text now lives in the queued row above the box, so the
   // draft goes. Not a refusal, so it carries no offers. `expired` and `cancelled` end a held send and
   // answer a DELETE or a snapshot row, not a POST; they are read here for a receipt that arrives late.
   if (note === "held") return { clear: true, note, offers: [] };
   if (note === "expired" || note === "cancelled") return { clear: false, note, offers: [] };
+  // A command onto a draft is offered Replace and Cancel, not Add (the bridge's list): the sentence names only those.
+  if (note === "draft" && offers.includes("replace") && !offers.includes("append")) return { clear: false, note: "draftCommand", offers };
   return { clear: false, note, offers };
 }
 

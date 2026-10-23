@@ -37,6 +37,7 @@ import { settleAfterSend } from "@/lib/harness/guard";
 import { setStatus } from "@/lib/status";
 import { setFollowing as publishFollowing } from "@/lib/poll-intent";
 import { useHarnessStatusLineShown } from "@/lib/harness-prefs";
+import { stopFor } from "@/lib/harness-bar";
 import { useAutoZenEnabled, useZenEnabled } from "@/lib/zen";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { setStripsCollapsed, useStripsCollapsed } from "@/lib/strips-collapsed";
@@ -64,7 +65,8 @@ import { paneSurface } from "@/lib/send-slot";
 import { answerAsk, cardHashOf, type AskTapResult } from "@/lib/dialog-ask";
 import { holdAskOfNote, screenCardMayAnswer } from "@/lib/surface/hold";
 import { askOptionFor } from "@/lib/ask-reply";
-import { refreshNow } from "@/lib/api";
+import { cancelWalky, dropWalky, refreshNow } from "@/lib/api";
+import { describeThrownError } from "@/lib/api-error-message";
 import { sameKeys } from "@/lib/harness/prompt-model";
 import { askOf, type Ask } from "@/lib/surface/surface";
 import { focusQuestionCard } from "@/lib/dialog-focus";
@@ -87,7 +89,7 @@ import { CardWaitingCtx } from "@/components/chat-cards";
 import { chatStatusKey, SavedCopyRow, SessionStream, sharedFolderLine } from "@/components/session-stream";
 import { PaneSettingsSheet } from "@/components/pane-settings-sheet";
 import { WalkyOpenProvider } from "@/components/walky-log";
-import { paneAddress } from "@/lib/walky";
+import { paneAddress, takeBackNote } from "@/lib/walky";
 import { WalkySheet } from "@/components/walky-sheet";
 import { CompactStripLabels, TAB_ROW_SQUARE_TAP_TARGET } from "@/components/ui/labelled-strip";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
@@ -2772,9 +2774,9 @@ export function AgentChat({
               data-slot="draft-notice-slot"
               className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-3 pb-2"
             />
-            {/* The pane's model, small on the mirror's bottom-right corner, over both bodies alike
-                and under the notice slot above (model-tag.tsx says why there). */}
-            <ModelTag model={modelOnScreen ? undefined : agent?.model} effort={agent?.effort} />
+            {/* The pane's model and its usage dots, small on the mirror's bottom-right corner, over both
+                bodies alike and under the notice slot above (model-tag.tsx says why there). */}
+            <ModelTag model={modelOnScreen ? undefined : agent?.model} effort={agent?.effort} usage={agent?.usage} />
           </div>
 
           {/* THE CARD DOCK (.adr/0059). The lifted card used to render inside the scroller above,
@@ -3027,9 +3029,13 @@ export function AgentChat({
                   scope={scope}
                   stale={actsDisabledByCache}
                   agent={agent?.agent}
+                  canSteer={agent?.canSteer}
                   isShell={isShell}
                   cwd={agent?.cwd || undefined}
                   held={agent?.held}
+                  // Stop on the belt (M68 spec 02): the turn runs and the bridge says the profile has an
+                  // interrupt key. The rule is lib/harness-bar.ts `stopFor`; a gone pane or a read-only device has none.
+                  stopOffered={stopFor(agent) && !gone && !readOnly}
                   // The Chat window's turns: the composer reads them only to settle a send that
                   // ended `unknown` once its text lands as a user turn (#511).
                   chatEntries={chatEntries}
@@ -3060,6 +3066,15 @@ export function AgentChat({
                     onToggle: () => setDrawer(drawer === "display" ? null : "display"),
                   }}
                   onSent={onSent}
+                  // The held mark above the box (M62 spec 03) opens the Messages sheet, from the top.
+                  onOpenMessages={
+                    messagesSheet
+                      ? () => {
+                          setWalkyFocus(null);
+                          setDrawer("messages");
+                        }
+                      : undefined
+                  }
                   // The Screen pill on the belt: the raw rows, in one tap, in every state (M56 spec 07).
                   screen={gridless ? undefined : { on: screenForced, onToggle: () => setScreenForced((on) => !on) }}
                   // The switcher mark, for the actions belt's top rule — see the condition at
@@ -3295,6 +3310,26 @@ export function AgentChat({
           canReply={!readOnly && !savedCopyWrites && hostBlock === undefined && !gone}
           focusId={walkyFocus}
           self={walkySelf}
+          // The two take-backs of a held message (M62 spec 03). The routes answer per target; the list
+          // is read again at once so the row's own receipt shows the end of the hold.
+          onCancel={async (row) => {
+            try {
+              const results = await cancelWalky(row.id);
+              revalidator.revalidate();
+              return takeBackNote(results);
+            } catch (thrown) {
+              return t("walky.sheet.takeBackFailed", { error: describeThrownError(thrown) });
+            }
+          }}
+          onDrop={async (row) => {
+            try {
+              const results = await dropWalky(paneId, row.id, scope);
+              revalidator.revalidate();
+              return takeBackNote(results);
+            } catch (thrown) {
+              return t("walky.sheet.takeBackFailed", { error: describeThrownError(thrown) });
+            }
+          }}
           onReply={(row) => {
             closeDrawer();
             if (row.from.address === null) return;

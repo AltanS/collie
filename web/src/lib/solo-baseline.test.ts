@@ -160,10 +160,17 @@ const AGENT_VIEW_KEYS = {
   // Not a crew dimension: the Send Protocol's mark (M56 spec 05). Only COLLIE_SEND_PROTOCOL=1 fills it,
   // and it is off by default, so it is absent on every pane here and no golden byte moved.
   sendProtocol: true,
+  // Not a crew dimension: whether a send may steer the pane's turn (M69). Rides with `sendProtocol` only.
+  canSteer: true,
   // Not a crew dimension: the pane's held sends (M56 spec 15), present only while a send waits for the turn to end.
   held: true,
+  // Not a crew dimension: whether a Stop (M68) has a key to press on this pane. It rides with `surface` only,
+  // and only when the pane's profile names an interrupt key; this harness builds no Surface, so no golden byte moved.
+  canStop: true,
   // Not a crew dimension: the pane's session instance (walky talky), four characters naming the session that holds the pane id now. Absent on a machine that predates it.
   instance: true,
+  // Not a crew dimension: the pane's usage dots (bridge/usage.ts), present only while the statusLine wrapper reports them.
+  usage: true,
 } satisfies Record<keyof AgentView, true>;
 
 const DEVICE_AUTH_KEYS = {
@@ -265,6 +272,8 @@ describe("solo zero-tax — the client's mirror types carry no crew dimension", 
       "asks",
       "badge",
       "cache",
+      "canSteer",
+      "canStop",
       "cwd",
       "effort",
       "focused",
@@ -299,6 +308,7 @@ describe("solo zero-tax — the client's mirror types carry no crew dimension", 
       "terminalTitleStale",
       "todos",
       "turnId",
+      "usage",
       "workspaceId",
       "workspaceLabel",
       "workspaceNumber",

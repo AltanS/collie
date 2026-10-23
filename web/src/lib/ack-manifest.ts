@@ -72,6 +72,14 @@ export const ACK_MANIFEST = {
     channel: "inline",
     why: "An operator message (M62): the receipt's state, in words, stands beside the composer box (or in the Crew sheet's receipt rows) until it is dismissed, because a message that was kept in the inbox or refused is something the operator must read and act on, and a status line would be gone by then.",
   },
+  cancelWalky: {
+    channel: "inline",
+    why: "The operator's Cancel on a held walky talky message it sent (M62 spec 03): the row's receipt turns to `cancelled by sender` on the next read, so a taken message says nothing more; an `already typed` answer and a failed call land as a line under the row, because the operator asked for something that did not happen.",
+  },
+  dropWalky: {
+    channel: "inline",
+    why: "The pane owner's Drop on a held walky talky message (M62 spec 03): the row's receipt turns to `dropped by the pane's owner` on the next read and the held mark goes; an `already typed` answer and a failed call land as a line under the row.",
+  },
   cancelHeldSend: {
     channel: "silent",
     why: "Cancel or Dismiss on a held send's queued row (M56 spec 15): the row leaving the composer IS the receipt, so a success says nothing more; a Cancel that came too late, and a failed call, land as a status line.",

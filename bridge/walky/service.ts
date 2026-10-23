@@ -10,7 +10,7 @@
 import { isSelf, paneAddress, parseAddress, LOCAL_MEMBER } from "./address.ts";
 import { signMessage } from "./canonical.ts";
 import { BODY_TOO_LONG, cleanBody } from "./clean.ts";
-import { isFanOut, withoutAnsweredLegs, WalkyDeliverer, type DelivererDeps, type SenderPane, type WalkyPane } from "./deliver.ts";
+import { CANCELLED_BY_SENDER, DROPPED_BY_OWNER, isFanOut, withoutAnsweredLegs, WalkyDeliverer, type DelivererDeps, type SenderPane, type TakeBack, type WalkyPane } from "./deliver.ts";
 import { sameInstance, type LogRecord, type WalkyLog } from "./log.ts";
 import type { RefusalCounts } from "./refusals.ts";
 import { headerField, WALKY_LABEL_MAX, type WalkyEntry, type WalkyMessage, type WalkyReceipt, type WalkySkipped, type WalkyTarget, type WalkyVerified } from "./types.ts";
@@ -74,6 +74,15 @@ export interface WalkyStatus {
    */
   readonly elsewhere: string[];
 }
+
+/** What `cancel` answers a sender that is not the message's: the id is kept out, the caller prints it. */
+export const NOT_THE_SENDER = "only the sender can cancel it";
+
+/** A take-back's answer (M62 spec 03): one result per logged target, or why none was touched. */
+export type TakeBackAnswer = { readonly ok: true; readonly results: readonly TakeBack[] } | { readonly ok: false; readonly error: string };
+
+/** Who asks to take a message back: the agent in a pane of this bridge, or the operator on a paired device. */
+export type TakeBackRef = { readonly kind: "agent"; readonly pane: WalkyPane } | { readonly kind: "operator" };
 
 /** A message with its newest receipt. */
 function entryOf(message: WalkyMessage, receipt: WalkyReceipt): WalkyEntry {
@@ -292,6 +301,37 @@ export class WalkyService {
             .map((receipt) => receipt.target)
         : [];
     return { receipts: shown, message: records[0]?.message ?? null, elsewhere };
+  }
+
+  /**
+   * The sender takes a held message back (M62 spec 03, decision 1 and 5): `collie walky cancel <id>`
+   * from the pane that sent it, or the phone's `POST /api/walky/<id>/cancel` for an operator's message.
+   * An agent proves it is the sender as a send does, by the pane the mux markers place: its address
+   * must be the message's `from.address`, token and all, so a new session in the same pane cannot
+   * cancel the old one's message. An operator message belongs to the paired devices as a whole. A
+   * fan-out is taken back target by target; each answers for itself.
+   */
+  cancel(id: string, by: TakeBackRef): TakeBackAnswer {
+    const records = this.deps.log.all(id);
+    const message = records[0]?.message;
+    if (message === undefined) return { ok: false, error: `no message ${id} on this machine` };
+    const mine = by.kind === "agent" ? message.from.address !== null && message.from.address === this.addressOf(by.pane.paneId, by.pane.instance) : message.kind === "operator";
+    if (!mine) {
+      this.deliverer.noteRefusal("not the sender");
+      return { ok: false, error: NOT_THE_SENDER };
+    }
+    return { ok: true, results: records.map((record) => this.deliverer.takeBack(record, CANCELLED_BY_SENDER)) };
+  }
+
+  /**
+   * The pane's owner drops a message held for the pane (M62 spec 03, decision 3): the phone's
+   * `POST /api/pane/<pane>/walky/<id>/drop`, on the machine that owns the pane. Only the records placed
+   * on that pane instance are touched; a message to another pane under the same id is not.
+   */
+  drop(id: string, pane: { readonly session: string; readonly paneId: string; readonly instance: string }): TakeBackAnswer {
+    const records = this.deps.log.all(id).filter((record) => record.session === pane.session && record.paneId === pane.paneId && sameInstance(record.instance, pane.instance));
+    if (records.length === 0) return { ok: false, error: `no message ${id} for this pane` };
+    return { ok: true, results: records.map((record) => this.deliverer.takeBack(record, DROPPED_BY_OWNER)) };
   }
 
   /** Mark messages read for a pane instance: the ids, or all of them. */

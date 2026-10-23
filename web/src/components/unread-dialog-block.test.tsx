@@ -6,7 +6,8 @@ import userEvent from "@testing-library/user-event";
 import { parseAnsi } from "@/lib/ansi";
 import { splitLines } from "@/lib/blocks";
 import { buildBlocks } from "@/lib/harness";
-import { ARM_MS, UnreadDialogBlock } from "./unread-dialog-block";
+import { ARM_MS } from "@/lib/arm";
+import { UnreadDialogBlock } from "./unread-dialog-block";
 
 // The unread-dialog card (.adr/0053). Driven off a real capture through the real pipeline, so what
 // it renders is exactly what the post-pass produces.

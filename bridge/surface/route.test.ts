@@ -18,7 +18,7 @@ import { liftDialog, readerBlocks } from "../../web/src/lib/surface/lift.ts";
 import { AskAnswerer, AskBook } from "./ask.ts";
 import { profileFor } from "../../web/src/lib/surface/profile.ts";
 import { KeyGate } from "./key-gate.ts";
-import { RowRing, SendProtocol, SessionLocks } from "./protocol.ts";
+import { RowRing, SendProtocol, SessionLocks, type SendRequest } from "./protocol.ts";
 import { RequestStore } from "./requests.ts";
 import { HoldStore } from "./holds.ts";
 
@@ -38,6 +38,16 @@ describe("parseSendRequest", () => {
     for (const bad of ["yes", 1, null, []]) {
       // SAFETY: each case is plain JSON data, a JsonValue.
       expect(parseSendRequest({ ...good, capAck: bad } as JsonValue)).toBeNull();
+    }
+  });
+
+  test("takes when: steer, refuses any other word, and never takes the caller's word for fromPhone (M69)", () => {
+    expect(parseSendRequest({ ...good, when: "steer" })).toEqual({ ...good, mode: "send", when: "steer" });
+    expect(parseSendRequest({ ...good, when: null })).toEqual({ ...good, mode: "send" });
+    expect(parseSendRequest({ ...good, fromPhone: true })).toEqual({ ...good, mode: "send" });
+    for (const bad of ["now", "Steer", 1, true, []]) {
+      // SAFETY: each case is plain JSON data, a JsonValue.
+      expect(parseSendRequest({ ...good, when: bad } as JsonValue)).toBeNull();
     }
   });
 
@@ -122,6 +132,18 @@ function runtime(withSend: boolean, dir: string, holds?: HoldStore) {
   // The herdr stub has no `controlTurn`, so it is a screen pane.
   const rt: SendRouteRuntime = { send, engine, herdr: {}, name: "main" };
   return { rt, pane, store, pokes: () => pokes };
+}
+
+/** Every request the route hands the protocol, in order; the protocol still runs each one. */
+function spyHandle(rt: SendRouteRuntime): SendRequest[] {
+  const send = rt.send!;
+  const seen: SendRequest[] = [];
+  const handle = send.handle.bind(send);
+  send.handle = (request, target) => {
+    seen.push(request);
+    return handle(request, target);
+  };
+  return seen;
 }
 
 function auditLines() {
@@ -292,6 +314,28 @@ describe("the reply route runs the protocol (M56 spec 06)", () => {
     }
   });
 
+  test("the reply route and /api/send set fromPhone; a body cannot (M69)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "collie-route-"));
+    try {
+      const { rt } = runtime(true, dir);
+      const seen = spyHandle(rt);
+      const { audit } = auditLines();
+      // /api/send is the phone's route: fromPhone, whatever the body says.
+      await sendRoute(rt, { id: "route-phone-0001", pane: "%1", text: "from the phone", fromPhone: false }, context(audit));
+      // The reply route with the phone's request id: fromPhone.
+      await replyThroughProtocol(replySendOf(rt), "%1", "main", { text: "a reply with an id", submit: true, id: "route-phone-0002" }, context(audit));
+      // The reply route with no id is not the phone: a body that says fromPhone does not make it so.
+      await replyThroughProtocol(replySendOf(rt), "%1", "main", { text: "a reply with no id", submit: true, fromPhone: true }, context(audit));
+      expect(seen.map((request) => [request.text, request.fromPhone])).toEqual([
+        ["from the phone", true],
+        ["a reply with an id", true],
+        ["a reply with no id", undefined],
+      ]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("with the protocol off a submitting reply is refused 409 and nothing is typed", async () => {
     const dir = mkdtempSync(join(tmpdir(), "collie-route-"));
     try {
@@ -324,21 +368,27 @@ describe("sendReceiptsRoute (M56 spec 09)", () => {
     }
   });
 
-  test("answers the pane's last ten receipts newest first, with no text and no rows", async () => {
+  test("answers the pane's last ten receipts newest first, each with the line Sent would keep, and no rows", async () => {
     const dir = mkdtempSync(join(tmpdir(), "collie-route-"));
     try {
       const { rt } = runtime(true, dir);
       const { audit } = auditLines();
-      for (let n = 0; n < 12; n++) await sendRoute(rt, { id: `route-rcpt-${String(n).padStart(4, "0")}`, pane: "%1", text: `message number ${String(n)} is private` }, { audit, device: null, redact: false, acceptEncoding: null });
+      const context = { audit, device: null, redact: false, acceptEncoding: null };
+      for (let n = 0; n < 12; n++) await sendRoute(rt, { id: `route-rcpt-${String(n).padStart(4, "0")}`, pane: "%1", text: `message number ${String(n)} is plain` }, context);
       const res = sendReceiptsRoute(rt, "%1", null);
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.receipts).toHaveLength(10);
-      expect(body.receipts[0]).toMatchObject({ requestId: "route-rcpt-0011", outcome: "sent", mode: "send", harness: "claude", keys: ["Enter"] });
-      expect(Object.keys(body.receipts[0]).toSorted()).toEqual(["at", "gapsMs", "harness", "keys", "mode", "outcome", "requestId", "version"]);
-      expect(JSON.stringify(body)).not.toMatch(/private/u);
+      expect(body.receipts[0]).toMatchObject({ requestId: "route-rcpt-0011", outcome: "sent", mode: "send", harness: "claude", keys: ["Enter"], line: "message number 11 is plain" });
+      expect(Object.keys(body.receipts[0]).toSorted()).toEqual(["at", "gapsMs", "harness", "keys", "line", "mode", "outcome", "requestId", "version"]);
       const other = await sendReceiptsRoute(rt, "%9", null).json();
       expect(other.receipts).toEqual([]);
+      // A text Sent's rule refuses is listed with no line at all, and nothing of it is in the body.
+      await sendRoute(rt, { id: "route-rcpt-0012", pane: "%1", text: "the token is hunter2" }, context);
+      const after = await sendReceiptsRoute(rt, "%1", null).json();
+      expect(after.receipts[0]).toMatchObject({ requestId: "route-rcpt-0012", outcome: "sent" });
+      expect(after.receipts[0].line).toBeUndefined();
+      expect(JSON.stringify(after)).not.toMatch(/hunter2|token/u);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -365,7 +415,10 @@ describe("sendReceiptsRoute: a refusal's line and Surface words (2026-10-17 fiel
       expect(listed.receipts[1].requestId).toBe("route-ok-0001");
       expect(listed.receipts[1].detail).toBeUndefined();
       expect(listed.receipts[1].saw).toBeUndefined();
-      expect(JSON.stringify(listed)).not.toMatch(/private/u);
+      // Both rows carry their own text as a line; the draft someone typed at the desk is a screen row and never listed.
+      expect(listed.receipts[0].line).toBe("a private second message");
+      expect(listed.receipts[1].line).toBe("a private first message");
+      expect(JSON.stringify(listed)).not.toContain("half a private thought");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -452,6 +505,30 @@ describe("a Resend through sendRoute (M56 spec 15 review, H7)", () => {
       expect(res.status).toBe(200);
       expect(await res.json()).toMatchObject({ receipt: { requestId: "route-res-0003", outcome: "sent", textLength: "a name the mask would hide".length } });
       expect(holds.get("route-res-0001")).toBeNull();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a Resend that asks to steer goes as a plain send: no when and no fromPhone reach the protocol (M69)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "collie-route-"));
+    try {
+      const { audit } = auditLines();
+      const context = { audit, device: null, redact: false, acceptEncoding: null };
+      const holds = new HoldStore(join(dir, "held"));
+      const { rt, store } = runtime(true, dir, holds);
+      const seen = spyHandle(rt);
+      const accepted = store.accept({ id: "route-res-0011", session: "main", paneId: "%1", paneGeneration: "gen", surfaceRevision: 0, mode: "send", text: "the held text" });
+      const { reason: _crash, ...receipt } = SendProtocol.crashReceipt(accepted.record);
+      store.hold("route-res-0011", { ...receipt, outcome: "held" });
+      holds.add({ id: "route-res-0011", session: "main", paneId: "%1", harness: "claude", mode: "send", text: "the held text", revision: 0, command: false });
+      holds.end("route-res-0011", "expired");
+      const res = await sendRoute(rt, { id: "route-res-0012", pane: "%1", text: "", resendOf: "route-res-0011", when: "steer" }, context);
+      expect(await res.json()).toMatchObject({ receipt: { requestId: "route-res-0012", outcome: "sent" } });
+      expect(seen).toHaveLength(1);
+      expect(seen[0]).toMatchObject({ id: "route-res-0012", text: "the held text", mode: "send" });
+      expect(seen[0] && "when" in seen[0]).toBe(false);
+      expect(seen[0] && "fromPhone" in seen[0]).toBe(false);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

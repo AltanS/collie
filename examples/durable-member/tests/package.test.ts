@@ -7,7 +7,7 @@ import { PROTOCOL_RANGE, SDK_VERSION, WIRE_VERSION } from "../../../packages/dur
 
 const PKG_DIR = new URL("../../../packages/durable-sdk/", import.meta.url).pathname;
 const pkg = JSON.parse(readFileSync(`${PKG_DIR}package.json`, "utf8"));
-const ENTRIES = [".", "./node", "./bun", "./pi", "./core"];
+const ENTRIES = [".", "./node", "./bun", "./pi", "./core", "./durable-harness"];
 
 describe("the package", () => {
   test("is @colliepwa/durable-sdk, an ES module with no side effects, for Node 22.19 or later", () => {
@@ -19,7 +19,7 @@ describe("the package", () => {
     expect(pkg.private).toBeUndefined();
   });
 
-  test("exports the root, ./node, ./bun, ./pi and ./core, each with types and default from dist/", () => {
+  test("exports the root, ./node, ./bun, ./pi, ./core and ./durable-harness, each with types and default from dist/", () => {
     for (const entry of ENTRIES) {
       const dir = entry === "." ? "" : `${entry.slice(2)}/`;
       expect([entry, pkg.exports[entry]]).toEqual([entry, { types: `./dist/${dir}index.d.ts`, default: `./dist/${dir}index.js` }]);
@@ -30,14 +30,16 @@ describe("the package", () => {
     expect(pkg.files).toEqual(["dist", "README.md", "CHANGELOG.md", "LICENSE"]);
   });
 
-  test("has no runtime dependency; the Pi packages are optional peers, 1.1.0 up to 2", () => {
+  test("has no runtime dependency; the Pi packages are optional peers, 1.1.0 up to 2; durable-harness and @workflow/world are optional peers at the exact versions tested", () => {
     expect(pkg.dependencies).toBeUndefined();
     expect(Object.keys(pkg.devDependencies)).toEqual(["@types/bun"]);
+    // A beta moves its API between releases: the durable-harness peers are pinned, and world-port.ts checks them at runtime.
+    const exact: Record<string, string> = { "durable-harness": "0.0.1-beta.6", "@workflow/world": "5.0.5" };
     for (const [name, range] of Object.entries(pkg.peerDependencies)) {
-      expect([name, range]).toEqual([name, ">=1.1.0 <2"]);
+      expect([name, range]).toEqual([name, exact[name] ?? ">=1.1.0 <2"]);
       expect([name, pkg.peerDependenciesMeta[name]]).toEqual([name, { optional: true }]);
     }
-    expect(Object.keys(pkg.peerDependencies).sort()).toEqual(["@earendil-works/chord", "@earendil-works/pi-ai", "@earendil-works/pi-durable"]);
+    expect(Object.keys(pkg.peerDependencies).sort()).toEqual(["@earendil-works/chord", "@earendil-works/pi-ai", "@earendil-works/pi-durable", "@workflow/world", "durable-harness"]);
   });
 
   test("its LICENSE is the repo's", () => {

@@ -18,6 +18,7 @@ import { asJsonObject, asJsonString, parseJsonObject, type JsonObject } from "./
 import { readHeldCancelAnswer, readSendReceipts, readSendReply, type SendReply } from "./send-protocol";
 import type { HeldCancelAnswer, SendReceiptRow, SendRequestBody } from "./surface/send";
 import type { AnswerBody } from "./surface/ask";
+import { STOP_OUTCOMES, STOP_REASONS, type StopBody, type StopReceipt } from "./surface/stop";
 import { readAskTapReply, type AskTapReply } from "./ask-reply";
 import { authHeader, clearNotPaired, EXPIRED_BODY, markExpired, markNotPaired, NOT_PAIRED_BODY } from "./pairing";
 import { pairingRefused } from "./wipe";
@@ -29,7 +30,7 @@ import { stampSend } from "./poll-intent";
 import { observeServerBuild, SERVER_BUILD_HEADER } from "./server-build";
 import { noteServerDate } from "./server-clock";
 import { mounted } from "./base-path";
-import { WALKY_LIST_LIMIT, type WalkyReceipt, type WalkyRefusals, type WalkyRow, type WalkySendBody, type WalkySkipped, type WalkyTarget, type WalkyWho } from "./walky";
+import { WALKY_LIST_LIMIT, type WalkyReceipt, type WalkyRefusals, type WalkyRow, type WalkySendBody, type WalkySkipped, type WalkyTakeBack, type WalkyTarget, type WalkyWho } from "./walky";
 import { CHAT_UNCHANGED, type ChatAnswer } from "./chat-window";
 import { decidedOf, parseAsk, type AnswerResult, type AskAnswer } from "./ask";
 import type { ColumnRange } from "./column-range";
@@ -1426,6 +1427,63 @@ async function postControl(paneId: string, route: "send" | "abort" | "action", b
   return result;
 }
 
+// The Stop helpers sit HERE, beside `postControl`, and not under `abortPane`: lib/ack-manifest.test.ts
+// reads a helper's `method: "POST"` as the export above it, so a helper below an export is a mutation it
+// has not declared.
+/**
+ * What a Stop's 400 or 404 means. This build's Stop route answers a missing pane with its own receipt
+ * (`refused`, `pane_gone`). A refusal in the bridge's error shape (a `code`: an unknown host or
+ * session) is thrown as that refusal. Anything else is a build with no Stop for a screen pane: a crew
+ * member before M68 answers a bare 404 (`{"error":"not found"}` from its crew router), or a 400 from
+ * the program-only abort route of ADR 0101, which wants a turn this phone never sends. Nothing was
+ * pressed either way.
+ */
+function stopMissed(body: JsonObject, status: 400 | 404, requestId: string): StopReceipt {
+  if (body.outcome === "refused" && body.reason === "pane_gone") return { requestId, outcome: "refused", reason: "pane_gone" };
+  const fields = asJsonString(body.code) === undefined ? undefined : apiErrorFieldsOf(body);
+  if (fields !== undefined) throw new ApiError(fields.error ?? "The abort route refused the Stop.", status, fields);
+  return { requestId, outcome: "refused", reason: "unsupported_build" };
+}
+
+/** A Stop's failed answers that are still answers: the three of `recoverOutcome`, and a 400 (see {@link stopMissed}). */
+const stopRecover = (status: number, detail: string): JsonObject | null =>
+  status === 400 ? { ...parseJsonObject(detail), [HTTP_STATUS]: status } : recoverOutcome(status, detail);
+
+/** The receipt a Stop answered, or null for a body that is none. A 404 or a 400 never pressed a key. */
+function stopReceiptOf(body: JsonObject | undefined, requestId: string): StopReceipt | null {
+  if (body === undefined) return null;
+  if (body[HTTP_STATUS] === 404) return stopMissed(body, 404, requestId);
+  if (body[HTTP_STATUS] === 400) return stopMissed(body, 400, requestId);
+  // The lead could not hear the member's answer in time (`write_outcome_unknown`): the key may have gone in.
+  if (body[HTTP_STATUS] === 504) return { requestId, outcome: "unknown" };
+  const outcome = STOP_OUTCOMES.find((word) => word === body.outcome);
+  if (outcome === undefined) return null;
+  const id = asJsonString(body.requestId) ?? requestId;
+  const reason = STOP_REASONS.find((word) => word === body.reason);
+  if (outcome !== "refused") {
+    const keys = Array.isArray(body.keys) ? body.keys.map(asJsonString).filter((key): key is string => key !== undefined) : undefined;
+    // Only a `pressed` receipt carries a reason, and only `dialog_open`: the key opened a dialog.
+    const opened = outcome === "pressed" && reason === "dialog_open" ? { reason } : {};
+    return keys === undefined ? { requestId: id, outcome, ...opened } : { requestId: id, outcome, ...opened, keys };
+  }
+  return reason === undefined ? null : { requestId: id, outcome, reason };
+}
+
+async function postStop(paneId: string, requestId: string, scope: Scope | undefined): Promise<StopReceipt> {
+  // The operator is watching from the tap on, as every write to a pane assumes (poll-intent).
+  stampSend(paneId);
+  const body: StopBody = { requestId };
+  const got = await req<JsonObject>(
+    withScope(`/api/pane/${encodeURIComponent(paneId)}/abort`, scope),
+    { method: "POST", body: JSON.stringify(body) },
+    sendRecover(stopRecover),
+  );
+  const receipt = stopReceiptOf(got, requestId);
+  if (receipt === null) throw new ApiError("The abort route sent a body this phone cannot read.", 502);
+  if (receipt.keys !== undefined) stampSend(paneId);
+  return receipt;
+}
+
 /** The longest first line a plain refusal shows: a sentence, never a page. */
 const PLAIN_LINE_MAX = 160;
 
@@ -1485,7 +1543,7 @@ export async function postSend(body: SendRequestBody, scope?: Scope): Promise<Se
           withScope(`/api/pane/${encodeURIComponent(body.pane)}/reply`, scope),
           {
             method: "POST",
-            body: JSON.stringify({ text: body.text, submit: true, id: body.id, mode: body.mode, rowsHash: body.rowsHash, capAck: body.capAck }),
+            body: JSON.stringify({ text: body.text, submit: true, id: body.id, mode: body.mode, rowsHash: body.rowsHash, capAck: body.capAck, when: body.when }),
           },
           sendRecover(),
         ),
@@ -1493,7 +1551,7 @@ export async function postSend(body: SendRequestBody, scope?: Scope): Promise<Se
     : await req<JsonObject>(withScope("/api/send", scope), { method: "POST", body: JSON.stringify(body) }, sendRecover());
   const reply = readSendReply(got);
   if (reply === null) throw new ApiError("The send route sent a body this phone cannot read.", 502);
-  if (reply.outcome === "sent" || reply.outcome === "effective") stampSend(body.pane);
+  if (reply.outcome === "sent" || reply.outcome === "effective" || reply.outcome === "steered") stampSend(body.pane);
   return reply;
 }
 
@@ -1516,8 +1574,9 @@ export async function postProgramSend(body: SendRequestBody, scope?: Scope): Pro
 
 /**
  * GET /api/send/receipts: the last ten sends the bridge ran for a pane, newest first (M56 spec 09):
- * outcome, reason, time, keys by name and gaps. Never text and never a row of the screen. This
- * machine's own panes only: a pane on a crew member answers nothing here, and the list is empty.
+ * outcome, reason, time, keys by name and gaps, and the one line of the text the bridge kept when
+ * Sent's rule would. Never a row of the screen. This machine's own panes only: a pane on a crew
+ * member answers nothing here, and the list is empty.
  */
 export async function getSendReceipts(paneId: string, scope?: Scope): Promise<SendReceiptRow[]> {
   if (normalizeScope(scope).host) return [];
@@ -1566,6 +1625,27 @@ export async function fetchWalkyWho(signal?: AbortSignal): Promise<WalkyWho> {
     { signal },
   );
   return { targets: got.targets, skipped: got.skipped ?? [], refusals: got.refusals ?? null };
+}
+
+/**
+ * POST /api/walky/<id>/cancel (M62 spec 03): the sender takes a held operator message back. The bridge
+ * answers one result per target; a message that typed, or is going out now, keeps its receipt and the
+ * result says `already typed`. An agent's message is not the phone's to cancel (403, an error here).
+ */
+export async function cancelWalky(id: string): Promise<WalkyTakeBack[]> {
+  const got = await req<{ results?: WalkyTakeBack[] }>(`/api/walky/${encodeURIComponent(id)}/cancel`, { method: "POST" });
+  return got.results ?? [];
+}
+
+/**
+ * POST /api/pane/<pane>/walky/<id>/drop (M62 spec 03): the pane's owner drops a message held for the pane.
+ * This machine's own panes only: the route does not cross a crew link, so a pane on a member is answered
+ * here before any request goes out.
+ */
+export async function dropWalky(paneId: string, id: string, scope?: Scope): Promise<WalkyTakeBack[]> {
+  if (!isLead(scope)) throw new ApiError("A message held on a crew member is dropped on that machine.", 400);
+  const got = await req<{ results?: WalkyTakeBack[] }>(withScope(`/api/pane/${encodeURIComponent(paneId)}/walky/${encodeURIComponent(id)}/drop`, scope), { method: "POST" });
+  return got.results ?? [];
 }
 
 /**
@@ -1632,14 +1712,25 @@ export function runPaneAction(
   return postControl(paneId, "action", body, scope);
 }
 
-/** POST /api/pane/:id/abort: stop the turn the phone saw. Same names and the same stale rule as a send. */
+/**
+ * POST /api/pane/:id/abort: stop the turn.
+ *
+ * A pane with no screen (a program) takes the turn or ask the phone saw, with the same stale rule as a
+ * send, and answers a {@link ControlResult}. A pane with a screen (M68) takes the request id alone: the
+ * bridge reads the Surface, presses the profile's interrupt key as this person's tap, reads back, and
+ * answers a {@link StopReceipt} (`stopped`, `pressed` or `refused` with a reason, always a 200). The
+ * same request id answers the same receipt and presses once.
+ */
+export function abortPane(paneId: string, abort: { requestId: string; target: ControlTarget | null }, scope?: Scope): Promise<ControlResult>;
+export function abortPane(paneId: string, abort: { requestId: string }, scope?: Scope): Promise<StopReceipt>;
 export function abortPane(
   paneId: string,
-  abort: { requestId: string; target: ControlTarget | null },
+  abort: { requestId: string; target?: ControlTarget | null },
   scope?: Scope,
-): Promise<ControlResult> {
+): Promise<ControlResult | StopReceipt> {
+  if (!("target" in abort)) return postStop(paneId, abort.requestId, scope);
   const body: JsonObject = { requestId: abort.requestId };
-  if (abort.target !== null) Object.assign(body, abort.target);
+  if (abort.target !== null && abort.target !== undefined) Object.assign(body, abort.target);
   return postControl(paneId, "abort", body, scope);
 }
 

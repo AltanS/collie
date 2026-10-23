@@ -21,7 +21,7 @@
       # The pinned Bun. It must be at least `MIN_BUN` in cli/update-check.ts — the two are one fact
       # about which Bun this tree is built and measured on, and
       # scripts/check-flake-bun.test.ts fails when they drift apart.
-      bunVersion = "1.4.1";
+      bunVersion = "1.4.4";
 
       # nixpkgs at the revision above ships an older Bun than MIN_BUN, so the version is pinned here
       # rather than taken from the set. Only `version` and the release archives move; the
@@ -42,15 +42,15 @@
               sources = {
                 "aarch64-darwin" = pkgs.fetchurl {
                   url = "https://github.com/oven-sh/bun/releases/download/bun-v${finalAttrs.version}/bun-darwin-aarch64.zip";
-                  hash = "sha256-2Jc86DX6eGflzHmv7m/G8a4BF6pL1fwlRv0AxRL3E4Y=";
+                  hash = "sha256-wkDX8My5DCY6hJ/NsJt+5iYw2SE0jtaq/ahrnVd7xRA=";
                 };
                 "aarch64-linux" = pkgs.fetchurl {
                   url = "https://github.com/oven-sh/bun/releases/download/bun-v${finalAttrs.version}/bun-linux-aarch64.zip";
-                  hash = "sha256-WAzndTMQjcaxC+wXITl+T1qkTpCXJtokUdSD38XlgdY=";
+                  hash = "sha256-uqa7NvUdblhWHgK76oJQOKnfRU9nPW13bou/hvjHhQ4=";
                 };
                 "x86_64-linux" = pkgs.fetchurl {
                   url = "https://github.com/oven-sh/bun/releases/download/bun-v${finalAttrs.version}/bun-linux-x64-baseline.zip";
-                  hash = "sha256-qMnGc4IC4vztVV3YYKlTxWwM0Fn3UEHnAQroGjKAJkY=";
+                  hash = "sha256-4ERutVmVdy65iUvrrppr42jZhai5Jx7hJEhvmUbu3XY=";
                 };
               };
             };

@@ -84,3 +84,21 @@ row's pinned one) that is not a directory on the machine that runs the start giv
 `launch.folder_missing` with `{ folder }`, before anything runs; a crew member checks its own disk.
 The page shows the full path in its summary before Start and does not check while the person types.
 
+
+## Amendment, 2026-10-21: a send's receipt keeps the line Sent would keep
+
+Status is unchanged. This ADR gave a phone intent a request id and a receipt. The Send Protocol uses the same pattern for a send: one file per request id under `<stateDir>/sends/` (`bridge/surface/requests.ts`). Until now that file kept a salted hash and the length of the text, and never the text. No ADR said so. This amendment records the rule, and the change to it.
+
+A request file now keeps the text as `line` when the Sent rule would keep it (`sentLineOf`, `bridge/secret-line.ts`, ADR 0107). The text is one line, not too long, not secret-looking, and not changed by the outbound mask. This holds for every pane kind, agents included. The receipts route carries the line, and the Recent sends list prints it under the outcome.
+
+Why: ten rows that read "Confirmed, 20h ago" could not be told apart on the phone. Altan decided on 2026-10-21 that a row may show what was sent.
+
+The limits:
+
+- The Sent rule errs towards keeping too little. It guarantees nothing. A secret with no known shape can be kept, as ADR 0107 says.
+- A text the rule refuses is sent as usual. It leaves only its hash and length, as before.
+- No screen row ever reaches the file. Rows can hold secrets.
+- The line stays on the machine that owns the pane. The crew lead does not copy it, and a member's list is read on that member only.
+- The line lives as long as the receipt does, seven days (`REQUEST_KEEP_MS`). Nothing searches it.
+
+ADR 0107 is unchanged. Sent still keeps shell lines only, has no request id, and keeps nothing for an agent pane. The line in a receipt is not a Sent record, and it is not a join with Sent.

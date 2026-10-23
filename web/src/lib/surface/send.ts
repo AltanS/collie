@@ -16,8 +16,10 @@ import { modalWord, type Surface, type SurfaceReason } from "./surface";
  * bridge keeps it and sends it, under the same request id, once the pane reads free. A held request
  * ends like any other send, or `expired` (nobody could send it within 30 minutes; the text is kept for
  * a Resend), or `cancelled` (the person took it back before it went out).
+ * `steered` (M69) ends a steer (`when: "steer"`): the harness drew its own sign that the text went into
+ * the running turn. A steer the harness queued instead ends `sent` with `queued`, as a queued send does.
  */
-export const SEND_OUTCOMES = ["effective", "sent", "discarded", "typed_not_submitted", "refused", "unknown", "held", "expired", "cancelled"] as const;
+export const SEND_OUTCOMES = ["effective", "sent", "discarded", "typed_not_submitted", "refused", "unknown", "held", "expired", "cancelled", "steered"] as const;
 export type SendOutcome = (typeof SEND_OUTCOMES)[number];
 
 /**
@@ -49,6 +51,11 @@ export const SEND_REASONS = [
   "modal_cue",
   "stale_token",
   "submit_failed",
+  // typed_not_submitted (M69, counsel on the Edge 5 candidate): a steer's read after its pause and
+  // before the steer key showed a dialog (`dialog_open`: the key would answer it), or no box, or a
+  // modal it cannot tell (`unreadable`). The text is in the box; no key was pressed.
+  "dialog_open",
+  "unreadable",
   // unknown: the request ended without evidence either way. `bound` also refuses: an S0 past its own
   // bound (2 reads, 1200 ms) ends `refused(bound)`, since nothing was written yet.
   "bound",
@@ -58,6 +65,12 @@ export const SEND_REASONS = [
   // unknown: a send queued behind a running turn met a dialog as its Enter went out; the dialog may
   // have taken the Enter, so the person checks the card before answering it
   "dialog_after_enter",
+  // refused (M69): a steer on a pane whose profile names no steer key, on a version Collie may not
+  // trust with a running turn, or for a text that is no message (a command)
+  "steer_unsupported",
+  // refused (M69): a steer from a caller that is not a person's send from the phone (walky talky, a
+  // hook, the CLI): an agent's text never steers a turn
+  "steer_not_allowed",
 ] as const;
 export type SendReason = (typeof SEND_REASONS)[number];
 
@@ -87,6 +100,14 @@ export function takesManualSend(surface: Surface): boolean {
   return surface.modal === "unknown" || surface.modal === "unreadable";
 }
 
+/**
+ * When a send goes into a running turn (M69). `steer`: into the turn the agent runs now, with the
+ * profile's steer key (`keys.steer`). Absent: as before, queued for after the turn (or held). A steer
+ * is the person's explicit choice per send; nothing makes it the default.
+ */
+export const SEND_WHENS = ["steer"] as const;
+export type SendWhen = (typeof SEND_WHENS)[number];
+
 /** A next action the answer offers, each a new request with a new id (`cancel` and `keys` send nothing). */
 export type SendOffer = "append" | "replace" | "cancel" | "submit" | "discard" | "commit" | "keys";
 
@@ -108,6 +129,12 @@ export interface SendRequestBody {
    * itself once it took the new request. The phone never sends a row's text back (it may be masked).
    */
   readonly resendOf?: string | undefined;
+  /**
+   * `steer` (M69): a send into a running turn steers it instead of queueing (the Send button's long
+   * press, only where the pane view says `canSteer`). Absent: exactly the send as before. On an idle
+   * turn a steer goes as a plain send and its receipt says `sent`.
+   */
+  readonly when?: SendWhen | undefined;
 }
 
 /**
@@ -239,8 +266,8 @@ export function surfaceWords(surface: Surface): SurfaceWords {
 
 /**
  * One row of a pane's recent sends, for the session page (M56 spec 09): the receipt's outcome, reason,
- * time, keys by name and measured gaps. No text, no hash of the text and no screen row: a receipt is
- * shown the way it is stored.
+ * time, keys by name and measured gaps, and the text as the one line the bridge kept of it, when it
+ * kept one. No hash of the text and no screen row: a receipt is shown the way it is stored.
  */
 export interface SendReceiptRow {
   readonly requestId: string;
@@ -261,6 +288,12 @@ export interface SendReceiptRow {
   readonly detail?: string;
   /** What the bridge saw at that end, four words (see {@link SendReceipt.saw}). */
   readonly saw?: SurfaceWords;
+  /**
+   * The text that was sent, as the one line the bridge keeps when Sent's own rule would keep it
+   * (`bridge/secret-line.ts`): absent for a text that looked like a secret, ran over several lines or
+   * was too long. The row prints it so ten rows can be told apart; it is never searched.
+   */
+  readonly line?: string;
 }
 
 /** Where a held request stands (M56 spec 15): waiting, going out now, or closed with its text kept. */
@@ -333,9 +366,12 @@ export interface SendAnswer {
 export const SEND_CAUSES = ["notice_key"] as const;
 export type SendCause = (typeof SEND_CAUSES)[number];
 
-/** The offers that go with an outcome and reason. A pane with no frame cannot prove a draft, so it gets the key pad instead. */
-export function offersFor(outcome: SendOutcome, reason: SendReason | undefined, framed: boolean): SendOffer[] {
-  if (outcome === "refused" && reason === "draft_present") return framed ? ["append", "replace", "cancel"] : ["keys"];
+/**
+ * The offers that go with an outcome and reason. A pane with no frame cannot prove a draft, so it gets the key pad instead.
+ * A command onto a draft (`command`) is offered Replace and Cancel only: Add would send the draft with the command at its end.
+ */
+export function offersFor(outcome: SendOutcome, reason: SendReason | undefined, framed: boolean, command = false): SendOffer[] {
+  if (outcome === "refused" && reason === "draft_present") return framed ? (command ? ["replace", "cancel"] : ["append", "replace", "cancel"]) : ["keys"];
   if (outcome === "refused" && reason === "unconfirmed") return ["commit", "keys"];
   // Every reason: the person reads the screen and decides; with no frame the bridge binds both to the rows hash.
   if (outcome === "typed_not_submitted") return ["submit", "discard", "keys"];

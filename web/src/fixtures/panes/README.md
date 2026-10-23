@@ -265,6 +265,56 @@ trailing padding are as read. No user, host or path is in either file.
 | `pi--v130-custom-footer-idle.txt` | Empty editor, the cursor cell, the extension's footer | composer, empty |
 | `pi--v130-custom-footer-draft.txt` | `hello from the probe` typed, not sent | composer, draft read back |
 
+## pi 1.3.0 under pi-powerline-footer's editor (issue 544, reported 2026-10-20, Herdr 0.9.5)
+
+**Sanitized**, from the reporter's own capture attached to issue 544 (`herdr pane read --source recent
+--lines 200 --format ansi`, 254 columns, LF line ends, no trailing newline). pi 1.3.0 with several
+extensions. One of them, pi-powerline-footer, replaces pi's editor (`ctx.ui.setEditorComponent`) with
+a wrapper whose `editor.render` draws both rules ` ─…` and the prompt ` > ` one column in, two cells
+short of the screen, and continuation rows three spaces in. Its `powerline-last-prompt` widget
+(`setWidget`, below the editor) puts ` ↳ ` and the last prompt straight under the bottom rule. Its
+`powerline-status` widget above the editor is the ` GPT-6.1 Sol | think:low | …` row. Under the widget
+stand five footer rows: three match pi's own cwd, stats and joined `setStatus` rows (ponytail's `🐴`
+status is in the last), and two more sit between them, so an extension footer (`setFooter`) draws
+them; which extension is not known. The turn is running, so pi embeds `⠸ Working` in
+the top rule. Cut to the last 23 rows of the read, from the blank row over the last agent turn. The pane
+id, the reporter's German reply and the session name were replaced by strings of the same width;
+`litellm/[REDACTED]` is the reporter's own redaction.
+
+| Fixture | State | Reads as |
+| --- | --- | --- |
+| `pi--v130-powerline-editor-running--w254.txt` | Empty inset editor, a running turn, widget row and five-row footer | running, modal none, composer empty (the profile's `frameAlternates`); the pi reader's `inset` layout, unbound (the tail is past the six-row window) |
+
+**Reporter's idle and draft captures**, the same setup, two captures taken 2026-10-20 and 2026-10-21 (`herdr pane read --source recent
+--lines 200 --format ansi`, 254 columns, CRLF in the read, here LF, no trailing newline). The turn is
+done, so the top rule has no `Working` label and the box stands over the widget row and the five-row
+footer. Cut to the tail (the last agent turn's final rows, then the status row, the box, the widget
+and the footer). Replaced by text of the same width, SGR bytes unchanged: the German reply and the
+German prompts in the widget row and in the cwd row (the widget's second line wraps onto the cwd row,
+105 columns), the Windows share path (`\\wsl.localhost\<user>\tmp\<folder>\...`, user and folder
+names), and the `auth:` profile name (`demo-profile`). The typed draft in the second file is the
+reporter's own test text.
+
+| Fixture | State | Reads as |
+| --- | --- | --- |
+| `pi--v130-powerline-editor-idle-footer--w254.txt` | Empty inset box over a long widget row (cut by an ellipsis) and the five-row footer | free (idle, modal none, empty) |
+| `pi--v130-powerline-editor-two-row-draft-footer--w254.txt` | Two typed rows, `Collie test draft line one` and `... two`, over the widget row and footer | draft read back as the two rows joined, modal none, not free |
+
+**Live**, from the lab run of 2026-10-20: pi 1.3.0 with pi-powerline-footer 0.20.2 alone, 120 columns
+and 40 rows, LF line ends, no trailing newline. pi ran under tmux, so its extended-keys warning stands
+at the top. With no other extension's footer the inset box ends the screen, or its ` ↳ ` widget row
+does; the powerline status row stands over the top rule. Nothing personal was on screen. One file is
+**derived**: the walky talky draft is the two-row draft with its two rows replaced by a walky talky
+header row and a body row, as the bridge types a message (a newline between them).
+
+| Fixture | State | Reads as |
+| --- | --- | --- |
+| `pi--v130-powerline-editor-idle-widget--w120.txt` | Empty inset box after a turn, the ` ↳ ` row under it | free (idle, modal none, empty); the pi reader's `inset` layout with no status row |
+| `pi--v130-powerline-editor-two-row-draft--w120.txt` | A typed prompt that wraps to a second row, three spaces in | draft, modal none, the two rows read as one text (the alternate's `rows` and `ownPrompt`) |
+| `pi--v130-powerline-editor-walky-draft--w120.txt` | Derived: a walky talky header row and its body row | draft, modal none, header and body as one text |
+| `pi--v130-powerline-editor-slash-model--w120.txt` | `/model` typed, pi's command list under the box | draft `/model`, modal none, the list is the command's own (the profile's `commandList`) |
+| `pi--v130-powerline-model-selector--w120.txt` | pi's `/model` selector, which takes the editor's place in column zero | modal unreadable, never free; the pi reader's modal |
+
 ## pi's permission gate on pi 0.87.1 (captured 2026-10-17, Herdr 0.9.4)
 
 Stock pi 0.87.1 with the example pi ships, `examples/extensions/permission-gate.ts` (`pi -e <path>`), in
@@ -306,11 +356,28 @@ The same block with nothing under its bottom rule is built inside `pi/ask.test.t
 file: agy's generic menu claims that screen, and the agy suite fails on any foreign fixture it lifts.
 The pi reader refuses it, because pi always paints a status row under a dialog.
 
+## Kiro CLI 2.33.0 workspace trust (captured 2026-10-21)
+
+The `kiro--v3-workspace-trust-*` captures show the startup trust prompt in a new, empty temporary folder under Herdr 0.9.5 on x86_64 Linux. They came from `kiro-cli chat --v3` and Herdr's visible ANSI grid at 120, 60 and 40 columns by 60 rows. Each starts at the dialog's top divider; rows above it were removed. The user name, temporary suffix and workspace-root hash were replaced with equal-length aliases, preserving the wrapped path fragments and ANSI styling.
+
+The captures themselves accept no trust choice. Up/Down move the pointer, the edge captures prove the arrows clamp, and Escape exits. A separate live phone test verified both native buttons through the scratch bridge's real Ask route, accepting trust only for an empty disposable folder. Keys, binding, results and the retained local screenshots are documented in [`kiro/WORKSPACE_TRUST_NOTES.md`](../../lib/harness/kiro/WORKSPACE_TRUST_NOTES.md).
+
+| Fixture | Cols | State / what's in it | Label |
+| --- | --- | --- | --- |
+| `kiro--v3-workspace-trust-continue-w120.txt` | 120 | Default Trust row; complete subject and revocation note | `dialog` |
+| `kiro--v3-workspace-trust-exit-w120.txt` | 120 | Don't trust row after one Down | `dialog` |
+| `kiro--v3-workspace-trust-continue-w60.txt` | 60 | Trust row; wrapped workspace and revocation paths | `dialog` |
+| `kiro--v3-workspace-trust-exit-w60.txt` | 60 | Don't trust row; same wrapped dialog | `dialog` |
+| `kiro--v3-workspace-trust-continue-w40.txt` | 40 | Trust row; both warnings and key hints wrap | `dialog` |
+| `kiro--v3-workspace-trust-exit-w40.txt` | 40 | Don't trust row; same narrow dialog | `dialog` |
+| `kiro--v3-workspace-trust-continue-up-edge-w40.txt` | 40 | Extra Up at the first row leaves Trust selected | `dialog` |
+| `kiro--v3-workspace-trust-exit-down-edge-w40.txt` | 40 | Extra Down at the last row leaves Don't trust selected | `dialog` |
+
 ## Kiro CLI 2.32.0 corpus (captured 2026-10-17, Herdr 0.9.5, throwaway Herdr session)
 
-`kiro-cli 2.32.0` on x86_64 Linux, run directly with `chat --v3` under Herdr 0.9.5. Each `kiro--*` file is `herdr pane read <pane> --source visible --format ansi --raw`, the same `pane.read` answer the bridge serves, with LF line ends. Each is cut from the composer divider, the divider above a shell panel, or a file panel's `↓` preview row down; transcript rows above it were removed and blank viewport rows remain. The `running-*` and `write-viewport-*` files keep the whole visible grid.
+`kiro-cli 2.32.0` on x86_64 Linux, run directly with `chat --v3` under Herdr 0.9.5. Each `kiro--*` file is `herdr pane read <pane> --source visible --format ansi --raw`, the same `pane.read` answer the bridge serves, with LF line ends. Each is cut from the composer divider or an approval panel's `↓` preview row down; transcript rows above it were removed and blank viewport rows remain. The `running-*` and `write-viewport-*` files keep the whole visible grid.
 
-Two runs on the same day made all but the `slash-*` files. Most files come from scratch agents started with `--v3 --trust-tools=''` and the model `qwen3-coder-next`, in a throwaway Herdr session whose terminal was resized between captures so the pane was exactly 120, 60 or 40 columns by 40 rows; the panel or draft stayed open while it was resized. They asked for harmless shell, file and local stdio MCP echo calls, and the shell probes asked for a fixed tool description, so the panel titles (`Print the probe message`, `Print the deny probe message`, `Print the cancel probe message`) are the same in every run. These replace an earlier set made from the same screens through an xterm grid instead of Herdr: the text of all 55 matched row for row, and only the escape encoding changed. The `-trusted-`, `idle-oneline`, `draft-cwd-wrapped` and `kiro--v2-` files come from an earlier live run, also through Herdr, with the default agent configuration (no `--trust-tools`) in a disposable `/tmp/kiro-fixture/demo` folder. They are 120 columns wide, except `kiro--v2-idle-w119.txt` at 119. The `slash-*` files come from a run on 2026-10-18, also through Herdr, with the default agent configuration and an empty scratch `KIRO_HOME`, so the menu lists only built-in commands.
+Two runs on the same day made all but the `slash-*` files. Most files come from scratch agents started with `--v3 --trust-tools=''` and the model `qwen3-coder-next`, in a throwaway Herdr session whose terminal was resized between captures so the pane was exactly 120, 60 or 40 columns by 40 rows; the panel or draft stayed open while it was resized. They asked for harmless shell, file and local stdio MCP echo calls, and the shell probes asked for a fixed tool description, so the panel titles (`Print the probe message`, `Print the deny probe message`, `Print the cancel probe message`) are the same in every run. These replace an earlier set made from the same screens through an xterm grid instead of Herdr: the text of all 55 matched row for row, and only the escape encoding changed. The `-trusted-`, `idle-oneline`, `draft-cwd-wrapped` and `kiro--v2-` files come from an earlier live run, also through Herdr, with the default agent configuration (no `--trust-tools`) in a disposable `/tmp/kiro-fixture/demo` folder. They are 120 columns wide, except `kiro--v2-idle-w119.txt` at 119. The `slash-*` files come from a run on 2026-10-18, also through Herdr, with the default agent configuration and an empty scratch `KIRO_HOME`, so the menu lists only built-in commands. The `shell-*` files come from a run on 2026-10-21, also through Herdr, with `--v3 --trust-tools=''`, `qwen3-coder-next` and an empty scratch `KIRO_HOME`; their probes asked for `cwd`, `timeout` and `run_in_background`, a long command, or the command alone. On that day the `approval-*` shell files were cut again from their original captures to start at the `↓ Shell` preview row; the rows below it did not change.
 
 For publication, the user name and the scratch folder were replaced with equal-length aliases, following the path across row breaks where it wraps, and the login-expiry label in the status rows with the equal-length word `Status`; its time value is unchanged. In the earlier run's files the model name was also replaced with the equal-length `qwen3-coder`. Every row keeps its columns. Request markers, option labels, pointers, dividers, footers and diff contents were not changed, and no credentials or real conversation content are included. Workspace trust, permissions and user settings were not edited, no persistent tool-approval option was confirmed, and every scratch process was stopped.
 
@@ -367,6 +434,17 @@ Herdr's agent status was not recorded for these captures, so the table gives the
 | `kiro--v3-replace-trusted-deny-w120.txt` | 120 | Default agent configuration: replace panel with four options, a bare-number context row in its diff, Deny pointed; lifts | `dialog` |
 | `kiro--v3-running-steered-w120.txt` | 120 | Running turn after a steer: `› collie steer probe` in the transcript, the busy prompt row; composer, turn running | `running` |
 | `kiro--v3-running-w120.txt` | 120 | Running turn, whole grid: `›  Kiro is working · 1s · …` on the prompt row; composer, turn running | `running` |
+| `kiro--v3-shell-args-allow-w120.txt` | 120 | Shell panel whose `↓ Shell` preview lists `cwd=sub`, `run_in_background=true` and `timeout=5000`, Allow pointed; lifts | `dialog` |
+| `kiro--v3-shell-args-allow-w60.txt` | 60 | Shell panel whose `↓ Shell` preview lists `cwd=sub`, `run_in_background=true` and `timeout=5000` over two rows, Allow pointed; lifts | `dialog` |
+| `kiro--v3-shell-args-deny-w120.txt` | 120 | Shell panel whose `↓ Shell` preview lists `cwd=sub`, `run_in_background=true` and `timeout=5000`, Deny pointed; lifts | `dialog` |
+| `kiro--v3-shell-args-deny-w60.txt` | 60 | Shell panel whose `↓ Shell` preview lists `cwd=sub`, `run_in_background=true` and `timeout=5000` over two rows, Deny pointed; lifts | `dialog` |
+| `kiro--v3-shell-args-no-timeout-allow-w120.txt` | 120 | The same panel as `shell-args-allow-w120` for a call with no `timeout`: only the preview differs; lifts | `dialog` |
+| `kiro--v3-shell-bare-allow-w120.txt` | 120 | Shell call that set only `command`: the preview still lists `run_in_background=false`, Allow pointed; lifts | `dialog` |
+| `kiro--v3-shell-bare-deny-w120.txt` | 120 | Shell call that set only `command`: the preview still lists `run_in_background=false`, Deny pointed; lifts | `dialog` |
+| `kiro--v3-shell-wrapped-allow-w120.txt` | 120 | Long `printf` command wrapped onto a second row in the preview and in the panel, Allow pointed; lifts | `dialog` |
+| `kiro--v3-shell-wrapped-allow-w60.txt` | 60 | Long `printf` command wrapped onto three rows in the preview and in the panel, Allow pointed; lifts | `dialog` |
+| `kiro--v3-shell-wrapped-deny-w120.txt` | 120 | Long `printf` command wrapped onto a second row in the preview and in the panel, Deny pointed; lifts | `dialog` |
+| `kiro--v3-shell-wrapped-deny-w60.txt` | 60 | Long `printf` command wrapped onto three rows in the preview and in the panel, Deny pointed; lifts | `dialog` |
 | `kiro--v3-slash-help-w120.txt` | 120 | `/help` typed: the `/` menu filtered to its one row; popup | `popup` |
 | `kiro--v3-slash-menu-w120.txt` | 120 | `/` typed: the command menu's first eight rows and `(+35 more)`; popup | `popup` |
 | `kiro--v3-slash-model-w120.txt` | 120 | `/model` typed: the `/` menu filtered to its one row; popup | `popup` |
@@ -2700,6 +2778,26 @@ Inherent to vanilla Claude Code: the model writes AskUserQuestion's question tex
 |---|---|
 | `claude--v2304-ask-no-question-mark--w135.txt` | **Derived** from the field report's `display` (an unread-dialog report from a `cui` session), escapes kept, line endings LF. Hardening against a user theme (ui-themes): the coloured strip and blank column left of the dialog, the rules wrapped into a `──` stub above the chip and above `Chat about this`. The chip ` ☐ Green #29`, a five-row question in the `│` gutter ending in `.`, two options with two-row descriptions, `3. Type something.`, `4. Chat about this`, the footer, then a task checklist. Every letter of the transcript, the chip label, the question, the option labels and descriptions and the checklist items was replaced by neutral words of the same width; every escape, glyph, digit, space, `│` and rule is kept, and no `?` was added. `Type something.`, `Chat about this`, the footer and the checklist's count rows are as captured. Lifts a `select` card. Labelled `dialog` |
 | `claude--v2304-ask-no-question-mark-plain--w135.txt` | **Derived** from a plain `claude` 2.1.304 capture (lab, 135 columns, escapes kept, line endings LF): the transcript above the dialog's rule, the lab prompts included, replaced by neutral words of the same width. The dialog is as captured: ` ☐ Ship it`, `The release branch has passed every check. Pick how to proceed with the merge.`, `Merge now (Recommended)`, `Hold the merge`, `3. Type something.`, `4. Chat about this` and the footer. Lifts a `select` card. Labelled `dialog` |
+| `claude--v2304-ask-chip-question-mark.txt` | Plain `claude` (`--safe-mode --setting-sources ""`) at 120 columns, read through `readPane` and trimmed to the prompt bubble and the dialog: the chip ` ☐ Deploy?` ends in `?` while the question row `The staging build passed every check. Pick how to proceed with the rollout.` ends in `.`. `singleSelectChipUnderRule` anchors on the `☐` chip under the top rule and `questionUnderChip` reads only the rows below that chip, so the question is the row under the chip and never `☐ Deploy?`. Labelled `dialog` |
+| `claude--v2304-ask-two-paragraph--w80.txt` | Plain `claude` (`--safe-mode --setting-sources ""`) at 80 columns, trimmed to the prompt bubble and the dialog: ` ☐ Release`, a two-paragraph question across seven `│` gutter rows (paragraph 1 carries `https://ci.example.test/runs/42?tab=checks`, a bare `│` row separates the paragraphs, and paragraph 2 ends in `?`), pointer on `1. Production`. `questionUnderChip` joins all non-empty rows below `☐ Release` so the first row is neither dropped at `MAX_QUESTION_ROWS = 6` nor leaked into `model.subject`, and the bare `│` row does not insert a double space. Labelled `dialog` |
+| `claude--v2304-select-preview-cjk.txt` | Plain `claude` (`--safe-mode --setting-sources ""`) at 120 columns, trimmed to the prompt bubble and the dialog: single-question preview AskUserQuestion (` ☐ デザイン`, `どのウィジェットのデザインにしますか？`), pointer on `1. カード型`, options `2. コンパクト` and `3. ミニマル` left of the boxed preview at display column 34. `splitAtDisplayColumn` splits by terminal display width so double-width CJK option labels do not shift the cut into the preview box's left border. Labelled `dialog` |
+| `claude--v2304-select-preview-cjk-moved.txt` | The same live pane after sending one `Down` key (`herdr pane send-keys <pane> Down`): pointer moved onto `2. コンパクト`, right-hand preview updated to option 2's compact box. Labelled `dialog` |
+
+## The survey's transcript question, 2.1.306 (captured 2026-10-21, 153 columns, Herdr)
+
+After a key on the rating survey (`● How is Claude doing this session? (optional)`) Claude Code 2.1.306
+asks a second question over the same live box: `● Can Anthropic look at your session transcript to help
+us improve Claude Code?`, a `Learn more:` row with the docs link, and the keys `y: Yes    n: No     d:
+Don't ask again`. The 2.1.306 bundle reads them through the same hook as the rating survey's digits: a
+key acts only when the box's whole value is that letter, lowercased first. Read with `herdr pane read
+<pane> --source visible --format ansi` from a live session, CRLF line ends and escapes kept, cut to the
+last 16 rows. The git branch in the statusline is replaced by `fix/transcript-survey-probe-01*` of the
+same width; every other row is as captured. The field case: every phone send to the pane was refused
+`unconfirmed` (`modal: "unreadable"`) until the question was answered by hand.
+
+| Fixture | State / what's in it |
+|---|---|
+| `claude--v2306-transcript-survey--w153.txt` | The transcript question over an empty box, a blank row between; under the box the statusline, `✔ Update installed · Restart to apply` and `new task? /clear to save 289.5k tokens`. Reads `idle`, `none`, `empty` and lifts a card with Yes, No and Don't ask again (`letters` head in claude.json). Labelled `idle` |
 
 ## The slash list under pi's and omp's box (captured 2026-10-17, pi 1.3.0, pi 0.87.1, omp 18.6.1, isolated Herdr)
 
@@ -2826,6 +2924,50 @@ separator draws U+E0BB and no closer. The `minimal` preset has no pi glyph and o
 | `omp--v18.11.1-slash-idle--w120.txt` | `statusLine.separator: slash`, empty box. Labelled `idle` |
 | `omp--v18.11.1-minimal-idle--w120.txt` | `statusLine.preset: minimal`, empty box. Labelled `idle` |
 | `omp--v18.11.1-ascii-idle--w120.txt` | `symbolPreset: ascii`, empty box. Labelled `idle` |
+
+## omp 18.12.2 `/goal` in a goal turn (captured 2026-10-22, real OMP, private Herdr 0.9.5, PR 577)
+
+The screens of a real OMP 18.12.2 (`omp --version` reads `omp/18.12.2`) while a goal turn streams, taken
+as Collie sends: the probe `⌁`, Backspace, the command text, then Enter, with a read between each step.
+They are the evidence behind `keys.commandsRunInTurn` in `omp.json`, and the screens
+`bridge/surface/protocol.test.ts` ("OMP 18.12.2 `/goal` in a goal turn, replayed from the real capture")
+and `command-list.test.ts` read.
+
+How they were made: a private Herdr 0.9.5 server (its own `HOME`, XDG folders and socket), one pane of
+119 columns by 40 rows (a read keeps the rows down to the last one that holds text, 20 to 34 of them). OMP ran stock
+(`--no-lsp --no-title`) from the installed binary with a scratch `HOME`, so no user credential or
+setting was used, and a config that held `goal.enabled`, `setupVersion: 2` and `startup.checkUpdate: false`.
+The model was `lab/slow`, a local OpenAI-compatible endpoint that streams one word a second and calls no
+model; it received one request. The goal was `/goal Lab objective: keep streaming ticks`, set before the
+first screen. Every file is `herdr pane read <pane> --source visible --format ansi --raw`, escapes and
+CRLF line ends kept, no row cut or changed. The only path on a screen is the lab folder, shown in the
+status line as `collie-goal-capture-lab/work`. No user, host, key or token is in any file.
+
+| Fixture | State / what's in it |
+|---|---|
+| `omp--v18-12-2-goal-turn-running--w119.txt` | Before `/goal pause`: the goal's first ticks streaming, `⎋ Working…`, the status line `⠙ 11s … 🎯 Goal 0 …`, an empty `╰─` box. The screen S0 reads. Labelled `running` |
+| `omp--v18-12-2-goal-turn-running-probe--w119.txt` | The probe `⌁` in the box. Labelled `draft` |
+| `omp--v18-12-2-goal-pause-typed--w119.txt` | The probe cleared and `/goal pause` typed: `╰─ /goal pause`, and under it the list of the command's arguments, one row `❯ pause   Pause the current goal`. Labelled `popup` |
+| `omp--v18-12-2-goal-pause-result--w119.txt` | 0.4 s after Enter: ` Goal mode paused.` over `⎋ Working…`, the status segment `⏸ Goal 0`, the stream still going. Labelled `running` |
+| `omp--v18-12-2-goal-pause-result-later--w119.txt` | 3 s after Enter: the stream has gone on (`tick 17`), `Goal mode paused.` is still the last status row. Labelled `running` |
+| `omp--v18-12-2-goal-resume-before--w119.txt` | Before `/goal resume`: paused, `⏸ Goal`, the box empty. Labelled `running` |
+| `omp--v18-12-2-goal-resume-probe--w119.txt` | The probe in the box, paused. Labelled `draft` |
+| `omp--v18-12-2-goal-resume-typed--w119.txt` | `/goal resume` typed, the argument list's row `❯ resume   Resume a paused goal`. Labelled `popup` |
+| `omp--v18-12-2-goal-resume-result--w119.txt` | After Enter: ` Goal mode resumed.`, the segment back to `🎯 Goal 0`, the stream going. Labelled `running` |
+| `omp--v18-12-2-goal-bare-before--w119.txt` | Before a bare `/goal`: resumed, `🎯 Goal`, the box empty. Labelled `running` |
+| `omp--v18-12-2-goal-bare-probe--w119.txt` | The probe in the box. Labelled `draft` |
+| `omp--v18-12-2-goal-bare-typed--w119.txt` | `/goal` typed: ten command rows under the box, the pointer on `🎯 goal   Goal: active (Lab objective: keep streaming ticks)`. Labelled `popup` |
+| `omp--v18-12-2-goal-bare-menu--w119.txt` | After Enter: the goal menu, a rounded box `Goal: Lab objective: keep streaming ticks (active)` with `❯ Show details`, `Adjust budget…`, `Pause`, `Drop` and `↑/↓ navigate  ⏎ select  ⎋ cancel`, the stream's last rows above it. It owns the keyboard. Labelled `dialog` |
+
+Each send's step after the probe (Backspace) read the same screen as the one before it, so that read
+has no file of its own. The Escape that closed the menu was the lab's own and is not in a file.
+
+What the screens show. Enter pressed during the goal turn ran the command at once and never queued or
+steered it: no `Steering` or `After yield` row came up, and the status line changed with the command.
+OMP's own words are `Goal mode paused.` and `Goal mode resumed.`. A `/goal pause` or `/goal resume` typed
+into the box brings up the list of that command's arguments under the box, with the pointer on the
+argument typed (`commandList.argumentList`, `command-list.ts`).
+
 ## Hermes corpus (captured 2026-10-16, Hermes Agent v0.22.2 classic CLI, Herdr 0.9.1, sandbox pane)
 
 `hermes--*.txt` come from one disposable Herdr pane running the installed `hermes --cli` with a
@@ -2875,3 +3017,44 @@ this corpus. Recipes: [`hermes/CLARIFY_NOTES.md`](../../lib/harness/hermes/CLARI
 | `hermes--approval-w60` | The same at 60 columns, prompt `⚠` | Allow once, Deny |
 | `hermes--approval-long` | A 120-character command, `5. Show full command` | Allow once, Show full command, Deny |
 | `hermes--approval-long-full` | After `5`: row 5 gone, `❯` on Deny | Allow once, Deny |
+
+## Steer and queue mid-turn (captured 2026-10-23, M69 spec 01, pi 1.3.0, OMP 18.6.1, Codex 0.164.0, scratch tmux, 120 columns)
+
+Real screens of three harnesses while a slow turn runs (a bash call, `for i in $(seq 1 40); do echo $i; sleep 1; done`). A line,
+`also say hello at the end`, was typed into the box and sent with the harness's steer key (Enter on all three), and in a second run
+with its queue key (pi Alt+Enter, OMP Ctrl+Q, Codex Tab). Each run has five captures: `typed` (the line in the box, no key pressed),
+`after-now` (read straight after the key, about 0.1 s), `after` (2 s later) and `done` (the turn ended and the line was answered).
+Taken with `tmux capture-pane -p -e` in a private tmux server (`tmux -L`), isolated `HOME`, no Herdr; the lab's folder was replaced with
+`/home/demo/sandbox/collie-labs/steerqueue`, a path of the same length. Findings table: `experiments/harnesses/steer-queue-2026-10-23.md`.
+
+The `<h>` is `pi--v130`, `omp--v18-6` or `codex--v0164`; every name ends in `--w120.txt`.
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `<h>-steer-typed` | Turn running, the line in the box | pi `── ⠙ Working ──` rule, OMP spinner and seconds in the status bar, Codex `tab to queue message` hint |
+| `<h>-steer-after-now` | Enter pressed, read at once | pi: box empty, no row yet. OMP: box still holds the line. Codex: `Messages to be submitted after next tool call` over `↳ <line>` |
+| `<h>-steer-after` | 2 s after Enter | pi `Steering: <line>` row. OMP: the line stands in the transcript and the tool box says `Backgrounded early to handle an incoming message`. Codex: the line stands in the transcript as `› <line>`, no `↳` row |
+| `<h>-steer-done` | Turn ended | The agent answered the line after the tool call (pi, Codex) or after the backgrounded job (OMP). Idle |
+| `<h>-queue-typed` | Turn running, the line in the box | As the steer-typed capture |
+| `<h>-queue-after-now` | Queue key pressed, read at once | pi: box empty, no row yet. OMP: box still holds the line. Codex: `Queued follow-up inputs` over `↳ <line>` |
+| `<h>-queue-after` | 2 s after the key | pi `Follow-up: <line>`. OMP `After yield · 1`, `1. <line>`. Codex `Queued follow-up inputs`, `↳ <line>`, `shift+← edit last queued message` |
+| `<h>-queue-done` | Turn ended | The agent finished the first task, then ran the line as a second turn. Idle |
+
+## Steer witness gaps from the live rerun (captured 2026-10-23, pi 1.3.0, OMP 18.6.1, Claude Code 2.1.309, scratch tmux, 120 columns)
+
+Real screens, taken after the int/edge-5 live rerun found three receipts or turn states wrong. Taken with `tmux capture-pane -p -e` in
+a private tmux server (`tmux -L`), isolated `HOME` or `CLAUDE_CONFIG_DIR`, no hooks, no Herdr. pi and OMP ran on
+`openrouter/anthropic/claude-haiku-4.5`, Claude Code on Haiku. The lab's folder was replaced with `/home/demo/sandbox/collie-labs/steer-queue-fix`,
+a path of the same length (OMP's shortened `…che/collie-lab/edge5fix-lab` became `…collie-labs/steer-queue-fix`, Claude's
+`~/.cache/collie-lab/edge5fix-lab` became `~/sandbox/collie-labs/steerq-fix`).
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `pi--v130-steer-after-queued--w120.txt` | `running` | A slow bash call runs; `ok` was queued with Alt+Enter, then `say banana` sent with Enter. pi draws `Steering: say banana`, then `Follow-up: ok`, then `↳ Alt+Up to edit all queued messages`: the queued row stands between the Steering row and the hint |
+| `omp--v18-6-steer-pending-block--w120.txt` | `running` | OMP streams a long plain-text answer (no tool runs); `say banana` sent with Enter waits for the next step in a block `Steering · 1` / `1. say banana` / `└ Alt+↑ to edit` over the spinner row. The queue draws the same rows and hint under `After yield · 1` (`omp--v18-6-queue-after`): only the header tells them apart. Taken while streaming, not during a tool batch: during a parallel bash batch OMP backgrounded the calls at once and took the line, with no block |
+| `omp--v18-6-steer-over-queued--w120.txt` | `running` | OMP writes a long file (the write tool's body streams); `ok` was queued with Ctrl+Q, then `say banana` sent with Enter. Two blocks stack over one hint: `Steering · 1` / `1. say banana`, then `After yield · 1` / `1. ok`, then one `└ Alt+↑ to edit`. Second live pass: the steer witness took the `After yield · 1` header for a wrapped row and the receipt said unknown. The lab folder replaced as above; taken in a second private tmux server |
+| `claude--v2-1-309-interrupted--w120.txt` | `idle` | Claude Code 2.1.309 (Haiku, the operator's three-row statusline): a turn read a file with its Read tool, then Escape while it thought. `⎿  Interrupted · What should Claude do instead?` over an empty box; no Stop hook fires. The same screen 2 s and 8 s after the key. Before the first output Escape takes the turn back instead and puts the prompt into the box |
+| `claude--v2-1-309-permission-denied--w120.txt` | `idle` | Claude Code 2.1.309: a Bash permission dialog answered `4. No`. `● Bash(…)`, `⎿  Interrupted · What should Claude do instead?`, `✻ Crunched for 2s · done 3:49 PM` over an empty box; no Stop hook fires |
+| `claude--v2-1-309-interrupted-fresh-session--w120.txt` | `idle` | Claude Code 2.1.309 under the operator's fullscreen TUI (`"tui": "fullscreen"`), a fresh session (`/clear`): a Bash call (`find /usr /opt -type f \| xargs md5sum \| wc -l`) interrupted with Escape. The short transcript stands at the top, `⎿  Interrupted · What should Claude do instead?` on row 14, then blank rows down to the box on row 35: the stopped row stands outside the six-row band above the box. Second live pass; taken in a second private tmux server, no hooks, isolated `CLAUDE_CONFIG_DIR` |
+| `claude--v2-1-309-permission-denied-fresh-session--w120.txt` | `idle` | The same fresh fullscreen session: a Bash permission dialog answered `4. No`. `Ran 1 shell command`, the Interrupted row and `✻ Crunched for 2s` at the top, blank rows, then `◐ medium · /effort` over the box |
+| `claude--v2-1-309-stopped-prompt-restored--w120.txt` | `draft` | The same fresh fullscreen session: `Write 700 numbered lines, …` sent, Escape 1.2 s later, before the first token. Claude takes the turn back and puts the prompt into the box; no Interrupted row and no Stop hook. Only Collie's own Stop receipt tells the fold the turn ended |

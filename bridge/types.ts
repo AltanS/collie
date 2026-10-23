@@ -8,6 +8,7 @@ import type { Confidence } from "./cache/claims.ts";
 import type { PaneCache } from "./cache/engine.ts";
 import type { ApiErrorDetail, ErrorCode } from "./error-codes.ts";
 import type { GitHead } from "./git-head.ts";
+import type { PaneUsage } from "./usage.ts";
 import type { ChatBody } from "./journal/live.ts";
 import type { AgentSessionRef, TranscriptEntry } from "./journal/types.ts";
 import type { MuxCapability, MuxSpaceCapacity, MuxTopologyLatency } from "./mux/capabilities.ts";
@@ -215,6 +216,15 @@ export interface AgentView {
    */
   effort?: string;
   /**
+   * How full this pane's context is and how much of the subscription's windows the account has used,
+   * as the harness's own statusLine reported them (bridge/usage.ts, .adr/0115). Numbers only; the
+   * phone draws them as dots beside the model and nothing decides on them.
+   *
+   * ABSENT, NEVER A PLACEHOLDER: a harness that reports none, an operator with no statusLine to
+   * wrap, a window that has reset, or an older bridge.
+   */
+  usage?: PaneUsage;
+  /**
    * What the checkout holding this pane's folder is on: a branch, or a detached head at a full
    * object name. Read off disk by `bridge/git-head.ts` (two small files, no git process, no lock) and
    * attached at serialise time exactly as {@link cache} is.
@@ -331,6 +341,20 @@ export type PaneWire = Omit<AgentView, "agentSession" | "sessionAgent"> & {
    * Absent otherwise, so a bridge without the flag sends the same bytes as before.
    */
   sendProtocol?: true;
+  /**
+   * Present (and `true`) when a Stop (M68) has a key to press on this pane: it has a screen Surface and
+   * its profile names an interrupt key (`keys.interrupt`) and is not revoked at the binary's version.
+   * The phone draws the belt's Stop only with it, and only while the turn runs. Absent otherwise, on a
+   * program pane and from every older bridge.
+   */
+  canStop?: true;
+  /**
+   * Present (and `true`) when a send on this pane may steer the running turn (M69): the pane carries
+   * `sendProtocol`, its harness's profile names a steer key (`keys.steer`), the binary's version may be
+   * trusted with a turn, and the pane is no program's (a durable pane never steers). The phone offers
+   * Steer on the Send button's long press only then. Absent otherwise, and from an older bridge.
+   */
+  canSteer?: true;
   /**
    * The pane's held sends (M56 spec 15), oldest first: what the harness could not take during its turn
    * and Collie sends once the pane reads free, plus ended ones whose text waits for a Resend. Present

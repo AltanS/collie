@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { commandsFor } from "@/lib/agent-commands";
-import { barFor, BAR_AGENTS, CAPTURE_SOURCED, DURABLE_BAR, durableBarFor } from "@/lib/harness-bar";
+import { barFor, BAR_AGENTS, CAPTURE_SOURCED, DURABLE_BAR, durableBarFor, stopFor } from "@/lib/harness-bar";
 import type { OperatorCommand } from "@/lib/types";
 
 // The bar's two invariants, as tests rather than as sentences in a spec. A phrase does not fail a
@@ -36,8 +36,18 @@ describe("the shipped bar", () => {
     }
   });
 
-  it("names a bar for exactly the four harnesses this milestone drove from a phone", () => {
-    expect(BAR_AGENTS.toSorted()).toEqual(["claude", "codex", "omp", "pi"]);
+  it("names a bar for every harness whose pickers were opened on a live pane", () => {
+    expect(BAR_AGENTS.toSorted()).toEqual([
+      "agy",
+      "antigravity",
+      "claude",
+      "codex",
+      "grok",
+      "muse",
+      "omp",
+      "opencode",
+      "pi",
+    ]);
   });
 
   it("gives Claude Model, Effort, Compact and Resume, in that order", () => {
@@ -58,8 +68,28 @@ describe("the shipped bar", () => {
     expect(barFor("omp").map((i) => i.id)).toEqual(["model", "compact", "tree", "resume"]);
   });
 
+  it("gives opencode its own spellings: /models and /sessions", () => {
+    expect(barFor("opencode").map((i) => i.id)).toEqual(["model", "compact", "resume"]);
+    expect(barFor("opencode").map((i) => i.command)).toEqual(["/models", "/compact", "/sessions"]);
+  });
+
+  it("gives Grok no Effort button, because a bare /effort opens no picker", () => {
+    // Grok's /model picker walks model, window and effort in turn; a bare /effort only leaves an
+    // argument template in the input box.
+    expect(barFor("grok").map((i) => i.id)).toEqual(["model", "compact", "resume"]);
+  });
+
+  it("gives Muse Claude's four, because its /effort opens a picker of its own", () => {
+    expect(barFor("muse").map((i) => i.id)).toEqual(["model", "effort", "compact", "resume"]);
+  });
+
+  it("gives agy one bar under both of its names, with Effort inside its /model picker", () => {
+    expect(barFor("agy").map((i) => i.id)).toEqual(["model", "compact", "resume"]);
+    expect(barFor("antigravity")).toEqual(barFor("agy"));
+  });
+
   it("renders nothing for an agent with no bar, and for no agent at all", () => {
-    for (const agent of ["grok", "opencode", "agy", "antigravity", "kiro", "bash", "", undefined, null]) {
+    for (const agent of ["hermes", "kiro", "bash", "", undefined, null]) {
       expect(barFor(agent), `${String(agent)} has no bar`).toEqual([]);
     }
   });
@@ -234,5 +264,26 @@ describe("the durable section", () => {
   it("is not a harness: the slash-command table has no entry for it", () => {
     expect(BAR_AGENTS).not.toContain("durable");
     expect(barFor("durable")).toEqual([]);
+  });
+});
+
+describe("stopFor (M68 spec 02)", () => {
+  const surface = (turn: "idle" | "running" | "unknown") => ({ revision: 1, turn, modal: "none" as const, composer: "empty" as const });
+
+  it("offers Stop while the turn runs and the bridge says a key exists", () => {
+    expect(stopFor({ surface: surface("running"), canStop: true })).toBe(true);
+  });
+
+  it("offers nothing on an idle or unread turn", () => {
+    expect(stopFor({ surface: surface("idle"), canStop: true })).toBe(false);
+    expect(stopFor({ surface: surface("unknown"), canStop: true })).toBe(false);
+    expect(stopFor({ canStop: true })).toBe(false);
+  });
+
+  it("offers nothing without the bridge's word, whatever the harness is", () => {
+    expect(stopFor({ surface: surface("running") })).toBe(false);
+    expect(stopFor({ surface: surface("running"), canStop: false })).toBe(false);
+    expect(stopFor(undefined)).toBe(false);
+    expect(stopFor(null)).toBe(false);
   });
 });

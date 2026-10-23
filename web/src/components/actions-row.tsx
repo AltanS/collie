@@ -6,9 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Collapse } from "@/components/ui/collapse";
 import {
   DurableBar,
+  ScreenStop,
   HarnessBar,
   useHarnessBarItems,
   type DurableBarProps,
+  type ScreenStopProps,
 } from "@/components/harness-bar";
 import { StatusDot } from "@/components/status-badge";
 import { OverflowEdges } from "@/components/ui/overflow-edges";
@@ -400,6 +402,12 @@ export interface ActionsRowProps {
    * whole of the old behaviour. The composer of a pane with no screen is the one caller.
    */
   durable?: Pick<DurableBarProps, "items" | "state">;
+  /**
+   * STOP FOR A PANE WITH A SCREEN (M68 spec 02), after the harness section. Present only while the turn runs and
+   * the bridge says a key exists (`stopFor`); absent is the whole of the old behaviour. The composer owns
+   * the request and the receipt. A pane with no screen keeps the program bar's own Stop and never gets this one.
+   */
+  stop?: Pick<ScreenStopProps, "onStop" | "paneId" | "running">;
   /** Which thumb the belt is laid out for; see {@link Hand}. Default `"right"`, the shipped layout. */
   hand?: Hand;
   /**
@@ -512,7 +520,7 @@ export interface ActionsRowProps {
   };
 }
 
-export function ActionsRow({ general, agent, mine, onRun, disabled, durable, hand = "right", handle, changes, clear, agents }: ActionsRowProps) {
+export function ActionsRow({ general, agent, mine, onRun, disabled, durable, stop, hand = "right", handle, changes, clear, agents }: ActionsRowProps) {
   useLocale();
 
   const harnessItems = useHarnessBarItems(agent, mine);
@@ -533,7 +541,7 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, han
 
   // Nothing to draw at all. Render nothing rather than an empty scroller, so the row costs no
   // height.
-  if (general.length === 0 && harnessItems.length === 0 && (durable?.items.length ?? 0) === 0) return null;
+  if (general.length === 0 && harnessItems.length === 0 && (durable?.items.length ?? 0) === 0 && stop === undefined) return null;
 
   return (
     <div
@@ -680,6 +688,7 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, han
               </div>
             )}
             <HarnessBar agent={agent} mine={mine} onRun={onRun} disabled={disabled} hand={hand} />
+            {stop !== undefined && <ScreenStop onStop={stop.onStop} paneId={stop.paneId} running={stop.running} disabled={disabled} hand={hand} />}
             {durable !== undefined && <DurableBar items={durable.items} state={durable.state} disabled={disabled} hand={hand} />}
             {/* THE TRAILING SPACER — a real flex child, not padding. `paddingRight` on this
                 scroller was tried first and measured wrong in Chrome: the scroller is a `flex`

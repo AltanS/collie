@@ -82,6 +82,15 @@ const PINNED = [
   "codex--v0163-agents-hint-warnings.txt",
   "codex--v0163-working-draft--w120.txt",
   "codex--v0163-working-steered--w120.txt",
+  // 0.164.0 mid-turn: a line typed, then a steer (Enter) or a queue (Tab), and the turn's end (M69 spec 01).
+  "codex--v0164-queue-after--w120.txt",
+  "codex--v0164-queue-after-now--w120.txt",
+  "codex--v0164-queue-done--w120.txt",
+  "codex--v0164-queue-typed--w120.txt",
+  "codex--v0164-steer-after--w120.txt",
+  "codex--v0164-steer-after-now--w120.txt",
+  "codex--v0164-steer-done--w120.txt",
+  "codex--v0164-steer-typed--w120.txt",
   "codex--working.txt",
 ];
 

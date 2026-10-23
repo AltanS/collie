@@ -4,6 +4,7 @@ import { Keyboard, Terminal } from "lucide-react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { __resetHarnessBar, setHarnessBarEnabled } from "@/lib/harness-bar-pref";
+import { DURABLE_BAR } from "@/lib/harness-bar";
 import { ActionsRow, switchPillInset, type ActionsRowProps, type GeneralAction } from "./actions-row";
 import { COLLAPSE_MS } from "./ui/collapse";
 
@@ -50,14 +51,14 @@ describe("ActionsRow", () => {
   });
 
   it("draws the general actions on a pane whose harness has no bar at all", () => {
-    render(<ActionsRow general={[general()]} agent="grok" onRun={took} />);
+    render(<ActionsRow general={[general()]} agent="hermes" onRun={took} />);
     expect(names()).toEqual(["Keys"]);
   });
 
   it("costs no height when there is neither a general action nor a harness bar", () => {
     // With nothing to carry, the row must not render an empty scroller — that would spend 12px on
     // nothing.
-    const { container } = render(<ActionsRow general={[]} agent="grok" onRun={took} />);
+    const { container } = render(<ActionsRow general={[]} agent="hermes" onRun={took} />);
     expect(container).toBeEmptyDOMElement();
   });
 
@@ -730,5 +731,30 @@ describe("ActionsRow — hand", () => {
     render(<ActionsRow general={[general()]} agent="claude" onRun={took} hand="left" />);
     expect(scroller().className).toMatch(/(?:^|\s)pl-3(?=\s|$)/);
     expect(scroller().className).toMatch(/(?:^|\s)pr-3(?=\s|$)/);
+  });
+});
+
+describe("ActionsRow: Stop (M68 spec 02)", () => {
+  it("draws no Stop without the stop prop: an idle pane, or a running one the bridge has no key for", () => {
+    render(<ActionsRow general={[general()]} agent="claude" onRun={took} />);
+    expect(document.querySelector("[data-slot='belt-stop']")).toBeNull();
+    expect(document.querySelector("[data-slot='durable-bar']")).toBeNull();
+  });
+
+  it("draws one Stop beside the harness section when the pane offers it", () => {
+    render(<ActionsRow general={[general()]} agent="claude" onRun={took} stop={{ onStop: async () => {}, paneId: "w1:p1", running: true }} />);
+    expect(document.querySelectorAll("[data-slot='belt-stop']")).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "Stop the turn" })).toBeInTheDocument();
+  });
+
+  it("keeps a durable pane's own Stop and draws no second one", () => {
+    const state = {
+      steer: { pressed: false, offered: true, onPressedChange: vi.fn() },
+      stop: { offered: true, busy: false, onStop: vi.fn() },
+    };
+    render(<ActionsRow general={[general()]} agent={null} onRun={took} durable={{ items: DURABLE_BAR, state }} />);
+    expect(document.querySelector("[data-slot='durable-bar']")).not.toBeNull();
+    expect(document.querySelector("[data-slot='belt-stop']")).toBeNull();
+    expect(screen.getByRole("button", { name: "Stop the running turn" })).toBeInTheDocument();
   });
 });

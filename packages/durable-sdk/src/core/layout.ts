@@ -4,6 +4,7 @@
 // its byte cap (WIRE.md section 6) before it is stored, so the wire never carries a string over a cap.
 
 import { randomHex, sha256Hex } from "./hash.ts";
+import type { SeededAsk } from "./journal.ts";
 import { type ReceiptStore, Receipts } from "./receipts.ts";
 import { ACTION_ICONS } from "./types.ts";
 
@@ -107,6 +108,53 @@ export class BadAnswer extends Error {
 /** The phone sent an answer of the wrong shape for the ask: a text over its `maxLength`, a missing required field. 400 `bad-body`. */
 export class BadAnswerBody extends BadAnswer {
   override readonly code = "bad-body";
+}
+
+/**
+ * What a host with no process of its own gives an ask it seeded ({@link PaneHandle.seedAsk}): the place an answer goes.
+ * The pane has no promise to resolve for such an ask, so `answer` writes the answer where the host keeps its facts,
+ * reads back who won, and says so.
+ */
+export interface AskSink {
+  /** `revision` is the one of the open ask; the caller has checked it against the phone's. Either method may return a promise. */
+  answer(askId: string, revision: number, answer: Answer, requestId: string): SinkReply | Promise<SinkReply>;
+}
+
+/**
+ * What an {@link AskSink} says. `taken`: this answer stands (`at`, an ISO stamp, is when the host recorded it; absent,
+ * the pane reads the clock). Not taken: the ask was decided first, with that outcome (409 `decided`), or the host does
+ * not know the ask any more (`too-late`).
+ */
+export type SinkReply = { taken: true; at?: string } | { taken: false; decided: AskOutcome } | { taken: false; tooLate: true };
+
+/** An answer through a sink found the ask decided already. The server maps it to 409 `decided` with the first outcome. */
+export class AnswerDecided extends Error {
+  readonly outcome: AskOutcome;
+  constructor(outcome: AskOutcome) {
+    super("ask decided");
+    this.outcome = outcome;
+  }
+}
+
+/** What a pane can be made with besides its title and harness. Every field is optional; left out, the pane is the memory pane. */
+export interface PaneOptions {
+  cwd?: string;
+  sessionId?: string | null;
+  /**
+   * The pane's turn id, fixed by the host. A pane made without one mints a new id whenever it goes from not working to
+   * working. A pane made with one keeps it: a host that derives its state from a log rebuilds the pane on every
+   * request, so the turn id is a fact it computes, not an event the pane sees.
+   */
+  turnId?: string;
+  /** True: `canSend` is false while the pane works or waits. For a host that cannot steer a running turn. */
+  sendWhenIdleOnly?: boolean;
+  /**
+   * The pane's events cursor, fixed by the host: a whole number that rises whenever anything the pane shows changes. A
+   * host that rebuilds the pane from its log on every request cannot replay the events between two cursors, so a read
+   * at exactly this cursor (and this epoch) gets no events, and any other read gets the reset view with this cursor as
+   * `next` (WIRE.md 7.2 allows a reset for any cursor). Left out, the pane counts its own events.
+   */
+  cursor?: number;
 }
 
 // ── cleaning ──────────────────────────────────────────────────────────────────
@@ -441,6 +489,16 @@ export interface PaneHandle {
   decideAsk(askId: string, answer?: Answer): boolean;
   /** The first decision of an ask this pane closed, with who and when, or undefined for one it never raised or forgot. */
   outcomeOf(askId: string): AskOutcome | undefined;
+  /**
+   * Open an ask a host read from its own durable record (`foldJournal`), not one a program raised: it has no promise
+   * and no timer. The pane goes to `waiting` and shows the ask, as `ask()` would. An answer from the phone goes to
+   * `sink.answer`, and is `taken` only when the sink says this answer stands. An ask past its `expiresAt` closes at the
+   * next read, decided by `timeout` at exactly `expiresAt`, so every instance of the host says the same. The ask is
+   * checked as `ask()` checks it: a bad record is a TypeError. Nothing else moves: no `lastActiveAt`, no revision.
+   */
+  seedAsk(record: SeededAsk, sink: AskSink): void;
+  /** Remember the first outcome of asks decided before this pane existed, oldest first, so a late tap gets 409 `decided`. */
+  seedDecided(outcomes: ReadonlyMap<string, AskOutcome>): void;
   onSend(fn: (text: string, o: SendContext) => void | Promise<void>): void;
   onAbort(fn: (o: { requestId: string }) => void | Promise<void>): void;
   /**
@@ -460,7 +518,7 @@ export interface TabHandle {
    * the pane id once a history provider is set, and null before. Pass `null` when the id does not stay the same
    * across a restart.
    */
-  pane(id: string, o: { title: string; harness: string; cwd?: string; sessionId?: string | null }): PaneHandle;
+  pane(id: string, o: PaneOptions & { title: string; harness: string }): PaneHandle;
 }
 export interface WorkspaceHandle {
   readonly id: string;
@@ -470,8 +528,11 @@ export interface WorkspaceHandle {
 interface OpenAsk {
   ask: Ask;
   openedAt: number;
-  resolve: (a: Answer) => void;
-  reject: (e: Error) => void;
+  /** Absent on a seeded ask: the host that seeded it has no promise to resolve. */
+  resolve?: (a: Answer) => void;
+  reject?: (e: Error) => void;
+  /** Present on a seeded ask: where an answer goes. */
+  sink?: AskSink;
   /** The timer that closes the ask at its `expiresAt`. A snapshot or an answer sweeps it too, for a host whose timers sleep. */
   timer?: ReturnType<typeof setTimeout>;
 }
@@ -479,7 +540,12 @@ interface OpenAsk {
 export class Pane implements PaneHandle {
   base: PaneState = "idle";
   lastActiveAt = Date.now();
-  turnId = mintId();
+  turnId: string;
+  /** True when the host fixed the turn id: `state()` never mints one. */
+  private readonly turnFixed: boolean;
+  private readonly sendWhenIdleOnly: boolean;
+  /** The host's cursor ({@link PaneOptions.cursor}), or undefined for a pane that counts its own events. */
+  private readonly fixedCursor: number | undefined;
   /** The raw tail: the newest `limit` events. `total` counts every event ever, so a cursor is `total` at read time. */
   readonly tail: SessionEvent[] = [];
   private total = 0;
@@ -520,6 +586,7 @@ export class Pane implements PaneHandle {
     cwd: string | undefined,
     limit = DEFAULT_TAIL,
     session?: string | null,
+    extra: Pick<PaneOptions, "turnId" | "sendWhenIdleOnly" | "cursor"> = {},
   ) {
     this.store = store;
     this.id = id;
@@ -529,6 +596,11 @@ export class Pane implements PaneHandle {
     this.harness = harness;
     this.cwd = cwd;
     this.session = session;
+    this.turnFixed = extra.turnId !== undefined;
+    this.turnId = extra.turnId === undefined ? mintId() : assertId(extra.turnId, "pane turnId");
+    this.sendWhenIdleOnly = extra.sendWhenIdleOnly === true;
+    if (extra.cursor !== undefined && (!Number.isSafeInteger(extra.cursor) || extra.cursor < 0)) throw new RangeError(`a pane's cursor is a whole number from 0: ${extra.cursor}`);
+    this.fixedCursor = extra.cursor;
     this.limit = Math.min(limit, MAX_TAIL);
   }
 
@@ -550,9 +622,15 @@ export class Pane implements PaneHandle {
   /**
    * The events past a cursor (WIRE.md 7.2). A cursor inside the tail gets plain events, at most 1000 and
    * at most 8 MiB, with `more` when it stopped early. A stale epoch, a cursor older than the tail or a
-   * cursor past the count gets `reset: true` and the whole current view of the pane.
+   * cursor past the count gets `reset: true` and the whole current view of the pane. A pane with a host's
+   * cursor ({@link PaneOptions.cursor}) answers nothing at that cursor and the reset view at any other.
    */
   eventsAfter(after: number, staleEpoch: boolean): Omit<EventsReply, "epoch"> {
+    if (this.fixedCursor !== undefined) {
+      // A host's cursor names a whole view, not a place in a tail: the same cursor is nothing new, any other one a reset.
+      if (!staleEpoch && after === this.fixedCursor) return { events: [], next: this.fixedCursor };
+      return { ...this.resetView(), next: this.fixedCursor };
+    }
     const start = this.total - this.tail.length;
     if (!staleEpoch && after >= start && after <= this.total) {
       const events: SessionEvent[] = [];
@@ -568,6 +646,11 @@ export class Pane implements PaneHandle {
       if (next < this.total) reply.more = true;
       return reply;
     }
+    return this.resetView();
+  }
+
+  /** The whole current view of the pane (WIRE.md 7.2): its items, its open asks, its state, with `next` at the count. */
+  private resetView(): Omit<EventsReply, "epoch"> {
     // The newest items that fit: at most 2000, and inside the reply budget with room for the asks.
     const asks = this.openAsks;
     let budget = LIMITS.replyBytes - asks.reduce((n, a) => n + bytes(JSON.stringify(a)), 0) - 1024;
@@ -644,7 +727,7 @@ export class Pane implements PaneHandle {
 
   state(s: PaneState) {
     // A new turn starts when the pane goes from not working to working.
-    if (s === "working" && this.base !== "working") this.turnId = mintId();
+    if (s === "working" && this.base !== "working" && !this.turnFixed) this.turnId = mintId();
     this.base = s;
     this.sync();
     this.touch();
@@ -703,6 +786,28 @@ export class Pane implements PaneHandle {
     });
   }
 
+  seedAsk(record: SeededAsk, sink: AskSink): void {
+    if (record.askId !== record.ask.id) throw new TypeError(`a seeded ask's record names ${record.askId} but its ask is ${record.ask.id}`);
+    const ask = cleanAsk({ ...record.ask, expiresAt: record.expiresAt ?? record.ask.expiresAt });
+    this.refuseAllowAlways(ask.options);
+    if (this.asks.has(ask.id)) throw new TypeError(`ask id already open: ${ask.id}`);
+    const openedAt = Date.parse(record.openedAt);
+    this.asks.set(ask.id, { ask, openedAt: Number.isNaN(openedAt) ? Date.now() : openedAt, sink });
+    this.append({ type: "ask", ask });
+    this.sync();
+  }
+
+  seedDecided(outcomes: ReadonlyMap<string, AskOutcome>): void {
+    for (const [askId, o] of outcomes) {
+      const kept: AskOutcome = { decidedBy: o.decidedBy, decidedAt: o.decidedAt };
+      if (o.optionId !== undefined) kept.optionId = o.optionId;
+      if (o.effect !== undefined) kept.effect = o.effect;
+      this.decided.delete(askId);
+      this.decided.set(askId, kept);
+    }
+    while (this.decided.size > DECIDED_KEPT) this.decided.delete(this.decided.keys().next().value!);
+  }
+
   /**
    * Close every open ask whose `expiresAt` has passed, as decided by `timeout` (WIRE.md 7.3). The timer of each ask
    * calls it, and so does every snapshot and every answer, so an ask reads as timed out on the next read even on a
@@ -711,7 +816,10 @@ export class Pane implements PaneHandle {
   sweep(now = Date.now()) {
     // A Map walk survives `closeAsk` deleting the entry it stands on.
     for (const [id, open] of this.asks) {
-      if (open.ask.expiresAt !== undefined && Date.parse(open.ask.expiresAt) <= now) this.closeAsk(id, "stopped", "timeout", new AskClosed("stopped", "timeout"));
+      if (open.ask.expiresAt !== undefined && Date.parse(open.ask.expiresAt) <= now) {
+        // A seeded ask closes AT its expiry, not at the read, so the instances of a host with no process say the same thing.
+        this.closeAsk(id, "stopped", "timeout", new AskClosed("stopped", "timeout"), undefined, open.sink === undefined ? undefined : open.ask.expiresAt);
+      }
     }
   }
 
@@ -748,17 +856,14 @@ export class Pane implements PaneHandle {
       return true;
     }
     checkAnswer(open.ask, answer);
-    open.resolve(answer);
+    open.resolve?.(answer);
     this.closeAsk(askId, "stopped", "program", undefined, answer);
     return true;
   }
 
-  private closeAsk(askId: string, by: ClosedBy, decidedBy: DecidedBy, err?: Error, answer?: Answer) {
+  private closeAsk(askId: string, by: ClosedBy, decidedBy: DecidedBy, err?: Error, answer?: Answer, decidedAt = new Date().toISOString()) {
     const open = this.asks.get(askId);
     if (!open) return;
-    this.asks.delete(askId);
-    if (open.timer !== undefined) clearTimeout(open.timer);
-    const decidedAt = new Date().toISOString();
     // The receipt of the decision: who and when, and for a permission the option and its effect.
     const outcome: AskOutcome = { decidedBy, decidedAt };
     if (answer !== undefined && "optionId" in answer) {
@@ -766,12 +871,19 @@ export class Pane implements PaneHandle {
       const effect = open.ask.options.find((o) => o.id === answer.optionId)?.effect;
       if (effect !== undefined) outcome.effect = effect;
     }
+    this.settle(askId, open, by, outcome, err);
+  }
+
+  /** Take an ask out of the open ones with its outcome: the receipt, the event, the state. */
+  private settle(askId: string, open: OpenAsk, by: ClosedBy, outcome: AskOutcome, err?: Error) {
+    this.asks.delete(askId);
+    if (open.timer !== undefined) clearTimeout(open.timer);
     this.decided.set(askId, outcome);
     if (this.decided.size > DECIDED_KEPT) this.decided.delete(this.decided.keys().next().value!);
-    this.append({ type: "ask-closed", askId, by, waitedMs: Date.now() - open.openedAt, decidedBy, decidedAt });
+    this.append({ type: "ask-closed", askId, by, waitedMs: Date.now() - open.openedAt, decidedBy: outcome.decidedBy, decidedAt: outcome.decidedAt });
     this.sync();
     this.touch();
-    if (err) open.reject(err);
+    if (err) open.reject?.(err);
   }
 
   /**
@@ -780,13 +892,32 @@ export class Pane implements PaneHandle {
    * shape for the ask's kind throws `BadAnswerBody` (400 `bad-body`, WIRE.md 7.14). An ask raised again after a restart has its
    * old id, so an answer to the id the phone saw before the wake lands here.
    */
-  answer(askId: string, answer: Answer): AnswerResult {
+  answer(askId: string, answer: Answer, requestId = ""): AnswerResult | Promise<AnswerResult> {
     const open = this.asks.get(askId);
     if (!open) return "too-late";
     checkAnswer(open.ask, answer);
-    open.resolve(answer);
+    if (open.sink !== undefined) return this.answerThrough(open, open.sink, answer, requestId);
+    open.resolve?.(answer);
     this.closeAsk(askId, "phone", "phone", undefined, answer);
     return "taken";
+  }
+
+  /**
+   * An answer to a seeded ask goes to its sink, and the pane believes the sink: `taken` closes the ask as the phone's,
+   * `decided` closes it with the first outcome and throws {@link AnswerDecided}, and `too-late` changes nothing.
+   */
+  private async answerThrough(open: OpenAsk, sink: AskSink, answer: Answer, requestId: string): Promise<AnswerResult> {
+    const askId = open.ask.id;
+    const reply = await sink.answer(askId, open.ask.revision, answer, requestId);
+    if (reply.taken) {
+      if (this.asks.get(askId) === open) this.closeAsk(askId, "phone", "phone", undefined, answer, reply.at);
+      return "taken";
+    }
+    if ("decided" in reply) {
+      if (this.asks.get(askId) === open) this.settle(askId, open, reply.decided.decidedBy === "phone" ? "phone" : "stopped", reply.decided);
+      throw new AnswerDecided(reply.decided);
+    }
+    return "too-late";
   }
 
   onSend(fn: (text: string, o: SendContext) => void | Promise<void>) {
@@ -834,6 +965,7 @@ export class Pane implements PaneHandle {
 
   /** A pane takes text when it has its own handler or the program has an `onSend` hook (the fallback). */
   get canSend() {
+    if (this.sendWhenIdleOnly && this.effective !== "idle") return false;
     return this.sendFn !== undefined || this.store.hooks.onSend !== undefined;
   }
   get canAbort() {
@@ -889,15 +1021,26 @@ interface WsRec {
   cwd?: string;
 }
 
+/** What a host with no process of its own may fix in a store. Left out, the store is the memory store: a random epoch and its own counter. */
+export interface StoreSeams {
+  /** Used as is, and checked against the id rule. */
+  epoch?: string;
+  /** The snapshot's `rev`, read at every snapshot, instead of the store's counter. The counter still runs. A whole number from 1. */
+  rev?: () => number;
+}
+
 export class Store {
-  /** New and random on every start. 128 bits. */
-  readonly epoch = mintId();
+  /** New and random on every start, 128 bits, unless the host names one ({@link StoreSeams.epoch}). */
+  readonly epoch: string;
+  private readonly revOf: (() => number) | undefined;
   readonly receipts: Receipts;
   /** `receipts`: where finished request ids are kept. Default: in memory, gone with the process. */
   readonly tailLimit: number;
   /** False: an ask option with effect `allow-always` is a TypeError (a program behind TLS, WIRE.md 1B). */
   readonly allowAlways: boolean;
-  constructor(tailLimit = DEFAULT_TAIL, receipts?: ReceiptStore, allowAlways = true) {
+  constructor(tailLimit = DEFAULT_TAIL, receipts?: ReceiptStore, allowAlways = true, seams: StoreSeams = {}) {
+    this.epoch = seams.epoch === undefined ? mintId() : assertId(seams.epoch, "epoch");
+    this.revOf = seams.rev;
     this.tailLimit = tailLimit;
     this.allowAlways = allowAlways;
     this.receipts = new Receipts(receipts);
@@ -951,12 +1094,16 @@ export class Store {
   }
 
   /** Idempotent: the same id returns the live pane, so a restarted program can re-attach. */
-  private pane(workspaceId: string, tabId: string, id: string, o: { title: string; harness: string; cwd?: string; sessionId?: string | null }): Pane {
+  private pane(workspaceId: string, tabId: string, id: string, o: PaneOptions & { title: string; harness: string }): Pane {
     assertId(id, "pane id");
     if (o.sessionId !== undefined && o.sessionId !== null) assertId(o.sessionId, "pane sessionId");
     const have = this.panes.get(id);
     if (have) return have;
-    const pane = new Pane(this, id, tabId, workspaceId, cut(o.title, CAPS.title), cut(o.harness, CAPS.harness), cwdOf(o.cwd), this.tailLimit, o.sessionId);
+    const host: Pick<PaneOptions, "turnId" | "sendWhenIdleOnly" | "cursor"> = {};
+    if (o.turnId !== undefined) host.turnId = o.turnId;
+    if (o.sendWhenIdleOnly !== undefined) host.sendWhenIdleOnly = o.sendWhenIdleOnly;
+    if (o.cursor !== undefined) host.cursor = o.cursor;
+    const pane = new Pane(this, id, tabId, workspaceId, cut(o.title, CAPS.title), cut(o.harness, CAPS.harness), cwdOf(o.cwd), this.tailLimit, o.sessionId, host);
     // A pane shown again is open: it is no longer one a reopen could put back.
     for (const [key, closed] of this.closedPanes) if (closed.id === id) this.closedPanes.delete(key);
     this.panes.set(id, pane);
@@ -1047,11 +1194,18 @@ export class Store {
     this.rev++;
   }
 
+  private currentRev(): number {
+    if (this.revOf === undefined) return this.rev;
+    const rev = this.revOf();
+    if (!Number.isSafeInteger(rev) || rev < 1) throw new RangeError(`the host's rev is a whole number from 1: ${rev}`);
+    return rev;
+  }
+
   snapshot(): Snapshot {
     // An ask past its `expiresAt` reads as decided by `timeout` from this read on (WIRE.md 7.3).
     for (const pane of this.panes.values()) pane.sweep();
     return {
-      rev: this.rev,
+      rev: this.currentRev(),
       epoch: this.epoch,
       workspaces: [...this.workspaces.values()].slice(0, LIMITS.workspaces),
       tabs: [...this.tabs.values()].slice(0, LIMITS.tabs),

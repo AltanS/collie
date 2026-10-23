@@ -67,13 +67,20 @@ export function stateRank(state: WalkyReceiptState): 0 | 1 | 2 {
 
 /**
  * Whether `next` may replace `held` when it comes from another machine (a member's report, the lead's
- * push): never over a finished state, never backwards, and a repeat of the same state only when newer.
+ * push): never over a finished state, never backwards, and a repeat of the same state only when newer,
+ * or of the same millisecond when it adds a reason the held one lacks. A held send (M62 spec 02) is
+ * `accepted` with a reason, and the member can write it in the millisecond it wrote the bare
+ * `accepted` the dial answered with: a second message to a pane that already holds one is held at
+ * once. Field case 2026-10-22 (browser leg case 21, message 3 of six): both at 1792620803859, so the
+ * lead skipped the report and `collie walky send` printed a bare `accepted`. A resend of the same
+ * receipt still writes nothing: the held one has the reason then.
  */
 export function movesForward(held: WalkyReceipt, next: WalkyReceipt): boolean {
   const from = stateRank(held.state);
   const to = stateRank(next.state);
   if (from === 2 || to < from) return false;
-  return next.state !== held.state || next.at > held.at;
+  if (next.state !== held.state || next.at > held.at) return true;
+  return next.at === held.at && held.reason === undefined && next.reason !== undefined;
 }
 
 /** The longest receipt `reason` read or written (CREW_PROTOCOL §21, added 2026-10-18). */

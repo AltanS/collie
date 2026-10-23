@@ -8,7 +8,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import { loadDraft, saveDraft } from "@/lib/drafts";
 import { markLive, resetLiveness } from "@/lib/liveness";
 import { clearStatus } from "@/lib/status";
-import { recordedWalkyPosts } from "@/test/handlers";
+import { recordedWalkyPosts, recordedWalkyTakeBacks } from "@/test/handlers";
 import { server } from "@/test/setup";
 import type { WalkyReceipt, WalkyRow } from "@/lib/walky";
 import { Composer, type ComposerHandle } from "./composer";
@@ -194,6 +194,11 @@ describe("the strip follows a queued message (M62 hardening I)", () => {
     // A revalidation that still reads `accepted` changes nothing.
     act(() => setRows([rowOf(base)]));
     expect(screen.getByText("Message to this pane: queued")).toBeInTheDocument();
+    // A held message (M62 spec 02): still `accepted`, with what holds it, and when it will be typed.
+    act(() => setRows([rowOf({ ...base, reason: "draft present" })]));
+    expect(await screen.findByText("Message to this pane: held: draft present. Typed when the box clears or the turn ends, up to 60 minutes. Do not send it again.")).toBeInTheDocument();
+    act(() => setRows([rowOf({ ...base, reason: "turn running", at: 2 })]));
+    expect(await screen.findByText(/^Message to this pane: held: turn running\. /)).toBeInTheDocument();
     act(() => setRows([rowOf({ ...base, state: "inbox-only", reason: "dialog open" })]));
     expect(await screen.findByText("Message to this pane: waiting in the inbox, not typed: dialog open")).toBeInTheDocument();
   });
@@ -231,5 +236,155 @@ describe("a reply handed in by the Messages sheet", () => {
     act(() => handle.current?.startMessage({ to: "bluefin/w6:p3", replyTo: "wt_k3f9x2m8q1a0", label: "peer" }));
     await user.click(await screen.findByRole("button", { name: "Send as a plain reply again" }));
     await waitFor(() => expect(screen.queryByText("Reply to peer")).toBeNull());
+  });
+});
+
+describe("the held mark (M62 spec 03)", () => {
+  /** A message held for this pane's box (`local/w1:p1` on a solo install), from another pane. */
+  const heldForThisPane: WalkyRow = {
+    v: 1,
+    id: "wt_he1dh01dh01d",
+    kind: "agent",
+    from: { memberId: null, address: "local/w2:p1", harness: "pi", label: "repo#other" },
+    to: "local/w1:p1",
+    replyTo: null,
+    at: Date.parse("2026-10-21T09:30:00Z"),
+    body: "Tests are green.",
+    signer: null,
+    signature: null,
+    receipt: { id: "wt_he1dh01dh01d", state: "accepted", reason: "draft present", verified: "local", at: Date.parse("2026-10-21T09:30:01Z"), by: "solo", target: "local/w1:p1" },
+  };
+  /** A message THIS pane sent that is held at the far pane: not this box's business. */
+  const heldElsewhere: WalkyRow = {
+    ...heldForThisPane,
+    id: "wt_he1de1sewhe",
+    from: { memberId: null, address: "local/w1:p1", harness: "claude", label: "repo#this" },
+    to: "local/w2:p1",
+    receipt: { ...heldForThisPane.receipt, id: "wt_he1de1sewhe", target: "local/w2:p1" },
+  };
+
+  function renderWithRows(rows: readonly WalkyRow[], onOpenMessages: (() => void) | undefined) {
+    const props: ComponentProps<typeof Composer> = {
+      paneId: "w1:p1",
+      agent: "claude",
+      isShell: false,
+      gone: false,
+      readOnly: false,
+      surface: { revision: 1, turn: "idle", modal: "none", composer: "empty" },
+      text: "pane output",
+      terminalDraft: null,
+      rawTerminalDraft: null,
+      prefs: { wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true, stretchText: false },
+      display: { open: false, onToggle: vi.fn() },
+      onSent: vi.fn(),
+      onOpenMessages,
+    };
+    const router = createMemoryRouter([
+      {
+        path: "/",
+        element: (
+          <WalkyLogProvider rows={rows}>
+            <Composer {...props} />
+          </WalkyLogProvider>
+        ),
+      },
+    ]);
+    render(<RouterProvider router={router} />);
+  }
+
+  it("counts the messages held for this pane's box, and a tap opens the Messages sheet", async () => {
+    const user = userEvent.setup();
+    const onOpenMessages = vi.fn();
+    renderWithRows([heldForThisPane, heldElsewhere], onOpenMessages);
+    const mark = await screen.findByText("1 message waits for the box to clear");
+    expect(mark).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "1 message waits for the box to clear" }));
+    expect(onOpenMessages).toHaveBeenCalledOnce();
+  });
+
+  it("reads the plural, and draws nothing with no held message or no sheet to open", () => {
+    const second: WalkyRow = { ...heldForThisPane, id: "wt_he1dh01dh02d", receipt: { ...heldForThisPane.receipt, id: "wt_he1dh01dh02d" } };
+    renderWithRows([heldForThisPane, second], vi.fn());
+    expect(screen.getByText("2 messages wait for the box to clear")).toBeInTheDocument();
+    cleanup();
+    renderWithRows([heldElsewhere], vi.fn());
+    expect(screen.queryByText(/wait(s)? for the box to clear/)).toBeNull();
+    cleanup();
+    renderWithRows([heldForThisPane], undefined);
+    expect(screen.queryByText(/wait(s)? for the box to clear/)).toBeNull();
+  });
+});
+
+describe("Cancel on the held outcome line (M62 spec 03)", () => {
+  it("offers Cancel while the list says the message is held, and posts the cancel route", async () => {
+    const user = userEvent.setup();
+    // The bridge answers `held` for this message, and the pane's list carries that receipt.
+    let postedId: string | null = null;
+    server.use(
+      http.post(/\/api\/walky$/, async ({ request }) => {
+        // SAFETY: the Composer under test posts `{ id, to, body }` through postWalky; this fake reads two of its strings back.
+        const body = (await request.json()) as { id: string; to: string };
+        postedId = body.id;
+        return HttpResponse.json({ receipt: { id: body.id, target: body.to, state: "accepted", reason: "draft present", verified: "local", at: Date.now(), by: "solo" } });
+      }),
+    );
+    let rows: readonly WalkyRow[] = [];
+    function Harness() {
+      const [list, setList] = useState<readonly WalkyRow[]>(rows);
+      rows = list;
+      // The list follows the first post: what the bridge's pane list would hold after the send.
+      const props: ComponentProps<typeof Composer> = {
+        paneId: "w1:p1",
+        agent: "claude",
+        isShell: false,
+        gone: false,
+        readOnly: false,
+        surface: { revision: 1, turn: "idle", modal: "none", composer: "empty" },
+        text: "pane output",
+        terminalDraft: null,
+        rawTerminalDraft: null,
+        prefs: { wrap: true, fontSize: 11, draftFontSize: 14, chatFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true, stretchText: false },
+        display: { open: false, onToggle: vi.fn() },
+        onSent: vi.fn(),
+      };
+      return (
+        <WalkyLogProvider rows={list}>
+          <button type="button" onClick={() => setList(heldRows())}>
+            list read
+          </button>
+          <Composer {...props} />
+        </WalkyLogProvider>
+      );
+    }
+    const heldRows = (): WalkyRow[] => {
+      const id = postedId ?? "wt_000000000000";
+      return [
+        {
+          v: 1,
+          id,
+          kind: "operator",
+          from: { memberId: null, address: null, harness: null, label: "phone" },
+          to: "local/w1:p1",
+          replyTo: null,
+          at: Date.now(),
+          body: "Stop and report",
+          signer: null,
+          signature: null,
+          receipt: { id, state: "accepted", reason: "draft present", verified: "local", at: Date.now(), by: "solo", target: "local/w1:p1" },
+        },
+      ];
+    };
+    const router = createMemoryRouter([{ path: "/", element: <Harness /> }]);
+    render(<RouterProvider router={router} />);
+    await user.type(screen.getByPlaceholderText(/type a reply/i), "Stop and report");
+    fireEvent.contextMenu(screen.getByRole("button", { name: "Send" }));
+    await user.click(await screen.findByRole("button", { name: "Send as message" }));
+    expect(await screen.findByText(/Message to this pane: held: draft present/)).toBeInTheDocument();
+    // No Cancel until the pane's own list carries the held receipt: the strip follows the list, not the first answer.
+    expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "list read" }));
+    const cancel = await screen.findByRole("button", { name: "Cancel" });
+    await user.click(cancel);
+    await waitFor(() => expect(recordedWalkyTakeBacks()).toEqual([`cancel ${String(postedId)}`]));
   });
 });

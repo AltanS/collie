@@ -149,7 +149,8 @@
           "wrapped": "^ {8,}\\S",
           "namespaces": [
             "skill:"
-          ]
+          ],
+          "argumentList": true
         }
       }
     },
@@ -192,11 +193,36 @@
     },
     "enterWhileRunning": "steers",
     "queueKey": "ctrl+q",
+    "commandsRunInTurn": [
+      "/goal"
+    ],
+    "commandsRunInTurnNote": "Measured on OMP 18.12.2 through Herdr 0.9.5 with the probe, the text and Enter while a goal turn streamed. Lab 2026-10-19: /goal status, /goal pause, /goal resume and a bare /goal each ran at once and none became a steering row; a prompt-template command (/labnote) became a Steering row. Lab 2026-10-22 ran /goal pause, /goal resume and a bare /goal again and kept every screen the send reads (web/src/fixtures/panes/omp--v18-12-2-goal-*): OMP printed Goal mode paused. and Goal mode resumed., the status segment went from 🎯 Goal to ⏸ Goal and back, the turn kept running, and the bare /goal opened the goal menu. With /goal pause or /goal resume typed OMP draws the argument's own list under the box, the pointer on the argument typed; commandList.argumentList reads that list as the typed command's own.",
     "queuedRow": {
       "pattern": "^\\s*\\d+\\. (?<text>\\S.*?)\\s*$",
       "hint": "^\\s*└ Alt\\+↑ to edit\\s*$",
-      "hintGap": 0
-    }
+      "hintGap": 0,
+      "between": "^\\s*Steering · \\d+\\s*$",
+      "header": "^\\s*After yield · \\d+\\s*$"
+    },
+    "steer": [
+      "Enter"
+    ],
+    "steerWitness": [
+      {
+        "pattern": "^\\s*│\\s*Backgrounded early to handle an incoming message\\b"
+      },
+      {
+        "pattern": "^ (?<text>\\S.*?)\\s*$",
+        "transcript": true
+      },
+      {
+        "pattern": "^\\s*\\d+\\. (?<text>\\S.*?)\\s*$",
+        "hint": "^\\s*└ Alt\\+↑ to edit\\s*$",
+        "hintGap": 0,
+        "between": "^\\s*After yield · \\d+\\s*$",
+        "header": "^\\s*Steering · \\d+\\s*$"
+      }
+    ]
   },
   "collapse": {
     "pattern": "(?:📄|🖼|\\u{F15C}|\\u{F03E}) #\\d+"

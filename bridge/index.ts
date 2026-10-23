@@ -200,6 +200,7 @@ import { Snooze } from "./snooze.ts";
 import { StateEngine } from "./state-engine.ts";
 import { SubagentTracker } from "./subagents.ts";
 import { TodoTracker } from "./todos.ts";
+import { diskUsageFiles, usageDir, UsageTracker } from "./usage.ts";
 import {
   bridgeStampSync,
   compareSemver,
@@ -236,6 +237,7 @@ import {
 import { collieVersion, collieVersionBare } from "./version.ts";
 import { SurfaceShadow, type ShadowOptions } from "./surface/shadow.ts";
 import { AskAnswerer, AskBook } from "./surface/ask.ts";
+import { StopService, type StopDeps } from "./surface/stop.ts";
 import { gateFor } from "./surface/key-gate.ts";
 import { RowRing, SendProtocol, SessionLocks } from "./surface/protocol.ts";
 import { ProgramDriver, type ProgramPort } from "./surface/durable-driver.ts";
@@ -801,6 +803,9 @@ const paneCache =
 const todos = journals === null ? null : new TodoTracker(journals, Date.now);
 // Each pane's running subagents (bridge/subagents.ts), read on the same poll as the todo list.
 const subagents = journals === null ? null : new SubagentTracker(journals, Date.now);
+// Each pane's context use and subscription windows (bridge/usage.ts), from the files the statusLine
+// wrapper writes. No journal needed: the pane's session id is the key.
+const usage = new UsageTracker(usageDir(cfg.stateDir), diskUsageFiles, Date.now);
 
 // Which branch each pane's folder is on (bridge/git-head.ts). One for the whole bridge: every
 // session's poll feeds it its folders, and the server reads it from memory at serialise time.
@@ -1407,6 +1412,9 @@ if (holdStore !== null && sendStore !== null) {
   const waiting = holdStore.list().filter((entry) => entry.state === "held").length;
   if (changed > 0 || waiting > 0) console.log(`[send] hold queue replayed: ${String(waiting)} held, ${String(changed)} row(s) settled after the last run`);
 }
+// Walky talky's last word before a held send goes out (M62 spec 02), set once its service exists below:
+// a message meant for a pane instance that is gone never reaches the pane that took its id.
+let walkyReleaseCheck: ((requestId: string, session: string, paneId: string) => boolean) | null = null;
 // The Surface counters (M56 spec 09): one ledger for the bridge, a day file under `<stateDir>/surface/`.
 // Created with either flag, so an instance that computes no Surface touches no new file. It never
 // blocks a send and never changes a verdict.
@@ -1518,6 +1526,7 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   if (subagents !== null) {
     engine.onUpdate((s) => void subagents.refresh(s.agents, { session: name }).catch(() => {}));
   }
+  engine.onUpdate((s) => void usage.refresh(s.agents, name).catch(() => {}));
 
   // Background notifications on lifecycle transitions (foreground toasts are computed client-side by
   // diffing snapshots). Each session gets its own coordinator + notification slot: the primary keeps
@@ -1614,6 +1623,7 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
           generation: generationOf,
           asks: askBook,
           holds: holdStore ?? undefined,
+          releaseCheck: (requestId, session, paneId) => walkyReleaseCheck?.(requestId, session, paneId) ?? true,
           // A blind send on one of this session's shell panes joins Sent (ADR 0107); any other pane is left out.
           blindSent: sentRecorder(sentStore, () => engine.current().shellPanes),
         })
@@ -1715,7 +1725,14 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   const withSend = send === undefined ? withSurface : { ...withSurface, send };
   const withAsks = asks === undefined ? withSend : { ...withSend, asks };
   const withHold = hold === undefined ? withAsks : { ...withAsks, hold };
-  return driver === undefined ? withHold : { ...withHold, driver };
+  // A Stop on a pane with a screen (M68 spec 01). It reads and presses on its own, so it needs neither the
+  // request store nor the Send Protocol flag: a terminal session always has it.
+  // Its `stopped` receipt is the stop edge the harness may not send (Claude Code fires no Stop hook on Escape).
+  const stopped = surface === undefined ? undefined : (paneId: string): void => void surface.stopSeen(paneId);
+  const stopDeps: StopDeps = { mux: herdr, gate: gateFor(herdr), profile: (harness) => sendProfile(harness) };
+  const stop = endpoint.kind === "terminal" ? new StopService(stopped === undefined ? stopDeps : { ...stopDeps, stopped }) : undefined;
+  const withStop = stop === undefined ? withHold : { ...withHold, stop };
+  return driver === undefined ? withStop : { ...withStop, driver };
 };
 
 const registry = new SessionRegistry({
@@ -1783,15 +1800,22 @@ const walkyRawPanes = (): Omit<WalkyPane, "instance">[] =>
     for (const view of shellPanes) out.push(of(view, false));
     return out;
   });
+/** A Send Protocol outcome for walky talky. A held one carries what holds it now, from its hold file. */
+function walkyResult(sendId: string, outcome: string, reason: string | undefined): SendResult {
+  const why = outcome === "held" ? (holdStore?.get(sendId)?.cause ?? reason) : reason;
+  return why === undefined ? { outcome } : { outcome, reason: why };
+}
 const walkyHost: WalkyHost = {
   panes: () => walkyInstances.stamp(walkyRawPanes()),
-  send: async (pane, sendId, text): Promise<SendResult> => {
+  // A walky send is marked (M62 spec 02): a draft holds it, and its hold ends on walky's one clock.
+  send: async (pane, sendId, text, hold): Promise<SendResult> => {
     const protocol = registry.get(pane.session)?.send;
     if (protocol === undefined) return { outcome: "refused", reason: "no terminal" };
-    const answer = await protocol.handle({ id: sendId, text, mode: "send" }, { session: pane.session, paneId: pane.paneId, harness: pane.harness ?? "" });
+    const request = hold === undefined ? { id: sendId, text, mode: "send" as const } : { id: sendId, text, mode: "send" as const, draftHolds: true, holdUntil: hold.holdUntil };
+    const answer = await protocol.handle(request, { session: pane.session, paneId: pane.paneId, harness: pane.harness ?? "" });
     const receipt = answer.receipt;
     if (receipt === undefined) return { outcome: "unknown" };
-    return receipt.reason === undefined ? { outcome: receipt.outcome } : { outcome: receipt.outcome, reason: receipt.reason };
+    return walkyResult(sendId, receipt.outcome, receipt.reason);
   },
   sendState: (sendId) => {
     const record = sendStore?.get(sendId) ?? null;
@@ -1799,7 +1823,7 @@ const walkyHost: WalkyHost = {
     const receipt = record.receipt;
     // A request with no receipt yet still runs; the start-up recovery ends a crashed one `unknown`.
     if (receipt === undefined) return { outcome: "held" };
-    return receipt.reason === undefined ? { outcome: receipt.outcome } : { outcome: receipt.outcome, reason: receipt.reason };
+    return walkyResult(sendId, receipt.outcome, receipt.reason);
   },
   cancelHeld: (session, paneId, sendId) => {
     registry.get(session)?.send?.cancelHeld(session, paneId, sendId);
@@ -1849,6 +1873,7 @@ const walky = new WalkyService({
   leadName: () => trustStore.current()?.lead?.memberId ?? null,
   remoteSkipped: crew.mode === "lead" ? () => walkyLeadHalf?.skipped() ?? [] : undefined,
 });
+walkyReleaseCheck = (requestId, session, paneId) => walky.deliverer.stillMeant(requestId, session, paneId);
 // A member reports, on each snapshot answer, how the messages from elsewhere ended on its panes, until
 // its lead acks them.
 const walkyReport = crew.mode === "peer" && walkyMemberId !== null ? new WalkyReport(walkyMemberId) : null;
@@ -2798,6 +2823,7 @@ const server = startServer({
   cache: paneCache ?? undefined,
   todos: todos ?? undefined,
   subagents: subagents ?? undefined,
+  usage,
   gitHeads,
   walkyInstance: (session, paneId) => walkyInstances.tokenOf(session, paneId),
   walky,
