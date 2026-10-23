@@ -349,6 +349,13 @@ export type PaneWire = Omit<AgentView, "agentSession" | "sessionAgent"> & {
    */
   canStop?: true;
   /**
+   * Present (and `true`) when a send on this pane may steer the running turn (M69): the pane carries
+   * `sendProtocol`, its harness's profile names a steer key (`keys.steer`), the binary's version may be
+   * trusted with a turn, and the pane is no program's (a durable pane never steers). The phone offers
+   * Steer on the Send button's long press only then. Absent otherwise, and from an older bridge.
+   */
+  canSteer?: true;
+  /**
    * The pane's held sends (M56 spec 15), oldest first: what the harness could not take during its turn
    * and Collie sends once the pane reads free, plus ended ones whose text waits for a Resend. Present
    * only when there is at least one; the text takes the mirror's mask like a title does.

@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { loadProfiles } from "../../web/src/lib/surface/profile.ts";
 import { loadConfig } from "../config.ts";
 import type { MuxGrid, MuxGridRequest, MuxOutcome } from "../mux/types.ts";
-import { guard, SURFACE_OFF_TEXT, surfaceRoute } from "../server.ts";
+import { guard, paneCanSteer, SURFACE_OFF_TEXT, surfaceRoute } from "../server.ts";
 import type { AgentView } from "../types.ts";
 import { askOf } from "../../web/src/lib/surface/surface.ts";
 import { SurfaceLedger } from "./counters.ts";
@@ -398,5 +398,42 @@ describe("surface shadow: the persisted counters (M56 spec 09)", () => {
     mux.set("w1:p1", IDLE, 1);
     await shadow.observe([agent("w1:p1")]);
     expect(shadow.surfaceOf("w1:p1")).toEqual({ revision: 1, turn: "idle", modal: "none", composer: "empty" });
+  });
+});
+
+// M69: the pane view's `canSteer`, from the shadow's own read of the pane's profile and version.
+describe("canSteer (M69)", () => {
+  const PI_RUNNING = "pi--v130-steer-typed--w120.txt";
+  const steerRig = (versions: Record<string, string | null>) => {
+    const mux = new FakeMux();
+    const shadow = new SurfaceShadow({ mux, pollMs: 1000, log: () => undefined, now: () => 1_000_000, version: async (profile) => versions[profile.id] ?? null });
+    return { mux, shadow };
+  };
+
+  test("pi 1.3.0 in a running turn can be steered; Claude cannot; nothing before the first read", async () => {
+    const { mux, shadow } = steerRig({ pi: "1.3.0", claude: "2.1.296" });
+    expect(shadow.canSteer("w1:p1")).toBe(false);
+    mux.set("w1:p1", PI_RUNNING, 1);
+    mux.set("w1:p2", IDLE, 1);
+    await shadow.observe([agent("w1:p1", "pi"), agent("w1:p2", "claude")]);
+    expect(shadow.surfaceOf("w1:p1")?.turn).toBe("running");
+    expect(shadow.canSteer("w1:p1")).toBe(true);
+    expect(shadow.canSteer("w1:p2")).toBe(false);
+  });
+
+  test("a pi binary whose version could not be read is not steered", async () => {
+    const { mux, shadow } = steerRig({ pi: null });
+    mux.set("w1:p1", PI_RUNNING, 1);
+    await shadow.observe([agent("w1:p1", "pi")]);
+    expect(shadow.canSteer("w1:p1")).toBe(false);
+  });
+
+  test("the serialiser marks a screen pane with a Send Protocol only, never a program's (durable) pane", () => {
+    const yes = { canSteer: () => true };
+    expect(paneCanSteer({ send: {}, surface: yes }, "w1:p1")).toBe(true);
+    expect(paneCanSteer({ send: {}, driver: {}, surface: yes }, "w1:p1")).toBe(false);
+    expect(paneCanSteer({ surface: yes }, "w1:p1")).toBe(false);
+    expect(paneCanSteer({ send: {}, surface: { canSteer: () => false } }, "w1:p1")).toBe(false);
+    expect(paneCanSteer({ send: {} }, "w1:p1")).toBe(false);
   });
 });

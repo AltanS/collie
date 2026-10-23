@@ -3029,6 +3029,7 @@ export function AgentChat({
                   scope={scope}
                   stale={actsDisabledByCache}
                   agent={agent?.agent}
+                  canSteer={agent?.canSteer}
                   isShell={isShell}
                   cwd={agent?.cwd || undefined}
                   held={agent?.held}

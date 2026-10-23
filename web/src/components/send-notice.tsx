@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Check, TriangleAlert } from "lucide-react";
 
 import { Notice } from "@/components/ui/notice";
-import { capSentence, type SendNote, type SendReading, type SendReply } from "@/lib/send-protocol";
+import { capSentence, noteKey, type SendNote, type SendReading, type SendReply } from "@/lib/send-protocol";
 import { shortHash, type Surface } from "@/lib/surface/surface";
 import { t as translate, type MessageKey } from "@/lib/i18n";
 import type { StopReason, StopReceipt } from "@/lib/surface/stop";
@@ -17,7 +17,7 @@ export function answerSentence(reading: SendReading): string {
   // The cap's sentence names the count, the harness and its version (M56 spec 09).
   const note =
     reading.cap === null
-      ? translate(`composer.protocol.${reading.note}`)
+      ? translate(noteKey(reading.note))
       : capSentence(reading.cap, (vars) => translate("composer.protocol.capConfirm", vars));
   // A draft refusal already says what the screen held, and "The agent is working" already says the turn runs.
   if (reading.surface === null || reading.note === "draft" || reading.note === "draftCommand" || reading.note === "agentBusy") return note;

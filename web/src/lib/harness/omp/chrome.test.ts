@@ -126,6 +126,17 @@ const BOX_COMPOSER_FIXTURES = [
   "omp--v18.11.1-powerline-transparent-draft--w120.txt",
   "omp--v18.11.1-powerline-transparent-idle--w120.txt",
   "omp--v18.11.1-slash-idle--w120.txt",
+  // omp 18.6.1 mid-turn with a line typed, then after a steer (Enter) or a queue (Ctrl+Q), and once the
+  // turn ended (M69 spec 01, lab 2026-10-23). The box stays a box: an `After yield · 1` block over it,
+  // or a tool box ending `Backgrounded early to handle an incoming message`, stands above its top edge.
+  "omp--v18-6-queue-after--w120.txt",
+  "omp--v18-6-queue-after-now--w120.txt",
+  "omp--v18-6-queue-done--w120.txt",
+  "omp--v18-6-queue-typed--w120.txt",
+  "omp--v18-6-steer-after--w120.txt",
+  "omp--v18-6-steer-after-now--w120.txt",
+  "omp--v18-6-steer-done--w120.txt",
+  "omp--v18-6-steer-typed--w120.txt",
 ];
 
 // omp 18.6.1 with `/model` or `/mod` typed (lab, 2026-10-17): a ten-row palette under the open box. The
@@ -247,6 +258,15 @@ describe("locateComposer — the real corpus, pinned so any change to the walk s
     { fixture: "omp--v18.11.1-powerline-transparent-draft--w120.txt", top: 15, bottom: 16, suggestEnd: 17 },
     { fixture: "omp--v18.11.1-powerline-transparent-idle--w120.txt", top: 15, bottom: 16, suggestEnd: 17 },
     { fixture: "omp--v18.11.1-slash-idle--w120.txt", top: 13, bottom: 14, suggestEnd: 15 },
+    // omp 18.6.1 steer and queue mid-turn (M69 spec 01): the block over the box moves nothing in it.
+    { fixture: "omp--v18-6-queue-after--w120.txt", top: 38, bottom: 39, suggestEnd: 40 },
+    { fixture: "omp--v18-6-queue-after-now--w120.txt", top: 38, bottom: 39, suggestEnd: 40 },
+    { fixture: "omp--v18-6-queue-done--w120.txt", top: 38, bottom: 39, suggestEnd: 40 },
+    { fixture: "omp--v18-6-queue-typed--w120.txt", top: 38, bottom: 39, suggestEnd: 40 },
+    { fixture: "omp--v18-6-steer-after--w120.txt", top: 38, bottom: 39, suggestEnd: 40 },
+    { fixture: "omp--v18-6-steer-after-now--w120.txt", top: 38, bottom: 39, suggestEnd: 40 },
+    { fixture: "omp--v18-6-steer-done--w120.txt", top: 37, bottom: 38, suggestEnd: 39 },
+    { fixture: "omp--v18-6-steer-typed--w120.txt", top: 38, bottom: 39, suggestEnd: 40 },
   ];
 
   // These eleven indices are byte-identical to the ones the width-gated scanner produced. That is
@@ -319,6 +339,13 @@ describe("extractInputDraft", () => {
     { fixture: "omp--working.txt", draft: null },
     { fixture: "omp--menu-dismissed.txt", draft: null },
     { fixture: "omp--v18-4-composer-idle.txt", draft: null },
+    // omp 18.6.1 mid-turn (M69 spec 01): the line stands in the box until OMP takes it, at 0.1 s still.
+    { fixture: "omp--v18-6-steer-typed--w120.txt", draft: "also say hello at the end" },
+    { fixture: "omp--v18-6-steer-after-now--w120.txt", draft: "also say hello at the end" },
+    { fixture: "omp--v18-6-steer-after--w120.txt", draft: null },
+    { fixture: "omp--v18-6-queue-typed--w120.txt", draft: "also say hello at the end" },
+    { fixture: "omp--v18-6-queue-after-now--w120.txt", draft: "also say hello at the end" },
+    { fixture: "omp--v18-6-queue-after--w120.txt", draft: null },
   ];
 
   it.each(DRAFTS)("$fixture reads its draft", ({ fixture, draft }) => {

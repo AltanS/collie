@@ -1,0 +1,40 @@
+
+  [38;2;99;168;248m>_ [1m[39mOpenAI Codex[0;2m (v0.164.0)[0m
+     [2m/home/demo/sandbox/collie-labs/steerqueue/codex/project[0m
+
+
+[1;2m› [0mRun this exact shell command, then say done: for i in $(seq 1 40); do echo $i; sleep 1; done
+
+
+[2m• [0mI’m running the command exactly as provided.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1m[38;2;128;128;128m•[0m [2mWorking[0m [2m(14s • [0;1mesc[0;2m to interrupt) · 1 background terminal running · /ps to view · /stop to close[0m
+
+[2m• [0mMessages to be submitted after next tool call[2m (press [0;1mesc[0;2m to interrupt and send immediately)[0m
+[2m  ↳ also say hello at the end[0m
+
+
+[1m›[0m [2mAsk Codex to do anything[0m
+
+  [38;2;246;226;183mGPT-6-Luna medium[39m · [38;2;171;223;167m/home/demo/sandbox/collie-labs/steerqueue/codex/project[39m · [38;2;203;166;247mRun shell command[39m
+  [1m←[0m for agents · [1m?[0m for shortcuts

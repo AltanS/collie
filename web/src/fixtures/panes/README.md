@@ -3016,3 +3016,25 @@ this corpus. Recipes: [`hermes/CLARIFY_NOTES.md`](../../lib/harness/hermes/CLARI
 | `hermes--approval-w60` | The same at 60 columns, prompt `⚠` | Allow once, Deny |
 | `hermes--approval-long` | A 120-character command, `5. Show full command` | Allow once, Show full command, Deny |
 | `hermes--approval-long-full` | After `5`: row 5 gone, `❯` on Deny | Allow once, Deny |
+
+## Steer and queue mid-turn (captured 2026-10-23, M69 spec 01, pi 1.3.0, OMP 18.6.1, Codex 0.164.0, scratch tmux, 120 columns)
+
+Real screens of three harnesses while a slow turn runs (a bash call, `for i in $(seq 1 40); do echo $i; sleep 1; done`). A line,
+`also say hello at the end`, was typed into the box and sent with the harness's steer key (Enter on all three), and in a second run
+with its queue key (pi Alt+Enter, OMP Ctrl+Q, Codex Tab). Each run has five captures: `typed` (the line in the box, no key pressed),
+`after-now` (read straight after the key, about 0.1 s), `after` (2 s later) and `done` (the turn ended and the line was answered).
+Taken with `tmux capture-pane -p -e` in a private tmux server (`tmux -L`), isolated `HOME`, no Herdr; the lab's folder was replaced with
+`/home/demo/sandbox/collie-labs/steerqueue`, a path of the same length. Findings table: `experiments/harnesses/steer-queue-2026-10-23.md`.
+
+The `<h>` is `pi--v130`, `omp--v18-6` or `codex--v0164`; every name ends in `--w120.txt`.
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `<h>-steer-typed` | Turn running, the line in the box | pi `── ⠙ Working ──` rule, OMP spinner and seconds in the status bar, Codex `tab to queue message` hint |
+| `<h>-steer-after-now` | Enter pressed, read at once | pi: box empty, no row yet. OMP: box still holds the line. Codex: `Messages to be submitted after next tool call` over `↳ <line>` |
+| `<h>-steer-after` | 2 s after Enter | pi `Steering: <line>` row. OMP: the line stands in the transcript and the tool box says `Backgrounded early to handle an incoming message`. Codex: the line stands in the transcript as `› <line>`, no `↳` row |
+| `<h>-steer-done` | Turn ended | The agent answered the line after the tool call (pi, Codex) or after the backgrounded job (OMP). Idle |
+| `<h>-queue-typed` | Turn running, the line in the box | As the steer-typed capture |
+| `<h>-queue-after-now` | Queue key pressed, read at once | pi: box empty, no row yet. OMP: box still holds the line. Codex: `Queued follow-up inputs` over `↳ <line>` |
+| `<h>-queue-after` | 2 s after the key | pi `Follow-up: <line>`. OMP `After yield · 1`, `1. <line>`. Codex `Queued follow-up inputs`, `↳ <line>`, `shift+← edit last queued message` |
+| `<h>-queue-done` | Turn ended | The agent finished the first task, then ran the line as a second turn. Idle |

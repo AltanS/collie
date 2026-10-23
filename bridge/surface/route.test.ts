@@ -18,7 +18,7 @@ import { liftDialog, readerBlocks } from "../../web/src/lib/surface/lift.ts";
 import { AskAnswerer, AskBook } from "./ask.ts";
 import { profileFor } from "../../web/src/lib/surface/profile.ts";
 import { KeyGate } from "./key-gate.ts";
-import { RowRing, SendProtocol, SessionLocks } from "./protocol.ts";
+import { RowRing, SendProtocol, SessionLocks, type SendRequest } from "./protocol.ts";
 import { RequestStore } from "./requests.ts";
 import { HoldStore } from "./holds.ts";
 
@@ -38,6 +38,16 @@ describe("parseSendRequest", () => {
     for (const bad of ["yes", 1, null, []]) {
       // SAFETY: each case is plain JSON data, a JsonValue.
       expect(parseSendRequest({ ...good, capAck: bad } as JsonValue)).toBeNull();
+    }
+  });
+
+  test("takes when: steer, refuses any other word, and never takes the caller's word for fromPhone (M69)", () => {
+    expect(parseSendRequest({ ...good, when: "steer" })).toEqual({ ...good, mode: "send", when: "steer" });
+    expect(parseSendRequest({ ...good, when: null })).toEqual({ ...good, mode: "send" });
+    expect(parseSendRequest({ ...good, fromPhone: true })).toEqual({ ...good, mode: "send" });
+    for (const bad of ["now", "Steer", 1, true, []]) {
+      // SAFETY: each case is plain JSON data, a JsonValue.
+      expect(parseSendRequest({ ...good, when: bad } as JsonValue)).toBeNull();
     }
   });
 
@@ -122,6 +132,18 @@ function runtime(withSend: boolean, dir: string, holds?: HoldStore) {
   // The herdr stub has no `controlTurn`, so it is a screen pane.
   const rt: SendRouteRuntime = { send, engine, herdr: {}, name: "main" };
   return { rt, pane, store, pokes: () => pokes };
+}
+
+/** Every request the route hands the protocol, in order; the protocol still runs each one. */
+function spyHandle(rt: SendRouteRuntime): SendRequest[] {
+  const send = rt.send!;
+  const seen: SendRequest[] = [];
+  const handle = send.handle.bind(send);
+  send.handle = (request, target) => {
+    seen.push(request);
+    return handle(request, target);
+  };
+  return seen;
 }
 
 function auditLines() {
@@ -287,6 +309,28 @@ describe("the reply route runs the protocol (M56 spec 06)", () => {
       // A shell has no profile: the reply is typed and Entered blind, sent on the first tap.
       const shell = await (await replyThroughProtocol(replySendOf(rt), "%7", "main", { text: "ls -la", submit: true }, context(audit))).json();
       expect(shell).toMatchObject({ ok: true, send: { receipt: { outcome: "sent", profileId: null, keys: ["Enter"] }, offers: [] } });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("the reply route and /api/send set fromPhone; a body cannot (M69)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "collie-route-"));
+    try {
+      const { rt } = runtime(true, dir);
+      const seen = spyHandle(rt);
+      const { audit } = auditLines();
+      // /api/send is the phone's route: fromPhone, whatever the body says.
+      await sendRoute(rt, { id: "route-phone-0001", pane: "%1", text: "from the phone", fromPhone: false }, context(audit));
+      // The reply route with the phone's request id: fromPhone.
+      await replyThroughProtocol(replySendOf(rt), "%1", "main", { text: "a reply with an id", submit: true, id: "route-phone-0002" }, context(audit));
+      // The reply route with no id is not the phone: a body that says fromPhone does not make it so.
+      await replyThroughProtocol(replySendOf(rt), "%1", "main", { text: "a reply with no id", submit: true, fromPhone: true }, context(audit));
+      expect(seen.map((request) => [request.text, request.fromPhone])).toEqual([
+        ["from the phone", true],
+        ["a reply with an id", true],
+        ["a reply with no id", undefined],
+      ]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -461,6 +505,30 @@ describe("a Resend through sendRoute (M56 spec 15 review, H7)", () => {
       expect(res.status).toBe(200);
       expect(await res.json()).toMatchObject({ receipt: { requestId: "route-res-0003", outcome: "sent", textLength: "a name the mask would hide".length } });
       expect(holds.get("route-res-0001")).toBeNull();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a Resend that asks to steer goes as a plain send: no when and no fromPhone reach the protocol (M69)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "collie-route-"));
+    try {
+      const { audit } = auditLines();
+      const context = { audit, device: null, redact: false, acceptEncoding: null };
+      const holds = new HoldStore(join(dir, "held"));
+      const { rt, store } = runtime(true, dir, holds);
+      const seen = spyHandle(rt);
+      const accepted = store.accept({ id: "route-res-0011", session: "main", paneId: "%1", paneGeneration: "gen", surfaceRevision: 0, mode: "send", text: "the held text" });
+      const { reason: _crash, ...receipt } = SendProtocol.crashReceipt(accepted.record);
+      store.hold("route-res-0011", { ...receipt, outcome: "held" });
+      holds.add({ id: "route-res-0011", session: "main", paneId: "%1", harness: "claude", mode: "send", text: "the held text", revision: 0, command: false });
+      holds.end("route-res-0011", "expired");
+      const res = await sendRoute(rt, { id: "route-res-0012", pane: "%1", text: "", resendOf: "route-res-0011", when: "steer" }, context);
+      expect(await res.json()).toMatchObject({ receipt: { requestId: "route-res-0012", outcome: "sent" } });
+      expect(seen).toHaveLength(1);
+      expect(seen[0]).toMatchObject({ id: "route-res-0012", text: "the held text", mode: "send" });
+      expect(seen[0] && "when" in seen[0]).toBe(false);
+      expect(seen[0] && "fromPhone" in seen[0]).toBe(false);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

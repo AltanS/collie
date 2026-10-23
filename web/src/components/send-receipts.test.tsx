@@ -37,6 +37,18 @@ describe("SendReceiptsView", () => {
     expect(items[2]).toHaveTextContent("Your text is in the box, but Enter was not pressed. Submit it or discard it.");
   });
 
+  it("shows steered as its own outcome word, and a refused steer with its sentence (M69)", () => {
+    const steer: readonly SendReceiptRow[] = [
+      { requestId: "req00010", at: NOW, mode: "send", outcome: "steered", keys: ["Enter"], gapsMs: {}, harness: "pi", version: "1.3.0" },
+      { requestId: "req00011", at: NOW, mode: "send", outcome: "refused", reason: "steer_unsupported", keys: [], gapsMs: {}, harness: "pi", version: null },
+    ];
+    render(<SendReceiptsView rows={steer} now={NOW} />);
+    const items = screen.getAllByRole("listitem");
+    expect(items[0]?.querySelector(".font-medium")).toHaveTextContent(/^Steered$/u);
+    expect(items[0]).not.toHaveTextContent("the agent takes it after its current step");
+    expect(items[1]).toHaveTextContent("Steer is not available on this pane. Nothing was sent.");
+  });
+
   it("says a reason with the composer's sentence and keeps the raw code in the title only", () => {
     const more: readonly SendReceiptRow[] = [
       { requestId: "req00004", at: NOW, mode: "command", outcome: "typed_not_submitted", reason: "changed", keys: ["probe", "Backspace"], gapsMs: {}, harness: "agent", version: "2.1.301" },

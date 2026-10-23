@@ -409,7 +409,7 @@ const WALKY_TAKEN: ReadonlySet<string> = new Set(["accepted", "delivered", "inbo
 /** True when the bridge took the write: an ask or send that went in, a key press it pressed. */
 export function accepted(answer: Answer): boolean {
   if (answer.status !== 200) return false;
-  if (answer.path.startsWith("/api/send")) return answer.outcome === "sent" || answer.outcome === "effective" || answer.outcome === "held";
+  if (answer.path.startsWith("/api/send")) return answer.outcome === "sent" || answer.outcome === "effective" || answer.outcome === "held" || answer.outcome === "steered";
   if (answer.path.startsWith("/api/ask/")) return answer.outcome === "sent" || answer.outcome === "effective";
   // A walky talky message the bridge took: logged, typed, or kept in the inbox (lib/walky.ts wasTaken).
   if (answer.path === "/api/walky") return answer.outcome !== null && WALKY_TAKEN.has(answer.outcome);

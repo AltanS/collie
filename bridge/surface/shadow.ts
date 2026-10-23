@@ -33,6 +33,7 @@ import { askOf, isFree, modalWord, shortHash, type Ask, type Surface } from "../
 import type { CounterKey } from "./counters.ts";
 import { ASK_LIFETIME_MS, type AskBook } from "./ask.ts";
 import { spawnBinaryVersion } from "./binary-version.ts";
+import { steerTrusted } from "./protocol.ts";
 import type { Block } from "../../web/src/lib/blocks.ts";
 
 /** How many rows of the viewport one shadow read asks for. `viewport` scope never moves a screen. */
@@ -205,6 +206,17 @@ export class SurfaceShadow {
       panes.push({ pane, harness: state.harness, version: state.version, status: state.status, surface: state.read.surface, legacyFree: state.lastLegacy });
     }
     return { panes, counters: Object.fromEntries(this.counters) };
+  }
+
+  /**
+   * Whether the pane's harness may be steered from the phone (M69): its profile names a steer key and
+   * the binary's version may be trusted with a running turn ({@link steerTrusted}), the rule the Send
+   * Protocol applies to a steer. False before the pane's first read and on an unread version.
+   */
+  canSteer(paneId: string): boolean {
+    const state = this.panes.get(paneId);
+    if (state === undefined || state.profileId === "-" || state.version === "unread") return false;
+    return steerTrusted(profileFor(state.profileId, state.version, { log: () => undefined }));
   }
 
   /** The persisted counter key of a pane (spec 09's row), or undefined before its first read. */

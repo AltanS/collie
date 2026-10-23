@@ -1521,7 +1521,7 @@ export async function postSend(body: SendRequestBody, scope?: Scope): Promise<Se
           withScope(`/api/pane/${encodeURIComponent(body.pane)}/reply`, scope),
           {
             method: "POST",
-            body: JSON.stringify({ text: body.text, submit: true, id: body.id, mode: body.mode, rowsHash: body.rowsHash, capAck: body.capAck }),
+            body: JSON.stringify({ text: body.text, submit: true, id: body.id, mode: body.mode, rowsHash: body.rowsHash, capAck: body.capAck, when: body.when }),
           },
           sendRecover(),
         ),
@@ -1529,7 +1529,7 @@ export async function postSend(body: SendRequestBody, scope?: Scope): Promise<Se
     : await req<JsonObject>(withScope("/api/send", scope), { method: "POST", body: JSON.stringify(body) }, sendRecover());
   const reply = readSendReply(got);
   if (reply === null) throw new ApiError("The send route sent a body this phone cannot read.", 502);
-  if (reply.outcome === "sent" || reply.outcome === "effective") stampSend(body.pane);
+  if (reply.outcome === "sent" || reply.outcome === "effective" || reply.outcome === "steered") stampSend(body.pane);
   return reply;
 }
 

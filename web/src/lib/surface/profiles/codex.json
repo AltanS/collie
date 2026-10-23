@@ -57,7 +57,8 @@
     "runningRows": [
       "\\s·\\s[⠀-⣿]$",
       "^\\s*[Tt]ab to queue message\\b",
-      "^\\s*(?:shift\\+←|alt \\+ ↑) edit last queued message$"
+      "^\\s*(?:shift\\+←|alt \\+ ↑) edit last queued message$",
+      "^\\s*• Messages to be submitted after next tool call\\b"
     ]
   },
   "keys": {
@@ -92,7 +93,23 @@
       "pattern": "^\\s*↳ (?<text>\\S.*?)\\s*$",
       "hint": "^\\s*(?:shift\\+←|alt \\+ ↑) edit last queued message\\s*$",
       "hintGap": 0
-    }
+    },
+    "steer": [
+      "Enter"
+    ],
+    "steerDelayMs": 1000,
+    "steerWitness": [
+      {
+        "pattern": "^\\s*↳ (?<text>\\S.*?)\\s*$",
+        "hint": "^\\s*• Messages to be submitted after next tool call\\b",
+        "hintGap": 0,
+        "hintAbove": true
+      },
+      {
+        "pattern": "^› (?<text>\\S.*?)\\s*$",
+        "transcript": true
+      }
+    ]
   },
   "collapse": {
     "pattern": "\\[Pasted Content (?<chars>\\d+) chars\\]"

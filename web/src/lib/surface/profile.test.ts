@@ -15,7 +15,11 @@ import {
   resetProfileLog,
   versionFromOutput,
   type Profile,
+  type SteerWitness,
 } from "./profile";
+import { parseAnsi } from "../ansi";
+import { splitLines } from "../blocks";
+import { rowText } from "./frame";
 import { PROFILE_FILES } from "./profiles/index";
 
 const PROFILES_DIR = join(import.meta.dirname, "profiles");
@@ -1146,5 +1150,147 @@ describe("other names of a harness (M56 spec 14 review)", () => {
         claimed.set(name, profile.id);
       }
     }
+  });
+});
+
+// M69 spec 02: the steer keys. The witness patterns are pinned on the lab's captures of pi 1.3.0, Codex
+// 0.164.0 and OMP 18.6.1 (web/src/fixtures/panes/*-{steer,queue}-*--w120.txt, 2026-10-23).
+describe("the steer keys (M69)", () => {
+  const FIXTURES = join(import.meta.dirname, "../../fixtures/panes");
+  const LINE = "also say hello at the end";
+  /** The rows of a capture as plain text, the way the reader sees them. */
+  const rowsOf = (name: string): string[] => splitLines(parseAnsi(readFileSync(join(FIXTURES, `${name}--w120.txt`), "utf8"))).map((row) => rowText(row).trimEnd());
+  const raw = (id: string): JsonObject => parseJsonObject(readFileSync(join(PROFILES_DIR, `${id}.json`), "utf8"))!;
+  const witnesses = (id: string): readonly SteerWitness[] => loadProfiles().get(id)!.keys.steerWitness!;
+  /** The rows a witness's pattern takes with the line as its text (or, for a marker, at all). */
+  const hits = (rows: readonly string[], witness: SteerWitness): number[] => {
+    const re = new RegExp(witness.pattern, "u");
+    return rows.flatMap((row, i) => {
+      const hit = re.exec(row);
+      if (hit === null) return [];
+      return witness.pattern.includes("(?<text>") ? (hit.groups?.["text"] === LINE ? [i] : []) : [i];
+    });
+  };
+
+  it("pi, Codex and OMP steer with Enter; Codex waits a second first; every other profile has no steer key", () => {
+    for (const id of ["pi", "codex", "omp"]) {
+      const keys = loadProfiles().get(id)!.keys;
+      expect([id, keys.steer, keys.enterWhileRunning]).toEqual([id, ["Enter"], "steers"]);
+      expect(keys.steerWitness?.length).toBeGreaterThan(0);
+    }
+    expect(loadProfiles().get("codex")!.keys.steerDelayMs).toBe(1000);
+    expect(loadProfiles().get("pi")!.keys.steerDelayMs).toBeUndefined();
+    expect(loadProfiles().get("omp")!.keys.steerDelayMs).toBeUndefined();
+    for (const [id, profile] of loadProfiles()) {
+      if (["pi", "codex", "omp"].includes(id)) continue;
+      expect([id, profile.keys.steer, profile.keys.steerWitness]).toEqual([id, undefined, undefined]);
+    }
+  });
+
+  it("pi: `Steering: <line>` over the edit hint after the steer, `Follow-up:` (no steer row) after the queue", () => {
+    const [block] = witnesses("pi");
+    expect(block).toEqual({ pattern: "^\\s*Steering: (?<text>\\S.*?)\\s*$", hint: "^\\s*↳ Alt\\+Up to edit all queued messages\\s*$", hintGap: 0 });
+    const after = rowsOf("pi--v130-steer-after");
+    const [at] = hits(after, block!);
+    expect(at).toBeDefined();
+    expect(new RegExp(block!.hint!, "u").test(after[at! + 1]!)).toBe(true);
+    // At 0.1 s pi has emptied the box but not drawn the row yet: no witness, so the reads go on to 2 s.
+    expect(hits(rowsOf("pi--v130-steer-after-now"), block!)).toEqual([]);
+    expect(hits(rowsOf("pi--v130-queue-after"), block!)).toEqual([]);
+  });
+
+  it("Codex: the `Messages to be submitted after next tool call` header over `↳ <line>` at 0.1 s, the line as `› <line>` by 2 s", () => {
+    const [block, transcript] = witnesses("codex");
+    expect(block).toEqual({ pattern: "^\\s*↳ (?<text>\\S.*?)\\s*$", hint: "^\\s*• Messages to be submitted after next tool call\\b", hintGap: 0, hintAbove: true });
+    expect(transcript).toEqual({ pattern: "^› (?<text>\\S.*?)\\s*$", transcript: true });
+    const now = rowsOf("codex--v0164-steer-after-now");
+    const header = now.findIndex((row) => new RegExp(block!.hint!, "u").test(row));
+    expect(header).toBeGreaterThan(0);
+    expect(hits(now, block!)).toEqual([header + 1]);
+    // By 2 s the header is gone and the line stands in the transcript, one row more than the box held it.
+    const after = rowsOf("codex--v0164-steer-after");
+    expect(after.some((row) => new RegExp(block!.hint!, "u").test(row))).toBe(false);
+    expect(hits(after, transcript!).length).toBe(1);
+    // The queue shows `↳ <line>` too, under its own header: the steer header is what tells them apart.
+    const queued = rowsOf("codex--v0164-queue-after");
+    expect(queued.some((row) => new RegExp(block!.hint!, "u").test(row))).toBe(false);
+    expect(queued.some((row) => /Queued follow-up inputs/u.test(row))).toBe(true);
+  });
+
+  it("Codex: the steer header is a running row, so a screen that holds only it still reads the turn running", () => {
+    const signs = loadProfiles().get("codex")!.idle.runningRows!.map((source) => new RegExp(source, "u"));
+    const header = rowsOf("codex--v0164-steer-after-now").find((row) => row.includes("Messages to be submitted after next tool call"))!;
+    expect(signs.some((sign) => sign.test(header))).toBe(true);
+    // Re-wrapped narrower, its first part still is one.
+    expect(signs.some((sign) => sign.test(header.slice(0, 60)))).toBe(true);
+    expect(signs.some((sign) => sign.test("› Messages to be submitted after next tool call"))).toBe(false);
+  });
+
+  it("OMP: `Backgrounded early to handle an incoming message` in the tool box and the line as a transcript row after the steer", () => {
+    const [marker, transcript] = witnesses("omp");
+    expect(marker).toEqual({ pattern: "^\\s*│\\s*Backgrounded early to handle an incoming message\\b" });
+    expect(transcript).toEqual({ pattern: "^ (?<text>\\S.*?)\\s*$", transcript: true });
+    const after = rowsOf("omp--v18-6-steer-after");
+    expect(hits(after, marker!).length).toBe(1);
+    expect(hits(after, transcript!).length).toBe(1);
+    // At 0.1 s the box still holds the line, and nothing above it shows a witness.
+    const now = rowsOf("omp--v18-6-steer-after-now");
+    expect(hits(now, marker!)).toEqual([]);
+    expect(hits(now, transcript!)).toEqual([]);
+    // The queue draws `After yield · 1` / `1. <line>` instead: neither witness.
+    const queued = rowsOf("omp--v18-6-queue-after");
+    expect(hits(queued, marker!)).toEqual([]);
+    expect(hits(queued, transcript!)).toEqual([]);
+  });
+
+  const cases: [string, string, (string | number)[], JsonValue | undefined, string][] = [
+    ["Escape as the steer key", "pi", ["keys", "steer"], ["Escape"], "keys.steer"],
+    ["a chord that holds Escape as the steer key", "pi", ["keys", "steer"], ["alt+Escape"], "keys.steer"],
+    ["a chord that holds esc as the steer key", "omp", ["keys", "steer"], ["ctrl+esc"], "keys.steer"],
+    ["a two-key steer that holds the queue key", "codex", ["keys", "steer"], ["Enter", "Tab"], "keys.steer"],
+    ["no steer key", "pi", ["keys", "steer"], [], "keys.steer"],
+    ["the queue key as the steer key", "codex", ["keys", "steer"], ["Tab"], "keys.steer"],
+    ["the queue key of another platform as the steer key", "pi", ["keys", "steer"], ["ctrl+q"], "keys.steer"],
+    ["a steer key where Enter does not steer", "codex", ["keys", "enterWhileRunning"], "submits", "keys.steer"],
+    ["a steer key with no witness", "pi", ["keys", "steerWitness"], undefined, "keys.steerWitness"],
+    ["an empty witness list", "pi", ["keys", "steerWitness"], [], "keys.steerWitness"],
+    ["a witness block with no text group", "pi", ["keys", "steerWitness", 0, "pattern"], "^\\s*Steering: .*$", "keys.steerWitness[0].pattern"],
+    ["a witness block with no gap", "pi", ["keys", "steerWitness", 0, "hintGap"], undefined, "keys.steerWitness[0].hintGap"],
+    ["a witness hintAbove that is no boolean", "codex", ["keys", "steerWitness", 0, "hintAbove"], "above", "keys.steerWitness[0].hintAbove"],
+    ["a transcript witness that is not true", "codex", ["keys", "steerWitness", 1, "transcript"], false, "keys.steerWitness[1].transcript"],
+    ["a transcript witness with no text group", "codex", ["keys", "steerWitness", 1, "pattern"], "^› .*$", "keys.steerWitness[1].pattern"],
+    ["a transcript witness with a hint", "codex", ["keys", "steerWitness", 0, "transcript"], true, "keys.steerWitness[0].transcript"],
+    ["a marker witness with a text group", "omp", ["keys", "steerWitness", 0, "pattern"], "^(?<text>Backgrounded)", "keys.steerWitness[0].pattern"],
+    ["a marker witness that matches a blank row", "omp", ["keys", "steerWitness", 0, "pattern"], "^\\s*$", "keys.steerWitness[0].pattern"],
+    ["a marker witness with a gap and no hint", "omp", ["keys", "steerWitness", 0, "hintGap"], 0, "keys.steerWitness[0].hintGap"],
+    ["a steer delay over three seconds", "codex", ["keys", "steerDelayMs"], 3001, "keys.steerDelayMs"],
+    ["a steer delay below zero", "codex", ["keys", "steerDelayMs"], -1, "keys.steerDelayMs"],
+    ["a steer delay that is not whole", "codex", ["keys", "steerDelayMs"], 1.5, "keys.steerDelayMs"],
+  ];
+  for (const [name, id, path, value, field] of cases) {
+    it(`${id}: ${name}`, () => {
+      expect(failure(change(raw(id), path, value)).path).toBe(field);
+    });
+  }
+
+  it("a steer key equal to an interrupt key is refused, in any key of the list", () => {
+    const interrupt = change(raw("pi"), ["keys", "interrupt"], ["Escape", "ctrl+c"]);
+    expect(failure(change(interrupt, ["keys", "steer"], ["ctrl+c"])).path).toBe("keys.steer");
+    expect(failure(change(interrupt, ["keys", "steer"], ["Enter", "CTRL+C"])).path).toBe("keys.steer");
+    expect(parseProfile(change(interrupt, ["keys", "steer"], ["Enter"])).keys.steer).toEqual(["Enter"]);
+  });
+
+  it("a witness or a delay with no steer key is refused", () => {
+    const noSteer = change(raw("codex"), ["keys", "steer"], undefined);
+    expect(failure(noSteer).path).toBe("keys.steerWitness");
+    expect(failure(change(noSteer, ["keys", "steerWitness"], undefined)).path).toBe("keys.steerDelayMs");
+    expect(parseProfile(change(change(noSteer, ["keys", "steerWitness"], undefined), ["keys", "steerDelayMs"], undefined)).keys.steer).toBeUndefined();
+  });
+
+  it("a single witness object reads as a list of one, and a steer delay of 0 and 3000 is taken", () => {
+    const one = change(raw("pi"), ["keys", "steerWitness"], { pattern: "^\\s*Steering: (?<text>\\S.*?)\\s*$", hint: "^\\s*↳ x$", hintGap: 1 });
+    expect(parseProfile(one).keys.steerWitness).toEqual([{ pattern: "^\\s*Steering: (?<text>\\S.*?)\\s*$", hint: "^\\s*↳ x$", hintGap: 1 }]);
+    expect(parseProfile(change(raw("codex"), ["keys", "steerDelayMs"], 0)).keys.steerDelayMs).toBe(0);
+    expect(parseProfile(change(raw("codex"), ["keys", "steerDelayMs"], 3000)).keys.steerDelayMs).toBe(3000);
   });
 });

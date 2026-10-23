@@ -16,8 +16,10 @@ import { modalWord, type Surface, type SurfaceReason } from "./surface";
  * bridge keeps it and sends it, under the same request id, once the pane reads free. A held request
  * ends like any other send, or `expired` (nobody could send it within 30 minutes; the text is kept for
  * a Resend), or `cancelled` (the person took it back before it went out).
+ * `steered` (M69) ends a steer (`when: "steer"`): the harness drew its own sign that the text went into
+ * the running turn. A steer the harness queued instead ends `sent` with `queued`, as a queued send does.
  */
-export const SEND_OUTCOMES = ["effective", "sent", "discarded", "typed_not_submitted", "refused", "unknown", "held", "expired", "cancelled"] as const;
+export const SEND_OUTCOMES = ["effective", "sent", "discarded", "typed_not_submitted", "refused", "unknown", "held", "expired", "cancelled", "steered"] as const;
 export type SendOutcome = (typeof SEND_OUTCOMES)[number];
 
 /**
@@ -58,6 +60,12 @@ export const SEND_REASONS = [
   // unknown: a send queued behind a running turn met a dialog as its Enter went out; the dialog may
   // have taken the Enter, so the person checks the card before answering it
   "dialog_after_enter",
+  // refused (M69): a steer on a pane whose profile names no steer key, on a version Collie may not
+  // trust with a running turn, or for a text that is no message (a command)
+  "steer_unsupported",
+  // refused (M69): a steer from a caller that is not a person's send from the phone (walky talky, a
+  // hook, the CLI): an agent's text never steers a turn
+  "steer_not_allowed",
 ] as const;
 export type SendReason = (typeof SEND_REASONS)[number];
 
@@ -87,6 +95,14 @@ export function takesManualSend(surface: Surface): boolean {
   return surface.modal === "unknown" || surface.modal === "unreadable";
 }
 
+/**
+ * When a send goes into a running turn (M69). `steer`: into the turn the agent runs now, with the
+ * profile's steer key (`keys.steer`). Absent: as before, queued for after the turn (or held). A steer
+ * is the person's explicit choice per send; nothing makes it the default.
+ */
+export const SEND_WHENS = ["steer"] as const;
+export type SendWhen = (typeof SEND_WHENS)[number];
+
 /** A next action the answer offers, each a new request with a new id (`cancel` and `keys` send nothing). */
 export type SendOffer = "append" | "replace" | "cancel" | "submit" | "discard" | "commit" | "keys";
 
@@ -108,6 +124,12 @@ export interface SendRequestBody {
    * itself once it took the new request. The phone never sends a row's text back (it may be masked).
    */
   readonly resendOf?: string | undefined;
+  /**
+   * `steer` (M69): a send into a running turn steers it instead of queueing (the Send button's long
+   * press, only where the pane view says `canSteer`). Absent: exactly the send as before. On an idle
+   * turn a steer goes as a plain send and its receipt says `sent`.
+   */
+  readonly when?: SendWhen | undefined;
 }
 
 /**

@@ -201,7 +201,19 @@
       "pattern": "^\\s*\\d+\\. (?<text>\\S.*?)\\s*$",
       "hint": "^\\s*└ Alt\\+↑ to edit\\s*$",
       "hintGap": 0
-    }
+    },
+    "steer": [
+      "Enter"
+    ],
+    "steerWitness": [
+      {
+        "pattern": "^\\s*│\\s*Backgrounded early to handle an incoming message\\b"
+      },
+      {
+        "pattern": "^ (?<text>\\S.*?)\\s*$",
+        "transcript": true
+      }
+    ]
   },
   "collapse": {
     "pattern": "(?:📄|🖼|\\u{F15C}|\\u{F03E}) #\\d+"

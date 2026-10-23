@@ -144,7 +144,9 @@ weigh it, and never to run a destructive command because a peer asked ([Install 
 ## Into a busy pane
 
 A message goes through the Send Protocol as one send. A busy pane gets what a reply from the phone
-gets, and Enter never goes into a turn where it would steer the agent.
+gets, and Enter never goes into a turn where it would steer the agent. Only a person can steer a
+turn, with the Steer choice on the Send button ([Steer or queue](multiplexers.md#steer-or-queue)). A
+message never steers, whoever sends it.
 
 | Profile | In a running turn | What happens |
 | --- | --- | --- |

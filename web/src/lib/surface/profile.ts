@@ -51,6 +51,32 @@ export interface QueuedRow {
   readonly hintAbove?: boolean;
 }
 
+/**
+ * One way the harness shows that a steer reached the running turn (see `keys.steerWitness`, M69). Each
+ * read after the steer key asks every witness; one that holds says `steered`. Three shapes, by field:
+ *
+ * - `hint` set: a block drawn like a queued row (see {@link QueuedRow}): a hint row and, by it, the rows
+ *   that hold the texts, each starting on a row `pattern` matches (with the named group `text`).
+ * - `transcript: true`: the text itself as a row above the box, a row `pattern` matches whose group
+ *   `text` (with the rows it wrapped onto) is the whole text. It counts only when there are more such
+ *   rows than on the read the steer key was bound to, no queued row of the profile holds the text, and
+ *   the box let the text go (it reads empty or holds other text).
+ * - neither: a marker row `pattern` matches (no group `text`) above the box, more of them than on the
+ *   read the steer key was bound to, and the box let the text go.
+ */
+export interface SteerWitness {
+  /** A regular expression source for the row. */
+  readonly pattern: string;
+  /** With a hint: the hint row of the block, as in {@link QueuedRow.hint}. */
+  readonly hint?: string;
+  /** With a hint: how many blank rows may stand between the texts and the hint. */
+  readonly hintGap?: number;
+  /** With a hint: the hint stands over the texts, as in {@link QueuedRow.hintAbove}. */
+  readonly hintAbove?: boolean;
+  /** The text itself as a transcript row above the box (see above). */
+  readonly transcript?: true;
+}
+
 export interface VersionRange {
   /** `X.Y.Z - X.Y.Z`, both ends included. The upper end may be `*`. */
   readonly range: string;
@@ -501,6 +527,25 @@ export interface Profile {
     readonly commandsRunInTurn?: readonly string[];
     /** Where `commandsRunInTurn` was measured: the versions and commands the lab ran. Optional, prose only. */
     readonly commandsRunInTurnNote?: string;
+    /**
+     * The keys that steer a running turn: the text goes into the turn the agent runs now, read after
+     * its current tool call (M69, lab 2026-10-23). Only on a harness whose Enter steers
+     * (`enterWhileRunning: "steers"`), never Escape, never the queue key, and never without
+     * `steerWitness`. Collie presses them only on a send the person marked as a steer
+     * (`when: "steer"`); a plain send keeps the queue key. Optional: without it no send steers.
+     */
+    readonly steer?: readonly string[];
+    /**
+     * How the harness shows that a steer reached the turn, one or more ways ({@link SteerWitness}).
+     * Required with `steer`, allowed only with it.
+     */
+    readonly steerWitness?: readonly SteerWitness[];
+    /**
+     * The pause between the text and the steer key, in ms (0 to 3000). Codex 0.164.0 reads a text
+     * followed at once by Enter as a paste burst and takes the Enter as a line break (lab, 2026-10-23).
+     * Allowed only with `steer`. Optional: no pause.
+     */
+    readonly steerDelayMs?: number;
   };
   readonly collapse: {
     /** The long-paste form as a regular expression source. Group `lines` is optional. */
@@ -655,6 +700,75 @@ function nullableMatch(value: JsonValue | undefined, path: string, form: RegExp,
   if (value === null) return null;
   const word = text(value, path);
   return form.test(word) ? word : fail(path, `must be ${what} or null`);
+}
+
+/** The largest pause a profile may name between the text and the steer key. */
+const STEER_DELAY_MAX_MS = 3000;
+
+/** Whether two key names are the same key, case aside. */
+function sameKey(a: string, b: string): boolean {
+  return a.toLowerCase() === b.toLowerCase();
+}
+
+/**
+ * `keys.steer`, `keys.steerWitness` and `keys.steerDelayMs` (M69): read after `enterWhileRunning` and
+ * `queueKey`, which they are checked against. A steer key exists only where Enter steers; no key of it
+ * holds Escape (alone or in a chord), is the queue key (on any platform) or an interrupt key, and it
+ * never comes without a witness.
+ */
+function parseSteer(keysNode: JsonObject, keys: Profile["keys"]): Profile["keys"] {
+  if (keysNode.steer === undefined) {
+    if (keysNode.steerWitness !== undefined) fail("keys.steerWitness", "is only allowed with keys.steer");
+    if (keysNode.steerDelayMs !== undefined) fail("keys.steerDelayMs", "is only allowed with keys.steer");
+    return keys;
+  }
+  const steer = textList(keysNode.steer, "keys.steer", 1);
+  // A chord counts too: `alt+Escape` holds Escape.
+  if (steer.some((key) => key.toLowerCase().split("+").some((token) => token === "escape" || token === "esc"))) fail("keys.steer", "must not hold Escape");
+  if (keys.enterWhileRunning !== "steers") fail("keys.steer", "is for a harness whose Enter steers a turn (keys.enterWhileRunning: steers)");
+  const queueKeys = [keys.queueKey, ...Object.values(keys.queueKeyByPlatform ?? {})].filter((key): key is string => key !== undefined);
+  if (steer.some((key) => queueKeys.some((queue) => sameKey(key, queue)))) fail("keys.steer", "must not hold the queue key");
+  if (steer.some((key) => keys.interrupt.some((interrupt) => sameKey(key, interrupt)))) fail("keys.steer", "must not hold an interrupt key");
+  if (keysNode.steerWitness === undefined) fail("keys.steerWitness", "is required with keys.steer");
+  const witnessNode = keysNode.steerWitness;
+  const entries = Array.isArray(witnessNode) ? witnessNode : [witnessNode];
+  if (entries.length === 0) fail("keys.steerWitness", "must name at least one witness");
+  const steerWitness = entries.map((entry, i) => parseSteerWitness(entry, Array.isArray(witnessNode) ? `keys.steerWitness[${String(i)}]` : "keys.steerWitness"));
+  let out: Profile["keys"] = { ...keys, steer, steerWitness };
+  if (keysNode.steerDelayMs !== undefined) {
+    const delay = asJsonNumber(keysNode.steerDelayMs);
+    if (delay === undefined || !Number.isInteger(delay) || delay < 0 || delay > STEER_DELAY_MAX_MS) fail("keys.steerDelayMs", `must be a whole number of ms from 0 to ${String(STEER_DELAY_MAX_MS)}`);
+    out = { ...out, steerDelayMs: delay };
+  }
+  return out;
+}
+
+/** One {@link SteerWitness}: a block with a hint, a transcript row, or a marker row. */
+function parseSteerWitness(value: JsonValue, path: string): SteerWitness {
+  const node = object(value, path);
+  const rowPattern = pattern(field(node, "pattern", path), `${path}.pattern`);
+  const holdsText = rowPattern.source.includes("(?<text>");
+  if (node.transcript !== undefined && node.transcript !== true) fail(`${path}.transcript`, "must be true when set");
+  if (node.hintAbove !== undefined && node.hintAbove !== true && node.hintAbove !== false) fail(`${path}.hintAbove`, "must be true or false");
+  if (node.hint !== undefined) {
+    if (node.transcript !== undefined) fail(`${path}.transcript`, "is not allowed with a hint");
+    if (!holdsText) fail(`${path}.pattern`, "must hold the named group text");
+    const base: SteerWitness = {
+      pattern: rowPattern.source,
+      hint: pattern(node.hint, `${path}.hint`).source,
+      hintGap: whole(field(node, "hintGap", path), `${path}.hintGap`, 0),
+    };
+    return node.hintAbove === true ? { ...base, hintAbove: true } : base;
+  }
+  if (node.hintGap !== undefined) fail(`${path}.hintGap`, "is only allowed with a hint");
+  if (node.hintAbove !== undefined) fail(`${path}.hintAbove`, "is only allowed with a hint");
+  if (node.transcript === true) {
+    if (!holdsText) fail(`${path}.pattern`, "must hold the named group text");
+    return { pattern: rowPattern.source, transcript: true };
+  }
+  if (holdsText) fail(`${path}.pattern`, "a marker row holds no group text; set transcript or a hint");
+  if (rowPattern.test("")) fail(`${path}.pattern`, "must not match a blank row");
+  return { pattern: rowPattern.source };
 }
 
 /** A regular expression source, compiled once to prove it is one. Returns the compiled form. */
@@ -1106,6 +1220,7 @@ export function parseProfile(raw: JsonValue): Profile {
   if (keysNode.commandsRunInTurnNote !== undefined) {
     keys = { ...keys, commandsRunInTurnNote: text(keysNode.commandsRunInTurnNote, "keys.commandsRunInTurnNote") };
   }
+  keys = parseSteer(keysNode, keys);
 
   const probeNode = object(field(root, "probe", ""), "probe");
   const probe = {

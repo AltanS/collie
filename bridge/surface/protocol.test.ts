@@ -4458,6 +4458,32 @@ describe("the held send (M56 spec 15)", () => {
     expect(released?.receipt?.keys.at(-1)).toBe("Enter");
   });
 
+  test("a steer while a held command waits runs now, ahead of it, and the held command still goes after the turn (M69)", async () => {
+    const r = await piHeldCommand("held-pi-03");
+    r.pane.inTurn = true;
+    // pi draws a steer as `Steering: <text>` over its edit hint (lab, pi 1.3.0, 2026-10-23).
+    const press = r.pane.writeKeys;
+    r.pane.writeKeys = async (paneId, keys) => {
+      const before = r.pane.steered.length;
+      const ack = await press(paneId, keys);
+      for (const text of r.pane.steered.slice(before)) r.pane.transcript.push(`Steering: ${text}`, "↳ Alt+Up to edit all queued messages");
+      return ack;
+    };
+    const steer = await r.send("also say hello at the end", { id: "steer-pi-03", when: "steer", fromPhone: true });
+    expect(steer.receipt).toMatchObject({ requestId: "steer-pi-03", outcome: "steered" });
+    expect(steer.receipt?.keys.at(-1)).toBe("Enter");
+    expect(r.pane.steered).toEqual(["also say hello at the end"]);
+    expect(r.holds.get("held-pi-03")?.state).toBe("held");
+    expect(r.holds.get("steer-pi-03")).toBeNull();
+    // The turn runs on a poll, then ends: the held command goes after it, as before the steer.
+    expect(await tick(r, RUNNING)).toEqual([]);
+    r.pane.inTurn = false;
+    const [released] = await freeTwice(r);
+    expect(released?.receipt).toMatchObject({ requestId: "held-pi-03", outcome: "sent" });
+    expect(released?.receipt?.keys.at(-1)).toBe("Enter");
+    expect(r.holds.list()).toEqual([]);
+  });
+
   test("a held command on a pane whose version was not read waits for a polled turn too; a held text there keeps the quiet path", async () => {
     const clock = { now: 1_000_000 };
     const holds = new HoldStore(join(dir, "held"), () => clock.now);
@@ -7127,4 +7153,251 @@ describe("pi under pi-powerline-footer's inset editor (issue 544, live 2026-10-2
       neverEscape(pane);
     });
   }
+});
+
+// M69 spec 02: the steer, replayed from real captures of pi 1.3.0, Codex 0.164.0 and OMP 18.6.1 (lab
+// 2026-10-23, web/src/fixtures/panes/*-{steer,queue}-*--w120.txt). Each read answers with the capture
+// the lab took at that point: the text typed, then one capture per read after the commit key (the last
+// one stands for every later read). The empty box and the probe are the typed capture with the line
+// taken out of the box, or the probe put in its place.
+describe("steer or queue (M69), replayed from the real captures (lab 2026-10-23)", () => {
+  const PANES = join(import.meta.dir, "../../web/src/fixtures/panes");
+  const LINE = "also say hello at the end";
+  const capture = (name: string): string => readFileSync(join(PANES, `${name}--w120.txt`), "utf8");
+  // eslint-disable-next-line no-control-regex
+  const plainRow = (row: string): string => row.replace(/\u001b\[[0-9;:]*m/gu, "");
+  /** The capture with the box's text (the line's last place on the screen) replaced. */
+  const inBox = (screen: string, text: string): string => {
+    const at = screen.lastIndexOf(LINE);
+    return screen.slice(0, at) + text + screen.slice(at + LINE.length);
+  };
+  /** The capture without the rows whose plain text holds one of these. */
+  const without = (screen: string, rows: readonly string[]): string =>
+    screen
+      .split("\n")
+      .filter((row) => !rows.some((part) => plainRow(row).includes(part)))
+      .join("\n");
+
+  interface Replayed {
+    pane: FakePane;
+    /** Each text write and key with the rig's clock when it went in. */
+    log: [string, number][];
+  }
+  const replay = (typedName: string, after: readonly string[], clock: { now: number }, line = LINE): Replayed => {
+    const lab = capture(typedName);
+    const typed = line === LINE ? lab : inBox(lab, line);
+    const pane = new FakePane("generic");
+    const log: [string, number][] = [];
+    let committed = false;
+    let read = 0;
+    pane.afterInput = (_p, what) => {
+      log.push([what, clock.now]);
+      if (what.startsWith("keys:") && what !== "keys:Backspace") committed = true;
+    };
+    pane.beforeRead = (p) => {
+      if (committed) p.fixed = after[Math.min(read++, after.length - 1)]!;
+      else if (p.box === "") p.fixed = inBox(lab, "");
+      else if (p.box === PROBE) p.fixed = inBox(lab, PROBE);
+      else if (p.box === line) p.fixed = typed;
+      else throw new Error(`the lab never saw the box hold ${JSON.stringify(p.box)}`);
+    };
+    return { pane, log };
+  };
+  const steerOn = async (
+    harness: string,
+    version: string,
+    typedName: string,
+    after: readonly string[],
+    over: Partial<SendRequest> = { when: "steer", fromPhone: true },
+    holds?: HoldStore,
+    line = LINE,
+  ): Promise<{ answer: SendAnswer } & Replayed & { clock: { now: number } }> => {
+    const clock = { now: 1_000_000 };
+    const replayed = replay(typedName, after, clock, line);
+    const made = rig({ pane: replayed.pane, harness, version, clock, holds });
+    return { answer: await made.send(line, over), clock, ...replayed };
+  };
+  /** The capture with each row whose plain text, trimmed, matches `pick` replaced by `row`. */
+  const swapRow = (screen: string, pick: (plain: string) => boolean, row: string): string =>
+    screen
+      .split("\n")
+      .map((at) => (pick(plainRow(at).trim()) ? row : at))
+      .join("\n");
+  const STEER = { when: "steer", fromPhone: true } as const;
+
+  test("pi 1.3.0: Enter after the text; no row at 0.4 s, the Steering row at 1.2 s: steered", async () => {
+    const { answer, pane } = await steerOn("pi", "1.3.0", "pi--v130-steer-typed", [capture("pi--v130-steer-after-now"), capture("pi--v130-steer-after")]);
+    expect(answer.receipt).toMatchObject({ outcome: "steered", keys: ["probe", "Backspace", "Enter"], version: "1.3.0" });
+    expect(answer.receipt?.queued).toBeUndefined();
+    expect(answer.receipt?.reason).toBeUndefined();
+    expect(pane.keysSeen).not.toContain("alt+Enter");
+    neverEscape(pane);
+  });
+
+  test("Codex 0.164.0: one second between the text and Enter, the steer header at 0.4 s: steered", async () => {
+    const { answer, pane, log } = await steerOn("codex", "0.164.0", "codex--v0164-steer-typed", [capture("codex--v0164-steer-after-now")]);
+    expect(answer.receipt).toMatchObject({ outcome: "steered", keys: ["probe", "Backspace", "Enter"] });
+    expect(pane.keysSeen).not.toContain("Tab");
+    const wrote = log.find(([what]) => what === `paste:${LINE}`)![1];
+    const entered = log.find(([what]) => what === "keys:Enter")![1];
+    expect(entered - wrote).toBeGreaterThanOrEqual(1000);
+  });
+
+  test("Codex 0.164.0: no witness at 0.4 s or 1.2 s, the line as `› <line>` in the transcript at 2 s: steered", async () => {
+    const after = capture("codex--v0164-steer-after");
+    const bare = without(after, [`› ${LINE}`]);
+    expect(bare.split("\n").length).toBe(after.split("\n").length - 1);
+    const { answer } = await steerOn("codex", "0.164.0", "codex--v0164-steer-typed", [bare, bare, after]);
+    expect(answer.receipt).toMatchObject({ outcome: "steered", keys: ["probe", "Backspace", "Enter"] });
+  });
+
+  test("OMP 18.6.1: the box still holds the line at 0.4 s, the backgrounded tool and the line in the transcript at 1.2 s: steered", async () => {
+    const { answer, pane } = await steerOn("omp", "18.6.1", "omp--v18-6-steer-typed", [capture("omp--v18-6-steer-after-now"), capture("omp--v18-6-steer-after")]);
+    expect(answer.receipt).toMatchObject({ outcome: "steered", keys: ["probe", "Backspace", "Enter"] });
+    expect(pane.keysSeen).not.toContain("ctrl+q");
+  });
+
+  test("OMP: the line in the transcript alone, with no backgrounded tool, is a steer too", async () => {
+    const after = without(capture("omp--v18-6-steer-after"), ["Backgrounded early to handle an incoming message"]);
+    const lines = after.split("\n").map((row) => plainRow(row).trimEnd());
+    expect(lines.some((row) => row.includes("Backgrounded early"))).toBe(false);
+    const { answer } = await steerOn("omp", "18.6.1", "omp--v18-6-steer-typed", [after]);
+    expect(answer.receipt?.outcome).toBe("steered");
+  });
+
+  // A transcript row or a marker counts only once the box let the text go (review before the tag): a
+  // short text is also a line the agent may write, and a marker does not say which text went in.
+  test("OMP, the short text `ok` still in the box while the agent writes the line ` ok`: not steered, typed_not_submitted at the deadline", async () => {
+    const after = swapRow(inBox(capture("omp--v18-6-steer-after-now"), "ok"), (plain) => plain === "- name: null", " ok");
+    expect(after.split("\n").filter((row) => plainRow(row) === " ok")).toHaveLength(1);
+    const { answer } = await steerOn("omp", "18.6.1", "omp--v18-6-steer-typed", [after], STEER, undefined, "ok");
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "submit_failed", keys: ["probe", "Backspace", "Enter"] });
+  });
+
+  test("OMP, the short text `ok`: the line in the transcript and the box empty: steered", async () => {
+    const after = without(inBox(capture("omp--v18-6-steer-after"), "ok"), ["Backgrounded early to handle an incoming message"]);
+    expect(after.split("\n").filter((row) => plainRow(row).trimEnd() === " ok")).toHaveLength(1);
+    const { answer } = await steerOn("omp", "18.6.1", "omp--v18-6-steer-typed", [after], STEER, undefined, "ok");
+    expect(answer.receipt).toMatchObject({ outcome: "steered", keys: ["probe", "Backspace", "Enter"] });
+  });
+
+  test("OMP: the backgrounded tool while the line is still in the box: not steered, typed_not_submitted", async () => {
+    const marker = capture("omp--v18-6-steer-after")
+      .split("\n")
+      .find((row) => plainRow(row).includes("Backgrounded early to handle an incoming message"))!;
+    const after = swapRow(capture("omp--v18-6-steer-after-now"), (plain) => plain.includes("⟦Timeout: 60s⟧"), marker);
+    expect(after).toContain(LINE);
+    const { answer } = await steerOn("omp", "18.6.1", "omp--v18-6-steer-typed", [after]);
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "submit_failed" });
+  });
+
+  test("OMP: the backgrounded tool and the box empty, the transcript row not drawn yet: steered", async () => {
+    const after = without(capture("omp--v18-6-steer-after"), [LINE]);
+    expect(after).toContain("Backgrounded early to handle an incoming message");
+    const { answer } = await steerOn("omp", "18.6.1", "omp--v18-6-steer-typed", [after]);
+    expect(answer.receipt?.outcome).toBe("steered");
+  });
+
+  test("pi: the Steering block counts as drawn, the box check does not apply to a block witness", async () => {
+    const typedRows = capture("pi--v130-steer-typed").split("\n");
+    const rows = capture("pi--v130-steer-after").split("\n");
+    const box = rows.findIndex((row, at) => at > 0 && plainRow(rows[at - 1]!).includes("Working") && plainRow(row).trim() === "");
+    expect(box).toBeGreaterThan(0);
+    rows[box] = typedRows.find((row) => plainRow(row).startsWith(LINE))!;
+    const { answer } = await steerOn("pi", "1.3.0", "pi--v130-steer-typed", [rows.join("\n")]);
+    expect(answer.receipt?.outcome).toBe("steered");
+  });
+
+  test("the harness's queued row shows instead of the steer witness: sent, queued", async () => {
+    const { answer } = await steerOn("pi", "1.3.0", "pi--v130-steer-typed", [capture("pi--v130-queue-after-now"), capture("pi--v130-queue-after")]);
+    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true, keys: ["probe", "Backspace", "Enter"] });
+  });
+
+  test("the line still in the box after the last read: typed_not_submitted, offered Submit and Discard", async () => {
+    const { answer } = await steerOn("omp", "18.6.1", "omp--v18-6-steer-typed", [capture("omp--v18-6-steer-after-now")]);
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "submit_failed", keys: ["probe", "Backspace", "Enter"] });
+    expect(answer.offers).toEqual(["submit", "discard", "keys"]);
+  });
+
+  test("an empty box and no row after the last read: unknown(no_evidence)", async () => {
+    const { answer } = await steerOn("pi", "1.3.0", "pi--v130-steer-typed", [capture("pi--v130-steer-after-now")]);
+    expect(answer.receipt).toMatchObject({ outcome: "unknown", reason: "no_evidence", keys: ["probe", "Backspace", "Enter"] });
+  });
+
+  test("when absent, pi in a turn takes today's path: the queue key, never Enter, sent and queued", async () => {
+    const { answer, pane } = await steerOn("pi", "1.3.0", "pi--v130-queue-typed", [capture("pi--v130-queue-after-now"), capture("pi--v130-queue-after")], {});
+    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true, keys: ["probe", "Backspace", "alt+Enter"] });
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+
+  test("a steer on an idle turn goes as a plain send: the submit key, receipt sent", async () => {
+    const r = rig({ pane: new FakePane("codex"), harness: "codex", version: "0.164.0" });
+    const answer = await r.send("tidy the parser please", { when: "steer", fromPhone: true });
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(answer.receipt?.keys.at(-1)).toBe("Tab");
+    expect(r.pane.keysSeen).not.toContain("Enter");
+  });
+
+  test("Claude has no steer key: steer_unsupported, nothing read past S0 typed", async () => {
+    const r = rig();
+    r.pane.over = ["✻ Working… (3s · esc to interrupt)"];
+    const answer = await r.send("also say hello", { when: "steer", fromPhone: true });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "steer_unsupported", keys: [] });
+    expect(r.pane.calls).toEqual([]);
+  });
+
+  test("an unread version is not trusted with a turn: steer_unsupported", async () => {
+    const { answer, pane } = await steerOn("pi", "no version here", "pi--v130-steer-typed", [capture("pi--v130-steer-after")]);
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "steer_unsupported", keys: [] });
+    expect(pane.calls).toEqual([]);
+  });
+
+  test("a command never steers: steer_unsupported before any read", async () => {
+    const { answer, pane } = await steerOn("pi", "1.3.0", "pi--v130-steer-typed", [capture("pi--v130-steer-after")], { when: "steer", fromPhone: true, mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "steer_unsupported", keys: [] });
+    expect(pane.readsSeen).toBe(0);
+  });
+
+  test("a walky talky delivery asking to steer is refused steer_not_allowed, never typed and never held", async () => {
+    const holds = new HoldStore(join(dir, "held-walky-steer"), () => 1_000_000);
+    const walky = { when: "steer" as const, draftHolds: true, holdUntil: 2_000_000 };
+    const { answer, pane } = await steerOn("pi", "1.3.0", "pi--v130-steer-typed", [capture("pi--v130-steer-after")], walky, holds);
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "steer_not_allowed", keys: [] });
+    expect(pane.calls).toEqual([]);
+    expect(pane.readsSeen).toBe(0);
+    expect(holds.list()).toEqual([]);
+  });
+
+  // The S1-idle fallback (review before the tag): S0 read the turn running, the turn ended while the
+  // text went in, so the steer goes as the plain send S0's read put it on. On pi and Codex the key of
+  // that path is the profile's queue key, which is also its submit key: read from the profile here.
+  for (const [harness, version] of [["pi", "0.87.1"], ["codex", "0.164.0"]] as const) {
+    test(`${harness}: the turn ends while the text goes in: the steer presses keys.submit, the profile's queue key, and says sent`, async () => {
+      const keys = loadProfiles().get(harness)!.keys;
+      expect(keys.queueKey).toBeDefined();
+      expect([keys.queueKey]).toEqual([...keys.submit]);
+      const pane = harness === "pi" ? new PiPane(keys.queueKey!) : new FakePane("codex");
+      if (pane instanceof PiPane) pane.inTurn = true;
+      else pane.over = ["• Working (4s • esc to interrupt)"];
+      pane.afterInput = (p, what) => {
+        if (!what.startsWith("paste:") && !what.startsWith("type:")) return;
+        if (what === `paste:${PROBE}` || what === `type:${PROBE}`) return;
+        if (p instanceof PiPane) p.inTurn = false;
+        else p.over = [];
+      };
+      const answer = await rig({ pane, harness, version }).send(LINE, { when: "steer", fromPhone: true });
+      expect(answer.receipt).toMatchObject({ outcome: "sent" });
+      expect(answer.receipt?.keys.at(-1)).toBe(keys.submit[0]);
+      expect(pane.keysSeen).not.toContain("Enter");
+    });
+  }
+
+  test("a steer refused at S0 is never held, even with a hold queue", async () => {
+    const holds = new HoldStore(join(dir, "held-steer"), () => 1_000_000);
+    const r = rig({ holds });
+    r.pane.over = ["✻ Working… (3s · esc to interrupt)"];
+    const answer = await r.send("also say hello", { when: "steer", fromPhone: true });
+    expect(answer.receipt?.outcome).toBe("refused");
+    expect(holds.list()).toEqual([]);
+  });
 });

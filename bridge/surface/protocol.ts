@@ -41,6 +41,21 @@
 // `keys.commandSubmit`. On such a harness the receipt says `queued` only when S2 or the late read
 // sees the harness's queued row with the text (`keys.queuedRow`); otherwise it says sent.
 //
+// The steer (M69): Enter never steers a turn by accident; a steer is the person's explicit choice
+// (`when: "steer"`), never the default, never an agent's. Only a send the phone posted for a person
+// (`fromPhone`) may ask for it; walky talky, hooks and every other caller are refused
+// `steer_not_allowed`, and a command, a pane with no profile, a profile with no `keys.steer` or a
+// version not trusted with a turn (turnTrusted) are refused `steer_unsupported`, both before any read.
+// Otherwise the steer runs the same S0, dialog gate and draft check as a send. An S0 that reads the turn idle sends it as
+// a plain send (`sent`); so does an S1 that reads the turn ended, with the keys a plain send presses
+// there. In a turn the text goes in on the queued path (probe, write, S1), then `keys.steerDelayMs`,
+// then the profile's `keys.steer` through the gate instead of the queue key. Reads at 0.4, 1.2 and
+// 2 s after the key decide (a read at 0.1 s is not reliable): the profile's steer witness
+// (`keys.steerWitness`) says `steered` (a transcript row or a marker row counts only once the box let
+// the text go: it reads empty or holds other text; a block counts as drawn); the queued row with the text says the harness queued it
+// (`sent`, `queued`); the text still in the box after the last read is `typed_not_submitted`;
+// anything else is `unknown(no_evidence)`. A steer is never held and never joins a pane's held sends.
+//
 // A turn the screen does not mark: Claude Code 2.1.301 draws no spinner while the answer streams, so
 // S0 reads idle. On a harness that queues, a send that is not a command may see the rows above the
 // box move while Collie types, if the frame stays, the rows under the box keep their count, the cue
@@ -106,7 +121,7 @@ import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
 import { findInputFrame, rowText, type Frame, type FrameRow } from "../../web/src/lib/surface/frame.ts";
 import { liftAsk, liftDialog, readerBlocks } from "../../web/src/lib/surface/lift.ts";
 import type { AboveNotice } from "../../web/src/lib/surface/notice.ts";
-import type { CommandListRows, OtherScreenRow, ProfileMatch, QueuedRow } from "../../web/src/lib/surface/profile.ts";
+import type { CommandListRows, OtherScreenRow, ProfileMatch, QueuedRow, SteerWitness } from "../../web/src/lib/surface/profile.ts";
 import {
   offersFor,
   RECEIPT_DETAIL_MAX,
@@ -126,6 +141,7 @@ import {
   type SendReceipt,
   type SendReceiptRow,
   type SendStep,
+  type SendWhen,
   type SurfaceWords,
   type HeldCancelAnswer,
   type HeldRow,
@@ -311,6 +327,14 @@ export interface SendRequest {
   readonly draftHolds?: boolean;
   /** With {@link draftHolds}: when the hold ends, epoch ms. It replaces the hold store's own clock. */
   readonly holdUntil?: number;
+  /** `steer` (M69): into the running turn with the profile's steer key, see the header. Absent: as before. */
+  readonly when?: SendWhen;
+  /**
+   * The request is a person's send from the phone: the bridge's `POST /api/send` route, or the reply
+   * route with a request id the phone minted. Only such a request may steer. Every other caller
+   * (walky talky, hooks, the CLI) leaves it out.
+   */
+  readonly fromPhone?: boolean;
 }
 
 // ── The lock and the ring ────────────────────────────────────────────────────────────────────────
@@ -546,6 +570,59 @@ const LATE_WITNESS_MS = 300;
 
 /** How many rows from a queued hint are read for the queued texts. */
 const QUEUED_SCAN_ROWS = 24;
+
+/**
+ * When the reads after a steer key go, in ms after it (M69). The lab (2026-10-23) saw no witness at
+ * 0.1 s on pi (the row not drawn yet) and on OMP (the box still full), and Codex's header gone by 2 s,
+ * the line by then in the transcript.
+ */
+const STEER_READS_MS = [400, 1200, 2000] as const;
+
+/**
+ * How many rows above the box hold the text as a transcript row the pattern takes: a row whose group
+ * `text`, with the rows it wrapped onto, is the whole text (white space aside).
+ */
+function transcriptRows(snap: Snap, source: string, text: string): number {
+  if (snap.frame === null) return 0;
+  const start = new RegExp(source, "u");
+  const want = wsFree(text);
+  const above = snap.texts.slice(0, snap.frame.top);
+  let count = 0;
+  for (let at = 0; at < above.length; at++) {
+    const head = start.exec(above[at]!);
+    if (head === null) continue;
+    let got = wsFree(head.groups?.["text"] ?? "");
+    for (let next = at + 1; got.length < want.length && want.startsWith(got) && next < above.length && next - at <= QUEUED_SCAN_ROWS; next++) got += wsFree(above[next]!);
+    if (got === want) count++;
+  }
+  return count;
+}
+
+/** How many rows above the box a marker pattern takes. */
+function markerRows(snap: Snap, source: string): number {
+  if (snap.frame === null) return 0;
+  const marker = new RegExp(source, "u");
+  return snap.texts.slice(0, snap.frame.top).filter((row) => marker.test(row)).length;
+}
+
+/**
+ * Whether one steer witness ({@link SteerWitness}) holds on a read after the steer key, against the
+ * read the key was bound to: a block with the text that was not there before; or, only once the box
+ * let the text go (`letGo`: the read found a box that reads empty or holds other text), a transcript
+ * row with the text more than before while no queued row holds the text, or more marker rows than
+ * before. A transcript row alone is not enough: a short text ("ok") is also a line the agent may write,
+ * and a marker alone does not say which text the harness took. With the text still in the box, neither counts.
+ */
+function steerWitnessed(before: Snap, after: Snap, witness: SteerWitness, text: string, queuedNow: boolean, letGo: boolean): boolean {
+  if (witness.hint !== undefined) {
+    const base: QueuedRow = { pattern: witness.pattern, hint: witness.hint, hintGap: witness.hintGap ?? 0 };
+    const block: QueuedRow = witness.hintAbove === true ? { ...base, hintAbove: true } : base;
+    return showsQueued(after, block, text) && !showsQueued(before, block, text);
+  }
+  if (!letGo) return false;
+  if (witness.transcript === true) return !queuedNow && transcriptRows(after, witness.pattern, text) > transcriptRows(before, witness.pattern, text);
+  return markerRows(after, witness.pattern) > markerRows(before, witness.pattern);
+}
 
 /**
  * Whether a read shows a text as a message the harness queued, by the profile's own drawing of one
@@ -879,6 +956,15 @@ function queuesInTurn(match: ProfileMatch | null): boolean {
 }
 
 /**
+ * Whether a pane's harness may be steered (M69): its profile names a steer key (`keys.steer`, which
+ * parses only with a witness and only where Enter steers) and may be trusted with a running turn
+ * ({@link turnTrusted}). The pane view's `canSteer` and the protocol read this one rule.
+ */
+export function steerTrusted(match: ProfileMatch | null): boolean {
+  return turnTrusted(match) && match.profile.keys.enterWhileRunning === "steers" && match.profile.keys.steer !== undefined && match.profile.keys.steerWitness !== undefined;
+}
+
+/**
  * Whether a released command's keys can never steer a turn: a version the binary reported, and an Enter
  * that queues in a turn or no Enter among the command's keys. Else a held command waits for a turn a
  * poll read before it goes (review of spec 15, Q1): pi and OMP send a command with an Enter that steers.
@@ -908,6 +994,11 @@ function commitKeys(state: RunState): readonly string[] {
   const keys = state.match?.profile.keys;
   if (keys === undefined) return GENERIC_SUBMIT;
   if (state.runsInTurn) return keys.commandSubmit ?? keys.submit;
+  // A steer the person asked for, into a turn S0 and S1 both read running (M69): the steer key only.
+  if (state.steer) {
+    if (keys.steer === undefined) throw new Ended("typed_not_submitted", "changed", { detail: STEER_UNSUPPORTED });
+    return keys.steer;
+  }
   // The queued path on a harness whose Enter does not queue: S0 read a turn, or the rows above moved
   // while Collie typed. Only the queue key goes in; no other rule routes the submit keys there.
   if ((state.queued || state.streamed) && keys.enterWhileRunning !== "queues") {
@@ -986,7 +1077,7 @@ function turnRefusal(state: RunState, s0: Snap, frame: Frame, cues: "screen" | "
  * turn ({@link runsInTurnEntry}) goes ahead marked `runsInTurn` (the command keys), and otherwise the
  * send takes the queue key (`"queue"`), or is refused when the profile names none (or the turn holds a
  * command). Null when the rule does not apply or no running sign shows. Enter never steers a turn by
- * accident.
+ * accident: a steer is the person's explicit choice (`when: "steer"`), never the default, never an agent's.
  */
 function steeringTurn(state: RunState, snap: Snap): Ended | "queue" | null {
   const profile = state.match?.profile;
@@ -1017,6 +1108,16 @@ const ENTER_MISSED_BOX = "The submit key did not reach the box. A dialog may hav
 const ANSWER_BOX = "The input box answers a question the agent asked. A held message waits for the question to close.";
 /** The detail of a send refused because the turn runs. */
 const TURN_RUNNING = "The agent is working, and this harness does not take a message during a turn.";
+/** The detail of a steer from a caller that is not a person's send from the phone (M69). */
+const STEER_NOT_ALLOWED = "Only a person's send from the phone can steer a turn. This message waits for the turn instead.";
+/** The detail of a steer on a pane Collie cannot steer (M69). */
+const STEER_UNSUPPORTED = "Collie cannot steer this agent's turn. Send it without Steer, and it waits for the turn.";
+/** The detail of a steer of a command (M69): only a message steers. */
+const STEER_MESSAGE_ONLY = "Only a message can steer a turn, not a command.";
+/** The detail of a steer whose text stayed in the box (M69). */
+const STEER_NOT_TAKEN = "The steer key went out, but the text is still in the box.";
+/** The detail of a steer with no sign either way (M69). */
+const STEER_NO_EVIDENCE = "The steer key went out, but the screen did not show whether the agent took it.";
 /** The `unconfirmed` detail of a send whose whole text, or first line, is one of the keys a notice above the box printed. */
 const NOTICE_KEY_DETAIL = "That message would answer the notice above the box. Check the pane, then tap Type here.";
 /** The detail of a notice digit refused where no commit can go ahead (a running turn, a Replace). */
@@ -1661,6 +1762,10 @@ interface RunState {
   neverHold?: boolean;
   /** A release met a box that answers the agent's question (`idle.answerPrompt`): it waits, and the try does not count. */
   answerWait?: boolean;
+  /** A steer (M69) that S0 read into a running turn: the commit presses `keys.steer`, and the reads after it look for the steer witness. */
+  steer: boolean;
+  /** The steer witness showed after the steer key: the receipt says `steered`. */
+  steered: boolean;
 }
 
 /** What the hold queue knows of one pane between polls (M56 spec 15 review). */
@@ -1935,7 +2040,9 @@ export class SendProtocol {
     // A queue of marked sends held over a draft only (M62 spec 02) does not take an unmarked send: that
     // one runs, and a draft still in the box refuses it with its offers, as on a pane with no queue.
     const draftOnly = request.draftHolds !== true && waiting.every((entry) => entry.cause === "draft_present");
-    const joins = holds !== undefined && JOINS.has(request.mode) && waiting.length > 0 && !draftOnly;
+    // A steer never joins (M69): it is for the turn that runs now, and goes in ahead of the held sends,
+    // which wait for that turn to end anyway.
+    const joins = holds !== undefined && JOINS.has(request.mode) && waiting.length > 0 && !draftOnly && request.when !== "steer";
     const match = joins ? await this.deps.profile(target.harness) : null;
     if (match !== null && !(request.mode === "command" && runsInTurnEntry(request.text, match) !== null)) {
       const state = this.bareState(request, accepted.record, target, match);
@@ -1974,6 +2081,8 @@ export class SendProtocol {
    */
   private holdsEnd(state: RunState, end: Ended): boolean {
     if (this.deps.holds === undefined || end.outcome !== "refused") return false;
+    // A steer is never held (M69): it is for the turn that runs now, and a later turn is the wrong one.
+    if (state.request.when === "steer") return false;
     const clean = cleanProbe(state, end);
     if (state.keys.length > 0 && !clean) return false;
     if (!HOLDABLE.has(state.request.mode) || state.neverHold === true) return false;
@@ -2382,8 +2491,9 @@ export class SendProtocol {
       target,
       match,
       lockKey: `${target.session}\u0000${target.paneId}`,
-      // A held request's release is bounded from its start, not from the accept (M56 spec 15).
-      deadline: (record.runAt ?? record.acceptedAt) + LOCK_BOUND_MS,
+      // A held request's release is bounded from its start, not from the accept (M56 spec 15). A steer
+      // also gets the pause its profile names before the steer key (M69).
+      deadline: (record.runAt ?? record.acceptedAt) + LOCK_BOUND_MS + (request.when === "steer" ? (match?.profile.keys.steerDelayMs ?? 0) : 0),
       marks: { s0: null, s1: null, s2: null },
       gaps: {},
       keys: [],
@@ -2402,6 +2512,8 @@ export class SendProtocol {
       previousRead: null,
       lastRead: null,
       stepStart: at,
+      steer: false,
+      steered: false,
     };
   }
 
@@ -2475,7 +2587,7 @@ export class SendProtocol {
       const note: EndNote = { framed: true };
       if (state.heldOther && record.mode === "submit") note.detail = HELD_OTHER;
       if (state.noticeKey) note.cause = NOTICE_KEY;
-      const answer = this.settle(state, new Ended(record.mode === "discard" ? "discarded" : "sent", undefined, note));
+      const answer = this.settle(state, new Ended(record.mode === "discard" ? "discarded" : state.steered ? "steered" : "sent", undefined, note));
       if (state.blind && answer.receipt?.outcome === "sent") this.noteBlindSent(state);
       return answer;
     } catch (err) {
@@ -2586,6 +2698,15 @@ export class SendProtocol {
       const refusal = textRefusal(request, match);
       if (refusal !== null) throw refusal;
     }
+    // A steer (M69): who asked, and whether it is a message to a pane that can be steered at all.
+    // Nothing is read or typed for these refusals.
+    if (request.when === "steer") {
+      if (request.fromPhone !== true) throw new Ended("refused", "steer_not_allowed", { detail: STEER_NOT_ALLOWED });
+      if (request.mode !== "send") throw new Ended("refused", "steer_unsupported", { detail: STEER_MESSAGE_ONLY });
+      // No profile, no steer key, or a version Collie may not trust with a turn: the same answer on an
+      // idle and a running turn, before any read, so a pane that cannot steer always says so.
+      if (!steerTrusted(match)) throw new Ended("refused", "steer_unsupported", { detail: STEER_UNSUPPORTED });
+    }
     // Submit and Discard name the text the box holds: a command's text may stand there with its lead read as a mode marker.
     // A Replace whose text starts with a reserved lead empties the box and then sends a command, so it is one from here on.
     if ((request.mode === "submit" || request.mode === "discard" || request.mode === "replace") && reservedLead(lines[0] ?? "", leads) !== null) state.command = true;
@@ -2660,6 +2781,7 @@ export class SendProtocol {
       case "send":
       case "command":
         this.gateSend(state, s0);
+        if (request.when === "steer") this.gateSteer(state, s0);
         break;
       case "prepare":
         return;
@@ -2699,15 +2821,27 @@ export class SendProtocol {
     // profile (`paste.settleMs`, #507): the blind send's 350 ms is the same pause with no profile
     // to name it. The pause sits before S1, so the read Enter is minted on is taken after it.
     const settleMs = state.match?.profile.paste?.settleMs;
-    if (settleMs !== undefined) await this.sleep(settleMs);
+    // A steer waits the profile's own pause before the steer key too (Codex reads a quick Enter as part
+    // of a paste, M69); the longer of the two pauses, once.
+    const steerDelayMs = state.steer ? (state.match?.profile.keys.steerDelayMs ?? 0) : 0;
+    const pauseMs = Math.max(settleMs ?? 0, steerDelayMs);
+    if (pauseMs > 0) await this.sleep(pauseMs);
 
     const s1 = await this.awaitTyped(state, s0, landing, prefix, state.whole?.lines ?? lines);
     state.marks.s1 = s1;
     this.lap(state, "s1");
     this.checkGeneration(state, "typed_not_submitted");
 
+    // A steer whose turn ended while the text went in goes as the plain send S0's read put it on: a
+    // steer is never held, and the keys of the queued path are what a plain send presses there.
+    if (state.steer && s1.surface.turn !== "running") state.steer = false;
     await this.commit(state, s1);
     this.lap(state, "commit");
+    if (state.steer) {
+      await this.awaitSteered(state, s1, lines);
+      this.lap(state, "s2");
+      return;
+    }
     await this.awaitSent(state, s0, landing, lines);
     this.lap(state, "s2");
     await this.lateWitness(state, lines);
@@ -2941,6 +3075,15 @@ export class SendProtocol {
       throw new Ended("typed_not_submitted", "changed", sawNote(s1, { framed: s0.frame !== null, rowsHash: s1.rowsHash, detail: TURN_STARTED }));
     }
     if (state.match?.profile.keys.enterWhileRunning !== "queues") state.streamed = true;
+  }
+
+  /**
+   * The steer's rule at S0, after the send's own gate let it through (M69; the profile's trust was
+   * checked before S0): on a turn S0 read running over a found box (the queued path) the send steers;
+   * anywhere else (an idle turn, the manual path) it goes as the plain send it is.
+   */
+  private gateSteer(state: RunState, s0: Snap): void {
+    state.steer = state.queued && !state.manual && !state.runsInTurn && !state.noticeKey && s0.surface.turn === "running" && s0.frame !== null;
   }
 
   /** Anything that goes into a turn S0 read as running (a send, Add to it, Replace, Submit, Discard) meets {@link turnRefusal}, then is queued. */
@@ -3561,6 +3704,62 @@ export class SendProtocol {
       throw new Ended("unknown", "dialog_after_enter", sawNote(result.snap, { offers: ["keys"], detail: ENTER_MISSED_BOX }));
     }
     if (result.verdict !== "pass") throw new Ended("unknown", "no_evidence", { detail: "The submit key went out, but the box did not show it was taken." });
+  }
+
+  /**
+   * After the steer key (M69): reads at {@link STEER_READS_MS} after it, each asked in order: a dialog
+   * at the box (or two reads with no box) ends `unknown(dialog_after_enter)`; the profile's queued row
+   * with the text, new since S1, says the harness queued it (the receipt says `sent`, `queued`); one of
+   * the profile's steer witnesses says `steered` (a transcript or marker witness only on a read whose
+   * box let the text go, see {@link steerWitnessed}). With neither after the last read, the text still in
+   * the box is `typed_not_submitted`, anything else `unknown(no_evidence)`.
+   */
+  private async awaitSteered(state: RunState, s1: Snap, lines: readonly string[]): Promise<void> {
+    const keys = state.match?.profile.keys;
+    const witnesses = keys?.steerWitness ?? [];
+    // The text as the person wrote it, and as the box held it (a long paste may stand as its chip).
+    const boxed = s1.frame === null ? "" : boxText(s1.frame);
+    const texts = [...new Set([lines.join(""), boxed].filter((text) => wsFree(text).length > 0))];
+    const queuedIn = (snap: Snap): boolean => texts.some((text) => showsQueued(snap, keys?.queuedRow, text));
+    const queuedBefore = queuedIn(s1);
+    const keyAt = this.now();
+    let last: Snap | null = null;
+    let frameless = 0;
+    for (const after of STEER_READS_MS) {
+      if (keyAt + after > state.deadline) break;
+      const wait = keyAt + after - this.now();
+      if (wait > 0) await this.sleep(wait);
+      let snap: Snap | null;
+      try {
+        snap = await this.read(state, "s2");
+      } catch (err) {
+        if (err instanceof StepLate) break;
+        throw err;
+      }
+      if (snap === null) continue;
+      last = snap;
+      state.marks.s2 = snap;
+      frameless = snap.frame === null ? frameless + 1 : 0;
+      if (frameless >= FRAMELESS_READS || modalAtBox(snap)) throw new Ended("unknown", "dialog_after_enter", sawNote(snap, { offers: ["keys"], detail: DIALOG_AFTER_ENTER }));
+      const queuedNow = queuedIn(snap);
+      if (queuedNow && !queuedBefore) {
+        state.witnessed = true;
+        state.queued = true;
+        return;
+      }
+      // The box let the text go: found, and it reads empty or holds other text than the one typed.
+      const frame = snap.frame;
+      const letGo = frame !== null && !texts.some((text) => wsFree(boxText(frame)) === wsFree(text));
+      if (texts.some((text) => witnesses.some((witness) => steerWitnessed(s1, snap, witness, text, queuedNow, letGo)))) {
+        state.steered = true;
+        return;
+      }
+    }
+    const lastFrame = last?.frame ?? null;
+    if (lastFrame !== null && wsFree(boxed).length > 0 && wsFree(boxText(lastFrame)) === wsFree(boxed)) {
+      throw new Ended("typed_not_submitted", "submit_failed", sawNote(last, { framed: true, rowsHash: last!.rowsHash, detail: STEER_NOT_TAKEN }));
+    }
+    throw new Ended("unknown", "no_evidence", { detail: STEER_NO_EVIDENCE });
   }
 
   /**
