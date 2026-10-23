@@ -19,7 +19,7 @@
 //           idle S0 meets S0's turn rule on that read; a send it refuses or holds ends the same way
 //   commit  the profile's submit keys through the gate with a 150 ms token; `submit-sent` is on disk first
 //   S2      (6, 3000) read until the box is empty or a running sign shows: `sent`; else `unknown`
-// A request past the sum of the bounds ends `unknown` and releases the lock. Escape is never sent.
+// A request past the sum of the bounds ends `unknown` and releases the lock. A protocol token never carries Escape; a person's Stop does, through the key gate, with a receipt (ADR 0116).
 //
 // A send into a running turn: when the screen shows the turn running, no modal and an empty box, and
 // the harness's profile says Enter queues while running (`keys.enterWhileRunning: "queues"`), the send
