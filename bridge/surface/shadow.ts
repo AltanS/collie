@@ -183,6 +183,18 @@ export class SurfaceShadow {
     return this.panes.get(paneId)?.read?.surface;
   }
 
+  /**
+   * Whether a Stop (M68) has a key to press on this pane: the pane was read under a profile whose
+   * `keys.interrupt` names a key, and the profile is not revoked at the binary's version. The phone
+   * draws its Stop button from this and from nothing else, so no harness name lives in the web app.
+   */
+  canStopOf(paneId: string): boolean {
+    const state = this.panes.get(paneId);
+    if (state === undefined || state.read === null || state.status === "revoked") return false;
+    const profile = loadProfiles().get(state.profileId);
+    return profile !== undefined && profile.keys.interrupt.length > 0;
+  }
+
   /** Every pane's Surface and every counter, for the debug route. */
   report(): ShadowReport {
     const panes: ShadowPane[] = [];

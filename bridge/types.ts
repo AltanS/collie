@@ -332,6 +332,13 @@ export type PaneWire = Omit<AgentView, "agentSession" | "sessionAgent"> & {
    */
   sendProtocol?: true;
   /**
+   * Present (and `true`) when a Stop (M68) has a key to press on this pane: it has a screen Surface and
+   * its profile names an interrupt key (`keys.interrupt`) and is not revoked at the binary's version.
+   * The phone draws the belt's Stop only with it, and only while the turn runs. Absent otherwise, on a
+   * program pane and from every older bridge.
+   */
+  canStop?: true;
+  /**
    * The pane's held sends (M56 spec 15), oldest first: what the harness could not take during its turn
    * and Collie sends once the pane reads free, plus ended ones whose text waits for a Resend. Present
    * only when there is at least one; the text takes the mirror's mask like a title does.

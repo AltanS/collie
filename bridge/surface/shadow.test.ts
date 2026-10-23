@@ -84,6 +84,17 @@ describe("surface shadow", () => {
     expect(counters).toEqual({ observed: 1, free: 1, unknown: {}, modal: {}, disagreements: 0 });
   });
 
+  test("says a Stop has a key only for a pane read under a profile with an interrupt key (M68)", async () => {
+    const r = rig();
+    r.mux.set("w1:p1", IDLE, 7);
+    r.mux.set("w1:p2", IDLE, 7);
+    expect(r.shadow.canStopOf("w1:p1")).toBe(false); // not read yet
+    await r.shadow.observe([agent("w1:p1"), agent("w1:p2", "no-such-harness")]);
+    expect(r.shadow.canStopOf("w1:p1")).toBe(true);
+    expect(r.shadow.canStopOf("w1:p2")).toBe(false); // no profile
+    expect(r.shadow.canStopOf("w1:p9")).toBe(false); // unknown pane
+  });
+
   test("lifts a permission dialog as an ask and counts it by kind", async () => {
     const r = rig();
     r.mux.set("w1:p1", PERMISSION, 3);

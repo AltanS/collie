@@ -1632,12 +1632,16 @@ export function startServer(opts: {
       const surface = from.driver !== undefined ? from.driver.surfaceOf(wire.paneId) : from.surface?.surfaceOf(wire.paneId);
       const masked = surface === undefined ? wire : { ...wire, surface: cfg.redact ? maskSurface(surface) : surface };
       const surfaced = surface === undefined || from.hooks === undefined ? masked : { ...masked, hooks: from.hooks(wire.paneId) };
+      // A pane with a screen says whether Stop (M68) has a key to press: its profile names an interrupt
+      // key and is not revoked. The phone draws its Stop button from this word, never from a harness name.
+      // Only a `true` rides; absent reads as "no Stop here".
+      const stoppable = surface !== undefined && from.driver === undefined && from.surface?.canStopOf(wire.paneId) === true ? { ...surfaced, canStop: true as const } : surfaced;
       // A hook-held permission (M56 spec 12) carries its note: the tool, the input shown, the state.
       // The input is a command line, so it takes the mirror's mask like the ask's labels do. A program
       // pane (M56 spec 14) takes its asks from its driver, so it never carries a hold.
       const note = surface === undefined || from.driver !== undefined ? null : (from.hold?.(wire.paneId) ?? null);
       // The option labels are screen text too. The hash stays: the hold card's tap carries it.
-      const withHold = note === null ? surfaced : { ...surfaced, hold: cfg.redact ? { ...note, input: redactText(note.input), options: note.options.map(redactText) } : note };
+      const withHold = note === null ? stoppable : { ...stoppable, hold: cfg.redact ? { ...note, input: redactText(note.input), options: note.options.map(redactText) } : note };
       if (from.send === undefined && from.driver === undefined) return withHold;
       // The pane's held sends (M56 spec 15), only when there is one; the text takes the mirror's mask.
       // A held send is the send queue's, a hold is a permission's (spec 12): both may stand at once.
