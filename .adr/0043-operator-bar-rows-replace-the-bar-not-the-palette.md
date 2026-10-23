@@ -40,3 +40,6 @@ The surprise this ADR keeps is smaller than the one it removes, not zero. An ope
 family resemblance, kept on purpose: adding operator bar rows to the shipped ones instead would give
 this one file two postures, and a bar half-chosen by the operator and half-guessed for them inherits
 the guarantees of neither. `docs/configure.md` states the rule in one sentence for that reason.
+
+2026-10-23: bars for opencode, Grok, Muse Code and Antigravity arrived with PR 453. The author checked
+their commands live, and the marks come from the vendors' own SVGs.

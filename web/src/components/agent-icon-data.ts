@@ -2,13 +2,14 @@
 // official logo, paired with the brand's tile color. Sources (all verified against each project's
 // own favicon/site): Claude + Codex(OpenAI) via Simple Icons (CC0); pi via Simple Icons / pi.dev
 // favicon (#09090b tile); opencode via opencode.ai's site mark (#080808 tile, theme_color); agy
-// (Antigravity) via its Google-blue #1A73E8 tile, keyed under both "agy" and "antigravity"; omp via
-// omp.sh/favicon.svg (#0f0a14 tile, and the one mark whose official paint is a gradient — `grad`);
-// grok via grok.com/images/favicon.svg (the slashed circle its app icon also wears; grok.com's page
-// header draws a different, animated bot face, which is not the brand mark); muse via
-// muse.ai/images/landing/brand/muse-logo.svg, the Muse family's mark on the white tile of muse.ai's own
-// app icon — Muse Code itself has none (its page at dev.meta.ai/products/muse-code shows only Meta's,
-// its CLI prints only its name), and dev.meta.ai links muse.ai as Muse's site. To refresh: re-run the fetch in CHANGELOG and replace the `d` strings.
+// (Antigravity) via its Google-blue #1A73E8 tile, keyed under both "agy" and "antigravity"; omp
+// via omp.sh/favicon.svg (#0f0a14 tile, and the one mark whose official paint is a gradient,
+// `grad`); grok via grok.com/images/favicon.svg (the slashed circle its app icon also wears;
+// grok.com's page header draws a different, animated bot face, which is not the brand mark); muse
+// via muse.ai/images/landing/brand/muse-logo.svg, the Muse family's mark on the white tile of
+// muse.ai's own app icon. Muse Code itself has none (its page at dev.meta.ai/products/muse-code
+// shows only Meta's, its CLI prints only its name), and dev.meta.ai links muse.ai as Muse's site.
+// To refresh: re-run the fetch in CHANGELOG and replace the `d` strings.
 
 export interface AgentBrand {
   /** Tile background — the agent's official brand color. */
@@ -78,6 +79,9 @@ export const AGENT_BRANDS = new Map<string, AgentBrand>([
       d: "M1.2 0h21.6v4.8h-6v19.2h-4.8V4.8H8.4v13.2H3.6V4.8H1.2z",
     },
   ],
+  // Attribution: the grok mark is from grok.com/images/favicon.svg and the muse mark from
+  // muse.ai/images/landing/brand/muse-logo.svg, both copied 2026-10-15. Neither source states
+  // terms. The marks belong to their owners, and Collie shows them only to name the harness.
   // grok: the favicon's two mark paths, its 400×400 mark box (56..456 of 512) rescaled ×0.06 to
   // fill 24×24 — the same paths, not a redrawing. Monochrome by design, so no accent.
   ["grok", { bg: "#050505", fg: "#FCFCFC", mode: "fill", d: "M9.269 15.406L17.248 9.263C17.639 8.962 18.198 9.079 18.384 9.547C19.365 12.014 18.927 14.978 16.976 17.014C15.024 19.049 12.308 19.496 9.826 18.479L7.115 19.788C11.004 22.56 15.726 21.875 18.677 18.795C21.018 16.354 21.743 13.026 21.065 10.025L21.071 10.032C20.088 5.624 21.313 3.862 23.822 0.258C23.881 0.173 23.941 0.088 24 0L20.699 3.443V3.432L9.267 15.408ZM7.623 16.898C4.831 14.118 5.312 9.814 7.694 7.332C9.455 5.495 12.341 4.746 14.86 5.848L17.565 4.545C17.078 4.178 16.453 3.783 15.736 3.505C12.497 2.114 8.618 2.806 5.984 5.551C3.451 8.193 2.654 12.255 4.022 15.722C5.044 18.312 3.369 20.145 1.681 21.994C1.083 22.65 0.483 23.306 0 24L7.62 16.901Z" }],
