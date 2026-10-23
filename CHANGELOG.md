@@ -23,9 +23,11 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+## [1.23.4] - 2026-10-23
+
 ### Fixed
 
-- **Replace sends a slash command onto a draft.** When the agent's input box held a draft, a slash command from the phone, such as the Model button on the belt or a typed `/model`, offered Replace, but the Replace was refused with "A slash command is sent as a command". Collie now empties the box and sends the command, as a Replace of a message does. A slash command onto a draft now offers Replace and Cancel, not Add, since Add would send the draft with the command at its end.
+- **Replace sends a slash command onto a draft.** When the agent's input box held a draft, a slash command from the phone, such as the Model button on the belt or a typed `/model`, offered Replace, but the Replace was refused with "A slash command is sent as a command". Collie now empties the box and sends the command, as a Replace of a message does. A slash command onto a draft now offers Replace and Cancel, not Add, since Add would send the draft with the command at its end. ([ab3adc2](https://github.com/AltanS/collie/commit/ab3adc2)) ([861bfcd](https://github.com/AltanS/collie/commit/861bfcd)) ([85924fe](https://github.com/AltanS/collie/commit/85924fe)) ([90b5e6f](https://github.com/AltanS/collie/commit/90b5e6f))
 
 ## [1.23.3] - 2026-10-22
 
