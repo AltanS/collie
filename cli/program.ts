@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { Command as Program, CommanderError } from "commander";
 
 import { type BeaconEmitDeps, runBeaconEmit } from "./beacon.ts";
+import { cmdBeaconStatusline, runShell, type StatusLineDeps } from "./statusline.ts";
 import { type HoldDeps, netConnect, runBeaconHold } from "./hold.ts";
 import { CODEX_NOTIFY_HARNESS, runCodexNotify } from "./codex-notify.ts";
 import { cmdBuild } from "./build.ts";
@@ -377,6 +378,17 @@ function beaconDeps(): BeaconEmitDeps {
   };
 }
 
+/** The statusLine wrapper's world. The run and its stopping rules live in cli/statusline.ts. */
+function statusLineDeps(): StatusLineDeps {
+  return {
+    ctx: loadContext(() => {}),
+    files: realFiles,
+    readStdin: () => Bun.stdin.text(),
+    uid: process.getuid?.(),
+    run: runShell,
+  };
+}
+
 function holdDeps(): HoldDeps {
   return {
     ctx: loadContext(() => {}),
@@ -685,7 +697,7 @@ export const COMMANDS: readonly Command[] = [
   },
   {
     name: "beacon",
-    summary: "internal: `beacon emit` and `beacon hold`, the agent hooks Collie installs",
+    summary: "internal: `beacon emit`, `beacon hold` and `beacon statusline`, the agent hooks Collie installs",
     internal: true,
     subcommands: [
       {
@@ -698,6 +710,11 @@ export const COMMANDS: readonly Command[] = [
         name: "hold",
         summary: "internal: hold one permission request for a tap on the phone (M56 spec 12)",
         run: () => runBeaconHold(holdDeps),
+      },
+      {
+        name: "statusline",
+        summary: "internal: run the operator's own statusLine, and pass its usage numbers to the phone (.adr/0115)",
+        run: (args) => cmdBeaconStatusline(statusLineDeps(), args),
       },
     ],
     // A bare `collie beacon`, or a misspelt sub-verb, is still an invocation from a hook — so it gets

@@ -2090,6 +2090,12 @@ export const zhTW: Dictionary = {
   // --- changes (ADR 0065) ---
   "chat.changes.label": "檔案",
   "chat.model.aria": "模型 {name}",
+  "chat.usage.context": "ctx",
+  "chat.usage.context.aria": "Context {percent}% used",
+  "chat.usage.window.5h": "5h",
+  "chat.usage.window.5h.aria": "5-hour limit {percent}% used",
+  "chat.usage.window.7d": "7d",
+  "chat.usage.window.7d.aria": "7-day limit {percent}% used",
   "files.title": "檔案",
   "branch.aria": "分支 {name}",
   "branch.detachedAria": "分離於 {sha}",

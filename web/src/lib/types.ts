@@ -194,6 +194,12 @@ export interface AgentView {
    */
   effort?: string;
   /**
+   * How full the context is and how much of the subscription's windows is used, as the harness's own
+   * statusLine reported them. Mirrors `PaneWire.usage` in bridge/types.ts. **Absent, never a
+   * placeholder**: drawn as dots beside the model (components/model-tag.tsx), and nothing decides on it.
+   */
+  usage?: PaneUsage;
+  /**
    * What the checkout holding this pane's folder is on. Mirrors `PaneWire.gitHead` in bridge/types.ts.
    *
    * **Absent, never a placeholder**: a folder in no checkout, a reading the bridge has not taken yet,
@@ -2513,3 +2519,22 @@ export type PaneProgress =
   | { kind: "percent"; value: number; label?: string };
 
 
+
+/** A subscription window, by the label the phone draws for it. Mirrors `UsageWindow` in bridge/usage.ts. */
+export type UsageWindow = "5h" | "7d";
+
+/** One subscription window's reading. Mirrors `UsageLimit` in bridge/usage.ts. */
+export interface UsageLimit {
+  window: UsageWindow;
+  /** Percent of the window used, 0 to 100. */
+  used: number;
+  /** When the window resets, epoch ms. */
+  resetsAt?: number;
+}
+
+/** A pane's usage numbers. Mirrors `PaneUsage` in bridge/usage.ts; every part absent when unreported. */
+export interface PaneUsage {
+  /** Percent of the context window used, 0 to 100. */
+  context?: number;
+  limits?: UsageLimit[];
+}

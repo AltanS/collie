@@ -2130,6 +2130,12 @@ export const de: Dictionary = {
   // --- changes (ADR 0065) ---
   "chat.changes.label": "Dateien",
   "chat.model.aria": "Modell {name}",
+  "chat.usage.context": "ctx",
+  "chat.usage.context.aria": "Context {percent}% used",
+  "chat.usage.window.5h": "5h",
+  "chat.usage.window.5h.aria": "5-hour limit {percent}% used",
+  "chat.usage.window.7d": "7d",
+  "chat.usage.window.7d.aria": "7-day limit {percent}% used",
   "files.title": "Dateien",
   "branch.aria": "Branch {name}",
   "branch.detachedAria": "Losgelöst bei {sha}",

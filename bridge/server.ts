@@ -1245,6 +1245,11 @@ export function startServer(opts: {
    */
   subagents?: { get(pane: AgentView): AgentView["subagents"] };
   /**
+   * Each pane's context use and subscription windows (bridge/usage.ts), read synchronously at
+   * serialise time like `todos`. Absent means no pane carries a `usage` key.
+   */
+  usage?: { get(pane: AgentView): AgentView["usage"] };
+  /**
    * Which branch each pane's folder is on (bridge/git-head.ts), read synchronously at serialise time
    * like `cache`: it answers from memory and reads the disk in the background. Absent means no pane
    * carries a `gitHead` key, which is every test that builds this server by hand.
@@ -1592,9 +1597,12 @@ export function startServer(opts: {
       const readSubagents = opts.subagents?.get(p);
       const subagents = readSubagents !== undefined && cfg.redact ? maskSubagentList(readSubagents) : readSubagents;
       const withSubagents = subagents === undefined ? withTodos : { ...withTodos, subagents };
+      // The usage dots: numbers only, from the statusLine wrapper's file for this session.
+      const readUsage = opts.usage?.get(p);
+      const withUsage = readUsage === undefined ? withSubagents : { ...withSubagents, usage: readUsage };
       // The branch rides the same way: from memory, never a wait, and no key when there is none.
       const gitHead = gitHeads?.get(p.cwd);
-      return gitHead === undefined ? withSubagents : { ...withSubagents, gitHead };
+      return gitHead === undefined ? withUsage : { ...withUsage, gitHead };
     };
     // The one place a pane leaves the bridge: the session ref is stripped to a presence flag here,
     // so an agent-reported filesystem path never reaches a browser (see toPaneWire). The flag is

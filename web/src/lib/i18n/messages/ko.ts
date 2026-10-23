@@ -2106,6 +2106,12 @@ export const ko: Dictionary = {
   // --- changes (ADR 0065) ---
   "chat.changes.label": "파일",
   "chat.model.aria": "모델 {name}",
+  "chat.usage.context": "ctx",
+  "chat.usage.context.aria": "Context {percent}% used",
+  "chat.usage.window.5h": "5h",
+  "chat.usage.window.5h.aria": "5-hour limit {percent}% used",
+  "chat.usage.window.7d": "7d",
+  "chat.usage.window.7d.aria": "7-day limit {percent}% used",
   "files.title": "파일",
   "branch.aria": "브랜치 {name}",
   "branch.detachedAria": "{sha}에서 분리됨",
