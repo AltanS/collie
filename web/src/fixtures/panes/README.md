@@ -2923,7 +2923,8 @@ separator draws U+E0BB and no closer. The `minimal` preset has no pi glyph and o
 | `omp--v18.11.1-slash-idle--w120.txt` | `statusLine.separator: slash`, empty box. Labelled `idle` |
 | `omp--v18.11.1-minimal-idle--w120.txt` | `statusLine.preset: minimal`, empty box. Labelled `idle` |
 | `omp--v18.11.1-ascii-idle--w120.txt` | `symbolPreset: ascii`, empty box. Labelled `idle` |
-## omp 18.12.2 `/goal` in a goal turn (captured 2026-10-22, real OMP, private Herdr 0.9.5, PR 541)
+
+## omp 18.12.2 `/goal` in a goal turn (captured 2026-10-22, real OMP, private Herdr 0.9.5, PR 577)
 
 The screens of a real OMP 18.12.2 (`omp --version` reads `omp/18.12.2`) while a goal turn streams, taken
 as Collie sends: the probe `⌁`, Backspace, the command text, then Enter, with a read between each step.
