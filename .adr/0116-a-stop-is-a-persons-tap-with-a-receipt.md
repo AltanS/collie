@@ -19,7 +19,7 @@ A program (a durable pane) already has a Stop. Its `abortTurn` capability, its r
 
 1. **One route for both kinds of pane.** `POST /api/pane/:id/abort` takes `{ requestId }` and answers `{ requestId, outcome, reason?, keys? }`. For a program it does what it did. For a pane with a screen it reads the Surface, presses `keys.interrupt` through the key gate as `person_tap`, reads the screen again, and answers.
 2. **Arm, then tap.** The first tap on the belt button only arms it. The word changes to "Stop?" and the arm ends by itself after `ARM_MS` (4 s, the value the Escape card of ADR 0053 uses; both read `web/src/lib/arm.ts`). The second tap sends one request. While it is in flight, the button takes no tap. There is no long press and no keyboard shortcut.
-3. **The Surface decides before a key goes.** The bridge presses nothing when:
+3. **The Surface decides before a key goes.** The bridge reads the screen twice before the key, the second time right before the press, and each read applies the same refusals. A dialog that draws after the first read is refused too, so the only window left is the press itself. The bridge presses nothing when:
    - `no_profile`: Collie has no reader for the pane, or the profile is revoked. It does not stop a pane blind.
    - `turn_idle`: the turn has already ended.
    - `dialog_open`: a dialog is up, and Escape would answer it. The card is the way.

@@ -1,5 +1,5 @@
 // Stop (M68 spec 01): `POST /api/pane/:id/abort` on a pane with a screen. A running turn is stopped by
-// a person's tap: one request id, one read of the Surface, the profile's interrupt key through the key
+// a person's tap: one request id, two reads of the Surface, the profile's interrupt key through the key
 // gate as `person_tap`, one read-back, one receipt. The harness's own key is data (`keys.interrupt`,
 // `keys.interruptClearsDraft`); no harness name lives here (no-harness-names.test.ts scans this folder).
 //
@@ -10,6 +10,8 @@
 //              a dialog is up (Escape would answer it) -> refused dialog_open
 //              no dialog claim or no turn claim   -> refused unreadable (never pressed blind)
 //              box not empty and the key clears a draft first -> refused draft_present
+//   reread   one more fresh read right before the press, with the same refusals: a dialog that drew
+//            after the first read is refused, so the only window left is the press itself
 //   press    `keys.interrupt` through the gate as `person_tap`, in one call (opencode names Escape twice)
 //   readback up to three reads, the first 400 ms after the press, then 1 s apart; the turn reads idle
 //            and no modal: `stopped`; else `pressed`, with reason `dialog_open` when the last read shows
@@ -68,6 +70,19 @@ function refusal(requestId: string, reason: StopReason): StopReceipt {
   return { requestId, outcome: "refused", reason };
 }
 
+/**
+ * Why a read refuses the press, or null when the key may go: the turn ended (`turn_idle`), a dialog
+ * is up and the key would answer it (`dialog_open`), the read cannot tell a turn or a dialog
+ * (`unreadable`), or the box holds text the key would clear first (`draft_present`).
+ */
+function refusalOf(surface: Surface, clearsDraft: boolean): StopReason | null {
+  if (surface.turn === "idle") return "turn_idle";
+  if (surface.modal !== "none" && surface.modal !== "unknown") return "dialog_open";
+  if (surface.modal === "unknown" || surface.turn !== "running") return "unreadable";
+  if (clearsDraft && surface.composer !== "empty") return "draft_present";
+  return null;
+}
+
 /** Whether the profile may be trusted to read a turn: not on a revoked version or range. */
 function readable(match: ProfileMatch | null): match is ProfileMatch {
   return match !== null && match.status !== "revoked" && match.range?.status !== "revoked";
@@ -112,13 +127,14 @@ export class StopService {
   private async run(requestId: string, paneId: string, harness: string): Promise<StopReceipt> {
     const match = harness === "" ? null : await this.deps.profile(harness);
     if (!readable(match)) return refusal(requestId, "no_profile");
-    const first = await this.look(paneId, harness, match);
-    if (first === null) return refusal(requestId, "pane_gone");
     const { keys } = match.profile;
-    if (first.turn === "idle") return refusal(requestId, "turn_idle");
-    if (first.modal !== "none" && first.modal !== "unknown") return refusal(requestId, "dialog_open");
-    if (first.modal === "unknown" || first.turn !== "running") return refusal(requestId, "unreadable");
-    if (keys.interruptClearsDraft === true && first.composer !== "empty") return refusal(requestId, "draft_present");
+    // Two reads before the key, each with the same refusals: the first decides, the second is taken
+    // right before the press, so a dialog that drew in between is never answered by the key.
+    for (let read = 0; read < 2; read++) {
+      const before = await this.look(paneId, harness, match);
+      const refused = before === null ? "pane_gone" : refusalOf(before, keys.interruptClearsDraft === true);
+      if (refused !== null) return refusal(requestId, refused);
+    }
     const pressed = [...keys.interrupt];
     const sent: MuxAck = await this.deps.gate.press(paneId, pressed, "person_tap");
     if (!sent.ok) return refusal(requestId, "press_failed");

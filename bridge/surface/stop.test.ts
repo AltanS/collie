@@ -208,6 +208,35 @@ describe("a Stop on a pane with a screen", () => {
     expect(pane.keysSeen).toEqual([]);
   });
 
+  test("re-read before the key: a dialog on the second read is refused dialog_open, and no key leaves", async () => {
+    const { pane, stop } = rig(PI_RUNNING);
+    const base = pane.readGrid;
+    pane.readGrid = (paneId, request) => {
+      // The first read shows the running turn; a dialog draws before the read right before the press.
+      if (pane.reads === 1) pane.screen = OMP_APPROVAL;
+      return base(paneId, request);
+    };
+    expect(await receipt(await stop("%1", { requestId: ID }))).toEqual({ requestId: ID, outcome: "refused", reason: "dialog_open" });
+    expect(pane.keysSeen).toEqual([]);
+    expect(pane.reads).toBe(2);
+  });
+
+  test("re-read before the key: the turn ended by the second read is refused turn_idle; a screen it cannot read, unreadable", async () => {
+    for (const [screen, reason] of [
+      [PI_IDLE, "turn_idle"],
+      [NOT_A_SCREEN, "unreadable"],
+    ] as const) {
+      const { pane, stop } = rig(PI_RUNNING);
+      const base = pane.readGrid;
+      pane.readGrid = (paneId, request) => {
+        if (pane.reads === 1) pane.screen = screen;
+        return base(paneId, request);
+      };
+      expect(await receipt(await stop("%1", { requestId: ID }))).toEqual({ requestId: ID, outcome: "refused", reason });
+      expect(pane.keysSeen).toEqual([]);
+    }
+  });
+
   test("refused pane_gone and press_failed", async () => {
     const gone = rig(PI_RUNNING);
     gone.pane.unreadable = true;
