@@ -7030,7 +7030,7 @@ describe("S1 reads the turn again before the commit key (PR 491): a turn starts 
 describe("pi under pi-powerline-footer's inset editor (issue 544, live 2026-10-20)", () => {
   // eslint-disable-next-line no-control-regex
   const plain = (row: string): string => row.replace(/\u001b\[[0-9;:]*m/gu, "");
-  const capture = (name: string): string[] => readFileSync(join(import.meta.dir, `../../web/src/fixtures/panes/${name}`), "utf8").split("\n");
+  const capture = (name: string): string[] => readFileSync(join(import.meta.dir, `../../web/src/fixtures/panes/${name}`), "utf8").split(/\r?\n/u);
   const GLYPH = " \u001b[38;2;200;200;200m>\u001b[39m";
   const WIDGET = " \u001b[38;5;244m↳\u001b[39m \u001b[38;5;244mReply with exactly DONE-1 and nothing else.\u001b[39m";
   const INSET_WRAP = 112;
