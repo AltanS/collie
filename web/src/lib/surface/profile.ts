@@ -696,7 +696,6 @@ function nullableMatch(value: JsonValue | undefined, path: string, form: RegExp,
   return form.test(word) ? word : fail(path, `must be ${what} or null`);
 }
 
-/** A regular expression source, compiled once to prove it is one. Returns the compiled form. */
 /** The largest pause a profile may name between the text and the steer key. */
 const STEER_DELAY_MAX_MS = 3000;
 
@@ -766,6 +765,7 @@ function parseSteerWitness(value: JsonValue, path: string): SteerWitness {
   return { pattern: rowPattern.source };
 }
 
+/** A regular expression source, compiled once to prove it is one. Returns the compiled form. */
 function pattern(value: JsonValue | undefined, path: string): RegExp {
   const source = text(value, path);
   try {
