@@ -490,6 +490,38 @@
   "frame": null
  },
  {
+  "fixture": "claude--v2-1-309-interrupted--w120.txt",
+  "frame": {
+   "top": 20,
+   "prompt": 21,
+   "bottom": 22,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 23,
+    "last": 25
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2-1-309-permission-denied--w120.txt",
+  "frame": {
+   "top": 15,
+   "prompt": 16,
+   "bottom": 17,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 18,
+    "last": 20
+   },
+   "footer": null
+  }
+ },
+ {
   "fixture": "claude--v2283-ask-long-question--w50.txt",
   "frame": null
  },

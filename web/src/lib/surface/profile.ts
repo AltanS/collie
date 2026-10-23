@@ -421,6 +421,16 @@ export interface Profile {
      */
     readonly runningRows?: readonly string[];
     /**
+     * Rows that mean a turn ended without the harness's stop hook, as regular expression sources, read
+     * on the volatile band above the box. Claude Code fires no Stop hook when a person interrupts a
+     * turn (Escape) or refuses a permission; it draws `⎿  Interrupted · What should Claude do instead?`
+     * over an idle box (lab 2.1.309, 2026-10-23). A read that shows one, whose screen reads the turn
+     * idle with no dialog, ends the hook's running and dialog blocks (fold.ts) once they are older than
+     * the settle time, as a stop edge would. Never a running sign. Optional: without it such a block
+     * ends only on a closing edge or the lost-Stop reads.
+     */
+    readonly stoppedRows?: readonly string[];
+    /**
      * The prompt row of a box that answers a question the agent asked, as a regular expression source
      * read on the frame's prompt row. A send typed there answers that question, so a person may send
      * into it, but a held send never goes there: it waits for an ordinary box. Optional.
@@ -1138,7 +1148,16 @@ export function parseProfile(raw: JsonValue): Profile {
     idleNode.runningRows === undefined
       ? undefined
       : list(idleNode.runningRows, "idle.runningRows").map((item, i) => pattern(item, `idle.runningRows[${String(i)}]`).source);
-  const withRunning: Profile["idle"] = runningRows === undefined ? idle : { ...idle, runningRows };
+  const withRunningRows: Profile["idle"] = runningRows === undefined ? idle : { ...idle, runningRows };
+  const stoppedRows =
+    idleNode.stoppedRows === undefined
+      ? undefined
+      : list(idleNode.stoppedRows, "idle.stoppedRows").map((item, i) => {
+          const row = pattern(item, `idle.stoppedRows[${String(i)}]`);
+          if (row.test("")) fail(`idle.stoppedRows[${String(i)}]`, "must not match a blank row");
+          return row.source;
+        });
+  const withRunning: Profile["idle"] = stoppedRows === undefined ? withRunningRows : { ...withRunningRows, stoppedRows };
   const overlayRows =
     idleNode.overlayRows === undefined
       ? undefined

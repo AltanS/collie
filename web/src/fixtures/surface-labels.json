@@ -511,6 +511,16 @@
    "version": "unversioned",
    "state": "dialog"
   },
+  "claude--v2-1-309-interrupted--w120.txt": {
+   "harness": "claude",
+   "version": "2.1.309",
+   "state": "idle"
+  },
+  "claude--v2-1-309-permission-denied--w120.txt": {
+   "harness": "claude",
+   "version": "2.1.309",
+   "state": "idle"
+  },
   "claude--v2283-ask-long-question--w50.txt": {
    "harness": "claude",
    "version": "2.1.283",

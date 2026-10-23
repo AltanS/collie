@@ -30,7 +30,10 @@
 // block: the modal reads `unreadable` while the screen says none. The screen lifting an ask ends a
 // modal block. A block ends on a closing edge (`stop`, `start`, `end`), or on the screen reading free
 // on LOST_STOP_READS reads over LOST_STOP_SPAN_MS, which counts as one lost-Stop incident. A `stop`
-// edge never makes a free: after it, the turn is the screen's claim.
+// edge never makes a free: after it, the turn is the screen's claim. A read that shows one of the
+// profile's stopped rows (`idle.stoppedRows`: a turn the person interrupted, which fires no stop hook)
+// on a screen that reads idle with no dialog ends both blocks too, as a stop edge would, once each is
+// older than the settle time; a draft in the box does not keep it open. It is no lost Stop.
 //
 // The fold is a reduction: `stepFold` takes one input, `readFold` reads the state. The bridge keeps
 // the state per pane, because a turn and its blocks outlive any short log. `foldSurface` reduces a
@@ -144,6 +147,13 @@ function stepScreen(state: FoldState, input: ScreenInput, context: FoldContext):
   let next: FoldState = { ...state, screen: input, screenRead, now: Math.max(state.now, input.at) };
   // The screen lifted the ask: it carries the modal itself now, so the modal block is done.
   if (next.dialog !== null && input.ask !== null) next = { ...next, dialog: null };
+  // The harness says on screen that the turn stopped without its stop hook: the blocks old enough end.
+  if (hasBlock(next) && stoppedOnScreen(input, screenRead, context.idle)) {
+    const settle = context.settleMs ?? SETTLE_MS;
+    const settled = (block: EdgeBlock | null): boolean => block !== null && input.at - block.since >= settle;
+    if (settled(next.running)) next = { ...next, running: null, freeReads: [] };
+    if (settled(next.dialog)) next = { ...next, dialog: null, freeReads: [] };
+  }
   if (!hasBlock(next)) return next.freeReads.length === 0 ? next : { ...next, freeReads: [] };
   if (!isFree(screenRead.surface)) return { ...next, freeReads: [] };
   const freeReads = [...next.freeReads, input.at];
@@ -152,6 +162,25 @@ function stepScreen(state: FoldState, input: ScreenInput, context: FoldContext):
     return { ...next, running: null, dialog: null, freeReads: [], lostStops: next.lostStops + 1 };
   }
   return { ...next, freeReads };
+}
+
+/**
+ * Whether a read shows that the turn stopped without the harness's stop hook: one of the profile's
+ * `idle.stoppedRows` in the volatile band above the box, on a screen that reads the turn idle and no
+ * dialog. A new turn draws its prompt row and a running sign under that row, so the screen then reads
+ * running and the row ends nothing.
+ */
+function stoppedOnScreen(input: ScreenInput, read: SurfaceRead, idle: IdleProfile | null): boolean {
+  const signs = idle?.stoppedRows;
+  const above = read.frame?.volatile.above ?? null;
+  if (signs === undefined || signs.length === 0 || input.rows === null || above === null) return false;
+  if (read.surface.turn !== "idle" || read.surface.modal !== "none") return false;
+  const patterns = signs.map((source) => new RegExp(source, "u"));
+  for (let i = above.first; i <= above.last; i++) {
+    const text = rowText(input.rows[i]!).trimEnd();
+    if (text.length > 0 && patterns.some((pattern) => pattern.test(text))) return true;
+  }
+  return false;
 }
 
 /** An edge: the read goes stale, and the kind opens or closes a block. */

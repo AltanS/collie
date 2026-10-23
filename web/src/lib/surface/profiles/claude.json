@@ -48,6 +48,9 @@
         }
       }
     },
+    "stoppedRows": [
+      "^\\s*⎿\\s+Interrupted · What should Claude do instead\\?\\s*$"
+    ],
     "notices": [
       { "head": "^✦ (?:Heads up|You should know) ·(?:\\s|$)", "body": true },
       { "head": "^● How is Claude doing this session\\? \\(optional\\)$" },

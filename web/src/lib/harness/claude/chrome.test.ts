@@ -1030,6 +1030,11 @@ describe("real corpus — pinned so any change to the walk shows up as a diff", 
     // statusline plus the mode row; the draft typed during the turn is read as a draft.
     { fixture: "v2301-done-shell-running--w100", statusRows: 3, draft: null, stripped: 23 },
     { fixture: "v2301-idle-after-turn--w100", statusRows: 3, draft: null, stripped: 16 },
+    // Claude Code 2.1.309 after a turn stopped with no Stop hook (live rerun 2026-10-23): Escape after a
+    // Read, and a refused Bash permission. `⎿  Interrupted · What should Claude do instead?` over an
+    // empty box, the operator's two-row statusline plus the mode row.
+    { fixture: "v2-1-309-interrupted--w120", statusRows: 3, draft: null, stripped: 22 },
+    { fixture: "v2-1-309-permission-denied--w120", statusRows: 3, draft: null, stripped: 27 },
     { fixture: "v2301-queued-taken--w100", statusRows: 3, draft: null, stripped: 7 },
     { fixture: "v2301-spinner-no-timer--w100", statusRows: 2, draft: null, stripped: 6 },
     // The /cost and /usage panel drawn over a live box (M56 spec 15 review): the box and its footer stay.
