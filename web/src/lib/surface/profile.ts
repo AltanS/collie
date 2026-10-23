@@ -700,10 +700,16 @@ function nullableMatch(value: JsonValue | undefined, path: string, form: RegExp,
 /** The largest pause a profile may name between the text and the steer key. */
 const STEER_DELAY_MAX_MS = 3000;
 
+/** Whether two key names are the same key, case aside. */
+function sameKey(a: string, b: string): boolean {
+  return a.toLowerCase() === b.toLowerCase();
+}
+
 /**
  * `keys.steer`, `keys.steerWitness` and `keys.steerDelayMs` (M69): read after `enterWhileRunning` and
- * `queueKey`, which they are checked against. A steer key exists only where Enter steers; it is never
- * Escape and never the queue key (on any platform), and it never comes without a witness.
+ * `queueKey`, which they are checked against. A steer key exists only where Enter steers; no key of it
+ * holds Escape (alone or in a chord), is the queue key (on any platform) or an interrupt key, and it
+ * never comes without a witness.
  */
 function parseSteer(keysNode: JsonObject, keys: Profile["keys"]): Profile["keys"] {
   if (keysNode.steer === undefined) {
@@ -712,10 +718,12 @@ function parseSteer(keysNode: JsonObject, keys: Profile["keys"]): Profile["keys"
     return keys;
   }
   const steer = textList(keysNode.steer, "keys.steer", 1);
-  if (steer.some((key) => /^(?:escape|esc)$/i.test(key))) fail("keys.steer", "must not hold Escape");
+  // A chord counts too: `alt+Escape` holds Escape.
+  if (steer.some((key) => key.toLowerCase().split("+").some((token) => token === "escape" || token === "esc"))) fail("keys.steer", "must not hold Escape");
   if (keys.enterWhileRunning !== "steers") fail("keys.steer", "is for a harness whose Enter steers a turn (keys.enterWhileRunning: steers)");
   const queueKeys = [keys.queueKey, ...Object.values(keys.queueKeyByPlatform ?? {})].filter((key): key is string => key !== undefined);
-  if (steer.length === 1 && queueKeys.some((key) => key.toLowerCase() === steer[0]!.toLowerCase())) fail("keys.steer", "must not be the queue key");
+  if (steer.some((key) => queueKeys.some((queue) => sameKey(key, queue)))) fail("keys.steer", "must not hold the queue key");
+  if (steer.some((key) => keys.interrupt.some((interrupt) => sameKey(key, interrupt)))) fail("keys.steer", "must not hold an interrupt key");
   if (keysNode.steerWitness === undefined) fail("keys.steerWitness", "is required with keys.steer");
   const witnessNode = keysNode.steerWitness;
   const entries = Array.isArray(witnessNode) ? witnessNode : [witnessNode];

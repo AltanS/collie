@@ -1226,6 +1226,9 @@ describe("the steer keys (M69)", () => {
 
   const cases: [string, string, (string | number)[], JsonValue | undefined, string][] = [
     ["Escape as the steer key", "pi", ["keys", "steer"], ["Escape"], "keys.steer"],
+    ["a chord that holds Escape as the steer key", "pi", ["keys", "steer"], ["alt+Escape"], "keys.steer"],
+    ["a chord that holds esc as the steer key", "omp", ["keys", "steer"], ["ctrl+esc"], "keys.steer"],
+    ["a two-key steer that holds the queue key", "codex", ["keys", "steer"], ["Enter", "Tab"], "keys.steer"],
     ["no steer key", "pi", ["keys", "steer"], [], "keys.steer"],
     ["the queue key as the steer key", "codex", ["keys", "steer"], ["Tab"], "keys.steer"],
     ["the queue key of another platform as the steer key", "pi", ["keys", "steer"], ["ctrl+q"], "keys.steer"],
@@ -1250,6 +1253,13 @@ describe("the steer keys (M69)", () => {
       expect(failure(change(raw(id), path, value)).path).toBe(field);
     });
   }
+
+  it("a steer key equal to an interrupt key is refused, in any key of the list", () => {
+    const interrupt = change(raw("pi"), ["keys", "interrupt"], ["Escape", "ctrl+c"]);
+    expect(failure(change(interrupt, ["keys", "steer"], ["ctrl+c"])).path).toBe("keys.steer");
+    expect(failure(change(interrupt, ["keys", "steer"], ["Enter", "CTRL+C"])).path).toBe("keys.steer");
+    expect(parseProfile(change(interrupt, ["keys", "steer"], ["Enter"])).keys.steer).toEqual(["Enter"]);
+  });
 
   it("a witness or a delay with no steer key is refused", () => {
     const noSteer = change(raw("codex"), ["keys", "steer"], undefined);
