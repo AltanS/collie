@@ -456,6 +456,24 @@ function withoutOwnPrompt(rows: readonly FrameRow[], frame: Frame): readonly Fra
  * The notice the profile names over a found frame's top edge (`idle.notices`, {@link readAboveNotice}),
  * or null. Every cue read takes it ({@link readCues}) and leaves its rows out: the box keeps its keys.
  */
+/** The prompt glyph at the start of the frame's prompt row, when one is there. */
+const PROMPT_POINTER = new RegExp(`^(\\s*)[${POINTERS}]`, "u");
+
+/**
+ * The prompt row without its anchor glyph. The draft and dialog rows keep their text. This is the
+ * fallback for a box the layout could not name every row of ({@link Frame.ownPrompt} unset, e.g. the
+ * top rule scrolled off a phone viewport): there the generic blank ({@link withoutOwnPrompt}) never
+ * fires, and the prompt glyph plus the draft's wrapped rows read as a pointed list.
+ */
+function stripPromptPointer(row: FrameRow): FrameRow {
+  const text = rowText(row);
+  const match = PROMPT_POINTER.exec(text);
+  if (match === null) return row;
+  const head = [...match[0]];
+  head.pop();
+  return { segments: [{ text: `${head.join("")}${text.slice(match[0].length)}` }] };
+}
+
 export function noticeOver(texts: readonly string[], frame: Frame | null, idle: IdleProfile | null): AboveNotice | null {
   if (frame === null || idle === null) return null;
   return readAboveNotice(texts, frame.top, idle.notices ?? [], idle.noticeGaps ?? []);
@@ -475,8 +493,14 @@ export function readCuesFor(allRows: readonly FrameRow[], frame: Frame | null, i
   if (idle?.dialogsInBox !== true || frame === null) return plain;
   // From the top edge down: a dialog in the box's place lies there, and the transcript above is no part of it.
   // The box's own prompt glyph, where the layout names one (`frame.ownPrompt`), is no pointer there.
+  // Where the layout names no own glyph (a partial frame), only the prompt row's anchor glyph goes:
+  // a full frame keeps the generic blank, so a real moved palette keeps its pointer.
   const at = frame.top;
-  const down = readCues(withoutOwnPrompt(rows, frame).slice(at), null, null);
+  const downRows =
+    frame.ownPrompt !== undefined
+      ? withoutOwnPrompt(rows, frame).slice(at)
+      : rows.map((row, i) => (i === frame.interior.prompt ? stripPromptPointer(row) : row)).slice(at);
+  const down = readCues(downRows, null, null);
   // A weak shape inside the box is the box's own hint row (OMP draws "to change thinking effort" there).
   if (down.strength !== "strong" || plain.strength === "strong") return plain;
   return { ...down, cluster: down.cluster.map((i) => i + at), cues: down.cues.map((cue) => ({ kind: cue.kind, row: cue.row + at })) };

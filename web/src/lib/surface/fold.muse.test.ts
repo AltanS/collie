@@ -133,4 +133,19 @@ describe("the typed command's own slash palette inside Muse's box (MUSE-03, #519
       expect(labelOf(name).state, name).toBe("dialog");
     }
   });
+
+  it("a multiline prose draft is the box's own text, not a pointed list (live capture 2026-10-21)", () => {
+    // muse--draft-multiline-live.txt is a real `pane read --format ansi`
+    // capture of Muse 1.4.11 with a three-line draft typed but not sent:
+    // prompt row plus soft-wrapped continuation rows over the bottom rule.
+    const rows = fixtureRows("muse--draft-multiline-live.txt");
+    const found = findInputFrame(rows, IDLE);
+    expect(found).not.toBeNull();
+    expect(found?.interior.text).toContain("first line of a long draft");
+    expect(found?.interior.text).toContain("third line continues here as well");
+    const read = readScreen(rows, "muse", IDLE);
+    expect(read.surface).toMatchObject({ modal: "none", composer: "draft" });
+    expect(read.cues?.cues.map((cue) => cue.kind)).not.toContain("pointer-row");
+    expect(read.cues?.strength).toBe("none");
+  });
 });

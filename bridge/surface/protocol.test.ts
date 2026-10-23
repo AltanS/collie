@@ -1809,6 +1809,15 @@ describe("muse: Tab queues in a turn, Enter steers it (MUSE-06/07, #519)", () =>
     neverEscape(pane);
   });
 
+  test("a multiline Muse draft is the box's own wrapped text, not a dialog: Enter sends (live 2026-10-21)", async () => {
+    const { pane, send } = muse();
+    const answer = await send("first line of a long draft\nsecond line continues here\nthird line continues here");
+    expect(answer.receipt).toMatchObject({ outcome: "sent", profileId: "muse", keys: ["probe", "Backspace", "ctrl+j", "ctrl+j", "Enter"] });
+    expect(pane.transcript.at(-1)).toBe("> first line of a long draft second line continues here third line continues here");
+    expect(pane.keysSeen).not.toContain("Tab");
+    neverEscape(pane);
+  });
+
   test("a running turn: probed, Tab only, and the queued rows Muse draws make the receipt say queued (MUSE-07)", async () => {
     const holds = new HoldStore(join(dir, "held"));
     const { pane, send } = muse({ holds });
