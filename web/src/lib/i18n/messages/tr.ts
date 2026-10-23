@@ -354,7 +354,7 @@ export const tr: Dictionary = {
   "composer.protocol.draftCommand": "Kutuda zaten bir taslak var. Değiştirin veya iptal edin.",
   "composer.protocol.typed": "Metnin kutuda, ama Enter'a basılmadı. Gönder veya at.",
   "composer.protocol.unconfirmed": "Collie bu ekranı okuyamıyor. Bölmeyi kontrol et, sonra Buraya yaz'a dokun.",
-  "composer.protocol.noticeKey": "Bu mesaj kutunun üzerindeki bildirimi yanıtlar. Bölmeyi kontrol edin, ardından ‘Buraya yaz’ seçeneğine dokunun.",
+  "composer.protocol.noticeKey": "Bu ileti kutunun üstündeki bildirimi yanıtlar. Bölmeyi kontrol et, ardından Buraya yaz ögesine dokun.",
   "composer.protocol.noticeKeyHeld": "Bu ileti kutunun üstündeki bildirimi yanıtlar. Kartında yanıtlayın veya tur sona erdiğinde gönderin.",
   "composer.protocol.unknown": "Collie bunun gönderilip gönderilmediğini belirleyemiyor. Ekranı okuyun, gitmediyse tekrar gönderin. Taslağınız saklanır.",
   "composer.protocol.busy": "Bu bölmeye başka bir gönderim hâlâ sürüyor. Bekle ve yeniden dene.",
@@ -706,7 +706,7 @@ export const tr: Dictionary = {
   "prompt.feedback.answer.editorLabel": "Yanıtınız",
   "prompt.feedback.answer.textAria": "Yanıt metni",
   "prompt.feedback.answer.placeholder": "Yanıtınızı yazın…",
-  "prompt.feedback.answer.help": "Sorunun yanıt alanına yazıldı ve yanıtınız olarak gönderildi.",
+  "prompt.feedback.answer.help": "Sorunun yanıt alanına yazılır ve yanıtın olarak gönderilir.",
   "prompt.feedback.answer.helpWizard":
     "Bu sorunun yanıt alanına yazıldı. Göndermek soruyu yanıtlar ve bir sonraki soruya geçer.",
   "prompt.feedback.answer.helpMulti":
@@ -714,7 +714,7 @@ export const tr: Dictionary = {
   "prompt.feedback.answer.send": "Yanıtı gönder",
   "prompt.feedback.answer.sending": "Yanıtınız yazılıyor…",
   "prompt.feedback.answer.focused":
-    "Yanıt alanı terminaldeki klavyeye sahiptir, bu nedenle bu düğmeler alana yazacaktır. Aşağıdan yine de kendi yanıtınızı gönderebilirsiniz.",
+    "Yanıt alanının klavyesi terminaldedir, bu yüzden bu düğmeler alana yazar. Aşağıdan kendi yanıtını yine de gönderebilirsin.",
   "prompt.feedback.answer.typedPrefix": "Yanıt alanında: ",
   "prompt.feedback.answer.fieldMoved": "Terminaldeki yanıt alanı artık “{text}” değerini içeriyor. Değiştirmek için tekrar gönderin.",
   "prompt.feedback.answer.fieldEmptied": "Terminaldeki yanıt alanı temizlendi. Doldurmak için tekrar gönderin.",
@@ -1398,8 +1398,8 @@ export const tr: Dictionary = {
   "promptAction.feedback.notArrived": "Geri bildirim ulaşmadı, hiçbir şey gönderilmedi",
   "promptAction.answer.fieldNotReached": "Yanıt alanına ulaşılamadı. Hiçbir şey gönderilmedi",
   "promptAction.answer.notCleared": "Yanıt alanı temizlenemedi. Hiçbir şey gönderilmedi",
-  "promptAction.answer.notArrived": "Cevabınız alana ulaşmadı. Hiçbir şey gönderilmedi",
-  "promptAction.answer.notTicked": "Cevap yazıldı ancak satırı işaretlenmedi. Kart üzerinden kontrol edin.",
+  "promptAction.answer.notArrived": "Yanıtın alana ulaşmadı. Hiçbir şey gönderilmedi",
+  "promptAction.answer.notTicked": "Yanıt yazıldı ama satırı işaretlenmedi. Karttan kontrol et.",
   "stt.error.busy": "Meşgul; başka bir kaydın metne dönüştürülmesi hâlâ sürüyor. Birazdan tekrar deneyin.",
   "stt.error.tooLong": "Bu kayıt çok uzun, daha kısa bir kayıt yapın.",
   "stt.error.badFormat": "Bu tarayıcı Collie uygulamasının iletemeyeceği bir biçim kaydetti.",
@@ -2378,7 +2378,7 @@ export const tr: Dictionary = {
   "walky.state.expired": "süresi doldu",
   "walky.state.unknown": "ulaşmış olabilir, tekrar gönderilmeyecek",
   "walky.state.held": "bekletildi: {reason}",
-  "walky.state.heldHint": "Kutu temizlendiğinde veya sıra bittiğinde yazılır, en fazla 60 dakika. Tekrar göndermeyin.",
+  "walky.state.heldHint": "Kutu temizlendiğinde veya tur bittiğinde yazılır, 60 dakikaya kadar. Tekrar gönderme.",
   // The pane sheet's row and the sheet it opens.
   "walky.sheet.row": "Mesajlar",
   "walky.sheet.title": "Mesajlar",

@@ -296,7 +296,7 @@ export const ru: Dictionary = {
   "composer.attach.inFront": "Его метки больше нет в тексте, поэтому «Отправить» поместит {name} в начало.",
   "composer.paste.chipStats.one": "{count} строка · {chars} симв.",
   "composer.paste.chipStats.other": "{count} строки · {chars} симв.",
-  "composer.paste.chipStats.few": "{count} строк · {chars} симв.",
+  "composer.paste.chipStats.few": "{count} строки · {chars} симв.",
   "composer.paste.chipStats.many": "{count} строк · {chars} симв.",
   "composer.paste.sheetTitle": "Вставленный текст #{n}",
   "composer.paste.expandToInput": "Развернуть в поле ввода",
@@ -362,7 +362,7 @@ export const ru: Dictionary = {
   "composer.protocol.draftCommand": "В поле уже есть черновик. Замените его или отмените действие.",
   "composer.protocol.typed": "Текст в поле, но Enter не нажат. Отправьте или удалите его.",
   "composer.protocol.unconfirmed": "Collie не может прочитать этот экран. Проверьте панель и нажмите «Ввести здесь».",
-  "composer.protocol.noticeKey": "Это сообщение ответит на уведомление над полем. Проверьте панель, затем нажмите ‘Ввести здесь’.",
+  "composer.protocol.noticeKey": "Это сообщение ответит на уведомление над полем. Проверьте панель, затем нажмите «Введите текст здесь».",
   "composer.protocol.noticeKeyHeld": "Это сообщение ответит на уведомление над полем. Ответьте на него в карточке или отправьте его после завершения хода.",
   "composer.protocol.unknown": "Collie не может определить, было ли это отправлено. Прочитайте экран, затем отправьте снова, если отправка не удалась. Ваш черновик сохранен.",
   "composer.protocol.busy": "Другая отправка в эту панель ещё идёт. Подождите и повторите.",
@@ -744,9 +744,9 @@ export const ru: Dictionary = {
   "prompt.feedback.answer.placeholder": "Напишите свой ответ…",
   "prompt.feedback.answer.help": "Вводится в поле ответа на вопрос и отправляется как ваш ответ.",
   "prompt.feedback.answer.helpWizard":
-    "Вводится в поле ответа на этот вопрос. Отправка дает ответ и переходит к следующему вопросу.",
+    "Вводится в поле ответа на этот вопрос. Отправка подтверждает ответ и переходит к следующему вопросу.",
   "prompt.feedback.answer.helpMulti":
-    "Добавляет ваш ответ в виде отмеченного варианта; нажмите ‘Отправить’ (или ‘Далее’), когда закончите.",
+    "Добавляет ваш ответ в виде отмеченного варианта; нажмите «Отправить» (или «Далее»), когда закончите.",
   "prompt.feedback.answer.send": "Отправить ответ",
   "prompt.feedback.answer.sending": "Ввод вашего ответа…",
   "prompt.feedback.answer.focused":
