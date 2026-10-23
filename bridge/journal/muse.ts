@@ -471,11 +471,13 @@ export function createMuseReducer(): RowReducer {
               // "[image attached]" marker), never as a broken image. Muse's own
               // `[Image #n]` markers already in the text stay verbatim: they are the
               // log's own words, not invented ones. A non-image mime contributes
-              // nothing, and an unshaped digest names nothing.
+              // nothing. An image mime keeps its marker even when the digest is
+              // missing or malformed: the picture was attached either way.
               const mediaType =
                 typeof block.asset.media_type === "string" ? block.asset.media_type : undefined;
               if (mediaType !== undefined && !mediaType.startsWith("image/")) continue;
-              if (!isBlobHash(str(block.asset.digest))) continue;
+              // No mime type at all still needs a well-formed digest to count as a picture.
+              if (mediaType === undefined && !isBlobHash(str(block.asset.digest))) continue;
               assets += 1;
             } else if (kind === "image") {
               // An inline picture beside the asset references: base64 the log carried, so the

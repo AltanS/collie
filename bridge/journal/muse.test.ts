@@ -851,12 +851,10 @@ describe("parseMuseTranscript edit diffs, question answers and image assets (#51
     expect(JSON.stringify(entries)).not.toContain("data:image");
   });
 
-  test("an asset without a digest or with a non-image mime contributes no part", () => {
+  test("a non-image mime contributes no part", () => {
     const textOnly = parseMuseTranscript(
       accepted("row-1", [
         textBlock("check this"),
-        { kind: "asset", asset: { media_type: "image/png", byte_length: 42 } },
-        { kind: "asset", asset: { media_type: "image/png", byte_length: 42, digest: "xyz" } },
         {
           kind: "asset",
           asset: { media_type: "video/mp4", byte_length: 42, digest: "d".repeat(64) },
@@ -864,11 +862,25 @@ describe("parseMuseTranscript edit diffs, question answers and image assets (#51
       ]),
     );
     expect(textOnly[0]?.parts).toEqual([{ kind: "text", text: "check this" }]);
+  });
+
+  test("an image asset with a missing or malformed digest keeps its marker", () => {
+    const entries = parseMuseTranscript(
+      accepted("row-1", [
+        textBlock("check this"),
+        { kind: "asset", asset: { media_type: "image/png", byte_length: 42 } },
+        { kind: "asset", asset: { media_type: "image/png", byte_length: 42, digest: "xyz" } },
+      ]),
+    );
+    expect(entries[0]?.parts).toEqual([
+      { kind: "text", text: "check this\n\n[image attached]\n\n[image attached]" },
+    ]);
+    expect(JSON.stringify(entries)).not.toContain("data:image");
     expect(
       parseMuseTranscript(
         accepted("row-2", [{ kind: "asset", asset: { media_type: "image/png", digest: "xyz" } }]),
-      ),
-    ).toEqual([]);
+      )[0]?.parts,
+    ).toEqual([{ kind: "text", text: "[image attached]" }]);
   });
 });
 
