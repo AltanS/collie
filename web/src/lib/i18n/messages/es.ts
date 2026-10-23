@@ -1243,6 +1243,8 @@ export const es: Dictionary = {
   "belt.stop.receipt.refused.unreadable": "Collie no pudo leer la pantalla. No se presionó nada.",
   "belt.stop.receipt.refused.pressFailed": "La terminal no aceptó la tecla. No se detuvo nada.",
   "belt.stop.receipt.refused.paneGone": "Este panel ya no existe.",
+  "belt.stop.receipt.refused.unsupportedBuild": "This machine cannot stop from the phone yet. Update it.",
+  "belt.stop.receipt.unknown": "No answer came back. The Stop may have gone in. Check the pane before you tap Stop again.",
 
   // --- quickActions (one-tap reply dock) ---
   "quickActions.group.confirm": "confirmar",

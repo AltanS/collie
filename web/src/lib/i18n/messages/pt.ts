@@ -1142,6 +1142,8 @@ export const pt: Dictionary = {
   "belt.stop.receipt.refused.unreadable": "O Collie não conseguiu ler a tela. Nada foi pressionado.",
   "belt.stop.receipt.refused.pressFailed": "O terminal não aceitou a tecla. Nada foi parado.",
   "belt.stop.receipt.refused.paneGone": "Este painel não existe mais.",
+  "belt.stop.receipt.refused.unsupportedBuild": "This machine cannot stop from the phone yet. Update it.",
+  "belt.stop.receipt.unknown": "No answer came back. The Stop may have gone in. Check the pane before you tap Stop again.",
   "quickActions.group.confirm": "confirmar",
   "quickActions.group.common": "comum",
   "find.placeholder": "Localizar em {subject}…",

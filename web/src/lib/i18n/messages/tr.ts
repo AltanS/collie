@@ -1142,6 +1142,8 @@ export const tr: Dictionary = {
   "belt.stop.receipt.refused.unreadable": "Collie ekranı okuyamadı. Hiçbir şeye basılmadı.",
   "belt.stop.receipt.refused.pressFailed": "Uçbirim tuşu almadı. Hiçbir şey durdurulmadı.",
   "belt.stop.receipt.refused.paneGone": "Bu bölme artık yok.",
+  "belt.stop.receipt.refused.unsupportedBuild": "This machine cannot stop from the phone yet. Update it.",
+  "belt.stop.receipt.unknown": "No answer came back. The Stop may have gone in. Check the pane before you tap Stop again.",
   "quickActions.group.confirm": "onayla",
   "quickActions.group.common": "ortak",
   "find.placeholder": "{subject} içinde bul…",

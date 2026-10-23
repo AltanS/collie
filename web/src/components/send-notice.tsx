@@ -54,6 +54,7 @@ const STOP_REFUSALS = {
   unreadable: "belt.stop.receipt.refused.unreadable",
   press_failed: "belt.stop.receipt.refused.pressFailed",
   pane_gone: "belt.stop.receipt.refused.paneGone",
+  unsupported_build: "belt.stop.receipt.refused.unsupportedBuild",
 } as const satisfies Record<StopReason, MessageKey>;
 
 /**
@@ -63,6 +64,9 @@ const STOP_REFUSALS = {
  */
 export function stopNotice(receipt: StopReceipt): SendRefusal {
   if (receipt.outcome === "stopped") return { sentence: translate("belt.stop.receipt.stopped"), detail: null, toCard: false, screen: false, tone: "neutral" };
+  // No receipt came back (a crew member that did not answer in time): the key may have gone in, so the
+  // person reads the pane before a second tap.
+  if (receipt.outcome === "unknown") return phoneRefusal(translate("belt.stop.receipt.unknown"));
   if (receipt.outcome === "pressed") {
     // The key opened a dialog: the turn is not the story now, its card is.
     if (receipt.reason === "dialog_open") return phoneRefusal(translate("belt.stop.receipt.pressedDialog"), true);

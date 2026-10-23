@@ -1235,6 +1235,8 @@ export const ja: Dictionary = {
   "belt.stop.receipt.refused.unreadable": "Collieが画面を読み取れませんでした。キーは押されていません。",
   "belt.stop.receipt.refused.pressFailed": "ターミナルがキーを受け付けませんでした。何も停止していません。",
   "belt.stop.receipt.refused.paneGone": "このペインは存在しません。",
+  "belt.stop.receipt.refused.unsupportedBuild": "This machine cannot stop from the phone yet. Update it.",
+  "belt.stop.receipt.unknown": "No answer came back. The Stop may have gone in. Check the pane before you tap Stop again.",
 
   // --- quickActions (one-tap reply dock) ---
   "quickActions.group.confirm": "確認",

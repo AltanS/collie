@@ -1233,6 +1233,8 @@ export const ko: Dictionary = {
   "belt.stop.receipt.refused.unreadable": "Collie가 화면을 읽을 수 없었습니다. 아무것도 누르지 않았습니다.",
   "belt.stop.receipt.refused.pressFailed": "터미널이 키를 입력받지 않았습니다. 아무것도 중지되지 않았습니다.",
   "belt.stop.receipt.refused.paneGone": "이 창이 사라졌습니다.",
+  "belt.stop.receipt.refused.unsupportedBuild": "This machine cannot stop from the phone yet. Update it.",
+  "belt.stop.receipt.unknown": "No answer came back. The Stop may have gone in. Check the pane before you tap Stop again.",
 
   // --- quickActions (one-tap reply dock) ---
   "quickActions.group.confirm": "확인",

@@ -1430,10 +1430,32 @@ async function postControl(paneId: string, route: "send" | "abort" | "action", b
 // The Stop helpers sit HERE, beside `postControl`, and not under `abortPane`: lib/ack-manifest.test.ts
 // reads a helper's `method: "POST"` as the export above it, so a helper below an export is a mutation it
 // has not declared.
-/** The receipt a Stop answered, or null for a body that is none. A 404 is the pane gone, never a press. */
+/**
+ * What a Stop's 400 or 404 means. This build's Stop route answers a missing pane with its own receipt
+ * (`refused`, `pane_gone`). A refusal in the bridge's error shape (a `code`: an unknown host or
+ * session) is thrown as that refusal. Anything else is a build with no Stop for a screen pane: a crew
+ * member before M68 answers a bare 404 (`{"error":"not found"}` from its crew router), or a 400 from
+ * the program-only abort route of ADR 0101, which wants a turn this phone never sends. Nothing was
+ * pressed either way.
+ */
+function stopMissed(body: JsonObject, status: 400 | 404, requestId: string): StopReceipt {
+  if (body.outcome === "refused" && body.reason === "pane_gone") return { requestId, outcome: "refused", reason: "pane_gone" };
+  const fields = asJsonString(body.code) === undefined ? undefined : apiErrorFieldsOf(body);
+  if (fields !== undefined) throw new ApiError(fields.error ?? "The abort route refused the Stop.", status, fields);
+  return { requestId, outcome: "refused", reason: "unsupported_build" };
+}
+
+/** A Stop's failed answers that are still answers: the three of `recoverOutcome`, and a 400 (see {@link stopMissed}). */
+const stopRecover = (status: number, detail: string): JsonObject | null =>
+  status === 400 ? { ...parseJsonObject(detail), [HTTP_STATUS]: status } : recoverOutcome(status, detail);
+
+/** The receipt a Stop answered, or null for a body that is none. A 404 or a 400 never pressed a key. */
 function stopReceiptOf(body: JsonObject | undefined, requestId: string): StopReceipt | null {
   if (body === undefined) return null;
-  if (body[HTTP_STATUS] === 404) return { requestId, outcome: "refused", reason: "pane_gone" };
+  if (body[HTTP_STATUS] === 404) return stopMissed(body, 404, requestId);
+  if (body[HTTP_STATUS] === 400) return stopMissed(body, 400, requestId);
+  // The lead could not hear the member's answer in time (`write_outcome_unknown`): the key may have gone in.
+  if (body[HTTP_STATUS] === 504) return { requestId, outcome: "unknown" };
   const outcome = STOP_OUTCOMES.find((word) => word === body.outcome);
   if (outcome === undefined) return null;
   const id = asJsonString(body.requestId) ?? requestId;
@@ -1454,7 +1476,7 @@ async function postStop(paneId: string, requestId: string, scope: Scope | undefi
   const got = await req<JsonObject>(
     withScope(`/api/pane/${encodeURIComponent(paneId)}/abort`, scope),
     { method: "POST", body: JSON.stringify(body) },
-    sendRecover(recoverOutcome),
+    sendRecover(stopRecover),
   );
   const receipt = stopReceiptOf(got, requestId);
   if (receipt === null) throw new ApiError("The abort route sent a body this phone cannot read.", 502);

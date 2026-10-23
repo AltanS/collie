@@ -269,6 +269,11 @@ Collie refuses before it presses when pressing could do harm:
 - **Collie cannot read this pane.** It does not press a key into a screen it cannot read. This also
   covers a screen where Collie cannot tell whether a turn runs.
 - **The turn had already ended.** There was nothing to stop, so nothing was pressed.
+- **This machine cannot stop from the phone yet.** Over a crew, the machine that runs the pane has an
+  older Collie. Update it, then stop.
+
+If no answer comes back from a crew machine in time, Collie says so. The Stop may have gone in, so
+check the pane before you tap Stop again.
 
 A Stop is always your tap. A walky talky message, a hook, the command line and a queued action never
 press one. Over a crew, the machine that runs the pane presses the key, reads the screen and sends

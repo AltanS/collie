@@ -1206,6 +1206,8 @@ export const ru: Dictionary = {
   "belt.stop.receipt.refused.unreadable": "Collie не удалось прочитать экран. Ничего не нажато.",
   "belt.stop.receipt.refused.pressFailed": "Терминал не принял клавишу. Ничего не остановлено.",
   "belt.stop.receipt.refused.paneGone": "Эта панель исчезла.",
+  "belt.stop.receipt.refused.unsupportedBuild": "This machine cannot stop from the phone yet. Update it.",
+  "belt.stop.receipt.unknown": "No answer came back. The Stop may have gone in. Check the pane before you tap Stop again.",
   "quickActions.group.confirm": "подтвердить",
   "quickActions.group.common": "общие",
   "find.placeholder": "Найти в {subject}…",

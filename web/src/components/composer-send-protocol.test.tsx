@@ -52,6 +52,7 @@ interface Posted {
   text: string;
   mode: string;
   rowsHash?: string;
+  when?: string;
 }
 
 /** One answer the fake bridge gives: a body, or a failure with this HTTP status. */
@@ -305,6 +306,29 @@ describe("Steer or queue on the Send button (M69)", () => {
     await waitFor(() => expect(sends).toHaveLength(1));
     await waitFor(() => expect(status()).toBe("Queued instead: the agent kept it for after the turn."));
     await waitFor(() => expect(loadDraft(undefined, "w1:p1") ?? "").toBe(""));
+  });
+
+  // Crew version skew (counsel on the Edge 5 candidate): a member that ignores `when` queues the text
+  // and answers `sent` with `queued` through the pane's reply route. The phone asked to steer and got
+  // queued: it says Queued instead, never Steered.
+  it("a steer to a crew member that queued it (a receipt with no steered) reads Queued instead, never Steered", async () => {
+    const user = userEvent.setup();
+    const posted: Pick<Posted, "text" | "when">[] = [];
+    markLive("w1:p1", Date.now(), { host: "laptop" });
+    server.use(
+      http.post(/\/api\/pane\/w1%3Ap1\/reply$/, async ({ request }) => {
+        // SAFETY: the composer under test is the only poster; the test reads two fields it then checks.
+        posted.push((await request.json()) as Pick<Posted, "text" | "when">);
+        return HttpResponse.json({ ok: true, send: { receipt: { ...receipt("sent"), queued: true }, offers: [] } });
+      }),
+    );
+    renderSteer({ surface: running, canSteer: true, scope: { host: "laptop" } });
+    await openMenu(user, "change course");
+    await user.click(await screen.findByRole("button", { name: STEER }));
+    await waitFor(() => expect(posted).toHaveLength(1));
+    expect(posted[0]).toMatchObject({ text: "change course", when: "steer" });
+    await waitFor(() => expect(status()).toBe("Queued instead: the agent kept it for after the turn."));
+    expect(status()).not.toMatch(/Steered/u);
   });
 
   it("steer_unsupported says nothing was sent and keeps the draft", async () => {

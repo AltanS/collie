@@ -7911,7 +7911,9 @@ export async function stopRoute(
   const requestId = asJsonRecord(body)?.requestId;
   if (typeof requestId !== "string" || !REQUEST_ID.test(requestId)) return text("bad body", 400);
   const harness = replySendOf(rt).harnessOf(paneId);
-  if (harness === null) return text("no such terminal pane", 404);
+  // A missing pane answers the Stop's own receipt, so the phone can tell it from the bare 404 of a
+  // build with no Stop for a screen pane (an older crew member: `unsupported_build` on the phone).
+  if (harness === null) return json({ requestId, outcome: "refused", reason: "pane_gone" }, context.acceptEncoding, 404);
   const answer = await rt.stop.handle(requestId, paneId, harness);
   if (answer.kind === "id_reused") return json({ requestId, outcome: "refused", reason: "request-id-reused" }, context.acceptEncoding, 409);
   const { receipt } = answer;

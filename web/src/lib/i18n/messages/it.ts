@@ -1143,6 +1143,8 @@ export const it: Dictionary = {
   "belt.stop.receipt.refused.unreadable": "Collie non ha potuto leggere lo schermo. Non è stato premuto nulla.",
   "belt.stop.receipt.refused.pressFailed": "Il terminale non ha accettato il tasto. Non è stato arrestato nulla.",
   "belt.stop.receipt.refused.paneGone": "Questo riquadro non esiste più.",
+  "belt.stop.receipt.refused.unsupportedBuild": "This machine cannot stop from the phone yet. Update it.",
+  "belt.stop.receipt.unknown": "No answer came back. The Stop may have gone in. Check the pane before you tap Stop again.",
   "quickActions.group.confirm": "conferma",
   "quickActions.group.common": "comuni",
   "find.placeholder": "Trova in {subject}…",

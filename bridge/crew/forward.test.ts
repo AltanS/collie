@@ -883,6 +883,29 @@ describe("an attempted write whose outcome is unknown (§10.3, .adr/0010 over a 
   });
 });
 
+// ── A Stop and a steer cross once (counsel on the Edge 5 candidate) ───────────
+//
+// Both are a key into a running turn on the member. A Stop on a member reads twice, presses, and reads
+// back up to 2.4 s; a Codex steer pauses 1 s before the key and reads up to 2 s after it. Both fit the
+// WRITE_BUDGET_MS of a forwarded write, and when the member does not answer inside it the lead says
+// `write_outcome_unknown` and never dials again: a second dial would be a second key.
+describe("a Stop and a steer over a crew link", () => {
+  test("the Stop (`abort`) and the steer (a `reply` with `when: steer`) dial once, on WRITE_BUDGET_MS, and a timeout is unknown", async () => {
+    for (const [path, body] of [
+      ["/api/pane/w1:p1/abort?host=laptop", `{"requestId":"stop-req-0001"}`],
+      ["/api/pane/w1:p1/reply?host=laptop", `{"text":"use the other table","submit":true,"id":"steer-req-0001","when":"steer"}`],
+    ] as const) {
+      const { transport, calls } = transportOf(() => ({ ok: false, state: "unreachable", reason: "timed out after 5000ms", receivedAt: 2 }));
+      const [req, url] = post(path, body);
+      const res = await forward(req, url, { transport });
+      expect(res.status).toBe(504);
+      expect((await failureBody(res)).code).toBe("write_outcome_unknown");
+      expect(calls).toHaveLength(1);
+      expect(calls[0]!.budgetMs).toBe(WRITE_BUDGET_MS);
+    }
+  });
+});
+
 // ── A forwarded write is not a poll (§10.1, amended 2026-09-08) ──────────────
 
 describe("a forwarded write carries its own budget (§10.1)", () => {

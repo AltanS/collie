@@ -716,15 +716,18 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const hideRefusal = () => setHiddenRefusalKey(shownRefusalKey);
   // STOP (M68 spec 02): one fresh request id per second tap, the bridge's receipt told in the notice a send's
   // refusal uses. The bridge presses the profile's interrupt key as this person's tap, so nothing is typed
-  // and no draft is touched; a refusal says why nothing was pressed. A thrown error is the status line's,
-  // like every other write that could not be read.
+  // and no draft is touched; a refusal says why nothing was pressed. A thrown error that says nothing about
+  // the key (a timeout, a dropped link, a body the phone cannot read) is the Stop's `unknown`: the key may
+  // have gone in. A refusal that came back as an error (an unknown host) is the status line's.
   async function stopTurn(): Promise<void> {
+    const requestId = mintRequestId();
     try {
-      const receipt = await api.abortPane(paneId, { requestId: mintRequestId() }, scope);
+      const receipt = await api.abortPane(paneId, { requestId }, scope);
       setSendRefusal(stopNotice(receipt), shownSurface);
       if (receipt.keys !== undefined) onSent();
     } catch (e) {
-      setStatus(describeThrownError(e), "error");
+      if (api.outcomeUnknown(e)) setSendRefusal(stopNotice({ requestId, outcome: "unknown" }), shownSurface);
+      else setStatus(describeThrownError(e), "error");
     }
   }
   // The reason a destructive line is held for a second tap, said at the Send slot (it was a header line,

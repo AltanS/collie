@@ -13,9 +13,11 @@ export interface StopBody {
 /**
  * `stopped`: the keys went in and two reads in a row within 3 s show the turn gone and no dialog.
  * `pressed`: the keys went in and the read-back did not show that (one idle read alone, a turn that
- * still reads running, or a read that could not tell). `refused`: no key left.
+ * still reads running, or a read that could not tell). `refused`: no key left. `unknown` is the
+ * phone's word, never the bridge's: no receipt came back (a crew member that did not answer the lead
+ * in time, the lead's `write_outcome_unknown`), so the key may or may not have gone in.
  */
-export const STOP_OUTCOMES = ["stopped", "pressed", "refused"] as const;
+export const STOP_OUTCOMES = ["stopped", "pressed", "refused", "unknown"] as const;
 export type StopOutcome = (typeof STOP_OUTCOMES)[number];
 
 /**
@@ -23,9 +25,11 @@ export type StopOutcome = (typeof STOP_OUTCOMES)[number];
  * blind. `turn_idle`: the turn already ended. `dialog_open`: a dialog is up and Escape would answer it.
  * `draft_present`: the box holds text and this harness's interrupt key clears it first.
  * `unreadable`: Collie cannot tell whether a turn runs on this screen. `press_failed`: the multiplexer
- * refused the keys. `pane_gone`: the multiplexer could not read the pane.
+ * refused the keys. `pane_gone`: the multiplexer could not read the pane. `unsupported_build` is the
+ * phone's word, never the bridge's: the machine that owns the pane runs a build with no Stop for a
+ * screen pane (its route answered a bare 404 or a 400 instead of a receipt), so nothing was pressed.
  */
-export const STOP_REASONS = ["no_profile", "turn_idle", "dialog_open", "draft_present", "unreadable", "press_failed", "pane_gone"] as const;
+export const STOP_REASONS = ["no_profile", "turn_idle", "dialog_open", "draft_present", "unreadable", "press_failed", "pane_gone", "unsupported_build"] as const;
 export type StopReason = (typeof STOP_REASONS)[number];
 
 /** The receipt a Stop answers, and the same one again for the same request id. */

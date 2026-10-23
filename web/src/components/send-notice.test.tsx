@@ -21,4 +21,14 @@ describe("stopNotice", () => {
   it("the dialog_open refusal still points at the card", () => {
     expect(stopNotice({ requestId: "stop-req-0001", outcome: "refused", reason: "dialog_open" }).toCard).toBe(true);
   });
+
+  it("an older crew member's answer says to update that machine; no answer says the Stop may have gone in", () => {
+    const old = stopNotice({ requestId: "stop-req-0001", outcome: "refused", reason: "unsupported_build" });
+    expect(old.sentence).toBe("This machine cannot stop from the phone yet. Update it.");
+    expect(old.toCard).toBe(false);
+    const unknown = stopNotice({ requestId: "stop-req-0001", outcome: "unknown" });
+    expect(unknown.sentence).toBe(t("belt.stop.receipt.unknown"));
+    expect(unknown.sentence).toMatch(/may have gone in/u);
+    expect(unknown.tone).toBe("caution");
+  });
 });

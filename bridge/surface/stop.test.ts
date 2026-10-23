@@ -314,7 +314,10 @@ describe("the route's body", () => {
     for (const body of [undefined, null, "x", [], {}, { requestId: 5 }, { requestId: "short" }, { requestId: "../../etc/passwd-x" }]) {
       expect((await stop("%1", body)).status).toBe(400);
     }
-    expect((await stop("%9", { requestId: ID })).status).toBe(404);
+    const missing = await stop("%9", { requestId: ID });
+    expect(missing.status).toBe(404);
+    // The Stop's own receipt, so the phone tells a gone pane from a build with no Stop (unsupported_build).
+    expect(await missing.json()).toEqual({ requestId: ID, outcome: "refused", reason: "pane_gone" });
     expect(pane.keysSeen).toEqual([]);
   });
 
