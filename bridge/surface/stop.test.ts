@@ -187,7 +187,8 @@ describe("a Stop on a pane with a screen", () => {
   test("the same Grok turn with an empty box is pressed", async () => {
     const { pane, stop } = rig(GROK_RUNNING);
     expect((await receipt(await stop("%3", { requestId: ID }))).outcome).toBe("pressed");
-    expect(pane.keysSeen).toEqual([["Escape"]]);
+    // Grok's vendor doc: "Esc never cancels the turn", so its interrupt key is Ctrl+C.
+    expect(pane.keysSeen).toEqual([["ctrl+c"]]);
   });
 
   test("refused unreadable: a screen with no box is not stopped blind", async () => {

@@ -69,7 +69,7 @@
       "ctrl+j"
     ],
     "interrupt": [
-      "Escape"
+      "ctrl+c"
     ],
     "interruptClearsDraft": true,
     "clear": {

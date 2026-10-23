@@ -778,6 +778,8 @@ describe("the frame schema of the interior walk (M56 spec 14)", () => {
     expect(loadProfiles().get("claude")?.keys.interruptClearsDraft).toBeUndefined();
     // opencode needs Esc twice within 5 s (vendor doc: the first shows "again to interrupt"), so the gate presses both.
     expect(loadProfiles().get("opencode")?.keys.interrupt).toEqual(["Escape", "Escape"]);
+    // Grok's vendor doc: "Esc never cancels the turn". Ctrl+C cancels it (and clears the draft first).
+    expect(loadProfiles().get("grok")?.keys.interrupt).toEqual(["ctrl+c"]);
   });
 
   it("names the alternate frame shape in the path of a bad field", () => {
