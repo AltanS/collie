@@ -46,7 +46,7 @@ import type { IntentId } from "@/lib/durable-control";
 import { Notice, NOTICE_ACTION } from "@/components/ui/notice";
 import { ActionRow } from "@/components/action-sheet-rows";
 import { AnchoredMenu } from "@/components/ui/anchored-menu";
-import { WalkyAimStrip, WalkyNoteStrip } from "@/components/walky-composer-strip";
+import { WalkyAimStrip, WalkyHeldStrip, WalkyNoteStrip } from "@/components/walky-composer-strip";
 import { WalkyIcon } from "@/components/walky-icon";
 import { useLongPress } from "@/hooks/use-long-press";
 import { useWalkyComposer, type WalkyAim } from "@/hooks/use-walky-composer";
@@ -186,6 +186,11 @@ interface ComposerProps {
   display: { open: boolean; onToggle: () => void };
   /** Snap the mirror to the live tail (follow + revalidate + scroll) after a successful send. */
   onSent: () => void;
+  /**
+   * Opens the pane's Messages sheet (M62 spec 03): where the held mark above the box takes a tap. Absent
+   * where the pane has no sheet, and then no mark is drawn.
+   */
+  onOpenMessages?: (() => void) | undefined;
   /**
    * The pane's held sends from the snapshot (M56 spec 15), oldest first: a send the harness could not
    * take mid-turn, kept by the bridge and sent when the pane reads free. One queued row each, above the box.
@@ -385,7 +390,7 @@ interface ClearedDraft {
 
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, instance, surface, unreachableNote, scope, agent, isShell, cwd, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, held: heldRows, chatEntries, pullHandle, draftNoticeSlot, changesPill, stale, hand = "right", screen, todos, subagents },
+  { paneId, instance, surface, unreachableNote, scope, agent, isShell, cwd, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, onOpenMessages, held: heldRows, chatEntries, pullHandle, draftNoticeSlot, changesPill, stale, hand = "right", screen, todos, subagents },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -805,6 +810,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       clearComposedDraft();
       revalidator.revalidate();
     },
+    onChanged: () => revalidator.revalidate(),
   });
 
   const hasDraft = input.trim() !== "" || attachments.length > 0;
@@ -2239,7 +2245,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           {walky.aim !== null && <WalkyAimStrip aim={walky.aim} onCancel={walky.clearAim} />}
         </Collapse>
         <Collapse open={walky.note !== null}>
-          {walky.note !== null && <WalkyNoteStrip note={walky.note} onDismiss={walky.dismissNote} />}
+          {walky.note !== null && <WalkyNoteStrip note={walky.note} onDismiss={walky.dismissNote} onCancel={walky.cancelFollowed === null ? null : () => void walky.cancelFollowed?.()} />}
+        </Collapse>
+        {/* MESSAGES HELD FOR THIS PANE (M62 spec 03): a draft in the box holds a message up to an hour, and
+            the owner of the box should know. One line, a tap opens the Messages sheet with its Drop. */}
+        <Collapse open={walky.held > 0 && onOpenMessages !== undefined}>
+          {walky.held > 0 && onOpenMessages !== undefined && <WalkyHeldStrip count={walky.held} onOpen={onOpenMessages} />}
         </Collapse>
         {/* A draft too large for the disk tier (lib/drafts.ts). It survives a pane switch — the
             memory tier holds it whole — but not the app closing, and that difference is invisible

@@ -14,7 +14,7 @@
 #              cannot hide behind a removed one in another. A test must not be skipped just to get
 #              green, so a higher count is a failure. Raise a number only with a reason.
 #              Bridge went from 2 to 0 when M43 spec 04 checked the access list instead of the mode.
-#              Today, 153 in all, each one named, with its reason:
+#              Today, 154 in all, each one named, with its reason:
 #              bridge 91. 5 are the POSIX-only and engine cases below, 1 the /etc link scan, 4 are the hold socket tests, 5 the walky ones, 30 are the
 #                durable example apps, 10 are the durable-harness adapter test, and 36 are the durable socket tests (see "Durable, bridge" below).
 #                Of the first 5, four are in bridge/stt/local-cli.test.ts. Windows has no executable bit
@@ -81,9 +81,9 @@
 #                "installScript from a shallow lead, run for real" in cli/remote.test.ts: they run the
 #                install leg, POSIX sh that a crew member runs over ssh, and a Windows machine cannot be a
 #                crew member (WINDOWS_CREW_SENTENCE in cli/crew.ts).
-#              Walky talky, cli (20). cli/walky.test.ts runs the verbs against a real bridge socket in a temp state
+#              Walky talky, cli (21). cli/walky.test.ts runs the verbs against a real bridge socket in a temp state
 #                dir, and Windows cannot bind it (the same reason as the hold socket). Each of those tests is
-#                `socketTest`, 9 in "send", 8 in "reply, inbox, status, who" and 3 in "on a crew member". The
+#                `socketTest`, 9 in "send", 8 in "reply, inbox, status, who", 1 in "cancel" and 3 in "on a crew member". The
 #                tests that never reach the socket run on Windows: the usage errors, "no bridge at all is
 #                UNREACHABLE" and "on Windows it says why and exits STATE".
 #              scripts 25: 23 are every test of scripts/install.test.ts ("scripts/install.sh > ..."):
@@ -95,7 +95,7 @@
 param(
   [Parameter(Mandatory = $true)][string]$Out,
   [int]$MaxSkipsBridge = 91,
-  [int]$MaxSkipsCli = 37,
+  [int]$MaxSkipsCli = 38,
   [int]$MaxSkipsScripts = 25
 )
 $skipBudget = @{ bridge = $MaxSkipsBridge; cli = $MaxSkipsCli; scripts = $MaxSkipsScripts }

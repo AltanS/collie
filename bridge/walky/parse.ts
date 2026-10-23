@@ -104,14 +104,15 @@ export function readReceipt(value: JsonValue | undefined): WalkyReceipt | null {
 
 // ── The local socket's requests ──────────────────────────────────────────────────────────────────
 
-export type WalkyOp = "send" | "inbox" | "who" | "status" | "ack";
+export type WalkyOp = "send" | "inbox" | "who" | "status" | "ack" | "cancel";
 
 export type WalkyRequest =
   | { readonly op: "send"; readonly markers: readonly BeaconMarker[]; readonly id: string; readonly to: string | null; readonly body: string; readonly replyTo: string | null }
   | { readonly op: "inbox"; readonly markers: readonly BeaconMarker[]; readonly all: boolean; readonly ack: boolean; readonly id: string | null }
   | { readonly op: "who"; readonly markers: readonly BeaconMarker[] }
   | { readonly op: "status"; readonly markers: readonly BeaconMarker[]; readonly id: string }
-  | { readonly op: "ack"; readonly markers: readonly BeaconMarker[]; readonly ids: readonly string[] | null };
+  | { readonly op: "ack"; readonly markers: readonly BeaconMarker[]; readonly ids: readonly string[] | null }
+  | { readonly op: "cancel"; readonly markers: readonly BeaconMarker[]; readonly id: string };
 
 /** One request line, or null. `v` must be 1; an unknown op, a bad id or a bad address fails. */
 export function parseWalkyRequest(line: string): WalkyRequest | null {
@@ -128,7 +129,7 @@ export function parseWalkyRequest(line: string): WalkyRequest | null {
   const markers = readMarkers(row.markers);
   const op = text(row, "op");
   if (op === "who") return { op, markers };
-  if (op === "status") {
+  if (op === "status" || op === "cancel") {
     const id = text(row, "id");
     return isWalkyId(id) ? { op, markers, id } : null;
   }

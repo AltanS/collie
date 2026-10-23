@@ -1,11 +1,13 @@
 import { useCallback, useMemo, useState } from "react";
 
 import { useCrew } from "@/components/crew-provider";
+import { cancelWalky } from "@/lib/api";
+import { describeThrownError } from "@/lib/api-error-message";
 import { useWalkyLog } from "@/components/walky-log";
 import { useWalkySend } from "@/hooks/use-walky-send";
 import { t } from "@/lib/i18n";
 import type { Scope } from "@/lib/scope";
-import { isHeld, paneAddress, stateWord, WALKY_BODY_MAX, wasTaken, type WalkyReceipt } from "@/lib/walky";
+import { heldForPane, isHeld, paneAddress, stateWord, takeBackNote, WALKY_BODY_MAX, wasTaken, type WalkyReceipt } from "@/lib/walky";
 import type { NoticeTone } from "@/components/ui/notice";
 
 /** Who a message in the composer is addressed to, when it is not simply this pane. */
@@ -55,6 +57,7 @@ export function useWalkyComposer({
   instance,
   scope,
   onTaken,
+  onChanged,
 }: {
   paneId: string;
   /** The pane's current session instance, when its machine reports one. The address then names it. */
@@ -62,6 +65,8 @@ export function useWalkyComposer({
   scope: Scope | undefined;
   /** The message left. The composer clears its draft and revalidates the pane. */
   onTaken: () => void;
+  /** A held message was taken back: the pane's list should be read again. Default: nothing, the poll reads it. */
+  onChanged?: (() => void) | undefined;
 }) {
   const { lead } = useCrew();
   const { send, sending } = useWalkySend();
@@ -110,15 +115,36 @@ export function useWalkyComposer({
 
   // The receipt the pane's list holds now for the followed message, once it has left `accepted` or is held.
   const later = followed === null ? undefined : log?.byId.get(followed.id)?.receipt;
+  // The followed message while the list says it is held (M62 spec 03): the strip offers Cancel for it. The
+  // operator sent it, so the operator may take it back; the list's next read shows how it ended.
+  const heldId = followed !== null && later !== undefined && isHeld(later) ? followed.id : null;
+  const cancelFollowed = useCallback(async () => {
+    if (heldId === null) return;
+    try {
+      const line = takeBackNote(await cancelWalky(heldId));
+      onChanged?.();
+      if (line !== null) setNote({ tone: "caution", text: line });
+    } catch (thrown) {
+      setNote({ tone: "danger", text: t("walky.sheet.takeBackFailed", { error: describeThrownError(thrown) }) });
+    }
+  }, [heldId, onChanged]);
   const shown = useMemo<WalkyNote | null>(
     () => (followed !== null && later !== undefined && (later.state !== "accepted" || isHeld(later)) ? outcomeNote(followed.label, later) : note),
     [followed, later, note],
   );
 
+  // The messages held for THIS pane (M62 spec 03): what the mark above the box counts. Read from the same
+  // list as everything else, so it adds no request of its own, and it goes when the hold ends either way.
+  const held = useMemo(() => (log === null ? 0 : heldForPane(log.rows, address).length), [log, address]);
+
   return {
     aim,
     note: shown,
     sending,
+    /** How many messages wait for this pane's box to clear (M62 spec 03). */
+    held,
+    /** Take the followed message back while it is held (M62 spec 03), or null when nothing of the operator's is held. */
+    cancelFollowed: heldId === null ? null : cancelFollowed,
     /** Open the box for a message to `to`: a reply to an agent's message. */
     startMessage: setAim,
     clearAim: useCallback(() => setAim(null), []),

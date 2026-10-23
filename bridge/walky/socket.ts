@@ -9,6 +9,7 @@
 //   who     {}                          → { ok, self, targets, note? }
 //   status  { id }                      → { ok, receipts, message, elsewhere }
 //   ack     { ids | null }              → { ok, acked }
+//   cancel  { id }                      → { ok, results }   (M62 spec 03: the sender takes a held message back)
 // A refusal is `{ ok: false, error }`. `not here` means the markers name no pane of this bridge, so
 // the CLI asks the next bridge on the machine. A send with no markers at all is refused: the operator
 // sends from a paired device, never from this socket.
@@ -23,10 +24,13 @@ import type { BeaconMarker } from "../beacon/types.ts";
 import { HOST, type Host } from "../host.ts";
 import { parseWalkyRequest, WALKY_LINE_MAX, type WalkyRequest } from "./parse.ts";
 import type { WalkyService } from "./service.ts";
+import type { TakeBack } from "./deliver.ts";
 import type { WalkyEntry, WalkyMessage, WalkyReceipt, WalkyTarget } from "./types.ts";
 
 /** What the socket answers a send that names no pane. */
 export const SEND_NEEDS_A_PANE = "run this inside a pane, or send from the phone";
+/** What the socket answers a cancel that names no pane: an operator's message is cancelled on the phone. */
+export const CANCEL_NEEDS_A_PANE = "run this inside the pane that sent it, or cancel from the phone";
 
 /** The socket of one state dir. */
 export function walkySocketPath(stateDir: string): string {
@@ -83,7 +87,8 @@ export type WalkyAnswer =
   | { readonly ok: true; readonly receipts: readonly WalkyReceipt[]; readonly message: WalkyMessage | null; readonly elsewhere: readonly string[] }
   | { readonly ok: true; readonly self: string | null; readonly targets: readonly WalkyTarget[]; readonly note?: string }
   | { readonly ok: true; readonly pane: string | null; readonly messages: readonly WalkyEntry[] }
-  | { readonly ok: true; readonly acked: number };
+  | { readonly ok: true; readonly acked: number }
+  | { readonly ok: true; readonly results: readonly TakeBack[] };
 
 /** Answer one parsed request. Exported for its test: the server only frames it. */
 export async function answerRequest(service: WalkyService, request: WalkyRequest, targets: readonly PlaceTarget[]): Promise<WalkyAnswer> {
@@ -132,6 +137,14 @@ export async function answerRequest(service: WalkyService, request: WalkyRequest
     case "ack":
       if (pane === null) return { ok: false, error: "needs a pane" };
       return { ok: true, acked: service.ack(pane.session, pane.paneId, pane.instance, request.ids) };
+    case "cancel": {
+      // The sender only (M62 spec 03): the pane the markers place must be the one that sent the message.
+      if (pane === null) {
+        service.noteRefusal("no pane");
+        return { ok: false, error: CANCEL_NEEDS_A_PANE };
+      }
+      return service.cancel(request.id, { kind: "agent", pane });
+    }
   }
 }
 

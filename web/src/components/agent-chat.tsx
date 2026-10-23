@@ -64,7 +64,8 @@ import { paneSurface } from "@/lib/send-slot";
 import { answerAsk, cardHashOf, type AskTapResult } from "@/lib/dialog-ask";
 import { holdAskOfNote, screenCardMayAnswer } from "@/lib/surface/hold";
 import { askOptionFor } from "@/lib/ask-reply";
-import { refreshNow } from "@/lib/api";
+import { cancelWalky, dropWalky, refreshNow } from "@/lib/api";
+import { describeThrownError } from "@/lib/api-error-message";
 import { sameKeys } from "@/lib/harness/prompt-model";
 import { askOf, type Ask } from "@/lib/surface/surface";
 import { focusQuestionCard } from "@/lib/dialog-focus";
@@ -87,7 +88,7 @@ import { CardWaitingCtx } from "@/components/chat-cards";
 import { chatStatusKey, SavedCopyRow, SessionStream, sharedFolderLine } from "@/components/session-stream";
 import { PaneSettingsSheet } from "@/components/pane-settings-sheet";
 import { WalkyOpenProvider } from "@/components/walky-log";
-import { paneAddress } from "@/lib/walky";
+import { paneAddress, takeBackNote } from "@/lib/walky";
 import { WalkySheet } from "@/components/walky-sheet";
 import { CompactStripLabels, TAB_ROW_SQUARE_TAP_TARGET } from "@/components/ui/labelled-strip";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
@@ -3060,6 +3061,15 @@ export function AgentChat({
                     onToggle: () => setDrawer(drawer === "display" ? null : "display"),
                   }}
                   onSent={onSent}
+                  // The held mark above the box (M62 spec 03) opens the Messages sheet, from the top.
+                  onOpenMessages={
+                    messagesSheet
+                      ? () => {
+                          setWalkyFocus(null);
+                          setDrawer("messages");
+                        }
+                      : undefined
+                  }
                   // The Screen pill on the belt: the raw rows, in one tap, in every state (M56 spec 07).
                   screen={gridless ? undefined : { on: screenForced, onToggle: () => setScreenForced((on) => !on) }}
                   // The switcher mark, for the actions belt's top rule — see the condition at
@@ -3295,6 +3305,26 @@ export function AgentChat({
           canReply={!readOnly && !savedCopyWrites && hostBlock === undefined && !gone}
           focusId={walkyFocus}
           self={walkySelf}
+          // The two take-backs of a held message (M62 spec 03). The routes answer per target; the list
+          // is read again at once so the row's own receipt shows the end of the hold.
+          onCancel={async (row) => {
+            try {
+              const results = await cancelWalky(row.id);
+              revalidator.revalidate();
+              return takeBackNote(results);
+            } catch (thrown) {
+              return t("walky.sheet.takeBackFailed", { error: describeThrownError(thrown) });
+            }
+          }}
+          onDrop={async (row) => {
+            try {
+              const results = await dropWalky(paneId, row.id, scope);
+              revalidator.revalidate();
+              return takeBackNote(results);
+            } catch (thrown) {
+              return t("walky.sheet.takeBackFailed", { error: describeThrownError(thrown) });
+            }
+          }}
           onReply={(row) => {
             closeDrawer();
             if (row.from.address === null) return;

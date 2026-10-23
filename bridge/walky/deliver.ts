@@ -53,6 +53,25 @@ export const HELD_POLL_MS = 2000;
 export const LANE_WAIT_MS = 2 * 60 * 1000;
 /** The reason of a message that waited out {@link LANE_WAIT_MS}. */
 export const PANE_BUSY = "pane busy";
+/** The reason of a held message its sender took back (M62 spec 03). */
+export const CANCELLED_BY_SENDER = "cancelled by sender";
+/** The reason of a held message the target pane's owner dropped (M62 spec 03). */
+export const DROPPED_BY_OWNER = "dropped by the pane's owner";
+
+/**
+ * How one take-back of one logged message ended (M62 spec 03). `taken`: the hold ended now, and the
+ * receipt is `inbox-only` with the reason given. `repeat`: it had ended as `inbox-only` already, so
+ * nothing changed. `already typed`: the message went into the pane (`delivered`), may have (`unknown`),
+ * or is going out this moment, so the Send Protocol did not confirm the cancel; the receipt stands.
+ * `not held`: the receipt is `accepted` with no held reason (queued, not held yet), `refused` or
+ * `expired`, none of which a take-back touches. `elsewhere`: the message is held on another machine,
+ * whose own bridge must take it back.
+ */
+export interface TakeBack {
+  readonly target: string;
+  readonly result: "taken" | "repeat" | "already typed" | "not held" | "elsewhere";
+  readonly receipt: WalkyReceipt;
+}
 
 /** One pane of this bridge, as walky talky sees it. */
 export interface WalkyPane {
@@ -601,8 +620,12 @@ export class WalkyDeliverer {
           said = why;
         }
         await this.sleep(HELD_POLL_MS);
+        // A person took the message back meanwhile (`takeBack`): its receipt is written, and the Send
+        // Protocol's `cancelled` is that take-back, not a new outcome to write over it.
+        if (this.ended(record)) return;
         result = this.deps.host.sendState(sendId) ?? result;
       }
+      if (this.ended(record)) return;
       if (result.outcome === "held") {
         // Take it back, then read what the Send Protocol says now: it may have gone out at the last
         // moment, and a hold the cancel did not reach may still go out. Only a cancel it confirmed
@@ -644,6 +667,39 @@ export class WalkyDeliverer {
       return;
     }
     this.deps.log.update(this.next(record, "inbox-only", reasonOf(result), sendId));
+  }
+
+  /** Whether the log's newest receipt for this record has left `accepted`: someone else settled it. */
+  private ended(record: LogRecord): boolean {
+    const now = this.deps.log.get(record.message.id, record.target);
+    return now !== null && now.receipt.state !== "accepted";
+  }
+
+  /**
+   * Take one held message back (M62 spec 03), for its sender (`reason` {@link CANCELLED_BY_SENDER}) or
+   * for the owner of the pane it waits for ({@link DROPPED_BY_OWNER}). Only a send that is `accepted`
+   * with a held reason, and placed on a pane of this bridge, is touched: the Send Protocol's cancel
+   * is asked, and only a cancel it confirmed (`cancelled`, or `expired` on the same clock) ends the
+   * send as `inbox-only` with the reason. The hold watcher (`settle`) reads that receipt and stops,
+   * so one send id types at most once and the reason stays the person's. A message that typed, may
+   * have typed, or is going out now keeps its receipt (`already typed`), as does one not held
+   * (`not held`); a repeat answers the stored `inbox-only` receipt and changes nothing. A message
+   * held on another machine (no pane here) is `elsewhere`. The caller decided who may ask.
+   */
+  takeBack(record: LogRecord, reason: typeof CANCELLED_BY_SENDER | typeof DROPPED_BY_OWNER): TakeBack {
+    const { receipt, target } = record;
+    const answer = (result: TakeBack["result"], newer: WalkyReceipt = receipt): TakeBack => ({ target, result, receipt: newer });
+    if (receipt.state === "inbox-only") return answer("repeat");
+    if (receipt.state === "delivered" || receipt.state === "unknown") return answer("already typed");
+    if (receipt.state !== "accepted" || receipt.reason === undefined) return answer("not held");
+    if (record.session === null || record.paneId === null) return answer("elsewhere");
+    const sendId = receipt.sendId ?? sendIdOf(record.message.id, target);
+    this.deps.host.cancelHeld(record.session, record.paneId, sendId);
+    const after = this.deps.host.sendState(sendId);
+    if (after !== null && after.outcome !== "cancelled" && after.outcome !== "expired") return answer("already typed");
+    const written = this.next(record, "inbox-only", reason, sendId);
+    this.deps.log.update(written);
+    return answer("taken", this.deps.log.get(record.message.id, target)?.receipt ?? written);
   }
 
   /** Whether the record's pane id is held by another instance now. A record from before instances never is. */

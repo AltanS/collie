@@ -657,6 +657,11 @@ let walkyPosts: WalkySendBody[] = [];
 export function setWalkyRows(rows: readonly WalkyRow[]): void {
   walkyRows = [...rows];
 }
+let walkyTakeBacks: string[] = [];
+/** The take-back routes the fake bridge took in this test (M62 spec 03): `cancel <id>` and `drop <pane> <id>`, oldest first. */
+export function recordedWalkyTakeBacks(): string[] {
+  return [...walkyTakeBacks];
+}
 /** The `POST /api/walky` bodies the fake bridge took in this test, oldest first. */
 export function recordedWalkyPosts(): readonly WalkySendBody[] {
   return walkyPosts;
@@ -665,6 +670,7 @@ export function recordedWalkyPosts(): readonly WalkySendBody[] {
 export function resetWalky(): void {
   walkyRows = [];
   walkyPosts = [];
+  walkyTakeBacks = [];
 }
 function walkyReceipt(id: string, to: string): WalkyReceipt {
   return { id, state: "accepted", verified: "local", at: Date.now(), by: to.split("/")[0] ?? "solo", target: to };
@@ -1004,6 +1010,17 @@ export const handlers = [
   }),
   // No agents, no shell panes, no refusals; a test that needs more overrides it with server.use(...).
   http.get("/api/walky/who", () => HttpResponse.json({ targets: [], skipped: [], refusals: null })),
+  // The take-backs (M62 spec 03): each answers one `taken` result for the row's own target.
+  http.post("/api/walky/:id/cancel", ({ params }) => {
+    const id = String(params.id);
+    walkyTakeBacks.push(`cancel ${id}`);
+    return HttpResponse.json({ results: [{ target: "local/w1:p1", result: "taken", receipt: { ...walkyReceipt(id, "local/w1:p1"), state: "inbox-only", reason: "cancelled by sender" } }] });
+  }),
+  http.post("/api/pane/:pane/walky/:id/drop", ({ params }) => {
+    const id = String(params.id);
+    walkyTakeBacks.push(`drop ${String(params.pane)} ${id}`);
+    return HttpResponse.json({ results: [{ target: "local/w1:p1", result: "taken", receipt: { ...walkyReceipt(id, "local/w1:p1"), state: "inbox-only", reason: "dropped by the pane's owner" } }] });
+  }),
   http.get("/api/snapshot", () => HttpResponse.json(fixtureSnapshot)),
   http.get(/\/api\/pane\/[^/]+$/, () =>
     HttpResponse.json({ paneId: "w1:p1", text: paneTextWithDraft(), truncated: false, revision: 1 }),

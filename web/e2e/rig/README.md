@@ -13,8 +13,8 @@ Tier 1's config ignores `e2e/rig/`.
 
 The leg is a gate. It runs in three places:
 
-- **Before every release tag**, on the release head. All thirty-five cases pass on the first tap:
-  twenty-eight on the solo leg (three harnesses with five cases each, twelve walky talky cases, and case 22) and
+- **Before every release tag**, on the release head. All thirty-seven cases pass on the first tap:
+  thirty on the solo leg (three harnesses with five cases each, fourteen walky talky cases, and case 22) and
   seven on the crew leg (below). A case that fails, or is not reached, holds the tag.
 - **Before merging a change** to a harness reader, the Surface, the Send Protocol or the ask code. Run
   it on the branch. A unit test cannot show that a tap works on a real screen.
@@ -63,7 +63,7 @@ The rules are the harness lab's (`scripts/harness-canary/lab/lab-ledger.ts`):
   rig.
 - A run that cannot finish writes `failed`. A run in which a case failed, in either leg, writes `fail`. A
   case that was not reached, or is not applicable, in either leg proves nothing, so it makes the row
-  `failed`. The row is `pass` only when both legs passed every case (28 solo cases and 7 crew cases). A
+  `failed`. The row is `pass` only when both legs passed every case (30 solo cases and 7 crew cases). A
   `fail` outranks a `failed` between the two legs.
 
 **Cannot start.** A Claude login with under 25 minutes left, no `herdr`, `bun` or `git`, under 8 GB of
@@ -89,7 +89,7 @@ a rig in `scripts/browser-leg-nightly.test.ts`, which `bun run test` runs.
 
 ## The cases
 
-Each harness runs the same five cases. The walky talky cases (6 to 11 and 16 to 21) run on the harnesses the
+Each harness runs the same five cases. The walky talky cases (6 to 11 and 16 to 23) run on the harnesses the
 last column names. Cases 12 to 15 and 19 to 21 run on the crew leg only (below).
 
 | # | Case | Harnesses | Spec |
@@ -116,6 +116,8 @@ last column names. Cases 12 to 15 and 19 to 21 run on the crew leg only (below).
 | 20 | Crew leg. Walky talky off on the member. The member's bridge restarts with `COLLIE_WALKY=off`. Claude on the lead sends to pi and reads `not sent: off`; the lead's status says `refused (off)`; pi's pane gets nothing. The Crew page's message to that machine (the sheet's "Send to" set to it) draws the receipt row `rig-member/all` with `not sent: off`, and the member counts the refusals in its own `refusals.json`. The lead's "Not sent on this machine" line counts only the lead's own refusals, so it stays empty. The member then restarts without the setting and is reachable | claude (lead), pi (member) | `walky-crew.spec.ts` |
 | 21 | Crew leg. The pair limit. A throwaway Claude on the lead sends seven messages to pi on the member through the CLI (`collie walky send` with that pane's markers). pi's box holds a draft, so the first six are held (`accepted`, and the lead reads the reason `draft present` from the member's report) and cost no model turn. Each send waits the CLI's 15 seconds for an outcome, so the six take about 90 seconds. The seventh is refused `pair limit` on the lead and never dialled, and the draft is untouched. The draft stays at the end: clearing it would type the six. This is the crew leg's last case, and the rig takes the holds down with it | claude (lead), pi (member) | `walky-crew.spec.ts` |
 | 22 | Model from the belt over a draft. A word typed into Claude's box outside the phone is a draft. The belt's Model is refused `draft_present`, and the phone offers Replace and Cancel, no Add, with the notice "Replace it, or cancel". One tap on Replace empties the box and sends `/model`: the picker opens on the pane and as a card on the phone, and the draft is gone. Escape outside the phone closes the picker. No model turn | claude | `claude.spec.ts` |
+| 23 | A held message cancelled by its sender (M62 spec 03). The operator's message over a draft is held (`accepted`, `draft present`). In the pane's Messages sheet the held row carries Cancel; a tap ends it as `inbox-only` with the reason `cancelled by sender`, the draft is untouched, and nothing is typed once the box is cleared | claude | `walky.spec.ts` |
+| 24 | A held message dropped by the pane's owner (M62 spec 03). A second Claude sends through the CLI over a draft, so the message is an agent's and held. The phone shows "1 message waits for the box to clear" above the box; a tap opens the Messages sheet on it, Drop ends it as `inbox-only` with the reason `dropped by the pane's owner`, the mark goes, and nothing is typed once the box is cleared | claude | `walky.spec.ts` |
 
 The walky talky path is the same bridge code for every harness, so Claude carries most of the cases and
 pi and omp prove that their screens take the message. The table prints a row only for a harness a case

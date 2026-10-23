@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { AuditLog } from "../audit.ts";
-import { walkyOlderMemberAnswer, walkyPaneRoute, walkyPostRoute, walkyWhoRoute, WALKY_OFF_TEXT, WALKY_OLDER_MEMBER_TEXT } from "../server.ts";
-import type { WalkyHost, WalkyPane } from "./deliver.ts";
+import { walkyCancelRoute, walkyDropRoute, walkyOlderMemberAnswer, walkyPaneRoute, walkyPostRoute, walkyWhoRoute, WALKY_OFF_TEXT, WALKY_OLDER_MEMBER_TEXT } from "../server.ts";
+import type { SendResult, WalkyHost, WalkyPane } from "./deliver.ts";
 import { WalkyLog } from "./log.ts";
 import { WalkyService } from "./service.ts";
 
@@ -164,5 +164,65 @@ describe("a crew member pane's list on the lead (§21, added 2026-10-18)", () =>
     // A development lead below 1.23.0 takes its own version as the floor, as the message route does.
     expect(walkyOlderMemberAnswer("1.22.5", "1.22.6")?.status).toBe(404);
     expect(walkyOlderMemberAnswer("1.22.6", "1.22.6")).toBeNull();
+  });
+});
+
+describe("the take-backs (M62 spec 03)", () => {
+  /** A service whose Send Protocol holds every send until a cancel, and whose watcher never wakes. */
+  function heldService(): WalkyService {
+    const root = mkdtempSync(join(tmpdir(), "walky-routes-"));
+    roots.push(root);
+    const states = new Map<string, SendResult>();
+    const heldHost: WalkyHost = {
+      panes: () => panes,
+      send: async (_pane, sendId): Promise<SendResult> => {
+        states.set(sendId, { outcome: "held", reason: "draft_present" });
+        return { outcome: "held", reason: "draft_present" };
+      },
+      sendState: (sendId) => states.get(sendId) ?? null,
+      cancelHeld: (_session, _paneId, sendId) => states.set(sendId, { outcome: "cancelled" }),
+    };
+    return new WalkyService({ log: new WalkyLog(join(root, "walky")), host: heldHost, memberId: null, enabled: () => true, machine: "desk", keyPem: () => null, sleep: () => new Promise(() => undefined) });
+  }
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
+
+  test("POST /api/walky/<id>/cancel takes an operator's held message back, once; an agent's is 403, an unknown id 404", async () => {
+    const walky = heldService();
+    const audit: string[] = [];
+    await walkyPostRoute(walky, { id: "wt_aaaaaaaaaaa1", to: "local/w1:p1", body: "Stop and report." }, context(audit));
+    await walky.send({ id: "wt_aaaaaaaaaaa2", to: "local/w1:p2", body: "hi", replyTo: null }, { kind: "agent", pane: panes[0]! });
+    await settle();
+    expect(walky.status("wt_aaaaaaaaaaa1").receipts[0]).toMatchObject({ state: "accepted", reason: "draft present" });
+    const res = walkyCancelRoute(walky, "wt_aaaaaaaaaaa1", context(audit));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ results: [{ target: "local/w1:p1", result: "taken", receipt: { state: "inbox-only", reason: "cancelled by sender" } }] });
+    expect(audit.join("")).toContain("walky.cancel");
+    expect(audit.join("")).not.toContain("Stop and report");
+    const again = walkyCancelRoute(walky, "wt_aaaaaaaaaaa1", context(audit));
+    expect(await again.json()).toMatchObject({ results: [{ result: "repeat" }] });
+    // The id's shape is checked here, not in the route table: a segment that is no walky id is a 400.
+    expect(walkyCancelRoute(walky, "nope", context(audit)).status).toBe(400);
+    expect(walkyDropRoute(walky, "main", "w1:p1", "nope", context(audit)).status).toBe(400);
+    expect(walkyCancelRoute(walky, "wt_aaaaaaaaaaa2", context(audit)).status).toBe(403);
+    expect(walky.status("wt_aaaaaaaaaaa2").receipts[0]).toMatchObject({ state: "accepted", reason: "draft present" });
+    expect(walkyCancelRoute(walky, "wt_zzzzzzzzzzzz", context(audit)).status).toBe(404);
+    expect(walkyCancelRoute(undefined, "wt_aaaaaaaaaaa1", context(audit)).status).toBe(404);
+  });
+
+  test("POST /api/pane/<pane>/walky/<id>/drop ends a message held for that pane as dropped; another pane, or no such pane, is 404", async () => {
+    const walky = heldService();
+    const audit: string[] = [];
+    await walky.send({ id: "wt_aaaaaaaaaaa1", to: "local/w1:p2", body: "hi", replyTo: null }, { kind: "agent", pane: panes[0]! });
+    await settle();
+    expect(walkyDropRoute(walky, "main", "w1:p1", "wt_aaaaaaaaaaa1", context(audit)).status).toBe(404);
+    expect(walkyDropRoute(walky, "main", "w9:p9", "wt_aaaaaaaaaaa1", context(audit)).status).toBe(404);
+    expect(walkyDropRoute(walky, "main", "../x", "wt_aaaaaaaaaaa1", context(audit)).status).toBe(400);
+    const res = walkyDropRoute(walky, "main", "w1:p2", "wt_aaaaaaaaaaa1", context(audit));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ results: [{ target: "local/w1:p2", result: "taken", receipt: { state: "inbox-only", reason: "dropped by the pane's owner" } }] });
+    expect(audit.join("")).toContain("walky.drop");
+    expect(audit.join("")).not.toContain('"hi"');
+    // The message stays in the pane's inbox, readable.
+    expect(walky.inbox("main", "w1:p2", "aaaa", false).map((entry) => entry.id)).toEqual(["wt_aaaaaaaaaaa1"]);
   });
 });
