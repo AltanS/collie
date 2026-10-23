@@ -51,6 +51,11 @@ export const SEND_REASONS = [
   "modal_cue",
   "stale_token",
   "submit_failed",
+  // typed_not_submitted (M69, counsel on the Edge 5 candidate): a steer's read after its pause and
+  // before the steer key showed a dialog (`dialog_open`: the key would answer it), or no box, or a
+  // modal it cannot tell (`unreadable`). The text is in the box; no key was pressed.
+  "dialog_open",
+  "unreadable",
   // unknown: the request ended without evidence either way. `bound` also refuses: an S0 past its own
   // bound (2 reads, 1200 ms) ends `refused(bound)`, since nothing was written yet.
   "bound",

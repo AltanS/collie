@@ -4274,7 +4274,7 @@ describe("outcome at the thumb", () => {
   // Send drill 2 (Codex on Herdr, 2026-10-16): a typed_not_submitted on a pane with no frame showed the
   // typed sentence with only Take over and Open Keys. Submit and Discard show for every reason, and each
   // carries the rows hash of the answer, so the bridge acts only on the screen the person saw.
-  it.each(["mismatch", "changed", "modal_cue", "stale_token", "submit_failed"] as const)(
+  it.each(["mismatch", "changed", "modal_cue", "stale_token", "submit_failed", "dialog_open", "unreadable"] as const)(
     "typed_not_submitted %s with no frame: Submit and Discard show, and Submit carries the rows hash it was offered with",
     async (reason) => {
       const user = await send(() => sendAnswer("x", "typed_not_submitted", reason, { offers: offersFor("typed_not_submitted", reason, false), rowsHash: "0f00ba", surface: SURFACES.noMatch }));
@@ -4423,7 +4423,7 @@ describe("outcome at the thumb", () => {
 
   it("every closed outcome and reason lands at the thumb, and none of them puts an action in the header", async () => {
     const outcomeOf = (reason: SendReason): string =>
-      ["mismatch", "changed", "modal_cue", "stale_token", "submit_failed"].includes(reason)
+      ["mismatch", "changed", "modal_cue", "stale_token", "submit_failed", "dialog_open", "unreadable"].includes(reason)
         ? "typed_not_submitted"
         : ["crash", "lost_lock", "no_evidence"].includes(reason)
           ? "unknown"

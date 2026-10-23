@@ -7392,6 +7392,44 @@ describe("steer or queue (M69), replayed from the real captures (lab 2026-10-23)
     });
   }
 
+  // Re-read before the key (counsel on the Edge 5 candidate): the read after the steer pause and
+  // before the steer key refuses the press when a dialog drew over the typed text. The key would
+  // answer the dialog, so no key leaves and the receipt says why.
+  for (const [harness, version, typedName, dialog] of [
+    ["codex", "0.164.0", "codex--v0164-steer-typed", "codex--v0156-approval-exec-2opt.txt"],
+    ["omp", "18.6.1", "omp--v18-6-steer-typed", "omp--v18-4-approval-bash.txt"],
+  ] as const) {
+    test(`${harness}: an approval dialog draws between the text and the steer key: no key, typed_not_submitted(dialog_open)`, async () => {
+      const clock = { now: 1_000_000 };
+      const replayed = replay(typedName, [capture(`${typedName.replace("-typed", "-after")}`)], clock);
+      const shown = replayed.pane.beforeRead!;
+      const approval = readFileSync(join(PANES, dialog), "utf8");
+      replayed.pane.beforeRead = async (p, n) => {
+        await shown(p, n);
+        if (p.box === LINE) p.fixed = approval;
+      };
+      const made = rig({ pane: replayed.pane, harness, version, clock });
+      const answer = await made.send(LINE, STEER);
+      expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "dialog_open" });
+      expect(replayed.pane.keysSeen).not.toContain("Enter");
+      expect(answer.receipt?.keys).toEqual(["probe", "Backspace"]);
+      neverEscape(replayed.pane);
+    });
+  }
+
+  test("pi: the box is gone on the read before the steer key: no key, typed_not_submitted(unreadable)", async () => {
+    const clock = { now: 1_000_000 };
+    const replayed = replay("pi--v130-steer-typed", [capture("pi--v130-steer-after")], clock);
+    const shown = replayed.pane.beforeRead!;
+    replayed.pane.beforeRead = async (p, n) => {
+      await shown(p, n);
+      if (p.box === LINE) p.fixed = "just some words\non a plain screen\n";
+    };
+    const answer = await rig({ pane: replayed.pane, harness: "pi", version: "1.3.0", clock }).send(LINE, STEER);
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "unreadable", keys: ["probe", "Backspace"] });
+    expect(replayed.pane.keysSeen).not.toContain("Enter");
+  });
+
   test("a steer refused at S0 is never held, even with a hold queue", async () => {
     const holds = new HoldStore(join(dir, "held-steer"), () => 1_000_000);
     const r = rig({ holds });

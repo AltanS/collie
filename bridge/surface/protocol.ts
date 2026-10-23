@@ -48,8 +48,10 @@
 // version not trusted with a turn (turnTrusted) are refused `steer_unsupported`, both before any read.
 // Otherwise the steer runs the same S0, dialog gate and draft check as a send. An S0 that reads the turn idle sends it as
 // a plain send (`sent`); so does an S1 that reads the turn ended, with the keys a plain send presses
-// there. In a turn the text goes in on the queued path (probe, write, S1), then `keys.steerDelayMs`,
-// then the profile's `keys.steer` through the gate instead of the queue key. Reads at 0.4, 1.2 and
+// there. In a turn the text goes in on the queued path (probe, write), then `keys.steerDelayMs`, then
+// S1, the read the key is minted on, after the pause: a dialog there (`dialog_open`), no box or a modal
+// it cannot tell (`unreadable`), or the text gone from the box (`mismatch`) ends `typed_not_submitted`
+// with no key. Then the profile's `keys.steer` through the gate instead of the queue key. Reads at 0.4, 1.2 and
 // 2 s after the key decide (a read at 0.1 s is not reliable): the profile's steer witness
 // (`keys.steerWitness`) says `steered` (a transcript row or a marker row counts only once the box let
 // the text go: it reads empty or holds other text; a block counts as drawn); the queued row with the text says the harness queued it
@@ -719,6 +721,20 @@ function probeBoxPasses(s0: Snap, snap: Snap, prefix: string, probe: string): bo
   if (modalAtBox(snap) || framedCueGrew(s0, snap)) return false;
   if (rowsBelow(s0, s0.frame) !== rowsBelow(snap, snap.frame)) return false;
   return wsFree(boxText(snap.frame)) === wsFree(prefix) + probe;
+}
+
+/**
+ * Why a steer's last read before the key refused the press (M69, counsel on the Edge 5 candidate): a
+ * dialog (an ask, or one Collie cannot read) is `dialog_open`, because the steer key would answer it;
+ * no read, no box, or a modal the Surface cannot tell is `unreadable`, because the key would land blind.
+ */
+function steerBlocked(snap: Snap | null, why: SendReason): SendReason {
+  if (snap === null) return "unreadable";
+  const { modal } = snap.surface;
+  if (modal !== "none" && modal !== "unknown") return "dialog_open";
+  if (snap.frame === null || modal === "unknown") return "unreadable";
+  // A box that is there and no modal: the screen moved some other way, and S1's own word says how.
+  return why;
 }
 
 /** Reads in a row with no frame before a queued send counts the box as gone: one may be a torn read. */
@@ -3600,6 +3616,10 @@ export class SendProtocol {
     const endedOn = (): SendReason => why; // set inside the poll's callback, so read through a closure
     const dialogUp = result.snap !== null && result.snap.surface.modal !== "none" && result.snap.surface.modal !== "unknown";
     if (boxOnly && endedOn() === "changed" && dialogUp) why = "modal_cue";
+    // A steer names what stood in the way of its key (counsel on the Edge 5 candidate): a dialog, or
+    // a box it could not find or a modal it could not tell. The text that is no longer in the box
+    // keeps its own word (`mismatch`), and so does a box that is there under no modal.
+    if (state.steer && endedOn() !== "mismatch") why = steerBlocked(result.snap, endedOn());
     state.marks.s1 = result.snap;
     // The rows hash binds a later Submit or Discard to the screen this answer saw.
     const note: EndNote = { framed: s0.frame !== null };
