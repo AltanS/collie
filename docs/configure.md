@@ -259,6 +259,8 @@ three things under the box:
 | **Stop sent. The agent is still working.** | The key went in, but the turn still reads as running. Give it a moment, then tap Stop again if you need to. |
 | A refusal | Nothing was pressed. The sentence says why. |
 
+If the stop key opened a dialog instead, Collie says so and points you to its card.
+
 Collie refuses before it presses when pressing could do harm:
 
 - **A dialog is open.** Escape would answer that dialog. Answer it on its card instead.
