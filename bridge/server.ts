@@ -7803,7 +7803,10 @@ export async function sendRoute(
     // The stored text, unmasked: never the row the phone shows, which the redact setting may mask.
     const source = rt.send.resendSource(rt.name, paneId, resendOf);
     if (source === null) return text("no such ended held send on this pane", 404);
-    sendRequest = { ...asked, text: source.text, mode: source.mode };
+    // A Resend goes on the queued path, as the held send it repeats: never a steer (M69), so `when`
+    // goes with `fromPhone`.
+    const { when: _steer, ...plain } = asked;
+    sendRequest = { ...plain, text: source.text, mode: source.mode };
   }
   const answer = await rt.send.handle(sendRequest, { session: rt.name, paneId, harness });
   const receipt = answer.receipt;

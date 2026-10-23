@@ -18,7 +18,7 @@ import { liftDialog, readerBlocks } from "../../web/src/lib/surface/lift.ts";
 import { AskAnswerer, AskBook } from "./ask.ts";
 import { profileFor } from "../../web/src/lib/surface/profile.ts";
 import { KeyGate } from "./key-gate.ts";
-import { RowRing, SendProtocol, SessionLocks } from "./protocol.ts";
+import { RowRing, SendProtocol, SessionLocks, type SendRequest } from "./protocol.ts";
 import { RequestStore } from "./requests.ts";
 import { HoldStore } from "./holds.ts";
 
@@ -132,6 +132,18 @@ function runtime(withSend: boolean, dir: string, holds?: HoldStore) {
   // The herdr stub has no `controlTurn`, so it is a screen pane.
   const rt: SendRouteRuntime = { send, engine, herdr: {}, name: "main" };
   return { rt, pane, store, pokes: () => pokes };
+}
+
+/** Every request the route hands the protocol, in order; the protocol still runs each one. */
+function spyHandle(rt: SendRouteRuntime): SendRequest[] {
+  const send = rt.send!;
+  const seen: SendRequest[] = [];
+  const handle = send.handle.bind(send);
+  send.handle = (request, target) => {
+    seen.push(request);
+    return handle(request, target);
+  };
+  return seen;
 }
 
 function auditLines() {
@@ -471,6 +483,30 @@ describe("a Resend through sendRoute (M56 spec 15 review, H7)", () => {
       expect(res.status).toBe(200);
       expect(await res.json()).toMatchObject({ receipt: { requestId: "route-res-0003", outcome: "sent", textLength: "a name the mask would hide".length } });
       expect(holds.get("route-res-0001")).toBeNull();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a Resend that asks to steer goes as a plain send: no when and no fromPhone reach the protocol (M69)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "collie-route-"));
+    try {
+      const { audit } = auditLines();
+      const context = { audit, device: null, redact: false, acceptEncoding: null };
+      const holds = new HoldStore(join(dir, "held"));
+      const { rt, store } = runtime(true, dir, holds);
+      const seen = spyHandle(rt);
+      const accepted = store.accept({ id: "route-res-0011", session: "main", paneId: "%1", paneGeneration: "gen", surfaceRevision: 0, mode: "send", text: "the held text" });
+      const { reason: _crash, ...receipt } = SendProtocol.crashReceipt(accepted.record);
+      store.hold("route-res-0011", { ...receipt, outcome: "held" });
+      holds.add({ id: "route-res-0011", session: "main", paneId: "%1", harness: "claude", mode: "send", text: "the held text", revision: 0, command: false });
+      holds.end("route-res-0011", "expired");
+      const res = await sendRoute(rt, { id: "route-res-0012", pane: "%1", text: "", resendOf: "route-res-0011", when: "steer" }, context);
+      expect(await res.json()).toMatchObject({ receipt: { requestId: "route-res-0012", outcome: "sent" } });
+      expect(seen).toHaveLength(1);
+      expect(seen[0]).toMatchObject({ id: "route-res-0012", text: "the held text", mode: "send" });
+      expect(seen[0] && "when" in seen[0]).toBe(false);
+      expect(seen[0] && "fromPhone" in seen[0]).toBe(false);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
