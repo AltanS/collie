@@ -5243,6 +5243,41 @@ describe("OMP runs `/goal` at once in a turn (keys.commandsRunInTurn, lab 18.12.
     expect(pane.keysSeen).toEqual([]);
   });
 
+  test("a text with a line break never runs in turn: /goal pause then more text matches nothing, on the OMP profile", () => {
+    const log = { log: () => undefined };
+    const match = profileFor("omp", "18.12.2", log);
+    expect(runsInTurnEntry("/goal pause", match)).toBe("/goal");
+    expect(runsInTurnEntry("/goal pause\nmore text", match)).toBeNull();
+    expect(runsInTurnEntry("/goal pause\r\nmore text", match)).toBeNull();
+    expect(runsInTurnEntry("/goal\nmore text", match)).toBeNull();
+    expect(runsInTurnEntry("/goal pause\n", match)).toBeNull();
+  });
+
+  test("/goal pause with a draft already in the box is refused draft_present, nothing typed", async () => {
+    const { pane, send } = goalTurn();
+    pane.box = "half a thought";
+    const answer = await send("/goal pause", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "draft_present", keys: [] });
+    expect(pane.ran).toEqual([]);
+    expect(pane.keysSeen).toEqual([]);
+  });
+
+  test("/goal pause with an OMP approval dialog on screen is refused not_free, nothing typed", async () => {
+    const pane = new FakePane("generic");
+    pane.fixed = readFileSync(join(import.meta.dir, "../../web/src/fixtures/panes/omp--approval-bash.txt"), "utf8").replace(/\r\n/gu, "\n");
+    const { send } = rig({ pane, harness: "omp", version: "18.12.2" });
+    const answer = await send("/goal pause", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "not_free", keys: [] });
+    expect(pane.calls).toEqual([]);
+    expect(pane.keysSeen).toEqual([]);
+  });
+
+  test("the shipped Claude profile has no in-turn command list: /goal pause matches nothing", () => {
+    const log = { log: () => undefined };
+    expect(runsInTurnEntry("/goal pause", profileFor("claude", "2.1.301", log))).toBeNull();
+    expect(loadProfiles().get("claude")!.keys.commandsRunInTurn).toBeUndefined();
+  });
+
   test("a pane with held sends: /goal pause does not wait behind them, and they stay held", async () => {
     const holds = new HoldStore(join(dir, "held"), () => 1_000_000);
     const { pane, send, protocol } = goalTurn({ holds });

@@ -1056,13 +1056,15 @@ export function neverHeldEntry(text: string, match: ProfileMatch | null): string
 
 /**
  * The profile's entry in `keys.commandsRunInTurn` that a command matches, or null: the command word
- * alone or followed by white space (`/goal`, `/goal pause`, never `/goals`). Only where the profile may
+ * alone or followed by white space (`/goal`, `/goal pause`, never `/goals`), on one line: a text with a line break matches nothing. Only where the profile may
  * be trusted with a running turn at all ({@link turnTrusted}): a version the binary reported, on a range
  * that is not revoked. A provisional version borrows the list as it borrows the queue key; an unread
  * version or a revoked range matches nothing, so such a command is held as before.
  */
 export function runsInTurnEntry(text: string, match: ProfileMatch | null): string | null {
   if (!turnTrusted(match)) return null;
+  // One line only: a text with a line break is not the command the harness runs at once, so it takes the hold or queue path.
+  if (/\r|\n/u.test(text)) return null;
   const t = text.trim();
   for (const entry of match.profile.keys.commandsRunInTurn ?? []) {
     if (t === entry || (t.startsWith(entry) && /\s/u.test(t.charAt(entry.length)))) return entry;
