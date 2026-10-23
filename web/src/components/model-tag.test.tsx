@@ -49,7 +49,7 @@ describe("ModelTag usage dots", () => {
     const gauges = [...container.querySelectorAll("[data-gauge]")].map((g) => g.getAttribute("data-gauge"));
     expect(gauges).toEqual(["context", "5h", "7d"]);
     const dots = [...container.querySelectorAll("[data-slot='usage-dots']")];
-    expect(dots.map((d) => d.getAttribute("data-lit"))).toEqual(["3", "3", "5"]);
+    expect(dots.map((d) => d.getAttribute("data-lit"))).toEqual(["2", "2", "4"]);
     expect(dots.every((d) => d.children.length === 5)).toBe(true);
     // 80% and up takes the working colour; under it does not.
     expect(dots.map((d) => d.hasAttribute("data-warn"))).toEqual([false, false, true]);
@@ -75,13 +75,15 @@ describe("ModelTag usage dots", () => {
     expect(render(<ModelTag model={undefined} usage={{}} />).container.innerHTML).toBe("");
   });
 
-  it("lights no dot at 0% and one dot for any use under a fifth", () => {
+  it("lights one dot per full fifth, so only 100% lights the fifth", () => {
     const lit = (context: number) =>
       render(<ModelTag model={undefined} usage={{ context }} />).container.querySelector("[data-slot='usage-dots']")?.getAttribute("data-lit");
+    // One dot per FULL fifth: only a full window lights the fifth dot.
     expect(lit(0)).toBe("0");
-    expect(lit(1)).toBe("1");
+    expect(lit(19)).toBe("0");
     expect(lit(20)).toBe("1");
-    expect(lit(21)).toBe("2");
+    expect(lit(81)).toBe("4");
+    expect(lit(99)).toBe("4");
     expect(lit(100)).toBe("5");
   });
 });

@@ -22,9 +22,10 @@ import { cn } from "@/lib/utils";
 //
 // THE USAGE DOTS FOLLOW THE MODEL (.adr/0115): the context use, then the 5-hour and 7-day windows of
 // the subscription, five dots each, one per fifth. Picked by Altan from three shapes in the playground
-// (2026-10-23, `#usage-row`, card 2). A dot is lit from the left; at 80% and up the lit dots take the
+// (2026-10-23, `#usage-row`, card 2). A dot lights from the left for each FULL fifth, so only 100% lights
+// the fifth and 81% shows four, not five as a full window would; at 80% and up the lit dots take the
 // working colour, never red, because red marks harm (DESIGN.md §4). A gauge the harness did not report
-// is not drawn, and the screen reader gets the exact figures the dots round.
+// is not drawn, and the screen reader gets the exact figure the dots round down.
 //
 // THE MODEL NAME STANDS DOWN WHILE THE SCREEN NAMES IT, the effort included. The caller passes no
 // model then (agent-chat.tsx asks hooks/use-model-on-screen.ts), so a statusline that prints
@@ -65,9 +66,9 @@ function gaugesOf(usage: PaneUsage | undefined): Gauge[] {
   return gauges;
 }
 
-/** Five 3px dots, lit from the left, one per fifth. A dot is as wide as it is tall, so it may be round (DESIGN.md §3). */
+/** Five 3px dots, lit from the left, one per full fifth. A dot is as wide as it is tall, so it may be round (DESIGN.md §3). */
 function Dots({ used }: { used: number }) {
-  const lit = Math.min(DOTS, Math.max(0, Math.ceil(used / (100 / DOTS))));
+  const lit = Math.min(DOTS, Math.max(0, Math.floor(used / (100 / DOTS))));
   const warn = used >= USAGE_WARN_AT;
   return (
     <span data-slot="usage-dots" data-lit={lit} data-warn={warn || undefined} className="inline-flex items-center gap-px">
