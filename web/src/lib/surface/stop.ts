@@ -31,7 +31,7 @@ export type StopReason = (typeof STOP_REASONS)[number];
 export interface StopReceipt {
   readonly requestId: string;
   readonly outcome: StopOutcome;
-  /** Set on a refusal. */
+  /** Set on a refusal, and `dialog_open` on a `pressed` receipt whose read-back shows a dialog the key opened. */
   readonly reason?: StopReason;
   /** The keys pressed, by name. Absent on a refusal. */
   readonly keys?: readonly string[];

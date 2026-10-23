@@ -63,7 +63,11 @@ const STOP_REFUSALS = {
  */
 export function stopNotice(receipt: StopReceipt): SendRefusal {
   if (receipt.outcome === "stopped") return { sentence: translate("belt.stop.receipt.stopped"), detail: null, toCard: false, screen: false, tone: "neutral" };
-  if (receipt.outcome === "pressed") return phoneRefusal(translate("belt.stop.receipt.pressed"));
+  if (receipt.outcome === "pressed") {
+    // The key opened a dialog: the turn is not the story now, its card is.
+    if (receipt.reason === "dialog_open") return phoneRefusal(translate("belt.stop.receipt.pressedDialog"), true);
+    return phoneRefusal(translate("belt.stop.receipt.pressed"));
+  }
   const reason = receipt.reason ?? "unreadable";
   return phoneRefusal(translate(STOP_REFUSALS[reason]), reason === "dialog_open");
 }

@@ -153,6 +153,17 @@ describe("a Stop on a pane with a screen", () => {
     expect((await receipt(await stop("%1", { requestId: ID }))).outcome).toBe("pressed");
   });
 
+  test("a dialog the key opened: still `pressed`, with reason dialog_open so the phone points at the card", async () => {
+    const { pane, stop } = rig(PI_RUNNING);
+    pane.onKeys = (_keys, p) => void (p.screen = OMP_APPROVAL);
+    expect(await receipt(await stop("%1", { requestId: ID }))).toEqual({ requestId: ID, outcome: "pressed", reason: "dialog_open", keys: ["Escape"] });
+  });
+
+  test("a turn that ignores the key carries no reason", async () => {
+    const { stop } = rig(PI_RUNNING);
+    expect((await receipt(await stop("%1", { requestId: ID }))).reason).toBeUndefined();
+  });
+
   test("refused no_profile: a bare shell, an agent Collie has no profile for, and no key leaves", async () => {
     for (const paneId of ["%7", "%4"]) {
       const { pane, stop } = rig(PI_RUNNING);

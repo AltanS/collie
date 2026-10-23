@@ -1218,6 +1218,7 @@ export const ko: Dictionary = {
   "belt.stopArmedAria": "Tap again to stop the turn",
   "belt.stop.receipt.stopped": "Stopped.",
   "belt.stop.receipt.pressed": "Stop sent. The agent is still working.",
+  "belt.stop.receipt.pressedDialog": "Stop sent. A dialog opened. Answer it on its card.",
   "belt.stop.receipt.refused.dialogOpen": "A dialog is open. Answer it on its card first.",
   "belt.stop.receipt.refused.draftPresent": "The box holds your text and this harness's stop key would clear it.",
   "belt.stop.receipt.refused.noProfile": "Collie cannot read this pane, so it does not press blind.",

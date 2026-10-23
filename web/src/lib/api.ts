@@ -1437,11 +1437,13 @@ function stopReceiptOf(body: JsonObject | undefined, requestId: string): StopRec
   const outcome = STOP_OUTCOMES.find((word) => word === body.outcome);
   if (outcome === undefined) return null;
   const id = asJsonString(body.requestId) ?? requestId;
+  const reason = STOP_REASONS.find((word) => word === body.reason);
   if (outcome !== "refused") {
     const keys = Array.isArray(body.keys) ? body.keys.map(asJsonString).filter((key): key is string => key !== undefined) : undefined;
-    return keys === undefined ? { requestId: id, outcome } : { requestId: id, outcome, keys };
+    // Only a `pressed` receipt carries a reason, and only `dialog_open`: the key opened a dialog.
+    const opened = outcome === "pressed" && reason === "dialog_open" ? { reason } : {};
+    return keys === undefined ? { requestId: id, outcome, ...opened } : { requestId: id, outcome, ...opened, keys };
   }
-  const reason = STOP_REASONS.find((word) => word === body.reason);
   return reason === undefined ? null : { requestId: id, outcome, reason };
 }
 

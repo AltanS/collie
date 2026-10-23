@@ -12,7 +12,8 @@
 //              box not empty and the key clears a draft first -> refused draft_present
 //   press    `keys.interrupt` through the gate as `person_tap`, in one call (opencode names Escape twice)
 //   readback up to three reads, the first 400 ms after the press, then 1 s apart; the turn reads idle
-//            and no modal: `stopped`; else `pressed`
+//            and no modal: `stopped`; else `pressed`, with reason `dialog_open` when the last read shows
+//            a dialog (the key opened one, and its card is the next move)
 //
 // The same request id answers the same receipt and presses once; a request id still in flight is
 // joined, never pressed twice. The receipts live in memory: a bridge restart forgets them, and a Stop is
@@ -122,12 +123,15 @@ export class StopService {
     const sent: MuxAck = await this.deps.gate.press(paneId, pressed, "person_tap");
     if (!sent.ok) return refusal(requestId, "press_failed");
     const sleep = this.deps.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+    let opened = false;
     for (let read = 0; read < READ_BACKS; read++) {
       await sleep(read === 0 ? FIRST_GAP_MS : NEXT_GAP_MS);
       const after = await this.look(paneId, harness, match);
       if (after !== null && after.turn === "idle" && after.modal === "none") return { requestId, outcome: "stopped", keys: pressed };
+      if (after !== null) opened = after.modal !== "none" && after.modal !== "unknown";
     }
-    return { requestId, outcome: "pressed", keys: pressed };
+    // The key went in, so the outcome stays `pressed`; a dialog the key opened is told, so the person is sent to its card.
+    return opened ? { requestId, outcome: "pressed", reason: "dialog_open", keys: pressed } : { requestId, outcome: "pressed", keys: pressed };
   }
 
   /** One fresh read of the pane, folded into its Surface. Null when the multiplexer could not read it. */
