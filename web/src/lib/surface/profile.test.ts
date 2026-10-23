@@ -321,6 +321,14 @@ describe("the codex profile (M56 spec 13)", () => {
     expect(form.exec("[Pasted Content 1500 chars]")?.groups?.chars).toBe("1500");
   });
 
+  it("a list of commands that run at once in a turn parses with its note; omp ships /goal", () => {
+    const keys = parseProfile(change(change(rawCodex(), ["keys", "commandsRunInTurn"], ["/status", "/model"]), ["keys", "commandsRunInTurnNote"], "Lab note.")).keys;
+    expect(keys.commandsRunInTurn).toEqual(["/status", "/model"]);
+    expect(keys.commandsRunInTurnNote).toBe("Lab note.");
+    expect(parseProfile(rawCodex()).keys.commandsRunInTurn).toBeUndefined();
+    expect(loadProfiles().get("omp")?.keys.commandsRunInTurn).toEqual(["/goal"]);
+  });
+
   const cases: [string, (string | number)[], JsonValue | undefined, string][] = [
     ["codex: Escape as the queue key", ["keys", "queueKey"], "Escape", "keys.queueKey"],
     ["codex: Enter as the queue key", ["keys", "queueKey"], "Enter", "keys.queueKey"],
@@ -335,6 +343,12 @@ describe("the codex profile (M56 spec 13)", () => {
     ["codex: losesText that is not true", ["idle", "volatile", "above", "losesText"], false, "idle.volatile.above.losesText"],
     ["codex: a hint row that is no expression", ["idle", "volatile", "below", "hints", 0], "[unclosed", "idle.volatile.below.hints[0]"],
     ["codex: hint rows that are no list", ["idle", "volatile", "below", "hints"], "? for shortcuts", "idle.volatile.below.hints"],
+    ["codex: no command that runs in a turn", ["keys", "commandsRunInTurn"], [], "keys.commandsRunInTurn"],
+    ["codex: a command that runs in a turn with a space in it", ["keys", "commandsRunInTurn"], ["/goal pause"], "keys.commandsRunInTurn"],
+    ["codex: a command that runs in a turn of one character", ["keys", "commandsRunInTurn"], ["!"], "keys.commandsRunInTurn"],
+    ["codex: a command that runs in a turn with no reserved lead", ["keys", "commandsRunInTurn"], ["goal"], "keys.commandsRunInTurn"],
+    ["codex: a command that runs in a turn and is never held", ["keys", "commandsRunInTurn"], ["/quit"], "keys.commandsRunInTurn"],
+    ["codex: a note on commands that run in a turn that is no text", ["keys", "commandsRunInTurnNote"], 3, "keys.commandsRunInTurnNote"],
   ];
   for (const [name, path, value, field] of cases) {
     it(name, () => {
@@ -769,6 +783,7 @@ describe("the frame schema of the interior walk (M56 spec 14)", () => {
     expect(pointer.exec("❯ ✦ skill:wrap-up   Wrap up the session")?.groups?.["command"]).toBe("skill:wrap-up");
     expect(pointer.test("> model   Switch model")).toBe(false);
     expect(list.namespaces).toEqual(["skill:"]);
+    expect(list.argumentList).toBe(true);
     expect(omp.idle.inlineHint).toEqual({ fg: ["rgb(107,114,128)"] });
   });
 
@@ -892,6 +907,7 @@ describe("parseProfile names the failing field", () => {
     ["a command list side named twice", ["idle", "volatile", "below", "commandList", "sides"], ["under", "under"], "idle.volatile.below.commandList.sides[1]"],
     ["a command list pointerBold that is no boolean", ["idle", "volatile", "below", "commandList", "pointerBold"], "yes", "idle.volatile.below.commandList.pointerBold"],
     ["a command list argumentHint that is no boolean", ["idle", "volatile", "below", "commandList", "argumentHint"], "yes", "idle.volatile.below.commandList.argumentHint"],
+    ["a command list argumentList that is no boolean", ["idle", "volatile", "below", "commandList", "argumentList"], "yes", "idle.volatile.below.commandList.argumentList"],
     ["a command list footer that is no object", ["idle", "volatile", "below", "commandList", "footer"], "^\\S", "idle.volatile.below.commandList.footer"],
     ["a command list footer that matches a blank row", ["idle", "volatile", "below", "commandList", "footer"], { pattern: "^\\s*$", maxRows: 2 }, "idle.volatile.below.commandList.footer.pattern"],
     ["a command list footer of no rows", ["idle", "volatile", "below", "commandList", "footer"], { pattern: "^\\S", maxRows: 0 }, "idle.volatile.below.commandList.footer.maxRows"],

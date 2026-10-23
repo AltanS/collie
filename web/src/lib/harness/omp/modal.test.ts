@@ -35,6 +35,8 @@ const MODALS_WITH_A_WAY_OUT = [
   // omp 18.6.1's Models picker and settings screen, the screens `/model` and `/settings` open (lab, 2026-10-17).
   "omp--v18-6-model-selector-empty--w120.txt",
   "omp--v18-6-settings-screen--w120.txt",
+  // omp 18.12.2's goal menu, which a bare `/goal` opens in a goal turn (lab, 2026-10-22): `⎋ cancel`.
+  "omp--v18-12-2-goal-bare-menu--w119.txt",
   "omp--approval-bash.txt",
   "omp--approval-write--deny.txt",
   "omp--approval-write.txt",

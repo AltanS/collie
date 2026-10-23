@@ -91,6 +91,18 @@ const BOX_COMPOSER_FIXTURES = [
   "omp--v18-11-nerd-skill-pointed--w130.txt",
   "omp--v18-11-nerd-skill-pointed--w80.txt",
   "omp--v18-11-skill-pointed--w130.txt",
+  // omp 18.12.2 in a goal turn: the screens of /goal pause, /goal resume and a bare /goal (lab 2026-10-22, PR 541).
+  "omp--v18-12-2-goal-bare-before--w119.txt",
+  "omp--v18-12-2-goal-bare-probe--w119.txt",
+  "omp--v18-12-2-goal-pause-result--w119.txt",
+  "omp--v18-12-2-goal-pause-result-later--w119.txt",
+  "omp--v18-12-2-goal-pause-typed--w119.txt",
+  "omp--v18-12-2-goal-resume-before--w119.txt",
+  "omp--v18-12-2-goal-resume-probe--w119.txt",
+  "omp--v18-12-2-goal-resume-result--w119.txt",
+  "omp--v18-12-2-goal-resume-typed--w119.txt",
+  "omp--v18-12-2-goal-turn-running--w119.txt",
+  "omp--v18-12-2-goal-turn-running-probe--w119.txt",
   // omp 18.12.1's default `band` composer under the nerd preset, and one unicode control (issue 505).
   "omp--v18-12-band-idle--w130.txt",
   "omp--v18-12-nerd-band-done--w130.txt",
@@ -127,6 +139,8 @@ const TALL_PALETTE_FIXTURES = [
   "omp--v18-11-nerd-skill-and-command--w130.txt",
   "omp--v18-11-nerd-slash-model--w130.txt",
   "omp--v18-11-nerd-slash-model--w80.txt",
+  // omp 18.12.2, a bare `/goal` typed in a goal turn: the ten-row command list under the box (lab, 2026-10-22).
+  "omp--v18-12-2-goal-bare-typed--w119.txt",
 ];
 
 const ALL_OMP_FIXTURES = readdirSync(PANES_DIR)
@@ -198,6 +212,18 @@ describe("locateComposer — the real corpus, pinned so any change to the walk s
     { fixture: "omp--v18-11-nerd-skill-pointed--w130.txt", top: 14, bottom: 15, suggestEnd: 17 },
     { fixture: "omp--v18-11-nerd-skill-pointed--w80.txt", top: 15, bottom: 16, suggestEnd: 19 },
     { fixture: "omp--v18-11-skill-pointed--w130.txt", top: 15, bottom: 16, suggestEnd: 18 },
+    // omp 18.12.2 in a goal turn (lab 2026-10-22): the status band is the top row, `╰─` the prompt.
+    { fixture: "omp--v18-12-2-goal-bare-before--w119.txt", top: 23, bottom: 24, suggestEnd: 25 },
+    { fixture: "omp--v18-12-2-goal-bare-probe--w119.txt", top: 23, bottom: 24, suggestEnd: 25 },
+    { fixture: "omp--v18-12-2-goal-pause-result--w119.txt", top: 21, bottom: 22, suggestEnd: 23 },
+    { fixture: "omp--v18-12-2-goal-pause-result-later--w119.txt", top: 22, bottom: 23, suggestEnd: 24 },
+    { fixture: "omp--v18-12-2-goal-pause-typed--w119.txt", top: 19, bottom: 20, suggestEnd: 22 },
+    { fixture: "omp--v18-12-2-goal-resume-before--w119.txt", top: 22, bottom: 23, suggestEnd: 24 },
+    { fixture: "omp--v18-12-2-goal-resume-probe--w119.txt", top: 22, bottom: 23, suggestEnd: 24 },
+    { fixture: "omp--v18-12-2-goal-resume-result--w119.txt", top: 22, bottom: 23, suggestEnd: 24 },
+    { fixture: "omp--v18-12-2-goal-resume-typed--w119.txt", top: 22, bottom: 23, suggestEnd: 25 },
+    { fixture: "omp--v18-12-2-goal-turn-running--w119.txt", top: 19, bottom: 20, suggestEnd: 21 },
+    { fixture: "omp--v18-12-2-goal-turn-running-probe--w119.txt", top: 19, bottom: 20, suggestEnd: 21 },
     // omp 18.12.1's default `band` composer (issue 505): the status band is the top row, `╰─` the prompt.
     { fixture: "omp--v18-12-band-idle--w130.txt", top: 10, bottom: 11, suggestEnd: 12 },
     { fixture: "omp--v18-12-nerd-band-done--w130.txt", top: 38, bottom: 39, suggestEnd: 40 },
@@ -852,6 +878,7 @@ describe("composerPrompt — the region a destructive write is bound to", () => 
       { fixture: "omp--v18-11-nerd-skill-and-command--w130.txt", top: 14, bottom: 15, suggestEnd: 26 },
       { fixture: "omp--v18-11-nerd-slash-model--w130.txt", top: 14, bottom: 15, suggestEnd: 26 },
       { fixture: "omp--v18-11-nerd-slash-model--w80.txt", top: 15, bottom: 16, suggestEnd: 27 },
+      { fixture: "omp--v18-12-2-goal-bare-typed--w119.txt", top: 23, bottom: 24, suggestEnd: 35 },
     ];
     expect(PINNED_TALL.map((p) => p.fixture)).toEqual(TALL_PALETTE_FIXTURES);
     for (const { fixture, top, bottom, suggestEnd } of PINNED_TALL) {

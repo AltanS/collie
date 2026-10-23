@@ -14,8 +14,10 @@ import type { HeldCancelAnswer, SendAnswer } from "../../web/src/lib/surface/sen
 import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { lineText, splitLines } from "../../web/src/lib/blocks.ts";
 import { findInputFrame } from "../../web/src/lib/surface/frame.ts";
+import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
+import { isFree, type Surface } from "../../web/src/lib/surface/surface.ts";
 import { KeyGate } from "./key-gate.ts";
-import { boxMatches, commandBoxMatches, GENERIC_PROBE, wholePaste, LOCK_BOUND_MS, locateText, neverHeldEntry, probeLanding, RowRing, SendProtocol, SessionLocks, steadyRow, type SendDeps, type SendRequest } from "./protocol.ts";
+import { boxMatches, commandBoxMatches, GENERIC_PROBE, wholePaste, LOCK_BOUND_MS, locateText, neverHeldEntry, probeLanding, RowRing, runsInTurnEntry, SendProtocol, SessionLocks, steadyRow, type SendDeps, type SendRequest } from "./protocol.ts";
 import { RequestStore } from "./requests.ts";
 import { SurfaceLedger } from "./counters.ts";
 import { HoldStore } from "./holds.ts";
@@ -4993,6 +4995,13 @@ class OmpPane extends FakePane {
   showWorking = true;
   /** Texts Enter sent into the turn: steering, which the send must never do. */
   steered: string[] = [];
+  /**
+   * The command words OMP runs at once when Enter takes them in a turn, never as steering text (lab,
+   * 18.12.2, 2026-10-19: `/goal`). Empty runs none, the shape before the lab.
+   */
+  runsAtOnce: string[] = [];
+  /** Commands Enter ran at once in a turn. */
+  ran: string[] = [];
 
   constructor() {
     super("generic");
@@ -5003,7 +5012,11 @@ class OmpPane extends FakePane {
         if (key === "ctrl+q" || (key === "Enter" && this.inTurn)) {
           this.keysSeen.push(key);
           const text = this.box.replace(/\n/gu, " ");
-          if (text.length > 0 && key === "Enter") this.steered.push(text);
+          if (key === "Enter" && this.runsAtOnce.includes(text.split(" ")[0] ?? "")) {
+            // The command runs before the turn sees it: its status line prints above the box.
+            this.ran.push(text);
+            this.transcript.push(` ran ${text}`);
+          } else if (text.length > 0 && key === "Enter") this.steered.push(text);
           else if (text.length > 0 && this.inTurn) this.queued.push(text);
           else if (text.length > 0) this.transcript.push(` > ${text}`);
           this.box = "";
@@ -5024,10 +5037,11 @@ class OmpPane extends FakePane {
   }
 }
 
-function omp(options: { version?: string; edit?: (profile: Profile) => Profile } = {}): Rig & { pane: OmpPane } {
+function omp(options: { version?: string; edit?: (profile: Profile) => Profile; holds?: HoldStore } = {}): Rig & { pane: OmpPane } {
   const pane = new OmpPane();
   const rigOptions: Parameters<typeof rig>[0] = { pane, harness: "omp", version: options.version ?? "18.6.1" };
   if (options.edit !== undefined) rigOptions.edit = options.edit;
+  if (options.holds !== undefined) rigOptions.holds = options.holds;
   const made = rig(rigOptions);
   return { ...made, pane };
 }
@@ -5089,6 +5103,312 @@ describe("OMP: Ctrl+Q sends, Enter steers (M56 spec 14 review)", () => {
     const answer = await win.send("write the summary now");
     expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"] });
     expect(win.pane.keysSeen).not.toContain("ctrl+q");
+  });
+});
+
+describe("OMP runs `/goal` at once in a turn (keys.commandsRunInTurn, lab 18.12.2, 2026-10-19)", () => {
+  /** An OMP pane in a turn, its fake running `/goal` at once on Enter as 18.12.2 did in the lab. */
+  const goalTurn = (options: Parameters<typeof omp>[0] = {}): Rig & { pane: OmpPane } => {
+    const made = omp({ version: "18.12.2", ...options });
+    made.pane.inTurn = true;
+    made.pane.runsAtOnce = ["/goal"];
+    return made;
+  };
+  /** The profile with its one range revoked. */
+  const revoke = (profile: Profile): Profile => ({ ...profile, versions: [{ ...profile.versions[0], status: "revoked" }] });
+
+  test("the shipped profile lists /goal alone, with its lab note", () => {
+    const keys = loadProfiles().get("omp")!.keys;
+    expect(keys.commandsRunInTurn).toEqual(["/goal"]);
+    expect(keys.commandsRunInTurnNote).toContain("18.12.2");
+  });
+
+  test("runsInTurnEntry matches the word alone or followed by white space, on a version the turn may trust", () => {
+    const log = { log: () => undefined };
+    const provisional = profileFor("omp", "18.12.2", log);
+    expect(provisional?.status).toBe("provisional");
+    expect(runsInTurnEntry("/goal pause", provisional)).toBe("/goal");
+    expect(runsInTurnEntry("  /goal  ", provisional)).toBe("/goal");
+    expect(runsInTurnEntry("/goal\tresume", provisional)).toBe("/goal");
+    expect(runsInTurnEntry("/goals", provisional)).toBeNull();
+    expect(runsInTurnEntry("/model", provisional)).toBeNull();
+    expect(runsInTurnEntry("pause /goal", provisional)).toBeNull();
+    expect(runsInTurnEntry("/goal pause", profileFor("omp", "18.6.1", log))).toBe("/goal");
+    // An unread version, a revoked range, and a profile with no list match nothing.
+    expect(runsInTurnEntry("/goal pause", profileFor("omp", null, log))).toBeNull();
+    const revoked = new Map([["omp", revoke(loadProfiles().get("omp")!)]]);
+    expect(runsInTurnEntry("/goal pause", profileFor("omp", "18.6.1", { ...log, profiles: revoked }))).toBeNull();
+    expect(runsInTurnEntry("/goal pause", profileFor("omp", "18.12.2", { ...log, profiles: revoked }))).toBeNull();
+    expect(runsInTurnEntry("/goal pause", profileFor("pi", "0.87.1", log))).toBeNull();
+  });
+
+  test("/goal pause in a turn goes in at once with Enter: probed, sent, never queued, never steered, nothing held", async () => {
+    const holds = new HoldStore(join(dir, "held"), () => 1_000_000);
+    const { pane, send } = goalTurn({ holds });
+    const answer = await send("/goal pause", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"], version: "18.12.2", profileStatus: "provisional" });
+    expect(answer.receipt?.queued).toBeUndefined();
+    expect(pane.ran).toEqual(["/goal pause"]);
+    expect(pane.steered).toEqual([]);
+    expect(pane.queued).toEqual([]);
+    expect(pane.keysSeen).not.toContain("ctrl+q");
+    expect(holds.list()).toEqual([]);
+    neverEscape(pane);
+  });
+
+  test("/goal status, /goal resume and a bare /goal go the same way, on the verified range too", async () => {
+    for (const version of ["18.6.1", "18.12.2"]) {
+      for (const text of ["/goal status", "/goal resume", "/goal"]) {
+        const { pane, send } = goalTurn({ version });
+        const answer = await send(text, { mode: "command" });
+        expect([version, text, answer.receipt?.outcome, answer.receipt?.keys.at(-1)]).toEqual([version, text, "sent", "Enter"]);
+        expect(pane.ran).toEqual([text]);
+        expect(pane.steered).toEqual([]);
+      }
+    }
+  });
+
+  test("the answer streaming above the box while /goal is typed does not stop it", async () => {
+    const { pane, send } = goalTurn();
+    let streamed = 0;
+    pane.afterInput = (p) => {
+      streamed++;
+      p.transcript.push(` tick ${String(streamed)} of the streaming answer`);
+    };
+    const answer = await send("/goal resume", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"] });
+    expect(answer.receipt?.queued).toBeUndefined();
+    expect(pane.ran).toEqual(["/goal resume"]);
+    expect(pane.steered).toEqual([]);
+  });
+
+  test("a command the list does not name is held as before, nothing typed: /model, /goals, a prompt template", async () => {
+    for (const text of ["/model", "/goals", "/labnote"]) {
+      const holds = new HoldStore(join(dir, `held-${text.slice(1)}`), () => 1_000_000);
+      const { pane, send } = goalTurn({ holds });
+      const answer = await send(text, { mode: "command" });
+      expect([text, answer.receipt?.outcome, answer.receipt?.keys]).toEqual([text, "held", []]);
+      expect(holds.list().map((entry) => [entry.text, entry.waitsForTurn])).toEqual([[text, true]]);
+      expect(pane.keysSeen).toEqual([]);
+      expect(pane.ran).toEqual([]);
+    }
+  });
+
+  test("without a hold queue a command the list does not name is refused turn_running, nothing typed", async () => {
+    const { pane, send } = goalTurn();
+    const answer = await send("/model", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
+    expect(answer.detail).toBe("A command waits until the turn ends.");
+    expect(pane.calls).toEqual([]);
+  });
+
+  test("on an idle box /goal pause takes Enter as every command does", async () => {
+    const { pane, send } = goalTurn();
+    pane.inTurn = false;
+    const answer = await send("/goal pause", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"] });
+    expect(answer.receipt?.queued).toBeUndefined();
+    expect(pane.transcript.at(-1)).toBe("> /goal pause");
+    expect(pane.ran).toEqual([]);
+  });
+
+  test("an unread version or a revoked range keeps the hold: the command waits for the turn, never Entered", async () => {
+    const cases: { name: string; version: string; edit?: (profile: Profile) => Profile }[] = [
+      { name: "unread", version: "no version here" },
+      { name: "revoked", version: "18.6.1", edit: revoke },
+      { name: "revoked, borrowed", version: "18.12.2", edit: revoke },
+    ];
+    for (const c of cases) {
+      const holds = new HoldStore(join(dir, `held-${c.name}`), () => 1_000_000);
+      const options: Parameters<typeof omp>[0] = { version: c.version, holds };
+      if (c.edit !== undefined) options.edit = c.edit;
+      const { pane, send } = goalTurn(options);
+      const answer = await send("/goal pause", { mode: "command" });
+      expect([c.name, answer.receipt?.outcome, answer.receipt?.keys]).toEqual([c.name, "held", []]);
+      expect(holds.list().map((entry) => entry.waitsForTurn)).toEqual([true]);
+      expect(pane.keysSeen).toEqual([]);
+    }
+  });
+
+  test("a profile without the list holds /goal pause in a turn, the shape before the lab", async () => {
+    const holds = new HoldStore(join(dir, "held"), () => 1_000_000);
+    const withoutList = (profile: Profile): Profile => {
+      const { commandsRunInTurn, commandsRunInTurnNote, ...keys } = profile.keys;
+      void commandsRunInTurn;
+      void commandsRunInTurnNote;
+      return { ...profile, keys };
+    };
+    const { pane, send } = goalTurn({ holds, edit: withoutList });
+    expect((await send("/goal pause", { mode: "command" })).receipt).toMatchObject({ outcome: "held", keys: [] });
+    expect(pane.keysSeen).toEqual([]);
+  });
+
+  test("a pane with held sends: /goal pause does not wait behind them, and they stay held", async () => {
+    const holds = new HoldStore(join(dir, "held"), () => 1_000_000);
+    const { pane, send, protocol } = goalTurn({ holds });
+    expect((await send("/model", { id: "held-goal-01", mode: "command" })).receipt).toMatchObject({ outcome: "held" });
+    const answer = await send("/goal pause", { id: "goal-now-01", mode: "command" });
+    expect(answer.receipt).toMatchObject({ requestId: "goal-now-01", outcome: "sent", keys: ["probe", "Backspace", "Enter"] });
+    expect(pane.ran).toEqual(["/goal pause"]);
+    expect(protocol.heldOf("main", "%1").map((row) => row.requestId)).toEqual(["held-goal-01"]);
+    // A command the list does not name still joins the end of the queue.
+    expect((await send("/compact", { id: "held-goal-02", mode: "command" })).receipt).toMatchObject({ outcome: "held", keys: [] });
+    expect(protocol.heldOf("main", "%1").map((row) => row.requestId)).toEqual(["held-goal-01", "held-goal-02"]);
+  });
+});
+
+// The same send, replayed from a real OMP 18.12.2 (captured 2026-10-22, Herdr 0.9.5, 119 columns, a local
+// fake model endpoint, no model call). Each screen the Send Protocol reads is a file in
+// web/src/fixtures/panes/omp--v18-12-2-goal-*--w119.txt, read off the pane as the bridge reads it
+// (`pane.read` visible, format ansi). The pane below answers each read with the capture taken at that
+// step of the lab's send: the probe typed, the text typed, Enter pressed. Nothing on a screen is drawn
+// by the test.
+describe("OMP 18.12.2 `/goal` in a goal turn, replayed from the real capture (lab 2026-10-22)", () => {
+  const PANES = join(import.meta.dir, "../../web/src/fixtures/panes");
+  /** A capture's text, line breaks as the bridge's read takes them. */
+  const capture = (name: string): string => readFileSync(join(PANES, `omp--v18-12-2-goal-${name}--w119.txt`), "utf8").replace(/\r\n/gu, "\n");
+  const OMP = loadProfiles().get("omp")!;
+  const surfaceOf = (name: string): Surface =>
+    surfaceOfScreen({ seq: 0, source: "screen", at: 0, revision: 1, rows: splitLines(parseAnsi(capture(name))), ask: null }, OMP.idle).surface;
+
+  /** The captures of one send in the lab: what the screen read before, with the probe, with the text typed, and after Enter. */
+  interface Stages {
+    before: string;
+    probe: string;
+    typed: string;
+    /** The reads after Enter, in the order the lab took them; the last one stands for every later read. */
+    after: string[];
+  }
+  const PAUSE: Stages = { before: "turn-running", probe: "turn-running-probe", typed: "pause-typed", after: ["pause-result", "pause-result-later"] };
+  const RESUME: Stages = { before: "resume-before", probe: "resume-probe", typed: "resume-typed", after: ["resume-result"] };
+  const BARE: Stages = { before: "bare-before", probe: "bare-probe", typed: "bare-typed", after: ["bare-menu"] };
+
+  /** An OMP pane whose every read is one of the captures: the empty box, the probe in the box, the text in the box, or a read after Enter. */
+  const replay = (stages: Stages, text: string): FakePane => {
+    const pane = new FakePane("generic");
+    let entered = false;
+    let after = 0;
+    pane.afterInput = (_p, what) => {
+      if (what === "keys:Enter") entered = true;
+    };
+    pane.beforeRead = (p) => {
+      if (entered) {
+        p.fixed = capture(stages.after[Math.min(after++, stages.after.length - 1)]!);
+      } else if (p.box === "") p.fixed = capture(stages.before);
+      else if (p.box === PROBE) p.fixed = capture(stages.probe);
+      else if (p.box === text) p.fixed = capture(stages.typed);
+      else throw new Error(`the lab never saw the box hold ${JSON.stringify(p.box)}`);
+    };
+    return pane;
+  };
+  const sendOn = async (stages: Stages, text: string, options: { holds?: HoldStore; edit?: (profile: Profile) => Profile } = {}): Promise<{ answer: SendAnswer; pane: FakePane }> => {
+    const pane = replay(stages, text);
+    const made = rig({ pane, harness: "omp", version: "18.12.2", ...options });
+    return { answer: await made.send(text, { mode: "command" }), pane };
+  };
+
+  test("the captured screens carry OMP's own words, version and width", () => {
+    // eslint-disable-next-line no-control-regex
+    const plain = (name: string): string => capture(name).replace(/\u001b\[[0-9;:]*m/gu, "");
+    expect(plain("turn-running")).toContain("v18.12.2");
+    expect(plain("turn-running")).toContain("⎋ Working…");
+    expect(plain("turn-running")).toContain("🎯 Goal");
+    expect(plain("pause-result")).toContain("Goal mode paused.");
+    expect(plain("pause-result")).toContain("⏸ Goal");
+    expect(plain("pause-result")).toContain("⎋ Working…");
+    expect(plain("resume-before")).toContain("⏸ Goal");
+    expect(plain("resume-result")).toContain("Goal mode resumed.");
+    expect(plain("resume-result")).toContain("🎯 Goal");
+    for (const entry of ["Show details", "Adjust budget…", "Pause", "Drop", "↑/↓ navigate  ⏎ select  ⎋ cancel"]) expect(plain("bare-menu")).toContain(entry);
+  });
+
+  test("the reader sees a running turn and a free box on the screen before /goal pause, and again before /goal resume", () => {
+    for (const name of ["turn-running", "resume-before", "bare-before"]) {
+      const surface = surfaceOf(name);
+      expect([name, surface.turn, surface.modal, surface.composer]).toEqual([name, "running", "none", "empty"]);
+      expect(isFree(surface), name).toBe(false);
+    }
+  });
+
+  test("the screens after /goal pause and /goal resume still read a running turn: the goal turn goes on", () => {
+    for (const name of ["pause-result", "pause-result-later", "resume-result"]) {
+      const surface = surfaceOf(name);
+      expect([name, surface.turn, surface.modal, surface.composer]).toEqual([name, "running", "none", "empty"]);
+    }
+  });
+
+  test("the screen after a bare /goal is a menu the reader does not call free", () => {
+    const surface = surfaceOf("bare-menu");
+    expect(surface.modal).not.toBe("none");
+    expect(isFree(surface)).toBe(false);
+  });
+
+  test("/goal pause is sent in the turn as a command: probe, Backspace, Enter, never the queue key, receipt sent", async () => {
+    const holds = new HoldStore(join(dir, "held"), () => 1_000_000);
+    const { answer, pane } = await sendOn(PAUSE, "/goal pause", { holds });
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"], version: "18.12.2", profileStatus: "provisional" });
+    expect(answer.receipt?.queued).toBeUndefined();
+    expect(pane.calls[0]).toBe(`type:${PROBE}`);
+    expect(pane.keysSeen).toEqual(["Backspace", "Enter"]);
+    expect(pane.keysSeen).not.toContain("ctrl+q");
+    expect(holds.list()).toEqual([]);
+    neverEscape(pane);
+  });
+
+  // What the first version of this change missed: with `/goal pause` typed OMP draws the argument's list
+  // under the box, the pointer on `pause`. Without `commandList.argumentList` that pointer is on another
+  // command, and S1 leaves the text typed.
+  test("without commandList.argumentList the real screen's list reads as another command and Enter is never pressed", async () => {
+    const withoutFlag = (profile: Profile): Profile => {
+      const list = profile.idle.volatile.below.commandList!;
+      const { argumentList, ...rest } = list;
+      void argumentList;
+      return { ...profile, idle: { ...profile.idle, volatile: { ...profile.idle.volatile, below: { ...profile.idle.volatile.below, commandList: rest } } } };
+    };
+    const { answer, pane } = await sendOn(PAUSE, "/goal pause", { edit: withoutFlag });
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue", keys: ["probe", "Backspace"] });
+    expect(pane.keysSeen).toEqual(["Backspace"]);
+  });
+
+  test("/goal resume on the paused screen goes the same way", async () => {
+    const { answer, pane } = await sendOn(RESUME, "/goal resume");
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"], version: "18.12.2" });
+    expect(answer.receipt?.queued).toBeUndefined();
+    expect(pane.keysSeen).toEqual(["Backspace", "Enter"]);
+    neverEscape(pane);
+  });
+
+  test("a bare /goal goes the same way, and the menu it opens is on the next screen", async () => {
+    const { answer, pane } = await sendOn(BARE, "/goal");
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"], version: "18.12.2" });
+    expect(pane.keysSeen).toEqual(["Backspace", "Enter"]);
+    neverEscape(pane);
+  });
+
+  test("a command the list does not name is held on the same running screen, and nothing is typed", async () => {
+    for (const text of ["/model", "/goals", "/compact"]) {
+      const holds = new HoldStore(join(dir, `held-${text.slice(1)}`), () => 1_000_000);
+      const { answer, pane } = await sendOn(PAUSE, text, { holds });
+      expect([text, answer.receipt?.outcome, answer.receipt?.keys]).toEqual([text, "held", []]);
+      expect(holds.list().map((entry) => [entry.text, entry.waitsForTurn])).toEqual([[text, true]]);
+      expect(pane.calls).toEqual([]);
+      expect(pane.keysSeen).toEqual([]);
+    }
+  });
+
+  test("with no hold queue a command the list does not name is refused turn_running on the same screen, nothing typed", async () => {
+    const { answer, pane } = await sendOn(PAUSE, "/model");
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
+    expect(pane.calls).toEqual([]);
+  });
+
+  test("an unread version keeps /goal pause held on the real screen: the list applies only where the turn is trusted", async () => {
+    const holds = new HoldStore(join(dir, "held-unread"), () => 1_000_000);
+    const pane = replay(PAUSE, "/goal pause");
+    const made = rig({ pane, harness: "omp", version: "no version here", holds });
+    const answer = await made.send("/goal pause", { mode: "command" });
+    expect([answer.receipt?.outcome, answer.receipt?.keys]).toEqual(["held", []]);
+    expect(pane.calls).toEqual([]);
   });
 });
 
@@ -6558,6 +6878,18 @@ describe("S1 reads the turn again before the commit key (PR 491): a turn starts 
     };
     const answer = await send("/model", { mode: "command" });
     expect({ steered: pane.steered, outcome: answer.receipt?.outcome }).toEqual({ steered: [], outcome: "typed_not_submitted" });
+  });
+
+  test("omp: /goal pause typed on an idle box, a turn starts while it goes in (the status row's spinner): it takes Enter, which OMP runs at once, never steering", async () => {
+    const { pane, send } = omp({ version: "18.12.2" });
+    pane.runsAtOnce = ["/goal"];
+    pane.showWorking = false;
+    pane.afterInput = (_p, what) => {
+      if (what === "type:/goal pause" || what === "paste:/goal pause") pane.inTurn = true;
+    };
+    const answer = await send("/goal pause", { mode: "command" });
+    expect({ steered: pane.steered, ran: pane.ran, outcome: answer.receipt?.outcome, key: answer.receipt?.keys.at(-1) }).toEqual({ steered: [], ran: ["/goal pause"], outcome: "sent", key: "Enter" });
+    expect(answer.receipt?.queued).toBeUndefined();
   });
 
   test("codex: /new (never held) typed on an idle box, a turn starts while it goes in: no Enter into the turn", async () => {

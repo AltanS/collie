@@ -4006,6 +4006,71 @@
    "version": "18.11",
    "state": "popup"
   },
+  "omp--v18-12-2-goal-bare-before--w119.txt": {
+   "harness": "omp",
+   "version": "18.12.2",
+   "state": "running"
+  },
+  "omp--v18-12-2-goal-bare-menu--w119.txt": {
+   "harness": "omp",
+   "version": "18.12.2",
+   "state": "dialog"
+  },
+  "omp--v18-12-2-goal-bare-probe--w119.txt": {
+   "harness": "omp",
+   "version": "18.12.2",
+   "state": "draft"
+  },
+  "omp--v18-12-2-goal-bare-typed--w119.txt": {
+   "harness": "omp",
+   "version": "18.12.2",
+   "state": "popup"
+  },
+  "omp--v18-12-2-goal-pause-result--w119.txt": {
+   "harness": "omp",
+   "version": "18.12.2",
+   "state": "running"
+  },
+  "omp--v18-12-2-goal-pause-result-later--w119.txt": {
+   "harness": "omp",
+   "version": "18.12.2",
+   "state": "running"
+  },
+  "omp--v18-12-2-goal-pause-typed--w119.txt": {
+   "harness": "omp",
+   "version": "18.12.2",
+   "state": "popup"
+  },
+  "omp--v18-12-2-goal-resume-before--w119.txt": {
+   "harness": "omp",
+   "version": "18.12.2",
+   "state": "running"
+  },
+  "omp--v18-12-2-goal-resume-probe--w119.txt": {
+   "harness": "omp",
+   "version": "18.12.2",
+   "state": "draft"
+  },
+  "omp--v18-12-2-goal-resume-result--w119.txt": {
+   "harness": "omp",
+   "version": "18.12.2",
+   "state": "running"
+  },
+  "omp--v18-12-2-goal-resume-typed--w119.txt": {
+   "harness": "omp",
+   "version": "18.12.2",
+   "state": "popup"
+  },
+  "omp--v18-12-2-goal-turn-running--w119.txt": {
+   "harness": "omp",
+   "version": "18.12.2",
+   "state": "running"
+  },
+  "omp--v18-12-2-goal-turn-running-probe--w119.txt": {
+   "harness": "omp",
+   "version": "18.12.2",
+   "state": "draft"
+  },
   "omp--v18-12-band-idle--w130.txt": {
    "harness": "omp",
    "version": "18.12",
