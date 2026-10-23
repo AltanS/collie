@@ -72,6 +72,7 @@ import {
   type RunnableBun,
   resolveRunnableBun,
 } from "./sys.ts";
+import { STATUSLINE_BEHIND_WORD } from "./hooks.ts";
 import { tagRemote } from "./update-remote.ts";
 import { unitName } from "./unit.ts";
 import {
@@ -1095,6 +1096,15 @@ function nudgeHooks(deps: UpdateDeps, binary: string): void {
     return;
   }
   if (!r.found || r.code !== EXIT.STATE) return;
+  // A new binary names the case where only the statusLine wrap is behind (cli/hooks.ts); an older one
+  // prints nothing, and its lag is always the hooks.
+  if (r.stdout.trim() === STATUSLINE_BEHIND_WORD) {
+    deps.io.out(
+      "note: this build wraps your Claude statusLine for the usage dots, and your settings do not carry the wrapper yet —" +
+        " run `collie hooks install claude` to add it.",
+    );
+    return;
+  }
   deps.io.out(
     "note: this build registers beacon hooks your settings do not carry yet —" +
       " run `collie hooks install claude` to add them.",

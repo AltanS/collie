@@ -2370,6 +2370,15 @@ describe("the hooks nudge", () => {
     expect(h.io.stdout.join("\n")).toContain("collie hooks install claude");
   });
 
+  test("names the statusLine wrap when that is the only thing behind, and still names the command", async () => {
+    const h = binaryHarness({ hooksCheck: { code: EXIT.STATE, stdout: "statusline\n" } });
+    expect(await runner(h, BINARY_APPLY)).toBe(EXIT.OK);
+    const out = h.io.stdout.join("\n");
+    expect(out).toContain("your settings do not carry the wrapper yet");
+    expect(out).not.toContain(NUDGE);
+    expect(out).toContain("collie hooks install claude");
+  });
+
   test("stays silent when the new binary reports nothing to do", async () => {
     const h = binaryHarness();
     expect(await runner(h, BINARY_APPLY)).toBe(EXIT.OK);

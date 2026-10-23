@@ -1197,5 +1197,17 @@ describe("the statusLine wrap (.adr/0115)", () => {
     const doc = asJsonObject(settingsOf(d)) ?? {};
     d.files.entries.set(SETTINGS, { text: `${JSON.stringify({ ...doc, statusLine: { type: "command", command: MINE } }, null, 2)}\n` });
     expect(hooksAreBehind(d)).toBe(wraps);
+    // `--check` says which thing is behind in one word, for the updater's nudge, and only then.
+    d.io.stdout.length = 0;
+    expect(cmdHooksStatus(d, ["--check"])).toBe(wraps ? EXIT.STATE : EXIT.OK);
+    expect(d.io.stdout).toEqual(wraps ? ["statusline"] : []);
+  });
+
+  test("on Windows the install says the statusLine is not wrapped; elsewhere it wraps", () => {
+    const d = deps({ files: { [SETTINGS]: withLine({ type: "command", command: MINE }) } });
+    cmdHooksInstall(d, ["claude"]);
+    const out = d.io.stdout.join("\n");
+    if (wraps) expect(out).not.toContain("statusLine not wrapped on Windows");
+    else expect(out).toContain("statusLine not wrapped on Windows");
   });
 });

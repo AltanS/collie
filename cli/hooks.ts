@@ -633,6 +633,7 @@ export function cmdHooksInstall(deps: HooksDeps, args: readonly string[]): numbe
   }
   let failed = false;
   let wrappedLines = 0;
+  let plainLines = 0;
 
   for (const rawTarget of claudeSettingsTargets(deps.ctx)) {
     const resolved = resolveTarget(deps, rawTarget);
@@ -661,6 +662,7 @@ export function cmdHooksInstall(deps: HooksDeps, args: readonly string[]): numbe
     const document = wrapsStatusLine() ? wrapStatusLine(outcome.document, binary) : outcome.document;
     const line = statusLineState(document).kind;
     if (line === "wrapped") wrappedLines += 1;
+    if (line === "plain") plainLines += 1;
     const text = serializeSettings(document);
     if (text === settings.text) {
       deps.io.out(`${target.path} already has them — no bytes changed.`);
@@ -693,7 +695,9 @@ export function cmdHooksInstall(deps: HooksDeps, args: readonly string[]): numbe
   if (wrappedLines > 0) {
     deps.io.out(`  statusLine → \`${binary} beacon statusline\`: your own command still runs and prints as before.`);
     deps.io.out("  The wrapper passes on the context use and the 5h and 7d limits, for the dots above the belt.");
-  } else if (wrapsStatusLine()) {
+  } else if (!wrapsStatusLine()) {
+    if (plainLines > 0) deps.io.out("  statusLine not wrapped on Windows, so the phone shows no usage dots.");
+  } else {
     deps.io.out("  No statusLine to wrap, so the phone shows no usage dots. Collie never adds a statusLine.");
   }
   return EXIT.OK;
@@ -791,10 +795,21 @@ function targetState(deps: HooksDeps, target: HookTarget): HookTargetState {
  * {@link BEACON_HOOKS} is compiled in and the old build's copy is exactly the stale thing.
  */
 export function hooksAreBehind(deps: HooksDeps): boolean {
-  return claudeSettingsTargets(deps.ctx)
-    .map((target) => targetState(deps, target))
-    .some((state) => state.kind === "partial" || state.kind === "stale" || state.kind === "statusline");
+  return behindReason(deps) !== null;
 }
+
+/**
+ * WHAT is behind: the hooks themselves (a missing registration or a stale marker), or only the
+ * statusLine wrap. The hooks win when both are, because their install wraps the statusLine as well.
+ */
+export function behindReason(deps: HooksDeps): "hooks" | "statusline" | null {
+  const states = claudeSettingsTargets(deps.ctx).map((target) => targetState(deps, target));
+  if (states.some((state) => state.kind === "partial" || state.kind === "stale")) return "hooks";
+  return states.some((state) => state.kind === "statusline") ? "statusline" : null;
+}
+
+/** The one word `hooks status --check` prints when only the statusLine wrap is behind. */
+export const STATUSLINE_BEHIND_WORD = "statusline";
 
 /**
  * `collie hooks status` — READ-ONLY. It reports; it never repairs.
@@ -805,7 +820,13 @@ export function hooksAreBehind(deps: HooksDeps): boolean {
  * the existing verb means the two answers cannot drift, and it leaves `status`'s own contract alone.
  */
 export function cmdHooksStatus(deps: HooksDeps, args: readonly string[] = []): number {
-  if (args.includes("--check")) return hooksAreBehind(deps) ? EXIT.STATE : EXIT.OK;
+  if (args.includes("--check")) {
+    const reason = behindReason(deps);
+    // One word, and only for the statusLine case, so the updater can say which thing is behind. An
+    // older updater reads the exit code alone, and the code is the same for both.
+    if (reason === "statusline") deps.io.out(STATUSLINE_BEHIND_WORD);
+    return reason === null ? EXIT.OK : EXIT.STATE;
+  }
   const { binary, source } = resolveHookCommand(deps.ctx, deps.fs);
   deps.io.out(`would install: ${binary} beacon emit  (${SOURCE_NAME[source]})`);
   for (const target of claudeSettingsTargets(deps.ctx)) {
