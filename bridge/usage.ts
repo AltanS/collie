@@ -248,11 +248,37 @@ export class UsageTracker {
     await this.prune();
   }
 
-  /** The pane's reading now, or undefined. */
+  /**
+   * The pane's reading now, or undefined. The context is the pane's own session's. The 5-hour and
+   * 7-day windows belong to the ACCOUNT, not the session, so each window is the newest one any held
+   * session of the same harness reported: a session that last spoke an hour ago shows what a busier
+   * one learned since. Only a session that reported windows of its own gets them, so an API-key
+   * session beside a subscription one stays without.
+   */
   get(pane: AgentView): PaneUsage | undefined {
     const session = UsageTracker.sessionOf(pane);
     const record = session === null ? null : (this.held.get(session)?.record ?? null);
-    return record === null ? undefined : usageAt(record, this.now());
+    if (record === null) return undefined;
+    const now = this.now();
+    if (record.limits === undefined) return usageAt(record, now);
+    return usageAt({ ...record, limits: this.newestLimits(record.harness, now) }, now);
+  }
+
+  /** Per window, the limit from the newest held record of `harness` that carries it unexpired. */
+  private newestLimits(harness: string, now: number): UsageLimit[] {
+    const newest = new Map<UsageWindow, { at: number; limit: UsageLimit }>();
+    for (const { record } of this.held.values()) {
+      if (record === null || record.harness !== harness) continue;
+      for (const limit of record.limits ?? []) {
+        if (limit.resetsAt !== undefined && limit.resetsAt <= now) continue;
+        const best = newest.get(limit.window);
+        if (best === undefined || record.at > best.at) newest.set(limit.window, { at: record.at, limit });
+      }
+    }
+    return USAGE_WINDOWS.flatMap((window) => {
+      const best = newest.get(window);
+      return best === undefined ? [] : [best.limit];
+    });
   }
 
   /** Remove readings past {@link USAGE_MAX_AGE_MS}, then the oldest past {@link USAGE_FILES_MAX}. */

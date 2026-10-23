@@ -147,6 +147,24 @@ describe("UsageTracker", () => {
     expect(tracker.get(pane("b"))).toEqual({ context: 2 });
   });
 
+  it("shows each window as the newest any session of the harness reported; the context stays per session", async () => {
+    const entries = new Map<string, [number, string]>([
+      [`${dir}/${usageFileName("old")}`, [NOW, record({ at: NOW - 3_600_000, context: 70, limits: [{ window: "5h", used: 10 }, { window: "7d", used: 30 }] })]],
+      [`${dir}/${usageFileName("new")}`, [NOW, record({ at: NOW, context: 5, limits: [{ window: "5h", used: 60 }] })]],
+      [`${dir}/${usageFileName("api")}`, [NOW, record({ at: NOW, context: 9 })]],
+      [`${dir}/${usageFileName("other")}`, [NOW, JSON.stringify({ schemaVersion: 1, harness: "codex", at: NOW + 1, limits: [{ window: "5h", used: 99 }] })]],
+    ]);
+    const tracker = new UsageTracker(dir, memoryFiles(entries), () => NOW);
+    await tracker.refresh([pane("old"), pane("new"), pane("api"), pane("other")]);
+    // The older session shows the newer 5h figure, keeps the 7d only it has, and its own context.
+    expect(tracker.get(pane("old"))).toEqual({ context: 70, limits: [{ window: "5h", used: 60 }, { window: "7d", used: 30 }] });
+    expect(tracker.get(pane("new"))).toEqual({ context: 5, limits: [{ window: "5h", used: 60 }, { window: "7d", used: 30 }] });
+    // A session that reported no windows (an API key) gets none from its neighbours.
+    expect(tracker.get(pane("api"))).toEqual({ context: 9 });
+    // Another harness's account is another account.
+    expect(tracker.get(pane("other"))).toEqual({ limits: [{ window: "5h", used: 99 }] });
+  });
+
   it("removes readings past their age, and leaves files that are not its own", async () => {
     const old = `${dir}/${usageFileName("old")}`;
     const fresh = `${dir}/${usageFileName("fresh")}`;
