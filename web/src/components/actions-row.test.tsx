@@ -742,7 +742,7 @@ describe("ActionsRow: Stop (M68 spec 02)", () => {
   });
 
   it("draws one Stop beside the harness section when the pane offers it", () => {
-    render(<ActionsRow general={[general()]} agent="claude" onRun={took} stop={{ onStop: async () => {} }} />);
+    render(<ActionsRow general={[general()]} agent="claude" onRun={took} stop={{ onStop: async () => {}, paneId: "w1:p1", running: true }} />);
     expect(document.querySelectorAll("[data-slot='belt-stop']")).toHaveLength(1);
     expect(screen.getByRole("button", { name: "Stop the turn" })).toBeInTheDocument();
   });

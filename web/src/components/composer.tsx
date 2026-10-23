@@ -2195,7 +2195,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           onRun={(command) => send(command, false)}
           disabled={locked}
           // Stop, for a running turn the bridge has a key for (M68 spec 02); a link that is down greys it.
-          stop={stopOffered ? { onStop: stopTurn } : undefined}
+          stop={stopOffered ? { onStop: stopTurn, paneId, running: surface.turn === "running" } : undefined}
           // The pane switcher: a Switch pill pinned at this belt's right end, above Send, and the
           // belt itself as the drag surface behind it. The pane decides whether there is one
           // (agent-chat.tsx); this row draws the pill, wires the drag, and costs no height.

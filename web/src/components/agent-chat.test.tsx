@@ -49,6 +49,7 @@ import { COLLAPSE_MS } from "./ui/collapse";
 import { AgentChat } from "./agent-chat";
 import { saveChatTail } from "@/lib/chat-tail";
 import { __resetMaskedHint, maskedHintRetired } from "@/lib/masked-hint";
+import { ARM_DWELL_MS } from "@/lib/arm";
 
 // M46 spec 11 turns every send off for a pane the bridge has not answered lately (lib/liveness.ts).
 // These suites drive sends against a mocked network and never poll first, so they pin the pane live;
@@ -4878,6 +4879,8 @@ describe("AgentChat: Stop on a pane with a screen", () => {
   const IDLE_SURFACE: Surface = { revision: 4, turn: "idle", modal: "none", composer: "empty" };
   const stopAgent = (over: Partial<AgentView>): AgentView => ({ ...fixtureAgents[0]!, sendProtocol: true, ...over });
   const beltStop = () => document.querySelector("[data-slot='belt-stop']");
+  /** A second tap counts only ARM_DWELL_MS after the arm (lib/arm.ts): wait it out, as a thumb does. */
+  const pastTheDwell = () => new Promise<void>((resolve) => setTimeout(resolve, ARM_DWELL_MS));
 
   function serveStop(receipt: JsonValue) {
     const posted: JsonValue[] = [];
@@ -4907,6 +4910,7 @@ describe("AgentChat: Stop on a pane with a screen", () => {
     renderChat({ agent: stopAgent({ surface: RUNNING, canStop: true }) });
     await user.click(await screen.findByRole("button", { name: "Stop the turn" }));
     expect(posted).toHaveLength(0);
+    await pastTheDwell();
     await user.click(screen.getByRole("button", { name: "Tap again to stop the turn" }));
     await waitFor(() => expect(posted).toHaveLength(1));
     expect(posted[0]).toEqual({ requestId: expect.stringMatching(/^[A-Za-z0-9_-]{8,64}$/) });
@@ -4918,6 +4922,7 @@ describe("AgentChat: Stop on a pane with a screen", () => {
     const posted = serveStop({ requestId: "echo-0002", outcome: "refused", reason: "draft_present" });
     renderChat({ agent: stopAgent({ surface: RUNNING, canStop: true }) });
     await user.click(await screen.findByRole("button", { name: "Stop the turn" }));
+    await pastTheDwell();
     await user.click(screen.getByRole("button", { name: "Tap again to stop the turn" }));
     expect(await screen.findByText("The box holds your text and this harness's stop key would clear it.")).toBeInTheDocument();
     expect(posted).toHaveLength(1);

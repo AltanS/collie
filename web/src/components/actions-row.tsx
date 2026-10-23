@@ -407,7 +407,7 @@ export interface ActionsRowProps {
    * the bridge says a key exists (`stopFor`); absent is the whole of the old behaviour. The composer owns
    * the request and the receipt. A pane with no screen keeps the program bar's own Stop and never gets this one.
    */
-  stop?: Pick<ScreenStopProps, "onStop">;
+  stop?: Pick<ScreenStopProps, "onStop" | "paneId" | "running">;
   /** Which thumb the belt is laid out for; see {@link Hand}. Default `"right"`, the shipped layout. */
   hand?: Hand;
   /**
@@ -688,7 +688,7 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, sto
               </div>
             )}
             <HarnessBar agent={agent} mine={mine} onRun={onRun} disabled={disabled} hand={hand} />
-            {stop !== undefined && <ScreenStop onStop={stop.onStop} disabled={disabled} hand={hand} />}
+            {stop !== undefined && <ScreenStop onStop={stop.onStop} paneId={stop.paneId} running={stop.running} disabled={disabled} hand={hand} />}
             {durable !== undefined && <DurableBar items={durable.items} state={durable.state} disabled={disabled} hand={hand} />}
             {/* THE TRAILING SPACER — a real flex child, not padding. `paddingRight` on this
                 scroller was tried first and measured wrong in Chrome: the scroller is a `flex`

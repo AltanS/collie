@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { __resetHarnessBar, setHarnessBarEnabled } from "@/lib/harness-bar-pref";
 import type { OperatorCommand } from "@/lib/types";
-import { ARM_MS } from "@/lib/arm";
+import { ARM_DWELL_MS, ARM_MS } from "@/lib/arm";
 import { accentFor, DurableBar, HarnessBar, ScreenStop } from "./harness-bar";
 import { DURABLE_BAR, durableBarFor } from "@/lib/harness-bar";
 import type { PaneAction } from "@/lib/types";
@@ -295,7 +295,7 @@ describe("ScreenStop (M68 spec 02)", () => {
   const stop = () => screen.getByRole("button", { name: /stop the turn/i });
 
   it("draws one 44px-reach Stop button in the belt, named for a reader", () => {
-    render(<ScreenStop onStop={async () => {}} />);
+    render(<ScreenStop paneId="w1:p1" running onStop={async () => {}} />);
     expect(stop()).toHaveAttribute("data-slot", "belt-stop");
     expect(stop()).toHaveTextContent("Stop");
     expect(stop().className).toContain("min-w-11");
@@ -303,7 +303,7 @@ describe("ScreenStop (M68 spec 02)", () => {
 
   it("arms on the first tap without stopping anything", () => {
     const onStop = vi.fn(async () => {});
-    render(<ScreenStop onStop={onStop} />);
+    render(<ScreenStop paneId="w1:p1" running onStop={onStop} />);
     fireEvent.click(stop());
     expect(onStop).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: /tap again to stop the turn/i })).toHaveTextContent("Stop?");
@@ -312,7 +312,7 @@ describe("ScreenStop (M68 spec 02)", () => {
   it("disarms by itself after ARM_MS, and the next tap only arms again", () => {
     vi.useFakeTimers();
     const onStop = vi.fn(async () => {});
-    render(<ScreenStop onStop={onStop} />);
+    render(<ScreenStop paneId="w1:p1" running onStop={onStop} />);
     fireEvent.click(stop());
     act(() => {
       vi.advanceTimersByTime(ARM_MS - 1);
@@ -335,9 +335,12 @@ describe("ScreenStop (M68 spec 02)", () => {
           finish = resolve;
         }),
     );
-    render(<ScreenStop onStop={onStop} />);
+    render(<ScreenStop paneId="w1:p1" running onStop={onStop} />);
+    const clock = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
     fireEvent.click(stop());
+    clock.mockReturnValue(1_000_000 + ARM_DWELL_MS);
     fireEvent.click(screen.getByRole("button", { name: /tap again/i }));
+    clock.mockRestore();
     expect(onStop).toHaveBeenCalledTimes(1);
     const busy = screen.getByRole("button", { name: /stop the turn/i });
     expect(busy).toHaveAttribute("aria-busy", "true");
@@ -354,11 +357,50 @@ describe("ScreenStop (M68 spec 02)", () => {
 
   it("does not arm on a greyed button, and drops an arm when it is greyed", () => {
     const onStop = vi.fn(async () => {});
-    const { rerender } = render(<ScreenStop onStop={onStop} />);
+    const { rerender } = render(<ScreenStop paneId="w1:p1" running onStop={onStop} />);
     fireEvent.click(stop());
     expect(stop()).toHaveTextContent("Stop?");
-    rerender(<ScreenStop onStop={onStop} disabled />);
+    rerender(<ScreenStop paneId="w1:p1" running onStop={onStop} disabled />);
     expect(stop()).toBeDisabled();
     expect(stop()).not.toHaveTextContent("Stop?");
+  });
+
+  // The arm dwell (counsel on the Edge 5 candidate): a second tap counts only ARM_DWELL_MS after the
+  // arm. A tap inside it is the same touch landing twice: ignored, neither a Stop nor a disarm.
+  it("ignores a second tap inside the dwell, and stops on a tap after it", () => {
+    const onStop = vi.fn(async () => {});
+    const clock = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+    try {
+      render(<ScreenStop paneId="w1:p1" running onStop={onStop} />);
+      fireEvent.click(stop());
+      clock.mockReturnValue(1_000_000 + ARM_DWELL_MS - 1);
+      fireEvent.click(stop());
+      expect(onStop).not.toHaveBeenCalled();
+      // Still armed: the tap was not a disarm.
+      expect(stop()).toHaveTextContent("Stop?");
+      clock.mockReturnValue(1_000_000 + ARM_DWELL_MS);
+      fireEvent.click(stop());
+      expect(onStop).toHaveBeenCalledTimes(1);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it("an arm ends when the turn leaves running, and when the pane changes", () => {
+    const onStop = vi.fn(async () => {});
+    const { rerender } = render(<ScreenStop paneId="w1:p1" running onStop={onStop} />);
+    fireEvent.click(stop());
+    expect(stop()).toHaveTextContent("Stop?");
+    rerender(<ScreenStop paneId="w1:p1" running={false} onStop={onStop} />);
+    expect(stop()).not.toHaveTextContent("Stop?");
+
+    rerender(<ScreenStop paneId="w1:p1" running onStop={onStop} />);
+    fireEvent.click(stop());
+    expect(stop()).toHaveTextContent("Stop?");
+    rerender(<ScreenStop paneId="w1:p2" running onStop={onStop} />);
+    expect(stop()).not.toHaveTextContent("Stop?");
+    // The next tap on the new pane only arms.
+    fireEvent.click(stop());
+    expect(onStop).not.toHaveBeenCalled();
   });
 });

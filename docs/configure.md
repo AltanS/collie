@@ -243,8 +243,9 @@ the turn runs and Collie knows the key that stops this agent. Stop does not type
 send a message. It presses the agent's own stop key, once, and tells you what happened.
 
 A Stop needs two taps. The first tap arms the button: the word changes to **Stop?** and the button
-keeps its size. Tap it again within four seconds to stop the turn. If you wait, the arm lapses and
-nothing is pressed. While the second tap is in flight the button takes no more taps, so a quick third
+keeps its size. Tap it again within four seconds to stop the turn. A second tap that lands at once,
+within 0.4 seconds, counts as the same touch and is ignored. If you wait, the arm lapses and nothing is
+pressed. The arm also lapses when you open another pane or the turn ends. While the second tap is in flight the button takes no more taps, so a quick third
 tap cannot press a second Stop.
 
 Which key stops a turn is the harness's own choice, and the harness profile holds it. Most agents

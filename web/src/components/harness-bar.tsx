@@ -10,7 +10,7 @@ import type { Hand } from "@/hooks/use-display-prefs";
 import { useActionEcho } from "@/hooks/use-action-echo";
 import { useLocale } from "@/hooks/use-locale";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
-import { ARM_MS } from "@/lib/arm";
+import { ARM_DWELL_MS, ARM_MS } from "@/lib/arm";
 import { t as translate, type MessageKey } from "@/lib/i18n";
 import { barFor, PROGRAM_MARK, durableBarFor, type DurableBarItem, type HarnessBarItem } from "@/lib/harness-bar";
 import { useHarnessBarEnabled } from "@/lib/harness-bar-pref";
@@ -428,6 +428,10 @@ export function DurableBar({ items, state, disabled, hand = "right" }: DurableBa
 export interface ScreenStopProps {
   /** Runs the Stop: the composer posts the abort and shows the receipt under the box. Resolves when the receipt is in. */
   onStop: () => Promise<void>;
+  /** The pane the button stops. An arm never carries over to another pane. */
+  paneId: string;
+  /** Whether the turn reads running now. An arm ends when the turn leaves running. */
+  running: boolean;
   /** Bound to the composer's `locked` or `offline`. Greys the button in place. */
   disabled?: boolean;
   hand?: Hand;
@@ -439,33 +443,44 @@ export interface ScreenStopProps {
  * own control, so it stands beside the harness section and not inside it.
  *
  * ARM, THEN STOP. The first tap only arms: the word changes to "Stop?" (never the size) and the arm lapses
- * by itself after ARM_MS. The second tap runs `onStop`. While it is in flight the button shows a spinner,
- * is dimmed and takes no tap, so a third tap cannot press a second Stop. A durable program keeps its own
+ * by itself after ARM_MS. The second tap runs `onStop`, and counts only ARM_DWELL_MS or more after the
+ * arm: a tap inside the dwell (a double tap, a thumb that lands twice) is ignored, neither a Stop nor a
+ * disarm. An arm ends when the pane changes or the turn leaves running. While the Stop is in flight the
+ * button shows a spinner, is dimmed and takes no tap, so a third tap cannot press a second Stop. A durable program keeps its own
  * Stop in `DurableBar`; the two never draw together, because a program pane never carries `canStop`.
  */
-export function ScreenStop({ onStop, disabled, hand = "right" }: ScreenStopProps) {
+export function ScreenStop({ onStop, paneId, running, disabled, hand = "right" }: ScreenStopProps) {
   useLocale();
   const [armed, setArmed] = useState(false);
   const [busy, setBusy] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const armedAt = useRef(0);
   const flying = useRef(false);
 
   useEffect(() => () => clearTimeout(timer.current), []);
-  // A button that stops being pressable also stops being armed.
+  // A button that stops being pressable also stops being armed, and so does one on another pane or
+  // over a turn that no longer runs: the arm was for that turn.
   useEffect(() => {
-    if (disabled !== true) return;
+    if (disabled !== true && running) return;
     clearTimeout(timer.current);
     setArmed(false);
-  }, [disabled]);
+  }, [disabled, running]);
+  useEffect(() => {
+    clearTimeout(timer.current);
+    setArmed(false);
+  }, [paneId]);
 
   async function tap() {
     if (disabled === true || flying.current) return;
     if (!armed) {
       setArmed(true);
+      armedAt.current = Date.now();
       clearTimeout(timer.current);
       timer.current = setTimeout(() => setArmed(false), ARM_MS);
       return;
     }
+    // Inside the dwell the tap is the same touch landing twice, not a second decision.
+    if (Date.now() - armedAt.current < ARM_DWELL_MS) return;
     clearTimeout(timer.current);
     setArmed(false);
     flying.current = true;
