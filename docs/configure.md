@@ -248,9 +248,7 @@ nothing is pressed. While the second tap is in flight the button takes no more t
 tap cannot press a second Stop.
 
 Which key stops a turn is the harness's own choice, and the harness profile holds it. Most agents
-stop on Escape. Grok, Cursor and Hermes stop on Ctrl+C. opencode wants Escape twice, and Collie
-presses both. The docs keep no list of harnesses for this, because the profile decides and it changes
-with the harness.
+stop on Escape, some on Ctrl+C, and some need Escape twice. The profile decides, not this page.
 
 After the key goes in, Collie reads the screen again for up to three seconds and tells you one of
 three things under the box:
