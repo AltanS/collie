@@ -7184,8 +7184,9 @@ describe("steer or queue (M69), replayed from the real captures (lab 2026-10-23)
     /** Each text write and key with the rig's clock when it went in. */
     log: [string, number][];
   }
+  /** `typedName` names a capture, or is a whole screen built from captures (it holds a newline). */
   const replay = (typedName: string, after: readonly string[], clock: { now: number }, line = LINE): Replayed => {
-    const lab = capture(typedName);
+    const lab = typedName.includes("\n") ? typedName : capture(typedName);
     const typed = line === LINE ? lab : inBox(lab, line);
     const pane = new FakePane("generic");
     const log: [string, number][] = [];
@@ -7282,6 +7283,37 @@ describe("steer or queue (M69), replayed from the real captures (lab 2026-10-23)
     expect(answer.receipt).toMatchObject({ outcome: "steered", keys: ["probe", "Backspace", "Enter"] });
     expect(answer.receipt?.queued).toBeUndefined();
     expect(pane.keysSeen).not.toContain("ctrl+q");
+  });
+
+  // Live rerun 2026-10-23, second pass: with `ok` queued first, a steer draws its `Steering · 1` block
+  // over the queue's `After yield · 1` block, and one `└ Alt+↑ to edit` hint stands under both. The
+  // steer witness read up from the hint, took ` After yield · 1` for a wrapped row of `1. ok` and
+  // stopped at `Steering · 1` with nothing found: unknown, the draft kept, a resend would steer twice.
+  test("OMP 18.6.1: a steer after a queued `ok`, its `Steering · 1` block over the `After yield · 1` block, one hint: steered", async () => {
+    const after = capture("omp--v18-6-steer-over-queued");
+    const { answer, pane } = await steerOn("omp", "18.6.1", "omp--v18-6-steer-typed", [after], STEER, undefined, "say banana");
+    expect(answer.receipt).toMatchObject({ outcome: "steered", keys: ["probe", "Backspace", "Enter"] });
+    expect(answer.receipt?.queued).toBeUndefined();
+    expect(answer.receipt?.reason).toBeUndefined();
+    expect(pane.keysSeen).not.toContain("ctrl+q");
+  });
+
+  test("OMP 18.6.1: the same stacked screen after the queue key for `ok`: sent, queued (the After yield block is still read)", async () => {
+    const { answer } = await steerOn("omp", "18.6.1", "omp--v18-6-queue-typed", [capture("omp--v18-6-steer-over-queued")], {}, undefined, "ok");
+    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect(answer.receipt?.keys.at(-1)).toBe("ctrl+q");
+  });
+
+  test("OMP 18.6.1: `ok` queued already and steered again; the stacked screen's `ok` is the After yield block's: no steer", async () => {
+    const stacked = capture("omp--v18-6-steer-over-queued").split("\n");
+    const block = stacked.filter((row) => /^\s*(?:After yield · 1|1\. ok|└ Alt\+↑ to edit)\s*$/u.test(plainRow(row)));
+    expect(block).toHaveLength(3);
+    // The queue-typed capture with that block over its spinner row: `ok` is queued before the steer.
+    const typed = capture("omp--v18-6-queue-typed").split("\n");
+    const spinner = typed.findIndex((row) => plainRow(row).includes("Running counting loop"));
+    const before = [...typed.slice(block.length + 1, spinner), ...block, "", ...typed.slice(spinner)].join("\n");
+    const { answer } = await steerOn("omp", "18.6.1", before, [capture("omp--v18-6-steer-over-queued")], STEER, undefined, "ok");
+    expect(answer.receipt?.outcome).not.toBe("steered");
   });
 
   test("OMP 18.6.1: the queue's `After yield · 1` block after a steer key: sent, queued", async () => {

@@ -136,6 +136,7 @@ const BOX_COMPOSER_FIXTURES = [
   "omp--v18-6-steer-after--w120.txt",
   "omp--v18-6-steer-after-now--w120.txt",
   "omp--v18-6-steer-done--w120.txt",
+  "omp--v18-6-steer-over-queued--w120.txt",
   "omp--v18-6-steer-pending-block--w120.txt",
   "omp--v18-6-steer-typed--w120.txt",
 ];
@@ -266,6 +267,7 @@ describe("locateComposer — the real corpus, pinned so any change to the walk s
     { fixture: "omp--v18-6-queue-typed--w120.txt", top: 38, bottom: 39, suggestEnd: 40 },
     { fixture: "omp--v18-6-steer-after--w120.txt", top: 38, bottom: 39, suggestEnd: 40 },
     { fixture: "omp--v18-6-steer-after-now--w120.txt", top: 38, bottom: 39, suggestEnd: 40 },
+    { fixture: "omp--v18-6-steer-over-queued--w120.txt", top: 38, bottom: 39, suggestEnd: 40 },
     { fixture: "omp--v18-6-steer-pending-block--w120.txt", top: 38, bottom: 39, suggestEnd: 40 },
     { fixture: "omp--v18-6-steer-done--w120.txt", top: 37, bottom: 38, suggestEnd: 39 },
     { fixture: "omp--v18-6-steer-typed--w120.txt", top: 38, bottom: 39, suggestEnd: 40 },
@@ -345,6 +347,7 @@ describe("extractInputDraft", () => {
     { fixture: "omp--v18-6-steer-typed--w120.txt", draft: "also say hello at the end" },
     { fixture: "omp--v18-6-steer-after-now--w120.txt", draft: "also say hello at the end" },
     { fixture: "omp--v18-6-steer-after--w120.txt", draft: null },
+    { fixture: "omp--v18-6-steer-over-queued--w120.txt", draft: null },
     { fixture: "omp--v18-6-steer-pending-block--w120.txt", draft: null },
     { fixture: "omp--v18-6-queue-typed--w120.txt", draft: "also say hello at the end" },
     { fixture: "omp--v18-6-queue-after-now--w120.txt", draft: "also say hello at the end" },

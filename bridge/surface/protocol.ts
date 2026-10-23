@@ -638,8 +638,10 @@ function steerWitnessed(before: Snap, after: Snap, witness: SteerWitness, text: 
  * another kind in the same block (pi's `Follow-up:` rows between its `Steering:` rows and the hint):
  * it and its wrapped rows are passed over. With a `header` (the hint under the texts), the block
  * counts only when the row over its first text is that header: OMP draws `After yield · N` over a
- * queue and `Steering · N` over a waiting steer, both with the same rows and hint. Rows inside the box
- * are never read.
+ * queue and `Steering · N` over a waiting steer, both with the same rows and hint. With both, a
+ * `between` row is the header of another block stacked over the same hint (OMP draws `Steering · 1`,
+ * its text, then `After yield · 1`, its text, then one `└ Alt+↑ to edit`): a text under it is that
+ * block's, and the scan goes on upward to the next header. Rows inside the box are never read.
  */
 function showsQueued(snap: Snap, queuedRow: QueuedRow | undefined, text: string): boolean {
   if (queuedRow === undefined || snap.frame === null || wsFree(text).length === 0) return false;
@@ -698,8 +700,11 @@ function showsQueued(snap: Snap, queuedRow: QueuedRow | undefined, text: string)
         continue;
       }
       if (between?.test(row) === true) {
-        // Another entry, with the rows it wrapped onto: passed over.
+        // Another entry, with the rows it wrapped onto: passed over. Under a header it is the header of
+        // another block over the same hint (OMP's `After yield · N` under its `Steering · N` block): the
+        // texts found so far were that block's.
         wrapped = [];
+        found = false;
         continue;
       }
       // The block's header ends it, before the indented-row rule could take it for a wrapped row.

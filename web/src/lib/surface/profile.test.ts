@@ -1263,9 +1263,12 @@ describe("the steer keys (M69)", () => {
   it("OMP: a steer that waits for the next step draws `Steering · N` over the queue's own rows and hint; only the header tells the two apart (live rerun 2026-10-23)", () => {
     const omp = loadProfiles().get("omp")!;
     const block = omp.keys.steerWitness![2]!;
-    expect(block).toEqual({ pattern: "^\\s*\\d+\\. (?<text>\\S.*?)\\s*$", hint: "^\\s*└ Alt\\+↑ to edit\\s*$", hintGap: 0, header: "^\\s*Steering · \\d+\\s*$" });
+    expect(block).toEqual({ pattern: "^\\s*\\d+\\. (?<text>\\S.*?)\\s*$", hint: "^\\s*└ Alt\\+↑ to edit\\s*$", hintGap: 0, between: "^\\s*After yield · \\d+\\s*$", header: "^\\s*Steering · \\d+\\s*$" });
     const queuedRow = omp.keys.queuedRow!;
     expect(queuedRow.header).toBe("^\\s*After yield · \\d+\\s*$");
+    // Each block's header is the other's `between`: the two stack over one hint (second live pass).
+    expect(queuedRow.between).toBe(block.header);
+    expect(block.between).toBe(queuedRow.header);
     // The same text row and hint in both captures; the header over them differs.
     const steer = rowsOf("omp--v18-6-steer-pending-block");
     const at = steer.findIndex((row) => new RegExp(block.pattern, "u").exec(row)?.groups?.["text"] === "say banana");
@@ -1278,6 +1281,10 @@ describe("the steer keys (M69)", () => {
     const q = queued.findIndex((row) => new RegExp(queuedRow.pattern, "u").exec(row)?.groups?.["text"] === LINE);
     expect(new RegExp(queuedRow.header!, "u").test(queued[q - 1]!)).toBe(true);
     expect(new RegExp(block.header!, "u").test(queued[q - 1]!)).toBe(false);
+    // Both blocks over the one hint: Steering first, then After yield, then the hint.
+    const stacked = rowsOf("omp--v18-6-steer-over-queued").map((row) => row.trim()).filter((row) => row.length > 0);
+    const s0 = stacked.indexOf("Steering · 1");
+    expect(stacked.slice(s0, s0 + 5)).toEqual(["Steering · 1", "1. say banana", "After yield · 1", "1. ok", "└ Alt+↑ to edit"]);
   });
 
   const cases: [string, string, (string | number)[], JsonValue | undefined, string][] = [

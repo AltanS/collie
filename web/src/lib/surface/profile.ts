@@ -54,6 +54,9 @@ export interface QueuedRow {
    * block, between the texts and the hint: they are passed over, with the indented rows they wrapped
    * onto. pi 1.3.0 draws its `Follow-up: <line>` rows between its `Steering: <line>` rows and the
    * `↳ Alt+Up` hint (live rerun 2026-10-23). Optional: without it the texts stand right by the hint.
+   * With a `header`, it names the header of another block stacked over the same hint: the texts under
+   * it are that block's. OMP 18.6.1 draws `Steering · 1` / `1. say banana` / `After yield · 1` /
+   * `1. ok` / `└ Alt+↑ to edit`, one hint under both blocks (live rerun 2026-10-23, second pass).
    */
   readonly between?: string;
   /**

@@ -201,6 +201,7 @@
       "pattern": "^\\s*\\d+\\. (?<text>\\S.*?)\\s*$",
       "hint": "^\\s*└ Alt\\+↑ to edit\\s*$",
       "hintGap": 0,
+      "between": "^\\s*Steering · \\d+\\s*$",
       "header": "^\\s*After yield · \\d+\\s*$"
     },
     "steer": [
@@ -218,6 +219,7 @@
         "pattern": "^\\s*\\d+\\. (?<text>\\S.*?)\\s*$",
         "hint": "^\\s*└ Alt\\+↑ to edit\\s*$",
         "hintGap": 0,
+        "between": "^\\s*After yield · \\d+\\s*$",
         "header": "^\\s*Steering · \\d+\\s*$"
       }
     ]

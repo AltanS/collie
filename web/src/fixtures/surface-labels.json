@@ -4501,6 +4501,11 @@
    "version": "18.6.1",
    "state": "running"
   },
+  "omp--v18-6-steer-over-queued--w120.txt": {
+   "harness": "omp",
+   "version": "18.6.1",
+   "state": "running"
+  },
   "omp--v18-6-steer-after-now--w120.txt": {
    "harness": "omp",
    "version": "18.6.1",
