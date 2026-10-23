@@ -31,7 +31,7 @@ A program (a durable pane) already has a Stop. Its `abortTurn` capability, its r
 5. **The receipt has three outcomes.** `stopped`: the keys went in and a read within the read-back shows the turn gone and no dialog. `pressed`: the keys went in and the turn still reads running, so the phone says "Stop sent. The agent is still working." `refused`: no key left, with one reason from the list above. The read-back makes up to three reads, at 0.4 s, 1.4 s and 2.4 s after the press.
 6. **A person's tap only.** Walky talky, a hook, the CLI and a queued action never run a Stop. Only a `person_tap` token may carry Escape through the key gate, and a Stop is one.
 7. **The crew forwards it.** `abort` is in the forwardable pane routes. The member that owns the pane runs the press and the read-back and answers the receipt. The lead relays it.
-8. **The same request id answers the same receipt and presses once.** A request id still in flight is joined, never pressed twice. A request id used on another pane is refused 409. The receipts live in memory, 256 of them, oldest dropped first.
+8. **The same request id answers the same receipt and presses once.** A request id still in flight is joined, never pressed twice. A request id used on another pane is refused 409. The receipts live in memory, 256 of them, oldest dropped first. A request id dropped from the 256, oldest first, can press again on a replay.
 9. **A Stop takes no pane lock.** It must not wait behind a send. One audit line records the request id, the pane, the keys by name and the outcome. It never records a message text.
 
 ## What this changes in the Send Protocol
@@ -43,7 +43,7 @@ The header of `bridge/surface/protocol.ts` said "Escape is never sent". That rul
 - A phone can stop a turn on every harness whose profile names an interrupt key, and it is told whether the turn stopped. A Keys board press stays what it was: a raw key, no receipt.
 - Collie never answers a dialog by accident with a Stop. It never clears a draft by accident either. The cost is a refusal the person reads and acts on: answer the card, or empty the box, then stop.
 - A harness whose key is not Escape (Ctrl+C for Grok, Cursor and Hermes) needs no code. Its profile says so.
-- **Known limit: the replay lives in memory.** A bridge restart between two taps with the same request id forgets the first receipt. The second tap can then press a second time. A Stop is a tap and not a message, so the harm is a second interrupt of a turn the person meant to stop, and the Surface check refuses it when the turn has ended. The limit is stated here and not hidden.
+- **Known limit: the replay lives in memory.** A bridge restart between two taps with the same request id forgets the first receipt. A request id dropped from the 256-id memory, oldest first, is forgotten the same way. The second tap can then press a second time. A Stop is a tap and not a message, so the harm is a second interrupt of a turn the person meant to stop, and the Surface check refuses it when the turn has ended. The limit is stated here and not hidden.
 - A `pressed` receipt is honest about doubt. The turn may need a moment longer, or the harness may have taken the key as something else. The person can tap again.
 - A program keeps the Stop it had, with the turn id and the ask id of ADR 0101. The two never draw together, because a program pane never carries `canStop`.
 - Stopping a background task or a subagent is not part of this decision. Neither is a Stop that then sends a message.
