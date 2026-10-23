@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseJsonObject, type JsonObject } from "./json";
-import { capSentence, isCommand, offerMode, readHeldCancelAnswer, readSend, readSendReceipts, readSendReply, readSurface, receiptLabelKey, receiptSentence, sendNote, surfaceNote } from "./send-protocol";
+import { capSentence, isCommand, offerMode, readHeldCancelAnswer, readSend, readSendReceipts, readSendReply, readSurface, receiptLabelKey, noteKey, receiptSentence, sendNote, surfaceNote, type SendReply } from "./send-protocol";
 import type { SendReceiptRow } from "./surface/send";
 import type { Surface } from "./surface/surface";
 
@@ -377,5 +377,39 @@ describe("offerMode and isCommand", () => {
     expect(isCommand(" /model")).toBe(true);
     expect(isCommand("@src/app.ts look here")).toBe(true);
     expect(isCommand("look at @src/app.ts")).toBe(false);
+  });
+});
+
+describe("a steer (M69)", () => {
+  const reply = (outcome: string, reason?: string): SendReply => {
+    const receipt: JsonObject = reason === undefined ? { outcome, keys: [] } : { outcome, reason, keys: [] };
+    const read = readSendReply({ receipt, offers: [], surface: { revision: 2, turn: "running", modal: "none", composer: "empty" } });
+    if (read === null) throw new Error("the wire answer was not readable");
+    return read;
+  };
+
+  it("steered clears the draft and has its own sentence key, the same words as the outcome word", () => {
+    const reading = readSend(reply("steered"));
+    expect(reading).toMatchObject({ clear: true, note: "steered", offers: [] });
+    expect(noteKey("steered")).toBe("sendReceipts.outcome.steered");
+    expect(receiptLabelKey("steered")).toBe("sendReceipts.outcome.steered");
+  });
+
+  it("the two refusals keep the draft and name their own sentences", () => {
+    const unsupported = readSend(reply("refused", "steer_unsupported"));
+    expect(unsupported).toMatchObject({ clear: false, note: "steerUnsupported" });
+    expect(noteKey(unsupported.note)).toBe("composer.steer.unsupported");
+    const notAllowed = readSend(reply("refused", "steer_not_allowed"));
+    expect(notAllowed).toMatchObject({ clear: false, note: "steerNotAllowed" });
+    expect(noteKey(notAllowed.note)).toBe("composer.steer.notAllowed");
+  });
+
+  it("Recent sends: a steered row says nothing under its label, a refused steer row says its sentence", () => {
+    const base = { requestId: "req00001", at: 1, mode: "send" as const, keys: [], gapsMs: {}, harness: "pi", version: null };
+    const say = (key: string) => key;
+    expect(receiptSentence({ ...base, outcome: "steered" }, say)).toBeNull();
+    expect(receiptSentence({ ...base, outcome: "refused", reason: "steer_not_allowed" }, say)).toBe("composer.steer.notAllowed");
+    const rows = readSendReceipts({ receipts: [{ requestId: "r1abcdefgh", at: 5, mode: "send", outcome: "steered", keys: ["Enter"], gapsMs: {}, harness: "pi", version: "1.3.0" }] });
+    expect(rows.receipts[0]?.outcome).toBe("steered");
   });
 });
