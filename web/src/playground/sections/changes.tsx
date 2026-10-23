@@ -26,7 +26,8 @@ import {
   StatusLetter,
 } from "@/components/changes-view";
 import { t } from "@/lib/i18n";
-import { BackBar, FileScreen, TREE_VIEW_ICON, type BackControl } from "@/routes/changes";
+import { BackBar, type BackControl } from "@/components/back-bar";
+import { FileScreen, TREE_VIEW_ICON } from "@/routes/changes";
 import type { Hand } from "@/hooks/use-display-prefs";
 import { summarizeChanges } from "@/lib/workspace-changes";
 import { folderView } from "@/lib/files-filter";

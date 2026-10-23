@@ -506,7 +506,8 @@ lint guard, the crew-wire guard or the `flake.lock` guard.
   followed by `revalidator.revalidate()`. There is **no TanStack Query** — don't reintroduce it.
 - Routes (`web/src/router.tsx`): `/`, `/space/:spaceId`, `/settings` (an INDEX of four sections:
   `/settings/appearance`, `/settings/device`, `/settings/alerts`, `/settings/system`), `/pane/:paneId`,
-  `/pane/:paneId/history`, `/pane/:paneId/changes` and `/space/:spaceId/changes` (both matched as
+  `/pane/:paneId/history`, `/pane/:paneId/zoom` (the output, zoomed: a child of the pane route, so the
+  pane stays mounted under it), `/pane/:paneId/changes` and `/space/:spaceId/changes` (both matched as
   `changes/*`, so the commit view `…/changes/commit` and a folder or file of the tree `…/changes/files`
   share the screen's route; the tree's root is `…/changes` itself, ADR 0083). The router
   instance is module-scoped so it keeps its location.
