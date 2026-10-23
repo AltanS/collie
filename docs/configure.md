@@ -265,8 +265,8 @@ If the stop key opened a dialog instead, Collie says so and points you to its ca
 Collie refuses before it presses when pressing could do harm:
 
 - **A dialog is open.** Escape would answer that dialog. Answer it on its card instead.
-- **The box holds your text, and this harness's stop key would clear it.** Send the text or empty the
-  box first, then stop.
+- **The box holds your text, and this harness's stop key would clear it.** Clear the box, or use the
+  Keys board, then tap Stop again.
 - **Collie cannot read this pane.** It does not press a key into a screen it cannot read. This also
   covers a screen where Collie cannot tell whether a turn runs.
 - **The turn had already ended.** There was nothing to stop, so nothing was pressed.

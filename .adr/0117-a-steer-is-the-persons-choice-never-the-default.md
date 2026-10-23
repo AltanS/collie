@@ -40,4 +40,6 @@ Issue 579 asks for a Steer choice on Codex. The reporter agrees that queueing is
 - A new harness gets the row by data: a profile with `keys.steer`, a witness and a capture. No code changes.
 - Muse and opencode have the keys in their vendor docs and no capture yet, so they get no `keys.steer`. Claude, Grok, Kiro, Kimi and Hermes get none either: no steer key, or a mode Collie cannot read.
 - Known limits. A long or multi-line steer may end `unknown`: no capture shows a long pi `Steering:` row, so the witness may not match a wrapped line. The receipt then says it does not know, and the text is not sent again.
+- Known limit: the captures show each harness in its default configuration. If OMP or pi has a setting that makes a steer interrupt the running tool call, a person who turns it on changes what Steer does on that pane. Collie does not read that setting. The row's words promise only "after its current step", which the captures show.
+- Known limit: the Codex steer is proven by a live rerun on the dev lane only. The browser leg's rig has no Codex harness yet (claude, pi and omp), so no leg case checks it on each release. A Codex rig harness is a follow-up.
 - Steer is a new write path into a running turn. It stays small: one flag, one key list, one witness list, and the same guards as any send.
