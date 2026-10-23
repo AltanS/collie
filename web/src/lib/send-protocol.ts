@@ -345,14 +345,15 @@ export function sendNote(outcome: SendOutcome | null, reason: SendReason | null)
 
 /**
  * The catalog key of a note's sentence. Most are under `composer.protocol.*`; the steer ones (M69)
- * live with their feature, and `steered` is the same words as the outcome word of Recent sends.
+ * live with their feature. `steered` is a sentence here; Recent sends wears the one word
+ * (`sendReceipts.outcome.steered`), as its other outcomes do.
  */
-export type NoteKey = `composer.protocol.${Exclude<SendNote, "steered" | "steerUnsupported" | "steerNotAllowed">}` | "composer.steer.unsupported" | "composer.steer.notAllowed" | "sendReceipts.outcome.steered";
+export type NoteKey = `composer.protocol.${Exclude<SendNote, "steered" | "steerUnsupported" | "steerNotAllowed">}` | "composer.steer.unsupported" | "composer.steer.notAllowed" | "composer.steer.steered";
 
 export function noteKey(note: SendNote): NoteKey {
   switch (note) {
     case "steered":
-      return "sendReceipts.outcome.steered";
+      return "composer.steer.steered";
     case "steerUnsupported":
       return "composer.steer.unsupported";
     case "steerNotAllowed":
@@ -400,7 +401,7 @@ export function receiptSentence(
   if (row.outcome === "refused" && row.reason === "unconfirmed" && row.cap !== undefined) {
     return capSentence(row.cap, (vars) => say("composer.protocol.capConfirm", vars));
   }
-  // A steered row's label already is the sentence: the outcome word says what happened.
+  // A steered row wears its one word, like Sent; the sentence is the status line's under the box.
   if (row.outcome === "steered") return null;
   return say(noteKey(sendNote(row.outcome, row.reason)));
 }

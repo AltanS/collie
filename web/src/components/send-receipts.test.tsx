@@ -44,7 +44,8 @@ describe("SendReceiptsView", () => {
     ];
     render(<SendReceiptsView rows={steer} now={NOW} />);
     const items = screen.getAllByRole("listitem");
-    expect(items[0]).toHaveTextContent("Steered: the agent takes it after its current step.");
+    expect(items[0]?.querySelector(".font-medium")).toHaveTextContent(/^Steered$/u);
+    expect(items[0]).not.toHaveTextContent("the agent takes it after its current step");
     expect(items[1]).toHaveTextContent("Steer is not available on this pane. Nothing was sent.");
   });
 

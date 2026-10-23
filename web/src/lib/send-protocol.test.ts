@@ -391,7 +391,7 @@ describe("a steer (M69)", () => {
   it("steered clears the draft and has its own sentence key, the same words as the outcome word", () => {
     const reading = readSend(reply("steered"));
     expect(reading).toMatchObject({ clear: true, note: "steered", offers: [] });
-    expect(noteKey("steered")).toBe("sendReceipts.outcome.steered");
+    expect(noteKey("steered")).toBe("composer.steer.steered");
     expect(receiptLabelKey("steered")).toBe("sendReceipts.outcome.steered");
   });
 

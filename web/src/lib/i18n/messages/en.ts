@@ -415,6 +415,7 @@ export const en = {
   "composer.steer.row": "Steer: the agent reads it now",
   "composer.steer.hint": "Send queues it for after the turn. Hold Send to steer.",
   "composer.steer.queuedInstead": "Queued instead: the agent kept it for after the turn.",
+  "composer.steer.steered": "Steered: the agent takes it after its current step.",
   "composer.steer.unsupported": "Steer is not available on this pane. Nothing was sent.",
   "composer.steer.notAllowed": "Only a person at the phone can steer.",
   // A send the harness could not take mid-turn waits in the bridge and goes out when the pane reads free (M56 spec 15).
@@ -492,7 +493,7 @@ export const en = {
   "sendReceipts.outcome.held": "Queued",
   "sendReceipts.outcome.expired": "Expired",
   "sendReceipts.outcome.cancelled": "Cancelled",
-  "sendReceipts.outcome.steered": "Steered: the agent takes it after its current step.",
+  "sendReceipts.outcome.steered": "Steered",
   "sendReceipts.queued": "Queued behind the agent's turn",
   "sendReceipts.keys": "Keys: {keys}",
   "sendReceipts.noKeys": "No keys were sent.",

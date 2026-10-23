@@ -106,7 +106,7 @@ const STATUS_KEY = {
   sent: "composer.status.sent",
   queued: "composer.protocol.queued",
   held: "composer.protocol.held",
-  steered: "sendReceipts.outcome.steered",
+  steered: "composer.steer.steered",
   queuedInstead: "composer.steer.queuedInstead",
 } as const;
 
