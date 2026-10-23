@@ -134,6 +134,8 @@ interface PaneState {
   harness: string;
   version: string;
   status: string | null;
+  /** Whether the range the version fell in or borrowed is revoked, as `StopService` reads `match.range.status`. */
+  rangeRevoked: boolean;
   profileId: string;
   idle: IdleProfile | null;
   /** When each disagreement class last made a journal line on this pane. */
@@ -190,7 +192,7 @@ export class SurfaceShadow {
    */
   canStopOf(paneId: string): boolean {
     const state = this.panes.get(paneId);
-    if (state === undefined || state.read === null || state.status === "revoked") return false;
+    if (state === undefined || state.read === null || state.status === "revoked" || state.rangeRevoked) return false;
     const profile = loadProfiles().get(state.profileId);
     return profile !== undefined && profile.keys.interrupt.length > 0;
   }
@@ -300,7 +302,9 @@ export class SurfaceShadow {
     // The status is looked up once the binary was read, so its once-per-version note in the journal
     // names a real version. The anchors are the profile's whatever the status: the status gates the
     // send path (spec 05), not the reading.
-    const status = profile === null ? null : version === "unread" ? "provisional" : (profileFor(profile.id, version)?.status ?? null);
+    const match = profile === null || version === "unread" ? null : profileFor(profile.id, version);
+    const status = profile === null ? null : version === "unread" ? "provisional" : (match?.status ?? null);
+    const rangeRevoked = match?.range?.status === "revoked";
     const idle = profile?.idle ?? null;
 
     const edges = profile?.edges ?? DEFAULT_EDGE_PROFILE;
@@ -321,6 +325,7 @@ export class SurfaceShadow {
         harness: profile?.id ?? harness,
         version,
         status,
+        rangeRevoked,
         profileId: profile?.id ?? "-",
         idle,
         logged: new Map(),
@@ -333,6 +338,7 @@ export class SurfaceShadow {
     state.harness = profile?.id ?? harness;
     state.version = version;
     state.status = status;
+    state.rangeRevoked = rangeRevoked;
     state.profileId = profile?.id ?? "-";
     state.idle = idle;
 
