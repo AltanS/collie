@@ -392,7 +392,7 @@ test.describe("walky talky", () => {
         notes.push(`POST /api/walky ${String(posted.status)}, receipt ${heldRow === null ? "NOT held: draft present" : "accepted (draft present)"}`);
         // The sender is the operator, so the Cancel is the phone's: on the row in the Messages sheet.
         log.push(await tap(recorder, page.getByRole("button", { name: "Pane actions" }), "Pane actions", { expectAnswer: false }));
-        log.push(await tap(recorder, page.getByRole("button", { name: "Messages" }), "Messages", { expectAnswer: false }));
+        log.push(await tap(recorder, page.getByRole("button", { name: "Messages", exact: true }), "Messages", { expectAnswer: false }));
         const row = page.locator(`[data-slot="walky-list-row"][data-id="${id}"]`);
         await expect(row, "no row for the held message in the Messages sheet").toBeVisible({ timeout: 15_000 });
         const cancel = row.getByRole("button", { name: /^Cancel the message/ });
