@@ -5,7 +5,7 @@ import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync }
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 
-import { onPath, piExamplesDir, piExtensions } from "../web/e2e/rig/bins";
+import { inNvm, onPath, piExamplesDir, piExtensions } from "../web/e2e/rig/bins";
 
 let root = "";
 
@@ -41,6 +41,30 @@ describe("onPath", () => {
   test("keeps a directory whose name only looks alike", () => {
     const near = exe(join(root, "my_node_modules", ".bin"), "pi");
     expect(onPath("pi", join(root, "my_node_modules", ".bin"))).toBe(near);
+  });
+});
+
+describe("inNvm", () => {
+  test("takes the newest version that holds the binary and skips a version whose link is dead", () => {
+    const old = exe(join(root, "v22.9.0", "bin"), "pi");
+    const mid = exe(join(root, "v24.9.0", "bin"), "pi");
+    mkdirSync(join(root, "v24.22.1", "bin"), { recursive: true });
+    symlinkSync(join(root, "gone"), join(root, "v24.22.1", "bin", "pi"));
+    expect(inNvm("pi", root)).toBe(mid);
+    rmSync(join(root, "v24.9.0"), { recursive: true });
+    expect(inNvm("pi", root)).toBe(old);
+  });
+
+  test("sorts versions by number, not by text", () => {
+    exe(join(root, "v9.0.0", "bin"), "pi");
+    const newest = exe(join(root, "v24.0.0", "bin"), "pi");
+    expect(inNvm("pi", root)).toBe(newest);
+  });
+
+  test("returns null when the folder is missing or holds no binary", () => {
+    expect(inNvm("pi", join(root, "none"))).toBeNull();
+    mkdirSync(join(root, "v24.0.0", "bin"), { recursive: true });
+    expect(inNvm("pi", root)).toBeNull();
   });
 });
 

@@ -2,10 +2,11 @@
 // nightly.ts can read their versions from a checkout with no node_modules, and harnesses.ts starts
 // the very same files. `claude` on PATH is a shell function and a cgroup shim here, so the leg never
 // uses PATH for it. pi takes the first `pi` on PATH (a node version manager moves it with every
-// Node), and the old fixed path only when PATH has none. A `node_modules/.bin` entry never counts:
+// Node). When PATH has none (a long-lived shell keeps an nvm entry of a Node that was since removed),
+// the newest `pi` under the nvm versions folder stands, and the old fixed path only after that. A `node_modules/.bin` entry never counts:
 // `bunx` puts every ancestor's one in front of PATH, and a stray pi under the home directory won over
 // the real one (2026-10-22).
-import { accessSync, constants, existsSync, readFileSync, realpathSync } from "node:fs";
+import { accessSync, constants, existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 
@@ -26,6 +27,28 @@ export function onPath(name: string, pathVar: string = process.env.PATH ?? ""): 
       return path;
     } catch {
       // not here: the next directory
+    }
+  }
+  return null;
+}
+
+const newestFirst = (a: string, b: string): number => b.localeCompare(a, undefined, { numeric: true });
+
+/** The newest installed `name` under `<nvmRoot>/<version>/bin` (a node version manager's layout), or null. Dead links never count. */
+export function inNvm(name: string, nvmRoot: string = join(HOME, ".config", "nvm", "versions", "node")): string | null {
+  let versions: string[] = [];
+  try {
+    versions = readdirSync(nvmRoot);
+  } catch {
+    return null;
+  }
+  for (const version of versions.toSorted(newestFirst)) {
+    const path = join(nvmRoot, version, "bin", name);
+    try {
+      accessSync(path, constants.X_OK);
+      return path;
+    } catch {
+      // not in this version: the next one
     }
   }
   return null;
@@ -77,6 +100,6 @@ export function piExtensions(bin: string, files: readonly string[]): PiExtension
 
 export const BIN = {
   claude: process.env.COLLIE_RIG_CLAUDE_BIN ?? join(HOME, ".local", "bin", "claude"),
-  pi: process.env.COLLIE_RIG_PI_BIN ?? onPath("pi") ?? join(HOME, ".config", "nvm", "versions", "node", "v24.8.0", "bin", "pi"),
+  pi: process.env.COLLIE_RIG_PI_BIN ?? onPath("pi") ?? inNvm("pi") ?? join(HOME, ".config", "nvm", "versions", "node", "v24.8.0", "bin", "pi"),
   omp: process.env.COLLIE_RIG_OMP_BIN ?? join(HOME, ".bun", "bin", "omp"),
 } as const;
