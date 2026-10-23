@@ -322,7 +322,7 @@ export const it: Dictionary = {
   "composer.noEcho.dismissAria": "Ignora avviso di richiesta password",
   "composer.protocol.sent": "Inviato",
   "composer.protocol.queued": "In coda. L'agente lo prende dopo questo turno.",
-  "composer.steer.row": "Guida: l'agente lo legge adesso",
+  "composer.steer.row": "Steer: the agent takes it after its current step",
   "composer.steer.hint": "Invia lo mette in coda per dopo il turno. Tieni premuto Invia per guidare.",
   "composer.steer.queuedInstead": "Messo invece in coda: l'agente lo ha conservato per dopo il turno.",
   "composer.steer.steered": "Guidato: l'agente lo accetta dopo il passaggio corrente.",

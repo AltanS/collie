@@ -369,7 +369,7 @@ export const zh: Dictionary = {
   "composer.noEcho.dismissAria": "关闭密码提示通知",
   "composer.protocol.sent": "已发送",
   "composer.protocol.queued": "已排队。代理将在本轮结束后处理。",
-  "composer.steer.row": "引导：智能体现在读取它",
+  "composer.steer.row": "Steer: the agent takes it after its current step",
   "composer.steer.hint": "“发送”会将其排入当前轮次之后。按住“发送”进行引导。",
   "composer.steer.queuedInstead": "Queued instead: the agent kept it for after the turn.",
   "composer.steer.steered": "Steered: the agent takes it after its current step.",

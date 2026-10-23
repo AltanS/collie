@@ -412,7 +412,7 @@ export const en = {
   "composer.noEcho.dismissAria": "Dismiss password-prompt notice",
   "composer.protocol.sent": "Sent",
   "composer.protocol.queued": "Queued. The agent takes it after this turn.",
-  "composer.steer.row": "Steer: the agent reads it now",
+  "composer.steer.row": "Steer: the agent takes it after its current step",
   "composer.steer.hint": "Send queues it for after the turn. Hold Send to steer.",
   "composer.steer.queuedInstead": "Queued instead: the agent kept it for after the turn.",
   "composer.steer.steered": "Steered: the agent takes it after its current step.",

@@ -379,7 +379,7 @@ export const ja: Dictionary = {
   "composer.noEcho.dismissAria": "パスワードプロンプト通知を閉じる",
   "composer.protocol.sent": "送信しました",
   "composer.protocol.queued": "キューに追加されました。現在のターンの終了後にエージェントが処理します。",
-  "composer.steer.row": "指示: エージェントが今すぐ読み取ります",
+  "composer.steer.row": "Steer: the agent takes it after its current step",
   "composer.steer.hint": "送信すると、現在のターンの終了後にキューへ追加されます。指示を出すには「送信」を長押ししてください。",
   "composer.steer.queuedInstead": "代わりにキューへ追加されました: エージェントは現在のターンの終了後までこれを保持しました。",
   "composer.steer.steered": "指示完了: エージェントは現在のステップの終了後にこれを受け取ります。",

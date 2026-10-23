@@ -380,7 +380,7 @@ export const ko: Dictionary = {
   "composer.noEcho.dismissAria": "비밀번호 프롬프트 알림 닫기",
   "composer.protocol.sent": "보냄",
   "composer.protocol.queued": "대기열에 추가되었습니다. 에이전트가 이번 턴이 끝난 후 처리합니다.",
-  "composer.steer.row": "방향 전환: 에이전트가 지금 읽습니다",
+  "composer.steer.row": "Steer: the agent takes it after its current step",
   "composer.steer.hint": "전송을 누르면 턴이 끝난 후로 대기열에 추가됩니다. 방향을 전환하려면 전송을 길게 누르세요.",
   "composer.steer.queuedInstead": "대신 대기열에 추가됨: 에이전트가 턴이 끝난 후로 보관했습니다.",
   "composer.steer.steered": "방향 전환됨: 에이전트가 현재 단계를 마친 후 반영합니다.",

@@ -385,7 +385,7 @@ export const de: Dictionary = {
   "composer.noEcho.dismissAria": "Passworthinweis verwerfen",
   "composer.protocol.sent": "Gesendet",
   "composer.protocol.queued": "In der Warteschlange. Der Agent übernimmt nach diesem Zug.",
-  "composer.steer.row": "Steuern: Der Agent liest es jetzt",
+  "composer.steer.row": "Steer: the agent takes it after its current step",
   "composer.steer.hint": "Senden reiht es für nach dem Durchgang ein. Halte Senden gedrückt, um zu steuern.",
   "composer.steer.queuedInstead": "Stattdessen eingereiht: Der Agent hat es für nach dem Durchgang behalten.",
   "composer.steer.steered": "Gesteuert: Der Agent übernimmt es nach seinem aktuellen Schritt.",

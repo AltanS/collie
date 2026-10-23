@@ -368,7 +368,7 @@ export const zhTW: Dictionary = {
   "composer.noEcho.dismissAria": "關閉密碼提示通知",
   "composer.protocol.sent": "已傳送",
   "composer.protocol.queued": "已排入佇列。代理會在這一輪結束後處理。",
-  "composer.steer.row": "引導：代理目前正在讀取",
+  "composer.steer.row": "Steer: the agent takes it after its current step",
   "composer.steer.hint": "「傳送」會將其排入該輪對話之後的佇列。按住「傳送」以引導。",
   "composer.steer.queuedInstead": "Queued instead: the agent kept it for after the turn.",
   "composer.steer.steered": "Steered: the agent takes it after its current step.",

@@ -383,7 +383,7 @@ export const es: Dictionary = {
   "composer.noEcho.dismissAria": "Descartar aviso de contraseña",
   "composer.protocol.sent": "Enviado",
   "composer.protocol.queued": "En cola. El agente lo tomará después de este turno.",
-  "composer.steer.row": "Dirigir: el agente lo lee ahora",
+  "composer.steer.row": "Steer: the agent takes it after its current step",
   "composer.steer.hint": "Enviar lo pone en cola para después del turno. Mantén presionado Enviar para dirigir.",
   "composer.steer.queuedInstead": "En cola en su lugar: el agente lo guardó para después del turno.",
   "composer.steer.steered": "Dirigido: el agente lo toma después de su paso actual.",

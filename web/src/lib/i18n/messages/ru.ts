@@ -328,7 +328,7 @@ export const ru: Dictionary = {
   "composer.noEcho.dismissAria": "Скрыть уведомление о запросе пароля",
   "composer.protocol.sent": "Отправлено",
   "composer.protocol.queued": "В очереди. Агент возьмет это после текущего хода.",
-  "composer.steer.row": "Направить: агент читает это сейчас",
+  "composer.steer.row": "Steer: the agent takes it after its current step",
   "composer.steer.hint": "Отправка ставит это в очередь на после хода. Удерживайте Отправить, чтобы направить.",
   "composer.steer.queuedInstead": "Помещено в очередь: агент сохранил это на после хода.",
   "composer.steer.steered": "Направлено: агент примет это после текущего шага.",

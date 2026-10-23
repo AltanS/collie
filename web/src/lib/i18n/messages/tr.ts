@@ -322,7 +322,7 @@ export const tr: Dictionary = {
   "composer.noEcho.dismissAria": "Parola istemi bildirimini kapat",
   "composer.protocol.sent": "Gönderildi",
   "composer.protocol.queued": "Kuyruğa alındı. Ajan bu turdan sonra alacak.",
-  "composer.steer.row": "Yönlendir: ajan bunu şimdi okur",
+  "composer.steer.row": "Steer: the agent takes it after its current step",
   "composer.steer.hint": "Gönder, sıranın sonrasına ekler. Yönlendirmek için Gönder'e basılı tut.",
   "composer.steer.queuedInstead": "Bunun yerine sıraya alındı: ajan bunu sıranın sonrasına sakladı.",
   "composer.steer.steered": "Yönlendirildi: ajan bunu geçerli adımından sonra alır.",

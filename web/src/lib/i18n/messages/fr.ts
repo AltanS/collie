@@ -322,7 +322,7 @@ export const fr: Dictionary = {
   "composer.noEcho.dismissAria": "Ignorer la notification de demande de mot de passe",
   "composer.protocol.sent": "Envoyé",
   "composer.protocol.queued": "En file d'attente. L'agent le prend après ce tour.",
-  "composer.steer.row": "Orienter : l'agent le lit maintenant",
+  "composer.steer.row": "Steer: the agent takes it after its current step",
   "composer.steer.hint": "Envoyer le met en file d'attente pour la fin du tour. Maintenez Envoyer pour orienter.",
   "composer.steer.queuedInstead": "Mis en file d'attente à la place : l'agent l'a gardé pour la fin du tour.",
   "composer.steer.steered": "Orienté : l'agent le prend en compte après son étape actuelle.",
