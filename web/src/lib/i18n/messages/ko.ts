@@ -380,7 +380,7 @@ export const ko: Dictionary = {
   "composer.noEcho.dismissAria": "비밀번호 프롬프트 알림 닫기",
   "composer.protocol.sent": "보냄",
   "composer.protocol.queued": "대기열에 추가되었습니다. 에이전트가 이번 턴이 끝난 후 처리합니다.",
-  "composer.steer.row": "Steer: the agent takes it after its current step",
+  "composer.steer.row": "방향 전환: 에이전트가 현재 단계를 마친 후에 반영합니다",
   "composer.steer.hint": "전송을 누르면 턴이 끝난 후로 대기열에 추가됩니다. 방향을 전환하려면 전송을 길게 누르세요.",
   "composer.steer.queuedInstead": "대신 대기열에 추가됨: 에이전트가 턴이 끝난 후로 보관했습니다.",
   "composer.steer.steered": "방향 전환됨: 에이전트가 현재 단계를 마친 후 반영합니다.",
@@ -1224,7 +1224,7 @@ export const ko: Dictionary = {
   "belt.stopAria": "턴 중지",
   "belt.stopArmedAria": "턴을 중지하려면 다시 탭하세요",
   "belt.stop.receipt.stopped": "중지되었습니다.",
-  "belt.stop.receipt.pressed": "Stop sent. The agent still looks busy.",
+  "belt.stop.receipt.pressed": "중지 요청을 보냈습니다. 에이전트가 아직 작업 중인 것으로 보입니다.",
   "belt.stop.receipt.pressedDialog": "중지 요청을 보냈습니다. 대화 상자가 열렸습니다. 해당 카드에서 답변하세요.",
   "belt.stop.receipt.refused.dialogOpen": "대화 상자가 열려 있습니다. 먼저 해당 카드에서 답변하세요.",
   "belt.stop.receipt.refused.draftPresent": "상자에 입력한 텍스트가 들어 있으며, 이 하네스의 중지 키를 누르면 해당 텍스트가 지워집니다.",
@@ -1233,8 +1233,8 @@ export const ko: Dictionary = {
   "belt.stop.receipt.refused.unreadable": "Collie가 화면을 읽을 수 없었습니다. 아무것도 누르지 않았습니다.",
   "belt.stop.receipt.refused.pressFailed": "터미널이 키를 입력받지 않았습니다. 아무것도 중지되지 않았습니다.",
   "belt.stop.receipt.refused.paneGone": "이 창이 사라졌습니다.",
-  "belt.stop.receipt.refused.unsupportedBuild": "This machine cannot stop from the phone yet. Update it.",
-  "belt.stop.receipt.unknown": "No answer came back. The Stop may have gone in. Check the pane before you tap Stop again.",
+  "belt.stop.receipt.refused.unsupportedBuild": "이 컴퓨터는 아직 휴대전화에서 중지를 지원하지 않아요. 업데이트해 주세요.",
+  "belt.stop.receipt.unknown": "응답이 돌아오지 않았습니다. 중지 명령이 전달되었을 수 있습니다. 중지를 다시 탭하기 전에 창을 확인하세요.",
 
   // --- quickActions (one-tap reply dock) ---
   "quickActions.group.confirm": "확인",

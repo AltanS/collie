@@ -383,7 +383,7 @@ export const es: Dictionary = {
   "composer.noEcho.dismissAria": "Descartar aviso de contraseña",
   "composer.protocol.sent": "Enviado",
   "composer.protocol.queued": "En cola. El agente lo tomará después de este turno.",
-  "composer.steer.row": "Steer: the agent takes it after its current step",
+  "composer.steer.row": "Redirigir: el agente lo toma después de su paso actual",
   "composer.steer.hint": "Enviar lo pone en cola para después del turno. Mantén presionado Enviar para dirigir.",
   "composer.steer.queuedInstead": "En cola en su lugar: el agente lo guardó para después del turno.",
   "composer.steer.steered": "Dirigido: el agente lo toma después de su paso actual.",
@@ -1234,7 +1234,7 @@ export const es: Dictionary = {
   "belt.stopAria": "Detén el turno",
   "belt.stopArmedAria": "Toca de nuevo para detener el turno",
   "belt.stop.receipt.stopped": "Detenido.",
-  "belt.stop.receipt.pressed": "Stop sent. The agent still looks busy.",
+  "belt.stop.receipt.pressed": "Detener enviado. El agente todavía parece ocupado.",
   "belt.stop.receipt.pressedDialog": "Detener enviado. Se abrió un cuadro de diálogo. Respóndelo en su tarjeta.",
   "belt.stop.receipt.refused.dialogOpen": "Hay un cuadro de diálogo abierto. Respóndelo primero en su tarjeta.",
   "belt.stop.receipt.refused.draftPresent": "El cuadro contiene tu texto y la tecla de detención de este harness lo borraría.",
@@ -1243,8 +1243,8 @@ export const es: Dictionary = {
   "belt.stop.receipt.refused.unreadable": "Collie no pudo leer la pantalla. No se presionó nada.",
   "belt.stop.receipt.refused.pressFailed": "La terminal no aceptó la tecla. No se detuvo nada.",
   "belt.stop.receipt.refused.paneGone": "Este panel ya no existe.",
-  "belt.stop.receipt.refused.unsupportedBuild": "This machine cannot stop from the phone yet. Update it.",
-  "belt.stop.receipt.unknown": "No answer came back. The Stop may have gone in. Check the pane before you tap Stop again.",
+  "belt.stop.receipt.refused.unsupportedBuild": "Esta máquina aún no admite Detener desde el teléfono. Actualízala.",
+  "belt.stop.receipt.unknown": "No se recibió respuesta. Es posible que Detener haya entrado. Revisa el panel antes de volver a tocar Detener.",
 
   // --- quickActions (one-tap reply dock) ---
   "quickActions.group.confirm": "confirmar",

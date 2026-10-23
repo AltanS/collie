@@ -379,7 +379,7 @@ export const ja: Dictionary = {
   "composer.noEcho.dismissAria": "パスワードプロンプト通知を閉じる",
   "composer.protocol.sent": "送信しました",
   "composer.protocol.queued": "キューに追加されました。現在のターンの終了後にエージェントが処理します。",
-  "composer.steer.row": "Steer: the agent takes it after its current step",
+  "composer.steer.row": "方向修正: エージェントは現在のステップを終えた後にこれを取り込みます",
   "composer.steer.hint": "送信すると、現在のターンの終了後にキューへ追加されます。指示を出すには「送信」を長押ししてください。",
   "composer.steer.queuedInstead": "代わりにキューへ追加されました: エージェントは現在のターンの終了後までこれを保持しました。",
   "composer.steer.steered": "指示完了: エージェントは現在のステップの終了後にこれを受け取ります。",
@@ -1226,7 +1226,7 @@ export const ja: Dictionary = {
   "belt.stopAria": "ターンを停止",
   "belt.stopArmedAria": "もう一度タップしてターンを停止します",
   "belt.stop.receipt.stopped": "停止しました。",
-  "belt.stop.receipt.pressed": "Stop sent. The agent still looks busy.",
+  "belt.stop.receipt.pressed": "停止を送信しました。エージェントはまだ処理中と表示されています。",
   "belt.stop.receipt.pressedDialog": "停止リクエストを送信しました。ダイアログが開きました。カード上で回答してください。",
   "belt.stop.receipt.refused.dialogOpen": "ダイアログが開いています。先にカード上で回答してください。",
   "belt.stop.receipt.refused.draftPresent": "入力欄にテキストが残っています。このハーネスの停止キーを押すとテキストが消去されます。",
@@ -1235,8 +1235,8 @@ export const ja: Dictionary = {
   "belt.stop.receipt.refused.unreadable": "Collieが画面を読み取れませんでした。キーは押されていません。",
   "belt.stop.receipt.refused.pressFailed": "ターミナルがキーを受け付けませんでした。何も停止していません。",
   "belt.stop.receipt.refused.paneGone": "このペインは存在しません。",
-  "belt.stop.receipt.refused.unsupportedBuild": "This machine cannot stop from the phone yet. Update it.",
-  "belt.stop.receipt.unknown": "No answer came back. The Stop may have gone in. Check the pane before you tap Stop again.",
+  "belt.stop.receipt.refused.unsupportedBuild": "このマシンはスマートフォンからの停止にまだ対応していません。アップデートしてください。",
+  "belt.stop.receipt.unknown": "応答がありませんでした。停止が適用された可能性があります。もう一度停止をタップする前にペインを確認してください。",
 
   // --- quickActions (one-tap reply dock) ---
   "quickActions.group.confirm": "確認",

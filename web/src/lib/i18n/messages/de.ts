@@ -385,7 +385,7 @@ export const de: Dictionary = {
   "composer.noEcho.dismissAria": "Passworthinweis verwerfen",
   "composer.protocol.sent": "Gesendet",
   "composer.protocol.queued": "In der Warteschlange. Der Agent übernimmt nach diesem Zug.",
-  "composer.steer.row": "Steer: the agent takes it after its current step",
+  "composer.steer.row": "Steuern: Der Agent übernimmt es nach seinem aktuellen Schritt",
   "composer.steer.hint": "Senden reiht es für nach dem Durchgang ein. Halte Senden gedrückt, um zu steuern.",
   "composer.steer.queuedInstead": "Stattdessen eingereiht: Der Agent hat es für nach dem Durchgang behalten.",
   "composer.steer.steered": "Gesteuert: Der Agent übernimmt es nach seinem aktuellen Schritt.",
@@ -1234,7 +1234,7 @@ export const de: Dictionary = {
   "belt.stopAria": "Durchgang stoppen",
   "belt.stopArmedAria": "Tippe erneut, um den Durchgang zu stoppen",
   "belt.stop.receipt.stopped": "Gestoppt.",
-  "belt.stop.receipt.pressed": "Stop sent. The agent still looks busy.",
+  "belt.stop.receipt.pressed": "Stopp gesendet. Der Agent wirkt noch beschäftigt.",
   "belt.stop.receipt.pressedDialog": "Stopp gesendet. Ein Dialog wurde geöffnet. Beantworte ihn auf seiner Karte.",
   "belt.stop.receipt.refused.dialogOpen": "Ein Dialog ist geöffnet. Beantworte ihn zuerst auf seiner Karte.",
   "belt.stop.receipt.refused.draftPresent": "Das Feld enthält deinen Text und die Stopp-Taste dieses Harness würde ihn löschen.",
@@ -1243,8 +1243,8 @@ export const de: Dictionary = {
   "belt.stop.receipt.refused.unreadable": "Collie konnte den Bildschirm nicht lesen. Es wurde nichts gedrückt.",
   "belt.stop.receipt.refused.pressFailed": "Das Terminal hat die Taste nicht angenommen. Es wurde nichts gestoppt.",
   "belt.stop.receipt.refused.paneGone": "Dieser Bereich ist nicht mehr vorhanden.",
-  "belt.stop.receipt.refused.unsupportedBuild": "This machine cannot stop from the phone yet. Update it.",
-  "belt.stop.receipt.unknown": "No answer came back. The Stop may have gone in. Check the pane before you tap Stop again.",
+  "belt.stop.receipt.refused.unsupportedBuild": "Dieses Gerät unterstützt das Stoppen über das Telefon noch nicht. Aktualisiere es.",
+  "belt.stop.receipt.unknown": "Keine Antwort erhalten. Das Stopp ist möglicherweise durchgegangen. Prüfe den Bereich, bevor du erneut auf Stopp tippst.",
 
   // --- quickActions (one-tap reply dock) ---
   "quickActions.group.confirm": "Bestätigen",
