@@ -128,6 +128,24 @@ function fixtureLines(name: string) {
 }
 
 describe("composerReady — the gate the reply path pre-flights on", () => {
+  it("accepts a plain 0.163 status row with the agents hint while working", () => {
+    const screen = [
+      "\u001b[2m◦ Working (12s • esc to interrupt)\u001b[0m",
+      "",
+      "\u001b[1m›\u001b[0m \u001b[2mAsk Codex to do anything\u001b[0m",
+      "",
+      "  GPT-6-Sol medium fast · ~/project · Example thread · Main [default]",
+      "  \u001b[1m← \u001b[0mfor agents · \u001b[1m? \u001b[0mfor shortcuts",
+    ].join("\n");
+    const lines = splitLines(parseAnsi(screen));
+    expect(codexAdapter.composerReady!(lines)).toBe(true);
+    expect(buildBlocks(lines, { agent: "codex" }).some((b) => b.kind === "unread-dialog")).toBe(false);
+    expect(codexAdapter.extractInputDraft(lines)).toBeNull();
+
+    const falseHint = splitLines(parseAnsi(screen.replace("for agents · ", "in a transcript · ")));
+    expect(codexAdapter.composerReady!(falseHint)).toBe(false);
+  });
+
   it.each([
     "codex--fresh-idle.txt",
     "codex--draft.txt",

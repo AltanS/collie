@@ -109,7 +109,14 @@ function locateStatusRow(texts: string[], clean: StyledLine[]): number {
   if (isStatusRow(texts[last]!, clean[last])) return last;
   const above = last - 1;
   if (above < 0 || !isHintRow(texts[last]!, clean[last])) return -1;
-  return isStatusRow(texts[above]!, clean[above]) ? above : -1;
+  if (isStatusRow(texts[above]!, clean[above])) return above;
+  // Some Codex 0.163 panes paint every status field as plain text. Only accept that
+  // row when the exact agents/shortcuts hint sits directly beneath it. A plain
+  // transcript line on its own must never claim the input box.
+  const plainStatus = clean[above]!.segments.length === 1 &&
+    /^ {2}[^·\n]{1,160} · [~/][^·\n]{1,160} · [^·\n]{1,160} · [^·\n]{1,160}$/.test(texts[above]!);
+  const agentsHint = texts[last] === "  ← for agents · ? for shortcuts";
+  return plainStatus && agentsHint ? above : -1;
 }
 
 /** The starfield rows directly above the prompt belong to the composer band, and leave the mirror
