@@ -518,4 +518,23 @@ describe("a turn stopped without its Stop hook (Claude Code 2.1.309, live rerun 
     expect(surface.turn).toBe("running");
     expect(state.running).not.toBeNull();
   });
+
+  // Second live pass: Collie's Stop before the first token. Claude Code takes the turn back and puts
+  // the prompt into the box: no Interrupted row, a draft, so the lost-Stop reads never count, and the
+  // turn read running 20 s and more, until the box was cleared. The Stop receipt said `stopped`; the
+  // bridge gives that to the fold as a `stop` edge (the shadow's `stopSeen`). Real capture.
+  const RESTORED = fixtureRows("claude--v2-1-309-stopped-prompt-restored--w120.txt");
+  const stop = (seq: number, at: number): SurfaceInput => ({ seq, source: "edge", at, kind: "stop" });
+
+  it("Stop before the first token: the restored prompt holds the block on every read; the Stop receipt's stop edge ends it", () => {
+    expect(surfaceOfScreen(screen(1, 0, RESTORED), CLAUDE).surface).toEqual({ revision: 1, turn: "idle", modal: "none", composer: "draft" });
+    const reads = [2000, 5000, 8000, 11_000, 14_000, 21_000].map((at, i) => screen(i + 2, at, RESTORED));
+    const held = run([prompt(1, 0), ...reads]);
+    expect(held.surface.turn).toBe("running");
+    expect(held.state.lostStops).toBe(0);
+    const { state, surface } = run([prompt(1, 0), screen(2, 2000, RESTORED), stop(3, 2400), screen(4, 3000, RESTORED)]);
+    expect(surface).toEqual({ revision: 4, turn: "idle", modal: "none", composer: "draft" });
+    expect(state.running).toBeNull();
+    expect(state.lostStops).toBe(0);
+  });
 });

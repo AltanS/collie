@@ -91,8 +91,9 @@ export interface CounterRow extends CounterKey {
   held_cancelled: number;
   /**
    * Hook edges (M56 spec 11), by word: each edge kind (`prompt`, `stop`, `dialog`, `start`, `end`,
-   * `reread`) as a pane took it, `lost-stop` for a block the screen ended with free reads, and
-   * `dropped` for an edge no pane could be found for (counted under the edge's harness, version `-`).
+   * `reread`) as a pane took it, `lost-stop` for a block the screen ended with free reads,
+   * `stop-receipt` for Collie's own Stop receipt `stopped` taken as a stop edge (M68), and `dropped`
+   * for an edge no pane could be found for (counted under the edge's harness, version `-`).
    */
   edges: Record<string, number>;
   /**

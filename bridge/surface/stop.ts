@@ -17,6 +17,8 @@
 //            the turn idle and no modal (0.4 + 1.4, or 1.4 + 2.4): `stopped`, since one idle read may be
 //            a redraw between two tool calls; else `pressed`, with reason `dialog_open` when the last
 //            read shows a dialog (the key opened one, and its card is the next move)
+//   told     a `stopped` receipt is told to the pane's fold (`deps.stopped`) as the stop edge a harness
+//            with no stop hook on an interrupt never sends
 //
 // The same request id answers the same receipt and presses once; a request id still in flight is
 // joined, never pressed twice. The receipts live in memory: a bridge restart forgets them, and a Stop is
@@ -54,6 +56,12 @@ export interface StopDeps {
   readonly gate: Pick<KeyGate, "press">;
   readonly profile: (harness: string) => Promise<ProfileMatch | null>;
   readonly sleep?: (ms: number) => Promise<void>;
+  /**
+   * Told once per `stopped` receipt, never on a replay: Collie saw the turn end. The bridge gives it
+   * to the pane's fold as the stop edge a harness with no stop hook on an interrupt did not send
+   * (`SurfaceShadow.stopSeen`). A throw is caught; the receipt stands.
+   */
+  readonly stopped?: (paneId: string) => void;
 }
 
 /** What a Stop answers: the receipt, and whether it is the stored one of an earlier tap. */
@@ -147,12 +155,23 @@ export class StopService {
       const after = await this.look(paneId, harness, match);
       const idle = after !== null && after.turn === "idle" && after.modal === "none";
       // One idle read may be a redraw between two tool calls: two in a row say the turn ended.
-      if (idle && idleBefore) return { requestId, outcome: "stopped", keys: pressed };
+      if (idle && idleBefore) {
+        this.tellStopped(paneId);
+        return { requestId, outcome: "stopped", keys: pressed };
+      }
       idleBefore = idle;
       if (after !== null) opened = after.modal !== "none" && after.modal !== "unknown";
     }
     // The key went in, so the outcome stays `pressed`; a dialog the key opened is told, so the person is sent to its card.
     return opened ? { requestId, outcome: "pressed", reason: "dialog_open", keys: pressed } : { requestId, outcome: "pressed", keys: pressed };
+  }
+
+  private tellStopped(paneId: string): void {
+    try {
+      this.deps.stopped?.(paneId);
+    } catch (err) {
+      console.warn(`[stop] stopped hook for ${paneId} failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   /** One fresh read of the pane, folded into its Surface. Null when the multiplexer could not read it. */

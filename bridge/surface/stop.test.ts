@@ -63,7 +63,7 @@ interface Rig {
 }
 
 /** Panes: %1 pi, %2 omp, %3 grok, %4 an agent with no profile, %7 a bare shell. */
-function rig(screen: string): Rig {
+function rig(screen: string, told: string[] = []): Rig {
   const pane = new ScriptPane(screen);
   const sleeps: number[] = [];
   const service = new StopService({
@@ -74,6 +74,7 @@ function rig(screen: string): Rig {
       sleeps.push(ms);
       return Promise.resolve();
     },
+    stopped: (paneId) => void told.push(paneId),
   });
   let pokes = 0;
   const engine = {
@@ -305,6 +306,44 @@ describe("the replay rule", () => {
     const other = await stop("%3", { requestId: ID });
     expect(other.status).toBe(409);
     expect(pane.keysSeen).toHaveLength(1);
+  });
+});
+
+// Second live pass (2026-10-23): Claude Code fires no Stop hook on Escape, so the prompt edge's running
+// block outlived Collie's own `stopped` receipt by 11 s, and by 20 s and more when Escape came before the
+// first token and the prompt went back into the box. The receipt is told to the pane's fold.
+describe("a stopped receipt is told to the fold", () => {
+  test("once per `stopped`, with the pane; never on `pressed`, a refusal or a replay", async () => {
+    const told: string[] = [];
+    const { pane, stop } = rig(PI_RUNNING, told);
+    pane.onKeys = (_keys, p) => void (p.screen = PI_IDLE);
+    expect((await receipt(await stop("%1", { requestId: ID }))).outcome).toBe("stopped");
+    expect(told).toEqual(["%1"]);
+    expect((await receipt(await stop("%1", { requestId: ID }))).outcome).toBe("stopped");
+    expect(told).toEqual(["%1"]);
+    // Idle now: a new tap is refused turn_idle, and nothing is told.
+    expect((await receipt(await stop("%1", { requestId: "stop-req-0002" }))).reason).toBe("turn_idle");
+    const still: string[] = [];
+    const running = rig(PI_RUNNING, still);
+    expect((await receipt(await running.stop("%1", { requestId: ID }))).outcome).toBe("pressed");
+    expect(still).toEqual([]);
+    expect(told).toEqual(["%1"]);
+  });
+
+  test("a hook that throws leaves the receipt `stopped`", async () => {
+    const pane = new ScriptPane(PI_RUNNING);
+    pane.onKeys = (_keys, p) => void (p.screen = PI_IDLE);
+    const service = new StopService({
+      mux: pane,
+      gate: new KeyGate(pane),
+      profile: (harness) => Promise.resolve(profileFor(harness, "99.0.0", { log: () => undefined })),
+      sleep: () => Promise.resolve(),
+      stopped: () => {
+        throw new Error("the fold is gone");
+      },
+    });
+    const answer = await service.handle(ID, "%1", "pi");
+    expect(answer.kind === "receipt" && answer.receipt.outcome).toBe("stopped");
   });
 });
 

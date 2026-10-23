@@ -34,7 +34,10 @@
 // profile's stopped rows (`idle.stoppedRows`: a turn the person interrupted, which fires no stop hook)
 // among the last rows with text above the box, on a screen that reads idle with no dialog, ends both
 // blocks too, as a stop edge would, once each is older than the settle time; a draft in the box does
-// not keep it open. It is no lost Stop.
+// not keep it open. It is no lost Stop. Collie's own Stop receipt `stopped` reaches the fold as a
+// `stop` edge (the bridge's shadow, `stopSeen`): Collie saw the end the hook did not report, and the
+// screen may show nothing that ends the block (Escape before the first token puts the prompt back
+// into the box, a draft).
 //
 // The fold is a reduction: `stepFold` takes one input, `readFold` reads the state. The bridge keeps
 // the state per pane, because a turn and its blocks outlive any short log. `foldSurface` reduces a

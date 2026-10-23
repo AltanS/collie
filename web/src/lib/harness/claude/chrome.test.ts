@@ -1039,6 +1039,8 @@ describe("real corpus — pinned so any change to the walk shows up as a diff", 
     // stands at the top, blank rows down to the box.
     { fixture: "v2-1-309-interrupted-fresh-session--w120", statusRows: 3, draft: null, stripped: 27 },
     { fixture: "v2-1-309-permission-denied-fresh-session--w120", statusRows: 3, draft: null, stripped: 7 },
+    // Escape before the first token in that session: the prompt goes back into the box, no Interrupted row.
+    { fixture: "v2-1-309-stopped-prompt-restored--w120", statusRows: 3, draft: "Write 700 numbered lines, one short fact about apples per line. No tools, no preamble, do not stop early.", stripped: 33 },
     { fixture: "v2301-queued-taken--w100", statusRows: 3, draft: null, stripped: 7 },
     { fixture: "v2301-spinner-no-timer--w100", statusRows: 2, draft: null, stripped: 6 },
     // The /cost and /usage panel drawn over a live box (M56 spec 15 review): the box and its footer stay.

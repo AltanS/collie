@@ -430,7 +430,30 @@ export class SurfaceShadow {
     return true;
   }
 
-  /** One edge word into the persisted counters (a kind, or `lost-stop`). A failure is a warning. */
+  /**
+   * Collie's own Stop receipt said `stopped` on this pane (M68): two fresh reads after the interrupt
+   * key showed the turn idle and no dialog. A harness that fires no stop hook on an interrupt (Claude
+   * Code 2.1.309, on Escape and on a refused permission) leaves the prompt edge's running block open,
+   * and the screen may hold nothing that ends it: Escape before the first token puts the prompt back
+   * into the box, a draft, so the lost-Stop reads never count (live rerun 2026-10-23: 20 s and more).
+   * This is the stop the hook did not send: it goes into the fold as a `stop` edge, which ends the
+   * blocks and makes no free, and is counted as `stop-receipt`, apart from the hooks' own `stop`.
+   * No fresh read is asked for: the route pokes the engine. Returns whether the pane took it. Never throws.
+   */
+  stopSeen(paneId: string): boolean {
+    const state = this.panes.get(paneId);
+    if (state === undefined) return false;
+    try {
+      this.push(state, { seq: ++state.seq, source: "edge", at: this.now(), kind: "stop" });
+      if (state.read !== null) state.read = readFold(state.fold, this.contextOf(state));
+      this.countEdge(state, "stop-receipt");
+    } catch (err) {
+      console.warn(`[surface] stop receipt on ${paneId} failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    return true;
+  }
+
+  /** One edge word into the persisted counters (a kind, `lost-stop` or `stop-receipt`). A failure is a warning. */
   private countEdge(state: PaneState, word: string): void {
     const ledger = this.options.ledger;
     if (ledger?.edge === undefined) return;

@@ -554,6 +554,22 @@
   }
  },
  {
+  "fixture": "claude--v2-1-309-stopped-prompt-restored--w120.txt",
+  "frame": {
+   "top": 34,
+   "prompt": 35,
+   "bottom": 36,
+   "label": null,
+   "text": "Write 700 numbered lines, one short fact about apples per line. No tools, no preamble, do not stop early.",
+   "placeholder": false,
+   "status": {
+    "first": 37,
+    "last": 39
+   },
+   "footer": null
+  }
+ },
+ {
   "fixture": "claude--v2283-ask-long-question--w50.txt",
   "frame": null
  },

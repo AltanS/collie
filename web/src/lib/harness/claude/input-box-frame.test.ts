@@ -117,6 +117,7 @@ describe("parity with the old walk on the real corpus", () => {
     // The same in a fresh session under the fullscreen TUI (second live pass).
     "claude--v2-1-309-interrupted-fresh-session--w120.txt",
     "claude--v2-1-309-permission-denied-fresh-session--w120.txt",
+    "claude--v2-1-309-stopped-prompt-restored--w120.txt",
     "claude--v2301-queued-taken--w100.txt",
     "claude--v2301-spinner-no-timer--w100.txt",
     "claude--v2301-usage-panel-over-box--w40.txt",

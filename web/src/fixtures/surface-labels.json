@@ -531,6 +531,11 @@
    "version": "2.1.309",
    "state": "idle"
   },
+  "claude--v2-1-309-stopped-prompt-restored--w120.txt": {
+   "harness": "claude",
+   "version": "2.1.309",
+   "state": "draft"
+  },
   "claude--v2283-ask-long-question--w50.txt": {
    "harness": "claude",
    "version": "2.1.283",
