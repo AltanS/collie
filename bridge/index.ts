@@ -236,6 +236,7 @@ import {
 import { collieVersion, collieVersionBare } from "./version.ts";
 import { SurfaceShadow, type ShadowOptions } from "./surface/shadow.ts";
 import { AskAnswerer, AskBook } from "./surface/ask.ts";
+import { StopService } from "./surface/stop.ts";
 import { gateFor } from "./surface/key-gate.ts";
 import { RowRing, SendProtocol, SessionLocks } from "./surface/protocol.ts";
 import { ProgramDriver, type ProgramPort } from "./surface/durable-driver.ts";
@@ -1719,7 +1720,11 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   const withSend = send === undefined ? withSurface : { ...withSurface, send };
   const withAsks = asks === undefined ? withSend : { ...withSend, asks };
   const withHold = hold === undefined ? withAsks : { ...withAsks, hold };
-  return driver === undefined ? withHold : { ...withHold, driver };
+  // A Stop on a pane with a screen (M68 spec 01). It reads and presses on its own, so it needs neither the
+  // request store nor the Send Protocol flag: a terminal session always has it.
+  const stop = endpoint.kind === "terminal" ? new StopService({ mux: herdr, gate: gateFor(herdr), profile: (harness) => sendProfile(harness) }) : undefined;
+  const withStop = stop === undefined ? withHold : { ...withHold, stop };
+  return driver === undefined ? withStop : { ...withStop, driver };
 };
 
 const registry = new SessionRegistry({
