@@ -150,4 +150,10 @@ describe("omp 18.12.2's argument list (the /goal capture, 2026-10-22)", () => {
     expect(pointsAt(read("/pause", ["/goal", "/pause"]), "/goal pause", LIST)).toBe(false);
     expect(pointsAt(read("/pause", ["/pause"]), "/goal pause", undefined)).toBe(false);
   });
+
+  it("a list of commands with the pointer on an unrelated command is no argument list: /goal pause typed, /model pointed", () => {
+    expect(LIST.argumentList).toBe(true);
+    expect(pointsAt(read("/model", ["/model", "/models"]), "/goal pause", LIST)).toBe(false);
+    expect(pointsAt(read("/model", ["/model"]), "/goal pause", LIST)).toBe(false);
+  });
 });
