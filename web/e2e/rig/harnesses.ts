@@ -29,7 +29,7 @@ import { dirname, join, resolve } from "node:path";
 import { EMPTY_MCP_FILE } from "../../../scripts/harness-canary/lab/harnesses";
 import { seedClaude } from "../../../scripts/harness-canary/lab/seed";
 import type { JsonObject } from "../../src/lib/json";
-import { BIN } from "./bins";
+import { BIN, piExtensions } from "./bins";
 import { machineDirs, type Machine } from "./rig-lib";
 import { HARNESS_IDS, type HarnessId } from "./scenarios";
 
@@ -162,6 +162,8 @@ function writeWalkySkill(path: string, form: "file" | "block"): void {
 export interface PreparedHarness {
   readonly line: string;
   readonly project: string;
+  /** What the start could not set up and went ahead without, in words for the start note. */
+  readonly notes: readonly string[];
 }
 
 /**
@@ -176,6 +178,7 @@ export function prepareHarness(id: HarnessId, machine: Machine = "lead"): Prepar
   writeFileSync(join(d.project, "README.md"), "Scratch project of the Collie browser leg. Nothing here matters.\n");
   const env: string[] = [];
   let argv: string[];
+  const notes: string[] = [];
   const bin = writeCollieShim(d.root, stateDir);
   if (id === "claude") {
     // The OAuth file without its refresh token, `.claude.json` with this project trusted, and an
@@ -224,10 +227,10 @@ export function prepareHarness(id: HarnessId, machine: Machine = "lead"): Prepar
       if (existsSync(join(realAgent, "models-store.json"))) copyFileSync(join(realAgent, "models-store.json"), join(d.agent, "models-store.json"));
       // Two of pi's stock example extensions, the screens Collie's pi reader lifts (ASK_NOTES.md):
       // `question` (a pick-one question tool) and `permission-gate` (asks before `rm -rf`, `sudo`).
-      const examples = join(BIN.pi, "..", "..", "lib", "node_modules", "@earendil-works", "pi-coding-agent", "examples", "extensions");
-      const extensions = ["question.ts", "permission-gate.ts"].map((file) => join(examples, file)).filter((path) => existsSync(path));
+      const found = piExtensions(BIN.pi, ["question.ts", "permission-gate.ts"]);
+      notes.push(...found.notes);
       // `--approve` trusts the scratch project for this run, so no trust question comes first.
-      argv = [BIN.pi, "--provider", provider, "--model", rest.join("/"), "--thinking", "off", "--offline", "--approve", ...extensions.flatMap((path) => ["-e", path])];
+      argv = [BIN.pi, "--provider", provider, "--model", rest.join("/"), "--thinking", "off", "--offline", "--approve", ...found.paths.flatMap((path) => ["-e", path])];
     } else {
       copySecret(join(realAgent, "agent.db"), join(d.agent, "agent.db"));
       writeFileSync(join(d.agent, "config.yml"), `setupVersion: 2\nmodelRoles:\n  default: ${SETUPS.omp.model}\n`);
@@ -257,5 +260,5 @@ export function prepareHarness(id: HarnessId, machine: Machine = "lead"): Prepar
   const key = KEY_FILE !== null && keyEnv !== null ? `${keyEnv}=$(set -a; . ${sq(KEY_FILE)} >/dev/null 2>&1; printf '%s' "\${${keyEnv}-}")\nexport ${keyEnv}\n` : "";
   writeFileSync(d.start, `#!/bin/sh\ncd ${sq(d.project)} || exit 1\n${path}${key}exec env ${unset} ${env.join(" ")} ${argv.map(sq).join(" ")}\n`, { mode: 0o700 });
   chmodSync(d.start, 0o700);
-  return { line: `exec ${sq(d.start)}`, project: d.project };
+  return { line: `exec ${sq(d.start)}`, project: d.project, notes };
 }
