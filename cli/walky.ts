@@ -21,7 +21,7 @@ import { formatRead, mintWalkyId, OUTCOME_ON_LEAD, WALKY_ID, type WalkyMessage, 
 // bridges may run on one machine: the CLI asks each live one (the hook target registry, as the hold
 // does) until one knows its pane.
 
-export const WALKY_SUBCOMMANDS = ["who", "send", "reply", "inbox", "status"] as const;
+export const WALKY_SUBCOMMANDS = ["who", "send", "reply", "inbox", "status", "cancel"] as const;
 
 /** How long `send` waits for the receipt to leave `accepted`. */
 export const SEND_WAIT_MS = 15_000;
@@ -285,6 +285,7 @@ const USAGE = {
   reply: "usage: collie walky reply <id> [text...]   (no text: the body is read from stdin)",
   inbox: "usage: collie walky inbox [<id>] [--all] [--keep] [--json]",
   status: "usage: collie walky status <id> [--json]",
+  cancel: "usage: collie walky cancel <id> [--json]   (a held message you sent; it stays in the inbox, not typed)",
 } as const satisfies Record<(typeof WALKY_SUBCOMMANDS)[number], string>;
 
 /** The body: the words on the command line, or stdin when there are none. */
@@ -448,6 +449,64 @@ export async function cmdWalkyStatus(deps: WalkyDeps, args: readonly string[]): 
   for (const receipt of receipts) deps.io.out(`${receiptLine(receipt, true, elsewhere)} (${verifiedWords(receipt, signer)})`);
   if (receipts.some(isHeld)) deps.io.out(HELD_HINT);
   return exitOf(receipts);
+}
+
+/** One target's answer to a take-back, as `cancel` prints it (M62 spec 03). */
+export function takeBackLine(result: string, receipt: WalkyReceipt, withTarget: boolean): string {
+  const words = receiptLine(receipt, withTarget);
+  switch (result) {
+    case "taken":
+    case "repeat":
+      return words;
+    case "already typed":
+      return `${withTarget ? `${shown(receipt.target)}: ` : ""}already typed, nothing to take back (${stateWords(receipt)})`;
+    case "not held":
+      return `${withTarget ? `${shown(receipt.target)}: ` : ""}not held, nothing to take back (${stateWords(receipt)})`;
+    case "elsewhere":
+      return `${withTarget ? `${shown(receipt.target)}: ` : ""}held on another machine: run this on that machine, or drop it from the phone on that pane`;
+    default:
+      return words;
+  }
+}
+
+/**
+ * `walky cancel <id> [--json]` (M62 spec 03): take back a held message this pane sent. The bridge
+ * that drives this pane checks it is the sender. A message already typed, or going out now, keeps its
+ * receipt and the line says so; a message that waits in the inbox already is printed as it stands.
+ */
+export async function cmdWalkyCancel(deps: WalkyDeps, args: readonly string[]): Promise<number> {
+  if (windows(deps)) return EXIT.STATE;
+  const json = args.includes("--json");
+  const rest = args.filter((arg) => arg !== "--json");
+  const id = rest[0];
+  if (id === undefined || rest.length > 1 || !WALKY_ID.test(id)) return usage(deps, "cancel", "name one message id (wt_ and 12 characters)");
+  const answer = await request(deps, { op: "cancel", id });
+  if (!answer.ok) {
+    if (answer.error.startsWith("no message ")) {
+      deps.io.err(`walky talky: ${shown(answer.error)}`);
+      return EXIT.STATE;
+    }
+    if (answer.error.startsWith("only the sender")) {
+      deps.io.err(`walky talky: ${shown(answer.error)}`);
+      return EXIT.REFUSED;
+    }
+    return failure(deps, answer);
+  }
+  const results = (Array.isArray(answer.body.results) ? answer.body.results : []).flatMap((entry) => {
+    const row = asJsonObject(entry);
+    const receipt = readReceipt(row?.receipt);
+    const result = asJsonString(row?.result);
+    return row === undefined || receipt === null || result === undefined ? [] : [{ result, receipt }];
+  });
+  if (json) {
+    deps.io.out(JSON.stringify({ id, results }));
+    return results.every((entry) => entry.result === "taken" || entry.result === "repeat") ? EXIT.OK : EXIT.STATE;
+  }
+  deps.io.out(id);
+  if (results.length === 0) deps.io.out("nothing to take back");
+  else if (results.length === 1) deps.io.out(takeBackLine(results[0]!.result, results[0]!.receipt, false));
+  else for (const entry of results) deps.io.out(takeBackLine(entry.result, entry.receipt, true));
+  return results.length > 0 && results.every((entry) => entry.result === "taken" || entry.result === "repeat") ? EXIT.OK : EXIT.STATE;
 }
 
 /** A bare or misspelt `collie walky`: the sub-verbs, and a usage exit. */

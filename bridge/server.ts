@@ -216,8 +216,8 @@ import { parseMachineAlerts } from "./machine-parse.ts";
 import { SPARK_MAX_MINUTES } from "./machine-history.ts";
 import type { MachineSurface } from "./machines.ts";
 import { isPaneId, parseAddress } from "./walky/address.ts";
-import { parsePhoneSend } from "./walky/parse.ts";
-import type { WalkyService } from "./walky/service.ts";
+import { isWalkyId, parsePhoneSend } from "./walky/parse.ts";
+import { NOT_THE_SENDER, type TakeBackAnswer, type WalkyService } from "./walky/service.ts";
 import { olderThanWalky, type WalkyCrew } from "./walky/crew.ts";
 import type {
   ActionResponse,
@@ -501,6 +501,15 @@ const BLOB_ROUTE = /^\/api\/blobs\/([^/]+)$/;
  * phone's reply. `bridge/crew/forward.ts` mirrors this literal one-for-one (`forward.test.ts`).
  */
 const WALKY_PANE_ROUTE = /^\/api\/pane\/([^/]+)\/walky$/;
+/**
+ * The two take-backs of a held walky talky message (M62 spec 03). `POST /api/walky/<id>/cancel`: the
+ * sender's, for an operator message, from a paired device. `POST /api/pane/<pane>/walky/<id>/drop`: the
+ * pane owner's, for a message held for that pane, on the machine that owns the pane (no `?host=`
+ * forward: a member's held message is dropped on the member). Both are writes under the browser gate.
+ */
+// The id's shape is the handler's check (`isWalkyId`), so the route table keeps one shape of segment.
+const WALKY_CANCEL_ROUTE = /^\/api\/walky\/([^/]+)\/cancel$/;
+const WALKY_DROP_ROUTE = /^\/api\/pane\/([^/]+)\/walky\/([^/]+)\/drop$/;
 
 /**
  * How long a worktree create may hold its connection open, in seconds (ADR 0089). Above Herdr's own
@@ -2734,6 +2743,31 @@ export function startServer(opts: {
         if (denied) return denied;
         if (host.kind === "member") return text(WALKY_LOCAL_TEXT, 400);
         return walkyWhoRoute(walky, req.headers.get("accept-encoding"));
+      }
+      // The sender takes a held operator message back (M62 spec 03). No `?host=`: the message's log
+      // record is on the bridge the phone sent it through, and a lead's record of a member's hold has
+      // no pane here, which the answer says (`elsewhere`).
+      const walkyCancel = pathname.match(WALKY_CANCEL_ROUTE);
+      if (walkyCancel && req.method === "POST") {
+        const denied = browserGate("write");
+        if (denied) return denied;
+        return walkyCancelRoute(walky, walkyCancel[1]!, { audit, device: whois(req).device, acceptEncoding: req.headers.get("accept-encoding") });
+      }
+      // The pane's owner drops a message held for the pane (M62 spec 03): this machine's own panes only.
+      const walkyDrop = pathname.match(WALKY_DROP_ROUTE);
+      if (walkyDrop && req.method === "POST") {
+        const denied = browserGate("write");
+        if (denied) return denied;
+        if (host.kind === "member") return text(WALKY_DROP_LOCAL_TEXT, 400);
+        const rt = localRuntime(sessionName, req.headers.get("accept-encoding"));
+        if (rt instanceof Response) return rt;
+        let paneId: string;
+        try {
+          paneId = decodeURIComponent(walkyDrop[1]!);
+        } catch {
+          return text("malformed URL", 400);
+        }
+        return walkyDropRoute(walky, rt.name, paneId, walkyDrop[2]!, { audit, device: whois(req).device, acceptEncoding: req.headers.get("accept-encoding") });
       }
       const walkyPane = pathname.match(WALKY_PANE_ROUTE);
       // The POST on this path is the lead's, through the crew dispatch (§21): never a phone's.
@@ -7885,6 +7919,51 @@ export function walkyWhoRoute(walky: WalkyService | undefined, acceptEncoding: s
 /** The most messages one pane list answers, and the default. */
 export const WALKY_LIST_MAX = 200;
 const WALKY_LIST_DEFAULT = 50;
+
+/** What the drop route answers on a crew member: the lead's phone forwards no take-back. */
+export const WALKY_DROP_LOCAL_TEXT = "a message held on a crew member is dropped on that machine";
+
+/** A take-back's answer as the phone reads it: `{ results }` (200), or the reason in a 404 or 403. */
+function walkyTakeBackResponse(answer: TakeBackAnswer, acceptEncoding: string | null): Response {
+  if (!answer.ok) return text(answer.error, answer.error === NOT_THE_SENDER ? 403 : 404);
+  return json({ results: answer.results }, acceptEncoding);
+}
+
+/**
+ * `POST /api/walky/<id>/cancel` (M62 spec 03): the sender takes a held message back. From the phone the
+ * sender is the operator, so only an operator message is the device's to cancel; an agent's message is
+ * cancelled from its own pane (`collie walky cancel`), and the route answers 403 for it. One audit
+ * line per request, with the id and each target's result, never the body.
+ */
+export function walkyCancelRoute(walky: WalkyService | undefined, id: string, context: { readonly audit: AuditLog; readonly device: string | null; readonly acceptEncoding: string | null }): Response {
+  if (walky === undefined) return text(WALKY_OFF_TEXT, 404);
+  if (!isWalkyId(id)) return text("bad message id", 400);
+  const answer = walky.cancel(id, { kind: "operator" });
+  context.audit.record({ action: "walky.cancel", device: context.device, detail: { id, results: answer.ok ? answer.results.map((result) => `${result.target}: ${result.result}`) : answer.error } });
+  return walkyTakeBackResponse(answer, context.acceptEncoding);
+}
+
+/**
+ * `POST /api/pane/<pane>/walky/<id>/drop` (M62 spec 03): the pane's owner drops a message held for the
+ * pane's current instance. A pane this bridge does not have is a 404; a message not held for it is a
+ * 404 that says so. One audit line, never the body.
+ */
+export function walkyDropRoute(
+  walky: WalkyService | undefined,
+  session: string,
+  paneId: string,
+  id: string,
+  context: { readonly audit: AuditLog; readonly device: string | null; readonly acceptEncoding: string | null },
+): Response {
+  if (walky === undefined) return text(WALKY_OFF_TEXT, 404);
+  if (!isPaneId(paneId)) return text("bad pane", 400);
+  if (!isWalkyId(id)) return text("bad message id", 400);
+  const instance = walky.instanceOf(session, paneId);
+  if (instance === null) return text("no such pane", 404);
+  const answer = walky.drop(id, { session, paneId, instance });
+  context.audit.record({ action: "walky.drop", paneId, session, device: context.device, detail: { id, results: answer.ok ? answer.results.map((result) => `${result.target}: ${result.result}`) : answer.error } });
+  return walkyTakeBackResponse(answer, context.acceptEncoding);
+}
 
 /**
  * `GET /api/pane/:id/walky?limit=50`: the messages that reached the pane's current instance and the

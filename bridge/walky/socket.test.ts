@@ -10,7 +10,7 @@ import type { SendResult, WalkyHost, WalkyPane } from "./deliver.ts";
 import { WalkyLog } from "./log.ts";
 import { parseWalkyRequest } from "./parse.ts";
 import { WalkyService } from "./service.ts";
-import { answerRequest, placeMarkers, walkySocketPath, WalkyServer, type PlaceTarget } from "./socket.ts";
+import { answerRequest, CANCEL_NEEDS_A_PANE, placeMarkers, walkySocketPath, WalkyServer, type PlaceTarget } from "./socket.ts";
 
 // A Unix socket file with an owner-only mode is POSIX; Windows has no walky socket ("Windows has no
 // socket" below), so every part of this test is about that socket.
@@ -73,6 +73,34 @@ describe("the requests", () => {
     const long = parseWalkyRequest(JSON.stringify({ v: 1, op: "send", markers: marker("%1"), id: "wt_aaaaaaaaaaa1", to: "local/%2", body: "\u{1f415}".repeat(4001) }));
     expect(await answerRequest(walky, long!, [target])).toMatchObject({ ok: true, receipts: [{ state: "refused", reason: "body over 4,000 characters" }] });
     expect(walky.log.all("wt_aaaaaaaaaaa1")).toEqual([]);
+  });
+
+  test("cancel (M62 spec 03): the sender's pane takes a held message back; another pane, or no pane, cannot", async () => {
+    const root = mkdtempSync(join(tmpdir(), "walky-socket-"));
+    roots.push(root);
+    const states = new Map<string, SendResult>();
+    const heldHost: WalkyHost = {
+      panes: () => panes,
+      send: async (_pane, sendId): Promise<SendResult> => {
+        states.set(sendId, { outcome: "held", reason: "draft_present" });
+        return { outcome: "held", reason: "draft_present" };
+      },
+      sendState: (sendId) => states.get(sendId) ?? null,
+      cancelHeld: (_session, _paneId, sendId) => states.set(sendId, { outcome: "cancelled" }),
+    };
+    // The watcher never wakes: the hold stands until a cancel.
+    const walky = new WalkyService({ log: new WalkyLog(join(root, "walky")), host: heldHost, memberId: null, enabled: () => true, machine: "desk", keyPem: () => null, sleep: () => new Promise(() => undefined) });
+    const sent = parseWalkyRequest(JSON.stringify({ v: 1, op: "send", markers: marker("%1"), id: "wt_aaaaaaaaaaa1", to: "local/%2", body: "hi" }));
+    expect(await answerRequest(walky, sent!, [target])).toMatchObject({ ok: true, receipts: [{ state: "accepted" }] });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(walky.status("wt_aaaaaaaaaaa1").receipts[0]).toMatchObject({ state: "accepted", reason: "draft present" });
+    const line = (markers: ReturnType<typeof marker>) => parseWalkyRequest(JSON.stringify({ v: 1, op: "cancel", markers, id: "wt_aaaaaaaaaaa1" }));
+    expect(line([])).toEqual({ op: "cancel", markers: [], id: "wt_aaaaaaaaaaa1" });
+    expect(parseWalkyRequest(JSON.stringify({ v: 1, op: "cancel", markers: [], id: "nope" }))).toBeNull();
+    expect(await answerRequest(walky, line([])!, [target])).toEqual({ ok: false, error: CANCEL_NEEDS_A_PANE });
+    expect(await answerRequest(walky, line(marker("%2"))!, [target])).toEqual({ ok: false, error: "only the sender can cancel it" });
+    expect(await answerRequest(walky, line(marker("%1"))!, [target])).toMatchObject({ ok: true, results: [{ target: "local/%2", result: "taken", receipt: { state: "inbox-only", reason: "cancelled by sender" } }] });
+    expect(await answerRequest(walky, line(marker("%1"))!, [target])).toMatchObject({ ok: true, results: [{ result: "repeat" }] });
   });
 
   test("the address is kept as the bridge spells it, without the blanks around it", () => {

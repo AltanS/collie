@@ -10,7 +10,7 @@ import { WalkyIcon } from "@/components/walky-icon";
 import { useLocale } from "@/hooks/use-locale";
 import { timeAgoShort } from "@/lib/format";
 import { t } from "@/lib/i18n";
-import { directionOf, signerOf, stateWord, targetWord, verifiedWord, type WalkyRow } from "@/lib/walky";
+import { directionOf, isHeld, signerOf, stateWord, targetWord, verifiedWord, type WalkyRow } from "@/lib/walky";
 import { cn } from "@/lib/utils";
 
 // The pane's Messages sheet (M62 spec 05): every walky talky message the bridge kept for this pane,
@@ -27,6 +27,16 @@ import { cn } from "@/lib/utils";
 // newest first across both. A received row is drawn as it always was. A SENT row (`directionOf`, read from
 // the addresses against `self`) is titled "To <target as the log names it>" and carries the receipt's state
 // words: no kind badge (the sender is this pane), and no Reply, because there is nobody to answer in it.
+//
+// ── A HELD MESSAGE HAS TWO WAYS OUT (M62 spec 03) ─────────────────────────────
+// A row whose receipt is `accepted` with a held reason (`isHeld`) waits for this pane's box to clear, up
+// to an hour. The phone is the OPERATOR, so a held operator message is its own and offers Cancel: the
+// sender takes it back. A held agent message offers Drop: the pane's owner ends the hold. Both are
+// writes behind the same gate as Reply, and both end the way the clock does, with the message in the
+// inbox, never typed. A SENT row held at the far pane is an agent's message: the phone is not its sender
+// and does not own that box, so it offers nothing here (the far pane's sheet has its Drop). The sheet
+// sends nothing itself: the caller's `onCancel` and `onDrop` post the routes and answer with a line to
+// show under the row, or null when the row's own receipt will say it on the next read.
 //
 // ── A FOCUSED MESSAGE ─────────────────────────────────────────────────────────
 // A tap on a Chat card, or on an id chip, opens this sheet on ONE message (`focusId`): the sheet scrolls
@@ -51,6 +61,10 @@ interface WalkySheetProps {
   focusId?: string | null;
   /** This pane's address (`paneAddress`). It tells a sent row from a received one; without it every row reads as received. */
   self?: string | undefined;
+  /** The sender takes a held message of this pane back (M62 spec 03). Resolves to a line for the row, or null. Absent: no Cancel. */
+  onCancel?: ((row: WalkyRow) => Promise<string | null>) | undefined;
+  /** The pane's owner drops a message held for this pane (M62 spec 03). Resolves to a line for the row, or null. Absent: no Drop. */
+  onDrop?: ((row: WalkyRow) => Promise<string | null>) | undefined;
 }
 
 /**
@@ -69,7 +83,7 @@ function centreInScroller(el: HTMLElement): void {
   box.scrollTop += a.top - b.top - (box.clientHeight - a.height) / 2;
 }
 
-export function WalkySheet({ open, onClose, onReply, canReply, focusId = null, self }: WalkySheetProps) {
+export function WalkySheet({ open, onClose, onReply, canReply, focusId = null, self, onCancel, onDrop }: WalkySheetProps) {
   useLocale();
   const log = useWalkyLog();
   const rows = log === null ? [] : newestFirst(log.rows);
@@ -100,6 +114,8 @@ export function WalkySheet({ open, onClose, onReply, canReply, focusId = null, s
                 focused={row.id === wanted}
                 holds={(id) => log?.byId.has(id) === true}
                 onFocusId={(id) => setMoved({ from: focusId, id })}
+                onCancel={onCancel}
+                onDrop={onDrop}
               />
             </li>
           ))}
@@ -117,6 +133,8 @@ function WalkyListRow({
   focused,
   holds,
   onFocusId,
+  onCancel,
+  onDrop,
 }: {
   row: WalkyRow;
   self: string | undefined;
@@ -125,11 +143,30 @@ function WalkyListRow({
   focused: boolean;
   holds: (id: string) => boolean;
   onFocusId: (id: string) => void;
+  onCancel: ((row: WalkyRow) => Promise<string | null>) | undefined;
+  onDrop: ((row: WalkyRow) => Promise<string | null>) | undefined;
 }) {
   const refused = row.receipt.state === "refused" || row.receipt.state === "expired";
   const sent = directionOf(row, self) === "sent";
   // Only a message that came in from an agent has an address to answer.
   const replyable = !sent && canReply && row.kind === "agent" && row.from.address !== null;
+  // A held row's way out (M62 spec 03): the operator's Cancel on its own message, the owner's Drop on an agent's.
+  const held = isHeld(row.receipt) && !sent;
+  const cancels = held && row.kind === "operator";
+  const takeBack = held && canReply ? (cancels ? onCancel : onDrop) : undefined;
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  // A row that left its held state settles the question: the note it earned goes with it.
+  if (!held && note !== null) setNote(null);
+  const onTakeBack = async () => {
+    if (takeBack === undefined || busy) return;
+    setBusy(true);
+    try {
+      setNote(await takeBack(row));
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
     <div
       data-slot="walky-list-row"
@@ -181,7 +218,25 @@ function WalkyListRow({
             {t("walky.sheet.reply")}
           </Button>
         )}
+        {takeBack !== undefined && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-11 shrink-0"
+            disabled={busy}
+            onClick={() => void onTakeBack()}
+            data-slot={cancels ? "walky-cancel" : "walky-drop"}
+            aria-label={cancels ? t("walky.sheet.cancelAria", { target: targetWord(row.receipt.target) }) : t("walky.sheet.dropAria", { label: row.from.label })}
+          >
+            {t(cancels ? "walky.sheet.cancel" : "walky.sheet.drop")}
+          </Button>
+        )}
       </div>
+      {note !== null && (
+        <p data-slot="walky-takeback-note" role="status" className="mt-1 text-[11px] text-muted-foreground">
+          {note}
+        </p>
+      )}
     </div>
   );
 }

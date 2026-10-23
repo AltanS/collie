@@ -12,10 +12,10 @@ import { HoldStore } from "../surface/holds.ts";
 import { KeyGate } from "../surface/key-gate.ts";
 import { RowRing, SendProtocol, SessionLocks } from "../surface/protocol.ts";
 import { RequestStore } from "../surface/requests.ts";
-import { HELD_LIMIT_MS, HELD_POLL_MS, reasonOf, sendIdOf, type SendResult, type WalkyHold, type WalkyHost, type WalkyPane } from "./deliver.ts";
+import { CANCELLED_BY_SENDER, DROPPED_BY_OWNER, HELD_LIMIT_MS, HELD_POLL_MS, reasonOf, sendIdOf, type SendResult, type WalkyHold, type WalkyHost, type WalkyPane } from "./deliver.ts";
 import { WalkyLog } from "./log.ts";
 import { RateLimiter } from "./rate.ts";
-import { WalkyService, type WalkyServiceDeps } from "./service.ts";
+import { NOT_THE_SENDER, WalkyService, type WalkyServiceDeps } from "./service.ts";
 
 const roots: string[] = [];
 afterEach(() => {
@@ -1021,5 +1021,209 @@ describe("a draft holds the message, through the Send Protocol (M62 spec 02)", (
     expect(r.box.calls).toEqual([]);
     expect(r.box.box).toBe("a long thought");
     expect(r.holds.list()).toEqual([]);
+  });
+});
+
+describe("a held message is taken back (M62 spec 03)", () => {
+  const ID = "wt_aaaaaaaaaaa1";
+  const TARGET = "local/w1:p2";
+  const SEND_ID = sendIdOf(ID, TARGET);
+  const panes = () => [pane("w1:p1"), pane("w1:p2")];
+
+  /**
+   * A rig whose hold never ends on its own: the Send Protocol answers `held` and keeps answering it,
+   * and `onPoll` runs on each poll of the watcher, so a test can take the message back mid-hold.
+   */
+  function heldRig(onPoll: (r: Rig, polls: number) => void = () => undefined) {
+    const host = new FakeHost(panes());
+    host.answer = { outcome: "held", reason: "draft_present" };
+    let polls = 0;
+    const inner = rig(panes(), {
+      host,
+      sleep: async (ms) => {
+        r.clock += ms;
+        polls += 1;
+        onPoll(r, polls);
+      },
+    });
+    // `rig` keeps its own FakeHost; the one that holds is this one.
+    const r: Rig = {
+      service: inner.service,
+      log: inner.log,
+      host,
+      get clock() {
+        return inner.clock;
+      },
+      set clock(value) {
+        inner.clock = value;
+      },
+    };
+    return r;
+  }
+
+  test("the sender cancels while held: the receipt is `inbox-only: cancelled by sender`, the hold watcher stops, nothing is typed", async () => {
+    const seen: string[] = [];
+    const r = heldRig((inner, polls) => {
+      if (polls === 3) {
+        const answer = inner.service.cancel(ID, { kind: "agent", pane: pane("w1:p1") });
+        expect(answer).toMatchObject({ ok: true, results: [{ target: TARGET, result: "taken", receipt: { state: "inbox-only", reason: CANCELLED_BY_SENDER } }] });
+      }
+    });
+    r.log.onReceipt((record) => seen.push(`${record.receipt.state}${record.receipt.reason === undefined ? "" : `: ${record.receipt.reason}`}`));
+    await r.service.send(send(ID, TARGET), { kind: "agent", pane: pane("w1:p1") });
+    await r.service.deliverer.settled();
+    expect(r.host.cancelled).toEqual([SEND_ID]);
+    expect(seen).toEqual(["accepted", "accepted", "accepted: draft present", `inbox-only: ${CANCELLED_BY_SENDER}`]);
+    expect(r.service.status(ID).receipts[0]).toMatchObject({ state: "inbox-only", reason: CANCELLED_BY_SENDER, sendId: SEND_ID });
+    // The watcher stopped well before the hour: the clock moved three polls, not sixty minutes.
+    expect(r.clock - 1_786_000_000_000).toBeLessThan(HELD_POLL_MS * 5);
+    // The message stays in the inbox, readable.
+    expect(r.service.inbox("main", "w1:p2", "aaaa", false).map((entry) => entry.id)).toEqual([ID]);
+  });
+
+  test("a second cancel answers the stored receipt and changes nothing", async () => {
+    const r = heldRig((inner, polls) => {
+      if (polls === 2) inner.service.cancel(ID, { kind: "agent", pane: pane("w1:p1") });
+    });
+    await r.service.send(send(ID, TARGET), { kind: "agent", pane: pane("w1:p1") });
+    await r.service.deliverer.settled();
+    const lines = r.log.all(ID).length;
+    const again = r.service.cancel(ID, { kind: "agent", pane: pane("w1:p1") });
+    expect(again).toMatchObject({ ok: true, results: [{ result: "repeat", receipt: { state: "inbox-only", reason: CANCELLED_BY_SENDER } }] });
+    expect(r.host.cancelled).toEqual([SEND_ID]);
+    expect(r.log.all(ID)).toHaveLength(lines);
+  });
+
+  test("a cancel of a message that already typed changes nothing and says so", async () => {
+    const r = rig(panes());
+    await r.service.send(send(ID, TARGET), { kind: "agent", pane: pane("w1:p1") });
+    await r.service.deliverer.settled();
+    const answer = r.service.cancel(ID, { kind: "agent", pane: pane("w1:p1") });
+    expect(answer).toMatchObject({ ok: true, results: [{ result: "already typed", receipt: { state: "delivered" } }] });
+    expect(r.host.cancelled).toEqual([]);
+    expect(r.service.status(ID).receipts[0]?.state).toBe("delivered");
+  });
+
+  test("a cancel and a release race: the Send Protocol's answer decides, and the message types at most once", async () => {
+    const host = new FakeHost(panes());
+    host.answer = { outcome: "held", reason: "draft_present" };
+    // The hold went out the moment the cancel reached it: the protocol refused the cancel and says `sent`.
+    host.cancelHeld = (_session, _paneId, sendId) => {
+      host.cancelled.push(sendId);
+      host.states.set(sendId, { outcome: "sent" });
+    };
+    const r = rig(panes(), {
+      host,
+      sleep: async (ms) => {
+        r.clock += ms;
+        if (host.cancelled.length === 0) {
+          const answer = r.service.cancel(ID, { kind: "agent", pane: pane("w1:p1") });
+          expect(answer).toMatchObject({ ok: true, results: [{ result: "already typed", receipt: { state: "accepted", reason: "draft present" } }] });
+        }
+      },
+    });
+    await r.service.send(send(ID, TARGET), { kind: "agent", pane: pane("w1:p1") });
+    await r.service.deliverer.settled();
+    expect(host.sends).toHaveLength(1);
+    expect(r.service.status(ID).receipts[0]).toMatchObject({ state: "delivered" });
+  });
+
+  test("a cancel by anyone but the sender is refused with a reason, and counted", async () => {
+    const r = heldRig((inner, polls) => {
+      if (polls === 1) {
+        // The target pane is not the sender; nor is an operator for an agent's message.
+        expect(inner.service.cancel(ID, { kind: "agent", pane: pane("w1:p2") })).toEqual({ ok: false, error: NOT_THE_SENDER });
+        expect(inner.service.cancel(ID, { kind: "operator" })).toEqual({ ok: false, error: NOT_THE_SENDER });
+        // A new session in the sender's pane (another instance) is not the sender either.
+        expect(inner.service.cancel(ID, { kind: "agent", pane: pane("w1:p1", { instance: "zzzz" }) })).toEqual({ ok: false, error: NOT_THE_SENDER });
+      }
+      if (polls === 2) inner.service.cancel(ID, { kind: "agent", pane: pane("w1:p1") });
+    });
+    await r.service.send(send(ID, TARGET), { kind: "agent", pane: pane("w1:p1") });
+    await r.service.deliverer.settled();
+    expect(r.service.refusals().counts["not the sender"]).toBe(3);
+    expect(r.service.status(ID).receipts[0]).toMatchObject({ state: "inbox-only", reason: CANCELLED_BY_SENDER });
+    expect(r.service.cancel("wt_zzzzzzzzzzzz", { kind: "operator" })).toEqual({ ok: false, error: "no message wt_zzzzzzzzzzzz on this machine" });
+  });
+
+  test("an operator cancels an operator message from any paired device", async () => {
+    const r = heldRig((inner, polls) => {
+      if (polls === 2) expect(inner.service.cancel(ID, { kind: "operator" })).toMatchObject({ ok: true, results: [{ result: "taken" }] });
+    });
+    await r.service.send(send(ID, TARGET), operator);
+    await r.service.deliverer.settled();
+    expect(r.service.status(ID).receipts[0]).toMatchObject({ state: "inbox-only", reason: CANCELLED_BY_SENDER });
+  });
+
+  test("the pane's owner drops a held message: `inbox-only: dropped by the pane's owner`; a typed one is left alone", async () => {
+    const r = heldRig((inner, polls) => {
+      if (polls === 2) {
+        expect(inner.service.drop(ID, { session: "main", paneId: "w1:p2", instance: "aaaa" })).toMatchObject({ ok: true, results: [{ result: "taken", receipt: { state: "inbox-only", reason: DROPPED_BY_OWNER } }] });
+      }
+    });
+    await r.service.send(send(ID, TARGET), { kind: "agent", pane: pane("w1:p1") });
+    await r.service.deliverer.settled();
+    expect(r.host.cancelled).toEqual([SEND_ID]);
+    expect(r.service.status(ID).receipts[0]).toMatchObject({ state: "inbox-only", reason: DROPPED_BY_OWNER });
+    expect(r.service.drop(ID, { session: "main", paneId: "w1:p2", instance: "aaaa" })).toMatchObject({ ok: true, results: [{ result: "repeat" }] });
+    // Another pane's name, or another instance at the pane, holds no such message.
+    expect(r.service.drop(ID, { session: "main", paneId: "w1:p1", instance: "aaaa" })).toEqual({ ok: false, error: `no message ${ID} for this pane` });
+    expect(r.service.drop(ID, { session: "main", paneId: "w1:p2", instance: "bbbb" })).toEqual({ ok: false, error: `no message ${ID} for this pane` });
+    // A typed message: nothing to drop.
+    const typed = rig(panes());
+    await typed.service.send(send("wt_aaaaaaaaaaa2", TARGET), operator);
+    await typed.service.deliverer.settled();
+    expect(typed.service.drop("wt_aaaaaaaaaaa2", { session: "main", paneId: "w1:p2", instance: "aaaa" })).toMatchObject({ ok: true, results: [{ result: "already typed" }] });
+    expect(typed.host.cancelled).toEqual([]);
+  });
+
+  test("a message queued but not held yet is not taken back", async () => {
+    // A message on another machine's leg that is `accepted` with no reason: the lead holds its outcome.
+    const r = rig(panes(), { memberId: "lead", routeRemote: async () => [{ id: ID, target: "member/w1:p1", state: "accepted" as const, verified: "lead" as const, at: 1, by: "lead" }] });
+    await r.service.send(send(ID, "member/w1:p1"), operator);
+    await r.service.deliverer.settled();
+    expect(r.service.cancel(ID, { kind: "operator" })).toMatchObject({ ok: true, results: [{ result: "not held", receipt: { state: "accepted" } }] });
+  });
+
+  test("a message held on another machine answers `elsewhere`: its own bridge takes it back", async () => {
+    const r = rig(panes(), {
+      memberId: "lead",
+      routeRemote: async () => [{ id: ID, target: "member/w1:p1", state: "accepted" as const, reason: "draft present", verified: "lead" as const, at: 1, by: "member" }],
+    });
+    await r.service.send(send(ID, "member/w1:p1"), operator);
+    await r.service.deliverer.settled();
+    expect(r.service.cancel(ID, { kind: "operator" })).toMatchObject({ ok: true, results: [{ target: "member/w1:p1", result: "elsewhere", receipt: { state: "accepted", reason: "draft present" } }] });
+    expect(r.host.cancelled).toEqual([]);
+  });
+
+  test("both reasons survive a restart", async () => {
+    const root = mkdtempSync(join(tmpdir(), "walky-takeback-"));
+    roots.push(root);
+    const clock = { now: 1_786_000_000_000 };
+    for (const [id, how] of [["wt_aaaaaaaaaaa1", "cancel"], ["wt_aaaaaaaaaaa2", "drop"]] as const) {
+      const host = new FakeHost(panes());
+      host.answer = { outcome: "held", reason: "draft_present" };
+      const log = new WalkyLog(join(root, "walky"), () => clock.now);
+      const service = new WalkyService({
+        log,
+        host,
+        memberId: null,
+        enabled: () => true,
+        machine: "desk",
+        keyPem: () => null,
+        now: () => clock.now,
+        sleep: async (ms) => {
+          clock.now += ms;
+          if (how === "cancel") service.cancel(id, { kind: "agent", pane: pane("w1:p1") });
+          else service.drop(id, { session: "main", paneId: "w1:p2", instance: "aaaa" });
+        },
+      });
+      await service.send(send(id, TARGET), { kind: "agent", pane: pane("w1:p1") });
+      await service.deliverer.settled();
+    }
+    const after = new WalkyLog(join(root, "walky"), () => clock.now);
+    expect(after.get("wt_aaaaaaaaaaa1", TARGET)?.receipt).toMatchObject({ state: "inbox-only", reason: CANCELLED_BY_SENDER });
+    expect(after.get("wt_aaaaaaaaaaa2", TARGET)?.receipt).toMatchObject({ state: "inbox-only", reason: DROPPED_BY_OWNER });
+    expect(after.pending()).toEqual([]);
   });
 });

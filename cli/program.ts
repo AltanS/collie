@@ -111,6 +111,7 @@ import { cmdApplyUpdate, cmdUpdate } from "./update.ts";
 import {
   askSocket,
   cmdWalky,
+  cmdWalkyCancel,
   cmdWalkyInbox,
   cmdWalkyReply,
   cmdWalkySend,
@@ -313,6 +314,11 @@ const WALKY_TREE: readonly Subcommand[] = [
     name: "status",
     summary: "a message's receipt: `walky status <id>`",
     run: (args, s) => cmdWalkyStatus(walkyDeps(s.io), args),
+  },
+  {
+    name: "cancel",
+    summary: "take back a held message you sent: `walky cancel <id>` (it stays in the inbox, not typed)",
+    run: (args, s) => cmdWalkyCancel(walkyDeps(s.io), args),
   },
 ];
 

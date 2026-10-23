@@ -23,6 +23,12 @@
 //   18 an address with the token of a pane that closed: refused, and the pane that came after gets
 //      nothing. (Herdr does not give a closed pane's id to the next pane, so the refusal here is
 //      `no such pane`; `pane replaced` needs a multiplexer that reuses ids, see the unit tests.)
+//   22 a held message cancelled by its sender (M62 spec 03): the operator's message over a draft is
+//      held; Cancel in the pane's Messages sheet ends it as `inbox-only: cancelled by sender`, the
+//      draft is untouched, and nothing is typed after the draft clears.
+//   23 a held message dropped from the held mark (M62 spec 03): an agent's message over a draft is
+//      held; the phone shows "1 message waits for the box to clear", a tap opens the sheet, Drop ends
+//      it as `inbox-only: dropped by the pane's owner`, the mark goes, and nothing is typed.
 //
 // Cases 7 and 8 (pi, omp, and agent to agent) are in walky-harnesses.spec.ts.
 import { existsSync, rmSync } from "node:fs";
@@ -52,7 +58,7 @@ import {
   type Session,
 } from "./leg";
 import { DEVICE_LABEL, paneClose, sleep } from "./rig-lib";
-import { PHONE, REPLY_MS, addressOf, busyMessage, escape, firstRow, mintId, operatorHeader, operatorMessage, reasonOf, settledWalky, startExtraAgent, stateOf, walkyRows, whoAddress } from "./walky-lib";
+import { PHONE, REPLY_MS, addressOf, busyMessage, cliSend, escape, firstRow, mintId, operatorHeader, operatorMessage, reasonOf, settledWalky, startExtraAgent, stateOf, walkyRows, whoAddress } from "./walky-lib";
 
 const H = "claude" as const;
 const session: Session = { paneId: null, startNote: "not started" };
@@ -365,6 +371,113 @@ test.describe("walky talky", () => {
         return { verdict, taps: log.length, minTaps: 2, note: `${notes.join("; ")}; ${log.map(tapWords).join("; ")}`, taps_log: log, captures: trail.captures };
       } finally {
         await context.close();
+      }
+    });
+  });
+
+  test("22 walky talky: a held message is cancelled by its sender, and nothing is typed", async ({ browser, rig }) => {
+    await runScenario(H, "walky-cancel", session, async (pane, trail) => {
+      // No model turn: the draft is cleared outside the phone, never sent.
+      const { context, page, recorder } = await phoneOn(browser, rig, pane, PHONE);
+      const log = trail.log;
+      const notes = trail.notes;
+      try {
+        // A draft in the box holds the message (M62 spec 02, case 9 part B).
+        await rig.keys(pane, ["d", "r", "a", "f", "t"]);
+        await sleep(1500);
+        const id = mintId();
+        const mark = id.slice(3, 9);
+        const posted = await rig.post("/api/walky", { id, to: addressOf(pane), body: `Walky cancel check ${mark}: answer with only the word NEVER-TYPED, nothing else.` });
+        const heldRow = await firstRow(rig, pane, (row) => row.id === id && stateOf(row) === "accepted" && reasonOf(row) === "draft present", 15_000);
+        notes.push(`POST /api/walky ${String(posted.status)}, receipt ${heldRow === null ? "NOT held: draft present" : "accepted (draft present)"}`);
+        // The sender is the operator, so the Cancel is the phone's: on the row in the Messages sheet.
+        log.push(await tap(recorder, page.getByRole("button", { name: "Pane actions" }), "Pane actions", { expectAnswer: false }));
+        log.push(await tap(recorder, page.getByRole("button", { name: "Messages" }), "Messages", { expectAnswer: false }));
+        const row = page.locator(`[data-slot="walky-list-row"][data-id="${id}"]`);
+        await expect(row, "no row for the held message in the Messages sheet").toBeVisible({ timeout: 15_000 });
+        const cancel = row.getByRole("button", { name: /^Cancel the message/ });
+        await expect(cancel, "no Cancel on the held row").toBeVisible({ timeout: 5000 });
+        trail.captures.push(await capture(page, "walky-22-held-row"));
+        const tapped = await tap(recorder, cancel, "Cancel", { expectAnswer: false });
+        log.push(tapped);
+        const after = await settledWalky(rig, pane, id, 15_000);
+        const afterRow = (await walkyRows(rig, pane)).find((r) => r.id === id);
+        const reason = reasonOf(afterRow);
+        notes.push(`after Cancel the receipt says ${after}${reason === null ? "" : ` (${reason})`}`);
+        await expect(row.getByText("waiting in the inbox, not typed: cancelled by sender"), "the row did not read cancelled by sender").toBeVisible({ timeout: 15_000 });
+        trail.captures.push(await capture(page, "walky-22-cancelled"));
+        // The draft is untouched, and once it is cleared outside the phone nothing is typed: the hold is gone.
+        const boxText = await rig.tail(pane, 6);
+        const draftKept = /❯\s*draft\s*$/m.test(boxText) && !boxText.includes(`[walky-talky ${id}]`) && !boxText.includes(mark);
+        const reset = await resetBox(rig, pane);
+        if (reset !== null) notes.push(reset);
+        await sleep(6000);
+        const screen = await rig.screen(pane, 120);
+        const typed = screen.includes(`[walky-talky ${id}]`) || screen.includes(mark);
+        notes.push(`${draftKept ? "the draft was untouched" : "the BOX CHANGED"}; after the box cleared ${typed ? "the message was TYPED" : "nothing was typed"}`);
+        trail.captures.push(await captureScreen(rig, pane, "walky-22-after"));
+        const verdict = posted.status === 200 && heldRow !== null && after === "inbox-only" && reason === "cancelled by sender" && draftKept && !typed && log.every((l) => l.worked) ? "pass" : "fail";
+        return { verdict, taps: log.length, minTaps: 3, note: notes.join("; "), taps_log: log, captures: trail.captures };
+      } finally {
+        await resetBox(rig, pane);
+        await context.close();
+      }
+    });
+  });
+
+  test("23 walky talky: a held message is dropped by the pane's owner from the held mark, and nothing is typed", async ({ browser, rig }) => {
+    await runScenario(H, "walky-drop", session, async (pane, trail) => {
+      const log = trail.log;
+      const notes = trail.notes;
+      const opened: string[] = [];
+      let phone: Awaited<ReturnType<typeof phoneOn>> | null = null;
+      try {
+        // Another agent is the sender, through the CLI with its own pane's markers (no model turn), so the
+        // message is an agent's: the phone cannot cancel it, only the pane's owner can drop it.
+        const sender = await startExtraAgent(rig, H);
+        opened.push(sender);
+        await rig.keys(pane, ["d", "r", "a", "f", "t"]);
+        await sleep(1500);
+        const body = "Walky drop check: answer with only the word NEVER-TYPED, nothing else.";
+        const sent = await cliSend(sender, addressOf(pane), body);
+        const id = sent.id;
+        const heldRow = id === null ? null : await firstRow(rig, pane, (row) => row.id === id && stateOf(row) === "accepted" && reasonOf(row) === "draft present", 15_000);
+        notes.push(`collie walky send exited ${String(sent.code)}, id ${id ?? "none"}, receipt ${heldRow === null ? "NOT held: draft present" : "accepted (draft present)"}`);
+        if (id === null) return { verdict: "fail", taps: 0, note: notes.join("; "), taps_log: log, captures: trail.captures };
+        phone = await phoneOn(browser, rig, pane, PHONE);
+        const { page, recorder } = phone;
+        // The owner's mark above the box, and the tap that opens the sheet on it.
+        const markOnPhone = page.getByRole("button", { name: message("walky.held.mark.one", { count: 1 }) });
+        await expect(markOnPhone, "no held mark above the box").toBeVisible({ timeout: 20_000 });
+        trail.captures.push(await capture(page, "walky-23-held-mark"));
+        log.push(await tap(recorder, markOnPhone, "the held mark", { expectAnswer: false }));
+        const row = page.locator(`[data-slot="walky-list-row"][data-id="${id}"]`);
+        await expect(row, "the Messages sheet did not open on the held message").toBeVisible({ timeout: 10_000 });
+        const drop = row.getByRole("button", { name: /^Drop the message/ });
+        await expect(drop, "no Drop on the held row").toBeVisible({ timeout: 5000 });
+        log.push(await tap(recorder, drop, "Drop", { expectAnswer: false }));
+        const after = await settledWalky(rig, pane, id, 15_000);
+        const reason = reasonOf((await walkyRows(rig, pane)).find((r) => r.id === id));
+        notes.push(`after Drop the receipt says ${after}${reason === null ? "" : ` (${reason})`}`);
+        await expect(row.getByText("waiting in the inbox, not typed: dropped by the pane's owner"), "the row did not read dropped by the pane's owner").toBeVisible({ timeout: 15_000 });
+        trail.captures.push(await capture(page, "walky-23-dropped"));
+        // The mark goes with the hold, the draft is untouched, and once it is cleared nothing is typed.
+        await page.keyboard.press("Escape");
+        await expect(markOnPhone, "the held mark stayed after the drop").toBeHidden({ timeout: 15_000 });
+        const boxText = await rig.tail(pane, 6);
+        const draftKept = /❯\s*draft\s*$/m.test(boxText) && !boxText.includes(`[walky-talky ${id}]`);
+        const reset = await resetBox(rig, pane);
+        if (reset !== null) notes.push(reset);
+        await sleep(6000);
+        const typed = (await rig.screen(pane, 120)).includes(`[walky-talky ${id}]`);
+        notes.push(`the mark went; ${draftKept ? "the draft was untouched" : "the BOX CHANGED"}; after the box cleared ${typed ? "the message was TYPED" : "nothing was typed"}`);
+        trail.captures.push(await captureScreen(rig, pane, "walky-23-after"));
+        const verdict = heldRow !== null && after === "inbox-only" && reason === "dropped by the pane's owner" && draftKept && !typed && log.every((l) => l.worked) ? "pass" : "fail";
+        return { verdict, taps: log.length, minTaps: 2, note: notes.join("; "), taps_log: log, captures: trail.captures };
+      } finally {
+        await resetBox(rig, pane);
+        if (phone !== null) await phone.context.close();
+        for (const extra of opened) paneClose(extra);
       }
     });
   });

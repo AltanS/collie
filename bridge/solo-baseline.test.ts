@@ -748,6 +748,9 @@ describe("solo zero-tax — routes", () => {
       // Walky talky's list for one pane (M62): the messages that reached it, newest first. A read, gated
       // like the pane read, this collie's own panes only until spec 03 makes it forwardable.
       "/^\\/api\\/pane\\/([^/]+)\\/walky$/",
+      // The pane owner's Drop on a held walky talky message (M62 spec 03): a write, this collie's own
+      // panes only. A message held on a crew member is dropped on that machine; the lead answers 400.
+      "/^\\/api\\/pane\\/([^/]+)\\/walky\\/([^/]+)\\/drop$/",
       // A space's rename (M53 spec 05): a write, forwarded to the owning member, and only an adapter that
       // declares `renameSpace` takes it; every other bridge answers it the refusal.
       "/^\\/api\\/space\\/([^/]+)\\/rename$/",
@@ -755,6 +758,9 @@ describe("solo zero-tax — routes", () => {
       // with the held file's and never made into a path. Lead-local, not forwardable.
       "/^\\/api\\/stt\\/model\\/([^/]+)$/",
       "/^\\/api\\/tab\\/([^/]+)\\/(rename|close)$/",
+      // The operator's Cancel on a held walky talky message it sent (M62 spec 03): a write, solo; a
+      // record held on a member answers `elsewhere`, never a route of its own.
+      "/^\\/api\\/walky\\/([^/]+)\\/cancel$/",
       // The Changes view asked by workspace (ADR 0065): the same read as the pane route's `changes`,
       // read-gated and forwarded with `?host=` to the member that owns the space.
       "/^\\/api\\/workspace\\/([^/]+)\\/changes$/",
