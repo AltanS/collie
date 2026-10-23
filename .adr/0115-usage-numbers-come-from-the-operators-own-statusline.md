@@ -40,18 +40,32 @@ A statusLine is not free. With one configured, Claude Code stops drawing most of
 3. The wrapper reads stdin, writes the numbers to `<stateDir>/usage/<digest of the session id>.json`,
    then runs the operator's command through `/bin/sh -c` with the same bytes on stdin and stdout and
    stderr inherited. What Claude Code draws is the command's own output, byte for byte, and the exit
-   code is the command's own. A signal that ends the wrapper ends the command.
-4. **A wrapper failure costs the reading, never the statusLine.** A document that does not parse, a
+   code is the command's own. `/bin/sh` is what Claude Code uses: its docs say only that the command
+   "runs in a shell", and the 2.1.309 bundle (read 2026-10-23) runs a POSIX statusLine through its
+   hook runner with `shell: true`, which is `/bin/sh -c`. A statusLine with its own `shell` or `args`
+   key runs another way, so it is not wrapped.
+4. **A stopped run stops the whole command.** Claude Code starts the command in a process group of
+   its own and cancels a run by signalling that group, SIGTERM and then SIGKILL. The shell stays in
+   the wrapper's group, so the group signal reaches everything the command started. A signal sent
+   to the wrapper alone is passed on to the group; a wrapper that leads no group gives the shell one
+   of its own and signals that.
+5. **A wrapper failure costs the reading, never the statusLine.** A document that does not parse, a
    missing session id, a full disk, a state dir that is not the operator's own: no file, and the
    command still runs. Outside a multiplexer nothing is written, as the beacon emitter does.
-5. **The file holds numbers only.** The bridge keeps a percentage clamped to 0 to 100 and a reset
+6. **The file holds numbers only.** The bridge keeps a percentage clamped to 0 to 100 and a reset
    time, and draws its own labels (`5h`, `7d`). No text from the document reaches the file or the
    phone. A window whose reset time has passed is dropped. A file older than eight days is removed.
-6. **`uninstall` decodes the string and puts the operator's command back exactly.** A file whose
+7. **The context is the session's; the windows are the account's.** A pane shows its own session's
+   context, and for each window the newest figure any session of the same harness reported, so a
+   quiet session does not show an old 5-hour figure beside a busy one. Only a session that reported
+   windows of its own gets them, so an API-key session stays without. The phone lights one dot per
+   full fifth: only 100% lights the fifth.
+8. **`uninstall` decodes the string and puts the operator's command back exactly.** A file whose
    beacon hooks are installed and whose statusLine is not wrapped by this build counts as behind, so
-   `collie update` prints its usual nudge to re-run the install.
-7. **Not on Windows.** Claude Code runs a statusLine there in a shell that `/bin/sh` is not, so the
-   install leaves the command alone.
+   `collie update` prints a nudge in words of its own to re-run the install (`hooks status --check`
+   prints `statusline` when that is the only lag).
+9. **Not on Windows.** Claude Code runs a statusLine there through Git Bash or PowerShell, not
+   `/bin/sh`, so the install leaves the command alone and says so in one line.
 
 The wrapper never reads a credential, makes no network call and never answers anything. Like a
 beacon, the reading is a hint the phone draws and nothing decides on.
@@ -60,13 +74,20 @@ beacon, the reading is a hint the phone draws and nothing decides on.
 
 - The dots exist only for an operator with a statusLine. That is the price of not adding one, and the
   install says so in one line.
-- The wrapper adds one process start to every statusLine run, about 60 ms measured with the source
-  build on 2026-10-23. Claude Code debounces the runs at 300 ms and cancels a run a newer one replaces.
+- The wrapper adds one process start to every statusLine run: about 85 ms with the compiled binary
+  (the Edge review's measure), 97 ms median on bluefin (2026-10-23, no mux, no write). Claude Code
+  debounces the runs at 300 ms and cancels a run a newer one replaces.
+- The wrapped command names the collie binary by its path. If the binary moves, the statusLine
+  prints nothing until the install runs again; `collie update` nudges for it. To change a wrapped
+  statusLine the operator unwraps, edits and installs again (docs/multiplexers.md).
 - An operator who later replaces their statusLine (Claude Code's `/statusline` does) loses the dots
   until the next install, and `collie update` nudges for it. An operator who wants the hooks and not
-  the wrap has no switch today; add one when somebody asks.
-- The reading is per session and keyed by the session id, not the pane id, which is the key v2 needs.
+  the wrap has no switch today.
+- The reading is stored per session and keyed by the session id, not the pane id, which is the key v2
+  needs.
 - Another harness gets dots by reporting the same numbers to the same file. The phone's code names no
   harness: it draws the gauges the wire carries.
+- **Open, Altan's call:** an opt-out that keeps the hooks, declines the wrap and silences the update
+  nudge for it. Without one, an operator who unwraps by hand is nudged at every update.
 - Revisit if Claude Code puts the same numbers on a hook event. A hook is already installed, and
   the statusLine would then not need to be touched at all.

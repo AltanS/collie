@@ -252,6 +252,10 @@ Behavior details for Claude configuration changes:
   the context use and the 5-hour and 7-day limits to the dots beside the model above the belt.
   Collie never adds a statusLine, and `hooks uninstall claude` puts your command back exactly. Not
   on Windows.
+- **To change a wrapped statusLine, unwrap it first.** Run `collie hooks uninstall claude`, edit
+  `statusLine.command`, then run `collie hooks install claude` again. The wrapped command names the
+  collie binary by its path, so if that binary moves, the statusLine prints nothing until you run
+  the install again. `collie update` reminds you when the wrapper is missing.
 - **Claude Code reloads its hooks while it runs.** This holds for 2.1.301. Restart an older Claude
   if no hook edges come.
 - **Linux only.** The agent liveness check depends on `/proc`. Other operating systems do not emit
