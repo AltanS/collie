@@ -405,7 +405,7 @@ export interface ActionsRowProps {
   /**
    * STOP FOR A PANE WITH A SCREEN (M68 spec 02), after the harness section. Present only while the turn runs and
    * the bridge says a key exists (`stopFor`); absent is the whole of the old behaviour. The composer owns
-   * the request and the receipt. A pane with no screen keeps `durable`'s own Stop and never gets this one.
+   * the request and the receipt. A pane with no screen keeps the program bar's own Stop and never gets this one.
    */
   stop?: Pick<ScreenStopProps, "onStop">;
   /** Which thumb the belt is laid out for; see {@link Hand}. Default `"right"`, the shipped layout. */
