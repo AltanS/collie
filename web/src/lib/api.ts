@@ -18,6 +18,7 @@ import { asJsonObject, asJsonString, parseJsonObject, type JsonObject } from "./
 import { readHeldCancelAnswer, readSendReceipts, readSendReply, type SendReply } from "./send-protocol";
 import type { HeldCancelAnswer, SendReceiptRow, SendRequestBody } from "./surface/send";
 import type { AnswerBody } from "./surface/ask";
+import { STOP_OUTCOMES, STOP_REASONS, type StopBody, type StopReceipt } from "./surface/stop";
 import { readAskTapReply, type AskTapReply } from "./ask-reply";
 import { authHeader, clearNotPaired, EXPIRED_BODY, markExpired, markNotPaired, NOT_PAIRED_BODY } from "./pairing";
 import { pairingRefused } from "./wipe";
@@ -1426,6 +1427,41 @@ async function postControl(paneId: string, route: "send" | "abort" | "action", b
   return result;
 }
 
+// The Stop helpers sit HERE, beside `postControl`, and not under `abortPane`: lib/ack-manifest.test.ts
+// reads a helper's `method: "POST"` as the export above it, so a helper below an export is a mutation it
+// has not declared.
+/** The receipt a Stop answered, or null for a body that is none. A 404 is the pane gone, never a press. */
+function stopReceiptOf(body: JsonObject | undefined, requestId: string): StopReceipt | null {
+  if (body === undefined) return null;
+  if (body[HTTP_STATUS] === 404) return { requestId, outcome: "refused", reason: "pane_gone" };
+  const outcome = STOP_OUTCOMES.find((word) => word === body.outcome);
+  if (outcome === undefined) return null;
+  const id = asJsonString(body.requestId) ?? requestId;
+  const reason = STOP_REASONS.find((word) => word === body.reason);
+  if (outcome !== "refused") {
+    const keys = Array.isArray(body.keys) ? body.keys.map(asJsonString).filter((key): key is string => key !== undefined) : undefined;
+    // Only a `pressed` receipt carries a reason, and only `dialog_open`: the key opened a dialog.
+    const opened = outcome === "pressed" && reason === "dialog_open" ? { reason } : {};
+    return keys === undefined ? { requestId: id, outcome, ...opened } : { requestId: id, outcome, ...opened, keys };
+  }
+  return reason === undefined ? null : { requestId: id, outcome, reason };
+}
+
+async function postStop(paneId: string, requestId: string, scope: Scope | undefined): Promise<StopReceipt> {
+  // The operator is watching from the tap on, as every write to a pane assumes (poll-intent).
+  stampSend(paneId);
+  const body: StopBody = { requestId };
+  const got = await req<JsonObject>(
+    withScope(`/api/pane/${encodeURIComponent(paneId)}/abort`, scope),
+    { method: "POST", body: JSON.stringify(body) },
+    sendRecover(recoverOutcome),
+  );
+  const receipt = stopReceiptOf(got, requestId);
+  if (receipt === null) throw new ApiError("The abort route sent a body this phone cannot read.", 502);
+  if (receipt.keys !== undefined) stampSend(paneId);
+  return receipt;
+}
+
 /** The longest first line a plain refusal shows: a sentence, never a page. */
 const PLAIN_LINE_MAX = 160;
 
@@ -1654,14 +1690,25 @@ export function runPaneAction(
   return postControl(paneId, "action", body, scope);
 }
 
-/** POST /api/pane/:id/abort: stop the turn the phone saw. Same names and the same stale rule as a send. */
+/**
+ * POST /api/pane/:id/abort: stop the turn.
+ *
+ * A pane with no screen (a program) takes the turn or ask the phone saw, with the same stale rule as a
+ * send, and answers a {@link ControlResult}. A pane with a screen (M68) takes the request id alone: the
+ * bridge reads the Surface, presses the profile's interrupt key as this person's tap, reads back, and
+ * answers a {@link StopReceipt} (`stopped`, `pressed` or `refused` with a reason, always a 200). The
+ * same request id answers the same receipt and presses once.
+ */
+export function abortPane(paneId: string, abort: { requestId: string; target: ControlTarget | null }, scope?: Scope): Promise<ControlResult>;
+export function abortPane(paneId: string, abort: { requestId: string }, scope?: Scope): Promise<StopReceipt>;
 export function abortPane(
   paneId: string,
-  abort: { requestId: string; target: ControlTarget | null },
+  abort: { requestId: string; target?: ControlTarget | null },
   scope?: Scope,
-): Promise<ControlResult> {
+): Promise<ControlResult | StopReceipt> {
+  if (!("target" in abort)) return postStop(paneId, abort.requestId, scope);
   const body: JsonObject = { requestId: abort.requestId };
-  if (abort.target !== null) Object.assign(body, abort.target);
+  if (abort.target !== null && abort.target !== undefined) Object.assign(body, abort.target);
   return postControl(paneId, "abort", body, scope);
 }
 

@@ -158,6 +158,7 @@ import { SURFACE_VERSION } from "../web/src/lib/surface/surface.ts";
 import { gateFor } from "./surface/key-gate.ts";
 import type { SendProtocol, SendRequest } from "./surface/protocol.ts";
 import type { AskAnswerer } from "./surface/ask.ts";
+import type { StopService } from "./surface/stop.ts";
 import type { ProgramDriver } from "./surface/durable-driver.ts";
 import { parseAnswerBody, type AskReply } from "../web/src/lib/surface/ask.ts";
 import { REQUEST_ID, reservedLead, SEND_MODES, type HeldCancelAnswer, type SendAnswer, type SendReceiptsAnswer } from "../web/src/lib/surface/send.ts";
@@ -430,6 +431,11 @@ export function isLoopbackPeer(address: string | null | undefined): boolean {
  * ran), `unknown` (504, the receipt stays so the same request id may be sent again), or `refused`
  * (409, `unsupported` for a pane or program that cannot take the act). A body that is not one is a
  * plain 400. Such a pane refuses `reply` and `keys` with `unsupported`. See `bridge/durable/control.ts`.
+ *
+ * `abort` on a pane with a screen (M68 spec 01) is a Stop: `POST /api/pane/:id/abort` with `{ requestId }`
+ * only. The bridge reads the Surface, presses the profile's interrupt key as a person's tap, reads back,
+ * and answers `{ requestId, outcome: "stopped" | "pressed" | "refused", reason?, keys? }` (always 200).
+ * The same request id answers the same receipt. See `bridge/surface/stop.ts`.
  */
 const PANE_ROUTE = /^\/api\/pane\/([^/]+)(?:\/(reply|keys|upload|close|rename|history|chat|changes|files|focus|answer|send|abort|action))?$/;
 
@@ -1643,12 +1649,16 @@ export function startServer(opts: {
       const surface = from.driver !== undefined ? from.driver.surfaceOf(wire.paneId) : from.surface?.surfaceOf(wire.paneId);
       const masked = surface === undefined ? wire : { ...wire, surface: cfg.redact ? maskSurface(surface) : surface };
       const surfaced = surface === undefined || from.hooks === undefined ? masked : { ...masked, hooks: from.hooks(wire.paneId) };
+      // A pane with a screen says whether Stop (M68) has a key to press: its profile names an interrupt
+      // key and is not revoked. The phone draws its Stop button from this word, never from a harness name.
+      // Only a `true` rides; absent reads as "no Stop here".
+      const stoppable = surface !== undefined && from.driver === undefined && from.surface?.canStopOf(wire.paneId) === true ? { ...surfaced, canStop: true as const } : surfaced;
       // A hook-held permission (M56 spec 12) carries its note: the tool, the input shown, the state.
       // The input is a command line, so it takes the mirror's mask like the ask's labels do. A program
       // pane (M56 spec 14) takes its asks from its driver, so it never carries a hold.
       const note = surface === undefined || from.driver !== undefined ? null : (from.hold?.(wire.paneId) ?? null);
       // The option labels are screen text too. The hash stays: the hold card's tap carries it.
-      const withHold = note === null ? surfaced : { ...surfaced, hold: cfg.redact ? { ...note, input: redactText(note.input), options: note.options.map(redactText) } : note };
+      const withHold = note === null ? stoppable : { ...stoppable, hold: cfg.redact ? { ...note, input: redactText(note.input), options: note.options.map(redactText) } : note };
       if (from.send === undefined && from.driver === undefined) return withHold;
       // The pane's held sends (M56 spec 15), only when there is one; the text takes the mirror's mask.
       // A held send is the send queue's, a hold is a permission's (spec 12): both may stand at once.
@@ -2180,6 +2190,18 @@ export function startServer(opts: {
           settled: () => rt.engine.pokeNow(),
         });
         return "text" in answered ? text(answered.text, answered.status) : json(answered.body, req.headers.get("accept-encoding"), answered.status);
+      }
+      // A Stop on a pane with a screen (M68 spec 01): a person's tap presses the profile's interrupt key
+      // and answers a receipt. A pane that takes guarded controls (a program) keeps the abort below.
+      if (action === "abort" && req.method === "POST" && rt.stop !== undefined && rawInputRefusal(herdr) === null) {
+        let body: JsonValue | undefined;
+        try {
+          // SAFETY: `Request.json()` output IS a JsonValue by construction; `stopRoute` checks every field.
+          body = (await req.json()) as JsonValue;
+        } catch {
+          body = undefined;
+        }
+        return stopRoute(rt, paneId, body, { audit: audit_, device, session, acceptEncoding: req.headers.get("accept-encoding") });
       }
       // A send or an abort that names the turn or ask the phone saw (ADR 0101), or a tap on one of the
       // program's belt buttons (M53 spec 07, the turn optional). The receipt is written before the control
@@ -7841,6 +7863,43 @@ export async function sendRoute(
   }
   const out = context.redact && answer.surface !== undefined ? { ...answer, surface: maskSurface(answer.surface) } : answer;
   return json(out, context.acceptEncoding);
+}
+
+/** What `stopRoute` reads of a session runtime: a {@link SessionRuntime} is one. */
+export interface StopRouteRuntime extends Pick<SendRouteRuntime, "send" | "engine"> {
+  readonly stop?: StopService;
+}
+
+/**
+ * `POST /api/pane/:id/abort` on a pane with a screen (M68 spec 01): `{ requestId }` in, one receipt out
+ * (`stopped`, `pressed` or `refused` with a reason), always a 200; a body that is no request id is a 400.
+ * The same request id answers the same receipt and presses once. One audit line per tap: request id,
+ * keys by name, outcome, and never a message text.
+ */
+export async function stopRoute(
+  rt: StopRouteRuntime,
+  paneId: string,
+  body: JsonValue | undefined,
+  context: { readonly audit: AuditLog; readonly device: string | null; readonly session: string; readonly acceptEncoding: string | null },
+): Promise<Response> {
+  if (rt.stop === undefined) return text("stop is not available on this session", 404);
+  const requestId = asJsonRecord(body)?.requestId;
+  if (typeof requestId !== "string" || !REQUEST_ID.test(requestId)) return text("bad body", 400);
+  const harness = replySendOf(rt).harnessOf(paneId);
+  if (harness === null) return text("no such terminal pane", 404);
+  const answer = await rt.stop.handle(requestId, paneId, harness);
+  if (answer.kind === "id_reused") return json({ requestId, outcome: "refused", reason: "request-id-reused" }, context.acceptEncoding, 409);
+  const { receipt } = answer;
+  const detail: AuditDetail = { requestId, outcome: receipt.outcome, replayed: answer.replayed };
+  if (receipt.reason !== undefined) detail.reason = receipt.reason;
+  if (receipt.keys !== undefined) detail.keys = [...receipt.keys];
+  context.audit.record({ action: "abort", paneId, session: context.session, device: context.device, detail });
+  // A replay pressed nothing this time; a first tap that pressed makes the engine look again soon.
+  if (receipt.keys !== undefined && !answer.replayed) {
+    rt.engine.noteInput();
+    rt.engine.pokeNow();
+  }
+  return json(receipt, context.acceptEncoding);
 }
 
 /**

@@ -253,6 +253,13 @@ export interface AgentView {
    */
   sendProtocol?: true;
   /**
+   * Mirrors `PaneWire.canStop` (M68): a Stop has a key to press on this pane, because its profile names an
+   * interrupt key and is not revoked. The belt draws Stop for a pane with a screen only with it, and
+   * only while `surface.turn` is `running` (`stopFor`, lib/harness-bar.ts). The bridge decides from the
+   * profile; the app holds no harness name. Absent means no Stop here, and on an older bridge.
+   */
+  canStop?: boolean;
+  /**
    * Mirrors `PaneWire.held` (M56 spec 15): the pane's held sends, oldest first. The composer draws one
    * queued row per entry, with the text and Cancel (Resend on an ended one).
    */

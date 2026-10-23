@@ -370,6 +370,9 @@ const PANE_WIRE_KEYS = {
   // Not a crew dimension: the pane's held sends (M56 spec 15). They ride with `sendProtocol` and only
   // when a send is held, and this harness builds no Send Protocol, so no golden byte moved.
   held: true,
+  // Not a crew dimension: whether a Stop (M68) has a key to press on this pane. It rides with `surface` only,
+  // and only when the pane's profile names an interrupt key; this harness builds no Surface, so no golden byte moved.
+  canStop: true,
   // Not a crew dimension: the pane's walky talky instance token (bridge/walky/instances.ts, added
   // 2026-10-18). A live solo bridge carries it on every pane, the change this baseline records on
   // purpose; the harness builds its wire with no instance registry, so no golden byte moved.
@@ -503,6 +506,7 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
       "asks",
       "badge",
       "cache",
+      "canStop",
       "cwd",
       "effort",
       "focused",

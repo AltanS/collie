@@ -1,6 +1,6 @@
 import { commandsFor } from "@/lib/agent-commands";
 import { canonicalAgent, rowsFor } from "@/lib/operator-scope";
-import type { MuxCapability, OperatorCommand, PaneAction } from "@/lib/types";
+import type { AgentView, MuxCapability, OperatorCommand, PaneAction } from "@/lib/types";
 
 // The harness bar's table: which of the running agent's own slash commands get a 44px button above
 // the key rail. One row per harness, four or five buttons, and nothing derived from the screen.
@@ -215,6 +215,16 @@ export function durableBarFor(declared: (cap: MuxCapability) => boolean, actions
   const fixed = DURABLE_BAR.filter((item) => declared(item.cap));
   if (!declared("programActions")) return fixed;
   return [...fixed, ...actions.map((action): DurableBarItem => ({ id: "action", cap: "programActions", action }))];
+}
+
+/**
+ * Whether the belt draws Stop for a pane with a screen (M68 spec 02): its turn reads `running` AND the
+ * bridge says a Stop has a key to press (`canStop`, set from the profile's `keys.interrupt`). No harness
+ * name is asked here, and a durable pane never carries `canStop`, so it keeps `DurableBar` and nothing
+ * else. An idle or unread turn draws no Stop: the stale tap would only come back as `turn_idle`.
+ */
+export function stopFor(pane: Pick<AgentView, "surface" | "canStop"> | undefined | null): boolean {
+  return pane?.canStop === true && pane.surface?.turn === "running";
 }
 
 // A Map for the same reason the command catalog uses one: the key tested against it is Herdr's

@@ -173,3 +173,32 @@ describe("sendToPane and abortPane", () => {
     expect(host).toBe("workshop");
   });
 });
+
+describe("abortPane on a pane with a screen (M68 spec 02)", () => {
+  it("posts the request id alone and reads each receipt", async () => {
+    const bodies: JsonValue[] = [];
+    server.use(
+      http.post<never, JsonValue>(/\/api\/pane\/s1\/abort$/, async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json({ requestId: ID, outcome: "stopped", keys: ["Escape"] });
+      }),
+      http.post(/\/api\/pane\/s2\/abort$/, () => HttpResponse.json({ requestId: ID, outcome: "pressed", keys: ["ctrl+c"] })),
+      http.post(/\/api\/pane\/s3\/abort$/, () => HttpResponse.json({ requestId: ID, outcome: "refused", reason: "draft_present" })),
+    );
+    await expect(abortPane("s1", { requestId: ID })).resolves.toEqual({ requestId: ID, outcome: "stopped", keys: ["Escape"] });
+    expect(bodies).toEqual([{ requestId: ID }]);
+    await expect(abortPane("s2", { requestId: ID })).resolves.toEqual({ requestId: ID, outcome: "pressed", keys: ["ctrl+c"] });
+    await expect(abortPane("s3", { requestId: ID })).resolves.toEqual({ requestId: ID, outcome: "refused", reason: "draft_present" });
+  });
+
+  it("reads a missing pane as pane_gone and refuses a body it cannot read", async () => {
+    server.use(
+      http.post(/\/api\/pane\/s4\/abort$/, () => new HttpResponse("no such terminal pane", { status: 404 })),
+      http.post(/\/api\/pane\/s5\/abort$/, () => HttpResponse.json({ requestId: ID, outcome: "refused", reason: "mystery" })),
+      http.post(/\/api\/pane\/s6\/abort$/, () => HttpResponse.json({ requestId: ID, outcome: "refused", reason: "request-id-reused" }, { status: 409 })),
+    );
+    await expect(abortPane("s4", { requestId: ID })).resolves.toEqual({ requestId: ID, outcome: "refused", reason: "pane_gone" });
+    await expect(abortPane("s5", { requestId: ID })).rejects.toThrow(/cannot read/);
+    await expect(abortPane("s6", { requestId: ID })).rejects.toThrow(/cannot read/);
+  });
+});

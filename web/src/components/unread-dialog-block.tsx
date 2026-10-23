@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { cn } from "@/lib/utils";
+import { ARM_MS } from "@/lib/arm";
 import { lineText, type StyledLine, type UnreadDialogModel } from "@/lib/blocks";
 import { keyLabel } from "@/lib/key-queue";
 import { OptionGroupCaption, PromptPanel } from "@/components/option-button";
@@ -50,7 +51,6 @@ export interface UnreadDialogBlockProps {
 // the first tap must not be able to do that. The first tap only arms: the button's words change
 // (never its size), and it disarms by itself after ARM_MS. The wording names "Dismiss" only when
 // the screen's own rows print `esc dismiss`; otherwise it names the key, never a verb.
-export const ARM_MS = 4000;
 const NAMES_A_DISMISS = /\besc\s+dismiss\b/i;
 
 export function UnreadDialogBlock({ cancel, lines, onAction, disabled, wrap }: UnreadDialogBlockProps) {

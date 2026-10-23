@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { commandsFor } from "@/lib/agent-commands";
-import { barFor, BAR_AGENTS, CAPTURE_SOURCED, DURABLE_BAR, durableBarFor } from "@/lib/harness-bar";
+import { barFor, BAR_AGENTS, CAPTURE_SOURCED, DURABLE_BAR, durableBarFor, stopFor } from "@/lib/harness-bar";
 import type { OperatorCommand } from "@/lib/types";
 
 // The bar's two invariants, as tests rather than as sentences in a spec. A phrase does not fail a
@@ -264,5 +264,26 @@ describe("the durable section", () => {
   it("is not a harness: the slash-command table has no entry for it", () => {
     expect(BAR_AGENTS).not.toContain("durable");
     expect(barFor("durable")).toEqual([]);
+  });
+});
+
+describe("stopFor (M68 spec 02)", () => {
+  const surface = (turn: "idle" | "running" | "unknown") => ({ revision: 1, turn, modal: "none" as const, composer: "empty" as const });
+
+  it("offers Stop while the turn runs and the bridge says a key exists", () => {
+    expect(stopFor({ surface: surface("running"), canStop: true })).toBe(true);
+  });
+
+  it("offers nothing on an idle or unread turn", () => {
+    expect(stopFor({ surface: surface("idle"), canStop: true })).toBe(false);
+    expect(stopFor({ surface: surface("unknown"), canStop: true })).toBe(false);
+    expect(stopFor({ canStop: true })).toBe(false);
+  });
+
+  it("offers nothing without the bridge's word, whatever the harness is", () => {
+    expect(stopFor({ surface: surface("running") })).toBe(false);
+    expect(stopFor({ surface: surface("running"), canStop: false })).toBe(false);
+    expect(stopFor(undefined)).toBe(false);
+    expect(stopFor(null)).toBe(false);
   });
 });

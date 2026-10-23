@@ -7,6 +7,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { loadProfiles } from "../../web/src/lib/surface/profile.ts";
 import { loadConfig } from "../config.ts";
 import type { MuxGrid, MuxGridRequest, MuxOutcome } from "../mux/types.ts";
 import { guard, SURFACE_OFF_TEXT, surfaceRoute } from "../server.ts";
@@ -48,7 +49,7 @@ function agent(paneId: string, harness = HARNESS): AgentView {
   return { paneId, workspaceId: "w1", workspaceLabel: "one", workspaceNumber: 1, tabId: "w1:t1", agent: harness, status: "idle", cwd: "/x", focused: false };
 }
 
-function rig() {
+function rig(binaryVersion = "2.1.296") {
   const mux = new FakeMux();
   const lines: string[] = [];
   let clock = 1_000_000;
@@ -60,7 +61,7 @@ function rig() {
     now: () => clock,
     version: async () => {
       versionReads++;
-      return "2.1.296";
+      return binaryVersion;
     },
   });
   return {
@@ -82,6 +83,33 @@ describe("surface shadow", () => {
     expect(r.lines).toEqual([]);
     const counters = r.shadow.report().counters[`${HARNESS}@2.1.296`]!;
     expect(counters).toEqual({ observed: 1, free: 1, unknown: {}, modal: {}, disagreements: 0 });
+  });
+
+  test("says a Stop has a key only for a pane read under a profile with an interrupt key (M68)", async () => {
+    const r = rig();
+    r.mux.set("w1:p1", IDLE, 7);
+    r.mux.set("w1:p2", IDLE, 7);
+    expect(r.shadow.canStopOf("w1:p1")).toBe(false); // not read yet
+    await r.shadow.observe([agent("w1:p1"), agent("w1:p2", "no-such-harness")]);
+    expect(r.shadow.canStopOf("w1:p1")).toBe(true);
+    expect(r.shadow.canStopOf("w1:p2")).toBe(false); // no profile
+    expect(r.shadow.canStopOf("w1:p9")).toBe(false); // unknown pane
+  });
+
+  test("says no Stop when the range the version borrows is revoked, as StopService would refuse it (M68)", async () => {
+    const profile = loadProfiles().get(HARNESS)!;
+    const saved = profile.versions;
+    try {
+      // A version above every range borrows the nearest older one: the status reads provisional, the range revoked.
+      Object.assign(profile, { versions: saved.map((range) => ({ ...range, status: "revoked" })) });
+      const r = rig("99.0.0");
+      r.mux.set("w1:p1", IDLE, 7);
+      await r.shadow.observe([agent("w1:p1")]);
+      expect(r.shadow.report().panes[0]!.status).toBe("provisional");
+      expect(r.shadow.canStopOf("w1:p1")).toBe(false);
+    } finally {
+      Object.assign(profile, { versions: saved });
+    }
   });
 
   test("lifts a permission dialog as an ask and counts it by kind", async () => {

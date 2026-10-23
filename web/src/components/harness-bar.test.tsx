@@ -1,10 +1,11 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { __resetHarnessBar, setHarnessBarEnabled } from "@/lib/harness-bar-pref";
 import type { OperatorCommand } from "@/lib/types";
-import { accentFor, DurableBar, HarnessBar } from "./harness-bar";
+import { ARM_MS } from "@/lib/arm";
+import { accentFor, DurableBar, HarnessBar, ScreenStop } from "./harness-bar";
 import { DURABLE_BAR, durableBarFor } from "@/lib/harness-bar";
 import type { PaneAction } from "@/lib/types";
 
@@ -285,5 +286,79 @@ describe("DurableBar, the program's own actions", () => {
     for (const b of screen.getAllByRole("button")) expect(b).toBeDisabled();
     rerender(<DurableBar items={durableBarFor((cap) => cap === "programActions", listed)} state={state()} />);
     expect(screen.getAllByRole("button").map((b) => b.textContent)).toEqual(["Escalate", "Pause", "Run", "Plain"]);
+  });
+});
+
+describe("ScreenStop (M68 spec 02)", () => {
+  afterEach(() => vi.useRealTimers());
+
+  const stop = () => screen.getByRole("button", { name: /stop the turn/i });
+
+  it("draws one 44px-reach Stop button in the belt, named for a reader", () => {
+    render(<ScreenStop onStop={async () => {}} />);
+    expect(stop()).toHaveAttribute("data-slot", "belt-stop");
+    expect(stop()).toHaveTextContent("Stop");
+    expect(stop().className).toContain("min-w-11");
+  });
+
+  it("arms on the first tap without stopping anything", () => {
+    const onStop = vi.fn(async () => {});
+    render(<ScreenStop onStop={onStop} />);
+    fireEvent.click(stop());
+    expect(onStop).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: /tap again to stop the turn/i })).toHaveTextContent("Stop?");
+  });
+
+  it("disarms by itself after ARM_MS, and the next tap only arms again", () => {
+    vi.useFakeTimers();
+    const onStop = vi.fn(async () => {});
+    render(<ScreenStop onStop={onStop} />);
+    fireEvent.click(stop());
+    act(() => {
+      vi.advanceTimersByTime(ARM_MS - 1);
+    });
+    expect(stop()).toHaveTextContent("Stop?");
+    act(() => {
+      vi.advanceTimersByTime(2);
+    });
+    expect(stop()).toHaveTextContent("Stop");
+    expect(stop()).not.toHaveTextContent("Stop?");
+    fireEvent.click(stop());
+    expect(onStop).not.toHaveBeenCalled();
+  });
+
+  it("runs the stop once on the second tap, shows busy, and ignores a third tap while it is in flight", async () => {
+    let finish: () => void = () => {};
+    const onStop = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    render(<ScreenStop onStop={onStop} />);
+    fireEvent.click(stop());
+    fireEvent.click(screen.getByRole("button", { name: /tap again/i }));
+    expect(onStop).toHaveBeenCalledTimes(1);
+    const busy = screen.getByRole("button", { name: /stop the turn/i });
+    expect(busy).toHaveAttribute("aria-busy", "true");
+    expect(busy).toBeDisabled();
+    fireEvent.click(busy);
+    fireEvent.click(busy);
+    expect(onStop).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      finish();
+    });
+    expect(stop()).toHaveAttribute("aria-busy", "false");
+    expect(stop()).not.toBeDisabled();
+  });
+
+  it("does not arm on a greyed button, and drops an arm when it is greyed", () => {
+    const onStop = vi.fn(async () => {});
+    const { rerender } = render(<ScreenStop onStop={onStop} />);
+    fireEvent.click(stop());
+    expect(stop()).toHaveTextContent("Stop?");
+    rerender(<ScreenStop onStop={onStop} disabled />);
+    expect(stop()).toBeDisabled();
+    expect(stop()).not.toHaveTextContent("Stop?");
   });
 });

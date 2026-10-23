@@ -32,6 +32,8 @@ export const SCENARIOS = [
   // A held message's two ways out (M62 spec 03): the sender's Cancel (23) and the owner's Drop (24).
   { id: "walky-cancel", title: "23 walky talky: a held message cancelled by its sender", only: ["claude"] },
   { id: "walky-drop", title: "24 walky talky: a held message dropped from the held mark", only: ["claude"] },
+  // A Stop on a running turn (M68, ADR 0116), case 25.
+  { id: "stop-pi", title: "25 Stop a running pi turn", only: ["pi"] },
   // The crew leg (crew.config.ts, walky-crew.spec.ts): a lead and a member. Each case is one row,
   // under the harness that starts it (Claude on the lead); pi on the member is its other end.
   { id: "walky-crew-broadcast", title: "12 crew: 'Message all agents' on the Crew page", only: ["claude"], leg: "crew" },

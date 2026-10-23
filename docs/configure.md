@@ -236,6 +236,47 @@ To verify, open a pane running Claude Code, Codex, pi or omp; the tinted segment
 of the row above the keyboard. Turn that segment off per device in **Settings → Appearance → Harness shortcuts**;
 Collie's own controls stay.
 
+### Stop a turn
+
+While an agent works, a **Stop** button sits on the belt, on Collie's own side of it. It shows only when
+the turn runs and Collie knows the key that stops this agent. Stop does not type anything and does not
+send a message. It presses the agent's own stop key, once, and tells you what happened.
+
+A Stop needs two taps. The first tap arms the button: the word changes to **Stop?** and the button
+keeps its size. Tap it again within four seconds to stop the turn. If you wait, the arm lapses and
+nothing is pressed. While the second tap is in flight the button takes no more taps, so a quick third
+tap cannot press a second Stop.
+
+Which key stops a turn is the harness's own choice, and the harness profile holds it. Most agents
+stop on Escape, some on Ctrl+C, and some need Escape twice. The profile decides, not this page.
+
+After the key goes in, Collie reads the screen again for up to three seconds and tells you one of
+three things under the box:
+
+| Receipt | What it means |
+| --- | --- |
+| **Stopped.** | The key went in and the turn is over. The box is free. |
+| **Stop sent. The agent is still working.** | The key went in, but the turn still reads as running. Give it a moment, then tap Stop again if you need to. |
+| A refusal | Nothing was pressed. The sentence says why. |
+
+If the stop key opened a dialog instead, Collie says so and points you to its card.
+
+Collie refuses before it presses when pressing could do harm:
+
+- **A dialog is open.** Escape would answer that dialog. Answer it on its card instead.
+- **The box holds your text, and this harness's stop key would clear it.** Send the text or empty the
+  box first, then stop.
+- **Collie cannot read this pane.** It does not press a key into a screen it cannot read. This also
+  covers a screen where Collie cannot tell whether a turn runs.
+- **The turn had already ended.** There was nothing to stop, so nothing was pressed.
+
+A Stop is always your tap. A walky talky message, a hook, the command line and a queued action never
+press one. Over a crew, the machine that runs the pane presses the key, reads the screen and sends
+the receipt back through the lead.
+
+A program that runs as a durable agent keeps the Stop it already had. It stops the turn it names,
+with its own receipt, and it does not use the arm.
+
 ## Your own key presets
 
 You can replace the Keys tray's **Presets** row in `keys.toml`, located next to `commands.toml`:

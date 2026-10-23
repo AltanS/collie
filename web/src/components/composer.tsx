@@ -99,7 +99,8 @@ import { useHandsFree, useSttCapability } from "@/lib/stt";
 import { NoEchoNotice } from "@/components/no-echo-notice";
 import type { TranscriptEntry } from "@/lib/types";
 import { findUnknownSendMatch, type UnknownSend } from "@/lib/unknown-send";
-import { phoneRefusal, readingRefusal, refusalKey, SendRefusalNotice, type SendRefusal } from "@/components/send-notice";
+import { phoneRefusal, readingRefusal, refusalKey, SendRefusalNotice, stopNotice, type SendRefusal } from "@/components/send-notice";
+import { mintRequestId } from "@/lib/worktree-name";
 
 export interface ComposerHandle {
   /** Focus the input and put the caret at the end — used by the mirror-tap-to-focus in AgentChat. */
@@ -153,6 +154,11 @@ interface ComposerProps {
    * the screen has none to give. The `0.5rem` of real breathing room stays, in both states.
    */
   composing?: boolean;
+  /**
+   * The belt draws Stop (M68 spec 02): the turn runs and the bridge says a key exists (`stopFor`,
+   * lib/harness-bar.ts, decided by the pane). Absent or false and no Stop is drawn.
+   */
+  stopOffered?: boolean;
   /** The "Answer the dialog" word's tap: scroll to the dialog card and focus its first button. It sends
    * no text and no key. The same tap is the control of a refusal notice whose screen holds an ask or
    * an overlay Collie cannot read. */
@@ -390,7 +396,7 @@ interface ClearedDraft {
 
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, instance, surface, unreachableNote, scope, agent, isShell, cwd, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, onOpenMessages, held: heldRows, chatEntries, pullHandle, draftNoticeSlot, changesPill, stale, hand = "right", screen, todos, subagents },
+  { paneId, instance, surface, unreachableNote, scope, stopOffered = false, agent, isShell, cwd, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, onOpenMessages, held: heldRows, chatEntries, pullHandle, draftNoticeSlot, changesPill, stale, hand = "right", screen, todos, subagents },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -685,6 +691,19 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     if (key !== null && !offers) setHiddenRefusalKey((hidden) => (hidden === key ? null : hidden));
   }
   const hideRefusal = () => setHiddenRefusalKey(shownRefusalKey);
+  // STOP (M68 spec 02): one fresh request id per second tap, the bridge's receipt told in the notice a send's
+  // refusal uses. The bridge presses the profile's interrupt key as this person's tap, so nothing is typed
+  // and no draft is touched; a refusal says why nothing was pressed. A thrown error is the status line's,
+  // like every other write that could not be read.
+  async function stopTurn(): Promise<void> {
+    try {
+      const receipt = await api.abortPane(paneId, { requestId: mintRequestId() }, scope);
+      setSendRefusal(stopNotice(receipt), shownSurface);
+      if (receipt.keys !== undefined) onSent();
+    } catch (e) {
+      setStatus(describeThrownError(e), "error");
+    }
+  }
   // The reason a destructive line is held for a second tap, said at the Send slot (it was a header line,
   // which holds nothing a person must act on, M56 spec 07). Shown only while the confirm is armed.
   const [destructiveNote, setDestructiveNote] = useState<string | null>(null);
@@ -2139,6 +2158,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           mine={operatorCommands}
           onRun={(command) => send(command, false)}
           disabled={locked}
+          // Stop, for a running turn the bridge has a key for (M68 spec 02); a link that is down greys it.
+          stop={stopOffered ? { onStop: stopTurn } : undefined}
           // The pane switcher: a Switch pill pinned at this belt's right end, above Send, and the
           // belt itself as the drag surface behind it. The pane decides whether there is one
           // (agent-chat.tsx); this row draws the pill, wires the drag, and costs no height.

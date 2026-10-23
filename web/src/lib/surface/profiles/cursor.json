@@ -44,6 +44,7 @@
     "submit": ["Enter"],
     "newline": ["ctrl+j"],
     "interrupt": ["ctrl+c"],
+    "interruptClearsDraft": true,
     "clear": { "key": "Backspace", "slack": 16 },
     "navigation": {
       "up": "Up",

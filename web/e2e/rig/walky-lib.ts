@@ -216,7 +216,7 @@ export async function operatorMessage(browser: Browser, rig: Rig, pane: string, 
 }
 
 /** Whether the agent's turn runs now, by the Surface when the harness has one, else by Herdr's status. */
-async function turnRuns(rig: Rig, pane: string): Promise<boolean> {
+export async function turnRuns(rig: Rig, pane: string): Promise<boolean> {
   const found = await rig.pane(pane).catch(() => null);
   if (found === null) return false;
   return found.surface === null ? found.status === "working" : found.surface.turn === "running";

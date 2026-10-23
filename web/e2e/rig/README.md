@@ -13,8 +13,8 @@ Tier 1's config ignores `e2e/rig/`.
 
 The leg is a gate. It runs in three places:
 
-- **Before every release tag**, on the release head. All thirty-seven cases pass on the first tap:
-  thirty on the solo leg (three harnesses with five cases each, fourteen walky talky cases, and case 22) and
+- **Before every release tag**, on the release head. All thirty-eight cases pass on the first tap:
+  thirty-one on the solo leg (three harnesses with five cases each, fourteen walky talky cases, case 22, and case 25) and
   seven on the crew leg (below). A case that fails, or is not reached, holds the tag.
 - **Before merging a change** to a harness reader, the Surface, the Send Protocol or the ask code. Run
   it on the branch. A unit test cannot show that a tap works on a real screen.
@@ -63,7 +63,7 @@ The rules are the harness lab's (`scripts/harness-canary/lab/lab-ledger.ts`):
   rig.
 - A run that cannot finish writes `failed`. A run in which a case failed, in either leg, writes `fail`. A
   case that was not reached, or is not applicable, in either leg proves nothing, so it makes the row
-  `failed`. The row is `pass` only when both legs passed every case (30 solo cases and 7 crew cases). A
+  `failed`. The row is `pass` only when both legs passed every case (31 solo cases and 7 crew cases). A
   `fail` outranks a `failed` between the two legs.
 
 **Cannot start.** A Claude login with under 25 minutes left, no `herdr`, `bun` or `git`, under 8 GB of
@@ -118,6 +118,7 @@ last column names. Cases 12 to 15 and 19 to 21 run on the crew leg only (below).
 | 22 | Model from the belt over a draft. A word typed into Claude's box outside the phone is a draft. The belt's Model is refused `draft_present`, and the phone offers Replace and Cancel, no Add, with the notice "Replace it, or cancel". One tap on Replace empties the box and sends `/model`: the picker opens on the pane and as a card on the phone, and the draft is gone. Escape outside the phone closes the picker. No model turn | claude | `claude.spec.ts` |
 | 23 | A held message cancelled by its sender (M62 spec 03). The operator's message over a draft is held (`accepted`, `draft present`). In the pane's Messages sheet the held row carries Cancel; a tap ends it as `inbox-only` with the reason `cancelled by sender`, the draft is untouched, and nothing is typed once the box is cleared | claude | `walky.spec.ts` |
 | 24 | A held message dropped by the pane's owner (M62 spec 03). A second Claude sends through the CLI over a draft, so the message is an agent's and held. The phone shows "1 message waits for the box to clear" above the box; a tap opens the Messages sheet on it, Drop ends it as `inbox-only` with the reason `dropped by the pane's owner`, the mark goes, and nothing is typed once the box is cleared | claude | `walky.spec.ts` |
+| 25 | Stop a running pi turn (M68, ADR 0116). A long numbered list streams (180 items), so the turn runs for tens of seconds. The belt shows Stop. The first tap arms it: the button reads "Stop?" and nothing is posted. The second tap posts one abort request, and the bridge presses pi's interrupt key as a person's tap. The receipt says `stopped`, the notice "Stopped." shows under the box, and the box reads free within 5 s. One model turn. | pi | `stop.spec.ts` |
 
 The walky talky path is the same bridge code for every harness, so Claude carries most of the cases and
 pi and omp prove that their screens take the message. The table prints a row only for a harness a case

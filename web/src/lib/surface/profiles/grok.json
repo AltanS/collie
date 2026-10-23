@@ -69,8 +69,9 @@
       "ctrl+j"
     ],
     "interrupt": [
-      "Escape"
+      "ctrl+c"
     ],
+    "interruptClearsDraft": true,
     "clear": {
       "key": "Backspace",
       "slack": 16

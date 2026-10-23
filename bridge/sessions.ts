@@ -2,6 +2,7 @@ import { basename, dirname } from "node:path";
 
 import type { SendProtocol } from "./surface/protocol.ts";
 import type { SurfaceShadow } from "./surface/shadow.ts";
+import type { StopService } from "./surface/stop.ts";
 import type { AskAnswerer } from "./surface/ask.ts";
 import type { HoldNote } from "../web/src/lib/surface/hold.ts";
 import type { ProgramDriver } from "./surface/durable-driver.ts";
@@ -104,6 +105,8 @@ export interface SessionParts {
   send?: SendProtocol;
   /** Set with `send`: the session's Ask answerer (M56 spec 08), `POST /api/ask/<id>`. */
   asks?: AskAnswerer;
+  /** Set on a terminal session: a Stop on a pane with a screen (M68 spec 01), `POST /api/pane/:id/abort`. */
+  stop?: StopService;
   /**
    * Set on a program session with the Send Protocol on (M56 spec 14): the structured driver. It
    * answers the pane's Surface, `POST /api/send` and `POST /api/ask/<id>` from the program's state.

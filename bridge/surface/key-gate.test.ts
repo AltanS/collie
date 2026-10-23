@@ -139,6 +139,17 @@ describe("the key gate's door for a person", () => {
     expect(gate.sentBy()).toEqual({ person_tap: 1, legacy_reply: 1, protocol: 0 });
   });
 
+  test("a Stop's two-key Escape list (opencode needs Esc twice) passes the person's door in one call (M68 spec 01)", async () => {
+    const mux = new Recorder();
+    const gate = new KeyGate(mux, clock().now);
+    gate.noteRead("%1");
+    expect(await gate.press("%1", ["Escape", "Escape"], "person_tap")).toEqual(muxAck());
+    expect(mux.sent).toEqual([{ paneId: "%1", keys: ["Escape", "Escape"] }]);
+    expect(gate.sentBy()).toEqual({ person_tap: 1, legacy_reply: 0, protocol: 0 });
+    // A protocol token still cannot carry Escape, one key or two.
+    expect(() => gate.mint("%1", ["Escape", "Escape"], gate.revision("%1"))).toThrow();
+  });
+
   test("Send now under a running turn: the queue's keys pass the person's door even after a protocol send queued", async () => {
     // A protocol send queued behind the turn (reads, a text write, its Enter token), then the person
     // taps Send now (`ChatWindow.sendQueuedNow`, ctrl+Enter on Claude Code). The door for a person
