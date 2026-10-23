@@ -252,6 +252,30 @@ describe("agent skill discovery", () => {
       "/h/.pi/agent/skills/kept/SKILL.md": skill(),
       "/h/.pi/agent/prompts/prompt-only.md": "hello",
     })).toEqual(["/prompt-only"]);
+    // Trusted project `.pi/settings.json` overrides global `enableSkillCommands` in both directions;
+    // an untrusted project's settings never override a global `false`.
+    const overrideBase = {
+      ...repo,
+      "/h/.pi/agent/settings.json": JSON.stringify({ enableSkillCommands: false }),
+      "/h/.pi/agent/skills/user-skill/SKILL.md": skill(),
+      "/h/code/app/src/.pi/settings.json": JSON.stringify({ enableSkillCommands: true }),
+      "/h/code/app/src/.pi/skills/proj-skill/SKILL.md": skill(),
+    };
+    expect(await names("pi", overrideBase)).toEqual([]);
+    expect(
+      await names("pi", {
+        ...overrideBase,
+        "/h/.pi/agent/trust.json": JSON.stringify({ [native("/h/code/app")]: true }),
+      }),
+    ).toEqual(["/skill:proj-skill", "/skill:user-skill"]);
+    expect(
+      await names("pi", {
+        ...repo,
+        "/h/.pi/agent/trust.json": JSON.stringify({ [native("/h/code/app")]: true }),
+        "/h/.pi/agent/skills/user-skill/SKILL.md": skill(),
+        "/h/code/app/src/.pi/settings.json": JSON.stringify({ enableSkillCommands: false }),
+      }),
+    ).toEqual([]);
   });
 
   test("pi prompt fallback uses the first body line capped at sixty characters", async () => {

@@ -415,7 +415,7 @@ async function opencodeRows(
 // ── pi ─────────────────────────────────────────────────────────────────────────────────────────
 
 interface PiSettings {
-  enableSkillCommands: boolean;
+  enableSkillCommands: boolean | undefined;
   /** Paths a skill may not sit at or under (`settings.json` `skills` entries starting with `-`). */
   excluded: string[];
 }
@@ -425,7 +425,7 @@ async function piSettings(
   path: string,
   roots: readonly string[],
   home: string,
-  agentDir: string,
+  baseDir: string,
 ): Promise<PiSettings> {
   const text = await readSettingsText(io, path, roots);
   const settings = text === null ? null : parseJsonObject(text);
@@ -434,11 +434,12 @@ async function piSettings(
     if (!entry.startsWith("-")) continue;
     const raw = entry.slice(1);
     if (raw === "") continue;
-    const target = absoluteFrom(raw, home) ?? resolve(agentDir, raw);
+    const target = absoluteFrom(raw, home) ?? resolve(baseDir, raw);
     excluded.push(target);
   }
+  const flag = settings?.enableSkillCommands;
   return {
-    enableSkillCommands: settings?.enableSkillCommands !== false,
+    enableSkillCommands: flag === true || flag === false ? flag : undefined,
     excluded,
   };
 }
@@ -472,13 +473,19 @@ async function piRows(
     here !== undefined && where.cwd !== null && (await piTrusted(io, agentDir, personalRoots, where.cwd));
   const rules: ScanRules = { ...DEEP, skipHidden: true, stopAtSkill: true, skip: new Set(["node_modules"]) };
   const loose: ScanRules = { ...rules, loose: true };
-  const { enableSkillCommands, excluded } = await piSettings(
+  const globalSettings = await piSettings(
     io,
     join(agentDir, "settings.json"),
     personalRoots,
     where.home,
     agentDir,
   );
+  const projectSettings =
+    trusted && here !== undefined
+      ? await piSettings(io, join(here, ".pi", "settings.json"), projectRoots, where.home, join(here, ".pi"))
+      : null;
+  const enableSkillCommands = (projectSettings?.enableSkillCommands ?? globalSettings.enableSkillCommands) ?? true;
+  const excluded = [...globalSettings.excluded, ...(projectSettings?.excluded ?? [])];
   const rows: ClaudeCommand[] = [];
   if (enableSkillCommands) {
     const roots: Array<[string, readonly string[], ScanRules]> = [
