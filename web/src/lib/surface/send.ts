@@ -108,7 +108,15 @@ export interface SendRequestBody {
    * itself once it took the new request. The phone never sends a row's text back (it may be masked).
    */
   readonly resendOf?: string | undefined;
+  /**
+   * M69: `steer` asks the harness to take the text into the running turn instead of queueing it for
+   * after the turn. Absent means today's path. Only a person's tap sets it, per send.
+   */
+  readonly when?: SendWhen | undefined;
 }
+
+/** The one value of `SendRequestBody.when`. */
+export type SendWhen = "steer";
 
 /**
  * The cap's answer (M56 spec 09): after `limit` manual sends on one harness and version inside 24

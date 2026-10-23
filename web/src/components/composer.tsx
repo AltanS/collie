@@ -2,7 +2,7 @@ import { forwardRef, useContext, useEffect, useImperativeHandle, useRef, useStat
 import { createPortal } from "react-dom";
 import type { ChangeEvent, ClipboardEvent, CSSProperties, ReactNode } from "react";
 import { useRevalidator } from "react-router";
-import { Check, FileText, Image, Keyboard, ListEnd, ListTodo, Loader2, Mic, Monitor, Paperclip, Pencil, Send, Settings2, Slash, Square, Terminal, TriangleAlert, X, Zap } from "lucide-react";
+import { Check, FileText, Image, Keyboard, ListEnd, ListTodo, Loader2, Mic, Monitor, Navigation, Paperclip, Pencil, Send, Settings2, Slash, Square, Terminal, TriangleAlert, X, Zap } from "lucide-react";
 
 import { StatusDot } from "@/components/status-badge";
 import { applyDraftFontSize, fontStack, inputFocusZoomsPage, sentSuggestionsOf } from "@/hooks/use-display-prefs";
@@ -41,7 +41,7 @@ import type { Surface } from "@/lib/surface/surface";
 import { parseAnsi } from "@/lib/ansi";
 import { splitLines } from "@/lib/blocks";
 import { detectNoEchoPrompt } from "@/lib/no-echo";
-import type { HeldRow, SendMode, SendOffer } from "@/lib/surface/send";
+import type { HeldRow, SendMode, SendOffer, SendWhen } from "@/lib/surface/send";
 import type { IntentId } from "@/lib/durable-control";
 import { Notice, NOTICE_ACTION } from "@/components/ui/notice";
 import { ActionRow } from "@/components/action-sheet-rows";
@@ -129,6 +129,12 @@ interface ComposerProps {
   scope?: Scope;
   /** The pane's agent name — drives the slash-command palette and the reply-vs-shell placeholder. */
   agent: string | undefined | null;
+  /**
+   * The pane's profile has a steer key and the pane is a trusted screen pane (`AgentView.canSteer`,
+   * M69). While the turn runs, the Send button's long-press menu then offers "Steer". Absent or false:
+   * the menu has no such row, whatever the harness is.
+   */
+  canSteer?: boolean | undefined;
   /** True for a bare shell pane — tweaks the placeholder copy. */
   isShell: boolean;
   /** The pane's folder, absolute. Sent (M61) lists "This folder" with it; absent, it offers the machine only. */
@@ -385,7 +391,7 @@ interface ClearedDraft {
 
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, instance, surface, unreachableNote, scope, agent, isShell, cwd, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, held: heldRows, chatEntries, pullHandle, draftNoticeSlot, changesPill, stale, hand = "right", screen, todos, subagents },
+  { paneId, instance, surface, unreachableNote, scope, agent, canSteer, isShell, cwd, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, held: heldRows, chatEntries, pullHandle, draftNoticeSlot, changesPill, stale, hand = "right", screen, todos, subagents },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -640,6 +646,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // send?" state on the Send button (auto-disarms after 3 s), the second actually sends. Same shared
   // confirm the command palette uses for /clear.
   const sendConfirm = usePendingConfirm();
+  const armedWhen = useRef<SendWhen | undefined>(undefined);
   // The password prompt the last refused send was looking at, if it was one (#103). Since M56 spec 06
   // the phone reads nothing before a send; this is a display read of the screen the composer already
   // has (`text`), taken when the bridge refused or left the text unsubmitted, and only to say so and
@@ -812,6 +819,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // The Send button's hold (M62). Offered only where a message could leave: not on a locked field, not
   // offline, not while Type mode owns the button as its Stop control, and not mid-send.
   const canMessage = hasDraft && !locked && !offline && !direct.active && !sending && !walky.sending;
+  // M69: the Steer row of that menu. Only while the turn reads running, only where the bridge says the
+  // profile has a steer key, and never for a reply in message mode (a walky message always queues).
+  const steerRow = canSteer === true && shownSurface.turn === "running" && walky.aim === null;
   const sendHold = useLongPress(canMessage ? () => setSendMenu(true) : undefined);
 
   // ── THE VOICE TAKEOVER (design 3.3) ───────────────────────────────────────────────────────────
@@ -1330,7 +1340,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // no key of its own: no pre-flight, no type-then-verify, no sweep of a stranded draft (a draft in
   // the box is refused `draft_present` and offered Add, Replace or Cancel). A text that starts with a
   // reserved lead (`/`, `!`, `@`) goes as a `command`, whose popup under the box is expected.
-  async function send(value: string, isDraft: boolean): Promise<boolean> {
+  async function send(value: string, isDraft: boolean, when?: SendWhen): Promise<boolean> {
     // A shell line keeps its leading space or tab, which keeps it out of Sent (M61): the bridge checks
     // the raw text. An agent pane's text is trimmed at both ends, as it always was. The emptiness
     // check and the mode read the fully trimmed text on both, so neither sees a difference.
@@ -1348,7 +1358,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       setSendRefusal(phoneRefusal(translate("composer.status.dialogWaiting"), true));
       return false;
     }
-    return sendThroughProtocol(t, isDraft, modeFor(trimmed), null);
+    return sendThroughProtocol(t, isDraft, modeFor(trimmed), null, false, undefined, when);
   }
 
   // One Send Protocol request (lib/reply-action.ts). The id is kept for a retry of the same intent
@@ -1357,7 +1367,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // `sent`, `effective` or a `discarded` the bridge took.
   // `resend` is a resend of an ended held row: the request carries the old id and an empty text, the
   // bridge takes the row's own text, and `shown` (the row's text, maybe masked) is only for the preview.
-  async function sendThroughProtocol(t: string, isDraft: boolean, mode: SendMode, rowsHash: string | null, capAck = false, resend?: { oldId: string; shown: string }): Promise<boolean> {
+  async function sendThroughProtocol(t: string, isDraft: boolean, mode: SendMode, rowsHash: string | null, capAck = false, resend?: { oldId: string; shown: string }, when?: SendWhen): Promise<boolean> {
     setSending(true);
     setSendRefusal(null);
     setPendingUnknown(null); // a new send supersedes the last one's open question (#511)
@@ -1373,7 +1383,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     // The operator has just acted on this pane, so the poller should watch it land, from the tap on.
     stampSend(paneId);
     try {
-      const res = await sendText({ paneId, text: t, scope, mode, rowsHash, capAck, resendOf: resend?.oldId, held: protocolIntent.current });
+      const res = await sendText({ paneId, text: t, scope, mode, rowsHash, capAck, resendOf: resend?.oldId, when, held: protocolIntent.current });
       if (res.status === "noAnswer") {
         // No answer: the id stays, so the next tap on the same text asks for the same request.
         protocolIntent.current = res.intent;
@@ -1447,7 +1457,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // Gate the composer's Send through the destructive-input confirm: a matching command arms the
   // "Really send?" state instead of sending; the confirming second tap goes through. Non-destructive
   // input sends immediately (and any stray armed state is cleared).
-  function onSendClick() {
+  // `when` is M69's explicit choice from the Send button's menu: `steer` takes the text into the running
+  // turn. A destructive line arms "Really send?", and the confirming tap must send what was armed, so
+  // `armedWhen` keeps the choice across the two taps (the confirm button calls this with it).
+  function onSendClick(when?: SendWhen) {
     // A reply in message mode goes to the other session through the bridge's walky route, and is not
     // typed into this pane by us, so the destructive-command guard (a shell concern) does not apply.
     if (walky.aim !== null) {
@@ -1459,6 +1472,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     const line = composeLine(input, attachments, isShell);
     const reason = isDestructiveInput(line);
     if (reason && !sendConfirm.confirm("send")) {
+      armedWhen.current = when;
       // On a crew the confirm names the machine as well as the pattern: "rm -r" is a different
       // sentence depending on whose disk it runs on, and this line is the last thing read before the
       // second tap. Solo copy is unchanged, byte for byte.
@@ -1471,7 +1485,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     }
     sendConfirm.reset();
     setDestructiveNote(null);
-    send(line, true);
+    armedWhen.current = undefined;
+    void send(line, true, when);
   }
   const confirmingSend = sendConfirm.pending === "send";
   // A modal ask owns the agent's keyboard: the Send slot and the placeholder say so (spec 10).
@@ -2604,6 +2619,16 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             label={translate("walky.composer.menu")}
             className={hand === "left" ? "right-auto left-0" : undefined}
           >
+            {steerRow && (
+              <ActionRow
+                icon={<Navigation aria-hidden="true" className="size-4 shrink-0" />}
+                label={translate("composer.steer.row")}
+                onClick={() => {
+                  setSendMenu(false);
+                  onSendClick("steer");
+                }}
+              />
+            )}
             <ActionRow
               icon={<WalkyIcon aria-hidden="true" className="size-4 shrink-0" />}
               label={translate("walky.composer.sendAsMessage")}
@@ -2632,7 +2657,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             <Button
               variant="destructive"
               className={cn(TOOLBAR_TAP_TARGET, "h-9 shrink-0 rounded-md px-3 text-sm font-semibold")}
-              onClick={onSendClick}
+              onClick={() => onSendClick(armedWhen.current)}
               disabled={locked || offline || !hasDraft || sending}
               title={offline ? translate("composer.send.reconnect") : undefined}
               aria-label={offline ? translate("composer.send.reconnect") : translate("composer.send.reallySend")}
@@ -2687,7 +2712,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               size="icon"
               {...sendHold}
               className={cn(TOOLBAR_TAP_TARGET, "size-9 shrink-0 select-none rounded-full [-webkit-touch-callout:none]")}
-              onClick={direct.active ? () => direct.deactivate() : onSendClick}
+              onClick={direct.active ? () => direct.deactivate() : () => onSendClick()}
               disabled={locked || sending || (offline && !direct.active)}
               title={offline && !direct.active ? translate("composer.send.reconnect") : undefined}
               aria-label={

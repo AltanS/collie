@@ -247,6 +247,11 @@ export interface AgentView {
    */
   sendProtocol?: true;
   /**
+   * Mirrors `PaneWire.canSteer` (M69): the pane's profile has a steer key and the pane is a trusted
+   * screen pane, so a send may ask to steer a running turn. Absent on an older bridge.
+   */
+  canSteer?: boolean;
+  /**
    * Mirrors `PaneWire.held` (M56 spec 15): the pane's held sends, oldest first. The composer draws one
    * queued row per entry, with the text and Cancel (Resend on an ended one).
    */

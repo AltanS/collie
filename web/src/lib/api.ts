@@ -1485,7 +1485,7 @@ export async function postSend(body: SendRequestBody, scope?: Scope): Promise<Se
           withScope(`/api/pane/${encodeURIComponent(body.pane)}/reply`, scope),
           {
             method: "POST",
-            body: JSON.stringify({ text: body.text, submit: true, id: body.id, mode: body.mode, rowsHash: body.rowsHash, capAck: body.capAck }),
+            body: JSON.stringify({ text: body.text, submit: true, id: body.id, mode: body.mode, rowsHash: body.rowsHash, capAck: body.capAck, when: body.when }),
           },
           sendRecover(),
         ),
