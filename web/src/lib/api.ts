@@ -12,6 +12,7 @@ import {
   noteServerFailure,
   type ReadFailureKind,
 } from "./connection-health";
+import { noteSnapshotTaken } from "./snapshot-clock";
 import { markDead as markPaneDead, markLive as markPaneLive } from "./liveness";
 import { abortSignalAfter, abortSignalAny } from "./env";
 import { asJsonObject, asJsonString, parseJsonObject, type JsonObject } from "./json";
@@ -597,7 +598,10 @@ export async function fetchSnapshot(
   // anchor so escalation is measured from here. A snapshot that 200s but reports `bridge:
   // "disconnected"` is NOT live (the pill/banner still escalate on it), so it must NOT reset the
   // clock, or the "Herdr is down" escalation could never surface.
-  if (snap.bridge !== "disconnected") markLive();
+  if (snap.bridge !== "disconnected") {
+    markLive();
+    noteSnapshotTaken();
+  }
   return snap;
 }
 

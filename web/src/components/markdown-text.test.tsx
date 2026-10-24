@@ -124,6 +124,73 @@ describe("MarkdownText file paths", () => {
   });
 });
 
+// ── Web addresses inside backticks ─────────────────────────────────────────────────────────────
+// Claude Code prints most addresses as code spans (`http://bluefin:8788`), which the parser keeps
+// verbatim, so they were dead text until the code span itself looked for an address.
+
+describe("MarkdownText web addresses in code spans", () => {
+  it("a code span that is an address is one link in a new tab, and keeps the chip", () => {
+    const { container } = render(<MarkdownText text="open `http://bluefin:8788` now" />);
+    const link = screen.getByRole("link");
+    expect(link.getAttribute("href")).toBe("http://bluefin:8788");
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("rel")).toBe("noopener noreferrer");
+    expect(link.querySelector("code")?.textContent).toBe("http://bluefin:8788");
+    expect(container.querySelectorAll("a")).toHaveLength(1);
+    expect(container.textContent).toBe("open http://bluefin:8788 now");
+  });
+
+  it("an address in a span with a trailing full stop links without it", () => {
+    const { container } = render(<MarkdownText text="at `http://x/.`" />);
+    const link = screen.getByRole("link");
+    expect(link.getAttribute("href")).toBe("http://x/");
+    expect(link.textContent).toBe("http://x/");
+    expect(container.querySelector("code")?.textContent).toBe("http://x/.");
+  });
+
+  it("an address inside a longer span links only its own token", () => {
+    const { container } = render(<MarkdownText text="run `curl -s https://example.com/health | jq` first" />);
+    const link = screen.getByRole("link");
+    expect(link.getAttribute("href")).toBe("https://example.com/health");
+    expect(link.textContent).toBe("https://example.com/health");
+    expect(container.querySelector("code")?.textContent).toBe("curl -s https://example.com/health | jq");
+    expect(container.querySelectorAll("a")).toHaveLength(1);
+  });
+
+  it("a mailto address links, and two addresses in one span are two links", () => {
+    render(<MarkdownText text="`mailto:a@b.dev` and `http://a:1 http://b:2`" />);
+    expect(screen.getAllByRole("link").map((a) => a.getAttribute("href"))).toEqual(["mailto:a@b.dev", "http://a:1", "http://b:2"]);
+  });
+
+  it("a plain word, a command and a javascript: address in a span are not links", () => {
+    const { container } = render(<MarkdownText text="`bluefin` `bun run test` `javascript:alert(1)` `www.example.com`" />);
+    expect(container.querySelector("a")).toBeNull();
+    expect(container.querySelectorAll("code")).toHaveLength(4);
+  });
+
+  it("a path in a code span is still a file link, and an address beside it is a web link", () => {
+    const opened: string[] = [];
+    const { container } = render(
+      <FileLinksProvider value={testFileOpener(opened)}>
+        <MarkdownText text="see `src/cart.ts:12` and `http://bluefin:8788`" />
+      </FileLinksProvider>,
+    );
+    const links = [...container.querySelectorAll("a")];
+    expect(links.map((a) => a.getAttribute("href"))).toEqual([
+      "/pane/w1%3Ap1/changes/files?path=src%2Fcart.ts&line=12",
+      "http://bluefin:8788",
+    ]);
+    fireEvent.click(links[0]!);
+    expect(opened).toHaveLength(1);
+  });
+
+  it("never nests an address inside a link's label", () => {
+    const { container } = render(<MarkdownText text="[`http://a:1`](https://example.com/x)" />);
+    expect(container.querySelectorAll("a")).toHaveLength(1);
+    expect(container.querySelector("a")!.getAttribute("href")).toBe("https://example.com/x");
+  });
+});
+
 // Stretchtext (`{{short|long}}`, the cc-stretch plugin's markup) is drawn only where both the screen
 // says this device draws it and the text is agent reply prose; anywhere else the markup reads as written.
 function withStretches(text: string, { query = "", stretches = true, on = true } = {}) {

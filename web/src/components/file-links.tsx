@@ -7,6 +7,7 @@ import { paneFilesRoot, resolveFilePathLink, type PrintedPath, type RootPane, ty
 import { useLaunchers } from "@/lib/launchers";
 import { filesPath } from "@/lib/nav";
 import type { Scope } from "@/lib/scope";
+import { snapshotsTaken } from "@/lib/snapshot-clock";
 
 // A path the agent printed, opened in the Files view (ADR 0088). The screen that knows which pane
 // the text belongs to provides an opener; the chat prose, the tool cards and the terminal mirror ask
@@ -22,6 +23,14 @@ import type { Scope } from "@/lib/scope";
 // has no answer for is queued, and the queue goes out 150 ms after the last addition, deduped, at most
 // 64 paths a request. Until then, and for good on an absent answer, the path is plain text; a link
 // never turns back into text while the view stays open. Offline, or after a failure, nothing is asked.
+//
+// A REFUSAL IS NOT FOREVER. Every failure holds the asking for `FILE_EXIST_RETRY_MS`, so a device that
+// may not read (no read tier) is never asked once per poll. A 4xx other than 404 (a gate) then
+// stays refused until the next live snapshot arrives AFTER that hold (`lib/snapshot-clock.ts`): that
+// snapshot proves the connection and the build are back, and a bridge that was updated, or a pairing
+// that was repaired, would otherwise stay unasked until a page reload. A 404 or 501 (an older bridge,
+// a member the lead cannot forward to) asks again when the hold ends, since a snapshot says nothing
+// new about the route.
 
 /** One tap target: `href` for a middle-click or a long-press copy, `onOpen` for the tap. */
 export interface FileLinkTarget {
@@ -90,8 +99,8 @@ class FileExistenceStore {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private controller = new AbortController();
   private attached = false;
-  /** The route is not there (a member, an older bridge) or refused: nothing more is asked. */
-  private refused = false;
+  /** The bridge refused the route: nothing more is asked until a live snapshot arrives after this count, and the hold has passed. */
+  private refusedAt: number | null = null;
   private quietUntil = 0;
   private onAnswer: () => void = () => {};
   /**
@@ -129,9 +138,17 @@ class FileExistenceStore {
       this.absentAt.delete(rel);
     }
     if (this.answers.has(rel) || this.queued.has(rel) || this.asking.has(rel)) return;
-    if (this.refused || Date.now() < this.quietUntil || isLostLatched()) return;
+    if (this.isRefused() || Date.now() < this.quietUntil || isLostLatched()) return;
     this.queued.add(rel);
     this.arm();
+  }
+
+  /** Whether a refusal still stands: it ends with the first live snapshot taken after it (the hold is `quietUntil`'s). */
+  private isRefused(): boolean {
+    if (this.refusedAt === null) return false;
+    if (snapshotsTaken() === this.refusedAt) return true;
+    this.refusedAt = null;
+    return false;
   }
 
   private attach(onAnswer: () => void): void {
@@ -176,10 +193,12 @@ class FileExistenceStore {
       }
     } catch (error) {
       if (signal.aborted) return;
-      // A 4xx is an answer about the route, not this moment: an older bridge, a member the lead
-      // cannot forward to (501), a device the gate refuses. Anything else may pass: wait, then ask.
-      if (isRefusalStatus(error) || isApiErrorStatus(error, 501)) this.refused = true;
-      else this.quietUntil = Date.now() + FILE_EXIST_RETRY_MS;
+      // A 4xx is an answer about the route, not this moment: a device the gate refuses, an older
+      // bridge, a member the lead cannot forward to (501). The first kind waits for the next live
+      // snapshot; a missing route (404, 501) and anything that may pass (a timeout, a 5xx, no
+      // network) wait a fixed time, then ask again.
+      this.quietUntil = Date.now() + FILE_EXIST_RETRY_MS;
+      if (isRefusalStatus(error) && !isApiErrorStatus(error, 404)) this.refusedAt = snapshotsTaken();
     } finally {
       for (const p of paths) this.asking.delete(p);
     }
