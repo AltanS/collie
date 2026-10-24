@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-24
-- **Shipped in:** pending
+- **Shipped in:** 1.24.0
 - **Trail:** the playground's "Large screens" round (`web/src/playground/sections/wide-layout*.tsx` on
   the prototype branch) · `web/src/lib/wide-layout.ts` · `web/src/lib/wide-layout-store.ts` ·
   `web/src/lib/belt-intent.ts` · `web/src/components/wide-layout.tsx` ·
