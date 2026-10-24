@@ -98,6 +98,7 @@ function renderDefault(setting: ConfigSetting): string {
     case "roots":
       return setting.default.length === 0 ? "(unset)" : setting.default.join(",");
     case "enum":
+    case "flags":
     case "string":
     case "secret":
       return setting.default === "" ? "(unset)" : setting.default;
@@ -204,6 +205,8 @@ function tomlDefault(setting: ConfigSetting): string {
     case "list":
     case "roots":
       return `[${setting.default.map((e) => JSON.stringify(e)).join(", ")}]`;
+    case "flags":
+      return setting.default === "on" ? "true" : JSON.stringify(setting.default);
     case "enum":
     case "string":
     case "secret":
@@ -214,6 +217,7 @@ function tomlDefault(setting: ConfigSetting): string {
 /** The bounds or allowed values a row has, as the one extra comment line, or `null`. */
 function constraintLine(setting: ConfigSetting): string | null {
   if (setting.kind === "enum") return `# one of: ${setting.values.join(", ")}`;
+  if (setting.kind === "flags") return `# true, false, "all", or a list of: ${setting.values.join(", ")}`;
   if (setting.kind !== "int") return null;
   if (setting.min !== undefined && setting.max !== undefined) return `# ${String(setting.min)} to ${String(setting.max)}`;
   if (setting.min !== undefined) return `# at least ${String(setting.min)}`;

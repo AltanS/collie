@@ -18,6 +18,7 @@
 // not change what any process reads; `bridge/solo-baseline.test.ts` pins the same 37 names it always
 // pinned, now read from {@link CONFIG_SETTINGS} instead of from `bridge/config.ts`'s source.
 
+import { ACCOUNT_WINDOW_HARNESSES } from "./account-windows-setting.ts";
 import { DEFAULT_MUX } from "./mux/registry.ts";
 import { DEFAULT_MAX_UPLOAD_MB } from "./uploads.ts";
 
@@ -75,10 +76,11 @@ export const SECTION_DOC = {
  * How a value is read.
  *
  * One per reader in `bridge/config.ts` (`envInt`, `envBool`, `envEnum`, `envList`, `envRoots`) plus
- * `string` for a raw read and `secret` — a `string` that `config show` masks and that raises the
+ * `flags` (an on/off switch that may also name which of a closed set of ids are on, the file taking a
+ * boolean, a string or an array of strings), `string` for a raw read and `secret` — a `string` that `config show` masks and that raises the
  * `.env` permission rule on the file holding it.
  */
-export type ConfigKind = "int" | "bool" | "enum" | "list" | "roots" | "string" | "secret";
+export type ConfigKind = "int" | "bool" | "enum" | "flags" | "list" | "roots" | "string" | "secret";
 
 /** A default as it would appear in the file: the TOML value `config init` writes, commented out. */
 export type ConfigDefault = string | number | boolean | readonly string[];
@@ -126,6 +128,13 @@ export type ConfigSetting =
       readonly kind: "enum";
       /** One of {@link values}, or `""` when the feature is absent until something configures it. */
       readonly default: string;
+      readonly values: readonly string[];
+    })
+  | (ConfigSettingBase & {
+      readonly kind: "flags";
+      /** The words the environment reads: `on`, `off`, `all`, or a comma list of {@link values}. */
+      readonly default: string;
+      /** The ids a list may name. An id outside it is refused. */
       readonly values: readonly string[];
     })
   | (ConfigSettingBase & { readonly kind: "list" | "roots"; readonly default: readonly string[] })
@@ -238,9 +247,10 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     key: "account_windows",
     env: "COLLIE_ACCOUNT_WINDOWS",
     section: "bridge",
-    kind: "bool",
-    default: true,
-    doc: "Show the 5-hour and 7-day windows: read the agent's own login on this machine and ask its vendor's usage endpoint (Claude: api.anthropic.com).",
+    kind: "flags",
+    default: "on",
+    values: ACCOUNT_WINDOW_HARNESSES,
+    doc: "Show the 5-hour and 7-day windows. on = claude and codex, off = none, all = every source, or name harnesses (claude, codex, opencode, grok). Claude reads your login on this machine and asks api.anthropic.com; opencode and grok are unverified and off unless named.",
     configField: "accountWindows",
   },
   {

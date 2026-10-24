@@ -389,3 +389,44 @@ describe("no path is ever named after an instance", () => {
     }
   });
 });
+
+describe("[bridge] account_windows (ADR 0118)", () => {
+  const layerFor = (value: string) => read({ [INSTANCE_FILE]: `[bridge]\naccount_windows = ${value}\n` });
+
+  test("a boolean still works: true is the default set, false is none", async () => {
+    expect((await layerFor("true")).env.COLLIE_ACCOUNT_WINDOWS).toBe("on");
+    expect((await layerFor("false")).env.COLLIE_ACCOUNT_WINDOWS).toBe("off");
+    expect((await layerFor("true")).problems).toEqual([]);
+  });
+
+  test("a string takes the environment's words and a list of ids", async () => {
+    for (const word of ["off", "on", "all", "no", "1"]) {
+      const layer = await layerFor(JSON.stringify(word));
+      expect(layer.problems).toEqual([]);
+      expect(layer.env.COLLIE_ACCOUNT_WINDOWS).toBe(word);
+    }
+    expect((await layerFor('" Claude , grok "')).env.COLLIE_ACCOUNT_WINDOWS).toBe("Claude , grok");
+  });
+
+  test("an array of ids joins into the environment's comma list", async () => {
+    const layer = await layerFor('["claude", " opencode "]');
+    expect(layer.problems).toEqual([]);
+    expect(layer.env.COLLIE_ACCOUNT_WINDOWS).toBe("claude,opencode");
+  });
+
+  test("an array with a word, an empty array and a number are problems and set nothing", async () => {
+    for (const value of ['["off"]', '["all"]', "[]", "3"]) {
+      const layer = await layerFor(value);
+      expect(layer.problems.length, value).toBe(1);
+      expect(layer.problems[0]?.key).toBe("account_windows");
+      expect(layer.env.COLLIE_ACCOUNT_WINDOWS, value).toBeUndefined();
+    }
+  });
+
+  test("an unknown id goes through to the config read, which drops it and keeps the known ids", async () => {
+    // A dropped key would fall back to the default set and turn Claude on for a typo.
+    expect((await layerFor('"opencode,gork"')).env.COLLIE_ACCOUNT_WINDOWS).toBe("opencode,gork");
+    expect((await layerFor('["opencode", "gork"]')).env.COLLIE_ACCOUNT_WINDOWS).toBe("opencode,gork");
+    expect((await layerFor('"opencode,gork"')).problems).toEqual([]);
+  });
+});

@@ -123,11 +123,25 @@ describe("loadConfig", () => {
     expect(cfg.skipServe).toBe(false);
   });
 
-  test("COLLIE_ACCOUNT_WINDOWS is on by default, and 0 turns it off (ADR 0118)", () => {
+  test("COLLIE_ACCOUNT_WINDOWS is claude and codex by default, a list names harnesses, 0 turns it off (ADR 0118)", () => {
     const base = { ...process.env, COLLIE_ACCOUNT_WINDOWS: undefined };
-    expect(loadConfig(base).accountWindows).toBe(true);
-    for (const off of ["0", "off", "false", "no"]) expect(loadConfig({ ...base, COLLIE_ACCOUNT_WINDOWS: off }).accountWindows).toBe(false);
-    expect(loadConfig({ ...base, COLLIE_ACCOUNT_WINDOWS: "1" }).accountWindows).toBe(true);
+    expect(loadConfig(base).accountWindows).toEqual(["claude", "codex"]);
+    for (const off of ["0", "off", "false", "no"]) expect(loadConfig({ ...base, COLLIE_ACCOUNT_WINDOWS: off }).accountWindows).toEqual([]);
+    for (const on of ["1", "on", "true", "yes"]) expect(loadConfig({ ...base, COLLIE_ACCOUNT_WINDOWS: on }).accountWindows).toEqual(["claude", "codex"]);
+    expect(loadConfig({ ...base, COLLIE_ACCOUNT_WINDOWS: "all" }).accountWindows).toEqual(["claude", "codex", "opencode", "grok"]);
+    expect(loadConfig({ ...base, COLLIE_ACCOUNT_WINDOWS: " Grok, claude " }).accountWindows).toEqual(["claude", "grok"]);
+  });
+
+  test("COLLIE_ACCOUNT_WINDOWS with an unknown id warns and keeps only the known ids", () => {
+    const warnings: string[] = [];
+    const realWarn = console.warn;
+    console.warn = (...args: unknown[]) => void warnings.push(args.map(String).join(" "));
+    try {
+      expect(loadConfig({ ...process.env, COLLIE_ACCOUNT_WINDOWS: "opencode,gork" }).accountWindows).toEqual(["opencode"]);
+    } finally {
+      console.warn = realWarn;
+    }
+    expect(warnings.join("\n")).toContain('COLLIE_ACCOUNT_WINDOWS: unknown id "gork"');
   });
 
   test("parses COLLIE_MULTI_SESSION as a boolean toggle (default on)", () => {
