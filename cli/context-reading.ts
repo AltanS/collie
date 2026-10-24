@@ -28,7 +28,8 @@ import { mergeBeacon, readUsage, writeUsage, type BeaconChange, type UsageStoreD
 //
 // This runs on every `PostToolUse`, so it is bounded: two `realpath`s, one `lstat`, ONE read of at most
 // {@link TAIL_BYTES} from the end of the file, and a JSON parse of the lines from the end back to the
-// first one that decides, never the whole file. An unchanged whole percent writes nothing.
+// first one that decides, never the whole file. An unchanged whole percent writes nothing. When the
+// tail was cut and holds no deciding line, the context on file is removed rather than kept stale.
 //
 // ── WHAT IT TRUSTS ────────────────────────────────────────────────────────────────────────────────
 //
@@ -71,12 +72,22 @@ export type TailReading =
   | { readonly kind: "compacted" };
 
 /**
- * The context reading in the end of a transcript, walking from the last line back to the first one that
- * decides, or null when none does. Only the lines that can decide are parsed.
+ * Whether a tail is a cut of a longer file: the read stopped at {@link TAIL_BYTES}. A cut that falls
+ * inside a character decodes to a replacement character of three bytes, so the length never shrinks.
  */
-export function readTail(tail: string): TailReading | null {
+export function tailIsCut(tail: string): boolean {
+  return Buffer.byteLength(tail, "utf8") >= TAIL_BYTES;
+}
+
+/**
+ * The context reading in the end of a transcript, walking from the last line back to the first one that
+ * decides, or null when none does. Only the lines that can decide are parsed. In a `cut` tail the first
+ * line is the end of a line torn by the cut and is never read, even when the piece would parse.
+ */
+export function readTail(tail: string, cut = false): TailReading | null {
   const lines = tail.split("\n");
-  for (let i = lines.length - 1; i >= 0; i--) {
+  const first = cut ? 1 : 0;
+  for (let i = lines.length - 1; i >= first; i--) {
     const line = lines[i]!;
     // A cheap test before the parse: a big tool result is a long line that is not worth parsing.
     const boundary = line.includes("compact_boundary");
@@ -85,7 +96,7 @@ export function readTail(tail: string): TailReading | null {
     try {
       row = asJsonObject(JSON.parse(line));
     } catch {
-      // The first line of the tail may be cut in half, and a torn last line is not a line yet.
+      // A torn last line is not a line yet.
       continue;
     }
     if (row === undefined) continue;
@@ -156,10 +167,15 @@ export function takeContextReading(
     if (file === null) return;
     const tail = deps.files.tail(file, TAIL_BYTES);
     if (tail === null) return;
-    const reading = readTail(tail);
-    if (reading === null) return;
+    const cut = tailIsCut(tail);
+    const reading = readTail(tail, cut);
+    // A whole file with no deciding line is a session before its first answer: what is on file stays
+    // (a resume's `context_tokens`). A CUT tail with none means one huge line, a tool result, filled the
+    // window after the last answer: the context has grown by that much, so the old value is stale.
+    // Remove it; the next answer measures it again.
+    if (reading === null && !cut) return;
     writeChange(deps, stateDirs(), input.session, input.harness, now, (window) => {
-      if (reading.kind === "compacted") return { context: null };
+      if (reading === null || reading.kind === "compacted") return { context: null };
       // No window, no context.
       return window === undefined ? null : { context: contextPercent(reading.tokens, window) };
     });
