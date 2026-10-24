@@ -1,4 +1,4 @@
-// A theme file, versions 1 and 2: the schema, the one parser, and the colour arithmetic the contrast
+// A theme file, versions 1, 2 and 3: the schema, the one parser, and the colour arithmetic the contrast
 // report needs (M57, the shared contract in the milestone README).
 //
 // WHAT A THEME IS. One JSON file with an id, a name, two halves of named colour tokens (light and
@@ -7,12 +7,14 @@
 // token list and the word lists are CLOSED, and the parser refuses any key or word it does not name,
 // so a file can never smuggle a property into the page.
 //
-// VERSIONS. The parser reads 1 and 2 and hands back the LOWEST version that holds the content: 2
-// when the theme carries a surface block, a display face or a palette, 1 when it carries none. So a colour-only theme is stored and
+// VERSIONS. The parser reads 1, 2 and 3 and hands back the LOWEST version that holds the content: 3
+// when the theme sets the optional token (`pane-active`), else 2 when it carries
+// a surface block, a display face or a palette, else 1. So a colour-only theme is stored and
 // exported as version 1, and a Collie from before version 2 (1.21.x after a rollback) still reads it.
 // A version 1 file has no surface block, which means the default word for every shape token. A
 // `surface` block, a `fonts.display` or an `ansi` block in a file that says version 1 is refused: the
-// file is older than the block.
+// file is older than the block. An optional token in a file that says version 1 or 2 is refused the
+// same way. Every file written before version 3 reads and exports exactly as it did.
 //
 // WHY THE PARSER IS TOTAL AND COLLECTS. A person imports a file someone else wrote. Telling them
 // about the first problem and hiding the next nine makes them fix a file nine more times. So
@@ -40,11 +42,11 @@ import {
   type SurfaceToken,
 } from "./surface";
 
-/** The highest schema version this build reads and writes. Only a theme with a shape, a display face or a palette needs it. */
-export const THEME_VERSION = 2;
+/** The highest schema version this build reads and writes. Only a theme that sets an optional token needs it. */
+export const THEME_VERSION = 3;
 
 /** The schema versions this build reads. A file with any other `version` is refused. */
-export const THEME_VERSIONS_READ = [1, 2] as const;
+export const THEME_VERSIONS_READ = [1, 2, 3] as const;
 
 export type ThemeVersion = (typeof THEME_VERSIONS_READ)[number];
 
@@ -101,6 +103,21 @@ export const THEME_TOKENS = [
 
 export type ThemeToken = (typeof THEME_TOKENS)[number];
 
+/**
+ * The token added in schema version 3. Unlike the 43 above a theme may leave it out, and then the
+ * `:root` pair in index.css holds, so a file written before version 3 paints as it always did. A
+ * component reads it as `border-pane-active` (the frame of the active pane column on a large
+ * screen). It is appended after the list above, so no earlier file or order moves.
+ */
+export const OPTIONAL_THEME_TOKENS = ["pane-active"] as const;
+
+export type OptionalThemeToken = (typeof OPTIONAL_THEME_TOKENS)[number];
+
+/** Every token a half may name: the 43, then the optional ones. */
+export const ALL_THEME_TOKENS = [...THEME_TOKENS, ...OPTIONAL_THEME_TOKENS] as const;
+
+export type AnyThemeToken = ThemeToken | OptionalThemeToken;
+
 /** The shipped ids. An imported file may not use one, so a download can never replace a shipped look. */
 export const SHIPPED_THEME_IDS = ["collie", "nightwatch", "daylight", "harbour"] as const;
 
@@ -113,7 +130,7 @@ export const DEFAULT_THEME_ID: ShippedThemeId = "collie";
  * One half of a theme: a value per token it sets, already normalised (trimmed, lower case, single
  * spaces). An interface rather than an alias so it names its owner: the keys are the closed list.
  */
-export interface Half extends Partial<Record<ThemeToken, string>> {}
+export interface Half extends Partial<Record<AnyThemeToken, string>> {}
 
 export interface Theme {
   /** The lowest version that holds the content: 2 with a `surface` block, 1 without (`versionOf`). */
@@ -184,6 +201,15 @@ export function isThemeToken(value: string): value is ThemeToken {
   return THEME_TOKENS.some((token) => token === value);
 }
 
+export function isOptionalThemeToken(value: string): value is OptionalThemeToken {
+  return OPTIONAL_THEME_TOKENS.some((token) => token === value);
+}
+
+/** True when the theme names this optional token in either half. A theme that does not leaves the stylesheet's pair alone. */
+export function setsOptionalToken(theme: Theme, token: OptionalThemeToken): boolean {
+  return theme.light?.[token] !== undefined || theme.dark?.[token] !== undefined;
+}
+
 /** True for a string shaped like a theme id. Says nothing about whether such a theme exists. */
 export function isThemeId(value: string): boolean {
   return ID_PATTERN.test(value);
@@ -232,8 +258,8 @@ export function parseTheme(raw: string, opts: ParseThemeOptions): ParsedTheme {
   const id = readId(doc, opts, refusals);
   const name = readName(doc, refusals);
   const author = readAuthor(doc, refusals);
-  const light = readHalf(doc, "light", refusals);
-  const dark = readHalf(doc, "dark", refusals);
+  const light = readHalf(doc, "light", version, refusals);
+  const dark = readHalf(doc, "dark", version, refusals);
   const fonts = readFonts(doc, version, refusals);
   const surface = readSurface(doc, version, refusals);
   const ansi = readAnsi(doc, version, refusals);
@@ -297,10 +323,11 @@ function unknownKey(path: string): Refusal {
   };
 }
 
-const READ_TEXT = THEME_VERSIONS_READ.join(" and ");
+const READ_TEXT = `${THEME_VERSIONS_READ.slice(0, -1).join(", ")} and ${THEME_VERSIONS_READ.at(-1)}`;
 
-/** The version a theme is written as: 2 when it carries a shape, a display face or a palette, else 1. */
+/** The version a theme is written as: 3 with an optional token, 2 with a shape, a display face or a palette, else 1. */
 export function versionOf(theme: Theme): ThemeVersion {
+  if (OPTIONAL_THEME_TOKENS.some((token) => setsOptionalToken(theme, token))) return 3;
   return theme.surface === undefined && theme.ansi === undefined && theme.fonts?.display === undefined ? 1 : 2;
 }
 
@@ -309,7 +336,7 @@ function olderThanBlock(block: string): Refusal {
   return {
     code: "version",
     path: "version",
-    detail: `A file with ${block} must say version ${THEME_VERSION}. This one says version 1.`,
+    detail: `A file with ${block} must say version 2. This one says version 1.`,
   };
 }
 
@@ -457,7 +484,12 @@ function readAuthor(doc: JsonObject, refusals: Refusal[]): string | undefined {
   return author === "" ? undefined : author;
 }
 
-function readHalf(doc: JsonObject, which: (typeof HALVES)[number], refusals: Refusal[]): Half {
+function readHalf(
+  doc: JsonObject,
+  which: (typeof HALVES)[number],
+  version: ThemeVersion | undefined,
+  refusals: Refusal[],
+): Half {
   const half: Half = {};
   const value = doc[which];
   if (value === undefined) return half;
@@ -472,8 +504,18 @@ function readHalf(doc: JsonObject, which: (typeof HALVES)[number], refusals: Ref
   }
   for (const key of Object.keys(obj)) {
     const path = `${which}.${key}`;
-    if (!isThemeToken(key)) {
+    if (!isThemeToken(key) && !isOptionalThemeToken(key)) {
       refusals.push(unknownKey(path));
+      continue;
+    }
+    // An optional token is older than any file that says version 1 or 2: the file is refused, as a
+    // surface block in a version 1 file is, and the value is still read so its own fault shows too.
+    if (isOptionalThemeToken(key) && version !== undefined && version < 3) {
+      refusals.push({
+        code: "version",
+        path,
+        detail: `A file with "${key}" must say version 3. This one says version ${version}.`,
+      });
       continue;
     }
     const raw = asJsonString(obj[key]);
@@ -858,7 +900,8 @@ export interface FilledHalves {
 export function fillHalves(theme: Theme, base: Theme): FilledHalves {
   const light: Half = {};
   const dark: Half = {};
-  for (const token of THEME_TOKENS) {
+  // The optional tokens are filled too, and a token neither side names is simply absent.
+  for (const token of ALL_THEME_TOKENS) {
     const l = theme.light?.[token] ?? base.light?.[token];
     const d = theme.dark?.[token] ?? base.dark?.[token];
     if (l !== undefined) light[token] = l;
@@ -871,7 +914,7 @@ export function fillHalves(theme: Theme, base: Theme): FilledHalves {
  * The `light-dark(<l>, <d>)` value of one token. Throws when either half lacks it, which can only
  * happen when the base theme itself is incomplete: a build error, not a user's.
  */
-export function lightDark(filled: FilledHalves, token: ThemeToken): string {
+export function lightDark(filled: FilledHalves, token: AnyThemeToken): string {
   const l = filled.light[token];
   const d = filled.dark[token];
   if (l === undefined || d === undefined) throw new Error(`theme token "${token}" has no value in both halves`);
@@ -977,6 +1020,12 @@ export function contrastReport(theme: Theme, base: Theme): Finding[] {
       push(`status-blocked text on ${groundToken}`, contrast(values["status-blocked"] ?? "", values[groundToken] ?? ""), TEXT_FLOOR);
     }
     push("rule on background", contrast(values.rule ?? "", values.background ?? ""), RULE_FLOOR);
+    // THE OPTIONAL TOKEN (version 3). Measured only in a half the theme sets, so a file that leaves
+    // it out reports exactly what it reported before. The active pane's frame is a shape, held to
+    // the non-text floor.
+    if (theme[half]?.["pane-active"] !== undefined) {
+      push("pane-active on background", contrast(values["pane-active"] ?? "", values.background ?? ""), NON_TEXT_FLOOR);
+    }
 
     // THE GROUND AND THE BAND (M57 spec 17). A gradient or a grain changes the page colour under the
     // text from the top to the bottom, so every pair measured on `background` above is measured again

@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 3,
   "id": "collie",
   "name": "Collie",
   "author": "Collie",
@@ -46,7 +46,8 @@
     "host-6": "oklch(0.46 0.2 262)",
     "host-7": "oklch(0.46 0.2 325)",
     "host-8": "oklch(0.46 0.108 241)",
-    "host-9": "oklch(0.46 0.2 280)"
+    "host-9": "oklch(0.46 0.2 280)",
+    "pane-active": "oklch(0.6 0.14 240)"
   },
   "dark": {
     "background": "oklch(0.145 0 0)",
@@ -91,7 +92,8 @@
     "host-6": "oklch(0.707 0.165 262)",
     "host-7": "oklch(0.74 0.238 325)",
     "host-8": "oklch(0.746 0.16 241)",
-    "host-9": "oklch(0.673 0.182 280)"
+    "host-9": "oklch(0.673 0.182 280)",
+    "pane-active": "oklch(0.9 0.058 231)"
   },
   "fonts": {
     "ui": "aldrich"

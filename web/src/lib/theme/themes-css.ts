@@ -15,10 +15,12 @@
 
 import {
   DEFAULT_THEME_ID,
+  OPTIONAL_THEME_TOKENS,
   THEME_TOKENS,
   fillHalves,
   lightDark,
   parseTheme,
+  setsOptionalToken,
   type Theme,
 } from "./schema";
 import { versionTwoDeclarations } from "./surface";
@@ -71,6 +73,10 @@ export function buildThemesCss(files: readonly ThemeFile[]): ThemesCss {
     .map((theme) => {
       const filled = fillHalves(theme, base);
       const lines = THEME_TOKENS.map((token) => `  --${token}: ${lightDark(filled, token)};`);
+      // An optional token writes a line only for a theme that names it: the rest keep index.css's pair.
+      for (const token of OPTIONAL_THEME_TOKENS) {
+        if (setsOptionalToken(theme, token)) lines.push(`  --${token}: ${lightDark(filled, token)};`);
+      }
       for (const [property, value] of versionTwoDeclarations(theme)) lines.push(`  ${property}: ${value};`);
       return `\n:root[data-theme="${theme.id}"] {\n${lines.join("\n")}\n}\n`;
     });

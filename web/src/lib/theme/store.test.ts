@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { MetaColours } from "@/hooks/use-theme";
 import { parseJsonObject } from "@/lib/json";
 
-import { THEME_TOKENS, fillHalves, parseTheme, toSrgbHex, type Theme } from "./schema";
+import { THEME_TOKENS, fillHalves, isOptionalThemeToken, parseTheme, toSrgbHex, type Theme } from "./schema";
 import { ANSI_PROPERTIES, VERSION_TWO_PROPERTIES, SURFACE_PROPERTIES } from "./surface";
 
 // The store keeps module-scope state (the design store, the library, the metas), so each case
@@ -21,7 +21,9 @@ const LIBRARY_KEY = "collie:themes:v1";
 function collie(): Theme {
   const parsed = parseTheme(COLLIE_RAW, { maxBytes: 64 * 1024, allowReservedId: true });
   if (!parsed.ok) throw new Error("collie.json no longer parses");
-  return parsed.theme;
+  // The fixtures are version 1 copies of collie's 43 required tokens; the optional ones (version 3) are left out.
+  const strip = (half: Theme["light"]) => Object.fromEntries(Object.entries(half ?? {}).filter(([token]) => !isOptionalThemeToken(token)));
+  return { ...parsed.theme, version: 1, light: strip(parsed.theme.light), dark: strip(parsed.theme.dark) };
 }
 
 /** A complete imported theme: collie's tokens, another id, and a dark ground of #123456. */
@@ -254,7 +256,7 @@ describe("the library", () => {
           { ...midnight("urlish"), light: { background: "url(https://x.test/a.png)" } },
           { ...midnight("extra"), surprise: true },
           midnight("nightwatch"),
-          { ...midnight("future"), version: 3 },
+          { ...midnight("future"), version: 4 },
           "not an object",
           midnight("good"),
         ],

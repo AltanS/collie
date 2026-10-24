@@ -11,6 +11,7 @@ import { StatusDot } from "@/components/status-badge";
 import { ColumnControls, ColumnHeader, PaneColumnBody, columnFrame } from "@/components/strip-column";
 import { Button } from "@/components/ui/button";
 import { BottomSheet } from "@/components/ui/sheet";
+import { Wordmark } from "@/components/wordmark";
 import { openForCount, useDashPrefs } from "@/hooks/use-dash-prefs";
 import { useElementWidth } from "@/hooks/use-element-width";
 import { useLocale } from "@/hooks/use-locale";
@@ -84,8 +85,15 @@ import { setSidebarOpen, setSpaceStrip, spaceStrip, useSidebarOpen, useSpaceStri
 /** A press that travels further than this is a scroll, not a tap. */
 const TAP_SLOP_PX = 10;
 
-/** The mark's drawing in the sidebar's and the rail's top row; its 44px tap box is the header's. */
-const SIDEBAR_MARK_PX = 26;
+/** On a column: its scrollers pass a sideways overscroll up to the strip (important, to win over the
+ *  transcript list's own `overscroll-contain`). Vertical overscroll is untouched. */
+const COLUMN_PASSES_X = "[&_*]:overscroll-x-auto!";
+
+/** The mark's drawing in the rail's top row; its 44px tap box is the header's. */
+const RAIL_MARK_PX = 26;
+
+/** The mark's drawing in the open sidebar's top row, a step above the rail's; the row stays 48px (h-12). */
+const SIDEBAR_MARK_PX = 30;
 
 interface WideLayoutProps {
   widthClass: "medium" | "expanded";
@@ -171,7 +179,12 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
   const shown = strip.cols.filter((c) => c.key === strip.focus || byColumn.has(c.key));
   const framed = shown.length > 1;
   const fractions = shown.map((c) => (wide ? PRESET_FRACTION[shownPreset(c.preset, allowed)] : 1));
-  const tail = Math.max(0, 1 - (fractions[fractions.length - 1] ?? 1));
+  // THE ADD COLUMN ends every flat strip: a scroll or a swipe right always lands on it. It is at least
+  // a pane wide, and as wide as the room the last column leaves, so the last column can still rest at
+  // the left edge and one column at 1/2 has the rest of the strip as its add column. It is no column
+  // of the strip: no focus, no frame, no count, never a landing for the focus that follows the view.
+  const addWidth = book ? 0 : Math.max(MIN_PANE_WIDTH, (1 - (fractions.at(-1) ?? 1)) * stripWidth);
+  const tail = stripWidth > 0 ? addWidth / stripWidth : 0;
   const focusAt = shown.findIndex((c) => c.key === strip.focus);
   // BOOK: exactly two columns, one per segment: the focused one and its right neighbour, or its left
   // one at the end. One column alone stands in the right segment, beside the full sidebar.
@@ -291,7 +304,13 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
   // column the view no longer shows whole hands the focus to the leftmost whole one. Folded as a book
   // the two columns are fixed, so nothing follows.
   useStripSnap(scroller, {
-    columnStarts: () => [...(scroller.current?.querySelectorAll<HTMLElement>("[data-col-key]") ?? [])].map((c) => c.offsetLeft),
+    // The add column is a snap point too; a start past the end of the scroll range rests at the end.
+    columnStarts: () => {
+      const node = scroller.current;
+      if (node === null) return [];
+      const end = Math.max(0, node.scrollWidth - node.clientWidth);
+      return [...node.querySelectorAll<HTMLElement>('[data-col-key], [data-slot="add-column"]')].map((c) => Math.min(c.offsetLeft, end));
+    },
     reducedMotion: reduced,
     onSettled: (left) => {
       const node = scroller.current;
@@ -316,7 +335,8 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
   // ── The one header, docked in the focused column; the mark in the sidebar's top row ─────────
   const [row, setRow] = useState<HTMLElement | null>(null);
   const [mark, setMark] = useState<HTMLElement | null>(null);
-  const trail = useHeaderDock({ row, mark, paper: "var(--card)", markSize: SIDEBAR_MARK_PX });
+  const sidebarOpen = useSidebarOpen();
+  const trail = useHeaderDock({ row, mark, paper: "var(--card)", markSize: sidebarOpen ? SIDEBAR_MARK_PX : RAIL_MARK_PX });
 
   const press = useRef<{ x: number; y: number } | null>(null);
   const swipe = useVerticalSwipe((dx, dy) => {
@@ -325,10 +345,7 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
   });
   const machine = isMultiHost(root.servers) && agent ? hostName(root.servers, agent.host) : undefined;
 
-  // ── The add slot: the strip's free width, while the columns leave some ──────────────────────
-  // One column at 1/2 or 4/5 leaves the rest of the strip empty; that width offers the space's other
-  // panes and a new agent. Folded as a book the segments fill the screen, so there is none.
-  const free = book ? 0 : Math.max(0, 1 - fractions.reduce((sum, f) => sum + f, 0));
+  // ── The add column's sheet: the space's other panes, to move here, and a new agent ──────────
   const [adding, setAdding] = useState(false);
   const inView = new Set(shown.map((c) => c.key));
   const offView = (space?.panes ?? []).filter((p) => !inView.has(columnKeyOf(p, places)));
@@ -339,9 +356,8 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
       data-width-class={widthClass}
       data-fold={fold}
       // No scroll bar anywhere in the layout: the position strip says where the strip is, and a bar on
-      // every column and list would be a second, noisier answer. No scroller in it hands a sideways
-      // overscroll on to the page, where Chrome would read it as history back.
-      className="flex min-h-0 w-full flex-1 [&_*]:overscroll-x-contain [&_*]:[scrollbar-width:none] [&_*::-webkit-scrollbar]:hidden"
+      // every column and list would be a second, noisier answer.
+      className="flex min-h-0 w-full flex-1 [&_*]:[scrollbar-width:none] [&_*::-webkit-scrollbar]:hidden"
     >
       <aside
         data-slot={sidebarShown ? "wide-sidebar" : "rail"}
@@ -449,6 +465,11 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
                 className={cn(
                   "flex h-full shrink-0 border-r border-rule",
                   COLUMN_SNAP_CLASSES,
+                  // A sideways wheel over a column must reach the strip. The transcript list is
+                  // `overscroll-contain` on both axes for the phone, which stopped the chain inside
+                  // the column, so every scroller in a column hands its x overscroll on. The strip
+                  // contains it, and the page's own lock keeps Chrome's history back off.
+                  COLUMN_PASSES_X,
                   segment === "left" && "fold-left-col",
                   segment === "right" && "fold-right-col",
                 )}
@@ -501,8 +522,8 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
             // The fold's gutter between the two columns of a book: no column stands on the hinge.
             return segment === "right" ? [<span key="fold-gutter" aria-hidden data-slot="fold-gutter" className="fold-gutter shrink-0" />, column] : [column];
           })}
-          {free > 0.01 && (
-            <div data-slot="add-slot" className="flex h-full shrink-0 p-3" style={{ flex: `0 0 ${free * 100}%` }}>
+          {!book && (
+            <div data-slot="add-column" className={cn("flex h-full shrink-0 p-3", COLUMN_SNAP_CLASSES)} style={{ flex: `0 0 ${addWidth}px` }}>
               <div className="flex min-w-0 flex-1 items-center justify-center rounded-md border border-dashed border-rule">
                 <Button variant="ghost" className="h-auto flex-col gap-2 px-3 py-2 text-sm text-muted-foreground" onClick={() => setAdding(true)}>
                   <span aria-hidden className="grid size-11 place-items-center rounded-md border border-rule bg-card text-foreground">
@@ -513,7 +534,6 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
               </div>
             </div>
           )}
-          {!book && tail > 0 && shown.length > 1 && <span aria-hidden data-slot="strip-end" className="shrink-0" style={{ flex: `0 0 ${tail * 100}%` }} />}
           {drag?.drop != null && (
             <span aria-hidden data-slot="drop-bar" className="pointer-events-none absolute inset-y-0 z-20 w-1 bg-primary" style={{ left: drag.drop.markerX - 2 }} />
           )}
@@ -533,7 +553,7 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
         </div>
       )}
 
-      {/* THIS space's panes the strip does not show, each to open beside the focus, then a new agent. */}
+      {/* THIS space's panes the strip does not show, each to open as the last column, then a new agent. */}
       <BottomSheet open={adding} onClose={() => setAdding(false)} title={t("wide.add.label")}>
         <div className="flex flex-col py-1">
           {offView.map((p) => (
@@ -545,13 +565,14 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
                 variant="outline"
                 size="lg"
                 className="shrink-0 text-sm"
-                aria-label={`${t("wide.openBeside")}: ${paneName(p)}`}
+                aria-label={`${t("wide.openHere")}: ${paneName(p)}`}
                 onClick={() => {
                   setAdding(false);
-                  write(p, openBeside);
+                  // Here is where the add column stands: after the last column, which it becomes.
+                  write(p, (s, key) => insertAt(s, key, s.cols.length));
                 }}
               >
-                {t("wide.openBeside")}
+                {t("wide.openHere")}
               </Button>
             </div>
           ))}
@@ -616,12 +637,12 @@ function SidebarTop({ open, setMark, toggle: hasToggle }: { open: boolean; setMa
     );
   }
   return (
-    // `pl-[7px]`: the mark's box is 44px and its drawing SIDEBAR_MARK_PX, so the drawing starts 7 + 9 =
-    // 16px in, on the list's inset; `-ml-1` pulls the word to the drawing past the box's air.
-    <div className="flex h-12 shrink-0 items-center gap-1 border-b border-rule pl-[7px] pr-1">
+    // `pl-[9px]`: the mark's box is 44px and its drawing SIDEBAR_MARK_PX (30), so the drawing starts
+    // 9 + 7 = 16px in, on the list's inset; `-ml-1` pulls the word to the drawing past the box's air.
+    <div className="flex h-12 shrink-0 items-center gap-1 border-b border-rule pl-[9px] pr-1">
       <div ref={setMark} data-slot="sidebar-mark" className="flex shrink-0 items-center" />
-      {/* The product's name outside, ONE word in two inks: Collie in the text colour, PWA in the
-          brand blue. Not translated. */}
+      {/* The product's name outside (components/wordmark.tsx): Collie in the text colour, PWA in the
+          herd's three colours. Not translated. */}
       {/* The word is part of the mark's button: a tap on it is the mark's tap (home, up a level,
           DESIGN.md §12). Hidden from the a11y tree and the tab order, so the row is ONE control. */}
       <button
@@ -630,9 +651,9 @@ function SidebarTop({ open, setMark, toggle: hasToggle }: { open: boolean; setMa
         aria-hidden
         data-slot="sidebar-word"
         onClick={(e) => e.currentTarget.parentElement?.querySelector<HTMLButtonElement>('[data-slot="sidebar-mark"] button')?.click()}
-        className="-ml-1 flex h-11 min-w-0 flex-1 items-center truncate text-left text-sm font-semibold text-foreground"
+        className="-ml-1 flex h-11 min-w-0 flex-1 items-center truncate text-left text-base font-semibold text-foreground"
       >
-        Collie<span className="text-brand">PWA</span>
+        <Wordmark />
       </button>
       {toggle}
     </div>

@@ -6,6 +6,9 @@ import { describe, expect, it } from "vitest";
 import type { JsonObject } from "@/lib/json";
 
 import {
+  ALL_THEME_TOKENS,
+  OPTIONAL_THEME_TOKENS,
+  setsOptionalToken,
   SHIPPED_THEME_IDS,
   THEME_TOKENS,
   THEME_VERSION,
@@ -49,7 +52,7 @@ describe("the token list", () => {
     expect(new Set(THEME_TOKENS).size).toBe(43);
     expect(THEME_TOKENS).not.toContain("popover");
     expect(THEME_TOKENS).not.toContain("radius");
-    expect(THEME_VERSION).toBe(2);
+    expect(THEME_VERSION).toBe(3);
     expect(SHIPPED_THEME_IDS).toEqual(["collie", "nightwatch", "daylight", "harbour"]);
   });
 });
@@ -144,10 +147,10 @@ describe("parseTheme", () => {
   });
 
   it("names an unknown version", () => {
-    const r = refusals(parseTheme(file({ version: 3 }), CAP));
+    const r = refusals(parseTheme(file({ version: 4 }), CAP));
     expect(r.map((x) => x.code)).toEqual(["version"]);
-    expect(r[0]?.detail).toContain("version 3");
-    expect(r[0]?.detail).toContain("reads version 1 and 2");
+    expect(r[0]?.detail).toContain("version 4");
+    expect(r[0]?.detail).toContain("reads version 1, 2 and 3");
     expect(codes(parseTheme(file({ version: "1" }), CAP))).toEqual(["version version"]);
   });
 
@@ -290,7 +293,7 @@ describe("parseTheme", () => {
 
   it("collects every refusal in one pass", () => {
     const raw = JSON.stringify({
-      version: 3,
+      version: 4,
       id: "Bad Id",
       name: "",
       author: 4,
@@ -471,8 +474,8 @@ function v2(extra: JsonObject): string {
 }
 
 describe("versions", () => {
-  it("reads version 1 and version 2, and hands back the lowest version that holds the content", () => {
-    expect(THEME_VERSIONS_READ).toEqual([1, 2]);
+  it("reads versions 1, 2 and 3, and hands back the lowest version that holds the content", () => {
+    expect(THEME_VERSIONS_READ).toEqual([1, 2, 3]);
     const one = parseTheme(file({}), CAP);
     const twoPlain = parseTheme(v2({}), CAP);
     const twoWithSurface = parseTheme(v2({ surface: { radius: "soft" } }), CAP);
@@ -731,5 +734,83 @@ describe("the ground and the band in the contrast report", () => {
     expect(band.find((f) => f.half === "light" && f.check === "foreground on the band")?.ratio).toBe(
       Math.round(contrast(collie.light?.foreground ?? "", collie.light?.secondary ?? "") * 100) / 100,
     );
+  });
+});
+
+// ── Schema version 3: the optional tokens (pane-active) ───────────────────────────
+
+describe("the optional tokens", () => {
+  const collie = parseTheme(read("src/themes/collie.json"), { ...CAP, allowReservedId: true });
+  if (!collie.ok) throw new Error("collie.json does not parse");
+  const base = collie.theme;
+
+  it("are appended after the 43, so the order of every earlier file holds", () => {
+    expect(OPTIONAL_THEME_TOKENS).toEqual(["pane-active"]);
+    expect(ALL_THEME_TOKENS.slice(0, 43)).toEqual([...THEME_TOKENS]);
+    expect(ALL_THEME_TOKENS).toHaveLength(44);
+  });
+
+  it("are read from a version 3 file, and the theme is handed back as version 3", () => {
+    const result = parseTheme(file({ version: 3, light: { "pane-active": "#336699" } }), CAP);
+    expect(result.ok && result.theme.light?.["pane-active"]).toBe("#336699");
+    expect(result.ok && versionOf(result.theme)).toBe(3);
+  });
+
+  it("are refused in a file that says version 1 or 2, by name and with the version they need", () => {
+    for (const version of [1, 2]) {
+      const result = parseTheme(file({ version, dark: { "pane-active": "#336699" } }), CAP);
+      expect(codes(result)).toEqual(["version dark.pane-active"]);
+    }
+  });
+
+  it("refuse a value that is not a colour, like any other token", () => {
+    const result = parseTheme(file({ version: 3, light: { "pane-active": "grey" } }), CAP);
+    expect(codes(result)).toEqual(["value light.pane-active"]);
+  });
+
+  // OLD FILES. A file written before version 3 (the shipped version 1 and 2 shapes) must read and
+  // export exactly as it did: the same theme, the same lowest version, and the same text again.
+  it.each([
+    ["version 1, colours only", { version: 1, id: "old1", name: "Old", light: { background: "#ffffff", foreground: "#111111" } }, 1],
+    [
+      "version 2, with a surface block and a display face",
+      { version: 2, id: "old2", name: "Old", dark: { background: "#000000" }, surface: { radius: "soft" }, fonts: { display: "grotesk" } },
+      2,
+    ],
+  ] as const)("round-trips an old %s file unchanged and sets neither optional token", (_name, doc, version) => {
+    const raw = JSON.stringify(doc);
+    const first = parseTheme(raw, CAP);
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    expect(first.theme.version).toBe(version);
+    expect(versionOf(first.theme)).toBe(version);
+    for (const token of OPTIONAL_THEME_TOKENS) {
+      expect(setsOptionalToken(first.theme, token)).toBe(false);
+      expect(first.theme.light?.[token]).toBeUndefined();
+      expect(first.theme.dark?.[token]).toBeUndefined();
+    }
+    // Export (what the picker writes) and parse again: the same theme.
+    const exported = JSON.stringify({ ...first.theme, version: versionOf(first.theme) }, null, 2);
+    const second = parseTheme(exported, CAP);
+    expect(second.ok && second.theme).toEqual(first.theme);
+    if (!second.ok) return;
+    expect(JSON.stringify({ ...second.theme, version: versionOf(second.theme) }, null, 2)).toBe(exported);
+  });
+
+  it("leaves an old theme's filled halves and contrast report as they were", () => {
+    const old = parseTheme(file({ light: { background: "#ffffff" } }), CAP);
+    expect(old.ok).toBe(true);
+    if (!old.ok) return;
+    const filled = fillHalves(old.theme, base);
+    for (const token of OPTIONAL_THEME_TOKENS) expect(filled.light[token]).toBe(base.light?.[token]);
+    expect(contrastReport(old.theme, base).some((f) => f.check.startsWith("pane-active"))).toBe(false);
+  });
+
+  it("measures an optional token only in a half that sets it", () => {
+    const theme: Theme = { version: 3, id: "a", name: "A", light: { "pane-active": "#fafafa" } };
+    const checks = contrastReport(theme, base).filter((f) => f.check.startsWith("pane-active"));
+    expect(checks.map((f) => `${f.half} ${f.check} ${f.pass}`).toSorted()).toEqual([
+      "light pane-active on background false",
+    ]);
   });
 });

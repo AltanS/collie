@@ -111,8 +111,12 @@ The new words are Open here, Open beside, Remove from view, the width labels, Co
 New agent and New space. Until the next translate pass the other locales carry the English strings.
 
 The pane header has no Settings gear, so the sidebar's foot holds it, beside New space; the rail
-stacks the two. Where the columns leave part of the strip empty, that width is an add slot: its sheet
-lists the space's panes the strip does not show, each to open beside the focus, and New agent. New
+stacks the two. A flat strip always ends with an add column after the last column: at least a pane
+wide (360px), and as wide as the room the last column leaves, so a scroll or a swipe to the right
+always lands on it and the last column can still rest at the left edge. It is a snap point but no
+column: it never takes the focus or the frame, is not counted, and the focus that follows the view
+never lands on it. Its sheet lists the space's panes the strip does not show, each with Open here,
+which makes it the last column and focuses it, and New agent. A book has no add column. New
 agent and New space both open the New page, which takes no space to start in, so a new agent always
 lands in a new space; a "new agent in this space" waits for a space field on the New page.
 
@@ -121,12 +125,15 @@ browser's momentum and snap alone. A wheel or trackpad gesture that ends between
 on the nearer one (`hooks/use-strip-snap.ts`), and Shift with a vertical wheel scrolls the strip. After
 a settle the focus follows the view, as in niri: a focused column the view no longer shows whole hands
 the focus to the leftmost whole column. While the layout is mounted the page takes
-`overscroll-behavior-x: none` and every scroller in it `contain`, because desktop Chrome reads a
-sideways overscroll as history back; below 600px the page keeps its own behaviour.
+`overscroll-behavior-x: none` and the strip `contain`, because desktop Chrome reads a sideways
+overscroll as history back; below 600px the page keeps its own behaviour. Inside a column every
+scroller passes its x overscroll on (`overscroll-x-auto`, important): the transcript list is
+`overscroll-contain` on both axes for the phone, and that stopped a sideways wheel inside the column,
+so the strip never scrolled.
 
 ## Known limits
 
-- **New agent starts a new space.** The New page takes no space to start in, so the add slot's sheet says
+- **New agent starts a new space.** The New page takes no space to start in, so the add column's sheet says
   "New agent in a new space" and means it. A "new agent in this space" waits for a space field on the
   New page, and opening the new pane beside the focus on return is not built.
 - **Folded postures are proven in emulation only.** Chromium's device-metrics override fired the segment

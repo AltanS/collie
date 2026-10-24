@@ -35,11 +35,14 @@ import { parseJsonObject } from "@/lib/json";
 import {
   DEFAULT_THEME_ID,
   SHIPPED_THEME_IDS,
+  ALL_THEME_TOKENS,
+  OPTIONAL_THEME_TOKENS,
   THEME_TOKENS,
   fillHalves,
   isShippedThemeId,
   lightDark,
   parseTheme,
+  setsOptionalToken,
   toSrgbHex,
   type Theme,
 } from "./schema";
@@ -255,7 +258,8 @@ export function initTheme(): void {
  *   * `collie`: no attribute and no inline property.
  *   * shipped: `data-theme="<id>"`, the id taken from `SHIPPED_THEME_IDS` and not from the file.
  *   * imported: no attribute, and one inline custom property per token in `THEME_TOKENS`, each
- *     `light-dark(<light>, <dark>)`, a half the theme leaves out filled from `collie`; then the
+ *     `light-dark(<light>, <dark>)`, a half the theme leaves out filled from `collie`, and the same
+ *     for each optional token the theme names (the others set nothing); then the
  *     declarations of each shape word the theme names, its display face and its palette. A part it
  *     leaves out sets nothing, so the stylesheet's default holds.
  *
@@ -287,6 +291,10 @@ export function applyTheme(theme: Theme, source: ThemeSource): void {
   delete root.dataset.theme;
   const filled = fillHalves(checked, defaultTheme());
   for (const token of THEME_TOKENS) root.style.setProperty(`--${token}`, lightDark(filled, token));
+  // An optional token is set only when the theme names it; otherwise the stylesheet's pair holds.
+  for (const token of OPTIONAL_THEME_TOKENS) {
+    if (setsOptionalToken(checked, token)) root.style.setProperty(`--${token}`, lightDark(filled, token));
+  }
   // The property names come from surface.ts; the file only picked the words, the face and the
   // palette's colours, which the parser has checked.
   for (const [property, value] of versionTwoDeclarations(checked)) root.style.setProperty(property, value);
@@ -302,7 +310,7 @@ function reset(): void {
 }
 
 function clearInline(root: HTMLElement): void {
-  for (const token of THEME_TOKENS) root.style.removeProperty(`--${token}`);
+  for (const token of ALL_THEME_TOKENS) root.style.removeProperty(`--${token}`);
   for (const property of VERSION_TWO_PROPERTIES) root.style.removeProperty(property);
 }
 

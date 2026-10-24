@@ -234,6 +234,7 @@
   --host-7: light-dark(oklch(0.45 0.16 325), oklch(0.74 0.16 325));
   --host-8: light-dark(oklch(0.45 0.09 241), oklch(0.75 0.11 241));
   --host-9: light-dark(oklch(0.45 0.16 280), oklch(0.7 0.13 280));
+  --pane-active: light-dark(oklch(0.56 0.1 62), oklch(0.88 0.06 75));
   --radius-sm: 2px;
   --radius-md: 2px;
   --radius-lg: 2px;

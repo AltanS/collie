@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { SHIPPED_FONTS } from "@/lib/design";
-import { SHIPPED_THEME_IDS, THEME_TOKENS, contrast, contrastReport, parseTheme, type Theme } from "@/lib/theme/schema";
+import { ALL_THEME_TOKENS, OPTIONAL_THEME_TOKENS, SHIPPED_THEME_IDS, THEME_TOKENS, contrast, contrastReport, parseTheme, type Theme } from "@/lib/theme/schema";
 import { SHIPPED_FONTS as FACES } from "@/lib/shipped-fonts";
 import { SURFACE_DEFAULTS, SURFACE_TOKENS, displayDeclarations, wordDeclarations } from "@/lib/theme/surface";
 import { buildThemesCss } from "@/lib/theme/themes-css";
@@ -41,16 +41,16 @@ function shipped(id: string): Theme {
   return result.theme;
 }
 
-/** `light-dark()` tokens of `:root` that are not theme tokens (yet): the product name's accent and the active pane's frame. */
-const OUTSIDE_THE_LIST: ReadonlySet<string> = new Set(["brand", "pane-active"]);
+/** The token a theme may leave out (schema version 3): index.css's pair holds when it does. */
+const OPTIONAL: ReadonlySet<string> = new Set(OPTIONAL_THEME_TOKENS);
 
 describe("the theme collie equals index.css", () => {
   const tokens = rootTokens();
   const collie = shipped("collie");
 
-  it("finds all 43 tokens in index.css, in the order of the token list", () => {
-    // The two large-screen tokens (DESIGN.md §13) stand outside the theme list: no theme file sets them.
-    expect(tokens.map((t) => t.token).filter((t) => !OUTSIDE_THE_LIST.has(t))).toEqual([...THEME_TOKENS]);
+  it("finds all 43 tokens in index.css, in the order of the token list, and the optional one", () => {
+    expect(tokens.map((t) => t.token).filter((t) => !OPTIONAL.has(t))).toEqual([...THEME_TOKENS]);
+    expect(tokens.map((t) => t.token).filter((t) => OPTIONAL.has(t)).toSorted()).toEqual([...OPTIONAL_THEME_TOKENS].toSorted());
   });
 
   it("reads the multi-line pairs whole", () => {
@@ -66,13 +66,13 @@ describe("the theme collie equals index.css", () => {
 
   it("holds every token of both halves, string for string", () => {
     const byName = new Map(tokens.map((t) => [t.token, t]));
-    for (const token of THEME_TOKENS) {
+    for (const token of ALL_THEME_TOKENS) {
       const row = byName.get(token);
       expect({ token, light: collie.light?.[token] }).toEqual({ token, light: row?.light });
       expect({ token, dark: collie.dark?.[token] }).toEqual({ token, dark: row?.dark });
     }
-    expect(Object.keys(collie.light ?? {})).toHaveLength(THEME_TOKENS.length);
-    expect(Object.keys(collie.dark ?? {})).toHaveLength(THEME_TOKENS.length);
+    expect(Object.keys(collie.light ?? {})).toHaveLength(ALL_THEME_TOKENS.length);
+    expect(Object.keys(collie.dark ?? {})).toHaveLength(ALL_THEME_TOKENS.length);
   });
 
   it("carries the default face and the shipped author", () => {
@@ -115,15 +115,16 @@ describe("the shipped themes", () => {
 
   it.each(ids)("%s has both halves, all 43 tokens each, a shipped face and the shipped author", (id) => {
     const theme = shipped(id);
-    expect(Object.keys(theme.light ?? {}).toSorted()).toEqual([...THEME_TOKENS].toSorted());
-    expect(Object.keys(theme.dark ?? {}).toSorted()).toEqual([...THEME_TOKENS].toSorted());
+    // The 43 are required; an optional token is present only where the theme's palette needs its own.
+    expect(Object.keys(theme.light ?? {}).filter((t) => !OPTIONAL.has(t)).toSorted()).toEqual([...THEME_TOKENS].toSorted());
+    expect(Object.keys(theme.dark ?? {}).filter((t) => !OPTIONAL.has(t)).toSorted()).toEqual([...THEME_TOKENS].toSorted());
     expect(SHIPPED_FONTS).toContain(theme.fonts?.ui);
     expect(theme.author).toBe("Collie");
   });
 
-  it.each(ids)("%s is version 2 and names a word for every shape token, so an export shows the whole shape", (id) => {
+  it.each(ids)("%s is version 2 or 3 and names a word for every shape token, so an export shows the whole shape", (id) => {
     const theme = shipped(id);
-    expect(theme.version).toBe(2);
+    expect(theme.version).toBeGreaterThanOrEqual(2);
     expect(Object.keys(theme.surface ?? {}).toSorted()).toEqual([...SURFACE_TOKENS].toSorted());
   });
 
@@ -395,6 +396,8 @@ describe("every default shape word is today's CSS", () => {
     const raw = JSON.parse(read("src/themes/nightwatch.json"));
     delete raw.surface;
     delete raw.ansi;
+    delete raw.light["pane-active"];
+    delete raw.dark["pane-active"];
     raw.fonts = { ui: raw.fonts.ui };
     const collieFile = { name: "collie.json", raw: read("src/themes/collie.json") };
     const plain = buildThemesCss([collieFile, { name: "nightwatch.json", raw: JSON.stringify({ ...raw, version: 1 }) }]);

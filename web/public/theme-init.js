@@ -59,7 +59,7 @@
     "border", "input", "rule", "ring", "status-blocked", "status-working", "status-done",
     "status-idle", "status-unknown", "status-info", "syntax-keyword", "syntax-string",
     "syntax-constant", "syntax-property", "syntax-entity", "syntax-comment", "host-0", "host-1",
-    "host-2", "host-3", "host-4", "host-5", "host-6", "host-7", "host-8", "host-9"
+    "host-2", "host-3", "host-4", "host-5", "host-6", "host-7", "host-8", "host-9", "pane-active"
   ];
   var COLOUR = /^(?:#(?:[0-9a-f]{6}|[0-9a-f]{8})|oklch\( ?(?:\d+(?:\.\d+)?|\.\d+) (?:\d+(?:\.\d+)?|\.\d+) (?:\d+(?:\.\d+)?|\.\d+)(?: \/ (?:\d+(?:\.\d+)?|\.\d+)%?)? ?\))$/;
   var ok = function (v) { return typeof v === "string" && v.length <= 64 && COLOUR.test(v); };

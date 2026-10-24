@@ -5,7 +5,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { THEME_TOKENS, parseTheme, type Theme } from "@/lib/theme/schema";
+import { THEME_TOKENS, isOptionalThemeToken, parseTheme, type Theme } from "@/lib/theme/schema";
 
 // The Theme card. The store keeps module-scope state (design prefs, the library), so each case
 // imports a fresh graph over a storage it seeded itself. Only `collie` ships on the branch that
@@ -20,7 +20,9 @@ const DESIGN_KEY = "collie:design:v1";
 function collie(): Theme {
   const parsed = parseTheme(COLLIE_RAW, { maxBytes: 64 * 1024, allowReservedId: true });
   if (!parsed.ok) throw new Error("collie.json no longer parses");
-  return parsed.theme;
+  // The fixtures are version 1 copies of collie's 43 required tokens; the optional ones (version 3) are left out.
+  const strip = (half: Theme["light"]) => Object.fromEntries(Object.entries(half ?? {}).filter(([token]) => !isOptionalThemeToken(token)));
+  return { ...parsed.theme, version: 1, light: strip(parsed.theme.light), dark: strip(parsed.theme.dark) };
 }
 
 /** A complete imported theme: collie's tokens under another id and name. */
@@ -143,7 +145,7 @@ describe("ThemePickerControl", () => {
     it("lists every refusal of a refused file, names the key, and offers only Close", async () => {
       const { ThemePickerControl } = await load();
       const { container } = render(<ThemePickerControl />);
-      const bad = JSON.stringify({ version: 3, id: "x", name: "X", light: { background: "#ffffff" }, bogus: 1 });
+      const bad = JSON.stringify({ version: 4, id: "x", name: "X", light: { background: "#ffffff" }, bogus: 1 });
       pick(container, fileOf(bad));
       const dialog = await screen.findByRole("dialog", { name: "This file was not imported" });
       expect(within(dialog).getAllByRole("listitem")).toHaveLength(2);

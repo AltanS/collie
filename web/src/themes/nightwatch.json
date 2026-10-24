@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "id": "nightwatch",
   "name": "Nightwatch",
   "author": "Collie",
@@ -46,7 +46,8 @@
     "host-6": "oklch(0.45 0.16 262)",
     "host-7": "oklch(0.45 0.16 325)",
     "host-8": "oklch(0.45 0.09 241)",
-    "host-9": "oklch(0.45 0.16 280)"
+    "host-9": "oklch(0.45 0.16 280)",
+    "pane-active": "oklch(0.56 0.1 62)"
   },
   "dark": {
     "background": "oklch(0 0 0)",
@@ -91,7 +92,8 @@
     "host-6": "oklch(0.72 0.12 262)",
     "host-7": "oklch(0.74 0.16 325)",
     "host-8": "oklch(0.75 0.11 241)",
-    "host-9": "oklch(0.7 0.13 280)"
+    "host-9": "oklch(0.7 0.13 280)",
+    "pane-active": "oklch(0.88 0.06 75)"
   },
   "fonts": {
     "ui": "plex",

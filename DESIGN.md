@@ -899,9 +899,9 @@ come from `light-dark()`.
 
 `popover` and `popover-foreground` stay aliases of `card` and are not in a theme file.
 
-`brand` (1.24.0) is the product name's accent only, the "PWA" in the large screen's sidebar, and never a state. It is outside the 43: a theme file does not set it yet.
+`pane-active` (1.24.0) is the frame of the pane you are working in on a large screen, and nothing else. It is outside the 43 but a theme can set it: from schema version 3 it is an optional token in either half. A theme that leaves it out keeps the `:root` pair in index.css, so every file written before version 3 reads and exports unchanged; a file that sets it must say version 3. The contrast report holds it to 3:1 on `background` in a half that sets it. Nightwatch sets its own, a warm sky for its amber palette.
 
-`pane-active` (1.24.0) is the frame of the pane you are working in on a large screen, and nothing else. It is outside the 43 too.
+The name "ColliePWA" in the large screen's sidebar draws "PWA" in the three status tokens, always: P `status-done`, W `status-working`, A `status-blocked` (`components/wordmark.tsx`). Unlike the website, the app does not rest in grey. It is not a token of its own, and no application state may ever drive those inks.
 
 **The twelve version 2 tokens.** Each is a closed list. A file names a word, and one table says what the word
 does (`web/src/lib/theme/surface.ts`). The default word of every token is today's look.

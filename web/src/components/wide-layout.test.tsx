@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, waitFor, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
+import type { RefObject } from "react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { __resetBeltIntents, takeBeltIntent } from "@/lib/belt-intent";
@@ -25,6 +26,21 @@ vi.mock("@/components/agent-chat", () => ({
   ),
 }));
 vi.mock("@/hooks/use-loading-stalled", () => ({ useLoadingStalled: () => false }));
+// The wheel settle has its own tests (hooks/use-strip-snap.test.tsx). Here it is caught, so a test can
+// end a gesture by hand over a strip whose boxes it has laid out itself (jsdom lays out nothing).
+interface CaughtSnap {
+  onSettled?: (left: number) => void;
+  columnStarts: () => number[];
+}
+interface SnapCatch {
+  options: CaughtSnap | null;
+}
+const snap = vi.hoisted((): SnapCatch => ({ options: null }));
+vi.mock("@/hooks/use-strip-snap", () => ({
+  useStripSnap: (_el: RefObject<HTMLElement | null> | HTMLElement | null, options: CaughtSnap) => {
+    snap.options = options;
+  },
+}));
 
 function pane(paneId: string, workspaceId: string, label: string, kind: "agent" | "shell" = "agent"): AgentView {
   return {
@@ -196,9 +212,9 @@ describe("the sidebar", () => {
     expect(aside.dataset.slot).toBe("wide-sidebar");
     expect(aside.className).toContain("bg-card");
     expect(aside.style.width).toBe("320px");
-    // One word in two inks: Collie in the text colour, PWA in the brand token.
+    // One word: Collie in the text colour, then three inked letters (components/wordmark.tsx).
     expect(q(aside, '[data-slot="sidebar-word"]')?.textContent).toBe("ColliePWA");
-    expect(within(aside).getByText("PWA").className).toContain("text-brand");
+    expect([...aside.querySelectorAll(".wordmark-ink")].map((el) => el.textContent)).toEqual(["P", "W", "A"]);
     expect(q(aside, '[data-slot="sidebar-mark"] [data-slot="collie-mark"]')).not.toBeNull();
     expect(q(container, '[data-testid="chat"]')?.dataset.inStrip).toBe("true");
     // The header moved into the focused column, and the mark is not drawn twice.
@@ -383,57 +399,117 @@ describe("width", () => {
   });
 });
 
-describe("adding", () => {
-  const slot = (root: ParentNode) => q(root, '[data-slot="add-slot"]');
-
-  it("the add slot stands in the strip's free width, and only while the columns leave some", async () => {
-    // One column at 1/2 of 880 leaves half the strip.
-    const { container } = await mount("w1:p1", 1200);
-    expect(slot(container)?.style.flex).toBe("0 0 50%");
-    expect(within(slot(container)!).getByRole("button", { name: "Add a pane" })).toBeTruthy();
-    const widthButton = () => within(columns(container)[0]!).getByRole("button", { name: /^Width / });
-    fireEvent.click(widthButton());
-    await waitFor(() => expect(widthButton().textContent).toBe("4/5"));
-    expect(Number.parseFloat(slot(container)!.style.flex.split(" ")[2]!)).toBeCloseTo(20);
-    fireEvent.click(widthButton());
-    await waitFor(() => expect(widthButton().textContent).toBe("Full"));
-    expect(slot(container)).toBeNull();
-    // Two half columns fill the strip.
-    fireEvent.click(widthButton());
-    await openBesideFromSidebar(container, A2);
-    expect(slot(container)).toBeNull();
-  });
-
-  it("is absent out of wide mode, where every column is full width", async () => {
-    const { container } = await mount("w1:p1", 700);
-    expect(slot(container)).toBeNull();
-  });
-
-  it("lists this space's panes the strip does not show, each to open beside the focus", async () => {
-    const { container, router } = await mount("w1:p1", 1200);
-    fireEvent.click(within(slot(container)!).getByRole("button", { name: "Add a pane" }));
-    const rows = await waitFor(() => {
+describe("the add column", () => {
+  const addColumn = (root: ParentNode) => q(root, '[data-slot="add-column"]');
+  const openSheet = async (root: HTMLElement) => {
+    fireEvent.click(within(addColumn(root)!).getByRole("button", { name: "Add a pane" }));
+    return await waitFor(() => {
       const found = [...document.querySelectorAll<HTMLElement>('[data-slot="add-row"]')];
       expect(found.length).toBeGreaterThan(0);
       return found;
     });
-    // Not the pane in view, not another space's pane; the space's shell is a pane like the others.
-    expect(rows.map((r) => r.textContent)).toEqual([A2, A3, SH].map((p) => `${p.paneLabel}Open beside`));
-    fireEvent.click(within(rows[0]!).getByRole("button", { name: /^Open beside/ }));
-    await waitFor(() => expect(router.state.location.pathname).toBe(panePath("w1:p2")));
-    expect(columns(container).map((c) => c.dataset.colKey)).toEqual([key(A1), key(A2)]);
+  };
+
+  it("always ends the strip, after the last column, as wide as the room it leaves and never under a pane", async () => {
+    // One column at 1/2 of 880: the add column is the other half.
+    const { container } = await mount("w1:p1", 1200);
+    const strip = q(container, '[data-slot="strip"]')!;
+    expect(strip.lastElementChild).toBe(addColumn(container));
+    expect(addColumn(container)?.style.flex).toBe("0 0 440px");
+    const widthButton = () => within(columns(container)[0]!).getByRole("button", { name: /^Width / });
+    fireEvent.click(widthButton());
+    await waitFor(() => expect(widthButton().textContent).toBe("4/5"));
+    // 1/5 of 880 is under a pane: the add column is a pane wide, so the strip scrolls to it.
+    expect(addColumn(container)?.style.flex).toBe("0 0 360px");
+    fireEvent.click(widthButton());
+    await waitFor(() => expect(widthButton().textContent).toBe("Full"));
+    expect(addColumn(container)?.style.flex).toBe("0 0 360px");
+  });
+
+  it("is a snap point and no column: no focus, no frame, not counted", async () => {
+    const { container } = await mount("w1:p1", 1200);
+    await openBesideFromSidebar(container, A2);
+    const add = addColumn(container)!;
+    expect(add.className).toContain("snap-start");
+    expect(add.hasAttribute("data-col-key")).toBe(false);
+    expect(add.hasAttribute("data-col-index")).toBe(false);
+    expect(q(add, '[data-slot="column-frame"]')).toBeNull();
+    expect(columns(container)).toHaveLength(2);
+  });
+
+  it("stands out of wide mode too, a pane wide, and not in a book or below 600 px", async () => {
+    const { container } = await mount("w1:p1", 700);
+    expect(addColumn(container)?.style.flex).toBe("0 0 360px");
+    cleanup();
+    posture = "book";
+    const book = await mount("w1:p1", 1200);
+    expect(addColumn(book.container)).toBeNull();
+    cleanup();
+    posture = "flat";
+    const phone = await mount("w1:p1", 599);
+    expect(addColumn(phone.container)).toBeNull();
+  });
+
+  it("lists this space's panes not in view; Open here makes one the last column and focuses it", async () => {
+    const { container, router } = await mount("w1:p1", 1200);
+    await openBesideFromSidebar(container, A2);
+    // Focus the first column, so a step beside the focus and a step to the end differ.
+    const body = q(columns(container)[0]!, '[data-slot="column-body"]')!;
+    fireEvent.pointerDown(body, { clientX: 10, clientY: 10 });
+    fireEvent.pointerUp(body, { clientX: 12, clientY: 11 });
+    await waitFor(() => expect(router.state.location.pathname).toBe(panePath("w1:p1")));
+    const rows = await openSheet(container);
+    // Not the panes in view, not another space's pane; the space's shell is a pane like the others.
+    expect(rows.map((r) => r.textContent)).toEqual([A3, SH].map((p) => `${p.paneLabel}Open here`));
+    fireEvent.click(within(rows[0]!).getByRole("button", { name: /^Open here/ }));
+    await waitFor(() => expect(router.state.location.pathname).toBe(panePath("w1:p3")));
+    await waitFor(() => expect(columns(container)[2]?.hasAttribute("data-focused")).toBe(true));
+    expect(columns(container).map((c) => c.dataset.colKey)).toEqual([key(A1), key(A2), key(A3)]);
   });
 
   it("its New agent goes down to the New page", async () => {
     const { container, router } = await mount("w1:p1", 1200);
-    fireEvent.click(within(slot(container)!).getByRole("button", { name: "Add a pane" }));
-    const sheet = await waitFor(() => {
-      const el = document.querySelector<HTMLElement>('[data-slot="add-row"]')?.parentElement;
-      expect(el).toBeTruthy();
-      return el!;
-    });
-    fireEvent.click(within(sheet).getByRole("button", { name: "New agent in a new space" }));
+    const rows = await openSheet(container);
+    fireEvent.click(within(rows[0]!.parentElement!).getByRole("button", { name: "New agent in a new space" }));
     await waitFor(() => expect(router.state.location.pathname).toBe("/new"));
+  });
+
+  it("the focus that follows the view never lands on it: with no whole column in view, the focus stays", async () => {
+    const { container, router } = await mount("w1:p1", 1200);
+    await openBesideFromSidebar(container, A2);
+    // Lay the strip out by hand: two half columns of 440 and the add column after them.
+    const strip = q(container, '[data-slot="strip"]')!;
+    Object.defineProperty(strip, "clientWidth", { configurable: true, value: 880 });
+    Object.defineProperty(strip, "scrollWidth", { configurable: true, value: 1320 });
+    const box = (el: HTMLElement, left: number, w: number) => {
+      Object.defineProperty(el, "offsetLeft", { configurable: true, value: left });
+      Object.defineProperty(el, "offsetWidth", { configurable: true, value: w });
+    };
+    const [c1, c2] = columns(container);
+    box(c1!, 0, 440);
+    box(c2!, 440, 440);
+    box(addColumn(container)!, 880, 440);
+    // The add column is a snap point, held at the end of the scroll range.
+    expect(snap.options?.columnStarts()).toEqual([0, 440, 440]);
+    // Settled with only the add column whole: the focus (the second column) stays.
+    act(() => snap.options?.onSettled?.(880));
+    expect(router.state.location.pathname).toBe(panePath("w1:p2"));
+    // Settled at the start with the focus still whole: nothing changes either.
+    act(() => snap.options?.onSettled?.(0));
+    expect(router.state.location.pathname).toBe(panePath("w1:p2"));
+  });
+});
+
+describe("a sideways scroll over a column", () => {
+  it("reaches the strip: the columns hand their x overscroll on, and only the strip contains it", async () => {
+    const { container } = await mount("w1:p1", 1200);
+    const layout = q(container, '[data-slot="wide-layout"]')!;
+    expect(layout.className).not.toContain("overscroll-x-contain");
+    expect(q(container, '[data-slot="strip"]')?.className).toContain("overscroll-x-contain");
+    for (const col of columns(container)) {
+      expect(col.className).toContain("[&_*]:overscroll-x-auto!");
+      expect(col.className).not.toContain("overscroll-x-contain");
+    }
   });
 });
 

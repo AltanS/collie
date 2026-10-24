@@ -336,12 +336,9 @@
     oklch(0.38 0.12 245),
     oklch(0.89 0.06 235)
   );
-  /* The product name's accent and nothing else: the "PWA" of the sidebar's ColliePWA (ADR 0120).
-     A clear blue from the --control-on family. Never a state; DESIGN.md §13. */
-  --brand: light-dark(oklch(0.5 0.15 245), oklch(0.78 0.13 235));
-  /* The frame of the pane you are working in on a large screen (ADR 0120): a light sky in the dark
+  /* The frame of the pane you are working in on a large screen (ADR 0120): a sky-200 in the dark
      half; a stronger blue in the light half, where a pale frame would vanish on white. */
-  --pane-active: light-dark(oklch(0.6 0.14 240), oklch(0.95 0.035 230));
+  --pane-active: light-dark(oklch(0.6 0.14 240), oklch(0.9 0.058 231));
   --secondary: light-dark(oklch(0.94 0 0), oklch(0.269 0 0));
   --secondary-foreground: light-dark(oklch(0.205 0 0), oklch(0.985 0 0));
   /* The INERT fill — a well, a disabled track, a quiet chip on a card. Value unchanged (rgb 235
@@ -654,7 +651,6 @@
   --color-primary-foreground: var(--primary-foreground);
   --color-control-on: var(--control-on);
   --color-control-on-foreground: var(--control-on-foreground);
-  --color-brand: var(--brand);
   --color-pane-active: var(--pane-active);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
@@ -1268,6 +1264,31 @@
    under `html.glide` and leave this rule alone. */
 :root {
   view-transition-name: none;
+}
+
+/*
+ * ── The name's suffix: three letters, three fixed inks ──
+ *
+ * "PWA" of the sidebar's ColliePWA is always in colour: P `--status-done`, W `--status-working`,
+ * A `--status-blocked`, at rest too. THE APP DIFFERS FROM THE WEBSITE ON PURPOSE: the website's
+ * wordmark rests in grey and takes these colours only under a pointer; here the name is coloured by
+ * default (Altan's call, 2026-10-24).
+ *
+ * THE ONE RULE IT MUST NOT BREAK: this must never read as a live status. The three colours are
+ * fixed per letter and always land on the same three letters, and NO APPLICATION STATE MAY EVER
+ * DRIVE THEM. If anything here is wired to a value (an agent count, a connection, a build), it has
+ * become a status readout and it is wrong. Nothing here moves: no keyframes, no animation, no hover.
+ */
+.wordmark-ink:nth-child(1) {
+  color: var(--status-done);
+}
+
+.wordmark-ink:nth-child(2) {
+  color: var(--status-working);
+}
+
+.wordmark-ink:nth-child(3) {
+  color: var(--status-blocked);
 }
 
 /* Submission progress bar — a slim indeterminate strip across the very top of the viewport while a

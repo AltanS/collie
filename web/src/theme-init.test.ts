@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import { DESIGN_STORAGE_KEY } from "@/lib/design";
 import type { JsonObject } from "@/lib/json";
-import { COLOUR_MAX, COLOUR_SOURCE, SHIPPED_THEME_IDS, THEME_TOKENS, isColour, type Theme } from "@/lib/theme/schema";
+import { ALL_THEME_TOKENS, COLOUR_MAX, COLOUR_SOURCE, SHIPPED_THEME_IDS, THEME_TOKENS, isColour, type Theme } from "@/lib/theme/schema";
 import { LIBRARY_STORAGE_KEY, applyTheme } from "@/lib/theme/store";
 import {
   ANSI_KEYS,
@@ -38,9 +38,10 @@ describe("theme-init.js and lib/theme agree", () => {
     expect(listOf("SHIPPED")).toEqual(SHIPPED_THEME_IDS.filter((id) => id !== "collie"));
   });
 
-  it("spells the closed token list, all of it and in order", () => {
-    expect(listOf("TOKENS")).toEqual([...THEME_TOKENS]);
-    expect(listOf("TOKENS")).toHaveLength(43);
+  it("spells the closed token list, all of it and in order, the optional token last", () => {
+    expect(listOf("TOKENS")).toEqual([...ALL_THEME_TOKENS]);
+    expect(listOf("TOKENS").slice(0, 43)).toEqual([...THEME_TOKENS]);
+    expect(listOf("TOKENS")).toHaveLength(44);
   });
 
   it("holds the same colour pattern and the same length cap", () => {
