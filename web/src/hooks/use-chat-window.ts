@@ -112,6 +112,7 @@ export function useChatWindow({
   scope,
   enabled,
   savedCopy = false,
+  seen = true,
 }: {
   paneId: string;
   /** Which machine + which named session this pane lives in — every other pane read carries it. */
@@ -123,6 +124,11 @@ export function useChatWindow({
    * gave up waiting for the bridge. An empty window then reads its own saved copy at once.
    */
   savedCopy?: boolean;
+  /**
+   * Whether this read counts as opening the pane (its unseen mark clears). False for a large
+   * screen's read-only column beside the focused one (ADR 0120): only the focused pane is opened.
+   */
+  seen?: boolean;
 }): ChatFeed {
   const revalidator = useRevalidator();
   const [held, setHeld] = useState<ChatWindow>(EMPTY_CHAT_WINDOW);
@@ -283,6 +289,8 @@ export function useChatWindow({
           paneId,
           cursor.gen === 0 ? {} : { after: { gen: cursor.gen, rev: cursor.rev } },
           scope,
+          undefined,
+          { seen },
         );
         apply(answer);
         lastAnsweredAt.current = Date.now();
@@ -313,7 +321,7 @@ export function useChatWindow({
     })();
     // `scope` is safe in a dependency array: scopes read off a URL are interned to one frozen
     // instance per (host, session), so its identity is as stable as the string it replaced.
-  }, [enabled, idle, paneId, scope, address, apply, writeThrough, readBack, readSaved]);
+  }, [enabled, idle, paneId, scope, address, seen, apply, writeThrough, readBack, readSaved]);
 
   const loadOlder = useCallback(() => {
     const cursor = window.current;

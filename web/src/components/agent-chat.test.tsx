@@ -27,6 +27,8 @@ vi.mock("@/lib/chat-gate", async (importOriginal) => ({
 }));
 
 import { server } from "@/test/setup";
+import { __resetBeltIntents, queueBeltIntent, takeBeltIntent } from "@/lib/belt-intent";
+import { paneScopeKey } from "@/lib/scope";
 import { clearStatus, setStatus, useStatus } from "@/lib/status";
 import { setAutoZenEnabled, setZenEnabled, __resetZen } from "@/lib/zen";
 import { HarnessPrefsControl } from "@/components/harness-prefs-control";
@@ -4926,5 +4928,38 @@ describe("AgentChat: Stop on a pane with a screen", () => {
     await user.click(screen.getByRole("button", { name: "Tap again to stop the turn" }));
     expect(await screen.findByText("The box holds your text and this harness's stop key would clear it.")).toBeInTheDocument();
     expect(posted).toHaveLength(1);
+  });
+});
+
+describe("AgentChat — the focused column of a large screen's strip (ADR 0120)", () => {
+  afterEach(() => __resetBeltIntents());
+
+  it("hides the belt's Switch pill, which the sidebar replaces, and keeps it below 600 px", () => {
+    const phone = renderChat();
+    expect(within(phone.container).queryByRole("button", { name: "Switch pane" })).not.toBeNull();
+    cleanup();
+    const { container } = renderChat({ inStrip: true });
+    expect(within(container).queryByRole("button", { name: "Switch pane" })).toBeNull();
+    // The belt itself stays, with the reply box under it.
+    expect(within(container).getByRole("button", { name: "Keys" })).toBeInTheDocument();
+    expect(within(container).getByPlaceholderText(/type a reply/i)).toBeInTheDocument();
+    // The column is the bound, so the phone's width ladder stands down.
+    expect(container.querySelector(".md\\:max-w-screen-md")).toBeNull();
+  });
+
+  it("runs a belt tap left in another column through this pane's own composer, once", async () => {
+    const agent = fixtureAgents[0]!;
+    queueBeltIntent(paneScopeKey(undefined, agent.paneId), { kind: "action", id: "keys" });
+    const { container } = renderChat({ inStrip: true });
+    await waitFor(() => expect(within(container).getByRole("button", { name: "Keys" })).toHaveAttribute("aria-expanded", "true"));
+    // Taken: a remount of the same pane does not open the dock again.
+    expect(takeBeltIntent(paneScopeKey(undefined, agent.paneId))).toBeNull();
+  });
+
+  it("leaves another pane's belt tap alone", () => {
+    queueBeltIntent(paneScopeKey(undefined, "w9:p9"), { kind: "action", id: "keys" });
+    const { container } = renderChat({ inStrip: true });
+    expect(within(container).getByRole("button", { name: "Keys" })).toHaveAttribute("aria-expanded", "false");
+    expect(takeBeltIntent(paneScopeKey(undefined, "w9:p9"))).toEqual({ kind: "action", id: "keys" });
   });
 });

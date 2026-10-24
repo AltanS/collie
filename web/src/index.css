@@ -1585,3 +1585,29 @@
   --belt-text: calc(0.75rem * var(--belt-scale));
   --belt-rule: round(calc(1.25rem * var(--belt-scale)), 1px);
 }
+
+/* A LARGE SCREEN'S FOCUS MOVE (ADR 0120). Every column draws its belt, and only the focused one adds
+   the reply box under it. When a column takes the focus its box eases in from no height, so the belt
+   rises to its place over 200ms instead of jumping, and the transcript above, pinned to its bottom,
+   keeps its last line in sight the whole way. The clip lives only inside the keyframes, so the box's
+   attach menu, which opens above it, is never cut once the move ends. Reduced motion: no ease. */
+[data-strip-focus] [data-slot="composer-box"] {
+  animation: strip-reply-in 200ms ease-out backwards;
+}
+@keyframes strip-reply-in {
+  from {
+    max-height: 0;
+    opacity: 0;
+    overflow: clip;
+  }
+  to {
+    max-height: 16rem;
+    opacity: 1;
+    overflow: clip;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-strip-focus] [data-slot="composer-box"] {
+    animation: none;
+  }
+}

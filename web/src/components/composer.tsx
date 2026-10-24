@@ -27,7 +27,7 @@ import { SentSheet } from "@/components/sent-sheet";
 import { SuggestionStrip } from "@/components/suggestion-strip";
 import { useSentSuggestions } from "@/hooks/use-sent-suggestions";
 import { QuickActionsContent } from "@/components/quick-actions";
-import { ActionsRow } from "@/components/actions-row";
+import { ActionsRow, type GeneralAction } from "@/components/actions-row";
 import { SectionLabel } from "@/components/ui/section-label";
 import { Collapse } from "@/components/ui/collapse";
 import { BottomSheet } from "@/components/ui/sheet";
@@ -87,7 +87,8 @@ import { adapterFor } from "@/lib/harness";
 import { useLive } from "@/lib/liveness";
 import { useCatchingUp, useLocked } from "@/lib/idle";
 import { OfflineDraftNote, TerminalDraftPreview } from "@/components/terminal-draft-preview";
-import { isLead, scopeKey, type Scope } from "@/lib/scope";
+import { isLead, paneScopeKey, scopeKey, type Scope } from "@/lib/scope";
+import { takeBeltIntent } from "@/lib/belt-intent";
 import type { PaneSubagent, PaneTodo } from "@/lib/types";
 import { AgentsSheet, subagentName } from "@/components/agents-sheet";
 import { SubagentSheetCtx, type SubagentTarget } from "@/components/chat-cards";
@@ -1915,6 +1916,35 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       ? attachments.find((a) => a.n === editingPaste.n && a.kind === "paste")
       : undefined;
 
+  // Collie's own pills, as the belt below draws them, kept so that a large screen's belt tap in another
+  // column can run one by id once this composer mounts for that pane (ADR 0120, lib/belt-intent.ts).
+  const beltPills = useRef<readonly GeneralAction[]>([]);
+  const keepBelt = (pills: GeneralAction[]): GeneralAction[] => {
+    beltPills.current = pills;
+    return pills;
+  };
+  const beltTap = useRef({ locked, send, stop: stopOffered ? stopTurn : null, changesPill, agents: subagentList.length > 0 });
+  beltTap.current = { locked, send, stop: stopOffered ? stopTurn : null, changesPill, agents: subagentList.length > 0 };
+  // The tap moved the focus here and left its act, which runs once, through the same handler and gates
+  // as a tap on this belt. A pill this belt does not draw, or draws disabled, does nothing.
+  useEffect(() => {
+    const intent = takeBeltIntent(paneScopeKey(scope, paneId));
+    if (intent === null) return;
+    const tap = beltTap.current;
+    if (intent.kind === "action") {
+      const pill = beltPills.current.find((a) => a.id === intent.id);
+      if (pill !== undefined && pill.disabled !== true) pill.onSelect();
+    } else if (intent.kind === "run") {
+      if (!tap.locked) void tap.send(intent.text, false);
+    } else if (intent.kind === "changes") {
+      tap.changesPill?.onClick();
+    } else if (intent.kind === "agents") {
+      if (tap.agents) setAgentsOpen(true);
+    } else if (tap.stop !== null) {
+      void tap.stop();
+    }
+  }, [scope, paneId]);
+
   return (
     <>
       <div
@@ -2079,7 +2109,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             actions-row.tsx; everything below is only what each action DOES.
   */}
         <ActionsRow
-          general={[
+          general={keepBelt([
               // Keys and Quick are TOGGLES for the in-flow dock above (not overlays): tap to
               // open, tap again to close. `expanded` ties each to the dock; the "on" tint marks
               // it pressed while open. Both share the single-valued `drawer`, so opening one
@@ -2208,7 +2238,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                   display.onToggle();
                 },
               },
-          ]}
+          ])}
           agent={agent}
           mine={operatorCommands}
           onRun={(command) => send(command, false)}

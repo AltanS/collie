@@ -101,6 +101,56 @@ interface HeaderSlots {
 
 const HeaderSlotContext = createContext<HeaderSlots | null>(null);
 
+/**
+ * WHERE THE ONE HEADER STANDS ON A LARGE SCREEN (ADR 0120). On the pane route at 600px and up the
+ * screen is a sidebar beside a strip of columns, and the header belongs to the FOCUSED column, not to
+ * the top of the window: the pane's identity, its status and its ⋮ sit over the pane they are about.
+ * The Collie mark moves to the sidebar's top row. A dock names the two places; while one is set the
+ * shell portals its `<header>` into `row` and the mark into `mark`, and adds a trailing host in the
+ * row (`trail`) for the column's own controls. Nothing else changes: the slots, the claim and the
+ * mark's one instance are the same as at the top of the window, and with no dock the shell draws
+ * exactly what it always drew.
+ */
+export interface HeaderDock {
+  /** The box at the top of the focused column the `<header>` is drawn in. */
+  row: HTMLElement | null;
+  /** The box the Collie mark is drawn in (the sidebar's top row, or the rail's). */
+  mark: HTMLElement | null;
+  /** The ground under the mark there, for its knockout (`var(--card)` on the sidebar). */
+  paper: string;
+}
+
+interface HeaderDockApi {
+  dock: (owner: string, dock: HeaderDock) => void;
+  undock: (owner: string) => void;
+  /** The trailing host in the docked row, for the column's own controls; null while undocked. */
+  trail: HTMLElement | null;
+}
+
+const HeaderDockContext = createContext<HeaderDockApi | null>(null);
+
+/**
+ * Dock the one header into a large screen's focused column (see {@link HeaderDock}) for as long as
+ * the caller is mounted with a `row` set. Returns the trailing host the caller may portal its own
+ * controls into. Outside an `AppHeaderHost` (a unit test of a bare component) it docks nothing.
+ */
+export function useHeaderDock(dock: HeaderDock): HTMLElement | null {
+  const api = useContext(HeaderDockContext);
+  const owner = useId();
+  const { row, mark, paper } = dock;
+  useLayoutEffect(() => {
+    if (api === null) return;
+    if (row === null) {
+      api.undock(owner);
+      return;
+    }
+    api.dock(owner, { row, mark, paper });
+  }, [api, owner, row, mark, paper]);
+  const undock = api?.undock;
+  useLayoutEffect(() => () => undock?.(owner), [undock, owner]);
+  return api?.trail ?? null;
+}
+
 interface AppHeaderHostProps {
   // Connection state — the inputs that drive the CollieHome dog. The dog blooms on sustained trouble
   // (≥4s not-live) and rests muted once lost (≥15s), both derived here from the SAME shared connection-
@@ -193,8 +243,39 @@ export function AppHeaderHost({ bridge, error, lastSeenAt, children }: AppHeader
     [center, right, overrideHost, claimRow, releaseRow],
   );
 
-  return (
-    <HeaderSlotContext.Provider value={slots}>
+  // The large screen's dock (see HeaderDock). One owner at a time, by the claim's own token rule.
+  const [docked, setDocked] = useState<HeaderDock | null>(null);
+  const dockOwner = useRef<string | null>(null);
+  const [trail, setTrail] = useState<HTMLElement | null>(null);
+  const dockRow = useCallback((id: string, next: HeaderDock) => {
+    dockOwner.current = id;
+    setDocked((prev) =>
+      prev !== null && prev.row === next.row && prev.mark === next.mark && prev.paper === next.paper ? prev : next,
+    );
+  }, []);
+  const undockRow = useCallback((id: string) => {
+    if (dockOwner.current !== id) return;
+    dockOwner.current = null;
+    setDocked(null);
+  }, []);
+  const dockApi = useMemo<HeaderDockApi>(
+    () => ({ dock: dockRow, undock: undockRow, trail: docked === null ? null : trail }),
+    [dockRow, undockRow, docked, trail],
+  );
+  const dockedRow = docked?.row ?? null;
+  const homeMark = (paper?: string) => (
+    <CollieHome
+      onHome={() => home.current?.fn?.()}
+      trouble={trouble}
+      lost={lost}
+      online={online}
+      lastSeenAt={lastSeenAt}
+      {...(paper === undefined ? {} : { paper })}
+    />
+  );
+
+  const header = (
+    <>
       {/* A column, not a row: the sticky bar reserves the safe-area inset (see the class list), and
           stacks the (usually absent) prerelease strip above the header row
           proper, which keeps its original padding. On a stable
@@ -232,8 +313,9 @@ export function AppHeaderHost({ bridge, error, lastSeenAt, children }: AppHeader
           // two regions left to cut apart, so the edge goes transparent; nothing moves by a pixel
           // when it comes back.
           claim.hidden ? "border-transparent" : "border-band-rule",
-          claim.width === "column" && "mx-auto w-full max-w-screen-sm",
-          claim.width === "wide" &&
+          dockedRow === null && claim.width === "column" && "mx-auto w-full max-w-screen-sm",
+          dockedRow === null &&
+            claim.width === "wide" &&
             "mx-auto w-full max-w-screen-md lg:max-w-screen-lg xl:max-w-screen-xl 2xl:max-w-[1400px]",
         )}
       >
@@ -282,13 +364,8 @@ export function AppHeaderHost({ bridge, error, lastSeenAt, children }: AppHeader
                     can restart it. `onHome` is dispatched through the owner's ref, so the tap still does
                     the route's own thing (space → dashboard, pane → dashboard, history → the pane)
                     without the callback's identity re-rendering anything. */}
-                <CollieHome
-                  onHome={() => home.current?.fn?.()}
-                  trouble={trouble}
-                  lost={lost}
-                  online={online}
-                  lastSeenAt={lastSeenAt}
-                />
+                {/* Docked on a large screen, the mark stands in the sidebar instead (HeaderDock). */}
+                {dockedRow === null && homeMark()}
                 {/* THE IDENTITY, STACKED: the brand over the multiplexer this collie drives, both
                     beside the mark. It was ONE 18px line — "Collie on <mux>" — and on a phone that
                     line ran out of room inside the multiplexer's NAME, the one word here the reader
@@ -421,10 +498,23 @@ export function AppHeaderHost({ bridge, error, lastSeenAt, children }: AppHeader
                 mounted (a portal needs a live target in the same commit the route renders into it) and
                 contributes no box of its own when empty. */}
             <div data-slot="header-override" ref={setOverrideHost} style={{ display: "contents" }} />
+            {/* The focused column's own controls on a large screen (HeaderDock), at the row's end. */}
+            {dockedRow !== null && (
+              <div data-slot="header-dock-trail" ref={setTrail} className="flex shrink-0 items-center gap-1" />
+            )}
           </div>
         </Collapse>
       </header>
-      {children}
+    </>
+  );
+
+  return (
+    <HeaderSlotContext.Provider value={slots}>
+      <HeaderDockContext.Provider value={dockApi}>
+        {dockedRow === null ? header : createPortal(header, dockedRow)}
+        {docked !== null && docked.mark !== null ? createPortal(homeMark(docked.paper), docked.mark) : null}
+        {children}
+      </HeaderDockContext.Provider>
     </HeaderSlotContext.Provider>
   );
 }

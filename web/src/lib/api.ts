@@ -863,6 +863,7 @@ export async function fetchChat(
   opts: ChatRequest = {},
   scope?: Scope,
   signal?: AbortSignal,
+  { seen = true }: { seen?: boolean } = {},
 ): Promise<ChatAnswer> {
   const q = new URLSearchParams();
   if (opts.limit) q.set("limit", String(opts.limit));
@@ -879,11 +880,13 @@ export async function fetchChat(
 
   const headers = new Headers({
     [XHR_HEADER]: XHR_HEADER_VALUE,
-    // Watching a session IS looking at the pane, the same reading history takes (bridge/server.ts →
-    // marksPaneSeen), so a Chat screen left open keeps the pane's unseen mark clear.
-    "x-collie-seen": "1",
     ...authHeader(),
   });
+  // Watching a session IS looking at the pane, the same reading history takes (bridge/server.ts →
+  // marksPaneSeen), so a Chat screen left open keeps the pane's unseen mark clear. `seen: false` is
+  // the large screen's read-only column beside the focused one (ADR 0120): on screen, but only the
+  // focused pane counts as opened, so it leaves the mark alone, as fetchPane's prefetch does.
+  if (seen) headers.set("x-collie-seen", "1");
   if (cached !== undefined) headers.set("if-none-match", cached);
 
   // The live window is a poll read and gets the poll deadline. A `?before=` page is a tap the operator
