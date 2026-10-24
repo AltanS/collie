@@ -1,4 +1,4 @@
-# 0116: a plan is a tool kind, and its updates fold into one card
+# 0119: a plan is a tool kind, and its updates fold into one card
 
 - **Status:** Accepted
 - **Date:** 2026-10-16
