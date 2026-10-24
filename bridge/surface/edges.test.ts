@@ -302,6 +302,63 @@ describe("the start's model (a fresh pane names its model before its first messa
   });
 });
 
+describe("the start's model is the process's, never the pane id's", () => {
+  // The model rides on the pane's hook source, which holds the pid and its start time. A pane id that a
+  // new process takes over (after the old one died with no end edge, or across a bridge restart) never
+  // shows the old process's model.
+  const NEXT_PID = PID + 1;
+  const NEXT_START = START + 50;
+
+  test("a new process in the same pane id, after the old one died with no end edge, shows no model", async () => {
+    let old = true;
+    const liveness: BeaconLiveness = { startTimeOf: (pid) => Promise.resolve(pid === PID && old ? START : pid === NEXT_PID ? NEXT_START : null) };
+    const { r, spool } = router([target()], liveness);
+    spool.files.push(JSON.stringify(record({ event: "SessionStart", model: "claude-sonnet-5-5", at: 1_000_100 })));
+    await r.tick();
+    expect(r.modelOf("main", "w1:p1")?.model).toBe("claude-sonnet-5-5");
+    // Killed: no SessionEnd. A new process's first edge in the same pane names no model.
+    old = false;
+    spool.files.push(JSON.stringify(record({ event: "UserPromptSubmit", pid: NEXT_PID, pidStartTime: NEXT_START, at: 1_000_200 })));
+    await r.tick();
+    expect(r.modelOf("main", "w1:p1")).toBeUndefined();
+  });
+
+  test("a dead process's model leaves at the next liveness check, before any new edge", async () => {
+    let old = true;
+    const liveness: BeaconLiveness = { startTimeOf: (pid) => Promise.resolve(pid === PID && old ? START : null) };
+    const { r, spool, advance } = router([target()], liveness);
+    spool.files.push(JSON.stringify(record({ event: "SessionStart", model: "claude-sonnet-5-5", at: 1_000_100 })));
+    await r.tick();
+    old = false;
+    advance(HOOK_LIVENESS_MS);
+    await r.tick();
+    expect(r.modelOf("main", "w1:p1")).toBeUndefined();
+  });
+
+  test("a restarted bridge seeds no model for a pane id whose saved process is gone, though another runs there", async () => {
+    const saved: SavedSource[][] = [];
+    const store: SourceStore = { load: () => saved.at(-1) ?? [], save: (sources) => void saved.push([...sources]) };
+    const spool = new FakeSpool();
+    const first = new EdgeRouter({ spool, store, liveness: alive, targets: () => [target()], log: () => undefined, now: () => 1_000_500 });
+    spool.files.push(JSON.stringify(record({ event: "SessionStart", model: "claude-sonnet-5-5", at: 1_000_100 })));
+    await first.tick();
+    expect(saved.at(-1)?.map((s) => s.record.model)).toEqual(["claude-sonnet-5-5"]);
+    // After the restart the pane id holds another process; the saved pid is gone, or reused with another start.
+    for (const liveness of [
+      { startTimeOf: (pid: number) => Promise.resolve(pid === NEXT_PID ? NEXT_START : null) },
+      { startTimeOf: (pid: number) => Promise.resolve(pid === PID ? NEXT_START : null) },
+    ] satisfies BeaconLiveness[]) {
+      const restartedSpool = new FakeSpool();
+      const restarted = new EdgeRouter({ spool: restartedSpool, store: { load: () => saved.at(-1) ?? [], save: () => undefined }, liveness, targets: () => [target()], log: () => undefined, now: () => 2_000_000 });
+      await restarted.tick();
+      expect(restarted.modelOf("main", "w1:p1")).toBeUndefined();
+      restartedSpool.files.push(JSON.stringify(record({ event: "Stop", pid: NEXT_PID, pidStartTime: NEXT_START, at: 2_000_100 })));
+      await restarted.tick();
+      expect(restarted.modelOf("main", "w1:p1")).toBeUndefined();
+    }
+  });
+});
+
 describe("the live sources across a restart", () => {
   class MemoryStore implements SourceStore {
     saved: readonly SavedSource[] = [];
