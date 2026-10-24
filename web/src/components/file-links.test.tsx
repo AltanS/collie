@@ -4,7 +4,10 @@ import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { fetchSnapshot } from "@/lib/api";
 import { __resetConnectionHealth, latchLost } from "@/lib/connection-health";
+import { noteSnapshotTaken, snapshotsTaken } from "@/lib/snapshot-clock";
+import { parseJsonObject } from "@/lib/json";
 import { paneLinkHandlers, PaneFileLinks } from "@/test/file-links";
 import { server } from "@/test/setup";
 
@@ -118,6 +121,114 @@ describe("usePaneFileLinks", () => {
     expect(result.current!({ path: "lib/b.ts" })).toBeNull();
     await settle();
     expect(calls).toBe(1);
+  });
+});
+
+// A refusal ends. A 403 (a gate, an older bridge) held the phone off until a reload; now the next live
+// snapshot lifts it, and a missing route (501, 404) holds a fixed time instead.
+interface ExistMode {
+  status: number | null;
+}
+
+describe("a refused file check", () => {
+  /** An existence route that answers `status` while `mode.status` is set, and yes to everything after. */
+  function refusing(mode: ExistMode, counter: { calls: number }) {
+    server.use(
+      http.get("/api/launchers", () => HttpResponse.json({ launchers: [], home: "/home/you" })),
+      http.post(/\/files\/exist$/, async ({ request }) => {
+        counter.calls++;
+        if (mode.status !== null) return HttpResponse.json({ error: "refused" }, { status: mode.status });
+        const body = parseJsonObject(await request.text());
+        const paths = Array.isArray(body?.paths) ? body.paths : [];
+        return HttpResponse.json({ exists: paths });
+      }),
+    );
+  }
+
+  it("a 403 holds 30 s, then the next live snapshot allows asks", async () => {
+    const counter = { calls: 0 };
+    const mode: ExistMode = { status: 403 };
+    refusing(mode, counter);
+    const { result } = renderHook(() => usePaneFileLinks({ paneId: "w1:p1", pane, panes, workspaces }), { wrapper });
+    await waitFor(() => expect(result.current).not.toBeNull());
+    result.current!({ path: "lib/a.ts" });
+    await settle();
+    expect(counter.calls).toBe(1);
+
+    // A snapshot inside the hold lifts nothing: a device that may not read is not asked once per poll.
+    mode.status = null;
+    noteSnapshotTaken();
+    result.current!({ path: "lib/b.ts" });
+    await settle();
+    expect(counter.calls).toBe(1);
+
+    // Past the hold, the snapshot taken since the refusal lifts it.
+    const clock = vi.spyOn(Date, "now").mockReturnValue(Date.now() + 30_001);
+    try {
+      result.current!({ path: "lib/b.ts" });
+      await settle();
+      expect(counter.calls).toBe(2);
+      await waitFor(() => expect(result.current!({ path: "lib/b.ts" })).not.toBeNull());
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it("a 403 stays refused past the hold until a snapshot arrives", async () => {
+    const counter = { calls: 0 };
+    const mode: ExistMode = { status: 403 };
+    refusing(mode, counter);
+    const { result } = renderHook(() => usePaneFileLinks({ paneId: "w1:p1", pane, panes, workspaces }), { wrapper });
+    await waitFor(() => expect(result.current).not.toBeNull());
+    result.current!({ path: "lib/a.ts" });
+    await settle();
+    expect(counter.calls).toBe(1);
+
+    const clock = vi.spyOn(Date, "now").mockReturnValue(Date.now() + 30_001);
+    try {
+      result.current!({ path: "lib/b.ts" });
+      await settle();
+      expect(counter.calls).toBe(1);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it("a 501 holds for thirty seconds, snapshots or not, then asks again", async () => {
+    const counter = { calls: 0 };
+    const mode: ExistMode = { status: 501 };
+    refusing(mode, counter);
+    const { result } = renderHook(() => usePaneFileLinks({ paneId: "w1:p1", pane, panes, workspaces }), { wrapper });
+    await waitFor(() => expect(result.current).not.toBeNull());
+    result.current!({ path: "lib/a.ts" });
+    await settle();
+    expect(counter.calls).toBe(1);
+
+    // A snapshot says nothing new about a route an old bridge lacks.
+    noteSnapshotTaken();
+    result.current!({ path: "lib/b.ts" });
+    await settle();
+    expect(counter.calls).toBe(1);
+
+    mode.status = null;
+    const clock = vi.spyOn(Date, "now").mockReturnValue(Date.now() + 30_001);
+    try {
+      result.current!({ path: "lib/b.ts" });
+      await settle();
+      expect(counter.calls).toBe(2);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it("fetchSnapshot counts a live snapshot, and a disconnected one counts nothing", async () => {
+    const before = snapshotsTaken();
+    server.use(http.get("/api/snapshot", () => HttpResponse.json({ bridge: "disconnected", panes: [], workspaces: [] })));
+    await fetchSnapshot();
+    expect(snapshotsTaken()).toBe(before);
+    server.use(http.get("/api/snapshot", () => HttpResponse.json({ bridge: "connected", panes: [], workspaces: [] })));
+    await fetchSnapshot();
+    expect(snapshotsTaken()).toBe(before + 1);
   });
 });
 

@@ -124,6 +124,31 @@ function externalHref(raw: string): string | null {
 // lib/stretch.ts), so a URL that ends a stretch's short form or a tinted run stops before the marker that ends it.
 const BARE_URL = "(?<![\\w@/.-])((?:https?://|mailto:)[^\\s<>`\"'\\uE000-\\uE006]*[^\\s<>`\"'.,:;!?)\\]}\\uE000-\\uE006])";
 
+/** One bare web address found inside a longer string: `[start, end)` and the href. */
+export interface BareUrl {
+  start: number;
+  end: number;
+  href: string;
+}
+
+/**
+ * Every bare `http://`, `https://` or `mailto:` address in `text`, by the SAME rule the prose
+ * autolinker uses ({@link BARE_URL}) and through the same scheme gate, so a code span and a sentence
+ * agree on what an address is. A host with no dot (`http://bluefin:8788`) counts. Claude Code prints
+ * most addresses inside backticks, which the inline parser reads as a code span, so the renderer asks
+ * this for the code span's own text.
+ */
+export function findBareUrls(text: string): BareUrl[] {
+  const found: BareUrl[] = [];
+  const re = new RegExp(BARE_URL, "g");
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    const href = externalHref(m[1]!);
+    if (href !== null) found.push({ start: m.index, end: m.index + m[1]!.length, href });
+  }
+  return found;
+}
+
 // The pieces of a link, each bounded, each with a branch that cannot match what the other can:
 //  - LABEL holds anything but a bracket, or ONE image (`![alt](src)`), which is how a badge is
 //    written: `[![build](badge.svg)](https://ci)`. An image always opens with `![`, and a plain

@@ -7,7 +7,7 @@ import { useWalkyChips } from "@/components/walky-log";
 import { useLocale } from "@/hooks/use-locale";
 import { codeSpanPath, findFilePaths } from "@/lib/file-paths";
 import { t } from "@/lib/i18n";
-import { headingAnchors, parseMarkdown, spansText, type MdBlock, type MdSpan } from "@/lib/markdown";
+import { findBareUrls, headingAnchors, parseMarkdown, spansText, type MdBlock, type MdSpan } from "@/lib/markdown";
 import { closeStretch, composeStretches, liftStretches, parseStretches, stretches as allStretches } from "@/lib/stretch";
 import { splitHighlight } from "@/lib/transcript-search";
 
@@ -295,13 +295,64 @@ function TextRun({ text }: { text: string }) {
   return <>{nodes}</>;
 }
 
-/** A code span: a chip, and a tappable one when the whole span is a path that resolves and exists. */
+/**
+ * A web address inside a code span, as a link in the chip's own ink. Claude Code prints most
+ * addresses in backticks, so a code span that holds one is a link to it: new tab, `noopener`, the
+ * way every other web link here opens. This is the anchor inside a longer span; the
+ * whole-span case wraps the chip instead (see {@link CodeSpan}), so the whole chip is the tap target.
+ */
+function UrlLink({ href, text }: { href: string; text: string }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+    >
+      <Hit text={text} />
+    </a>
+  );
+}
+
+/**
+ * A code span: a chip. Tappable when the whole span is a path that resolves and exists (ADR 0088),
+ * or when it holds a web address: the address alone is the whole chip's link, and an address among
+ * other words links only its own token. The address wins over the path rule, since neither rule
+ * takes the other's text (a `://` run is never a file path).
+ */
 function CodeSpan({ text }: { text: string }) {
   const open = useFileLinks();
   const inLink = useContext(InLinkContext);
   const chips = useWalkyChips();
+  const urls = useMemo(() => (inLink ? [] : findBareUrls(text)), [inLink, text]);
   // A span that is one message id the log holds is the id chip; a span that holds more than an id stays the code chip.
   if (chips !== null && !inLink && chips.holds(text.trim())) return <WalkyIdChip id={text.trim()} onOpen={chips.open} />;
+  const only = urls.length === 1 && text.slice(0, urls[0]!.start).trim() === "" && text.slice(urls[0]!.end).trim() === "" ? urls[0]! : null;
+  if (only !== null) {
+    return (
+      <a
+        href={only.href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+      >
+        <code className={`${CHIP_CLASS} underline underline-offset-2 ${breakClass(text)}`}>
+          <Hit text={text} />
+        </code>
+      </a>
+    );
+  }
+  if (urls.length > 0) {
+    const nodes: ReactNode[] = [];
+    let at = 0;
+    for (const u of urls) {
+      if (u.start > at) nodes.push(<Hit key={`t${at}`} text={text.slice(at, u.start)} />);
+      nodes.push(<UrlLink key={`u${u.start}`} href={u.href} text={text.slice(u.start, u.end)} />);
+      at = u.end;
+    }
+    if (at < text.length) nodes.push(<Hit key={`t${at}`} text={text.slice(at)} />);
+    return <code className={`${CHIP_CLASS} ${breakClass(text)}`}>{nodes}</code>;
+  }
   const found = open === null || inLink ? null : codeSpanPath(text);
   const target = found === null || open === null ? null : open(found);
   if (target !== null) return <PathChip target={target} text={text} />;
