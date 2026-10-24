@@ -1,6 +1,6 @@
 # 0115: usage numbers come from the operator's own statusLine
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-23
 - **Shipped in:** pending
 - **Trail:** Altan, 2026-10-23: the row above the belt should carry the session's context use and the

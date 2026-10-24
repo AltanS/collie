@@ -95,6 +95,7 @@ list shows at most 25 causes, then one line "and N more". A file is refused for 
   does not ship.
 - A shape word is not on its list, or a number stands where a word goes.
 - It has a `surface` block, a `fonts.display` face or an `ansi` block, and says version 1.
+- It sets `pane-active`, and says version 1 or 2.
 - Its `ansi` block lacks a key, has a colour with an alpha, or fails a gate under
   [Terminal palette](#terminal-palette).
 - It has a bad `id`, `name` or `author`, or the `id` belongs to a shipped theme.
@@ -125,6 +126,7 @@ the other parts. A floor is a contrast ratio, so a higher number is easier to re
 | `destructive` as text, on `background` and on `card` | 4.5 |
 | `destructive` as an icon, on `background` and on `card` | 3 |
 | `rule` on `background` | 1.3 |
+| `pane-active` on `background`, only in a half that sets it | 3 |
 | `status-blocked` apart from `status-done` | a distance of 0.15 |
 
 - **Destructive text is held to what Collie measures when you keep its colours.** Collie's own light red on
@@ -177,7 +179,7 @@ version 2 file: it is Daylight with a shorter list of colours and the full palet
 }
 ```
 
-- `version` is 1 or 2. See [Versions](#versions). Any other number is refused.
+- `version` is 1, 2 or 3. See [Versions](#versions). Any other number is refused.
 - `id` is 1 to 32 characters: lower-case letters, digits and hyphens, starting with a letter or a digit.
 - `name` is 1 to 40 characters, and `author` is up to 60. Neither may hold a control character.
 - `light` and `dark` are objects of tokens. Give one half or both. A half you leave out, and any token you
@@ -202,12 +204,18 @@ A file says which version it is, and Collie writes the lowest version that holds
 | --- | --- |
 | 1 | Colours in `light` and `dark`, and `fonts.ui`. |
 | 2 | Everything in version 1, and any of `surface`, `fonts.display` and `ansi`. |
+| 3 | Everything in version 2, and the optional token `pane-active`. |
 
 - A file with a `surface` block, a `fonts.display` face or an `ansi` block must say 2. A file that says 1 and
   has one of them is refused.
-- A file without those blocks may say either. Collie reads both versions, and an export of a theme with
-  colours and `fonts.ui` only says 1.
+- A file with `pane-active` in `light` or `dark` must say 3. A file that says 1 or 2 and sets it is
+  refused. The cause names the token and the version.
+- A file without those blocks and without `pane-active` may say 1 or 2. Collie reads all three versions,
+  and an export of a theme with colours and `fonts.ui` only says 1.
 - A version 2 file needs Collie 1.22.0 or newer.
+- A version 3 file needs Collie 1.24.0 or newer. An older Collie refuses it and names the version: "The
+  file is version 3. This Collie reads version 1 and 2." A theme that does not set `pane-active` keeps
+  its version, so an older Collie still reads it.
 - A version 1 file means the default word of each list for every token of `surface`.
 
 ### The 43 tokens
@@ -238,6 +246,19 @@ Each half takes any of these, in four groups.
 | `syntax-property` `syntax-entity` `syntax-comment` | Property names, types and function names, and comments. |
 | **Host** | |
 | `host-0` `host-1` `host-2` `host-3` `host-4` `host-5` `host-6` `host-7` `host-8` `host-9` | The ten colours that tell your machines apart. |
+
+### The optional token
+
+One more token is optional, and it is the reason for version 3. It is not one of the 43, and a theme may
+leave it out.
+
+| Token | Meaning |
+| --- | --- |
+| `pane-active` | The frame of the active pane column on a large screen. |
+
+When a theme leaves out `pane-active` in a half, that half takes the sky blue of the theme Collie. Collie
+measures it only in a half that sets it. See [The contrast report](#the-contrast-report). A file that sets it
+must say [version 3](#versions).
 
 ## Shape
 

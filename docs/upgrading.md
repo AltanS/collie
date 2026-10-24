@@ -715,6 +715,36 @@ herdr plugin install AltanS/collie --yes
 herdr plugin action invoke restart --plugin herdr.collie
 ```
 
+## Upgrading to 1.24.0
+
+Version 1.24.0 adds usage dots, a Stop button and a large-screen layout. If you come from 1.23.4,
+nothing needs doing on upgrade day. What you will notice:
+
+- **Collie leaves your statusLine alone.** Wrapping it is opt-in with
+  `collie hooks install claude --statusline`. If you took the wrap from an Edge build and want it
+  gone, run `collie hooks uninstall claude`, then `collie hooks install claude`
+  ([Collie writes hooks into Claude's own settings](multiplexers.md#collie-writes-hooks-into-claudes-own-settings)).
+- **The context dot needs no new hook.** The hooks that 1.23.4 installed already include
+  `SessionStart`, and they run the same command. The new Collie reads the session file with them.
+  If you never ran `collie hooks install claude`, run it once. A Claude session that is already
+  running shows no dot until it starts again, resumes, clears or compacts, because the window size
+  comes from the session start.
+- **The 5-hour and 7-day dots read your own logins.** For Claude, Collie reads the login file on this
+  machine and asks `api.anthropic.com`. For Codex, it reads Codex's session files and asks nobody.
+  Both are on by default. Set `COLLIE_ACCOUNT_WINDOWS=0` in your `.env`, or `account_windows = false`
+  under `[bridge]`, to turn them off. OpenCode Go and Grok stay off until you name them
+  ([Usage windows](configure.md#usage-windows)).
+- **A Stop button, a Clear button and Steer.** Stop takes two taps and presses the agent's own stop
+  key ([Stop a turn](configure.md#stop-a-turn)). Clear empties the input box, and Restore types the
+  text back for two minutes ([Clear the box](configure.md#clear-the-box)). Hold Send to steer a
+  running turn on pi, Codex and OMP ([Steer or queue](multiplexers.md#steer-or-queue)).
+- **A theme that sets `pane-active` is version 3.** A Collie older than 1.24.0 refuses that file with
+  a message that names the version. The other themes keep their version
+  ([Versions](themes.md#versions)).
+- **A wide screen shows a sidebar.** From 600px wide and 480px tall, the pane screen shows several
+  panes side by side. To keep the phone layout on one device, set **Large-screen layout** to Off in
+  Settings.
+
 ## Upgrading to 1.19.0
 
 Version 1.19.0 moves starting things to one page and lets each phone shape its own Keys and
