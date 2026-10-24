@@ -80,6 +80,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Docs
 
+- **The docs have a Large screens section.** [Configure](docs/configure.md#large-screens) says when the pane screen turns into a sidebar beside a row of panes, how the sidebar, the row, the space header and the add pane work, and how a half-open foldable splits the screen.
 - **The durable wire gains a draft appendix for a host with no process.** WIRE.md now says how a durable agent without a long-lived process, such as a function on Vercel, fills the wire: one epoch per World and schema, rev and turn id derived from the log, and the journal of asks, answers and request ids. It describes that host only and changes nothing in version 1.
 - **Muse Code 1.4.10 has live captures in the fixture corpus.** Six byte-faithful screens (idle, done, draft, probe draft, two running turns) are labelled and pinned in the Muse adapter tests. The Muse profile range does not move, because the harness lab cannot run Muse yet. Thanks @jpcarranza94 (#520). ([66b31e6](https://github.com/AltanS/collie/commit/66b31e6))
 

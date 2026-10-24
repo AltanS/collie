@@ -30,6 +30,8 @@ A group of panes. A Herdr tab is a tab, and a tmux window is a tab
 One thing you can open on the phone. In a terminal it is a pane with a screen. In a durable agent it is
 one conversation, and it opens in Chat only.
 
+On a large screen several panes show side by side ([Large screens](configure.md#large-screens)).
+
 ## Terminal (mux)
 
 Herdr, tmux, zellij, tuios or Tern, the program that holds your shells and agents. Other tools call
