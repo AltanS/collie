@@ -249,9 +249,24 @@ Behavior details for Claude configuration changes:
   preserved. `hooks uninstall claude` removes only Collie entries.
 - **Leaves your statusLine alone unless you ask.** Without a flag the install does not touch
   `statusLine`. You still get the context dot beside the model above the belt: the hooks read the
-  session transcript, and the window size from the session start. With
-  `collie hooks install claude --statusline` Collie also wraps your own statusLine, and the 5-hour
-  and 7-day windows appear too. Its command becomes `collie beacon statusline …`, and your script
+  session transcript, and the window size from the session start.
+- **The 5-hour and 7-day windows show on their own.** They need no hook and no statusLine. While a
+  Claude pane is open, the bridge reads your Claude login on this machine
+  (`~/.claude/.credentials.json`, or `$CLAUDE_CONFIG_DIR/.credentials.json`; the Keychain on a Mac
+  with no file) and asks `api.anthropic.com/api/oauth/usage`, the same call Claude Code's `/usage`
+  makes. It asks when the pane appears, after a turn ends (at most once a minute) and every five
+  minutes. It stores nothing of the login, never refreshes it and sends it nowhere else. It skips a
+  login file that others may read (anything looser than `0600`) and a login that has expired, and
+  Claude Code refreshes that one at its next call. An API-key, Bedrock or Vertex session has no
+  windows to show. Codex, OpenCode Go and Grok panes get theirs the same way, on the same schedule
+  (Codex from its own session files, with no login read; see
+  [Usage windows](configure.md#usage-windows)). `COLLIE_ACCOUNT_WINDOWS=0` (or
+  `[bridge] account_windows = false`) turns all of it off, and `collie doctor` says which in its
+  `account-windows` row.
+- **Wrapping your statusLine is the second road.** With
+  `collie hooks install claude --statusline` Collie also wraps your own statusLine, and the windows
+  come from what Claude Code hands it. Take it if you prefer that to the login read, with
+  `COLLIE_ACCOUNT_WINDOWS=0`. Its command becomes `collie beacon statusline …`, and your script
   still runs and prints as before. Collie never adds a statusLine, and `hooks uninstall claude`
   puts your command back exactly. An install without the flag keeps a wrap you already have and
   points it at the current binary. Not on Windows.

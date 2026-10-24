@@ -139,3 +139,5 @@ text above stays as written.
   decided, an operator without `--statusline` sees the context dot and no windows. Altan's call.
   Candidate, explicitly not built: Claude Code's own `/api/oauth/usage` endpoint with the operator's
   token, which is the credential road the Context above declined.
+- **2026-10-24, later: the windows now come from [ADR 0118](./0118-account-windows-come-from-the-vendors-usage-endpoint-with-the-operators-own-login.md)'s
+  source; `--statusline` remains as the second source.**

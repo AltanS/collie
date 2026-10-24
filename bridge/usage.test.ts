@@ -12,6 +12,7 @@ import {
   usageFileName,
   UsageTracker,
   type UsageFiles,
+  type UsageLimit,
 } from "./usage.ts";
 
 const NOW = 1_800_000_000_000;
@@ -195,5 +196,62 @@ describe("UsageTracker", () => {
     const tracker = new UsageTracker(dir, memoryFiles(entries), () => NOW);
     await tracker.refresh([]);
     expect([...entries.keys()].toSorted()).toEqual([fresh, foreign].toSorted());
+  });
+});
+
+describe("UsageTracker with the account windows (ADR 0118)", () => {
+  const dir = "/state/usage";
+  const file = (session: string): string => join(dir, usageFileName(session));
+  const ACCOUNT = [
+    { window: "5h" as const, used: 33, resetsAt: NOW + 60_000 },
+    { window: "7d" as const, used: 7, resetsAt: NOW + 120_000 },
+  ];
+  function claudePane(session: string | null, kind: "agent" | "shell" = "agent"): AgentView {
+    // SAFETY: the tracker reads `agentSession`, `agent` and `kind` off a pane and nothing else.
+    return { ...pane(session), agent: "claude", kind } as AgentView;
+  }
+  function account(limits: Record<string, UsageLimit[] | undefined>) {
+    return { limits: (harness: string) => limits[harness] };
+  }
+
+  it("the account windows win over a wrapped statusLine's, and the context stays the session's", async () => {
+    const entries = new Map<string, [number, string]>([
+      [file("s1"), [NOW, record({ context: 42, limits: [{ window: "5h", used: 90 }, { window: "7d", used: 80 }] })]],
+    ]);
+    const tracker = new UsageTracker(dir, memoryFiles(entries), () => NOW, account({ claude: ACCOUNT }));
+    await tracker.refresh([claudePane("s1")]);
+    expect(tracker.get(claudePane("s1"))).toEqual({ context: 42, limits: ACCOUNT });
+  });
+
+  it("a pane with no session record still gets the account windows", async () => {
+    const tracker = new UsageTracker(dir, memoryFiles(new Map()), () => NOW, account({ claude: ACCOUNT }));
+    await tracker.refresh([claudePane(null), claudePane("s9")]);
+    expect(tracker.get(claudePane(null))).toEqual({ limits: ACCOUNT });
+    expect(tracker.get(claudePane("s9"))).toEqual({ limits: ACCOUNT });
+  });
+
+  it("a shell and another harness get none", async () => {
+    const tracker = new UsageTracker(dir, memoryFiles(new Map()), () => NOW, account({ claude: ACCOUNT }));
+    expect(tracker.get(claudePane(null, "shell"))).toBeUndefined();
+    // SAFETY: as in claudePane, the tracker reads only `agentSession`, `agent` and `kind`.
+    expect(tracker.get({ ...claudePane(null), agent: "codex" } as AgentView)).toBeUndefined();
+  });
+
+  it("without account windows the statusLine road works as before", async () => {
+    const limits: UsageLimit[] = [{ window: "5h", used: 90 }, { window: "7d", used: 80 }];
+    const written = limits.map((limit) => ({ window: limit.window, used: limit.used }));
+    const entries = new Map<string, [number, string]>([[file("s1"), [NOW, record({ context: 42, limits: written })]]]);
+    const readings: Array<UsageLimit[] | undefined> = [undefined, []];
+    for (const reading of readings) {
+      const tracker = new UsageTracker(dir, memoryFiles(entries), () => NOW, account({ claude: reading }));
+      await tracker.refresh([claudePane("s1")]);
+      expect(tracker.get(claudePane("s1"))).toEqual({ context: 42, limits });
+      expect(tracker.get(claudePane(null))).toBeUndefined();
+    }
+  });
+
+  it("drops an account window whose reset has passed", async () => {
+    const tracker = new UsageTracker(dir, memoryFiles(new Map()), () => NOW + 90_000, account({ claude: ACCOUNT }));
+    expect(tracker.get(claudePane(null))).toEqual({ limits: ACCOUNT.slice(1) });
   });
 });

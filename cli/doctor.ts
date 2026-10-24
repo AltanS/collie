@@ -60,6 +60,7 @@ import { DEVICES_FILENAME, isExpired, parseRegistryText } from "../bridge/pairin
 import { pairedRegistryOf } from "./pairing.ts";
 import { collieVersionBare, type CliContext } from "./context.ts";
 import { aboutCrew, bad, ok, skipped, warn, type DoctorStatus, type Finding } from "./finding.ts";
+import { accountWindowsDoctorLine, grokAuthPath, hasOpencodeGoEntry, opencodeAuthPath } from "../bridge/account-windows.ts";
 import { explicitMux, probeMuxes, refusedMux, type MuxSighting } from "./mux.ts";
 import { cacheFindings } from "./cache-findings.ts";
 import { surfaceFindings } from "./surface-findings.ts";
@@ -262,6 +263,7 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
     await beacons(deps, hookEntries.length > 0),
     skillWalkyTalky(deps),
     ...walkyRefusals(deps),
+    accountWindowsFinding(deps),
     // The Whistle model (ADR 0096): one finding when the model, or the host engine that needs it, is
     // on this host, and none otherwise. A host that never heard of Whistle reads exactly as before.
     ...(await whistleModelFindings(deps)),
@@ -2109,6 +2111,21 @@ function walkyRefusals(deps: DoctorDeps): Finding[] {
   if (total === 0) return [ok("walky-refusals", "none counted")];
   const since = held.since === null ? "" : ` since ${new Date(held.since).toISOString().slice(0, 10)}`;
   return [ok("walky-refusals", `${String(total)} refused${since}: ${refusalLine(held.counts)}`)];
+}
+
+/**
+ * `account-windows` — whether the bridge reads the operator's own harness logins to ask the vendors for
+ * the 5-hour and 7-day windows (ADR 0118), what each harness reads and where it asks. Never a warning:
+ * off is a choice, and on reads nothing until a pane of the harness exists. The line names files and
+ * hosts, never anything in a file. It looks at OpenCode's auth store for an `opencode-go` entry and at
+ * Grok's login file for existence, so the line can say which of them has a login.
+ */
+export function accountWindowsFinding(deps: Pick<DoctorDeps, "ctx" | "host" | "files">): Finding {
+  const { env, home } = deps.ctx;
+  const enabled = envBool("COLLIE_ACCOUNT_WINDOWS", true, env);
+  const store = deps.files.read(opencodeAuthPath(env, home));
+  const facts = { opencodeGoKey: store !== null && hasOpencodeGoEntry(store), grokLogin: deps.files.exists(grokAuthPath(env, home)) };
+  return ok("account-windows", accountWindowsDoctorLine(enabled, env, home, deps.host.platform, facts));
 }
 
 /**

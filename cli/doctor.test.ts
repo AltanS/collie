@@ -18,6 +18,7 @@ import { BEACON_HOOKS } from "./beacon.ts";
 import { durableFindings } from "./durable-findings.ts";
 import type { CliContext } from "./context.ts";
 import {
+  accountWindowsFinding,
   cmdDoctor,
   type DoctorDeps,
   type Finding,
@@ -407,6 +408,7 @@ describe("collie doctor — the contract", () => {
       "beacon-hooks-claude",
       "beacons",
       "skill-walky-talky",
+      "account-windows",
       "herdr-version",
       "integration-claude",
       "integration-codex",
@@ -1701,6 +1703,7 @@ describe("the finding set is scoped by the chosen multiplexer", () => {
       "beacon-hooks-claude",
       "beacons",
       "skill-walky-talky",
+      "account-windows",
       "agent-sessions",
       "journal-roots",
       "cache-claims",
@@ -1902,6 +1905,45 @@ describe("walky-refusals", () => {
     const finding = (await findings(h)).byCheck.get("walky-refusals")!;
     expect(finding.status).toBe("ok");
     expect(finding.detail).toBe("4 refused since 2026-10-18: rate limit 3, pair limit 1");
+  });
+});
+
+describe("account-windows", () => {
+  const CLAUDE_PART = "claude: read ~/.claude/.credentials.json";
+
+  test("one ok row: on names what each harness reads and the hosts it asks; 0 says off", async () => {
+    const on = (await findings(harness(null))).byCheck.get("account-windows")!;
+    expect(on.status).toBe("ok");
+    expect(on.detail).toMatch(
+      /^on \(claude: read .*\.credentials\.json, asks api\.anthropic\.com; codex: reads .*sessions; opencode: no Go key; grok: no login\)$/,
+    );
+    const off = (await findings(harness(null, [], { env: { COLLIE_ACCOUNT_WINDOWS: "0" } }))).byCheck.get("account-windows")!;
+    expect(off.detail).toBe("off");
+  });
+
+  test("the row names the default files under the operator's home, and no login for the harnesses without one", () => {
+    const finding = accountWindowsFinding({ ctx: context({}, {}), host: HOST, files: fakeFiles({}) });
+    expect(finding.detail).toBe(
+      `on (${CLAUDE_PART}${HOST.platform === "darwin" ? " or the Keychain" : ""}, asks api.anthropic.com; codex: reads ~/.codex/sessions; opencode: no Go key; grok: no login)`,
+    );
+  });
+
+  test("an OpenCode Go entry and a Grok login file switch their parts on, and nothing of the files is printed", () => {
+    const ctx = context({}, {});
+    const files = fakeFiles({
+      [`${ctx.home}/.local/share/opencode/auth.json`]: JSON.stringify({ "opencode-go": { type: "api", key: "placeholder-go-key" } }),
+      [`${ctx.home}/.grok/auth.json`]: "{}",
+    });
+    const detail = accountWindowsFinding({ ctx, host: HOST, files }).detail;
+    expect(detail).toContain("opencode: read ~/.local/share/opencode/auth.json, asks opencode.ai");
+    expect(detail).toContain("grok: read ~/.grok/auth.json, asks cli-chat-proxy.grok.com");
+    expect(detail).not.toContain("placeholder-go-key");
+  });
+
+  test("an auth store without the Go entry stays at no Go key", () => {
+    const ctx = context({}, {});
+    const files = fakeFiles({ [`${ctx.home}/.local/share/opencode/auth.json`]: JSON.stringify({ openrouter: { type: "api", key: "placeholder" } }) });
+    expect(accountWindowsFinding({ ctx, host: HOST, files }).detail).toContain("opencode: no Go key");
   });
 });
 

@@ -201,6 +201,7 @@ import { StateEngine } from "./state-engine.ts";
 import { SubagentTracker } from "./subagents.ts";
 import { TodoTracker } from "./todos.ts";
 import { diskUsageFiles, usageDir, UsageTracker } from "./usage.ts";
+import { AccountWindows, defaultAccountSources, diskCredentialSeams, isTurnEnd } from "./account-windows.ts";
 import {
   bridgeStampSync,
   compareSemver,
@@ -803,9 +804,21 @@ const paneCache =
 const todos = journals === null ? null : new TodoTracker(journals, Date.now);
 // Each pane's running subagents (bridge/subagents.ts), read on the same poll as the todo list.
 const subagents = journals === null ? null : new SubagentTracker(journals, Date.now);
+// The account's 5-hour and 7-day windows (bridge/account-windows.ts, ADR 0118): one ask to the vendor
+// with the operator's own harness login, read on this machine, only while a pane of that harness is
+// here (Codex needs no ask: its own session files carry them). `COLLIE_ACCOUNT_WINDOWS=0` turns it off: no login is read and nothing is asked.
+const accountWindows = new AccountWindows({
+  enabled: cfg.accountWindows,
+  sources: defaultAccountSources(diskCredentialSeams(process.env)),
+  fetch: (url, init) => fetch(url, init),
+  now: Date.now,
+  userAgent: `collie/${crewVersion}`,
+  log: (line) => console.log(line),
+});
 // Each pane's context use and subscription windows (bridge/usage.ts), from the files the statusLine
-// wrapper writes. No journal needed: the pane's session id is the key.
-const usage = new UsageTracker(usageDir(cfg.stateDir), diskUsageFiles, Date.now);
+// wrapper and the beacon write, joined with the account windows above. No journal needed: the pane's
+// session id is the key.
+const usage = new UsageTracker(usageDir(cfg.stateDir), diskUsageFiles, Date.now, accountWindows);
 
 // Which branch each pane's folder is on (bridge/git-head.ts). One for the whole bridge: every
 // session's poll feeds it its folders, and the server reads it from memory at serialise time.
@@ -1527,6 +1540,12 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
     engine.onUpdate((s) => void subagents.refresh(s.agents, { session: name }).catch(() => {}));
   }
   engine.onUpdate((s) => void usage.refresh(s.agents, name).catch(() => {}));
+  // The account windows ride the same poll (first reading, then every five minutes while a pane of the
+  // harness is here) and a turn's end (at most once a minute per harness). Neither waits on the ask.
+  engine.onUpdate((s) => accountWindows.observe(s.agents, name));
+  engine.onTransition((agent, from, to) => {
+    if (isTurnEnd(from, to)) accountWindows.poke(agent.agent);
+  });
 
   // Background notifications on lifecycle transitions (foreground toasts are computed client-side by
   // diffing snapshots). Each session gets its own coordinator + notification slot: the primary keeps

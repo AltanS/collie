@@ -235,6 +235,15 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     configField: "walky",
   },
   {
+    key: "account_windows",
+    env: "COLLIE_ACCOUNT_WINDOWS",
+    section: "bridge",
+    kind: "bool",
+    default: true,
+    doc: "Show the 5-hour and 7-day windows: read the agent's own login on this machine and ask its vendor's usage endpoint (Claude: api.anthropic.com).",
+    configField: "accountWindows",
+  },
+  {
     key: "transcript",
     env: "COLLIE_TRANSCRIPT",
     section: "bridge",

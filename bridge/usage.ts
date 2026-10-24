@@ -10,7 +10,9 @@
 // (`collie beacon statusline`, cli/statusline.ts) writes the three numbers to one small file here
 // before it runs the operator's command and passes its output through untouched. Since 2026-10-24 the
 // context number also comes from the session transcript through the beacon hooks, with no statusLine
-// (`cli/context-reading.ts`), and the wrap is opt-in.
+// (`cli/context-reading.ts`), and the wrap is opt-in. Since 2026-10-24 the 5-hour and 7-day windows
+// come first from the vendor's usage endpoint with the operator's own login (bridge/account-windows.ts,
+// .adr/0118); a wrapped statusLine is the second road.
 //
 // ONE FILE PER SESSION, named by a digest of the harness session id, never by the pane: the pane
 // already knows its session (`agentSession`, from Herdr or the beacon), and a session id cannot be
@@ -205,6 +207,14 @@ export const diskUsageFiles: UsageFiles = {
   },
 };
 
+/**
+ * The account windows of a harness, from bridge/account-windows.ts: synchronous, memory only, and
+ * undefined when there is no fresh reading.
+ */
+export interface AccountLimits {
+  limits(harness: string): UsageLimit[] | undefined;
+}
+
 /** How often the directory is swept for old files. */
 const PRUNE_EVERY_MS = 60 * 60 * 1000;
 
@@ -227,6 +237,7 @@ export class UsageTracker {
     private readonly dir: string,
     private readonly files: UsageFiles,
     private readonly now: () => number = Date.now,
+    private readonly account?: AccountLimits,
   ) {}
 
   /** The session id a pane's usage is keyed by, or null for a pane with no id-kind session. */
@@ -267,16 +278,26 @@ export class UsageTracker {
 
   /**
    * The pane's reading now, or undefined. The context is the pane's own session's. The 5-hour and
-   * 7-day windows belong to the ACCOUNT, not the session, so each window is the newest one any held
-   * session of the same harness reported: a session that last spoke an hour ago shows what a busier
-   * one learned since. Only a session that reported windows of its own gets them, so an API-key
-   * session beside a subscription one stays without.
+   * 7-day windows belong to the ACCOUNT, not the session.
+   *
+   * When the account windows of the pane's harness are known (bridge/account-windows.ts, ADR 0118),
+   * they are the pane's windows, with or without a session record: they are fresher, and they are the
+   * account's own. Otherwise each window is the newest one any held session of the same harness
+   * reported through a wrapped statusLine: a session that last spoke an hour ago shows what a busier
+   * one learned since. On that road only a session that reported windows of its own gets them, so an
+   * API-key session beside a subscription one stays without.
    */
   get(pane: AgentView): PaneUsage | undefined {
     const session = UsageTracker.sessionOf(pane);
     const record = session === null ? null : (this.held.get(session)?.record ?? null);
-    if (record === null) return undefined;
     const now = this.now();
+    const harness = pane.kind === "shell" ? undefined : pane.agent || record?.harness;
+    const account = harness === undefined || harness === "" ? undefined : this.account?.limits(harness);
+    if (account !== undefined && account.length > 0) {
+      const base: UsageRecord = record ?? { schemaVersion: USAGE_SCHEMA_VERSION, harness: harness ?? "", at: now };
+      return usageAt({ ...base, limits: account }, now);
+    }
+    if (record === null) return undefined;
     if (record.limits === undefined) return usageAt(record, now);
     return usageAt({ ...record, limits: this.newestLimits(record.harness, now) }, now);
   }

@@ -255,6 +255,12 @@ export interface Config {
    */
   transcript: boolean;
   /**
+   * Ask the vendor for the account's 5-hour and 7-day windows with the operator's own harness login,
+   * read on this machine (`COLLIE_ACCOUNT_WINDOWS`, `[bridge] account_windows`, ADR 0118). Off reads
+   * no login and asks nothing; a wrapped statusLine still reports the windows.
+   */
+  accountWindows: boolean;
+  /**
    * Where each harness keeps its session logs — one directory or several, searched in order. Every
    * read is confined to the root it was found under, after symlink resolution, so these double as the
    * security boundary for a feature that touches the filesystem — override only to relocate (or add)
@@ -724,6 +730,7 @@ export function loadConfig(env: Environment = process.env): Config {
       envInt("COLLIE_MAX_UPLOAD_MB", DEFAULT_MAX_UPLOAD_MB, { min: 1, max: 512 }, env) * 1024 * 1024,
     uploadExtraTypes: normaliseUploadTypes(envList("COLLIE_UPLOAD_EXTRA_TYPES", env)),
     transcript: envBool("COLLIE_TRANSCRIPT", true, env),
+    accountWindows: envBool("COLLIE_ACCOUNT_WINDOWS", true, env),
     journalRoots: resolveJournalRoots(env),
     submitKeys: submitKeys.length ? submitKeys : ["Enter"],
     commandsFile: join(configDir, "commands.toml"),

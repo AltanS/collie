@@ -1603,7 +1603,7 @@ export function startServer(opts: {
       const readSubagents = opts.subagents?.get(p);
       const subagents = readSubagents !== undefined && cfg.redact ? maskSubagentList(readSubagents) : readSubagents;
       const withSubagents = subagents === undefined ? withTodos : { ...withTodos, subagents };
-      // The usage dots: numbers only, from the statusLine wrapper's file for this session.
+      // The usage dots: numbers only, the session's context and the account's windows (ADR 0118).
       const readUsage = opts.usage?.get(p);
       const withUsage = readUsage === undefined ? withSubagents : { ...withSubagents, usage: readUsage };
       // The branch rides the same way: from memory, never a wait, and no key when there is none.
