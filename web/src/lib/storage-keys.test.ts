@@ -69,6 +69,7 @@ const KEYS = new Map<string, KeyFate>([
   ["collie:pins:v1", { area: "local", prefix: false, fate: "kept", why: "pinned pane ids, no content" }],
   ["collie:wide-layout:v1", { area: "local", prefix: false, fate: "kept", why: "large-screen columns per space: pane addresses and widths, no content (ADR 0120)" }],
   ["collie:wide-sidebar:v1", { area: "local", prefix: false, fate: "kept", why: "preference" }],
+  ["collie:wide-layout-mode:v1", { area: "local", prefix: false, fate: "kept", why: "preference: Auto or Off for the large-screen layout (ADR 0120)" }],
   ["collie:pin-hint:v1", { area: "local", prefix: false, fate: "kept", why: "a dismissed hint" }],
   ["collie:masked-hint:v1", { area: "local", prefix: false, fate: "kept", why: "a dismissed hint" }],
   ["collie:hidden-machines:v1", { area: "local", prefix: false, fate: "kept", why: "machine names hidden here" }],
