@@ -129,15 +129,17 @@ pinch zoom works as it did.
 - **The Joystick is the single-pointer alternative** (WCAG 2.5.1, Pointer Gestures): every move Two
   fingers makes, the Joystick makes with one finger, and the switcher sheet (the Switch pill), the
   sidebar and the space header make with a tap.
-- **TalkBack consumes two-finger swipes**, so with TalkBack on the gesture is inert, and the switcher
+- **TalkBack consumes two-finger swipes**, so with TalkBack on the gesture is expected to be inert (not tried), and the switcher
   (the Switch pill, or the sidebar on a large screen) remains the way. The overlay and the handle are
   `aria-hidden`; nothing a screen reader reaches changed.
 
 ## Consequences
 
-Two fingers attaches four `touch*` listeners and a `pointercancel`, `contextmenu` and `click` listener
-to the document while a pane screen is mounted, with `passive: false`, so the browser waits for the
-touch ones before it starts a scroll from a touch. At rest each returns at once. The joystick listens
+Two fingers attaches four `touch*` listeners and a `pointercancel` and `contextmenu` listener to the
+document while a pane screen is mounted, with `passive: false`, so the browser waits for the touch ones
+before it starts a scroll from a touch. One capture `click` listener, the swallow of an armed lift's
+click, is installed at the first Two fingers mount and kept for the page, because the commit remounts
+the pane view before that click can arrive. At rest each returns at once. The joystick listens
 on its handle only.
 
 The joystick band costs 44px of the chrome block, and only on a device that chose Joystick.
@@ -150,7 +152,9 @@ next translate pass the other locales carry the English strings.
 
 - **Touch only.** A mouse, a trackpad and a keyboard have no gesture here; they keep the sidebar, the
   space header and the switcher.
-- **Tested on Android Chrome only** (Altan's Pixel). Not on iOS Safari, Samsung Internet or Firefox.
+- **The second-finger arm has run in Chromium multi-touch (CDP) only.** The Pixel check of this build
+  is still to do. The earlier hold-to-arm build was tried on Android Chrome (Altan's Pixel). Not tried
+  on iOS Safari, Samsung Internet or Firefox.
 - **The phone-shaped browser leg cannot prove it.** The leg taps; it does not hold one finger and swipe
   another. The machine is a pure reducer with replayed pointer sequences
   (`lib/pane-nav-gesture.test.ts`), the hook has component tests with touch events

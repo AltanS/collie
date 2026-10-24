@@ -1,8 +1,10 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { useState } from "react";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { PaneNav } from "@/hooks/use-display-prefs";
+import { __resetPaneNavClickSwallow } from "@/hooks/use-pane-nav-gesture";
 import { buzz } from "@/lib/haptics";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
 import { panePath } from "@/lib/nav";
@@ -88,8 +90,16 @@ function Harness({ method, onSwitcher, agent = A2 }: { method: PaneNav; onSwitch
   );
 }
 
-async function mount(method: PaneNav, onSwitcher?: () => void, agent?: AgentView) {
-  const router = createMemoryRouter([{ id: ROOT_ROUTE_ID, path: "/", loader: home, element: <Harness method={method} onSwitcher={onSwitcher} agent={agent} /> }], { initialEntries: ["/"] });
+/** The way routes/detail.tsx remounts the pane view on a move: a new key, so a new hook instance. */
+let remountHarness: (() => void) | null = null;
+function Remounting({ method }: { method: PaneNav }) {
+  const [key, setKey] = useState(0);
+  remountHarness = () => setKey((k) => k + 1);
+  return <Harness key={key} method={method} />;
+}
+
+async function mount(method: PaneNav, onSwitcher?: () => void, agent?: AgentView, element = <Harness method={method} onSwitcher={onSwitcher} agent={agent} />) {
+  const router = createMemoryRouter([{ id: ROOT_ROUTE_ID, path: "/", loader: home, element }], { initialEntries: ["/"] });
   const view = render(<RouterProvider router={router} />);
   await screen.findByTestId("reading");
   vi.useFakeTimers();
@@ -116,6 +126,7 @@ beforeEach(() => {
   navMock.side.mockClear();
   copyClicked.mockClear();
   __resetPaneNavHint();
+  __resetPaneNavClickSwallow();
   vi.mocked(buzz).mockClear();
   __resetWideLayoutStore();
 });
@@ -258,6 +269,27 @@ describe("Two fingers", () => {
     hold(250);
     expect(click(copy, 245, 400)).toBe(true);
     expect(copyClicked).toHaveBeenCalledTimes(2);
+  });
+
+  it("still swallows the click of the committing lift after the move remounts the pane view", async () => {
+    await mount("twoFingers", undefined, undefined, <Remounting method="twoFingers" />);
+    navMock.side.mockImplementationOnce(() => remountHarness?.());
+    const before = screen.getByTestId("copy");
+    const text = await armAndLand();
+    moveTo(text, [T(1, 100, 300), T(2, 245, 400)]);
+    end(text, T(2, 245, 400), [T(1, 100, 300)]);
+    end(text, T(1, 100, 300), []);
+    expect(navMock.side).toHaveBeenCalledTimes(1);
+    // The move remounted the view: a new hook instance, a new button under the finger.
+    const copy = screen.getByTestId("copy");
+    expect(copy).not.toBe(before);
+    hold(100);
+    expect(click(copy, 245, 400)).toBe(false);
+    expect(click(copy, 101, 301)).toBe(false);
+    expect(copyClicked).not.toHaveBeenCalled();
+    hold(350);
+    expect(click(copy, 245, 400)).toBe(true);
+    expect(copyClicked).toHaveBeenCalledTimes(1);
   });
 
   it("the first finger lifted mid-swipe, with the second still down, cancels and its lifts still click nothing", async () => {

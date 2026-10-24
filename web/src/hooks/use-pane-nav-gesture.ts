@@ -38,7 +38,8 @@ import {
 // AN ARMED TOUCH NEVER CLICKS. Once a touch sequence armed, the lift of each of its fingers is
 // prevented (no tap on what is under it: a belt pill, an Allow button, a link), a click that still
 // arrives within 400 ms where a finger lifted is swallowed in the capture phase, and its long-press
-// menu stays refused until every finger is up. That holds after a cancel too.
+// menu stays refused until every finger is up. That holds after a cancel too. The lifts and the one
+// `click` listener that swallows live at module scope (below), because a commit remounts the view.
 //
 // A SECOND FINGER INSIDE THE HOLD IS A PINCH. It lands before 300 ms, so the machine cancels and the
 // rest of that touch sequence is left to the browser: nothing arms until every finger has lifted. A
@@ -131,6 +132,44 @@ function watchLift(target: EventTarget | null, onLift: (e: TouchEvent) => void):
   };
 }
 
+// ── THE CLICK SWALLOW OUTLIVES THE PANE VIEW ────────────────────────────────────────────────────────
+// A commit moves to another pane, and routes/detail.tsx keys AgentChat by the pane's address, so the
+// view whose hook heard the lift unmounts before the browser's click of that lift can arrive. So the
+// lifts of an armed sequence, and the one capture `click` listener that swallows them, are the page's,
+// not the view's: installed at the first Two fingers mount and kept for the life of the page. At rest
+// the listener returns at once.
+
+/** Where the fingers of an armed sequence lifted, for the click that may still follow. */
+let armedLifts: Lift[] = [];
+let swallowInstalled = false;
+
+/** The click a browser still makes of an armed lift, swallowed before anything hears it. */
+function swallowArmedClick(e: MouseEvent): void {
+  if (armedLifts.length === 0) return;
+  const ms = now();
+  armedLifts = armedLifts.filter((l) => ms - l.ms <= CLICK_SWALLOW_MS);
+  if (!swallowsClick(armedLifts, { x: e.clientX, y: e.clientY }, ms)) return;
+  veto(e);
+  e.stopImmediatePropagation();
+}
+
+function installClickSwallow(): void {
+  if (swallowInstalled) return;
+  swallowInstalled = true;
+  document.addEventListener("click", swallowArmedClick, { capture: true, passive: false });
+}
+
+/** The fingers of an armed sequence lifted here, now. */
+function noteArmedLifts(changed: readonly TouchLike[]): void {
+  const ms = now();
+  armedLifts = [...armedLifts.filter((l) => ms - l.ms <= CLICK_SWALLOW_MS), ...changed.map((t) => ({ x: t.clientX, y: t.clientY, ms }))];
+}
+
+/** Test seam: forget the lifts, as a fresh page would. */
+export function __resetPaneNavClickSwallow(): void {
+  armedLifts = [];
+}
+
 export interface PaneNavGestureOptions {
   method: PaneNav;
   /** The pane screen's reading area: the Chat stream or the terminal mirror. Two fingers. */
@@ -206,8 +245,7 @@ export function usePaneNavGesture({ method, reading, handle, layout, onCommit, o
     /** This touch sequence armed the mode: its lifts never click and its long press shows no menu,
      *  until every finger is up, even after a cancel. */
     let guarded = false;
-    /** Where the fingers of an armed sequence lifted, for the click that may still follow. */
-    let lifts: Lift[] = [];
+    installClickSwallow();
     let unlift: (() => void) | null = null;
     const reset = () => {
       unlift?.();
@@ -299,8 +337,7 @@ export function usePaneNavGesture({ method, reading, handle, layout, onCommit, o
       if (guarded) {
         // The lift of an armed touch must not become a tap on what is under the finger.
         if (e.cancelable) e.preventDefault();
-        const ms = now();
-        lifts = [...lifts.filter((l) => ms - l.ms <= CLICK_SWALLOW_MS), ...changed.map((t) => ({ x: t.clientX, y: t.clientY, ms }))];
+        noteArmedLifts(changed);
       }
       const gone = new Set(changed.map((t) => t.identifier));
       if (first !== null && e.type === "touchcancel") {
@@ -333,13 +370,6 @@ export function usePaneNavGesture({ method, reading, handle, layout, onCommit, o
     const onContextMenu = (e: Event) => {
       if (guarded) veto(e);
     };
-    /** The click a browser still makes of an armed lift, swallowed before anything hears it. */
-    const onClick = (e: MouseEvent) => {
-      if (lifts.length === 0 || !swallowsClick(lifts, { x: e.clientX, y: e.clientY }, now())) return;
-      veto(e);
-      e.stopImmediatePropagation();
-    };
-
     const opts = { capture: true, passive: false } as const;
     document.addEventListener("touchstart", onStart, opts);
     document.addEventListener("touchmove", onMove, opts);
@@ -347,7 +377,6 @@ export function usePaneNavGesture({ method, reading, handle, layout, onCommit, o
     document.addEventListener("touchcancel", onEnd, opts);
     document.addEventListener("pointercancel", onPointerCancel, opts);
     document.addEventListener("contextmenu", onContextMenu, opts);
-    document.addEventListener("click", onClick, opts);
     return () => {
       document.removeEventListener("touchstart", onStart, opts);
       document.removeEventListener("touchmove", onMove, opts);
@@ -355,7 +384,6 @@ export function usePaneNavGesture({ method, reading, handle, layout, onCommit, o
       document.removeEventListener("touchcancel", onEnd, opts);
       document.removeEventListener("pointercancel", onPointerCancel, opts);
       document.removeEventListener("contextmenu", onContextMenu, opts);
-      document.removeEventListener("click", onClick, opts);
       const was = first;
       reset();
       if (was !== null) send({ t: "cancel", why: "the view went away" });

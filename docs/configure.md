@@ -1028,7 +1028,7 @@ first 300 ms counts as a pinch. A finger that was scrolling, or that starts at t
 edge of the screen where the phone's own back gesture lives, never starts the gesture. From the
 moment the second finger lands until you lift the first, the page holds off selection and scrolling,
 and a selection you made earlier is cleared. Pane navigation is touch only, and a mouse does nothing
-here. With TalkBack on, the gesture does nothing, because TalkBack takes two-finger swipes for
+here. With TalkBack on, the gesture should do nothing, because TalkBack takes two-finger swipes for
 itself; the pane switcher still moves you.
 
 ## Chat view
