@@ -250,7 +250,7 @@ export function isTerminal(phase: Phase): boolean {
   return phase === "commit" || phase === "cancel" || phase === "tap" || phase === "flick";
 }
 
-/** True while the mode is armed: the overlay shows and the page's own touch handling is held off. */
+/** True while the mode is armed: the overlay shows. The hook holds the page off from the second finger (chord) or the arm (stick). */
 export function isArmed(phase: Phase): boolean {
   return phase === "armed" || phase === "stepping";
 }

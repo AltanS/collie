@@ -37,8 +37,8 @@ gesture that lives there must not take any of that away at rest.
    display prefs (`paneNav`), and read when a pane mounts.
    - **Two fingers.** Hold ONE finger on the reading area (the Chat stream or the terminal mirror; not
      a control inside it, the composer, the reply box, the belt or the Keys board) for 300ms, with up
-     to 24px of drift. That arms the mode: a buzz (the haptics setting applies) and the overlay. A
-     SECOND finger then swipes. A step is 40px of travel, or a flick faster than 0.4px per ms over the
+     to 24px of drift. That arms the mode: a buzz (the haptics setting applies) and the overlay, and
+     nothing else yet (below, "Text selection stays on"). A SECOND finger then swipes. A step is 40px of travel, or a flick faster than 0.4px per ms over the
      last 80ms and at least 15px long. The direction is the dominant axis, and a swipe within 40
      degrees of an axis counts its whole length. One swipe is one step unless it travels twice the
      threshold. The second finger may lift and swipe again. Lifting the FIRST finger commits after a
@@ -63,13 +63,28 @@ gesture that lives there must not take any of that away at rest.
 The prototype turned text selection, the long-press menu and double-tap zoom off on the whole pane
 body, always, because Android's own long-press selection starts at about the time the hold arms. In the
 app that would cost copy by long press in the Chat and the mirror, which is a normal way to work.
-Altan decided on 2026-10-24 to keep selection on. So nothing changes at rest: the reading area keeps
-its `touch-action`, and a touch that never arms is left wholly to the browser.
+Altan decided on 2026-10-24 to keep selection on, and restated it after review: the long press that
+starts a selection must keep working. So nothing changes at rest: the reading area keeps its
+`touch-action`, and a touch that never arms is left wholly to the browser.
 
-## Held off only while armed
+The arm itself does not hold the page off either. The 300ms arm comes before the browser's own long
+press (about 400 to 500ms), so a person who means to select would lose the selection to the arm. So
+Two fingers arms in two steps:
 
-From the arm to the commit or the cancel, and nowhere else (`holdOffPage` in
-`hooks/use-pane-nav-gesture.ts`):
+1. **Ready.** The hold ends: the buzz and the overlay, and nothing else. The selection, the root's
+   `user-select`, the long-press menu and the first finger's scroll stay the page's. If the browser now
+   starts a selection (`selectstart`), opens its long-press menu (`contextmenu`), or takes the finger
+   for a scroll (a `touchmove` it no longer lets a listener cancel), the gesture cancels and the
+   browser wins. Neither event is prevented. The rest of that touch sequence is the browser's.
+2. **Held off.** The second finger lands. Only now is the page held off (next section).
+
+The Joystick's handle is `touch-none` and holds no text, so the Joystick holds the page off at its
+arm.
+
+## Held off only once the second finger lands
+
+For Two fingers from the second finger's landing, for the Joystick from its arm, to the commit or the
+cancel, and nowhere else (`holdOffPage` in `hooks/use-pane-nav-gesture.ts`):
 
 - the selection is cleared (`getSelection().removeAllRanges()`);
 - the root takes `user-select: none`;
@@ -83,6 +98,12 @@ From the arm to the commit or the cancel, and nowhere else (`holdOffPage` in
 
 The commit, the cancel, the browser's `touchcancel` and an unmount give all of it back, and the root's
 own `user-select` is put back as it was.
+
+A lift is never lost. The touch events of a finger go to the node it landed on, and the Chat stream
+can replace that node mid-touch; a detached node's `touchend` does not reach the document. So the
+node is watched for the lift too, and every touch event checks the live touch list: a finger that is
+gone from it cancels the gesture, so the mode never stays armed, or the page held off, with no finger
+down. A touch that lands alone also clears a block left by a lost lift.
 
 ## Why a second finger within 300ms is a pinch
 
@@ -109,8 +130,14 @@ the next translate pass the other locales carry the English strings.
   space header and the switcher.
 - **The phone-shaped browser leg cannot prove it.** The leg taps; it does not hold one finger and swipe
   another. The machines and the hook have unit and component tests with touch events.
-- **WebKit's long-press timing is untested on a device.** iOS starts its own selection and callout
-  from a long press; the 300ms arm should win, but no iPhone has run it.
+- **A long press to select still buzzes and shows the overlay first.** The arm comes at 300ms and the
+  browser's selection at about 400 to 500ms, so for that moment the overlay shows; then the selection
+  starts and the overlay leaves. The trade is a short flash for selection kept.
+- **The yield relies on the browser's events.** It needs `selectstart` or `contextmenu` at the start
+  of a long-press selection, or an uncancelable `touchmove` at the start of a scroll. Chrome on Android
+  sends them; WebKit on iOS is untested on a device, and no iPhone has run it.
+- **A selection made earlier is cleared when the second finger lands.** The person chose the move by
+  then.
 - **No touch hardware has run the app's build yet.** Altan chose from the playground prototype; the
   app's own build is checked by its tests only.
 - **A pinned pane or the activity order does not change the axes.** The sidebar can lead with pinned

@@ -635,7 +635,8 @@ export function AgentChat({
   // are niri's: left and right walk this space's panes in the sidebar's order, up and down the spaces.
   // A commit is a sideways move to the target, exactly as the space header's up and down are, so on a
   // large screen the strip follows the URL. The setting is read at mount, like the hand.
-  // Text selection is never touched at rest; the hook holds it off only while the mode is armed.
+  // Text selection is never touched at rest, nor at the arm; the hook holds it off only once a second
+  // finger lands, and a long-press selection before that wins (ADR 0121).
   const paneNav = usePaneNavigation({
     method: paneNavOf(prefs),
     agent,

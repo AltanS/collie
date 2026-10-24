@@ -23,14 +23,27 @@ import {
 // text selection and context menu, and a non-passive `touchmove` that calls preventDefault is the one
 // switch that holds all of them off. Pointer events cannot veto a pan. Both methods are touch only.
 //
-// NOTHING IS HELD OFF AT REST. Text selection stays on in the chat (Altan's decision, 2026-10-24), the
-// reading area keeps its `touch-action`, and a touch that never arms is left wholly to the browser: a
-// scroll, a long-press selection, a pinch. Only WHILE ARMED does the page lose them: the selection is
-// cleared, the root takes `user-select: none`, `contextmenu` and `selectstart` are prevented, and so is
-// every `touchmove`, with non-passive listeners. Commit, cancel and unmount give all of it back.
+// NOTHING IS HELD OFF AT REST, NOR AT THE ARM. Text selection stays on in the chat (Altan's decision,
+// 2026-10-24, restated after review), and that includes the long press that starts a selection. The
+// 300 ms arm comes before the browser's own long press (about 400 to 500 ms), so the Two fingers arm
+// happens in two steps:
+//   1. READY. The hold ends: a buzz and the overlay, and nothing else. The page keeps every gesture of
+//      its own. If the browser now starts a selection or its long-press menu (`selectstart`,
+//      `contextmenu`), or takes the finger for a scroll (a `touchmove` that can no longer be
+//      cancelled), the gesture cancels and the browser wins.
+//   2. HELD OFF. A second finger lands. Only now does the page lose its own handling: the selection
+//      is cleared, the root takes `user-select: none`, `contextmenu` and `selectstart` are prevented,
+//      and so is every `touchmove`, with non-passive listeners. Commit, cancel and unmount give all
+//      of it back.
+// The Joystick handle is `touch-none` and holds no text, so it holds the page off at its arm.
 //
 // A SECOND FINGER INSIDE THE HOLD IS A PINCH. It lands before the mode arms, so the machine cancels and
 // the rest of that touch sequence is left to the browser: nothing arms until every finger has lifted.
+//
+// A LOST LIFT IS RECONCILED. The touch events of a finger go to the node it landed on. When React
+// removes that node mid-touch, its touchend no longer reaches the document. So the node itself is
+// watched for the lift, and every touch event checks the live touch list for the finger it follows: a
+// finger that is gone cancels the gesture, and it never stays armed with no finger down.
 
 /** What the reading area's first finger must not start on: the controls inside it. */
 const NOT_READING =
@@ -69,8 +82,9 @@ function veto(e: Event): void {
 }
 
 /**
- * Hold the page's own touch handling off while the mode is armed, and return the way back. The
- * root's `user-select` is put back exactly as it was, inline value and all.
+ * Hold the page's own touch handling off, and return the way back. Two fingers calls it once the
+ * second finger lands, the Joystick at its arm. The root's `user-select` is put back exactly as it
+ * was, inline value and all.
  */
 export function holdOffPage(): () => void {
   const root = document.documentElement;
@@ -89,6 +103,39 @@ export function holdOffPage(): () => void {
     const put = (prop: string, value: string) => (value === "" ? root.style.removeProperty(prop) : root.style.setProperty(prop, value));
     put("user-select", before.userSelect);
     put("-webkit-user-select", before.webkit);
+  };
+}
+
+/**
+ * While ready (armed, no second finger yet), let the browser's own selection and long-press menu win:
+ * either one calls `onYield`, and neither is prevented. Returns the way to stop watching.
+ */
+export function yieldToSelection(onYield: () => void): () => void {
+  const opts = { capture: true, passive: true } as const;
+  const fire = () => onYield();
+  document.addEventListener("selectstart", fire, opts);
+  document.addEventListener("contextmenu", fire, opts);
+  return () => {
+    document.removeEventListener("selectstart", fire, opts);
+    document.removeEventListener("contextmenu", fire, opts);
+  };
+}
+
+/**
+ * The lift of a finger whose node left the document mid-touch. Its touchend and touchcancel go to the
+ * detached node and never reach a document listener, so they are heard on the node itself. While the
+ * node is still connected the document listener has already handled the event, and this one stays out.
+ */
+function watchLift(target: EventTarget | null, onLift: (e: TouchEvent) => void): () => void {
+  if (!(target instanceof Node)) return () => {};
+  const lift = (e: Event) => {
+    if (!target.isConnected && e instanceof TouchEvent) onLift(e);
+  };
+  target.addEventListener("touchend", lift);
+  target.addEventListener("touchcancel", lift);
+  return () => {
+    target.removeEventListener("touchend", lift);
+    target.removeEventListener("touchcancel", lift);
   };
 }
 
@@ -114,11 +161,16 @@ export function usePaneNavGesture({ method, reading, handle, layout, onCommit, o
   const kind: GestureKind = method === "joystick" ? "stick" : "chord";
   const [state, setState] = useState(() => idleGesture(kind));
   const machine = useRef(state);
+  /** The way back from {@link holdOffPage}, while the page is held off. */
   const restore = useRef<(() => void) | null>(null);
+  /** The way to stop {@link yieldToSelection}, while Two fingers is ready and not yet held off. */
+  const unwatch = useRef<(() => void) | null>(null);
   const live = useRef({ layout, onCommit, onSwitcher, kind });
   live.current = { layout, onCommit, onSwitcher, kind };
 
   const release = useCallback(() => {
+    unwatch.current?.();
+    unwatch.current = null;
     restore.current?.();
     restore.current = null;
   }, []);
@@ -132,7 +184,15 @@ export function usePaneNavGesture({ method, reading, handle, layout, onCommit, o
       machine.current = next;
       if (!isArmed(prev.phase) && isArmed(next.phase)) {
         buzz();
-        restore.current ??= holdOffPage();
+        // Two fingers is READY: the browser's selection may still take the touch (see the top).
+        if (next.kind === "chord") unwatch.current ??= yieldToSelection(() => sendRef.current({ t: "cancel", why: "the browser started a selection" }));
+        else restore.current ??= holdOffPage();
+      }
+      // The second finger landed: now the page is held off.
+      if (isArmed(next.phase) && next.second !== null && restore.current === null) {
+        unwatch.current?.();
+        unwatch.current = null;
+        restore.current = holdOffPage();
       }
       if (isTerminal(next.phase)) {
         release();
@@ -144,6 +204,8 @@ export function usePaneNavGesture({ method, reading, handle, layout, onCommit, o
     },
     [release],
   );
+  const sendRef = useRef(send);
+  sendRef.current = send;
 
   // A method change starts the machine afresh.
   useEffect(() => {
@@ -161,12 +223,15 @@ export function usePaneNavGesture({ method, reading, handle, layout, onCommit, o
     let second: number | null = null;
     /** A touch sequence that is not ours (a pinch, a cancelled hold): nothing arms until all fingers lift. */
     let blocked = false;
+    let unlift: (() => void) | null = null;
     const clear = () => {
       if (timer !== null) clearTimeout(timer);
       timer = null;
     };
     const reset = () => {
       clear();
+      unlift?.();
+      unlift = null;
       first = null;
       second = null;
     };
@@ -177,10 +242,28 @@ export function usePaneNavGesture({ method, reading, handle, layout, onCommit, o
         blocked = true;
       }
     };
+    /** The first finger is down by our count but not in the live list: its lift was lost. Cancel. */
+    const lost = (e: TouchEvent): boolean => {
+      if (first === null || find(e.touches, first) !== undefined) return false;
+      if (find(e.changedTouches, first) !== undefined && (e.type === "touchend" || e.type === "touchcancel")) return false;
+      send({ t: "cancel", why: "the first finger's lift was lost" });
+      reset();
+      blocked = list(e.touches).length > 0;
+      return true;
+    };
+    /** The same for the second finger: its lift was lost, so a new second finger may swipe. */
+    const lostSecond = (e: TouchEvent) => {
+      if (first === null || second === null || find(e.touches, second) !== undefined) return;
+      second = null;
+      send({ t: "second-up" });
+    };
 
     const onStart = (e: TouchEvent) => {
       const touches = list(e.touches);
+      lost(e);
       if (first === null) {
+        // One finger down is a fresh sequence: no earlier finger can still be down.
+        if (touches.length === 1) blocked = false;
         if (blocked || touches.length !== 1) {
           blocked = touches.length > 0;
           return;
@@ -189,6 +272,7 @@ export function usePaneNavGesture({ method, reading, handle, layout, onCommit, o
         const layoutNow = live.current.layout;
         if (t === undefined || layoutNow === null || !startsOnReading(e.target, reading)) return;
         first = t.identifier;
+        unlift = watchLift(e.target, onEnd);
         send({ t: "down", at: at(t), layout: layoutNow, ms: now() });
         timer = setTimeout(() => {
           timer = null;
@@ -196,6 +280,7 @@ export function usePaneNavGesture({ method, reading, handle, layout, onCommit, o
         }, DEFAULT_TUNING.chord.holdMs);
         return;
       }
+      lostSecond(e);
       const wasArmed = isArmed(machine.current.phase);
       for (const t of list(e.changedTouches)) {
         if (t.identifier === first || second !== null) continue;
@@ -208,7 +293,10 @@ export function usePaneNavGesture({ method, reading, handle, layout, onCommit, o
     };
 
     const onMove = (e: TouchEvent) => {
-      if (first === null) return;
+      if (lost(e) || first === null) return;
+      lostSecond(e);
+      // Ready, and the browser has begun a scroll with this finger: its moves can no longer be refused.
+      if (isArmed(machine.current.phase) && restore.current === null && !e.cancelable) send({ t: "cancel", why: "the browser took the touch for a scroll" });
       const f = find(e.touches, first);
       if (f !== undefined) send({ t: "move", at: at(f), ms: now() });
       const s = second === null ? undefined : find(e.touches, second);
@@ -216,7 +304,8 @@ export function usePaneNavGesture({ method, reading, handle, layout, onCommit, o
       ended();
     };
 
-    const onEnd = (e: TouchEvent) => {
+    function onEnd(e: TouchEvent) {
+      lost(e);
       const gone = new Set(list(e.changedTouches).map((t) => t.identifier));
       if (first !== null && e.type === "touchcancel") {
         send({ t: "cancel", why: "the browser cancelled the touch" });
@@ -234,7 +323,7 @@ export function usePaneNavGesture({ method, reading, handle, layout, onCommit, o
         reset();
       }
       if (list(e.touches).length === 0) blocked = false;
-    };
+    }
 
     const opts = { capture: true, passive: false } as const;
     document.addEventListener("touchstart", onStart, opts);
@@ -246,8 +335,9 @@ export function usePaneNavGesture({ method, reading, handle, layout, onCommit, o
       document.removeEventListener("touchmove", onMove, opts);
       document.removeEventListener("touchend", onEnd, opts);
       document.removeEventListener("touchcancel", onEnd, opts);
-      clear();
-      if (first !== null) send({ t: "cancel", why: "the view went away" });
+      const was = first;
+      reset();
+      if (was !== null) send({ t: "cancel", why: "the view went away" });
     };
   }, [enabled, method, reading, send]);
 
@@ -272,7 +362,16 @@ export function usePaneNavGesture({ method, reading, handle, layout, onCommit, o
       unlook();
     };
 
+    /** The finger is ours by our count but not in the live list: its lift was lost. Cancel. */
+    const lost = (e: TouchEvent): boolean => {
+      if (finger === null || find(e.touches, finger) !== undefined) return false;
+      clear();
+      finger = null;
+      send({ t: "cancel", why: "the finger's lift was lost" });
+      return true;
+    };
     const onStart = (e: TouchEvent) => {
+      lost(e);
       const t = list(e.changedTouches)[0];
       const layoutNow = live.current.layout;
       if (finger !== null || t === undefined || layoutNow === null || list(e.touches).length !== 1) return;
@@ -291,7 +390,7 @@ export function usePaneNavGesture({ method, reading, handle, layout, onCommit, o
       }, holdMs);
     };
     const onMove = (e: TouchEvent) => {
-      if (finger === null) return;
+      if (lost(e) || finger === null) return;
       const t = find(e.touches, finger);
       if (t !== undefined) send({ t: "move", at: at(t), ms: now() });
       // A finger that moved before the hold will not arm: the hold look goes at once.
