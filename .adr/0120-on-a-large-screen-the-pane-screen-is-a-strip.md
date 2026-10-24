@@ -116,6 +116,14 @@ lists the space's panes the strip does not show, each to open beside the focus, 
 agent and New space both open the New page, which takes no space to start in, so a new agent always
 lands in a new space; a "new agent in this space" waits for a space field on the New page.
 
+The strip snaps to column starts (`scroll-snap-type: x mandatory`, `lib/strip-snap.ts`). Touch is the
+browser's momentum and snap alone. A wheel or trackpad gesture that ends between two starts settles
+on the nearer one (`hooks/use-strip-snap.ts`), and Shift with a vertical wheel scrolls the strip. After
+a settle the focus follows the view, as in niri: a focused column the view no longer shows whole hands
+the focus to the leftmost whole column. While the layout is mounted the page takes
+`overscroll-behavior-x: none` and every scroller in it `contain`, because desktop Chrome reads a
+sideways overscroll as history back; below 600px the page keeps its own behaviour.
+
 The switcher sheet inside the pane screen is still mounted on a large screen, closed, with no pill to
 open it; the sidebar repeats its wiring. If the two drift, the sheet should take its list from the
 sidebar's component.

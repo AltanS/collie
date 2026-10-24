@@ -18,8 +18,10 @@ import { useMediaQuery } from "@/hooks/use-media-query";
 import { useNav } from "@/hooks/use-nav";
 import { useNoPromptsGuard } from "@/hooks/use-no-prompts-guard";
 import type { FoldPosture } from "@/hooks/use-fold-posture";
+import { useRootOverscrollLock } from "@/hooks/use-root-overscroll-lock";
 import { useRowDrag, useVerticalSwipe, type DropTarget } from "@/hooks/use-row-drag";
 import { useSpaceActions } from "@/hooks/use-spaces";
+import { useStripSnap } from "@/hooks/use-strip-snap";
 import { queueBeltIntent, type BeltIntent } from "@/lib/belt-intent";
 import { writeRefusal } from "@/lib/host-health";
 import { hostName, isMultiHost, paneRowKey } from "@/lib/hosts";
@@ -33,6 +35,7 @@ import { usePins } from "@/lib/pins";
 import { useRootData } from "@/lib/route-data";
 import { paneScopeKey, type Scope } from "@/lib/scope";
 import { shortenHome } from "@/lib/shorten-home";
+import { COLUMN_SNAP_CLASSES, STRIP_SNAP_CLASSES, leftmostWholeColumn, shouldFollowFocus } from "@/lib/strip-snap";
 import { isReadOnly, statusLabel, type AgentView } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import {
@@ -283,6 +286,33 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
     measure();
   }, [focusAt, signature, stripWidth, reduced, measure, book]);
 
+  // ── Wheel and trackpad settle on a column start; the focus follows the view, as in niri ─────
+  // Touch is the browser's own momentum and mandatory snap. After a wheel gesture settles, a focused
+  // column the view no longer shows whole hands the focus to the leftmost whole one. Folded as a book
+  // the two columns are fixed, so nothing follows.
+  useStripSnap(scroller, {
+    columnStarts: () => [...(scroller.current?.querySelectorAll<HTMLElement>("[data-col-key]") ?? [])].map((c) => c.offsetLeft),
+    reducedMotion: reduced,
+    onSettled: (left) => {
+      const node = scroller.current;
+      if (node === null || book) return;
+      const cols = [...node.querySelectorAll<HTMLElement>("[data-col-key]")].map((c) => ({
+        key: c.dataset.colKey ?? "",
+        start: c.offsetLeft,
+        width: c.offsetWidth,
+        focused: c.hasAttribute("data-focused"),
+      }));
+      const focusedBox = cols.find((c) => c.focused);
+      const viewport = { left, width: node.clientWidth };
+      if (focusedBox === undefined || !shouldFollowFocus(viewport, focusedBox)) return;
+      const next = leftmostWholeColumn(viewport, cols);
+      const pane = next === undefined ? undefined : byColumn.get(next);
+      if (pane !== undefined) goTo(pane);
+    },
+  });
+  // Desktop Chrome reads a sideways overscroll as history back; the layout owns the page while mounted.
+  useRootOverscrollLock(true);
+
   // ── The one header, docked in the focused column; the mark in the sidebar's top row ─────────
   const [row, setRow] = useState<HTMLElement | null>(null);
   const [mark, setMark] = useState<HTMLElement | null>(null);
@@ -309,8 +339,9 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
       data-width-class={widthClass}
       data-fold={fold}
       // No scroll bar anywhere in the layout: the position strip says where the strip is, and a bar on
-      // every column and list would be a second, noisier answer.
-      className="flex min-h-0 w-full flex-1 [&_*]:[scrollbar-width:none] [&_*::-webkit-scrollbar]:hidden"
+      // every column and list would be a second, noisier answer. No scroller in it hands a sideways
+      // overscroll on to the page, where Chrome would read it as history back.
+      className="flex min-h-0 w-full flex-1 [&_*]:overscroll-x-contain [&_*]:[scrollbar-width:none] [&_*::-webkit-scrollbar]:hidden"
     >
       <aside
         data-slot={sidebarShown ? "wide-sidebar" : "rail"}
@@ -394,7 +425,7 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
           className={cn(
             "relative flex min-h-0 flex-1 overflow-y-hidden",
             book ? "overflow-x-hidden" : "overflow-x-auto",
-            book || drag !== null ? "snap-none" : "snap-x snap-mandatory",
+            book || drag !== null ? "snap-none overscroll-x-contain" : STRIP_SNAP_CLASSES,
           )}
         >
           {/* One flat list, the gutter a sibling, so a column keeps its identity through a fold. */}
@@ -416,7 +447,8 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
                 aria-label={pane ? paneName(pane) : undefined}
                 aria-current={isFocus && framed ? "true" : undefined}
                 className={cn(
-                  "flex h-full shrink-0 snap-start border-r border-rule",
+                  "flex h-full shrink-0 border-r border-rule",
+                  COLUMN_SNAP_CLASSES,
                   segment === "left" && "fold-left-col",
                   segment === "right" && "fold-right-col",
                 )}

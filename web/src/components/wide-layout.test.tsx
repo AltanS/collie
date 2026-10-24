@@ -176,6 +176,19 @@ describe("below 600 px", () => {
   });
 });
 
+describe("the page under the layout", () => {
+  it("stops a sideways overscroll from going back while the layout is mounted, and only then", async () => {
+    const root = document.documentElement;
+    await mount("w1:p1", 1200);
+    expect(root.style.overscrollBehaviorX).toBe("none");
+    expect(q(document.body, '[data-slot="strip"]')?.className).toContain("overscroll-x-contain");
+    cleanup();
+    expect(root.style.overscrollBehaviorX).toBe("");
+    await mount("w1:p1", 599);
+    expect(root.style.overscrollBehaviorX).toBe("");
+  });
+});
+
 describe("the sidebar", () => {
   it("is a raised panel with the mark, the word and an open toggle, and the header docks in the focused column", async () => {
     const { container } = await mount("w1:p1", 1200);
