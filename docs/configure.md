@@ -975,19 +975,23 @@ The layout has three parts.
   the sidebar to show it. Hold it (right-click with a mouse) for **Open here**, which replaces the
   pane you are in, or **Open beside**, which adds it next to that pane. You can also drag a pane
   into the row. **Remove from view** takes a pane out of the row. The agent keeps running.
-- **The space header.** It holds the space's name, its tabs and a **+** for a new tab. Its two
-  buttons, or a vertical swipe, move to the space above or below.
+- **The space header.** It holds the space's name, its tabs and a **+** for a new tab. Hold a tab
+  (right-click with a mouse) to **Rename** it or **Close tab**, as on the phone. Closing the tab you
+  work in moves you to a pane of the tab beside it. Its two buttons, or a vertical swipe, move to the space
+  above or below.
 
 Each pane has a width: **1/2**, **4/5** or **Full** of the row. A pane is never narrower than 360
 pixels, so a width that would make it narrower is not offered. When the row cannot hold two panes at
 that size, every pane is **Full** width and the control is hidden. The row snaps to the start of a
 pane when you stop scrolling, and a scroll to the side never goes back a page in the browser. The row
 always ends with **Add a pane**. It lists the panes of this space that the row does not show, each
-with **Open here** (the pane becomes the last one in the row), and **New agent in a new space**.
+with **Open here** (the pane becomes the last one in the row). It also offers **New agent in this
+space**, which opens the New page on that pane's machine and folder and adds the agent as a new tab
+of this space, next to the pane you are in, and **New agent in a new space**.
 
-Every pane has its own belt, except when you hold a foldable like a laptop (see below), and a tap on it acts on that pane. The pane you work in has a frame and
-the reply box. A tap on another pane's belt acts on that pane and moves you there. Tap the pane to
-move without acting.
+Every pane has its own belt, except when you hold a foldable like a laptop (see below). The pane you
+work in has a frame and the reply box. A tap on another pane's belt acts on that pane and moves you
+there. Tap the pane to move without acting.
 
 The layout is kept on this device only, and Back and shared links work as before.
 
@@ -998,6 +1002,29 @@ This split applies at any width, so it also changes a half-open flip phone. The 
 flat while the keyboard is up. Held like a book, the split applies from 600 pixels wide. With two
 panes, each half shows one pane and the sidebar becomes the rail. With one pane, the sidebar stays
 open in one half and the pane fills the other. Other browsers show the flat layout only.
+
+### Pane navigation
+
+A gesture moves you between panes and spaces, on a phone and in the large-screen layout. Left and
+right go to the previous and next pane of the space, in the switcher's order. Up and down go to the
+previous and next space. At the first or last pane or space, a move stays put. Choose the method in
+**Settings → Appearance → Pane navigation**. A change shows the next time a pane opens.
+
+| Method          | How it works                                                                                                                                                                                                                     |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Two fingers** | The default. Hold one finger still on the chat or the terminal. The phone buzzes and a box shows where you are. Swipe with a second finger: a short swipe is one step, a long one takes more. Lift the first finger to go there. |
+| **Joystick**    | Hold the handle just above the belt, then drag the same finger. Let go on another pane to go there, or back where you started to stay. On a phone, a quick drag up opens the pane switcher.                                      |
+| **Off**         | No gesture. The pane switcher still moves you, and on a large screen so do the sidebar and the space header.                                                                                                                     |
+
+The box names the pane you are moving to, with its status, its space and its place in the space,
+above a map of the spaces. Lift the first finger with no swipe, and you stay where you are.
+
+The gesture keeps the page's own touches. A pinch still zooms, because a second finger that lands
+during the hold counts as a pinch. A long press still selects text: if the phone starts a selection,
+its long-press menu or a scroll before the second finger lands, the gesture stops. From the moment
+the second finger lands until you lift the first, the page holds off selection and scrolling. A
+selection you made earlier is cleared when the second finger lands. Pane navigation is touch only,
+and a mouse does nothing here.
 
 ## Chat view
 
