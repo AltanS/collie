@@ -959,7 +959,7 @@ they are part of the content stream rather than chrome.
 
 ## Large screens
 
-> **Note.** On a tablet or an open Fold the pane screen shows several panes side by side. A phone is not changed.
+> **Note.** On a tablet or an open Fold the pane screen shows several panes side by side. A phone held upright and flat is not changed.
 
 The layout turns on for the pane screen when the screen is at least 600 CSS pixels wide and at least
 480 pixels tall. A phone held sideways is under 480 pixels tall, so it keeps the phone layout.
@@ -982,10 +982,10 @@ Each pane has a width: **1/2**, **4/5** or **Full** of the row. A pane is never 
 pixels, so a width that would make it narrower is not offered. When the row cannot hold two panes at
 that size, every pane is **Full** width and the control is hidden. The row snaps to the start of a
 pane when you stop scrolling, and a scroll to the side never goes back a page in the browser. The row
-always ends with **Add a pane**. It lists the other panes of the space and has **New agent**, which
-starts it in a new space.
+always ends with **Add a pane**. It lists the panes of this space that the row does not show, each
+with **Open here** (the pane becomes the last one in the row), and **New agent in a new space**.
 
-Every pane has its own belt, and a tap on it acts on that pane. The pane you work in has a frame and
+Every pane has its own belt, except when you hold a foldable like a laptop (see below), and a tap on it acts on that pane. The pane you work in has a frame and
 the reply box. A tap on another pane's belt acts on that pane and moves you there. Tap the pane to
 move without acting.
 
@@ -993,19 +993,11 @@ The layout is kept on this device only, and Back and shared links work as before
 
 **Foldables.** On a foldable held half open, Chrome and Samsung Internet split the screen at the fold.
 Held like a laptop, the conversation stays above the fold, and the belt and a taller reply box sit
-below it. The layout goes back to flat while the keyboard is up. Held like a book, each half shows
-one pane, and the sidebar is the rail. Other browsers show the flat layout only.
-
-**Pane navigation.** You can move between panes and spaces with a gesture. Pick the way in
-**Settings → Pane navigation**.
-
-| Way | How it works |
-| --- | --- |
-| Two fingers | The default. Hold one finger on the reading area, then swipe with a second finger. Left and right move between panes. Up and down move between spaces. The move happens when you lift the first finger. |
-| Joystick | Hold the handle above the belt and slide it in the direction you want. |
-| Off | No gesture. |
-
-Selecting text keeps working in all three.
+below it. Only the pane you work in keeps its belt, below the fold. The other panes show Chat only.
+This split applies at any width, so it also changes a half-open flip phone. The layout goes back to
+flat while the keyboard is up. Held like a book, the split applies from 600 pixels wide. With two
+panes, each half shows one pane and the sidebar becomes the rail. With one pane, the sidebar stays
+open in one half and the pane fills the other. Other browsers show the flat layout only.
 
 ## Chat view
 
