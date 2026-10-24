@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useKeyboardOpen } from "@/hooks/use-keyboard";
 import { useSheetPull } from "@/hooks/use-sheet-pull";
+import { usePaneNavigation } from "@/components/pane-nav";
 import { tabCreateKey, useSpaceActions } from "@/hooks/use-spaces";
 import { useNav } from "@/hooks/use-nav";
 import { useDashPrefs, openForCount } from "@/hooks/use-dash-prefs";
@@ -20,7 +21,7 @@ import { useLaunchers } from "@/lib/launchers";
 import { shortenHome } from "@/lib/shorten-home";
 import { useNoPromptsGuard } from "@/hooks/use-no-prompts-guard";
 import { buzz } from "@/lib/haptics";
-import { handOf, mirrorFont, useDisplayPrefs } from "@/hooks/use-display-prefs";
+import { handOf, mirrorFont, paneNavOf, useDisplayPrefs } from "@/hooks/use-display-prefs";
 import { useChatWindow } from "@/hooks/use-chat-window";
 import { useChatReady } from "@/hooks/use-chat-ready";
 import { usePaneStart } from "@/hooks/use-pane-start";
@@ -628,6 +629,30 @@ export function AgentChat({
           alert: elsewhereNeedsYou,
         }
       : undefined;
+  // ── PANE NAVIGATION BY GESTURE (M70 spec 03, ADR 0121) ────────────────────────
+  // Two fingers (the default): hold one finger still on the reading area, then swipe a second finger.
+  // Joystick: hold the handle above the belt, then steer with the same finger. Off: neither. The axes
+  // are niri's: left and right walk this space's panes in the sidebar's order, up and down the spaces.
+  // A commit is a sideways move to the target, exactly as the space header's up and down are, so on a
+  // large screen the strip follows the URL. The setting is read at mount, like the hand.
+  // Text selection is never touched at rest; the hook holds it off only while the mode is armed.
+  const paneNav = usePaneNavigation({
+    method: paneNavOf(prefs),
+    agent,
+    agents,
+    shellPanes,
+    tabs,
+    servers,
+    scope,
+    // A quick drag up on the handle is the Switch pill's drag: the switcher sheet, where there is one.
+    onSwitcher:
+      pullHandle === undefined
+        ? undefined
+        : () => {
+            buzz();
+            setDrawer("switcher");
+          },
+  });
   // ── COMPOSING MODE — read ONCE, here, for the whole pane ──────────────────────
   // The soft keyboard takes roughly 45% of a phone. What is left has to hold the header, the tab
   // strip, the agent's statusline, the grab handle, the status band, the controls row and the draft
@@ -2551,7 +2576,9 @@ export function AgentChat({
               and `focusFromMirror` deliberately declines a tap that landed on a control or a text
               selection. It is a touch convenience layered over an already-reachable action. */}
           <div
+            ref={paneNav.setReading}
             role="presentation"
+            data-slot="pane-reading"
             className={cn(
               mirrorGap,
               // `relative` anchors the floating terminal-draft notice's slot, the last child below.
@@ -3029,6 +3056,7 @@ export function AgentChat({
                     // behind the back arrow is how one reaches another conversation, and a program has no
                     // folder on this machine to show. The belt keeps Display and the program's own section.
                     hand={handOf(prefs)}
+                    aboveBelt={paneNav.handle}
                     onSent={onSent}
                     onReload={() => revalidator.revalidate()}
                     onAnswerDialog={answerDialog}
@@ -3073,6 +3101,8 @@ export function AgentChat({
                   prefs={prefs}
                   // Settings → Hand: which thumb the belt and the reply box are laid out for.
                   hand={handOf(prefs)}
+                  // Settings → Pane navigation → Joystick: the handle band, just above the belt (ADR 0121).
+                  aboveBelt={paneNav.handle}
                   todos={agent?.todos}
                   subagents={agent?.subagents}
                   // The belt's ⚙: the button is the composer's, the sheet it opens is mounted below
@@ -3112,6 +3142,9 @@ export function AgentChat({
             </div>
           </Collapse>
         </div>
+
+        {/* The pane navigation overlay: portalled, fixed, drawn only while a gesture is armed (ADR 0121). */}
+        {paneNav.overlay}
 
         {/* Swipe-up quick switcher — just the panes (agents + shells), reached by the thumb gesture.
             Switch-only for panes: pane closing lives in the pane pill's long-press sheet, not here.

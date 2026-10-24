@@ -114,6 +114,12 @@ export const ko: Dictionary = {
   "settings.wideLayout.off": "Off",
   "settings.wideLayout.hint":
     "Auto shows the sidebar and pane columns on a screen at least 600 px wide and 480 px tall. Off keeps the phone layout everywhere.",
+  "settings.paneNav.title": "Pane navigation",
+  "settings.paneNav.twoFingers": "Two fingers",
+  "settings.paneNav.joystick": "Joystick",
+  "settings.paneNav.off": "Off",
+  "settings.paneNav.hint":
+    "Move between panes and spaces by gesture. Two fingers: hold one finger on the chat or the terminal, then swipe with a second. Joystick: hold the handle above the belt, then drag. A change shows the next time a pane opens.",
   "settings.zen.title": "젠 모드",
   "settings.zen.description": "터미널만 남기고 나머지 UI를 숨기는 메뉴 항목을 추가합니다.",
   "settings.zen.auto.label": "가로 모드에서 자동 실행",
@@ -538,6 +544,7 @@ export const ko: Dictionary = {
   "chat.switcher.launch.here": "여기",
   "wide.sidebar.label": "창",
   "wide.space.position": "{total}개 중 {index}번째 스페이스",
+  "paneNav.position": "pane {index} of {total}",
   "wide.space.previous": "이전 스페이스",
   "wide.space.next": "다음 스페이스",
   "wide.openHere": "여기에 열기",

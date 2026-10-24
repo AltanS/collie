@@ -19,6 +19,7 @@ import { HarnessBarControl } from "@/components/harness-bar-control";
 import { HarnessPrefsControl } from "@/components/harness-prefs-control";
 import { LanguageControl } from "@/components/language-control";
 import { NotifyPrefsControl } from "@/components/notify-prefs-control";
+import { PaneNavControl } from "@/components/pane-nav-control";
 import { PaneOrderControl } from "@/components/pane-order-control";
 import { WideLayoutControl } from "@/components/wide-layout-control";
 import { PairedDevices } from "@/components/paired-devices";
@@ -106,6 +107,10 @@ export function SettingsAppearanceRoute() {
           way out for a screen where the layout misbehaves, so it sits with the other arrangement
           choices. Stored per device. */}
       <WideLayoutControl />
+      {/* How the pane screen moves between panes and spaces by gesture (ADR 0121): Two fingers,
+          Joystick or Off. Beside Large-screen layout, because both decide how the pane screen is
+          arranged and moved through. Stored per device with the hand. */}
+      <PaneNavControl />
       {/* Last, and it is the odd one here: every card above changes how a surface LOOKS, and this
           one changes what a surface CONTAINS. It earns the place anyway, because the question it
           answers is the same question — what do I want on screen — and filing it under Device would

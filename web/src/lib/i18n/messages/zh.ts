@@ -112,6 +112,12 @@ export const zh: Dictionary = {
   "settings.wideLayout.off": "Off",
   "settings.wideLayout.hint":
     "Auto shows the sidebar and pane columns on a screen at least 600 px wide and 480 px tall. Off keeps the phone layout everywhere.",
+  "settings.paneNav.title": "Pane navigation",
+  "settings.paneNav.twoFingers": "Two fingers",
+  "settings.paneNav.joystick": "Joystick",
+  "settings.paneNav.off": "Off",
+  "settings.paneNav.hint":
+    "Move between panes and spaces by gesture. Two fingers: hold one finger on the chat or the terminal, then swipe with a second. Joystick: hold the handle above the belt, then drag. A change shows the next time a pane opens.",
   "settings.zen.title": "专注模式",
   "settings.zen.description": "在面板菜单中添加选项，隐藏终端以外的所有界面元素。",
   "settings.zen.auto.label": "横屏时自动启用",
@@ -527,6 +533,7 @@ export const zh: Dictionary = {
   "chat.switcher.launch.here": "当前位置",
   "wide.sidebar.label": "窗格",
   "wide.space.position": "工作区 {index} / {total}",
+  "paneNav.position": "pane {index} of {total}",
   "wide.space.previous": "上一个工作区",
   "wide.space.next": "下一个工作区",
   "wide.openHere": "在此打开",

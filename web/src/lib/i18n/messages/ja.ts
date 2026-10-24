@@ -111,6 +111,12 @@ export const ja: Dictionary = {
   "settings.wideLayout.off": "Off",
   "settings.wideLayout.hint":
     "Auto shows the sidebar and pane columns on a screen at least 600 px wide and 480 px tall. Off keeps the phone layout everywhere.",
+  "settings.paneNav.title": "Pane navigation",
+  "settings.paneNav.twoFingers": "Two fingers",
+  "settings.paneNav.joystick": "Joystick",
+  "settings.paneNav.off": "Off",
+  "settings.paneNav.hint":
+    "Move between panes and spaces by gesture. Two fingers: hold one finger on the chat or the terminal, then swipe with a second. Joystick: hold the handle above the belt, then drag. A change shows the next time a pane opens.",
   "settings.zen.title": "Zen モード",
   "settings.zen.description": "ペインメニューに、ターミナル以外のUI要素を非表示にする項目を追加します。",
   "settings.zen.auto.label": "横向きで自動的に有効化",
@@ -537,6 +543,7 @@ export const ja: Dictionary = {
   "chat.switcher.launch.here": "ここ",
   "wide.sidebar.label": "ペイン",
   "wide.space.position": "Space {index} / {total}",
+  "paneNav.position": "pane {index} of {total}",
   "wide.space.previous": "前のSpace",
   "wide.space.next": "次のSpace",
   "wide.openHere": "ここで開く",

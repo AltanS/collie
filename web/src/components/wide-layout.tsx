@@ -30,7 +30,7 @@ import { hostName, isMultiHost, paneRowKey } from "@/lib/hosts";
 import { t } from "@/lib/i18n";
 import { useLaunchers } from "@/lib/launchers";
 import { newPath, panePath } from "@/lib/nav";
-import { groupPanesByWorkspace, type WorkspaceGroup } from "@/lib/pane-groups";
+import type { WorkspaceGroup } from "@/lib/pane-groups";
 import { paneName } from "@/lib/pane-name";
 import { usePairing } from "@/lib/pairing";
 import { usePins } from "@/lib/pins";
@@ -62,6 +62,7 @@ import {
   shownPreset,
   SIDEBAR_WIDTH,
   spaceKeyOf,
+  spacesInOrder,
   spaceSwipe,
   wholeColumnStart,
   type Places,
@@ -109,8 +110,6 @@ interface WideLayoutProps {
   fold?: FoldPosture;
 }
 
-/** Spaces in the sidebar's workspace order: the agents' sections first, as the sidebar draws them,
- *  then a space that holds only shells. */
 /** Whether a text field of this layout holds the document focus: the reply box, or any input,
  *  textarea or editable element inside the layout. A scroll never takes the focus from it. */
 function isTypingInLayout(strip: HTMLElement): boolean {
@@ -119,16 +118,6 @@ function isTypingInLayout(strip: HTMLElement): boolean {
   const root = strip.closest('[data-slot="wide-layout"]') ?? strip;
   if (!root.contains(active)) return false;
   return active instanceof HTMLTextAreaElement || active instanceof HTMLInputElement || active.isContentEditable;
-}
-
-function spacesInOrder(agents: readonly AgentView[], shells: readonly AgentView[], options: Parameters<typeof groupPanesByWorkspace>[2]): WorkspaceGroup[] {
-  const sections = groupPanesByWorkspace(agents, [], options).map((g) => g.key);
-  const all = groupPanesByWorkspace(agents, shells, options);
-  const rank = (g: WorkspaceGroup) => {
-    const at = sections.indexOf(g.key);
-    return at < 0 ? sections.length : at;
-  };
-  return all.map((g, i) => ({ g, i })).toSorted((a, b) => rank(a.g) - rank(b.g) || a.i - b.i).map(({ g }) => g);
 }
 
 export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "flat" }: WideLayoutProps) {

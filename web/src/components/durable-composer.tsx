@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Check, Loader2, Send, Settings2 } from "lucide-react";
 
 import { ActionsRow, type Hand } from "@/components/actions-row";
@@ -119,6 +119,8 @@ export interface DurableComposerProps {
   };
   changesPill?: { onClick: () => void; label: string };
   hand?: Hand;
+  /** Drawn directly above the belt: the joystick handle band of Settings → Pane navigation (ADR 0121). */
+  aboveBelt?: ReactNode;
   /** A send landed: snap the stream to its tail. */
   onSent: () => void;
   /** Scroll to the open question's card and focus its first button: the way on from a send an open question refused. */
@@ -149,6 +151,7 @@ export function DurableComposer({
   pullHandle,
   changesPill,
   hand = "right",
+  aboveBelt,
   onSent,
   onReload,
   onAnswerDialog,
@@ -351,6 +354,7 @@ export function DurableComposer({
         composing ? "pb-2" : "pb-[calc(env(safe-area-inset-bottom)_+_0.5rem)]",
       )}
     >
+      {aboveBelt}
       <ActionsRow
         general={[
           {

@@ -1480,6 +1480,29 @@
   }
 }
 
+/* THE PANE NAVIGATION PAD'S STEP PULSE (components/pane-nav-overlay.tsx, ADR 0121). Each step of the
+   two-finger or joystick move rings the arrow it took once: a square of the arrow's own size grows and
+   fades in 350ms. Transform and opacity only, on a layer that takes no pointer and holds no space, so
+   nothing moves. Reduced motion: no pulse at all; the filled arrow alone says the step. */
+.pane-nav-pulse {
+  animation: pane-nav-pulse 350ms cubic-bezier(0, 0, 0.2, 1) 1 both;
+}
+@keyframes pane-nav-pulse {
+  from {
+    transform: scale(1);
+    opacity: 0.9;
+  }
+  to {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pane-nav-pulse {
+    display: none;
+  }
+}
+
 /* THE CHANGES COUNT LINE (components/change-count.tsx ChangeCountSlot), on each row of the dashboard's
    Changes tab and in the Changes screen's header. The screen's list skeleton (routes/changes.tsx)
    breathes with `.count-skeleton` too, and its first real rows arrive with `.count-arrive`. Until a workspace's

@@ -101,6 +101,12 @@ export const fr: Dictionary = {
   "settings.wideLayout.off": "Off",
   "settings.wideLayout.hint":
     "Auto shows the sidebar and pane columns on a screen at least 600 px wide and 480 px tall. Off keeps the phone layout everywhere.",
+  "settings.paneNav.title": "Pane navigation",
+  "settings.paneNav.twoFingers": "Two fingers",
+  "settings.paneNav.joystick": "Joystick",
+  "settings.paneNav.off": "Off",
+  "settings.paneNav.hint":
+    "Move between panes and spaces by gesture. Two fingers: hold one finger on the chat or the terminal, then swipe with a second. Joystick: hold the handle above the belt, then drag. A change shows the next time a pane opens.",
   "settings.zen.title": "Mode Zen",
   "settings.zen.description": "Ajoute une ligne au menu du volet qui masque tout sauf le terminal.",
   "settings.zen.auto.label": "Activer en mode paysage",
@@ -473,6 +479,7 @@ export const fr: Dictionary = {
   "chat.switcher.launch.here": "ici",
   "wide.sidebar.label": "Volets",
   "wide.space.position": "espace {index} sur {total}",
+  "paneNav.position": "pane {index} of {total}",
   "wide.space.previous": "Espace précédent",
   "wide.space.next": "Espace suivant",
   "wide.openHere": "Ouvrir ici",

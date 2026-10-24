@@ -51,7 +51,7 @@ afterwards. A copy-paste gives you six places to remember instead.
 | `ui/search-field.tsx` | The search box: a 44px text field with a magnifier inside its left edge, 16px type so iOS does not zoom, every keyboard correction off, `inputMode="search"`. Forwards its ref to the `<input>` so a sheet can focus it on open. Owns the look and the field, not the list under it or the filtering. The command palette's and the Sent sheet's. |
 | `ui/section-label.tsx` | The small uppercase word that names a section. Type only — it renders a `<span>` and owns no structure. |
 | `ui/select.tsx` | A form select: a NATIVE `<select>` in a 44px box with our own chevron (`appearance-none`), a full `--border` edge and the house corner, so a phone draws its own picker and no sheet is needed. `lead` puts an inert glyph before the text; the caller's `className` sizes the box (`flex-1 min-w-0` for the flexible one, `shrink-0` for the compact one). The New page's machine, agent and command selects (`routes/new.tsx`), and the dashboard's order select (`dash-selects.tsx`). The dashboard's workspace filter there draws the same box as a button, because it chooses several workspaces in a sheet of checks (issue #527). The four Settings selects (language, typeface, terminal font, theme) carry the same construction by hand and have not been moved onto it. |
-| `ui/sheet.tsx` | `BottomSheet`. The app's only floating layer, with one exception: the dashboard's floating New button (`ui/fab.tsx`, below). There is no popover, no dialog, no tooltip. It also exports `useAnySheetOpen`, the count of open sheets that button hides itself on. |
+| `ui/sheet.tsx` | `BottomSheet`. The app's only floating layer, with one exception: the dashboard's floating New button (`ui/fab.tsx`, below). The pane navigation overlay floats too, but takes no touch (below). There is no popover, no dialog, no tooltip. It also exports `useAnySheetOpen`, the count of open sheets that button hides itself on. |
 | `ui/strip-host.tsx` | The ribbon band, an overlay hung from the header bar's bottom edge. Renders ONE `StripSlot` at a time, the highest priority, and keeps the two permanent `sr-only` live regions. It reserves no space: a zero-height anchor sits right after the header, and the band floats from it at `z-30` over the top of the route, on the page colour with a `shadow-md`. Domain-blind: a bigger number wins, and it does not know what a connection is. `flow` paints it in flow instead, for a playground stage with no route under it; the app never sets it. |
 | `ui/switch.tsx` | A boolean toggle, `role="switch"`. No Radix. |
 | `ui/tab-bar.tsx` | A bottom tab bar: equal icon-over-word tabs on the page colour, a rule above, the safe area below. The active mark is a reserved 2px top edge, and a count badge floats on the icon, so a switch or a count never moves a word. The dashboard footer (ADR 0066, ADR 0085): with a crew, Crew, Dashboard, Changes, so the default tab sits in the middle under the thumb and the two side tabs are the side trips. |
@@ -94,6 +94,21 @@ section first:
   "New" in both shapes, and the word is `aria-hidden`.
 - **The Spaces header's FolderPlus stays,** and opens the same page. So does the empty dashboard's
   "Start your first agent" card. The button adds an entry; it removes none.
+
+### The pane navigation overlay floats, and takes no touch
+
+`components/pane-nav-overlay.tsx` ([ADR 0121](./.adr/0121-two-fingers-move-between-panes.md)) is drawn
+only while a pane navigation gesture is armed: the target pane's name and the map at the top, and the
+four-arrow pad where the second finger first landed. It is not a control, so it does not count against
+the rule above, and it is bounded the same way:
+
+- **It holds no space and takes no touch.** Portalled to `<body>`, `fixed`, `pointer-events-none`,
+  `aria-hidden`, at `z-40`: over the band, under the sheets. Its coming and going moves nothing (§2).
+- **It lives only while the mode is armed,** and leaves on the commit, the cancel or an unmount. It is
+  never a standing condition.
+- **Tokens only:** `--card` with a uniform `--rule` edge and `shadow-md`, the house 2px corner, the
+  status marks from `StatusDot` and `UnseenMark`, the lit arrow in `--primary`. Its step pulse is
+  `.pane-nav-pulse` in index.css, which reduced motion turns off.
 
 ### The alert family: the primitive landed, the conversion did not finish
 

@@ -67,7 +67,8 @@ or Firefox. The window's width is known everywhere.
    workspace. Nothing is written to a bridge and there is no request id. A column whose pane a live
    herd no longer lists is pruned; a herd from a saved copy prunes nothing.
 10. **Phone gestures are deferred.** The playground's swipe, two-finger chord and joystick cards are
-    not built. Below 600px the pane screen is the phone's as before, except on a tabletop fold (see
+    not built. (The chord and the joystick came later, on every width:
+    [ADR 0121](./0121-two-fingers-move-between-panes.md).) Below 600px the pane screen is the phone's as before, except on a tabletop fold (see
     "Folded postures").
 
 ## Folded postures
