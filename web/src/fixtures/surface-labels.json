@@ -1126,6 +1126,66 @@
    "version": "2.1.304",
    "state": "idle"
   },
+  "claude--v2307-auth-refresh-before-output--w61.txt": {
+   "harness": "claude",
+   "version": "2.1.307",
+   "state": "idle"
+  },
+  "claude--v2307-auth-refresh-output--w61.txt": {
+   "harness": "claude",
+   "version": "2.1.307",
+   "state": "idle"
+  },
+  "claude--v2309-auth-refresh-locked--w120.txt": {
+   "harness": "claude",
+   "version": "2.1.309",
+   "state": "idle"
+  },
+  "claude--v2309-auth-refresh-locked--w52.txt": {
+   "harness": "claude",
+   "version": "2.1.309",
+   "state": "idle"
+  },
+  "claude--v2309-auth-refresh-locked--w80.txt": {
+   "harness": "claude",
+   "version": "2.1.309",
+   "state": "idle"
+  },
+  "claude--v2309-auth-refresh-output--w40.txt": {
+   "harness": "claude",
+   "version": "2.1.309",
+   "state": "idle"
+  },
+  "claude--v2309-auth-refresh-output--w52.txt": {
+   "harness": "claude",
+   "version": "2.1.309",
+   "state": "idle"
+  },
+  "claude--v2309-auth-refresh-output--w64.txt": {
+   "harness": "claude",
+   "version": "2.1.309",
+   "state": "idle"
+  },
+  "claude--v2309-auth-refresh-output--w120.txt": {
+   "harness": "claude",
+   "version": "2.1.309",
+   "state": "idle"
+  },
+  "claude--v2310-auth-refresh-before-output-spinner--w52.txt": {
+   "harness": "claude",
+   "version": "2.1.310",
+   "state": "running"
+  },
+  "claude--v2310-auth-refresh-output-spinner--w52.txt": {
+   "harness": "claude",
+   "version": "2.1.310",
+   "state": "running"
+  },
+  "claude--v2310-auth-refresh-output-spinner-timer--w52.txt": {
+   "harness": "claude",
+   "version": "2.1.310",
+   "state": "running"
+  },
   "claude--v2303-titled-edge-working--w160.txt": {
    "harness": "claude",
    "version": "2.1.303",
@@ -5455,6 +5515,8 @@
  "knownMismatches": {
   "$comment": "Fixtures whose label is running but whose Surface reads free, with the reason. fold.corpus.test.ts fails on any other running label that reads free, and on an entry here that no longer reads free.",
   "claude--v2301-hold-subagent.txt": "The main turn is over and a background subagent waits on a hook-held permission: the screen shows a free box and a finished row, and only a hook can say the session is busy.",
+  "claude--v2310-auth-refresh-before-output-spinner--w52.txt": "The first second of a turn sent while the Authentication box is up: the spinner row under the box has no timer yet, and the running sign needs the timer. A send there goes ahead and Claude Code queues it.",
+  "claude--v2310-auth-refresh-output-spinner--w52.txt": "The first second of a turn sent while the Authentication box is up: the spinner row under the box has no timer yet, and the running sign needs the timer. A send there goes ahead and Claude Code queues it.",
   "claude--v2301-spinner-no-timer--w100.txt": "The first second of a turn: the spinner row has no timer yet, and the running sign needs the timer. A send there goes ahead and Claude Code queues it.",
   "claude--v2302-turn-ending-stop-hooks--w119.txt": "The last read of a turn on Claude Code 2.1.302: the spinner row carries 'running Stop hooks' before its timer, which the running sign does not take. The turn is ending; a send there goes ahead, and Enter either queues it or starts the next turn.",
   "claude--v2302-working-list-echo--w119.txt": "Claude Code 2.1.302 draws no spinner while the answer streams: the screen shows a list growing above an empty box, and only the prompt edge can say the turn runs. A send there goes ahead and Claude Code queues it."

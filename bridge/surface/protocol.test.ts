@@ -3677,6 +3677,45 @@ describe("real screens from the fixture corpus", () => {
     });
   }
 
+  const AUTH_BOX_FIXTURES = [
+    "claude--v2307-auth-refresh-before-output--w61.txt",
+    "claude--v2307-auth-refresh-output--w61.txt",
+    "claude--v2309-auth-refresh-locked--w120.txt",
+    "claude--v2309-auth-refresh-locked--w52.txt",
+    "claude--v2309-auth-refresh-locked--w80.txt",
+    "claude--v2309-auth-refresh-output--w40.txt",
+    "claude--v2309-auth-refresh-output--w52.txt",
+    "claude--v2309-auth-refresh-output--w64.txt",
+    "claude--v2309-auth-refresh-output--w120.txt",
+  ];
+
+  function authBoxRowsOf(name: string): string[] {
+    const rows = splitLines(parseAnsi(fixture(name))).map((line) => lineText(line).trimEnd());
+    const top = rows.findIndex((row) => row.startsWith("╭"));
+    const bottom = rows.findIndex((row, i) => i > top && row.startsWith("╰"));
+    return rows.slice(top, bottom + 1);
+  }
+
+  for (const name of AUTH_BOX_FIXTURES) {
+    test(`over the Authentication box in ${name}: hello and 1 go on one tap`, async () => {
+      for (const text of ["hello", "1"]) {
+        const { pane, send } = rig();
+        pane.over = authBoxRowsOf(name);
+        const answer = await send(text);
+        expect(answer.receipt, text).toMatchObject({ outcome: "sent" });
+        expect(answer.cause, text).toBeUndefined();
+        expect(pane.transcript.at(-1)).toBe(`> ${text}`);
+      }
+    });
+
+    test(`a capture of the Authentication box in ${name} reads free at the first look`, async () => {
+      const { protocol } = rig({ pane: still(fixture(name)) });
+      const prepared = await protocol.handle({ id: "fixture-auth-box", text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: "claude" });
+      expect(prepared.surface).toMatchObject({ turn: "idle", modal: "none", composer: "empty" });
+      expect(prepared.offers).toEqual([]);
+    });
+  }
+
   // Seen live on 2026-10-17: Claude Code's usage row in the blank row between the key row and the box
   // for about ten seconds after a turn. The profile names it (`idle.noticeGaps`), so the box stays free.
   test("on a heads-up notice with the usage row under its keys: hello goes on one tap", async () => {

@@ -57,6 +57,9 @@ import claudeModelPicker from "@/fixtures/panes/claude-lab--menu-model-picker-v2
 import claudeHeadsUp from "@/fixtures/panes/claude--v2302-heads-up-above-box--w142.txt?raw";
 import claudeHeadsUpDismissed from "@/fixtures/panes/claude--v2304-heads-up-dismissed--w135.txt?raw";
 import claudeHeadsUpExplained from "@/fixtures/panes/claude--v2304-heads-up-explained--w135.txt?raw";
+import claudeAuthBoxWaiting from "@/fixtures/panes/claude--v2307-auth-refresh-before-output--w61.txt?raw";
+import claudeAuthBoxFilled from "@/fixtures/panes/claude--v2307-auth-refresh-output--w61.txt?raw";
+import claudeAuthBoxLocked from "@/fixtures/panes/claude--v2309-auth-refresh-locked--w52.txt?raw";
 
 // ── The one clock ────────────────────────────────────────────────────────────────────────────────
 
@@ -1123,6 +1126,42 @@ export const paneHeadsUpExplained: PaneFixture = {
   text: claudeHeadsUpExplained,
   revision: 7_305,
   surface: { revision: 7_305, turn: "idle", modal: "none", composer: "empty" },
+};
+
+/**
+ * Claude Code 2.1.307 while `awsAuthRefresh` has not printed yet, at 61 columns: the Authentication
+ * box holds its title alone, and lifts as a waiting card.
+ */
+export const paneAuthBoxWaiting: PaneFixture = {
+  // SAFETY: `structuredClone` of an `AgentView`, a plain data record, is an `AgentView`.
+  pane: { ...structuredClone(working[0]!), paneId: `${working[0]!.paneId}-auth-box-waiting` },
+  text: claudeAuthBoxWaiting,
+  revision: 7_306,
+  surface: { revision: 7_306, turn: "idle", modal: "none", composer: "empty" },
+};
+
+/**
+ * Claude Code 2.1.307 once the login command printed its URL and device code, at 61 columns, with the
+ * URL broken mid-word at the box edge: the card shows it as one link.
+ */
+export const paneAuthBoxFilled: PaneFixture = {
+  // SAFETY: `structuredClone` of an `AgentView`, a plain data record, is an `AgentView`.
+  pane: { ...structuredClone(working[0]!), paneId: `${working[0]!.paneId}-auth-box-filled` },
+  text: claudeAuthBoxFilled,
+  revision: 7_307,
+  surface: { revision: 7_307, turn: "idle", modal: "none", composer: "empty" },
+};
+
+/**
+ * Claude Code 2.1.309 when another process already runs the login command, at 52 columns: the box
+ * holds one sentence and no link.
+ */
+export const paneAuthBoxLocked: PaneFixture = {
+  // SAFETY: `structuredClone` of an `AgentView`, a plain data record, is an `AgentView`.
+  pane: { ...structuredClone(working[0]!), paneId: `${working[0]!.paneId}-auth-box-locked` },
+  text: claudeAuthBoxLocked,
+  revision: 7_308,
+  surface: { revision: 7_308, turn: "idle", modal: "none", composer: "empty" },
 };
 
 /** A bare shell — no agent, no grammar, a ShellBadge in place of the status chip. */

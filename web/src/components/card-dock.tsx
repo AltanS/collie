@@ -18,6 +18,7 @@ import { PreviewSelectBlock, type PreviewBlockAction } from "@/components/previe
 import { MultiSelectBlock } from "@/components/multi-select-block";
 import { MenuBlock, type MenuBlockAction } from "@/components/menu-block";
 import { AutocompleteBlock } from "@/components/autocomplete-block";
+import { BoxTextBlock } from "@/components/box-text-block";
 import { UnreadDialogBlock } from "@/components/unread-dialog-block";
 
 // ── THE CARD DOCKS IN ONE SLOT (.adr/0059) ─────────────────────────────────────────────────────
@@ -48,9 +49,11 @@ type PrevBlock = Extract<Block, { kind: "preview-select" }>;
 type MultiBlock = Extract<Block, { kind: "multi-select" }>;
 /** The (at most one) generic-menu block, lifted only when all four above declined. */
 type GenericMenuBlock = Extract<Block, { kind: "menu" }>;
-/** The (at most one) completion-popup block: the only non-raw kind that is NOT a modal. The agent's
- *  input box is live under it, so it renders with no controls and locks nothing. */
+/** The (at most one) completion-popup block: NOT a modal, like `box-text`. The agent's input box is
+ *  live under it, so it renders with no controls and locks nothing. */
 type AutoBlock = Extract<Block, { kind: "autocomplete" }>;
+/** The (at most one) text card of a titled box over the live input box. Keyless, like the popup. */
+type BoxBlock = Extract<Block, { kind: "box-text" }>;
 /** The (at most one) unread-dialog card. The post-pass emits it only when NOTHING else lifted, so it
  *  is mutually exclusive with every kind above by construction (harness/index.ts). */
 type UnreadBlock = Extract<Block, { kind: "unread-dialog" }>;
@@ -218,6 +221,9 @@ function liftedCard({
   // dialog above means there is no input box, and a popup means there is one.
   const autoBlock = blocks.find((b): b is AutoBlock => b.kind === "autocomplete");
   if (autoBlock) return <AutocompleteBlock autocomplete={autoBlock.autocomplete} />;
+  // Keyless like the popup, and for the same reason: the input box is live under the box it shows.
+  const boxTextBlock = blocks.find((b): b is BoxBlock => b.kind === "box-text");
+  if (boxTextBlock) return <BoxTextBlock boxText={boxTextBlock.boxText} />;
   return null;
 }
 
