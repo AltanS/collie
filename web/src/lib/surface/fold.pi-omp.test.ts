@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { agentOf, fixtureRows, idleFor, PANES_DIR, readScreen, rowsOf } from "../../test/surface-corpus";
 import { commandListAt, ownCommandList, runningSign } from "./cues";
 import { findInputFrame, rowText } from "./frame";
-import { isFree } from "./surface";
+import { askOf, isFree } from "./surface";
 import { CORPUS_WALK, FIXTURES, labelOf, own } from "../../test/surface-fold";
 
 describe("pi's dialogs under its profile", () => {
@@ -305,7 +305,9 @@ describe("a soft-wrapped draft in pi's box is no menu (issue 553)", () => {
   });
 
   // pi draws a menu or hint row wider than the box cut short with an ellipsis, which fills the width the
-  // way a soft wrap does. A row that ends in one is no wrapped draft row, whatever else the rows look like.
+  // way a soft wrap does, so a wrapped draft and a cut menu look the same. Neither reading is safe (a
+  // draft's Enter answers a menu; a menu tap's Enter submits a draft), so the read is unreadable: no
+  // dialog, no taps, no draft, nothing free. The older reading, a pointed list, offered a false dialog.
   // Synthetic variations: the field draft's rows with the last word of one row replaced by the ellipsis.
   const ELLIPSES: readonly [string, string][] = [
     ["the ellipsis character", "…"],
@@ -313,17 +315,27 @@ describe("a soft-wrapped draft in pi's box is no menu (issue 553)", () => {
   ];
   for (const [what, ending] of ELLIPSES) {
     for (const [where, rowAt] of [["a middle row", 1], ["the last row", 4]] as const) {
-      it(`a draft row ending in ${what} (${where}) is not read as a wrapped draft`, () => {
+      it(`a draft row ending in ${what} (${where}) reads as unreadable, never as a dialog`, () => {
         const lines = wrapped(PROSE.split(" "));
         expect(lines.length).toBe(5);
         lines[rowAt] = `${lines[rowAt]!.replace(/\S+$/u, "")}${ending}`;
         const got = read(lines);
-        expect(got.cues?.strength).toBe("strong");
-        expect(got.surface.composer).not.toBe("draft");
+        expect(got.cues?.cutWrap).toBe(true);
+        expect(got.cues?.strength).toBe("none");
+        expect(got.surface).toMatchObject({ modal: "unknown", composer: "unknown", reason: "no-match" });
+        expect(askOf(got.surface.modal)).toBeNull();
         expect(isFree(got.surface)).toBe(false);
       });
     }
   }
+
+  it("the same rows without an ellipsis still read as a draft", () => {
+    const lines = wrapped(PROSE.split(" "));
+    const got = read(lines);
+    expect(got.cues?.cutWrap).toBeUndefined();
+    expect(got.surface).toMatchObject({ turn: "idle", modal: "none", composer: "draft" });
+    expect(got.frame?.interior.text).toBe(lines.join(" "));
+  });
 
   // The controls stay dialogs: a choice between the rules is no soft wrap. An explicit-newline draft of
   // short rows reads the same as such a list, so it stays a dialog too, the conservative side.
