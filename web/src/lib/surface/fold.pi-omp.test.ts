@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { fixtureRows, idleFor, PANES_DIR, readScreen, rowsOf } from "../../test/surface-corpus";
+import { agentOf, fixtureRows, idleFor, PANES_DIR, readScreen, rowsOf } from "../../test/surface-corpus";
 import { commandListAt, ownCommandList, runningSign } from "./cues";
 import { findInputFrame, rowText } from "./frame";
 import { isFree } from "./surface";
@@ -241,6 +241,104 @@ describe("omp 18.11.1's band under any status line style (issue 505)", () => {
       expect(findInputFrame(withTop(line), idleFor("omp")!)).toBeNull();
     });
   }
+});
+
+describe("a soft-wrapped draft in pi's box is no menu (issue 553)", () => {
+  // Built rows in the shape of the field screen: a model label, a blank row, the 139-cell top rule, the
+  // prompt row `❯ ` and the draft's wrapped rows indented to column 2, the bottom rule as the last row.
+  // The `❯` and the aligned continuation rows read as a pointed list between two rules, so the frame was
+  // dropped, the box read as hidden by a dialog, and Send stopped at "Enter was not pressed".
+  const WIDTH = 139;
+  const RULE = "─".repeat(WIDTH);
+  const PROSE =
+    "please look at the failing build on the main branch and find out why the integration suite times out after the last merge, then write down what you find in the notes file so we can talk about it tomorrow morning before the release goes out, and if the cause is the new cache layer check whether turning it off makes the suite pass again on a clean checkout of the branch without any local state left over from earlier runs, and also tell me which commits touched the scheduler since the last green build before we decide anything about the release, and write the summary in plain words so the rest of the team can follow it, ok";
+  const row = (text: string) => ({ segments: [{ text, style: {}, muted: false }] });
+
+  /** The words wrapped the way the editor wraps them: greedy, at the box's width less the two-cell lead. */
+  function wrapped(words: readonly string[], width = WIDTH - 2): string[] {
+    const lines: string[] = [];
+    let line = "";
+    for (const word of words) {
+      if (line.length > 0 && line.length + 1 + word.length > width) {
+        lines.push(line);
+        line = word;
+      } else line = line.length === 0 ? word : `${line} ${word}`;
+    }
+    if (line.length > 0) lines.push(line);
+    return lines;
+  }
+
+  function screen(lines: readonly string[]) {
+    const label = "claude-opus-5-5 · high";
+    return [
+      row(`${" ".repeat(WIDTH - label.length)}${label}`),
+      row(""),
+      row(RULE),
+      ...lines.map((line, i) => row(`${i === 0 ? "❯ " : "  "}${line}`)),
+      row(RULE),
+    ];
+  }
+
+  const read = (lines: readonly string[]) => readScreen(screen(lines), agentOf("pi"), idleFor("pi"));
+
+  const DRAFTS: readonly [string, string[]][] = [
+    ["the field case's five-row draft", wrapped(PROSE.split(" "))],
+    ["a two-row draft", wrapped(PROSE.split(" ").slice(0, 30))],
+  ];
+  for (const [what, lines] of DRAFTS) {
+    it(`${what} reads as a draft with no modal`, () => {
+      expect(lines.length).toBe(what.startsWith("a two") ? 2 : 5);
+      const got = read(lines);
+      expect(got.surface).toMatchObject({ turn: "idle", modal: "none", composer: "draft" });
+      expect(got.cues?.strength).not.toBe("strong");
+      expect(got.frame?.interior.text).toBe(lines.join(" "));
+    });
+  }
+
+  // The field screen's bytes: gentle-pi 4.3.0 on pi 1.3.0, 201 columns, a five-row draft not sent.
+  it("the captured wrapped draft reads as a draft with no modal", () => {
+    const got = own("pi--v130-gentle-draft-wrapped.txt");
+    expect(got.surface).toMatchObject({ turn: "idle", modal: "none", composer: "draft" });
+    expect(got.cues?.strength).not.toBe("strong");
+    expect(got.frame?.interior.text.startsWith("This is a draft typed to capture")).toBe(true);
+    expect(got.frame?.interior.text.endsWith("look at first and why.")).toBe(true);
+  });
+
+  // The controls stay dialogs: a choice between the rules is no soft wrap. An explicit-newline draft of
+  // short rows reads the same as such a list, so it stays a dialog too, the conservative side.
+  const MENUS: readonly [string, string[]][] = [
+    ["a yes/no choice", ["Yes", "No"]],
+    ["a three-option menu", ["Option one", "Option two", "Option three"]],
+    ["a draft of short rows, typed with newlines (known, conservative)", ["fix the build", "then run the tests", "and report back"]],
+  ];
+  for (const [what, lines] of MENUS) {
+    it(`${what} between the rules still reads as a dialog`, () => {
+      const got = read(lines);
+      expect(got.cues?.strength).toBe("strong");
+      expect(got.surface.modal).not.toBe("none");
+      expect(isFree(got.surface)).toBe(false);
+    });
+  }
+
+  // An open box (omp) ends on its statusline, narrower than the box: the width to fill is the top edge's.
+  // Measured on the statusline, these three options of about 65 cells read as a wrapped draft.
+  it("a menu in omp's open box is measured against the top edge, not the statusline", () => {
+    const name = "omp--v18-4-borderless-wrapped.txt";
+    const idle = idleFor("omp")!;
+    const rows = fixtureRows(name);
+    const frame = findInputFrame(rows, idle)!;
+    const options = [
+      "❯ Allow the agent to run this command once, in this workspace only",
+      "  Allow the agent to run this command always, in every workspace",
+      "  Deny the command and tell the agent why it was not allowed here",
+    ];
+    const menu = [...rows];
+    for (let i = frame.interior.prompt; i < frame.bottom; i++) menu[i] = row(options[i - frame.interior.prompt] ?? "");
+    const got = readScreen(menu, agentOf("omp"), idle);
+    expect(got.cues?.strength).toBe("strong");
+    expect(isFree(got.surface)).toBe(false);
+    expect(got.surface.modal).not.toBe("none");
+  });
 });
 
 // Issue 544: pi-powerline-footer replaces pi's editor (`ctx.ui.setEditorComponent`) with one that draws

@@ -249,6 +249,21 @@ user, host or path is in either file.
 | `pi--v130-gentle-choice.txt` | Three unnumbered options with descriptions, ` → Red` pointed | walk |
 | `pi--v130-gentle-choice-moved.txt` | The same dialog after `herdr pane send-keys <pane> Down`, ` → Green` | walk (the pair in `walk-pairs.ts`) |
 
+## gentle-pi soft-wrapped draft on pi 1.3.0 (issue 553, captured 2026-10-21, Herdr 0.9.5)
+
+pi 1.3.0 with gentle-pi 4.3.0, which replaces pi's footer, so nothing stands under the editor's bottom
+rule. A 201-column Herdr pane in a scratch directory, `/tmp/collie-pi-wrap-probe`, read with
+`herdr pane read <pane> --source visible --format ansi --raw`. A long English probe draft is typed and
+Enter is not pressed: it wraps over five rows, `❯ ` on the prompt row and the continuation rows indented
+two columns, with the right-aligned `claude-opus-5-5 · high` label two rows over the top rule. The `❯`
+and the aligned rows read as a pointed list between two rules, so the frame was dropped and Send
+stopped at "Enter was not pressed". CRLF line ends and the trailing padding are as read. No user or host
+is in the file; the only path is the scratch directory's name in gentle-pi's header row.
+
+| Fixture | State | Reads as |
+| --- | --- | --- |
+| `pi--v130-gentle-draft-wrapped.txt` | A five-row soft-wrapped draft, not sent | composer, draft read back, no modal |
+
 ## Stock pi 1.3.0 with an extension's own footer (issue 485, captured 2026-10-17, Herdr 0.9.5)
 
 Stock pi 1.3.0 (`@earendil-works/pi-coding-agent`, no model, a scratch `PI_CODING_AGENT_DIR`) run with

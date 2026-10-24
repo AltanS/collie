@@ -5316,6 +5316,11 @@
    "version": "1.3.0",
    "state": "draft"
   },
+  "pi--v130-gentle-draft-wrapped.txt": {
+   "harness": "pi",
+   "version": "1.3.0",
+   "state": "draft"
+  },
   "pi--v130-custom-footer-idle.txt": {
    "harness": "pi",
    "version": "1.3.0",
