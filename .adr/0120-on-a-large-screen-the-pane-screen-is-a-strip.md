@@ -117,9 +117,9 @@ wide (360px), and as wide as the room the last column leaves, so a scroll or a s
 always lands on it and the last column can still rest at the left edge. It is a snap point but no
 column: it never takes the focus or the frame, is not counted, and the focus that follows the view
 never lands on it. Its sheet lists the space's panes the strip does not show, each with Open here,
-which makes it the last column and focuses it, and New agent. A book has no add column. New
-agent and New space both open the New page, which takes no space to start in, so a new agent always
-lands in a new space; a "new agent in this space" waits for a space field on the New page.
+which makes it the last column and focuses it, then New agent in this space and New agent in a new
+space. A book has no add column. New space and the second New agent open the New page with no space
+to start in; the first tells the page which space (`?beside=`), see Known limits.
 
 The strip snaps to column starts (`scroll-snap-type: x mandatory`, `lib/strip-snap.ts`). Touch is the
 browser's momentum and snap alone. A wheel or trackpad gesture that ends between two starts settles
@@ -133,7 +133,10 @@ scroller passes its x overscroll on (`overscroll-x-auto`, important): the transc
 so the strip never scrolled.
 
 The space header is the one bar for the space. It holds the space's tabs, with the pane view's own
-handlers: a tab opens its first pane, and its "+" opens a new tab the way the pane's tab row does. So
+handlers: a tab opens its first pane, its "+" opens a new tab the way the pane's tab row does, and a
+long-press on a chip offers Rename and Close tab with the same gates (a read-only device and a saved copy
+get the sheet's note instead). Closing the tab that holds the focused column moves the focus to a
+neighbouring tab's pane with `nav.side`, and only a space with nothing left goes up to Home. So
 in a strip the pane view drops what the large screen shows elsewhere: its tab row, its pane row and
 the bar that folds them (the space header and the sidebar have them), and the space's name on its
 header's second line. A column header keeps the pane's branch, machine and state. Below 600px the
@@ -141,9 +144,16 @@ pane view keeps all of it.
 
 ## Known limits
 
-- **New agent starts a new space.** The New page takes no space to start in, so the add column's sheet says
-  "New agent in a new space" and means it. A "new agent in this space" waits for a space field on the
-  New page, and opening the new pane beside the focus on return is not built.
+- **New agent in this space is a new tab, and the New page offers no worktree there.** The add column's
+  sheet has two rows. "New agent in this space" opens the New page with `?beside=<pane>`: the launch route
+  already takes a pane as `paneId` and then creates a tab in that pane's space (the switcher's launch used it
+  first), so no bridge change was needed. The page then stays on that pane's machine, starts in that pane's
+  folder, and shows no worktree switch, since a worktree is a space of its own. The request id and the
+  receipt are the route's own. A starter ignores the pane and starts its own space. The pane that comes back
+  opens beside the focused column through a note in memory (`lib/open-beside.ts`): it counts only for a
+  pane the space did not hold when the sheet was left, and it expires after ten minutes. A reload on the
+  New page loses the note, and the pane then replaces the focus as any arrival does. "New agent in a new
+  space" stays the second row.
 - **Folded postures are proven in emulation only.** Chromium's device-metrics override fired the segment
   queries and the env values; no half-open Fold or Flip has run the layout.
 - **Snapping is checked in Chromium and WebKit by script, not on every device.** Touch relies on the

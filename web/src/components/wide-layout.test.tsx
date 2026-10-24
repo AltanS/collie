@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 import type { RefObject } from "react";
@@ -9,8 +9,9 @@ import { paneRowKey } from "@/lib/hosts";
 import { asJsonObject, asJsonString, parseJsonObject } from "@/lib/json";
 import { ROOT_ROUTE_ID, type HomeData, type PaneData } from "@/lib/loaders";
 import { panePath } from "@/lib/nav";
+import { __resetOpenBeside } from "@/lib/open-beside";
 import { paneScopeKey } from "@/lib/scope";
-import { statusLabel, type AgentView, type TabView } from "@/lib/types";
+import { statusLabel, type AgentView, type DeviceAuth, type TabView } from "@/lib/types";
 import { __resetWideLayoutStore } from "@/lib/wide-layout-store";
 import { DetailRoute } from "@/routes/detail";
 import { withHeaderHost } from "@/test/header-host";
@@ -67,6 +68,7 @@ const B1 = pane("w2:p1", "w2", "beta");
 // A test that needs a space with tabs sets these; afterEach clears them.
 let extraAgents: AgentView[] = [];
 let tabs: TabView[] = [];
+let device: DeviceAuth | undefined;
 
 const home = (): HomeData => ({
   bridge: "connected",
@@ -74,7 +76,7 @@ const home = (): HomeData => ({
   shellPanes: [SH],
   workspaces: [],
   tabs,
-  device: undefined,
+  device,
   sessions: [],
   servers: [],
   ts: 0,
@@ -139,6 +141,7 @@ beforeAll(() => {
 beforeEach(() => {
   __resetWideLayoutStore();
   __resetBeltIntents();
+  __resetOpenBeside();
   vi.stubGlobal(
     "matchMedia",
     (query: string) =>
@@ -161,6 +164,7 @@ afterEach(() => {
   windowHeight = 900;
   extraAgents = [];
   tabs = [];
+  device = undefined;
   vi.unstubAllGlobals();
   __resetWideLayoutStore();
 });
@@ -472,6 +476,72 @@ describe("the space header", () => {
   });
 });
 
+describe("the space's tab actions", () => {
+  const T1: TabView = { tabId: "w1:t1", workspaceId: "w1", number: 1, label: "main", focused: true, paneCount: 4 };
+  const T2: TabView = { tabId: "w1:t2", workspaceId: "w1", number: 2, label: "side", focused: false, paneCount: 1 };
+  const A4: AgentView = { ...pane("w1:p4", "w1", "alpha"), tabId: "w1:t2" };
+  const chip = (container: HTMLElement, name: RegExp) =>
+    within(within(q(container, '[data-slot="space-header"]')!).getByRole("navigation", { name: "Tabs" })).getByRole("button", { name });
+
+  it("a long-press on a chip offers rename and close", async () => {
+    extraAgents = [A4];
+    tabs = [T1, T2];
+    const { container } = await mount("w1:p1", 1200);
+    fireEvent.contextMenu(chip(container, /w1:p4/));
+    expect(await screen.findByRole("button", { name: "Rename" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Close tab" })).toBeInTheDocument();
+  });
+
+  it("a device that cannot write gets a note and neither action", async () => {
+    extraAgents = [A4];
+    tabs = [T1, T2];
+    device = { enforced: true, device: "phone", authorized: false };
+    const { container } = await mount("w1:p1", 1200);
+    fireEvent.contextMenu(chip(container, /w1:p4/));
+    expect(await screen.findByText(/isn't authorised to rename or close tabs/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Rename" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Close tab" })).toBeNull();
+  });
+
+  const closeTabOf = async (container: HTMLElement, name: RegExp) => {
+    fireEvent.contextMenu(chip(container, name));
+    fireEvent.click(await screen.findByRole("button", { name: "Close tab" }));
+    fireEvent.click(await screen.findByRole("button", { name: /^Tap again to close/ }));
+  };
+
+  it("closing the tab that holds the focused column moves the focus to a neighbouring tab's pane", async () => {
+    extraAgents = [A4];
+    tabs = [T1, T2];
+    let closed = "";
+    server.use(
+      http.post(/\/api\/tab\/[^/]+\/close$/, ({ request }) => {
+        closed = decodeURIComponent(new URL(request.url).pathname);
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    const { container, router } = await mount("w1:p4", 1200);
+    await closeTabOf(container, /w1:p4/);
+    await waitFor(() => expect(router.state.location.pathname).toBe(panePath("w1:p1")));
+    expect(closed).toBe("/api/tab/w1:t2/close");
+  });
+
+  it("closing another tab leaves the focus where it is", async () => {
+    extraAgents = [A4];
+    tabs = [T1, T2];
+    let closed = false;
+    server.use(
+      http.post(/\/api\/tab\/[^/]+\/close$/, () => {
+        closed = true;
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    const { container, router } = await mount("w1:p1", 1200);
+    await closeTabOf(container, /w1:p4/);
+    await waitFor(() => expect(closed).toBe(true));
+    expect(router.state.location.pathname).toBe(panePath("w1:p1"));
+  });
+});
+
 describe("the add column", () => {
   const addColumn = (root: ParentNode) => q(root, '[data-slot="add-column"]');
   const openSheet = async (root: HTMLElement) => {
@@ -545,7 +615,60 @@ describe("the add column", () => {
     expect(columns(container).map((c) => c.dataset.colKey)).toEqual([key(A1), key(A2), key(A3)]);
   });
 
-  it("its New agent goes down to the New page", async () => {
+  it("its New agent in this space goes down to the New page told which space, and the new pane opens beside the focus", async () => {
+    const { container, router } = await mount("w1:p1", 1200);
+    await openBesideFromSidebar(container, A2);
+    // Focus the first column: beside the focus and at the end now differ.
+    const body = q(columns(container)[0]!, '[data-slot="column-body"]')!;
+    fireEvent.pointerDown(body, { clientX: 10, clientY: 10 });
+    fireEvent.pointerUp(body, { clientX: 12, clientY: 11 });
+    await waitFor(() => expect(router.state.location.pathname).toBe(panePath("w1:p1")));
+    const rows = await openSheet(container);
+    fireEvent.click(within(rows[0]!.parentElement!).getByRole("button", { name: "New agent in this space" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/new"));
+    expect(new URLSearchParams(router.state.location.search).get("beside")).toBe("w1:p1");
+    expect(new URLSearchParams(router.state.location.search).get("pane")).toBeNull();
+
+    // The agent starts on the New page; its pane is one the space did not hold.
+    const fresh: AgentView = { ...pane("w1:p7", "w1", "alpha"), tabId: "w1:t7" };
+    // As use-spaces does: navigate with the fresh pane before any snapshot lists it.
+    await act(async () => {
+      await router.navigate(panePath("w1:p7"), { state: { freshPane: fresh } });
+    });
+    await waitFor(() => expect(columns(container).map((c) => c.dataset.colKey)).toEqual([key(A1), key(fresh), key(A2)]));
+    expect(columns(container)[1]?.hasAttribute("data-focused")).toBe(true);
+    // The snapshot catches up: the order and the focus stay.
+    extraAgents = [fresh];
+    await act(async () => {
+      await router.revalidate();
+    });
+    expect(columns(container).map((c) => c.dataset.colKey)).toEqual([key(A1), key(fresh), key(A2)]);
+    expect(columns(container)[1]?.hasAttribute("data-focused")).toBe(true);
+  });
+
+  it("a pane that arrives as a freshPane the snapshot does not list yet gets a column, and does not loop", async () => {
+    const { container, router } = await mount("w1:p1", 1200);
+    const fresh: AgentView = { ...pane("w1:p7", "w1", "alpha"), tabId: "w1:t7" };
+    await act(async () => {
+      await router.navigate(panePath("w1:p7"), { state: { freshPane: fresh } });
+    });
+    await waitFor(() => expect(columns(container).map((c) => c.dataset.colKey)).toContain(key(fresh)));
+    const at = columns(container).findIndex((c) => c.dataset.colKey === key(fresh));
+    expect(columns(container)[at]?.hasAttribute("data-focused")).toBe(true);
+  });
+
+  it("a pane the space already held, opened after backing out of the New page, still replaces the focus", async () => {
+    const { container, router } = await mount("w1:p1", 1200);
+    const rows = await openSheet(container);
+    fireEvent.click(within(rows[0]!.parentElement!).getByRole("button", { name: "New agent in this space" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/new"));
+    await act(async () => {
+      await router.navigate(panePath("w1:p3"));
+    });
+    await waitFor(() => expect(columns(container).map((c) => c.dataset.colKey)).toEqual([key(A3)]));
+  });
+
+  it("its New agent in a new space goes down to the New page", async () => {
     const { container, router } = await mount("w1:p1", 1200);
     const rows = await openSheet(container);
     fireEvent.click(within(rows[0]!.parentElement!).getByRole("button", { name: "New agent in a new space" }));

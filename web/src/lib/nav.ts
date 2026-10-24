@@ -191,10 +191,16 @@ export function settingsPath(scope?: Scope): string {
  * `pane` is the pane whose folder and branch a worktree starts from, a pane's ⋯ "New agent in a
  * worktree"; `session` is that pane's named Herdr session. A pane is the lead's, so `machine` rides
  * beside it only to name the lead's own id.
+ *
+ * `beside` is a pane whose SPACE the new agent starts in, as a new tab there (a large screen's "New
+ * agent in this space", ADR 0120): the bridge's launch route takes it as `paneId`. It is not `pane`:
+ * that one opens a worktree, a new space. The page then stays on that pane's machine and offers no
+ * worktree, since a worktree is a space of its own.
  */
 export interface NewAt {
   machine?: string;
   pane?: string;
+  beside?: string;
   session?: string;
   /**
    * The select option to open on, an item key (`row:claude --model opus`): where "Add your own"
@@ -206,6 +212,7 @@ export interface NewAt {
 /** The query keys of {@link NewAt}. `session` is the scope's own `s`, so the root snapshot follows it. */
 export const NEW_MACHINE_PARAM = "machine";
 export const NEW_PANE_PARAM = "pane";
+export const NEW_BESIDE_PARAM = "beside";
 export const NEW_PICK_PARAM = "pick";
 export const NEW_KIND_PARAM = "kind";
 
@@ -214,6 +221,7 @@ export function newPath(at: NewAt = {}): string {
   const q = new URLSearchParams();
   if (at.machine) q.set(NEW_MACHINE_PARAM, at.machine);
   if (at.pane) q.set(NEW_PANE_PARAM, at.pane);
+  if (at.beside) q.set(NEW_BESIDE_PARAM, at.beside);
   if (at.session) q.set(SESSION_PARAM, at.session);
   if (at.pick) q.set(NEW_PICK_PARAM, at.pick);
   const query = q.toString();
@@ -225,6 +233,7 @@ export function newAddPath(at: NewAt = {}, kind: "agent" | "command" = "agent"):
   const q = new URLSearchParams({ [NEW_KIND_PARAM]: kind });
   if (at.machine) q.set(NEW_MACHINE_PARAM, at.machine);
   if (at.pane) q.set(NEW_PANE_PARAM, at.pane);
+  if (at.beside) q.set(NEW_BESIDE_PARAM, at.beside);
   if (at.session) q.set(SESSION_PARAM, at.session);
   return `/new/add?${q.toString()}`;
 }
@@ -244,6 +253,7 @@ export function readNewAt(search: string): NewAt {
   return {
     machine: field(NEW_MACHINE_PARAM),
     pane: field(NEW_PANE_PARAM),
+    beside: field(NEW_BESIDE_PARAM),
     session: field(SESSION_PARAM),
     pick: field(NEW_PICK_PARAM),
   };
@@ -684,14 +694,16 @@ export function parentChain(pathname: string, search: string): string[] {
   if (head === "new" && seg.length === 1) {
     const at = readNewAt(search);
     const view = { host: at.machine, session: at.session };
-    return at.pane === undefined ? [homePath(view)] : [homePath(view), panePath(at.pane, view)];
+    const behind = at.pane ?? at.beside;
+    return behind === undefined ? [homePath(view)] : [homePath(view), panePath(behind, view)];
   }
   // "Add your own": behind it the New page it was opened from, and behind that the New page's own.
   if (head === "new" && seg.length === 2 && id === "add") {
     const at = readNewAt(search);
     const view = { host: at.machine, session: at.session };
-    const chain = at.pane === undefined ? [homePath(view)] : [homePath(view), panePath(at.pane, view)];
-    return [...chain, newPath({ machine: at.machine, pane: at.pane, session: at.session })];
+    const behind = at.pane ?? at.beside;
+    const chain = behind === undefined ? [homePath(view)] : [homePath(view), panePath(behind, view)];
+    return [...chain, newPath({ machine: at.machine, pane: at.pane, beside: at.beside, session: at.session })];
   }
   if (head === "settings" && seg.length === 2 && id === "updates") {
     return [home, `/settings${q}`, `/settings/system${q}`];
