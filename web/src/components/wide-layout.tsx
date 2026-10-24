@@ -17,6 +17,7 @@ import { useLocale } from "@/hooks/use-locale";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { useNav } from "@/hooks/use-nav";
 import { useNoPromptsGuard } from "@/hooks/use-no-prompts-guard";
+import type { FoldPosture } from "@/hooks/use-fold-posture";
 import { useRowDrag, useVerticalSwipe, type DropTarget } from "@/hooks/use-row-drag";
 import { useSpaceActions } from "@/hooks/use-spaces";
 import { queueBeltIntent, type BeltIntent } from "@/lib/belt-intent";
@@ -89,6 +90,8 @@ interface WideLayoutProps {
   agent: AgentView | undefined;
   /** The route's own pane view, mounted in the focused column. */
   focused: ReactNode;
+  /** A half-open foldable's layout (hooks/use-fold-posture.ts `usePaneFold`); "flat" elsewhere. */
+  fold?: FoldPosture;
 }
 
 /** Spaces in the sidebar's workspace order: the agents' sections first, as the sidebar draws them,
@@ -103,7 +106,7 @@ function spacesInOrder(agents: readonly AgentView[], shells: readonly AgentView[
   return all.map((g, i) => ({ g, i })).toSorted((a, b) => rank(a.g) - rank(b.g) || a.i - b.i).map(({ g }) => g);
 }
 
-export function WideLayout({ widthClass, paneId, scope, agent, focused }: WideLayoutProps) {
+export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "flat" }: WideLayoutProps) {
   useLocale();
   const root = useRootData();
   const nav = useNav();
@@ -153,7 +156,9 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused }: WideLa
     },
     [measureStrip],
   );
-  const wide = isWideMode(stripWidth, MIN_PANE_WIDTH);
+  const book = fold === "book";
+  // Folded as a book the segments set the widths, so the presets rest until the screen is flat.
+  const wide = !book && isWideMode(stripWidth, MIN_PANE_WIDTH);
   const allowed = allowedPresets(stripWidth, MIN_PANE_WIDTH);
   const widthChoice = wide && hasWidthChoice(stripWidth, MIN_PANE_WIDTH);
 
@@ -162,6 +167,13 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused }: WideLa
   const fractions = shown.map((c) => (wide ? PRESET_FRACTION[shownPreset(c.preset, allowed)] : 1));
   const tail = Math.max(0, 1 - (fractions[fractions.length - 1] ?? 1));
   const focusAt = shown.findIndex((c) => c.key === strip.focus);
+  // BOOK: exactly two columns, one per segment: the focused one and its right neighbour, or its left
+  // one at the end. One column alone stands in the right segment, beside the full sidebar.
+  const pairAt = focusAt < 0 ? 0 : Math.min(focusAt, Math.max(0, shown.length - 2));
+  const visible = book ? shown.slice(pairAt, pairAt + 2) : shown;
+  const bookPair = book && visible.length === 2;
+  // The sidebar while folded is a presentation only: the stored choice is not touched.
+  const sidebarShown = book ? !bookPair : open;
 
   // ── Acts ────────────────────────────────────────────────────────────────────────────────────
   const write = useCallback(
@@ -250,7 +262,7 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused }: WideLa
   const signature = fractions.join(",");
   useLayoutEffect(() => {
     const node = scroller.current;
-    if (node === null) return;
+    if (node === null || book) return;
     const cols = [...node.querySelectorAll<HTMLElement>("[data-col-index]")];
     const lefts = cols.map((c) => c.offsetLeft);
     const widths = cols.map((c) => c.offsetWidth);
@@ -263,7 +275,7 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused }: WideLa
     }
     if (to !== null) node.scrollTo?.({ left: to, behavior: reduced ? "auto" : "smooth" });
     measure();
-  }, [focusAt, signature, stripWidth, reduced, measure]);
+  }, [focusAt, signature, stripWidth, reduced, measure, book]);
 
   // ── The one header, docked in the focused column; the mark in the sidebar's top row ─────────
   const [row, setRow] = useState<HTMLElement | null>(null);
@@ -281,19 +293,22 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused }: WideLa
     <div
       data-slot="wide-layout"
       data-width-class={widthClass}
+      data-fold={fold}
       // No scroll bar anywhere in the layout: the position strip says where the strip is, and a bar on
       // every column and list would be a second, noisier answer.
       className="flex min-h-0 w-full flex-1 [&_*]:[scrollbar-width:none] [&_*::-webkit-scrollbar]:hidden"
     >
       <aside
-        data-slot={open ? "wide-sidebar" : "rail"}
+        data-slot={sidebarShown ? "wide-sidebar" : "rail"}
+        data-segment={book ? "left" : undefined}
         aria-label={t("wide.sidebar.label")}
-        className="flex shrink-0 flex-col border-r border-rule bg-card"
-        style={{ width: aside }}
+        // Folded with one column, the sidebar fills the left segment; with two, it is the rail.
+        className={cn("flex shrink-0 flex-col border-r border-rule bg-card", book && sidebarShown && "fold-left-full")}
+        style={book && sidebarShown ? undefined : { width: sidebarShown ? SIDEBAR_WIDTH[widthClass] : RAIL_WIDTH }}
       >
-        <SidebarTop open={open} setMark={setMark} />
+        <SidebarTop open={sidebarShown} setMark={setMark} toggle={!book} />
         <div {...hostProps} className="min-h-0 flex-1 overflow-y-auto [-webkit-touch-callout:none]">
-          {open ? (
+          {sidebarShown ? (
             <SidebarList agent={agent} paneId={paneId} scope={scope} onSelect={goTo} />
           ) : (
             <Rail spaces={spaces} hereKey={agent ? paneRowKey(agent) : null} onSelect={goTo} />
@@ -301,23 +316,30 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused }: WideLa
         </div>
       </aside>
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      {/* The fold's own width, between the full sidebar and the one column (book, one column). */}
+      {book && !bookPair && <span aria-hidden data-slot="fold-gutter" className="fold-gutter shrink-0" />}
+
+      <div data-segment={book && !bookPair ? "right" : undefined} className="flex min-w-0 flex-1 flex-col">
         <div
           data-slot="space-header"
           {...swipe}
-          className="flex h-12 shrink-0 touch-none items-center gap-1 border-b border-rule bg-band-ground pl-4 pr-1"
+          className={cn("flex h-12 shrink-0 touch-none items-center gap-1 border-b border-rule bg-band-ground", bookPair ? "pr-1" : "pl-4 pr-1")}
         >
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-medium">
+          {/* Folded with two columns, the header is cut at the fold like the strip under it: the name
+              over the left column, the buttons over the right one, nothing on the hinge. */}
+          <div className={cn("flex min-w-0 items-center", bookPair ? "fold-left-col pl-4" : "flex-1")}>
+            <div className="min-w-0 flex-1 truncate text-sm font-medium">
               {space?.label ?? ""}
               {machine !== undefined && <span className="text-muted-foreground"> · {machine}</span>}
             </div>
+            {spaceAt >= 0 && (
+              <span data-slot="space-position" className="shrink-0 px-2 text-xs tabular-nums text-muted-foreground">
+                {t("wide.space.position", { index: spaceAt + 1, total: spaces.length })}
+              </span>
+            )}
           </div>
-          {spaceAt >= 0 && (
-            <span data-slot="space-position" className="shrink-0 px-2 text-xs tabular-nums text-muted-foreground">
-              {t("wide.space.position", { index: spaceAt + 1, total: spaces.length })}
-            </span>
-          )}
+          {bookPair && <span aria-hidden className="fold-gutter shrink-0" />}
+          {bookPair && <span aria-hidden className="flex-1" />}
           <Button variant="ghost" size="lg" className="size-11 px-0" aria-label={t("wide.space.previous")} disabled={spaceAt <= 0} onClick={() => moveSpace(-1)}>
             <ChevronUp className="size-5" />
           </Button>
@@ -337,25 +359,40 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused }: WideLa
           ref={setScroller}
           data-slot="strip"
           onScroll={measure}
-          className={cn("relative flex min-h-0 flex-1 overflow-x-auto overflow-y-hidden", drag !== null ? "snap-none" : "snap-x snap-mandatory")}
+          className={cn(
+            "relative flex min-h-0 flex-1 overflow-y-hidden",
+            book ? "overflow-x-hidden" : "overflow-x-auto",
+            book || drag !== null ? "snap-none" : "snap-x snap-mandatory",
+          )}
         >
-          {shown.map((c, i) => {
+          {/* One flat list, the gutter a sibling, so a column keeps its identity through a fold. */}
+          {visible.flatMap((c, i) => {
             const isFocus = c.key === strip.focus;
             const pane = byColumn.get(c.key);
             const preset = widthChoice ? shownPreset(c.preset, allowed) : null;
             const controls = (
               <ColumnControls preset={preset} onCycle={() => cycle(c.key)} onRemove={() => remove(c.key)} removable={shown.length > 1} />
             );
-            return (
+            const segment = bookPair ? (i === 0 ? "left" : "right") : undefined;
+            const column = (
               <section
                 key={c.key}
+                data-segment={segment}
                 data-col-index={i}
                 data-col-key={c.key}
                 data-focused={isFocus ? "" : undefined}
                 aria-label={pane ? paneName(pane) : undefined}
                 aria-current={isFocus && framed ? "true" : undefined}
-                className="flex h-full shrink-0 snap-start border-r border-rule"
-                style={{ flex: `0 0 ${(fractions[i] ?? 1) * 100}%`, minWidth: wide ? MIN_PANE_WIDTH : undefined }}
+                className={cn(
+                  "flex h-full shrink-0 snap-start border-r border-rule",
+                  segment === "left" && "fold-left-col",
+                  segment === "right" && "fold-right-col",
+                )}
+                style={
+                  segment !== undefined
+                    ? undefined
+                    : { flex: `0 0 ${book ? 100 : (fractions[i] ?? 1) * 100}%`, minWidth: wide ? MIN_PANE_WIDTH : undefined }
+                }
                 // A tap anywhere on a column without focus gives it the focus. A tap, not a press: a
                 // press would remount the column under the finger, and a drag is a scroll. A pill on
                 // the belt carries its own act and its own focus move (`onIntent`).
@@ -385,19 +422,27 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused }: WideLa
                   ) : pane !== undefined ? (
                     <>
                       <ColumnHeader pane={pane} controls={controls} onFocus={() => goTo(pane)} />
-                      <PaneColumnBody pane={pane} scope={scopeOfPane(pane, places)} onIntent={(intent) => onIntent(pane, intent)} />
+                      <PaneColumnBody
+                        pane={pane}
+                        scope={scopeOfPane(pane, places)}
+                        onIntent={(intent) => onIntent(pane, intent)}
+                        // Tabletop: only the focused pane's belt stands under the fold; the others show Chat.
+                        belt={fold !== "tabletop"}
+                      />
                     </>
                   ) : null}
                 </div>
               </section>
             );
+            // The fold's gutter between the two columns of a book: no column stands on the hinge.
+            return segment === "right" ? [<span key="fold-gutter" aria-hidden data-slot="fold-gutter" className="fold-gutter shrink-0" />, column] : [column];
           })}
-          {tail > 0 && shown.length > 1 && <span aria-hidden data-slot="strip-end" className="shrink-0" style={{ flex: `0 0 ${tail * 100}%` }} />}
+          {!book && tail > 0 && shown.length > 1 && <span aria-hidden data-slot="strip-end" className="shrink-0" style={{ flex: `0 0 ${tail * 100}%` }} />}
           {drag?.drop != null && (
             <span aria-hidden data-slot="drop-bar" className="pointer-events-none absolute inset-y-0 z-20 w-1 bg-primary" style={{ left: drag.drop.markerX - 2 }} />
           )}
         </div>
-        {shown.length > 1 && <PositionStrip widths={fractions} focus={focusAt} view={view} tail={tail} />}
+        {!book && shown.length > 1 && <PositionStrip widths={fractions} focus={focusAt} view={view} tail={tail} />}
       </div>
 
       {drag !== null && dragPane !== undefined && (
@@ -438,8 +483,9 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused }: WideLa
 
 /** The sidebar's top row: the Collie mark, the word, and the toggle at the edge nearest the strip.
  *  As tall as the space header. The rail keeps the mark, with the toggle under it. */
-function SidebarTop({ open, setMark }: { open: boolean; setMark: (el: HTMLElement | null) => void }) {
-  const toggle = (
+function SidebarTop({ open, setMark, toggle: hasToggle }: { open: boolean; setMark: (el: HTMLElement | null) => void; toggle: boolean }) {
+  // Folded as a book the segments decide, so there is no toggle to offer until the screen is flat.
+  const toggle = hasToggle && (
     <Button
       variant="ghost"
       size="lg"

@@ -4963,3 +4963,19 @@ describe("AgentChat — the focused column of a large screen's strip (ADR 0120)"
     expect(takeBeltIntent(paneScopeKey(undefined, "w9:p9"))).toEqual({ kind: "action", id: "keys" });
   });
 });
+
+describe("AgentChat — a tabletop fold (ADR 0120, folded postures)", () => {
+  it("marks the chrome block for the bottom segment: the belt, then the reply box; the header stays above", () => {
+    const { container } = renderChat({ tabletop: true });
+    const bottom = container.querySelector<HTMLElement>('[data-segment="bottom"]');
+    expect(bottom?.dataset.slot).toBe("chrome-block");
+    expect(within(bottom!).getByRole("button", { name: "Keys" })).toBeInTheDocument();
+    expect(within(bottom!).getByPlaceholderText(/type a reply/i)).toBeInTheDocument();
+    expect(container.querySelector("header")?.closest('[data-segment="bottom"]') ?? null).toBeNull();
+  });
+
+  it("marks nothing when the screen is flat", () => {
+    const { container } = renderChat();
+    expect(container.querySelector("[data-segment]")).toBeNull();
+  });
+});

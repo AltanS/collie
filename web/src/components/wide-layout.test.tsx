@@ -1,4 +1,4 @@
-import { act, fireEvent, render, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, waitFor, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -20,8 +20,8 @@ import { server } from "@/test/setup";
 // rules here are about what stands around it. The stub reports the pane and whether it was told it
 // stands in a strip.
 vi.mock("@/components/agent-chat", () => ({
-  AgentChat: ({ paneId, inStrip }: { paneId: string; inStrip?: boolean }) => (
-    <div data-testid="chat" data-in-strip={String(inStrip === true)}>{`pane:${paneId}`}</div>
+  AgentChat: ({ paneId, inStrip, tabletop }: { paneId: string; inStrip?: boolean; tabletop?: boolean }) => (
+    <div data-testid="chat" data-in-strip={String(inStrip === true)} data-tabletop={String(tabletop === true)}>{`pane:${paneId}`}</div>
   ),
 }));
 vi.mock("@/hooks/use-loading-stalled", () => ({ useLoadingStalled: () => false }));
@@ -99,7 +99,11 @@ function makeRouter(paneId: string) {
 
 // The window's width, as the two width-class media queries read it.
 let width = 1200;
+// How a foldable is held, as the Viewport Segments media features read it. "flat" matches neither.
+let posture: "flat" | "tabletop" | "book" = "flat";
 function answer(query: string): boolean {
+  if (query.includes("vertical-viewport-segments")) return posture === "tabletop";
+  if (query.includes("horizontal-viewport-segments")) return posture === "book";
   const min = /min-width:\s*(\d+)px/.exec(query);
   return min !== null && width >= Number(min[1]);
 }
@@ -129,6 +133,7 @@ beforeEach(() => {
   server.use(http.get("/api/pane/:id", () => HttpResponse.json({ text: "preview rows", truncated: false, revision: 1 })));
 });
 afterEach(() => {
+  posture = "flat";
   vi.unstubAllGlobals();
   __resetWideLayoutStore();
 });
@@ -372,5 +377,134 @@ describe("the space header", () => {
     // Back up: alpha's own focus is where it was left.
     fireEvent.click(within(q(container, '[data-slot="space-header"]')!).getByRole("button", { name: "Previous space" }));
     await waitFor(() => expect(router.state.location.pathname).toBe(panePath("w1:p1")));
+  });
+});
+
+/** A soft keyboard for `useKeyboardOpen`, which reads `visualViewport` (jsdom has none). */
+function withSoftKeyboard() {
+  const listeners = new Set<() => void>();
+  const vv = {
+    width: 900,
+    height: 800,
+    addEventListener: (_: string, fn: () => void) => void listeners.add(fn),
+    removeEventListener: (_: string, fn: () => void) => void listeners.delete(fn),
+  };
+  Object.defineProperty(window, "visualViewport", { value: vv, configurable: true });
+  return {
+    open: (height: number) => {
+      vv.height = height;
+      act(() => listeners.forEach((fn) => fn()));
+    },
+    restore: () => Reflect.deleteProperty(window, "visualViewport"),
+  };
+}
+
+const frame = (root: ParentNode) => q(root, '[data-slot="fold-frame"]')!;
+const chat = (root: ParentNode) => q(root, '[data-testid="chat"]')!;
+
+describe("folded postures", () => {
+  it("flat: no browser that lacks the segment features sees a fold", async () => {
+    const { container } = await mount("w1:p1", 1200);
+    expect(frame(container).dataset.fold).toBe("flat");
+    expect(chat(container).dataset.tabletop).toBe("false");
+    expect(container.querySelectorAll("[data-segment]")).toHaveLength(0);
+  });
+
+  it("tabletop on a phone-width screen: the pane view sends its belt and reply box under the fold", async () => {
+    posture = "tabletop";
+    const { container } = await mount("w1:p1", 412);
+    expect(q(container, '[data-slot="wide-layout"]')).toBeNull();
+    expect(frame(container).dataset.fold).toBe("tabletop");
+    expect(chat(container).dataset.tabletop).toBe("true");
+    // The header stays above the fold, in the frame that ends at the top segment.
+    expect(q(container, "header")?.closest('[data-segment="bottom"]')).toBeNull();
+  });
+
+  it("tabletop on a large screen: the other columns show their Chat only, with no belt", async () => {
+    posture = "tabletop";
+    const { container } = await mount("w1:p1", 1200);
+    await openBesideFromSidebar(container, A2);
+    const other = columns(container)[0]!;
+    expect(q(other, '[data-slot="column-body"]')).not.toBeNull();
+    expect(q(other, '[data-slot="chrome-block"]')).toBeNull();
+    expect(within(other).queryByRole("button", { name: "Keys" })).toBeNull();
+    expect(chat(container).dataset.tabletop).toBe("true");
+  });
+
+  it("tabletop falls back to the normal layout while the soft keyboard is up", async () => {
+    posture = "tabletop";
+    const kb = withSoftKeyboard();
+    try {
+      const { container } = await mount("w1:p1", 1200);
+      expect(frame(container).dataset.fold).toBe("tabletop");
+      const view = chat(container);
+      kb.open(400);
+      await waitFor(() => expect(frame(container).dataset.fold).toBe("flat"));
+      expect(chat(container).dataset.tabletop).toBe("false");
+      // The same pane view, not a new one: the keyboard's field keeps its focus.
+      expect(chat(container)).toBe(view);
+    } finally {
+      kb.restore();
+    }
+  });
+
+  it("book with two columns: the rail and one column in the left segment, the other in the right, a gutter between", async () => {
+    const { container } = await mount("w1:p1", 1200);
+    await openBesideFromSidebar(container, A2);
+    // Unfolded to a book: mount again under the new media answer, on the layout the device kept.
+    cleanup();
+    posture = "book";
+    const folded = await mount("w1:p2", 1200);
+    const root = folded.container;
+    const aside = q(root, "aside")!;
+    expect(aside.dataset.slot).toBe("rail");
+    expect(aside.dataset.segment).toBe("left");
+    // A presentation only: the stored choice is still "open".
+    expect(localStorage.getItem("collie:wide-sidebar:v1")).toBeNull();
+    expect(q(root, '[data-slot="sidebar-toggle"]')).toBeNull();
+    const strip = q(root, '[data-slot="strip"]')!;
+    const parts = [...strip.children].map((el) => (el instanceof HTMLElement ? (el.dataset.segment ?? el.dataset.slot) : ""));
+    expect(parts).toEqual(["left", "fold-gutter", "right"]);
+    expect(columns(root).map((c) => c.dataset.colKey)).toEqual([key(A1), key(A2)]);
+    // The presets rest while folded: no width button, no inline width, no position strip.
+    for (const col of columns(root)) {
+      expect(within(col).queryByRole("button", { name: /^Width / })).toBeNull();
+      expect(col.style.flex).toBe("");
+    }
+    expect(q(root, '[data-slot="position-strip"]')).toBeNull();
+    // The space header is cut at the fold too.
+    expect(q(q(root, '[data-slot="space-header"]')!, ".fold-gutter")).not.toBeNull();
+  });
+
+  it("book with one column: the full sidebar fills the left segment and the column the right one", async () => {
+    posture = "book";
+    const { container } = await mount("w1:p1", 1200);
+    const aside = q(container, "aside")!;
+    expect(aside.dataset.slot).toBe("wide-sidebar");
+    expect(aside.className).toContain("fold-left-full");
+    expect(aside.nextElementSibling instanceof HTMLElement && aside.nextElementSibling.dataset.slot).toBe("fold-gutter");
+    const right = q(container, '[data-segment="right"]')!;
+    expect(q(right, "[data-col-key]")?.dataset.colKey).toBe(key(A1));
+  });
+
+  it("book shows the focused column and its neighbour, and only from 600 px", async () => {
+    const flat = await mount("w1:p1", 1200);
+    await openBesideFromSidebar(flat.container, A2);
+    await openBesideFromSidebar(flat.container, A3);
+    expect(columns(flat.container).map((c) => c.dataset.colKey)).toEqual([key(A1), key(A2), key(A3)]);
+    // One screen at a time: two mounted layouts on two routes would each move the shared focus.
+    cleanup();
+    posture = "book";
+    // The focus at the end: it and its left neighbour.
+    const last = await mount("w1:p3", 1200);
+    expect(columns(last.container).map((c) => c.dataset.colKey)).toEqual([key(A2), key(A3)]);
+    cleanup();
+    // The focus first: it and its right neighbour.
+    const first = await mount("w1:p1", 1200);
+    expect(columns(first.container).map((c) => c.dataset.colKey)).toEqual([key(A1), key(A2)]);
+    cleanup();
+    const phone = await mount("w1:p1", 599);
+    expect(frame(phone.container).dataset.fold).toBe("flat");
+    expect(q(phone.container, "aside")).toBeNull();
   });
 });

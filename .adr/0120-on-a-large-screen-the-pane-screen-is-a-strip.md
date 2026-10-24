@@ -65,7 +65,35 @@ or Firefox. The window's width is known everywhere.
    workspace. Nothing is written to a bridge and there is no request id. A column whose pane a live
    herd no longer lists is pruned; a herd from a saved copy prunes nothing.
 10. **Phone gestures are deferred.** The playground's swipe, two-finger chord and joystick cards are
-    not built. Below 600px the pane screen is the phone's as before.
+    not built. Below 600px the pane screen is the phone's as before, except on a tabletop fold (see
+    "Folded postures").
+
+## Folded postures
+
+Added 2026-10-24, on top of the width layout. A foldable held half open splits the screen at the fold,
+and the layout splits with it. Nothing straddles the fold.
+
+1. **Read from Viewport Segments, not from Device Posture alone.** Two segments one above the other
+   (`vertical-viewport-segments: 2`) is TABLETOP; two side by side (`horizontal-viewport-segments: 2`)
+   is BOOK. Device Posture's `folded` says the hinge is bent but not where the fold crosses the
+   viewport, and the layout needs where. The geometry comes from the `viewport-segment-*` environment
+   variables, each with a fallback. Only Chrome 138+ and Samsung Internet have the features. Safari,
+   Firefox and the Apple foldable match neither query and get the width layout only.
+2. **Tabletop, at every width.** The top segment holds the header and the Chat (from 600px the sidebar
+   and the strip, each column with its Chat only). The bottom segment holds the focused pane's belt,
+   anchored at its top edge, and the reply box, which fills the rest of the segment. While the soft
+   keyboard is up the layout falls back to flat, because the keyboard covers the bottom segment. The
+   switch changes attributes only and never remounts the pane view, so the field keeps its focus.
+3. **Book, from 600px.** Two columns, one per segment, with the fold's width as a gutter between them:
+   the focused column and its right neighbour, or its left one at the end. The sidebar shows as the
+   rail without touching the stored choice, and the width presets rest until the screen is flat. One
+   column alone stands in the right segment, beside the full sidebar in the left one.
+
+Checked in Chromium 151 over CDP on 2026-10-24: `Emulation.setDisplayFeaturesOverride` with
+`setDevicePostureOverride({type: "folded"})` changed nothing, while the deprecated `displayFeature`
+and `devicePosture` parameters of `Emulation.setDeviceMetricsOverride` made both queries match and
+the variables answer (book: segments at 0 and 460 for a 20px fold at 440; tabletop: the bottom
+segment's top at 410).
 
 ## Consequences
 

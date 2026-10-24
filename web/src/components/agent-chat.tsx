@@ -203,6 +203,8 @@ interface AgentChatProps {
    * because the sidebar beside the strip is the switcher there.
    */
   inStrip?: boolean;
+  /** A half-open foldable in tabletop (ADR 0120): the chrome block stands in the bottom segment. */
+  tabletop?: boolean;
 }
 
 /** How many rows at the raw screen's tail count as its footer when the model label asks if it is named. */
@@ -260,6 +262,7 @@ export function AgentChat({
   onBackArrow,
   onSelect,
   inStrip = false,
+  tabletop = false,
 }: AgentChatProps) {
   const revalidator = useRevalidator();
   const nav = useNav();
@@ -2992,7 +2995,7 @@ export function AgentChat({
               {/* `relative` is the box the voice takeover is drawn over: it is `absolute inset-0` in this
                   block, a sibling of the composer, so it fills exactly the composer's own box and
                   adds no height (components/voice-takeover.tsx). */}
-              <div data-slot="chrome-block" className="relative border-t border-rule bg-chrome">
+              <div data-slot="chrome-block" data-segment={tabletop ? "bottom" : undefined} className="relative border-t border-rule bg-chrome">
                 {gridless ? (
                   // The composer of a pane with no screen: text goes through the send route with the
                   // turn the phone saw, and a Stop control posts the abort route. The keys bar, the

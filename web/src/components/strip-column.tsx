@@ -146,7 +146,18 @@ export function ColumnHeader({ pane, controls, onFocus }: { pane: AgentView; con
  * composer run it (lib/belt-intent.ts). Stop arms and confirms here, in the column, as it does on the
  * phone; only the confirmed Stop travels.
  */
-export function PaneColumnBody({ pane, scope, onIntent }: { pane: AgentView; scope: Scope; onIntent: (intent: BeltIntent) => void }) {
+export function PaneColumnBody({
+  pane,
+  scope,
+  onIntent,
+  belt = true,
+}: {
+  pane: AgentView;
+  scope: Scope;
+  onIntent: (intent: BeltIntent) => void;
+  /** False on a tabletop fold, where only the focused pane's belt stands, under the fold. */
+  belt?: boolean;
+}) {
   useLocale();
   const dash = useDashPrefs();
   const { prefs } = useDisplayPrefs();
@@ -216,6 +227,7 @@ export function PaneColumnBody({ pane, scope, onIntent }: { pane: AgentView; sco
         )}
         <ModelTag model={pane.model} effort={pane.effort} usage={pane.usage} />
       </div>
+      {belt && (
       <div data-slot="chrome-block" className="relative shrink-0 border-t border-rule bg-chrome px-3">
         <ActionsRow
           general={general}
@@ -251,6 +263,7 @@ export function PaneColumnBody({ pane, scope, onIntent }: { pane: AgentView; sco
           }
         />
       </div>
+      )}
     </>
   );
 }
