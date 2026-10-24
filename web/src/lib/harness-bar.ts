@@ -237,13 +237,14 @@ export function durableBarFor(declared: (cap: MuxCapability) => boolean, actions
 }
 
 /**
- * Whether the belt draws Stop for a pane with a screen (M68 spec 02): its turn reads `running` AND the
- * bridge says a Stop has a key to press (`canStop`, set from the profile's `keys.interrupt`). No harness
- * name is asked here, and a durable pane never carries `canStop`, so it keeps `DurableBar` and nothing
- * else. An idle or unread turn draws no Stop: the stale tap would only come back as `turn_idle`.
+ * Whether the belt draws Stop for a pane with a screen (M68 spec 02): the bridge says a Stop has a key to
+ * press (`canStop`, set from the profile's `keys.interrupt`). No harness name is asked here, and a durable
+ * pane never carries `canStop`, so it keeps `DurableBar` and nothing else. The turn does not decide whether
+ * the button is DRAWN, only whether it is live: Stop stands dimmed while nothing runs, so the belt never
+ * reflows when a turn starts or ends (DESIGN.md §2). `ScreenStop` takes `running` for that.
  */
-export function stopFor(pane: Pick<AgentView, "surface" | "canStop"> | undefined | null): boolean {
-  return pane?.canStop === true && pane.surface?.turn === "running";
+export function stopFor(pane: Pick<AgentView, "canStop"> | undefined | null): boolean {
+  return pane?.canStop === true;
 }
 
 // A Map for the same reason the command catalog uses one: the key tested against it is Herdr's

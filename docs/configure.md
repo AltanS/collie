@@ -238,15 +238,19 @@ Collie's own controls stay.
 
 ### Stop a turn
 
-While an agent works, a **Stop** button sits at the start of the belt, before Collie's other buttons, so it is in view without a scroll. It shows only when
-the turn runs and Collie knows the key that stops this agent. Stop does not type anything and does not
-send a message. It presses the agent's own stop key, once, and tells you what happened.
+A **Stop** button sits at the start of the belt, before Collie's other buttons, so it is in view
+without a scroll. It stands there for every agent whose harness profile names a stop key, and it is
+dimmed while nothing runs. It keeps its place and its size, so the other buttons never move when a
+turn starts or ends. A tap on the dimmed button does nothing and sends nothing. An agent with no
+stop key has no button. Stop does not type anything and does not send a message. It presses the
+agent's own stop key, once, and tells you what happened.
 
 A Stop needs two taps. The first tap arms the button: the word changes to **Stop?** and the button
 keeps its size. Tap it again within four seconds to stop the turn. A second tap that lands at once,
-within 0.4 seconds, counts as the same touch and is ignored. If you wait, the arm lapses and nothing is
-pressed. The arm also lapses when you open another pane or the turn ends. While the second tap is in flight the button takes no more taps, so a quick third
-tap cannot press a second Stop.
+within 0.4 seconds, counts as the same touch and is ignored. If you wait, the arm lapses and nothing
+is pressed. The arm also lapses when you open another pane, and the button goes dim when the turn
+ends. While the second tap is in flight the button takes no more taps, so a quick third tap cannot
+press a second Stop.
 
 Which key stops a turn is the harness's own choice, and the harness profile holds it. Most agents
 stop on Escape, some on Ctrl+C, and some need Escape twice. The profile decides, not this page.

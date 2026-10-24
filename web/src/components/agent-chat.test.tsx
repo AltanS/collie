@@ -4872,8 +4872,8 @@ describe("AgentChat, the newest turn's picture on a pi pane (M39, #292)", () => 
   });
 });
 
-// M68 spec 02: Stop on the belt of a pane with a screen. The rule is `stopFor` (the turn runs and the bridge
-// says a key exists); the first tap arms, the second posts the request id alone and the receipt shows under the box.
+// M68 spec 02: Stop on the belt of a pane with a screen. The rule is `stopFor` (the bridge says a key exists;
+// the turn only decides live or dimmed); the first tap arms, the second posts the request id alone and the receipt shows under the box.
 describe("AgentChat: Stop on a pane with a screen", () => {
   const RUNNING: Surface = { revision: 4, turn: "running", modal: "none", composer: "empty" };
   const IDLE_SURFACE: Surface = { revision: 4, turn: "idle", modal: "none", composer: "empty" };
@@ -4894,14 +4894,28 @@ describe("AgentChat: Stop on a pane with a screen", () => {
     return posted;
   }
 
-  it("draws no Stop on an idle pane, or on a running one the bridge has no key for", async () => {
-    renderChat({ agent: stopAgent({ surface: IDLE_SURFACE, canStop: true }) });
-    await screen.findByRole("button", { name: "Pane actions" });
-    expect(beltStop()).toBeNull();
-    cleanup();
+  it("draws no Stop on a pane the bridge has no key for, running or idle", async () => {
     renderChat({ agent: stopAgent({ surface: RUNNING }) });
     await screen.findByRole("button", { name: "Pane actions" });
     expect(beltStop()).toBeNull();
+    cleanup();
+    renderChat({ agent: stopAgent({ surface: IDLE_SURFACE }) });
+    await screen.findByRole("button", { name: "Pane actions" });
+    expect(beltStop()).toBeNull();
+  });
+
+  it("draws a dimmed Stop on an idle pane that has a key, and a tap posts nothing and arms nothing", async () => {
+    const user = userEvent.setup();
+    const posted = serveStop({ requestId: "echo-0003", outcome: "refused", reason: "turn_idle" });
+    renderChat({ agent: stopAgent({ surface: IDLE_SURFACE, canStop: true }) });
+    const stop = await screen.findByRole("button", { name: "Stop the turn" });
+    expect(stop).toHaveAttribute("data-slot", "belt-stop");
+    expect(stop).toHaveAttribute("aria-disabled", "true");
+    await user.click(stop);
+    await pastTheDwell();
+    await user.click(stop);
+    expect(posted).toHaveLength(0);
+    expect(screen.queryByRole("button", { name: "Tap again to stop the turn" })).toBeNull();
   });
 
   it("arms on the first tap, posts one fresh request id on the second and tells the receipt under the box", async () => {

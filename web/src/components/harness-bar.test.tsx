@@ -312,6 +312,51 @@ describe("ScreenStop (M68 spec 02)", () => {
     expect(stop().className).toContain("min-w-11");
   });
 
+  it("is live while the turn runs: full strength, no aria-disabled", () => {
+    render(<ScreenStop paneId="w1:p1" running onStop={async () => {}} />);
+    expect(stop()).not.toHaveAttribute("aria-disabled");
+    expect(stop().className.split(/\s+/)).not.toContain("opacity-50");
+  });
+
+  // IDLE IS DIM, NOT ABSENT (DESIGN.md §2): the button keeps its place and its size, so the belt never reflows.
+  it("stands dimmed while the turn is idle, in the focus order, and the tap sends no request and arms nothing", () => {
+    const onStop = vi.fn(async () => {});
+    const { rerender } = render(<ScreenStop paneId="w1:p1" running onStop={onStop} />);
+    const live = stop().className;
+    rerender(<ScreenStop paneId="w1:p1" running={false} onStop={onStop} />);
+    expect(stop()).toHaveAttribute("aria-disabled", "true");
+    expect(stop().className.split(/\s+/)).toContain("opacity-50");
+    // Not the `disabled` attribute: a reader and the Tab key still reach it.
+    expect(stop()).not.toBeDisabled();
+    expect(stop()).toHaveTextContent("Stop");
+    // Only the dim differs: every sizing class (height, min width, padding, gap, text) is the same in both states.
+    const sizing = (cn: string) => cn.split(/\s+/).filter((c) => /^(h-|min-w-|px-|has-\[>svg\]:px-|gap-|text-\[length)/.test(c));
+    expect(sizing(stop().className)).toEqual(sizing(live));
+    fireEvent.click(stop());
+    fireEvent.click(stop());
+    expect(onStop).not.toHaveBeenCalled();
+    expect(stop()).toHaveTextContent("Stop");
+    expect(stop()).not.toHaveTextContent("Stop?");
+    expect(screen.queryByRole("button", { name: /tap again/i })).toBeNull();
+  });
+
+  it("goes live again when the turn starts, and arms then stops as before", () => {
+    const onStop = vi.fn(async () => {});
+    const clock = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+    try {
+      const { rerender } = render(<ScreenStop paneId="w1:p1" running={false} onStop={onStop} />);
+      rerender(<ScreenStop paneId="w1:p1" running onStop={onStop} />);
+      expect(stop()).not.toHaveAttribute("aria-disabled");
+      fireEvent.click(stop());
+      expect(stop()).toHaveTextContent("Stop?");
+      clock.mockReturnValue(1_000_000 + ARM_DWELL_MS);
+      fireEvent.click(stop());
+      expect(onStop).toHaveBeenCalledTimes(1);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
   it("arms on the first tap without stopping anything", () => {
     const onStop = vi.fn(async () => {});
     render(<ScreenStop paneId="w1:p1" running onStop={onStop} />);
@@ -404,6 +449,7 @@ describe("ScreenStop (M68 spec 02)", () => {
     expect(stop()).toHaveTextContent("Stop?");
     rerender(<ScreenStop paneId="w1:p1" running={false} onStop={onStop} />);
     expect(stop()).not.toHaveTextContent("Stop?");
+    expect(stop()).toHaveAttribute("aria-disabled", "true");
 
     rerender(<ScreenStop paneId="w1:p1" running onStop={onStop} />);
     fireEvent.click(stop());

@@ -177,8 +177,9 @@ interface ComposerProps {
    */
   composing?: boolean;
   /**
-   * The belt draws Stop (M68 spec 02): the turn runs and the bridge says a key exists (`stopFor`,
-   * lib/harness-bar.ts, decided by the pane). Absent or false and no Stop is drawn.
+   * The belt draws Stop (M68 spec 02): the bridge says a key exists (`stopFor`, lib/harness-bar.ts,
+   * decided by the pane). The turn only decides whether it is live or dimmed. Absent or false and no
+   * Stop is drawn.
    */
   stopOffered?: boolean;
   /** The "Answer the dialog" word's tap: scroll to the dialog card and focus its first button. It sends
@@ -2213,7 +2214,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           mine={operatorCommands}
           onRun={(command) => send(command, false)}
           disabled={locked}
-          // Stop, for a running turn the bridge has a key for (M68 spec 02); a link that is down greys it.
+          // Stop, for a pane the bridge has a key for (M68 spec 02): live while the turn runs, dimmed in
+          // place otherwise; a link that is down greys it.
           stop={stopOffered ? { onStop: stopTurn, paneId, running: surface.turn === "running" } : undefined}
           // The pane switcher: a Switch pill pinned at this belt's right end, above Send, and the
           // belt itself as the drag surface behind it. The pane decides whether there is one
