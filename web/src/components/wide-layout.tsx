@@ -111,6 +111,16 @@ interface WideLayoutProps {
 
 /** Spaces in the sidebar's workspace order: the agents' sections first, as the sidebar draws them,
  *  then a space that holds only shells. */
+/** Whether a text field of this layout holds the document focus: the reply box, or any input,
+ *  textarea or editable element inside the layout. A scroll never takes the focus from it. */
+function isTypingInLayout(strip: HTMLElement): boolean {
+  const active = document.activeElement;
+  if (!(active instanceof HTMLElement)) return false;
+  const root = strip.closest('[data-slot="wide-layout"]') ?? strip;
+  if (!root.contains(active)) return false;
+  return active instanceof HTMLTextAreaElement || active instanceof HTMLInputElement || active.isContentEditable;
+}
+
 function spacesInOrder(agents: readonly AgentView[], shells: readonly AgentView[], options: Parameters<typeof groupPanesByWorkspace>[2]): WorkspaceGroup[] {
   const sections = groupPanesByWorkspace(agents, [], options).map((g) => g.key);
   const all = groupPanesByWorkspace(agents, shells, options);
@@ -324,7 +334,8 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
   // ── Wheel and trackpad settle on a column start; the focus follows the view, as in niri ─────
   // Touch is the browser's own momentum and mandatory snap. After a wheel gesture settles, a focused
   // column the view no longer shows whole hands the focus to the leftmost whole one. Folded as a book
-  // the two columns are fixed, so nothing follows.
+  // the two columns are fixed, so nothing follows. While a text field of the layout (the reply box)
+  // has the document focus nothing follows either, and it follows again from the first settle after blur.
   useStripSnap(scroller, {
     // The add column is a snap point too; a start past the end of the scroll range rests at the end.
     columnStarts: () => {
@@ -337,6 +348,8 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
     onSettled: (left) => {
       const node = scroller.current;
       if (node === null || book) return;
+      // The person is typing: a scroll must not move the focus (and with it the reply box) from under them.
+      if (isTypingInLayout(node)) return;
       const cols = [...node.querySelectorAll<HTMLElement>("[data-col-key]")].map((c) => ({
         key: c.dataset.colKey ?? "",
         start: c.offsetLeft,

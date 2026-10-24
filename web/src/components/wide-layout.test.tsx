@@ -578,6 +578,52 @@ describe("the add column", () => {
   });
 });
 
+describe("the focus that follows the view", () => {
+  async function laidOut() {
+    const { container, router } = await mount("w1:p1", 1200);
+    await openBesideFromSidebar(container, A2);
+    const strip = q(container, '[data-slot="strip"]')!;
+    Object.defineProperty(strip, "clientWidth", { configurable: true, value: 440 });
+    Object.defineProperty(strip, "scrollWidth", { configurable: true, value: 1320 });
+    const box = (el: HTMLElement, left: number, w: number) => {
+      Object.defineProperty(el, "offsetLeft", { configurable: true, value: left });
+      Object.defineProperty(el, "offsetWidth", { configurable: true, value: w });
+    };
+    const [c1, c2] = columns(container);
+    box(c1!, 0, 440);
+    box(c2!, 440, 440);
+    box(q(container, '[data-slot="add-column"]')!, 880, 440);
+    return { container, router, focusedColumn: c2! };
+  }
+
+  it("waits while the reply box has the document focus, and follows again after the blur", async () => {
+    const { router, focusedColumn } = await laidOut();
+    const reply = document.createElement("textarea");
+    focusedColumn.appendChild(reply);
+    reply.focus();
+    expect(document.activeElement).toBe(reply);
+    // The view rests on the first column only: without the typing, the focus would move there.
+    act(() => snap.options?.onSettled?.(0));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 30)); // navigation is async; give a wrong move time to land
+    });
+    expect(router.state.location.pathname).toBe(panePath("w1:p2"));
+    reply.blur();
+    act(() => snap.options?.onSettled?.(0));
+    await waitFor(() => expect(router.state.location.pathname).toBe(panePath("w1:p1")));
+  });
+
+  it("is not held by a text field outside the layout", async () => {
+    const { router } = await laidOut();
+    const outside = document.createElement("input");
+    document.body.appendChild(outside);
+    outside.focus();
+    act(() => snap.options?.onSettled?.(0));
+    await waitFor(() => expect(router.state.location.pathname).toBe(panePath("w1:p1")));
+    outside.remove();
+  });
+});
+
 describe("a sideways scroll over a column", () => {
   it("reaches the strip: the columns hand their x overscroll on, and only the strip contains it", async () => {
     const { container } = await mount("w1:p1", 1200);
