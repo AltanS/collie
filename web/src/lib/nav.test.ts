@@ -144,10 +144,12 @@ describe("the New page's address", () => {
     expect(newPath({ machine: "mini" })).toBe("/new?machine=mini");
     expect(newPath({ machine: "mini", pane: "w1:p1", session: "demo" })).toBe("/new?machine=mini&pane=w1%3Ap1&s=demo");
     expect(newPath({ pane: "w1:p1" })).toBe("/new?pane=w1%3Ap1");
+    expect(newPath({ machine: "mini", beside: "w1:p1" })).toBe("/new?machine=mini&beside=w1%3Ap1");
   });
 
   it("reads back what it wrote, and blank values as absent", () => {
     expect(readNewAt("?machine=mini&pane=w1%3Ap1&s=demo")).toEqual({ machine: "mini", pane: "w1:p1", session: "demo" });
+    expect(readNewAt("?beside=w1%3Ap1")).toMatchObject({ beside: "w1:p1", pane: undefined });
     expect(readNewAt("")).toEqual({ machine: undefined, pane: undefined, session: undefined });
     expect(readNewAt("?machine=%20&pane=")).toEqual({ machine: undefined, pane: undefined, session: undefined });
   });

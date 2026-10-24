@@ -150,7 +150,7 @@ function NewAddPage({ search }: { search: string }) {
       }
       // Back to the New page, the new row chosen. `side` replaces this entry, so Back from there
       // lands on the page that opened the New page, not on this form again.
-      nav.side(newPath({ machine: at.machine, pane: at.pane, session: at.session, pick: rowKey(res.row) }));
+      nav.side(newPath({ machine: at.machine, pane: at.pane, beside: at.beside, session: at.session, pick: rowKey(res.row) }));
     } catch (e) {
       setError({ print, message: describeThrownError(e) });
     } finally {
@@ -174,7 +174,7 @@ function NewAddPage({ search }: { search: string }) {
               variant="ghost"
               size="icon"
               className="size-11"
-              onClick={() => nav.up(newPath({ machine: at.machine, pane: at.pane, session: at.session }))}
+              onClick={() => nav.up(newPath({ machine: at.machine, pane: at.pane, beside: at.beside, session: at.session }))}
               aria-label={backLabel}
             >
               <ArrowLeft className="size-5" />

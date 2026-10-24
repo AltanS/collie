@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { useRevalidator } from "react-router";
 import { ChevronDown, ChevronUp, Columns2, PanelLeftClose, PanelLeftOpen, Plus, Replace, TerminalSquare } from "lucide-react";
 
 import { ActionRow } from "@/components/action-sheet-rows";
@@ -26,13 +27,15 @@ import { tabCreateKey, useSpaceActions } from "@/hooks/use-spaces";
 import { useStripSnap } from "@/hooks/use-strip-snap";
 import { queueBeltIntent, type BeltIntent } from "@/lib/belt-intent";
 import { writeRefusal } from "@/lib/host-health";
-import { hostName, isMultiHost, paneRowKey } from "@/lib/hosts";
+import { hostKey, hostName, isMultiHost, paneRowKey } from "@/lib/hosts";
 import { t } from "@/lib/i18n";
 import { useLaunchers } from "@/lib/launchers";
-import { newPath, panePath } from "@/lib/nav";
+import { homePath, newPath, panePath } from "@/lib/nav";
 import { groupPanesByWorkspace, type WorkspaceGroup } from "@/lib/pane-groups";
 import { paneName } from "@/lib/pane-name";
+import { isOpenBeside, queueOpenBeside, takeOpenBeside } from "@/lib/open-beside";
 import { usePairing } from "@/lib/pairing";
+import { setStatus } from "@/lib/status";
 import { usePins } from "@/lib/pins";
 import { useRootData } from "@/lib/route-data";
 import { paneScopeKey, type Scope } from "@/lib/scope";
@@ -151,11 +154,17 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
   const strip: SpaceStrip = useMemo(() => {
     if (spaceKey === null) return { cols: [{ key: routeKey, preset: "full" }], focus: routeKey };
     const base = kept ?? spaceStrip(spaceKey);
-    return arrive(root.error ? base : prune(base, live), routeKey);
+    const pruned = root.error ? base : prune(base, live);
+    // A pane started from this space's add sheet ("New agent in this space") opens beside the focus
+    // rather than replacing it (lib/open-beside.ts).
+    if (!pruned.cols.some((c) => c.key === routeKey) && isOpenBeside(spaceKey, routeKey)) return openBeside(pruned, routeKey);
+    return arrive(pruned, routeKey);
   }, [spaceKey, kept, root.error, live, routeKey]);
   useEffect(() => {
-    if (spaceKey !== null && strip !== kept) setSpaceStrip(spaceKey, strip);
-  }, [spaceKey, strip, kept]);
+    if (spaceKey === null || strip === kept) return;
+    setSpaceStrip(spaceKey, strip);
+    if (strip.focus === routeKey && isOpenBeside(spaceKey, routeKey)) takeOpenBeside(spaceKey);
+  }, [spaceKey, strip, kept, routeKey]);
 
   const pathOf = useCallback((pane: AgentView) => panePath(pane.paneId, scopeOfPane(pane, places)), [places]);
   const goTo = useCallback((pane: AgentView) => nav.side(pathOf(pane)), [nav, pathOf]);
@@ -227,12 +236,40 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
   // A new space, and a new agent from the add slot, are the New page: it starts its agent in a new
   // space of the machine and session on screen. It takes no space to start in (lib/nav.ts `NewAt`).
   const toNew = () => nav.down(newPath({ machine: scope.host, session: scope.session }));
+  // A new agent in THIS space is the same page told which space: it starts a new tab there (the launch
+  // route's `paneId`), and the pane that comes back opens beside the focused column (lib/open-beside.ts).
+  const toNewHere = () => {
+    if (agent === undefined || spaceKey === null || space === undefined) return;
+    queueOpenBeside(spaceKey, space.panes.map((p) => columnKeyOf(p, places)));
+    nav.down(newPath({ machine: scope.host, beside: agent.paneId, session: scope.session }));
+  };
   // THE SPACE'S TABS live in the space header, with the pane view's own handlers (agent-chat.tsx's tab
   // row, hidden in a strip): a tab opens its first pane, and "+" opens a new tab the way the row does.
   const { refused: notPaired } = usePairing();
   const readOnly = isReadOnly(root.device) || notPaired;
   const canWriteTabs = useCallback(() => !root.error, [root.error]);
   const { newTab, creatingTab } = useSpaceActions(canWriteTabs);
+  // Rename and close from the chip's long-press sheet, wired as the pane view wires its own tab row
+  // (agent-chat.tsx): a rename or a close of another tab only revalidates. Closing the tab that holds
+  // the focused column must not leave the route on a pane that is gone, so the focus moves to a
+  // neighbouring tab's pane (`nav.side`, ADR 0067: pane to pane), and only a space with nothing left
+  // to land on goes up to Home.
+  const revalidator = useRevalidator();
+  const revalidate = () => void revalidator.revalidate();
+  const closedTab = (tabId: string) => {
+    if (agent === undefined || tabId !== agent.tabId) return revalidate();
+    // Published before the move, as the pane view does: the tab you were in is gone either way.
+    setStatus(t("space.tab.closed"), "info");
+    // The strip's own order and neighbours: the next tab first, the previous only past the end, then
+    // on in both directions, because a neighbour can be an empty tab with no pane to land on.
+    const mine = root.tabs.filter((tab) => tab.workspaceId === agent.workspaceId && hostKey(tab) === hostKey(agent));
+    const at = mine.findIndex((tab) => tab.tabId === tabId);
+    for (const tab of [...mine.slice(at + 1), ...mine.slice(0, Math.max(at, 0)).toReversed()]) {
+      const target = herd.find((p) => p.tabId === tab.tabId && p.workspaceId === agent.workspaceId && p.host === agent.host);
+      if (target !== undefined) return goTo(target);
+    }
+    nav.up(homePath({ host: scope.host, session: scope.session }));
+  };
   const toTab = (tabId: string) => {
     if (agent === undefined || tabId === agent.tabId) return;
     const target = herd.find((p) => p.tabId === tabId && p.host === agent.host);
@@ -451,6 +488,8 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
                 scope={scope}
                 readOnly={readOnly}
                 savedCopy={root.error}
+                onRenamed={revalidate}
+                onClosed={closedTab}
                 className="min-w-0 flex-1 bg-transparent"
               />
             ) : (
@@ -627,6 +666,16 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
               </Button>
             </div>
           ))}
+          {agent !== undefined && space !== undefined && (
+            <ActionRow
+              icon={<Plus className="size-5" />}
+              label={t("wide.add.newAgentHere")}
+              onClick={() => {
+                setAdding(false);
+                toNewHere();
+              }}
+            />
+          )}
           <ActionRow
             icon={<Plus className="size-5" />}
             label={t("wide.add.newAgent")}

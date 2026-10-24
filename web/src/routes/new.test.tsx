@@ -256,6 +256,45 @@ describe("the New page: the address", () => {
   });
 });
 
+describe("the New page: ?beside= (an agent in this space)", () => {
+  const beside = `/new?beside=${encodeURIComponent("w1:p1")}`;
+
+  it("starts on that pane's folder, with no worktree block and no machine select, titled for the space", async () => {
+    serveLaunchers();
+    mount({ entries: [beside], agents: [PANE], servers: roster });
+    expect(await screen.findByRole("heading", { name: "New in this space" })).toBeInTheDocument();
+    await agentSelect();
+    expect(screen.getByRole("textbox", { name: "Folder" })).toHaveValue("/home/op/src/app");
+    expect(screen.queryByRole("switch", { name: /New worktree/ })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Host" })).toBeNull();
+  });
+
+  it("sends the pane as the launch route's paneId, with the request id, and lands on the new pane as a tab", async () => {
+    serveLaunchers();
+    const bodies: unknown[] = [];
+    serveLaunch(bodies);
+    const router = mount({ entries: [beside], agents: [PANE] });
+    await waitFor(async () => expect(await agentSelect()).toHaveValue("harness:claude"));
+    await userEvent.click(screen.getByRole("button", { name: "Start" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/pane/w9%3Ap1"));
+    expect(bodies).toEqual([
+      { harness: "claude", cwd: "/home/op/src/app", paneId: "w1:p1", requestId: expect.stringMatching(/^[0-9a-f-]{36}$/) },
+    ]);
+  });
+
+  it("a pane that is gone leaves the plain page: a new space, no paneId", async () => {
+    serveLaunchers();
+    const bodies: unknown[] = [];
+    serveLaunch(bodies);
+    mount({ entries: [`/new?beside=${encodeURIComponent("w9:p9")}`], agents: [PANE] });
+    await waitFor(async () => expect(await agentSelect()).toHaveValue("harness:claude"));
+    expect(screen.getByRole("heading", { name: "New" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Start" }));
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).not.toHaveProperty("paneId");
+  });
+});
+
 describe("the New page: Agent and Command", () => {
   it("Agent lists every agent the machine knows; one not installed stays, disabled, with its reason in brackets", async () => {
     serveLaunchers();

@@ -595,6 +595,7 @@ export const en = {
   "wide.newSpace": "New space",
   "wide.add.label": "Add a pane",
   "wide.add.newAgent": "New agent in a new space",
+  "wide.add.newAgentHere": "New agent in this space",
   // --- pane order (the switcher's toggle and the Settings row write one value, ADR 0071) ---
   "paneOrder.aria": "Pane order",
   "paneOrder.place": "Place",
@@ -866,6 +867,7 @@ export const en = {
   "newPage.starters.none": "This machine's durable agent offers no starters yet.",
   "newPage.starters.label": "Starters",
   "newPage.starters.title": "New conversation",
+  "newPage.title.inSpace": "New in this space",
   "prompt.feedback.cancel": "Cancel",
   "prompt.feedback.typedAria": "Feedback in the terminal",
   "prompt.feedback.planChange.offer": "Tell Claude what to change",

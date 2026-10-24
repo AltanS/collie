@@ -28,6 +28,12 @@ export interface StartAsk {
   requestId: string;
   /** The chosen machine is older than 1.19.0: a shell goes through its plain space create. */
   legacyShell?: boolean;
+  /**
+   * Start as a new TAB in this pane's space instead of a new space (a large screen's "New agent in
+   * this space"). The route's own `paneId`; the workspace is for a machine older than 1.19.0, whose
+   * plain shell goes through its tab create. Never with `branch`: a worktree is a space of its own.
+   */
+  beside?: { paneId: string; workspaceId: string };
   branch?: { cwd: string; name: string; base: WorktreeBaseChoice; folder: WorktreeFolderChoice };
 }
 
@@ -228,9 +234,9 @@ export function useSpaceActions(canWrite?: () => boolean) {
         if (ask.what.kind === "run") {
           // A one-off line never starts on a branch; the page switches that off, and the bridge refuses it too.
           if (ask.branch !== undefined) return { kind: "refused", message: t("apiError.launch.run_no_branch") };
-          const res = await api.startRun(ask.what.line, { cwd: ask.cwd, requestId: ask.requestId }, scope);
+          const res = await api.startRun(ask.what.line, { cwd: ask.cwd, requestId: ask.requestId, besidePaneId: ask.beside?.paneId }, scope);
           if (!res.ok) return { kind: "refused", message: describeApiError(res) };
-          open(res, "space", scope);
+          open(res, ask.beside === undefined ? "space" : "tab", scope);
           return { kind: "done" };
         }
         if (ask.branch !== undefined) {
@@ -244,12 +250,17 @@ export function useSpaceActions(canWrite?: () => boolean) {
           return { kind: "done" };
         }
         // A machine older than 1.19.0 starts no plain shell by id: its own space create opens one.
+        // A starter makes no tab by hand and ignores the pane, so it is a space whatever was asked.
+        const beside = ask.what.kind === "starter" ? undefined : ask.beside;
+        const cwd = ask.cwd === undefined ? {} : { cwd: ask.cwd };
         const res =
           ask.what.kind === "shell" && ask.legacyShell === true
-            ? await api.createWorkspace(ask.cwd === undefined ? {} : { cwd: ask.cwd }, scope)
-            : await api.startLaunch(ask.what, { cwd: ask.cwd, requestId: ask.requestId }, scope);
+            ? beside === undefined
+              ? await api.createWorkspace(cwd, scope)
+              : await api.createTab(beside.workspaceId, cwd, scope)
+            : await api.startLaunch(ask.what, { cwd: ask.cwd, requestId: ask.requestId, besidePaneId: beside?.paneId }, scope);
         if (!res.ok) return { kind: "refused", message: describeApiError(res) };
-        open(res, "space", scope);
+        open(res, beside === undefined ? "space" : "tab", scope);
         return { kind: "done" };
       } catch (e) {
         if (api.outcomeUnknown(e)) return { kind: "unknown" };

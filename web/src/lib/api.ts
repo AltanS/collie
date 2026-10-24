@@ -1970,14 +1970,22 @@ interface StartLaunchBody {
   shell?: true;
   starter?: string;
   cwd?: string;
+  /** The pane whose space this opens a new tab in (the route's own `paneId` field). Absent: a new space. */
+  paneId?: string;
   requestId: string;
 }
 
 /**
  * POST /api/launch from the New page: one kind, an optional folder, and a request id the phone
  * minted for this intent. A retry with the same id answers the first pane (`replayed: true`).
+ * `besidePaneId` starts it as a new TAB in that pane's space instead of a new space; the bridge
+ * then takes the pane's folder when none is named. A starter ignores it (it makes no tab by hand).
  */
-export function startLaunch(what: BranchableWhat, opts: { cwd?: string; requestId: string }, scope?: Scope): Promise<CreateResponse> {
+export function startLaunch(
+  what: BranchableWhat,
+  opts: { cwd?: string; requestId: string; besidePaneId?: string },
+  scope?: Scope,
+): Promise<CreateResponse> {
   const body: StartLaunchBody = { requestId: opts.requestId };
   if (what.kind === "row") body.command = what.command;
   else if (what.kind === "harness") body.harness = what.id;
@@ -1985,6 +1993,7 @@ export function startLaunch(what: BranchableWhat, opts: { cwd?: string; requestI
   else body.shell = true;
   // A starter has no folder: the bridge ignores one, so none is sent.
   if (opts.cwd !== undefined && what.kind !== "starter") body.cwd = opts.cwd;
+  if (opts.besidePaneId !== undefined && what.kind !== "starter") body.paneId = opts.besidePaneId;
   return req<CreateResponse>(withScope("/api/launch", scope), { method: "POST", body: JSON.stringify(body) });
 }
 
@@ -2000,6 +2009,7 @@ export function startLaunch(what: BranchableWhat, opts: { cwd?: string; requestI
 interface StartRunBody {
   run: string;
   cwd?: string;
+  paneId?: string;
   requestId: string;
 }
 
@@ -2010,9 +2020,10 @@ interface StartRunBody {
  * `launch.run_off`, `launch.bad_line` (`detail.problem`, `detail.max`), `launch.bad_folder`,
  * `launch.folder_missing`.
  */
-export function startRun(line: string, opts: { cwd?: string; requestId: string }, scope?: Scope): Promise<CreateResponse> {
+export function startRun(line: string, opts: { cwd?: string; requestId: string; besidePaneId?: string }, scope?: Scope): Promise<CreateResponse> {
   const body: StartRunBody = { run: line, requestId: opts.requestId };
   if (opts.cwd !== undefined) body.cwd = opts.cwd;
+  if (opts.besidePaneId !== undefined) body.paneId = opts.besidePaneId;
   return req<CreateResponse>(withScope("/api/launch", scope), { method: "POST", body: JSON.stringify(body) });
 }
 
