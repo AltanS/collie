@@ -25,11 +25,16 @@
 // tap, not a message, so nothing is lost but the replay. A Clear takes no pane lock, as a Stop takes none:
 // it must not wait behind a send. It never presses Escape (the profile's clear key is a key that deletes).
 // The audit line is the route's: request id, pane, outcome, never the box's text.
+//
+// RESTORE. A one-tap Clear can lose a long draft, so a `cleared` receipt carries the text the first read
+// showed in the box (`draft`, one line, at most 8 KiB): the phone offers to type it back. The text is the
+// operator's own, read behind the same write gate as the tap; it is kept only in the receipt (and its
+// replay), never logged, never on the audit line.
 
 import type { MuxAck, MuxGrid, MuxGridRequest, MuxOutcome } from "../mux/types.ts";
 import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { splitLines } from "../../web/src/lib/blocks.ts";
-import type { ClearReason, ClearReceipt } from "../../web/src/lib/surface/clear.ts";
+import { boundedDraft, type ClearReason, type ClearReceipt } from "../../web/src/lib/surface/clear.ts";
 import type { Frame } from "../../web/src/lib/surface/frame.ts";
 import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
 import { liftAsk, readerBlocks } from "../../web/src/lib/surface/lift.ts";
@@ -155,6 +160,8 @@ export class ClearService {
     const sleep = this.deps.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
     let pressed = false;
     let before = Number.POSITIVE_INFINITY;
+    // The draft the first read showed, for the receipt's Restore. Later rounds read what is left of it.
+    let draft = "";
     for (let round = 0; round < MAX_ROUNDS; round++) {
       // Two reads before the first key, each with the same refusals: the second is taken right before the
       // press, so a dialog that drew in between is never typed at. A later round starts from the read-back.
@@ -165,6 +172,7 @@ export class ClearService {
         if (refused !== null) return refusal(requestId, refused, pressed);
       }
       const length = draftLength(look!.frame!);
+      if (round === 0 && !look!.frame!.placeholder) draft = boundedDraft(look!.frame!.interior.text);
       // A box that did not shrink since the last press is left alone: no second blind press.
       if (length >= before) return refusal(requestId, "press_failed", pressed);
       before = length;
@@ -180,7 +188,7 @@ export class ClearService {
         if (after === null) return refusal(requestId, "pane_gone", pressed);
         if (after.surface.modal !== "none" && after.surface.modal !== "unknown") return refusal(requestId, "dialog_open", pressed);
         if (after.frame !== null && after.surface.modal === "none" && after.surface.composer === "empty") {
-          return { receipt: { requestId, outcome: "cleared" }, pressed };
+          return { receipt: draft === "" ? { requestId, outcome: "cleared" } : { requestId, outcome: "cleared", draft }, pressed };
         }
         if (capped && after.frame !== null && draftLength(after.frame) < length) break;
       }

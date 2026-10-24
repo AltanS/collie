@@ -289,7 +289,16 @@ with its own receipt, and it does not use the arm.
 
 ### Clear the box
 
-The **Clear** button at the end of the chip row on the Keys board empties the harness's input box in one tap, with no arm, because you can retype what it removes. Collie presses the harness's own delete key as often as the text needs, reads the box again, and tells you under it whether the box is clear or why it was not. The button is greyed when the box is empty, a dialog is open or the link is down, and if the box does not empty Collie leaves what remains alone and does not press again.
+The **Clear** button at the end of the chip row on the Keys board empties the harness's input box
+in one tap, with no arm. Collie presses the harness's own delete key as often as the text needs,
+reads the box again, and tells you in a notice above the belt whether the box is clear or why it was
+not. The button is greyed when the box is empty, a dialog is open or the link is down, and if the box
+does not empty Collie leaves what remains alone and does not press again.
+
+After a Clear, the notice offers **Restore** for two minutes. One tap types the text back into the
+box, as one line and without Enter, so nothing is sent. Restore goes away once you type in the box
+again or open another pane. The bridge keeps the cleared text in memory with the Clear's receipt,
+and never writes it to a log or to disk.
 
 ## Your own key presets
 

@@ -13,7 +13,7 @@ import { muxAck, muxGone, muxOk, muxRefused, type MuxAck, type MuxGrid, type Mux
 import { crewRouteFor } from "../crew/forward.ts";
 import { clearRoute, type ClearRouteRuntime } from "../server.ts";
 import { profileFor } from "../../web/src/lib/surface/profile.ts";
-import type { ClearReceipt } from "../../web/src/lib/surface/clear.ts";
+import { boundedDraft, CLEAR_DRAFT_MAX_BYTES, type ClearReceipt } from "../../web/src/lib/surface/clear.ts";
 import { KeyGate } from "./key-gate.ts";
 import { ClearService } from "./clear.ts";
 
@@ -83,7 +83,7 @@ interface Rig {
   readonly lines: string[];
   readonly sleeps: number[];
   readonly pokes: () => number;
-  readonly clear: (paneId: string, body: JsonValue | undefined) => Promise<Response>;
+  readonly clear: (paneId: string, body: JsonValue | undefined, redact?: boolean) => Promise<Response>;
 }
 
 /** Panes: %1 grok, %4 an agent with no profile, %7 a bare shell. */
@@ -123,7 +123,7 @@ function rig(draft: string): Rig {
     lines,
     sleeps,
     pokes: () => pokes,
-    clear: (paneId, body) => clearRoute(rt, paneId, body, { audit, device: "phone", session: "main", acceptEncoding: null }),
+    clear: (paneId, body, redact = false) => clearRoute(rt, paneId, body, { audit, device: "phone", session: "main", acceptEncoding: null, redact }),
   };
 }
 
@@ -138,7 +138,7 @@ const ID = "clear-req-0001";
 describe("a Clear on a pane with a screen", () => {
   test("the box empties after the press: `cleared`, the profile's own key, length plus slack, one press", async () => {
     const { pane, clear, sleeps, lines, pokes } = rig(DRAFT);
-    expect(await receipt(await clear("%1", { requestId: ID }))).toEqual({ requestId: ID, outcome: "cleared" });
+    expect(await receipt(await clear("%1", { requestId: ID }))).toEqual({ requestId: ID, outcome: "cleared", draft: DRAFT });
     // Grok's profile: Backspace, slack 16.
     expect(pane.keysSeen).toHaveLength(1);
     expect(pane.keysSeen[0]).toEqual(Array.from({ length: DRAFT.length + 16 }, () => "Backspace"));
@@ -179,7 +179,8 @@ describe("a Clear on a pane with a screen", () => {
       pane.show(withDraft(pane.draft));
       return original(paneId, request);
     };
-    expect(await receipt(await clear("%1", { requestId: ID }))).toEqual({ requestId: ID, outcome: "cleared" });
+    // The receipt carries the draft the FIRST read showed, not the rest a later round read.
+    expect(await receipt(await clear("%1", { requestId: ID }))).toEqual({ requestId: ID, outcome: "cleared", draft: long });
     expect(pane.keysSeen.map((keys) => keys.length)).toEqual([256, 60]);
   });
 
@@ -266,12 +267,47 @@ describe("a Clear on a pane with a screen", () => {
 
   test("the audit line names the request id, the pane and the outcome, and never the box's text", async () => {
     const { clear, lines } = rig(DRAFT);
-    await clear("%1", { requestId: ID, text: "should never be recorded" });
+    // The receipt carries the draft for Restore; the audit line beside it does not.
+    expect((await receipt(await clear("%1", { requestId: ID, text: "should never be recorded" }))).draft).toBe(DRAFT);
     expect(lines).toHaveLength(1);
     const line = JSON.parse(lines[0]!);
     expect(line).toMatchObject({ action: "clear", paneId: "%1", session: "main", device: "phone", detail: { requestId: ID, outcome: "cleared", replayed: false, pressed: true } });
     expect(lines[0]).not.toContain("should never be recorded");
     expect(lines[0]).not.toContain(DRAFT);
+  });
+});
+
+describe("the cleared text rides on the receipt, for Restore", () => {
+  test("a refusal carries no text; a replay carries the same text", async () => {
+    const { clear } = rig(DRAFT);
+    expect((await receipt(await clear("%1", { requestId: ID }))).draft).toBe(DRAFT);
+    expect((await receipt(await clear("%1", { requestId: ID }))).draft).toBe(DRAFT);
+    const again = await receipt(await clear("%1", { requestId: "clear-req-0002" }));
+    expect(again).toEqual({ requestId: "clear-req-0002", outcome: "refused", reason: "no_draft" });
+  });
+
+  test("where the bridge masks secret shapes, a text that holds one goes without; a plain text keeps it", async () => {
+    const secret = "token=abcDEF123xyz";
+    const masked = rig(secret);
+    const got = await receipt(await masked.clear("%1", { requestId: ID }, true));
+    expect(got).toEqual({ requestId: ID, outcome: "cleared" });
+    expect(JSON.stringify(got)).not.toContain("abcDEF123xyz");
+    expect(masked.lines.join("\n")).not.toContain("abcDEF123xyz");
+    const plain = rig(DRAFT);
+    expect((await receipt(await plain.clear("%1", { requestId: ID }, true))).draft).toBe(DRAFT);
+  });
+
+  test("the text is one line, cut to 8 KiB on a character boundary", () => {
+    expect(boundedDraft("one\ntwo\r\nthree\tfour")).toBe("one two three four");
+    expect(boundedDraft("short")).toBe("short");
+    const wide = "é".repeat(CLEAR_DRAFT_MAX_BYTES);
+    const cut = boundedDraft(wide);
+    expect(new TextEncoder().encode(cut).length).toBe(CLEAR_DRAFT_MAX_BYTES);
+    expect(cut).toBe("é".repeat(CLEAR_DRAFT_MAX_BYTES / 2));
+    const odd = `x${"😀".repeat(CLEAR_DRAFT_MAX_BYTES)}`;
+    const oddCut = boundedDraft(odd);
+    expect(new TextEncoder().encode(oddCut).length).toBeLessThanOrEqual(CLEAR_DRAFT_MAX_BYTES);
+    expect(oddCut.endsWith("😀")).toBe(true);
   });
 });
 

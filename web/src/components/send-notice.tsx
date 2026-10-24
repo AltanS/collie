@@ -89,7 +89,7 @@ const CLEAR_REFUSALS = {
 } as const satisfies Record<ClearReason, MessageKey>;
 
 /**
- * The notice a Clear's receipt gets under the box, in the box a send's refusal and a Stop's receipt use.
+ * The words a Clear's receipt gets, in the floating notice above the belt (composer.tsx `clearCard`).
  * `cleared` is the one calm word. A refusal is a caution; one behind an open dialog points at the card.
  * `unknown` (no receipt came back) tells the person to read the pane before a second tap.
  */
