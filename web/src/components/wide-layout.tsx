@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { ChevronDown, ChevronUp, Columns2, PanelLeftClose, PanelLeftOpen, Replace, TerminalSquare } from "lucide-react";
+import { ChevronDown, ChevronUp, Columns2, PanelLeftClose, PanelLeftOpen, Plus, Replace, TerminalSquare } from "lucide-react";
 
 import { ActionRow } from "@/components/action-sheet-rows";
 import { AgentIcon } from "@/components/agent-icon";
 import { ThreadSidebar } from "@/components/agent-sidebar";
-import { useHeaderDock } from "@/components/app-header";
+import { SettingsGear, useHeaderDock } from "@/components/app-header";
 import { useHostHealth } from "@/components/crew-provider";
 import { StatusDot } from "@/components/status-badge";
 import { ColumnControls, ColumnHeader, PaneColumnBody, columnFrame } from "@/components/strip-column";
@@ -25,7 +25,7 @@ import { writeRefusal } from "@/lib/host-health";
 import { hostName, isMultiHost, paneRowKey } from "@/lib/hosts";
 import { t } from "@/lib/i18n";
 import { useLaunchers } from "@/lib/launchers";
-import { panePath } from "@/lib/nav";
+import { newPath, panePath } from "@/lib/nav";
 import { groupPanesByWorkspace, type WorkspaceGroup } from "@/lib/pane-groups";
 import { paneName } from "@/lib/pane-name";
 import { usePairing } from "@/lib/pairing";
@@ -80,6 +80,9 @@ import { setSidebarOpen, setSpaceStrip, spaceStrip, useSidebarOpen, useSpaceStri
 
 /** A press that travels further than this is a scroll, not a tap. */
 const TAP_SLOP_PX = 10;
+
+/** The mark's drawing in the sidebar's and the rail's top row; its 44px tap box is the header's. */
+const SIDEBAR_MARK_PX = 26;
 
 interface WideLayoutProps {
   widthClass: "medium" | "expanded";
@@ -204,6 +207,9 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
     const pane = landing === null ? undefined : byColumn.get(landing);
     if (pane !== undefined) goTo(pane);
   };
+  // A new space, and a new agent from the add slot, are the New page: it starts its agent in a new
+  // space of the machine and session on screen. It takes no space to start in (lib/nav.ts `NewAt`).
+  const toNew = () => nav.down(newPath({ machine: scope.host, session: scope.session }));
   const onIntent = (pane: AgentView, intent: BeltIntent) => {
     queueBeltIntent(columnKeyOf(pane, places), intent);
     goTo(pane);
@@ -280,7 +286,7 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
   // ── The one header, docked in the focused column; the mark in the sidebar's top row ─────────
   const [row, setRow] = useState<HTMLElement | null>(null);
   const [mark, setMark] = useState<HTMLElement | null>(null);
-  const trail = useHeaderDock({ row, mark, paper: "var(--card)" });
+  const trail = useHeaderDock({ row, mark, paper: "var(--card)", markSize: SIDEBAR_MARK_PX });
 
   const press = useRef<{ x: number; y: number } | null>(null);
   const swipe = useVerticalSwipe((dx, dy) => {
@@ -288,6 +294,14 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
     if (by !== null) moveSpace(by);
   });
   const machine = isMultiHost(root.servers) && agent ? hostName(root.servers, agent.host) : undefined;
+
+  // ── The add slot: the strip's free width, while the columns leave some ──────────────────────
+  // One column at 1/2 or 4/5 leaves the rest of the strip empty; that width offers the space's other
+  // panes and a new agent. Folded as a book the segments fill the screen, so there is none.
+  const free = book ? 0 : Math.max(0, 1 - fractions.reduce((sum, f) => sum + f, 0));
+  const [adding, setAdding] = useState(false);
+  const inView = new Set(shown.map((c) => c.key));
+  const offView = (space?.panes ?? []).filter((p) => !inView.has(columnKeyOf(p, places)));
 
   return (
     <div
@@ -313,6 +327,24 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
           ) : (
             <Rail spaces={spaces} hereKey={agent ? paneRowKey(agent) : null} onSelect={goTo} />
           )}
+        </div>
+        {/* NEW SPACE and SETTINGS, pinned under the list so both are one tap away, however long the
+            list. The pane header has no gear; this is the large screen's way to Settings. */}
+        <div
+          data-slot="sidebar-foot"
+          className={cn("flex shrink-0 items-center border-t border-rule", sidebarShown ? "gap-1 px-2 py-1" : "flex-col py-1")}
+        >
+          {sidebarShown ? (
+            <Button variant="ghost" data-slot="new-space" className="h-11 min-w-0 flex-1 justify-start gap-2.5 px-2 text-sm font-medium" onClick={toNew}>
+              <Plus className="size-5" aria-hidden />
+              <span className="truncate">{t("wide.newSpace")}</span>
+            </Button>
+          ) : (
+            <Button variant="ghost" size="lg" data-slot="new-space" className="size-11 px-0" aria-label={t("wide.newSpace")} onClick={toNew}>
+              <Plus className="size-5" aria-hidden />
+            </Button>
+          )}
+          <SettingsGear scope={scope} />
         </div>
       </aside>
 
@@ -437,6 +469,18 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
             // The fold's gutter between the two columns of a book: no column stands on the hinge.
             return segment === "right" ? [<span key="fold-gutter" aria-hidden data-slot="fold-gutter" className="fold-gutter shrink-0" />, column] : [column];
           })}
+          {free > 0.01 && (
+            <div data-slot="add-slot" className="flex h-full shrink-0 p-3" style={{ flex: `0 0 ${free * 100}%` }}>
+              <div className="flex min-w-0 flex-1 items-center justify-center rounded-md border border-dashed border-rule">
+                <Button variant="ghost" className="h-auto flex-col gap-2 px-3 py-2 text-sm text-muted-foreground" onClick={() => setAdding(true)}>
+                  <span aria-hidden className="grid size-11 place-items-center rounded-md border border-rule bg-card text-foreground">
+                    <Plus className="size-5" />
+                  </span>
+                  {t("wide.add.label")}
+                </Button>
+              </div>
+            </div>
+          )}
           {!book && tail > 0 && shown.length > 1 && <span aria-hidden data-slot="strip-end" className="shrink-0" style={{ flex: `0 0 ${tail * 100}%` }} />}
           {drag?.drop != null && (
             <span aria-hidden data-slot="drop-bar" className="pointer-events-none absolute inset-y-0 z-20 w-1 bg-primary" style={{ left: drag.drop.markerX - 2 }} />
@@ -456,6 +500,39 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
           <span className="max-w-48 truncate">{paneName(dragPane)}</span>
         </div>
       )}
+
+      {/* THIS space's panes the strip does not show, each to open beside the focus, then a new agent. */}
+      <BottomSheet open={adding} onClose={() => setAdding(false)} title={t("wide.add.label")}>
+        <div className="flex flex-col py-1">
+          {offView.map((p) => (
+            <div key={paneRowKey(p)} data-slot="add-row" className="flex min-h-11 items-center gap-3 px-3 py-1">
+              <StatusDot status={p.status} surface="bg-card" />
+              <PaneGlyph pane={p} className="size-5" />
+              <span className="min-w-0 flex-1 truncate text-sm font-medium">{paneName(p)}</span>
+              <Button
+                variant="outline"
+                size="lg"
+                className="shrink-0 text-sm"
+                aria-label={`${t("wide.openBeside")}: ${paneName(p)}`}
+                onClick={() => {
+                  setAdding(false);
+                  write(p, openBeside);
+                }}
+              >
+                {t("wide.openBeside")}
+              </Button>
+            </div>
+          ))}
+          <ActionRow
+            icon={<Plus className="size-5" />}
+            label={t("wide.add.newAgent")}
+            onClick={() => {
+              setAdding(false);
+              toNew();
+            }}
+          />
+        </div>
+      </BottomSheet>
 
       <BottomSheet open={menuPane !== undefined} onClose={() => setMenuRow(null)} title={menuPane ? paneName(menuPane) : undefined}>
         <div className="flex flex-col py-1">
@@ -507,10 +584,24 @@ function SidebarTop({ open, setMark, toggle: hasToggle }: { open: boolean; setMa
     );
   }
   return (
-    <div className="flex h-12 shrink-0 items-center gap-1 border-b border-rule pl-1 pr-1">
+    // `pl-[7px]`: the mark's box is 44px and its drawing SIDEBAR_MARK_PX, so the drawing starts 7 + 9 =
+    // 16px in, on the list's inset; `-ml-1` pulls the word to the drawing past the box's air.
+    <div className="flex h-12 shrink-0 items-center gap-1 border-b border-rule pl-[7px] pr-1">
       <div ref={setMark} data-slot="sidebar-mark" className="flex shrink-0 items-center" />
-      {/* The product's name outside (ColliePWA), small and muted beside the mark. Not translated. */}
-      <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">ColliePWA</span>
+      {/* The product's name outside, ONE word in two inks: Collie in the text colour, PWA in the
+          brand blue. Not translated. */}
+      {/* The word is part of the mark's button: a tap on it is the mark's tap (home, up a level,
+          DESIGN.md §12). Hidden from the a11y tree and the tab order, so the row is ONE control. */}
+      <button
+        type="button"
+        tabIndex={-1}
+        aria-hidden
+        data-slot="sidebar-word"
+        onClick={(e) => e.currentTarget.parentElement?.querySelector<HTMLButtonElement>('[data-slot="sidebar-mark"] button')?.click()}
+        className="-ml-1 flex h-11 min-w-0 flex-1 items-center truncate text-left text-sm font-semibold text-foreground"
+      >
+        Collie<span className="text-brand">PWA</span>
+      </button>
       {toggle}
     </div>
   );
@@ -562,7 +653,8 @@ function SidebarList({ agent, paneId, scope, onSelect }: { agent: AgentView | un
         onLaunchOpenChange={dash.setLaunchOpen}
         order={dash.prefs.paneOrder}
         onOrderChange={dash.setPaneOrder}
-        className="px-0 py-1"
+        className="px-2 py-2"
+        roomy
       />
       {sheet}
     </>

@@ -899,6 +899,10 @@ come from `light-dark()`.
 
 `popover` and `popover-foreground` stay aliases of `card` and are not in a theme file.
 
+`brand` (1.24.0) is the product name's accent only, the "PWA" in the large screen's sidebar, and never a state. It is outside the 43: a theme file does not set it yet.
+
+`pane-active` (1.24.0) is the frame of the pane you are working in on a large screen, and nothing else. It is outside the 43 too.
+
 **The twelve version 2 tokens.** Each is a closed list. A file names a word, and one table says what the word
 does (`web/src/lib/theme/surface.ts`). The default word of every token is today's look.
 

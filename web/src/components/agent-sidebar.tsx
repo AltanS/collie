@@ -82,6 +82,12 @@ interface ThreadSidebarProps {
   onOrderChange?: (order: PaneOrder) => void;
   /** Override the list container padding (e.g. flush inside a bottom sheet). */
   className?: string;
+  /**
+   * The large screen's standing sidebar (ADR 0120), not the switcher sheet: rows on a 16px inset with
+   * more air, the space headings in the quiet voice (muted, the name's own case), and badges in the
+   * muted ink, so the pane's name is the one thing in full ink.
+   */
+  roomy?: boolean;
 }
 
 // The pane switcher behind the swipe-up "Switch pane" sheet: every agent pane under the WORKSPACE it
@@ -144,6 +150,7 @@ export function ThreadSidebar({
   order = "place",
   onOrderChange,
   className,
+  roomy = false,
 }: ThreadSidebarProps) {
   useLocale();
   // THE ORDER, AND WHY IT IS READ ONCE: see `useFrozenRanks` and the long note below. Called here, above
@@ -267,6 +274,7 @@ export function ThreadSidebar({
               pane={a}
               active={paneRowKey(a) === currentPaneKey}
               onSelect={onSelect}
+              roomy={roomy}
             />
           ))}
         </Section>
@@ -284,7 +292,7 @@ export function ThreadSidebar({
             id="switch-activity"
             label={t(order === "cache" ? "paneOrder.coldest" : "paneOrder.recent")}
             count={rankedRows.length}
-            tone="strong"
+            tone={roomy ? "quiet" : "strong"}
           >
             {rankedRows.map((a) => (
               <PaneRow
@@ -293,6 +301,7 @@ export function ThreadSidebar({
                 pane={a}
                 active={paneRowKey(a) === currentPaneKey}
                 onSelect={onSelect}
+                roomy={roomy}
               />
             ))}
           </Section>
@@ -304,7 +313,7 @@ export function ThreadSidebar({
               key={g.key}
               id={`switch-ws-${g.key.replace(/[^A-Za-z0-9_-]/gu, "_")}`}
               label={g.label}
-              tone="strong"
+              tone={roomy ? "quiet" : "strong"}
               mark={worstTriage(g.panes) === "needs" ? "blocked" : undefined}
               trailing={<StatusCounts panes={g.panes} className="shrink-0 text-[11px] text-muted-foreground" />}
             >
@@ -315,6 +324,7 @@ export function ThreadSidebar({
                   pane={a}
                   active={paneRowKey(a) === currentPaneKey}
                   onSelect={onSelect}
+                  roomy={roomy}
                 />
               ))}
             </Section>
@@ -335,6 +345,7 @@ export function ThreadSidebar({
                   pane={p}
                   active={paneRowKey(p) === currentPaneKey}
                   onSelect={onSelect}
+                  roomy={roomy}
                 />
               ))}
             </Section>
@@ -392,7 +403,7 @@ function Section({
   mark?: AgentStatus | undefined;
   /** A plain status-palette bullet, for a section that is a kind of thing (Shells, Launch). */
   dot?: string | undefined;
-  tone?: "muted" | "strong";
+  tone?: "muted" | "strong" | "quiet";
   trailing?: React.ReactNode;
   open?: boolean;
   onToggle?: (open: boolean) => void;
@@ -423,12 +434,15 @@ function PaneRow({
   pane,
   active,
   onSelect,
+  roomy,
 }: {
   /** The row's DOM id, for the summary line's jump. Every row has one, shells too. */
   id?: string;
   pane: AgentView;
   active: boolean;
   onSelect: (pane: AgentView) => void;
+  /** The large screen's sidebar ({@link ThreadSidebarProps.roomy}). */
+  roomy: boolean;
 }) {
   const isShell = pane.kind === "shell";
   // ONE NAME, ONE PLACE (lib/pane-name.ts), the same way round as every other row in the app: the
@@ -455,7 +469,9 @@ function PaneRow({
         // changes the paint. Added by state it would pull the text 1px in and grow the row 2px,
         // which is the zig-zag every switcher row above and below it would then sit out of line
         // with. This is a gap list, not a divide-y one, so a four-sided edge is the right mark.
-        "flex w-full min-w-0 items-center gap-2.5 rounded-lg border border-transparent px-2.5 py-2 text-left transition-colors",
+        "flex w-full min-w-0 items-center gap-2.5 rounded-lg border border-transparent text-left transition-colors",
+        // The sidebar's 16px inset is the list's 8 plus the row's 8, and its 44px floor a little more air.
+        roomy ? "min-h-11 px-2 py-2.5" : "px-2.5 py-2",
         active ? "bg-accent text-accent-foreground" : "hover:bg-muted/60 active:bg-muted",
         // The switcher is exactly where you jump TO the thing that needs you, so it must be able to
         // SHOW that — it renders every pane identically otherwise. Staying denser than the dashboard
@@ -477,8 +493,8 @@ function PaneRow({
       )}
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-baseline gap-1">
-          <span className="min-w-0 truncate text-sm font-medium">{name}</span>
-          <PaneBadge pane={pane} className="shrink-0 self-center" />
+          <span className={cn("min-w-0 truncate text-sm font-medium", roomy && !active && "text-foreground")}>{name}</span>
+          <PaneBadge pane={pane} className={cn("shrink-0 self-center", roomy && "text-muted-foreground")} />
           {/* The cache reading trails the name, same corner as the dashboard row (agent-card.tsx,
               via PaneMeta), but without PaneMeta's session chip. `row`, not `button` — the whole row
               is already a `<button>`, and a button cannot nest inside one. The machine is the glyph

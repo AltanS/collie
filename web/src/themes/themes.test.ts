@@ -41,12 +41,16 @@ function shipped(id: string): Theme {
   return result.theme;
 }
 
+/** `light-dark()` tokens of `:root` that are not theme tokens (yet): the product name's accent and the active pane's frame. */
+const OUTSIDE_THE_LIST: ReadonlySet<string> = new Set(["brand", "pane-active"]);
+
 describe("the theme collie equals index.css", () => {
   const tokens = rootTokens();
   const collie = shipped("collie");
 
   it("finds all 43 tokens in index.css, in the order of the token list", () => {
-    expect(tokens.map((t) => t.token)).toEqual([...THEME_TOKENS]);
+    // The two large-screen tokens (DESIGN.md §13) stand outside the theme list: no theme file sets them.
+    expect(tokens.map((t) => t.token).filter((t) => !OUTSIDE_THE_LIST.has(t))).toEqual([...THEME_TOKENS]);
   });
 
   it("reads the multi-line pairs whole", () => {

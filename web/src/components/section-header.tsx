@@ -46,9 +46,11 @@ interface SectionHeaderProps {
   /**
    * "muted" (default) is the small uppercase caption every section has always worn. "strong" is the
    * dashboard trial's louder workspace heading: foreground ink, 13px, the name in its own case, for a
-   * heading that IS the address the operator scans for (agent-list.tsx, `headingTone`).
+   * heading that IS the address the operator scans for (agent-list.tsx, `headingTone`). "quiet" is
+   * the large screen's sidebar heading (ADR 0120): the muted ink, 12px and heavy, in the name's own
+   * case, so the rows under it carry the one full ink.
    */
-  tone?: "muted" | "strong";
+  tone?: "muted" | "strong" | "quiet";
   className?: string;
 }
 
@@ -104,9 +106,11 @@ export function SectionHeader({
   // <h2> rendered pinned sections as small-caps "WORKING" and foldable ones as larger, sentence-case
   // "Recent" — making the low-priority tail the loudest heading on the page.
   const type =
-    toneName === "strong" && !accent
-      ? "text-[13px] font-semibold tracking-normal"
-      : "text-xs font-semibold label-caps";
+    accent || toneName === "muted"
+      ? "text-xs font-semibold label-caps"
+      : toneName === "strong"
+        ? "text-[13px] font-semibold tracking-normal"
+        : "text-xs font-semibold tracking-normal";
 
   return (
     // No horizontal inset of its own: R2 — a section label begins on the page gutter, on the same

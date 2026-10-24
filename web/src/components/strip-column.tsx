@@ -270,5 +270,5 @@ export function PaneColumnBody({
 
 /** The class a column's frame takes: reserved on every column, drawn on the focused one (§2). */
 export function columnFrame(focused: boolean, framed: boolean): string {
-  return cn("border-2", focused && framed ? "border-ring" : "border-transparent");
+  return cn("border-2", focused && framed ? "border-pane-active" : "border-transparent");
 }

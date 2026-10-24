@@ -336,6 +336,12 @@
     oklch(0.38 0.12 245),
     oklch(0.89 0.06 235)
   );
+  /* The product name's accent and nothing else: the "PWA" of the sidebar's ColliePWA (ADR 0120).
+     A clear blue from the --control-on family. Never a state; DESIGN.md §13. */
+  --brand: light-dark(oklch(0.5 0.15 245), oklch(0.78 0.13 235));
+  /* The frame of the pane you are working in on a large screen (ADR 0120): a light sky in the dark
+     half; a stronger blue in the light half, where a pale frame would vanish on white. */
+  --pane-active: light-dark(oklch(0.6 0.14 240), oklch(0.95 0.035 230));
   --secondary: light-dark(oklch(0.94 0 0), oklch(0.269 0 0));
   --secondary-foreground: light-dark(oklch(0.205 0 0), oklch(0.985 0 0));
   /* The INERT fill — a well, a disabled track, a quiet chip on a card. Value unchanged (rgb 235
@@ -648,6 +654,8 @@
   --color-primary-foreground: var(--primary-foreground);
   --color-control-on: var(--control-on);
   --color-control-on-foreground: var(--control-on-foreground);
+  --color-brand: var(--brand);
+  --color-pane-active: var(--pane-active);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);

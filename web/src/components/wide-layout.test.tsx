@@ -76,6 +76,8 @@ function makeRouter(paneId: string) {
         element: withHeaderHost(<Outlet />),
         children: [
           { index: true, element: <div data-testid="home">HOME</div> },
+          { path: "new", element: <div data-testid="new">NEW</div> },
+          { path: "settings", element: <div data-testid="settings">SETTINGS</div> },
           {
             path: "pane/:paneId",
             loader: ({ params }): PaneData => ({
@@ -181,12 +183,18 @@ describe("the sidebar", () => {
     expect(aside.dataset.slot).toBe("wide-sidebar");
     expect(aside.className).toContain("bg-card");
     expect(aside.style.width).toBe("320px");
-    expect(within(aside).getByText("ColliePWA")).toBeTruthy();
+    // One word in two inks: Collie in the text colour, PWA in the brand token.
+    expect(q(aside, '[data-slot="sidebar-word"]')?.textContent).toBe("ColliePWA");
+    expect(within(aside).getByText("PWA").className).toContain("text-brand");
     expect(q(aside, '[data-slot="sidebar-mark"] [data-slot="collie-mark"]')).not.toBeNull();
     expect(q(container, '[data-testid="chat"]')?.dataset.inStrip).toBe("true");
     // The header moved into the focused column, and the mark is not drawn twice.
     expect(q(container, "header")?.closest('[data-slot="column-head"]')).not.toBeNull();
     expect(container.querySelectorAll('[data-slot="collie-mark"]')).toHaveLength(1);
+    // A space heading speaks in the quiet voice: the muted ink, the name's own case.
+    const heading = within(aside).getByRole("heading", { name: "alpha" }).firstElementChild!;
+    expect(heading.className).toContain("text-muted-foreground");
+    expect(heading.className).not.toContain("label-caps");
     // Every pane is a row, the shell too, each with its full identity for the gestures.
     for (const p of [A1, A2, A3, B1]) expect(sidebarRow(container, p)).not.toBeNull();
   });
@@ -262,7 +270,7 @@ describe("the strip", () => {
     await openBesideFromSidebar(container, A2);
     const [other, focused] = columns(container).map((c) => q(c, '[data-slot="column-frame"]')!);
     expect(focused!.className).toContain("border-2");
-    expect(focused!.className).toContain("border-ring");
+    expect(focused!.className).toContain("border-pane-active");
     expect(other!.className).toContain("border-2");
     expect(other!.className).toContain("border-transparent");
   });
@@ -359,6 +367,108 @@ describe("width", () => {
       expect(col.style.flex).toBe("0 0 100%");
       expect(within(col).queryByRole("button", { name: /^Width / })).toBeNull();
     }
+  });
+});
+
+describe("adding", () => {
+  const slot = (root: ParentNode) => q(root, '[data-slot="add-slot"]');
+
+  it("the add slot stands in the strip's free width, and only while the columns leave some", async () => {
+    // One column at 1/2 of 880 leaves half the strip.
+    const { container } = await mount("w1:p1", 1200);
+    expect(slot(container)?.style.flex).toBe("0 0 50%");
+    expect(within(slot(container)!).getByRole("button", { name: "Add a pane" })).toBeTruthy();
+    const widthButton = () => within(columns(container)[0]!).getByRole("button", { name: /^Width / });
+    fireEvent.click(widthButton());
+    await waitFor(() => expect(widthButton().textContent).toBe("4/5"));
+    expect(Number.parseFloat(slot(container)!.style.flex.split(" ")[2]!)).toBeCloseTo(20);
+    fireEvent.click(widthButton());
+    await waitFor(() => expect(widthButton().textContent).toBe("Full"));
+    expect(slot(container)).toBeNull();
+    // Two half columns fill the strip.
+    fireEvent.click(widthButton());
+    await openBesideFromSidebar(container, A2);
+    expect(slot(container)).toBeNull();
+  });
+
+  it("is absent out of wide mode, where every column is full width", async () => {
+    const { container } = await mount("w1:p1", 700);
+    expect(slot(container)).toBeNull();
+  });
+
+  it("lists this space's panes the strip does not show, each to open beside the focus", async () => {
+    const { container, router } = await mount("w1:p1", 1200);
+    fireEvent.click(within(slot(container)!).getByRole("button", { name: "Add a pane" }));
+    const rows = await waitFor(() => {
+      const found = [...document.querySelectorAll<HTMLElement>('[data-slot="add-row"]')];
+      expect(found.length).toBeGreaterThan(0);
+      return found;
+    });
+    // Not the pane in view, not another space's pane; the space's shell is a pane like the others.
+    expect(rows.map((r) => r.textContent)).toEqual([A2, A3, SH].map((p) => `${p.paneLabel}Open beside`));
+    fireEvent.click(within(rows[0]!).getByRole("button", { name: /^Open beside/ }));
+    await waitFor(() => expect(router.state.location.pathname).toBe(panePath("w1:p2")));
+    expect(columns(container).map((c) => c.dataset.colKey)).toEqual([key(A1), key(A2)]);
+  });
+
+  it("its New agent goes down to the New page", async () => {
+    const { container, router } = await mount("w1:p1", 1200);
+    fireEvent.click(within(slot(container)!).getByRole("button", { name: "Add a pane" }));
+    const sheet = await waitFor(() => {
+      const el = document.querySelector<HTMLElement>('[data-slot="add-row"]')?.parentElement;
+      expect(el).toBeTruthy();
+      return el!;
+    });
+    fireEvent.click(within(sheet).getByRole("button", { name: "New agent" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/new"));
+  });
+});
+
+describe("the sidebar's own entries", () => {
+  async function toRail(root: HTMLElement) {
+    fireEvent.click(q(root, '[data-slot="sidebar-toggle"]')!);
+    return await waitFor(() => {
+      const el = q(root, 'aside[data-slot="rail"] [data-slot="sidebar-foot"]');
+      expect(el).not.toBeNull();
+      return el!;
+    });
+  }
+
+  it("New space goes down to the New page, from the open sidebar and from the rail", async () => {
+    const { container, router } = await mount("w1:p1", 1200);
+    fireEvent.click(within(q(container, '[data-slot="sidebar-foot"]')!).getByRole("button", { name: "New space" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/new"));
+    cleanup();
+    const again = await mount("w1:p1", 1200);
+    const foot = await toRail(again.container);
+    fireEvent.click(within(foot).getByRole("button", { name: "New space" }));
+    await waitFor(() => expect(again.router.state.location.pathname).toBe("/new"));
+  });
+
+  it("the gear beside it goes down to Settings, from the open sidebar and from the rail", async () => {
+    const { container, router } = await mount("w1:p1", 1200);
+    fireEvent.click(within(q(container, '[data-slot="sidebar-foot"]')!).getByRole("button", { name: "Settings" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/settings"));
+    cleanup();
+    const again = await mount("w1:p1", 1200);
+    const foot = await toRail(again.container);
+    fireEvent.click(within(foot).getByRole("button", { name: "Settings" }));
+    await waitFor(() => expect(again.router.state.location.pathname).toBe("/settings"));
+  });
+
+  it("the logo row is the mark's button: a tap on the word is the mark's tap", async () => {
+    // The mark goes where the pane view's header tells it (up to the dashboard); AgentChat is a stub
+    // here, so what is proven is that the word hands its tap to the mark and is no control of its own.
+    const { container } = await mount("w1:p1", 1200);
+    const word = q(container, '[data-slot="sidebar-word"]')!;
+    expect(word.getAttribute("aria-hidden")).toBe("true");
+    expect(word.tabIndex).toBe(-1);
+    const mark = q(container, '[data-slot="sidebar-mark"] button')!;
+    expect(mark.getAttribute("aria-label")).toBeTruthy();
+    const taps = vi.fn();
+    mark.addEventListener("click", taps);
+    fireEvent.click(word);
+    expect(taps).toHaveBeenCalledTimes(1);
   });
 });
 

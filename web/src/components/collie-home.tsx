@@ -32,6 +32,8 @@ interface CollieHomeProps {
   /** The ground the mark stands on, for its knockout: the header's `--band-ground` by default, and
    *  `--card` where a large screen draws the mark in its sidebar (ADR 0120). */
   paper?: string;
+  /** How large the drawing is, in px (40, the header's). The 44px box around it does not change. */
+  markSize?: number;
   className?: string;
 }
 
@@ -135,6 +137,7 @@ export function CollieHome({
   online = true,
   lastSeenAt,
   paper = "var(--band-ground)",
+  markSize = 40,
   className,
 }: CollieHomeProps) {
   useLocale();
@@ -365,7 +368,7 @@ export function CollieHome({
           this one, so it needs this box on screen; it reads the `<svg>` inside for the true size. */}
       <span ref={mark} data-slot="collie-mark" className="relative grid size-11 shrink-0 place-items-center">
         <CollieMark
-          size={40}
+          size={markSize}
           weight="header"
           loading={bloom || ((round || busy) && !lost)}
           paper={paper}

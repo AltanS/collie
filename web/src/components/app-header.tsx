@@ -118,6 +118,8 @@ export interface HeaderDock {
   mark: HTMLElement | null;
   /** The ground under the mark there, for its knockout (`var(--card)` on the sidebar). */
   paper: string;
+  /** How large the mark is drawn there, in px. Absent is the header's own 40; its box stays 44 either way. */
+  markSize?: number;
 }
 
 interface HeaderDockApi {
@@ -137,15 +139,17 @@ const HeaderDockContext = createContext<HeaderDockApi | null>(null);
 export function useHeaderDock(dock: HeaderDock): HTMLElement | null {
   const api = useContext(HeaderDockContext);
   const owner = useId();
-  const { row, mark, paper } = dock;
+  const { row, mark, paper, markSize } = dock;
   useLayoutEffect(() => {
     if (api === null) return;
     if (row === null) {
       api.undock(owner);
       return;
     }
-    api.dock(owner, { row, mark, paper });
-  }, [api, owner, row, mark, paper]);
+    const next: HeaderDock = { row, mark, paper };
+    if (markSize !== undefined) next.markSize = markSize;
+    api.dock(owner, next);
+  }, [api, owner, row, mark, paper, markSize]);
   const undock = api?.undock;
   useLayoutEffect(() => () => undock?.(owner), [undock, owner]);
   return api?.trail ?? null;
@@ -250,7 +254,9 @@ export function AppHeaderHost({ bridge, error, lastSeenAt, children }: AppHeader
   const dockRow = useCallback((id: string, next: HeaderDock) => {
     dockOwner.current = id;
     setDocked((prev) =>
-      prev !== null && prev.row === next.row && prev.mark === next.mark && prev.paper === next.paper ? prev : next,
+      prev !== null && prev.row === next.row && prev.mark === next.mark && prev.paper === next.paper && prev.markSize === next.markSize
+        ? prev
+        : next,
     );
   }, []);
   const undockRow = useCallback((id: string) => {
@@ -263,7 +269,7 @@ export function AppHeaderHost({ bridge, error, lastSeenAt, children }: AppHeader
     [dockRow, undockRow, docked, trail],
   );
   const dockedRow = docked?.row ?? null;
-  const homeMark = (paper?: string) => (
+  const homeMark = (paper?: string, markSize?: number) => (
     <CollieHome
       onHome={() => home.current?.fn?.()}
       trouble={trouble}
@@ -271,6 +277,7 @@ export function AppHeaderHost({ bridge, error, lastSeenAt, children }: AppHeader
       online={online}
       lastSeenAt={lastSeenAt}
       {...(paper === undefined ? {} : { paper })}
+      {...(markSize === undefined ? {} : { markSize })}
     />
   );
 
@@ -512,7 +519,7 @@ export function AppHeaderHost({ bridge, error, lastSeenAt, children }: AppHeader
     <HeaderSlotContext.Provider value={slots}>
       <HeaderDockContext.Provider value={dockApi}>
         {dockedRow === null ? header : createPortal(header, dockedRow)}
-        {docked !== null && docked.mark !== null ? createPortal(homeMark(docked.paper), docked.mark) : null}
+        {docked !== null && docked.mark !== null ? createPortal(homeMark(docked.paper, docked.markSize), docked.mark) : null}
         {children}
       </HeaderDockContext.Provider>
     </HeaderSlotContext.Provider>

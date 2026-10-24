@@ -97,7 +97,7 @@ segment's top at 410).
 
 ## Consequences
 
-The focused column is framed in `--ring` on all four sides while the strip shows more than one
+The focused column is framed in `--pane-active` (a light sky; its own token, never a state) on all four sides while the strip shows more than one
 column. Every column reserves the frame, so a focus change recolours and moves nothing. A column that
 takes the focus grows its reply box over 200ms under the belt, so the belt rises instead of jumping,
 and the transcript, pinned to its bottom, keeps its last line in sight. Under reduced motion both the
@@ -107,8 +107,14 @@ A pane screen mounted for each column was not an option: it would mean a compose
 that could reach the wrong pane, and every page-level effect once per column. The read-only columns
 cost one read each on the existing poll, the same read the pane screen makes.
 
-The new words are Open here, Open beside, Remove from view, the width labels and ColliePWA. Until the
-next translate pass the other locales carry the English strings.
+The new words are Open here, Open beside, Remove from view, the width labels, ColliePWA, Add a pane,
+New agent and New space. Until the next translate pass the other locales carry the English strings.
+
+The pane header has no Settings gear, so the sidebar's foot holds it, beside New space; the rail
+stacks the two. Where the columns leave part of the strip empty, that width is an add slot: its sheet
+lists the space's panes the strip does not show, each to open beside the focus, and New agent. New
+agent and New space both open the New page, which takes no space to start in, so a new agent always
+lands in a new space; a "new agent in this space" waits for a space field on the New page.
 
 The switcher sheet inside the pane screen is still mounted on a large screen, closed, with no pill to
 open it; the sidebar repeats its wiring. If the two drift, the sheet should take its list from the
