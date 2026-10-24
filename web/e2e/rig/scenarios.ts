@@ -37,6 +37,8 @@ export const SCENARIOS = [
   // A steer from the Send button's long press while the agent works (M69). Case 27 is the
   // same on Codex and waits for a Codex harness in this rig (README, "The cases").
   { id: "steer", title: "26 steer while working (pi)", only: ["pi"] },
+  // A Clear from the Keys board over a draft typed outside the phone (ADR 0116), case 28. No model turn.
+  { id: "clear-pi", title: "28 Clear a pi draft from the Keys board", only: ["pi"] },
   // The crew leg (crew.config.ts, walky-crew.spec.ts): a lead and a member. Each case is one row,
   // under the harness that starts it (Claude on the lead); pi on the member is its other end.
   { id: "walky-crew-broadcast", title: "12 crew: 'Message all agents' on the Crew page", only: ["claude"], leg: "crew" },

@@ -13,8 +13,8 @@ Tier 1's config ignores `e2e/rig/`.
 
 The leg is a gate. It runs in three places:
 
-- **Before every release tag**, on the release head. All thirty-nine cases pass on the first tap:
-  thirty-two on the solo leg (three harnesses with five cases each, fourteen walky talky cases, case 22, case 25, and case 26) and
+- **Before every release tag**, on the release head. All forty cases pass on the first tap:
+  thirty-three on the solo leg (three harnesses with five cases each, fourteen walky talky cases, case 22, case 25, case 26, and case 28) and
   seven on the crew leg (below). A case that fails, or is not reached, holds the tag.
 - **Before merging a change** to a harness reader, the Surface, the Send Protocol or the ask code. Run
   it on the branch. A unit test cannot show that a tap works on a real screen.
@@ -63,7 +63,7 @@ The rules are the harness lab's (`scripts/harness-canary/lab/lab-ledger.ts`):
   rig.
 - A run that cannot finish writes `failed`. A run in which a case failed, in either leg, writes `fail`. A
   case that was not reached, or is not applicable, in either leg proves nothing, so it makes the row
-  `failed`. The row is `pass` only when both legs passed every case (32 solo cases and 7 crew cases). A
+  `failed`. The row is `pass` only when both legs passed every case (33 solo cases and 7 crew cases). A
   `fail` outranks a `failed` between the two legs.
 
 **Cannot start.** A Claude login with under 25 minutes left, no `herdr`, `bun` or `git`, under 8 GB of
@@ -121,6 +121,7 @@ last column names. Cases 12 to 15 and 19 to 21 run on the crew leg only (below).
 | 25 | Stop a running pi turn (M68, ADR 0116). A long numbered list streams (180 items), so the turn runs for tens of seconds. The belt shows Stop. The first tap arms it: the button reads "Stop?" and nothing is posted. The second tap posts one abort request, and the bridge presses pi's interrupt key as a person's tap. The receipt says `stopped`, the notice "Stopped." shows under the box, and the box reads free within 5 s. One model turn. | pi | `stop.spec.ts` |
 | 26 | Steer while working (M69). A bash call counts to 40 over 40 s (the lab's long turn, 2026-10-23). The operator types a line, holds Send and taps the Steer row. The receipt says `steered`, the phone says "Steered: the agent takes it after its current step." within 5 s, and the turn still runs right after, because a steer is taken after the current tool call in the same turn. The note says whether the agent answered the line | pi | `steer.spec.ts` |
 | 27 | Steer while working (Codex): case 26 on Codex, with the profile's `steerDelayMs` (1000) added to the 5 s window. Not built: this rig starts claude, pi and omp only, and a Codex harness needs a binary, a login seed, an entry in `harnesses.ts`, and a column in the nightly's table. `steer.spec.ts` carries the helper and its `steerDelayMs` parameter, so the case is one test line once the harness exists | none yet | `steer.spec.ts` |
+| 28 | Clear a draft from the Keys board (ADR 0116). A word is typed into pi's box outside the phone (the keys route, as case 22 types one) and never sent, so the Surface reads `draft` and the Keys board's Clear button is enabled. One tap posts one `POST /api/pane/:id/clear`, and the bridge presses pi's clear key as a person's tap. The receipt says `cleared`, the notice "Box cleared." shows under the box, the box reads free within 5 s and the word is gone from the screen. No prompt is sent: zero model turns, nothing on OpenRouter | pi | `clear.spec.ts` |
 
 The walky talky path is the same bridge code for every harness, so Claude carries most of the cases and
 pi and omp prove that their screens take the message. The table prints a row only for a harness a case
@@ -252,7 +253,7 @@ results, and drops a screenshot whose capture held it. It prints a count, never 
   forged header (11, two), the long list and the message sent during it (16), and the question and the
   message that waited behind it (17). The picker and case 18 need no turn. A run caps each harness at 25 turns (`TURN_CAP` in `leg.ts`), and every turn is logged in
   `~/.cache/collie-lab/browser-leg-state/turns.log`.
-- pi and omp: 11 turns each on Haiku 4.5 with a key file, none without. Case 26 adds 1 on pi (the long turn; the steered line is answered inside it). Walky talky adds 6 on pi (case 7,
+- pi and omp: 11 turns each on Haiku 4.5 with a key file, none without. Case 26 adds 1 on pi (the long turn; the steered line is answered inside it). Case 28 adds none. Walky talky adds 6 on pi (case 7,
   the send and the reply nudge of case 8, the broadcast, and the two of case 16) and 4 on omp (case 7, the
   broadcast and the two of case 16). Their "Load older" history is
   seven prompts ("Reply with exactly DONE-n") and 45 shell lines (`!echo`) after the first, which run
