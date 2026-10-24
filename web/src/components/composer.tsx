@@ -283,6 +283,12 @@ interface ComposerProps {
   hand?: Hand;
 
   /**
+   * Drawn directly above the actions belt, under any open dock: the pane's joystick handle band when
+   * Settings → Pane navigation is Joystick (ADR 0121). The pane decides; absent, nothing is drawn.
+   */
+  aboveBelt?: ReactNode;
+
+  /**
    * The Screen pill on the belt (M56 spec 07): the raw rows of the terminal, without cards, one tap
    * away in every state. `on` is true while those rows are what the pane draws; `onToggle` turns
    * them on and off. Absent on a pane with no screen (Chat is its only body, ADR 0099 point 9), where
@@ -437,7 +443,7 @@ interface ClearedDraft {
 
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, instance, surface, unreachableNote, scope, stopOffered = false, agent, canSteer, isShell, cwd, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, onOpenMessages, held: heldRows, chatEntries, pullHandle, draftNoticeSlot, changesPill, stale, hand = "right", screen, todos, subagents },
+  { paneId, instance, surface, unreachableNote, scope, stopOffered = false, agent, canSteer, isShell, cwd, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, onOpenMessages, held: heldRows, chatEntries, pullHandle, draftNoticeSlot, changesPill, stale, hand = "right", aboveBelt, screen, todos, subagents },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -2193,6 +2199,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             which were two rows of a phone's glass answering one question. The row itself is
             actions-row.tsx; everything below is only what each action DOES.
   */}
+        {aboveBelt}
         <ActionsRow
           general={keepBelt([
               // Keys and Quick are TOGGLES for the in-flow dock above (not overlays): tap to

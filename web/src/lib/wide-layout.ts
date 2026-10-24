@@ -14,9 +14,11 @@
 // bare pane id: `w1:p1` is a different terminal on every machine and in every session.
 //
 // Ported from the playground's approved prototype (playground/sections/wide-layout-model.ts); the
-// phone gestures of its cards 4 to 6 are not part of this slice.
+// phone gestures of its cards 4 to 6 are not part of this slice. Cards 5 and 6 (two fingers, the
+// joystick) are lib/pane-nav-gesture.ts, ADR 0121.
 
 import { paneScope } from "@/lib/hosts";
+import { groupPanesByWorkspace, type GroupOptions, type WorkspaceGroup } from "@/lib/pane-groups";
 import { paneScopeKey, scopeKey, type Scope } from "@/lib/scope";
 import type { AgentView, ServerSummary, SessionSummary } from "@/lib/types";
 
@@ -133,6 +135,21 @@ const KEY_SEP = "\u0000";
 /** A space's key: its machine and session, then the multiplexer's workspace id. */
 export function spaceKeyOf(pane: AgentView, places: Places): string {
   return `${scopeKey(scopeOfPane(pane, places))}${KEY_SEP}${pane.workspaceId}`;
+}
+
+/**
+ * Spaces in the sidebar's workspace order: the agents' sections first, as the sidebar draws them,
+ * then a space that holds only shells. The space header moves along this order, and so does the
+ * pane navigation gesture (lib/pane-nav-gesture.ts, ADR 0121), so the two can never disagree.
+ */
+export function spacesInOrder(agents: readonly AgentView[], shells: readonly AgentView[], options: GroupOptions): WorkspaceGroup[] {
+  const sections = groupPanesByWorkspace(agents, [], options).map((g) => g.key);
+  const all = groupPanesByWorkspace(agents, shells, options);
+  const rank = (g: WorkspaceGroup) => {
+    const at = sections.indexOf(g.key);
+    return at < 0 ? sections.length : at;
+  };
+  return all.map((g, i) => ({ g, i })).toSorted((a, b) => rank(a.g) - rank(b.g) || a.i - b.i).map(({ g }) => g);
 }
 
 // ── One space's strip ───────────────────────────────────────────────────────────────────────────

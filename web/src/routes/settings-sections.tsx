@@ -19,7 +19,9 @@ import { HarnessBarControl } from "@/components/harness-bar-control";
 import { HarnessPrefsControl } from "@/components/harness-prefs-control";
 import { LanguageControl } from "@/components/language-control";
 import { NotifyPrefsControl } from "@/components/notify-prefs-control";
+import { PaneNavControl } from "@/components/pane-nav-control";
 import { PaneOrderControl } from "@/components/pane-order-control";
+import { WideLayoutControl } from "@/components/wide-layout-control";
 import { PairedDevices } from "@/components/paired-devices";
 import { PushControl, usePushAvailability } from "@/components/push-control";
 import { SnoozeControl } from "@/components/snooze-control";
@@ -101,6 +103,14 @@ export function SettingsAppearanceRoute() {
           surface is ARRANGED, which is the same question every card above answers. The pane
           switcher's own toggle writes the same value; this is where you go to find it. */}
       <PaneOrderControl />
+      {/* Whether a tablet or an open Fold may show the sidebar and the strip of panes (ADR 0120). The
+          way out for a screen where the layout misbehaves, so it sits with the other arrangement
+          choices. Stored per device. */}
+      <WideLayoutControl />
+      {/* How the pane screen moves between panes and spaces by gesture (ADR 0121): Two fingers,
+          Joystick or Off. Beside Large-screen layout, because both decide how the pane screen is
+          arranged and moved through. Stored per device with the hand. */}
+      <PaneNavControl />
       {/* Last, and it is the odd one here: every card above changes how a surface LOOKS, and this
           one changes what a surface CONTAINS. It earns the place anyway, because the question it
           answers is the same question — what do I want on screen — and filing it under Device would

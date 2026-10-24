@@ -99,6 +99,8 @@ export function ColumnControls({
         data-slot="column-remove"
         className="size-11 shrink-0 px-0 text-muted-foreground"
         aria-label={t("wide.removeFromView")}
+        // Says what the button does NOT do: the pane stays alive and stays in the sidebar.
+        title={t("wide.removeFromView.hint")}
         disabled={!removable}
         onClick={own(onRemove)}
       >

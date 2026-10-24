@@ -26,8 +26,9 @@ or Firefox. The window's width is known everywhere.
 
 1. **Three width classes, read from the window's width with two media queries.** Compact is below
    600px, medium is 600px to 899px, expanded is 900px and up. Below 600px nothing changes. A window
-   under 480px tall is compact at every width, so a phone held sideways keeps the phone layout. The
-   fold APIs are not read, for the reasons above.
+   under 480px tall is compact at every width, so a phone held sideways keeps the phone layout. A
+   Settings row, Large-screen layout, sets Auto (the default) or Off per device (`collie:wide-layout-mode:v1`);
+   Off makes every width compact. The fold APIs are not read, for the reasons above.
 2. **From 600px, and only on `pane/:paneId`, the screen is a sidebar beside a strip.** The sidebar is
    the switcher's own list (pins, Shells, Launch), raised on `--card`, 280px at medium and 320px at
    expanded. Its top row carries the Collie mark, the word ColliePWA and a toggle that closes it to a
@@ -66,7 +67,8 @@ or Firefox. The window's width is known everywhere.
    workspace. Nothing is written to a bridge and there is no request id. A column whose pane a live
    herd no longer lists is pruned; a herd from a saved copy prunes nothing.
 10. **Phone gestures are deferred.** The playground's swipe, two-finger chord and joystick cards are
-    not built. Below 600px the pane screen is the phone's as before, except on a tabletop fold (see
+    not built. (The chord and the joystick came later, on every width:
+    [ADR 0121](./0121-two-fingers-move-between-panes.md).) Below 600px the pane screen is the phone's as before, except on a tabletop fold (see
     "Folded postures").
 
 ## Folded postures
@@ -154,6 +156,16 @@ pane view keeps all of it.
   pane the space did not hold when the sheet was left, and it expires after ten minutes. A reload on the
   New page loses the note, and the pane then replaces the focus as any arrival does. "New agent in a new
   space" stays the second row.
+- **Permission, ask and held cards show in the focused column only.** Another column shows a blocked
+  status dot, and a tap on it focuses that column, where the card stands.
+- **Every stored column of the space mounts its own reader and belt.** There is no cap beyond the 24
+  stored columns, so a space with many columns carries many readers.
+- **Fold postures are on by default.** They are feature-detected by the viewport-segments media queries and
+  proven in emulation only (below).
+- **A theme file that sets `pane-active` is written as schema version 3.** A Collie older than this
+  build refuses such a file with a message.
+- **Wide mode is not covered by the browser leg, and no touch hardware has run it yet.** The leg is
+  phone-shaped. Large-screen layout in Settings set to Off is the way back to the phone layout.
 - **Folded postures are proven in emulation only.** Chromium's device-metrics override fired the segment
   queries and the env values; no half-open Fold or Flip has run the layout.
 - **Snapping is checked in Chromium and WebKit by script, not on every device.** Touch relies on the

@@ -12,7 +12,7 @@ import { panePath } from "@/lib/nav";
 import { __resetOpenBeside } from "@/lib/open-beside";
 import { paneScopeKey } from "@/lib/scope";
 import { statusLabel, type AgentView, type DeviceAuth, type TabView } from "@/lib/types";
-import { __resetWideLayoutStore } from "@/lib/wide-layout-store";
+import { __resetWideLayoutStore, setWideLayoutMode } from "@/lib/wide-layout-store";
 import { DetailRoute } from "@/routes/detail";
 import { withHeaderHost } from "@/test/header-host";
 import { server } from "@/test/setup";
@@ -219,6 +219,15 @@ describe("under 480 px tall", () => {
   });
 });
 
+describe("Large-screen layout set to Off", () => {
+  it("keeps the phone layout at every width", async () => {
+    setWideLayoutMode("off");
+    const { container } = await mount("w1:p1", 1200);
+    expect(q(container, '[data-slot="wide-layout"]')).toBeNull();
+    expect(q(container, "aside")).toBeNull();
+  });
+});
+
 describe("the page under the layout", () => {
   it("stops a sideways overscroll from going back while the layout is mounted, and only then", async () => {
     const root = document.documentElement;
@@ -370,6 +379,7 @@ describe("the strip", () => {
     const { container, router } = await mount("w1:p1", 1200);
     const lone = within(columns(container)[0]!).getByRole("button", { name: "Remove from view" });
     expect(lone).toBeDisabled();
+    expect(lone).toHaveAttribute("title", "The agent keeps running.");
 
     await openBesideFromSidebar(container, A2);
     fireEvent.click(within(columns(container)[0]!).getByRole("button", { name: "Remove from view" }));
@@ -698,6 +708,52 @@ describe("the add column", () => {
     // Settled at the start with the focus still whole: nothing changes either.
     act(() => snap.options?.onSettled?.(0));
     expect(router.state.location.pathname).toBe(panePath("w1:p2"));
+  });
+});
+
+describe("the focus that follows the view", () => {
+  async function laidOut() {
+    const { container, router } = await mount("w1:p1", 1200);
+    await openBesideFromSidebar(container, A2);
+    const strip = q(container, '[data-slot="strip"]')!;
+    Object.defineProperty(strip, "clientWidth", { configurable: true, value: 440 });
+    Object.defineProperty(strip, "scrollWidth", { configurable: true, value: 1320 });
+    const box = (el: HTMLElement, left: number, w: number) => {
+      Object.defineProperty(el, "offsetLeft", { configurable: true, value: left });
+      Object.defineProperty(el, "offsetWidth", { configurable: true, value: w });
+    };
+    const [c1, c2] = columns(container);
+    box(c1!, 0, 440);
+    box(c2!, 440, 440);
+    box(q(container, '[data-slot="add-column"]')!, 880, 440);
+    return { container, router, focusedColumn: c2! };
+  }
+
+  it("waits while the reply box has the document focus, and follows again after the blur", async () => {
+    const { router, focusedColumn } = await laidOut();
+    const reply = document.createElement("textarea");
+    focusedColumn.appendChild(reply);
+    reply.focus();
+    expect(document.activeElement).toBe(reply);
+    // The view rests on the first column only: without the typing, the focus would move there.
+    act(() => snap.options?.onSettled?.(0));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 30)); // navigation is async; give a wrong move time to land
+    });
+    expect(router.state.location.pathname).toBe(panePath("w1:p2"));
+    reply.blur();
+    act(() => snap.options?.onSettled?.(0));
+    await waitFor(() => expect(router.state.location.pathname).toBe(panePath("w1:p1")));
+  });
+
+  it("is not held by a text field outside the layout", async () => {
+    const { router } = await laidOut();
+    const outside = document.createElement("input");
+    document.body.appendChild(outside);
+    outside.focus();
+    act(() => snap.options?.onSettled?.(0));
+    await waitFor(() => expect(router.state.location.pathname).toBe(panePath("w1:p1")));
+    outside.remove();
   });
 });
 
