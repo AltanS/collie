@@ -479,7 +479,7 @@ export const tr: Dictionary = {
   "wide.width.aria": "Width {width}",
   "wide.newSpace": "New space",
   "wide.add.label": "Add a pane",
-  "wide.add.newAgent": "New agent",
+  "wide.add.newAgent": "New agent in a new space",
   "paneOrder.aria": "Bölme sırası",
   "paneOrder.place": "Yer",
   "paneOrder.activity": "Etkinlik",

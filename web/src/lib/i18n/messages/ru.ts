@@ -487,7 +487,7 @@ export const ru: Dictionary = {
   "wide.width.aria": "Width {width}",
   "wide.newSpace": "New space",
   "wide.add.label": "Add a pane",
-  "wide.add.newAgent": "New agent",
+  "wide.add.newAgent": "New agent in a new space",
   "paneOrder.aria": "Порядок панелей",
   "paneOrder.place": "Место",
   "paneOrder.activity": "Активность",

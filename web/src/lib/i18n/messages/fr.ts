@@ -479,7 +479,7 @@ export const fr: Dictionary = {
   "wide.width.aria": "Width {width}",
   "wide.newSpace": "New space",
   "wide.add.label": "Add a pane",
-  "wide.add.newAgent": "New agent",
+  "wide.add.newAgent": "New agent in a new space",
   "paneOrder.aria": "Ordre des volets",
   "paneOrder.place": "Emplacement",
   "paneOrder.activity": "Activité",

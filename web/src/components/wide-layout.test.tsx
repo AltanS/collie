@@ -432,7 +432,7 @@ describe("adding", () => {
       expect(el).toBeTruthy();
       return el!;
     });
-    fireEvent.click(within(sheet).getByRole("button", { name: "New agent" }));
+    fireEvent.click(within(sheet).getByRole("button", { name: "New agent in a new space" }));
     await waitFor(() => expect(router.state.location.pathname).toBe("/new"));
   });
 });

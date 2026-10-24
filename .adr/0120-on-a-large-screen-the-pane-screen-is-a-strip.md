@@ -124,6 +124,16 @@ the focus to the leftmost whole column. While the layout is mounted the page tak
 `overscroll-behavior-x: none` and every scroller in it `contain`, because desktop Chrome reads a
 sideways overscroll as history back; below 600px the page keeps its own behaviour.
 
+## Known limits
+
+- **New agent starts a new space.** The New page takes no space to start in, so the add slot's sheet says
+  "New agent in a new space" and means it. A "new agent in this space" waits for a space field on the
+  New page, and opening the new pane beside the focus on return is not built.
+- **Folded postures are proven in emulation only.** Chromium's device-metrics override fired the segment
+  queries and the env values; no half-open Fold or Flip has run the layout.
+- **Snapping is checked in Chromium and WebKit by script, not on every device.** Touch relies on the
+  browser's own snap.
+
 The switcher sheet inside the pane screen is still mounted on a large screen, closed, with no pill to
 open it; the sidebar repeats its wiring. If the two drift, the sheet should take its list from the
 sidebar's component.

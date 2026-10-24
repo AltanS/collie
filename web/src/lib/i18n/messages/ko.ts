@@ -544,7 +544,7 @@ export const ko: Dictionary = {
   "wide.width.aria": "Width {width}",
   "wide.newSpace": "New space",
   "wide.add.label": "Add a pane",
-  "wide.add.newAgent": "New agent",
+  "wide.add.newAgent": "New agent in a new space",
   "paneOrder.aria": "창 정렬 순서",
   "paneOrder.place": "위치",
   "paneOrder.activity": "활동",

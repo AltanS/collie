@@ -594,7 +594,7 @@ export const en = {
   "wide.width.aria": "Width {width}",
   "wide.newSpace": "New space",
   "wide.add.label": "Add a pane",
-  "wide.add.newAgent": "New agent",
+  "wide.add.newAgent": "New agent in a new space",
   // --- pane order (the switcher's toggle and the Settings row write one value, ADR 0071) ---
   "paneOrder.aria": "Pane order",
   "paneOrder.place": "Place",
