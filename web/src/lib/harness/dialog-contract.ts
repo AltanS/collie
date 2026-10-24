@@ -63,8 +63,8 @@ export type DialogKind = keyof DialogModels;
  * `autocomplete` it would have locked the composer out of a pane whose input box is demonstrably live.
  */
 export function blockOwnsKeyboard(block: Block): boolean {
-  // A menu lifted off a notice ABOVE a live input box (`MenuModel.liveBox`) is the one card whose
-  // screen leaves the keyboard to the box: the notice's keys act only on a box holding one digit.
+  // A menu lifted off a notice ABOVE a live input box (`MenuModel.liveBox`) leaves the keyboard to the
+  // box: the notice's keys act only on a box holding one digit.
   if (block.kind === "menu" && block.menu.liveBox !== undefined) return false;
   return block.kind in DIALOG_CONTRACT;
 }
@@ -91,6 +91,7 @@ export function dialogNounOf(blocks: readonly Block[]): DialogNoun | null {
         return "dialog";
       case "raw":
       case "autocomplete":
+      case "box-text":
         break;
     }
   }

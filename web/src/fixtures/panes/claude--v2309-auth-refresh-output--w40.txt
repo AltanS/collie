@@ -1,0 +1,34 @@
+[38;5;174m ▐[48;5;16m▛███▛█[39m[49m   [1mClaude[0m [1mCode[0m [38;5;246mv2.1.309[39m
+[38;5;174m▝▜[48;5;16m█████[49m█▀[39m  [38;5;246mOpus[39m [38;5;246m5.5[39m [38;5;246m·[39m [38;5;246mAmazon[39m [38;5;246mBedrock[39m
+[38;5;174m ▝▝[39m   [38;5;174m▝▝[39m   [38;5;246m/home/demo/work/demo[39m
+
+
+[38;5;153m╭──────────────────────────────────────╮
+│[39m [1m[38;5;153mAuthentication[0m                       [38;5;153m│
+│[39m                                      [38;5;153m│
+│[39m [38;5;246mBrowser will not be automatically [39m   [38;5;153m│
+│[39m [38;5;246mopened.[39m                              [38;5;153m│
+│[39m [38;5;246mPlease visit the following URL: [39m     [38;5;153m│
+│[39m [38;5;246m]8;id=1mos4nj;https://example.awsapps.com/start/#/device\https://example.awsapps.com/start/#/[39m]8;;\ [38;5;153m│
+│[39m [38;5;246m]8;id=1mos4nj;https://example.awsapps.com/start/#/device\device]8;;\ Then enter the code: [39m         [38;5;153m│
+│[39m [38;5;246mABCD-EFGH Alternatively, you may [39m    [38;5;153m│
+│[39m [38;5;246mvisit the following URL which will [39m  [38;5;153m│
+│[39m [38;5;246mautofill the code upon loading: [39m     [38;5;153m│
+│[39m [38;5;246mhttps://example.awsapps.com/start/#/[39m [38;5;153m│
+│[39m [38;5;246mdevice?user_code=ABCD-EFGH[39m [38;5;246m>>>[39m       [38;5;153m│
+│[39m [38;5;246mOne-tap[39m [38;5;246mlogin[39m [38;5;246mURL[39m [38;5;246m(code[39m [38;5;246mpre-filled):[39m [38;5;153m│
+│[39m [38;5;246mhttps://example.awsapps.com/start/#[39m  [38;5;153m│
+│[39m [38;5;246m/device?user_code=ABCD-EFGH[39m [38;5;246mSee[39m      [38;5;153m│
+│[39m [38;5;246m~/.aws/config[39m [38;5;246m--profile[39m [38;5;246me.g.[39m [38;5;246mv2.1[39m    [38;5;153m│
+│[39m [38;5;246mdocs[39m [38;5;246mat[39m [38;5;246mhttps://docs.example.com/cli[39m [38;5;153m│
+│[39m [38;5;246m/latest/userguide/sso-configure-prof[39m [38;5;153m│
+│[39m [38;5;246mile-token.html[39m [38;5;246mfor[39m [38;5;246mdetails.[39m          [38;5;153m│
+╰──────────────────────────────────────╯
+
+
+[38;5;244m────────────────────────────────────────
+[39m❯ [7m [0m
+[38;5;244m────────────────────────────────────────
+[39m  [38;5;246mContext:[39m [38;5;246m--%[39m [38;5;246m│[39m [2m[38;5;246m💰[0m [2m[38;5;246m$0.00[0m
+  [38;5;246m--[39m [38;5;246mINSERT[39m [38;5;246m--[39m [38;5;220m⏵⏵[39m [38;5;220mauto[39m [38;5;220mmode[39m [38;5;220mon[38;5;246m [39m
+  [38;5;246mtmux focus-events off · add 'set -g…[39m

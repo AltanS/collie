@@ -1498,6 +1498,8 @@ export const zh: Dictionary = {
   "dialog.backToOptions": "返回选项",
   "dialog.endsQuestionsSuffix": "（结束问答）",
   "dialog.autocomplete.title": "斜杠命令",
+  "dialog.authBox.label": "登录输出",
+  "dialog.authBox.waiting": "登录命令尚未输出任何内容。",
   "dialog.menu.moveUp": "上移",
   "dialog.menu.moveDown": "下移",
   "dialog.menu.noticeDraft": "请先清空输入框：数字会接在框里的文字后面。",

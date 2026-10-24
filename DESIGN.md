@@ -711,6 +711,19 @@ Stated so nobody reads this document as a description of a clean tree.
    new token, which is a new schema version (§13). These are not closed in M57, because that
    milestone's exit test is a zero pixel diff of the current theme, and each fix needs its own
    proof that it stays at zero.
+7. **`box-text-block.tsx:14` — the Authentication card's links are inline, below §6's 44px
+   floor.** A login URL sits inside the command's own sentence, so the card links it where it
+   stands, the way the mirror does: the same `py-[0.35em]` reach (`ansi-output.tsx:170` holds
+   the measurement), about 22px on a phone. Two different links can sit on neighbouring lines
+   of one card, which makes a mis-tap the cost. Closing it means a layout that pulls each link
+   out of its sentence onto a full-height row, and the sentence then no longer reads as the
+   command printed it.
+8. **The Authentication card leaves with keyboard focus inside it.** When the login finishes
+   the box goes, the card unmounts, and a link that held keyboard focus takes it to `<body>`.
+   Handing focus to the composer was tried and taken back: a tapped link holds focus too on
+   Android, so the hand-off opened the soft keyboard over a phone that had just come back from
+   the login tab, the case `focusFromMirror` (`agent-chat.tsx:1847`) declines for the mirror's
+   own links. Closing it needs a target that takes focus without raising the keyboard.
 
 ---
 

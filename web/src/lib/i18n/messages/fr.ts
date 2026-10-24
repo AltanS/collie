@@ -1390,6 +1390,8 @@ export const fr: Dictionary = {
   "dialog.backToOptions": "Retour aux options",
   "dialog.endsQuestionsSuffix": "- termine les questions",
   "dialog.autocomplete.title": "Commandes slash",
+  "dialog.authBox.label": "Sortie de la connexion",
+  "dialog.authBox.waiting": "La commande de connexion n'a encore rien affiché.",
   "dialog.menu.moveUp": "Monter",
   "dialog.menu.moveDown": "Descendre",
   "dialog.menu.noticeDraft": "Videz d'abord la zone : un chiffre s'ajouterait au texte qui s'y trouve.",
