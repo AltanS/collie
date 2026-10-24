@@ -39,8 +39,13 @@ export function holdCommandIn(document: JsonValue | null, event: string): string
  * surface folders, where no harness name may live.
  */
 export function agentSettingsPath(env: Readonly<Record<string, string | undefined>>, home: string): string {
+  return join(agentConfigRoot(env, home), "settings.json");
+}
+
+/** The harness's config root: `$CLAUDE_CONFIG_DIR`, else `~/.claude`. Its transcripts live under it. */
+export function agentConfigRoot(env: Readonly<Record<string, string | undefined>>, home: string): string {
   const dir = env.CLAUDE_CONFIG_DIR?.trim();
-  return join(dir !== undefined && dir !== "" ? dir : join(home, ".claude"), "settings.json");
+  return dir !== undefined && dir !== "" ? dir : join(home, ".claude");
 }
 
 /**

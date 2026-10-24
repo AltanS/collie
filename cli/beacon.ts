@@ -13,15 +13,19 @@ import {
   type BeaconStatus,
   type EdgeRecord,
 } from "../bridge/beacon/types.ts";
-import { asJsonString } from "../web/src/lib/json.ts";
+import { asJsonNumber, asJsonString } from "../web/src/lib/json.ts";
 import { normalizePrompt } from "../web/src/lib/surface/edges.ts";
 import { holdInputHash, shownInput } from "../web/src/lib/surface/hold.ts";
 import { loadProfiles } from "../web/src/lib/surface/profile.ts";
+import { takeContextReading, takeSessionStart } from "./context-reading.ts";
 import { agentHolds, agentSettingsPath, managedSettingsPath, projectSettingsPaths } from "./hold-entry.ts";
 import type { JsonObject, JsonValue } from "../bridge/json.ts";
 import type { CliContext, Environment } from "./context.ts";
 import { EXIT } from "./io.ts";
+import { privateDir } from "./private-dir.ts";
 import type { Files } from "./sys.ts";
+
+export { privateDir };
 
 // `collie beacon emit` — the agent's own hook, telling Collie what only the agent knows.
 //
@@ -56,7 +60,8 @@ import type { Files } from "./sys.ts";
 // `notification_type`, `message`) were not reached by the headless probe — a `-p` run completes
 // without either, and `idle_prompt` fires ~60 s after a response in an INTERACTIVE session only.
 // Their field lists are the documented ones (code.claude.com/docs/en/hooks.md, read 2026-08-20), and
-// this verb reads neither: `hook_event_name` and `session_id` are the only fields it touches.
+// this verb reads neither: `hook_event_name` and `session_id` are the only fields it touches, plus the
+// context-reading fields below (`transcript_path`, `source`, `model`, `context_tokens`).
 // `agent_id` (present only for a SUBAGENT's events) was absent from every captured payload, which is
 // the case the gate below is for.
 //
@@ -64,6 +69,20 @@ import type { Files } from "./sys.ts";
 // process — no surviving shell in between, with or without a trailing comment in the command string —
 // so `process.ppid` is the agent, and the agent is what the reader's liveness check needs. The hook's
 // own pid is dead microseconds later and would make every beacon read expired.
+
+// ── THE CONTEXT READING (.adr/0115, amended 2026-10-24) ───────────────────────────────────────────
+//
+// Besides the beacon and the edge, this verb notes the session's context use for the dots above the
+// belt, with no statusLine (`cli/context-reading.ts` has the whole rule):
+//
+//  - `SessionStart` reads `source`, `model` and `context_tokens`: the window the model names, a context
+//    that is unknown after a compact or a clear, a context known at once after a resume or a fork.
+//  - `Stop` and the tool event (`PostToolUse`, registered by `--hold-permissions`) read the END of the
+//    transcript, `transcript_path` in the payload, for the token counts of the last assistant line.
+//    The path is a hint to check: an absolute `.jsonl` file under the Claude config root once every
+//    link is resolved. Unlike the session id below, it is never recorded in anything this verb writes.
+//
+// A refusal, a missing file and a full disk are all "no reading", and exit 0 as everywhere in this verb.
 
 /** The marker namespace of a Herdr pane, which is the Herdr adapter's registry key. */
 const HERDR_NAMESPACE = "herdr";
@@ -328,17 +347,6 @@ const NOTIFICATION_TYPE = /^[a-z_]{1,64}$/u;
 export type EdgeTargetDeps = Pick<BeaconEmitDeps, "ctx" | "files" | "uid">;
 
 /**
- * Whether a folder the emitter is about to write into is this user's own and private: a real folder,
- * not a link, owned by this uid, and writable by nobody else. A folder that fails is skipped.
- */
-export function privateDir(deps: EdgeTargetDeps, dir: string): boolean {
-  if (deps.files.entryType(dir) !== "directory") return false;
-  const mode = deps.files.mode(dir);
-  if (mode !== null && (mode & 0o022) !== 0) return false;
-  return deps.uid === undefined || deps.files.ownerUid(dir) === deps.uid;
-}
-
-/**
  * Write one edge file into a state dir's spool (M56 spec 11): a temp name, then a rename, so the
  * bridge never reads half of one. A spool at {@link EDGE_SPOOL_MAX} files first loses its edges older
  * than {@link EDGE_MAX_AGE_MS}, which no bridge would take anyway; still full, it takes nothing more,
@@ -419,6 +427,25 @@ function herdrOnly(markers: readonly BeaconMarker[]): boolean {
   return markers.every((marker) => marker.namespace === HERDR_NAMESPACE);
 }
 
+/** The session's context use from its transcript, if the payload names a session and a transcript. Never throws. */
+function takeReading(deps: BeaconEmitDeps, payload: JsonObject, stateDirs: () => string[]): void {
+  const session = readField(payload, "session_id", SESSION_ID);
+  if (session === null) return;
+  takeContextReading(deps, { session, transcriptPath: asJsonString(payload.transcript_path), harness: BEACON_HARNESS }, stateDirs, (deps.now ?? Date.now)());
+}
+
+/** What a `SessionStart` says about the window and the context. Never throws. */
+function takeStart(deps: BeaconEmitDeps, payload: JsonObject, stateDirs: () => string[]): void {
+  const session = readField(payload, "session_id", SESSION_ID);
+  if (session === null) return;
+  takeSessionStart(
+    deps,
+    { session, harness: BEACON_HARNESS, source: asJsonString(payload.source), model: asJsonString(payload.model), contextTokens: asJsonNumber(payload.context_tokens) },
+    stateDirs,
+    (deps.now ?? Date.now)(),
+  );
+}
+
 /**
  * `collie beacon emit` — one hook event in, at most one beacon file out.
  *
@@ -438,7 +465,12 @@ export async function cmdBeaconEmit(deps: BeaconEmitDeps): Promise<number> {
     // The tool edge (M56 spec 12): a tool finished. It ends a "Sent" card of a hook-held permission,
     // so it is written for a subagent too, with the subagent id and the tool name, and never a beacon.
     const hold = loadProfiles().get(BEACON_HARNESS)?.hold;
+    // The registry walk happens at most once per run, and only when something is to be written.
+    let targets: string[] | undefined;
+    const stateDirs = (): string[] => (targets ??= edgeStateDirs(deps));
     if (hold !== undefined && payload.hook_event_name === hold.toolEvent) {
+      // The context use, before the edge: it needs no pid. A subagent's tool call is not the session's turn.
+      if (payload.agent_id === undefined || payload.agent_id === null) takeReading(deps, payload, stateDirs);
       const pidStartTime = readPidStartTime(deps.files, deps.agentPid);
       if (pidStartTime === null) return EXIT.OK;
       const tool = readField(payload, "tool_name", TOOL_FIELD);
@@ -459,7 +491,7 @@ export async function cmdBeaconEmit(deps: BeaconEmitDeps): Promise<number> {
       if (agent !== null) record = { ...record, agent };
       // The input shown, hashed as the hold hashed it: the bridge ends only the hold of this very call.
       if (tool !== null) record = { ...record, inputHash: holdInputHash(tool, shownInput(payload.tool_input, hold.inputShown, hold.inputDetails[tool])) };
-      for (const stateDir of edgeStateDirs(deps)) {
+      for (const stateDir of stateDirs()) {
         try {
           writeEdge(deps, stateDir, record);
         } catch {
@@ -482,6 +514,9 @@ export async function cmdBeaconEmit(deps: BeaconEmitDeps): Promise<number> {
     const status = registration.details === undefined ? registration.status : detail === null ? undefined : registration.details[detail];
     if (status === undefined) return EXIT.OK;
 
+    if (registration.event === "Stop") takeReading(deps, payload, stateDirs);
+    if (registration.event === "SessionStart") takeStart(deps, payload, stateDirs);
+
     const pidStartTime = readPidStartTime(deps.files, deps.agentPid);
     if (pidStartTime === null) return EXIT.OK;
     const now = (deps.now ?? Date.now)();
@@ -489,7 +524,7 @@ export async function cmdBeaconEmit(deps: BeaconEmitDeps): Promise<number> {
     // The edges first, each in its own guard: a beacon that cannot be written must not cost an edge,
     // one target that cannot be written must not cost the others, and the other way round.
     const holds = hold === undefined ? false : holdsNow(deps, hold.event, cwdOf(payload));
-    for (const stateDir of edgeStateDirs(deps)) {
+    for (const stateDir of stateDirs()) {
       try {
         writeEdge(deps, stateDir, {
           schemaVersion: EDGE_SCHEMA_VERSION,

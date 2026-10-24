@@ -3,12 +3,14 @@ import { githubHeaders, type GithubCredential } from "../bridge/update.ts";
 import {
   accessSync,
   closeSync,
+  fstatSync,
   constants,
   existsSync,
   mkdirSync,
   openSync,
   readdirSync,
   readFileSync,
+  readSync,
   readlinkSync,
   lstatSync,
   mkdtempSync,
@@ -232,6 +234,12 @@ export interface Files {
   executable(p: string): boolean;
   /** File contents, or null when missing/unreadable. */
   read(p: string): string | null;
+  /**
+   * The last `maxBytes` bytes of a regular file as text (the whole file when it is smaller), or null
+   * when it is not a regular file or cannot be read. One open, one `fstat`, one read: how a hook reads
+   * the end of a transcript that may be many megabytes. The cut may fall inside a line or a character.
+   */
+  tail(p: string, maxBytes: number): string | null;
   /**
    * The entry's own type, without following a symlink, or null when it cannot be read.
    *
@@ -779,6 +787,22 @@ export const realFiles: Files = {
       return readFileSync(p, "utf8");
     } catch {
       return null;
+    }
+  },
+  tail(p, maxBytes) {
+    let fd: number | undefined;
+    try {
+      fd = openSync(p, "r");
+      const info = fstatSync(fd);
+      if (!info.isFile()) return null;
+      const length = Math.min(info.size, maxBytes);
+      const buffer = Buffer.alloc(length);
+      const got = readSync(fd, buffer, 0, length, info.size - length);
+      return buffer.toString("utf8", 0, got);
+    } catch {
+      return null;
+    } finally {
+      if (fd !== undefined) closeSync(fd);
     }
   },
   entryType(p) {

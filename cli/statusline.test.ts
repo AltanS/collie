@@ -68,7 +68,7 @@ describe("the settings document", () => {
 
   test("wraps the operator's command and keeps every other key of the statusLine where it was", () => {
     const doc = withLine({ type: "command", command: OWN, padding: 1, refreshInterval: 5 });
-    const wrapped = wrapStatusLine(doc, BIN);
+    const wrapped = wrapStatusLine(doc, BIN, true);
     expect(wrapped).toEqual(withLine({ type: "command", command: wrapCommand(BIN, OWN), padding: 1, refreshInterval: 5 }));
     expect(Object.keys(wrapped)).toEqual(["theme", "statusLine", "hooks"]);
     // Uninstall puts back exactly what was there.
@@ -77,24 +77,42 @@ describe("the settings document", () => {
 
   test("never adds a statusLine, and leaves one that is not a command alone", () => {
     const none: JsonObject = { theme: "dark" };
-    expect(wrapStatusLine(none, BIN)).toBe(none);
+    expect(wrapStatusLine(none, BIN, true)).toBe(none);
     const other = withLine({ type: "something-new", url: "x" });
-    expect(wrapStatusLine(other, BIN)).toBe(other);
+    expect(wrapStatusLine(other, BIN, true)).toBe(other);
     const empty = withLine({ type: "command", command: "  " });
-    expect(wrapStatusLine(empty, BIN)).toBe(empty);
+    expect(wrapStatusLine(empty, BIN, true)).toBe(empty);
     expect(statusLineState(none).kind).toBe("absent");
     expect(statusLineState(other).kind).toBe("other");
   });
 
   test("wrapping twice wraps once, and a wrapper from another binary heals around the same command", () => {
-    const once = wrapStatusLine(withLine({ type: "command", command: OWN }), BIN);
-    expect(wrapStatusLine(once, BIN)).toEqual(once);
+    const once = wrapStatusLine(withLine({ type: "command", command: OWN }), BIN, true);
+    expect(wrapStatusLine(once, BIN, true)).toEqual(once);
     expect(statusLineBehind(once, BIN)).toBe(false);
     const moved = "/opt/collie/current/bin/collie";
     expect(statusLineBehind(once, moved)).toBe(true);
-    expect(wrapStatusLine(once, moved)).toEqual(withLine({ type: "command", command: wrapCommand(moved, OWN) }));
-    expect(statusLineBehind(withLine({ type: "command", command: OWN }), BIN)).toBe(true);
+    expect(wrapStatusLine(once, moved, true)).toEqual(withLine({ type: "command", command: wrapCommand(moved, OWN) }));
     expect(statusLineBehind({}, BIN)).toBe(false);
+  });
+
+  test("a plain statusLine is wrapped only when asked, and is never behind (.adr/0115, amended 2026-10-24)", () => {
+    const plain = withLine({ type: "command", command: OWN, padding: 1 });
+    expect(wrapStatusLine(plain, BIN, false)).toBe(plain);
+    expect(wrapStatusLine(plain, BIN, true)).toEqual(withLine({ type: "command", command: wrapCommand(BIN, OWN), padding: 1 }));
+    expect(statusLineBehind(plain, BIN)).toBe(false);
+    expect(statusLineBehind({}, BIN)).toBe(false);
+    expect(statusLineBehind(withLine({ type: "something-new" }), BIN)).toBe(false);
+  });
+
+  test("a wrapped statusLine is re-pointed at a new binary without the flag, and is behind until then", () => {
+    const old = "/opt/collie-old/bin/collie";
+    const wrapped = withLine({ type: "command", command: wrapCommand(old, OWN), padding: 0 });
+    expect(statusLineBehind(wrapped, BIN)).toBe(true);
+    expect(statusLineBehind(wrapped, old)).toBe(false);
+    const healed = wrapStatusLine(wrapped, BIN, false);
+    expect(healed).toEqual(withLine({ type: "command", command: wrapCommand(BIN, OWN), padding: 0 }));
+    expect(statusLineBehind(healed, BIN)).toBe(false);
   });
 
   test("leaves a statusLine alone that Claude Code runs another way than `/bin/sh -c`", () => {
@@ -104,7 +122,7 @@ describe("the settings document", () => {
     ]) {
       const doc = withLine(line);
       expect(statusLineState(doc).kind).toBe("other");
-      expect(wrapStatusLine(doc, BIN)).toBe(doc);
+      expect(wrapStatusLine(doc, BIN, true)).toBe(doc);
       expect(statusLineBehind(doc, BIN)).toBe(false);
     }
   });
@@ -179,6 +197,17 @@ describe("collie beacon statusline", () => {
     const written = files.entries.get(usagePath);
     expect(written?.mode).toBe(0o600);
     expect(parseUsageRecord(written?.text ?? "")?.context).toBe(42);
+  });
+
+  test("merges into a file the beacon wrote: the window it noted and the context stay unless this reading has its own", async () => {
+    const { d, files } = deps({ stdin: JSON.stringify(payload({ context_window: { used_percentage: null } })) });
+    files.write(usagePath, JSON.stringify({ schemaVersion: 1, harness: "claude", at: NOW - 1, context: 17, window: 1_000_000 }));
+    await cmdBeaconStatusline(d, [token]);
+    const merged = parseUsageRecord(files.entries.get(usagePath)?.text ?? "");
+    expect(merged).toMatchObject({ context: 17, window: 1_000_000, at: NOW });
+    expect(merged?.limits).toHaveLength(2);
+    await cmdBeaconStatusline({ ...d, readStdin: () => Promise.resolve(JSON.stringify(payload())) }, [token]);
+    expect(parseUsageRecord(files.entries.get(usagePath)?.text ?? "")).toMatchObject({ context: 42, window: 1_000_000 });
   });
 
   test("outside a multiplexer it writes nothing and still runs the command", async () => {

@@ -332,6 +332,12 @@ export function fakeFiles(seed: SeededFiles = {}): FakeFiles {
     exists: (p) => under(p).length > 0,
     executable: (p) => under(p).length > 0 && !notExecutable.has(p),
     read: (p) => entries.get(p)?.text ?? null,
+    tail: (p, maxBytes) => {
+      const text = entries.get(p)?.text;
+      if (text === undefined) return null;
+      const bytes = Buffer.from(text, "utf8");
+      return bytes.subarray(Math.max(0, bytes.length - maxBytes)).toString("utf8");
+    },
     digest: (p) => {
       const text = entries.get(p)?.text;
       return text === undefined ? null : new Bun.CryptoHasher("sha256").update(text).digest("hex");
@@ -406,6 +412,7 @@ export function fakeFiles(seed: SeededFiles = {}): FakeFiles {
     exists: one(raw.exists),
     executable: one(raw.executable),
     read: one(raw.read),
+    tail: one(raw.tail),
     digest: one(raw.digest),
     entryType: one(raw.entryType),
     list: one(raw.list),

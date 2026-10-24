@@ -7,6 +7,8 @@ import { HOST } from "../bridge/host.ts";
 import { managedSettingsPath } from "./hold-entry.ts";
 
 import { parseBeacon, parseEdge } from "../bridge/beacon/parse.ts";
+import { parseUsageRecord, usageFileName } from "../bridge/usage.ts";
+import { TAIL_BYTES, windowFromModel } from "./context-reading.ts";
 import { beaconFileName, beaconKey, EDGE_FILE, EDGE_MAX_AGE_MS, EDGE_SPOOL_MAX } from "../bridge/beacon/paths.ts";
 import { hookTargetFileName } from "../bridge/beacon/hook-targets.ts";
 import { BEACON_SCHEMA_VERSION, type EdgeRecord } from "../bridge/beacon/types.ts";
@@ -488,5 +490,250 @@ describe("the hook target registry (M56 spec 11)", () => {
     d.files.write(`/proc/${String(A.pid)}/stat`, statOf(A.pid, A.start));
     await cmdBeaconEmit(d);
     expect(edgesIn(d.files, A.dir)).toHaveLength(1);
+  });
+});
+
+describe("the context reading (.adr/0115, amended 2026-10-24)", () => {
+  const ROOT = join(HOME, ".claude");
+  const TRANSCRIPT = join(ROOT, "projects", "-x", "y.jsonl");
+  const USAGE = `${STATE}/usage/${usageFileName(SESSION)}`;
+  const NOW = 1_700_000_000_000;
+
+  const assistant = (usage: JsonObject | string, model = "claude-opus-5-5", extra: JsonObject = {}): string =>
+    JSON.stringify({ type: "assistant", message: { model, usage }, ...extra });
+  const userLine = JSON.stringify({ type: "user", message: { role: "user", content: "hello" } });
+  const tail = JSON.stringify({ type: "system", subtype: "turn_duration", durationMs: 12 });
+  const lines = (...rows: string[]): string => `${rows.join("\n")}\n`;
+
+  /** Run one hook event against a deps whose transcript is `text`, and give back the deps. */
+  async function run(event: string, over: JsonObject = {}, text: string | null = null, setup?: (d: ReturnType<typeof deps>) => void) {
+    const d = deps({ stdin: payload({ hook_event_name: event, transcript_path: TRANSCRIPT, ...over }) });
+    if (text !== null) d.files.write(TRANSCRIPT, text);
+    setup?.(d);
+    expect(await cmdBeaconEmit(d)).toBe(EXIT.OK);
+    return d;
+  }
+  const record = (d: ReturnType<typeof deps>) => {
+    const text = d.files.read(USAGE);
+    return text === null ? null : parseUsageRecord(text);
+  };
+  const seed = (d: ReturnType<typeof deps>, over: JsonObject): void =>
+    d.files.write(USAGE, JSON.stringify({ schemaVersion: 1, harness: "claude", at: NOW - 5000, window: 1_000_000, ...over }));
+  const USED = lines(userLine, assistant({ input_tokens: 10, cache_creation_input_tokens: 20_000, cache_read_input_tokens: 130_000, output_tokens: 900 }), tail);
+
+  describe("the window comes from SessionStart", () => {
+    test("the window of a model: the [1m] suffix is one million tokens, any other model two hundred thousand", async () => {
+      expect(windowFromModel("claude-opus-5-5[1m]")).toBe(1_000_000);
+      expect(windowFromModel("opus[1m]")).toBe(1_000_000);
+      expect(windowFromModel("claude-opus-5-5")).toBe(200_000);
+      expect(windowFromModel(undefined)).toBeUndefined();
+      expect(windowFromModel("")).toBeUndefined();
+      const big = await run("SessionStart", { source: "startup", model: "claude-opus-5-5[1m]" });
+      expect(record(big)).toMatchObject({ window: 1_000_000 });
+      expect(record(big)?.context).toBeUndefined();
+      const small = await run("SessionStart", { source: "startup", model: "claude-opus-5-5" });
+      expect(record(small)).toMatchObject({ window: 200_000 });
+    });
+
+    test("a start that names no model (claude -p) records no window, and the transcript then writes no context", async () => {
+      const d = await run("SessionStart", { source: "startup" });
+      expect(record(d)).toBeNull();
+      const stop = await run("Stop", {}, USED);
+      expect(record(stop)).toBeNull();
+    });
+
+    test("a source it does not know writes nothing", async () => {
+      const d = await run("SessionStart", { source: "teleport", model: "claude-opus-5-5" });
+      expect(record(d)).toBeNull();
+    });
+
+    test("compact and clear drop the context and keep the limits and the window", async () => {
+      const limits = [{ window: "5h" as const, used: 30, resetsAt: NOW + 3_600_000 }];
+      for (const source of ["compact", "clear"]) {
+        const d = await run("SessionStart", { source, model: "claude-opus-5-5[1m]" }, null, (x) => seed(x, { context: 71, limits }));
+        const written = record(d);
+        expect(written?.context).toBeUndefined();
+        expect(written?.window).toBe(1_000_000);
+        expect(written?.limits).toEqual(limits);
+      }
+    });
+
+    test("compact without a model keeps the window already on file", async () => {
+      const d = await run("SessionStart", { source: "compact" }, null, (x) => seed(x, { context: 71, window: 200_000 }));
+      expect(record(d)).toMatchObject({ window: 200_000 });
+      expect(record(d)?.context).toBeUndefined();
+    });
+
+    test("resume and fork with context_tokens write the context at once", async () => {
+      for (const source of ["resume", "fork"]) {
+        const d = await run("SessionStart", { source, model: "claude-opus-5-5[1m]", context_tokens: 250_000 });
+        expect(record(d)).toMatchObject({ window: 1_000_000, context: 25 });
+      }
+      const two = await run("SessionStart", { source: "resume", model: "claude-opus-5-5", context_tokens: 50_000 });
+      expect(record(two)?.context).toBe(25);
+    });
+
+    test("resume with no model and no window on file has no context to write", async () => {
+      const d = await run("SessionStart", { source: "resume", context_tokens: 50_000 });
+      expect(record(d)).toBeNull();
+    });
+  });
+
+  describe("the transcript, on Stop and PostToolUse", () => {
+    test("Stop: input, cache creation and cache read tokens of the last assistant line, over the window", async () => {
+      // 10 + 20_000 + 130_000 = 150_010 of 1_000_000. Output tokens are not context.
+      const d = await run("Stop", {}, USED, (x) => seed(x, {}));
+      expect(record(d)).toMatchObject({ schemaVersion: 1, harness: "claude", window: 1_000_000, context: 15 });
+      expect(d.files.read(USAGE)?.length ?? 0).toBeLessThan(4096);
+      const small = await run("Stop", {}, USED, (x) => seed(x, { window: 200_000 }));
+      expect(record(small)?.context).toBe(75);
+    });
+
+    test("no window on file, no context: honest beats guessed", async () => {
+      expect(record(await run("Stop", {}, USED))).toBeNull();
+    });
+
+    test("PostToolUse reads it too, and still writes its tool edge", async () => {
+      const d = await run("PostToolUse", { tool_name: "Bash", tool_input: { command: "ls" } }, USED, (x) => seed(x, {}));
+      expect(record(d)?.context).toBe(15);
+      expect([...d.files.entries.keys()].filter((path) => path.startsWith(`${STATE}/edges/`))).toHaveLength(1);
+    });
+
+    test("a subagent's tool call is not the session's turn", async () => {
+      const d = await run("PostToolUse", { tool_name: "Bash", agent_id: "sub-1" }, USED, (x) => seed(x, {}));
+      expect(record(d)?.context).toBeUndefined();
+    });
+
+    test("UserPromptSubmit and SessionEnd do not read the transcript", async () => {
+      for (const event of ["UserPromptSubmit", "SessionEnd"]) {
+        expect(record(await run(event, {}, USED, (x) => seed(x, {})))?.context).toBeUndefined();
+      }
+    });
+
+    test("takes the newest assistant line, past a trailing non-assistant line, a subagent line and a synthetic notice", async () => {
+      const text = lines(
+        assistant({ input_tokens: 900_000 }),
+        assistant({ input_tokens: 100_000 }),
+        assistant({ input_tokens: 800_000 }, "claude-opus-5-5", { isSidechain: true }),
+        assistant({ input_tokens: 0, output_tokens: 0 }, "<synthetic>"),
+        userLine,
+        tail,
+      );
+      expect(record(await run("Stop", {}, text, (x) => seed(x, {})))?.context).toBe(10);
+    });
+
+    test("an assistant line with no usage object is skipped; a file with no assistant line writes nothing", async () => {
+      const noUsage = lines(userLine, JSON.stringify({ type: "assistant", message: { model: "m", content: "x" } }), tail);
+      expect(record(await run("Stop", {}, noUsage, (x) => seed(x, {})))?.context).toBeUndefined();
+      const none = await run("Stop", {}, lines(userLine, tail));
+      expect(record(none)).toBeNull();
+      expect(none.files.read(USAGE)).toBeNull();
+    });
+
+    test("a compact boundary after the last assistant line removes the context", async () => {
+      const boundary = JSON.stringify({ type: "system", subtype: "compact_boundary", compactMetadata: { trigger: "auto" } });
+      const text = lines(assistant({ input_tokens: 900_000 }), boundary, userLine);
+      const d = await run("Stop", {}, text, (x) => seed(x, { context: 90 }));
+      expect(record(d)?.context).toBeUndefined();
+      expect(record(d)?.window).toBe(1_000_000);
+      // A response after the boundary measures the new context again.
+      const after = lines(boundary, userLine, assistant({ input_tokens: 40_000 }));
+      expect(record((await run("Stop", {}, after, (x) => seed(x, {}))))?.context).toBe(4);
+    });
+
+    test("reads only the last 256 KiB: an assistant line before that is out of sight, and a cut first line is skipped", async () => {
+      const filler = JSON.stringify({ type: "user", message: { content: "x".repeat(1000) } });
+      const many = Array.from({ length: Math.ceil(TAIL_BYTES / 1000) + 20 }, () => filler);
+      const out = await run("Stop", {}, lines(assistant({ input_tokens: 500_000 }), ...many), (x) => seed(x, {}));
+      expect(record(out)?.context).toBeUndefined();
+      const inside = await run("Stop", {}, lines(...many, assistant({ input_tokens: 500_000 }), tail), (x) => seed(x, {}));
+      expect(record(inside)?.context).toBe(50);
+    });
+
+    test("an unchanged whole percent writes nothing", async () => {
+      // On file: 15.2. The transcript says 15.0. Both round to 15, so the file is not touched.
+      const d = await run("Stop", {}, USED, (x) => seed(x, { context: 15.2 }));
+      expect(JSON.parse(d.files.read(USAGE) ?? "{}").context).toBe(15.2);
+      expect(JSON.parse(d.files.read(USAGE) ?? "{}").at).toBe(NOW - 5000);
+      const moved = await run("Stop", {}, USED, (x) => seed(x, { context: 17 }));
+      expect(JSON.parse(moved.files.read(USAGE) ?? "{}").context).toBe(15);
+    });
+
+    test("keeps an existing file's running limits and drops the expired ones, and the file's own time", async () => {
+      const limits = [
+        { window: "5h", used: 30, resetsAt: NOW + 3_600_000 },
+        { window: "7d", used: 50, resetsAt: NOW - 1 },
+      ];
+      const d = await run("Stop", {}, USED, (x) => seed(x, { context: 3, limits }));
+      expect(record(d)).toMatchObject({ context: 15, window: 1_000_000, at: NOW - 5000, limits: [limits[0]] });
+      const none = await run("Stop", {}, USED, (x) => seed(x, { context: 3 }));
+      expect(record(none)?.at).toBe(NOW);
+      expect(record(none)?.limits).toBeUndefined();
+    });
+
+    test("goes to every state dir the edges go to", async () => {
+      const A = { dir: "/srv/collie-a", pid: 5001, start: 11 };
+      const d = deps({ stdin: payload({ hook_event_name: "Stop", transcript_path: TRANSCRIPT }) });
+      d.files.write(TRANSCRIPT, USED);
+      d.files.mkdirp("/home/pat/.local/state/collie/hook-targets", 0o700);
+      d.files.write(`${HOME}/.local/state/collie/hook-targets/${hookTargetFileName(A.dir)}`, JSON.stringify({ schemaVersion: 1, stateDir: A.dir, pid: A.pid, pidStartTime: A.start, bootedAt: 1 }));
+      d.files.write(`/proc/${String(A.pid)}/stat`, `${String(A.pid)} (bun) S 1 ${Array.from({ length: 17 }, (_v, i) => i).join(" ")} ${String(A.start)} 0 0`);
+      for (const dir of [A.dir, STATE]) d.files.write(`${dir}/usage/${usageFileName(SESSION)}`, JSON.stringify({ schemaVersion: 1, harness: "claude", at: 1, window: 1_000_000 }));
+      await cmdBeaconEmit(d);
+      for (const dir of [A.dir]) expect(parseUsageRecord(d.files.read(`${dir}/usage/${usageFileName(SESSION)}`) ?? "")?.context).toBe(15);
+    });
+  });
+
+  describe("the path is checked before it is opened", () => {
+    const refused = async (path: string, setup?: (d: ReturnType<typeof deps>) => void) => {
+      const d = await run("Stop", { transcript_path: path }, null, (x) => {
+        seed(x, {});
+        setup?.(x);
+      });
+      expect(record(d)?.context).toBeUndefined();
+    };
+
+    test("a path outside the Claude config root", async () => {
+      await refused("/tmp/elsewhere.jsonl", (d) => d.files.write("/tmp/elsewhere.jsonl", USED));
+    });
+
+    test("a symlink under the root that points out of it", async () => {
+      const link = join(ROOT, "projects", "link.jsonl");
+      await refused(link, (d) => {
+        d.files.write("/etc/secret.jsonl", USED);
+        d.files.write(link, USED);
+        d.files.realPaths.set(link, "/etc/secret.jsonl");
+      });
+    });
+
+    test("a relative path, a path that is not .jsonl, a folder and a missing file", async () => {
+      await refused("projects/-x/y.jsonl", (d) => d.files.write(TRANSCRIPT, USED));
+      await refused(join(ROOT, "projects", "-x", "y.json"), (d) => d.files.write(join(ROOT, "projects", "-x", "y.json"), USED));
+      await refused(join(ROOT, "projects", "-x"), (d) => d.files.write(TRANSCRIPT, USED));
+      await refused(join(ROOT, "projects", "-x", "gone.jsonl"));
+    });
+
+    test("$CLAUDE_CONFIG_DIR moves the root", async () => {
+      const path = "/data/claude/projects/y.jsonl";
+      const d = deps({ env: { ...TMUX, CLAUDE_CONFIG_DIR: "/data/claude" }, stdin: payload({ hook_event_name: "Stop", transcript_path: path }) });
+      d.files.write(path, USED);
+      seed(d, {});
+      await cmdBeaconEmit(d);
+      expect(record(d)?.context).toBe(15);
+      // And the default root no longer counts.
+      const other = deps({ env: { ...TMUX, CLAUDE_CONFIG_DIR: "/data/claude" }, stdin: payload({ hook_event_name: "Stop", transcript_path: TRANSCRIPT }) });
+      other.files.write(TRANSCRIPT, USED);
+      seed(other, {});
+      await cmdBeaconEmit(other);
+      expect(record(other)?.context).toBeUndefined();
+    });
+
+    test("outside a multiplexer nothing is read or written", async () => {
+      const d = deps({ env: { HOME }, stdin: payload({ hook_event_name: "Stop", transcript_path: TRANSCRIPT }) });
+      d.files.write(TRANSCRIPT, USED);
+      seed(d, {});
+      expect(await cmdBeaconEmit(d)).toBe(EXIT.OK);
+      expect(record(d)?.context).toBeUndefined();
+    });
   });
 });
