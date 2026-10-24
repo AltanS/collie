@@ -148,8 +148,13 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
   const space = spaceAt < 0 ? undefined : spaces[spaceAt];
 
   // The strip on screen: what this device stored for the space, less the panes a LIVE herd no longer
-  // has, arrived at the route's pane. A herd from a saved copy prunes nothing.
-  const live = useMemo(() => new Set((space?.panes ?? []).map((p) => columnKeyOf(p, places))), [space, places]);
+  // has, arrived at the route's pane. A herd from a saved copy prunes nothing. The route's own pane
+  // stays live: a pane just started (`freshPane`) is not in the snapshot yet, and pruning it would
+  // make the arrive below loop.
+  const live = useMemo(
+    () => new Set([...(space?.panes ?? []).map((p) => columnKeyOf(p, places)), routeKey]),
+    [space, places, routeKey],
+  );
   const kept = spaceKey === null ? undefined : stored.get(spaceKey);
   const strip: SpaceStrip = useMemo(() => {
     if (spaceKey === null) return { cols: [{ key: routeKey, preset: "full" }], focus: routeKey };

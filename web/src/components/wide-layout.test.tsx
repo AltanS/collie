@@ -631,13 +631,30 @@ describe("the add column", () => {
 
     // The agent starts on the New page; its pane is one the space did not hold.
     const fresh: AgentView = { ...pane("w1:p7", "w1", "alpha"), tabId: "w1:t7" };
-    extraAgents = [fresh];
+    // As use-spaces does: navigate with the fresh pane before any snapshot lists it.
     await act(async () => {
-      await router.revalidate();
-      await router.navigate(panePath("w1:p7"));
+      await router.navigate(panePath("w1:p7"), { state: { freshPane: fresh } });
     });
     await waitFor(() => expect(columns(container).map((c) => c.dataset.colKey)).toEqual([key(A1), key(fresh), key(A2)]));
     expect(columns(container)[1]?.hasAttribute("data-focused")).toBe(true);
+    // The snapshot catches up: the order and the focus stay.
+    extraAgents = [fresh];
+    await act(async () => {
+      await router.revalidate();
+    });
+    expect(columns(container).map((c) => c.dataset.colKey)).toEqual([key(A1), key(fresh), key(A2)]);
+    expect(columns(container)[1]?.hasAttribute("data-focused")).toBe(true);
+  });
+
+  it("a pane that arrives as a freshPane the snapshot does not list yet gets a column, and does not loop", async () => {
+    const { container, router } = await mount("w1:p1", 1200);
+    const fresh: AgentView = { ...pane("w1:p7", "w1", "alpha"), tabId: "w1:t7" };
+    await act(async () => {
+      await router.navigate(panePath("w1:p7"), { state: { freshPane: fresh } });
+    });
+    await waitFor(() => expect(columns(container).map((c) => c.dataset.colKey)).toContain(key(fresh)));
+    const at = columns(container).findIndex((c) => c.dataset.colKey === key(fresh));
+    expect(columns(container)[at]?.hasAttribute("data-focused")).toBe(true);
   });
 
   it("a pane the space already held, opened after backing out of the New page, still replaces the focus", async () => {
