@@ -258,8 +258,11 @@ Behavior details for Claude configuration changes:
   minutes. It stores nothing of the login, never refreshes it and sends it nowhere else. It skips a
   login file that others may read (anything looser than `0600`) and a login that has expired, and
   Claude Code refreshes that one at its next call. An API-key, Bedrock or Vertex session has no
-  windows to show. `COLLIE_ACCOUNT_WINDOWS=0` (or `[bridge] account_windows = false`) turns it off,
-  and `collie doctor` says which in its `account-windows` row.
+  windows to show. Codex, OpenCode Go and Grok panes get theirs the same way, on the same schedule
+  (Codex from its own session files, with no login read; see
+  [Usage windows](configure.md#usage-windows)). `COLLIE_ACCOUNT_WINDOWS=0` (or
+  `[bridge] account_windows = false`) turns all of it off, and `collie doctor` says which in its
+  `account-windows` row.
 - **Wrapping your statusLine is the second road.** With
   `collie hooks install claude --statusline` Collie also wraps your own statusLine, and the windows
   come from what Claude Code hands it. Take it if you prefer that to the login read, with

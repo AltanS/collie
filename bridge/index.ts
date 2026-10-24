@@ -201,7 +201,7 @@ import { StateEngine } from "./state-engine.ts";
 import { SubagentTracker } from "./subagents.ts";
 import { TodoTracker } from "./todos.ts";
 import { diskUsageFiles, usageDir, UsageTracker } from "./usage.ts";
-import { AccountWindows, claudeAccountSource, diskCredentialSeams, isTurnEnd } from "./account-windows.ts";
+import { AccountWindows, defaultAccountSources, diskCredentialSeams, isTurnEnd } from "./account-windows.ts";
 import {
   bridgeStampSync,
   compareSemver,
@@ -806,10 +806,10 @@ const todos = journals === null ? null : new TodoTracker(journals, Date.now);
 const subagents = journals === null ? null : new SubagentTracker(journals, Date.now);
 // The account's 5-hour and 7-day windows (bridge/account-windows.ts, ADR 0118): one ask to the vendor
 // with the operator's own harness login, read on this machine, only while a pane of that harness is
-// here. `COLLIE_ACCOUNT_WINDOWS=0` turns it off: no login is read and nothing is asked.
+// here (Codex needs no ask: its own session files carry them). `COLLIE_ACCOUNT_WINDOWS=0` turns it off: no login is read and nothing is asked.
 const accountWindows = new AccountWindows({
   enabled: cfg.accountWindows,
-  sources: [claudeAccountSource(diskCredentialSeams(process.env))],
+  sources: defaultAccountSources(diskCredentialSeams(process.env)),
   fetch: (url, init) => fetch(url, init),
   now: Date.now,
   userAgent: `collie/${crewVersion}`,

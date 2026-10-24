@@ -854,16 +854,33 @@ sessions. [Security](security.md) lists this behavior as a sharp edge.
 ## Usage windows
 
 Beside the model above the belt, the dots show how full the session's context is and how much of
-your Claude 5-hour and 7-day windows you have used. The windows show on their own: while a Claude
-pane is open, Collie reads your Claude login on this machine (`~/.claude/.credentials.json`, or
-`$CLAUDE_CONFIG_DIR/.credentials.json`) and asks `api.anthropic.com` for the numbers, the same call
-Claude Code's `/usage` makes. It stores nothing of the login and sends it nowhere else.
+your subscription's 5-hour and 7-day windows you have used. The windows show on their own, for four
+harnesses. Collie asks only while a pane of that harness is open, and it stores nothing of any login.
+
+- **Claude.** Collie reads your Claude login on this machine (`~/.claude/.credentials.json`, or
+  `$CLAUDE_CONFIG_DIR/.credentials.json`) and asks `api.anthropic.com` for the numbers, the same call
+  Claude Code's `/usage` makes.
+- **Codex.** Collie reads no login and asks nobody. On a ChatGPT login Codex writes the windows into
+  its own session files (`$CODEX_HOME/sessions`, or `~/.codex/sessions`), and Collie reads the end of
+  the newest files from the last two hours. A Codex on an API key has no windows to show.
+- **OpenCode Go.** Collie reads the `opencode-go` entry of OpenCode's login store
+  (`~/.local/share/opencode/auth.json`, or under `$XDG_DATA_HOME`) and asks `opencode.ai`. With no
+  Go entry it asks nothing. The monthly window is read and not drawn.
+- **Grok.** Collie reads the login `grok login` keeps (`~/.grok/auth.json`, or under `$GROK_HOME`)
+  and asks `cli-chat-proxy.grok.com` for your credits. A weekly period draws as the 7-day window; a
+  monthly one is read and not drawn.
+
+Collie skips a login file that others may read (anything looser than `0600`) and a login that has
+expired. The Codex, OpenCode Go and Grok readers follow the shape other tools use for these
+endpoints, and Collie has not checked them against a live account yet. pi and OMP show no windows
+here yet.
 
 | setting | default | what it does |
 | --- | --- | --- |
-| `[bridge] account_windows` / `COLLIE_ACCOUNT_WINDOWS` | `true` | `0` or `false` reads no login and asks nothing |
+| `[bridge] account_windows` / `COLLIE_ACCOUNT_WINDOWS` | `true` | `0` or `false` turns every harness off: no login or session file is read and nothing is asked |
 
-`collie doctor` shows the setting in its `account-windows` row.
+`collie doctor` shows the setting in its `account-windows` row, with the file each harness reads and
+the host it asks.
 [Terminals](multiplexers.md#collie-writes-hooks-into-claudes-own-settings) has the details.
 
 ## Dark mode / light mode
