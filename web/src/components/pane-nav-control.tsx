@@ -33,7 +33,8 @@ export function PaneNavControl() {
       </div>
 
       <div className="border-t border-border p-2">
-        <Segmented options={options} value={paneNavOf(prefs)} onChange={setPaneNav} label={t("settings.paneNav.title")} semantics="choice" />
+        {/* `tight`: "Two fingers" (and "Deux doigts", "Disattivato") clipped under px-4 on a phone. */}
+        <Segmented options={options} value={paneNavOf(prefs)} onChange={setPaneNav} label={t("settings.paneNav.title")} semantics="choice" tight />
       </div>
     </Card>
   );

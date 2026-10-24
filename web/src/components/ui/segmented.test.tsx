@@ -143,6 +143,15 @@ describe("Segmented padding follows the count", () => {
     expect(padOf(5)).toContain("px-1");
   });
 
+  it("a tight row takes px-1 at any count, and the tap height stays", () => {
+    const { unmount } = render(<Segmented options={labels(3)} value="v0" onChange={() => {}} label="Pick" tight />);
+    const cls = screen.getAllByRole("radio")[0]!.className;
+    unmount();
+    expect(cls).toContain("px-1");
+    expect(cls).not.toContain("px-4");
+    expect(cls).toContain("min-h-11");
+  });
+
   it("keeps the 44px tap height at every count", () => {
     for (const n of [2, 4, 5]) expect(padOf(n)).toContain("min-h-11");
   });

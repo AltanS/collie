@@ -53,6 +53,12 @@ export interface SegmentedProps<V extends string | number> {
   disabled?: boolean;
   /** The badge's fill, a `bg-*` class with its ink. The primary fill by default. */
   badgeClassName?: string;
+  /**
+   * Every segment takes the narrowest air, `px-1`, whatever the count. For a row whose words are long
+   * for its share of a phone: Pane navigation's "Two fingers" lost three pixels to `px-4` at 390 px and
+   * showed "Two fing…". A label that fits sits centred either way, so a row that fits looks the same.
+   */
+  tight?: boolean;
   className?: string;
 }
 
@@ -79,13 +85,15 @@ export function Segmented<V extends string | number>({
   semantics = "choice",
   disabled = false,
   badgeClassName = "bg-primary text-primary-foreground",
+  tight = false,
   className,
 }: SegmentedProps<V>) {
   const tabs = semantics === "tabs";
   // Equal widths mean four segments get a quarter of the row each. At 375 px that is about 78 px,
   // and `px-4` spent 32 of them on air, which left "30 min" (about 50 px at 14 px) clipped to "30 m…".
-  // The padding follows the count, so two and three segments keep the look they have always had.
-  const pad = options.length >= 5 ? "px-1" : options.length === 4 ? "px-2" : "px-4";
+  // The padding follows the count, so two and three segments keep the look they have always had,
+  // unless the caller says the words are long (`tight`).
+  const pad = tight || options.length >= 5 ? "px-1" : options.length === 4 ? "px-2" : "px-4";
   return (
     <div role={tabs ? "tablist" : "radiogroup"} aria-label={label} data-slot="segmented" className={cn("flex", className)}>
       {options.map((option) => {
