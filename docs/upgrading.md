@@ -739,7 +739,8 @@ nothing needs doing on upgrade day. What you will notice:
   text back for two minutes ([Clear the box](configure.md#clear-the-box)). Hold Send to steer a
   running turn on pi, Codex and OMP ([Steer or queue](multiplexers.md#steer-or-queue)).
 - **A theme that sets `pane-active` is version 3.** A Collie older than 1.24.0 refuses that file with
-  a message that names the version. The other themes keep their version.
+  a message that names the version. The other themes keep their version
+  ([Versions](themes.md#versions)).
 - **A wide screen shows a sidebar.** From 600px wide and 480px tall, the pane screen shows several
   panes side by side. To keep the phone layout on one device, set **Large-screen layout** to Off in
   Settings.
