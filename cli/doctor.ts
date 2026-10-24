@@ -60,6 +60,7 @@ import { DEVICES_FILENAME, isExpired, parseRegistryText } from "../bridge/pairin
 import { pairedRegistryOf } from "./pairing.ts";
 import { collieVersionBare, type CliContext } from "./context.ts";
 import { aboutCrew, bad, ok, skipped, warn, type DoctorStatus, type Finding } from "./finding.ts";
+import { accountWindowsDoctorLine } from "../bridge/account-windows.ts";
 import { explicitMux, probeMuxes, refusedMux, type MuxSighting } from "./mux.ts";
 import { cacheFindings } from "./cache-findings.ts";
 import { surfaceFindings } from "./surface-findings.ts";
@@ -262,6 +263,7 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
     await beacons(deps, hookEntries.length > 0),
     skillWalkyTalky(deps),
     ...walkyRefusals(deps),
+    accountWindowsFinding(deps),
     // The Whistle model (ADR 0096): one finding when the model, or the host engine that needs it, is
     // on this host, and none otherwise. A host that never heard of Whistle reads exactly as before.
     ...(await whistleModelFindings(deps)),
@@ -2109,6 +2111,17 @@ function walkyRefusals(deps: DoctorDeps): Finding[] {
   if (total === 0) return [ok("walky-refusals", "none counted")];
   const since = held.since === null ? "" : ` since ${new Date(held.since).toISOString().slice(0, 10)}`;
   return [ok("walky-refusals", `${String(total)} refused${since}: ${refusalLine(held.counts)}`)];
+}
+
+/**
+ * `account-windows` — whether the bridge reads the operator's own harness login to ask the vendor for
+ * the 5-hour and 7-day windows (ADR 0118), what it reads and where it asks. Never a warning: off is a
+ * choice, and on reads nothing until a pane of the harness exists. The line names the file and the
+ * host, never anything in the file.
+ */
+export function accountWindowsFinding(deps: Pick<DoctorDeps, "ctx" | "host">): Finding {
+  const enabled = envBool("COLLIE_ACCOUNT_WINDOWS", true, deps.ctx.env);
+  return ok("account-windows", accountWindowsDoctorLine(enabled, deps.ctx.env, deps.ctx.home, deps.host.platform));
 }
 
 /**

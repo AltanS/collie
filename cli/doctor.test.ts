@@ -18,6 +18,7 @@ import { BEACON_HOOKS } from "./beacon.ts";
 import { durableFindings } from "./durable-findings.ts";
 import type { CliContext } from "./context.ts";
 import {
+  accountWindowsFinding,
   cmdDoctor,
   type DoctorDeps,
   type Finding,
@@ -407,6 +408,7 @@ describe("collie doctor — the contract", () => {
       "beacon-hooks-claude",
       "beacons",
       "skill-walky-talky",
+      "account-windows",
       "herdr-version",
       "integration-claude",
       "integration-codex",
@@ -1701,6 +1703,7 @@ describe("the finding set is scoped by the chosen multiplexer", () => {
       "beacon-hooks-claude",
       "beacons",
       "skill-walky-talky",
+      "account-windows",
       "agent-sessions",
       "journal-roots",
       "cache-claims",
@@ -1902,6 +1905,25 @@ describe("walky-refusals", () => {
     const finding = (await findings(h)).byCheck.get("walky-refusals")!;
     expect(finding.status).toBe("ok");
     expect(finding.detail).toBe("4 refused since 2026-10-18: rate limit 3, pair limit 1");
+  });
+});
+
+describe("account-windows", () => {
+  test("one ok row: on names the login file it reads and the host it asks; 0 says off", async () => {
+    const on = (await findings(harness(null))).byCheck.get("account-windows")!;
+    expect(on.status).toBe("ok");
+    expect(on.detail).toMatch(/^on \(claude: read .*\.credentials\.json, asks api\.anthropic\.com\)$/);
+    const off = (await findings(harness(null, [], { env: { COLLIE_ACCOUNT_WINDOWS: "0" } }))).byCheck.get("account-windows")!;
+    expect(off.detail).toBe("off");
+  });
+
+  test("the row names ~/.claude/.credentials.json under the operator's home", () => {
+    const finding = accountWindowsFinding({ ctx: context({}, {}), host: HOST });
+    expect(finding.detail).toBe(
+      HOST.platform === "darwin"
+        ? "on (claude: read ~/.claude/.credentials.json or the Keychain, asks api.anthropic.com)"
+        : "on (claude: read ~/.claude/.credentials.json, asks api.anthropic.com)",
+    );
   });
 });
 

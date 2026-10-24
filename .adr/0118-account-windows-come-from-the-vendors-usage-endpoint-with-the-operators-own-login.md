@@ -1,0 +1,109 @@
+# 0118: account windows come from the vendor's usage endpoint with the operator's own login
+
+- **Status:** Proposed
+- **Date:** 2026-10-24
+- **Shipped in:** pending (1.24.0 Edge)
+- **Trail:** Altan, 2026-10-24: the windows must show without a statusLine; the operator sees no dots
+  on 8788 because their statusLine is not wrapped · `bridge/account-windows.ts` (`AccountWindows`,
+  `readClaudeLogin`, `parseAccountUsage`, `isTurnEnd`) · `bridge/usage.ts` (`UsageTracker.get`, the
+  join) · `bridge/index.ts` (the poll and the turn-end poke) · `bridge/config-schema.ts`
+  (`[bridge] account_windows`, `COLLIE_ACCOUNT_WINDOWS`) · `cli/doctor.ts` (`account-windows`) ·
+  `docs/multiplexers.md` · `docs/configure.md` ("Usage windows") ·
+  [ADR 0115](./0115-usage-numbers-come-from-the-operators-own-statusline.md) ·
+  [ADR 0024](./0024-a-beacon-is-a-hint-never-a-control-channel.md)
+
+## Context
+
+The 5-hour and 7-day windows belong to the account, not to a session. Three places hold them:
+
+1. **The statusLine document.** Claude Code hands its statusLine command `rate_limits.five_hour` and
+   `rate_limits.seven_day` on every assistant message. ADR 0115 reads them there, through a wrapper
+   around the operator's own command. Since its amendment of 2026-10-24 the wrap is opt-in, so an
+   operator who does not pass `--statusline` sees the context dot and no windows. On 8788 that is
+   every operator.
+2. **The host control channel.** An SDK host learns the numbers from the agent it runs. Collie hosts
+   no sessions.
+3. **The vendor endpoint Claude Code itself calls.** Its `/usage` screen makes one request:
+   `GET https://api.anthropic.com/api/oauth/usage` with `Authorization: Bearer <access token>` and
+   `anthropic-beta: oauth-2025-04-20`. Seen live on 2026-10-24 on a Max account.
+
+Hooks never carry the windows. No hook event has them, so the beacon road that gives the context dot
+since ADR 0115's amendment cannot give the windows.
+
+ADR 0115 declined the third road on 2026-10-23 because it reads a credential. Altan reopened it on
+2026-10-24 with the rules below.
+
+The endpoint is undocumented. Its answer changed shape once: first flat fields
+(`five_hour: { utilization, resets_at }`, `seven_day: { … }`), then a structured `limits[]`
+(`kind: "session" | "weekly_all" | "weekly_scoped"`, `percent`, `resets_at`, `scope.model.display_name`)
+beside the flat fields. Either window may be `null`.
+
+## Decision
+
+**Collie reads the operator's own harness login, locally, for one GET to the vendor. It stores nothing
+of it, never refreshes it and never sends it elsewhere. The endpoint is undocumented and its shape
+changed once (flat fields, then `limits[]`), so the parser accepts both, and a parse failure costs the
+reading, never the pane.**
+
+1. **One service, in memory.** `AccountWindows` in the bridge keeps, per harness with a source, the
+   last good reading as `UsageLimit[]`: `5h` from `kind: "session"` or `five_hour`, `7d` from
+   `kind: "weekly_all"` or `seven_day`. `used` is the percent clamped to 0 to 100, `resetsAt` is epoch
+   ms. A window `limits[]` names wins over its flat field. A body with neither shape is unreadable. A
+   body whose windows are all `null` is an account without windows. Only `claude` has a source today.
+2. **Model-scoped weekly rows are kept, not drawn.** `weekly_scoped` rows are parsed into
+   `scoped: [{ label, used, resetsAt }]` (the label stripped of control characters, at most 64
+   characters, at most eight rows) for a later build. They never enter `UsageLimit[]`, because the
+   phone draws two gauges.
+3. **The login, Claude.** `$CLAUDE_CONFIG_DIR/.credentials.json`, else `~/.claude/.credentials.json`
+   (`%USERPROFILE%\.claude` on Windows). `claudeAiOauth.accessToken` and `claudeAiOauth.expiresAt`
+   are read; nothing else. No ask is made when the file is missing or not a regular file, when on
+   POSIX its mode lets group or other read it (0600 and 0400 pass), when `expiresAt` is missing or
+   past, or when the token is not a bearer string (printable ASCII, no space, under 4096 characters).
+   On macOS, when the file is absent, the Keychain item `Claude Code-credentials` is read with
+   `security find-generic-password -s … -w`, with a 3 s timeout. Collie never refreshes a token and
+   never reads `refreshToken`: an expired token waits for Claude Code, which refreshes it on its own
+   next call.
+4. **The token lives in a local variable for one request.** Never a field, a log line, an error
+   message, a receipt or a file. It goes to `api.anthropic.com` and nowhere else; redirects are
+   refused. The log names a refusal reason or an HTTP status in one line per change, never the
+   token, the body or a transport error's text.
+5. **Cadence.** Only while this bridge has at least one pane of the harness: once when there is no
+   reading, once after a turn ends (working or blocked to idle or done, `isTurnEnd`) at most once a
+   minute, and every five minutes. One request in flight per harness, a 10 s timeout,
+   `User-Agent: collie/<version>`. No pane of the harness, no ask.
+6. **Backoff.** 401 or 403: drop the reading (the account may have logged out), wait 15 minutes. 429:
+   keep the reading, wait 15 minutes. No answer, a timeout or another status: keep it, wait 2
+   minutes. A body that does not parse: keep it, wait 5 minutes. A refused login: wait 5 minutes, or
+   1 minute when the token has expired. A reading older than 20 minutes is not drawn: stale windows
+   are worse than none.
+7. **The join.** A pane of harness H gets the account windows of H when there are any, whatever its
+   session record says, and with no record at all. Otherwise it keeps ADR 0115's behaviour: the newest
+   window any session of H reported through a wrapped statusLine. The account windows win because
+   they are fresher and the account's own. The context stays the session's. The wire does not change;
+   the phone draws `usage.limits` as before.
+8. **The off switch.** `[bridge] account_windows` / `COLLIE_ACCOUNT_WINDOWS`, default on. Off reads no
+   login and asks nothing. `collie doctor` prints one `account-windows` row:
+   `on (claude: read ~/.claude/.credentials.json, asks api.anthropic.com)` (with "or the Keychain" on
+   macOS, and the full path under a `CLAUDE_CONFIG_DIR`), or `off`.
+
+Like a beacon (ADR 0024), the reading is a hint the phone draws and nothing decides on.
+
+## Consequences
+
+- The windows show for every Claude subscription operator on this machine, with no statusLine and no
+  hook. `--statusline` stays as the second road, for an operator who prefers it with
+  `COLLIE_ACCOUNT_WINDOWS=0`.
+- An API-key, Bedrock or Vertex session has no windows: there is no OAuth login file, or the answer's
+  windows are `null`. On the statusLine road `rate_limits` is absent for those sessions too.
+- The login is the machine's, not the session's. An API-key session on a machine whose Claude login
+  is a subscription shows that subscription's windows. On the statusLine road it showed none.
+- Each machine of a crew asks with its own login, for its own panes. A lead does not ask for a peer.
+- A `CLAUDE_CONFIG_DIR` profile is read only when the bridge's own environment names it. Several
+  profiles on one machine show the windows of the one the bridge sees.
+- **Policy risk.** A vendor may object to a third-party program reading the login token. Collie's
+  read is the same one the harness makes, from the same file, and it is read-only. The off switch is
+  one line. Revisit if Anthropic publishes a rule on it, or documents the endpoint.
+- The shape may change again. A body this build cannot read costs the reading for five minutes and
+  logs one line; the pane and the context dot are untouched.
+- A login file that others may read is skipped silently except for one log line. `collie doctor`
+  does not judge the file's mode; the bridge's line says why there are no windows.

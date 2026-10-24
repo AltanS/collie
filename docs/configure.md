@@ -851,6 +851,21 @@ config root, switchable from the header. Setting `COLLIE_MULTI_SESSION=off` serv
 Herdr session. Every discovered Herdr session is accessible through the same URL, including private or sandbox
 sessions. [Security](security.md) lists this behavior as a sharp edge.
 
+## Usage windows
+
+Beside the model above the belt, the dots show how full the session's context is and how much of
+your Claude 5-hour and 7-day windows you have used. The windows show on their own: while a Claude
+pane is open, Collie reads your Claude login on this machine (`~/.claude/.credentials.json`, or
+`$CLAUDE_CONFIG_DIR/.credentials.json`) and asks `api.anthropic.com` for the numbers, the same call
+Claude Code's `/usage` makes. It stores nothing of the login and sends it nowhere else.
+
+| setting | default | what it does |
+| --- | --- | --- |
+| `[bridge] account_windows` / `COLLIE_ACCOUNT_WINDOWS` | `true` | `0` or `false` reads no login and asks nothing |
+
+`collie doctor` shows the setting in its `account-windows` row.
+[Terminals](multiplexers.md#collie-writes-hooks-into-claudes-own-settings) has the details.
+
 ## Dark mode / light mode
 
 > **Note.** Collie follows your phone's appearance by default.
