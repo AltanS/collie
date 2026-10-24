@@ -19,7 +19,7 @@ import { asJsonObject, asJsonString, parseJsonObject, type JsonObject } from "./
 import { readHeldCancelAnswer, readSendReceipts, readSendReply, type SendReply } from "./send-protocol";
 import type { HeldCancelAnswer, SendReceiptRow, SendRequestBody } from "./surface/send";
 import type { AnswerBody } from "./surface/ask";
-import { CLEAR_OUTCOMES, CLEAR_REASONS, type ClearBody, type ClearReceipt } from "./surface/clear";
+import { boundedDraft, CLEAR_OUTCOMES, CLEAR_REASONS, type ClearBody, type ClearReceipt } from "./surface/clear";
 import { STOP_OUTCOMES, STOP_REASONS, type StopBody, type StopReceipt } from "./surface/stop";
 import { readAskTapReply, type AskTapReply } from "./ask-reply";
 import { authHeader, clearNotPaired, EXPIRED_BODY, markExpired, markNotPaired, NOT_PAIRED_BODY } from "./pairing";
@@ -1519,7 +1519,11 @@ function clearReceiptOf(body: JsonObject | undefined, requestId: string): ClearR
   const outcome = CLEAR_OUTCOMES.find((word) => word === body.outcome && word !== "unknown");
   if (outcome === undefined) return null;
   const id = asJsonString(body.requestId) ?? requestId;
-  if (outcome === "cleared") return { requestId: id, outcome };
+  if (outcome === "cleared") {
+    // The cleared text, for Restore: bounded again here, since the phone types it back.
+    const draft = asJsonString(body.draft);
+    return draft === undefined || draft === "" ? { requestId: id, outcome } : { requestId: id, outcome, draft: boundedDraft(draft) };
+  }
   const reason = CLEAR_REASONS.find((word) => word === body.reason);
   return reason === undefined ? null : { requestId: id, outcome, reason };
 }

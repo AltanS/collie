@@ -270,21 +270,13 @@ describe("the durable section", () => {
 });
 
 describe("stopFor (M68 spec 02)", () => {
-  const surface = (turn: "idle" | "running" | "unknown") => ({ revision: 1, turn, modal: "none" as const, composer: "empty" as const });
-
-  it("offers Stop while the turn runs and the bridge says a key exists", () => {
-    expect(stopFor({ surface: surface("running"), canStop: true })).toBe(true);
-  });
-
-  it("offers nothing on an idle or unread turn", () => {
-    expect(stopFor({ surface: surface("idle"), canStop: true })).toBe(false);
-    expect(stopFor({ surface: surface("unknown"), canStop: true })).toBe(false);
-    expect(stopFor({ canStop: true })).toBe(false);
+  it("offers Stop whatever the turn reads, once the bridge says a key exists", () => {
+    expect(stopFor({ canStop: true })).toBe(true);
   });
 
   it("offers nothing without the bridge's word, whatever the harness is", () => {
-    expect(stopFor({ surface: surface("running") })).toBe(false);
-    expect(stopFor({ surface: surface("running"), canStop: false })).toBe(false);
+    expect(stopFor({})).toBe(false);
+    expect(stopFor({ canStop: false })).toBe(false);
     expect(stopFor(undefined)).toBe(false);
     expect(stopFor(null)).toBe(false);
   });

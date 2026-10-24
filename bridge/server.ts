@@ -2238,7 +2238,7 @@ export function startServer(opts: {
         } catch {
           body = undefined;
         }
-        return clearRoute(rt, paneId, body, { audit: audit_, device, session, acceptEncoding: req.headers.get("accept-encoding") });
+        return clearRoute(rt, paneId, body, { audit: audit_, device, session, acceptEncoding: req.headers.get("accept-encoding"), redact: cfg.redact });
       }
       // A send or an abort that names the turn or ask the phone saw (ADR 0101), or a tap on one of the
       // program's belt buttons (M53 spec 07, the turn optional). The receipt is written before the control
@@ -7973,13 +7973,15 @@ export interface ClearRouteRuntime extends Pick<SendRouteRuntime, "send" | "engi
  * `POST /api/pane/:id/clear` on a pane with a screen (ADR 0116, the Clear paragraph): `{ requestId }` in, one
  * receipt out (`cleared`, or `refused` with a reason), always a 200; a body that is no request id is a 400.
  * The same request id answers the same receipt and presses once. One audit line per tap: request id,
- * outcome and reason, and never the box's text.
+ * outcome and reason, and never the box's text. A `cleared` receipt carries the cleared text (`draft`)
+ * for the phone's Restore; where this bridge masks secret shapes (`redact`) and the text holds one, the
+ * receipt goes without it, since a Restore would type the mask.
  */
 export async function clearRoute(
   rt: ClearRouteRuntime,
   paneId: string,
   body: JsonValue | undefined,
-  context: { readonly audit: AuditLog; readonly device: string | null; readonly session: string; readonly acceptEncoding: string | null },
+  context: { readonly audit: AuditLog; readonly device: string | null; readonly session: string; readonly acceptEncoding: string | null; readonly redact?: boolean },
 ): Promise<Response> {
   if (rt.clear === undefined) return text("clear is not available on this session", 404);
   const requestId = asJsonRecord(body)?.requestId;
@@ -7990,7 +7992,10 @@ export async function clearRoute(
   if (harness === null) return json({ requestId, outcome: "refused", reason: "pane_gone" }, context.acceptEncoding, 404);
   const answer = await rt.clear.handle(requestId, paneId, harness);
   if (answer.kind === "id_reused") return json({ requestId, outcome: "refused", reason: "request-id-reused" }, context.acceptEncoding, 409);
-  const { receipt } = answer;
+  const { receipt: full } = answer;
+  const { draft, ...bare } = full;
+  const receipt = draft === undefined || (context.redact === true && redactText(draft) !== draft) ? bare : full;
+  // Named fields only: the draft never reaches the audit line.
   const detail: AuditDetail = { requestId, outcome: receipt.outcome, replayed: answer.replayed, pressed: answer.pressed };
   if (receipt.reason !== undefined) detail.reason = receipt.reason;
   context.audit.record({ action: "clear", paneId, session: context.session, device: context.device, detail });

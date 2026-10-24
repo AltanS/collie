@@ -18,7 +18,7 @@ local:
   ✓        beacon-hooks-claude   v1 in 1 settings file, running `/opt/collie/bin/collie`; herdr names agents itself and does not need them for that, so they give hook edges only
   skipped: beacons               no agent has written one yet — the emitter is installed, and a beacon appears at an agent's first hook event → start (or prompt) an agent in a pane and re-run `collie doctor`
   ✓        skill-walky-talky     not installed — `collie skill install all` teaches agents to message each other
-  ✓        account-windows       on (claude: read ~/.claude/.credentials.json, asks api.anthropic.com; codex: reads ~/.codex/sessions; opencode: no Go key; grok: no login)
+  ✓        account-windows       claude: on (reads ~/.claude/.credentials.json, asks api.anthropic.com); codex: on (reads ~/.codex/sessions); opencode: off by default, unverified (COLLIE_ACCOUNT_WINDOWS=all); grok: off by default, unverified (COLLIE_ACCOUNT_WINDOWS=all)
   ✓        herdr-version         herdr 0.9.3
   ✓        integration-claude    installed and current
   ✓        integration-codex     installed and current
@@ -62,7 +62,7 @@ local:
   ✓        beacon-hooks-claude   v1 in 1 settings file, running `/opt/collie/bin/collie`; herdr names agents itself and does not need them for that, so they give hook edges only
   skipped: beacons               no agent has written one yet — the emitter is installed, and a beacon appears at an agent's first hook event → start (or prompt) an agent in a pane and re-run `collie doctor`
   ✓        skill-walky-talky     not installed — `collie skill install all` teaches agents to message each other
-  ✓        account-windows       on (claude: read ~/.claude/.credentials.json, asks api.anthropic.com; codex: reads ~/.codex/sessions; opencode: no Go key; grok: no login)
+  ✓        account-windows       claude: on (reads ~/.claude/.credentials.json, asks api.anthropic.com); codex: on (reads ~/.codex/sessions); opencode: off by default, unverified (COLLIE_ACCOUNT_WINDOWS=all); grok: off by default, unverified (COLLIE_ACCOUNT_WINDOWS=all)
   ✓        herdr-version         herdr 0.9.3
   ✓        integration-claude    installed and current
   ✓        integration-codex     installed and current

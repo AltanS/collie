@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 
 import { createHash } from "node:crypto";
 import { join } from "node:path";
@@ -8,7 +8,7 @@ import { managedSettingsPath } from "./hold-entry.ts";
 
 import { parseBeacon, parseEdge } from "../bridge/beacon/parse.ts";
 import { parseUsageRecord, usageFileName } from "../bridge/usage.ts";
-import { TAIL_BYTES, windowFromModel } from "./context-reading.ts";
+import { readTail, TAIL_BYTES, windowFromModel } from "./context-reading.ts";
 import { beaconFileName, beaconKey, EDGE_FILE, EDGE_MAX_AGE_MS, EDGE_SPOOL_MAX } from "../bridge/beacon/paths.ts";
 import { hookTargetFileName } from "../bridge/beacon/hook-targets.ts";
 import { BEACON_SCHEMA_VERSION, type EdgeRecord } from "../bridge/beacon/types.ts";
@@ -265,6 +265,50 @@ describe("it never fails, and it never speaks", () => {
   test("stdin that never resolves as text is exit 0", async () => {
     const d = { ...deps(), readStdin: () => Promise.reject(new Error("EIO")) };
     expect(await cmdBeaconEmit(d)).toBe(EXIT.OK);
+  });
+
+  test("the context reading's failures print nothing and exit 0", async () => {
+    const root = join(HOME, ".claude");
+    const transcript = join(root, "projects", "-x", "y.jsonl");
+    const spoken: string[] = [];
+    const listen = (...args: unknown[]): boolean => {
+      spoken.push(args.map(String).join(" "));
+      return true;
+    };
+    const spies = [
+      spyOn(process.stdout, "write").mockImplementation(listen),
+      spyOn(process.stderr, "write").mockImplementation(listen),
+      ...(["log", "error", "warn", "info", "debug"] as const).map((name) => spyOn(console, name).mockImplementation(listen)),
+    ];
+    try {
+      const boom = (): never => {
+        throw new Error("EIO: i/o error");
+      };
+      type Files = BeaconEmitDeps["files"];
+      const cases: [string, string, (files: Files) => Partial<Files>][] = [
+        ["a relative path", "y.jsonl", () => ({})],
+        ["a path that is not .jsonl", join(root, "projects", "-x", "y.txt"), () => ({})],
+        ["a path outside the config root", "/etc/passwd.jsonl", () => ({})],
+        ["a missing file", join(root, "projects", "-x", "gone.jsonl"), () => ({})],
+        ["an unreadable file", transcript, () => ({ tail: () => null })],
+        ["a read that throws", transcript, () => ({ tail: boom })],
+        ["a realpath that throws", transcript, () => ({ realpath: boom })],
+        ["a type check that throws", transcript, () => ({ entryType: boom })],
+        ["a usage read that throws", transcript, (files) => ({ read: (p: string) => (p.includes("/usage/") ? boom() : files.read(p)) })],
+        ["a usage write that throws", transcript, () => ({ write: boom, rename: boom })],
+      ];
+      for (const [what, path, broken] of cases) {
+        for (const event of ["Stop", "PostToolUse", "SessionStart"]) {
+          const d = deps({ stdin: payload({ hook_event_name: event, transcript_path: path, source: "resume", model: "m[1m]", context_tokens: 5, tool_name: "Bash" }) });
+          d.files.write(transcript, `${JSON.stringify({ type: "assistant", message: { model: "m", usage: { input_tokens: 5 } } })}\n`);
+          const run = { ...d, files: { ...d.files, ...broken(d.files) } };
+          expect(`${what} ${event}: ${await cmdBeaconEmit(run)}`).toBe(`${what} ${event}: ${EXIT.OK}`);
+        }
+      }
+    } finally {
+      for (const spy of spies) spy.mockRestore();
+    }
+    expect(spoken).toEqual([]);
   });
 });
 
@@ -674,6 +718,31 @@ describe("the context reading (.adr/0115, amended 2026-10-24)", () => {
       expect(record(out)?.context).toBeUndefined();
       const inside = await run("Stop", {}, lines(...many, assistant({ input_tokens: 500_000 }), tail), (x) => seed(x, {}));
       expect(record(inside)?.context).toBe(50);
+    });
+
+    test("a cut tail with no deciding line removes the stale context; a whole file with none keeps it", async () => {
+      // One tool result longer than the tail after the last answer: the context grew by that much.
+      const huge = JSON.stringify({ type: "user", message: { content: "x".repeat(TAIL_BYTES + 1000) } });
+      const cut = await run("Stop", {}, lines(assistant({ input_tokens: 200_000 }), huge), (x) => seed(x, { context: 20 }));
+      expect(record(cut)?.context).toBeUndefined();
+      expect(record(cut)?.window).toBe(1_000_000);
+      // A short file before the first answer (a resume whose start wrote context_tokens) keeps its value.
+      const whole = await run("Stop", {}, lines(userLine, tail), (x) => seed(x, { context: 20 }));
+      expect(record(whole)?.context).toBe(20);
+    });
+
+    test("the torn first line of a cut tail is never read, even when its piece would parse", async () => {
+      // The cut falls exactly at the start of a whole assistant object inside a longer line.
+      const piece = assistant({ input_tokens: 900_000 });
+      // The tail is `piece \n filler \n`: the filler takes what is left of TAIL_BYTES.
+      const empty = JSON.stringify({ type: "user", message: { content: "" } }).length;
+      const filler = JSON.stringify({ type: "user", message: { content: "y".repeat(TAIL_BYTES - piece.length - 2 - empty) } });
+      const text = `${"z".repeat(5000)}${piece}\n${filler}\n`;
+      expect(Buffer.byteLength(text) - TAIL_BYTES).toBe(5000);
+      expect(readTail(`${piece}\n${filler}\n`, false)).toEqual({ kind: "used", tokens: 900_000 });
+      expect(readTail(`${piece}\n${filler}\n`, true)).toBeNull();
+      const d = await run("Stop", {}, text, (x) => seed(x, { context: 20 }));
+      expect(record(d)?.context).toBeUndefined();
     });
 
     test("an unchanged whole percent writes nothing", async () => {

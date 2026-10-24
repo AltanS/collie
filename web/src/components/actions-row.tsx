@@ -24,9 +24,9 @@ import { t as translate } from "@/lib/i18n";
 import type { OperatorCommand } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-// ONE ROW OF ACTIONS, DIRECTLY ABOVE THE INPUT. While a turn runs, Stop stands at the belt's start
-// (in view at rest, no scroll needed); then Collie's own controls — Keys, Type, Quick, Agent, the
-// display gear — then the running harness's own commands in a section of their own. It scrolls
+// ONE ROW OF ACTIONS, DIRECTLY ABOVE THE INPUT. Stop stands at the belt's start (in view at rest, no
+// scroll needed; dimmed while no turn runs, so the belt never reflows); then Collie's own controls —
+// Keys, Type, Quick, Agent, the display gear — then the running harness's own commands in a section of their own. It scrolls
 // sideways; nothing wraps and nothing is dropped.
 //
 // IT IS A BELT: ONE FULL-BLEED BAND, NOT TWO FLOATING CAPSULES. The row is a continuous strip that
@@ -405,9 +405,9 @@ export interface ActionsRowProps {
   durable?: Pick<DurableBarProps, "items" | "state">;
   /**
    * STOP FOR A PANE WITH A SCREEN (M68 spec 02), the FIRST child of the scroller, before Collie's own controls: the
-   * belt scrolls sideways and the first child is in view at rest, so Stop needs no scroll. Present only while the turn runs and
-   * the bridge says a key exists (`stopFor`); absent is the whole of the old behaviour. The composer owns
-   * the request and the receipt. A pane with no screen keeps the program bar's own Stop and never gets this one.
+   * belt scrolls sideways and the first child is in view at rest, so Stop needs no scroll. Present whenever
+   * the bridge says a key exists (`stopFor`), dimmed in place while `running` is false; absent is the whole
+   * of the old behaviour. The composer owns the request and the receipt. A pane with no screen keeps the program bar's own Stop and never gets this one.
    */
   stop?: Pick<ScreenStopProps, "onStop" | "paneId" | "running">;
   /** Which thumb the belt is laid out for; see {@link Hand}. Default `"right"`, the shipped layout. */
@@ -655,8 +655,8 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, durable, sto
           >
             {/* STOP IS THE FIRST CHILD OF THE SCROLLER, before Collie's own controls. The belt scrolls
                 sideways and the first child is the one always in view at rest, so a running turn can be
-                stopped without a scroll. Under `hand="left"` the scroller is `[direction:rtl]`, so the
-                first child lands at the belt's right end, mirrored like every other control; that is
+                stopped without a scroll, and a button that is always drawn moves nothing when a turn
+                starts or ends. Under `hand="left"` the scroller is `[direction:rtl]`, so the first child lands at the belt's right end, mirrored like every other control; that is
                 intended and not special-cased. */}
             {stop !== undefined && <ScreenStop onStop={stop.onStop} paneId={stop.paneId} running={stop.running} disabled={disabled} hand={hand} />}
             {general.length > 0 && (

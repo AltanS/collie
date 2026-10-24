@@ -4,9 +4,9 @@
 - **Date:** 2026-10-24
 - **Shipped in:** pending (1.24.0 Edge)
 - **Trail:** Altan, 2026-10-24: the windows must show without a statusLine; the operator sees no dots
-  on 8788 because their statusLine is not wrapped · `bridge/account-windows.ts` (`AccountWindows`,
+  on 8788 because their statusLine is not wrapped; counsel the same day: an allowlist, the unproven readers off · `bridge/account-windows.ts` (`AccountWindows`,
   `readClaudeLogin`, `parseAccountUsage`, `isTurnEnd`) · `bridge/usage.ts` (`UsageTracker.get`, the
-  join) · `bridge/index.ts` (the poll and the turn-end poke) · `bridge/config-schema.ts`
+  join) · `bridge/index.ts` (the poll and the turn-end poke) · `bridge/account-windows-setting.ts` (the setting's forms) · `bridge/config-schema.ts`
   (`[bridge] account_windows`, `COLLIE_ACCOUNT_WINDOWS`) · `cli/doctor.ts` (`account-windows`) ·
   `docs/multiplexers.md` · `docs/configure.md` ("Usage windows") · amended 2026-10-24: Codex,
   OpenCode Go and Grok sources beside Claude (see "Other harnesses") ·
@@ -82,11 +82,21 @@ reading, never the pane.**
    window any session of H reported through a wrapped statusLine. The account windows win because
    they are fresher and the account's own. The context stays the session's. The wire does not change;
    the phone draws `usage.limits` as before.
-8. **The off switch.** `[bridge] account_windows` / `COLLIE_ACCOUNT_WINDOWS`, default on. Off reads no
-   login and asks nothing. `collie doctor` prints one `account-windows` row:
-   `on (claude: read ~/.claude/.credentials.json, asks api.anthropic.com; codex: reads ~/.codex/sessions; opencode: no Go key; grok: no login)`
+8. **The setting.** `[bridge] account_windows` / `COLLIE_ACCOUNT_WINDOWS` names which harnesses
+   Collie may read. Unset, `1`, `on`, `true` or `yes` is the default set, `claude` and `codex`. `0`,
+   `off`, `false` or `no` is none: no login read, nothing asked. `all` is every source. A comma list
+   of harness ids (`claude,codex`; case and spaces ignored) is exactly those. An id this build does
+   not know is dropped with a warning and only the known ids are on, so a typo never turns on a
+   source the operator did not name. `opencode` and `grok` are off by default because no live login
+   has proven their shape; they turn on with `all` or by name (see "Other harnesses"). In the file
+   the key takes `true`/`false`, a string with the same forms, or an array of ids. A harness left
+   out has no source, so its login and files are never opened. `collie doctor` prints one
+   `account-windows` row that lists every source with its state:
+   `claude: on (reads ~/.claude/.credentials.json, asks api.anthropic.com); codex: on (reads ~/.codex/sessions); opencode: off by default, unverified (COLLIE_ACCOUNT_WINDOWS=all); grok: off by default, unverified (COLLIE_ACCOUNT_WINDOWS=all)`
    (with "or the Keychain" on macOS, and the full path under a `CLAUDE_CONFIG_DIR`, `CODEX_HOME`,
-   `XDG_DATA_HOME` or `GROK_HOME`), or `off`. A harness with a login lists its file and host.
+   `XDG_DATA_HOME` or `GROK_HOME`). With every source off it says `off` and that the operator turned
+   it off; a named `opencode` or `grok` shows `on, unverified`, with its file and host once it has a
+   login.
 
 Like a beacon (ADR 0024), the reading is a hint the phone draws and nothing decides on.
 
@@ -94,7 +104,7 @@ Like a beacon (ADR 0024), the reading is a hint the phone draws and nothing deci
 
 - The windows show for every Claude subscription operator on this machine, with no statusLine and no
   hook. `--statusline` stays as the second road, for an operator who prefers it with
-  `COLLIE_ACCOUNT_WINDOWS=0`.
+  `COLLIE_ACCOUNT_WINDOWS=0` (or a list without `claude`).
 - An API-key, Bedrock or Vertex session has no windows: there is no OAuth login file, or the answer's
   windows are `null`. On the statusLine road `rate_limits` is absent for those sessions too.
 - The login is the machine's, not the session's. An API-key session on a machine whose Claude login
@@ -116,7 +126,12 @@ Altan decided on 2026-10-24 that the account windows cover the other subscriptio
 sources join `AccountWindows` in the one table in `bridge/account-windows.ts`, keyed by the harness id
 a pane carries. They share the lifecycle (pane present, once, after a turn, every five minutes), the
 backoff table, the 60 s poke throttle, the 20 minute staleness, the redirect refusal, the 10 s timeout,
-the `collie/<version>` user agent, the mode check on a login file, and the one off switch.
+the `collie/<version>` user agent, the mode check on a login file, and the one setting.
+
+**Counsel, 2026-10-24: an allowlist, and the unproven readers off.** A reader that has never met a
+real login should not read one by default. `claude` is proven live and `codex` sends no token, so
+those two are the default set. `opencode` and `grok` are off until one real login has proven their
+shape, and then they join the default set in the change that drops "unverified" below.
 
 **None of the three is proven live.** On this machine Codex runs on an API key and OpenCode and pi
 run on OpenRouter, and there is no Grok login. Each shape below comes from third-party readers

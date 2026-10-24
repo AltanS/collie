@@ -272,7 +272,11 @@ export function surfaceOfScreen(input: ScreenInput, idle: IdleProfile | null): S
   // A dialog the profile names drawn over the screen above a live box (`idle.overlayRows`).
   const covered = frame !== null && idle !== null && coveredFrame(rows, frame, idle);
   let modal: SurfaceModal;
-  if (input.ask !== null) modal = { ask: input.ask };
+  // A box that reads as a wrapped draft but for a row cut by an ellipsis (`cutWrap`, cues.ts `draftWrap`)
+  // is unreadable: a draft or a menu cut to the box's width. No ask from it either, since a tap's Enter
+  // would submit the draft if it is one. Unknown keeps Send off its free path and offers no taps.
+  if (cues.cutWrap === true) modal = "unknown";
+  else if (input.ask !== null) modal = { ask: input.ask };
   else if (cues.strength === "strong") modal = "unreadable";
   else if (cues.strength === "weak") modal = "unknown";
   else if (covered) modal = "unreadable";
@@ -282,13 +286,13 @@ export function surfaceOfScreen(input: ScreenInput, idle: IdleProfile | null): S
   // Under a panel that takes the keys the box is not what a key reaches, so the screen claims nothing
   // of it: a panel's dismiss hint over the box, or a dialog the profile names over it.
   const composer: SurfaceComposer =
-    frame === null || cues.panelFoot === true || covered ? "unknown" : frame.placeholder || frame.interior.text.length === 0 ? "empty" : "draft";
+    frame === null || cues.panelFoot === true || cues.cutWrap === true || covered ? "unknown" : frame.placeholder || frame.interior.text.length === 0 ? "empty" : "draft";
 
   let reason: SurfaceReason | undefined;
   // Torn is a read cut inside the box. A whole box the dialog rule hid above is not one: its strong cue
   // already keeps it from free, and the person may check the screen and confirm.
   if (found === null && idle !== null && endsInsideFrame(rows, idle)) reason = "torn";
-  else if (frame === null && input.ask === null && cues.strength === "none") reason = "no-match";
+  else if (cues.cutWrap === true || (frame === null && input.ask === null && cues.strength === "none")) reason = "no-match";
 
   const surface: Surface = reason === undefined ? { revision: input.revision, turn, modal, composer } : { revision: input.revision, turn, modal, composer, reason };
   return { surface, frame, cues };

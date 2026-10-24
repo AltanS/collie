@@ -741,6 +741,27 @@ describe("ActionsRow: Stop (M68 spec 02)", () => {
     expect(document.querySelector("[data-slot='durable-bar']")).toBeNull();
   });
 
+  it("draws the Stop dimmed, and still first, while the turn is idle", () => {
+    render(<ActionsRow general={[general()]} agent="claude" onRun={took} stop={{ onStop: async () => {}, paneId: "w1:p1", running: false }} />);
+    const stop = document.querySelector<HTMLElement>("[data-slot='belt-stop']")!;
+    expect(stop).toHaveAttribute("aria-disabled", "true");
+    expect(stop).not.toBeDisabled();
+    const scroller = document.querySelector<HTMLElement>(".overflow-x-auto")!;
+    expect(scroller.firstElementChild).toBe(stop);
+  });
+
+  it("keeps every other belt button in the same order whether the turn runs or not", () => {
+    const order = (running: boolean) => {
+      const { unmount } = render(<ActionsRow general={[general()]} agent="claude" onRun={took} stop={{ onStop: async () => {}, paneId: "w1:p1", running }} />);
+      const labels = Array.from(document.querySelector<HTMLElement>(".overflow-x-auto")!.querySelectorAll("button")).map((b) => b.getAttribute("data-slot") ?? b.textContent);
+      unmount();
+      return labels;
+    };
+    const idle = order(false);
+    expect(idle[0]).toBe("belt-stop");
+    expect(order(true)).toEqual(idle);
+  });
+
   it("draws one Stop at the belt's start when the pane offers it", () => {
     render(<ActionsRow general={[general()]} agent="claude" onRun={took} stop={{ onStop: async () => {}, paneId: "w1:p1", running: true }} />);
     expect(document.querySelectorAll("[data-slot='belt-stop']")).toHaveLength(1);

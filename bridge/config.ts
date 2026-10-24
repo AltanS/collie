@@ -12,6 +12,7 @@ import {
   type FilePerms,
   type PrivateFileVerdict,
 } from "./config-source.ts";
+import { accountWindowsProblem, parseAccountWindowsSetting } from "./account-windows-setting.ts";
 import { HOST, type Host, isInside } from "./host.ts";
 import { diskIo } from "./operator-file.ts";
 import { secretFileVerdict } from "./owner-only.ts";
@@ -153,6 +154,20 @@ export function envBool(
   return fallback;
 }
 
+/**
+ * The harnesses `COLLIE_ACCOUNT_WINDOWS` turns on (ADR 0118). An id this build does not know is
+ * dropped with a warning, and only the known ids are on: a typo never turns on a source the operator
+ * did not name.
+ */
+function envAccountWindows(env: Environment): readonly string[] {
+  const setting = parseAccountWindowsSetting(env["COLLIE_ACCOUNT_WINDOWS"]);
+  const problem = accountWindowsProblem(setting);
+  if (problem !== null) {
+    console.warn(`[config] COLLIE_ACCOUNT_WINDOWS: ${problem}; on: ${setting.harnesses.length === 0 ? "none" : setting.harnesses.join(", ")}`);
+  }
+  return setting.harnesses;
+}
+
 export interface Config {
   /**
    * Which multiplexer this collie drives — a name in `bridge/mux/registry.ts`. `herdr` by default,
@@ -255,11 +270,12 @@ export interface Config {
    */
   transcript: boolean;
   /**
-   * Ask the vendor for the account's 5-hour and 7-day windows with the operator's own harness login,
-   * read on this machine (`COLLIE_ACCOUNT_WINDOWS`, `[bridge] account_windows`, ADR 0118). Off reads
-   * no login and asks nothing; a wrapped statusLine still reports the windows.
+   * The harnesses whose account windows Collie may read (`COLLIE_ACCOUNT_WINDOWS`, `[bridge]
+   * account_windows`, ADR 0118): ids from `ACCOUNT_WINDOW_HARNESSES`. Unset is `claude` and `codex`;
+   * `all` adds `opencode` and `grok`, which no live login has proven yet. Empty reads no login and
+   * asks nothing; a wrapped statusLine still reports the windows.
    */
-  accountWindows: boolean;
+  accountWindows: readonly string[];
   /**
    * Where each harness keeps its session logs — one directory or several, searched in order. Every
    * read is confined to the root it was found under, after symlink resolution, so these double as the
@@ -730,7 +746,7 @@ export function loadConfig(env: Environment = process.env): Config {
       envInt("COLLIE_MAX_UPLOAD_MB", DEFAULT_MAX_UPLOAD_MB, { min: 1, max: 512 }, env) * 1024 * 1024,
     uploadExtraTypes: normaliseUploadTypes(envList("COLLIE_UPLOAD_EXTRA_TYPES", env)),
     transcript: envBool("COLLIE_TRANSCRIPT", true, env),
-    accountWindows: envBool("COLLIE_ACCOUNT_WINDOWS", true, env),
+    accountWindows: envAccountWindows(env),
     journalRoots: resolveJournalRoots(env),
     submitKeys: submitKeys.length ? submitKeys : ["Enter"],
     commandsFile: join(configDir, "commands.toml"),

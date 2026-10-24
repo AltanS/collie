@@ -258,18 +258,20 @@ Behavior details for Claude configuration changes:
   minutes. It stores nothing of the login, never refreshes it and sends it nowhere else. It skips a
   login file that others may read (anything looser than `0600`) and a login that has expired, and
   Claude Code refreshes that one at its next call. An API-key, Bedrock or Vertex session has no
-  windows to show. Codex, OpenCode Go and Grok panes get theirs the same way, on the same schedule
-  (Codex from its own session files, with no login read; see
-  [Usage windows](configure.md#usage-windows)). `COLLIE_ACCOUNT_WINDOWS=0` (or
-  `[bridge] account_windows = false`) turns all of it off, and `collie doctor` says which in its
-  `account-windows` row.
+  windows to show. Codex panes get theirs the same way, on the same schedule, from its own session
+  files with no login read. OpenCode Go and Grok are off until you name them, with
+  `COLLIE_ACCOUNT_WINDOWS=all` or a list (see [Usage windows](configure.md#usage-windows)).
+  `COLLIE_ACCOUNT_WINDOWS=0` (or `[bridge] account_windows = false`) turns all of it off, and
+  `collie doctor` says which in its `account-windows` row.
 - **Wrapping your statusLine is the second road.** With
   `collie hooks install claude --statusline` Collie also wraps your own statusLine, and the windows
   come from what Claude Code hands it. Take it if you prefer that to the login read, with
   `COLLIE_ACCOUNT_WINDOWS=0`. Its command becomes `collie beacon statusline …`, and your script
   still runs and prints as before. Collie never adds a statusLine, and `hooks uninstall claude`
   puts your command back exactly. An install without the flag keeps a wrap you already have and
-  points it at the current binary. Not on Windows.
+  points it at the current binary. To drop a wrap you no longer want, run
+  `collie hooks uninstall claude` and then `collie hooks install claude` without `--statusline`.
+  Not on Windows.
 - **To change a wrapped statusLine, unwrap it first.** Run `collie hooks uninstall claude`, edit
   `statusLine.command`, then run `collie hooks install claude --statusline` again. The wrapped
   command names the collie binary by its path, so if that binary moves, the statusLine prints

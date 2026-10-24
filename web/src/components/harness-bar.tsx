@@ -430,7 +430,8 @@ export interface ScreenStopProps {
   onStop: () => Promise<void>;
   /** The pane the button stops. An arm never carries over to another pane. */
   paneId: string;
-  /** Whether the turn reads running now. An arm ends when the turn leaves running. */
+  /** Whether the turn reads running now. Idle draws the button dimmed and takes no tap; an arm ends
+   *  when the turn leaves running. */
   running: boolean;
   /** Bound to the composer's `locked` or `offline`. Greys the button in place. */
   disabled?: boolean;
@@ -438,17 +439,23 @@ export interface ScreenStopProps {
 }
 
 /**
- * STOP FOR A PANE WITH A SCREEN (M68 spec 02): one button on the belt's bare ground, drawn only while the
- * turn runs and the bridge says a key exists (`stopFor`, lib/harness-bar.ts; the caller decides). Collie's
+ * STOP FOR A PANE WITH A SCREEN (M68 spec 02): one button on the belt's bare ground, drawn ALWAYS when the
+ * bridge says a key exists (`stopFor`, lib/harness-bar.ts; the caller decides). Collie's
  * own control, so it stands at the belt's START, before Collie's other controls and the harness section, and not
  * inside the section. The belt scrolls sideways and the first child is in view at rest, so a running turn is
  * stopped without a scroll (under `hand="left"` the start is the belt's right end, mirrored like every control).
  *
+ * IDLE IS DIM, NOT ABSENT. A button that came and went would shift every other button under the thumb at
+ * the belt's first position each time a turn started or ended (DESIGN.md §2, reserve and never reflow). While
+ * the turn does not read running the button keeps its place and its width, drawn at half strength with
+ * `aria-disabled="true"`. It is not the `disabled` attribute, so it stays in the focus order and a reader still
+ * finds it; the tap is refused in `tap` before any arm or request.
+ *
  * ARM, THEN STOP. The first tap only arms: the word changes to "Stop?" (never the size) and the arm lapses
  * by itself after ARM_MS. The second tap runs `onStop`, and counts only ARM_DWELL_MS or more after the
  * arm: a tap inside the dwell (a double tap, a thumb that lands twice) is ignored, neither a Stop nor a
- * disarm. An arm ends when the pane changes or the turn leaves running. While the Stop is in flight the
- * button shows a spinner, is dimmed and takes no tap, so a third tap cannot press a second Stop. A durable program keeps its own
+ * disarm. An arm ends when the pane changes or the turn leaves running, and the button goes dim. While
+ * the Stop is in flight the button shows a spinner, is dimmed and takes no tap, so a third tap cannot press a second Stop. A durable program keeps its own
  * Stop in `DurableBar`; the two never draw together, because a program pane never carries `canStop`.
  */
 export function ScreenStop({ onStop, paneId, running, disabled, hand = "right" }: ScreenStopProps) {
@@ -473,7 +480,8 @@ export function ScreenStop({ onStop, paneId, running, disabled, hand = "right" }
   }, [paneId]);
 
   async function tap() {
-    if (disabled === true || flying.current) return;
+    // An idle turn has nothing to stop: no arm, no request. The bridge would only answer `turn_idle`.
+    if (disabled === true || !running || flying.current) return;
     if (!armed) {
       setArmed(true);
       armedAt.current = Date.now();
@@ -502,11 +510,14 @@ export function ScreenStop({ onStop, paneId, running, disabled, hand = "right" }
       size="sm"
       data-slot="belt-stop"
       aria-busy={busy}
+      aria-disabled={running ? undefined : true}
       disabled={disabled === true || busy}
       aria-label={translate(armed ? "belt.stopArmedAria" : "belt.stopAria")}
       onClick={() => void tap()}
       className={cn(
         `${STRIP_ROW_PILL} gap-1.5`,
+        // The dim look of `disabled:opacity-50`, without the attribute. No press feedback on a button that does nothing.
+        !running && "opacity-50 active:scale-100",
         armed ? "border border-destructive/40 bg-destructive/10 text-destructive" : "text-foreground",
         hand === "left" && "[direction:ltr]",
       )}

@@ -7,6 +7,7 @@ import {
   type ConfigSetting,
   CONFIG_SECTIONS,
 } from "./config-schema.ts";
+import { parseAccountWindowsSetting } from "./account-windows-setting.ts";
 import type { Host } from "./host.ts";
 import type { OperatorFileIo } from "./operator-file.ts";
 
@@ -567,6 +568,22 @@ function convert(setting: ConfigSetting, raw: TomlValue, home: string): string |
       const match = allowed.find((a) => a.toLowerCase() === raw.trim().toLowerCase());
       if (match === undefined) return { why: `must be one of ${allowed.join(", ")}` };
       return match;
+    }
+    case "flags": {
+      // A boolean keeps working: `true` is the default set, `false` is none. A string is the
+      // environment's own text, and an array is a list of ids.
+      if (typeof raw === "boolean") return raw ? "on" : "off";
+      const list = typeof raw === "string" ? [raw] : asStringList(raw);
+      if (list === null) return { why: `must be true, false, a string or an array of strings, not ${typeName(raw)}` };
+      const text = list.map((e) => e.trim()).join(",");
+      const read = parseAccountWindowsSetting(text);
+      // An unknown id is not a problem that drops the key: the env-only view behind a dropped key is the
+      // default set, so a typo would turn Claude on. The text goes through, and the config read drops
+      // the unknown id with a warning and keeps only the known ones (bridge/config.ts).
+      if (Array.isArray(raw) && read.form !== "list") {
+        return { why: `an array must name at least one id of ${setting.values.join(", ")}` };
+      }
+      return text;
     }
     case "list":
     case "roots": {

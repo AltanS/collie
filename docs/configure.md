@@ -238,15 +238,19 @@ Collie's own controls stay.
 
 ### Stop a turn
 
-While an agent works, a **Stop** button sits at the start of the belt, before Collie's other buttons, so it is in view without a scroll. It shows only when
-the turn runs and Collie knows the key that stops this agent. Stop does not type anything and does not
-send a message. It presses the agent's own stop key, once, and tells you what happened.
+A **Stop** button sits at the start of the belt, before Collie's other buttons, so it is in view
+without a scroll. It stands there for every agent whose harness profile names a stop key, and it is
+dimmed while nothing runs. It keeps its place and its size, so the other buttons never move when a
+turn starts or ends. A tap on the dimmed button does nothing and sends nothing. An agent with no
+stop key has no button. Stop does not type anything and does not send a message. It presses the
+agent's own stop key, once, and tells you what happened.
 
 A Stop needs two taps. The first tap arms the button: the word changes to **Stop?** and the button
 keeps its size. Tap it again within four seconds to stop the turn. A second tap that lands at once,
-within 0.4 seconds, counts as the same touch and is ignored. If you wait, the arm lapses and nothing is
-pressed. The arm also lapses when you open another pane or the turn ends. While the second tap is in flight the button takes no more taps, so a quick third
-tap cannot press a second Stop.
+within 0.4 seconds, counts as the same touch and is ignored. If you wait, the arm lapses and nothing
+is pressed. The arm also lapses when you open another pane, and the button goes dim when the turn
+ends. While the second tap is in flight the button takes no more taps, so a quick third tap cannot
+press a second Stop.
 
 Which key stops a turn is the harness's own choice, and the harness profile holds it. Most agents
 stop on Escape, some on Ctrl+C, and some need Escape twice. The profile decides, not this page.
@@ -285,7 +289,16 @@ with its own receipt, and it does not use the arm.
 
 ### Clear the box
 
-The **Clear** button at the end of the chip row on the Keys board empties the harness's input box in one tap, with no arm, because you can retype what it removes. Collie presses the harness's own delete key as often as the text needs, reads the box again, and tells you under it whether the box is clear or why it was not. The button is greyed when the box is empty, a dialog is open or the link is down, and if the box does not empty Collie leaves what remains alone and does not press again.
+The **Clear** button at the end of the chip row on the Keys board empties the harness's input box
+in one tap, with no arm. Collie presses the harness's own delete key as often as the text needs,
+reads the box again, and tells you in a notice above the belt whether the box is clear or why it was
+not. The button is greyed when the box is empty, a dialog is open or the link is down, and if the box
+does not empty Collie leaves what remains alone and does not press again.
+
+After a Clear, the notice offers **Restore** for two minutes. One tap types the text back into the
+box, as one line and without Enter, so nothing is sent. Restore goes away once you type in the box
+again or open another pane. The bridge keeps the cleared text in memory with the Clear's receipt,
+and never writes it to a log or to disk.
 
 ## Your own key presets
 
@@ -857,35 +870,42 @@ sessions. [Security](security.md) lists this behavior as a sharp edge.
 
 ## Usage windows
 
-Beside the model above the belt, the dots show how full the session's context is and how much of
-your subscription's 5-hour and 7-day windows you have used. The windows show on their own, for four
-harnesses. Collie asks only while a pane of that harness is open, and it stores nothing of any login.
+The dots beside the model show your 5-hour and 7-day limits for Claude and Codex, with no setup.
 
-- **Claude.** Collie reads your Claude login on this machine (`~/.claude/.credentials.json`, or
-  `$CLAUDE_CONFIG_DIR/.credentials.json`) and asks `api.anthropic.com` for the numbers, the same call
-  Claude Code's `/usage` makes.
-- **Codex.** Collie reads no login and asks nobody. On a ChatGPT login Codex writes the windows into
-  its own session files (`$CODEX_HOME/sessions`, or `~/.codex/sessions`), and Collie reads the end of
-  the newest files from the last two hours. A Codex on an API key has no windows to show.
-- **OpenCode Go.** Collie reads the `opencode-go` entry of OpenCode's login store
-  (`~/.local/share/opencode/auth.json`, or under `$XDG_DATA_HOME`) and asks `opencode.ai`. With no
-  Go entry it asks nothing. The monthly window is read and not drawn.
-- **Grok.** Collie reads the login `grok login` keeps (`~/.grok/auth.json`, or under `$GROK_HOME`)
-  and asks `cli-chat-proxy.grok.com` for your credits. A weekly period draws as the 7-day window; a
-  monthly one is read and not drawn.
+```bash
+# turn every source off
+COLLIE_ACCOUNT_WINDOWS=0
+# turn on opencode and grok too, or name the ones you want
+COLLIE_ACCOUNT_WINDOWS=all
+COLLIE_ACCOUNT_WINDOWS=claude,codex
+```
 
-Collie skips a login file that others may read (anything looser than `0600`) and a login that has
-expired. The Codex, OpenCode Go and Grok readers follow the shape other tools use for these
-endpoints, and Collie has not checked them against a live account yet. pi and OMP show no windows
-here yet.
+Collie reads your Claude login file on this machine and asks Anthropic's usage endpoint, the same
+call Claude Code's /usage makes; nothing of the login is stored or sent elsewhere. Collie asks only
+while a pane of that harness is open, and it skips a login file that others may read (anything
+looser than `0600`) and a login that has expired. Codex sends no token: it reads its own files.
 
-| setting | default | what it does |
-| --- | --- | --- |
-| `[bridge] account_windows` / `COLLIE_ACCOUNT_WINDOWS` | `true` | `0` or `false` turns every harness off: no login or session file is read and nothing is asked |
+| form | what it turns on |
+| --- | --- |
+| unset, `1`, `on`, `true`, `yes` | the default set: `claude` and `codex` |
+| `0`, `off`, `false`, `no` | nothing: no login or session file is read and nothing is asked |
+| `all` | every source: `claude`, `codex`, `opencode` and `grok` |
+| `claude,codex` | the harnesses you name, in any case and with spaces |
 
-`collie doctor` shows the setting in its `account-windows` row, with the file each harness reads and
-the host it asks.
-[Terminals](multiplexers.md#collie-writes-hooks-into-claudes-own-settings) has the details.
+An id Collie does not know is dropped with a warning, and only the ids it knows are on, so a typo
+never turns on a source you did not name. In the config file, `[bridge] account_windows` takes
+`true` or `false`, a string with the same forms, or an array such as `["claude", "codex"]`.
+
+Each source reads a different thing.
+
+- **Claude, on by default.** Collie reads `~/.claude/.credentials.json`, or `$CLAUDE_CONFIG_DIR/.credentials.json`, and asks `api.anthropic.com`.
+- **Codex, on by default.** Collie reads no login and asks nobody. On a ChatGPT login Codex writes the windows into its own session files (`$CODEX_HOME/sessions`, or `~/.codex/sessions`), and Collie reads the end of the newest files from the last two hours. A Codex on an API key has no windows to show.
+- **OpenCode Go, off by default.** When you turn it on, Collie reads the `opencode-go` entry of OpenCode's login store (`~/.local/share/opencode/auth.json`, or under `$XDG_DATA_HOME`) and asks `opencode.ai`. With no Go entry it asks nothing.
+- **Grok, off by default.** When you turn it on, Collie reads the login `grok login` keeps (`~/.grok/auth.json`, or under `$GROK_HOME`) and asks `cli-chat-proxy.grok.com` for your credits.
+
+> **Note.** OpenCode Go and Grok follow the shape other tools use for these endpoints, and no live account has checked them yet. That is why they are off until you name them. pi and OMP show no windows here yet.
+
+`collie doctor` shows every source in its `account-windows` row: on or off, the file it reads and the host it asks. [Terminals](multiplexers.md#collie-writes-hooks-into-claudes-own-settings) has the statusLine road.
 
 ## Dark mode / light mode
 

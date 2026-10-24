@@ -3033,8 +3033,8 @@ export function AgentChat({
                   isShell={isShell}
                   cwd={agent?.cwd || undefined}
                   held={agent?.held}
-                  // Stop on the belt (M68 spec 02): the turn runs and the bridge says the profile has an
-                  // interrupt key. The rule is lib/harness-bar.ts `stopFor`; a gone pane or a read-only device has none.
+                  // Stop on the belt (M68 spec 02): the bridge says the profile has an interrupt key (live
+                  // while the turn runs, dimmed otherwise). The rule is lib/harness-bar.ts `stopFor`; a gone pane or a read-only device has none.
                   stopOffered={stopFor(agent) && !gone && !readOnly}
                   // The Chat window's turns: the composer reads them only to settle a send that
                   // ended `unknown` once its text lands as a user turn (#511).

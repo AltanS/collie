@@ -45,6 +45,13 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { asJsonNumber, asJsonObject, asJsonString, parseJsonObject } from "../web/src/lib/json.ts";
+import {
+  ACCOUNT_WINDOW_HARNESSES,
+  ACCOUNT_WINDOWS_DEFAULT,
+  ACCOUNT_WINDOWS_UNVERIFIED,
+  accountWindowsProblem,
+  type AccountWindowsSetting,
+} from "./account-windows-setting.ts";
 import { HOST } from "./host.ts";
 import type { JsonObject, JsonValue } from "./json.ts";
 import type { AgentStatus, AgentView } from "./types.ts";
@@ -709,8 +716,15 @@ const SOURCE_TABLE = {
   grok: grokAccountSource,
 } satisfies Record<string, (seams: CredentialSeams) => AccountSource>;
 
-export function defaultAccountSources(seams: CredentialSeams): AccountSource[] {
-  return Object.values(SOURCE_TABLE).map((build) => build(seams));
+/**
+ * The sources for the harnesses the setting turns on (ADR 0118). A harness left out has no source, so
+ * the service never reads its login or its files and never asks its vendor. With no list, the
+ * default set (`claude`, `codex`).
+ */
+export function defaultAccountSources(seams: CredentialSeams, harnesses: readonly string[] = ACCOUNT_WINDOWS_DEFAULT): AccountSource[] {
+  return Object.entries(SOURCE_TABLE)
+    .filter(([id]) => harnesses.includes(id))
+    .map(([, build]) => build(seams));
 }
 
 /** The transport. Only `status` and `text()` of the answer are read. */
@@ -720,7 +734,7 @@ export type AccountFetch = (
 ) => Promise<{ status: number; text(): Promise<string> }>;
 
 export interface AccountWindowsOptions {
-  /** False with `COLLIE_ACCOUNT_WINDOWS=0`: nothing is read and nothing is asked. */
+  /** False with `COLLIE_ACCOUNT_WINDOWS=0` (no harness on): nothing is read and nothing is asked. */
   readonly enabled: boolean;
   readonly sources: readonly AccountSource[];
   readonly fetch: AccountFetch;
@@ -934,27 +948,39 @@ export interface AccountDoctorFacts {
 }
 
 /**
- * The doctor's sentence for one setting: what each harness's source reads and where it asks. Names
- * files and hosts, never anything in a file.
+ * The doctor's sentence for one setting: every source with its state, what it reads and where it asks.
+ * Names files and hosts, never anything in a file. `setting` is what {@link parseAccountWindowsSetting}
+ * made of the operator's text.
  */
 export function accountWindowsDoctorLine(
-  enabled: boolean,
+  setting: AccountWindowsSetting,
   env: Readonly<Record<string, string | undefined>>,
   home: string,
   platform: NodeJS.Platform,
   facts: AccountDoctorFacts = { opencodeGoKey: false, grokLogin: false },
 ): string {
-  if (!enabled) return "off";
+  const refused = accountWindowsProblem(setting);
+  const note = refused === null ? "" : `. COLLIE_ACCOUNT_WINDOWS: ${refused}`;
+  if (setting.harnesses.length === 0) {
+    return `off, every source is turned off by COLLIE_ACCOUNT_WINDOWS: no login or session file is read and nothing is asked${note}`;
+  }
   const named = (name: string, tilde: string, path: string): string => ((env[name] ?? "").trim() === "" ? tilde : path);
-  const claude = named("CLAUDE_CONFIG_DIR", "~/.claude/.credentials.json", claudeCredentialsPath(env, home));
   const keychain = platform === "darwin" ? " or the Keychain" : "";
-  const codex = named("CODEX_HOME", "~/.codex/sessions", codexSessionsDir(env, home));
-  const opencode = named("XDG_DATA_HOME", "~/.local/share/opencode/auth.json", opencodeAuthPath(env, home));
-  const grok = named("GROK_HOME", "~/.grok/auth.json", grokAuthPath(env, home));
-  return `on (${[
-    `claude: read ${claude}${keychain}, asks ${CLAUDE_USAGE_HOST}`,
-    `codex: reads ${codex}`,
-    facts.opencodeGoKey ? `opencode: read ${opencode}, asks ${OPENCODE_USAGE_HOST}` : "opencode: no Go key",
-    facts.grokLogin ? `grok: read ${grok}, asks ${GROK_USAGE_HOST}` : "grok: no login",
-  ].join("; ")})`;
+  const where = {
+    claude: `reads ${named("CLAUDE_CONFIG_DIR", "~/.claude/.credentials.json", claudeCredentialsPath(env, home))}${keychain}, asks ${CLAUDE_USAGE_HOST}`,
+    codex: `reads ${named("CODEX_HOME", "~/.codex/sessions", codexSessionsDir(env, home))}`,
+    opencode: facts.opencodeGoKey
+      ? `reads ${named("XDG_DATA_HOME", "~/.local/share/opencode/auth.json", opencodeAuthPath(env, home))}, asks ${OPENCODE_USAGE_HOST}`
+      : "no Go key",
+    grok: facts.grokLogin
+      ? `reads ${named("GROK_HOME", "~/.grok/auth.json", grokAuthPath(env, home))}, asks ${GROK_USAGE_HOST}`
+      : "no login",
+  } satisfies Record<(typeof ACCOUNT_WINDOW_HARNESSES)[number], string>;
+  const rows = ACCOUNT_WINDOW_HARNESSES.map((id) => {
+    const unverified = ACCOUNT_WINDOWS_UNVERIFIED.includes(id);
+    if (setting.harnesses.includes(id)) return `${id}: on${unverified ? ", unverified" : ""} (${where[id]})`;
+    if (setting.form === "list") return `${id}: off (not in your list)`;
+    return `${id}: off by default, unverified (COLLIE_ACCOUNT_WINDOWS=all)`;
+  });
+  return `${rows.join("; ")}${note}`;
 }

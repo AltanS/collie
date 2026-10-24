@@ -86,7 +86,8 @@ import { isSelfEcho, normalizeDraft } from "@/hooks/use-terminal-draft";
 import { adapterFor } from "@/lib/harness";
 import { useLive } from "@/lib/liveness";
 import { useCatchingUp, useLocked } from "@/lib/idle";
-import { OfflineDraftNote, TerminalDraftPreview } from "@/components/terminal-draft-preview";
+import { ClearNotice, OfflineDraftNote, TerminalDraftPreview } from "@/components/terminal-draft-preview";
+import { textToKeySequence } from "@/lib/key-queue";
 import { isLead, scopeKey, type Scope } from "@/lib/scope";
 import type { PaneSubagent, PaneTodo } from "@/lib/types";
 import { AgentsSheet, subagentName } from "@/components/agents-sheet";
@@ -177,8 +178,9 @@ interface ComposerProps {
    */
   composing?: boolean;
   /**
-   * The belt draws Stop (M68 spec 02): the turn runs and the bridge says a key exists (`stopFor`,
-   * lib/harness-bar.ts, decided by the pane). Absent or false and no Stop is drawn.
+   * The belt draws Stop (M68 spec 02): the bridge says a key exists (`stopFor`, lib/harness-bar.ts,
+   * decided by the pane). The turn only decides whether it is live or dimmed. Absent or false and no
+   * Stop is drawn.
    */
   stopOffered?: boolean;
   /** The "Answer the dialog" word's tap: scroll to the dialog card and focus its first button. It sends
@@ -406,6 +408,22 @@ function revokePreview(attachment: ComposerAttachment) {
 }
 
 /** What the belt's X took out of the box, held in memory for its Undo (M40 spec 04). */
+/** What the last Clear answered, while its floating notice stands (ADR 0116, the Clear paragraph). */
+interface ClearNote {
+  /** The pane the Clear was for: the notice never shows on another. */
+  readonly paneId: string;
+  readonly refusal: SendRefusal;
+  /** The text the Clear removed, while Restore is offered; null once it is not. */
+  readonly draft: string | null;
+  /** When the receipt came back: the notice goes after {@link CLEAR_NOTE_MS}. */
+  readonly at: number;
+  /** A read since the Clear showed the box without a draft (see the composer's effect). */
+  readonly seenEmpty: boolean;
+}
+
+/** How long a Clear's floating notice, and its Restore, stand. */
+export const CLEAR_NOTE_MS = 120_000;
+
 interface ClearedDraft {
   text: string;
   /** The chips, preview URLs included: those stay alive until the window ends. */
@@ -733,21 +751,78 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       else setStatus(describeThrownError(e), "error");
     }
   }
+  // What the last Clear answered, for the floating notice: its words, and the text it cleared while Restore
+  // is offered. `seenEmpty` turns true once a read shows the box without a draft, so the read from before the
+  // Clear, still on screen when the receipt lands, does not end the offer.
+  const [clearNote, setClearNote] = useState<ClearNote | null>(null);
   // CLEAR (ADR 0116, the Clear paragraph): the Keys board's button that empties the harness's box. One fresh
-  // request id per tap; the bridge presses the profile's clear key as this person's tap and reads back, and the
-  // receipt is told in the notice a send's refusal and a Stop use. No arm: a cleared draft is retyped. A thrown
+  // request id per tap; the bridge presses the profile's clear key as this person's tap and reads back. No arm:
+  // Restore types a cleared draft back (below). A thrown
   // error that says nothing about the key (a timeout, a dropped link) is the Clear's `unknown`. The button is
   // offered only while the Surface reads a draft and no dialog, and the link is up; the bridge decides again.
+  //
+  // The receipt floats above the belt with the other floating notices (`floating`, ADR 0061), not in the
+  // send notice under the box: a notice that came and went there moved the composer and the belt (Altan's
+  // phone, 2026-10-24). A `cleared` receipt carries the text it cleared, and the notice offers Restore.
   async function clearBox(): Promise<void> {
     const requestId = mintRequestId();
     try {
       const receipt = await api.clearPane(paneId, { requestId }, scope);
-      setSendRefusal(clearNotice(receipt), shownSurface);
+      const draft = receipt.outcome === "cleared" && receipt.draft !== undefined && receipt.draft !== "" ? receipt.draft : null;
+      setClearNote({ paneId, refusal: clearNotice(receipt), draft, at: Date.now(), seenEmpty: false });
     } catch (e) {
-      if (api.outcomeUnknown(e)) setSendRefusal(clearNotice({ requestId, outcome: "unknown" }), shownSurface);
+      if (api.outcomeUnknown(e)) setClearNote({ paneId, refusal: clearNotice({ requestId, outcome: "unknown" }), draft: null, at: Date.now(), seenEmpty: false });
       else setStatus(describeThrownError(e), "error");
     }
   }
+  // RESTORE (ADR 0116, the Clear paragraph): the cleared text typed back into the box as this person's taps
+  // through the keys route (`POST /api/pane/:id/keys`, the key gate's `person_tap`, the way Type mode types),
+  // with no Enter: a line break or a tab in the text becomes a space (`boundedDraft`), so no key in it
+  // submits. The keys route audits a typed character only as a mask, never the text. One Restore per Clear:
+  // the offer goes as the tap leaves, so a second tap cannot type the text twice; a refusal that says
+  // nothing was typed gives it back.
+  const [restoring, setRestoring] = useState(false);
+  async function restoreDraft(): Promise<void> {
+    const note = clearNote;
+    if (note === null || note.draft === null || restoring) return;
+    const keys = textToKeySequence(note.draft.replace(/[\r\n\t]+/gu, " "));
+    setRestoring(true);
+    setClearNote({ ...note, draft: null });
+    try {
+      const res = await api.sendKeys(paneId, keys, scope);
+      if (res.ok) {
+        setClearNote(null);
+        onSent();
+      } else {
+        setClearNote((now) => (now === null ? now : { ...now, draft: note.draft }));
+        setStatus(describeApiError(res), "error");
+      }
+    } catch (e) {
+      setStatus(describeThrownError(e), "error");
+    } finally {
+      setRestoring(false);
+    }
+  }
+  // The Clear notice's lifetime. It goes after CLEAR_NOTE_MS, and on another pane. Restore ends, with the
+  // notice, once a read after the Clear shows a draft in the box again: the person typed there, or Restore
+  // did, so the text the Clear took is no longer what the box lacks.
+  useEffect(() => {
+    if (clearNote === null) return;
+    const left = clearNote.at + CLEAR_NOTE_MS - Date.now();
+    const timer = setTimeout(() => setClearNote(null), Math.max(0, left));
+    return () => clearTimeout(timer);
+  }, [clearNote]);
+  useEffect(() => {
+    setClearNote((note) => (note === null || note.paneId === paneId ? note : null));
+  }, [paneId]);
+  const boxComposer = shownSurface.composer;
+  useEffect(() => {
+    setClearNote((note) => {
+      if (note === null) return note;
+      if (boxComposer !== "draft") return note.seenEmpty ? note : { ...note, seenEmpty: true };
+      return note.seenEmpty && note.draft !== null ? null : note;
+    });
+  }, [boxComposer, clearNote?.at]);
   // The reason a destructive line is held for a second tap, said at the Send slot (it was a header line,
   // which holds nothing a person must act on, M56 spec 07). Shown only while the confirm is armed.
   const [destructiveNote, setDestructiveNote] = useState<string | null>(null);
@@ -1183,8 +1258,17 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // the belt, with a small gap. Pass-through wrapper (`pointer-events-none`); each card takes touches
   // back. In the pane view's slot the slot does the positioning; alone, the column floats above this
   // composer's own top edge. No `Collapse`: it is absolute, so it holds no space at all.
+  // The last Clear's answer floats nearest the belt (ADR 0116, the Clear paragraph): its words, and Restore
+  // while the cleared text is kept, the box reads empty and no dialog owns the keys, so the text is never
+  // typed into a dialog or onto a draft.
+  const restoreOpen =
+    clearNote !== null && clearNote.draft !== null && clearNote.seenEmpty && way.keysSendable && shownSurface.composer === "empty" && shownSurface.modal === "none";
+  const clearCard =
+    clearNote !== null && clearNote.paneId === paneId ? (
+      <ClearNotice refusal={clearNote.refusal} onRestore={restoreOpen ? () => void restoreDraft() : null} restoring={restoring} onDismiss={() => setClearNote(null)} />
+    ) : null;
   const floating =
-    heldCard !== null || floatingNotice !== null ? (
+    heldCard !== null || floatingNotice !== null || clearCard !== null ? (
       <div
         data-slot="floating-cards"
         className={cn(
@@ -1194,6 +1278,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       >
         {heldCard}
         {floatingNotice}
+        {clearCard}
       </div>
     ) : null;
 
@@ -2213,7 +2298,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           mine={operatorCommands}
           onRun={(command) => send(command, false)}
           disabled={locked}
-          // Stop, for a running turn the bridge has a key for (M68 spec 02); a link that is down greys it.
+          // Stop, for a pane the bridge has a key for (M68 spec 02): live while the turn runs, dimmed in
+          // place otherwise; a link that is down greys it.
           stop={stopOffered ? { onStop: stopTurn, paneId, running: surface.turn === "running" } : undefined}
           // The pane switcher: a Switch pill pinned at this belt's right end, above Send, and the
           // belt itself as the drag surface behind it. The pane decides whether there is one

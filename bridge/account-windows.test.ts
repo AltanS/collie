@@ -35,6 +35,12 @@ import {
   type AccountFetch,
   type CredentialSeams,
 } from "./account-windows.ts";
+import {
+  ACCOUNT_WINDOW_HARNESSES,
+  ACCOUNT_WINDOWS_DEFAULT,
+  accountWindowsProblem,
+  parseAccountWindowsSetting,
+} from "./account-windows-setting.ts";
 import type { AgentView } from "./types.ts";
 
 const NOW = 1_800_000_000_000;
@@ -540,30 +546,109 @@ describe("isTurnEnd", () => {
 });
 
 describe("the doctor line", () => {
-  const tail = "codex: reads ~/.codex/sessions; opencode: no Go key; grok: no login)";
-  it("names what each harness reads and the hosts it asks, and says off when off", () => {
-    expect(accountWindowsDoctorLine(true, {}, HOME, "linux")).toBe(
-      `on (claude: read ~/.claude/.credentials.json, asks api.anthropic.com; ${tail}`,
-    );
-    expect(accountWindowsDoctorLine(true, { CLAUDE_CONFIG_DIR: "/profiles/work" }, HOME, "linux")).toBe(
-      `on (claude: read ${join("/profiles/work", ".credentials.json")}, asks api.anthropic.com; ${tail}`,
-    );
-    expect(accountWindowsDoctorLine(true, {}, HOME, "darwin")).toBe(
-      `on (claude: read ~/.claude/.credentials.json or the Keychain, asks api.anthropic.com; ${tail}`,
-    );
-    expect(accountWindowsDoctorLine(false, {}, HOME, "linux")).toBe("off");
+  const line = (raw: string | undefined, env: Record<string, string> = {}, platform: NodeJS.Platform = "linux", facts?: { opencodeGoKey: boolean; grokLogin: boolean }) =>
+    accountWindowsDoctorLine(parseAccountWindowsSetting(raw), env, HOME, platform, facts);
+  const UNVERIFIED_OFF =
+    "opencode: off by default, unverified (COLLIE_ACCOUNT_WINDOWS=all); grok: off by default, unverified (COLLIE_ACCOUNT_WINDOWS=all)";
+
+  it("by default lists claude and codex on, and opencode and grok off by default, unverified", () => {
+    const expected = `claude: on (reads ~/.claude/.credentials.json, asks api.anthropic.com); codex: on (reads ~/.codex/sessions); ${UNVERIFIED_OFF}`;
+    expect(line(undefined)).toBe(expected);
+    expect(line("1")).toBe(expected);
+    expect(line("on")).toBe(expected);
   });
 
-  it("lists OpenCode Go and Grok with their file and host once they have a login, and follows the home variables", () => {
-    expect(accountWindowsDoctorLine(true, {}, HOME, "linux", { opencodeGoKey: true, grokLogin: true })).toBe(
-      "on (claude: read ~/.claude/.credentials.json, asks api.anthropic.com; codex: reads ~/.codex/sessions; " +
-        "opencode: read ~/.local/share/opencode/auth.json, asks opencode.ai; grok: read ~/.grok/auth.json, asks cli-chat-proxy.grok.com)",
+  it("follows CLAUDE_CONFIG_DIR and CODEX_HOME, and names the Keychain on a Mac", () => {
+    expect(line(undefined, { CLAUDE_CONFIG_DIR: "/profiles/work", CODEX_HOME: "/c" })).toBe(
+      `claude: on (reads ${join("/profiles/work", ".credentials.json")}, asks api.anthropic.com); codex: on (reads ${join("/c", "sessions")}); ${UNVERIFIED_OFF}`,
     );
-    const env = { CODEX_HOME: "/c", XDG_DATA_HOME: "/x", GROK_HOME: "/g" };
-    expect(accountWindowsDoctorLine(true, env, HOME, "linux", { opencodeGoKey: true, grokLogin: true })).toBe(
-      `on (claude: read ~/.claude/.credentials.json, asks api.anthropic.com; codex: reads ${join("/c", "sessions")}; ` +
-        `opencode: read ${join("/x", "opencode", "auth.json")}, asks opencode.ai; grok: read ${join("/g", "auth.json")}, asks cli-chat-proxy.grok.com)`,
+    expect(line(undefined, {}, "darwin")).toContain("claude: on (reads ~/.claude/.credentials.json or the Keychain, asks api.anthropic.com)");
+  });
+
+  it("with all, lists the four on, opencode and grok marked unverified, with their file and host once they have a login", () => {
+    expect(line("all")).toBe(
+      "claude: on (reads ~/.claude/.credentials.json, asks api.anthropic.com); codex: on (reads ~/.codex/sessions); " +
+        "opencode: on, unverified (no Go key); grok: on, unverified (no login)",
     );
+    expect(line("all", {}, "linux", { opencodeGoKey: true, grokLogin: true })).toBe(
+      "claude: on (reads ~/.claude/.credentials.json, asks api.anthropic.com); codex: on (reads ~/.codex/sessions); " +
+        "opencode: on, unverified (reads ~/.local/share/opencode/auth.json, asks opencode.ai); " +
+        "grok: on, unverified (reads ~/.grok/auth.json, asks cli-chat-proxy.grok.com)",
+    );
+    const env = { XDG_DATA_HOME: "/x", GROK_HOME: "/g" };
+    expect(line("all", env, "linux", { opencodeGoKey: true, grokLogin: true })).toContain(
+      `opencode: on, unverified (reads ${join("/x", "opencode", "auth.json")}, asks opencode.ai); grok: on, unverified (reads ${join("/g", "auth.json")}, asks cli-chat-proxy.grok.com)`,
+    );
+  });
+
+  it("says when everything is off, and that the operator did it", () => {
+    for (const off of ["0", "off", "false", "no"]) {
+      expect(line(off)).toBe("off, every source is turned off by COLLIE_ACCOUNT_WINDOWS: no login or session file is read and nothing is asked");
+    }
+  });
+
+  it("with a named list, shows the named ones on and the rest off; naming opencode shows it on, unverified", () => {
+    expect(line("claude")).toBe(
+      "claude: on (reads ~/.claude/.credentials.json, asks api.anthropic.com); codex: off (not in your list); opencode: off (not in your list); grok: off (not in your list)",
+    );
+    expect(line(" Codex , OpenCode ", {}, "linux", { opencodeGoKey: true, grokLogin: false })).toBe(
+      "claude: off (not in your list); codex: on (reads ~/.codex/sessions); " +
+        "opencode: on, unverified (reads ~/.local/share/opencode/auth.json, asks opencode.ai); grok: off (not in your list)",
+    );
+  });
+
+  it("names an unknown id, says it was ignored and keeps only the known ids on", () => {
+    const text = line("claude,gork");
+    expect(text).toContain("claude: on (");
+    expect(text).toContain("codex: off (not in your list)");
+    expect(text).toContain("opencode: off (not in your list)");
+    expect(text).toContain('COLLIE_ACCOUNT_WINDOWS: unknown id "gork" ignored');
+    // A list with no known id turns every source off, and still names the id.
+    const none = line("gork");
+    expect(none).toStartWith("off, every source is turned off");
+    expect(none).toContain('unknown id "gork" ignored');
+  });
+});
+
+describe("the COLLIE_ACCOUNT_WINDOWS setting", () => {
+  const harnesses = (raw: string | undefined) => parseAccountWindowsSetting(raw).harnesses;
+
+  it("unset, blank and the on words are the default set, exactly claude and codex", () => {
+    expect([...ACCOUNT_WINDOWS_DEFAULT]).toEqual(["claude", "codex"]);
+    for (const raw of [undefined, "", "   "]) expect(parseAccountWindowsSetting(raw)).toEqual({ form: "unset", harnesses: ["claude", "codex"], unknown: [] });
+    for (const on of ["1", "on", "true", "yes", "ON", " Yes "]) {
+      expect(parseAccountWindowsSetting(on)).toEqual({ form: "on", harnesses: ["claude", "codex"], unknown: [] });
+    }
+  });
+
+  it("the off words turn everything off", () => {
+    for (const off of ["0", "off", "false", "no", "OFF", " False "]) {
+      expect(parseAccountWindowsSetting(off)).toEqual({ form: "off", harnesses: [], unknown: [] });
+    }
+  });
+
+  it("all is every source", () => {
+    for (const all of ["all", "ALL", " all "]) expect(harnesses(all)).toEqual(["claude", "codex", "opencode", "grok"]);
+    expect(parseAccountWindowsSetting("all").form).toBe("all");
+  });
+
+  it("a list names harnesses: trimmed, case-insensitive, deduplicated, in table order", () => {
+    expect(harnesses("claude,codex")).toEqual(["claude", "codex"]);
+    expect(harnesses(" Grok , CLAUDE ,claude,")).toEqual(["claude", "grok"]);
+    expect(harnesses("opencode")).toEqual(["opencode"]);
+    expect(parseAccountWindowsSetting("opencode").form).toBe("list");
+  });
+
+  it("an unknown id is dropped and named; only the known ids are on, so a typo never turns a source on", () => {
+    const read = parseAccountWindowsSetting("claude,gork");
+    expect(read).toEqual({ form: "list", harnesses: ["claude"], unknown: ["gork"] });
+    expect(parseAccountWindowsSetting("opencode,gork").harnesses).toEqual(["opencode"]);
+    expect(parseAccountWindowsSetting("gork").harnesses).toEqual([]);
+    expect(accountWindowsProblem(read)).toContain('unknown id "gork"');
+    expect(parseAccountWindowsSetting("opencode,off").unknown).toEqual(["off"]);
+    expect(parseAccountWindowsSetting("nope,more").unknown).toEqual(["nope", "more"]);
+    expect(parseAccountWindowsSetting(",").unknown).toEqual([","]);
+    expect(accountWindowsProblem(parseAccountWindowsSetting("claude"))).toBeNull();
   });
 });
 
@@ -1016,7 +1101,7 @@ describe("Grok", () => {
 
 describe("the source table", () => {
   it("has one source per harness id, claude, codex, opencode and grok, and the phone's windows stay 5h and 7d", () => {
-    const sources = defaultAccountSources(fileSeams({}));
+    const sources = defaultAccountSources(fileSeams({}), ACCOUNT_WINDOW_HARNESSES);
     expect(sources.map((source) => `${source.harness}:${source.kind}`)).toEqual(["claude:http", "codex:local", "opencode:http", "grok:http"]);
     expect([...USAGE_WINDOWS]).toEqual(["5h", "7d"]);
   });
@@ -1026,10 +1111,257 @@ describe("the source table", () => {
       const files = { [OPENCODE_AUTH]: { mode: 0o600, text: goStore() }, [GROK_AUTH]: { mode: 0o600, text: grokStore({ "https://auth.x.ai::c": { key: GROK_TOKEN } }) } };
       const fake = vendor();
       fake.answers.push({ status: 200, body: "<html>maintenance</html>" });
-      const windows = new AccountWindows({ enabled: true, sources: defaultAccountSources(fileSeams(files)), fetch: fake.fetch, now: () => NOW, userAgent: "collie/1.24.0" });
+      const windows = new AccountWindows({ enabled: true, sources: defaultAccountSources(fileSeams(files), ACCOUNT_WINDOW_HARNESSES), fetch: fake.fetch, now: () => NOW, userAgent: "collie/1.24.0" });
       windows.observe([pane(harness)], "main");
       await windows.settled();
       expect(windows.limits(harness)).toBeUndefined();
     }
+  });
+});
+
+// ── Which sources a setting turns on (ADR 0118) ────────────────────────────────────────────────
+
+const CLAUDE_FILE = join(HOME, ".claude", ".credentials.json");
+const GROK_FILE = join(HOME, ".grok", "auth.json");
+
+/** Seams that write down every path asked about, so a test can say what was never touched. */
+interface RecordedSeams {
+  seams: CredentialSeams;
+  touched: string[];
+}
+
+function recordingSeams(files: Record<string, { mode: number; text: string }>): RecordedSeams {
+  const touched: string[] = [];
+  const base = fileSeams(files);
+  const seams: CredentialSeams = {
+    ...base,
+    stat: async (path) => {
+      touched.push(path);
+      return base.stat(path);
+    },
+    read: async (path) => {
+      touched.push(path);
+      return base.read(path);
+    },
+    keychain: async () => {
+      touched.push("keychain");
+      return null;
+    },
+    list: async (path) => {
+      touched.push(path);
+      return [];
+    },
+    tail: async (path, max) => {
+      touched.push(path);
+      return base.tail(path, max);
+    },
+  };
+  return { seams, touched };
+}
+
+describe("which sources a setting turns on", () => {
+  const files = {
+    [CLAUDE_FILE]: { mode: 0o600, text: login() },
+    [OPENCODE_AUTH]: { mode: 0o600, text: goStore() },
+    [GROK_FILE]: { mode: 0o600, text: grokStore({ "https://auth.x.ai::c": { key: GROK_TOKEN } }) },
+  };
+  const allPanes = [pane("claude"), pane("codex"), pane("opencode"), pane("grok")];
+
+  async function run(raw: string | undefined) {
+    const { seams, touched } = recordingSeams(files);
+    const fake = vendor();
+    const windows = new AccountWindows({
+      enabled: parseAccountWindowsSetting(raw).harnesses.length > 0,
+      sources: defaultAccountSources(seams, parseAccountWindowsSetting(raw).harnesses),
+      fetch: fake.fetch,
+      now: () => NOW,
+      userAgent: "collie/1.24.0",
+    });
+    windows.observe(allPanes, "main");
+    windows.poke("opencode");
+    windows.poke("grok");
+    await windows.settled();
+    return { touched, calls: fake.calls.map((call) => new URL(call.url).host).toSorted() };
+  }
+
+  it("under the default, opencode and grok panes read no file and ask no vendor", async () => {
+    for (const raw of [undefined, "on", "1"]) {
+      const { touched, calls } = await run(raw);
+      expect(calls).toEqual(["api.anthropic.com"]);
+      expect(touched).toContain(CLAUDE_FILE);
+      expect(touched.filter((path) => path === OPENCODE_AUTH || path === GROK_FILE)).toEqual([]);
+    }
+  });
+
+  it("all turns opencode and grok on: they read their login and ask their vendor", async () => {
+    const { touched, calls } = await run("all");
+    expect(calls).toEqual(["api.anthropic.com", "cli-chat-proxy.grok.com", "opencode.ai"]);
+    expect(touched).toContain(OPENCODE_AUTH);
+    expect(touched).toContain(GROK_FILE);
+  });
+
+  it("naming opencode turns it on alone: claude is not read, nor asked", async () => {
+    const { touched, calls } = await run("opencode");
+    expect(calls).toEqual(["opencode.ai"]);
+    expect(touched).not.toContain(CLAUDE_FILE);
+    expect(touched).not.toContain(GROK_FILE);
+  });
+
+  it("off reads nothing and asks nothing", async () => {
+    for (const raw of ["0", "off", "no"]) {
+      const { touched, calls } = await run(raw);
+      expect(calls).toEqual([]);
+      expect(touched).toEqual([]);
+    }
+  });
+
+  it("the default source table is claude and codex, and a list builds only what it names", () => {
+    expect(defaultAccountSources(fileSeams({})).map((source) => source.harness)).toEqual(["claude", "codex"]);
+    expect(defaultAccountSources(fileSeams({}), ["grok", "claude"]).map((source) => source.harness)).toEqual(["claude", "grok"]);
+    expect(defaultAccountSources(fileSeams({}), [])).toEqual([]);
+  });
+});
+
+// ── No path leaks the token ────────────────────────────────────────────────────────────────────
+
+describe("no failure path of the service leaks a login", () => {
+  const CANARY = "sk-ant-oat01-LEAKCANARY-0000";
+  const future = NOW + 3_600_000;
+  const past = NOW - 1000;
+  const claudeText = (over: JsonObject = {}): string =>
+    JSON.stringify({ claudeAiOauth: { accessToken: CANARY, refreshToken: `${CANARY}-refresh`, expiresAt: future, ...over } });
+  const goText = (over: JsonObject = {}): string => JSON.stringify({ "opencode-go": { type: "api", key: CANARY, ...over } });
+  const grokText = (over: JsonObject = {}): string => JSON.stringify({ "https://auth.x.ai::c": { key: CANARY, refresh_token: `${CANARY}-refresh`, ...over } });
+  const GROK = join(HOME, ".grok", "auth.json");
+
+  interface Scenario {
+    name: string;
+    files?: Record<string, { mode: number; text: string }>;
+    platform?: NodeJS.Platform;
+    /** The fetch answers, tried in order; `throw` and `throwText` raise with the token in the message. */
+    answer?: { status: number; body?: string } | "throw" | "throwText";
+    seams?: Partial<CredentialSeams>;
+    codexTail?: string | null;
+  }
+
+  const good = { [CLAUDE_FILE]: { mode: 0o600, text: claudeText() }, [OPENCODE_AUTH]: { mode: 0o600, text: goText() }, [GROK]: { mode: 0o600, text: grokText() } };
+  const withBody = (status: number): Scenario => ({ name: `HTTP ${String(status)} whose body echoes the token`, files: good, answer: { status, body: `{"error":"bad token ${CANARY}"}` } });
+  const scenarios: Scenario[] = [
+    { name: "fetch throws with the token in its message", files: good, answer: "throw" },
+    { name: "the body stream throws with the token in its message", files: good, answer: "throwText" },
+    withBody(401),
+    withBody(403),
+    withBody(429),
+    withBody(500),
+    withBody(302),
+    { name: "bad JSON that echoes the token", files: good, answer: { status: 200, body: `<html>${CANARY}</html>` } },
+    { name: "valid JSON of the wrong shape that echoes the token", files: good, answer: { status: 200, body: JSON.stringify({ token: CANARY }) } },
+    { name: "missing credentials files", files: {}, answer: { status: 200, body: limitsBody() } },
+    { name: "malformed Claude login: a token with a space", files: { [CLAUDE_FILE]: { mode: 0o600, text: claudeText({ accessToken: `${CANARY} two words` }) } } },
+    { name: "malformed Claude login: not JSON", files: { [CLAUDE_FILE]: { mode: 0o600, text: `{"accessToken":"${CANARY}"` } } },
+    { name: "malformed Claude login: no expiry", files: { [CLAUDE_FILE]: { mode: 0o600, text: claudeText({ expiresAt: undefined }) } } },
+    { name: "expired Claude token", files: { [CLAUDE_FILE]: { mode: 0o600, text: claudeText({ expiresAt: past }) } } },
+    { name: "Claude login readable by others", files: { [CLAUDE_FILE]: { mode: 0o644, text: claudeText() } } },
+    { name: "Claude login is a directory", files: { [CLAUDE_FILE]: { mode: 0o600, text: CANARY } }, seams: { stat: async () => ({ file: false, mode: 0o600, size: 9 }) } },
+    { name: "the Keychain holds junk with the token", files: {}, platform: "darwin", seams: { keychain: async () => `${CANARY} junk` } },
+    { name: "the read itself throws with the token in its message", files: good, seams: { read: async () => Promise.reject(new Error(`EACCES ${CANARY}`)) } },
+    { name: "the stat throws with the token in its message", files: good, seams: { stat: async () => Promise.reject(new Error(`EIO ${CANARY}`)) } },
+    { name: "OpenCode store without the Go entry", files: { [OPENCODE_AUTH]: { mode: 0o600, text: JSON.stringify({ openrouter: { key: CANARY } }) } } },
+    { name: "OpenCode store that is not JSON", files: { [OPENCODE_AUTH]: { mode: 0o600, text: `not json ${CANARY}` } } },
+    { name: "OpenCode Go key with a space", files: { [OPENCODE_AUTH]: { mode: 0o600, text: goText({ key: `${CANARY} x` }) } } },
+    { name: "OpenCode store readable by others", files: { [OPENCODE_AUTH]: { mode: 0o666, text: goText() } } },
+    { name: "Grok login that is not JSON", files: { [GROK]: { mode: 0o600, text: `[${CANARY}` } } },
+    { name: "Grok token expired", files: { [GROK]: { mode: 0o600, text: grokText({ expires_at: new Date(past).toISOString() }) } } },
+    { name: "Grok login readable by others", files: { [GROK]: { mode: 0o640, text: grokText() } } },
+    { name: "Grok login without a token", files: { [GROK]: { mode: 0o600, text: JSON.stringify({ x: { refresh_token: CANARY } }) } } },
+    { name: "Codex files hold garbage with the token", files: good, codexTail: `{broken ${CANARY}\n${CANARY}\n{"payload":{"rate_limits":"${CANARY}"}}\n` },
+    { name: "Codex tail read fails", files: good, codexTail: null },
+    { name: "Codex listing throws with the token in its message", files: good, seams: { list: async () => Promise.reject(new Error(`EIO ${CANARY}`)) } },
+    { name: "Codex tail throws with the token in its message", files: good, seams: { tail: async () => Promise.reject(new Error(`EIO ${CANARY}`)) } },
+  ];
+
+  /** The service's every output for one scenario: log lines, console output, returned values, errors. */
+  async function outputs(scenario: Scenario, raw: string): Promise<{ text: string; log: string[] }> {
+    const files = scenario.files ?? {};
+    const base = fileSeams(files);
+    const seams: CredentialSeams = {
+      ...base,
+      platform: scenario.platform ?? "linux",
+      list: async () => [{ name: "rollout-x.jsonl", file: true, mtimeMs: NOW - 1000 }],
+      tail: async () => (scenario.codexTail === undefined ? `${tokenCount({ primary: null })}\n` : scenario.codexTail),
+      ...scenario.seams,
+    };
+    const log: string[] = [];
+    const heard: string[] = [];
+    const sink = (...args: unknown[]): void => {
+      heard.push(args.map((arg) => (arg instanceof Error ? `${arg.name}: ${arg.message}\n${String(arg.stack)}` : String(arg))).join(" "));
+    };
+    const saved = { log: console.log, warn: console.warn, error: console.error, info: console.info, debug: console.debug };
+    console.log = sink;
+    console.warn = sink;
+    console.error = sink;
+    console.info = sink;
+    console.debug = sink;
+    const returned: string[] = [];
+    try {
+      const setting = parseAccountWindowsSetting(raw);
+      const windows = new AccountWindows({
+        enabled: true,
+        sources: defaultAccountSources(seams, setting.harnesses),
+        fetch: async () => {
+          if (scenario.answer === "throw") throw new Error(`connect failed, Authorization: Bearer ${CANARY}`);
+          if (scenario.answer === "throwText") {
+            return { status: 200, text: async () => Promise.reject(new Error(`stream died ${CANARY}`)) };
+          }
+          const answer = scenario.answer ?? { status: 200, body: limitsBody() };
+          return { status: answer.status, text: async () => answer.body ?? "" };
+        },
+        now: () => NOW,
+        userAgent: "collie/1.24.0",
+        log: (line) => log.push(line),
+      });
+      const panes = ACCOUNT_WINDOW_HARNESSES.map((id) => pane(id));
+      windows.observe(panes, "main");
+      for (const id of ACCOUNT_WINDOW_HARNESSES) windows.poke(id);
+      try {
+        await windows.settled();
+      } catch (err) {
+        returned.push(`settled rejected: ${err instanceof Error ? `${err.message}\n${String(err.stack)}` : String(err)}`);
+      }
+      for (const id of ACCOUNT_WINDOW_HARNESSES) returned.push(JSON.stringify([windows.limits(id), windows.scoped(id)]));
+      // The login reads, whose refusal reasons are the other text the service makes.
+      for (const read of [readClaudeLogin, readOpencodeGoKey, readGrokLogin]) {
+        try {
+          const result = await read(seams);
+          returned.push(JSON.stringify(result.ok ? { ok: true } : result));
+        } catch (err) {
+          // The service catches this and logs "unreadable"; the raw error is the seam's, not the service's.
+          void err;
+          returned.push("login read threw");
+        }
+      }
+      // The doctor's sentence for every form of the setting, with this machine's facts.
+      for (const form of [undefined, "all", "0", "claude,opencode,grok"]) {
+        returned.push(accountWindowsDoctorLine(parseAccountWindowsSetting(form), {}, HOME, seams.platform, { opencodeGoKey: true, grokLogin: true }));
+      }
+    } finally {
+      Object.assign(console, saved);
+    }
+    return { text: [...log, ...heard, ...returned].join("\n"), log };
+  }
+
+  for (const scenario of scenarios) {
+    it(`never prints the token: ${scenario.name}`, async () => {
+      for (const raw of ["all", "claude"]) {
+        const { text } = await outputs(scenario, raw);
+        expect(text).not.toContain("LEAKCANARY");
+        expect(text).not.toContain("sk-ant-oat01");
+      }
+    });
+  }
+
+  it("logs at most one line per harness and per change, in plain words", async () => {
+    const { log } = await outputs(scenarios[0]!, "all");
+    for (const line of log) expect(line).toMatch(/^\[usage\] account windows, (claude|codex|opencode|grok): [a-zA-Z0-9 ,()-]+$/);
   });
 });

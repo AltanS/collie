@@ -1,7 +1,7 @@
 // The Clear receipt's wire shape and its closed lists (ADR 0116, the Clear paragraph). `POST
 // /api/pane/:id/clear` on a pane with a screen takes `{ requestId }` and empties the harness's input box
 // with the profile's clear key (`keys.clear`), the step the Send Protocol already uses to replace a
-// draft. The bridge runs it (bridge/surface/clear.ts); the phone posts the body and renders the receipt.
+// draft. A `cleared` receipt carries the text it cleared, so the phone can offer Restore. The bridge runs it (bridge/surface/clear.ts); the phone posts the body and renders the receipt.
 // Both read the types from here, so the lists cannot drift apart.
 //
 // Pure: no DOM, no Bun API, no harness name.
@@ -37,6 +37,31 @@ export interface ClearReceipt {
   readonly outcome: ClearOutcome;
   /** Set on a refusal. */
   readonly reason?: ClearReason;
+  /**
+   * Set on `cleared` when the box held text: the draft as the read before the press showed it, one line
+   * (the box's rows joined with a space), at most {@link CLEAR_DRAFT_MAX_BYTES}. The phone keeps it for a
+   * Restore. It is the operator's own text, behind the same write gate as the tap: the bridge never logs
+   * it and never puts it on the audit line.
+   */
+  readonly draft?: string;
+}
+
+/** The most UTF-8 bytes a receipt's {@link ClearReceipt.draft} carries. */
+export const CLEAR_DRAFT_MAX_BYTES = 8 * 1024;
+
+/** A draft cut to {@link CLEAR_DRAFT_MAX_BYTES} on a character boundary, with no line break or tab: one line, as the box showed it. */
+export function boundedDraft(text: string): string {
+  const line = text.replace(/[\r\n\t]+/gu, " ");
+  const encoder = new TextEncoder();
+  if (encoder.encode(line).length <= CLEAR_DRAFT_MAX_BYTES) return line;
+  let bytes = 0;
+  let out = "";
+  for (const char of line) {
+    bytes += encoder.encode(char).length;
+    if (bytes > CLEAR_DRAFT_MAX_BYTES) break;
+    out += char;
+  }
+  return out;
 }
 
 /** The request id's grammar is the Send Protocol's: see `REQUEST_ID` in ./send. */
