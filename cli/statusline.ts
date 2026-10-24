@@ -1,32 +1,32 @@
 import { spawn } from "node:child_process";
-import { join } from "node:path";
 import { constants } from "node:os";
 
 import { asJsonNumber, asJsonObject, asJsonString, parseJsonObject } from "../web/src/lib/json.ts";
 import type { JsonObject } from "../bridge/json.ts";
 import {
   asPercent,
-  USAGE_DIR_MODE,
   USAGE_SCHEMA_VERSION,
-  usageDir,
-  usageFileName,
   type UsageLimit,
   type UsageRecord,
   type UsageWindow,
 } from "../bridge/usage.ts";
-import { BEACON_HARNESS, edgeStateDirs, privateDir, readEnvMarkers, type EdgeTargetDeps } from "./beacon.ts";
+import { BEACON_HARNESS, edgeStateDirs, readEnvMarkers, type EdgeTargetDeps } from "./beacon.ts";
 import { EXIT } from "./io.ts";
+import { mergeStatusLine, readUsage, writeUsage } from "./usage-store.ts";
 
 // `collie beacon statusline` — the operator's own Claude Code statusLine, with Collie listening in.
 //
 // Claude Code runs the statusLine command on every assistant message with a JSON document on stdin:
 // the context window's use, and for a Pro or Max account the 5-hour and 7-day rate limit windows. It
-// is the one place the agent tells a local program those numbers, so it is where the phone's usage
-// dots come from (.adr/0115). Collie never asks the vendor and never reads a credential.
+// is the one place the agent tells a local program the two subscription windows, so it is where the
+// phone's 5-hour and 7-day dots come from (.adr/0115). Collie never asks the vendor and never reads a
+// credential. The context dot does not need this verb: the beacon hooks read it from the session
+// transcript (`cli/context-reading.ts`). Since 2026-10-24 the wrap is OPT-IN, `hooks install claude
+// --statusline`, because rewriting an operator's statusLine is the part of the design that bites.
 //
 // ── THE OPERATOR'S STATUSLINE IS NEVER REPLACED ───────────────────────────────────────────────────
 //
-// `collie hooks install claude` rewrites `statusLine.command` to this verb with the operator's command
+// `collie hooks install claude --statusline` rewrites `statusLine.command` to this verb with the operator's command
 // carried along, base64url-encoded, in the same string: `<collie> beacon statusline <b64> # collie-
 // statusline v1`. Nothing else in `statusLine` moves (`padding`, `refreshInterval`), and `uninstall`
 // decodes the string and puts the operator's command back exactly. Carrying it in the string, rather
@@ -34,8 +34,12 @@ import { EXIT } from "./io.ts";
 //
 // A settings file with NO statusLine gets none. A statusLine is not free: with one configured, Claude
 // Code stops drawing most of its footer hints (`esc to interrupt` among them), which the phone's
-// screen readers use. So the dots come only to an operator who already chose a statusLine, and a pane
-// without one draws the model tag as before.
+// screen readers use. So the windows come only to an operator who already chose a statusLine AND asked
+// for the wrap; a pane without one draws the model tag and the context dot.
+//
+// An install WITHOUT the flag leaves a plain statusLine alone, and re-points one that is already
+// wrapped (an operator who had the wrap keeps it, and a moved binary heals). Only a wrapped statusLine
+// whose command names another binary counts as behind: that one prints nothing until it is re-pointed.
 //
 // ── THE ORDER, AND WHAT CAN FAIL ──────────────────────────────────────────────────────────────────
 //
@@ -154,11 +158,14 @@ function withCommand(document: JsonObject, command: string): JsonObject {
 
 /**
  * The document with the operator's statusLine wrapped, or unchanged. A wrapper written by another
- * binary path or marker version is rewritten around the same original, which is how it heals.
+ * binary path or marker version is rewritten around the same original, which is how it heals. A plain
+ * statusLine is wrapped only with `wrapPlain` (`hooks install claude --statusline`); without it the
+ * plain command stays exactly as the operator wrote it.
  */
-export function wrapStatusLine(document: JsonObject, binary: string): JsonObject {
+export function wrapStatusLine(document: JsonObject, binary: string, wrapPlain: boolean): JsonObject {
   const state = statusLineState(document);
   if (state.kind === "plain") {
+    if (!wrapPlain) return document;
     if (state.command.length > ORIGINAL_MAX) return document;
     return withCommand(document, wrapCommand(binary, state.command));
   }
@@ -172,10 +179,13 @@ export function unwrapStatusLine(document: JsonObject): JsonObject {
   return state.kind === "wrapped" ? withCommand(document, state.original) : document;
 }
 
-/** Whether `install` would write this statusLine differently: unwrapped, or wrapped by another build. */
+/**
+ * Whether this statusLine is wrapped around another binary or marker version, so it prints nothing or
+ * is read by an older wrapper until `install` points it here. A plain statusLine is NOT behind: the
+ * wrap is the operator's to ask for.
+ */
 export function statusLineBehind(document: JsonObject, binary: string): boolean {
   const state = statusLineState(document);
-  if (state.kind === "plain") return state.command.length <= ORIGINAL_MAX;
   return state.kind === "wrapped" && state.command !== wrapCommand(binary, state.original);
 }
 
@@ -225,21 +235,6 @@ export interface StatusLineDeps extends EdgeTargetDeps {
   readonly now?: () => number;
 }
 
-/** Write the record to one state dir: a temp name, then a rename, so the bridge never reads half. */
-function writeUsage(deps: StatusLineDeps, stateDir: string, session: string, record: UsageRecord): void {
-  const dir = usageDir(stateDir);
-  deps.files.mkdirp(dir, USAGE_DIR_MODE);
-  if (!privateDir(deps, dir)) return;
-  const name = usageFileName(session);
-  const temp = join(dir, `.${name}.${process.pid}.tmp`);
-  try {
-    deps.files.write(temp, `${JSON.stringify(record)}\n`, 0o600);
-    deps.files.rename(temp, join(dir, name));
-  } catch {
-    deps.files.remove(temp);
-  }
-}
-
 /** Take the numbers. Never throws: a reading that cannot be written is a reading that is absent. */
 function takeReading(deps: StatusLineDeps, input: string): void {
   try {
@@ -250,7 +245,7 @@ function takeReading(deps: StatusLineDeps, input: string): void {
     if (usage === null) return;
     for (const stateDir of edgeStateDirs(deps)) {
       try {
-        writeUsage(deps, stateDir, usage.session, usage.record);
+        writeUsage(deps, stateDir, usage.session, mergeStatusLine(readUsage(deps, stateDir, usage.session), usage.record, usage.record.at));
       } catch {
         // No reading for this bridge. The tag draws the model alone.
       }

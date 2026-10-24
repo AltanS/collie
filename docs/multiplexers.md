@@ -247,17 +247,21 @@ Behavior details for Claude configuration changes:
   Project-level `.claude/settings.json` files are untouched.
 - Injects **five** hooks tagged `# collie-beacon v1` with 10-second timeouts. Existing hooks are
   preserved. `hooks uninstall claude` removes only Collie entries.
-- **Wraps your own statusLine, if you have one.** Its command becomes
-  `collie beacon statusline …`, and your script still runs and prints as before. The wrapper passes
-  the context use and the 5-hour and 7-day limits to the dots beside the model above the belt.
-  Collie never adds a statusLine, and `hooks uninstall claude` puts your command back exactly. Not
-  on Windows.
+- **Leaves your statusLine alone unless you ask.** Without a flag the install does not touch
+  `statusLine`. You still get the context dot beside the model above the belt: the hooks read the
+  session transcript, and the window size from the session start. With
+  `collie hooks install claude --statusline` Collie also wraps your own statusLine, and the 5-hour
+  and 7-day windows appear too. Its command becomes `collie beacon statusline …`, and your script
+  still runs and prints as before. Collie never adds a statusLine, and `hooks uninstall claude`
+  puts your command back exactly. An install without the flag keeps a wrap you already have and
+  points it at the current binary. Not on Windows.
 - **To change a wrapped statusLine, unwrap it first.** Run `collie hooks uninstall claude`, edit
-  `statusLine.command`, then run `collie hooks install claude` again. The wrapped command names the
-  collie binary by its path, so if that binary moves, the statusLine prints nothing until you run
-  the install again. `collie update` reminds you when the wrapper is missing. To try the wrapper by
-  hand, run it outside the multiplexer (`env -u HERDR_PANE_ID -u TMUX_PANE -u ZELLIJ_PANE_ID …`), or
-  it writes a reading into every running bridge.
+  `statusLine.command`, then run `collie hooks install claude --statusline` again. The wrapped
+  command names the collie binary by its path, so if that binary moves, the statusLine prints
+  nothing until you run the install again. `collie update` reminds you when a wrapped statusLine
+  points at an older binary. To try the wrapper by hand, run it outside the multiplexer
+  (`env -u HERDR_PANE_ID -u TMUX_PANE -u ZELLIJ_PANE_ID …`), or it writes a reading into every
+  running bridge.
 - **Claude Code reloads its hooks while it runs.** This holds for 2.1.301. Restart an older Claude
   if no hook edges come.
 - **Linux only.** The agent liveness check depends on `/proc`. Other operating systems do not emit

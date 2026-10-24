@@ -337,6 +337,12 @@ function mergeGroups(groups: readonly JsonValue[], ours: JsonObject): JsonValue[
 
 // ── The permission hold (M56 spec 12) ────────────────────────────────────────
 
+/**
+ * The flag that wraps the operator's statusLine: `collie hooks install claude --statusline`. Without
+ * it a plain statusLine is left alone (.adr/0115, amended 2026-10-24).
+ */
+export const STATUSLINE_FLAG = "--statusline";
+
 /** The flag that adds the permission hold: `collie hooks install claude --hold-permissions`. */
 export const HOLD_FLAG = "--hold-permissions";
 
@@ -603,14 +609,19 @@ function readHarness(deps: HooksDeps, args: readonly string[], verb: string): st
 export function cmdHooksInstall(deps: HooksDeps, args: readonly string[]): number {
   const harness = readHarness(deps, args, "install");
   if (harness === null) return EXIT.USAGE;
-  const unknown = args.slice(1).filter((arg) => arg !== HOLD_FLAG);
+  const unknown = args.slice(1).filter((arg) => arg !== HOLD_FLAG && arg !== STATUSLINE_FLAG);
   if (unknown.length > 0) {
-    deps.io.err(`error: unknown option \`${unknown[0]!}\`. The one option is \`${HOLD_FLAG}\`.`);
+    deps.io.err(`error: unknown option \`${unknown[0]!}\`. The options are \`${HOLD_FLAG}\` and \`${STATUSLINE_FLAG}\`.`);
     return EXIT.USAGE;
   }
   const { command, binary, source } = resolveHookCommand(deps.ctx, deps.fs);
   const wantsHold = args.includes(HOLD_FLAG);
+  const wantsStatusLine = args.includes(STATUSLINE_FLAG);
   if (harness === "codex") {
+    if (wantsStatusLine) {
+      deps.io.err(`error: \`codex\` has no statusLine to wrap. Run \`collie hooks install codex\` without \`${STATUSLINE_FLAG}\`.`);
+      return EXIT.USAGE;
+    }
     // Codex has no permission hook to hold: its install writes the notify hook only.
     if (wantsHold) {
       deps.io.err(`error: \`codex\` has no permission hold. Run \`collie hooks install codex\` without \`${HOLD_FLAG}\`.`);
@@ -634,6 +645,7 @@ export function cmdHooksInstall(deps: HooksDeps, args: readonly string[]): numbe
   let failed = false;
   let wrappedLines = 0;
   let plainLines = 0;
+  let noLines = 0;
 
   for (const rawTarget of claudeSettingsTargets(deps.ctx)) {
     const resolved = resolveTarget(deps, rawTarget);
@@ -656,13 +668,16 @@ export function cmdHooksInstall(deps: HooksDeps, args: readonly string[]): numbe
       failed = true;
       continue;
     }
-    // The operator's own statusLine, wrapped so the usage dots can read it (cli/statusline.ts). None
-    // is added where there is none, and none is wrapped on Windows, where the wrapper's shell is not
-    // the one Claude Code runs the command in.
-    const document = wrapsStatusLine() ? wrapStatusLine(outcome.document, binary) : outcome.document;
+    // The operator's own statusLine, wrapped so the 5h and 7d dots can read it (cli/statusline.ts), but
+    // only when asked for (`--statusline`). A statusLine that is already wrapped is re-pointed at this
+    // binary without the flag, so an operator who had the wrap keeps it. None is added where there is
+    // none, and none is wrapped on Windows, where the wrapper's shell is not the one Claude Code runs
+    // the command in.
+    const document = wrapsStatusLine() ? wrapStatusLine(outcome.document, binary, wantsStatusLine) : outcome.document;
     const line = statusLineState(document).kind;
     if (line === "wrapped") wrappedLines += 1;
     if (line === "plain") plainLines += 1;
+    if (line === "absent") noLines += 1;
     const text = serializeSettings(document);
     if (text === settings.text) {
       deps.io.out(`${target.path} already has them — no bytes changed.`);
@@ -694,11 +709,15 @@ export function cmdHooksInstall(deps: HooksDeps, args: readonly string[]): numbe
   }
   if (wrappedLines > 0) {
     deps.io.out(`  statusLine → \`${binary} beacon statusline\`: your own command still runs and prints as before.`);
-    deps.io.out("  The wrapper passes on the context use and the 5h and 7d limits, for the dots above the belt.");
-  } else if (!wrapsStatusLine()) {
-    if (plainLines > 0) deps.io.out("  statusLine not wrapped on Windows, so the phone shows no usage dots.");
-  } else {
-    deps.io.out("  No statusLine to wrap, so the phone shows no usage dots. Collie never adds a statusLine.");
+    deps.io.out("  The wrapper passes on the 5h and 7d limits, for the dots above the belt.");
+  } else if (wantsStatusLine) {
+    if (!wrapsStatusLine()) {
+      deps.io.out("  statusLine not wrapped on Windows, so the phone shows no 5h and 7d limits.");
+    } else if (noLines > 0 && plainLines === 0) {
+      deps.io.out("  No statusLine to wrap, so the phone shows no 5h and 7d limits. Collie never adds a statusLine.");
+    } else {
+      deps.io.out("  Your statusLine is not a plain command Collie can wrap, so it was left alone and the phone shows no 5h and 7d limits.");
+    }
   }
   return EXIT.OK;
 }
@@ -757,7 +776,7 @@ export type HookTargetState =
   | { readonly kind: "partial"; readonly at: string; readonly present: number }
   /** Ours, complete, but written by a build whose marker was a different version. */
   | { readonly kind: "stale"; readonly at: string }
-  /** Ours and complete, but the operator's statusLine is not wrapped by this build yet. */
+  /** Ours and complete, but the operator's WRAPPED statusLine names another collie binary, so it prints nothing. */
   | { readonly kind: "statusline"; readonly at: string }
   | { readonly kind: "installed"; readonly at: string };
 
@@ -800,7 +819,9 @@ export function hooksAreBehind(deps: HooksDeps): boolean {
 
 /**
  * WHAT is behind: the hooks themselves (a missing registration or a stale marker), or only the
- * statusLine wrap. The hooks win when both are, because their install wraps the statusLine as well.
+ * statusLine wrap, which counts only when the statusLine IS wrapped and names another binary. An
+ * unwrapped statusLine is never behind: the wrap is opt-in. The hooks win when both are, because their
+ * install re-points a wrapped statusLine as well.
  */
 export function behindReason(deps: HooksDeps): "hooks" | "statusline" | null {
   const states = claudeSettingsTargets(deps.ctx).map((target) => targetState(deps, target));
@@ -877,7 +898,7 @@ function describeBeacons(deps: HooksDeps, target: HookTarget): string {
     case "stale":
       return `installed at ${state.at} — re-run install to heal it to v${HOOK_MARKER_VERSION}`;
     case "statusline":
-      return `installed (${state.at}), statusLine not wrapped — re-run install to wrap it`;
+      return `installed (${state.at}), wrapped statusLine points at another collie binary — re-run \`install claude --statusline\` to re-point it`;
     case "installed":
       return `installed (${state.at})`;
   }
@@ -902,7 +923,8 @@ export function cmdHooks(deps: HooksDeps, args: readonly string[]): number {
         deps.io.err(`error: unknown hooks subcommand \`${sub}\``);
       }
       deps.io.err(hooksUsage());
-      deps.io.err("  install     register the beacon hooks: `hooks install claude` (add `--hold-permissions` to hold permissions), or `hooks install codex`");
+      deps.io.err("  install     register the beacon hooks: `hooks install claude` (add `--hold-permissions` to hold permissions, and `--statusline` to also wrap your statusLine");
+      deps.io.err("              so the phone shows the 5-hour and 7-day windows; your command still runs and prints as before), or `hooks install codex`");
       deps.io.err("  uninstall   remove only the entries collie owns: `hooks uninstall claude`, or `hooks uninstall codex`");
       deps.io.err("  status      what each settings file carries right now (reads only)");
       return EXIT.USAGE;

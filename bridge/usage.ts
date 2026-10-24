@@ -8,7 +8,9 @@
 // holds no model key and reads no credential, so it does not ask the vendor for these. It asks the
 // agent: `collie hooks install claude` wraps the operator's OWN statusLine command, and the wrapper
 // (`collie beacon statusline`, cli/statusline.ts) writes the three numbers to one small file here
-// before it runs the operator's command and passes its output through untouched.
+// before it runs the operator's command and passes its output through untouched. Since 2026-10-24 the
+// context number also comes from the session transcript through the beacon hooks, with no statusLine
+// (`cli/context-reading.ts`), and the wrap is opt-in.
 //
 // ONE FILE PER SESSION, named by a digest of the harness session id, never by the pane: the pane
 // already knows its session (`agentSession`, from Herdr or the beacon), and a session id cannot be
@@ -75,13 +77,26 @@ export interface PaneUsage {
   limits?: UsageLimit[];
 }
 
-/** The file the wrapper writes: the reading plus when and for which session. */
+/**
+ * The file a writer leaves: the reading plus when and for which session. Two writers share it, the
+ * statusLine wrapper and the beacon hooks (`cli/usage-store.ts` merges, neither erases the other's
+ * fields).
+ */
 export interface UsageRecord extends PaneUsage {
   schemaVersion: number;
   harness: string;
-  /** Epoch ms of the write. */
+  /** Epoch ms of the write; with kept `limits`, of the write that reported them. */
   at: number;
+  /**
+   * The session's context window in tokens, as its SessionStart hook said (`cli/context-reading.ts`).
+   * A writer's note to the next writer, never drawn: {@link usageAt} leaves it out. Absent when the
+   * start named no model, and then the transcript reading writes no context.
+   */
+  window?: number;
 }
+
+/** The largest window a record may name. A bound on a strange file, not a model's window. */
+const WINDOW_MAX = 100_000_000;
 
 /** `${stateDir}/usage`. */
 export function usageDir(stateDir: string): string {
@@ -121,6 +136,8 @@ export function parseUsageRecord(text: string): UsageRecord | null {
   const record: UsageRecord = { schemaVersion: USAGE_SCHEMA_VERSION, harness: harness.slice(0, 32), at };
   const context = asPercent(root.context);
   if (context !== undefined) record.context = context;
+  const size = asJsonNumber(root.window);
+  if (size !== undefined && Number.isInteger(size) && size > 0 && size <= WINDOW_MAX) record.window = size;
   const rows = Array.isArray(root.limits) ? root.limits.map(asJsonObject) : [];
   const limits: UsageLimit[] = [];
   for (const window of USAGE_WINDOWS) {

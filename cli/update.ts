@@ -1087,7 +1087,7 @@ const HOOKS_CHECK_TIMEOUT_MS = 5_000;
  * silence too. The update already succeeded, and no afterthought may take that back.
  */
 /**
- * The word `hooks status --check` prints when only the statusLine wrap is behind. Spelled here, not
+ * The word `hooks status --check` prints when only the statusLine wrap is behind: wrapped, and pointing at another binary. Spelled here, not
  * imported: cli/hooks.ts would pull the harness profiles into the bootstrap path cli/main.test.ts
  * keeps lean. cli/update.test.ts pins that it equals hooks.ts's `STATUSLINE_BEHIND_WORD`.
  */
@@ -1106,8 +1106,8 @@ function nudgeHooks(deps: UpdateDeps, binary: string): void {
   // prints nothing, and its lag is always the hooks.
   if (r.stdout.trim() === STATUSLINE_LAG_WORD) {
     deps.io.out(
-      "note: this build wraps your Claude statusLine for the usage dots, and your settings do not carry the wrapper yet —" +
-        " run `collie hooks install claude` to add it.",
+      "note: your wrapped statusLine points at an older collie binary;" +
+        " run `collie hooks install claude --statusline` to re-point it.",
     );
     return;
   }

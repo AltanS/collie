@@ -58,6 +58,20 @@ describe("parseUsageRecord", () => {
   });
 });
 
+describe("the window note", () => {
+  it("round-trips as a positive integer, a record without it still parses, and junk is dropped", () => {
+    expect(parseUsageRecord(record({ context: 4, window: 1_000_000 }))).toEqual({ schemaVersion: 1, harness: "claude", at: NOW, context: 4, window: 1_000_000 });
+    expect(parseUsageRecord(record({ context: 4 }))?.window).toBeUndefined();
+    for (const window of [0, -5, 1.5, "200000", null, 1e12]) expect(parseUsageRecord(record({ context: 4, window }))?.window).toBeUndefined();
+  });
+
+  it("is never drawn: the phone gets the context and the limits only", () => {
+    const parsed = parseUsageRecord(record({ context: 4, window: 200_000 }));
+    expect(usageAt(parsed!, NOW)).toEqual({ context: 4 });
+    expect(usageAt(parseUsageRecord(record({ window: 200_000 }))!, NOW)).toBeUndefined();
+  });
+});
+
 describe("usageAt", () => {
   it("drops a window whose reset has passed, as Claude Code does", () => {
     const parsed = parseUsageRecord(
