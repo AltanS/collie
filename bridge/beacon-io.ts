@@ -22,7 +22,7 @@ import { HOOK_TARGET_SCHEMA_VERSION, hookTargetFileName, hookTargetsDir, parseHo
 import { parseProcStartTime, procStatPath } from "./beacon/liveness.ts";
 import { parseEdge } from "./beacon/parse.ts";
 import type { SavedSource, SourceStore } from "./surface/edges.ts";
-import { asJsonObject, asJsonString, parseJson } from "../web/src/lib/json.ts";
+import { asJsonNumber, asJsonObject, asJsonString, parseJson } from "../web/src/lib/json.ts";
 import { beaconsDir, BEACON_FILE_SUFFIX, EDGE_FILE, edgesDir } from "./beacon/paths.ts";
 import type { BeaconDirectory, BeaconLiveness, BeaconSweepDeps } from "./beacon/reader.ts";
 import type { JsonValue } from "./json.ts";
@@ -308,7 +308,9 @@ export function fileSourceStore(stateDir: string): SourceStore {
         const session = asJsonString(object?.session);
         const paneId = asJsonString(object?.paneId);
         const record = object?.record === undefined ? null : parseEdge(JSON.stringify(object.record));
-        if (session !== undefined && paneId !== undefined && record !== null) out.push({ session, paneId, record });
+        if (session === undefined || paneId === undefined || record === null) continue;
+        const modelAt = asJsonNumber(object?.modelAt);
+        out.push(modelAt !== undefined && Number.isFinite(modelAt) ? { session, paneId, record, modelAt } : { session, paneId, record });
       }
       return out;
     },

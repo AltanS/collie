@@ -13,9 +13,10 @@ import { EDGE_SCHEMA_VERSION, type BeaconMarker, type EdgeRecord } from "../beac
 import type { EdgeSpool } from "../beacon-io.ts";
 import type { ForegroundProcess } from "../journal/types.ts";
 import { muxOk, type MuxGrid, type MuxGridRequest, type MuxOutcome } from "../mux/types.ts";
+import type { JsonValue } from "../json.ts";
 import type { AgentView } from "../types.ts";
 import { isFree, modalWord } from "../../web/src/lib/surface/surface.ts";
-import { deliverEdge, EDGE_MAX_AGE_MS, EDGE_TAG, EdgeRouter, HOOK_LIVENESS_MS, kindOfEdge, placeEdge, type EdgeHoldInfo, type EdgeSinks, type EdgeTarget, type PlacedEdge, type SavedSource, type SourceStore } from "./edges.ts";
+import { deliverEdge, EDGE_MAX_AGE_MS, EDGE_TAG, EdgeRouter, HOOK_LIVENESS_MS, kindOfEdge, modelAfter, placeEdge, type EdgeHoldInfo, type EdgeSinks, type EdgeTarget, type PlacedEdge, type SavedSource, type SourceStore } from "./edges.ts";
 import { SurfaceShadow } from "./shadow.ts";
 
 const PANES = join(import.meta.dir, "..", "..", "web", "src", "fixtures", "panes");
@@ -236,6 +237,68 @@ describe("the hook target on the liveness tick", () => {
     clock += HOOK_LIVENESS_MS;
     await keeper.tick();
     expect(kept).toBe(2);
+  });
+});
+
+describe("the start's model (a fresh pane names its model before its first message)", () => {
+  test("a start edge's model stays on the pane's source over the later edges of the same pid, and leaves with it", async () => {
+    const { r, spool, lines } = router([target()]);
+    spool.files.push(JSON.stringify(record({ event: "SessionStart", model: "claude-sonnet-5-5", at: 1_000_100 })));
+    await r.tick();
+    expect(r.modelOf("main", "w1:p1")).toEqual({ model: "claude-sonnet-5-5", at: 1_000_100 });
+    expect(lines.some((line) => line.includes("event=SessionStart") && line.endsWith("model=claude-sonnet-5-5"))).toBe(true);
+    expect(r.modelOf("main", "w1:p2")).toBeUndefined();
+
+    spool.files.push(JSON.stringify(record({ event: "Stop", at: 1_000_200 })));
+    await r.tick();
+    expect(r.modelOf("main", "w1:p1")).toEqual({ model: "claude-sonnet-5-5", at: 1_000_100 });
+
+    // A /clear starts again in the same process, and its start names the model anew.
+    spool.files.push(JSON.stringify(record({ event: "SessionStart", model: "claude-opus-5-5[1m]", at: 1_000_300 })));
+    await r.tick();
+    expect(r.modelOf("main", "w1:p1")).toEqual({ model: "claude-opus-5-5[1m]", at: 1_000_300 });
+
+    spool.files.push(JSON.stringify(record({ event: "SessionEnd", at: 1_000_400 })));
+    await r.tick();
+    expect(r.modelOf("main", "w1:p1")).toBeUndefined();
+  });
+
+  test("another process in the pane does not inherit the model", () => {
+    const known = { pid: PID, pidStartTime: START, model: { model: "claude-sonnet-5-5", at: 1 } };
+    expect(modelAfter(known, record({ event: "Stop" }))).toEqual({ model: "claude-sonnet-5-5", at: 1 });
+    expect(modelAfter(known, record({ event: "Stop", pid: PID + 1 }))).toBeUndefined();
+    expect(modelAfter(known, record({ event: "Stop", pidStartTime: START + 1 }))).toBeUndefined();
+    expect(modelAfter(undefined, record({ event: "SessionStart" }))).toBeUndefined();
+  });
+
+  test("the parse keeps a model name and drops a malformed one, never the edge", () => {
+    const parse = (model: JsonValue) => parseEdge(JSON.stringify({ ...record({ event: "SessionStart" }), model }));
+    expect(parse("claude-opus-5-5[1m]")?.model).toBe("claude-opus-5-5[1m]");
+    for (const bad of ["opus\n5", "x".repeat(129), "", "   ", 42, null, { name: "opus" }, "\u001b[31mopus"]) {
+      const edge = parse(bad);
+      expect(edge?.event).toBe("SessionStart");
+      expect(edge?.model).toBeUndefined();
+    }
+    expect(parse("m".repeat(128))?.model).toHaveLength(128);
+  });
+
+  test("a restarted bridge still knows the model, at the time its hook ran", async () => {
+    const saved: SavedSource[][] = [];
+    const store: SourceStore = { load: () => saved.at(-1) ?? [], save: (sources) => void saved.push([...sources]) };
+    const spool = new FakeSpool();
+    const first = new EdgeRouter({ spool, store, liveness: alive, targets: () => [target()], log: () => undefined, now: () => 1_000_500 });
+    spool.files.push(JSON.stringify(record({ event: "SessionStart", model: "claude-sonnet-5-5", at: 1_000_100 })));
+    await first.tick();
+    spool.files.push(JSON.stringify(record({ event: "SessionStart", model: "claude-opus-5-5", at: 1_000_200 })));
+    await first.tick();
+    // The newest save holds the model of the newest start, with its own time.
+    expect(saved.at(-1)?.map((s) => [s.record.model, s.modelAt])).toEqual([["claude-opus-5-5", 1_000_200]]);
+    // A later edge that names none: the save that follows (if any) keeps the model and its time.
+    spool.files.push(JSON.stringify(record({ event: "Stop", at: 1_000_300 })));
+    await first.tick();
+    const restarted = new EdgeRouter({ spool: new FakeSpool(), store, liveness: alive, targets: () => [target()], log: () => undefined, now: () => 2_000_000 });
+    await restarted.tick();
+    expect(restarted.modelOf("main", "w1:p1")).toEqual({ model: "claude-opus-5-5", at: 1_000_200 });
   });
 });
 

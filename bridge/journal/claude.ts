@@ -30,7 +30,7 @@ import { readdir, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import { observedClaim, type Sourced } from "../cache/claims.ts";
-import type { CacheProbe } from "../cache/engine.ts";
+import type { CacheProbe, ChoiceOnly } from "../cache/engine.ts";
 import type { JsonObject, JsonValue } from "../json.ts";
 import {
   createUnknownCounter,
@@ -46,7 +46,7 @@ import {
   type RowReducer,
 } from "./reduce.ts";
 import { asRecord, asText, probeTail, tokenCount } from "./cache-probe.ts";
-import { claudeResets, effortChosenAfter, lastTwoTurns, modelChosenAfter } from "./claude-resets.ts";
+import { choicesBeforeFirstTurn, claudeResets, effortChosenAfter, lastTwoTurns, modelChoiceAfter } from "./claude-resets.ts";
 // The shared guard on what an image block may become. It lives in pi's adapter because it also
 // resolves pi's `blob:sha256:` refs against pi's own store, and `bridge/server.ts` reaches for it
 // from there for the same reason. The rule it enforces is not pi's, though: a journal is an AGENT's
@@ -1308,6 +1308,7 @@ export function claudeJournal(roots: string | readonly string[]): JournalAdapter
     parse: (text) => parseClaudeTranscript(text),
     reducer: () => createClaudeReducer(),
     cacheProbe: (ref) => claudeCacheProbe(source, ref),
+    choiceProbe: (ref) => claudeChoiceProbe(source, ref),
     // Proven 2026-10-07 on a throwaway pane under Herdr 0.9.3: with two messages queued behind a
     // running tool, `ctrl+Enter` through `POST /api/pane/:id/keys` made Claude Code write a `remove`
     // row for BOTH (`absorbed_mid_turn`) and the "ctrl+enter to send now" hint went away. NOT on tmux
@@ -1363,6 +1364,26 @@ function ttlFromUsage(usage: JsonObject, path: string): Sourced<number> | undefi
 }
 
 /**
+ * The `/model` and `/effort` choices in a log whose window holds no turn, or null. A session that has
+ * only just started names its model this way: Claude Code writes the `/model` record before the first
+ * message exists. The window holding a turn answers null, because {@link claudeCacheProbe} reads the
+ * choices after that turn itself. Nothing about the cache comes from it.
+ */
+async function claudeChoiceProbe(source: ClaudeTranscriptSource, ref: AgentSessionRef): Promise<ChoiceOnly | null> {
+  const tail = await probeTail(source, ref);
+  if (tail === null || lastTwoTurns(tail.lines) !== null) return null;
+  const { model, effort } = choicesBeforeFirstTurn(tail.lines);
+  if (model === undefined && effort === undefined) return null;
+  const choices: ChoiceOnly = {};
+  if (model !== undefined) {
+    choices.selectedModel = model.name;
+    choices.selectedModelAt = model.at;
+  }
+  if (effort !== undefined) choices.effort = effort;
+  return choices;
+}
+
+/**
  * The newest turn's reading, plus every reset event around it.
  *
  * One walk of the same 128 KB tail finds the newest turn and the turn before it
@@ -1378,7 +1399,8 @@ async function claudeCacheProbe(
   if (tail === null) return null;
   const turns = lastTwoTurns(tail.lines);
   // The tail held no assistant turn at all — a session that has only just started, or one turn larger
-  // than the window. The tracker keeps whatever the last successful probe left behind.
+  // than the window. The tracker keeps whatever the last successful probe left behind, and asks
+  // {@link claudeChoiceProbe} for a `/model` chosen before the first message.
   if (turns === null) return null;
   const { entry, message, at, stamp } = turns.newest;
   const usage = asRecord(message.usage) ?? {};
@@ -1394,8 +1416,11 @@ async function claudeCacheProbe(
   if (observed !== undefined) probe.observedTtlSeconds = observed;
   const model = asText(message.model);
   if (model !== undefined) probe.model = model;
-  const chosen = modelChosenAfter(turns);
-  if (chosen !== undefined) probe.selectedModel = chosen;
+  const chosen = modelChoiceAfter(turns);
+  if (chosen !== undefined) {
+    probe.selectedModel = chosen.name;
+    probe.selectedModelAt = chosen.at;
+  }
   // Claude Code stamps `effort` on each assistant record; an `/effort` since then wins (#463).
   const effort = effortChosenAfter(turns) ?? asText(entry.effort);
   if (effort !== undefined) probe.effort = effort;

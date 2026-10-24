@@ -175,27 +175,73 @@ export function resetsBetween(
   return events.toSorted((a, b) => a.at - b.at);
 }
 
-/**
- * The newest `/model` choice written AFTER the newest turn, by its display name, or undefined.
- *
- * The turn's own `message.model` says what the last request ran on; a `/model` after it says what the
- * next one will. The pane's model label wants the second when there is one. A subagent's record is
- * not the conversation's choice, so a sidechain is skipped, as `resetsBetween` skips it.
- */
-export function modelChosenAfter(turns: ClaudeTurns): string | undefined {
-  let chosen: string | undefined;
-  for (const record of stretch(turns.records, turns.newest.index + 1, turns.records.length)) {
-    if (record.isSidechain === true) continue;
-    const text = commandText(record);
-    if (text === undefined) continue;
-    const model = modelSetBy(text);
-    if (model !== null) chosen = model;
-  }
-  return chosen;
+/** A `/model` choice: the name Claude Code printed, and the epoch ms of the record that wrote it. */
+export interface ModelChoice {
+  readonly name: string;
+  readonly at: number;
+}
+
+/** The newest `/model` and `/effort` choices in a run of records. */
+export interface LocalChoices {
+  model?: ModelChoice;
+  effort?: string;
 }
 
 /** `Set effort level to max (this session only).` → `max`. The word as Claude Code printed it. */
 const EFFORT_SET = /^Set effort level to ([A-Za-z][\w-]*)/;
+
+/**
+ * The newest `/model` and `/effort` choices in a run of records, oldest first in, newest wins. A
+ * subagent's record is not the conversation's choice, so a sidechain is skipped, as `resetsBetween`
+ * skips it. A `/model` record with no readable timestamp still names the model, at time 0, which
+ * loses to every other source that has a time.
+ */
+export function choicesIn(records: readonly JsonObject[]): LocalChoices {
+  let model: ModelChoice | undefined;
+  let effort: string | undefined;
+  for (const record of records) {
+    if (record.isSidechain === true) continue;
+    const text = commandText(record);
+    if (text === undefined) continue;
+    const name = modelSetBy(text);
+    if (name !== null) {
+      const at = Date.parse(asText(record.timestamp) ?? "");
+      model = { name, at: Number.isNaN(at) ? 0 : at };
+      continue;
+    }
+    if (!text.startsWith(STDOUT)) continue;
+    const word = EFFORT_SET.exec(text.slice(STDOUT.length))?.[1];
+    if (word !== undefined) effort = word;
+  }
+  const choices: LocalChoices = {};
+  if (model !== undefined) choices.model = model;
+  if (effort !== undefined) choices.effort = effort;
+  return choices;
+}
+
+/**
+ * The choices in a window that holds NO turn: a session in which the operator ran `/model` or
+ * `/effort` before the first message. Claude Code writes the transcript at that moment (seen on
+ * 2.1.310: the caveat, the `<command-name>` record and the `<local-command-stdout>` record, no turn).
+ */
+export function choicesBeforeFirstTurn(lines: readonly string[]): LocalChoices {
+  return choicesIn(lines.map(parseLine).filter((r): r is JsonObject => r !== null));
+}
+
+/**
+ * The newest `/model` choice written AFTER the newest turn, with its time, or undefined.
+ *
+ * The turn's own `message.model` says what the last request ran on; a `/model` after it says what the
+ * next one will. The pane's model label wants the second when there is one.
+ */
+export function modelChoiceAfter(turns: ClaudeTurns): ModelChoice | undefined {
+  return choicesIn(stretch(turns.records, turns.newest.index + 1, turns.records.length)).model;
+}
+
+/** The newest `/model` choice written AFTER the newest turn, by its display name, or undefined. */
+export function modelChosenAfter(turns: ClaudeTurns): string | undefined {
+  return modelChoiceAfter(turns)?.name;
+}
 
 /**
  * The newest `/effort` choice written AFTER the newest turn, or undefined.
@@ -204,15 +250,7 @@ const EFFORT_SET = /^Set effort level to ([A-Za-z][\w-]*)/;
  * next one will, so the pane's label wants the second, exactly as {@link modelChosenAfter} does (#463).
  */
 export function effortChosenAfter(turns: ClaudeTurns): string | undefined {
-  let chosen: string | undefined;
-  for (const record of stretch(turns.records, turns.newest.index + 1, turns.records.length)) {
-    if (record.isSidechain === true) continue;
-    const text = commandText(record);
-    if (text === undefined || !text.startsWith(STDOUT)) continue;
-    const word = EFFORT_SET.exec(text.slice(STDOUT.length))?.[1];
-    if (word !== undefined) chosen = word;
-  }
-  return chosen;
+  return choicesIn(stretch(turns.records, turns.newest.index + 1, turns.records.length)).effort;
 }
 
 /** One assistant record that stands for a request Claude Code really sent. */

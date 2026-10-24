@@ -87,3 +87,27 @@ Concretely:
   could be proven to come from a process the operator started, under a credential Collie issued, then
   "a file in a directory" stops being the threat model and road 2 becomes a different proposition,
   worth re-arguing on that evidence. Until then, a beacon is read and never obeyed.
+
+## Amended 2026-10-24: the start edge names the model
+
+A fresh Claude pane showed no model above the belt until its first message. The label came only from
+the transcript, and Claude Code 2.1.310 writes no transcript until the first message or local command
+(lab, 2026-10-24: `claude --model sonnet`, no prompt, no `.jsonl` under the config root, so the tag
+stayed empty). The `SessionStart` hook input already carries `model` in an interactive session.
+
+- The `SessionStart` edge gains one optional field, `model`: printable ASCII, at most 128 characters,
+  read raw and refused whole on a newline or a control character (`bridge/beacon/parse.ts`
+  `edgeModelOf`, used by the emitter and the parse alike). Its consumer is a display: the model tag.
+- The edge router keeps the model on the pane's hook source, over the later edges of the same pid, and
+  drops it with the source. It is saved with the source, with the time its hook ran.
+- The transcript still wins (`bridge/pane-model.ts`): the hook's model shows when the transcript names
+  none, or when the hook ran after the transcript's newest naming and names another model. A turn or a
+  `/model` written after the start takes over again. The comparison is by family and version, and the
+  `[1m]` tag is removed for the label; the window it names reaches the usage dots through ADR 0115.
+- `/model` fires no hook. Before the first message Claude Code still writes its `/model` record at once
+  (same lab: the caveat, the `<command-name>/model</command-name>` record and the `Set model to`
+  stdout record, no turn), so the Claude adapter gains `choiceProbe`, which reads that record when the
+  window holds no turn. No screen rule was needed.
+
+The blast radius is unchanged: a hostile edge can make a tag name a wrong model, a lie on screen. No
+rule, TTL, cache state or send reads it.

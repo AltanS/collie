@@ -19,6 +19,11 @@
 // source is placed again like an edge (its markers, its pid and start time), and one whose pid is gone
 // is dropped.
 //
+// THE START'S MODEL. A start edge may name the model the session starts on (`EdgeRecord.model`). The
+// router keeps it on the pane's hook source, carries it over the later edges of the same pid, and drops
+// it with the source, so a pane whose agent left names no model from a hook. It is saved with the
+// source, so a restarted bridge still knows it. bridge/pane-model.ts decides when it is shown.
+//
 // No harness name lives here (no-harness-names.test.ts scans this folder). The edge names its own
 // harness, and that harness's profile maps the event to a kind.
 
@@ -29,6 +34,7 @@ import type { EdgeRecord } from "../beacon/types.ts";
 import type { EdgeSpool } from "../beacon-io.ts";
 import type { ForegroundProcess } from "../journal/types.ts";
 import type { MuxOutcome } from "../mux/types.ts";
+import type { ModelReading } from "../pane-model.ts";
 import { edgeKindOf, type EdgeKind } from "../../web/src/lib/surface/edges.ts";
 import { findProfile, loadProfiles } from "../../web/src/lib/surface/profile.ts";
 
@@ -146,6 +152,22 @@ interface HookSource {
   readonly pid: number;
   readonly pidStartTime: number;
   readonly record: EdgeRecord;
+  /**
+   * The model the newest start edge of this pid named, and when the hook ran: the edge's own `at`, by
+   * the same machine clock the transcript's timestamps use, so the label can tell which came later.
+   * Undefined when no start of this pid named one.
+   */
+  readonly model: ModelReading | undefined;
+}
+
+/**
+ * The model a pane's hook source names after one more edge: the edge's own when it carries one, else
+ * the one the source already had while the pid is the same process, else none.
+ */
+export function modelAfter(known: Pick<HookSource, "pid" | "pidStartTime" | "model"> | undefined, record: EdgeRecord): ModelReading | undefined {
+  if (record.model !== undefined) return { model: record.model, at: record.at };
+  if (known === undefined || known.pid !== record.pid || known.pidStartTime !== record.pidStartTime) return undefined;
+  return known.model;
 }
 
 /** A live source as saved across a restart: the session, the pane and the last edge it sent. */
@@ -153,6 +175,8 @@ export interface SavedSource {
   readonly session: string;
   readonly paneId: string;
   readonly record: EdgeRecord;
+  /** When the hook that named `record.model` ran, which may be an earlier edge than `record`. */
+  readonly modelAt?: number;
 }
 
 /** Where the live sources are kept across a restart. Both calls never throw to the router. */
@@ -177,6 +201,13 @@ export interface EdgeRouterDeps {
   readonly onDrop?: (record: EdgeRecord | null, reason: DropReason) => void;
   readonly log?: (line: string) => void;
   readonly now?: () => number;
+}
+
+/** A live source as it is saved. The model rides on the saved record, with the time its own hook ran. */
+function savedOf(source: HookSource): SavedSource {
+  const saved: SavedSource = { session: source.target.session, paneId: source.paneId, record: source.record };
+  if (source.model === undefined) return saved;
+  return { ...saved, record: { ...source.record, model: source.model.model }, modelAt: source.model.at };
 }
 
 function keyOf(session: string, paneId: string): string {
@@ -253,7 +284,10 @@ export class EdgeRouter {
     const kind = kindOfEdge(record);
     const key = keyOf(placement.target.session, placement.paneId);
     if (kind === "end") this.forget(key);
-    else this.remember(key, { target: placement.target, paneId: placement.paneId, pid: record.pid, pidStartTime: record.pidStartTime, record });
+    else {
+      const model = modelAfter(this.sources.get(key), record);
+      this.remember(key, { target: placement.target, paneId: placement.paneId, pid: record.pid, pidStartTime: record.pidStartTime, record, model });
+    }
     this.log(
       [
         `[surface] ${EDGE_TAG}`,
@@ -263,6 +297,7 @@ export class EdgeRouter {
         `session=${placement.target.session}`,
         `pane=${placement.paneId}`,
         `prompt=${record.promptHash === null ? "-" : "hashed"}`,
+        ...(record.model === undefined ? [] : [`model=${record.model}`]),
       ].join(" "),
     );
     this.deliver(placement.target, placement.paneId, { kind, record, at: now });
@@ -280,7 +315,9 @@ export class EdgeRouter {
       const placement = await placeEdge(saved.record, targets.filter((target) => target.session === saved.session), this.deps.liveness);
       if (placement.kind === "placed") {
         const key = keyOf(placement.target.session, placement.paneId);
-        if (!this.sources.has(key)) this.remember(key, { target: placement.target, paneId: placement.paneId, pid: saved.record.pid, pidStartTime: saved.record.pidStartTime, record: saved.record });
+        // The saved model keeps the time its hook ran, so a log that named a model after it still wins.
+        const model = saved.record.model === undefined ? undefined : { model: saved.record.model, at: saved.modelAt ?? saved.record.at };
+        if (!this.sources.has(key)) this.remember(key, { target: placement.target, paneId: placement.paneId, pid: saved.record.pid, pidStartTime: saved.record.pidStartTime, record: saved.record, model });
       } else if (placement.reason === "no-pane" && this.now() < this.seedUntil) {
         waiting.push(saved);
       }
@@ -289,11 +326,19 @@ export class EdgeRouter {
     if (waiting.length === 0) this.persist();
   }
 
-  /** A pane's source is live, or its pid changed: saved when that is news. */
+  /**
+   * The model the pane's live hook source names, from its newest start edge, or undefined: no live
+   * source, or a start that named none.
+   */
+  modelOf(session: string, paneId: string): ModelReading | undefined {
+    return this.sources.get(keyOf(session, paneId))?.model;
+  }
+
+  /** A pane's source is live, its pid changed, or its start named another model: saved when that is news. */
   private remember(key: string, source: HookSource): void {
     const known = this.sources.get(key);
     this.sources.set(key, source);
-    if (known === undefined || known.pid !== source.pid || known.pidStartTime !== source.pidStartTime) this.persist();
+    if (known === undefined || known.pid !== source.pid || known.pidStartTime !== source.pidStartTime || known.model?.model !== source.model?.model) this.persist();
   }
 
   private forget(key: string): void {
@@ -304,7 +349,7 @@ export class EdgeRouter {
   private persist(): void {
     const store = this.deps.store;
     if (store === undefined) return;
-    const live: SavedSource[] = [...this.sources.values()].map((source) => ({ session: source.target.session, paneId: source.paneId, record: source.record }));
+    const live: SavedSource[] = [...this.sources.values()].map(savedOf);
     try {
       store.save([...live, ...this.seeds]);
     } catch (err) {

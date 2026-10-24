@@ -164,4 +164,13 @@ describe("the live hook sources across a restart", () => {
     writeFileSync(join(dir, "surface", "hook-sources.json"), "not json");
     expect(store.load()).toEqual([]);
   });
+
+  test("keeps a start's model and the time its hook ran; a time that is not a number is dropped", () => {
+    const store = fileSourceStore(dir);
+    const started = { ...RECORD, event: "Stop", detail: null, model: "claude-opus-5-5[1m]" };
+    store.save([{ session: "main", paneId: "w1:p1", record: started, modelAt: 999_000 }]);
+    expect(store.load()).toEqual([{ session: "main", paneId: "w1:p1", record: started, modelAt: 999_000 }]);
+    writeFileSync(join(dir, "surface", "hook-sources.json"), JSON.stringify([{ session: "main", paneId: "w1:p1", record: started, modelAt: "soon" }]));
+    expect(store.load()).toEqual([{ session: "main", paneId: "w1:p1", record: started }]);
+  });
 });

@@ -3,6 +3,7 @@ import { isAbsolute, join } from "node:path";
 
 import { BEACON_DIR_MODE, beaconFileName, beaconKey, beaconsDir, EDGE_FILE, EDGE_MAX_AGE_MS, EDGE_SPOOL_MAX, edgesDir } from "../bridge/beacon/paths.ts";
 import { HOOK_TARGET_FILE, HOOK_TARGETS_MAX, hookTargetsDir, parseHookTarget } from "../bridge/beacon/hook-targets.ts";
+import { edgeModelOf } from "../bridge/beacon/parse.ts";
 import { parseProcStartTime, procStatPath } from "../bridge/beacon/liveness.ts";
 import { HOST } from "../bridge/host.ts";
 import {
@@ -61,7 +62,8 @@ export { privateDir };
 // without either, and `idle_prompt` fires ~60 s after a response in an INTERACTIVE session only.
 // Their field lists are the documented ones (code.claude.com/docs/en/hooks.md, read 2026-08-20), and
 // this verb reads neither: `hook_event_name` and `session_id` are the only fields it touches, plus the
-// context-reading fields below (`transcript_path`, `source`, `model`, `context_tokens`).
+// context-reading fields below (`transcript_path`, `source`, `model`, `context_tokens`). `model` also
+// rides on the `SessionStart` edge, so the pane names its model before its first turn (below).
 // `agent_id` (present only for a SUBAGENT's events) was absent from every captured payload, which is
 // the case the gate below is for.
 //
@@ -524,9 +526,13 @@ export async function cmdBeaconEmit(deps: BeaconEmitDeps): Promise<number> {
     // The edges first, each in its own guard: a beacon that cannot be written must not cost an edge,
     // one target that cannot be written must not cost the others, and the other way round.
     const holds = hold === undefined ? false : holdsNow(deps, hold.event, cwdOf(payload));
+    // The start's model rides on its edge, so the pane names its model before the transcript holds a
+    // turn: Claude Code writes no transcript until the first message or local command (seen on
+    // 2.1.310). Bounded and raw; a name that is not one adds no field and still writes the edge.
+    const model = registration.event === "SessionStart" ? edgeModelOf(payload.model) : null;
     for (const stateDir of stateDirs()) {
       try {
-        writeEdge(deps, stateDir, {
+        const record: EdgeRecord = {
           schemaVersion: EDGE_SCHEMA_VERSION,
           harness: BEACON_HARNESS,
           event: registration.event,
@@ -537,7 +543,8 @@ export async function cmdBeaconEmit(deps: BeaconEmitDeps): Promise<number> {
           at: now,
           promptHash: promptHashOf(deps, stateDir, payload),
           holds,
-        });
+        };
+        writeEdge(deps, stateDir, model === null ? record : { ...record, model });
       } catch {
         // No edge for this target. The screen still reads the pane on its own poll.
       }
