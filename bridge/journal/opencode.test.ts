@@ -1570,9 +1570,9 @@ describe("parseOpencodeTranscript: the structured tool call", () => {
     });
   });
 
-  test("a tool outside the nine kinds is `other` and reads exactly as its row did", () => {
-    const part = firstTool(one(toolPart("todowrite", { status: "completed", input: { todos: [] }, output: "ok" })));
-    expect(part.call).toEqual({ kind: "other", name: "todowrite", summary: part.summary });
+  test("a tool outside the ten kinds is `other` and reads exactly as its row did", () => {
+    const part = firstTool(one(toolPart("todoread", { status: "completed", input: {}, output: "ok" })));
+    expect(part.call).toEqual({ kind: "other", name: "todoread", summary: part.summary });
   });
 });
 

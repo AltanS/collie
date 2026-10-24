@@ -142,3 +142,24 @@ the one pointer, read up from it. A header row indented deeper than one space co
 selector's blank row stands over the list and a row one space in stands between the two. Every other
 header row is still blank or one space in, so an option cut off by a blank row, or a label wrapped
 back to column 1, still declines. The card's question holds the quoted command.
+
+## Amendment, 2026-10-18: a dialog with no rules, whose footer is the last row
+
+Status: **Accepted** (2026-10-18). Amends the shape the Decision reads for one more screen. Trail:
+`web/src/fixtures/panes/pi--v130-gentle-review-consent.txt` (a live capture of gentle-pi 4.2.0 on pi
+1.3.0) · `web/src/lib/harness/pi/ask.ts` (`framelessFrame`, `framelessNote`), `footer.ts`,
+`ASK_NOTES.md`.
+
+An extension can draw its dialog under the transcript with no rule frame and no editor or status row
+under it, so the footer is the last non-blank row of the screen: a title row, prose rows, numbered
+options with the pointer at column 0, an optional description paragraph between blank rows, then the
+footer. The reader takes it by that shape. The footer must be painted, at column 0 and the screen's
+last row, with a painted title row above the options, so a transcript that quotes these rows above
+pi's real editor never lifts. The footer's `choose` (for the arrows) and `confirm` (for Enter) read as
+moving and committing, so the plan is the walk, verify, commit of ADR 0080; a key like `D details` is
+one the plan never sends. Escape is the Cancel row in the footer's words. Nothing names the title,
+the labels or the extension, and anything else stays raw.
+
+The description paragraph describes the pointed option and moves with it, so the core signature blanks
+it and keeps the full signature; the live pair `pi--v130-gentle-review-consent-moved.txt` is its walk
+proof.

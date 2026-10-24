@@ -194,14 +194,14 @@ describe("parseCodexTranscript", () => {
     });
   });
 
-  test("a tool outside the nine kinds degrades to `other`, keeping its own line", () => {
+  test("a tool outside the ten kinds degrades to `other`, keeping its own line", () => {
     const entries = parseCodexTranscript(
-      item({ type: "function_call", name: "update_plan", arguments: JSON.stringify({ plan: [] }), call_id: "c" }),
+      item({ type: "function_call", name: "list_mcp_resources", arguments: JSON.stringify({ server: "x" }), call_id: "c" }),
     );
     expect(entries[0]!.parts[0]).toMatchObject({
       kind: "tool",
-      name: "update_plan",
-      call: { kind: "other", name: "update_plan" },
+      name: "list_mcp_resources",
+      call: { kind: "other", name: "list_mcp_resources" },
     });
   });
 

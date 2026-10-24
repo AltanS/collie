@@ -90,6 +90,10 @@ const LIFTS_397 = new Map<string, Expect>([
   ["pi--v0871-permission-gate-moved.txt", "walk"],
   ["pi--v0871-permission-gate-narrow.txt", "walk"],
   ["pi--v0871-permission-gate-narrow-moved.txt", "walk"],
+  // The Gentle AI review-consent screen (gentle-pi 4.2.0, pi 1.3.0): no rule frame, the footer is the
+  // screen's last row (L12 of odd/tasks/gentle-pi-chat-cards.md).
+  ["pi--v130-gentle-review-consent.txt", "walk"],
+  ["pi--v130-gentle-review-consent-moved.txt", "walk"],
 ]);
 /** Screens with a pi modal up that stay raw: the Escape card's evidence. */
 const RAW_MODALS = new Set([
@@ -413,6 +417,126 @@ describe("pi's permission gate: a selector whose title quotes the command", () =
     const wrapped = replaceLast(onBlue, pointed("Blue"), ` continued\n${pointed("Blue")}`);
     expect(prompt(linesOf(onBlue)).options.map((o) => o.label)).toEqual(["Red", "Green", "Blue", "Cancel"]);
     expect(detectPiQuestion(linesOf(wrapped))).toBeNull();
+  });
+});
+
+describe("a frameless dialog read by its footer, the last row of the screen", () => {
+  const NAME = "pi--v130-gentle-review-consent.txt";
+  const consent = raw(NAME);
+  const FOOTER = "↑↓ choose · Enter confirm · Esc cancel · D details";
+  /** The pointer moved to option 2: the pointed row is painted, the others are plain. */
+  const onSecond = replaceLast(
+    replaceLast(consent, "\x1b[0m\x1b[38;2;157;157;157m→ 1. Review this change\x1b[0m", "  1. Review this change"),
+    "  2. Skip this time",
+    "\x1b[0m\x1b[38;2;157;157;157m→ 2. Skip this time\x1b[0m",
+  );
+
+  it("lifts the three options with the pointer, the walk's keys and the Escape row", () => {
+    const lines = load(NAME);
+    expect(lineText(lines.at(-1)!).trimEnd()).toBe(FOOTER);
+    const model = prompt(lines);
+    expect(model.family).toBe("select");
+    expect(model.question).toBe(
+      "Review consent Gentle AI can review this change before you call it done. Review can help detect regressions in these changes.",
+    );
+    expect(model.options).toEqual([
+      { label: "Review this change", keys: ["Enter"], keyLabel: "→" },
+      { label: "Skip this time", keys: ["Down", "Enter"], keyLabel: "" },
+      { label: "Review and allow this session", keys: ["Down", "Down", "Enter"], keyLabel: "" },
+      { label: "Cancel", keys: ["Escape"], keyLabel: "Esc" },
+    ]);
+    expect(piModalOnScreen(lines)).toBe(true);
+    expect(piAdapter.composerReady?.(lines)).toBe(false);
+  });
+
+  it("is a prompt-select card whose region starts at the title, the transcript kept above", () => {
+    const blocks = piAdapter.buildBlocks(load(NAME));
+    expect(blocks.map((b) => b.kind)).toEqual(["raw", "prompt-select"]);
+    const card = blocks[1]!;
+    if (card.kind !== "prompt-select") throw new Error("not a prompt-select");
+    expect(lineText(card.lines[0]!).trimEnd()).toBe("Review consent");
+    expect(lineText(card.lines.at(-1)!).trimEnd()).toBe(FOOTER);
+  });
+
+  it("points at option 2 when the pointer is there, and walks from it", () => {
+    const model = prompt(linesOf(onSecond));
+    expect(model.options.map((o) => [o.label, o.keys, o.keyLabel])).toEqual([
+      ["Review this change", ["Up", "Enter"], ""],
+      ["Skip this time", ["Enter"], "→"],
+      ["Review and allow this session", ["Down", "Enter"], ""],
+      ["Cancel", ["Escape"], "Esc"],
+    ]);
+  });
+
+  it("reads the real capture with the pointer on option 2 as option 2, plans [Up, Enter] [Enter] [Down, Enter]", () => {
+    const model = prompt(load("pi--v130-gentle-review-consent-moved.txt"));
+    expect(model.options.map((o) => [o.label, o.keys, o.keyLabel])).toEqual([
+      ["Review this change", ["Up", "Enter"], ""],
+      ["Skip this time", ["Enter"], "→"],
+      ["Review and allow this session", ["Down", "Enter"], ""],
+      ["Cancel", ["Escape"], "Esc"],
+    ]);
+  });
+
+  it("changes the core signature only by the pointer", () => {
+    const a = prompt(load(NAME));
+    const b = prompt(linesOf(onSecond));
+    expect(a.signature).not.toBe(b.signature);
+    expect(a.coreSignature).toBe(b.coreSignature);
+  });
+
+  it("names nothing by title or label: the same shape with other words lifts alike", () => {
+    const reworded = replaceLast(
+      replaceLast(replaceLast(consent, "Review consent", "Deploy gate"), "Skip this time", "Not now"),
+      "Gentle AI can review", "Some tool can review",
+    );
+    expect(prompt(linesOf(reworded)).options.map((o) => o.label)).toEqual([
+      "Review this change", "Not now", "Review and allow this session", "Cancel",
+    ]);
+  });
+
+  it("lifts without the effect paragraph too", () => {
+    const rows = consent.split("\r\n");
+    const effect = rows.findIndex((r) => r.includes("Effect:"));
+    const bare = [...rows.slice(0, effect - 1), ...rows.slice(effect + 1)].join("\r\n");
+    expect(prompt(linesOf(bare)).options).toHaveLength(4);
+  });
+
+  it.each([
+    ["a footer missing Enter confirm", replaceLast(consent, " · Enter confirm", "")],
+    ["Enter named as next", replaceLast(consent, "Enter confirm", "Enter next")],
+    ["arrows named as scroll", replaceLast(consent, "choose", "scroll")],
+    ["a plain (unpainted) footer", replaceLast(consent, "\x1b[0m\x1b[38;2;127;127;127m↑↓", "↑↓")],
+    ["a plain title row", replaceLast(consent, "\x1b[0m\x1b[1m\x1b[38;2;157;157;157mReview consent\x1b[0m", "Review consent")],
+    ["a second pointer", replaceLast(consent, "  2. Skip", "→ 2. Skip")],
+    ["no pointer", replaceLast(consent, "→ 1. Review", "  1. Review")],
+    ["noncontiguous numbers", replaceLast(consent, "  3. Review and", "  5. Review and")],
+    ["a row after the footer", `${consent}\r\n$ `],
+    ["a row of prose between options and footer", replaceLast(consent, "\r\n\r\n\x1b[0m\x1b[38;2;127;127;127m↑↓", "\r\nmore prose here\r\n\r\n\x1b[0m\x1b[38;2;127;127;127m↑↓")],
+  ])("stays raw: %s", (_name, text) => {
+    expect(detectPiQuestion(linesOf(text))).toBeNull();
+    expect(piAdapter.buildBlocks(linesOf(text)).every((b) => b.kind === "raw")).toBe(true);
+  });
+
+  it("keeps the Escape card when only the Enter hint is missing, and never types", () => {
+    const lines = linesOf(replaceLast(consent, " · Enter confirm", ""));
+    expect(piModalOnScreen(lines)).toBe(true);
+    expect(piAdapter.composerReady?.(lines)).toBe(false);
+  });
+
+  it("stays raw when the same rows are quoted in agent prose above pi's real editor", () => {
+    const dialog = consent.slice(consent.lastIndexOf("Review consent") - 20);
+    const editor = load("pi--v110-idle.txt");
+    const quoted = [...linesOf(dialog), ...editor];
+    expect(detectPiQuestion(quoted)).toBeNull();
+    expect(piAdapter.buildBlocks(quoted).every((b) => b.kind === "raw")).toBe(true);
+    expect(piAdapter.composerReady?.(quoted)).toBe(true);
+  });
+
+  it("stays raw when the same rows are quoted with a plain footer at the end of the screen", () => {
+    const plainFooter = replaceLast(consent, "\x1b[0m\x1b[38;2;127;127;127m↑↓", "↑↓");
+    expect(detectPiQuestion(linesOf(plainFooter))).toBeNull();
+    expect(piModalOnScreen(linesOf(plainFooter))).toBe(false);
   });
 });
 

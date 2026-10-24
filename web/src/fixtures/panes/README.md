@@ -248,6 +248,8 @@ user, host or path is in either file.
 | --- | --- | --- |
 | `pi--v130-gentle-choice.txt` | Three unnumbered options with descriptions, ` → Red` pointed | walk |
 | `pi--v130-gentle-choice-moved.txt` | The same dialog after `herdr pane send-keys <pane> Down`, ` → Green` | walk (the pair in `walk-pairs.ts`) |
+| `pi--v130-gentle-review-consent.txt` | gentle-pi 4.2.0 on pi 1.3.0, the review-consent screen: NO rule frame and no editor or status row, a bold title, two prose rows, three numbered options with `→` at column 0 on option 1, an `Effect:` paragraph, and `↑↓ choose · Enter confirm · Esc cancel · D details` as the screen's last row | walk |
+| `pi--v130-gentle-review-consent-moved.txt` | The same screen after `herdr pane send-keys <pane> Down`: `→` on option 2, and the `Effect:` paragraph describes option 2 | walk (the pair in `walk-pairs.ts`) |
 
 ## gentle-pi soft-wrapped draft on pi 1.3.0 (issue 553, captured 2026-10-21, Herdr 0.9.5)
 
