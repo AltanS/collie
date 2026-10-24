@@ -25,8 +25,9 @@ or Firefox. The window's width is known everywhere.
 ## Decision
 
 1. **Three width classes, read from the window's width with two media queries.** Compact is below
-   600px, medium is 600px to 899px, expanded is 900px and up. Below 600px nothing changes. The fold
-   APIs are not read, for the reasons above.
+   600px, medium is 600px to 899px, expanded is 900px and up. Below 600px nothing changes. A window
+   under 480px tall is compact at every width, so a phone held sideways keeps the phone layout. The
+   fold APIs are not read, for the reasons above.
 2. **From 600px, and only on `pane/:paneId`, the screen is a sidebar beside a strip.** The sidebar is
    the switcher's own list (pins, Shells, Launch), raised on `--card`, 280px at medium and 320px at
    expanded. Its top row carries the Collie mark, the word ColliePWA and a toggle that closes it to a

@@ -119,15 +119,17 @@ function makeRouter(paneId: string) {
   );
 }
 
-// The window's width, as the two width-class media queries read it.
+// The window's width and height, as the two width-class media queries read them.
 let width = 1200;
+let windowHeight = 900;
 // How a foldable is held, as the Viewport Segments media features read it. "flat" matches neither.
 let posture: "flat" | "tabletop" | "book" = "flat";
 function answer(query: string): boolean {
   if (query.includes("vertical-viewport-segments")) return posture === "tabletop";
   if (query.includes("horizontal-viewport-segments")) return posture === "book";
-  const min = /min-width:\s*(\d+)px/.exec(query);
-  return min !== null && width >= Number(min[1]);
+  const minW = /min-width:\s*(\d+)px/.exec(query);
+  const minH = /min-height:\s*(\d+)px/.exec(query);
+  return minW !== null && width >= Number(minW[1]) && (minH === null || windowHeight >= Number(minH[1]));
 }
 
 beforeAll(() => {
@@ -156,14 +158,16 @@ beforeEach(() => {
 });
 afterEach(() => {
   posture = "flat";
+  windowHeight = 900;
   extraAgents = [];
   tabs = [];
   vi.unstubAllGlobals();
   __resetWideLayoutStore();
 });
 
-async function mount(paneId: string, px: number) {
+async function mount(paneId: string, px: number, tall = 900) {
   width = px;
+  windowHeight = tall;
   Object.defineProperty(window, "innerWidth", { configurable: true, value: px });
   const router = makeRouter(paneId);
   const { container } = render(<RouterProvider router={router} />);
@@ -195,6 +199,19 @@ describe("below 600 px", () => {
     const header = q(container, "header")!;
     expect(header.closest('[data-slot="column-head"]')).toBeNull();
     expect(q(header, '[data-slot="collie-mark"]')).not.toBeNull();
+  });
+});
+
+describe("under 480 px tall", () => {
+  it("keeps the phone layout on a phone held sideways, 915 by 412", async () => {
+    const { container } = await mount("w1:p1", 915, 412);
+    expect(q(container, '[data-slot="wide-layout"]')).toBeNull();
+    expect(q(container, "aside")).toBeNull();
+  });
+
+  it("shows the layout at 915 by 600", async () => {
+    const { container } = await mount("w1:p1", 915, 600);
+    expect(q(container, '[data-slot="wide-layout"]')?.dataset.widthClass).toBe("expanded");
   });
 });
 

@@ -31,8 +31,12 @@ export const MEDIUM_MIN_PX = 600;
 /** From this is expanded: tablet landscape and desktop. */
 export const EXPANDED_MIN_PX = 900;
 
-export const MEDIUM_QUERY = `(min-width: ${MEDIUM_MIN_PX}px)`;
-export const EXPANDED_QUERY = `(min-width: ${EXPANDED_MIN_PX}px)`;
+/** A phone held sideways is 600 to 1000px wide and under 480px tall. Below this height every width is
+ *  compact, so the sidebar and the strip never take a landscape phone. */
+export const WIDE_MIN_HEIGHT_PX = 480;
+
+export const MEDIUM_QUERY = `(min-width: ${MEDIUM_MIN_PX}px) and (min-height: ${WIDE_MIN_HEIGHT_PX}px)`;
+export const EXPANDED_QUERY = `(min-width: ${EXPANDED_MIN_PX}px) and (min-height: ${WIDE_MIN_HEIGHT_PX}px)`;
 
 export function widthClassOf(px: number): WidthClass {
   if (px >= EXPANDED_MIN_PX) return "expanded";
