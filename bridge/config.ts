@@ -298,6 +298,13 @@ export interface Config {
    */
   launchersFile: string;
   /**
+   * Where the operator's session labels live — `sessions.toml`, a sibling in the same dir, read the
+   * same way (bridge/operator-session-labels.ts) and likewise never read here. Display-only: a label
+   * never renames a session. `loadConfig` always sets it; optional only so a hand-built Config (a
+   * test fixture) may leave it out, which reads as "no labels".
+   */
+  sessionsFile?: string;
+  /**
    * Where the operator's prompt-cache overrides live — `cache-rules.toml`, the sixth file on the same
    * contract, read the same way (bridge/operator-cache-rules.ts) and likewise never read here.
    */
@@ -733,6 +740,7 @@ export function loadConfig(env: Environment = process.env): Config {
     fontsDir: join(configDir, "fonts"),
     launchersFile: join(configDir, "launchers.toml"),
     cacheRulesFile: join(configDir, "cache-rules.toml"),
+    sessionsFile: join(configDir, "sessions.toml"),
     trustedUser: env.COLLIE_TRUSTED_USER ?? "",
     trustedUserOptional: envBool("COLLIE_TRUSTED_USER_OPTIONAL", false, env),
     accessTeam: (env.COLLIE_ACCESS_TEAM ?? "").trim(),

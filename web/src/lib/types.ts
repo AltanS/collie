@@ -561,8 +561,14 @@ export type PairFailure =
  * `reachable: false` with zeroed counts and renders greyed-out, non-clickable in the switcher.
  */
 export interface SessionSummary {
-  /** Registry name, e.g. "default", "collie-demo". */
+  /** Registry name, e.g. "default", "collie-demo". The identity: `?s=` and `?session=` carry it. */
   name: string;
+  /**
+   * The operator's display label for this session (`sessions.toml`). Display-only — print it through
+   * `sessionDisplayName` (lib/hosts.ts), never address by it. Absent from an older bridge, and from a
+   * session the operator gave no label.
+   */
+  label?: string;
   /** The `cfg.socketPath` session — all no-`?s=` requests map to it. */
   isPrimary: boolean;
   /** Whether the last poll of this session's socket succeeded. */

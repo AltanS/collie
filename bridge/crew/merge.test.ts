@@ -592,6 +592,30 @@ describe("parsePeerSnapshot — a peer contributes rows, never claims", () => {
     expect(parsed.shellPanes[0]!.instance).toBe("zz00");
   });
 
+  test("a session's display label is kept only as a string, cleaned and capped by the lead's rule", () => {
+    const parsed = parsePeerSnapshot({
+      sessions: [
+        { ...session({ name: "a" }), label: "Видео" },
+        { ...session({ name: "b" }), label: `x‮y${"z".repeat(100)}` },
+        { ...session({ name: "c" }), label: { evil: true } },
+        { ...session({ name: "d" }), label: "​" },
+        session({ name: "e" }),
+      ],
+      agents: [],
+      shellPanes: [],
+    })!;
+    expect(parsed.sessions.map((s) => s.label)).toEqual(["Видео", `x y${"z".repeat(45)}`, undefined, undefined, undefined]);
+    expect("label" in parsed.sessions[2]!).toBe(false);
+
+    // The label survives the merge beside the lead's host tag; the name is still the identity.
+    const merged = mergeSnapshot(localBody(), {
+      self: SELF,
+      peers: [contribution({ state: state({ memberId: "laptop" }), body: parsed })],
+      now: NOW,
+    });
+    expect(merged.sessions.find((s) => s.host === "laptop" && s.name === "a")?.label).toBe("Видео");
+  });
+
   test("a body missing any of the three PANE lists is not a snapshot to salvage", () => {
     expect(parsePeerSnapshot(null)).toBeNull();
     expect(parsePeerSnapshot("nope")).toBeNull();
