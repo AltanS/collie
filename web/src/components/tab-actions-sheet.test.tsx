@@ -232,6 +232,65 @@ describe("TabActionsSheet — close", () => {
   });
 });
 
+describe("TabActionsSheet — close confirm and separation", () => {
+  it("sends no request on the arming tap, and backing out (sheet closed and reopened) sends none and disarms", async () => {
+    const user = userEvent.setup();
+    const calls: string[] = [];
+    server.use(
+      http.post(/\/api\/tab\/[^/]+\/close$/, ({ request }) => {
+        calls.push(request.url);
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    const onClosed = vi.fn();
+    const mk = (open: boolean) => (
+      <TabActionsSheet open={open} onClose={vi.fn()} tab={tab} onRenamed={vi.fn()} onClosed={onClosed} />
+    );
+    const { rerender } = render(mk(true));
+    await user.click(screen.getByRole("button", { name: "Close tab" }));
+    expect(screen.getByRole("button", { name: "Tap again to close 2 panes" })).toBeInTheDocument();
+    rerender(mk(false));
+    rerender(mk(true));
+    expect(screen.getByRole("button", { name: "Close tab" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Tap again to close 2 panes" })).toBeNull();
+    expect(calls).toEqual([]);
+    expect(onClosed).not.toHaveBeenCalled();
+  });
+
+  it("calls close exactly once after the confirm tap", async () => {
+    const user = userEvent.setup();
+    const calls: string[] = [];
+    server.use(
+      http.post(/\/api\/tab\/[^/]+\/close$/, ({ request }) => {
+        calls.push(request.url);
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    const props = renderSheet();
+    await user.click(screen.getByRole("button", { name: "Close tab" }));
+    expect(calls).toEqual([]);
+    await user.click(screen.getByRole("button", { name: "Tap again to close 2 panes" }));
+    await waitFor(() => expect(props.onClosed).toHaveBeenCalledTimes(1));
+    expect(calls).toHaveLength(1);
+  });
+
+  it("puts Close tab last, behind a divider, with 44px rows, so it never neighbours Rename", () => {
+    renderSheet();
+    const rename = screen.getByRole("button", { name: "Rename" });
+    const close = screen.getByRole("button", { name: "Close tab" });
+    const divider = document.querySelector('[data-slot="tab-actions-divider"]');
+    expect(divider).not.toBeNull();
+    // Document order: Rename, then the divider, then Close tab.
+    expect(rename.compareDocumentPosition(divider!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(divider!.compareDocumentPosition(close) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // Nothing tappable sits between them: the divider is the only sibling in the gap.
+    expect(rename.nextElementSibling).toBe(divider);
+    expect(divider!.nextElementSibling).toBe(close);
+    expect(rename).toHaveClass("min-h-11");
+    expect(close).toHaveClass("min-h-11");
+  });
+});
+
 describe("TabActionsSheet — read-only", () => {
   it("shows a note and no write actions when the device isn't authorised", () => {
     renderSheet({ readOnly: true });
