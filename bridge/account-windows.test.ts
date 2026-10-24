@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
 import type { JsonObject, JsonValue } from "./json.ts";
 import { USAGE_WINDOWS } from "./usage.ts";
@@ -791,7 +791,7 @@ describe("the Codex source", () => {
     expect(source.kind).toBe("local");
     if (source.kind !== "local") return;
     expect(await source.read()).toEqual({ ok: false, reason: "no subscription limits in the newest session files" });
-    expect(m.tails.map((t) => t.split("/").at(-1)?.split(":")[0])).toEqual(["rollout-1.jsonl", "rollout-2.jsonl", "rollout-3.jsonl"]);
+    expect(m.tails.map((t) => basename(t.slice(0, t.lastIndexOf(":"))))).toEqual(["rollout-1.jsonl", "rollout-2.jsonl", "rollout-3.jsonl"]);
     const yesterday = new Date(NOW - 86_400_000);
     expect(m.listed).toContain(dayDir(yesterday));
     expect(m.listed.every((p) => p.startsWith(root))).toBe(true);
