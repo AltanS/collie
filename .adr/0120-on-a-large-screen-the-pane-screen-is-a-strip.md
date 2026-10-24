@@ -145,6 +145,16 @@ pane view keeps all of it.
 - **New agent starts a new space.** The New page takes no space to start in, so the add column's sheet says
   "New agent in a new space" and means it. A "new agent in this space" waits for a space field on the
   New page, and opening the new pane beside the focus on return is not built.
+- **Permission, ask and held cards show in the focused column only.** Another column shows a blocked
+  status dot, and a tap on it focuses that column, where the card stands.
+- **Every stored column of the space mounts its own reader and belt.** There is no cap beyond the 24
+  stored columns, so a space with many columns carries many readers.
+- **Fold postures are on by default.** They are feature-detected by the viewport-segments media queries and
+  proven in emulation only (below).
+- **A theme file that sets `pane-active` is written as schema version 3.** A Collie older than this
+  build refuses such a file with a message.
+- **Wide mode is not covered by the browser leg, and no touch hardware has run it yet.** The leg is
+  phone-shaped. Large-screen layout in Settings set to Off is the way back to the phone layout.
 - **Folded postures are proven in emulation only.** Chromium's device-metrics override fired the segment
   queries and the env values; no half-open Fold or Flip has run the layout.
 - **Snapping is checked in Chromium and WebKit by script, not on every device.** Touch relies on the

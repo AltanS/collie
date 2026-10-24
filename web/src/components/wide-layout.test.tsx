@@ -375,6 +375,7 @@ describe("the strip", () => {
     const { container, router } = await mount("w1:p1", 1200);
     const lone = within(columns(container)[0]!).getByRole("button", { name: "Remove from view" });
     expect(lone).toBeDisabled();
+    expect(lone).toHaveAttribute("title", "The agent keeps running.");
 
     await openBesideFromSidebar(container, A2);
     fireEvent.click(within(columns(container)[0]!).getByRole("button", { name: "Remove from view" }));
