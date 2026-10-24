@@ -4,6 +4,7 @@ import { en } from "@/lib/i18n/messages/en";
 import { fixtureSnapshot } from "@/test/handlers";
 
 import { installApiStub } from "./fixtures/api";
+import { keepPhoneLayout } from "./fixtures/layout";
 
 // THE FOLD OF THE TAB AND PANE ROWS, in a real engine, on the two claims jsdom cannot carry:
 // the preference survives a reload of the shipped bundle, and a shrinking visual viewport (what a
@@ -21,6 +22,8 @@ test.use({ serviceWorkers: "block" });
 test.beforeEach(async ({ page }, testInfo) => {
   test.skip(testInfo.project.name.startsWith("states"), "the playground has no pane route");
   await installApiStub(page);
+  // The fold bar is the phone pane screen's; a large-screen strip drops it (ADR 0120).
+  await keepPhoneLayout(page);
   // The fixture's shell pane moved into the `code` tab, so the pane row draws too.
   const twoPanes = {
     ...fixtureSnapshot,

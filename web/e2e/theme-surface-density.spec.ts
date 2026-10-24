@@ -1,11 +1,9 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-
 import { expect, test, type Page, type TestInfo } from "@playwright/test";
 
 import { en } from "@/lib/i18n/messages/en";
 
 import { installApiStub, installCrewWorld, installMachinesWorld } from "./fixtures/api";
+import { collieHalves } from "./fixtures/collie-theme";
 
 // A ROOMY THEME FITS A SMALL PHONE (M57 spec 14). Schema version 2 lets a theme raise the spacing step
 // (`density: roomy`), and every `p-*`, `gap-*`, `h-*` and `size-*` grows with it. This walks every page
@@ -20,13 +18,11 @@ import { installApiStub, installCrewWorld, installMachinesWorld } from "./fixtur
 // And one more: the header dog renders at the same pixel size under every density, because index.css
 // pins icons and the mark box to the default step.
 
-const web = resolve(import.meta.dirname, "..");
-const collie = JSON.parse(readFileSync(resolve(web, "src/themes/collie.json"), "utf8"));
-
 const LARGEST = { radius: "round", shadow: "lifted", density: "roomy", weight: "bold", border: "strong" } as const;
 
+/** A version 2 file: collie's 43 required tokens, never the version 3 `pane-active` (ADR 0120). */
 function themeFile(surface: Readonly<Record<string, string>> | undefined) {
-  const theme = { version: 2, id: "roomy", name: "Roomy", light: collie.light, dark: collie.dark };
+  const theme = { version: 2, id: "roomy", name: "Roomy", light: collieHalves.light, dark: collieHalves.dark };
   return surface === undefined ? theme : { ...theme, surface };
 }
 

@@ -1,9 +1,7 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-
 import { expect, test } from "@playwright/test";
 
 import { installApiStub } from "./fixtures/api";
+import { collieHalves } from "./fixtures/collie-theme";
 
 // A PINNED THEME PAINTS IN ITSELF ON THE FIRST FRAME (M57). public/theme-init.js reads the design
 // blob and the theme library and sets the inline properties before the bundle's module script runs.
@@ -19,15 +17,13 @@ test.beforeEach(async ({ page }, testInfo) => {
   await installApiStub(page);
 });
 
-const web = resolve(import.meta.dirname, "..");
-const collie = JSON.parse(readFileSync(resolve(web, "src/themes/collie.json"), "utf8"));
-
+// A version 1 file: the 43 required tokens, and not the optional `pane-active` (ADR 0120).
 const theme = {
   version: 1,
   id: "midnight",
   name: "Midnight",
-  light: collie.light,
-  dark: { ...collie.dark, background: "#123456" },
+  light: collieHalves.light,
+  dark: { ...collieHalves.dark, background: "#123456" },
 };
 
 async function seed(page: import("@playwright/test").Page) {
@@ -52,12 +48,15 @@ test("an imported theme is on the page before the bundle runs", async ({ page })
     return {
       background: getComputedStyle(html).getPropertyValue("--background"),
       inline: html.style.length,
+      paneActive: html.style.getPropertyValue("--pane-active"),
       attribute: html.getAttribute("data-theme"),
       body: getComputedStyle(document.body).backgroundColor,
     };
   });
   expect(seen.background).toContain("#123456");
   expect(seen.inline).toBe(43);
+  // The theme leaves the optional token out, so index.css's pair holds and nothing is set inline.
+  expect(seen.paneActive).toBe("");
   expect(seen.attribute).toBeNull();
 });
 
