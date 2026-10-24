@@ -197,6 +197,14 @@ interface AgentChatProps {
    */
   onBackArrow?: () => void;
   onSelect: (paneId: string) => void;
+  /**
+   * Drawn as the focused column of a large screen's strip (ADR 0120): the view fills the column it is
+   * given instead of centring under the phone's width ladder, and the belt's Switch pill stands down,
+   * because the sidebar beside the strip is the switcher there.
+   */
+  inStrip?: boolean;
+  /** A half-open foldable in tabletop (ADR 0120): the chrome block stands in the bottom segment. */
+  tabletop?: boolean;
 }
 
 /** How many rows at the raw screen's tail count as its footer when the model label asks if it is named. */
@@ -253,6 +261,8 @@ export function AgentChat({
   onBack,
   onBackArrow,
   onSelect,
+  inStrip = false,
+  tabletop = false,
 }: AgentChatProps) {
   const revalidator = useRevalidator();
   const nav = useNav();
@@ -294,7 +304,9 @@ export function AgentChat({
     [chooseMirrorOverride, agentNative],
   );
 
-  const { launchers, home: launchersHome } = useLaunchers(scope);
+  // On a large screen's strip the sidebar lists the launchers and the switcher is not drawn, so the
+  // pane does not read them a second time (ADR 0120).
+  const { launchers, home: launchersHome } = useLaunchers(scope, !inStrip);
   // A row that skips permission prompts is confirmed once per device before it starts (ADR 0094).
   const { guard: guardNoPrompts, sheet: noPromptsSheet } = useNoPromptsGuard();
   // "New agent in a worktree" (ADR 0089, M48): offered for a pane whose space sits in a Git repo, read
@@ -606,8 +618,9 @@ export function AgentChat({
   // pane you are in, and the pane on screen already shows its own state.
   const hereKey = agent ? paneRowKey(agent) : null;
   const elsewhereNeedsYou = agents.some((a) => a.status === "blocked" && paneRowKey(a) !== hereKey);
+  // On a large screen's strip the sidebar beside it is the switcher, so the pill would be a second one.
   const pullHandle =
-    agents.length + shellPanes.length > 0 || launchers.length > 0
+    !inStrip && (agents.length + shellPanes.length > 0 || launchers.length > 0)
       ? {
           ref: sheetPull.ref,
           onClick: () => setDrawer("switcher"),
@@ -1888,7 +1901,8 @@ export function AgentChat({
           reaches its own cap exactly, so it runs edge to edge, which is a wider mirror and still one
           right edge. app-header.tsx's `wide` claim carries the identical ladder, or the header and
           the mirror stop sharing that edge. */}
-      <div ref={chatRootRef} className="mx-auto flex min-h-0 w-full min-w-0 max-w-[100dvw] flex-1 flex-col overflow-x-hidden md:max-w-screen-md lg:max-w-screen-lg xl:max-w-screen-xl 2xl:max-w-[1400px]">
+      {/* In a large screen's column the column is the bound (ADR 0120), so the ladder stands down there. */}
+      <div ref={chatRootRef} className={cn("flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-x-hidden", !inStrip && "mx-auto max-w-[100dvw] md:max-w-screen-md lg:max-w-screen-lg xl:max-w-screen-xl 2xl:max-w-[1400px]")}>
         {/* Header — this route's contribution to the ONE header shell, which is mounted above the
             outlet in RootLayout and is the same element on every screen (so the Collie mark is not
             only identical, it is literally the same drawing, still turning). The pane's own bits are
@@ -2981,7 +2995,7 @@ export function AgentChat({
               {/* `relative` is the box the voice takeover is drawn over: it is `absolute inset-0` in this
                   block, a sibling of the composer, so it fills exactly the composer's own box and
                   adds no height (components/voice-takeover.tsx). */}
-              <div data-slot="chrome-block" className="relative border-t border-rule bg-chrome">
+              <div data-slot="chrome-block" data-segment={tabletop ? "bottom" : undefined} className="relative border-t border-rule bg-chrome">
                 {gridless ? (
                   // The composer of a pane with no screen: text goes through the send route with the
                   // turn the phone saw, and a Stop control posts the abort route. The keys bar, the

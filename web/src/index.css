@@ -1585,3 +1585,86 @@
   --belt-text: calc(0.75rem * var(--belt-scale));
   --belt-rule: round(calc(1.25rem * var(--belt-scale)), 1px);
 }
+
+/* A LARGE SCREEN'S FOCUS MOVE (ADR 0120). Every column draws its belt, and only the focused one adds
+   the reply box under it. When a column takes the focus its box eases in from no height, so the belt
+   rises to its place over 200ms instead of jumping, and the transcript above, pinned to its bottom,
+   keeps its last line in sight the whole way. The clip lives only inside the keyframes, so the box's
+   attach menu, which opens above it, is never cut once the move ends. Reduced motion: no ease. */
+[data-strip-focus] [data-slot="composer-box"] {
+  animation: strip-reply-in 200ms ease-out backwards;
+}
+@keyframes strip-reply-in {
+  from {
+    max-height: 0;
+    opacity: 0;
+    overflow: clip;
+  }
+  to {
+    max-height: 16rem;
+    opacity: 1;
+    overflow: clip;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-strip-focus] [data-slot="composer-box"] {
+    animation: none;
+  }
+}
+
+/* HALF-OPEN FOLDABLES (ADR 0120, "Folded postures"). The geometry comes from the Viewport Segments
+   environment variables only, each with a fallback, so a browser that answers the media query but
+   not the variable still lays out. Nothing straddles the fold: each region ends at its segment.
+
+   TABLETOP (two segments, one above the other). The pane screen ends at the top segment's bottom
+   edge, and the focused pane's chrome block (belt, then reply box) stands in the bottom segment,
+   anchored at its top edge, with the reply box filling the rest of it. */
+[data-slot="fold-frame"][data-fold="tabletop"] {
+  padding-bottom: calc(var(--app-h) - env(viewport-segment-bottom 0 0, 50dvh));
+}
+[data-fold="tabletop"] [data-segment="bottom"] {
+  position: fixed;
+  inset-inline: 0;
+  top: env(viewport-segment-top 0 1, 50dvh);
+  bottom: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+[data-fold="tabletop"] [data-segment="bottom"] > :first-child {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+[data-fold="tabletop"] [data-segment="bottom"] [data-slot="composer-box"] {
+  flex: 1 1 auto;
+  align-items: stretch;
+}
+[data-fold="tabletop"] [data-segment="bottom"] [data-slot="composer-box"] textarea {
+  field-sizing: fixed;
+  max-height: none;
+}
+
+/* BOOK (two segments side by side), from 600px. Two columns, one per segment, with the fold's own
+   width between them as a gutter; the rail (3.5rem) stands at the left segment's start. One column
+   alone takes the right segment, beside the full sidebar in the left one. */
+[data-fold="book"] {
+  --fold-a: env(viewport-segment-right 0 0, 50vw);
+  --fold-b: env(viewport-segment-left 1 0, 50vw);
+}
+[data-fold="book"] .fold-gutter {
+  flex: 0 0 calc(var(--fold-b) - var(--fold-a));
+}
+[data-fold="book"] .fold-left-col {
+  flex: 0 0 calc(var(--fold-a) - 3.5rem);
+  width: calc(var(--fold-a) - 3.5rem);
+}
+[data-fold="book"] .fold-right-col {
+  flex: 1 1 0;
+  min-width: 0;
+}
+[data-fold="book"] .fold-left-full {
+  width: var(--fold-a);
+}

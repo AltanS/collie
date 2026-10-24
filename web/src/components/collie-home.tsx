@@ -29,6 +29,9 @@ interface CollieHomeProps {
    *  strip's "Showing what was saved at <time>" once the operator has dismissed it. The strip under
    *  the header carries the date for sighted readers; the bar itself stays free of it. */
   lastSeenAt?: number;
+  /** The ground the mark stands on, for its knockout: the header's `--band-ground` by default, and
+   *  `--card` where a large screen draws the mark in its sidebar (ADR 0120). */
+  paper?: string;
   className?: string;
 }
 
@@ -131,6 +134,7 @@ export function CollieHome({
   lost = false,
   online = true,
   lastSeenAt,
+  paper = "var(--band-ground)",
   className,
 }: CollieHomeProps) {
   useLocale();
@@ -364,7 +368,7 @@ export function CollieHome({
           size={40}
           weight="header"
           loading={bloom || ((round || busy) && !lost)}
-          paper="var(--band-ground)"
+          paper={paper}
           className={cn("transition-opacity", lost && "opacity-40 grayscale")}
         />
         {/* THE LOST BADGE. The strip under the header says the connection is gone, and the operator can

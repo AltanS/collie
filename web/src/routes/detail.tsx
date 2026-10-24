@@ -5,9 +5,12 @@ import { AgentChat } from "@/components/agent-chat";
 import { WalkyLogProvider } from "@/components/walky-log";
 import { FileLinksProvider, usePaneFileLinks } from "@/components/file-links";
 import { SubagentSheet } from "@/components/subagent-sheet";
+import { WideLayout } from "@/components/wide-layout";
 import { useDashPrefs } from "@/hooks/use-dash-prefs";
 import { useLoadingStalled } from "@/hooks/use-loading-stalled";
 import { useNav } from "@/hooks/use-nav";
+import { usePaneFold } from "@/hooks/use-fold-posture";
+import { useWidthClass } from "@/hooks/use-width-class";
 import { type PaneData } from "@/lib/loaders";
 import { GLIDE_PAIRS, glideBack } from "@/lib/glide";
 import { canStepBack, homePath, panePath, readFrom, upTarget } from "@/lib/nav";
@@ -37,6 +40,11 @@ export function DetailRoute() {
   const location = useLocation();
   const stalled = useLoadingStalled();
   const dashView = useDashPrefs().prefs.dashView;
+  // From 600px wide the pane screen is a sidebar beside a strip of panes (ADR 0120). Below, nothing
+  // here changes.
+  const widthClass = useWidthClass();
+  // A half-open foldable splits the screen at the fold (ADR 0120, "Folded postures"); flat elsewhere.
+  const fold = usePaneFold(widthClass);
 
   // SAFETY: `location.state` is whatever the navigation that got here attached — `unknown` by
   // definition. The only shape Collie ever puts there is `{ freshPane }` (components/agent-list's
@@ -153,6 +161,9 @@ export function DetailRoute() {
         noSavedCopy={pane.error && pane.text === ""}
         onBack={up}
         onBackArrow={backArrow}
+        inStrip={widthClass !== "compact"}
+        // Tabletop: the belt and the reply box stand in the bottom segment, under the fold.
+        tabletop={fold === "tabletop"}
         // Pane to pane is a sideways move: it replaces, and the pane's way up comes along.
         onSelect={(id) =>
           nav.side(
@@ -173,5 +184,18 @@ export function DetailRoute() {
   );
 
   // The pane's walky talky list, the cross-check behind the Chat card and the mirror's row style (lib/walky.ts).
-  return <WalkyLogProvider rows={pane.walky} reads={pane.walkyReads}>{view}</WalkyLogProvider>;
+  return (
+    <WalkyLogProvider rows={pane.walky} reads={pane.walkyReads}>
+      {/* THE FOLD FRAME, always mounted so a posture change (the keyboard coming up on a tabletop
+          fold, a hinge that moves) changes an attribute and never remounts the pane view under the
+          finger. Tabletop ends this box at the top segment's bottom edge (index.css). */}
+      <div data-slot="fold-frame" data-fold={fold} className="flex min-h-0 flex-1 flex-col">
+        {widthClass === "compact" ? (
+          view
+        ) : (
+          <WideLayout widthClass={widthClass} fold={fold} paneId={paneId} scope={scope} agent={agent} focused={view} />
+        )}
+      </div>
+    </WalkyLogProvider>
+  );
 }

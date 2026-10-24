@@ -331,6 +331,7 @@ export function ThreadSidebar({
               {shellRows.map((p) => (
                 <PaneRow
                   key={paneRowKey(p)}
+                  id={rowDomId(p)}
                   pane={p}
                   active={paneRowKey(p) === currentPaneKey}
                   onSelect={onSelect}
@@ -423,7 +424,7 @@ function PaneRow({
   active,
   onSelect,
 }: {
-  /** The row's DOM id, for the summary line's jump. Shell rows need none. */
+  /** The row's DOM id, for the summary line's jump. Every row has one, shells too. */
   id?: string;
   pane: AgentView;
   active: boolean;
@@ -443,6 +444,10 @@ function PaneRow({
     <button
       id={id}
       type="button"
+      // The row's full identity (paneRowKey), read back by a large screen's row gestures (a hold
+      // opens "Open here" and "Open beside", a drag carries the row into the strip, ADR 0120). The
+      // gestures sit on a host around this list, so the list itself takes only the tap.
+      data-pane-key={paneRowKey(pane)}
       onClick={() => onSelect(pane)}
       aria-current={active ? "page" : undefined}
       className={cn(

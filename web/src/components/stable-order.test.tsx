@@ -80,9 +80,10 @@ function surfaces(agents: AgentView[]) {
   const sidebar = render(
     <ThreadSidebar agents={agents} shellPanes={SHELLS} tabs={tabs} servers={servers} currentPaneKey="" onSelect={vi.fn()} />,
   );
-  const switcher = [...sidebar.container.querySelectorAll("button[id^='switch-row-']")].map(
-    (b) => agents.find((a) => b.textContent?.includes(a.paneLabel!))?.paneLabel,
-  );
+  // The agents' rows, in order. Shell rows carry a row id too since ADR 0120, and are not this list.
+  const switcher = [...sidebar.container.querySelectorAll("button[id^='switch-row-']")]
+    .map((b) => agents.find((a) => b.textContent?.includes(a.paneLabel!))?.paneLabel)
+    .filter((label) => label !== undefined);
   sidebar.unmount();
   const dash = render(
     <AgentList agents={agents} shellPanes={SHELLS} tabs={tabs} servers={servers} onOpen={vi.fn()} />,
