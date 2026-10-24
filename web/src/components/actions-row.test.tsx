@@ -741,10 +741,20 @@ describe("ActionsRow: Stop (M68 spec 02)", () => {
     expect(document.querySelector("[data-slot='durable-bar']")).toBeNull();
   });
 
-  it("draws one Stop beside the harness section when the pane offers it", () => {
+  it("draws one Stop at the belt's start when the pane offers it", () => {
     render(<ActionsRow general={[general()]} agent="claude" onRun={took} stop={{ onStop: async () => {}, paneId: "w1:p1", running: true }} />);
     expect(document.querySelectorAll("[data-slot='belt-stop']")).toHaveLength(1);
     expect(screen.getByRole("button", { name: "Stop the turn" })).toBeInTheDocument();
+  });
+
+  it("stands the Stop first in the scroller, before the composer controls", () => {
+    render(<ActionsRow general={[general()]} agent="claude" onRun={took} stop={{ onStop: async () => {}, paneId: "w1:p1", running: true }} />);
+    const scroller = document.querySelector<HTMLElement>(".overflow-x-auto")!;
+    const buttons = Array.from(scroller.querySelectorAll("button"));
+    expect(buttons[0]).toHaveAttribute("data-slot", "belt-stop");
+    expect(scroller.firstElementChild).toBe(buttons[0]);
+    const controls = scroller.querySelector("[data-slot='composer-controls']")!;
+    expect(buttons[0].compareDocumentPosition(controls) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("keeps a durable pane's own Stop and draws no second one", () => {

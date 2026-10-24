@@ -238,7 +238,7 @@ Collie's own controls stay.
 
 ### Stop a turn
 
-While an agent works, a **Stop** button sits on the belt, on Collie's own side of it. It shows only when
+While an agent works, a **Stop** button sits at the start of the belt, before Collie's other buttons, so it is in view without a scroll. It shows only when
 the turn runs and Collie knows the key that stops this agent. Stop does not type anything and does not
 send a message. It presses the agent's own stop key, once, and tells you what happened.
 

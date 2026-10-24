@@ -440,7 +440,9 @@ export interface ScreenStopProps {
 /**
  * STOP FOR A PANE WITH A SCREEN (M68 spec 02): one button on the belt's bare ground, drawn only while the
  * turn runs and the bridge says a key exists (`stopFor`, lib/harness-bar.ts; the caller decides). Collie's
- * own control, so it stands beside the harness section and not inside it.
+ * own control, so it stands at the belt's START, before Collie's other controls and the harness section, and not
+ * inside the section. The belt scrolls sideways and the first child is in view at rest, so a running turn is
+ * stopped without a scroll (under `hand="left"` the start is the belt's right end, mirrored like every control).
  *
  * ARM, THEN STOP. The first tap only arms: the word changes to "Stop?" (never the size) and the arm lapses
  * by itself after ARM_MS. The second tap runs `onStop`, and counts only ARM_DWELL_MS or more after the
