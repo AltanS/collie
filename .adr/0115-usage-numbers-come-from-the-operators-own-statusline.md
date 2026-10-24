@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-23
-- **Shipped in:** pending
+- **Shipped in:** 1.24.0
 - **Trail:** Altan, 2026-10-23: the row above the belt should carry the session's context use and the
   5-hour and 7-day subscription windows, as bars or dots. The brief named the other road and asked
   for an explicit yes before it was built: read `~/.claude/.credentials.json` and call the OAuth

@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-23
-- **Shipped in:** pending (1.24.0 Edge)
+- **Shipped in:** 1.24.0
 - **Trail:** asked by Altan on 2026-10-23 ("let's also add a stop button, just saw that a lot of mobile harnesses have that") · every surface profile has carried `keys.interrupt` since the profiles began, and nothing pressed it · the Keys board's Esc and `^C` (`web/src/lib/key-board.ts`) go through `POST /api/pane/:id/keys`, which has no request id and no receipt · v2's Control names `abort` · `bridge/surface/stop.ts` (`StopService`) · `web/src/lib/surface/stop.ts` (the receipt's wire shape) · `bridge/server.ts` (`stopRoute`) · `bridge/surface/shadow.ts` (`canStopOf`) · `bridge/surface/key-gate.ts` (`person_tap`) · `web/src/lib/arm.ts` (`ARM_MS`, `ARM_DWELL_MS`) · `web/src/components/harness-bar.tsx` (`ScreenStop`) · `web/src/components/send-notice.tsx` (`stopNotice`) · `web/src/lib/surface/profiles/*.json` (`keys.interrupt`, `keys.interruptClearsDraft`) · `bridge/crew/forward.ts` (`FORWARDABLE`) · `web/e2e/rig/stop.spec.ts` (case 25) · counsel: none yet, the browser leg is the proof · [ADR 0053](./0053-an-unread-dialog-still-has-a-way-out.md) · [ADR 0101](./0101-a-control-on-a-screenless-pane-names-the-turn-it-saw.md)
 
 ## Context

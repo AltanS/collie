@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-24
-- **Shipped in:** pending (1.24.0 Edge)
+- **Shipped in:** 1.24.0
 - **Trail:** Altan, 2026-10-24: the windows must show without a statusLine; the operator sees no dots
   on 8788 because their statusLine is not wrapped; counsel the same day: an allowlist, the unproven readers off · `bridge/account-windows.ts` (`AccountWindows`,
   `readClaudeLogin`, `parseAccountUsage`, `isTurnEnd`) · `bridge/usage.ts` (`UsageTracker.get`, the

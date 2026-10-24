@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-16
-- **Shipped in:** pending
+- **Shipped in:** 1.24.0
 - **Trail:** [issue 461](https://github.com/AltanS/collie/issues/461) (Gentle Shell's `todo`, subagent
   and background tools drawn as `other`) · `bridge/journal/tool-call.ts` · `bridge/journal/pi.ts` ·
   `web/src/lib/chat-items.ts` · `web/src/components/chat-cards.tsx` ·
