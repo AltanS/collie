@@ -149,7 +149,7 @@ describe("pinned dialog regions", () => {
   }
 });
 
-// Muse, Oh My Pi's Claude theme, pi's OmO extension and Hermes's classic CLI paint Claude's own input
+// Muse, Oh My Pi's Claude theme, pi's OmO extension, gentle-pi's editor and Hermes's classic CLI paint Claude's own input
 // box: a column-0 ❯ row between two bare U+2500 rules. The anchors are shape only, so the Claude profile finds a frame
 // there, and that is right: the frame says "a box is drawn", and the profile is picked by the binary
 // (the README contract: version and harness from the binary, never from the screen), so the Claude
@@ -159,7 +159,8 @@ const DRAWS_THE_SAME_BOX = (name: string): boolean =>
   name.startsWith("omp--v18-4-claude") ||
   name.startsWith("pi--omo-") ||
   name.startsWith("hermes--") ||
-  name === "pi--prose-quoted-omo-dialog-above-editor.txt";
+  name === "pi--prose-quoted-omo-dialog-above-editor.txt" ||
+  name === "pi--v130-gentle-draft-wrapped.txt";
 
 describe("non-Claude fixtures", () => {
   it("yield null with the Claude profile, except the harnesses that draw the same box", () => {

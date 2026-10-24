@@ -43,6 +43,7 @@ export function canonicalAgent(key: string): string {
   if (FAMILIES.has(key)) return key;
   if (key.startsWith("claude")) return "claude";
   if (key.startsWith("codex")) return "codex";
+  if (key.startsWith("muse")) return "muse";
   if (key.startsWith("opencode")) return "opencode";
   if (key === "pi" || key.startsWith("pi-") || key.startsWith("pi.")) return "pi";
   // `omp` is its own prefix — no other agent string in the catalog starts with it, and it must NOT
