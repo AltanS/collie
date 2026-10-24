@@ -238,6 +238,7 @@ import {
 import { collieVersion, collieVersionBare } from "./version.ts";
 import { SurfaceShadow, type ShadowOptions } from "./surface/shadow.ts";
 import { AskAnswerer, AskBook } from "./surface/ask.ts";
+import { ClearService } from "./surface/clear.ts";
 import { StopService, type StopDeps } from "./surface/stop.ts";
 import { gateFor } from "./surface/key-gate.ts";
 import { RowRing, SendProtocol, SessionLocks } from "./surface/protocol.ts";
@@ -1751,7 +1752,10 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   const stopDeps: StopDeps = { mux: herdr, gate: gateFor(herdr), profile: (harness) => sendProfile(harness) };
   const stop = endpoint.kind === "terminal" ? new StopService(stopped === undefined ? stopDeps : { ...stopDeps, stopped }) : undefined;
   const withStop = stop === undefined ? withHold : { ...withHold, stop };
-  return driver === undefined ? withStop : { ...withStop, driver };
+  // A Clear of the harness's box (ADR 0116, the Clear paragraph): the same mux, key gate and profile as the Stop.
+  const clear = endpoint.kind === "terminal" ? new ClearService({ mux: herdr, gate: gateFor(herdr), profile: (harness) => sendProfile(harness) }) : undefined;
+  const withClear = clear === undefined ? withStop : { ...withStop, clear };
+  return driver === undefined ? withClear : { ...withClear, driver };
 };
 
 const registry = new SessionRegistry({

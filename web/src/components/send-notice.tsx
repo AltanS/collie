@@ -5,6 +5,7 @@ import { Notice } from "@/components/ui/notice";
 import { capSentence, noteKey, type SendNote, type SendReading, type SendReply } from "@/lib/send-protocol";
 import { shortHash, type Surface } from "@/lib/surface/surface";
 import { t as translate, type MessageKey } from "@/lib/i18n";
+import type { ClearReason, ClearReceipt } from "@/lib/surface/clear";
 import type { StopReason, StopReceipt } from "@/lib/surface/stop";
 
 // WHAT BECAME OF A SEND, AT THE THUMB (M56 specs 06, 07 and 14). The terminal composer and the
@@ -74,6 +75,29 @@ export function stopNotice(receipt: StopReceipt): SendRefusal {
   }
   const reason = receipt.reason ?? "unreadable";
   return phoneRefusal(translate(STOP_REFUSALS[reason]), reason === "dialog_open");
+}
+
+/** The sentence of each refusal a Clear can answer (ADR 0116), one string key per closed reason. */
+const CLEAR_REFUSALS = {
+  no_profile: "keys.clear.receipt.refused.noProfile",
+  no_draft: "keys.clear.receipt.refused.noDraft",
+  dialog_open: "keys.clear.receipt.refused.dialogOpen",
+  unreadable: "keys.clear.receipt.refused.unreadable",
+  press_failed: "keys.clear.receipt.refused.pressFailed",
+  pane_gone: "keys.clear.receipt.refused.paneGone",
+  unsupported_build: "keys.clear.receipt.refused.unsupportedBuild",
+} as const satisfies Record<ClearReason, MessageKey>;
+
+/**
+ * The notice a Clear's receipt gets under the box, in the box a send's refusal and a Stop's receipt use.
+ * `cleared` is the one calm word. A refusal is a caution; one behind an open dialog points at the card.
+ * `unknown` (no receipt came back) tells the person to read the pane before a second tap.
+ */
+export function clearNotice(receipt: ClearReceipt): SendRefusal {
+  if (receipt.outcome === "cleared") return { sentence: translate("keys.clear.receipt.cleared"), detail: null, toCard: false, screen: false, tone: "neutral" };
+  if (receipt.outcome === "unknown") return phoneRefusal(translate("keys.clear.receipt.unknown"));
+  const reason = receipt.reason ?? "unreadable";
+  return phoneRefusal(translate(CLEAR_REFUSALS[reason]), reason === "dialog_open");
 }
 
 /** The notice for an answer that did not send, from the bridge's reading of it. */

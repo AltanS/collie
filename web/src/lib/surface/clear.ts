@@ -1,0 +1,42 @@
+// The Clear receipt's wire shape and its closed lists (ADR 0116, the Clear paragraph). `POST
+// /api/pane/:id/clear` on a pane with a screen takes `{ requestId }` and empties the harness's input box
+// with the profile's clear key (`keys.clear`), the step the Send Protocol already uses to replace a
+// draft. The bridge runs it (bridge/surface/clear.ts); the phone posts the body and renders the receipt.
+// Both read the types from here, so the lists cannot drift apart.
+//
+// Pure: no DOM, no Bun API, no harness name.
+
+/** What the phone posts: one request id, the same shape as a send's and a Stop's. */
+export interface ClearBody {
+  readonly requestId: string;
+}
+
+/**
+ * `cleared`: the clear key went in and a read-back shows the box free (empty, and no dialog). `refused`:
+ * the box was not cleared, with one reason. `unknown` is the phone's word, never the bridge's: no
+ * receipt came back (a crew member that did not answer the lead in time), so the key may have gone in.
+ */
+export const CLEAR_OUTCOMES = ["cleared", "refused", "unknown"] as const;
+export type ClearOutcome = (typeof CLEAR_OUTCOMES)[number];
+
+/**
+ * Why the box was not cleared. `no_profile`: Collie has no reader for this pane, so it does not press
+ * blind. `no_draft`: the box already reads empty. `dialog_open`: a dialog is up and a key would reach it.
+ * `unreadable`: Collie cannot tell what the box holds. `press_failed`: the multiplexer refused the keys,
+ * or the box still holds text after the press; what remains is left alone, never pressed at again blind.
+ * `pane_gone`: the multiplexer could not read the pane. `unsupported_build` is the phone's word, never
+ * the bridge's: the machine that owns the pane runs a build with no Clear (its route answered a bare 404,
+ * a 400 or a 405 instead of a receipt), so nothing was pressed.
+ */
+export const CLEAR_REASONS = ["no_profile", "no_draft", "dialog_open", "unreadable", "press_failed", "pane_gone", "unsupported_build"] as const;
+export type ClearReason = (typeof CLEAR_REASONS)[number];
+
+/** The receipt a Clear answers, and the same one again for the same request id. */
+export interface ClearReceipt {
+  readonly requestId: string;
+  readonly outcome: ClearOutcome;
+  /** Set on a refusal. */
+  readonly reason?: ClearReason;
+}
+
+/** The request id's grammar is the Send Protocol's: see `REQUEST_ID` in ./send. */

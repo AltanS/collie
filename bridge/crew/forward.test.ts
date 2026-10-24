@@ -251,7 +251,7 @@ describe("which routes cross a link", () => {
     // The list IS the inventory of what crosses a link; `chat` joined it with the live window, and
     // `files` with the Files view (ADR 0083).
     expect(paneActions).toEqual([
-      "abort", "action", "answer", "changes", "chat", "close", "files", "focus", "history", "keys", "rename", "reply", "send", "upload",
+      "abort", "action", "answer", "changes", "chat", "clear", "close", "files", "focus", "history", "keys", "rename", "reply", "send", "upload",
     ]);
     for (const action of paneActions) expect(crewRouteFor(`/api/pane/x/${action}`)).toBe(`pane/x/${action}`);
     const tabActions = tab.match(alternation)![1]!.split("|").toSorted();
@@ -334,7 +334,7 @@ describe("which routes cross a link", () => {
     // must be attempted against a stale member rather than refused before it is tried (§10.3).
     expect(forwardKind("pane/w1:p1/chat")).toBe("read");
     expect(forwardKind("pane/w1:p1/changes")).toBe("read");
-    for (const action of ["reply", "keys", "upload", "close", "rename", "answer", "send", "abort"]) {
+    for (const action of ["reply", "keys", "upload", "close", "rename", "answer", "send", "abort", "clear"]) {
       expect(forwardKind(`pane/w1:p1/${action}`)).toBe("write");
     }
     expect(forwardKind("tab")).toBe("write");
@@ -893,6 +893,8 @@ describe("a Stop and a steer over a crew link", () => {
   test("the Stop (`abort`) and the steer (a `reply` with `when: steer`) dial once, on WRITE_BUDGET_MS, and a timeout is unknown", async () => {
     for (const [path, body] of [
       ["/api/pane/w1:p1/abort?host=laptop", `{"requestId":"stop-req-0001"}`],
+      // A Clear (ADR 0116) is the same kind of write: the key may have gone in, so it never dials twice.
+      ["/api/pane/w1:p1/clear?host=laptop", `{"requestId":"clear-req-0001"}`],
       ["/api/pane/w1:p1/reply?host=laptop", `{"text":"use the other table","submit":true,"id":"steer-req-0001","when":"steer"}`],
     ] as const) {
       const { transport, calls } = transportOf(() => ({ ok: false, state: "unreachable", reason: "timed out after 5000ms", receivedAt: 2 }));

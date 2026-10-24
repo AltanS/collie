@@ -99,7 +99,7 @@ import { useHandsFree, useSttCapability } from "@/lib/stt";
 import { NoEchoNotice } from "@/components/no-echo-notice";
 import type { TranscriptEntry } from "@/lib/types";
 import { findUnknownSendMatch, type UnknownSend } from "@/lib/unknown-send";
-import { phoneRefusal, readingRefusal, refusalKey, SendRefusalNotice, stopNotice, type SendRefusal } from "@/components/send-notice";
+import { clearNotice, phoneRefusal, readingRefusal, refusalKey, SendRefusalNotice, stopNotice, type SendRefusal } from "@/components/send-notice";
 import { mintRequestId } from "@/lib/worktree-name";
 
 /** The status line a verified send leaves, by where the text went. */
@@ -471,6 +471,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // The field itself is off only when nothing typed here can ever leave for this pane: a gone pane,
   // a read-only device, a box out of reach. Derived from the slot, never passed in.
   const locked = fieldLocked(slot);
+  // Clear (ADR 0116) is offered while the box holds a draft and no dialog owns the keys. The Surface's own
+  // words, so a stale or unreadable read greys it; the keys door and the link are `way.keysSendable`.
+  const clearOffered = way.keysSendable && shownSurface.composer === "draft" && shownSurface.modal === "none";
   const offlineRef = useRef(offline);
   offlineRef.current = offline;
   // The one-line note while Send is off for want of a live read: what happens to the words already
@@ -727,6 +730,21 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       if (receipt.keys !== undefined) onSent();
     } catch (e) {
       if (api.outcomeUnknown(e)) setSendRefusal(stopNotice({ requestId, outcome: "unknown" }), shownSurface);
+      else setStatus(describeThrownError(e), "error");
+    }
+  }
+  // CLEAR (ADR 0116, the Clear paragraph): the Keys board's button that empties the harness's box. One fresh
+  // request id per tap; the bridge presses the profile's clear key as this person's tap and reads back, and the
+  // receipt is told in the notice a send's refusal and a Stop use. No arm: a cleared draft is retyped. A thrown
+  // error that says nothing about the key (a timeout, a dropped link) is the Clear's `unknown`. The button is
+  // offered only while the Surface reads a draft and no dialog, and the link is up; the bridge decides again.
+  async function clearBox(): Promise<void> {
+    const requestId = mintRequestId();
+    try {
+      const receipt = await api.clearPane(paneId, { requestId }, scope);
+      setSendRefusal(clearNotice(receipt), shownSurface);
+    } catch (e) {
+      if (api.outcomeUnknown(e)) setSendRefusal(clearNotice({ requestId, outcome: "unknown" }), shownSurface);
       else setStatus(describeThrownError(e), "error");
     }
   }
@@ -1969,6 +1987,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               onSend={(keys) => direct.sendPaneKeys(keys)}
               presets={keyPresets}
               board={keyBoard}
+              clearBox={{ available: clearOffered, onClear: clearBox }}
               onQueueChange={setQueuedKeys}
               disabled={!way.keysSendable}
             />
