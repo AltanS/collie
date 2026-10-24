@@ -957,6 +957,56 @@ The terminal mirror continues polling in Zen mode, and interactive buffer elemen
 functional. Prompt buttons, "Load older", and "Show entire history" controls stay available because
 they are part of the content stream rather than chrome.
 
+## Large screens
+
+> **Note.** On a tablet or an open Fold the pane screen shows several panes side by side. A phone is not changed.
+
+The layout turns on for the pane screen when the screen is at least 600 CSS pixels wide and at least
+480 pixels tall. A phone held sideways is under 480 pixels tall, so it keeps the phone layout.
+To switch it off, open **Settings → Appearance → Large-screen layout** and pick **Off**. **Auto**,
+the default, turns it on where the screen is big enough. The choice is stored per device.
+
+The layout has three parts.
+
+- **The sidebar.** It lists your panes, the same list the pane switcher shows. The button in its top
+  row folds it to a narrow rail of icons, and the choice is kept on this device. The ColliePWA mark
+  in the top row goes home. **New space** and **Settings** sit at its foot.
+- **The row of panes.** Each space keeps its own row, and the row scrolls sideways. Tap a pane in
+  the sidebar to show it. Hold it (right-click with a mouse) for **Open here**, which replaces the
+  pane you are in, or **Open beside**, which adds it next to that pane. You can also drag a pane
+  into the row. **Remove from view** takes a pane out of the row. The agent keeps running.
+- **The space header.** It holds the space's name, its tabs and a **+** for a new tab. Its two
+  buttons, or a vertical swipe, move to the space above or below.
+
+Each pane has a width: **1/2**, **4/5** or **Full** of the row. A pane is never narrower than 360
+pixels, so a width that would make it narrower is not offered. When the row cannot hold two panes at
+that size, every pane is **Full** width and the control is hidden. The row snaps to the start of a
+pane when you stop scrolling, and a scroll to the side never goes back a page in the browser. The row
+always ends with **Add a pane**. It lists the other panes of the space and has **New agent**, which
+starts it in a new space.
+
+Every pane has its own belt, and a tap on it acts on that pane. The pane you work in has a frame and
+the reply box. A tap on another pane's belt acts on that pane and moves you there. Tap the pane to
+move without acting.
+
+The layout is kept on this device only, and Back and shared links work as before.
+
+**Foldables.** On a foldable held half open, Chrome and Samsung Internet split the screen at the fold.
+Held like a laptop, the conversation stays above the fold, and the belt and a taller reply box sit
+below it. The layout goes back to flat while the keyboard is up. Held like a book, each half shows
+one pane, and the sidebar is the rail. Other browsers show the flat layout only.
+
+**Pane navigation.** You can move between panes and spaces with a gesture. Pick the way in
+**Settings → Pane navigation**.
+
+| Way | How it works |
+| --- | --- |
+| Two fingers | The default. Hold one finger on the reading area, then swipe with a second finger. Left and right move between panes. Up and down move between spaces. The move happens when you lift the first finger. |
+| Joystick | Hold the handle above the belt and slide it in the direction you want. |
+| Off | No gesture. |
+
+Selecting text keeps working in all three.
+
 ## Chat view
 
 > **Note.** Chat is the default view of an agent pane since 1.17.0. Terminal is one tap away.
