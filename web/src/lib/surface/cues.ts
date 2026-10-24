@@ -507,6 +507,10 @@ function softWrapped(texts: readonly string[], frame: Frame): boolean {
   let last = frame.interior.last;
   while (last > prompt && isBlank(texts[last]!)) last--;
   if (last === prompt) return false;
+  // A row that ends in an ellipsis is no wrapped draft row: pi truncates a menu or hint row that is wider
+  // than the box with `…` (or `...`), so the row fills the width the way a soft wrap does. Refuse, and leave
+  // the read to the older rules (a menu row or unknown), never a draft.
+  for (let i = prompt; i <= last; i++) if (endsInEllipsis(texts[i]!)) return false;
   for (let i = prompt; i < last; i++) {
     const row = texts[i]!.trimEnd();
     const next = texts[i + 1]!.trim().split(/\s/u)[0]!;
@@ -514,6 +518,12 @@ function softWrapped(texts: readonly string[], frame: Frame): boolean {
     if (displayWidth(row) + 1 + displayWidth(next) <= width - WRAP_SLACK) return false;
   }
   return true;
+}
+
+/** Whether a row's text ends in an ellipsis: the character `…` or three ASCII dots. */
+function endsInEllipsis(text: string): boolean {
+  const end = text.trimEnd();
+  return end.endsWith("…") || end.endsWith("...");
 }
 
 /** The rows with the pointer glyph the box's prompt row opens on read as blank, when the frame took it as

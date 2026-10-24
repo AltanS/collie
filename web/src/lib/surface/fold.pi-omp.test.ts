@@ -304,6 +304,27 @@ describe("a soft-wrapped draft in pi's box is no menu (issue 553)", () => {
     expect(got.frame?.interior.text.endsWith("look at first and why.")).toBe(true);
   });
 
+  // pi draws a menu or hint row wider than the box cut short with an ellipsis, which fills the width the
+  // way a soft wrap does. A row that ends in one is no wrapped draft row, whatever else the rows look like.
+  // Synthetic variations: the field draft's rows with the last word of one row replaced by the ellipsis.
+  const ELLIPSES: readonly [string, string][] = [
+    ["the ellipsis character", "…"],
+    ["three ASCII dots", "..."],
+  ];
+  for (const [what, ending] of ELLIPSES) {
+    for (const [where, rowAt] of [["a middle row", 1], ["the last row", 4]] as const) {
+      it(`a draft row ending in ${what} (${where}) is not read as a wrapped draft`, () => {
+        const lines = wrapped(PROSE.split(" "));
+        expect(lines.length).toBe(5);
+        lines[rowAt] = `${lines[rowAt]!.replace(/\S+$/u, "")}${ending}`;
+        const got = read(lines);
+        expect(got.cues?.strength).toBe("strong");
+        expect(got.surface.composer).not.toBe("draft");
+        expect(isFree(got.surface)).toBe(false);
+      });
+    }
+  }
+
   // The controls stay dialogs: a choice between the rules is no soft wrap. An explicit-newline draft of
   // short rows reads the same as such a list, so it stays a dialog too, the conservative side.
   const MENUS: readonly [string, string[]][] = [
