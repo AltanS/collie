@@ -66,7 +66,8 @@ import { adapterFor } from "../journal/registry.ts";
 import type { JournalAdapter } from "../journal/types.ts";
 import { journalAgentOf, type AgentView } from "../types.ts";
 import type { CacheRule, ResetEvent, ResetRule, Sourced } from "./claims.ts";
-import { evaluate, type CacheMemo, type CacheOverride, type EvaluateInput, type PaneCache } from "./engine.ts";
+import { evaluate, type CacheMemo, type CacheOverride, type ChoiceOnly, type EvaluateInput, type PaneCache } from "./engine.ts";
+import type { ModelReading } from "../pane-model.ts";
 import { modelRuleFor, resetRulesFor, ruleForProbe } from "./rules/index.ts";
 
 /** Where the operator's overrides come from. One method, so the reader can be faked in a test. */
@@ -135,6 +136,11 @@ interface Entry extends Owner, Chosen {
 /** The model label a session last read, with the same owner the cache entry carries. */
 interface ModelEntry extends Owner {
   model: string;
+  /**
+   * When the log named it, by the log's own clock: the `/model` record's time, else the turn's. The
+   * pane's label weighs it against the start hook's model (bridge/pane-model.ts).
+   */
+  at: number;
   /** The effort beside it, in the harness's own word, when the log names one. */
   effort?: string;
 }
@@ -175,6 +181,12 @@ export class CacheTracker {
    */
   model(sessionKey: string): string | undefined {
     return this.modelBySession.get(sessionKey)?.model;
+  }
+
+  /** The model with the time the log named it, for the label's choice against the start hook (bridge/pane-model.ts). */
+  modelReading(sessionKey: string): ModelReading | undefined {
+    const entry = this.modelBySession.get(sessionKey);
+    return entry === undefined ? undefined : { model: entry.model, at: entry.at };
   }
 
   /**
@@ -279,11 +291,17 @@ export class CacheTracker {
     // engine decides whether the cache has anything to say. A probe that names no model keeps the
     // last one: the window may simply hold no turn that says.
     // The effort rides with it, and a probe that names none keeps the last one for the same reason.
-    const shown = (probe?.selectedModel ?? probe?.model)?.trim();
+    // A read with no turn may still name a `/model` chosen before the first message: the adapter's
+    // choice probe reads it, so a fresh session's label follows a `/model` at once.
+    const choices = probe === null || probe === undefined ? await this.choicesOf(adapter, ref) : null;
+    const read = probe ?? choices;
+    const shown = (read?.selectedModel ?? probe?.model)?.trim();
     if (shown !== undefined && shown !== "") {
-      const named = probe?.effort?.trim();
+      const named = read?.effort?.trim();
       const effort = named === undefined || named === "" ? this.modelBySession.get(key)?.effort : named.slice(0, EFFORT_MAX);
-      const entry: ModelEntry = { model: shown.slice(0, MODEL_MAX), session: owner.session, paneId: owner.paneId };
+      // When the log named it: the `/model` record's time, else the turn's.
+      const namedAt = read?.selectedModel !== undefined ? (read.selectedModelAt ?? 0) : (probe?.lastRequestAt ?? 0);
+      const entry: ModelEntry = { model: shown.slice(0, MODEL_MAX), at: namedAt, session: owner.session, paneId: owner.paneId };
       if (effort !== undefined) entry.effort = effort;
       this.modelBySession.set(key, entry);
     }
@@ -308,6 +326,15 @@ export class CacheTracker {
       override: overrideFor(overrides, chosen.rule?.id),
       now: at,
     });
+  }
+
+  /** The adapter's choices in a log with no turn, or null. A failed read is no choice. */
+  private async choicesOf(adapter: JournalAdapter, ref: { kind: "id" | "path"; value: string }): Promise<ChoiceOnly | null> {
+    try {
+      return (await adapter.choiceProbe?.(ref)) ?? null;
+    } catch {
+      return null;
+    }
   }
 
   /**

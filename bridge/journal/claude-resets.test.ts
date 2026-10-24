@@ -371,6 +371,68 @@ describe("the Claude probe, end to end", () => {
     expect(probe?.effort).toBeUndefined();
   });
 
+  // The log of a session in which `/model opus` ran before any message, record for record as Claude
+  // Code 2.1.310 wrote it in the 2026-10-24 lab (bookkeeping fields trimmed). No assistant turn.
+  const BEFORE_FIRST_MESSAGE = [
+    JSON.stringify({ type: "mode", mode: "normal" }),
+    JSON.stringify({ type: "permission-mode", permissionMode: "bypassPermissions" }),
+    JSON.stringify({ type: "file-history-snapshot" }),
+    JSON.stringify({
+      isSidechain: false,
+      type: "user",
+      isMeta: true,
+      timestamp: "2026-10-24T19:09:45.251Z",
+      version: "2.1.310",
+      message: { role: "user", content: "<local-command-caveat>The command below was run directly in Claude Code, not sent to you as a request, and its output goes straight to the user. It's recorded here as context for later messages.</local-command-caveat>" },
+    }),
+    JSON.stringify({
+      isSidechain: false,
+      type: "user",
+      timestamp: "2026-10-24T19:09:45.251Z",
+      version: "2.1.310",
+      message: { role: "user", content: "<command-name>/model</command-name>\n            <command-message>model</command-message>\n            <command-args>opus</command-args>" },
+    }),
+    JSON.stringify({
+      isSidechain: false,
+      type: "user",
+      timestamp: "2026-10-24T19:09:45.251Z",
+      version: "2.1.310",
+      message: { role: "user", content: "<local-command-stdout>Set model to `Opus 5.5` and saved as your default for new sessions</local-command-stdout>" },
+    }),
+    JSON.stringify({ type: "file-history-snapshot" }),
+    JSON.stringify({ type: "last-prompt" }),
+    JSON.stringify({ type: "cost-state" }),
+  ];
+
+  test("a /model before the first message: no cache reading, and the choice probe names the model with its time", async () => {
+    const dir = await fixture(BEFORE_FIRST_MESSAGE);
+    const journal = claudeJournal(dir);
+    const probe = await journal.cacheProbe?.({ kind: "id", value: SESSION });
+    const choices = await journal.choiceProbe?.({ kind: "id", value: SESSION });
+    await rm(dir, { recursive: true, force: true });
+    expect(probe).toBeNull();
+    expect(choices).toEqual({ selectedModel: "Opus 5.5", selectedModelAt: Date.parse("2026-10-24T19:09:45.251Z") });
+  });
+
+  test("the choice probe answers null with a turn in the window, and with no choice before the first message", async () => {
+    const withTurn = await fixture([turn("msg_1", "2026-09-17T09:00:00Z", "claude-opus-5"), JSON.stringify(stdout("Set model to `Fable 5.1` for this session only", "2026-09-17T09:02:00Z"))]);
+    expect(await claudeJournal(withTurn).choiceProbe?.({ kind: "id", value: SESSION })).toBeNull();
+    await rm(withTurn, { recursive: true, force: true });
+    const bare = await fixture([JSON.stringify({ type: "mode", mode: "normal" })]);
+    expect(await claudeJournal(bare).choiceProbe?.({ kind: "id", value: SESSION })).toBeNull();
+    await rm(bare, { recursive: true, force: true });
+    const effortOnly = await fixture([JSON.stringify(stdout("Set effort level to high (this session only).", "2026-09-17T09:02:00Z"))]);
+    expect(await claudeJournal(effortOnly).choiceProbe?.({ kind: "id", value: SESSION })).toEqual({ effort: "high" });
+    await rm(effortOnly, { recursive: true, force: true });
+  });
+
+  test("a /model after the turn carries the time of its own record", async () => {
+    const dir = await fixture([turn("msg_1", "2026-09-17T09:00:00Z", "claude-opus-5"), JSON.stringify(stdout("Set model to `Fable 5.1` for this session only", "2026-09-17T09:02:00Z"))]);
+    const probe = await claudeJournal(dir).cacheProbe?.({ kind: "id", value: SESSION });
+    await rm(dir, { recursive: true, force: true });
+    expect(probe?.selectedModelAt).toBe(Date.parse("2026-09-17T09:02:00Z"));
+  });
+
   test("a session with no action since its last turn reports no resets at all", async () => {
     const dir = await fixture([turn("msg_1", "2026-09-17T09:00:00Z", "claude-opus-5")]);
     const probe = await claudeJournal(dir).cacheProbe?.({ kind: "id", value: SESSION });

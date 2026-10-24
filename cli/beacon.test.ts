@@ -16,7 +16,7 @@ import { BEACON_HARNESS, BEACON_HOOKS, type BeaconEmitDeps, cmdBeaconEmit, readE
 import { context, fakeFiles, HOME, STATE } from "./fakes.ts";
 import { EXIT } from "./io.ts";
 import type { Environment } from "./context.ts";
-import type { JsonObject } from "../bridge/json.ts";
+import type { JsonObject, JsonValue } from "../bridge/json.ts";
 
 // `collie beacon emit`. Everything here is driven through the two seams (`cli/sys.ts`), so no test
 // reads a real `/proc`, writes a real state dir, or touches stdin.
@@ -342,6 +342,32 @@ describe("the hook edges it writes (M56 spec 11)", () => {
     expect(await run({ [userFile]: HOLD_ENTRY, [managedSettingsPath(HOST.platform)]: '{"allowManagedHooksOnly":true}' })).toBeUndefined();
     expect(await run({ [userFile]: HOLD_ENTRY, [managedSettingsPath(HOST.platform)]: '{"disableAllHooks":true}' })).toBeUndefined();
     expect(await run({})).toBeUndefined();
+  });
+
+  test("a start edge carries the model the start names, so a fresh pane names it before its first message", async () => {
+    const run = async (event: string, model: JsonValue | undefined): Promise<EdgeRecord | undefined> => {
+      const d = deps({ stdin: payload({ hook_event_name: event, source: "startup", model }) });
+      expect(await cmdBeaconEmit(d)).toBe(EXIT.OK);
+      const [edge, ...rest] = edges(d.files);
+      expect(rest).toEqual([]);
+      return edge;
+    };
+    // As Claude Code 2.1.310 sends it, with and without the 1M window tag.
+    expect((await run("SessionStart", "claude-sonnet-5-5"))?.model).toBe("claude-sonnet-5-5");
+    expect((await run("SessionStart", "claude-opus-5-5[1m]"))?.model).toBe("claude-opus-5-5[1m]");
+    // Absent (`claude -p` sends none): the edge goes out without the field.
+    const absent = await run("SessionStart", undefined);
+    expect(absent?.event).toBe("SessionStart");
+    expect(absent !== undefined && "model" in absent).toBe(false);
+    // Refused whole, never cleaned: too long, a newline (even a trailing one), a control character, not text.
+    for (const bad of ["m".repeat(129), "claude-opus-5-5\n", "opus\n5", "\u001b[1mopus", 7, { id: "opus" }, ""]) {
+      const edge = await run("SessionStart", bad);
+      expect(edge?.event).toBe("SessionStart");
+      expect(edge?.model).toBeUndefined();
+    }
+    expect((await run("SessionStart", "m".repeat(128)))?.model).toHaveLength(128);
+    // Only the start speaks for the model: a prompt edge with one in its payload carries none.
+    expect((await run("UserPromptSubmit", "claude-opus-5-5"))?.model).toBeUndefined();
   });
 
   test("an edge needs no session id: the pid places it", async () => {

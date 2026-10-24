@@ -47,6 +47,11 @@ export interface CacheProbe {
    */
   selectedModel?: string;
   /**
+   * Epoch ms of the record that chose {@link selectedModel}, by the transcript's own clock. The pane's
+   * label weighs it against the start hook's model (bridge/pane-model.ts). Absent: the turn's time.
+   */
+  selectedModelAt?: number;
+  /**
    * The effort the next turn runs at, in the harness's own word: pi's thinking level, Claude's
    * `/effort`, Codex's reasoning effort, opencode's variant (`high`, `xhigh`, `max`). A level set after
    * the turn above wins, as {@link selectedModel} does. Display only: no rule and no TTL reads it.
@@ -64,6 +69,19 @@ export interface CacheProbe {
   measuredAt?: number;
   /** One line naming what was read, for a doctor line and a log. Never transcript content. */
   evidence: string;
+}
+
+/**
+ * A read that found no turn, but choices the operator made before the first one: Claude's `/model` or
+ * `/effort` in a session with no message yet, which Claude Code writes to the transcript at once. It
+ * names the model and the effort for the pane's label and says nothing about the cache. Produced by
+ * `JournalAdapter.choiceProbe`, only when the cache probe found no turn.
+ */
+export interface ChoiceOnly {
+  selectedModel?: string;
+  /** Epoch ms of the record that chose it, by the transcript's own clock. */
+  selectedModelAt?: number;
+  effort?: string;
 }
 
 /** What the tracker remembers about one session between polls. In memory only. */

@@ -10,6 +10,7 @@ import type { ProgramDriver } from "./surface/durable-driver.ts";
 import type { EventPoker } from "./event-poker.ts";
 import type { MuxAdapter } from "./mux/types.ts";
 import type { NotificationCoordinator } from "./notifications.ts";
+import type { ModelReading } from "./pane-model.ts";
 import { DURABLE_MUX } from "./mux/durable/adapter.ts";
 import { versionNotice, type VersionRefusal } from "./mux/durable/protocol.ts";
 import { sourceWhere, type DurableSource } from "./sources.ts";
@@ -121,6 +122,11 @@ export interface SessionParts {
    * or "holds permissions" when the harness's hook also holds permissions (M56 spec 12).
    */
   hooks?: (paneId: string) => "live" | "holds" | "none";
+  /**
+   * Set with `hooks`: the model the pane's live hook source named on its start edge, and when, or
+   * undefined. The pane's label weighs it against the log's (bridge/pane-model.ts).
+   */
+  hookModel?: (paneId: string) => ModelReading | undefined;
   /** Set with `asks` when the bridge takes holds (M56 spec 12): the pane's hold note for the phone. */
   hold?: (paneId: string) => HoldNote | null;
 }

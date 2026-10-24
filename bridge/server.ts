@@ -221,6 +221,7 @@ import { isPaneId, parseAddress } from "./walky/address.ts";
 import { isWalkyId, parsePhoneSend } from "./walky/parse.ts";
 import { NOT_THE_SENDER, type TakeBackAnswer, type WalkyService } from "./walky/service.ts";
 import { olderThanWalky, type WalkyCrew } from "./walky/crew.ts";
+import { journalModelShown, paneModel, type ModelReading } from "./pane-model.ts";
 import type {
   ActionResponse,
   AgentView,
@@ -270,6 +271,17 @@ import type {
   UploadCapability,
   UploadResponse,
 } from "./types.ts";
+
+/**
+ * The log's model reading for one session, from a ledger that may predate `modelReading` (a test's
+ * fake): then the plain `model` counts as a reading with no time, which every hook reading loses to,
+ * as the label behaved before the start hook named a model.
+ */
+function journalModelOf(cache: { model?(key: string): string | undefined; modelReading?(key: string): ModelReading | undefined } | undefined, key: string): ModelReading | undefined {
+  if (cache?.modelReading !== undefined) return cache.modelReading(key);
+  const model = cache?.model?.(key);
+  return model === undefined ? undefined : { model, at: Number.POSITIVE_INFINITY };
+}
 
 // Headroom the runtime's own body cap (Bun.serve maxRequestBodySize) keeps above the operator's
 // upload cap. It has to sit above cap + multipart overhead so the handler's own 413 fires first for
@@ -1243,6 +1255,8 @@ export function startServer(opts: {
   cache?: {
     get(sessionKey: string): PaneCache | undefined;
     model?(sessionKey: string): string | undefined;
+    /** The model with the time the log named it; the label weighs it against the start hook's. */
+    modelReading?(sessionKey: string): ModelReading | undefined;
     effort?(sessionKey: string): string | undefined;
   };
   /**
@@ -1594,11 +1608,15 @@ export function startServer(opts: {
       const key = p.agentSession?.value;
       const reading = key === undefined ? undefined : cache?.get(key);
       const read = reading === undefined ? withTimes : { ...withTimes, cache: reading };
-      // The model label rides beside it, from the same probe's memo (bridge/cache/tracker.ts).
-      const model = key === undefined ? undefined : cache?.model?.(key);
+      // The model label rides beside it, from the same probe's memo (bridge/cache/tracker.ts), or from
+      // the start hook's edge where the log has not named one yet or named it before the start
+      // (bridge/pane-model.ts): a fresh session has no log until its first message.
+      const journalModel = key === undefined ? undefined : journalModelOf(cache, key);
+      const hookModel = from.hookModel?.(p.paneId);
+      const model = paneModel(journalModel, hookModel);
       const withModel = model === undefined ? read : { ...read, model };
-      // The effort rides with the model, and only with it: an effort alone names nothing (#463).
-      const effort = model === undefined || key === undefined ? undefined : cache?.effort?.(key);
+      // The effort rides with the log's model, and only with it: an effort alone names nothing (#463).
+      const effort = key === undefined || !journalModelShown(journalModel, hookModel) ? undefined : cache?.effort?.(key);
       const withCache = effort === undefined ? withModel : { ...withModel, effort };
       // The tasks are words the agent wrote, so they take the mirror's mask like the title above.
       const readTodos = opts.todos?.get(p);

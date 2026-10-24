@@ -158,6 +158,18 @@ const EDGE_DETAIL = /^[a-z_]{1,64}$/u;
 const EDGE_HARNESS = /^[a-z0-9][a-z0-9._-]{0,31}$/u;
 /** A SHA-256 in hex. */
 const PROMPT_HASH = /^[0-9a-f]{64}$/u;
+/** A model name on a start edge: printable ASCII, no newline, at most 128 characters. */
+const EDGE_MODEL = /^[\x20-\x7e]{1,128}$/u;
+
+/**
+ * A model name as an edge may carry it, or null. Read raw, never trimmed: a value with a newline or a
+ * control character is refused whole rather than cleaned, because the emitter (`cli/beacon.ts`) and
+ * this boundary must agree on what a model name is.
+ */
+export function edgeModelOf(raw: JsonValue | undefined): string | null {
+  if (typeof raw !== "string" || !EDGE_MODEL.test(raw) || raw.trim() === "") return null;
+  return raw;
+}
 
 /**
  * One edge file's text as a record, or null when it is not an edge this build can read (M56 spec 11).
@@ -200,5 +212,8 @@ export function parseEdge(text: string): EdgeRecord | null {
   if (agent !== null && shortText.test(agent)) record = { ...record, agent };
   const inputHash = row.inputHash === undefined ? null : readText(row, "inputHash");
   if (inputHash !== null && /^[0-9a-f]{1,64}$/u.test(inputHash)) record = { ...record, inputHash };
+  // The start edge's model: a malformed one drops the field, never the edge.
+  const model = edgeModelOf(row.model);
+  if (model !== null) record = { ...record, model };
   return record;
 }
