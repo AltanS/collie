@@ -1,6 +1,6 @@
 # 0118: account windows come from the vendor's usage endpoint with the operator's own login
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-24
 - **Shipped in:** pending (1.24.0 Edge)
 - **Trail:** Altan, 2026-10-24: the windows must show without a statusLine; the operator sees no dots
