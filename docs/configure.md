@@ -266,7 +266,7 @@ Collie refuses before it presses when pressing could do harm:
 
 - **A dialog is open.** Escape would answer that dialog. Answer it on its card instead.
 - **The box holds your text, and this harness's stop key would clear it.** Clear the box, or use the
-  Keys board, then tap Stop again.
+  Clear button on the Keys board, then tap Stop again.
 - **Collie cannot read this pane.** It does not press a key into a screen it cannot read. This also
   covers a screen where Collie cannot tell whether a turn runs.
 - **The turn had already ended.** There was nothing to stop, so nothing was pressed.
@@ -282,6 +282,10 @@ the receipt back through the lead.
 
 A program that runs as a durable agent keeps the Stop it already had. It stops the turn it names,
 with its own receipt, and it does not use the arm.
+
+### Clear the box
+
+The **Clear** button at the end of the chip row on the Keys board empties the harness's input box in one tap, with no arm, because you can retype what it removes. Collie presses the harness's own delete key as often as the text needs, reads the box again, and tells you under it whether the box is clear or why it was not. The button is greyed when the box is empty, a dialog is open or the link is down, and if the box does not empty Collie leaves what remains alone and does not press again.
 
 ## Your own key presets
 

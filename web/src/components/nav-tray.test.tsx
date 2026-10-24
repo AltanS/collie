@@ -960,4 +960,31 @@ describe("NavTray — operator preset rows", () => {
     await user.click(btn);
     expect(onSend).toHaveBeenCalledExactlyOnceWith(["ctrl+b", "c"]);
   });
+
+  // ── Clear (ADR 0116): the board's own button, at the chip row's end ──
+
+  it("draws no Clear without the clearBox prop (a playground, a pane with no screen)", () => {
+    render(<NavTray onSend={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: "Clear the input box" })).toBeNull();
+  });
+
+  it("Clear runs its callback once per tap, and never sends a key itself", async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    const onClear = vi.fn(() => Promise.resolve());
+    render(<NavTray onSend={onSend} clearBox={{ available: true, onClear }} />);
+    await user.click(screen.getByRole("button", { name: "Clear the input box" }));
+    expect(onClear).toHaveBeenCalledTimes(1);
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("Clear is greyed when unavailable or when the tray is disabled", async () => {
+    const user = userEvent.setup();
+    const onClear = vi.fn(() => Promise.resolve());
+    const { rerender } = render(<NavTray onSend={vi.fn()} clearBox={{ available: false, onClear }} />);
+    expect(screen.getByRole("button", { name: "Clear the input box" })).toBeDisabled();
+    rerender(<NavTray onSend={vi.fn()} disabled clearBox={{ available: true, onClear }} />);
+    await user.click(screen.getByRole("button", { name: "Clear the input box" }));
+    expect(onClear).not.toHaveBeenCalled();
+  });
 });

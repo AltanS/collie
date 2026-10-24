@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -10,6 +10,8 @@ import {
   ArrowUp,
   Check,
   CornerDownLeft,
+  Eraser,
+  Loader2,
   Lock,
   Space,
 } from "lucide-react";
@@ -94,6 +96,14 @@ interface NavTrayProps {
   board?: KeyBoard;
   disabled?: boolean;
   /**
+   * Clear (ADR 0116, the Clear paragraph): the button at the chip row's end that empties the harness's
+   * input box in one tap. Absent, no button is drawn (a playground, a test, a pane with no screen).
+   * `available` is the composer's reading of the Surface: the box holds a draft and no dialog is up. The
+   * composer owns the request and shows the receipt under the box; the tray owns the spinner and takes
+   * no second tap while the request is in flight.
+   */
+  clearBox?: { readonly available: boolean; readonly onClear: () => Promise<void> };
+  /**
    * Neutral key spellings this multiplexer refuses (`/api/config`, M10/06). A button whose chord
    * uses one is greyed — the door is open (`sendKeys`), this key is simply not behind it.
    *
@@ -150,10 +160,25 @@ export function NavTray({
   onQueueChange,
   board = DEFAULT_BOARD,
   disabled,
+  clearBox,
   unsupportedKeys = NO_REFUSED_KEYS,
 }: NavTrayProps) {
   useLocale();
   const [open, setOpen] = useState<OpenPanel>(null);
+  // A Clear in flight takes no second tap: a second request id would be a second press.
+  const [clearing, setClearing] = useState(false);
+  const clearingRef = useRef(false);
+  async function runClear() {
+    if (clearBox === undefined || disabled || !clearBox.available || clearingRef.current) return;
+    clearingRef.current = true;
+    setClearing(true);
+    try {
+      await clearBox.onClear();
+    } finally {
+      clearingRef.current = false;
+      setClearing(false);
+    }
+  }
   const togglePanel = (panel: Exclude<OpenPanel, null>) =>
     setOpen((cur) => (cur === panel ? null : panel));
   const { queue, mods, activeMods, composing, arm, press, pushBase, removeAt, clear, take, releaseAbsent } =
@@ -423,6 +448,24 @@ export function NavTray({
         {chip("123", "123")}
         {chip("presets", t("keys.presets.label"))}
         {chip("fkeys", t("keys.fkeys.label"))}
+        {clearBox !== undefined && (
+          // Clear (ADR 0116): one tap, no arm, since a cleared draft is retyped. Collie's own control, so it
+          // is drawn plain and apart from the keys; greyed in place (never removed) when there is no draft
+          // to clear, a dialog is up, or the link is down. 36px drawn + 4px reach each side = 44px to tap.
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            data-slot="keys-clear"
+            disabled={disabled || !clearBox.available || clearing}
+            aria-label={t("keys.clear.aria")}
+            onClick={() => void runClear()}
+            className={cn("ml-auto h-9 gap-1.5 px-3 text-sm font-medium touch-manipulation select-none", "relative before:absolute before:inset-x-0 before:-inset-y-[4px] before:content-['']")}
+          >
+            {clearing ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Eraser className="size-4" aria-hidden="true" />}
+            {t("keys.clear.label")}
+          </Button>
+        )}
       </div>
 
       {open === "123" && (

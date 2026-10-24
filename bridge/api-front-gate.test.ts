@@ -541,6 +541,8 @@ describe("the local credential: reads only, from this host through nothing", () 
   // on both routes at the level server.ts asks for them, before any read of the pane.
   test("a Stop (`POST /api/pane/:id/abort`) and a steer (`POST /api/send`, `when: steer`) with the local credential are 403", async () => {
     expect(paneGateLevel("abort")).toBe("write");
+    // A Clear of the box (ADR 0116) is a write too, and the local credential is refused on it the same way.
+    expect(paneGateLevel("clear")).toBe("write");
     expect(SERVER_CODE).toContain('if (pathname === "/api/send" && req.method === "POST") {\n        const denied = browserGate("write");');
     for (const [bind, peer] of [
       [LOOPBACK_BIND, "127.0.0.1"],
@@ -550,6 +552,8 @@ describe("the local credential: reads only, from this host through nothing", () 
       const headers = { ...bearer, origin: "http://127.0.0.1:8787", "content-type": "application/json" };
       const stop = guard(request("POST", "/api/pane/w1%3Ap1/abort", headers), config(), paneGateLevel("abort"), gate);
       expect({ bind, status: stop?.status }).toEqual({ bind, status: 403 });
+      const cleared = guard(request("POST", "/api/pane/w1%3Ap1/clear", headers), config(), paneGateLevel("clear"), gate);
+      expect({ bind, status: cleared?.status }).toEqual({ bind, status: 403 });
       const steer = guard(request("POST", "/api/send", headers), config(), "write", gate);
       expect({ bind, status: steer?.status }).toEqual({ bind, status: 403 });
     }

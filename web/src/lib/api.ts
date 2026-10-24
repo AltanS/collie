@@ -19,6 +19,7 @@ import { asJsonObject, asJsonString, parseJsonObject, type JsonObject } from "./
 import { readHeldCancelAnswer, readSendReceipts, readSendReply, type SendReply } from "./send-protocol";
 import type { HeldCancelAnswer, SendReceiptRow, SendRequestBody } from "./surface/send";
 import type { AnswerBody } from "./surface/ask";
+import { CLEAR_OUTCOMES, CLEAR_REASONS, type ClearBody, type ClearReceipt } from "./surface/clear";
 import { STOP_OUTCOMES, STOP_REASONS, type StopBody, type StopReceipt } from "./surface/stop";
 import { readAskTapReply, type AskTapReply } from "./ask-reply";
 import { authHeader, clearNotPaired, EXPIRED_BODY, markExpired, markNotPaired, NOT_PAIRED_BODY } from "./pairing";
@@ -1488,6 +1489,57 @@ async function postStop(paneId: string, requestId: string, scope: Scope | undefi
   return receipt;
 }
 
+/**
+ * What a Clear's 400, 404 or 405 means. This build's Clear route answers a missing pane with its own receipt
+ * (`refused`, `pane_gone`). A refusal in the bridge's error shape (a `code`: an unknown host or session) is
+ * thrown as that refusal. Anything else is a build with no Clear for a screen pane (a crew member before
+ * the Clear answers a bare 404 from its crew router; a pane that takes guarded controls answers 405).
+ * Nothing was pressed either way.
+ */
+function clearMissed(body: JsonObject, status: 400 | 404 | 405, requestId: string): ClearReceipt {
+  if (body.outcome === "refused" && body.reason === "pane_gone") return { requestId, outcome: "refused", reason: "pane_gone" };
+  const fields = asJsonString(body.code) === undefined ? undefined : apiErrorFieldsOf(body);
+  if (fields !== undefined) throw new ApiError(fields.error ?? "The clear route refused the Clear.", status, fields);
+  return { requestId, outcome: "refused", reason: "unsupported_build" };
+}
+
+/** A Clear's failed answers that are still answers: the three of `recoverOutcome`, a 400 and a 405 (see {@link clearMissed}). */
+const clearRecover = (status: number, detail: string): JsonObject | null =>
+  status === 400 || status === 405 ? { ...parseJsonObject(detail), [HTTP_STATUS]: status } : recoverOutcome(status, detail);
+
+/** The receipt a Clear answered, or null for a body that is none. A 404, 400 or 405 never pressed a key. */
+function clearReceiptOf(body: JsonObject | undefined, requestId: string): ClearReceipt | null {
+  if (body === undefined) return null;
+  if (body[HTTP_STATUS] === 404) return clearMissed(body, 404, requestId);
+  if (body[HTTP_STATUS] === 400) return clearMissed(body, 400, requestId);
+  if (body[HTTP_STATUS] === 405) return clearMissed(body, 405, requestId);
+  // The lead could not hear the member's answer in time (`write_outcome_unknown`): the key may have gone in.
+  if (body[HTTP_STATUS] === 504) return { requestId, outcome: "unknown" };
+  // `unknown` is the phone's word, never the bridge's: only the two the bridge answers are read.
+  const outcome = CLEAR_OUTCOMES.find((word) => word === body.outcome && word !== "unknown");
+  if (outcome === undefined) return null;
+  const id = asJsonString(body.requestId) ?? requestId;
+  if (outcome === "cleared") return { requestId: id, outcome };
+  const reason = CLEAR_REASONS.find((word) => word === body.reason);
+  return reason === undefined ? null : { requestId: id, outcome, reason };
+}
+
+async function postClear(paneId: string, requestId: string, scope: Scope | undefined): Promise<ClearReceipt> {
+  // The operator is watching from the tap on, as every write to a pane assumes (poll-intent).
+  stampSend(paneId);
+  const body: ClearBody = { requestId };
+  const got = await req<JsonObject>(
+    withScope(`/api/pane/${encodeURIComponent(paneId)}/clear`, scope),
+    { method: "POST", body: JSON.stringify(body) },
+    sendRecover(clearRecover),
+  );
+  const receipt = clearReceiptOf(got, requestId);
+  if (receipt === null) throw new ApiError("The clear route sent a body this phone cannot read.", 502);
+  // A refusal after the keys went in (a box that would not empty) still moved the pane: look soon.
+  stampSend(paneId);
+  return receipt;
+}
+
 /** The longest first line a plain refusal shows: a sentence, never a page. */
 const PLAIN_LINE_MAX = 160;
 
@@ -1736,6 +1788,17 @@ export function abortPane(
   const body: JsonObject = { requestId: abort.requestId };
   if (abort.target !== null && abort.target !== undefined) Object.assign(body, abort.target);
   return postControl(paneId, "abort", body, scope);
+}
+
+/**
+ * POST /api/pane/:id/clear: empty the harness's input box (ADR 0116, the Clear paragraph).
+ *
+ * A pane with a screen takes the request id alone: the bridge reads the Surface, presses the profile's
+ * clear key as this person's tap, reads back, and answers a {@link ClearReceipt} (`cleared`, or `refused`
+ * with a reason, always a 200). The same request id answers the same receipt and presses once.
+ */
+export function clearPane(paneId: string, clear: { requestId: string }, scope?: Scope): Promise<ClearReceipt> {
+  return postClear(paneId, clear.requestId, scope);
 }
 
 /**

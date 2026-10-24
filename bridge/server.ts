@@ -158,6 +158,7 @@ import { SURFACE_VERSION } from "../web/src/lib/surface/surface.ts";
 import { gateFor } from "./surface/key-gate.ts";
 import type { SendProtocol, SendRequest } from "./surface/protocol.ts";
 import type { AskAnswerer } from "./surface/ask.ts";
+import type { ClearService } from "./surface/clear.ts";
 import type { StopService } from "./surface/stop.ts";
 import type { ProgramDriver } from "./surface/durable-driver.ts";
 import { parseAnswerBody, type AskReply } from "../web/src/lib/surface/ask.ts";
@@ -436,8 +437,12 @@ export function isLoopbackPeer(address: string | null | undefined): boolean {
  * only. The bridge reads the Surface, presses the profile's interrupt key as a person's tap, reads back,
  * and answers `{ requestId, outcome: "stopped" | "pressed" | "refused", reason?, keys? }` (always 200).
  * The same request id answers the same receipt. See `bridge/surface/stop.ts`.
+ *
+ * `clear` (ADR 0116, the Clear paragraph) is `POST /api/pane/:id/clear` with `{ requestId }` only, on a pane
+ * with a screen: it empties the harness's input box with the profile's clear key as a person's tap, reads
+ * back, and answers `{ requestId, outcome: "cleared" | "refused", reason? }` (always 200). See `bridge/surface/clear.ts`.
  */
-const PANE_ROUTE = /^\/api\/pane\/([^/]+)(?:\/(reply|keys|upload|close|rename|history|chat|changes|files|focus|answer|send|abort|action))?$/;
+const PANE_ROUTE = /^\/api\/pane\/([^/]+)(?:\/(reply|keys|upload|close|rename|history|chat|changes|files|focus|answer|send|abort|clear|action))?$/;
 
 /**
  * A pairing claim's refusal, as an error code.
@@ -2204,6 +2209,18 @@ export function startServer(opts: {
           body = undefined;
         }
         return stopRoute(rt, paneId, body, { audit: audit_, device, session, acceptEncoding: req.headers.get("accept-encoding") });
+      }
+      // A Clear on a pane with a screen (ADR 0116, the Clear paragraph): a person's tap empties the harness's
+      // box with the profile's clear key and answers a receipt. A pane that takes guarded controls (a program) has no box.
+      if (action === "clear" && req.method === "POST" && rt.clear !== undefined && rawInputRefusal(herdr) === null) {
+        let body: JsonValue | undefined;
+        try {
+          // SAFETY: `Request.json()` output IS a JsonValue by construction; `clearRoute` checks every field.
+          body = (await req.json()) as JsonValue;
+        } catch {
+          body = undefined;
+        }
+        return clearRoute(rt, paneId, body, { audit: audit_, device, session, acceptEncoding: req.headers.get("accept-encoding") });
       }
       // A send or an abort that names the turn or ask the phone saw (ADR 0101), or a tap on one of the
       // program's belt buttons (M53 spec 07, the turn optional). The receipt is written before the control
@@ -7923,6 +7940,44 @@ export async function stopRoute(
   context.audit.record({ action: "abort", paneId, session: context.session, device: context.device, detail });
   // A replay pressed nothing this time; a first tap that pressed makes the engine look again soon.
   if (receipt.keys !== undefined && !answer.replayed) {
+    rt.engine.noteInput();
+    rt.engine.pokeNow();
+  }
+  return json(receipt, context.acceptEncoding);
+}
+
+/** What `clearRoute` reads of a session runtime: a {@link SessionRuntime} is one. */
+export interface ClearRouteRuntime extends Pick<SendRouteRuntime, "send" | "engine"> {
+  readonly clear?: ClearService;
+}
+
+/**
+ * `POST /api/pane/:id/clear` on a pane with a screen (ADR 0116, the Clear paragraph): `{ requestId }` in, one
+ * receipt out (`cleared`, or `refused` with a reason), always a 200; a body that is no request id is a 400.
+ * The same request id answers the same receipt and presses once. One audit line per tap: request id,
+ * outcome and reason, and never the box's text.
+ */
+export async function clearRoute(
+  rt: ClearRouteRuntime,
+  paneId: string,
+  body: JsonValue | undefined,
+  context: { readonly audit: AuditLog; readonly device: string | null; readonly session: string; readonly acceptEncoding: string | null },
+): Promise<Response> {
+  if (rt.clear === undefined) return text("clear is not available on this session", 404);
+  const requestId = asJsonRecord(body)?.requestId;
+  if (typeof requestId !== "string" || !REQUEST_ID.test(requestId)) return text("bad body", 400);
+  const harness = replySendOf(rt).harnessOf(paneId);
+  // A missing pane answers the Clear's own receipt, so the phone can tell it from the bare 404 of a
+  // build with no Clear (an older crew member: `unsupported_build` on the phone).
+  if (harness === null) return json({ requestId, outcome: "refused", reason: "pane_gone" }, context.acceptEncoding, 404);
+  const answer = await rt.clear.handle(requestId, paneId, harness);
+  if (answer.kind === "id_reused") return json({ requestId, outcome: "refused", reason: "request-id-reused" }, context.acceptEncoding, 409);
+  const { receipt } = answer;
+  const detail: AuditDetail = { requestId, outcome: receipt.outcome, replayed: answer.replayed, pressed: answer.pressed };
+  if (receipt.reason !== undefined) detail.reason = receipt.reason;
+  context.audit.record({ action: "clear", paneId, session: context.session, device: context.device, detail });
+  // A replay pressed nothing this time; a first tap that pressed makes the engine look again soon.
+  if (answer.pressed && !answer.replayed) {
     rt.engine.noteInput();
     rt.engine.pokeNow();
   }
