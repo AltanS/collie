@@ -545,6 +545,8 @@ export const ko: Dictionary = {
   "wide.sidebar.label": "창",
   "wide.space.position": "{total}개 중 {index}번째 스페이스",
   "paneNav.position": "pane {index} of {total}",
+  "paneNav.firstHint": "Two-finger pane navigation. Hold one finger, swipe with another. Turn it off in Settings.",
+  "paneNav.firstHint.dismissAria": "Dismiss the pane navigation hint",
   "wide.space.previous": "이전 스페이스",
   "wide.space.next": "다음 스페이스",
   "wide.openHere": "여기에 열기",

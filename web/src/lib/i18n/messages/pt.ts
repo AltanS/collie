@@ -480,6 +480,8 @@ export const pt: Dictionary = {
   "wide.sidebar.label": "Painéis",
   "wide.space.position": "espaço {index} de {total}",
   "paneNav.position": "pane {index} of {total}",
+  "paneNav.firstHint": "Two-finger pane navigation. Hold one finger, swipe with another. Turn it off in Settings.",
+  "paneNav.firstHint.dismissAria": "Dismiss the pane navigation hint",
   "wide.space.previous": "Espaço anterior",
   "wide.space.next": "Próximo espaço",
   "wide.openHere": "Abrir aqui",

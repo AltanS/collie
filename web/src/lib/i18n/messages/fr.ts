@@ -480,6 +480,8 @@ export const fr: Dictionary = {
   "wide.sidebar.label": "Volets",
   "wide.space.position": "espace {index} sur {total}",
   "paneNav.position": "pane {index} of {total}",
+  "paneNav.firstHint": "Two-finger pane navigation. Hold one finger, swipe with another. Turn it off in Settings.",
+  "paneNav.firstHint.dismissAria": "Dismiss the pane navigation hint",
   "wide.space.previous": "Espace précédent",
   "wide.space.next": "Espace suivant",
   "wide.openHere": "Ouvrir ici",

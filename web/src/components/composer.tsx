@@ -289,6 +289,12 @@ interface ComposerProps {
   aboveBelt?: ReactNode;
 
   /**
+   * One more floating notice from the pane, nearest the belt in the floating group (ADR 0061): the Two
+   * fingers first-arm hint (ADR 0121). The pane decides; absent, nothing is drawn.
+   */
+  floatingHint?: ReactNode;
+
+  /**
    * The Screen pill on the belt (M56 spec 07): the raw rows of the terminal, without cards, one tap
    * away in every state. `on` is true while those rows are what the pane draws; `onToggle` turns
    * them on and off. Absent on a pane with no screen (Chat is its only body, ADR 0099 point 9), where
@@ -443,7 +449,7 @@ interface ClearedDraft {
 
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, instance, surface, unreachableNote, scope, stopOffered = false, agent, canSteer, isShell, cwd, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, onOpenMessages, held: heldRows, chatEntries, pullHandle, draftNoticeSlot, changesPill, stale, hand = "right", aboveBelt, screen, todos, subagents },
+  { paneId, instance, surface, unreachableNote, scope, stopOffered = false, agent, canSteer, isShell, cwd, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, onOpenMessages, held: heldRows, chatEntries, pullHandle, draftNoticeSlot, changesPill, stale, hand = "right", aboveBelt, floatingHint, screen, todos, subagents },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -1275,7 +1281,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       <ClearNotice refusal={clearNote.refusal} onRestore={restoreOpen ? () => void restoreDraft() : null} restoring={restoring} onDismiss={() => setClearNote(null)} />
     ) : null;
   const floating =
-    heldCard !== null || floatingNotice !== null || clearCard !== null ? (
+    heldCard !== null || floatingNotice !== null || clearCard !== null || (floatingHint !== undefined && floatingHint !== null) ? (
       <div
         data-slot="floating-cards"
         className={cn(
@@ -1286,6 +1292,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         {heldCard}
         {floatingNotice}
         {clearCard}
+        {floatingHint}
       </div>
     ) : null;
 

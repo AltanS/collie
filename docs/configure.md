@@ -1010,21 +1010,26 @@ right go to the previous and next pane of the space, in the switcher's order. Up
 previous and next space. At the first or last pane or space, a move stays put. Choose the method in
 **Settings → Appearance → Pane navigation**. A change shows the next time a pane opens.
 
-| Method          | How it works                                                                                                                                                                                                                     |
-| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Two fingers** | The default. Hold one finger still on the chat or the terminal. The phone buzzes and a box shows where you are. Swipe with a second finger: a short swipe is one step, a long one takes more. Lift the first finger to go there. |
-| **Joystick**    | Hold the handle just above the belt, then drag the same finger. Let go on another pane to go there, or back where you started to stay. On a phone, a quick drag up opens the pane switcher.                                      |
-| **Off**         | No gesture. The pane switcher still moves you, and on a large screen so do the sidebar and the space header.                                                                                                                     |
+| Method          | How it works                                                                                                                                                                                                                                                                        |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Two fingers** | The default. Hold one finger still on the chat or the terminal, then put a second finger down. The phone buzzes and a box shows where you are. Swipe with the second finger: a short swipe is one step, a long one takes more. Lift the second finger, then the first, to go there. |
+| **Joystick**    | Hold the handle just above the belt, then drag the same finger. Let go on another pane to go there, or back where you started to stay. On a phone, a quick drag up opens the pane switcher.                                                                                         |
+| **Off**         | No gesture. The pane switcher still moves you, and on a large screen so do the sidebar and the space header.                                                                                                                                                                        |
 
 The box names the pane you are moving to, with its status, its space and its place in the space,
-above a map of the spaces. Lift the first finger with no swipe, and you stay where you are.
+above a map of the spaces. You stay where you are when you lift the first finger with no swipe, lift
+it while the second finger is still down, or put a third finger down. Nothing under your fingers is
+tapped when they lift. The first time the gesture starts on a device, a short notice above the belt
+says how it works and where to turn it off.
 
-The gesture keeps the page's own touches. A pinch still zooms, because a second finger that lands
-during the hold counts as a pinch. A long press still selects text: if the phone starts a selection,
-its long-press menu or a scroll before the second finger lands, the gesture stops. From the moment
-the second finger lands until you lift the first, the page holds off selection and scrolling. A
-selection you made earlier is cleared when the second finger lands. Pane navigation is touch only,
-and a mouse does nothing here.
+The gesture keeps the page's own touches. One finger held alone does nothing new: a long press still
+selects text and opens its menu. A pinch still zooms, because a second finger that lands within the
+first 300 ms counts as a pinch. A finger that was scrolling, or that starts at the left or right
+edge of the screen where the phone's own back gesture lives, never starts the gesture. From the
+moment the second finger lands until you lift the first, the page holds off selection and scrolling,
+and a selection you made earlier is cleared. Pane navigation is touch only, and a mouse does nothing
+here. With TalkBack on, the gesture does nothing, because TalkBack takes two-finger swipes for
+itself; the pane switcher still moves you.
 
 ## Chat view
 

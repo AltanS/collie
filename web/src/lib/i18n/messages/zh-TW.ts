@@ -533,6 +533,8 @@ export const zhTW: Dictionary = {
   "wide.sidebar.label": "窗格",
   "wide.space.position": "工作區 {index} / {total}",
   "paneNav.position": "pane {index} of {total}",
+  "paneNav.firstHint": "Two-finger pane navigation. Hold one finger, swipe with another. Turn it off in Settings.",
+  "paneNav.firstHint.dismissAria": "Dismiss the pane navigation hint",
   "wide.space.previous": "上一個工作區",
   "wide.space.next": "下一個工作區",
   "wide.openHere": "在此開啟",
