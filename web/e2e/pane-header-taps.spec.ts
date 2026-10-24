@@ -4,6 +4,7 @@ import { en } from "@/lib/i18n/messages/en";
 import { fixtureSnapshot } from "@/test/handlers";
 
 import { installApiStub } from "./fixtures/api";
+import { keepPhoneLayout } from "./fixtures/layout";
 
 // THE PANE HEADER'S THREE TAP TARGETS, measured in a real engine. The name line opens Pane settings,
 // the workspace line opens the space, and the cache reading (a 12px chip) opens its sheet from a box
@@ -17,6 +18,9 @@ test.use({ serviceWorkers: "block" });
 test.beforeEach(async ({ page }, testInfo) => {
   test.skip(testInfo.project.name.startsWith("states"), "the playground has no pane route");
   await installApiStub(page);
+  // One pane header and one cache chip: on app-tablet the large-screen sidebar's cards draw a chip
+  // each too (ADR 0120).
+  await keepPhoneLayout(page);
   // The cache chip is only a button when the pane carries a reading.
   const withCache = {
     ...fixtureSnapshot,

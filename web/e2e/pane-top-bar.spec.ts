@@ -4,6 +4,7 @@ import { en } from "@/lib/i18n/messages/en";
 import { fixtureSnapshot } from "@/test/handlers";
 
 import { installApiStub } from "./fixtures/api";
+import { keepPhoneLayout } from "./fixtures/layout";
 
 // THE PANE SCREEN'S TWO STRIPS, measured in a real engine (option 3 of the 2026-09-23 top-bar
 // deck). The tab row is 30px and the pane row 26px, and neither draws a tap floor's worth of
@@ -25,6 +26,9 @@ test.use({ serviceWorkers: "block" });
 test.beforeEach(async ({ page }, testInfo) => {
   test.skip(testInfo.project.name.startsWith("states"), "the playground has no pane route");
   await installApiStub(page);
+  // The tab and pane rows are the phone pane screen's; in a large-screen strip the space header and
+  // the sidebar hold them instead (ADR 0120).
+  await keepPhoneLayout(page);
 });
 
 const twoPaneSnapshot = {

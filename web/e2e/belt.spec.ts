@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 import { en } from "@/lib/i18n/messages/en";
 
 import { installApiStub } from "./fixtures/api";
+import { keepPhoneLayout } from "./fixtures/layout";
 
 // THE COMPOSER'S BELT, measured in a real engine. The belt (`components/actions-row.tsx`) is a
 // sideways scroller, 45px at the default scale, with a pinned Switch block fading in over its right
@@ -21,6 +22,9 @@ import { installApiStub } from "./fixtures/api";
 
 test.beforeEach(async ({ page }) => {
   await installApiStub(page);
+  // The belt with its Switch block is the phone pane screen's; on app-tablet Auto would draw the
+  // large-screen layout, whose belt has no Switch pill (ADR 0120).
+  await keepPhoneLayout(page);
 });
 
 const BELT = '[data-slot="composer-actions"]';
