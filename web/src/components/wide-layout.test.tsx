@@ -10,7 +10,7 @@ import { asJsonObject, asJsonString, parseJsonObject } from "@/lib/json";
 import { ROOT_ROUTE_ID, type HomeData, type PaneData } from "@/lib/loaders";
 import { panePath } from "@/lib/nav";
 import { paneScopeKey } from "@/lib/scope";
-import type { AgentView } from "@/lib/types";
+import { statusLabel, type AgentView, type TabView } from "@/lib/types";
 import { __resetWideLayoutStore } from "@/lib/wide-layout-store";
 import { DetailRoute } from "@/routes/detail";
 import { withHeaderHost } from "@/test/header-host";
@@ -64,12 +64,16 @@ const A3 = pane("w1:p3", "w1", "alpha");
 const SH = pane("w1:p9", "w1", "alpha", "shell");
 const B1 = pane("w2:p1", "w2", "beta");
 
+// A test that needs a space with tabs sets these; afterEach clears them.
+let extraAgents: AgentView[] = [];
+let tabs: TabView[] = [];
+
 const home = (): HomeData => ({
   bridge: "connected",
-  agents: [A1, A2, A3, B1],
+  agents: [A1, A2, A3, B1, ...extraAgents],
   shellPanes: [SH],
   workspaces: [],
-  tabs: [],
+  tabs,
   device: undefined,
   sessions: [],
   servers: [],
@@ -152,6 +156,8 @@ beforeEach(() => {
 });
 afterEach(() => {
   posture = "flat";
+  extraAgents = [];
+  tabs = [];
   vi.unstubAllGlobals();
   __resetWideLayoutStore();
 });
@@ -399,6 +405,56 @@ describe("width", () => {
   });
 });
 
+describe("the sidebar's structure", () => {
+  it("one 16px inset, 44px icon buttons with 20px glyphs, a hairline between rows, more air above a heading", async () => {
+    const { container } = await mount("w1:p1", 1200);
+    const aside = q(container, "aside")!;
+    const list = q(aside, "[data-pane-key]")!.closest("section")!.parentElement!;
+    // The list's 8px plus each row's, heading's and summary row's own 8px: 16px from the edge.
+    expect(list.className).toContain("px-2");
+    expect(list.className).toContain("gap-6");
+    const heading = within(aside).getByRole("heading", { name: "alpha" }).parentElement!;
+    expect(heading.className).toContain("px-2");
+    // The summary row: a 44px row, its order glyphs 20px like every icon button around them.
+    const radios = within(aside).getAllByRole("radio");
+    expect(radios[0]?.closest("div.min-h-11")).not.toBeNull();
+    for (const r of radios) expect(r.querySelector("svg")?.getAttribute("class")).toContain("size-5");
+    // The toggle is the same glyph size, so it reads as the same icon set.
+    expect(q(container, '[data-slot="sidebar-toggle"] svg')?.getAttribute("class")).toContain("size-5");
+    // Rows: a hairline drawn once, between rows; a floor, never a fixed height; stated line boxes.
+    const row = sidebarRow(container, A2)!;
+    expect(row.parentElement?.className).toContain("[&>*+*]:before:bg-rule");
+    expect(row.className).toContain("min-h-11");
+    expect(row.className).not.toMatch(/(?:^|\s)h-\d/);
+    expect(q(row, ".leading-4")?.textContent).toContain("alpha");
+  });
+});
+
+describe("the space header", () => {
+  it("is the one bar that names the space: a column header keeps its branch, machine and state, not the space", async () => {
+    const { container } = await mount("w1:p1", 1200);
+    await openBesideFromSidebar(container, A2);
+    const line = q(columns(container)[0]!, '[data-slot="column-header-line"]')!;
+    expect(line.textContent).not.toContain("alpha");
+    expect(line.textContent).toContain(statusLabel("idle"));
+    expect(q(container, '[data-slot="space-title"]')?.textContent).toBe("alpha");
+  });
+
+  it("holds the space's tabs: a tap on one opens its pane", async () => {
+    const A4: AgentView = { ...pane("w1:p4", "w1", "alpha"), tabId: "w1:t2" };
+    extraAgents = [A4];
+    tabs = [
+      { tabId: "w1:t1", workspaceId: "w1", number: 1, label: "main", focused: true, paneCount: 4 },
+      { tabId: "w1:t2", workspaceId: "w1", number: 2, label: "side", focused: false, paneCount: 1 },
+    ];
+    const { container, router } = await mount("w1:p1", 1200);
+    const nav = within(q(container, '[data-slot="space-header"]')!).getByRole("navigation", { name: "Tabs" });
+    // A tab holding one named pane is called by that pane's name (lib/pane-name.ts `tabCellTitle`).
+    fireEvent.click(within(nav).getByRole("button", { name: /w1:p4/ }));
+    await waitFor(() => expect(router.state.location.pathname).toBe(panePath("w1:p4")));
+  });
+});
+
 describe("the add column", () => {
   const addColumn = (root: ParentNode) => q(root, '[data-slot="add-column"]');
   const openSheet = async (root: HTMLElement) => {
@@ -424,6 +480,11 @@ describe("the add column", () => {
     fireEvent.click(widthButton());
     await waitFor(() => expect(widthButton().textContent).toBe("Full"));
     expect(addColumn(container)?.style.flex).toBe("0 0 360px");
+  });
+
+  it("keeps its plus in the part of it that is in view", async () => {
+    const { container } = await mount("w1:p1", 1200);
+    expect(q(addColumn(container)!, '[data-slot="add-button"]')?.className).toContain("sticky");
   });
 
   it("is a snap point and no column: no focus, no frame, not counted", async () => {

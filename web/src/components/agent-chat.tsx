@@ -698,7 +698,8 @@ export function AgentChat({
   // badge its row wears in the Spaces list. A terminal session's header is untouched.
   const experimental = wearsExperimental(useSessionCard(scope));
   const gridless = !paneGrid.capable;
-  const stripsExist = !gridless && (canFold || tabPanes.length > 1);
+  // In a large screen's strip the space header holds the tabs and the sidebar the panes (ADR 0120).
+  const stripsExist = !inStrip && !gridless && (canFold || tabPanes.length > 1);
   const folded = canFold && stripsFolded;
   // WHO OWNS THE 4px ABOVE THE MIRROR'S RULE.
   //
@@ -2242,7 +2243,8 @@ export function AgentChat({
                     data-slot="pane-place"
                     className="min-w-0 shrink-[3] truncate text-[11px] leading-3 text-muted-foreground"
                   >
-                    {headerLine ?? workspace}
+                    {/* In a strip the space header names the space, so the line keeps only the pane's own. */}
+                    {headerLine ?? (inStrip ? null : workspace)}
                   </span>
                   {/* The branch the pane's folder is on, after the workspace and in the same 12px
                       line box, so the 36px block above holds with or without it. The workspace gives

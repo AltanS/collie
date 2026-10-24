@@ -4970,6 +4970,22 @@ describe("AgentChat — the focused column of a large screen's strip (ADR 0120)"
     expect(takeBeltIntent(paneScopeKey(undefined, agent.paneId))).toBeNull();
   });
 
+  it("leaves the tab row and the pane row to the space header and the sidebar, and the space name to the space header", () => {
+    const sibling: AgentView = { ...fixtureAgents[0]!, paneId: "w1:p9" };
+    const strips = { tabs: fixtureTabs, agents: [...fixtureAgents, sibling] };
+    const phone = renderChat(strips);
+    expect(within(phone.container).queryByRole("navigation", { name: "Tabs" })).not.toBeNull();
+    expect(within(phone.container).queryByRole("navigation", { name: "Panes" })).not.toBeNull();
+    expect(phone.container.querySelector('[data-slot="pane-place"]')?.textContent).not.toBe("");
+    cleanup();
+    const { container } = renderChat({ ...strips, inStrip: true });
+    expect(within(container).queryByRole("navigation", { name: "Tabs" })).toBeNull();
+    expect(within(container).queryByRole("navigation", { name: "Panes" })).toBeNull();
+    expect(within(container).queryByRole("button", { name: /^Show tabs/ })).toBeNull();
+    // The header's second line keeps the pane's own facts and drops the space's name.
+    expect(container.querySelector('[data-slot="pane-place"]')?.textContent).toBe("");
+  });
+
   it("leaves another pane's belt tap alone", () => {
     queueBeltIntent(paneScopeKey(undefined, "w9:p9"), { kind: "action", id: "keys" });
     const { container } = renderChat({ inStrip: true });

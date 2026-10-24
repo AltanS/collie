@@ -8,6 +8,7 @@ import { ThreadSidebar } from "@/components/agent-sidebar";
 import { SettingsGear, useHeaderDock } from "@/components/app-header";
 import { useHostHealth } from "@/components/crew-provider";
 import { StatusDot } from "@/components/status-badge";
+import { TabStrip } from "@/components/tab-strip";
 import { ColumnControls, ColumnHeader, PaneColumnBody, columnFrame } from "@/components/strip-column";
 import { Button } from "@/components/ui/button";
 import { BottomSheet } from "@/components/ui/sheet";
@@ -21,7 +22,7 @@ import { useNoPromptsGuard } from "@/hooks/use-no-prompts-guard";
 import type { FoldPosture } from "@/hooks/use-fold-posture";
 import { useRootOverscrollLock } from "@/hooks/use-root-overscroll-lock";
 import { useRowDrag, useVerticalSwipe, type DropTarget } from "@/hooks/use-row-drag";
-import { useSpaceActions } from "@/hooks/use-spaces";
+import { tabCreateKey, useSpaceActions } from "@/hooks/use-spaces";
 import { useStripSnap } from "@/hooks/use-strip-snap";
 import { queueBeltIntent, type BeltIntent } from "@/lib/belt-intent";
 import { writeRefusal } from "@/lib/host-health";
@@ -226,6 +227,17 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
   // A new space, and a new agent from the add slot, are the New page: it starts its agent in a new
   // space of the machine and session on screen. It takes no space to start in (lib/nav.ts `NewAt`).
   const toNew = () => nav.down(newPath({ machine: scope.host, session: scope.session }));
+  // THE SPACE'S TABS live in the space header, with the pane view's own handlers (agent-chat.tsx's tab
+  // row, hidden in a strip): a tab opens its first pane, and "+" opens a new tab the way the row does.
+  const { refused: notPaired } = usePairing();
+  const readOnly = isReadOnly(root.device) || notPaired;
+  const canWriteTabs = useCallback(() => !root.error, [root.error]);
+  const { newTab, creatingTab } = useSpaceActions(canWriteTabs);
+  const toTab = (tabId: string) => {
+    if (agent === undefined || tabId === agent.tabId) return;
+    const target = herd.find((p) => p.tabId === tabId && p.host === agent.host);
+    if (target !== undefined) goTo(target);
+  };
   const onIntent = (pane: AgentView, intent: BeltIntent) => {
     queueBeltIntent(columnKeyOf(pane, places), intent);
     goTo(pane);
@@ -417,10 +429,33 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
           {/* Folded with two columns, the header is cut at the fold like the strip under it: the name
               over the left column, the buttons over the right one, nothing on the hinge. */}
           <div className={cn("flex min-w-0 items-center", bookPair ? "fold-left-col pl-4" : "flex-1")}>
-            <div className="min-w-0 flex-1 truncate text-sm font-medium">
+            {/* The bar's title: the space, in the face and weight of the pane names under it. */}
+            <div data-slot="space-title" className="min-w-0 max-w-[45%] shrink-0 truncate text-sm font-semibold">
               {space?.label ?? ""}
-              {machine !== undefined && <span className="text-muted-foreground"> · {machine}</span>}
+              {machine !== undefined && <span className="font-normal text-muted-foreground"> · {machine}</span>}
             </div>
+            {agent !== undefined ? (
+              <TabStrip
+                workspaceId={agent.workspaceId}
+                host={agent.host}
+                tabs={root.tabs}
+                agents={root.agents}
+                selected={agent.tabId}
+                onSelect={(id) => {
+                  if (id !== null) toTab(id);
+                }}
+                onNewTab={newTab}
+                onNewStarters={() => nav.down(newPath({ machine: scope.host, pane: paneId, session: scope.session }))}
+                creatingTab={creatingTab.has(tabCreateKey(agent.workspaceId, scope))}
+                allowAll={false}
+                scope={scope}
+                readOnly={readOnly}
+                savedCopy={root.error}
+                className="min-w-0 flex-1 bg-transparent"
+              />
+            ) : (
+              <span className="flex-1" />
+            )}
             {spaceAt >= 0 && (
               <span data-slot="space-position" className="shrink-0 px-2 text-xs tabular-nums text-muted-foreground">
                 {t("wide.space.position", { index: spaceAt + 1, total: spaces.length })}
@@ -538,7 +573,9 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
             {!book && (
               <div data-slot="add-column" className={cn("flex h-full shrink-0 p-3", COLUMN_SNAP_CLASSES)} style={{ flex: `0 0 ${addWidth}px` }}>
                 <div className="flex min-w-0 flex-1 items-center justify-center rounded-md border border-dashed border-rule">
-                  <Button variant="ghost" className="h-auto flex-col gap-2 px-3 py-2 text-sm text-muted-foreground" onClick={() => setAdding(true)}>
+                  {/* `sticky`: while only part of the add column is in view, the "+" moves along inside it
+                      and stays in the visible part, at either edge of the strip. */}
+                  <Button variant="ghost" data-slot="add-button" className="sticky inset-x-3 h-auto flex-col gap-2 px-3 py-2 text-sm text-muted-foreground" onClick={() => setAdding(true)}>
                     <span aria-hidden className="grid size-11 place-items-center rounded-md border border-rule bg-card text-foreground">
                       <Plus className="size-5" />
                     </span>
@@ -639,7 +676,10 @@ function SidebarTop({ open, setMark, toggle: hasToggle }: { open: boolean; setMa
       aria-expanded={open}
       onClick={() => setSidebarOpen(!open)}
     >
-      {open ? <PanelLeftClose className="size-6 shrink-0" /> : <PanelLeftOpen className="size-6 shrink-0" />}
+      {/* 20px, like every icon button around it (the order glyphs, the space chevrons). A lucide stroke
+          scales with its drawing, so at 24px this glyph drew a 2px line beside their 1.7px ones and
+          read as another icon set. */}
+      {open ? <PanelLeftClose className="size-5 shrink-0" /> : <PanelLeftOpen className="size-5 shrink-0" />}
     </Button>
   );
   if (!open) {

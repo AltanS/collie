@@ -131,6 +131,13 @@ scroller passes its x overscroll on (`overscroll-x-auto`, important): the transc
 `overscroll-contain` on both axes for the phone, and that stopped a sideways wheel inside the column,
 so the strip never scrolled.
 
+The space header is the one bar for the space. It holds the space's tabs, with the pane view's own
+handlers: a tab opens its first pane, and its "+" opens a new tab the way the pane's tab row does. So
+in a strip the pane view drops what the large screen shows elsewhere: its tab row, its pane row and
+the bar that folds them (the space header and the sidebar have them), and the space's name on its
+header's second line. A column header keeps the pane's branch, machine and state. Below 600px the
+pane view keeps all of it.
+
 ## Known limits
 
 - **New agent starts a new space.** The New page takes no space to start in, so the add column's sheet says

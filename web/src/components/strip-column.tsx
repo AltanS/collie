@@ -3,12 +3,14 @@ import { EyeOff, Keyboard, ListEnd, ListTodo, Monitor, Settings2, Slash, Termina
 
 import { ActionsRow, type GeneralAction } from "@/components/actions-row";
 import { AgentIcon } from "@/components/agent-icon";
+import { HostChip } from "@/components/host-chip";
 import { ModelTag } from "@/components/model-tag";
 import { RawMirror } from "@/components/raw-mirror";
 import { SessionStream } from "@/components/session-stream";
 import { StatusDot } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { ChatMessageList, type ChatMessageListHandle } from "@/components/ui/chat/chat-message-list";
+import { BranchLabel } from "@/components/ui/branch-label";
 import { UnseenMark } from "@/components/ui/unseen-mark";
 import { useChatWindow } from "@/hooks/use-chat-window";
 import { useDashPrefs } from "@/hooks/use-dash-prefs";
@@ -23,7 +25,8 @@ import { stopFor } from "@/lib/harness-bar";
 import { t } from "@/lib/i18n";
 import { useMuxCapability } from "@/lib/mux-capability";
 import { useOperatorCommands } from "@/lib/operator-config";
-import { paneName, panePlaceParts } from "@/lib/pane-name";
+import { paneGitHead } from "@/lib/git-head";
+import { paneName } from "@/lib/pane-name";
 import { paneScopeKey, type Scope } from "@/lib/scope";
 import { isUnseen } from "@/lib/triage";
 import type { AgentView } from "@/lib/types";
@@ -112,7 +115,7 @@ export function ColumnControls({
  */
 export function ColumnHeader({ pane, controls, onFocus }: { pane: AgentView; controls: ReactNode; onFocus: () => void }) {
   useLocale();
-  const { space, tab } = panePlaceParts(pane);
+  const head = paneGitHead(pane);
   return (
     <div data-slot="column-header" className="flex min-h-15 shrink-0 items-center gap-1 border-b border-band-rule bg-band-ground py-1 pl-4 pr-2">
       <span className="relative inline-flex shrink-0">
@@ -129,9 +132,12 @@ export function ColumnHeader({ pane, controls, onFocus }: { pane: AgentView; con
           <span className="min-w-0 truncate text-sm font-medium text-muted-foreground">{paneName(pane)}</span>
           <UnseenMark on={isUnseen(pane)} reserve />
         </div>
-        <div className="truncate text-[11px] leading-4 text-muted-foreground">
-          {space}
-          {tab !== null && ` › ${tab.text}`}
+        {/* No space name: the space header above the strip is the one bar that names it. What is the
+            column's own stays: its branch, its machine, its state. */}
+        <div data-slot="column-header-line" className="flex min-w-0 items-baseline gap-2 text-[11px] leading-4 text-muted-foreground">
+          {head !== null && <BranchLabel head={head} className="min-w-0 shrink truncate" />}
+          <span className="shrink-0">{statusLabel(pane.status)}</span>
+          <HostChip host={pane.host} variant="glyph" className="ml-auto self-center" />
         </div>
       </button>
       {controls}

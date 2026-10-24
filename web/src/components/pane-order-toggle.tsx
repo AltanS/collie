@@ -35,12 +35,15 @@ export function PaneOrderToggle({
   order,
   onChange,
   compact = false,
+  iconClassName = "size-4",
   className,
 }: {
   order: PaneOrder;
   onChange: (order: PaneOrder) => void;
   /** Glyphs only, sized to share a row. See the note above {@link PANE_ORDER_SEGMENTS}. */
   compact?: boolean;
+  /** The glyph's size; the large screen's sidebar draws its 20px glyphs here too. */
+  iconClassName?: string;
   className?: string;
 }) {
   useLocale();
@@ -71,7 +74,7 @@ export function PaneOrderToggle({
               selected ? "bg-muted text-foreground" : "text-muted-foreground active:bg-muted",
             )}
           >
-            <Icon className="size-4 shrink-0" aria-hidden />
+            <Icon className={cn(iconClassName, "shrink-0")} aria-hidden />
             {!compact && t(label)}
           </button>
         );

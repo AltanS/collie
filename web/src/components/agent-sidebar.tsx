@@ -224,7 +224,7 @@ export function ThreadSidebar({
   };
 
   return (
-    <div className={cn("flex flex-col gap-4 px-2 py-3", className)}>
+    <div className={cn("flex flex-col px-2 py-3", roomy ? "gap-6" : "gap-4", className)}>
       {noPanes && (
         <p className="px-2 py-2 text-sm text-muted-foreground">{t("home.empty.noAgents")}</p>
       )}
@@ -239,7 +239,7 @@ export function ThreadSidebar({
           own while there are agents, so the rows below never shift when the first pane needs you or
           the last one is answered. */}
       {(agents.length > 0 || (onOrderChange && !noPanes)) && (
-        <div className="flex items-center justify-between gap-2 px-2">
+        <div className={cn("flex items-center justify-between gap-2 px-2", roomy && "min-h-11")}>
           {agents.length > 0 ? (
             <StatusSummaryLine
               panes={urgent}
@@ -258,6 +258,8 @@ export function ThreadSidebar({
                 onOrderChange(next);
               }}
               compact
+              // The large screen's icon buttons are 20px glyphs in 44px boxes, these three too.
+              {...(roomy ? { iconClassName: "size-5" } : {})}
             />
           )}
         </div>
@@ -266,7 +268,7 @@ export function ThreadSidebar({
       {/* The Pinned section, in the section voice Shells and Launch wear, with no dot and no count,
           and it does not fold: a pin is the one thing this sheet was opened to reach. */}
       {pinned.length > 0 && (
-        <Section id="switch-pinned" headingId="switch-pinned-heading" label={t("home.pinned.title")}>
+        <Section id="switch-pinned" roomy={roomy} headingId="switch-pinned-heading" label={t("home.pinned.title")}>
           {pinnedShown.map((a) => (
             <PaneRow
               key={paneRowKey(a)}
@@ -289,6 +291,7 @@ export function ThreadSidebar({
         // The heading NAMES THE ORDER, which is what pays for the compact glyphs in the row above.
         rankedRows.length > 0 && (
           <Section
+            roomy={roomy}
             id="switch-activity"
             label={t(order === "cache" ? "paneOrder.coldest" : "paneOrder.recent")}
             count={rankedRows.length}
@@ -310,6 +313,7 @@ export function ThreadSidebar({
         <>
           {sections.map(({ group: g, rows }) => (
             <Section
+              roomy={roomy}
               key={g.key}
               id={`switch-ws-${g.key.replace(/[^A-Za-z0-9_-]/gu, "_")}`}
               label={g.label}
@@ -332,6 +336,7 @@ export function ThreadSidebar({
 
           {shellRows.length > 0 && (
             <Section
+              roomy={roomy}
               id="switch-shells"
               label={t("home.sidebar.shells")}
               count={shellRows.length}
@@ -355,6 +360,7 @@ export function ThreadSidebar({
 
       {launchers.length > 0 && onLaunch && (
         <Section
+          roomy={roomy}
           id="switch-launch"
           label="Launch"
           count={launchers.length}
@@ -391,6 +397,7 @@ function Section({
   trailing,
   open,
   onToggle,
+  roomy,
   children,
 }: {
   id: string;
@@ -407,6 +414,8 @@ function Section({
   trailing?: React.ReactNode;
   open?: boolean;
   onToggle?: (open: boolean) => void;
+  /** The large screen's sidebar: a hairline between rows. */
+  roomy: boolean;
   children: React.ReactNode;
 }) {
   const foldable = open !== undefined && onToggle !== undefined;
@@ -424,10 +433,20 @@ function Section({
         {...(trailing !== undefined ? { trailing } : {})}
         {...(foldable ? { open, onToggle, controls: id } : {})}
       />
-      {(!foldable || open) && <div id={id}>{children}</div>}
+      {(!foldable || open) && (
+        <div id={id} className={roomy ? ROW_RULES : undefined}>
+          {children}
+        </div>
+      )}
     </section>
   );
 }
+
+// THE HAIRLINE BETWEEN ROWS (DESIGN.md §4: a boundary is drawn once). Each row after the first draws
+// it on its own top edge, inside the 1px its transparent border already reserves, so it costs no
+// height and never meets the alarm edge's colour. Inset to the rows' 16px text line.
+const ROW_RULES =
+  "[&>*+*]:relative [&>*+*]:before:pointer-events-none [&>*+*]:before:absolute [&>*+*]:before:inset-x-2 [&>*+*]:before:-top-px [&>*+*]:before:h-px [&>*+*]:before:bg-rule";
 
 function PaneRow({
   id,
@@ -493,7 +512,7 @@ function PaneRow({
       )}
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-baseline gap-1">
-          <span className={cn("min-w-0 truncate text-sm font-medium", roomy && !active && "text-foreground")}>{name}</span>
+          <span className={cn("min-w-0 truncate text-sm font-medium", roomy && "leading-5", roomy && !active && "text-foreground")}>{name}</span>
           <PaneBadge pane={pane} className={cn("shrink-0 self-center", roomy && "text-muted-foreground")} />
           {/* The cache reading trails the name, same corner as the dashboard row (agent-card.tsx,
               via PaneMeta), but without PaneMeta's session chip. `row`, not `button` — the whole row
@@ -501,7 +520,9 @@ function PaneRow({
               at the end of the place line below, not a chip here. */}
           <CacheChip cache={pane.cache} variant="row" className="ml-auto shrink-0" />
         </div>
-        <div className="flex min-w-0 items-baseline gap-1 text-[11px] text-muted-foreground">
+        {/* `leading-4` on the large screen: a stated line box, so the second line always fits inside
+            the row and its descenders are never clipped by the truncation. */}
+        <div className={cn("flex min-w-0 items-baseline gap-1 text-[11px] text-muted-foreground", roomy && "leading-4")}>
           <span className="max-w-[45%] shrink truncate">{space}</span>
           {tab && (
             <>
