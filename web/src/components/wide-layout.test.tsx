@@ -11,7 +11,7 @@ import { ROOT_ROUTE_ID, type HomeData, type PaneData } from "@/lib/loaders";
 import { panePath } from "@/lib/nav";
 import { paneScopeKey } from "@/lib/scope";
 import { statusLabel, type AgentView, type TabView } from "@/lib/types";
-import { __resetWideLayoutStore } from "@/lib/wide-layout-store";
+import { __resetWideLayoutStore, setWideLayoutMode } from "@/lib/wide-layout-store";
 import { DetailRoute } from "@/routes/detail";
 import { withHeaderHost } from "@/test/header-host";
 import { server } from "@/test/setup";
@@ -212,6 +212,15 @@ describe("under 480 px tall", () => {
   it("shows the layout at 915 by 600", async () => {
     const { container } = await mount("w1:p1", 915, 600);
     expect(q(container, '[data-slot="wide-layout"]')?.dataset.widthClass).toBe("expanded");
+  });
+});
+
+describe("Large-screen layout set to Off", () => {
+  it("keeps the phone layout at every width", async () => {
+    setWideLayoutMode("off");
+    const { container } = await mount("w1:p1", 1200);
+    expect(q(container, '[data-slot="wide-layout"]')).toBeNull();
+    expect(q(container, "aside")).toBeNull();
   });
 });
 

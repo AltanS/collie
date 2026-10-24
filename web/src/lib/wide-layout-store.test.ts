@@ -6,6 +6,8 @@ import {
   isSidebarOpen,
   MAX_SPACES,
   setSidebarOpen,
+  setWideLayoutMode,
+  wideLayoutMode,
   setSpaceStrip,
   spaceStrip,
 } from "./wide-layout-store";
@@ -58,5 +60,29 @@ describe("the large-screen layout store", () => {
     setSidebarOpen(true);
     __reloadWideLayoutStore();
     expect(isSidebarOpen()).toBe(true);
+  });
+});
+
+describe("the large-screen layout mode", () => {
+  const MODE_KEY = "collie:wide-layout-mode:v1";
+
+  it("is auto on a device that stored nothing, and keeps off across a reload", () => {
+    expect(wideLayoutMode()).toBe("auto");
+    setWideLayoutMode("off");
+    expect(localStorage.getItem(MODE_KEY)).toBe("off");
+    __reloadWideLayoutStore();
+    expect(wideLayoutMode()).toBe("off");
+    setWideLayoutMode("auto");
+    expect(localStorage.getItem(MODE_KEY)).toBe("auto");
+    __reloadWideLayoutStore();
+    expect(wideLayoutMode()).toBe("auto");
+  });
+
+  it("reads an unknown stored value as auto, and keeps the strip store's key apart", () => {
+    localStorage.setItem(MODE_KEY, "sometimes");
+    __reloadWideLayoutStore();
+    expect(wideLayoutMode()).toBe("auto");
+    setWideLayoutMode("off");
+    expect(localStorage.getItem(LAYOUT_KEY)).toBeNull();
   });
 });

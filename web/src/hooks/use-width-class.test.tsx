@@ -1,6 +1,8 @@
 import { renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { __resetWideLayoutStore, setWideLayoutMode } from "@/lib/wide-layout-store";
+
 import { useWidthClass } from "./use-width-class";
 
 // A window of the given size, as a media query list answers `min-width` and `min-height` for it.
@@ -23,8 +25,11 @@ function window_(width: number, height: number): void {
   });
 }
 
-beforeEach(() => localStorage.clear());
-afterEach(() => vi.unstubAllGlobals());
+beforeEach(() => __resetWideLayoutStore());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  __resetWideLayoutStore();
+});
 
 describe("useWidthClass", () => {
   it("is compact on a phone held sideways, 915 by 412", () => {
@@ -44,5 +49,15 @@ describe("useWidthClass", () => {
   it("is compact below 600px wide however tall the window is", () => {
     window_(599, 1200);
     expect(renderHook(() => useWidthClass()).result.current).toBe("compact");
+  });
+});
+
+describe("useWidthClass with the layout off", () => {
+  it("is compact at every size once the device says Off, and follows the window again on Auto", () => {
+    window_(1200, 900);
+    setWideLayoutMode("off");
+    expect(renderHook(() => useWidthClass()).result.current).toBe("compact");
+    setWideLayoutMode("auto");
+    expect(renderHook(() => useWidthClass()).result.current).toBe("expanded");
   });
 });

@@ -17,6 +17,7 @@ import { EMPTY_STRIP, presetOf, type Column, type SpaceStrip } from "@/lib/wide-
 
 const LAYOUT_KEY = "collie:wide-layout:v1";
 const SIDEBAR_KEY = "collie:wide-sidebar:v1";
+const MODE_KEY = "collie:wide-layout-mode:v1";
 /** The most spaces one device remembers. */
 export const MAX_SPACES = 64;
 /** The most columns one space keeps. Far more than any screen shows at once. */
@@ -24,8 +25,14 @@ export const MAX_COLUMNS = 24;
 
 type Spaces = ReadonlyMap<string, SpaceStrip>;
 
+/** Whether this device may use the large-screen layout. Auto follows the window; Off keeps the phone
+ *  layout at every width. A per-device choice, like the sidebar's, and never written to a bridge. */
+export type WideLayoutMode = "auto" | "off";
+export const WIDE_LAYOUT_MODES: readonly WideLayoutMode[] = ["auto", "off"];
+
 let spaces: Spaces = loadSpaces();
 let sidebarOpen = loadSidebar();
+let mode = loadMode();
 const listeners = new Set<() => void>();
 
 function readStorage(key: string): string | null {
@@ -80,6 +87,11 @@ function loadSidebar(): boolean {
   return readStorage(SIDEBAR_KEY) !== "0";
 }
 
+/** Anything but a stored "off" is auto, so an unknown or missing value never turns the layout off. */
+function loadMode(): WideLayoutMode {
+  return readStorage(MODE_KEY) === "off" ? "off" : "auto";
+}
+
 function emit(): void {
   for (const fn of listeners) fn();
 }
@@ -130,12 +142,30 @@ export function useSidebarOpen(): boolean {
   return useSyncExternalStore(subscribe, isSidebarOpen, () => true);
 }
 
+export function wideLayoutMode(): WideLayoutMode {
+  return mode;
+}
+
+export function setWideLayoutMode(next: WideLayoutMode): void {
+  if (mode === next) return;
+  mode = next;
+  writeStorage(MODE_KEY, next);
+  emit();
+}
+
+/** The layout mode of this device, reactive. */
+export function useWideLayoutMode(): WideLayoutMode {
+  return useSyncExternalStore(subscribe, wideLayoutMode, () => "auto");
+}
+
 /** Test seam: back to a device that never stored a layout. */
 export function __resetWideLayoutStore(): void {
   spaces = new Map();
   sidebarOpen = true;
+  mode = "auto";
   writeStorage(LAYOUT_KEY, null);
   writeStorage(SIDEBAR_KEY, null);
+  writeStorage(MODE_KEY, null);
   emit();
 }
 
@@ -143,5 +173,6 @@ export function __resetWideLayoutStore(): void {
 export function __reloadWideLayoutStore(): void {
   spaces = loadSpaces();
   sidebarOpen = loadSidebar();
+  mode = loadMode();
   emit();
 }
