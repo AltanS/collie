@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { useRevalidator } from "react-router";
 import {
@@ -635,8 +636,8 @@ export function AgentChat({
   // are niri's: left and right walk this space's panes in the sidebar's order, up and down the spaces.
   // A commit is a sideways move to the target, exactly as the space header's up and down are, so on a
   // large screen the strip follows the URL. The setting is read at mount, like the hand.
-  // Text selection is never touched at rest, nor at the arm; the hook holds it off only once a second
-  // finger lands, and a long-press selection before that wins (ADR 0121).
+  // Text selection is never touched at rest, nor by a lone hold, however long: the mode arms, and holds
+  // the page off, only when a second finger lands after the hold (ADR 0121).
   const paneNav = usePaneNavigation({
     method: paneNavOf(prefs),
     agent,
@@ -3137,6 +3138,7 @@ export function AgentChat({
                       : undefined
                   }
                   draftNoticeSlot={draftNoticeSlot}
+                  floatingHint={paneNav.hint}
                 />
                 )}
               </div>
@@ -3146,6 +3148,11 @@ export function AgentChat({
 
         {/* The pane navigation overlay: portalled, fixed, drawn only while a gesture is armed (ADR 0121). */}
         {paneNav.overlay}
+        {/* The Two fingers first-arm hint (ADR 0121). With a Composer it rides that composer's floating
+            group; a pane with no screen has none, so the hint takes the same slot by itself. */}
+        {gridless && paneNav.hint !== undefined && draftNoticeSlot !== null
+          ? createPortal(<div data-slot="floating-cards" className="pointer-events-none flex flex-col gap-1.5">{paneNav.hint}</div>, draftNoticeSlot)
+          : null}
 
         {/* Swipe-up quick switcher — just the panes (agents + shells), reached by the thumb gesture.
             Switch-only for panes: pane closing lives in the pane pill's long-press sheet, not here.

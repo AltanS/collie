@@ -59,7 +59,10 @@ const APP_BASE_URL = `http://127.0.0.1:${APP_PORT}`;
 /** Tier 2 lives under `e2e/live/**` and has its own config (`e2e/live/playwright.config.ts`).
  *  It needs the live dev lane, so tier 1 never collects it; `make e2e` runs tier 2. The browser leg
  *  under `e2e/rig/**` has its own config too: it starts a scratch bridge and real agents. */
-const LIVE_TEST_IGNORE = ["**/live/**", "**/rig/**"];
+/** The real-touch specs (`*.touch.spec.ts`, CDP multi-touch) never gate: they are collected only with
+ *  `COLLIE_E2E_TOUCH=1`, so no default project, CI job or `bun run e2e` runs them. */
+const TOUCH_IGNORE = process.env.COLLIE_E2E_TOUCH === "1" ? [] : ["**/*.touch.spec.ts"];
+const LIVE_TEST_IGNORE = ["**/live/**", "**/rig/**", ...TOUCH_IGNORE];
 
 /** WebKit runs in CI unless `E2E_WEBKIT=0` (the per-push job sets it, `webkit.yml` does not) and only
  *  on request elsewhere; the header says why. */

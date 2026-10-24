@@ -23,10 +23,10 @@ interface TerminalDraftPreviewProps {
  * The 44px floor for the x, bought back as hit area (DESIGN.md §6): the face is `size-6`, 24px, and
  * `-inset-2.5` reaches 10px out on every side, so 24 + 20 = 44 in both axes.
  */
-const DISMISS_TAP_TARGET = "relative before:absolute before:-inset-2.5 before:content-['']";
+export const DISMISS_TAP_TARGET = "relative before:absolute before:-inset-2.5 before:content-['']";
 
 /** The translucent card the floating notices stand on: it covers terminal text and moves nothing. */
-const FLOATING_CARD =
+export const FLOATING_CARD =
   "pointer-events-auto flex items-start gap-1.5 rounded-lg border border-foreground/20 bg-card/95 py-1.5 pr-1.5 pl-2.5 text-xs text-muted-foreground shadow-md backdrop-blur-sm";
 
 // A read-only notice for a draft stranded on the terminal's "❯" line (a message queued then recalled
@@ -121,7 +121,7 @@ export function ClearNotice({ refusal, onRestore, restoring, onDismiss }: { refu
   );
 }
 
-function DismissButton({ onDismiss, label }: { onDismiss: () => void; label: string }) {
+export function DismissButton({ onDismiss, label }: { onDismiss: () => void; label: string }) {
   return (
     <button
       type="button"

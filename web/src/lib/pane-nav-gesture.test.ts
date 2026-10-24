@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   activeDirection,
+  CLICK_SLOP_PX,
+  CLICK_SWALLOW_MS,
   cellOf,
   chordSwipe,
   DEFAULT_TUNING,
@@ -16,6 +18,7 @@ import {
   reduceGesture,
   sameCell,
   speedOf,
+  swallowsClick,
   type GestureEvent,
   type GestureKind,
   type GestureState,
@@ -178,37 +181,70 @@ describe("the joystick target", () => {
 });
 
 describe("the chord machine (Two fingers)", () => {
-  const armed = () => play("chord", [down(0), { t: "hold-done" }]);
+  // Replayed pointer sequences: the first finger lands at 0 ms, the second at 1000 ms unless named.
+  const armed = () => play("chord", [down(0), second(200, 300, 1000)]);
+  const W = 390;
+  const downAt = (x: number, ms = 0): GestureEvent => ({ t: "down", at: P(x, 300), layout: START, ms, width: W });
 
-  it("idle -> holding on down, holding -> armed when the 300 ms hold ends", () => {
+  it("a lone hold arms nothing, however long: no overlay phase, and its lift is a plain cancel", () => {
+    const held = play("chord", [down(0), move(102, 101, 400), move(101, 102, 2000), { t: "hold-done" }]);
+    expect(held.phase).toBe("holding");
+    expect(isArmed(held.phase)).toBe(false);
+    const lifted = play("chord", [up(101, 102, 2500)], held);
+    expect(lifted.phase).toBe("cancel");
+    expect(lifted.endedBy).toBe("the first finger lifted with no second finger");
+  });
+
+  it("arms only when the second finger lands after 300 ms of a still first finger", () => {
     expect(play("chord", [down()]).phase).toBe("holding");
-    expect(armed().phase).toBe("armed");
-    expect(isArmed(armed().phase)).toBe(true);
+    const s = armed();
+    expect(s.phase).toBe("armed");
+    expect(s.second).toEqual(P(200, 300));
+    expect(s.padAt).toEqual(P(200, 300));
+    expect(play("chord", [down(0), second(200, 300, 300)]).phase).toBe("armed");
     expect(CHORD.holdMs).toBe(300);
   });
 
+  it("takes a second finger before 300 ms as a pinch, and never arms", () => {
+    const s = play("chord", [down(1000), second(200, 300, 1299)]);
+    expect(s.phase).toBe("cancel");
+    expect(s.endedBy).toBe("a second finger before the hold is a pinch");
+    expect(play("chord", [swipe(260, 300, 1400)], s).phase).toBe("cancel");
+  });
+
   it("tolerates 24 px of drift during the hold, and cancels past it", () => {
-    expect(play("chord", [down(), move(120, 112)]).phase).toBe("holding");
-    const s = play("chord", [down(), move(100, 130)]);
+    expect(play("chord", [down(), move(120, 112, 500)]).phase).toBe("holding");
+    const s = play("chord", [down(), move(100, 130, 500)]);
     expect(s.phase).toBe("cancel");
-    expect(s.endedBy).toBe("moved before the hold finished");
+    expect(s.endedBy).toBe("the first finger drifted past the hold's limit");
+    expect(play("chord", [second(200, 300, 1000)], s).phase).toBe("cancel");
   });
 
-  it("cancels when the finger lifts before the hold ends", () => {
-    expect(play("chord", [down(), up()]).endedBy).toBe("released before the hold finished");
-  });
-
-  it("takes a second finger within 300 ms of the first as a pinch, and never arms", () => {
-    const s = play("chord", [down(1000), second(200, 300, 1100)]);
+  it("scroll then hold: a finger that drifted past 24 px while scrolling never arms, even once still", () => {
+    const s = play("chord", [down(0), move(100, 110, 20), move(100, 130, 40), move(100, 160, 60), move(100, 160, 900), second(200, 300, 1000)]);
     expect(s.phase).toBe("cancel");
-    expect(s.endedBy).toBe("a second finger within the pinch window is a pinch");
-    // The hold timer firing afterwards changes nothing: the gesture is over.
-    expect(play("chord", [{ t: "hold-done" }], s).phase).toBe("cancel");
+    expect(s.endedBy).toBe("the first finger drifted past the hold's limit");
   });
 
-  it("names a late second finger before the hold as a cancel too", () => {
-    const s = play("chord", [down(1000), second(200, 300, 1400)], undefined, { ...CHORD, holdMs: 500 });
-    expect(s.endedBy).toBe("a second finger came before the hold finished");
+  it("a fast move inside the drift is a scroll: the hold's clock starts again from when the finger is still", () => {
+    // 20 px in 20 ms is 1 px per ms, far over the still speed: the clock restarts at 20 ms.
+    const fast = play("chord", [down(0), move(100, 120, 20)]);
+    expect(fast.stillMs).toBe(20);
+    expect(play("chord", [second(200, 300, 300)], fast).phase).toBe("cancel");
+    expect(play("chord", [second(200, 300, 320)], fast).phase).toBe("armed");
+    // A slow creep of the same length is still a hold.
+    const slow = play("chord", [down(0), move(100, 105, 100), move(100, 110, 200), move(100, 120, 400)]);
+    expect(slow.stillMs).toBe(0);
+  });
+
+  it("a hold that starts within 24 px of the left or right edge never arms", () => {
+    expect(play("chord", [downAt(10)]).endedBy).toBe("the hold started in a system back-gesture edge zone");
+    expect(play("chord", [downAt(W - 10)]).phase).toBe("cancel");
+    expect(play("chord", [downAt(10), second(200, 300, 1000)]).phase).toBe("cancel");
+    expect(play("chord", [downAt(30), second(200, 300, 1000)]).phase).toBe("armed");
+    expect(play("chord", [downAt(W - 30), second(200, 300, 1000)]).phase).toBe("armed");
+    // The joystick lives on its own handle: no edge zone there.
+    expect(play("stick", [downAt(10)]).phase).toBe("holding");
   });
 
   it("lets the first finger drift freely once armed", () => {
@@ -216,13 +252,13 @@ describe("the chord machine (Two fingers)", () => {
   });
 
   it("armed + a swipe under 40 px is no step", () => {
-    const s = play("chord", [second(200, 300), swipe(230, 300)], armed());
+    const s = play("chord", [swipe(230, 300)], armed());
     expect(s.phase).toBe("armed");
     expect(s.dx).toBe(30);
   });
 
   it("armed -> stepping at 40 px, and a further 40 px is another step", () => {
-    const s = play("chord", [second(200, 300), swipe(242, 300), swipe(284, 300)], armed());
+    const s = play("chord", [swipe(242, 300), swipe(284, 300)], armed());
     expect(s.phase).toBe("stepping");
     expect(s.steps).toBe(2);
     expect(keyAt(must(s.target))).toBe("a4");
@@ -230,42 +266,83 @@ describe("the chord machine (Two fingers)", () => {
   });
 
   it("one swipe of twice the threshold is two steps", () => {
-    const s = play("chord", [second(200, 300), swipe(285, 300)], armed());
+    const s = play("chord", [swipe(285, 300)], armed());
     expect(s.steps).toBe(2);
   });
 
   it("a flick steps under 40 px", () => {
-    const s = play("chord", [second(200, 300, 1000), swipe(228, 300, 1040)], armed());
+    const s = play("chord", [down(0), second(200, 300, 1000), swipe(228, 300, 1040)]);
     expect(s.steps).toBe(1);
     expect(s.lastDir).toBe("right");
   });
 
-  it("a vertical swipe moves between spaces", () => {
-    const s = play("chord", [second(200, 300), swipe(200, 345)], armed());
-    expect(keyAt(must(s.target))).toBe("b2");
-    expect(s.lastDir).toBe("down");
+  // Hold, swipe, lift the second finger, lift the first: the whole replay in each direction.
+  const replay = (to: { x: number; y: number }) =>
+    play("chord", [down(0), move(101, 100, 150), second(200, 300, 400), swipe((200 + to.x) / 2, (300 + to.y) / 2, 500), swipe(to.x, to.y, 600), { t: "second-up" }, up(101, 100, 700)]);
+
+  it.each([
+    ["right", { x: 245, y: 300 }, "a3"],
+    ["left", { x: 155, y: 300 }, "a1"],
+    ["down", { x: 200, y: 345 }, "b2"],
+    ["up", { x: 200, y: 255 }, "a2"],
+  ] as const)("hold + swipe %s, then both lifts, commits to the neighbour", (dir, to, key) => {
+    const s = replay(to);
+    expect(s.lastDir).toBe(dir);
+    // Up from the first space clamps: one step taken, the target is the pane on screen.
+    expect(s.phase).toBe("commit");
+    expect(keyAt(must(s.target))).toBe(key);
+  });
+
+  it("a swipe up from a lower space moves to the space above, landing on its first pane", () => {
+    const fromB = must(navLayoutOf(DEFS, "b1"));
+    const s = play("chord", [{ t: "down", at: P(100, 100), layout: fromB, ms: 0 }, second(200, 300, 400), swipe(200, 255, 600), { t: "second-up" }, up(100, 100, 700)]);
+    expect(s.phase).toBe("commit");
+    expect(s.lastDir).toBe("up");
+    expect(keyAt(must(s.target))).toBe("a1");
+  });
+
+  it("a diagonal outside the 40 degree cone counts its larger axis only", () => {
+    // 30 px right and 30 px down is 45 degrees off both axes: 30 px of travel, short of a step.
+    const short = play("chord", [swipe(230, 330)], armed());
+    expect(short.steps).toBe(0);
+    // Inside the cone, 36 right and 18 down (27 degrees) counts its whole 40.2 px: a step.
+    const inCone = play("chord", [swipe(236, 318)], armed());
+    expect(inCone.steps).toBe(1);
+    expect(inCone.lastDir).toBe("right");
+    // Outside the cone, 41 right and 39 down: the larger axis alone is 41 px, so it steps right.
+    const wide = play("chord", [swipe(241, 339)], armed());
+    expect(wide.steps).toBe(1);
+    expect(wide.lastDir).toBe("right");
   });
 
   it("the second finger may lift and swipe again, and the pad stays where it first landed", () => {
-    const s = play("chord", [second(200, 300), swipe(245, 300), { t: "second-up" }, second(50, 600), swipe(5, 600), { t: "second-up" }, second(60, 610), swipe(105, 610)], armed());
+    const s = play("chord", [swipe(245, 300), { t: "second-up" }, second(50, 600), swipe(5, 600), { t: "second-up" }, second(60, 610), swipe(105, 610)], armed());
     expect(s.steps).toBe(3);
     expect(keyAt(must(s.target))).toBe("a3");
     expect(s.padAt).toEqual(P(200, 300));
   });
 
-  it("ignores a third finger", () => {
-    const s = play("chord", [second(200, 300), second(10, 10)], armed());
-    expect(s.second).toEqual(P(200, 300));
+  it("a third finger cancels, and nothing moves", () => {
+    const s = play("chord", [swipe(245, 300), second(10, 10)], armed());
+    expect(s.phase).toBe("cancel");
+    expect(s.endedBy).toBe("a third finger landed");
   });
 
-  it("lifting the first finger commits after a step and cancels with none", () => {
-    const stepped = play("chord", [second(200, 300), swipe(245, 300), up()], armed());
+  it("the first finger lifted mid-swipe, with the second still down, cancels", () => {
+    const s = play("chord", [swipe(245, 300), up()], armed());
+    expect(s.phase).toBe("cancel");
+    expect(s.endedBy).toBe("the first finger lifted while the second was still down");
+  });
+
+  it("the first finger lifted after the second commits after a step, and cancels with none", () => {
+    const stepped = play("chord", [swipe(245, 300), { t: "second-up" }, up()], armed());
     expect(stepped.phase).toBe("commit");
     expect(stepped.endedBy).toBe("the first finger lifted after 1 step");
     expect(keyAt(must(stepped.target))).toBe("a3");
-    const none = play("chord", [up()], armed());
-    expect(none.phase).toBe("cancel");
-    expect(none.endedBy).toBe("the first finger lifted with no swipe");
+    // A plain two-finger tap: the second finger lands and lifts with no swipe.
+    const tap = play("chord", [{ t: "second-up" }, up()], armed());
+    expect(tap.phase).toBe("cancel");
+    expect(tap.endedBy).toBe("the first finger lifted with no swipe");
   });
 
   it("the browser's cancel ends it, settle returns to idle, and a new down starts over", () => {
@@ -275,6 +352,25 @@ describe("the chord machine (Two fingers)", () => {
     expect(play("chord", [{ t: "settle" }], c).phase).toBe("idle");
     expect(play("chord", [{ t: "settle" }], armed()).phase).toBe("armed");
     expect(play("chord", [down()], c).phase).toBe("holding");
+    expect(play("chord", [down(), { t: "cancel", why: "pointercancel" }]).phase).toBe("cancel");
+  });
+});
+
+describe("the click an armed lift would make", () => {
+  const lifts = [{ x: 200, y: 400, ms: 1000 }];
+
+  it("is swallowed within 400 ms and 32 px of a lift", () => {
+    expect(swallowsClick(lifts, P(200, 400), 1000)).toBe(true);
+    expect(swallowsClick(lifts, P(220, 420), 1400)).toBe(true);
+  });
+
+  it("is let through later, farther, or before the lift", () => {
+    expect(swallowsClick(lifts, P(200, 400), 1401)).toBe(false);
+    expect(swallowsClick(lifts, P(240, 400), 1100)).toBe(false);
+    expect(swallowsClick(lifts, P(200, 400), 999)).toBe(false);
+    expect(swallowsClick([], P(200, 400), 1000)).toBe(false);
+    expect(CLICK_SWALLOW_MS).toBe(400);
+    expect(CLICK_SLOP_PX).toBe(32);
   });
 });
 

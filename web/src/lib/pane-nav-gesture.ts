@@ -9,16 +9,22 @@
 //
 // TWO METHODS, ONE MAP.
 //   chord (Two fingers): idle -> holding -> armed -> stepping -> commit | cancel
-//     Hold ONE finger still on the reading area; the hold arms the mode. A SECOND finger then swipes,
-//     one step per swipe. Lifting the first finger commits or cancels. A second finger before the hold
-//     ends is a pinch, and the gesture never arms.
+//     Hold ONE finger still on the reading area. A hold alone arms NOTHING: no overlay, no buzz, and
+//     the browser keeps its long-press selection and menu (release counsel, 2026-10-25). The mode arms
+//     only when a SECOND finger lands while the first has been down and still for 300 ms. The second
+//     finger then swipes, one step per swipe, and may lift and swipe again. Lifting the first finger
+//     after the second has lifted commits, with at least one step. Every other end is a cancel: a
+//     second finger before 300 ms (a pinch), the first finger lifting while the second is still down, a
+//     third finger, a drift past 24 px, a hold that starts in a system back-gesture edge zone, and the
+//     browser's own cancel.
 //   stick (Joystick): idle -> holding -> armed -> stepping -> commit | cancel, and from holding the
 //     exits "tap" (nothing) and "flick" (a quick drag up: the switcher sheet).
 //     Hold the handle above the belt; the same finger then drags like a joystick.
 //
 // Ported from the playground's approved prototype (playground/sections/wide-layout-model.ts on
-// feat/wide-layout), with the pinch rule changed: in the app a second finger within the hold is a
-// pinch and never arms, so the browser's pinch zoom keeps working (ADR 0121).
+// feat/wide-layout), with the arm moved to the second finger and the pinch rule changed: in the app a
+// second finger within the hold is a pinch and never arms, so the browser's pinch zoom keeps working
+// (ADR 0121).
 
 // ── The map ─────────────────────────────────────────────────────────────────────────────────────
 
@@ -129,12 +135,19 @@ export function fitCenter(center: Point, bounds: { readonly w: number; readonly 
 // ── Tuning ──────────────────────────────────────────────────────────────────────────────────────
 
 export interface Tuning {
-  /** How long the first finger holds nearly still to arm the mode, ms. */
+  /** How long the first finger holds nearly still before a second finger may arm the mode (chord),
+   *  or before the hold arms it (stick), ms. */
   readonly holdMs: number;
   /** Travel for one step, CSS px. */
   readonly stepPx: number;
   /** How far the first finger may drift before the hold gives up. Once armed it may drift freely. */
   readonly driftPx: number;
+  /** Chord: the first finger counts as still below this speed over the last {@link FLICK_WINDOW_MS},
+   *  px per ms. A faster finger is scrolling, and the hold's clock starts again from zero. */
+  readonly stillPxPerMs: number;
+  /** Chord: a hold that starts this close to the left or right screen edge never arms, px. Those are
+   *  the system back-gesture zones. */
+  readonly edgePx: number;
   /** Chord: a flick steps when faster than this over the last {@link FLICK_WINDOW_MS}, px per ms. */
   readonly flickPxPerMs: number;
   /** Chord: and at least this far from the anchor, px. */
@@ -143,15 +156,13 @@ export interface Tuning {
   readonly coneDeg: number;
   /** Chord: a swipe that travels this many thresholds is a step per threshold. */
   readonly multiAt: number;
-  /** Chord: a second finger landing within this many ms of the first is a pinch, never a move. */
-  readonly pinchMs: number;
 }
 
 export type GestureKind = "chord" | "stick";
 
 export const DEFAULT_TUNING = {
-  chord: { holdMs: 300, stepPx: 40, driftPx: 24, flickPxPerMs: 0.4, flickMinPx: 15, coneDeg: 40, multiAt: 2, pinchMs: 300 },
-  stick: { holdMs: 400, stepPx: 48, driftPx: 10, flickPxPerMs: 0.4, flickMinPx: 15, coneDeg: 40, multiAt: 2, pinchMs: 300 },
+  chord: { holdMs: 300, stepPx: 40, driftPx: 24, stillPxPerMs: 0.15, edgePx: 24, flickPxPerMs: 0.4, flickMinPx: 15, coneDeg: 40, multiAt: 2 },
+  stick: { holdMs: 400, stepPx: 48, driftPx: 10, stillPxPerMs: 0.15, edgePx: 0, flickPxPerMs: 0.4, flickMinPx: 15, coneDeg: 40, multiAt: 2 },
 } as const satisfies Record<GestureKind, Tuning>;
 
 /** A quick drag up on the joystick handle opens the switcher from this far, CSS px. */
@@ -250,7 +261,7 @@ export function isTerminal(phase: Phase): boolean {
   return phase === "commit" || phase === "cancel" || phase === "tap" || phase === "flick";
 }
 
-/** True while the mode is armed: the overlay shows. The hook holds the page off from the second finger (chord) or the arm (stick). */
+/** True while the mode is armed: the overlay shows, and the hook holds the page off. */
 export function isArmed(phase: Phase): boolean {
   return phase === "armed" || phase === "stepping";
 }
@@ -262,6 +273,11 @@ export interface GestureState {
   readonly start: Point | null;
   readonly downMs: number;
   readonly at: Point | null;
+  /** Chord: since when the first finger has been still. The landing, or the last move faster than
+   *  `stillPxPerMs`: a hold only starts from a finger that is still. */
+  readonly stillMs: number;
+  /** Chord: the first finger's recent positions, for its speed. */
+  readonly firstSamples: readonly Sample[];
   /** Chord: where the second finger is, and where its next step is measured from. */
   readonly second: Point | null;
   readonly anchor: Point | null;
@@ -293,6 +309,8 @@ export function idleGesture(kind: GestureKind): GestureState {
     start: null,
     downMs: 0,
     at: null,
+    stillMs: 0,
+    firstSamples: [],
     second: null,
     anchor: null,
     padAt: null,
@@ -309,12 +327,14 @@ export function idleGesture(kind: GestureKind): GestureState {
 }
 
 export type GestureEvent =
-  /** The first finger lands. `layout` is the map the gesture starts from. */
-  | { t: "down"; at: Point; layout: NavLayout; ms: number }
+  /** The first finger lands. `layout` is the map the gesture starts from. `width` is the viewport's
+   *  width, for the chord's edge zones; absent, no zone applies. */
+  | { t: "down"; at: Point; layout: NavLayout; ms: number; width?: number }
   /** The first finger moves. */
   | { t: "move"; at: Point; ms: number }
-  /** The hold timer ran out. */
+  /** The hold timer ran out. The stick only: the chord arms on the second finger. */
   | { t: "hold-done" }
+  /** Another finger lands while the first is down: the second, or (chord) a third, which cancels. */
   | { t: "second-down"; at: Point; ms: number }
   | { t: "second-move"; at: Point; ms: number }
   | { t: "second-up" }
@@ -329,14 +349,27 @@ function finish(s: GestureState, phase: Phase, endedBy: string): GestureState {
   return { ...s, phase, endedBy, second: null, anchor: null, samples: [] };
 }
 
-function begin(kind: GestureKind, e: Extract<GestureEvent, { t: "down" }>): GestureState {
-  return { ...idleGesture(kind), phase: "holding", start: e.at, downMs: e.ms, at: e.at, origin: e.layout, target: e.layout };
+function begin(kind: GestureKind, e: Extract<GestureEvent, { t: "down" }>, tune: Tuning): GestureState {
+  const s: GestureState = {
+    ...idleGesture(kind),
+    phase: "holding",
+    start: e.at,
+    downMs: e.ms,
+    at: e.at,
+    stillMs: e.ms,
+    firstSamples: [{ x: e.at.x, y: e.at.y, ms: e.ms }],
+    origin: e.layout,
+    target: e.layout,
+  };
+  // The system's back gesture lives at the left and right edges: a hold that starts there is not ours.
+  const inEdge = e.width !== undefined && tune.edgePx > 0 && (e.at.x < tune.edgePx || e.at.x > e.width - tune.edgePx);
+  return kind === "chord" && inEdge ? finish(s, "cancel", "the hold started in a system back-gesture edge zone") : s;
 }
 
 /** The pure transition. An event that means nothing in the current phase returns the state unchanged. */
 export function reduceGesture(s: GestureState, e: GestureEvent, tune: Tuning): GestureState {
   if (e.t === "settle") return isTerminal(s.phase) ? { ...s, phase: "idle", dx: 0, dy: 0 } : s;
-  if (e.t === "down") return s.phase === "idle" || isTerminal(s.phase) ? begin(s.kind, e) : s;
+  if (e.t === "down") return s.phase === "idle" || isTerminal(s.phase) ? begin(s.kind, e, tune) : s;
   if (s.phase === "idle" || isTerminal(s.phase)) return s;
   if (e.t === "cancel") return finish(s, "cancel", e.why);
   return s.kind === "chord" ? reduceChord(s, e, tune) : reduceStick(s, e, tune);
@@ -354,20 +387,26 @@ function reduceChord(s: GestureState, e: GestureEvent, tune: Tuning): GestureSta
     if (e.t === "move") {
       const dx = e.at.x - start.x;
       const dy = e.at.y - start.y;
-      const next = { ...s, at: e.at, dx, dy };
-      return Math.hypot(dx, dy) > tune.driftPx ? finish(next, "cancel", "moved before the hold finished") : next;
+      const firstSamples = sampled(s.firstSamples, e.at, e.ms);
+      // A finger that moves fast is scrolling: the hold only counts from when it is still again.
+      const stillMs = speedOf(firstSamples, e.ms) > tune.stillPxPerMs ? e.ms : s.stillMs;
+      const next = { ...s, at: e.at, dx, dy, firstSamples, stillMs };
+      return Math.hypot(dx, dy) > tune.driftPx ? finish(next, "cancel", "the first finger drifted past the hold's limit") : next;
     }
-    if (e.t === "hold-done") return { ...s, phase: "armed", dx: 0, dy: 0 };
-    // A second finger inside the hold is a pinch: the browser keeps it, and this gesture never arms.
-    if (e.t === "second-down")
-      return finish(s, "cancel", e.ms - s.downMs <= tune.pinchMs ? "a second finger within the pinch window is a pinch" : "a second finger came before the hold finished");
-    if (e.t === "up") return finish(s, "cancel", "released before the hold finished");
+    // THE ARM. A second finger after 300 ms of a still first finger arms the mode, and the second
+    // finger is the one that swipes. Before that it is a pinch: the browser keeps it.
+    if (e.t === "second-down") {
+      if (e.ms - s.stillMs < tune.holdMs) return finish(s, "cancel", "a second finger before the hold is a pinch");
+      return { ...s, phase: "armed", second: e.at, anchor: e.at, padAt: e.at, dx: 0, dy: 0, samples: [{ x: e.at.x, y: e.at.y, ms: e.ms }] };
+    }
+    // A lone hold, however long, is the browser's: its lift ends the gesture with nothing done.
+    if (e.t === "up") return finish(s, "cancel", "the first finger lifted with no second finger");
     return s;
   }
   // armed or stepping: the first finger only has to stay down.
   if (e.t === "move") return { ...s, at: e.at };
   if (e.t === "second-down") {
-    if (s.second !== null) return s;
+    if (s.second !== null) return finish(s, "cancel", "a third finger landed");
     return { ...s, second: e.at, anchor: e.at, padAt: s.padAt ?? e.at, dx: 0, dy: 0, samples: [{ x: e.at.x, y: e.at.y, ms: e.ms }] };
   }
   if (e.t === "second-up") return { ...s, second: null, anchor: null, dx: 0, dy: 0, samples: [] };
@@ -392,10 +431,13 @@ function reduceChord(s: GestureState, e: GestureEvent, tune: Tuning): GestureSta
       target: next,
     };
   }
-  if (e.t === "up")
+  if (e.t === "up") {
+    // Mid-swipe: the person let go of the hold, not of the swipe. Nothing moves.
+    if (s.second !== null) return finish(s, "cancel", "the first finger lifted while the second was still down");
     return s.steps > 0
       ? finish(s, "commit", `the first finger lifted after ${s.steps} ${s.steps === 1 ? "step" : "steps"}`)
       : finish(s, "cancel", "the first finger lifted with no swipe");
+  }
   return s;
 }
 
@@ -425,4 +467,27 @@ function reduceStick(s: GestureState, e: GestureEvent, tune: Tuning): GestureSta
   }
   if (e.t === "up") return sameCell(s.target ?? origin, origin) ? finish(s, "cancel", "released back at the start") : finish(s, "commit", "released on another cell");
   return s;
+}
+
+// ── The lifts that must not click (chord) ───────────────────────────────────────────────────────
+
+/** A click this soon after an armed gesture's lift is the browser's own click for that lift, ms. */
+export const CLICK_SWALLOW_MS = 400;
+/** And this close to where the finger lifted, px. */
+export const CLICK_SLOP_PX = 32;
+
+/** Where and when a finger of an armed touch sequence lifted. */
+export interface Lift {
+  readonly x: number;
+  readonly y: number;
+  readonly ms: number;
+}
+
+/**
+ * Whether a click at `at` and `ms` is the click a browser makes of an armed gesture's lift: within
+ * {@link CLICK_SWALLOW_MS} after a lift and {@link CLICK_SLOP_PX} of where it lifted. The hook swallows
+ * it in the capture phase, so the belt pill, the Allow button or the link under the finger never fires.
+ */
+export function swallowsClick(lifts: readonly Lift[], at: Point, ms: number): boolean {
+  return lifts.some((l) => ms >= l.ms && ms - l.ms <= CLICK_SWALLOW_MS && Math.hypot(at.x - l.x, at.y - l.y) <= CLICK_SLOP_PX);
 }

@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
 
+import { PaneNavHint } from "@/components/pane-nav-hint";
 import { PaneNavHandle, PaneNavOverlay } from "@/components/pane-nav-overlay";
 import type { PaneNav } from "@/hooks/use-display-prefs";
 import { useNav } from "@/hooks/use-nav";
@@ -7,6 +8,7 @@ import { usePaneNavGesture } from "@/hooks/use-pane-nav-gesture";
 import { usePaneNavMap } from "@/hooks/use-pane-nav-map";
 import { panePath } from "@/lib/nav";
 import { keyAt, type NavLayout } from "@/lib/pane-nav-gesture";
+import { dismissPaneNavHint, notePaneNavArm, usePaneNavHintOpen } from "@/lib/pane-nav-hint";
 import type { Scope } from "@/lib/scope";
 import type { AgentView, ServerSummary, TabView } from "@/lib/types";
 import { columnKeyOf, scopeOfPane } from "@/lib/wide-layout";
@@ -39,6 +41,9 @@ export interface PaneNavigation {
   overlay: ReactNode;
   /** The joystick handle band for above the belt, or undefined when the method is not Joystick. */
   handle: ReactNode | undefined;
+  /** The first-arm hint (once per device, lib/pane-nav-hint.ts), for the floating notice group above
+   *  the belt; undefined when it does not stand. */
+  hint: ReactNode | undefined;
 }
 
 export function usePaneNavigation({ method, agent, agents, shellPanes, tabs, servers, scope, onSwitcher }: Options): PaneNavigation {
@@ -58,10 +63,16 @@ export function usePaneNavigation({ method, agent, agents, shellPanes, tabs, ser
       if (pane !== undefined) nav.side(panePath(pane.paneId, scopeOfPane(pane, map.places)));
     },
     onSwitcher,
+    // The first Two fingers arm on this device opens the hint; the Joystick has its own visible handle.
+    onArm: (kind) => {
+      if (kind === "chord") notePaneNavArm();
+    },
   });
+  const hintOpen = usePaneNavHintOpen();
   return {
     setReading,
     overlay: <PaneNavOverlay state={state} spaces={map.spaces} paneOf={map.paneOf} servers={servers} />,
     handle: method === "joystick" && map.layout !== null ? <PaneNavHandle setNode={setHandleNode} /> : undefined,
+    hint: hintOpen && method === "twoFingers" ? <PaneNavHint onDismiss={dismissPaneNavHint} /> : undefined,
   };
 }
