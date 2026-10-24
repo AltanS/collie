@@ -1,6 +1,6 @@
 # 0120: on a large screen, the pane screen is a sidebar beside a strip of panes
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-24
 - **Shipped in:** pending
 - **Trail:** the playground's "Large screens" round (`web/src/playground/sections/wide-layout*.tsx` on

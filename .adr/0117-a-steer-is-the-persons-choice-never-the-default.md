@@ -1,6 +1,6 @@
 # 0117: a steer is the person's choice, never the default
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-23
 - **Shipped in:** pending (1.24.0 Edge)
 - **Trail:** issue #579 · `bridge/surface/protocol.ts` (the header rule "Enter never steers a turn by accident", `steerTrusted`, `gateSteer`, `STEER_READS_MS`, `steerWitnessed`) · `web/src/lib/surface/profile.ts` (`keys.steer`, `keys.steerWitness`, `keys.steerDelayMs`) · `web/src/lib/surface/profiles/{pi,codex,omp}.json` · `web/src/lib/surface/send.ts` (`when`, `steered`, `steer_unsupported`, `steer_not_allowed`) · `web/src/lib/send-protocol.ts` (`noteKey`) · `web/src/components/composer.tsx` (the Steer row, `composer-steer-hint`, `AgentView.canSteer`) · `experiments/harnesses/steer-queue-2026-10-23.md` · `web/e2e/rig/steer.spec.ts` · `docs/multiplexers.md` ("Steer or queue") · [ADR 0101](./0101-a-control-on-a-screenless-pane-names-the-turn-it-saw.md) · [ADR 0110](./0110-two-release-lines.md)
