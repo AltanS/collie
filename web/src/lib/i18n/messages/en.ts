@@ -682,6 +682,14 @@ export const en = {
   "chat.card.status.failed": "failed",
   "chat.card.status.denied": "denied",
   "chat.card.status.exit": "exit {code}",
+  "chat.card.plan": "Plan",
+  "chat.card.plan.empty": "No tasks",
+  "chat.card.background": "background",
+  "chat.card.plan.pending": "pending",
+  "chat.card.plan.inProgress": "in progress",
+  "chat.card.plan.done": "done",
+  "chat.card.plan.blocked": "blocked",
+  "chat.card.plan.dropped": "dropped",
   // A question tool call's card. The agent's own `header` names the card when it sent one; the
   // dialog the reader answers in lives in the dock below the stream, never on the card.
   "chat.tool.question": "Question",

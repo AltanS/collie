@@ -2,7 +2,7 @@
 //
 // The journal answers in `TranscriptEntry[]` — one turn holding several parts — and a card draws ONE
 // thing. This is the whole distance between the two, and it is small on purpose: the tool vocabulary
-// on both sides is already the same nine kinds (`bridge/journal/tool-call.ts`), so what is left is a
+// on both sides is already the same ten kinds (`bridge/journal/tool-call.ts`), so what is left is a
 // role-to-kind table, an `output` field, and a status.
 //
 // It lives beside the cards rather than in the bridge because it is a VIEW decision. Whether a
@@ -28,9 +28,10 @@ export type ChatToolStatus = "running" | "done" | "failed" | "denied";
 /**
  * The five kinds whose card can show what the call PRINTED, given the room.
  *
- * The other three have nothing to print: an edit draws its diff, a read draws its range, and a
- * delete leaves no output at all. Writing the union as a conditional over {@link ToolCall} rather
- * than as a second list of branches is what stops the two from drifting when a tenth kind lands.
+ * The others have nothing to print: an edit draws its diff, a read draws its range, a delete leaves
+ * no output at all, and a plan's result is the list the card already draws (ADR 0119). Writing the
+ * union as a conditional over {@link ToolCall} rather than as a second list of branches is what stops
+ * the two from drifting when another kind lands.
  */
 type WithOutput<T> = T extends { kind: "execute" | "search" | "fetch" | "task" | "other" }
   ? T & { output?: string }
@@ -91,6 +92,7 @@ export function withToolOutput(call: ToolCall, output: string): ChatToolCall {
       return { ...call, output };
     case "other":
       return { ...call, output };
+    // A plan has no output to print: its result only echoes the list the card draws row by row.
     default:
       return call;
   }
@@ -122,6 +124,8 @@ export function toolStatus(part: Extract<TranscriptPart, { kind: "tool" }>): Cha
   if (result === undefined) return "running";
   if (result.denied) return "denied";
   if (result.isError) return "failed";
+  // A background job or sub-agent answers "started" at once; the call says it has not ended.
+  if (part.call && "ongoing" in part.call && part.call.ongoing === true) return "running";
   return "done";
 }
 

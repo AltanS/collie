@@ -18,6 +18,7 @@ and the live probes.
 | PR 397 extension, Review page | `←→ tabs • Enter submit • Esc cancel` | review (Enter, Escape) | `pi--v110-review-complete.txt` |
 | OmO ask, one question | `↑↓ move  1-9 select  space select  enter next  tab next question  c comment  esc cancel` | (b) digit | `pi--omo-v5130-single-described*`; probe below |
 | gentle-pi `ask_user_choice`, unnumbered, no status row | `↑↓ navigate • Enter select • Esc cancel` | (a) walk | `pi--v130-gentle-choice.txt`; source below |
+| gentle-pi review consent, numbered, NO rule frame, footer last | `↑↓ choose · Enter confirm · Esc cancel · D details` | (a) walk | `pi--v130-gentle-review-consent.txt`; "A dialog with no rules" below |
 | pi's own selector (`ctx.ui.confirm`, `ctx.ui.select`), unnumbered | `↑↓ navigate  enter select  escape/ctrl+c cancel` | (a) walk | built from source in `ask.test.ts` |
 | pi's own selector with a title of several rows: the stock `permission-gate` example, the command quoted further in | the same | (a) walk | `pi--v0871-permission-gate*`; live taps below |
 
@@ -103,6 +104,35 @@ the card read Yes, No and Cancel, and a tap through `POST /api/ask/<id>` sent `E
 file went from 644 to 777) and printed `Blocked by user` after No.
 `ask_user_question` (`❯` rows, a tab strip) is read from source only and stays raw with the Escape
 card.
+
+## A dialog with no rules: the review-consent screen
+
+Captured 2026-10-18 with pi 1.3.0 and gentle-pi 4.2.0 (`herdr pane read --format ansi`, CRLF rows):
+`pi--v130-gentle-review-consent.txt`. Measured shape, bottom up: there is NO rule frame and NO editor
+or status row under the dialog, so the footer is the last non-blank row of the screen.
+
+- the footer, painted (rgb 127), at column 0: `↑↓ choose · Enter confirm · Esc cancel · D details`;
+- a blank row, one painted description paragraph at column 0 (`Effect: …`, it describes the pointed
+  option), a blank row; both optional, the paragraph at most three rows (`framelessNote`);
+- three numbered options, `N. label`, exactly one `→` at column 0 (rgb 157, the pointed row), the
+  others indented by two spaces;
+- two prose rows, then the bold painted title row, then a blank row and the transcript (`⠙ Working`).
+
+`ask.ts` (`framelessFrame`) reads it only when the footer parses and is painted and the last row, a
+`1.` row stands above it with a header block over it whose first row is painted, and no rule is among
+the rows. The tail decides, as ever: a dialog quoted in prose sits above pi's real editor, whose
+rules make `statusTailBottom` take the tail first, and a plain footer fails `footerAt`. `choose` is
+taught to `parsePiFooter` as moving the pointer and `confirm` as Enter's select; `D details` is a
+letter key the plan never emits. The plan is the walk (arrows, verify the pointer, Enter), and the
+card's last row is `Cancel`, Escape, in the footer's words. Unnumbered rows never lift frameless (a
+column-0 `→ name` is pi's palette).
+
+The second capture, `pi--v130-gentle-review-consent-moved.txt` (after `herdr pane send-keys <pane> Down`),
+has `→` on option 2 and an `Effect:` paragraph that now describes option 2. That paragraph follows the
+pointer, so `coreSignature` blanks the note rows; without it the walk pair would read as a changed
+dialog. The pair is in `walk-pairs.ts`.
+
+Not proven: a walked tap on this screen end to end through the phone.
 
 ## OmO, probed by the PR 412 author
 

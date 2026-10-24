@@ -126,6 +126,8 @@ export const WALK_PAIRS: readonly WalkPair[] = [
   // pi's example permission-gate (pi 0.87.1), pi's own selector: Down at 120 columns, Up at 80.
   ["pi", "pi--v0871-permission-gate.txt", "pi--v0871-permission-gate-moved.txt"],
   ["pi", "pi--v0871-permission-gate-narrow.txt", "pi--v0871-permission-gate-narrow-moved.txt"],
+  // gentle-pi 4.2.0's review-consent screen (pi 1.3.0): no rule frame, footer last; the Effect paragraph follows the pointer.
+  ["pi", "pi--v130-gentle-review-consent.txt", "pi--v130-gentle-review-consent-moved.txt"],
   // Kiro V3 2.33.0: the startup workspace trust dialog, before and after one Down at each width.
   ["kiro", "kiro--v3-workspace-trust-continue-w120.txt", "kiro--v3-workspace-trust-exit-w120.txt"],
   ["kiro", "kiro--v3-workspace-trust-continue-w60.txt", "kiro--v3-workspace-trust-exit-w60.txt"],

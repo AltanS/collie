@@ -680,21 +680,6 @@ describe("parsePiTranscript — the structured call", () => {
     expect(part.call).toEqual({ kind: "execute", command: "echo hi" });
   });
 
-  test("`details.answer` joins the structured summary and leaves the part's own alone", () => {
-    const part = partOf(
-      call("call_1", "ask_user", { question: "Which color do you prefer?", options: ["Red", "Blue"] }),
-      result("call_1", "ask_user", "The user picked: Blue", {
-        details: { question: "Which color do you prefer?", options: ["Red", "Blue"], answer: "Blue", by: "phone" },
-      }),
-    );
-    expect(part.summary).toBe("Which color do you prefer?");
-    expect(part.call).toEqual({
-      kind: "other",
-      name: "ask_user",
-      summary: "Which color do you prefer? → Blue",
-    });
-  });
-
   test("OmO's `details.answers` fills the chosen label, in question order", () => {
     const q = "Pick a color for the Collie sandbox probe?";
     const part = partOf(
@@ -1097,6 +1082,224 @@ describe("parsePiTranscript — a message delivered while the agent works", () =
       ["u2", { kind: "text", text: "are you updating build artifacts ??" }],
     ]);
     expect(entries.map((e) => e.role)).toEqual(["user", "assistant", "user", "assistant"]);
+  });
+});
+
+// Gentle Shell (gentle-pi 4.2.0) on pi 1.3.0: the row shapes below were read off real local sessions on
+// 2026-10-16 (issue #461, ADR 0119).
+describe("parsePiTranscript — Gentle Shell's tools", () => {
+  /** A linear session: each row hangs off the one before, so nothing reads as a rewind. */
+  const session = () => {
+    const rows: string[] = [];
+    let parent: string | null = null;
+    const add = (id: string, body: Record<string, JsonValue>) => {
+      rows.push(plain(id, parent, body));
+      parent = id;
+    };
+    return {
+      call(id: string, callId: string, name: string, args: Record<string, JsonValue>) {
+        add(id, { type: "message", message: { role: "assistant", content: [{ type: "toolCall", id: callId, name, arguments: args }] } });
+      },
+      result(id: string, callId: string, name: string, text: string, details: JsonValue, isError = false) {
+        const message = { role: "toolResult", toolCallId: callId, toolName: name, content: [{ type: "text", text }], details };
+        add(id, { type: "message", message: isError ? { ...message, isError: true } : message });
+      },
+      notice(id: string, customType: string, content: string, details: JsonValue) {
+        add(id, { type: "custom_message", customType, content, display: true, details });
+      },
+      rows,
+    };
+  };
+  const tools = (lines: string[]) =>
+    parsePiTranscript(lines.join("\n")).flatMap((e) =>
+      e.parts.flatMap((p) => (p.kind === "tool" ? [{ uuid: e.uuid, part: p }] : [])),
+    );
+  const todo = (tasks: { id: number; title: string; status: string }[]) => ({ gentleTodo: { tasks, nextId: tasks.length + 1, updatedTurn: 1 } });
+
+  test("a `todo` update folds into the card its write drew, with the list from the result", () => {
+    const s = session();
+    s.call("a1", "c1", "todo", { action: "write", tasks: [{ title: "Parse", status: "in_progress" }, { title: "Ship" }] });
+    s.result("r1", "c1", "todo", "Todo list written: 2 tasks", todo([{ id: 1, title: "Parse", status: "in_progress" }, { id: 2, title: "Ship", status: "pending" }]));
+    s.call("a2", "c2", "todo", { action: "update", id: 1, status: "done" });
+    s.result("r2", "c2", "todo", "#1 Parse → done", todo([{ id: 1, title: "Parse", status: "done" }, { id: 2, title: "Ship", status: "pending" }]));
+    const drawn = tools(s.rows);
+    expect(drawn).toHaveLength(1);
+    expect(drawn[0]?.uuid).toBe("a1");
+    expect(drawn[0]?.part.call).toEqual({
+      kind: "plan",
+      name: "todo",
+      tasks: [{ title: "Parse", status: "done" }, { title: "Ship", status: "pending" }],
+    });
+  });
+
+  test("the fold names the card's turn as changed", () => {
+    const s = session();
+    s.call("a1", "c1", "todo", { action: "write", tasks: [{ title: "Parse" }] });
+    s.result("r1", "c1", "todo", "written", todo([{ id: 1, title: "Parse", status: "pending" }]));
+    s.call("a2", "c2", "todo", { action: "update", id: 1, status: "in_progress" });
+    const reducer = createPiReducer();
+    for (const line of s.rows) reducer.push(line);
+    const folded = reducer.push(plain("r2", "a2", {
+      type: "message",
+      message: { role: "toolResult", toolCallId: "c2", toolName: "todo", content: [{ type: "text", text: "ok" }], details: todo([{ id: 1, title: "Parse", status: "in_progress" }]) },
+    }));
+    expect(folded.added).toEqual([]);
+    expect([...folded.changed]).toEqual(["a1"]);
+  });
+
+  test("a second write opens a card of its own", () => {
+    const s = session();
+    s.call("a1", "c1", "todo", { action: "write", tasks: [{ title: "Old" }] });
+    s.result("r1", "c1", "todo", "written", todo([{ id: 1, title: "Old", status: "pending" }]));
+    s.call("a2", "c2", "todo", { action: "write", tasks: [{ title: "New" }] });
+    s.result("r2", "c2", "todo", "written", todo([{ id: 1, title: "New", status: "pending" }]));
+    expect(tools(s.rows).map((t) => t.uuid)).toEqual(["a1", "a2"]);
+  });
+
+  // 14 real `clear` calls (2026-10-16): the result's list is empty, and the next `add` starts a new list.
+  test("a `clear` keeps the card's last list and lets the next `add` draw a card of its own", () => {
+    const s = session();
+    s.call("a1", "c1", "todo", { action: "write", tasks: [{ title: "Old" }] });
+    s.result("r1", "c1", "todo", "written", todo([{ id: 1, title: "Old", status: "done" }]));
+    s.call("a2", "c2", "todo", { action: "clear" });
+    s.result("r2", "c2", "todo", "cleared", todo([]));
+    s.call("a3", "c3", "todo", { action: "add", title: "New" });
+    s.result("r3", "c3", "todo", "added", todo([{ id: 1, title: "New", status: "pending" }]));
+    expect(tools(s.rows).map((t) => [t.uuid, t.part.call])).toEqual([
+      ["a1", { kind: "plan", name: "todo", tasks: [{ title: "Old", status: "done" }] }],
+      ["a3", { kind: "plan", name: "todo", tasks: [{ title: "New", status: "pending" }] }],
+    ]);
+  });
+
+  test("a rewind past the held card lets the next update draw on the new branch", () => {
+    const rows = [
+      plain("a1", null, { type: "message", message: { role: "assistant", content: [{ type: "toolCall", id: "c1", name: "todo", arguments: { action: "write", tasks: [{ title: "Old" }] } }] } }),
+      plain("r1", "a1", { type: "message", message: { role: "toolResult", toolCallId: "c1", toolName: "todo", content: [{ type: "text", text: "ok" }], details: todo([{ id: 1, title: "Old", status: "pending" }]) } }),
+      plain("u1", null, { type: "message", message: { role: "user", content: [{ type: "text", text: "start over" }] } }),
+      plain("a2", "u1", { type: "message", message: { role: "assistant", content: [{ type: "toolCall", id: "c2", name: "todo", arguments: { action: "update", id: 1, status: "done" } }] } }),
+      plain("r2", "a2", { type: "message", message: { role: "toolResult", toolCallId: "c2", toolName: "todo", content: [{ type: "text", text: "ok" }], details: todo([{ id: 1, title: "Old", status: "done" }]) } }),
+    ];
+    const drawn = parsePiTranscript(rows.join("\n")).filter((e) => e.parts.some((p) => p.kind === "tool"));
+    expect(drawn.map((e) => [e.uuid, e.abandoned === true])).toEqual([["a1", true], ["a2", false]]);
+  });
+
+  test("an update with no write before it draws its own card from the result", () => {
+    const s = session();
+    s.call("a1", "c1", "todo", { action: "update", id: 2, status: "done" });
+    s.result("r1", "c1", "todo", "ok", todo([{ id: 2, title: "Ship", status: "done" }]));
+    expect(tools(s.rows).map((t) => t.part.call)).toEqual([{ kind: "plan", name: "todo", tasks: [{ title: "Ship", status: "done" }] }]);
+  });
+
+  test("`ask_user_choice` takes its answer from `details.selection`, and a dismissal fills nothing", () => {
+    const ask = { question: "Which?", options: [{ label: "Remove", value: "remove" }, { label: "Keep", value: "keep" }] };
+    const s = session();
+    s.call("a1", "c1", "ask_user_choice", ask);
+    s.result("r1", "c1", "ask_user_choice", "Remove", { ...ask, selection: { value: "remove", label: "Remove", index: 1 } });
+    s.call("a2", "c2", "ask_user_choice", ask);
+    s.result("r2", "c2", "ask_user_choice", "User cancelled the choice", { ...ask, cancelled: true });
+    const [answered, dismissed] = tools(s.rows).map((t) => t.part.call);
+    expect(answered).toMatchObject({ kind: "question", answers: [["Remove"]] });
+    expect(dismissed?.kind === "question" && dismissed.answers).toBeUndefined();
+  });
+
+  test("collie's own `ask_user` is a question card with its `details.answer`", () => {
+    const s = session();
+    s.call("a1", "c1", "ask_user", { question: "Which color do you prefer?", options: ["Red", "Blue"] });
+    s.result("r1", "c1", "ask_user", "The user picked: Blue", { question: "Which color do you prefer?", options: ["Red", "Blue"], answer: "Blue", by: "phone" });
+    const [only] = tools(s.rows);
+    expect(only?.part.summary).toBe("Which color do you prefer?");
+    expect(only?.part.call).toMatchObject({ kind: "question", name: "ask_user", answers: [["Blue"]] });
+  });
+
+  const agents = (taskId: string, status: string, mode = "background", agent = "gentle-ai-explore") => ({ gentleAgents: { taskId, agent, status, mode, cwd: "/repo" } });
+
+  test("a background subagent is ongoing until its end notice, which a failure marks", () => {
+    const s = session();
+    s.call("a1", "c1", "subagent_run", { agent: "gentle-ai-explore", label: "Map it", task: "…", mode: "background" });
+    s.result("r1", "c1", "subagent_run", "Started gentle-ai-explore in the background as task t-1.", agents("t-1", "queued"));
+    const running = tools(s.rows)[0]?.part;
+    expect(running?.call).toEqual({ kind: "task", agent: "gentle-ai-explore", summary: "Map it", ongoing: true });
+    s.notice("n1", "gentle-agents.result", "Subagent gentle-ai-explore (task t-1, \"Map it\") failed.", agents("t-1", "failed"));
+    const entries = parsePiTranscript(s.rows.join("\n"));
+    const part = entries[0]?.parts[0];
+    expect(part?.kind === "tool" && part.call).toEqual({ kind: "task", agent: "gentle-ai-explore", summary: "Map it" });
+    expect(part?.kind === "tool" && part.result?.isError).toBe(true);
+    // The notice is still drawn where it happened.
+    expect(entries.at(-1)?.role).toBe("note");
+  });
+
+  test("a foreground subagent is finished when it returns", () => {
+    const s = session();
+    s.call("a1", "c1", "subagent_run", { agent: "gentle-ai-explore", label: "Map it", task: "…" });
+    s.result("r1", "c1", "subagent_run", "The answer.", agents("t-1", "completed", "task"));
+    expect(tools(s.rows)[0]?.part.call).toEqual({ kind: "task", agent: "gentle-ai-explore", summary: "Map it" });
+  });
+
+  test("`subagent_result` folds into its task's card and brings the answer", () => {
+    const s = session();
+    s.call("a1", "c1", "subagent_run", { agent: "gentle-ai-explore", label: "Map it", task: "…", mode: "background" });
+    s.result("r1", "c1", "subagent_run", "Started.", agents("t-1", "queued"));
+    s.call("a2", "c2", "subagent_result", { task_id: "t-1" });
+    s.result("r2", "c2", "subagent_result", "The map.", agents("t-1", "completed"));
+    const drawn = tools(s.rows);
+    expect(drawn).toHaveLength(1);
+    expect(drawn[0]?.part.call).toEqual({ kind: "task", agent: "gentle-ai-explore", summary: "Map it" });
+    expect(drawn[0]?.part.result?.text).toBe("The map.");
+  });
+
+  // Read off a real session (2026-10-15): a cancelled subagent has no end notice, only the status a
+  // later `subagent_status` or `subagent_cancel` reports.
+  test("a later status result that names the task ends its card", () => {
+    const s = session();
+    s.call("a1", "c1", "subagent_run", { agent: "gentle-ai-explore", label: "Map it", task: "…", mode: "background" });
+    s.result("r1", "c1", "subagent_run", "Started.", agents("t-1", "queued"));
+    s.call("a2", "c2", "subagent_status", { task_id: "t-1" });
+    s.result("r2", "c2", "subagent_status", "cancelled", agents("t-1", "cancelled"));
+    expect(tools(s.rows)[0]?.part.call).toEqual({ kind: "task", agent: "gentle-ai-explore", summary: "Map it" });
+  });
+
+  test("a `subagent_result` asked while the task still runs leaves it running", () => {
+    const s = session();
+    s.call("a1", "c1", "subagent_run", { agent: "gentle-ai-explore", label: "Map it", task: "…", mode: "background" });
+    s.result("r1", "c1", "subagent_run", "Started.", agents("t-1", "queued"));
+    s.call("a2", "c2", "subagent_result", { task_id: "t-1" });
+    s.result("r2", "c2", "subagent_result", "Still running.", agents("t-1", "running"));
+    expect(tools(s.rows)[0]?.part.call).toMatchObject({ ongoing: true });
+  });
+
+  test("`subagent_continue` takes its agent from the result", () => {
+    const s = session();
+    s.call("a1", "c1", "subagent_continue", { task_id: "t-1", label: "Fix it", prompt: "…" });
+    s.result("r1", "c1", "subagent_continue", "Started.", agents("t-2", "queued", "background", "gentle-ai-worker"));
+    expect(tools(s.rows)[0]?.part.call).toEqual({ kind: "task", agent: "gentle-ai-worker", summary: "Fix it", ongoing: true });
+  });
+
+  const job = (jobId: string, kind: string, status: string, exitCode: number | null, event: string | null = null) => {
+    const gentleJobs = { jobId, kind, label: "suite", status, exitCode, outputPath: "/tmp/j.log" };
+    return { gentleJobs: event === null ? gentleJobs : { ...gentleJobs, event } };
+  };
+
+  test("a background command is ongoing with no exit code until its notice gives one", () => {
+    const s = session();
+    s.call("a1", "c1", "bash_background", { command: "bun test", label: "suite" });
+    s.result("r1", "c1", "bash_background", "Started background job job-1 (\"suite\").", job("job-1", "command", "running", null));
+    expect(tools(s.rows)[0]?.part.call).toEqual({ kind: "execute", command: "bun test", description: "suite", background: true, ongoing: true });
+    s.notice("n1", "gentle-jobs.notice", "Background job job-1 (\"suite\") exited with code 137 after 3s.", job("job-1", "command", "exited", 137));
+    const part = tools(s.rows)[0]?.part;
+    expect(part?.call).toEqual({ kind: "execute", command: "bun test", description: "suite", background: true, exitCode: 137 });
+    expect(part?.result?.isError).toBe(true);
+  });
+
+  test("a monitor's events leave it running, and stopping it ends it", () => {
+    const s = session();
+    s.call("a1", "c1", "monitor", { command: "tail -f x", label: "watch", timeout_seconds: 60 });
+    s.result("r1", "c1", "monitor", "Started monitor job-1.", job("job-1", "monitor", "running", null));
+    s.notice("n1", "gentle-jobs.notice", "Monitor job-1 reported 2 new lines", job("job-1", "monitor", "running", null, "events"));
+    expect(tools(s.rows)[0]?.part.call).toMatchObject({ ongoing: true });
+    s.notice("n2", "gentle-jobs.notice", "Monitor job-1 reported 1 new line", job("job-1", "monitor", "stopped", null, "events"));
+    const call = tools(s.rows)[0]?.part.call;
+    expect(call).toEqual({ kind: "execute", command: "tail -f x", description: "watch", background: true });
+    expect(tools(s.rows)[0]?.part.result?.isError).toBeUndefined();
   });
 });
 

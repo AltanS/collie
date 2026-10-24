@@ -5455,6 +5455,16 @@
    "harness": "shell",
    "version": "unversioned",
    "state": "screen"
+  },
+  "pi--v130-gentle-review-consent.txt": {
+   "harness": "pi",
+   "version": "1.3.0",
+   "state": "dialog"
+  },
+  "pi--v130-gentle-review-consent-moved.txt": {
+   "harness": "pi",
+   "version": "1.3.0",
+   "state": "dialog"
   }
  },
  "knownMismatches": {

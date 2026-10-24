@@ -50,7 +50,7 @@ import {
 } from "./reduce.ts";
 import { clamp, type Clamped, MAX_RESULT_CHARS, MAX_TEXT_CHARS, stripAnsi, summarizeToolInput } from "./text.ts";
 import { parseUnifiedDiff } from "./diff.ts";
-import { answerLabels, classifyToolCall, questionKey, type ToolCall } from "./tool-call.ts";
+import { answerLabels, classifyToolCall, planTasks, questionKey, type ToolCall } from "./tool-call.ts";
 import type {
   AgentSessionRef,
   JournalAdapter,
@@ -230,13 +230,38 @@ function enrichCall(
     }
     return;
   }
+  if (call.kind === "plan") {
+    // Gentle Shell's `todo` result holds the WHOLE list whatever the action was (277 of 277 local
+    // results, 2026-10-16); the input of an `update` holds one task. An empty or absent list leaves
+    // what the input said.
+    const gentle = details?.gentleTodo;
+    const tasks = gentle !== null && typeof gentle === "object" && !Array.isArray(gentle) ? planTasks(gentle.tasks) : [];
+    if (tasks.length > 0) call.tasks = tasks;
+    return;
+  }
   if (call.kind === "execute") {
+    // A background start answers before the command ran: no status line is no exit code YET, and the
+    // end notice gives the real one (see `endNotice`).
+    if (call.background) return;
     const status = PI_EXIT_STATUS.exec(text);
     if (status !== null) call.exitCode = Number(status[1]);
     else if (!isError) call.exitCode = 0;
     return;
   }
   if (call.kind === "question") {
+    // Gentle Shell's `ask_user_choice` writes the pick as `details.selection.label` and collie's own
+    // `ask_user` as `details.answer`, both for a one-question call. A dismissal
+    // (`details.cancelled`) carries neither and fills nothing.
+    const selection = details?.selection;
+    const picked =
+      selection !== null && typeof selection === "object" && !Array.isArray(selection) ? selection.label : details?.answer;
+    if (call.questions.length === 1 && typeof picked === "string" && picked.trim() !== "") {
+      const labels = answerLabels(picked);
+      if (labels.length > 0) {
+        call.answers = [labels];
+        return;
+      }
+    }
     // One list of chosen labels per question, in question order (`[["Blue"]]`), the shape the
     // question card reads. pi's own log does not write it; OpenClaw's `ask_user` answers do, once
     // its normaliser has put them in order (journal/openclaw.ts). Anything of another shape is left
@@ -273,16 +298,33 @@ function enrichCall(
     return;
   }
   if (call.kind === "other") {
-    // The one thing an unrecognised pi tool records that a view can draw: the answer a question got.
-    // It joins the STRUCTURED summary only — the part's own `summary` is the call's one-line form and
-    // stays exactly what `summarizeToolInput` made of the input.
+    // An unrecognised pi tool that records an answer (one with a `question` but no options, so not a
+    // question card). It joins the STRUCTURED summary only — the part's own `summary` is the call's
+    // one-line form and stays exactly what `summarizeToolInput` made of the input.
     const answer = details?.answer;
     if (typeof answer === "string" && answer.trim() !== "") call.summary = `${call.summary} → ${answer}`;
   }
 }
 
 /** A pi call waiting for its result, plus each question's `id` by its text when the call asked any. */
-type PiPending = PendingTool & { questionIds?: ReadonlyMap<string, string> };
+type PiPending = PendingTool & {
+  questionIds?: ReadonlyMap<string, string>;
+  /** Set when the call draws no part of its own: its result lands on this card instead (ADR 0119). */
+  foldInto?: PendingTool;
+};
+
+/** The object under `details[key]`, or `undefined`. */
+function detailsOf(details: JsonValue | undefined, key: string): JsonObject | undefined {
+  if (details === null || details === undefined || typeof details !== "object" || Array.isArray(details)) return undefined;
+  const inner = details[key];
+  return inner !== null && typeof inner === "object" && !Array.isArray(inner) ? inner : undefined;
+}
+
+/** A string field, or `undefined` when absent, blank or another type. */
+function field(o: JsonObject | undefined, key: string): string | undefined {
+  const v = o?.[key];
+  return typeof v === "string" && v.trim() !== "" ? v : undefined;
+}
 
 /** The `id` of each question a call's input names, keyed by the question's text. */
 function questionIdsOf(input: JsonValue | undefined): Map<string, string> {
@@ -447,12 +489,73 @@ const PI_KNOWN: KnownTypes = {
   parts: ["text", "thinking", "image", "toolCall"],
 };
 
+/** The statuses Gentle Shell writes when a subagent or a background job has ended. */
+const FINAL_WORK_STATUS: ReadonlySet<string> = new Set(["completed", "failed", "cancelled", "exited", "stopped"]);
+
 export function createPiReducer(): RowReducer {
   // toolCall id → the part awaiting its result and the turn it went out in, so a later `toolResult`
   // row lands on its own call and can name where that call is drawn.
   const pendingTools = new Map<string, PiPending>();
   // What this reducer met and had no branch for, asked for once per session by the canary.
   const unknown = createUnknownCounter(PI_KNOWN);
+  // The newest plan card, which a later non-`write` `todo` call folds into (ADR 0119).
+  let heldPlan: PendingTool | undefined;
+  // Subagent task id / background job id → the card that started it, so the end notice (or a
+  // `subagent_result`) can find it. Kept after the work ends: a result can be asked for later. Bounded
+  // by `rememberPending`; what falls off is the oldest id, whose notice the window has long passed.
+  const workCards = new Map<string, PendingTool>();
+
+  /** Mark a card ongoing and remember it by id, when its start result says the work is still running. */
+  function startWork(target: PendingTool, raw: JsonValue | undefined): void {
+    const call = target.part.call;
+    if (call?.kind !== "task" && call?.kind !== "execute") return;
+    const agents = call.kind === "task" ? detailsOf(raw, "gentleAgents") : undefined;
+    const jobs = call.kind === "execute" ? detailsOf(raw, "gentleJobs") : undefined;
+    const info = agents ?? jobs;
+    if (info === undefined) return;
+    const agent = field(agents, "agent");
+    if (call.kind === "task" && call.agent === undefined && agent !== undefined) call.agent = agent;
+    // `subagent_result` asks about work another card started; it never starts any of its own.
+    if (target.part.name.toLowerCase() === "subagent_result") return;
+    const id = field(info, agents ? "taskId" : "jobId");
+    if (id !== undefined) rememberPending(workCards, id, target);
+    const status = field(info, "status");
+    if (status === "queued" || status === "running") call.ongoing = true;
+  }
+
+  /** A `gentle-agents.result` / `gentle-jobs.notice` row: the work it names has ended. */
+  function endNotice(row: PiRow, changed: Set<string>): void {
+    const type = row.customType;
+    if (type !== "gentle-agents.result" && type !== "gentle-jobs.notice") return;
+    const agents = type === "gentle-agents.result";
+    const info = detailsOf(row.details, agents ? "gentleAgents" : "gentleJobs");
+    if (info !== undefined) settle(workCards.get(field(info, agents ? "taskId" : "jobId") ?? ""), info, changed);
+  }
+
+  /**
+   * End a held card when `info` (a `gentleAgents` / `gentleJobs` record) reports a final status.
+   * The end notice is the usual source; a cancelled subagent has none, and only the status a later
+   * `subagent_status` or `subagent_cancel` result reports says it is over (a real session,
+   * 2026-10-15). A status still running or queued leaves the card as it is.
+   */
+  function settle(card: PendingTool | undefined, info: JsonObject, changed: Set<string>): void {
+    const status = field(info, "status");
+    if (status === undefined || !FINAL_WORK_STATUS.has(status)) return;
+    const call = card?.part.call;
+    if (card === undefined || (call?.kind !== "task" && call?.kind !== "execute")) return;
+    delete call.ongoing;
+    const exitCode = info.exitCode;
+    let failed = status === "failed";
+    if (call.kind === "execute" && typeof exitCode === "number" && Number.isFinite(exitCode)) {
+      call.exitCode = exitCode;
+      failed ||= exitCode !== 0;
+    }
+    if (failed) {
+      if (card.part.result) card.part.result.isError = true;
+      else card.part.result = toolResult("", true);
+    }
+    changed.add(card.uuid);
+  }
 
   // ── THE BRANCH CHAIN ────────────────────────────────────────────────────────
   // pi keeps every branch in ONE append-only log. Every row names its parent, and the session's
@@ -468,6 +571,12 @@ export function createPiReducer(): RowReducer {
   // way, which a remove verb could never have done.
   const chain = new Map<string, BranchLink>();
   let leaf: string | null = null;
+
+  /** A card on a turn the branch left can no longer be folded into: the new branch draws its own. */
+  function forget(uuid: string): void {
+    if (heldPlan?.uuid === uuid) heldPlan = undefined;
+    for (const [id, card] of workCards) if (card.uuid === uuid) workCards.delete(id);
+  }
 
   /** Remember this row, and if it rewound, flip the flags the rewind changed. */
   function link(rowId: string, parentId: string | null, entries: TranscriptEntry[], changed: Set<string>): void {
@@ -486,6 +595,7 @@ export function createPiReducer(): RowReducer {
           if (off && entry.abandoned !== true) {
             entry.abandoned = true;
             changed.add(entry.uuid);
+            forget(entry.uuid);
           } else if (!off && entry.abandoned === true) {
             delete entry.abandoned;
             changed.add(entry.uuid);
@@ -527,6 +637,8 @@ export function createPiReducer(): RowReducer {
     // the model, which is the same distinction Claude's `isMeta` draws, so it is dropped.
     if (type === "custom_message") {
       if (row.display !== true) return;
+      // The notice is still drawn below; it also ends the card that started the work.
+      endNotice(row, changed);
       const text = customText(row.content);
       if (text.trim() !== "")
         entries.push({ uuid, ts, role: "note", parts: [{ kind: "text", ...clamp(text, MAX_TEXT_CHARS) }] });
@@ -551,7 +663,22 @@ export function createPiReducer(): RowReducer {
       const resultText = stripAnsi(textBlocks(m.content));
       const isError = m.isError === true;
       const imageUrl = extractImageUrl(m.content);
-      if (target) {
+      if (target?.foldInto) {
+        // A call that drew no part of its own: its result lands on the card it folds into.
+        const card = target.foldInto;
+        pendingTools.delete(id);
+        if (card.part.call?.kind === "plan") {
+          const tasks = planTasks(detailsOf(m.details, "gentleTodo")?.tasks);
+          if (tasks.length > 0) card.part.call.tasks = tasks;
+        } else {
+          // `subagent_result`: the answer replaces the start notice's text. The work is over only
+          // when the status it reports says so: one asked for too early answers "running".
+          card.part.result = toolResult(resultText, isError, imageUrl);
+          const info = detailsOf(m.details, "gentleAgents");
+          if (info !== undefined) settle(card, info, changed);
+        }
+        changed.add(card.uuid);
+      } else if (target) {
         // Mutated in place — the part already sits in an emitted entry, which is why results attach
         // without reordering anything.
         pendingTools.delete(id);
@@ -559,8 +686,13 @@ export function createPiReducer(): RowReducer {
         // `details` rides on the RESULT ROW, not on a content block — it is pi's own record of what
         // the call did, and the only place a patch or an answer ever appears.
         if (target.part.call) enrichCall(target.part.call, m.details, resultText, isError, target.questionIds);
+        if (!isError) startWork(target, m.details);
         // Both mutations above landed in a turn that went out rows ago. Name it.
         changed.add(target.uuid);
+        // A status call about ANOTHER card's task (`subagent_status`, `subagent_cancel`).
+        const info = detailsOf(m.details, "gentleAgents");
+        const other = workCards.get(field(info, "taskId") ?? "");
+        if (info !== undefined && other !== undefined && other !== target) settle(other, info, changed);
       } else if (resultText.trim() !== "" || imageUrl) {
         // Orphan result (its call fell outside a tail-read window) — kept unattached so the window
         // never silently drops output.
@@ -629,6 +761,23 @@ export function createPiReducer(): RowReducer {
           summary,
           call: classifyToolCall(name, b.arguments, summary),
         };
+        // A call that folds into an earlier card draws nothing: a `todo` update into the held plan,
+        // a `subagent_result` into the card of its `task_id` (ADR 0119).
+        const input = b.arguments !== null && typeof b.arguments === "object" && !Array.isArray(b.arguments) ? b.arguments : {};
+        const lower = name.toLowerCase();
+        let foldInto: PendingTool | undefined;
+        if (lower === "todo" && input.action !== "write") {
+          foldInto = heldPlan;
+          // A `clear` ends the list: its result is empty, so the card keeps the list as it last
+          // stood, and the next `add` starts a card of its own.
+          if (input.action === "clear") heldPlan = undefined;
+        }
+        else if (lower === "subagent_result") foldInto = workCards.get(field(input, "task_id") ?? "");
+        if (foldInto !== undefined) {
+          if (typeof b.id === "string") rememberPending(pendingTools, b.id, { part, uuid, foldInto });
+          continue;
+        }
+        if (lower === "todo") heldPlan = { part, uuid };
         if (typeof b.id === "string") {
           part.id = b.id;
           // The turn is named here, before it exists, because `uuid` is read off the row above and

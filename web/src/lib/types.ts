@@ -1302,25 +1302,38 @@ export interface ToolQuestion {
   options: readonly { label: string; description?: string }[];
 }
 
+/** One task of a plan, and where it stands. Other harnesses' words are mapped onto these five by the bridge. */
+export type PlanStatus = "pending" | "in_progress" | "done" | "blocked" | "dropped";
+export interface PlanTask {
+  title: string;
+  status: PlanStatus;
+  note?: string;
+}
+
 /**
  * What a tool call did, in the shape the thing it did suggests. Mirrors
- * `bridge/journal/tool-call.ts`, where the reasoning for the nine kinds lives.
+ * `bridge/journal/tool-call.ts`, where the reasoning for the ten kinds lives (ADR 0119).
  *
  * Every branch's FIRST field is the one a person would name the call by, so a row can be drawn from
- * `kind` plus one field. A tool outside the nine is not an error, it is `other`, which still carries
+ * `kind` plus one field. A tool outside the ten is not an error, it is `other`, which still carries
  * a name and a summary.
  */
 export type ToolCall =
   | { kind: "edit"; path: string; added: number; removed: number; diff?: Hunk[]; created?: boolean }
-  | { kind: "execute"; command: string; description?: string; exitCode?: number }
+  /** `background`: started and returned at once (`bash_background`, `monitor`). `ongoing`: it has not ended yet, though its start result is in. */
+  | { kind: "execute"; command: string; description?: string; exitCode?: number; background?: true; ongoing?: true }
   | { kind: "read"; path: string; range?: [number, number] }
   | { kind: "search"; query: string; where?: string; hits?: number }
   | { kind: "fetch"; url: string }
   | { kind: "delete" | "move"; path: string; to?: string }
-  | { kind: "task"; agent?: string; summary: string; agentId?: string }
+  /** `agentId` names the subagent's own log. `ongoing`: a background sub-agent that has not finished, though its start result is in. */
+  | { kind: "task"; agent?: string; summary: string; agentId?: string; ongoing?: true }
+  /** A task list the agent keeps rewriting (ADR 0119). On pi its updates are folded into the one card. */
+  | { kind: "plan"; name: string; tasks: readonly PlanTask[] }
   /** The agent asked the operator to choose. One entry per question the call carried. `answers[i]` is the list of chosen labels for question `i`, present only once the call completed with answers. */
   | { kind: "question"; name: string; summary: string; questions: readonly ToolQuestion[]; answers?: readonly (readonly string[])[] }
-  | { kind: "other"; name: string; summary: string };
+  /** `quiet`: bookkeeping (memory, phase, job list) drawn as a muted line. */
+  | { kind: "other"; name: string; summary: string; quiet?: true };
 
 /**
  * One renderable piece of a transcript turn. Mirrors `bridge/transcript.ts` (wire types are
