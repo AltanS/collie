@@ -1,9 +1,7 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-
 import { expect, test, type BrowserContext, type Page, type TestInfo } from "@playwright/test";
 
 import { installApiStub } from "./fixtures/api";
+import { collieHalves } from "./fixtures/collie-theme";
 
 // THE SEVEN MORE TOKENS PAINT (M57 spec 17). The unit tier holds every word's declarations equal to
 // the table and every default equal to index.css; this tier opens the shipped bundle with an imported
@@ -13,21 +11,19 @@ import { installApiStub } from "./fixtures/api";
 // for, which is the proof that the default look fetches no new byte and a display face costs exactly
 // one file.
 
-const web = resolve(import.meta.dirname, "..");
-const collie = JSON.parse(readFileSync(resolve(web, "src/themes/collie.json"), "utf8"));
-
 const PALETTE = {
   "0": "#000000", "1": "#cd3131", "2": "#0dbc79", "3": "#e5e510", "4": "#2472c8", "5": "#bc3fbc",
   "6": "#11a8cd", "7": "#e5e5e5", "8": "#666666", "9": "#f14c4c", "10": "#23d18b", "11": "#f5f543",
   "12": "#3b8eea", "13": "#d670d6", "14": "#29b8db", "15": "#ffffff", ink: "#fafafa", ground: "#14141e",
 };
 
+// A version 2 file: collie's 43 required tokens, never the version 3 `pane-active` (ADR 0120).
 const ALL = {
   version: 2,
   id: "seven",
   name: "Seven",
-  light: collie.light,
-  dark: collie.dark,
+  light: collieHalves.light,
+  dark: collieHalves.dark,
   fonts: { display: "geist" },
   surface: { ground: "gradient", chrome: "band", rows: "cards", icons: "heavy", labels: "sentence" },
   ansi: PALETTE,
