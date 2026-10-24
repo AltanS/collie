@@ -513,6 +513,19 @@ describe("a sideways scroll over a column", () => {
   });
 });
 
+describe("the position line", () => {
+  it("floats over the strip's top edge, hidden at rest, shown while the strip moves", async () => {
+    const { container } = await mount("w1:p1", 1200);
+    await openBesideFromSidebar(container, A2);
+    const line = q(container, '[data-slot="position-strip"]')!;
+    expect(line.className).toContain("absolute");
+    expect(line.className).toContain("pointer-events-none");
+    expect(line.className).toContain("opacity-0");
+    fireEvent.scroll(q(container, '[data-slot="strip"]')!);
+    await waitFor(() => expect(q(container, '[data-slot="position-strip"]')?.className).toContain("opacity-100"));
+  });
+});
+
 describe("the sidebar's own entries", () => {
   async function toRail(root: HTMLElement) {
     fireEvent.click(q(root, '[data-slot="sidebar-toggle"]')!);

@@ -1,14 +1,11 @@
 /**
- * The product's name, "ColliePWA", with its last three letters in the herd's three colours: P
- * `--status-done`, W `--status-working`, A `--status-blocked` (index.css, `.wordmark-ink`).
+ * The product's name, "ColliePWA": "Collie" in the text colour, "PWA" in the muted ink at rest, and
+ * the herd's three colours (P done, W working, A blocked) under a pointer on the lockup
+ * (`.wordmark-lockup`, index.css `.wordmark-ink`), as on the website (collie-website
+ * `components/wordmark.tsx`).
  *
- * THE APP DIFFERS FROM THE WEBSITE ON PURPOSE. The website's wordmark (collie-website
- * `components/wordmark.tsx`) rests in grey and takes these colours under a pointer. Here the name is
- * coloured by default, at rest too (Altan's call, 2026-10-24).
- *
- * NO APPLICATION STATE MAY EVER DRIVE THESE INKS. The three colours are fixed per letter and always
- * land on the same three letters, so the name never reads as a live status. Do not wire these letters
- * to an agent count, a connection or a build.
+ * NO APPLICATION STATE MAY EVER DRIVE THESE INKS. The trigger is the reader's pointer; the colours are
+ * fixed per letter. Do not wire these letters to an agent count, a connection or a build.
  *
  * The letters are three elements because each takes its own ink and the stylesheet reaches them by
  * position (`:nth-child`). `stem` is a text node and does not count. Do not wrap them, and do not put

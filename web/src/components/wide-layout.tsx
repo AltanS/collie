@@ -93,7 +93,7 @@ const COLUMN_PASSES_X = "[&_*]:overscroll-x-auto!";
 const RAIL_MARK_PX = 26;
 
 /** The mark's drawing in the open sidebar's top row, a step above the rail's; the row stays 48px (h-12). */
-const SIDEBAR_MARK_PX = 30;
+const SIDEBAR_MARK_PX = 36;
 
 interface WideLayoutProps {
   widthClass: "medium" | "expanded";
@@ -281,6 +281,16 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
     if (node === null || node.scrollWidth === 0) return;
     setView({ start: node.scrollLeft / node.scrollWidth, size: Math.min(1, node.clientWidth / node.scrollWidth) });
   }, []);
+  // The position line shows while the strip moves and fades out after it rests, like an overlay scroll bar.
+  const [moving, setMoving] = useState(false);
+  const restTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const onStripScroll = useCallback(() => {
+    measure();
+    setMoving(true);
+    clearTimeout(restTimer.current);
+    restTimer.current = setTimeout(() => setMoving(false), 900);
+  }, [measure]);
+  useEffect(() => () => clearTimeout(restTimer.current), []);
   const signature = fractions.join(",");
   useLayoutEffect(() => {
     const node = scroller.current;
@@ -434,111 +444,115 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
           </Button>
         </div>
 
-        <div
-          ref={setScroller}
-          data-slot="strip"
-          onScroll={measure}
-          className={cn(
-            "relative flex min-h-0 flex-1 overflow-y-hidden",
-            book ? "overflow-x-hidden" : "overflow-x-auto",
-            book || drag !== null ? "snap-none overscroll-x-contain" : STRIP_SNAP_CLASSES,
-          )}
-        >
-          {/* One flat list, the gutter a sibling, so a column keeps its identity through a fold. */}
-          {visible.flatMap((c, i) => {
-            const isFocus = c.key === strip.focus;
-            const pane = byColumn.get(c.key);
-            const preset = widthChoice ? shownPreset(c.preset, allowed) : null;
-            const controls = (
-              <ColumnControls preset={preset} onCycle={() => cycle(c.key)} onRemove={() => remove(c.key)} removable={shown.length > 1} />
-            );
-            const segment = bookPair ? (i === 0 ? "left" : "right") : undefined;
-            const column = (
-              <section
-                key={c.key}
-                data-segment={segment}
-                data-col-index={i}
-                data-col-key={c.key}
-                data-focused={isFocus ? "" : undefined}
-                aria-label={pane ? paneName(pane) : undefined}
-                aria-current={isFocus && framed ? "true" : undefined}
-                className={cn(
-                  "flex h-full shrink-0 border-r border-rule",
-                  COLUMN_SNAP_CLASSES,
-                  // A sideways wheel over a column must reach the strip. The transcript list is
-                  // `overscroll-contain` on both axes for the phone, which stopped the chain inside
-                  // the column, so every scroller in a column hands its x overscroll on. The strip
-                  // contains it, and the page's own lock keeps Chrome's history back off.
-                  COLUMN_PASSES_X,
-                  segment === "left" && "fold-left-col",
-                  segment === "right" && "fold-right-col",
-                )}
-                style={
-                  segment !== undefined
-                    ? undefined
-                    : { flex: `0 0 ${book ? 100 : (fractions[i] ?? 1) * 100}%`, minWidth: wide ? MIN_PANE_WIDTH : undefined }
-                }
-                // A tap anywhere on a column without focus gives it the focus. A tap, not a press: a
-                // press would remount the column under the finger, and a drag is a scroll. A pill on
-                // the belt carries its own act and its own focus move (`onIntent`).
-                onPointerDown={(e) => {
-                  press.current = { x: e.clientX, y: e.clientY };
-                }}
-                onPointerUp={(e) => {
-                  const p = press.current;
-                  press.current = null;
-                  if (isFocus || pane === undefined || p === null) return;
-                  if (Math.hypot(e.clientX - p.x, e.clientY - p.y) > TAP_SLOP_PX) return;
-                  if (e.target instanceof Element && e.target.closest('[data-slot="chrome-block"] button, [data-slot="column-header"] button') !== null) return;
-                  goTo(pane);
-                }}
-              >
-                {/* THE FRAME: reserved on every column, drawn on the focused one while the strip shows more
-                    than one, so a focus change recolours and moves nothing (DESIGN.md §2). */}
-                <div data-slot="column-frame" className={cn("relative flex min-w-0 flex-1 flex-col overflow-hidden bg-background", columnFrame(isFocus, framed))}>
-                  {isFocus ? (
-                    <>
-                      <div ref={setRow} data-slot="column-head" className="shrink-0" />
-                      {trail !== null && agent !== undefined && createPortal(controls, trail)}
-                      <div data-strip-focus className="flex min-h-0 flex-1 flex-col">
-                        {focused}
-                      </div>
-                    </>
-                  ) : pane !== undefined ? (
-                    <>
-                      <ColumnHeader pane={pane} controls={controls} onFocus={() => goTo(pane)} />
-                      <PaneColumnBody
-                        pane={pane}
-                        scope={scopeOfPane(pane, places)}
-                        onIntent={(intent) => onIntent(pane, intent)}
-                        // Tabletop: only the focused pane's belt stands under the fold; the others show Chat.
-                        belt={fold !== "tabletop"}
-                      />
-                    </>
-                  ) : null}
+        {/* The strip and its position line share a box, so the line can float over the strip's top edge
+            instead of taking a row of its own under it. */}
+        <div className="relative flex min-h-0 flex-1 flex-col">
+          <div
+            ref={setScroller}
+            data-slot="strip"
+            onScroll={onStripScroll}
+            className={cn(
+              "relative flex min-h-0 flex-1 overflow-y-hidden",
+              book ? "overflow-x-hidden" : "overflow-x-auto",
+              book || drag !== null ? "snap-none overscroll-x-contain" : STRIP_SNAP_CLASSES,
+            )}
+          >
+            {/* One flat list, the gutter a sibling, so a column keeps its identity through a fold. */}
+            {visible.flatMap((c, i) => {
+              const isFocus = c.key === strip.focus;
+              const pane = byColumn.get(c.key);
+              const preset = widthChoice ? shownPreset(c.preset, allowed) : null;
+              const controls = (
+                <ColumnControls preset={preset} onCycle={() => cycle(c.key)} onRemove={() => remove(c.key)} removable={shown.length > 1} />
+              );
+              const segment = bookPair ? (i === 0 ? "left" : "right") : undefined;
+              const column = (
+                <section
+                  key={c.key}
+                  data-segment={segment}
+                  data-col-index={i}
+                  data-col-key={c.key}
+                  data-focused={isFocus ? "" : undefined}
+                  aria-label={pane ? paneName(pane) : undefined}
+                  aria-current={isFocus && framed ? "true" : undefined}
+                  className={cn(
+                    "flex h-full shrink-0 border-r border-rule",
+                    COLUMN_SNAP_CLASSES,
+                    // A sideways wheel over a column must reach the strip. The transcript list is
+                    // `overscroll-contain` on both axes for the phone, which stopped the chain inside
+                    // the column, so every scroller in a column hands its x overscroll on. The strip
+                    // contains it, and the page's own lock keeps Chrome's history back off.
+                    COLUMN_PASSES_X,
+                    segment === "left" && "fold-left-col",
+                    segment === "right" && "fold-right-col",
+                  )}
+                  style={
+                    segment !== undefined
+                      ? undefined
+                      : { flex: `0 0 ${book ? 100 : (fractions[i] ?? 1) * 100}%`, minWidth: wide ? MIN_PANE_WIDTH : undefined }
+                  }
+                  // A tap anywhere on a column without focus gives it the focus. A tap, not a press: a
+                  // press would remount the column under the finger, and a drag is a scroll. A pill on
+                  // the belt carries its own act and its own focus move (`onIntent`).
+                  onPointerDown={(e) => {
+                    press.current = { x: e.clientX, y: e.clientY };
+                  }}
+                  onPointerUp={(e) => {
+                    const p = press.current;
+                    press.current = null;
+                    if (isFocus || pane === undefined || p === null) return;
+                    if (Math.hypot(e.clientX - p.x, e.clientY - p.y) > TAP_SLOP_PX) return;
+                    if (e.target instanceof Element && e.target.closest('[data-slot="chrome-block"] button, [data-slot="column-header"] button') !== null) return;
+                    goTo(pane);
+                  }}
+                >
+                  {/* THE FRAME: reserved on every column, drawn on the focused one while the strip shows more
+                      than one, so a focus change recolours and moves nothing (DESIGN.md §2). */}
+                  <div data-slot="column-frame" className={cn("relative flex min-w-0 flex-1 flex-col overflow-hidden bg-background", columnFrame(isFocus, framed))}>
+                    {isFocus ? (
+                      <>
+                        <div ref={setRow} data-slot="column-head" className="shrink-0" />
+                        {trail !== null && agent !== undefined && createPortal(controls, trail)}
+                        <div data-strip-focus className="flex min-h-0 flex-1 flex-col">
+                          {focused}
+                        </div>
+                      </>
+                    ) : pane !== undefined ? (
+                      <>
+                        <ColumnHeader pane={pane} controls={controls} onFocus={() => goTo(pane)} />
+                        <PaneColumnBody
+                          pane={pane}
+                          scope={scopeOfPane(pane, places)}
+                          onIntent={(intent) => onIntent(pane, intent)}
+                          // Tabletop: only the focused pane's belt stands under the fold; the others show Chat.
+                          belt={fold !== "tabletop"}
+                        />
+                      </>
+                    ) : null}
+                  </div>
+                </section>
+              );
+              // The fold's gutter between the two columns of a book: no column stands on the hinge.
+              return segment === "right" ? [<span key="fold-gutter" aria-hidden data-slot="fold-gutter" className="fold-gutter shrink-0" />, column] : [column];
+            })}
+            {!book && (
+              <div data-slot="add-column" className={cn("flex h-full shrink-0 p-3", COLUMN_SNAP_CLASSES)} style={{ flex: `0 0 ${addWidth}px` }}>
+                <div className="flex min-w-0 flex-1 items-center justify-center rounded-md border border-dashed border-rule">
+                  <Button variant="ghost" className="h-auto flex-col gap-2 px-3 py-2 text-sm text-muted-foreground" onClick={() => setAdding(true)}>
+                    <span aria-hidden className="grid size-11 place-items-center rounded-md border border-rule bg-card text-foreground">
+                      <Plus className="size-5" />
+                    </span>
+                    {t("wide.add.label")}
+                  </Button>
                 </div>
-              </section>
-            );
-            // The fold's gutter between the two columns of a book: no column stands on the hinge.
-            return segment === "right" ? [<span key="fold-gutter" aria-hidden data-slot="fold-gutter" className="fold-gutter shrink-0" />, column] : [column];
-          })}
-          {!book && (
-            <div data-slot="add-column" className={cn("flex h-full shrink-0 p-3", COLUMN_SNAP_CLASSES)} style={{ flex: `0 0 ${addWidth}px` }}>
-              <div className="flex min-w-0 flex-1 items-center justify-center rounded-md border border-dashed border-rule">
-                <Button variant="ghost" className="h-auto flex-col gap-2 px-3 py-2 text-sm text-muted-foreground" onClick={() => setAdding(true)}>
-                  <span aria-hidden className="grid size-11 place-items-center rounded-md border border-rule bg-card text-foreground">
-                    <Plus className="size-5" />
-                  </span>
-                  {t("wide.add.label")}
-                </Button>
               </div>
-            </div>
-          )}
-          {drag?.drop != null && (
-            <span aria-hidden data-slot="drop-bar" className="pointer-events-none absolute inset-y-0 z-20 w-1 bg-primary" style={{ left: drag.drop.markerX - 2 }} />
-          )}
+            )}
+            {drag?.drop != null && (
+              <span aria-hidden data-slot="drop-bar" className="pointer-events-none absolute inset-y-0 z-20 w-1 bg-primary" style={{ left: drag.drop.markerX - 2 }} />
+            )}
+          </div>
+          {!book && shown.length > 1 && <PositionStrip widths={fractions} focus={focusAt} view={view} tail={tail} moving={moving} />}
         </div>
-        {!book && shown.length > 1 && <PositionStrip widths={fractions} focus={focusAt} view={view} tail={tail} />}
       </div>
 
       {drag !== null && dragPane !== undefined && (
@@ -625,7 +639,7 @@ function SidebarTop({ open, setMark, toggle: hasToggle }: { open: boolean; setMa
       aria-expanded={open}
       onClick={() => setSidebarOpen(!open)}
     >
-      {open ? <PanelLeftClose className="size-5" /> : <PanelLeftOpen className="size-5" />}
+      {open ? <PanelLeftClose className="size-6 shrink-0" /> : <PanelLeftOpen className="size-6 shrink-0" />}
     </Button>
   );
   if (!open) {
@@ -637,12 +651,13 @@ function SidebarTop({ open, setMark, toggle: hasToggle }: { open: boolean; setMa
     );
   }
   return (
-    // `pl-[9px]`: the mark's box is 44px and its drawing SIDEBAR_MARK_PX (30), so the drawing starts
-    // 9 + 7 = 16px in, on the list's inset; `-ml-1` pulls the word to the drawing past the box's air.
-    <div className="flex h-12 shrink-0 items-center gap-1 border-b border-rule pl-[9px] pr-1">
-      <div ref={setMark} data-slot="sidebar-mark" className="flex shrink-0 items-center" />
+    // `pl-3`: the mark's box is 44px and its drawing SIDEBAR_MARK_PX (36), so the drawing starts
+    // 12 + 4 = 16px in, on the list's inset; `-ml-0.5` pulls the word to the drawing past the box's air.
+    // `wordmark-lockup`: the row is the pointer target that lights the name's suffix (index.css).
+    <div className="wordmark-lockup flex h-12 shrink-0 items-center gap-1 border-b border-rule pl-3 pr-1">
+      <div ref={setMark} data-slot="sidebar-mark" className="flex size-11 shrink-0 items-center justify-center" />
       {/* The product's name outside (components/wordmark.tsx): Collie in the text colour, PWA in the
-          herd's three colours. Not translated. */}
+          herd's three colours under a pointer. Not translated. */}
       {/* The word is part of the mark's button: a tap on it is the mark's tap (home, up a level,
           DESIGN.md §12). Hidden from the a11y tree and the tab order, so the row is ONE control. */}
       <button
@@ -651,7 +666,7 @@ function SidebarTop({ open, setMark, toggle: hasToggle }: { open: boolean; setMa
         aria-hidden
         data-slot="sidebar-word"
         onClick={(e) => e.currentTarget.parentElement?.querySelector<HTMLButtonElement>('[data-slot="sidebar-mark"] button')?.click()}
-        className="-ml-1 flex h-11 min-w-0 flex-1 items-center truncate text-left text-base font-semibold text-foreground"
+        className="-ml-0.5 flex h-11 min-w-0 flex-1 items-center truncate text-left text-lg font-semibold text-foreground"
       >
         <Wordmark />
       </button>
@@ -756,16 +771,26 @@ function Rail({ spaces, hereKey, onSelect }: { spaces: readonly WorkspaceGroup[]
   );
 }
 
-/** Where the strip is: one segment per column, the focused one solid, the visible window framed. */
-function PositionStrip({ widths, focus, view, tail }: { widths: readonly number[]; focus: number; view: { start: number; size: number }; tail: number }) {
+/** Where the strip is: one segment per column, the focused one solid, the visible window framed.
+ *  It floats over the strip's top edge and takes no row of its own: shown while the strip moves, it
+ *  fades out once the strip rests, the way an overlay scroll bar does. It never takes a pointer. */
+function PositionStrip({ widths, focus, view, tail, moving }: { widths: readonly number[]; focus: number; view: { start: number; size: number }; tail: number; moving: boolean }) {
   const total = widths.reduce((n, w) => n + w, 0) + tail || 1;
   return (
-    <div aria-hidden data-slot="position-strip" className="flex h-3 shrink-0 items-stretch border-t border-rule bg-background px-2 py-1">
+    <div
+      aria-hidden
+      data-slot="position-strip"
+      data-moving={moving || undefined}
+      className={cn(
+        "pointer-events-none absolute inset-x-2 top-0 z-10 flex h-1.5 items-stretch transition-opacity duration-300 motion-reduce:transition-none",
+        moving ? "opacity-100" : "opacity-0",
+      )}
+    >
       <div className="relative flex min-w-0 flex-1 gap-px">
         {widths.map((w, i) => (
           <span key={i} className={cn("h-full", i === focus ? "bg-foreground" : "bg-muted-foreground/40")} style={{ width: `${(w / total) * 100}%` }} />
         ))}
-        <span className="pointer-events-none absolute inset-y-[-2px] border border-foreground" style={{ left: `${view.start * 100}%`, width: `${view.size * 100}%` }} />
+        <span className="pointer-events-none absolute inset-y-[-1px] border border-foreground" style={{ left: `${view.start * 100}%`, width: `${view.size * 100}%` }} />
       </div>
     </div>
   );

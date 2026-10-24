@@ -1267,28 +1267,37 @@
 }
 
 /*
- * ── The name's suffix: three letters, three fixed inks ──
+ * ── The name's suffix: grey at rest, the herd's three inks under a pointer ──
  *
- * "PWA" of the sidebar's ColliePWA is always in colour: P `--status-done`, W `--status-working`,
- * A `--status-blocked`, at rest too. THE APP DIFFERS FROM THE WEBSITE ON PURPOSE: the website's
- * wordmark rests in grey and takes these colours only under a pointer; here the name is coloured by
- * default (Altan's call, 2026-10-24).
+ * "PWA" of the sidebar's ColliePWA rests in the muted ink, the same size as "Collie", as on the
+ * website (collie-website `components/wordmark.tsx`). Hover the logo row, or reach its mark with the
+ * keyboard, and the three letters take P `--status-done`, W `--status-working`, A `--status-blocked`,
+ * fading back over 240ms. Altan tried the inks at rest on 2026-10-24 and reverted it the same day.
  *
- * THE ONE RULE IT MUST NOT BREAK: this must never read as a live status. The three colours are
- * fixed per letter and always land on the same three letters, and NO APPLICATION STATE MAY EVER
- * DRIVE THEM. If anything here is wired to a value (an agent count, a connection, a build), it has
- * become a status readout and it is wrong. Nothing here moves: no keyframes, no animation, no hover.
+ * THE ONE RULE IT MUST NOT BREAK: this must never read as a live status. The trigger is the READER'S
+ * POINTER and nothing else; the colours are fixed per letter and NO APPLICATION STATE MAY EVER DRIVE
+ * THEM. Nothing here moves: no keyframes, no animation.
  */
+.wordmark-ink {
+  color: var(--muted-foreground);
+  transition: color 240ms ease-out;
+}
+
 .wordmark-ink:nth-child(1) {
-  color: var(--status-done);
+  --wordmark-lit: var(--status-done);
 }
 
 .wordmark-ink:nth-child(2) {
-  color: var(--status-working);
+  --wordmark-lit: var(--status-working);
 }
 
 .wordmark-ink:nth-child(3) {
-  color: var(--status-blocked);
+  --wordmark-lit: var(--status-blocked);
+}
+
+.wordmark-lockup:hover .wordmark-ink,
+.wordmark-lockup:focus-within .wordmark-ink {
+  color: var(--wordmark-lit);
 }
 
 /* Submission progress bar — a slim indeterminate strip across the very top of the viewport while a
