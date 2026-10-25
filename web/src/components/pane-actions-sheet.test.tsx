@@ -691,3 +691,22 @@ describe("PaneActionsSheet — Messages (M62)", () => {
     expect(vi.mocked(props.onClose).mock.invocationCallOrder[0]!).toBeLessThan(onMessages.mock.invocationCallOrder[0]!);
   });
 });
+
+describe("PaneActionsSheet — report a problem (ADR 0123)", () => {
+  it("trails Pin, closes the sheet first, then opens the report", async () => {
+    const user = userEvent.setup();
+    const onReport = vi.fn();
+    const props = renderSheet({ onFind: vi.fn(), onReport });
+    const pin = screen.getByRole("button", { name: "Pin to top" });
+    const report = screen.getByRole("button", { name: "Report a problem" });
+    expect(pin.compareDocumentPosition(report) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    await user.click(report);
+    expect(onReport).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(props.onClose).mock.invocationCallOrder[0]!).toBeLessThan(onReport.mock.invocationCallOrder[0]!);
+  });
+
+  it("is absent when the caller passes no report (a crew member's pane)", () => {
+    renderSheet({ onFind: vi.fn() });
+    expect(screen.queryByRole("button", { name: "Report a problem" })).toBeNull();
+  });
+});

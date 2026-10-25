@@ -17,6 +17,7 @@ import { markDead as markPaneDead, markLive as markPaneLive } from "./liveness";
 import { abortSignalAfter, abortSignalAny } from "./env";
 import { asJsonObject, asJsonString, parseJsonObject, type JsonObject } from "./json";
 import { readHeldCancelAnswer, readSendReceipts, readSendReply, type SendReply } from "./send-protocol";
+import { readReportContext, type ReportContext } from "./report/context";
 import { REQUEST_ID, type HeldCancelAnswer, type SendReceiptRow, type SendRequestBody } from "./surface/send";
 import type { AnswerBody } from "./surface/ask";
 import { boundedDraft, CLEAR_OUTCOMES, CLEAR_REASONS, type ClearBody, type ClearReceipt } from "./surface/clear";
@@ -1649,6 +1650,22 @@ export async function getSendReceipts(paneId: string, scope?: Scope): Promise<Se
   if (normalizeScope(scope).host) return [];
   const got = await req<JsonObject>(withScope(`/api/send/receipts?pane=${encodeURIComponent(paneId)}`, scope), undefined, sendRecover());
   return readSendReceipts(got).receipts.slice();
+}
+
+/**
+ * GET /api/report/context (ADR 0123): this machine's setup for a problem report, and with `screen` the
+ * pane's last rows, masked by the bridge. A paired device's read; it changes nothing. This machine's
+ * own panes only: the bridge refuses a crew member's pane, so the sheet does not ask for one.
+ */
+export async function getReportContext(paneId: string | null, screen: boolean, scope?: Scope): Promise<ReportContext> {
+  const params = new URLSearchParams();
+  if (paneId !== null) params.set("pane", paneId);
+  if (screen) params.set("screen", "1");
+  const query = params.toString();
+  const got = await req<JsonObject>(withScope(`/api/report/context${query === "" ? "" : `?${query}`}`, scope));
+  const context = readReportContext(got);
+  if (context === null) throw new ApiError("The report route sent a body this phone cannot read.", 502);
+  return context;
 }
 
 /**

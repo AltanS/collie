@@ -44,8 +44,12 @@ export interface ReplyArgs {
 }
 
 export type ReplyOutcome =
-  /** The bridge answered. `reading.clear` is true only on `sent` or `effective`. */
-  | { readonly status: "answered"; readonly reply: SendReply; readonly reading: SendReading }
+  /**
+   * The bridge answered. `reading.clear` is true only on `sent` or `effective`. `requestId` is the id the
+   * request went under: a retry that got the stored receipt back carries the same one (ADR 0123 counts
+   * a send once by it).
+   */
+  | { readonly status: "answered"; readonly reply: SendReply; readonly reading: SendReading; readonly requestId: string }
   /**
    * No answer arrived (a dropped link, a timeout, a body the phone cannot read). The intent comes
    * back: the next tap on the same text asks for the same request id, so a lost answer never sends
@@ -80,7 +84,7 @@ export async function sendText(args: ReplyArgs): Promise<ReplyOutcome> {
   const body: SendRequestBody = { id: intent.requestId, pane: args.paneId, text: args.text, mode };
   try {
     const reply = await postSend({ ...body, rowsHash: rowsHash ?? undefined, capAck: capAck ? true : undefined, resendOf, when: args.when }, args.scope);
-    return { status: "answered", reply, reading: readSend(reply) };
+    return { status: "answered", reply, reading: readSend(reply), requestId: intent.requestId };
   } catch (e) {
     return { status: "noAnswer", error: describeThrownError(e), intent };
   }

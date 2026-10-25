@@ -133,6 +133,7 @@ import { hasJournalAdapter, reportsSessionOnFirstPrompt } from "@/lib/journal-ag
 import { journalReadingOf, paneBody, type JournalReading } from "@/lib/chat-gate";
 import { paneRowKey, paneScope } from "@/lib/hosts";
 import { isLead, paneScopeKey } from "@/lib/scope";
+import { openReport } from "@/lib/report/store";
 import { answerRouteFor, textRouteFor } from "@/lib/send-path";
 import { useSessionCard, wearsExperimental } from "@/lib/session-cards";
 import { usePins } from "@/lib/pins";
@@ -3415,6 +3416,8 @@ export function AgentChat({
           onSettings={gridless && !programReceipts ? undefined : () => setDrawer("paneSettings")}
           // The pane's walky talky messages (M62), a read row with the others. A member's pane too: the
           // lead forwards its list from that member's own log (CREW_PROTOCOL.md §21).
+          // Report a problem (ADR 0123): this machine's panes only, since the bridge reads no member's pane yet.
+          onReport={isLead(scope) ? () => openReport({ paneId, scope }) : undefined}
           onMessages={
             messagesSheet
               ? () => {

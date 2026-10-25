@@ -24,6 +24,7 @@ import { PaneOrderControl } from "@/components/pane-order-control";
 import { WideLayoutControl } from "@/components/wide-layout-control";
 import { PairedDevices } from "@/components/paired-devices";
 import { PushControl, usePushAvailability } from "@/components/push-control";
+import { ReportControl } from "@/components/report-control";
 import { SnoozeControl } from "@/components/snooze-control";
 import { ThemeControl } from "@/components/theme-control";
 import { ThemePickerControl } from "@/components/theme-picker-control";
@@ -276,6 +277,9 @@ export function SettingsSystemRoute() {
         build={diagnostics.build}
         redact={diagnostics.redact}
       />
+      {/* Report a problem (ADR 0123): the offer's switch and the sheet's third door, with the diagnostics
+          because a report is the one way those leave this phone, and only by the person's taps. */}
+      <ReportControl />
     </SettingsPage>
   );
 }
