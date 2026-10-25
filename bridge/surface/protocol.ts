@@ -168,7 +168,7 @@ import { askLifetimeOf, type AskBook } from "./ask.ts";
 import type { KeyGate } from "./key-gate.ts";
 import type { RequestStore, SendRecord } from "./requests.ts";
 import { HOLD_BRIDGE_MAX, HOLD_PANE_MAX, heldRow, type HeldEntry, type HoldCause, type HoldStore } from "./holds.ts";
-import { QueuedSends, type ReceiptQueued } from "./queued.ts";
+import { QueuedSends, type BoxReading, type ReceiptQueued } from "./queued.ts";
 
 /** The step bounds, written as (max reads, max ms). */
 export const BOUNDS = {
@@ -363,6 +363,12 @@ export interface SendRequest {
    * (walky talky, hooks, the CLI) leaves it out.
    */
   readonly fromPhone?: boolean;
+  /**
+   * A Send on a queued message a Stop gave back to the box (ADR 0122): set by `POST /api/send` alone,
+   * for `resendOf` of a returned card, never read off a body. The submit then needs the S0 read, taken
+   * under the pane lock right before the key, to show an idle turn as well as the exact text in the box.
+   */
+  readonly returnedCard?: boolean;
 }
 
 // ── The lock and the ring ────────────────────────────────────────────────────────────────────────
@@ -1197,6 +1203,13 @@ const ENTER_MISSED_BOX = "The submit key did not reach the box. A dialog may hav
 
 /** The detail of a held send that met a box answering the agent's question: it waits for an ordinary box. */
 const ANSWER_BOX = "The input box answers a question the agent asked. A held message waits for the question to close.";
+/**
+ * Submit or Discard on a box that no longer holds the text: what the person saw is gone. The route
+ * reads this exact sentence to tell a returned card's Discard that only the card may go (ADR 0122).
+ */
+export const BOX_CHANGED = "The box no longer holds this text.";
+/** A returned card's Send on a turn that runs again (ADR 0122): nothing is pressed. */
+const RETURNED_BUSY = "The agent is busy again. Your message stays in its box; send it when the turn ends.";
 /** The detail of a send refused because the turn runs. */
 const TURN_RUNNING = "The agent is working, and this harness does not take a message during a turn.";
 /** The detail of a steer from a caller that is not a person's send from the phone (M69). */
@@ -2060,14 +2073,16 @@ export class SendProtocol {
   }
 
   /**
-   * One read of a pane's input box (ADR 0122): `box` is its text ("" for an empty box), or null when
-   * the read found no box. Marks the open queued sends whose texts the box holds as returned (their
-   * receipts take `late: "returned"`), ends the returned ones it no longer holds, and returns the ids
-   * it holds. The poll's Surface read and the Stop's read-back both call it. Never throws.
+   * One read of a pane (ADR 0122): its input box ("" for an empty box, null when the read found no box)
+   * and its turn. Marks the open queued sends whose texts the box holds as returned (their receipts take
+   * `late: "returned"`), ends the returned ones it no longer holds, keeps a running turn's queued cards
+   * alive, and turns a queued card unconfirmed after polls of an idle turn over an empty box
+   * (QueuedSends.boxRead). Returns the ids the box holds. The poll's Surface read and the Stop's
+   * read-back both call it. Never throws.
    */
-  boxRead(session: string, paneId: string, box: string | null, readAt: number = this.now()): string[] {
+  boxRead(session: string, paneId: string, reading: BoxReading): string[] {
     try {
-      return this.queuedSends.boxRead(session, paneId, box, readAt);
+      return this.queuedSends.boxRead(session, paneId, reading);
     } catch (err) {
       console.warn(`[send] box read on ${paneId} failed: ${err instanceof Error ? err.message : String(err)}`);
       return [];
@@ -2078,10 +2093,10 @@ export class SendProtocol {
    * The poll's tick for queued sends, after the Surface read the panes: one {@link boxRead} per pane
    * with open queued sends. `boxOf` answers the newest read's box and when it was taken, or null.
    */
-  tickQueued(session: string, boxOf: (paneId: string) => { readonly box: string | null; readonly at: number } | null): void {
+  tickQueued(session: string, boxOf: (paneId: string) => Omit<BoxReading, "poll"> | null): void {
     for (const paneId of this.queuedSends.panes(session)) {
       const read = boxOf(paneId);
-      if (read !== null) this.boxRead(session, paneId, read.box, read.at);
+      if (read !== null) this.boxRead(session, paneId, { ...read, poll: true });
     }
   }
 
@@ -2571,6 +2586,8 @@ export class SendProtocol {
    * holds no such request.
    */
   cancelHeld(session: string, paneId: string, id: string): HeldCancelAnswer | null {
+    // Discard on an unconfirmed queued card (ADR 0122): the card goes, and nothing is pressed.
+    if (this.queuedSends.dismissUnconfirmed(session, paneId, id)) return { result: "dismissed" };
     const entry = this.deps.holds?.get(id) ?? null;
     if (entry === null) {
       // No row any more: the request may have gone out a moment ago. Its own receipt says what happened.
@@ -2973,6 +2990,8 @@ export class SendProtocol {
 
     switch (request.mode) {
       case "submit": {
+        // A returned card's Send goes only on an idle turn: a busy one means the text may be on its way.
+        if (request.returnedCard === true && s0.surface.turn !== "idle") throw new Ended("refused", "not_free", { surface: s0.surface, detail: RETURNED_BUSY });
         const located = this.typedBox(state, s0, holds, lines);
         // Enter on a command whose list points at another one runs that one: the person picks it with the keys or discards the text.
         if (state.command && listPointsElsewhere(s0, "", lines, collapseOf(match), match?.profile.idle.volatile.below.commandList)) {
@@ -2990,7 +3009,7 @@ export class SendProtocol {
       }
       case "discard": {
         const located = this.typedBox(state, s0, holds, lines);
-        if (s0.frame === null && located === null) throw new Ended("refused", "not_free", { surface: s0.surface, detail: "The box no longer holds this text." });
+        if (s0.frame === null && located === null) throw new Ended("refused", "not_free", { surface: s0.surface, detail: BOX_CHANGED });
         this.lap(state, "s0");
         // The length of the text Collie typed sizes the clear of a box that hides its head; a box that
         // held another text has no length Collie knows.
@@ -3261,7 +3280,7 @@ export class SendProtocol {
     }
     if (frame === null && !takesManualSend(surface) && !isFree(surface)) throw new Ended("refused", "not_free", { surface, detail: "The input box is not free." });
     const hash = state.request.rowsHash;
-    if (hash === undefined) throw new Ended("refused", "not_free", { surface, detail: "The box no longer holds this text." });
+    if (hash === undefined) throw new Ended("refused", "not_free", { surface, detail: BOX_CHANGED });
     if (hash !== s0.rowsHash) {
       throw new Ended("refused", "stale_surface", { surface, rowsHash: s0.rowsHash, offers: ["submit", "discard", "keys"], detail: "The screen moved since you looked. Check it, then tap Submit or Discard again." });
     }

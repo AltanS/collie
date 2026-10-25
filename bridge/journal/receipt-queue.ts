@@ -10,12 +10,17 @@
 // and one prompt clears one of them.
 //
 // A harness whose journal DOES record its queue (`JournalAdapter.recordsQueue`, Claude Code and Muse)
-// keeps the journal as the source of the queued cards; the receipts add only rows that came back to the
-// box, which no journal records as a queue. One reducer answer, never two cards for one message.
+// keeps the journal as the source of the queued cards; the receipts add only cards that came back to the
+// box, which no journal records as a queue. That flag is an optimisation, not the guard: a receipt card
+// whose folded text equals a text the journal lists as queued is never drawn, whatever the flag says,
+// so a message is never drawn twice even when an adapter starts recording its queue.
+//
+// The receipt cards ride only in `queuedSends`, never in the legacy `queued` list: a phone one release
+// behind would draw them under its journal card with a Send now button that cannot work for them.
 //
 // Pure: no clock, no disk, no harness name.
 
-import type { ReceiptQueued } from "../surface/queued.ts";
+import type { QueuedSendState, ReceiptQueued } from "../surface/queued.ts";
 import type { TranscriptEntry } from "./types.ts";
 
 export type { ReceiptQueued };
@@ -27,10 +32,10 @@ export type { ReceiptQueued };
  */
 export const PROMPT_SKEW_MS = 2_000;
 
-/** One row of the window's receipt queue on the wire: the request id, where it stands, and its text. */
+/** One card of the window's receipt queue on the wire: the request id, where it stands, and its text. */
 export interface QueuedSendWire {
   requestId: string;
-  state: "queued" | "returned";
+  state: QueuedSendState;
   text: string;
 }
 
@@ -70,24 +75,19 @@ export function stillOpen(sends: readonly ReceiptQueued[], entries: readonly Tra
   return open;
 }
 
-/** What the window takes from the receipts: the rows on the wire, and the texts its `queued` list gains. */
-export interface ReceiptQueueAnswer {
-  rows: QueuedSendWire[];
-  queued: string[];
-}
-
 /**
- * What the window answers from the receipts. A harness that records its queue in the journal gains no
- * `queued` text and shows only the returned rows; every other harness shows both.
+ * The window's receipt cards: the sends the journal does not show as a prompt yet, less every card whose
+ * text the journal lists as queued, and, for a harness that records its queue, less every card that is
+ * not back in the box.
  */
 export function receiptQueue(
   sends: readonly ReceiptQueued[],
   entries: readonly TranscriptEntry[],
   recordsQueue: boolean,
-): ReceiptQueueAnswer {
-  const open = stillOpen(sends, entries).filter((send) => !recordsQueue || send.state === "returned");
-  return {
-    rows: open.map((send) => ({ requestId: send.requestId, state: send.state, text: send.text })),
-    queued: open.flatMap((send) => (send.state === "queued" ? [send.text] : [])),
-  };
+  journalQueued: readonly string[],
+): QueuedSendWire[] {
+  const listed = new Set(journalQueued.map(folded));
+  return stillOpen(sends, entries)
+    .filter((send) => (!recordsQueue || send.state === "returned") && !listed.has(folded(send.text)))
+    .map((send) => ({ requestId: send.requestId, state: send.state, text: send.text }));
 }

@@ -177,23 +177,18 @@ export interface ChatWindowBody {
    * changed is a different body and a queue that did not is the same one.
    *
    * Claude Code and Muse record their queues in the log, and their reducers fill it. Every other
-   * harness records none (`journal/reduce.ts` § `RowReducer.queued`); for those the list takes the
-   * sends Collie's own receipts say are queued and the journal does not show as a prompt yet
-   * (ADR 0122, `journal/receipt-queue.ts`), and {@link queuedFrom} says so.
+   * harness records none (`journal/reduce.ts` § `RowReducer.queued`). This list is the JOURNAL's only:
+   * Collie's own queued sends ride in {@link queuedSends} and never here, because a phone one release
+   * behind draws this list with a Send now button that cannot work for them (ADR 0122).
    */
   queued: string[];
   /**
-   * `receipts` when {@link queued} came from Collie's receipts rather than the journal: the same texts
-   * stand in {@link queuedSends} with their request ids, and a phone that reads both draws them once.
-   * ABSENT otherwise, so a body with no receipt queue is byte-identical to before.
-   */
-  queuedFrom?: "receipts";
-  /**
-   * The pane's open queued sends from Collie's receipts (ADR 0122), oldest first: each request id,
-   * whether it waits in the harness (`queued`) or a read showed it back in the input box (`returned`),
-   * and its text, masked like {@link queued}. A harness that records its queue in the log gets only
-   * `returned` rows here. STATE, whole on every answer, like {@link queued}. ABSENT when there is none,
-   * and from a bridge one release behind.
+   * The pane's queued sends as Collie's receipts know them (ADR 0122), oldest first: each card's request
+   * id, where it stands (`queued` in the harness, `returned` to the input box by a Stop, `unconfirmed`
+   * when Collie cannot tell), and its text, masked like {@link queued}. A run of texts a Stop gave back
+   * together is one card. A card whose text {@link queued} lists is left out; a harness that records
+   * its queue in the log gets only `returned` cards. STATE, whole on every answer, like {@link queued}.
+   * ABSENT when there is none, and from a bridge one release behind.
    */
   queuedSends?: QueuedSendWire[];
   /**
@@ -657,13 +652,8 @@ class LiveWindow {
     if (this.adapter.sendQueuedNow !== undefined) body.sendQueuedNow = [...this.adapter.sendQueuedNow];
     // Collie's own queued sends (ADR 0122), checked against every prompt the window holds, not the page.
     if (receipts.length > 0) {
-      const recordsQueue = this.adapter.recordsQueue === true;
-      const fromReceipts = receiptQueue(receipts, this.rows.map((row) => row.entry), recordsQueue);
-      if (fromReceipts.rows.length > 0) body.queuedSends = fromReceipts.rows;
-      if (!recordsQueue && fromReceipts.queued.length > 0) {
-        body.queued = [...body.queued, ...fromReceipts.queued];
-        body.queuedFrom = "receipts";
-      }
+      const cards = receiptQueue(receipts, this.rows.map((row) => row.entry), this.adapter.recordsQueue === true, body.queued);
+      if (cards.length > 0) body.queuedSends = cards;
     }
     // Over every row the window holds, not the `limit` sent: the point is the prompt the first paint
     // left out. A window that opened mid-run holds none, and then the one looked up behind its front

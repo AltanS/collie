@@ -880,11 +880,11 @@ describe("what is queued, from the receipts", () => {
     { requestId: "req-second-002", text: "and a third", at: AT + 3_000, state: "queued" },
   ];
 
-  test("a journal with no queue answers both receipt-queued sends, oldest first", async () => {
+  test("a journal with no queue answers both receipt-queued sends, oldest first, and only in `queuedSends`", async () => {
     const fx = fakeJournal([askAt("p1", "List 120 fruits", AT - 10_000), say("u1")]);
     const body = await windows(fx).window(fx.adapter, ref(), { limit: 10 }, sends());
-    expect(body!.queued).toEqual(["second message", "and a third"]);
-    expect(body!.queuedFrom).toBe("receipts");
+    // Never in the legacy list: a phone one release behind would draw a Send now that cannot work.
+    expect(body!.queued).toEqual([]);
     expect(body!.queuedSends).toEqual([
       { requestId: "req-first-0001", state: "queued", text: "second message" },
       { requestId: "req-second-002", state: "queued", text: "and a third" },
@@ -900,14 +900,13 @@ describe("what is queued, from the receipts", () => {
     fx.append(askAt("p2", "  second   message ", AT + 30_000));
     fx.settle();
     const next = await live.window(fx.adapter, ref(), { limit: 10, after: { gen: first!.gen, rev: first!.rev } }, sends());
-    expect(next!.queued).toEqual(["and a third"]);
     expect(next!.queuedSends).toEqual([{ requestId: "req-second-002", state: "queued", text: "and a third" }]);
   });
 
   test("a prompt with the same text from before the send does not take its card", async () => {
     const fx = fakeJournal([askAt("p0", "second message", AT - 60_000), say("u1")]);
     const body = await windows(fx).window(fx.adapter, ref(), { limit: 10 }, sends());
-    expect(body!.queued).toEqual(["second message", "and a third"]);
+    expect(body!.queuedSends?.map((card) => card.text)).toEqual(["second message", "and a third"]);
   });
 
   test("one prompt takes one of two identical queued texts", async () => {
@@ -925,8 +924,27 @@ describe("what is queued, from the receipts", () => {
     const fx = fakeJournal([askAt("p1", "List 120 fruits", AT - 10_000)]);
     const body = await windows(fx).window(fx.adapter, ref(), { limit: 10 }, back);
     expect(body!.queued).toEqual([]);
-    expect("queuedFrom" in body!).toBe(false);
     expect(body!.queuedSends).toEqual([{ requestId: "req-back-00001", state: "returned", text: "second message" }]);
+  });
+
+  test("an unconfirmed card rides too, and a prompt with its text still takes it", async () => {
+    const lost: ReceiptQueued[] = [{ requestId: "req-lost-00001", text: "where did it go", at: AT, state: "unconfirmed" }];
+    const fx = fakeJournal([askAt("p1", "List 120 fruits", AT - 10_000)]);
+    const live = windows(fx);
+    const first = await live.window(fx.adapter, ref(), { limit: 10 }, lost);
+    expect(first!.queuedSends).toEqual([{ requestId: "req-lost-00001", state: "unconfirmed", text: "where did it go" }]);
+    fx.append(askAt("p2", "where did it go", AT + 40_000));
+    fx.settle();
+    const next = await live.window(fx.adapter, ref(), { limit: 10, after: { gen: first!.gen, rev: first!.rev } }, lost);
+    expect("queuedSends" in next!).toBe(false);
+  });
+
+  test("a card whose text the journal lists as queued is not drawn, whatever the adapter's flag says", async () => {
+    // The flag is the optimisation; this is the guard: never two cards for one message.
+    const fx = fakeJournal([say("u1"), queue("second   message")]);
+    const body = await windows(fx).window(fx.adapter, ref(), { limit: 10 }, sends());
+    expect(body!.queued).toEqual(["second   message"]);
+    expect(body!.queuedSends).toEqual([{ requestId: "req-second-002", state: "queued", text: "and a third" }]);
   });
 
   test("a harness whose journal records its queue keeps the journal as the source", async () => {
@@ -937,7 +955,6 @@ describe("what is queued, from the receipts", () => {
     const mixed: ReceiptQueued[] = [...sends(), { requestId: "req-back-00001", text: "popped back", at: AT + 5_000, state: "returned" }];
     const body = await windows(fx).window(recording, ref(), { limit: 10 }, mixed);
     expect(body!.queued).toEqual(["from the journal"]);
-    expect("queuedFrom" in body!).toBe(false);
     expect(body!.queuedSends).toEqual([{ requestId: "req-back-00001", state: "returned", text: "popped back" }]);
   });
 
@@ -945,7 +962,6 @@ describe("what is queued, from the receipts", () => {
     const fx = fakeJournal([say("u1")]);
     const body = await windows(fx).window(fx.adapter, ref(), { limit: 10 });
     expect("queuedSends" in body!).toBe(false);
-    expect("queuedFrom" in body!).toBe(false);
     const recording: JournalAdapter = { ...fx.adapter, recordsQueue: true };
     const claude = await windows(fx).window(recording, ref(), { limit: 10 }, sends());
     expect("queuedSends" in claude!).toBe(false);
@@ -1143,7 +1159,6 @@ describe("redact — journal turns leave the bridge masked, shape intact", () =>
       hasOlder: false,
       upserts: [],
       queued: [`and use ${key}`],
-      queuedFrom: "receipts",
       queuedSends: [
         { requestId: "req-first-0001", state: "queued", text: `and use ${key}` },
         { requestId: "req-back-00001", state: "returned", text: `deploy with ${key}` },
@@ -1152,7 +1167,6 @@ describe("redact — journal turns leave the bridge masked, shape intact", () =>
     expect(JSON.stringify(live)).not.toContain(key);
     expect(live).toMatchObject({
       queued: [`and use ${masked}`],
-      queuedFrom: "receipts",
       queuedSends: [
         { requestId: "req-first-0001", state: "queued", text: `and use ${masked}` },
         { requestId: "req-back-00001", state: "returned", text: `deploy with ${masked}` },

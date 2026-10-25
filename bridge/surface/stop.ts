@@ -37,7 +37,7 @@ import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
 import { liftAsk, readerBlocks } from "../../web/src/lib/surface/lift.ts";
 import type { ProfileMatch } from "../../web/src/lib/surface/profile.ts";
 import type { StopReason, StopReceipt } from "../../web/src/lib/surface/stop.ts";
-import type { Surface } from "../../web/src/lib/surface/surface.ts";
+import type { Surface, SurfaceTurn } from "../../web/src/lib/surface/surface.ts";
 import type { KeyGate } from "./key-gate.ts";
 
 /** Rows one read asks for, as the Send Protocol reads them. */
@@ -69,11 +69,11 @@ export interface StopDeps {
    */
   readonly stopped?: (paneId: string) => void;
   /**
-   * One read-back's input box (its text, "" when empty, null when the read found no box) and when it
-   * was read; answers the ids of the pane's queued sends that box holds (SendProtocol.boxRead, ADR 0122).
-   * Absent with the Send Protocol off. A throw is caught; the receipt stands.
+   * One read-back's input box (its text, "" when empty, null when the read found no box), when it was
+   * read and the turn it showed; answers the ids of the pane's queued sends that box holds
+   * (SendProtocol.boxRead, ADR 0122). Absent with the Send Protocol off. A throw is caught; the receipt stands.
    */
-  readonly returned?: (paneId: string, box: string | null, readAt: number) => readonly string[];
+  readonly returned?: (paneId: string, read: { readonly box: string | null; readonly at: number; readonly turn: SurfaceTurn }) => readonly string[];
 }
 
 /** What a Stop answers: the receipt, and whether it is the stored one of an earlier tap. */
@@ -169,7 +169,7 @@ export class StopService {
       await sleep(read === 0 ? FIRST_GAP_MS : NEXT_GAP_MS);
       const look = await this.look(paneId, harness, match);
       const after = look?.surface ?? null;
-      if (look !== null && look.box !== null) returned = this.boxRead(paneId, look.box, look.at);
+      if (look !== null && look.box !== null) returned = this.boxRead(paneId, { box: look.box, at: look.at, turn: look.surface.turn });
       const idle = after !== null && after.turn === "idle" && after.modal === "none";
       // One idle read may be a redraw between two tool calls: two in a row say the turn ended.
       if (idle && idleBefore) {
@@ -184,9 +184,9 @@ export class StopService {
   }
 
   /** {@link StopDeps.returned} for one read-back's box. Never throws: the receipt does not depend on it. */
-  private boxRead(paneId: string, box: string, at: number): readonly string[] {
+  private boxRead(paneId: string, read: { readonly box: string | null; readonly at: number; readonly turn: SurfaceTurn }): readonly string[] {
     try {
-      return this.deps.returned?.(paneId, box, at) ?? [];
+      return this.deps.returned?.(paneId, read) ?? [];
     } catch (err) {
       console.warn(`[stop] box read for ${paneId} failed: ${err instanceof Error ? err.message : String(err)}`);
       return [];

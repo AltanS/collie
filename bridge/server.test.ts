@@ -5720,11 +5720,10 @@ describe("paneHistory — two muse tabs in one workspace read their own transcri
       const text = await res.text();
       expect(text).not.toContain(key);
       // SAFETY: the bridge's own JSON, served by the call above.
-      const body = JSON.parse(text) as { queued: string[]; queuedFrom?: string; queuedSends?: { requestId: string; state: string; text: string }[] };
+      const body = JSON.parse(text) as { queued: string[]; queuedSends?: { requestId: string; state: string; text: string }[] };
       expect(asked).toEqual(["w1:p1"]);
       // Muse records its queue in its log: the journal stays the source, the returned row rides along.
       expect(body.queued).toEqual([]);
-      expect(body.queuedFrom).toBeUndefined();
       expect(body.queuedSends).toHaveLength(1);
       expect(body.queuedSends![0]).toMatchObject({ requestId: "req-back-00001", state: "returned" });
       expect(body.queuedSends![0]!.text.startsWith("deploy with sk-o")).toBe(true);

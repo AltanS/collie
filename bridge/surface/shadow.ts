@@ -29,7 +29,7 @@ import { emptyFoldState, readFold, stepFold, type FoldContext, type FoldState, t
 import type { IdleProfile } from "../../web/src/lib/surface/frame.ts";
 import { legacyFree, liftAsk, liftDialog, readerBlocks } from "../../web/src/lib/surface/lift.ts";
 import { findProfile, loadProfiles, profileFor, type Profile } from "../../web/src/lib/surface/profile.ts";
-import { askOf, isFree, modalWord, shortHash, type Ask, type Surface } from "../../web/src/lib/surface/surface.ts";
+import { askOf, isFree, modalWord, shortHash, type Ask, type Surface, type SurfaceTurn } from "../../web/src/lib/surface/surface.ts";
 import type { CounterKey } from "./counters.ts";
 import { ASK_LIFETIME_MS, type AskBook } from "./ask.ts";
 import { spawnBinaryVersion } from "./binary-version.ts";
@@ -187,16 +187,19 @@ export class SurfaceShadow {
   }
 
   /**
-   * The input box of the pane's newest screen read and when it was read (ADR 0122): its text, "" when
+   * The input box of the pane's newest screen read, when it was read and the turn the Surface claimed
+   * (ADR 0122): the box's text, "" when
    * empty or showing the placeholder, null when that read found no box (a dialog over it, an unreadable
    * screen). Null before the pane's first read. The Send Protocol reads it for queued sends that came
    * back to the box; the box text never leaves the bridge from here.
    */
-  boxOf(paneId: string): { readonly box: string | null; readonly at: number } | null {
-    const fold = this.panes.get(paneId)?.fold;
+  boxOf(paneId: string): { readonly box: string | null; readonly at: number; readonly turn: SurfaceTurn } | null {
+    const state = this.panes.get(paneId);
+    const fold = state?.fold;
     if (fold?.screen == null) return null;
     const frame = fold.screenRead?.frame ?? null;
-    return { box: frame === null ? null : frame.placeholder ? "" : frame.interior.text, at: fold.screen.at };
+    const turn = state?.read?.surface.turn ?? "unknown";
+    return { box: frame === null ? null : frame.placeholder ? "" : frame.interior.text, at: fold.screen.at, turn };
   }
 
   /**

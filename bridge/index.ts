@@ -1759,7 +1759,7 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   const stopped = surface === undefined ? undefined : (paneId: string): void => void surface.stopSeen(paneId);
   // Each read-back's box goes to the Send Protocol: a queued send the Stop gave back rides the receipt (ADR 0122).
   const stopBase: StopDeps = { mux: herdr, gate: gateFor(herdr), profile: (harness) => sendProfile(harness) };
-  const stopDeps: StopDeps = send === undefined ? stopBase : { ...stopBase, returned: (paneId, box, at) => send.boxRead(name, paneId, box, at) };
+  const stopDeps: StopDeps = send === undefined ? stopBase : { ...stopBase, returned: (paneId, read) => send.boxRead(name, paneId, { ...read, poll: false }) };
   const stop = endpoint.kind === "terminal" ? new StopService(stopped === undefined ? stopDeps : { ...stopDeps, stopped }) : undefined;
   const withStop = stop === undefined ? withHold : { ...withHold, stop };
   // A Clear of the harness's box (ADR 0116, the Clear paragraph): the same mux, key gate and profile as the Stop.

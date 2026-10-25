@@ -353,7 +353,7 @@ describe("a queued message the Stop gives back to the box (ADR 0122)", () => {
   const OMP_QUEUED = fx("omp--v18-6-1-queued-before-stop--w119.txt");
   const OMP_RETURNED = fx("omp--v18-6-1-stop-returned--w119.txt");
 
-  function queuedRig(returned: (paneId: string, box: string | null, at: number) => readonly string[]) {
+  function queuedRig(returned: (paneId: string, read: { readonly box: string | null; readonly at: number; readonly turn: string }) => readonly string[]) {
     const pane = new ScriptPane(OMP_QUEUED);
     const service = new StopService({
       mux: pane,
@@ -369,11 +369,13 @@ describe("a queued message the Stop gives back to the box (ADR 0122)", () => {
 
   test("each read-back's box goes to the Send Protocol, and what it says came back rides the receipt", async () => {
     const boxes: (string | null)[] = [];
-    const { service } = queuedRig((paneId, box, at) => {
+    const { service } = queuedRig((paneId, read) => {
       expect(paneId).toBe("%2");
-      expect(at).toBe(5_000);
-      boxes.push(box);
-      return box === "second message" ? ["queued-0001"] : [];
+      expect(read.at).toBe(5_000);
+      // The turn the read-back showed goes along: the Send Protocol keeps a running turn's cards alive.
+      expect(read.turn).toBe("idle");
+      boxes.push(read.box);
+      return read.box === "second message" ? ["queued-0001"] : [];
     });
     const answer = await service.handle(ID, "%2", "omp");
     expect(answer).toEqual({ kind: "receipt", replayed: false, receipt: { requestId: ID, outcome: "stopped", keys: ["Escape"], returned: ["queued-0001"] } });

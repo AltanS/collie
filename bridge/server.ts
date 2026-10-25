@@ -157,7 +157,7 @@ import { maskSurface, surfaceRouteBody, type SurfaceShadow } from "./surface/sha
 import type { SurfaceTotals } from "./surface/counters.ts";
 import { SURFACE_VERSION } from "../web/src/lib/surface/surface.ts";
 import { gateFor } from "./surface/key-gate.ts";
-import type { SendProtocol, SendRequest } from "./surface/protocol.ts";
+import { BOX_CHANGED, type SendProtocol, type SendRequest } from "./surface/protocol.ts";
 import type { AskAnswerer } from "./surface/ask.ts";
 import type { ClearService } from "./surface/clear.ts";
 import type { StopService } from "./surface/stop.ts";
@@ -7817,6 +7817,9 @@ export function surfaceRoute(shadow: SurfaceShadow | undefined, paneId: string |
 }
 
 /** What `/api/send` answers with the flag off: the route is not there, a 404 that says why. */
+/** The answer's sentence when a returned card's Discard found the box changed: only the card went (ADR 0122). */
+export const RETURNED_CARD_DROPPED = "The box no longer holds this message. Collie removed its card and pressed nothing.";
+
 export const SEND_OFF_TEXT = "the send protocol is off (COLLIE_SEND_PROTOCOL=0 turned it off; it is on by default)";
 /** The longest text one send takes, in UTF-16 units. A longer message is a file, not a reply. */
 export const SEND_MAX_TEXT = 64 * 1024;
@@ -7913,7 +7916,7 @@ export async function sendRoute(
   const returned = resendOf !== undefined && (asked.mode === "submit" || asked.mode === "discard") ? rt.send.returnedSource(rt.name, paneId, resendOf) : null;
   if (resendOf !== undefined && returned !== null) {
     const { when: _steer, ...plain } = asked;
-    sendRequest = { ...plain, text: returned };
+    sendRequest = { ...plain, text: returned, returnedCard: true };
   } else if (resendOf !== undefined) {
     // The stored text, unmasked: never the row the phone shows, which the redact setting may mask.
     const source = rt.send.resendSource(rt.name, paneId, resendOf);
@@ -7923,12 +7926,19 @@ export async function sendRoute(
     const { when: _steer, ...plain } = asked;
     sendRequest = { ...plain, text: source.text, mode: source.mode };
   }
-  const answer = await rt.send.handle(sendRequest, { session: rt.name, paneId, harness });
-  const receipt = answer.receipt;
+  let answer = await rt.send.handle(sendRequest, { session: rt.name, paneId, harness });
+  let receipt = answer.receipt;
   // The old row goes once the new request was taken; a refusal keeps it, text and all.
   if (resendOf !== undefined && receipt !== undefined && receipt.outcome !== "refused") {
     if (returned !== null) rt.send.dismissReturned(resendOf);
     else rt.send.dismissHeld(rt.name, paneId, resendOf);
+  }
+  // Discard on a returned card whose box changed since (the fresh read under the pane lock no longer
+  // shows exactly that text): nothing was pressed, and only the card goes. The answer says so.
+  if (returned !== null && sendRequest.mode === "discard" && receipt?.outcome === "refused" && receipt.detail === BOX_CHANGED) {
+    rt.send.dismissReturned(resendOf!);
+    receipt = { ...receipt, detail: RETURNED_CARD_DROPPED };
+    answer = { ...answer, receipt };
   }
   if (receipt !== undefined) {
     const detail: AuditDetail = { mode: sendRequest.mode, outcome: receipt.outcome, textLength: receipt.textLength, probed: receipt.keys.includes("probe") };
