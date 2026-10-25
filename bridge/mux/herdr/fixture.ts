@@ -166,6 +166,17 @@ export class FakeHerdr implements HerdrRpc {
     await Promise.resolve();
   }
 
+  /**
+   * The operator scrolls a pane's viewport up `offset` rows (0 is the live bottom), as `pane.scroll`
+   * does: never past the top of the scrollback.
+   */
+  scrollPane(paneId: string, offset: number): void {
+    const pane = this.pane("pane.scroll", paneId);
+    if (!pane.scroll) throw new Error(`fake herdr: ${paneId} has no scroll geometry`);
+    const history = this.screens.get(paneId)?.history.length ?? 0;
+    pane.scroll = { ...pane.scroll, offset_from_bottom: Math.max(0, Math.min(offset, history)) };
+  }
+
   /** The pane's foreground group becomes these processes. */
   setProcesses(paneId: string, processes: WireForegroundProcess[]): void {
     this.processes.set(paneId, processes);
@@ -221,6 +232,10 @@ export class FakeHerdr implements HerdrRpc {
     return this.panes;
   }
 
+  async getPane(paneId: string): Promise<WirePane> {
+    return this.pane("pane.get", paneId);
+  }
+
   async listTabs(): Promise<WireTab[]> {
     this.assertConnected("tab.list");
     return this.tabs;
@@ -229,7 +244,14 @@ export class FakeHerdr implements HerdrRpc {
   async readPane(paneId: string, source: string, lines: number, format = "text"): Promise<PaneRead> {
     const pane = this.pane("pane.read", paneId);
     const screen = this.screens.get(paneId) ?? { history: [], viewport: [] };
-    const all = source === "visible" ? screen.viewport : [...screen.history, ...screen.viewport];
+    // A `visible` read is the viewport where the operator left it: scrolled up `offset_from_bottom`
+    // rows, it shows older rows and not the live screen, as Herdr's own does.
+    const offset = pane.scroll?.offset_from_bottom ?? 0;
+    const rows = [...screen.history, ...screen.viewport];
+    const all =
+      source === "visible"
+        ? rows.slice(Math.max(0, rows.length - offset - screen.viewport.length), rows.length - offset)
+        : rows;
     const shown = all.slice(Math.max(0, all.length - lines));
     // SGR only, and only in `ansi` — colour and weight, never a cursor move (ADR 0008).
     const paint = (line: string) => (format === "ansi" ? `${GREEN}${line}${RESET}` : line);

@@ -324,7 +324,17 @@ not require a literal `done` from Herdr. See [ADR 0003](.adr/0003-one-shared-see
 > **Pane records now carry `scroll`** (new in 0.7.2, live-verified 2026-07-07): `pane.list`,
 > `pane.get`, `pane.current`, and `session.snapshot` panes all include
 > `scroll: {offset_from_bottom, max_offset_from_bottom, viewport_rows} | null` (all `uint64`;
-> `offset_from_bottom == 0` means the pane is scrolled to the bottom). Collie doesn't consume it yet.
+> `offset_from_bottom == 0` means the pane is scrolled to the bottom). The adapter's `viewport` read
+> uses it: `visible` follows the operator's scroll, `recent` does not.
+
+> **`visible` follows the operator's scroll; `recent` ends at the live screen** (live-probed
+> 2026-10-25, herdr 0.9.3, after `pane.scroll`): a shell pane scrolled 50 rows up read old rows
+> through `visible`, while `recent` with `lines` = `viewport_rows` in `ansi` was byte-identical to
+> `visible` at offset 0 (40 of 40 rows). A Claude Code pane scrolled 30 rows up read the same live
+> last row through `recent`; Herdr trimmed one trailing blank row from the live screen, so `recent`
+> carried one scrollback row above it. A Claude pane scrolled 405 rows up read old output with no
+> input box through `visible`, which is how phone sends failed "could not find the input box". So a
+> `viewport` read of a scrolled pane goes to `recent` (`bridge/mux/herdr/adapter.ts` `readLiveScreen`).
 
 > **`revision` is a stub on Herdr 0.7.x** (live-verified 2026-07-05 on 0.7.0; reconfirmed unchanged
 > on 0.7.2, live-verified 2026-07-07): `pane.read`, `pane.list`, and `session.snapshot` all return

@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import type { MuxSpace } from "../types.ts";
 import { HerdrMux, REPO_LOOKUP_RETRY_MS, workspaceRepoOf } from "./adapter.ts";
-import type { WireSnapshot, WireWorkspace, WireWorktreeListing } from "./client.ts";
+import type { PaneRead, WirePane, WireSnapshot, WireWorkspace, WireWorktreeListing } from "./client.ts";
 import { FakeHerdr } from "./fixture.ts";
 
 // WHICH REPO A WORKSPACE SITS IN, across the two Herdr shapes (ADR 0032).
@@ -326,5 +326,88 @@ describe("pasteBlock: one bracketed paste, framed by the adapter", () => {
     await mux.pasteBlock("w1:p1", "");
     await mux.pasteBlock("w1:p1", "\u001b\u009b");
     expect(fake.sent).toEqual([["w1:p1", "\u001b[200~a[201~b201~c\nd\u001b[201~"]]);
+  });
+});
+
+describe("readGrid viewport: the live screen, whatever the operator's scroll", () => {
+  /** A fake that logs every `pane.read` as asked: source, lines, format. */
+  class ReadLog extends FakeHerdr {
+    reads: Array<[string, number, string]> = [];
+    override async readPane(paneId: string, source: string, lines: number, format = "text"): Promise<PaneRead> {
+      this.reads.push([source, lines, format]);
+      return super.readPane(paneId, source, lines, format);
+    }
+  }
+
+  /** The seeded agent pane and the two rows its live screen holds. */
+  async function agentPane(fake: FakeHerdr): Promise<{ id: string; live: string[] }> {
+    const id = (await fake.listPanes())[0]!.pane_id;
+    return { id, live: ["$ shell in /home/dev/collie", `pane ${id} on screen`] };
+  }
+
+  test("an unscrolled pane reads its visible screen", async () => {
+    const fake = new ReadLog();
+    const { id, live } = await agentPane(fake);
+    const read = await new HerdrMux(fake, () => []).readGrid(id, { scope: "viewport", lines: 120, styling: "strip" });
+    expect(read.ok && read.value.text.split("\n")).toEqual(live);
+    expect(fake.reads).toEqual([["visible", 120, "text"]]);
+  });
+
+  test("a pane scrolled up on the desktop still reads the live screen, not the old rows in view", async () => {
+    const fake = new ReadLog();
+    const { id, live } = await agentPane(fake);
+    fake.scrollPane(id, 5);
+    const mux = new HerdrMux(fake, () => []);
+    // The live screen is the bottom of the read; a screen the program has not filled may carry
+    // scrollback rows above it, never more rows than the viewport holds (24 in the fake).
+    const stripped = await mux.readGrid(id, { scope: "viewport", lines: 120, styling: "strip" });
+    const rows = stripped.ok ? stripped.value.text.split("\n") : [];
+    expect(rows.slice(-2)).toEqual(live);
+    expect(rows.length).toBe(24);
+    expect(stripped.ok && stripped.value.text).not.toContain("\u001b");
+    const preserved = await mux.readGrid(id, { scope: "viewport", lines: 120, styling: "preserve" });
+    expect(preserved.ok && preserved.value.text.split("\n").at(-1)).toContain(`pane ${id} on screen`);
+    // Both reads are `recent` in `ansi`, the read that never harvests an alt-screen pane.
+    expect(fake.reads).toEqual([
+      ["recent", 24, "ansi"],
+      ["recent", 24, "ansi"],
+    ]);
+  });
+
+  test("a text read of a scrolled pane cuts every CSI sequence, not only plain SGR", async () => {
+    class Painted extends FakeHerdr {
+      override async readPane(): Promise<PaneRead> {
+        return { pane_id: "x", text: "\u001b[1;38:2::255:0:0mX\u001b[0m\u001b[K", truncated: false, revision: 1 };
+      }
+    }
+    const fake = new Painted();
+    const { id } = await agentPane(fake);
+    fake.scrollPane(id, 5);
+    const read = await new HerdrMux(fake, () => []).readGrid(id, { scope: "viewport", lines: 120, styling: "strip" });
+    expect(read.ok && read.value.text).toBe("X");
+  });
+
+  test("a pane record that cannot be read, is empty or has no scroll leaves the visible read", async () => {
+    class NoGet extends FakeHerdr {
+      override async getPane(): Promise<never> {
+        throw new Error("herdr pane.get: unknown variant");
+      }
+    }
+    class EmptyGet extends FakeHerdr {
+      override async getPane(): Promise<never> {
+        // SAFETY: a reply with no `pane` key is what this case models; the adapter must not read it.
+        return undefined as never;
+      }
+    }
+    class NoScroll extends FakeHerdr {
+      override async getPane(paneId: string): Promise<WirePane> {
+        return { ...(await super.getPane(paneId)), scroll: null };
+      }
+    }
+    for (const fake of [new NoGet(), new EmptyGet(), new NoScroll()]) {
+      const { id, live } = await agentPane(fake);
+      const read = await new HerdrMux(fake, () => []).readGrid(id, { scope: "viewport", lines: 120, styling: "strip" });
+      expect(read.ok && read.value.text.split("\n")).toEqual(live);
+    }
   });
 });
