@@ -237,6 +237,23 @@ export interface CommandListRows {
    * showed Enter run the typed text with that list open. Optional.
    */
   readonly argumentList?: boolean;
+  /**
+   * The harness draws a fuzzy list under the box for any text that starts with the lead (OMP's
+   * `/help` lists ten commands that match it in part, the pointer on the first), so the list is the
+   * text's own popup whatever it points at. The Surface leaves its rows out of the cue read, and a
+   * box under a list as tall as the harness draws it is still found. Whether Enter would run what is
+   * typed stays the pointer's question ({@link pointsAt}). Needs `lead`. A profile names it only
+   * where a lab run showed that list under every text that starts with the lead. Optional.
+   */
+  readonly leadOpens?: boolean;
+  /**
+   * A list left on screen under an EMPTY box is stale: the harness did not redraw the rows after the
+   * text that opened the list was cleared (OMP 18.12.6 keeps `❯ ↻ loop` under the box after a cancelled
+   * `//comment`), and the rows go with the next key typed. The rows under the box count none of its
+   * rows, so the probe character that closes the list does not read as a screen that moved. A profile
+   * names it only where a lab run showed the row go at the next key. Optional.
+   */
+  readonly staleWhenEmpty?: boolean;
 }
 
 /** A side of the box a command list stands on. */
@@ -966,9 +983,14 @@ function commandList(value: JsonValue | undefined): CommandListRows {
   if (node.pointerBold !== undefined && node.pointerBold !== true && node.pointerBold !== false) fail(`${path}.pointerBold`, "must be true or false");
   if (node.argumentHint !== undefined && node.argumentHint !== true && node.argumentHint !== false) fail(`${path}.argumentHint`, "must be true or false");
   if (node.argumentList !== undefined && node.argumentList !== true && node.argumentList !== false) fail(`${path}.argumentList`, "must be true or false");
+  if (node.leadOpens !== undefined && node.leadOpens !== true && node.leadOpens !== false) fail(`${path}.leadOpens`, "must be true or false");
+  if (node.leadOpens === true && (node.lead === undefined || node.lead === "")) fail(`${path}.leadOpens`, "needs a lead");
+  if (node.staleWhenEmpty !== undefined && node.staleWhenEmpty !== true && node.staleWhenEmpty !== false) fail(`${path}.staleWhenEmpty`, "must be true or false");
   const withPointerBold = node.pointerBold === true ? { ...withNamespaces, pointerBold: true } : withNamespaces;
   const withArgumentHint = node.argumentHint === true ? { ...withPointerBold, argumentHint: true } : withPointerBold;
-  return node.argumentList === true ? { ...withArgumentHint, argumentList: true } : withArgumentHint;
+  const withArgumentList = node.argumentList === true ? { ...withArgumentHint, argumentList: true } : withArgumentHint;
+  const withLeadOpens = node.leadOpens === true ? { ...withArgumentList, leadOpens: true } : withArgumentList;
+  return node.staleWhenEmpty === true ? { ...withLeadOpens, staleWhenEmpty: true } : withLeadOpens;
 }
 
 /** `commandList.namespaces`: unique words with no space in them. */

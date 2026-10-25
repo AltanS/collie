@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { agentOf, fixtureRows, idleFor, PANES_DIR, readScreen, rowsOf } from "../../test/surface-corpus";
+import { pointsAt } from "./command-list";
 import { commandListAt, ownCommandList, runningSign } from "./cues";
 import { findInputFrame, rowText } from "./frame";
 import { askOf, isFree } from "./surface";
@@ -64,11 +65,11 @@ describe("the typed command's own list under pi's and omp's box (field case 2026
     });
   }
 
-  // A list that points at another command (`/mod` typed, `model` pointed), the selector `/model` opens
-  // and the settings screen `/settings` opens all stay dialogs.
+  // On pi a list that points at another command (`/mod` typed, `model` pointed), the selector `/model`
+  // opens and the settings screen `/settings` opens all stay dialogs. omp names `leadOpens`: its fuzzy
+  // list under a box that starts with `/` is that text's own popup whatever it points at (below).
   for (const name of [
     "pi--v130-slash-mod-partial--w120.txt",
-    "omp--v18-6-slash-mod-partial--w120.txt",
     "pi--v130-model-selector-empty--w120.txt",
     "pi--v0871-model-selector-empty--w120.txt",
     "omp--v18-6-model-selector-empty--w120.txt",
@@ -76,7 +77,6 @@ describe("the typed command's own list under pi's and omp's box (field case 2026
     "omp--v18-6-settings-screen--w120.txt",
     "pi--v110-slash-palette.txt",
     "pi--v120-slash-palette-padded.txt",
-    "omp--slash-palette.txt",
   ]) {
     it(`${name}: still reads as a dialog`, () => {
       const read = own(name);
@@ -86,19 +86,34 @@ describe("the typed command's own list under pi's and omp's box (field case 2026
     });
   }
 
-  it("a list that points at another command finds no own list, on either profile", () => {
-    for (const [name, harness] of [
-      ["pi--v130-slash-mod-partial--w120.txt", "pi"],
-      ["omp--v18-6-slash-mod-partial--w120.txt", "omp"],
-    ] as const) {
-      const rows = fixtureRows(name);
-      const idle = idleFor(harness)!;
-      const frame = findInputFrame(rows, idle);
-      const texts = rows.map(rowText);
-      expect(frame === null ? null : ownCommandList(texts, frame, idle), name).toBeNull();
-      if (frame !== null) expect(commandListAt(texts, frame, idle.volatile.below.commandList)?.pointed, name).toBe("/model");
-    }
+  it("on pi a list that points at another command finds no own list", () => {
+    const name = "pi--v130-slash-mod-partial--w120.txt";
+    const rows = fixtureRows(name);
+    const idle = idleFor("pi")!;
+    const frame = findInputFrame(rows, idle);
+    const texts = rows.map(rowText);
+    expect(frame === null ? null : ownCommandList(texts, frame, idle), name).toBeNull();
+    if (frame !== null) expect(commandListAt(texts, frame, idle.volatile.below.commandList)?.pointed, name).toBe("/model");
   });
+
+  // omp's list is a fuzzy one: `/mod` lists ten commands that match it in part, the pointer on `model`
+  // (`leadOpens`). The box is found past the whole list, the list is read, and it is the text's own popup;
+  // that Enter would run `model` and not `/mod` is the protocol's question, answered by `pointsAt`.
+  for (const name of ["omp--v18-6-slash-mod-partial--w120.txt", "omp--slash-palette.txt"]) {
+    it(`${name}: omp's fuzzy list is the typed text's popup, pointed at another command or not`, () => {
+      const read = own(name);
+      expect(read.frame).not.toBeNull();
+      expect(read.surface).toMatchObject({ turn: "idle", modal: "none", composer: "draft" });
+      expect(read.cues?.strength).toBe("none");
+      expect(labelOf(name).state).toBe("popup");
+      const idle = idleFor("omp")!;
+      const rows = fixtureRows(name);
+      const texts = rows.map(rowText);
+      const list = commandListAt(texts, read.frame!, idle.volatile.below.commandList);
+      expect(list?.side, name).toBe("under");
+      expect(pointsAt(list!, read.frame!.interior.text, idle.volatile.below.commandList), name).toBe(false);
+    });
+  }
 });
 
 describe("omp's default band composer under the nerd preset (omp 18.12.1, issue 505)", () => {
@@ -513,6 +528,57 @@ describe("the reporter's idle captures under pi-powerline-footer (issue 544)", (
     const read = own("pi--v130-powerline-editor-two-row-draft-footer--w254.txt");
     expect(read.surface).toMatchObject({ turn: "idle", modal: "none", composer: "draft" });
     expect(read.frame!.interior.text).toBe("Collie test draft line one Collie test draft line two");
+    expect(isFree(read.surface)).toBe(false);
+  });
+});
+
+// omp 18.6.1 and 18.12.6 (omp-gang testers, 2026-10-25). The fuzzy list under the box is up to ten rows
+// tall and points at a command that is not the typed one. Until 1.24.1 the box past it was found only for a
+// list that pointed at the typed text, so these screens read `unreadable/torn` and the phone's `/help`,
+// `/mo` and `/nothere` ended `typed_not_submitted (modal_cue)` with the generic detail. The profile's
+// `leadOpens` makes the list the typed text's own popup: the Surface reads a draft and no modal, and
+// the Send Protocol alone decides, from the pointer, whether Enter runs what is typed.
+describe("omp's fuzzy command list under the box (18.6.1 and 18.12.6)", () => {
+  const FUZZY: readonly [string, string, string][] = [
+    ["omp--v18-6-1-slash-open-tall--w120.txt", "/", "/skill:"],
+    ["omp--v18-6-1-slash-help-unlisted--w120.txt", "/help", "/plan-review"],
+    ["omp--v18-6-1-slash-mo-fuzzy--w120.txt", "/mo", "/model"],
+    ["omp--v18-6-1-slash-nothere-fuzzy--w120.txt", "/nothere", "/skills"],
+    ["omp--v18-12-6-slash-help-unlisted--w120.txt", "/help", "/plan-review"],
+    ["omp--v18-12-6-slash-mo-fuzzy--w120.txt", "/mo", "/model"],
+    ["omp--v18-12-6-slash-nothere-fuzzy--w120.txt", "/nothere", "/skills"],
+    ["omp--v18-12-6-slash-comment-loop-row--w120.txt", "//comment", "/loop"],
+  ];
+
+  for (const [name, typed, pointed] of FUZZY) {
+    it(`${name}: a draft with no modal and the list read, pointed at ${pointed}`, () => {
+      const read = own(name);
+      expect(read.frame?.interior.text).toBe(typed);
+      expect(read.surface).toEqual({ revision: 1, turn: "idle", modal: "none", composer: "draft" });
+      expect(read.cues?.strength).toBe("none");
+      expect(labelOf(name).state).toBe("popup");
+      const idle = idleFor("omp")!;
+      const texts = fixtureRows(name).map(rowText);
+      const list = commandListAt(texts, read.frame!, idle.volatile.below.commandList);
+      expect(list?.pointed, name).toBe(pointed);
+      expect(pointsAt(list!, typed, idle.volatile.below.commandList), name).toBe(false);
+    });
+  }
+
+  // The 18.12.6 row that stays under the box after a cancelled `//comment`: the Surface already read it free.
+  it("omp--v18-12-6-stale-list-row-empty-box--w120.txt: an empty box and no modal, with the stale row still read as a list", () => {
+    const name = "omp--v18-12-6-stale-list-row-empty-box--w120.txt";
+    const read = own(name);
+    expect(read.surface).toEqual({ revision: 1, turn: "idle", modal: "none", composer: "empty" });
+    expect(labelOf(name).state).toBe("idle");
+    const texts = fixtureRows(name).map(rowText);
+    expect(commandListAt(texts, read.frame!, idleFor("omp")!.volatile.below.commandList)?.pointed).toBe("/loop");
+  });
+
+  // A list the profile does not call fuzzy stays what it was: a dialog until the pointer rests on the text.
+  it("pi's list that points at another command is still a dialog", () => {
+    const read = own("pi--v130-slash-mod-partial--w120.txt");
+    expect(read.surface.modal).toBe("unreadable");
     expect(isFree(read.surface)).toBe(false);
   });
 });

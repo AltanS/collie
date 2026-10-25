@@ -14,7 +14,7 @@
 // from nothing but the rows.
 
 import { displayWidth } from "../text-width";
-import { insideList, listedBottom, ownListUnder } from "./command-list";
+import { insideList, listedBottom, openListUnder } from "./command-list";
 import { readAboveNotice } from "./notice";
 import type { FrameAnchor, Profile } from "./profile";
 
@@ -746,7 +746,7 @@ function interiorFrameAt(rows: readonly FrameRow[], bottom: number, idle: IdlePr
   }
   const text = draftText(rows, texts, pieces, c.hint);
   // A list pushed the harness's own row down: only the typed command's own list may stand there.
-  if (listed && ownListUnder(texts, bottom, text, idle.volatile.below.commandList) === null) return null;
+  if (listed && openListUnder(texts, bottom, text, idle.volatile.below.commandList) === null) return null;
 
   const label = topMatch.groups?.label?.trim() ?? "";
   const anchorsHit: FrameAnchorHit[] = ["top"];
@@ -863,8 +863,10 @@ const LISTED_REACH = 64;
  * The box over the typed command's own list (`idle.volatile.below.commandList`), when the search at the
  * screen's end found none: a list taller than `maxTailRows` pushes the box's bottom edge, or an open
  * box's last row, out of that search's reach. The row right over the list is tried as that edge, and
- * the box found there is kept only when the list's pointer rests on exactly the box's text. A list that
- * points at another command, or at none, finds no box here.
+ * the box found there is kept only when the list is the box's own ({@link openListUnder}): its pointer
+ * rests on exactly the box's text, or the profile's `leadOpens` says the text opened it, whatever the
+ * pointer rests on. A list that points at another command on a profile with no `leadOpens`, or at none,
+ * finds no box here.
  */
 function listedLayout(rows: readonly FrameRow[], end: number, idle: IdleProfile): Frame | null {
   const list = idle.volatile.below.commandList;
@@ -875,5 +877,5 @@ function listedLayout(rows: readonly FrameRow[], end: number, idle: IdleProfile)
   const c = compile(idle);
   const frame = c.bottom.open ? interiorFrameAt(rows, bottom, idle) : anchored(texts[bottom]!, c.bottom) === null ? null : frameAt(rows, bottom, idle);
   if (frame === null || frame.placeholder) return null;
-  return ownListUnder(texts, bottom, frame.interior.text, list) === null ? null : frame;
+  return openListUnder(texts, bottom, frame.interior.text, list) === null ? null : frame;
 }

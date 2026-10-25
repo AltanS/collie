@@ -118,7 +118,7 @@ import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { splitLines } from "../../web/src/lib/blocks.ts";
 import { noEchoPromptIn } from "../../web/src/lib/no-echo.ts";
 import { isUploadImagePath, pastePieces } from "../../web/src/lib/upload-path.ts";
-import { pointsAt } from "../../web/src/lib/surface/command-list.ts";
+import { pointsAt, staleListUnder } from "../../web/src/lib/surface/command-list.ts";
 import { commandListAt, isRunningRow, noticeOver, ownCommandList, readCues, readCuesFor, runningSign, withoutCommandList, withoutPromptEchoes, type CommandListRead, type Cue } from "../../web/src/lib/surface/cues.ts";
 import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
 import { findInputFrame, rowText, type Frame, type FrameRow } from "../../web/src/lib/surface/frame.ts";
@@ -798,12 +798,15 @@ function rowsBelow(snap: Snap, frame: Frame): number {
  * The non-blank rows under a frame's bottom edge, the profile's hint rows left out
  * (`idle.volatile.below.hints`): a harness may hide or swap a hint there once the box holds text
  * (Codex 0.163.0 drops "← for agents · ? for shortcuts" at the first character), which is not a
- * moved screen.
+ * moved screen. The rows of a stale list under an empty box (`stale`, `commandList.staleWhenEmpty`) are
+ * left out the same way: the harness drops them at the next key.
  */
-function countBelow(texts: readonly string[], frame: Frame | null, hints: readonly RegExp[]): number {
+function countBelow(texts: readonly string[], frame: Frame | null, hints: readonly RegExp[], stale: CommandListRead | null = null): number {
   if (frame === null) return 0;
   let n = 0;
   for (let i = frame.bottom + 1; i < texts.length; i++) {
+    // The rows of a list the harness left under an empty box (`commandList.staleWhenEmpty`) go with the next key.
+    if (stale !== null && i >= stale.first && i <= stale.last) continue;
     const text = texts[i]!.trimEnd();
     if (text.trim().length > 0 && !hints.some((hint) => hint.test(text))) n++;
   }
@@ -1290,6 +1293,8 @@ function typedDetail(reason: SendReason): string | undefined {
 }
 /** The detail of a typed command whose list over or under the box pointed at another command: Enter would have run that one. */
 const LIST_ELSEWHERE = "The command list at the box pointed at another command, so Enter was not pressed.";
+/** The detail of a Submit of a typed command whose list under the box points at another command: Enter would run that one. */
+const SUBMIT_ELSEWHERE = "The command list at the box points at another command, so Enter was not pressed. Discard the text, or pick the command with the keys.";
 /** The detail of a send whose S1 read showed a turn that started after S0, one the turn rule would refuse or hold (PR 491). */
 const TURN_STARTED = "A turn started while the text was typed, so Enter was not pressed. The text is in the box. Submit it when the turn ends.";
 
@@ -2811,6 +2816,10 @@ export class SendProtocol {
     switch (request.mode) {
       case "submit": {
         const located = this.typedBox(state, s0, holds, lines);
+        // Enter on a command whose list points at another one runs that one: the person picks it with the keys or discards the text.
+        if (state.command && listPointsElsewhere(s0, "", lines, collapseOf(match), match?.profile.idle.volatile.below.commandList)) {
+          throw new Ended("refused", "not_free", { surface: s0.surface, framed: true, rowsHash: s0.rowsHash, detail: SUBMIT_ELSEWHERE });
+        }
         this.lap(state, "s0");
         state.marks.s1 = s0;
         await this.commit(state, s0);
@@ -3310,7 +3319,12 @@ export class SendProtocol {
               readCues(frame === null ? bare : [...bare.slice(0, frame.interior.first), ...bare.slice(frame.interior.last + 1)], null, notice).strength,
       belowCues: frame === null ? "none" : readCues(bare.slice(frame.bottom + 1), null, null).strength,
       notice,
-      below: countBelow(texts, frame, (idle?.volatile.below.hints ?? []).map((source) => new RegExp(source, "u"))),
+      below: countBelow(
+        texts,
+        frame,
+        (idle?.volatile.below.hints ?? []).map((source) => new RegExp(source, "u")),
+        frame === null ? null : staleListUnder(texts, frame.bottom, frame.interior.text, idle?.volatile.below.commandList),
+      ),
       otherScreen: otherScreenOf(texts, frame, idle?.volatile.below.otherScreens ?? []),
       commandList: frame === null ? null : commandListAt(texts, frame, idle?.volatile.below.commandList, rows),
       ownList,

@@ -144,6 +144,10 @@ const BOX_COMPOSER_FIXTURES = [
   "omp--v18-6-steer-over-queued--w120.txt",
   "omp--v18-6-steer-pending-block--w120.txt",
   "omp--v18-6-steer-typed--w120.txt",
+  // omp 18.12.6, `//comment` typed in command mode: one list row under the box (omp-gang testers, 2026-10-25).
+  "omp--v18-12-6-slash-comment-loop-row--w120.txt",
+  // omp 18.12.6 after a cancelled `//comment`: the box is empty and the last list row stays under it.
+  "omp--v18-12-6-stale-list-row-empty-box--w120.txt",
 ];
 
 // omp 18.6.1 with `/model` or `/mod` typed (lab, 2026-10-17): a ten-row palette under the open box. The
@@ -159,6 +163,15 @@ const TALL_PALETTE_FIXTURES = [
   "omp--v18-11-nerd-slash-model--w80.txt",
   // omp 18.12.2, a bare `/goal` typed in a goal turn: the ten-row command list under the box (lab, 2026-10-22).
   "omp--v18-12-2-goal-bare-typed--w119.txt",
+  // omp 18.6.1 and 18.12.6, a fuzzy list of up to ten rows under the box for `/`, `/help`, `/mo` and `/nothere`
+  // (omp-gang testers, 2026-10-25).
+  "omp--v18-6-1-slash-help-unlisted--w120.txt",
+  "omp--v18-6-1-slash-mo-fuzzy--w120.txt",
+  "omp--v18-6-1-slash-nothere-fuzzy--w120.txt",
+  "omp--v18-12-6-slash-help-unlisted--w120.txt",
+  "omp--v18-12-6-slash-mo-fuzzy--w120.txt",
+  "omp--v18-12-6-slash-nothere-fuzzy--w120.txt",
+  "omp--v18-6-1-slash-open-tall--w120.txt",
 ];
 
 const ALL_OMP_FIXTURES = readdirSync(PANES_DIR)
@@ -280,6 +293,8 @@ describe("locateComposer — the real corpus, pinned so any change to the walk s
     { fixture: "omp--v18-6-steer-pending-block--w120.txt", top: 38, bottom: 39, suggestEnd: 40 },
     { fixture: "omp--v18-6-steer-done--w120.txt", top: 37, bottom: 38, suggestEnd: 39 },
     { fixture: "omp--v18-6-steer-typed--w120.txt", top: 38, bottom: 39, suggestEnd: 40 },
+    { fixture: "omp--v18-12-6-slash-comment-loop-row--w120.txt", top: 11, bottom: 12, suggestEnd: 14 },
+    { fixture: "omp--v18-12-6-stale-list-row-empty-box--w120.txt", top: 11, bottom: 12, suggestEnd: 14 },
   ];
 
   // These eleven indices are byte-identical to the ones the width-gated scanner produced. That is
@@ -345,6 +360,14 @@ describe("extractInputDraft", () => {
     { fixture: "omp--v18-6-slash-model-list--w120.txt", draft: "/model" },
     { fixture: "omp--v18-6-slash-model-list--w80.txt", draft: "/model" },
     { fixture: "omp--v18-6-slash-mod-partial--w120.txt", draft: "/mod" },
+    { fixture: "omp--v18-6-1-slash-help-unlisted--w120.txt", draft: "/help" },
+    { fixture: "omp--v18-6-1-slash-mo-fuzzy--w120.txt", draft: "/mo" },
+    { fixture: "omp--v18-6-1-slash-nothere-fuzzy--w120.txt", draft: "/nothere" },
+    { fixture: "omp--v18-12-6-slash-help-unlisted--w120.txt", draft: "/help" },
+    { fixture: "omp--v18-12-6-slash-mo-fuzzy--w120.txt", draft: "/mo" },
+    { fixture: "omp--v18-12-6-slash-nothere-fuzzy--w120.txt", draft: "/nothere" },
+    { fixture: "omp--v18-6-1-slash-open-tall--w120.txt", draft: "/" },
+    { fixture: "omp--v18-12-6-slash-comment-loop-row--w120.txt", draft: "//comment" },
     // Empty composers. omp 17/18.1 painted nothing in an empty box; omp 18.4 paints a right-aligned
     // key hint there (`⇧⇥ to change thinking effort`), which is placeholder text, not a draft.
     // Reading it as one showed "Draft in terminal" on every fresh session (markers.ts
@@ -395,8 +418,9 @@ describe("extractStatusLines", () => {
     const rows = extractStatusLines(fixtureLines(name));
     expect(rows).toHaveLength(1);
     // STYLED, not flattened: omp colours each powerline field separately, and that is what makes the
-    // strip readable at a glance once the mirror can no longer show it.
-    expect(rows[0]!.segments.length).toBeGreaterThan(1);
+    // strip readable at a glance once the mirror can no longer show it. A capture with no SGR bytes at all
+    // (the omp-gang testers' plain reads, 2026-10-25) has nothing to keep apart.
+    if (readFileSync(join(PANES_DIR, name), "utf8").includes("\u001b[")) expect(rows[0]!.segments.length).toBeGreaterThan(1);
   });
 
   // The two omp 18.4 hint captures carry the capturing operator's own statusline template, not
@@ -939,6 +963,13 @@ describe("composerPrompt — the region a destructive write is bound to", () => 
       { fixture: "omp--v18-11-nerd-slash-model--w130.txt", top: 14, bottom: 15, suggestEnd: 26 },
       { fixture: "omp--v18-11-nerd-slash-model--w80.txt", top: 15, bottom: 16, suggestEnd: 27 },
       { fixture: "omp--v18-12-2-goal-bare-typed--w119.txt", top: 23, bottom: 24, suggestEnd: 35 },
+      { fixture: "omp--v18-6-1-slash-help-unlisted--w120.txt", top: 4, bottom: 5, suggestEnd: 16 },
+      { fixture: "omp--v18-6-1-slash-mo-fuzzy--w120.txt", top: 4, bottom: 5, suggestEnd: 16 },
+      { fixture: "omp--v18-6-1-slash-nothere-fuzzy--w120.txt", top: 5, bottom: 6, suggestEnd: 16 },
+      { fixture: "omp--v18-12-6-slash-help-unlisted--w120.txt", top: 4, bottom: 5, suggestEnd: 16 },
+      { fixture: "omp--v18-12-6-slash-mo-fuzzy--w120.txt", top: 4, bottom: 5, suggestEnd: 16 },
+      { fixture: "omp--v18-12-6-slash-nothere-fuzzy--w120.txt", top: 5, bottom: 6, suggestEnd: 16 },
+      { fixture: "omp--v18-6-1-slash-open-tall--w120.txt", top: 15, bottom: 16, suggestEnd: 27 },
     ];
     expect(PINNED_TALL.map((p) => p.fixture)).toEqual(TALL_PALETTE_FIXTURES);
     for (const { fixture, top, bottom, suggestEnd } of PINNED_TALL) {
