@@ -204,10 +204,10 @@ export interface SendReceipt {
    */
   readonly queued?: true;
   /**
-   * Set later on a `queued` receipt whose text came back: the harness put it back into its input box
-   * (a Stop ended the turn and the harness returned its queue to the box), and it never became a
-   * prompt. The receipt keeps `sent` and `queued`, which were true when it settled; this says what
-   * happened after (ADR 0122). Absent on every other receipt.
+   * Set later on a `queued` or `steered` receipt whose text came back: the harness put it back into its
+   * input box (a Stop ended the turn and the harness returned its queue and its steers to the box), and
+   * it never became a prompt. The receipt keeps its outcome and `queued`, which were true when it
+   * settled; this says what happened after (ADR 0122). Absent on every other receipt.
    */
   readonly late?: SendLate;
   /**

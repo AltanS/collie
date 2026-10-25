@@ -2852,7 +2852,8 @@ export class SendProtocol {
     const receipt = this.receiptOf(state, outcome, outcome === "effective" ? undefined : end.reason, end.extra.cap, end.extra);
     this.deps.store.settle(state.record.id, receipt);
     // A send the harness holds for after the turn: a card until the journal or the box closes it (ADR 0122).
-    if (receipt.outcome === "sent" && receipt.queued === true) {
+    // A steer is kept too, with no card of its own: a Stop may give it back together with the queue.
+    if ((receipt.outcome === "sent" && receipt.queued === true) || receipt.outcome === "steered") {
       this.queuedSends.add({
         id: state.record.id,
         session: state.target.session,
@@ -2861,6 +2862,7 @@ export class SendProtocol {
         text: state.request.text,
         collapse: state.match?.profile.collapse.pattern ?? null,
         at: this.now(),
+        steer: receipt.outcome === "steered",
       });
     }
     this.count(state, receipt, end.extra.surface);
