@@ -587,3 +587,63 @@ describe("the codex probe — the reasoning effort", () => {
     expect(probe?.effort).toBeUndefined();
   });
 });
+
+// The context dot (.adr/0115, amended 2026-10-25). Codex's `token_count` row names both halves:
+// `last_token_usage.input_tokens` (which already includes the cached and written tokens) and
+// `info.model_context_window`. Numbers shaped like a 0.164.0 row; the words are the lab's.
+describe("the codex probe — the context", () => {
+  const SID = "01a13c59-3c21-7ce0-bb62-6768d54d272e";
+
+  async function probeOf(lines: readonly string[]) {
+    const created = `${tmpdir()}/collie-codex-context-${Math.floor(performance.now() * 1000)}`;
+    const day = join(created, "2026", "10", "14");
+    await mkdir(day, { recursive: true });
+    await Bun.write(join(day, `rollout-2026-10-14T18-37-23-${SID}.jsonl`), `${lines.join("\n")}\n`);
+    const probe = await codexJournal(created).cacheProbe?.({ kind: "id", value: SID });
+    await rm(created, { recursive: true, force: true });
+    return probe;
+  }
+  const turn = JSON.stringify({
+    timestamp: "2026-10-14T21:37:24.000Z",
+    type: "turn_context",
+    payload: { turn_id: "t1", model: "lab-model", summary: "none" },
+  });
+  const usage = { input_tokens: 17345, cached_input_tokens: 17187, cache_write_input_tokens: 155, output_tokens: 164 };
+  const tokens = (info: { last_token_usage: typeof usage; model_context_window?: number } | null, at = "2026-10-14T21:37:30.000Z") =>
+    JSON.stringify({ timestamp: at, type: "event_msg", payload: { type: "token_count", info } });
+  const compacted = JSON.stringify({ timestamp: "2026-10-14T21:40:00.000Z", type: "compacted", payload: { message: "…" } });
+
+  test("the input tokens and the window both come off the token_count row", async () => {
+    const probe = await probeOf([turn, tokens({ last_token_usage: usage, model_context_window: 258_400 })]);
+    // `input_tokens` already holds the cached and written tokens, so nothing is added to it.
+    expect(probe?.contextTokens).toBe(17_345);
+    expect(probe?.contextWindow).toBe(258_400);
+    expect(probe?.cacheReadTokens).toBe(17_187);
+  });
+
+  test("a row that names no window gives tokens and no window", async () => {
+    const probe = await probeOf([turn, tokens({ last_token_usage: usage })]);
+    expect(probe?.contextTokens).toBe(17_345);
+    expect(probe?.contextWindow).toBeUndefined();
+  });
+
+  test("a window that is not a whole positive number is no window", async () => {
+    const probe = await probeOf([turn, tokens({ last_token_usage: usage, model_context_window: -1 })]);
+    expect(probe?.contextWindow).toBeUndefined();
+  });
+
+  test("a token_count with no info (rate limits only) is passed over for the one before it", async () => {
+    const probe = await probeOf([
+      turn,
+      tokens({ last_token_usage: usage, model_context_window: 258_400 }),
+      tokens(null, "2026-10-14T21:37:31.000Z"),
+    ]);
+    expect(probe?.contextTokens).toBe(17_345);
+    expect(probe?.contextWindow).toBe(258_400);
+  });
+
+  test("a compaction after the counts leaves the context unknown", async () => {
+    const probe = await probeOf([turn, tokens({ last_token_usage: usage, model_context_window: 258_400 }), compacted]);
+    expect(probe?.contextTokens).toBeUndefined();
+  });
+});

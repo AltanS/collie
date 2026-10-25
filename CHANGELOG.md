@@ -28,6 +28,9 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The Steer hint no longer moves the composer.** While a turn runs on a pane that can steer, the hint ("Hold Send to steer.") was a row above the input box that opened and closed with every turn, and it shifted the belt and the field. It is now the empty field's placeholder, in a smaller size, and it goes when you type.
 - **The Steer hint is one short sentence in every language.** It keeps only the instruction, "Hold Send to steer.", so the placeholder never wraps on a phone and never makes the empty field two lines tall.
 - **The belt's agents mark counts Oh My Pi and Gentle Shell subagents.** A background `task` job of Oh My Pi, and a background subagent of Gentle Shell, now shows in the agents mark and its sheet while it runs, read from the session's Chat in memory; it leaves when the end notice or a `wait` reports it done, and a failed job marks its Agent card in Chat as failed. Such a row has no transcript to open, so it is not a tap. The mark fills while the pane's Chat is being read.
+### Added
+
+- **pi, OMP, Codex and OpenCode panes show the context dot above the belt.** Collie reads the last turn's tokens from the session log, and the model's window from Codex's log or from the harness's own model list on disk. A model that list does not name gets no dot, never a guessed one.
 
 ## [1.24.0] - 2026-10-25
 

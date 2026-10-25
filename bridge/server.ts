@@ -1541,7 +1541,7 @@ export function startServer(opts: {
   const operatorCacheRules = createCacheRulesReader(cfg.cacheRulesFile);
   // ONE registry for the process, built by the caller so the cache tracker probes through the same
   // adapters (and therefore the same memoised path caches) the history route reads.
-  const journals = cfg.transcript ? (opts.journals ?? buildJournalRegistry(cfg.journalRoots)) : null;
+  const journals = cfg.transcript ? (opts.journals ?? buildJournalRegistry(cfg.journalRoots, cfg.modelCatalogs)) : null;
   const transcripts = cfg.transcript ? new TranscriptStore() : null;
   // The live half of the same reading, over the same store: a `?before=` page IS a History page with
   // the live window's numbering put back on it, so the two must share one cache or a "load older" tap

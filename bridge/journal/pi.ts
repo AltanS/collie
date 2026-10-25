@@ -25,6 +25,7 @@ import type { CacheProbe } from "../cache/engine.ts";
 import type { JsonObject, JsonValue } from "../json.ts";
 import { basename, dirname, join } from "node:path";
 import { asRecord, asText, probeTail, tokenCount, walkBack } from "./cache-probe.ts";
+import { type MeasuredContext, piAgentDirLookups, WindowCatalog } from "./model-window.ts";
 import {
   containedRealpath,
   containedRealpathIn,
@@ -1045,12 +1046,13 @@ export class PiTranscriptSource implements TranscriptSource {
 /** pi's journal adapter. `agent` matches the Herdr snapshot's `agent` string. */
 export function piJournal(roots: string | readonly string[]): JournalAdapter {
   const source = new PiTranscriptSource(roots);
+  const catalog = new WindowCatalog();
   return {
     agent: "pi",
     source,
     parse: parsePiTranscript,
     reducer: createPiReducer,
-    cacheProbe: (ref) => piCacheProbe(source, ref),
+    cacheProbe: (ref) => piCacheProbe(source, ref, catalog),
   };
 }
 
@@ -1071,8 +1073,66 @@ export function piJournal(roots: string | readonly string[]): JournalAdapter {
 //
 // Oh My Pi needs nothing here: `omp` is an alias of `pi` in registry.ts, so an omp pane resolves to
 // this adapter and to `pi.*` rules alike.
+//
+// THE CONTEXT (.adr/0115, amended 2026-10-25) is a turn row's `input + cacheRead + cacheWrite`: pi
+// counts the cache apart from `input`, so the three together are what the request carried. pi's own
+// footer adds the reply's `output` too; Collie counts what went in, as it does for Claude. A turn that
+// failed writes zeros and is passed over ({@link piContextOf}). A `compaction` row after the turn means
+// the next request carries less, and no turn has measured it yet, so the probe names no context then.
+// The log names no window (a `model_change` row names the model only), so the window comes from the
+// catalog in the agent dir ({@link piAgentDirOf}, bridge/journal/model-window.ts), and a model it does
+// not name has no context dot.
 
-async function piCacheProbe(source: PiTranscriptSource, ref: AgentSessionRef): Promise<CacheProbe | null> {
+/**
+ * The agent dir a session log belongs to: the parent of the nearest `sessions` folder above it. A
+ * session is `<agent>/sessions/<folder>/<file>.jsonl`, and Oh My Pi nests a subagent's log one level
+ * deeper, under a folder named after its parent session. A root set to some other folder names no
+ * agent dir, and then no catalog is read.
+ */
+export function piAgentDirOf(path: string): string | null {
+  let folder = dirname(path);
+  for (let depth = 0; depth < 3; depth++) {
+    folder = dirname(folder);
+    if (basename(folder) === "sessions") return dirname(folder);
+  }
+  return null;
+}
+
+/** The sum of a usage row's input-side counts, or undefined when the row names none of them. */
+function piContextTokens(usage: JsonObject): number | undefined {
+  const parts = [tokenCount(usage.input), tokenCount(usage.cacheRead), tokenCount(usage.cacheWrite)];
+  if (parts.every((n) => n === undefined)) return undefined;
+  const sum = parts.reduce<number>((total, n) => total + Math.max(0, n ?? 0), 0);
+  return sum > 0 ? sum : undefined;
+}
+
+/**
+ * The context the newest MEASURED turn carried, with its provider and model, or undefined. A turn
+ * that failed writes a usage row of zeros, and the context it would have sent is the one before it,
+ * so such a row is passed over. A `compaction` met first ends the search with no reading.
+ */
+export function piContextOf(lines: readonly string[]): MeasuredContext | undefined {
+  const found = walkBack(lines, (raw): MeasuredContext | null | undefined => {
+    const entry = asRecord(raw);
+    if (entry === null) return undefined;
+    if (entry.type === "compaction") return null;
+    if (entry.type !== "message") return undefined;
+    const message = asRecord(entry.message);
+    if (message === null || message.role !== "assistant") return undefined;
+    const usage = asRecord(message.usage);
+    const tokens = usage === null ? undefined : piContextTokens(usage);
+    if (tokens === undefined) return undefined;
+    const out: MeasuredContext = { tokens };
+    const provider = asText(message.provider);
+    const model = asText(message.model);
+    if (provider !== undefined) out.provider = provider;
+    if (model !== undefined) out.model = model;
+    return out;
+  });
+  return found ?? undefined;
+}
+
+async function piCacheProbe(source: PiTranscriptSource, ref: AgentSessionRef, catalog?: WindowCatalog): Promise<CacheProbe | null> {
   const tail = await probeTail(source, ref);
   if (tail === null) return null;
   // The thinking level is the NEWEST one the walk meets, whether a `thinking_level_change` row (written
@@ -1112,6 +1172,15 @@ async function piCacheProbe(source: PiTranscriptSource, ref: AgentSessionRef): P
     return probe;
   });
   if (found === undefined) return null;
+  const context = piContextOf(tail.lines);
+  if (context !== undefined) {
+    found.contextTokens = context.tokens;
+    const agentDir = piAgentDirOf(tail.path);
+    if (catalog !== undefined && agentDir !== null && context.provider !== undefined && context.model !== undefined) {
+      const window = await catalog.window(agentDir, piAgentDirLookups(agentDir), context.provider, context.model);
+      if (window !== undefined) found.contextWindow = window;
+    }
+  }
   // A turn that carried no level of its own: the level row the session opened with, or the last
   // change before the turn, still stands. Only the level is looked for past the turn.
   effort ??= walkBack(tail.lines, (raw) => {

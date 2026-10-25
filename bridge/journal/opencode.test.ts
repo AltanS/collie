@@ -2018,3 +2018,72 @@ describe("parseOpencodeTranscript — a message sent while the agent works", () 
     expect(entries[2]!.parts).toEqual([{ kind: "text", text: "Queued note: reply with only OK." }]);
   });
 });
+
+// The context dot (.adr/0115, amended 2026-10-25). OpenCode counts `tokens.input` apart from
+// `tokens.cache`, so the three together are what the turn carried; the window comes from OpenCode's
+// copy of the models.dev catalog, `<provider>.models.<id>.limit.context`. Lab names only.
+describe("the opencode probe — the context", () => {
+  type Message = { [key: string]: JsonValue | undefined };
+  const assistant = (at: number, tokens: Message, extra: Message = {}): Message => ({
+    role: "assistant",
+    providerID: "labrouter",
+    modelID: "lab/model-one",
+    time: { created: at - 10, completed: at },
+    tokens,
+    ...extra,
+  });
+
+  async function probeOf(rows: readonly Message[], catalog?: JsonValue) {
+    const base = await realpath(await mkdtemp(join(tmpdir(), "collie-opencode-context-")));
+    const db = openDb(join(base, "opencode.db"), V1_SCHEMA);
+    db.run("insert into session values (?, null, 'session', 1, 100)", [SID]);
+    for (const [i, data] of rows.entries()) {
+      db.run("insert into message values (?, ?, ?, ?, ?)", [`msg_${String(i)}`, SID, 1000 + i, 1000 + i, JSON.stringify(data)]);
+    }
+    db.close();
+    const models = join(base, "models.json");
+    if (catalog !== undefined) await Bun.write(models, JSON.stringify(catalog));
+    const probe = await opencodeJournal(base, models).cacheProbe?.({ kind: "id", value: SID });
+    await rm(base, { recursive: true, force: true });
+    return probe;
+  }
+  const catalog = { labrouter: { models: { "lab/model-one": { limit: { context: 1_050_000, output: 128_000 } } } } };
+
+  test("the tokens are input, cache read and cache write; the catalog names the window", async () => {
+    const probe = await probeOf([assistant(2000, { input: 276, output: 135, cache: { read: 14_208, write: 16 } })], catalog);
+    expect(probe?.contextTokens).toBe(14_500);
+    expect(probe?.contextWindow).toBe(1_050_000);
+  });
+
+  test("with no catalog file there is no window", async () => {
+    const probe = await probeOf([assistant(2000, { input: 276, cache: { read: 14_208, write: 0 } })]);
+    expect(probe?.contextTokens).toBe(14_484);
+    expect(probe?.contextWindow).toBeUndefined();
+  });
+
+  test("a catalog that does not name the model gives no window", async () => {
+    const probe = await probeOf([assistant(2000, { input: 276, cache: { read: 0, write: 0 } })], {
+      labrouter: { models: { "lab/other": { limit: { context: 9 } } } },
+    });
+    expect(probe?.contextWindow).toBeUndefined();
+  });
+
+  test("a reply still at zero tokens is passed over for the turn before it", async () => {
+    const probe = await probeOf(
+      [assistant(2000, { input: 300, cache: { read: 700, write: 0 } }), assistant(3000, { input: 0, output: 0, cache: { read: 0, write: 0 } })],
+      catalog,
+    );
+    expect(probe?.contextTokens).toBe(1000);
+  });
+
+  test("a compaction summary newer than every turn leaves the context unknown", async () => {
+    const probe = await probeOf(
+      [
+        assistant(2000, { input: 300, cache: { read: 700, write: 0 } }),
+        assistant(3000, { input: 9000, cache: { read: 0, write: 0 } }, { mode: "compaction", summary: true }),
+      ],
+      catalog,
+    );
+    expect(probe?.contextTokens).toBeUndefined();
+  });
+});

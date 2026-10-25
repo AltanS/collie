@@ -789,7 +789,7 @@ await activity.load();
 // adapters' memoised path caches. Null when `COLLIE_TRANSCRIPT` is off: no journal means no probe, and
 // every pane then reads exactly as it did before this feature existed.
 const journals = cfg.transcript
-  ? buildJournalRegistry({ ...cfg.journalRoots, durable: [durableLogDir(cfg.stateDir)] })
+  ? buildJournalRegistry({ ...cfg.journalRoots, durable: [durableLogDir(cfg.stateDir)] }, cfg.modelCatalogs)
   : null;
 // The name the operator gave a Muse session, for the engines' pane naming (journal/muse.ts).
 // It reads the same logs the journal does, so it lives and dies with the same switch: with
@@ -818,9 +818,10 @@ const accountWindows = new AccountWindows({
   log: (line) => console.log(line),
 });
 // Each pane's context use and subscription windows (bridge/usage.ts), from the files the statusLine
-// wrapper and the beacon write, joined with the account windows above. No journal needed: the pane's
-// session id is the key.
-const usage = new UsageTracker(usageDir(cfg.stateDir), diskUsageFiles, Date.now, accountWindows);
+// wrapper and the beacon write, joined with the account windows above. The pane's session id is the
+// key. A harness whose hooks write no file takes its context from the cache probe's reading of its
+// journal (.adr/0115, amended 2026-10-25); with transcripts off there is none.
+const usage = new UsageTracker(usageDir(cfg.stateDir), diskUsageFiles, Date.now, accountWindows, paneCache ?? undefined);
 
 // Which branch each pane's folder is on (bridge/git-head.ts). One for the whole bridge: every
 // session's poll feeds it its folders, and the server reads it from memory at serialise time.

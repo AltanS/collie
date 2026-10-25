@@ -60,6 +60,19 @@ export interface CacheProbe {
   /** Subscription or API key, where the transcript says so. */
   tier?: Tier;
   /**
+   * What the turn above carried into the model, in tokens: its input plus what it read from and wrote
+   * to the cache, in the harness's own fields (.adr/0115, amended 2026-10-25). The phone's context dot
+   * divides it by {@link contextWindow}. Absent when the log does not say, or when a compaction came
+   * after the turn, so the next turn has not measured the new context yet. Display only: no rule and
+   * no TTL reads it.
+   */
+  contextTokens?: number;
+  /**
+   * The model's context window in tokens, when the log itself names it (Codex) or the harness's own
+   * model catalog on disk does (pi, OMP, OpenCode). Never a guess: absent means no context dot.
+   */
+  contextWindow?: number;
+  /**
    * Every reset-rule match from just after the PREVIOUS turn to the end of what was read, oldest first.
    * One flat list: {@link evaluate} decides which are pending (newer than `lastRequestAt`) and which
    * explain the last turn. A probe that reports none leaves this absent.

@@ -59,6 +59,12 @@
 // when it has nothing to say about the cache, and a model is worth showing even then. It is reaped by
 // the same rule as the entries: its pane left this session's list.
 //
+// THE CONTEXT RIDES ALONG TOO, ON A THIRD MAP (.adr/0115, amended 2026-10-25). The same probe names
+// the tokens the last turn carried and, where the log or the harness's catalog says, the model's
+// window; `context()` answers both, and bridge/usage.ts turns them into the context dot for a harness
+// whose hooks write no usage file. A probe that read a turn REPLACES the reading, so a compaction after
+// the turn (no tokens) removes it; a read with no turn keeps it, like the model. Same owner, same reap.
+//
 // NOTHING IS PERSISTED. A restart costs one poll, and a memo that survived a restart would be a
 // countdown for a process that is gone.
 
@@ -66,7 +72,15 @@ import { adapterFor } from "../journal/registry.ts";
 import type { JournalAdapter } from "../journal/types.ts";
 import { journalAgentOf, type AgentView } from "../types.ts";
 import type { CacheRule, ResetEvent, ResetRule, Sourced } from "./claims.ts";
-import { evaluate, type CacheMemo, type CacheOverride, type ChoiceOnly, type EvaluateInput, type PaneCache } from "./engine.ts";
+import {
+  evaluate,
+  type CacheMemo,
+  type CacheOverride,
+  type CacheProbe,
+  type ChoiceOnly,
+  type EvaluateInput,
+  type PaneCache,
+} from "./engine.ts";
 import type { ModelReading } from "../pane-model.ts";
 import { modelRuleFor, resetRulesFor, ruleForProbe } from "./rules/index.ts";
 
@@ -145,6 +159,19 @@ interface ModelEntry extends Owner {
   effort?: string;
 }
 
+/** The context a session's last turn carried, with the same owner the cache entry carries. */
+interface ContextEntry extends Owner {
+  tokens: number;
+  /** The model's window, when the log or the harness's catalog named it. */
+  window?: number;
+}
+
+/** What {@link CacheTracker.context} answers: the tokens, and the window when one is known. */
+export interface ContextReading {
+  tokens: number;
+  window?: number;
+}
+
 /** Longest model name the wire carries. A real one is under 40; this only bounds a hostile file. */
 const MODEL_MAX = 80;
 
@@ -155,6 +182,8 @@ export class CacheTracker {
   private readonly bySession = new Map<string, Entry>();
 
   private readonly modelBySession = new Map<string, ModelEntry>();
+
+  private readonly contextBySession = new Map<string, ContextEntry>();
 
   constructor(
     private readonly registry: Record<string, JournalAdapter>,
@@ -197,11 +226,20 @@ export class CacheTracker {
     return this.modelBySession.get(sessionKey)?.effort;
   }
 
+  /**
+   * The context one harness session's last turn carried, from the same probe, or undefined. The window
+   * is present only when the log or the harness's own catalog named it. Display only.
+   */
+  context(sessionKey: string): ContextReading | undefined {
+    return this.contextBySession.get(sessionKey);
+  }
+
   /** Drop these sessions outright. Called by {@link refresh} for panes that are gone. */
   forget(sessionKeys: readonly string[]): void {
     for (const key of sessionKeys) {
       this.bySession.delete(key);
       this.modelBySession.delete(key);
+      this.contextBySession.delete(key);
     }
   }
 
@@ -234,13 +272,19 @@ export class CacheTracker {
         this.bySession.set(ref.value, { ...entry, ...owner });
         const known = this.modelBySession.get(ref.value);
         if (known !== undefined) this.modelBySession.set(ref.value, { ...known, ...owner });
+        const context = this.contextBySession.get(ref.value);
+        if (context !== undefined) this.contextBySession.set(ref.value, { ...context, ...owner });
         continue;
       }
       await this.look(adapter, harness, ref, at, owner);
     }
     // Reap THIS session's departed panes, on the same poll the activity ledger reconciles on. Another
     // session's entries are none of this poll's business.
-    const owned: [string, Owner][] = [...this.bySession.entries(), ...this.modelBySession.entries()];
+    const owned: [string, Owner][] = [
+      ...this.bySession.entries(),
+      ...this.modelBySession.entries(),
+      ...this.contextBySession.entries(),
+    ];
     this.forget(
       owned
         .filter(([key, entry]) => entry.session === session && departed(named, key, entry.paneId))
@@ -305,6 +349,7 @@ export class CacheTracker {
       if (effort !== undefined) entry.effort = effort;
       this.modelBySession.set(key, entry);
     }
+    if (probe !== null && probe !== undefined) this.recordContext(key, probe, owner);
     if (probe === null || probe === undefined) {
       // A read that found no turn in the window — see the module header. Keep what the last successful
       // probe left behind, and let it age; with nothing behind it there is nothing to say (Decision 1).
@@ -326,6 +371,22 @@ export class CacheTracker {
       override: overrideFor(overrides, chosen.rule?.id),
       now: at,
     });
+  }
+
+  /**
+   * Keep the context a probe read, or drop the last one when the probe read a turn and named none (a
+   * compaction after it). A token count or window that is not a finite positive number is no reading.
+   */
+  private recordContext(key: string, probe: CacheProbe, owner: Owner): void {
+    const tokens = probe.contextTokens;
+    if (tokens === undefined || !Number.isFinite(tokens) || tokens <= 0) {
+      this.contextBySession.delete(key);
+      return;
+    }
+    const entry: ContextEntry = { tokens, session: owner.session, paneId: owner.paneId };
+    const window = probe.contextWindow;
+    if (window !== undefined && Number.isFinite(window) && window > 0) entry.window = window;
+    this.contextBySession.set(key, entry);
   }
 
   /** The adapter's choices in a log with no turn, or null. A failed read is no choice. */

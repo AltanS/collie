@@ -255,3 +255,61 @@ describe("UsageTracker with the account windows (ADR 0118)", () => {
     expect(tracker.get(claudePane(null))).toEqual({ limits: ACCOUNT.slice(1) });
   });
 });
+
+// Other harnesses write no usage file: their context comes from the journal's reading of the same
+// session (bridge/cache/tracker.ts § context), and only when that reading knows the window
+// (.adr/0115, amended 2026-10-25).
+describe("UsageTracker with the journal's context", () => {
+  const dir = "/state/usage";
+  const file = (session: string): string => join(dir, usageFileName(session));
+  function agentPane(agent: string, session: string | null, kind: "agent" | "shell" = "agent", ref: "id" | "path" = "id"): AgentView {
+    // SAFETY: the tracker reads `agentSession`, `agent` and `kind` off a pane and nothing else.
+    const view = { agent, kind } as AgentView;
+    if (session !== null) view.agentSession = { kind: ref, value: session };
+    return view;
+  }
+  function journal(readings: Record<string, { tokens: number; window?: number } | undefined>) {
+    return { context: (key: string) => readings[key] };
+  }
+
+  it("a reading with a window becomes the context, floored to one decimal", async () => {
+    const tracker = new UsageTracker(dir, memoryFiles(new Map()), () => NOW, undefined, journal({ s1: { tokens: 17_345, window: 258_400 } }));
+    await tracker.refresh([agentPane("codex", "s1")]);
+    expect(tracker.get(agentPane("codex", "s1"))).toEqual({ context: 6.7 });
+  });
+
+  it("a reading with no window is no context", async () => {
+    const tracker = new UsageTracker(dir, memoryFiles(new Map()), () => NOW, undefined, journal({ s1: { tokens: 17_345 } }));
+    expect(tracker.get(agentPane("omp", "s1"))).toBeUndefined();
+  });
+
+  it("is clamped at 100 when the tokens overrun the window", async () => {
+    const tracker = new UsageTracker(dir, memoryFiles(new Map()), () => NOW, undefined, journal({ s1: { tokens: 300_000, window: 200_000 } }));
+    expect(tracker.get(agentPane("pi", "s1"))).toEqual({ context: 100 });
+  });
+
+  it("a session's usage file wins over the journal", async () => {
+    const entries = new Map<string, [number, string]>([[file("s1"), [NOW, record({ context: 42 })]]]);
+    const tracker = new UsageTracker(dir, memoryFiles(entries), () => NOW, undefined, journal({ s1: { tokens: 1, window: 2 } }));
+    await tracker.refresh([agentPane("claude", "s1")]);
+    expect(tracker.get(agentPane("claude", "s1"))).toEqual({ context: 42 });
+  });
+
+  it("fills in a file that holds windows and no context, and rides beside the account windows", async () => {
+    const limits = [{ window: "5h" as const, used: 33, resetsAt: NOW + 60_000 }];
+    const entries = new Map<string, [number, string]>([[file("s1"), [NOW, record({ harness: "codex", limits: [{ window: "7d", used: 5 }] })]]]);
+    const readings = journal({ s1: { tokens: 50_000, window: 200_000 }, s2: { tokens: 100_000, window: 200_000 } });
+    const tracker = new UsageTracker(dir, memoryFiles(entries), () => NOW, undefined, readings);
+    await tracker.refresh([agentPane("codex", "s1")]);
+    expect(tracker.get(agentPane("codex", "s1"))).toEqual({ context: 25, limits: [{ window: "7d", used: 5 }] });
+    const withAccount = new UsageTracker(dir, memoryFiles(new Map()), () => NOW, { limits: () => limits }, readings);
+    expect(withAccount.get(agentPane("codex", "s2"))).toEqual({ context: 50, limits });
+  });
+
+  it("is keyed by the session ref of either kind; a shell pane gets none", async () => {
+    const tracker = new UsageTracker(dir, memoryFiles(new Map()), () => NOW, undefined, journal({ "/logs/a.jsonl": { tokens: 10, window: 100 } }));
+    expect(tracker.get(agentPane("pi", "/logs/a.jsonl", "agent", "path"))).toEqual({ context: 10 });
+    expect(tracker.get(agentPane("pi", "/logs/a.jsonl", "shell", "path"))).toBeUndefined();
+    expect(tracker.get(agentPane("pi", null))).toBeUndefined();
+  });
+});

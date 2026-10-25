@@ -14,6 +14,13 @@
 // come first from the vendor's usage endpoint with the operator's own login (bridge/account-windows.ts,
 // .adr/0118); a wrapped statusLine is the second road.
 //
+// OTHER HARNESSES WRITE NO FILE, so since 2026-10-25 their context comes from the journal: the cache
+// probe that already reads the session log for the prompt-cache chip also names the tokens the last
+// turn carried and, where it can, the model's window (bridge/cache/tracker.ts § context). Codex's log
+// names the window itself; pi, Oh My Pi and OpenCode take it from the harness's own model catalog on
+// disk (bridge/journal/model-window.ts). No window, no context: a model no catalog names has no
+// context dot, and the model label still draws. A usage file's context, where one exists, wins.
+//
 // ONE FILE PER SESSION, named by a digest of the harness session id, never by the pane: the pane
 // already knows its session (`agentSession`, from Herdr or the beacon), and a session id cannot be
 // renumbered under it the way a pane id can. `/clear` starts a new session and therefore a new file;
@@ -111,6 +118,11 @@ export function usageDir(stateDir: string): string {
  */
 export function usageFileName(session: string): string {
   return `${createHash("sha256").update(session).digest("hex").slice(0, 32)}.json`;
+}
+
+/** The share of a window `tokens` fill, floored to one decimal so a window that is not full never reads as 100. */
+export function contextPercent(tokens: number, window: number): number {
+  return Math.floor(Math.min(100, (tokens / window) * 100) * 10) / 10;
 }
 
 /** A percentage as the phone may draw it, or undefined for anything that is not a finite number. */
@@ -215,6 +227,14 @@ export interface AccountLimits {
   limits(harness: string): UsageLimit[] | undefined;
 }
 
+/**
+ * The context the journal read for a session (bridge/cache/tracker.ts): synchronous, memory only,
+ * keyed by the pane's `agentSession` value as the cache chip is.
+ */
+export interface JournalContext {
+  context(sessionKey: string): { tokens: number; window?: number } | undefined;
+}
+
 /** How often the directory is swept for old files. */
 const PRUNE_EVERY_MS = 60 * 60 * 1000;
 
@@ -238,6 +258,7 @@ export class UsageTracker {
     private readonly files: UsageFiles,
     private readonly now: () => number = Date.now,
     private readonly account?: AccountLimits,
+    private readonly journal?: JournalContext,
   ) {}
 
   /** The session id a pane's usage is keyed by, or null for a pane with no id-kind session. */
@@ -286,20 +307,38 @@ export class UsageTracker {
    * reported through a wrapped statusLine: a session that last spoke an hour ago shows what a busier
    * one learned since. On that road only a session that reported windows of its own gets them, so an
    * API-key session beside a subscription one stays without.
+   *
+   * The context comes from the session's usage file when that holds one (Claude's beacon or wrapped
+   * statusLine), else from the journal's reading of the same session when it knows both the tokens
+   * and the window (pi, OMP, Codex, OpenCode; .adr/0115 amended 2026-10-25).
    */
   get(pane: AgentView): PaneUsage | undefined {
     const session = UsageTracker.sessionOf(pane);
     const record = session === null ? null : (this.held.get(session)?.record ?? null);
     const now = this.now();
     const harness = pane.kind === "shell" ? undefined : pane.agent || record?.harness;
+    const journal = record?.context === undefined ? this.journalContext(pane) : undefined;
     const account = harness === undefined || harness === "" ? undefined : this.account?.limits(harness);
     if (account !== undefined && account.length > 0) {
       const base: UsageRecord = record ?? { schemaVersion: USAGE_SCHEMA_VERSION, harness: harness ?? "", at: now };
-      return usageAt({ ...base, limits: account }, now);
+      return usageAt(journal === undefined ? { ...base, limits: account } : { ...base, limits: account, context: journal }, now);
     }
-    if (record === null) return undefined;
-    if (record.limits === undefined) return usageAt(record, now);
-    return usageAt({ ...record, limits: this.newestLimits(record.harness, now) }, now);
+    if (record === null) return journal === undefined ? undefined : { context: journal };
+    const held = record.limits === undefined ? record : { ...record, limits: this.newestLimits(record.harness, now) };
+    return usageAt(journal === undefined ? held : { ...held, context: journal }, now);
+  }
+
+  /**
+   * The pane's context from the journal, as a percentage, or undefined: no reading, no window, or a
+   * shell pane. Keyed by the session ref's value of either kind, as the cache chip is.
+   */
+  private journalContext(pane: AgentView): number | undefined {
+    if (this.journal === undefined || pane.kind === "shell") return undefined;
+    const key = pane.agentSession?.value;
+    if (key === undefined || key === "") return undefined;
+    const reading = this.journal.context(key);
+    if (reading?.window === undefined || reading.window <= 0) return undefined;
+    return contextPercent(reading.tokens, reading.window);
   }
 
   /** Per window, the limit from the newest held record of `harness` that carries it unexpired. */

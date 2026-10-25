@@ -2,6 +2,7 @@ import { isAbsolute, relative, sep } from "node:path";
 
 import { asJsonNumber, asJsonObject, asJsonString } from "../web/src/lib/json.ts";
 import type { JsonObject } from "../bridge/json.ts";
+import { contextPercent } from "../bridge/usage.ts";
 import type { CliContext } from "./context.ts";
 import { agentConfigRoot } from "./hold-entry.ts";
 import { mergeBeacon, readUsage, writeUsage, type BeaconChange, type UsageStoreDeps } from "./usage-store.ts";
@@ -51,11 +52,6 @@ export const TAIL_BYTES = 256 * 1024;
 export function windowFromModel(model: string | undefined): number | undefined {
   if (model === undefined || model.trim() === "") return undefined;
   return model.includes("[1m]") ? 1_000_000 : 200_000;
-}
-
-/** The share of a window `tokens` fill, floored to one decimal so a window that is not full never reads as 100. */
-export function contextPercent(tokens: number, window: number): number {
-  return Math.floor(Math.min(100, (tokens / window) * 100) * 10) / 10;
 }
 
 /** Tokens billed for one request's input, as Claude Code's `/context` counts the live context. */

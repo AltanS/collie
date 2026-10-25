@@ -1,3 +1,4 @@
+import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, realpath, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -1523,5 +1524,111 @@ describe("parsePiTranscript — Oh My Pi's task jobs", () => {
     s.asyncResult("n1", "LabFix", "LabFix");
     const reduction = reducer.push(s.rows[before]!);
     expect([...reduction.changed]).toContain("a1");
+  });
+});
+
+// The context dot (.adr/0115, amended 2026-10-25). The tokens are the turn's own input-side counts;
+// the log names no window, so the window comes from the catalog in the agent dir above `sessions`:
+// pi's `models-store.json` or Oh My Pi's `models.db`. Lab names only.
+describe("the pi probe — the context", () => {
+  const SID = "019f1827-bf99-7927-9684-76318de905b5";
+  const answer = (id: string, usage: Record<string, JsonValue>) =>
+    row(id, {
+      role: "assistant",
+      content: [{ type: "text", text: "ok" }],
+      provider: "labrouter",
+      model: "lab/model-one",
+      usage,
+    });
+  const compaction = (id: string) =>
+    JSON.stringify({ type: "compaction", id, parentId: "p0", timestamp: "2026-07-29T10:05:00.000Z", summary: "…" });
+
+  async function probeOf(lines: readonly string[], catalog?: (agentDir: string) => Promise<void>) {
+    const created = `${tmpdir()}/collie-pi-context-${Math.floor(performance.now() * 1000)}`;
+    const root = join(created, "sessions");
+    const project = join(root, "--repo--");
+    await mkdir(project, { recursive: true });
+    if (catalog !== undefined) await catalog(created);
+    const log = join(project, `2026-07-29T10-00-00-000Z_${SID}.jsonl`);
+    await Bun.write(log, `${lines.join("\n")}\n`);
+    const probe = await piJournal(root).cacheProbe?.({ kind: "path", value: await realpath(log) });
+    await rm(created, { recursive: true, force: true });
+    return probe;
+  }
+
+  const store = (window: JsonValue) => async (agentDir: string) => {
+    await Bun.write(
+      join(agentDir, "models-store.json"),
+      JSON.stringify({ labrouter: { models: [{ id: "lab/other", contextWindow: 1 }, { id: "lab/model-one", contextWindow: window }] } }),
+    );
+  };
+
+  test("the tokens are input, cache read and cache write together", async () => {
+    const probe = await probeOf([header(), answer("a1", { input: 10, output: 5, cacheRead: 900, cacheWrite: 90 })]);
+    expect(probe?.contextTokens).toBe(1000);
+  });
+
+  test("with no catalog in the agent dir there is no window", async () => {
+    const probe = await probeOf([header(), answer("a1", { input: 10, cacheRead: 900, cacheWrite: 90 })]);
+    expect(probe?.contextTokens).toBe(1000);
+    expect(probe?.contextWindow).toBeUndefined();
+  });
+
+  test("pi's models-store.json names the window for the turn's provider and model", async () => {
+    const probe = await probeOf([header(), answer("a1", { input: 10, cacheRead: 900, cacheWrite: 90 })], store(400_000));
+    expect(probe?.contextWindow).toBe(400_000);
+  });
+
+  test("a window that is not a whole positive number is no window", async () => {
+    const probe = await probeOf([header(), answer("a1", { input: 10, cacheRead: 900 })], store("400000"));
+    expect(probe?.contextTokens).toBe(910);
+    expect(probe?.contextWindow).toBeUndefined();
+  });
+
+  test("Oh My Pi's models.db names the window from a variant row of the provider", async () => {
+    const probe = await probeOf([header(), answer("a1", { input: 3, cacheRead: 0, cacheWrite: 1997 })], async (agentDir) => {
+      const db = new Database(join(agentDir, "models.db"));
+      db.run("create table model_cache (provider_id text primary key, version integer, models text not null)");
+      db.run("insert into model_cache values (?, 1, ?)", ["labrouterx", JSON.stringify([{ id: "lab/model-one", contextWindow: 7 }])]);
+      db.run("insert into model_cache values (?, 1, ?)", [
+        "labrouter:pseudo-api",
+        JSON.stringify([{ id: "lab/model-one", provider: "labrouter", contextWindow: 262_144 }]),
+      ]);
+      db.close();
+    });
+    expect(probe?.contextTokens).toBe(2000);
+    expect(probe?.contextWindow).toBe(262_144);
+  });
+
+  test("a catalog that does not name the model gives no window", async () => {
+    const probe = await probeOf([header(), answer("a1", { input: 10, cacheRead: 900 })], async (agentDir) => {
+      await Bun.write(join(agentDir, "models-store.json"), JSON.stringify({ labrouter: { models: [{ id: "lab/other", contextWindow: 9 }] } }));
+    });
+    expect(probe?.contextWindow).toBeUndefined();
+  });
+
+  test("a compaction after the turn leaves the context unknown", async () => {
+    const probe = await probeOf([header(), answer("a1", { input: 10, cacheRead: 900 }), compaction("c1")], store(400_000));
+    expect(probe?.turnId).toBe("a1");
+    expect(probe?.contextTokens).toBeUndefined();
+  });
+
+  test("a turn after the compaction measures the new context", async () => {
+    const probe = await probeOf([header(), compaction("c1"), answer("a2", { input: 40, cacheRead: 0 })], store(400_000));
+    expect(probe?.contextTokens).toBe(40);
+    expect(probe?.contextWindow).toBe(400_000);
+  });
+
+  test("a failed turn's zeros are passed over for the turn before it", async () => {
+    const failed = answer("a2", { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 });
+    const probe = await probeOf([header(), answer("a1", { input: 10, cacheRead: 900 }), failed], store(400_000));
+    expect(probe?.turnId).toBe("a2");
+    expect(probe?.contextTokens).toBe(910);
+    expect(probe?.contextWindow).toBe(400_000);
+  });
+
+  test("a usage row with no input-side counts names no context", async () => {
+    const probe = await probeOf([header(), answer("a1", { output: 5 })]);
+    expect(probe?.contextTokens).toBeUndefined();
   });
 });
