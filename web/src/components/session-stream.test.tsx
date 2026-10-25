@@ -679,6 +679,90 @@ describe("SessionStream — Send now", () => {
 });
 
 // A durable pane's asks (ADR 0100): a card sits under the block that shows its item, else at the tail.
+// ── The receipt queue (ADR 0122) ────────────────────────────────────────────
+//
+// Rows from Collie's own receipts: still waiting (no button at all, one sentence), or given back to the
+// input box by a Stop (Send and Discard). The journal's own queue card is the "Send now" block above.
+describe("SessionStream — queued sends from the receipts", () => {
+  function renderReceipts(window: Partial<ChatWindow>, onReturned?: (requestId: string, action: "submit" | "discard") => Promise<boolean>) {
+    const listRef = createRef<ChatMessageListHandle>();
+    return render(
+      <SessionStream
+        feed={feedOf({ status: { kind: "live" }, entries: [], ...window })}
+        address="w1:p1"
+        working
+        showToolCalls
+        showCompactions={false}
+        fontSize={14}
+        listRef={listRef}
+        onReturned={onReturned}
+        agent="muse"
+      />,
+    );
+  }
+  const QUEUED = { requestId: "req-queued-0001", state: "queued", text: "still waiting" } as const;
+  const BACK = { requestId: "req-back-00001", state: "returned", text: "second message" } as const;
+
+  it("a waiting row says it waits for the turn, and offers no button: no Send now, no Cancel", () => {
+    const { container } = renderReceipts({ queuedSends: [QUEUED] }, vi.fn(async () => true));
+    const card = container.querySelector("[data-slot='stream-queued-receipts']")!;
+    expect([...card.querySelectorAll("p")].map((p) => p.textContent)).toEqual(["Waiting to send", "Waits for the turn to end.", "still waiting"]);
+    expect(card.querySelectorAll("button")).toHaveLength(0);
+    expect(container.querySelector("[data-slot='stream-returned']")).toBeNull();
+  });
+
+  it("a returned row says Stop put it back, and offers Send and Discard", () => {
+    const { container } = renderReceipts({ queuedSends: [BACK] }, vi.fn(async () => true));
+    const card = container.querySelector("[data-slot='stream-returned']")!;
+    expect([...card.querySelectorAll("p")].map((p) => p.textContent)).toEqual([
+      "Back in the box",
+      "Stop put this message back in the agent's box.",
+      "second message",
+    ]);
+    expect(screen.getByRole("button", { name: "Send this message from the agent's box" })).toHaveTextContent("Send");
+    expect(screen.getByRole("button", { name: "Discard this message from the agent's box" })).toHaveTextContent("Discard");
+    expect(container.querySelector("[data-slot='stream-queued-receipts']")).toBeNull();
+  });
+
+  it("a journal queue and a receipt queue stand side by side, each once", () => {
+    const { container } = renderReceipts({ queued: ["from the log"], queuedSends: [QUEUED, BACK] });
+    expect(container.querySelectorAll("[data-slot='stream-queued']")).toHaveLength(1);
+    expect(container.querySelectorAll("[data-slot='stream-queued-receipts']")).toHaveLength(1);
+    expect(container.querySelectorAll("[data-slot='stream-returned']")).toHaveLength(1);
+  });
+
+  it("the returned card's buttons are withheld where the device cannot act", () => {
+    const { container } = renderReceipts({ queuedSends: [BACK] });
+    expect(container.querySelector("[data-slot='stream-returned']")).not.toBeNull();
+    expect(container.querySelectorAll("[data-slot='stream-returned'] button")).toHaveLength(0);
+  });
+
+  it("Send and Discard hand the row's request id and the act over, once, and wait while it runs", async () => {
+    let finish: (done: boolean) => void = () => undefined;
+    const onReturned = vi.fn(() => new Promise<boolean>((resolve) => (finish = resolve)));
+    renderReceipts({ queuedSends: [BACK] }, onReturned);
+    const send = screen.getByRole("button", { name: "Send this message from the agent's box" });
+    const discard = screen.getByRole("button", { name: "Discard this message from the agent's box" });
+    await userEvent.click(send);
+    expect(onReturned).toHaveBeenCalledWith("req-back-00001", "submit");
+    expect(send).toBeDisabled();
+    expect(discard).toBeDisabled();
+    await userEvent.click(discard);
+    expect(onReturned).toHaveBeenCalledTimes(1);
+    // Nothing was done: both come back, and Discard asks for its own act.
+    await act(async () => finish(false));
+    expect(send).not.toBeDisabled();
+    await userEvent.click(discard);
+    expect(onReturned).toHaveBeenLastCalledWith("req-back-00001", "discard");
+  });
+
+  it("draws nothing on a window that is not live", () => {
+    const { container } = renderReceipts({ status: { kind: "unavailable", reason: "no-log" }, queuedSends: [QUEUED, BACK] });
+    expect(container.querySelector("[data-slot='stream-queued-receipts']")).toBeNull();
+    expect(container.querySelector("[data-slot='stream-returned']")).toBeNull();
+  });
+});
+
 describe("SessionStream: asks", () => {
   const ask = (id: string, itemId: string) => ({
     id,

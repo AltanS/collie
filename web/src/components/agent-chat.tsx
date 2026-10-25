@@ -88,7 +88,10 @@ import { paneGitHead } from "@/lib/git-head";
 import { CacheSheet } from "@/components/cache-sheet";
 import { PaneActionsSheet } from "@/components/pane-actions-sheet";
 import { CardWaitingCtx } from "@/components/chat-cards";
-import { chatStatusKey, SavedCopyRow, SessionStream, sharedFolderLine } from "@/components/session-stream";
+import { chatStatusKey, SavedCopyRow, SessionStream, sharedFolderLine, type ReturnedAction } from "@/components/session-stream";
+import { readingRefusal } from "@/components/send-notice";
+import { sendText } from "@/lib/reply-action";
+import type { IntentId } from "@/lib/durable-control";
 import { PaneSettingsSheet } from "@/components/pane-settings-sheet";
 import { WalkyOpenProvider } from "@/components/walky-log";
 import { paneAddress, takeBackNote } from "@/lib/walky";
@@ -1789,6 +1792,50 @@ export function AgentChat({
     [refuseWrite, paneId, scope, revalidator],
   );
 
+  // A tap on a returned card's Send or Discard (ADR 0122). A NEW request that names the returned row in
+  // `resendOf` with an empty text: the bridge acts on its own copy of the text, never the phone's (it
+  // may be masked), and the box that holds exactly that text lets the submit go without a rows hash.
+  // An answer that never came keeps its intent, so a second tap asks with the same request id and
+  // never sends twice.
+  const returnedIntents = useRef(new Map<string, IntentId>());
+  const handleReturned = useCallback(
+    async (requestId: string, action: ReturnedAction): Promise<boolean> => {
+      const refusal = refuseWrite();
+      if (refusal) {
+        setStatus(refusal, "error");
+        return false;
+      }
+      if (dialogPresentRef.current) {
+        setStatus(t("chat.status.screenChanged"), "warn");
+        return false;
+      }
+      if (!isLive(paneId, scope)) {
+        setStatus(t("composer.send.reconnect"), "error");
+        return false;
+      }
+      const key = `${requestId}\u0000${action}`;
+      const result = await sendText({ paneId, scope, text: "", mode: action, resendOf: requestId, held: returnedIntents.current.get(key) ?? null });
+      if (result.status === "noAnswer") {
+        returnedIntents.current.set(key, result.intent);
+        setStatus(result.error, "error");
+        return false;
+      }
+      returnedIntents.current.delete(key);
+      if (result.status === "refused") {
+        setStatus(result.error, "error");
+        return false;
+      }
+      if (result.reading.clear || result.reading.note === "discarded") {
+        setStatus(t(action === "submit" ? "chat.status.sent" : "composer.protocol.discarded"), "success");
+        revalidator.revalidate();
+        return true;
+      }
+      setStatus(readingRefusal(result.reading).sentence, "error");
+      return false;
+    },
+    [refuseWrite, paneId, scope, revalidator],
+  );
+
   // NOTE: the composer is deliberately NOT auto-focused on open/switch — that would pop the Android
   // keyboard and cover the output. You read the pane first, then tap the input to type. (Explicit
   // actions inside the composer still focus it; the mirror tap focuses it via composerRef.)
@@ -2646,6 +2693,12 @@ export function AgentChat({
                     readOnly || hostBlock !== undefined || actsDisabledByCache || connecting || dialogPresent || !paneLive
                       ? undefined
                       : handleSendQueuedNow
+                  }
+                  // The same gates: a returned card acts on the input box.
+                  onReturned={
+                    readOnly || hostBlock !== undefined || actsDisabledByCache || connecting || dialogPresent || !paneLive
+                      ? undefined
+                      : handleReturned
                   }
                 />
               </CardWaitingCtx.Provider>

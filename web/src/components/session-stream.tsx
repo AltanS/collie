@@ -14,7 +14,7 @@ import { finished, itemsOf } from "@/lib/chat-items";
 import type { ChatStatus } from "@/lib/chat-window";
 import { dropPending, unmatched, usePending } from "@/lib/durable-pending";
 import { t, type MessageKey } from "@/lib/i18n";
-import type { Ask } from "@/lib/types";
+import type { Ask, QueuedSendRow } from "@/lib/types";
 import { AskCard, type AskCardProps } from "@/components/ask-card";
 import { pinAt, promptMap } from "@/lib/prompt-pin";
 import { recallScroll, rememberScroll } from "@/lib/scroll-memory";
@@ -162,6 +162,115 @@ function QueuedCard({ queued, sendNow }: { queued: readonly string[]; sendNow: (
           {text}
         </p>
       ))}
+    </div>
+  );
+}
+
+/** What a returned card's two buttons ask of the pane view: send the box, or empty it. */
+export type ReturnedAction = "submit" | "discard";
+
+/**
+ * THE RECEIPT QUEUE (ADR 0122): the sends Collie itself queued behind a running turn, for a harness
+ * whose log does not record its queue, and any queued send a Stop gave back to the input box.
+ *
+ * Two looks. The ones still waiting are one group under the same label as the journal's queue, with
+ * one sentence and NO button: there is no Send now for a harness that names no key, and there is no
+ * Cancel, because Collie cannot take a message out of the harness's queue without a dequeue key, which
+ * no profile names yet. A returned one is its own card: the agent holds the text in its box, so it
+ * says so and offers Send (a submit of what the box holds) and Discard (the box emptied).
+ *
+ * PENDING, NEVER RETRYING, like the queue card: a tap disables both buttons until the row goes away
+ * (the next answer drops it) or {@link SEND_NOW_PENDING_MS} pass, or the act itself failed.
+ */
+function ReceiptQueueCards({
+  rows,
+  act,
+}: {
+  rows: readonly QueuedSendRow[];
+  act: ((requestId: string, action: ReturnedAction) => Promise<boolean>) | null;
+}) {
+  const waiting = rows.filter((row) => row.state === "queued");
+  const returned = rows.filter((row) => row.state === "returned");
+  return (
+    <>
+      {waiting.length > 0 && (
+        <div data-slot="stream-queued-receipts" className={QUEUED_BLOCK}>
+          <div className={QUEUED_HEAD}>
+            <p className={QUEUED_LABEL}>{t("chat.stream.queued")}</p>
+          </div>
+          <p className="text-xs text-muted-foreground">{t("chat.stream.queuedWaits")}</p>
+          {waiting.map((row) => (
+            <p key={row.requestId} className={QUEUED_TEXT}>
+              {row.text}
+            </p>
+          ))}
+        </div>
+      )}
+      {returned.map((row) => (
+        <ReturnedCard key={row.requestId} row={row} act={act} />
+      ))}
+    </>
+  );
+}
+
+function ReturnedCard({ row, act }: { row: QueuedSendRow; act: ((requestId: string, action: ReturnedAction) => Promise<boolean>) | null }) {
+  const [pending, setPending] = useState<ReturnedAction | null>(null);
+  useEffect(() => {
+    if (pending === null) return;
+    const timer = setTimeout(() => setPending(null), SEND_NOW_PENDING_MS);
+    return () => clearTimeout(timer);
+  }, [pending]);
+
+  const onTap = (action: ReturnedAction) => {
+    if (pending !== null || act === null) return;
+    setPending(action);
+    // A refusal or a failed write has already told the operator why (the pane view's status line).
+    void act(row.requestId, action).then(
+      (done) => (done ? undefined : setPending(null)),
+      () => setPending(null),
+    );
+  };
+
+  return (
+    <div data-slot="stream-returned" className={QUEUED_BLOCK}>
+      <div className={QUEUED_HEAD}>
+        <p className={QUEUED_LABEL}>{t("chat.stream.returned")}</p>
+        {act !== null && (
+          <div className="flex items-center gap-1">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              data-slot="stream-returned-discard"
+              className={QUEUED_BUTTON}
+              disabled={pending !== null}
+              aria-busy={pending === "discard"}
+              // The accessible name STARTS with the visible word (WCAG 2.5.3, Label in Name).
+              aria-label={t("chat.stream.returnedDiscardAria")}
+              onClick={() => onTap("discard")}
+            >
+              {pending === "discard" && <Loader2 aria-hidden className="size-3.5 animate-spin" />}
+              {t("chat.stream.returnedDiscard")}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              data-slot="stream-returned-send"
+              className={QUEUED_BUTTON}
+              disabled={pending !== null}
+              aria-busy={pending === "submit"}
+              aria-label={t("chat.stream.returnedSendAria")}
+              onClick={() => onTap("submit")}
+            >
+              {pending === "submit" ? <Loader2 aria-hidden className="size-3.5 animate-spin" /> : <CornerDownLeft aria-hidden className="size-3.5" />}
+              {t("chat.stream.returnedSend")}
+            </Button>
+          </div>
+        )}
+      </div>
+      <p className="text-xs text-muted-foreground">{t("chat.stream.returnedWhy")}</p>
+      <p className={QUEUED_TEXT}>{row.text}</p>
     </div>
   );
 }
@@ -325,6 +434,7 @@ export function SessionStream({
   listRef,
   savedCopy = null,
   onSendQueuedNow,
+  onReturned,
   asks,
   durable = false,
   questionPending = false,
@@ -365,6 +475,12 @@ export function SessionStream({
    * sent. The keys are handed back so this body never holds a copy of its own.
    */
   onSendQueuedNow?: (keys: readonly string[]) => Promise<boolean>;
+  /**
+   * Send or empty the input box that holds a queued message a Stop gave back (ADR 0122), by the
+   * row's request id. Passed ONLY where this device may write to this pane; leave it out and a
+   * returned card has no buttons. Resolves false when nothing was done.
+   */
+  onReturned?: (requestId: string, action: ReturnedAction) => Promise<boolean>;
   /**
    * The open asks of a pane that carries them as data (ADR 0100), and the props every card shares. Each card sits
    * under the block that shows its item, or at the tail when that item is not on screen. The list holds
@@ -766,6 +882,9 @@ export function SessionStream({
           "mine, not yet sent" rather than "a turn nobody answered". */}
       {window.queued.length > 0 && window.status.kind === "live" && (
         <QueuedCard queued={window.queued} sendNow={sendNow} />
+      )}
+      {window.queuedSends.length > 0 && window.status.kind === "live" && (
+        <ReceiptQueueCards rows={window.queuedSends} act={onReturned ?? null} />
       )}
 
       {/* The reading, when there is one, and only where there is nothing to read under it. A stale

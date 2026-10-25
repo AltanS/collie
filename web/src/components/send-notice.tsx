@@ -4,7 +4,7 @@ import { Check, TriangleAlert } from "lucide-react";
 import { Notice } from "@/components/ui/notice";
 import { capSentence, noteKey, type SendNote, type SendReading, type SendReply } from "@/lib/send-protocol";
 import { shortHash, type Surface } from "@/lib/surface/surface";
-import { t as translate, type MessageKey } from "@/lib/i18n";
+import { t as translate, tn, type MessageKey } from "@/lib/i18n";
 import type { ClearReason, ClearReceipt } from "@/lib/surface/clear";
 import type { StopReason, StopReceipt } from "@/lib/surface/stop";
 
@@ -64,17 +64,26 @@ const STOP_REFUSALS = {
  * pressed. A refused Stop behind an open dialog points at the card, where the answer is.
  */
 export function stopNotice(receipt: StopReceipt): SendRefusal {
-  if (receipt.outcome === "stopped") return { sentence: translate("belt.stop.receipt.stopped"), detail: null, toCard: false, screen: false, tone: "neutral" };
+  if (receipt.outcome === "stopped") return { sentence: withReturned(translate("belt.stop.receipt.stopped"), receipt), detail: null, toCard: false, screen: false, tone: "neutral" };
   // No receipt came back (a crew member that did not answer in time): the key may have gone in, so the
   // person reads the pane before a second tap.
   if (receipt.outcome === "unknown") return phoneRefusal(translate("belt.stop.receipt.unknown"));
   if (receipt.outcome === "pressed") {
     // The key opened a dialog: the turn is not the story now, its card is.
-    if (receipt.reason === "dialog_open") return phoneRefusal(translate("belt.stop.receipt.pressedDialog"), true);
-    return phoneRefusal(translate("belt.stop.receipt.pressed"));
+    if (receipt.reason === "dialog_open") return phoneRefusal(withReturned(translate("belt.stop.receipt.pressedDialog"), receipt), true);
+    return phoneRefusal(withReturned(translate("belt.stop.receipt.pressed"), receipt));
   }
   const reason = receipt.reason ?? "unreadable";
   return phoneRefusal(translate(STOP_REFUSALS[reason]), reason === "dialog_open");
+}
+
+/**
+ * A Stop sentence with the clause for the queued messages a read-back saw back in the input box
+ * (ADR 0122): "Stopped. 1 queued message is back in the box." Only what the bridge saw is counted.
+ */
+function withReturned(sentence: string, receipt: StopReceipt): string {
+  const count = receipt.returned?.length ?? 0;
+  return count === 0 ? sentence : `${sentence} ${tn("belt.stop.receipt.returned", count)}`;
 }
 
 /** The sentence of each refusal a Clear can answer (ADR 0116), one string key per closed reason. */

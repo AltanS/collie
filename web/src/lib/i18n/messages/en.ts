@@ -508,6 +508,7 @@ export const en = {
   "sendReceipts.outcome.cancelled": "Cancelled",
   "sendReceipts.outcome.steered": "Steered",
   "sendReceipts.queued": "Queued behind the agent's turn",
+  "sendReceipts.returned": "Stop put it back in the agent's box",
   "sendReceipts.keys": "Keys: {keys}",
   "sendReceipts.noKeys": "No keys were sent.",
   "sendReceipts.gaps": "Waited: {gaps}",
@@ -686,6 +687,13 @@ export const en = {
   "chat.pin.earlier": "Asked further back · Load older",
   "chat.stream.sendNow": "Send now",
   "chat.stream.sendNowAria": "Send now, the waiting messages",
+  "chat.stream.queuedWaits": "Waits for the turn to end.",
+  "chat.stream.returned": "Back in the box",
+  "chat.stream.returnedWhy": "Stop put this message back in the agent's box.",
+  "chat.stream.returnedSend": "Send",
+  "chat.stream.returnedSendAria": "Send this message from the agent's box",
+  "chat.stream.returnedDiscard": "Discard",
+  "chat.stream.returnedDiscardAria": "Discard this message from the agent's box",
   "chat.stream.loadOlderFailed": "Couldn't load older turns",
   // --- chat.card (the blocks of the stream: turns, steps, notices) ---
   // A card's LABEL is the kind of step, a chrome word. What the step acted on — a path, a command,
@@ -1377,6 +1385,8 @@ export const en = {
   "belt.stop.receipt.refused.paneGone": "This pane is gone.",
   "belt.stop.receipt.refused.unsupportedBuild": "This machine cannot stop from the phone yet. Update it.",
   "belt.stop.receipt.unknown": "No answer came back. The Stop may have gone in. Check the pane before you tap Stop again.",
+  "belt.stop.receipt.returned.one": "{count} queued message is back in the box.",
+  "belt.stop.receipt.returned.other": "{count} queued messages are back in the box.",
 
   // --- quickActions (one-tap reply dock) ---
   "quickActions.group.confirm": "confirm",

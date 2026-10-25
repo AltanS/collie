@@ -270,6 +270,12 @@ three things under the box:
 
 If the stop key opened a dialog instead, Collie says so and points you to its card.
 
+Some agents, OMP among them, put a queued message back into their input box when you stop the turn.
+Collie reads the box after the key, and the receipt says so, for example "Stopped. 1 queued message is
+back in the box." In Chat that message moves to a **Back in the box** card with two buttons: **Send**
+sends what the box holds, and **Discard** empties the box. The card goes when the box no longer holds
+the text. Until then Collie refuses a new message, because the box is not empty.
+
 Collie refuses before it presses when pressing could do harm:
 
 - **A dialog is open.** Escape would answer that dialog. Answer it on its card instead.
@@ -1052,6 +1058,12 @@ When you queue a message while Claude Code works, Chat shows it on a **Waiting t
 the card's **Send now** button sends the whole queue to the running turn at once. Only Claude Code
 offers it, because the button presses Ctrl+Enter, the key that agent defines for this. The button is
 hidden on a read-only device and on a saved copy.
+
+Most other agents, OMP and pi among them, write nothing about a queued message into their log until
+the turn ends. For them Chat draws the messages Collie itself queued: each shows on the same
+**Waiting to send** card with "Waits for the turn to end." until the agent's log shows it as a
+prompt, or for 30 minutes at most. That card has no button. Collie cannot take a message back out of
+the agent's queue, so there is no Cancel.
 
 The display gear has a **Stretchtext replies** switch, off by default. With it on, Chat, the full reply card and History show a reply written with the cc-stretch plugin as its short form, and a tap on a phrase opens it. A `{{name}}` without a bar shows as `name`.
 

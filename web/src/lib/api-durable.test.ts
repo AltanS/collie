@@ -229,3 +229,25 @@ describe("abortPane on a pane with a screen (M68 spec 02)", () => {
     await expect(abortPane("t1", { requestId: ID }, { host: "laptop" })).resolves.toEqual({ requestId: ID, outcome: "unknown" });
   });
 });
+
+describe("abortPane on a pane with a screen: the queued sends that came back (ADR 0122)", () => {
+  it("reads `returned` as the request ids a read-back saw, drops a word that is no request id, and keeps the rest", async () => {
+    server.use(
+      http.post(/\/api\/pane\/s1\/abort$/, () =>
+        HttpResponse.json({ requestId: "stop-req-0001", outcome: "stopped", keys: ["Escape"], returned: ["req-back-00001", "../x", 7] }),
+      ),
+    );
+    await expect(abortPane("s1", { requestId: "stop-req-0001" })).resolves.toEqual({
+      requestId: "stop-req-0001",
+      outcome: "stopped",
+      keys: ["Escape"],
+      returned: ["req-back-00001"],
+    });
+  });
+
+  it("a bridge one release behind sends no `returned`, and the receipt has none", async () => {
+    server.use(http.post(/\/api\/pane\/s1\/abort$/, () => HttpResponse.json({ requestId: "stop-req-0002", outcome: "pressed", keys: ["Escape"], returned: [] })));
+    const receipt = await abortPane("s1", { requestId: "stop-req-0002" });
+    expect(receipt).toEqual({ requestId: "stop-req-0002", outcome: "pressed", keys: ["Escape"] });
+  });
+});
