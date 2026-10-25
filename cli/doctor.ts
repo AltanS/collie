@@ -65,6 +65,7 @@ import { accountWindowsDoctorLine, grokAuthPath, hasOpencodeGoEntry, opencodeAut
 import { explicitMux, probeMuxes, refusedMux, type MuxSighting } from "./mux.ts";
 import { cacheFindings } from "./cache-findings.ts";
 import { surfaceFindings } from "./surface-findings.ts";
+import { harnessFindings, harnessReader, type ReadHarness } from "./harness-findings.ts";
 import { durableFindings, sourcesFindings } from "./durable-findings.ts";
 import { historyFindings, type SnapshotRead } from "./history.ts";
 import { EXIT, type Io } from "./io.ts";
@@ -179,6 +180,12 @@ export interface DoctorDeps {
   readonly ui?: Ui | null;
   /** The Whistle model check's stand-in pin, for the tests. Production leaves it. */
   readonly whistle?: WhistleSeams;
+  /**
+   * Reads each harness's binary and version for the harnesses table (`cli/harness-findings.ts`). It
+   * runs the harness's own version command, which is a read. Absent means no table, which is what
+   * the tests that are not about it see.
+   */
+  readonly harnesses?: ReadHarness;
 }
 
 // ── §8.6's window, and the shoulder before it ────────────────────────────────
@@ -285,6 +292,8 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
     // What the input readers saw, per harness and version, over the last seven days (M56 spec 09): a
     // summary line and one line per row, read from the bridge's own day files. A read, like the rest.
     ...surfaceFindings({ ctx: deps.ctx, files: deps.files, now: deps.now }),
+    // The binary and version of every harness with a profile, and what the profile says (1.24.1).
+    ...(deps.harnesses === undefined ? [] : await harnessFindings(deps.harnesses)),
     restartPending(deps, install, runtimeMarker, await ownRead()),
     // STAMPED `crew` when it is a comparison at all (ADR 0050), while still PRINTING here, where it
     // always has. `clock` measures this machine against a member's `Date` header and its own remedy
@@ -404,12 +413,15 @@ async function render(
   crew: readonly Finding[],
 ): Promise<void> {
   const heading = `collie doctor — ${collieVersionBare(deps.ctx.root, (p) => deps.files.read(p))} · mode ${mode}`;
+  // The first line, before the heading, so a person with two lanes sees which one this run read.
+  const instance = instanceLine(deps.ctx);
   const crewNote = ["crew: none — this collie is not in a crew.", soloCrewHint(deps.host)];
   // One findings list, two renderings. The terminal gets the columns laid out and the statuses
   // coloured; everything else gets exactly the lines below, which are what `--json`'s human twin has
   // always printed and what scripts/collie-cli.test.sh greps.
   if (deps.ui != null) {
     await deps.ui.doctor({
+      instance,
       heading,
       local,
       crewTitle: crew.length === 0 ? "crew:" : `crew: ${data?.crew?.name ?? "?"}`,
@@ -418,6 +430,7 @@ async function render(
     });
     return;
   }
+  deps.io.out(instance);
   deps.io.out(heading);
   deps.io.out("");
   deps.io.out("local:");
@@ -446,15 +459,27 @@ function line(f: Finding): string {
 
 // ── Local checks ─────────────────────────────────────────────────────────────
 
+/** The `collie` finding, with the instance and state directory this run read. */
+interface IdentityFinding extends Finding {
+  readonly instance: string | null;
+  readonly stateDir: string;
+}
+
 /**
  * The very first line: this Collie's own version and platform. Not a check — there is nothing to
  * pass or fail — but an operator pasting a `doctor --json` block into a GitHub issue should never
  * have to be asked "which version was this" as a follow-up question.
  */
-function identity(deps: DoctorDeps): Finding {
+function identity(deps: DoctorDeps): IdentityFinding {
   const version = collieVersionBare(deps.ctx.root, (p) => deps.files.read(p));
   const platform = platformId(process.platform, process.arch) ?? `${process.platform}-${process.arch}`;
-  return ok("collie", `v${version} · ${platform}`);
+  // `instance` and `stateDir` ride on this finding so `--json` names the state it read (1.24.1).
+  return { ...ok("collie", `v${version} · ${platform}`), instance: deps.ctx.instance, stateDir: deps.ctx.stateDir };
+}
+
+/** The first line of the human report: the instance (`COLLIE_INSTANCE`, or the default) and the state directory read. */
+function instanceLine(ctx: CliContext): string {
+  return `instance: ${ctx.instance ?? "default"} · state ${ctx.stateDir}`;
 }
 
 /**
@@ -2398,5 +2423,6 @@ export function doctorDeps(base: {
     beacons: beaconReader(base.ctx.stateDir),
     now: () => Date.now(),
     ownerOnly: realOwnerOnlyDeps,
+    harnesses: harnessReader(base.ctx.env),
   };
 }

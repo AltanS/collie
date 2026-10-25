@@ -67,21 +67,95 @@ export function mergePaths(login: string | undefined, own: string | undefined, h
  * child as well, because a script agent (`#!/usr/bin/env node`) finds its interpreter on it.
  */
 export function createVersionReader(deps: VersionReaderDeps = {}): AsyncVersionReader {
+  const search = createBinarySearch(deps);
+  const run = deps.run ?? spawnWithPath;
+  return async (profile) => {
+    const found = await search(profile);
+    if (found === null) return null;
+    const output = await run([found.binary, ...found.args], found.path);
+    return output === null ? null : versionFromOutput(profile, output);
+  };
+}
+
+/** Where a profile's version command resolves: the file, the rest of its argv and the PATH it was found on. */
+interface BinaryFound {
+  readonly binary: string;
+  readonly args: readonly string[];
+  readonly path: string | undefined;
+}
+
+/** The one resolution rule for a profile's binary (see {@link createVersionReader}); null when nothing on the PATH answers. */
+function createBinarySearch(deps: VersionReaderDeps): (profile: Profile) => Promise<BinaryFound | null> {
   const env = deps.env ?? process.env;
   const host = deps.host ?? HOST;
   const loginPath = deps.loginPath ?? createLoginPath({ ...deps, env, host });
   const resolve =
     deps.resolve ?? ((binary: string, path: string | undefined) => findTool(binary, { ...env, PATH: path }, homedir(), host));
-  const run = deps.run ?? spawnWithPath;
   return async (profile) => {
     const [command, ...args] = profile.identity.versionCommand;
     const path = mergePaths(await loginPath(), envGet(env, "PATH", host), host);
     const binary = command === undefined ? null : resolve(command, path);
-    if (binary === null) return null;
-    const output = await run([binary, ...args], path);
-    return output === null ? null : versionFromOutput(profile, output);
+    return binary === null ? null : { binary, args, path };
   };
 }
+
+/** What a version command did, for a diagnosis: how it ended and what it said on stderr. */
+export interface RunOutcome {
+  /** The exit code, or null when the process was killed (the bound) or never ran. */
+  readonly exitCode: number | null;
+  /** Stdout and stderr joined, as {@link RunResolvedCommand} returns them. */
+  readonly output: string;
+  readonly stderr: string;
+}
+
+/** Runs a resolved command with `path` as its PATH and reports how it ended, or null when it would not run. */
+export type RunResolvedDetailed = (argv: readonly string[], path: string | undefined) => Promise<RunOutcome | null>;
+
+/** A harness's binary as the bridge would find it, and what its version command returned. */
+export interface BinaryRead {
+  /** The file the version command resolved to on the login PATH, or null when nothing answers: not installed. */
+  readonly binary: string | null;
+  /** The version the profile's expression found, or null. Always null with no binary. */
+  readonly version: string | null;
+  /** How the version command ended. Null with no binary, or when the command would not run. */
+  readonly outcome: RunOutcome | null;
+}
+
+export interface BinaryReaderDeps extends VersionReaderDeps {
+  runDetailed?: RunResolvedDetailed;
+}
+
+/**
+ * Reads a binary the way {@link createVersionReader} does (same login PATH, same resolution, same
+ * child PATH) and keeps what that reader throws away: the resolved file and how the command ended.
+ * `collie doctor` uses it to tell "not installed" from "installed, but the version read failed".
+ */
+export function createBinaryReader(deps: BinaryReaderDeps = {}): (profile: Profile) => Promise<BinaryRead> {
+  const search = createBinarySearch(deps);
+  const run = deps.runDetailed ?? spawnWithPathDetailed;
+  return async (profile) => {
+    const found = await search(profile);
+    if (found === null) return { binary: null, version: null, outcome: null };
+    const outcome = await run([found.binary, ...found.args], found.path);
+    return {
+      binary: found.binary,
+      version: outcome === null ? null : versionFromOutput(profile, outcome.output),
+      outcome,
+    };
+  };
+}
+
+const spawnWithPathDetailed: RunResolvedDetailed = async (argv, path) => {
+  try {
+    const env = path === undefined ? process.env : { ...process.env, [envKey(process.env, "PATH")]: path };
+    const run = Bun.spawn([...argv], { env, stdout: "pipe", stderr: "pipe", timeout: VERSION_TIMEOUT_MS });
+    const [out, err] = await Promise.all([new Response(run.stdout).text(), new Response(run.stderr).text()]);
+    const exitCode = await run.exited;
+    return { exitCode, output: `${out} ${err}`, stderr: err };
+  } catch {
+    return null;
+  }
+};
 
 const spawnWithPath: RunResolvedCommand = async (argv, path) => {
   try {

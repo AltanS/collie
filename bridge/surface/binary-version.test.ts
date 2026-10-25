@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { dirname } from "node:path";
 
 import { hostFor } from "../host.ts";
-import { binaryVersion, createVersionReader, mergePaths, spawnBinaryVersion } from "./binary-version.ts";
+import { binaryVersion, createBinaryReader, createVersionReader, mergePaths, spawnBinaryVersion } from "./binary-version.ts";
 import { SurfaceShadow } from "./shadow.ts";
 import { loadProfiles, parseProfile, profileFor } from "../../web/src/lib/surface/profile.ts";
 
@@ -193,5 +193,50 @@ describe("the shadow's default version reader", () => {
     const shadow = new SurfaceShadow({ mux, pollMs: 1000, log: () => {} });
     // The field is private; reading it by name is the one way to see which reader the shadow defaulted to.
     expect(shadow["readVersion"]).toBe(spawnBinaryVersion);
+  });
+});
+
+describe("createBinaryReader — the file and how the command ended", () => {
+  const base = { env: { PATH: "/usr/bin" }, host: hostFor("linux"), loginPath: () => Promise.resolve("/home/op/.local/bin:/usr/bin") };
+  const resolve = (binary: string) => `/home/op/.local/bin/${binary}`;
+
+  test("keeps the resolved file and the exit code beside the version", async () => {
+    const read = createBinaryReader({
+      ...base,
+      resolve,
+      runDetailed: () => Promise.resolve({ exitCode: 0, output: "2.1.300 (a build) ", stderr: "" }),
+    });
+    const [command] = anyProfile!.identity.versionCommand;
+    expect(await read(anyProfile!)).toEqual({
+      binary: `/home/op/.local/bin/${command}`,
+      version: "2.1.300",
+      outcome: { exitCode: 0, output: "2.1.300 (a build) ", stderr: "" },
+    });
+  });
+
+  test("a command that fails gives the file, no version and the exit code", async () => {
+    const read = createBinaryReader({
+      ...base,
+      resolve,
+      runDetailed: () => Promise.resolve({ exitCode: 127, output: " not found", stderr: "not found" }),
+    });
+    const got = await read(anyProfile!);
+    expect(got.binary).not.toBeNull();
+    expect(got.version).toBeNull();
+    expect(got.outcome?.exitCode).toBe(127);
+  });
+
+  test("a binary nowhere on the PATH is null, and nothing runs", async () => {
+    let ran = false;
+    const read = createBinaryReader({
+      ...base,
+      resolve: () => null,
+      runDetailed: () => {
+        ran = true;
+        return Promise.resolve(null);
+      },
+    });
+    expect(await read(anyProfile!)).toEqual({ binary: null, version: null, outcome: null });
+    expect(ran).toBe(false);
   });
 });
