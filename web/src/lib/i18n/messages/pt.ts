@@ -2026,6 +2026,7 @@ export const pt: Dictionary = {
   "chat.usage.window.5h.aria": "Limite de 5 horas {percent}% usado",
   "chat.usage.window.7d": "7d",
   "chat.usage.window.7d.aria": "Limite de 7 dias {percent}% usado",
+  "chat.usage.cost.aria": "Custo da sessão {amount}",
   "files.title": "Arquivos",
   "branch.aria": "Branch {name}",
   "branch.detachedAria": "Desanexado em {sha}",

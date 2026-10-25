@@ -2126,6 +2126,7 @@ export const ru: Dictionary = {
   "chat.usage.window.5h.aria": "5-часовой лимит использован на {percent}%",
   "chat.usage.window.7d": "7d",
   "chat.usage.window.7d.aria": "7-дневный лимит использован на {percent}%",
+  "chat.usage.cost.aria": "Стоимость сессии {amount}",
   "files.title": "Файлы",
   "branch.aria": "Ветка {name}",
   "branch.detachedAria": "Отсоединено на {sha}",

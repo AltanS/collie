@@ -647,3 +647,30 @@ describe("the codex probe — the context", () => {
     expect(probe?.contextTokens).toBeUndefined();
   });
 });
+
+// Codex's log carries no cost, and Collie prices no tokens itself (PaneUsage.cost stays absent).
+describe("the codex probe — no cost", () => {
+  const SID = "01a13c59-3c21-7ce0-bb62-6768d54d272e";
+
+  test("a log with token counts yields a probe with no cost", async () => {
+    const created = `${tmpdir()}/collie-codex-cost-${Math.floor(performance.now() * 1000)}`;
+    const day = join(created, "2026", "10", "14");
+    await mkdir(day, { recursive: true });
+    const lines = [
+      JSON.stringify({ timestamp: "2026-10-14T21:37:24.000Z", type: "turn_context", payload: { turn_id: "t1", model: "lab-model", summary: "none" } }),
+      JSON.stringify({
+        timestamp: "2026-10-14T21:37:30.000Z",
+        type: "event_msg",
+        payload: {
+          type: "token_count",
+          info: { last_token_usage: { input_tokens: 17345, cached_input_tokens: 17187, output_tokens: 164 }, total_token_usage: { input_tokens: 40000, output_tokens: 900 }, model_context_window: 258_400 },
+        },
+      }),
+    ];
+    await Bun.write(join(day, `rollout-2026-10-14T18-37-23-${SID}.jsonl`), `${lines.join("\n")}\n`);
+    const probe = await codexJournal(created).cacheProbe?.({ kind: "id", value: SID });
+    await rm(created, { recursive: true, force: true });
+    expect(probe?.contextTokens).toBe(17_345);
+    expect(probe?.costUsd).toBeUndefined();
+  });
+});

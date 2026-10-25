@@ -838,3 +838,49 @@ describe("the context reading", () => {
     expect(tracker.context("ses-1")).toBeUndefined();
   });
 });
+
+// The session cost the probe summed: kept beside the context, same owner and reap, for bridge/usage.ts.
+describe("the cost reading", () => {
+  test("a probe's cost is kept, replaced by a newer sum, and kept when a read names none", async () => {
+    const c = clock();
+    const { adapter, state } = fakeAdapter("pi");
+    state.probe = probe({ costUsd: 0.11 });
+    const tracker = new CacheTracker({ pi: adapter }, noOverrides, c.now, { floorMs: 1000 });
+    await tracker.refresh([pane("pi", "ses-1")]);
+    expect(tracker.cost("ses-1")).toBe(0.11);
+
+    c.advance(2000);
+    state.stat = { size: 20, mtimeMs: 200 };
+    state.probe = probe({ turnId: "turn-1", costUsd: 0.2 });
+    await tracker.refresh([pane("pi", "ses-1")]);
+    expect(tracker.cost("ses-1")).toBe(0.2);
+
+    c.advance(2000);
+    state.stat = { size: 30, mtimeMs: 300 };
+    state.probe = probe({ turnId: "turn-2" });
+    await tracker.refresh([pane("pi", "ses-1")]);
+    expect(tracker.cost("ses-1")).toBe(0.2);
+  });
+
+  test("a harness that states none has none, and a bad number is no reading", async () => {
+    const { adapter, state } = fakeAdapter("codex");
+    state.probe = probe({});
+    const tracker = new CacheTracker({ codex: adapter }, noOverrides, () => NOW);
+    await tracker.refresh([pane("codex", "ses-1")]);
+    expect(tracker.cost("ses-1")).toBeUndefined();
+    state.probe = probe({ costUsd: Number.NaN });
+    await tracker.refresh([pane("codex", "ses-2")]);
+    expect(tracker.cost("ses-2")).toBeUndefined();
+  });
+
+  test("is reaped with the pane, by the poll of the session that owns it", async () => {
+    const { adapter, state } = fakeAdapter("pi");
+    state.probe = probe({ costUsd: 1 });
+    const tracker = new CacheTracker({ pi: adapter }, noOverrides, () => NOW);
+    await tracker.refresh([pane("pi", "ses-1")], { session: "main" });
+    await tracker.refresh([], { session: "work" });
+    expect(tracker.cost("ses-1")).toBe(1);
+    await tracker.refresh([], { session: "main" });
+    expect(tracker.cost("ses-1")).toBeUndefined();
+  });
+});

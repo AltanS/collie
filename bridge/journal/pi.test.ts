@@ -1645,3 +1645,81 @@ describe("the pi probe — the context", () => {
     expect(probe?.contextTokens).toBeUndefined();
   });
 });
+
+// The session cost (PaneUsage.cost): the sum of message.usage.cost.total over every assistant row,
+// kept incrementally. The row shape is Oh My Pi 18.6.1's and pi's own.
+describe("the pi probe — the session cost", () => {
+  const SID = "019f1827-bf99-7927-9684-76318de905b5";
+  const cost = (total: number) => ({ input: 3e-7, output: 0.000175, cacheRead: 0.001, cacheWrite: 0.00002, total });
+  const answer = (id: string, total: number | null) => {
+    const counts = { input: 3, output: 350, cacheRead: 120_007, cacheWrite: 125 };
+    const usage = total === null ? counts : { ...counts, cost: cost(total) };
+    return row(id, { role: "assistant", content: [{ type: "text", text: "ok" }], provider: "labrouter", model: "lab/model-one", usage });
+  };
+  const user = (id: string) => row(id, { role: "user", content: [{ type: "text", text: "hi" }], usage: { cost: cost(99) } });
+
+  async function withLog<T>(run: (log: string, probe: () => Promise<number | undefined>) => Promise<T>): Promise<T> {
+    const created = await mkdtemp(join(tmpdir(), "collie-pi-cost-"));
+    try {
+      const root = join(created, "sessions");
+      const project = join(root, "--repo--");
+      await mkdir(project, { recursive: true });
+      const log = join(project, `2026-07-29T10-00-00-000Z_${SID}.jsonl`);
+      await Bun.write(log, "");
+      const journal = piJournal(root);
+      const real = await realpath(log);
+      return await run(real, async () => (await journal.cacheProbe?.({ kind: "path", value: real }))?.costUsd);
+    } finally {
+      await rm(created, { recursive: true, force: true });
+    }
+  }
+
+  test("sums two assistant rows and an aborted zero row, and ignores other roles", async () => {
+    await withLog(async (log, probe) => {
+      const aborted = row("a3", { role: "assistant", content: [], usage: { input: 0, output: 0, cost: cost(0) } });
+      await Bun.write(log, `${[header(), user("u1"), answer("a1", 0.001390995), answer("a2", 0.25), aborted].join("\n")}\n`);
+      expect(await probe()).toBeCloseTo(0.251390995, 9);
+    });
+  });
+
+  test("a log that states no cost, or only zeros, has no cost", async () => {
+    await withLog(async (log, probe) => {
+      await Bun.write(log, `${[header(), answer("a1", null)].join("\n")}\n`);
+      expect(await probe()).toBeUndefined();
+      await Bun.write(log, `${[header(), answer("a1", 0)].join("\n")}\n`);
+      expect(await probe()).toBeUndefined();
+    });
+  });
+
+  test("a new row adds to the sum, and a torn last line waits for its newline", async () => {
+    await withLog(async (log, probe) => {
+      await Bun.write(log, `${[header(), answer("a1", 0.5)].join("\n")}\n`);
+      expect(await probe()).toBeCloseTo(0.5, 9);
+      const next = answer("a2", 0.25);
+      const handle = Bun.file(log);
+      const before = await handle.text();
+      await Bun.write(log, before + next.slice(0, 40));
+      expect(await probe()).toBeCloseTo(0.5, 9);
+      await Bun.write(log, `${before}${next}\n`);
+      expect(await probe()).toBeCloseTo(0.75, 9);
+      expect(await probe()).toBeCloseTo(0.75, 9);
+    });
+  });
+
+  test("a file replaced by a shorter one starts the sum again", async () => {
+    await withLog(async (log, probe) => {
+      await Bun.write(log, `${[header(), answer("a1", 0.5), answer("a2", 0.5)].join("\n")}\n`);
+      expect(await probe()).toBeCloseTo(1, 9);
+      await Bun.write(log, `${[header(), answer("b1", 0.125)].join("\n")}\n`);
+      expect(await probe()).toBeCloseTo(0.125, 9);
+    });
+  });
+
+  test("reads a big log in one pass", async () => {
+    await withLog(async (log, probe) => {
+      const rows = Array.from({ length: 2000 }, (_, i) => answer(`a${i}`, 0.01));
+      await Bun.write(log, `${[header(), ...rows].join("\n")}\n`);
+      expect(await probe()).toBeCloseTo(20, 6);
+    });
+  });
+});

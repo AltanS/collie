@@ -313,3 +313,55 @@ describe("UsageTracker with the journal's context", () => {
     expect(tracker.get(agentPane("pi", null))).toBeUndefined();
   });
 });
+
+// The session's cost (PaneUsage.cost): Claude's usage file carries it, pi, OMP and OpenCode get it from
+// the journal's sum, and it is absent otherwise, never a zero.
+describe("UsageTracker with the session cost", () => {
+  const dir = "/state/usage";
+  const file = (session: string): string => join(dir, usageFileName(session));
+  function agentPane(agent: string, session: string | null): AgentView {
+    // SAFETY: the tracker reads `agentSession`, `agent` and `kind` off a pane and nothing else.
+    const view = { agent, kind: "agent" } as AgentView;
+    if (session !== null) view.agentSession = { kind: "id", value: session };
+    return view;
+  }
+  function journal(costs: Record<string, number | undefined>) {
+    return { context: () => undefined, cost: (key: string) => costs[key] };
+  }
+
+  it("rides through the join from a usage file", async () => {
+    const entries = new Map<string, [number, string]>([[file("s1"), [NOW, record({ context: 42, cost: 0.11 })]]]);
+    const tracker = new UsageTracker(dir, memoryFiles(entries), () => NOW);
+    await tracker.refresh([agentPane("claude", "s1")]);
+    expect(tracker.get(agentPane("claude", "s1"))).toEqual({ context: 42, cost: 0.11 });
+  });
+
+  it("a cost alone is a reading", async () => {
+    const entries = new Map<string, [number, string]>([[file("s1"), [NOW, record({ cost: 3 })]]]);
+    const tracker = new UsageTracker(dir, memoryFiles(entries), () => NOW);
+    await tracker.refresh([agentPane("claude", "s1")]);
+    expect(tracker.get(agentPane("claude", "s1"))).toEqual({ cost: 3 });
+  });
+
+  it("takes the journal's sum when the pane has no file, and the file's cost when it has one", async () => {
+    const entries = new Map<string, [number, string]>([[file("s2"), [NOW, record({ cost: 9 })]]]);
+    const tracker = new UsageTracker(dir, memoryFiles(entries), () => NOW, undefined, journal({ s1: 0.5, s2: 1 }));
+    await tracker.refresh([agentPane("omp", "s1"), agentPane("claude", "s2")]);
+    expect(tracker.get(agentPane("omp", "s1"))).toEqual({ cost: 0.5 });
+    expect(tracker.get(agentPane("claude", "s2"))).toEqual({ cost: 9 });
+  });
+
+  it("rides beside the account windows, and is absent when no one reports it", async () => {
+    const limits = [{ window: "5h" as const, used: 33, resetsAt: NOW + 60_000 }];
+    const tracker = new UsageTracker(dir, memoryFiles(new Map()), () => NOW, { limits: () => limits }, journal({ s1: 0.25 }));
+    expect(tracker.get(agentPane("codex", "s1"))).toEqual({ limits, cost: 0.25 });
+    expect(tracker.get(agentPane("codex", "s9"))).toEqual({ limits });
+    const bare = new UsageTracker(dir, memoryFiles(new Map()), () => NOW, undefined, journal({}));
+    expect(bare.get(agentPane("codex", "s1"))).toBeUndefined();
+  });
+
+  it("parses a cost, and drops one that is not a non-negative number", () => {
+    expect(parseUsageRecord(record({ cost: 1.5 }))?.cost).toBe(1.5);
+    for (const bad of ["1", -2, null, true]) expect(parseUsageRecord(record({ cost: bad }))?.cost).toBeUndefined();
+  });
+});

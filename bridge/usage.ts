@@ -84,6 +84,14 @@ export interface PaneUsage {
   context?: number;
   /** The windows still running, in {@link USAGE_WINDOWS} order. Absent rather than empty. */
   limits?: UsageLimit[];
+  /**
+   * The running total of what the session this pane shows has cost, in US dollars (never a count of
+   * tokens; Collie prices nothing itself). Claude Code reports it in the statusLine document
+   * (`cost.total_cost_usd`); pi, Oh My Pi and OpenCode write it on every assistant message in their
+   * logs, and the journal sums those (`CacheProbe.costUsd`); Codex's log carries none. ABSENT, NEVER A
+   * PLACEHOLDER: no `0` for "unknown". A usage file's cost wins over the journal's, as the context does.
+   */
+  cost?: number;
 }
 
 /**
@@ -131,6 +139,12 @@ export function asPercent(value: JsonValue | undefined): number | undefined {
   return n === undefined || !Number.isFinite(n) ? undefined : Math.min(100, Math.max(0, n));
 }
 
+/** A cost as the phone may draw it: a finite number of dollars, zero or more. Anything else is no reading. */
+export function asCost(value: JsonValue | undefined): number | undefined {
+  const n = asJsonNumber(value);
+  return n === undefined || !Number.isFinite(n) || n < 0 ? undefined : n;
+}
+
 function asEpochMs(value: JsonValue | undefined): number | undefined {
   const n = asJsonNumber(value);
   return n !== undefined && Number.isFinite(n) && n > 0 ? n : undefined;
@@ -150,6 +164,8 @@ export function parseUsageRecord(text: string): UsageRecord | null {
   const record: UsageRecord = { schemaVersion: USAGE_SCHEMA_VERSION, harness: harness.slice(0, 32), at };
   const context = asPercent(root.context);
   if (context !== undefined) record.context = context;
+  const cost = asCost(root.cost);
+  if (cost !== undefined) record.cost = cost;
   const size = asJsonNumber(root.window);
   if (size !== undefined && Number.isInteger(size) && size > 0 && size <= WINDOW_MAX) record.window = size;
   const rows = Array.isArray(root.limits) ? root.limits.map(asJsonObject) : [];
@@ -174,7 +190,8 @@ export function usageAt(record: UsageRecord, now: number): PaneUsage | undefined
   if (record.context !== undefined) usage.context = record.context;
   const limits = (record.limits ?? []).filter((limit) => limit.resetsAt === undefined || limit.resetsAt > now);
   if (limits.length > 0) usage.limits = limits;
-  return usage.context === undefined && usage.limits === undefined ? undefined : usage;
+  if (record.cost !== undefined) usage.cost = record.cost;
+  return usage.context === undefined && usage.limits === undefined && usage.cost === undefined ? undefined : usage;
 }
 
 /** The disk, as the tracker needs it. A seam, so the rules are testable with no temp files. */
@@ -233,6 +250,8 @@ export interface AccountLimits {
  */
 export interface JournalContext {
   context(sessionKey: string): { tokens: number; window?: number } | undefined;
+  /** The session's cost in US dollars that the journal summed, or undefined (`CacheTracker.cost`). */
+  cost?(sessionKey: string): number | undefined;
 }
 
 /** How often the directory is swept for old files. */
@@ -310,22 +329,28 @@ export class UsageTracker {
    *
    * The context comes from the session's usage file when that holds one (Claude's beacon or wrapped
    * statusLine), else from the journal's reading of the same session when it knows both the tokens
-   * and the window (pi, OMP, Codex, OpenCode; .adr/0115 amended 2026-10-25).
+   * and the window (pi, OMP, Codex, OpenCode; .adr/0115 amended 2026-10-25). The cost follows the
+   * same rule: the file's (Claude's statusLine), else the journal's sum (pi, OMP, OpenCode).
    */
   get(pane: AgentView): PaneUsage | undefined {
     const session = UsageTracker.sessionOf(pane);
     const record = session === null ? null : (this.held.get(session)?.record ?? null);
     const now = this.now();
     const harness = pane.kind === "shell" ? undefined : pane.agent || record?.harness;
-    const journal = record?.context === undefined ? this.journalContext(pane) : undefined;
+    // The journal fills what the usage file leaves out: the file's own context and cost win.
+    const overlay: PaneUsage = {};
+    const journalContext = record?.context === undefined ? this.journalContext(pane) : undefined;
+    if (journalContext !== undefined) overlay.context = journalContext;
+    const journalCost = record?.cost === undefined ? this.journalCost(pane) : undefined;
+    if (journalCost !== undefined) overlay.cost = journalCost;
     const account = harness === undefined || harness === "" ? undefined : this.account?.limits(harness);
     if (account !== undefined && account.length > 0) {
       const base: UsageRecord = record ?? { schemaVersion: USAGE_SCHEMA_VERSION, harness: harness ?? "", at: now };
-      return usageAt(journal === undefined ? { ...base, limits: account } : { ...base, limits: account, context: journal }, now);
+      return usageAt({ ...base, ...overlay, limits: account }, now);
     }
-    if (record === null) return journal === undefined ? undefined : { context: journal };
+    if (record === null) return overlay.context === undefined && overlay.cost === undefined ? undefined : overlay;
     const held = record.limits === undefined ? record : { ...record, limits: this.newestLimits(record.harness, now) };
-    return usageAt(journal === undefined ? held : { ...held, context: journal }, now);
+    return usageAt({ ...held, ...overlay }, now);
   }
 
   /**
@@ -339,6 +364,14 @@ export class UsageTracker {
     const reading = this.journal.context(key);
     if (reading?.window === undefined || reading.window <= 0) return undefined;
     return contextPercent(reading.tokens, reading.window);
+  }
+
+  /** The pane's session cost from the journal, in dollars, or undefined: none summed, or a shell pane. */
+  private journalCost(pane: AgentView): number | undefined {
+    if (this.journal?.cost === undefined || pane.kind === "shell") return undefined;
+    const key = pane.agentSession?.value;
+    if (key === undefined || key === "") return undefined;
+    return this.journal.cost(key);
   }
 
   /** Per window, the limit from the newest held record of `harness` that carries it unexpired. */

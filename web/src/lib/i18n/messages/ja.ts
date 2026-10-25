@@ -2196,6 +2196,7 @@ export const ja: Dictionary = {
   "chat.usage.window.5h.aria": "5時間の上限使用率: {percent}%",
   "chat.usage.window.7d": "7d",
   "chat.usage.window.7d.aria": "7日間の上限使用率: {percent}%",
+  "chat.usage.cost.aria": "セッションの費用 {amount}",
   "files.title": "ファイル",
   "branch.aria": "ブランチ {name}",
   "branch.detachedAria": "{sha} でデタッチ",

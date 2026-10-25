@@ -2026,6 +2026,7 @@ export const tr: Dictionary = {
   "chat.usage.window.5h.aria": "5 saatlik sınırın %{percent} kadarı kullanıldı",
   "chat.usage.window.7d": "7d",
   "chat.usage.window.7d.aria": "7 günlük sınırın %{percent} kadarı kullanıldı",
+  "chat.usage.cost.aria": "Oturum maliyeti {amount}",
   "files.title": "Dosyalar",
   "branch.aria": "Dal {name}",
   "branch.detachedAria": "{sha} üzerinde ayrık",

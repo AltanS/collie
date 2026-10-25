@@ -32,6 +32,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Added
 
 - **pi, OMP, Codex and OpenCode panes show the context dot above the belt.** Collie reads the last turn's tokens from the session log, and the model's window from Codex's log or from the harness's own model list on disk. A model that list does not name gets no dot, never a guessed one.
+- **The tag beside the chat's model name shows the session's cost in dollars.** It follows the dots whenever the harness reports a cost: Claude Code through the wrapped status line, pi, OMP and OpenCode from their logs. Codex's log has none, so its tag shows no cost, never a guess.
+- **The model name stays beside the session cost.** A tag with a cost and no dots, such as a pi model its list does not name, names the model even when the screen already prints it, so the figure never floats alone.
 
 ### Changed
 

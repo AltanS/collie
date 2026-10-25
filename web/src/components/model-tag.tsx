@@ -27,10 +27,16 @@ import { cn } from "@/lib/utils";
 // working colour, never red, because red marks harm (DESIGN.md §4). A gauge the harness did not report
 // is not drawn, and the screen reader gets the exact figure the dots round down.
 //
+// THE SESSION COST CLOSES THE ROW (.adr/0115, amended 2026-10-25): dollars after the last gauge, in the
+// gauges' muted colour and the tag's own size. It is a figure, not a gauge: no dots and never the working
+// colour, whatever the amount. Drawn whenever the harness reported one, even when its own status line
+// prints a cost too. Absent, never a placeholder: no cost, no span.
+//
 // THE MODEL NAME STANDS DOWN WHILE THE SCREEN NAMES IT, but only when it would stand ALONE. With no
-// gauge to draw, the caller passes no model while the screen names it (agent-chat.tsx asks
-// hooks/use-model-on-screen.ts), so a statusline that prints "Opus 5.5" is not doubled by a bare
-// label. With a gauge ({@link hasGauge}) the tag is the row Claude Code has, model, context and
+// gauge and no cost to draw, the caller passes no model while the screen names it (agent-chat.tsx
+// asks hooks/use-model-on-screen.ts), so a statusline that prints "Opus 5.5" is not doubled by a bare
+// label. A cost counts like a gauge ({@link hasFigure}): a bare "$0.11" would float unlabelled too.
+// With a gauge or a cost the tag is the row Claude Code has, model, context and
 // limits, and it names the model whatever the screen prints, so the dots never float unlabelled
 // (Altan, 2026-10-25). The effort goes with the model either way. The tag is absolute, so it arriving
 // or leaving moves nothing (DESIGN.md §2): there is no line to reserve because it owns none.
@@ -46,6 +52,23 @@ const WINDOW_KEYS = new Map<string, { short: MessageKey; spoken: MessageKey }>([
   ["5h", { short: "chat.usage.window.5h", spoken: "chat.usage.window.5h.aria" }],
   ["7d", { short: "chat.usage.window.7d", spoken: "chat.usage.window.7d.aria" }],
 ]);
+
+/**
+ * A session cost as the tag writes it: `<$0.01` below a cent, two decimals up to $100 (`$0.11`), whole
+ * dollars from there (`$123`). Plain `$`, since the harnesses report US dollars. A value that is not a
+ * non-negative number reads as below a cent; the caller draws only a real one.
+ */
+export function formatCost(usd: number): string {
+  if (!(usd >= 0.01)) return "<$0.01";
+  const cents = Math.round(usd * 100) / 100;
+  return cents < 100 ? `$${cents.toFixed(2)}` : `$${Math.round(usd).toString()}`;
+}
+
+/** The cost to draw, or null when the reading names none or a number a peer should not have sent. */
+function costOf(usage: PaneUsage | undefined): number | null {
+  const cost = usage?.cost;
+  return cost !== undefined && Number.isFinite(cost) && cost >= 0 ? cost : null;
+}
 
 interface Gauge {
   id: string;
@@ -75,6 +98,15 @@ function gaugesOf(usage: PaneUsage | undefined): Gauge[] {
  */
 export function hasGauge(usage: PaneUsage | undefined): boolean {
   return gaugesOf(usage).length > 0;
+}
+
+/**
+ * Whether a usage reading draws any figure at all: a gauge, or the session cost. This is the test the
+ * caller uses to keep the model name beside the figures while the screen names the model, so a lone
+ * cost never floats without it.
+ */
+export function hasFigure(usage: PaneUsage | undefined): boolean {
+  return hasGauge(usage) || costOf(usage) !== null;
 }
 
 /** Five 3px dots, lit from the left, one per full fifth. A dot is as wide as it is tall, so it may be round (DESIGN.md §3). */
@@ -108,13 +140,16 @@ export function ModelTag({
   useLocale();
   const name = modelLabel(model);
   const gauges = gaugesOf(usage);
-  if (name === null && gauges.length === 0) return null;
+  const cost = costOf(usage);
+  if (name === null && gauges.length === 0 && cost === null) return null;
   // THE EFFORT FOLLOWS THE MODEL, in the harness's own word (#463): "Opus 5.5 · high". It never draws
   // alone, and it goes with the model when the screen already names it, because the caller passes
   // neither then. The same model at `high` and at `low` is a different trade-off in time and cost.
   const level = name === null ? null : effortLabel(effort);
   const label = name === null ? null : level === null ? name : `${name} · ${level}`;
-  const spoken = [label === null ? null : t("chat.model.aria", { name: label }), ...gauges.map((g) => g.spoken)].filter(
+  const spoken = [label === null ? null : t("chat.model.aria", { name: label }), ...gauges.map((g) => g.spoken),
+    cost === null ? null : t("chat.usage.cost.aria", { amount: formatCost(cost) }),
+  ].filter(
     (part): part is string => part !== null,
   );
   return (
@@ -130,6 +165,11 @@ export function ModelTag({
             <Dots used={g.used} />
           </span>
         ))}
+        {cost !== null && (
+          <span data-slot="usage-cost" className="shrink-0 tabular-nums">
+            {formatCost(cost)}
+          </span>
+        )}
       </span>
       <span className="sr-only">{spoken.join(". ")}</span>
     </div>

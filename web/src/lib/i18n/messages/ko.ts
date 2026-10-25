@@ -2188,6 +2188,7 @@ export const ko: Dictionary = {
   "chat.usage.window.5h.aria": "5시간 한도 {percent}% 사용됨",
   "chat.usage.window.7d": "7d",
   "chat.usage.window.7d.aria": "7일 한도 {percent}% 사용됨",
+  "chat.usage.cost.aria": "세션 비용 {amount}",
   "files.title": "파일",
   "branch.aria": "브랜치 {name}",
   "branch.detachedAria": "{sha}에서 분리됨",

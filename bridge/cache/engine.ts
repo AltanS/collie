@@ -73,6 +73,13 @@ export interface CacheProbe {
    */
   contextWindow?: number;
   /**
+   * What the whole session has cost so far, in US dollars, as the harness's own log states it: the sum
+   * of the cost every assistant message carries (pi, Oh My Pi, OpenCode). Collie prices nothing. Absent
+   * when the log states none, when the sum is zero (a session of aborted turns, a free model) and for a
+   * harness whose log has no cost (Codex). Display only: no rule and no TTL reads it.
+   */
+  costUsd?: number;
+  /**
    * Every reset-rule match from just after the PREVIOUS turn to the end of what was read, oldest first.
    * One flat list: {@link evaluate} decides which are pending (newer than `lastRequestAt`) and which
    * explain the last turn. A probe that reports none leaves this absent.

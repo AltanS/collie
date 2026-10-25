@@ -14,6 +14,19 @@ const SEVEN_DAY = { window: "7d", used: 41.2, resetsAt: NOW + 500_000_000 } as c
 
 const record = (over: Partial<UsageRecord> = {}): UsageRecord => ({ schemaVersion: 1, harness: "claude", at: NOW - 1000, ...over });
 
+describe("the cost in the merge", () => {
+  test("the beacon keeps the wrapper's cost", () => {
+    const existing = record({ context: 3, cost: 0.4 });
+    expect(mergeBeacon(existing, "claude", NOW, { context: 40 })).toEqual({ ...existing, context: 40, at: NOW });
+  });
+
+  test("the wrapper replaces its cost, and keeps the one on file when it reports none", () => {
+    const existing = record({ cost: 0.4 });
+    expect(mergeStatusLine(existing, record({ at: NOW, cost: 0.5 }), NOW).cost).toBe(0.5);
+    expect(mergeStatusLine(existing, record({ at: NOW, context: 9 }), NOW).cost).toBe(0.4);
+  });
+});
+
 describe("the beacon side of the merge", () => {
   test("replaces the context and keeps the window and the running limits", () => {
     const existing = record({ context: 3, window: 1_000_000, limits: [FIVE_HOUR, SEVEN_DAY] });

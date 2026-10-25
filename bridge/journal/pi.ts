@@ -24,7 +24,7 @@ import { lstat, readdir } from "node:fs/promises";
 import type { CacheProbe } from "../cache/engine.ts";
 import type { JsonObject, JsonValue } from "../json.ts";
 import { basename, dirname, join } from "node:path";
-import { asRecord, asText, probeTail, tokenCount, walkBack } from "./cache-probe.ts";
+import { asRecord, asText, FileSum, probeTail, tokenCount, walkBack } from "./cache-probe.ts";
 import { type MeasuredContext, piAgentDirLookups, WindowCatalog } from "./model-window.ts";
 import {
   containedRealpath,
@@ -1066,12 +1066,13 @@ export class PiTranscriptSource implements TranscriptSource {
 export function piJournal(roots: string | readonly string[]): JournalAdapter {
   const source = new PiTranscriptSource(roots);
   const catalog = new WindowCatalog();
+  const costs = new FileSum('"cost"', piRowCost);
   return {
     agent: "pi",
     source,
     parse: parsePiTranscript,
     reducer: createPiReducer,
-    cacheProbe: (ref) => piCacheProbe(source, ref, catalog),
+    cacheProbe: (ref) => piCacheProbe(source, ref, catalog, costs),
   };
 }
 
@@ -1151,7 +1152,28 @@ export function piContextOf(lines: readonly string[]): MeasuredContext | undefin
   return found ?? undefined;
 }
 
-async function piCacheProbe(source: PiTranscriptSource, ref: AgentSessionRef, catalog?: WindowCatalog): Promise<CacheProbe | null> {
+/**
+ * THE SESSION COST (.adr/0115, amended 2026-10-25) is the sum of `message.usage.cost.total`, in US
+ * dollars, over every assistant row of the file; pi and Oh My Pi write the same shape (verified on pi
+ * logs and on Oh My Pi 18.6.1). An aborted turn writes zeros and adds nothing. Branches pi abandoned
+ * stay in the file and were paid for, so they count. A tail holds a handful of turns, so the sum runs
+ * over the whole file once and then over the appended bytes only ({@link FileSum}).
+ */
+export function piRowCost(raw: JsonValue): number | undefined {
+  const entry = asRecord(raw);
+  if (entry === null || entry.type !== "message") return undefined;
+  const message = asRecord(entry.message);
+  if (message === null || message.role !== "assistant") return undefined;
+  const total = tokenCount(asRecord(asRecord(message.usage)?.cost)?.total);
+  return total === undefined || total < 0 ? undefined : total;
+}
+
+async function piCacheProbe(
+  source: PiTranscriptSource,
+  ref: AgentSessionRef,
+  catalog?: WindowCatalog,
+  costs?: FileSum,
+): Promise<CacheProbe | null> {
   const tail = await probeTail(source, ref);
   if (tail === null) return null;
   // The thinking level is the NEWEST one the walk meets, whether a `thinking_level_change` row (written
@@ -1200,6 +1222,8 @@ async function piCacheProbe(source: PiTranscriptSource, ref: AgentSessionRef, ca
       if (window !== undefined) found.contextWindow = window;
     }
   }
+  const summed = costs === undefined ? undefined : await costs.read(tail.path);
+  if (summed !== undefined && summed.sum > 0) found.costUsd = summed.sum;
   // A turn that carried no level of its own: the level row the session opened with, or the last
   // change before the turn, still stands. Only the level is looked for past the turn.
   effort ??= walkBack(tail.lines, (raw) => {

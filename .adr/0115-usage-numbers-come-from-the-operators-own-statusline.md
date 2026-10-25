@@ -206,3 +206,14 @@ left them; this section is about the context only.
 - pi's session is a tree. After a jump to another branch the newest assistant row in the file may
   belong to the branch left behind, until the next turn.
 - A catalog that changes a model's window during a bridge run is read again only after a restart.
+
+**The session cost (2026-10-25).** The tag also shows what the session has cost, in US dollars, after
+the last gauge (`PaneUsage.cost`). Collie prices nothing: it shows a figure the harness states.
+Claude Code's statusLine document carries `cost.total_cost_usd`, which the wrapper keeps in the usage
+file beside the context. pi and OMP write `message.usage.cost.total` on every assistant row, and
+OpenCode a `cost` on every assistant message; the journal sums them (`CacheProbe.costUsd`), the file
+once and then only the appended bytes for pi and OMP (3 ms for a 1.3 MB log), one SQL sum for OpenCode.
+Codex's log has no cost. The usage file's cost wins over the journal's, as the context does. The field
+is absent, never a placeholder: no `0` for an unknown cost, and a journal sum of zero (aborted turns, a
+free model) is not sent. The tag writes `<$0.01`, `$0.11` or `$123` (`formatCost`), is not a gauge (no
+dots, never the working colour), and shows even when the harness's own status line prints a cost too.

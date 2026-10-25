@@ -2573,4 +2573,10 @@ export interface PaneUsage {
   /** Percent of the context window used, 0 to 100. */
   context?: number;
   limits?: UsageLimit[];
+  /**
+   * The session's running cost in US dollars. Claude Code reports it through the wrapped status line;
+   * pi, Oh My Pi and OpenCode write it in their logs and the bridge sums it; Codex reports none.
+   * **Absent, never a placeholder**: no `0` for "unknown". Drawn after the dots (components/model-tag.tsx).
+   */
+  cost?: number;
 }
