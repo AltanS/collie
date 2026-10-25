@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { fixtureRows } from "../../test/surface-corpus";
+import { fixtureRows, SURFACE_FIXTURES_DIR } from "../../test/surface-corpus";
 import { commandListNear, openedByText, openListUnder, ownListUnder, pointsAt, staleListUnder, type CommandListRead } from "./command-list";
 import { findInputFrame, rowText } from "./frame";
 import { requireProfile } from "./profile";
@@ -238,5 +238,53 @@ describe("omp's fuzzy list (18.6.1 and 18.12.6, 2026-10-25)", () => {
     void staleWhenEmpty;
     expect(staleListUnder(texts, frame.bottom, "", without)).toBeNull();
     expect(staleListUnder(texts, frame.bottom, "", undefined)).toBeNull();
+  });
+});
+
+// omp gang, tester 15 (2026-10-25): an extension's `ctx.ui.setStatus` draws one plain row per key under
+// everything else, so under a slash list too, flush left. A list of four rows or more ended on a row that
+// was no entry, the box was not found past it, and the send of `/wx` stopped at `modal_cue` with the text
+// left typed. The profile names those rows as the list's footer (`commandList.footer`).
+describe("omp's slash list with an extension's status row under it (18.6.1 and 18.12.6, 2026-10-25)", () => {
+  const sheet = (name: string) => fixtureRows(name, SURFACE_FIXTURES_DIR);
+
+  it("the shipped profile names the status row as the list's footer", () => {
+    expect(LIST.footer).toEqual({ pattern: "^\\S", maxRows: 4 });
+  });
+
+  it.each([
+    ["omp--v18-12-6-status-row-palette-4.txt", "/wx", "/wx", 4],
+    ["omp--v18-6-1-status-row-palette-4.txt", "/wx", "/wx", 4],
+    ["omp--v18-12-6-status-row-palette-10.txt", "/w", "/wx", 10],
+  ])("%s: the box holds %s, and the list under it is read whole with the status row left out", (fixture, typed, pointed, rows) => {
+    const frame = findInputFrame(sheet(fixture), OMP);
+    expect(frame, fixture).not.toBeNull();
+    expect(frame!.interior.text).toBe(typed);
+    const texts = sheet(fixture).map(rowText);
+    const list = commandListNear(texts, frame!.top, frame!.bottom, LIST);
+    expect(list).toMatchObject({ pointed, side: "under" });
+    expect(list!.entries).toHaveLength(rows);
+    expect(list!.last).toBe(texts.findLastIndex((row) => row.startsWith("PLAN")) - 1);
+    expect(openListUnder(texts, frame!.bottom, typed, LIST)).not.toBeNull();
+  });
+
+  it("an extension's status rows up to the footer's bound are passed, one more is not", () => {
+    const rows = sheet("omp--v18-12-6-status-row-palette-4.txt");
+    const status = (n: number) => Array.from({ length: n }, (_, i) => ({ segments: [{ text: `STATUS ${String(i + 1)}` }] }));
+    const base = rows.slice(0, rows.findLastIndex((row) => rowText(row).startsWith("PLAN")));
+    expect(findInputFrame([...base, ...status(4)], OMP)).not.toBeNull();
+    expect(findInputFrame([...base, ...status(5)], OMP)).toBeNull();
+  });
+
+  it("an indented row under the list is no status row", () => {
+    const rows = sheet("omp--v18-12-6-status-row-palette-4.txt");
+    const base = rows.slice(0, rows.findLastIndex((row) => rowText(row).startsWith("PLAN")));
+    expect(findInputFrame([...base, { segments: [{ text: "  PLAN 3/6" }] }], OMP)).toBeNull();
+  });
+
+  it("the status row does not make an unpointed run a list: the pointer decides, as before", () => {
+    const fixture = "omp--v18-12-6-status-row-palette-4.txt";
+    const unpointed = sheet(fixture).map((row) => (rowText(row).startsWith("❯ ") ? { segments: [{ text: rowText(row).replace(/^❯ /u, "  ") }] } : row));
+    expect(findInputFrame(unpointed, OMP)).toBeNull();
   });
 });

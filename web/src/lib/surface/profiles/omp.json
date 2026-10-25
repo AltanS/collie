@@ -39,6 +39,7 @@
       "continuationIndent": 0,
       "maxDraftRows": 40,
       "maxTailRows": 3,
+      "maxWidgetRows": 12,
       "scroll": {
         "keeps": "tail",
         "rows": 17
@@ -155,6 +156,10 @@
             "skill:"
           ],
           "argumentList": true,
+          "footer": {
+            "pattern": "^\\S",
+            "maxRows": 4
+          },
           "leadOpens": true,
           "staleWhenEmpty": true
         }

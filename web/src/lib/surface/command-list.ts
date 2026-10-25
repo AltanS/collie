@@ -330,6 +330,23 @@ export function staleListUnder(texts: readonly string[], bottom: number, text: s
 }
 
 /**
+ * Whether any row from `first` to `last` is an entry or the pointed entry of the profile's list
+ * (a wrapped row alone is none: it means something only under an entry). False on a profile whose
+ * list never stands under the box. The frame module asks it of the rows under an open box before it
+ * passes them over as an extension's widget: a list is read as the typed command's own or not at all.
+ */
+export function anyListRow(texts: readonly string[], first: number, last: number, list: CommandListRows | undefined): boolean {
+  if (list === undefined) return false;
+  const patterns = listPatterns(list);
+  if (!patterns.under) return false;
+  for (let i = first; i <= last && i < texts.length; i++) {
+    const row = listRow(texts[i]!.trimEnd(), patterns);
+    if (row !== null && row.kind !== "wrapped") return true;
+  }
+  return false;
+}
+
+/**
  * The row a box past its own list would end on: from the screen's last non-blank row (`end` - 1) up,
  * at most `reach` rows, the first row that is no list row and whose rows under it read as a list with
  * a pointer ({@link listUnder}). Only one row can: a row higher up has that row under it, which is no

@@ -82,6 +82,14 @@
 // and the probe's own landing spot (the row and column where the probe character appeared) is what S1
 // and S2 compare against.
 //
+// The launch window: a pane the bridge started a harness in (`POST /api/launch`) is a shell for the
+// first seconds, and the multiplexer names no agent yet, so it has no profile of its own and a blind
+// send would type into the shell and press Enter there (omp gang, 2026-10-25: `sent`, and the text
+// later sat as an unsent draft in the agent's box). `SendDeps.launching` names the harness the bridge
+// started in such a pane. The send then reads the screen with that harness's profile: with its input
+// box on screen it runs the normal steps; with none it ends `refused(probe_failed)` before any key, no
+// probe included, saying the pane may still be starting.
+//
 // A manual send (the screen takes the two-tap Send: no frame found, an unreadable overlay, a weak cue)
 // compares less than a free one: the rows under the box (hints, footers, status rows) and the rest
 // of the box may change while the probe and the text go in, as a `command` lets them. The rows
@@ -335,6 +343,13 @@ export interface SendDeps {
   readonly ring: RowRing;
   /** The harness's profile at its binary's version, or null when the harness has no profile. */
   readonly profile: (harness: string) => Promise<ProfileMatch | null>;
+  /**
+   * The harness id the bridge started in this pane (`POST /api/launch`) while the multiplexer may still
+   * report a shell, or null. A pane with no profile of its own that has one is read with that harness's
+   * profile and takes no key until its input box is on screen ({@link SendProtocol}, the launch window).
+   * Absent: every pane without a profile of its own is sent blind, as before.
+   */
+  readonly launching?: ((paneId: string) => string | null) | undefined;
   /** The pane's generation now, or null when the pane is gone. */
   readonly generation: (paneId: string) => string | null;
   /** The counters, the cap and the lab's folders. Absent in a test that does not need them. */
@@ -1362,6 +1377,10 @@ function boundDetail(state: RunState, now: number): string {
 
 /** The detail of a held send (M56 spec 15): the harness cannot take it during the turn, so Collie keeps it. */
 const HELD = "The agent is working. Collie keeps this and sends it when the turn ends.";
+/** The detail of a send refused in the launch window: the harness the bridge started has drawn no input box yet. */
+function notStartedDetail(match: ProfileMatch | null): string {
+  return `The pane shows no ${match?.profile.id ?? "agent"} input box yet; it may still be starting. Nothing was typed.`;
+}
 /** The detail of a send held because the box was not free or would not hold still: no turn was read. */
 const HELD_BOX = "The input box is not free. Collie keeps this and sends it when the box is free.";
 /** The line of a held send that ended because its pane closed. */
@@ -1975,6 +1994,12 @@ interface RunState {
   manual: boolean;
   /** The pane has no profile: the text went in blind, with no read ({@link SendProtocol.blindSend}). */
   blind: boolean;
+  /**
+   * The pane has no profile of its own, but the bridge started a harness in it a moment ago
+   * ({@link SendDeps.launching}): `match` is that harness's profile, and nothing is typed or pressed
+   * until S0 finds its input box.
+   */
+  starting: boolean;
   /** The text is a command: sent as one, or a draft that starts with a reserved lead (Submit and Discard of a command). */
   command: boolean;
   /** The text went, or a draft stands, as ONE paste ({@link wholePaste}); null for the write per line. */
@@ -2849,6 +2874,7 @@ export class SendProtocol {
       probed: false,
       manual: false,
       blind: false,
+      starting: false,
       command: request.mode === "command",
       whole: null,
       noticeKey: false,
@@ -2929,8 +2955,13 @@ export class SendProtocol {
    * "not yet" sends it back to its place in the queue instead of ending it.
    */
   private async run(request: SendRequest, record: SendRecord, target: SendTarget, release = false): Promise<SendAnswer> {
-    const match = await this.deps.profile(target.harness);
-    const state: RunState = { ...this.bareState(request, record, target, match), released: release };
+    const own = await this.deps.profile(target.harness);
+    // A pane with no profile of its own that the bridge started a harness in a moment ago is that
+    // harness's pane in waiting: its shell is not the place for the text (the launch window).
+    const launching = own === null ? (this.deps.launching?.(target.paneId) ?? null) : null;
+    const expected = launching === null || launching === "" ? null : await this.deps.profile(launching);
+    const match = own ?? expected;
+    const state: RunState = { ...this.bareState(request, record, target, match), released: release, starting: own === null && expected !== null };
     // The bound starts once the profile is known (#594): the profile waits for the binary's version,
     // and a slow or hanging `--version` used to spend the whole bound before S0, so every send ended
     // `unknown(bound)` with nothing read and nothing typed. The wait is measured as `profile`, never counted.
@@ -3108,6 +3139,9 @@ export class SendProtocol {
     this.begin(state);
     let s0 = await this.stableRead(state, "s0");
     state.marks.s0 = s0;
+    // The launch window: the bridge started this harness in the pane, and its box is not on screen yet.
+    // No probe either, for the probe would be typed into the shell.
+    if (state.starting && s0.frame === null) throw new Ended("refused", "probe_failed", { surface: s0.surface, framed: false, detail: notStartedDetail(match) });
     this.atS0(state, s0);
     // A draft read is a reading until a probe proves it (the header, 2026-10-25). A stale frame gets one
     // more S0 read, and the run goes on from it or ends refused.

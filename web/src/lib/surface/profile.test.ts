@@ -275,7 +275,8 @@ describe("the codex profile (M56 spec 13)", () => {
     expect(stock.pointer("> ")).toBeNull();
     const omp = read("omp");
     expect(omp.list).toMatchObject({ lead: "/", sides: ["under"] });
-    expect(omp.list.footer).toBeUndefined();
+    // An extension's status row (`ctx.ui.setStatus`) is one plain row per key, flush left, under the list.
+    expect(omp.list.footer).toEqual({ pattern: "^\\S", maxRows: 4 });
     // omp 18.6.1 draws an icon column, omp 18.8 too, older omp none; a scrollbar cell ends the row.
     expect(omp.pointer(`❯ ⬢  model         Model: none selected${" ".repeat(60)}█`)).toBe("model");
     expect(omp.entry(`  🏃 prewalk       Arm or restart a one-shot model handoff${" ".repeat(40)}█`)).toBe("prewalk");
@@ -790,6 +791,16 @@ describe("the frame schema of the interior walk (M56 spec 14)", () => {
     expect(failure(change(rawClaude(), ["idle", "frame", "scroll"], { keeps: "tail", rows: 0 })).path).toBe("idle.frame.scroll.rows");
     expect(failure(change(rawClaude(), ["idle", "frame", "scroll"], { keeps: "tail", rows: 999 })).path).toBe("idle.frame.scroll.rows");
     expect(failure(change(rawClaude(), ["idle", "frame", "scroll"], "tail")).path).toBe("idle.frame.scroll");
+  });
+
+  it("takes a widget bound (`maxWidgetRows`) only on an open box, and only above the tail bound", () => {
+    const omp = (): JsonObject => parseJsonObject(readFileSync(join(PROFILES_DIR, "omp.json"), "utf8"))!;
+    expect(parseProfile(omp()).idle.frame.maxWidgetRows).toBe(12);
+    expect(parseProfile(rawClaude()).idle.frame.maxWidgetRows).toBeUndefined();
+    expect(failure(change(omp(), ["idle", "frame", "maxWidgetRows"], 3)).path).toBe("idle.frame.maxWidgetRows");
+    expect(failure(change(omp(), ["idle", "frame", "maxWidgetRows"], 1.5)).path).toBe("idle.frame.maxWidgetRows");
+    expect(failure(change(omp(), ["idle", "frame", "bottom"], { pattern: "^─+$", minCells: 8, column: 0 })).path).toBe("idle.frame.maxWidgetRows");
+    expect(failure(change(rawClaude(), ["idle", "frame", "maxWidgetRows"], 12)).path).toBe("idle.frame.maxWidgetRows");
   });
 
   it("takes the box's own prompt glyph (`ownPrompt`) only beside a rows pattern (issue 544)", () => {

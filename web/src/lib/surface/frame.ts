@@ -14,7 +14,7 @@
 // from nothing but the rows.
 
 import { displayWidth } from "../text-width";
-import { insideList, listedBottom, openListUnder } from "./command-list";
+import { anyListRow, insideList, listedBottom, openListUnder } from "./command-list";
 import { readAboveNotice } from "./notice";
 import type { FrameAnchor, Profile } from "./profile";
 
@@ -850,16 +850,34 @@ function alternatesOf(idle: IdleProfile): readonly IdleProfile[] {
  * The frame of an open box over the last non-blank row `end - 1`. Each row passed over on the way up
  * is blank or a row the profile's `rows` pattern does not accept: a row the box draws (an edge, a draft
  * row) is never passed, so a read cut inside the box still finds no frame.
+ *
+ * Under the box there are at most `maxTailRows` rows of anything. A profile that names `maxWidgetRows`
+ * (an extension may draw a widget of that many rows under the box) also finds the box past that reach,
+ * but only over a run of painted rows, no blank row among them, none of them a row of the command list
+ * ({@link widgetRun}). A welcome card higher up the screen is set apart by blank rows, and a list is read
+ * by {@link listedLayout}, which asks whose list it is.
  */
 function openFrame(rows: readonly FrameRow[], end: number, idle: IdleProfile): Frame | null {
   const under = compile(idle).interior.rows;
-  for (let b = end - 1; b >= 0 && end - 1 - b <= idle.frame.maxTailRows; b--) {
+  const reach = Math.max(idle.frame.maxTailRows, idle.frame.maxWidgetRows ?? 0);
+  for (let b = end - 1; b >= 0 && end - 1 - b <= reach; b--) {
     const frame = interiorFrameAt(rows, b, idle);
-    if (frame !== null) return frame;
+    if (frame !== null) return end - 1 - b <= idle.frame.maxTailRows || widgetRun(rows, b, end, idle) ? frame : null;
     const text = rowText(rows[b]!);
     if (under === null || (!isBlank(text) && under.test(text.trimEnd()))) return null;
   }
   return null;
+}
+
+/**
+ * Whether the rows under an open box's last row `bottom` to the screen's last row `end - 1` are an
+ * extension's widget: painted rows all the way (no blank one), none of them an entry of the profile's
+ * command list. The caller has bounded their number by `maxWidgetRows`.
+ */
+function widgetRun(rows: readonly FrameRow[], bottom: number, end: number, idle: IdleProfile): boolean {
+  const texts = rows.map(rowText);
+  for (let i = bottom + 1; i < end; i++) if (isBlank(texts[i]!)) return false;
+  return !anyListRow(texts, bottom + 1, end - 1, idle.volatile.below.commandList);
 }
 
 function findLayout(rows: readonly FrameRow[], idle: IdleProfile): Frame | null {
@@ -867,7 +885,8 @@ function findLayout(rows: readonly FrameRow[], idle: IdleProfile): Frame | null 
   let end = rows.length;
   while (end > 0 && isBlank(rowText(rows[end - 1]!))) end--;
   // An open box has no bottom edge: its last row is the last row of the screen, or a row at most
-  // `maxTailRows` above it when rows the box never draws stand under it (an extension's widget, #468).
+  // `maxTailRows` above it when rows the box never draws stand under it (an extension's widget, #468),
+  // or up to `maxWidgetRows` above it when those rows are one unbroken run of a widget ({@link openFrame}).
   if (c.bottom.open) return openFrame(rows, end, idle) ?? listedLayout(rows, end, idle);
   for (let b = end - 1; b >= 0 && end - 1 - b <= idle.frame.maxTailRows; b--) {
     if (anchored(rowText(rows[b]!), c.bottom) !== null) return frameAt(rows, b, idle);

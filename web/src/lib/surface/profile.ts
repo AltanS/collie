@@ -295,6 +295,15 @@ export interface FrameLayout {
    *  search bound, M56 spec 03): the tallest thing the harness draws under a live box. */
   readonly maxTailRows: number;
   /**
+   * An open box only: how many rows an extension's widget may take in one unbroken run right under
+   * the box. Past `maxTailRows`, a box is still found while every row under it up to the screen's last
+   * row is painted (no blank row) and none of them is a row of the profile's command list, and the run
+   * is at most this tall. The list rows keep the tail bound, because a list under the box is read as
+   * the typed command's own or not at all ({@link CommandListRows}). Optional: with none, the tail
+   * bound is the only bound.
+   */
+  readonly maxWidgetRows?: number;
+  /**
    * How the walk finds the box. `edges` (the default) walks up from the bottom edge: rows that are
    * no edge are the wrapped draft, the first edge row is the prompt row, the top edge is over it.
    * `interior` walks up from the bottom edge (or from the last row, with no bottom anchor) to the
@@ -1180,9 +1189,11 @@ function parseFrame(frameNode: JsonObject): FrameLayout {
     maxDraftRows,
     maxTailRows: whole(field(frameNode, "maxTailRows", "idle.frame"), "idle.frame.maxTailRows", 0),
   };
-  const base = frameNode.scroll === undefined ? anchors : { ...anchors, scroll: parseScroll(frameNode.scroll, maxDraftRows) };
+  const maxWidgetRows = frameNode.maxWidgetRows === undefined ? undefined : whole(frameNode.maxWidgetRows, "idle.frame.maxWidgetRows", 1);
+  const withWidgets = maxWidgetRows === undefined ? anchors : { ...anchors, maxWidgetRows };
+  const base = frameNode.scroll === undefined ? withWidgets : { ...withWidgets, scroll: parseScroll(frameNode.scroll, maxDraftRows) };
   if (walk === "edges") {
-    for (const key of ["rows", "trailer", "continuation", "ownPrompt"] as const) {
+    for (const key of ["rows", "trailer", "continuation", "ownPrompt", "maxWidgetRows"] as const) {
       if (frameNode[key] !== undefined) fail(`idle.frame.${key}`, "belongs to the interior walk");
     }
     const edgeBottom = anchor(field(frameNode, "bottom", "idle.frame"), "idle.frame.bottom", null, true);
@@ -1190,6 +1201,10 @@ function parseFrame(frameNode: JsonObject): FrameLayout {
     return { ...base, bottom: edgeBottom };
   }
   const interior = { ...base, bottom: anchor(field(frameNode, "bottom", "idle.frame"), "idle.frame.bottom", null, true), walk };
+  if (maxWidgetRows !== undefined) {
+    if (interior.bottom.open !== true) fail("idle.frame.maxWidgetRows", "belongs to an open box");
+    if (maxWidgetRows <= anchors.maxTailRows) fail("idle.frame.maxWidgetRows", "must be more than maxTailRows");
+  }
   const withRows = frameNode.rows === undefined ? interior : { ...interior, rows: pattern(frameNode.rows, "idle.frame.rows").source };
   const withTrailer = frameNode.trailer === undefined ? withRows : { ...withRows, trailer: parseTrailer(frameNode.trailer) };
   const withUnder = frameNode.under === undefined ? withTrailer : { ...withTrailer, under: pattern(frameNode.under, "idle.frame.under").source };

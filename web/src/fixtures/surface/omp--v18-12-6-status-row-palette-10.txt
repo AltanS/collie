@@ -1,0 +1,26 @@
+
+                                            ████████████    
+                                               ██  ██       ▄▀▀▄ █▀▄▀▄ █▀▀▄
+                                               ██  ██       ▀▄▄▀ █ █ █ █▄▄▀
+                                               ▒▒  ██                  █
+                                                   ██       v18.12.6
+
+                         Tip: Drop the word `ultrathink` in your message for harder multi-step
+                                     reasoning — watch it glow rainbow as you type
+
+ zz ran with: abc                                                                                                       
+
+ above row 1                                                                                                            
+ π > ◒ Haiku 4.5 > 📁 …g/15-crew-ext/state/harness/omp/project ▶──5%───────────────────────────────────────┃───────200K─
+╰─ /w                                                                                                                   
+❯ 🧩 wx                clear widgets, status, ticks                                                                    █
+  🧩 wb                widget N rows below editor                                                                      │
+  🧩 wa                widget N rows above editor                                                                      │
+  📂 wt                Move this session into a new worktree, changes included                                         │
+  ✚  new               Start a new session                                                                             │
+  🗺  plan-review       Plan review: plan mode inactive                                                                 │
+  ⇄  switch            Model: openrouter/anthropic/claude-haiku-4.5                                                    │
+  ⚡ slow              Slow mode: off                                                                                  │
+  🏃 prewalk           Arm, restart, or cancel a one-shot model handoff                                                │
+  🌐 browser           Browser: headless                                                                               │
+PLAN 3/6
