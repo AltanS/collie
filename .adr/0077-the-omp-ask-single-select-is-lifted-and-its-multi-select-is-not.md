@@ -189,3 +189,6 @@ refused `unconfirmed`. The "no preview" line of the fail-closed list changes:
   border, and every other shape this ADR declines. The echo block above the panel is outside the region.
 - **Keys do not change.** A preview is drawn whatever the pointer, so a tap is the same walk, verify and Enter.
   The walk pair for this dialog is a reviewed gap until a second capture exists.
+- **The plan-mode question is one of them.** omp 18.12.6 with plan mode on asks "What work should I plan?" through
+  the same dialog (`omp--v18-12-6-ask-plan-mode--w120.txt`). It lifts as the previews dialog does: four choices, `Other`,
+  Cancel as Escape. Its choices are fixed, so no new rule was needed.

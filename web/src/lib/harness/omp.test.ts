@@ -111,6 +111,8 @@ const LIFTED = new Set([
   "omp--v18-8-ask-single-described.txt",
   // omp 18.12.6's Ask with option previews (omp/ask.ts, OPTION PREVIEWS).
   "omp--v18-12-6-ask-previews--w120.txt",
+  // omp 18.12.6 in plan mode: the "Gather task for plan mode" Ask, four options with descriptions and previews.
+  "omp--v18-12-6-ask-plan-mode--w120.txt",
   "omp--v18-10-ask-single.txt",
   "omp--v18-10-ask-batch.txt",
   "omp--v18-10-ask-batch-moved.txt",
@@ -514,6 +516,7 @@ describe("the omp corpus", () => {
     "omp--v18-12-2-goal-turn-running-probe--w119.txt",
     "omp--v18-12-6-approval-bash--w120.txt",
     "omp--v18-12-6-approval-bash-later--w120.txt",
+    "omp--v18-12-6-ask-plan-mode--w120.txt",
     "omp--v18-12-6-ask-previews--w120.txt",
     "omp--v18-12-6-image-chip--w120.txt",
     "omp--v18-12-6-path-popup--w120.txt",

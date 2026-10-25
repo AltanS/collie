@@ -653,6 +653,43 @@ describe("omp 18.6.1 `Allow tool: goal` (no body, 2026-10-25 omp-gang tester 02)
   });
 });
 
+describe("omp 18.12.6 plan-mode Ask with option previews (2026-10-25 omp-gang tester 4, 14)", () => {
+  const PLAN = fx("omp--v18-12-6-ask-plan-mode--w120.txt");
+  const OMP_IDLE = fx("omp--v18-12-band-idle--w130.txt");
+  const omp = (screen: string): Rig => rig(screen, "omp", "18.12.6");
+  const ON_BUG = PLAN.replace("\u2502 \u276f \u25cb Feature or enhancement", "\u2502   \u25cb Feature or enhancement").replace("\u2502   \u25cb Bug fix or repair", "\u2502 \u276f \u25cb Bug fix or repair");
+
+  test("the dialog lifts as a question with the options it shows, and the Surface reads an ask where it read unreadable", () => {
+    expect(ON_BUG).not.toBe(PLAN);
+    const ask = omp(PLAN).poll()!;
+    expect(ask.kind).toBe("question");
+    expect(ask.options.map((o) => o.label)).toEqual(["Feature or enhancement", "Bug fix or repair", "Refactor or cleanup", "Integration or migration", "Other (type your own)", "Cancel"]);
+    const rows = splitLines(parseAnsi(PLAN));
+    const idle = loadProfiles().get("omp")!.idle;
+    expect(surfaceOfScreen({ seq: 0, source: "screen", at: 0, revision: 0, rows, ask }, idle).surface.modal).toEqual({ ask });
+    expect(surfaceOfScreen({ seq: 0, source: "screen", at: 0, revision: 0, rows, ask: null }, idle).surface.modal).toBe("unreadable");
+  });
+
+  test("a tap walks one Down, reads the pointer back on the tapped row, then commits with Enter", async () => {
+    const tap = omp(PLAN);
+    tap.pane.onKeys = (keys, p) => {
+      if (keys.join(",") === "Down" && p.screen === PLAN) p.screen = ON_BUG;
+      else if (keys.includes("Enter")) p.screen = OMP_IDLE;
+    };
+    const ask = tap.poll()!;
+    expect((await tap.answer(ask, idOf(ask, "Bug fix or repair"))).receipt).toMatchObject({ outcome: "sent", keys: ["Down", "Enter"] });
+  });
+
+  test("Cancel is Escape alone", async () => {
+    const cancel = omp(PLAN);
+    cancel.pane.onKeys = (keys, p) => {
+      if (keys.join(",") === "Escape") p.screen = OMP_IDLE;
+    };
+    const ask = cancel.poll()!;
+    expect((await cancel.answer(ask, idOf(ask, "Cancel"))).receipt).toMatchObject({ outcome: "sent", keys: ["Escape"] });
+  });
+});
+
 describe("changed, replaced and repeated asks are refused with no key", () => {
   test("the dialog changes between the lift and the answer: refused ask_changed, the new ask has a new id, nothing sent", async () => {
     const { pane, poll, answer, book } = rig(BASH);

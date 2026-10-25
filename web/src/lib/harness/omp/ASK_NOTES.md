@@ -221,3 +221,9 @@ preview is markdown or fenced code, so a row may be empty. Above the panel omp a
 
 Declined: a preview under `Other` or under no option, a description row after a preview, a preview of
 blank rows only, and a hidden or bidi character.
+
+The plan-mode question follows the same shape: `omp--v18-12-6-ask-plan-mode--w120.txt` (omp-gang tester 14, plan
+mode on, "Gather task for plan mode"). Four choices with a description and a preview each, `Other (type your own)`
+last, the footer `⏎ select · n note · ↑/↓ move · ⎋ cancel · Alt+H hide`. The echo block above the panel and the
+status row on its first line are outside the region. The choices are fixed text, so the card is the ordinary one:
+a choice is a walk and Enter, `Other` opens the answer editor (the phone types there), Cancel is Escape.

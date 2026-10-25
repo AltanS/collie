@@ -1,0 +1,20 @@
+  ⎋ Gather task for plan mode                                                        🍎 FRUIT: Generate fruit taste list
+╭─ Ask ────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ What work should I plan?                                                                                             │
+├──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ ❯ ○ Feature or enhancement                                                                                           │
+│       Add new capability or improve existing behavior                                                                │
+│       │ Provide the feature description                                                                              │
+│   ○ Bug fix or repair                                                                                                │
+│       Fix broken behavior or correct implementation                                                                  │
+│       │ Describe the bug and expected behavior                                                                       │
+│   ○ Refactor or cleanup                                                                                              │
+│       Restructure code, remove dead weight, improve maintainability                                                  │
+│       │ Specify what to refactor and why                                                                             │
+│   ○ Integration or migration                                                                                         │
+│       Connect systems, migrate data, adapt to new patterns                                                           │
+│       │ Describe the integration scope                                                                               │
+│   ○ Other (type your own)                                                                                            │
+├──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ ⏎ select · n note · ↑/↓ move · ⎋ cancel · Alt+H hide                                                                 │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯

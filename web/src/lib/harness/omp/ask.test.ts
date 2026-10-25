@@ -320,6 +320,25 @@ describe("omp 18.12.6 Ask with option previews lifts, each preview on its option
     expect(model.signature).not.toContain("Ask 1 questions");
   });
 
+  it("omp's plan mode asks the same shape (\"Gather task for plan mode\", 14-turn-queue): four choices, Other, Cancel", () => {
+    const plan = "omp--v18-12-6-ask-plan-mode--w120.txt";
+    const model = detectAskSelect(load(plan))!;
+    expect(model.question).toBe("What work should I plan?");
+    expect(model.options.map((o) => o.label)).toEqual([
+      "Feature or enhancement",
+      "Bug fix or repair",
+      "Refactor or cleanup",
+      "Integration or migration",
+      OTHER,
+      "Cancel",
+    ]);
+    expect(model.options.map((o) => o.keys)).toEqual([["Enter"], ["Down", "Enter"], ["Down", "Down", "Enter"], ["Down", "Down", "Down", "Enter"], ["Down", "Down", "Down", "Down", "Enter"], ["Escape"]]);
+    expect(model.options[1]!.description).toBe("Fix broken behavior or correct implementation · Preview: Describe the bug and expected behavior");
+    // The echo block above the panel (`╭─── Ask 1 questions`, `[task] · options:4`) and the status row are outside it.
+    expect(model.signature).not.toContain("options:4");
+    expect(ompBuildBlocks(load(plan)).at(-1)!.kind).toBe("prompt-select");
+  });
+
   it("the footer's Alt+H hide segment is accepted, and the pipeline lifts one prompt-select", () => {
     const blocks = ompBuildBlocks(load(PREVIEWED));
     expect(blocks.at(-1)!.kind).toBe("prompt-select");
@@ -693,6 +712,7 @@ describe("the grammar claims nothing else in the corpus", () => {
     "omp--v18-8-ask-single-described-moved.txt",
     "omp--v18-8-ask-single-described.txt",
     "omp--v18-12-6-ask-previews--w120.txt",
+    "omp--v18-12-6-ask-plan-mode--w120.txt",
     "omp--v18-10-ask-single.txt",
     "omp--v18-10-ask-batch.txt",
     "omp--v18-10-ask-batch-moved.txt",

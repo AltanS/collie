@@ -3291,3 +3291,9 @@ The `#` popup that lists prompt actions (`ends with hash #`, `tag:#abc`: `Copy c
 | Fixture | State | What it shows |
 | --- | --- | --- |
 | `omp--v18-6-1-quoted-dialog-draft--w120.txt` | `draft` | A nine-row prompt in the box that asks for a permission box printed in a code fence (`╭─ Allow tool: bash`, `❯ Approve`, `Deny`, a footer), then `my notes`. The quoted rows are the person's text. omp draws the draft's rows under the prompt at three columns, which `idle.frame.draftIndent` says, so the modal cues (`dialogsInBox` reads the box rows) leave them out. A dialog omp draws in the box's place starts at the box's column and stays a dialog. The draft is taller than the bridge's tail window, so no prompt region binds (the sweep goes out unbound) |
+
+## omp 18.12.6 plan-mode Ask (captured 2026-10-25, omp-gang tester 14)
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `omp--v18-12-6-ask-plan-mode--w120.txt` | `dialog` | The last 20 rows when `x` was sent with plan mode on: a status row `⎋ Gather task for plan mode`, then the Ask panel `What work should I plan?` with four choices, each with a description row and a preview row, `Other (type your own)` and the footer ending `Alt+H hide`. Lifts like the previews dialog (ask.ts, OPTION PREVIEWS) |
