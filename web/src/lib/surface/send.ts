@@ -170,9 +170,12 @@ export interface ReadMark {
   readonly hash: string;
 }
 
-/** The steps whose time a receipt measures. */
-/** `proof`: the probe of a draft S0 read, with its second S0 read where it needed one (2026-10-25); S0's gap leaves it out. */
-export type SendStep = "s0" | "proof" | "clear" | "probe" | "write" | "s1" | "commit" | "s2";
+/**
+ * The steps whose time a receipt measures. `profile` is the wait for the harness's profile and binary
+ * version before S0 (#594): the send's bound starts after it, so it is measured and never counted.
+ * `proof`: the probe of a draft S0 read, with its second S0 read where it needed one (2026-10-25); S0's gap leaves it out.
+ */
+export type SendStep = "profile" | "s0" | "proof" | "clear" | "probe" | "write" | "s1" | "commit" | "s2";
 
 /**
  * The receipt, a closed list of fields. It is written to disk, so it holds no screen text and no
@@ -353,6 +356,11 @@ export interface HeldRow {
   readonly reason?: SendReason;
   /** What holds it ({@link HeldCause}); absent on a row a bridge before 1.24.1 held. */
   readonly cause?: HeldCause;
+  /**
+   * Held for a running turn only because Collie could not read the harness's version (#594): the
+   * profile would take a message in a turn, but not on a version it cannot name. `collie doctor` says why.
+   */
+  readonly versionUnread?: true;
 }
 
 /** What `DELETE /api/send/<id>` answers (M56 spec 15): a held request cancelled, or an ended row dismissed. */

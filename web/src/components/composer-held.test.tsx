@@ -133,6 +133,13 @@ describe("the held-send card", () => {
     }
   });
 
+  it("a row held for a turn only because the agent's version could not be read says so (#594)", () => {
+    renderComposer({ held: [row("req00001", "held", { cause: "turn_running", versionUnread: true })] });
+    expect(document.querySelector('[data-slot="held-row"]')).toHaveTextContent(
+      "Queued. Collie could not read this agent's version, so it sends when the turn ends. Run collie doctor to see why.",
+    );
+  });
+
   it("two held rows start collapsed: a count, the first text on two lines, a Show all toggle and no Cancel", () => {
     renderComposer({ held: [row("req00001", "held"), row("req00002", "held", { text: "second\nline" })] });
     const card = document.querySelector('[data-slot="held-card"]')!;

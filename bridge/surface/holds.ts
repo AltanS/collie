@@ -80,6 +80,8 @@ export interface HeldEntry {
   readonly draftHolds?: true;
   /** What holds it: the refusal it was held from, then what the poll reads now. */
   readonly cause?: HoldCause;
+  /** Held for a turn only because the harness's version could not be read (see {@link HeldRow.versionUnread}). */
+  readonly versionUnread?: true;
 }
 
 export interface HoldInput {
@@ -98,6 +100,8 @@ export interface HoldInput {
   readonly draftHolds?: boolean;
   /** See {@link HeldEntry.cause}. */
   readonly cause?: HoldCause;
+  /** See {@link HeldEntry.versionUnread}. */
+  readonly versionUnread?: boolean;
   /** The caller's own end of the hold, epoch ms: it replaces {@link HOLD_MS} and {@link HOLD_COMMAND_MS}. */
   readonly expiresAt?: number;
 }
@@ -135,6 +139,7 @@ function parseEntry(raw: JsonValue | undefined): HeldEntry | null {
   if (node.draftHolds === true) entry = { ...entry, draftHolds: true };
   const cause = pick(node.cause, HELD_CAUSES);
   if (cause !== undefined) entry = { ...entry, cause };
+  if (node.versionUnread === true) entry = { ...entry, versionUnread: true };
   return entry;
 }
 
@@ -144,6 +149,7 @@ export function heldRow(entry: HeldEntry): HeldRow {
   if (entry.outcome !== undefined) row = { ...row, outcome: entry.outcome };
   if (entry.reason !== undefined) row = { ...row, reason: entry.reason };
   if (entry.cause !== undefined) row = { ...row, cause: entry.cause };
+  if (entry.versionUnread === true) row = { ...row, versionUnread: true };
   return row;
 }
 
@@ -202,11 +208,12 @@ export class HoldStore {
   /** A new request at the end of its pane's queue. */
   add(input: HoldInput): HeldEntry {
     const at = this.now();
-    const { command, waitsForTurn, draftHolds, cause, expiresAt, ...rest } = input;
+    const { command, waitsForTurn, draftHolds, cause, versionUnread, expiresAt, ...rest } = input;
     let entry: HeldEntry = { ...rest, heldAt: at, expiresAt: expiresAt ?? at + (command ? HOLD_COMMAND_MS : HOLD_MS), seq: this.nextSeq++, state: "held", tries: 0 };
     if (waitsForTurn === true) entry = { ...entry, waitsForTurn: true };
     if (draftHolds === true) entry = { ...entry, draftHolds: true };
     if (cause !== undefined) entry = { ...entry, cause };
+    if (versionUnread === true) entry = { ...entry, versionUnread: true };
     return this.write(entry);
   }
 

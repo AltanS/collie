@@ -391,6 +391,7 @@ export const zh: Dictionary = {
   "composer.protocol.expired": "未发送。本轮未在 30 分钟内结束。",
   "composer.protocol.cancelled": "已取消。未向代理发送任何内容。",
   "composer.held.queued": "已排队。本轮结束时发送。",
+  "composer.held.versionUnread": "已排队。Collie 无法读取此代理的版本，因此在本轮结束时发送。运行 collie doctor 查看原因。",
   "composer.held.box": "已暂存。输入框处有内容打开；关闭后发送。",
   "composer.held.draft": "已暂存。输入框清空后发送。",
   "composer.held.sending": "正在发送。",

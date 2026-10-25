@@ -42,8 +42,9 @@ function heldKey(row: HeldRow): MessageKey {
     case "draft_present":
       return "composer.held.draft";
     default:
-      // A turn, or a row from a bridge that keeps no cause.
-      return "composer.held.queued";
+      // A turn, or a row from a bridge that keeps no cause. A turn the harness would take a message in,
+      // were its version read, says so (#594).
+      return row.versionUnread === true ? "composer.held.versionUnread" : "composer.held.queued";
   }
 }
 

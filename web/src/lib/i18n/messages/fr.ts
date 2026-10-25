@@ -344,6 +344,7 @@ export const fr: Dictionary = {
   "composer.protocol.expired": "Non envoyé. Le tour ne s'est pas terminé dans les 30 minutes.",
   "composer.protocol.cancelled": "Annulé. Rien n'a été envoyé à l'agent.",
   "composer.held.queued": "En file d'attente. Envoi à la fin du tour.",
+  "composer.held.versionUnread": "En file d'attente. Collie n'a pas pu lire la version de cet agent, l'envoi se fait donc à la fin du tour. Lancez collie doctor pour savoir pourquoi.",
   "composer.held.box": "En attente. Quelque chose est ouvert sur la boîte ; envoi dès sa fermeture.",
   "composer.held.draft": "En attente. Envoi quand la boîte est vide.",
   "composer.held.sending": "Envoi en cours.",

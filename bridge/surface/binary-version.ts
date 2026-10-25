@@ -8,10 +8,11 @@ import { homedir } from "node:os";
 
 import { type Profile, versionFromOutput } from "../../web/src/lib/surface/profile.ts";
 import { HOST, type Host } from "../host.ts";
-import { createLoginPath, type LoginPath, type LoginPathDeps } from "../login-path.ts";
+import { boundedRun, createLoginPath, type LoginPath, type LoginPathDeps } from "../login-path.ts";
 import { envGet, envKey, findTool } from "../tools.ts";
 
-const VERSION_TIMEOUT_MS = 5000;
+/** The version command alone ends inside this, killed at the cap ({@link boundedRun}); the whole read has {@link VERSION_READ_BUDGET_MS}. */
+const VERSION_TIMEOUT_MS = 3_000;
 
 /** Runs a command and returns what it printed, or null when it would not run. */
 export type RunVersionCommand = (command: readonly string[]) => string | null;
@@ -146,27 +147,16 @@ export function createBinaryReader(deps: BinaryReaderDeps = {}): (profile: Profi
 }
 
 const spawnWithPathDetailed: RunResolvedDetailed = async (argv, path) => {
-  try {
-    const env = path === undefined ? process.env : { ...process.env, [envKey(process.env, "PATH")]: path };
-    const run = Bun.spawn([...argv], { env, stdout: "pipe", stderr: "pipe", timeout: VERSION_TIMEOUT_MS });
-    const [out, err] = await Promise.all([new Response(run.stdout).text(), new Response(run.stderr).text()]);
-    const exitCode = await run.exited;
-    return { exitCode, output: `${out} ${err}`, stderr: err };
-  } catch {
-    return null;
-  }
+  const env = path === undefined ? process.env : { ...process.env, [envKey(process.env, "PATH")]: path };
+  // The same real bound as a send's read (#594): a killed command is `exitCode: null`, "did not finish in time".
+  const done = await boundedRun(argv, env, VERSION_TIMEOUT_MS);
+  return done === null ? null : { exitCode: done.code, output: `${done.out} ${done.err}`, stderr: done.err };
 };
 
 const spawnWithPath: RunResolvedCommand = async (argv, path) => {
-  try {
-    const env = path === undefined ? process.env : { ...process.env, [envKey(process.env, "PATH")]: path };
-    const run = Bun.spawn([...argv], { env, stdout: "pipe", stderr: "pipe", timeout: VERSION_TIMEOUT_MS });
-    const [out, err] = await Promise.all([new Response(run.stdout).text(), new Response(run.stderr).text()]);
-    await run.exited;
-    return `${out} ${err}`;
-  } catch {
-    return null;
-  }
+  const env = path === undefined ? process.env : { ...process.env, [envKey(process.env, "PATH")]: path };
+  const done = await boundedRun(argv, env, VERSION_TIMEOUT_MS);
+  return done === null || done.code === null ? null : `${done.out} ${done.err}`;
 };
 
 /** The version command run with Bun.spawn, bounded by VERSION_TIMEOUT_MS, never blocking the event loop. */
@@ -176,24 +166,62 @@ export const spawnBinaryVersion: AsyncVersionReader = createVersionReader();
 export const VERSION_CACHE_MS = 10 * 60_000;
 
 /**
+ * How long a version read that failed (no binary, no version in what it printed, or no answer inside
+ * {@link VERSION_READ_BUDGET_MS}) stands before a send reads again (#594). Short, so a binary that was
+ * slow once, or one the operator just put on PATH, is read again soon; long enough that a hanging
+ * `--version` costs one send's `profile` gap a minute, not every send's. A read that succeeds replaces it.
+ */
+export const VERSION_FAILED_CACHE_MS = 60_000;
+
+/**
+ * The whole version read, the login shell's PATH and the version command together, ends inside this
+ * budget, or reads as failed (null) for {@link VERSION_FAILED_CACHE_MS}. The send's own bound starts
+ * after the read (the `profile` gap in a receipt's `gapsMs`), so this is the longest a send waits for
+ * its profile. The login PATH is asked once per process and keeps going in the background when the
+ * budget ends first; the next read after the failed window takes its answer.
+ */
+export const VERSION_READ_BUDGET_MS = 4_000;
+
+/**
  * A per-profile cache of the binary's version for the send path (M56 spec 05). The first send on a
  * profile waits for the version, so its status is never guessed; later sends use the cached value
- * for VERSION_CACHE_MS. A version that could not be read is cached too, as null, which `profileFor`
- * turns into `provisional` and the probed path.
+ * for VERSION_CACHE_MS. A version that could not be read is cached too, as null, for
+ * VERSION_FAILED_CACHE_MS, which `profileFor` turns into `provisional` and the probed path. The cache
+ * is per bridge process, so per host; sends that ask while a read runs share that read.
  */
 export class VersionCache {
   private readonly known = new Map<string, { version: string | null; at: number }>();
+  private readonly reading = new Map<string, Promise<string | null>>();
 
   constructor(
     private readonly read: AsyncVersionReader = spawnBinaryVersion,
     private readonly now: () => number = () => Date.now(),
+    private readonly budgetMs: number = VERSION_READ_BUDGET_MS,
   ) {}
 
   async versionOf(profile: Profile): Promise<string | null> {
     const hit = this.known.get(profile.id);
-    if (hit !== undefined && this.now() - hit.at <= VERSION_CACHE_MS) return hit.version;
-    const version = await this.read(profile);
-    this.known.set(profile.id, { version, at: this.now() });
-    return version;
+    if (hit !== undefined && this.now() - hit.at <= (hit.version === null ? VERSION_FAILED_CACHE_MS : VERSION_CACHE_MS)) return hit.version;
+    const running = this.reading.get(profile.id);
+    if (running !== undefined) return running;
+    const work = this.readInBudget(profile).then((version) => {
+      this.known.set(profile.id, { version, at: this.now() });
+      this.reading.delete(profile.id);
+      return version;
+    });
+    this.reading.set(profile.id, work);
+    return work;
+  }
+
+  private async readInBudget(profile: Profile): Promise<string | null> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<null>((done) => {
+      timer = setTimeout(() => done(null), this.budgetMs);
+    });
+    try {
+      return await Promise.race([this.read(profile).catch(() => null), late]);
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
   }
 }

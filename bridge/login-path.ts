@@ -1,4 +1,5 @@
 import { basename } from "node:path";
+import type { Subprocess } from "bun";
 
 import { HOST, type Host } from "./host.ts";
 import { envGet } from "./tools.ts";
@@ -24,26 +25,57 @@ export type LoginPathAsk = (shell: string) => Promise<string | null>;
  * than one line (a profile that echoes) is read as its LAST line.
  */
 export const askLoginPath: LoginPathAsk = async (shell) => {
+  const done = await boundedRun([shell, "-lc", 'printf %s "$PATH"'], process.env, LOGIN_PATH_TIMEOUT_MS);
+  if (done === null || done.code !== 0 || done.out.length > LOGIN_PATH_MAX_BYTES) return null;
+  const last = done.out.split("\n").at(-1)?.trim() ?? "";
+  return last === "" ? null : last;
+};
+
+/** What a {@link boundedRun} child printed, and how it exited: `code` null when it was killed at the cap (nothing it printed is kept). */
+export interface BoundedRun {
+  readonly out: string;
+  readonly err: string;
+  readonly code: number | null;
+}
+
+/**
+ * Runs `argv` with no stdin and returns what it printed and its exit code, or null when it would not
+ * start. One that does not finish inside `ms` is killed and answers at once with `code` null and no
+ * output. The bound is real. Bun's own `timeout`, and a kill on a timer, end the child, but reading its stdout and
+ * stderr still waits for both pipes to close, and a grandchild that inherited them (a wrapper's
+ * `sleep`, an agent started from a login profile, a node script's helper) holds them open after the
+ * kill. A version read that waited so took 20 s in the lab against a 5 s timeout (#594), and the
+ * send's bound counted down behind it.
+ */
+export async function boundedRun(argv: readonly string[], env: Record<string, string | undefined>, ms: number): Promise<BoundedRun | null> {
+  let child: Subprocess<"ignore", "pipe", "pipe">;
   try {
-    const proc = Bun.spawn([shell, "-lc", 'printf %s "$PATH"'], {
-      stdin: "ignore",
-      stdout: "pipe",
-      stderr: "ignore",
-    });
-    const timer = setTimeout(() => proc.kill(), LOGIN_PATH_TIMEOUT_MS);
-    try {
-      const out = await new Response(proc.stdout).text();
-      const code = await proc.exited;
-      if (code !== 0 || out.length > LOGIN_PATH_MAX_BYTES) return null;
-      const last = out.split("\n").at(-1)?.trim() ?? "";
-      return last === "" ? null : last;
-    } finally {
-      clearTimeout(timer);
-    }
+    child = Bun.spawn([...argv], { env, stdin: "ignore", stdout: "pipe", stderr: "pipe" });
   } catch {
     return null;
   }
-};
+  const started = child;
+  const finished = (async (): Promise<BoundedRun> => {
+    const [out, err] = await Promise.all([new Response(started.stdout).text(), new Response(started.stderr).text()]);
+    return { out, err, code: await started.exited };
+  })().catch(() => null);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<BoundedRun>((done) => {
+    timer = setTimeout(() => {
+      try {
+        started.kill("SIGKILL");
+      } catch {
+        // Gone already.
+      }
+      done({ out: "", err: "", code: null });
+    }, ms);
+  });
+  try {
+    return await Promise.race([finished, late]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
 
 /** Shells whose `-lc` takes a POSIX-quoted script. Another shell is not asked. */
 const POSIX_LOGIN_SHELLS: ReadonlySet<string> = new Set(["bash", "zsh", "sh", "dash", "ksh", "fish"]);
