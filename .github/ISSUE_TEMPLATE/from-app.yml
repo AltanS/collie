@@ -1,0 +1,56 @@
+# Opened from the app's "Report a problem" sheet (ADR 0123), which fills in every field below through
+# the new-issue URL: `?template=from-app.yml&title=…&what-happened=…&sends=…&setup=…&screen=…`.
+# The ids are the URL's parameter names, so renaming one breaks the prefill: web/src/lib/report/body.ts
+# (`FIELD_IDS`) names the same four, and web/src/lib/report/template.test.ts pins them together.
+# The label rides here, because a `labels=` URL parameter needs triage rights on the repository.
+name: Report from the app
+description: Opened by Collie's Report a problem sheet after sends kept failing
+labels:
+  - from-app
+body:
+  - type: markdown
+    attributes:
+      value: >
+        The app filled in this form. Read every field before you submit: the issue is public. By
+        default it holds no text you typed and no screen, only the Collie version, the agent and its
+        version, the multiplexer and each failing send's codes.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: The app's summary and your own line, if you wrote one. Add anything you saw.
+    validations:
+      required: true
+
+  - type: textarea
+    id: sends
+    attributes:
+      label: The failing sends
+      description: >
+        One entry per send, newest first: the time, how it ended, its request id, the keys Collie
+        pressed and the gaps between them in milliseconds. The last line is a signature that finds
+        reports of the same problem.
+      render: text
+    validations:
+      required: false
+
+  - type: textarea
+    id: setup
+    attributes:
+      label: Setup
+      description: The Collie version and release line, the operating system, the multiplexer, the agent and its version, and the reader profile.
+      render: json
+    validations:
+      required: false
+
+  - type: textarea
+    id: screen
+    attributes:
+      label: The screen
+      description: >
+        Present only when you turned on "Include the screen". The pane's last rows, with known
+        secret shapes masked by the bridge. Read them before you submit.
+      render: text
+    validations:
+      required: false

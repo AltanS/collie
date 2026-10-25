@@ -22,6 +22,7 @@ import { ConnectionBanner } from "@/components/connection-banner";
 import { AppHeaderHost } from "@/components/app-header";
 import { StripHost } from "@/components/ui/strip-host";
 import { ScreenTransition } from "@/components/screen-transition";
+import { ReportDoor } from "@/components/report-door";
 import { CrewProvider } from "@/components/crew-provider";
 import { CollieMark } from "@/components/collie-mark";
 import { TourHost } from "@/components/tour-sheet";
@@ -153,6 +154,9 @@ export function RootLayout() {
           inside it because it is not a strip: it covers the screen, it does not share the top of
           it. */}
       <TourHost home={data} onDecision={setTourDecision} />
+      {/* Report a problem (ADR 0123): the one sheet the composer's card, the pane menu and Settings open
+          through lib/report/store.ts. Renders nothing until the first open, and loads the sheet then. */}
+      <ReportDoor />
       <div className="flex h-(--app-h) flex-col overflow-hidden">
         {/* THE ONE HEADER, and the first thing on the screen in every state. It survives a
             navigation because it is rendered HERE rather than inside `<Outlet/>`: all six routes used

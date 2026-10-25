@@ -345,6 +345,21 @@ describe("the session page's rows (send drill 3)", () => {
     expect(rows.receipts[3]!.line).toBeUndefined();
   });
 
+  it("reads the reader profile and its status off the wire, and drops a status it does not know (ADR 0123)", () => {
+    const row = { requestId: "r1abcdefgh", at: 5, mode: "send", outcome: "sent", keys: ["Enter"], gapsMs: {}, harness: "claude", version: "2.1.302" };
+    const rows = readSendReceipts({
+      receipts: [
+        { ...row, profileId: "claude@2.1", profileStatus: "verified" },
+        { ...row, requestId: "r2abcdefgh", profileId: "", profileStatus: "trusted" },
+        { ...row, requestId: "r3abcdefgh" },
+      ],
+    });
+    expect(rows.receipts[0]).toMatchObject({ profileId: "claude@2.1", profileStatus: "verified" });
+    expect(rows.receipts[1]!.profileId).toBeUndefined();
+    expect(rows.receipts[1]!.profileStatus).toBeUndefined();
+    expect(rows.receipts[2]!.profileId).toBeUndefined();
+  });
+
   it("reads the cap of a row off the wire and drops one that is not whole", () => {
     const row = { requestId: "r1abcdefgh", at: 5, mode: "send", outcome: "refused", reason: "unconfirmed", keys: [], gapsMs: {}, harness: "codex", version: null };
     const rows = readSendReceipts({ receipts: [{ ...row, cap: { count: 5, limit: 5, harness: "codex", version: "-" } }, { ...row, requestId: "r2abcdefgh", cap: { count: "x" } }] });

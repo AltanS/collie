@@ -5,7 +5,7 @@ import { useRevalidator } from "react-router";
 import { Check, FileText, Image, Keyboard, ListEnd, ListTodo, Loader2, Mic, Monitor, Navigation, Paperclip, Pencil, Send, Settings2, Slash, Square, Terminal, TriangleAlert, X, Zap } from "lucide-react";
 
 import { StatusDot } from "@/components/status-badge";
-import { applyDraftFontSize, fontStack, inputFocusZoomsPage, sentSuggestionsOf } from "@/hooks/use-display-prefs";
+import { applyDraftFontSize, fontStack, inputFocusZoomsPage, reportOfferOf, sentSuggestionsOf } from "@/hooks/use-display-prefs";
 import type { DisplayPrefs, Hand } from "@/hooks/use-display-prefs";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
 import { useDirectTyping } from "@/hooks/use-direct-typing";
@@ -87,8 +87,10 @@ import { adapterFor } from "@/lib/harness";
 import { useLive } from "@/lib/liveness";
 import { useCatchingUp, useLocked } from "@/lib/idle";
 import { ClearNotice, OfflineDraftNote, TerminalDraftPreview } from "@/components/terminal-draft-preview";
+import { ReportCard } from "@/components/report-card";
 import { textToKeySequence } from "@/lib/key-queue";
 import { isLead, paneScopeKey, scopeKey, type Scope } from "@/lib/scope";
+import { closeTrouble, noteSend, openReport, streakIds, useTroubleOffer } from "@/lib/report/store";
 import { takeBeltIntent } from "@/lib/belt-intent";
 import type { PaneSubagent, PaneTodo } from "@/lib/types";
 import { AgentsSheet, subagentName } from "@/components/agents-sheet";
@@ -560,6 +562,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // Compared by VALUE (its cache key), never by object identity: a scope is a value passed as an
   // object, and an identity compare here would re-run the save/restore below on every poll.
   const scopeId = scopeKey(scope);
+  // Report a problem (ADR 0123): this pane's failure streak, and whether this device offers the card.
+  const reportKey = paneScopeKey(scope, paneId);
+  const reportOn = isLead(scope) && reportOfferOf(prefs);
+  const reportCount = useTroubleOffer(reportKey);
   const draftPaneRef = useRef({ scope, scopeId, paneId });
   // THE BELT'S X AND ITS UNDO (M40 spec 04, issue #291). The X empties this box in one tap
   // (`clearByHand`); until the operator's next act the same slot is Undo, and this is what Undo puts
@@ -1272,6 +1278,18 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       />
     ) : null;
 
+  // Report a problem (ADR 0123): after three failed sends in a row on this pane, a card offers the report
+  // sheet. It floats with the others, under the held card, so it moves nothing; the cross keeps it quiet
+  // until the streak ends. Off on a crew member's pane (the next slice) and when Settings turned it off.
+  const reportCard =
+    reportOn && reportCount > 0 ? (
+      <ReportCard
+        count={reportCount}
+        onReport={() => openReport({ paneId, scope, requestIds: streakIds(reportKey) })}
+        onClose={() => closeTrouble(reportKey)}
+      />
+    ) : null;
+
   // The place both float in: a column, the held card on top and the draft or offline notice nearest
   // the belt, with a small gap. Pass-through wrapper (`pointer-events-none`); each card takes touches
   // back. In the pane view's slot the slot does the positioning; alone, the column floats above this
@@ -1286,7 +1304,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       <ClearNotice refusal={clearNote.refusal} onRestore={restoreOpen ? () => void restoreDraft() : null} restoring={restoring} onDismiss={() => setClearNote(null)} />
     ) : null;
   const floating =
-    heldCard !== null || floatingNotice !== null || clearCard !== null || (floatingHint !== undefined && floatingHint !== null) ? (
+    heldCard !== null || reportCard !== null || floatingNotice !== null || clearCard !== null || (floatingHint !== undefined && floatingHint !== null) ? (
       <div
         data-slot="floating-cards"
         className={cn(
@@ -1295,6 +1313,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         )}
       >
         {heldCard}
+        {reportCard}
         {floatingNotice}
         {clearCard}
         {floatingHint}
@@ -1564,6 +1583,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         return false;
       }
       const { reply, reading } = res;
+      // Report a problem (ADR 0123): the answer joins this pane's streak. Plain rules over the outcome and
+      // reason (lib/report/trouble.ts); nothing is sent and nothing is retried. This machine's panes only.
+      if (reportOn && reply.outcome !== null) {
+        noteSend(reportKey, paneId, { requestId: res.requestId, outcome: reply.outcome, reason: reply.reason, cap: reply.cap !== null, at: Date.now() });
+      }
       if (reading.clear) {
         setProtocolOffer(null);
         afterVerifiedSend(resend?.shown ?? t, isDraft, verifiedNote(reading.note, when));

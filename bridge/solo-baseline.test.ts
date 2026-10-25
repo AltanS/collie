@@ -872,6 +872,7 @@ describe("solo zero-tax — routes", () => {
       // than exempted. It is session-scoped and read-gated, and it registers no crew route of its
       // own: a lead reaches a peer's through the peer's existing `/crew/v1/*` dispatch.
       "/api/refresh",
+      "/api/report/context",
       // The Send Protocol (M56 spec 05): a SOLO route that legitimately extends this list, named here
       // rather than exempted. Write-gated through the same closure a reply rides, this collie's own
       // sessions only, and a 404 only when the operator set COLLIE_SEND_PROTOCOL=0 (the flag is on by
