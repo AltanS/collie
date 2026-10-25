@@ -1166,5 +1166,7 @@ export function museJournal(roots: string | readonly string[]): JournalAdapter {
     reducer: createMuseReducer,
     discover: (cwd: string, hints?: DiscoverHints) => source.discoverSession(cwd, hints),
     sharedFolderBlind: true,
+    // The `run/inbox_item_queued` and `inbox_item_drained` rows are the queue: the cards come from them (ADR 0122).
+    recordsQueue: true,
   };
 }

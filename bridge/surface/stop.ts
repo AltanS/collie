@@ -19,6 +19,10 @@
 //            read shows a dialog (the key opened one, and its card is the next move)
 //   told     a `stopped` receipt is told to the pane's fold (`deps.stopped`) as the stop edge a harness
 //            with no stop hook on an interrupt never sends
+//   returned each read-back's input box goes to the Send Protocol (`deps.returned`, ADR 0122): a harness
+//            may give its queued messages back to the box when its turn is interrupted. The ids of this
+//            pane's queued sends a read showed back in the box ride a `stopped` or `pressed` receipt as
+//            `returned`, so the phone can say so at once. Only what a read showed, never a guess
 //
 // The same request id answers the same receipt and presses once; a request id still in flight is
 // joined, never pressed twice. The receipts live in memory: a bridge restart forgets them, and a Stop is
@@ -33,7 +37,7 @@ import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
 import { liftAsk, readerBlocks } from "../../web/src/lib/surface/lift.ts";
 import type { ProfileMatch } from "../../web/src/lib/surface/profile.ts";
 import type { StopReason, StopReceipt } from "../../web/src/lib/surface/stop.ts";
-import type { Surface } from "../../web/src/lib/surface/surface.ts";
+import type { Surface, SurfaceTurn } from "../../web/src/lib/surface/surface.ts";
 import type { KeyGate } from "./key-gate.ts";
 
 /** Rows one read asks for, as the Send Protocol reads them. */
@@ -56,12 +60,20 @@ export interface StopDeps {
   readonly gate: Pick<KeyGate, "press">;
   readonly profile: (harness: string) => Promise<ProfileMatch | null>;
   readonly sleep?: (ms: number) => Promise<void>;
+  /** The clock a read is stamped with, for {@link returned}. Defaults to `Date.now`. */
+  readonly now?: () => number;
   /**
    * Told once per `stopped` receipt, never on a replay: Collie saw the turn end. The bridge gives it
    * to the pane's fold as the stop edge a harness with no stop hook on an interrupt did not send
    * (`SurfaceShadow.stopSeen`). A throw is caught; the receipt stands.
    */
   readonly stopped?: (paneId: string) => void;
+  /**
+   * One read-back's input box (its text, "" when empty, null when the read found no box), when it was
+   * read and the turn it showed; answers the ids of the pane's queued sends that box holds
+   * (SendProtocol.boxRead, ADR 0122). Absent with the Send Protocol off. A throw is caught; the receipt stands.
+   */
+  readonly returned?: (paneId: string, read: { readonly box: string | null; readonly at: number; readonly turn: SurfaceTurn }) => readonly string[];
 }
 
 /** What a Stop answers: the receipt, and whether it is the stored one of an earlier tap. */
@@ -140,7 +152,7 @@ export class StopService {
     // Two reads before the key, each with the same refusals: the first decides, the second is taken
     // right before the press, so a dialog that drew in between is never answered by the key.
     for (let read = 0; read < 2; read++) {
-      const before = await this.look(paneId, harness, match);
+      const before = (await this.look(paneId, harness, match))?.surface ?? null;
       const refused = before === null ? "pane_gone" : refusalOf(before, keys.interruptClearsDraft === true);
       if (refused !== null) return refusal(requestId, refused);
     }
@@ -150,20 +162,35 @@ export class StopService {
     const sleep = this.deps.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
     let opened = false;
     let idleBefore = false;
+    // The queued sends a read-back showed back in the box: the latest read with a box says which.
+    let returned: readonly string[] = [];
+    const withReturned = (receipt: StopReceipt): StopReceipt => (returned.length === 0 ? receipt : { ...receipt, returned: [...returned] });
     for (let read = 0; read < READ_BACKS; read++) {
       await sleep(read === 0 ? FIRST_GAP_MS : NEXT_GAP_MS);
-      const after = await this.look(paneId, harness, match);
+      const look = await this.look(paneId, harness, match);
+      const after = look?.surface ?? null;
+      if (look !== null && look.box !== null) returned = this.boxRead(paneId, { box: look.box, at: look.at, turn: look.surface.turn });
       const idle = after !== null && after.turn === "idle" && after.modal === "none";
       // One idle read may be a redraw between two tool calls: two in a row say the turn ended.
       if (idle && idleBefore) {
         this.tellStopped(paneId);
-        return { requestId, outcome: "stopped", keys: pressed };
+        return withReturned({ requestId, outcome: "stopped", keys: pressed });
       }
       idleBefore = idle;
       if (after !== null) opened = after.modal !== "none" && after.modal !== "unknown";
     }
     // The key went in, so the outcome stays `pressed`; a dialog the key opened is told, so the person is sent to its card.
-    return opened ? { requestId, outcome: "pressed", reason: "dialog_open", keys: pressed } : { requestId, outcome: "pressed", keys: pressed };
+    return withReturned(opened ? { requestId, outcome: "pressed", reason: "dialog_open", keys: pressed } : { requestId, outcome: "pressed", keys: pressed });
+  }
+
+  /** {@link StopDeps.returned} for one read-back's box. Never throws: the receipt does not depend on it. */
+  private boxRead(paneId: string, read: { readonly box: string | null; readonly at: number; readonly turn: SurfaceTurn }): readonly string[] {
+    try {
+      return this.deps.returned?.(paneId, read) ?? [];
+    } catch (err) {
+      console.warn(`[stop] box read for ${paneId} failed: ${err instanceof Error ? err.message : String(err)}`);
+      return [];
+    }
   }
 
   private tellStopped(paneId: string): void {
@@ -174,12 +201,19 @@ export class StopService {
     }
   }
 
-  /** One fresh read of the pane, folded into its Surface. Null when the multiplexer could not read it. */
-  private async look(paneId: string, harness: string, match: ProfileMatch): Promise<Surface | null> {
+  /**
+   * One fresh read of the pane, folded into its Surface, with its input box's text ("" when empty, the
+   * placeholder read as empty; null when the read found no box) and when it was read. Null when the
+   * multiplexer could not read it.
+   */
+  private async look(paneId: string, harness: string, match: ProfileMatch): Promise<{ readonly surface: Surface; readonly box: string | null; readonly at: number } | null> {
+    const at = (this.deps.now ?? Date.now)();
     const grid = await this.deps.mux.readGrid(paneId, { scope: "viewport", lines: STOP_READ_LINES, styling: "preserve" });
     if (!grid.ok) return null;
     const rows = splitLines(parseAnsi(grid.value.text));
     const ask = liftAsk(readerBlocks(rows, harness), grid.value.revision);
-    return surfaceOfScreen({ seq: 0, source: "screen", at: Date.now(), revision: grid.value.revision, rows, ask }, match.profile.idle).surface;
+    const read = surfaceOfScreen({ seq: 0, source: "screen", at, revision: grid.value.revision, rows, ask }, match.profile.idle);
+    const box = read.frame === null ? null : read.frame.placeholder ? "" : read.frame.interior.text;
+    return { surface: read.surface, box, at };
   }
 }

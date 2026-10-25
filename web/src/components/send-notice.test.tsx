@@ -12,6 +12,20 @@ describe("stopNotice", () => {
     expect(notice.tone).toBe("caution");
   });
 
+  it("a Stop that gave queued messages back to the box says how many, after the outcome (ADR 0122)", () => {
+    expect(stopNotice({ requestId: "stop-req-0001", outcome: "stopped", keys: ["Escape"], returned: ["req-back-00001"] }).sentence).toBe(
+      "Stopped. 1 queued message is back in the agent as a draft.",
+    );
+    expect(stopNotice({ requestId: "stop-req-0001", outcome: "stopped", keys: ["Escape"], returned: ["req-back-00001", "req-back-00002"] }).sentence).toBe(
+      "Stopped. 2 queued messages are back in the agent as a draft.",
+    );
+    const pressed = stopNotice({ requestId: "stop-req-0001", outcome: "pressed", keys: ["Escape"], returned: ["req-back-00001"] });
+    expect(pressed.sentence).toBe("Stop sent. The agent still looks busy. 1 queued message is back in the agent as a draft.");
+    expect(pressed.tone).toBe("caution");
+    // Nothing a read-back saw, no clause: the card turns returned on a later poll, and the two never contradict.
+    expect(stopNotice({ requestId: "stop-req-0001", outcome: "stopped", keys: ["Escape"], returned: [] }).sentence).toBe("Stopped.");
+  });
+
   it("a plain pressed receipt keeps the working sentence and does not point at a card", () => {
     const notice = stopNotice({ requestId: "stop-req-0001", outcome: "pressed", keys: ["Escape"] });
     expect(notice.sentence).toBe(t("belt.stop.receipt.pressed"));

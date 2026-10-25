@@ -1315,6 +1315,8 @@ export function claudeJournal(roots: string | readonly string[]): JournalAdapter
     // 3.6b or zellij 0.44.2, which deliver it as a plain Enter (mux/keys.ts `EXTENDED_ONLY_CHORDS`);
     // the chat route drops this list there (server.ts `chatBodyForMux`).
     sendQueuedNow: ["ctrl+Enter"],
+    // The `queue-operation` rows are the queue (createQueueTracker): the cards come from them (ADR 0122).
+    recordsQueue: true,
   };
 }
 

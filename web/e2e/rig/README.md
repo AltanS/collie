@@ -13,8 +13,8 @@ Tier 1's config ignores `e2e/rig/`.
 
 The leg is a gate. It runs in three places:
 
-- **Before every release tag**, on the release head. All forty cases pass on the first tap:
-  thirty-three on the solo leg (three harnesses with five cases each, fourteen walky talky cases, case 22, case 25, case 26, and case 28) and
+- **Before every release tag**, on the release head. All forty-one cases pass on the first tap:
+  thirty-four on the solo leg (three harnesses with five cases each, fourteen walky talky cases, case 22, case 25, case 26, case 28, and case 29) and
   seven on the crew leg (below). A case that fails, or is not reached, holds the tag.
 - **Before merging a change** to a harness reader, the Surface, the Send Protocol or the ask code. Run
   it on the branch. A unit test cannot show that a tap works on a real screen.
@@ -63,7 +63,7 @@ The rules are the harness lab's (`scripts/harness-canary/lab/lab-ledger.ts`):
   rig.
 - A run that cannot finish writes `failed`. A run in which a case failed, in either leg, writes `fail`. A
   case that was not reached, or is not applicable, in either leg proves nothing, so it makes the row
-  `failed`. The row is `pass` only when both legs passed every case (33 solo cases and 7 crew cases). A
+  `failed`. The row is `pass` only when both legs passed every case (34 solo cases and 7 crew cases). A
   `fail` outranks a `failed` between the two legs.
 
 **Cannot start.** A Claude login with under 25 minutes left, no `herdr`, `bun` or `git`, under 8 GB of
@@ -89,7 +89,7 @@ a rig in `scripts/browser-leg-nightly.test.ts`, which `bun run test` runs.
 
 ## The cases
 
-Each harness runs the same five cases. The walky talky cases (6 to 11 and 16 to 24), the stop case (25) and the steer case (26) run on the harnesses the
+Each harness runs the same five cases. The walky talky cases (6 to 11 and 16 to 24), the stop case (25), the steer case (26) and the queued case (29) run on the harnesses the
 last column names. Cases 12 to 15 and 19 to 21 run on the crew leg only (below).
 
 | # | Case | Harnesses | Spec |
@@ -122,6 +122,7 @@ last column names. Cases 12 to 15 and 19 to 21 run on the crew leg only (below).
 | 26 | Steer while working (M69). A bash call counts to 40 over 40 s (the lab's long turn, 2026-10-23). The operator types a line, holds Send and taps the Steer row. The receipt says `steered`, the phone says "Steered: the agent takes it after its current step." within 5 s, and the turn still runs right after, because a steer is taken after the current tool call in the same turn. The note says whether the agent answered the line | pi | `steer.spec.ts` |
 | 27 | Steer while working (Codex): case 26 on Codex, with the profile's `steerDelayMs` (1000) added to the 5 s window. Not built: this rig starts claude, pi and omp only, and a Codex harness needs a binary, a login seed, an entry in `harnesses.ts`, and a column in the nightly's table. `steer.spec.ts` carries the helper and its `steerDelayMs` parameter, so the case is one test line once the harness exists | none yet | `steer.spec.ts` |
 | 28 | Clear a draft from the Keys board (ADR 0116). A word is typed into pi's box outside the phone (the keys route, as case 22 types one) and never sent, so the Surface reads `draft` and the Keys board's Clear button is enabled. One tap posts one `POST /api/pane/:id/clear`, and the bridge presses pi's clear key as a person's tap. The receipt says `cleared`, the notice "Box cleared." shows under the box, the box reads free within 5 s and the word is gone from the screen. No prompt is sent: zero model turns, nothing on OpenRouter | pi | `clear.spec.ts` |
+| 29 | A queued send on omp (ADR 0122). Two passes over a long numbered list (80 items). In each, a send from the composer while the turn runs is queued: the receipt is `sent` + `queued`, and within one poll Chat shows the "Waiting to send" card with the text and no button. Stop (arm, then Stop) ends the turn, omp puts the text back into its box, and the card turns "Back in the box" with Send and Discard; the receipt carries `late: "returned"`. Pass 1 taps Send: the submit key goes alone, omp answers the text, the log holds it once and the card goes. Pass 2 taps Discard: the box reads empty, the card goes and the text never becomes a prompt. Three model turns | omp | `queued.spec.ts` |
 
 The walky talky path is the same bridge code for every harness, so Claude carries most of the cases and
 pi and omp prove that their screens take the message. The table prints a row only for a harness a case

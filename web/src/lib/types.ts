@@ -1675,6 +1675,13 @@ export interface ChatWindowBody {
    */
   queued?: string[];
   /**
+   * The pane's queued sends as Collie's receipts know them, oldest first (ADR 0122): STATE like
+   * {@link queued}, whole on every answer. Never repeated in {@link queued}, which stays the journal's.
+   * Absent when there is none and from a bridge one release behind. Mirrors `ChatWindowBody` in
+   * bridge/journal/live.ts.
+   */
+  queuedSends?: QueuedSendRow[];
+  /**
    * The keys that deliver {@link queued} now, in the neutral key spelling, declared by the bridge
    * for this session's harness. Absent for every harness that has no such key and from a bridge one
    * release behind, and both read as "no Send now button". Mirrors `ChatWindowBody` in
@@ -1688,6 +1695,18 @@ export interface ChatWindowBody {
    * `ChatWindowBody` in bridge/journal/live.ts.
    */
   lastPrompt?: ChatPrompt;
+}
+
+/**
+ * One queued card as Collie's receipts know it (ADR 0122): its request id, whether it waits in the
+ * harness (`queued`), Stop gave it back to the input box (`returned`, a run of texts given back
+ * together is one card), or Collie cannot tell where it went (`unconfirmed`), and its text, masked when
+ * the bridge masks. Mirrors `QueuedSendWire` in bridge/journal/receipt-queue.ts.
+ */
+export interface QueuedSendRow {
+  requestId: string;
+  state: "queued" | "returned" | "unconfirmed";
+  text: string;
 }
 
 /** The operator's newest prompt, capped by the bridge. Mirrors `ChatPrompt` in bridge/journal/live.ts. */

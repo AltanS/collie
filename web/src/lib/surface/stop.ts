@@ -40,6 +40,12 @@ export interface StopReceipt {
   readonly reason?: StopReason;
   /** The keys pressed, by name. Absent on a refusal. */
   readonly keys?: readonly string[];
+  /**
+   * On `stopped` or `pressed`: the request ids of this pane's queued sends whose text a read-back after
+   * the key showed back in the input box (the harness returned its queue to the box, ADR 0122). Only
+   * what a read showed, never a guess; absent when none came back, and from an older bridge.
+   */
+  readonly returned?: readonly string[];
 }
 
 /** The request id's grammar is the Send Protocol's: see `REQUEST_ID` in ./send. */

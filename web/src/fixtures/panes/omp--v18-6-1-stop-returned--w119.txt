@@ -1,0 +1,18 @@
+ Let me create this list of 120 fruits with taste descriptions. I need to make sure each description is about 20 words.
+
+ 1. Apple - Crisp, sweet with a slight tartness that varies by variety, offering a refreshing balance of flavors.
+ 2. Banana - Creamy, sweet, and mild with a tropical warmth that becomes richer as it ripens fully.
+ 3. Orange - Bright citrus sweetness with tangy acidity and juicy freshness that's both refreshing and satisfying.
+ 4. Strawberry - Sweet and slightly tart with berry freshness, gentle tartness, and natural juiciness throughout.
+ 5. Blueberry - Sweet and mild with subtle earthy notes and slight tartness that's pleasant on the palate.
+ 6. Mango - Rich, creamy sweetness with tropical warmth, slight tartness, and an almost honey-like quality.
+ 7. Pineapple - Tropical sweetness with bright tangy acidity and a unique slightly tart finish overall.
+ 8. Watermelon - Refreshingly sweet with watery juiciness, subtle tartness, and a light, clean taste throughout.
+ 9. Peach - Sweet and juicy with delicate floral notes, slight tartness, and smooth, pleasant flavors overall.
+ 10. Grape - Sweet with light tartness, refreshing juiciness, and varies in flavor by color and variety.
+ 11. Lemon - Intensely sour and acidic with bright tartness that dominates the palate completely overall.
+ 12. Lime - Tart and acidic with bright citrus notes and a sharp, penetrating sour quality.
+ 13. Coconut - Sweet and slightly nutty with mild creamy flavors and a unique tropical taste profile.
+
+ π > ◒ Haiku 4.5 > 📁 …-running-turn/state/harness/omp/project ▶──4%───────────────────────────────────────┃───────200K─
+╰─ second message

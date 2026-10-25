@@ -32,6 +32,7 @@ import type {
   ChatPrompt,
   ChatWindowBody,
   PaneChatResponse,
+  QueuedSendRow,
 } from "./types";
 
 /** Why the bridge had nothing to show. Taken off the wire type so the two can never drift. */
@@ -100,6 +101,13 @@ export interface ChatWindow {
    */
   readonly queued: readonly string[];
   /**
+   * The queued cards Collie's own receipts know about (ADR 0122), oldest first, each with its request
+   * id and state: waiting in the harness, given back to the input box by a Stop, or unconfirmed.
+   * {@link queued} is the JOURNAL's queue alone; the bridge never repeats a card there. Replaced on
+   * every answer, like {@link queued}; a `?before=` page leaves it alone.
+   */
+  readonly queuedSends: readonly QueuedSendRow[];
+  /**
    * The keys that make the agent take {@link queued} now, as the BRIDGE declared them for this
    * session's harness (neutral spelling, e.g. `["ctrl+Enter"]`), or empty when it declares none.
    *
@@ -150,6 +158,9 @@ const LIVE: ChatStatus = { kind: "live" };
 /** One shared empty queue, so the common answer — nothing waiting — allocates nothing. */
 const EMPTY_QUEUE: readonly string[] = Object.freeze<string[]>([]);
 
+/** The same for the receipt queue. */
+const EMPTY_SENDS: readonly QueuedSendRow[] = Object.freeze<QueuedSendRow[]>([]);
+
 /** What a client holds before it has asked anything. */
 export const EMPTY_CHAT_WINDOW: ChatWindow = {
   status: { kind: "empty" },
@@ -161,6 +172,7 @@ export const EMPTY_CHAT_WINDOW: ChatWindow = {
   hasOlder: false,
   entries: [],
   queued: EMPTY_QUEUE,
+  queuedSends: EMPTY_SENDS,
   sendQueuedNow: EMPTY_QUEUE,
   lastPrompt: null,
   savedAt: null,
@@ -185,6 +197,7 @@ export function savedChatWindow(entries: readonly ChatEntry[], savedAt: number):
     hasOlder: false,
     entries,
     queued: EMPTY_QUEUE,
+    queuedSends: EMPTY_SENDS,
     // What could be sent now then is not a thing a copy can do (nothing saved acts, M46).
     sendQueuedNow: EMPTY_QUEUE,
     // The copy keeps turns only; a prompt it holds is still pinned from those turns by the view.
@@ -259,6 +272,7 @@ function mergeLive(held: ChatWindow, body: ChatWindowBody): ChatWindow {
     // `?? EMPTY_QUEUE`: a member one release behind sends no `queued` at all, and "nothing waiting"
     // is the honest reading of a bridge that does not know the question.
     queued: nextQueue(held.queued, body.queued ?? EMPTY_QUEUE),
+    queuedSends: nextSends(held.queuedSends, body.queuedSends ?? EMPTY_SENDS),
     sendQueuedNow: nextQueue(held.sendQueuedNow, body.sendQueuedNow ?? EMPTY_QUEUE),
     lastPrompt: nextPrompt(held.lastPrompt, body.lastPrompt ?? null),
     // A live answer: whatever the window was before, it is current now.
@@ -274,6 +288,14 @@ function mergeLive(held: ChatWindow, body: ChatWindowBody): ChatWindow {
  */
 function nextQueue(held: readonly string[], next: readonly string[]): readonly string[] {
   const same = held.length === next.length && held.every((text, i) => text === next[i]);
+  return same ? held : next;
+}
+
+/** The held receipt rows when the answer lists the same, so an unchanged poll keeps their identity. */
+function nextSends(held: readonly QueuedSendRow[], next: readonly QueuedSendRow[]): readonly QueuedSendRow[] {
+  const same =
+    held.length === next.length &&
+    held.every((row, i) => row.requestId === next[i]?.requestId && row.state === next[i]?.state && row.text === next[i]?.text);
   return same ? held : next;
 }
 

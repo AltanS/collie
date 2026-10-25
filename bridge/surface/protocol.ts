@@ -168,6 +168,7 @@ import { askLifetimeOf, type AskBook } from "./ask.ts";
 import type { KeyGate } from "./key-gate.ts";
 import type { RequestStore, SendRecord } from "./requests.ts";
 import { HOLD_BRIDGE_MAX, HOLD_PANE_MAX, heldRow, type HeldEntry, type HoldCause, type HoldStore } from "./holds.ts";
+import { QueuedSends, type BoxReading, type ReceiptQueued } from "./queued.ts";
 
 /** The step bounds, written as (max reads, max ms). */
 export const BOUNDS = {
@@ -362,6 +363,12 @@ export interface SendRequest {
    * (walky talky, hooks, the CLI) leaves it out.
    */
   readonly fromPhone?: boolean;
+  /**
+   * A Send on a queued message a Stop gave back to the box (ADR 0122): set by `POST /api/send` alone,
+   * for `resendOf` of a returned card, never read off a body. The submit then needs the S0 read, taken
+   * under the pane lock right before the key, to show an idle turn as well as the exact text in the box.
+   */
+  readonly returnedCard?: boolean;
 }
 
 // ── The lock and the ring ────────────────────────────────────────────────────────────────────────
@@ -376,6 +383,12 @@ export class SessionLocks {
     if (current !== undefined && current.owner !== owner && current.until >= now) return false;
     this.held.set(key, { owner, until });
     return true;
+  }
+
+  /** Whether any request holds the lock inside its bound. */
+  busy(key: string, now: number): boolean {
+    const current = this.held.get(key);
+    return current !== undefined && current.until >= now;
   }
 
   /** Whether `owner` still holds the lock inside its bound. */
@@ -1190,6 +1203,13 @@ const ENTER_MISSED_BOX = "The submit key did not reach the box. A dialog may hav
 
 /** The detail of a held send that met a box answering the agent's question: it waits for an ordinary box. */
 const ANSWER_BOX = "The input box answers a question the agent asked. A held message waits for the question to close.";
+/**
+ * Submit or Discard on a box that no longer holds the text: what the person saw is gone. The route
+ * reads this exact sentence to tell a returned card's Discard that only the card may go (ADR 0122).
+ */
+export const BOX_CHANGED = "The box no longer holds this text.";
+/** A returned card's Send on a turn that runs again (ADR 0122): nothing is pressed. */
+const RETURNED_BUSY = "The agent is busy again. Your message stays in its box; send it when the turn ends.";
 /** The detail of a send refused because the turn runs. */
 const TURN_RUNNING = "The agent is working, and this harness does not take a message during a turn.";
 /** The detail of a steer from a caller that is not a person's send from the phone (M69). */
@@ -2028,10 +2048,70 @@ export class SendProtocol {
   private readonly watches = new Map<string, PaneWatch>();
   /** Receipts a prompt edge may close as `effective` (M56 spec 11), oldest first. */
   private readonly openSends: OpenSend[] = [];
+  /** Sends that settled `sent` + `queued`, with their texts, until the journal or the box closes them (ADR 0122). */
+  private readonly queuedSends: QueuedSends;
 
   constructor(private readonly deps: SendDeps) {
     this.now = deps.now ?? (() => Date.now());
     this.sleep = deps.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+    this.queuedSends = new QueuedSends({
+      store: deps.store,
+      generation: deps.generation,
+      matches: (box, lines, collapse) => boxMatches(box, "", lines, collapse),
+      now: this.now,
+      busy: (session, paneId) => deps.locks.busy(`${session}\u0000${paneId}`, this.now()),
+    });
+  }
+
+  /**
+   * The pane's open queued sends, oldest first (ADR 0122): sends that settled `sent` + `queued` inside
+   * the bound, each `queued` or `returned`. The live window decides which of them the journal already
+   * shows as a prompt; this only lists what Collie's receipts left open.
+   */
+  queuedOf(session: string, paneId: string): ReceiptQueued[] {
+    return this.queuedSends.of(session, paneId);
+  }
+
+  /**
+   * One read of a pane (ADR 0122): its input box ("" for an empty box, null when the read found no box)
+   * and its turn. Marks the open queued sends whose texts the box holds as returned (their receipts take
+   * `late: "returned"`), ends the returned ones it no longer holds, keeps a running turn's queued cards
+   * alive, and turns a queued card unconfirmed after polls of an idle turn over an empty box
+   * (QueuedSends.boxRead). Returns the ids the box holds. The poll's Surface read and the Stop's
+   * read-back both call it. Never throws.
+   */
+  boxRead(session: string, paneId: string, reading: BoxReading): string[] {
+    try {
+      return this.queuedSends.boxRead(session, paneId, reading);
+    } catch (err) {
+      console.warn(`[send] box read on ${paneId} failed: ${err instanceof Error ? err.message : String(err)}`);
+      return [];
+    }
+  }
+
+  /**
+   * The poll's tick for queued sends, after the Surface read the panes: one {@link boxRead} per pane
+   * with open queued sends. `boxOf` answers the newest read's box and when it was taken, or null.
+   */
+  tickQueued(session: string, boxOf: (paneId: string) => Omit<BoxReading, "poll"> | null): void {
+    for (const paneId of this.queuedSends.panes(session)) {
+      const read = boxOf(paneId);
+      if (read !== null) this.boxRead(session, paneId, { ...read, poll: true });
+    }
+  }
+
+  /**
+   * The unmasked text of a queued send that is back in the box, for the Send or Discard on its card
+   * (`POST /api/send` with `resendOf` and mode `submit` or `discard`); null when the row is not back
+   * in the box on this pane.
+   */
+  returnedSource(session: string, paneId: string, id: string): string | null {
+    return this.queuedSends.returnedText(session, paneId, id);
+  }
+
+  /** A returned row's Send or Discard was taken: the row goes now rather than at the next read. */
+  dismissReturned(id: string): void {
+    this.queuedSends.drop(id);
   }
 
   /**
@@ -2049,6 +2129,7 @@ export class SendProtocol {
       if (receipt.reason !== undefined) row.reason = receipt.reason;
       if (receipt.cap !== undefined) row.cap = receipt.cap;
       if (receipt.queued === true) row.queued = true;
+      if (receipt.late !== undefined) row.late = receipt.late;
       // A refusal's line and the Surface words are stored to be read later: the list carries them.
       if (receipt.detail !== undefined) row.detail = receipt.detail;
       if (receipt.saw !== undefined) row.saw = receipt.saw;
@@ -2071,6 +2152,8 @@ export class SendProtocol {
     if (match === null) return null;
     const entry = this.openSends.find((open) => open.id === match.id);
     if (entry === undefined) return null;
+    // The harness took the prompt: a queued send is not waiting any more.
+    this.queuedSends.drop(entry.id);
     if (!entry.settled) {
       entry.effective = true;
       return entry.id;
@@ -2503,6 +2586,8 @@ export class SendProtocol {
    * holds no such request.
    */
   cancelHeld(session: string, paneId: string, id: string): HeldCancelAnswer | null {
+    // Discard on an unconfirmed queued card (ADR 0122): the card goes, and nothing is pressed.
+    if (this.queuedSends.dismissUnconfirmed(session, paneId, id)) return { result: "dismissed" };
     const entry = this.deps.holds?.get(id) ?? null;
     if (entry === null) {
       // No row any more: the request may have gone out a moment ago. Its own receipt says what happened.
@@ -2766,6 +2851,18 @@ export class SendProtocol {
     }
     const receipt = this.receiptOf(state, outcome, outcome === "effective" ? undefined : end.reason, end.extra.cap, end.extra);
     this.deps.store.settle(state.record.id, receipt);
+    // A send the harness holds for after the turn: a card until the journal or the box closes it (ADR 0122).
+    if (receipt.outcome === "sent" && receipt.queued === true) {
+      this.queuedSends.add({
+        id: state.record.id,
+        session: state.target.session,
+        paneId: state.target.paneId,
+        generation: state.record.paneGeneration,
+        text: state.request.text,
+        collapse: state.match?.profile.collapse.pattern ?? null,
+        at: this.now(),
+      });
+    }
     this.count(state, receipt, end.extra.surface);
     const framed = end.extra.framed ?? (state.marks.s0?.frame ?? null) !== null;
     return answerWith({ receipt, offers: end.extra.offers ?? offersFor(outcome, receipt.reason, framed) }, end.extra);
@@ -2893,6 +2990,8 @@ export class SendProtocol {
 
     switch (request.mode) {
       case "submit": {
+        // A returned card's Send goes only on an idle turn: a busy one means the text may be on its way.
+        if (request.returnedCard === true && s0.surface.turn !== "idle") throw new Ended("refused", "not_free", { surface: s0.surface, detail: RETURNED_BUSY });
         const located = this.typedBox(state, s0, holds, lines);
         // Enter on a command whose list points at another one runs that one: the person picks it with the keys or discards the text.
         if (state.command && listPointsElsewhere(s0, "", lines, collapseOf(match), match?.profile.idle.volatile.below.commandList)) {
@@ -2910,7 +3009,7 @@ export class SendProtocol {
       }
       case "discard": {
         const located = this.typedBox(state, s0, holds, lines);
-        if (s0.frame === null && located === null) throw new Ended("refused", "not_free", { surface: s0.surface, detail: "The box no longer holds this text." });
+        if (s0.frame === null && located === null) throw new Ended("refused", "not_free", { surface: s0.surface, detail: BOX_CHANGED });
         this.lap(state, "s0");
         // The length of the text Collie typed sizes the clear of a box that hides its head; a box that
         // held another text has no length Collie knows.
@@ -3181,7 +3280,7 @@ export class SendProtocol {
     }
     if (frame === null && !takesManualSend(surface) && !isFree(surface)) throw new Ended("refused", "not_free", { surface, detail: "The input box is not free." });
     const hash = state.request.rowsHash;
-    if (hash === undefined) throw new Ended("refused", "not_free", { surface, detail: "The box no longer holds this text." });
+    if (hash === undefined) throw new Ended("refused", "not_free", { surface, detail: BOX_CHANGED });
     if (hash !== s0.rowsHash) {
       throw new Ended("refused", "stale_surface", { surface, rowsHash: s0.rowsHash, offers: ["submit", "discard", "keys"], detail: "The screen moved since you looked. Check it, then tap Submit or Discard again." });
     }

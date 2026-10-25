@@ -4,6 +4,7 @@ import {
   CHAT_UNCHANGED,
   EMPTY_CHAT_WINDOW,
   mergeChat,
+  savedChatWindow,
   type ChatAnswer,
   type ChatWindow,
 } from "@/lib/chat-window";
@@ -248,6 +249,38 @@ describe("mergeChat — an older page in a numbering we no longer hold", () => {
     const before = held();
     const window = mergeChat(before, older({ gen: GEN + 1, upserts: [entry("x", BASE - 1)] }));
     expect(window).toBe(before);
+  });
+});
+
+// ── the receipt queue beside it (ADR 0122) ─────────────────────────────────
+
+describe("what Collie's receipts say is queued", () => {
+  const QUEUED = { requestId: "req-queued-0001", state: "queued", text: "still waiting" } as const;
+  const BACK = { requestId: "req-back-00001", state: "returned", text: "second message" } as const;
+
+  it("starts empty, and a saved copy holds none", () => {
+    expect(EMPTY_CHAT_WINDOW.queuedSends).toEqual([]);
+    expect(savedChatWindow([], 5).queuedSends).toEqual([]);
+  });
+
+  it("takes the rows beside the journal's own `queued`, which it leaves as the journal sent it", () => {
+    const window = mergeChat(held(), live({ rev: 2, upserts: [], queued: ["from the log"], queuedSends: [QUEUED, BACK] }));
+    expect(window.queuedSends).toEqual([QUEUED, BACK]);
+    expect(window.queued).toEqual(["from the log"]);
+  });
+
+  it("REPLACES the rows on every answer, keeps the same array when nothing moved, and reads a body without them as none", () => {
+    const one = mergeChat(held(), live({ rev: 2, upserts: [], queuedSends: [QUEUED] }));
+    const same = mergeChat(one, live({ rev: 3, upserts: [], queuedSends: [{ ...QUEUED }] }));
+    expect(same.queuedSends).toBe(one.queuedSends);
+    const moved = mergeChat(same, live({ rev: 4, upserts: [], queuedSends: [{ ...QUEUED, state: "returned" }] }));
+    expect(moved.queuedSends).toEqual([{ ...QUEUED, state: "returned" }]);
+    expect(mergeChat(moved, live({ rev: 5, upserts: [] })).queuedSends).toEqual([]);
+  });
+
+  it("survives a `?before=` page, which cannot see the tail", () => {
+    const one = mergeChat(held(), live({ rev: 2, upserts: [], queuedSends: [BACK] }));
+    expect(mergeChat(one, older({ upserts: [entry("z", BASE - 1)] })).queuedSends).toEqual([BACK]);
   });
 });
 

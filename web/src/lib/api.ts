@@ -17,7 +17,7 @@ import { markDead as markPaneDead, markLive as markPaneLive } from "./liveness";
 import { abortSignalAfter, abortSignalAny } from "./env";
 import { asJsonObject, asJsonString, parseJsonObject, type JsonObject } from "./json";
 import { readHeldCancelAnswer, readSendReceipts, readSendReply, type SendReply } from "./send-protocol";
-import type { HeldCancelAnswer, SendReceiptRow, SendRequestBody } from "./surface/send";
+import { REQUEST_ID, type HeldCancelAnswer, type SendReceiptRow, type SendRequestBody } from "./surface/send";
 import type { AnswerBody } from "./surface/ask";
 import { boundedDraft, CLEAR_OUTCOMES, CLEAR_REASONS, type ClearBody, type ClearReceipt } from "./surface/clear";
 import { STOP_OUTCOMES, STOP_REASONS, type StopBody, type StopReceipt } from "./surface/stop";
@@ -1472,7 +1472,11 @@ function stopReceiptOf(body: JsonObject | undefined, requestId: string): StopRec
     const keys = Array.isArray(body.keys) ? body.keys.map(asJsonString).filter((key): key is string => key !== undefined) : undefined;
     // Only a `pressed` receipt carries a reason, and only `dialog_open`: the key opened a dialog.
     const opened = outcome === "pressed" && reason === "dialog_open" ? { reason } : {};
-    return keys === undefined ? { requestId: id, outcome, ...opened } : { requestId: id, outcome, ...opened, keys };
+    // The queued sends a read-back saw back in the input box (ADR 0122); a bridge one release behind
+    // sends none, and a word that is no request id is dropped rather than shown.
+    const back = Array.isArray(body.returned) ? body.returned.map(asJsonString).filter((rid): rid is string => rid !== undefined && REQUEST_ID.test(rid)) : [];
+    const returned = back.length > 0 ? { returned: back } : {};
+    return keys === undefined ? { requestId: id, outcome, ...opened, ...returned } : { requestId: id, outcome, ...opened, ...returned, keys };
   }
   return reason === undefined ? null : { requestId: id, outcome, reason };
 }

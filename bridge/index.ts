@@ -1624,7 +1624,11 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   // `send` is declared below; the poll's first update comes after `engine.start()`.
   if (surface !== undefined) {
     engine.onUpdate((s) => {
-      void surface.observe(s.agents).then(() => send?.tickHolds(name, (paneId) => surface.surfaceOf(paneId)));
+      void surface.observe(s.agents).then(() => {
+        // A queued send whose text a read shows back in the box (ADR 0122): its card says so.
+        send?.tickQueued(name, (paneId) => surface.boxOf(paneId));
+        return send?.tickHolds(name, (paneId) => surface.surfaceOf(paneId));
+      });
     });
   }
   // One protocol per terminal session: its own locks, the adapter's one key gate, the bridge's one
@@ -1753,7 +1757,9 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   // request store nor the Send Protocol flag: a terminal session always has it.
   // Its `stopped` receipt is the stop edge the harness may not send (Claude Code fires no Stop hook on Escape).
   const stopped = surface === undefined ? undefined : (paneId: string): void => void surface.stopSeen(paneId);
-  const stopDeps: StopDeps = { mux: herdr, gate: gateFor(herdr), profile: (harness) => sendProfile(harness) };
+  // Each read-back's box goes to the Send Protocol: a queued send the Stop gave back rides the receipt (ADR 0122).
+  const stopBase: StopDeps = { mux: herdr, gate: gateFor(herdr), profile: (harness) => sendProfile(harness) };
+  const stopDeps: StopDeps = send === undefined ? stopBase : { ...stopBase, returned: (paneId, read) => send.boxRead(name, paneId, { ...read, poll: false }) };
   const stop = endpoint.kind === "terminal" ? new StopService(stopped === undefined ? stopDeps : { ...stopDeps, stopped }) : undefined;
   const withStop = stop === undefined ? withHold : { ...withHold, stop };
   // A Clear of the harness's box (ADR 0116, the Clear paragraph): the same mux, key gate and profile as the Stop.

@@ -14,7 +14,7 @@ import { finished, itemsOf } from "@/lib/chat-items";
 import type { ChatStatus } from "@/lib/chat-window";
 import { dropPending, unmatched, usePending } from "@/lib/durable-pending";
 import { t, type MessageKey } from "@/lib/i18n";
-import type { Ask } from "@/lib/types";
+import type { Ask, QueuedSendRow } from "@/lib/types";
 import { AskCard, type AskCardProps } from "@/components/ask-card";
 import { pinAt, promptMap } from "@/lib/prompt-pin";
 import { recallScroll, rememberScroll } from "@/lib/scroll-memory";
@@ -162,6 +162,147 @@ function QueuedCard({ queued, sendNow }: { queued: readonly string[]; sendNow: (
           {text}
         </p>
       ))}
+    </div>
+  );
+}
+
+/**
+ * What a receipt card's buttons ask of the pane view: send the box (`submit`) or empty it (`discard`)
+ * on a returned card, or drop an unconfirmed card and press nothing (`dismiss`).
+ */
+export type QueuedCardAction = "submit" | "discard" | "dismiss";
+
+type QueuedCardAct = ((requestId: string, action: QueuedCardAction) => Promise<boolean>) | null;
+
+/**
+ * THE RECEIPT QUEUE (ADR 0122): the sends Collie itself queued behind a running turn, for a harness
+ * whose log does not record its queue, in three states.
+ *
+ *   - Still waiting: one group under the same label as the journal's queue, with two short lines and
+ *     NO button. There is no Send now for a harness that names no key, and no Cancel, because Collie
+ *     cannot take a message out of the harness's queue without a dequeue key, which no profile names
+ *     yet: stopping the turn is the way back, and the card says so.
+ *   - Returned: the agent holds the text as a draft in its box, so the card says so and offers Send (a
+ *     submit of what the box holds) and Discard (the box emptied). A run of texts a Stop gave back
+ *     together is ONE card, with one Send and one Discard.
+ *   - Unconfirmed: Collie cannot tell where the message went. The card says so, and its one button,
+ *     Discard, drops the card and presses nothing.
+ *
+ * PENDING, NEVER RETRYING, like the queue card: a tap disables the card's buttons until the card goes
+ * away (the next answer drops it) or {@link SEND_NOW_PENDING_MS} pass, or the act itself failed.
+ */
+function ReceiptQueueCards({ rows, act }: { rows: readonly QueuedSendRow[]; act: QueuedCardAct }) {
+  const waiting = rows.filter((row) => row.state === "queued");
+  return (
+    <>
+      {waiting.length > 0 && (
+        <div data-slot="stream-queued-receipts" className={QUEUED_BLOCK}>
+          <div className={QUEUED_HEAD}>
+            <p className={QUEUED_LABEL}>{t("chat.stream.queued")}</p>
+          </div>
+          <p className="text-xs text-muted-foreground">{t("chat.stream.queuedWaits")}</p>
+          <p className="text-xs text-muted-foreground">{t("chat.stream.queuedTakeBack")}</p>
+          {waiting.map((row) => (
+            <p key={row.requestId} className={QUEUED_TEXT}>
+              {row.text}
+            </p>
+          ))}
+        </div>
+      )}
+      {rows.map((row) =>
+        row.state === "returned" ? (
+          <ReceiptCard key={row.requestId} row={row} act={act} slot="stream-returned" label="chat.stream.returned" why="chat.stream.returnedWhy" buttons={RETURNED_BUTTONS} />
+        ) : row.state === "unconfirmed" ? (
+          <ReceiptCard key={row.requestId} row={row} act={act} slot="stream-unconfirmed" label="chat.stream.unconfirmed" why="chat.stream.unconfirmedWhy" buttons={UNCONFIRMED_BUTTONS} />
+        ) : null,
+      )}
+    </>
+  );
+}
+
+/** One button of a receipt card: the act, its visible word, its accessible name (which starts with the word), its look. */
+interface CardButton {
+  readonly action: QueuedCardAction;
+  readonly word: MessageKey;
+  readonly aria: MessageKey;
+  readonly variant: "outline" | "ghost";
+  readonly slot: string;
+}
+
+/** Discard first and quieter, Send last and outlined: the act that sends sits at the thumb's end. */
+const RETURNED_BUTTONS: readonly CardButton[] = [
+  { action: "discard", word: "chat.stream.returnedDiscard", aria: "chat.stream.returnedDiscardAria", variant: "ghost", slot: "stream-returned-discard" },
+  { action: "submit", word: "chat.stream.returnedSend", aria: "chat.stream.returnedSendAria", variant: "outline", slot: "stream-returned-send" },
+];
+const UNCONFIRMED_BUTTONS: readonly CardButton[] = [
+  { action: "dismiss", word: "chat.stream.unconfirmedDiscard", aria: "chat.stream.unconfirmedDiscardAria", variant: "outline", slot: "stream-unconfirmed-discard" },
+];
+
+function ReceiptCard({
+  row,
+  act,
+  slot,
+  label,
+  why,
+  buttons,
+}: {
+  row: QueuedSendRow;
+  act: QueuedCardAct;
+  slot: string;
+  label: MessageKey;
+  why: MessageKey;
+  buttons: readonly CardButton[];
+}) {
+  const [pending, setPending] = useState<QueuedCardAction | null>(null);
+  useEffect(() => {
+    if (pending === null) return;
+    const timer = setTimeout(() => setPending(null), SEND_NOW_PENDING_MS);
+    return () => clearTimeout(timer);
+  }, [pending]);
+
+  const onTap = (action: QueuedCardAction) => {
+    if (pending !== null || act === null) return;
+    setPending(action);
+    // A refusal or a failed write has already told the operator why (the pane view's status line).
+    void act(row.requestId, action).then(
+      (done) => (done ? undefined : setPending(null)),
+      () => setPending(null),
+    );
+  };
+
+  return (
+    <div data-slot={slot} className={QUEUED_BLOCK}>
+      <div className={QUEUED_HEAD}>
+        <p className={QUEUED_LABEL}>{t(label)}</p>
+        {act !== null && (
+          <div className="flex items-center gap-1">
+            {buttons.map((button) => (
+              <Button
+                key={button.action}
+                type="button"
+                variant={button.variant}
+                size="sm"
+                data-slot={button.slot}
+                className={QUEUED_BUTTON}
+                disabled={pending !== null}
+                aria-busy={pending === button.action}
+                // The accessible name STARTS with the visible word (WCAG 2.5.3, Label in Name).
+                aria-label={t(button.aria)}
+                onClick={() => onTap(button.action)}
+              >
+                {pending === button.action ? (
+                  <Loader2 aria-hidden className="size-3.5 animate-spin" />
+                ) : (
+                  button.action === "submit" && <CornerDownLeft aria-hidden className="size-3.5" />
+                )}
+                {t(button.word)}
+              </Button>
+            ))}
+          </div>
+        )}
+      </div>
+      <p className="text-xs text-muted-foreground">{t(why)}</p>
+      <p className={QUEUED_TEXT}>{row.text}</p>
     </div>
   );
 }
@@ -325,6 +466,7 @@ export function SessionStream({
   listRef,
   savedCopy = null,
   onSendQueuedNow,
+  onReturned,
   asks,
   durable = false,
   questionPending = false,
@@ -365,6 +507,12 @@ export function SessionStream({
    * sent. The keys are handed back so this body never holds a copy of its own.
    */
   onSendQueuedNow?: (keys: readonly string[]) => Promise<boolean>;
+  /**
+   * A receipt card's act (ADR 0122), by the card's request id: Send or Discard on a returned card,
+   * Discard on an unconfirmed one. Passed ONLY where this device may write to this pane; leave it out
+   * and the cards have no buttons. Resolves false when nothing was done.
+   */
+  onReturned?: (requestId: string, action: QueuedCardAction) => Promise<boolean>;
   /**
    * The open asks of a pane that carries them as data (ADR 0100), and the props every card shares. Each card sits
    * under the block that shows its item, or at the tail when that item is not on screen. The list holds
@@ -766,6 +914,9 @@ export function SessionStream({
           "mine, not yet sent" rather than "a turn nobody answered". */}
       {window.queued.length > 0 && window.status.kind === "live" && (
         <QueuedCard queued={window.queued} sendNow={sendNow} />
+      )}
+      {window.queuedSends.length > 0 && window.status.kind === "live" && (
+        <ReceiptQueueCards rows={window.queuedSends} act={onReturned ?? null} />
       )}
 
       {/* The reading, when there is one, and only where there is nothing to read under it. A stale

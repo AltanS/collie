@@ -204,6 +204,13 @@ export interface SendReceipt {
    */
   readonly queued?: true;
   /**
+   * Set later on a `queued` receipt whose text came back: the harness put it back into its input box
+   * (a Stop ended the turn and the harness returned its queue to the box), and it never became a
+   * prompt. The receipt keeps `sent` and `queued`, which were true when it settled; this says what
+   * happened after (ADR 0122). Absent on every other receipt.
+   */
+  readonly late?: SendLate;
+  /**
    * Set on a send a program session took (M56 spec 14): the request id the program acknowledged.
    * The driver passes the request id to the program unchanged, so it equals `requestId`. Absent on
    * every send into a screen.
@@ -222,6 +229,16 @@ export interface SendReceipt {
    */
   readonly saw?: SurfaceWords;
 }
+
+/** What may happen to a settled receipt later (see {@link SendReceipt.late}). One word today. */
+export const SEND_LATES = ["returned"] as const;
+
+/**
+ * The receipt detail when Discard on a returned queued card (ADR 0122) found the box changed: nothing
+ * was pressed and only the card went. The bridge writes it; the phone reads it to say so in its own words.
+ */
+export const RETURNED_CARD_DROPPED = "The box no longer holds this message. Collie removed its card and pressed nothing.";
+export type SendLate = (typeof SEND_LATES)[number];
 
 /** The longest {@link SendReceipt.detail} a receipt keeps. */
 export const RECEIPT_DETAIL_MAX = 240;
@@ -284,6 +301,8 @@ export interface SendReceiptRow {
   readonly cap?: SendCap;
   /** Set when the send was queued behind a running turn (see {@link SendReceipt.queued}). */
   readonly queued?: true;
+  /** Set when a queued send came back to the box and never became a prompt (see {@link SendReceipt.late}). */
+  readonly late?: SendLate;
   /** The line of a refusal or a `typed_not_submitted` (see {@link SendReceipt.detail}). */
   readonly detail?: string;
   /** What the bridge saw at that end, four words (see {@link SendReceipt.saw}). */

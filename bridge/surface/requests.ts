@@ -25,7 +25,7 @@ import { join } from "node:path";
 import { asJsonNumber, asJsonObject, asJsonString, type JsonValue } from "../../web/src/lib/json.ts";
 import { ASK_ID, ASK_OUTCOMES, ASK_REASONS, type AskReceipt } from "../../web/src/lib/surface/ask.ts";
 import { ASK_CHANNELS } from "../../web/src/lib/surface/surface.ts";
-import { readSendCap, readSurfaceWords, RECEIPT_DETAIL_MAX, REQUEST_ID, SEND_MODES, SEND_OUTCOMES, SEND_REASONS, type ReadMark, type SendMode, type SendReceipt, type SendStep } from "../../web/src/lib/surface/send.ts";
+import { readSendCap, readSurfaceWords, RECEIPT_DETAIL_MAX, REQUEST_ID, SEND_LATES, SEND_MODES, SEND_OUTCOMES, SEND_REASONS, type ReadMark, type SendMode, type SendReceipt, type SendStep } from "../../web/src/lib/surface/send.ts";
 import { SENT_MAX_LINE, sentLineOf } from "../secret-line.ts";
 
 /** How long a settled request is kept, so a retry after a long network gap still finds its receipt. */
@@ -196,6 +196,9 @@ function parseReceipt(value: JsonValue | undefined): SendReceipt | undefined {
   if (reason !== undefined) whole.reason = reason;
   if (cap !== undefined) whole.cap = cap;
   if (node.queued === true) whole.queued = true;
+  // `late` is lenient like `detail`: a word this module did not write is dropped, and the receipt stays.
+  const late = node.late === undefined ? undefined : pick(node.late, SEND_LATES);
+  if (late !== undefined) whole.late = late;
   if (acknowledged !== undefined) whole.acknowledged = acknowledged;
   if (detail !== undefined) whole.detail = detail;
   if (saw !== undefined) whole.saw = saw;
@@ -385,8 +388,8 @@ export class RequestStore {
 
   /**
    * A settled `sent` or `unknown` that a matching prompt edge confirmed (M56 spec 11) becomes
-   * `effective`, its reason dropped. That is the one change a settled record can take, and it takes it
-   * once. Returns the outcome it had, or null when the record is not one a prompt edge may close.
+   * `effective`, its reason dropped. That and {@link markReturned} are the changes a settled record can
+   * take, each once. Returns the outcome it had, or null when the record is not one a prompt edge may close.
    */
   markEffective(id: string): "sent" | "unknown" | null {
     const known = this.get(id);
@@ -396,6 +399,21 @@ export class RequestStore {
     const { reason: _dropped, ...rest } = receipt;
     this.write({ ...known, receipt: { ...rest, outcome: "effective" } });
     return receipt.outcome;
+  }
+
+  /**
+   * A settled `sent` receipt that said `queued` gets `late: "returned"` (ADR 0122): the harness put
+   * its text back into the input box, and it never became a prompt. The outcome and `queued` stay, since
+   * both were true when it settled; the mark says what happened after. Taken once. Returns whether the
+   * record took it.
+   */
+  markReturned(id: string): boolean {
+    const known = this.get(id);
+    const receipt = known?.receipt;
+    if (known === null || known.phase !== "settled" || receipt === undefined) return false;
+    if (receipt.outcome !== "sent" || receipt.queued !== true || receipt.late !== undefined) return false;
+    this.write({ ...known, receipt: { ...receipt, late: "returned" } });
+    return true;
   }
 
   /**
@@ -422,7 +440,7 @@ export class RequestStore {
     return armed;
   }
 
-  /** The request's end: its receipt. A settled record changes once at most after this (`markEffective`). */
+  /** The request's end: its receipt. A settled record changes once at most after this (`markEffective`, or `markReturned`). */
   settle(id: string, receipt: SendReceipt): SendRecord | null {
     const known = this.get(id);
     if (known === null) return null;

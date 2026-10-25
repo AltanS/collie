@@ -292,6 +292,17 @@ describe("the session page's rows (send drill 3)", () => {
     expect(receiptSentence({ ...base, outcome: "sent" }, say)).toBeNull();
   });
 
+  it("a queued send that Stop gave back wears Sent and says it is back in the box; `late` is read off the wire only as a known word (ADR 0122)", () => {
+    const row: SendReceiptRow = { ...base, outcome: "sent", queued: true, late: "returned" };
+    expect(receiptLabelKey(row.outcome)).toBe("sendReceipts.outcome.sent");
+    expect(receiptSentence(row, say)).toBe("sendReceipts.returned");
+    const wire = { requestId: "r1abcdefgh", at: 5, mode: "send", outcome: "sent", keys: ["ctrl+q"], gapsMs: {}, harness: "omp", version: "18.6.1", queued: true };
+    const rows = readSendReceipts({ receipts: [{ ...wire, late: "returned" }, { ...wire, requestId: "r2abcdefgh", late: "teleported" }] });
+    expect(rows.receipts[0]?.late).toBe("returned");
+    expect(rows.receipts[1] && "late" in rows.receipts[1]).toBe(false);
+    expect(rows.receipts[1] && receiptSentence(rows.receipts[1], say)).toBe("sendReceipts.queued");
+  });
+
   it("a send queued behind the turn wears Sent and says it was queued; queued is read off the wire only when true", () => {
     const row: SendReceiptRow = { ...base, outcome: "sent", queued: true };
     expect(receiptLabelKey(row.outcome)).toBe("sendReceipts.outcome.sent");

@@ -270,6 +270,16 @@ three things under the box:
 
 If the stop key opened a dialog instead, Collie says so and points you to its card.
 
+Some agents, OMP among them, put a queued message back into their input box when you stop the turn.
+When Collie sees it there right after the key, the receipt says so, for example "Stopped. 1 queued
+message is back in the agent as a draft." In Chat the message moves to a **Back in the box** card.
+Messages that came back together share one card.
+
+The card has two buttons, and both read the box again first. **Send** sends the draft only when the
+turn is idle and the box holds exactly that text. **Discard** empties the box only when it still
+holds that text; if you changed it, Discard removes the card and presses nothing. While the draft
+stands, a new message is refused, and the refusal points you to the card.
+
 Collie refuses before it presses when pressing could do harm:
 
 - **A dialog is open.** Escape would answer that dialog. Answer it on its card instead.
@@ -1052,6 +1062,15 @@ When you queue a message while Claude Code works, Chat shows it on a **Waiting t
 the card's **Send now** button sends the whole queue to the running turn at once. Only Claude Code
 offers it, because the button presses Ctrl+Enter, the key that agent defines for this. The button is
 hidden on a read-only device and on a saved copy.
+
+Most other agents, OMP and pi among them, write nothing about a queued message into their log until
+the turn ends. For them Chat draws the messages Collie itself queued on the same **Waiting to send**
+card, until the agent's log shows each as a prompt. That card has no button. Collie cannot take a
+message out of the agent's queue, so there is no Cancel: to take it back, stop the turn.
+
+When Collie can no longer tell where a queued message went, the card says **Not confirmed** instead
+of disappearing. That happens when the agent sits idle with an empty box twice in a row, or after 30
+minutes without a running turn. Its **Discard** button removes the card and sends nothing.
 
 The display gear has a **Stretchtext replies** switch, off by default. With it on, Chat, the full reply card and History show a reply written with the cc-stretch plugin as its short form, and a tap on a phrase opens it. A `{{name}}` without a bar shows as `name`.
 

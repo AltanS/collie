@@ -3167,3 +3167,16 @@ folder; no secrets were present.
 | --- | --- | --- |
 | `omp--draft-scrolled-2000-chars--v18.6.1.txt` | `draft` | 33 rows: a 2,000-character draft Collie typed (`... w0 w1 ... w401  END`), left by `typed_not_submitted(mismatch)`. The box starts at `╰─ w7 w8 ...`; the head of the text is out of view (07 F1) |
 | `omp--draft-scrolled-26-lines--v18.6.1.txt` | `draft` | The last 45 rows of a 130x45 pane: a 26-line draft the person typed, at the 17-row cap, `draft line 2` to `draft line 18` in view. A Replace on this box once pressed 1,536 Backspaces and left 39 characters of the draft (06 C5) |
+
+## A queued message that Stop gives back to the box (captured 2026-10-25, OMP 18.6.1, Collie's rig, 119 columns, ADR 0122)
+
+Two screens of tester 03's case 0 (`~/.cache/collie-lab/omp-gang/03-running-turn/captures/c0-18.6.1.log`), read through
+the rig bridge's own pane read, so they are plain text with no SGR bytes. A slow plain-text turn ran ("List 120 different
+fruits"); `second message` was sent into it, and Collie queued it with Ctrl+Q (receipt `sent`, `queued: true`). Then Stop
+pressed Escape. OMP ended the turn and moved the queued text back into its input box, and it never became a prompt. The
+lab folder stands as OMP shortened it (`…-running-turn/state/harness/omp/project`); no user, host or key is in either file.
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `omp--v18-6-1-queued-before-stop--w119.txt` | `running` | The answer streams; `After yield · 1` / `1. second message` / `└ Alt+↑ to edit` over `⎋ Working…` and the spinner row; the `╰─` box is empty. Taken 3 s after the queued send |
+| `omp--v18-6-1-stop-returned--w119.txt` | `draft` | 1.5 s after Stop: the list and the Working row are gone, the status row is at rest (`π >`), and the box reads `╰─ second message`. The same screen 18 s later. The next plain send is refused `draft_present` |

@@ -15,6 +15,7 @@ import {
   SEND_OUTCOMES,
   SEND_CAUSES,
   SEND_REASONS,
+  SEND_LATES,
   readSendCap,
   readSurfaceWords,
   RECEIPT_DETAIL_MAX,
@@ -166,6 +167,8 @@ export function readSendReceipts(body: JsonValue | undefined): SendReceiptsAnswe
     if (reason !== null) row.reason = reason;
     if (cap !== null) row.cap = cap;
     if (node.queued === true) row.queued = true;
+    const late = pick(node.late, SEND_LATES);
+    if (late !== null) row.late = late;
     const detail = asJsonString(node.detail);
     if (detail !== undefined && detail.length > 0) row.detail = detail.slice(0, RECEIPT_DETAIL_MAX);
     const saw = readSurfaceWords(node.saw);
@@ -393,9 +396,11 @@ export function receiptLabelKey(outcome: SendOutcome): "composer.protocol.discar
  */
 export function receiptSentence(
   row: SendReceiptRow,
-  say: (key: NoteKey | "sendReceipts.queued", vars?: Record<string, string>) => string,
+  say: (key: NoteKey | "sendReceipts.queued" | "sendReceipts.returned", vars?: Record<string, string>) => string,
 ): string | null {
   if (row.outcome === "discarded") return say("composer.protocol.discarded");
+  // Stop gave the queued text back to the box (ADR 0122): the row is still `sent`, but not waiting.
+  if (row.late === "returned") return say("sendReceipts.returned");
   if (row.queued === true) return say("sendReceipts.queued");
   if (row.reason === undefined) return null;
   if (row.outcome === "refused" && row.reason === "unconfirmed" && row.cap !== undefined) {

@@ -23,6 +23,7 @@ import {
   MAX_WINDOWS,
 } from "./live.ts";
 import { NO_CHANGE, noUnknowns, parseWith, type PendingTool, rememberPending, type RowReducer } from "./reduce.ts";
+import type { ReceiptQueued } from "./receipt-queue.ts";
 import { TranscriptStore } from "./store.ts";
 import { redactEntry } from "./text.ts";
 import type {
@@ -51,6 +52,7 @@ type FakeRow = {
   queue?: string[];
   ask?: string;
   role?: "user" | "note";
+  ts?: string;
 };
 
 function readRow(line: string): FakeRow | null {
@@ -82,7 +84,7 @@ function fakeReducer(): RowReducer {
       if (typeof row.id === "string" && typeof row.ask === "string") {
         const entry: TranscriptEntry = {
           uuid: row.id,
-          ts: "2026-10-10T00:00:00Z",
+          ts: row.ts ?? "2026-10-10T00:00:00Z",
           role: row.role ?? "user",
           parts: [{ kind: "text", text: row.ask }],
         };
@@ -196,6 +198,8 @@ const answer = (id: string, out = "ok") => JSON.stringify({ for: id, out });
 const queue = (...waiting: string[]) => JSON.stringify({ queue: waiting });
 /** A prompt turn; `note` makes it one the agent sent itself. */
 const ask = (id: string, text: string, role: "user" | "note" = "user") => JSON.stringify({ id, ask: text, role });
+/** A prompt turn the journal stamped at `ms` (epoch): what a queued send landing as a prompt writes. */
+const askAt = (id: string, text: string, ms: number) => JSON.stringify({ id, ask: text, role: "user", ts: new Date(ms).toISOString() });
 
 /** `n` prompts (`p0`..), each followed by two tool rows (`p0a`, `p0b`): three rows a turn. */
 const thread = (n: number): string[] =>
@@ -866,6 +870,105 @@ describe("what is queued", () => {
   });
 });
 
+// ── the queue from Collie's own receipts (ADR 0122) ─────────────────────────
+
+describe("what is queued, from the receipts", () => {
+  /** When the two sends' submit keys went out, epoch ms: a day after the fake log's fixed prompt time. */
+  const AT = Date.parse("2026-10-11T12:00:00Z");
+  const sends = (): ReceiptQueued[] => [
+    { requestId: "req-first-0001", text: "second message", at: AT, state: "queued" },
+    { requestId: "req-second-002", text: "and a third", at: AT + 3_000, state: "queued" },
+  ];
+
+  test("a journal with no queue answers both receipt-queued sends, oldest first, and only in `queuedSends`", async () => {
+    const fx = fakeJournal([askAt("p1", "List 120 fruits", AT - 10_000), say("u1")]);
+    const body = await windows(fx).window(fx.adapter, ref(), { limit: 10 }, sends());
+    // Never in the legacy list: a phone one release behind would draw a Send now that cannot work.
+    expect(body!.queued).toEqual([]);
+    expect(body!.queuedSends).toEqual([
+      { requestId: "req-first-0001", state: "queued", text: "second message" },
+      { requestId: "req-second-002", state: "queued", text: "and a third" },
+    ]);
+  });
+
+  test("a send drops once the journal shows its text as a prompt after its submit key", async () => {
+    const fx = fakeJournal([askAt("p1", "List 120 fruits", AT - 10_000), say("u1")]);
+    const live = windows(fx);
+    const first = await live.window(fx.adapter, ref(), { limit: 10 }, sends());
+    // The harness took the first one when the turn ended; the journal writes it like any prompt,
+    // white space its own.
+    fx.append(askAt("p2", "  second   message ", AT + 30_000));
+    fx.settle();
+    const next = await live.window(fx.adapter, ref(), { limit: 10, after: { gen: first!.gen, rev: first!.rev } }, sends());
+    expect(next!.queuedSends).toEqual([{ requestId: "req-second-002", state: "queued", text: "and a third" }]);
+  });
+
+  test("a prompt with the same text from before the send does not take its card", async () => {
+    const fx = fakeJournal([askAt("p0", "second message", AT - 60_000), say("u1")]);
+    const body = await windows(fx).window(fx.adapter, ref(), { limit: 10 }, sends());
+    expect(body!.queuedSends?.map((card) => card.text)).toEqual(["second message", "and a third"]);
+  });
+
+  test("one prompt takes one of two identical queued texts", async () => {
+    const twice: ReceiptQueued[] = [
+      { requestId: "req-twice-0001", text: "yes", at: AT, state: "queued" },
+      { requestId: "req-twice-0002", text: "yes", at: AT + 1_000, state: "queued" },
+    ];
+    const fx = fakeJournal([askAt("p1", "yes", AT + 20_000)]);
+    const body = await windows(fx).window(fx.adapter, ref(), { limit: 10 }, twice);
+    expect(body!.queuedSends).toEqual([{ requestId: "req-twice-0002", state: "queued", text: "yes" }]);
+  });
+
+  test("a returned send rides `queuedSends` and not `queued`: it is in the box, not waiting", async () => {
+    const back: ReceiptQueued[] = [{ requestId: "req-back-00001", text: "second message", at: AT, state: "returned" }];
+    const fx = fakeJournal([askAt("p1", "List 120 fruits", AT - 10_000)]);
+    const body = await windows(fx).window(fx.adapter, ref(), { limit: 10 }, back);
+    expect(body!.queued).toEqual([]);
+    expect(body!.queuedSends).toEqual([{ requestId: "req-back-00001", state: "returned", text: "second message" }]);
+  });
+
+  test("an unconfirmed card rides too, and a prompt with its text still takes it", async () => {
+    const lost: ReceiptQueued[] = [{ requestId: "req-lost-00001", text: "where did it go", at: AT, state: "unconfirmed" }];
+    const fx = fakeJournal([askAt("p1", "List 120 fruits", AT - 10_000)]);
+    const live = windows(fx);
+    const first = await live.window(fx.adapter, ref(), { limit: 10 }, lost);
+    expect(first!.queuedSends).toEqual([{ requestId: "req-lost-00001", state: "unconfirmed", text: "where did it go" }]);
+    fx.append(askAt("p2", "where did it go", AT + 40_000));
+    fx.settle();
+    const next = await live.window(fx.adapter, ref(), { limit: 10, after: { gen: first!.gen, rev: first!.rev } }, lost);
+    expect("queuedSends" in next!).toBe(false);
+  });
+
+  test("a card whose text the journal lists as queued is not drawn, whatever the adapter's flag says", async () => {
+    // The flag is the optimisation; this is the guard: never two cards for one message.
+    const fx = fakeJournal([say("u1"), queue("second   message")]);
+    const body = await windows(fx).window(fx.adapter, ref(), { limit: 10 }, sends());
+    expect(body!.queued).toEqual(["second   message"]);
+    expect(body!.queuedSends).toEqual([{ requestId: "req-second-002", state: "queued", text: "and a third" }]);
+  });
+
+  test("a harness whose journal records its queue keeps the journal as the source", async () => {
+    // Claude Code and Muse: the reducer's own list stands, the receipts add no queued card, and only a
+    // row that came back to the box (which no queue row records) rides along.
+    const fx = fakeJournal([say("u1"), queue("from the journal")]);
+    const recording: JournalAdapter = { ...fx.adapter, recordsQueue: true };
+    const mixed: ReceiptQueued[] = [...sends(), { requestId: "req-back-00001", text: "popped back", at: AT + 5_000, state: "returned" }];
+    const body = await windows(fx).window(recording, ref(), { limit: 10 }, mixed);
+    expect(body!.queued).toEqual(["from the journal"]);
+    expect(body!.queuedSends).toEqual([{ requestId: "req-back-00001", state: "returned", text: "popped back" }]);
+  });
+
+  test("no open sends leave the body byte-identical to before", async () => {
+    const fx = fakeJournal([say("u1")]);
+    const body = await windows(fx).window(fx.adapter, ref(), { limit: 10 });
+    expect("queuedSends" in body!).toBe(false);
+    const recording: JournalAdapter = { ...fx.adapter, recordsQueue: true };
+    const claude = await windows(fx).window(recording, ref(), { limit: 10 }, sends());
+    expect("queuedSends" in claude!).toBe(false);
+    expect(claude!.queued).toEqual([]);
+  });
+});
+
 // ── the operator's newest prompt rides the body too ─────────────────────────
 
 describe("the newest prompt", () => {
@@ -1043,5 +1146,31 @@ describe("redact — journal turns leave the bridge masked, shape intact", () =>
     const older = redactChatBody({ page: "older", gen: 1, session: "s1", upserts: [turn], hasOlder: true });
     expect(JSON.stringify(older)).not.toContain(key);
     expect(older).toMatchObject({ page: "older", gen: 1, hasOlder: true });
+  });
+
+  test("redactChatBody masks the receipt queue's texts too, ids and states untouched", () => {
+    const live = redactChatBody({
+      page: "live",
+      gen: 1,
+      session: "s1",
+      rev: 2,
+      head: SEQ_BASE,
+      oldest: SEQ_BASE,
+      hasOlder: false,
+      upserts: [],
+      queued: [`and use ${key}`],
+      queuedSends: [
+        { requestId: "req-first-0001", state: "queued", text: `and use ${key}` },
+        { requestId: "req-back-00001", state: "returned", text: `deploy with ${key}` },
+      ],
+    });
+    expect(JSON.stringify(live)).not.toContain(key);
+    expect(live).toMatchObject({
+      queued: [`and use ${masked}`],
+      queuedSends: [
+        { requestId: "req-first-0001", state: "queued", text: `and use ${masked}` },
+        { requestId: "req-back-00001", state: "returned", text: `deploy with ${masked}` },
+      ],
+    });
   });
 });
