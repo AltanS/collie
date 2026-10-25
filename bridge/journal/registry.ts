@@ -61,17 +61,27 @@ export interface JournalRoots {
 }
 
 /**
+ * The harnesses' own model catalogs, where a log names no context window (bridge/journal/model-window.ts).
+ * Kept apart from {@link JournalRoots}, which are folders of logs, searched and confined as such. pi
+ * and Oh My Pi need no entry: their catalog sits in the agent dir above the sessions root.
+ */
+export interface ModelCatalogs {
+  /** OpenCode's copy of the models.dev catalog, `$XDG_CACHE_HOME/opencode/models.json`. */
+  opencode?: string;
+}
+
+/**
  * Build the registry for a set of roots.
  *
  * The map is built FROM each adapter's own `agent` field (not a hand-written literal), so a key can
  * never drift from the adapter it points at — the same guarantee the frontend registry gives.
  */
-export function buildJournalRegistry(roots: JournalRoots): Record<string, JournalAdapter> {
+export function buildJournalRegistry(roots: JournalRoots, catalogs: ModelCatalogs = {}): Record<string, JournalAdapter> {
   const adapters: JournalAdapter[] = [
     claudeJournal(roots.claude),
     codexJournal(roots.codex),
     piJournal(roots.pi),
-    opencodeJournal(roots.opencode),
+    opencodeJournal(roots.opencode, catalogs.opencode),
     grokJournal(roots.grok),
     hermesJournal(roots.hermes),
     kiroJournal(roots.kiro),

@@ -18,7 +18,7 @@ import { diskIo } from "./operator-file.ts";
 import { secretFileVerdict } from "./owner-only.ts";
 import type { AuditContent } from "./audit.ts";
 import type { DialMode } from "./dial.ts";
-import type { JournalRoots } from "./journal/registry.ts";
+import type { JournalRoots, ModelCatalogs } from "./journal/registry.ts";
 import { DEFAULT_MUX, muxEndpointVar } from "./mux/registry.ts";
 import { DEFAULT_MAX_UPLOAD_MB } from "./uploads.ts";
 
@@ -283,6 +283,11 @@ export interface Config {
    * a non-default agent home, never from a request.
    */
   journalRoots: JournalRoots;
+  /**
+   * The harnesses' own model catalogs, read for the context dot's window and nothing else
+   * (bridge/journal/model-window.ts, .adr/0115 amended 2026-10-25). Absent: no catalog is read.
+   */
+  modelCatalogs?: ModelCatalogs;
   /** Key sequence sent to submit a reply after the text (agent-dependent; see HERDR_API.md). */
   submitKeys: string[];
   /**
@@ -643,6 +648,14 @@ export function resolveJournalRoots(
 }
 
 /**
+ * Where each harness keeps the model catalog that names a context window. Only OpenCode's needs a
+ * path of its own: it lives in OpenCode's XDG cache dir, not beside its database.
+ */
+export function resolveModelCatalogs(env: Environment = process.env, home: string = homedir()): ModelCatalogs {
+  return { opencode: join(env.XDG_CACHE_HOME ?? join(home, ".cache"), "opencode", "models.json") };
+}
+
+/**
  * The operator's config dir — where their `.env` lives, their `commands.toml` beside it, and the
  * `tailscale serve` ownership record beside that.
  *
@@ -748,6 +761,7 @@ export function loadConfig(env: Environment = process.env): Config {
     transcript: envBool("COLLIE_TRANSCRIPT", true, env),
     accountWindows: envAccountWindows(env),
     journalRoots: resolveJournalRoots(env),
+    modelCatalogs: resolveModelCatalogs(env),
     submitKeys: submitKeys.length ? submitKeys : ["Enter"],
     commandsFile: join(configDir, "commands.toml"),
     keysFile: join(configDir, "keys.toml"),

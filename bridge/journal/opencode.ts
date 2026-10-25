@@ -82,6 +82,7 @@ import {
   type RowReducer,
 } from "./reduce.ts";
 import { asRecord, asText, tokenCount } from "./cache-probe.ts";
+import { type CatalogLookup, type MeasuredContext, opencodeModelsWindow, WindowCatalog } from "./model-window.ts";
 import {
   type Cursor,
   decodeCursor,
@@ -1071,14 +1072,21 @@ export class OpencodeTranscriptSource implements TranscriptSource {
 }
 
 /** OpenCode's journal adapter. `agent` matches the Herdr snapshot's `agent` string. */
-export function opencodeJournal(roots: string | readonly string[]): JournalAdapter {
+/**
+ * OpenCode's journal adapter. `modelsCatalog` is OpenCode's copy of the models.dev catalog
+ * (`$XDG_CACHE_HOME/opencode/models.json`), the one place that names a model's context window; with
+ * none, an OpenCode pane has no context dot (bridge/journal/model-window.ts).
+ */
+export function opencodeJournal(roots: string | readonly string[], modelsCatalog?: string): JournalAdapter {
   const source = new OpencodeTranscriptSource(roots);
+  const windows =
+    modelsCatalog === undefined ? undefined : { catalog: new WindowCatalog(), lookups: [opencodeModelsWindow(modelsCatalog)], scope: modelsCatalog };
   return {
     agent: "opencode",
     source,
     parse: parseOpencodeTranscript,
     reducer: createOpencodeReducer,
-    cacheProbe: (ref) => opencodeCacheProbe(source, ref),
+    cacheProbe: (ref) => opencodeCacheProbe(source, ref, windows),
   };
 }
 
@@ -1299,9 +1307,57 @@ function v2ModelEvent(row: JsonObject, at: number): ResetEvent | null {
   return { ruleId: OPENCODE_RESET_IDS.model, at, evidence: `model ${from ?? "?"} → ${to}` };
 }
 
+/** Where an OpenCode probe looks up a model's window. */
+interface OpencodeWindows {
+  catalog: WindowCatalog;
+  lookups: readonly CatalogLookup[];
+  scope: string;
+}
+
+/** The input-side tokens of an assistant message: `input` plus the cache read and written. */
+function opencodeContextTokens(tokens: JsonObject): number {
+  const cache = asRecord(tokens.cache);
+  return [tokenCount(tokens.input), tokenCount(cache?.read), tokenCount(cache?.write)].reduce<number>(
+    (total, n) => total + Math.max(0, n ?? 0),
+    0,
+  );
+}
+
+/**
+ * The context the newest measured turn carried, and the turn's provider and model, from the rows the
+ * probe already read (newest first). OpenCode counts `tokens.input` apart from `tokens.cache`, so the
+ * three together are what the request carried. A row with no tokens yet (a reply still streaming
+ * writes zeros) is passed over. A compaction newer than the turn ends the search with no reading: its
+ * summary replaced the history, and no turn has measured the smaller context yet. V1 marks it on the
+ * summary message itself, V2 with a `compaction` row.
+ */
+export function opencodeContextOf(
+  messages: ReadonlyArray<JsonObject | null>,
+): MeasuredContext | undefined {
+  for (const message of messages) {
+    if (message === null) continue;
+    if (isV2Compaction(message)) return undefined;
+    if (message.role !== "assistant") continue;
+    const tokens = asRecord(message.tokens);
+    if (tokens === null) continue;
+    if (isCompaction(message)) return undefined;
+    const sum = opencodeContextTokens(tokens);
+    if (sum <= 0) continue;
+    const nested = asRecord(message.model);
+    const provider = asText(nested?.providerID) ?? asText(message.providerID);
+    const model = asText(nested?.id) ?? asText(nested?.modelID) ?? asText(message.modelID);
+    const out: MeasuredContext = { tokens: sum };
+    if (provider !== undefined) out.provider = provider;
+    if (model !== undefined) out.model = model;
+    return out;
+  }
+  return undefined;
+}
+
 async function opencodeCacheProbe(
   source: OpencodeTranscriptSource,
   ref: AgentSessionRef,
+  windows?: OpencodeWindows,
 ): Promise<CacheProbe | null> {
   const key = await source.resolve(ref);
   if (key === null) return null;
@@ -1374,6 +1430,16 @@ async function opencodeCacheProbe(
     if (effort !== undefined) probe.effort = effort;
     const resets = store === "v2" ? opencodeResetsV2(messages, index) : opencodeResets(messages, index);
     if (resets.length > 0) probe.resets = resets;
+    // The context dot (.adr/0115, amended 2026-10-25): the tokens from the rows in hand, the window
+    // from OpenCode's own catalog, by the provider and model of the turn that measured them.
+    const context = opencodeContextOf(messages);
+    if (context !== undefined) {
+      probe.contextTokens = context.tokens;
+      if (windows !== undefined && context.provider !== undefined && context.model !== undefined) {
+        const window = await windows.catalog.window(windows.scope, windows.lookups, context.provider, context.model);
+        if (window !== undefined) probe.contextWindow = window;
+      }
+    }
     return probe;
   }
   return null;

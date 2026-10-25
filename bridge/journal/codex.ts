@@ -55,6 +55,7 @@ import {
   type RowReducer,
 } from "./reduce.ts";
 import { asRecord, asText, probeTail, tokenCount, walkBack } from "./cache-probe.ts";
+import { asWindow } from "./model-window.ts";
 import { type Cursor, NO_CURSOR, type ReadSince } from "./cursor.ts";
 import {
   containedRealpath,
@@ -841,6 +842,15 @@ export function codexJournal(roots: string | readonly string[]): JournalAdapter 
 //
 // Codex publishes nothing that names its TTL outright, so unlike Claude there is no `observedTtl`
 // here. The model is what the rule is picked by (`bridge/cache/rules/index.ts` § modelRuleFor).
+//
+// THE CONTEXT (.adr/0115, amended 2026-10-25) comes off the same `token_count` row, and it is the one
+// harness whose log names both halves: `last_token_usage.input_tokens` is what the request carried,
+// and `info.model_context_window` is the window. `input_tokens` already INCLUDES
+// `cached_input_tokens` and `cache_write_input_tokens` (OpenAI's usage shape; on 0.164.0 a row reads
+// 16209 input, 15770 cached, 436 written), so neither is added. Codex's own status line counts
+// `total_tokens - reasoning_output_tokens`, the reply included, against the window less a 12k
+// baseline; Collie counts what went in against the whole window, as it does for Claude. A `compacted`
+// row after the counts means the next request carries less, so the probe names no context then.
 
 async function codexCacheProbe(
   source: CodexTranscriptSource,
@@ -855,6 +865,9 @@ async function codexCacheProbe(
   let model: string | undefined;
   let effort: string | undefined;
   let usage: JsonObject | undefined;
+  let contextWindow: number | undefined;
+  // A compaction met on the walk back before the counts is NEWER than them.
+  let compactedAfter = false;
 
   walkBack(tail.lines, (raw): true | undefined => {
     const entry = asRecord(raw);
@@ -867,9 +880,12 @@ async function codexCacheProbe(
         stamp = ts ?? "";
       }
     }
+    if (usage === undefined && entry.type === "compacted") compactedAfter = true;
     const payload = asRecord(entry.payload);
     if (usage === undefined && payload !== null && payload.type === "token_count") {
-      usage = asRecord(asRecord(payload.info)?.last_token_usage) ?? undefined;
+      const info = asRecord(payload.info);
+      usage = asRecord(info?.last_token_usage) ?? undefined;
+      if (usage !== undefined) contextWindow = asWindow(info?.model_context_window);
     }
     if (turnId === "" && entry.type === "turn_context" && payload !== null) {
       turnId = asText(payload.turn_id) ?? "";
@@ -897,5 +913,8 @@ async function codexCacheProbe(
   if (cacheCreationTokens !== undefined) probe.cacheCreationTokens = cacheCreationTokens;
   if (model !== undefined) probe.model = model;
   if (effort !== undefined) probe.effort = effort;
+  const contextTokens = compactedAfter ? undefined : tokenCount(usage?.input_tokens);
+  if (contextTokens !== undefined && contextTokens > 0) probe.contextTokens = contextTokens;
+  if (contextWindow !== undefined) probe.contextWindow = contextWindow;
   return probe;
 }

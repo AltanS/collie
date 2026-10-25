@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **pi, OMP, Codex and OpenCode panes show the context dot above the belt.** Collie reads the last turn's tokens from the session log, and the model's window from Codex's log or from the harness's own model list on disk. A model that list does not name gets no dot, never a guessed one.
+
 ## [1.24.0] - 2026-10-25
 
 ### Added

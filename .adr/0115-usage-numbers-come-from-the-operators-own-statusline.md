@@ -9,7 +9,9 @@
   usage endpoint. The Edge integrator asked for this record because `collie hooks install claude` now
   writes into the operator's settings a second time · `cli/statusline.ts` · `cli/hooks.ts` ·
   `bridge/usage.ts` · `web/src/components/model-tag.tsx` · the playground's `#usage-row` ·
-  [ADR 0024](./0024-a-beacon-is-a-hint-never-a-control-channel.md)
+  [ADR 0024](./0024-a-beacon-is-a-hint-never-a-control-channel.md) · amended 2026-10-25: the context
+  for pi, OMP, Codex and OpenCode from the journal (`bridge/cache/tracker.ts`,
+  `bridge/journal/model-window.ts`), see the last section
 
 ## Context
 
@@ -141,3 +143,66 @@ text above stays as written.
   token, which is the credential road the Context above declined.
 - **2026-10-24, later: the windows now come from [ADR 0118](./0118-account-windows-come-from-the-vendors-usage-endpoint-with-the-operators-own-login.md)'s
   source; `--statusline` remains as the second source.**
+
+## Other harnesses: the context reading from the journal (2026-10-25)
+
+Altan, 2026-10-25: OMP, and the other harnesses, should carry the same row above the belt as Claude
+Code, with the model, the context and the usage limits. Until now the context came only from Claude's
+beacon hooks writing the usage file, so a pi, OMP, Codex or OpenCode pane had no `usage` and the row
+did not draw. The 5-hour and 7-day windows stay as [ADR 0118](./0118-account-windows-come-from-the-vendors-usage-endpoint-with-the-operators-own-login.md)
+left them; this section is about the context only.
+
+- **One seam, journal-side.** The prompt-cache probe already reads each harness's session log on the
+  bridge's poll (`bridge/cache/tracker.ts`). `CacheProbe` gains two optional numbers:
+  `contextTokens`, what the last turn carried into the model, and `contextWindow`, the window size
+  when one is known. The tracker keeps them per session beside the model label, with the same owner
+  and the same reap. A probe that read a turn replaces the reading; a read with no turn keeps it.
+- **The tokens, per harness.** Each in its own fields, input side only, as Claude's /context counts:
+  - pi and OMP: the assistant row's `usage.input + usage.cacheRead + usage.cacheWrite`. pi counts the
+    cache apart from `input`. A failed turn writes zeros and is passed over for the turn before it.
+  - Codex: `last_token_usage.input_tokens` of the newest `token_count` row. It already includes
+    `cached_input_tokens` and `cache_write_input_tokens` (on 0.164.0: 16209 input, 15770 cached, 436
+    written), so neither is added.
+  - OpenCode: the assistant message's `tokens.input + tokens.cache.read + tokens.cache.write`. A reply
+    still at zero tokens is passed over.
+  - A compaction after the measured turn (pi's `compaction` row, Codex's `compacted` row, OpenCode's
+    compaction summary or V2 `compaction` row) leaves the context unknown until the next turn, as
+    the beacon does on `compact`.
+- **The window rule stays: no window, no context.** A window comes from, in this order:
+  1. the session log itself: Codex's `info.model_context_window` (258,400 seen);
+  2. the harness's own model catalog on disk, when it names the model: pi's
+     `<agent dir>/models-store.json` (`<provider>.models[].contextWindow`), OMP's
+     `<agent dir>/models.db` (table `model_cache`, the provider's row or a `<provider>:<variant>` row,
+     `models[].contextWindow`), OpenCode's `$XDG_CACHE_HOME/opencode/models.json`
+     (`<provider>.models.<id>.limit.context`). The agent dir is the parent of the `sessions` folder
+     above the log. Read once per model id per bridge run, a file or row over 16 MB is not read, a
+     model the catalog does not name is asked again after ten minutes, and the database opens
+     read-only (`bridge/journal/model-window.ts`);
+  3. nothing: no context dot, and the model label still draws.
+
+  Never a guessed window, never a table shipped in Collie, never a process spawned, never a network
+  call.
+- **The join.** `UsageTracker.get` takes the context from the session's usage file when that holds
+  one (Claude's road, unchanged), else from the journal's reading when it knows both the tokens and
+  the window, floored to one decimal like the beacon's (`contextPercent`) and clamped at 100. The
+  account windows join exactly as before. The wire does not change; `ModelTag` already draws when
+  any gauge exists, so the web needs no change.
+- **Read live on bluefin, 2026-10-25.** Codex 0.164.0: 17,345 of 258,400, 6.7%. OMP 18.6.1 on
+  OpenRouter `openai/gpt-6-luna`: 98,087 of 1,050,000 from the `openrouter:pseudo-api` row, 9.3%.
+  pi 0.87.1 on OpenRouter `anthropic/claude-opus-4.7`: 10,718 of 1,000,000 from `models-store.json`.
+  OpenCode on OpenRouter `inclusionai/ling-3.0-flash-sante:free`: tokens read, and the catalog does
+  not name the model, so no dot; a model the catalog names (`openai/gpt-6-luna`, 1,050,000) was
+  checked by its lookup only, with no live OpenCode session on it.
+
+**Known limits.**
+
+- A model the harness's catalog does not list has no context dot: a custom provider, a free variant
+  missing from models.dev, a provider OMP has not cached. On OMP that depends on what OMP itself
+  cached; on this machine OpenRouter is cached as `openrouter:pseudo-api`, and another machine may
+  have no row for its provider. pi's own `models.json` (operator-defined models) is not read yet.
+- pi's and Codex's own footers count the reply's output tokens too (Codex also against the window
+  less a 12k baseline), so Collie's dot can read a little lower than theirs. Collie counts what went
+  in, for every harness alike.
+- pi's session is a tree. After a jump to another branch the newest assistant row in the file may
+  belong to the branch left behind, until the next turn.
+- A catalog that changes a model's window during a bridge run is read again only after a restart.
