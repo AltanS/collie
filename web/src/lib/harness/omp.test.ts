@@ -194,6 +194,16 @@ const PATH_POPUP = [
   "omp--v18-12-6-path-popup-two-paths--w120.txt",
 ];
 
+// omp 18.6.1 (omp-gang tester 12, 2026-10-25): the `@` file popup and the `#` issue and pull request popup
+// under the box, and the `#` rows left under an emptied box. All are composers.
+const TYPEAHEAD_POPUP = [
+  "omp--v18-6-1-at-popup--w120.txt",
+  "omp--v18-6-1-at-popup-path--w120.txt",
+  "omp--v18-6-1-hash-popup--w120.txt",
+  "omp--v18-6-1-hash-popup-single--w120.txt",
+  "omp--v18-6-1-hash-popup-stale--w120.txt",
+];
+
 const DECLINED = new Set([
   // — Composer states. An input box is chrome, never a dialog; stripChrome peels it, the statusline
   //   and stranded-draft probes re-surface what it carried.
@@ -377,6 +387,7 @@ const DECLINED = new Set([
   ...FUZZY_LIST_SHORT,
   // omp 18.6.1 and 18.12.6 (2026-10-25): the file popup under a path typed in the box, a composer.
   ...PATH_POPUP,
+  ...TYPEAHEAD_POPUP,
   // omp 18.6.1 and 18.12.6 (2026-10-25): the rewind picker (Esc Esc), a full-screen modal with no box. Nothing to lift.
   "omp--v18-6-1-rewind-picker--w120.txt",
   "omp--v18-12-6-rewind-picker--w120.txt",
@@ -580,6 +591,11 @@ describe("the omp corpus", () => {
     "omp--v18-4-switch.txt",
     "omp--v18-4-tree.txt",
     "omp--v18-6-1-approval-goal--w120.txt",
+    "omp--v18-6-1-at-popup--w120.txt",
+    "omp--v18-6-1-at-popup-path--w120.txt",
+    "omp--v18-6-1-hash-popup--w120.txt",
+    "omp--v18-6-1-hash-popup-single--w120.txt",
+    "omp--v18-6-1-hash-popup-stale--w120.txt",
     "omp--v18-6-1-path-popup--w120.txt",
     "omp--v18-6-1-path-popup-tilde--w120.txt",
     "omp--v18-6-1-queued-before-stop--w119.txt",
@@ -830,6 +846,7 @@ const COMPOSER_FIXTURES = [
   ...FUZZY_LIST_SHORT,
   // omp 18.6.1 and 18.12.6 (2026-10-25): the file popup under a path typed in the box.
   ...PATH_POPUP,
+  ...TYPEAHEAD_POPUP,
 ];
 
 describe("composerReady — the gate the reply path pre-flights on", () => {

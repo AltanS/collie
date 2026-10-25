@@ -1,0 +1,14 @@
+ I see a darius settings page for the bluefin host, showing the "About" tab with host details. What would you like me
+ to help you with? Are you looking to:
+
+ - Configure darius settings?
+ - Manage a Bay infrastructure task?
+ - Access tracking/milestone information?
+ - Something else specific to this interface?
+
+ Let me know what you need.
+
+ π > ◒ Haiku 4.5 > 📁 …ng/12-pickers/state/harness/omp/project > $0.02 ▶───6%────────────────────────────────┃─────200K─
+╰─ fix item #1
+❯ PR #1                           GitHub pull request
+  Issue #1                        GitHub issue

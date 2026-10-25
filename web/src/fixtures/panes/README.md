@@ -3271,3 +3271,17 @@ equal to its only entry, Enter cancels the popup and submits the text; the teste
 | --- | --- | --- |
 | `omp--v18-6-1-rewind-picker--w120.txt` | `dialog` | The last 22 rows of an 18.6.1 turn behind the picker: the transcript, a dashed `╭┄┄` frame holding the chosen turn, and the footer `64/64  ↑/↓ step  ←/→ user turns  f filter  ⏎ rewind  Ctrl+O expand  ⎋ cancel`. No box, no status row. Reads `unreadable` from `idle.overlayRows` in the profile |
 | `omp--v18-12-6-rewind-picker--w120.txt` | `dialog` | The same picker on 18.12.6 (`29/29`) |
+
+## omp 18.6.1 typeahead popups under the box (captured 2026-10-25, omp-gang tester 12)
+
+All are composers, labelled `popup`. The profile names them in `idle.volatile.below.popups` (rules `file`, `issue`, `emoji`); the Surface leaves their rows out of the cue read and the Send Protocol out of its row count, and a send committed with Ctrl+Q goes out with the popup open (omp's key handler for it runs before the autocomplete handler). The emoji rule is written from omp 18.12.6's `emoji-autocomplete.ts` and has no capture yet.
+
+| Fixture | What it shows |
+| --- | --- |
+| `omp--v18-6-1-at-popup--w120.txt` | `please read @READ`, one popup row `❯ README.md   README.md` |
+| `omp--v18-6-1-at-popup-path--w120.txt` | `@/tmp/x.png`, one popup row `❯ x.png` |
+| `omp--v18-6-1-hash-popup--w120.txt` | `fix item #1`, two popup rows `PR #1` and `Issue #1`: a pointer list, the weak cue that read `modal: unknown` |
+| `omp--v18-6-1-hash-popup-single--w120.txt` | `see PR #12`, one popup row |
+| `omp--v18-6-1-hash-popup-stale--w120.txt` | an EMPTY box after Ctrl+C with `PR #1` and `Issue #1` still under it; they go with the next key |
+
+The `#` popup that lists prompt actions (`ends with hash #`, `tag:#abc`: `Copy current line` and more) is a different popup, not a rule here; its screens read as before.

@@ -266,6 +266,40 @@ export interface CommandListRows {
   readonly notForText?: string;
 }
 
+/**
+ * One typeahead popup the harness draws under the box for the text's last word (OMP's `@` file popup, the
+ * `#` issue and pull request popup, the `:` emoji popup). It is the text's own popup, not a dialog.
+ */
+export interface PopupRule {
+  /** A word for the rule, unique in the profile. */
+  readonly name: string;
+  /** A regular expression source for the box text that opens the popup. It cannot match an empty text. */
+  readonly text: string;
+  /**
+   * A regular expression source for each row of the popup, with the named group `pointer` set on the
+   * pointed row (and only there). It cannot match a blank row.
+   */
+  readonly rows: string;
+  /**
+   * The rows stay on screen under an EMPTY box after the text that opened them is gone (OMP 18.6.1 keeps
+   * `PR #1` and `Issue #1` under a box cleared with Ctrl+C), and go with the next key. Optional.
+   */
+  readonly staleWhenEmpty?: true;
+}
+
+/** `idle.volatile.below.popups`: the popups a box's last word opens ({@link PopupRule}). */
+export interface PopupRows {
+  /**
+   * True: the harness's `keys.submit` ignores an open popup (OMP's Ctrl+Q runs before the autocomplete
+   * handler), so a send committed with that key goes out with the popup open. A send committed with
+   * `keys.commandSubmit` does not: Enter acts on the popup, and that send keeps its refusal.
+   */
+  readonly submitIgnores: true;
+  /** The popup's most rows. */
+  readonly maxRows: number;
+  readonly rules: readonly PopupRule[];
+}
+
 /** A side of the box a command list stands on. */
 export type CommandListSide = "under" | "above" | "inside";
 
@@ -468,6 +502,12 @@ export interface Profile {
          * only when the list is its own. Never Escape. Optional.
          */
         readonly commandList?: CommandListRows;
+        /**
+         * The typeahead popups under the box that the text's last word opens ({@link PopupRows}). The
+         * Surface leaves their rows out of every cue read and the Send Protocol out of its row count, so
+         * a draft with a popup open reads as a draft. Optional.
+         */
+        readonly popups?: PopupRows;
       };
     };
     /**
@@ -1112,7 +1152,37 @@ function volatileBelow(node: JsonObject): Profile["idle"]["volatile"]["below"] {
       : { ...base, hints: list(node.hints, "idle.volatile.below.hints").map((item, i) => pattern(item, `idle.volatile.below.hints[${String(i)}]`).source) };
   const withFooter = node.footerRows === undefined ? withHints : { ...withHints, footerRows: footerRows(node.footerRows) };
   const withScreens = node.otherScreens === undefined ? withFooter : { ...withFooter, otherScreens: otherScreens(node.otherScreens) };
-  return node.commandList === undefined ? withScreens : { ...withScreens, commandList: commandList(node.commandList) };
+  const withList = node.commandList === undefined ? withScreens : { ...withScreens, commandList: commandList(node.commandList) };
+  return node.popups === undefined ? withList : { ...withList, popups: popupRows(node.popups) };
+}
+
+/**
+ * `idle.volatile.below.popups`: `submitIgnores` true, the most rows, and at least one rule with a unique
+ * name, a text pattern that cannot match an empty text and a row pattern that holds the group `pointer`
+ * and cannot match a blank row.
+ */
+function popupRows(value: JsonValue): PopupRows {
+  const path = "idle.volatile.below.popups";
+  const node = object(value, path);
+  if (node.submitIgnores !== true) fail(`${path}.submitIgnores`, "must be true");
+  const maxRows = whole(field(node, "maxRows", path), `${path}.maxRows`, 1);
+  const names = new Set<string>();
+  const rules = list(field(node, "rules", path), `${path}.rules`).map((item, i): PopupRule => {
+    const at = `${path}.rules[${String(i)}]`;
+    const rule = object(item, at);
+    const name = text(field(rule, "name", at), `${at}.name`);
+    if (names.has(name)) fail(`${at}.name`, "is used twice");
+    names.add(name);
+    const opens = pattern(field(rule, "text", at), `${at}.text`);
+    if (opens.test("") || opens.test(" ")) fail(`${at}.text`, "must not match an empty text");
+    const rowPattern = pattern(field(rule, "rows", at), `${at}.rows`);
+    if (rowPattern.test("") || rowPattern.test(" ")) fail(`${at}.rows`, "must not match a blank row");
+    if (!rowPattern.source.includes("(?<pointer>")) fail(`${at}.rows`, "must hold the named group pointer");
+    if (rule.staleWhenEmpty !== undefined && rule.staleWhenEmpty !== true) fail(`${at}.staleWhenEmpty`, "must be true when named");
+    return rule.staleWhenEmpty === true ? { name, text: opens.source, rows: rowPattern.source, staleWhenEmpty: true } : { name, text: opens.source, rows: rowPattern.source };
+  });
+  if (rules.length === 0) fail(`${path}.rules`, "must name at least one rule");
+  return { submitIgnores: true, maxRows, rules };
 }
 /** `idle.notices`: each an object whose head pattern compiles and cannot match a blank row, and whose `body` and `letters`, when named, are true. */
 function parseNotices(value: JsonValue | undefined): NoticeHead[] {

@@ -155,7 +155,8 @@ import { splitLines } from "../../web/src/lib/blocks.ts";
 import { noEchoPromptIn } from "../../web/src/lib/no-echo.ts";
 import { isUploadImagePath, pastePieces } from "../../web/src/lib/upload-path.ts";
 import { pointsAt, staleListUnder } from "../../web/src/lib/surface/command-list.ts";
-import { commandListAt, isRunningRow, noticeOver, ownCommandList, readCues, readCuesFor, runningSign, withoutCommandList, withoutPromptEchoes, type CommandListRead, type Cue } from "../../web/src/lib/surface/cues.ts";
+import type { PopupRead } from "../../web/src/lib/surface/popup.ts";
+import { commandListAt, isRunningRow, noticeOver, ownCommandList, popupAt, readCues, readCuesFor, runningSign, withoutCommandList, withoutPopup, withoutPromptEchoes, type CommandListRead, type Cue } from "../../web/src/lib/surface/cues.ts";
 import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
 import { findInputFrame, rowText, type Frame, type FrameRow } from "../../web/src/lib/surface/frame.ts";
 import { liftAsk, liftDialog, readerBlocks } from "../../web/src/lib/surface/lift.ts";
@@ -514,6 +515,8 @@ interface Snap {
   readonly below: number;
   /** The name of the other screen whose own row stands under the frame ({@link otherScreenOf}); null with no frame. */
   readonly otherScreen: string | null;
+  /** The typeahead popup the box's text opened ({@link popupAt}), its rows left out of every count and cue read; null with none. */
+  readonly popup: PopupRead | null;
   /** The profile's command list at the frame and the command its pointer rests on ({@link commandListAt}); null with none. */
   readonly commandList: CommandListRead | null;
   /** That list when it is the typeahead of the command the box holds ({@link ownCommandList}); null otherwise. */
@@ -888,12 +891,14 @@ function rowsBelow(snap: Snap, frame: Frame): number {
  * moved screen. The rows of a stale list under an empty box (`stale`, `commandList.staleWhenEmpty`) are
  * left out the same way: the harness drops them at the next key.
  */
-function countBelow(texts: readonly string[], frame: Frame | null, hints: readonly RegExp[], stale: CommandListRead | null = null): number {
+function countBelow(texts: readonly string[], frame: Frame | null, hints: readonly RegExp[], stale: CommandListRead | null = null, popup: PopupRead | null = null): number {
   if (frame === null) return 0;
   let n = 0;
   for (let i = frame.bottom + 1; i < texts.length; i++) {
     // The rows of a list the harness left under an empty box (`commandList.staleWhenEmpty`) go with the next key.
     if (stale !== null && i >= stale.first && i <= stale.last) continue;
+    // A typeahead popup (`volatile.below.popups`) comes and goes with the text: its rows are not a screen that moved.
+    if (popup !== null && i >= popup.first && i <= popup.last) continue;
     const text = texts[i]!.trimEnd();
     if (text.trim().length > 0 && !hints.some((hint) => hint.test(text))) n++;
   }
@@ -1455,6 +1460,8 @@ function typedDetail(reason: SendReason): string | undefined {
 const LIST_ELSEWHERE = "The command list at the box pointed at another command, so Enter was not pressed.";
 /** The detail of a Submit of a typed command whose list under the box points at another command: Enter would run that one. */
 const SUBMIT_ELSEWHERE = "The command list at the box points at another command, so Enter was not pressed. Discard the text, or pick the command with the keys.";
+/** The detail of a typed command with a typeahead popup open under the box: Enter would act on the popup. */
+const POPUP_AT_ENTER = "A popup is open under the box, and Enter would act on it, so Enter was not pressed. Submit the text, or discard it.";
 /** The detail of a send whose S1 read showed a turn that started after S0, one the turn rule would refuse or hold (PR 491). */
 const TURN_STARTED = "A turn started while the text was typed, so Enter was not pressed. The text is in the box. Submit it when the turn ends.";
 
@@ -3172,6 +3179,10 @@ export class SendProtocol {
         if (state.command && listPointsElsewhere(s0, "", lines, collapseOf(match), match?.profile.idle.volatile.below.commandList)) {
           throw new Ended("refused", "not_free", { surface: s0.surface, framed: true, rowsHash: s0.rowsHash, detail: SUBMIT_ELSEWHERE });
         }
+        // The same for a popup: the command key is Enter, and Enter acts on it.
+        if (state.command && s0.popup !== null) {
+          throw new Ended("refused", "not_free", { surface: s0.surface, framed: true, rowsHash: s0.rowsHash, detail: POPUP_AT_ENTER });
+        }
         this.lap(state, "s0");
         state.marks.s1 = s0;
         await this.commit(state, s0);
@@ -3803,7 +3814,9 @@ export class SendProtocol {
     const ownList = ownCommandList(texts, frame, idle, rows);
     // The transcript's echo of a sent prompt above the box (`idle.promptEchoes`) is no pointed list either:
     // a long prompt wraps into rows aligned under its glyph (withoutPromptEchoes).
-    const bare = withoutPromptEchoes(withoutNamedRows(withoutCommandList(rows, ownList), frame), frame, idle);
+    // The box's typeahead popup (`volatile.below.popups`) is no dialog either: the profile's submit key ignores it.
+    const popup = popupAt(texts, frame, idle);
+    const bare = withoutPopup(withoutPromptEchoes(withoutNamedRows(withoutCommandList(rows, ownList), frame), frame, idle), popup);
     // A notice over the box (`idle.notices`) is left out of every read as well: its keys act only on a
     // box holding one of its digits, so its key row is no prompt that holds the keys.
     const notice = noticeOver(texts, frame, idle);
@@ -3838,8 +3851,10 @@ export class SendProtocol {
         frame,
         (idle?.volatile.below.hints ?? []).map((source) => new RegExp(source, "u")),
         frame === null ? null : staleListUnder(texts, frame.bottom, frame.interior.text, idle?.volatile.below.commandList),
+        popup,
       ),
       otherScreen: otherScreenOf(texts, frame, idle?.volatile.below.otherScreens ?? []),
+      popup,
       commandList: frame === null ? null : commandListAt(texts, frame, idle?.volatile.below.commandList, rows),
       ownList,
       hash: shortHash(texts.join("\n")),
@@ -4110,6 +4125,8 @@ export class SendProtocol {
     let otherScreen: string | null = null;
     // The last read showed the command typed and the harness's command list pointing at another one.
     let elsewhere = false;
+    // The last read showed a command typed and a typeahead popup open under the box.
+    let popupOpen = false;
     let earlier: Snap | null = null;
     // A message into a framed box on a harness that takes one in a turn: only the box and what is under
     // it decide (2026-10-17 decision). Where Enter would steer or interrupt a turn and no queue key
@@ -4139,6 +4156,13 @@ export class SendProtocol {
       // may still be catching up with the paste, so the read waits; when no read passes, the text stays.
       elsewhere = command && listPointsElsewhere(snap, prefix, lines, collapse, state.match?.profile.idle.volatile.below.commandList);
       if (elsewhere) {
+        why = "modal_cue";
+        return "wait";
+      }
+      // A command commits with the command key, and Enter acts on an open popup (the profile's `submitIgnores`
+      // is its submit key's only). The popup's rows are no cue, so this is where the refusal stands.
+      popupOpen = command && snap.popup !== null;
+      if (popupOpen) {
         why = "modal_cue";
         return "wait";
       }
@@ -4221,6 +4245,8 @@ export class SendProtocol {
     if (screen !== null) note.detail = otherScreenDetail(screen);
     const pointedElsewhere: boolean = elsewhere; // set inside the poll's callback
     if (pointedElsewhere) note.detail = LIST_ELSEWHERE;
+    const popupAtEnter: boolean = popupOpen; // set inside the poll's callback
+    if (popupAtEnter) note.detail = POPUP_AT_ENTER;
     throw new Ended("typed_not_submitted", why, sawNote(result.snap, note));
   }
 

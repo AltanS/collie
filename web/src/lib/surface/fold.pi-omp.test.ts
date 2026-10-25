@@ -633,3 +633,47 @@ describe("omp's rewind picker (Esc Esc) is a modal, not an unknown screen (18.6.
     });
   }
 });
+
+describe("omp's typeahead popups under the box read as a draft (18.6.1, omp-gang tester 12)", () => {
+  const DRAFTS: readonly [string, string][] = [
+    ["omp--v18-6-1-at-popup--w120.txt", "please read @READ"],
+    ["omp--v18-6-1-at-popup-path--w120.txt", "@/tmp/x.png"],
+    ["omp--v18-6-1-hash-popup--w120.txt", "fix item #1"],
+    ["omp--v18-6-1-hash-popup-single--w120.txt", "see PR #12"],
+  ];
+
+  for (const [name, typed] of DRAFTS) {
+    it(`${name}: a draft with no modal and no cue`, () => {
+      const read = own(name);
+      expect(read.frame?.interior.text).toBe(typed);
+      expect(read.surface).toEqual({ revision: 1, turn: "idle", modal: "none", composer: "draft" });
+      expect(read.cues?.strength).toBe("none");
+      expect(labelOf(name).state).toBe("popup");
+    });
+  }
+
+  it("the `#` popup is two rows with a pointer, the weak cue that read `modal: unknown` before the profile named it", () => {
+    const name = "omp--v18-6-1-hash-popup--w120.txt";
+    const idle = idleFor("omp")!;
+    const { popups, ...below } = idle.volatile.below;
+    void popups;
+    const without = readScreen(fixtureRows(name), agentOf("omp"), { ...idle, volatile: { ...idle.volatile, below } });
+    expect(without.cues?.strength).toBe("weak");
+    expect(without.surface.modal).toBe("unknown");
+  });
+
+  it("omp--v18-6-1-hash-popup-stale--w120.txt: the `#` rows left under an emptied box are a stale popup, an empty box", () => {
+    const read = own("omp--v18-6-1-hash-popup-stale--w120.txt");
+    expect(read.frame?.interior.text).toBe("");
+    expect(read.surface).toEqual({ revision: 1, turn: "idle", modal: "none", composer: "empty" });
+    expect(read.cues?.strength).toBe("none");
+  });
+
+  it("a dialog drawn under the box is not a popup: the same box over a permission row stays a modal", () => {
+    const name = "omp--v18-6-1-hash-popup--w120.txt";
+    const rows = fixtureRows(name);
+    const dialog = [...rows, ...rowsOf("  Allow tool: bash\n  ❯ Approve\n    Deny")];
+    const read = readScreen(dialog, agentOf("omp"), idleFor("omp"));
+    expect(read.surface.modal).not.toBe("none");
+  });
+});

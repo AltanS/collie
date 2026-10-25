@@ -160,6 +160,13 @@ const BOX_COMPOSER_FIXTURES = [
   "omp--v18-6-1-path-popup-tilde--w120.txt",
   "omp--v18-12-6-path-popup--w120.txt",
   "omp--v18-12-6-path-popup-two-paths--w120.txt",
+  // omp 18.6.1, the `@` file popup and the `#` issue popup under the box, and the `#` rows left under an
+  // emptied box (omp-gang tester 12, 2026-10-25).
+  "omp--v18-6-1-at-popup--w120.txt",
+  "omp--v18-6-1-at-popup-path--w120.txt",
+  "omp--v18-6-1-hash-popup--w120.txt",
+  "omp--v18-6-1-hash-popup-single--w120.txt",
+  "omp--v18-6-1-hash-popup-stale--w120.txt",
 ];
 
 // omp 18.6.1 with `/model` or `/mod` typed (lab, 2026-10-17): a ten-row palette under the open box. The
@@ -315,6 +322,11 @@ describe("locateComposer — the real corpus, pinned so any change to the walk s
     { fixture: "omp--v18-6-1-path-popup-tilde--w120.txt", top: 9, bottom: 10, suggestEnd: 12 },
     { fixture: "omp--v18-12-6-path-popup--w120.txt", top: 13, bottom: 14, suggestEnd: 16 },
     { fixture: "omp--v18-12-6-path-popup-two-paths--w120.txt", top: 12, bottom: 13, suggestEnd: 16 },
+    { fixture: "omp--v18-6-1-at-popup--w120.txt", top: 11, bottom: 12, suggestEnd: 14 },
+    { fixture: "omp--v18-6-1-at-popup-path--w120.txt", top: 11, bottom: 12, suggestEnd: 14 },
+    { fixture: "omp--v18-6-1-hash-popup--w120.txt", top: 10, bottom: 11, suggestEnd: 14 },
+    { fixture: "omp--v18-6-1-hash-popup-single--w120.txt", top: 11, bottom: 12, suggestEnd: 14 },
+    { fixture: "omp--v18-6-1-hash-popup-stale--w120.txt", top: 10, bottom: 11, suggestEnd: 14 },
   ];
 
   // These eleven indices are byte-identical to the ones the width-gated scanner produced. That is
@@ -392,6 +404,12 @@ describe("extractInputDraft", () => {
     { fixture: "omp--v18-6-1-path-popup--w120.txt", draft: "/home/demo/lab1/.cache/collie-lab/omp-gang/05-images/state/rig/state/uploads/w2_p1-mvo3m20o-6e1a9e71.png" },
     { fixture: "omp--v18-6-1-path-popup-tilde--w120.txt", draft: "~/.cache/collie-lab/omp-gang/12-pickers/state/harness/omp/project/x.png" },
     { fixture: "omp--v18-12-6-path-popup--w120.txt", draft: "/home/demo/lab1/.cache/collie-lab/omp-gang/05-images/state/rig/state/uploads/w2_p1-mvo44h6i-fd050f5a.png" },
+    // The `@` and `#` typeahead popups are no part of the draft either, and the rows left under an emptied box hold none.
+    { fixture: "omp--v18-6-1-at-popup--w120.txt", draft: "please read @READ" },
+    { fixture: "omp--v18-6-1-at-popup-path--w120.txt", draft: "@/tmp/x.png" },
+    { fixture: "omp--v18-6-1-hash-popup--w120.txt", draft: "fix item #1" },
+    { fixture: "omp--v18-6-1-hash-popup-single--w120.txt", draft: "see PR #12" },
+    { fixture: "omp--v18-6-1-hash-popup-stale--w120.txt", draft: null },
     // Empty composers. omp 17/18.1 painted nothing in an empty box; omp 18.4 paints a right-aligned
     // key hint there (`⇧⇥ to change thinking effort`), which is placeholder text, not a draft.
     // Reading it as one showed "Draft in terminal" on every fresh session (markers.ts

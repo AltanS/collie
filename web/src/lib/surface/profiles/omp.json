@@ -163,6 +163,28 @@
           "leadOpens": true,
           "staleWhenEmpty": true,
           "notForText": "^\\s*@?(?:~|\\.{1,2}|/[^\\s/]+)/"
+        },
+        "popups": {
+          "submitIgnores": true,
+          "maxRows": 10,
+          "rules": [
+            {
+              "name": "file",
+              "text": "^(?!\\s*/)[\\s\\S]*(?:^|\\s)@\\S*$",
+              "rows": "^(?:(?<pointer>❯|\\u{F054}) | {2})\\S.*$"
+            },
+            {
+              "name": "issue",
+              "text": "(?:^|\\s)#\\S*$",
+              "rows": "^(?:(?<pointer>❯|\\u{F054}) | {2})(?:PR|Issue) #\\d+ {2,}GitHub (?:pull request|issue)$",
+              "staleWhenEmpty": true
+            },
+            {
+              "name": "emoji",
+              "text": "(?:^|[\\s(\\[{>]):[A-Za-z0-9_+-]+$",
+              "rows": "^(?:(?<pointer>❯|\\u{F054}) | {2})[^\\x00-\\x7F]\\S* {2}\\S+$"
+            }
+          ]
         }
       }
     },

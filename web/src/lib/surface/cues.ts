@@ -39,6 +39,7 @@
 
 import { displayWidth } from "../text-width";
 import { commandListNear, openedByText, pointsAt, type CommandListRead } from "./command-list";
+import { popupUnder, type PopupRead } from "./popup";
 import { promptDraft, rowText, type Frame, type FrameRow, type IdleProfile } from "./frame";
 import { isSingleKeyRow } from "./key-row";
 import { readAboveNotice, type AboveNotice } from "./notice";
@@ -482,6 +483,21 @@ export function withoutPromptEchoes(rows: readonly FrameRow[], frame: Frame | nu
   return rows.map((row, i) => (echoes.some((echo) => i >= echo.first && i <= echo.last) ? { segments: [] } : row));
 }
 
+/**
+ * The typeahead popup under a found frame that the box's text opened (`idle.volatile.below.popups`,
+ * {@link popupUnder}), or null: with no frame, or on a profile that names none. A box showing its
+ * placeholder holds no text.
+ */
+export function popupAt(texts: readonly string[], frame: Frame | null, idle: IdleProfile | null): PopupRead | null {
+  if (frame === null || idle === null) return null;
+  return popupUnder(texts, frame.bottom, frame.placeholder ? "" : frame.interior.text, idle.volatile.below.popups);
+}
+
+/** The rows with a typeahead popup's rows read as blank. */
+export function withoutPopup(rows: readonly FrameRow[], popup: PopupRead | null): readonly FrameRow[] {
+  return withoutSpan(rows, popup);
+}
+
 /** The rows with a command list's rows read as blank. */
 export function withoutCommandList(rows: readonly FrameRow[], list: CommandListRead | null): readonly FrameRow[] {
   return withoutSpan(rows, list);
@@ -521,7 +537,7 @@ export function noticeOver(texts: readonly string[], frame: Frame | null, idle: 
  */
 export function readCuesFor(allRows: readonly FrameRow[], frame: Frame | null, idle: IdleProfile | null): CueRead {
   const texts = allRows.map(rowText);
-  const rows = withoutCommandList(allRows, frame === null ? null : ownCommandList(texts, frame, idle, allRows));
+  const rows = withoutPopup(withoutCommandList(allRows, frame === null ? null : ownCommandList(texts, frame, idle, allRows)), popupAt(texts, frame, idle));
   const plain = readCues(rows, frame, noticeOver(texts, frame, idle));
   if (idle?.dialogsInBox !== true || frame === null) return plain;
   // From the top edge down: a dialog in the box's place lies there, and the transcript above is no part of it.
