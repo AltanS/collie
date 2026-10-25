@@ -27,8 +27,10 @@ import type { Files } from "./sys.ts";
 //
 // Every path exits 0 and every failure is "no edge" or "no decision", with ONE exception: Moshi-only
 // routing (below) hands the permission to the original Moshi command untouched and returns ITS exit
-// code, because Moshi-only means Moshi answers exactly as it did before this install, and Codex reads
-// that exit code as it always has. A Moshi that cannot start is no decision, exit 0. Everywhere else
+// code, because Moshi-only means Moshi answers exactly as it did before this install. The registered
+// command ends in `|| :` (cli/codex-native.ts), so Codex sees exit 0 whatever that code is: Moshi's
+// output still reaches Codex, its non-zero exit is no decision. A Moshi that cannot start is no decision, exit 0.
+// Everywhere else
 // a non-zero exit is not neutral to Codex (exit 2 with a message on stderr is a DENY on a
 // PermissionRequest), so this verb never returns one, and it never prints anything but the broker's
 // line. Outside a multiplexer it reads nothing and exits at once, except that a PermissionRequest still
@@ -176,12 +178,14 @@ function writeEdges(deps: CodexHookDeps, payload: JsonObject, event: string, rec
   }
 }
 
-/** Whether hooks.json names a Moshi `codex-hook` on PermissionRequest that is not Collie's. A file that is there and cannot be read counts as yes. */
-function foreignMoshiPresent(deps: CodexHookDeps): boolean {
+/** Whether hooks.json names a handler on PermissionRequest that is not Collie's. A file that is there and cannot be read counts as yes. */
+function foreignHandlerPresent(deps: CodexHookDeps): boolean {
   const text = deps.files.read(hooksJsonPath(deps.ctx));
   if (text === null) return false;
   const document = parseJson(text);
-  return document === undefined || foreignPermission(document).moshi > 0;
+  if (document === undefined) return true;
+  const foreign = foreignPermission(document);
+  return foreign.moshi + foreign.other > 0;
 }
 
 /**
@@ -191,6 +195,16 @@ function foreignMoshiPresent(deps: CodexHookDeps): boolean {
  */
 async function decide(deps: CodexHookDeps, raw: string, payload: JsonObject, record: NativeRecord): Promise<number> {
   const profile = loadProfiles().get(CODEX_HARNESS)?.hold;
+  // A HANDLER THAT IS NOT OURS sits on this event beside this one (Moshi, or the person, added it after the
+  // install, or in a spelling the install did not take over). Two approvers race, and Moshi's card is not
+  // withdrawn when Collie decides first (issue #595), so the Collie hold is off while it is there. So is the
+  // broker's own start of Moshi, and so is a Moshi-only pass-through: a foreign Moshi entry runs by itself, and
+  // running the captured one as well would send the phone two requests. No decision; Codex asks as usual.
+  // A hooks.json that is present and unreadable cannot be shown to hold none, so it counts the same way.
+  if (record.hold && foreignHandlerPresent(deps)) {
+    await deps.print("{}");
+    return EXIT.OK;
+  }
   let provider: ((cancel: MoshiCapability["cancel"]) => ProviderRun) | null = null;
   let cancel: MoshiCapability["cancel"] | null = null;
   if (record.moshi !== null) {
@@ -202,7 +216,8 @@ async function decide(deps: CodexHookDeps, raw: string, payload: JsonObject, rec
     const verdict = capabilityVerdict(deps.files.read(capabilityPath(deps.ctx.configDir)), record.moshi.command, moshiNow(deps.files, record.moshi.command));
     if (!verdict.ok) {
       // MOSHI-ONLY ROUTING: the proof no longer describes this Moshi (it was updated, replaced or never
-      // proven), so the Collie hold stays off and Moshi answers exactly as it did before the install.
+      // proven), so the Collie hold stays off and Moshi answers exactly as it did before the install. At most
+      // one pass-through, and none when a foreign handler is there (above).
       return await deps.passThrough(argv, raw);
     }
     cancel = verdict.capability.cancel;
@@ -210,15 +225,6 @@ async function decide(deps: CodexHookDeps, raw: string, payload: JsonObject, rec
     provider = () => deps.spawnProvider(argv, raw, method);
   }
   const now = (deps.now ?? Date.now)();
-  // A MOSHI ENTRY THAT IS NOT OURS sits on this event beside this one (Moshi, or the person, added it after
-  // the install, or in a spelling the install did not take over). Its phone card is not withdrawn when
-  // Collie decides first (issue #595), so the Collie hold is off while it is there, and so is the broker's
-  // own start of Moshi: that other entry is Moshi, and answers by itself. No decision; Codex asks as usual.
-  // A hooks.json that is present and unreadable cannot be shown to hold none, so it counts the same way.
-  if (record.hold && foreignMoshiPresent(deps)) {
-    await deps.print("{}");
-    return EXIT.OK;
-  }
   const request = record.hold && profile !== undefined
     ? codexHoldRequest(payload, attributeCodexHook({ probe: deps.probe, files: deps.files, env: deps.ctx.env, stateDir: deps.ctx.stateDir, selfPid: deps.selfPid, parentPid: deps.parentPid, session: shortField(payload, "session_id") ?? undefined }), profile, now)
     : null;

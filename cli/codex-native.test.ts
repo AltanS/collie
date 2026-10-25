@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { JsonObject, JsonValue } from "../bridge/json.ts";
@@ -469,7 +471,7 @@ describe("native install: Moshi in any spelling (a second remote-approval handle
     const doc = parsed(d);
     doc.hooks.PermissionRequest!.push({ hooks: [{ type: "command", command: "python3 policy.py" }] });
     d.files.write(HOOKS, serializeHooks(doc));
-    expect(nativeStatusLines(d, BIN).join("\n")).toContain("note: 1 other handler(s)");
+    expect(nativeStatusLines(d, BIN).join("\n")).toContain("warning: 1 other handler(s)");
     doc.hooks.PermissionRequest!.push({ hooks: [{ type: "command", command: "/usr/local/bin/moshi codex-hook" }] });
     d.files.write(HOOKS, serializeHooks(doc));
     const text = nativeStatusLines(d, BIN).join("\n");
@@ -541,5 +543,74 @@ describe("hooks install codex --native --hold-permissions: the Codex version flo
     const unknown = { ...rig({ hooks: null }), harnessVersion: () => null };
     expect(cmdHooksInstall(unknown, ["codex", "--native", "--hold-permissions"])).toBe(EXIT.OK);
     expect(unknown.io.stdout.join("\n")).toContain("could not read the codex version");
+  });
+});
+
+describe("native install: a hold beside any other PermissionRequest handler", () => {
+  test("is refused and writes nothing, while a status-only install is untouched", () => {
+    const doc: Doc = { hooks: { PermissionRequest: [{ hooks: [{ type: "command", command: "python3 policy.py" }] }] } };
+    const d = rig({ hooks: doc });
+    const before = read(d, HOOKS);
+    expect(cmdCodexNativeInstall(d, BIN, { hold: true, moshi: false })).toBe(EXIT.FAIL);
+    expect(d.io.stderr.join("\n")).toContain("another handler");
+    expect(read(d, HOOKS)).toBe(before);
+    expect(read(d, RECORD)).toBeNull();
+    expect(cmdCodexNativeInstall(d, BIN, { hold: false, moshi: false })).toBe(EXIT.OK);
+    expect(parsed(d).hooks.PermissionRequest).toEqual(doc.hooks.PermissionRequest);
+  });
+
+  test("--with-moshi takes Moshi's slot but not a second handler beside it", () => {
+    const d = rig({ hooks: { hooks: { PermissionRequest: [{ hooks: [moshiHandler()] }, { hooks: [{ type: "command", command: "python3 policy.py" }] }] } }, proven: true });
+    const before = read(d, HOOKS);
+    expect(cmdCodexNativeInstall(d, BIN, { hold: true, moshi: true })).toBe(EXIT.FAIL);
+    expect(read(d, HOOKS)).toBe(before);
+  });
+});
+
+describe("the registered command never fails its host", () => {
+  const OLD_FORM = `'${BIN}' codex-hook # collie-codex v1`;
+
+  test("both command forms are ours: an install re-points the earlier one in place, an uninstall removes either", () => {
+    expect(ownedBinary(OLD_FORM)).toBe(BIN);
+    expect(ownedBinary(nativeCommand(BIN))).toBe(BIN);
+    expect(ownedBinary(`'${BIN}' codex-hook || true # collie-codex v1`)).toBeNull();
+    expect(ownedBinary(`'${BIN}' codex-hook || : | tee x # collie-codex v1`)).toBeNull();
+    const doc = operatorHooks();
+    doc.hooks.Stop!.push({ hooks: [{ type: "command", command: OLD_FORM, timeout: 10 }] });
+    const d = rig({ hooks: doc });
+    expect(cmdCodexNativeInstall(d, BIN, { hold: false, moshi: false })).toBe(EXIT.OK);
+    const stop = commands(parsed(d).hooks.Stop).filter((c) => ownedBinary(c) !== null);
+    expect(stop).toEqual([nativeCommand(BIN)]);
+    expect(nativeStatusLines(d, BIN).join("\n")).not.toContain("older command form");
+    // An install of the earlier form (every entry without `|| :`) is still reported, still ours, still removed.
+    const earlier = rig({ hooks: null });
+    cmdCodexNativeInstall(earlier, BIN, { hold: false, moshi: false });
+    earlier.files.write(HOOKS, (read(earlier, HOOKS) ?? "").replaceAll(" || :", ""));
+    expect(nativeStatusLines(earlier, BIN).join("\n")).toContain("older command form");
+    expect(cmdCodexNativeUninstall(earlier)).toBe(EXIT.OK);
+    expect(parsed(earlier).hooks).toEqual({});
+  });
+
+  // Real `sh`, a fake Collie from before `codex-hook` existed: it exits 2 on a usage error. To Codex that
+  // exit would block a UserPromptSubmit, ask a Stop for a continuation and deny a PermissionRequest.
+  test("a Collie that does not know codex-hook exits 0 with no output and no decision; a working one is unchanged", () => {
+    const dir = mkdtempSync(join(tmpdir(), "collie it's native-"));
+    try {
+      const old = join(dir, "collie-old");
+      writeFileSync(old, '#!/bin/sh\necho "error: unknown command \'$1\'" >&2\nexit 2\n', { mode: 0o755 });
+      const DENY = '{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"deny"}}}';
+      const current = join(dir, "collie-current");
+      writeFileSync(current, `#!/bin/sh\nprintf '%s' '${DENY}'\nexit 0\n`, { mode: 0o755 });
+      const run = (binary: string): { code: number | null; out: string } => {
+        const child = Bun.spawnSync(["/bin/sh", "-c", nativeCommand(binary)], { stdin: "ignore", stdout: "pipe", stderr: "pipe" });
+        return { code: child.exitCode, out: child.stdout.toString() };
+      };
+      expect(run(old)).toEqual({ code: 0, out: "" });
+      expect(run(current)).toEqual({ code: 0, out: DENY });
+      // The unguarded form is what this replaces: the same fake blocks with exit 2.
+      expect(Bun.spawnSync(["/bin/sh", "-c", `"${old}" codex-hook`], { stdin: "ignore", stdout: "pipe", stderr: "pipe" }).exitCode).toBe(2);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

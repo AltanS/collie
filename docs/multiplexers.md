@@ -594,9 +594,11 @@ $ collie hooks uninstall codex
 The first command registers `SessionStart`, `UserPromptSubmit`, `Stop`, `Interrupt` and
 `SessionEnd` in `$CODEX_HOME/hooks.json` (`~/.codex/hooks.json`), each as its own entry at the end of
 the event's list. The second adds `PermissionRequest` and a `PostToolUse` edge that ends the
-"Sent" card. Every entry runs `collie codex-hook`. Nothing else in the file is edited, reordered or
-removed, and `config.toml` is not opened: your own `notify` command and Codex's trust state stay as
-they are. A bare `collie hooks install codex` still writes the `notify` line and nothing more.
+"Sent" card. Every entry runs `'<collie>' codex-hook || :`, so a Collie that does not know the verb
+yet (an older release after an upgrade or rollback) exits 0 with no decision, never a blocked prompt
+or a denied permission. Nothing else in the file is edited, reordered or removed, and `config.toml`
+is not opened: your own `notify` command and Codex's trust state stay as they are. A bare
+`collie hooks install codex` still writes the `notify` line and nothing more.
 
 > **Note.** Codex runs a new or changed hook only after you trust it. Open Codex, run `/hooks`, and
 > review the Collie entries. Collie does not touch the trust state and has no way around it.
@@ -635,9 +637,10 @@ stale card answered a different prompt (moshi-hook 0.4.37, issue
 [#595](https://github.com/AltanS/collie/issues/595)).
 
 So with a Moshi `codex-hook` entry in `hooks.json`, in any spelling (`moshi` or `moshi-hook`, at any
-path, quoted or not), `--hold-permissions` refuses and writes nothing. Install without it, or remove
-the entry yourself. If the entry appears after a hold install, `collie codex-hook` sees it when a
-permission arrives, holds nothing, and prints `{}` so Codex asks you as usual. `collie hooks status`
+path, quoted or not), `--hold-permissions` refuses and writes nothing. So does any other
+`PermissionRequest` handler: Codex runs every one and any deny wins, so a hold would race it. Install
+without it, or remove the entry yourself. If a handler appears after a hold install, `collie codex-hook` sees it when a
+permission arrives, holds nothing, runs no Moshi of its own, and prints `{}` so Codex asks you as usual. `collie hooks status`
 warns about it. The install also refuses when a Collie `PermissionRequest` entry has no record file
 beside it, since that entry could be a broker and Moshi's original entry lives only in the record.
 

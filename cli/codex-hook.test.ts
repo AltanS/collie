@@ -414,33 +414,48 @@ describe("PermissionRequest: the Collie hold", () => {
     expect(none.printed).toEqual(["{}"]);
   });
 
-  // The install refuses a hold beside Moshi, but Moshi (or the person) can add its entry afterwards, in any
-  // spelling. Then both would answer from a phone and Moshi's card is not withdrawn (issue #595).
-  test("a Moshi entry that appeared on PermissionRequest after the install turns the hold off, whatever its spelling", async () => {
+  // The install refuses a hold beside another handler, but Moshi (or the person) can add one afterwards, in
+  // any spelling. Then two approvers race, and Moshi's card is not withdrawn (issue #595).
+  test("a handler that is not ours on PermissionRequest turns the hold off, whatever it is or how it is spelled", async () => {
     const hooksFile = join(HOME, ".codex", "hooks.json");
-    const moshiAfter = (command: string): string => JSON.stringify({ hooks: { PermissionRequest: [{ hooks: [{ type: "command", command: "'/opt/collie/bin/collie' codex-hook # collie-codex v1" }] }, { hooks: [{ type: "command", command }] }] } });
-    for (const command of [MOSHI_ENTRY_COMMAND, "'/usr/local/bin/moshi' codex-hook", "moshi codex-hook"]) {
+    const beside = (command: string): string => JSON.stringify({ hooks: { PermissionRequest: [{ hooks: [{ type: "command", command: "'/opt/collie/bin/collie' codex-hook # collie-codex v1" }] }, { hooks: [{ type: "command", command }] }] } });
+    for (const command of [MOSHI_ENTRY_COMMAND, "'/usr/local/bin/moshi' codex-hook", "moshi codex-hook", "python3 policy.py"]) {
       const r = rig({ stdin: permission() });
-      r.files.write(hooksFile, moshiAfter(command));
+      r.files.write(hooksFile, beside(command));
       expect(await cmdCodexHook(r.deps)).toBe(EXIT.OK);
       expect(r.printed).toEqual(["{}"]);
       expect(r.bridge.sent).toEqual([]);
       expect(r.provider.spawned).toEqual([]);
     }
-    // Another tool's handler, or hooks.json with only ours, does not turn it off.
-    const other = rig({ stdin: permission() });
-    other.files.write(hooksFile, JSON.stringify({ hooks: { PermissionRequest: [{ hooks: [{ type: "command", command: "python3 policy.py" }] }] } }));
-    const done = cmdCodexHook(other.deps);
+    // hooks.json with only ours holds as before.
+    const alone = rig({ stdin: permission() });
+    alone.files.write(hooksFile, JSON.stringify({ hooks: { PermissionRequest: [{ hooks: [{ type: "command", command: "'/opt/collie/bin/collie' codex-hook # collie-codex v1" }] }] } }));
+    const done = cmdCodexHook(alone.deps);
     await settle();
-    expect(other.bridge.sent).toHaveLength(1);
-    other.bridge.reply(JSON.stringify({ decision: "allow" }));
+    expect(alone.bridge.sent).toHaveLength(1);
+    alone.bridge.reply(JSON.stringify({ decision: "allow" }));
     await done;
-    // A hooks.json that is there and cannot be read cannot be shown to hold no Moshi.
+    // A hooks.json that is there and cannot be read cannot be shown to hold nothing else.
     const broken = rig({ stdin: permission() });
     broken.files.write(hooksFile, "{ not json");
     await cmdCodexHook(broken.deps);
     expect(broken.printed).toEqual(["{}"]);
     expect(broken.bridge.sent).toEqual([]);
+  });
+
+  // Moshi-only routing runs the captured Moshi once. With a foreign Moshi entry already running it, the same
+  // pass-through would send the phone a second request, so nothing is run at all.
+  test("an invalid proof passes Moshi through once; with a foreign Moshi entry beside it, not at all", async () => {
+    const broker: Partial<NativeRecord> = { moshi: { original: { command: MOSHI_ENTRY_COMMAND, type: "command" }, command: MOSHI_ENTRY_COMMAND, group: 0, handler: 0 } };
+    const alone = rig({ stdin: permission(), record: broker });
+    await cmdCodexHook(alone.deps);
+    expect(alone.passed).toHaveLength(1);
+    expect(alone.bridge.sent).toEqual([]);
+    const doubled = rig({ stdin: permission(), record: broker });
+    doubled.files.write(join(HOME, ".codex", "hooks.json"), JSON.stringify({ hooks: { PermissionRequest: [{ hooks: [{ type: "command", command: "'/opt/collie/bin/collie' codex-hook # collie-codex v1" }] }, { hooks: [{ type: "command", command: "/usr/local/bin/moshi codex-hook" }] }] } }));
+    await cmdCodexHook(doubled.deps);
+    expect(doubled.passed).toEqual([]);
+    expect(doubled.printed).toEqual(["{}"]);
   });
 });
 

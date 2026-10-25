@@ -24,9 +24,12 @@ import type { HooksDeps } from "./hooks.ts";
 // trust a new or changed hook in `/hooks`, and that is how these entries come to run.
 //
 // ── THE RULES ─────────────────────────────────────────────────────────────────────────────────────
-//  1. OWNERSHIP IS THE COMMAND. An entry is ours when its command is `'<binary>' codex-hook # collie-codex
-//     v<N>` (Codex rejects unknown keys in a handler, so there is nowhere else to put a marker). Nothing
-//     else is ever edited, reordered or removed.
+//  1. OWNERSHIP IS THE COMMAND. An entry is ours when its command is `'<binary>' codex-hook || : # collie-codex
+//     v<N>`, or the earlier form without `|| :` (Codex rejects unknown keys in a handler, so there is
+//     nowhere else to put a marker). The install re-points an earlier form in place, and the uninstall
+//     removes both. Nothing else is ever edited, reordered or removed. `|| :` keeps a child that fails
+//     (a Collie that does not know `codex-hook` yet exits 2) from blocking a prompt, asking for a
+//     continuation or denying a permission: a failure is no decision, never an allow.
 //  2. NEW ENTRIES GO LAST. Codex keys a hook's trust by its position (`hooks.json:<event>:<group>:<handler>`),
 //     so appending a group leaves every other entry's trust where it was, and so does removing ours again.
 //  3. DUPLICATES REFUSE. Two entries of ours on one event, two entries that are exactly Moshi's, or ours
@@ -58,7 +61,8 @@ export const WITH_MOSHI_FLAG = "--with-moshi";
 export const NATIVE_VERB = "codex-hook";
 export const NATIVE_MARKER_VERSION = 1;
 export const NATIVE_MARKER_PREFIX = "# collie-codex v";
-const OWNED = /^'((?:[^']|'\\'')+)' codex-hook # collie-codex v(\d+)$/u;
+/** Both forms are ours: the guarded one this install writes, and the earlier one without `|| :`, which an install re-points in place. */
+const OWNED = /^'((?:[^']|'\\'')+)' codex-hook(?: \|\| :)? # collie-codex v(\d+)$/u;
 
 /** The edge events, with the timeout in seconds each is written with (Codex clamps SessionEnd and Interrupt to 1..3). */
 export const NATIVE_EDGE_EVENTS: readonly { readonly event: string; readonly timeout: number }[] = [
@@ -82,9 +86,15 @@ export const hooksJsonPath = (ctx: Parameters<typeof codexHome>[0]): string => j
 /** A path as one shell word. */
 const quote = (text: string): string => `'${text.replace(/'/gu, "'\\''")}'`;
 
-/** The command a native entry runs for this binary. */
+/**
+ * The command a native entry runs for this binary. `|| :` makes a non-zero exit of the child exit 0: a
+ * Collie that does not know `codex-hook` yet (an older release after a later ordinary upgrade or rollback)
+ * exits 2 on the usage error, and to Codex exit 2 from UserPromptSubmit blocks the prompt, from Stop asks
+ * for a continuation and from PermissionRequest is a deny. With the guard a failure is no decision and never
+ * an allow; the working verb's structured allow or deny is printed and exits 0 as before. POSIX, no pipe.
+ */
 export function nativeCommand(binary: string): string {
-  return `${quote(binary)} ${NATIVE_VERB} ${NATIVE_MARKER_PREFIX}${String(NATIVE_MARKER_VERSION)}`;
+  return `${quote(binary)} ${NATIVE_VERB} || : ${NATIVE_MARKER_PREFIX}${String(NATIVE_MARKER_VERSION)}`;
 }
 
 /** The binary an owned command names, or null when the command is not ours. */
@@ -223,6 +233,12 @@ export function planInstall(current: JsonValue | null, command: string, want: In
   if (want.moshi && !want.hold) return refusal(`\`${WITH_MOSHI_FLAG}\` needs \`--hold-permissions\``);
   if (want.moshi && moshiLike.length > moshiSlots.length) {
     return refusal(`a Moshi \`codex-hook\` entry on ${PERMISSION} is not spelled exactly \`${MOSHI_ENTRY_COMMAND}\`, and only that spelling can be taken over`);
+  }
+  // Any other handler is the same race (Codex runs every one and any deny wins), and `collie codex-hook`
+  // holds nothing while one is there, so an install beside it would promise a hold that never comes.
+  const foreignSlots = slotsOf(permission, (handler) => !isOurs(handler));
+  if (want.hold && foreignSlots.length > moshiSlots.length * (want.moshi ? 1 : 0)) {
+    return refusal(`another handler is registered on ${PERMISSION}; Codex runs every one and any deny wins, so a hold would race it and \`collie codex-hook\` holds nothing while it is there. Install without \`--hold-permissions\`, or remove that entry yourself`);
   }
   if (want.moshi && moshiSlots.length === 0 && (ourPermission.length === 0 || previous?.moshi == null)) {
     return refusal(`no entry is exactly \`${MOSHI_ENTRY_COMMAND}\` on ${PERMISSION}, so there is nothing to take over`);
@@ -553,14 +569,14 @@ export function nativeStatusLines(deps: HooksDeps, binary: string): string[] {
   const missing = wanted.filter((event) => !present.includes(event));
   if (duplicate !== null) lines.push(`${hooksPath}: native Codex hooks: duplicate Collie entries on ${duplicate} — remove one by hand, then re-run install`);
   else if (missing.length > 0) lines.push(`${hooksPath}: native Codex hooks: partly installed (missing ${missing.join(", ")}) — re-run \`install codex --native\``);
-  else if (stale.length > 0) lines.push(`${hooksPath}: native Codex hooks: installed, but ${[...new Set(stale)].join(", ")} run another binary — re-run \`install codex --native\` to re-point them`);
+  else if (stale.length > 0) lines.push(`${hooksPath}: native Codex hooks: installed, but ${[...new Set(stale)].join(", ")} run another binary or an older command form (without the exit-0 guard) — re-run \`install codex --native\` to re-point them`);
   else lines.push(`${hooksPath}: native Codex hooks: installed (${present.join(", ")})${record?.hold === true ? ", holds permissions" : ""}; trust them in /hooks if Codex has not`);
   if (record?.hold === true) {
     const foreign = foreignPermission(hooks.value);
     if (foreign.moshi > 0) {
       lines.push(`  warning: a Moshi \`codex-hook\` entry is registered on ${PERMISSION} beside the Collie hold (issue #595). The Collie hold stays off while it is there, and Codex asks as usual; remove that entry, or install again without \`--hold-permissions\`.`);
     } else if (foreign.other > 0) {
-      lines.push(`  note: ${String(foreign.other)} other handler(s) are registered on ${PERMISSION}; Codex runs every one and any deny wins, so the hold waits for the slowest.`);
+      lines.push(`  warning: ${String(foreign.other)} other handler(s) are registered on ${PERMISSION} beside the Collie hold. Codex runs every one and any deny wins; the Collie hold stays off while they are there, and Codex asks as usual. Remove them, or install again without \`--hold-permissions\`.`);
     }
   }
   if (record?.moshi != null) {
