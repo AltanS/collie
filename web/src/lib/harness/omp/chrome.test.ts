@@ -103,6 +103,11 @@ const BOX_COMPOSER_FIXTURES = [
   "omp--v18-12-2-goal-resume-typed--w119.txt",
   "omp--v18-12-2-goal-turn-running--w119.txt",
   "omp--v18-12-2-goal-turn-running-probe--w119.txt",
+  // omp 18.12.6 (and 18.6.1) with a skill chip `✦ name arg…` or a pasted image chip `📷 #1` in the band's prompt row
+  // (omp gang 02 and 05, 2026-10-25): cut to the band and the prompt row, the image card over them whole.
+  "omp--v18-12-6-image-chip--w120.txt",
+  "omp--v18-12-6-skill-chip--w120.txt",
+  "omp--v18-6-skill-chip--w120.txt",
   // omp 18.12.1's default `band` composer under the nerd preset, and one unicode control (issue 505).
   "omp--v18-12-band-idle--w130.txt",
   "omp--v18-12-nerd-band-done--w130.txt",
@@ -237,6 +242,10 @@ describe("locateComposer — the real corpus, pinned so any change to the walk s
     { fixture: "omp--v18-12-2-goal-resume-typed--w119.txt", top: 22, bottom: 23, suggestEnd: 25 },
     { fixture: "omp--v18-12-2-goal-turn-running--w119.txt", top: 19, bottom: 20, suggestEnd: 21 },
     { fixture: "omp--v18-12-2-goal-turn-running-probe--w119.txt", top: 19, bottom: 20, suggestEnd: 21 },
+    // The chips of omp 18.12.6 and 18.6.1 (omp gang 02 and 05): the band is the top row, the chip the prompt row.
+    { fixture: "omp--v18-12-6-image-chip--w120.txt", top: 7, bottom: 8, suggestEnd: 9 },
+    { fixture: "omp--v18-12-6-skill-chip--w120.txt", top: 0, bottom: 1, suggestEnd: 2 },
+    { fixture: "omp--v18-6-skill-chip--w120.txt", top: 0, bottom: 1, suggestEnd: 2 },
     // omp 18.12.1's default `band` composer (issue 505): the status band is the top row, `╰─` the prompt.
     { fixture: "omp--v18-12-band-idle--w130.txt", top: 10, bottom: 11, suggestEnd: 12 },
     { fixture: "omp--v18-12-nerd-band-done--w130.txt", top: 38, bottom: 39, suggestEnd: 40 },
@@ -323,6 +332,11 @@ describe("extractInputDraft", () => {
         "inside the dot git directory, and finally print the total count of files at the very bottom " +
         "of the answer so it is easy to check the result quickly against a manual count taken by hand",
     },
+    // The chips omp draws in the box: the skill chip `✦ name arg…` (18.6.1 and 18.12.6, omp gang 02) and the
+    // pasted image chip (`📷 #1` on 18.12.6, omp gang 05). The draft is the chip as it stands, a draft like any other.
+    { fixture: "omp--v18-12-6-skill-chip--w120.txt", draft: "✦ darius-work-plan reply with the single word OK and call no tools" },
+    { fixture: "omp--v18-6-skill-chip--w120.txt", draft: "✦ darius-work-plan reply with the single word OK and call no tools" },
+    { fixture: "omp--v18-12-6-image-chip--w120.txt", draft: "📷 #1" },
     // A slash command mid-typing is a draft like any other — the palette below the box is chrome.
     { fixture: "omp--slash-palette.txt", draft: "/" },
     { fixture: "omp--slash-palette--filtered.txt", draft: "/new" },
@@ -363,8 +377,21 @@ describe("extractInputDraft", () => {
   });
 });
 
+// The omp gang's rig reads a pane as plain text: these captures carry no SGR, so the band is one segment.
+const PLAIN_READ_FIXTURES = [
+  "omp--v18-12-6-image-chip--w120.txt",
+  "omp--v18-12-6-skill-chip--w120.txt",
+  "omp--v18-6-skill-chip--w120.txt",
+];
+
 describe("extractStatusLines", () => {
-  it.each(BOX_COMPOSER_FIXTURES)("%s: re-surfaces exactly one styled row", (name) => {
+  it.each(PLAIN_READ_FIXTURES)("%s: a plain read re-surfaces the band as one row", (name) => {
+    const rows = extractStatusLines(fixtureLines(name));
+    expect(rows).toHaveLength(1);
+    expect(lineText(rows[0]!)).toContain("Haiku 4.5");
+  });
+
+  it.each(BOX_COMPOSER_FIXTURES.filter((name) => !PLAIN_READ_FIXTURES.includes(name)))("%s: re-surfaces exactly one styled row", (name) => {
     const rows = extractStatusLines(fixtureLines(name));
     expect(rows).toHaveLength(1);
     // STYLED, not flattened: omp colours each powerline field separately, and that is what makes the

@@ -2984,6 +2984,46 @@ OMP's own words are `Goal mode paused.` and `Goal mode resumed.`. A `/goal pause
 into the box brings up the list of that command's arguments under the box, with the pointer on the
 argument typed (`commandList.argumentList`, `command-list.ts`).
 
+## omp 18.12.6 tool-approval panel (captured 2026-10-25, real omp, rig pane, issue batch 1.24.1)
+
+Two screens of a real omp 18.12.6 (`omp --version`) with its tool-approval panel up for a `bash` call
+(`echo gang-test`), under a Collie rig bridge (port 18703, `approval` mode, model `anthropic/claude-haiku-4.5`
+on OpenRouter, a scratch `HOME` and project folder under `~/.cache/collie-lab/`). Each is the rig's plain
+pane read, 120 columns, copied unchanged: the rig's read carries no SGR, so these two files hold no escape
+sequences (every other omp approval capture here does). The reader looks at text only, the pointer is the
+`❯` glyph, so the missing paint costs nothing. No user, host, key or token appears; the one path on a
+screen is the lab's own, cut to `…ng/04-dialogs/state/harness/omp/project` by omp.
+
+The panel is a new layout (the pi-tui overlay panel): no blank spacer rows, the choices under the body, a
+third row `Approve bash for this session`, a divider over a new footer (`↑/↓ choose · ⏎ select ·
+Ctrl+⏎/Ctrl+Q approve · ⎋ deny · Ctrl+O details · type to deny and steer`), and the composer's band (the
+status row and the empty `╰─`) still drawn under the box. Enter approves, Escape denies and Down then Enter
+approves for the session; all three were proved by raw keys in the lab. Before the reader of
+`web/src/lib/harness/omp/approval.ts` learned this shape the Surface said `modal: unreadable` on it and
+every send was refused `unconfirmed`.
+
+| Fixture | State / what's in it |
+|---|---|
+| `omp--v18-12-6-approval-bash--w120.txt` | A fresh session in its first turn: the `What's New` banner, the user line, the model's short reasoning, the finished `$ echo gang-test` tool box, and the panel with the pointer on `Approve`. Labelled `dialog`, lifts as `Approve`, `Approve bash for this session`, `Deny` |
+| `omp--v18-12-6-approval-bash-later--w120.txt` | The same panel 18 s into the turn, taken after a refused `Type here` tap: the reasoning's tail above a boxed tool call, the `⎋ Run echo gang-test` row with omp's title tag to its right, and the panel with the pointer still on `Approve`. Labelled `dialog` |
+
+No capture holds the pointer on another row, so the moved states in the tests are the capture with the `❯`
+moved (`bridge/surface/ask.test.ts`) or drawn the way the source lays the rows out (`approval.test.ts`).
+
+## omp skill chip and pasted image chip (captured 2026-10-25, real omp 18.6.1 and 18.12.6, rig pane)
+
+Plain pane reads from the same Collie rig as the approval panel above (no SGR, 120 columns), cut to whole
+rows. omp rewrites a box that holds `/skill:<name> <arg>` into a chip, `✦ <name> <arg>`, as soon as a space
+follows the name; a skill with no argument stays as typed. Before the profile's `collapse.pattern` knew the
+chip every skill with an argument ended `typed_not_submitted / mismatch`, on both versions. A pasted image
+path becomes a chip too, `🖼 #N` (U+1F5BC) on 18.6.1 and `📷 #N` (U+1F4F7) on 18.12.6; only the first matched.
+
+| Fixture | State / what's in it |
+|---|---|
+| `omp--v18-6-skill-chip--w120.txt` | omp 18.6.1, cut to its last two rows: the band (`π > ◒ Haiku 4.5 > 🗺 Plan ⏸ > … > $0.05 ▶──6%─…`) and the prompt row `╰─ ✦ darius-work-plan reply with the single word OK and call no tools`. Typed text was `/skill:darius-work-plan reply with the single word OK and call no tools`. Labelled `draft` |
+| `omp--v18-12-6-skill-chip--w120.txt` | The same on omp 18.12.6, cut to its last two rows: the band with no cost segment and the same chip row. The rows above held a 402 banner of the run, left out. Labelled `draft` |
+| `omp--v18-12-6-image-chip--w120.txt` | omp 18.12.6 after a bracketed paste of one image path: the title tag `🎨 COLOR: …` at the right, omp's image card `╭── 📷 #1 ───╮` with its `200x200` footer, the band, and the prompt row `╰─ 📷 #1`. CRLF normalised to LF. Labelled `draft` |
+
 ## Hermes corpus (captured 2026-10-16, Hermes Agent v0.22.2 classic CLI, Herdr 0.9.1, sandbox pane)
 
 `hermes--*.txt` come from one disposable Herdr pane running the installed `hermes --cli` with a

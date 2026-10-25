@@ -126,6 +126,9 @@ const LIFTED = new Set([
   "omp--v18-4-approval-write-long.txt",
   "omp--v18-4-approval-write-moved.txt",
   "omp--v18-4-approval-write.txt",
+  // omp 18.12.6's divided approval panel (approval.ts, the second shape): lifted for `bash`.
+  "omp--v18-12-6-approval-bash--w120.txt",
+  "omp--v18-12-6-approval-bash-later--w120.txt",
   // The compact model picker's session state is DERIVED: every `omp--v18-4-switch*` capture except the
   // declined states listed in DECLINED_SWITCH. A new capture of it lifts by default, and the conformance
   // suite fails it loudly if it does not, which is the moment a person files it as declined with a reason.
@@ -223,6 +226,7 @@ const DECLINED = new Set([
   "omp--v18-6-queue-after-now--w120.txt",
   "omp--v18-6-queue-done--w120.txt",
   "omp--v18-6-queue-typed--w120.txt",
+  "omp--v18-6-skill-chip--w120.txt",
   "omp--v18-6-steer-after--w120.txt",
   "omp--v18-6-steer-after-now--w120.txt",
   "omp--v18-6-steer-done--w120.txt",
@@ -230,6 +234,8 @@ const DECLINED = new Set([
   "omp--v18-6-steer-pending-block--w120.txt",
   "omp--v18-6-steer-typed--w120.txt",
   // omp 18.12.1's default `band` composer under the nerd preset, and one unicode control (issue 505).
+  "omp--v18-12-6-image-chip--w120.txt",
+  "omp--v18-12-6-skill-chip--w120.txt",
   "omp--v18-12-band-idle--w130.txt",
   "omp--v18-12-nerd-band-done--w130.txt",
   "omp--v18-12-nerd-band-done--w80.txt",
@@ -447,6 +453,10 @@ describe("the omp corpus", () => {
     "omp--v18-12-2-goal-resume-typed--w119.txt",
     "omp--v18-12-2-goal-turn-running--w119.txt",
     "omp--v18-12-2-goal-turn-running-probe--w119.txt",
+    "omp--v18-12-6-approval-bash--w120.txt",
+    "omp--v18-12-6-approval-bash-later--w120.txt",
+    "omp--v18-12-6-image-chip--w120.txt",
+    "omp--v18-12-6-skill-chip--w120.txt",
     "omp--v18-12-band-idle--w130.txt",
     "omp--v18-12-nerd-band-done--w130.txt",
     "omp--v18-12-nerd-band-done--w80.txt",
@@ -523,6 +533,7 @@ describe("the omp corpus", () => {
     "omp--v18-6-queue-done--w120.txt",
     "omp--v18-6-queue-typed--w120.txt",
     "omp--v18-6-settings-screen--w120.txt",
+    "omp--v18-6-skill-chip--w120.txt",
     "omp--v18-6-slash-mod-partial--w120.txt",
     "omp--v18-6-slash-model-list--w120.txt",
     "omp--v18-6-slash-model-list--w80.txt",
@@ -708,6 +719,7 @@ const COMPOSER_FIXTURES = [
   "omp--v18-6-queue-after-now--w120.txt",
   "omp--v18-6-queue-done--w120.txt",
   "omp--v18-6-queue-typed--w120.txt",
+  "omp--v18-6-skill-chip--w120.txt",
   "omp--v18-6-steer-after--w120.txt",
   "omp--v18-6-steer-after-now--w120.txt",
   "omp--v18-6-steer-done--w120.txt",
@@ -715,6 +727,8 @@ const COMPOSER_FIXTURES = [
   "omp--v18-6-steer-pending-block--w120.txt",
   "omp--v18-6-steer-typed--w120.txt",
   // omp 18.12.1's default `band` composer under the nerd preset, and one unicode control (issue 505).
+  "omp--v18-12-6-image-chip--w120.txt",
+  "omp--v18-12-6-skill-chip--w120.txt",
   "omp--v18-12-band-idle--w130.txt",
   "omp--v18-12-nerd-band-done--w130.txt",
   "omp--v18-12-nerd-band-done--w80.txt",

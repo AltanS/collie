@@ -516,6 +516,98 @@ describe("codex asks (M56 spec 13)", () => {
   });
 });
 
+describe("omp 18.12.6 permission dialog (2026-10-25 lab, the third option and the new footer)", () => {
+  const OMP_APPROVE = fx("omp--v18-12-6-approval-bash--w120.txt");
+  // The band composer that stays under the dialog, with no dialog above it: what the pane shows once a key answered.
+  const OMP_IDLE = fx("omp--v18-12-band-idle--w130.txt");
+  const omp = (screen: string): Rig => rig(screen, "omp", "18.12.6");
+  // The same dialog with the pointer moved, as Down draws it: derived from the capture, row for row. The
+  // pointer sits in the same columns, so no other byte moves.
+  const POINT_APPROVE = "\u2502 \u276f Approve";
+  const POINT_SESSION = "\u2502   Approve bash for this session";
+  const OMP_ON_SESSION = OMP_APPROVE.replace(POINT_APPROVE, "\u2502   Approve").replace(POINT_SESSION, "\u2502 \u276f Approve bash for this session");
+  const OMP_ON_DENY = OMP_APPROVE.replace(POINT_APPROVE, "\u2502   Approve").replace("\u2502   Deny", "\u2502 \u276f Deny");
+
+  test("the derived screens differ from the capture only in the pointer", () => {
+    expect(OMP_ON_SESSION).not.toBe(OMP_APPROVE);
+    expect(OMP_ON_DENY).not.toBe(OMP_APPROVE);
+    expect(OMP_ON_SESSION.length).toBe(OMP_APPROVE.length);
+    expect(OMP_ON_DENY.length).toBe(OMP_APPROVE.length);
+  });
+
+  test("the dialog lifts as a permission with all three rows, and the Surface reads an ask where it read unreadable", () => {
+    const { poll } = omp(OMP_APPROVE);
+    const ask = poll()!;
+    expect(ask.kind).toBe("permission");
+    expect(ask.options.map((o) => o.label)).toEqual(["Approve", "Approve bash for this session", "Deny"]);
+    const rows = splitLines(parseAnsi(OMP_APPROVE));
+    const { surface } = surfaceOfScreen(
+      { seq: 0, source: "screen", at: 0, revision: 0, rows, ask },
+      loadProfiles().get("omp")!.idle,
+    );
+    expect(surface.modal).toEqual({ ask });
+    const unlifted = surfaceOfScreen({ seq: 0, source: "screen", at: 0, revision: 0, rows, ask: null }, loadProfiles().get("omp")!.idle);
+    expect(unlifted.surface.modal).toBe("unreadable");
+  });
+
+  test("Approve with the pointer on it is a bare Enter, with the read back and nothing else", async () => {
+    const { pane, poll, answer } = omp(OMP_APPROVE);
+    pane.onKeys = (keys, p) => {
+      if (keys.join(",") === "Enter") p.screen = OMP_IDLE;
+    };
+    const ask = poll()!;
+    const reply = await answer(ask, idOf(ask, "Approve"));
+    expect(reply.receipt).toMatchObject({ harness: "omp", outcome: "sent", keys: ["Enter"] });
+    expect(pane.keysSeen).toEqual(["Enter"]);
+  });
+
+  test("the session row walks one Down, reads the pointer back on it, then commits with a bare Enter", async () => {
+    const { pane, poll, answer } = omp(OMP_APPROVE);
+    pane.onKeys = (keys, p) => {
+      if (keys.join(",") === "Down" && p.screen === OMP_APPROVE) p.screen = OMP_ON_SESSION;
+      else if (keys.join(",") === "Enter") p.screen = OMP_IDLE;
+    };
+    const ask = poll()!;
+    const reply = await answer(ask, idOf(ask, "Approve bash for this session"));
+    expect(reply.receipt).toMatchObject({ outcome: "sent", keys: ["Down", "Enter"] });
+    expect(reply.receipt!.readBack!.hash).not.toBe(reply.receipt!.check!.hash);
+    expect(pane.keysSeen).toEqual(["Down", "Enter"]);
+  });
+
+  test("the session row with a pointer that never moves is refused ask_mismatch, with no Enter", async () => {
+    const { pane, poll, answer } = omp(OMP_APPROVE);
+    const ask = poll()!;
+    const reply = await answer(ask, idOf(ask, "Approve bash for this session"));
+    expect(reply.receipt).toMatchObject({ outcome: "refused", reason: "ask_mismatch" });
+    expect(pane.keysSeen).toEqual(["Down"]);
+    neverEnter(pane);
+  });
+
+  test("Deny is Escape from every pointer position: the list wraps, so no walk and Enter can be a Deny", async () => {
+    for (const screen of [OMP_APPROVE, OMP_ON_SESSION, OMP_ON_DENY]) {
+      const { pane, poll, answer } = omp(screen);
+      pane.onKeys = (keys, p) => {
+        if (keys.join(",") === "Escape") p.screen = OMP_IDLE;
+      };
+      const ask = poll()!;
+      expect(ask.options.map((o) => o.label)).toEqual(["Approve", "Approve bash for this session", "Deny"]);
+      const reply = await answer(ask, idOf(ask, "Deny"));
+      expect(reply.receipt).toMatchObject({ outcome: "sent", keys: ["Escape"] });
+      expect(pane.keysSeen).toEqual(["Escape"]);
+      neverEnter(pane);
+    }
+  });
+
+  test("a desk arrow after the lift refuses the Approve tap on a moved pointer: the binding changed, no key goes out", async () => {
+    const { pane, poll, answer } = omp(OMP_APPROVE);
+    const ask = poll()!;
+    pane.screen = OMP_ON_DENY; // the person pressed Up at the desk: the pointer wrapped to Deny
+    const reply = await answer(ask, idOf(ask, "Approve"));
+    expect(reply.receipt).toMatchObject({ outcome: "refused" });
+    expect(pane.keysSeen).toEqual([]);
+  });
+});
+
 describe("changed, replaced and repeated asks are refused with no key", () => {
   test("the dialog changes between the lift and the answer: refused ask_changed, the new ask has a new id, nothing sent", async () => {
     const { pane, poll, answer, book } = rig(BASH);

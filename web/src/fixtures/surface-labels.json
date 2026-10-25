@@ -4151,6 +4151,26 @@
    "version": "18.12.2",
    "state": "draft"
   },
+  "omp--v18-12-6-approval-bash--w120.txt": {
+   "harness": "omp",
+   "version": "18.12",
+   "state": "dialog"
+  },
+  "omp--v18-12-6-approval-bash-later--w120.txt": {
+   "harness": "omp",
+   "version": "18.12",
+   "state": "dialog"
+  },
+  "omp--v18-12-6-image-chip--w120.txt": {
+   "harness": "omp",
+   "version": "18.12",
+   "state": "draft"
+  },
+  "omp--v18-12-6-skill-chip--w120.txt": {
+   "harness": "omp",
+   "version": "18.12",
+   "state": "draft"
+  },
   "omp--v18-12-band-idle--w130.txt": {
    "harness": "omp",
    "version": "18.12",
@@ -4520,6 +4540,11 @@
    "harness": "omp",
    "version": "18.6.1",
    "state": "running"
+  },
+  "omp--v18-6-skill-chip--w120.txt": {
+   "harness": "omp",
+   "version": "18.6",
+   "state": "draft"
   },
   "omp--v18-6-steer-after--w120.txt": {
    "harness": "omp",

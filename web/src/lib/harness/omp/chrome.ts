@@ -19,6 +19,7 @@
 // input untouched when the shape doesn't fully match. Pure; no pane access, no network.
 
 import type { StyledLine } from "../../blocks";
+import { approvalOwnsKeyboard } from "./approval";
 import {
   BRIDGE_PROMPT_TAIL_LINES,
   composerBottomText,
@@ -143,6 +144,11 @@ export interface ComposerBox {
  * the width equalities that used to co-sign (b) and (c) are gone and must stay gone.
  */
 export function locateComposer(lines: StyledLine[]): ComposerBox | null {
+  // omp 18.12's tool-approval panel stands ABOVE the composer, not in front of it: the composer stays
+  // mounted under the panel and every key the panel does not own types into it, where a typed character
+  // DENIES the call (approval.ts, the second shape). The tail rule below cannot see that, because the
+  // panel is not below the box. So a lifted approval panel means the box has no keyboard.
+  if (approvalOwnsKeyboard(lines)) return null;
   const texts = lines.map((l) => rstrip(lineText(l)));
   let end = texts.length - 1;
   while (end >= 0 && isBlank(texts[end]!)) end--;

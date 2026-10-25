@@ -62,7 +62,7 @@
 // shortens every field to 2000 characters (`truncateForPrompt`), and a field it shortened declines
 // below. The card starts at the box's title row, so the box is not also painted in the raw mirror above it.
 //
-// FAIL CLOSED. Every piece below is required, and any one missing returns null, which leaves the raw
+// FAIL CLOSED (the first shape; the second shape's evidence is in its own header above). Every piece below is required, and any one missing returns null, which leaves the raw
 // mirror and the unread-dialog card's Escape exactly as slice 1 drew them:
 //   * the bottom border is the last non-blank row. Under the 18.1.17 preset alone it may also be the row
 //     above one row of anything (the operator's usage strip, kept out of the signature); the 18.4.10
@@ -83,6 +83,53 @@
 //     subject from the terminal too) nor a `Provider safety checks:` section (uncaptured), nor a
 //     control, zero-width or bidi character, which can make the card read differently from the command;
 //   * a region short enough for the bridge to bind (32000 characters, as resume.ts and ask.ts).
+//
+// THE SECOND SHAPE, omp 18.12.6 (2026-10-25, `omp--v18-12-6-approval-bash--w120.txt`; pi-tui
+// `overlays/approval-dialog.ts` over `chrome/overlay-box.ts`, read in the published 18.12.6 package).
+// omp rebuilt the dialog on its overlay panel. The blank spacer rows are gone, the choices moved under
+// the body, a divider row (`├─…─┤`) sits over the footer, and a session row joined the list:
+//
+//     ╭─ Allow tool: bash ─────────────────────────────────╮     the title
+//     │ Command: echo gang-test                            │     the body: ONE summary row per detail
+//     │ ❯ Approve                                          │     the pointed row: pointer, space, label
+//     │   Approve bash for this session                    │     only when the call may be granted
+//     │   Deny                                             │
+//     ├────────────────────────────────────────────────────┤
+//     │ ↑/↓ choose · ⏎ select · Ctrl+⏎/Ctrl+Q approve · ⎋ deny · Ctrl+O details · type to deny and steer │
+//     ╰────────────────────────────────────────────────────╯
+//      ⠙ 4s > ◒ Haiku 4.5 > … ▶──6%───┃─────200K─               the band: the status row and the empty prompt
+//     ╰─                                                          row of the composer, which this dialog does not replace
+//
+// What differs from the first shape, each read off the source and the capture:
+//   * THE BODY IS A SUMMARY, not the call. `showCollabAwareApproval` hands the dialog the COMPACT prompt:
+//     each detail cut to its first line and joined by ` · `, a ` …` after it when a detail had more lines
+//     (`approvalSummary`), and every row then clipped to the box with a `…` (`truncateToWidth`). A body
+//     row that ends in `…` therefore may hide part of the command, and the card declines it: someone
+//     approves from the card, so it never shows less than it claims. Ctrl+O swaps the full prompt in on
+//     the desk. Only `bash` is lifted here: its summary row is `Command: <command>` and nothing else
+//     (`tools/bash.ts` `formatApprovalDetails`). A `write` summary would hide its content behind
+//     `Content: <first row> …`, always, and no 18.12.6 capture holds one.
+//   * THE LIST WRAPS. `#moveChoice` is `(choice + delta + count) % count`, so Up on the first row lands on
+//     Deny and Down on the last on Approve. The model does NOT declare `clampedEnds`: the first shape's
+//     commit batch `Up, Enter` would DENY here. A walk-class commit is a bare `Enter` on a verified read.
+//   * DENY IS ESCAPE. Because the list wraps, no walk-and-Enter plan from the Deny row is safe against a
+//     desk arrow in the gap between the bridge's read and its send: `Down, Enter` on Deny would approve.
+//     `⎋ deny` is named by the footer and denies from any row (`matchesSelectCancel` is checked before
+//     the arrows), so the Deny button is `Escape`, not a walk. ADR 0078's guarantee (a Deny tap never
+//     lands on Approve) holds for the second shape by that choice. There is no separate Cancel button:
+//     it would be the same key.
+//   * THE SESSION ROW, `Approve <tool> for this session`, grants every later call of that tool for the
+//     rest of the session (`sessionApprovalScope`). It is a button like the others and keeps the screen's
+//     own words, in the position the screen gives it, between Approve and Deny. Tapping it walks one row.
+//   * THE FOOTER is one exact string (the keycaps follow the install's keybindings and symbol preset, so
+//     anything else is another dialect and declines), and no row under the box except the composer's own
+//     band and empty prompt row. A draft in the composer relabels the Deny row `Deny and send message`
+//     and moves the pointer onto it; that label is no row this grammar knows, so the screen declines.
+//   * Only the `unicode` preset is captured. `❯` is the pointer and the footer carries the glyph keycaps.
+//
+// Not read, and so declined: the `always-ask-cached` grants (`Remember across sessions`, `Approve
+// Directory: …`, `Approve Once`), a title with a countdown, the PgUp/PgDn scroll hint of an overflowing
+// body, a `write` or any other tool, and the nerd preset.
 //
 // Pure functions over `StyledLine[]`, tail-anchored like every other grammar.
 
@@ -151,11 +198,21 @@ const OMP_ELISION = /\[…\d+chelided…\]/;
 const SAFETY_SECTION = "Provider safety checks:";
 
 /**
- * Detect omp's tool-approval dialog at the tail of `lines`. Returns a `prompt-select` model whose
- * options are `Approve`, `Deny` and the footer's own way out, and the index of the title row; null
- * when any piece of evidence is missing.
+ * Detect omp's tool-approval dialog at the tail of `lines`, in either shape (see the header): the
+ * blank-row box of omp 18.1 to 18.6 or the divided panel of omp 18.12. Returns a `prompt-select` model
+ * and the index of the title row; null when any piece of evidence is missing. The two never share a
+ * tail (the first needs a blank row over its footer, the second a divider), so the order is free.
  */
 export function detectApprovalRegion(lines: StyledLine[]): ApprovalRegion | null {
+  return detectBlankRowApproval(lines) ?? detectDividedApproval(lines);
+}
+
+/**
+ * The first shape: `Approve` and `Deny` between blank rows, a footer under another, options as the
+ * footer's way out. Returns a `prompt-select` model whose options are `Approve`, `Deny` and the
+ * footer's own way out, and the index of the title row.
+ */
+function detectBlankRowApproval(lines: StyledLine[]): ApprovalRegion | null {
   const texts = lines.map((l) => rstrip(lineText(l)));
 
   // 1. The tail: the bottom border, or the border with one row of anything under it.
@@ -247,6 +304,159 @@ export function detectApprovalRegion(lines: StyledLine[]): ApprovalRegion | null
     coreSignature,
   };
   return { model, startLine: titleAt };
+}
+
+// ── The second shape: omp 18.12.6 ────────────────────────────────────────────────────────────────
+
+/** The footer of the divided panel, exactly, as the `unicode` preset prints it (see the header). */
+const DIVIDED_FOOTER = "↑/↓ choose · ⏎ select · Ctrl+⏎/Ctrl+Q approve · ⎋ deny · Ctrl+O details · type to deny and steer";
+/** The pointer of the `unicode` preset, then the one space omp puts before the label. */
+const DIVIDED_POINTER = "❯ ";
+/** The divider over the footer. */
+const DIVIDER = /^├─+┤$/;
+/** The tool whose summary row is captured; the only one the divided shape lifts. */
+const DIVIDED_TOOLS = new Set(["bash"]);
+/** A body is at most `Reason: …` and `Command: …`: one compact row per detail. */
+const MAX_DIVIDED_BODY_ROWS = 2;
+/** The session row's label: `Approve ${sessionSubject} for this session`, the subject being the tool. */
+const SESSION_LABEL = /^Approve (\S+) for this session$/;
+/** The composer's band under the dialog: the status row (spinner and time, or π, then segments, then the
+ *  `▶` or U+E0B0 cap and the rule) and the empty prompt row. The same row `omp.json` reads as the top
+ *  of the composer; a dialog never replaces it, so a shell prompt under a stale box is not one. */
+const BAND_ROW = /^(?:\u{E0B6} |\s?)(?:π|\u{F0D57}|[⠀-⣿]\s+\d+[smh])\s.*(?:▶|\u{E0B0})─.*$/u;
+const EMPTY_PROMPT_ROW = /^╰─$/;
+
+interface DividedChoice {
+  label: string;
+  pointed: boolean;
+}
+
+/** A choice row of the divided panel: `│ ` then the pointer and a space, or two spaces, then the label. */
+function readDividedChoice(row: string): DividedChoice | null {
+  const inner = BOX_ROW.exec(row)?.[1]?.replace(/\s+$/, "");
+  if (inner === undefined) return null;
+  const pointed = inner.startsWith(DIVIDED_POINTER);
+  if (!pointed && !inner.startsWith("  ")) return null;
+  const label = inner.slice(2);
+  return /^\S/.test(label) ? { label, pointed } : null;
+}
+
+/**
+ * The divided panel (omp 18.12.6). Fail closed, as the first shape: the border is the last non-blank
+ * row, or sits over exactly the composer's band and empty prompt row; above it the footer (one exact
+ * string), the divider, then the choices `Approve`, optionally `Approve <tool> for this session`, and
+ * `Deny` with exactly one pointer; above them one or two body rows (free text like the first shape's, the
+ * right side not required, every byte of it in the signature) and the title. The card is
+ * `Approve`, the session row when there is one, and `Deny` as Escape; no `clampedEnds` (the list wraps).
+ */
+function detectDividedApproval(lines: StyledLine[]): ApprovalRegion | null {
+  const texts = lines.map((l) => rstrip(lineText(l)));
+
+  // 1. The tail: the bottom border, or the border over the composer's band and its empty prompt row.
+  let end = texts.length - 1;
+  while (end >= 0 && isBlank(texts[end]!)) end--;
+  if (end < 0) return null;
+  let bottom = end;
+  if (EMPTY_PROMPT_ROW.test(texts[end]!)) {
+    if (end < 1 || !BAND_ROW.test(texts[end - 1]!)) return null;
+    bottom = end - 2;
+  }
+  // Title, one body row, two choices, the divider, the footer and the border at the least.
+  if (bottom < 6 || !BOTTOM.test(texts[bottom]!)) return null;
+
+  // 2. The footer and the divider over it.
+  const footerRow = BOX_ROW.exec(texts[bottom - 1]!);
+  if (footerRow === null || footerRow[1]!.trim() !== DIVIDED_FOOTER) return null;
+  if (!DIVIDER.test(texts[bottom - 2]!)) return null;
+
+  // 3. The choices, read up from the divider: Deny last, then `Approve`, with the session row between
+  //    them when it is there.
+  const deny = readDividedChoice(texts[bottom - 3]!);
+  if (deny?.label !== "Deny") return null;
+  const middle = readDividedChoice(texts[bottom - 4]!);
+  if (middle === null) return null;
+  let choices: DividedChoice[];
+  let sessionTool: string | null = null;
+  if (middle.label === "Approve") {
+    choices = [middle, deny];
+  } else {
+    sessionTool = SESSION_LABEL.exec(middle.label)?.[1] ?? null;
+    const approve = readDividedChoice(texts[bottom - 5]!);
+    if (sessionTool === null || approve?.label !== "Approve") return null;
+    choices = [approve, middle, deny];
+  }
+  if (choices.filter((c) => c.pointed).length !== 1) return null;
+  const choicesAt = bottom - 2 - choices.length;
+
+  // 4. The body, up to the title: one or two rows, each boxed with its right side.
+  let titleAt = choicesAt - 1;
+  while (titleAt >= 0 && !TITLE.test(texts[titleAt]!)) {
+    if (choicesAt - titleAt > MAX_DIVIDED_BODY_ROWS || !BODY_ROW.test(texts[titleAt]!)) return null;
+    titleAt--;
+  }
+  if (titleAt < 0 || titleAt === choicesAt - 1) return null;
+  const tool = TITLE.exec(texts[titleAt]!)![1]!;
+  if (!DIVIDED_TOOLS.has(tool)) return null;
+  if (sessionTool !== null && sessionTool !== tool) return null;
+  const body = texts.slice(titleAt + 1, choicesAt).map(bodyText);
+  const shown = summariseDivided(body);
+  if (shown === null) return null;
+
+  // 5. The signature, as the first shape's: the region verbatim, title through the border. The band
+  //    under it is the composer's and ticks.
+  const region = texts.slice(titleAt, bottom + 1);
+  const signature = region.join("\n");
+  if (signature.length > MAX_REGION_CHARS) return null;
+  const pointedAt = choices.findIndex((c) => c.pointed);
+  const pointedRow = choicesAt + pointedAt;
+  const coreSignature = region
+    .map((row, i) => (titleAt + i === pointedRow ? row.replace(DIVIDED_POINTER, "  ") : row))
+    .join("\n");
+
+  const title = `Allow tool: ${tool}`;
+  const badge = (i: number): string => (i === pointedAt ? POINTER_BADGE : "");
+  const options: PromptOption[] = [
+    {
+      label: "Approve",
+      description: shown.join(ROW_BREAK),
+      keys: pointerWalk(pointedAt, 0),
+      keyLabel: badge(0),
+    },
+  ];
+  if (sessionTool !== null) {
+    options.push({ label: choices[1]!.label, keys: pointerWalk(pointedAt, 1), keyLabel: badge(1) });
+  }
+  // Deny is the footer's own `⎋ deny`, not a walk: the list wraps, and Escape denies from any row.
+  options.push({ label: "Deny", keys: ["Escape"], keyLabel: "Esc" });
+  const model: PromptModel = {
+    question: [title, ...shown].join("\n"),
+    caption: title,
+    options,
+    family: "permission",
+    signature,
+    coreSignature,
+  };
+  return { model, startLine: titleAt };
+}
+
+/**
+ * The compact body of the divided panel: an optional `Reason: …` row, then `Command: …`. A row that ends
+ * in `…` may be one omp cut to the box, or a command with more lines (`approvalSummary`'s ` …`), so the
+ * card declines it rather than show less than the call. Same refusals as the first shape's body.
+ */
+function summariseDivided(body: string[]): string[] | null {
+  if (body.length === 0 || body.length > MAX_DIVIDED_BODY_ROWS) return null;
+  if (body.some((row) => row.length === 0 || row.endsWith("…"))) return null;
+  if (OMP_ELISION.test(body.join("").replace(/\s+/g, ""))) return null;
+  if (body.some(hasHiddenCharacter)) return null;
+  const first = body[0]!.startsWith("Reason: ") ? 1 : 0;
+  if (body.length !== first + 1) return null;
+  return body[first]!.startsWith("Command: ") ? body : null;
+}
+
+/** Whether a lifted approval dialog owns the keyboard of this screen, in either shape. */
+export function approvalOwnsKeyboard(lines: StyledLine[]): boolean {
+  return detectApprovalRegion(lines) !== null;
 }
 
 /** The model alone (or null), the thin matcher tests assert on. */

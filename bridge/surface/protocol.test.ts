@@ -5072,6 +5072,50 @@ function omp(options: { version?: string; edit?: (profile: Profile) => Profile; 
   return { ...made, pane };
 }
 
+describe("OMP: commands that end the process are never held (omp gang 03)", () => {
+  const NEVER = "Collie does not queue this command during a turn. Send it when the turn ends.";
+
+  test("/exit, /quit, /q and /restart in a turn are refused turn_running, never held, never typed after the turn ends (18.6.1 held /exit, then omp quit)", async () => {
+    const holds = new HoldStore(join(dir, "held"));
+    for (const version of ["18.6.1", "18.12.6"]) {
+      const { pane, send, ...made } = omp({ version, holds });
+      pane.inTurn = true;
+      for (const text of ["/exit", "/quit", "/q", "/restart", "/exit now"]) {
+        const answer = await send(text, { mode: "command" });
+        expect(answer.receipt, `${version} ${text}`).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
+        expect(answer.detail, `${version} ${text}`).toBe(NEVER);
+      }
+      expect(holds.list(), version).toEqual([]);
+      expect(pane.keysSeen, version).toEqual([]);
+      expect(pane.queued, version).toEqual([]);
+      void made;
+    }
+  });
+
+  test("the list is data in omp.json, per spelling: a longer word is another command, and /compact is not on it", () => {
+    expect(loadProfiles().get("omp")?.keys.neverHeld).toEqual(["/exit", "/quit", "/q", "/restart"]);
+    const profile = profileFor("omp", "18.12.6", { log: () => undefined });
+    expect(neverHeldEntry("/q", profile)).toBe("/q");
+    expect(neverHeldEntry("/quote", profile)).toBeNull();
+    expect(neverHeldEntry("/quit now", profile)).toBe("/quit");
+    expect(neverHeldEntry("/exits", profile)).toBeNull();
+    expect(neverHeldEntry("/restarting", profile)).toBeNull();
+    expect(neverHeldEntry("/compact", profile)).toBeNull();
+    expect(neverHeldEntry("/goal pause", profile)).toBeNull();
+  });
+
+  test("another command in an OMP turn keeps its own refusal: only the listed spellings carry the never-held wording", async () => {
+    const { pane, send } = omp();
+    pane.inTurn = true;
+    const exit = await send("/exit", { mode: "command" });
+    expect(exit.detail).toBe(NEVER);
+    const model = await send("/model", { mode: "command" });
+    expect(model.receipt).toMatchObject({ outcome: "refused", reason: "turn_running" });
+    expect(model.detail).toBe("A command waits until the turn ends.");
+    expect(pane.keysSeen).toEqual([]);
+  });
+});
+
 describe("OMP: Ctrl+Q sends, Enter steers (M56 spec 14 review)", () => {
   test("an idle box is sent with Ctrl+Q, never Enter", async () => {
     const { pane, send } = omp();
@@ -5294,6 +5338,20 @@ describe("OMP runs `/goal` at once in a turn (keys.commandsRunInTurn, lab 18.12.
     const { send } = rig({ pane, harness: "omp", version: "18.12.2" });
     const answer = await send("/goal pause", { mode: "command" });
     expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "not_free", keys: [] });
+    expect(pane.calls).toEqual([]);
+    expect(pane.keysSeen).toEqual([]);
+  });
+
+  test("an OMP 18.12.6 approval panel on screen is a lifted ask: a plain send and a command are refused not_free (not unconfirmed), nothing typed", async () => {
+    const screen = readFileSync(join(import.meta.dir, "../../web/src/fixtures/panes/omp--v18-12-6-approval-bash--w120.txt"), "utf8").replace(/\r\n/gu, "\n");
+    const pane = new FakePane("generic");
+    pane.fixed = screen;
+    const { send } = rig({ pane, harness: "omp", version: "18.12.6" });
+    const plain = await send("hello while asking");
+    // The Surface reads the dialog as an ask, where it read `unreadable` and refused `unconfirmed` before.
+    expect(plain.receipt).toMatchObject({ outcome: "refused", reason: "not_free", keys: [], saw: { modal: "ask" } });
+    const command = await send("/goal pause", { mode: "command" });
+    expect(command.receipt).toMatchObject({ outcome: "refused", reason: "not_free", keys: [] });
     expect(pane.calls).toEqual([]);
     expect(pane.keysSeen).toEqual([]);
   });
@@ -6882,6 +6940,110 @@ describe("omp 18.11's box composer (issue 497)", () => {
       expect(answer.receipt, name).toMatchObject({ outcome: "refused", reason: "turn_running" });
       expect(pane.calls).toEqual([]);
       expect(pane.keysSeen).toEqual([]);
+    }
+  });
+});
+
+// Omp 18.6.1 and 18.12.6 (omp gang, 2026-10-25): `/skill:<name> <arg>` never sent, because omp rewrites the box
+// into a chip `✦ name arg…` as soon as a space follows the name, and the profile's collapse pattern did not know
+// it. Every skill with an argument ended `typed_not_submitted / mismatch`. The pasted image chip is `🖼 #N` on
+// 18.6.1 and `📷 #N` on 18.12.6; only the first was a collapse form.
+describe("omp's skill chip and image chip glyphs (omp gang 02 and 05)", () => {
+  const PANES = join(import.meta.dir, "../../web/src/fixtures/panes");
+  const capture = (name: string): string[] => readFileSync(join(PANES, name), "utf8").split(/\r?\n/u).filter((row, i, all) => row !== "" || i < all.length - 1);
+  const OMP = loadProfiles().get("omp")!;
+  const collapse = new RegExp(OMP.collapse.pattern, "uy");
+  const SKILL = "/skill:darius-work-plan reply with the single word OK and call no tools";
+  const SKILL_CHIPS = [
+    ["omp--v18-6-skill-chip--w120.txt", "18.6.1"],
+    ["omp--v18-12-6-skill-chip--w120.txt", "18.12.6"],
+  ] as const;
+
+  /** The box text the Surface reads off a capture, as the bridge reads it. */
+  const boxOf = (name: string): string => {
+    const frame = findInputFrame(splitLines(parseAnsi(capture(name).join("\n"))), OMP.idle);
+    expect(frame, name).not.toBeNull();
+    return frame!.placeholder ? "" : frame!.interior.text;
+  };
+
+  /**
+   * The capture while the box holds `shown`; any other text draws the band and one `╰─ <text>` prompt row, as omp
+   * draws a short draft. Enter takes the text out of the box into the transcript over the band.
+   */
+  const bandScene = (pane: FakePane, name: string, shown: string): void => {
+    const rows = capture(name);
+    const band = rows.findLastIndex((row) => row.startsWith(" π "));
+    expect(band).toBeGreaterThanOrEqual(0);
+    const above: string[] = [];
+    let taken: string | null = null;
+    pane.collapseOver = 100_000;
+    pane.beforeWrite = (p, what) => {
+      if (what === "keys:Enter" && p.box !== "") taken = p.box;
+    };
+    pane.afterInput = (p, what) => {
+      if (taken === null || what !== "keys:Enter") return;
+      above.push(` ${taken}`, "");
+      taken = null;
+      p.box = "";
+    };
+    pane.beforeRead = (p) => {
+      if (p.box === shown && above.length === 0) {
+        p.fixed = rows.join("\n");
+        return;
+      }
+      p.fixed = [...above, rows[band]!, p.box === "" ? "╰─" : `╰─ ${p.box}`].join("\n");
+    };
+  };
+
+  test("the box that shows the skill chip is the typed `/skill:name arg`, read off the 18.6.1 and 18.12.6 captures", () => {
+    for (const [name] of SKILL_CHIPS) {
+      expect(boxOf(name), name).toBe("✦ darius-work-plan reply with the single word OK and call no tools");
+      expect(commandBoxMatches(boxOf(name), "", [SKILL], collapse), name).toBe(true);
+    }
+  });
+
+  test("a skill chip with nothing after the name, a long argument that wraps and a namespaced skill all match", () => {
+    const long = `/skill:ship ${"word ".repeat(60).trim()}`;
+    expect(commandBoxMatches("✦ ship", "", ["/skill:ship"], collapse)).toBe(true);
+    expect(commandBoxMatches(`✦ ship ${"word ".repeat(30)}\n${"word ".repeat(29)}word`, "", [long], collapse)).toBe(true);
+    expect(commandBoxMatches("✦ dev-tools:wordsmith fix the changelog", "", ["/skill:dev-tools:wordsmith fix the changelog"], collapse)).toBe(true);
+  });
+
+  test("the chip is read at the start of the box only: a box that does not begin with it is a mismatch", () => {
+    expect(commandBoxMatches("", "", [SKILL], collapse)).toBe(false);
+    expect(commandBoxMatches("hello", "", [SKILL], collapse)).toBe(false);
+    expect(commandBoxMatches("please ✦ darius-work-plan reply", "", [SKILL], collapse)).toBe(false);
+    expect(commandBoxMatches("✦", "", [SKILL], collapse)).toBe(false);
+    expect(commandBoxMatches("✦darius-work-plan reply", "", [SKILL], collapse)).toBe(false);
+    // A draft already in the box is a prefix the protocol checks first; the chip cannot stand behind it.
+    expect(boxMatches("old draft ✦ ship now", "", ["/skill:ship now"], collapse)).toBe(false);
+  });
+
+  test("a chip stands for ONE typed line: a second typed line after it never matches", () => {
+    expect(boxMatches("✦ ship now", "", ["/skill:ship now", "and more"], collapse)).toBe(false);
+  });
+
+  test("the pasted image chip is `🖼 #N` on 18.6.1 and `📷 #N` on 18.12.6, and the Nerd and document chips keep matching", () => {
+    const IMAGE = "/tmp/uploads/w1-mx7k2p-1a2b3c4d.png";
+    expect(boxOf("omp--v18-12-6-image-chip--w120.txt")).toBe("📷 #1");
+    expect(boxMatches(boxOf("omp--v18-12-6-image-chip--w120.txt"), "", [IMAGE], collapse)).toBe(true);
+    expect(boxMatches(boxOf("omp--v18-11-image-chip--w130.txt"), "", [IMAGE], collapse)).toBe(true);
+    for (const chip of ["🖼 #1", "📷 #1", "📄 #3", "\u{F03E} #2", "\u{F15C} #4"]) expect(boxMatches(chip, "", [IMAGE], collapse), chip).toBe(true);
+    expect(boxMatches("📷 #", "", [IMAGE], collapse)).toBe(false);
+    expect(boxMatches("📷#1", "", [IMAGE], collapse)).toBe(false);
+    expect(boxMatches("🎨 #1", "", [IMAGE], collapse)).toBe(false);
+  });
+
+  test("/skill:name arg is sent with Enter on both versions: the chip is what the box shows, not a mismatch", async () => {
+    for (const [name, version] of SKILL_CHIPS) {
+      const pane = new FakePane("generic");
+      const { send } = rig({ pane, harness: "omp", version });
+      bandScene(pane, name, SKILL);
+      const answer = await send(SKILL, { mode: "command" });
+      expect(answer.receipt, name).toMatchObject({ outcome: "sent" });
+      expect(answer.receipt?.reason, name).toBeUndefined();
+      expect(pane.keysSeen.at(-1), name).toBe("Enter");
+      expect(pane.keysSeen, name).not.toContain("Escape");
     }
   });
 });

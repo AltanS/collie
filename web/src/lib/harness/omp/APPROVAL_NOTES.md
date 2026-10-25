@@ -187,3 +187,45 @@ which omp also reads as a denial.
   prompt prints under it, the strip rule could read the prompt as the usage strip. Herdr stops
   reporting the agent about half a second after it exits (ADR 0053's addendum), after which no omp
   grammar runs.
+
+## omp 18.12.6: the divided panel (2026-10-25)
+
+Corpus: `omp--v18-12-6-approval-bash--w120.txt` and `omp--v18-12-6-approval-bash-later--w120.txt`
+(plain pane reads of a real omp 18.12.6, 120 columns, no SGR; see the fixtures README). Source, read in
+the published 18.12.6 package: pi-tui `overlays/approval-dialog.ts` (the keys, the rows, the footer),
+`tools/approval.ts` (`requestApproval`, `approvalSummary`, `approvalChoiceLabels`, `sessionApprovalScope`)
+and `modes/controllers/extension-ui-controller.ts` (`showCollabAwareApproval`). The grammar is
+`detectDividedApproval` in `approval.ts`; its header lists every difference from the shape above.
+
+| What | Evidence |
+|---|---|
+| Rows: title, one compact body row per detail, the choices, a `├─┤` divider, the footer | capture |
+| Choices `Approve`, `Approve bash for this session`, `Deny`; the middle one only when the call may be granted | capture, `requestApproval` (`session` is optional) |
+| Footer `↑/↓ choose · ⏎ select · Ctrl+⏎/Ctrl+Q approve · ⎋ deny · Ctrl+O details · type to deny and steer` | capture; the approve key and the keycaps follow the install |
+| The list wraps: `#moveChoice` is `(choice + delta + count) % count` | source only |
+| Enter approves, Escape denies, Down then Enter approves for the session | lab, raw keys on 18.12.6 |
+| Escape denies from any row (`matchesSelectCancel` runs before the arrows) | source only |
+| Enter and Ctrl+Q are ignored for 500 ms after the panel mounts (`APPROVE_ARM_MS`) | source only |
+| A draft in the composer relabels Deny `Deny and send message`, moves the pointer onto it, and the footer starts `⏎ deny and send` | source only |
+| The body is the COMPACT prompt: details cut to their first line, ` …` for more lines, each row clipped with `…` | source only; the capture's command is short |
+| The composer band (`⠙ 4s > … ▶──6%──┃─────200K─` and `╰─`) stays drawn under the box | capture |
+
+What a tap sends. `Approve` and the session row walk from the pointer and commit with a bare `Enter` on a
+verified read. `Deny` is `Escape`, because the list wraps and no walk-and-Enter is safe from every row. No
+`clampedEnds` is declared. See the amendment in ADR 0078.
+
+Not proven by the captures, and so not lifted or not probed:
+
+- **The pointer on the session row or on Deny.** Both are drawn from the source layout in the tests, never
+  captured. The ask test moves the `❯` of the capture row by row.
+- **A `Reason:` row, a two-row list, a `write` panel, MCP tools and the `always-ask-cached` grants.** The
+  first two lift because the source lays them out the same way; the rest decline.
+- **A command the box clips.** Declined by its trailing `…`; no capture holds one. The same goes for a
+  multi-line command, whose compact row ends in ` …`.
+- **The nerd preset.** Its pointer is U+F054 and its keycaps are private-use glyphs; the footer comparison
+  declines it.
+- **Ctrl+O details.** The desk key swaps the full prompt in, wrapped, and the footer's last hint reads
+  `less` (source: `#footerHint`). The footer no longer matches, so the grammar declines, which is the safe
+  answer.
+- **The unread-dialog card for the dialogs this grammar declines.** `ompModalOnScreen` does not know this
+  footer, so a declined 18.12.6 panel shows no Escape card. Raw keys from the Keys board still work.
