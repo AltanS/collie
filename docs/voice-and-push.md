@@ -507,6 +507,19 @@ includes one a `/model` switch made cold with time still left.
 > second window. A five-minute cache, Codex, OpenCode, pi and omp, warns about two and a half minutes
 > before it goes cold instead.
 
+### The count on the app icon
+
+The installed app's icon shows how many panes are blocked on you, the same red count as the
+Dashboard tab. A finished pane adds nothing to it.
+
+Each Needs input push carries the count for its session, and the phone adds up every session and
+machine in the crew. Opening the dashboard sets it again from what is on screen, and unpairing the
+device clears it.
+
+> **Note.** The count needs a browser with the Badging API and an installed app: on an iPhone,
+> iOS 16.4 or later, Collie added to the Home Screen, and notifications allowed. With Needs input
+> switched off, no push carries a count, so the icon changes only when you open the dashboard.
+
 Stale subscriptions can accumulate over time because home-screen reinstalls and service-worker
 resets create new endpoints without always returning an HTTP 410. Collie updates the record when a
 device re-registers. You can view and delete stored endpoints directly:
