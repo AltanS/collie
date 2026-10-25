@@ -343,6 +343,25 @@ export interface FrameLayout {
    * must name every row the box may hold, so a box with any other row inside is no box. Optional.
    */
   readonly ownPrompt?: boolean;
+  /**
+   * How the harness's editor shows a draft taller than the box (omp gang, 2026-10-25). Optional: a
+   * layout without it grows with its draft, so the box always shows the whole text.
+   */
+  readonly scroll?: FrameScroll;
+}
+
+/**
+ * A box that stops growing at a height and scrolls its draft inside ({@link FrameLayout.scroll}).
+ * OMP 18.6.1 and 18.12.6 cap their editor at 17 draft rows on a pane of 30 rows or more and keep the
+ * cursor's rows in view: after typing, the LAST rows. A box read at that height may hold more text
+ * above its first row, so the Send Protocol compares only the visible rows, against the end of the text
+ * it typed, and empties such a box only when it knows how long the draft is.
+ */
+export interface FrameScroll {
+  /** Which rows stay in view: `tail`, the last ones (the cursor's, at the end of a typed text). */
+  readonly keeps: "tail";
+  /** The box's height in draft rows once it scrolls. A box that shows fewer rows shows the whole draft. */
+  readonly rows: number;
 }
 
 /** The ghost text after the cursor ({@link Profile.idle.inlineHint}). */
@@ -677,6 +696,7 @@ const STATUSES = ["verified", "provisional", "revoked"] as const;
 const PROBE_STATUSES = ["verified", "provisional"] as const;
 const HOOK_KINDS = ["edge", "ask"] as const;
 const FRAME_WALKS = ["edges", "interior"] as const;
+const SCROLL_KEEPS = ["tail"] as const satisfies readonly FrameScroll["keeps"][];
 const ENTER_MODES = ["queues", "steers", "submits", "ignored"] as const;
 const COMMAND_MODES = ["queues", "runs", "drops", "steers"] as const;
 const SEMVER = /^\d+\.\d+\.\d+$/;
@@ -1109,16 +1129,27 @@ function parseTrailer(value: JsonValue): FrameTrailer {
   return { row, pad: pattern(node.pad, "idle.frame.trailer.pad").source, maxPad };
 }
 
+/** `idle.frame.scroll`: which rows a scrolled box keeps in view, and its height then. */
+function parseScroll(value: JsonValue, maxDraftRows: number): FrameScroll {
+  const node = object(value, "idle.frame.scroll");
+  const keeps = oneOf(field(node, "keeps", "idle.frame.scroll"), "idle.frame.scroll.keeps", SCROLL_KEEPS);
+  const rows = whole(field(node, "rows", "idle.frame.scroll"), "idle.frame.scroll.rows", 1);
+  if (rows > maxDraftRows) fail("idle.frame.scroll.rows", "must not pass maxDraftRows: the walk would never read a box that tall");
+  return { keeps, rows };
+}
+
 /** `idle.frame`: the three anchors, the bounds, and the interior walk's own fields when the profile names that walk. */
 function parseFrame(frameNode: JsonObject): FrameLayout {
   const walk = frameNode.walk === undefined ? "edges" : oneOf(frameNode.walk, "idle.frame.walk", FRAME_WALKS);
-  const base = {
+  const maxDraftRows = whole(field(frameNode, "maxDraftRows", "idle.frame"), "idle.frame.maxDraftRows", 1);
+  const anchors = {
     top: anchor(field(frameNode, "top", "idle.frame"), "idle.frame.top", null, true),
     prompt: anchor(field(frameNode, "prompt", "idle.frame"), "idle.frame.prompt", "draft", false),
     continuationIndent: whole(field(frameNode, "continuationIndent", "idle.frame"), "idle.frame.continuationIndent", 0),
-    maxDraftRows: whole(field(frameNode, "maxDraftRows", "idle.frame"), "idle.frame.maxDraftRows", 1),
+    maxDraftRows,
     maxTailRows: whole(field(frameNode, "maxTailRows", "idle.frame"), "idle.frame.maxTailRows", 0),
   };
+  const base = frameNode.scroll === undefined ? anchors : { ...anchors, scroll: parseScroll(frameNode.scroll, maxDraftRows) };
   if (walk === "edges") {
     for (const key of ["rows", "trailer", "continuation", "ownPrompt"] as const) {
       if (frameNode[key] !== undefined) fail(`idle.frame.${key}`, "belongs to the interior walk");

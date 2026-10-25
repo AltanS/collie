@@ -71,7 +71,9 @@ export interface HeldEntry {
   readonly endedAt?: number;
   /**
    * A command whose keys could steer a turn (its Enter steers on this harness, or the version was not
-   * read): it goes out only after a poll read a running turn and then a free pane, never on quiet polls.
+   * read): it goes out only once the turn it was held for has ended. Two free polls after a poll read
+   * the turn; two free polls at least two seconds apart when only the hold read it; the quiet rule when
+   * no turn was read since the last release (protocol.ts `tickHolds`).
    */
   readonly waitsForTurn?: true;
   /** The caller asked for a draft to hold this request, not refuse it (see the header). */

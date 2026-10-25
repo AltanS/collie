@@ -88,6 +88,12 @@ export interface Frame {
    * reads it as blank (cues.ts `readCuesFor`). Absent otherwise.
    */
   readonly ownPrompt?: { readonly row: number; readonly end: number };
+  /**
+   * The box stands at the height where its layout scrolls (`idle.frame.scroll`): it shows at least
+   * `scroll.rows` draft rows, so the head of the draft may be out of view and `interior.text` is only
+   * the tail. Absent on a box that shows its whole draft, and on every layout that does not scroll.
+   */
+  readonly scrolled?: true;
 }
 
 /** A row under the bottom edge that a named footer row of the profile matches. */
@@ -808,12 +814,25 @@ export function coveredFrame(rows: readonly FrameRow[], frame: Frame, idle: Idle
  */
 export function findInputFrame(rows: readonly FrameRow[], idle: IdleProfile): Frame | null {
   const found = findLayout(rows, idle);
-  if (found !== null || idle.frameAlternates === undefined) return found;
+  if (found !== null) return atScroll(rows, found, idle);
+  if (idle.frameAlternates === undefined) return null;
   for (const alternate of alternatesOf(idle)) {
     const hit = findLayout(rows, alternate);
-    if (hit !== null) return hit;
+    if (hit !== null) return atScroll(rows, hit, alternate);
   }
   return null;
+}
+
+/**
+ * The frame marked {@link Frame.scrolled} when its layout scrolls and it shows at least the layout's
+ * scroll height in draft rows: the non-blank rows from the prompt row down to the interior's last row.
+ */
+function atScroll(rows: readonly FrameRow[], frame: Frame, idle: IdleProfile): Frame {
+  const scroll = idle.frame.scroll;
+  if (scroll === undefined || frame.placeholder) return frame;
+  let drawn = 0;
+  for (let j = frame.interior.prompt; j <= frame.interior.last && j < rows.length; j++) if (!isBlank(rowText(rows[j]!))) drawn++;
+  return drawn >= scroll.rows ? { ...frame, scrolled: true } : frame;
 }
 
 const compiledAlternates = new WeakMap<IdleProfile, readonly IdleProfile[]>();

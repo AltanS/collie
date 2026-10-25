@@ -43,3 +43,12 @@ Issue 579 asks for a Steer choice on Codex. The reporter agrees that queueing is
 - Known limit: the captures show each harness in its default configuration. If OMP or pi has a setting that makes a steer interrupt the running tool call, a person who turns it on changes what Steer does on that pane. Collie does not read that setting. The row's words promise only "after its current step", which the captures show.
 - Known limit: the Codex steer is proven by a live rerun on the dev lane only. The browser leg's rig has no Codex harness yet (claude, pi and omp), so no leg case checks it on each release. A Codex rig harness is a follow-up.
 - Steer is a new write path into a running turn. It stays small: one flag, one key list, one witness list, and the same guards as any send.
+
+## Addendum — 2026-10-25: a held command that could steer goes when its turn has ended
+
+Status is unchanged: **Accepted**. Nothing above this line is rewritten. "Enter never steers a turn by accident" also covers a held command (M56 spec 15). On pi, OMP and Codex a command goes out with Enter, and Enter steers a running turn: a command released into a turn would join it as text instead of running. So such a command (`waitsForTurn` on its held file, and any held command on a version Collie could not read) went only after a poll read the turn running and then two free polls.
+
+Testers on OMP 18.6.1 and 18.12.6 (omp gang, 2026-10-25, reports 03 and 07) found the gap. A turn that ended before the next poll was never seen by a poll, so the command stayed held for its ten minutes on an idle pane with an empty box, and every later send waited behind it. A command held behind a box hold, with no turn at all, did the same.
+
+The rule now (`tickHolds`): such a command goes on two free polls after a poll read the turn, as before. When only its own hold read the turn, it goes on two free polls in a row at least two seconds apart (`DRAFT_LEFT_MS`, the rule a walky talky draft hold uses). With no turn read since the last release, it takes the quiet rule every other held send takes: five free polls over ten seconds. A free poll means an idle turn, no modal and an empty box. It still never goes while a poll reads the turn, and its own run reads the turn again before any key, so a turn that is still running refuses it and it goes back to its place. A command the profile never holds (`neverHeld`) is still refused during a turn.
+

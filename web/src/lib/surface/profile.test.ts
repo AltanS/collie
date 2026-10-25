@@ -758,6 +758,15 @@ describe("the frame schema of the interior walk (M56 spec 14)", () => {
     expect(failure(change(rawClaude(), ["idle", "frame", "ownPrompt"], true)).path).toBe("idle.frame.ownPrompt");
   });
 
+  it("reads a scrolling box (`scroll`, omp gang 2026-10-25) and refuses a bad one", () => {
+    expect(parseProfile(parseJsonObject(readFileSync(join(PROFILES_DIR, "omp.json"), "utf8"))!).idle.frame.scroll).toEqual({ keeps: "tail", rows: 17 });
+    expect(parseProfile(rawClaude()).idle.frame.scroll).toBeUndefined();
+    expect(failure(change(rawClaude(), ["idle", "frame", "scroll"], { keeps: "head", rows: 17 })).path).toBe("idle.frame.scroll.keeps");
+    expect(failure(change(rawClaude(), ["idle", "frame", "scroll"], { keeps: "tail", rows: 0 })).path).toBe("idle.frame.scroll.rows");
+    expect(failure(change(rawClaude(), ["idle", "frame", "scroll"], { keeps: "tail", rows: 999 })).path).toBe("idle.frame.scroll.rows");
+    expect(failure(change(rawClaude(), ["idle", "frame", "scroll"], "tail")).path).toBe("idle.frame.scroll");
+  });
+
   it("takes the box's own prompt glyph (`ownPrompt`) only beside a rows pattern (issue 544)", () => {
     const own = change(rawOpencode(), ["idle", "frame", "ownPrompt"], true);
     expect(parseProfile(own).idle.frame.ownPrompt).toBe(true);
