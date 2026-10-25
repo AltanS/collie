@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import type { StyledLine } from "../blocks";
-import { agentOf, fixtureRows, idleFor, PANES_DIR, readScreen, rowsOf } from "../../test/surface-corpus";
+import { agentOf, fixtureRows, idleFor, PANES_DIR, readScreen, rowsOf, SURFACE_FIXTURES_DIR } from "../../test/surface-corpus";
 import { pointsAt } from "./command-list";
 import { commandListAt, ownCommandList, runningSign } from "./cues";
 import { findInputFrame, rowText } from "./frame";
@@ -48,6 +48,9 @@ describe("the typed command's own list under pi's and omp's box (field case 2026
     ["omp--v18-6-slash-model-list--w80.txt", "/model"],
     ["omp--v18-6-slash-settings-list--w120.txt", "/settings"],
     ["omp--v18-6-slash-settings-list--w80.txt", "/settings"],
+    // symbolPreset ascii draws the list cursor as `>` (omp-gang 11-geometry, 2026-10-25).
+    ["omp--v18-6-1-ascii-symbols-session-list--w130.txt", "/session"],
+    ["omp--v18-12-6-ascii-symbols-session-list--w130.txt", "/session"],
     // The older captures of the same state: OmO on pi, omp 18.8's pi-shaped box (commit 9acc1502) and an older omp box.
     ["pi--omo-v5130-slash-model.txt", "/model"],
     ["pi--omo-v5130-slash-compact.txt", "/compact"],
@@ -611,6 +614,37 @@ describe("omp's file popup under a path typed in the box (18.6.1 and 18.12.6)", 
       expect(commandListAt(texts, read.frame!, idle.volatile.below.commandList), name).toBeNull();
     });
   }
+});
+
+// The ascii symbol preset draws every cursor as `>` (omp-gang 11-geometry, W3). The pointer pattern reads that glyph in a
+// command list, and a popup row under a typed path must still be no command list: `notForText` decides on the text.
+describe("omp's file popup with the ascii cursor under a typed path is still no command list", () => {
+  for (const name of ["omp--v18-6-1-path-popup--w120.txt", "omp--v18-12-6-path-popup--w120.txt", "omp--v18-6-1-path-popup-tilde--w120.txt"]) {
+    it(`${name}: the popup row drawn with > reads a draft, no cue, no command list`, () => {
+      const rows = rowsOf(fixtureRows(name).map(rowText).map((text) => text.replace(/^❯ /u, "> ")).join("\n"));
+      const read = readScreen(rows, "omp", idleFor("omp"));
+      expect(read.surface).toEqual({ revision: 1, turn: "idle", modal: "none", composer: "draft" });
+      expect(read.cues?.strength).toBe("none");
+      const texts = rows.map(rowText);
+      expect(texts.some((text) => text.startsWith("> ")), name).toBe(true);
+      expect(commandListAt(texts, read.frame!, idleFor("omp")!.volatile.below.commandList), name).toBeNull();
+    });
+  }
+});
+
+describe("omp's status row pattern leaves the rows under a command list alone", () => {
+  // The rows an extension draws under a list (`commandList.footer`) and the popup rows are under the box. Neither may read
+  // as the status row over a box, or a box above them would be found a second time from there.
+  it("no row under the box of the status-row palettes and the popups is a status row", () => {
+    const top = new RegExp(idleFor("omp")!.frame.top.pattern, "u");
+    for (const name of ["omp--v18-12-6-status-row-palette-4.txt", "omp--v18-6-1-status-row-palette-4.txt", "omp--v18-12-6-status-row-palette-10.txt", "omp--v18-6-1-at-popup--w120.txt", "omp--v18-6-1-hash-popup--w120.txt", "omp--v18-6-1-path-popup--w120.txt"]) {
+      const rows = fixtureRows(name, name.includes("status-row") ? SURFACE_FIXTURES_DIR : PANES_DIR);
+      const frame = findInputFrame(rows, idleFor("omp")!)!;
+      const under = rows.map(rowText).slice(frame.bottom + 1).filter((text) => text.trim() !== "");
+      expect(under.length, name).toBeGreaterThan(0);
+      for (const text of under) expect(top.test(text), `${name}: ${text}`).toBe(false);
+    }
+  });
 });
 
 describe("omp's rewind picker (Esc Esc) is a modal, not an unknown screen (18.6.1 and 18.12.6)", () => {

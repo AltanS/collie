@@ -151,7 +151,8 @@
           "sides": [
             "under"
           ],
-          "pointer": "^(?:❯|\\u{F054}) (?:[^\\x00-\\x7F\\s]\\S* {1,2})?(?<command>\\w[\\w:.-]*)(?: {2,}\\S.*)?$",
+          "pointer": "^(?:❯|\\u{F054}|>) (?:[^\\x00-\\x7F\\s]\\S* {1,2})?(?<command>\\w[\\w:.-]*)(?: {2,}\\S.*)?$",
+          "pointerNote": "The list cursor is the theme symbol nav.cursor, which the symbol preset sets: ❯ (unicode), U+F054 (nerd) and > (ascii). OMP 18.12.6 pi-tui theme/symbols.ts and tui-adapters.ts (select list theme cursor), omp-gang 11-geometry W3, 2026-10-25. A custom theme may override the symbol; that is not read.",
           "entry": "^ {2}(?:[^\\x00-\\x7F\\s]\\S* {1,2})?(?<command>\\w[\\w:.-]*)(?: {2,}\\S.*)?$",
           "wrapped": "^ {8,}\\S",
           "namespaces": [

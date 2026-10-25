@@ -8364,6 +8364,21 @@ describe("omp's fuzzy command list under the box (1.24.1)", () => {
     neverEscape(pane);
   });
 
+  // `symbolPreset: ascii` draws the list cursor as `>`, not `❯` (omp-gang 11-geometry, W3). The list was not
+  // read as the typed command's own, so `/session` ended `typed_not_submitted (modal_cue)` on both versions.
+  for (const [version, name] of [
+    ["18.6.1", "omp--v18-6-1-ascii-symbols-session-list--w130.txt"],
+    ["18.12.6", "omp--v18-12-6-ascii-symbols-session-list--w130.txt"],
+  ] as const) {
+    test(`${version}: /session under the ascii symbols' list (cursor >) goes out with one Enter`, async () => {
+      const { send, pane } = ompPane(version, name);
+      const answer = await send("/session", { id: `ascii-session-${version.replaceAll(".", "-")}`, mode: "command" });
+      expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"] });
+      expect(pane.box).toBe("");
+      neverEscape(pane);
+    });
+  }
+
   test("18.12.6: the list row left under the emptied box after a cancelled slash command does not hold the next send", async () => {
     const { send, pane } = ompPane("18.12.6", "omp--v18-12-6-stale-list-row-empty-box--w120.txt", { stale: true });
     const prepared = await send("", { mode: "prepare" });

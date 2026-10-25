@@ -852,7 +852,9 @@ describe("the frame schema of the interior walk (M56 spec 14)", () => {
     const pointer = new RegExp(list.pointer, "u");
     expect(pointer.exec("\u{F054} \u{F0EE5} model                Switch model")?.groups?.["command"]).toBe("model");
     expect(pointer.exec("❯ ✦ skill:wrap-up   Wrap up the session")?.groups?.["command"]).toBe("skill:wrap-up");
-    expect(pointer.test("> model   Switch model")).toBe(false);
+    // The ascii symbol preset draws the cursor as `>` (nav.cursor), which 1.24.1 reads (omp-gang 11-geometry, W3).
+    expect(pointer.exec("> session     Session management commands")?.groups?.["command"]).toBe("session");
+    expect(pointer.test("  session     Session management commands")).toBe(false);
     expect(list.namespaces).toEqual(["skill:"]);
     expect(list.argumentList).toBe(true);
     expect(omp.idle.inlineHint).toEqual({ fg: ["rgb(107,114,128)"] });

@@ -3315,3 +3315,16 @@ preset starts on `[high]` and draws its rule with `-`. Both read `unknown/unknow
 | `omp--v18-12-6-status-ascii-idle--w130.txt` | `idle` | 18.12.6, preset `ascii`, symbols `ascii`: the first token is `[high]`, the rule is `-`, the compaction tick is `|` |
 | `omp--v18-12-6-status-ascii-draft--w80.txt` | `draft` | 18.12.6, the same preset at 80 columns with `abc` typed: `-5%------|200K-` |
 | `omp--v18-6-1-status-ascii-idle--w80.txt` | `idle` | 18.6.1, the same preset at 80 columns: `-4%------|200K-` |
+
+## The command list with `symbolPreset: ascii` (captured 2026-10-25, OMP 18.6.1 and 18.12.6, omp gang 11-geometry)
+
+`config.yml` held `symbolPreset: ascii`. `/session` typed in command mode, as the rig bridge's pane read it (plain text, no
+SGR), cut to the status row, the box and the list. The list draws its cursor with the theme's `nav.cursor`, which is `❯` in the
+unicode preset, U+F054 in the nerd preset and `>` in the ascii preset. Until 1.24.1 `commandList.pointer` knew the first two,
+so the list was no popup of the typed command, and `/session` ended `typed_not_submitted (modal_cue)` with its text left in
+the box.
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `omp--v18-12-6-ascii-symbols-session-list--w130.txt` | `popup` | 18.12.6, `/session` typed: the pointer row is `> session     Session management commands`, nine more rows under it |
+| `omp--v18-6-1-ascii-symbols-session-list--w130.txt` | `popup` | 18.6.1, the same list, status row `pi > [high] Haiku 4.5 > [D] ... >--4%----` |

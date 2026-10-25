@@ -221,6 +221,10 @@ const STATUS_ROWS = [
   "omp--v18-6-1-status-full-slash-idle--w80.txt",
 ];
 
+// omp 18.6.1 and 18.12.6 with `symbolPreset: ascii` (omp-gang 11-geometry, 2026-10-25): `/session` typed, and the list under
+// the box draws its cursor as `>`. Composers, the list is composer chrome.
+const ASCII_SYMBOL_LISTS = ["omp--v18-12-6-ascii-symbols-session-list--w130.txt", "omp--v18-6-1-ascii-symbols-session-list--w130.txt"];
+
 const DECLINED = new Set([
   // — Composer states. An input box is chrome, never a dialog; stripChrome peels it, the statusline
   //   and stranded-draft probes re-surface what it carried.
@@ -410,6 +414,7 @@ const DECLINED = new Set([
   "omp--v18-6-1-rewind-picker--w120.txt",
   "omp--v18-12-6-rewind-picker--w120.txt",
   ...STATUS_ROWS,
+  ...ASCII_SYMBOL_LISTS,
 ]);
 
 // The own cohort is the lifted captures, so every conformance leg that needs one runs on them
@@ -433,7 +438,7 @@ describeAdapterConformance(ompAdapter, {
   // omp 18.6.1 draws a ten-row palette under its open box for `/model` and `/mod` (lab, 2026-10-17): the same trade.
   // `Allow tool: goal` has no body: every row of its region is fixed text, so a changed row stops the lift.
   fixedRegionFixtures: ["omp--v18-6-1-approval-goal--w120.txt"],
-  unboundComposerFixtures: ["omp--v18-8-slash-palette.txt", "omp--v18-8-slash-palette-w48.txt", ...TALL_PALETTE_V18_6, ...TALL_PALETTE_V18_11, ...TALL_PALETTE_V18_12, ...FUZZY_LIST_TALL, ...QUOTED_DIALOG],
+  unboundComposerFixtures: ["omp--v18-8-slash-palette.txt", "omp--v18-8-slash-palette-w48.txt", ...TALL_PALETTE_V18_6, ...TALL_PALETTE_V18_11, ...TALL_PALETTE_V18_12, ...FUZZY_LIST_TALL, ...QUOTED_DIALOG, ...ASCII_SYMBOL_LISTS],
 });
 
 // The corpus pin (mirroring claude/chrome.test.ts's): a newly-captured omp fixture must be filed into
@@ -528,6 +533,7 @@ describe("the omp corpus", () => {
     "omp--v18-12-2-goal-turn-running-probe--w119.txt",
     "omp--v18-12-6-approval-bash--w120.txt",
     "omp--v18-12-6-approval-bash-later--w120.txt",
+    "omp--v18-12-6-ascii-symbols-session-list--w130.txt",
     "omp--v18-12-6-ask-plan-mode--w120.txt",
     "omp--v18-12-6-ask-previews--w120.txt",
     "omp--v18-12-6-image-chip--w120.txt",
@@ -615,6 +621,7 @@ describe("the omp corpus", () => {
     "omp--v18-4-switch.txt",
     "omp--v18-4-tree.txt",
     "omp--v18-6-1-approval-goal--w120.txt",
+    "omp--v18-6-1-ascii-symbols-session-list--w130.txt",
     "omp--v18-6-1-at-popup--w120.txt",
     "omp--v18-6-1-at-popup-path--w120.txt",
     "omp--v18-6-1-hash-popup--w120.txt",
@@ -876,6 +883,7 @@ const COMPOSER_FIXTURES = [
   ...TYPEAHEAD_POPUP,
   ...QUOTED_DIALOG,
   ...STATUS_ROWS,
+  ...ASCII_SYMBOL_LISTS,
 ];
 
 describe("composerReady — the gate the reply path pre-flights on", () => {

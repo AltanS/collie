@@ -198,6 +198,9 @@ const TALL_PALETTE_FIXTURES = [
   "omp--v18-12-6-slash-mo-fuzzy--w120.txt",
   "omp--v18-12-6-slash-nothere-fuzzy--w120.txt",
   "omp--v18-6-1-slash-open-tall--w120.txt",
+  // omp 18.6.1 and 18.12.6 with symbolPreset ascii, `/session` typed: the list cursor is `>` (omp-gang 11-geometry, 2026-10-25).
+  "omp--v18-12-6-ascii-symbols-session-list--w130.txt",
+  "omp--v18-6-1-ascii-symbols-session-list--w130.txt",
 ];
 
 // omp 18.6.1, a nine-row draft that quotes a permission dialog (omp-gang tester 12, 2026-10-25). The composer is
@@ -1050,6 +1053,8 @@ describe("composerPrompt — the region a destructive write is bound to", () => 
       { fixture: "omp--v18-12-6-slash-mo-fuzzy--w120.txt", top: 4, bottom: 5, suggestEnd: 16 },
       { fixture: "omp--v18-12-6-slash-nothere-fuzzy--w120.txt", top: 5, bottom: 6, suggestEnd: 16 },
       { fixture: "omp--v18-6-1-slash-open-tall--w120.txt", top: 15, bottom: 16, suggestEnd: 27 },
+      { fixture: "omp--v18-12-6-ascii-symbols-session-list--w130.txt", top: 1, bottom: 2, suggestEnd: 13 },
+      { fixture: "omp--v18-6-1-ascii-symbols-session-list--w130.txt", top: 1, bottom: 2, suggestEnd: 13 },
     ];
     expect(PINNED_TALL.map((p) => p.fixture)).toEqual(TALL_PALETTE_FIXTURES);
     for (const { fixture, top, bottom, suggestEnd } of PINNED_TALL) {
