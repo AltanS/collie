@@ -578,7 +578,7 @@ describe("discoverAgentSkills: real-disk containment and size bounds", () => {
     expect(rows.map((r) => r.command)).toEqual(["/personal"]);
   });
 
-  test.skipIf(process.platform === "win32")(
+  test(
     "real disk: symlinks escaping personal roots, project roots, or an Antigravity plugin root are refused while inside skills load",
     async () => {
       const sandbox = mkdtempSync(join(tmpdir(), "collie-agent-bounds-"));
