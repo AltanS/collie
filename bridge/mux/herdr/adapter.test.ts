@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import type { MuxSpace } from "../types.ts";
-import { HerdrMux, REPO_LOOKUP_RETRY_MS, workspaceRepoOf } from "./adapter.ts";
+import { HerdrMux, REPO_LOOKUP_RETRY_MS, SCROLL_STATE_MEMO_MS, workspaceRepoOf } from "./adapter.ts";
 import type { PaneRead, WirePane, WireSnapshot, WireWorkspace, WireWorktreeListing } from "./client.ts";
 import { FakeHerdr } from "./fixture.ts";
 
@@ -409,5 +409,44 @@ describe("readGrid viewport: the live screen, whatever the operator's scroll", (
       const read = await new HerdrMux(fake, () => []).readGrid(id, { scope: "viewport", lines: 120, styling: "strip" });
       expect(read.ok && read.value.text.split("\n")).toEqual(live);
     }
+  });
+
+  test("two reads inside the memo window make one pane.get, and one after it asks again", async () => {
+    class CountGet extends FakeHerdr {
+      gets = 0;
+      override async getPane(paneId: string): Promise<WirePane> {
+        this.gets++;
+        return super.getPane(paneId);
+      }
+    }
+    const fake = new CountGet();
+    const { id } = await agentPane(fake);
+    let clock = 10_000;
+    const mux = new HerdrMux(fake, () => [], () => clock);
+    const viewport = { scope: "viewport", lines: 120, styling: "strip" } as const;
+    await mux.readGrid(id, viewport);
+    clock += SCROLL_STATE_MEMO_MS - 1;
+    await mux.readGrid(id, viewport);
+    expect(fake.gets).toBe(1);
+    clock += 1;
+    await mux.readGrid(id, viewport);
+    expect(fake.gets).toBe(2);
+  });
+
+  test("reads that overlap share one pane.get, and a recent read asks none", async () => {
+    class CountGet extends FakeHerdr {
+      gets = 0;
+      override async getPane(paneId: string): Promise<WirePane> {
+        this.gets++;
+        return super.getPane(paneId);
+      }
+    }
+    const fake = new CountGet();
+    const { id } = await agentPane(fake);
+    const mux = new HerdrMux(fake, () => []);
+    await Promise.all([1, 2, 3].map(() => mux.readGrid(id, { scope: "viewport", lines: 120, styling: "strip" })));
+    expect(fake.gets).toBe(1);
+    await mux.readGrid(id, { scope: "recent", lines: 120, styling: "preserve" });
+    expect(fake.gets).toBe(1);
   });
 });

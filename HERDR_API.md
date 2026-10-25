@@ -334,7 +334,7 @@ not require a literal `done` from Herdr. See [ADR 0003](.adr/0003-one-shared-see
 > last row through `recent`; Herdr trimmed one trailing blank row from the live screen, so `recent`
 > carried one scrollback row above it. A Claude pane scrolled 405 rows up read old output with no
 > input box through `visible`, which is how phone sends failed "could not find the input box". So a
-> `viewport` read of a scrolled pane goes to `recent` (`bridge/mux/herdr/adapter.ts` `readLiveScreen`).
+> `viewport` read of a scrolled pane goes to `recent` (`bridge/mux/herdr/adapter.ts` `readLiveScreen`). The adapter asks `pane.get` once per pane per second (`SCROLL_STATE_MEMO_MS`), so the reads of one request share the answer.
 
 > **`revision` is a stub on Herdr 0.7.x** (live-verified 2026-07-05 on 0.7.0; reconfirmed unchanged
 > on 0.7.2, live-verified 2026-07-07): `pane.read`, `pane.list`, and `session.snapshot` all return
