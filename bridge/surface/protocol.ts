@@ -245,6 +245,9 @@ const CLEAR_ALL_AFTER = 3;
 /** Texts this short take the probed path whatever the profile says. */
 const SHORT_TEXT = 3;
 
+/** The detail of a text that holds a paste chip's token: typed, the token would expand to a file pasted earlier. */
+const CHIP_TOKEN = "This text holds the label of a paste chip. Typed into the box, the label would expand to a file or text pasted earlier, not to your words. Nothing was typed. Write the text without the label.";
+
 /** What a reserved lead is, for the refusal's sentence: each is sent as a `command`, never as a plain send. */
 const LEAD_ROUTES = new Map<string, string>(Object.entries({
   "/": "A slash command is sent as a command (mode command), not as a message.",
@@ -4236,6 +4239,10 @@ function textRefusal(request: SendRequest, match: ProfileMatch | null): Ended | 
   if (note !== undefined) return new Ended("refused", "reserved_lead", { detail: note });
   const lead = request.mode === "command" || request.mode === "replace" ? null : anyLead;
   if (lead !== null) return new Ended("refused", "reserved_lead", { detail: LEAD_ROUTES.get(lead) ?? `A text that starts with ${lead} has its own route.` });
+  // A chip token typed as text may expand to a pasted body the harness still holds (the profile says so).
+  if (match?.profile.collapse.refuseLiteral === true && lines.some((line) => new RegExp(match.profile.collapse.pattern, "u").test(line))) {
+    return new Ended("refused", "reserved_lead", { detail: CHIP_TOKEN });
+  }
   if (lines.length > 1 && match === null) return new Ended("refused", "multiline", { detail: "This harness has no profile, so its newline key is unknown; send one line at a time." });
   return null;
 }

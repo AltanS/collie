@@ -241,7 +241,9 @@
     ]
   },
   "collapse": {
-    "pattern": "(?:📄|🖼|📷|\\u{F15C}|\\u{F03E}) #\\d+|✦ \\S+(?: [\\s\\S]*)?"
+    "pattern": "(?:📄|🖼|📷|\\u{F15C}|\\u{F03E}) #\\d+|✦ \\S+(?: [\\s\\S]*)?",
+    "refuseLiteral": true,
+    "refuseLiteralNote": "OMP 18.6.1 and 18.12.6 (pi-tui editor insertAtom and registerAtom): a pasted body stays registered under its chip after the chip label is deleted, and clearDraft resets it only on a submit. A later typed token such as 📄 #1 then expands to that cleared body in the journal (omp gang 13-drafts, case 37, 2026-10-25). A literal [Paste #1, +3 lines] marker is safe."
   },
   "reservedLeads": [
     "/",

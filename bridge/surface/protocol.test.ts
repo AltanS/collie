@@ -8661,3 +8661,55 @@ describe("OMP: a text that starts with its queue prefix is refused before any ke
     expect(pane.emptyPresses).toBe(0);
   });
 });
+
+describe("OMP: a text that holds a paste chip's label is refused before any key (gang 13-drafts, stale chip)", () => {
+  test("the check is data on the profile: only OMP opts in", () => {
+    expect(loadProfiles().get("omp")?.collapse.refuseLiteral).toBe(true);
+    for (const [id, profile] of loadProfiles()) if (id !== "omp") expect(profile.collapse.refuseLiteral, id).toBeUndefined();
+  });
+
+  test("chip labels in the text are refused reserved_lead with a detail that says the label expands to pasted text", async () => {
+    for (const version of ["18.6.1", "18.12.6"]) {
+      const { pane, send } = omp({ version });
+      for (const text of ["see 📄 #1 here", "look at 🖼 #2", "📷 #3 first", "line one\nsee 📄 #12 here", "a ✦ chip label"]) {
+        const answer = await send(text);
+        expect(answer.receipt, `${version} ${text}`).toMatchObject({ outcome: "refused", reason: "reserved_lead", keys: [] });
+        expect(answer.receipt?.detail, `${version} ${text}`).toContain("label of a paste chip");
+        expect(answer.receipt?.detail, `${version} ${text}`).toContain("pasted earlier");
+      }
+      expect(pane.calls).toEqual([]);
+      expect(pane.keysSeen).toEqual([]);
+    }
+  });
+
+  test("a Replace and a command carry the same refusal", async () => {
+    for (const mode of ["replace", "command", "append"] as const) {
+      const { pane, send } = omp();
+      const answer = await send("see 📄 #1 here", { mode });
+      expect(answer.receipt, mode).toMatchObject({ outcome: "refused", reason: "reserved_lead", keys: [] });
+      expect(pane.calls, mode).toEqual([]);
+    }
+  });
+
+  test("texts that only look alike go: a literal paste marker, an issue number, a lone emoji, a hash", async () => {
+    for (const text of ["see [Paste #1, +3 lines] here", "see #12 for details", "a 📄 page and the #1 spot", "plain words"]) {
+      const { pane, send } = omp();
+      const answer = await send(text);
+      expect(answer.receipt, text).toMatchObject({ outcome: "sent" });
+      expect(pane.transcript.at(-1)).toBe(` > ${text}`);
+    }
+  });
+
+  test("Collie's own long paste keeps its road: the text carries no label, so it is not refused", async () => {
+    const { pane, send } = omp();
+    const text = words(400);
+    const answer = await send(text);
+    expect(answer.receipt?.reason).not.toBe("reserved_lead");
+    expect(pane.calls.length).toBeGreaterThan(0);
+  });
+
+  test("another profile reads the same words as plain text", async () => {
+    const { send } = rig({ harness: "claude", version: "2.1.200" });
+    expect((await send("see 📄 #1 here")).receipt).toMatchObject({ outcome: "sent" });
+  });
+});

@@ -333,23 +333,29 @@ describe("the codex profile (M56 spec 13)", () => {
     expect(loadProfiles().get("omp")?.keys.commandsRunInTurn).toEqual(["/goal"]);
   });
 
-  it("keys.clearAll and reservedLeadNotes parse; omp ships both and nobody else does", () => {
-    const edited = parseProfile(change(change(rawCodex(), ["keys", "clearAll"], { key: "ctrl+c" }), ["reservedLeadNotes"], { "!": "A note." }));
+  it("keys.clearAll, collapse.refuseLiteral and reservedLeadNotes parse; omp ships all three and nobody else does", () => {
+    const edited = parseProfile(
+      change(change(change(rawCodex(), ["keys", "clearAll"], { key: "ctrl+c" }), ["collapse", "refuseLiteral"], true), ["reservedLeadNotes"], { "!": "A note." }),
+    );
     expect(edited.keys.clearAll).toEqual({ key: "ctrl+c" });
+    expect(edited.collapse.refuseLiteral).toBe(true);
     expect(edited.reservedLeadNotes).toEqual({ "!": "A note." });
     const omp = loadProfiles().get("omp")!;
     expect(omp.keys.clearAll).toEqual({ key: "ctrl+c" });
+    expect(omp.collapse.refuseLiteral).toBe(true);
     expect(omp.reservedLeads).toEqual(["/", "!", "->", "=>"]);
     expect(Object.keys(omp.reservedLeadNotes ?? {})).toEqual(["->", "=>"]);
     for (const [id, profile] of loadProfiles()) {
       if (id === "omp") continue;
       expect(profile.keys.clearAll, id).toBeUndefined();
+      expect(profile.collapse.refuseLiteral, id).toBeUndefined();
       expect(profile.reservedLeadNotes, id).toBeUndefined();
     }
   });
 
   const cases: [string, (string | number)[], JsonValue | undefined, string][] = [
     ["codex: Escape as the stroke clear key", ["keys", "clearAll"], { key: "Escape" }, "keys.clearAll.key"],
+    ["codex: refuseLiteral that is not a boolean", ["collapse", "refuseLiteral"], "yes", "collapse.refuseLiteral"],
     ["codex: a stroke clear key with no key", ["keys", "clearAll"], {}, "keys.clearAll.key"],
     ["codex: a lead note for a lead that is not reserved", ["reservedLeadNotes"], { "->": "A note." }, "reservedLeadNotes"],
     ["codex: an empty lead note", ["reservedLeadNotes"], { "!": " " }, "reservedLeadNotes.!"],

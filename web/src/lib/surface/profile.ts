@@ -638,6 +638,14 @@ export interface Profile {
   readonly collapse: {
     /** The long-paste form as a regular expression source. Group `lines` is optional. */
     readonly pattern: string;
+    /**
+     * True when the harness keeps a pasted body registered under its chip after the chip is deleted,
+     * and expands a later typed chip token into that body (OMP 18.6.1 and 18.12.6: a cleared `📄 #1`
+     * leaks into `see 📄 #1 here`). A plain send, command, Add or Replace whose text holds a token
+     * that matches `pattern` is then refused `reserved_lead` before any key. Optional: absent allows
+     * the token as plain text. Collie's own pastes never carry the token in their text, so they pass.
+     */
+    readonly refuseLiteral?: boolean;
   };
   /**
    * The leads the harness reads as something other than text: a command (`/`), a shell line (`!`), or
@@ -1374,7 +1382,9 @@ export function parseProfile(raw: JsonValue): Profile {
   }
 
   const collapseNode = object(field(root, "collapse", ""), "collapse");
-  const collapse = { pattern: pattern(field(collapseNode, "pattern", "collapse"), "collapse.pattern").source };
+  const collapseBase = { pattern: pattern(field(collapseNode, "pattern", "collapse"), "collapse.pattern").source };
+  if (collapseNode.refuseLiteral !== undefined && collapseNode.refuseLiteral !== true && collapseNode.refuseLiteral !== false) fail("collapse.refuseLiteral", "must be true or false");
+  const collapse = collapseNode.refuseLiteral === true ? { ...collapseBase, refuseLiteral: true } : collapseBase;
 
   const reservedLeads = textList(field(root, "reservedLeads", ""), "reservedLeads", 1);
   let reservedLeadNotes: Readonly<Record<string, string>> | undefined;
