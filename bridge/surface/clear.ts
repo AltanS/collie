@@ -16,6 +16,9 @@
 //   press     the clear key, `length + slack` times in one call (at most CLEAR_BATCH), as `person_tap`
 //   readback  up to four reads after the press: the box reads empty and no dialog -> `cleared`; a dialog ->
 //             refused dialog_open; else the box is read again
+// A profile with `keys.clearAll` (a key that empties a box the clear key cannot, such as a draft the
+// harness rewrites after every Backspace) gets that key once, in the round where the box did not shrink,
+// after a fresh read showed a draft; then the same read-back. Never on a box that reads empty, never twice.
 // A draft longer than one batch needs a second round. A second round starts only from a fresh read that
 // shows the box SHORTER than before the press (it is never a blind press); a box that did not shrink, or
 // that still holds text after the last round, is `press_failed` and what remains is left alone.
@@ -157,6 +160,8 @@ export class ClearService {
     const match = harness === "" ? null : await this.deps.profile(harness);
     if (!readable(match)) return refusal(requestId, "no_profile", false);
     const clearKey = match.profile.keys.clear;
+    const clearAll = match.profile.keys.clearAll;
+    let allPressed = false;
     const sleep = this.deps.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
     let pressed = false;
     let before = Number.POSITIVE_INFINITY;
@@ -173,15 +178,20 @@ export class ClearService {
       }
       const length = draftLength(look!.frame!);
       if (round === 0 && !look!.frame!.placeholder) draft = boundedDraft(look!.frame!.interior.text);
-      // A box that did not shrink since the last press is left alone: no second blind press.
-      if (length >= before) return refusal(requestId, "press_failed", pressed);
-      before = length;
+      // A box that did not shrink since the last press is left alone: no second blind press. The one
+      // exception is the profile's own stroke key (`keys.clearAll`): the box is a draft on a read taken
+      // just now (an empty box was refused above), and it goes at most once per request.
+      const unmoved = length >= before;
+      if (unmoved && (clearAll === undefined || allPressed)) return refusal(requestId, "press_failed", pressed);
+      if (!unmoved) before = length;
       const count = Math.min(CLEAR_BATCH, length + clearKey.slack);
-      const sent: MuxAck = await this.deps.gate.press(paneId, Array.from({ length: count }, () => clearKey.key), "person_tap");
+      const keys = unmoved ? [clearAll!.key] : Array.from({ length: count }, () => clearKey.key);
+      const sent: MuxAck = await this.deps.gate.press(paneId, keys, "person_tap");
       if (!sent.ok) return refusal(requestId, "press_failed", pressed);
       pressed = true;
+      if (unmoved) allPressed = true;
       // A draft longer than one batch is not cleared by this press alone: once the box shrank, the next round reads it fresh.
-      const capped = length + clearKey.slack > CLEAR_BATCH;
+      const capped = !unmoved && length + clearKey.slack > CLEAR_BATCH;
       for (const gap of READ_BACK_GAPS_MS) {
         await sleep(gap);
         const after = await this.look(paneId, harness, match);

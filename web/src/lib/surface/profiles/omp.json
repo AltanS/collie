@@ -191,6 +191,10 @@
       "key": "Backspace",
       "slack": 16
     },
+    "clearAll": {
+      "key": "ctrl+c"
+    },
+    "clearAllNote": "OMP 18.6.1 and 18.12.6 (pi-coding-agent input-controller handleCtrlC, pi-tui custom-editor #normalizeQueuePrefix): after each edit OMP puts a newline back behind a bare -> or =>, so Backspace never removes that prefix, and the box keeps its Queueing label (omp gang 13-drafts, cases 35a to 35b, 2026-10-25). Ctrl+C is OMP's app.clear: on a box that holds text it empties the editor with no other effect, but a second Ctrl+C within 500 ms of the first quits OMP, and the bridge must never press it on an empty box. Collie presses it once, after a fresh read showed a draft and two Backspace batches left it unchanged.",
     "navigation": {
       "up": "Up",
       "down": "Down",
@@ -241,8 +245,15 @@
   },
   "reservedLeads": [
     "/",
-    "!"
+    "!",
+    "->",
+    "=>"
   ],
+  "reservedLeadNotes": {
+    "->": "OMP reads a leading -> as its queue prefix and rewrites the box, so this text cannot be typed as written. Start the text with a word.",
+    "=>": "OMP reads a leading => as its queue prefix and rewrites the box, so this text cannot be typed as written. Start the text with a word."
+  },
+  "reservedLeadsNote": "Read from OMP 18.6.1 and 18.12.6 source. Rewrites the box as typed: -> and => only (pi-tui prompt/queue-input QUEUE_PREFIXES, custom-editor #normalizeQueuePrefix puts a newline behind a bare prefix and draws a Queueing label). Commands: / (slash command), ! and !! (shell line). Not listed: $ and $$ (Python line) are read only when Enter submits, and a plain Collie send goes out with Ctrl+Q (follow-up), which never runs them (gang case 34, sent exact). # @ ^ and :name: only open completion lists and do not rewrite the typed text, except :name: which becomes an emoji (a mismatch the send reports, gang case 36).",
   "probe": {
     "char": "⌁",
     "status": "provisional",

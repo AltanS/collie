@@ -5895,7 +5895,7 @@ describe("a text that starts with `@` is a message on pi and OMP", () => {
 
   test("pi leaves `@` out of its reserved leads and keeps `/` and `!`", () => {
     expect(loadProfiles().get("pi")?.reservedLeads).toEqual(["/", "!"]);
-    expect(loadProfiles().get("omp")?.reservedLeads).toEqual(["/", "!"]);
+    expect(loadProfiles().get("omp")?.reservedLeads).toEqual(["/", "!", "->", "=>"]);
   });
 
   for (const [platform, key] of [["linux", "alt+Enter"], ["win32", "ctrl+q"]] as const) {
@@ -8476,5 +8476,188 @@ describe("a queued send that comes back to the box (ADR 0122)", () => {
     const second = rig({ pane: new OmpPane(), harness: "omp", version: "18.6.1", clock, storeDir });
     expect(second.protocol.queuedOf("main", "%1")).toMatchObject([{ requestId: "queued-back-0041", text: "still waiting", state: "queued" }]);
     expect(second.protocol.queuedOf("other", "%1")).toEqual([]);
+  });
+});
+
+/**
+ * OMP's editor with its queue prefix (omp gang 13-drafts, 2026-10-25, 18.6.1 and 18.12.6): a box that
+ * starts with a bare `->` or `=>` gets a newline put back behind it after every edit, so Backspace never
+ * removes the prefix, and the box draws the `Queueing ➤` label over the rest. Ctrl+C empties the box;
+ * on an empty box it is the first tap of OMP's quit.
+ */
+class QueueingOmpPane extends OmpPane {
+  /** Ctrl+C presses on a box that held text. */
+  clears = 0;
+  /** Ctrl+C presses on an empty box: the program would be one tap from quitting. */
+  emptyPresses = 0;
+  /** A Ctrl+C that leaves the box alone (a key the profile named wrongly). */
+  deafCtrlC = false;
+
+  constructor() {
+    super();
+    const base = this.writeKeys;
+    this.writeKeys = (paneId, keys) => {
+      for (const key of keys) {
+        if (key === "ctrl+c") {
+          this.keysSeen.push(key);
+          if (this.box === "") this.emptyPresses++;
+          else if (!this.deafCtrlC) {
+            this.box = "";
+            this.clears++;
+          }
+          this.revision++;
+        } else {
+          const bare = this.box === "->" || this.box === "=>";
+          void base(paneId, [key]);
+          this.normalise(bare);
+        }
+      }
+      return Promise.resolve(muxAck());
+    };
+    const type = this.typeText;
+    this.typeText = (paneId, text) => {
+      const bare = this.box === "->" || this.box === "=>";
+      const done = type(paneId, text);
+      this.normalise(bare);
+      return done;
+    };
+  }
+
+  /** The newline OMP puts behind a prefix that just formed, or behind one typed with its text. */
+  private normalise(hadBarePrefix: boolean): void {
+    if (hadBarePrefix || this.box.includes("\n")) return;
+    const prefix = ["->", "=>"].find((candidate) => this.box.startsWith(candidate));
+    if (prefix !== undefined) this.box = `${prefix}\n${this.box.slice(2)}`;
+  }
+
+  override render(): string {
+    const prefix = ["->", "=>"].find((candidate) => this.box.startsWith(candidate));
+    if (prefix === undefined) return super.render();
+    const draft = this.box;
+    this.box = `Queueing ➤${draft.slice(2)}`;
+    const rows = super.render();
+    this.box = draft;
+    return rows;
+  }
+}
+
+describe("OMP: a text that starts with its queue prefix is refused before any key (gang 13-drafts, 3.5)", () => {
+  const DETAIL = "OMP reads a leading -> as its queue prefix and rewrites the box, so this text cannot be typed as written. Start the text with a word.";
+
+  test("the leads are data: -> and => are reserved beside / and !, each with its own note", () => {
+    const profile = loadProfiles().get("omp")!;
+    expect(profile.reservedLeads).toEqual(["/", "!", "->", "=>"]);
+    expect(Object.keys(profile.reservedLeadNotes ?? {})).toEqual(["->", "=>"]);
+    expect(profile.keys.clearAll).toEqual({ key: "ctrl+c" });
+  });
+
+  test("a plain send of -> and => texts is refused reserved_lead with the true detail, nothing typed, on both versions", async () => {
+    for (const version of ["18.6.1", "18.12.6"]) {
+      const { pane, send } = omp({ version, pane: new QueueingOmpPane() });
+      for (const text of ["-> then do this", "=> second", "->no space", "  -> padded"]) {
+        const answer = await send(text);
+        expect(answer.receipt, `${version} ${text}`).toMatchObject({ outcome: "refused", reason: "reserved_lead", keys: [] });
+        expect(answer.receipt?.detail, `${version} ${text}`).toBe(text.includes("=>") ? DETAIL.replace("->", "=>") : DETAIL);
+      }
+      expect(pane.calls).toEqual([]);
+      expect(pane.keysSeen).toEqual([]);
+      expect(pane.box).toBe("");
+    }
+  });
+
+  test("no writing mode types it: a command and a Replace are refused the same way", async () => {
+    for (const mode of ["command", "replace", "append"] as const) {
+      const { pane, send } = omp({ pane: new QueueingOmpPane() });
+      const answer = await send("-> then do this", { mode });
+      expect(answer.receipt, mode).toMatchObject({ outcome: "refused", reason: "reserved_lead", keys: [] });
+      expect(pane.calls, mode).toEqual([]);
+    }
+  });
+
+  test("an arrow that does not lead the text is plain text and goes", async () => {
+    const { pane, send } = omp({ pane: new QueueingOmpPane() });
+    const answer = await send("go from a -> b and then c => d");
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(pane.transcript.at(-1)).toBe(" > go from a -> b and then c => d");
+  });
+
+  test("another profile keeps its leads: Claude has no note and sends -> as text", async () => {
+    const { pane, send } = rig({ harness: "claude", version: "2.1.200" });
+    const answer = await send("-> then do this");
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(pane.transcript.at(-1)).toBe("> -> then do this");
+  });
+
+  test("Discard on the Queueing screen empties the box with ONE clearAll press, after Backspace left it unchanged", async () => {
+    for (const version of ["18.6.1", "18.12.6"]) {
+      const pane = new QueueingOmpPane();
+      pane.box = "->\n then do this";
+      const { send, protocol } = omp({ version, pane });
+      const prepared = await protocol.handle({ id: `queueing-prep-${version}`, text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: "omp" });
+      const answer = await send("-> then do this", { mode: "discard", rowsHash: prepared.rowsHash! });
+      expect(answer.receipt, version).toMatchObject({ outcome: "discarded" });
+      expect(pane.box).toBe("");
+      expect(pane.keysSeen.filter((key) => key === "ctrl+c")).toHaveLength(1);
+      expect(pane.clears).toBe(1);
+      expect(pane.emptyPresses).toBe(0);
+      // The Backspace batches went first and the stroke key went last.
+      expect(pane.keysSeen.indexOf("ctrl+c")).toBe(pane.keysSeen.length - 1);
+      expect(pane.keysSeen.slice(0, -1).every((key) => key === "Backspace")).toBe(true);
+    }
+  });
+
+  test("Replace over a person's -> draft clears it the same way and sends the new text once", async () => {
+    const pane = new QueueingOmpPane();
+    pane.box = "->\n half a thought";
+    const { send } = omp({ pane, version: "18.12.6" });
+    const answer = await send("start with a word", { mode: "replace" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(pane.keysSeen.filter((key) => key === "ctrl+c")).toHaveLength(1);
+    expect(pane.emptyPresses).toBe(0);
+    expect(pane.transcript.at(-1)).toBe(" > start with a word");
+  });
+
+  test("an ordinary draft never meets the stroke key: Backspace empties it, and an empty box is never pressed", async () => {
+    const pane = new QueueingOmpPane();
+    const { send } = omp({ pane });
+    pane.box = "an ordinary draft";
+    expect((await send("an ordinary draft", { mode: "discard" })).receipt).toMatchObject({ outcome: "discarded" });
+    expect(pane.keysSeen).not.toContain("ctrl+c");
+    const sent = await send("a fresh message", { mode: "replace" });
+    expect(sent.receipt).toMatchObject({ outcome: "sent" });
+    expect(pane.keysSeen).not.toContain("ctrl+c");
+    expect(pane.emptyPresses).toBe(0);
+  });
+
+  test("a redraw that lags behind the Backspace batch by one or two reads is no cause for the stroke key", async () => {
+    const pane = new QueueingOmpPane();
+    pane.box = "an ordinary draft to throw away";
+    const { send, protocol } = omp({ pane });
+    const prepared = await protocol.handle({ id: "queueing-prep-lag", text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: "omp" });
+    // After the first batch the screen still shows the old draft for two reads, then the empty box.
+    const stale = pane.render();
+    let lagReads = 0;
+    pane.afterInput = (p, what) => {
+      if (what.startsWith("keys:Backspace") && p.fixed === null) p.fixed = stale;
+    };
+    pane.beforeRead = (p) => {
+      if (p.fixed !== null && ++lagReads > 2) p.fixed = null;
+    };
+    const answer = await send("an ordinary draft to throw away", { mode: "discard", rowsHash: prepared.rowsHash! });
+    expect(answer.receipt).toMatchObject({ outcome: "discarded" });
+    expect(pane.keysSeen).not.toContain("ctrl+c");
+    expect(pane.emptyPresses).toBe(0);
+  });
+
+  test("a stroke key that does not empty the box is pressed once and the Discard ends unknown, never twice", async () => {
+    const pane = new QueueingOmpPane();
+    pane.box = "->\n then do this";
+    pane.deafCtrlC = true;
+    const { send, protocol } = omp({ pane });
+    const prepared = await protocol.handle({ id: "queueing-prep-deaf", text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: "omp" });
+    const answer = await send("-> then do this", { mode: "discard", rowsHash: prepared.rowsHash! });
+    expect(answer.receipt).toMatchObject({ outcome: "unknown", reason: "no_evidence" });
+    expect(pane.keysSeen.filter((key) => key === "ctrl+c")).toHaveLength(1);
+    expect(pane.emptyPresses).toBe(0);
   });
 });
