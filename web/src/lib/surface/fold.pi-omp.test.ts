@@ -582,3 +582,126 @@ describe("omp's fuzzy command list under the box (18.6.1 and 18.12.6)", () => {
     expect(isFree(read.surface)).toBe(false);
   });
 });
+
+// omp 18.6.1 and 18.12.6 (omp-gang testers 05 and 12, 2026-10-25). A file path at the start of the box makes
+// omp draw its file popup under it, one `❯ name.png` row. The profile's patterns took that row for a command
+// list pointing at another command, and the phone's send of an upload path ended `typed_not_submitted
+// (modal_cue)` with nothing wrong. `commandList.notForText` says such a text opens no command list: the
+// Surface still reads a draft and no modal, and no list is read.
+describe("omp's file popup under a path typed in the box (18.6.1 and 18.12.6)", () => {
+  const POPUPS: readonly [string, string][] = [
+    ["omp--v18-6-1-path-popup--w120.txt", "/home/demo/lab1/.cache/collie-lab/omp-gang/05-images/state/rig/state/uploads/w2_p1-mvo3m20o-6e1a9e71.png"],
+    ["omp--v18-6-1-path-popup-tilde--w120.txt", "~/.cache/collie-lab/omp-gang/12-pickers/state/harness/omp/project/x.png"],
+    ["omp--v18-12-6-path-popup--w120.txt", "/home/demo/lab1/.cache/collie-lab/omp-gang/05-images/state/rig/state/uploads/w2_p1-mvo44h6i-fd050f5a.png"],
+    // Two upload paths on two rows: the draft's rows join into one text that starts with a path.
+    ["omp--v18-12-6-path-popup-two-paths--w120.txt", ""],
+  ];
+
+  for (const [name, typed] of POPUPS) {
+    it(`${name}: a draft with no modal, no cue and no command list`, () => {
+      const read = own(name);
+      if (typed !== "") expect(read.frame?.interior.text).toBe(typed);
+      else expect(read.frame?.interior.text).toMatch(/^\/home\/demo\/lab1\/.*\.png\s*\/home\/demo\/lab1\/.*\.png$/u);
+      expect(read.surface).toEqual({ revision: 1, turn: "idle", modal: "none", composer: "draft" });
+      expect(read.cues?.strength).toBe("none");
+      expect(labelOf(name).state).toBe("popup");
+      const idle = idleFor("omp")!;
+      const texts = fixtureRows(name).map(rowText);
+      expect(commandListAt(texts, read.frame!, idle.volatile.below.commandList), name).toBeNull();
+    });
+  }
+});
+
+describe("omp's rewind picker (Esc Esc) is a modal, not an unknown screen (18.6.1 and 18.12.6)", () => {
+  const PICKERS = ["omp--v18-6-1-rewind-picker--w120.txt", "omp--v18-12-6-rewind-picker--w120.txt"];
+
+  for (const name of PICKERS) {
+    it(`${name}: no frame, modal unreadable from the footer the profile names`, () => {
+      const read = own(name);
+      expect(read.frame).toBeNull();
+      expect(read.cues?.strength).toBe("weak");
+      expect(read.surface).toEqual({ revision: 1, turn: "unknown", modal: "unreadable", composer: "unknown" });
+    });
+
+    it(`${name}: without the footer row the same screen stays unknown, so the footer is the cue`, () => {
+      const rows = fixtureRows(name);
+      const footer = rows.findIndex((row) => /rewind/.test(rowText(row)));
+      expect(footer).toBeGreaterThan(0);
+      const changed = rows.map((row, i) => (i === footer ? { segments: [{ text: " 29/29  ↑/↓ step  ←/→ user turns  f filter  ⏎ go  Ctrl+O expand  ⎋ cancel" }] } : row));
+      // SAFETY: `changed` is `rows` with one row replaced by a one-segment row of the same shape.
+      expect(readScreen(changed as typeof rows, agentOf("omp"), idleFor("omp")).surface.modal).toBe("unknown");
+    });
+  }
+});
+
+describe("omp's typeahead popups under the box read as a draft (18.6.1, omp-gang tester 12)", () => {
+  const DRAFTS: readonly [string, string][] = [
+    ["omp--v18-6-1-at-popup--w120.txt", "please read @READ"],
+    ["omp--v18-6-1-at-popup-path--w120.txt", "@/tmp/x.png"],
+    ["omp--v18-6-1-hash-popup--w120.txt", "fix item #1"],
+    ["omp--v18-6-1-hash-popup-single--w120.txt", "see PR #12"],
+  ];
+
+  for (const [name, typed] of DRAFTS) {
+    it(`${name}: a draft with no modal and no cue`, () => {
+      const read = own(name);
+      expect(read.frame?.interior.text).toBe(typed);
+      expect(read.surface).toEqual({ revision: 1, turn: "idle", modal: "none", composer: "draft" });
+      expect(read.cues?.strength).toBe("none");
+      expect(labelOf(name).state).toBe("popup");
+    });
+  }
+
+  it("the `#` popup is two rows with a pointer, the weak cue that read `modal: unknown` before the profile named it", () => {
+    const name = "omp--v18-6-1-hash-popup--w120.txt";
+    const idle = idleFor("omp")!;
+    const { popups, ...below } = idle.volatile.below;
+    void popups;
+    const without = readScreen(fixtureRows(name), agentOf("omp"), { ...idle, volatile: { ...idle.volatile, below } });
+    expect(without.cues?.strength).toBe("weak");
+    expect(without.surface.modal).toBe("unknown");
+  });
+
+  it("omp--v18-6-1-hash-popup-stale--w120.txt: the `#` rows left under an emptied box are a stale popup, an empty box", () => {
+    const read = own("omp--v18-6-1-hash-popup-stale--w120.txt");
+    expect(read.frame?.interior.text).toBe("");
+    expect(read.surface).toEqual({ revision: 1, turn: "idle", modal: "none", composer: "empty" });
+    expect(read.cues?.strength).toBe("none");
+  });
+
+  it("a dialog drawn under the box is not a popup: the same box over a permission row stays a modal", () => {
+    const name = "omp--v18-6-1-hash-popup--w120.txt";
+    const rows = fixtureRows(name);
+    const dialog = [...rows, ...rowsOf("  Allow tool: bash\n  ❯ Approve\n    Deny")];
+    const read = readScreen(dialog, agentOf("omp"), idleFor("omp"));
+    expect(read.surface.modal).not.toBe("none");
+  });
+});
+
+describe("a dialog quoted inside the person's own draft is the draft's text (omp 18.6.1, omp-gang tester 12)", () => {
+  const NAME = "omp--v18-6-1-quoted-dialog-draft--w120.txt";
+
+  it("a nine-row prompt that prints a permission box inside a code fence reads a draft, no cue", () => {
+    const read = own(NAME);
+    expect(read.frame?.interior.text).toContain("╭─ Allow tool: bash ───────────╮ │ ❯ Approve");
+    expect(read.surface).toEqual({ revision: 1, turn: "idle", modal: "none", composer: "draft" });
+    expect(read.cues?.strength).toBe("none");
+    expect(labelOf(NAME).state).toBe("draft");
+  });
+
+  it("the profile's draftIndent is what says so: without it the same screen is a modal nobody can read", () => {
+    const idle = idleFor("omp")!;
+    const { draftIndent, ...frame } = idle.frame;
+    void draftIndent;
+    const read = readScreen(fixtureRows(NAME), agentOf("omp"), { ...idle, frame });
+    expect(read.cues?.strength).toBe("strong");
+    expect(read.surface.modal).toBe("unreadable");
+  });
+
+  it("the same rows at the box's own column are a dialog drawn in the box's place, and stay one", () => {
+    const rows = fixtureRows(NAME).map((row) => rowText(row));
+    const outdented = rows.map((text) => (/^ {3}[╭│╰]/u.test(text) ? text.slice(3) : text)).join("\n");
+    const read = readScreen(rowsOf(outdented), agentOf("omp"), idleFor("omp"));
+    expect(read.surface.modal).toBe("unreadable");
+  });
+});

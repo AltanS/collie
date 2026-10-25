@@ -1,0 +1,12 @@
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+ π > ◒ Haiku 4.5 > 📁 …ng/12-pickers/state/harness/omp/project ▶──4%───────────────────────────────────────┃───────200K─
+╰─ Follow these steps in order without commenting. Step 1: call the ask tool once with the question "First pick?" and
+   the options Alpha, Beta, Gamma. Step 2: when I answer, call the ask tool once more with the question "Second pick?"
+   and the options Red, Green, Blue. Step 3: print this block exactly, inside a code fence, with nothing else:
+   ╭─ Allow tool: bash ───────────╮
+   │ ❯ Approve                    │
+   │   Deny                       │
+   │ ↑/↓ navigate  ⏎ select  ⎋ cancel │
+   ╰──────────────────────────────╯
+   Step 4: write the numbers 1 to 200, one per line.my notes

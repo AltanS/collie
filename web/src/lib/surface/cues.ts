@@ -39,6 +39,7 @@
 
 import { displayWidth } from "../text-width";
 import { commandListNear, openedByText, pointsAt, type CommandListRead } from "./command-list";
+import { popupUnder, type PopupRead } from "./popup";
 import { promptDraft, rowText, type Frame, type FrameRow, type IdleProfile } from "./frame";
 import { isSingleKeyRow } from "./key-row";
 import { readAboveNotice, type AboveNotice } from "./notice";
@@ -423,7 +424,7 @@ function cuesIn(texts: readonly string[], cluster: readonly number[], readOverla
  * side holds one.
  */
 export function commandListAt(texts: readonly string[], frame: Frame, list: CommandListRows | undefined, rows?: readonly FrameRow[]): CommandListRead | null {
-  return commandListNear(texts, frame.top, frame.bottom, list, rows, frame.interior.prompt);
+  return commandListNear(texts, frame.top, frame.bottom, list, rows, frame.interior.prompt, frame.interior.text);
 }
 
 /**
@@ -482,6 +483,21 @@ export function withoutPromptEchoes(rows: readonly FrameRow[], frame: Frame | nu
   return rows.map((row, i) => (echoes.some((echo) => i >= echo.first && i <= echo.last) ? { segments: [] } : row));
 }
 
+/**
+ * The typeahead popup under a found frame that the box's text opened (`idle.volatile.below.popups`,
+ * {@link popupUnder}), or null: with no frame, or on a profile that names none. A box showing its
+ * placeholder holds no text.
+ */
+export function popupAt(texts: readonly string[], frame: Frame | null, idle: IdleProfile | null): PopupRead | null {
+  if (frame === null || idle === null) return null;
+  return popupUnder(texts, frame.bottom, frame.placeholder ? "" : frame.interior.text, idle.volatile.below.popups);
+}
+
+/** The rows with a typeahead popup's rows read as blank. */
+export function withoutPopup(rows: readonly FrameRow[], popup: PopupRead | null): readonly FrameRow[] {
+  return withoutSpan(rows, popup);
+}
+
 /** The rows with a command list's rows read as blank. */
 export function withoutCommandList(rows: readonly FrameRow[], list: CommandListRead | null): readonly FrameRow[] {
   return withoutSpan(rows, list);
@@ -521,7 +537,7 @@ export function noticeOver(texts: readonly string[], frame: Frame | null, idle: 
  */
 export function readCuesFor(allRows: readonly FrameRow[], frame: Frame | null, idle: IdleProfile | null): CueRead {
   const texts = allRows.map(rowText);
-  const rows = withoutCommandList(allRows, frame === null ? null : ownCommandList(texts, frame, idle, allRows));
+  const rows = withoutPopup(withoutCommandList(allRows, frame === null ? null : ownCommandList(texts, frame, idle, allRows)), popupAt(texts, frame, idle));
   const plain = readCues(rows, frame, noticeOver(texts, frame, idle));
   if (idle?.dialogsInBox !== true || frame === null) return plain;
   // From the top edge down: a dialog in the box's place lies there, and the transcript above is no part of it.
@@ -531,10 +547,23 @@ export function readCuesFor(allRows: readonly FrameRow[], frame: Frame | null, i
   if (plain.strength !== "strong" && wrapUnderGlyph(withoutOwnPrompt(rows, frame).map(rowText), frame) === "cut") {
     return { ...plain, cues: [], strength: "none", cutWrap: true };
   }
-  const down = readCues(withoutPromptGlyph(withoutOwnPrompt(rows, frame), frame).slice(at), null, null);
+  const down = readCues(withoutDraftContinuation(withoutPromptGlyph(withoutOwnPrompt(rows, frame), frame), frame, idle).slice(at), null, null);
   // A weak shape inside the box is the box's own hint row (OMP draws "to change thinking effort" there).
   if (down.strength !== "strong" || plain.strength === "strong") return plain;
   return { ...down, cluster: down.cluster.map((i) => i + at), cues: down.cues.map((cue) => ({ kind: cue.kind, row: cue.row + at })) };
+}
+
+/**
+ * The rows with the draft's continuation rows read as blank, for a profile that names `frame.draftIndent`:
+ * the rows under the prompt row inside the box that start with that many spaces. A dialog the person quoted
+ * in a long draft (a permission box in a prompt about permission boxes) draws at that indent and is no
+ * dialog; one the harness draws in the box's place starts at the box's own column and stays.
+ */
+function withoutDraftContinuation(rows: readonly FrameRow[], frame: Frame, idle: IdleProfile): readonly FrameRow[] {
+  const indent = idle.frame.draftIndent;
+  if (indent === undefined) return rows;
+  const lead = " ".repeat(indent);
+  return rows.map((row, i) => (i > frame.interior.prompt && i <= frame.interior.last && rowText(row).startsWith(lead) ? { segments: [] } : row));
 }
 
 /**

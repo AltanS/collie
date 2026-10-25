@@ -1,0 +1,30 @@
+ Let me create a simple, straightforward question with three distinct options.
+
+╭─── Ask 1 questions ──────────────────────────────────────────────────────────────────────────────────────────────────╮
+├─── [choice] · options:3 ─────────────────────────────────────────────────────────────────────────────────────────────┤
+│  Which of these would be most useful for your work right now?                                                        │
+│  ○ Code refactoring                                                                                                  │
+│    ↳ Improving structure and maintainability                                                                         │
+│  ○ Bug investigation                                                                                                 │
+│    ↳ Tracking down and fixing issues                                                                                 │
+│  ○ New feature development                                                                                           │
+│    ↳ Building new capabilities                                                                                       │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+  ⎋ User question with three options
+╭─ Ask ────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ Which of these would be most useful for your work right now?                                                         │
+├──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ ❯ ○ Code refactoring                                                                                                 │
+│       Improving structure and maintainability                                                                        │
+│       │ Clean up technical debt                                                                                      │
+│   ○ Bug investigation                                                                                                │
+│       Tracking down and fixing issues                                                                                │
+│       │ Debug existing problems                                                                                      │
+│   ○ New feature development                                                                                          │
+│       Building new capabilities                                                                                      │
+│       │ Implement fresh functionality                                                                                │
+│   ○ Other (type your own)                                                                                            │
+├──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ ⏎ select · n note · ↑/↓ move · ⎋ cancel · Alt+H hide                                                                 │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯

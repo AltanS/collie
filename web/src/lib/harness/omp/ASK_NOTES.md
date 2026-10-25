@@ -119,7 +119,7 @@ Anything missing returns null, and the screen stays raw with the unread-dialog c
   a footer action, so the card does not offer it; the Keys drawer sends `n`. A saved note shows as
   the row's description, `✎ note`, or as `✎ note · <description>` when omp prints one under the row.
 - **The multi-select dialog** (see below).
-- **Multi-select toggles, tab navigation, previews and clipped lists.** No new key recipe is inferred.
+- **Multi-select toggles, tab navigation and clipped lists.** (Previews: lifted on 18.12.6, see the end.) No new key recipe is inferred.
 
 ## The multi-select dialog stays raw
 
@@ -162,7 +162,7 @@ mirror and the Escape card. ADR 0077 says what a later slice needs.
   Escape card, its mirror wrapping or panning with Wrap lines before and after Put away; there
   `Space` toggled the pointed row and `Enter` submitted the ticked rows alone, as in 18.4.10. Not
   probed: a tap on the pointed row, on `Other` or on Cancel of a described card.
-- **Still declined without a complete captured grammar:** wrapped option labels, previews, a saved
+- **Still declined without a complete captured grammar:** wrapped option labels, a saved
   custom answer displayed under `Other`, scrolling option lists/reviews, note rows in review,
   `ask.timeout` countdown titles and the `ascii` preset. Long questions and descriptions are now
   captured in their collapsed and expanded states, as described below.
@@ -203,3 +203,27 @@ Unit cases also reject a style-only successor step, ambiguous tabs and incomplet
 Batches and the review are lifted only for the default glyph preset.
 Not live-probed: a desk/phone race, non-default symbol presets for batches, multi-select toggles,
 scrolling lists or timeout dialogs. These are not claimed as supported by this change.
+
+## omp 18.12.6: option previews (2026-10-25)
+
+Corpus: `omp--v18-12-6-ask-previews--w120.txt` (omp-gang tester 04, case 9; plain pane read, last 30 rows).
+Source: pi-tui `overlays/ask-dialog.ts` `renderRowLabel` and `renderCachedPreview`. Each option with a
+`preview` draws it under its label and description, one row per rendered line, as `      │ <line>`. The
+preview is markdown or fenced code, so a row may be empty. Above the panel omp also echoes the call as
+`╭─── Ask 1 questions`; that block lies above the `╭─ Ask ─╮` title and the grammar never reads it.
+
+| What | Evidence |
+|---|---|
+| Rows: label, description, then `│ ` preview rows, all six columns in | capture, source |
+| Preview is drawn for every option whatever the pointer | source (`renderRowLabel` has no pointer test for it) |
+| Footer `⏎ select · n note · ↑/↓ move · ⎋ cancel · Alt+H hide` | capture; already accepted |
+| A tap is the same walk and Enter | source; not probed on a card |
+
+Declined: a preview under `Other` or under no option, a description row after a preview, a preview of
+blank rows only, and a hidden or bidi character.
+
+The plan-mode question follows the same shape: `omp--v18-12-6-ask-plan-mode--w120.txt` (omp-gang tester 14, plan
+mode on, "Gather task for plan mode"). Four choices with a description and a preview each, `Other (type your own)`
+last, the footer `⏎ select · n note · ↑/↓ move · ⎋ cancel · Alt+H hide`. The echo block above the panel and the
+status row on its first line are outside the region. The choices are fixed text, so the card is the ordinary one:
+a choice is a walk and Enter, `Other` opens the answer editor (the phone types there), Cancel is Escape.

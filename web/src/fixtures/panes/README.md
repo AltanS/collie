@@ -3234,3 +3234,66 @@ rig's own scratch folder, and no secret was present.
 | Fixture | State | What it shows |
 | --- | --- | --- |
 | `shell--omp-launch-window.txt` | `screen` | 737 ms after the rig typed `exec '…/start.sh'` into a fresh shell: the image banner and the command table, then the typed line on the starship prompt row. omp is not up (it boots in about 20 s on 18.12.6), the multiplexer names no agent, and the box is not on screen. A send here went in blind (`sent`, Enter into the shell) and the text later sat as an unsent draft in omp's box |
+
+## omp file popup under a path typed in the box (captured 2026-10-25, omp 18.6.1 and 18.12.6, omp-gang testers 05 and 12)
+
+Real pane reads from the testers' rig, the same setup as the fuzzy list section above, cut to the last 16 rows (the
+`~` one is a fresh pane, cut to 12), rows kept as read with their CRLF line ends. A text that is a file path at the
+start of the box makes omp draw its file popup under it: one `❯ name.png` row for the path of one file, with no
+description. The phone sends an upload path as a command (it starts with `/`). A file name has the shape of a
+command name, so until 1.24.1 the row read as a command list pointing at another command and the send ended
+`typed_not_submitted (modal_cue)` (issue 497, part 5). `commandList.notForText` in `omp.json` says a path at the
+start of the box opens no command list. The testers' home folder `/var/home/<user>` became `/home/demo/lab1`, a path
+of the same length, so no row moves. Source (pi-tui `editor.ts`, 18.12.6): with this popup open and the typed path
+equal to its only entry, Enter cancels the popup and submits the text; the tester's own Enter on 18.6.1 did.
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `omp--v18-6-1-path-popup--w120.txt`, `omp--v18-12-6-path-popup--w120.txt` | `popup` | An upload path alone in the box, `❯ w2_p1-....png` under it |
+| `omp--v18-12-6-path-popup-two-paths--w120.txt` | `popup` | Two upload paths on two rows (the second wrapped), the popup for the last one |
+| `omp--v18-6-1-path-popup-tilde--w120.txt` | `popup` | 18.6.1, `~/.../x.png` typed in a fresh pane: `❯ x.png` under it. Read as a draft with no list. A plain send of it (it is no command) still stops at `changed`, as the row under the box is new |
+
+## omp 18.6.1 `Allow tool: goal` (captured 2026-10-25, omp-gang tester 02)
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `omp--v18-6-1-approval-goal--w120.txt` | `dialog` | The last 16 rows of a `/goal` turn: the transcript row `⏳ Goal: complete`, then `Allow tool: goal` with no body (two blank rows), `Approve` pointed, `Deny`, and the first shape's footer. Lifts as Approve, Deny, Cancel with no description on Approve (approval.ts, `BODYLESS_TOOLS`) |
+
+## omp 18.12.6 Ask with option previews (captured 2026-10-25, omp-gang tester 04)
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `omp--v18-12-6-ask-previews--w120.txt` | `dialog` | The echo block `╭─── Ask 1 questions`, then the panel: three options, each with a description row and a `│ ` preview row, `Other`, and the footer ending `Alt+H hide`. Pointer on the first row. Lifts with the preview on each option (ask.ts, OPTION PREVIEWS) |
+
+## omp's rewind picker, Esc Esc (captured 2026-10-25, omp-gang tester 04 case 7)
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `omp--v18-6-1-rewind-picker--w120.txt` | `dialog` | The last 22 rows of an 18.6.1 turn behind the picker: the transcript, a dashed `╭┄┄` frame holding the chosen turn, and the footer `64/64  ↑/↓ step  ←/→ user turns  f filter  ⏎ rewind  Ctrl+O expand  ⎋ cancel`. No box, no status row. Reads `unreadable` from `idle.overlayRows` in the profile |
+| `omp--v18-12-6-rewind-picker--w120.txt` | `dialog` | The same picker on 18.12.6 (`29/29`) |
+
+## omp 18.6.1 typeahead popups under the box (captured 2026-10-25, omp-gang tester 12)
+
+All are composers, labelled `popup`. The profile names them in `idle.volatile.below.popups` (rules `file`, `issue`, `emoji`); the Surface leaves their rows out of the cue read and the Send Protocol out of its row count, and a send committed with Ctrl+Q goes out with the popup open (omp's key handler for it runs before the autocomplete handler). The emoji rule is written from omp 18.12.6's `emoji-autocomplete.ts` and has no capture yet.
+
+| Fixture | What it shows |
+| --- | --- |
+| `omp--v18-6-1-at-popup--w120.txt` | `please read @READ`, one popup row `❯ README.md   README.md` |
+| `omp--v18-6-1-at-popup-path--w120.txt` | `@/tmp/x.png`, one popup row `❯ x.png` |
+| `omp--v18-6-1-hash-popup--w120.txt` | `fix item #1`, two popup rows `PR #1` and `Issue #1`: a pointer list, the weak cue that read `modal: unknown` |
+| `omp--v18-6-1-hash-popup-single--w120.txt` | `see PR #12`, one popup row |
+| `omp--v18-6-1-hash-popup-stale--w120.txt` | an EMPTY box after Ctrl+C with `PR #1` and `Issue #1` still under it; they go with the next key |
+
+The `#` popup that lists prompt actions (`ends with hash #`, `tag:#abc`: `Copy current line` and more) is a different popup, not a rule here; its screens read as before.
+
+## omp 18.6.1 a draft that quotes a dialog (captured 2026-10-25, omp-gang tester 12)
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `omp--v18-6-1-quoted-dialog-draft--w120.txt` | `draft` | A nine-row prompt in the box that asks for a permission box printed in a code fence (`╭─ Allow tool: bash`, `❯ Approve`, `Deny`, a footer), then `my notes`. The quoted rows are the person's text. omp draws the draft's rows under the prompt at three columns, which `idle.frame.draftIndent` says, so the modal cues (`dialogsInBox` reads the box rows) leave them out. A dialog omp draws in the box's place starts at the box's column and stays a dialog. The draft is taller than the bridge's tail window, so no prompt region binds (the sweep goes out unbound) |
+
+## omp 18.12.6 plan-mode Ask (captured 2026-10-25, omp-gang tester 14)
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `omp--v18-12-6-ask-plan-mode--w120.txt` | `dialog` | The last 20 rows when `x` was sent with plan mode on: a status row `⎋ Gather task for plan mode`, then the Ask panel `What work should I plan?` with four choices, each with a description row and a preview row, `Other (type your own)` and the footer ending `Alt+H hide`. Lifts like the previews dialog (ask.ts, OPTION PREVIEWS) |

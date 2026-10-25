@@ -64,6 +64,9 @@ const LIFTED = [
 ];
 
 // omp 18.12.6's divided panel, the second shape (see the header of approval.ts).
+// omp 18.6.1's `Allow tool: goal`: no body rows at all (approval.ts, BODYLESS_TOOLS).
+const GOAL = ["omp--v18-6-1-approval-goal--w120.txt"];
+
 const DIVIDED = ["omp--v18-12-6-approval-bash--w120.txt", "omp--v18-12-6-approval-bash-later--w120.txt"];
 
 describe("omp 18.4.10 (`unicode` preset) lifts as Approve, Deny, Cancel", () => {
@@ -539,11 +542,11 @@ describe("tail anchoring", () => {
 });
 
 describe("the grammar claims nothing else in the corpus", () => {
-  it("lifts exactly the ten approval captures, out of every capture in the corpus", () => {
+  it("lifts exactly the eleven approval captures, out of every capture in the corpus", () => {
     const all = readdirSync(PANES_DIR).filter((f) => f.endsWith(".txt"));
     expect(all.length).toBeGreaterThan(300);
     const lifted = all.filter((name) => detectApproval(load(name)) !== null);
-    expect(lifted.toSorted()).toEqual([...LIFTED, ...DIVIDED].toSorted());
+    expect(lifted.toSorted()).toEqual([...LIFTED, ...GOAL, ...DIVIDED].toSorted());
   });
 });
 
@@ -760,5 +763,52 @@ describe("a lifted panel owns the keyboard even though the composer stays mounte
   it("a panel the grammar declines (a draft in the composer) leaves the old verdict alone", () => {
     const lines = fromTexts(panel({ under: [BAND, "╰─ please check the build"] }));
     expect(detectApproval(lines)).toBeNull();
+  });
+});
+
+// ── omp 18.6.1: `Allow tool: goal`, a dialog with no body (approval.ts, BODYLESS_TOOLS) ──────────────────
+// Read off `omp--v18-6-1-approval-goal--w120.txt` (omp-gang tester 02, 2026-10-25): the title, the spacer,
+// a second blank row, Approve and Deny, and the first shape's footer. omp's `goal` tool has no
+// `formatApprovalDetails`, and the card names the tool and nothing else.
+describe("omp 18.6.1 `Allow tool: goal` lifts with no body", () => {
+  const GOAL_CAPTURE = "omp--v18-6-1-approval-goal--w120.txt";
+
+  it("the capture: Approve, Deny, Cancel; the card shows only the title", () => {
+    const region = detectApprovalRegion(load(GOAL_CAPTURE))!;
+    expect(region).not.toBeNull();
+    const model = region.model;
+    expect(model.family).toBe("permission");
+    expect(model.caption).toBe("Allow tool: goal");
+    expect(model.question).toBe("Allow tool: goal");
+    expect(model.options).toEqual([
+      { label: "Approve", keys: ["Enter"], keyLabel: "❯" },
+      { label: "Deny", keys: ["Down", "Enter"], keyLabel: "" },
+      { label: "Cancel", keys: ["Escape"], keyLabel: "Esc" },
+    ]);
+    expect(model.clampedEnds).toBe(true);
+    // The card starts at the title row, so the box is not painted twice.
+    expect(textsOf(GOAL_CAPTURE)[region.startLine]).toMatch(/^╭─ Allow tool: goal ─+╮$/);
+  });
+
+  it("the pointer on Deny walks the other way", () => {
+    const moved = dialog({ title: "Allow tool: goal", body: [], options: ["   Approve", " ❯ Deny"] });
+    const model = detectApproval(fromTexts(moved))!;
+    expect(model.options.map((o) => o.keys)).toEqual([["Up", "Enter"], ["Enter"], ["Escape"]]);
+  });
+
+  it("a synthetic goal dialog of the same shape lifts", () => {
+    expect(detectApproval(fromTexts(dialog({ title: "Allow tool: goal", body: [] })))).not.toBeNull();
+  });
+
+  it("declines a goal dialog with a body row, a Reason row or a third option, and other bodyless tools", () => {
+    expect(detectApproval(fromTexts(dialog({ title: "Allow tool: goal", body: ["Command: echo hi"] })))).toBeNull();
+    expect(detectApproval(fromTexts(dialog({ title: "Allow tool: goal", body: ["Reason: pattern"] })))).toBeNull();
+    expect(detectApproval(fromTexts(dialog({ title: "Allow tool: goal", body: [], options: [" ❯ Always for this session", "   Approve", "   Deny"] })))).toBeNull();
+    expect(detectApproval(fromTexts(dialog({ title: "Allow tool: edit", body: [] })))).toBeNull();
+    expect(detectApproval(fromTexts(dialog({ title: "Allow tool: bash", body: [] })))).toBeNull();
+  });
+
+  it("declines when the footer is another dialect, as the other shapes do", () => {
+    expect(detectApproval(fromTexts(dialog({ title: "Allow tool: goal", body: [], footer: "↑/↓ navigate  ⏎ select" })))).toBeNull();
   });
 });

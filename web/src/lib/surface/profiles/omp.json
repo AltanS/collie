@@ -37,6 +37,7 @@
       "rows": "^(?:(?:\\u{E0B6} |\\s?)(?:π|\\u{F0D57}|[⠀-⣿]\\s+\\d+[smh])\\s.*(?:▶|\\u{E0B0}).*|\\s?(?:\\u{E0B6} )?(?:(?![\\u{E0A0}-\\u{E0D7}])[\\p{Co}\\p{So}π]|pi|[⠀-⣿]\\s+\\d+[smh])\\s.*(?:─{3}|-{3}).*|╭─.*|╰─.*|│.*|\\s{3}.*|\\s*)$",
       "continuation": "^(?:│|╰─)? ?(?<text>.*?)(?:\\s*(?:│|█|─?╯))?$",
       "continuationIndent": 0,
+      "draftIndent": 3,
       "maxDraftRows": 40,
       "maxTailRows": 3,
       "maxWidgetRows": 12,
@@ -161,7 +162,30 @@
             "maxRows": 4
           },
           "leadOpens": true,
-          "staleWhenEmpty": true
+          "staleWhenEmpty": true,
+          "notForText": "^\\s*@?(?:~|\\.{1,2}|/[^\\s/]+)/"
+        },
+        "popups": {
+          "submitIgnores": true,
+          "maxRows": 10,
+          "rules": [
+            {
+              "name": "file",
+              "text": "^(?!\\s*/)[\\s\\S]*(?:^|\\s)@\\S*$",
+              "rows": "^(?:(?<pointer>❯|\\u{F054}) | {2})\\S.*$"
+            },
+            {
+              "name": "issue",
+              "text": "(?:^|\\s)#\\S*$",
+              "rows": "^(?:(?<pointer>❯|\\u{F054}) | {2})(?:PR|Issue) #\\d+ {2,}GitHub (?:pull request|issue)$",
+              "staleWhenEmpty": true
+            },
+            {
+              "name": "emoji",
+              "text": "(?:^|[\\s(\\[{>]):[A-Za-z0-9_+-]+$",
+              "rows": "^(?:(?<pointer>❯|\\u{F054}) | {2})[^\\x00-\\x7F]\\S* {2}\\S+$"
+            }
+          ]
         }
       }
     },
@@ -173,6 +197,9 @@
       "^╭─{2} [⠀-⣿] \\d+[smh] "
     ],
     "dialogsInBox": true,
+    "overlayRows": [
+      "^\\s*\\d+/\\d+\\s{2}↑/↓ step\\s{2}←/→ user turns\\s{2}f filter\\s{2}.*\\brewind\\b.*\\bcancel\\s*$"
+    ],
     "inlineHint": {
       "fg": [
         "rgb(107,114,128)"

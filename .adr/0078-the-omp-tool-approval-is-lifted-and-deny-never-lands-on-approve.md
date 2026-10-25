@@ -191,3 +191,29 @@ lab by raw keys on 18.12.6: Enter approves, Escape denies, Down then Enter appro
 Not probed live: the moved-pointer screens (derived in tests from the capture and the source), a
 `Reason:` row, and the two-row list of a call that cannot be granted.
 
+
+## Amendment, 2026-10-25: omp 18.6.1 asks for the `goal` tool, and its dialog has no body
+
+The omp-gang tester (report 02) saw `Allow tool: goal` on omp 18.6.1 during a `/goal` turn: the title, two
+blank rows, `Approve`, `Deny` and the first shape's footer, nothing else (`omp--v18-6-1-approval-goal--w120.txt`).
+The tool has no `formatApprovalDetails` (`goals/tools/goal-tool.ts`), so `approvalDetails` returns no rows.
+The grammar needed a body row and a `bash` or `write` title, so the Surface read `modal: unreadable`
+and the phone had no card; a goal turn stopped there until someone pressed a key at the desk.
+
+`approval.ts` now lifts `goal` as the first shape with an EMPTY body (`BODYLESS_TOOLS`). Everything else
+of 0078 holds unchanged: the clamp at both ends, Approve and Deny as walks from the pointer, the commit
+as `Up, Enter` or `Down, Enter` so Enter is never bare on an edge, Cancel as Escape, one exact footer, the
+region verbatim as the signature. What is new:
+
+- **The card names the tool and nothing else, because the screen shows nothing else.** The Approve button
+  has no description. omp's own source says why the call asks: "Goal ops touch only session state; the
+  rest change the goal, so `always-ask` still prompts". Which op the model called (`create`, `complete`,
+  `resume`, `drop`) is in the transcript row above the box (`⏳ Goal: complete`), not in the dialog. This
+  is the first lifted tap whose subject is not on the card; it is accepted because the tool cannot run a
+  command or write a file.
+- **A bodyless tool lifts only with exactly that body.** A `Reason:` row, any body row, a third option, a
+  countdown, another footer or another tool name still declines. No other tool is bodyless.
+- **The 18.12.6 divided panel for `goal` is not captured**, so it declines as before.
+
+The conformance perturbation test cannot find a free-text row in this dialog; it lists the fixture as a
+fixed region and checks the stronger fact that every one-row change stops the lift or moves the signature.

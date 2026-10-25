@@ -8366,6 +8366,65 @@ describe("omp's fuzzy command list under the box (1.24.1)", () => {
     expect(deps.store.get("fuzzy-comment-1")?.receipt?.detail).toBe(LIST_NOTICE);
     expect(pane.keysSeen).not.toContain("Enter");
   });
+
+  // omp-gang tester 05 (2026-10-25): a text that is only an upload path starts with `/`, so the phone sends it as
+  // a command, and omp draws its FILE popup under the box, `❯ name.png`, not a command list. The profile read
+  // that row as a command list pointing at another command and the send ended `typed_not_submitted (modal_cue)`
+  // with nothing wrong (issue 497, part 5). The profile's `notForText` says a path typed at the end of the box
+  // opens no command list. omp 18.12.6's source (pi-tui editor.ts): with the popup open and the typed path
+  // equal to the only entry, `selectedSlashArgumentIsAlreadyTyped` is true, so Enter cancels the popup and
+  // submits the text (the tester's manual Enter on 18.6.1 submitted it).
+  describe("omp's file popup under a path typed in the box", () => {
+    const UPLOAD = "/home/demo/lab1/.cache/collie-lab/omp-gang/05-images/state/rig/state/uploads/";
+    const PATHS = [
+      ["18.6.1", "omp--v18-6-1-path-popup--w120.txt", `${UPLOAD}w2_p1-mvo3m20o-6e1a9e71.png`],
+      ["18.12.6", "omp--v18-12-6-path-popup--w120.txt", `${UPLOAD}w2_p1-mvo44h6i-fd050f5a.png`],
+    ] as const;
+
+    for (const [version, name, text] of PATHS) {
+      test(`${name}: the path as a command goes out with one Enter`, async () => {
+        const { send, pane } = ompPane(version, name);
+        const answer = await send(text, { id: `path-${version.replaceAll(".", "-")}`, mode: "command" });
+        expect(answer.receipt).toMatchObject({ outcome: "sent" });
+        expect(answer.receipt?.keys.at(-1)).toBe("Enter");
+        expect(pane.box).toBe("");
+        neverEscape(pane);
+      });
+
+      test(`${name}: with the path in the box the pane reads a draft and no list, and Submit goes out`, async () => {
+        const looked = ompPane(version, name);
+        looked.pane.box = text;
+        const prepared = await looked.protocol.handle({ id: `path-prep-${version.replaceAll(".", "-")}`, text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: "omp" });
+        expect(prepared.surface).toMatchObject({ turn: "idle", modal: "none", composer: "draft" });
+        const { send, pane } = ompPane(version, name);
+        pane.box = text;
+        const answer = await send(text, { id: `path-submit-${version.replaceAll(".", "-")}`, mode: "submit" });
+        expect(answer.receipt).toMatchObject({ outcome: "sent" });
+        expect(pane.box).toBe("");
+      });
+    }
+
+    test("the same screen without the profile's notForText ends modal_cue, as the tester saw it: the rule is what lets it through", async () => {
+      const [version, name, text] = PATHS[1];
+      const { send, pane, deps } = ompPane(version, name, {}, (profile) => {
+        const { notForText, ...list } = profile.idle.volatile.below.commandList!;
+        void notForText;
+        return { ...profile, idle: { ...profile.idle, volatile: { ...profile.idle.volatile, below: { ...profile.idle.volatile.below, commandList: list } } } };
+      });
+      const answer = await send(text, { id: "path-old-read", mode: "command" });
+      expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue" });
+      expect(deps.store.get("path-old-read")?.receipt?.detail).toBe(LIST_NOTICE);
+      expect(pane.keysSeen).not.toContain("Enter");
+    });
+
+    test("a slash command is still a list: /mo under the fuzzy list ends with the list notice", async () => {
+      const { send, pane, deps } = ompPane("18.12.6", "omp--v18-12-6-slash-mo-fuzzy--w120.txt");
+      const answer = await send("/mo", { id: "path-not-for-mo", mode: "command" });
+      expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue" });
+      expect(deps.store.get("path-not-for-mo")?.receipt?.detail).toBe(LIST_NOTICE);
+      expect(pane.keysSeen).not.toContain("Enter");
+    });
+  });
 });
 
 // ── ADR 0122: a queued send is a card until the journal shows it; Stop may give it back ──
@@ -9228,5 +9287,190 @@ describe("issue 594: a pi pane with a ticking widget, a tall footer and a versio
     };
     const answer = await r.send("Reply with exactly OK-11");
     expect(answer.receipt).toMatchObject({ outcome: "unknown", reason: "no_evidence" });
+  });
+});
+
+// omp's typeahead popups under the box (omp-gang tester 12, 2026-10-25). The `@` file popup and the `#` issue
+// popup draw rows under a box whose last word opens them, and omp's submit key (Ctrl+Q) ignores them. A plain
+// send used to end `typed_not_submitted (changed)` because the rows under the box appeared while it typed, or
+// `modal_cue` because two of them read as a pointer list, and the rows left under an emptied box made the
+// Surface read `modal: unknown`. The profile's `volatile.below.popups` names them, so they count as no cue and
+// no moved row. A command commits with Enter, and Enter acts on a popup: that send keeps its refusal.
+describe("omp's typeahead popups under the box (1.24.1)", () => {
+  const PANES = join(import.meta.dir, "../../web/src/fixtures/panes");
+  const POPUP_NOTICE = "A popup is open under the box, and Enter would act on it, so Enter was not pressed. Submit the text, or discard it.";
+
+  interface SceneOptions {
+    /** Whether the popup is drawn for this box text: omp draws it for the word the cursor ends on. Default: any `@` or `#` word. */
+    readonly opens?: (box: string) => boolean;
+    /** The popup shows on the empty box until the first key, as omp 18.6.1 leaves `PR #1` and `Issue #1`. */
+    readonly stale?: boolean;
+  }
+
+  const scene = (pane: FakePane, name: string, options: SceneOptions = {}): void => {
+    const rows = readFileSync(join(PANES, name), "utf8").split(/\r?\n/u);
+    const boxAt = rows.findLastIndex((row) => row.startsWith("╰─"));
+    expect(boxAt, name).toBeGreaterThan(0);
+    const head = rows.slice(0, boxAt - 1);
+    const top = rows[boxAt - 1]!;
+    const under = rows.slice(boxAt + 1);
+    const boxRow = (text: string): string => `╰─ ${text}`.padEnd(120);
+    const above: string[] = [];
+    let touched = false;
+    let taken: string | null = null;
+    pane.collapseOver = 100_000;
+    pane.beforeWrite = (p, what) => {
+      if ((what === "keys:Enter" || what === "keys:ctrl+q") && p.box !== "") taken = p.box;
+    };
+    pane.afterInput = (p, what) => {
+      touched = true;
+      if (taken === null || (what !== "keys:Enter" && what !== "keys:ctrl+q")) return;
+      above.push(` ${taken}`, "");
+      taken = null;
+      p.box = "";
+    };
+    pane.beforeRead = (p) => {
+      const shown = options.stale === true ? p.box === "" && !touched : (options.opens ?? ((box: string) => /(?:^|\s)[@#]\S*$/u.test(box)))(p.box);
+      p.fixed = [...head.slice(above.length), ...above, top, boxRow(p.box), ...(shown ? under : [])].join("\n");
+    };
+  };
+
+  const ompPane = (name: string, options: SceneOptions = {}, edit?: (profile: Profile) => Profile) => {
+    const pane = new FakePane("generic");
+    const made = edit === undefined ? rig({ pane, harness: "omp", version: "18.6.1" }) : rig({ pane, harness: "omp", version: "18.6.1", edit });
+    scene(pane, name, options);
+    return { ...made, pane };
+  };
+  const withoutPopups = (profile: Profile): Profile => {
+    const { popups, ...below } = profile.idle.volatile.below;
+    void popups;
+    return { ...profile, idle: { ...profile.idle, volatile: { ...profile.idle.volatile, below } } };
+  };
+
+  const PLAIN = [
+    ["omp--v18-6-1-at-popup--w120.txt", "please read @READ"],
+    ["omp--v18-6-1-hash-popup--w120.txt", "fix item #1"],
+    ["omp--v18-6-1-hash-popup-single--w120.txt", "see PR #12"],
+  ] as const;
+
+  for (const [name, text] of PLAIN) {
+    test(`${name}: ${text} goes out with the submit key while the popup is open`, async () => {
+      const { send, pane } = ompPane(name);
+      const answer = await send(text, { mode: "send" });
+      expect(answer.receipt).toMatchObject({ outcome: "sent" });
+      expect(answer.receipt?.keys.at(-1)).toBe("ctrl+q");
+      expect(pane.keysSeen).not.toContain("Enter");
+      expect(pane.box).toBe("");
+      neverEscape(pane);
+    });
+
+    test(`${name}: with ${text} in the box the pane reads a draft, and Submit goes out`, async () => {
+      const looked = ompPane(name);
+      looked.pane.box = text;
+      const prepared = await looked.protocol.handle({ id: `popup-prep-${text.length}`, text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: "omp" });
+      expect(prepared.surface).toMatchObject({ turn: "idle", modal: "none", composer: "draft" });
+      const { send, pane } = ompPane(name);
+      pane.box = text;
+      const answer = await send(text, { id: `popup-submit-${text.length}`, mode: "submit" });
+      expect(answer.receipt).toMatchObject({ outcome: "sent" });
+      expect(answer.receipt?.keys.at(-1)).toBe("ctrl+q");
+      expect(pane.box).toBe("");
+    });
+  }
+
+  test("without the profile's popups the same send ends changed: the rows that came under the box while it typed", async () => {
+    const [name, text] = PLAIN[0];
+    const { send, pane } = ompPane(name, {}, withoutPopups);
+    const answer = await send(text, { id: "popup-old-read", mode: "send" });
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted" });
+    expect(pane.keysSeen).not.toContain("ctrl+q");
+  });
+
+  test("without the profile's popups a two-row `#` popup reads a pointer list, and Submit is refused as unreadable", async () => {
+    const [name, text] = PLAIN[1];
+    const { send, pane } = ompPane(name, {}, withoutPopups);
+    pane.box = text;
+    const answer = await send(text, { id: "popup-old-submit", mode: "submit" });
+    expect(answer.receipt?.outcome).not.toBe("sent");
+    expect(pane.keysSeen).not.toContain("ctrl+q");
+  });
+
+  test("a message that starts with @ is a command to the web, and its Enter would act on the popup: typed, not submitted", async () => {
+    const { send, pane, deps } = ompPane("omp--v18-6-1-at-popup-path--w120.txt");
+    const answer = await send("@/tmp/x.png", { id: "popup-at-command", mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue" });
+    expect(deps.store.get("popup-at-command")?.receipt?.detail).toBe(POPUP_NOTICE);
+    expect(pane.keysSeen).not.toContain("Enter");
+    expect(pane.keysSeen).not.toContain("ctrl+q");
+    expect(pane.box).toBe("@/tmp/x.png");
+  });
+
+  test("the typed @ path goes out when the person taps Submit: the submit key ignores the popup", async () => {
+    const { send, pane } = ompPane("omp--v18-6-1-at-popup-path--w120.txt");
+    pane.box = "@/tmp/x.png";
+    const answer = await send("@/tmp/x.png", { id: "popup-at-submit", mode: "submit" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(answer.receipt?.keys.at(-1)).toBe("ctrl+q");
+    expect(pane.box).toBe("");
+  });
+
+  test("the `#` rows left under an emptied box: the pane reads an empty box and a plain send goes out", async () => {
+    const name = "omp--v18-6-1-hash-popup-stale--w120.txt";
+    const looked = ompPane(name, { stale: true });
+    const prepared = await looked.protocol.handle({ id: "popup-stale-prep", text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: "omp" });
+    expect(prepared.surface).toMatchObject({ turn: "idle", modal: "none", composer: "empty" });
+    const { send, pane } = ompPane(name, { stale: true });
+    const answer = await send("hello there", { id: "popup-stale-send", mode: "send" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(answer.receipt?.keys.at(-1)).toBe("ctrl+q");
+    neverEscape(pane);
+  });
+
+  test("without the profile's popups the stale rows read modal unknown and the send is refused, as the tester saw it", async () => {
+    const { protocol } = ompPane("omp--v18-6-1-hash-popup-stale--w120.txt", { stale: true }, withoutPopups);
+    const prepared = await protocol.handle({ id: "popup-stale-old", text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: "omp" });
+    expect(prepared.surface).toMatchObject({ modal: "unknown" });
+  });
+
+  // A long prompt that quotes a permission dialog (omp-gang tester 12, 2026-10-25). The nine-row draft is the
+  // person's text: the Surface read it as a strong cue, so Submit was refused and the prose could not be sent
+  // from the phone. The profile's `frame.draftIndent` says the indented rows under the prompt are the draft.
+  describe("a prompt that quotes a dialog", () => {
+    const QUOTED = "omp--v18-6-1-quoted-dialog-draft--w120.txt";
+    const shown = readFileSync(join(PANES, QUOTED), "utf8");
+    // The box's text as the pane reads it: the prompt row and the wrapped rows, borders cut, joined with a space.
+    const draftOf = (): string =>
+      'Follow these steps in order without commenting. Step 1: call the ask tool once with the question "First pick?" and the options Alpha, Beta, Gamma. Step 2: when I answer, call the ask tool once more with the question "Second pick?" and the options Red, Green, Blue. Step 3: print this block exactly, inside a code fence, with nothing else: ╭─ Allow tool: bash ───────────╮ │ ❯ Approve │   Deny │ ↑/↓ navigate  ⏎ select  ⎋ cancel ╰───────────────────────────── Step 4: write the numbers 1 to 200, one per line.my notes';
+    const quotedPane = (edit?: (profile: Profile) => Profile) => {
+      const pane = new FakePane("generic");
+      const made = edit === undefined ? rig({ pane, harness: "omp", version: "18.6.1" }) : rig({ pane, harness: "omp", version: "18.6.1", edit });
+      const rows = shown.split(/\r?\n/u);
+      const at = rows.findIndex((row) => row.startsWith("╰─"));
+      pane.fixed = shown;
+      pane.afterInput = (p, what) => {
+        if (what === "keys:ctrl+q" || what === "keys:Enter") p.fixed = [...rows.slice(0, at), "╰─ ".padEnd(120)].join("\n");
+      };
+      return { ...made, pane };
+    };
+
+    test("the pane reads a draft, and Submit goes out with the submit key", async () => {
+      const { send, pane, protocol } = quotedPane();
+      const prepared = await protocol.handle({ id: "quoted-prep", text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: "omp" });
+      expect(prepared.surface).toMatchObject({ turn: "idle", modal: "none", composer: "draft" });
+      const answer = await send(draftOf(), { id: "quoted-submit", mode: "submit" });
+      expect(answer.receipt).toMatchObject({ outcome: "sent" });
+      expect(answer.receipt?.keys.at(-1)).toBe("ctrl+q");
+      neverEscape(pane);
+    });
+
+    test("without the profile's draftIndent the same pane reads an unreadable dialog, as the tester saw it", async () => {
+      const { protocol } = quotedPane((profile) => {
+        const { draftIndent, ...frame } = profile.idle.frame;
+        void draftIndent;
+        return { ...profile, idle: { ...profile.idle, frame } };
+      });
+      const prepared = await protocol.handle({ id: "quoted-old", text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: "omp" });
+      expect(prepared.surface).toMatchObject({ modal: "unreadable" });
+    });
   });
 });

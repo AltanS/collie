@@ -174,3 +174,21 @@ Evidence and limits: `ASK_NOTES.md`, the `omp--v18-10-ask-*` captures, parser/gu
 `src/components/agent-chat-omp-ask.test.tsx`. A paired mobile-shaped browser completed a real three-question call
 including expansion and final Submit; another completed a typed custom answer. The Chat journal
 card stays read-only. No shared model or Chat component changes are needed.
+
+## Amendment, 2026-10-25: option previews are lifted on omp 18.12.6
+
+A model that gives each option a `preview` makes omp 18.12.6 draw rows behind a rail (`      │ <line>`) under the
+option's description (`omp--v18-12-6-ask-previews--w120.txt`, `ask-dialog.ts` `renderCachedPreview`). The grammar
+declined every such row, so the Surface read `modal: unreadable`, the phone had no card and a plain send was
+refused `unconfirmed`. The "no preview" line of the fail-closed list changes:
+
+- **Preview rows belong to the option above them.** They come after its label and description, never under
+  `Other`, never before an option, never before a description row. They join into that option's card text after
+  `Preview:`, rows apart by ` ↵ `, so the person reads what omp shows.
+- **Declined as before:** a preview of blank rows only, a hidden or bidi character in a row, a row with no right
+  border, and every other shape this ADR declines. The echo block above the panel is outside the region.
+- **Keys do not change.** A preview is drawn whatever the pointer, so a tap is the same walk, verify and Enter.
+  The walk pair for this dialog is a reviewed gap until a second capture exists.
+- **The plan-mode question is one of them.** omp 18.12.6 with plan mode on asks "What work should I plan?" through
+  the same dialog (`omp--v18-12-6-ask-plan-mode--w120.txt`). It lifts as the previews dialog does: four choices, `Other`,
+  Cancel as Escape. Its choices are fixed, so no new rule was needed.

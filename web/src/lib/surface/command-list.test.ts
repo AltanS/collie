@@ -288,3 +288,57 @@ describe("omp's slash list with an extension's status row under it (18.6.1 and 1
     expect(findInputFrame(unpointed, OMP)).toBeNull();
   });
 });
+
+// omp 18.6.1 and 18.12.6 (omp-gang testers 05 and 12, 2026-10-25): a file path at the start of the box makes
+// omp draw its FILE popup under it, one `❯ pic.png` row for the path of one file. A file name has the shape of
+// a command, so the profile's patterns took the row for a command list pointing at another command and the
+// phone's send of an upload path ended `typed_not_submitted (modal_cue)` with nothing wrong. The profile's
+// `notForText` names the texts that open another popup. Of the 44 command lists in the omp gang's captures
+// (the whole sweep, 627 screens), 36 are real lists and keep their read, and these 8 are the file popup.
+describe("omp's file popup under a path (notForText)", () => {
+  const POPUPS = [
+    ["omp--v18-6-1-path-popup--w120.txt", "/home/demo/lab1/.cache/collie-lab/omp-gang/05-images/state/rig/state/uploads/w2_p1-mvo3m20o-6e1a9e71.png", "/w2_p1-mvo3m20o-6e1a9e71.png"],
+    ["omp--v18-6-1-path-popup-tilde--w120.txt", "~/.cache/collie-lab/omp-gang/12-pickers/state/harness/omp/project/x.png", "/x.png"],
+    ["omp--v18-12-6-path-popup--w120.txt", "/home/demo/lab1/.cache/collie-lab/omp-gang/05-images/state/rig/state/uploads/w2_p1-mvo44h6i-fd050f5a.png", "/w2_p1-mvo44h6i-fd050f5a.png"],
+  ] as const;
+
+  it("the shipped profile names the rule", () => {
+    expect(LIST.notForText).toBeDefined();
+  });
+
+  it.each(POPUPS)("%s: the box is found, and the popup row is no command list", (fixture, typed, pointedWithout) => {
+    const sheet = fixtureRows(fixture);
+    const frame = findInputFrame(sheet, OMP);
+    expect(frame, fixture).not.toBeNull();
+    expect(frame!.interior.text).toBe(typed);
+    const texts = sheet.map(rowText);
+    expect(commandListNear(texts, frame!.top, frame!.bottom, LIST, undefined, frame!.interior.prompt, typed)).toBeNull();
+    expect(openListUnder(texts, frame!.bottom, typed, LIST)).toBeNull();
+    expect(ownListUnder(texts, frame!.bottom, typed, LIST)).toBeNull();
+    // Without the profile's rule the same row reads as a list, the pointer on a file name: the rule is what removes it.
+    const { notForText, ...without } = LIST;
+    void notForText;
+    expect(commandListNear(texts, frame!.top, frame!.bottom, without, undefined, frame!.interior.prompt, typed)).toMatchObject({ pointed: pointedWithout, entries: [pointedWithout] });
+  });
+
+  it("matches a path at the start of the box, a wrapped draft of two paths, and an @ mention of a path", () => {
+    const rule = new RegExp(LIST.notForText!, "u");
+    for (const text of ["/var/home/x.png", "  /var/home/x.png", "/tmp/x", "~/x.png", "./a.png", "../a.png", "@/tmp/x.png", "@~/a", "/var/a.png/var/b.png", "/var/a.png /var/b.png"]) {
+      expect(rule.test(text), text).toBe(true);
+    }
+  });
+
+  it("matches no slash command, no fuzzy text and no argument: every one of those keeps its list", () => {
+    const rule = new RegExp(LIST.notForText!, "u");
+    for (const text of ["", "/", "/mo", "/model", "/help", "//comment", "/skill:wrap-up", "/goal pause", "/mcp enable srv", "/move /tmp/x", "look at /tmp/x", "what is a/b", "~", "~x", ".", "/tmp", "@", "@read"]) {
+      expect(rule.test(text), text).toBe(false);
+    }
+  });
+
+  it("a slash command's list keeps its read with the text passed in", () => {
+    const sheet = fixtureRows("omp--v18-12-6-slash-mo-fuzzy--w120.txt");
+    const frame = findInputFrame(sheet, OMP)!;
+    const list = commandListNear(sheet.map(rowText), frame.top, frame.bottom, LIST, undefined, frame.interior.prompt, "/mo");
+    expect(list).toMatchObject({ pointed: "/model", side: "under" });
+  });
+});

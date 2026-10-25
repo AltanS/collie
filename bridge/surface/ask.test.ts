@@ -608,6 +608,88 @@ describe("omp 18.12.6 permission dialog (2026-10-25 lab, the third option and th
   });
 });
 
+describe("omp 18.6.1 `Allow tool: goal` (no body, 2026-10-25 omp-gang tester 02)", () => {
+  const GOAL = fx("omp--v18-6-1-approval-goal--w120.txt");
+  const OMP_IDLE = fx("omp--v18-12-band-idle--w130.txt");
+  const omp = (screen: string): Rig => rig(screen, "omp", "18.6.1");
+  const ON_DENY = GOAL.replace("\u2502  \u276f Approve", "\u2502    Approve").replace("\u2502    Deny", "\u2502  \u276f Deny");
+
+  test("the dialog lifts as a permission, and the Surface reads an ask where it read unreadable", () => {
+    expect(ON_DENY).not.toBe(GOAL);
+    const ask = omp(GOAL).poll()!;
+    expect(ask.kind).toBe("permission");
+    expect(ask.options.map((o) => o.label)).toEqual(["Approve", "Deny", "Cancel"]);
+    const rows = splitLines(parseAnsi(GOAL));
+    const idle = loadProfiles().get("omp")!.idle;
+    expect(surfaceOfScreen({ seq: 0, source: "screen", at: 0, revision: 0, rows, ask }, idle).surface.modal).toEqual({ ask });
+    expect(surfaceOfScreen({ seq: 0, source: "screen", at: 0, revision: 0, rows, ask: null }, idle).surface.modal).toBe("unreadable");
+  });
+
+  test("this omp clamps at both ends: Approve commits as Up, Enter, so Enter is never bare on an edge", async () => {
+    const approve = omp(GOAL);
+    approve.pane.onKeys = (keys, p) => {
+      if (keys.includes("Enter")) p.screen = OMP_IDLE;
+    };
+    const ask = approve.poll()!;
+    expect((await approve.answer(ask, idOf(ask, "Approve"))).receipt).toMatchObject({ outcome: "sent", keys: ["Up", "Enter"] });
+  });
+
+  test("Deny walks one Down, reads the pointer back on it, then commits as Down, Enter (clamped, never a bare Enter)", async () => {
+    const deny = omp(GOAL);
+    deny.pane.onKeys = (keys, p) => {
+      if (keys.join(",") === "Down" && p.screen === GOAL) p.screen = ON_DENY;
+      else if (keys.includes("Enter")) p.screen = OMP_IDLE;
+    };
+    const denyAsk = deny.poll()!;
+    expect((await deny.answer(denyAsk, idOf(denyAsk, "Deny"))).receipt).toMatchObject({ outcome: "sent", keys: ["Down", "Down", "Enter"] });
+  });
+
+  test("a desk arrow after the lift refuses the Approve tap: no key goes out", async () => {
+    const { pane, poll, answer } = omp(GOAL);
+    const ask = poll()!;
+    pane.screen = ON_DENY;
+    expect((await answer(ask, idOf(ask, "Approve"))).receipt).toMatchObject({ outcome: "refused" });
+    expect(pane.keysSeen).toEqual([]);
+  });
+});
+
+describe("omp 18.12.6 plan-mode Ask with option previews (2026-10-25 omp-gang tester 4, 14)", () => {
+  const PLAN = fx("omp--v18-12-6-ask-plan-mode--w120.txt");
+  const OMP_IDLE = fx("omp--v18-12-band-idle--w130.txt");
+  const omp = (screen: string): Rig => rig(screen, "omp", "18.12.6");
+  const ON_BUG = PLAN.replace("\u2502 \u276f \u25cb Feature or enhancement", "\u2502   \u25cb Feature or enhancement").replace("\u2502   \u25cb Bug fix or repair", "\u2502 \u276f \u25cb Bug fix or repair");
+
+  test("the dialog lifts as a question with the options it shows, and the Surface reads an ask where it read unreadable", () => {
+    expect(ON_BUG).not.toBe(PLAN);
+    const ask = omp(PLAN).poll()!;
+    expect(ask.kind).toBe("question");
+    expect(ask.options.map((o) => o.label)).toEqual(["Feature or enhancement", "Bug fix or repair", "Refactor or cleanup", "Integration or migration", "Other (type your own)", "Cancel"]);
+    const rows = splitLines(parseAnsi(PLAN));
+    const idle = loadProfiles().get("omp")!.idle;
+    expect(surfaceOfScreen({ seq: 0, source: "screen", at: 0, revision: 0, rows, ask }, idle).surface.modal).toEqual({ ask });
+    expect(surfaceOfScreen({ seq: 0, source: "screen", at: 0, revision: 0, rows, ask: null }, idle).surface.modal).toBe("unreadable");
+  });
+
+  test("a tap walks one Down, reads the pointer back on the tapped row, then commits with Enter", async () => {
+    const tap = omp(PLAN);
+    tap.pane.onKeys = (keys, p) => {
+      if (keys.join(",") === "Down" && p.screen === PLAN) p.screen = ON_BUG;
+      else if (keys.includes("Enter")) p.screen = OMP_IDLE;
+    };
+    const ask = tap.poll()!;
+    expect((await tap.answer(ask, idOf(ask, "Bug fix or repair"))).receipt).toMatchObject({ outcome: "sent", keys: ["Down", "Enter"] });
+  });
+
+  test("Cancel is Escape alone", async () => {
+    const cancel = omp(PLAN);
+    cancel.pane.onKeys = (keys, p) => {
+      if (keys.join(",") === "Escape") p.screen = OMP_IDLE;
+    };
+    const ask = cancel.poll()!;
+    expect((await cancel.answer(ask, idOf(ask, "Cancel"))).receipt).toMatchObject({ outcome: "sent", keys: ["Escape"] });
+  });
+});
+
 describe("changed, replaced and repeated asks are refused with no key", () => {
   test("the dialog changes between the lift and the answer: refused ask_changed, the new ask has a new id, nothing sent", async () => {
     const { pane, poll, answer, book } = rig(BASH);

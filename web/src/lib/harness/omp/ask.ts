@@ -62,13 +62,13 @@
 // FAIL CLOSED. Every piece below is required, and any one missing returns null:
 //   * the bottom border is the last non-blank row, the footer is the row above it, a divider above that;
 //   * the footer's four segments are exactly one preset's;
-//   * the body is option rows, each followed by its description rows, then blank rows, nothing else:
-//     no wrapped label, no preview, no scrollbar cell (omp can print all three; none is captured, so
-//     none is guessed);
+//   * the body is option rows, each followed by its description rows and then its preview rows (omp
+//     18.12.6, below), then blank rows, nothing else: no wrapped label, no scrollbar cell (omp can print
+//     both; neither is captured, so neither is guessed);
 //   * a description row is exactly six columns in, under an option or that option's previous
 //     description row, never under `Other` (omp prints an answer typed earlier there, at the same
-//     indent), never behind a `│` (an option's preview, at the same indent), and never opening with
-//     the preset's radio or pointer, the glyphs of an option row;
+//     indent), never behind a `│` (an option's preview, below), and never opening with the preset's
+//     radio or pointer, the glyphs of an option row;
 //   * every option row carries that preset's unselected radio, the last one reads exactly
 //     `Other (type your own)`, and no other row does;
 //   * exactly one pointer, in that preset's glyph;
@@ -76,6 +76,22 @@
 //     The question rows are free text and are checked only for the box's left side, as resume.ts checks
 //     a session's first-prompt row: their bytes ride in the signature, and nothing reads a key off them;
 //   * a region short enough for the bridge to bind (32000 characters, as resume.ts).
+//
+// OPTION PREVIEWS (omp 18.12.6, `omp--v18-12-6-ask-previews--w120.txt`). An option the agent gave a
+// `preview` carries it under its description, each row behind a rail at the description's indent
+// (`      │ ` in ask-dialog.ts `renderCachedPreview`), markdown or code rendered to the box:
+//
+//     │ ❯ ○ Code refactoring                                │
+//     │       Improving structure and maintainability       │     the description
+//     │       │ Clean up technical debt                     │     the preview, one row per rendered line
+//     │   ○ Bug investigation                               │
+//
+// The rows join, with ` ↵ ` for a break, after `Preview:` in that option's `description` on the card, so
+// the person sees what omp shows. A preview row may be empty. Declined: a preview under no option or
+// under `Other`, a description row after a preview, a preview of blank rows only, and a hidden or bidi
+// character in a row. The echo block omp draws above the panel (`╭─── Ask 1 questions`) is no part of the
+// panel, and the grammar reads up from the footer to the `╭─ Ask ─╮` title and stops there. Tapping an
+// option is the same walk and Enter as before: a preview does not change a key.
 //
 // THE MULTI-SELECT DIALOG IS NOT LIFTED, on purpose (.adr/0077): its toggle is an arrow walk then Space,
 // a recipe no shared model carries, and its Enter changed meaning between omp versions. It keeps the
@@ -105,7 +121,7 @@
 
 import type { StyledLine } from "../../blocks";
 import { canonicalStyledLines, encodeStyledRegion } from "../../styled-region";
-import { MAX_REGION_CHARS } from "../bound-region";
+import { hasHiddenCharacter, MAX_REGION_CHARS } from "../bound-region";
 import { pointerWalk } from "../menu-hints";
 import type { PromptModel, PromptOption } from "../prompt-model";
 import { isBlank, lineText, rstrip } from "./markers";
@@ -177,6 +193,9 @@ const BLANK_ROW = /^│\s*│$/;
  *  same indent (`omp--v18-8-ask-single-described.txt`). The text never opens with `│`: that is the
  *  rail of an option's `preview`, which omp draws at the same indent and this grammar does not read. */
 const DESCRIPTION_ROW = /^│ {7}([^\s│][\s\S]*?)\s*│$/;
+/** An option's preview row (omp 18.12.6, `renderRowLabel` in ask-dialog.ts): the same six columns, then the
+ *  rail `│`, a space and one row of the preview rendered as markdown or code, which may be empty. */
+const PREVIEW_ROW = /^│ {7}│(?: ([\s\S]*?))?\s*│$/;
 
 interface Option {
   label: string;
@@ -187,6 +206,8 @@ interface Option {
   bodyRow: number;
   /** The option's description rows, joined with a space; absent when omp printed none. */
   description?: string;
+  /** The option's preview rows (omp 18.12.6), rail off, in screen order; absent when omp printed none. */
+  preview?: string[];
 }
 
 /**
@@ -264,9 +285,8 @@ export function detectAskSelectRegion(lines: StyledLine[]): AskSelectRegion | nu
     };
     if (option.note) row.description = "✎ note";
     // A description omp printed under the row follows the note's mark, in screen order.
-    if (option.description !== undefined) {
-      row.description = option.note ? `✎ note · ${option.description}` : option.description;
-    }
+    const shown = describe(option);
+    if (shown !== undefined) row.description = option.note ? `✎ note · ${shown}` : shown;
     return row;
   });
   // The footer's own way out, in its own words, as the last row (ADR 0058 point 5).
@@ -381,6 +401,16 @@ function readBody(rows: string[], preset: Preset, allowSelected: boolean): Optio
     }
     // A row of text below a blank one is not this layout: omp pads only after the last option.
     if (padding) return null;
+    // A preview row: behind the rail, under the option's label or its description, never under `Other`.
+    const preview = PREVIEW_ROW.exec(row);
+    if (preview !== null) {
+      const owner = options.at(-1);
+      if (owner === undefined || owner.label === OTHER_LABEL) return null;
+      const text = preview[1] ?? "";
+      if (hasHiddenCharacter(text)) return null;
+      owner.preview = [...(owner.preview ?? []), text];
+      continue;
+    }
     const description = DESCRIPTION_ROW.exec(row)?.[1];
     if (description !== undefined) {
       // Directly under its option, or under that option's previous description row. Never under
@@ -388,6 +418,8 @@ function readBody(rows: string[], preset: Preset, allowSelected: boolean): Optio
       // Never opening with the radio or the pointer either: those glyphs open an option row.
       const owner = options.at(-1);
       if (owner === undefined || owner.label === OTHER_LABEL) return null;
+      // omp draws the description before the preview, never after it.
+      if (owner.preview !== undefined) return null;
       if (description.startsWith(preset.radio) || description.startsWith(preset.pointer) || description.startsWith("◉")) return null;
       owner.description = owner.description === undefined ? description : `${owner.description} ${description}`;
       continue;
@@ -398,6 +430,8 @@ function readBody(rows: string[], preset: Preset, allowSelected: boolean): Optio
   }
   // At least one real option above the `Other` row, which must be last and must be the only one.
   if (options.length < 2) return null;
+  // A preview of blank rows only shows the person nothing, so it is no preview this card can claim.
+  if (options.some((o) => o.preview !== undefined && o.preview.every((row) => row.trim() === ""))) return null;
   if (options.at(-1)!.label !== OTHER_LABEL) return null;
   if (options.slice(0, -1).some((o) => o.label === OTHER_LABEL)) return null;
   if (options.filter((o) => o.pointed).length !== 1) return null;
@@ -423,6 +457,17 @@ function matchesAskFooter(segments: string[], expected: string[], allowExpansion
   if (allowExpansion && /^Ctrl\+O (?:expand|collapse)$/.test(segments[length - 1]!)) length--;
   if (segments[length - 1] === "Alt+H hide") length--;
   return length === expected.length && expected.every((segment, i) => segment === segments[i]);
+}
+
+/** What the card shows under an option: its description, then its preview rows after `Preview:`, rows joined
+ *  by ` ↵ ` (a break is never read as a space), the blank rows at the preview's ends left off. */
+function describe(option: Option): string | undefined {
+  if (option.preview === undefined) return option.description;
+  const rows = option.preview.map((row) => row.trim());
+  while (rows.length > 0 && rows[0] === "") rows.shift();
+  while (rows.length > 0 && rows.at(-1) === "") rows.pop();
+  const preview = `Preview: ${rows.join(" ↵ ")}`;
+  return option.description === undefined ? preview : `${option.description} · ${preview}`;
 }
 
 function capitalise(word: string): string {

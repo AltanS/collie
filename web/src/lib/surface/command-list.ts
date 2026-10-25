@@ -36,6 +36,7 @@ interface CompiledCommandList {
   readonly inside: boolean;
   readonly pointerBold: boolean;
   readonly footer: { readonly pattern: RegExp; readonly maxRows: number } | null;
+  readonly notForText: RegExp | null;
 }
 
 const compiledLists = new WeakMap<CommandListRows, CompiledCommandList>();
@@ -55,9 +56,15 @@ function listPatterns(list: CommandListRows): CompiledCommandList {
     inside: sides.includes("inside"),
     pointerBold: list.pointerBold === true,
     footer: list.footer === undefined ? null : { pattern: new RegExp(list.footer.pattern, "u"), maxRows: list.footer.maxRows },
+    notForText: list.notForText === undefined ? null : new RegExp(list.notForText, "u"),
   };
   compiledLists.set(list, compiled);
   return compiled;
+}
+
+/** Whether the profile says the box's `text` opens no command list (`notForText`): another popup stands under it. */
+function opensNoList(patterns: CompiledCommandList, text: string | undefined): boolean {
+  return text !== undefined && patterns.notForText !== null && patterns.notForText.test(text);
 }
 
 function isBlank(text: string): boolean {
@@ -223,7 +230,8 @@ export function insideList(
  * description in a second column on the same row, or wrapped onto rows under it. A list under the
  * box with a pointer wins; else a list inside it with a pointer; else the list over it; else a list
  * inside it; else a list under it with no pointer. Null when the profile names no list or no side
- * holds one. `rows` carries the styled rows a `pointerBold` list's pointer is read from.
+ * holds one. `rows` carries the styled rows a `pointerBold` list's pointer is read from. `text` is the
+ * box's text: with the profile's `notForText` it names a text that opens another popup, and no list is read.
  */
 export function commandListNear(
   texts: readonly string[],
@@ -232,9 +240,11 @@ export function commandListNear(
   list: CommandListRows | undefined,
   rows?: readonly FrameRow[],
   prompt?: number,
+  text?: string,
 ): CommandListRead | null {
   if (list === undefined) return null;
   const patterns = listPatterns(list);
+  if (opensNoList(patterns, text)) return null;
   const under = patterns.under ? listUnder(texts, bottom, patterns, rows) : null;
   if (under !== null && under.pointed !== null) return under;
   const inside = patterns.inside && prompt !== undefined ? listInside(texts, prompt, bottom, patterns, rows) : null;
@@ -285,7 +295,7 @@ function pointsAtArgument(read: CommandListRead, text: string, lead: string): bo
 export function ownListUnder(texts: readonly string[], bottom: number, text: string, list: CommandListRows | undefined): CommandListRead | null {
   if (list === undefined) return null;
   const patterns = listPatterns(list);
-  if (!patterns.under) return null;
+  if (!patterns.under || opensNoList(patterns, text)) return null;
   const read = listUnder(texts, bottom, patterns);
   return read !== null && pointsAt(read, text, list) ? read : null;
 }
@@ -312,7 +322,7 @@ export function openedByText(read: CommandListRead, text: string, list: CommandL
 export function openListUnder(texts: readonly string[], bottom: number, text: string, list: CommandListRows | undefined): CommandListRead | null {
   if (list === undefined) return null;
   const patterns = listPatterns(list);
-  if (!patterns.under) return null;
+  if (!patterns.under || opensNoList(patterns, text)) return null;
   const read = listUnder(texts, bottom, patterns);
   if (read === null || read.pointed === null) return null;
   return pointsAt(read, text, list) || openedByText(read, text, list) ? read : null;
