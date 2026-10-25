@@ -77,6 +77,7 @@ function Findings({ findings }: { findings: readonly UiFinding[] }): React.React
 export function Doctor({ view }: { view: DoctorView }): React.ReactElement {
   return (
     <Box flexDirection="column" paddingLeft={1}>
+      {view.instance === undefined ? null : <Text>{view.instance}</Text>}
       <Text bold>{view.heading}</Text>
       <Box marginTop={1} flexDirection="column">
         <Text dimColor>local:</Text>

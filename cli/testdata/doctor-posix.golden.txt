@@ -1,3 +1,4 @@
+instance: default · state /state
 collie doctor — 1.0.0-alpha.12 · mode solo
 
 local:
@@ -42,6 +43,7 @@ local:
 crew: none — this collie is not in a crew.
   `collie crew invite` here makes it a lead; `collie join …` makes it a peer.
 ---
+instance: default · state /state
 collie doctor — 1.0.0-alpha.12 · mode solo
 
 local:

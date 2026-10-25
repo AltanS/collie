@@ -46,6 +46,12 @@ build.
 render an interactive terminal UI when stdout is a TTY. Passing `--plain`, or redirecting output to
 a pipe, file, systemd journal, or CI runner, falls back to raw line output.
 
+**`collie doctor` says which state it read.** Its first line names the instance (`default`, or the
+name in `COLLIE_INSTANCE`) and the state directory it reads. If you run two lanes on one machine,
+check that line before you trust the rest, because a shell with the wrong `COLLIE_INSTANCE` reads
+the wrong lane. `--json` gives the same two values as `instance` and `stateDir` on the `collie`
+entry.
+
 
 ## Put `collie` on your PATH
 

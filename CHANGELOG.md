@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **`collie doctor` opens with the instance and the state directory it reads.** The first line now reads `instance: next · state /home/you/.local/state/collie-next`, with `default` for the first instance, so a person who runs two lanes can see at once when a shell with the wrong `COLLIE_INSTANCE` is answering for the other. `--json` carries the same two values as `instance` and `stateDir` on the `collie` entry.
+
 ### Fixed
 
 - **The web build passes again as the app grows.** The main chunk passed Workbox's 2 MiB precache limit by a few kilobytes, and the web build, so `collie update` from source, stopped at that step. The limit is now 3 MiB, and the main chunk stays in the offline precache.

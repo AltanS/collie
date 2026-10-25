@@ -505,8 +505,10 @@ describe("collie doctor — the contract", () => {
     for (const f of parsed) {
       // Four keys on every finding, plus `scope` on a crew one and ONLY on a crew one (ADR 0050).
       // Absent is the local answer, so a script written before the field keeps reading correctly.
+      // The `collie` finding adds `instance` and `stateDir` (1.24.1); no other finding carries a fifth key.
       const keys = Object.keys(f).toSorted();
-      expect(keys.filter((k) => k !== "scope")).toEqual(["check", "detail", "remedy", "status"]);
+      const extra = f.check === "collie" ? ["instance", "stateDir"] : [];
+      expect(keys.filter((k) => k !== "scope" && !extra.includes(k))).toEqual(["check", "detail", "remedy", "status"]);
       if (keys.includes("scope")) expect(f.scope).toBe("crew");
       expect(["ok", "warn", "error", "skipped"]).toContain(f.status);
     }
@@ -2016,6 +2018,7 @@ describe("the terminal renderer", () => {
     const h = harness(null);
     expect(await cmdDoctor({ ...h.deps, ui }, [])).toBe(EXIT.OK);
     expect(h.io.stdout).toEqual([]);
+    expect(views[0]!.instance).toBe(`instance: default · state ${STATE}`);
     expect(views).toHaveLength(1);
     // The same findings, not a re-derived summary of them.
     expect(views[0]!.local.map((f) => f.check)).toEqual((await plainFindings()).map((f) => f.check));
@@ -2972,5 +2975,36 @@ describe("doctor: the surface table (M56 spec 09)", () => {
     const before = JSON.stringify([...h.files.entries.entries()]);
     await cmdDoctor(h.deps, ["--json"]);
     expect(JSON.stringify([...h.files.entries.entries()])).toBe(before);
+  });
+});
+
+describe("doctor: the first line names the state it reads (1.24.1)", () => {
+  test("the plain output opens with the instance and the state directory", async () => {
+    const h = harness(null);
+    await cmdDoctor(h.deps, []);
+    expect(h.io.stdout[0]).toBe(`instance: default · state ${STATE}`);
+    expect(h.io.stdout[1]).toStartWith("collie doctor — ");
+  });
+
+  test("a named instance shows its name and its own state directory", async () => {
+    const h = harness(null);
+    const deps: DoctorDeps = { ...h.deps, ctx: { ...h.deps.ctx, instance: "next", stateDir: "/home/pat/.local/state/collie-next" } };
+    await cmdDoctor(deps, []);
+    expect(h.io.stdout[0]).toBe("instance: next · state /home/pat/.local/state/collie-next");
+  });
+
+  test("--json carries instance and stateDir on the collie finding, and still starts with an array", async () => {
+    const h = harness(null);
+    const deps: DoctorDeps = { ...h.deps, ctx: { ...h.deps.ctx, instance: "next", stateDir: "/home/pat/.local/state/collie-next" } };
+    await cmdDoctor(deps, ["--json"]);
+    expect(h.io.stdout[0]).toStartWith("[");
+    // SAFETY: `--json` prints the findings array and nothing else (pinned in the contract suite above); the fields read are asserted below.
+    const raw = JSON.parse(h.io.stdout.join("\n")) as (Finding & { instance?: string | null; stateDir?: string })[];
+    expect(raw[0]).toMatchObject({ check: "collie", instance: "next", stateDir: "/home/pat/.local/state/collie-next" });
+  });
+
+  test("--json on the default instance says null", async () => {
+    const { raw } = await findings(harness(null));
+    expect(raw[0]).toMatchObject({ check: "collie", instance: null, stateDir: STATE });
   });
 });

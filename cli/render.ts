@@ -89,6 +89,8 @@ export interface UiFinding {
 
 /** `collie doctor`, as a table. `crew` empty means `crewNote` is the whole crew section. */
 export interface DoctorView {
+  /** The instance and the state directory this run read: the first line. Optional so a caller that predates it still compiles. */
+  readonly instance?: string;
   readonly heading: string;
   readonly local: readonly UiFinding[];
   readonly crewTitle: string;

@@ -404,12 +404,15 @@ async function render(
   crew: readonly Finding[],
 ): Promise<void> {
   const heading = `collie doctor — ${collieVersionBare(deps.ctx.root, (p) => deps.files.read(p))} · mode ${mode}`;
+  // The first line, before the heading, so a person with two lanes sees which one this run read.
+  const instance = instanceLine(deps.ctx);
   const crewNote = ["crew: none — this collie is not in a crew.", soloCrewHint(deps.host)];
   // One findings list, two renderings. The terminal gets the columns laid out and the statuses
   // coloured; everything else gets exactly the lines below, which are what `--json`'s human twin has
   // always printed and what scripts/collie-cli.test.sh greps.
   if (deps.ui != null) {
     await deps.ui.doctor({
+      instance,
       heading,
       local,
       crewTitle: crew.length === 0 ? "crew:" : `crew: ${data?.crew?.name ?? "?"}`,
@@ -418,6 +421,7 @@ async function render(
     });
     return;
   }
+  deps.io.out(instance);
   deps.io.out(heading);
   deps.io.out("");
   deps.io.out("local:");
@@ -446,15 +450,27 @@ function line(f: Finding): string {
 
 // ── Local checks ─────────────────────────────────────────────────────────────
 
+/** The `collie` finding, with the instance and state directory this run read. */
+interface IdentityFinding extends Finding {
+  readonly instance: string | null;
+  readonly stateDir: string;
+}
+
 /**
  * The very first line: this Collie's own version and platform. Not a check — there is nothing to
  * pass or fail — but an operator pasting a `doctor --json` block into a GitHub issue should never
  * have to be asked "which version was this" as a follow-up question.
  */
-function identity(deps: DoctorDeps): Finding {
+function identity(deps: DoctorDeps): IdentityFinding {
   const version = collieVersionBare(deps.ctx.root, (p) => deps.files.read(p));
   const platform = platformId(process.platform, process.arch) ?? `${process.platform}-${process.arch}`;
-  return ok("collie", `v${version} · ${platform}`);
+  // `instance` and `stateDir` ride on this finding so `--json` names the state it read (1.24.1).
+  return { ...ok("collie", `v${version} · ${platform}`), instance: deps.ctx.instance, stateDir: deps.ctx.stateDir };
+}
+
+/** The first line of the human report: the instance (`COLLIE_INSTANCE`, or the default) and the state directory read. */
+function instanceLine(ctx: CliContext): string {
+  return `instance: ${ctx.instance ?? "default"} · state ${ctx.stateDir}`;
 }
 
 /**
