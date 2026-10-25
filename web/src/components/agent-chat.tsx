@@ -97,7 +97,7 @@ import { CompactStripLabels, TAB_ROW_SQUARE_TAP_TARGET } from "@/components/ui/l
 import { ReadOnlyBanner } from "@/components/read-only-banner";
 import { HostStaleBanner } from "@/components/host-stale-banner";
 import { MaskedHint } from "@/components/masked-hint";
-import { ModelTag } from "@/components/model-tag";
+import { hasGauge, ModelTag } from "@/components/model-tag";
 import { useModelOnScreen } from "@/hooks/use-model-on-screen";
 import { modelLabel } from "@/lib/model-label";
 import { useMaskedHintRetired } from "@/lib/masked-hint";
@@ -2820,8 +2820,15 @@ export function AgentChat({
               className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-3 pb-2"
             />
             {/* The pane's model and its usage dots, small on the mirror's bottom-right corner, over both
-                bodies alike and under the notice slot above (model-tag.tsx says why there). */}
-            <ModelTag model={modelOnScreen ? undefined : agent?.model} effort={agent?.effort} usage={agent?.usage} />
+                bodies alike and under the notice slot above (model-tag.tsx says why there). With a
+                gauge to draw, the tag is the whole row Claude Code has, model first, whatever the
+                screen prints (Altan, 2026-10-25); a model ALONE stands down while the screen names
+                it, the duplicate `modelOnScreen` exists to avoid. */}
+            <ModelTag
+              model={modelOnScreen && !hasGauge(agent?.usage) ? undefined : agent?.model}
+              effort={agent?.effort}
+              usage={agent?.usage}
+            />
           </div>
 
           {/* THE CARD DOCK (.adr/0059). The lifted card used to render inside the scroller above,

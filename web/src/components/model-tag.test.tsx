@@ -1,7 +1,7 @@
 import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { ModelTag } from "./model-tag";
+import { hasGauge, ModelTag } from "./model-tag";
 
 describe("ModelTag", () => {
   it("draws the short model name, named for a screen reader, and takes no touch", () => {
@@ -85,5 +85,16 @@ describe("ModelTag usage dots", () => {
     expect(lit(81)).toBe("4");
     expect(lit(99)).toBe("4");
     expect(lit(100)).toBe("5");
+  });
+});
+
+// The caller keeps the model beside the dots while the screen names it, so "a gauge to draw" is one
+// answer in one place.
+describe("hasGauge", () => {
+  it("is true for a context or a window this build draws, false for nothing", () => {
+    expect(hasGauge({ context: 0 })).toBe(true);
+    expect(hasGauge({ limits: [{ window: "7d", used: 5 }] })).toBe(true);
+    expect(hasGauge({})).toBe(false);
+    expect(hasGauge(undefined)).toBe(false);
   });
 });

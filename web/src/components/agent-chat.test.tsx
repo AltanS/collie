@@ -4601,6 +4601,21 @@ describe("AgentChat — the model label and a footer that already names it", () 
     expect(tag(container)).toBeNull();
   });
 
+  it("with a gauge to draw, the tag names the model beside the dots even while the screen names it", () => {
+    terminal();
+    const footer = pane("codex--v0157-idle.txt");
+    const usage = { context: 42, limits: [{ window: "5h" as const, used: 30 }] };
+    const { container } = renderChat({ text: footer, agent: on("codex", "gpt-6-luna", { effort: "low", usage }) });
+    expect(screen.getAllByText(/GPT-6-Luna low/).length).toBeGreaterThan(0); // the footer names it
+    const shown = tag(container);
+    expect(shown?.querySelector("[aria-hidden]")?.textContent).toContain("gpt-6-luna · low");
+    expect(shown?.querySelectorAll('[data-slot="usage-dots"]').length).toBe(2);
+    cleanup();
+    // No gauge: the model alone would repeat the footer, so there is no tag at all.
+    const bare = renderChat({ text: footer, agent: on("codex", "gpt-6-luna", { usage: {} }) });
+    expect(tag(bare.container)).toBeNull();
+  });
+
   it("Chat body, a harness without a lifted footer: nothing on screen names the model, so the label stays", async () => {
     chat();
     const footer = "~/webapp (main)\n(anthropic) claude-sonnet-4-5 • medium";
