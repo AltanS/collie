@@ -7775,21 +7775,25 @@ describe("steer or queue (M69), replayed from the real captures (lab 2026-10-23)
 // omp 18.6.1 and 18.12.6 draw a fuzzy list of up to ten rows under the box for any text that starts with
 // `/` (omp-gang tester reports 02 and 04, 2026-10-25). The list is as tall as the screen's rows under the
 // box, so the box was not found, the Surface read torn and `/help`, `/mo` and `/nothere` ended
-// `typed_not_submitted (modal_cue)` with the generic detail.
+// `typed_not_submitted (modal_cue)` with the generic detail. 18.12.6 also leaves the last list row on
+// screen under an emptied box (report 01, case 8a), which held the next plain send.
 describe("omp's fuzzy command list under the box (1.24.1)", () => {
   const PANES = join(import.meta.dir, "../../web/src/fixtures/panes");
   const LIST_NOTICE = "The command list at the box pointed at another command, so Enter was not pressed.";
   const SUBMIT_NOTICE = "The command list at the box points at another command, so Enter was not pressed. Discard the text, or pick the command with the keys.";
 
   interface SceneOptions {
+    /** The list shows only on an untouched empty box: the row omp 18.12.6 leaves under it. */
+    readonly stale?: boolean;
     /** The screen once Enter took the typed command. */
     readonly after?: string;
   }
 
   /**
    * The capture `name` as the pane: its rows over the box row, the box row holding the typed text, and
-   * the capture's rows under the box (the list) only while the box starts with `/`. A submit key takes
-   * the text out of the box into the transcript, or, with `after`, redraws the screen the command opens.
+   * the capture's rows under the box (the list) only while the box starts with `/`. A stale scene draws
+   * them on the empty box until the first key and never again. A submit key takes the text out of the box
+   * into the transcript, or, with `after`, redraws the screen the command opens.
    */
   const scene = (pane: FakePane, name: string, options: SceneOptions = {}): void => {
     const rows = readFileSync(join(PANES, name), "utf8").split(/\r?\n/u);
@@ -7800,12 +7804,14 @@ describe("omp's fuzzy command list under the box (1.24.1)", () => {
     const under = rows.slice(boxAt + 1);
     const boxRow = (text: string): string => `╰─ ${text}`.padEnd(120);
     const above: string[] = [];
+    let touched = false;
     let taken: string | null = null;
     pane.collapseOver = 100_000;
     pane.beforeWrite = (p, what) => {
       if ((what === "keys:Enter" || what === "keys:ctrl+q") && p.box !== "") taken = p.box;
     };
     pane.afterInput = (p, what) => {
+      touched = true;
       if (taken === null || (what !== "keys:Enter" && what !== "keys:ctrl+q")) return;
       above.push(` ${taken}`, "");
       taken = null;
@@ -7814,7 +7820,7 @@ describe("omp's fuzzy command list under the box (1.24.1)", () => {
     };
     pane.beforeRead = (p) => {
       if (p.fixed === options.after && options.after !== undefined && p.box === "") return;
-      const listed = p.box.startsWith("/");
+      const listed = options.stale === true ? p.box === "" && !touched : p.box.startsWith("/");
       p.fixed = [...head.slice(above.length), ...above, top, boxRow(p.box), ...(listed ? under : [])].join("\n");
     };
   };
@@ -7880,6 +7886,26 @@ describe("omp's fuzzy command list under the box (1.24.1)", () => {
     expect(answer.receipt).toMatchObject({ outcome: "sent" });
     expect(answer.receipt?.keys.at(-1)).toBe("Enter");
     neverEscape(pane);
+  });
+
+  test("18.12.6: the list row left under the emptied box after a cancelled slash command does not hold the next send", async () => {
+    const { send, pane } = ompPane("18.12.6", "omp--v18-12-6-stale-list-row-empty-box--w120.txt", { stale: true });
+    const prepared = await send("", { mode: "prepare" });
+    expect(prepared.surface).toMatchObject({ turn: "idle", modal: "none", composer: "empty" });
+    const answer = await send("hello there again");
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(pane.keysSeen.at(-1)).toBe("ctrl+q");
+    neverEscape(pane);
+  });
+
+  test("the same screen without the profile's staleWhenEmpty holds that send: the rule is what lets it through", async () => {
+    const { send } = ompPane("18.12.6", "omp--v18-12-6-stale-list-row-empty-box--w120.txt", { stale: true }, (profile) => {
+      const { staleWhenEmpty, ...list } = profile.idle.volatile.below.commandList!;
+      void staleWhenEmpty;
+      return { ...profile, idle: { ...profile.idle, volatile: { ...profile.idle.volatile, below: { ...profile.idle.volatile.below, commandList: list } } } };
+    });
+    const answer = await send("hello there again");
+    expect(answer.receipt?.outcome).not.toBe("sent");
   });
 
   test("a one-row list under a typed //comment is the box's own popup: left typed with the list notice", async () => {

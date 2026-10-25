@@ -1,0 +1,14 @@
+ w1367ab w1368abc w13                                                                                                   
+                                                                                                                        
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ✘ 402 This request requires more credits, or fewer max_tokens. You requested up to 64000 tokens, but can only afford   
+   61330. To increase, visit                                                                                            
+   https://openrouter.ai/workspaces/default/keys/0000000000000000000000000000000000000000000000000000000000000000 and   
+   adjust the key's monthly limit                                                                                       
+ Dismissed when you send your next message.                                                                             
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+ π > ◒ Haiku 4.5 > 📁 …1-text-shapes/state/harness/omp/project ▶────9%─────────────────────────────────────┃───────200K─
+╰─                                                                                                                      
+❯ ↻ loop        Loop: off

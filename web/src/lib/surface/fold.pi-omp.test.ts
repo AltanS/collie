@@ -565,6 +565,16 @@ describe("omp's fuzzy command list under the box (18.6.1 and 18.12.6)", () => {
     });
   }
 
+  // The 18.12.6 row that stays under the box after a cancelled `//comment`: the Surface already read it free.
+  it("omp--v18-12-6-stale-list-row-empty-box--w120.txt: an empty box and no modal, with the stale row still read as a list", () => {
+    const name = "omp--v18-12-6-stale-list-row-empty-box--w120.txt";
+    const read = own(name);
+    expect(read.surface).toEqual({ revision: 1, turn: "idle", modal: "none", composer: "empty" });
+    expect(labelOf(name).state).toBe("idle");
+    const texts = fixtureRows(name).map(rowText);
+    expect(commandListAt(texts, read.frame!, idleFor("omp")!.volatile.below.commandList)?.pointed).toBe("/loop");
+  });
+
   // A list the profile does not call fuzzy stays what it was: a dialog until the pointer rests on the text.
   it("pi's list that points at another command is still a dialog", () => {
     const read = own("pi--v130-slash-mod-partial--w120.txt");

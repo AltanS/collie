@@ -319,6 +319,17 @@ export function openListUnder(texts: readonly string[], bottom: number, text: st
 }
 
 /**
+ * The stale list under an empty box (`staleWhenEmpty`): the rows of a list under the bottom edge
+ * `bottom` when the box's text is empty, so the harness left them from a text that is gone. Null
+ * otherwise, and on a profile that does not name `staleWhenEmpty`.
+ */
+export function staleListUnder(texts: readonly string[], bottom: number, text: string, list: CommandListRows | undefined): CommandListRead | null {
+  if (list === undefined || list.staleWhenEmpty !== true || text.trim().length > 0) return null;
+  const patterns = listPatterns(list);
+  return patterns.under ? listUnder(texts, bottom, patterns) : null;
+}
+
+/**
  * The row a box past its own list would end on: from the screen's last non-blank row (`end` - 1) up,
  * at most `reach` rows, the first row that is no list row and whose rows under it read as a list with
  * a pointer ({@link listUnder}). Only one row can: a row higher up has that row under it, which is no

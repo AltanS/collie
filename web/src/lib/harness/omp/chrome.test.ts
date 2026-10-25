@@ -146,6 +146,8 @@ const BOX_COMPOSER_FIXTURES = [
   "omp--v18-6-steer-typed--w120.txt",
   // omp 18.12.6, `//comment` typed in command mode: one list row under the box (omp-gang testers, 2026-10-25).
   "omp--v18-12-6-slash-comment-loop-row--w120.txt",
+  // omp 18.12.6 after a cancelled `//comment`: the box is empty and the last list row stays under it.
+  "omp--v18-12-6-stale-list-row-empty-box--w120.txt",
 ];
 
 // omp 18.6.1 with `/model` or `/mod` typed (lab, 2026-10-17): a ten-row palette under the open box. The
@@ -292,6 +294,7 @@ describe("locateComposer — the real corpus, pinned so any change to the walk s
     { fixture: "omp--v18-6-steer-done--w120.txt", top: 37, bottom: 38, suggestEnd: 39 },
     { fixture: "omp--v18-6-steer-typed--w120.txt", top: 38, bottom: 39, suggestEnd: 40 },
     { fixture: "omp--v18-12-6-slash-comment-loop-row--w120.txt", top: 11, bottom: 12, suggestEnd: 14 },
+    { fixture: "omp--v18-12-6-stale-list-row-empty-box--w120.txt", top: 11, bottom: 12, suggestEnd: 14 },
   ];
 
   // These eleven indices are byte-identical to the ones the width-gated scanner produced. That is

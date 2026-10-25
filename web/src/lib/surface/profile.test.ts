@@ -939,6 +939,7 @@ describe("parseProfile names the failing field", () => {
     ["a command list argumentList that is no boolean", ["idle", "volatile", "below", "commandList", "argumentList"], "yes", "idle.volatile.below.commandList.argumentList"],
     ["a command list leadOpens that is no boolean", ["idle", "volatile", "below", "commandList", "leadOpens"], "yes", "idle.volatile.below.commandList.leadOpens"],
     ["a command list leadOpens with no lead", ["idle", "volatile", "below", "commandList", "leadOpens"], true, "idle.volatile.below.commandList.leadOpens"],
+    ["a command list staleWhenEmpty that is no boolean", ["idle", "volatile", "below", "commandList", "staleWhenEmpty"], "yes", "idle.volatile.below.commandList.staleWhenEmpty"],
     ["a command list footer that is no object", ["idle", "volatile", "below", "commandList", "footer"], "^\\S", "idle.volatile.below.commandList.footer"],
     ["a command list footer that matches a blank row", ["idle", "volatile", "below", "commandList", "footer"], { pattern: "^\\s*$", maxRows: 2 }, "idle.volatile.below.commandList.footer.pattern"],
     ["a command list footer of no rows", ["idle", "volatile", "below", "commandList", "footer"], { pattern: "^\\S", maxRows: 0 }, "idle.volatile.below.commandList.footer.maxRows"],

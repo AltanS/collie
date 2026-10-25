@@ -168,7 +168,7 @@ const TALL_PALETTE_V18_12 = ["omp--v18-12-2-goal-bare-typed--w119.txt"];
 
 // omp 18.6.1 and 18.12.6 (omp-gang testers, 2026-10-25): the fuzzy list under the open box for `/`, `/help`,
 // `/mo` and `/nothere`, up to ten rows pointed at a command that is not the typed one, and the one-row
-// shape of 18.12.6: a list row under a typed `//comment`.
+// shapes of 18.12.6: a list row under a typed `//comment`, and the same row left under the emptied box.
 // All are composers. The ten-row ones are taller than the bridge's tail window: no region bound.
 const FUZZY_LIST_TALL = [
   "omp--v18-6-1-slash-help-unlisted--w120.txt",
@@ -179,7 +179,7 @@ const FUZZY_LIST_TALL = [
   "omp--v18-12-6-slash-mo-fuzzy--w120.txt",
   "omp--v18-12-6-slash-nothere-fuzzy--w120.txt",
 ];
-const FUZZY_LIST_SHORT = ["omp--v18-12-6-slash-comment-loop-row--w120.txt"];
+const FUZZY_LIST_SHORT = ["omp--v18-12-6-slash-comment-loop-row--w120.txt", "omp--v18-12-6-stale-list-row-empty-box--w120.txt"];
 
 const DECLINED = new Set([
   // — Composer states. An input box is chrome, never a dialog; stripChrome peels it, the statusline
@@ -354,7 +354,7 @@ const DECLINED = new Set([
   // omp 18.6.1 (lab, 2026-10-17): the slash palette under the box for `/model`, `/settings` and `/mod`,
   // a composer, and the Models picker and settings screen those commands open, two modals. Nothing to lift.
   ...ALL_V18_6,
-  // omp 18.6.1 and 18.12.6 (2026-10-25): the fuzzy list under the box, and the row under a typed //comment.
+  // omp 18.6.1 and 18.12.6 (2026-10-25): the fuzzy list under the box, and the row left under an emptied box.
   ...FUZZY_LIST_TALL,
   ...FUZZY_LIST_SHORT,
 ]);
@@ -479,6 +479,7 @@ describe("the omp corpus", () => {
     "omp--v18-12-6-slash-help-unlisted--w120.txt",
     "omp--v18-12-6-slash-mo-fuzzy--w120.txt",
     "omp--v18-12-6-slash-nothere-fuzzy--w120.txt",
+    "omp--v18-12-6-stale-list-row-empty-box--w120.txt",
     "omp--v18-12-band-idle--w130.txt",
     "omp--v18-12-nerd-band-done--w130.txt",
     "omp--v18-12-nerd-band-done--w80.txt",
@@ -783,7 +784,7 @@ const COMPOSER_FIXTURES = [
   "omp--v18-6-slash-model-list--w80.txt",
   "omp--v18-6-slash-settings-list--w120.txt",
   "omp--v18-6-slash-settings-list--w80.txt",
-  // omp 18.6.1 and 18.12.6 (2026-10-25): the fuzzy list under the open box and the row under a typed //comment.
+  // omp 18.6.1 and 18.12.6 (2026-10-25): the fuzzy list under the open box and the row left under an emptied box.
   ...FUZZY_LIST_TALL,
   ...FUZZY_LIST_SHORT,
 ];

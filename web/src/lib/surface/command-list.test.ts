@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { fixtureRows } from "../../test/surface-corpus";
-import { commandListNear, openedByText, openListUnder, ownListUnder, pointsAt, type CommandListRead } from "./command-list";
+import { commandListNear, openedByText, openListUnder, ownListUnder, pointsAt, staleListUnder, type CommandListRead } from "./command-list";
 import { findInputFrame, rowText } from "./frame";
 import { requireProfile } from "./profile";
 
@@ -162,7 +162,7 @@ describe("omp 18.12.2's argument list (the /goal capture, 2026-10-22)", () => {
 // box for any text that starts with `/`. `/help` (no such command) lists ten commands that match it in part,
 // the pointer on the first; `/mo` points at `model`. The list is the text's own popup (`leadOpens`), so the
 // box past it is found and the Surface reads a draft; whether Enter runs what is typed is `pointsAt`'s
-// question.
+// question. 18.12.6 also leaves the last list row under the box after a cancelled `//comment`.
 describe("omp's fuzzy list (18.6.1 and 18.12.6, 2026-10-25)", () => {
   const TALL = [
     ["omp--v18-6-1-slash-help-unlisted--w120.txt", "/help", "/plan-review", 10],
@@ -174,8 +174,9 @@ describe("omp's fuzzy list (18.6.1 and 18.12.6, 2026-10-25)", () => {
     ["omp--v18-12-6-slash-nothere-fuzzy--w120.txt", "/nothere", "/skills", 9],
   ] as const;
 
-  it("the shipped profile names the rule", () => {
+  it("the shipped profile names the two rules", () => {
     expect(LIST.leadOpens).toBe(true);
+    expect(LIST.staleWhenEmpty).toBe(true);
     expect(LIST.lead).toBe("/");
   });
 
@@ -223,5 +224,19 @@ describe("omp's fuzzy list (18.6.1 and 18.12.6, 2026-10-25)", () => {
     const list = commandListNear(sheet.map(rowText), frame.top, frame.bottom, LIST);
     expect(list).toMatchObject({ pointed: "/loop", entries: ["/loop"] });
     expect(openedByText(list!, "//comment", LIST)).toBe(true);
+  });
+
+  it("the list row left under an emptied box is stale; under a box with text it is not", () => {
+    const sheet = fixtureRows("omp--v18-12-6-stale-list-row-empty-box--w120.txt");
+    const frame = findInputFrame(sheet, OMP)!;
+    expect(frame.interior.text).toBe("");
+    const texts = sheet.map(rowText);
+    expect(staleListUnder(texts, frame.bottom, "", LIST)).toMatchObject({ pointed: "/loop", first: frame.bottom + 1, last: frame.bottom + 1 });
+    expect(staleListUnder(texts, frame.bottom, "  ", LIST)).not.toBeNull();
+    expect(staleListUnder(texts, frame.bottom, "/lo", LIST)).toBeNull();
+    const { staleWhenEmpty, ...without } = LIST;
+    void staleWhenEmpty;
+    expect(staleListUnder(texts, frame.bottom, "", without)).toBeNull();
+    expect(staleListUnder(texts, frame.bottom, "", undefined)).toBeNull();
   });
 });

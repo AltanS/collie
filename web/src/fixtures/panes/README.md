@@ -3152,3 +3152,4 @@ typed text's own popup.
 | `omp--v18-6-1-slash-mo-fuzzy--w120.txt`, `omp--v18-12-6-slash-mo-fuzzy--w120.txt` | `popup` | `/mo` typed: ten rows, the pointer on `model`, which a bare Enter runs (checked by hand on 18.6.1) |
 | `omp--v18-6-1-slash-nothere-fuzzy--w120.txt`, `omp--v18-12-6-slash-nothere-fuzzy--w120.txt` | `popup` | `/nothere` typed: nine rows, the pointer on `skills` |
 | `omp--v18-12-6-slash-comment-loop-row--w120.txt` | `popup` | 18.12.6, `//comment` typed in command mode: one row, `❯ ↻ loop`. The 402 notice's key id is zeros |
+| `omp--v18-12-6-stale-list-row-empty-box--w120.txt` | `idle` | 18.12.6 after a cancelled `//comment` (Ctrl+C): the box is empty and the last list row, `❯ ↻ loop`, stays under it. omp 18.6.1 redraws that row away; 18.12.6 keeps it until the next key. `commandList.staleWhenEmpty` leaves it out of the rows under the box that a send compares. The 402 notice's key id is zeros |

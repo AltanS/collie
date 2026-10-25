@@ -151,7 +151,8 @@
             "skill:"
           ],
           "argumentList": true,
-          "leadOpens": true
+          "leadOpens": true,
+          "staleWhenEmpty": true
         }
       }
     },
