@@ -33,9 +33,9 @@
 import "./rig-mode";
 
 import { spawn, type ChildProcess } from "node:child_process";
-import { appendFileSync, chmodSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { createConnection, createServer } from "node:net";
-import { dirname, join, resolve } from "node:path";
+import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -70,6 +70,7 @@ import {
   type Run,
 } from "./rig-lib";
 import { asJsonObject, asJsonString, parseJson, type JsonValue } from "../../src/lib/json";
+import { BIN } from "./bins";
 import { enrolMember } from "./crew-enrol";
 import { HARNESS_IDS, harnessDirs, prepareHarness } from "./harnesses";
 import { socketPathProblem } from "./sock-path";
@@ -172,6 +173,17 @@ function memberEnvOverrides(): [string, string][] {
   }
 }
 
+/** `<dir>/bin` with a link named claude, pi and omp to the binary the rig runs for each (bins.ts). */
+function harnessBinDir(home: string): string {
+  const dir = join(home, "bin");
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  for (const [name, target] of Object.entries(BIN)) {
+    rmSync(join(dir, name), { force: true });
+    symlinkSync(target, join(dir, name));
+  }
+  return dir;
+}
+
 /** The bridge's environment on one machine: only what it needs, every inherited COLLIE_/HERDR_ name dropped. */
 function bridgeEnv(machine: Machine, port: number, socket: string) {
   const d = machineDirs(machine);
@@ -187,6 +199,14 @@ function bridgeEnv(machine: Machine, port: number, socket: string) {
     // records, journals). The journal roots below name the harnesses' scratch homes instead, so
     // Chat reads the leg's own sessions and never the operator's ~/.claude/projects.
     HOME: d.bridgeHome,
+    // A directory of links to the three binaries the rig runs, first on the PATH. The bridge reads a
+    // harness's version by running `<name> --version` on the login PATH, then this one
+    // (bridge/surface/binary-version.ts), and that must be the very binary the pane runs. Without it
+    // the operator's PATH decides: a `claude` shim ahead of ~/.local/bin resolves its target from
+    // $HOME/.local/bin, and under the bridge's scratch HOME that file does not exist (exit 127, version
+    // null, every Claude send provisional); and ~/.local/bin holding a newer `omp` than BIN.omp would
+    // read the wrong omp version.
+    PATH: [harnessBinDir(d.bridgeHome), env.PATH].filter((part) => part !== undefined && part !== "").join(delimiter),
     COLLIE_TRANSCRIPT_ROOT: join(harnessDirs("claude", machine).config, "projects"),
     COLLIE_PI_ROOT: [join(harnessDirs("pi", machine).agent, "sessions"), join(harnessDirs("omp", machine).agent, "sessions")].join(","),
     COLLIE_HOST: "127.0.0.1",
