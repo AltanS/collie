@@ -164,6 +164,14 @@ describe("phases and receipts", () => {
     expect(new RequestStore(dir).get(ID)).toBeNull();
   });
 
+  test("a receipt's proof gap survives a restart (2026-10-25)", () => {
+    const first = new RequestStore(dir);
+    const { record } = first.accept(input());
+    const receipt: SendReceipt = { ...receiptFor(record), gapsMs: { s0: 120, proof: 640 } };
+    first.settle(ID, receipt);
+    expect(new RequestStore(dir).get(ID)?.receipt).toEqual(receipt);
+  });
+
   test("a detail and saw survive a restart; a future saw word drops only saw, a long detail is cut, a detail of the wrong type is dropped, and the receipt stays", () => {
     const first = new RequestStore(dir);
     const { record } = first.accept(input());

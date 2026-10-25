@@ -94,6 +94,7 @@ const CLEAR_REFUSALS = {
   unreadable: "keys.clear.receipt.refused.unreadable",
   press_failed: "keys.clear.receipt.refused.pressFailed",
   pane_gone: "keys.clear.receipt.refused.paneGone",
+  stale_screen: "keys.clear.receipt.refused.staleScreen",
   unsupported_build: "keys.clear.receipt.refused.unsupportedBuild",
 } as const satisfies Record<ClearReason, MessageKey>;
 

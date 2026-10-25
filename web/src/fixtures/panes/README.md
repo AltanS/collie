@@ -3180,3 +3180,18 @@ lab folder stands as OMP shortened it (`…-running-turn/state/harness/omp/proje
 | --- | --- | --- |
 | `omp--v18-6-1-queued-before-stop--w119.txt` | `running` | The answer streams; `After yield · 1` / `1. second message` / `└ Alt+↑ to edit` over `⎋ Working…` and the spinner row; the `╰─` box is empty. Taken 3 s after the queued send |
 | `omp--v18-6-1-stop-returned--w119.txt` | `draft` | 1.5 s after Stop: the list and the Working row are gone, the status row is at rest (`π >`), and the box reads `╰─ second message`. The same screen 18 s later. The next plain send is refused `draft_present` |
+
+## A stale bottom frame below the live editor (captured 2026-10-25, OMP 18.6.1 under Herdr, 120 columns)
+
+One screen of Altan's own OMP pane on the dev lane, read through Herdr's pane read with its SGR bytes
+(`~/.cache/collie-lab/omp-gang/09-stale-frame/w78p5-stale-frame.ansi`). The file is byte-faithful in
+layout, not in content: every row, column, SGR sequence and frame character is as captured, and the
+conversation text, the project names and the folder in the status row are replaced with neutral text
+of the same length. A layout change never reached the pane in full: OMP drew its live editor higher
+up, on row 35, right under the answer, and the bottom two rows still show the status row and the box
+of the earlier layout, with an old draft in it. `xy` was typed before the capture, and it shows in the
+live editor, not in the bottom box.
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `omp--v18-6-1-stale-frame-below-live--w120.txt` | `draft` | Labelled as the reader reads it today: idle, no dialog, and a draft, because the box at rows 38-39 reads `╰─ and what about the design`. That box is a stale image and takes no keys; the live editor is the `╰─ xy` row 35 with no frame of its own. Every send on this screen was refused `draft_present`, and a Replace pressed 41 Backspaces into the live editor and ended `unknown`. The Send Protocol now probes a draft before it refuses or clears one; a probe that does not land in the box, on a screen that reads the same once more, ends `stale_screen` with nothing deleted |

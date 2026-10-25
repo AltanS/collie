@@ -115,7 +115,10 @@ code.
       submit and clear roads, never a road of their own: each ends on a read that must see the box
       change, so a frame that never changes ends `unknown(no_evidence)`, never `sent` or `discarded`
       (`protocol.test.ts`, "a returned row is a reading"). A probe before a clear, when one lands, is
-      the clear road's and covers Discard too.
+      the clear road's and covers Discard too. 2026-10-25, landed: Send and Discard on a card probe the
+      box first, as every request that acts on a draft does ([ADR 0048](./0048-the-input-box-is-found-by-its-own-frame.md),
+      the 2026-10-25 addendum). On a frame that never changes they now end `refused(probe_failed)` with
+      the cause `stale_screen` before any other key, not `unknown(no_evidence)`.
 11. **The `draft_present` refusal points at the card.** When a send is refused because the box holds a
     draft and the pane has a returned card, the phone says "Your queued message is back in the agent as
     a draft. Use its card."

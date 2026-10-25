@@ -129,3 +129,42 @@ Since 2026-10-15 (M56 spec 03) the walk lives in `web/src/lib/surface/frame.ts` 
 `frameAt`, `frameEdge`), read from the profile's anchors in `web/src/lib/surface/profiles/claude.json`.
 `atColumnZero` and `walkFrame` are gone; the column-0 rule is the anchor's column, and the rule above
 holds unchanged.
+
+## Addendum, 2026-10-25: a frame is found, a draft in it is proven
+
+A frame can be found and still be stale. Altan's OMP 18.6.1 pane under Herdr kept the status row and
+the box of an earlier layout on its last two rows, with an old draft in the box. OMP drew its live
+editor higher up, under the answer, with no frame of its own. The reader found the old box and read
+a draft, so every send was refused `draft_present`, and a Replace pressed 41 Backspaces into the
+live editor and ended `unknown`. The fixture is `omp--v18-6-1-stale-frame-below-live--w120.txt`.
+
+The rule this adds, in the Send Protocol (`bridge/surface/protocol.ts`, the header) and the Clear
+route (`bridge/surface/clear.ts`):
+
+1. **A draft is a reading until a probe proves it.** When S0 reads a draft in an idle box with no
+   dialog, the request types the probe character before it refuses `draft_present`, appends, clears
+   or submits. The character must land in the box after the draft; one Backspace takes it out, and
+   the run goes on from that read. A real draft costs the probe and one Backspace, nothing more.
+2. **A probe that lands elsewhere or nowhere marks the frame stale.** A character that shows outside
+   the box is taken back with one Backspace. A character that shows nowhere is left alone. No clear
+   key is pressed on a box that did not take the probe.
+3. **One second read, never a loop, and no redraw.** After one S0 gap S0 reads again. A box that now
+   reads empty, or shows other rows whose draft takes a second probe, goes on from that read. The
+   same rows again, or a second probe that does not land, ends `refused(probe_failed)` with the
+   cause `stale_screen`, the key pad as the only offer, and nothing deleted. A Clear ends
+   `refused(stale_screen)`. Collie does not ask the multiplexer to redraw the pane: a resize, even
+   one cell and back, writes the operator's geometry, which
+   [ADR 0008](./0008-collie-does-not-run-a-terminal-emulator.md)'s 2026-09-05 amendment refuses, and
+   it could not reach a pane alone in its tab anyway. A per-pane redraw is an ask to Herdr
+   (`HERDR_API.md`, "What Herdr should provide").
+4. **The pane says so.** After a request proved a frame stale, the bridge's Surface carries
+   `staleFrame: true` on every read that shows the same box rows, and drops it at the first read that
+   shows others. The phone shows it in the field's placeholder, never in a row of its own.
+
+Left out on purpose: a box at its scroll height (`Frame.scrolled`) shows a slice of its draft, so it
+is not probed and keeps its own refusals. A marked send (walky talky) over a draft is held, not
+refused, and is not probed: nobody tapped it, and a person may be typing in that box.
+
+Trail: `bridge/surface/protocol.ts` (`draftToProve`, `proveDraft`, `draftProbe`, `takeBack`,
+`staleScreen`) · `bridge/surface/clear.ts` (`prove`, `probeBox`) · `bridge/surface/shadow.ts` (`markStale`) ·
+`protocol.test.ts` ("a draft is a reading until the probe proves it").

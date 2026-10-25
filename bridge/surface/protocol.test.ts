@@ -17,7 +17,7 @@ import { findInputFrame } from "../../web/src/lib/surface/frame.ts";
 import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
 import { isFree, type Surface, type SurfaceTurn } from "../../web/src/lib/surface/surface.ts";
 import { KeyGate } from "./key-gate.ts";
-import { BOUNDS, BOX_CHANGED, boxMatches, boxMatchesTail, commandBoxMatches, GENERIC_PROBE, wholePaste, LOCK_BOUND_MS, locateText, neverHeldEntry, probeLanding, RowRing, runsInTurnEntry, SendProtocol, SessionLocks, steadyRow, type SendDeps, type SendRequest } from "./protocol.ts";
+import { BOUNDS, BOX_CHANGED, boxMatches, boxMatchesTail, commandBoxMatches, GENERIC_PROBE, wholePaste, LOCK_BOUND_MS, locateText, neverHeldEntry, probeLanding, RowRing, runsInTurnEntry, SendProtocol, SessionLocks, STALE_SCREEN, steadyRow, type SendDeps, type SendRequest } from "./protocol.ts";
 import { RequestStore } from "./requests.ts";
 import { SurfaceLedger } from "./counters.ts";
 import { HoldStore } from "./holds.ts";
@@ -2737,9 +2737,12 @@ describe("S0", () => {
     const { pane, send } = rig();
     pane.box = "half a thought";
     const answer = await send("hello");
-    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "draft_present" });
+    // The draft is proven first (2026-10-25): the probe and one Backspace are the only keys, and the box is as it was.
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "draft_present", keys: ["probe", "Backspace"] });
     expect(answer.offers).toEqual(["append", "replace", "cancel"]);
-    expect(pane.calls).toEqual([]);
+    expect(pane.calls).toEqual(["type:⌁"]);
+    expect(pane.keysSeen).toEqual(["Backspace"]);
+    expect(pane.box).toBe("half a thought");
   });
 
   test("a running turn on a harness that does not queue is refused turn_running, nothing typed", async () => {
@@ -3016,7 +3019,7 @@ describe("the offers as new requests", () => {
       if (what.endsWith("Enter")) p.popup = null;
     };
     const refused = await send("/model", { mode: "command" });
-    expect(refused.receipt).toMatchObject({ outcome: "refused", reason: "draft_present", keys: [] });
+    expect(refused.receipt).toMatchObject({ outcome: "refused", reason: "draft_present", keys: ["probe", "Backspace"] });
     // Add would send "old draft /model", a message nobody means: a command is offered Replace and Cancel only.
     expect(refused.offers).toEqual(["replace", "cancel"]);
     // The same request id again is a replay of the stored receipt, with the same two offers.
@@ -3029,7 +3032,8 @@ describe("the offers as new requests", () => {
     const answer = await send("/model", { mode: "replace" });
     expect(answer.receipt).toMatchObject({ outcome: "sent" });
     expect(answer.receipt?.keys.at(-1)).toBe("Enter");
-    expect(pane.calls).toEqual(["paste:/model"]);
+    // Each request that read the draft proved it with one probe; a replay reads nothing and types nothing.
+    expect(pane.calls).toEqual(["type:⌁", "type:⌁", "type:⌁", "paste:/model"]);
     expect(pane.transcript.at(-1)).toBe("> /model");
     expect(pane.keysSeen.filter((k) => k === "Backspace").length).toBeGreaterThanOrEqual("old draft".length);
     neverEscape(pane);
@@ -3045,6 +3049,7 @@ describe("the offers as new requests", () => {
       r.clock.now += 400;
     };
     const answer = await r.send("new words", { mode: "replace" });
+    console.log("DEBUG", JSON.stringify(answer.receipt));
     expect(answer.receipt?.outcome).toBe("sent");
     expect(answer.receipt?.gapsMs.s0).toBeLessThanOrEqual(1200);
     expect(answer.receipt?.gapsMs.clear).toBeGreaterThan(0);
@@ -3054,10 +3059,16 @@ describe("the offers as new requests", () => {
   test("replace: a clear that runs past its bound ends unknown, and no text is written", async () => {
     const r = rig();
     r.pane.box = "old draft";
-    r.pane.backspaceRestores = false;
+    // The probe's own Backspace still works; the clear's do not.
+    const base = r.pane.writeKeys;
+    r.pane.writeKeys = (paneId, keys) => {
+      const ack = base(paneId, keys);
+      r.pane.backspaceRestores = false;
+      return ack;
+    };
     const answer = await r.send("new words", { mode: "replace" });
     expect(answer.receipt).toMatchObject({ outcome: "unknown", reason: "no_evidence" });
-    expect(r.pane.calls).toEqual([]);
+    expect(r.pane.calls).toEqual(["type:⌁"]);
     neverEscape(r.pane);
   });
 
@@ -5213,6 +5224,135 @@ function omp<P extends OmpPane = OmpPane>(options: { version?: string; edit?: (p
   return { ...made, pane };
 }
 
+/**
+ * Altan's OMP 18.6.1 pane under Herdr, 2026-10-25 (fixture omp--v18-6-1-stale-frame-below-live--w120):
+ * the live editor is drawn higher up, under the answer, and the bottom of the screen still shows the
+ * frame of an earlier layout with an old draft in it. Keys go to the live editor. Collie never redraws
+ * a pane (ADR 0008); `mendsOnItsOwn` is the program drawing one frame at the bottom by itself, with the
+ * live editor's text in it, right after the probe's Backspace.
+ */
+class StaleOmpPane extends OmpPane {
+  /** The old draft the stale bottom frame shows; null once the screen was drawn again. */
+  stale: string | null = "and what about the design";
+  /** The program draws its screen again by itself after the first Backspace. False: the stale rows stay. */
+  mendsOnItsOwn = false;
+
+  constructor() {
+    super();
+    const base = this.writeKeys;
+    this.writeKeys = async (paneId, keys) => {
+      const ack = await base(paneId, keys);
+      if (this.mendsOnItsOwn && keys.includes("Backspace")) this.stale = null;
+      return ack;
+    };
+  }
+
+  override render(): string {
+    if (this.stale === null) return super.render();
+    const rows = [...this.transcript, `╰─ ${this.box}`.trimEnd(), "", "                                          Clarify Explanation Input"];
+    rows.push(" π > ◒ Haiku 4.5 > 📁 ~/work > ⑂ master ?1 > $0.06 ▶──6%─────────────", `╰─ ${this.stale}`);
+    return rows.join("\n");
+  }
+}
+
+describe("a draft is a reading until the probe proves it: the stale screen (2026-10-25)", () => {
+  const staleRig = (): Rig & { pane: StaleOmpPane; frames: string[] } => {
+    const pane = new StaleOmpPane();
+    const made = omp({ pane });
+    const frames: string[] = [];
+    const protocol = new SendProtocol({ ...made.deps, staleFrame: (paneId, frame) => void frames.push(`${paneId}:${frame}`) });
+    const send = (text: string, over: Partial<SendRequest> = {}): Promise<SendAnswer> => protocol.handle({ id: nextId(), text, mode: "send", ...over }, { session: "main", paneId: "%1", harness: "omp" });
+    return { ...made, protocol, send, pane, frames };
+  };
+
+  test("the stale screen reads a draft today: idle, no dialog, and the old text in the bottom frame", async () => {
+    const { protocol } = staleRig();
+    const prepared = await protocol.handle({ id: "stale-prep-1", text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: "omp" });
+    expect(prepared.surface).toMatchObject({ turn: "idle", modal: "none", composer: "draft" });
+  });
+
+  test("(a) a stale box that stays: refused probe_failed with the stale-screen sentence, the key pad the only offer, nothing deleted", async () => {
+    const { pane, send, frames } = staleRig();
+    pane.box = "words I typed at the desk";
+    const answer = await send("hello there");
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed", keys: ["probe", "Backspace"] });
+    expect(answer.receipt?.detail).toBe(STALE_SCREEN);
+    expect(answer.receipt?.gapsMs.proof).toBeGreaterThan(0);
+    expect(answer.offers).toEqual(["keys"]);
+    expect(answer.cause).toBe("stale_screen");
+    // The one Backspace took only the probe out of the live editor; no clear key, no second probe.
+    expect(pane.calls).toEqual(["type:⌁"]);
+    expect(pane.keysSeen).toEqual(["Backspace"]);
+    expect(pane.box).toBe("words I typed at the desk");
+    expect(pane.stale).toBe("and what about the design");
+    expect(pane.transcript.some((row) => row.includes("hello there"))).toBe(false);
+    // The bridge's Surface is told which rows were proven stale.
+    expect(frames).toHaveLength(1);
+  });
+
+  test("(b) a screen that drew again by itself before the second S0 read: the send goes on from it and lands once", async () => {
+    const { pane, send, frames } = staleRig();
+    pane.mendsOnItsOwn = true;
+    const answer = await send("hello there");
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(answer.receipt?.keys.slice(0, 2)).toEqual(["probe", "Backspace"]);
+    expect(pane.transcript.filter((row) => row === " > hello there")).toHaveLength(1);
+    expect(pane.box).toBe("");
+    expect(frames).toEqual([]);
+  });
+
+  test("(c) a real draft is refused as before: the probe and one Backspace are the only extra keys", async () => {
+    const pane = new StaleOmpPane();
+    pane.stale = null;
+    pane.box = "half a thought";
+    const { send } = omp({ pane });
+    const answer = await send("hello there");
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "draft_present", keys: ["probe", "Backspace"] });
+    expect(answer.offers).toEqual(["append", "replace", "cancel"]);
+    expect(pane.calls).toEqual(["type:⌁"]);
+    expect(pane.keysSeen).toEqual(["Backspace"]);
+    expect(pane.box).toBe("half a thought");
+  });
+
+  test("(d) Replace and Discard on a stale frame press no clear key: the only Backspace takes the probe back", async () => {
+    for (const mode of ["replace", "discard"] as const) {
+      const { pane, send } = staleRig();
+      pane.box = "my real words";
+      const answer = await send(mode === "discard" ? "and what about the design" : "new words", { mode });
+      expect(answer.receipt, mode).toMatchObject({ outcome: "refused", reason: "probe_failed" });
+      expect(answer.offers, mode).toEqual(["keys"]);
+      expect(pane.keysSeen, mode).toEqual(["Backspace"]);
+      expect(pane.box, mode).toBe("my real words");
+      expect(pane.stale, mode).toBe("and what about the design");
+    }
+  });
+
+  test("(d) Replace on a stale frame that drew again by itself empties the live draft, not the old one, and sends once", async () => {
+    const { pane, send } = staleRig();
+    pane.mendsOnItsOwn = true;
+    pane.box = "my real words";
+    const answer = await send("new words", { mode: "replace" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(pane.transcript.filter((row) => row === " > new words")).toHaveLength(1);
+    // Three Backspaces take a probe back (the one that stood in the live editor, the second proof's, the
+    // send's own); the clear's cover the live draft and its slack, sized by what the drawn box showed.
+    const presses = pane.keysSeen.filter((key) => key === "Backspace").length;
+    expect(presses).toBe(3 + "my real words".length + 16);
+    expect(pane.box).toBe("");
+  });
+
+  test("the real capture: the probe shows nowhere a read finds and the screen stays still, so nothing is deleted", async () => {
+    const pane = still(fixture("omp--v18-6-1-stale-frame-below-live--w120.txt"));
+    const { protocol } = rig({ pane, harness: "omp", version: "18.6.1" });
+    const answer = await protocol.handle({ id: "stale-real-1", text: "Reply with only the word: yes", mode: "replace" }, { session: "main", paneId: "%1", harness: "omp" });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed", keys: ["probe"] });
+    expect(answer.receipt?.detail).toStartWith(STALE_SCREEN);
+    expect(answer.receipt?.detail).toContain("⌁");
+    expect(answer.offers).toEqual(["keys"]);
+    expect(pane.keysSeen).toEqual([]);
+  });
+});
+
 describe("OMP: commands that end the process are never held (omp gang 03)", () => {
   const NEVER = "Collie does not queue this command during a turn. Send it when the turn ends.";
 
@@ -6117,7 +6257,7 @@ describe("a send at a box that is not free is held, not refused (2026-10-17 fiel
     const r = queued();
     r.pane.box = "half a thought";
     const answer = await r.send("hello", { id: "box-0000006" });
-    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "draft_present", keys: [] });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "draft_present", keys: ["probe", "Backspace"] });
     expect(answer.offers).toEqual(["append", "replace", "cancel"]);
     expect(r.holds.list()).toEqual([]);
   });
@@ -6264,8 +6404,11 @@ describe("a draft holds a marked send, and only a marked one (M62 spec 02)", () 
     const r = queued();
     r.pane.box = "half a thought";
     const phone = await r.send("hello", { id: "draft-000001" });
-    expect(phone.receipt).toMatchObject({ outcome: "refused", reason: "draft_present", keys: [] });
+    // The phone's send proves the draft with the probe (2026-10-25); the marked send that follows types nothing.
+    expect(phone.receipt).toMatchObject({ outcome: "refused", reason: "draft_present", keys: ["probe", "Backspace"] });
     expect(phone.offers).toEqual(["append", "replace", "cancel"]);
+    const calls = r.pane.calls.length;
+    const keys = r.pane.keysSeen.length;
     const until = r.clock.now + HOUR;
     const walky = await r.send("hello", { id: "draft-000002", ...marked(until) });
     expect(walky.receipt).toMatchObject({ outcome: "held", keys: [] });
@@ -6273,8 +6416,8 @@ describe("a draft holds a marked send, and only a marked one (M62 spec 02)", () 
     expect(walky.detail).toBe("The box holds a draft. Collie keeps this and sends it when the box is empty.");
     // Its caller's clock replaces the hold store's 30 minutes.
     expect(r.holds.get("draft-000002")).toMatchObject({ draftHolds: true, cause: "draft_present", expiresAt: until });
-    expect(r.pane.calls).toEqual([]);
-    expect(r.pane.keysSeen).toEqual([]);
+    expect(r.pane.calls.slice(calls)).toEqual([]);
+    expect(r.pane.keysSeen.slice(keys)).toEqual([]);
     expect(r.pane.box).toBe("half a thought");
   });
 
@@ -8305,9 +8448,10 @@ describe("a queued send that comes back to the box (ADR 0122)", () => {
     const keys = r.pane.keysSeen.length;
     const res = await sendRoute(rt, { id: "queued-back-0004", pane: "%1", text: "", mode: "submit", resendOf: "queued-back-0003" }, context);
     // OMP's profile names Ctrl+Q as the submit key of an idle box (its Enter steers a turn).
-    expect(await res.json()).toMatchObject({ receipt: { requestId: "queued-back-0004", outcome: "sent", keys: ["ctrl+q"] } });
-    expect(r.pane.keysSeen.slice(keys)).toEqual(["ctrl+q"]);
-    expect(r.pane.calls.slice(calls).filter((call) => call.startsWith("type:") || call.startsWith("paste:"))).toEqual([]);
+    // The returned row is proven first (2026-10-25): the probe and its Backspace, then the submit key.
+    expect(await res.json()).toMatchObject({ receipt: { requestId: "queued-back-0004", outcome: "sent", keys: ["probe", "Backspace", "ctrl+q"] } });
+    expect(r.pane.keysSeen.slice(keys)).toEqual(["Backspace", "ctrl+q"]);
+    expect(r.pane.calls.slice(calls).filter((call) => call.startsWith("type:") || call.startsWith("paste:"))).toEqual(["type:⌁"]);
     expect(r.pane.transcript.filter((row) => row === " > second message")).toHaveLength(1);
     expect(r.pane.box).toBe("");
     expect(r.protocol.queuedOf("main", "%1")).toEqual([]);
@@ -8349,7 +8493,7 @@ describe("a queued send that comes back to the box (ADR 0122)", () => {
     const { rt, context, lines } = routeOf(r);
     expect((await sendRoute(rt, { id: "queued-back-0021", pane: "%1", text: "", resendOf: "queued-back-0020" }, context)).status).toBe(404);
     const res = await sendRoute(rt, { id: "queued-back-0022", pane: "%1", text: "", mode: "submit", resendOf: "queued-back-0020" }, context);
-    expect(await res.json()).toMatchObject({ receipt: { outcome: "sent", keys: ["ctrl+q"] } });
+    expect(await res.json()).toMatchObject({ receipt: { outcome: "sent", keys: ["probe", "Backspace", "ctrl+q"] } });
     expect(r.pane.transcript.at(-1)).toBe(" > deploy with the real name");
     expect(lines.join("\n")).not.toContain("real name");
   });
@@ -8365,20 +8509,25 @@ describe("a queued send that comes back to the box (ADR 0122)", () => {
     expect(r.protocol.queuedOf("main", "%1")).toEqual([]);
   });
 
-  test("a returned row is a reading: on a frozen frame, Send and Discard end no_evidence, never sent or discarded", async () => {
+  test("a returned row is a reading: on a frozen frame, Send and Discard are refused stale_screen, never sent or discarded", async () => {
     // Altan's OMP 18.6.1 pane, 2026-10-25: a bottom frame can stay drawn after the live editor moved
-    // (a resize that never reached a background pane). The card's buttons take the normal roads, whose
-    // last step must see the box change; a frame that never changes cannot fake a "sent".
+    // (a resize that never reached a background pane). The card's buttons prove the box first: a probe
+    // that shows nowhere, and a second S0 read of the same rows, end the request before any other key.
     for (const mode of ["submit", "discard"] as const) {
       const r = await returnedCard(`queued-stale-${mode}-1`);
-      r.pane.writeKeys = (_paneId, keys) => {
-        r.pane.keysSeen.push(...keys);
-        return Promise.resolve(muxAck());
+      // Every key and every text goes nowhere the screen shows.
+      r.pane.beforeWrite = (p, what) => {
+        p.calls.push(what);
+        return Promise.resolve();
       };
       const { rt, context } = routeOf(r);
       const transcript = r.pane.transcript.length;
       const res = await sendRoute(rt, { id: `queued-stale-${mode}-2`, pane: "%1", text: "", mode, resendOf: `queued-stale-${mode}-1` }, context);
-      expect(await res.json()).toMatchObject({ receipt: { outcome: "unknown", reason: "no_evidence" } });
+      // SAFETY: the send route answers a SendAnswer body; only its receipt, detail and offers are read.
+      const answer = (await res.json()) as SendAnswer;
+      expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed", keys: ["probe"] });
+      expect(answer.receipt?.detail).toStartWith(STALE_SCREEN);
+      expect(answer.offers).toEqual(["keys"]);
       expect(r.pane.transcript).toHaveLength(transcript);
       expect(r.pane.box).toBe("second message");
     }
@@ -8416,7 +8565,7 @@ describe("a queued send that comes back to the box (ADR 0122)", () => {
     expect(r.protocol.returnedSource("main", "%1", "queued-back-0031")).toBeNull();
     const { rt, context } = routeOf(r);
     const res = await sendRoute(rt, { id: "queued-back-0032", pane: "%1", text: "", mode: "submit", resendOf: "queued-back-0030" }, context);
-    expect(await res.json()).toMatchObject({ receipt: { outcome: "sent", keys: ["ctrl+q"] } });
+    expect(await res.json()).toMatchObject({ receipt: { outcome: "sent", keys: ["probe", "Backspace", "ctrl+q"] } });
     expect(r.pane.transcript.at(-1)).toBe(" > alpha one beta two");
     expect(r.protocol.queuedOf("main", "%1")).toEqual([]);
     expect(r.deps.store.get("queued-back-0031")?.receipt?.late).toBe("returned");

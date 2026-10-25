@@ -13,6 +13,13 @@
 //               the box already reads empty            -> refused no_draft   (before any key)
 //   reread    on the first round only: one more fresh read right before the press with the same refusals,
 //             so a dialog that drew after the first read is never typed at
+//   probe     on the first round only (2026-10-25): the profile's probe character, typed; it must land in
+//             the box after the draft, and one Backspace takes it out again. Where it lands elsewhere it
+//             is taken back with one Backspace, and where it shows nowhere it is left alone: the box is a
+//             stale image of an earlier layout. The box is read once more after one gap (Collie never
+//             redraws a pane, ADR 0008): an empty box -> refused no_draft; other rows whose draft takes a
+//             second probe go on; else -> refused stale_screen. Nothing is deleted on a box that did not
+//             take the probe
 //   press     the clear key, `length + slack` times in one call (at most CLEAR_BATCH), as `person_tap`
 //   readback  up to four reads after the press: the box reads empty and no dialog -> `cleared`; a dialog ->
 //             refused dialog_open; else the box is read again
@@ -35,10 +42,12 @@
 // replay), never logged, never on the audit line.
 
 import type { MuxAck, MuxGrid, MuxGridRequest, MuxOutcome } from "../mux/types.ts";
+import { wsFree } from "../../web/src/lib/surface/send.ts";
+import { frameImageKey } from "../../web/src/lib/surface/surface.ts";
 import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { splitLines } from "../../web/src/lib/blocks.ts";
 import { boundedDraft, type ClearReason, type ClearReceipt } from "../../web/src/lib/surface/clear.ts";
-import type { Frame } from "../../web/src/lib/surface/frame.ts";
+import { rowText, type Frame } from "../../web/src/lib/surface/frame.ts";
 import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
 import { liftAsk, readerBlocks } from "../../web/src/lib/surface/lift.ts";
 import type { ProfileMatch } from "../../web/src/lib/surface/profile.ts";
@@ -53,18 +62,26 @@ const CLEAR_BATCH = 256;
 const MAX_ROUNDS = 12;
 /** The gaps before each read-back after a press. Every one is a fresh read; the first that shows an empty box ends it. */
 const READ_BACK_GAPS_MS: readonly number[] = [120, 280, 500, 800];
+/** The gaps before each read after the probe character or its Backspace. */
+const PROBE_GAPS_MS: readonly number[] = [80, 160, 320];
+/** The wait before a stale box is read once more. */
+const REREAD_GAP_MS = 120;
 /** How many settled receipts a bridge keeps for a replay, newest kept. */
 const KEPT = 256;
 
 /** What a Clear needs of a multiplexer besides keys (which only the gate sends). */
 export interface ClearMux {
   readGrid(paneId: string, request: MuxGridRequest): Promise<MuxOutcome<MuxGrid>>;
+  /** The probe character goes in as text. */
+  typeText(paneId: string, text: string): Promise<MuxAck>;
 }
 
 export interface ClearDeps {
   readonly mux: ClearMux;
   readonly gate: Pick<KeyGate, "press">;
   readonly profile: (harness: string) => Promise<ProfileMatch | null>;
+  /** A box proven stale (as the Send Protocol's `staleFrame`): the bridge's Surface marks it until its rows change. */
+  readonly staleFrame?: (paneId: string, frame: string) => void;
   readonly sleep?: (ms: number) => Promise<void>;
 }
 
@@ -85,10 +102,27 @@ interface Settled {
   readonly pressed: boolean;
 }
 
-/** One read of the pane: its Surface, and the box it found (null when the screen shows none). */
+/** One read of the pane: its Surface, the box it found (null when the screen shows none), and its rows' text. */
 interface Look {
   readonly surface: Surface;
   readonly frame: Frame | null;
+  readonly texts: readonly string[];
+}
+
+/** The probe's verdict on a box: the read the clear goes on from, or the refusal. `probed` says a key left (the probe or a Backspace). */
+type Proof = { readonly look: Look; readonly probed: boolean } | { readonly refused: ClearReason; readonly probed: boolean };
+
+/** Where a probe character went: into the box after the draft, onto the screen elsewhere, or nowhere a read showed. */
+type Landing = "box" | "away" | "nowhere";
+
+function countIn(texts: readonly string[], probe: string): number {
+  let n = 0;
+  for (const text of texts) n += text.split(probe).length - 1;
+  return n;
+}
+
+function boxOf(frame: Frame): string {
+  return frame.placeholder ? "" : frame.interior.text;
 }
 
 function refusal(requestId: string, reason: ClearReason, pressed: boolean): Settled {
@@ -176,6 +210,13 @@ export class ClearService {
         const refused = look === null ? "pane_gone" : refusalOf(look);
         if (refused !== null) return refusal(requestId, refused, pressed);
       }
+      if (round === 0) {
+        // The draft is a reading until the probe proves the box takes keys (2026-10-25).
+        const proven = await this.prove(paneId, harness, match, look!, sleep);
+        if (proven.probed) pressed = true;
+        if ("refused" in proven) return refusal(requestId, proven.refused, pressed);
+        look = proven.look;
+      }
       const length = draftLength(look!.frame!);
       if (round === 0 && !look!.frame!.placeholder) draft = boundedDraft(look!.frame!.interior.text);
       // A box that did not shrink since the last press is left alone: no second blind press. The one
@@ -206,6 +247,92 @@ export class ClearService {
     return refusal(requestId, "press_failed", pressed);
   }
 
+  /**
+   * The probe before the first clear key: the read the clear goes on from, or the refusal. A box that
+   * takes the probe goes on from `look`. A box that does not is read once more: a box that then reads
+   * empty is `no_draft`, other rows whose draft takes a second probe go on, anything else is `stale_screen`.
+   * `probed` says a key left (the probe or a Backspace).
+   */
+  private async prove(paneId: string, harness: string, match: ProfileMatch, look: Look, sleep: (ms: number) => Promise<void>): Promise<Proof> {
+    const probe = match.profile.probe.char;
+    const before = countIn(look.texts, probe);
+    const first = await this.probeBox(paneId, harness, match, look, probe, sleep);
+    if ("refused" in first) return { refused: first.refused, probed: true };
+    if (first.landing === "box") return { look, probed: true };
+    const stale = (at: Look): Proof => {
+      if (at.frame !== null) {
+        try {
+          this.deps.staleFrame?.(paneId, frameImageKey(at.texts, at.frame.top, at.frame.bottom));
+        } catch (err) {
+          console.warn(`[clear] stale frame note failed: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+      return { refused: "stale_screen", probed: true };
+    };
+    await sleep(REREAD_GAP_MS);
+    let fresh = await this.look(paneId, harness, match);
+    if (fresh === null) return { refused: "pane_gone", probed: true };
+    if (first.landing === "nowhere") {
+      // The screen may show where the character went now; one Backspace takes it back, or nothing is pressed.
+      if (countIn(fresh.texts, probe) !== before + 1) return stale(fresh);
+      const back = await this.takeBack(paneId, harness, match, before, probe, sleep);
+      if (back === null) return stale(fresh);
+      fresh = back;
+    }
+    const refused = refusalOf(fresh);
+    if (refused !== null) return { refused, probed: true };
+    const { frame } = fresh;
+    if (frame === null || look.frame === null) return { refused: "unreadable", probed: true };
+    if (frameImageKey(fresh.texts, frame.top, frame.bottom) === frameImageKey(look.texts, look.frame.top, look.frame.bottom)) return stale(fresh);
+    const again = await this.probeBox(paneId, harness, match, fresh, probe, sleep);
+    if ("refused" in again) return { refused: again.refused, probed: true };
+    return again.landing === "box" ? { look: fresh, probed: true } : stale(fresh);
+  }
+
+  /**
+   * One probe of the box `look` shows: `box` when the character landed after the draft and one Backspace
+   * gave the box back; `away` when it stood elsewhere and one Backspace took it back; `nowhere` when no
+   * read showed it (no key follows). A probe that changed the box some other way, or a Backspace that did
+   * not give it back, is a refusal (`unreadable`, `press_failed`).
+   */
+  private async probeBox(paneId: string, harness: string, match: ProfileMatch, look: Look, probe: string, sleep: (ms: number) => Promise<void>): Promise<{ readonly landing: Landing } | { readonly refused: ClearReason }> {
+    const draft = look.frame === null ? "" : boxOf(look.frame);
+    const before = countIn(look.texts, probe);
+    const typed = await this.deps.mux.typeText(paneId, probe);
+    if (!typed.ok) return { refused: "press_failed" };
+    for (const gap of PROBE_GAPS_MS) {
+      await sleep(gap);
+      const now = await this.look(paneId, harness, match);
+      if (now === null) return { refused: "pane_gone" };
+      if (now.frame === null) continue;
+      const box = boxOf(now.frame);
+      if (wsFree(box) === wsFree(draft) + probe) {
+        if (!(await this.deps.gate.press(paneId, ["Backspace"], "person_tap")).ok) return { refused: "press_failed" };
+        for (const again of PROBE_GAPS_MS) {
+          await sleep(again);
+          const back = await this.look(paneId, harness, match);
+          if (back?.frame != null && boxOf(back.frame) === draft) return { landing: "box" };
+        }
+        return { refused: "press_failed" };
+      }
+      if (box !== draft) return { refused: "unreadable" };
+      if (countIn(now.texts, probe) !== before + 1) continue;
+      return (await this.takeBack(paneId, harness, match, before, probe, sleep)) === null ? { refused: "press_failed" } : { landing: "away" };
+    }
+    return { landing: "nowhere" };
+  }
+
+  /** One Backspace for a probe character outside the box, then reads until the screen holds as many as before; the read, or null. */
+  private async takeBack(paneId: string, harness: string, match: ProfileMatch, before: number, probe: string, sleep: (ms: number) => Promise<void>): Promise<Look | null> {
+    if (!(await this.deps.gate.press(paneId, ["Backspace"], "person_tap")).ok) return null;
+    for (const gap of PROBE_GAPS_MS) {
+      await sleep(gap);
+      const back = await this.look(paneId, harness, match);
+      if (back !== null && countIn(back.texts, probe) === before) return back;
+    }
+    return null;
+  }
+
   /** One fresh read of the pane, folded into its Surface. Null when the multiplexer could not read it. */
   private async look(paneId: string, harness: string, match: ProfileMatch): Promise<Look | null> {
     const grid = await this.deps.mux.readGrid(paneId, { scope: "viewport", lines: CLEAR_READ_LINES, styling: "preserve" });
@@ -213,6 +340,6 @@ export class ClearService {
     const rows = splitLines(parseAnsi(grid.value.text));
     const ask = liftAsk(readerBlocks(rows, harness), grid.value.revision);
     const read = surfaceOfScreen({ seq: 0, source: "screen", at: Date.now(), revision: grid.value.revision, rows, ask }, match.profile.idle);
-    return { surface: read.surface, frame: read.frame };
+    return { surface: read.surface, frame: read.frame, texts: rows.map((row) => rowText(row)) };
   }
 }

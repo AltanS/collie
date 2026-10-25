@@ -1710,6 +1710,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // `field-sizing-content` field.
   const steerWords =
     way.state !== "gone" && way.state !== "readOnly" && way.state !== "unreachable" && !direct.active && !isShell && steerRow;
+  // A box the bridge proved stale (2026-10-25: the screen shows an input box that did not take keys)
+  // says so in the same place, before the Steer hint: a send probes the box first, so the person knows
+  // why a send may come back refused.
+  const staleWords = way.state !== "gone" && way.state !== "readOnly" && way.state !== "unreachable" && !direct.active && !isShell && surface.staleFrame === true;
   const placeholderWords =
     way.state === "gone"
       ? translate("composer.placeholder.gone")
@@ -1721,9 +1725,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             ? translate("composer.placeholder.direct")
             : isShell
               ? translate("composer.placeholder.shell")
-              : steerWords
-                ? translate("composer.steer.hint")
-                : translate("composer.placeholder.reply");
+              : staleWords
+                ? translate("composer.stale.hint")
+                : steerWords
+                  ? translate("composer.steer.hint")
+                  : translate("composer.placeholder.reply");
 
   // Coalesce revalidations from a burst of key presses, LEADING edge first: the first press in a
   // burst refetches immediately, and only presses that arrive inside the window collapse into one
@@ -2757,7 +2763,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               // does not change with it: `text-base` gives the field a unitless line-height, so the
               // placeholder's line box can only shrink (12px x 1.33 against 14-16px x 1.5), and the empty
               // field is already held at `min-h-9` above (at most 16px x 1.5 + 12px of padding = 36px).
-              steerWords && "placeholder:text-xs",
+              (staleWords || steerWords) && "placeholder:text-xs",
               // Mirrored, the field's right side stands against the box's border, so it takes the
               // inset the left used to take from Attach.
               hand === "left" && "pr-2",
