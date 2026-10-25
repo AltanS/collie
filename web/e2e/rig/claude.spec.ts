@@ -194,7 +194,7 @@ test.describe("claude", () => {
             .waitFor({ state: "visible", timeout: 20_000 })
             .then(() => true)
             .catch(() => false);
-          notes.push(queuedRow ? "the Chat drew Claude's queued row with the note" : "NO queued row with the note in the Chat");
+          notes.push(queuedRow ? "the Chat drew Claude's queued row with the note" : "no queued row with the note in the Chat (the queue may have drained first)");
         } else if (idleSend) {
           notes.push("the turn had ended before the tap: the note went in as a plain send");
         }
@@ -224,9 +224,12 @@ test.describe("claude", () => {
         const shot = await capture(page, "claude-4-stream-send");
         const screen = await captureScreen(rig, pane, "claude-4-stream-send");
         const wentIn = settled !== null && (settled.outcome === "sent" || settled.outcome === "effective");
-        // The first tap must do it: into Claude's queue with its row in the Chat, or a plain send on a
-        // turn that had ended. A send that needed the Submit offer, or a hold, fails the case.
-        const firstTap = (queued && queuedRow) || idleSend;
+        // The first tap must do it: into Claude's queue, seen as its row in the Chat or, when a fast answer
+        // drained the queue before the check, as the note landed in the transcript after the turn; or a
+        // plain send on a turn that had ended. A send that needed the Submit offer, or a hold, fails the case.
+        const drained = queued && !queuedRow && echoes >= 1;
+        if (drained) notes.push("the queue drained before the Chat check: the note landed after the turn");
+        const firstTap = (queued && (queuedRow || drained)) || idleSend;
         const verdict = t.worked && firstTap && !heldCard && wentIn && reply && echoes === 1 ? "pass" : "fail";
         return { verdict, taps: log.length, minTaps: 2, note: notes.join("; "), taps_log: log, captures: [shot, screen] };
       } finally {
