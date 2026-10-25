@@ -5680,6 +5680,62 @@ describe("OMP runs `/goal` at once in a turn (keys.commandsRunInTurn, lab 18.12.
 // (`pane.read` visible, format ansi). The pane below answers each read with the capture taken at that
 // step of the lab's send: the probe typed, the text typed, Enter pressed. Nothing on a screen is drawn
 // by the test.
+// Tester 14 (omp 18.12.6, 2026-10-25): `/plan` as a command with plan mode on ended `typed_not_submitted /
+// changed` twice. The transcript is shorter than the pane, so blank rows fill the gap over the box. The
+// typed command's list took its ten rows from those blank rows, the transcript stayed where it was, and
+// the volatile band over the box (six rows counted up from its edge, blank or not) reached three lines
+// higher, into the transcript. The compare of the rows above read that as a changed screen. The captures
+// are the lab's three reads of one send, cut to their last 40 rows.
+describe("OMP 18.12.6 `/plan` with plan mode on, replayed from the real capture (omp gang tester 14, 2026-10-25)", () => {
+  // Kept beside this test, not in web/src/fixtures/panes: the web corpus sweeps read every `omp--` file there
+  // as a conversation screen, and these three end in a list under the box.
+  const FIXTURES = join(import.meta.dir, "fixtures");
+  const capture = (name: string): string => readFileSync(join(FIXTURES, `omp--v18-12-6-plan-on-${name}--w120.txt`), "utf8");
+  /** An OMP pane whose every read is one of the captures: the empty box, the probe in it, `/plan` typed, or the read after Enter. */
+  const replay = (typed: string): FakePane => {
+    const empty = capture("empty");
+    const probe = empty.replace(/^╰─.*$/mu, `╰─ ${PROBE}`);
+    const pane = new FakePane("generic");
+    let entered = false;
+    pane.afterInput = (_p, what) => {
+      if (what === "keys:Enter") entered = true;
+    };
+    pane.beforeRead = (p) => {
+      if (entered) p.fixed = capture("slash-plan-sent");
+      else if (p.box === "") p.fixed = empty;
+      else if (p.box === PROBE) p.fixed = probe;
+      else if (p.box === "/plan") p.fixed = typed;
+      else throw new Error(`the lab never saw the box hold ${JSON.stringify(p.box)}`);
+    };
+    return pane;
+  };
+
+  test("the captures are the lab's: plan mode on, the list under the box pointing at /plan, ten rows from the blank gap", () => {
+    const empty = capture("empty").split("\n");
+    const typed = capture("slash-plan").split("\n");
+    expect(empty.some((row) => row.includes("🗺 Plan >"))).toBe(true);
+    expect(typed.some((row) => row.startsWith("╰─ /plan"))).toBe(true);
+    expect(typed.some((row) => row.startsWith("❯ 🗺  plan"))).toBe(true);
+    expect(typed.length).toBe(empty.length);
+  });
+
+  test("/plan goes out once with the command keys: probed, typed, one Enter, sent", async () => {
+    const pane = replay(capture("slash-plan"));
+    const answer = await rig({ pane, harness: "omp", version: "18.12.6" }).send("/plan", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"] });
+    expect(pane.keysSeen.filter((key) => key === "Enter")).toHaveLength(1);
+  });
+
+  test("a row that is NEW above the box still stops it: a dialog line in the transcript is a changed screen, nothing is pressed", async () => {
+    const typed = capture("slash-plan").replace("Plan mode requires a task to plan.", "Allow this tool call? (y/n)");
+    expect(typed).not.toBe(capture("slash-plan"));
+    const pane = replay(typed);
+    const answer = await rig({ pane, harness: "omp", version: "18.12.6" }).send("/plan", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "changed" });
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+});
+
 describe("OMP 18.12.2 `/goal` in a goal turn, replayed from the real capture (lab 2026-10-22)", () => {
   const PANES = join(import.meta.dir, "../../web/src/fixtures/panes");
   /** A capture's text, line breaks as the bridge's read takes them. */

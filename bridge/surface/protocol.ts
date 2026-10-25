@@ -1444,9 +1444,20 @@ function aboveUnchanged(before: Snap, after: Snap, scroll = 0): boolean {
   const a = transcriptAbove(before, before.frame);
   const b = transcriptAbove(after, after.frame);
   const grew = after.frame.bottom - after.frame.top - (before.frame.bottom - before.frame.top);
+  // The box moved up (its list opened under it, or it grew): the volatile band is a fixed number of rows
+  // counted up from the box's top edge, so it now reaches higher and takes the last rows of the transcript
+  // into itself. That happens when the transcript is shorter than the pane and blank rows fill the gap
+  // over the box: the list takes its room from the blank rows, the transcript stays where it was, and the
+  // band, no longer padded by blank rows, covers its last lines (omp 18.12.6, `/plan` with plan mode on,
+  // tester 14, 2026-10-25: three lines went into the band). The rows that stay must still be the same,
+  // in order, and no row is new: the transcript may end earlier by up to the band's height.
+  const bandRows = after.frame.volatile.above === null ? 0 : after.frame.volatile.above.last - after.frame.volatile.above.first + 1;
+  const bandMoved = after.frame.top < before.frame.top;
   for (let shift = 0; shift <= Math.max(0, grew) + 1 + scroll; shift++) {
     const tail = a.slice(shift);
     if (tail.length === b.length && tail.every((row, i) => row === b[i])) return true;
+    const lost = tail.length - b.length;
+    if (bandMoved && lost > 0 && lost <= bandRows && b.some((row) => row.length > 0) && b.every((row, i) => row === tail[i])) return true;
   }
   return false;
 }
