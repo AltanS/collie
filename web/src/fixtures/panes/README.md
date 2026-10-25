@@ -3340,3 +3340,17 @@ extra character).
 | --- | --- | --- |
 | `omp--v18-6-1-draft-cjk-wrapped--w80.txt` | `draft` | 67 CJK characters, no spaces: the first row ends one cell short of the width |
 | `omp--v18-12-6-draft-url-wrapped--w80.txt` | `draft` | a 140-character URL: the first row is full, the cut is inside the token |
+
+## `composer.shape: field` (captured 2026-10-25, OMP 18.12.6, omp gang 11-geometry)
+
+The editor shape `field` has no rule and no border. Every draft row opens with the block `▐` and closes with `▌` on the last
+column, a blank row and the status row follow. The empty box is one `▐` row with the hint `⇧⇥ to change thinking effort` before
+the cap. The profile reads it as an interior frame under a blank row (`idle.frameAlternates`, the last one). The older chrome walk
+of the adapter does not read it, so `composerReady` stays false on these two.
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `omp--v18-12-6-composer-field-idle--w130.txt` | `idle` | the empty box with its effort hint |
+| `omp--v18-12-6-composer-field-two-lines--w130.txt` | `draft` | two typed lines, one `▐` row each |
+
+The shape `claude` (rule, `❯`, rule) reads empty and with one line, but not with two, and has no fixture here on purpose: a two-line draft reads `unreadable` because the cue reader takes the `❯` row and the indented row under it, between two rules, for a pointer on a listed row. `ownPrompt` is not safe on that edges entry. The wanted read is an expected-fail test, and the gap a `todo`, in `fold.pi-omp.test.ts` ("omp's composer.shape field"). Left for after 1.24.1.

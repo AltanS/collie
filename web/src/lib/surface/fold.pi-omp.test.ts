@@ -819,3 +819,51 @@ describe("omp's status row above the box, in every shape its presets draw (omp-g
     });
   }
 });
+
+// omp 18.12.6 draws the editor in one of eight `composer.shape` forms (omp-gang 11-geometry W5, 2026-10-25):
+// band, borderless, claude, field, pi, rail, rule and the default box. The profile lists the box and the shapes
+// `frameAlternates` already held (claude rules, pi's blank row); `field` is a borderless run of ▐ rows closed by ▌.
+describe("omp's composer.shape field (18.12.6)", () => {
+  const FIELD = ["omp--v18-12-6-composer-field-idle--w130.txt", "omp--v18-12-6-composer-field-two-lines--w130.txt"];
+  const idle = idleFor("omp");
+
+  it("the empty field box reads an idle, empty composer, and the hint inside it is no draft", () => {
+    const read = readScreen(fixtureRows(FIELD[0]!), "omp", idle);
+    expect(read.surface).toEqual({ revision: 1, turn: "idle", modal: "none", composer: "empty" });
+    expect(read.frame?.interior.text).toBe("");
+    expect(read.cues?.strength).toBe("none");
+    expect(labelOf(FIELD[0]!).state).toBe("idle");
+  });
+
+  it("a two-line draft reads as the two lines joined, with no modal", () => {
+    const read = readScreen(fixtureRows(FIELD[1]!), "omp", idle);
+    expect(read.surface).toEqual({ revision: 1, turn: "idle", modal: "none", composer: "draft" });
+    expect(read.frame?.interior.text).toBe("draft line 1: the quick brown fox jumps over the lazy dog 1 draft line 2: the quick brown fox jumps over the lazy dog 2");
+    expect(labelOf(FIELD[1]!).state).toBe("draft");
+  });
+
+  it("a transcript line that opens with the block glyph is no field box without a blank row above it", () => {
+    const rows = rowsOf(["some output", "▐ quoted text ▌", "", " π · ◒ Haiku 4.5 · 📁 ~/work · ◫ 4.7%/200K ⟲ "].join("\n"));
+    expect(readScreen(rows, "omp", idle).surface.composer).not.toBe("draft");
+  });
+
+  // `composer.shape: claude` draws the Claude Code frame (rule, `❯`, rule) under a status row. A one-line draft
+  // and the empty box read. A two-line draft does not: the prompt row and the indented row under it are a
+  // pointer row on a listed row between two rules, which the cue reader takes for a dialog (cues, `pointer-row`).
+  // `idle.dialogsInBox`'s answer for a harness is `ownPrompt`, but it is only safe on the interior walk with a
+  // `rows` pattern naming every row a box may hold, and this alternate walks the edges: with `ownPrompt` any
+  // `❯` list between two rules would read as a draft. A fix needs a walk that names the rows (rule, `❯` row,
+  // two-space rows, status row), which collides with Claude Code's own `❯` pickers on the same screens.
+  const CLAUDE_TWO_LINES = [
+    "──────────────────────────────────────────────────────────────────────────────",
+    "❯ draft line 1: the quick brown fox jumps over the lazy dog 1",
+    "  draft line 2: the quick brown fox jumps over the lazy dog 2",
+    "──────────────────────────────────────────────────────────────────────────────",
+    " π · ◒ Haiku 4.5 · 📁 ~/work · ◫ 4.7%/200K ⟲ ",
+  ];
+  it.todo("composer.shape claude: a two-line draft reads as a draft, not an unreadable modal (see the note above)");
+  it.fails("composer.shape claude, two-line draft: the wanted read, which the cue reader still refuses", () => {
+    const read = readScreen(rowsOf(CLAUDE_TWO_LINES.join("\n")), "omp", idle);
+    expect(read.surface).toEqual({ revision: 1, turn: "idle", modal: "none", composer: "draft" });
+  });
+});

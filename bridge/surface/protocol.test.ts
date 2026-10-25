@@ -5379,6 +5379,36 @@ describe("OMP: a send under the status rows the profile did not read before (omp
   }
 });
 
+/** OMP 18.12.6 with `composer.shape: field` (omp-gang 11-geometry, W5): ▐ rows closed by ▌, a blank row and the status row under. */
+class FieldOmpPane extends OmpPane {
+  override render(): string {
+    const rows = [...this.transcript, ""];
+    const lines = this.box === "" ? [""] : this.box.split("\n");
+    for (const line of lines) rows.push(`▐ ${line}`.padEnd(129) + "▌");
+    rows.push("", " π · ◒ Haiku 4.5 · 📁 …/11-geometry/state2/harness/omp/project · ◫ 4.7%/200K ⟲ ");
+    return rows.join("\n");
+  }
+}
+
+describe("OMP 18.12.6: composer.shape field (omp gang 11-geometry, W5)", () => {
+  test("a plain send under the borderless ▐ box goes out in one tap", async () => {
+    const { pane, send } = omp({ version: "18.12.6", pane: new FieldOmpPane() });
+    const prepared = await send("", { mode: "prepare" });
+    expect(prepared.surface).toMatchObject({ turn: "idle", modal: "none", composer: "empty" });
+    const answer = await send("Reply with only the word: yes");
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "ctrl+q"] });
+    expect(pane.transcript).toContain(" > Reply with only the word: yes");
+    expect(pane.box).toBe("");
+  });
+
+  test("a two-line draft in that box is read as a draft", async () => {
+    const { pane, send } = omp({ version: "18.12.6", pane: new FieldOmpPane() });
+    pane.box = "first line\nsecond line";
+    const prepared = await send("", { mode: "prepare" });
+    expect(prepared.surface).toMatchObject({ turn: "idle", modal: "none", composer: "draft" });
+  });
+});
+
 describe("OMP: commands that end the process are never held (omp gang 03)", () => {
   const NEVER = "Collie does not queue this command during a turn. Send it when the turn ends.";
 

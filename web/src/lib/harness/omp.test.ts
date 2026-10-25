@@ -224,6 +224,9 @@ const STATUS_ROWS = [
 // omp 18.6.1 and 18.12.6 with `symbolPreset: ascii` (omp-gang 11-geometry, 2026-10-25): `/session` typed, and the list under
 // the box draws its cursor as `>`. Composers, the list is composer chrome.
 // Drafts the box wraps by cutting a token (omp-gang 11-geometry W4): a CJK run at 80 columns and a URL wider than a row.
+// omp 18.12.6 with `composer.shape: field` (omp-gang 11-geometry W5): a borderless box of ▐ rows, empty and with two draft lines.
+// The Surface reads it (idle.frameAlternates); the older chrome walk of this adapter does not, so composerReady stays false here.
+const BORDERLESS_FIELD_COMPOSERS = ["omp--v18-12-6-composer-field-idle--w130.txt", "omp--v18-12-6-composer-field-two-lines--w130.txt"];
 const TOKEN_WRAPPED_DRAFTS = ["omp--v18-6-1-draft-cjk-wrapped--w80.txt", "omp--v18-12-6-draft-url-wrapped--w80.txt"];
 const ASCII_SYMBOL_LISTS = ["omp--v18-12-6-ascii-symbols-session-list--w130.txt", "omp--v18-6-1-ascii-symbols-session-list--w130.txt"];
 
@@ -418,6 +421,7 @@ const DECLINED = new Set([
   ...STATUS_ROWS,
   ...ASCII_SYMBOL_LISTS,
   ...TOKEN_WRAPPED_DRAFTS,
+  ...BORDERLESS_FIELD_COMPOSERS,
 ]);
 
 // The own cohort is the lifted captures, so every conformance leg that needs one runs on them
@@ -539,6 +543,8 @@ describe("the omp corpus", () => {
     "omp--v18-12-6-ascii-symbols-session-list--w130.txt",
     "omp--v18-12-6-ask-plan-mode--w120.txt",
     "omp--v18-12-6-ask-previews--w120.txt",
+    "omp--v18-12-6-composer-field-idle--w130.txt",
+    "omp--v18-12-6-composer-field-two-lines--w130.txt",
     "omp--v18-12-6-draft-url-wrapped--w80.txt",
     "omp--v18-12-6-image-chip--w120.txt",
     "omp--v18-12-6-path-popup--w120.txt",

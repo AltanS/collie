@@ -838,7 +838,7 @@ describe("the frame schema of the interior walk (M56 spec 14)", () => {
     const raw = parseJsonObject(readFileSync(join(PROFILES_DIR, "omp.json"), "utf8"))!;
     expect(failure(change(raw, ["idle", "frameAlternates", 1, "bottom", "pattern"], "[unclosed")).path).toBe("idle.frameAlternates[1].bottom.pattern");
     expect(failure(change(raw, ["idle", "frameAlternates"], "no list")).path).toBe("idle.frameAlternates");
-    expect(parseProfile(raw).idle.frameAlternates).toHaveLength(4);
+    expect(parseProfile(raw).idle.frameAlternates).toHaveLength(5);
   });
 
   it("omp 18.11 (issue 497): the chips of every symbol preset collapse, the Nerd Font pointer points, and a skill is listed under its namespace", () => {

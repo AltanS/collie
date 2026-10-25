@@ -133,6 +133,30 @@
         "continuationIndent": 2,
         "maxDraftRows": 40,
         "maxTailRows": 3
+      },
+      {
+        "walk": "interior",
+        "top": {
+          "pattern": "^$",
+          "column": 0,
+          "blank": true,
+          "note": "composer.shape field (OMP 18.12.6 pi-tui editor, settings composer.shape): no rule, no border, no glyph row above. Each draft row opens with the block ▐ and closes with ▌ on the last column; the empty box is one ▐ row with the hint (⇧⇥ to change thinking effort) before the cap. A blank row and the status row follow. The box is the run of ▐ rows under a blank row (omp-gang 11-geometry W5, 2026-10-25)."
+        },
+        "prompt": {
+          "pattern": "^▐(?: (?<draft>(?:(?!\\s{8,}\\S).)*))?(?:\\s{8,}\\S.*|\\s*▌)?$",
+          "column": 0
+        },
+        "bottom": {
+          "pattern": "^",
+          "column": 0,
+          "maxColumn": 3,
+          "open": true
+        },
+        "rows": "^(?:▐.*|\\s*)$",
+        "continuation": "^▐ ?(?<text>(?:(?!\\s{8,}\\S).)*)(?:\\s{8,}\\S.*|\\s*▌)?$",
+        "continuationIndent": 0,
+        "maxDraftRows": 40,
+        "maxTailRows": 3
       }
     ],
     "placeholders": {

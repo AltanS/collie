@@ -4791,6 +4791,16 @@
    "version": "18.12.6",
    "state": "draft"
   },
+  "omp--v18-12-6-composer-field-idle--w130.txt": {
+   "harness": "omp",
+   "version": "18.12.6",
+   "state": "idle"
+  },
+  "omp--v18-12-6-composer-field-two-lines--w130.txt": {
+   "harness": "omp",
+   "version": "18.12.6",
+   "state": "draft"
+  },
   "omp--v18-12-6-ascii-symbols-session-list--w130.txt": {
    "harness": "omp",
    "version": "18.12.6",
