@@ -1505,6 +1505,19 @@ describe("parsePiTranscript — Oh My Pi's task jobs", () => {
     expect(tasks(s.rows)[0]?.call).not.toHaveProperty("ongoing");
   });
 
+  test("two same-named jobs ongoing: a notice for an unknown job id with their shared label ends neither", () => {
+    const s = session();
+    s.spawn("a1", "c1", "First lab count");
+    s.started("r1", "c1", "LabFix");
+    s.spawn("a2", "c2", "Second lab count");
+    s.started("r2", "c2", "LabFix", "LabFix-2");
+    s.asyncResult("n1", "LabFix-7", "LabFix");
+    s.wait("w1", "c3", [{ id: "LabFix-9", status: "completed", label: "LabFix" }]);
+    const [first, second] = tasks(s.rows);
+    expect(first?.call).toMatchObject({ jobId: "LabFix", ongoing: true });
+    expect(second?.call).toMatchObject({ jobId: "LabFix-2", ongoing: true });
+  });
+
   test("a failed spawn (`isError`, no `async`) is never ongoing", () => {
     const s = session();
     s.spawn("a1", "c1");
