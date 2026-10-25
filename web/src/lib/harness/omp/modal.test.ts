@@ -63,6 +63,8 @@ const MODALS_WITH_A_WAY_OUT = [
   "omp--v18-4-approval-write-long.txt",
   "omp--v18-4-approval-write-moved.txt",
   "omp--v18-4-approval-write.txt",
+  // omp 18.6.1's `Allow tool: goal`, a dialog with no body, LIFTED (approval.ts, BODYLESS_TOOLS).
+  "omp--v18-6-1-approval-goal--w120.txt",
   "omp--v18-4-ask-multi-checked.txt",
   "omp--v18-4-ask-multi.txt",
   "omp--v18-4-ask-single-moved.txt",

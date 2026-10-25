@@ -77,7 +77,7 @@
 //     under the title. A body row is free text and its right side is not required, as ask.ts reads its
 //     question rows: every byte of it binds the tap, and the card shows all of it but the border;
 //   * the title is exactly `Allow tool: <name>` with no countdown, and the tool is `bash` or `write`,
-//     the two with captured bodies. Their body must have the captured shape (an optional `Reason:` row,
+//     the two with captured bodies, or `goal` (omp 18.6.1) with NO body at all: see BODYLESS_TOOLS. Their body must have the captured shape (an optional `Reason:` row,
 //     then `Command:`; or `Path:`, then a row reading `Content:`);
 //   * the body carries neither omp's own elision mark (`[…Nch elided…]`, so omp hid part of the
 //     subject from the terminal too) nor a `Provider safety checks:` section (uncaptured), nor a
@@ -165,8 +165,19 @@ const PRESETS: readonly Preset[] = [
   { footer: "up/down navigate  enter select  esc cancel", pointer: "\u{F054}", strip: true },
 ];
 
-/** The two tools whose approval body is captured, and so the only two lifted. */
+/** The two tools whose approval body is captured, and so the only two lifted with a body. */
 const LIFTED_TOOLS = new Set(["bash", "write"]);
+
+/**
+ * The tools lifted with NO body (omp 18.6.1, `omp--v18-6-1-approval-goal--w120.txt`). `goal` has no
+ * `formatApprovalDetails`, so `approvalDetails` returns nothing and the box is the title, the spacer, a
+ * second blank row and the choices. omp's source (`goals/tools/goal-tool.ts`) says why it asks: "Goal ops
+ * touch only session state; the rest change the goal, so `always-ask` still prompts". The card names the
+ * tool and nothing else, because the screen shows nothing else; the transcript row above (`⏳ Goal: …`)
+ * says which op the model called. A bodyless tool lifts only with exactly that empty body: a `Reason:`
+ * row, or any other row, declines.
+ */
+const BODYLESS_TOOLS = new Set(["goal"]);
 
 /** How tall the body may be before the scan stops: a bound against scrollback, not a layout fact. */
 const MAX_BODY_ROWS = 200;
@@ -255,16 +266,19 @@ function detectBlankRowApproval(lines: StyledLine[]): ApprovalRegion | null {
   }
   if (titleAt < 0) return null;
   const tool = TITLE.exec(texts[titleAt]!)![1]!;
-  if (!LIFTED_TOOLS.has(tool)) return null;
-  // The spacer omp draws under the title, then at least one body row.
-  if (titleAt + 2 > bottom - 7 || !BLANK_ROW.test(texts[titleAt + 1]!)) return null;
+  const bodyless = BODYLESS_TOOLS.has(tool);
+  if (!bodyless && !LIFTED_TOOLS.has(tool)) return null;
+  // The spacer omp draws under the title, then at least one body row; a bodyless tool has none, and the
+  // blank row over its choices follows the spacer directly.
+  if (!BLANK_ROW.test(texts[titleAt + 1]!)) return null;
+  if (bodyless ? titleAt + 2 !== bottom - 6 : titleAt + 2 > bottom - 7) return null;
   const bodyRows = texts.slice(titleAt + 2, bottom - 6);
   // A row that ends in `…` with no right border may be a row omp clipped, which wrapped overflow would
   // not look like. The card cannot tell the two apart, so it declines.
   if (bodyRows.some((row) => !row.endsWith("│") && row.endsWith("…"))) return null;
   const body = bodyRows.map(bodyText);
-  if (body[0]!.length === 0) return null;
-  const shown = summarise(tool, body);
+  if (!bodyless && body[0]!.length === 0) return null;
+  const shown = bodyless ? [] : summarise(tool, body);
   if (shown === null) return null;
 
   // 4. The signature is the region verbatim, title through the bottom border, trailing padding off.
@@ -281,13 +295,11 @@ function detectBlankRowApproval(lines: StyledLine[]): ApprovalRegion | null {
     .join("\n");
 
   const title = `Allow tool: ${tool}`;
+  const approveOption: PromptOption = { label: "Approve", keys: pointerWalk(pointedAt, 0), keyLabel: approve.pointed ? POINTER_BADGE : "" };
+  // A bodyless tool shows no subject: the Approve button carries no description.
+  if (shown.length > 0) approveOption.description = shown.join(ROW_BREAK);
   const options: PromptOption[] = [
-    {
-      label: "Approve",
-      description: shown.join(ROW_BREAK),
-      keys: pointerWalk(pointedAt, 0),
-      keyLabel: approve.pointed ? POINTER_BADGE : "",
-    },
+    approveOption,
     // The plain walk, like Approve: the verified commit of ADR 0080 plus `clampedEnds` is the safety argument. See the header.
     { label: "Deny", keys: pointerWalk(pointedAt, 1), keyLabel: deny.pointed ? POINTER_BADGE : "" },
     // The footer's own way out, in its own words (ADR 0058 point 5).

@@ -3252,3 +3252,9 @@ equal to its only entry, Enter cancels the popup and submits the text; the teste
 | `omp--v18-6-1-path-popup--w120.txt`, `omp--v18-12-6-path-popup--w120.txt` | `popup` | An upload path alone in the box, `❯ w2_p1-....png` under it |
 | `omp--v18-12-6-path-popup-two-paths--w120.txt` | `popup` | Two upload paths on two rows (the second wrapped), the popup for the last one |
 | `omp--v18-6-1-path-popup-tilde--w120.txt` | `popup` | 18.6.1, `~/.../x.png` typed in a fresh pane: `❯ x.png` under it. Read as a draft with no list. A plain send of it (it is no command) still stops at `changed`, as the row under the box is new |
+
+## omp 18.6.1 `Allow tool: goal` (captured 2026-10-25, omp-gang tester 02)
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `omp--v18-6-1-approval-goal--w120.txt` | `dialog` | The last 16 rows of a `/goal` turn: the transcript row `⏳ Goal: complete`, then `Allow tool: goal` with no body (two blank rows), `Approve` pointed, `Deny`, and the first shape's footer. Lifts as Approve, Deny, Cancel with no description on Approve (approval.ts, `BODYLESS_TOOLS`) |

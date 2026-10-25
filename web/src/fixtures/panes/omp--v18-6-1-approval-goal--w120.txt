@@ -1,0 +1,16 @@
+                                                                                                                        
+ There are no complex deliverables to verify - the task is just to respond with "done" and then stop. Let me complete   
+ this goal.                                                                                                             
+
+⏳ Goal: complete                                                                                                       
+
+  ⎋ Working…                                                                                                            
+╭─ Allow tool: goal ───────────────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                                                                                      │
+│                                                                                                                      │
+│  ❯ Approve                                                                                                           │
+│    Deny                                                                                                              │
+│                                                                                                                      │
+│ ↑/↓ navigate  ⏎ select  ⎋ cancel                                                                                     │
+│                                                                                                                      │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯

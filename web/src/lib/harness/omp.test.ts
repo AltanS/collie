@@ -129,6 +129,8 @@ const LIFTED = new Set([
   // omp 18.12.6's divided approval panel (approval.ts, the second shape): lifted for `bash`.
   "omp--v18-12-6-approval-bash--w120.txt",
   "omp--v18-12-6-approval-bash-later--w120.txt",
+  // omp 18.6.1's `Allow tool: goal`, a dialog with no body (approval.ts, BODYLESS_TOOLS).
+  "omp--v18-6-1-approval-goal--w120.txt",
   // The compact model picker's session state is DERIVED: every `omp--v18-4-switch*` capture except the
   // declined states listed in DECLINED_SWITCH. A new capture of it lifts by default, and the conformance
   // suite fails it loudly if it does not, which is the moment a person files it as declined with a reason.
@@ -394,6 +396,8 @@ describeAdapterConformance(ompAdapter, {
   // changed while clearing it" (pi-shape.ts `piComposerPrompt`). Null means an unbound write, exactly
   // as the boxed shape answers for the same palette sitting under its own composer (chrome.ts).
   // omp 18.6.1 draws a ten-row palette under its open box for `/model` and `/mod` (lab, 2026-10-17): the same trade.
+  // `Allow tool: goal` has no body: every row of its region is fixed text, so a changed row stops the lift.
+  fixedRegionFixtures: ["omp--v18-6-1-approval-goal--w120.txt"],
   unboundComposerFixtures: ["omp--v18-8-slash-palette.txt", "omp--v18-8-slash-palette-w48.txt", ...TALL_PALETTE_V18_6, ...TALL_PALETTE_V18_11, ...TALL_PALETTE_V18_12, ...FUZZY_LIST_TALL],
 });
 
@@ -568,6 +572,7 @@ describe("the omp corpus", () => {
     "omp--v18-4-switch-wrapped.txt",
     "omp--v18-4-switch.txt",
     "omp--v18-4-tree.txt",
+    "omp--v18-6-1-approval-goal--w120.txt",
     "omp--v18-6-1-path-popup--w120.txt",
     "omp--v18-6-1-path-popup-tilde--w120.txt",
     "omp--v18-6-1-queued-before-stop--w119.txt",

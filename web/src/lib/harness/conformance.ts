@@ -356,6 +356,32 @@ function perturbRegion<K extends DialogKind>(
   return null;
 }
 
+/**
+ * Whether ANY single-row perturbation of the dialog's region (as {@link perturbRegion} makes them) still
+ * lifts the same number of models with the SAME signature: the race guard would be blind to that change.
+ * For a dialog with no free-text row the answer must be false, because every change stops the lift.
+ */
+function perturbationsLeaveItBlind<K extends DialogKind>(adapter: HarnessAdapter, name: string, kind: K): boolean {
+  const lines = loadLines(name);
+  const blocks = adapter.buildBlocks(lines);
+  const count = modelsIn(blocks, kind).length;
+  const region = blocks.find((b) => dialogModelOf(b, kind) !== null)!;
+  const start = lines.length - region.lines.length;
+  const footer = lastNonBlank(lines);
+  const signature = DIALOG_CONTRACT[kind].signature;
+  const before = signature(modelsIn(blocks, kind).at(-1)!);
+  for (const i of range(start, lines.length)) {
+    if (i === footer || lineIsBlank(lines[i]!)) continue;
+    for (const withinText of [false, true]) {
+      const perturbed = perturbLine(lines, i, withinText);
+      if (perturbed === lines) continue; // a row with no letter or digit: nothing to change
+      const after = modelsIn(adapter.buildBlocks(perturbed), kind);
+      if (after.length === count && signature(after.at(-1)!) === before) return true;
+    }
+  }
+  return false;
+}
+
 function range(from: number, to: number): number[] {
   return Array.from({ length: Math.max(0, to - from) }, (_, i) => from + i);
 }
@@ -590,10 +616,16 @@ export function describeAdapterConformance(
      *  to "a region exists exactly when the composer is ready": the sweep goes out unbound there,
      *  and the list says so in the test output rather than in a silent null. */
     unboundComposerFixtures?: string[];
+    /** Dialogs whose region holds no free-text row, so no row can change and still lift (omp's `Allow
+     *  tool: goal`: a title, two choices and a footer, nothing else). The perturbation test cannot
+     *  find a row that keeps the lift and moves the signature; instead it checks the stronger fact
+     *  that EVERY perturbation either stops the lift or moves the signature, never neither. */
+    fixedRegionFixtures?: string[];
   },
 ): void {
   const { ownFixtures, foreignFixtures, neutralFixtures } = opts;
   const unbound = opts.unboundComposerFixtures ?? [];
+  const fixedRegion = new Set(opts.fixedRegionFixtures ?? []);
 
   describe(`HarnessAdapter conformance — ${adapter.agent}`, () => {
     describe("conservative detection (fail-closed on foreign + neutral buffers)", () => {
@@ -938,6 +970,10 @@ export function describeAdapterConformance(
 
           it(`${name}: a perturbed region moves the signature and fails the committing check`, () => {
             const before = modelsOf(adapter, name, kind).at(-1)!;
+            if (fixedRegion.has(name)) {
+              expect(perturbationsLeaveItBlind(adapter, name, kind), `${name}: a perturbed row still lifts with the same signature`).toBe(false);
+              return;
+            }
             const probe = perturbRegion(adapter, name, kind);
             expect(
               probe,

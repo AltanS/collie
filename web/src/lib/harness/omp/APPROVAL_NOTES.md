@@ -229,3 +229,11 @@ Not proven by the captures, and so not lifted or not probed:
   answer.
 - **The unread-dialog card for the dialogs this grammar declines.** `ompModalOnScreen` does not know this
   footer, so a declined 18.12.6 panel shows no Escape card. Raw keys from the Keys board still work.
+
+## omp 18.6.1: `Allow tool: goal`, a dialog with no body (2026-10-25)
+
+Corpus: `omp--v18-6-1-approval-goal--w120.txt` (a plain read of omp-gang tester 02's `/goal` run, last 16
+rows). The tool has no `formatApprovalDetails` (`goals/tools/goal-tool.ts`), so the box is the title, the
+spacer, a second blank row, `Approve`, `Deny`, a blank row, the footer and a blank row. `approval.ts` lifts it
+through `BODYLESS_TOOLS`: exactly that body or nothing. The op the model called is in the transcript row
+above the box, not in the dialog. The 18.12.6 divided panel for `goal` is not captured and declines.
