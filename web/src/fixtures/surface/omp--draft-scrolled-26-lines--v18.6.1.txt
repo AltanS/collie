@@ -1,0 +1,45 @@
+ ok
+
+ ok
+
+
+ Reply with only the word ok.
+ This second line is padding.
+ This third line is padding too.
+
+
+ The user is asking me to reply with only the word "ok". This is a simple, straightforward request. I should just respond with
+ "ok" and nothing else.
+
+ ok
+
+
+ Reply with only the word ok and nothing else. Please ignore this padding text, which exists only to make the line long enough
+ that it wraps across several rows of the box: alpha bravo charlie delta echo foxtrot golf hotel ind
+
+
+ The user is asking me to reply with only the word "ok" and nothing else. They also mention that the rest is padding text that I
+ should ignore.
+
+ This is straightforward - I should reply with just "ok".
+
+ ok
+
+ π > ◒ Haiku 4.5 > 📁 …g/06-geometry/state/harness/omp/project > $0.04 ▶───6%────────────────────────────────────────┃───────200K─
+╰─ draft line 2: the quick brown fox jumps over the lazy dog 2
+   draft line 3: the quick brown fox jumps over the lazy dog 3
+   draft line 4: the quick brown fox jumps over the lazy dog 4
+   draft line 5: the quick brown fox jumps over the lazy dog 5
+   draft line 6: the quick brown fox jumps over the lazy dog 6
+   draft line 7: the quick brown fox jumps over the lazy dog 7
+   draft line 8: the quick brown fox jumps over the lazy dog 8
+   draft line 9: the quick brown fox jumps over the lazy dog 9
+   draft line 10: the quick brown fox jumps over the lazy dog 10
+   draft line 11: the quick brown fox jumps over the lazy dog 11
+   draft line 12: the quick brown fox jumps over the lazy dog 12
+   draft line 13: the quick brown fox jumps over the lazy dog 13
+   draft line 14: the quick brown fox jumps over the lazy dog 14
+   draft line 15: the quick brown fox jumps over the lazy dog 15
+   draft line 16: the quick brown fox jumps over the lazy dog 16
+   draft line 17: the quick brown fox jumps over the lazy dog 17
+   draft line 18: the quick brown fox jumps over the lazy dog 18

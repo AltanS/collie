@@ -641,6 +641,9 @@ Collie checks that the character lands in the box, then removes it.
   OMP lists a queued message in an `After yield` block above the box.
   OMP can show a dim completion after your text.
   A send that meets one stops before the send key and leaves the text in the box.
+  In the open box, OMP shows at most 17 rows of a long message, the last ones. Collie then checks those
+  rows against the end of what it typed, and the receipt says so.
+  Replace refuses a draft that fills those 17 rows, because Collie cannot see its start. Nothing is deleted.
 
 - **Grok** draws a rounded box with a `❯` prompt row and a row of key hints under it.
   A tall draft shows a scroll bar at the right edge of the box.

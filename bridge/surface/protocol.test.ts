@@ -17,7 +17,7 @@ import { findInputFrame } from "../../web/src/lib/surface/frame.ts";
 import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
 import { isFree, type Surface } from "../../web/src/lib/surface/surface.ts";
 import { KeyGate } from "./key-gate.ts";
-import { BOUNDS, boxMatches, commandBoxMatches, GENERIC_PROBE, wholePaste, LOCK_BOUND_MS, locateText, neverHeldEntry, probeLanding, RowRing, runsInTurnEntry, SendProtocol, SessionLocks, steadyRow, type SendDeps, type SendRequest } from "./protocol.ts";
+import { BOUNDS, boxMatches, boxMatchesTail, commandBoxMatches, GENERIC_PROBE, wholePaste, LOCK_BOUND_MS, locateText, neverHeldEntry, probeLanding, RowRing, runsInTurnEntry, SendProtocol, SessionLocks, steadyRow, type SendDeps, type SendRequest } from "./protocol.ts";
 import { RequestStore } from "./requests.ts";
 import { SurfaceLedger } from "./counters.ts";
 import { HoldStore } from "./holds.ts";
@@ -5163,8 +5163,9 @@ class OmpPane extends FakePane {
   }
 }
 
-function omp(options: { version?: string; edit?: (profile: Profile) => Profile; holds?: HoldStore } = {}): Rig & { pane: OmpPane } {
-  const pane = new OmpPane();
+function omp<P extends OmpPane = OmpPane>(options: { version?: string; edit?: (profile: Profile) => Profile; holds?: HoldStore; pane?: P } = {}): Rig & { pane: P } {
+  // SAFETY: without a pane of its own the rig makes the plain OmpPane, which is P's default.
+  const pane = options.pane ?? (new OmpPane() as P);
   const rigOptions: Parameters<typeof rig>[0] = { pane, harness: "omp", version: options.version ?? "18.6.1" };
   if (options.edit !== undefined) rigOptions.edit = options.edit;
   if (options.holds !== undefined) rigOptions.holds = options.holds;
@@ -5213,6 +5214,163 @@ describe("OMP: commands that end the process are never held (omp gang 03)", () =
     expect(model.receipt).toMatchObject({ outcome: "refused", reason: "turn_running" });
     expect(model.detail).toBe("A command waits until the turn ends.");
     expect(pane.keysSeen).toEqual([]);
+  });
+});
+
+/**
+ * OMP's editor at its height cap (omp gang 2026-10-25, reports 01, 06 and 07): the draft wraps at
+ * `width` columns, and past `cap` rows only the last ones show, the first of them on the `╰─` row.
+ * A null cap grows the box with its draft.
+ */
+class TallOmpPane extends OmpPane {
+  constructor(
+    readonly width = 80,
+    readonly cap: number | null = 17,
+  ) {
+    super();
+    // OMP showed a 12,000-character paste literally in its box (reports 01 and 07): it folds none.
+    this.collapseOver = Number.POSITIVE_INFINITY;
+  }
+
+  override render(): string {
+    const draft = this.box;
+    this.box = "";
+    const rows = super.render().split("\n");
+    this.box = draft;
+    // The empty box's own `╰─` row; the draft's rows take its place.
+    rows.pop();
+    if (draft === "") return [...rows, "╰─"].join("\n");
+    const wrapped = draft.split("\n").flatMap((line) => (line.length === 0 ? [""] : (line.match(new RegExp(`.{1,${String(this.width)}}`, "gu")) ?? [""])));
+    const shown = this.cap === null ? wrapped : wrapped.slice(-this.cap);
+    return [...rows, ...shown.map((row, i) => (i === 0 ? `╰─ ${row}` : `   ${row}`).trimEnd())].join("\n");
+  }
+}
+
+/** A capture from `web/src/fixtures/surface/`: screens the Send Protocol reads that the phone's adapter corpus does not pin. */
+const surfaceFixture = (name: string): string => readFileSync(join(import.meta.dirname, "..", "..", "web", "src", "fixtures", "surface", name), "utf8");
+
+/** A one-line text of at least `length` characters: numbered words, so no two rows read alike. */
+function words(length: number, lead = "w"): string {
+  let text = "";
+  for (let i = 0; text.length < length; i++) text += `${i === 0 ? "" : " "}${lead}${String(i)}`;
+  return text;
+}
+
+/** The omp profile with no `idle.frame.scroll`: its box would grow with the draft. */
+function withoutScroll(profile: Profile): Profile {
+  const { scroll, ...frame } = profile.idle.frame;
+  void scroll;
+  return { ...profile, idle: { ...profile.idle, frame } };
+}
+
+describe("a draft taller than OMP's box (omp gang 2026-10-25)", () => {
+  test("a 3,000-character send into a box that keeps its last 17 rows matches by those rows and goes once; the receipt says only the end was compared", async () => {
+    const pane = new TallOmpPane();
+    const { send } = omp({ pane });
+    const text = words(3000);
+    const answer = await send(text);
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(answer.receipt?.keys.at(-1)).toBe("ctrl+q");
+    expect(answer.receipt?.detail).toBe("The box showed only the last rows of this long text. Collie compared those with the end of the text.");
+    expect(pane.transcript.filter((row) => row === ` > ${text}`)).toHaveLength(1);
+    expect(pane.box).toBe("");
+    expect(pane.steered).toEqual([]);
+  });
+
+  test("the same send on a profile whose box does not scroll still mismatches: no Enter, the text stays in the box", async () => {
+    const pane = new TallOmpPane();
+    const { send } = omp({ pane, edit: withoutScroll });
+    const text = words(3000);
+    const answer = await send(text);
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "mismatch" });
+    expect(pane.keysSeen).not.toContain("ctrl+q");
+    expect(pane.box).toBe(text);
+  });
+
+  test("a box under its scroll height that lost the head of the text mismatches: only a box at the cap is read by its tail", async () => {
+    const pane = new TallOmpPane();
+    const { send } = omp({ pane });
+    const text = words(600);
+    pane.afterInput = (p, what) => {
+      if (what.startsWith("type:") || what.startsWith("paste:")) p.box = p.box.length > 100 ? p.box.slice(60) : p.box;
+    };
+    const answer = await send(text);
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "mismatch" });
+    expect(pane.keysSeen).not.toContain("ctrl+q");
+  });
+
+  test("the real 2,000-character box (07 F1) reads as scrolled, and its rows match only the end of the text they show", () => {
+    const rows = splitLines(parseAnsi(surfaceFixture("omp--draft-scrolled-2000-chars--v18.6.1.txt")));
+    const frame = findInputFrame(rows, loadProfiles().get("omp")!.idle)!;
+    expect(frame.scrolled).toBe(true);
+    const tail = `${Array.from({ length: 402 }, (_, i) => `w${String(i)}`).join(" ")}  END`;
+    const text = `Reply with the single word JULIET. MARKER: ${tail}`;
+    expect(boxMatches(frame.interior.text, "", [text], null)).toBe(false);
+    expect(boxMatchesTail(frame.interior.text, "", [text])).toBe(true);
+    expect(boxMatchesTail(frame.interior.text, "", [text.replace("w400", "w4OO")])).toBe(false);
+    expect(boxMatchesTail(frame.interior.text, "", [`${text} more`])).toBe(false);
+    // A box that holds all of the text is no tail of it.
+    expect(boxMatchesTail(frame.interior.text, "", [frame.interior.text])).toBe(false);
+  });
+
+  test("Discard of a 5,000-character draft Collie typed empties the box in one request, with no more keys than its length and the slack", async () => {
+    const pane = new TallOmpPane();
+    const { send } = omp({ pane });
+    const text = words(5000);
+    pane.box = text;
+    const answer = await send(text, { mode: "discard" });
+    expect(answer.receipt).toMatchObject({ outcome: "discarded" });
+    expect(pane.box).toBe("");
+    const presses = pane.keysSeen.filter((key) => key === "Backspace").length;
+    expect(presses).toBeGreaterThanOrEqual(text.length);
+    expect(presses).toBeLessThanOrEqual(text.length + 16);
+    expect(pane.transcript.some((row) => row.includes("w1"))).toBe(false);
+  });
+
+  test("Replace on a draft at the box's scroll height that Collie did not type is refused before any key: nothing deleted (06 C5)", async () => {
+    const pane = new TallOmpPane(120);
+    const draft = Array.from({ length: 26 }, (_, i) => `draft line ${String(i + 1)}: the quick brown fox jumps over the lazy dog ${String(i + 1)}`).join("\n");
+    pane.box = draft;
+    const { send } = omp({ pane });
+    const answer = await send("Reply with only the word: yes", { mode: "replace" });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "draft_present", keys: [] });
+    expect(answer.receipt?.detail).toContain("Nothing was deleted");
+    expect(answer.offers).toEqual(["keys"]);
+    expect(pane.keysSeen).toEqual([]);
+    expect(pane.box).toBe(draft);
+  });
+
+  test("Replace on the real 26-line screen at the cap (06 C5) is refused with nothing pressed", async () => {
+    const pane = still(surfaceFixture("omp--draft-scrolled-26-lines--v18.6.1.txt"));
+    const { protocol } = rig({ pane, harness: "omp", version: "18.6.1" });
+    const answer = await protocol.handle({ id: "tall-replace-1", text: "Reply with only the word: yes", mode: "replace" }, { session: "main", paneId: "%1", harness: "omp" });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "draft_present", keys: [] });
+    expect(pane.keysSeen).toEqual([]);
+    expect(pane.calls).toEqual([]);
+  });
+
+  test("Replace on a 1,600-character draft that fits the box empties it and sends the new text once (six rounds of 256 left 64 characters before)", async () => {
+    const pane = new TallOmpPane(120);
+    pane.box = words(1600, "d");
+    const { send } = omp({ pane });
+    const answer = await send("Reply with the word LIMA only.", { mode: "replace" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(answer.receipt?.detail).toBeUndefined();
+    expect(pane.transcript.filter((row) => row === " > Reply with the word LIMA only.")).toHaveLength(1);
+    expect(pane.transcript.filter((row) => row.includes("d1"))).toEqual([]);
+    expect(pane.box).toBe("");
+  });
+
+  test("Discard of a draft longer than one request empties is refused before any key", async () => {
+    const pane = new TallOmpPane();
+    const { send } = omp({ pane });
+    const text = words(17_000);
+    pane.box = text;
+    const answer = await send(text, { mode: "discard" });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "draft_present", keys: [] });
+    expect(answer.receipt?.detail).toContain("longer than Collie empties in one request");
+    expect(pane.keysSeen).toEqual([]);
+    expect(pane.box).toBe(text);
   });
 });
 

@@ -3153,3 +3153,17 @@ typed text's own popup.
 | `omp--v18-6-1-slash-nothere-fuzzy--w120.txt`, `omp--v18-12-6-slash-nothere-fuzzy--w120.txt` | `popup` | `/nothere` typed: nine rows, the pointer on `skills` |
 | `omp--v18-12-6-slash-comment-loop-row--w120.txt` | `popup` | 18.12.6, `//comment` typed in command mode: one row, `❯ ↻ loop`. The 402 notice's key id is zeros |
 | `omp--v18-12-6-stale-list-row-empty-box--w120.txt` | `idle` | 18.12.6 after a cancelled `//comment` (Ctrl+C): the box is empty and the last list row, `❯ ↻ loop`, stays under it. omp 18.6.1 redraws that row away; 18.12.6 keeps it until the next key. `commandList.staleWhenEmpty` leaves it out of the rows under the box that a send compares. The 402 notice's key id is zeros |
+
+## OMP drafts taller than the box (captured 2026-10-25, omp gang reports 06 and 07, OMP 18.6.1, Herdr rig)
+
+These two live in `fixtures/surface/`: the Send Protocol's tests read them (`idle.frame.scroll` in
+`omp.json`), and the phone's omp adapter corpus, which pins every capture in this folder, does not.
+OMP caps its editor at 17 draft rows on a pane of 30 rows or more and keeps the cursor's rows in view,
+so a long draft shows only its last rows. Plain text (the rig read the visible rows without SGR),
+transport CRLF normalized to LF, trailing blanks cut. The lab folder path is the rig's own scratch
+folder; no secrets were present.
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `omp--draft-scrolled-2000-chars--v18.6.1.txt` | `draft` | 33 rows: a 2,000-character draft Collie typed (`... w0 w1 ... w401  END`), left by `typed_not_submitted(mismatch)`. The box starts at `╰─ w7 w8 ...`; the head of the text is out of view (07 F1) |
+| `omp--draft-scrolled-26-lines--v18.6.1.txt` | `draft` | The last 45 rows of a 130x45 pane: a 26-line draft the person typed, at the 17-row cap, `draft line 2` to `draft line 18` in view. A Replace on this box once pressed 1,536 Backspaces and left 39 characters of the draft (06 C5) |

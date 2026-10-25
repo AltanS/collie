@@ -85,6 +85,15 @@
 // above the box may lose text (go blank, or move because rows vanished) but never gain any, and a
 // modal cue that shows still fails.
 //
+// A box that scrolls its draft (`idle.frame.scroll`; OMP keeps the last 17 rows in view): once it stands
+// at that height (Frame.scrolled) the head of a long text is out of view. S1, and Submit and Discard's
+// own check, then compare the rows in view with the END of the typed text (boxHolds), as strictly as a
+// box that fits; a box under that height, and a text written as one paste, are compared in full. The
+// receipt's detail says only the end was compared. Discard and Replace count their clear keys before
+// the first one: what a box shows, or on a scrolled box the length of the text Collie typed (a
+// Discard). With no length known the request is refused `draft_present` before any key, so a clear
+// never stops half way through a person's draft (omp gang, 2026-10-25).
+//
 // A command in a running turn (M56 spec 15): a profile whose harness queues a command entered during
 // a turn (`keys.commandWhileRunning: "queues"`, measured in the lab) sends it on the queued path like a
 // message. Its popup may fill the rows under the box, so S1 asks only that the rows above scrolled.
@@ -216,6 +225,18 @@ const S0_GAP_MS = 120;
 const CLEAR_BOUND = BOUNDS.s2;
 /** Keys per clear batch; a read sits between two batches. */
 const CLEAR_BATCH = 256;
+/** The ms one clear read may take, from the S2 bound it borrows: 500. A long draft's clear gets one per read it needs. */
+const CLEAR_READ_MS = CLEAR_BOUND.ms / CLEAR_BOUND.reads;
+/** Reads a clear keeps beyond one per batch: the read that sees the box empty, and one late redraw. */
+const CLEAR_SPARE_READS = 2;
+/** The longest draft one request empties: 64 batches, about 33 s. A longer one is refused before any key. */
+const CLEAR_MAX_CHARS = 16_384;
+/** The detail of a Replace or Discard refused on a box that hides the head of a draft Collie cannot measure. */
+const TALL_DRAFT = "The draft is taller than the box, so Collie cannot see how long it is. Nothing was deleted. Empty the box with the key pad, then send again.";
+/** The detail of a Replace or Discard refused on a draft longer than one request empties. */
+const LONG_DRAFT = "The draft is longer than Collie empties in one request. Nothing was deleted. Empty the box with the key pad, then send again.";
+/** The detail of a receipt whose S1 compared only the rows a scrolled box showed with the end of the text. */
+const TAIL_ONLY = "The box showed only the last rows of this long text. Collie compared those with the end of the text.";
 /** Texts this short take the probed path whatever the profile says. */
 const SHORT_TEXT = 3;
 
@@ -746,7 +767,7 @@ function typedBoxVerdict(s0: Snap, snap: Snap, prefix: string, lines: readonly s
   if (modalAtBox(snap) || framedCueGrew(s0, snap)) return "modal_cue";
   if (s0.frame === null || snap.frame === null) return "changed";
   if (snap.otherScreen !== null) return "other_screen";
-  if (!boxMatches(boxText(snap.frame), prefix, lines, collapse, whole)) return "mismatch";
+  if (boxHolds(snap.frame, prefix, lines, collapse, whole) === null) return "mismatch";
   if (rowsBelow(s0, s0.frame) !== rowsBelow(snap, snap.frame)) return "changed";
   return "pass";
 }
@@ -1483,6 +1504,31 @@ export function wholePaste(match: ProfileMatch | null, lines: readonly string[],
 }
 
 /**
+ * The tail half of the box compare, for a box at its scroll height (omp gang, 2026-10-25): the box
+ * shows the END of the typed text, white space and wrapping ignored as in {@link boxMatches}, and less
+ * than all of it. Every character the box shows must stand at the end of the text, in order, and the
+ * last one must be the text's last: what is in view is compared as strictly as a box that fits.
+ */
+export function boxMatchesTail(box: string, prefix: string, lines: readonly string[]): boolean {
+  const seen = wsFree(box);
+  const typed = wsFree(prefix + lines.join(""));
+  return seen.length > 0 && seen.length < typed.length && typed.endsWith(seen);
+}
+
+/**
+ * Whether a framed box holds the typed text: `all` of it ({@link boxMatches}), or, on a box at the
+ * height where its profile scrolls the draft (`idle.frame.scroll` keeps the last rows,
+ * {@link Frame.scrolled}), its `tail` ({@link boxMatchesTail}); null otherwise. A box that shows fewer
+ * rows than that height shows its whole draft, so it is never compared by its tail, and neither is a
+ * text written as one paste, which the harness may fold.
+ */
+function boxHolds(frame: Frame, prefix: string, lines: readonly string[], collapse: RegExp | null, whole: WholePaste | null): "all" | "tail" | null {
+  const box = boxText(frame);
+  if (boxMatches(box, prefix, lines, collapse, whole)) return "all";
+  return frame.scrolled === true && whole === null && boxMatchesTail(box, prefix, lines) ? "tail" : null;
+}
+
+/**
  * Whether the box text equals `prefix` then each line, white space and wrapping ignored. A line may
  * also show as the profile's collapse form (a long paste the harness folded), whose line count, if it
  * carries one, must say one line: each written line is its own write. A text written as ONE paste
@@ -1792,7 +1838,8 @@ interface RunState {
   readonly target: SendTarget;
   readonly match: ProfileMatch | null;
   readonly lockKey: string;
-  readonly deadline: number;
+  /** The request's bound. Emptying a long draft moves it later by its own bound ({@link SendProtocol.stretch}). */
+  deadline: number;
   readonly marks: { s0: Snap | null; s1: Snap | null; s2: Snap | null };
   readonly gaps: Partial<Record<SendStep, number>>;
   readonly keys: string[];
@@ -1812,6 +1859,11 @@ interface RunState {
   noticeKey: boolean;
   /** A Submit or Discard found the box holding another text than the request names (the person's own Backspace shortened it). */
   heldOther: boolean;
+  /**
+   * The box stood at its scroll height and showed only the end of the text: S1 (or Submit and
+   * Discard's own check) compared those rows with the end of the text (boxHolds). The receipt says so.
+   */
+  tailOnly: boolean;
   /** S0 read a running turn on a harness that queues, or S2 saw the harness's queued row with the text: the receipt says `queued`. */
   queued: boolean;
   /**
@@ -2598,6 +2650,7 @@ export class SendProtocol {
       whole: null,
       noticeKey: false,
       heldOther: false,
+      tailOnly: false,
       queued: false,
       streamed: false,
       belowMoved: false,
@@ -2647,6 +2700,8 @@ export class SendProtocol {
       const saw = note.surface ?? state.lastRead?.surface ?? state.marks.s0?.surface;
       if (saw !== undefined) receipt.saw = surfaceWords(saw);
     }
+    // Whatever the end, a box that showed only the end of the text was compared by those rows alone.
+    if (state.tailOnly && receipt.detail === undefined) receipt.detail = TAIL_ONLY;
     if (state.blind) receipt.saw = BLIND_SAW;
     return receipt;
   }
@@ -2680,6 +2735,7 @@ export class SendProtocol {
       await this.steps(state);
       const note: EndNote = { framed: true };
       if (state.heldOther && record.mode === "submit") note.detail = HELD_OTHER;
+      else if (state.tailOnly) note.detail = TAIL_ONLY;
       if (state.noticeKey) note.cause = NOTICE_KEY;
       const answer = this.settle(state, new Ended(record.mode === "discard" ? "discarded" : state.steered ? "steered" : "sent", undefined, note));
       if (state.blind && answer.receipt?.outcome === "sent") this.noteBlindSent(state);
@@ -2809,8 +2865,13 @@ export class SendProtocol {
       state.whole = wholePaste(match, lines, this.deps.imageFile);
     }
     const { whole } = state;
-    const holds = (box: string): boolean =>
-      state.command ? commandBoxMatches(box, "", lines, collapseOf(match)) : boxMatches(box, "", whole?.lines ?? lines, collapseOf(match), whole);
+    // On a box at its scroll height the text Collie typed is compared by the rows in view (boxHolds).
+    const holds = (frame: Frame): boolean => {
+      if (state.command) return commandBoxMatches(boxText(frame), "", lines, collapseOf(match));
+      const held = boxHolds(frame, "", whole?.lines ?? lines, collapseOf(match), whole);
+      state.tailOnly = held === "tail";
+      return held !== null;
+    };
 
     if (match === null && (request.mode === "send" || request.mode === "command")) {
       await this.blindSend(state, lines);
@@ -2851,7 +2912,9 @@ export class SendProtocol {
         const located = this.typedBox(state, s0, holds, lines);
         if (s0.frame === null && located === null) throw new Ended("refused", "not_free", { surface: s0.surface, detail: "The box no longer holds this text." });
         this.lap(state, "s0");
-        if (located === null) await this.clear(state, s0);
+        // The length of the text Collie typed sizes the clear of a box that hides its head; a box that
+        // held another text has no length Collie knows.
+        if (located === null) await this.clear(state, s0, state.heldOther ? null : [...lines.join("\n")].length);
         else await this.clearBare(state, located);
         this.lap(state, "clear");
         return;
@@ -2863,7 +2926,8 @@ export class SendProtocol {
         // S0 ends with its two reads; emptying the box is its own step with its own bound.
         this.lap(state, "s0");
         if (boxText(frame).length > 0) {
-          s0 = await this.clear(state, s0);
+          // The draft is the person's (or one a refusal left there): Collie knows only what the box shows.
+          s0 = await this.clear(state, s0, null);
           state.marks.s0 = s0;
           this.lap(state, "clear");
         }
@@ -3109,10 +3173,10 @@ export class SendProtocol {
    * the bottom window, so S2 and the clear know the box; null when it stands nowhere there, or with a
    * frame.
    */
-  private typedBox(state: RunState, s0: Snap, holds: (box: string) => boolean, lines: readonly string[]): Located | null {
+  private typedBox(state: RunState, s0: Snap, holds: (frame: Frame) => boolean, lines: readonly string[]): Located | null {
     const { surface, frame } = s0;
     if (frame !== null) {
-      if (holds(boxText(this.draftFrame(state, s0)))) return null;
+      if (holds(this.draftFrame(state, s0))) return null;
       state.heldOther = true;
     }
     if (frame === null && !takesManualSend(surface) && !isFree(surface)) throw new Ended("refused", "not_free", { surface, detail: "The input box is not free." });
@@ -3631,6 +3695,7 @@ export class SendProtocol {
         }
         // The rows above moved on a harness that queues in a turn: the commit takes its queue key.
         if (!state.queued && queuesInTurn(state.match) && !aboveUnchanged(s0, snap)) state.streamed = true;
+        state.tailOnly = snap.frame !== null && boxHolds(snap.frame, prefix, lines, collapse, state.whole) === "tail";
         return "pass";
       }
       // A command whose list under the box points at another command: Enter would run that one. The list
@@ -3656,10 +3721,12 @@ export class SendProtocol {
       }
       if (s0.frame !== null) {
         if (snap.frame === null) return "wait";
-        if (!(command ? commandBoxMatches(boxText(snap.frame), prefix, lines, collapse) : boxMatches(boxText(snap.frame), prefix, lines, collapse, state.whole))) {
+        const held = command ? (commandBoxMatches(boxText(snap.frame), prefix, lines, collapse) ? "all" : null) : boxHolds(snap.frame, prefix, lines, collapse, state.whole);
+        if (held === null) {
           why = "mismatch";
           return "wait";
         }
+        state.tailOnly = held === "tail";
         const inTurn = state.queued || state.streamed;
         // A command in a turn: its popup may fill the rows under the box, so only the rows above count.
         const outside = inTurn
@@ -3934,19 +4001,57 @@ export class SendProtocol {
     if (result.verdict !== "pass") throw new Ended("unknown", "no_evidence", { detail: "The box did not empty inside the bound." });
   }
 
-  /** Empties a framed box with the profile's clear key, in batches with a read between. Never Escape. */
-  private async clear(state: RunState, from: Snap): Promise<Snap> {
+  /**
+   * Empties a framed box with the profile's clear key, in batches of {@link CLEAR_BATCH} with a read
+   * between. Never Escape. The keys are counted before the first one goes (omp gang, 2026-10-25: six
+   * rounds of 256 left most of a long draft in the box, or most of it gone and the rest kept):
+   *  - a box that shows its whole draft takes what it shows plus the key's slack, counted again on
+   *    every read, as before;
+   *  - a box at its scroll height ({@link Frame.scrolled}) hides the head of its draft. It takes the
+   *    length of the text Collie typed there (`known`, a Discard of its own send) plus the slack. With
+   *    no such length (a Replace of the person's draft, a Discard of a box that held another text) it
+   *    is refused `draft_present` before any key: a clear that stopped half way would leave half a draft;
+   *  - a draft longer than {@link CLEAR_MAX_CHARS} is refused the same way.
+   * The bound is one read per batch plus {@link CLEAR_SPARE_READS}, never under the S2 bound it borrowed
+   * before, at {@link CLEAR_READ_MS} each; the request's own bound grows by what that adds. A batch
+   * goes only after a read showed the box changed since the last one, so a late redraw costs a read,
+   * never a second batch. A box that went away, a cue, or the bound end it `unknown(no_evidence)`.
+   */
+  private async clear(state: RunState, from: Snap, known: number | null): Promise<Snap> {
     const clearKey = state.match?.profile.keys.clear ?? GENERIC_CLEAR;
-    const until = Math.min(this.now() + CLEAR_BOUND.ms, state.deadline);
+    const gone = (): Ended => new Ended("unknown", "no_evidence", { detail: "The box went away while it was being emptied." });
     const late = (): Ended => new Ended("unknown", "no_evidence", { detail: "The box did not empty inside the bound." });
+    if (from.frame === null || from.cueStrength !== "none") throw gone();
+    const shown = [...boxText(from.frame)].length;
+    if (shown === 0) return from;
+    const scrolled = from.frame.scrolled === true;
+    if (scrolled && known === null) throw new Ended("refused", "draft_present", sawNote(from, { framed: true, offers: ["keys"], detail: TALL_DRAFT }));
+    const length = scrolled && known !== null ? Math.max(known, shown) : shown;
+    if (length > CLEAR_MAX_CHARS) throw new Ended("refused", "draft_present", sawNote(from, { framed: true, offers: ["keys"], detail: LONG_DRAFT }));
+    let budget = length + clearKey.slack;
+    const reads = Math.max(CLEAR_BOUND.reads, Math.ceil(budget / CLEAR_BATCH) + CLEAR_SPARE_READS);
+    const ms = reads * CLEAR_READ_MS;
+    this.stretch(state, ms - CLEAR_BOUND.ms);
+    const until = Math.min(this.now() + ms, state.deadline);
     let snap = from;
-    for (let round = 0; round < CLEAR_BOUND.reads; round++) {
+    // The box as the last batch left it; null before the first batch.
+    let pressedAt: string | null = null;
+    for (let read = 0; read < reads; read++) {
       if (this.now() > until) throw late();
-      if (snap.frame === null || snap.cueStrength !== "none") throw new Ended("unknown", "no_evidence", { detail: "The box went away while it was being emptied." });
-      const left = [...boxText(snap.frame)].length;
+      if (snap.frame === null || snap.cueStrength !== "none") throw gone();
+      const text = boxText(snap.frame);
+      const left = [...text].length;
       if (left === 0) return snap;
-      const count = Math.min(CLEAR_BATCH, left + clearKey.slack);
-      await this.keysThroughGate(state, Array.from({ length: count }, () => clearKey.key), "unknown");
+      if (text !== pressedAt) {
+        // A box that shows its whole draft is pressed for what it shows; one at its scroll height for
+        // what is left of the length counted before the first key.
+        const want = snap.frame.scrolled === true ? budget : Math.min(budget, left + clearKey.slack);
+        if (want <= 0) break;
+        const count = Math.min(CLEAR_BATCH, want);
+        await this.keysThroughGate(state, Array.from({ length: count }, () => clearKey.key), "unknown");
+        budget -= count;
+        pressedAt = text;
+      }
       await this.sleep(FIRST_GAP_MS);
       let next: Snap | null;
       try {
@@ -3959,7 +4064,17 @@ export class SendProtocol {
       snap = next;
     }
     if (snap.frame !== null && boxText(snap.frame).length === 0) return snap;
-    throw new Ended("unknown", "no_evidence", { detail: "The box did not empty inside the bound." });
+    throw late();
+  }
+
+  /**
+   * The request's bound grows by `ms` (a clear of a long draft needs more than the S2 bound it
+   * borrows), and the pane's lock with it, so no other send takes the pane while the keys go.
+   */
+  private stretch(state: RunState, ms: number): void {
+    if (ms <= 0) return;
+    state.deadline += ms;
+    this.deps.locks.acquire(state.lockKey, state.record.id, state.deadline, this.now());
   }
 }
 

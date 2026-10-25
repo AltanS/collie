@@ -886,3 +886,23 @@ describe("the omp box past a ten-row fuzzy list (omp-gang, 2026-10-25)", () => {
     expect(findInputFrame(splitLines(parseAnsi(raw.replace("❯ \u{1F5FA}", "  \u{1F5FA}"))), OMP)).toBeNull();
   });
 });
+
+describe("a box at its scroll height (`idle.frame.scroll`, omp gang 2026-10-25)", () => {
+  const OMP = requireProfile("omp").idle;
+  const surfaceRows = (name: string): StyledLine[] => splitLines(parseAnsi(readFileSync(join(FIXTURES_DIR, "surface", name), "utf8")));
+
+  it("marks the real 17-row boxes scrolled: their head is out of view", () => {
+    for (const name of ["omp--draft-scrolled-2000-chars--v18.6.1.txt", "omp--draft-scrolled-26-lines--v18.6.1.txt"]) {
+      const frame = findInputFrame(surfaceRows(name), OMP);
+      expect(frame?.scrolled, name).toBe(true);
+    }
+  });
+
+  it("leaves a box that shows its whole draft unmarked, and every profile with no scroll", () => {
+    expect(findInputFrame(fixtureRows("omp--draft-wrapped.txt"), OMP)?.scrolled).toBeUndefined();
+    expect(findInputFrame(fixtureRows("omp--draft-single.txt"), OMP)?.scrolled).toBeUndefined();
+    const { scroll, ...frame } = OMP.frame;
+    void scroll;
+    expect(findInputFrame(surfaceRows("omp--draft-scrolled-2000-chars--v18.6.1.txt"), { ...OMP, frame })?.scrolled).toBeUndefined();
+  });
+});

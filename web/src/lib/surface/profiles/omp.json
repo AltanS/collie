@@ -38,7 +38,11 @@
       "continuation": "^(?:│|╰─)? ?(?<text>.*?)(?:\\s*(?:│|█|─?╯))?$",
       "continuationIndent": 0,
       "maxDraftRows": 40,
-      "maxTailRows": 3
+      "maxTailRows": 3,
+      "scroll": {
+        "keeps": "tail",
+        "rows": 17
+      }
     },
     "frameAlternates": [
       {
