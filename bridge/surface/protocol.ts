@@ -1306,10 +1306,15 @@ function holdCauseOf(end: Ended): HoldCause {
   }
 }
 
-/** What a poll's Surface says holds a marked request now, or null when it says nothing new. */
+/**
+ * What a poll's Surface says holds a held request now, or null when it says nothing new (the pane reads
+ * free, or the turn is unknown): a running turn, something open at the box (a cue or a dialog), or a
+ * draft in the box. The turn comes first, as the refusal rules read it.
+ */
 function causeOf(surface: Surface): HoldCause | null {
   if (surface.turn === "running") return "turn_running";
-  if (surface.turn === "idle" && surface.modal === "none" && surface.composer === "draft") return "draft_present";
+  if (surface.modal !== "none") return "not_free";
+  if (surface.turn === "idle" && surface.composer === "draft") return "draft_present";
   return null;
 }
 /**
@@ -2258,7 +2263,7 @@ export class SendProtocol {
     const waiting = holds?.waiting(target.session, target.paneId) ?? [];
     // A queue of marked sends held over a draft only (M62 spec 02) does not take an unmarked send: that
     // one runs, and a draft still in the box refuses it with its offers, as on a pane with no queue.
-    const draftOnly = request.draftHolds !== true && waiting.every((entry) => entry.cause === "draft_present");
+    const draftOnly = request.draftHolds !== true && waiting.every((entry) => entry.draftHolds === true && entry.cause === "draft_present");
     // A steer never joins (M69): it is for the turn that runs now, and goes in ahead of the held sends,
     // which wait for that turn to end anyway.
     const joins = holds !== undefined && JOINS.has(request.mode) && waiting.length > 0 && !draftOnly && request.when !== "steer";
@@ -2505,9 +2510,11 @@ export class SendProtocol {
         continue;
       }
       const surface = generation === null ? undefined : surfaceOf(paneId);
-      // What holds each marked request now, as this poll reads it: a draft, or a turn.
+      // What holds each held request now, as this poll reads it: a turn, something open at the box, or a
+      // draft. A cause written at hold time goes stale (a /plan held for a turn showed `turn_running` on an
+      // idle pane whose box held a returned draft, omp gang tester 14, 2026-10-25).
       const cause = surface === undefined ? null : causeOf(surface);
-      if (cause !== null) for (const entry of entries) if (entry.draftHolds === true && entry.state === "held" && entry.cause !== cause) holds.setCause(entry.id, cause);
+      if (cause !== null) for (const entry of entries) if (entry.state === "held" && entry.cause !== cause) holds.setCause(entry.id, cause);
       if (surface !== undefined && isFree(surface)) {
         watch.freeReads += 1;
         watch.freeSince ??= now;
@@ -2530,7 +2537,8 @@ export class SendProtocol {
       const quiet = watch.freeReads >= QUIET_FREE_POLLS && watch.freeSince !== null && now - watch.freeSince >= QUIET_FREE_MS;
       // A draft that left the box: two reads in a row of an empty box and an idle pane, at least
       // DRAFT_LEFT_MS apart, so a submitted draft has drawn its turn before anything is typed.
-      const draftLeft = holds.get(next.id)?.cause === "draft_present" && watch.freeReads >= FREE_POLLS && watch.freeSince !== null && now - watch.freeSince >= DRAFT_LEFT_MS;
+      // Only a marked request: another held send keeps its own release rules, whatever its label says.
+      const draftLeft = next.draftHolds === true && holds.get(next.id)?.cause === "draft_present" && watch.freeReads >= FREE_POLLS && watch.freeSince !== null && now - watch.freeSince >= DRAFT_LEFT_MS;
       if (busy || !(afterTurn || turnEnded || quiet || draftLeft)) continue;
       if (this.deps.releaseCheck?.(next.id, session, paneId) === false) {
         this.endHeld(next, "refused", "pane_gone");

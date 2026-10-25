@@ -26,7 +26,9 @@ describe("HoldStore", () => {
     expect(plain.cause).toBe("not_free");
     expect(plain.draftHolds).toBeUndefined();
     expect(plain.expiresAt).toBe(5_000 + HOLD_MS);
-    expect(store.setCause("req-000002", "turn_running")).toBeNull();
+    // Every held request follows the pane (the poll), a marked one or not.
+    expect(store.setCause("req-000002", "turn_running")?.cause).toBe("turn_running");
+    expect(store.setCause("req-000009", "turn_running")).toBeNull();
   });
 
   test("every cause a refusal holds from comes back from its file and rides on the phone's row", () => {

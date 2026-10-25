@@ -4563,6 +4563,33 @@ describe("the held send (M56 spec 15)", () => {
     expect(released?.receipt?.keys.at(-1)).toBe("Enter");
   });
 
+  // Tester 14 (omp 18.12.6, 2026-10-25): a held `/plan` kept `turn_running` on an idle pane whose box held
+  // a returned draft, because only a marked request's cause was rewritten after the hold.
+  test("a held send's cause follows the pane on every poll: a turn that ends over a draft reads draft_present, a dialog not_free", async () => {
+    const DRAFT = { revision: 2, turn: "idle", modal: "none", composer: "draft" } as const;
+    const OPEN_DIALOG = { revision: 3, turn: "idle", modal: "unknown", composer: "empty" } as const;
+    const holds = new HoldStore(join(dir, "held"));
+    const r = omp({ holds });
+    r.pane.inTurn = true;
+    await r.send("/plan", { id: "held-cause-01", mode: "command" });
+    await r.send("and then tidy up", { id: "held-cause-02" });
+    expect(r.protocol.heldOf("main", "%1").map((row) => row.cause)).toEqual(["turn_running", "turn_running"]);
+    const poll = async (surface: Surface): Promise<void> => void (await Promise.all(r.protocol.tickHolds("main", () => surface)));
+    // The turn ends and the box holds a draft (Stop gave a queued text back): the sentence says the box.
+    await poll(DRAFT);
+    expect(r.protocol.heldOf("main", "%1").map((row) => row.cause)).toEqual(["draft_present", "draft_present"]);
+    expect(holds.get("held-cause-01")?.cause).toBe("draft_present");
+    // Nothing was typed over the draft, and the command stayed held.
+    expect(r.pane.keysSeen).toEqual([]);
+    await poll(OPEN_DIALOG);
+    expect(r.protocol.heldOf("main", "%1").map((row) => row.cause)).toEqual(["not_free", "not_free"]);
+    await poll(RUNNING);
+    expect(r.protocol.heldOf("main", "%1").map((row) => row.cause)).toEqual(["turn_running", "turn_running"]);
+    // A free read says nothing new: the label stays until the release.
+    await poll(FREE);
+    expect(r.protocol.heldOf("main", "%1").map((row) => row.cause)).toEqual(["turn_running", "turn_running"]);
+  });
+
   test("a steer while a held command waits runs now, ahead of it, and the held command still goes after the turn (M69)", async () => {
     const r = await piHeldCommand("held-pi-03");
     r.pane.inTurn = true;

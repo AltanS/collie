@@ -20,8 +20,8 @@
 //
 // A send its caller marks `draftHolds` (a walky talky delivery, M62 spec 02) is also held over a draft,
 // and its caller names the hold's end (`expiresAt`), so one clock runs for it. Every file carries what
-// held it (`cause`, the refusal it came from), so the phone can say why; on a marked send the poll
-// rewrites it when that changes, so the caller can say why too.
+// held it (`cause`, the refusal it came from), so the phone can say why; the poll rewrites it on every
+// held send when the pane's reading changes, so the phone's sentence is true now, not at hold time.
 //
 // No harness name lives here (bridge/surface/no-harness-names.test.ts scans this folder).
 
@@ -45,8 +45,8 @@ export const HOLD_BRIDGE_MAX = 256;
 
 const HELD_STATES = ["held", "running", "ended"] as const satisfies readonly HeldState[];
 
-/** What holds a request: the refusal it was held from ({@link HeldCause}). A marked request's poll moves it
- *  between a draft in the box and a turn (anything else the box waits on reads as a turn there). */
+/** What holds a request: the refusal it was held from ({@link HeldCause}); every poll moves it between a
+ *  turn, something open at the box and a draft, as the pane reads now. */
 export type HoldCause = HeldCause;
 
 /** One held request on disk. */
@@ -78,7 +78,7 @@ export interface HeldEntry {
   readonly waitsForTurn?: true;
   /** The caller asked for a draft to hold this request, not refuse it (see the header). */
   readonly draftHolds?: true;
-  /** What holds it: the refusal it was held from, and on a {@link draftHolds} request what the poll reads now. */
+  /** What holds it: the refusal it was held from, then what the poll reads now. */
   readonly cause?: HoldCause;
 }
 
@@ -210,10 +210,10 @@ export class HoldStore {
     return this.write(entry);
   }
 
-  /** What holds a marked request now: the file is written only when it changed. Null when not held or not marked. */
+  /** What holds a request now: the file is written only when it changed. Null when it is not held. */
   setCause(id: string, cause: HoldCause): HeldEntry | null {
     const known = this.get(id);
-    if (known === null || known.state === "ended" || known.draftHolds !== true) return null;
+    if (known === null || known.state === "ended") return null;
     return known.cause === cause ? known : this.write({ ...known, cause });
   }
 
