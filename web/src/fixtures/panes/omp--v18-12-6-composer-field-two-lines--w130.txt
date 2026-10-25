@@ -1,0 +1,5 @@
+
+▐ draft line 1: the quick brown fox jumps over the lazy dog 1                                                                    ▌
+▐ draft line 2: the quick brown fox jumps over the lazy dog 2                                                                    ▌
+
+ π · ◒ Haiku 4.5 · 📁 …/11-geometry/state2/harness/omp/project · ◫ 4.7%/200K ⟲ 

@@ -3297,3 +3297,60 @@ The `#` popup that lists prompt actions (`ends with hash #`, `tag:#abc`: `Copy c
 | Fixture | State | What it shows |
 | --- | --- | --- |
 | `omp--v18-12-6-ask-plan-mode--w120.txt` | `dialog` | The last 20 rows when `x` was sent with plan mode on: a status row `⎋ Gather task for plan mode`, then the Ask panel `What work should I plan?` with four choices, each with a description row and a preview row, `Other (type your own)` and the footer ending `Alt+H hide`. Lifts like the previews dialog (ask.ts, OPTION PREVIEWS) |
+
+## Status rows the profile did not read (captured 2026-10-25, OMP 18.6.1 and 18.12.6, omp gang 11-geometry)
+
+Captures of tester 1 (`~/.cache/collie-lab/omp-gang/11-geometry/captures/1.3-*`), read through the rig bridge's pane read, so
+plain text with no SGR bytes, cut to the rows that matter (the last rows of the screen). The host name in the status row is
+replaced with `example`, a word of the same length. `config.yml` held `statusLine: {preset: full, separator: slash}` or
+`{preset: ascii, separator: ascii, symbolPreset: ascii}`. Until 1.24.1 `idle.frame.top` wanted a run of three rule glyphs in
+the status row and a symbol as its first token: the full preset at 80 columns draws `─5%─┃200K─` for its gauge, and the ascii
+preset starts on `[high]` and draws its rule with `-`. Both read `unknown/unknown/unknown`, and a send was refused `unconfirmed`.
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `omp--v18-12-6-status-full-slash-idle--w80.txt` | `idle` | 18.12.6, 80 columns, preset `full`, separator `slash`: the gauge keeps `─5%─┃200K─` |
+| `omp--v18-12-6-status-full-slash-draft--w80.txt` | `draft` | The same screen with `abc` typed |
+| `omp--v18-6-1-status-full-slash-idle--w80.txt` | `idle` | 18.6.1, the same preset, with the update notice over the box |
+| `omp--v18-12-6-status-ascii-idle--w130.txt` | `idle` | 18.12.6, preset `ascii`, symbols `ascii`: the first token is `[high]`, the rule is `-`, the compaction tick is `|` |
+| `omp--v18-12-6-status-ascii-draft--w80.txt` | `draft` | 18.12.6, the same preset at 80 columns with `abc` typed: `-5%------|200K-` |
+| `omp--v18-6-1-status-ascii-idle--w80.txt` | `idle` | 18.6.1, the same preset at 80 columns: `-4%------|200K-` |
+
+## The command list with `symbolPreset: ascii` (captured 2026-10-25, OMP 18.6.1 and 18.12.6, omp gang 11-geometry)
+
+`config.yml` held `symbolPreset: ascii`. `/session` typed in command mode, as the rig bridge's pane read it (plain text, no
+SGR), cut to the status row, the box and the list. The list draws its cursor with the theme's `nav.cursor`, which is `❯` in the
+unicode preset, U+F054 in the nerd preset and `>` in the ascii preset. Until 1.24.1 `commandList.pointer` knew the first two,
+so the list was no popup of the typed command, and `/session` ended `typed_not_submitted (modal_cue)` with its text left in
+the box.
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `omp--v18-12-6-ascii-symbols-session-list--w130.txt` | `popup` | 18.12.6, `/session` typed: the pointer row is `> session     Session management commands`, nine more rows under it |
+| `omp--v18-6-1-ascii-symbols-session-list--w130.txt` | `popup` | 18.6.1, the same list, status row `pi > [high] Haiku 4.5 > [D] ... >--4%----` |
+
+## Drafts the box wraps by cutting a token (captured 2026-10-25, OMP 18.6.1 and 18.12.6, omp gang 11-geometry)
+
+Typed through the rig bridge, then read from the pane at 80 columns, cut to the status row and the box. OMP wraps a draft at a
+break and drops the break. A token wider than a row, and a run of double-width cells, are cut where the row is full instead, so the
+draft has no space at that wrap. Until 1.24.1 the reader joined every wrap with a space (Clear's Restore text came back with one
+extra character).
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `omp--v18-6-1-draft-cjk-wrapped--w80.txt` | `draft` | 67 CJK characters, no spaces: the first row ends one cell short of the width |
+| `omp--v18-12-6-draft-url-wrapped--w80.txt` | `draft` | a 140-character URL: the first row is full, the cut is inside the token |
+
+## `composer.shape: field` (captured 2026-10-25, OMP 18.12.6, omp gang 11-geometry)
+
+The editor shape `field` has no rule and no border. Every draft row opens with the block `▐` and closes with `▌` on the last
+column, a blank row and the status row follow. The empty box is one `▐` row with the hint `⇧⇥ to change thinking effort` before
+the cap. The profile reads it as an interior frame under a blank row (`idle.frameAlternates`, the last one). The older chrome walk
+of the adapter does not read it, so `composerReady` stays false on these two.
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `omp--v18-12-6-composer-field-idle--w130.txt` | `idle` | the empty box with its effort hint |
+| `omp--v18-12-6-composer-field-two-lines--w130.txt` | `draft` | two typed lines, one `▐` row each |
+
+The shape `claude` (rule, `❯`, rule) reads empty and with one line, but not with two, and has no fixture here on purpose: a two-line draft reads `unreadable` because the cue reader takes the `❯` row and the indented row under it, between two rules, for a pointer on a listed row. `ownPrompt` is not safe on that edges entry. The wanted read is an expected-fail test, and the gap a `todo`, in `fold.pi-omp.test.ts` ("omp's composer.shape field"). Left for after 1.24.1.

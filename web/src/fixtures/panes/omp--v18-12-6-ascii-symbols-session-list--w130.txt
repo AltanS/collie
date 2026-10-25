@@ -1,0 +1,13 @@
+
+ pi > [high] Haiku 4.5 > [D] …/11-geometry/state2/harness/omp/project >---5%-----------------------------------------|-------200K-
+╰─ /session                                                                                                                       
+> session     Session management commands                                                                                        █
+  resume      Resume a different session                                                                                         █
+  model       Model: openrouter/anthropic/claude-haiku-4.5                                                                       │
+  tree        Navigate session tree (switch branches)                                                                            │
+  goal        Goal: off                                                                                                          │
+  fork        Fork this session, or open it in a multiplexer pane or window                                                      │
+  new         Start a new session                                                                                                │
+  vibe        Vibe: off                                                                                                          │
+  switch      Model: openrouter/anthropic/claude-haiku-4.5                                                                       │
+  slow        Slow mode: off                                                                                                     │

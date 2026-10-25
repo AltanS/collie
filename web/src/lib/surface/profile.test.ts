@@ -838,7 +838,7 @@ describe("the frame schema of the interior walk (M56 spec 14)", () => {
     const raw = parseJsonObject(readFileSync(join(PROFILES_DIR, "omp.json"), "utf8"))!;
     expect(failure(change(raw, ["idle", "frameAlternates", 1, "bottom", "pattern"], "[unclosed")).path).toBe("idle.frameAlternates[1].bottom.pattern");
     expect(failure(change(raw, ["idle", "frameAlternates"], "no list")).path).toBe("idle.frameAlternates");
-    expect(parseProfile(raw).idle.frameAlternates).toHaveLength(4);
+    expect(parseProfile(raw).idle.frameAlternates).toHaveLength(5);
   });
 
   it("omp 18.11 (issue 497): the chips of every symbol preset collapse, the Nerd Font pointer points, and a skill is listed under its namespace", () => {
@@ -852,7 +852,9 @@ describe("the frame schema of the interior walk (M56 spec 14)", () => {
     const pointer = new RegExp(list.pointer, "u");
     expect(pointer.exec("\u{F054} \u{F0EE5} model                Switch model")?.groups?.["command"]).toBe("model");
     expect(pointer.exec("❯ ✦ skill:wrap-up   Wrap up the session")?.groups?.["command"]).toBe("skill:wrap-up");
-    expect(pointer.test("> model   Switch model")).toBe(false);
+    // The ascii symbol preset draws the cursor as `>` (nav.cursor), which 1.24.1 reads (omp-gang 11-geometry, W3).
+    expect(pointer.exec("> session     Session management commands")?.groups?.["command"]).toBe("session");
+    expect(pointer.test("  session     Session management commands")).toBe(false);
     expect(list.namespaces).toEqual(["skill:"]);
     expect(list.argumentList).toBe(true);
     expect(omp.idle.inlineHint).toEqual({ fg: ["rgb(107,114,128)"] });

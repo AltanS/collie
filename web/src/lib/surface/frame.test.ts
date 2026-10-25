@@ -906,3 +906,92 @@ describe("a box at its scroll height (`idle.frame.scroll`, omp gang 2026-10-25)"
     expect(findInputFrame(surfaceRows("omp--draft-scrolled-2000-chars--v18.6.1.txt"), { ...OMP, frame })?.scrolled).toBeUndefined();
   });
 });
+
+// omp-gang 11-geometry, W4 (2026-10-25): the Clear receipt's Restore text had a space at every soft wrap, so a
+// CJK draft of 67 characters came back with 68 and a 140-character URL with 141. A harness wraps a draft at a
+// break and drops the break, and wraps inside a token only for a token wider than a row (a URL) and for a run
+// of double-width cells (CJK text has no spaces). The join keeps one space everywhere else.
+describe("the draft of a soft-wrapped box joins the rows the way they were broken (omp-gang 11-geometry, W4)", () => {
+  const OMP = requireProfile("omp").idle;
+  const WIDTH = 80;
+  /** An omp box over a transcript row: the first draft row behind the prompt glyph, the others indented under it. */
+  const box = (draft: readonly string[], columns = WIDTH): FrameRow[] => {
+    const pad = (text: string): string => text + " ".repeat(Math.max(0, columns - displayWidth(text)));
+    return plainRows([pad(""), pad(" π > ◒ Haiku 4.5 > 📁 ~/work ▶─6%─┃200K─"), ...draft.map((row, i) => pad(i === 0 ? `╰─ ${row}` : `   ${row}`))]);
+  };
+  const draftOf = (draft: readonly string[], columns = WIDTH): string | undefined => findInputFrame(box(draft, columns), OMP)?.interior.text;
+
+  it("the real CJK capture: 67 characters come back as 67 (omp cuts the run at the last cell that fits)", () => {
+    const text = findInputFrame(fixtureRows("omp--v18-6-1-draft-cjk-wrapped--w80.txt"), OMP)?.interior.text;
+    expect(text).toBe("日本語のテキストをここに入力して、ボックスの幅の計算が正しいかどうかを確認します。全角文字は二つのセルを占めます。これは七十文字です。");
+    expect([...text!]).toHaveLength(67);
+  });
+
+  it("the real URL capture: 140 characters come back as 140 (the token is wider than a row)", () => {
+    const text = findInputFrame(fixtureRows("omp--v18-12-6-draft-url-wrapped--w80.txt"), OMP)?.interior.text;
+    expect(text).toBe(`https://example.com/${"abcdefghij".repeat(12)}`);
+    expect(text).toHaveLength(140);
+  });
+
+  it("a URL after a word is cut where the row is full, and the space before it stays", () => {
+    const url = `https://example.com/${"abcdefghij".repeat(9)}`;
+    // Row one: "see " and as much of the URL as fits the 77 cells behind the glyph. Row two: the rest.
+    const first = `see ${url}`.slice(0, 77);
+    const rest = `see ${url}`.slice(77);
+    expect(draftOf([first, rest])).toBe(`see ${url}`);
+  });
+
+  it("a plain wrap at a word keeps its space, whether the row ends short or the word ends exactly on the last cell", () => {
+    const words = "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi rho sigma tau";
+    expect(draftOf([words.slice(0, 70).trimEnd(), words.slice(71)])).toBe(`${words.slice(0, 70).trimEnd()} ${words.slice(71)}`);
+    // 77 cells of words, the row full to the last cell at a word end; a short word follows on the next row.
+    const row = `${"word ".repeat(15)}wordy ab`.slice(0, 77).trimEnd();
+    expect(displayWidth(`╰─ ${row}`)).toBe(WIDTH);
+    expect(draftOf([row, "next words here"])).toBe(`${row} next words here`);
+  });
+
+  it("two long words at a full row's edge are two words: only a token wider than a row has no space", () => {
+    const left = `${"a".repeat(30)} ${"b".repeat(46)}`;
+    expect(displayWidth(`╰─ ${left}`)).toBe(WIDTH);
+    expect(draftOf([left, `${"c".repeat(30)} tail`])).toBe(`${left} ${"c".repeat(30)} tail`);
+  });
+
+  it("a draft typed with newlines keeps a space for each: the rows end short", () => {
+    expect(draftOf(["first line", "second line", "third"])).toBe("first line second line third");
+    expect(draftOf(["日本語のテキスト", "二行目"])).toBe("日本語のテキスト 二行目");
+  });
+
+  it("a newline after a CJK line that fills the row to within a cell keeps its space (the next row starts on a narrow glyph)", () => {
+    const line = "文".repeat(38);
+    expect(displayWidth(`╰─ ${line}`)).toBe(79);
+    expect(draftOf([line, "next line"])).toBe(`${line} next line`);
+  });
+
+  it("a blank row in the draft is a real break: the space stays", () => {
+    const rows = findInputFrame(box(["part one", "", "part two"]), OMP)?.interior.text;
+    expect(rows).toBe("part one part two");
+  });
+
+  it("Korean text, which has spaces, keeps the space where a row ends short of the width", () => {
+    expect(draftOf(["안녕하세요 세계 여러분", "다음 줄입니다"])).toBe("안녕하세요 세계 여러분 다음 줄입니다");
+  });
+
+  it("rows that are not one padded rectangle join as they always did", () => {
+    const rows = plainRows(["", " π > ◒ Haiku 4.5 > 📁 ~/work ▶─6%─┃200K─", `╰─ ${"x".repeat(77)}`, `   ${"y".repeat(10)}`]);
+    expect(findInputFrame(rows, OMP)?.interior.text).toBe(`${"x".repeat(77)} ${"y".repeat(10)}`);
+  });
+
+  it("a screen with its trailing spaces cut says nothing about a full row: two equal-length lines typed with a newline keep the space", () => {
+    const rows = plainRows(["", " π > ◒ Haiku 4.5 > 📁 ~/work ▶─6%─┃200K─".padEnd(80), `╰─ ${"x".repeat(40)}`, `   ${"y".repeat(40)}`]);
+    expect(findInputFrame(rows, OMP)?.interior.text).toBe(`${"x".repeat(40)} ${"y".repeat(40)}`);
+  });
+
+  it("narrower terminals, 40 columns: the URL cut and the CJK run cut both hold", () => {
+    // A row holds 37 cells behind the glyph or the indent.
+    const url = `https://example.com/${"abcdefghij".repeat(5)}`;
+    expect(draftOf([url.slice(0, 37), url.slice(37, 74), url.slice(74)], 40)).toBe(url);
+    const cjk = "日本語のテキストをここに入力して、ボックスの幅を確認します。これは二行目以降です。";
+    // 18 double-width characters fill 36 of the 37 cells: omp cuts the run one cell short.
+    expect(draftOf([cjk.slice(0, 18), cjk.slice(18, 36), cjk.slice(36)], 40)).toBe(cjk);
+  });
+});

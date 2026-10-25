@@ -3,7 +3,8 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { agentOf, fixtureRows, idleFor, PANES_DIR, readScreen, rowsOf } from "../../test/surface-corpus";
+import type { StyledLine } from "../blocks";
+import { agentOf, fixtureRows, idleFor, PANES_DIR, readScreen, rowsOf, SURFACE_FIXTURES_DIR } from "../../test/surface-corpus";
 import { pointsAt } from "./command-list";
 import { commandListAt, ownCommandList, runningSign } from "./cues";
 import { findInputFrame, rowText } from "./frame";
@@ -47,6 +48,9 @@ describe("the typed command's own list under pi's and omp's box (field case 2026
     ["omp--v18-6-slash-model-list--w80.txt", "/model"],
     ["omp--v18-6-slash-settings-list--w120.txt", "/settings"],
     ["omp--v18-6-slash-settings-list--w80.txt", "/settings"],
+    // symbolPreset ascii draws the list cursor as `>` (omp-gang 11-geometry, 2026-10-25).
+    ["omp--v18-6-1-ascii-symbols-session-list--w130.txt", "/session"],
+    ["omp--v18-12-6-ascii-symbols-session-list--w130.txt", "/session"],
     // The older captures of the same state: OmO on pi, omp 18.8's pi-shaped box (commit 9acc1502) and an older omp box.
     ["pi--omo-v5130-slash-model.txt", "/model"],
     ["pi--omo-v5130-slash-compact.txt", "/compact"],
@@ -612,6 +616,37 @@ describe("omp's file popup under a path typed in the box (18.6.1 and 18.12.6)", 
   }
 });
 
+// The ascii symbol preset draws every cursor as `>` (omp-gang 11-geometry, W3). The pointer pattern reads that glyph in a
+// command list, and a popup row under a typed path must still be no command list: `notForText` decides on the text.
+describe("omp's file popup with the ascii cursor under a typed path is still no command list", () => {
+  for (const name of ["omp--v18-6-1-path-popup--w120.txt", "omp--v18-12-6-path-popup--w120.txt", "omp--v18-6-1-path-popup-tilde--w120.txt"]) {
+    it(`${name}: the popup row drawn with > reads a draft, no cue, no command list`, () => {
+      const rows = rowsOf(fixtureRows(name).map(rowText).map((text) => text.replace(/^❯ /u, "> ")).join("\n"));
+      const read = readScreen(rows, "omp", idleFor("omp"));
+      expect(read.surface).toEqual({ revision: 1, turn: "idle", modal: "none", composer: "draft" });
+      expect(read.cues?.strength).toBe("none");
+      const texts = rows.map(rowText);
+      expect(texts.some((text) => text.startsWith("> ")), name).toBe(true);
+      expect(commandListAt(texts, read.frame!, idleFor("omp")!.volatile.below.commandList), name).toBeNull();
+    });
+  }
+});
+
+describe("omp's status row pattern leaves the rows under a command list alone", () => {
+  // The rows an extension draws under a list (`commandList.footer`) and the popup rows are under the box. Neither may read
+  // as the status row over a box, or a box above them would be found a second time from there.
+  it("no row under the box of the status-row palettes and the popups is a status row", () => {
+    const top = new RegExp(idleFor("omp")!.frame.top.pattern, "u");
+    for (const name of ["omp--v18-12-6-status-row-palette-4.txt", "omp--v18-6-1-status-row-palette-4.txt", "omp--v18-12-6-status-row-palette-10.txt", "omp--v18-6-1-at-popup--w120.txt", "omp--v18-6-1-hash-popup--w120.txt", "omp--v18-6-1-path-popup--w120.txt"]) {
+      const rows = fixtureRows(name, name.includes("status-row") ? SURFACE_FIXTURES_DIR : PANES_DIR);
+      const frame = findInputFrame(rows, idleFor("omp")!)!;
+      const under = rows.map(rowText).slice(frame.bottom + 1).filter((text) => text.trim() !== "");
+      expect(under.length, name).toBeGreaterThan(0);
+      for (const text of under) expect(top.test(text), `${name}: ${text}`).toBe(false);
+    }
+  });
+});
+
 describe("omp's rewind picker (Esc Esc) is a modal, not an unknown screen (18.6.1 and 18.12.6)", () => {
   const PICKERS = ["omp--v18-6-1-rewind-picker--w120.txt", "omp--v18-12-6-rewind-picker--w120.txt"];
 
@@ -703,5 +738,132 @@ describe("a dialog quoted inside the person's own draft is the draft's text (omp
     const outdented = rows.map((text) => (/^ {3}[╭│╰]/u.test(text) ? text.slice(3) : text)).join("\n");
     const read = readScreen(rowsOf(outdented), agentOf("omp"), idleFor("omp"));
     expect(read.surface.modal).toBe("unreadable");
+  });
+});
+
+const STATUS_ROW_FIXTURES = [
+  "omp--v18-12-6-status-ascii-draft--w80.txt",
+  "omp--v18-12-6-status-ascii-idle--w130.txt",
+  "omp--v18-12-6-status-full-slash-draft--w80.txt",
+  "omp--v18-12-6-status-full-slash-idle--w80.txt",
+  "omp--v18-6-1-status-ascii-idle--w80.txt",
+  "omp--v18-6-1-status-full-slash-idle--w80.txt",
+];
+
+describe("omp's status row above the box, in every shape its presets draw (omp-gang 11-geometry, 2026-10-25)", () => {
+  // Rows rendered by OMP 18.12.6's own status line (pi-tui status-line, the gallery's fake session) across the presets
+  // default, minimal, compact, full, nerd and ascii, the separators and the symbol presets, at widths from 20 to 130.
+  // Until 1.24.1 the profile asked for a run of three rule glyphs, so the full preset at 80 columns (its gauge shrinks
+  // to ─5%─┃200K─) and the ascii preset (first token [high], [M] or [T]) read as no box: unknown, and a send refused.
+  const STATUS_ROW_SAMPLES: readonly (readonly [string, string])[] = [
+  ["percentage and tick gauge, 130 columns", " π > ⬢ test-model > 🗑 geo2-render > ◫ 0.8%/200K ⟲ > $0.02 ▶───────────────────────────────────────────────────────────────────────"],
+  ["full preset, embedded gauge down to its percent label", " π / 🖥 example / ⬢ test-model / 🗑 geo2-render ─0.8%────200K─ 💾 20.00% / ⤵ 1.2K "],
+  ["full preset, powerline caps, labels kept", " π ▶ 🖥 example ▶ ⬢ test-model ▶ 🗑 geo2-render ▶──30%───200K─"],
+  ["minimal preset, the path first", " 🗑 geo2-render ─────────30%──────────────────200K─"],
+  ["compact preset, pipe separator, plain rule", " ⬢ test-model ─────────────────────── $0.02 │ ◫ 0.0%/200K ⟲ "],
+  ["overflow: window label before the percent", " π ▶ 🗑 …ender ▶──────200K─125%"],
+  ["ascii symbols, percent label between dashes", " pi > [T] …der >-----95%-200K-"],
+  ["ascii preset, [M] first", " [M] test-model > [T] geo2-render -0.8%-------------------200K- tok: 2K < $0.02 "],
+  ["ascii compact, a short rule", " [M] test-model >---"],
+  ["ascii minimal, [T] path first", " [T] geo2-render >-----------------------------------------< ctx: 0.0%/200K [A] "],
+  ["nerd full preset, labels kept", " \u{F0D57} \u{E0B0} \u{F109} example \u{E0B0} \u{EC19} test-model \u{E0B0} \u{F014} geo2-render \u{E0B0}─0.8%───200K─\u{E0B2} \u{F1C0} 20.00% \u{E0B2} \u{F090} 1.2K "],
+  ["nerd preset", " \u{F0D57} \u{E0B0} \u{F109} example \u{E0B0} \u{EC19} test-model \u{E0B0} \u{F014} geo2-render \u{E0B0} \u{F0051} new \u{E0B0}────────────\u{E0B2} \u{F090} 1.2K \u{E0B2} \u{F08B} 800 \u{E0B2} \u{F1C0} 300 \u{E0B2} $0.02 "],
+  ["block separator", " 🗑 geo2-render ──────────────────── ◫ 0.0%/200K ⟲ "],
+  ["two rule glyphs at the end, powerline caps", " π ▶ ⬢ test-model ▶ 🗑 geo2-render ▶ ◫ 0.0%/200K ⟲ ▶ $0.02 ──"],
+  ["one rule glyph after a cap", " π ▶ ⬢ test-model ▶ 🗑 …ender ▶─"],
+  ["ascii, one rule glyph after a cap", " pi > [M] test-model > [T] geo2-render > ctx: 0.0%/200K [A] > $0.02 >-"],
+  ["one rule glyph set apart by spaces", " ⬢ test-model ─ $0.02 ◀ ◫ 125.0%/200K ⟲ "],
+  ["a named profile on the brand", " π-work ▶ ⬢ test-model ▶ 🗑 geo2-render ▶──30%───200K─"],
+  ];
+  const screen = (status: string, box: string): StyledLine[] => rowsOf(["", status, `╰─ ${box}`.trimEnd()].join("\n"));
+  const idle = idleFor("omp");
+
+  for (const [label, row] of STATUS_ROW_SAMPLES) {
+    it(`${label}: an empty box and a draft are read`, () => {
+      expect(readScreen(screen(row, ""), "omp", idle).surface).toEqual({ revision: 1, turn: "idle", modal: "none", composer: "empty" });
+      const draft = readScreen(screen(row, "abc"), "omp", idle);
+      expect(draft.surface).toEqual({ revision: 1, turn: "idle", modal: "none", composer: "draft" });
+      expect(draft.frame?.interior.text).toBe("abc");
+    });
+  }
+
+  // While a turn runs the brand glyph is the spinner and the turn timer; the ascii preset spins - \\ | /.
+  const RUNNING: readonly (readonly [string, string])[] = [
+    ["unicode spinner", " ⠼ 4s ▶ ⬢ test-model ▶ 🗑 geo2-render ▶──30%───200K─"],
+    ["unicode spinner, slash separator, short gauge", " ⠼ 4s / ⬢ test-model / 🗑 geo2-render ─30%─200K─"],
+    ["ascii spinner", " \\ 4s > [M] test-model > [T] geo2-render >-----95%-200K-"],
+    ["ascii spinner, a minute", " | 1m > [M] test-model >---"],
+  ];
+  for (const [label, row] of RUNNING) {
+    it(`${label}: a running turn is read`, () => {
+      expect(readScreen(screen(row, ""), "omp", idle).surface).toEqual({ revision: 1, turn: "running", modal: "none", composer: "empty" });
+    });
+  }
+
+  // Prose that holds three dashes is not a status row: with no status row over the box there is no box.
+  it("a transcript line with dashes over the box is no status row", () => {
+    for (const line of ["Use --- as a rule", "See the list ─── below", "Note: 5% then 200K - done"]) {
+      const read = readScreen(rowsOf([line, "", "╰─ abc"].join("\n")), "omp", idle);
+      expect(read.frame, line).toBeNull();
+      expect(isFree(read.surface), line).toBe(false);
+    }
+  });
+
+  for (const name of STATUS_ROW_FIXTURES) {
+    it(`${name}: the captured screen reads ${labelOf(name).state}`, () => {
+      const read = own(name);
+      const want = labelOf(name).state === "draft" ? { composer: "draft", text: "abc" } : { composer: "empty", text: "" };
+      expect(read.surface).toEqual({ revision: 1, turn: "idle", modal: "none", composer: want.composer });
+      expect(read.frame?.interior.text).toBe(want.text);
+      expect(read.cues?.strength).toBe("none");
+    });
+  }
+});
+
+// omp 18.12.6 draws the editor in one of eight `composer.shape` forms (omp-gang 11-geometry W5, 2026-10-25):
+// band, borderless, claude, field, pi, rail, rule and the default box. The profile lists the box and the shapes
+// `frameAlternates` already held (claude rules, pi's blank row); `field` is a borderless run of ▐ rows closed by ▌.
+describe("omp's composer.shape field (18.12.6)", () => {
+  const FIELD = ["omp--v18-12-6-composer-field-idle--w130.txt", "omp--v18-12-6-composer-field-two-lines--w130.txt"];
+  const idle = idleFor("omp");
+
+  it("the empty field box reads an idle, empty composer, and the hint inside it is no draft", () => {
+    const read = readScreen(fixtureRows(FIELD[0]!), "omp", idle);
+    expect(read.surface).toEqual({ revision: 1, turn: "idle", modal: "none", composer: "empty" });
+    expect(read.frame?.interior.text).toBe("");
+    expect(read.cues?.strength).toBe("none");
+    expect(labelOf(FIELD[0]!).state).toBe("idle");
+  });
+
+  it("a two-line draft reads as the two lines joined, with no modal", () => {
+    const read = readScreen(fixtureRows(FIELD[1]!), "omp", idle);
+    expect(read.surface).toEqual({ revision: 1, turn: "idle", modal: "none", composer: "draft" });
+    expect(read.frame?.interior.text).toBe("draft line 1: the quick brown fox jumps over the lazy dog 1 draft line 2: the quick brown fox jumps over the lazy dog 2");
+    expect(labelOf(FIELD[1]!).state).toBe("draft");
+  });
+
+  it("a transcript line that opens with the block glyph is no field box without a blank row above it", () => {
+    const rows = rowsOf(["some output", "▐ quoted text ▌", "", " π · ◒ Haiku 4.5 · 📁 ~/work · ◫ 4.7%/200K ⟲ "].join("\n"));
+    expect(readScreen(rows, "omp", idle).surface.composer).not.toBe("draft");
+  });
+
+  // `composer.shape: claude` draws the Claude Code frame (rule, `❯`, rule) under a status row. A one-line draft
+  // and the empty box read. A two-line draft does not: the prompt row and the indented row under it are a
+  // pointer row on a listed row between two rules, which the cue reader takes for a dialog (cues, `pointer-row`).
+  // `idle.dialogsInBox`'s answer for a harness is `ownPrompt`, but it is only safe on the interior walk with a
+  // `rows` pattern naming every row a box may hold, and this alternate walks the edges: with `ownPrompt` any
+  // `❯` list between two rules would read as a draft. A fix needs a walk that names the rows (rule, `❯` row,
+  // two-space rows, status row), which collides with Claude Code's own `❯` pickers on the same screens.
+  const CLAUDE_TWO_LINES = [
+    "──────────────────────────────────────────────────────────────────────────────",
+    "❯ draft line 1: the quick brown fox jumps over the lazy dog 1",
+    "  draft line 2: the quick brown fox jumps over the lazy dog 2",
+    "──────────────────────────────────────────────────────────────────────────────",
+    " π · ◒ Haiku 4.5 · 📁 ~/work · ◫ 4.7%/200K ⟲ ",
+  ];
+  it.todo("composer.shape claude: a two-line draft reads as a draft, not an unreadable modal (see the note above)");
+  it.fails("composer.shape claude, two-line draft: the wanted read, which the cue reader still refuses", () => {
+    const read = readScreen(rowsOf(CLAUDE_TWO_LINES.join("\n")), "omp", idle);
+    expect(read.surface).toEqual({ revision: 1, turn: "idle", modal: "none", composer: "draft" });
   });
 });

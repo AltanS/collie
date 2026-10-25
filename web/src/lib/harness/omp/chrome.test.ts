@@ -148,6 +148,16 @@ const BOX_COMPOSER_FIXTURES = [
   "omp--v18-12-6-slash-comment-loop-row--w120.txt",
   // omp 18.12.6 after a cancelled `//comment`: the box is empty and the last list row stays under it.
   "omp--v18-12-6-stale-list-row-empty-box--w120.txt",
+  // omp 18.6.1 and 18.12.6 under the full preset at 80 columns and the ascii preset (omp-gang 11-geometry, 2026-10-25).
+  "omp--v18-12-6-status-ascii-draft--w80.txt",
+  "omp--v18-12-6-status-ascii-idle--w130.txt",
+  "omp--v18-12-6-status-full-slash-draft--w80.txt",
+  "omp--v18-12-6-status-full-slash-idle--w80.txt",
+  "omp--v18-6-1-status-ascii-idle--w80.txt",
+  "omp--v18-6-1-status-full-slash-idle--w80.txt",
+  // Drafts the box wraps by cutting a token: a CJK run (18.6.1) and a URL wider than a row (18.12.6), 80 columns.
+  "omp--v18-6-1-draft-cjk-wrapped--w80.txt",
+  "omp--v18-12-6-draft-url-wrapped--w80.txt",
   // omp 18.6.1: a queued line under `After yield · 1`, then Stop gave it back to the box (ADR 0122).
   "omp--v18-6-1-queued-before-stop--w119.txt",
   "omp--v18-6-1-stop-returned--w119.txt",
@@ -191,6 +201,9 @@ const TALL_PALETTE_FIXTURES = [
   "omp--v18-12-6-slash-mo-fuzzy--w120.txt",
   "omp--v18-12-6-slash-nothere-fuzzy--w120.txt",
   "omp--v18-6-1-slash-open-tall--w120.txt",
+  // omp 18.6.1 and 18.12.6 with symbolPreset ascii, `/session` typed: the list cursor is `>` (omp-gang 11-geometry, 2026-10-25).
+  "omp--v18-12-6-ascii-symbols-session-list--w130.txt",
+  "omp--v18-6-1-ascii-symbols-session-list--w130.txt",
 ];
 
 // omp 18.6.1, a nine-row draft that quotes a permission dialog (omp-gang tester 12, 2026-10-25). The composer is
@@ -319,6 +332,14 @@ describe("locateComposer — the real corpus, pinned so any change to the walk s
     { fixture: "omp--v18-6-steer-typed--w120.txt", top: 38, bottom: 39, suggestEnd: 40 },
     { fixture: "omp--v18-12-6-slash-comment-loop-row--w120.txt", top: 11, bottom: 12, suggestEnd: 14 },
     { fixture: "omp--v18-12-6-stale-list-row-empty-box--w120.txt", top: 11, bottom: 12, suggestEnd: 14 },
+    { fixture: "omp--v18-12-6-status-ascii-draft--w80.txt", top: 3, bottom: 4, suggestEnd: 5 },
+    { fixture: "omp--v18-12-6-status-ascii-idle--w130.txt", top: 3, bottom: 4, suggestEnd: 5 },
+    { fixture: "omp--v18-12-6-status-full-slash-draft--w80.txt", top: 3, bottom: 4, suggestEnd: 5 },
+    { fixture: "omp--v18-12-6-status-full-slash-idle--w80.txt", top: 3, bottom: 4, suggestEnd: 5 },
+    { fixture: "omp--v18-6-1-status-ascii-idle--w80.txt", top: 6, bottom: 7, suggestEnd: 8 },
+    { fixture: "omp--v18-6-1-status-full-slash-idle--w80.txt", top: 6, bottom: 7, suggestEnd: 8 },
+    { fixture: "omp--v18-6-1-draft-cjk-wrapped--w80.txt", top: 1, bottom: 2, suggestEnd: 4, draftEnd: 4 },
+    { fixture: "omp--v18-12-6-draft-url-wrapped--w80.txt", top: 1, bottom: 2, suggestEnd: 4, draftEnd: 4 },
     // omp 18.6.1, a queued line and Stop giving it back (ADR 0122): a short screen, the box on its last row.
     { fixture: "omp--v18-6-1-queued-before-stop--w119.txt", top: 16, bottom: 17, suggestEnd: 18 },
     { fixture: "omp--v18-6-1-stop-returned--w119.txt", top: 16, bottom: 17, suggestEnd: 18 },
@@ -1037,6 +1058,8 @@ describe("composerPrompt — the region a destructive write is bound to", () => 
       { fixture: "omp--v18-12-6-slash-mo-fuzzy--w120.txt", top: 4, bottom: 5, suggestEnd: 16 },
       { fixture: "omp--v18-12-6-slash-nothere-fuzzy--w120.txt", top: 5, bottom: 6, suggestEnd: 16 },
       { fixture: "omp--v18-6-1-slash-open-tall--w120.txt", top: 15, bottom: 16, suggestEnd: 27 },
+      { fixture: "omp--v18-12-6-ascii-symbols-session-list--w130.txt", top: 1, bottom: 2, suggestEnd: 13 },
+      { fixture: "omp--v18-6-1-ascii-symbols-session-list--w130.txt", top: 1, bottom: 2, suggestEnd: 13 },
     ];
     expect(PINNED_TALL.map((p) => p.fixture)).toEqual(TALL_PALETTE_FIXTURES);
     for (const { fixture, top, bottom, suggestEnd } of PINNED_TALL) {
