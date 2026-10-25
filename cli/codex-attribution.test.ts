@@ -73,6 +73,15 @@ describe("attributeCodexHook: the host is the Codex the kernel says is above the
     expect(attributeCodexHook(deps(rows, HERDR_A, { parentPid: 100 }))).toEqual({ kind: "unattributed", reason: "exec-session" });
   });
 
+  test("codex e (the alias of exec) and codex review are non-interactive runs with no pane", () => {
+    for (const args of [["codex", "e", "fix it"], ["codex", "review", "--base", "main"], ["codex", "-m", "gpt-5", "review"]]) {
+      const rows = { 9000: hook(100, 500), 100: { ppid: 1, startTime: 300, comm: "codex", args } } satisfies Record<number, Proc>;
+      expect(isExecArgs(args)).toBe(true);
+      expect(attributeCodexHook(deps(rows, HERDR_A, { parentPid: 100 }))).toEqual({ kind: "unattributed", reason: "exec-session" });
+    }
+    for (const args of [["codex"], ["codex", "--yolo"], ["codex", "resume", "--last"], ["codex", "fork"], ["codex", "fix the review comments"]]) expect(isExecArgs(args)).toBe(false);
+  });
+
   test("a TUI with no multiplexer markers is unattributed", () => {
     const d = deps({ 9000: hook(100, 500), 100: tui(1, 300) }, {}, { parentPid: 100 });
     expect(attributeCodexHook(d)).toEqual({ kind: "unattributed", reason: "no-markers" });
@@ -101,7 +110,7 @@ describe("attributeCodexHook: session identity", () => {
 
   /** A hook that detached itself: its parent chain holds no Codex at all. */
   function detached(rows: Record<number, Proc>, over: Partial<AttributionDeps>): AttributionDeps {
-    return { ...deps({ ...rows, 9500: hook(1, 600) }, {}, { selfPid: 9500, parentPid: 1, ...over }) };
+    return { ...deps({ ...rows, 9500: hook(1, 600) }, HERDR_A, { selfPid: 9500, parentPid: 1, ...over }) };
   }
 
   test("a verified hook records its session, and a later detached hook of that session is attributed through it", () => {
@@ -115,6 +124,15 @@ describe("attributeCodexHook: session identity", () => {
     const first = deps(verified(), HERDR_A, { parentPid: 100, session: SESSION });
     attributeCodexHook(first);
     expect(attributeCodexHook(detached(first.rows, { files: first.files, session: "0199a111-aaaa-7bbb-8ccc-000000000002" }))).toEqual({ kind: "unattributed", reason: "no-binding" });
+  });
+
+  test("the record is used only when this hook's own environment names the recorded panes", () => {
+    const first = deps(verified(), HERDR_A, { parentPid: 100, session: SESSION });
+    attributeCodexHook(first);
+    const elsewhere = detached(first.rows, { files: first.files, session: SESSION, env: HERDR_B });
+    expect(attributeCodexHook(elsewhere)).toEqual({ kind: "unattributed", reason: "no-binding" });
+    const bare = detached(first.rows, { files: first.files, session: SESSION, env: {} });
+    expect(attributeCodexHook(bare)).toEqual({ kind: "unattributed", reason: "no-binding" });
   });
 
   test("a recorded host whose pid was reused is stale, never attributed", () => {

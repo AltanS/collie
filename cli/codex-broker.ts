@@ -20,7 +20,9 @@ import { asJsonObject, asJsonString, parseJsonObject } from "../web/src/lib/json
 //  3. Anything that is not a clean answer is NO DECISION, and no decision prints `{}`: Codex then asks
 //     the person the way it always did. A provider that exits non-zero, prints nothing, prints
 //     something else, asks for an input rewrite, or says `interrupt` is no decision. An error, an
-//     offline bridge and a missed deadline are no decision. The broker NEVER decides by itself.
+//     offline bridge and a missed deadline are no decision. The broker NEVER decides by itself. A
+//     provider that ends with no decision while the hold is still open ends the WHOLE request with
+//     no decision (the hold is withdrawn too): its remote card cannot be withdrawn any more.
 //  4. The output is built here from the decision, never copied from a provider: no `updatedInput`, no
 //     `updatedPermissions`, no `interrupt` (Codex fails closed on all three) can leave this process.
 //  5. The deadline is 290 s, inside the 300 s hook timeout, so the cancel and the print always fit.
@@ -174,7 +176,11 @@ export function brokerPermission(deps: BrokerDeps, signal?: AbortSignal): Promis
     providerOpen = false;
     const verdict = providerDecision(end);
     if (verdict !== null) await finish(verdict.decision, verdict.message, "provider", "answered");
-    else noneLeft();
+    // A provider that ended with no valid decision (it exited at once, printed nothing, or was killed) has
+    // not withdrawn its remote request, and there is nothing left to withdraw it by: if the Collie hold
+    // stayed open and hid Codex's own prompt, that card would be a second approval path nobody watches. So
+    // the whole request ends with no decision, the hold is told to stand down, and Codex asks the person.
+    else await finish(null, null, null, "no-answer");
   })();
   void (async () => {
     const decision = await hold?.settled;

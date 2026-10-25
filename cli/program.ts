@@ -284,6 +284,7 @@ function walkyDeps(io: Io): WalkyDeps {
     ctx: loadContext(io.err),
     files: realFiles,
     uid: process.getuid?.(),
+    probe: hostProcessProbe(),
     io,
     platform: HOST.platform,
     readStdin: () => Bun.stdin.text(),
@@ -414,6 +415,7 @@ function statusLineDeps(): StatusLineDeps {
     files: realFiles,
     readStdin: () => Bun.stdin.text(),
     uid: process.getuid?.(),
+    probe: hostProcessProbe(),
     run: runShell,
   };
 }
@@ -755,7 +757,7 @@ export const COMMANDS: readonly Command[] = [
     run: () => EXIT.OK,
   },
   // The command every native Codex hook entry runs (cli/codex-hook.ts). Internal, like `beacon`: spelled by
-  // Codex, never typed, and it exits 0 on every path, because a non-zero exit is a deny to a permission hook.
+  // Codex, never typed, and it exits 0 on every path but Moshi-only routing, which returns the original Moshi command's own code (a non-zero exit is a deny to a permission hook).
   {
     name: "codex-hook",
     summary: "internal: the native Codex hook. Writes hook edges, and answers a permission request for the phone",

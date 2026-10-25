@@ -167,14 +167,14 @@ describe("brokerPermission: nothing that is not a clean answer decides", () => {
   ];
 
   for (const [name, end] of bad) {
-    test(`${name} is no decision, and the hold is still waited for`, async () => {
+    test(`${name} is no decision, and it ends the whole request: the hold is withdrawn, Codex asks the person`, async () => {
       expect(providerDecision(end)).toBeNull();
       const r = rig();
       const pending = brokerPermission(r.deps);
       r.provider.answer(end);
-      await Promise.resolve();
-      r.hold.answer("allow");
-      expect(await pending).toMatchObject({ decision: "allow", winner: "collie" });
+      expect(await pending).toMatchObject({ output: "{}", decision: null, winner: null, why: "no-answer", holdCancelled: true });
+      expect(r.hold.cancelled).toBe(1);
+      expect(r.provider.cancels).toHaveLength(1);
     });
   }
 

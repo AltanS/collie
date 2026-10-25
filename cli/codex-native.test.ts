@@ -61,7 +61,7 @@ function proof(over: Record<string, JsonValue> = {}): string {
     executable: MOSHI_REAL,
     digest: new Bun.CryptoHasher("sha256").update("moshi 1.0.0").digest("hex"),
     cancel: { method: "sigterm", graceMs: 3000 },
-    proof: { kind: "runtime-withdrawal", remoteWithdrawn: true, observer: "root", observedAt: "2026-10-25T18:00:00Z", detail: "Cancelled the loser on a phone; the pending prompt left the phone within 2 s." },
+    proof: { kind: "runtime-withdrawal", remoteWithdrawn: true, decides: "hook-stdout", blocksUntilAnswered: true, observer: "root", observedAt: "2026-10-25T18:00:00Z", detail: "Cancelled the loser on a phone; the pending prompt left the phone within 2 s." },
     ...over,
   });
 }
@@ -81,7 +81,7 @@ function rig(opts: { hooks?: Doc | null; text?: string; moshi?: boolean; proven?
     files.write(MOSHI, "moshi 1.0.0");
   }
   if (opts.proven === true) files.write(join("/cfg", CAPABILITY_FILE), proof());
-  return { ctx: context({}), io: capture(), files, fs: fakeLinkFs() };
+  return { ctx: context({}), io: capture(), files, fs: fakeLinkFs(), harnessVersion: () => "0.164.0" };
 }
 
 const read = (d: Rig, path: string): string | null => d.files.entries.get(path)?.text ?? null;
@@ -431,5 +431,115 @@ describe("nativeStatusLines", () => {
     delete doc.hooks.Interrupt;
     d.files.write(HOOKS, serializeHooks(doc));
     expect(nativeStatusLines(d, BIN).join("\n")).toContain("missing Interrupt");
+  });
+});
+
+describe("native install: Moshi in any spelling (a second remote-approval handler beside a hold)", () => {
+  const entry = (command: string): Doc => ({ hooks: { PermissionRequest: [{ hooks: [{ type: "command", command }] }] } });
+
+  test("a hold beside Moshi's codex-hook is refused in every spelling, and writes nothing", () => {
+    for (const command of ["'/usr/local/bin/moshi' codex-hook", "/opt/homebrew/bin/moshi codex-hook", "moshi codex-hook", '"/usr/local/bin/moshi" codex-hook', "FOO=1 moshi-hook codex-hook"]) {
+      const d = rig({ hooks: entry(command) });
+      const before = read(d, HOOKS);
+      expect(cmdCodexNativeInstall(d, BIN, { hold: true, moshi: false })).toBe(EXIT.FAIL);
+      expect(d.io.stderr.join("\n")).toContain("Moshi");
+      expect(read(d, HOOKS)).toBe(before);
+      expect(read(d, RECORD)).toBeNull();
+    }
+  });
+
+  test("--with-moshi takes over only the exact entry: another spelling is refused even with a proof", () => {
+    const d = rig({ hooks: entry("'/usr/local/bin/moshi' codex-hook"), proven: true });
+    const before = read(d, HOOKS);
+    expect(cmdCodexNativeInstall(d, BIN, { hold: true, moshi: true })).toBe(EXIT.FAIL);
+    expect(d.io.stderr.join("\n")).toContain("not spelled exactly");
+    expect(read(d, HOOKS)).toBe(before);
+  });
+
+  test("a status-only install does not look at Moshi at all, whatever its spelling", () => {
+    const d = rig({ hooks: entry("/usr/local/bin/moshi codex-hook") });
+    expect(cmdCodexNativeInstall(d, BIN, { hold: false, moshi: false })).toBe(EXIT.OK);
+    expect(parsed(d).hooks.PermissionRequest).toEqual(entry("/usr/local/bin/moshi codex-hook").hooks.PermissionRequest);
+  });
+
+  test("status warns when a Moshi entry appears after a hold install, and notes another handler", () => {
+    const d = rig({ hooks: null });
+    expect(cmdCodexNativeInstall(d, BIN, { hold: true, moshi: false })).toBe(EXIT.OK);
+    expect(nativeStatusLines(d, BIN).join("\n")).not.toMatch(/warning|note:/u);
+    const doc = parsed(d);
+    doc.hooks.PermissionRequest!.push({ hooks: [{ type: "command", command: "python3 policy.py" }] });
+    d.files.write(HOOKS, serializeHooks(doc));
+    expect(nativeStatusLines(d, BIN).join("\n")).toContain("note: 1 other handler(s)");
+    doc.hooks.PermissionRequest!.push({ hooks: [{ type: "command", command: "/usr/local/bin/moshi codex-hook" }] });
+    d.files.write(HOOKS, serializeHooks(doc));
+    const text = nativeStatusLines(d, BIN).join("\n");
+    expect(text).toContain("warning: a Moshi `codex-hook` entry");
+    expect(text).toContain("stays off");
+  });
+
+  test("a status-only install is never warned about a foreign handler: it holds nothing", () => {
+    const d = rig();
+    cmdCodexNativeInstall(d, BIN, { hold: false, moshi: false });
+    expect(nativeStatusLines(d, BIN).join("\n")).not.toMatch(/warning|note:/u);
+  });
+});
+
+describe("native install: an entry of ours on PermissionRequest with no record", () => {
+  test("is refused, hold or not: it may be the broker, and Moshi's entry is only in the record", () => {
+    const d = rig({ proven: true });
+    expect(cmdCodexNativeInstall(d, BIN, { hold: true, moshi: true })).toBe(EXIT.OK);
+    const brokered = read(d, HOOKS);
+    d.files.remove(RECORD);
+    for (const flags of [{ hold: true, moshi: false }, { hold: false, moshi: false }, { hold: true, moshi: true }]) {
+      expect(cmdCodexNativeInstall(d, BIN, flags)).toBe(EXIT.FAIL);
+      expect(read(d, HOOKS)).toBe(brokered);
+    }
+    expect(d.io.stderr.join("\n")).toContain("is missing");
+    // The uninstall gives the same answer for the same reason: the entry stays and the verb says so.
+    expect(cmdCodexNativeUninstall(d)).toBe(EXIT.FAIL);
+    expect(commands(parsed(d).hooks.PermissionRequest)).toEqual([nativeCommand(BIN)]);
+  });
+});
+
+describe("native install and uninstall: event arrays and groups that are not ours", () => {
+  test("an empty event array nobody of ours is in stays, through a status-only install and the uninstall", () => {
+    const doc = operatorHooks();
+    doc.hooks.PostToolUse = [];
+    doc.hooks.SubagentStop = [];
+    const d = rig({ hooks: doc });
+    expect(cmdCodexNativeInstall(d, BIN, { hold: false, moshi: false })).toBe(EXIT.OK);
+    expect(parsed(d).hooks.PostToolUse).toEqual([]);
+    expect(parsed(d).hooks.SubagentStop).toEqual([]);
+    expect(cmdCodexNativeUninstall(d)).toBe(EXIT.OK);
+    expect(parsed(d)).toEqual(doc);
+  });
+
+  test("uninstall keeps `{}`, a matcher with no hooks and an empty hooks list where they stand", () => {
+    const doc = operatorHooks();
+    doc.hooks.Stop = [{}, { matcher: "Bash" }, { hooks: [] }, { matcher: "x", hooks: [] }, ...doc.hooks.Stop!];
+    const bare = rig({ hooks: { hooks: { ...doc.hooks, PermissionRequest: [] } } });
+    expect(cmdCodexNativeInstall(bare, BIN, { hold: true, moshi: false })).toBe(EXIT.OK);
+    expect(cmdCodexNativeUninstall(bare)).toBe(EXIT.OK);
+    expect(parsed(bare).hooks.Stop).toEqual(doc.hooks.Stop);
+  });
+});
+
+describe("hooks install codex --native --hold-permissions: the Codex version floor", () => {
+  test("a Codex older than the profile's hold floor is refused with nothing written; a status-only install never asks", () => {
+    const old = { ...rig({ hooks: null }), harnessVersion: () => "0.163.0" };
+    expect(cmdHooksInstall(old, ["codex", "--native", "--hold-permissions"])).toBe(EXIT.FAIL);
+    expect(old.io.stderr.join("\n")).toContain("0.164.0");
+    expect(read(old, HOOKS)).toBeNull();
+    expect(read(old, RECORD)).toBeNull();
+    expect(cmdHooksInstall(old, ["codex", "--native"])).toBe(EXIT.OK);
+    expect(read(old, HOOKS)).not.toBeNull();
+  });
+
+  test("the floor itself installs, and a version that cannot be read installs and says so", () => {
+    const exact = { ...rig({ hooks: null }), harnessVersion: () => "0.164.0" };
+    expect(cmdHooksInstall(exact, ["codex", "--native", "--hold-permissions"])).toBe(EXIT.OK);
+    const unknown = { ...rig({ hooks: null }), harnessVersion: () => null };
+    expect(cmdHooksInstall(unknown, ["codex", "--native", "--hold-permissions"])).toBe(EXIT.OK);
+    expect(unknown.io.stdout.join("\n")).toContain("could not read the codex version");
   });
 });

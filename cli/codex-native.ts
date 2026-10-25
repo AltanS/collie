@@ -3,9 +3,12 @@ import { dirname, join } from "node:path";
 import { HOST } from "../bridge/host.ts";
 import type { JsonObject, JsonValue } from "../bridge/json.ts";
 import { asJsonString, parseJson } from "../web/src/lib/json.ts";
+import { compareSemver } from "../web/src/lib/semver.ts";
+import { loadProfiles } from "../web/src/lib/surface/profile.ts";
+import { binaryVersion } from "../bridge/surface/binary-version.ts";
 import { codexHome } from "./codex-hooks.ts";
-import { MOSHI_ENTRY_COMMAND, moshiNow, moshiVerdict, capabilityPath } from "./codex-moshi.ts";
-import { readRecord, recordPath, serializeRecord, type NativeRecord, type ReplacedMoshi } from "./codex-native-record.ts";
+import { MOSHI_ENTRY_COMMAND, isMoshiCommand, moshiNow, moshiVerdict, capabilityPath } from "./codex-moshi.ts";
+import { readRecord, RECORD_FILE, recordPath, serializeRecord, type NativeRecord, type ReplacedMoshi } from "./codex-native-record.ts";
 import { EXIT } from "./io.ts";
 import type { HooksDeps } from "./hooks.ts";
 
@@ -27,13 +30,18 @@ import type { HooksDeps } from "./hooks.ts";
 //  2. NEW ENTRIES GO LAST. Codex keys a hook's trust by its position (`hooks.json:<event>:<group>:<handler>`),
 //     so appending a group leaves every other entry's trust where it was, and so does removing ours again.
 //  3. DUPLICATES REFUSE. Two entries of ours on one event, two entries that are exactly Moshi's, or ours
-//     and Moshi's together: nothing says which one the operator meant, so nothing is written.
+//     and Moshi's together (in any spelling): nothing says which one the operator meant, so nothing is
+//     written. An entry of ours on PermissionRequest with NO record beside it refuses too: it may be a
+//     broker, and the entry Moshi had lives only in that record (the uninstall refuses the same way).
 //  4. ONE PERMISSION HANDLER. Codex runs every matching PermissionRequest handler and any deny wins. So
 //     with `--with-moshi` the exact Moshi entry (`'/opt/homebrew/bin/moshi' codex-hook`) would be
 //     REPLACED, in its own slot, by the broker (cli/codex-broker.ts), and the entry as it was saved in
 //     the record; uninstall puts that very object back. Without `--with-moshi`, a Moshi
-//     PermissionRequest entry makes the hold install refuse: Moshi's phone card is not withdrawn when
-//     Collie decides first (issue #595), and a second handler would hold the turn for the first.
+//     PermissionRequest entry, whatever its path or quoting (`moshi` or `moshi-hook` then `codex-hook`),
+//     makes the hold install refuse: Moshi's phone card is not withdrawn when Collie decides first
+//     (issue #595), and a second handler would hold the turn for the first. A Moshi entry that appears
+//     AFTER the install is caught where it runs: `collie codex-hook` reads hooks.json and holds nothing
+//     while one is there, and `hooks status` says so.
 //  5. THE CAPABILITY GATE (cli/codex-moshi.ts) comes before every write. `--with-moshi` with no proof
 //     that Moshi withdraws its request when cancelled, with a proof that no longer matches the installed
 //     Moshi, or for a Moshi known not to qualify (0.4.37 today), writes nothing at all and leaves
@@ -135,7 +143,34 @@ function putHandler(groups: JsonValue[], slot: Slot, handler: JsonValue): void {
 }
 
 const isOurs = (handler: JsonObject): boolean => ownedBinary(handler.command) !== null;
+/** Exactly Moshi's entry: the only spelling the broker can take over (its capability gate is made for that command). */
 const isMoshi = (handler: JsonObject): boolean => handler.type === "command" && handler.command === MOSHI_ENTRY_COMMAND;
+/** Moshi's `codex-hook` in any spelling: every one of them is a second remote-approval handler beside a Collie hold. */
+const isMoshiLike = (handler: JsonObject): boolean => {
+  const command = asJsonString(handler.command);
+  return command !== undefined && isMoshiCommand(command);
+};
+
+/**
+ * The handlers on `PermissionRequest` that are not Collie's: how many are Moshi's `codex-hook` in any
+ * spelling, and how many are something else. A hold beside a Moshi one is the issue #595 setup (Moshi's
+ * card is not withdrawn when Collie decides first); another handler only shares the decision.
+ */
+export function foreignPermission(document: JsonValue | null): { readonly moshi: number; readonly other: number } {
+  const groups = asObject(asObject(document)?.hooks)?.[PERMISSION];
+  let moshi = 0;
+  let other = 0;
+  if (!Array.isArray(groups)) return { moshi, other };
+  for (const group of groups) {
+    for (const handler of handlersOf(group) ?? []) {
+      const node = asObject(handler);
+      if (node === null || isOurs(node)) continue;
+      if (isMoshiLike(node)) moshi += 1;
+      else other += 1;
+    }
+  }
+  return { moshi, other };
+}
 
 export interface InstallPlan {
   readonly hold: boolean;
@@ -170,16 +205,25 @@ export function planInstall(current: JsonValue | null, command: string, want: In
   if (permissionRaw !== undefined && !Array.isArray(permissionRaw)) return refusal(`\`${PERMISSION}\` is not an array`);
   const permission = permissionRaw === undefined ? [] : [...permissionRaw];
   const moshiSlots = slotsOf(permission, isMoshi);
+  const moshiLike = slotsOf(permission, isMoshiLike);
   const ourPermission = slotsOf(permission, isOurs);
   if (moshiSlots.length > 1) return refusal(`${String(moshiSlots.length)} entries are exactly \`${MOSHI_ENTRY_COMMAND}\` on ${PERMISSION}; nothing says which one to take over`);
   if (ourPermission.length > 1) return refusal(`${String(ourPermission.length)} Collie entries on ${PERMISSION}`);
-  if (moshiSlots.length > 0 && ourPermission.length > 0) return refusal(`a Collie entry and \`${MOSHI_ENTRY_COMMAND}\` are both registered on ${PERMISSION}`);
-  if (want.hold && !want.moshi && moshiSlots.length > 0) {
+  if (moshiLike.length > 0 && ourPermission.length > 0) return refusal(`a Collie entry and a Moshi \`codex-hook\` entry are both registered on ${PERMISSION}`);
+  // An entry of ours with no record beside it: it may be a broker standing in Moshi's place, and the entry
+  // Moshi had is only in that record. Rewriting or removing it would destroy it, the uninstall refuses the same way.
+  if (previous === null && ourPermission.length > 0) {
+    return refusal(`a Collie entry is on ${PERMISSION} but ${RECORD_FILE} is missing, so it cannot be told from a broker that holds Moshi's place; restore the record or remove the entry by hand`);
+  }
+  if (want.hold && !want.moshi && moshiLike.length > 0) {
     return refusal(
-      `\`${MOSHI_ENTRY_COMMAND}\` is registered on ${PERMISSION}, and its phone card can stay answerable after Collie decides and approve an unrelated prompt (issue #595); install without \`--hold-permissions\`, or remove that entry yourself (\`${WITH_MOSHI_FLAG}\` is refused until Moshi can withdraw a card)`,
+      `a Moshi \`codex-hook\` entry is registered on ${PERMISSION}, and its phone card can stay answerable after Collie decides and approve an unrelated prompt (issue #595); install without \`--hold-permissions\`, or remove that entry yourself (\`${WITH_MOSHI_FLAG}\` is refused until Moshi can withdraw a card)`,
     );
   }
   if (want.moshi && !want.hold) return refusal(`\`${WITH_MOSHI_FLAG}\` needs \`--hold-permissions\``);
+  if (want.moshi && moshiLike.length > moshiSlots.length) {
+    return refusal(`a Moshi \`codex-hook\` entry on ${PERMISSION} is not spelled exactly \`${MOSHI_ENTRY_COMMAND}\`, and only that spelling can be taken over`);
+  }
   if (want.moshi && moshiSlots.length === 0 && (ourPermission.length === 0 || previous?.moshi == null)) {
     return refusal(`no entry is exactly \`${MOSHI_ENTRY_COMMAND}\` on ${PERMISSION}, so there is nothing to take over`);
   }
@@ -212,9 +256,10 @@ export function planInstall(current: JsonValue | null, command: string, want: In
   }
 
   // Hold entries from an earlier install that this one does not ask for go away (never a broker: refused above).
+  // An event with none of ours in it is not touched: an empty array someone else left there stays an empty array.
   for (const row of unwanted) {
     const raw = hooks[row.event];
-    if (!Array.isArray(raw)) continue;
+    if (!Array.isArray(raw) || slotsOf(raw, isOurs).length === 0) continue;
     const groups = removeOwned(raw);
     if (groups.length === 0) delete hooks[row.event];
     else hooks[row.event] = groups;
@@ -372,6 +417,17 @@ export function cmdCodexNativeInstall(deps: HooksDeps, binary: string, flags: Na
     deps.io.err(`error: \`${WITH_MOSHI_FLAG}\` replaces Moshi's permission entry with the broker, so it needs \`--hold-permissions\`.`);
     return EXIT.USAGE;
   }
+  // The same floor the Claude hold has (cli/hooks.ts): Codex before the profile's `hold.minVersion` does not
+  // run the PermissionRequest hook this install needs, so it would promise a hold that never comes. A version
+  // that cannot be read installs, and the verb says so. A status-only install never asks.
+  const profile = loadProfiles().get("codex");
+  const floor = flags.hold ? (profile?.hold?.minVersion ?? null) : null;
+  const version = floor === null || profile === undefined ? null : (deps.harnessVersion ?? (() => binaryVersion(profile)))("codex");
+  if (floor !== null && version !== null && compareSemver(version, floor) < 0) {
+    deps.io.err(`error: codex ${version} does not run the ${PERMISSION} hook. The hold needs ${floor} or later.`);
+    deps.io.err(`  Update codex, or run the install without \`--hold-permissions\`.`);
+    return EXIT.FAIL;
+  }
   const hooksPath = resolved(deps, hooksJsonPath(deps.ctx));
   const recordFile = resolved(deps, recordPath(deps.ctx));
   if (deps.files.entryType(hooksPath) === "symlink") {
@@ -418,6 +474,7 @@ export function cmdCodexNativeInstall(deps: HooksDeps, binary: string, flags: Na
   deps.io.out(`✓ ${hooksPath}`);
   deps.io.out(`  ${[...NATIVE_EDGE_EVENTS, ...(flags.hold ? NATIVE_HOLD_EVENTS : [])].map((row) => row.event).join(", ")} → \`${binary} ${NATIVE_VERB}\``);
   deps.io.out(`  config.toml was not read or changed; your own \`notify\` command is untouched.`);
+  if (floor !== null && version === null) deps.io.out(`  Collie could not read the codex version. The hold needs ${floor} or later.`);
   deps.io.out("  Codex runs a new or changed hook only after you trust it: open Codex, run /hooks and review the Collie entries.");
   if (plan.replaced !== null) {
     deps.io.out(`  ${PERMISSION}: the broker took Moshi's slot, so Codex asks you to trust that slot again. Moshi still answers; Collie answers beside it, and whichever answers first wins.`);
@@ -498,6 +555,14 @@ export function nativeStatusLines(deps: HooksDeps, binary: string): string[] {
   else if (missing.length > 0) lines.push(`${hooksPath}: native Codex hooks: partly installed (missing ${missing.join(", ")}) — re-run \`install codex --native\``);
   else if (stale.length > 0) lines.push(`${hooksPath}: native Codex hooks: installed, but ${[...new Set(stale)].join(", ")} run another binary — re-run \`install codex --native\` to re-point them`);
   else lines.push(`${hooksPath}: native Codex hooks: installed (${present.join(", ")})${record?.hold === true ? ", holds permissions" : ""}; trust them in /hooks if Codex has not`);
+  if (record?.hold === true) {
+    const foreign = foreignPermission(hooks.value);
+    if (foreign.moshi > 0) {
+      lines.push(`  warning: a Moshi \`codex-hook\` entry is registered on ${PERMISSION} beside the Collie hold (issue #595). The Collie hold stays off while it is there, and Codex asks as usual; remove that entry, or install again without \`--hold-permissions\`.`);
+    } else if (foreign.other > 0) {
+      lines.push(`  note: ${String(foreign.other)} other handler(s) are registered on ${PERMISSION}; Codex runs every one and any deny wins, so the hold waits for the slowest.`);
+    }
+  }
   if (record?.moshi != null) {
     const verdict = moshiVerdict(deps.files, deps.ctx.configDir, record.moshi.command);
     lines.push(verdict.ok

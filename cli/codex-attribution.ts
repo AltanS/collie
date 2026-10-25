@@ -100,9 +100,12 @@ export function isAppServerArgs(args: readonly string[]): boolean {
   return basename(args[0] ?? "") === "codex" && args.includes("app-server");
 }
 
-/** `codex exec`: a non-interactive run, with no pane of its own to hold a permission on. */
+/** The `codex` subcommands that run without a terminal UI, so with no pane to hold a permission on: `exec` and its alias `e`, and `review`. */
+const NON_INTERACTIVE: readonly string[] = ["exec", "e", "review"];
+
+/** `codex exec` (or its alias `e`) and `codex review`: non-interactive runs, with no pane of their own to hold a permission on. */
 export function isExecArgs(args: readonly string[]): boolean {
-  return basename(args[0] ?? "") === "codex" && !args.includes("app-server") && args.slice(1).includes("exec");
+  return basename(args[0] ?? "") === "codex" && !args.includes("app-server") && args.slice(1).some((arg) => NON_INTERACTIVE.includes(arg));
 }
 
 /** The directory the session records live in. */
@@ -226,6 +229,9 @@ export function attributeCodexHook(deps: AttributionDeps): Attribution {
       if ((host.reason === "no-codex-ancestor" || host.reason === "reparented") && session !== undefined) {
         const binding = readBinding(deps.files, bindingPath(deps.stateDir, session));
         if (binding === null || binding.session !== session) return { kind: "unattributed", reason: "no-binding" };
+        // This hook's own environment must name the very panes the record does: a hook that carries
+        // another pane's markers (or none) is not that session's, whatever the record says.
+        if (markers.length === 0 || JSON.stringify(markers) !== JSON.stringify(binding.markers)) return { kind: "unattributed", reason: "no-binding" };
         if (!bindingLive(deps.probe, binding)) return { kind: "unattributed", reason: "stale-binding" };
         return { kind: "attributed", pid: binding.pid, pidStartTime: binding.pidStartTime, markers: binding.markers, via: "session" };
       }

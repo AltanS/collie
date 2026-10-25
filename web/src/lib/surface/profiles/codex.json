@@ -159,7 +159,7 @@
     "hookTimeoutS": 300,
     "minVersion": "0.164.0",
     "inputShown": ["command"],
-    "inputDetails": {},
+    "inputDetails": { "Bash": { "flags": ["description"] } },
     "screenOnly": [],
     "headers": {},
     "agentMark": "(?!)()",

@@ -22,6 +22,9 @@ import type { Files } from "./sys.ts";
 //  - the record names the cancellation method the observation used (the broker uses the same one),
 //  - it says the remote request was observed withdrawn (`proof.kind` is `runtime-withdrawal` and
 //    `remoteWithdrawn` is true; no other kind of evidence is accepted),
+//  - it says the provider DECIDES (`proof.decides` is `hook-stdout`: the allow or deny is on the hook's
+//    stdout) and BLOCKS until answered (`proof.blocksUntilAnswered` is true). A provider that exits at
+//    once is silent to the broker, and its remote card would outlive the request,
 //  - it names the exact entry command, the resolved executable and that executable's sha256, so a
 //    Moshi that was updated, replaced or repointed is a different provider and the record no longer
 //    applies (a version change always changes the digest).
@@ -67,6 +70,48 @@ export function moshiArgvOf(command: string): string[] | null {
   return match === null ? null : [match[1]!, "codex-hook"];
 }
 
+/** The words of a command line that is plain shell words: single and double quotes, no expansion, no operator. Null for anything else. */
+function plainWords(command: string): string[] | null {
+  const words: string[] = [];
+  let word: string | null = null;
+  let quote: "'" | '"' | null = null;
+  for (const ch of command) {
+    if (quote !== null) {
+      if (ch === quote) quote = null;
+      else if (quote === '"' && (ch === "$" || ch === "`" || ch === "\\")) return null;
+      else word = (word ?? "") + ch;
+    } else if (ch === "'" || ch === '"') {
+      quote = ch;
+      word = word ?? "";
+    } else if (ch === " " || ch === "\t") {
+      if (word !== null) words.push(word);
+      word = null;
+    } else if ("$`\\;&|<>(){}*?[]#~!\n".includes(ch)) {
+      return null;
+    } else {
+      word = (word ?? "") + ch;
+    }
+  }
+  if (quote !== null) return null;
+  if (word !== null) words.push(word);
+  return words;
+}
+
+/**
+ * Whether a hook command is a Moshi `codex-hook` in ANY spelling: the first word's basename is `moshi`
+ * (or `moshi-hook`, the name of the binary the `moshi` link points at), quoted or not, at any path, and
+ * `codex-hook` is its next word. Used to REFUSE and to WARN, never to take over: only the exact entry
+ * {@link MOSHI_ENTRY_COMMAND} can be replaced by the broker. A command that is not plain words (a pipe, a
+ * substitution) is read by its text: one that names `moshi` and `codex-hook` is still counted as Moshi.
+ */
+export function isMoshiCommand(command: string): boolean {
+  const words = plainWords(command);
+  if (words === null) return /(^|[\s/'"])moshi(-hook)?['"]?\s+codex-hook\b/u.test(command);
+  while (words[0] !== undefined && /^[A-Za-z_][A-Za-z0-9_]*=/u.test(words[0])) words.shift();
+  const first = words[0];
+  return first !== undefined && /^(?:moshi|moshi-hook)$/u.test(first.slice(first.lastIndexOf("/") + 1)) && words[1] === "codex-hook";
+}
+
 export interface MoshiCapability {
   readonly executable: string;
   readonly digest: string;
@@ -109,6 +154,12 @@ export function capabilityVerdict(text: string | null, command: string, now: Mos
   if (proof?.kind !== "runtime-withdrawal" || proof.remoteWithdrawn !== true) {
     return refusal("the recorded proof is not a runtime observation that the remote request was withdrawn");
   }
+  // The broker obeys the hook contract: a provider is a DECISION provider only when its stdout carries the
+  // allow or deny and it stays up until it has one. A fire-and-forget hook (0.4.37) exits at once, so its
+  // card would outlive the request. The record must say both were observed; nothing else is accepted.
+  if (proof.decides !== "hook-stdout" || proof.blocksUntilAnswered !== true) {
+    return refusal("the recorded proof does not attest that the provider returns its decision on the hook's stdout and blocks until it has an answer");
+  }
   const observer = asJsonString(proof.observer);
   const observedAt = asJsonString(proof.observedAt);
   const detail = asJsonString(proof.detail);
@@ -140,7 +191,7 @@ export function capabilityTemplate(command: string, now: MoshiNow, cancel: Moshi
     executable: now.executable,
     digest: now.digest,
     cancel,
-    proof: { kind: "runtime-withdrawal", remoteWithdrawn: false, observer: "", observedAt: "", detail: "" },
+    proof: { kind: "runtime-withdrawal", remoteWithdrawn: false, decides: "hook-stdout", blocksUntilAnswered: false, observer: "", observedAt: "", detail: "" },
   };
   return `${JSON.stringify(record, null, 2)}\n`;
 }

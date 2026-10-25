@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 import type { JsonValue } from "../bridge/json.ts";
 import { brokerPermission } from "./codex-broker.ts";
-import { CAPABILITY_FILE, capabilityPath, capabilityTemplate, capabilityVerdict, KNOWN_INCOMPATIBLE, MOSHI_ENTRY_COMMAND, moshiArgvOf, moshiNow, moshiVerdict, passThrough, spawnProvider } from "./codex-moshi.ts";
+import { CAPABILITY_FILE, capabilityPath, capabilityTemplate, capabilityVerdict, isMoshiCommand, KNOWN_INCOMPATIBLE, MOSHI_ENTRY_COMMAND, moshiArgvOf, moshiNow, moshiVerdict, passThrough, spawnProvider } from "./codex-moshi.ts";
 import { fakeFiles, type FakeFiles } from "./fakes.ts";
 
 // The gate decides whether the broker may run Moshi beside Collie, and the answer must follow the
@@ -27,6 +27,8 @@ function moshiHost(version: "v1" | "v2" = "v1"): FakeFiles {
 interface ProofBody {
   kind: string;
   remoteWithdrawn: JsonValue;
+  decides: JsonValue;
+  blocksUntilAnswered: JsonValue;
   observer: string;
   observedAt: string;
   detail: string;
@@ -40,7 +42,7 @@ function record(over: Record<string, JsonValue> = {}): string {
     executable: REAL_V1,
     digest: sha("moshi binary v1"),
     cancel: { method: "sigterm", graceMs: 3000 },
-    proof: { kind: "runtime-withdrawal", remoteWithdrawn: true, observer: "root", observedAt: "2026-10-25T18:00:00Z", detail: "Cancelled the broker's loser on a phone; the pending prompt left the phone within 2 s." },
+    proof: { kind: "runtime-withdrawal", remoteWithdrawn: true, decides: "hook-stdout", blocksUntilAnswered: true, observer: "root", observedAt: "2026-10-25T18:00:00Z", detail: "Cancelled the broker's loser on a phone; the pending prompt left the phone within 2 s." },
     ...over,
   });
 }
@@ -83,10 +85,27 @@ describe("capabilityVerdict: a proof counts only for the Moshi it was made on", 
 
   test("evidence that is not a runtime observation of the remote withdrawal does not count", () => {
     const now = moshiNow(moshiHost(), MOSHI_ENTRY_COMMAND);
-    const proof = (over: Partial<ProofBody>): string => record({ proof: { kind: "runtime-withdrawal", remoteWithdrawn: true, observer: "root", observedAt: "2026-10-25T18:00:00Z", detail: "x".repeat(40), ...over } });
+    const proof = (over: Partial<ProofBody>): string => record({ proof: { kind: "runtime-withdrawal", remoteWithdrawn: true, decides: "hook-stdout", blocksUntilAnswered: true, observer: "root", observedAt: "2026-10-25T18:00:00Z", detail: "x".repeat(40), ...over } });
     for (const weak of [{ kind: "symbol-present" }, { kind: "exit-status" }, { remoteWithdrawn: false }, { remoteWithdrawn: "yes" }, { observer: "" }, { observedAt: "soon" }, { detail: "ok" }]) {
       expect(capabilityVerdict(proof(weak), MOSHI_ENTRY_COMMAND, now)).toMatchObject({ ok: false });
     }
+  });
+
+  // The broker obeys the hook contract, so a record has to say the provider answers on stdout and stays
+  // up until it has an answer. A fire-and-forget hook with a new digest and a hand-written record must not pass.
+  test("a proof that does not attest a stdout decision and a block until answered is refused, however the rest reads", () => {
+    const now = moshiNow(moshiHost(), MOSHI_ENTRY_COMMAND);
+    const base = { kind: "runtime-withdrawal", remoteWithdrawn: true, observer: "root", observedAt: "2026-10-25T18:00:00Z", detail: "x".repeat(40) };
+    const attested = { decides: "hook-stdout", blocksUntilAnswered: true };
+    expect(capabilityVerdict(record({ proof: { ...base, ...attested } }), MOSHI_ENTRY_COMMAND, now)).toMatchObject({ ok: true });
+    for (const proof of [base, { ...base, decides: "hook-stdout" }, { ...base, blocksUntilAnswered: true }, { ...base, ...attested, decides: "exit-code" }, { ...base, ...attested, blocksUntilAnswered: false }, { ...base, ...attested, blocksUntilAnswered: "true" }]) {
+      expect(capabilityVerdict(record({ proof }), MOSHI_ENTRY_COMMAND, now)).toMatchObject({ ok: false, reason: expect.stringContaining("blocks until it has an answer") });
+    }
+  });
+
+  test("a template carries both attestations, as not yet observed", () => {
+    const now = moshiNow(moshiHost(), MOSHI_ENTRY_COMMAND);
+    expect(JSON.parse(capabilityTemplate(MOSHI_ENTRY_COMMAND, now!, { method: "sigterm", graceMs: 3000 })).proof).toMatchObject({ decides: "hook-stdout", blocksUntilAnswered: false });
   });
 
   test("a cancellation method the broker cannot send, or a grace outside 0.5 to 5 s, refuses", () => {
@@ -116,7 +135,7 @@ describe("capabilityVerdict: a proof counts only for the Moshi it was made on", 
     const template = capabilityTemplate(MOSHI_ENTRY_COMMAND, now!, { method: "sigterm", graceMs: 3000 });
     expect(capabilityVerdict(template, MOSHI_ENTRY_COMMAND, now)).toMatchObject({ ok: false, reason: expect.stringContaining("not a runtime observation") });
     const filled = JSON.parse(template);
-    filled.proof = { kind: "runtime-withdrawal", remoteWithdrawn: true, observer: "root", observedAt: "2026-10-25T18:00:00Z", detail: "Cancelled it on the Mac and the prompt left the phone within 2 s." };
+    filled.proof = { kind: "runtime-withdrawal", remoteWithdrawn: true, decides: "hook-stdout", blocksUntilAnswered: true, observer: "root", observedAt: "2026-10-25T18:00:00Z", detail: "Cancelled it on the Mac and the prompt left the phone within 2 s." };
     expect(capabilityVerdict(JSON.stringify(filled), MOSHI_ENTRY_COMMAND, now)).toMatchObject({ ok: true });
   });
 
@@ -126,6 +145,20 @@ describe("capabilityVerdict: a proof counts only for the Moshi it was made on", 
     files.write(capabilityPath("/cfg"), record());
     expect(capabilityPath("/cfg")).toBe(join("/cfg", CAPABILITY_FILE));
     expect(moshiVerdict(files, "/cfg", MOSHI_ENTRY_COMMAND)).toMatchObject({ ok: true });
+  });
+});
+
+describe("isMoshiCommand: Moshi's codex-hook in any spelling", () => {
+  test("is true for the exact entry, another prefix, a bare name, quotes, an env prefix and the binary's own name", () => {
+    for (const spelling of [MOSHI_ENTRY_COMMAND, "'/usr/local/bin/moshi' codex-hook", "/usr/local/bin/moshi codex-hook", "moshi codex-hook", '"/opt/x y/moshi" codex-hook', "FOO=1 /usr/bin/moshi codex-hook", "moshi-hook codex-hook", "$HOME/bin/moshi codex-hook", "~/bin/moshi codex-hook"]) {
+      expect(isMoshiCommand(spelling)).toBe(true);
+    }
+  });
+
+  test("is false for another program, another verb, and the path alone", () => {
+    for (const other of ["'/opt/homebrew/bin/collie' codex-hook # collie-codex v1", "'/opt/homebrew/bin/moshi' hook", "/opt/moshi/bin/other codex-hook", "/opt/moshi/codex-hook", "notmoshi codex-hook", ""]) {
+      expect(isMoshiCommand(other)).toBe(false);
+    }
   });
 });
 

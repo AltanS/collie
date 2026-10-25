@@ -2,13 +2,14 @@ import type { ProcessProbe } from "../bridge/proc-probe.ts";
 import { edgeModelOf } from "../bridge/beacon/parse.ts";
 import { EDGE_SCHEMA_VERSION, type EdgeRecord } from "../bridge/beacon/types.ts";
 import type { JsonObject } from "../bridge/json.ts";
-import { asJsonString, parseJsonObject } from "../web/src/lib/json.ts";
+import { asJsonString, parseJson, parseJsonObject } from "../web/src/lib/json.ts";
 import { holdInputHash, isCwd, shownInput, shownInputOf, HOLD_WIRE_VERSION, type HoldProfile, type HoldRequest } from "../web/src/lib/surface/hold.ts";
 import { loadProfiles } from "../web/src/lib/surface/profile.ts";
 import { edgeStateDirs, promptHashOf, readEnvMarkers, writeEdge, type BeaconEmitDeps } from "./beacon.ts";
 import { attributeCodexHook, forgetSession, type Attribution } from "./codex-attribution.ts";
 import { BROKER_DEADLINE_MS, brokerPermission, type ProviderRun } from "./codex-broker.ts";
 import { capabilityPath, capabilityVerdict, moshiArgvOf, moshiNow, type MoshiCapability } from "./codex-moshi.ts";
+import { foreignPermission, hooksJsonPath } from "./codex-native.ts";
 import { readRecord, recordPath, type NativeRecord } from "./codex-native-record.ts";
 import type { CliContext } from "./context.ts";
 import { EXIT } from "./io.ts";
@@ -24,11 +25,15 @@ import type { Files } from "./sys.ts";
 //    a decision, and an edge is neither.
 //  - PermissionRequest: the broker (cli/codex-broker.ts). It prints a decision, or `{}`.
 //
-// Every path exits 0 and every failure is "no edge" or "no decision". A non-zero exit is not neutral to
-// Codex (exit 2 with a message on stderr is a DENY on a PermissionRequest), so this verb never returns
-// one, and it never prints anything but the broker's line. Outside a multiplexer it reads nothing and
-// exits at once, except that a PermissionRequest still runs the original Moshi command when a broker
-// took Moshi's place, because that entry was Moshi's before it was ours.
+// Every path exits 0 and every failure is "no edge" or "no decision", with ONE exception: Moshi-only
+// routing (below) hands the permission to the original Moshi command untouched and returns ITS exit
+// code, because Moshi-only means Moshi answers exactly as it did before this install, and Codex reads
+// that exit code as it always has. A Moshi that cannot start is no decision, exit 0. Everywhere else
+// a non-zero exit is not neutral to Codex (exit 2 with a message on stderr is a DENY on a
+// PermissionRequest), so this verb never returns one, and it never prints anything but the broker's
+// line. Outside a multiplexer it reads nothing and exits at once, except that a PermissionRequest still
+// runs the original Moshi command when a broker took Moshi's place, because that entry was Moshi's
+// before it was ours.
 //
 // What an edge is NOT: it is not a control channel (.adr/0024). It asks for a fresh read of the screen
 // and ends a "Sent" card; it never sends a key.
@@ -171,6 +176,14 @@ function writeEdges(deps: CodexHookDeps, payload: JsonObject, event: string, rec
   }
 }
 
+/** Whether hooks.json names a Moshi `codex-hook` on PermissionRequest that is not Collie's. A file that is there and cannot be read counts as yes. */
+function foreignMoshiPresent(deps: CodexHookDeps): boolean {
+  const text = deps.files.read(hooksJsonPath(deps.ctx));
+  if (text === null) return false;
+  const document = parseJson(text);
+  return document === undefined || foreignPermission(document).moshi > 0;
+}
+
 /**
  * The permission half. The voices: the original Moshi command (only when a broker took its place and
  * the capability record still describes the installed Moshi), and the Collie hold (only when this
@@ -197,6 +210,15 @@ async function decide(deps: CodexHookDeps, raw: string, payload: JsonObject, rec
     provider = () => deps.spawnProvider(argv, raw, method);
   }
   const now = (deps.now ?? Date.now)();
+  // A MOSHI ENTRY THAT IS NOT OURS sits on this event beside this one (Moshi, or the person, added it after
+  // the install, or in a spelling the install did not take over). Its phone card is not withdrawn when
+  // Collie decides first (issue #595), so the Collie hold is off while it is there, and so is the broker's
+  // own start of Moshi: that other entry is Moshi, and answers by itself. No decision; Codex asks as usual.
+  // A hooks.json that is present and unreadable cannot be shown to hold none, so it counts the same way.
+  if (record.hold && foreignMoshiPresent(deps)) {
+    await deps.print("{}");
+    return EXIT.OK;
+  }
   const request = record.hold && profile !== undefined
     ? codexHoldRequest(payload, attributeCodexHook({ probe: deps.probe, files: deps.files, env: deps.ctx.env, stateDir: deps.ctx.stateDir, selfPid: deps.selfPid, parentPid: deps.parentPid, session: shortField(payload, "session_id") ?? undefined }), profile, now)
     : null;
@@ -217,7 +239,7 @@ async function decide(deps: CodexHookDeps, raw: string, payload: JsonObject, rec
   return EXIT.OK;
 }
 
-/** `collie codex-hook`. ALWAYS returns `EXIT.OK`. */
+/** `collie codex-hook`. Returns `EXIT.OK` on every path but one: Moshi-only routing returns the original Moshi command's own exit code. */
 export async function cmdCodexHook(deps: CodexHookDeps): Promise<number> {
   try {
     const raw = await deps.readStdin();

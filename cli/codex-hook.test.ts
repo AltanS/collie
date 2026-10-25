@@ -120,7 +120,7 @@ const PROOF = JSON.stringify({
   executable: MOSHI_REAL,
   digest: sha("moshi 1.0.0"),
   cancel: { method: "sigint", graceMs: 2500 },
-  proof: { kind: "runtime-withdrawal", remoteWithdrawn: true, observer: "root", observedAt: "2026-10-25T18:00:00Z", detail: "Cancelled the loser on a phone; the pending prompt left the phone within 2 s." },
+  proof: { kind: "runtime-withdrawal", remoteWithdrawn: true, decides: "hook-stdout", blocksUntilAnswered: true, observer: "root", observedAt: "2026-10-25T18:00:00Z", detail: "Cancelled the loser on a phone; the pending prompt left the phone within 2 s." },
 });
 
 const ALLOW = JSON.stringify({ hookSpecificOutput: { hookEventName: "PermissionRequest", decision: { behavior: "allow" } } });
@@ -413,6 +413,35 @@ describe("PermissionRequest: the Collie hold", () => {
     await cmdCodexHook(none.deps);
     expect(none.printed).toEqual(["{}"]);
   });
+
+  // The install refuses a hold beside Moshi, but Moshi (or the person) can add its entry afterwards, in any
+  // spelling. Then both would answer from a phone and Moshi's card is not withdrawn (issue #595).
+  test("a Moshi entry that appeared on PermissionRequest after the install turns the hold off, whatever its spelling", async () => {
+    const hooksFile = join(HOME, ".codex", "hooks.json");
+    const moshiAfter = (command: string): string => JSON.stringify({ hooks: { PermissionRequest: [{ hooks: [{ type: "command", command: "'/opt/collie/bin/collie' codex-hook # collie-codex v1" }] }, { hooks: [{ type: "command", command }] }] } });
+    for (const command of [MOSHI_ENTRY_COMMAND, "'/usr/local/bin/moshi' codex-hook", "moshi codex-hook"]) {
+      const r = rig({ stdin: permission() });
+      r.files.write(hooksFile, moshiAfter(command));
+      expect(await cmdCodexHook(r.deps)).toBe(EXIT.OK);
+      expect(r.printed).toEqual(["{}"]);
+      expect(r.bridge.sent).toEqual([]);
+      expect(r.provider.spawned).toEqual([]);
+    }
+    // Another tool's handler, or hooks.json with only ours, does not turn it off.
+    const other = rig({ stdin: permission() });
+    other.files.write(hooksFile, JSON.stringify({ hooks: { PermissionRequest: [{ hooks: [{ type: "command", command: "python3 policy.py" }] }] } }));
+    const done = cmdCodexHook(other.deps);
+    await settle();
+    expect(other.bridge.sent).toHaveLength(1);
+    other.bridge.reply(JSON.stringify({ decision: "allow" }));
+    await done;
+    // A hooks.json that is there and cannot be read cannot be shown to hold no Moshi.
+    const broken = rig({ stdin: permission() });
+    broken.files.write(hooksFile, "{ not json");
+    await cmdCodexHook(broken.deps);
+    expect(broken.printed).toEqual(["{}"]);
+    expect(broken.bridge.sent).toEqual([]);
+  });
 });
 
 describe("PermissionRequest: the broker beside Moshi", () => {
@@ -499,6 +528,21 @@ describe("codexHoldRequest", () => {
   test("is null for a tool name that is not printable text, and for an unattributed hook", () => {
     expect(codexHoldRequest(payloadOf({ tool_name: "Ba\u0000sh" }), at, hold, 5)).toBeNull();
     expect(codexHoldRequest(payloadOf(), { kind: "unattributed", reason: "no-markers" }, hold, 5)).toBeNull();
+  });
+
+  // Codex 0.164 (core/src/tools/sandboxing.rs, approvals.rs) puts a network-access target and an
+  // escalation justification in `tool_input.description` of a Bash request. Without it the card for a
+  // request to reach evil.example reads like `python script.py`, and a Yes grants it.
+  test("a Bash request shows the description Codex puts there: the network-access target and the justification", () => {
+    const network = codexHoldRequest(payloadOf({ tool_input: { command: "python script.py", description: "network-access https://evil.example:443" } }), at, hold, 5);
+    expect(network?.input).toBe('python script.py\n[description: "network-access https://evil.example:443"]');
+    expect(network?.hold).toBe(true);
+    const escalation = codexHoldRequest(payloadOf({ tool_input: { command: "rm -rf build", description: "Do you want to run this outside the sandbox?" } }), at, hold, 5);
+    expect(escalation?.input).toContain('[description: "Do you want to run this outside the sandbox?"]');
+    // A request with no description is unchanged, and cwd is still only the hook's own hint.
+    const plain = codexHoldRequest(payloadOf({ tool_input: { command: "ls" } }), at, hold, 5);
+    expect(plain?.input).toBe("ls");
+    expect(plain?.cwd).toBe("/work/proj");
   });
 
   test("the subagent type travels only with a subagent id", () => {

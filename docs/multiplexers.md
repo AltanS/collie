@@ -606,14 +606,19 @@ phone is how you answer. A tap becomes Codex's answer to that one request. With 
 answer in 290 seconds, or any error, the hook prints `{}` and Codex asks you as it always did.
 Collie never allows or denies on its own.
 
+`--hold-permissions` needs Codex 0.164.0 or later and refuses on an older one, as the Claude hold
+does. The card for a `Bash` request shows the command and, on its own line, the `description` Codex
+sends: the target of a network access (`network-access https://host:443`) or the reason a command
+wants to leave the sandbox. Codex's payload does not say a retry is outside the sandbox.
+
 Collie places a hook on a pane only when it can prove which Codex it came from:
 
 | What the hook finds | What Collie does |
 | --- | --- |
 | A `codex` TUI above it in the process tree, and multiplexer markers in its environment | Attributes the hook to that process and pane |
 | The shared `codex app-server` daemon above it | No edge, no hold: the daemon's markers are another pane's |
-| `codex exec` above it | No edge, no hold: there is no pane |
-| No Codex above it, but an earlier hook of the same `session_id` was proven | Uses that record while the process is still the same one |
+| `codex exec` (or its alias `codex e`) or `codex review` above it | No edge, no hold: there is no pane |
+| No Codex above it, but an earlier hook of the same `session_id` was proven, and this hook's own environment names the same panes | Uses that record while the process is still the same one |
 | Two Codex windows in one folder | Each hook belongs to its own process. Collie never picks the first one in the folder |
 
 The check uses the start time of each process, so a pid the system handed out again is never taken
@@ -629,8 +634,12 @@ that card back when it decides first. In a test it stayed for about 12 seconds, 
 stale card answered a different prompt (moshi-hook 0.4.37, issue
 [#595](https://github.com/AltanS/collie/issues/595)).
 
-So with that entry in `hooks.json`, `--hold-permissions` refuses and writes nothing. Install
-without it, or remove the entry yourself.
+So with a Moshi `codex-hook` entry in `hooks.json`, in any spelling (`moshi` or `moshi-hook`, at any
+path, quoted or not), `--hold-permissions` refuses and writes nothing. Install without it, or remove
+the entry yourself. If the entry appears after a hold install, `collie codex-hook` sees it when a
+permission arrives, holds nothing, and prints `{}` so Codex asks you as usual. `collie hooks status`
+warns about it. The install also refuses when a Collie `PermissionRequest` entry has no record file
+beside it, since that entry could be a broker and Moshi's original entry lives only in the record.
 
 ```console
 $ collie hooks install codex --native --hold-permissions --with-moshi
@@ -639,8 +648,11 @@ $ collie hooks install codex --native --hold-permissions --with-moshi
 `--with-moshi` is the other road: one Collie handler takes Moshi's slot, starts the original command
 with the unchanged request beside the Collie hold, keeps the first valid allow or deny once, and
 cancels the other. It is built and tested, and it is **off**. It starts only for a provider that
-returns a decision and withdraws its request when cancelled, shown by a record in Collie's config
-directory (`codex-moshi-capability.json`) made from a run that watched the request leave the phone.
+returns a decision on the hook's stdout, stays up until it has an answer, and withdraws its request
+when cancelled, shown by a record in Collie's config directory (`codex-moshi-capability.json`) made
+from a run that watched the request leave the phone. The record says so in `proof.decides`
+(`hook-stdout`) and `proof.blocksUntilAnswered` (`true`). A provider that ends with no decision while
+the hold is open ends the whole request with no decision, and Codex asks you.
 A symbol in the binary or a clean exit is not proof. The record names the provider's path and its
 sha256, so an update voids it, and Moshi 0.4.37 is refused whatever a record says. With no valid record
 the install writes nothing, and Moshi's entry is left as it was. `collie hooks status` shows the path,
