@@ -258,6 +258,7 @@ export type HerdrRpc = Pick<
   | "listWorkspaces"
   | "listPanes"
   | "listTabs"
+  | "getPane"
   | "readPane"
   | "processInfo"
   | "sendPaneText"
@@ -420,6 +421,12 @@ export class HerdrClient {
   async listPanes(): Promise<WirePane[]> {
     const r = await this.request<{ panes: WirePane[] }>("pane.list");
     return r.panes;
+  }
+
+  /** One pane's record (`pane.get`), scroll geometry included. */
+  async getPane(paneId: string): Promise<WirePane> {
+    const r = await this.request<{ pane: WirePane }>("pane.get", { pane_id: paneId });
+    return r.pane;
   }
 
   /** All tabs across every workspace (`tab.list` with no filter returns the full set). */
