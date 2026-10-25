@@ -2212,6 +2212,7 @@ export const de: Dictionary = {
   "chat.usage.window.5h.aria": "5-Stunden-Limit zu {percent}% belegt",
   "chat.usage.window.7d": "7d",
   "chat.usage.window.7d.aria": "7-Tage-Limit zu {percent}% belegt",
+  "chat.usage.cost.aria": "Sitzungskosten {amount}",
   "files.title": "Dateien",
   "branch.aria": "Branch {name}",
   "branch.detachedAria": "Losgelöst bei {sha}",

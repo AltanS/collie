@@ -91,3 +91,94 @@ export function asRecord(value: JsonValue | undefined): JsonObject | null {
 export function asText(value: JsonValue | undefined): string | undefined {
   return typeof value === "string" && value !== "" ? value : undefined;
 }
+
+// ── A running sum over a whole log ───────────────────────────────────────────
+//
+// The tail above answers "what did the LAST turn carry". A session's cost is a question about EVERY
+// turn, and a 128 KB tail holds a handful of them. So the sum is taken once over the whole file on
+// first sight, then only over the bytes appended since: the memo keeps the byte offset (always a row
+// boundary, so a torn last line is read again when its newline exists), the running total and how many
+// rows contributed. A poll whose file did not grow reads nothing past a 64-byte fingerprint of the head.
+
+/** How much of a log one read takes at once. A first read of a huge log is chunked, never held whole. */
+const SUM_CHUNK_BYTES = 4 * 1024 * 1024;
+
+/** The head of the file the memo was taken from: a file replaced under the same name no longer matches. */
+const SUM_HEAD_BYTES = 64;
+
+/** How many files a {@link FileSum} remembers before it drops the oldest. */
+const SUM_FILES_MAX = 128;
+
+interface SumState {
+  /** Bytes consumed, always just past a newline (or 0). */
+  offset: number;
+  sum: number;
+  /** Rows that named a number. */
+  rows: number;
+  head: string;
+}
+
+/**
+ * The sum, over every line of a JSONL file, of the number `pick` finds in it. `mentions` is a cheap
+ * substring a line must hold before it is parsed, so a log of mostly text rows costs a scan and not a
+ * parse per row. Never throws: an unreadable file answers undefined.
+ */
+export class FileSum {
+  private readonly held = new Map<string, SumState>();
+
+  constructor(
+    private readonly mentions: string,
+    private readonly pick: (row: JsonValue) => number | undefined,
+  ) {}
+
+  /** The total so far and how many rows named a number, or undefined when the file cannot be read. */
+  async read(path: string): Promise<{ sum: number; rows: number } | undefined> {
+    try {
+      const file = Bun.file(path);
+      const size = file.size;
+      const head = new TextDecoder().decode(new Uint8Array(await file.slice(0, Math.min(SUM_HEAD_BYTES, size)).arrayBuffer()));
+      let state = this.held.get(path);
+      // A file that shrank, or whose first bytes changed, is not the one the memo came from.
+      if (state !== undefined && (size < state.offset || !head.startsWith(state.head))) state = undefined;
+      const next: SumState = state === undefined ? { offset: 0, sum: 0, rows: 0, head } : { ...state, head: head.length > state.head.length ? head : state.head };
+      let chunk = SUM_CHUNK_BYTES;
+      while (next.offset < size) {
+        const to = Math.min(size, next.offset + chunk);
+        const bytes = new Uint8Array(await file.slice(next.offset, to).arrayBuffer());
+        const end = bytes.lastIndexOf(0x0a);
+        if (end === -1) {
+          // No row boundary: either the row is still being written (stop and read it again next time)
+          // or it is longer than the chunk (widen the chunk).
+          if (to >= size) break;
+          chunk *= 2;
+          continue;
+        }
+        for (const line of new TextDecoder().decode(bytes.subarray(0, end)).split("\n")) {
+          if (!line.includes(this.mentions)) continue;
+          let row: JsonValue;
+          try {
+            // SAFETY: as in walkBack, JSON.parse output is a JsonValue; `pick` guards every read.
+            row = JSON.parse(line) as JsonValue;
+          } catch {
+            continue;
+          }
+          const n = this.pick(row);
+          if (n === undefined) continue;
+          next.sum += n;
+          next.rows += 1;
+        }
+        next.offset += end + 1;
+        chunk = SUM_CHUNK_BYTES;
+      }
+      this.held.delete(path);
+      this.held.set(path, next);
+      if (this.held.size > SUM_FILES_MAX) {
+        const oldest = this.held.keys().next();
+        if (!oldest.done) this.held.delete(oldest.value);
+      }
+      return { sum: next.sum, rows: next.rows };
+    } catch {
+      return undefined;
+    }
+  }
+}

@@ -70,6 +70,8 @@ export function mergeBeacon(existing: UsageRecord | null, harness: string, now: 
   const window = change.window ?? existing?.window;
   if (window !== undefined) record.window = window;
   if (limits.length > 0) record.limits = limits;
+  // The cost is the wrapper's alone: the beacon keeps what is on file.
+  if (existing?.cost !== undefined) record.cost = existing.cost;
   if (
     existing !== null &&
     existing.window === record.window &&
@@ -92,6 +94,8 @@ export function mergeStatusLine(existing: UsageRecord | null, reading: UsageReco
   if (context !== undefined) record.context = context;
   const window = reading.window ?? existing?.window;
   if (window !== undefined) record.window = window;
+  const cost = reading.cost ?? existing?.cost;
+  if (cost !== undefined) record.cost = cost;
   if (reading.limits !== undefined) {
     record.limits = reading.limits;
   } else {

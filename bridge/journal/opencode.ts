@@ -1109,6 +1109,11 @@ export function opencodeJournal(roots: string | readonly string[], modelsCatalog
 // message's `data` carries `tokens.cache.{read,write}` and `time.{created,completed}` in both, and
 // the model pair is `providerID`/`modelID` at the top level in V1 but `model:{providerID, id}` in V2.
 
+/** The one-column answer of the cost sum: null when no assistant message states a number. */
+interface CostRow {
+  usd: number | null;
+}
+
 interface ProbeRow {
   /** V2's role/event column; the V1 query aliases `null` in so both rows share one shape. */
   type: string | null;
@@ -1382,12 +1387,26 @@ async function opencodeCacheProbe(
               "select null type, data, time_created from message where session_id = ? order by time_created desc limit 12",
             )
             .all(split.sessionId);
-    return { store, rows };
+    // The session's cost: the sum of every assistant message's `cost`, in US dollars, in SQL so no row
+    // leaves the database. The `typeof` guard keeps a message that holds no number out of the sum.
+    const costRow =
+      store === "v2"
+        ? db
+            .query<CostRow, [string]>(
+              "select sum(json_extract(data, '$.cost')) as usd from session_message where session_id = ? and type = 'assistant' and typeof(json_extract(data, '$.cost')) in ('integer', 'real')",
+            )
+            .get(split.sessionId)
+        : db
+            .query<CostRow, [string]>(
+              "select sum(json_extract(data, '$.cost')) as usd from message where session_id = ? and json_extract(data, '$.role') = 'assistant' and typeof(json_extract(data, '$.cost')) in ('integer', 'real')",
+            )
+            .get(split.sessionId);
+    return { store, rows, usd: costRow?.usd ?? null };
   });
   // A database that failed to open, or a session that vanished between resolve and read, has no
   // reading to give — the tracker treats null as "nothing new" and ages the last one.
   if (read === null) return null;
-  const { store, rows } = read;
+  const { store, rows, usd } = read;
   const messages = rows.map((row) => {
     const parsed = asRecord(parseData(row.data)) ?? {};
     // V2 keeps the role in the `type` column rather than the row's json; a V1 row already has it.
@@ -1430,6 +1449,8 @@ async function opencodeCacheProbe(
     if (effort !== undefined) probe.effort = effort;
     const resets = store === "v2" ? opencodeResetsV2(messages, index) : opencodeResets(messages, index);
     if (resets.length > 0) probe.resets = resets;
+    // The session cost the log states (.adr/0115, amended 2026-10-25). A sum of zero states nothing.
+    if (typeof usd === "number" && Number.isFinite(usd) && usd > 0) probe.costUsd = usd;
     // The context dot (.adr/0115, amended 2026-10-25): the tokens from the rows in hand, the window
     // from OpenCode's own catalog, by the provider and model of the turn that measured them.
     const context = opencodeContextOf(messages);

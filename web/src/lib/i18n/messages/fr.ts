@@ -2027,6 +2027,7 @@ export const fr: Dictionary = {
   "chat.usage.window.5h.aria": "Limite de 5 heures utilisée à {percent} %",
   "chat.usage.window.7d": "7d",
   "chat.usage.window.7d.aria": "Limite de 7 jours utilisée à {percent} %",
+  "chat.usage.cost.aria": "Coût de la session {amount}",
   "files.title": "Fichiers",
   "branch.aria": "Branche {name}",
   "branch.detachedAria": "Détaché sur {sha}",

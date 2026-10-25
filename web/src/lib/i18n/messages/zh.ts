@@ -2178,6 +2178,7 @@ export const zh: Dictionary = {
   "chat.usage.window.5h.aria": "5 小时额度已使用 {percent}%",
   "chat.usage.window.7d": "7d",
   "chat.usage.window.7d.aria": "7 天额度已使用 {percent}%",
+  "chat.usage.cost.aria": "会话费用 {amount}",
   "files.title": "文件",
   "branch.aria": "分支 {name}",
   "branch.detachedAria": "分离于 {sha}",

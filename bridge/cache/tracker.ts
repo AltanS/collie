@@ -65,6 +65,11 @@
 // whose hooks write no usage file. A probe that read a turn REPLACES the reading, so a compaction after
 // the turn (no tokens) removes it; a read with no turn keeps it, like the model. Same owner, same reap.
 //
+// THE SESSION COST RIDES ON A FOURTH MAP (.adr/0115, amended 2026-10-25). A journal that states the cost
+// of every turn (pi, Oh My Pi, OpenCode) reports the running sum as `costUsd`; `cost()` answers it for
+// bridge/usage.ts. The adapter keeps the sum incrementally, so a poll costs the appended bytes. A cost
+// only grows, so a probe that names none (a failed read) keeps the last one. Same owner, same reap.
+//
 // NOTHING IS PERSISTED. A restart costs one poll, and a memo that survived a restart would be a
 // countdown for a process that is gone.
 
@@ -166,6 +171,11 @@ interface ContextEntry extends Owner {
   window?: number;
 }
 
+/** A session's running cost in US dollars, with the same owner the cache entry carries. */
+interface CostEntry extends Owner {
+  usd: number;
+}
+
 /** What {@link CacheTracker.context} answers: the tokens, and the window when one is known. */
 export interface ContextReading {
   tokens: number;
@@ -184,6 +194,8 @@ export class CacheTracker {
   private readonly modelBySession = new Map<string, ModelEntry>();
 
   private readonly contextBySession = new Map<string, ContextEntry>();
+
+  private readonly costBySession = new Map<string, CostEntry>();
 
   constructor(
     private readonly registry: Record<string, JournalAdapter>,
@@ -234,12 +246,18 @@ export class CacheTracker {
     return this.contextBySession.get(sessionKey);
   }
 
+  /** The session's cost in US dollars as its journal summed it, or undefined. Display only. */
+  cost(sessionKey: string): number | undefined {
+    return this.costBySession.get(sessionKey)?.usd;
+  }
+
   /** Drop these sessions outright. Called by {@link refresh} for panes that are gone. */
   forget(sessionKeys: readonly string[]): void {
     for (const key of sessionKeys) {
       this.bySession.delete(key);
       this.modelBySession.delete(key);
       this.contextBySession.delete(key);
+      this.costBySession.delete(key);
     }
   }
 
@@ -274,6 +292,8 @@ export class CacheTracker {
         if (known !== undefined) this.modelBySession.set(ref.value, { ...known, ...owner });
         const context = this.contextBySession.get(ref.value);
         if (context !== undefined) this.contextBySession.set(ref.value, { ...context, ...owner });
+        const cost = this.costBySession.get(ref.value);
+        if (cost !== undefined) this.costBySession.set(ref.value, { ...cost, ...owner });
         continue;
       }
       await this.look(adapter, harness, ref, at, owner);
@@ -284,6 +304,7 @@ export class CacheTracker {
       ...this.bySession.entries(),
       ...this.modelBySession.entries(),
       ...this.contextBySession.entries(),
+      ...this.costBySession.entries(),
     ];
     this.forget(
       owned
@@ -349,7 +370,10 @@ export class CacheTracker {
       if (effort !== undefined) entry.effort = effort;
       this.modelBySession.set(key, entry);
     }
-    if (probe !== null && probe !== undefined) this.recordContext(key, probe, owner);
+    if (probe !== null && probe !== undefined) {
+      this.recordContext(key, probe, owner);
+      this.recordCost(key, probe, owner);
+    }
     if (probe === null || probe === undefined) {
       // A read that found no turn in the window — see the module header. Keep what the last successful
       // probe left behind, and let it age; with nothing behind it there is nothing to say (Decision 1).
@@ -387,6 +411,13 @@ export class CacheTracker {
     const window = probe.contextWindow;
     if (window !== undefined && Number.isFinite(window) && window > 0) entry.window = window;
     this.contextBySession.set(key, entry);
+  }
+
+  /** Keep the cost a probe summed. A value that is not a finite positive number is no reading, and the last one stands. */
+  private recordCost(key: string, probe: CacheProbe, owner: Owner): void {
+    const usd = probe.costUsd;
+    if (usd === undefined || !Number.isFinite(usd) || usd <= 0) return;
+    this.costBySession.set(key, { usd, ...owner });
   }
 
   /** The adapter's choices in a log with no turn, or null. A failed read is no choice. */

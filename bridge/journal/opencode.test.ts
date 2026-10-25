@@ -2087,3 +2087,65 @@ describe("the opencode probe — the context", () => {
     expect(probe?.contextTokens).toBeUndefined();
   });
 });
+
+// The session cost (PaneUsage.cost): each assistant message states `cost` in US dollars, and the probe
+// sums them in SQL. Lab names only.
+describe("the opencode probe — the session cost", () => {
+  type Message = { [key: string]: JsonValue | undefined };
+  const assistant = (at: number, cost: JsonValue | undefined): Message => {
+    const message: Message = {
+      role: "assistant",
+      providerID: "labrouter",
+      modelID: "lab/model-one",
+      time: { created: at - 10, completed: at },
+      tokens: { input: 10, output: 5, cache: { read: 0, write: 0 } },
+    };
+    if (cost !== undefined) message.cost = cost;
+    return message;
+  };
+
+  async function costOf(rows: readonly Message[]): Promise<number | undefined> {
+    const base = await realpath(await mkdtemp(join(tmpdir(), "collie-opencode-cost-")));
+    const db = openDb(join(base, "opencode.db"), V1_SCHEMA);
+    db.run("insert into session values (?, null, 'session', 1, 100)", [SID]);
+    for (const [i, data] of rows.entries()) {
+      db.run("insert into message values (?, ?, ?, ?, ?)", [`msg_${String(i)}`, SID, 1000 + i, 1000 + i, JSON.stringify(data)]);
+    }
+    db.close();
+    const probe = await opencodeJournal(base, join(base, "models.json")).cacheProbe?.({ kind: "id", value: SID });
+    await rm(base, { recursive: true, force: true });
+    return probe?.costUsd;
+  }
+
+  test("sums the cost of every assistant message, an integer one included", async () => {
+    const user: Message = { role: "user", time: { created: 1 }, cost: 50 };
+    expect(await costOf([user, assistant(2000, 0.25), assistant(3000, 0.5), assistant(4000, 1)])).toBeCloseTo(1.75, 9);
+  });
+
+  test("a message with no cost, or one that is not a number, adds nothing", async () => {
+    expect(await costOf([assistant(2000, 0.5), assistant(3000, undefined), assistant(4000, "9")])).toBeCloseTo(0.5, 9);
+  });
+
+  test("a session that states no cost, or only zeros, has none", async () => {
+    expect(await costOf([assistant(2000, undefined)])).toBeUndefined();
+    expect(await costOf([assistant(2000, 0), assistant(3000, 0)])).toBeUndefined();
+  });
+
+  test("V2 sums the assistant rows of session_message", async () => {
+    const base = await realpath(await mkdtemp(join(tmpdir(), "collie-opencode-cost-")));
+    const db = openDb(join(base, "opencode.db"), V2_SCHEMA);
+    db.run("insert into session_v2 values (?, null, 'session', 1, 100)", [SID]);
+    const rows: Array<[string, Message]> = [
+      ["user", { time: { created: 1 }, text: "hi", cost: 40 }],
+      ["assistant", { time: { created: 2, completed: 3 }, model: { id: "lab/model-one", providerID: "labrouter" }, content: [], tokens: { input: 1 }, cost: 0.125 }],
+      ["assistant", { time: { created: 4, completed: 5 }, model: { id: "lab/model-one", providerID: "labrouter" }, content: [], tokens: { input: 1 }, cost: 0.25 }],
+    ];
+    for (const [i, [type, data]] of rows.entries()) {
+      db.run("insert into session_message values (?, ?, ?, ?, ?, ?, ?)", [`m${String(i)}`, SID, type, i + 1, 1000 + i, 1000 + i, JSON.stringify(data)]);
+    }
+    db.close();
+    const probe = await opencodeJournal(base, join(base, "models.json")).cacheProbe?.({ kind: "id", value: SID });
+    await rm(base, { recursive: true, force: true });
+    expect(probe?.costUsd).toBeCloseTo(0.375, 9);
+  });
+});

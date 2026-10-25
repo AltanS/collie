@@ -2379,6 +2379,7 @@ export const en = {
   "chat.usage.window.5h.aria": "5-hour limit {percent}% used",
   "chat.usage.window.7d": "7d",
   "chat.usage.window.7d.aria": "7-day limit {percent}% used",
+  "chat.usage.cost.aria": "Session cost {amount}",
   "files.title": "Files",
   // --- the branch a pane's folder is on (components/ui/branch-label.tsx) ---
   "branch.aria": "Branch {name}",

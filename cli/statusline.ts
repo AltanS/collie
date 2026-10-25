@@ -4,6 +4,7 @@ import { constants } from "node:os";
 import { asJsonNumber, asJsonObject, asJsonString, parseJsonObject } from "../web/src/lib/json.ts";
 import type { JsonObject } from "../bridge/json.ts";
 import {
+  asCost,
   asPercent,
   USAGE_SCHEMA_VERSION,
   type UsageLimit,
@@ -207,6 +208,8 @@ export function usageFromStatusLine(payload: JsonObject, now: number): { session
   const record: UsageRecord = { schemaVersion: USAGE_SCHEMA_VERSION, harness: BEACON_HARNESS, at: now };
   const context = asPercent(asJsonObject(payload.context_window)?.used_percentage);
   if (context !== undefined) record.context = context;
+  const cost = asCost(asJsonObject(payload.cost)?.total_cost_usd);
+  if (cost !== undefined) record.cost = cost;
   const limitsRoot = asJsonObject(payload.rate_limits);
   const limits: UsageLimit[] = [];
   for (const [key, window] of WINDOW_KEYS) {
@@ -218,7 +221,7 @@ export function usageFromStatusLine(payload: JsonObject, now: number): { session
     limits.push(seconds !== undefined && Number.isFinite(seconds) && seconds > 0 ? { window, used, resetsAt: seconds * 1000 } : { window, used });
   }
   if (limits.length > 0) record.limits = limits;
-  if (record.context === undefined && record.limits === undefined) return null;
+  if (record.context === undefined && record.limits === undefined && record.cost === undefined) return null;
   return { session, record };
 }
 

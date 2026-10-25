@@ -158,6 +158,25 @@ describe("usageFromStatusLine", () => {
     expect(early).toBeNull();
   });
 
+  test("takes the session's cost in dollars, and nothing when it is missing or not a number", () => {
+    const withCost = usageFromStatusLine(payload({ cost: { total_cost_usd: 0.1137 } }), NOW);
+    expect(withCost?.record.cost).toBe(0.1137);
+    expect(usageFromStatusLine(payload(), NOW)?.record.cost).toBeUndefined();
+    expect(usageFromStatusLine(payload({ cost: {} }), NOW)?.record.cost).toBeUndefined();
+    for (const bad of ["0.5", null, true, -1]) {
+      expect(usageFromStatusLine(payload({ cost: { total_cost_usd: bad } }), NOW)?.record.cost).toBeUndefined();
+    }
+  });
+
+  test("a cost alone is a reading, and survives the file round trip", () => {
+    const alone = usageFromStatusLine(
+      payload({ context_window: { used_percentage: null }, rate_limits: null, cost: { total_cost_usd: 2 } }),
+      NOW,
+    );
+    expect(alone?.record).toEqual({ schemaVersion: 1, harness: "claude", at: NOW, cost: 2 });
+    expect(parseUsageRecord(JSON.stringify(alone?.record))).toEqual(alone!.record);
+  });
+
   test("no session id, or a strange one, is no reading", () => {
     expect(usageFromStatusLine(payload({ session_id: null }), NOW)).toBeNull();
     expect(usageFromStatusLine(payload({ session_id: "../../x" }), NOW)).toBeNull();
