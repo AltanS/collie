@@ -4480,27 +4480,79 @@ describe("the held send (M56 spec 15)", () => {
     return { ...r, holds, clock, pane };
   };
 
-  test("a held command whose Enter steers (pi) never goes on quiet polls: 40 free polls keep it, then it expires at 10 minutes (review Q1)", async () => {
+  test("a held command whose Enter steers (pi), its turn ended before any poll: two free polls under two seconds keep it, two seconds apart send it once (omp gang 2026-10-25)", async () => {
     const r = await piHeldCommand("held-pi-01");
-    for (let i = 0; i < 40; i++) {
-      r.clock.now += 10_000;
-      expect(await tick(r)).toEqual([]);
+    expect(await tick(r)).toEqual([]);
+    r.clock.now += 500;
+    expect(await tick(r)).toEqual([]);
+    expect(r.pane.keysSeen).toEqual([]);
+    r.clock.now += 1_600;
+    const [released] = await tick(r);
+    expect(released?.receipt).toMatchObject({ requestId: "held-pi-01", outcome: "sent" });
+    expect(released?.receipt?.keys.at(-1)).toBe("Enter");
+    expect(r.pane.transcript.filter((row) => row === "> /model")).toHaveLength(1);
+    expect(r.pane.steered).toEqual([]);
+    expect(r.holds.list()).toEqual([]);
+  });
+
+  test("a held command whose Enter steers (pi) never goes while a poll reads the turn: a running poll starts the free count again", async () => {
+    const r = await piHeldCommand("held-pi-03");
+    expect(await tick(r)).toEqual([]);
+    r.clock.now += 1_000;
+    r.pane.inTurn = true;
+    expect(await tick(r, RUNNING)).toEqual([]);
+    r.pane.inTurn = false;
+    r.clock.now += 3_000;
+    expect(await tick(r)).toEqual([]);
+    expect(r.pane.keysSeen).toEqual([]);
+    const [released] = await tick(r);
+    expect(released?.receipt).toMatchObject({ requestId: "held-pi-03", outcome: "sent" });
+    expect(r.pane.steered).toEqual([]);
+  });
+
+  test("a plain send behind a held command (pi) waits seconds, not the command's ten minutes (omp gang 2026-10-25, 07 F3)", async () => {
+    const r = await piHeldCommand("held-pi-04");
+    const behind = await r.send("then summarise the diff", { id: "held-pi-05" });
+    expect(behind.receipt).toMatchObject({ outcome: "held", keys: [] });
+    const sent: string[] = [];
+    for (let i = 0; i < 12 && r.holds.list().length > 0; i++) {
+      for (const answer of await tick(r)) if (answer?.receipt?.outcome === "sent") sent.push(answer.receipt.requestId);
+      r.clock.now += 1_500;
     }
-    expect(r.holds.get("held-pi-01")?.state).toBe("held");
-    expect(r.pane.keysSeen).toEqual([]);
-    r.clock.now = 1_000_000 + 10 * 60 * 1000 + 1_000;
-    await tick(r);
-    expect(r.holds.get("held-pi-01")).toMatchObject({ state: "ended", outcome: "expired" });
-    expect(r.pane.keysSeen).toEqual([]);
+    expect(sent).toEqual(["held-pi-04", "held-pi-05"]);
+    expect(r.clock.now - 1_000_000).toBeLessThan(20_000);
+    // The command went with Enter on an idle box, the message with pi's send key.
+    expect(r.pane.transcript.slice(-2)).toEqual(["> /model", " > then summarise the diff"]);
+    expect(r.pane.steered).toEqual([]);
+  });
+
+  test("a second held command after a release that started no turn takes the quiet rule: five free polls over ten seconds, never two", async () => {
+    const r = await piHeldCommand("held-pi-06");
+    expect((await r.send("/session", { id: "held-pi-07", mode: "command" })).receipt).toMatchObject({ outcome: "held" });
+    expect(await tick(r)).toEqual([]);
+    r.clock.now += 2_100;
+    const [first] = await tick(r);
+    expect(first?.receipt).toMatchObject({ requestId: "held-pi-06", outcome: "sent" });
+    // No poll reads a turn after it: two free polls seconds apart are not enough for the next command.
+    expect(await tick(r)).toEqual([]);
+    r.clock.now += 2_500;
+    expect(await tick(r)).toEqual([]);
+    r.clock.now += 2_500;
+    expect(await tick(r)).toEqual([]);
+    r.clock.now += 2_500;
+    expect(await tick(r)).toEqual([]);
+    r.clock.now += 2_600;
+    const [second] = await tick(r);
+    expect(second?.receipt).toMatchObject({ requestId: "held-pi-07", outcome: "sent" });
+    expect(second?.receipt?.keys.at(-1)).toBe("Enter");
+    expect(r.pane.steered).toEqual([]);
   });
 
   test("a held command whose Enter steers (pi) goes out after a poll read a running turn, then two free polls", async () => {
     const r = await piHeldCommand("held-pi-02");
-    for (let i = 0; i < 10; i++) {
-      r.clock.now += 10_000;
-      expect(await tick(r)).toEqual([]);
-    }
+    r.pane.inTurn = true;
     expect(await tick(r, RUNNING)).toEqual([]);
+    r.pane.inTurn = false;
     const [released] = await freeTwice(r);
     expect(released?.receipt).toMatchObject({ requestId: "held-pi-02", outcome: "sent" });
     expect(released?.receipt?.keys.at(-1)).toBe("Enter");

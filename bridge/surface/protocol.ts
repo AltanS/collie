@@ -101,7 +101,10 @@
 // `held`; the poll releases the oldest held request of a pane the first time its Surface reads free, as
 // a fresh run of these steps under the same request id. A later send or command on that pane joins the
 // end of the queue. A hold lasts 30 minutes, then ends `expired` with its text kept for a Resend; the
-// person may cancel it while it waits.
+// person may cancel it while it waits. A held command whose Enter could steer a turn waits for the turn
+// to end: two free polls after a poll read it running, two free polls at least two seconds apart after
+// only its own hold read it (the turn ended between polls), or the quiet rule when no turn was read
+// since the last release. Its run reads the turn again before any key.
 //
 // A draft holds a walky talky message (M62 spec 02): a send its caller marks `draftHolds` is held over
 // a draft instead of refused `draft_present`, and nothing is typed while the draft is there. It goes
@@ -1025,8 +1028,9 @@ export function steerTrusted(match: ProfileMatch | null): boolean {
 
 /**
  * Whether a released command's keys can never steer a turn: a version the binary reported, and an Enter
- * that queues in a turn or no Enter among the command's keys. Else a held command waits for a turn a
- * poll read before it goes (review of spec 15, Q1): pi and OMP send a command with an Enter that steers.
+ * that queues in a turn or no Enter among the command's keys. Else a held command waits for the end of
+ * the turn it was held for (review of spec 15, Q1; `tickHolds`): pi and OMP send a command with an Enter
+ * that steers, so a command released into a turn would join it as text instead of running.
  */
 function commandCannotSteer(match: ProfileMatch | null): boolean {
   if (!turnTrusted(match)) return false;
@@ -1852,7 +1856,11 @@ interface PaneWatch {
   freeReads: number;
   /** When the first of those free polls came; null while the run is empty. */
   freeSince: number | null;
-  /** A poll itself read a running turn since the last release (a hold's own read does not count). */
+  /**
+   * A poll itself read a running turn since the last release (a hold's own read does not count). A
+   * command that waits for a turn goes on two free polls after such a read; after the hold's read alone
+   * its two free polls must span {@link DRAFT_LEFT_MS}.
+   */
   pollSawRunning: boolean;
   /** Polls in a row that found no pane. */
   missing: number;
@@ -2308,8 +2316,11 @@ export class SendProtocol {
    *    polls in a row found no pane; a session id that resolved, or a /clear, keeps them;
    *  - the oldest held request goes only once a poll read a running turn since the last release, and
    *    then two polls in a row read the pane free; or, with no turn read, once five polls in a row read
-   *    it free over at least ten seconds. A command whose Enter could steer a turn takes neither the
-   *    quiet path nor the hold's own read: a poll must read the turn. A release starts that wait again;
+   *    it free over at least ten seconds. A command whose Enter could steer a turn (`waitsForTurn`)
+   *    counts the hold's own read of the turn only when its two free polls also span
+   *    {@link DRAFT_LEFT_MS}: a turn that ended before the first poll ends its wait there, and a turn a
+   *    poll read ends it on two free polls as before. It still never goes while a poll reads the turn,
+   *    and its run reads the turn once more before any key. A release starts that wait again;
    *  - a marked request held over a draft (M62 spec 02) goes once two polls in a row read the pane free,
    *    the box empty and the pane idle (the shape of hold.ts `DESK_READS`), the second at least
    *    {@link DRAFT_LEFT_MS} after the first. A poll that reads a turn
@@ -2373,13 +2384,19 @@ export class SendProtocol {
         watch.freeReads = 0;
         watch.freeSince = null;
       }
-      // A command whose Enter could steer a turn waits for a running turn a poll itself read (review Q1).
+      // A command whose Enter could steer a turn goes on two free polls only after a running turn a poll
+      // itself read (review Q1). When only its own hold read the turn (the turn ended between two polls,
+      // or the bridge restarted), the two free polls must also span DRAFT_LEFT_MS (turnEnded), so a turn
+      // the screen dropped for one poll is not taken for its end. With no turn read since the last
+      // release it takes the quiet rule like every other request (omp gang 2026-10-25: before this, such
+      // a command never left an idle pane and held every later send for its ten minutes).
       const afterTurn = (next.waitsForTurn === true ? watch.pollSawRunning : watch.sawRunning) && watch.freeReads >= FREE_POLLS;
-      const quiet = next.waitsForTurn !== true && watch.freeReads >= QUIET_FREE_POLLS && watch.freeSince !== null && now - watch.freeSince >= QUIET_FREE_MS;
+      const turnEnded = next.waitsForTurn === true && watch.sawRunning && watch.freeReads >= FREE_POLLS && watch.freeSince !== null && now - watch.freeSince >= DRAFT_LEFT_MS;
+      const quiet = watch.freeReads >= QUIET_FREE_POLLS && watch.freeSince !== null && now - watch.freeSince >= QUIET_FREE_MS;
       // A draft that left the box: two reads in a row of an empty box and an idle pane, at least
       // DRAFT_LEFT_MS apart, so a submitted draft has drawn its turn before anything is typed.
       const draftLeft = holds.get(next.id)?.cause === "draft_present" && watch.freeReads >= FREE_POLLS && watch.freeSince !== null && now - watch.freeSince >= DRAFT_LEFT_MS;
-      if (busy || !(afterTurn || quiet || draftLeft)) continue;
+      if (busy || !(afterTurn || turnEnded || quiet || draftLeft)) continue;
       if (this.deps.releaseCheck?.(next.id, session, paneId) === false) {
         this.endHeld(next, "refused", "pane_gone");
         continue;

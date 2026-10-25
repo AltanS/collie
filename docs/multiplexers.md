@@ -428,8 +428,9 @@ screen you confirmed with Type here. A send on a pane with no profile is never h
 Sends when the turn ends." The card shows the text and a Cancel button. Collie sends it after the turn ends, once the
 pane reads free on two polls in a row, oldest first. Each later held send waits for the turn that
 the send before it started. If no turn shows, it goes after five free polls over ten seconds. A held
-command on pi, OMP or Codex sends Enter, and there Enter steers a turn. Such a command waits for a
-turn Collie sees, and so does any held command on an agent whose version Collie could not read. OMP
+command on pi, OMP or Codex sends Enter, and there Enter steers a turn. Such a command waits until
+the turn has ended, and so does any held command on an agent whose version Collie could not read: two
+free polls at least two seconds apart, or five over ten seconds if Collie saw no turn at all. OMP
 runs `/goal` at once during a turn, so Collie sends `/goal`, `/goal pause` or `/goal resume` right
 away with Enter. It never holds them, and they do not wait behind other held sends. A
 later message on that pane waits behind the held ones. A held text lasts 30 minutes, a held command
