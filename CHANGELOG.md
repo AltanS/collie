@@ -23,17 +23,6 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
-### Added
-
-- **Codex's own hooks report to Collie, and can hold a permission for the phone.** `collie hooks install codex --native` registers `SessionStart`, `UserPromptSubmit`, `Stop`, `Interrupt` and `SessionEnd` in `~/.codex/hooks.json` as separate entries (your other hooks, `config.toml` and `notify` are not touched), `--hold-permissions` adds `PermissionRequest` and `PostToolUse`, and every entry runs the new `collie codex-hook`. A hook is placed on a pane only through its verified `codex` parent, never by folder. A hold beside Moshi's own `PermissionRequest` entry is refused, because Moshi's card is not withdrawn when Collie decides first (#595); `--with-moshi` builds a single broker that takes the first valid answer once and cancels the other, and stays off for every provider that has no recorded runtime proof of withdrawal, Moshi 0.4.37 included. Process start times now read through libproc on macOS for the bridge and the hooks alike.
-
-### Fixed
-
-- **Collie reads a Codex config whose multi-line strings end in four or five quotes.** `collie hooks install codex` refused a valid `config.toml` with "a string with no closing quote" when a `'''` or `"""` string ended with its own quote just before the closing three; the scanner now closes on the last three quotes of a run of up to five, as TOML defines it, and still refuses six or more. Reported in #592.
-- **Two CI regression guards pass again for the native Codex hooks.** The process probe reads its platform from the host object instead of `process.platform`, and the private-roots guard lists the native install's writes under `$CODEX_HOME` with the reason they are safe on Windows, where the install refuses and only the uninstall can still write. No behaviour changes (#595).
-- **A Codex permission card now shows what the request asks for, and the native hold no longer sits beside a second approver.** The Bash card shows the `description` Codex sends (a network-access target or a sandbox escalation reason); `codex e` and `codex review` are no pane, and a session record is used only when the hook's environment names the same pane; statusline and walky keep the hook-target registry on macOS; Moshi's `codex-hook` is recognised in any spelling, at install and when the hook runs, and `hooks status` warns; a proof must attest a stdout decision that blocks until answered, and a provider that ends with no decision ends the whole request; the install refuses a Collie permission entry with no record, keeps empty event arrays it did not write, and refuses `--hold-permissions` below Codex 0.164.0 (#595).
-- **The Codex native hook can no longer block a prompt after an ordinary Collie upgrade or rollback.** Each registered entry now runs `'<collie>' codex-hook || :`, so a Collie release that does not know the verb yet (usage error, exit 2) exits 0 with no decision instead of blocking `UserPromptSubmit`, forcing a `Stop` continuation or denying a permission; the structured allow or deny of a working one is unchanged, and an install re-points the earlier form in place while the uninstall removes both. A `--hold-permissions` install also refuses, and the hook holds nothing, beside any other `PermissionRequest` handler, and a Moshi pass-through is never run next to a foreign Moshi entry (#595).
-
 ## [1.24.0] - 2026-10-25
 
 ### Added
