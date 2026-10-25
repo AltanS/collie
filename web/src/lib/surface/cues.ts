@@ -547,10 +547,23 @@ export function readCuesFor(allRows: readonly FrameRow[], frame: Frame | null, i
   if (plain.strength !== "strong" && wrapUnderGlyph(withoutOwnPrompt(rows, frame).map(rowText), frame) === "cut") {
     return { ...plain, cues: [], strength: "none", cutWrap: true };
   }
-  const down = readCues(withoutPromptGlyph(withoutOwnPrompt(rows, frame), frame).slice(at), null, null);
+  const down = readCues(withoutDraftContinuation(withoutPromptGlyph(withoutOwnPrompt(rows, frame), frame), frame, idle).slice(at), null, null);
   // A weak shape inside the box is the box's own hint row (OMP draws "to change thinking effort" there).
   if (down.strength !== "strong" || plain.strength === "strong") return plain;
   return { ...down, cluster: down.cluster.map((i) => i + at), cues: down.cues.map((cue) => ({ kind: cue.kind, row: cue.row + at })) };
+}
+
+/**
+ * The rows with the draft's continuation rows read as blank, for a profile that names `frame.draftIndent`:
+ * the rows under the prompt row inside the box that start with that many spaces. A dialog the person quoted
+ * in a long draft (a permission box in a prompt about permission boxes) draws at that indent and is no
+ * dialog; one the harness draws in the box's place starts at the box's own column and stays.
+ */
+function withoutDraftContinuation(rows: readonly FrameRow[], frame: Frame, idle: IdleProfile): readonly FrameRow[] {
+  const indent = idle.frame.draftIndent;
+  if (indent === undefined) return rows;
+  const lead = " ".repeat(indent);
+  return rows.map((row, i) => (i > frame.interior.prompt && i <= frame.interior.last && rowText(row).startsWith(lead) ? { segments: [] } : row));
 }
 
 /**

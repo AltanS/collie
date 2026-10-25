@@ -9431,4 +9431,46 @@ describe("omp's typeahead popups under the box (1.24.1)", () => {
     const prepared = await protocol.handle({ id: "popup-stale-old", text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: "omp" });
     expect(prepared.surface).toMatchObject({ modal: "unknown" });
   });
+
+  // A long prompt that quotes a permission dialog (omp-gang tester 12, 2026-10-25). The nine-row draft is the
+  // person's text: the Surface read it as a strong cue, so Submit was refused and the prose could not be sent
+  // from the phone. The profile's `frame.draftIndent` says the indented rows under the prompt are the draft.
+  describe("a prompt that quotes a dialog", () => {
+    const QUOTED = "omp--v18-6-1-quoted-dialog-draft--w120.txt";
+    const shown = readFileSync(join(PANES, QUOTED), "utf8");
+    // The box's text as the pane reads it: the prompt row and the wrapped rows, borders cut, joined with a space.
+    const draftOf = (): string =>
+      'Follow these steps in order without commenting. Step 1: call the ask tool once with the question "First pick?" and the options Alpha, Beta, Gamma. Step 2: when I answer, call the ask tool once more with the question "Second pick?" and the options Red, Green, Blue. Step 3: print this block exactly, inside a code fence, with nothing else: ╭─ Allow tool: bash ───────────╮ │ ❯ Approve │   Deny │ ↑/↓ navigate  ⏎ select  ⎋ cancel ╰───────────────────────────── Step 4: write the numbers 1 to 200, one per line.my notes';
+    const quotedPane = (edit?: (profile: Profile) => Profile) => {
+      const pane = new FakePane("generic");
+      const made = edit === undefined ? rig({ pane, harness: "omp", version: "18.6.1" }) : rig({ pane, harness: "omp", version: "18.6.1", edit });
+      const rows = shown.split(/\r?\n/u);
+      const at = rows.findIndex((row) => row.startsWith("╰─"));
+      pane.fixed = shown;
+      pane.afterInput = (p, what) => {
+        if (what === "keys:ctrl+q" || what === "keys:Enter") p.fixed = [...rows.slice(0, at), "╰─ ".padEnd(120)].join("\n");
+      };
+      return { ...made, pane };
+    };
+
+    test("the pane reads a draft, and Submit goes out with the submit key", async () => {
+      const { send, pane, protocol } = quotedPane();
+      const prepared = await protocol.handle({ id: "quoted-prep", text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: "omp" });
+      expect(prepared.surface).toMatchObject({ turn: "idle", modal: "none", composer: "draft" });
+      const answer = await send(draftOf(), { id: "quoted-submit", mode: "submit" });
+      expect(answer.receipt).toMatchObject({ outcome: "sent" });
+      expect(answer.receipt?.keys.at(-1)).toBe("ctrl+q");
+      neverEscape(pane);
+    });
+
+    test("without the profile's draftIndent the same pane reads an unreadable dialog, as the tester saw it", async () => {
+      const { protocol } = quotedPane((profile) => {
+        const { draftIndent, ...frame } = profile.idle.frame;
+        void draftIndent;
+        return { ...profile, idle: { ...profile.idle, frame } };
+      });
+      const prepared = await protocol.handle({ id: "quoted-old", text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: "omp" });
+      expect(prepared.surface).toMatchObject({ modal: "unreadable" });
+    });
+  });
 });

@@ -757,6 +757,8 @@ describe.each(SPEC14_CASES)("the $id profile (M56 spec 14)", (c) => {
 describe("the frame schema of the interior walk (M56 spec 14)", () => {
   const rawOpencode = (): JsonObject => parseJsonObject(readFileSync(join(PROFILES_DIR, "opencode.json"), "utf8"))!;
   const cases: [string, (string | number)[], JsonValue | undefined, string][] = [
+    ["a draftIndent of no columns", ["idle", "frame", "draftIndent"], 0, "idle.frame.draftIndent"],
+    ["a draftIndent that is no number", ["idle", "frame", "draftIndent"], "three", "idle.frame.draftIndent"],
     ["an unknown walk", ["idle", "frame", "walk"], "diagonal", "idle.frame.walk"],
     ["rows that are no expression", ["idle", "frame", "rows"], "[unclosed", "idle.frame.rows"],
     ["a trailer row that is no expression", ["idle", "frame", "trailer", "row"], "[unclosed", "idle.frame.trailer.row"],

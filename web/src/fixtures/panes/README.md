@@ -3285,3 +3285,9 @@ All are composers, labelled `popup`. The profile names them in `idle.volatile.be
 | `omp--v18-6-1-hash-popup-stale--w120.txt` | an EMPTY box after Ctrl+C with `PR #1` and `Issue #1` still under it; they go with the next key |
 
 The `#` popup that lists prompt actions (`ends with hash #`, `tag:#abc`: `Copy current line` and more) is a different popup, not a rule here; its screens read as before.
+
+## omp 18.6.1 a draft that quotes a dialog (captured 2026-10-25, omp-gang tester 12)
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `omp--v18-6-1-quoted-dialog-draft--w120.txt` | `draft` | A nine-row prompt in the box that asks for a permission box printed in a code fence (`╭─ Allow tool: bash`, `❯ Approve`, `Deny`, a footer), then `my notes`. The quoted rows are the person's text. omp draws the draft's rows under the prompt at three columns, which `idle.frame.draftIndent` says, so the modal cues (`dialogsInBox` reads the box rows) leave them out. A dialog omp draws in the box's place starts at the box's column and stays a dialog. The draft is taller than the bridge's tail window, so no prompt region binds (the sweep goes out unbound) |

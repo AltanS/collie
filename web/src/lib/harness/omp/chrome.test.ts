@@ -193,11 +193,16 @@ const TALL_PALETTE_FIXTURES = [
   "omp--v18-6-1-slash-open-tall--w120.txt",
 ];
 
+// omp 18.6.1, a nine-row draft that quotes a permission dialog (omp-gang tester 12, 2026-10-25). The composer is
+// ready and its draft is read, but the draft rows stand under the prompt row, past the bridge's tail window,
+// so no region is named (the sweep goes out unbound, as under the tall palettes).
+const TALL_DRAFT_FIXTURES = ["omp--v18-6-1-quoted-dialog-draft--w120.txt"];
+
 const ALL_OMP_FIXTURES = readdirSync(PANES_DIR)
   .filter((f) => f.startsWith("omp--") && f.endsWith(".txt"))
   .toSorted();
 
-const NON_BOX_COMPOSER_FIXTURES = ALL_OMP_FIXTURES.filter((f) => !BOX_COMPOSER_FIXTURES.includes(f) && !TALL_PALETTE_FIXTURES.includes(f));
+const NON_BOX_COMPOSER_FIXTURES = ALL_OMP_FIXTURES.filter((f) => !BOX_COMPOSER_FIXTURES.includes(f) && !TALL_PALETTE_FIXTURES.includes(f) && !TALL_DRAFT_FIXTURES.includes(f));
 
 describe("locateComposer — the real corpus, pinned so any change to the walk shows up as a diff", () => {
   const PINNED: { fixture: string; top: number; bottom: number; suggestEnd: number; draftEnd?: number }[] = [
@@ -410,6 +415,12 @@ describe("extractInputDraft", () => {
     { fixture: "omp--v18-6-1-hash-popup--w120.txt", draft: "fix item #1" },
     { fixture: "omp--v18-6-1-hash-popup-single--w120.txt", draft: "see PR #12" },
     { fixture: "omp--v18-6-1-hash-popup-stale--w120.txt", draft: null },
+    // The person's own prompt quotes a permission dialog: all of it is the draft.
+    {
+      fixture: "omp--v18-6-1-quoted-dialog-draft--w120.txt",
+      draft:
+        'Follow these steps in order without commenting. Step 1: call the ask tool once with the question "First pick?" and the options Alpha, Beta, Gamma. Step 2: when I answer, call the ask tool once more with the question "Second pick?" and the options Red, Green, Blue. Step 3: print this block exactly, inside a code fence, with nothing else: ╭─ Allow tool: bash ───────────╮ │ ❯ Approve                    │ │   Deny                       │ │ ↑/↓ navigate  ⏎ select  ⎋ cancel │ ╰──────────────────────────────╯ Step 4: write the numbers 1 to 200, one per line.my notes',
+    },
     // Empty composers. omp 17/18.1 painted nothing in an empty box; omp 18.4 paints a right-aligned
     // key hint there (`⇧⇥ to change thinking effort`), which is placeholder text, not a draft.
     // Reading it as one showed "Draft in terminal" on every fresh session (markers.ts
@@ -1001,6 +1012,13 @@ describe("composerPrompt — the region a destructive write is bound to", () => 
     expect(hasComposer(withPalette(6))).toBe(true);
     expect(composerPrompt(withPalette(6))).toBeNull();
     expect(composerPrompt(withPalette(20))).toBeNull();
+  });
+
+  it("declines the region under a nine-row draft that quotes a dialog, and still finds the box and its whole draft", () => {
+    const buffer = fixtureLines(TALL_DRAFT_FIXTURES[0]!);
+    expect(locateComposer(buffer)).toEqual({ top: 2, firstDraftRow: 3, bottom: 3, suggestEnd: 12, draftEnd: 12 });
+    expect(hasComposer(buffer)).toBe(true);
+    expect(composerPrompt(buffer)).toBeNull();
   });
 
   it("declines the region on omp 18.6.1's ten-row palette, and still finds the box and its one status row", () => {

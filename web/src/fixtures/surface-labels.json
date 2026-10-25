@@ -4731,6 +4731,11 @@
    "version": "18.6.1",
    "state": "popup"
   },
+  "omp--v18-6-1-quoted-dialog-draft--w120.txt": {
+   "harness": "omp",
+   "version": "18.6.1",
+   "state": "draft"
+  },
   "omp--v18-6-1-path-popup--w120.txt": {
    "harness": "omp",
    "version": "18.6.1",

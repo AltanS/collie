@@ -204,6 +204,10 @@ const TYPEAHEAD_POPUP = [
   "omp--v18-6-1-hash-popup-stale--w120.txt",
 ];
 
+// omp 18.6.1 (omp-gang tester 12, 2026-10-25): a long prompt that quotes a permission dialog, typed in the box and
+// not sent. A composer: the quoted rows are the person's text.
+const QUOTED_DIALOG = ["omp--v18-6-1-quoted-dialog-draft--w120.txt"];
+
 const DECLINED = new Set([
   // — Composer states. An input box is chrome, never a dialog; stripChrome peels it, the statusline
   //   and stranded-draft probes re-surface what it carried.
@@ -388,6 +392,7 @@ const DECLINED = new Set([
   // omp 18.6.1 and 18.12.6 (2026-10-25): the file popup under a path typed in the box, a composer.
   ...PATH_POPUP,
   ...TYPEAHEAD_POPUP,
+  ...QUOTED_DIALOG,
   // omp 18.6.1 and 18.12.6 (2026-10-25): the rewind picker (Esc Esc), a full-screen modal with no box. Nothing to lift.
   "omp--v18-6-1-rewind-picker--w120.txt",
   "omp--v18-12-6-rewind-picker--w120.txt",
@@ -414,7 +419,7 @@ describeAdapterConformance(ompAdapter, {
   // omp 18.6.1 draws a ten-row palette under its open box for `/model` and `/mod` (lab, 2026-10-17): the same trade.
   // `Allow tool: goal` has no body: every row of its region is fixed text, so a changed row stops the lift.
   fixedRegionFixtures: ["omp--v18-6-1-approval-goal--w120.txt"],
-  unboundComposerFixtures: ["omp--v18-8-slash-palette.txt", "omp--v18-8-slash-palette-w48.txt", ...TALL_PALETTE_V18_6, ...TALL_PALETTE_V18_11, ...TALL_PALETTE_V18_12, ...FUZZY_LIST_TALL],
+  unboundComposerFixtures: ["omp--v18-8-slash-palette.txt", "omp--v18-8-slash-palette-w48.txt", ...TALL_PALETTE_V18_6, ...TALL_PALETTE_V18_11, ...TALL_PALETTE_V18_12, ...FUZZY_LIST_TALL, ...QUOTED_DIALOG],
 });
 
 // The corpus pin (mirroring claude/chrome.test.ts's): a newly-captured omp fixture must be filed into
@@ -599,6 +604,7 @@ describe("the omp corpus", () => {
     "omp--v18-6-1-path-popup--w120.txt",
     "omp--v18-6-1-path-popup-tilde--w120.txt",
     "omp--v18-6-1-queued-before-stop--w119.txt",
+    "omp--v18-6-1-quoted-dialog-draft--w120.txt",
     "omp--v18-6-1-rewind-picker--w120.txt",
     "omp--v18-6-1-slash-help-unlisted--w120.txt",
     "omp--v18-6-1-slash-mo-fuzzy--w120.txt",
@@ -847,6 +853,7 @@ const COMPOSER_FIXTURES = [
   // omp 18.6.1 and 18.12.6 (2026-10-25): the file popup under a path typed in the box.
   ...PATH_POPUP,
   ...TYPEAHEAD_POPUP,
+  ...QUOTED_DIALOG,
 ];
 
 describe("composerReady — the gate the reply path pre-flights on", () => {

@@ -677,3 +677,31 @@ describe("omp's typeahead popups under the box read as a draft (18.6.1, omp-gang
     expect(read.surface.modal).not.toBe("none");
   });
 });
+
+describe("a dialog quoted inside the person's own draft is the draft's text (omp 18.6.1, omp-gang tester 12)", () => {
+  const NAME = "omp--v18-6-1-quoted-dialog-draft--w120.txt";
+
+  it("a nine-row prompt that prints a permission box inside a code fence reads a draft, no cue", () => {
+    const read = own(NAME);
+    expect(read.frame?.interior.text).toContain("╭─ Allow tool: bash ───────────╮ │ ❯ Approve");
+    expect(read.surface).toEqual({ revision: 1, turn: "idle", modal: "none", composer: "draft" });
+    expect(read.cues?.strength).toBe("none");
+    expect(labelOf(NAME).state).toBe("draft");
+  });
+
+  it("the profile's draftIndent is what says so: without it the same screen is a modal nobody can read", () => {
+    const idle = idleFor("omp")!;
+    const { draftIndent, ...frame } = idle.frame;
+    void draftIndent;
+    const read = readScreen(fixtureRows(NAME), agentOf("omp"), { ...idle, frame });
+    expect(read.cues?.strength).toBe("strong");
+    expect(read.surface.modal).toBe("unreadable");
+  });
+
+  it("the same rows at the box's own column are a dialog drawn in the box's place, and stay one", () => {
+    const rows = fixtureRows(NAME).map((row) => rowText(row));
+    const outdented = rows.map((text) => (/^ {3}[╭│╰]/u.test(text) ? text.slice(3) : text)).join("\n");
+    const read = readScreen(rowsOf(outdented), agentOf("omp"), idleFor("omp"));
+    expect(read.surface.modal).toBe("unreadable");
+  });
+});

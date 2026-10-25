@@ -334,6 +334,14 @@ export interface FrameLayout {
   readonly bottom: FrameAnchor;
   /** Spaces in front of a wrapped draft row inside the box. */
   readonly continuationIndent: number;
+  /**
+   * For a profile that draws its dialogs in the box's place (`dialogsInBox`): the columns in front of the
+   * rows under the prompt row that hold the draft (OMP's `╰─ ` is three wide, so its draft continues at
+   * three spaces). A row inside the box that starts with that many spaces is the draft's, and a dialog
+   * the person quoted in it is no dialog: the modal cues leave those rows out. A dialog drawn in the box's
+   * place starts at the box's own column. Optional, 1 or more.
+   */
+  readonly draftIndent?: number;
   readonly maxDraftRows: number;
   /** How many rows above the last non-blank row the bottom edge may sit (the frame module's
    *  search bound, M56 spec 03): the tallest thing the harness draws under a live box. */
@@ -1276,7 +1284,8 @@ function parseFrame(frameNode: JsonObject): FrameLayout {
   };
   const maxWidgetRows = frameNode.maxWidgetRows === undefined ? undefined : whole(frameNode.maxWidgetRows, "idle.frame.maxWidgetRows", 1);
   const withWidgets = maxWidgetRows === undefined ? anchors : { ...anchors, maxWidgetRows };
-  const base = frameNode.scroll === undefined ? withWidgets : { ...withWidgets, scroll: parseScroll(frameNode.scroll, maxDraftRows) };
+  const withIndent = frameNode.draftIndent === undefined ? withWidgets : { ...withWidgets, draftIndent: whole(frameNode.draftIndent, "idle.frame.draftIndent", 1) };
+  const base = frameNode.scroll === undefined ? withIndent : { ...withIndent, scroll: parseScroll(frameNode.scroll, maxDraftRows) };
   if (walk === "edges") {
     for (const key of ["rows", "trailer", "continuation", "ownPrompt", "maxWidgetRows"] as const) {
       if (frameNode[key] !== undefined) fail(`idle.frame.${key}`, "belongs to the interior walk");

@@ -37,6 +37,7 @@
       "rows": "^(?:(?:\\u{E0B6} |\\s?)(?:π|\\u{F0D57}|[⠀-⣿]\\s+\\d+[smh])\\s.*(?:▶|\\u{E0B0}).*|\\s?(?:\\u{E0B6} )?(?:(?![\\u{E0A0}-\\u{E0D7}])[\\p{Co}\\p{So}π]|pi|[⠀-⣿]\\s+\\d+[smh])\\s.*(?:─{3}|-{3}).*|╭─.*|╰─.*|│.*|\\s{3}.*|\\s*)$",
       "continuation": "^(?:│|╰─)? ?(?<text>.*?)(?:\\s*(?:│|█|─?╯))?$",
       "continuationIndent": 0,
+      "draftIndent": 3,
       "maxDraftRows": 40,
       "maxTailRows": 3,
       "maxWidgetRows": 12,
