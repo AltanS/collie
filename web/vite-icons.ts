@@ -182,3 +182,28 @@ export function transformIndexIcons(html: string, channel: Channel): string {
   }
   return out;
 }
+
+/**
+ * The largest single file the service worker's precache accepts (Workbox's
+ * `injectManifest.maximumFileSizeToCacheInBytes`). The main chunk `assets/index-*.js` must stay
+ * inside it: a chunk over the limit is left out of the precache, and Workbox then fails the build
+ * (that is the only reason it is loud), because an uncached main chunk breaks offline reading
+ * (M46).
+ *
+ * Measured main chunk, minified and ungzipped, in bytes:
+ *   1.21.0   1,621,690
+ *   1.22.0   1,814,958
+ *   1.23.x   1,948,674
+ *   edge.5   2,026,635
+ *   1.24.1   2,101,583 (2026-10-25, int/1.24.1 f653954ad; 325218dcd was 2,095,645, 1.5 kB under
+ *            the old 2 MiB default, so one merge of ordinary code, +5.9 kB, tipped it over)
+ * The growth is organic: the 2026-10-25 source-map attribution found no wrong import, no test
+ * fixture and no node-only module in the chunk, and the message catalogs other than English are
+ * already their own lazy chunks. The chunk has grown about 100 to 150 kB a minor release.
+ *
+ * 3 MiB leaves room for roughly seven minor releases at that rate. Before it is raised again, run
+ * `bunx vite build --sourcemap --outDir /tmp/x` and look at what grew; the English catalog
+ * (`en.ts`, ~150 kB) and `react-router`'s `development` build (~94 kB) are the two large
+ * candidates for a split.
+ */
+export const PRECACHE_MAX_FILE_BYTES = 3 * 1024 * 1024;
