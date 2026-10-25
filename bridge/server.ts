@@ -164,7 +164,7 @@ import type { StopService } from "./surface/stop.ts";
 import type { ReceiptQueued } from "./surface/queued.ts";
 import type { ProgramDriver } from "./surface/durable-driver.ts";
 import { parseAnswerBody, type AskReply } from "../web/src/lib/surface/ask.ts";
-import { REQUEST_ID, reservedLead, SEND_MODES, SEND_WHENS, type HeldCancelAnswer, type SendAnswer, type SendReceiptsAnswer } from "../web/src/lib/surface/send.ts";
+import { REQUEST_ID, RETURNED_CARD_DROPPED, reservedLead, SEND_MODES, SEND_WHENS, type HeldCancelAnswer, type SendAnswer, type SendReceiptsAnswer } from "../web/src/lib/surface/send.ts";
 import {
   maskChatBody,
   maskDiff,
@@ -7817,9 +7817,6 @@ export function surfaceRoute(shadow: SurfaceShadow | undefined, paneId: string |
 }
 
 /** What `/api/send` answers with the flag off: the route is not there, a 404 that says why. */
-/** The answer's sentence when a returned card's Discard found the box changed: only the card went (ADR 0122). */
-export const RETURNED_CARD_DROPPED = "The box no longer holds this message. Collie removed its card and pressed nothing.";
-
 export const SEND_OFF_TEXT = "the send protocol is off (COLLIE_SEND_PROTOCOL=0 turned it off; it is on by default)";
 /** The longest text one send takes, in UTF-16 units. A longer message is a file, not a reply. */
 export const SEND_MAX_TEXT = 64 * 1024;

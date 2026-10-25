@@ -1675,15 +1675,10 @@ export interface ChatWindowBody {
    */
   queued?: string[];
   /**
-   * `receipts` when {@link queued} ends with the texts Collie's own receipts say are queued (ADR 0122):
-   * the same texts stand in {@link queuedSends}, and this client draws them from there, once. Absent
-   * when the whole list is the journal's. Mirrors `ChatWindowBody` in bridge/journal/live.ts.
-   */
-  queuedFrom?: "receipts";
-  /**
-   * The pane's open queued sends from Collie's receipts, oldest first (ADR 0122): STATE like
-   * {@link queued}, whole on every answer. Absent when there is none and from a bridge one release
-   * behind. Mirrors `ChatWindowBody` in bridge/journal/live.ts.
+   * The pane's queued sends as Collie's receipts know them, oldest first (ADR 0122): STATE like
+   * {@link queued}, whole on every answer. Never repeated in {@link queued}, which stays the journal's.
+   * Absent when there is none and from a bridge one release behind. Mirrors `ChatWindowBody` in
+   * bridge/journal/live.ts.
    */
   queuedSends?: QueuedSendRow[];
   /**
@@ -1703,13 +1698,14 @@ export interface ChatWindowBody {
 }
 
 /**
- * One queued send as Collie's receipts know it (ADR 0122): its request id, whether it waits in the
- * harness (`queued`) or Stop gave it back to the input box (`returned`), and its text, masked when the
- * bridge masks. Mirrors `QueuedSendWire` in bridge/journal/receipt-queue.ts.
+ * One queued card as Collie's receipts know it (ADR 0122): its request id, whether it waits in the
+ * harness (`queued`), Stop gave it back to the input box (`returned`, a run of texts given back
+ * together is one card), or Collie cannot tell where it went (`unconfirmed`), and its text, masked when
+ * the bridge masks. Mirrors `QueuedSendWire` in bridge/journal/receipt-queue.ts.
  */
 export interface QueuedSendRow {
   requestId: string;
-  state: "queued" | "returned";
+  state: "queued" | "returned" | "unconfirmed";
   text: string;
 }
 

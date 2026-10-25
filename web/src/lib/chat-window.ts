@@ -101,11 +101,10 @@ export interface ChatWindow {
    */
   readonly queued: readonly string[];
   /**
-   * The queued sends Collie's own receipts know about (ADR 0122), oldest first, each with its request
-   * id and state: waiting in the harness, or given back to the input box by a Stop. {@link queued}
-   * keeps only the JOURNAL's queue: when the bridge filled its `queued` from the receipts too, those
-   * texts are here instead, so no message is drawn twice. Replaced on every answer, like
-   * {@link queued}; a `?before=` page leaves it alone.
+   * The queued cards Collie's own receipts know about (ADR 0122), oldest first, each with its request
+   * id and state: waiting in the harness, given back to the input box by a Stop, or unconfirmed.
+   * {@link queued} is the JOURNAL's queue alone; the bridge never repeats a card there. Replaced on
+   * every answer, like {@link queued}; a `?before=` page leaves it alone.
    */
   readonly queuedSends: readonly QueuedSendRow[];
   /**
@@ -272,7 +271,7 @@ function mergeLive(held: ChatWindow, body: ChatWindowBody): ChatWindow {
     // same thing, so a poll that changed nothing hands the view the same array it already has.
     // `?? EMPTY_QUEUE`: a member one release behind sends no `queued` at all, and "nothing waiting"
     // is the honest reading of a bridge that does not know the question.
-    queued: nextQueue(held.queued, journalQueue(body)),
+    queued: nextQueue(held.queued, body.queued ?? EMPTY_QUEUE),
     queuedSends: nextSends(held.queuedSends, body.queuedSends ?? EMPTY_SENDS),
     sendQueuedNow: nextQueue(held.sendQueuedNow, body.sendQueuedNow ?? EMPTY_QUEUE),
     lastPrompt: nextPrompt(held.lastPrompt, body.lastPrompt ?? null),
@@ -290,18 +289,6 @@ function mergeLive(held: ChatWindow, body: ChatWindowBody): ChatWindow {
 function nextQueue(held: readonly string[], next: readonly string[]): readonly string[] {
   const same = held.length === next.length && held.every((text, i) => text === next[i]);
   return same ? held : next;
-}
-
-/**
- * The journal's own queue out of a body. The bridge appends the receipt-queued texts to `queued`
- * after the journal's, so a phone one release behind still draws them (ADR 0122); this client draws
- * them from `queuedSends` and keeps the rest.
- */
-function journalQueue(body: ChatWindowBody): readonly string[] {
-  const queued = body.queued ?? EMPTY_QUEUE;
-  if (body.queuedFrom !== "receipts") return queued;
-  const fromReceipts = (body.queuedSends ?? EMPTY_SENDS).filter((row) => row.state === "queued").length;
-  return queued.slice(0, Math.max(0, queued.length - fromReceipts));
 }
 
 /** The held receipt rows when the answer lists the same, so an unchanged poll keeps their identity. */

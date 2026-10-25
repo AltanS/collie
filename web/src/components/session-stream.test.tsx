@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createRef } from "react";
 
-import { SessionStream } from "./session-stream";
+import { SessionStream, type QueuedCardAction } from "./session-stream";
 import type { ChatFeed } from "@/hooks/use-chat-window";
 import type { ChatMessageListHandle } from "@/components/ui/chat/chat-message-list";
 import { EMPTY_CHAT_WINDOW, type ChatWindow } from "@/lib/chat-window";
@@ -684,7 +684,7 @@ describe("SessionStream — Send now", () => {
 // Rows from Collie's own receipts: still waiting (no button at all, one sentence), or given back to the
 // input box by a Stop (Send and Discard). The journal's own queue card is the "Send now" block above.
 describe("SessionStream — queued sends from the receipts", () => {
-  function renderReceipts(window: Partial<ChatWindow>, onReturned?: (requestId: string, action: "submit" | "discard") => Promise<boolean>) {
+  function renderReceipts(window: Partial<ChatWindow>, onReturned?: (requestId: string, action: QueuedCardAction) => Promise<boolean>) {
     const listRef = createRef<ChatMessageListHandle>();
     return render(
       <SessionStream
@@ -703,10 +703,17 @@ describe("SessionStream — queued sends from the receipts", () => {
   const QUEUED = { requestId: "req-queued-0001", state: "queued", text: "still waiting" } as const;
   const BACK = { requestId: "req-back-00001", state: "returned", text: "second message" } as const;
 
-  it("a waiting row says it waits for the turn, and offers no button: no Send now, no Cancel", () => {
+  const LOST = { requestId: "req-lost-00001", state: "unconfirmed", text: "where did it go" } as const;
+
+  it("a waiting row says it waits for the turn and that Stop takes it back, and offers no button: no Send now, no Cancel", () => {
     const { container } = renderReceipts({ queuedSends: [QUEUED] }, vi.fn(async () => true));
     const card = container.querySelector("[data-slot='stream-queued-receipts']")!;
-    expect([...card.querySelectorAll("p")].map((p) => p.textContent)).toEqual(["Waiting to send", "Waits for the turn to end.", "still waiting"]);
+    expect([...card.querySelectorAll("p")].map((p) => p.textContent)).toEqual([
+      "Waiting to send",
+      "Waits for the turn to end.",
+      "To take it back, stop the turn.",
+      "still waiting",
+    ]);
     expect(card.querySelectorAll("button")).toHaveLength(0);
     expect(container.querySelector("[data-slot='stream-returned']")).toBeNull();
   });
@@ -716,12 +723,36 @@ describe("SessionStream — queued sends from the receipts", () => {
     const card = container.querySelector("[data-slot='stream-returned']")!;
     expect([...card.querySelectorAll("p")].map((p) => p.textContent)).toEqual([
       "Back in the box",
-      "Stop put this message back in the agent's box.",
+      "Stop put your message back as a draft in the agent. Send it or discard it.",
       "second message",
     ]);
     expect(screen.getByRole("button", { name: "Send this message from the agent's box" })).toHaveTextContent("Send");
     expect(screen.getByRole("button", { name: "Discard this message from the agent's box" })).toHaveTextContent("Discard");
     expect(container.querySelector("[data-slot='stream-queued-receipts']")).toBeNull();
+  });
+
+  it("an unconfirmed card says Collie cannot tell, and offers Discard alone, which asks to dismiss", async () => {
+    const onReturned = vi.fn(async () => true);
+    const { container } = renderReceipts({ queuedSends: [LOST] }, onReturned);
+    const card = container.querySelector("[data-slot='stream-unconfirmed']")!;
+    expect([...card.querySelectorAll("p")].map((p) => p.textContent)).toEqual([
+      "Not confirmed",
+      "Collie cannot tell where this message went. Check the agent.",
+      "where did it go",
+    ]);
+    expect(card.querySelectorAll("button")).toHaveLength(1);
+    const discard = screen.getByRole("button", { name: "Discard this card. Nothing is sent to the agent." });
+    expect(discard).toHaveTextContent("Discard");
+    await userEvent.click(discard);
+    expect(onReturned).toHaveBeenCalledWith("req-lost-00001", "dismiss");
+  });
+
+  it("a returned run is one card with its joined text and one pair of buttons", () => {
+    const run = { requestId: "req-run-000001", state: "returned", text: "alpha one\nbeta two" } as const;
+    const { container } = renderReceipts({ queuedSends: [run] }, vi.fn(async () => true));
+    expect(container.querySelectorAll("[data-slot='stream-returned']")).toHaveLength(1);
+    expect(container.querySelectorAll("[data-slot='stream-returned'] button")).toHaveLength(2);
+    expect(screen.getByText(/alpha one/u)).toHaveTextContent("alpha one beta two");
   });
 
   it("a journal queue and a receipt queue stand side by side, each once", () => {

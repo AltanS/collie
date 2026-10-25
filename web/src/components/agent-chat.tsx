@@ -67,7 +67,7 @@ import { paneSurface } from "@/lib/send-slot";
 import { answerAsk, cardHashOf, type AskTapResult } from "@/lib/dialog-ask";
 import { holdAskOfNote, screenCardMayAnswer } from "@/lib/surface/hold";
 import { askOptionFor } from "@/lib/ask-reply";
-import { cancelWalky, dropWalky, refreshNow } from "@/lib/api";
+import { cancelHeldSend, cancelWalky, dropWalky, refreshNow } from "@/lib/api";
 import { describeThrownError } from "@/lib/api-error-message";
 import { sameKeys } from "@/lib/harness/prompt-model";
 import { askOf, type Ask } from "@/lib/surface/surface";
@@ -88,10 +88,11 @@ import { paneGitHead } from "@/lib/git-head";
 import { CacheSheet } from "@/components/cache-sheet";
 import { PaneActionsSheet } from "@/components/pane-actions-sheet";
 import { CardWaitingCtx } from "@/components/chat-cards";
-import { chatStatusKey, SavedCopyRow, SessionStream, sharedFolderLine, type ReturnedAction } from "@/components/session-stream";
+import { chatStatusKey, SavedCopyRow, SessionStream, sharedFolderLine, type QueuedCardAction } from "@/components/session-stream";
 import { readingRefusal } from "@/components/send-notice";
 import { sendText } from "@/lib/reply-action";
 import type { IntentId } from "@/lib/durable-control";
+import { RETURNED_CARD_DROPPED } from "@/lib/surface/send";
 import { PaneSettingsSheet } from "@/components/pane-settings-sheet";
 import { WalkyOpenProvider } from "@/components/walky-log";
 import { paneAddress, takeBackNote } from "@/lib/walky";
@@ -1792,14 +1793,14 @@ export function AgentChat({
     [refuseWrite, paneId, scope, revalidator],
   );
 
-  // A tap on a returned card's Send or Discard (ADR 0122). A NEW request that names the returned row in
-  // `resendOf` with an empty text: the bridge acts on its own copy of the text, never the phone's (it
-  // may be masked), and the box that holds exactly that text lets the submit go without a rows hash.
-  // An answer that never came keeps its intent, so a second tap asks with the same request id and
-  // never sends twice.
+  // A tap on a receipt card (ADR 0122). Send or Discard on a returned card is a NEW request that names
+  // the card in `resendOf` with an empty text: the bridge acts on its own copy of the text, never the
+  // phone's (it may be masked), after a fresh read of the box under the pane lock. An answer that never
+  // came keeps its intent, so a second tap asks with the same request id and never sends twice. Discard
+  // on an unconfirmed card goes through the held-cancel route, which drops the card and presses nothing.
   const returnedIntents = useRef(new Map<string, IntentId>());
   const handleReturned = useCallback(
-    async (requestId: string, action: ReturnedAction): Promise<boolean> => {
+    async (requestId: string, action: QueuedCardAction): Promise<boolean> => {
       const refusal = refuseWrite();
       if (refusal) {
         setStatus(refusal, "error");
@@ -1812,6 +1813,20 @@ export function AgentChat({
       if (!isLive(paneId, scope)) {
         setStatus(t("composer.send.reconnect"), "error");
         return false;
+      }
+      if (action === "dismiss") {
+        try {
+          const answer = await cancelHeldSend(requestId, paneId, scope);
+          if (answer.result === "refused") {
+            setStatus(t("chat.status.sendFailed"), "error");
+            return false;
+          }
+          revalidator.revalidate();
+          return true;
+        } catch (e) {
+          setStatus(describeThrownError(e), "error");
+          return false;
+        }
       }
       const key = `${requestId}\u0000${action}`;
       const result = await sendText({ paneId, scope, text: "", mode: action, resendOf: requestId, held: returnedIntents.current.get(key) ?? null });
@@ -1827,6 +1842,12 @@ export function AgentChat({
       }
       if (result.reading.clear || result.reading.note === "discarded") {
         setStatus(t(action === "submit" ? "chat.status.sent" : "composer.protocol.discarded"), "success");
+        revalidator.revalidate();
+        return true;
+      }
+      // Discard on a box that changed since: the bridge pressed nothing and dropped only the card.
+      if (result.reply.detail === RETURNED_CARD_DROPPED) {
+        setStatus(t("chat.status.returnedDropped"), "warn");
         revalidator.revalidate();
         return true;
       }
@@ -3136,6 +3157,8 @@ export function AgentChat({
                   stale={actsDisabledByCache}
                   agent={agent?.agent}
                   canSteer={agent?.canSteer}
+                  // A queued message Stop gave back stands in the box: a draft refusal points at its card (ADR 0122).
+                  returnedDraft={chatFeed.window.queuedSends.some((row) => row.state === "returned")}
                   isShell={isShell}
                   cwd={agent?.cwd || undefined}
                   held={agent?.held}

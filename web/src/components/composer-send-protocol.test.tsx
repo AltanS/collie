@@ -125,6 +125,17 @@ describe("Composer on the Send Protocol (M56 specs 05 and 06)", () => {
     expect(sends[1]!.id).not.toBe(sends[0]!.id);
   });
 
+  it("a draft refusal on a pane with a returned queued card points at that card, and keeps the offers (ADR 0122)", async () => {
+    const user = userEvent.setup();
+    bridge([{ body: { receipt: receipt("refused", "draft_present"), offers: ["append", "replace", "cancel"] } }]);
+    renderComposer({ returnedDraft: true });
+    await user.type(screen.getByPlaceholderText(/type a reply/i), "new words");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    expect(await screen.findByText("Your queued message is back in the agent as a draft. Use its card.")).toBeInTheDocument();
+    expect(screen.queryByText("The box already holds a draft. Add to it, replace it, or cancel.")).toBeNull();
+    expect(screen.getByTestId("send-offers")).toHaveTextContent("Replace");
+  });
+
   it("a slash command onto a draft offers Replace and Cancel only, says so, and Replace sends it as a replace", async () => {
     const user = userEvent.setup();
     const { sends } = bridge([

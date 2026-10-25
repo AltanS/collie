@@ -271,10 +271,14 @@ three things under the box:
 If the stop key opened a dialog instead, Collie says so and points you to its card.
 
 Some agents, OMP among them, put a queued message back into their input box when you stop the turn.
-Collie reads the box after the key, and the receipt says so, for example "Stopped. 1 queued message is
-back in the box." In Chat that message moves to a **Back in the box** card with two buttons: **Send**
-sends what the box holds, and **Discard** empties the box. The card goes when the box no longer holds
-the text. Until then Collie refuses a new message, because the box is not empty.
+When Collie sees it there right after the key, the receipt says so, for example "Stopped. 1 queued
+message is back in the agent as a draft." In Chat the message moves to a **Back in the box** card.
+Messages that came back together share one card.
+
+The card has two buttons, and both read the box again first. **Send** sends the draft only when the
+turn is idle and the box holds exactly that text. **Discard** empties the box only when it still
+holds that text; if you changed it, Discard removes the card and presses nothing. While the draft
+stands, a new message is refused, and the refusal points you to the card.
 
 Collie refuses before it presses when pressing could do harm:
 
@@ -1060,10 +1064,13 @@ offers it, because the button presses Ctrl+Enter, the key that agent defines for
 hidden on a read-only device and on a saved copy.
 
 Most other agents, OMP and pi among them, write nothing about a queued message into their log until
-the turn ends. For them Chat draws the messages Collie itself queued: each shows on the same
-**Waiting to send** card with "Waits for the turn to end." until the agent's log shows it as a
-prompt, or for 30 minutes at most. That card has no button. Collie cannot take a message back out of
-the agent's queue, so there is no Cancel.
+the turn ends. For them Chat draws the messages Collie itself queued on the same **Waiting to send**
+card, until the agent's log shows each as a prompt. That card has no button. Collie cannot take a
+message out of the agent's queue, so there is no Cancel: to take it back, stop the turn.
+
+When Collie can no longer tell where a queued message went, the card says **Not confirmed** instead
+of disappearing. That happens when the agent sits idle with an empty box twice in a row, or after 30
+minutes without a running turn. Its **Discard** button removes the card and sends nothing.
 
 The display gear has a **Stretchtext replies** switch, off by default. With it on, Chat, the full reply card and History show a reply written with the cc-stretch plugin as its short form, and a tap on a phrase opens it. A `{{name}}` without a bar shows as `name`.
 

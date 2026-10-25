@@ -232,6 +232,12 @@ export interface SendReceipt {
 
 /** What may happen to a settled receipt later (see {@link SendReceipt.late}). One word today. */
 export const SEND_LATES = ["returned"] as const;
+
+/**
+ * The receipt detail when Discard on a returned queued card (ADR 0122) found the box changed: nothing
+ * was pressed and only the card went. The bridge writes it; the phone reads it to say so in its own words.
+ */
+export const RETURNED_CARD_DROPPED = "The box no longer holds this message. Collie removed its card and pressed nothing.";
 export type SendLate = (typeof SEND_LATES)[number];
 
 /** The longest {@link SendReceipt.detail} a receipt keeps. */

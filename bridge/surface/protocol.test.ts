@@ -23,7 +23,8 @@ import { SurfaceLedger } from "./counters.ts";
 import { HoldStore } from "./holds.ts";
 import { StopService } from "./stop.ts";
 import { AuditLog } from "../audit.ts";
-import { heldCancelRoute, RETURNED_CARD_DROPPED, sendRoute, type SendRouteRuntime } from "../server.ts";
+import { heldCancelRoute, sendRoute, type SendRouteRuntime } from "../server.ts";
+import { RETURNED_CARD_DROPPED } from "../../web/src/lib/surface/send.ts";
 import { QUEUED_SEND_MS, type BoxReading } from "./queued.ts";
 
 const RULE = "─".repeat(40);

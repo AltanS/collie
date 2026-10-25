@@ -263,17 +263,10 @@ describe("what Collie's receipts say is queued", () => {
     expect(savedChatWindow([], 5).queuedSends).toEqual([]);
   });
 
-  it("takes the rows, and keeps only the journal's texts in `queued` when the bridge filled it from the receipts", () => {
-    const window = mergeChat(held(), live({ rev: 2, upserts: [], queued: ["from the log", "still waiting"], queuedFrom: "receipts", queuedSends: [QUEUED, BACK] }));
+  it("takes the rows beside the journal's own `queued`, which it leaves as the journal sent it", () => {
+    const window = mergeChat(held(), live({ rev: 2, upserts: [], queued: ["from the log"], queuedSends: [QUEUED, BACK] }));
     expect(window.queuedSends).toEqual([QUEUED, BACK]);
-    // The receipt's own text is drawn from `queuedSends`, once; a returned row was never in `queued`.
     expect(window.queued).toEqual(["from the log"]);
-  });
-
-  it("leaves `queued` whole when it is all the journal's", () => {
-    const window = mergeChat(held(), live({ rev: 2, upserts: [], queued: ["from the log"], queuedSends: [BACK] }));
-    expect(window.queued).toEqual(["from the log"]);
-    expect(window.queuedSends).toEqual([BACK]);
   });
 
   it("REPLACES the rows on every answer, keeps the same array when nothing moved, and reads a body without them as none", () => {
