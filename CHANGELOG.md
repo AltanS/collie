@@ -30,6 +30,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Fixed
 
 - **Collie reads a Codex config whose multi-line strings end in four or five quotes.** `collie hooks install codex` refused a valid `config.toml` with "a string with no closing quote" when a `'''` or `"""` string ended with its own quote just before the closing three; the scanner now closes on the last three quotes of a run of up to five, as TOML defines it, and still refuses six or more. Reported in #592.
+- **Two CI regression guards pass again for the native Codex hooks.** The process probe reads its platform from the host object instead of `process.platform`, and the private-roots guard lists the native install's writes under `$CODEX_HOME` with the reason they are safe on Windows, where the install refuses and only the uninstall can still write. No behaviour changes (#595).
 
 ## [1.24.0] - 2026-10-25
 

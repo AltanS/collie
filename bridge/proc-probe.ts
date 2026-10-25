@@ -31,6 +31,7 @@ import {
   procStatPath,
   type ProcessIdentity,
 } from "./beacon/liveness.ts";
+import { HOST } from "./host.ts";
 
 /** What a caller may ask about a process. Absent facts are null, never a default. */
 export interface ProcessProbe {
@@ -175,4 +176,4 @@ export function processProbeFor(platform: NodeJS.Platform | string): ProcessProb
 }
 
 /** This host's probe. Production reads this and passes it down; the seams below take one as a parameter. */
-export const hostProcessProbe = (): ProcessProbe => processProbeFor(process.platform);
+export const hostProcessProbe = (): ProcessProbe => processProbeFor(HOST.platform);
