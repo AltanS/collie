@@ -3258,3 +3258,9 @@ equal to its only entry, Enter cancels the popup and submits the text; the teste
 | Fixture | State | What it shows |
 | --- | --- | --- |
 | `omp--v18-6-1-approval-goal--w120.txt` | `dialog` | The last 16 rows of a `/goal` turn: the transcript row `⏳ Goal: complete`, then `Allow tool: goal` with no body (two blank rows), `Approve` pointed, `Deny`, and the first shape's footer. Lifts as Approve, Deny, Cancel with no description on Approve (approval.ts, `BODYLESS_TOOLS`) |
+
+## omp 18.12.6 Ask with option previews (captured 2026-10-25, omp-gang tester 04)
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `omp--v18-12-6-ask-previews--w120.txt` | `dialog` | The echo block `╭─── Ask 1 questions`, then the panel: three options, each with a description row and a `│ ` preview row, `Other`, and the footer ending `Alt+H hide`. Pointer on the first row. Lifts with the preview on each option (ask.ts, OPTION PREVIEWS) |

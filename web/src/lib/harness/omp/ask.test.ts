@@ -286,6 +286,93 @@ describe("the 18.8.0 dialog with option descriptions (#372) lifts, each descript
   });
 });
 
+// omp 18.12.6 (omp-gang tester 04, case 9): the model gave each option a `preview`, drawn behind a rail under
+// the description. The grammar declined every preview row, so the Surface read `unreadable` and a plain send
+// was refused `unconfirmed`. Now the rows belong to their option, and the card shows them after `Preview:`.
+describe("omp 18.12.6 Ask with option previews lifts, each preview on its option", () => {
+  const PREVIEWED = "omp--v18-12-6-ask-previews--w120.txt";
+  const texts = (): string[] => textsOf(PREVIEWED);
+  const pad = (s: string) => `│${s.padEnd(118)}│`;
+  const at = (needle: string): number => texts().findIndex((t) => t.includes(needle));
+
+  it("the capture: three options with descriptions and previews, Other, and the walk to each", () => {
+    const model = detectAskSelect(load(PREVIEWED))!;
+    expect(model.question).toBe("Which of these would be most useful for your work right now?");
+    expect(model.options.map((o) => o.label)).toEqual(["Code refactoring", "Bug investigation", "New feature development", OTHER, "Cancel"]);
+    expect(model.options.map((o) => o.keys)).toEqual([
+      ["Enter"],
+      ["Down", "Enter"],
+      ["Down", "Down", "Enter"],
+      ["Down", "Down", "Down", "Enter"],
+      ["Escape"],
+    ]);
+    expect(model.options.map((o) => o.keyLabel)).toEqual(["❯", "", "", "", "Esc"]);
+    expect(model.options.map((o) => o.description)).toEqual([
+      "Improving structure and maintainability · Preview: Clean up technical debt",
+      "Tracking down and fixing issues · Preview: Debug existing problems",
+      "Building new capabilities · Preview: Implement fresh functionality",
+      undefined,
+      undefined,
+    ]);
+    // The echo block above the panel is no part of it: the card starts at the panel's title.
+    const region = detectAskSelectRegion(load(PREVIEWED))!;
+    expect(textsOf(PREVIEWED)[region.startLine]).toMatch(/^╭─ Ask ─+╮$/);
+    expect(model.signature).not.toContain("Ask 1 questions");
+  });
+
+  it("the footer's Alt+H hide segment is accepted, and the pipeline lifts one prompt-select", () => {
+    const blocks = ompBuildBlocks(load(PREVIEWED));
+    expect(blocks.at(-1)!.kind).toBe("prompt-select");
+    expect(blocks.filter((b) => b.kind !== "raw")).toHaveLength(1);
+    expect(ompModalOnScreen(load(PREVIEWED))).toBe(true);
+  });
+
+  it("a pointer moved at the desk is another prompt: the race guard sees the pointer", () => {
+    const moved = texts().map((t) => t.replace("│ ❯ ○ Code refactoring", "│   ○ Code refactoring").replace("│   ○ Bug investigation", "│ ❯ ○ Bug investigation"));
+    const first = detectAskSelect(load(PREVIEWED))!;
+    const after = detectAskSelect(fromTexts(moved))!;
+    expect(after.options.map((o) => o.keys)).toEqual([["Up", "Enter"], ["Enter"], ["Down", "Enter"], ["Down", "Down", "Enter"], ["Escape"]]);
+    expect(promptsEqual(first, after)).toBe(false);
+    expect(first.coreSignature).toBe(after.coreSignature);
+  });
+
+  it("a multi-row preview with an empty row in it joins with breaks, and a saved note's mark leads", () => {
+    const rows = texts();
+    const first = at("Clean up technical debt");
+    const more = [pad("       │ "), pad("       │ - keep the public API"), pad("       │ ")];
+    const longer = [...rows.slice(0, first + 1), ...more, ...rows.slice(first + 1)];
+    const model = detectAskSelect(fromTexts(longer))!;
+    expect(model.options[0]!.description).toBe("Improving structure and maintainability · Preview: Clean up technical debt ↵  ↵ - keep the public API");
+    const noted = rows.map((t) => t.replace("○ Bug investigation  ", "○ Bug investigation  ✎ note"));
+    expect(detectAskSelect(fromTexts(noted))!.options[1]!.description).toBe("✎ note · Tracking down and fixing issues · Preview: Debug existing problems");
+  });
+
+  it("an option with a preview and no description shows the preview alone", () => {
+    const rows = texts().filter((t) => !t.includes("Improving structure"));
+    expect(detectAskSelect(fromTexts(rows))!.options[0]!.description).toBe("Preview: Clean up technical debt");
+  });
+
+  it("declines a preview under Other, under no option, after a description's successor, of blank rows only, or with a hidden character", () => {
+    const rows = texts();
+    const other = at("Other (type your own)");
+    expect(detectAskSelect(fromTexts([...rows.slice(0, other + 1), pad("       │ a deep teal"), ...rows.slice(other + 1)]))).toBeNull();
+    const body = at("Which of these");
+    const divider = rows.findIndex((t, i) => i > body && /^├─+┤$/.test(t));
+    expect(detectAskSelect(fromTexts([...rows.slice(0, divider + 1), pad("       │ before any option"), ...rows.slice(divider + 1)]))).toBeNull();
+    const first = at("Clean up technical debt");
+    expect(detectAskSelect(fromTexts([...rows.slice(0, first + 1), pad("       a description after the preview"), ...rows.slice(first + 1)]))).toBeNull();
+    expect(detectAskSelect(fromTexts(rows.map((t, i) => (i === first ? pad("       │ ") : t))))).toBeNull();
+    expect(detectAskSelect(fromTexts(rows.map((t, i) => (i === first ? pad("       │ Clean up \u202etechnical debt") : t))))).toBeNull();
+  });
+
+  it("a preview row that runs off the box with no right border still declines", () => {
+    const rows = texts().map((t) => (t.includes("Clean up technical debt") ? t.replace(/\s*│$/, "") : t));
+    // Text with no right border is read as a clipped row only by the description rule; for a preview the
+    // right border is required, as for a description row.
+    expect(detectAskSelect(fromTexts(rows))).toBeNull();
+  });
+});
+
 describe("every tap is the walk plus a key the footer printed", () => {
   const LIFTED = [
     "omp--select-menu-moved.txt",
@@ -484,7 +571,7 @@ describe("fails closed", () => {
     expect(detectAskSelect(fromTexts(insert(206, pad("       the colour of warnings"))))).toBeNull();
   });
 
-  it("with a description-shaped row under no option, under `Other`, off its indent, led by an option's glyph, or an option's preview", () => {
+  it("with a description-shaped row under no option, under `Other`, off its indent, or led by an option's glyph", () => {
     const described = textsOf("omp--v18-8-ask-single-described.txt");
     expect(detectAskSelect(fromTexts(described))).not.toBeNull();
     const pad = (s: string) => `│${s.padEnd(described[26]!.length - 2)}│`;
@@ -504,10 +591,6 @@ describe("fails closed", () => {
       const led = described.map((t, i) => (i === 30 ? pad(`       ${glyph} Ship straight to production.`) : t));
       expect(detectAskSelect(fromTexts(led)), `led by ${glyph}`).toBeNull();
     }
-    // An option's `preview`, which omp draws under its description at the same indent, behind a `│`
-    // rail of its own (read from omp 18.8.7's `ask-dialog.ts`; no capture shows one).
-    const previewed = [...described.slice(0, 31), pad("       │ kubectl rollout status deploy/api"), ...described.slice(31)];
-    expect(detectAskSelect(fromTexts(previewed))).toBeNull();
   });
 
   it("with glyphs and a rail inside a description row, the description stays on the option above and the pointer stays put", () => {
@@ -609,6 +692,7 @@ describe("the grammar claims nothing else in the corpus", () => {
     "omp--v18-4-ask-single.txt",
     "omp--v18-8-ask-single-described-moved.txt",
     "omp--v18-8-ask-single-described.txt",
+    "omp--v18-12-6-ask-previews--w120.txt",
     "omp--v18-10-ask-single.txt",
     "omp--v18-10-ask-batch.txt",
     "omp--v18-10-ask-batch-moved.txt",

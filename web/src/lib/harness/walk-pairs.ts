@@ -221,4 +221,10 @@ export const WALK_GAPS = {
     since: "2026-10-03",
     reason: "no pointer-only pair: the two captures differ by a `✎ note` mark, which is note state, not the pointer",
   },
+  "omp | select | Which of these would be most useful for your work right now?": {
+    since: "2026-10-25",
+    reason:
+      "no second capture yet: one 18.12.6 capture of an Ask with option previews, pointer on the first row; " +
+      "ask-dialog.ts draws a preview under its option whatever the pointer, and ask.test.ts derives the moved screen",
+  },
 } satisfies Record<string, WalkGap>;

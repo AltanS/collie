@@ -341,6 +341,7 @@ describe("the walk-pair table", () => {
         "claude | trust | Quick safety check",
         "codex | trust | Trust this folder?",
         "omp | select | Pick a colour",
+        "omp | select | Which of these would be most useful for your work right now?",
         "pi | select | 1",
         "pi | select | Auth",
         "pi | select | Which package manager do you want to use?",
