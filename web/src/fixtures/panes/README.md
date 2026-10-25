@@ -3209,3 +3209,17 @@ live editor, not in the bottom box.
 | Fixture | State | What it shows |
 | --- | --- | --- |
 | `omp--v18-6-1-stale-frame-below-live--w120.txt` | `draft` | Labelled as the reader reads it today: idle, no dialog, and a draft, because the box at rows 38-39 reads `╰─ and what about the design`. That box is a stale image and takes no keys; the live editor is the `╰─ xy` row 35 with no frame of its own. Every send on this screen was refused `draft_present`, and a Replace pressed 41 Backspaces into the live editor and ended `unknown`. The Send Protocol now probes a draft before it refuses or clears one; a probe that does not land in the box, on a screen that reads the same once more, ends `stale_screen` with nothing deleted |
+## OMP widget rows under the box (captured 2026-10-25, omp gang tester 15, OMP 18.6.1 and 18.12.6, Collie's rig)
+
+These live in `fixtures/surface/`: the Send Protocol's tests and the Surface's read read them
+(`idle.frame.maxWidgetRows` in `omp.json`), and the phone's omp adapter corpus, which pins every capture in
+this folder, does not read a widget under the box. Plain text through the rig bridge's pane read, transport
+CRLF normalized to LF, the rig's header line cut. An extension's `ctx.ui.setWidget` with `placement:
+"belowEditor"` draws its rows straight under the box's `╰─` row, with no blank row; the lab folder is the
+rig's own scratch folder, and no secret was present.
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `omp--v18-12-6-widget-below-3.txt` | `idle` | 18.12.6, three widget rows under the box: within the tail bound, free before and after the change |
+| `omp--v18-12-6-widget-below-4.txt` | `idle` | 18.12.6, four widget rows: the read was `torn` and a send was held 30 minutes |
+| `omp--v18-6-1-widget-below-6.txt` | `idle` | 18.6.1, six widget rows under the box and the "Update Available" panel higher up |

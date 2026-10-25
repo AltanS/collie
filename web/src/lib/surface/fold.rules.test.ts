@@ -55,12 +55,45 @@ describe("an OMP extension widget around the open box (#468)", () => {
     expect(r.surface).toEqual(IDLE_FREE);
   });
 
-  it("omp: up to maxTailRows rows under the box read free, one more reads torn", () => {
+  it("omp: up to maxTailRows rows under the box read free whatever they hold, past it only a widget run up to maxWidgetRows", () => {
     const widget = (n: number) => Array.from({ length: n }, (_, i) => ` widget row ${i + 1}`);
+    const readOf = (rows: string[]) => surfaceOfScreen({ seq: 1, source: "screen", at: 0, revision: 1, rows: plainRows(rows), ask: null }, OMP).surface;
     expect(OMP.frame.maxTailRows).toBe(3);
-    expect(surfaceOfScreen({ seq: 1, source: "screen", at: 0, revision: 1, rows: plainRows([...box, ...widget(3)]), ask: null }, OMP).surface).toEqual(IDLE_FREE);
-    expect(surfaceOfScreen({ seq: 1, source: "screen", at: 0, revision: 1, rows: plainRows([...box, "", ...widget(2)]), ask: null }, OMP).surface).toEqual(IDLE_FREE);
-    expect(surfaceOfScreen({ seq: 1, source: "screen", at: 0, revision: 1, rows: plainRows([...box, ...widget(4)]), ask: null }, OMP).surface.reason).toBe("torn");
+    expect(OMP.frame.maxWidgetRows).toBe(12);
+    expect(readOf([...box, ...widget(3)])).toEqual(IDLE_FREE);
+    expect(readOf([...box, "", ...widget(2)])).toEqual(IDLE_FREE);
+    // The gang's tester 5 (2026-10-25): a belowEditor widget of four rows or more made the read torn on 18.6.1 and 18.12.6.
+    for (const n of [4, 6, 11, 12]) expect(readOf([...box, ...widget(n)]), `${String(n)} rows`).toEqual(IDLE_FREE);
+    expect(readOf([...box, ...widget(13)]).reason).toBe("torn");
+  });
+
+  it("omp: past maxTailRows a widget run has no blank row, and no row of the command list", () => {
+    const readOf = (rows: string[]) => surfaceOfScreen({ seq: 1, source: "screen", at: 0, revision: 1, rows: plainRows(rows), ask: null }, OMP).surface;
+    // A blank row inside the run: the reach stays the tail bound, so this is a read cut inside the box, as before.
+    expect(readOf([...box, " one", " two", " three", "", " five"]).reason).toBe("torn");
+    // An entry-shaped row (two spaces, a word, two spaces, a description) is a command list's, and a list is read by the list rules.
+    const listed = readOf([...box, " one", " two", "  tests  passing", " four"]);
+    expect(listed.reason).toBe("torn");
+    expect(isFree(listed)).toBe(false);
+  });
+
+  it("omp: a dialog's rows under the open box stay a strong cue past the old reach, so the read is never free", () => {
+    const dialog = [" Allow this tool?", " ❯ 1. Yes", "   2. No", "   3. Always", " Enter to select · Esc to cancel"];
+    const r = surfaceOfScreen({ seq: 1, source: "screen", at: 0, revision: 1, rows: plainRows([...box, ...dialog]), ask: null }, OMP);
+    expect(isFree(r.surface)).toBe(false);
+    expect(r.surface.modal).not.toBe("none");
+  });
+
+  it.each([
+    ["omp--v18-12-6-widget-below-3.txt", "18.12.6"],
+    ["omp--v18-12-6-widget-below-4.txt", "18.12.6"],
+    ["omp--v18-6-1-widget-below-6.txt", "18.6.1"],
+  ])("omp %s (gang, 2026-10-25): the widget rows under the box read idle and free, the composer empty", (name) => {
+    const r = readScreen(fixtureRows(name, SURFACE_FIXTURES_DIR), agentOf("omp"), OMP);
+    expect(r.frame).not.toBeNull();
+    expect(r.frame!.interior.text).toBe("");
+    expect(r.surface).toEqual(IDLE_FREE);
+    expect(isFree(r.surface)).toBe(true);
   });
 
   it("omp: a draft under the widget's box still reads as a draft", () => {

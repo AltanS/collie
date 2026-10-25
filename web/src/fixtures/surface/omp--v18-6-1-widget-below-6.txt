@@ -1,0 +1,24 @@
+
+                                            ████████████    
+                                               ██  ██       ▄▀▀▄ █▀▄▀▄ █▀▀▄
+                                               ██  ██       ▀▄▄▀ █ █ █ █▄▄▀
+                                               ▒▒  ██                  █
+                                                   ██       v18.6.1
+
+                        Tip: omp can reconfigure and extend itself — ask any questions you have!
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Update Available                                                                                                       
+ New version 18.12.6 is available. Run: omp update                                                                      
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+ zz ran with: abc                                                                                                       
+
+ π > ◒ Haiku 4.5 > 📁 …g/15-crew-ext/state/harness/omp/project ▶──4%───────────────────────────────────────┃───────200K─
+╰─                                                                                          ⇧⇥ to change thinking effort
+ below row 1                                                                                                            
+ below row 2                                                                                                            
+ below row 3                                                                                                            
+ below row 4                                                                                                            
+ below row 5                                                                                                            
+ below row 6                                                                                                            
