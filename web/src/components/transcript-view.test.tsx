@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { http, HttpResponse } from "msw";
@@ -357,13 +357,15 @@ describe("TranscriptView — images", () => {
 
   // Reads need the pairing token (ADR 0086) and an `<img src>` cannot send it, so the picture is
   // fetched with the token and drawn from an object URL, link and image alike.
-  it("renders an attachment as a link to the blob, with alt text from the dictionary", async () => {
+  it("renders an attachment from the blob that opens full size in a sheet, with alt text from the dictionary", async () => {
     const seen = watchBlobs();
     setDeviceToken("tok-test-placeholder");
     render(<TranscriptView entries={[turn({ parts: [{ kind: "image", url: BLOB }] })]} />);
     const img = await screen.findByAltText("Attachment");
     expect(img.getAttribute("src")).toMatch(/^blob:/);
-    expect(img.closest("a")?.getAttribute("href")).toBe(img.getAttribute("src"));
+    expect(img.closest("a")).toBeNull();
+    fireEvent.click(img.closest("button")!);
+    expect(within(screen.getByRole("dialog")).getByAltText("Attachment").getAttribute("src")).toBe(img.getAttribute("src"));
     expect(seen).toEqual([{ path: BLOB, auth: "Bearer tok-test-placeholder" }]);
   });
 

@@ -1,3 +1,4 @@
+import { ImageSheet } from "@/components/ui/image-sheet";
 import { cn } from "@/lib/utils";
 
 // One picture out of an agent's journal, framed, with a line that says where it came from.
@@ -8,13 +9,13 @@ import { cn } from "@/lib/utils";
 // Every element is a <span> (block where it must be), because the first sits inside a <pre>, which
 // does not allow a <div>.
 //
-// The card is an ANCHOR to the bytes, so it is keyboard reachable and long-pressable, and it is the
-// only way to see a picture at full size on a phone. `src` must be a URL `imageSrc` already vetted
-// (`lib/api.ts`): a blob path on the owning host, or inline bytes, never a URL out of the agent's log.
+// A tap opens the picture at full size in a sheet (`ImageSheet`), which is the only way to see it at
+// full size on a phone. `src` must be a URL `imageSrc` already vetted (`lib/api.ts`): a blob path on
+// the owning host, or inline bytes, never a URL out of the agent's log.
 //
 // The caption says what the card is and is Collie's own words, so the caller translates it. It is
-// also the anchor's tooltip: a pointer that hovers the picture asks about the picture, and the
-// caption may be scrolled out of the tap target.
+// also the picture's tooltip and the sheet's title: a pointer that hovers the picture asks about the
+// picture, and the caption may be scrolled out of the tap target.
 //
 // TWO GROUNDS, because the two places sit in two colour spaces. Inside the mirror's <pre> everything
 // is dark-space and the light theme inverts it wholesale (.adr/0002), so the frame there is a
@@ -51,21 +52,13 @@ export function ImageCard({
         className,
       )}
     >
-      <a
-        href={src}
-        target="_blank"
-        rel="noopener noreferrer"
+      <ImageSheet
+        src={src}
+        alt={alt}
         title={caption}
-        className="inline-block cursor-zoom-in"
-      >
-        <img
-          src={src}
-          alt={alt}
-          className="mx-auto max-h-80 w-auto max-w-full rounded object-contain"
-          loading="lazy"
-          onError={onError}
-        />
-      </a>
+        imgClassName="mx-auto max-h-80 w-auto max-w-full rounded object-contain"
+        onError={onError}
+      />
       <span className="block px-2 pb-1 text-xs text-muted-foreground">{caption}</span>
     </span>
   );
