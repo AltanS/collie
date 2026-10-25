@@ -86,6 +86,36 @@ const NOTIFY_ARRAY = /^\s*notify\s*=\s*(\[.*\])\s*(?:#.*)?$/u;
 const BARE_KEY = /^\s*([A-Za-z0-9_-]+|"[^"]*"|'[^']*')\s*(?:[.=])/u;
 
 /**
+ * Where a multi-line string ends on this line: the index just past its closing delimiter, -1 when it
+ * runs on to the next line, -2 when a run of quotes is longer than TOML allows. TOML lets one or two
+ * quotes sit directly before the closing three, so a run of 3 to 5 closes the string and the last
+ * three of it are the delimiter: `'''it's'''' ` ends with a literal apostrophe in the value, and the
+ * first three quotes of the run are not the close. A basic string's backslash escapes the next
+ * character, so `\"""` is a quote and no close.
+ */
+function multiClose(line: string, from: number, delim: '"""' | "'''"): number {
+  const quote = delim[0]!;
+  let at = from;
+  while (at < line.length) {
+    const ch = line[at]!;
+    if (quote === '"' && ch === "\\") {
+      at += 2;
+      continue;
+    }
+    if (ch !== quote) {
+      at++;
+      continue;
+    }
+    let run = 1;
+    while (line[at + run] === quote) run++;
+    if (run > 5) return -2;
+    if (run >= 3) return at + run;
+    at += run;
+  }
+  return -1;
+}
+
+/**
  * Scans a TOML file: the top-level statements before the first table header, and every header. It knows
  * strings (basic, literal, and both multi-line forms), comments, arrays and inline tables, so a row
  * inside a value never reads as a header. It does not check the TOML beyond that.
@@ -117,14 +147,10 @@ export function scanTopLevel(lines: readonly string[]): TopLevel {
     }
     while (at < line.length) {
       if (multi !== null) {
-        const close = line.indexOf(multi, at);
+        const close = multiClose(line, at, multi);
         if (close === -1) break;
-        // A basic string's closing quotes may follow an escaped quote: \""" is a quote, then the close.
-        if (multi === '"""' && close > 0 && line[close - 1] === "\\") {
-          at = close + 1;
-          continue;
-        }
-        at = close + 3;
+        if (close === -2) return { ok: false, line: i, problem: "a multi-line string closed by more than five quotes" };
+        at = close;
         multi = null;
         continue;
       }

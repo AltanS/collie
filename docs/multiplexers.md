@@ -580,6 +580,87 @@ edge, and the screen read after it decides whether the pane is free. The limits:
 - Codex also runs a short hidden turn to name a new task. That turn sends one more stop edge, so
   the pane gets one more screen read.
 
+##### Native hooks, and holding a Codex permission
+
+Codex 0.164.0 has its own hooks in `hooks.json`, and Collie can use them instead of `notify`. They
+also let a permission wait for a tap on the phone.
+
+```console
+$ collie hooks install codex --native
+$ collie hooks install codex --native --hold-permissions
+$ collie hooks uninstall codex
+```
+
+The first command registers `SessionStart`, `UserPromptSubmit`, `Stop`, `Interrupt` and
+`SessionEnd` in `$CODEX_HOME/hooks.json` (`~/.codex/hooks.json`), each as its own entry at the end of
+the event's list. The second adds `PermissionRequest` and a `PostToolUse` edge that ends the
+"Sent" card. Every entry runs `'<collie>' codex-hook || :`, so a Collie that does not know the verb
+yet (an older release after an upgrade or rollback) exits 0 with no decision, never a blocked prompt
+or a denied permission. Nothing else in the file is edited, reordered or removed, and `config.toml`
+is not opened: your own `notify` command and Codex's trust state stay as they are. A bare
+`collie hooks install codex` still writes the `notify` line and nothing more.
+
+> **Note.** Codex runs a new or changed hook only after you trust it. Open Codex, run `/hooks`, and
+> review the Collie entries. Collie does not touch the trust state and has no way around it.
+
+While a `PermissionRequest` hook waits, Codex draws no prompt of its own (openai/codex#39835). The
+phone is how you answer. A tap becomes Codex's answer to that one request. With no bridge, no
+answer in 290 seconds, or any error, the hook prints `{}` and Codex asks you as it always did.
+Collie never allows or denies on its own.
+
+`--hold-permissions` needs Codex 0.164.0 or later and refuses on an older one, as the Claude hold
+does. The card for a `Bash` request shows the command and, on its own line, the `description` Codex
+sends: the target of a network access (`network-access https://host:443`) or the reason a command
+wants to leave the sandbox. Codex's payload does not say a retry is outside the sandbox.
+
+Collie places a hook on a pane only when it can prove which Codex it came from:
+
+| What the hook finds | What Collie does |
+| --- | --- |
+| A `codex` TUI above it in the process tree, and multiplexer markers in its environment | Attributes the hook to that process and pane |
+| The shared `codex app-server` daemon above it | No edge, no hold: the daemon's markers are another pane's |
+| `codex exec` (or its alias `codex e`) or `codex review` above it | No edge, no hold: there is no pane |
+| No Codex above it, but an earlier hook of the same `session_id` was proven, and this hook's own environment names the same panes | Uses that record while the process is still the same one |
+| Two Codex windows in one folder | Each hook belongs to its own process. Collie never picks the first one in the folder |
+
+The check uses the start time of each process, so a pid the system handed out again is never taken
+for the old one. On macOS the start time comes from libproc. The bridge and the hook read it the same
+way, so a live agent is never read as expired.
+
+###### Moshi
+
+Moshi's own Codex entry (`'/opt/homebrew/bin/moshi' codex-hook`) does not decide a permission. On
+`PermissionRequest` it posts one update to the Moshi daemon and exits at once with no output. The
+phone card lives in the daemon, which types `y` into the terminal when you tap. Collie cannot take
+that card back when it decides first. In a test it stayed for about 12 seconds, and a late tap on a
+stale card answered a different prompt (moshi-hook 0.4.37, issue
+[#595](https://github.com/AltanS/collie/issues/595)).
+
+So with a Moshi `codex-hook` entry in `hooks.json`, in any spelling (`moshi` or `moshi-hook`, at any
+path, quoted or not), `--hold-permissions` refuses and writes nothing. So does any other
+`PermissionRequest` handler: Codex runs every one and any deny wins, so a hold would race it. Install
+without it, or remove the entry yourself. If a handler appears after a hold install, `collie codex-hook` sees it when a
+permission arrives, holds nothing, runs no Moshi of its own, and prints `{}` so Codex asks you as usual. `collie hooks status`
+warns about it. The install also refuses when a Collie `PermissionRequest` entry has no record file
+beside it, since that entry could be a broker and Moshi's original entry lives only in the record.
+
+```console
+$ collie hooks install codex --native --hold-permissions --with-moshi
+```
+
+`--with-moshi` is the other road: one Collie handler takes Moshi's slot, starts the original command
+with the unchanged request beside the Collie hold, keeps the first valid allow or deny once, and
+cancels the other. It is built and tested, and it is **off**. It starts only for a provider that
+returns a decision on the hook's stdout, stays up until it has an answer, and withdraws its request
+when cancelled, shown by a record in Collie's config directory (`codex-moshi-capability.json`) made
+from a run that watched the request leave the phone. The record says so in `proof.decides`
+(`hook-stdout`) and `proof.blocksUntilAnswered` (`true`). A provider that ends with no decision while
+the hold is open ends the whole request with no decision, and Codex asks you.
+A symbol in the binary or a clean exit is not proof. The record names the provider's path and its
+sha256, so an update voids it, and Moshi 0.4.37 is refused whatever a record says. With no valid record
+the install writes nothing, and Moshi's entry is left as it was. `collie hooks status` shows the path,
+the digest and the verdict.
+
 Collie presses Tab for a Codex message. During a turn, Codex queues it. In Codex, Tab sends a
 message on an idle box and queues it during a turn. So Tab is right in both states. Enter steers a
 running turn, so Collie never presses Enter for a message. A text that starts with `/` or `!` is a command.

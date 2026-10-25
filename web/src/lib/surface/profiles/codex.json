@@ -130,13 +130,49 @@
     "lifetimeMs": 5000
   },
   "hooks": {
-    "agent-turn-complete": "edge"
+    "agent-turn-complete": "edge",
+    "SessionStart": "edge",
+    "UserPromptSubmit": "edge",
+    "Stop": "edge",
+    "Interrupt": "edge",
+    "SessionEnd": "edge",
+    "PostToolUse": "edge",
+    "PermissionRequest": "ask"
   },
   "edges": {
     "rereadMs": 700,
     "settleMs": 1500,
     "events": {
-      "agent-turn-complete": "stop"
+      "agent-turn-complete": "stop",
+      "SessionStart": "start",
+      "UserPromptSubmit": "prompt",
+      "Stop": "stop",
+      "Interrupt": "stop",
+      "SessionEnd": "end",
+      "PostToolUse": "tool"
     }
+  },
+  "hold": {
+    "event": "PermissionRequest",
+    "toolEvent": "PostToolUse",
+    "limitMs": 290000,
+    "hookTimeoutS": 300,
+    "minVersion": "0.164.0",
+    "inputShown": ["command"],
+    "inputDetails": { "Bash": { "flags": ["description"] } },
+    "screenOnly": [],
+    "headers": {},
+    "agentMark": "(?!)()",
+    "options": [
+      { "label": "Yes", "decision": "allow" },
+      { "label": "No", "decision": "deny" }
+    ],
+    "decisions": [
+      { "match": "^Yes$", "decision": "allow" },
+      { "match": "^No$", "decision": "deny" }
+    ],
+    "decidedLine": "(?!)",
+    "deniedLine": "(?!)",
+    "denyMessage": "The person denied this from Collie."
   }
 }

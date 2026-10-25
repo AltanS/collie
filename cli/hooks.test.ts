@@ -20,7 +20,7 @@ import {
   serializeSettings,
   uninstallDocument,
 } from "./hooks.ts";
-import { codexConfigPath, installNotify, notifyState } from "./codex-hooks.ts";
+import { codexConfigPath, installNotify, notifyState, scanTopLevel } from "./codex-hooks.ts";
 import { wrapCommand } from "./statusline.ts";
 import { HOST } from "../bridge/host.ts";
 import { EXIT } from "./io.ts";
@@ -505,6 +505,68 @@ describe("codex: the notify setting in config.toml (M56 spec 13)", () => {
     expect(installNotify(text, OWN)).toEqual({ text: `${NOTIFY}\n${text}` });
     const after = `${text}notify = ["/bin/ding"]\n`;
     expect(notifyState(after.split("\n"))).toMatchObject({ kind: "theirs", line: 9 });
+  });
+
+  test("codex: a multi-line string closed by 3 to 5 quotes is one statement, as TOML defines it (#592)", () => {
+    // Up to two quotes of the content may sit directly before the closing three.
+    const values = [
+      "'''sh -c 'echo \"hi\" \\n' '''",
+      "'''sh -c 'echo hi''''",
+      "'''sh -c ''echo hi'''''",
+      '"""say "hi""""',
+      '"""say ""hi"""""',
+      "'''one line ''' ",
+    ];
+    for (const value of values) {
+      const text = [`helper = ${value}`, 'model = "gpt-6-luna"', "", "[projects.x]", 'trust_level = "trusted"', ""].join("\n");
+      const top = scanTopLevel(text.split("\n"));
+      expect(top).toMatchObject({ ok: true });
+      if (top.ok) {
+        expect(top.statements.map((s) => s.key)).toEqual(["helper", "model"]);
+        expect(top.headers).toEqual([{ line: 3, head: "projects" }]);
+      }
+      expect(installNotify(text, OWN)).toEqual({ text: `${NOTIFY}\n${text}` });
+    }
+  });
+
+  test("codex: the same closing runs work across lines, and the string's own `[` rows stay inside it (#592)", () => {
+    for (const q of ["'''", '"""']) {
+      const text = [`helper = ${q}`, "[not a table]", `ends with a quote${q[0]}${q}`, 'model = "gpt-6-luna"', "[projects.x]", ""].join("\n");
+      const top = scanTopLevel(text.split("\n"));
+      expect(top).toMatchObject({ ok: true });
+      if (top.ok) expect(top.statements.map((s) => s.key)).toEqual(["helper", "model"]);
+    }
+  });
+
+  test("codex: a backslash escapes only the next character in a basic multi-line string (#592)", () => {
+    // `\"` is a quote and not a close; `\\` is a backslash, so the three quotes after it do close.
+    expect(scanTopLevel(['a = """x \\""" y"""', 'b = 1'])).toMatchObject({ ok: true });
+    expect(scanTopLevel(['a = """x \\\\"""', 'b = 1'])).toMatchObject({ ok: true, statements: [{ key: "a" }, { key: "b" }] });
+    // A literal string has no escapes: the backslash is content and the quotes close.
+    expect(scanTopLevel(["a = '''x \\'''", "b = 1"])).toMatchObject({ ok: true, statements: [{ key: "a" }, { key: "b" }] });
+  });
+
+  test("codex: a run of six or more closing quotes is still refused, and nothing is written (#592)", () => {
+    for (const broken of ["a = '''x''''''\n", 'a = """x""""""\n', "a = '''x'''''''\n"]) {
+      const d = deps({ files: { [CONFIG]: broken } });
+      expect(cmdHooksInstall(d, ["codex"])).toBe(EXIT.FAIL);
+      expect(d.io.stderr.join("\n")).toMatch(/cannot read its TOML at line 1/u);
+      expect(d.files.entries.get(CONFIG)!.text).toBe(broken);
+    }
+    // A string that never closes is refused as before, whatever quotes it holds.
+    expect(scanTopLevel(["a = '''x ''", "b = 1"])).toMatchObject({ ok: false, problem: "a multi-line string with no end" });
+  });
+
+  test("codex: install, repeat and uninstall keep every byte of a config holding a 4-quote closing run (#592)", () => {
+    const text = ["helper = '''sh -c 'ok''''", 'model = "gpt-6-luna"', "", "[projects.x]", 'trust_level = "trusted"', ""].join("\n");
+    const d = deps({ files: { [CONFIG]: text } });
+    expect(cmdHooksInstall(d, ["codex"])).toBe(EXIT.OK);
+    const once = d.files.entries.get(CONFIG)!.text;
+    expect(once).toBe(`${NOTIFY}\n${text}`);
+    expect(cmdHooksInstall(d, ["codex"])).toBe(EXIT.OK);
+    expect(d.files.entries.get(CONFIG)!.text).toBe(once);
+    expect(cmdHooksUninstall(d, ["codex"])).toBe(EXIT.OK);
+    expect(d.files.entries.get(CONFIG)!.text).toBe(text);
   });
 
   test("codex: a table whose path starts with notify is refused with its line, and nothing is written (N1)", () => {

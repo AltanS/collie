@@ -19,7 +19,7 @@ import { join } from "node:path";
 
 import { HOOK_TARGET_SCHEMA_VERSION, hookTargetFileName, hookTargetsDir, parseHookTarget, type HookTargetEnv, type HookTargetRecord } from "./beacon/hook-targets.ts";
 
-import { parseProcStartTime, procStatPath } from "./beacon/liveness.ts";
+import { hostProcessProbe, type ProcessProbe } from "./proc-probe.ts";
 import { parseEdge } from "./beacon/parse.ts";
 import type { SavedSource, SourceStore } from "./surface/edges.ts";
 import { asJsonNumber, asJsonObject, asJsonString, parseJson } from "../web/src/lib/json.ts";
@@ -67,22 +67,18 @@ export function fileBeaconDirectory(stateDir: string): BeaconDirectory {
 }
 
 /**
- * The pid probe, on Linux.
+ * The pid probe of this host: `/proc` on Linux, libproc on macOS (bridge/proc-probe.ts).
  *
  * The unit is `bridge/beacon/liveness.ts`'s and must stay that module's, because the EMITTER stores
  * what the same parser returned: two implementations that agree today are not that guarantee, and a
  * mismatch would make every live beacon read expired in silence.
  */
-export function procBeaconLiveness(): BeaconLiveness {
+export function procBeaconLiveness(probe: ProcessProbe = hostProcessProbe()): BeaconLiveness {
   return {
     startTimeOf(pid: number): Promise<number | null> {
-      try {
-        return Promise.resolve(parseProcStartTime(readFileSync(procStatPath(pid), "utf8")));
-      } catch {
-        // No such process, or a platform with no `/proc`. Both mean the same thing to the reader: it
-        // cannot confirm the writer is alive, so the beacon is expired rather than live.
-        return Promise.resolve(null);
-      }
+      // No such process, or a host with no way to ask. Both mean the same thing to the reader: it
+      // cannot confirm the writer is alive, so the beacon is expired rather than live.
+      return Promise.resolve(probe.startTimeOf(pid));
     },
   };
 }
@@ -241,12 +237,8 @@ export interface HookTargetRegistration {
 export function registerHookTarget(stateDir: string, env: HookTargetEnv = process.env, home: string = homedir()): HookTargetRegistration {
   const dir = hookTargetsDir(env, home);
   const path = join(dir, hookTargetFileName(stateDir));
-  let pidStartTime: number | null = null;
-  try {
-    pidStartTime = parseProcStartTime(readFileSync(procStatPath(process.pid), "utf8"));
-  } catch {
-    // No /proc: the emitter checks the pid alone.
-  }
+  // No way to ask on this host: the emitter checks the pid alone.
+  const pidStartTime = hostProcessProbe().startTimeOf(process.pid);
   const record: HookTargetRecord = { schemaVersion: HOOK_TARGET_SCHEMA_VERSION, stateDir, pid: process.pid, pidStartTime, bootedAt: Date.now() };
   const temp = join(dir, `.${String(process.pid)}.tmp`);
   let warned = false;

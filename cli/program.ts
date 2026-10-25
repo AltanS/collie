@@ -7,6 +7,9 @@ import { type BeaconEmitDeps, runBeaconEmit } from "./beacon.ts";
 import { cmdBeaconStatusline, runShell, type StatusLineDeps } from "./statusline.ts";
 import { type HoldDeps, netConnect, runBeaconHold } from "./hold.ts";
 import { CODEX_NOTIFY_HARNESS, runCodexNotify } from "./codex-notify.ts";
+import { type CodexHookDeps, runCodexHook } from "./codex-hook.ts";
+import { passThrough, spawnProvider } from "./codex-moshi.ts";
+import { hostProcessProbe } from "../bridge/proc-probe.ts";
 import { cmdBuild } from "./build.ts";
 import {
   cmdConfig,
@@ -281,6 +284,7 @@ function walkyDeps(io: Io): WalkyDeps {
     ctx: loadContext(io.err),
     files: realFiles,
     uid: process.getuid?.(),
+    probe: hostProcessProbe(),
     io,
     platform: HOST.platform,
     readStdin: () => Bun.stdin.text(),
@@ -375,6 +379,32 @@ function beaconDeps(): BeaconEmitDeps {
     readStdin: () => Bun.stdin.text(),
     agentPid: process.ppid,
     uid: process.getuid?.(),
+    probe: hostProcessProbe(),
+  };
+}
+
+/**
+ * `collie codex-hook`'s world. The process's own end (Codex timing the hook out, a hang-up when the
+ * turn is interrupted) aborts the broker, which withdraws whatever it started before it exits.
+ */
+function codexHookDeps(): CodexHookDeps {
+  const stop = new AbortController();
+  for (const name of ["SIGTERM", "SIGINT", "SIGHUP"] as const) process.on(name, () => stop.abort());
+  return {
+    ctx: loadContext(() => {}),
+    files: realFiles,
+    readStdin: () => Bun.stdin.text(),
+    selfPid: process.pid,
+    parentPid: process.ppid,
+    uid: process.getuid?.(),
+    probe: hostProcessProbe(),
+    print: async (text) => {
+      await Bun.write(Bun.stdout, `${text}\n`);
+    },
+    wire: { connect: netConnect },
+    spawnProvider: (argv, payload, cancel) => spawnProvider(argv, payload, cancel),
+    passThrough: (argv, payload) => passThrough(argv, payload),
+    signal: stop.signal,
   };
 }
 
@@ -385,6 +415,7 @@ function statusLineDeps(): StatusLineDeps {
     files: realFiles,
     readStdin: () => Bun.stdin.text(),
     uid: process.getuid?.(),
+    probe: hostProcessProbe(),
     run: runShell,
   };
 }
@@ -396,6 +427,7 @@ function holdDeps(): HoldDeps {
     readStdin: () => Bun.stdin.text(),
     agentPid: process.ppid,
     uid: process.getuid?.(),
+    probe: hostProcessProbe(),
     connect: netConnect,
     print: async (text) => {
       await Bun.write(Bun.stdout, `${text}\n`);
@@ -681,7 +713,8 @@ export const COMMANDS: readonly Command[] = [
         name: "install",
         summary:
           "register the beacon hooks: `hooks install claude` (add `--hold-permissions` to hold permissions, and `--statusline` to also wrap your statusLine" +
-          " so the phone shows the 5-hour and 7-day windows; your command still runs and prints as before), or `hooks install codex`",
+          " so the phone shows the 5-hour and 7-day windows; your command still runs and prints as before), or `hooks install codex`" +
+          " (add `--native` for Codex's own hooks, `--hold-permissions` to hold permissions, `--with-moshi` to answer beside Moshi)",
         run: (args, s) => cmdHooksInstall(hooksDeps(s.io), args),
       },
       {
@@ -722,6 +755,14 @@ export const COMMANDS: readonly Command[] = [
     // A bare `collie beacon`, or a misspelt sub-verb, is still an invocation from a hook — so it gets
     // the same silence and the same exit 0 as every other path through the emitter.
     run: () => EXIT.OK,
+  },
+  // The command every native Codex hook entry runs (cli/codex-hook.ts). Internal, like `beacon`: spelled by
+  // Codex, never typed, and it exits 0 on every path but Moshi-only routing, which returns the original Moshi command's own code (a non-zero exit is a deny to a permission hook).
+  {
+    name: "codex-hook",
+    summary: "internal: the native Codex hook. Writes hook edges, and answers a permission request for the phone",
+    internal: true,
+    run: () => runCodexHook(codexHookDeps),
   },
   // ── Device pairing ─────────────────────────────────────────────────────────
   // The operator's terminal is the out-of-band channel enrolment bootstraps from — see the header of

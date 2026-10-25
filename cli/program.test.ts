@@ -77,7 +77,7 @@ const LINK_VERBS = ["link", "unlink"];
 // The agent-beacon verbs (M11/02). Declared right after the PATH-name pair because `hooks install`
 // writes that published name into the agent's own settings.json (ADR 0021), and `beacon` is the
 // internal emitter the entry it writes calls.
-const BEACON_VERBS = ["hooks", "beacon"];
+const BEACON_VERBS = ["hooks", "beacon", "codex-hook"];
 
 // The device-pairing verbs. Declared between the diagnostics and the crew, because that is where
 // they sit in the table, and grouped separately for the same reason as the two above.
@@ -136,6 +136,8 @@ describe("the verb table", () => {
       "_supervise",
       // The emitter is spelled by a hook, never typed — see cli/beacon.ts.
       "beacon",
+      // The native Codex hook, spelled by Codex — see cli/codex-hook.ts.
+      "codex-hook",
       // The `crew` alias. Dispatchable, but never named in the usage line (ADR 0038).
       "pack",
     ]);
