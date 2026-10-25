@@ -109,7 +109,7 @@ function sentence(row: SendReceiptRow): string | null {
   return receiptSentence(row, t);
 }
 
-const STEP_ORDER: readonly SendStep[] = ["s0", "clear", "probe", "write", "s1", "commit", "s2"];
+const STEP_ORDER: readonly SendStep[] = ["s0", "proof", "clear", "probe", "write", "s1", "commit", "s2"];
 
 /** The measured gaps in step order, as `s0 120 ms, probe 160 ms`. */
 function gapsText(row: SendReceiptRow): string {

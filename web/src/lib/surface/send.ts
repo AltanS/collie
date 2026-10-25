@@ -171,7 +171,8 @@ export interface ReadMark {
 }
 
 /** The steps whose time a receipt measures. */
-export type SendStep = "s0" | "clear" | "probe" | "write" | "s1" | "commit" | "s2";
+/** `proof`: the probe of a draft S0 read, with its second S0 read where it needed one (2026-10-25); S0's gap leaves it out. */
+export type SendStep = "s0" | "proof" | "clear" | "probe" | "write" | "s1" | "commit" | "s2";
 
 /**
  * The receipt, a closed list of fields. It is written to disk, so it holds no screen text and no
@@ -396,10 +397,18 @@ export interface SendAnswer {
 
 /**
  * The rules an answer may name beside its reason. `notice_key`: the send's whole text is one of the
- * keys a notice above the box printed, which a box holding it alone would answer.
+ * keys a notice above the box printed, which a box holding it alone would answer. `stale_screen`: the
+ * input box on the screen does not take keys (a probe character landed elsewhere or nowhere) and a
+ * second S0 read showed the same rows, so the screen is a stale image (2026-10-25).
  */
-export const SEND_CAUSES = ["notice_key"] as const;
+export const SEND_CAUSES = ["notice_key", "stale_screen"] as const;
 export type SendCause = (typeof SEND_CAUSES)[number];
+
+/**
+ * The bridge's line for a `stale_screen` refusal (2026-10-25). The phone says it in its own words; a
+ * line that adds to it (a probe character that may remain in the box) gets its own sentence too.
+ */
+export const STALE_SCREEN = "The screen shows an input box that does not take keys. The pane may need a redraw; focus it on the desktop or resize it.";
 
 /**
  * The offers that go with an outcome and reason. A pane with no frame cannot prove a draft, so it gets the key pad instead.

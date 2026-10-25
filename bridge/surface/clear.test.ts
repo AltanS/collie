@@ -31,6 +31,10 @@ function withDraft(text: string): string {
 }
 
 const DRAFT = "half a thought";
+/** The probe character of the profiles here (grok, omp). */
+const PROBE = "⌁";
+/** The sleeps of a probe that landed at once: one read after the character, one after its Backspace. */
+const PROBE_SLEEPS = [80, 80];
 
 /** A pane that shows one capture at a time and shortens its draft as the clear key arrives. */
 class ScriptPane {
@@ -51,8 +55,17 @@ class ScriptPane {
     this.draft = draft;
   }
 
+  /**
+   * A stale screen (2026-10-25): non-null while the box shows `draft` as an old image and the live
+   * editor, drawn on a row above it, holds this text. Typing and Backspace go there.
+   */
+  live: string | null = null;
+  /** The program draws its screen again by itself after the probe's Backspace: the live box moves to the frame. */
+  mendsOnItsOwn = false;
+
   get screen(): string {
-    return this.override ?? withDraft(this.draft);
+    if (this.override !== null) return this.override;
+    return this.live === null ? withDraft(this.draft) : `> ${this.live}\n${withDraft(this.draft)}`;
   }
 
   private override: string | null = null;
@@ -67,9 +80,35 @@ class ScriptPane {
     return Promise.resolve(muxOk({ paneId, text: this.screen, truncated: false, revision: 0 }));
   };
 
+  /** Text typed into the box: the probe character lands after the draft, as a live box takes it. */
+  typed: string[] = [];
+  typeText = (paneId: string, text: string): Promise<MuxAck> => {
+    void paneId;
+    this.typed.push(text);
+    if (this.live !== null) this.live += text;
+    else this.draft += text;
+    return Promise.resolve(muxAck());
+  };
+
+  /** The one Backspace that took each probe character out again, apart from the clear's own presses. */
+  probeKeys: string[][] = [];
   writeKeys = (paneId: string, keys: readonly string[]): Promise<MuxAck> => {
     void paneId;
     if (this.refuseKeys) return Promise.resolve(muxRefused("refused"));
+    if (keys.length === 1 && keys[0] === "Backspace" && this.live?.endsWith(PROBE) === true) {
+      this.probeKeys.push([...keys]);
+      this.live = this.live.slice(0, -PROBE.length);
+      if (this.mendsOnItsOwn) {
+        this.draft = this.live;
+        this.live = null;
+      }
+      return Promise.resolve(muxAck());
+    }
+    if (keys.length === 1 && keys[0] === "Backspace" && this.draft.endsWith(PROBE)) {
+      this.probeKeys.push([...keys]);
+      this.draft = this.draft.slice(0, -PROBE.length);
+      return Promise.resolve(muxAck());
+    }
     this.keysSeen.push([...keys]);
     if (this.afterPress !== null) this.override = this.afterPress;
     else if (!this.deaf) this.draft = this.draft.slice(0, Math.max(0, this.draft.length - Math.min(keys.length, this.perPress)));
@@ -83,6 +122,8 @@ interface Rig {
   readonly lines: string[];
   readonly sleeps: number[];
   readonly pokes: () => number;
+  /** The box rows the Clear reported stale, in order. */
+  readonly stales: string[];
   readonly clear: (paneId: string, body: JsonValue | undefined, redact?: boolean) => Promise<Response>;
 }
 
@@ -90,7 +131,9 @@ interface Rig {
 function rig(draft: string): Rig {
   const pane = new ScriptPane(draft);
   const sleeps: number[] = [];
+  const stales: string[] = [];
   const service = new ClearService({
+    staleFrame: (paneId, frame) => void stales.push(`${paneId}:${frame}`),
     mux: pane,
     gate: new KeyGate(pane),
     profile: (harness) => Promise.resolve(profileFor(harness, "99.0.0", { log: () => undefined })),
@@ -123,6 +166,7 @@ function rig(draft: string): Rig {
     lines,
     sleeps,
     pokes: () => pokes,
+    stales,
     clear: (paneId, body, redact = false) => clearRoute(rt, paneId, body, { audit, device: "phone", session: "main", acceptEncoding: null, redact }),
   };
 }
@@ -143,8 +187,10 @@ describe("a Clear on a pane with a screen", () => {
     expect(pane.keysSeen).toHaveLength(1);
     expect(pane.keysSeen[0]).toEqual(Array.from({ length: DRAFT.length + 16 }, () => "Backspace"));
     expect(pane.keysSeen[0]!.includes("Escape")).toBe(false);
-    // The first read-back already shows an empty box.
-    expect(sleeps).toEqual([120]);
+    // The probe landed in the box and went again; the first read-back already shows an empty box.
+    expect(pane.typed).toEqual([PROBE]);
+    expect(pane.probeKeys).toEqual([["Backspace"]]);
+    expect(sleeps).toEqual([...PROBE_SLEEPS, 120]);
     expect(lines).toHaveLength(1);
     expect(pokes()).toBe(1);
   });
@@ -166,7 +212,7 @@ describe("a Clear on a pane with a screen", () => {
       return ack;
     };
     expect((await receipt(await clear("%1", { requestId: ID }))).outcome).toBe("cleared");
-    expect(sleeps).toEqual([120, 280]);
+    expect(sleeps).toEqual([...PROBE_SLEEPS, 120, 280]);
     expect(pane.keysSeen).toHaveLength(1);
   });
 
@@ -244,7 +290,8 @@ describe("a Clear on a pane with a screen", () => {
     const refused = rig(DRAFT);
     refused.pane.refuseKeys = true;
     expect(await receipt(await refused.clear("%1", { requestId: ID }))).toEqual({ requestId: ID, outcome: "refused", reason: "press_failed" });
-    expect(refused.pokes()).toBe(0);
+    // The probe character went in and its Backspace was refused: a key left, so the engine looks again.
+    expect(refused.pokes()).toBe(1);
   });
 
   test("a box that ignores the key: press_failed after the read-back, and the key is NOT pressed a second time", async () => {
@@ -253,7 +300,7 @@ describe("a Clear on a pane with a screen", () => {
     expect(await receipt(await clear("%1", { requestId: ID }))).toEqual({ requestId: ID, outcome: "refused", reason: "press_failed" });
     expect(pane.keysSeen).toHaveLength(1);
     // Four read-backs, then the next round's fresh read finds the box no shorter and stops.
-    expect(sleeps).toEqual([120, 280, 500, 800]);
+    expect(sleeps).toEqual([...PROBE_SLEEPS, 120, 280, 500, 800]);
     // The key did go in, so the engine looks again.
     expect(pokes()).toBe(1);
   });
@@ -388,5 +435,38 @@ describe("across a crew link and the device gate", () => {
     expect(branch).toBeGreaterThan(0);
     // Before the crew handler is built: the same code serves the lead's own panes and a member's.
     expect(branch).toBeLessThan(src.indexOf("const crewHandler = opts.crewRouter?.("));
+  });
+});
+
+describe("a Clear on a stale screen: the probe first, then one more read (2026-10-25)", () => {
+  test("a box that does not take the probe: stale_screen, the probe taken back, nothing cleared", async () => {
+    const { pane, clear, stales } = rig(DRAFT);
+    pane.live = "";
+    expect(await receipt(await clear("%1", { requestId: ID }))).toEqual({ requestId: ID, outcome: "refused", reason: "stale_screen" });
+    expect(pane.typed).toEqual([PROBE]);
+    expect(pane.probeKeys).toEqual([["Backspace"]]);
+    expect(pane.keysSeen).toEqual([]);
+    expect(pane.live).toBe("");
+    expect(pane.draft).toBe(DRAFT);
+    expect(stales).toHaveLength(1);
+  });
+
+  test("the screen drew again by itself and shows the live box empty: no_draft, and no clear key", async () => {
+    const { pane, clear, stales } = rig(DRAFT);
+    pane.live = "";
+    pane.mendsOnItsOwn = true;
+    expect(await receipt(await clear("%1", { requestId: ID }))).toEqual({ requestId: ID, outcome: "refused", reason: "no_draft" });
+    expect(pane.keysSeen).toEqual([]);
+    expect(stales).toEqual([]);
+  });
+
+  test("the screen drew again by itself and shows the live box holding text: a second probe lands, and that text is cleared", async () => {
+    const { pane, clear } = rig(DRAFT);
+    pane.live = "the real draft";
+    pane.mendsOnItsOwn = true;
+    expect(await receipt(await clear("%1", { requestId: ID }))).toEqual({ requestId: ID, outcome: "cleared", draft: "the real draft" });
+    expect(pane.typed).toEqual([PROBE, PROBE]);
+    expect(pane.probeKeys).toHaveLength(2);
+    expect(pane.keysSeen).toHaveLength(1);
   });
 });

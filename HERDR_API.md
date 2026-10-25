@@ -274,6 +274,38 @@ Two sibling structural ops reorder objects. Both live-verified 2026-07-20 on the
 - The event catalog lists sibling `tab.moved` / `workspace.moved` events (0.7.2); emission not
   observed here (no live subscription during the probe).
 
+## What Herdr should provide — a redraw of one pane (our ask, not a Collie capability)
+
+A program can keep the screen of an earlier layout after a resize, with a stale input box on its last
+rows (Altan's OMP 18.6.1 pane, 2026-10-25). Collie proves such a box stale with its probe and refuses
+the send with nothing deleted ([ADR 0048](.adr/0048-the-input-box-is-found-by-its-own-frame.md), the
+2026-10-25 addendum). It does not mend the pane: a pane's geometry is the operator's screen, and Collie
+does not write it ([ADR 0008](.adr/0008-collie-does-not-run-a-terminal-emulator.md)). What would let a
+client mend it without touching the layout:
+
+1. **A per-pane redraw**, for example `pane.redraw {pane_id}`: deliver `SIGWINCH` to the pane's
+   program, or resize its PTY by itself, with no change to any `rect`, focus or zoom.
+2. **Every PTY resize reaches background panes**, and the emulator and the program agree on the size
+   afterwards, so a stale screen does not happen in the first place.
+
+What we probed on herdr 0.9.5 (2026-10-25, a scratch session with its own `XDG_RUNTIME_DIR` and a
+small logger that printed every `SIGWINCH` it got). Collie calls neither method.
+
+| Method | Params | Returns |
+|---|---|---|
+| `pane.layout` | `{pane_id}` | `{layout: {area, panes: [{pane_id, focused, rect}], splits, zoomed}}`: the pane's tab, each pane's `rect` in cells |
+| `pane.resize` | `{pane_id, direction, amount}` | `{resize: {changed, layout}}`: `direction` is `up`, `down`, `left` or `right`, `amount` a ratio of the split |
+
+- **`changed` means the split's ratio moved, not the cells.** A ratio step of 0.01 answered
+  `changed: true` and left every `rect` as it was.
+- **A resize in a split reaches the program, even in a background workspace.** The pane's PTY gets
+  `SIGWINCH`, and focus stays where it was.
+- **A pane that fills its tab cannot be resized.** `pane.resize` and `pane.zoom` change nothing
+  there, and Herdr has no call that resizes one pane's PTY or sends it `SIGWINCH`.
+  `workspace.focus` would redraw it, but it moves the operator's desktop (ADR 0031).
+- On 0.9.5 a client resize also reached a background PTY, which differs from the 0.9.4 note in the
+  omp gang's tester 06 report. `pane.clear` exists in the schema, but it is not documented.
+
 ## Object shapes (observed)
 
 ```jsonc

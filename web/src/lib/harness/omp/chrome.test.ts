@@ -151,6 +151,9 @@ const BOX_COMPOSER_FIXTURES = [
   // omp 18.6.1: a queued line under `After yield · 1`, then Stop gave it back to the box (ADR 0122).
   "omp--v18-6-1-queued-before-stop--w119.txt",
   "omp--v18-6-1-stop-returned--w119.txt",
+  // omp 18.6.1 under Herdr (Altan's pane, 2026-10-25): a stale bottom frame of an earlier layout; the live
+  // editor is drawn higher up. The reader finds the stale box, which is why the Send Protocol probes a draft.
+  "omp--v18-6-1-stale-frame-below-live--w120.txt",
 ];
 
 // omp 18.6.1 with `/model` or `/mod` typed (lab, 2026-10-17): a ten-row palette under the open box. The
@@ -301,6 +304,7 @@ describe("locateComposer — the real corpus, pinned so any change to the walk s
     // omp 18.6.1, a queued line and Stop giving it back (ADR 0122): a short screen, the box on its last row.
     { fixture: "omp--v18-6-1-queued-before-stop--w119.txt", top: 16, bottom: 17, suggestEnd: 18 },
     { fixture: "omp--v18-6-1-stop-returned--w119.txt", top: 16, bottom: 17, suggestEnd: 18 },
+    { fixture: "omp--v18-6-1-stale-frame-below-live--w120.txt", top: 38, bottom: 39, suggestEnd: 40 },
   ];
 
   // These eleven indices are byte-identical to the ones the width-gated scanner produced. That is
@@ -398,6 +402,8 @@ describe("extractInputDraft", () => {
     // Stop gave the queued line back (ADR 0122): the box holds it as a draft, the queue block is gone.
     { fixture: "omp--v18-6-1-queued-before-stop--w119.txt", draft: null },
     { fixture: "omp--v18-6-1-stop-returned--w119.txt", draft: "second message" },
+    // The stale frame's old text, not the live editor's: a reading the probe has to prove.
+    { fixture: "omp--v18-6-1-stale-frame-below-live--w120.txt", draft: "and what about the design" },
   ];
 
   it.each(DRAFTS)("$fixture reads its draft", ({ fixture, draft }) => {

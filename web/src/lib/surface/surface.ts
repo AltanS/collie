@@ -54,6 +54,22 @@ export interface Surface {
   readonly modal: SurfaceModal;
   readonly composer: SurfaceComposer;
   readonly reason?: SurfaceReason;
+  /**
+   * A request proved that the input box this read shows does not take keys: a probe character typed
+   * there showed up elsewhere or nowhere, and a second read showed the same rows (2026-10-25). The image is a
+   * stale one of an earlier layout, so its composer claim is a reading, not the box. Set by the bridge
+   * on the reads that show the same box rows as the proven one, and gone at the first read that differs.
+   */
+  readonly staleFrame?: true;
+}
+
+/**
+ * The name of the rows an input box stands on, for "the same stale image again": a short hash of the
+ * rows from the box's top edge to its bottom edge, trailing blanks cut. The Send Protocol names the box
+ * it proved stale with it, and the bridge's Surface compares each later read's box with that name.
+ */
+export function frameImageKey(texts: readonly string[], top: number, bottom: number): string {
+  return shortHash(texts.slice(top, bottom + 1).map((text) => text.trimEnd()).join("\n"));
 }
 
 /** The free rule: the turn is idle, no modal is up and the composer is empty. Nothing else is free. */

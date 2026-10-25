@@ -94,6 +94,19 @@
 // Discard). With no length known the request is refused `draft_present` before any key, so a clear
 // never stops half way through a person's draft (omp gang, 2026-10-25).
 //
+// A draft read is a reading until a probe proves it (2026-10-25): a pane can keep a stale image of an
+// earlier, taller layout at its foot (a resize that never reached a background pane), whose editor row
+// shows a draft while the live editor, drawn higher up, is empty. So no request acts on an idle box's
+// draft before a probe: a send or command it would refuse `draft_present`, an Add to it, a Replace, a
+// Discard, and a returned card's Submit. The probe character must land in that box, after the draft;
+// then it goes again with one Backspace and the request goes on as before. When it lands elsewhere it
+// is taken back with one Backspace, and when it shows nowhere it is left alone. Either way the frame is
+// stale. Collie never asks the multiplexer to redraw it (ADR 0008: a pane's geometry is the operator's).
+// S0 reads once more after one S0 gap: a box that now reads empty, or shows other rows and takes a
+// second probe, carries the request on from that read with the send's own probe forced. The same rows
+// again, or a second probe that does not land, ends `probe_failed` with the cause `stale_screen` and
+// the key pad as the only offer; nothing is deleted. One second read per request, never a loop.
+//
 // A command in a running turn (M56 spec 15): a profile whose harness queues a command entered during
 // a turn (`keys.commandWhileRunning: "queues"`, measured in the lab) sends it on the queued path like a
 // message. Its popup may fill the rows under the box, so S1 asks only that the rows above scrolled.
@@ -160,8 +173,9 @@ import {
   type SurfaceWords,
   type HeldCancelAnswer,
   type HeldRow,
+  STALE_SCREEN,
 } from "../../web/src/lib/surface/send.ts";
-import { isFree, shortHash, type Surface } from "../../web/src/lib/surface/surface.ts";
+import { frameImageKey, isFree, shortHash, type Surface } from "../../web/src/lib/surface/surface.ts";
 import { closingReceipt, normalizePrompt, receiptWindowMs, type OpenReceipt } from "../../web/src/lib/surface/edges.ts";
 import type { CapState, CounterKey, ExampleEntry, InboxEntry } from "./counters.ts";
 import { askLifetimeOf, type AskBook } from "./ask.ts";
@@ -197,6 +211,11 @@ export const BLIND_SETTLE_MS = 350;
 const BLIND_SAW: SurfaceWords = { turn: "unknown", modal: "unknown", composer: "unknown", reason: "no-profile" };
 /** The refusal of a blind send at a password prompt. Never the prompt's row: it may name a user or a key file. */
 const NO_ECHO_REFUSAL = "A password prompt is waiting on the last row. Collie does not type into it from the text box. Use Type to answer it.";
+
+/** The refusal of a box that does not take keys, after its second S0 read (2026-10-25); the phone reads the same words. */
+export { STALE_SCREEN };
+/** The wait before a stale box's second S0 read: one S0 gap. */
+const REREAD_GAP_MS = 120;
 
 /** The detail after a failed probe whose one Backspace took the character out again. */
 const PROBE_REMOVED = "One Backspace removed the probe character, so the box is clean again.";
@@ -331,6 +350,12 @@ export interface SendDeps {
    * still holds the instance the message was meant for. Absent: every release goes ahead.
    */
   readonly releaseCheck?: (requestId: string, session: string, paneId: string) => boolean;
+  /**
+   * A request proved the box a pane's screen shows does not take keys, and a second S0 read showed the
+   * same rows (2026-10-25): `frame` names the box's rows ({@link frameImageKey}). The bridge's Surface marks the
+   * reads that show the same rows `staleFrame` until one differs. Called inside a try.
+   */
+  readonly staleFrame?: (paneId: string, frame: string) => void;
   /** Whether an upload path still names a file the harness can attach (`wholePaste`). Absent: a regular file on this disk. */
   readonly imageFile?: (path: string) => boolean;
   readonly now?: () => number;
@@ -1232,6 +1257,8 @@ const NOTICE_DIGIT_LEFT = "The key is still in the box: the notice did not take 
 const NOTICE_NOT_TAKEN = "The notice did not take the number. Check the pane.";
 /** The {@link SendAnswer.cause} of every send the notice digit rule decides. */
 const NOTICE_KEY: SendCause = "notice_key";
+/** The cause of a refusal on a screen whose input box does not take keys (2026-10-25). */
+const STALE_CAUSE: SendCause = "stale_screen";
 
 /**
  * The refusal of a send whose box would hold one of a notice's digits alone where no commit can go
@@ -1318,7 +1345,11 @@ function causeOf(surface: Surface): HoldCause | null {
  * S0. Nothing of the text went in, so the hold queue may take it like a box that was not free.
  */
 function cleanProbe(state: RunState, end: Ended): boolean {
-  return end.reason === "probe_failed" && end.extra.probeClean === true && state.keys.length === 2 && state.keys[0] === "probe" && state.keys[1] === "Backspace";
+  return end.reason === "probe_failed" && end.extra.probeClean === true && probeOnly(state);
+}
+/** The only keys that left were the probe and the Backspace that took it out again. */
+function probeOnly(state: RunState): boolean {
+  return state.keys.length === 2 && state.keys[0] === "probe" && state.keys[1] === "Backspace";
 }
 /**
  * The receipt's line for a send left typed in the box at S1 (2026-10-17): which rule kept Enter back.
@@ -1918,6 +1949,8 @@ interface RunState {
   steer: boolean;
   /** The steer witness showed after the steer key: the receipt says `steered`. */
   steered: boolean;
+  /** The probe proved S0's draft a stale image and S0 read once more (the header): once per request. */
+  reread: boolean;
 }
 
 /** What the hold queue knows of one pane between polls (M56 spec 15 review). */
@@ -2305,7 +2338,8 @@ export class SendProtocol {
     // A steer is never held (M69): it is for the turn that runs now, and a later turn is the wrong one.
     if (state.request.when === "steer") return false;
     const clean = cleanProbe(state, end);
-    if (state.keys.length > 0 && !clean) return false;
+    // A draft proven live by its probe (2026-10-25) left the box as it was: it holds like an unprobed one did.
+    if (state.keys.length > 0 && !clean && !(end.reason === "draft_present" && probeOnly(state))) return false;
     if (!HOLDABLE.has(state.request.mode) || state.neverHold === true) return false;
     if (end.reason === "turn_running") return true;
     if (state.manual || state.match === null) return false;
@@ -2748,6 +2782,7 @@ export class SendProtocol {
       stepStart: at,
       steer: false,
       steered: false,
+      reread: false,
     };
   }
 
@@ -2980,15 +3015,26 @@ export class SendProtocol {
     this.begin(state);
     let s0 = await this.stableRead(state, "s0");
     state.marks.s0 = s0;
-    // A held request is a message for the agent, in every mode a release runs (a send, a command, a
-    // Replace): a box that answers the agent's question would take it as the answer. It waits.
-    if (state.released === true && answersQuestion(match, s0)) {
-      state.answerWait = true;
-      throw new Ended("refused", "not_free", { surface: s0.surface, detail: ANSWER_BOX });
+    this.atS0(state, s0);
+    // A draft read is a reading until a probe proves it (the header, 2026-10-25). A stale frame gets one
+    // more S0 read, and the run goes on from it or ends refused.
+    if (this.draftToProve(state, s0, holds)) {
+      const started = this.now();
+      let proven: Snap;
+      try {
+        proven = await this.proveDraft(state, s0);
+      } finally {
+        // The proof is its own gap, on a refusal too: S0's gap stays the time of its two reads.
+        const spent = this.now() - started;
+        state.gaps.proof = spent;
+        state.stepStart += spent;
+      }
+      if (proven !== s0) {
+        s0 = proven;
+        state.marks.s0 = s0;
+        this.atS0(state, s0);
+      }
     }
-    state.manual = takesManualSend(s0.surface);
-    if (state.manual) this.gateSteeringTurn(state, s0);
-    this.checkGeneration(state, "refused");
 
     switch (request.mode) {
       case "submit": {
@@ -3058,7 +3104,9 @@ export class SendProtocol {
     // A notice's digit is never probed: S0 proved the box empty, and no key but the digit may reach a box under the notice.
     state.probed =
       !state.noticeKey &&
-      (state.queued ||
+      // After a second S0 read of a stale box the box is proven by the probe again, whatever the profile says.
+      (state.reread ||
+      state.queued ||
       s0.frame === null ||
       match === null ||
       match.status !== "verified" ||
@@ -3154,6 +3202,161 @@ export class SendProtocol {
     }
     state.keys.push(...GENERIC_SUBMIT);
     this.lap(state, "commit");
+  }
+
+  /** What every S0 read is held to before the mode's own rule: a held request's answer box, the manual Send's turn rule, the pane's generation. */
+  private atS0(state: RunState, s0: Snap): void {
+    // A held request is a message for the agent, in every mode a release runs (a send, a command, a
+    // Replace): a box that answers the agent's question would take it as the answer. It waits.
+    if (state.released === true && answersQuestion(state.match, s0)) {
+      state.answerWait = true;
+      throw new Ended("refused", "not_free", { surface: s0.surface, detail: ANSWER_BOX });
+    }
+    state.manual = takesManualSend(s0.surface);
+    if (state.manual) this.gateSteeringTurn(state, s0);
+    this.checkGeneration(state, "refused");
+  }
+
+  /**
+   * Whether this request would act on the draft S0 reads in an idle box (the header, 2026-10-25): a send
+   * or command it would refuse `draft_present`, an Add to it, a Replace, a Discard of a box that holds
+   * the text, and a returned card's Submit. A notice over the box keeps its own refusal, which presses
+   * nothing; a running turn keeps its rules.
+   */
+  private draftToProve(state: RunState, s0: Snap, holds: (frame: Frame) => boolean): boolean {
+    const { frame, surface } = s0;
+    if (state.reread || state.manual || frame === null || s0.notice !== null) return false;
+    // A box at its scroll height shows a slice of its draft, so a probe there cannot be compared; its
+    // own rules refuse or bound the clear before any key (TALL_DRAFT, LONG_DRAFT).
+    if (frame.scrolled === true) return false;
+    // A marked send (walky talky) is held over a draft, never refused, and nobody tapped it: a person may
+    // be typing in that box right now, and a probe there could land between their keys. It waits as before.
+    if (state.request.draftHolds === true) return false;
+    if (surface.turn !== "idle" || surface.modal !== "none" || surface.composer !== "draft" || boxText(frame).length === 0) return false;
+    switch (state.request.mode) {
+      case "send":
+      case "command":
+      case "append":
+      case "replace":
+        return true;
+      case "discard":
+        return holds(frame);
+      case "submit":
+        return state.request.returnedCard === true && holds(frame);
+      default:
+        return false;
+    }
+  }
+
+  /**
+   * The draft's probe (the header): the read after the probe and its Backspace when the probe landed in
+   * its box (the gate's revision moved, so the run goes on from that read), or the second S0 read from
+   * which the request goes on. A frame that stays stale ends `probe_failed` with the cause
+   * `stale_screen`. The request's bound grows by each step it adds.
+   */
+  private async proveDraft(state: RunState, s0: Snap): Promise<Snap> {
+    const probe = state.match?.profile.probe.char ?? GENERIC_PROBE;
+    const before = countIn(s0.texts, probe);
+    // The probe, then its Backspace, each with the probe's own bound.
+    this.stretch(state, 2 * BOUNDS.probe.ms);
+    const first = await this.draftProbe(state, s0, probe);
+    if (first.landing === "live") return first.snap;
+    state.reread = true;
+    // The second S0 read, a second probe, and the send's own probe that the second read forces.
+    this.stretch(state, REREAD_GAP_MS + BOUNDS.s0.ms + 3 * BOUNDS.probe.ms);
+    this.guard(state);
+    await this.sleep(REREAD_GAP_MS);
+    let fresh = await this.stableRead(state, "s0");
+    // A probe that showed nowhere may show now that the screen drew again: it is taken back first.
+    if (first.landing === "nowhere") {
+      if (countIn(fresh.texts, probe) !== before + 1) throw this.staleScreen(state, fresh, probe);
+      fresh = await this.takeBack(state, before, probe);
+    }
+    const { frame } = fresh;
+    if (frame === null || fresh.surface.composer !== "draft" || boxText(frame).length === 0) return fresh;
+    // The same rows again: nothing mended the screen, and a second probe would only say so twice.
+    if (s0.frame !== null && frameImageKey(fresh.texts, frame.top, frame.bottom) === frameImageKey(s0.texts, s0.frame.top, s0.frame.bottom)) {
+      throw this.staleScreen(state, fresh, null);
+    }
+    const again = await this.draftProbe(state, fresh, probe);
+    if (again.landing === "live") return again.snap;
+    throw this.staleScreen(state, state.lastRead ?? fresh, again.landing === "nowhere" ? probe : null);
+  }
+
+  /**
+   * One probe of a box that reads a draft: the read that shows the box as it was, when the character
+   * landed in the box after the draft and one Backspace gave the box back; `away` when it stood elsewhere on the screen and one Backspace
+   * took it back; `nowhere` when no read showed it (no key follows). A probe that changed the box some
+   * other way, or opened something, fails as the send's own probe does.
+   */
+  private async draftProbe(state: RunState, s0: Snap, probe: string): Promise<{ readonly landing: "live"; readonly snap: Snap } | { readonly landing: "away" | "nowhere" }> {
+    const frame = s0.frame!;
+    const draft = boxText(frame);
+    const before = countIn(s0.texts, probe);
+    const failed = (detail: string, snap: Snap | null): Ended => new Ended("refused", "probe_failed", sawNote(snap, { detail, framed: true }));
+    await this.writeText(state, probe, false);
+    state.keys.push("probe");
+    let away = false;
+    const typed = await this.poll(state, "probe", { reads: BOUNDS.probe.reads - 1, ms: BOUNDS.probe.ms }, (snap) => {
+      if (snap.frame === null) return "wait";
+      if (probeBoxPasses(s0, snap, draft, probe)) return "pass";
+      if (boxText(snap.frame) !== draft || modalAtBox(snap) || cueAppeared(s0, snap)) return "fail";
+      if (countIn(snap.texts, probe) !== before + 1) return "wait";
+      away = true;
+      return "fail";
+    });
+    if (typed.verdict === "wait") return { landing: "nowhere" };
+    if (typed.verdict === "fail" && away) {
+      await this.takeBack(state, before, probe);
+      return { landing: "away" };
+    }
+    if (typed.verdict === "fail") throw await this.probeCleanup(state, s0, typed.snap, probe, "The probe character changed more than the box.");
+    try {
+      await this.keysThroughGate(state, ["Backspace"], "refused");
+    } catch (err) {
+      if (err instanceof Ended && err.outcome === "refused") throw failed(`Backspace after the probe was refused: ${err.extra.detail ?? err.message}`, typed.snap);
+      throw err;
+    }
+    const back = await this.poll(state, "probe", { reads: BOUNDS.probe.reads, ms: BOUNDS.probe.ms }, (snap) => (snap.frame !== null && boxText(snap.frame) === draft ? "pass" : "wait"));
+    if (back.verdict !== "pass" || back.snap === null) throw failed("Backspace did not give the box back as it was.", back.snap);
+    return { landing: "live", snap: back.snap };
+  }
+
+  /**
+   * One Backspace for a probe character that stands outside the box (the live editor of a stale
+   * screen), then reads until the screen holds as many of it as S0 did. The read is the answer; a
+   * character that stays ends `probe_failed`, saying it may remain.
+   */
+  private async takeBack(state: RunState, before: number, probe: string): Promise<Snap> {
+    const left = (snap: Snap | null): Ended =>
+      new Ended("refused", "probe_failed", sawNote(snap, { detail: `${STALE_SCREEN} ${probeMayRemain(probe)}`, framed: true, offers: ["keys"], cause: STALE_CAUSE }));
+    try {
+      await this.keysThroughGate(state, ["Backspace"], "refused");
+    } catch (err) {
+      if (err instanceof Ended && err.outcome === "refused") throw left(state.lastRead);
+      throw err;
+    }
+    const back = await this.poll(state, "probe", { reads: BOUNDS.probe.reads, ms: BOUNDS.probe.ms }, (snap) => (countIn(snap.texts, probe) === before ? "pass" : "wait"));
+    if (back.verdict !== "pass" || back.snap === null) throw left(back.snap);
+    return back.snap;
+  }
+
+  /**
+   * The refusal of a box that does not take keys (the header): `probe_failed`, the cause `stale_screen`,
+   * the key pad as the offer, nothing deleted. `probe` names a probe character that showed nowhere and
+   * may still stand in the live editor. The bridge's Surface is told which box rows were proven stale.
+   */
+  private staleScreen(state: RunState, snap: Snap, probe: string | null): Ended {
+    const { frame } = snap;
+    if (frame !== null) {
+      try {
+        this.deps.staleFrame?.(state.target.paneId, frameImageKey(snap.texts, frame.top, frame.bottom));
+      } catch (err) {
+        console.warn(`[send] stale frame note failed: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    const detail = probe === null ? STALE_SCREEN : `${STALE_SCREEN} ${probeMayRemain(probe)}`;
+    return new Ended("refused", "probe_failed", sawNote(snap, { detail, framed: true, offers: ["keys"], cause: STALE_CAUSE }));
   }
 
   /**

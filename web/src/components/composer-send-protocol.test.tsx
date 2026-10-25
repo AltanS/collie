@@ -237,6 +237,27 @@ describe("Composer on the Send Protocol (M56 specs 05 and 06)", () => {
   });
 });
 
+// 2026-10-25: a box the bridge proved stale (its probe did not land, a second read showed the same rows) says so in
+// the empty field's placeholder, in the smaller size, never in a row of its own.
+describe("a stale screen in the placeholder", () => {
+  const staleDraft = { revision: 1, turn: "idle", modal: "none", composer: "draft", staleFrame: true } as const;
+  const HINT = "The screen may be stale. Send probes it first.";
+
+  it("the empty field's placeholder is the stale hint, smaller than the reply words", () => {
+    renderComposer({ surface: staleDraft });
+    const field = screen.getByRole("textbox");
+    expect(field).toHaveAttribute("placeholder", HINT);
+    expect(field.className).toMatch(/placeholder:text-xs/);
+    expect(screen.queryByText(HINT)).toBeNull();
+  });
+
+  it("a Surface with no stale mark keeps the reply words", () => {
+    renderComposer({ surface: { revision: 1, turn: "idle", modal: "none", composer: "draft" } });
+    expect(screen.getByRole("textbox")).not.toHaveAttribute("placeholder", HINT);
+    expect(screen.getByRole("textbox").className).not.toMatch(/placeholder:text-xs/);
+  });
+});
+
 // M69 spec 03: while the turn runs on a pane whose bridge says `canSteer`, the Send button's long-press
 // menu offers Steer above "Send as message", and the empty field's placeholder names both gestures.
 // The hint is the placeholder, never a row of its own: a row opened and closed with every turn and moved

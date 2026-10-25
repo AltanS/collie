@@ -26,10 +26,10 @@ import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { splitLines } from "../../web/src/lib/blocks.ts";
 import { DEFAULT_EDGE_PROFILE, type EdgeKind } from "../../web/src/lib/surface/edges.ts";
 import { emptyFoldState, readFold, stepFold, type FoldContext, type FoldState, type SurfaceInput, type SurfaceRead } from "../../web/src/lib/surface/fold.ts";
-import type { IdleProfile } from "../../web/src/lib/surface/frame.ts";
+import { rowText, type IdleProfile } from "../../web/src/lib/surface/frame.ts";
 import { legacyFree, liftAsk, liftDialog, readerBlocks } from "../../web/src/lib/surface/lift.ts";
 import { findProfile, loadProfiles, profileFor, type Profile } from "../../web/src/lib/surface/profile.ts";
-import { askOf, isFree, modalWord, shortHash, type Ask, type Surface, type SurfaceTurn } from "../../web/src/lib/surface/surface.ts";
+import { askOf, frameImageKey, isFree, modalWord, shortHash, type Ask, type Surface, type SurfaceTurn } from "../../web/src/lib/surface/surface.ts";
 import type { CounterKey } from "./counters.ts";
 import { ASK_LIFETIME_MS, type AskBook } from "./ask.ts";
 import { spawnBinaryVersion } from "./binary-version.ts";
@@ -141,6 +141,8 @@ interface PaneState {
   idle: IdleProfile | null;
   /** When each disagreement class last made a journal line on this pane. */
   logged: Map<string, number>;
+  /** The box rows a request proved stale ({@link SurfaceShadow.markStale}), until a read shows other rows; null with none. */
+  staleFrame: string | null;
 }
 
 function emptyCounters(): ShadowCounters {
@@ -259,7 +261,7 @@ export class SurfaceShadow {
     if (this.observing) {
       for (const state of this.panes.values()) {
         this.push(state, { seq: ++state.seq, source: "tick", at });
-        if (state.read !== null) state.read = readFold(state.fold, this.contextOf(state));
+        if (state.read !== null) state.read = this.folded(state);
       }
       return;
     }
@@ -357,6 +359,7 @@ export class SurfaceShadow {
         profileId: profile?.id ?? "-",
         idle,
         logged: new Map(),
+        staleFrame: null,
       };
       this.panes.set(agent.paneId, state);
     }
@@ -391,11 +394,37 @@ export class SurfaceShadow {
       state.lastLegacy = this.options.compare === false ? false : legacyFree(rows, blocks, harness);
     }
 
-    const read = readFold(state.fold, this.contextOf(state));
+    const read = this.folded(state);
     state.read = read;
     if (state.countedRead === readKey) return;
     state.countedRead = readKey;
     this.count(agent.paneId, state, read);
+  }
+
+  /**
+   * The Send Protocol proved that the box a pane shows does not take keys and a second read showed the same rows
+   * (2026-10-25): `frame` names the box's rows ({@link frameImageKey}). The pane's Surface carries
+   * `staleFrame` on every read that shows the same rows, and the mark goes at the first read that shows
+   * other rows or no box. A pane the shadow has not read takes no mark. Never throws.
+   */
+  markStale(paneId: string, frame: string): void {
+    const state = this.panes.get(paneId);
+    if (state === undefined) return;
+    state.staleFrame = frame;
+    if (state.read !== null) state.read = this.folded(state);
+  }
+
+  /** The fold's read of a pane, marked `staleFrame` while its newest screen shows the box rows a request proved stale. */
+  private folded(state: PaneState): SurfaceRead {
+    const read = readFold(state.fold, this.contextOf(state));
+    if (state.staleFrame === null) return read;
+    const rows = state.fold.screen?.rows ?? null;
+    const frame = state.fold.screenRead?.frame ?? null;
+    if (rows === null || frame === null || frameImageKey(rows.map((row) => rowText(row)), frame.top, frame.bottom) !== state.staleFrame) {
+      state.staleFrame = null;
+      return read;
+    }
+    return { ...read, surface: { ...read.surface, staleFrame: true } };
   }
 
   /** The ask a read lifted: through the session's book when it has one, else named by its content. */
@@ -429,7 +458,7 @@ export class SurfaceShadow {
     if (state === undefined) return false;
     try {
       this.push(state, { seq: ++state.seq, source: "edge", at, kind });
-      if (state.read !== null) state.read = readFold(state.fold, this.contextOf(state));
+      if (state.read !== null) state.read = this.folded(state);
       this.countEdge(state, kind);
       state.reread?.();
       state.reread = (this.options.schedule ?? timerSchedule)(() => {
@@ -461,7 +490,7 @@ export class SurfaceShadow {
     if (state === undefined) return false;
     try {
       this.push(state, { seq: ++state.seq, source: "edge", at: this.now(), kind: "stop" });
-      if (state.read !== null) state.read = readFold(state.fold, this.contextOf(state));
+      if (state.read !== null) state.read = this.folded(state);
       this.countEdge(state, "stop-receipt");
     } catch (err) {
       console.warn(`[surface] stop receipt on ${paneId} failed: ${err instanceof Error ? err.message : String(err)}`);

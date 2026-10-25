@@ -24,11 +24,13 @@ export type ClearOutcome = (typeof CLEAR_OUTCOMES)[number];
  * blind. `no_draft`: the box already reads empty. `dialog_open`: a dialog is up and a key would reach it.
  * `unreadable`: Collie cannot tell what the box holds. `press_failed`: the multiplexer refused the keys,
  * or the box still holds text after the press; what remains is left alone, never pressed at again blind.
- * `pane_gone`: the multiplexer could not read the pane. `unsupported_build` is the phone's word, never
+ * `pane_gone`: the multiplexer could not read the pane. `stale_screen`: the box on the screen did not
+ * take a probe character and a second read showed the same rows, so it is a stale image; nothing was deleted
+ * (2026-10-25). `unsupported_build` is the phone's word, never
  * the bridge's: the machine that owns the pane runs a build with no Clear (its route answered a bare 404,
  * a 400 or a 405 instead of a receipt), so nothing was pressed.
  */
-export const CLEAR_REASONS = ["no_profile", "no_draft", "dialog_open", "unreadable", "press_failed", "pane_gone", "unsupported_build"] as const;
+export const CLEAR_REASONS = ["no_profile", "no_draft", "dialog_open", "unreadable", "press_failed", "pane_gone", "stale_screen", "unsupported_build"] as const;
 export type ClearReason = (typeof CLEAR_REASONS)[number];
 
 /** The receipt a Clear answers, and the same one again for the same request id. */

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseJsonObject, type JsonObject } from "./json";
 import { capSentence, isCommand, offerMode, readHeldCancelAnswer, readSend, readSendReceipts, readSendReply, readSurface, receiptLabelKey, noteKey, receiptSentence, sendNote, surfaceNote, type SendReply } from "./send-protocol";
-import type { SendReceiptRow } from "./surface/send";
+import { STALE_SCREEN, type SendReceiptRow } from "./surface/send";
 import type { Surface } from "./surface/surface";
 
 const RUNNING: Surface = { revision: 3, turn: "running", modal: "none", composer: "empty" };
@@ -100,6 +100,22 @@ describe("readSend", () => {
     // No commit offered (a running turn, a Replace): the sentence names the card and the turn's end, not Type here.
     expect(readSend(readSendReply(running)!)).toMatchObject({ note: "noticeKeyHeld", offers: [], detail: null });
     expect(readSend(reply("refused", "unconfirmed", ["commit", "keys"])).note).toBe("unconfirmed");
+  });
+
+  // 2026-10-25: a box that did not take the probe, and a second read of the same rows. The phone says it in
+  // its own words; the line that adds a probe character that may remain gets its own sentence.
+  it("a refusal with the stale-screen cause has its own sentence, with or without the probe that may remain", () => {
+    const plain: JsonObject = { receipt: { outcome: "refused", reason: "probe_failed" }, offers: ["keys"], cause: "stale_screen", detail: STALE_SCREEN };
+    expect(readSend(readSendReply(plain)!)).toMatchObject({ clear: false, note: "staleScreen", detail: null });
+    const probe: JsonObject = { ...plain, detail: `${STALE_SCREEN} A probe character (⌁) may remain in the box. Check the pane before you type.` };
+    expect(readSend(readSendReply(probe)!)).toMatchObject({ clear: false, note: "staleScreenProbe", detail: null });
+    // Without the cause a probe_failed keeps its old sentence.
+    expect(readSend(reply("refused", "probe_failed", ["keys"])).note).toBe("probeFailed");
+  });
+
+  it("a Surface carries staleFrame only as true", () => {
+    expect(readSurface({ revision: 3, turn: "idle", modal: "none", composer: "draft", staleFrame: true })).toEqual({ revision: 3, turn: "idle", modal: "none", composer: "draft", staleFrame: true });
+    expect(readSurface({ revision: 3, turn: "idle", modal: "none", composer: "draft", staleFrame: "yes" })).toEqual({ revision: 3, turn: "idle", modal: "none", composer: "draft" });
   });
 
   it("a send queued behind the running turn clears the draft and says it waits for the turn; the receipt's queued is read off the wire", () => {
