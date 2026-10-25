@@ -286,6 +286,15 @@ describe("a queued receipt whose text came back (ADR 0122)", () => {
     expect(new RequestStore(dir).get(ID)?.receipt?.late).toBe("returned");
   });
 
+  test("a settled `steered` receipt takes it too, once, and keeps its outcome", () => {
+    const store = new RequestStore(dir);
+    const { record } = store.accept(input({ id: "req-steer-00001" }));
+    store.settle("req-steer-00001", receiptFor(record, "steered"));
+    expect(store.markReturned("req-steer-00001")).toBe(true);
+    expect(store.markReturned("req-steer-00001")).toBe(false);
+    expect(store.get("req-steer-00001")?.receipt).toMatchObject({ outcome: "steered", late: "returned" });
+  });
+
   test("only a settled queued `sent` takes it: not a plain send, not an effective one, not an unsettled one", () => {
     const store = new RequestStore(dir);
     const plain = store.accept(input({ id: "req-plain-0001" })).record;

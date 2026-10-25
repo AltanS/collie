@@ -402,16 +402,17 @@ export class RequestStore {
   }
 
   /**
-   * A settled `sent` receipt that said `queued` gets `late: "returned"` (ADR 0122): the harness put
-   * its text back into the input box, and it never became a prompt. The outcome and `queued` stay, since
-   * both were true when it settled; the mark says what happened after. Taken once. Returns whether the
-   * record took it.
+   * A settled `sent` receipt that said `queued`, or a `steered` one, gets `late: "returned"` (ADR 0122):
+   * the harness put its text back into the input box, and it never became a prompt. The outcome and
+   * `queued` stay, since both were true when it settled; the mark says what happened after. Taken once.
+   * Returns whether the record took it.
    */
   markReturned(id: string): boolean {
     const known = this.get(id);
     const receipt = known?.receipt;
     if (known === null || known.phase !== "settled" || receipt === undefined) return false;
-    if (receipt.outcome !== "sent" || receipt.queued !== true || receipt.late !== undefined) return false;
+    const waited = (receipt.outcome === "sent" && receipt.queued === true) || receipt.outcome === "steered";
+    if (!waited || receipt.late !== undefined) return false;
     this.write({ ...known, receipt: { ...receipt, late: "returned" } });
     return true;
   }

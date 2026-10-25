@@ -1306,10 +1306,15 @@ function holdCauseOf(end: Ended): HoldCause {
   }
 }
 
-/** What a poll's Surface says holds a marked request now, or null when it says nothing new. */
+/**
+ * What a poll's Surface says holds a held request now, or null when it says nothing new (the pane reads
+ * free, or the turn is unknown): a running turn, something open at the box (a cue or a dialog), or a
+ * draft in the box. The turn comes first, as the refusal rules read it.
+ */
 function causeOf(surface: Surface): HoldCause | null {
   if (surface.turn === "running") return "turn_running";
-  if (surface.turn === "idle" && surface.modal === "none" && surface.composer === "draft") return "draft_present";
+  if (surface.modal !== "none") return "not_free";
+  if (surface.turn === "idle" && surface.composer === "draft") return "draft_present";
   return null;
 }
 /**
@@ -1439,9 +1444,20 @@ function aboveUnchanged(before: Snap, after: Snap, scroll = 0): boolean {
   const a = transcriptAbove(before, before.frame);
   const b = transcriptAbove(after, after.frame);
   const grew = after.frame.bottom - after.frame.top - (before.frame.bottom - before.frame.top);
+  // The box moved up (its list opened under it, or it grew): the volatile band is a fixed number of rows
+  // counted up from the box's top edge, so it now reaches higher and takes the last rows of the transcript
+  // into itself. That happens when the transcript is shorter than the pane and blank rows fill the gap
+  // over the box: the list takes its room from the blank rows, the transcript stays where it was, and the
+  // band, no longer padded by blank rows, covers its last lines (omp 18.12.6, `/plan` with plan mode on,
+  // tester 14, 2026-10-25: three lines went into the band). The rows that stay must still be the same,
+  // in order, and no row is new: the transcript may end earlier by up to the band's height.
+  const bandRows = after.frame.volatile.above === null ? 0 : after.frame.volatile.above.last - after.frame.volatile.above.first + 1;
+  const bandMoved = after.frame.top < before.frame.top;
   for (let shift = 0; shift <= Math.max(0, grew) + 1 + scroll; shift++) {
     const tail = a.slice(shift);
     if (tail.length === b.length && tail.every((row, i) => row === b[i])) return true;
+    const lost = tail.length - b.length;
+    if (bandMoved && lost > 0 && lost <= bandRows && b.some((row) => row.length > 0) && b.every((row, i) => row === tail[i])) return true;
   }
   return false;
 }
@@ -2260,7 +2276,7 @@ export class SendProtocol {
     const waiting = holds?.waiting(target.session, target.paneId) ?? [];
     // A queue of marked sends held over a draft only (M62 spec 02) does not take an unmarked send: that
     // one runs, and a draft still in the box refuses it with its offers, as on a pane with no queue.
-    const draftOnly = request.draftHolds !== true && waiting.every((entry) => entry.cause === "draft_present");
+    const draftOnly = request.draftHolds !== true && waiting.every((entry) => entry.draftHolds === true && entry.cause === "draft_present");
     // A steer never joins (M69): it is for the turn that runs now, and goes in ahead of the held sends,
     // which wait for that turn to end anyway.
     const joins = holds !== undefined && JOINS.has(request.mode) && waiting.length > 0 && !draftOnly && request.when !== "steer";
@@ -2507,9 +2523,11 @@ export class SendProtocol {
         continue;
       }
       const surface = generation === null ? undefined : surfaceOf(paneId);
-      // What holds each marked request now, as this poll reads it: a draft, or a turn.
+      // What holds each held request now, as this poll reads it: a turn, something open at the box, or a
+      // draft. A cause written at hold time goes stale (a /plan held for a turn showed `turn_running` on an
+      // idle pane whose box held a returned draft, omp gang tester 14, 2026-10-25).
       const cause = surface === undefined ? null : causeOf(surface);
-      if (cause !== null) for (const entry of entries) if (entry.draftHolds === true && entry.state === "held" && entry.cause !== cause) holds.setCause(entry.id, cause);
+      if (cause !== null) for (const entry of entries) if (entry.state === "held" && entry.cause !== cause) holds.setCause(entry.id, cause);
       if (surface !== undefined && isFree(surface)) {
         watch.freeReads += 1;
         watch.freeSince ??= now;
@@ -2532,7 +2550,8 @@ export class SendProtocol {
       const quiet = watch.freeReads >= QUIET_FREE_POLLS && watch.freeSince !== null && now - watch.freeSince >= QUIET_FREE_MS;
       // A draft that left the box: two reads in a row of an empty box and an idle pane, at least
       // DRAFT_LEFT_MS apart, so a submitted draft has drawn its turn before anything is typed.
-      const draftLeft = holds.get(next.id)?.cause === "draft_present" && watch.freeReads >= FREE_POLLS && watch.freeSince !== null && now - watch.freeSince >= DRAFT_LEFT_MS;
+      // Only a marked request: another held send keeps its own release rules, whatever its label says.
+      const draftLeft = next.draftHolds === true && holds.get(next.id)?.cause === "draft_present" && watch.freeReads >= FREE_POLLS && watch.freeSince !== null && now - watch.freeSince >= DRAFT_LEFT_MS;
       if (busy || !(afterTurn || turnEnded || quiet || draftLeft)) continue;
       if (this.deps.releaseCheck?.(next.id, session, paneId) === false) {
         this.endHeld(next, "refused", "pane_gone");
@@ -2854,7 +2873,8 @@ export class SendProtocol {
     const receipt = this.receiptOf(state, outcome, outcome === "effective" ? undefined : end.reason, end.extra.cap, end.extra);
     this.deps.store.settle(state.record.id, receipt);
     // A send the harness holds for after the turn: a card until the journal or the box closes it (ADR 0122).
-    if (receipt.outcome === "sent" && receipt.queued === true) {
+    // A steer is kept too, with no card of its own: a Stop may give it back together with the queue.
+    if ((receipt.outcome === "sent" && receipt.queued === true) || receipt.outcome === "steered") {
       this.queuedSends.add({
         id: state.record.id,
         session: state.target.session,
@@ -2863,6 +2883,7 @@ export class SendProtocol {
         text: state.request.text,
         collapse: state.match?.profile.collapse.pattern ?? null,
         at: this.now(),
+        steer: receipt.outcome === "steered",
       });
     }
     this.count(state, receipt, end.extra.surface);

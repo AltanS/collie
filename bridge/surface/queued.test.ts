@@ -14,7 +14,7 @@ function memory() {
     now: () => clock.now,
     busy: () => false,
   });
-  const add = (id: string, text: string): void => sends.add({ id, session: "main", paneId: "%1", generation: "omp:session", text, collapse: null, at: clock.now });
+  const add = (id: string, text: string, steer = false): void => sends.add({ id, session: "main", paneId: "%1", generation: "omp:session", text, collapse: null, at: clock.now, steer });
   return { clock, marked, sends, add };
 }
 
@@ -66,5 +66,40 @@ describe("QueuedSends", () => {
       m.sends.boxRead("main", "%1", { box: "", at: m.clock.now, turn: "idle", poll: true });
     }
     expect(m.sends.of("main", "%1")).toEqual([]);
+  });
+
+  test("a steer is no card until the box gives it back, and the run is steers first", () => {
+    const m = memory();
+    m.add("queued-st-0001", "Q text");
+    m.clock.now += 100;
+    m.add("queued-st-0002", "S text", true);
+    expect(m.sends.of("main", "%1")).toMatchObject([{ requestId: "queued-st-0001", state: "queued" }]);
+    m.clock.now += 1_000;
+    expect(m.sends.boxRead("main", "%1", { box: "S text\n\nQ text", at: m.clock.now, turn: "idle", poll: false })).toEqual(["queued-st-0002", "queued-st-0001"]);
+    expect(m.marked).toEqual(["queued-st-0002", "queued-st-0001"]);
+    expect(m.sends.of("main", "%1")).toMatchObject([{ requestId: "queued-st-0002", text: "S text\nQ text", state: "returned" }]);
+  });
+
+  test("a steer the box never gave back is dropped without a card: idle polls, or the bound", () => {
+    const m = memory();
+    m.add("queued-st-0003", "S text", true);
+    // Running reads start the count again; a Stop's read-back is no poll.
+    m.clock.now += 1_000;
+    m.sends.boxRead("main", "%1", { box: "", at: m.clock.now, turn: "idle", poll: true });
+    m.clock.now += 1_000;
+    m.sends.boxRead("main", "%1", { box: "", at: m.clock.now, turn: "running", poll: true });
+    for (let i = 0; i < IDLE_EMPTY_POLLS; i++) {
+      m.clock.now += 1_000;
+      m.sends.boxRead("main", "%1", { box: "elsewhere", at: m.clock.now, turn: "idle", poll: true });
+    }
+    expect(m.sends.panes("main")).toEqual([]);
+    m.clock.now += 1_000;
+    expect(m.sends.boxRead("main", "%1", { box: "S text", at: m.clock.now, turn: "idle", poll: true })).toEqual([]);
+    expect(m.marked).toEqual([]);
+    // The bound: never an unconfirmed card for a steer nobody saw in the box.
+    m.add("queued-st-0004", "T text", true);
+    m.clock.now += QUEUED_SEND_MS + 1;
+    expect(m.sends.of("main", "%1")).toEqual([]);
+    expect(m.sends.panes("main")).toEqual([]);
   });
 });

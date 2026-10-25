@@ -4563,6 +4563,33 @@ describe("the held send (M56 spec 15)", () => {
     expect(released?.receipt?.keys.at(-1)).toBe("Enter");
   });
 
+  // Tester 14 (omp 18.12.6, 2026-10-25): a held `/plan` kept `turn_running` on an idle pane whose box held
+  // a returned draft, because only a marked request's cause was rewritten after the hold.
+  test("a held send's cause follows the pane on every poll: a turn that ends over a draft reads draft_present, a dialog not_free", async () => {
+    const DRAFT = { revision: 2, turn: "idle", modal: "none", composer: "draft" } as const;
+    const OPEN_DIALOG = { revision: 3, turn: "idle", modal: "unknown", composer: "empty" } as const;
+    const holds = new HoldStore(join(dir, "held"));
+    const r = omp({ holds });
+    r.pane.inTurn = true;
+    await r.send("/plan", { id: "held-cause-01", mode: "command" });
+    await r.send("and then tidy up", { id: "held-cause-02" });
+    expect(r.protocol.heldOf("main", "%1").map((row) => row.cause)).toEqual(["turn_running", "turn_running"]);
+    const poll = async (surface: Surface): Promise<void> => void (await Promise.all(r.protocol.tickHolds("main", () => surface)));
+    // The turn ends and the box holds a draft (Stop gave a queued text back): the sentence says the box.
+    await poll(DRAFT);
+    expect(r.protocol.heldOf("main", "%1").map((row) => row.cause)).toEqual(["draft_present", "draft_present"]);
+    expect(holds.get("held-cause-01")?.cause).toBe("draft_present");
+    // Nothing was typed over the draft, and the command stayed held.
+    expect(r.pane.keysSeen).toEqual([]);
+    await poll(OPEN_DIALOG);
+    expect(r.protocol.heldOf("main", "%1").map((row) => row.cause)).toEqual(["not_free", "not_free"]);
+    await poll(RUNNING);
+    expect(r.protocol.heldOf("main", "%1").map((row) => row.cause)).toEqual(["turn_running", "turn_running"]);
+    // A free read says nothing new: the label stays until the release.
+    await poll(FREE);
+    expect(r.protocol.heldOf("main", "%1").map((row) => row.cause)).toEqual(["turn_running", "turn_running"]);
+  });
+
   test("a steer while a held command waits runs now, ahead of it, and the held command still goes after the turn (M69)", async () => {
     const r = await piHeldCommand("held-pi-03");
     r.pane.inTurn = true;
@@ -5133,6 +5160,8 @@ class OmpPane extends FakePane {
   runsAtOnce: string[] = [];
   /** Commands Enter ran at once in a turn. */
   ran: string[] = [];
+  /** Draw the steered texts in a `Steering · N` block, the steer witness of the profile (the lab screens). */
+  drawsSteers = false;
 
   constructor() {
     super("generic");
@@ -5160,7 +5189,13 @@ class OmpPane extends FakePane {
 
   override render(): string {
     const rows = [...this.transcript, ""];
-    if (this.queued.length > 0) rows.push(`  After yield · ${String(this.queued.length)}`, ...this.queued.map((text, i) => `  ${String(i + 1)}. ${text}`), "  └ Alt+↑ to edit", "");
+    const steering = this.drawsSteers ? this.steered : [];
+    if (steering.length > 0 || this.queued.length > 0) {
+      // OMP stacks its two blocks over one hint (lab, 18.6.1, 2026-10-23).
+      if (steering.length > 0) rows.push(`  Steering · ${String(steering.length)}`, ...steering.map((text, i) => `  ${String(i + 1)}. ${text}`));
+      if (this.queued.length > 0) rows.push(`  After yield · ${String(this.queued.length)}`, ...this.queued.map((text, i) => `  ${String(i + 1)}. ${text}`));
+      rows.push("  └ Alt+↑ to edit", "");
+    }
     if (this.inTurn && this.showWorking) rows.push("  ⎋ Working…                                      Write essay");
     rows.push(this.inTurn ? " ⠼ 4s > ◒ Haiku 4.5 > 📁 ~/work > ⑂ master ?1 > $0.06 ▶──6%─────────────" : " π > ◒ Haiku 4.5 > 📁 ~/work > ⑂ master ?1 > $0.06 ▶──6%─────────────");
     this.box.split("\n").forEach((line, i) => rows.push(i === 0 ? `╰─ ${line}`.trimEnd() : `   ${line}`));
@@ -5645,6 +5680,62 @@ describe("OMP runs `/goal` at once in a turn (keys.commandsRunInTurn, lab 18.12.
 // (`pane.read` visible, format ansi). The pane below answers each read with the capture taken at that
 // step of the lab's send: the probe typed, the text typed, Enter pressed. Nothing on a screen is drawn
 // by the test.
+// Tester 14 (omp 18.12.6, 2026-10-25): `/plan` as a command with plan mode on ended `typed_not_submitted /
+// changed` twice. The transcript is shorter than the pane, so blank rows fill the gap over the box. The
+// typed command's list took its ten rows from those blank rows, the transcript stayed where it was, and
+// the volatile band over the box (six rows counted up from its edge, blank or not) reached three lines
+// higher, into the transcript. The compare of the rows above read that as a changed screen. The captures
+// are the lab's three reads of one send, cut to their last 40 rows.
+describe("OMP 18.12.6 `/plan` with plan mode on, replayed from the real capture (omp gang tester 14, 2026-10-25)", () => {
+  // Kept beside this test, not in web/src/fixtures/panes: the web corpus sweeps read every `omp--` file there
+  // as a conversation screen, and these three end in a list under the box.
+  const FIXTURES = join(import.meta.dir, "fixtures");
+  const capture = (name: string): string => readFileSync(join(FIXTURES, `omp--v18-12-6-plan-on-${name}--w120.txt`), "utf8");
+  /** An OMP pane whose every read is one of the captures: the empty box, the probe in it, `/plan` typed, or the read after Enter. */
+  const replay = (typed: string): FakePane => {
+    const empty = capture("empty");
+    const probe = empty.replace(/^╰─.*$/mu, `╰─ ${PROBE}`);
+    const pane = new FakePane("generic");
+    let entered = false;
+    pane.afterInput = (_p, what) => {
+      if (what === "keys:Enter") entered = true;
+    };
+    pane.beforeRead = (p) => {
+      if (entered) p.fixed = capture("slash-plan-sent");
+      else if (p.box === "") p.fixed = empty;
+      else if (p.box === PROBE) p.fixed = probe;
+      else if (p.box === "/plan") p.fixed = typed;
+      else throw new Error(`the lab never saw the box hold ${JSON.stringify(p.box)}`);
+    };
+    return pane;
+  };
+
+  test("the captures are the lab's: plan mode on, the list under the box pointing at /plan, ten rows from the blank gap", () => {
+    const empty = capture("empty").split("\n");
+    const typed = capture("slash-plan").split("\n");
+    expect(empty.some((row) => row.includes("🗺 Plan >"))).toBe(true);
+    expect(typed.some((row) => row.startsWith("╰─ /plan"))).toBe(true);
+    expect(typed.some((row) => row.startsWith("❯ 🗺  plan"))).toBe(true);
+    expect(typed.length).toBe(empty.length);
+  });
+
+  test("/plan goes out once with the command keys: probed, typed, one Enter, sent", async () => {
+    const pane = replay(capture("slash-plan"));
+    const answer = await rig({ pane, harness: "omp", version: "18.12.6" }).send("/plan", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"] });
+    expect(pane.keysSeen.filter((key) => key === "Enter")).toHaveLength(1);
+  });
+
+  test("a row that is NEW above the box still stops it: a dialog line in the transcript is a changed screen, nothing is pressed", async () => {
+    const typed = capture("slash-plan").replace("Plan mode requires a task to plan.", "Allow this tool call? (y/n)");
+    expect(typed).not.toBe(capture("slash-plan"));
+    const pane = replay(typed);
+    const answer = await rig({ pane, harness: "omp", version: "18.12.6" }).send("/plan", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "changed" });
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+});
+
 describe("OMP 18.12.2 `/goal` in a goal turn, replayed from the real capture (lab 2026-10-22)", () => {
   const PANES = join(import.meta.dir, "../../web/src/fixtures/panes");
   /** A capture's text, line breaks as the bridge's read takes them. */
@@ -8461,6 +8552,130 @@ describe("a queued send that comes back to the box (ADR 0122)", () => {
     expect(answer).toMatchObject({ kind: "receipt", receipt: { outcome: "stopped", keys: ["Escape"], returned: ["queued-back-0040"] } });
     expect(r.protocol.queuedOf("main", "%1")).toMatchObject([{ requestId: "queued-back-0040", state: "returned" }]);
     expect(r.deps.store.get("queued-back-0040")?.receipt?.late).toBe("returned");
+  });
+
+  // Tester 14, case s1 (omp 18.12.6, 2026-10-25): a steer and a queued send pending, then Stop. OMP puts
+  // both back, steers first, a blank row between: `S-steer text`, ``, `Q-queued text`. The run matcher
+  // saw only receipt-queued sends, so no row turned returned and the phone drew no card.
+  /** A steer, then a queued send, in a running turn on a pane that draws OMP's `Steering · N` block. */
+  async function steerThenQueued(steerId: string, queuedId: string): Promise<Rig & { pane: OmpPane }> {
+    const r = omp();
+    r.pane.drawsSteers = true;
+    r.pane.inTurn = true;
+    const steer = await r.send("S-steer text", { id: steerId, when: "steer", fromPhone: true });
+    expect(steer.receipt).toMatchObject({ requestId: steerId, outcome: "steered" });
+    r.clock.now += 3_000;
+    const queued = await r.send("Q-queued text", { id: queuedId });
+    expect(queued.receipt).toMatchObject({ requestId: queuedId, outcome: "sent", queued: true });
+    return r;
+  }
+  /** OMP's Escape with a steer and a queue pending: both texts go back, steers first, one blank row between. */
+  function stopGivesBackSteers(pane: OmpPane): void {
+    pane.inTurn = false;
+    pane.box = [...pane.steered, ...pane.queued].join("\n\n");
+    pane.steered = [];
+    pane.queued = [];
+    pane.revision++;
+  }
+
+  test("a steer pending beside a queued send draws no card of its own: the queued one alone", async () => {
+    const r = await steerThenQueued("queued-steer-0001", "queued-steer-0002");
+    expect(r.protocol.queuedOf("main", "%1")).toEqual([{ requestId: "queued-steer-0002", text: "Q-queued text", at: r.clock.now, state: "queued" }]);
+  });
+
+  test("Stop gives a steer and a queued send back together: one run, one card, both receipts late", async () => {
+    const r = await steerThenQueued("queued-steer-0003", "queued-steer-0004");
+    stopGivesBackSteers(r.pane);
+    r.clock.now += 1_500;
+    const read = look(r.pane, r.clock.now);
+    // The box read folds the blank row between the two texts to a space (omp gang tester 14).
+    expect(read.box).toBe("S-steer text Q-queued text");
+    expect(r.protocol.boxRead("main", "%1", read)).toEqual(["queued-steer-0003", "queued-steer-0004"]);
+    const cards = r.protocol.queuedOf("main", "%1");
+    expect(cards).toHaveLength(1);
+    expect(cards[0]).toMatchObject({ requestId: "queued-steer-0003", text: "S-steer text\nQ-queued text", state: "returned" });
+    expect(r.deps.store.get("queued-steer-0003")?.receipt).toMatchObject({ outcome: "steered", late: "returned" });
+    expect(r.deps.store.get("queued-steer-0004")?.receipt).toMatchObject({ outcome: "sent", queued: true, late: "returned" });
+    // The card's own id acts, and the older rows keep the outcome they settled with.
+    expect(r.protocol.returnedSource("main", "%1", "queued-steer-0003")).toBe("S-steer text\nQ-queued text");
+    expect(r.protocol.returnedSource("main", "%1", "queued-steer-0004")).toBeNull();
+    expect(r.protocol.recent("%1").find((row) => row.requestId === "queued-steer-0003")).toMatchObject({ outcome: "steered", late: "returned" });
+  });
+
+  test("the run is matched steers first, whatever order they were sent in: the queue first, then the steer, still one card", async () => {
+    const r = omp();
+    r.pane.drawsSteers = true;
+    r.pane.inTurn = true;
+    await r.send("Q-queued text", { id: "queued-steer-0005" });
+    r.clock.now += 3_000;
+    await r.send("S-steer text", { id: "queued-steer-0006", when: "steer", fromPhone: true });
+    stopGivesBackSteers(r.pane);
+    r.clock.now += 1_500;
+    expect(r.protocol.boxRead("main", "%1", look(r.pane, r.clock.now))).toEqual(["queued-steer-0006", "queued-steer-0005"]);
+    expect(r.protocol.queuedOf("main", "%1")).toMatchObject([{ requestId: "queued-steer-0006", text: "S-steer text\nQ-queued text", state: "returned" }]);
+  });
+
+  test("a steer returned alone after Stop is marked returned and draws the card", async () => {
+    const r = omp();
+    r.pane.drawsSteers = true;
+    r.pane.inTurn = true;
+    await r.send("S-steer text", { id: "queued-steer-0007", when: "steer", fromPhone: true });
+    expect(r.protocol.queuedOf("main", "%1")).toEqual([]);
+    stopGivesBackSteers(r.pane);
+    r.clock.now += 1_500;
+    expect(r.protocol.boxRead("main", "%1", look(r.pane, r.clock.now))).toEqual(["queued-steer-0007"]);
+    expect(r.protocol.queuedOf("main", "%1")).toMatchObject([{ requestId: "queued-steer-0007", text: "S-steer text", state: "returned" }]);
+    expect(r.deps.store.get("queued-steer-0007")?.receipt).toMatchObject({ outcome: "steered", late: "returned" });
+    // Once: a second read marks nothing again.
+    r.clock.now += 1_000;
+    expect(r.protocol.boxRead("main", "%1", look(r.pane, r.clock.now))).toEqual(["queued-steer-0007"]);
+  });
+
+  test("a steer that landed never matches: the queued text alone comes back, and the steer is gone after idle polls", async () => {
+    const r = await steerThenQueued("queued-steer-0008", "queued-steer-0009");
+    // The steer reached the turn (the Steering block is gone); the queue stays until the turn yields.
+    r.pane.steered = [];
+    r.clock.now += 2_000;
+    expect(r.protocol.boxRead("main", "%1", look(r.pane, r.clock.now))).toEqual([]);
+    stopGivesBackSteers(r.pane);
+    r.clock.now += 1_500;
+    expect(r.protocol.boxRead("main", "%1", look(r.pane, r.clock.now))).toEqual(["queued-steer-0009"]);
+    expect(r.deps.store.get("queued-steer-0008")?.receipt?.late).toBeUndefined();
+    expect(r.deps.store.get("queued-steer-0009")?.receipt?.late).toBe("returned");
+    // Idle polls pass; the steer is gone. The text typed again at the desk later reads as a draft.
+    for (let i = 0; i < 2; i++) {
+      r.clock.now += 1_000;
+      r.protocol.boxRead("main", "%1", look(r.pane, r.clock.now));
+    }
+    r.pane.box = "S-steer text";
+    for (let i = 0; i < 3; i++) {
+      r.clock.now += 1_000;
+      r.protocol.boxRead("main", "%1", look(r.pane, r.clock.now));
+    }
+    expect(r.deps.store.get("queued-steer-0008")?.receipt?.late).toBeUndefined();
+  });
+
+  test("Stop's read-back lists a steer and a queued send that came back together", async () => {
+    const r = await steerThenQueued("queued-steer-0010", "queued-steer-0011");
+    const keys = r.pane.writeKeys;
+    r.pane.writeKeys = (paneId, pressed) => {
+      if (pressed.includes("Escape") && r.pane instanceof OmpPane) stopGivesBackSteers(r.pane);
+      return keys(paneId, pressed.filter((key) => key !== "Escape"));
+    };
+    const stop = new StopService({
+      mux: r.pane,
+      gate: new KeyGate(r.pane, () => r.clock.now),
+      profile: (harness) => Promise.resolve(profileFor(harness, "18.6.1", { log: () => undefined })),
+      sleep: (ms) => {
+        r.clock.now += ms;
+        return Promise.resolve();
+      },
+      now: () => r.clock.now,
+      returned: (paneId, read) => r.protocol.boxRead("main", paneId, { ...read, poll: false }),
+    });
+    const answer = await stop.handle("queued-stop-0002", "%1", "omp");
+    expect(answer).toMatchObject({ kind: "receipt", receipt: { outcome: "stopped", keys: ["Escape"], returned: ["queued-steer-0010", "queued-steer-0011"] } });
+    expect(r.protocol.queuedOf("main", "%1")).toMatchObject([{ requestId: "queued-steer-0010", state: "returned" }]);
   });
 
   test("after a restart the open queued sends come back from their kept lines, and a returned one does not", async () => {

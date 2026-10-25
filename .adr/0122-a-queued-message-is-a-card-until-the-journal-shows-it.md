@@ -71,6 +71,16 @@ code.
 6. **A returned run is one card.** A harness may give several queued texts back into one box. The
    texts that together are exactly the box, in order, are one card, with the joined text, one Send and
    one Discard. Its first request id is the card's; every receipt in the run takes the late mark.
+   - **A steer is a candidate too** (tester 14, OMP 18.12.6, 2026-10-25). With a steer and a queued
+     send both pending, Stop makes OMP give back both: the steer text, a blank row, the queued text
+     (`restoreQueuedMessagesToEditor` joins the steering messages, then the follow-ups, with a blank
+     row). A send whose receipt settled `steered` is kept for the turn it was sent in, with no card of
+     its own, and the run is matched in order over the candidates, steers first (in send order), then
+     the queued sends (in send order), whichever was sent first. A matched steer row takes the same
+     `late: "returned"` and joins the same one card; it needs no new state. A steer nobody saw in the
+     box is dropped without a card after two polls that read the turn idle, or at the queued bound: it
+     landed (the journal shows its prompt) or the turn ended without it, and it can never match a
+     draft typed later. A steer is not read back from the request files after a restart.
 7. **After a Stop, the box is read.** Two reads feed one rule: the Stop's own read-backs after its key
    (0.4 s, 1.4 s and 2.4 s), and the poll's Surface read of each agent pane. A read changes nothing when
    it is older than the send's settle, or while another send holds the pane's lock, because during S1

@@ -13,6 +13,14 @@
 //                harness gave back together, which is ONE card): the receipt takes `late: "returned"`,
 //                the card offers Send and Discard. Ends when a later read shows the box without it, on
 //                its Send or Discard, or when the journal shows the prompt.
+//
+// A STEER (a send whose receipt settled `steered`) is a candidate too, but never a card of its own: it
+// is not waiting for the turn to end, the harness takes it at the next step. It is kept only so that a
+// Stop which makes the harness give back its steers AND its queued texts together (steers first, then a
+// blank row, then the queue) can be matched as one run. A steer that was never seen in the box is
+// dropped silently, after {@link IDLE_EMPTY_POLLS} polls that read the turn idle (it landed, or the
+// turn ended without it), and at the same bound as a queued card. A steer is not read back from the
+// request files after a restart.
 //   unconfirmed  Collie cannot tell where the message went: the pane read idle with an empty box on two
 //                polls in a row while it was queued, or a clock below ran out. The card says so and
 //                offers Discard only, which drops the card and presses nothing. Ends on that Discard,
@@ -82,6 +90,8 @@ interface Entry {
   idleEmptyAt?: number;
   /** The first id of the run of returned texts this one came back with; absent when it came back alone. */
   group?: string;
+  /** A steer, not a queued send: never drawn until it is returned, and dropped silently when it landed. */
+  readonly steer: boolean;
 }
 
 /** One card the live window is handed for a pane, oldest first. A returned run is one card. */
@@ -103,6 +113,8 @@ export interface QueuedSendInput {
   readonly text: string;
   readonly collapse: string | null;
   readonly at: number;
+  /** The send settled `steered`, not `sent` + `queued` (see the header). */
+  readonly steer?: boolean;
 }
 
 /** One read of a pane, as {@link QueuedSends.boxRead} takes it. */
@@ -135,6 +147,11 @@ function agentOf(generation: string): string {
   return cut === -1 ? generation : generation.slice(0, cut);
 }
 
+/** Steers before queued texts, each kept in send order: how the harness puts them back into the box. */
+function inBoxOrder(entries: readonly Entry[]): Entry[] {
+  return [...entries.filter((entry) => entry.steer), ...entries.filter((entry) => !entry.steer)];
+}
+
 export class QueuedSends {
   private entries: Entry[] = [];
   /** The sessions whose open entries were read back from the request files once. */
@@ -157,6 +174,7 @@ export class QueuedSends {
       state: "queued",
       busyAt: input.at,
       idleEmpty: 0,
+      steer: input.steer === true,
     });
     this.age();
   }
@@ -181,6 +199,8 @@ export class QueuedSends {
     const cards: ReceiptQueued[] = [];
     for (const entry of mine) {
       if (entry.group !== undefined && entry.group !== entry.id) continue;
+      // A steer that nobody gave back is no card: the harness took it, it does not wait.
+      if (entry.steer && entry.state !== "returned") continue;
       const run = this.runOf(entry, mine);
       cards.push({ requestId: entry.id, text: run.map((e) => e.text).join("\n"), at: entry.at, state: entry.state });
     }
@@ -231,7 +251,7 @@ export class QueuedSends {
     const idleEmpty = reading.poll && reading.turn === "idle" && reading.box === "";
     for (const entry of open) {
       if (reading.turn === "running") entry.busyAt = Math.max(entry.busyAt, readAt);
-      if (entry.state !== "queued") continue;
+      if (entry.state !== "queued" || entry.steer) continue;
       if (!idleEmpty) {
         if (reading.poll) entry.idleEmpty = 0;
         continue;
@@ -261,14 +281,38 @@ export class QueuedSends {
     }
     const gone = open.filter((entry) => entry.state === "returned" && !held.includes(entry) && (entry.seenAt ?? 0) < readAt);
     if (gone.length > 0) this.entries = this.entries.filter((entry) => !gone.includes(entry));
+    this.letSteersGo(open, held, reading);
     this.age();
     return held.map((entry) => entry.id);
   }
 
-  /** The entry's run, in order: itself alone, or every entry that came back in the box with it. */
+  /** The entry's run, in the order the box holds it (steers first): itself alone, or every entry that came back with it. */
   private runOf(entry: Entry, among: readonly Entry[]): Entry[] {
     if (entry.group === undefined) return [entry];
-    return among.filter((e) => e.group === entry.group);
+    return inBoxOrder(among.filter((e) => e.group === entry.group));
+  }
+
+  /**
+   * A steer the box does not hold on a poll that reads the turn idle has not come back: after
+   * {@link IDLE_EMPTY_POLLS} such polls in a row it is gone without a card (it landed, or the turn ended
+   * without it). Any other read of the turn starts the count again. A Stop's read-backs never count: they
+   * come before the harness may have put the text back.
+   */
+  private letSteersGo(open: readonly Entry[], held: readonly Entry[], reading: BoxReading): void {
+    if (!reading.poll) return;
+    const gone = new Set<Entry>();
+    for (const entry of open) {
+      if (!entry.steer || entry.state !== "queued" || held.includes(entry)) continue;
+      if (reading.turn !== "idle") {
+        entry.idleEmpty = 0;
+        continue;
+      }
+      if (entry.idleEmptyAt !== undefined && entry.idleEmptyAt >= reading.at) continue;
+      entry.idleEmpty++;
+      entry.idleEmptyAt = reading.at;
+      if (entry.idleEmpty >= IDLE_EMPTY_POLLS) gone.add(entry);
+    }
+    if (gone.size > 0) this.entries = this.entries.filter((entry) => !gone.has(entry));
   }
 
   private unconfirm(entry: Entry, at: number): void {
@@ -281,8 +325,10 @@ export class QueuedSends {
    * The longest run of entries, in order, whose lines together are exactly the box. The harness may
    * give back one queued text or all of them in one box; a box that holds anything else matches none.
    */
-  private heldRun(box: string, open: readonly Entry[]): Entry[] {
+  private heldRun(box: string, candidates: readonly Entry[]): Entry[] {
     if (box.trim().length === 0) return [];
+    // The harness restores its steers first and its queue after, whatever order they were sent in.
+    const open = inBoxOrder(candidates);
     for (let start = 0; start < open.length; start++) {
       for (let end = open.length; end > start; end--) {
         const run = open.slice(start, end);
@@ -302,6 +348,8 @@ export class QueuedSends {
       if (entry.state === "queued" && now - entry.busyAt > QUEUED_SEND_MS) this.unconfirm(entry, now);
       else if (entry.state === "returned" && now - (entry.seenAt ?? entry.busyAt) > QUEUED_SEND_MS) this.unconfirm(entry, now);
     }
+    // A steer nobody saw in the box has nothing to say: it goes without a card.
+    this.entries = this.entries.filter((entry) => !(entry.steer && entry.state === "unconfirmed" && entry.seenAt === undefined));
     this.entries = this.entries.filter((entry) => entry.state !== "unconfirmed" || now - (entry.unconfirmedAt ?? now) <= QUEUED_SEND_MS);
     const live = this.entries.filter((entry) => entry.state !== "unconfirmed");
     for (const entry of live.slice(0, Math.max(0, live.length - QUEUED_SENDS_MAX))) this.unconfirm(entry, now);
@@ -347,6 +395,7 @@ export class QueuedSends {
         state: "queued",
         busyAt: at,
         idleEmpty: 0,
+        steer: false,
       });
     }
     this.entries.sort((a, b) => a.at - b.at);
