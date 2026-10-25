@@ -400,6 +400,8 @@ export const ja: Dictionary = {
   "composer.protocol.expired": "送信されませんでした。30分以内にターンが終了しませんでした。",
   "composer.protocol.cancelled": "キャンセルされました。エージェントには何も送信されていません。",
   "composer.held.queued": "キューに追加されました。ターンが終了すると送信されます。",
+  "composer.held.box": "保留中。ボックスで何かが開いています。閉じると送信されます。",
+  "composer.held.draft": "保留中。ボックスが空になると送信されます。",
   "composer.held.sending": "送信中。",
   "composer.held.expired": "送信されませんでした。30分以内にターンが終了しませんでした。",
   "composer.held.paneGone": "送信されませんでした。ペインが閉じました。",

@@ -401,6 +401,8 @@ export const ko: Dictionary = {
   "composer.protocol.expired": "전송되지 않았습니다. 30분 이내에 턴이 끝나지 않았습니다.",
   "composer.protocol.cancelled": "취소되었습니다. 에이전트에 아무것도 전송되지 않았습니다.",
   "composer.held.queued": "대기열에 추가되었습니다. 턴이 끝나면 전송됩니다.",
+  "composer.held.box": "보류됨. 입력 상자에 무언가 열려 있습니다. 닫히면 전송됩니다.",
+  "composer.held.draft": "보류됨. 입력 상자가 비면 전송됩니다.",
   "composer.held.sending": "지금 전송 중입니다.",
   "composer.held.expired": "전송되지 않았습니다. 30분 이내에 턴이 끝나지 않았습니다.",
   "composer.held.paneGone": "전송되지 않았습니다. 창이 닫혔습니다.",

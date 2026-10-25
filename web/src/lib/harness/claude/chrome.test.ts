@@ -1041,6 +1041,11 @@ describe("real corpus — pinned so any change to the walk shows up as a diff", 
     { fixture: "v2-1-309-permission-denied-fresh-session--w120", statusRows: 3, draft: null, stripped: 7 },
     // Escape before the first token in that session: the prompt goes back into the box, no Interrupted row.
     { fixture: "v2-1-309-stopped-prompt-restored--w120", statusRows: 3, draft: "Write 700 numbered lines, one short fact about apples per line. No tools, no preamble, do not stop early.", stripped: 33 },
+    // Claude Code 2.1.310 turns under the transcript's echo of a sent prompt (live 2026-10-25): the
+    // operator's two-row statusline plus the mode row under an empty box.
+    { fixture: "v2-1-310-working-echo-bullets--w120", statusRows: 3, draft: null, stripped: 7 },
+    { fixture: "v2-1-310-working-echo-numbered--w120", statusRows: 3, draft: null, stripped: 7 },
+    { fixture: "v2-1-310-working-echo-one-line--w120", statusRows: 3, draft: null, stripped: 7 },
     { fixture: "v2301-queued-taken--w100", statusRows: 3, draft: null, stripped: 7 },
     { fixture: "v2301-spinner-no-timer--w100", statusRows: 2, draft: null, stripped: 6 },
     // The /cost and /usage panel drawn over a live box (M56 spec 15 review): the box and its footer stay.

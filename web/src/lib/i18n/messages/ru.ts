@@ -349,6 +349,8 @@ export const ru: Dictionary = {
   "composer.protocol.expired": "Не отправлено. Ход не завершился в течение 30 минут.",
   "composer.protocol.cancelled": "Отменено. Агенту ничего не отправлено.",
   "composer.held.queued": "В очереди. Отправится после завершения хода.",
+  "composer.held.box": "Задержано. У поля ввода что-то открыто; отправится, когда закроется.",
+  "composer.held.draft": "Задержано. Отправится, когда поле ввода опустеет.",
   "composer.held.sending": "Отправляется.",
   "composer.held.expired": "Не отправлено. Ход не завершился в течение 30 минут.",
   "composer.held.paneGone": "Не отправлено. Панель закрылась.",

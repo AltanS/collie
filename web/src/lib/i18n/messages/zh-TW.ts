@@ -389,6 +389,8 @@ export const zhTW: Dictionary = {
   "composer.protocol.expired": "未傳送。這一輪未在 30 分鐘內結束。",
   "composer.protocol.cancelled": "已取消。沒有任何內容傳送給代理。",
   "composer.held.queued": "已排入佇列。在這一輪結束時傳送。",
+  "composer.held.box": "已暫存。輸入框處有內容開啟；關閉後傳送。",
+  "composer.held.draft": "已暫存。輸入框清空後傳送。",
   "composer.held.sending": "正在傳送。",
   "composer.held.expired": "未傳送。這一輪未在 30 分鐘內結束。",
   "composer.held.paneGone": "未傳送。窗格已關閉。",

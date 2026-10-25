@@ -343,6 +343,8 @@ export const fr: Dictionary = {
   "composer.protocol.expired": "Non envoyé. Le tour ne s'est pas terminé dans les 30 minutes.",
   "composer.protocol.cancelled": "Annulé. Rien n'a été envoyé à l'agent.",
   "composer.held.queued": "En file d'attente. Envoi à la fin du tour.",
+  "composer.held.box": "En attente. Quelque chose est ouvert sur la boîte ; envoi dès sa fermeture.",
+  "composer.held.draft": "En attente. Envoi quand la boîte est vide.",
   "composer.held.sending": "Envoi en cours.",
   "composer.held.expired": "Non envoyé. Le tour ne s'est pas terminé dans les 30 minutes.",
   "composer.held.paneGone": "Non envoyé. Le panneau s'est fermé.",

@@ -4342,7 +4342,7 @@ describe("the held send (M56 spec 15)", () => {
     // Windows has no POSIX mode bits, so only the mode expectation waits for another platform.
     if (process.platform !== "win32") expect(statSync(file).mode & 0o777).toBe(0o600);
     expect(r.protocol.heldOf("main", "%1")).toEqual([
-      { requestId: "held-000001", mode: "send", text: "then give it a title", heldAt: 1_000_120, expiresAt: 1_000_120 + 30 * 60 * 1000, state: "held" },
+      { requestId: "held-000001", mode: "send", text: "then give it a title", heldAt: 1_000_120, expiresAt: 1_000_120 + 30 * 60 * 1000, state: "held", cause: "turn_running" },
     ]);
     expect(r.protocol.recent("%1")[0]).toMatchObject({ requestId: "held-000001", outcome: "held" });
   });
@@ -6191,6 +6191,48 @@ describe("real Claude Code 2.1.302 turns with a list on screen (captured 2026-10
     const r = rig({ version: "2.1.302" });
     liveFixture(r.pane, "claude--v2302-working-list-echo--w119.txt");
     expect((await r.send("then give it a title")).receipt).toMatchObject({ outcome: "sent" });
+  });
+});
+
+describe("a send into a running Claude Code turn under a wrapped prompt echo (2.1.310, live 2026-10-25)", () => {
+  // The transcript echoes the operator's long prompt as `❯ ` and rows at column 2; the whole-screen cue
+  // read took it for a pointed list (and, with the answer's numbered list, for a dialog), so the send was
+  // refused not_free and held to the turn's end. Claude's profile names the echo (`idle.promptEchoes`).
+  const liveFixture = (pane: FakePane, name: string): void => {
+    const rows = readFileSync(join(import.meta.dir, `../../web/src/fixtures/panes/${name}`), "utf8").split("\r\n");
+    // eslint-disable-next-line no-control-regex
+    const plain = (row: string): string => row.replace(/\u001b\[[0-9;]*m/gu, "");
+    const boxRow = rows.findIndex((row, i) => i > 0 && plain(row).startsWith("❯") && plain(rows[i - 1]!).startsWith("─".repeat(20)));
+    expect(boxRow).toBeGreaterThan(0);
+    pane.beforeRead = (p) => {
+      const shown = [...rows];
+      if (p.box !== "") shown[boxRow] = `❯ ${p.box}`;
+      p.fixed = shown.join("\r\n");
+    };
+  };
+
+  for (const name of ["claude--v2-1-310-working-echo-numbered--w120.txt", "claude--v2-1-310-working-echo-bullets--w120.txt"]) {
+    test(`${name}: the send goes in with Enter for Claude's queue, never refused not_free nor held`, async () => {
+      const holds = new HoldStore(join(dir, "held"));
+      const r = rig({ version: "2.1.310", holds });
+      liveFixture(r.pane, name);
+      const answer = await r.send("then give it a title");
+      expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true, keys: ["probe", "Backspace", "Enter"] });
+      expect(answer.receipt?.reason).not.toBe("not_free");
+      expect(r.pane.keysSeen.at(-1)).toBe("Enter");
+      expect(holds.list()).toEqual([]);
+    });
+  }
+
+  test("the same screen without the profile's echo rule is refused not_free and held, as it was live", async () => {
+    const holds = new HoldStore(join(dir, "held-off"));
+    const r = rig({ version: "2.1.310", holds, edit: (profile) => ({ ...profile, idle: { ...profile.idle, promptEchoes: false } }) });
+    liveFixture(r.pane, "claude--v2-1-310-working-echo-numbered--w120.txt");
+    const answer = await r.send("then give it a title");
+    expect(answer.receipt?.outcome).toBe("held");
+    expect(r.pane.keysSeen).not.toContain("Enter");
+    // The held row keeps the refusal it came from, so the phone says the box, not the turn.
+    expect(r.protocol.heldOf("main", "%1")).toEqual([expect.objectContaining({ state: "held", cause: "not_free" })]);
   });
 });
 

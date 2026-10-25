@@ -570,6 +570,54 @@
   }
  },
  {
+  "fixture": "claude--v2-1-310-working-echo-bullets--w120.txt",
+  "frame": {
+   "top": 54,
+   "prompt": 55,
+   "bottom": 56,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 57,
+    "last": 59
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2-1-310-working-echo-numbered--w120.txt",
+  "frame": {
+   "top": 46,
+   "prompt": 47,
+   "bottom": 48,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 49,
+    "last": 51
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2-1-310-working-echo-one-line--w120.txt",
+  "frame": {
+   "top": 54,
+   "prompt": 55,
+   "bottom": 56,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 57,
+    "last": 59
+   },
+   "footer": null
+  }
+ },
+ {
   "fixture": "claude--v2283-ask-long-question--w50.txt",
   "frame": null
  },

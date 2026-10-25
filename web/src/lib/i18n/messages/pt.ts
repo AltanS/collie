@@ -343,6 +343,8 @@ export const pt: Dictionary = {
   "composer.protocol.expired": "Não enviado. O turno não terminou dentro de 30 minutos.",
   "composer.protocol.cancelled": "Cancelado. Nada foi enviado ao agente.",
   "composer.held.queued": "Na fila. Envia quando o turno terminar.",
+  "composer.held.box": "Retido. Há algo aberto na caixa; envia quando fechar.",
+  "composer.held.draft": "Retido. Envia quando a caixa estiver vazia.",
   "composer.held.sending": "Enviando agora.",
   "composer.held.expired": "Não enviado. O turno não terminou dentro de 30 minutos.",
   "composer.held.paneGone": "Não enviado. O painel foi fechado.",

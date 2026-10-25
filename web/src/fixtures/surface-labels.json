@@ -536,6 +536,21 @@
    "version": "2.1.309",
    "state": "draft"
   },
+  "claude--v2-1-310-working-echo-bullets--w120.txt": {
+   "harness": "claude",
+   "version": "2.1.310",
+   "state": "running"
+  },
+  "claude--v2-1-310-working-echo-numbered--w120.txt": {
+   "harness": "claude",
+   "version": "2.1.310",
+   "state": "running"
+  },
+  "claude--v2-1-310-working-echo-one-line--w120.txt": {
+   "harness": "claude",
+   "version": "2.1.310",
+   "state": "running"
+  },
   "claude--v2283-ask-long-question--w50.txt": {
    "harness": "claude",
    "version": "2.1.283",

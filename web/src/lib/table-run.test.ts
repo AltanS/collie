@@ -298,6 +298,9 @@ describe("tableRuns — the whole pane corpus", () => {
       "claude--box-table-vs16-emoji.txt 0..10",
       "claude--trust-prompt-unnumbered.txt 5..10",
       "claude--trust-prompt.txt 5..10",
+      // The same Bluefin motd table in the scrollback of a running Claude Code 2.1.310 turn (the prompt
+      // echo capture, 2026-10-25): a real table again, at the same rows.
+      "claude--v2-1-310-working-echo-numbered--w120.txt 5..10",
       // THE SCREEN ADR 0072 WAS TAKEN FOR (discussion #301). Claude's dynamic-workflow view: the
       // phase list on the left, the running agents on the right, 226 columns wide. The reporter saw
       // it on a phone as a band of stacked rules with `· 74…` cut off the right edge, which is what

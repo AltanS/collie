@@ -454,6 +454,16 @@ export interface Profile {
      */
     readonly dialogsInBox?: boolean;
     /**
+     * True for a harness whose transcript echoes each sent prompt in its prompt row's shape: the prompt
+     * glyph and the text, then the wrapped or later lines at `frame.continuationIndent`, a blank row
+     * after it (Claude Code's `❯ ` echo, 2.1.309 and 2.1.310, 2026-10-25). The bridge's whole-screen cue
+     * read over a found box then reads such a run above the box as blank: a long prompt wraps into rows
+     * that line up like a pointed list, and a numbered list in the answer under it made the read strong,
+     * so a send into a running turn was held instead of queued. A run with an option row of its own (a
+     * number, a checkbox) stays in the read. Optional.
+     */
+    readonly promptEchoes?: boolean;
+    /**
      * Notices the harness draws above its live box while the box keeps the keys, each named by its
      * head row. A notice is that head, up to three continuation rows indented by two spaces, and one
      * row of `<digit>: <label>` keys, with only blank rows under it down to the box. Its keys act only
@@ -1186,7 +1196,11 @@ export function parseProfile(raw: JsonValue): Profile {
   if (idleNode.dialogsInBox !== undefined && idleNode.dialogsInBox !== true && idleNode.dialogsInBox !== false) {
     fail("idle.dialogsInBox", "must be true or false");
   }
-  const withDialogs: Profile["idle"] = idleNode.dialogsInBox === true ? { ...withOverlay, dialogsInBox: true } : withOverlay;
+  const withDialogs0: Profile["idle"] = idleNode.dialogsInBox === true ? { ...withOverlay, dialogsInBox: true } : withOverlay;
+  if (idleNode.promptEchoes !== undefined && idleNode.promptEchoes !== true && idleNode.promptEchoes !== false) {
+    fail("idle.promptEchoes", "must be true or false");
+  }
+  const withDialogs: Profile["idle"] = idleNode.promptEchoes === true ? { ...withDialogs0, promptEchoes: true } : withDialogs0;
   const withNotices: Profile["idle"] = idleNode.notices === undefined ? withDialogs : { ...withDialogs, notices: parseNotices(idleNode.notices) };
   const withGaps: Profile["idle"] = idleNode.noticeGaps === undefined ? withNotices : { ...withNotices, noticeGaps: parseNoticeGaps(idleNode.noticeGaps) };
   const withHint: Profile["idle"] = idleNode.inlineHint === undefined ? withGaps : { ...withGaps, inlineHint: parseInlineHint(idleNode.inlineHint) };

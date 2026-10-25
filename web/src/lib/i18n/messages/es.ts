@@ -404,6 +404,8 @@ export const es: Dictionary = {
   "composer.protocol.expired": "No enviado. El turno no terminó en 30 minutos.",
   "composer.protocol.cancelled": "Cancelado. No se envió nada al agente.",
   "composer.held.queued": "En cola. Se enviará cuando termine el turno.",
+  "composer.held.box": "Retenido. Hay algo abierto en el cuadro; se enviará cuando se cierre.",
+  "composer.held.draft": "Retenido. Se enviará cuando el cuadro esté vacío.",
   "composer.held.sending": "Enviando ahora.",
   "composer.held.expired": "No enviado. El turno no terminó en 30 minutos.",
   "composer.held.paneGone": "No enviado. El panel se cerró.",

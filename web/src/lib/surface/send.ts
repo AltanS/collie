@@ -305,6 +305,14 @@ export type HeldState = "held" | "running" | "ended";
  * (`expired`, `refused`, `typed_not_submitted`, `unknown`); its text stays for a Resend until the
  * person dismisses it. A request that went out, or that the person cancelled, has no row.
  */
+/**
+ * What holds a held request now: the refusal it was held from (a running turn, something open at the
+ * box, a box that did not read twice the same in time, a probe that found the box not free, a draft).
+ * The phone picks the row's sentence by it.
+ */
+export const HELD_CAUSES = ["turn_running", "not_free", "bound", "draft_present", "probe_failed"] as const;
+export type HeldCause = (typeof HELD_CAUSES)[number];
+
 export interface HeldRow {
   readonly requestId: string;
   readonly mode: SendMode;
@@ -317,6 +325,8 @@ export interface HeldRow {
   /** On an `ended` row: how it closed. */
   readonly outcome?: SendOutcome;
   readonly reason?: SendReason;
+  /** What holds it ({@link HeldCause}); absent on a row a bridge before 1.24.1 held. */
+  readonly cause?: HeldCause;
 }
 
 /** What `DELETE /api/send/<id>` answers (M56 spec 15): a held request cancelled, or an ended row dismissed. */

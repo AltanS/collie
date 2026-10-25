@@ -117,6 +117,22 @@ describe("the held-send card", () => {
     expect(document.querySelector('[data-slot="held-card"]')).toHaveAttribute("data-mode", "single");
   });
 
+  it("a held row says what holds it: the turn, something open at the box, or a draft", () => {
+    const cases: [HeldRow["cause"], string][] = [
+      ["turn_running", "Queued. Sends when the turn ends."],
+      [undefined, "Queued. Sends when the turn ends."],
+      ["not_free", "Held. Something is open at the box; sends when it clears."],
+      ["bound", "Held. Something is open at the box; sends when it clears."],
+      ["probe_failed", "Held. Something is open at the box; sends when it clears."],
+      ["draft_present", "Held. Sends when the box is empty."],
+    ];
+    for (const [cause, sentence] of cases) {
+      renderComposer({ held: [row("req00001", "held", cause === undefined ? {} : { cause })] });
+      expect(document.querySelector('[data-slot="held-row"]')).toHaveTextContent(sentence);
+      cleanup();
+    }
+  });
+
   it("two held rows start collapsed: a count, the first text on two lines, a Show all toggle and no Cancel", () => {
     renderComposer({ held: [row("req00001", "held"), row("req00002", "held", { text: "second\nline" })] });
     const card = document.querySelector('[data-slot="held-card"]')!;

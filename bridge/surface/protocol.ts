@@ -118,7 +118,7 @@ import { splitLines } from "../../web/src/lib/blocks.ts";
 import { noEchoPromptIn } from "../../web/src/lib/no-echo.ts";
 import { isUploadImagePath, pastePieces } from "../../web/src/lib/upload-path.ts";
 import { pointsAt } from "../../web/src/lib/surface/command-list.ts";
-import { commandListAt, isRunningRow, noticeOver, ownCommandList, readCues, readCuesFor, runningSign, withoutCommandList, type CommandListRead, type Cue } from "../../web/src/lib/surface/cues.ts";
+import { commandListAt, isRunningRow, noticeOver, ownCommandList, readCues, readCuesFor, runningSign, withoutCommandList, withoutPromptEchoes, type CommandListRead, type Cue } from "../../web/src/lib/surface/cues.ts";
 import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
 import { findInputFrame, rowText, type Frame, type FrameRow } from "../../web/src/lib/surface/frame.ts";
 import { liftAsk, liftDialog, readerBlocks } from "../../web/src/lib/surface/lift.ts";
@@ -1242,6 +1242,21 @@ function heldDetail(end: Ended): string {
   return end.reason === "turn_running" ? HELD : HELD_BOX;
 }
 
+/** The cause a held request keeps from the refusal it was held from ({@link holdsEnd} lets only these through). */
+function holdCauseOf(end: Ended): HoldCause {
+  switch (end.reason) {
+    case "turn_running":
+    case "not_free":
+    case "bound":
+    case "draft_present":
+    case "probe_failed":
+      return end.reason;
+    default:
+      // holdsEnd holds no other refusal; a box hold is the plain reading if one ever does.
+      return "not_free";
+  }
+}
+
 /** What a poll's Surface says holds a marked request now, or null when it says nothing new. */
 function causeOf(surface: Surface): HoldCause | null {
   if (surface.turn === "running") return "turn_running";
@@ -2166,13 +2181,14 @@ export class SendProtocol {
     else if (end.reason !== "turn_running") this.quietWatch(target.session, target.paneId);
     const command = state.command || request.mode === "command";
     const waitsForTurn = command && !commandCannotSteer(state.match);
-    const input = { id: request.id, session: target.session, paneId: target.paneId, harness: target.harness, mode: request.mode, text: request.text, revision: request.revision ?? 0, command, waitsForTurn };
+    // What holds it, for the phone's sentence and a marked send's caller: the refusal it came from, or
+    // what the newest request ahead of it waits on when it joins the queue behind.
+    const ahead = holds.waiting(target.session, target.paneId).at(-1)?.cause;
+    const cause = end.extra.detail === HELD_BEHIND ? (ahead ?? "turn_running") : holdCauseOf(end);
+    const input = { id: request.id, session: target.session, paneId: target.paneId, harness: target.harness, mode: request.mode, text: request.text, revision: request.revision ?? 0, command, waitsForTurn, cause };
     if (request.draftHolds === true) {
-      // A marked send keeps its caller's clock, and what holds it: its own draft, or what the newest
-      // request ahead of it waits on when it joins the queue behind.
-      const ahead = holds.waiting(target.session, target.paneId).at(-1)?.cause;
-      const cause: HoldCause = end.reason === "draft_present" ? "draft_present" : end.extra.detail === HELD_BEHIND ? (ahead ?? "turn_running") : "turn_running";
-      holds.add(request.holdUntil === undefined ? { ...input, draftHolds: true, cause } : { ...input, draftHolds: true, cause, expiresAt: request.holdUntil });
+      // A marked send keeps its caller's clock.
+      holds.add(request.holdUntil === undefined ? { ...input, draftHolds: true } : { ...input, draftHolds: true, expiresAt: request.holdUntil });
     } else {
       holds.add(input);
     }
@@ -3261,7 +3277,9 @@ export class SendProtocol {
     // The frameless reads never see a row the profile names as a footer row (the frame found it), nor
     // the typed command's own list over or under the box (ownCommandList): Enter there picks that command.
     const ownList = ownCommandList(texts, frame, idle, rows);
-    const bare = withoutNamedRows(withoutCommandList(rows, ownList), frame);
+    // The transcript's echo of a sent prompt above the box (`idle.promptEchoes`) is no pointed list either:
+    // a long prompt wraps into rows aligned under its glyph (withoutPromptEchoes).
+    const bare = withoutPromptEchoes(withoutNamedRows(withoutCommandList(rows, ownList), frame), frame, idle);
     // A notice over the box (`idle.notices`) is left out of every read as well: its keys act only on a
     // box holding one of its digits, so its key row is no prompt that holds the keys.
     const notice = noticeOver(texts, frame, idle);
