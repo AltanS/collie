@@ -1144,6 +1144,62 @@
   }
 }
 
+/* THE TOP EDGE OF A HOME-SCREEN APP, painted by the page (#597, after #203).
+ *
+ * iOS 26.1 and later draw a system blur over the top of an installed web app, and a page cannot
+ * switch it off. WebKit leaves it out when the page's own top edge is a solid, opaque element it can
+ * sample: a REAL element (a pseudo-element is ignored), `position: fixed`, within 4px of the top,
+ * at least 6px tall and at least 80% as wide as the viewport. Otherwise it falls back to the page
+ * colour and blurs the strip. These numbers are field reports (rexdotsh/kleis#97, WebKit bugs
+ * 295569 and 317153), not an Apple document, and there is no iPad in the workspace to prove them.
+ *
+ * #203 took the phone out of that fallback with `apple-mobile-web-app-status-bar-style: default`:
+ * the web view starts below an opaque bar, and the header (sticky, opaque, 100% wide below 640px)
+ * is the edge. An iPad is wider than the header. The column header stops at `max-w-screen-sm`
+ * (640px), 77% of a portrait iPad Pro 11 (834pt) and 54% of it in landscape, and on the wide layout
+ * the top edge is a 48px rail beside a tab row. Nothing at the top reaches 80% of the width, so the
+ * heuristic finds no edge and the blur washes over the mark and the first row (the reporter's
+ * report: the row under it, "SPACES", stays sharp).
+ *
+ * So the page states the edge itself: one element across the whole top, in the header's own colour
+ * (`--band-ground`, which follows the theme), as tall as the top inset. It is `pointer-events:
+ * none`, `position: fixed` and out of flow, so it moves nothing; the header already pads by the
+ * same inset. On a phone that starts below an opaque bar the inset is 0 and it has no height.
+ *
+ * THE FLOOR. Where the inset is 0 the strip has no height to sample, and an iPad may report 0 under
+ * `default`. From 768px wide it is therefore at least `--top-edge-floor` (6px, the smallest height
+ * the heuristic accepts). That covers 6px of page at the very top, where the header and the rail
+ * keep at least 2px of air above their 44px controls. A phone gets no floor, so nothing changes
+ * there.
+ *
+ * ONLY IN A STANDALONE iOS WEB VIEW: the same gate as `--app-h` above, so a browser tab, Android and
+ * desktop never paint it. z-index 25 is above the sticky header (20) and below the strip rung (30),
+ * the toasts (40) and the sheets (50). */
+[data-slot="top-edge"] {
+  display: none;
+}
+@media (display-mode: standalone) {
+  @supports (-webkit-touch-callout: none) {
+    :root {
+      --top-edge-floor: 0px;
+    }
+    @media (min-width: 768px) {
+      :root {
+        --top-edge-floor: 6px;
+      }
+    }
+    [data-slot="top-edge"] {
+      display: block;
+      position: fixed;
+      inset: 0 0 auto 0;
+      z-index: 25;
+      height: max(env(safe-area-inset-top, 0px), var(--top-edge-floor));
+      background: var(--band-ground);
+      pointer-events: none;
+    }
+  }
+}
+
 @layer base {
   * {
     /* Full-strength ring, not /50: halved, the focus indicator measures 1.77:1 in light and 1.87:1

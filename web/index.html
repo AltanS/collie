@@ -316,6 +316,10 @@
     </style>
   </head>
   <body>
+    <!-- The page's own top edge in a Home Screen app (index.css, "THE TOP EDGE"). A real element, not
+         a pseudo-element, and outside #root so React's createRoot never replaces it. Empty and
+         invisible everywhere but a standalone iOS web view. -->
+    <div data-slot="top-edge" aria-hidden="true"></div>
     <div id="root">
       <div class="boot-splash" role="status" aria-label="Loading Collie">
         <span class="boot-splash__mark" aria-hidden="true"></span>
