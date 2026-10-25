@@ -8,7 +8,10 @@ import { SectionLabel } from "@/components/ui/section-label";
 import { BottomSheet } from "@/components/ui/sheet";
 import type { StartAsk, StartOutcome } from "@/hooks/use-spaces";
 import { useLocale } from "@/hooks/use-locale";
+import { useNav } from "@/hooks/use-nav";
+import { saveDraft } from "@/lib/drafts";
 import { t } from "@/lib/i18n";
+import { panePath } from "@/lib/nav";
 import { visibleLine } from "@/lib/no-prompts";
 import type { Scope } from "@/lib/scope";
 import { setStatus } from "@/lib/status";
@@ -29,16 +32,21 @@ interface RunAsk {
 }
 
 /**
- * Lets a one-line command in the agent's reply run in a new shell tab beside the pane, in the pane's
- * folder, and steps into it, where a password prompt is answered with Type. It always asks first: the
- * line is the agent's words, and a tap runs it in a real shell. The sheet shows it with any hidden
- * character written as its code, as the no-prompts confirm does.
+ * Lets a one-line command in the agent's reply run in a shell in the pane's folder, where a password
+ * prompt is answered with Type. Nothing runs on the tap alone: the line is the agent's words.
+ *
+ * A shell already open in that space and folder is reused: the line goes into its reply box and the
+ * tap steps into it, so the operator sees what that shell is doing before Send. Collie cannot tell a
+ * shell at its prompt from one running a program, so it never types into one unseen. With no such
+ * shell, a sheet asks first, showing the line with any hidden character written as its code as the
+ * no-prompts confirm does, and Run starts it in a new tab beside the pane.
  *
  * The sheet is portalled to <body> for the reason `ImageSheet` gives: the chat body is a transformed
  * ancestor that would otherwise contain its `fixed` layer.
  */
 export function RunInShellProvider({
   beside,
+  reuse,
   folder,
   scope,
   start,
@@ -46,6 +54,8 @@ export function RunInShellProvider({
 }: {
   /** Absent: this pane offers no run (a shell, or a pane not on screen yet). */
   beside: RunBeside | undefined;
+  /** The pane id of the shell to reuse, when one is open in the same space and folder. */
+  reuse: string | undefined;
   /** The folder as the sheet shows it, home shortened. */
   folder: string;
   scope: Scope | undefined;
@@ -55,7 +65,15 @@ export function RunInShellProvider({
   useLocale();
   const [ask, setAsk] = useState<RunAsk | null>(null);
   const [busy, setBusy] = useState(false);
-  const offer = useCallback((line: string) => setAsk({ line, requestId: mintRequestId(), unknown: false }), []);
+  const nav = useNav();
+  const offer = useCallback(
+    (line: string) => {
+      if (reuse === undefined) return setAsk({ line, requestId: mintRequestId(), unknown: false });
+      saveDraft(scope, reuse, line);
+      nav.open(panePath(reuse, scope));
+    },
+    [reuse, scope, nav],
+  );
   const close = () => {
     if (!busy) setAsk(null);
   };

@@ -19,6 +19,7 @@ import { useNav } from "@/hooks/use-nav";
 import { useDashPrefs, openForCount } from "@/hooks/use-dash-prefs";
 import { useAgentStart } from "@/hooks/use-agent-start";
 import { useLaunchers } from "@/lib/launchers";
+import { reusableShell } from "@/lib/run-line";
 import { shortenHome } from "@/lib/shorten-home";
 import { useNoPromptsGuard } from "@/hooks/use-no-prompts-guard";
 import { buzz } from "@/lib/haptics";
@@ -378,6 +379,7 @@ export function AgentChat({
   // Every pane of the herd, for the pane menu's Pin to top row on both doors (lib/pins.ts reads it to
   // tell a live pin from a dormant one), and this device's pins, for the switcher's Pinned section.
   const herd = useMemo(() => [...agents, ...shellPanes], [agents, shellPanes]);
+  const runShell = useMemo(() => (agent === undefined ? undefined : reusableShell(agent, shellPanes)), [agent, shellPanes]);
   const pins = usePins();
   // This device may not type into agents: the backend rejects every write, so the composer drops to
   // read-only (and shows a banner). The mirror still polls (reading is fine). Either write gate puts
@@ -2599,6 +2601,7 @@ export function AgentChat({
             <StretchTextContext.Provider value={prefs.stretchText}>
             <RunInShellProvider
               beside={agent && !isShell && agent.cwd ? { paneId, workspaceId: agent.workspaceId, cwd: agent.cwd } : undefined}
+              reuse={runShell?.paneId}
               folder={shortenHome(agent?.cwd ?? "", launchersHome) || "~"}
               scope={scope}
               start={start}

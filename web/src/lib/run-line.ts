@@ -1,3 +1,5 @@
+import type { AgentView } from "./types";
+
 // Which code blocks in an agent's reply can be run as they are. A run types one line into a fresh
 // shell (ADR 0095), and the bridge refuses a line over its 200-character limit or with a control
 // character in it, so only a block that is a single command offers one.
@@ -19,4 +21,24 @@ export function runnableLine(lang: string, text: string): string | null {
   const line = trimmed.replace(/^\$(\s+|$)/u, "");
   if (line === "" || [...line].length > MAX_RUN_CHARS) return null;
   return line;
+}
+
+/**
+ * The shell a run from this pane's chat goes to instead of a new tab: one already open in the same
+ * space and folder, on the same machine and session, the most recently used first. One shell per
+ * folder, so repeated runs do not leave a tab each behind.
+ */
+export function reusableShell(pane: AgentView, shells: readonly AgentView[]): AgentView | undefined {
+  let best: AgentView | undefined;
+  let bestAt = -1;
+  for (const s of shells) {
+    if (s.kind !== "shell" || s.paneId === pane.paneId) continue;
+    if (s.workspaceId !== pane.workspaceId || s.cwd !== pane.cwd || s.host !== pane.host || s.session !== pane.session) continue;
+    const at = Math.max(s.lastActiveAt ?? 0, s.lastSeenAt ?? 0);
+    if (at > bestAt) {
+      best = s;
+      bestAt = at;
+    }
+  }
+  return best;
 }

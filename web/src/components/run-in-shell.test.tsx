@@ -1,27 +1,44 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 
 import type { StartAsk, StartOutcome } from "@/hooks/use-spaces";
+import { loadDraftEntry } from "@/lib/drafts";
 
 import { MarkdownText } from "./markdown-text";
 import { RunInShellProvider, type RunBeside } from "./run-in-shell";
 
 // The load-bearing rules: only a pane's chat offers a run, only for a one-line shell block, never
-// without a confirm, and a retry after an unconfirmed start reuses its request id.
+// without a confirm or an open shell's own Send, and a retry after an unconfirmed start reuses its
+// request id.
 
 const BESIDE: RunBeside = { paneId: "w7:p8", workspaceId: "w7", cwd: "/home/you/app" };
 const REPLY = "Run this:\n\n```bash\nsudo systemctl restart docker\n```\n\nand this:\n\n```bash\ncd app\nnpm test\n```";
 
-function setup(outcomes: StartOutcome[], beside: RunBeside | null = BESIDE) {
+function Where() {
+  return <p data-testid="where">{useLocation().pathname}</p>;
+}
+
+function setup(outcomes: StartOutcome[], beside: RunBeside | null = BESIDE, reuse?: string) {
   const asks: StartAsk[] = [];
   const start = vi.fn(async (ask: StartAsk): Promise<StartOutcome> => {
     asks.push(ask);
     return outcomes.shift() ?? { kind: "done" };
   });
   render(
-    <RunInShellProvider beside={beside ?? undefined} folder="~/app" scope={undefined} start={start}>
-      <MarkdownText text={REPLY} />
-    </RunInShellProvider>,
+    <MemoryRouter initialEntries={["/pane/w7%3Ap8"]}>
+      <Routes>
+        <Route
+          path="*"
+          element={
+            <RunInShellProvider beside={beside ?? undefined} reuse={reuse} folder="~/app" scope={undefined} start={start}>
+              <MarkdownText text={REPLY} />
+              <Where />
+            </RunInShellProvider>
+          }
+        />
+      </Routes>
+    </MemoryRouter>,
   );
   return { asks, start };
 }
@@ -37,6 +54,15 @@ describe("Run in shell", () => {
   it("offers nothing where the screen gives no pane to run beside", () => {
     setup([], null);
     expect(runButtons()).toHaveLength(0);
+  });
+
+  it("hands the line to a shell already open in the folder, in its reply box, and runs nothing itself", () => {
+    const { start } = setup([], BESIDE, "w7:p9");
+    fireEvent.click(runButtons()[0]!);
+    expect(start).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("run-in-shell-command")).toBeNull();
+    expect(loadDraftEntry(undefined, "w7:p9")?.text).toBe("sudo systemctl restart docker");
+    expect(screen.getByTestId("where").textContent).toBe("/pane/w7%3Ap9");
   });
 
   it("offers nothing without the provider at all", () => {
