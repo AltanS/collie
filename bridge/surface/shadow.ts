@@ -187,6 +187,19 @@ export class SurfaceShadow {
   }
 
   /**
+   * The input box of the pane's newest screen read and when it was read (ADR 0122): its text, "" when
+   * empty or showing the placeholder, null when that read found no box (a dialog over it, an unreadable
+   * screen). Null before the pane's first read. The Send Protocol reads it for queued sends that came
+   * back to the box; the box text never leaves the bridge from here.
+   */
+  boxOf(paneId: string): { readonly box: string | null; readonly at: number } | null {
+    const fold = this.panes.get(paneId)?.fold;
+    if (fold?.screen == null) return null;
+    const frame = fold.screenRead?.frame ?? null;
+    return { box: frame === null ? null : frame.placeholder ? "" : frame.interior.text, at: fold.screen.at };
+  }
+
+  /**
    * Whether a Stop (M68) has a key to press on this pane: the pane was read under a profile whose
    * `keys.interrupt` names a key, and the profile is not revoked at the binary's version. The phone
    * draws its Stop button from this and from nothing else, so no harness name lives in the web app.

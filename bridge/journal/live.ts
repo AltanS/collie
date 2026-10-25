@@ -40,6 +40,7 @@ import type { Cursor } from "./cursor.ts";
 import { NO_CURSOR } from "./cursor.ts";
 import type { RowReducer } from "./reduce.ts";
 import type { TranscriptStore } from "./store.ts";
+import { receiptQueue, type QueuedSendWire, type ReceiptQueued } from "./receipt-queue.ts";
 import type { AgentSessionRef, JournalAdapter, TranscriptEntry } from "./types.ts";
 import { LIVE_TURNS, MAX_PAGE_ROWS, pageStart } from "./turns.ts";
 import { redactText } from "../redact.ts";
@@ -175,10 +176,26 @@ export interface ChatWindowBody {
    * this wire does not have. The 304 still works: the ETag is over these bytes, so a queue that
    * changed is a different body and a queue that did not is the same one.
    *
-   * ONE harness fills it. Claude Code and Muse record their queues in the log; the other five do not record one,
-   * and answer `[]` (`journal/reduce.ts` § `RowReducer.queued`).
+   * Claude Code and Muse record their queues in the log, and their reducers fill it. Every other
+   * harness records none (`journal/reduce.ts` § `RowReducer.queued`); for those the list takes the
+   * sends Collie's own receipts say are queued and the journal does not show as a prompt yet
+   * (ADR 0122, `journal/receipt-queue.ts`), and {@link queuedFrom} says so.
    */
   queued: string[];
+  /**
+   * `receipts` when {@link queued} came from Collie's receipts rather than the journal: the same texts
+   * stand in {@link queuedSends} with their request ids, and a phone that reads both draws them once.
+   * ABSENT otherwise, so a body with no receipt queue is byte-identical to before.
+   */
+  queuedFrom?: "receipts";
+  /**
+   * The pane's open queued sends from Collie's receipts (ADR 0122), oldest first: each request id,
+   * whether it waits in the harness (`queued`) or a read showed it back in the input box (`returned`),
+   * and its text, masked like {@link queued}. A harness that records its queue in the log gets only
+   * `returned` rows here. STATE, whole on every answer, like {@link queued}. ABSENT when there is none,
+   * and from a bridge one release behind.
+   */
+  queuedSends?: QueuedSendWire[];
   /**
    * The keys that deliver {@link queued} now, in the neutral spelling, when this session's harness
    * declares any (`JournalAdapter.sendQueuedNow`). ABSENT for every other harness, so their bodies are
@@ -273,6 +290,7 @@ export function redactChatBody(body: ChatBody): ChatBody {
   const upserts = body.upserts.map(redactEntry);
   if (body.page === "older") return { ...body, upserts };
   const masked: ChatWindowBody = { ...body, upserts, queued: body.queued.map(redactText) };
+  if (body.queuedSends !== undefined) masked.queuedSends = body.queuedSends.map((row) => ({ ...row, text: redactText(row.text) }));
   if (body.lastPrompt !== undefined) {
     masked.lastPrompt = { ...body.lastPrompt, text: redactText(body.lastPrompt.text) };
   }
@@ -615,7 +633,7 @@ class LiveWindow {
    * everything after each instead, held to `limit` rows at least and {@link MAX_PAGE_ROWS} at most
    * (`journal/turns.ts`). That is a first paint.
    */
-  body(after: ChatAfter | null, limit: number): ChatWindowBody {
+  body(after: ChatAfter | null, limit: number, receipts: readonly ReceiptQueued[] = []): ChatWindowBody {
     const rows =
       after !== null && after.gen === this.gen
         ? this.rows.filter((row) => row.rev > after.rev)
@@ -637,6 +655,16 @@ class LiveWindow {
     };
     // Added only when declared, so every other harness's body is byte-identical to before.
     if (this.adapter.sendQueuedNow !== undefined) body.sendQueuedNow = [...this.adapter.sendQueuedNow];
+    // Collie's own queued sends (ADR 0122), checked against every prompt the window holds, not the page.
+    if (receipts.length > 0) {
+      const recordsQueue = this.adapter.recordsQueue === true;
+      const fromReceipts = receiptQueue(receipts, this.rows.map((row) => row.entry), recordsQueue);
+      if (fromReceipts.rows.length > 0) body.queuedSends = fromReceipts.rows;
+      if (!recordsQueue && fromReceipts.queued.length > 0) {
+        body.queued = [...body.queued, ...fromReceipts.queued];
+        body.queuedFrom = "receipts";
+      }
+    }
     // Over every row the window holds, not the `limit` sent: the point is the prompt the first paint
     // left out. A window that opened mid-run holds none, and then the one looked up behind its front
     // stands in, until a prompt the window does hold replaces it.
@@ -725,11 +753,16 @@ export class LiveWindows {
    * place the adapter can confine now (`TranscriptSource.pending`, pi only). That window answers an
    * empty session from its start under the new session's tag, and the same window starts reading
    * when the file appears, because `resolve` then answers the same key (#526).
+   *
+   * `receipts` are the pane's open queued sends from Collie's own receipts (ADR 0122): the answer lists
+   * those the journal does not show as a prompt yet. Per pane, not per window: two panes on one session
+   * each see their own sends.
    */
   async window(
     adapter: JournalAdapter,
     ref: AgentSessionRef,
     params: ChatParams,
+    receipts: readonly ReceiptQueued[] = [],
   ): Promise<ChatWindowBody | null> {
     const key = (await adapter.source.resolve(ref)) ?? (await adapter.source.pending?.(ref)) ?? null;
     if (key === null) return null;
@@ -753,7 +786,7 @@ export class LiveWindows {
         () => window.settleLookup(gen, null),
       );
     }
-    return window.body(params.after ?? null, params.limit);
+    return window.body(params.after ?? null, params.limit, receipts);
   }
 
   /**

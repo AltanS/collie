@@ -5689,6 +5689,50 @@ describe("paneHistory — two muse tabs in one workspace read their own transcri
     }
   });
 
+  // ADR 0122: the route hands the window the pane's open queued sends, and masks their texts with the rest.
+  test("the chat route carries the pane's queued sends from the receipts, masked; a harness that records its queue keeps only returned rows", async () => {
+    const base = await realpath(await mkdtemp(join(tmpdir(), "collie-muse-route-")));
+    try {
+      await sessionLog(base, UUID_A, [metadata("/same"), accepted("alpha from session A")]);
+      const journals = { muse: museJournal([base]) };
+      const live = new LiveWindows(new TranscriptStore());
+      const stub: Partial<StateEngine> = {
+        current: () => ({ agents: [view("w1:p1")], shellPanes: [], workspaces: [], tabs: [], bridge: "connected" }),
+      };
+      // SAFETY: paneChat reaches only `current()` (for the pane lookup) on the paths read here.
+      const engine = stub as StateEngine;
+      const mux = {
+        capabilities: declareCapabilities({ supports: ["paneGrid"], topologyLatency: { kind: "push" } }),
+        readGrid: async () => muxGone("no screen"),
+        foregroundProcesses: async () => muxOk([{ argv: ["muse"] }]),
+      };
+      const key = `sk-or-v1-your-key-here-${"0".repeat(40)}`;
+      const asked: string[] = [];
+      const queuedOf = (paneId: string) => {
+        asked.push(paneId);
+        return [
+          { requestId: "req-queued-0001", text: "still waiting", at: Date.now(), state: "queued" as const },
+          { requestId: "req-back-00001", text: `deploy with ${key}`, at: Date.now(), state: "returned" as const },
+        ];
+      };
+      const url = new URL("http://x/api/pane/w1:p1/chat");
+      const res = await paneChat(cfg(), journals, live, engine, mux, "w1:p1", url, new Request(url), queuedOf);
+      const text = await res.text();
+      expect(text).not.toContain(key);
+      // SAFETY: the bridge's own JSON, served by the call above.
+      const body = JSON.parse(text) as { queued: string[]; queuedFrom?: string; queuedSends?: { requestId: string; state: string; text: string }[] };
+      expect(asked).toEqual(["w1:p1"]);
+      // Muse records its queue in its log: the journal stays the source, the returned row rides along.
+      expect(body.queued).toEqual([]);
+      expect(body.queuedFrom).toBeUndefined();
+      expect(body.queuedSends).toHaveLength(1);
+      expect(body.queuedSends![0]).toMatchObject({ requestId: "req-back-00001", state: "returned" });
+      expect(body.queuedSends![0]!.text.startsWith("deploy with sk-o")).toBe(true);
+    } finally {
+      await rm(base, { recursive: true, force: true });
+    }
+  });
+
   test("a multiplexer without the call keeps the newest-wins fallback", async () => {
     const base = await realpath(await mkdtemp(join(tmpdir(), "collie-muse-route-")));
     try {

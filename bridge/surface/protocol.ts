@@ -168,6 +168,7 @@ import { askLifetimeOf, type AskBook } from "./ask.ts";
 import type { KeyGate } from "./key-gate.ts";
 import type { RequestStore, SendRecord } from "./requests.ts";
 import { HOLD_BRIDGE_MAX, HOLD_PANE_MAX, heldRow, type HeldEntry, type HoldCause, type HoldStore } from "./holds.ts";
+import { QueuedSends, type ReceiptQueued } from "./queued.ts";
 
 /** The step bounds, written as (max reads, max ms). */
 export const BOUNDS = {
@@ -376,6 +377,12 @@ export class SessionLocks {
     if (current !== undefined && current.owner !== owner && current.until >= now) return false;
     this.held.set(key, { owner, until });
     return true;
+  }
+
+  /** Whether any request holds the lock inside its bound. */
+  busy(key: string, now: number): boolean {
+    const current = this.held.get(key);
+    return current !== undefined && current.until >= now;
   }
 
   /** Whether `owner` still holds the lock inside its bound. */
@@ -2028,10 +2035,68 @@ export class SendProtocol {
   private readonly watches = new Map<string, PaneWatch>();
   /** Receipts a prompt edge may close as `effective` (M56 spec 11), oldest first. */
   private readonly openSends: OpenSend[] = [];
+  /** Sends that settled `sent` + `queued`, with their texts, until the journal or the box closes them (ADR 0122). */
+  private readonly queuedSends: QueuedSends;
 
   constructor(private readonly deps: SendDeps) {
     this.now = deps.now ?? (() => Date.now());
     this.sleep = deps.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+    this.queuedSends = new QueuedSends({
+      store: deps.store,
+      generation: deps.generation,
+      matches: (box, lines, collapse) => boxMatches(box, "", lines, collapse),
+      now: this.now,
+      busy: (session, paneId) => deps.locks.busy(`${session}\u0000${paneId}`, this.now()),
+    });
+  }
+
+  /**
+   * The pane's open queued sends, oldest first (ADR 0122): sends that settled `sent` + `queued` inside
+   * the bound, each `queued` or `returned`. The live window decides which of them the journal already
+   * shows as a prompt; this only lists what Collie's receipts left open.
+   */
+  queuedOf(session: string, paneId: string): ReceiptQueued[] {
+    return this.queuedSends.of(session, paneId);
+  }
+
+  /**
+   * One read of a pane's input box (ADR 0122): `box` is its text ("" for an empty box), or null when
+   * the read found no box. Marks the open queued sends whose texts the box holds as returned (their
+   * receipts take `late: "returned"`), ends the returned ones it no longer holds, and returns the ids
+   * it holds. The poll's Surface read and the Stop's read-back both call it. Never throws.
+   */
+  boxRead(session: string, paneId: string, box: string | null, readAt: number = this.now()): string[] {
+    try {
+      return this.queuedSends.boxRead(session, paneId, box, readAt);
+    } catch (err) {
+      console.warn(`[send] box read on ${paneId} failed: ${err instanceof Error ? err.message : String(err)}`);
+      return [];
+    }
+  }
+
+  /**
+   * The poll's tick for queued sends, after the Surface read the panes: one {@link boxRead} per pane
+   * with open queued sends. `boxOf` answers the newest read's box and when it was taken, or null.
+   */
+  tickQueued(session: string, boxOf: (paneId: string) => { readonly box: string | null; readonly at: number } | null): void {
+    for (const paneId of this.queuedSends.panes(session)) {
+      const read = boxOf(paneId);
+      if (read !== null) this.boxRead(session, paneId, read.box, read.at);
+    }
+  }
+
+  /**
+   * The unmasked text of a queued send that is back in the box, for the Send or Discard on its card
+   * (`POST /api/send` with `resendOf` and mode `submit` or `discard`); null when the row is not back
+   * in the box on this pane.
+   */
+  returnedSource(session: string, paneId: string, id: string): string | null {
+    return this.queuedSends.returnedText(session, paneId, id);
+  }
+
+  /** A returned row's Send or Discard was taken: the row goes now rather than at the next read. */
+  dismissReturned(id: string): void {
+    this.queuedSends.drop(id);
   }
 
   /**
@@ -2049,6 +2114,7 @@ export class SendProtocol {
       if (receipt.reason !== undefined) row.reason = receipt.reason;
       if (receipt.cap !== undefined) row.cap = receipt.cap;
       if (receipt.queued === true) row.queued = true;
+      if (receipt.late !== undefined) row.late = receipt.late;
       // A refusal's line and the Surface words are stored to be read later: the list carries them.
       if (receipt.detail !== undefined) row.detail = receipt.detail;
       if (receipt.saw !== undefined) row.saw = receipt.saw;
@@ -2071,6 +2137,8 @@ export class SendProtocol {
     if (match === null) return null;
     const entry = this.openSends.find((open) => open.id === match.id);
     if (entry === undefined) return null;
+    // The harness took the prompt: a queued send is not waiting any more.
+    this.queuedSends.drop(entry.id);
     if (!entry.settled) {
       entry.effective = true;
       return entry.id;
@@ -2766,6 +2834,18 @@ export class SendProtocol {
     }
     const receipt = this.receiptOf(state, outcome, outcome === "effective" ? undefined : end.reason, end.extra.cap, end.extra);
     this.deps.store.settle(state.record.id, receipt);
+    // A send the harness holds for after the turn: a card until the journal or the box closes it (ADR 0122).
+    if (receipt.outcome === "sent" && receipt.queued === true) {
+      this.queuedSends.add({
+        id: state.record.id,
+        session: state.target.session,
+        paneId: state.target.paneId,
+        generation: state.record.paneGeneration,
+        text: state.request.text,
+        collapse: state.match?.profile.collapse.pattern ?? null,
+        at: this.now(),
+      });
+    }
     this.count(state, receipt, end.extra.surface);
     const framed = end.extra.framed ?? (state.marks.s0?.frame ?? null) !== null;
     return answerWith({ receipt, offers: end.extra.offers ?? offersFor(outcome, receipt.reason, framed) }, end.extra);

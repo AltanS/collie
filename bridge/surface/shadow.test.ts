@@ -96,6 +96,21 @@ describe("surface shadow", () => {
     expect(r.shadow.canStopOf("w1:p9")).toBe(false); // unknown pane
   });
 
+  test("answers the newest read's input box and when it was read, for queued sends that come back (ADR 0122)", async () => {
+    const r = rig("18.6.1");
+    r.mux.set("w1:p1", "omp--v18-6-1-stop-returned--w119.txt", 3);
+    r.mux.set("w1:p2", "omp--v18-6-1-queued-before-stop--w119.txt", 3);
+    expect(r.shadow.boxOf("w1:p1")).toBeNull(); // not read yet
+    await r.shadow.observe([agent("w1:p1", "omp"), agent("w1:p2", "omp")]);
+    expect(r.shadow.boxOf("w1:p1")).toEqual({ box: "second message", at: 1_000_000 });
+    expect(r.shadow.boxOf("w1:p2")).toEqual({ box: "", at: 1_000_000 });
+    // A read the multiplexer could not take has no box: it says nothing about the text.
+    r.mux.failing.add("w1:p1");
+    r.tick(1_000);
+    await r.shadow.observe([agent("w1:p1", "omp")]);
+    expect(r.shadow.boxOf("w1:p1")).toEqual({ box: null, at: 1_001_000 });
+  });
+
   test("says no Stop when the range the version borrows is revoked, as StopService would refuse it (M68)", async () => {
     const profile = loadProfiles().get(HARNESS)!;
     const saved = profile.versions;

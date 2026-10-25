@@ -148,6 +148,9 @@ const BOX_COMPOSER_FIXTURES = [
   "omp--v18-12-6-slash-comment-loop-row--w120.txt",
   // omp 18.12.6 after a cancelled `//comment`: the box is empty and the last list row stays under it.
   "omp--v18-12-6-stale-list-row-empty-box--w120.txt",
+  // omp 18.6.1: a queued line under `After yield · 1`, then Stop gave it back to the box (ADR 0122).
+  "omp--v18-6-1-queued-before-stop--w119.txt",
+  "omp--v18-6-1-stop-returned--w119.txt",
 ];
 
 // omp 18.6.1 with `/model` or `/mod` typed (lab, 2026-10-17): a ten-row palette under the open box. The
@@ -295,6 +298,9 @@ describe("locateComposer — the real corpus, pinned so any change to the walk s
     { fixture: "omp--v18-6-steer-typed--w120.txt", top: 38, bottom: 39, suggestEnd: 40 },
     { fixture: "omp--v18-12-6-slash-comment-loop-row--w120.txt", top: 11, bottom: 12, suggestEnd: 14 },
     { fixture: "omp--v18-12-6-stale-list-row-empty-box--w120.txt", top: 11, bottom: 12, suggestEnd: 14 },
+    // omp 18.6.1, a queued line and Stop giving it back (ADR 0122): a short screen, the box on its last row.
+    { fixture: "omp--v18-6-1-queued-before-stop--w119.txt", top: 16, bottom: 17, suggestEnd: 18 },
+    { fixture: "omp--v18-6-1-stop-returned--w119.txt", top: 16, bottom: 17, suggestEnd: 18 },
   ];
 
   // These eleven indices are byte-identical to the ones the width-gated scanner produced. That is
@@ -389,6 +395,9 @@ describe("extractInputDraft", () => {
     { fixture: "omp--v18-6-queue-typed--w120.txt", draft: "also say hello at the end" },
     { fixture: "omp--v18-6-queue-after-now--w120.txt", draft: "also say hello at the end" },
     { fixture: "omp--v18-6-queue-after--w120.txt", draft: null },
+    // Stop gave the queued line back (ADR 0122): the box holds it as a draft, the queue block is gone.
+    { fixture: "omp--v18-6-1-queued-before-stop--w119.txt", draft: null },
+    { fixture: "omp--v18-6-1-stop-returned--w119.txt", draft: "second message" },
   ];
 
   it.each(DRAFTS)("$fixture reads its draft", ({ fixture, draft }) => {
@@ -404,6 +413,8 @@ describe("extractInputDraft", () => {
 const PLAIN_READ_FIXTURES = [
   "omp--v18-12-6-image-chip--w120.txt",
   "omp--v18-12-6-skill-chip--w120.txt",
+  "omp--v18-6-1-queued-before-stop--w119.txt",
+  "omp--v18-6-1-stop-returned--w119.txt",
   "omp--v18-6-skill-chip--w120.txt",
 ];
 

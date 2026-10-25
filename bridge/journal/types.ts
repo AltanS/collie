@@ -352,4 +352,13 @@ export interface JournalAdapter {
    * mux/capabilities.ts), because tmux and zellij deliver `ctrl+Enter` as a plain Enter.
    */
   readonly sendQueuedNow?: readonly string[];
+  /**
+   * This harness's journal records its message queue (its reducer's `queued()` reads real queue rows),
+   * so the live window takes its queued cards from the journal and never from Collie's own receipts
+   * (ADR 0122, journal/receipt-queue.ts). OPTIONAL and set only where it is true: Claude Code
+   * (`queue-operation` rows) and Muse (`run/inbox_item_queued`). Every other harness writes nothing
+   * about a queued message until the turn yields, and its window lists the sends Collie's receipts
+   * say are queued. Data, so the shared code names no harness.
+   */
+  readonly recordsQueue?: true;
 }

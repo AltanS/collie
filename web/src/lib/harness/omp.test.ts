@@ -248,6 +248,9 @@ const DECLINED = new Set([
   "omp--v18-6-steer-over-queued--w120.txt",
   "omp--v18-6-steer-pending-block--w120.txt",
   "omp--v18-6-steer-typed--w120.txt",
+  // omp 18.6.1: a line queued with Ctrl+Q under `After yield · 1`, then Stop gave it back to the box (ADR 0122).
+  "omp--v18-6-1-queued-before-stop--w119.txt",
+  "omp--v18-6-1-stop-returned--w119.txt",
   // omp 18.12.1's default `band` composer under the nerd preset, and one unicode control (issue 505).
   "omp--v18-12-6-image-chip--w120.txt",
   "omp--v18-12-6-skill-chip--w120.txt",
@@ -550,10 +553,12 @@ describe("the omp corpus", () => {
     "omp--v18-4-switch-wrapped.txt",
     "omp--v18-4-switch.txt",
     "omp--v18-4-tree.txt",
+    "omp--v18-6-1-queued-before-stop--w119.txt",
     "omp--v18-6-1-slash-help-unlisted--w120.txt",
     "omp--v18-6-1-slash-mo-fuzzy--w120.txt",
     "omp--v18-6-1-slash-nothere-fuzzy--w120.txt",
     "omp--v18-6-1-slash-open-tall--w120.txt",
+    "omp--v18-6-1-stop-returned--w119.txt",
     "omp--v18-6-model-selector-empty--w120.txt",
     "omp--v18-6-queue-after--w120.txt",
     "omp--v18-6-queue-after-now--w120.txt",
@@ -753,6 +758,9 @@ const COMPOSER_FIXTURES = [
   "omp--v18-6-steer-over-queued--w120.txt",
   "omp--v18-6-steer-pending-block--w120.txt",
   "omp--v18-6-steer-typed--w120.txt",
+  // omp 18.6.1: a line queued with Ctrl+Q under `After yield · 1`, then Stop gave it back to the box (ADR 0122).
+  "omp--v18-6-1-queued-before-stop--w119.txt",
+  "omp--v18-6-1-stop-returned--w119.txt",
   // omp 18.12.1's default `band` composer under the nerd preset, and one unicode control (issue 505).
   "omp--v18-12-6-image-chip--w120.txt",
   "omp--v18-12-6-skill-chip--w120.txt",

@@ -21,6 +21,9 @@ import { BOUNDS, boxMatches, boxMatchesTail, commandBoxMatches, GENERIC_PROBE, w
 import { RequestStore } from "./requests.ts";
 import { SurfaceLedger } from "./counters.ts";
 import { HoldStore } from "./holds.ts";
+import { StopService } from "./stop.ts";
+import { AuditLog } from "../audit.ts";
+import { sendRoute, type SendRouteRuntime } from "../server.ts";
 
 const RULE = "─".repeat(40);
 const WIDTH = 38;
@@ -8124,5 +8127,219 @@ describe("omp's fuzzy command list under the box (1.24.1)", () => {
     expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue" });
     expect(deps.store.get("fuzzy-comment-1")?.receipt?.detail).toBe(LIST_NOTICE);
     expect(pane.keysSeen).not.toContain("Enter");
+  });
+});
+
+// ── ADR 0122: a queued send is a card until the journal shows it; Stop may give it back ──
+
+describe("a queued send that comes back to the box (ADR 0122)", () => {
+  /** The OMP pane's input box as the poll's Surface read reads it: its text, "" when empty, null with no box. */
+  function boxOf(pane: FakePane): string | null {
+    const match = profileFor("omp", "18.6.1", { log: () => undefined })!;
+    const rows = splitLines(parseAnsi(pane.render()));
+    const read = surfaceOfScreen({ seq: 0, source: "screen", at: 0, revision: 0, rows, ask: null }, match.profile.idle);
+    return read.frame === null ? null : read.frame.placeholder ? "" : read.frame.interior.text;
+  }
+
+  /** OMP's Escape on a turn with a queue: the turn ends and the queued texts go back into the box. */
+  function stopGivesBack(pane: OmpPane): void {
+    pane.inTurn = false;
+    pane.box = pane.queued.join("\n");
+    pane.queued = [];
+    pane.revision++;
+  }
+
+  test("a send into a running turn is listed open and queued, with its text, until something closes it", async () => {
+    const r = omp();
+    r.pane.inTurn = true;
+    const answer = await r.send("second message", { id: "queued-back-0001" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect(r.protocol.queuedOf("main", "%1")).toEqual([{ requestId: "queued-back-0001", text: "second message", at: r.clock.now, state: "queued" }]);
+    // A read of the box while the turn runs (an empty box) changes nothing.
+    expect(r.protocol.boxRead("main", "%1", boxOf(r.pane))).toEqual([]);
+    expect(r.protocol.queuedOf("main", "%1")[0]?.state).toBe("queued");
+  });
+
+  test("after Stop, a read whose box holds the queued text marks the row returned and the receipt late", async () => {
+    const r = omp();
+    r.pane.inTurn = true;
+    await r.send("second message", { id: "queued-back-0002" });
+    stopGivesBack(r.pane);
+    expect(boxOf(r.pane)).toBe("second message");
+    r.clock.now += 1_500;
+    expect(r.protocol.boxRead("main", "%1", boxOf(r.pane))).toEqual(["queued-back-0002"]);
+    expect(r.protocol.queuedOf("main", "%1")).toMatchObject([{ requestId: "queued-back-0002", state: "returned" }]);
+    // The receipt is revised, not rewritten: `sent` and `queued` were true when it settled.
+    expect(r.deps.store.get("queued-back-0002")?.receipt).toMatchObject({ outcome: "sent", queued: true, late: "returned" });
+    expect(r.protocol.recent("%1")[0]).toMatchObject({ requestId: "queued-back-0002", outcome: "sent", queued: true, late: "returned" });
+    // A second read of the same box keeps the row and marks nothing twice.
+    expect(r.protocol.boxRead("main", "%1", boxOf(r.pane))).toEqual(["queued-back-0002"]);
+    expect(r.protocol.returnedSource("main", "%1", "queued-back-0002")).toBe("second message");
+    expect(r.protocol.returnedSource("main", "%2", "queued-back-0002")).toBeNull();
+  });
+
+  test("Send on the returned card submits the box once, with the queue key OMP sends an idle box with", async () => {
+    const r = omp();
+    r.pane.inTurn = true;
+    await r.send("second message", { id: "queued-back-0003" });
+    stopGivesBack(r.pane);
+    r.clock.now += 1_500;
+    r.protocol.boxRead("main", "%1", boxOf(r.pane));
+    const keysBefore = r.pane.keysSeen.length;
+    // What the route does for `resendOf` + mode `submit`: the bridge's own text, never the phone's.
+    const text = r.protocol.returnedSource("main", "%1", "queued-back-0003")!;
+    const answer = await r.send(text, { id: "queued-back-0004", mode: "submit" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["ctrl+q"] });
+    expect(r.pane.keysSeen.slice(keysBefore)).toEqual(["ctrl+q"]);
+    expect(r.pane.transcript.filter((row) => row === " > second message")).toHaveLength(1);
+    expect(r.pane.box).toBe("");
+    // The next read finds the box without the text: the returned row ends, the late mark stays.
+    r.clock.now += 1_000;
+    expect(r.protocol.boxRead("main", "%1", boxOf(r.pane))).toEqual([]);
+    expect(r.protocol.queuedOf("main", "%1")).toEqual([]);
+    expect(r.deps.store.get("queued-back-0003")?.receipt?.late).toBe("returned");
+  });
+
+  test("two queued texts given back together in one box are both returned; a box with other text returns none", async () => {
+    const r = omp();
+    r.pane.inTurn = true;
+    await r.send("alpha one", { id: "queued-back-0005" });
+    r.clock.now += 3_000;
+    await r.send("beta two", { id: "queued-back-0006" });
+    stopGivesBack(r.pane);
+    r.clock.now += 1_000;
+    expect(r.protocol.boxRead("main", "%1", "alpha one beta two")).toEqual(["queued-back-0005", "queued-back-0006"]);
+    const other = omp();
+    other.pane.inTurn = true;
+    await other.send("alpha one", { id: "queued-back-0007" });
+    other.clock.now += 1_000;
+    expect(other.protocol.boxRead("main", "%1", "alpha one and more I typed")).toEqual([]);
+    expect(other.deps.store.get("queued-back-0007")?.receipt?.late).toBeUndefined();
+  });
+
+  test("a read taken before the send settled, or a pane with a send running, changes nothing", async () => {
+    const r = omp();
+    r.pane.inTurn = true;
+    const before = r.clock.now;
+    await r.send("second message", { id: "queued-back-0008" });
+    // The poll read the box while S1 had the text in it: an older read than the settle.
+    expect(r.protocol.boxRead("main", "%1", "second message", before)).toEqual([]);
+    // Another send holds the pane's lock: its own text may stand in the box.
+    r.deps.locks.acquire("main\u0000%1", "another-request", r.clock.now + 5_000, r.clock.now);
+    r.clock.now += 1_000;
+    expect(r.protocol.boxRead("main", "%1", "second message")).toEqual([]);
+    r.deps.locks.release("main\u0000%1", "another-request");
+    expect(r.protocol.boxRead("main", "%1", "second message")).toEqual(["queued-back-0008"]);
+    // No box in the read (a dialog over it) says nothing either way.
+    expect(r.protocol.boxRead("main", "%1", null)).toEqual([]);
+    expect(r.protocol.queuedOf("main", "%1")[0]?.state).toBe("returned");
+  });
+
+  test("a prompt edge that confirms the send closes its card; a pane that holds another agent lists none", async () => {
+    const r = omp();
+    r.pane.inTurn = true;
+    await r.send("second message", { id: "queued-back-0009" });
+    const hash = r.deps.store.hashText("second message");
+    expect(r.protocol.promptEdge("%1", hash, r.clock.now + 1_000)).toBe("queued-back-0009");
+    expect(r.protocol.queuedOf("main", "%1")).toEqual([]);
+    let generation = "gen-1";
+    const otherPane = new OmpPane();
+    const other = rig({ pane: otherPane, harness: "omp", version: "18.6.1", generation: () => generation });
+    otherPane.inTurn = true;
+    await other.send("second message", { id: "queued-back-0010" });
+    expect(other.protocol.queuedOf("main", "%1")).toHaveLength(1);
+    generation = "codex:other-session";
+    expect(other.protocol.queuedOf("main", "%1")).toEqual([]);
+  });
+
+  test("Stop's read-back sees the text back in the box: the receipt lists it, and the row and the receipt say returned", async () => {
+    const r = omp();
+    r.pane.inTurn = true;
+    await r.send("second message", { id: "queued-back-0030" });
+    // OMP's Escape: the turn ends and the queue goes back into the box.
+    const keys = r.pane.writeKeys;
+    r.pane.writeKeys = (paneId, pressed) => {
+      if (pressed.includes("Escape") && r.pane instanceof OmpPane) stopGivesBack(r.pane);
+      return keys(paneId, pressed.filter((key) => key !== "Escape"));
+    };
+    const stop = new StopService({
+      mux: r.pane,
+      gate: new KeyGate(r.pane, () => r.clock.now),
+      profile: (harness) => Promise.resolve(profileFor(harness, "18.6.1", { log: () => undefined })),
+      sleep: (ms) => {
+        r.clock.now += ms;
+        return Promise.resolve();
+      },
+      now: () => r.clock.now,
+      returned: (paneId, box, at) => r.protocol.boxRead("main", paneId, box, at),
+    });
+    const answer = await stop.handle("queued-stop-0001", "%1", "omp");
+    expect(answer).toMatchObject({ kind: "receipt", receipt: { outcome: "stopped", keys: ["Escape"], returned: ["queued-back-0030"] } });
+    expect(r.protocol.queuedOf("main", "%1")).toMatchObject([{ requestId: "queued-back-0030", state: "returned" }]);
+    expect(r.deps.store.get("queued-back-0030")?.receipt?.late).toBe("returned");
+  });
+
+  test("the route takes `resendOf` + `submit` on a returned row with the bridge's own text, and the row goes", async () => {
+    const r = omp();
+    r.pane.inTurn = true;
+    await r.send("deploy with the real name", { id: "queued-back-0020" });
+    stopGivesBack(r.pane);
+    r.clock.now += 1_500;
+    r.protocol.boxRead("main", "%1", boxOf(r.pane));
+    const rt: SendRouteRuntime = {
+      send: r.protocol,
+      name: "main",
+      herdr: {},
+      engine: { current: () => ({ agents: [{ paneId: "%1", agent: "omp" }], shellPanes: [] }), noteInput: () => undefined, pokeNow: () => undefined },
+    };
+    const lines: string[] = [];
+    const context = { audit: new AuditLog((line) => void lines.push(line)), device: "phone", redact: true, acceptEncoding: null };
+    // A plain Resend of a returned row is no Resend: there is no ended held row by that id.
+    expect((await sendRoute(rt, { id: "queued-back-0021", pane: "%1", text: "", resendOf: "queued-back-0020" }, context)).status).toBe(404);
+    // The phone's text may be masked; the route sends the bridge's, so the box matches and goes once.
+    const res = await sendRoute(rt, { id: "queued-back-0022", pane: "%1", text: "", mode: "submit", resendOf: "queued-back-0020" }, context);
+    expect(await res.json()).toMatchObject({ receipt: { requestId: "queued-back-0022", outcome: "sent", keys: ["ctrl+q"] } });
+    expect(r.pane.transcript.at(-1)).toBe(" > deploy with the real name");
+    expect(r.protocol.queuedOf("main", "%1")).toEqual([]);
+    expect(lines.join("\n")).not.toContain("real name");
+  });
+
+  test("Discard on a returned row empties the box and sends nothing", async () => {
+    const r = omp();
+    r.pane.inTurn = true;
+    await r.send("second message", { id: "queued-back-0023" });
+    stopGivesBack(r.pane);
+    r.clock.now += 1_500;
+    r.protocol.boxRead("main", "%1", boxOf(r.pane));
+    const transcript = r.pane.transcript.length;
+    const answer = await r.send(r.protocol.returnedSource("main", "%1", "queued-back-0023")!, { id: "queued-back-0024", mode: "discard" });
+    expect(answer.receipt?.outcome).toBe("discarded");
+    expect(r.pane.box).toBe("");
+    expect(r.pane.transcript).toHaveLength(transcript);
+  });
+
+  test("a queued send counts as waiting for 30 minutes at most", async () => {
+    const r = omp();
+    r.pane.inTurn = true;
+    await r.send("second message", { id: "queued-back-0011" });
+    r.clock.now += 30 * 60_000;
+    expect(r.protocol.queuedOf("main", "%1")).toHaveLength(1);
+    r.clock.now += 1;
+    expect(r.protocol.queuedOf("main", "%1")).toEqual([]);
+  });
+
+  test("after a restart the open queued sends come back from their kept lines, and a returned one does not", async () => {
+    const clock = { now: 1_000_000 };
+    const storeDir = join(dir, "sends-restart");
+    const firstPane = new OmpPane();
+    const first = rig({ pane: firstPane, harness: "omp", version: "18.6.1", clock, storeDir });
+    firstPane.inTurn = true;
+    await first.send("still waiting", { id: "queued-back-0012" });
+    await first.send("came back", { id: "queued-back-0013" });
+    clock.now += 1_000;
+    first.protocol.boxRead("main", "%1", "came back");
+    const second = rig({ pane: new OmpPane(), harness: "omp", version: "18.6.1", clock, storeDir });
+    expect(second.protocol.queuedOf("main", "%1")).toMatchObject([{ requestId: "queued-back-0012", text: "still waiting", state: "queued" }]);
+    expect(second.protocol.queuedOf("other", "%1")).toEqual([]);
   });
 });

@@ -5550,6 +5550,16 @@
    "harness": "pi",
    "version": "1.3.0",
    "state": "dialog"
+  },
+  "omp--v18-6-1-queued-before-stop--w119.txt": {
+   "harness": "omp",
+   "version": "18.6.1",
+   "state": "running"
+  },
+  "omp--v18-6-1-stop-returned--w119.txt": {
+   "harness": "omp",
+   "version": "18.6.1",
+   "state": "draft"
   }
  },
  "knownMismatches": {

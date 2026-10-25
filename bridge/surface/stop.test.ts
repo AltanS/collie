@@ -347,6 +347,56 @@ describe("a stopped receipt is told to the fold", () => {
   });
 });
 
+describe("a queued message the Stop gives back to the box (ADR 0122)", () => {
+  // Tester 03's case 0 on OMP 18.6.1: `second message` waits under `After yield · 1`, Escape ends the
+  // turn and OMP moves the text back into its box (web/src/fixtures/panes/README.md).
+  const OMP_QUEUED = fx("omp--v18-6-1-queued-before-stop--w119.txt");
+  const OMP_RETURNED = fx("omp--v18-6-1-stop-returned--w119.txt");
+
+  function queuedRig(returned: (paneId: string, box: string | null, at: number) => readonly string[]) {
+    const pane = new ScriptPane(OMP_QUEUED);
+    const service = new StopService({
+      mux: pane,
+      gate: new KeyGate(pane),
+      profile: (harness) => Promise.resolve(profileFor(harness, "18.6.1", { log: () => undefined })),
+      sleep: () => Promise.resolve(),
+      now: () => 5_000,
+      returned,
+    });
+    pane.onKeys = (_keys, p) => void (p.screen = OMP_RETURNED);
+    return { pane, service };
+  }
+
+  test("each read-back's box goes to the Send Protocol, and what it says came back rides the receipt", async () => {
+    const boxes: (string | null)[] = [];
+    const { service } = queuedRig((paneId, box, at) => {
+      expect(paneId).toBe("%2");
+      expect(at).toBe(5_000);
+      boxes.push(box);
+      return box === "second message" ? ["queued-0001"] : [];
+    });
+    const answer = await service.handle(ID, "%2", "omp");
+    expect(answer).toEqual({ kind: "receipt", replayed: false, receipt: { requestId: ID, outcome: "stopped", keys: ["Escape"], returned: ["queued-0001"] } });
+    // The two reads before the key are not handed over: only what the key left on screen counts.
+    expect(boxes).toEqual(["second message", "second message"]);
+  });
+
+  test("nothing back in the box: the receipt carries no `returned`, as before", async () => {
+    const { service } = queuedRig(() => []);
+    const answer = await service.handle(ID, "%2", "omp");
+    expect(answer).toEqual({ kind: "receipt", replayed: false, receipt: { requestId: ID, outcome: "stopped", keys: ["Escape"] } });
+  });
+
+  test("a Send Protocol that throws leaves the receipt as it was", async () => {
+    const { service } = queuedRig(() => {
+      throw new Error("the store is gone");
+    });
+    const answer = await service.handle(ID, "%2", "omp");
+    expect(answer).toMatchObject({ receipt: { outcome: "stopped" } });
+    expect(answer.kind === "receipt" && "returned" in answer.receipt).toBe(false);
+  });
+});
+
 describe("the route's body", () => {
   test("no request id, a bad one, or a body that is no object is a 400; a pane the engine lacks is a 404", async () => {
     const { pane, stop } = rig(PI_RUNNING);
