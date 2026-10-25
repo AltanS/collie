@@ -334,7 +334,7 @@ export const tr: Dictionary = {
   "composer.protocol.sent": "Gönderildi",
   "composer.protocol.queued": "Kuyruğa alındı. Ajan bu turdan sonra alacak.",
   "composer.steer.row": "Yönlendir: ajan bunu mevcut adımından sonra alır",
-  "composer.steer.hint": "Yönlendirmek için Gönder'e basılı tut.",
+  "composer.steer.hint": "Gönder'e basılı tutarak yönlendir.",
   "composer.steer.queuedInstead": "Bunun yerine sıraya alındı: ajan bunu sıranın sonrasına sakladı.",
   "composer.steer.steered": "Yönlendirildi: ajan bunu geçerli adımından sonra alır.",
   "composer.steer.unsupported": "Bu bölmede yönlendirme kullanılamıyor. Hiçbir şey gönderilmedi.",

@@ -27,6 +27,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **The Steer hint no longer moves the composer.** While a turn runs on a pane that can steer, the hint ("Hold Send to steer.") was a row above the input box that opened and closed with every turn, and it shifted the belt and the field. It is now the empty field's placeholder, in a smaller size, and it goes when you type.
 - **The Steer hint is one short sentence in every language.** It keeps only the instruction, "Hold Send to steer.", so the placeholder never wraps on a phone and never makes the empty field two lines tall.
+- **The Steer hint is shorter in German, Spanish, Japanese, Portuguese, Russian and Turkish.** The old wording was wider than the field on a phone, so the placeholder was cut off. Each now fits on one line and still names the Send button.
 
 ## [1.24.0] - 2026-10-25
 
