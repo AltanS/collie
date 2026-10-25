@@ -390,6 +390,7 @@ export class FakeTmux implements TmuxExec {
     if (verb === "switch-client") return this.switchClient(group);
     if (verb === "kill-pane") return this.killPane(group);
     if (verb === "new-window") return this.newWindow(group);
+    if (verb === "split-window") return this.splitWindow(group);
     if (verb === "rename-window") return this.renameWindow(group);
     if (verb === "kill-window") return this.killWindow(group);
     if (verb === "new-session") return this.newSession(group);
@@ -559,6 +560,16 @@ export class FakeTmux implements TmuxExec {
     if (session === undefined) return missing("session", sessionId);
     const window = this.newWindowIn(session, flagValue(group, "-n") ?? "bash", flagValue(group, "-n") === undefined);
     const pane = this.newPaneIn(window, flagValue(group, "-c") ?? "/tmp");
+    return said(`${render(flagValue(group, "-F") ?? "", this.paneVars(pane))}\n`);
+  }
+
+  private splitWindow(group: readonly string[]): TmuxRunResult {
+    const paneId = flagValue(group, "-t") ?? "";
+    const target = this.panes.find((candidate) => candidate.id === paneId);
+    if (target === undefined) return missing("pane", paneId);
+    const window = this.windows.find((candidate) => candidate.id === target.windowId);
+    if (window === undefined) return missing("window", target.windowId);
+    const pane = this.newPaneIn(window, flagValue(group, "-c") ?? target.cwd);
     return said(`${render(flagValue(group, "-F") ?? "", this.paneVars(pane))}\n`);
   }
 

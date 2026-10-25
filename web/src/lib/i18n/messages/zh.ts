@@ -1242,6 +1242,7 @@ export const zh: Dictionary = {
   "space.readOnly.deviceUnauthorised": "只读模式，设备未授权",
   "space.readOnly.savedCopy": "这是已保存的副本。请重新连接后再修改。",
   "space.create.ready": "新{what}已就绪，可启动 Agent",
+  "space.noun.pane": "窗格",
   "space.noun.tab": "标签页",
   "space.noun.space": "空间",
 

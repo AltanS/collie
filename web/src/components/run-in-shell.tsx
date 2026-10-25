@@ -17,10 +17,11 @@ import type { Scope } from "@/lib/scope";
 import { setStatus } from "@/lib/status";
 import { mintRequestId } from "@/lib/worktree-name";
 
-/** The pane a run starts beside: its folder is the run's, and its space gets the new tab. */
+/** The pane a run starts beside: its folder is the run's, and its tab gets the new pane (or its space the new tab). */
 export interface RunBeside {
   paneId: string;
   workspaceId: string;
+  tabId: string;
   cwd: string;
 }
 
@@ -39,7 +40,8 @@ interface RunAsk {
  * tap steps into it, so the operator sees what that shell is doing before Send. Collie cannot tell a
  * shell at its prompt from one running a program, so it never types into one unseen. With no such
  * shell, a sheet asks first, showing the line with any hidden character written as its code as the
- * no-prompts confirm does, and Run starts it in a new tab beside the pane.
+ * no-prompts confirm does, and Run starts it in a new pane in the agent's own tab, or in a new tab
+ * beside it where the machine cannot split a pane.
  *
  * The sheet is portalled to <body> for the reason `ImageSheet` gives: the chat body is a transformed
  * ancestor that would otherwise contain its `fixed` layer.
@@ -85,7 +87,8 @@ export function RunInShellProvider({
         what: { kind: "run", line: ask.line },
         cwd: beside.cwd,
         requestId: ask.requestId,
-        beside: { paneId: beside.paneId, workspaceId: beside.workspaceId },
+        beside: { paneId: beside.paneId, workspaceId: beside.workspaceId, tabId: beside.tabId },
+        split: true,
       },
       scope,
     );

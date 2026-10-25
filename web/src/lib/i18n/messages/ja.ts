@@ -1252,6 +1252,7 @@ export const ja: Dictionary = {
   "space.readOnly.deviceUnauthorised": "読み取り専用です。この端末は許可されていません。",
   "space.readOnly.savedCopy": "保存済みのコピーです。変更するには再接続してください。",
   "space.create.ready": "{what}の準備が完了しました。エージェントを起動してください。",
+  "space.noun.pane": "ペイン",
   "space.noun.tab": "タブ",
   "space.noun.space": "スペース",
 

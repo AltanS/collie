@@ -1260,6 +1260,7 @@ export const de: Dictionary = {
   "space.readOnly.deviceUnauthorised": "Schreibgeschützt: Gerät nicht autorisiert",
   "space.readOnly.savedCopy": "Gespeicherte Kopie. Verbinde dich neu, um etwas zu ändern.",
   "space.create.ready": "Neuer {what} bereit. Agent starten.",
+  "space.noun.pane": "Pane",
   "space.noun.tab": "Tab",
   "space.noun.space": "Space",
 

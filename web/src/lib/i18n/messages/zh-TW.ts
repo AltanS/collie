@@ -1238,6 +1238,7 @@ export const zhTW: Dictionary = {
   "space.readOnly.deviceUnauthorised": "唯讀模式，裝置未授權",
   "space.readOnly.savedCopy": "這是已儲存的副本。請重新連線後再修改。",
   "space.create.ready": "新的{what}已就緒，可以啟動 Agent",
+  "space.noun.pane": "窗格",
   "space.noun.tab": "分頁",
   "space.noun.space": "空間",
 

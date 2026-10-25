@@ -36,6 +36,7 @@ export const MUX_CAPABILITIES = [
   "closePane",
   "setFocus",
   "createTab",
+  "splitPane",
   "renameTab",
   "renameSpace",
   "closeTab",
@@ -100,6 +101,8 @@ export const MUX_CAPABILITY_ROUTES = {
   setFocus:
     "POST /api/pane/:id/focus — the pane action sheet's \"Show in terminal\" row, the one act by which the phone moves the operator's own screen. Absent ⇒ the row is not there (hide the meaningless), and the phone can still SEE which pane the terminal shows, because `MuxPane.focused` is on the floor.",
   createTab: "POST /api/tab — a new tab in a space, opening a fresh shell.",
+  splitPane:
+    "POST /api/launch with a `run` and `split: true`: a chat's Run in shell opens its shell as a new pane in the agent's own tab, beside it. Absent ⇒ the run opens a new tab in the space instead, as it did before.",
   renameTab:
     "POST /api/tab/:id/rename. A durable agent declares it from its own `caps.rename` (WIRE.md section 7.8); every other adapter declares it from its multiplexer's tab rename.",
   renameSpace:
@@ -227,6 +230,7 @@ export function declareCapabilities(input: MuxCapabilityInput): MuxCapabilityDec
     closePane: claimed.has("closePane"),
     setFocus: claimed.has("setFocus"),
     createTab: claimed.has("createTab"),
+    splitPane: claimed.has("splitPane"),
     renameTab: claimed.has("renameTab"),
     renameSpace: claimed.has("renameSpace"),
     closeTab: claimed.has("closeTab"),

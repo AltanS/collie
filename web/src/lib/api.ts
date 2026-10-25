@@ -2010,6 +2010,7 @@ interface StartRunBody {
   run: string;
   cwd?: string;
   paneId?: string;
+  split?: true;
   requestId: string;
 }
 
@@ -2020,10 +2021,15 @@ interface StartRunBody {
  * `launch.run_off`, `launch.bad_line` (`detail.problem`, `detail.max`), `launch.bad_folder`,
  * `launch.folder_missing`.
  */
-export function startRun(line: string, opts: { cwd?: string; requestId: string; besidePaneId?: string }, scope?: Scope): Promise<CreateResponse> {
+export function startRun(
+  line: string,
+  opts: { cwd?: string; requestId: string; besidePaneId?: string; split?: boolean },
+  scope?: Scope,
+): Promise<CreateResponse> {
   const body: StartRunBody = { run: line, requestId: opts.requestId };
   if (opts.cwd !== undefined) body.cwd = opts.cwd;
   if (opts.besidePaneId !== undefined) body.paneId = opts.besidePaneId;
+  if (opts.split === true && opts.besidePaneId !== undefined) body.split = true;
   return req<CreateResponse>(withScope("/api/launch", scope), { method: "POST", body: JSON.stringify(body) });
 }
 

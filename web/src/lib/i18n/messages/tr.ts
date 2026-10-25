@@ -1167,6 +1167,7 @@ export const tr: Dictionary = {
   "space.readOnly.deviceUnauthorised": "Salt okunur, cihaza yetki verilmedi",
   "space.readOnly.savedCopy": "Kayıtlı kopya. Değişiklik yapmak için yeniden bağlanın.",
   "space.create.ready": "Yeni {what} hazır, aracınızı başlatın",
+  "space.noun.pane": "bölme",
   "space.noun.tab": "sekme",
   "space.noun.space": "boşluk",
   "actionSheet.back": "Geri",

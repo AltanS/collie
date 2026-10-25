@@ -124,7 +124,7 @@ import { paneName, panePlaceParts } from "@/lib/pane-name";
 import { paneHeaderLine, paneProgress, paneSubtitle } from "@/lib/pane-marks";
 import { panesOfTab } from "@/lib/pane-ordinal";
 import { ExperimentalBadge } from "@/components/experimental-badge";
-import { useMuxCapability } from "@/lib/mux-capability";
+import { useMuxCapability, useMuxDeclared } from "@/lib/mux-capability";
 import { paneInRepo } from "@/lib/branch-off";
 import { useOptionalRootData } from "@/lib/route-data";
 import { hasJournalAdapter, reportsSessionOnFirstPrompt } from "@/lib/journal-agents";
@@ -379,7 +379,11 @@ export function AgentChat({
   // Every pane of the herd, for the pane menu's Pin to top row on both doors (lib/pins.ts reads it to
   // tell a live pin from a dormant one), and this device's pins, for the switcher's Pinned section.
   const herd = useMemo(() => [...agents, ...shellPanes], [agents, shellPanes]);
-  const runShell = useMemo(() => (agent === undefined ? undefined : reusableShell(agent, shellPanes)), [agent, shellPanes]);
+  const splitsHere = useMuxDeclared("splitPane", { host: agent?.host, session: scope?.session });
+  const runShell = useMemo(
+    () => (agent === undefined ? undefined : reusableShell(agent, shellPanes, splitsHere)),
+    [agent, shellPanes, splitsHere],
+  );
   const pins = usePins();
   // This device may not type into agents: the backend rejects every write, so the composer drops to
   // read-only (and shows a banner). The mirror still polls (reading is fine). Either write gate puts
@@ -2600,7 +2604,7 @@ export function AgentChat({
                 replies, so whether this device draws their stretches is read once, here. */}
             <StretchTextContext.Provider value={prefs.stretchText}>
             <RunInShellProvider
-              beside={agent && !isShell && agent.cwd ? { paneId, workspaceId: agent.workspaceId, cwd: agent.cwd } : undefined}
+              beside={agent && !isShell && agent.cwd ? { paneId, workspaceId: agent.workspaceId, tabId: agent.tabId, cwd: agent.cwd } : undefined}
               reuse={runShell?.paneId}
               folder={shortenHome(agent?.cwd ?? "", launchersHome) || "~"}
               scope={scope}

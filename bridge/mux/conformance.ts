@@ -311,6 +311,17 @@ function capabilityCalls(adapter: MuxAdapter, targets: CallTargets): CapabilityC
       run: async () => refusalOf(await adapter.createTab({ spaceId: targets.spaceId })),
     },
     {
+      capability: "splitPane",
+      writes: true,
+      // Optional, like `renameSpace`: a declaration without the method is what this entry catches.
+      run: async () =>
+        refusalOf(
+          adapter.splitPane === undefined
+            ? muxUnsupported("splitPane", "This adapter has no way to split a named pane.")
+            : await adapter.splitPane({ paneId: targets.paneId }),
+        ),
+    },
+    {
       capability: "createSpace",
       writes: true,
       run: async () => refusalOf(await adapter.createSpace({ cwd: "/tmp" })),

@@ -1880,6 +1880,9 @@ export const MUX_CAPABILITIES = [
   // and takes a reopen of a closed one. Both are read through `muxDeclared`, so they fail closed.
   "programHistory",
   "reopenConversation",
+  // A new pane beside a named one, in its own tab (a chat's Run in shell). Read through `muxDeclared`:
+  // a bridge that predates it opens the run in a tab beside the pane, as it always did.
+  "splitPane",
 ] as const;
 
 export type MuxCapability = (typeof MUX_CAPABILITIES)[number];

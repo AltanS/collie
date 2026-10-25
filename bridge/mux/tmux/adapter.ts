@@ -73,6 +73,7 @@ import {
   type MuxSpaceRequest,
   type MuxSubscription,
   type MuxTab,
+  type MuxSplitRequest,
   type MuxTabRequest,
   type MuxWorktree,
   type MuxWorktreeCreateRequest,
@@ -185,6 +186,7 @@ const TMUX_CAPABILITIES = declareCapabilities({
     "closePane",
     "setFocus",
     "createTab",
+    "splitPane",
     "renameTab",
     "closeTab",
     "createSpace",
@@ -523,6 +525,14 @@ export class TmuxMux implements MuxAdapter {
     const asked = requestedCwd(request.cwd);
     if (asked !== undefined) args.push("-c", asked);
     if (request.label !== undefined) args.push("-n", request.label);
+    return this.created(args);
+  }
+
+  /** A pane under `paneId` in its own window, `-d` so the operator's focus stays (probed, tmux 3.8). */
+  async splitPane(request: MuxSplitRequest): Promise<MuxOutcome<MuxCreatedPane>> {
+    const args = ["split-window", "-d", "-v", "-t", request.paneId, "-P", "-F", CREATED_FORMAT];
+    const asked = requestedCwd(request.cwd);
+    if (asked !== undefined) args.push("-c", asked);
     return this.created(args);
   }
 

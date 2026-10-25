@@ -228,6 +228,12 @@ export function paneAgentSession(raw: WirePane["agent_session"]): PaneAgentSessi
 /** Wire params of `tab.create`. `focus` is always false — never yank the desktop TUI's focus. */
 type TabCreateParams = { workspace_id: string; focus: false; label?: string; cwd?: string };
 
+/**
+ * Wire params of `pane.split`. The pane is `target_pane_id`: herdr ignores a key it does not know, and
+ * a split with no target splits the FOCUSED pane, whichever tab the operator is in (probed 2026-10-25).
+ */
+type PaneSplitParams = { target_pane_id: string; direction: "right" | "down"; focus: false; cwd?: string };
+
 /** Wire params of `workspace.create`. */
 type WorkspaceCreateParams = { cwd: string; focus: false; label?: string };
 
@@ -266,6 +272,7 @@ export type HerdrRpc = Pick<
   | "closePane"
   | "focusPane"
   | "createTab"
+  | "splitPane"
   | "renameTab"
   | "closeTab"
   | "createWorkspace"
@@ -571,6 +578,15 @@ export class HerdrClient {
     if (opts.cwd) params.cwd = opts.cwd;
     const r = await this.request<{ root_pane: WirePane }>("tab.create", params);
     const p = r.root_pane;
+    return { paneId: p.pane_id, workspaceId: p.workspace_id, tabId: p.tab_id, cwd: p.cwd };
+  }
+
+  /** Split a pane: a fresh shell pane under it, in the same tab, without moving the desktop's focus. */
+  async splitPane(paneId: string, opts: { cwd?: string } = {}): Promise<CreatedShell> {
+    const params: PaneSplitParams = { target_pane_id: paneId, direction: "down", focus: false };
+    if (opts.cwd) params.cwd = opts.cwd;
+    const r = await this.request<{ pane: WirePane }>("pane.split", params);
+    const p = r.pane;
     return { paneId: p.pane_id, workspaceId: p.workspace_id, tabId: p.tab_id, cwd: p.cwd };
   }
 

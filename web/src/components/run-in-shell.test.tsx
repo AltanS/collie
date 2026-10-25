@@ -12,7 +12,7 @@ import { RunInShellProvider, type RunBeside } from "./run-in-shell";
 // without a confirm or an open shell's own Send, and a retry after an unconfirmed start reuses its
 // request id.
 
-const BESIDE: RunBeside = { paneId: "w7:p8", workspaceId: "w7", cwd: "/home/you/app" };
+const BESIDE: RunBeside = { paneId: "w7:p8", workspaceId: "w7", tabId: "w7:t1", cwd: "/home/you/app" };
 const REPLY = "Run this:\n\n```bash\nsudo systemctl restart docker\n```\n\nand this:\n\n```bash\ncd app\nnpm test\n```";
 
 function Where() {
@@ -81,7 +81,8 @@ describe("Run in shell", () => {
     expect(asks[0]).toMatchObject({
       what: { kind: "run", line: "sudo systemctl restart docker" },
       cwd: "/home/you/app",
-      beside: { paneId: "w7:p8", workspaceId: "w7" },
+      beside: { paneId: "w7:p8", workspaceId: "w7", tabId: "w7:t1" },
+      split: true,
     });
     await waitFor(() => expect(screen.queryByTestId("run-in-shell-command")).toBeNull());
   });

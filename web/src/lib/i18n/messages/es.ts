@@ -1260,6 +1260,7 @@ export const es: Dictionary = {
   "space.readOnly.deviceUnauthorised": "Modo lectura. Dispositivo no autorizado",
   "space.readOnly.savedCopy": "Copia guardada. Vuelve a conectarte para hacer cambios.",
   "space.create.ready": "{what} disponible. Inicia el agente",
+  "space.noun.pane": "panel",
   "space.noun.tab": "pestana",
   "space.noun.space": "espacio",
 

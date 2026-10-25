@@ -424,6 +424,13 @@ export interface MuxCreatedPane {
   readonly cwd: string;
 }
 
+/** What a split asks for: a new pane beside `paneId`, in the same tab. */
+export interface MuxSplitRequest {
+  readonly paneId: string;
+  /** Where to open it, or nothing. A blank string is nothing, as in {@link MuxTabRequest.cwd}. */
+  readonly cwd?: string;
+}
+
 /** What a new tab asks for. */
 export interface MuxTabRequest {
   readonly spaceId: string;
@@ -855,6 +862,13 @@ export interface MuxAdapter {
   /** New tab in a space, opening a fresh shell. Needs `createTab`. */
   createTab(request: MuxTabRequest): Promise<MuxOutcome<MuxCreatedPane>>;
 
+  /**
+   * New pane beside `paneId`, in the same tab, opening a fresh shell; the operator's focus does not
+   * move. Needs `splitPane`. OPTIONAL by design, like {@link renameSpace}: only an adapter that can
+   * address a split at a named pane declares the capability and has the method.
+   */
+  splitPane?(request: MuxSplitRequest): Promise<MuxOutcome<MuxCreatedPane>>;
+
   /** Set a tab's label. Needs `renameTab`. */
   renameTab(tabId: string, label: string): Promise<MuxAck>;
 
@@ -943,6 +957,7 @@ export type MuxOptionalMethod =
   | "pasteText"
   | "pasteBlock"
   | "renameSpace"
+  | "splitPane"
   | "listConversations"
   | "conversationItems"
   | "reopenConversation";
@@ -983,6 +998,8 @@ export function muxOptionalMethods(
   if (pasteBlock !== undefined) methods.pasteBlock = pasteBlock;
   const renameSpace = adapter.renameSpace?.bind(adapter);
   if (renameSpace !== undefined) methods.renameSpace = renameSpace;
+  const splitPane = adapter.splitPane?.bind(adapter);
+  if (splitPane !== undefined) methods.splitPane = splitPane;
   // The program's history (M53 spec 11): the list, the items of one, and a reopen.
   const listConversations = adapter.listConversations?.bind(adapter);
   if (listConversations !== undefined) methods.listConversations = listConversations;

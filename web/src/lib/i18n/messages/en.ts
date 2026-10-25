@@ -1337,6 +1337,7 @@ export const en = {
   "space.readOnly.deviceUnauthorised": "Read-only, device not authorised",
   "space.readOnly.savedCopy": "Saved copy. Reconnect to make changes.",
   "space.create.ready": "New {what} ready, launch your agent",
+  "space.noun.pane": "pane",
   "space.noun.tab": "tab",
   "space.noun.space": "space",
 

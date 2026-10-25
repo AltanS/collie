@@ -25,16 +25,18 @@ export function runnableLine(lang: string, text: string): string | null {
 }
 
 /**
- * The shell a run from this pane's chat goes to instead of a new tab: one already open in the same
- * space and folder, on the same machine and session, the most recently used first. One shell per
- * folder, so repeated runs do not leave a tab each behind.
+ * The shell a run from this pane's chat goes to instead of a new one: one already open in the same
+ * folder, on the same machine and session, the most recently used first. In the pane's own tab where
+ * the machine opens a run there (`sameTab`), else anywhere in its space. One shell per folder, so
+ * repeated runs do not leave a shell each behind.
  */
-export function reusableShell(pane: AgentView, shells: readonly AgentView[]): AgentView | undefined {
+export function reusableShell(pane: AgentView, shells: readonly AgentView[], sameTab = false): AgentView | undefined {
   let best: AgentView | undefined;
   let bestAt = -1;
   for (const s of shells) {
     if (s.kind !== "shell" || s.paneId === pane.paneId) continue;
     if (s.workspaceId !== pane.workspaceId || s.cwd !== pane.cwd || s.host !== pane.host || s.session !== pane.session) continue;
+    if (sameTab && s.tabId !== pane.tabId) continue;
     const at = Math.max(s.lastActiveAt ?? 0, s.lastSeenAt ?? 0);
     if (at > bestAt) {
       best = s;

@@ -1231,6 +1231,7 @@ export const ru: Dictionary = {
   "space.readOnly.deviceUnauthorised": "Только чтение: устройство не авторизовано",
   "space.readOnly.savedCopy": "Сохранённая копия. Переподключитесь, чтобы вносить изменения.",
   "space.create.ready": "Новый {what} готов: запустите своего агента",
+  "space.noun.pane": "панель",
   "space.noun.tab": "tab",
   "space.noun.space": "пробел",
   "actionSheet.back": "Назад",

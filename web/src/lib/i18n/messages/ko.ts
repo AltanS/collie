@@ -1250,6 +1250,7 @@ export const ko: Dictionary = {
   "space.readOnly.deviceUnauthorised": "읽기 전용. 승인되지 않은 기기입니다.",
   "space.readOnly.savedCopy": "저장된 사본입니다. 변경하려면 다시 연결하세요.",
   "space.create.ready": "새 {what} 준비 완료. 에이전트를 실행하세요.",
+  "space.noun.pane": "창",
   "space.noun.tab": "탭",
   "space.noun.space": "스페이스",
 

@@ -290,6 +290,13 @@ export class FakeHerdr implements HerdrRpc {
     return { paneId: pane.pane_id, workspaceId: workspace.workspace_id, tabId: tab.tab_id, cwd: pane.cwd };
   }
 
+  async splitPane(paneId: string, opts: { cwd?: string } = {}): Promise<CreatedShell> {
+    const target = this.pane("pane.split", paneId);
+    const tab = this.tab("pane.split", target.tab_id);
+    const pane = this.newPane(tab, opts.cwd ?? target.cwd);
+    return { paneId: pane.pane_id, workspaceId: pane.workspace_id, tabId: tab.tab_id, cwd: pane.cwd };
+  }
+
   async renameTab(tabId: string, label: string): Promise<void> {
     this.tab("tab.rename", tabId).label = label;
   }

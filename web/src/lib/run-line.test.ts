@@ -47,6 +47,13 @@ describe("reusableShell", () => {
     expect(reusableShell(claude, [older, newer])?.paneId).toBe("w7:p3");
   });
 
+  it("keeps to the pane's own tab where runs open there", () => {
+    const beside = pane("w7:p2", { tabId: "t-w7:p1" });
+    const elsewhere = pane("w7:p3", { lastActiveAt: 9 });
+    expect(reusableShell(claude, [beside, elsewhere], true)?.paneId).toBe("w7:p2");
+    expect(reusableShell(claude, [elsewhere], true)).toBeUndefined();
+  });
+
   it("leaves a shell in another folder, space or machine alone", () => {
     expect(reusableShell(claude, [pane("w7:p2", { cwd: "/home/you" })])).toBeUndefined();
     expect(reusableShell(claude, [pane("w8:p2", { workspaceId: "w8" })])).toBeUndefined();

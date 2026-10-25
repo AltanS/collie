@@ -33,7 +33,9 @@ export interface StartAsk {
    * this space"). The route's own `paneId`; the workspace is for a machine older than 1.19.0, whose
    * plain shell goes through its tab create. Never with `branch`: a worktree is a space of its own.
    */
-  beside?: { paneId: string; workspaceId: string };
+  beside?: { paneId: string; workspaceId: string; tabId?: string };
+  /** Open a run in `beside`'s own tab, as a new pane, where the machine can split one; else beside it. */
+  split?: boolean;
   branch?: { cwd: string; name: string; base: WorktreeBaseChoice; folder: WorktreeFolderChoice };
 }
 
@@ -121,7 +123,7 @@ export function useSpaceActions(canWrite?: () => boolean) {
     // the SAME scope, or the phone would open the new pane's id on the machine it was looking at —
     // where that id is a different terminal, which is the one mistake the host dimension exists to
     // prevent. Absent means the ambient scope, which is every caller that cannot re-address.
-    (res: CreateResponse, what: "tab" | "space", at?: Scope) => {
+    (res: CreateResponse, what: "pane" | "tab" | "space", at?: Scope) => {
       if (!res.ok) {
         setStatus(describeApiError(res), "error");
         return;
@@ -139,7 +141,7 @@ export function useSpaceActions(canWrite?: () => boolean) {
         focused: false,
         kind: "shell",
       };
-      const noun = what === "tab" ? t("space.noun.tab") : t("space.noun.space");
+      const noun = what === "pane" ? t("space.noun.pane") : what === "tab" ? t("space.noun.tab") : t("space.noun.space");
       setStatus(t("space.create.ready", { what: noun }), "success");
       // A topology write: whichever view the operator lands back on (the tab strip they just left,
       // the dashboard behind it) should not wait out an idle-timed gap to show the new pane.
@@ -234,9 +236,14 @@ export function useSpaceActions(canWrite?: () => boolean) {
         if (ask.what.kind === "run") {
           // A one-off line never starts on a branch; the page switches that off, and the bridge refuses it too.
           if (ask.branch !== undefined) return { kind: "refused", message: t("apiError.launch.run_no_branch") };
-          const res = await api.startRun(ask.what.line, { cwd: ask.cwd, requestId: ask.requestId, besidePaneId: ask.beside?.paneId }, scope);
+          const res = await api.startRun(
+            ask.what.line,
+            { cwd: ask.cwd, requestId: ask.requestId, besidePaneId: ask.beside?.paneId, split: ask.split },
+            scope,
+          );
           if (!res.ok) return { kind: "refused", message: describeApiError(res) };
-          open(res, ask.beside === undefined ? "space" : "tab", scope);
+          const into = ask.beside === undefined ? "space" : res.pane.tabId === ask.beside.tabId ? "pane" : "tab";
+          open(res, into, scope);
           return { kind: "done" };
         }
         if (ask.branch !== undefined) {

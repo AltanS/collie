@@ -6898,6 +6898,8 @@ export async function launch(
   // The client never sends a command line, except as a one-off `run`, which met its gates above. It
   // may send the pane it wants the launch to open BESIDE, and the folder the sheet's Where field names.
   const besidePaneId = typeof fields.paneId === "string" ? fields.paneId.trim() : "";
+  // A run may ask to open in the pane's own tab rather than a tab beside it (a chat's Run in shell).
+  const split = fields.split === true;
   const asked = askedFolder(fields.cwd, deps.home ?? homedir());
   if (asked === false) return json({ ok: false, ...apiError("launch.bad_folder") } satisfies CreateResponse, ae, 400);
   // A folder the person named must be a directory on THIS machine's disk (on a crew the member runs
@@ -6937,6 +6939,7 @@ export async function launch(
     kind: picked.kind,
     cwd: resolvedCwd,
     besidePane,
+    split,
     requestId,
     audit,
     device,
@@ -7110,6 +7113,8 @@ async function runLaunch(
     kind: PickedLaunch["kind"];
     cwd: string;
     besidePane: AgentView | undefined;
+    /** Open in `besidePane`'s own tab, where the multiplexer can split a named pane; else a tab beside it. */
+    split: boolean;
     requestId: string | undefined;
     audit: AuditLog;
     device: string | null;
@@ -7128,13 +7133,29 @@ async function runLaunch(
   // from one folder would fail there, and on Herdr two equal names cannot be told apart.
   const folder = basename(cwd);
   const folderNamed = !besidePane && row !== undefined && job.kind !== "run" && folder !== "";
+  const splitPane = herdr.splitPane?.bind(herdr);
+  const splitting =
+    job.split && besidePane !== undefined && splitPane !== undefined && supportsCapability(herdr.capabilities, "splitPane");
   const outcome = besidePane
-    ? await herdr.createTab({ spaceId: besidePane.workspaceId, label, cwd })
+    ? splitting && splitPane !== undefined
+      ? await splitPane({ paneId: besidePane.paneId, cwd })
+      : await herdr.createTab({ spaceId: besidePane.workspaceId, label, cwd })
     : await herdr.createSpace({ cwd, label: folderNamed ? freeSpaceName(folder, engine.current().workspaces) : label });
   if (!outcome.ok) {
     return { ok: false, ...apiError("workspace.create_failed", { reason: outcome.detail }) };
   }
   const created = outcome.value;
+  if (splitting && created.tabId !== besidePane?.tabId) {
+    // A split that landed in another tab split the wrong pane: a multiplexer that does not know the
+    // pane it was given may split the focused one instead, in whatever tab the operator is using.
+    // That pane is closed before anything is typed into it.
+    try {
+      await herdr.closePane(created.paneId);
+    } catch {
+      // Swallowed: the refusal below is the answer, and a second failure would only obscure it.
+    }
+    return { ok: false, ...apiError("workspace.create_failed", { reason: "the split did not open beside the pane" }) };
+  }
   if (folderNamed && label !== undefined && supportsCapability(herdr.capabilities, "renameTab")) {
     // Best effort: a tab left with the multiplexer's own name costs a label, never the launch.
     try {
@@ -7167,7 +7188,7 @@ async function runLaunch(
   // and a history line may hold a secret they typed. Pane input is never kept whole either (a reply is
   // a bounded preview, Type mode keeps no character at all), so a run records its command word and its
   // length, never the line (ADR 0095).
-  const where = besidePane ? "tab" : "workspace";
+  const where = splitting ? "pane" : besidePane ? "tab" : "workspace";
   let detail: AuditDetail;
   if (row === undefined) detail = { cwd, requestId: job.requestId };
   else if (job.kind === "run") detail = { program: row.label, length: [...row.command].length, cwd, requestId: job.requestId };

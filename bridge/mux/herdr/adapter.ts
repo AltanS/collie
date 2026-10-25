@@ -53,6 +53,7 @@ import {
   type MuxSpaceRequest,
   type MuxSubscription,
   type MuxTab,
+  type MuxSplitRequest,
   type MuxTabRequest,
   type MuxWatchOptions,
   type MuxWorktree,
@@ -110,6 +111,7 @@ const HERDR_CAPABILITIES = declareCapabilities({
     "closePane",
     "setFocus",
     "createTab",
+    "splitPane",
     "renameTab",
     "closeTab",
     "createSpace",
@@ -530,6 +532,17 @@ export class HerdrMux implements MuxAdapter {
     try {
       const created = await this.client.createTab(request.spaceId, opts);
       return muxOk(toCreatedPane(created));
+    } catch (err) {
+      return transportRefusal(err);
+    }
+  }
+
+  async splitPane(request: MuxSplitRequest): Promise<MuxOutcome<MuxCreatedPane>> {
+    const opts: Parameters<HerdrClient["splitPane"]>[1] = {};
+    const asked = requestedCwd(request.cwd);
+    if (asked !== undefined) opts.cwd = asked;
+    try {
+      return muxOk(toCreatedPane(await this.client.splitPane(request.paneId, opts)));
     } catch (err) {
       return transportRefusal(err);
     }
