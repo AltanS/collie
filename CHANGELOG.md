@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **The Steer hint no longer moves the composer.** While a turn runs on a pane that can steer, the hint ("Send queues it for after the turn. Hold Send to steer.") was a row above the input box that opened and closed with every turn, and it shifted the belt and the field. It is now the empty field's placeholder, in a smaller size, and it goes when you type.
+
 ## [1.24.0] - 2026-10-25
 
 ### Added

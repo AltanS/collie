@@ -227,7 +227,9 @@ describe("Composer on the Send Protocol (M56 specs 05 and 06)", () => {
 });
 
 // M69 spec 03: while the turn runs on a pane whose bridge says `canSteer`, the Send button's long-press
-// menu offers Steer above "Send as message", and the hint under the box names both gestures.
+// menu offers Steer above "Send as message", and the empty field's placeholder names both gestures.
+// The hint is the placeholder, never a row of its own: a row opened and closed with every turn and moved
+// the belt and the field (Altan, 2026-10-25), and a placeholder takes no height of its own.
 describe("Steer or queue on the Send button (M69)", () => {
   const running = { revision: 1, turn: "running", modal: "none", composer: "empty" } as const;
   const HINT = "Send queues it for after the turn. Hold Send to steer.";
@@ -237,6 +239,8 @@ describe("Steer or queue on the Send button (M69)", () => {
   function StatusProbe() {
     return <div data-testid="status">{useStatus()?.text ?? ""}</div>;
   }
+  /** The draft field. Its placeholder is the only place the hint is drawn. */
+  const field = () => screen.getByRole("textbox");
   const status = () => screen.getByTestId("status").textContent ?? "";
   function renderSteer(overrides: Partial<ComponentProps<typeof Composer>>) {
     render(<StatusProbe />);
@@ -244,36 +248,71 @@ describe("Steer or queue on the Send button (M69)", () => {
   }
 
   async function openMenu(user: ReturnType<typeof userEvent.setup>, text: string) {
-    await user.type(screen.getByPlaceholderText(/type a reply/i), text);
+    await user.type(field(), text);
     fireEvent.contextMenu(screen.getByRole("button", { name: "Send" }));
   }
 
-  it("offers the row and the hint while the turn runs on a pane that can steer, above Send as message", async () => {
+  it("offers the row while the turn runs on a pane that can steer, above Send as message", async () => {
     const user = userEvent.setup();
     renderSteer({ surface: running, canSteer: true });
-    expect(screen.getByText(HINT)).toBeInTheDocument();
     await openMenu(user, "look at the logs");
     const steer = await screen.findByRole("button", { name: STEER });
     const message = screen.getByRole("button", { name: "Send as message" });
     expect(steer.compareDocumentPosition(message) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it("offers neither row nor hint on an idle pane, even one that can steer", async () => {
+  it("the empty field's placeholder is the hint, smaller than the reply words, while the turn runs on a pane that can steer", () => {
+    renderSteer({ surface: running, canSteer: true });
+    expect(field()).toHaveAttribute("placeholder", HINT);
+    expect(field().className).toMatch(/placeholder:text-xs/);
+    // The hint is not text in the page: it is the placeholder or nothing.
+    expect(screen.queryByText(HINT)).toBeNull();
+  });
+
+  it("draws no row for the hint: nothing in the composer carries the old slot, with or without the steer row", () => {
+    renderSteer({ surface: running, canSteer: true });
+    expect(document.querySelector('[data-slot="composer-steer-hint"]')).toBeNull();
+    cleanup();
+    renderSteer({ canSteer: true });
+    expect(document.querySelector('[data-slot="composer-steer-hint"]')).toBeNull();
+  });
+
+  it("typing text leaves the placeholder attribute on the hint (the browser hides it, the DOM does not change)", async () => {
+    const user = userEvent.setup();
+    renderSteer({ surface: running, canSteer: true });
+    await user.type(field(), "x");
+    expect(field()).toHaveValue("x");
+    expect(field()).toHaveAttribute("placeholder", HINT);
+  });
+
+  it("keeps the ordinary reply words on an idle pane, even one that can steer", async () => {
     const user = userEvent.setup();
     renderSteer({ canSteer: true });
-    expect(screen.queryByText(HINT)).toBeNull();
+    expect(screen.getByPlaceholderText(/type a reply/i)).toBeInTheDocument();
+    expect(field().className).not.toMatch(/placeholder:text-xs/);
     await openMenu(user, "hello");
     expect(await screen.findByRole("button", { name: "Send as message" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: STEER })).toBeNull();
   });
 
-  it("offers neither row nor hint while the turn runs on a pane that cannot steer", async () => {
+  it("keeps the ordinary reply words while the turn runs on a pane that cannot steer", async () => {
     const user = userEvent.setup();
     renderSteer({ surface: running });
-    expect(screen.queryByText(HINT)).toBeNull();
+    expect(screen.getByPlaceholderText(/type a reply/i)).toBeInTheDocument();
+    expect(field().className).not.toMatch(/placeholder:text-xs/);
     await openMenu(user, "hello");
     expect(await screen.findByRole("button", { name: "Send as message" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: STEER })).toBeNull();
+  });
+
+  it("the facts keep priority over the hint: a read-only pane, a gone pane and a shell keep their own words", () => {
+    renderSteer({ surface: running, canSteer: true, readOnly: true });
+    expect(screen.getByPlaceholderText(/read-only/i)).not.toHaveAttribute("placeholder", HINT);
+    expect(field().className).not.toMatch(/placeholder:text-xs/);
+    cleanup();
+    renderSteer({ surface: running, canSteer: true, isShell: true });
+    expect(field()).not.toHaveAttribute("placeholder", HINT);
+    expect(field().className).not.toMatch(/placeholder:text-xs/);
   });
 
   it("the row sends when: steer, says Steered, and clears the draft; the plain tap sends no when", async () => {
@@ -290,7 +329,7 @@ describe("Steer or queue on the Send button (M69)", () => {
     await waitFor(() => expect(status()).toBe("Steered: the agent takes it after its current step."));
     await waitFor(() => expect(loadDraft(undefined, "w1:p1") ?? "").toBe(""));
 
-    await user.type(screen.getByPlaceholderText(/type a reply/i), "and then stop");
+    await user.type(field(), "and then stop");
     await user.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(sends).toHaveLength(2));
     expect(sends[1]).not.toHaveProperty("when");

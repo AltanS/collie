@@ -1664,8 +1664,16 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const refusalScreen = sendRefusal?.screen === true && screen !== undefined && !screen.on;
   const refusalKeys = way.keysOpen && drawer !== "keys";
   // What the field's placeholder says: the facts first (a pane that is gone, a device that may not
-  // write, a box out of reach), then Type mode, then the ordinary reply or shell line. The placeholder
-  // names no other state: the notices, the Screen pill and the Send slot carry those.
+  // write, a box out of reach), then Type mode, then the shell line, then (M69) the Steer hint while a
+  // turn runs on a harness that can steer, then the ordinary reply line. The placeholder names no other
+  // state: the notices, the Screen pill and the Send slot carry those.
+  //
+  // THE STEER HINT LIVES HERE, NOT IN A ROW OF ITS OWN. It was a line above the box inside a Collapse,
+  // so it opened and closed with every turn and moved the belt and the field (Altan, 2026-10-25: a
+  // composer hint must not shift the layout). A placeholder takes no height of its own, and it goes
+  // when the first character is typed, which is when the operator no longer needs it.
+  const steerWords =
+    way.state !== "gone" && way.state !== "readOnly" && way.state !== "unreachable" && !direct.active && !isShell && steerRow;
   const placeholderWords =
     way.state === "gone"
       ? translate("composer.placeholder.gone")
@@ -1677,7 +1685,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             ? translate("composer.placeholder.direct")
             : isShell
               ? translate("composer.placeholder.shell")
-              : translate("composer.placeholder.reply");
+              : steerWords
+                ? translate("composer.steer.hint")
+                : translate("composer.placeholder.reply");
 
   // Coalesce revalidations from a burst of key presses, LEADING edge first: the first press in a
   // burst refetches immediately, and only presses that arrive inside the window collapse into one
@@ -2533,14 +2543,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             {translate("composer.draft.holdsMask")}
           </p>
         </Collapse>
-        {/* M69: what the plain tap does, and where the other choice is, while a turn runs on a harness
-            that can steer. Only then: a pane without `canSteer` draws nothing here, and a closed
-            Collapse holds no height, so its layout does not move. */}
-        <Collapse open={steerRow && !direct.active}>
-          <p data-slot="composer-steer-hint" className="px-1 pb-1 text-xs leading-snug text-muted-foreground">
-            {translate("composer.steer.hint")}
-          </p>
-        </Collapse>
         {/* ── ONE BOX, ONE ROW: THE FIELD, ATTACH, THE PRIMARY ACTION ──────────────────────
             The field, the attach control and Send used to be three shapes on one line: a
             bordered field with a button tucked into its bottom-right corner, and a round primary
@@ -2715,6 +2717,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               // the field's right side takes no padding of its own, and the box's `gap-1` to attach
               // is what keeps the text off it.
               "min-w-0 flex-1 min-h-9 pl-2 py-1.5",
+              // The Steer hint is longer than the reply words, so it is drawn smaller. The FIELD'S HEIGHT
+              // does not change with it: `text-base` gives the field a unitless line-height, so the
+              // placeholder's line box can only shrink (12px x 1.33 against 14-16px x 1.5), and the empty
+              // field is already held at `min-h-9` above (at most 16px x 1.5 + 12px of padding = 36px).
+              steerWords && "placeholder:text-xs",
               // Mirrored, the field's right side stands against the box's border, so it takes the
               // inset the left used to take from Attach.
               hand === "left" && "pr-2",
