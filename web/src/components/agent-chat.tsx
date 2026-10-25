@@ -87,6 +87,7 @@ import { BranchLabel } from "@/components/ui/branch-label";
 import { paneGitHead } from "@/lib/git-head";
 import { CacheSheet } from "@/components/cache-sheet";
 import { PaneActionsSheet } from "@/components/pane-actions-sheet";
+import { RunInShellProvider } from "@/components/run-in-shell";
 import { CardWaitingCtx } from "@/components/chat-cards";
 import { chatStatusKey, SavedCopyRow, SessionStream, sharedFolderLine } from "@/components/session-stream";
 import { PaneSettingsSheet } from "@/components/pane-settings-sheet";
@@ -280,7 +281,7 @@ export function AgentChat({
   // last read failed or its screen is a saved copy. Set below, once both facts exist.
   const structuralWritesOff = useRef(false);
   const canWriteHere = useCallback(() => !structuralWritesOff.current, []);
-  const { newTab, launch, launching, creatingTab } = useSpaceActions(canWriteHere);
+  const { newTab, launch, launching, creatingTab, start } = useSpaceActions(canWriteHere);
   // The pane's light-theme inversion override (lib/mirror-invert.ts). Read once at mount, which is
   // enough: DetailRoute keys this component by `paneScopeKey(scope, paneId)` — the full address, not
   // the id, for the reason that file records — so a walk to another pane, session or host remounts it
@@ -2596,6 +2597,12 @@ export function AgentChat({
                 and the notice floats over both bodies alike (ADR 0061). Both bodies draw agent
                 replies, so whether this device draws their stretches is read once, here. */}
             <StretchTextContext.Provider value={prefs.stretchText}>
+            <RunInShellProvider
+              beside={agent && !isShell && agent.cwd ? { paneId, workspaceId: agent.workspaceId, cwd: agent.cwd } : undefined}
+              folder={shortenHome(agent?.cwd ?? "", launchersHome) || "~"}
+              scope={scope}
+              start={start}
+            >
             {chatShown ? (
               <WalkyOpenProvider open={messagesSheet ? openWalkyMessage : null} self={walkySelf}>
               <CardWaitingCtx.Provider value={questionNotes}>
@@ -2807,6 +2814,7 @@ export function AgentChat({
               )}
             </ChatMessageList>
             )}
+            </RunInShellProvider>
             </StretchTextContext.Provider>
             {/* THE TERMINAL-DRAFT NOTICE FLOATS HERE (ADR 0061). The composer portals the notice
                 into this box, pinned to the mirror's bottom edge: above the card dock when a card

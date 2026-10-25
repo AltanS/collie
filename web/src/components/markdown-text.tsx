@@ -1,6 +1,8 @@
+import { SquareTerminal } from "lucide-react";
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 
 import { useFileLinks, type FileLinkTarget } from "@/components/file-links";
+import { Button } from "@/components/ui/button";
 import { CopyableBlock } from "@/components/ui/copyable-block";
 import { WalkyIdChip, WalkyIds } from "@/components/walky-id-chip";
 import { useWalkyChips } from "@/components/walky-log";
@@ -8,6 +10,7 @@ import { useLocale } from "@/hooks/use-locale";
 import { codeSpanPath, findFilePaths } from "@/lib/file-paths";
 import { t } from "@/lib/i18n";
 import { findBareUrls, headingAnchors, parseMarkdown, spansText, type MdBlock, type MdSpan } from "@/lib/markdown";
+import { runnableLine } from "@/lib/run-line";
 import { closeStretch, composeStretches, liftStretches, parseStretches, stretches as allStretches } from "@/lib/stretch";
 import { splitHighlight } from "@/lib/transcript-search";
 
@@ -524,6 +527,31 @@ function useStretchBlocks(text: string, withImages: boolean, drawn: boolean, que
 }
 
 /** `chat` is agent prose, sized for a phone transcript. `document` is a file the operator opened to read. */
+/**
+ * What a "Run in shell" tap does with a block's line, as the screen showing the text decides it. Only
+ * a pane's chat provides one (components/run-in-shell.tsx): it knows the folder and the space a run
+ * belongs in. Everywhere else a code block offers its copy and nothing more.
+ */
+export const RunLineContext = createContext<((line: string) => void) | null>(null);
+
+function RunLineButton({ lang, text }: { lang: string; text: string }) {
+  const run = useContext(RunLineContext);
+  const line = runnableLine(lang, text);
+  if (run === null || line === null) return null;
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      className="relative mt-1 h-7 gap-1.5 px-2 text-xs before:absolute before:-inset-y-2 before:inset-x-0 before:content-['']"
+      onClick={() => run(line)}
+    >
+      <SquareTerminal aria-hidden className="size-3.5" />
+      {t("runInShell.button")}
+    </Button>
+  );
+}
+
 export type MarkdownVariant = "chat" | "document";
 
 function Block({ block, anchor, variant }: { block: MdBlock; anchor: string | null; variant: MarkdownVariant }) {
@@ -553,11 +581,14 @@ function Block({ block, anchor, variant }: { block: MdBlock; anchor: string | nu
     }
     case "code":
       return (
-        <CopyableBlock text={block.text}>
-          <pre className="overflow-x-auto rounded-md border border-status-info/20 bg-status-info/5 px-2 py-1.5 font-mono text-[11px] leading-snug [font-variant-ligatures:none]">
-            <Hit text={block.text} />
-          </pre>
-        </CopyableBlock>
+        <div>
+          <CopyableBlock text={block.text}>
+            <pre className="overflow-x-auto rounded-md border border-status-info/20 bg-status-info/5 px-2 py-1.5 font-mono text-[11px] leading-snug [font-variant-ligatures:none]">
+              <Hit text={block.text} />
+            </pre>
+          </CopyableBlock>
+          <RunLineButton lang={block.lang} text={block.text} />
+        </div>
       );
     case "list": {
       const Tag = block.ordered ? "ol" : "ul";
