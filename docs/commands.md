@@ -52,6 +52,15 @@ check that line before you trust the rest, because a shell with the wrong `COLLI
 the wrong lane. `--json` gives the same two values as `instance` and `stateDir` on the `collie`
 entry.
 
+**`collie doctor` lists your agent programs.** Each program Collie has an input profile for gets
+one `harness-<name>` row: the file Collie would run on your login shell's `PATH`, the version it
+printed, and the profile's verdict on that version. A version above the verified range is only a
+note, because sends in a turn are still trusted. The row warns when the file resolves but its
+version cannot be read, for example a wrapper first on `PATH` that needs `$HOME`, or a broken
+install: until the version reads, Collie treats every send to that program as provisional. A program
+that is not installed shows `not installed`. In `--json` each row also carries `harness`, `binary`,
+`version` and `profileStatus`.
+
 
 ## Put `collie` on your PATH
 

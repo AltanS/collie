@@ -65,6 +65,7 @@ import { accountWindowsDoctorLine, grokAuthPath, hasOpencodeGoEntry, opencodeAut
 import { explicitMux, probeMuxes, refusedMux, type MuxSighting } from "./mux.ts";
 import { cacheFindings } from "./cache-findings.ts";
 import { surfaceFindings } from "./surface-findings.ts";
+import { harnessFindings, harnessReader, type ReadHarness } from "./harness-findings.ts";
 import { durableFindings, sourcesFindings } from "./durable-findings.ts";
 import { historyFindings, type SnapshotRead } from "./history.ts";
 import { EXIT, type Io } from "./io.ts";
@@ -179,6 +180,12 @@ export interface DoctorDeps {
   readonly ui?: Ui | null;
   /** The Whistle model check's stand-in pin, for the tests. Production leaves it. */
   readonly whistle?: WhistleSeams;
+  /**
+   * Reads each harness's binary and version for the harnesses table (`cli/harness-findings.ts`). It
+   * runs the harness's own version command, which is a read. Absent means no table, which is what
+   * the tests that are not about it see.
+   */
+  readonly harnesses?: ReadHarness;
 }
 
 // ── §8.6's window, and the shoulder before it ────────────────────────────────
@@ -285,6 +292,8 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
     // What the input readers saw, per harness and version, over the last seven days (M56 spec 09): a
     // summary line and one line per row, read from the bridge's own day files. A read, like the rest.
     ...surfaceFindings({ ctx: deps.ctx, files: deps.files, now: deps.now }),
+    // The binary and version of every harness with a profile, and what the profile says (1.24.1).
+    ...(deps.harnesses === undefined ? [] : await harnessFindings(deps.harnesses)),
     restartPending(deps, install, runtimeMarker, await ownRead()),
     // STAMPED `crew` when it is a comparison at all (ADR 0050), while still PRINTING here, where it
     // always has. `clock` measures this machine against a member's `Date` header and its own remedy
@@ -2414,5 +2423,6 @@ export function doctorDeps(base: {
     beacons: beaconReader(base.ctx.stateDir),
     now: () => Date.now(),
     ownerOnly: realOwnerOnlyDeps,
+    harnesses: harnessReader(base.ctx.env),
   };
 }

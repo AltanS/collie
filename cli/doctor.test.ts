@@ -46,6 +46,9 @@ import {
   STATE,
 } from "./fakes.ts";
 import { EXIT } from "./io.ts";
+import type { BinaryRead } from "../bridge/surface/binary-version.ts";
+import { loadProfiles } from "../web/src/lib/surface/profile.ts";
+import type { HarnessFinding, ReadHarness } from "./harness-findings.ts";
 import type { PairedDevice } from "../bridge/pairing.ts";
 import { POWERSHELL_UTF8 } from "./sys.ts";
 import { collieBinary } from "./unit.ts";
@@ -505,7 +508,8 @@ describe("collie doctor — the contract", () => {
     for (const f of parsed) {
       // Four keys on every finding, plus `scope` on a crew one and ONLY on a crew one (ADR 0050).
       // Absent is the local answer, so a script written before the field keeps reading correctly.
-      // The `collie` finding adds `instance` and `stateDir` (1.24.1); no other finding carries a fifth key.
+      // The `collie` finding adds `instance` and `stateDir`, and a harness row `harness`, `binary`,
+      // `version` and `profileStatus` (1.24.1); no other finding carries a fifth key.
       const keys = Object.keys(f).toSorted();
       const extra = f.check === "collie" ? ["instance", "stateDir"] : [];
       expect(keys.filter((k) => k !== "scope" && !extra.includes(k))).toEqual(["check", "detail", "remedy", "status"]);
@@ -3006,5 +3010,62 @@ describe("doctor: the first line names the state it reads (1.24.1)", () => {
   test("--json on the default instance says null", async () => {
     const { raw } = await findings(harness(null));
     expect(raw[0]).toMatchObject({ check: "collie", instance: null, stateDir: STATE });
+  });
+});
+
+describe("doctor: the harnesses table (1.24.1)", () => {
+  const CLAUDE = "/home/pat/.local/bin/claude";
+  const outcome = (exitCode: number, stderr = "", stdout = ""): BinaryRead["outcome"] => ({ exitCode, output: `${stdout} ${stderr}`, stderr });
+  /** Only `claude` is installed; every other profile resolves to nothing. */
+  const reader = (claude: BinaryRead): ReadHarness => async (profile) => (profile.id === "claude" ? claude : { binary: null, version: null, outcome: null });
+  const run = async (claude: BinaryRead) => {
+    const h = harness(null);
+    const code = await cmdDoctor({ ...h.deps, harnesses: reader(claude) }, ["--json"]);
+    // SAFETY: `--json` prints the findings array (see the contract suite); `harness-*` rows are HarnessFinding, asserted per field below.
+    const raw = JSON.parse(h.io.stdout.join("\n")) as HarnessFinding[];
+    return { code, rows: raw.filter((f) => f.check.startsWith("harness-")), row: raw.find((f) => f.check === "harness-claude")! };
+  };
+
+  test("a read, verified version is ok", async () => {
+    const { row, code } = await run({ binary: CLAUDE, version: "2.1.200", outcome: outcome(0, "", "2.1.200 (Claude Code)") });
+    expect(code).toBe(EXIT.OK);
+    expect(row).toMatchObject({ harness: "claude", binary: CLAUDE, version: "2.1.200", profileStatus: "verified", status: "ok", remedy: null });
+    expect(row.detail).toBe(`${CLAUDE} · 2.1.200 · verified`);
+  });
+
+  test("a version above the verified range is a provisional note, not a fault", async () => {
+    const { row, code } = await run({ binary: CLAUDE, version: "2.1.400", outcome: outcome(0) });
+    expect(code).toBe(EXIT.OK);
+    expect(row).toMatchObject({ version: "2.1.400", profileStatus: "provisional", status: "ok", remedy: null });
+    expect(row.detail).toContain("note: above the verified range; sends in a turn are trusted, dialogs may drift");
+  });
+
+  test("a binary that resolves but whose version read failed warns, with the path and the exit code", async () => {
+    const { row, code } = await run({ binary: CLAUDE, version: null, outcome: outcome(127, "\nclaude: line 3: $HOME: unbound variable\nmore") });
+    expect(code).toBe(EXIT.OK);
+    expect(row).toMatchObject({ binary: CLAUDE, version: null, profileStatus: null, status: "warn" });
+    expect(row.detail).toBe(`${CLAUDE} · unread (exit 127: claude: line 3: $HOME: unbound variable)`);
+    expect(row.remedy).toContain(CLAUDE);
+    expect(row.remedy).toContain("a wrapper first on PATH that needs $HOME, or a broken install");
+  });
+
+  test("a version command that exits 0 with no version is still unread", async () => {
+    const { row } = await run({ binary: CLAUDE, version: null, outcome: outcome(0, "", "hello") });
+    expect(row.status).toBe("warn");
+    expect(row.detail).toContain("unread (exit 0, no version in its output)");
+  });
+
+  test("a harness with no binary is a quiet not installed, one row per profile, none named by the doctor", async () => {
+    const { row, rows, code } = await run({ binary: null, version: null, outcome: null });
+    expect(code).toBe(EXIT.OK);
+    expect(row).toMatchObject({ binary: null, version: null, profileStatus: null, status: "ok", detail: "not installed", remedy: null });
+    expect(rows.map((r) => r.harness)).toEqual([...loadProfiles().keys()]);
+  });
+
+  test("the plain output prints the rows too, and without a reader the table is absent", async () => {
+    const h = harness(null);
+    await cmdDoctor({ ...h.deps, harnesses: reader({ binary: CLAUDE, version: "2.1.200", outcome: outcome(0) }) }, []);
+    expect(h.io.stdout.join("\n")).toMatch(/✓\s+harness-claude\s+\/home\/pat\/\.local\/bin\/claude · 2\.1\.200 · verified/u);
+    expect((await findings(harness(null))).raw.filter((f) => f.check.startsWith("harness-"))).toEqual([]);
   });
 });

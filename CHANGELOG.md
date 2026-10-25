@@ -26,6 +26,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Added
 
 - **`collie doctor` opens with the instance and the state directory it reads.** The first line now reads `instance: next · state /home/you/.local/state/collie-next`, with `default` for the first instance, so a person who runs two lanes can see at once when a shell with the wrong `COLLIE_INSTANCE` is answering for the other. `--json` carries the same two values as `instance` and `stateDir` on the `collie` entry.
+- **`collie doctor` lists every agent program Collie has a profile for, with the binary and version it reads.** Each program gets a `harness-<name>` row: the file on your login shell's `PATH`, the version it printed, and the profile's verdict on it (verified, or provisional with a note). It warns when the file resolves but the version cannot be read, for example a `claude` wrapper that exits 127 because it needs `$HOME`, which made every send to that program run on a provisional profile with no sign of why. A program that is not installed reads `not installed`. `--json` adds `harness`, `binary`, `version` and `profileStatus` to each row.
 
 ### Fixed
 
