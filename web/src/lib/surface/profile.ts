@@ -555,6 +555,16 @@ export interface Profile {
     readonly interruptClearsDraft?: boolean;
     /** One `key` press per typed character, plus `slack` more. Never Escape. */
     readonly clear: { readonly key: string; readonly slack: number };
+    /**
+     * The one key that empties the box at a stroke where `clear` cannot (OMP 18.6.1 and 18.12.6: a
+     * draft that starts with `->` or `=>` grows its queue label back after every Backspace; only
+     * Ctrl+C empties it). Optional: without it a box `clear` leaves unchanged stays, as before.
+     * SAFETY: such a key may quit the program when the box is already empty (OMP quits on a second
+     * Ctrl+C within 500 ms of the first), so Collie presses it at most once per request, only after a
+     * fresh read showed a draft in the box and the `clear` batches left it unchanged, and reads again
+     * at once. Never on an empty box. Never Escape.
+     */
+    readonly clearAll?: { readonly key: string };
     readonly navigation: {
       readonly up: string;
       readonly down: string;
@@ -628,8 +638,29 @@ export interface Profile {
   readonly collapse: {
     /** The long-paste form as a regular expression source. Group `lines` is optional. */
     readonly pattern: string;
+    /**
+     * True when the harness keeps a pasted body registered under its chip after the chip is deleted,
+     * and expands a later typed chip token into that body (OMP 18.6.1 and 18.12.6: a cleared `📄 #1`
+     * leaks into `see 📄 #1 here`). A plain send, command, Add or Replace whose text holds a token
+     * that matches `pattern` is then refused `reserved_lead` before any key. Optional: absent allows
+     * the token as plain text. Collie's own pastes never carry the token in their text, so they pass.
+     */
+    readonly refuseLiteral?: boolean;
   };
+  /**
+   * The leads the harness reads as something other than text: a command (`/`), a shell line (`!`), or
+   * a rewrite of the box (OMP re-inserts a newline after a bare `->` or `=>`, its yield-queue prefix,
+   * so such a box can never be sent as typed or emptied by Backspace). A plain send of a text that
+   * starts with one is refused `reserved_lead` before any key.
+   */
   readonly reservedLeads: readonly string[];
+  /**
+   * For a lead in `reservedLeads` that has no command route either (a text that starts with it cannot
+   * be typed at all): the sentence the refusal carries, which is true for this harness. Optional. A
+   * lead with a note is refused in every writing mode, a Replace and a command included; a lead
+   * without one keeps the generic line and its command route. Every key must be in `reservedLeads`.
+   */
+  readonly reservedLeadNotes?: Readonly<Record<string, string>>;
   readonly probe: {
     readonly char: string;
     readonly status: "verified" | "provisional";
@@ -1343,11 +1374,31 @@ export function parseProfile(raw: JsonValue): Profile {
   }
   // Escape is never cleanup (ARCHITECTURE.md, Send Protocol): a profile cannot name it as the clear key.
   if (/^(?:escape|esc)$/i.test(keys.clear.key)) fail("keys.clear.key", "must not be Escape");
+  if (keysNode.clearAll !== undefined) {
+    const clearAllNode = object(keysNode.clearAll, "keys.clearAll");
+    const clearAll = { key: text(field(clearAllNode, "key", "keys.clearAll"), "keys.clearAll.key") };
+    if (/^(?:escape|esc)$/i.test(clearAll.key)) fail("keys.clearAll.key", "must not be Escape");
+    keys = { ...keys, clearAll };
+  }
 
   const collapseNode = object(field(root, "collapse", ""), "collapse");
-  const collapse = { pattern: pattern(field(collapseNode, "pattern", "collapse"), "collapse.pattern").source };
+  const collapseBase = { pattern: pattern(field(collapseNode, "pattern", "collapse"), "collapse.pattern").source };
+  if (collapseNode.refuseLiteral !== undefined && collapseNode.refuseLiteral !== true && collapseNode.refuseLiteral !== false) fail("collapse.refuseLiteral", "must be true or false");
+  const collapse = collapseNode.refuseLiteral === true ? { ...collapseBase, refuseLiteral: true } : collapseBase;
 
   const reservedLeads = textList(field(root, "reservedLeads", ""), "reservedLeads", 1);
+  let reservedLeadNotes: Readonly<Record<string, string>> | undefined;
+  if (root.reservedLeadNotes !== undefined) {
+    const notesNode = object(root.reservedLeadNotes, "reservedLeadNotes");
+    const notes: Record<string, string> = {};
+    for (const lead of Object.keys(notesNode)) {
+      if (!reservedLeads.includes(lead)) fail("reservedLeadNotes", `${lead} is not in reservedLeads`);
+      const leadNote = text(notesNode[lead], `reservedLeadNotes.${lead}`);
+      if (leadNote.trim().length === 0) fail(`reservedLeadNotes.${lead}`, "must not be empty");
+      notes[lead] = leadNote;
+    }
+    reservedLeadNotes = notes;
+  }
   // Read after the leads: each entry is one command word that starts with one of them.
   if (keysNode.commandsRunInTurn !== undefined) {
     const commandsRunInTurn = textList(keysNode.commandsRunInTurn, "keys.commandsRunInTurn", 1);
@@ -1411,7 +1462,8 @@ export function parseProfile(raw: JsonValue): Profile {
   const hold = root.hold === undefined ? undefined : parseHold(root.hold, hooks);
 
   const parsedProfile: Profile = { id, identity: agentNames === undefined ? identity : { ...identity, agentNames }, versions, idle: idleBlock, keys, collapse, reservedLeads, probe, hooks };
-  const withPaste = paste === undefined ? parsedProfile : { ...parsedProfile, paste };
+  const withNotes = reservedLeadNotes === undefined ? parsedProfile : { ...parsedProfile, reservedLeadNotes };
+  const withPaste = paste === undefined ? withNotes : { ...withNotes, paste };
   const withAsk = ask === undefined ? withPaste : { ...withPaste, ask };
   const withEdges = edges === undefined ? withAsk : { ...withAsk, edges };
   return hold === undefined ? withEdges : { ...withEdges, hold };

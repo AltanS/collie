@@ -238,8 +238,15 @@ const TALL_DRAFT = "The draft is taller than the box, so Collie cannot see how l
 const LONG_DRAFT = "The draft is longer than Collie empties in one request. Nothing was deleted. Empty the box with the key pad, then send again.";
 /** The detail of a receipt whose S1 compared only the rows a scrolled box showed with the end of the text. */
 const TAIL_ONLY = "The box showed only the last rows of this long text. Collie compared those with the end of the text.";
+/** Reads a clear gets on top when its profile names a `keys.clearAll`: one to see the box after the stroke, one spare. */
+const CLEAR_ALL_READS = 2 + 2;
+/** Unchanged reads, after a Backspace batch, before the profile's `keys.clearAll` goes: the first may be a late redraw. */
+const CLEAR_ALL_AFTER = 3;
 /** Texts this short take the probed path whatever the profile says. */
 const SHORT_TEXT = 3;
+
+/** The detail of a text that holds a paste chip's token: typed, the token would expand to a file pasted earlier. */
+const CHIP_TOKEN = "This text holds the label of a paste chip. Typed into the box, the label would expand to a file or text pasted earlier, not to your words. Nothing was typed. Write the text without the label.";
 
 /** What a reserved lead is, for the refusal's sentence: each is sent as a `command`, never as a plain send. */
 const LEAD_ROUTES = new Map<string, string>(Object.entries({
@@ -4151,7 +4158,12 @@ export class SendProtocol {
     const length = scrolled && known !== null ? Math.max(known, shown) : shown;
     if (length > CLEAR_MAX_CHARS) throw new Ended("refused", "draft_present", sawNote(from, { framed: true, offers: ["keys"], detail: LONG_DRAFT }));
     let budget = length + clearKey.slack;
-    const reads = Math.max(CLEAR_BOUND.reads, Math.ceil(budget / CLEAR_BATCH) + CLEAR_SPARE_READS);
+    // The profile's one stroke key (`keys.clearAll`) is pressed at most once, after reads showed the box
+    // unchanged since the last batch, never on a box that reads empty.
+    const clearAll = state.match?.profile.keys.clearAll;
+    let allPressed = false;
+    let unchanged = 0;
+    const reads = Math.max(CLEAR_BOUND.reads, Math.ceil(budget / CLEAR_BATCH) + CLEAR_SPARE_READS) + (clearAll === undefined ? 0 : CLEAR_ALL_READS);
     const ms = reads * CLEAR_READ_MS;
     this.stretch(state, ms - CLEAR_BOUND.ms);
     const until = Math.min(this.now() + ms, state.deadline);
@@ -4164,15 +4176,27 @@ export class SendProtocol {
       const text = boxText(snap.frame);
       const left = [...text].length;
       if (left === 0) return snap;
-      if (text !== pressedAt) {
+      unchanged = text === pressedAt ? unchanged + 1 : 0;
+      if (clearAll !== undefined && !allPressed && unchanged >= CLEAR_ALL_AFTER) {
+        // `left` is above 0 here: this very read showed a draft the Backspace batches did not move.
+        allPressed = true;
+        await this.keysThroughGate(state, [clearAll.key], "unknown");
+        pressedAt = null;
+      } else if (text !== pressedAt) {
         // A box that shows its whole draft is pressed for what it shows; one at its scroll height for
         // what is left of the length counted before the first key.
         const want = snap.frame.scrolled === true ? budget : Math.min(budget, left + clearKey.slack);
-        if (want <= 0) break;
-        const count = Math.min(CLEAR_BATCH, want);
-        await this.keysThroughGate(state, Array.from({ length: count }, () => clearKey.key), "unknown");
-        budget -= count;
-        pressedAt = text;
+        if (want <= 0 && (clearAll === undefined || allPressed)) break;
+        if (want <= 0) {
+          // Backspace has no key left (its length plus slack went out) and the box still shows text: the
+          // stroke key may follow once a few more reads show the box as it is, so a late redraw is no cause.
+          pressedAt = text;
+        } else {
+          const count = Math.min(CLEAR_BATCH, want);
+          await this.keysThroughGate(state, Array.from({ length: count }, () => clearKey.key), "unknown");
+          budget -= count;
+          pressedAt = text;
+        }
       }
       await this.sleep(FIRST_GAP_MS);
       let next: Snap | null;
@@ -4229,8 +4253,17 @@ function draftRefusal(state: RunState, s0: Snap): Ended {
 function textRefusal(request: SendRequest, match: ProfileMatch | null): Ended | null {
   const lines = sendLines(request.text);
   const leads = match?.profile.reservedLeads ?? GENERIC_LEADS;
-  const lead = request.mode === "command" || request.mode === "replace" ? null : reservedLead(lines[0] ?? "", leads);
+  const notes = match?.profile.reservedLeadNotes;
+  const anyLead = reservedLead(lines[0] ?? "", leads);
+  // A lead the profile gives a note has no command route: no mode may type it (it would be rewritten in the box).
+  const note = anyLead === null ? undefined : notes?.[anyLead];
+  if (note !== undefined) return new Ended("refused", "reserved_lead", { detail: note });
+  const lead = request.mode === "command" || request.mode === "replace" ? null : anyLead;
   if (lead !== null) return new Ended("refused", "reserved_lead", { detail: LEAD_ROUTES.get(lead) ?? `A text that starts with ${lead} has its own route.` });
+  // A chip token typed as text may expand to a pasted body the harness still holds (the profile says so).
+  if (match?.profile.collapse.refuseLiteral === true && lines.some((line) => new RegExp(match.profile.collapse.pattern, "u").test(line))) {
+    return new Ended("refused", "reserved_lead", { detail: CHIP_TOKEN });
+  }
   if (lines.length > 1 && match === null) return new Ended("refused", "multiline", { detail: "This harness has no profile, so its newline key is unknown; send one line at a time." });
   return null;
 }

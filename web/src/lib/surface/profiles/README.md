@@ -15,6 +15,10 @@ need a rule to be read right.
 - A command matches an entry when its first word is the entry: `/goal` matches `/goal pause`, never `/goals`.
 - The list applies only where the profile is trusted with a turn: a version the binary reported, on a range that is not revoked. On an unread version or a revoked range the command is held as before.
 
+- `keys.clearAll` is the one key that empties a box where `keys.clear` (a Backspace per character) cannot, such as OMP's Ctrl+C on a draft that starts with `->` or `=>`. A clear presses it at most once per request, only after a fresh read showed a draft and the clear key left the box unchanged, and never on an empty box: the same key may quit the program there. Never Escape.
+- `reservedLeads` lists the leads a plain send may not start with. `reservedLeadNotes` gives a lead that has no command route either (OMP's `->` and `=>`) its refusal sentence; such a lead is refused in every writing mode.
+- `collapse.refuseLiteral` says the harness expands a typed chip label (`📄 #1`) into a body it still holds. A send whose text matches `collapse.pattern` is refused `reserved_lead` before any key.
+
 ### Keys that differ by platform
 
 `keys.submit` may be an object instead of a list.
