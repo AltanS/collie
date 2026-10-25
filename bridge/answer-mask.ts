@@ -74,11 +74,18 @@ export function maskTodoList<T extends { text: string; activeForm?: string }>(to
 
 /**
  * A pane's running subagents with their descriptions masked. The description is the text the agent
- * wrote when it started the subagent, so it can hold a path, a command or a key. The id, the type,
- * the model and the times are Claude Code's own.
+ * wrote when it started the subagent, so it can hold a path, a command or a key. On a Claude row the
+ * id, the type, the model and the times are Claude Code's own. A row read from the journal
+ * (`transcript: false`) takes its id from a job name the agent chose, so that id is masked too.
  */
-export function maskSubagentList<T extends { description: string }>(subagents: readonly T[]): T[] {
-  return subagents.map((subagent) => ({ ...subagent, description: redactText(subagent.description) }));
+export function maskSubagentList<T extends { description: string; agentId?: string; transcript?: false }>(
+  subagents: readonly T[],
+): T[] {
+  return subagents.map((subagent) => {
+    const masked = { ...subagent, description: redactText(subagent.description) };
+    if (subagent.transcript === false && subagent.agentId !== undefined) masked.agentId = redactText(subagent.agentId);
+    return masked;
+  });
 }
 
 /** The pane fields an agent or a program wrote, which the mask reaches. */

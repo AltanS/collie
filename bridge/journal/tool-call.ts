@@ -74,10 +74,11 @@ export type ToolCall =
   /** A file was removed or renamed. `to` is the destination of a move. */
   | { kind: "delete" | "move"; path: string; to?: string }
   /**
-   * A subagent ran. `agentId` names the subagent's own log when the harness records one. `ongoing`:
-   * it returned before its work ended and no end notice has arrived.
+   * A subagent ran. `agentId` names the subagent's own log when the harness records one. `jobId` is
+   * the harness's name for a background job that runs it (Oh My Pi's `async.jobId`), which no
+   * transcript route serves. `ongoing`: it returned before its work ended and no end notice has arrived.
    */
-  | { kind: "task"; agent?: string; summary: string; agentId?: string; ongoing?: true }
+  | { kind: "task"; agent?: string; summary: string; agentId?: string; jobId?: string; ongoing?: true }
   /** A task list the agent keeps up to date (ADR 0119). The list is the whole list as of this call. */
   | { kind: "plan"; name: string; tasks: readonly PlanTask[] }
   /**

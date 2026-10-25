@@ -366,6 +366,11 @@ export interface PaneSubagent {
   /** ISO 8601. */
   startedAt?: string;
   spawnDepth?: number;
+  /**
+   * `false` for a row read from the session's journal (Oh My Pi, Gentle Shell): no transcript route
+   * serves it, so the row is not a tap. Absent on a Claude Code subagent, whose transcript opens.
+   */
+  transcript?: false;
 }
 
 /**
@@ -1326,8 +1331,12 @@ export type ToolCall =
   | { kind: "search"; query: string; where?: string; hits?: number }
   | { kind: "fetch"; url: string }
   | { kind: "delete" | "move"; path: string; to?: string }
-  /** `agentId` names the subagent's own log. `ongoing`: a background sub-agent that has not finished, though its start result is in. */
-  | { kind: "task"; agent?: string; summary: string; agentId?: string; ongoing?: true }
+  /**
+   * `agentId` names the subagent's own log. `jobId`: the harness's name for the background job that
+   * runs it (Oh My Pi), with no transcript behind it. `ongoing`: a background sub-agent that has not
+   * finished, though its start result is in.
+   */
+  | { kind: "task"; agent?: string; summary: string; agentId?: string; jobId?: string; ongoing?: true }
   /** A task list the agent keeps rewriting (ADR 0119). On pi its updates are folded into the one card. */
   | { kind: "plan"; name: string; tasks: readonly PlanTask[] }
   /** The agent asked the operator to choose. One entry per question the call carried. `answers[i]` is the list of chosen labels for question `i`, present only once the call completed with answers. */
