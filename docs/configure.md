@@ -873,6 +873,17 @@ mirror's layout holds. It catches high-confidence shapes only; the limits are in
 In a crew, the lead also masks the text its members send, by its own setting. A member's text
 reaches your phone unmasked only when the lead and that member both set `COLLIE_REDACT=off`.
 
+## Report a problem
+
+When three sends in a row on one pane fail for a reason that points at Collie, a card above the
+reply box offers to report it. **Settings → System → Offer a report when sending fails** turns the
+card off for that device (stored in the browser, on by default). The pane menu's **Report a problem**
+and the **Report a problem** button on the same card in Settings still open the sheet.
+
+Nothing leaves the phone until you tap **Open on GitHub** or **Copy report**, and Collie holds no
+GitHub token. What the report holds, and how to read it before you send it, is in
+[Troubleshooting](troubleshooting.md).
+
 ## Multi-session
 
 By default, one Collie instance serves every Herdr session it finds.

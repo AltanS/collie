@@ -523,6 +523,11 @@ to host** or runs `collie stt whistle`, and it sends no data about you ([The spe
 Walky talky adds no outbound call. A message to another machine rides the crew link and goes
 nowhere else ([Walky talky](#walky-talky)).
 
+Report a problem adds no outbound call. After failed sends the phone can open GitHub's new-issue
+form, filled in, as a link in your own browser. You read the whole text first and submit it yourself
+under your own account. Collie holds no GitHub token and the phone never calls GitHub
+([ADR 0123](../.adr/0123-report-a-problem-three-failed-sends-offer-a-prefilled-issue.md)).
+
 If you set `COLLIE_ACCESS_TEAM`, Collie also fetches that Cloudflare Access team's public keys, at
 start and once an hour. That call is yours to turn on, and it sends nothing about you either.
 

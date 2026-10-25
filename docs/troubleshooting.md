@@ -9,7 +9,8 @@ reboot** · **a pane is stuck narrow** · **Collie refuses to open a tmux window
 **stale UI after a rebuild** · **I saved a machine in Herdr and the phone does not show it** ·
 **an update started from the phone stays at staging** · **a phone update on macOS leaves Collie
 unloaded** · **on macOS, `collie status` says "loaded, not running"** · **a pane shows no prompt-cache chip** · **a Kiro pane's History opens empty** · **a pane has no Chat or History** · **a new Codex pane says it has no history
-yet** · **the phone says Collie cannot read a screen the agent is not showing** · **an agent is greyed
+yet** · **the phone says Collie cannot read a screen the agent is not showing** · **sending failed 3 times
+and the phone offers a report** · **an agent is greyed
 out on the New page** · **Start says there is no folder, or says it could not confirm** ·
 **walky talky: send is refused, "run this inside a pane"** · **walky talky: the message sits in the
 inbox and was not typed** · **walky talky: "no log record on this machine"** · **walky talky: the
@@ -219,6 +220,19 @@ herdr pane read <pane-id> --source recent --lines 200 --format ansi > pane.txt
 while the phone still shows the problem, and attach `pane.txt` together with the agent's version
 (`claude --version`, `codex --version`, and so on). The file is the terminal's text, so read it
 first and remove anything private.
+
+**Sending failed 3 times and the phone offers a report.** Three sends in a row on one pane failed
+for a reason that points at Collie: it could not read or write the input box, the text went in and
+Enter did not follow, or it lost track of the send. A refusal that protects you (a draft in the box,
+a running turn, an open dialog) does not count. Tap **Report** on the card. The sheet shows the whole
+issue before anything leaves: the Collie and agent versions, the multiplexer, and each failed send's
+codes. It holds no text you typed and no screen unless you turn on **Include what I typed** or
+**Include the screen**. The screen is the pane's last 40 rows with known secret shapes masked; read
+it anyway, because the issue is public. **Open on GitHub** opens the filled-in form in your browser,
+under your own GitHub account, and **Copy report** copies the same text. Tap **Already reported?**
+first to find an issue with the same signature line. The pane menu and **Settings → System** open
+the same sheet at any time. The cross closes the card on that pane until a send works again. A
+crew member's pane does not offer a report yet; use the steps above.
 
 **An update started from the phone stays at staging.** On Collie up to 1.6.0, an update tapped on
 the phone could stage the new version and then stop: the runner that performs the swap was never
