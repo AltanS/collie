@@ -20,16 +20,39 @@ const EMPTY = fx("omp--box-empty--v18.12.6.txt");
 
 /** An OMP box in the queue-prefix state: Backspace takes the body, then the label stays; Ctrl+C empties. */
 class QueueingScreen {
-  screen = WITH_BODY;
+  /** The settled screen, without a probe character on it. */
+  base = WITH_BODY;
+  /** The probe character typed and not yet taken back: OMP draws it after the draft, in the box. */
+  probe = "";
+  /** Every text typed into the box (the Clear's probe character). */
+  typed: string[] = [];
   keys: string[] = [];
   /** Ctrl+C presses that met an empty box. */
   emptyPresses = 0;
   /** A Ctrl+C that leaves the box alone. */
   deafCtrlC = false;
 
+  get screen(): string {
+    return this.probe === "" ? this.base : `${this.base.replace(/\n$/u, "")}${this.probe}\n`;
+  }
+
+  set screen(next: string) {
+    this.base = next;
+  }
+
   readGrid = (paneId: string, request: MuxGridRequest): Promise<MuxOutcome<MuxGrid>> => {
     void request;
     return Promise.resolve(muxOk({ paneId, text: this.screen, truncated: false, revision: 0 }));
+  };
+
+  /** A stale image: typed text reaches no box on the screen, and the screen never changes. */
+  stale = false;
+
+  typeText = (paneId: string, text: string): Promise<MuxAck> => {
+    void paneId;
+    this.typed.push(text);
+    if (!this.stale) this.probe += text;
+    return Promise.resolve(muxAck());
   };
 
   writeKeys = (paneId: string, keys: readonly string[]): Promise<MuxAck> => {
@@ -37,9 +60,12 @@ class QueueingScreen {
     for (const key of keys) {
       this.keys.push(key);
       if (key === "ctrl+c") {
-        if (this.screen === EMPTY) this.emptyPresses++;
-        else if (!this.deafCtrlC) this.screen = EMPTY;
-      } else if (key === "Backspace" && this.screen === WITH_BODY) this.screen = LABEL_ONLY;
+        if (this.base === EMPTY) this.emptyPresses++;
+        else if (!this.deafCtrlC) this.base = EMPTY;
+      } else if (key === "Backspace") {
+        if (this.probe !== "") this.probe = "";
+        else if (this.base === WITH_BODY) this.base = LABEL_ONLY;
+      }
     }
     return Promise.resolve(muxAck());
   };
@@ -77,7 +103,19 @@ describe("Clear on a box OMP rewrites after every Backspace", () => {
       expect(pane.keys.at(-1)).toBe("ctrl+c");
       expect(pane.keys.slice(0, -1).every((key) => key === "Backspace")).toBe(true);
       expect(pane.emptyPresses).toBe(0);
+      // The probe runs first: its character goes in as text, and its one Backspace comes before the batch.
+      expect(pane.typed, version).toEqual(["⌁"]);
+      expect(pane.keys[0], version).toBe("Backspace");
+      expect(pane.probe).toBe("");
     }
+  });
+
+  test("a stale screen refuses stale_screen at the probe and presses no stroke key", async () => {
+    const pane = new QueueingScreen();
+    pane.stale = true;
+    expect(await clear(service(pane), "c-stale")).toMatchObject({ outcome: "refused", reason: "stale_screen" });
+    expect(pane.typed).toEqual(["⌁"]);
+    expect(pane.keys).toEqual([]);
   });
 
   test("a box the label alone fills (Backspace left it unchanged from the first press) gets the stroke key the same way", async () => {
