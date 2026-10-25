@@ -150,6 +150,7 @@ import type { StateEngine } from "./state-engine.ts";
 import { adapterFor, buildJournalRegistry } from "./journal/registry.ts";
 import { readClaudeSubagent } from "./journal/claude.ts";
 import { chatParams, LiveWindows } from "./journal/live.ts";
+import { JournalSubagents } from "./subagents-journal.ts";
 import { parseDurableLog } from "./journal/durable.ts";
 import { redactText } from "./redact.ts";
 import { maskSurface, surfaceRouteBody, type SurfaceShadow } from "./surface/shadow.ts";
@@ -1266,7 +1267,8 @@ export function startServer(opts: {
   todos?: { get(pane: AgentView): AgentView["todos"] };
   /**
    * Each pane's running subagents (bridge/subagents.ts), read synchronously at serialise time like
-   * `todos`. Absent means no pane carries a `subagents` key.
+   * `todos`. Where it answers nothing for a pane whose journal has no subagent files, the live
+   * windows' ongoing task cards answer instead (bridge/subagents-journal.ts).
    */
   subagents?: { get(pane: AgentView): AgentView["subagents"] };
   /**
@@ -1545,6 +1547,9 @@ export function startServer(opts: {
   // the live window's numbering put back on it, so the two must share one cache or a "load older" tap
   // would re-read a 32 MB log the History view already holds.
   const live = transcripts === null ? null : new LiveWindows(transcripts);
+  // The agents pill's second source: Oh My Pi's and Gentle Shell's ongoing task cards, read from the
+  // live windows above. Only for a pane whose journal has no subagent files (bridge/subagents-journal.ts).
+  const journalSubagents = live === null || journals === null ? null : new JournalSubagents(journals, live, () => Date.now());
   /** Does this agent have a journal at all — the snapshot's History-affordance gate. */
   const hasJournal = (agent: string) => adapterFor(journals ?? {}, agent) !== undefined;
   const discoversSessions = (agent: string) =>
@@ -1623,7 +1628,7 @@ export function startServer(opts: {
       const todos = readTodos !== undefined && cfg.redact ? maskTodoList(readTodos) : readTodos;
       const withTodos = todos === undefined ? withCache : { ...withCache, todos };
       // The running subagents' descriptions are words the agent wrote too, so they take the same mask.
-      const readSubagents = opts.subagents?.get(p);
+      const readSubagents = opts.subagents?.get(p) ?? journalSubagents?.get(p);
       const subagents = readSubagents !== undefined && cfg.redact ? maskSubagentList(readSubagents) : readSubagents;
       const withSubagents = subagents === undefined ? withTodos : { ...withTodos, subagents };
       // The usage dots: numbers only, the session's context and the account's windows (ADR 0118).

@@ -52,9 +52,14 @@
 // skipped before any path is built from it. Every file is opened through `containedRealpath` against
 // its folder. Nothing here takes a value from a request.
 //
-// OTHER HARNESSES. Claude only in this release: no other harness writes subagent files. The seam is
-// `TranscriptSource.subagentDirs` (bridge/journal/types.ts). A source that implements it gets this
-// tracker, the wire field and the pill with no change here, provided its files keep this shape.
+// OTHER HARNESSES. Only Claude Code writes subagent files, and only a source that implements
+// `TranscriptSource.subagentDirs` (bridge/journal/types.ts) reaches this tracker. A source that
+// implements it gets the tracker, the wire field and the pill with no change here, provided its files
+// keep this shape. Since 2026-10-25 a pane whose source has no `subagentDirs` gets a second source
+// instead, consulted where this one answers nothing: bridge/subagents-journal.ts lists the ongoing
+// task cards of the session's live Chat window, which is how Oh My Pi's background `task` jobs and
+// Gentle Shell's background subagents reach the pill. Those rows carry `transcript: false`, because
+// the transcript route below serves Claude logs only.
 
 import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
@@ -69,7 +74,10 @@ import { journalAgentOf, type AgentView } from "./types.ts";
 
 /** One subagent of a pane's session that has not finished yet. Attached to `AgentView.subagents`. */
 export interface PaneSubagent {
-  /** Claude Code's own id for it, the one `GET /api/pane/<id>/subagent/<agentId>` takes. */
+  /**
+   * Claude Code's own id for it, the one `GET /api/pane/<id>/subagent/<agentId>` takes. On a row read
+   * from the journal, the job id the harness named (Oh My Pi), else the tool call's id.
+   */
   agentId: string;
   /** The subagent type the call named or defaulted to (`general-purpose`, `Explore`, a plugin's). */
   agentType?: string;
@@ -81,6 +89,11 @@ export interface PaneSubagent {
   startedAt?: string;
   /** 1 for a subagent of the session itself, 2 for a subagent's subagent, and so on. */
   spawnDepth?: number;
+  /**
+   * `false` for a row read from the session's journal (bridge/subagents-journal.ts): no transcript
+   * route serves it, so the phone draws the row without a tap. Absent on a Claude Code subagent.
+   */
+  transcript?: false;
 }
 
 export const MAX_SUBAGENTS = 50;
@@ -95,7 +108,7 @@ const META_MAX_BYTES = 16 * 1024;
 const AGENT_FILE_RE = /^agent-(.+)\.(jsonl|meta\.json)$/;
 
 /** Collapse whitespace to one line and clip with an ellipsis. The same rule as todos.ts. */
-function clipLine(text: string, max: number): string {
+export function clipLine(text: string, max: number): string {
   const line = text.replace(/\s+/g, " ").trim();
   return line.length > max ? `${line.slice(0, max - 1)}…` : line;
 }

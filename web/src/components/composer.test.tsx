@@ -4879,6 +4879,32 @@ describe("Composer agents mark and sheet", () => {
     expect(screen.getByRole("dialog", { name: "Agents 2" })).toBeInTheDocument();
   });
 
+  it("draws a journal row (no transcript) as a plain row, not a tap, and opens nothing", async () => {
+    // Oh My Pi's and Gentle Shell's jobs reach the list from the session's journal, and no route
+    // serves their log: the row is drawn the same, without a button.
+    const user = userEvent.setup();
+    const open = vi.fn<(t: SubagentTarget) => void>();
+    const sync = vi.fn<(t: SubagentTarget) => void>();
+    const journal: PaneSubagent[] = [
+      { agentId: "LabFix", agentType: "task", description: "count the files in the lab", transcript: false },
+      RUNNING[0]!,
+    ];
+    const router = createMemoryRouter([{ path: "/", element: <SheetHost subagents={journal} open={open} sync={sync} /> }]);
+    render(<RouterProvider router={router} />);
+
+    await user.click(screen.getByRole("button", { name: "Agents 2" }));
+    const sheet = screen.getByRole("dialog", { name: "Agents 2" });
+    const rows = sheet.querySelectorAll<HTMLElement>('[data-slot="belt-subagent"]');
+    expect(rows).toHaveLength(2);
+    expect(rows[0]!.tagName).toBe("DIV");
+    expect(within(rows[0]!).getByText("Agent · task")).toBeInTheDocument();
+    expect(within(rows[0]!).getByText("count the files in the lab")).toBeInTheDocument();
+    expect(rows[1]!.tagName).toBe("BUTTON");
+    await user.click(rows[0]!);
+    expect(open).not.toHaveBeenCalled();
+    expect(within(sheet).getAllByRole("button").filter((b) => b.dataset.slot === "belt-subagent")).toHaveLength(1);
+  });
+
   it("tells the open sheet the subagent ended once it leaves the running list", async () => {
     const user = userEvent.setup();
     const open = vi.fn<(t: SubagentTarget) => void>();

@@ -489,8 +489,34 @@ const PI_KNOWN: KnownTypes = {
   parts: ["text", "thinking", "image", "toolCall"],
 };
 
-/** The statuses Gentle Shell writes when a subagent or a background job has ended. */
+/** The statuses Gentle Shell and Oh My Pi write when a subagent or a background job has ended. */
 const FINAL_WORK_STATUS: ReadonlySet<string> = new Set(["completed", "failed", "cancelled", "exited", "stopped"]);
+
+/** The statuses an Oh My Pi `task` start writes for a subagent that has not ended yet. */
+const OMP_RUNNING_STATUS: ReadonlySet<string> = new Set(["pending", "running"]);
+
+/** The objects of `details[key]` when it is a list, else none. */
+function detailRows(details: JsonValue | undefined, key: string): JsonObject[] {
+  if (details === null || details === undefined || typeof details !== "object" || Array.isArray(details)) return [];
+  const list = details[key];
+  if (!Array.isArray(list)) return [];
+  return list.filter((row): row is JsonObject => row !== null && typeof row === "object" && !Array.isArray(row));
+}
+
+/**
+ * The status an Oh My Pi `async-result` notice gives one job. The row's `details.jobs[]` carries no
+ * status (OMP 18.6.1); the notice's own text does, as `<task-result id="<job>" … status="<s>">`. A
+ * notice that names none is a delivered result, so `completed`.
+ */
+function asyncResultStatus(content: string, jobId: string): string {
+  for (const m of content.matchAll(/<task-result\b([^>]*)>/g)) {
+    const attrs = m[1] ?? "";
+    if (/\bid="([^"]*)"/.exec(attrs)?.[1] !== jobId) continue;
+    const status = /\bstatus="([^"]*)"/.exec(attrs)?.[1];
+    if (status !== undefined && status !== "") return status;
+  }
+  return "completed";
+}
 
 export function createPiReducer(): RowReducer {
   // toolCall id → the part awaiting its result and the turn it went out in, so a later `toolResult`
@@ -505,10 +531,65 @@ export function createPiReducer(): RowReducer {
   // by `rememberPending`; what falls off is the oldest id, whose notice the window has long passed.
   const workCards = new Map<string, PendingTool>();
 
+  /**
+   * Oh My Pi's `task` start (OMP 18.6.1, read off a real session on 2026-10-25). The result answers at
+   * once with `details.async: {state: "running", jobId}` and one `details.progress[]` row per subagent
+   * (`id`, `agent`, `status: "pending"`). The card is ongoing while the job runs, remembered under the
+   * job id and under each progress id, and carries the job id as `jobId`. A failed spawn (`isError`,
+   * no `async`) never reaches here. True when the details had this shape at all.
+   */
+  function startOmpJob(target: PendingTool, raw: JsonValue | undefined): boolean {
+    const call = target.part.call;
+    if (call?.kind !== "task") return false;
+    const job = detailsOf(raw, "async");
+    const progress = detailRows(raw, "progress");
+    if (job === undefined && progress.length === 0) return false;
+    const agent = progress.map((row) => field(row, "agent")).find((a) => a !== undefined);
+    if (call.agent === undefined && agent !== undefined) call.agent = agent;
+    const running =
+      field(job, "state") === "running" || progress.some((row) => OMP_RUNNING_STATUS.has(field(row, "status") ?? ""));
+    if (!running) return true;
+    // A second job of one name gets `<name>-2` as its job id while its progress id stays `<name>`, so
+    // a progress id an ongoing card already holds is left to that card. The job id is taken last and
+    // always: it is the name the end notice uses.
+    for (const row of progress) {
+      const id = field(row, "id");
+      const held = id === undefined ? undefined : workCards.get(id);
+      if (id !== undefined && (held === undefined || held.part.call?.kind !== "task" || held.part.call.ongoing !== true))
+        rememberPending(workCards, id, target);
+    }
+    const jobId = field(job, "jobId") ?? field(progress[0], "id");
+    if (jobId !== undefined) {
+      rememberPending(workCards, jobId, target);
+      call.jobId = jobId;
+    }
+    call.ongoing = true;
+    return true;
+  }
+
+  /**
+   * Oh My Pi's end of a job: an `async-result` notice (`details.jobs[]`: `jobId`, `label`) or any tool
+   * result whose `details.jobs[]` rows carry a `status` (`wait`: `id`, `label`, `status`). A job is
+   * found by its id, then by its label (the name its first progress row had). Only a final status ends
+   * the card, the same set Gentle Shell's notices use.
+   */
+  function settleOmpJobs(rows: readonly JsonObject[], statusOf: (row: JsonObject, id: string) => string | undefined, changed: Set<string>): void {
+    for (const row of rows) {
+      const id = field(row, "jobId") ?? field(row, "id");
+      const label = field(row, "label");
+      const key = id ?? label;
+      const card = (id === undefined ? undefined : workCards.get(id)) ?? (label === undefined ? undefined : workCards.get(label));
+      if (card === undefined || key === undefined) continue;
+      const status = statusOf(row, key);
+      if (status !== undefined) settle(card, { status }, changed);
+    }
+  }
+
   /** Mark a card ongoing and remember it by id, when its start result says the work is still running. */
   function startWork(target: PendingTool, raw: JsonValue | undefined): void {
     const call = target.part.call;
     if (call?.kind !== "task" && call?.kind !== "execute") return;
+    if (detailsOf(raw, "gentleAgents") === undefined && startOmpJob(target, raw)) return;
     const agents = call.kind === "task" ? detailsOf(raw, "gentleAgents") : undefined;
     const jobs = call.kind === "execute" ? detailsOf(raw, "gentleJobs") : undefined;
     const info = agents ?? jobs;
@@ -526,6 +607,11 @@ export function createPiReducer(): RowReducer {
   /** A `gentle-agents.result` / `gentle-jobs.notice` row: the work it names has ended. */
   function endNotice(row: PiRow, changed: Set<string>): void {
     const type = row.customType;
+    if (type === "async-result") {
+      const content = customText(row.content);
+      settleOmpJobs(detailRows(row.details, "jobs"), (job, id) => field(job, "status") ?? asyncResultStatus(content, id), changed);
+      return;
+    }
     if (type !== "gentle-agents.result" && type !== "gentle-jobs.notice") return;
     const agents = type === "gentle-agents.result";
     const info = detailsOf(row.details, agents ? "gentleAgents" : "gentleJobs");
@@ -658,6 +744,9 @@ export function createPiReducer(): RowReducer {
     noteBlockTypes(note, m.content);
 
     if (m.role === "toolResult") {
+      // Oh My Pi's `wait` (and any result that lists jobs with a status) settles the jobs it names,
+      // whether or not its own call is still held.
+      settleOmpJobs(detailRows(m.details, "jobs"), (job) => field(job, "status"), changed);
       const id = typeof m.toolCallId === "string" ? m.toolCallId : "";
       const target = pendingTools.get(id);
       const resultText = stripAnsi(textBlocks(m.content));

@@ -191,10 +191,11 @@ export interface AgentView {
    */
   todos?: PaneTodo[];
   /**
-   * The subagents of this pane's session that have not finished yet, read from the session's
-   * subagent meta files by the subagent tracker (bridge/subagents.ts). Claude Code only in this
-   * release. Attached at serialise time and ABSENT, NEVER A PLACEHOLDER: a pane with none running
-   * carries no key at all, never `[]`.
+   * The subagents of this pane's session that have not finished yet. For Claude Code, read from the
+   * session's subagent meta files by the subagent tracker (bridge/subagents.ts). For a harness with no
+   * such files (Oh My Pi, Gentle Shell), the ongoing task cards of the session's live Chat window, from
+   * memory (bridge/subagents-journal.ts); those rows carry `transcript: false`. Attached at serialise
+   * time and ABSENT, NEVER A PLACEHOLDER: a pane with none running carries no key at all, never `[]`.
    */
   subagents?: PaneSubagent[];
   /**

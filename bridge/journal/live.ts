@@ -459,6 +459,11 @@ class LiveWindow {
   private lastSeen: { size: number; mtimeMs: number } | null = null;
   /** When a reader last asked. The idle rule's whole input. */
   askedAt: number;
+  /**
+   * The ref values readers reached this window by, so {@link LiveWindows.held} can find it from a
+   * pane's ref without resolving a path. A pane names one or two (a pi path, then its id), so a handful.
+   */
+  readonly refs = new Set<string>();
   /** This window's session on the wire ({@link sessionTag}). Fixed: one window is one key. */
   readonly session: string;
 
@@ -640,6 +645,20 @@ class LiveWindow {
     return body;
   }
 
+  /**
+   * What the window holds, for a reader that is not a client poll ({@link LiveWindows.held}). `stamp`
+   * moves whenever a held turn does, so a caller can keep what it derived until it moves.
+   */
+  heldNow(): HeldWindow {
+    const held: HeldWindow = {
+      stamp: `${this.gen}:${this.rev}`,
+      askedAt: this.askedAt,
+      entries: () => this.rows.map((row) => row.entry),
+    };
+    if (this.lastSeen !== null) held.writtenAt = this.lastSeen.mtimeMs;
+    return held;
+  }
+
   /** This generation, for a `?before=` page that must land in the same numbering. */
   generation(): number {
     return this.gen;
@@ -663,6 +682,21 @@ class LiveWindow {
     if (gen === this.gen) this.behind = { gen, prompt };
   }
 }
+
+/** One live window as {@link LiveWindows.held} hands it out. Read only; the entries are the window's own. */
+export interface HeldWindow {
+  /** `<gen>:<rev>`. The same stamp means the same turns in the same state. */
+  stamp: string;
+  /** When a reader last polled this window. */
+  askedAt: number;
+  /** The log's mtime at the last read, when a read has run. */
+  writtenAt?: number;
+  /** The held turns, oldest first. Built on call, so a caller whose stamp did not move pays nothing. */
+  entries: () => readonly TranscriptEntry[];
+}
+
+/** Most ref values one window remembers; past it the oldest go. */
+const MAX_WINDOW_REFS = 4;
 
 /**
  * Every live session this bridge is holding, one window each.
@@ -700,6 +734,12 @@ export class LiveWindows {
     const key = (await adapter.source.resolve(ref)) ?? (await adapter.source.pending?.(ref)) ?? null;
     if (key === null) return null;
     const window = this.reach(key, adapter);
+    window.refs.delete(ref.value);
+    window.refs.add(ref.value);
+    for (const old of window.refs) {
+      if (window.refs.size <= MAX_WINDOW_REFS) break;
+      window.refs.delete(old);
+    }
     await window.tick(key);
     // The window opened mid-run (its first read is a 2 MB tail, and a long tool run fills that with
     // no prompt in it): look the prompt up in the History read, once per generation and WITHOUT
@@ -750,6 +790,19 @@ export class LiveWindows {
       upserts: page.entries.map((entry, i) => chatEntry(entry, first + i)),
       hasOlder: page.hasMore,
     };
+  }
+
+  /**
+   * The window a client poll reached by this ref value, from memory alone: no resolve, no read, and
+   * no idle bookkeeping, so asking keeps nothing alive. Null when no poll has reached it, or the
+   * window has gone. The belt's agents pill reads Oh My Pi's and Gentle Shell's ongoing task cards
+   * from here (bridge/subagents-journal.ts).
+   */
+  held(refValue: string): HeldWindow | null {
+    for (const window of this.windows.values()) {
+      if (window.refs.has(refValue)) return window.heldNow();
+    }
+    return null;
   }
 
   /** How many sessions are held live. For tests and for the idle rule's own assertions. */

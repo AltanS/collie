@@ -1355,3 +1355,173 @@ describe("the pi probe — the thinking level", () => {
     expect(probe?.effort).toBeUndefined();
   });
 });
+
+// Oh My Pi 18.6.1's background `task` jobs: the row shapes below copy a real session read on
+// 2026-10-25 (key names exact; the words are the lab's). A spawn answers at once with
+// `details.async` and `details.progress[]`; the end is an `async-result` notice or a `wait` result.
+describe("parsePiTranscript — Oh My Pi's task jobs", () => {
+  const session = () => {
+    const rows: string[] = [];
+    let parent: string | null = null;
+    const add = (id: string, body: Record<string, JsonValue>) => {
+      rows.push(plain(id, parent, body));
+      parent = id;
+    };
+    return {
+      spawn(id: string, callId: string, intent = "Count the lab files") {
+        add(id, {
+          type: "message",
+          message: { role: "assistant", content: [{ type: "toolCall", id: callId, name: "task", arguments: { i: intent, context: "The lab.", tasks: [{ task: "count the files in the lab", name: "LabFix" }] } }] },
+        });
+        add(`${id}s`, { type: "custom", customType: "tool_execution_start", data: { toolCallId: callId, toolName: "task", startedAt: "2026-09-30T12:00:00.000Z", intent } });
+      },
+      started(id: string, callId: string, name: string, jobId = name) {
+        add(id, {
+          type: "message",
+          message: {
+            role: "toolResult",
+            toolCallId: callId,
+            toolName: "task",
+            content: [{ type: "text", text: `Spawned agent \`${name}\` (job \`${jobId}\`).` }],
+            details: {
+              projectAgentsDir: null,
+              results: [],
+              totalDurationMs: 1,
+              progress: [{ index: 0, id: name, agent: "task", agentSource: "bundled", status: "pending", task: "count the files in the lab", assignment: "count the files in the lab", recentTools: [], recentOutput: [], toolCount: 0, requests: 0, tokens: 0, cost: 0, durationMs: 0 }],
+              async: { state: "running", jobId, type: "task" },
+            },
+          },
+        });
+      },
+      failedSpawn(id: string, callId: string) {
+        add(id, {
+          type: "message",
+          message: { role: "toolResult", toolCallId: callId, toolName: "task", isError: true, content: [{ type: "text", text: "Missing `tasks`. Provide a `tasks` array." }], details: { projectAgentsDir: null, results: [], totalDurationMs: 0 } },
+        });
+      },
+      asyncResult(id: string, jobId: string, label: string, status = "completed") {
+        add(id, {
+          type: "custom_message",
+          customType: "async-result",
+          content: `<system-notice>\nBackground job ${jobId} has ${status}.\n<task-result id="${jobId}" agent="task" status="${status}" duration="9.6s">\n12 files.\n</task-result>\n</system-notice>`,
+          display: true,
+          details: { meta: { source: { type: "report", value: "background job delivery" } }, jobs: [{ jobId, type: "task", label, durationMs: 9638 }] },
+        });
+      },
+      wait(id: string, callId: string, jobs: { id: string; status: string; label: string }[]) {
+        add(id, { type: "message", message: { role: "assistant", content: [{ type: "toolCall", id: callId, name: "wait", arguments: { i: "Wait for the lab" } }] } });
+        add(`${id}r`, {
+          type: "message",
+          message: {
+            role: "toolResult",
+            toolCallId: callId,
+            toolName: "wait",
+            content: [{ type: "text", text: "## Completed (1)" }],
+            details: { op: "wait", meta: { source: { type: "report", value: "wait" } }, jobs: jobs.map((j) => ({ ...j, type: "task", durationMs: 55938, resultText: "<task-result>12 files.</task-result>" })) },
+          },
+        });
+      },
+      rows,
+    };
+  };
+  const tasks = (lines: string[]) =>
+    parsePiTranscript(lines.join("\n")).flatMap((e) => e.parts.flatMap((p) => (p.kind === "tool" && p.call?.kind === "task" ? [p] : [])));
+
+  test("a spawn is ongoing under its job id, named by the progress row's agent", () => {
+    const s = session();
+    s.spawn("a1", "c1");
+    s.started("r1", "c1", "LabFix");
+    const [card] = tasks(s.rows);
+    expect(card?.call).toEqual({ kind: "task", summary: "Count the lab files", agent: "task", jobId: "LabFix", ongoing: true });
+    expect(card?.result?.isError).toBeUndefined();
+  });
+
+  test("an async-result notice ends it, and the notice is still drawn", () => {
+    const s = session();
+    s.spawn("a1", "c1");
+    s.started("r1", "c1", "LabFix");
+    s.asyncResult("n1", "LabFix", "LabFix");
+    const entries = parsePiTranscript(s.rows.join("\n"));
+    const [card] = tasks(s.rows);
+    expect(card?.call).toEqual({ kind: "task", summary: "Count the lab files", agent: "task", jobId: "LabFix" });
+    expect(card?.result?.isError).toBeUndefined();
+    expect(entries.at(-1)?.role).toBe("note");
+  });
+
+  test("a wait result with a completed job ends it", () => {
+    const s = session();
+    s.spawn("a1", "c1");
+    s.started("r1", "c1", "LabFix");
+    s.wait("w1", "c2", [{ id: "LabFix", status: "completed", label: "LabFix" }]);
+    expect(tasks(s.rows)[0]?.call).toEqual({ kind: "task", summary: "Count the lab files", agent: "task", jobId: "LabFix" });
+  });
+
+  test("a wait that reports a job still running leaves the card ongoing", () => {
+    const s = session();
+    s.spawn("a1", "c1");
+    s.started("r1", "c1", "LabFix");
+    s.wait("w1", "c2", [{ id: "LabFix", status: "running", label: "LabFix" }]);
+    expect(tasks(s.rows)[0]?.call).toMatchObject({ ongoing: true });
+  });
+
+  test("a failed job marks the card's result as an error, from a wait or from the notice's own status", () => {
+    const viaWait = session();
+    viaWait.spawn("a1", "c1");
+    viaWait.started("r1", "c1", "LabFix");
+    viaWait.wait("w1", "c2", [{ id: "LabFix", status: "failed", label: "LabFix" }]);
+    const [waited] = tasks(viaWait.rows);
+    expect(waited?.call).not.toHaveProperty("ongoing");
+    expect(waited?.result?.isError).toBe(true);
+
+    const viaNotice = session();
+    viaNotice.spawn("a1", "c1");
+    viaNotice.started("r1", "c1", "LabFix");
+    viaNotice.asyncResult("n1", "LabFix", "LabFix", "failed");
+    const [noticed] = tasks(viaNotice.rows);
+    expect(noticed?.call).not.toHaveProperty("ongoing");
+    expect(noticed?.result?.isError).toBe(true);
+  });
+
+  test("a second job of one name settles by its `-2` job id, and leaves the first running", () => {
+    const s = session();
+    s.spawn("a1", "c1", "First lab count");
+    s.started("r1", "c1", "LabFix");
+    s.spawn("a2", "c2", "Second lab count");
+    s.started("r2", "c2", "LabFix", "LabFix-2");
+    s.asyncResult("n1", "LabFix-2", "LabFix");
+    const [first, second] = tasks(s.rows);
+    expect(first?.call).toMatchObject({ summary: "First lab count", jobId: "LabFix", ongoing: true });
+    expect(second?.call).toEqual({ kind: "task", summary: "Second lab count", agent: "task", jobId: "LabFix-2" });
+    s.asyncResult("n2", "LabFix", "LabFix");
+    expect(tasks(s.rows)[0]?.call).not.toHaveProperty("ongoing");
+  });
+
+  test("a notice whose job id is unknown settles the card by its label", () => {
+    const s = session();
+    s.spawn("a1", "c1");
+    s.started("r1", "c1", "LabFix", "lab-job-1");
+    s.asyncResult("n1", "lab-job-9", "LabFix");
+    expect(tasks(s.rows)[0]?.call).not.toHaveProperty("ongoing");
+  });
+
+  test("a failed spawn (`isError`, no `async`) is never ongoing", () => {
+    const s = session();
+    s.spawn("a1", "c1");
+    s.failedSpawn("r1", "c1");
+    const [card] = tasks(s.rows);
+    expect(card?.call).toEqual({ kind: "task", summary: "Count the lab files" });
+    expect(card?.result?.isError).toBe(true);
+  });
+
+  test("the reducer names the card's turn when a later row ends it", () => {
+    const s = session();
+    s.spawn("a1", "c1");
+    s.started("r1", "c1", "LabFix");
+    const reducer = createPiReducer();
+    for (const line of s.rows) reducer.push(line);
+    const before = s.rows.length;
+    s.asyncResult("n1", "LabFix", "LabFix");
+    const reduction = reducer.push(s.rows[before]!);
+    expect([...reduction.changed]).toContain("a1");
+  });
+});

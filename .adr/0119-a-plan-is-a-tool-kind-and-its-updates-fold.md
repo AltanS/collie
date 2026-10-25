@@ -62,3 +62,25 @@ whose card has left the window.
 
 An ongoing call whose end notice never arrives (pi killed, notice outside the window) stays running.
 That is the same as a call whose result never arrived, and it is drawn the same way.
+
+## Addendum 2026-10-25: OMP and Gentle Shell jobs from the journal
+
+Oh My Pi (18.6.1, read off a real session) starts a subagent with a `task` call whose result
+answers at once: `details.async` (`state: "running"`, `jobId`) and one `details.progress[]` row per
+subagent (`id`, `agent`, `status: "pending"`). The job ends in an `async-result` notice
+(`details.jobs[]`: `jobId`, `label`; the status sits in the notice's `<task-result … status>`) or in
+a `wait` result (`details.jobs[]`: `id`, `status`, `label`). The pi reducer reads this beside Gentle
+Shell's shape: the card is `ongoing`, remembered by job id and by progress id, and carries the job
+id as `jobId`; a notice settles it by job id, then by label, and any result whose `details.jobs[]`
+rows carry a final status settles the jobs it names. A second job of one name gets `<name>-2` as its
+job id, so a progress id an ongoing card already holds stays with that card. A failed spawn
+(`isError`, no `async`) is never ongoing.
+
+The belt's agents mark (the running subagents of a pane, `PaneSubagent[]`) read Claude Code's meta
+files only. For a pane whose journal has no subagent files it now also lists the ongoing `task`
+cards of the session's live Chat window (`bridge/subagents-journal.ts`), from memory and never from
+disk, so the mark fills while a reader polls that Chat and empties 30 seconds after the last poll,
+or when the log has been quiet past the Claude list's 30-minute bound. Such a row has no transcript
+route behind it and carries `transcript: false`, which the Agents sheet draws without a tap. The job
+id is not `agentId` on the card: `agentId` names a log the subagent sheet fetches, and no route
+serves one for these jobs.

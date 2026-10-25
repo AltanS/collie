@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **The belt's agents mark counts Oh My Pi and Gentle Shell subagents.** A background `task` job of Oh My Pi, and a background subagent of Gentle Shell, now shows in the agents mark and its sheet while it runs, read from the session's Chat in memory; it leaves when the end notice or a `wait` reports it done, and a failed job marks its Agent card in Chat as failed. Such a row has no transcript to open, so it is not a tap. The mark fills while the pane's Chat is being read.
+
 ## [1.24.0] - 2026-10-25
 
 ### Added
