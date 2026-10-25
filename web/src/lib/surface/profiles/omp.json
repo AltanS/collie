@@ -225,7 +225,7 @@
     ]
   },
   "collapse": {
-    "pattern": "(?:📄|🖼|\\u{F15C}|\\u{F03E}) #\\d+"
+    "pattern": "(?:📄|🖼|📷|\\u{F15C}|\\u{F03E}) #\\d+|✦ \\S+(?: [\\s\\S]*)?"
   },
   "reservedLeads": [
     "/",

@@ -6858,6 +6858,110 @@ describe("omp 18.11's box composer (issue 497)", () => {
   });
 });
 
+// Omp 18.6.1 and 18.12.6 (omp gang, 2026-10-25): `/skill:<name> <arg>` never sent, because omp rewrites the box
+// into a chip `✦ name arg…` as soon as a space follows the name, and the profile's collapse pattern did not know
+// it. Every skill with an argument ended `typed_not_submitted / mismatch`. The pasted image chip is `🖼 #N` on
+// 18.6.1 and `📷 #N` on 18.12.6; only the first was a collapse form.
+describe("omp's skill chip and image chip glyphs (omp gang 02 and 05)", () => {
+  const PANES = join(import.meta.dir, "../../web/src/fixtures/panes");
+  const capture = (name: string): string[] => readFileSync(join(PANES, name), "utf8").split(/\r?\n/u).filter((row, i, all) => row !== "" || i < all.length - 1);
+  const OMP = loadProfiles().get("omp")!;
+  const collapse = new RegExp(OMP.collapse.pattern, "uy");
+  const SKILL = "/skill:darius-work-plan reply with the single word OK and call no tools";
+  const SKILL_CHIPS = [
+    ["omp--v18-6-skill-chip--w120.txt", "18.6.1"],
+    ["omp--v18-12-6-skill-chip--w120.txt", "18.12.6"],
+  ] as const;
+
+  /** The box text the Surface reads off a capture, as the bridge reads it. */
+  const boxOf = (name: string): string => {
+    const frame = findInputFrame(splitLines(parseAnsi(capture(name).join("\n"))), OMP.idle);
+    expect(frame, name).not.toBeNull();
+    return frame!.placeholder ? "" : frame!.interior.text;
+  };
+
+  /**
+   * The capture while the box holds `shown`; any other text draws the band and one `╰─ <text>` prompt row, as omp
+   * draws a short draft. Enter takes the text out of the box into the transcript over the band.
+   */
+  const bandScene = (pane: FakePane, name: string, shown: string): void => {
+    const rows = capture(name);
+    const band = rows.findLastIndex((row) => row.startsWith(" π "));
+    expect(band).toBeGreaterThanOrEqual(0);
+    const above: string[] = [];
+    let taken: string | null = null;
+    pane.collapseOver = 100_000;
+    pane.beforeWrite = (p, what) => {
+      if (what === "keys:Enter" && p.box !== "") taken = p.box;
+    };
+    pane.afterInput = (p, what) => {
+      if (taken === null || what !== "keys:Enter") return;
+      above.push(` ${taken}`, "");
+      taken = null;
+      p.box = "";
+    };
+    pane.beforeRead = (p) => {
+      if (p.box === shown && above.length === 0) {
+        p.fixed = rows.join("\n");
+        return;
+      }
+      p.fixed = [...above, rows[band]!, p.box === "" ? "╰─" : `╰─ ${p.box}`].join("\n");
+    };
+  };
+
+  test("the box that shows the skill chip is the typed `/skill:name arg`, read off the 18.6.1 and 18.12.6 captures", () => {
+    for (const [name] of SKILL_CHIPS) {
+      expect(boxOf(name), name).toBe("✦ darius-work-plan reply with the single word OK and call no tools");
+      expect(commandBoxMatches(boxOf(name), "", [SKILL], collapse), name).toBe(true);
+    }
+  });
+
+  test("a skill chip with nothing after the name, a long argument that wraps and a namespaced skill all match", () => {
+    const long = `/skill:ship ${"word ".repeat(60).trim()}`;
+    expect(commandBoxMatches("✦ ship", "", ["/skill:ship"], collapse)).toBe(true);
+    expect(commandBoxMatches(`✦ ship ${"word ".repeat(30)}\n${"word ".repeat(29)}word`, "", [long], collapse)).toBe(true);
+    expect(commandBoxMatches("✦ dev-tools:wordsmith fix the changelog", "", ["/skill:dev-tools:wordsmith fix the changelog"], collapse)).toBe(true);
+  });
+
+  test("the chip is read at the start of the box only: a box that does not begin with it is a mismatch", () => {
+    expect(commandBoxMatches("", "", [SKILL], collapse)).toBe(false);
+    expect(commandBoxMatches("hello", "", [SKILL], collapse)).toBe(false);
+    expect(commandBoxMatches("please ✦ darius-work-plan reply", "", [SKILL], collapse)).toBe(false);
+    expect(commandBoxMatches("✦", "", [SKILL], collapse)).toBe(false);
+    expect(commandBoxMatches("✦darius-work-plan reply", "", [SKILL], collapse)).toBe(false);
+    // A draft already in the box is a prefix the protocol checks first; the chip cannot stand behind it.
+    expect(boxMatches("old draft ✦ ship now", "", ["/skill:ship now"], collapse)).toBe(false);
+  });
+
+  test("a chip stands for ONE typed line: a second typed line after it never matches", () => {
+    expect(boxMatches("✦ ship now", "", ["/skill:ship now", "and more"], collapse)).toBe(false);
+  });
+
+  test("the pasted image chip is `🖼 #N` on 18.6.1 and `📷 #N` on 18.12.6, and the Nerd and document chips keep matching", () => {
+    const IMAGE = "/tmp/uploads/w1-mx7k2p-1a2b3c4d.png";
+    expect(boxOf("omp--v18-12-6-image-chip--w120.txt")).toBe("📷 #1");
+    expect(boxMatches(boxOf("omp--v18-12-6-image-chip--w120.txt"), "", [IMAGE], collapse)).toBe(true);
+    expect(boxMatches(boxOf("omp--v18-11-image-chip--w130.txt"), "", [IMAGE], collapse)).toBe(true);
+    for (const chip of ["🖼 #1", "📷 #1", "📄 #3", "\u{F03E} #2", "\u{F15C} #4"]) expect(boxMatches(chip, "", [IMAGE], collapse), chip).toBe(true);
+    expect(boxMatches("📷 #", "", [IMAGE], collapse)).toBe(false);
+    expect(boxMatches("📷#1", "", [IMAGE], collapse)).toBe(false);
+    expect(boxMatches("🎨 #1", "", [IMAGE], collapse)).toBe(false);
+  });
+
+  test("/skill:name arg is sent with Enter on both versions: the chip is what the box shows, not a mismatch", async () => {
+    for (const [name, version] of SKILL_CHIPS) {
+      const pane = new FakePane("generic");
+      const { send } = rig({ pane, harness: "omp", version });
+      bandScene(pane, name, SKILL);
+      const answer = await send(SKILL, { mode: "command" });
+      expect(answer.receipt, name).toMatchObject({ outcome: "sent" });
+      expect(answer.receipt?.reason, name).toBeUndefined();
+      expect(pane.keysSeen.at(-1), name).toBe("Enter");
+      expect(pane.keysSeen, name).not.toContain("Escape");
+    }
+  });
+});
+
 describe("a slash command over Muse's own slash palette inside the box (MUSE-03, #519)", () => {
   const PANES = join(import.meta.dir, "../../web/src/fixtures/panes");
   const capture = (name: string): string[] => readFileSync(join(PANES, name), "utf8").split(/\r?\n/u);

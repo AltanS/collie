@@ -3010,6 +3010,20 @@ every send was refused `unconfirmed`.
 No capture holds the pointer on another row, so the moved states in the tests are the capture with the `❯`
 moved (`bridge/surface/ask.test.ts`) or drawn the way the source lays the rows out (`approval.test.ts`).
 
+## omp skill chip and pasted image chip (captured 2026-10-25, real omp 18.6.1 and 18.12.6, rig pane)
+
+Plain pane reads from the same Collie rig as the approval panel above (no SGR, 120 columns), cut to whole
+rows. omp rewrites a box that holds `/skill:<name> <arg>` into a chip, `✦ <name> <arg>`, as soon as a space
+follows the name; a skill with no argument stays as typed. Before the profile's `collapse.pattern` knew the
+chip every skill with an argument ended `typed_not_submitted / mismatch`, on both versions. A pasted image
+path becomes a chip too, `🖼 #N` (U+1F5BC) on 18.6.1 and `📷 #N` (U+1F4F7) on 18.12.6; only the first matched.
+
+| Fixture | State / what's in it |
+|---|---|
+| `omp--v18-6-skill-chip--w120.txt` | omp 18.6.1, cut to its last two rows: the band (`π > ◒ Haiku 4.5 > 🗺 Plan ⏸ > … > $0.05 ▶──6%─…`) and the prompt row `╰─ ✦ darius-work-plan reply with the single word OK and call no tools`. Typed text was `/skill:darius-work-plan reply with the single word OK and call no tools`. Labelled `draft` |
+| `omp--v18-12-6-skill-chip--w120.txt` | The same on omp 18.12.6, cut to its last two rows: the band with no cost segment and the same chip row. The rows above held a 402 banner of the run, left out. Labelled `draft` |
+| `omp--v18-12-6-image-chip--w120.txt` | omp 18.12.6 after a bracketed paste of one image path: the title tag `🎨 COLOR: …` at the right, omp's image card `╭── 📷 #1 ───╮` with its `200x200` footer, the band, and the prompt row `╰─ 📷 #1`. CRLF normalised to LF. Labelled `draft` |
+
 ## Hermes corpus (captured 2026-10-16, Hermes Agent v0.22.2 classic CLI, Herdr 0.9.1, sandbox pane)
 
 `hermes--*.txt` come from one disposable Herdr pane running the installed `hermes --cli` with a
