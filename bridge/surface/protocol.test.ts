@@ -17,7 +17,7 @@ import { findInputFrame } from "../../web/src/lib/surface/frame.ts";
 import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
 import { isFree, type Surface } from "../../web/src/lib/surface/surface.ts";
 import { KeyGate } from "./key-gate.ts";
-import { boxMatches, commandBoxMatches, GENERIC_PROBE, wholePaste, LOCK_BOUND_MS, locateText, neverHeldEntry, probeLanding, RowRing, runsInTurnEntry, SendProtocol, SessionLocks, steadyRow, type SendDeps, type SendRequest } from "./protocol.ts";
+import { BOUNDS, boxMatches, commandBoxMatches, GENERIC_PROBE, wholePaste, LOCK_BOUND_MS, locateText, neverHeldEntry, probeLanding, RowRing, runsInTurnEntry, SendProtocol, SessionLocks, steadyRow, type SendDeps, type SendRequest } from "./protocol.ts";
 import { RequestStore } from "./requests.ts";
 import { SurfaceLedger } from "./counters.ts";
 import { HoldStore } from "./holds.ts";
@@ -773,6 +773,54 @@ describe("a harness that swallows a too-soon Enter takes the send with its profi
     expect(answer.receipt).toMatchObject({ outcome: "unknown", reason: "no_evidence", keys: ["probe", "Backspace", "Enter"] });
     expect(pane.box).toBe("please fix the parser test");
     neverEscape(pane);
+  });
+});
+
+describe("a command whose own screen draws late (the browser leg, omp /model, 2026-10-25)", () => {
+  // The leg's omp case 1 read unknown/no_evidence once: the box held `/model` with its slash list over
+  // the screen for the whole S2 bound (final S2 hash equal to S1's), then the model picker opened and
+  // the phone showed it. The fake pane keeps the typed command in the box after Enter, and draws the
+  // picker (a dialog in the box's place) only `drawMs` after it, on the rig's clock.
+  const lateScreen = (drawMs: number | null) => {
+    const r = rig();
+    let enteredAt: number | null = null;
+    r.pane.afterInput = (p, what) => {
+      if (what.endsWith("Enter")) {
+        enteredAt = r.clock.now;
+        p.box = "/model";
+      }
+    };
+    r.pane.beforeRead = (p) => {
+      if (enteredAt === null || drawMs === null || r.clock.now - enteredAt < drawMs) return;
+      p.box = "";
+      p.dialog = DIALOG;
+    };
+    return r;
+  };
+
+  test("a picker that draws after S2's bound but inside the request's is the evidence: sent", async () => {
+    const { send } = lateScreen(4000);
+    const answer = await send("/model", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(answer.receipt?.gapsMs.s2).toBeGreaterThan(BOUNDS.s2.ms);
+  });
+
+  test("a command whose box never changes still ends unknown/no_evidence, after the second bound", async () => {
+    const { pane, send } = lateScreen(null);
+    const answer = await send("/model", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "unknown", reason: "no_evidence" });
+    expect(pane.box).toBe("/model");
+    neverEscape(pane);
+  });
+
+  test("a plain send that leaves its text in the box gets no second bound", async () => {
+    const r = lateScreen(4000);
+    r.pane.afterInput = (p, what) => {
+      if (what.endsWith("Enter")) p.box = "please fix the parser test";
+    };
+    const answer = await r.send("please fix the parser test");
+    expect(answer.receipt).toMatchObject({ outcome: "unknown", reason: "no_evidence" });
+    expect(answer.receipt?.gapsMs.s2 ?? 0).toBeLessThanOrEqual(BOUNDS.s2.ms);
   });
 });
 

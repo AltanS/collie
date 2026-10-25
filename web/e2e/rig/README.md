@@ -193,6 +193,9 @@ Collie stopped.
 - On PATH: `herdr` and `bun`. The harness binaries are named by path in `harnesses.ts`: Claude Code
   at `~/.local/bin/claude`, pi under nvm, omp at `~/.bun/bin/omp`. Override them with
   `COLLIE_RIG_CLAUDE_BIN`, `COLLIE_RIG_PI_BIN` and `COLLIE_RIG_OMP_BIN`.
+  The rig's bridge gets a `bin/` folder under its scratch HOME with a link per binary, first on its PATH, so its
+  version read runs the very binary the pane runs (a `claude` shim on the operator's PATH fails under the scratch
+  HOME, and a newer `omp` in `~/.local/bin` would be read instead of `~/.bun/bin/omp`).
 - A Claude login in `~/.claude/.credentials.json` with at least 25 minutes left on its access token.
 - 8 GB of free memory. The leg stops before a browser or a harness starts when less is free.
 
