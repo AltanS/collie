@@ -210,6 +210,17 @@ const TYPEAHEAD_POPUP = [
 // not sent. A composer: the quoted rows are the person's text.
 const QUOTED_DIALOG = ["omp--v18-6-1-quoted-dialog-draft--w120.txt"];
 
+// omp 18.6.1 and 18.12.6 (omp-gang 11-geometry, 2026-10-25): the box under a status row the profile did not read before,
+// the full preset at 80 columns (its gauge shrinks to ─5%─┃200K─) and the ascii preset. All are composers.
+const STATUS_ROWS = [
+  "omp--v18-12-6-status-ascii-draft--w80.txt",
+  "omp--v18-12-6-status-ascii-idle--w130.txt",
+  "omp--v18-12-6-status-full-slash-draft--w80.txt",
+  "omp--v18-12-6-status-full-slash-idle--w80.txt",
+  "omp--v18-6-1-status-ascii-idle--w80.txt",
+  "omp--v18-6-1-status-full-slash-idle--w80.txt",
+];
+
 const DECLINED = new Set([
   // — Composer states. An input box is chrome, never a dialog; stripChrome peels it, the statusline
   //   and stranded-draft probes re-surface what it carried.
@@ -398,6 +409,7 @@ const DECLINED = new Set([
   // omp 18.6.1 and 18.12.6 (2026-10-25): the rewind picker (Esc Esc), a full-screen modal with no box. Nothing to lift.
   "omp--v18-6-1-rewind-picker--w120.txt",
   "omp--v18-12-6-rewind-picker--w120.txt",
+  ...STATUS_ROWS,
 ]);
 
 // The own cohort is the lifted captures, so every conformance leg that needs one runs on them
@@ -528,6 +540,10 @@ describe("the omp corpus", () => {
     "omp--v18-12-6-slash-mo-fuzzy--w120.txt",
     "omp--v18-12-6-slash-nothere-fuzzy--w120.txt",
     "omp--v18-12-6-stale-list-row-empty-box--w120.txt",
+    "omp--v18-12-6-status-ascii-draft--w80.txt",
+    "omp--v18-12-6-status-ascii-idle--w130.txt",
+    "omp--v18-12-6-status-full-slash-draft--w80.txt",
+    "omp--v18-12-6-status-full-slash-idle--w80.txt",
     "omp--v18-12-band-idle--w130.txt",
     "omp--v18-12-nerd-band-done--w130.txt",
     "omp--v18-12-nerd-band-done--w80.txt",
@@ -614,6 +630,8 @@ describe("the omp corpus", () => {
     "omp--v18-6-1-slash-nothere-fuzzy--w120.txt",
     "omp--v18-6-1-slash-open-tall--w120.txt",
     "omp--v18-6-1-stale-frame-below-live--w120.txt",
+    "omp--v18-6-1-status-ascii-idle--w80.txt",
+    "omp--v18-6-1-status-full-slash-idle--w80.txt",
     "omp--v18-6-1-stop-returned--w119.txt",
     "omp--v18-6-model-selector-empty--w120.txt",
     "omp--v18-6-queue-after--w120.txt",
@@ -857,6 +875,7 @@ const COMPOSER_FIXTURES = [
   ...PATH_POPUP,
   ...TYPEAHEAD_POPUP,
   ...QUOTED_DIALOG,
+  ...STATUS_ROWS,
 ];
 
 describe("composerReady — the gate the reply path pre-flights on", () => {

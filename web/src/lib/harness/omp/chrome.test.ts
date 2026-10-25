@@ -148,6 +148,13 @@ const BOX_COMPOSER_FIXTURES = [
   "omp--v18-12-6-slash-comment-loop-row--w120.txt",
   // omp 18.12.6 after a cancelled `//comment`: the box is empty and the last list row stays under it.
   "omp--v18-12-6-stale-list-row-empty-box--w120.txt",
+  // omp 18.6.1 and 18.12.6 under the full preset at 80 columns and the ascii preset (omp-gang 11-geometry, 2026-10-25).
+  "omp--v18-12-6-status-ascii-draft--w80.txt",
+  "omp--v18-12-6-status-ascii-idle--w130.txt",
+  "omp--v18-12-6-status-full-slash-draft--w80.txt",
+  "omp--v18-12-6-status-full-slash-idle--w80.txt",
+  "omp--v18-6-1-status-ascii-idle--w80.txt",
+  "omp--v18-6-1-status-full-slash-idle--w80.txt",
   // omp 18.6.1: a queued line under `After yield · 1`, then Stop gave it back to the box (ADR 0122).
   "omp--v18-6-1-queued-before-stop--w119.txt",
   "omp--v18-6-1-stop-returned--w119.txt",
@@ -319,6 +326,12 @@ describe("locateComposer — the real corpus, pinned so any change to the walk s
     { fixture: "omp--v18-6-steer-typed--w120.txt", top: 38, bottom: 39, suggestEnd: 40 },
     { fixture: "omp--v18-12-6-slash-comment-loop-row--w120.txt", top: 11, bottom: 12, suggestEnd: 14 },
     { fixture: "omp--v18-12-6-stale-list-row-empty-box--w120.txt", top: 11, bottom: 12, suggestEnd: 14 },
+    { fixture: "omp--v18-12-6-status-ascii-draft--w80.txt", top: 3, bottom: 4, suggestEnd: 5 },
+    { fixture: "omp--v18-12-6-status-ascii-idle--w130.txt", top: 3, bottom: 4, suggestEnd: 5 },
+    { fixture: "omp--v18-12-6-status-full-slash-draft--w80.txt", top: 3, bottom: 4, suggestEnd: 5 },
+    { fixture: "omp--v18-12-6-status-full-slash-idle--w80.txt", top: 3, bottom: 4, suggestEnd: 5 },
+    { fixture: "omp--v18-6-1-status-ascii-idle--w80.txt", top: 6, bottom: 7, suggestEnd: 8 },
+    { fixture: "omp--v18-6-1-status-full-slash-idle--w80.txt", top: 6, bottom: 7, suggestEnd: 8 },
     // omp 18.6.1, a queued line and Stop giving it back (ADR 0122): a short screen, the box on its last row.
     { fixture: "omp--v18-6-1-queued-before-stop--w119.txt", top: 16, bottom: 17, suggestEnd: 18 },
     { fixture: "omp--v18-6-1-stop-returned--w119.txt", top: 16, bottom: 17, suggestEnd: 18 },

@@ -4766,6 +4766,36 @@
    "version": "18.12.6",
    "state": "idle"
   },
+  "omp--v18-12-6-status-full-slash-idle--w80.txt": {
+   "harness": "omp",
+   "version": "18.12.6",
+   "state": "idle"
+  },
+  "omp--v18-12-6-status-full-slash-draft--w80.txt": {
+   "harness": "omp",
+   "version": "18.12.6",
+   "state": "draft"
+  },
+  "omp--v18-6-1-status-full-slash-idle--w80.txt": {
+   "harness": "omp",
+   "version": "18.6.1",
+   "state": "idle"
+  },
+  "omp--v18-12-6-status-ascii-idle--w130.txt": {
+   "harness": "omp",
+   "version": "18.12.6",
+   "state": "idle"
+  },
+  "omp--v18-12-6-status-ascii-draft--w80.txt": {
+   "harness": "omp",
+   "version": "18.12.6",
+   "state": "draft"
+  },
+  "omp--v18-6-1-status-ascii-idle--w80.txt": {
+   "harness": "omp",
+   "version": "18.6.1",
+   "state": "idle"
+  },
   "omp--v18-6-model-selector-empty--w120.txt": {
    "harness": "omp",
    "version": "18.6.1",

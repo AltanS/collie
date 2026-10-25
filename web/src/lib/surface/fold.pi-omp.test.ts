@@ -3,6 +3,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import type { StyledLine } from "../blocks";
 import { agentOf, fixtureRows, idleFor, PANES_DIR, readScreen, rowsOf } from "../../test/surface-corpus";
 import { pointsAt } from "./command-list";
 import { commandListAt, ownCommandList, runningSign } from "./cues";
@@ -704,4 +705,83 @@ describe("a dialog quoted inside the person's own draft is the draft's text (omp
     const read = readScreen(rowsOf(outdented), agentOf("omp"), idleFor("omp"));
     expect(read.surface.modal).toBe("unreadable");
   });
+});
+
+const STATUS_ROW_FIXTURES = [
+  "omp--v18-12-6-status-ascii-draft--w80.txt",
+  "omp--v18-12-6-status-ascii-idle--w130.txt",
+  "omp--v18-12-6-status-full-slash-draft--w80.txt",
+  "omp--v18-12-6-status-full-slash-idle--w80.txt",
+  "omp--v18-6-1-status-ascii-idle--w80.txt",
+  "omp--v18-6-1-status-full-slash-idle--w80.txt",
+];
+
+describe("omp's status row above the box, in every shape its presets draw (omp-gang 11-geometry, 2026-10-25)", () => {
+  // Rows rendered by OMP 18.12.6's own status line (pi-tui status-line, the gallery's fake session) across the presets
+  // default, minimal, compact, full, nerd and ascii, the separators and the symbol presets, at widths from 20 to 130.
+  // Until 1.24.1 the profile asked for a run of three rule glyphs, so the full preset at 80 columns (its gauge shrinks
+  // to ─5%─┃200K─) and the ascii preset (first token [high], [M] or [T]) read as no box: unknown, and a send refused.
+  const STATUS_ROW_SAMPLES: readonly (readonly [string, string])[] = [
+  ["percentage and tick gauge, 130 columns", " π > ⬢ test-model > 🗑 geo2-render > ◫ 0.8%/200K ⟲ > $0.02 ▶───────────────────────────────────────────────────────────────────────"],
+  ["full preset, embedded gauge down to its percent label", " π / 🖥 example / ⬢ test-model / 🗑 geo2-render ─0.8%────200K─ 💾 20.00% / ⤵ 1.2K "],
+  ["full preset, powerline caps, labels kept", " π ▶ 🖥 example ▶ ⬢ test-model ▶ 🗑 geo2-render ▶──30%───200K─"],
+  ["minimal preset, the path first", " 🗑 geo2-render ─────────30%──────────────────200K─"],
+  ["compact preset, pipe separator, plain rule", " ⬢ test-model ─────────────────────── $0.02 │ ◫ 0.0%/200K ⟲ "],
+  ["overflow: window label before the percent", " π ▶ 🗑 …ender ▶──────200K─125%"],
+  ["ascii symbols, percent label between dashes", " pi > [T] …der >-----95%-200K-"],
+  ["ascii preset, [M] first", " [M] test-model > [T] geo2-render -0.8%-------------------200K- tok: 2K < $0.02 "],
+  ["ascii compact, a short rule", " [M] test-model >---"],
+  ["ascii minimal, [T] path first", " [T] geo2-render >-----------------------------------------< ctx: 0.0%/200K [A] "],
+  ["nerd full preset, labels kept", " \u{F0D57} \u{E0B0} \u{F109} example \u{E0B0} \u{EC19} test-model \u{E0B0} \u{F014} geo2-render \u{E0B0}─0.8%───200K─\u{E0B2} \u{F1C0} 20.00% \u{E0B2} \u{F090} 1.2K "],
+  ["nerd preset", " \u{F0D57} \u{E0B0} \u{F109} example \u{E0B0} \u{EC19} test-model \u{E0B0} \u{F014} geo2-render \u{E0B0} \u{F0051} new \u{E0B0}────────────\u{E0B2} \u{F090} 1.2K \u{E0B2} \u{F08B} 800 \u{E0B2} \u{F1C0} 300 \u{E0B2} $0.02 "],
+  ["block separator", " 🗑 geo2-render ──────────────────── ◫ 0.0%/200K ⟲ "],
+  ["two rule glyphs at the end, powerline caps", " π ▶ ⬢ test-model ▶ 🗑 geo2-render ▶ ◫ 0.0%/200K ⟲ ▶ $0.02 ──"],
+  ["one rule glyph after a cap", " π ▶ ⬢ test-model ▶ 🗑 …ender ▶─"],
+  ["ascii, one rule glyph after a cap", " pi > [M] test-model > [T] geo2-render > ctx: 0.0%/200K [A] > $0.02 >-"],
+  ["one rule glyph set apart by spaces", " ⬢ test-model ─ $0.02 ◀ ◫ 125.0%/200K ⟲ "],
+  ["a named profile on the brand", " π-work ▶ ⬢ test-model ▶ 🗑 geo2-render ▶──30%───200K─"],
+  ];
+  const screen = (status: string, box: string): StyledLine[] => rowsOf(["", status, `╰─ ${box}`.trimEnd()].join("\n"));
+  const idle = idleFor("omp");
+
+  for (const [label, row] of STATUS_ROW_SAMPLES) {
+    it(`${label}: an empty box and a draft are read`, () => {
+      expect(readScreen(screen(row, ""), "omp", idle).surface).toEqual({ revision: 1, turn: "idle", modal: "none", composer: "empty" });
+      const draft = readScreen(screen(row, "abc"), "omp", idle);
+      expect(draft.surface).toEqual({ revision: 1, turn: "idle", modal: "none", composer: "draft" });
+      expect(draft.frame?.interior.text).toBe("abc");
+    });
+  }
+
+  // While a turn runs the brand glyph is the spinner and the turn timer; the ascii preset spins - \\ | /.
+  const RUNNING: readonly (readonly [string, string])[] = [
+    ["unicode spinner", " ⠼ 4s ▶ ⬢ test-model ▶ 🗑 geo2-render ▶──30%───200K─"],
+    ["unicode spinner, slash separator, short gauge", " ⠼ 4s / ⬢ test-model / 🗑 geo2-render ─30%─200K─"],
+    ["ascii spinner", " \\ 4s > [M] test-model > [T] geo2-render >-----95%-200K-"],
+    ["ascii spinner, a minute", " | 1m > [M] test-model >---"],
+  ];
+  for (const [label, row] of RUNNING) {
+    it(`${label}: a running turn is read`, () => {
+      expect(readScreen(screen(row, ""), "omp", idle).surface).toEqual({ revision: 1, turn: "running", modal: "none", composer: "empty" });
+    });
+  }
+
+  // Prose that holds three dashes is not a status row: with no status row over the box there is no box.
+  it("a transcript line with dashes over the box is no status row", () => {
+    for (const line of ["Use --- as a rule", "See the list ─── below", "Note: 5% then 200K - done"]) {
+      const read = readScreen(rowsOf([line, "", "╰─ abc"].join("\n")), "omp", idle);
+      expect(read.frame, line).toBeNull();
+      expect(isFree(read.surface), line).toBe(false);
+    }
+  });
+
+  for (const name of STATUS_ROW_FIXTURES) {
+    it(`${name}: the captured screen reads ${labelOf(name).state}`, () => {
+      const read = own(name);
+      const want = labelOf(name).state === "draft" ? { composer: "draft", text: "abc" } : { composer: "empty", text: "" };
+      expect(read.surface).toEqual({ revision: 1, turn: "idle", modal: "none", composer: want.composer });
+      expect(read.frame?.interior.text).toBe(want.text);
+      expect(read.cues?.strength).toBe("none");
+    });
+  }
 });

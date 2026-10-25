@@ -5174,6 +5174,8 @@ class OmpPane extends FakePane {
   ran: string[] = [];
   /** Draw the steered texts in a `Steering · N` block, the steer witness of the profile (the lab screens). */
   drawsSteers = false;
+  /** The status row over the box, instead of the default preset's. */
+  statusRow: string | null = null;
 
   constructor() {
     super("generic");
@@ -5209,7 +5211,7 @@ class OmpPane extends FakePane {
       rows.push("  └ Alt+↑ to edit", "");
     }
     if (this.inTurn && this.showWorking) rows.push("  ⎋ Working…                                      Write essay");
-    rows.push(this.inTurn ? " ⠼ 4s > ◒ Haiku 4.5 > 📁 ~/work > ⑂ master ?1 > $0.06 ▶──6%─────────────" : " π > ◒ Haiku 4.5 > 📁 ~/work > ⑂ master ?1 > $0.06 ▶──6%─────────────");
+    rows.push(this.statusRow ?? (this.inTurn ? " ⠼ 4s > ◒ Haiku 4.5 > 📁 ~/work > ⑂ master ?1 > $0.06 ▶──6%─────────────" : " π > ◒ Haiku 4.5 > 📁 ~/work > ⑂ master ?1 > $0.06 ▶──6%─────────────"));
     this.box.split("\n").forEach((line, i) => rows.push(i === 0 ? `╰─ ${line}`.trimEnd() : `   ${line}`));
     return rows.join("\n");
   }
@@ -5352,6 +5354,29 @@ describe("a draft is a reading until the probe proves it: the stale screen (2026
     expect(answer.offers).toEqual(["keys"]);
     expect(pane.keysSeen).toEqual([]);
   });
+});
+
+describe("OMP: a send under the status rows the profile did not read before (omp gang 11-geometry, 2026-10-25)", () => {
+  // The full preset at 80 columns keeps ─5%─┃200K─ of its gauge, and the ascii preset starts on [high] and draws
+  // its rule with dashes. Both read as no box (unknown), and a plain send was refused `unconfirmed`.
+  const ROWS = [
+    ["the full preset at 80 columns", " π / 🖥 example / ◒ Haiku 4.5 / 📁 …eometry/state2/harness/omp/project ─5%─┃200K─"],
+    ["the ascii preset", " [high] Haiku 4.5 > [D] …/state2/harness/omp/project ---5%--------------------|--------200K-"],
+    ["the ascii preset at 80 columns", " [high] Haiku 4.5 > [D] …g/11-geometry/state/harness/omp/project -4%------|200K-"],
+  ] as const;
+
+  for (const version of ["18.6.1", "18.12.6"]) {
+    for (const [label, row] of ROWS) {
+      test(`${version}, ${label}: a plain send goes out in one tap`, async () => {
+        const { pane, send } = omp({ version });
+        pane.statusRow = row;
+        const answer = await send("Reply with only the word: yes");
+        expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "ctrl+q"] });
+        expect(pane.transcript).toContain(" > Reply with only the word: yes");
+        expect(pane.box).toBe("");
+      });
+    }
+  }
 });
 
 describe("OMP: commands that end the process are never held (omp gang 03)", () => {

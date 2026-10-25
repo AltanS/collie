@@ -1,0 +1,8 @@
+
+--------------------------------------------------------------------------------
+ Update Available                                                               
+ New version 18.12.6 is available. Run: omp update                              
+--------------------------------------------------------------------------------
+
+ [high] Haiku 4.5 > [D] …g/11-geometry/state/harness/omp/project -4%------|200K-
+╰─                                           Shift+Tab to change thinking effort

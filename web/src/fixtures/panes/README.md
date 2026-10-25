@@ -3297,3 +3297,21 @@ The `#` popup that lists prompt actions (`ends with hash #`, `tag:#abc`: `Copy c
 | Fixture | State | What it shows |
 | --- | --- | --- |
 | `omp--v18-12-6-ask-plan-mode--w120.txt` | `dialog` | The last 20 rows when `x` was sent with plan mode on: a status row `⎋ Gather task for plan mode`, then the Ask panel `What work should I plan?` with four choices, each with a description row and a preview row, `Other (type your own)` and the footer ending `Alt+H hide`. Lifts like the previews dialog (ask.ts, OPTION PREVIEWS) |
+
+## Status rows the profile did not read (captured 2026-10-25, OMP 18.6.1 and 18.12.6, omp gang 11-geometry)
+
+Captures of tester 1 (`~/.cache/collie-lab/omp-gang/11-geometry/captures/1.3-*`), read through the rig bridge's pane read, so
+plain text with no SGR bytes, cut to the rows that matter (the last rows of the screen). The host name in the status row is
+replaced with `example`, a word of the same length. `config.yml` held `statusLine: {preset: full, separator: slash}` or
+`{preset: ascii, separator: ascii, symbolPreset: ascii}`. Until 1.24.1 `idle.frame.top` wanted a run of three rule glyphs in
+the status row and a symbol as its first token: the full preset at 80 columns draws `─5%─┃200K─` for its gauge, and the ascii
+preset starts on `[high]` and draws its rule with `-`. Both read `unknown/unknown/unknown`, and a send was refused `unconfirmed`.
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `omp--v18-12-6-status-full-slash-idle--w80.txt` | `idle` | 18.12.6, 80 columns, preset `full`, separator `slash`: the gauge keeps `─5%─┃200K─` |
+| `omp--v18-12-6-status-full-slash-draft--w80.txt` | `draft` | The same screen with `abc` typed |
+| `omp--v18-6-1-status-full-slash-idle--w80.txt` | `idle` | 18.6.1, the same preset, with the update notice over the box |
+| `omp--v18-12-6-status-ascii-idle--w130.txt` | `idle` | 18.12.6, preset `ascii`, symbols `ascii`: the first token is `[high]`, the rule is `-`, the compaction tick is `|` |
+| `omp--v18-12-6-status-ascii-draft--w80.txt` | `draft` | 18.12.6, the same preset at 80 columns with `abc` typed: `-5%------|200K-` |
+| `omp--v18-6-1-status-ascii-idle--w80.txt` | `idle` | 18.6.1, the same preset at 80 columns: `-4%------|200K-` |
