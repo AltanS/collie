@@ -27,6 +27,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **pi, OMP, Codex and OpenCode panes show the context dot above the belt.** Collie reads the last turn's tokens from the session log, and the model's window from Codex's log or from the harness's own model list on disk. A model that list does not name gets no dot, never a guessed one.
 
+### Changed
+
+- **The row above the belt names the model beside its dots.** With a context or a usage window to draw, the tag shows the model too, even when the agent's own status line already prints it. A model with no dots still stands down while the screen names it.
+
 ## [1.24.0] - 2026-10-25
 
 ### Added

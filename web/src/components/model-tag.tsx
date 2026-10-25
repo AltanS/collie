@@ -27,10 +27,13 @@ import { cn } from "@/lib/utils";
 // working colour, never red, because red marks harm (DESIGN.md §4). A gauge the harness did not report
 // is not drawn, and the screen reader gets the exact figure the dots round down.
 //
-// THE MODEL NAME STANDS DOWN WHILE THE SCREEN NAMES IT, the effort included. The caller passes no
-// model then (agent-chat.tsx asks hooks/use-model-on-screen.ts), so a statusline that prints
-// "Opus 5.5" is not doubled; the dots still draw. The tag is absolute either way, so it arriving or
-// leaving moves nothing (DESIGN.md §2): there is no line to reserve because it owns none.
+// THE MODEL NAME STANDS DOWN WHILE THE SCREEN NAMES IT, but only when it would stand ALONE. With no
+// gauge to draw, the caller passes no model while the screen names it (agent-chat.tsx asks
+// hooks/use-model-on-screen.ts), so a statusline that prints "Opus 5.5" is not doubled by a bare
+// label. With a gauge ({@link hasGauge}) the tag is the row Claude Code has, model, context and
+// limits, and it names the model whatever the screen prints, so the dots never float unlabelled
+// (Altan, 2026-10-25). The effort goes with the model either way. The tag is absolute, so it arriving
+// or leaving moves nothing (DESIGN.md §2): there is no line to reserve because it owns none.
 
 /** At or above this percentage a gauge takes the working colour. */
 export const USAGE_WARN_AT = 80;
@@ -64,6 +67,14 @@ function gaugesOf(usage: PaneUsage | undefined): Gauge[] {
     gauges.push({ id: limit.window, short: t(keys.short), spoken: t(keys.spoken, { percent: Math.round(limit.used) }), used: limit.used });
   }
   return gauges;
+}
+
+/**
+ * Whether a usage reading draws any gauge: the context, or a window this build draws. The caller keeps
+ * the model name beside the dots then, even while the screen names the model.
+ */
+export function hasGauge(usage: PaneUsage | undefined): boolean {
+  return gaugesOf(usage).length > 0;
 }
 
 /** Five 3px dots, lit from the left, one per full fifth. A dot is as wide as it is tall, so it may be round (DESIGN.md §3). */
