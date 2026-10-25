@@ -30,6 +30,7 @@ import {
   type SendReceiptsAnswer,
   type SendStep,
 } from "./surface/send";
+import type { ProfileStatus } from "./surface/profile";
 import { ASK_CHANNELS, type Ask, type AskOption, type Surface, type SurfaceComposer, type SurfaceModal, type SurfaceReason, type SurfaceTurn } from "./surface/surface";
 
 /** What the composer needs of an answer. The receipt's marks and gaps are for the log. */
@@ -51,6 +52,7 @@ export interface SendReply {
   readonly cause: SendCause | null;
 }
 
+const PROFILE_STATUSES: readonly ProfileStatus[] = ["verified", "provisional", "revoked"];
 const OFFERS: readonly SendOffer[] = ["append", "replace", "cancel", "submit", "discard", "commit", "keys"];
 const TURNS: readonly SurfaceTurn[] = ["idle", "running", "unknown"];
 const COMPOSERS: readonly SurfaceComposer[] = ["empty", "draft", "unreachable", "unknown"];
@@ -166,6 +168,10 @@ export function readSendReceipts(body: JsonValue | undefined): SendReceiptsAnswe
     const row: RowDraft = { requestId, at, mode, outcome, keys, gapsMs, harness, version: asJsonString(node.version) ?? null };
     if (reason !== null) row.reason = reason;
     if (cap !== null) row.cap = cap;
+    const profileId = asJsonString(node.profileId);
+    if (profileId !== undefined && profileId.length > 0) row.profileId = profileId;
+    const profileStatus = pick(node.profileStatus, PROFILE_STATUSES);
+    if (profileStatus !== null) row.profileStatus = profileStatus;
     if (node.queued === true) row.queued = true;
     const late = pick(node.late, SEND_LATES);
     if (late !== null) row.late = late;

@@ -145,7 +145,8 @@ import {
   updateStartVerdict,
   type PreflightReport,
 } from "./update-action.ts";
-import { type UpdateLineRecord, withLine } from "./update-line.ts";
+import { type ReleaseLine, type UpdateLineRecord, withLine } from "./update-line.ts";
+import { REPORT_SCREEN_ROWS, reportScreen, type ReportContext } from "./report.ts";
 import type { StateEngine } from "./state-engine.ts";
 import { adapterFor, buildJournalRegistry } from "./journal/registry.ts";
 import { readClaudeSubagent } from "./journal/claude.ts";
@@ -204,6 +205,7 @@ import { createSttAdmission, MAX_STT_AUDIO_BYTES, sttCapability, transcribeReque
 import type { SttProvider } from "./stt/provider.ts";
 import { createWhistleModelStore, type WhistleModelStore } from "./stt/whistle-model.ts";
 import type { CodexDetector } from "./stt/codex-detect.ts";
+import { HOST } from "./host.ts";
 import { createHostCodexDetector, sttHostGet, sttHostPut, type SttHostRouteDeps } from "./stt/host-http.ts";
 import {
   modelResponse,
@@ -2792,6 +2794,18 @@ export function startServer(opts: {
         const rt = localRuntime(sessionName, req.headers.get("accept-encoding"));
         if (rt instanceof Response) return rt;
         return sendReceiptsRoute(rt, url.searchParams.get("pane"), req.headers.get("accept-encoding"));
+      }
+      // Report a problem (ADR 0123): the setup block and, on `screen=1`, the pane's last rows, always
+      // masked. A read for a paired device only, since the screen goes to a public issue if the person
+      // sends it. This collie's own panes only: a crew member's pane is the next slice.
+      if (pathname === "/api/report/context" && req.method === "GET") {
+        const denied = browserGate("device-read");
+        if (denied) return denied;
+        if (host.kind === "member") return text("a report reads this machine's panes only for now", 400);
+        const rt = localRuntime(sessionName, req.headers.get("accept-encoding"));
+        if (rt instanceof Response) return rt;
+        const machine: ReportMachine = { collie: opts.version, line: opts.updateLine?.read().line ?? null, os: HOST.platform, arch: process.arch };
+        return reportContextRoute(rt, url.searchParams.get("pane"), url.searchParams.get("screen") === "1", machine, req.headers.get("accept-encoding"));
       }
       // ── Walky talky (M62) ────────────────────────────────────────────────
       // A message from the phone is an operator's, under the paired device's label, and a write under
@@ -8183,6 +8197,48 @@ export function sendReceiptsRoute(rt: Pick<SendRouteRuntime, "send" | "driver"> 
   const receipts = rt.driver !== undefined ? rt.driver.recent(pane, 10, rt.name) : (rt.send?.recent(pane, 10) ?? []);
   const answer: SendReceiptsAnswer = { receipts };
   return json(answer, acceptEncoding);
+}
+
+/** What `reportContextRoute` reads of a session runtime: a {@link SessionRuntime} is one. */
+export interface ReportRouteRuntime extends Pick<SendRouteRuntime, "send" | "engine"> {
+  readonly herdr: Pick<MuxAdapter, "controlTurn" | "readGrid" | "mux">;
+}
+
+/** What `reportContextRoute` takes of this machine: its version and its release line. */
+export interface ReportMachine {
+  readonly collie: string;
+  readonly line: ReleaseLine | null;
+  /** `HOST.platform` and `process.arch`, read at the edge. */
+  readonly os: string;
+  readonly arch: string;
+}
+
+/**
+ * `GET /api/report/context?pane=<id>[&screen=1]` once the paired-device read gate passed and the
+ * session resolved (ADR 0123): the setup block of a Report a problem sheet, and with `screen=1` the
+ * pane's last rows, always masked (bridge/report.ts). A read: it changes nothing, writes no audit line
+ * and stores nothing. A pane this session does not show is a 404; a screen asked of a pane with none
+ * (a program session) is a 400. With no pane it answers the machine's half alone.
+ */
+export async function reportContextRoute(
+  rt: ReportRouteRuntime,
+  pane: string | null,
+  wantScreen: boolean,
+  machine: ReportMachine,
+  acceptEncoding: string | null,
+): Promise<Response> {
+  if (pane !== null && (pane.length === 0 || pane.length > 256)) return text("bad pane", 400);
+  const harness = pane === null ? null : replySendOf(rt).harnessOf(pane);
+  if (pane !== null && harness === null) return text("no such pane", 404);
+  const screenable = pane !== null && rawInputRefusal(rt.herdr) === null;
+  const context: ReportContext = { collie: machine.collie, line: machine.line, os: machine.os, arch: machine.arch, mux: rt.herdr.mux, harness, screenable };
+  if (!wantScreen) return json(context, acceptEncoding);
+  if (pane === null || !screenable) return text("this pane has no screen to include", 400);
+  // The mirror's own read shape (`readPane`): `recent` with styling kept, which leaves the operator's
+  // screen where it is. The escapes are stripped here and the rows masked in `reportScreen`.
+  const read = await rt.herdr.readGrid(pane, { scope: "recent", lines: REPORT_SCREEN_ROWS, styling: "preserve" });
+  if (!read.ok) return text(`${rt.herdr.mux} read failed: ${read.detail}`, 502);
+  return json({ ...context, screen: reportScreen(stripSgr(read.value.text)) } satisfies ReportContext, acceptEncoding);
 }
 
 /**

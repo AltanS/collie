@@ -297,6 +297,12 @@ export interface SendReceiptRow {
   readonly gapsMs: Readonly<Partial<Record<SendStep, number>>>;
   readonly harness: string;
   readonly version: string | null;
+  /**
+   * The reader profile the bridge used for this send and its status, when it had one (ADR 0123: the
+   * setup block of a report names them). Absent on a pane with no profile and from a bridge before 1.24.1.
+   */
+  readonly profileId?: string;
+  readonly profileStatus?: ProfileStatus;
   /** The cap's numbers, on the cap's refusal only (see {@link SendReceipt.cap}). */
   readonly cap?: SendCap;
   /** Set when the send was queued behind a running turn (see {@link SendReceipt.queued}). */

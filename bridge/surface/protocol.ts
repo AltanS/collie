@@ -2127,6 +2127,8 @@ export class SendProtocol {
       if (record.paneId !== paneId || receipt === undefined) continue;
       const row: RowDraft = { requestId: record.id, at: record.acceptedAt, mode: record.mode, outcome: receipt.outcome, keys: receipt.keys, gapsMs: receipt.gapsMs, harness: receipt.harness, version: receipt.version };
       if (receipt.reason !== undefined) row.reason = receipt.reason;
+      if (receipt.profileId !== null) row.profileId = receipt.profileId;
+      if (receipt.profileStatus !== null) row.profileStatus = receipt.profileStatus;
       if (receipt.cap !== undefined) row.cap = receipt.cap;
       if (receipt.queued === true) row.queued = true;
       if (receipt.late !== undefined) row.late = receipt.late;

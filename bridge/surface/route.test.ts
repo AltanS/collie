@@ -380,7 +380,7 @@ describe("sendReceiptsRoute (M56 spec 09)", () => {
       const body = await res.json();
       expect(body.receipts).toHaveLength(10);
       expect(body.receipts[0]).toMatchObject({ requestId: "route-rcpt-0011", outcome: "sent", mode: "send", harness: "claude", keys: ["Enter"], line: "message number 11 is plain" });
-      expect(Object.keys(body.receipts[0]).toSorted()).toEqual(["at", "gapsMs", "harness", "keys", "line", "mode", "outcome", "requestId", "version"]);
+      expect(Object.keys(body.receipts[0]).toSorted()).toEqual(["at", "gapsMs", "harness", "keys", "line", "mode", "outcome", "profileId", "profileStatus", "requestId", "version"]);
       const other = await sendReceiptsRoute(rt, "%9", null).json();
       expect(other.receipts).toEqual([]);
       // A text Sent's rule refuses is listed with no line at all, and nothing of it is in the body.

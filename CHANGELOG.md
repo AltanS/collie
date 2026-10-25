@@ -51,6 +51,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **pi, OMP, Codex and OpenCode panes show the context dot above the belt.** Collie reads the last turn's tokens from the session log, and the model's window from Codex's log or from the harness's own model list on disk. A model that list does not name gets no dot, never a guessed one.
 - **The tag beside the chat's model name shows the session's cost in dollars.** It follows the dots whenever the harness reports a cost: Claude Code through the wrapped status line, pi, OMP and OpenCode from their logs. Codex's log has none, so its tag shows no cost, never a guess.
 - **The model name stays beside the session cost.** A tag with a cost and no dots, such as a pi model its list does not name, names the model even when the screen already prints it, so the figure never floats alone.
+- **The bridge reads a pane's setup and masked screen for a problem report.** `GET /api/report/context?pane=` answers the Collie version and release line, the OS, the multiplexer and the pane's agent, for a paired device only. With `screen=1` it adds the pane's last 40 rows with every secret shape masked, even when `COLLIE_REDACT` is off, because a report is meant for a public issue. Nothing is stored, and the bridge calls no one. The recent-sends list now carries each send's reader profile and its status too.
 
 ### Changed
 
