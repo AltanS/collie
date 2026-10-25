@@ -1,0 +1,20 @@
+
+                                            ████████████    
+                                               ██  ██       ▄▀▀▄ █▀▄▀▄ █▀▀▄
+                                               ██  ██       ▀▄▄▀ █ █ █ █▄▄▀
+                                               ▒▒  ██                  █
+                                                   ██       v18.12.6
+
+                         Tip: Drop the word `ultrathink` in your message for harder multi-step
+                                     reasoning — watch it glow rainbow as you type
+
+ zz ran with: abc                                                                                                       
+
+ above row 1                                                                                                            
+ π > ◒ Haiku 4.5 > 📁 …g/15-crew-ext/state/harness/omp/project ▶──5%───────────────────────────────────────┃───────200K─
+╰─ /wx                                                                                                                  
+❯ 🧩 wx          clear widgets, status, ticks
+  ↻  loop        Loop: off
+  ⚡ slow        Slow mode: off
+  ◫  context     Context: 5% (9,428/200,000)
+PLAN 3/6

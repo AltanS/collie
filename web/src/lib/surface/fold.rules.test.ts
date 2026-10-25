@@ -104,6 +104,28 @@ describe("an OMP extension widget around the open box (#468)", () => {
   });
 });
 
+describe("an OMP extension's status row under the box and under a slash list (omp gang, 2026-10-25)", () => {
+  // `ctx.ui.setStatus` draws one plain row under everything else. With a list of four rows or more under
+  // the box the read was unreadable and torn; the profile now names that row as the list's footer.
+  const OMP = requireProfile("omp").idle;
+  const read = (name: string) => readScreen(fixtureRows(name, SURFACE_FIXTURES_DIR), agentOf("omp"), OMP);
+
+  it("omp: the box with only the status row under it reads idle and free", () => {
+    const r = read("omp--v18-12-6-status-row-idle.txt");
+    expect(r.surface).toEqual({ revision: 1, turn: "idle", modal: "none", composer: "empty" });
+  });
+
+  it.each([
+    ["omp--v18-12-6-status-row-palette-4.txt", "/wx"],
+    ["omp--v18-6-1-status-row-palette-4.txt", "/wx"],
+    ["omp--v18-12-6-status-row-palette-10.txt", "/w"],
+  ])("omp %s: the typed command with its list and the status row under it reads a draft, not unreadable or torn", (name, typed) => {
+    const r = read(name);
+    expect(r.frame?.interior.text).toBe(typed);
+    expect(r.surface).toEqual({ revision: 1, turn: "idle", modal: "none", composer: "draft" });
+  });
+});
+
 describe("a running turn on live captures (Claude Code 2.1.301, 2026-10-16)", () => {
   const read = (name: string) => readScreen(fixtureRows(name), agentOf("claude"), idleFor("claude")).surface;
 

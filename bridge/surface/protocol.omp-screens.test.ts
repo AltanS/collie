@@ -149,3 +149,34 @@ describe("a widget of four rows or more under the box (belowEditor, omp gang 202
     expect(pane.submitted).toEqual(["hello there"]);
   });
 });
+
+/** The list rows a capture shows under its box row, the status row left out. */
+function listRowsOf(name: string): string[] {
+  const rows = fx(name).replace(/\r/gu, "").split("\n");
+  const at = rows.findLastIndex((row) => row.startsWith("╰─"));
+  return rows.slice(at + 1).filter((row) => row.trim() !== "" && !row.startsWith("PLAN"));
+}
+
+describe("a slash command with an extension's status row under the list (omp gang 2026-10-25)", () => {
+  test.each([
+    ["omp--v18-12-6-status-row-palette-4.txt"],
+    ["omp--v18-6-1-status-row-palette-4.txt"],
+  ])("%s: /wx goes in with the command keys and runs, where the list had four rows and the status row sat under it", async (name) => {
+    const pane = new OmpPane(fx("omp--v18-12-6-status-row-idle.txt"), listRowsOf(name));
+    const { send } = rig(pane);
+    const answer = await send("/wx", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent", profileId: "omp" });
+    expect(answer.receipt?.keys.at(-1)).toBe("Enter");
+    expect(pane.submitted).toEqual(["/wx"]);
+  });
+
+  test("a half-typed command whose ten-row list points at another one is still not entered: the text stays for the person", async () => {
+    const pane = new OmpPane(fx("omp--v18-12-6-status-row-idle.txt"), listRowsOf("omp--v18-12-6-status-row-palette-10.txt"));
+    const { send } = rig(pane);
+    const answer = await send("/w", { mode: "command" });
+    expect(answer.receipt?.outcome).not.toBe("sent");
+    expect(pane.submitted).toEqual([]);
+    expect(pane.keysSeen).not.toContain("Enter");
+    expect(pane.box).toBe("/w");
+  });
+});

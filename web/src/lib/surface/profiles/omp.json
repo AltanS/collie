@@ -156,6 +156,10 @@
             "skill:"
           ],
           "argumentList": true,
+          "footer": {
+            "pattern": "^\\S",
+            "maxRows": 4
+          },
           "leadOpens": true,
           "staleWhenEmpty": true
         }

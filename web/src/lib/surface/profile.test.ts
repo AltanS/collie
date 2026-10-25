@@ -275,7 +275,8 @@ describe("the codex profile (M56 spec 13)", () => {
     expect(stock.pointer("> ")).toBeNull();
     const omp = read("omp");
     expect(omp.list).toMatchObject({ lead: "/", sides: ["under"] });
-    expect(omp.list.footer).toBeUndefined();
+    // An extension's status row (`ctx.ui.setStatus`) is one plain row per key, flush left, under the list.
+    expect(omp.list.footer).toEqual({ pattern: "^\\S", maxRows: 4 });
     // omp 18.6.1 draws an icon column, omp 18.8 too, older omp none; a scrollbar cell ends the row.
     expect(omp.pointer(`❯ ⬢  model         Model: none selected${" ".repeat(60)}█`)).toBe("model");
     expect(omp.entry(`  🏃 prewalk       Arm or restart a one-shot model handoff${" ".repeat(40)}█`)).toBe("prewalk");
