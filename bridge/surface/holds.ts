@@ -19,15 +19,16 @@
 // are deleted.
 //
 // A send its caller marks `draftHolds` (a walky talky delivery, M62 spec 02) is also held over a draft,
-// and its caller names the hold's end (`expiresAt`), so one clock runs for it. Its file then carries
-// what holds it now (`cause`), rewritten by the poll when that changes, so the caller can say why.
+// and its caller names the hold's end (`expiresAt`), so one clock runs for it. Every file carries what
+// held it (`cause`, the refusal it came from), so the phone can say why; on a marked send the poll
+// rewrites it when that changes, so the caller can say why too.
 //
 // No harness name lives here (bridge/surface/no-harness-names.test.ts scans this folder).
 
 import { chmodSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { asJsonNumber, asJsonObject, asJsonString, type JsonValue } from "../../web/src/lib/json.ts";
-import { REQUEST_ID, SEND_MODES, SEND_OUTCOMES, SEND_REASONS, type HeldRow, type HeldState, type SendMode, type SendOutcome, type SendReason } from "../../web/src/lib/surface/send.ts";
+import { HELD_CAUSES, REQUEST_ID, SEND_MODES, SEND_OUTCOMES, SEND_REASONS, type HeldCause, type HeldRow, type HeldState, type SendMode, type SendOutcome, type SendReason } from "../../web/src/lib/surface/send.ts";
 
 /** How long a text stays held before it ends `expired` (decision 4). */
 export const HOLD_MS = 30 * 60 * 1000;
@@ -44,9 +45,9 @@ export const HOLD_BRIDGE_MAX = 256;
 
 const HELD_STATES = ["held", "running", "ended"] as const satisfies readonly HeldState[];
 
-/** What holds a marked request now: a draft in the box, or a turn (or anything else the box waits on). */
-export type HoldCause = "draft_present" | "turn_running";
-const HOLD_CAUSES = ["draft_present", "turn_running"] as const satisfies readonly HoldCause[];
+/** What holds a request: the refusal it was held from ({@link HeldCause}). A marked request's poll moves it
+ *  between a draft in the box and a turn (anything else the box waits on reads as a turn there). */
+export type HoldCause = HeldCause;
 
 /** One held request on disk. */
 export interface HeldEntry {
@@ -75,7 +76,7 @@ export interface HeldEntry {
   readonly waitsForTurn?: true;
   /** The caller asked for a draft to hold this request, not refuse it (see the header). */
   readonly draftHolds?: true;
-  /** On a {@link draftHolds} request: what holds it now. */
+  /** What holds it: the refusal it was held from, and on a {@link draftHolds} request what the poll reads now. */
   readonly cause?: HoldCause;
 }
 
@@ -93,7 +94,7 @@ export interface HoldInput {
   readonly waitsForTurn?: boolean;
   /** See {@link HeldEntry.draftHolds}. */
   readonly draftHolds?: boolean;
-  /** See {@link HeldEntry.cause}; kept only with {@link draftHolds}. */
+  /** See {@link HeldEntry.cause}. */
   readonly cause?: HoldCause;
   /** The caller's own end of the hold, epoch ms: it replaces {@link HOLD_MS} and {@link HOLD_COMMAND_MS}. */
   readonly expiresAt?: number;
@@ -129,11 +130,9 @@ function parseEntry(raw: JsonValue | undefined): HeldEntry | null {
   if (reason !== undefined) entry = { ...entry, reason };
   if (endedAt !== undefined) entry = { ...entry, endedAt };
   if (node.waitsForTurn === true) entry = { ...entry, waitsForTurn: true };
-  if (node.draftHolds === true) {
-    entry = { ...entry, draftHolds: true };
-    const cause = pick(node.cause, HOLD_CAUSES);
-    if (cause !== undefined) entry = { ...entry, cause };
-  }
+  if (node.draftHolds === true) entry = { ...entry, draftHolds: true };
+  const cause = pick(node.cause, HELD_CAUSES);
+  if (cause !== undefined) entry = { ...entry, cause };
   return entry;
 }
 
@@ -142,6 +141,7 @@ export function heldRow(entry: HeldEntry): HeldRow {
   let row: HeldRow = { requestId: entry.id, mode: entry.mode, text: entry.text, heldAt: entry.heldAt, expiresAt: entry.expiresAt, state: entry.state };
   if (entry.outcome !== undefined) row = { ...row, outcome: entry.outcome };
   if (entry.reason !== undefined) row = { ...row, reason: entry.reason };
+  if (entry.cause !== undefined) row = { ...row, cause: entry.cause };
   return row;
 }
 
@@ -203,7 +203,8 @@ export class HoldStore {
     const { command, waitsForTurn, draftHolds, cause, expiresAt, ...rest } = input;
     let entry: HeldEntry = { ...rest, heldAt: at, expiresAt: expiresAt ?? at + (command ? HOLD_COMMAND_MS : HOLD_MS), seq: this.nextSeq++, state: "held", tries: 0 };
     if (waitsForTurn === true) entry = { ...entry, waitsForTurn: true };
-    if (draftHolds === true) entry = cause === undefined ? { ...entry, draftHolds: true } : { ...entry, draftHolds: true, cause };
+    if (draftHolds === true) entry = { ...entry, draftHolds: true };
+    if (cause !== undefined) entry = { ...entry, cause };
     return this.write(entry);
   }
 

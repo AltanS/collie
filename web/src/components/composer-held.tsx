@@ -32,9 +32,24 @@ import { cn } from "@/lib/utils";
 /** What a tap on an ended row sends: the row again, or the text it left in the box submitted or discarded. */
 export type HeldAction = "resend" | "submit" | "discard";
 
+/** The sentence of a row that waits, by what holds it: a turn, something open at the box, or a draft. */
+function heldKey(row: HeldRow): MessageKey {
+  switch (row.cause) {
+    case "not_free":
+    case "bound":
+    case "probe_failed":
+      return "composer.held.box";
+    case "draft_present":
+      return "composer.held.draft";
+    default:
+      // A turn, or a row from a bridge that keeps no cause.
+      return "composer.held.queued";
+  }
+}
+
 /** The label a row wears: what the bridge is doing with it, or why it never went out. */
 function labelKey(row: HeldRow): MessageKey {
-  if (row.state === "held") return "composer.held.queued";
+  if (row.state === "held") return heldKey(row);
   if (row.state === "running") return "composer.held.sending";
   if (row.outcome === "unknown") return "composer.held.unknown";
   if (row.outcome === "typed_not_submitted") return "composer.held.typed";

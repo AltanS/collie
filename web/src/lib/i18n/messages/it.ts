@@ -343,6 +343,8 @@ export const it: Dictionary = {
   "composer.protocol.expired": "Non inviato. Il turno non è terminato entro 30 minuti.",
   "composer.protocol.cancelled": "Annullato. All'agente non è arrivato nulla.",
   "composer.held.queued": "In coda. Viene inviato al termine del turno.",
+  "composer.held.box": "In attesa. C'è qualcosa aperto sul riquadro; viene inviato quando si chiude.",
+  "composer.held.draft": "In attesa. Viene inviato quando il riquadro è vuoto.",
   "composer.held.sending": "Invio in corso.",
   "composer.held.expired": "Non inviato. Il turno non è terminato entro 30 minuti.",
   "composer.held.paneGone": "Non inviato. Il riquadro si è chiuso.",

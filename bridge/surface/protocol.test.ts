@@ -4342,7 +4342,7 @@ describe("the held send (M56 spec 15)", () => {
     // Windows has no POSIX mode bits, so only the mode expectation waits for another platform.
     if (process.platform !== "win32") expect(statSync(file).mode & 0o777).toBe(0o600);
     expect(r.protocol.heldOf("main", "%1")).toEqual([
-      { requestId: "held-000001", mode: "send", text: "then give it a title", heldAt: 1_000_120, expiresAt: 1_000_120 + 30 * 60 * 1000, state: "held" },
+      { requestId: "held-000001", mode: "send", text: "then give it a title", heldAt: 1_000_120, expiresAt: 1_000_120 + 30 * 60 * 1000, state: "held", cause: "turn_running" },
     ]);
     expect(r.protocol.recent("%1")[0]).toMatchObject({ requestId: "held-000001", outcome: "held" });
   });
@@ -6231,6 +6231,8 @@ describe("a send into a running Claude Code turn under a wrapped prompt echo (2.
     const answer = await r.send("then give it a title");
     expect(answer.receipt?.outcome).toBe("held");
     expect(r.pane.keysSeen).not.toContain("Enter");
+    // The held row keeps the refusal it came from, so the phone says the box, not the turn.
+    expect(r.protocol.heldOf("main", "%1")).toEqual([expect.objectContaining({ state: "held", cause: "not_free" })]);
   });
 });
 

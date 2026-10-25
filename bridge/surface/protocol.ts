@@ -1242,6 +1242,21 @@ function heldDetail(end: Ended): string {
   return end.reason === "turn_running" ? HELD : HELD_BOX;
 }
 
+/** The cause a held request keeps from the refusal it was held from ({@link holdsEnd} lets only these through). */
+function holdCauseOf(end: Ended): HoldCause {
+  switch (end.reason) {
+    case "turn_running":
+    case "not_free":
+    case "bound":
+    case "draft_present":
+    case "probe_failed":
+      return end.reason;
+    default:
+      // holdsEnd holds no other refusal; a box hold is the plain reading if one ever does.
+      return "not_free";
+  }
+}
+
 /** What a poll's Surface says holds a marked request now, or null when it says nothing new. */
 function causeOf(surface: Surface): HoldCause | null {
   if (surface.turn === "running") return "turn_running";
@@ -2166,13 +2181,14 @@ export class SendProtocol {
     else if (end.reason !== "turn_running") this.quietWatch(target.session, target.paneId);
     const command = state.command || request.mode === "command";
     const waitsForTurn = command && !commandCannotSteer(state.match);
-    const input = { id: request.id, session: target.session, paneId: target.paneId, harness: target.harness, mode: request.mode, text: request.text, revision: request.revision ?? 0, command, waitsForTurn };
+    // What holds it, for the phone's sentence and a marked send's caller: the refusal it came from, or
+    // what the newest request ahead of it waits on when it joins the queue behind.
+    const ahead = holds.waiting(target.session, target.paneId).at(-1)?.cause;
+    const cause = end.extra.detail === HELD_BEHIND ? (ahead ?? "turn_running") : holdCauseOf(end);
+    const input = { id: request.id, session: target.session, paneId: target.paneId, harness: target.harness, mode: request.mode, text: request.text, revision: request.revision ?? 0, command, waitsForTurn, cause };
     if (request.draftHolds === true) {
-      // A marked send keeps its caller's clock, and what holds it: its own draft, or what the newest
-      // request ahead of it waits on when it joins the queue behind.
-      const ahead = holds.waiting(target.session, target.paneId).at(-1)?.cause;
-      const cause: HoldCause = end.reason === "draft_present" ? "draft_present" : end.extra.detail === HELD_BEHIND ? (ahead ?? "turn_running") : "turn_running";
-      holds.add(request.holdUntil === undefined ? { ...input, draftHolds: true, cause } : { ...input, draftHolds: true, cause, expiresAt: request.holdUntil });
+      // A marked send keeps its caller's clock.
+      holds.add(request.holdUntil === undefined ? { ...input, draftHolds: true } : { ...input, draftHolds: true, expiresAt: request.holdUntil });
     } else {
       holds.add(input);
     }

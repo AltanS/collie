@@ -343,6 +343,8 @@ export const tr: Dictionary = {
   "composer.protocol.expired": "Gönderilmedi. Tur 30 dakika içinde bitmedi.",
   "composer.protocol.cancelled": "İptal edildi. Ajana hiçbir şey iletilmedi.",
   "composer.held.queued": "Kuyruğa alındı. Tur bittiğinde gönderilir.",
+  "composer.held.box": "Bekletiliyor. Kutuda açık bir şey var; kapanınca gönderilir.",
+  "composer.held.draft": "Bekletiliyor. Kutu boşalınca gönderilir.",
   "composer.held.sending": "Şimdi gönderiliyor.",
   "composer.held.expired": "Gönderilmedi. Tur 30 dakika içinde bitmedi.",
   "composer.held.paneGone": "Gönderilmedi. Bölme kapandı.",

@@ -434,6 +434,8 @@ export const en = {
   "composer.protocol.expired": "Not sent. The turn did not end within 30 minutes.",
   "composer.protocol.cancelled": "Cancelled. Nothing went to the agent.",
   "composer.held.queued": "Queued. Sends when the turn ends.",
+  "composer.held.box": "Held. Something is open at the box; sends when it clears.",
+  "composer.held.draft": "Held. Sends when the box is empty.",
   "composer.held.sending": "Sending now.",
   "composer.held.expired": "Not sent. The turn did not end within 30 minutes.",
   "composer.held.paneGone": "Not sent. The pane closed.",

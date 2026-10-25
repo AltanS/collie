@@ -21,12 +21,26 @@ describe("HoldStore", () => {
     const entry = store.add({ ...input("req-000001"), draftHolds: true, cause: "draft_present", expiresAt: 5_000 + 60 * 60 * 1000 });
     expect(entry).toMatchObject({ draftHolds: true, cause: "draft_present", expiresAt: 5_000 + 60 * 60 * 1000 });
     expect(new HoldStore(dir, () => 5_000).get("req-000001")).toMatchObject({ draftHolds: true, cause: "draft_present", expiresAt: 5_000 + 60 * 60 * 1000 });
-    // An unmarked request takes no cause, and the store's own clock.
-    const plain = store.add({ ...input("req-000002"), cause: "draft_present" });
-    expect(plain.cause).toBeUndefined();
+    // An unmarked request keeps the cause it was held from (the phone's sentence), and the store's own clock.
+    const plain = store.add({ ...input("req-000002"), cause: "not_free" });
+    expect(plain.cause).toBe("not_free");
     expect(plain.draftHolds).toBeUndefined();
     expect(plain.expiresAt).toBe(5_000 + HOLD_MS);
     expect(store.setCause("req-000002", "turn_running")).toBeNull();
+  });
+
+  test("every cause a refusal holds from comes back from its file and rides on the phone's row", () => {
+    const store = new HoldStore(dir, () => 5_000);
+    const causes = ["turn_running", "not_free", "bound", "draft_present", "probe_failed"] as const;
+    causes.forEach((cause, i) => store.add({ ...input(`req-00000${String(i + 1)}`), cause }));
+    const again = new HoldStore(dir, () => 5_000);
+    expect(again.list().map((entry) => entry.cause)).toEqual([...causes]);
+    expect(again.list().map((entry) => heldRow(entry).cause)).toEqual([...causes]);
+    // A file with a cause no bridge writes reads back without one; a file without one gives a row without one.
+    writeFileSync(join(dir, "req-000009.json"), `${JSON.stringify({ ...again.get("req-000001"), id: "req-000009", seq: 99, cause: "sideways" })}\n`);
+    const third = new HoldStore(dir, () => 5_000);
+    expect(third.get("req-000009")?.cause).toBeUndefined();
+    expect(heldRow(third.get("req-000009")!)).not.toHaveProperty("cause");
   });
 
   test("setCause writes the file only when the cause changed, and a put-back keeps it", () => {

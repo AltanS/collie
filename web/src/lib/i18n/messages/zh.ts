@@ -390,6 +390,8 @@ export const zh: Dictionary = {
   "composer.protocol.expired": "未发送。本轮未在 30 分钟内结束。",
   "composer.protocol.cancelled": "已取消。未向代理发送任何内容。",
   "composer.held.queued": "已排队。本轮结束时发送。",
+  "composer.held.box": "已暂存。输入框处有内容打开；关闭后发送。",
+  "composer.held.draft": "已暂存。输入框清空后发送。",
   "composer.held.sending": "正在发送。",
   "composer.held.expired": "未发送。本轮未在 30 分钟内结束。",
   "composer.held.paneGone": "未发送。窗格已关闭。",

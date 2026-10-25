@@ -406,6 +406,8 @@ export const de: Dictionary = {
   "composer.protocol.expired": "Nicht gesendet. Der Zug endete nicht innerhalb von 30 Minuten.",
   "composer.protocol.cancelled": "Abgebrochen. Es ging nichts an den Agenten.",
   "composer.held.queued": "In der Warteschlange. Wird gesendet, wenn der Zug endet.",
+  "composer.held.box": "Gehalten. Am Feld ist etwas offen; wird gesendet, sobald es zu ist.",
+  "composer.held.draft": "Gehalten. Wird gesendet, wenn das Feld leer ist.",
   "composer.held.sending": "Wird jetzt gesendet.",
   "composer.held.expired": "Nicht gesendet. Der Zug endete nicht innerhalb von 30 Minuten.",
   "composer.held.paneGone": "Nicht gesendet. Die Pane wurde geschlossen.",
