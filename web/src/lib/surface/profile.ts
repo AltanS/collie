@@ -498,7 +498,8 @@ export interface Profile {
      * Rows that mean a dialog is drawn over the screen above a live box, as regular expression
      * sources, read on every row above the box. A harness that draws its pickers and notices over
      * the transcript and leaves the box on screen needs them: the box looks free under a dialog.
-     * A match makes the modal `unreadable`. Optional.
+     * A match makes the modal `unreadable`. On a screen with no frame at all (a full-screen picker),
+     * a match in the rows the modal cues read does the same when those rows hold any cue. Optional.
      */
     readonly overlayRows?: readonly string[];
     /**

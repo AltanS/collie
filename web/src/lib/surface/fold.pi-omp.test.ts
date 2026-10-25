@@ -611,3 +611,25 @@ describe("omp's file popup under a path typed in the box (18.6.1 and 18.12.6)", 
     });
   }
 });
+
+describe("omp's rewind picker (Esc Esc) is a modal, not an unknown screen (18.6.1 and 18.12.6)", () => {
+  const PICKERS = ["omp--v18-6-1-rewind-picker--w120.txt", "omp--v18-12-6-rewind-picker--w120.txt"];
+
+  for (const name of PICKERS) {
+    it(`${name}: no frame, modal unreadable from the footer the profile names`, () => {
+      const read = own(name);
+      expect(read.frame).toBeNull();
+      expect(read.cues?.strength).toBe("weak");
+      expect(read.surface).toEqual({ revision: 1, turn: "unknown", modal: "unreadable", composer: "unknown" });
+    });
+
+    it(`${name}: without the footer row the same screen stays unknown, so the footer is the cue`, () => {
+      const rows = fixtureRows(name);
+      const footer = rows.findIndex((row) => /rewind/.test(rowText(row)));
+      expect(footer).toBeGreaterThan(0);
+      const changed = rows.map((row, i) => (i === footer ? { segments: [{ text: " 29/29  ↑/↓ step  ←/→ user turns  f filter  ⏎ go  Ctrl+O expand  ⎋ cancel" }] } : row));
+      // SAFETY: `changed` is `rows` with one row replaced by a one-segment row of the same shape.
+      expect(readScreen(changed as typeof rows, agentOf("omp"), idleFor("omp")).surface.modal).toBe("unknown");
+    });
+  }
+});

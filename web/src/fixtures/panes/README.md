@@ -3264,3 +3264,10 @@ equal to its only entry, Enter cancels the popup and submits the text; the teste
 | Fixture | State | What it shows |
 | --- | --- | --- |
 | `omp--v18-12-6-ask-previews--w120.txt` | `dialog` | The echo block `╭─── Ask 1 questions`, then the panel: three options, each with a description row and a `│ ` preview row, `Other`, and the footer ending `Alt+H hide`. Pointer on the first row. Lifts with the preview on each option (ask.ts, OPTION PREVIEWS) |
+
+## omp's rewind picker, Esc Esc (captured 2026-10-25, omp-gang tester 04 case 7)
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `omp--v18-6-1-rewind-picker--w120.txt` | `dialog` | The last 22 rows of an 18.6.1 turn behind the picker: the transcript, a dashed `╭┄┄` frame holding the chosen turn, and the footer `64/64  ↑/↓ step  ←/→ user turns  f filter  ⏎ rewind  Ctrl+O expand  ⎋ cancel`. No box, no status row. Reads `unreadable` from `idle.overlayRows` in the profile |
+| `omp--v18-12-6-rewind-picker--w120.txt` | `dialog` | The same picker on 18.12.6 (`29/29`) |

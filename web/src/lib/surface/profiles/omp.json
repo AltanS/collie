@@ -174,6 +174,9 @@
       "^╭─{2} [⠀-⣿] \\d+[smh] "
     ],
     "dialogsInBox": true,
+    "overlayRows": [
+      "^\\s*\\d+/\\d+\\s{2}↑/↓ step\\s{2}←/→ user turns\\s{2}f filter\\s{2}.*\\brewind\\b.*\\bcancel\\s*$"
+    ],
     "inlineHint": {
       "fg": [
         "rgb(107,114,128)"

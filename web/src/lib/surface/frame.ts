@@ -783,24 +783,44 @@ function interiorFrameAt(rows: readonly FrameRow[], bottom: number, idle: IdlePr
 
 const compiledOverlays = new WeakMap<IdleProfile, readonly RegExp[]>();
 
+function overlayPatterns(idle: IdleProfile): readonly RegExp[] {
+  const sources = idle.overlayRows;
+  if (sources === undefined || sources.length === 0) return [];
+  let patterns = compiledOverlays.get(idle);
+  if (patterns === undefined) {
+    patterns = sources.map((source) => new RegExp(source, "u"));
+    compiledOverlays.set(idle, patterns);
+  }
+  return patterns;
+}
+
 /**
  * Whether a dialog is drawn over the screen above the frame: a row above the top edge matches one of
  * the profile's `overlayRows`. The box stays on screen under such a dialog, so the frame alone would
  * read free. False for a profile with no such rows.
  */
 export function coveredFrame(rows: readonly FrameRow[], frame: Frame, idle: IdleProfile): boolean {
-  const sources = idle.overlayRows;
-  if (sources === undefined || sources.length === 0) return false;
-  let patterns = compiledOverlays.get(idle);
-  if (patterns === undefined) {
-    patterns = sources.map((source) => new RegExp(source, "u"));
-    compiledOverlays.set(idle, patterns);
-  }
+  const patterns = overlayPatterns(idle);
+  if (patterns.length === 0) return false;
   for (let i = 0; i < frame.top && i < rows.length; i++) {
     const text = rowText(rows[i]!).trimEnd();
     if (text.length > 0 && patterns.some((pattern) => pattern.test(text))) return true;
   }
   return false;
+}
+
+/**
+ * Whether one of `indices` (a screen with no frame: the tail cluster the modal cues read) matches a
+ * profile's `overlayRows`. A full-screen picker has no box at all, and its footer is the profile's
+ * strong word that a dialog holds the screen. False for a profile with no such rows.
+ */
+export function overlayInRows(rows: readonly FrameRow[], indices: readonly number[], idle: IdleProfile): boolean {
+  const patterns = overlayPatterns(idle);
+  if (patterns.length === 0) return false;
+  return indices.some((i) => {
+    const text = rowText(rows[i]!).trimEnd();
+    return text.length > 0 && patterns.some((pattern) => pattern.test(text));
+  });
 }
 
 /**

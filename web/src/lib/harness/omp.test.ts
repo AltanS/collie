@@ -377,6 +377,9 @@ const DECLINED = new Set([
   ...FUZZY_LIST_SHORT,
   // omp 18.6.1 and 18.12.6 (2026-10-25): the file popup under a path typed in the box, a composer.
   ...PATH_POPUP,
+  // omp 18.6.1 and 18.12.6 (2026-10-25): the rewind picker (Esc Esc), a full-screen modal with no box. Nothing to lift.
+  "omp--v18-6-1-rewind-picker--w120.txt",
+  "omp--v18-12-6-rewind-picker--w120.txt",
 ]);
 
 // The own cohort is the lifted captures, so every conformance leg that needs one runs on them
@@ -499,6 +502,7 @@ describe("the omp corpus", () => {
     "omp--v18-12-6-image-chip--w120.txt",
     "omp--v18-12-6-path-popup--w120.txt",
     "omp--v18-12-6-path-popup-two-paths--w120.txt",
+    "omp--v18-12-6-rewind-picker--w120.txt",
     "omp--v18-12-6-skill-chip--w120.txt",
     "omp--v18-12-6-slash-comment-loop-row--w120.txt",
     "omp--v18-12-6-slash-help-unlisted--w120.txt",
@@ -579,6 +583,7 @@ describe("the omp corpus", () => {
     "omp--v18-6-1-path-popup--w120.txt",
     "omp--v18-6-1-path-popup-tilde--w120.txt",
     "omp--v18-6-1-queued-before-stop--w119.txt",
+    "omp--v18-6-1-rewind-picker--w120.txt",
     "omp--v18-6-1-slash-help-unlisted--w120.txt",
     "omp--v18-6-1-slash-mo-fuzzy--w120.txt",
     "omp--v18-6-1-slash-nothere-fuzzy--w120.txt",

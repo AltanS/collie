@@ -1,0 +1,22 @@
+                                                                                                                       │
+   Output: one2                                                                                                        │
+                                                                                                                       │
+   Stopping as requested.                                                                                              │
+                                                                                                                       │
+   interject 2                                                                                                         │
+                                                                                                                       │
+   The user is saying "interject 2". This appears to be part of a test pattern. They're interjecting with a message    │
+   between my responses. I should just acknowledge this.                                                               │
+                                                                                                                       │
+   Noted.                                                                                                              │
+                                                                                                                       │
+   ok esc1                                                                                                             │
+                                                                                                                       │
+╭┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄╮│
+┆  The user is saying "ok esc1" - this seems to be part of the test sequence. Based on the pattern, they're testing   ┆│
+┆  various scenarios and marking checkpoints. I should acknowledge this and wait for their next instruction.          ┆█
+┆                                                                                                                     ┆█
+┆  Understood.                                                                                                        ┆█
+╰┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄╯█
+ 64/64  ↑/↓ step  ←/→ user turns  f filter  ⏎ rewind  Ctrl+O expand  ⎋ cancel
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────

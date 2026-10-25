@@ -46,7 +46,7 @@
 // Pure: no DOM, no Bun API, no harness name. One log and one context always give one Surface.
 
 import { readCuesFor, runningSign, type CueRead } from "./cues";
-import { coveredFrame, findInputFrame, frameEdge, rowText, type Frame, type FrameRow, type IdleProfile } from "./frame";
+import { coveredFrame, findInputFrame, frameEdge, overlayInRows, rowText, type Frame, type FrameRow, type IdleProfile } from "./frame";
 import { LOST_STOP_READS, LOST_STOP_SPAN_MS, SETTLE_MS, type EdgeKind } from "./edges";
 import { isFree, type Ask, type Surface, type SurfaceComposer, type SurfaceModal, type SurfaceReason, type SurfaceTurn } from "./surface";
 
@@ -278,6 +278,8 @@ export function surfaceOfScreen(input: ScreenInput, idle: IdleProfile | null): S
   if (cues.cutWrap === true) modal = "unknown";
   else if (input.ask !== null) modal = { ask: input.ask };
   else if (cues.strength === "strong") modal = "unreadable";
+  // No frame, and a row the profile names (`idle.overlayRows`) in the cues' cluster: a full-screen picker.
+  else if (frame === null && found === null && idle !== null && cues.strength !== "none" && overlayInRows(rows, cues.cluster, idle)) modal = "unreadable";
   else if (cues.strength === "weak") modal = "unknown";
   else if (covered) modal = "unreadable";
   else if (frame !== null) modal = "none";
