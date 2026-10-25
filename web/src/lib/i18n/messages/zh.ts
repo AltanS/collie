@@ -381,7 +381,7 @@ export const zh: Dictionary = {
   "composer.protocol.sent": "已发送",
   "composer.protocol.queued": "已排队。代理将在本轮结束后处理。",
   "composer.steer.row": "引导：代理将在当前步骤结束后处理",
-  "composer.steer.hint": "“发送”会将其排入当前轮次之后。按住“发送”进行引导。",
+  "composer.steer.hint": "按住“发送”进行引导。",
   "composer.steer.queuedInstead": "已改为排队：代理会留到本轮结束后再处理。",
   "composer.steer.steered": "已引导：代理将在当前步骤结束后处理。",
   "composer.steer.unsupported": "此窗格不支持引导。未发送任何内容。",

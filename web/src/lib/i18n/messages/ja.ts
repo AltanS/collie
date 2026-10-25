@@ -391,7 +391,7 @@ export const ja: Dictionary = {
   "composer.protocol.sent": "送信しました",
   "composer.protocol.queued": "キューに追加されました。現在のターンの終了後にエージェントが処理します。",
   "composer.steer.row": "方向修正: エージェントは現在のステップを終えた後にこれを取り込みます",
-  "composer.steer.hint": "送信すると、現在のターンの終了後にキューへ追加されます。指示を出すには「送信」を長押ししてください。",
+  "composer.steer.hint": "指示を出すには「送信」を長押ししてください。",
   "composer.steer.queuedInstead": "代わりにキューへ追加されました: エージェントは現在のターンの終了後までこれを保持しました。",
   "composer.steer.steered": "指示完了: エージェントは現在のステップの終了後にこれを受け取ります。",
   "composer.steer.unsupported": "このペインでは指示を利用できません。何も送信されませんでした。",

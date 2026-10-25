@@ -392,7 +392,7 @@ export const ko: Dictionary = {
   "composer.protocol.sent": "보냄",
   "composer.protocol.queued": "대기열에 추가되었습니다. 에이전트가 이번 턴이 끝난 후 처리합니다.",
   "composer.steer.row": "방향 전환: 에이전트가 현재 단계를 마친 후에 반영합니다",
-  "composer.steer.hint": "전송을 누르면 턴이 끝난 후로 대기열에 추가됩니다. 방향을 전환하려면 전송을 길게 누르세요.",
+  "composer.steer.hint": "방향을 전환하려면 전송을 길게 누르세요.",
   "composer.steer.queuedInstead": "대신 대기열에 추가됨: 에이전트가 턴이 끝난 후로 보관했습니다.",
   "composer.steer.steered": "방향 전환됨: 에이전트가 현재 단계를 마친 후 반영합니다.",
   "composer.steer.unsupported": "이 창에서는 방향 전환을 사용할 수 없습니다. 아무것도 전송되지 않았습니다.",

@@ -397,7 +397,7 @@ export const de: Dictionary = {
   "composer.protocol.sent": "Gesendet",
   "composer.protocol.queued": "In der Warteschlange. Der Agent übernimmt nach diesem Zug.",
   "composer.steer.row": "Steuern: Der Agent übernimmt es nach seinem aktuellen Schritt",
-  "composer.steer.hint": "Senden reiht es für nach dem Durchgang ein. Halte Senden gedrückt, um zu steuern.",
+  "composer.steer.hint": "Halte Senden gedrückt, um zu steuern.",
   "composer.steer.queuedInstead": "Stattdessen eingereiht: Der Agent hat es für nach dem Durchgang behalten.",
   "composer.steer.steered": "Gesteuert: Der Agent übernimmt es nach seinem aktuellen Schritt.",
   "composer.steer.unsupported": "Steuern ist in diesem Bereich nicht verfügbar. Es wurde nichts gesendet.",
