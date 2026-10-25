@@ -264,6 +264,8 @@ export interface PushMessage {
    */
   topic?: string;
   renotify?: boolean;
+  /** How many panes in a herd slot are blocked: the phone adds every slot's up for the app icon's badge. */
+  blocked?: number;
 }
 
 /**

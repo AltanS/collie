@@ -31,6 +31,7 @@ import { useSpaceActions } from "@/hooks/use-spaces";
 import { useNav } from "@/hooks/use-nav";
 import { usePaneOpen } from "@/hooks/use-pane-open";
 import { useScrollMemory } from "@/hooks/use-scroll-memory";
+import { showBadge } from "@/lib/app-badge";
 import { useLaunchers } from "@/lib/launchers";
 import { useMuxCapability } from "@/lib/mux-capability";
 import { setStatus } from "@/lib/status";
@@ -149,6 +150,10 @@ export function HomeRoute() {
   // still holds both kinds.
   const blockedCount = countBlocked(data.agents);
   const readyUnseen = blockedCount === 0 && hasReady(data.agents);
+  // The installed app's icon carries the same count (lib/app-badge.ts).
+  useEffect(() => {
+    void showBadge(navigator, blockedCount);
+  }, [blockedCount]);
   const lookup = useMemo<ChangesLookup>(
     () => ({ depth: prefs.changesDepth, nested: prefs.changesNested }),
     [prefs.changesDepth, prefs.changesNested],

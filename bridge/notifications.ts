@@ -44,6 +44,8 @@ export interface HerdSummary {
   paneId?: string;
   /** Re-alert (buzz) the device — true when a new alert arrived, false on a silent retraction update. */
   renotify: boolean;
+  /** How many outstanding alerts are a blocked pane: this slot's share of the app icon's badge. */
+  blocked: number;
 }
 
 export interface NotifySink {
@@ -105,6 +107,7 @@ export function makeNotifySink(
         tag: herdTag,
         paneId: s.paneId,
         renotify: s.renotify,
+        blocked: s.blocked,
       };
       if (s.titleCode !== undefined) msg.titleCode = s.titleCode;
       if (s.titleDetail !== undefined) msg.titleDetail = s.titleDetail;
@@ -280,6 +283,7 @@ export class NotificationCoordinator<H = unknown> {
 
   private summarize(renotify: boolean): HerdSummary {
     const entries = [...this.outstanding.entries()];
+    const blocked = entries.filter(([, a]) => a.status === "blocked").length;
     if (entries.length === 1) {
       const [paneId, a] = entries[0]!;
       // One outstanding agent → deep-link straight to its pane on tap.
@@ -305,6 +309,7 @@ export class NotificationCoordinator<H = unknown> {
         body: a.ask === true && a.askText?.line !== undefined ? a.askText.line : a.place,
         paneId,
         renotify,
+        blocked,
       };
     }
     const alerts = entries.map(([, a]) => a);
@@ -312,7 +317,7 @@ export class NotificationCoordinator<H = unknown> {
     const allBlocked = alerts.every((a) => a.status === "blocked");
     const allDone = alerts.every((a) => a.status === "done");
     const code = allBlocked ? "herd.blocked" : allDone ? "herd.done" : "herd.mixed";
-    return { ...pushTitle(code, { count: n }), body: digestLabels(alerts).join(", "), renotify };
+    return { ...pushTitle(code, { count: n }), body: digestLabels(alerts).join(", "), renotify, blocked };
   }
 
   private cancelPending(id: string): void {

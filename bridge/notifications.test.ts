@@ -103,6 +103,7 @@ describe("NotificationCoordinator — debounce", () => {
       body: "demo",
       paneId: "p1",
       renotify: true,
+      blocked: 1,
     });
   });
 
@@ -141,6 +142,7 @@ describe("NotificationCoordinator — working → idle is a completion (#345)", 
       body: "demo",
       paneId: "p1",
       renotify: true,
+      blocked: 0,
     });
   });
 
@@ -212,6 +214,7 @@ describe("NotificationCoordinator — coalescing", () => {
       body: "api, web",
       paneId: undefined,
       renotify: true,
+      blocked: 2,
     });
   });
 
@@ -223,6 +226,14 @@ describe("NotificationCoordinator — coalescing", () => {
     expect(sink.last?.title).toBe("2 agents need attention");
     expect(sink.last?.titleCode).toBe("herd.mixed");
     expect(sink.last?.titleDetail).toEqual({ count: 2 });
+  });
+
+  test("a digest counts only its blocked panes for the badge, not the finished ones", () => {
+    const { clock, sink, coord } = setup();
+    coord.onTransition(agentNamed("p1", "claude", "blocked"), "working", "blocked");
+    coord.onTransition(agentNamed("p2", "codex", "idle"), "working", "idle");
+    clock.fireAll();
+    expect(sink.last).toMatchObject({ titleCode: "herd.mixed", blocked: 1 });
   });
 
   test("resolving one of two falls back to the named single, silently", () => {
@@ -238,6 +249,7 @@ describe("NotificationCoordinator — coalescing", () => {
       body: "demo",
       paneId: "p1",
       renotify: false, // a retraction update must not re-buzz
+      blocked: 1,
     });
   });
 });
@@ -303,7 +315,7 @@ describe("an ask's push words (durable/ask-push.ts)", () => {
   test("the sink leaves the code out of the message when the title is the program's", () => {
     const sent: PushMessage[] = [];
     const sink = makeNotifySink({ send: (m) => void sent.push(m) }, { isMuted: () => false }, "herd");
-    sink.render({ title: "Triage: Needs a yes", body: "One line.", renotify: true });
+    sink.render({ title: "Triage: Needs a yes", body: "One line.", renotify: true, blocked: 1 });
     expect(sent[0]).toMatchObject({ title: "Triage: Needs a yes", body: "One line." });
     expect(sent[0]).not.toHaveProperty("titleCode");
   });
@@ -425,6 +437,7 @@ describe("NotificationCoordinator — multi-agent digest labels (#215)", () => {
       body: "demo",
       paneId: "p1",
       renotify: true,
+      blocked: 1,
     });
   });
 });
@@ -530,6 +543,7 @@ describe("makeNotifySink", () => {
     body: "demo",
     paneId: "p1",
     renotify: true,
+    blocked: 1,
   };
   class RecordingPush {
     readonly sent: PushMessage[] = [];
@@ -550,6 +564,7 @@ describe("makeNotifySink", () => {
         tag: "collie:herd",
         paneId: "p1",
         renotify: true,
+        blocked: 1,
       },
     ]);
   });

@@ -136,6 +136,7 @@ describe("PeerNotifier — a peer's alerts on the lead's phone", () => {
       tag: "collie:herd@laptop",
       paneId: "p1",
       renotify: true,
+      blocked: 1,
       host: "laptop",
     });
     // `session` does NOT ride it — a peer's merged pane names no session, and the sweep reads that
