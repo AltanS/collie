@@ -8274,6 +8274,25 @@ describe("a queued send that comes back to the box (ADR 0122)", () => {
     expect(r.protocol.queuedOf("main", "%1")).toEqual([]);
   });
 
+  test("a returned row is a reading: on a frozen frame, Send and Discard end no_evidence, never sent or discarded", async () => {
+    // Altan's OMP 18.6.1 pane, 2026-10-25: a bottom frame can stay drawn after the live editor moved
+    // (a resize that never reached a background pane). The card's buttons take the normal roads, whose
+    // last step must see the box change; a frame that never changes cannot fake a "sent".
+    for (const mode of ["submit", "discard"] as const) {
+      const r = await returnedCard(`queued-stale-${mode}-1`);
+      r.pane.writeKeys = (_paneId, keys) => {
+        r.pane.keysSeen.push(...keys);
+        return Promise.resolve(muxAck());
+      };
+      const { rt, context } = routeOf(r);
+      const transcript = r.pane.transcript.length;
+      const res = await sendRoute(rt, { id: `queued-stale-${mode}-2`, pane: "%1", text: "", mode, resendOf: `queued-stale-${mode}-1` }, context);
+      expect(await res.json()).toMatchObject({ receipt: { outcome: "unknown", reason: "no_evidence" } });
+      expect(r.pane.transcript).toHaveLength(transcript);
+      expect(r.pane.box).toBe("second message");
+    }
+  });
+
   test("Discard on a card whose box changed presses nothing, drops only the card, and the answer says so", async () => {
     const r = await returnedCard("queued-back-0025");
     // The person edited the text at the desk.

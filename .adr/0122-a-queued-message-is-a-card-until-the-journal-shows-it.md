@@ -98,6 +98,14 @@ code.
       exactly the text goes without one. The returned card adds no new road; its idle check is the only
       rule that is its own, set by the route for `resendOf` of a returned card and never read off a body.
     - A plain `resendOf` of a returned card is a 404: it is no held row.
+    - **A returned row is a reading, not a proof.** A pane can keep a stale bottom frame: the editor row
+      at the screen's foot still shows a text while the live editor is empty and drawn higher up (a
+      resize that never reached a background pane, Altan's OMP 18.6.1 pane, 2026-10-25). So a returned
+      card can be stale until a request probes the box. Its Send and Discard take the protocol's normal
+      submit and clear roads, never a road of their own: each ends on a read that must see the box
+      change, so a frame that never changes ends `unknown(no_evidence)`, never `sent` or `discarded`
+      (`protocol.test.ts`, "a returned row is a reading"). A probe before a clear, when one lands, is
+      the clear road's and covers Discard too.
 11. **The `draft_present` refusal points at the card.** When a send is refused because the box holds a
     draft and the pane has a returned card, the phone says "Your queued message is back in the agent as
     a draft. Use its card."
@@ -129,11 +137,13 @@ code.
   from their request files, text from the one line the Sent rule keeps. A send with no kept line
   (several lines, a secret shape, too long) is not drawn again, and a card already returned is not drawn
   again.
-- **Not proven live yet.** No live OMP run backs the first version of this decision (no model turns
-  were available on 2026-10-25). OMP's box after a Stop with two queued texts, the journal's prompt text
-  for a queued message, and the timing of the give-back against the 0.4 s read-back are read from tester
-  03's captures and the fake panes. The browser leg's OMP case (`web/e2e/rig/queued.spec.ts`) closes the
-  gap on its next run.
+- **Proven live in part.** On 2026-10-25 Altan's own OMP 18.6.1 pane confirmed the one-queued case: a
+  send during a running turn (receipt `sent` + `queued`, Ctrl+Q), then Stop 18 s later, put the exact
+  text back into OMP's editor, one line, no prefix. Still not proven live: OMP's box after a Stop with
+  two queued texts (the one-card run), the journal's prompt text for a queued message, and the timing
+  of the give-back against the 0.4 s read-back. Those are read from tester 03's captures and the fake
+  panes. The browser leg's OMP case (case 29, `web/e2e/rig/queued.spec.ts`) closes part of the gap on
+  its next run.
 
 ## Alternatives
 
