@@ -18,7 +18,8 @@
 //           form) and nothing else moved; else `typed_not_submitted`. A turn that started after an
 //           idle S0 meets S0's turn rule on that read; a send it refuses or holds ends the same way
 //   commit  the profile's submit keys through the gate with a 150 ms token; `submit-sent` is on disk first
-//   S2      (6, 3000) read until the box is empty or a running sign shows: `sent`; else `unknown`
+//   S2      (6, 3000) read until the box is empty or a running sign shows: `sent`; else `unknown`. A command
+//           that found nothing reads once more (6, 3000): its own screen may be slow to draw
 // A request past the sum of the bounds ends `unknown` and releases the lock. A protocol token never carries Escape; a person's Stop does, through the key gate, with a receipt (ADR 0116).
 //
 // A send into a running turn: when the screen shows the turn running, no modal and an empty box, and
@@ -3734,7 +3735,7 @@ export class SendProtocol {
     const s1Frame = state.marks.s1?.frame ?? null;
     const sentText = s1Frame === null ? lines.join("") : boxText(s1Frame);
     let witnessed = false;
-    const result = await this.poll(state, "s2", BOUNDS.s2, (snap) => {
+    const test = (snap: Snap): Verdict => {
       if (!command && !witnessed && (labelFromWitness(state.match) || (!state.queued && enterQueues(state.match)))) witnessed = showsQueued(snap, state.match?.profile.keys.queuedRow, sentText);
       if (s0.frame !== null) {
         // Queued behind a running turn: a dialog that opened as the Enter went out may have taken it.
@@ -3767,7 +3768,14 @@ export class SendProtocol {
       // A manual send: the rows under the box may differ from S0's (a hint row that came back, a
       // running row), so the empty box is looked for by what it read at S0, not by its distance.
       return manual && emptyBoxBack(s0.plain, snap.plain, landing, lines.join("")) ? "pass" : "wait";
-    });
+    };
+    let result = await this.poll(state, "s2", BOUNDS.s2, test);
+    // A command's own screen (a picker, a panel) may be slow to draw: a machine under load took more
+    // than S2's whole bound to open one, and the box stood unchanged until it did. That screen is the
+    // evidence, so a command that found nothing gets one more S2 bound with the same test (still cut
+    // by the request's deadline). Only a command waits: a send that left its text in the box has no
+    // screen to wait for. A box that never changes still ends `no_evidence`.
+    if (command && result.verdict === "wait") result = await this.poll(state, "s2", BOUNDS.s2, test);
     state.marks.s2 = result.snap;
     if (witnessed && result.verdict === "pass") {
       state.witnessed = true;
