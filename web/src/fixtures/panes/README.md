@@ -3234,3 +3234,21 @@ rig's own scratch folder, and no secret was present.
 | Fixture | State | What it shows |
 | --- | --- | --- |
 | `shell--omp-launch-window.txt` | `screen` | 737 ms after the rig typed `exec '…/start.sh'` into a fresh shell: the image banner and the command table, then the typed line on the starship prompt row. omp is not up (it boots in about 20 s on 18.12.6), the multiplexer names no agent, and the box is not on screen. A send here went in blind (`sent`, Enter into the shell) and the text later sat as an unsent draft in omp's box |
+
+## omp file popup under a path typed in the box (captured 2026-10-25, omp 18.6.1 and 18.12.6, omp-gang testers 05 and 12)
+
+Real pane reads from the testers' rig, the same setup as the fuzzy list section above, cut to the last 16 rows (the
+`~` one is a fresh pane, cut to 12), rows kept as read with their CRLF line ends. A text that is a file path at the
+start of the box makes omp draw its file popup under it: one `❯ name.png` row for the path of one file, with no
+description. The phone sends an upload path as a command (it starts with `/`). A file name has the shape of a
+command name, so until 1.24.1 the row read as a command list pointing at another command and the send ended
+`typed_not_submitted (modal_cue)` (issue 497, part 5). `commandList.notForText` in `omp.json` says a path at the
+start of the box opens no command list. The testers' home folder `/var/home/<user>` became `/home/demo/lab1`, a path
+of the same length, so no row moves. Source (pi-tui `editor.ts`, 18.12.6): with this popup open and the typed path
+equal to its only entry, Enter cancels the popup and submits the text; the tester's own Enter on 18.6.1 did.
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `omp--v18-6-1-path-popup--w120.txt`, `omp--v18-12-6-path-popup--w120.txt` | `popup` | An upload path alone in the box, `❯ w2_p1-....png` under it |
+| `omp--v18-12-6-path-popup-two-paths--w120.txt` | `popup` | Two upload paths on two rows (the second wrapped), the popup for the last one |
+| `omp--v18-6-1-path-popup-tilde--w120.txt` | `popup` | 18.6.1, `~/.../x.png` typed in a fresh pane: `❯ x.png` under it. Read as a draft with no list. A plain send of it (it is no command) still stops at `changed`, as the row under the box is new |

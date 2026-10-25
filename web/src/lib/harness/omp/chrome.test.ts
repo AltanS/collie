@@ -154,6 +154,12 @@ const BOX_COMPOSER_FIXTURES = [
   // omp 18.6.1 under Herdr (Altan's pane, 2026-10-25): a stale bottom frame of an earlier layout; the live
   // editor is drawn higher up. The reader finds the stale box, which is why the Send Protocol probes a draft.
   "omp--v18-6-1-stale-frame-below-live--w120.txt",
+  // omp 18.6.1 and 18.12.6, a file path typed in the box: omp's file popup is one `❯ name.png` row under it
+  // (omp-gang testers 05 and 12, 2026-10-25).
+  "omp--v18-6-1-path-popup--w120.txt",
+  "omp--v18-6-1-path-popup-tilde--w120.txt",
+  "omp--v18-12-6-path-popup--w120.txt",
+  "omp--v18-12-6-path-popup-two-paths--w120.txt",
 ];
 
 // omp 18.6.1 with `/model` or `/mod` typed (lab, 2026-10-17): a ten-row palette under the open box. The
@@ -305,6 +311,10 @@ describe("locateComposer — the real corpus, pinned so any change to the walk s
     { fixture: "omp--v18-6-1-queued-before-stop--w119.txt", top: 16, bottom: 17, suggestEnd: 18 },
     { fixture: "omp--v18-6-1-stop-returned--w119.txt", top: 16, bottom: 17, suggestEnd: 18 },
     { fixture: "omp--v18-6-1-stale-frame-below-live--w120.txt", top: 38, bottom: 39, suggestEnd: 40 },
+    { fixture: "omp--v18-6-1-path-popup--w120.txt", top: 13, bottom: 14, suggestEnd: 16 },
+    { fixture: "omp--v18-6-1-path-popup-tilde--w120.txt", top: 9, bottom: 10, suggestEnd: 12 },
+    { fixture: "omp--v18-12-6-path-popup--w120.txt", top: 13, bottom: 14, suggestEnd: 16 },
+    { fixture: "omp--v18-12-6-path-popup-two-paths--w120.txt", top: 12, bottom: 13, suggestEnd: 16 },
   ];
 
   // These eleven indices are byte-identical to the ones the width-gated scanner produced. That is
@@ -378,6 +388,10 @@ describe("extractInputDraft", () => {
     { fixture: "omp--v18-12-6-slash-nothere-fuzzy--w120.txt", draft: "/nothere" },
     { fixture: "omp--v18-6-1-slash-open-tall--w120.txt", draft: "/" },
     { fixture: "omp--v18-12-6-slash-comment-loop-row--w120.txt", draft: "//comment" },
+    // The file popup under a path draft is no list, and no part of the draft.
+    { fixture: "omp--v18-6-1-path-popup--w120.txt", draft: "/home/demo/lab1/.cache/collie-lab/omp-gang/05-images/state/rig/state/uploads/w2_p1-mvo3m20o-6e1a9e71.png" },
+    { fixture: "omp--v18-6-1-path-popup-tilde--w120.txt", draft: "~/.cache/collie-lab/omp-gang/12-pickers/state/harness/omp/project/x.png" },
+    { fixture: "omp--v18-12-6-path-popup--w120.txt", draft: "/home/demo/lab1/.cache/collie-lab/omp-gang/05-images/state/rig/state/uploads/w2_p1-mvo44h6i-fd050f5a.png" },
     // Empty composers. omp 17/18.1 painted nothing in an empty box; omp 18.4 paints a right-aligned
     // key hint there (`⇧⇥ to change thinking effort`), which is placeholder text, not a draft.
     // Reading it as one showed "Draft in terminal" on every fresh session (markers.ts

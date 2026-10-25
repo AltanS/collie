@@ -8366,6 +8366,65 @@ describe("omp's fuzzy command list under the box (1.24.1)", () => {
     expect(deps.store.get("fuzzy-comment-1")?.receipt?.detail).toBe(LIST_NOTICE);
     expect(pane.keysSeen).not.toContain("Enter");
   });
+
+  // omp-gang tester 05 (2026-10-25): a text that is only an upload path starts with `/`, so the phone sends it as
+  // a command, and omp draws its FILE popup under the box, `❯ name.png`, not a command list. The profile read
+  // that row as a command list pointing at another command and the send ended `typed_not_submitted (modal_cue)`
+  // with nothing wrong (issue 497, part 5). The profile's `notForText` says a path typed at the end of the box
+  // opens no command list. omp 18.12.6's source (pi-tui editor.ts): with the popup open and the typed path
+  // equal to the only entry, `selectedSlashArgumentIsAlreadyTyped` is true, so Enter cancels the popup and
+  // submits the text (the tester's manual Enter on 18.6.1 submitted it).
+  describe("omp's file popup under a path typed in the box", () => {
+    const UPLOAD = "/home/demo/lab1/.cache/collie-lab/omp-gang/05-images/state/rig/state/uploads/";
+    const PATHS = [
+      ["18.6.1", "omp--v18-6-1-path-popup--w120.txt", `${UPLOAD}w2_p1-mvo3m20o-6e1a9e71.png`],
+      ["18.12.6", "omp--v18-12-6-path-popup--w120.txt", `${UPLOAD}w2_p1-mvo44h6i-fd050f5a.png`],
+    ] as const;
+
+    for (const [version, name, text] of PATHS) {
+      test(`${name}: the path as a command goes out with one Enter`, async () => {
+        const { send, pane } = ompPane(version, name);
+        const answer = await send(text, { id: `path-${version.replaceAll(".", "-")}`, mode: "command" });
+        expect(answer.receipt).toMatchObject({ outcome: "sent" });
+        expect(answer.receipt?.keys.at(-1)).toBe("Enter");
+        expect(pane.box).toBe("");
+        neverEscape(pane);
+      });
+
+      test(`${name}: with the path in the box the pane reads a draft and no list, and Submit goes out`, async () => {
+        const looked = ompPane(version, name);
+        looked.pane.box = text;
+        const prepared = await looked.protocol.handle({ id: `path-prep-${version.replaceAll(".", "-")}`, text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: "omp" });
+        expect(prepared.surface).toMatchObject({ turn: "idle", modal: "none", composer: "draft" });
+        const { send, pane } = ompPane(version, name);
+        pane.box = text;
+        const answer = await send(text, { id: `path-submit-${version.replaceAll(".", "-")}`, mode: "submit" });
+        expect(answer.receipt).toMatchObject({ outcome: "sent" });
+        expect(pane.box).toBe("");
+      });
+    }
+
+    test("the same screen without the profile's notForText ends modal_cue, as the tester saw it: the rule is what lets it through", async () => {
+      const [version, name, text] = PATHS[1];
+      const { send, pane, deps } = ompPane(version, name, {}, (profile) => {
+        const { notForText, ...list } = profile.idle.volatile.below.commandList!;
+        void notForText;
+        return { ...profile, idle: { ...profile.idle, volatile: { ...profile.idle.volatile, below: { ...profile.idle.volatile.below, commandList: list } } } };
+      });
+      const answer = await send(text, { id: "path-old-read", mode: "command" });
+      expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue" });
+      expect(deps.store.get("path-old-read")?.receipt?.detail).toBe(LIST_NOTICE);
+      expect(pane.keysSeen).not.toContain("Enter");
+    });
+
+    test("a slash command is still a list: /mo under the fuzzy list ends with the list notice", async () => {
+      const { send, pane, deps } = ompPane("18.12.6", "omp--v18-12-6-slash-mo-fuzzy--w120.txt");
+      const answer = await send("/mo", { id: "path-not-for-mo", mode: "command" });
+      expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue" });
+      expect(deps.store.get("path-not-for-mo")?.receipt?.detail).toBe(LIST_NOTICE);
+      expect(pane.keysSeen).not.toContain("Enter");
+    });
+  });
 });
 
 // ── ADR 0122: a queued send is a card until the journal shows it; Stop may give it back ──

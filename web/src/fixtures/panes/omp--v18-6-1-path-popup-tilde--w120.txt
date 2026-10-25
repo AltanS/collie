@@ -1,0 +1,12 @@
+                                                   ██       v18.6.1
+
+                           Tip: Type `/` at the start of your prompt to browse every command
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Update Available
+ New version 18.12.6 is available. Run: omp update
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+ π > ◒ Haiku 4.5 > 📁 …ng/12-pickers/state/harness/omp/project ▶──4%───────────────────────────────────────┃───────200K─
+╰─ ~/.cache/collie-lab/omp-gang/12-pickers/state/harness/omp/project/x.png
+❯ x.png

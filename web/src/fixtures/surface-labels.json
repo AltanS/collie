@@ -4686,6 +4686,26 @@
    "version": "18.12.6",
    "state": "popup"
   },
+  "omp--v18-6-1-path-popup--w120.txt": {
+   "harness": "omp",
+   "version": "18.6.1",
+   "state": "popup"
+  },
+  "omp--v18-6-1-path-popup-tilde--w120.txt": {
+   "harness": "omp",
+   "version": "18.6.1",
+   "state": "popup"
+  },
+  "omp--v18-12-6-path-popup--w120.txt": {
+   "harness": "omp",
+   "version": "18.12.6",
+   "state": "popup"
+  },
+  "omp--v18-12-6-path-popup-two-paths--w120.txt": {
+   "harness": "omp",
+   "version": "18.12.6",
+   "state": "popup"
+  },
   "omp--v18-12-6-stale-list-row-empty-box--w120.txt": {
    "harness": "omp",
    "version": "18.12.6",

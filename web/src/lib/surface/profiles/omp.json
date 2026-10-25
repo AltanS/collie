@@ -161,7 +161,8 @@
             "maxRows": 4
           },
           "leadOpens": true,
-          "staleWhenEmpty": true
+          "staleWhenEmpty": true,
+          "notForText": "^\\s*@?(?:~|\\.{1,2}|/[^\\s/]+)/"
         }
       }
     },

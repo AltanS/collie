@@ -181,6 +181,15 @@ const FUZZY_LIST_TALL = [
 ];
 const FUZZY_LIST_SHORT = ["omp--v18-12-6-slash-comment-loop-row--w120.txt", "omp--v18-12-6-stale-list-row-empty-box--w120.txt"];
 
+// omp 18.6.1 and 18.12.6 (omp-gang testers 05 and 12, 2026-10-25): a file path typed at the end of the box
+// (an upload path, `~/...`) draws omp's file popup under it, one `❯ name.png` row. All are composers.
+const PATH_POPUP = [
+  "omp--v18-6-1-path-popup--w120.txt",
+  "omp--v18-6-1-path-popup-tilde--w120.txt",
+  "omp--v18-12-6-path-popup--w120.txt",
+  "omp--v18-12-6-path-popup-two-paths--w120.txt",
+];
+
 const DECLINED = new Set([
   // — Composer states. An input box is chrome, never a dialog; stripChrome peels it, the statusline
   //   and stranded-draft probes re-surface what it carried.
@@ -362,6 +371,8 @@ const DECLINED = new Set([
   // omp 18.6.1 and 18.12.6 (2026-10-25): the fuzzy list under the box, and the row left under an emptied box.
   ...FUZZY_LIST_TALL,
   ...FUZZY_LIST_SHORT,
+  // omp 18.6.1 and 18.12.6 (2026-10-25): the file popup under a path typed in the box, a composer.
+  ...PATH_POPUP,
 ]);
 
 // The own cohort is the lifted captures, so every conformance leg that needs one runs on them
@@ -479,6 +490,8 @@ describe("the omp corpus", () => {
     "omp--v18-12-6-approval-bash--w120.txt",
     "omp--v18-12-6-approval-bash-later--w120.txt",
     "omp--v18-12-6-image-chip--w120.txt",
+    "omp--v18-12-6-path-popup--w120.txt",
+    "omp--v18-12-6-path-popup-two-paths--w120.txt",
     "omp--v18-12-6-skill-chip--w120.txt",
     "omp--v18-12-6-slash-comment-loop-row--w120.txt",
     "omp--v18-12-6-slash-help-unlisted--w120.txt",
@@ -555,6 +568,8 @@ describe("the omp corpus", () => {
     "omp--v18-4-switch-wrapped.txt",
     "omp--v18-4-switch.txt",
     "omp--v18-4-tree.txt",
+    "omp--v18-6-1-path-popup--w120.txt",
+    "omp--v18-6-1-path-popup-tilde--w120.txt",
     "omp--v18-6-1-queued-before-stop--w119.txt",
     "omp--v18-6-1-slash-help-unlisted--w120.txt",
     "omp--v18-6-1-slash-mo-fuzzy--w120.txt",
@@ -800,6 +815,8 @@ const COMPOSER_FIXTURES = [
   // omp 18.6.1 and 18.12.6 (2026-10-25): the fuzzy list under the open box and the row left under an emptied box.
   ...FUZZY_LIST_TALL,
   ...FUZZY_LIST_SHORT,
+  // omp 18.6.1 and 18.12.6 (2026-10-25): the file popup under a path typed in the box.
+  ...PATH_POPUP,
 ];
 
 describe("composerReady — the gate the reply path pre-flights on", () => {

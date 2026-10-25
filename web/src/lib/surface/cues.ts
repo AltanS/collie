@@ -423,7 +423,7 @@ function cuesIn(texts: readonly string[], cluster: readonly number[], readOverla
  * side holds one.
  */
 export function commandListAt(texts: readonly string[], frame: Frame, list: CommandListRows | undefined, rows?: readonly FrameRow[]): CommandListRead | null {
-  return commandListNear(texts, frame.top, frame.bottom, list, rows, frame.interior.prompt);
+  return commandListNear(texts, frame.top, frame.bottom, list, rows, frame.interior.prompt, frame.interior.text);
 }
 
 /**

@@ -254,6 +254,16 @@ export interface CommandListRows {
    * names it only where a lab run showed the row go at the next key. Optional.
    */
   readonly staleWhenEmpty?: boolean;
+  /**
+   * A regular expression source for a box text that opens no command list. The harness draws a popup of
+   * another kind under such a text, and its rows can look like a list's entries: OMP completes a file
+   * path at the start of the box (`/home/me/pic.png`, `~/pic.png`, `./pic.png`, `@/tmp/pic.png`) with a
+   * popup of file names, one `❯ pic.png` row for the path of one file, and a file name has the shape of a
+   * command. A box whose text matches reads no command list, so the row under it is no list pointing at
+   * another command and Enter there is not refused for it. Matched on the box's text, the rows of a
+   * wrapped draft joined. A profile names it only where a lab run showed that popup under the text. Optional.
+   */
+  readonly notForText?: string;
 }
 
 /** A side of the box a command list stands on. */
@@ -1050,7 +1060,11 @@ function commandList(value: JsonValue | undefined): CommandListRows {
   const withArgumentHint = node.argumentHint === true ? { ...withPointerBold, argumentHint: true } : withPointerBold;
   const withArgumentList = node.argumentList === true ? { ...withArgumentHint, argumentList: true } : withArgumentHint;
   const withLeadOpens = node.leadOpens === true ? { ...withArgumentList, leadOpens: true } : withArgumentList;
-  return node.staleWhenEmpty === true ? { ...withLeadOpens, staleWhenEmpty: true } : withLeadOpens;
+  const withStale = node.staleWhenEmpty === true ? { ...withLeadOpens, staleWhenEmpty: true } : withLeadOpens;
+  if (node.notForText === undefined) return withStale;
+  const notFor = pattern(node.notForText, `${path}.notForText`);
+  if (notFor.test("")) fail(`${path}.notForText`, "must not match an empty text");
+  return { ...withStale, notForText: notFor.source };
 }
 
 /** `commandList.namespaces`: unique words with no space in them. */

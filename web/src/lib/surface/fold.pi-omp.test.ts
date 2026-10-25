@@ -582,3 +582,32 @@ describe("omp's fuzzy command list under the box (18.6.1 and 18.12.6)", () => {
     expect(isFree(read.surface)).toBe(false);
   });
 });
+
+// omp 18.6.1 and 18.12.6 (omp-gang testers 05 and 12, 2026-10-25). A file path at the start of the box makes
+// omp draw its file popup under it, one `❯ name.png` row. The profile's patterns took that row for a command
+// list pointing at another command, and the phone's send of an upload path ended `typed_not_submitted
+// (modal_cue)` with nothing wrong. `commandList.notForText` says such a text opens no command list: the
+// Surface still reads a draft and no modal, and no list is read.
+describe("omp's file popup under a path typed in the box (18.6.1 and 18.12.6)", () => {
+  const POPUPS: readonly [string, string][] = [
+    ["omp--v18-6-1-path-popup--w120.txt", "/home/demo/lab1/.cache/collie-lab/omp-gang/05-images/state/rig/state/uploads/w2_p1-mvo3m20o-6e1a9e71.png"],
+    ["omp--v18-6-1-path-popup-tilde--w120.txt", "~/.cache/collie-lab/omp-gang/12-pickers/state/harness/omp/project/x.png"],
+    ["omp--v18-12-6-path-popup--w120.txt", "/home/demo/lab1/.cache/collie-lab/omp-gang/05-images/state/rig/state/uploads/w2_p1-mvo44h6i-fd050f5a.png"],
+    // Two upload paths on two rows: the draft's rows join into one text that starts with a path.
+    ["omp--v18-12-6-path-popup-two-paths--w120.txt", ""],
+  ];
+
+  for (const [name, typed] of POPUPS) {
+    it(`${name}: a draft with no modal, no cue and no command list`, () => {
+      const read = own(name);
+      if (typed !== "") expect(read.frame?.interior.text).toBe(typed);
+      else expect(read.frame?.interior.text).toMatch(/^\/home\/demo\/lab1\/.*\.png\s*\/home\/demo\/lab1\/.*\.png$/u);
+      expect(read.surface).toEqual({ revision: 1, turn: "idle", modal: "none", composer: "draft" });
+      expect(read.cues?.strength).toBe("none");
+      expect(labelOf(name).state).toBe("popup");
+      const idle = idleFor("omp")!;
+      const texts = fixtureRows(name).map(rowText);
+      expect(commandListAt(texts, read.frame!, idle.volatile.below.commandList), name).toBeNull();
+    });
+  }
+});
