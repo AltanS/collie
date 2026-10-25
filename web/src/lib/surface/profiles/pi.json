@@ -72,7 +72,8 @@
     },
     "volatile": {
       "above": {
-        "maxRows": 6
+        "maxRows": 6,
+        "losesText": true
       },
       "below": {
         "maxRows": 4,

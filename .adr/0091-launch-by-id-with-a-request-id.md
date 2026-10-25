@@ -39,7 +39,8 @@ launch carries a phone-minted request id, and a retry with that id never starts 
    name of the mux contract (`MUX_AGENT_NAMES`), and every contract name is either started or named
    with its reason (`antigravity` is the desktop app; its terminal agent is `agy`). A test pins both.
 2. **Found is checked on the login shell's PATH.** Once per process, the bridge asks the operator's
-   login shell (`$SHELL -lc 'printf %s "$PATH"'`, argv only, killed after 3 s) for its PATH, and
+   login shell (`$SHELL -lc 'printf %s "$PATH"'`, argv only, killed after 3 s, answered null at the
+   kill without waiting on its pipes since [ADR 0124](./0124-a-sends-bound-starts-after-its-profile.md)) for its PATH, and
    searches each binary there with the existing tool search (`findTool`). Only POSIX shells and fish
    are asked; Windows and an unknown shell use the bridge's own PATH. The answer is cached for 60 s.
 3. **The list rides on `GET /api/launchers`** as the optional `harnesses: [{ id, label, found }]`.

@@ -425,7 +425,8 @@ screen that changes between Collie's two reads, or a probe character that failed
 Backspace took back out of a box Collie read clean again. Such a message goes after five free polls over ten
 seconds, or after a turn Collie sees. A command there is still refused, and so is a send on a
 screen you confirmed with Type here. A send on a pane with no profile is never held. Collie keeps the text and shows a card that floats over the bottom of the terminal view: "Queued.
-Sends when the turn ends." The card shows the text and a Cancel button. Collie sends it after the turn ends, once the
+Sends when the turn ends." On an agent whose version Collie could not read, the card says so and
+points to `collie doctor`: Collie types into a running turn only on a version the agent reported. The card shows the text and a Cancel button. Collie sends it after the turn ends, once the
 pane reads free on two polls in a row, oldest first. Each later held send waits for the turn that
 the send before it started. If no turn shows, it goes after five free polls over ten seconds. A held
 command on pi, OMP or Codex sends Enter, and there Enter steers a turn. Such a command waits until

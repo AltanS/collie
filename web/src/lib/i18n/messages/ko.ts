@@ -402,6 +402,7 @@ export const ko: Dictionary = {
   "composer.protocol.expired": "전송되지 않았습니다. 30분 이내에 턴이 끝나지 않았습니다.",
   "composer.protocol.cancelled": "취소되었습니다. 에이전트에 아무것도 전송되지 않았습니다.",
   "composer.held.queued": "대기열에 추가되었습니다. 턴이 끝나면 전송됩니다.",
+  "composer.held.versionUnread": "대기열에 추가되었습니다. 이 에이전트의 버전을 읽지 못해 턴이 끝나면 전송됩니다. 이유는 collie doctor로 확인하세요.",
   "composer.held.box": "보류됨. 입력 상자에 무언가 열려 있습니다. 닫히면 전송됩니다.",
   "composer.held.draft": "보류됨. 입력 상자가 비면 전송됩니다.",
   "composer.held.sending": "지금 전송 중입니다.",

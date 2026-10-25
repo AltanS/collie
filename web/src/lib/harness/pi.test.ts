@@ -213,6 +213,22 @@ describe("pi adapter routing", () => {
     expect(block?.kind === "raw" ? block.lines.length : 0).toBe(14);
   });
 
+  // Issue 594, live (2026-10-25): the same editor under a goal widget that ticks its seconds over the
+  // box, idle and in a running turn with five rows under the box, and a fresh session's welcome splash
+  // that the first key clears. Each is a ready composer with no draft and no dialog.
+  it.each([
+    ["pi--v130-powerline-goal-widget-idle--w254.txt", 4],
+    ["pi--v130-powerline-goal-widget-running--w254.txt", 4],
+    ["pi--v130-powerline-welcome-idle--w254.txt", 4],
+    ["pi--v130-powerline-welcome-gone--w254.txt", 4],
+  ] as const)("reads %s as a ready composer with %i status rows (the running one has its prompt widget row too)", (name, under) => {
+    const lines = load(name);
+    expect(piAdapter.composerReady?.(lines)).toBe(true);
+    expect(piAdapter.extractInputDraft(lines)).toBeNull();
+    expect(piAdapter.modalOnScreen?.(lines)).toBe(false);
+    expect(piAdapter.extractStatusLines(lines)).toHaveLength(under);
+  });
+
   // Issue 544, live: the same editor with no footer under it, a wrapped draft, and pi's own selector.
   it("reads the live inset editor with no footer, and never pi's selector under the extension", () => {
     const draft = load("pi--v130-powerline-editor-walky-draft--w120.txt");

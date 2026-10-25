@@ -21,6 +21,9 @@
 //   S2      (6, 3000) read until the box is empty or a running sign shows: `sent`; else `unknown`. A command
 //           that found nothing reads once more (6, 3000): its own screen may be slow to draw
 // A request past the sum of the bounds ends `unknown` and releases the lock. A protocol token never carries Escape; a person's Stop does, through the key gate, with a receipt (ADR 0116).
+// The sum starts once the profile and the binary's version are known (`profile` in gapsMs), never at
+// the accept, and its detail names the step that ran out; a step whose end is the bound ends with its
+// own outcome when its timer wakes late (ADR 0124).
 //
 // A send into a running turn: when the screen shows the turn running, no modal and an empty box, and
 // the harness's profile says Enter queues while running (`keys.enterWhileRunning: "queues"`), the send
@@ -1058,6 +1061,14 @@ function belowMovedAlone(before: Snap | null, after: Snap): boolean {
   return belowRows(before) !== belowRows(after);
 }
 
+/**
+ * Whether the profile would take a message in a running turn (its Enter queues, or it names a queue
+ * key) but the binary's version could not be read, so {@link queuesInTurn} says no (#594).
+ */
+function versionUnread(match: ProfileMatch | null): boolean {
+  return match !== null && match.version === null && (match.profile.keys.enterWhileRunning === "queues" || match.profile.keys.queueKey !== undefined);
+}
+
 /** Whether the profile may be trusted with a running turn: a version the binary reported, on a range that is not revoked. */
 function turnTrusted(match: ProfileMatch | null): match is ProfileMatch {
   return match !== null && match.version !== null && match.status !== "revoked" && match.range?.status !== "revoked";
@@ -1188,7 +1199,7 @@ function turnRefusal(state: RunState, s0: Snap, frame: Frame, cues: "screen" | "
     return new Ended("refused", "turn_running", { surface, detail: NEVER_HELD });
   }
   const atOnce = request.mode !== "discard" && isCommand && runsInTurnEntry(goesOut, state.match) !== null;
-  if (!atOnce && !queuesInTurn(state.match)) return new Ended("refused", "turn_running", { surface, detail: TURN_RUNNING });
+  if (!atOnce && !queuesInTurn(state.match)) return new Ended("refused", "turn_running", { surface, detail: versionUnread(state.match) ? TURN_VERSION_UNREAD : TURN_RUNNING });
   if ((cues === "screen" ? s0.bareCues : s0.belowCues) === "strong") return new Ended("refused", "not_free", { surface, detail: OPEN_AT_BOX });
   if (request.mode === "discard") return null;
   if (atOnce) {
@@ -1244,6 +1255,11 @@ export const BOX_CHANGED = "The box no longer holds this text.";
 const RETURNED_BUSY = "The agent is busy again. Your message stays in its box; send it when the turn ends.";
 /** The detail of a send refused because the turn runs. */
 const TURN_RUNNING = "The agent is working, and this harness does not take a message during a turn.";
+/**
+ * The turn refusal on a harness that takes a message in a turn, on a version Collie could not read
+ * (#594): the profile's queue key is trusted only on a version the binary reported (ADR 0091).
+ */
+const TURN_VERSION_UNREAD = "The agent is working, and Collie could not read this agent's version, so it does not type into a running turn. Run collie doctor to see why.";
 /** The detail of a steer from a caller that is not a person's send from the phone (M69). */
 const STEER_NOT_ALLOWED = "Only a person's send from the phone can steer a turn. This message waits for the turn instead.";
 /** The detail of a steer on a pane Collie cannot steer (M69). */
@@ -1310,6 +1326,40 @@ export function runsInTurnEntry(text: string, match: ProfileMatch | null): strin
   }
   return null;
 }
+/** The words for a step in {@link boundDetail}: what the step waits for. */
+function phaseWords(phase: string): string {
+  switch (phase) {
+    case "s0":
+      return "S0, the two reads of the box";
+    case "probe":
+      return "the probe";
+    case "write":
+      return "the write";
+    case "s1":
+      return "S1, the read of the typed text";
+    case "commit":
+      return "the submit key";
+    case "s2":
+      return "S2, the wait for the box to take the text";
+    case "clear":
+      return "the clear of the box";
+    default:
+      return phase;
+  }
+}
+
+/**
+ * The detail of a send that ran past its bound (#594): the step it was in, how long that step had run,
+ * and the gaps of the steps before it, so a report says which one used the time. The `profile` gap
+ * (the version read before S0) is named too, though the bound no longer counts it.
+ */
+function boundDetail(state: RunState, now: number): string {
+  const phase = phaseWords(state.phase);
+  const spent = Object.entries(state.gaps).map(([step, ms]) => `${step} ${String(ms)} ms`);
+  spent.push(`${state.phase} ${String(Math.max(0, now - state.stepStart))} ms so far`);
+  return `The send ran past its bound at ${phase} (${spent.join(", ")}).`;
+}
+
 /** The detail of a held send (M56 spec 15): the harness cannot take it during the turn, so Collie keeps it. */
 const HELD = "The agent is working. Collie keeps this and sends it when the turn ends.";
 /** The detail of a send held because the box was not free or would not hold still: no turn was read. */
@@ -1318,9 +1368,12 @@ const HELD_BOX = "The input box is not free. Collie keeps this and sends it when
 const HELD_PANE_GONE = "The pane closed before the held text could go out.";
 /** The detail of a marked send held because the box holds a draft (M62 spec 02). */
 const HELD_DRAFT = "The box holds a draft. Collie keeps this and sends it when the box is empty.";
+/** The detail of a send held for a turn only because the version could not be read (#594). */
+const HELD_VERSION_UNREAD = "The agent is working, and Collie could not read this agent's version. Collie keeps this and sends it when the turn ends. Run collie doctor to see why.";
 /** The detail a held answer carries, by what it was held for. */
 function heldDetail(end: Ended): string {
   if (end.extra.detail === HELD_BEHIND) return HELD_BEHIND;
+  if (end.extra.detail === TURN_VERSION_UNREAD) return HELD_VERSION_UNREAD;
   if (end.reason === "draft_present") return HELD_DRAFT;
   return end.reason === "turn_running" ? HELD : HELD_BOX;
 }
@@ -1962,6 +2015,8 @@ interface RunState {
   /** The latest read. */
   lastRead: Snap | null;
   stepStart: number;
+  /** The step that runs now (a read's step name, `write`, `commit`): the bound's detail names it ({@link boundDetail}). */
+  phase: string;
   /** The run of a held request (M56 spec 15): its `sent` also counts under `held_sent`. */
   released?: boolean;
   /** The turn gate refused a command the profile never lets wait (`keys.neverHeld`): it is not held either. */
@@ -2393,7 +2448,8 @@ export class SendProtocol {
     // what the newest request ahead of it waits on when it joins the queue behind.
     const ahead = holds.waiting(target.session, target.paneId).at(-1)?.cause;
     const cause = end.extra.detail === HELD_BEHIND ? (ahead ?? "turn_running") : holdCauseOf(end);
-    const input = { id: request.id, session: target.session, paneId: target.paneId, harness: target.harness, mode: request.mode, text: request.text, revision: request.revision ?? 0, command, waitsForTurn, cause };
+    const unread = end.extra.detail === TURN_VERSION_UNREAD;
+    const input = { id: request.id, session: target.session, paneId: target.paneId, harness: target.harness, mode: request.mode, text: request.text, revision: request.revision ?? 0, command, waitsForTurn, cause, versionUnread: unread };
     if (request.draftHolds === true) {
       // A marked send keeps its caller's clock.
       holds.add(request.holdUntil === undefined ? { ...input, draftHolds: true } : { ...input, draftHolds: true, expiresAt: request.holdUntil });
@@ -2806,6 +2862,7 @@ export class SendProtocol {
       previousRead: null,
       lastRead: null,
       stepStart: at,
+      phase: "s0",
       steer: false,
       steered: false,
       reread: false,
@@ -2874,6 +2931,14 @@ export class SendProtocol {
   private async run(request: SendRequest, record: SendRecord, target: SendTarget, release = false): Promise<SendAnswer> {
     const match = await this.deps.profile(target.harness);
     const state: RunState = { ...this.bareState(request, record, target, match), released: release };
+    // The bound starts once the profile is known (#594): the profile waits for the binary's version,
+    // and a slow or hanging `--version` used to spend the whole bound before S0, so every send ended
+    // `unknown(bound)` with nothing read and nothing typed. The wait is measured as `profile`, never counted.
+    const waited = this.now() - (record.runAt ?? record.acceptedAt);
+    if (waited > 0) {
+      state.gaps.profile = waited;
+      state.deadline += waited;
+    }
     const { locks } = this.deps;
     if (!locks.acquire(state.lockKey, record.id, state.deadline, this.now())) {
       const busy = new Ended("refused", "busy", { detail: "Another send on this pane is still running." });
@@ -3218,6 +3283,7 @@ export class SendProtocol {
     await this.write(state, lines);
     this.lap(state, "write");
     await this.sleep(BLIND_SETTLE_MS);
+    state.phase = "commit";
     this.guard(state);
     const { gate, store } = this.deps;
     const { paneId } = state.target;
@@ -3641,7 +3707,7 @@ export class SendProtocol {
   /** Ends the request when its bound passed or another request took the lock after it. */
   private guard(state: RunState): void {
     const now = this.now();
-    if (now > state.deadline) throw new Ended("unknown", "bound", { detail: "The send ran past its bound." });
+    if (now > state.deadline) throw new Ended("unknown", "bound", { detail: boundDetail(state, now) });
     if (!this.deps.locks.owns(state.lockKey, state.record.id, now) && state.record.id !== "prepare") {
       throw new Ended("unknown", "lost_lock", { detail: "The send lost its lock." });
     }
@@ -3671,6 +3737,7 @@ export class SendProtocol {
 
   /** One read, cut at the step's end (`until`) or the request's bound, whichever comes first. */
   private async read(state: RunState, step: string, until = state.deadline): Promise<Snap | null> {
+    state.phase = step;
     this.guard(state);
     return this.readNow(state, step, until);
   }
@@ -3807,6 +3874,9 @@ export class SendProtocol {
       const left = until - this.now();
       if (left <= 0) break;
       await this.sleep(Math.min(gap, left));
+      // A step whose end is the request's bound, woken a hair past it (a timer fires late), ends as its
+      // own bound would: its outcome (`no_evidence`, `typed_not_submitted`) says more than `bound` (#594).
+      if (this.now() > state.deadline) break;
       gap *= 2;
       reads++;
       let snap: Snap | null;
@@ -3963,6 +4033,7 @@ export class SendProtocol {
    * which S1 matches (boxMatches); a short one lands literally.
    */
   private async write(state: RunState, lines: readonly string[]): Promise<void> {
+    state.phase = "write";
     const { mux } = this.deps;
     if (state.whole !== null && mux.pasteBlock !== undefined) {
       this.guard(state);
@@ -4135,6 +4206,7 @@ export class SendProtocol {
 
   /** Commit: `submit-sent` on disk, then the submit keys through the gate on S1's revision. */
   private async commit(state: RunState, s1: Snap): Promise<void> {
+    state.phase = "commit";
     this.guard(state);
     const keys = commitKeys(state);
     const { gate, store } = this.deps;

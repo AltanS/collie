@@ -401,6 +401,7 @@ export const ja: Dictionary = {
   "composer.protocol.expired": "送信されませんでした。30分以内にターンが終了しませんでした。",
   "composer.protocol.cancelled": "キャンセルされました。エージェントには何も送信されていません。",
   "composer.held.queued": "キューに追加されました。ターンが終了すると送信されます。",
+  "composer.held.versionUnread": "キューに追加されました。このエージェントのバージョンを読み取れなかったため、ターンが終了すると送信されます。理由は collie doctor で確認できます。",
   "composer.held.box": "保留中。ボックスで何かが開いています。閉じると送信されます。",
   "composer.held.draft": "保留中。ボックスが空になると送信されます。",
   "composer.held.sending": "送信中。",

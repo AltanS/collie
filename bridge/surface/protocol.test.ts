@@ -375,7 +375,7 @@ const CLAUDE_TEST_RANGE: readonly [VersionRange] = [
 function rig(
   options: {
     mode?: Mode;
-    version?: string;
+    version?: string | null;
     harness?: string;
     paste?: boolean;
     /** The multiplexer frames a whole-text paste itself (Herdr's `pasteBlock`). */
@@ -405,7 +405,7 @@ function rig(
   const store = new RequestStore(options.storeDir ?? join(dir, "sends"), now);
   const locks = new SessionLocks();
   const ring = new RowRing();
-  const version = options.version ?? "2.1.200";
+  const version = options.version === null ? null : (options.version ?? "2.1.200");
   const deps = {
     mux,
     gate,
@@ -1620,7 +1620,7 @@ describe("codex: Tab sends every text, Enter steers a running turn (M56 spec 13)
     const { pane, send } = codex();
     streams(pane);
     const answer = await send("please list the files in this folder");
-    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
     expect(answer.receipt?.keys.at(-1)).toBe("Tab");
     expect(pane.keysSeen).not.toContain("Enter");
     expect(pane.queued).toEqual(["please list the files in this folder"]);
@@ -1633,7 +1633,7 @@ describe("codex: Tab sends every text, Enter steers a running turn (M56 spec 13)
     for (let i = 0; i < 20; i++) pane.transcript.push(`  number row ${String(i)}`);
     streams(pane);
     const answer = await send("now reply with the single word cherry");
-    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
     expect(answer.receipt?.keys.at(-1)).toBe("Tab");
     expect(pane.keysSeen).not.toContain("Enter");
   });
@@ -1650,7 +1650,7 @@ describe("codex: Tab sends every text, Enter steers a running turn (M56 spec 13)
     };
     // Once the text is typed only the box and the rows under it decide; the rows above may change.
     const answer = await send("now reply with the single word cherry");
-    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
     expect(answer.receipt?.keys.at(-1)).toBe("Tab");
     expect(pane.keysSeen).not.toContain("Enter");
   });
@@ -1660,7 +1660,7 @@ describe("codex: Tab sends every text, Enter steers a running turn (M56 spec 13)
     pane.box = "half a thought";
     streams(pane);
     const answer = await send("half a thought", { mode: "submit" });
-    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
     expect(answer.receipt?.keys).toEqual(["Tab"]);
     expect(pane.keysSeen).not.toContain("Enter");
     expect(pane.queued).toEqual(["half a thought"]);
@@ -1930,7 +1930,7 @@ describe("muse: Tab queues in a turn, Enter steers it (MUSE-06/07, #519)", () =>
     expect(pane.calls).toEqual([]);
     expect(pane.keysSeen).toEqual([]);
     const answer = await send("then add a short summary");
-    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
     expect(pane.queued).toEqual(["then add a short summary"]);
     expect(holds.list()).toEqual([]);
   });
@@ -2174,7 +2174,7 @@ describe("a send into a running turn", () => {
       if (p.calls.some((call) => call.includes("then give"))) p.transcript.push(`${String(++item)}. Step ${String(item)} of the plan`);
     };
     const answer = await send("then give it a title");
-    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
     expect(item).toBeGreaterThan(1);
   });
 
@@ -2192,7 +2192,7 @@ describe("a send into a running turn", () => {
     };
     const answer = await send("then give it a title");
     expect(torn).toBe(1);
-    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
   });
 
   test("two reads in a row with no box in S2 end unknown(dialog_after_enter)", async () => {
@@ -2420,7 +2420,7 @@ describe("a send into a running turn", () => {
     streamAnswer(pane, typing);
     queuedRowLate(pane, 2, "then give it a title");
     const answer = await send("then give it a title");
-    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
     clock.now += 60_000;
     expect(protocol.promptEdge("%1", deps.store.hashText("then give it a title"), clock.now)).not.toBeNull();
     expect(deps.store.get(answer.receipt!.requestId)?.receipt?.outcome).toBe("effective");
@@ -2682,7 +2682,7 @@ describe("a send into a running turn", () => {
     const { pane, send } = rig();
     pane.drawsQueuedRow = true;
     const answer = await send("QUEUEDMSG please add a title");
-    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
     expect(pane.over).toEqual(["❯ QUEUEDMSG please add a title", "  ctrl+enter to send now"]);
   });
 
@@ -4397,7 +4397,8 @@ describe("the held send (M56 spec 15)", () => {
     expect(answer.receipt).toMatchObject({ requestId: "held-000001", outcome: "held", keys: [] });
     expect(answer.receipt?.reason).toBeUndefined();
     expect(answer.offers).toEqual([]);
-    expect(answer.detail).toBe("The agent is working. Collie keeps this and sends it when the turn ends.");
+    // Claude queues in a turn, but not on a version Collie could not read: the detail and the row say so (#594).
+    expect(answer.detail).toBe("The agent is working, and Collie could not read this agent's version. Collie keeps this and sends it when the turn ends. Run collie doctor to see why.");
     expect(r.pane.calls).toEqual([]);
     expect(r.pane.keysSeen).toEqual([]);
     expect(r.deps.store.get("held-000001")?.phase).toBe("held");
@@ -4406,7 +4407,7 @@ describe("the held send (M56 spec 15)", () => {
     // Windows has no POSIX mode bits, so only the mode expectation waits for another platform.
     if (process.platform !== "win32") expect(statSync(file).mode & 0o777).toBe(0o600);
     expect(r.protocol.heldOf("main", "%1")).toEqual([
-      { requestId: "held-000001", mode: "send", text: "then give it a title", heldAt: 1_000_120, expiresAt: 1_000_120 + 30 * 60 * 1000, state: "held", cause: "turn_running" },
+      { requestId: "held-000001", mode: "send", text: "then give it a title", heldAt: 1_000_120, expiresAt: 1_000_120 + 30 * 60 * 1000, state: "held", cause: "turn_running", versionUnread: true },
     ]);
     expect(r.protocol.recent("%1")[0]).toMatchObject({ requestId: "held-000001", outcome: "held" });
   });
@@ -5575,7 +5576,7 @@ describe("OMP: Ctrl+Q sends, Enter steers (M56 spec 14 review)", () => {
     pane.inTurn = true;
     pane.showWorking = false;
     const answer = await send("then add a short summary");
-    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
     expect(answer.receipt?.keys.at(-1)).toBe("ctrl+q");
     expect(pane.queued).toEqual(["then add a short summary"]);
     expect(pane.keysSeen).not.toContain("Enter");
@@ -5588,7 +5589,7 @@ describe("OMP: Ctrl+Q sends, Enter steers (M56 spec 14 review)", () => {
     const render = pane.render.bind(pane);
     pane.render = () => render().replace(" ⠼ 4s >", " π >");
     const answer = await send("then add a short summary");
-    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
     expect(answer.receipt?.keys.at(-1)).toBe("ctrl+q");
     expect(pane.keysSeen).not.toContain("Enter");
     expect(pane.steered).toEqual([]);
@@ -6135,7 +6136,7 @@ describe("a text that starts with `@` is a message on pi and OMP", () => {
       pane.inTurn = true;
       const { send } = rig({ pane, harness: "pi", version: "0.87.1", edit: (profile) => forPlatform(profile, platform) });
       const answer = await send(AT);
-      expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true });
+      expect(answer.receipt).toMatchObject({ outcome: "sent" });
       expect(answer.receipt?.keys.at(-1)).toBe(key);
       expect(pane.queued).toEqual([AT]);
       expect(pane.keysSeen).not.toContain("Enter");
@@ -6158,7 +6159,7 @@ describe("a text that starts with `@` is a message on pi and OMP", () => {
     const { pane, send } = omp();
     pane.inTurn = true;
     const answer = await send(AT);
-    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
     expect(answer.receipt?.keys.at(-1)).toBe("ctrl+q");
     expect(pane.queued).toEqual([AT]);
     expect(pane.keysSeen).not.toContain("Enter");
@@ -6931,7 +6932,7 @@ describe("a slash command over Claude Code's command list under the box (field c
     const { pane, send } = rig({ version: "2.1.302" });
     aboveScreen(pane, { over: RUNNING });
     const answer = await send("/model", { mode: "command" });
-    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
     expect(answer.receipt?.keys.at(-1)).toBe("Enter");
   });
 
@@ -7138,7 +7139,7 @@ describe("a slash command over Claude Code's command list under the box (field c
     const { pane, send } = rig({ version: "2.1.302" });
     listScreen(pane, V2302, { over: RUNNING });
     const answer = await send("/model", { mode: "command" });
-    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
     expect(answer.receipt?.keys.at(-1)).toBe("Enter");
     neverEscape(pane);
   });
@@ -8003,7 +8004,7 @@ describe("steer or queue (M69), replayed from the real captures (lab 2026-10-23)
 
   test("OMP 18.6.1: the same stacked screen after the queue key for `ok`: sent, queued (the After yield block is still read)", async () => {
     const { answer } = await steerOn("omp", "18.6.1", "omp--v18-6-queue-typed", [capture("omp--v18-6-steer-over-queued")], {}, undefined, "ok");
-    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
     expect(answer.receipt?.keys.at(-1)).toBe("ctrl+q");
   });
 
@@ -8026,7 +8027,7 @@ describe("steer or queue (M69), replayed from the real captures (lab 2026-10-23)
 
   test("OMP 18.6.1 without a steer: the queue key, `After yield · 1` over the line: sent, queued", async () => {
     const { answer, pane } = await steerOn("omp", "18.6.1", "omp--v18-6-queue-typed", [capture("omp--v18-6-queue-after-now"), capture("omp--v18-6-queue-after")], {});
-    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
     expect(answer.receipt?.keys.at(-1)).toBe("ctrl+q");
     expect(pane.keysSeen).not.toContain("Enter");
   });
@@ -8107,7 +8108,8 @@ describe("steer or queue (M69), replayed from the real captures (lab 2026-10-23)
 
   test("when absent, pi in a turn takes today's path: the queue key, never Enter, sent and queued", async () => {
     const { answer, pane } = await steerOn("pi", "1.3.0", "pi--v130-queue-typed", [capture("pi--v130-queue-after-now"), capture("pi--v130-queue-after")], {});
-    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true, keys: ["probe", "Backspace", "alt+Enter"] });
+    // The fake draws no Follow-up row, so the receipt says `sent` alone (live it said `queued` too).
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "alt+Enter"] });
     expect(pane.keysSeen).not.toContain("Enter");
   });
 
@@ -8420,7 +8422,7 @@ describe("a queued send that comes back to the box (ADR 0122)", () => {
     const r = omp();
     r.pane.inTurn = true;
     const answer = await r.send("second message", { id: "queued-back-0001" });
-    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true });
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
     expect(r.protocol.queuedOf("main", "%1")).toEqual([{ requestId: "queued-back-0001", text: "second message", at: r.clock.now, state: "queued" }]);
     r.clock.now += 2_000;
     const busy = look(r.pane, r.clock.now);
@@ -9075,5 +9077,156 @@ describe("OMP: a text that holds a paste chip's label is refused before any key 
   test("another profile reads the same words as plain text", async () => {
     const { send } = rig({ harness: "claude", version: "2.1.200" });
     expect((await send("see 📄 #1 here")).receipt).toMatchObject({ outcome: "sent" });
+  });
+});
+
+describe("issue 594: a pi pane with a ticking widget, a tall footer and a version Collie could not read", () => {
+  // Live captures (rig, 2026-10-25): pi 1.3.0 under pi-powerline-footer 0.20.2 and pi-context-chart
+  // 0.0.5, with a goal widget that ticks its seconds over the box, on a 254-column pane. The running
+  // capture has five rows under the box. The welcome pair is a fresh pi before and after its first key.
+  // eslint-disable-next-line no-control-regex
+  const plain = (row: string): string => row.replace(/\u001b\[[0-9;:?]*[ -/]*[@-~]/gu, "");
+  const rowsOf = (name: string): string[] => fixture(name).split(/\r?\n/u);
+  const IDLE = "pi--v130-powerline-goal-widget-idle--w254.txt";
+  const RUNNING = "pi--v130-powerline-goal-widget-running--w254.txt";
+
+  /**
+   * A live pi screen: the box redrawn from the pane's text, the goal widget's seconds ticking once per
+   * `tickMs` of the fake clock (100 ms: a new number on every read), and with `footerClock` one more
+   * row under the box that ticks too (the reporter's `⏱ 29m 21s`). `after` is the screen once a key went in.
+   */
+  const livePi = (clock: { now: number }, name: string, options: { tickMs?: number; footerClock?: boolean; after?: string } = {}): FakePane => {
+    const before = rowsOf(name);
+    const later = options.after === undefined ? null : rowsOf(options.after);
+    const pane = new FakePane();
+    let typed = false;
+    pane.afterInput = (p, what) => {
+      typed = true;
+      if (what.startsWith("keys:") && what.includes("alt+Enter")) p.box = "";
+    };
+    pane.render = () => {
+      const tick = Math.floor(clock.now / (options.tickMs ?? 100));
+      const rows = (typed && later !== null ? later : before).map((row) => {
+        const text = plain(row);
+        if (/^ >(?: |$)/u.test(text)) return ` > ${pane.box}`;
+        if (text.includes("🎯 active")) return row.replace(/· \d+s/u, `· ${String(tick % 1000)}s`);
+        return row;
+      });
+      if (options.footerClock === true) rows.push(` ⏱ 29m ${String(tick % 60)}s`);
+      return rows.join("\r\n");
+    };
+    return pane;
+  };
+  const piRig = (name: string, version: string | null, options: Parameters<typeof livePi>[2] = {}, holds?: HoldStore): Rig => {
+    const clock = { now: 1_000_000 };
+    return rig({ pane: livePi(clock, name, options), harness: "pi", version, clock, holds });
+  };
+
+  test.each([["1.3.0"], [null]] as const)("an idle box under a widget that ticks on every read takes the send, version %p", async (version) => {
+    const r = piRig(IDLE, version);
+    const answer = await r.send("Reply with exactly OK-1");
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "alt+Enter"] });
+  });
+
+  test("a running turn with five rows under the box takes the send into pi's queue", async () => {
+    const answer = await piRig(RUNNING, "1.3.0").send("Reply with exactly OK-2");
+    // The fake draws no Follow-up row, so the receipt says `sent` alone (live it said `queued` too).
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "alt+Enter"] });
+  });
+
+  test("a footer row that ticks under the box does not hold a send", async () => {
+    const answer = await piRig(IDLE, "1.3.0", { tickMs: 60_000, footerClock: true }).send("Reply with exactly OK-3");
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+  });
+
+  test("both at once, in a running turn: the widget above and a footer row below tick on every read", async () => {
+    const answer = await piRig(RUNNING, "1.3.0", { footerClock: true }).send("Reply with exactly OK-4");
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+  });
+
+  test("a real change still stops it: a dialog that opens at the first key gets no submit key", async () => {
+    const r = piRig(IDLE, "1.3.0", { after: "pi--v0871-permission-gate.txt" });
+    const answer = await r.send("Reply with exactly OK-5");
+    expect(answer.receipt?.outcome).not.toBe("sent");
+    expect(r.pane.keysSeen).not.toContain("alt+Enter");
+  });
+
+  test("an unread version holds a send in a running turn, and the receipt and the row say why", async () => {
+    const holds = new HoldStore(join(dir, "held-594"), () => 1_000_000);
+    const r = piRig(RUNNING, null, {}, holds);
+    const answer = await r.send("Reply with exactly OK-6");
+    expect(answer.receipt).toMatchObject({ outcome: "held", keys: [] });
+    expect(answer.detail).toContain("could not read this agent's version");
+    expect(r.protocol.heldOf("main", "%1")[0]).toMatchObject({ cause: "turn_running", versionUnread: true });
+  });
+
+  test("the first key of a fresh pi clears its welcome box above: the send goes on an unread version (idle.volatile.above.losesText)", async () => {
+    const r = piRig("pi--v130-powerline-welcome-idle--w254.txt", null, { tickMs: 60_000, after: "pi--v130-powerline-welcome-gone--w254.txt" });
+    expect((await r.send("Reply with exactly OK-7")).receipt).toMatchObject({ outcome: "sent" });
+    // Without the profile's word the welcome box going reads as a moved screen, and the probe fails.
+    const clock = { now: 1_000_000 };
+    const pane = livePi(clock, "pi--v130-powerline-welcome-idle--w254.txt", { tickMs: 60_000, after: "pi--v130-powerline-welcome-gone--w254.txt" });
+    const strict = rig({
+      pane,
+      harness: "pi",
+      version: null,
+      clock,
+      edit: (profile) => ({ ...profile, idle: { ...profile.idle, volatile: { ...profile.idle.volatile, above: { maxRows: profile.idle.volatile.above.maxRows } } } }),
+    });
+    expect((await strict.send("Reply with exactly OK-8")).receipt).toMatchObject({ outcome: "refused", reason: "probe_failed" });
+  });
+
+  test("the bound starts once the profile is known: a 9 s version read costs no send, and the receipt measures it", async () => {
+    const r = piRig(IDLE, null);
+    const inner = r.deps.profile;
+    // SAFETY: `r.deps` is the very object the protocol reads its profile from; only this test swaps the reader.
+    (r.deps as { profile: SendDeps["profile"] }).profile = async (harness) => {
+      r.clock.now += 9_000;
+      return inner(harness);
+    };
+    const answer = await r.send("Reply with exactly OK-9");
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(answer.receipt?.gapsMs.profile).toBe(9_000);
+  });
+
+  test("a send that runs past its bound names the step it was in and the gaps before it", async () => {
+    const r = piRig(IDLE, "1.3.0", { tickMs: 60_000 });
+    let written = false;
+    let late = false;
+    r.pane.afterInput = (_p, what) => {
+      if (what.startsWith("type:Reply") || what.startsWith("paste:Reply")) written = true;
+    };
+    r.pane.beforeRead = async () => {
+      // The first read after the write comes back 8 s late: S1 passes on it, and the bound is gone before the submit key.
+      await Promise.resolve();
+      if (written && !late) {
+        late = true;
+        r.clock.now += 8_000;
+      }
+    };
+    const answer = await r.send("Reply with exactly OK-10");
+    expect(answer.receipt).toMatchObject({ outcome: "unknown", reason: "bound" });
+    expect(r.pane.keysSeen).not.toContain("alt+Enter");
+    expect(answer.detail).toMatch(/^The send ran past its bound at the submit key \(s0 \d+ ms, probe \d+ ms, write \d+ ms, s1 \d+ ms, commit 0 ms so far\)\.$/u);
+  });
+
+  test("an S2 that runs out at the request's bound, its timer a hair late, ends with its own outcome", async () => {
+    // Every wait wakes 1 ms late, as a real timer does.
+    let t = 1_000_000;
+    const clock = {
+      get now(): number {
+        return t;
+      },
+      set now(value: number) {
+        t = value > t ? value + 1 : value;
+      },
+    };
+    const r = rig({ pane: livePi(clock, IDLE, { tickMs: 60_000 }), harness: "pi", version: "1.3.0", clock });
+    r.pane.afterInput = (_p, what) => {
+      // A slow write leaves S2 less than its own bound, and the box never lets the text go.
+      if (what.startsWith("type:Reply") || what.startsWith("paste:Reply")) r.clock.now += 5_000;
+    };
+    const answer = await r.send("Reply with exactly OK-11");
+    expect(answer.receipt).toMatchObject({ outcome: "unknown", reason: "no_evidence" });
   });
 });

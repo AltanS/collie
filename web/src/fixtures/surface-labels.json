@@ -5416,6 +5416,26 @@
    "version": "1.3.0",
    "state": "running"
   },
+  "pi--v130-powerline-goal-widget-idle--w254.txt": {
+   "harness": "pi",
+   "version": "1.3.0",
+   "state": "idle"
+  },
+  "pi--v130-powerline-goal-widget-running--w254.txt": {
+   "harness": "pi",
+   "version": "1.3.0",
+   "state": "running"
+  },
+  "pi--v130-powerline-welcome-gone--w254.txt": {
+   "harness": "pi",
+   "version": "1.3.0",
+   "state": "idle"
+  },
+  "pi--v130-powerline-welcome-idle--w254.txt": {
+   "harness": "pi",
+   "version": "1.3.0",
+   "state": "idle"
+  },
   "pi--v130-powerline-editor-idle-footer--w254.txt": {
    "harness": "pi",
    "version": "1.3.0",

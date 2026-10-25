@@ -332,6 +332,20 @@ header row and a body row, as the bridge types a message (a newline between them
 | `pi--v130-powerline-editor-slash-model--w120.txt` | `/model` typed, pi's command list under the box | draft `/model`, modal none, the list is the command's own (the profile's `commandList`) |
 | `pi--v130-powerline-model-selector--w120.txt` | pi's `/model` selector, which takes the editor's place in column zero | modal unreadable, never free; the pi reader's modal |
 
+**Issue 594, live**, from the rig run of 2026-10-25: pi 1.3.0 with pi-powerline-footer 0.20.2,
+@baggiiiie/pi-context-chart 0.0.5 and a lab goal widget (a stand-in for the reporter's, drawn with
+`setWidget` over the editor as `🎯 active · … · turns N/∞ · Ns`, its seconds ticking once a second), 254
+columns, CRLF line ends as the bridge reads them, no trailing newline. The scratch project path in the
+cwd row was replaced by `~/project`. A fresh session draws pi's welcome splash at the top; the first key
+clears it.
+
+| Fixture | State | Reads as |
+| --- | --- | --- |
+| `pi--v130-powerline-goal-widget-idle--w254.txt` | Fresh session, idle: the splash, the goal widget row over the inset box, four rows under it | free (idle, modal none, empty) |
+| `pi--v130-powerline-goal-widget-running--w254.txt` | A running turn (`⠹ Working` in the top rule), the goal widget, five rows under the box (the prompt widget row and the context chart's four) | running, modal none, composer empty |
+| `pi--v130-powerline-welcome-idle--w254.txt` | Another fresh session before its first key, the splash at the top | free |
+| `pi--v130-powerline-welcome-gone--w254.txt` | The same pane after the probe character and its Backspace: the splash rows are blank | free; against the one before it the rows above only lost text (`idle.volatile.above.losesText`) |
+
 ## pi's permission gate on pi 0.87.1 (captured 2026-10-17, Herdr 0.9.4)
 
 Stock pi 0.87.1 with the example pi ships, `examples/extensions/permission-gate.ts` (`pi -e <path>`), in

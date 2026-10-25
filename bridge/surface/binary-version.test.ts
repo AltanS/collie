@@ -2,7 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { dirname } from "node:path";
 
 import { hostFor } from "../host.ts";
-import { binaryVersion, createBinaryReader, createVersionReader, mergePaths, spawnBinaryVersion } from "./binary-version.ts";
+import { binaryVersion, createBinaryReader, createVersionReader, mergePaths, spawnBinaryVersion, VERSION_CACHE_MS, VERSION_FAILED_CACHE_MS, VersionCache } from "./binary-version.ts";
+import { boundedRun } from "../login-path.ts";
 import { SurfaceShadow } from "./shadow.ts";
 import { loadProfiles, parseProfile, profileFor } from "../../web/src/lib/surface/profile.ts";
 
@@ -238,5 +239,58 @@ describe("createBinaryReader — the file and how the command ended", () => {
     });
     expect(await read(anyProfile!)).toEqual({ binary: null, version: null, outcome: null });
     expect(ran).toBe(false);
+  });
+});
+
+describe("a version read that cannot hang a send (#594)", () => {
+  // A child that holds stdout open after its parent is killed: the old 5 s timeout killed the parent and
+  // then waited for the pipe, 20 s in the lab.
+  test.skipIf(process.platform === "win32")("boundedRun answers at its cap even when a grandchild holds the pipe", async () => {
+    const started = Date.now();
+    const done = await boundedRun(["/bin/sh", "-c", "sleep 5 & sleep 5"], process.env, 200);
+    expect(done).toEqual({ out: "", err: "", code: null });
+    expect(Date.now() - started).toBeLessThan(2_000);
+  });
+
+  test.skipIf(process.platform === "win32")("boundedRun returns what a quick command printed, and its exit code", async () => {
+    expect(await boundedRun(["/bin/sh", "-c", "printf 1.2.3; exit 3"], process.env, 2_000)).toEqual({ out: "1.2.3", err: "", code: 3 });
+  });
+
+  test("sends that ask while a read runs share it", async () => {
+    let reads = 0;
+    let answer: (version: string | null) => void = () => undefined;
+    const cache = new VersionCache(() => {
+      reads++;
+      return new Promise((done) => (answer = done));
+    });
+    const first = cache.versionOf(anyProfile!);
+    const second = cache.versionOf(anyProfile!);
+    answer("1.3.0");
+    expect(await Promise.all([first, second])).toEqual(["1.3.0", "1.3.0"]);
+    expect(reads).toBe(1);
+  });
+
+  test("a read that does not answer inside the budget reads as null, and stands for VERSION_FAILED_CACHE_MS only", async () => {
+    let now = 1_000_000;
+    let reads = 0;
+    const cache = new VersionCache(
+      () => {
+        reads++;
+        return reads === 1 ? new Promise<string | null>(() => undefined) : Promise.resolve("1.3.0");
+      },
+      () => now,
+      20,
+    );
+    expect(await cache.versionOf(anyProfile!)).toBeNull();
+    now += VERSION_FAILED_CACHE_MS;
+    expect(await cache.versionOf(anyProfile!)).toBeNull();
+    expect(reads).toBe(1);
+    now += 1;
+    // A later success replaces the failure, and stands for the long window.
+    expect(await cache.versionOf(anyProfile!)).toBe("1.3.0");
+    now += VERSION_FAILED_CACHE_MS + 1;
+    expect(await cache.versionOf(anyProfile!)).toBe("1.3.0");
+    expect(reads).toBe(2);
+    expect(VERSION_FAILED_CACHE_MS).toBeLessThan(VERSION_CACHE_MS);
   });
 });
