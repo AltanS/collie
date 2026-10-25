@@ -10,8 +10,10 @@ describe("runnableLine", () => {
     expect(runnableLine("Shell", "ls -la")).toBe("ls -la");
   });
 
-  it("drops the prompt in front of a console line", () => {
+  it("drops the prompt in front of a console line, and Claude Code's shell-mode lead", () => {
     expect(runnableLine("console", "$ npm test")).toBe("npm test");
+    expect(runnableLine("bash", "! sudo journalctl -u docker -n 20")).toBe("sudo journalctl -u docker -n 20");
+    expect(runnableLine("bash", "!")).toBeNull();
   });
 
   it("offers nothing for another language, several lines, or a line over the limit", () => {

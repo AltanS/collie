@@ -12,13 +12,14 @@ export const MAX_RUN_CHARS = 200;
 
 /**
  * The line a fenced block would run, or `null` when it is not one command: another language, more
- * than one line, or over the limit. A `$ ` prompt in front is the prompt, not the command.
+ * than one line, or over the limit. A `$ ` prompt in front is the prompt, not the command, and so is
+ * the `! ` an agent writes for Claude Code's own shell mode: that mode is what cannot answer a password.
  */
 export function runnableLine(lang: string, text: string): string | null {
   if (!SHELL_LANGS.has(lang.trim().toLowerCase())) return null;
   const trimmed = text.trim();
   if (trimmed === "" || trimmed.includes("\n")) return null;
-  const line = trimmed.replace(/^\$(\s+|$)/u, "");
+  const line = trimmed.replace(/^[$!](\s+|$)/u, "");
   if (line === "" || [...line].length > MAX_RUN_CHARS) return null;
   return line;
 }
