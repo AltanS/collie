@@ -3228,3 +3228,9 @@ rig's own scratch folder, and no secret was present.
 | `omp--v18-12-6-status-row-palette-4.txt` | `popup` | 18.12.6, `/wx` typed: a four-row list, the pointer on `wx`, and the status row under the list. The read was unreadable and torn, and the send stopped at `modal_cue` |
 | `omp--v18-6-1-status-row-palette-4.txt` | `popup` | 18.6.1, the same four-row list and status row |
 | `omp--v18-12-6-status-row-palette-10.txt` | `popup` | 18.12.6, `/w` typed: ten list rows with a scrollbar column, the pointer on `wx`, the status row under the list |
+
+## A pane that is still a shell while the agent starts (captured 2026-10-25, omp gang tester 15, OMP 18.12.6, Collie's rig)
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `shell--omp-launch-window.txt` | `screen` | 737 ms after the rig typed `exec '…/start.sh'` into a fresh shell: the image banner and the command table, then the typed line on the starship prompt row. omp is not up (it boots in about 20 s on 18.12.6), the multiplexer names no agent, and the box is not on screen. A send here went in blind (`sent`, Enter into the shell) and the text later sat as an unsent draft in omp's box |

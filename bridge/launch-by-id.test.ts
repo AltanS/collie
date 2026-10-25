@@ -7,6 +7,7 @@ import { AuditLog } from "./audit.ts";
 import { harnessLaunch } from "./harness-launch.ts";
 import { LAUNCH_RECEIPTS_FILE, LaunchReceiptStore, coerceLaunchReceipt, memoryLaunchReceipts } from "./launch-receipts.ts";
 import type { JsonObject } from "./json.ts";
+import { LaunchWindow } from "./launch-window.ts";
 import { launch, launchersRoute, type LaunchDeps } from "./server.ts";
 import type { StateEngine } from "./state-engine.ts";
 import type { CreateResponse, Launcher, LaunchersResponse } from "./types.ts";
@@ -147,6 +148,26 @@ describe("POST /api/launch — by id", () => {
     expect(mux.spaces).toEqual([{ cwd: "/home/op/src/app", label: "app" }]);
     expect(mux.tabRenames).toEqual([["w1:t1", "Claude Code"]]);
     expect(mux.texts).toEqual([["w1:p1", "claude"]]);
+  });
+
+  test("a harness launch marks its pane in the launch window once the line is typed; a shell, a row and a failed launch mark nothing", async () => {
+    const window = new LaunchWindow();
+    const mux = new FakeMux();
+    const { body } = await run(mux, { harness: "omp", cwd: "/home/op/src/app" }, { launchWindow: window });
+    expect(body?.ok).toBe(true);
+    expect(window.expecting("default", "w1:p1")).toBe("omp");
+    expect(window.expecting("other", "w1:p1")).toBeNull();
+
+    const shell = new LaunchWindow();
+    await run(new FakeMux(), { shell: true }, { launchWindow: shell });
+    await run(new FakeMux(), { command: "htop" }, { launchWindow: shell });
+    expect(shell.expecting("default", "w1:p1")).toBeNull();
+
+    const failed = new LaunchWindow();
+    const broken = new FakeMux();
+    broken.failText = true;
+    await run(broken, { harness: "omp" }, { launchWindow: failed });
+    expect(failed.expecting("default", "w1:p1")).toBeNull();
   });
 
   test("an adapter that declares no renameTab still launches, and no rename is asked", async () => {

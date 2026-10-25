@@ -46,6 +46,7 @@ import { MAX_FAVOURITES, MAX_FOLDER_CHARS, type FolderSurface } from "./folders.
 import { isValidWorktreeBranch } from "./worktree-branch.ts";
 import { createHarnessProbe, type HarnessProbe } from "./harness-launch.ts";
 import { launchReplay, memoryLaunchReceipts, type LaunchReceiptSurface } from "./launch-receipts.ts";
+import type { LaunchWindow } from "./launch-window.ts";
 import { isStarterBody, launchStarter, memoryStarterReceipts, starterItems, type StarterReceiptSurface } from "./starter-launch.ts";
 import { answerPane, memoryAnswerReceipts, type AnswerReceiptSurface } from "./durable/answer.ts";
 import { controlPane, memoryControlReceipts, rawInputRefusal, type ControlReceiptSurface } from "./durable/control.ts";
@@ -1331,6 +1332,8 @@ export function startServer(opts: {
    * Absent means an in-memory store; `bridge/index.ts` passes the file-backed one.
    */
   launchReceipts?: LaunchReceiptSurface;
+  /** The launch window (bridge/launch-window.ts), shared with each session's Send Protocol. Absent: no pane is marked. */
+  launchWindow?: Pick<LaunchWindow, "mark"> | undefined;
   /**
    * One receipt per starter run (ADR 0102, `bridge/starter-launch.ts`). Absent means an in-memory
    * store; `bridge/index.ts` passes the file-backed one, which writes nothing until a starter runs.
@@ -1853,6 +1856,7 @@ export function startServer(opts: {
       return launch(rt.herdr, rt.engine, req, caller.audit, caller.device(), rt.name, allowedLaunchers, {}, {
         harnesses,
         receipts: launchReceipts,
+        launchWindow: opts.launchWindow,
         starterReceipts,
         folders,
         switches: launcherSources.switches,
@@ -6967,6 +6971,8 @@ export async function launch(
     session,
     receipts,
     wait,
+    harness: picked.harness,
+    launchWindow: deps.launchWindow,
   });
   if (requestId !== undefined) receipts.track(requestId, work);
   const answer = await work;
@@ -7018,6 +7024,8 @@ export interface LaunchDeps {
   recentRuns?: Pick<RecentRunSurface, "record">;
   /** Sent, where the same run is kept as kind `run` (ADR 0107). Absent: nothing is kept. */
   sent?: Pick<SentSurface, "record">;
+  /** The launch window (bridge/launch-window.ts): a `harness` launch marks its pane. Absent: nothing is marked. */
+  launchWindow?: Pick<LaunchWindow, "mark"> | undefined;
 }
 
 /**
@@ -7034,7 +7042,13 @@ function earlierLaunch(receipts: LaunchReceiptSurface, requestId: string): Promi
 }
 
 /** Which of the four kinds a launch body names, and the line it types. */
-type PickedLaunch = { kind: "row" | "harness" | "shell" | "run"; row: Launcher | undefined; noPrompts?: boolean };
+type PickedLaunch = {
+  kind: "row" | "harness" | "shell" | "run";
+  row: Launcher | undefined;
+  noPrompts?: boolean;
+  /** The harness id a `harness` launch named: the launch window's mark ({@link LaunchWindow}). */
+  harness?: string;
+};
 
 /** What a one-off `run` is checked against: who asks, and the operator's switch (ADR 0095). */
 interface RunGate {
@@ -7069,7 +7083,7 @@ async function pickLaunch(
     if (known === undefined) {
       return json({ ok: false, ...apiError("launch.unknown_harness", { harness }) } satisfies CreateResponse, null, 400);
     }
-    return { kind: "harness", row: { command: known.binary, label: known.label } };
+    return { kind: "harness", row: { command: known.binary, label: known.label }, harness };
   }
   // Live read, behind the same mtime cache the other operator files use — a new row in
   // `launchers.toml` is live on the bridge without a restart (an already-open tab needs a reload to
@@ -7140,6 +7154,9 @@ async function runLaunch(
     session: string;
     receipts: LaunchReceiptSurface;
     wait: PaneReadyOptions;
+    /** The harness id of a `harness` launch, and where its pane is marked once the line is typed. */
+    harness: string | undefined;
+    launchWindow: Pick<LaunchWindow, "mark"> | undefined;
   },
 ): Promise<CreateResponse> {
   const { row, besidePane, cwd } = job;
@@ -7180,6 +7197,9 @@ async function runLaunch(
       }
       return { ok: false, error: sent.error, code: sent.code, detail: sent.detail };
     }
+    // The line is typed and the agent is booting: until the multiplexer names it, a send to this pane
+    // waits for the agent's input box instead of going into the shell (the Send Protocol, `launching`).
+    if (job.harness !== undefined) job.launchWindow?.mark(job.session, created.paneId, job.harness);
   }
   // `command` is deliberately NOT added to `METADATA_KEYS` in audit.ts. Under
   // `COLLIE_AUDIT_CONTENT=none` it therefore redacts like every other content-bearing detail, and

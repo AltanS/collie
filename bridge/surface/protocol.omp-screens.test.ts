@@ -180,3 +180,59 @@ describe("a slash command with an extension's status row under the list (omp gan
     expect(pane.box).toBe("/w");
   });
 });
+
+describe("a send in the launch window: the bridge started omp in this pane and the shell is all there is yet (omp gang 2026-10-25)", () => {
+  const SHELL = fx("shell--omp-launch-window.txt");
+  const OMP_UP = fx("omp--v18-12-6-status-row-idle.txt");
+
+  /** A pane that shows a shell until `load` brings the agent's screen up. */
+  const startingPane = (): OmpPane => {
+    const pane = new OmpPane(OMP_UP);
+    pane.override = SHELL;
+    return pane;
+  };
+
+  test("a shell screen is refused before any key: no text, no probe, no Enter", async () => {
+    const pane = startingPane();
+    const { send } = rig(pane, { launching: () => "omp", harness: "shell" });
+    const answer = await send("hello");
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed", keys: [], profileId: "omp" });
+    expect(answer.receipt?.detail).toBe("The pane shows no omp input box yet; it may still be starting. Nothing was typed.");
+    expect(pane.calls).toEqual([]);
+    expect(pane.keysSeen).toEqual([]);
+    expect(answer.offers).not.toContain("commit");
+  });
+
+  test("a command is refused the same way", async () => {
+    const pane = startingPane();
+    const { send } = rig(pane, { launching: () => "omp", harness: "shell" });
+    const answer = await send("/wx", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed", keys: [] });
+    expect(pane.calls).toEqual([]);
+    expect(pane.keysSeen).toEqual([]);
+  });
+
+  test("the same pane once omp's input box is on screen takes the send", async () => {
+    const pane = startingPane();
+    const { send } = rig(pane, { launching: () => "omp", harness: "shell" });
+    expect((await send("hello")).receipt?.outcome).toBe("refused");
+    pane.load(OMP_UP);
+    const answer = await send("hello");
+    expect(answer.receipt).toMatchObject({ outcome: "sent", profileId: "omp" });
+    expect(pane.submitted).toEqual(["hello"]);
+  });
+
+  test("a pane the bridge did not start anything in is still a shell that takes a blind send", async () => {
+    const pane = startingPane();
+    const { send } = rig(pane, { harness: "shell" });
+    const answer = await send("ls -la");
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["Enter"], profileId: null });
+    expect(pane.calls).toEqual(["type:ls -la"]);
+  });
+
+  test("a started harness with no profile of its own leaves the pane a blind shell", async () => {
+    const pane = startingPane();
+    const { send } = rig(pane, { launching: () => "nothing-known", harness: "shell" });
+    expect((await send("ls -la")).receipt).toMatchObject({ outcome: "sent", keys: ["Enter"], profileId: null });
+  });
+});

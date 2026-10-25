@@ -73,6 +73,7 @@ import { FolderStore } from "./folders.ts";
 import { WorktreeBaseStore } from "./worktree-bases.ts";
 import { WorktreeReceiptStore } from "./worktree-receipts.ts";
 import { LaunchReceiptStore } from "./launch-receipts.ts";
+import { LaunchWindow } from "./launch-window.ts";
 import { StarterReceiptStore } from "./starter-launch.ts";
 import { AnswerReceiptStore } from "./durable/answer.ts";
 import { ControlReceiptStore } from "./durable/control.ts";
@@ -853,6 +854,8 @@ await worktreeBases.load();
 // One receipt per launch the phone tagged with a request id, so a retried Start never opens a second
 // pane (ADR 0091, bridge/launch-receipts.ts). Loading writes nothing.
 const launchReceipts = new LaunchReceiptStore(cfg.stateDir);
+// The panes a launch started an agent in that the multiplexer does not name yet (the Send Protocol reads them with that agent's profile).
+const launchWindow = new LaunchWindow();
 await launchReceipts.load();
 
 // One receipt per starter run (ADR 0102, bridge/starter-launch.ts). Loading writes nothing.
@@ -1646,6 +1649,7 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
           ring,
           ledger: surfaceLedger ?? undefined,
           profile: (harness) => sendProfile(harness),
+          launching: (paneId) => launchWindow.expecting(name, paneId),
           generation: generationOf,
           asks: askBook,
           holds: holdStore ?? undefined,
@@ -1656,6 +1660,8 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
           staleFrame: (paneId, frame) => surface?.markStale(paneId, frame),
         })
       : undefined;
+  // A launched pane's window ends when the multiplexer names its agent (the TTL ends it otherwise).
+  if (send !== undefined) engine.onUpdate((s) => s.agents.forEach((agent) => launchWindow.seen(name, agent.paneId, agent.agent)));
   const asks =
     sends && sendStore !== null && askBook !== undefined
       ? new AskAnswerer({ mux: herdr, gate: gateFor(herdr), store: sendStore, locks, ring, book: askBook, profile: (harness) => sendProfile(harness), generation: generationOf })
@@ -2867,6 +2873,7 @@ const server = startServer({
   worktreeReceipts,
   worktreeBases,
   launchReceipts,
+  launchWindow,
   starterReceipts,
   answerReceipts,
   controlReceipts,
