@@ -594,7 +594,6 @@ export const tr: Dictionary = {
   "chat.card.output.showAll.one": "{count} satırın tümünü göster",
   "chat.card.output.showAll.other": "{count} satırın tümünü göster",
   "chat.card.diff.less": "Daha az göster",
-  "chat.card.image": "Görsel: {url}",
   "chat.run.commands.one": "{count} komut",
   "chat.run.commands.other": "{count} komut",
   "chat.run.edits.one": "{count} düzenleme",

@@ -660,7 +660,6 @@ export const ko: Dictionary = {
   "chat.card.output.showAll.one": "전체 {count}행 보기",
   "chat.card.output.showAll.other": "전체 {count}행 보기",
   "chat.card.diff.less": "간략히 보기",
-  "chat.card.image": "이미지: {url}",
   "chat.run.commands.one": "명령 {count}개",
   "chat.run.commands.other": "명령 {count}개",
   "chat.run.edits.one": "편집 {count}개",

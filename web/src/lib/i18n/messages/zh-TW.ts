@@ -648,7 +648,6 @@ export const zhTW: Dictionary = {
   "chat.card.output.showAll.one": "顯示全部 {count} 行",
   "chat.card.output.showAll.other": "顯示全部 {count} 行",
   "chat.card.diff.less": "收合",
-  "chat.card.image": "圖片：{url}",
   "chat.run.commands.one": "{count} 個指令",
   "chat.run.commands.other": "{count} 個指令",
   "chat.run.edits.one": "{count} 處編輯",
