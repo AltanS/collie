@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { fixtureRows } from "../../test/surface-corpus";
-import { commandListNear, ownListUnder, pointsAt, type CommandListRead } from "./command-list";
+import { commandListNear, openedByText, openListUnder, ownListUnder, pointsAt, type CommandListRead } from "./command-list";
 import { findInputFrame, rowText } from "./frame";
 import { requireProfile } from "./profile";
 
@@ -155,5 +155,73 @@ describe("omp 18.12.2's argument list (the /goal capture, 2026-10-22)", () => {
     expect(LIST.argumentList).toBe(true);
     expect(pointsAt(read("/model", ["/model", "/models"]), "/goal pause", LIST)).toBe(false);
     expect(pointsAt(read("/model", ["/model"]), "/goal pause", LIST)).toBe(false);
+  });
+});
+
+// omp 18.6.1 and 18.12.6 (omp-gang testers, 2026-10-25): omp draws a fuzzy list of up to ten rows under the
+// box for any text that starts with `/`. `/help` (no such command) lists ten commands that match it in part,
+// the pointer on the first; `/mo` points at `model`. The list is the text's own popup (`leadOpens`), so the
+// box past it is found and the Surface reads a draft; whether Enter runs what is typed is `pointsAt`'s
+// question.
+describe("omp's fuzzy list (18.6.1 and 18.12.6, 2026-10-25)", () => {
+  const TALL = [
+    ["omp--v18-6-1-slash-help-unlisted--w120.txt", "/help", "/plan-review", 10],
+    ["omp--v18-6-1-slash-mo-fuzzy--w120.txt", "/mo", "/model", 10],
+    ["omp--v18-6-1-slash-nothere-fuzzy--w120.txt", "/nothere", "/skills", 9],
+    ["omp--v18-6-1-slash-open-tall--w120.txt", "/", "/skill:", 10],
+    ["omp--v18-12-6-slash-help-unlisted--w120.txt", "/help", "/plan-review", 10],
+    ["omp--v18-12-6-slash-mo-fuzzy--w120.txt", "/mo", "/model", 10],
+    ["omp--v18-12-6-slash-nothere-fuzzy--w120.txt", "/nothere", "/skills", 9],
+  ] as const;
+
+  it("the shipped profile names the rule", () => {
+    expect(LIST.leadOpens).toBe(true);
+    expect(LIST.lead).toBe("/");
+  });
+
+  it.each(TALL)("%s: the box is found past the list, and the list is read whole", (fixture, typed, pointed, rows) => {
+    const sheet = fixtureRows(fixture);
+    const frame = findInputFrame(sheet, OMP);
+    expect(frame, fixture).not.toBeNull();
+    expect(frame!.interior.text).toBe(typed);
+    const texts = sheet.map(rowText);
+    const list = commandListNear(texts, frame!.top, frame!.bottom, LIST);
+    expect(list).toMatchObject({ pointed, side: "under" });
+    expect(list!.entries).toHaveLength(rows);
+    // The typed text is not what Enter would run, whatever opened the list.
+    expect(pointsAt(list!, typed, LIST)).toBe(false);
+    expect(openedByText(list!, typed, LIST)).toBe(true);
+    expect(openListUnder(texts, frame!.bottom, typed, LIST)).not.toBeNull();
+  });
+
+  it("without leadOpens a list that points at another command finds no box, as before", () => {
+    const { leadOpens, ...without } = LIST;
+    void leadOpens;
+    const sheet = fixtureRows("omp--v18-6-1-slash-help-unlisted--w120.txt");
+    const idle = { ...OMP, volatile: { ...OMP.volatile, below: { ...OMP.volatile.below, commandList: without } } };
+    expect(findInputFrame(sheet, idle)).toBeNull();
+    expect(openedByText({ pointed: "/plan-review", side: "under", first: 6, last: 7, entries: ["/plan-review"] }, "/help", without)).toBe(false);
+  });
+
+  it("a text that does not start with the lead did not open the list, and neither did a list with no pointer", () => {
+    const list = read("/plan-review", ["/plan-review", "/switch"]);
+    expect(openedByText(list, "help", LIST)).toBe(false);
+    expect(openedByText(list, "", LIST)).toBe(false);
+    expect(openedByText(list, "  /help", LIST)).toBe(true);
+    expect(openedByText({ ...list, side: "above" }, "/help", LIST)).toBe(false);
+    const sheet = fixtureRows("omp--v18-6-1-slash-help-unlisted--w120.txt");
+    const frame = findInputFrame(sheet, OMP)!;
+    const texts = sheet.map(rowText);
+    const unpointed = texts.map((row) => row.replace(/^❯ /u, "  "));
+    expect(openListUnder(unpointed, frame.bottom, "/help", LIST)).toBeNull();
+  });
+
+  it("a one-row list under a typed //comment is the box's own", () => {
+    const sheet = fixtureRows("omp--v18-12-6-slash-comment-loop-row--w120.txt");
+    const frame = findInputFrame(sheet, OMP)!;
+    expect(frame.interior.text).toBe("//comment");
+    const list = commandListNear(sheet.map(rowText), frame.top, frame.bottom, LIST);
+    expect(list).toMatchObject({ pointed: "/loop", entries: ["/loop"] });
+    expect(openedByText(list!, "//comment", LIST)).toBe(true);
   });
 });

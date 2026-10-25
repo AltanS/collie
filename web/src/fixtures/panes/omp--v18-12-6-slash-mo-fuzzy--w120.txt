@@ -1,0 +1,16 @@
+ 11 added · 12 changed · 56 fixed · +29 earlier releases · Use /changelog full for history.                             
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+ π > ◒ Haiku 4.5 > 📁 …g/02-commands/state/harness/omp/project ▶──5%───────────────────────────────────────┃───────200K─
+╰─ /mo                                                                                                                  
+❯ ⬢  model             Model: openrouter/anthropic/claude-haiku-4.5                                                    █
+  ⬢  modelpreset       Presets: none saved                                                                             │
+  📂 move              Move the current session to a different directory                                               │
+  🧠 memory            Inspect and operate memory maintenance                                                          │
+  📁 remove-dir        Remove a workspace directory from this session                                                  │
+  📂 wt                Move this session into a new worktree, changes included                                         │
+  🎯 goal              Goal: off                                                                                       │
+  ↻  loop              Loop: off                                                                                       │
+  🗺  plan              Plan: off                                                                                       │
+  🗺  plan-review       Plan review: plan mode inactive                                                                 │

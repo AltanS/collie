@@ -1,11 +1,14 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
-import { agentOf, fixtureRows, idleFor, readScreen, rowsOf, SURFACE_FIXTURES_DIR } from "../../test/surface-corpus";
+import { agentOf, fixtureRows, idleFor, PANES_DIR, readScreen, rowsOf, SURFACE_FIXTURES_DIR } from "../../test/surface-corpus";
 import { findInputFrame, plainRows, rowText } from "./frame";
 import { emptyFoldState, endsInsideFrame, foldSurface, type FoldContext, readFold, type ScreenInput, stepFold, SURFACE_SOURCES, type SurfaceInput, surfaceOfScreen } from "./fold";
 import { requireProfile } from "./profile";
 import { type Ask, isFree, modalWord } from "./surface";
-import { ASK, CLAUDE, LABELS, own } from "../../test/surface-fold";
+import { ASK, CLAUDE, LABELS } from "../../test/surface-fold";
 
 // The fold's own rules and the screens that broke it: the OMP widget, a running turn, foldSurface, the agents panel, and the rows around an idle box.
 
@@ -316,10 +319,13 @@ describe("rows around an idle box that 1.21.3 sent to (1.22.1 audit)", () => {
   });
 
   it("omp: a screen with no whole box under a strong cue still reads torn", () => {
-    // The slash palette stands under the prompt row, so no frame closes and the read ends inside one.
-    const read = own("omp--slash-palette.txt");
-    expect(findInputFrame(fixtureRows("omp--slash-palette.txt"), idleFor("omp")!)).toBeNull();
-    expect(read.surface.reason).toBe("torn");
+    // The slash palette stands under the prompt row. With the pointer taken off its first entry it is no
+    // list (`leadOpens` needs a pointed list), so no frame closes and the read ends inside one.
+    const raw = readFileSync(join(PANES_DIR, "omp--slash-palette.txt"), "utf8");
+    expect(raw).toContain("\u276f skill:");
+    const rows = rowsOf(raw.replace("\u276f skill:", "  skill:"));
+    expect(findInputFrame(rows, idleFor("omp")!)).toBeNull();
+    expect(readScreen(rows, "omp", idleFor("omp")).surface.reason).toBe("torn");
   });
 });
 

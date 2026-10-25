@@ -859,3 +859,30 @@ describe("omp 18.11's box composer (issue 497)", () => {
     expect(read(box({ text: "please push", fg: TEXT }, { text: "ed", fg: GHOST }), bare)).toBe("please pushed");
   });
 });
+
+// omp 18.6.1 and 18.12.6 draw a fuzzy list of up to ten rows under the open box for any text that starts with
+// `/`. The box past it is found whatever the list's pointer rests on (`commandList.leadOpens`), and the
+// frame's draft is the typed text, the list's rows left out.
+describe("the omp box past a ten-row fuzzy list (omp-gang, 2026-10-25)", () => {
+  const OMP = requireProfile("omp").idle;
+
+  it.each([
+    ["omp--v18-6-1-slash-help-unlisted--w120.txt", "/help", 4],
+    ["omp--v18-12-6-slash-help-unlisted--w120.txt", "/help", 4],
+    ["omp--v18-6-1-slash-nothere-fuzzy--w120.txt", "/nothere", 5],
+    ["omp--v18-12-6-slash-nothere-fuzzy--w120.txt", "/nothere", 5],
+  ])("%s: the box holds %s", (name, text, top) => {
+    const frame = findInputFrame(fixtureRows(name), OMP);
+    expect(frame).not.toBeNull();
+    expect(frame!.interior.text).toBe(text);
+    expect(frame!.top).toBe(top);
+    expect(frame!.bottom).toBe(top + 1);
+    expect(frame!.placeholder).toBe(false);
+  });
+
+  it("the same screen with the pointer taken off the list finds no box: an unpointed run under the box is no list", () => {
+    const raw = readFileSync(join(PANES_DIR, "omp--v18-6-1-slash-help-unlisted--w120.txt"), "utf8");
+    expect(raw).toContain("❯ \u{1F5FA}");
+    expect(findInputFrame(splitLines(parseAnsi(raw.replace("❯ \u{1F5FA}", "  \u{1F5FA}"))), OMP)).toBeNull();
+  });
+});

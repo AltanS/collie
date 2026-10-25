@@ -291,6 +291,34 @@ export function ownListUnder(texts: readonly string[], bottom: number, text: str
 }
 
 /**
+ * Whether `text`, the box's text, opened the list `read` on a profile with `leadOpens`: the text starts
+ * with the profile's lead and the list stands under the box. The harness draws a fuzzy list for a
+ * half-typed or unknown command (`/help` shows ten rows the pointer picks from), and that list belongs
+ * to the box all the same; whether Enter would run what is typed is {@link pointsAt}'s question, asked
+ * by the caller. False on a profile that does not name `leadOpens`.
+ */
+export function openedByText(read: CommandListRead, text: string, list: CommandListRows | undefined): boolean {
+  if (list === undefined || list.leadOpens !== true || read.side !== "under") return false;
+  const lead = list.lead ?? "";
+  return lead.length > 0 && text.trimStart().startsWith(lead);
+}
+
+/**
+ * The list under the box whose bottom edge (or open box's last row) is row `bottom`, when it is the
+ * list the box's text opened: its pointer rests on the text ({@link ownListUnder}), or the profile's
+ * `leadOpens` says the text opened it ({@link openedByText}) and the list has a pointer. Null
+ * otherwise, and on a profile whose list never stands under the box.
+ */
+export function openListUnder(texts: readonly string[], bottom: number, text: string, list: CommandListRows | undefined): CommandListRead | null {
+  if (list === undefined) return null;
+  const patterns = listPatterns(list);
+  if (!patterns.under) return null;
+  const read = listUnder(texts, bottom, patterns);
+  if (read === null || read.pointed === null) return null;
+  return pointsAt(read, text, list) || openedByText(read, text, list) ? read : null;
+}
+
+/**
  * The row a box past its own list would end on: from the screen's last non-blank row (`end` - 1) up,
  * at most `reach` rows, the first row that is no list row and whose rows under it read as a list with
  * a pointer ({@link listUnder}). Only one row can: a row higher up has that row under it, which is no

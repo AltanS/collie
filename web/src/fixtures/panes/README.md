@@ -2849,7 +2849,7 @@ through.
 | `pi--v0871-model-selector-empty--w120.txt` | pi 0.87.1, the selector `/model` opens. Labelled `dialog` |
 | `omp--v18-6-slash-model-list--w120.txt`, `--w80.txt` | omp 18.6.1, the box holds `/model`, under it ten entries from `❯ ⬢  model` to `↻  loop`, a scrollbar column; at 80 columns the descriptions wrap. Labelled `popup` |
 | `omp--v18-6-slash-settings-list--w120.txt`, `--w80.txt` | The box holds `/settings`, its list pointing at `settings`. Labelled `popup` |
-| `omp--v18-6-slash-mod-partial--w120.txt` | The box holds `/mod`, the pointer on `model`. Labelled `dialog` |
+| `omp--v18-6-slash-mod-partial--w120.txt` | The box holds `/mod`, the pointer on `model`. Labelled `popup` since 1.24.1 (omp's `leadOpens`, see the omp fuzzy list section below); `dialog` before |
 | `omp--v18-6-model-selector-empty--w120.txt` | The Models picker `/model` opens, a full-screen box with providers and models. Labelled `dialog` |
 | `omp--v18-6-settings-screen--w120.txt` | The settings screen `/settings` opens. Labelled `dialog` |
 
@@ -3133,3 +3133,22 @@ do echo $i; sleep 1; done` took.
 | `claude--v2-1-310-working-echo-numbered--w120.txt` | A three-row echo (`❯ First reply with a numbered list of 6 colors…`, two rows at column 2), the answer's list `1.` to `6.`, the Bash call counting, the spinner over an empty box. Reads `running`, `none`, `empty`; the whole-screen cue read was strong (the send held), now weak (it queues). Labelled `running` |
 | `claude--v2-1-310-working-echo-bullets--w120.txt` | The held case with no number near the box: the earlier turns (the numbered one among them) above, then a three-row echo (`❯ First reply with a bullet list of 6 colors…`), a bullet list (`- red - …`), the Bash call and the spinner. The echo alone read as a pointed list of three rows: strong (the send held), now none. Labelled `running` |
 | `claude--v2-1-310-working-echo-one-line--w120.txt` | The same pane with a one-row echo (`❯ Run this exact bash command…`): the whole-screen read was already none and the send queued. Labelled `running` |
+
+## omp fuzzy command list under the box (captured 2026-10-25, omp 18.6.1 and 18.12.6, omp-gang testers 01 and 02)
+
+Real pane reads from the testers' rig: a scratch Herdr with its own bridge, `omp` on `openrouter/anthropic/claude-haiku-4.5`,
+120 columns, read through `GET /api/pane/:id` and cut to the last 16 rows (`omp--v18-6-1-slash-open-tall--w120.txt` is the
+whole read). Rows are kept as read, with their CRLF line ends. The scratch working folder is already cut by omp's own `…`.
+omp draws a fuzzy list of up to ten rows under the open box for any text that starts with `/`: `/help`, which omp does not
+have, lists ten commands that match it in part, the pointer on the first; `/mo` points at `model`; `/` points at the
+skills row. Enter would run the pointed command, not the typed one. Until 1.24.1 the box past such a list was found only
+when the pointer rested on the typed text, so these read `unreadable/torn`. `commandList.leadOpens` makes the list the
+typed text's own popup.
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `omp--v18-6-1-slash-open-tall--w120.txt` | `popup` | 18.6.1, `/` typed: the whole read, ten rows from `✦ skill:` to `⤵ login`, a scroll bar column |
+| `omp--v18-6-1-slash-help-unlisted--w120.txt`, `omp--v18-12-6-slash-help-unlisted--w120.txt` | `popup` | `/help` typed (omp has no such command): ten rows, the pointer on `plan-review` |
+| `omp--v18-6-1-slash-mo-fuzzy--w120.txt`, `omp--v18-12-6-slash-mo-fuzzy--w120.txt` | `popup` | `/mo` typed: ten rows, the pointer on `model`, which a bare Enter runs (checked by hand on 18.6.1) |
+| `omp--v18-6-1-slash-nothere-fuzzy--w120.txt`, `omp--v18-12-6-slash-nothere-fuzzy--w120.txt` | `popup` | `/nothere` typed: nine rows, the pointer on `skills` |
+| `omp--v18-12-6-slash-comment-loop-row--w120.txt` | `popup` | 18.12.6, `//comment` typed in command mode: one row, `❯ ↻ loop`. The 402 notice's key id is zeros |

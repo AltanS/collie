@@ -1,0 +1,16 @@
+ Updated to v18.12.6 · 79 changes across 3 releases                                                                     
+ 11 added · 12 changed · 56 fixed · +29 earlier releases · Use /changelog full for history.                             
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+ π > ◒ Haiku 4.5 > 📁 …g/02-commands/state/harness/omp/project ▶──5%───────────────────────────────────────┃───────200K─
+╰─ /nothere                                                                                                             
+❯ ✦  skills      Search, install, and update skills from the skills.omp.sh registry
+  🌐 open        Open the last link from the conversation in your browser (or pick one with /copy)
+  📌 pin         Pin or unpin a session at the top of the resume list
+  ⚡ slow        Slow mode: off
+  👁  advisor     Advisor: off
+  ✎  green       Generate a prompt to iterate on CI failures until the branch is green (bundled)
+  ↻  loop        Loop: off
+  ⚡ effort      Thinking: high
+  🩺 cleanse     Detect and fix project diagnostics with weighted parallel subagents

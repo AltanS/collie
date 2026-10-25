@@ -1,0 +1,27 @@
+
+                                            ████████████    
+                                               ██  ██       ▄▀▀▄ █▀▄▀▄ █▀▀▄
+                                               ██  ██       ▀▄▄▀ █ █ █ █▄▄▀
+                                               ▒▒  ██                  █
+                                                   ██       v18.6.1
+
+                        Tip: Try starting your prompt with a ->, and writing a list (1. Do X, 2.
+                                                         Do Y)
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Update Available                                                                                                       
+ New version 18.12.6 is available. Run: omp update                                                                      
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+ π > ◒ Haiku 4.5 > 📁 …g/02-commands/state/harness/omp/project ▶──4%───────────────────────────────────────┃───────200K─
+╰─ /                                                                                                                    
+❯ ✦  skill:            19 skills                                                                                       █
+  🕘 resume            Resume a different session                                                                      │
+  ⬢  model             Model: openrouter/anthropic/claude-haiku-4.5                                                    │
+  ❯  exit              Exit the application                                                                            │
+  🌳 tree              Navigate session tree (switch branches)                                                         │
+  🎛  settings          Open settings menu                                                                              │
+  🎯 goal              Goal: off                                                                                       │
+  ↻  loop              Loop: off                                                                                       │
+  ⑂  fork              Create a new fork from a previous message                                                       │
+  ⤵  login             Login: choose provider                                                                          │

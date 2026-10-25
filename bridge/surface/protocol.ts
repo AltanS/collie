@@ -1290,6 +1290,8 @@ function typedDetail(reason: SendReason): string | undefined {
 }
 /** The detail of a typed command whose list over or under the box pointed at another command: Enter would have run that one. */
 const LIST_ELSEWHERE = "The command list at the box pointed at another command, so Enter was not pressed.";
+/** The detail of a Submit of a typed command whose list under the box points at another command: Enter would run that one. */
+const SUBMIT_ELSEWHERE = "The command list at the box points at another command, so Enter was not pressed. Discard the text, or pick the command with the keys.";
 /** The detail of a send whose S1 read showed a turn that started after S0, one the turn rule would refuse or hold (PR 491). */
 const TURN_STARTED = "A turn started while the text was typed, so Enter was not pressed. The text is in the box. Submit it when the turn ends.";
 
@@ -2811,6 +2813,10 @@ export class SendProtocol {
     switch (request.mode) {
       case "submit": {
         const located = this.typedBox(state, s0, holds, lines);
+        // Enter on a command whose list points at another one runs that one: the person picks it with the keys or discards the text.
+        if (state.command && listPointsElsewhere(s0, "", lines, collapseOf(match), match?.profile.idle.volatile.below.commandList)) {
+          throw new Ended("refused", "not_free", { surface: s0.surface, framed: true, rowsHash: s0.rowsHash, detail: SUBMIT_ELSEWHERE });
+        }
         this.lap(state, "s0");
         state.marks.s1 = s0;
         await this.commit(state, s0);

@@ -150,7 +150,8 @@
           "namespaces": [
             "skill:"
           ],
-          "argumentList": true
+          "argumentList": true,
+          "leadOpens": true
         }
       }
     },

@@ -1,0 +1,16 @@
+ Update Available                                                                                                       
+ New version 18.12.6 is available. Run: omp update                                                                      
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+ π > ◒ Haiku 4.5 > 📁 …g/02-commands/state/harness/omp/project ▶──4%───────────────────────────────────────┃───────200K─
+╰─ /help                                                                                                                
+❯ 🗺  plan-review  Plan review: plan mode inactive                                                                      █
+  ⇄  switch       Model: openrouter/anthropic/claude-haiku-4.5                                                         █
+  🖥  computer     Computer: off                                                                                        █
+  ⬢  modelpreset  Presets: none saved                                                                                  █
+  🌐 open         Open the last link from the conversation in your browser (or pick one with /copy)                    █
+  👥 agents       Open the agents hub (per-agent model, prewalk, and advisor)                                          █
+  ⑂  git          Open the git UI (split diff viewer, staging, commit composer)                                        │
+  ⑂  branch       Rewind to a previous message, keeping the old path as a branch                                       │
+  🧹 clear        Clear: drop context, keep session                                                                    │
+  ↻  loop         Loop: off                                                                                            │

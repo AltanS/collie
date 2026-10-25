@@ -3904,7 +3904,7 @@
   "omp--slash-palette.txt": {
    "harness": "omp",
    "version": "unversioned",
-   "state": "dialog"
+   "state": "popup"
   },
   "omp--tree.txt": {
    "harness": "omp",
@@ -4644,7 +4644,47 @@
   "omp--v18-6-slash-mod-partial--w120.txt": {
    "harness": "omp",
    "version": "18.6.1",
-   "state": "dialog"
+   "state": "popup"
+  },
+  "omp--v18-6-1-slash-open-tall--w120.txt": {
+   "harness": "omp",
+   "version": "18.6.1",
+   "state": "popup"
+  },
+  "omp--v18-6-1-slash-help-unlisted--w120.txt": {
+   "harness": "omp",
+   "version": "18.6.1",
+   "state": "popup"
+  },
+  "omp--v18-6-1-slash-mo-fuzzy--w120.txt": {
+   "harness": "omp",
+   "version": "18.6.1",
+   "state": "popup"
+  },
+  "omp--v18-6-1-slash-nothere-fuzzy--w120.txt": {
+   "harness": "omp",
+   "version": "18.6.1",
+   "state": "popup"
+  },
+  "omp--v18-12-6-slash-help-unlisted--w120.txt": {
+   "harness": "omp",
+   "version": "18.12.6",
+   "state": "popup"
+  },
+  "omp--v18-12-6-slash-mo-fuzzy--w120.txt": {
+   "harness": "omp",
+   "version": "18.12.6",
+   "state": "popup"
+  },
+  "omp--v18-12-6-slash-nothere-fuzzy--w120.txt": {
+   "harness": "omp",
+   "version": "18.12.6",
+   "state": "popup"
+  },
+  "omp--v18-12-6-slash-comment-loop-row--w120.txt": {
+   "harness": "omp",
+   "version": "18.12.6",
+   "state": "popup"
   },
   "omp--v18-6-model-selector-empty--w120.txt": {
    "harness": "omp",

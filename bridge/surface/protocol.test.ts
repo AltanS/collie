@@ -6703,6 +6703,7 @@ describe("a slash command over pi's and omp's own command list (field case, 2026
   const PI087 = { list: "pi--v0871-slash-model-list--w120.txt", opened: "pi--v0871-model-selector-empty--w120.txt", version: "0.87.1" };
   const OMP = { list: "omp--v18-6-slash-model-list--w120.txt", opened: "omp--v18-6-model-selector-empty--w120.txt", version: "18.6.1" };
   const OPENED = "Something opened at the box after the text was typed, so Enter was not pressed.";
+  const LIST_NOTICE = "The command list at the box pointed at another command, so Enter was not pressed.";
 
   /**
    * A capture of the typed command's list, split at the box (lab, 2026-10-17): the screen with the fake
@@ -6814,9 +6815,10 @@ describe("a slash command over pi's and omp's own command list (field case, 2026
       expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue" });
       expect(pane.keysSeen).not.toContain("Enter");
       expect(pane.box).toBe("/model");
-      // These profiles find a box past a list only when the list is the box's own, so a list that points
-      // elsewhere reads as something opened at the box, the detail of any other cue, not the list notice.
-      expect(deps.store.get(id)?.receipt?.detail).toBe(OPENED);
+      // pi finds a box past a list only when the list is the box's own, so a list that points elsewhere
+      // reads as something opened at the box, the detail of any other cue. omp names `leadOpens`: its
+      // fuzzy list is the typed text's own popup, the box is found, and the detail is the list notice.
+      expect(deps.store.get(id)?.receipt?.detail).toBe(c === OMP ? LIST_NOTICE : OPENED);
     });
   }
 });
@@ -7767,5 +7769,124 @@ describe("steer or queue (M69), replayed from the real captures (lab 2026-10-23)
     const answer = await r.send("also say hello", { when: "steer", fromPhone: true });
     expect(answer.receipt?.outcome).toBe("refused");
     expect(holds.list()).toEqual([]);
+  });
+});
+
+// omp 18.6.1 and 18.12.6 draw a fuzzy list of up to ten rows under the box for any text that starts with
+// `/` (omp-gang tester reports 02 and 04, 2026-10-25). The list is as tall as the screen's rows under the
+// box, so the box was not found, the Surface read torn and `/help`, `/mo` and `/nothere` ended
+// `typed_not_submitted (modal_cue)` with the generic detail.
+describe("omp's fuzzy command list under the box (1.24.1)", () => {
+  const PANES = join(import.meta.dir, "../../web/src/fixtures/panes");
+  const LIST_NOTICE = "The command list at the box pointed at another command, so Enter was not pressed.";
+  const SUBMIT_NOTICE = "The command list at the box points at another command, so Enter was not pressed. Discard the text, or pick the command with the keys.";
+
+  interface SceneOptions {
+    /** The screen once Enter took the typed command. */
+    readonly after?: string;
+  }
+
+  /**
+   * The capture `name` as the pane: its rows over the box row, the box row holding the typed text, and
+   * the capture's rows under the box (the list) only while the box starts with `/`. A submit key takes
+   * the text out of the box into the transcript, or, with `after`, redraws the screen the command opens.
+   */
+  const scene = (pane: FakePane, name: string, options: SceneOptions = {}): void => {
+    const rows = readFileSync(join(PANES, name), "utf8").split(/\r?\n/u);
+    const boxAt = rows.findLastIndex((row) => row.startsWith("╰─"));
+    expect(boxAt, name).toBeGreaterThan(0);
+    const head = rows.slice(0, boxAt - 1);
+    const top = rows[boxAt - 1]!;
+    const under = rows.slice(boxAt + 1);
+    const boxRow = (text: string): string => `╰─ ${text}`.padEnd(120);
+    const above: string[] = [];
+    let taken: string | null = null;
+    pane.collapseOver = 100_000;
+    pane.beforeWrite = (p, what) => {
+      if ((what === "keys:Enter" || what === "keys:ctrl+q") && p.box !== "") taken = p.box;
+    };
+    pane.afterInput = (p, what) => {
+      if (taken === null || (what !== "keys:Enter" && what !== "keys:ctrl+q")) return;
+      above.push(` ${taken}`, "");
+      taken = null;
+      p.box = "";
+      if (options.after !== undefined) pane.fixed = options.after;
+    };
+    pane.beforeRead = (p) => {
+      if (p.fixed === options.after && options.after !== undefined && p.box === "") return;
+      const listed = p.box.startsWith("/");
+      p.fixed = [...head.slice(above.length), ...above, top, boxRow(p.box), ...(listed ? under : [])].join("\n");
+    };
+  };
+
+  const ompPane = (version: string, name: string, options: SceneOptions = {}, edit?: (profile: Profile) => Profile) => {
+    const pane = new FakePane("generic");
+    const made = edit === undefined ? rig({ pane, harness: "omp", version }) : rig({ pane, harness: "omp", version, edit });
+    scene(pane, name, options);
+    return { ...made, pane };
+  };
+
+  const CASES = [
+    ["18.6.1", "omp--v18-6-1-slash-help-unlisted--w120.txt", "/help"],
+    ["18.6.1", "omp--v18-6-1-slash-mo-fuzzy--w120.txt", "/mo"],
+    ["18.6.1", "omp--v18-6-1-slash-nothere-fuzzy--w120.txt", "/nothere"],
+    ["18.12.6", "omp--v18-12-6-slash-help-unlisted--w120.txt", "/help"],
+    ["18.12.6", "omp--v18-12-6-slash-mo-fuzzy--w120.txt", "/mo"],
+    ["18.12.6", "omp--v18-12-6-slash-nothere-fuzzy--w120.txt", "/nothere"],
+  ] as const;
+
+  for (const [version, name, text] of CASES) {
+    test(`${name}: ${text} typed under a ten-row list is left typed with the list notice, no Enter`, async () => {
+      const { send, pane, deps } = ompPane(version, name);
+      const id = `fuzzy-${version.replaceAll(".", "-")}-${text.slice(1)}`;
+      const answer = await send(text, { id, mode: "command" });
+      expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue", keys: ["probe", "Backspace"] });
+      expect(answer.receipt?.saw).toMatchObject({ turn: "idle", modal: "none", composer: "draft" });
+      expect(answer.offers).toEqual(["submit", "discard", "keys"]);
+      expect(deps.store.get(id)?.receipt?.detail).toBe(LIST_NOTICE);
+      expect(pane.keysSeen).not.toContain("Enter");
+      expect(pane.box).toBe(text);
+      neverEscape(pane);
+    });
+
+    test(`${name}: with ${text} in the box the pane reads a draft, and Submit is refused while the list points elsewhere`, async () => {
+      const looked = ompPane(version, name);
+      looked.pane.box = text;
+      const prepared = await looked.protocol.handle({ id: `fuzzy-prep-${version.replaceAll(".", "-")}-${text.slice(1)}`, text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: "omp" });
+      expect(prepared.surface).toMatchObject({ turn: "idle", modal: "none", composer: "draft" });
+      const { send, pane, deps } = ompPane(version, name);
+      pane.box = text;
+      const id = `fuzzy-submit-${version.replaceAll(".", "-")}-${text.slice(1)}`;
+      const answer = await send(text, { id, mode: "submit" });
+      expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "not_free", keys: [] });
+      expect(deps.store.get(id)?.receipt?.detail).toBe(SUBMIT_NOTICE);
+      expect(pane.keysSeen).toEqual([]);
+      expect(pane.box).toBe(text);
+    });
+
+    test(`${name}: Discard clears the box and a later plain send is not held behind it`, async () => {
+      const { send, pane } = ompPane(version, name);
+      pane.box = text;
+      expect((await send(text, { mode: "discard" })).receipt).toMatchObject({ outcome: "discarded" });
+      expect(pane.box).toBe("");
+      expect(pane.keysSeen).not.toContain("Enter");
+    });
+  }
+
+  test("a command whose name is the list's pointed entry still goes out with one Enter (the list is its own)", async () => {
+    const { send, pane } = ompPane("18.6.1", "omp--v18-6-1-slash-mo-fuzzy--w120.txt", { after: readFileSync(join(PANES, "omp--v18-6-model-selector-empty--w120.txt"), "utf8") });
+    // The capture's list is the fuzzy list of `/mo`, its pointer on `model`: typed in full, the pointer rests on the text.
+    const answer = await send("/model", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(answer.receipt?.keys.at(-1)).toBe("Enter");
+    neverEscape(pane);
+  });
+
+  test("a one-row list under a typed //comment is the box's own popup: left typed with the list notice", async () => {
+    const { send, pane, deps } = ompPane("18.12.6", "omp--v18-12-6-slash-comment-loop-row--w120.txt");
+    const answer = await send("//comment", { id: "fuzzy-comment-1", mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue" });
+    expect(deps.store.get("fuzzy-comment-1")?.receipt?.detail).toBe(LIST_NOTICE);
+    expect(pane.keysSeen).not.toContain("Enter");
   });
 });
