@@ -26,6 +26,7 @@ import { WorkspaceChangesList, type WorkspaceChangesRow } from "@/components/wor
 import { useDashPrefs, openForCount } from "@/hooks/use-dash-prefs";
 import { useKeyboardOpen } from "@/hooks/use-keyboard";
 import { useLocale } from "@/hooks/use-locale";
+import { useNotifyPrefs } from "@/hooks/use-notify-prefs";
 import { useWorkspaceChangeCounts } from "@/hooks/use-workspace-change-counts";
 import { useSpaceActions } from "@/hooks/use-spaces";
 import { useNav } from "@/hooks/use-nav";
@@ -46,7 +47,7 @@ import { glideForward } from "@/lib/glide";
 import { homePath, newPath, spaceChangesPath, spacePath } from "@/lib/nav";
 import type { WorkspaceGroup } from "@/lib/pane-groups";
 import { scopeKey, type Scope } from "@/lib/scope";
-import { countBlocked, hasReady } from "@/lib/triage";
+import { countAlerting, countBlocked, hasReady } from "@/lib/triage";
 import { usePairing } from "@/lib/pairing";
 import { usePins } from "@/lib/pins";
 import { programScope, programSessions, programsAbove, waitingPrograms } from "@/lib/session-cards";
@@ -150,10 +151,13 @@ export function HomeRoute() {
   // still holds both kinds.
   const blockedCount = countBlocked(data.agents);
   const readyUnseen = blockedCount === 0 && hasReady(data.agents);
-  // The installed app's icon carries the same count (lib/app-badge.ts).
+  // The installed app's icon counts what has an alert out instead (lib/app-badge.ts), so it waits for
+  // the bridge's notification kinds rather than guess them.
+  const { prefs: notifyKinds } = useNotifyPrefs();
+  const alerting = notifyKinds === null ? null : countAlerting(data.agents, notifyKinds);
   useEffect(() => {
-    void showBadge(navigator, blockedCount);
-  }, [blockedCount]);
+    if (alerting !== null) void showBadge(navigator, alerting);
+  }, [alerting]);
   const lookup = useMemo<ChangesLookup>(
     () => ({ depth: prefs.changesDepth, nested: prefs.changesNested }),
     [prefs.changesDepth, prefs.changesNested],

@@ -6,10 +6,10 @@ import { badgeTotal, parseBadgeSlots, recordSlot, showBadge, slotCount, withSlot
 // field never zeroes a slot, a retraction does, and the icon shows every slot added up.
 
 describe("slotCount", () => {
-  it("reads a herd push's blocked count, on the primary, a named session and a peer alike", () => {
-    expect(slotCount({ tag: "collie:herd", blocked: 2 })).toBe(2);
-    expect(slotCount({ tag: "collie:herd:work", blocked: 0 })).toBe(0);
-    expect(slotCount({ tag: "collie:herd@laptop", blocked: 1 })).toBe(1);
+  it("reads a herd push's count, on the primary, a named session and a peer alike", () => {
+    expect(slotCount({ tag: "collie:herd", badge: 2 })).toBe(2);
+    expect(slotCount({ tag: "collie:herd:work", badge: 0 })).toBe(0);
+    expect(slotCount({ tag: "collie:herd@laptop", badge: 1 })).toBe(1);
   });
 
   it("zeroes the slot a retraction closes", () => {
@@ -20,12 +20,12 @@ describe("slotCount", () => {
     expect(slotCount({ type: "update", tag: "collie:update" })).toBeUndefined();
     expect(slotCount({ type: "machine", tag: "collie:herd" })).toBeUndefined();
     expect(slotCount({ tag: "collie:herd" })).toBeUndefined();
-    expect(slotCount({ blocked: 3 })).toBeUndefined();
+    expect(slotCount({ badge: 3 })).toBeUndefined();
   });
 
   it("refuses a count that is not a whole, non-negative number", () => {
-    expect(slotCount({ tag: "collie:herd", blocked: -1 })).toBeUndefined();
-    expect(slotCount({ tag: "collie:herd", blocked: 1.5 })).toBeUndefined();
+    expect(slotCount({ tag: "collie:herd", badge: -1 })).toBeUndefined();
+    expect(slotCount({ tag: "collie:herd", badge: 1.5 })).toBeUndefined();
   });
 });
 

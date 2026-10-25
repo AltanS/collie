@@ -103,7 +103,7 @@ describe("NotificationCoordinator — debounce", () => {
       body: "demo",
       paneId: "p1",
       renotify: true,
-      blocked: 1,
+      badge: 1,
     });
   });
 
@@ -142,7 +142,7 @@ describe("NotificationCoordinator — working → idle is a completion (#345)", 
       body: "demo",
       paneId: "p1",
       renotify: true,
-      blocked: 0,
+      badge: 1,
     });
   });
 
@@ -214,7 +214,7 @@ describe("NotificationCoordinator — coalescing", () => {
       body: "api, web",
       paneId: undefined,
       renotify: true,
-      blocked: 2,
+      badge: 2,
     });
   });
 
@@ -228,12 +228,12 @@ describe("NotificationCoordinator — coalescing", () => {
     expect(sink.last?.titleDetail).toEqual({ count: 2 });
   });
 
-  test("a digest counts only its blocked panes for the badge, not the finished ones", () => {
+  test("a digest counts every alert it holds for the badge, the finished ones too", () => {
     const { clock, sink, coord } = setup();
     coord.onTransition(agentNamed("p1", "claude", "blocked"), "working", "blocked");
     coord.onTransition(agentNamed("p2", "codex", "idle"), "working", "idle");
     clock.fireAll();
-    expect(sink.last).toMatchObject({ titleCode: "herd.mixed", blocked: 1 });
+    expect(sink.last).toMatchObject({ titleCode: "herd.mixed", badge: 2 });
   });
 
   test("resolving one of two falls back to the named single, silently", () => {
@@ -249,7 +249,7 @@ describe("NotificationCoordinator — coalescing", () => {
       body: "demo",
       paneId: "p1",
       renotify: false, // a retraction update must not re-buzz
-      blocked: 1,
+      badge: 1,
     });
   });
 });
@@ -315,7 +315,7 @@ describe("an ask's push words (durable/ask-push.ts)", () => {
   test("the sink leaves the code out of the message when the title is the program's", () => {
     const sent: PushMessage[] = [];
     const sink = makeNotifySink({ send: (m) => void sent.push(m) }, { isMuted: () => false }, "herd");
-    sink.render({ title: "Triage: Needs a yes", body: "One line.", renotify: true, blocked: 1 });
+    sink.render({ title: "Triage: Needs a yes", body: "One line.", renotify: true, badge: 1 });
     expect(sent[0]).toMatchObject({ title: "Triage: Needs a yes", body: "One line." });
     expect(sent[0]).not.toHaveProperty("titleCode");
   });
@@ -437,7 +437,7 @@ describe("NotificationCoordinator — multi-agent digest labels (#215)", () => {
       body: "demo",
       paneId: "p1",
       renotify: true,
-      blocked: 1,
+      badge: 1,
     });
   });
 });
@@ -474,6 +474,42 @@ describe("NotificationCoordinator — retraction", () => {
     coord.onTransition(agent("p1", "idle"), "blocked", "idle");
     coord.onTransition(agent("p1", "working"), "idle", "working");
     expect(sink.clears).toBe(1);
+  });
+});
+
+describe("NotificationCoordinator — a finished pane you opened", () => {
+  test("retracts its alert, silently, and leaves a blocked one", () => {
+    const { clock, sink, coord } = setup();
+    coord.onTransition(agent("p1", "blocked"), "working", "blocked");
+    coord.onTransition(agent("p2", "idle"), "working", "idle");
+    clock.fireAll();
+    coord.retractSeen([
+      { paneId: "p1", lastActiveAt: 10, lastSeenAt: 20 },
+      { paneId: "p2", lastActiveAt: 10, lastSeenAt: 20 },
+    ]);
+    expect(sink.last).toMatchObject({ paneId: "p1", renotify: false, badge: 1 });
+  });
+
+  test("clears the herd when it was the last alert, and cancels one still in its window", () => {
+    const { clock, sink, coord } = setup();
+    coord.onTransition(agent("p1", "done"), "working", "done");
+    clock.fireAll();
+    coord.onTransition(agent("p2", "done"), "working", "done");
+    coord.retractSeen([
+      { paneId: "p1", lastActiveAt: 10, lastSeenAt: 10 },
+      { paneId: "p2", lastActiveAt: 10, lastSeenAt: 10 },
+    ]);
+    clock.fireAll();
+    expect(sink.events.at(-1)).toEqual({ kind: "clear" });
+  });
+
+  test("keeps it while unread, or when a timestamp is missing", () => {
+    const { clock, sink, coord } = setup();
+    coord.onTransition(agent("p1", "done"), "working", "done");
+    clock.fireAll();
+    coord.retractSeen([{ paneId: "p1", lastActiveAt: 20, lastSeenAt: 10 }]);
+    coord.retractSeen([{ paneId: "p1", lastActiveAt: 20 }]);
+    expect(sink.events).toHaveLength(1);
   });
 });
 
@@ -543,7 +579,7 @@ describe("makeNotifySink", () => {
     body: "demo",
     paneId: "p1",
     renotify: true,
-    blocked: 1,
+    badge: 1,
   };
   class RecordingPush {
     readonly sent: PushMessage[] = [];
@@ -564,7 +600,7 @@ describe("makeNotifySink", () => {
         tag: "collie:herd",
         paneId: "p1",
         renotify: true,
-        blocked: 1,
+        badge: 1,
       },
     ]);
   });

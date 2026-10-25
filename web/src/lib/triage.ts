@@ -79,6 +79,20 @@ export function countBlocked(agents: readonly AgentView[]): number {
   return n;
 }
 
+/**
+ * How many panes have an alert out on the bridge (bridge/notifications.ts), for the installed app's
+ * icon (lib/app-badge.ts): the blocked ones, and the finished ones you have not opened, each only
+ * while that kind notifies.
+ */
+export function countAlerting(agents: readonly AgentView[], kinds: { blocked: boolean; done: boolean }): number {
+  let n = 0;
+  for (const a of agents) {
+    const bucket = bucketOf(a);
+    if ((bucket === "needs" && kinds.blocked) || (bucket === "ready" && kinds.done)) n++;
+  }
+  return n;
+}
+
 /** Whether any pane is in the "ready" bucket: finished and unseen. The "Focus" tab's dot. */
 export function hasReady(agents: readonly AgentView[]): boolean {
   return agents.some((a) => bucketOf(a) === "ready");

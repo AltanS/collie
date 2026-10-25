@@ -1,9 +1,9 @@
 // ── THE COUNT ON THE HOME SCREEN ICON ────────────────────────────────────────────────────────────
 //
-// The installed app's icon carries the number of panes blocked on you: the Dashboard tab's red count
-// (ADR 0066), and nothing a finished pane adds. Two writers keep it, because neither is always awake.
-// The page sets it from its own snapshot while it is open. The service worker sets it on every herd
-// push, whose `blocked` field is that slot's count, and a retraction is a slot with none.
+// The installed app's icon carries the number of alerts waiting on you: a blocked pane, and a finished
+// one you have not opened when finished panes notify. Two writers keep it, because neither is always
+// awake. The page sets it from its own snapshot while it is open. The service worker sets it on every
+// herd push, whose `badge` field is that slot's count, and a retraction is a slot with none.
 //
 // A worker holds no state between two pushes, and each push names one slot (one session on one
 // machine), so the worker keeps every slot's last count in Cache Storage and shows their sum. Cache
@@ -36,18 +36,18 @@ const HERD_TAG = "collie:herd";
 export interface BadgePush {
   type?: string;
   tag?: string;
-  blocked?: number;
+  badge?: number;
 }
 
 /**
- * The slot's blocked count a push carries, or `undefined` when it says nothing about one: another
+ * The slot's count a push carries, or `undefined` when it says nothing about one: another
  * kind of push, or a herd push from a bridge that predates the field, which must not zero a slot.
  */
 export function slotCount(push: BadgePush): number | undefined {
   if (push.tag === undefined || !push.tag.startsWith(HERD_TAG)) return undefined;
   if (push.type === "clear") return 0;
   if (push.type !== undefined) return undefined;
-  const n = push.blocked;
+  const n = push.badge;
   return n !== undefined && Number.isInteger(n) && n >= 0 ? n : undefined;
 }
 
