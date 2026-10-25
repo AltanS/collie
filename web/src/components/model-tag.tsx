@@ -33,9 +33,10 @@ import { cn } from "@/lib/utils";
 // prints a cost too. Absent, never a placeholder: no cost, no span.
 //
 // THE MODEL NAME STANDS DOWN WHILE THE SCREEN NAMES IT, but only when it would stand ALONE. With no
-// gauge to draw, the caller passes no model while the screen names it (agent-chat.tsx asks
-// hooks/use-model-on-screen.ts), so a statusline that prints "Opus 5.5" is not doubled by a bare
-// label. With a gauge ({@link hasGauge}) the tag is the row Claude Code has, model, context and
+// gauge and no cost to draw, the caller passes no model while the screen names it (agent-chat.tsx
+// asks hooks/use-model-on-screen.ts), so a statusline that prints "Opus 5.5" is not doubled by a bare
+// label. A cost counts like a gauge ({@link hasFigure}): a bare "$0.11" would float unlabelled too.
+// With a gauge or a cost the tag is the row Claude Code has, model, context and
 // limits, and it names the model whatever the screen prints, so the dots never float unlabelled
 // (Altan, 2026-10-25). The effort goes with the model either way. The tag is absolute, so it arriving
 // or leaving moves nothing (DESIGN.md §2): there is no line to reserve because it owns none.
@@ -97,6 +98,15 @@ function gaugesOf(usage: PaneUsage | undefined): Gauge[] {
  */
 export function hasGauge(usage: PaneUsage | undefined): boolean {
   return gaugesOf(usage).length > 0;
+}
+
+/**
+ * Whether a usage reading draws any figure at all: a gauge, or the session cost. This is the test the
+ * caller uses to keep the model name beside the figures while the screen names the model, so a lone
+ * cost never floats without it.
+ */
+export function hasFigure(usage: PaneUsage | undefined): boolean {
+  return hasGauge(usage) || costOf(usage) !== null;
 }
 
 /** Five 3px dots, lit from the left, one per full fifth. A dot is as wide as it is tall, so it may be round (DESIGN.md §3). */

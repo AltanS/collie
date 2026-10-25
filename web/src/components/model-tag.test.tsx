@@ -1,7 +1,7 @@
 import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { formatCost, hasGauge, ModelTag } from "./model-tag";
+import { formatCost, hasFigure, hasGauge, ModelTag } from "./model-tag";
 
 describe("ModelTag", () => {
   it("draws the short model name, named for a screen reader, and takes no touch", () => {
@@ -152,5 +152,17 @@ describe("ModelTag session cost", () => {
     expect(container.querySelector("[aria-hidden]")?.textContent).toBe("$12.50");
     expect(container.querySelector(".sr-only")?.textContent).toBe("Session cost $12.50");
     expect(hasGauge({ cost: 12.5 })).toBe(false);
+  });
+
+  it("a cost counts like a gauge for the caller: hasFigure keeps the model name beside it", () => {
+    expect(hasFigure({ cost: 0.11 })).toBe(true);
+    expect(hasFigure({ context: 3 })).toBe(true);
+    expect(hasFigure({ cost: Number.NaN })).toBe(false);
+    expect(hasFigure({})).toBe(false);
+    expect(hasFigure(undefined)).toBe(false);
+    // The caller (agent-chat.tsx) passes the model whenever hasFigure is true, so the cost never floats alone.
+    const { container } = render(<ModelTag model="claude-opus-5-5" usage={{ cost: 0.11 }} />);
+    expect(container.querySelector("[aria-hidden]")?.textContent).toBe("Opus 5.5$0.11");
+    expect(container.querySelector(".sr-only")?.textContent).toBe("Model Opus 5.5. Session cost $0.11");
   });
 });
