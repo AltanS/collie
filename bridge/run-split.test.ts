@@ -26,6 +26,7 @@ import type { AgentView, CreateResponse } from "./types.ts";
 //      is typed into it, and the audit line names a pane.
 //   2. Where it does not, or the body does not ask, the run opens a tab beside the pane as before.
 //   3. A split that lands in another tab is closed before anything is typed, and the run is refused.
+//   4. The name the phone sends goes on the new pane, or on the new tab where there is no split.
 
 const AGENT: AgentView = {
   paneId: "w1:p1",
@@ -49,13 +50,14 @@ function engine(): StateEngine {
   return stub as StateEngine;
 }
 
-const BASE: readonly MuxCapability[] = ["typeText", "sendKeys", "createTab", "closePane"];
+const BASE: readonly MuxCapability[] = ["typeText", "sendKeys", "createTab", "closePane", "renamePane"];
 
 class FakeMux {
   readonly splits: MuxSplitRequest[] = [];
   readonly tabs: MuxTabRequest[] = [];
   readonly texts: Array<[string, string]> = [];
   readonly closes: string[] = [];
+  readonly renames: Array<[string, string | null]> = [];
   readonly capabilities;
   splitLandsIn = "w1:t1";
 
@@ -81,6 +83,10 @@ class FakeMux {
     return Promise.resolve(muxAck());
   }
   writeKeys(): Promise<MuxAck> {
+    return Promise.resolve(muxAck());
+  }
+  renamePane(paneId: string, label: string | null): Promise<MuxAck> {
+    this.renames.push([paneId, label]);
     return Promise.resolve(muxAck());
   }
   closePane(paneId: string): Promise<MuxAck> {
@@ -147,6 +153,19 @@ describe("POST /api/launch `{ run, split }`", () => {
     const unasked = new FakeMux(true);
     expect((await run(unasked, { run: "sudo ls", paneId: "w1:p1" })).answer).toMatchObject({ ok: true, pane: { tabId: "w1:t2" } });
     expect(unasked.splits).toEqual([]);
+  });
+
+  test("names the new pane, or the new tab where the run cannot split, with the phone's words", async () => {
+    const split = new FakeMux(true);
+    await run(split, { run: "sudo ls", paneId: "w1:p1", split: true, label: "Run in shell" });
+    expect(split.renames).toEqual([["w1:p2", "Run in shell"]]);
+    const tab = new FakeMux(false);
+    await run(tab, { run: "sudo ls", paneId: "w1:p1", split: true, label: "Run in shell" });
+    expect(tab.tabs[0]?.label).toBe("Run in shell");
+    expect(tab.renames).toEqual([]);
+    const unnamed = new FakeMux(true);
+    await run(unnamed, { run: "sudo ls", paneId: "w1:p1", split: true, label: "bad\u0007name" });
+    expect(unnamed.renames).toEqual([]);
   });
 
   test("closes a split that landed in another tab, types nothing, and refuses", async () => {

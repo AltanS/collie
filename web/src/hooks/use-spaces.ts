@@ -36,6 +36,8 @@ export interface StartAsk {
   beside?: { paneId: string; workspaceId: string; tabId?: string };
   /** Open a run in `beside`'s own tab, as a new pane, where the machine can split one; else beside it. */
   split?: boolean;
+  /** The name for the shell a run beside a pane opens, in this device's language. */
+  shellLabel?: string;
   branch?: { cwd: string; name: string; base: WorktreeBaseChoice; folder: WorktreeFolderChoice };
 }
 
@@ -238,7 +240,7 @@ export function useSpaceActions(canWrite?: () => boolean) {
           if (ask.branch !== undefined) return { kind: "refused", message: t("apiError.launch.run_no_branch") };
           const res = await api.startRun(
             ask.what.line,
-            { cwd: ask.cwd, requestId: ask.requestId, besidePaneId: ask.beside?.paneId, split: ask.split },
+            { cwd: ask.cwd, requestId: ask.requestId, besidePaneId: ask.beside?.paneId, split: ask.split, label: ask.shellLabel },
             scope,
           );
           if (!res.ok) return { kind: "refused", message: describeApiError(res) };

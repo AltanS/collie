@@ -83,6 +83,7 @@ describe("Run in shell", () => {
       cwd: "/home/you/app",
       beside: { paneId: "w7:p8", workspaceId: "w7", tabId: "w7:t1" },
       split: true,
+      shellLabel: "Run in shell",
     });
     await waitFor(() => expect(screen.queryByTestId("run-in-shell-command")).toBeNull());
   });

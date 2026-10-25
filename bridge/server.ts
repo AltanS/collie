@@ -95,7 +95,7 @@ import {
   type RouteAnswer,
 } from "./launcher-adds.ts";
 import { memoryAddedLaunchers, type AddedLauncherSurface } from "./launchers-added.ts";
-import { checkRunLine, cleanLauncherText, MAX_COMMAND_CHARS, scanNoPrompts } from "./launcher-recipes.ts";
+import { checkRunLine, cleanLauncherText, MAX_COMMAND_CHARS, MAX_LABEL_CHARS, scanNoPrompts } from "./launcher-recipes.ts";
 import {
   clearSent,
   memorySent,
@@ -6900,6 +6900,10 @@ export async function launch(
   const besidePaneId = typeof fields.paneId === "string" ? fields.paneId.trim() : "";
   // A run may ask to open in the pane's own tab rather than a tab beside it (a chat's Run in shell).
   const split = fields.split === true;
+  // The name a run beside a pane gives the shell it opens, in the phone's words ("Run in shell"), so
+  // the pane says what it is for. A name the character rule refuses is dropped, never the run.
+  const askedLabel = besidePaneId !== "" && typeof fields.label === "string" ? cleanLauncherText(fields.label, MAX_LABEL_CHARS) : null;
+  const shellLabel = askedLabel?.ok === true ? askedLabel.text : undefined;
   const asked = askedFolder(fields.cwd, deps.home ?? homedir());
   if (asked === false) return json({ ok: false, ...apiError("launch.bad_folder") } satisfies CreateResponse, ae, 400);
   // A folder the person named must be a directory on THIS machine's disk (on a crew the member runs
@@ -6940,6 +6944,7 @@ export async function launch(
     cwd: resolvedCwd,
     besidePane,
     split,
+    shellLabel,
     requestId,
     audit,
     device,
@@ -7115,6 +7120,8 @@ async function runLaunch(
     besidePane: AgentView | undefined;
     /** Open in `besidePane`'s own tab, where the multiplexer can split a named pane; else a tab beside it. */
     split: boolean;
+    /** The name for the shell a run beside a pane opens: the new pane's, or the new tab's. */
+    shellLabel: string | undefined;
     requestId: string | undefined;
     audit: AuditLog;
     device: string | null;
@@ -7124,7 +7131,7 @@ async function runLaunch(
   },
 ): Promise<CreateResponse> {
   const { row, besidePane, cwd } = job;
-  const label = row?.label;
+  const label = (besidePane === undefined ? undefined : job.shellLabel) ?? row?.label;
   // A row or an agent started in a NEW space names the space after its folder, the way Herdr names a
   // space opened by hand, and puts its own name on the tab, as the tab path already does. Named after
   // the row, a "Claude danger" row became the name of the operator's workspace, which the phone cannot
@@ -7155,6 +7162,14 @@ async function runLaunch(
       // Swallowed: the refusal below is the answer, and a second failure would only obscure it.
     }
     return { ok: false, ...apiError("workspace.create_failed", { reason: "the split did not open beside the pane" }) };
+  }
+  if (splitting && job.shellLabel !== undefined && supportsCapability(herdr.capabilities, "renamePane")) {
+    // Best effort, as the tab rename below: an unnamed pane costs a label, never the run.
+    try {
+      await herdr.renamePane(created.paneId, job.shellLabel);
+    } catch {
+      // Swallowed: the pane exists and the line is about to be typed; the name is cosmetic.
+    }
   }
   if (folderNamed && label !== undefined && supportsCapability(herdr.capabilities, "renameTab")) {
     // Best effort: a tab left with the multiplexer's own name costs a label, never the launch.

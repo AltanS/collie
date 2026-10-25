@@ -2011,6 +2011,7 @@ interface StartRunBody {
   cwd?: string;
   paneId?: string;
   split?: true;
+  label?: string;
   requestId: string;
 }
 
@@ -2023,13 +2024,14 @@ interface StartRunBody {
  */
 export function startRun(
   line: string,
-  opts: { cwd?: string; requestId: string; besidePaneId?: string; split?: boolean },
+  opts: { cwd?: string; requestId: string; besidePaneId?: string; split?: boolean; label?: string },
   scope?: Scope,
 ): Promise<CreateResponse> {
   const body: StartRunBody = { run: line, requestId: opts.requestId };
   if (opts.cwd !== undefined) body.cwd = opts.cwd;
   if (opts.besidePaneId !== undefined) body.paneId = opts.besidePaneId;
   if (opts.split === true && opts.besidePaneId !== undefined) body.split = true;
+  if (opts.label !== undefined && opts.besidePaneId !== undefined) body.label = opts.label;
   return req<CreateResponse>(withScope("/api/launch", scope), { method: "POST", body: JSON.stringify(body) });
 }
 

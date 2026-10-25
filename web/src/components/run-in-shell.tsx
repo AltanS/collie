@@ -89,6 +89,7 @@ export function RunInShellProvider({
         requestId: ask.requestId,
         beside: { paneId: beside.paneId, workspaceId: beside.workspaceId, tabId: beside.tabId },
         split: true,
+        shellLabel: t("runInShell.button"),
       },
       scope,
     );
