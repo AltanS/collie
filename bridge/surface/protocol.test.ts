@@ -5072,6 +5072,50 @@ function omp(options: { version?: string; edit?: (profile: Profile) => Profile; 
   return { ...made, pane };
 }
 
+describe("OMP: commands that end the process are never held (omp gang 03)", () => {
+  const NEVER = "Collie does not queue this command during a turn. Send it when the turn ends.";
+
+  test("/exit, /quit, /q and /restart in a turn are refused turn_running, never held, never typed after the turn ends (18.6.1 held /exit, then omp quit)", async () => {
+    const holds = new HoldStore(join(dir, "held"));
+    for (const version of ["18.6.1", "18.12.6"]) {
+      const { pane, send, ...made } = omp({ version, holds });
+      pane.inTurn = true;
+      for (const text of ["/exit", "/quit", "/q", "/restart", "/exit now"]) {
+        const answer = await send(text, { mode: "command" });
+        expect(answer.receipt, `${version} ${text}`).toMatchObject({ outcome: "refused", reason: "turn_running", keys: [] });
+        expect(answer.detail, `${version} ${text}`).toBe(NEVER);
+      }
+      expect(holds.list(), version).toEqual([]);
+      expect(pane.keysSeen, version).toEqual([]);
+      expect(pane.queued, version).toEqual([]);
+      void made;
+    }
+  });
+
+  test("the list is data in omp.json, per spelling: a longer word is another command, and /compact is not on it", () => {
+    expect(loadProfiles().get("omp")?.keys.neverHeld).toEqual(["/exit", "/quit", "/q", "/restart"]);
+    const profile = profileFor("omp", "18.12.6", { log: () => undefined });
+    expect(neverHeldEntry("/q", profile)).toBe("/q");
+    expect(neverHeldEntry("/quote", profile)).toBeNull();
+    expect(neverHeldEntry("/quit now", profile)).toBe("/quit");
+    expect(neverHeldEntry("/exits", profile)).toBeNull();
+    expect(neverHeldEntry("/restarting", profile)).toBeNull();
+    expect(neverHeldEntry("/compact", profile)).toBeNull();
+    expect(neverHeldEntry("/goal pause", profile)).toBeNull();
+  });
+
+  test("another command in an OMP turn keeps its own refusal: only the listed spellings carry the never-held wording", async () => {
+    const { pane, send } = omp();
+    pane.inTurn = true;
+    const exit = await send("/exit", { mode: "command" });
+    expect(exit.detail).toBe(NEVER);
+    const model = await send("/model", { mode: "command" });
+    expect(model.receipt).toMatchObject({ outcome: "refused", reason: "turn_running" });
+    expect(model.detail).toBe("A command waits until the turn ends.");
+    expect(pane.keysSeen).toEqual([]);
+  });
+});
+
 describe("OMP: Ctrl+Q sends, Enter steers (M56 spec 14 review)", () => {
   test("an idle box is sent with Ctrl+Q, never Enter", async () => {
     const { pane, send } = omp();

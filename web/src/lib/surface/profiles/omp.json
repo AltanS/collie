@@ -193,6 +193,12 @@
     },
     "enterWhileRunning": "steers",
     "queueKey": "ctrl+q",
+    "neverHeld": [
+      "/exit",
+      "/quit",
+      "/q",
+      "/restart"
+    ],
     "commandsRunInTurn": [
       "/goal"
     ],
