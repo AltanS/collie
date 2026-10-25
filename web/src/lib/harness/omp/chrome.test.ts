@@ -155,6 +155,9 @@ const BOX_COMPOSER_FIXTURES = [
   "omp--v18-12-6-status-full-slash-idle--w80.txt",
   "omp--v18-6-1-status-ascii-idle--w80.txt",
   "omp--v18-6-1-status-full-slash-idle--w80.txt",
+  // Drafts the box wraps by cutting a token: a CJK run (18.6.1) and a URL wider than a row (18.12.6), 80 columns.
+  "omp--v18-6-1-draft-cjk-wrapped--w80.txt",
+  "omp--v18-12-6-draft-url-wrapped--w80.txt",
   // omp 18.6.1: a queued line under `After yield · 1`, then Stop gave it back to the box (ADR 0122).
   "omp--v18-6-1-queued-before-stop--w119.txt",
   "omp--v18-6-1-stop-returned--w119.txt",
@@ -335,6 +338,8 @@ describe("locateComposer — the real corpus, pinned so any change to the walk s
     { fixture: "omp--v18-12-6-status-full-slash-idle--w80.txt", top: 3, bottom: 4, suggestEnd: 5 },
     { fixture: "omp--v18-6-1-status-ascii-idle--w80.txt", top: 6, bottom: 7, suggestEnd: 8 },
     { fixture: "omp--v18-6-1-status-full-slash-idle--w80.txt", top: 6, bottom: 7, suggestEnd: 8 },
+    { fixture: "omp--v18-6-1-draft-cjk-wrapped--w80.txt", top: 1, bottom: 2, suggestEnd: 4, draftEnd: 4 },
+    { fixture: "omp--v18-12-6-draft-url-wrapped--w80.txt", top: 1, bottom: 2, suggestEnd: 4, draftEnd: 4 },
     // omp 18.6.1, a queued line and Stop giving it back (ADR 0122): a short screen, the box on its last row.
     { fixture: "omp--v18-6-1-queued-before-stop--w119.txt", top: 16, bottom: 17, suggestEnd: 18 },
     { fixture: "omp--v18-6-1-stop-returned--w119.txt", top: 16, bottom: 17, suggestEnd: 18 },

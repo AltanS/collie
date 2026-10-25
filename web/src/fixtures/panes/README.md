@@ -3328,3 +3328,15 @@ the box.
 | --- | --- | --- |
 | `omp--v18-12-6-ascii-symbols-session-list--w130.txt` | `popup` | 18.12.6, `/session` typed: the pointer row is `> session     Session management commands`, nine more rows under it |
 | `omp--v18-6-1-ascii-symbols-session-list--w130.txt` | `popup` | 18.6.1, the same list, status row `pi > [high] Haiku 4.5 > [D] ... >--4%----` |
+
+## Drafts the box wraps by cutting a token (captured 2026-10-25, OMP 18.6.1 and 18.12.6, omp gang 11-geometry)
+
+Typed through the rig bridge, then read from the pane at 80 columns, cut to the status row and the box. OMP wraps a draft at a
+break and drops the break. A token wider than a row, and a run of double-width cells, are cut where the row is full instead, so the
+draft has no space at that wrap. Until 1.24.1 the reader joined every wrap with a space (Clear's Restore text came back with one
+extra character).
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `omp--v18-6-1-draft-cjk-wrapped--w80.txt` | `draft` | 67 CJK characters, no spaces: the first row ends one cell short of the width |
+| `omp--v18-12-6-draft-url-wrapped--w80.txt` | `draft` | a 140-character URL: the first row is full, the cut is inside the token |

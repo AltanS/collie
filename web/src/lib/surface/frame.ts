@@ -13,7 +13,7 @@
 // comes from the profile. The same rows always give the same frame, and the screen width is read
 // from nothing but the rows.
 
-import { displayWidth } from "../text-width";
+import { displayWidth, widePieces } from "../text-width";
 import { anyListRow, insideList, listedBottom, openListUnder } from "./command-list";
 import { readAboveNotice } from "./notice";
 import type { FrameAnchor, Profile } from "./profile";
@@ -431,18 +431,75 @@ function argumentHintStart(row: FrameRow, text: string, holeStart: number, holeE
   return entries.includes(text.slice(holeStart, last.at).trim()) ? last.at : null;
 }
 
+/** The last and the first whitespace-separated token of a text; the text itself when it holds none. */
+const lastToken = (text: string): string => text.slice(text.search(/\S+$/u));
+const firstToken = (text: string): string => text.slice(0, text.search(/\s|$/u));
+
+/** Whether a text ends, or starts, on a double-width cell (a CJK character, a wide emoji). */
+const endsWide = (text: string): boolean => widePieces(text).at(-1)?.wide === true;
+const startsWide = (text: string): boolean => widePieces(text)[0]?.wide === true;
+
+/** No terminal is narrower than this; a read of narrower rows is a hand-cut one. */
+const MIN_WRAP_WIDTH = 20;
+
 /**
- * The draft as one line: each piece's text joined with one space, with the profile's ghost text cut off
- * the end of the last piece ({@link hintStart}).
+ * What the rows of a soft-wrapped draft say about the screen they were drawn on: the width every row was
+ * padded to, and the cells in front of the draft on the narrowest row (the prompt glyph or the indent).
+ * Null when the draft's rows are not padded to the screen's width, so a hand-cut or trimmed read joins as it always did.
+ * Rows within two cells of the width count as full width, because a harness may measure a glyph one
+ * cell differently from {@link displayWidth}.
+ */
+function paddedRows(texts: readonly string[], pieces: readonly DraftPiece[]): { readonly width: number; readonly indent: number } | null {
+  if (pieces.length < 2) return null;
+  const widths = pieces.map((piece) => displayWidth(texts[piece.row]!));
+  // The screen's width is its widest row: a capture pads every row, the draft's too. Rows that are as
+  // short as the draft is long (a screen with its trailing spaces cut) say nothing about a full row.
+  const width = Math.max(...texts.map(displayWidth));
+  if (width < MIN_WRAP_WIDTH || widths.some((w) => w < width - 2)) return null;
+  return { width, indent: Math.min(...pieces.map((piece) => displayWidth(texts[piece.row]!.slice(0, piece.start)))) };
+}
+
+/**
+ * Whether the soft wrap between two rows of a draft broke inside a token, so the draft has no space there.
+ *
+ * A harness wraps a draft at a break and drops the break: a row that ends at a word ends short of the
+ * width, or exactly on it when the word fills it. It wraps inside a token in two cases, and each leaves a
+ * mark on the screen:
+ * - a token wider than a row (a URL, a long path) is cut where the row is full. The token's end on this
+ *   row and its start on the next are together wider than the room a row has. A row that is full where a
+ *   word ends has two short words at its edge, which are not;
+ * - a run with double-width cells (CJK text has no spaces) is cut at the last cell that fits, so the row
+ *   ends one cell short at most, and both sides of the cut are double-width cells. A newline typed
+ *   after a CJK line that fills the row to within a cell, ahead of a narrow glyph, keeps its space.
+ * The join adds a space unless one of these holds. A row's end counts as full against the width of the
+ * padded rows ({@link paddedRows}); a row with a right border or a margin is never full, and joins as
+ * before.
+ */
+function brokeToken(texts: readonly string[], rect: { readonly width: number; readonly indent: number }, before: DraftPiece, after: DraftPiece, left: string, right: string): boolean {
+  if (after.row !== before.row + 1) return false;
+  const slack = rect.width - displayWidth(texts[before.row]!.slice(0, before.end));
+  const end = lastToken(left);
+  const start = firstToken(right);
+  if (slack === 0 && displayWidth(end) + displayWidth(start) > rect.width - rect.indent) return true;
+  return slack <= 1 && endsWide(end) && startsWide(start);
+}
+
+/**
+ * The draft as one line: each piece's text joined with one space, unless the wrap between two rows broke
+ * inside a token ({@link brokeToken}), with the profile's ghost text cut off the end of the last piece
+ * ({@link hintStart}). A draft typed with newlines has rows that end short, and keeps a space for each.
  */
 function draftText(rows: readonly FrameRow[], texts: readonly string[], pieces: readonly DraftPiece[], hint: ReadonlySet<string> | null): string {
   const last = pieces[pieces.length - 1];
   const ghost = last === undefined || hint === null ? null : hintStart(rows[last.row]!, last, hint);
-  return pieces
-    .map((piece) => texts[piece.row]!.slice(piece.start, piece === last && ghost !== null ? ghost : piece.end).trim())
-    .filter((part) => part.length > 0)
-    .join(" ")
-    .trim();
+  const parts = pieces.map((piece) => ({ piece, text: texts[piece.row]!.slice(piece.start, piece === last && ghost !== null ? ghost : piece.end).trim() })).filter((part) => part.text.length > 0);
+  const rect = paddedRows(texts, parts.map((part) => part.piece));
+  let out = "";
+  for (const [i, part] of parts.entries()) {
+    const before = parts[i - 1];
+    out += before === undefined ? part.text : `${rect !== null && brokeToken(texts, rect, before.piece, part.piece, before.text, part.text) ? "" : " "}${part.text}`;
+  }
+  return out.trim();
 }
 
 /** The statusline run and the footer under the bottom edge (`Frame.volatile`). */
