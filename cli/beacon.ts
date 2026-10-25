@@ -6,6 +6,7 @@ import { HOOK_TARGET_FILE, HOOK_TARGETS_MAX, hookTargetsDir, parseHookTarget } f
 import { edgeModelOf } from "../bridge/beacon/parse.ts";
 import { parseProcStartTime, procStatPath } from "../bridge/beacon/liveness.ts";
 import { HOST } from "../bridge/host.ts";
+import type { ProcessProbe } from "../bridge/proc-probe.ts";
 import {
   BEACON_SCHEMA_VERSION,
   EDGE_SCHEMA_VERSION,
@@ -278,18 +279,25 @@ export interface BeaconEmitDeps {
   readonly now?: () => number;
   /** This process's uid: a spool or registry folder another user owns is not written into. Absent off POSIX. */
   readonly uid?: number | undefined;
+  /**
+   * The process probe (bridge/proc-probe.ts): how the pid's start time is read. Production passes the
+   * host's own (`/proc` on Linux, libproc on macOS), the same one the bridge's reader uses. Absent: the
+   * Linux `/proc/<pid>/stat` read through {@link BeaconEmitDeps.files}, which is what the fixtures feed.
+   */
+  readonly probe?: ProcessProbe | undefined;
 }
 
 /**
- * The pid's start time, from the ONE extra file read this verb allows itself.
+ * The pid's start time, from the ONE extra read this verb allows itself.
  *
  * It is not optional in the record (`BeaconRecord.pidStartTime`) and it must not be faked: a beacon
  * carrying a start time no probe will ever return reads as EXPIRED for its whole life, which would
  * present a working agent as a dead one. So an unreadable start time means NO BEACON — the reader's
- * honest answer to an absent file is already the right one. In practice that is every non-Linux host,
- * because the alternatives there are all subprocesses and `SessionEnd` has 1.5 s.
+ * honest answer to an absent file is already the right one. The unit is the probe's own, and the
+ * reader (`bridge/beacon-io.ts`) asks the same probe, so the two cannot disagree.
  */
-export function readPidStartTime(files: Files, pid: number): number | null {
+export function readPidStartTime(files: Files, pid: number, probe?: ProcessProbe): number | null {
+  if (probe !== undefined) return probe.startTimeOf(pid);
   const text = files.read(procStatPath(pid));
   return text === null ? null : parseProcStartTime(text);
 }
@@ -346,7 +354,7 @@ function cwdOf(payload: JsonObject): string | null {
 const NOTIFICATION_TYPE = /^[a-z_]{1,64}$/u;
 
 /** What the registry walk needs: the emitter and the permission hold (`collie beacon hold`) share it. */
-export type EdgeTargetDeps = Pick<BeaconEmitDeps, "ctx" | "files" | "uid">;
+export type EdgeTargetDeps = Pick<BeaconEmitDeps, "ctx" | "files" | "uid" | "probe">;
 
 /**
  * Write one edge file into a state dir's spool (M56 spec 11): a temp name, then a rename, so the
@@ -412,7 +420,7 @@ export function edgeStateDirs(deps: EdgeTargetDeps): string[] {
       const path = join(registry, name);
       const target = parseHookTarget(deps.files.read(path) ?? "");
       if (target === null) continue;
-      const start = readPidStartTime(deps.files, target.pid);
+      const start = readPidStartTime(deps.files, target.pid, deps.probe);
       if (start === null || (target.pidStartTime !== null && start !== target.pidStartTime)) {
         deps.files.remove(path);
         continue;
@@ -473,7 +481,7 @@ export async function cmdBeaconEmit(deps: BeaconEmitDeps): Promise<number> {
     if (hold !== undefined && payload.hook_event_name === hold.toolEvent) {
       // The context use, before the edge: it needs no pid. A subagent's tool call is not the session's turn.
       if (payload.agent_id === undefined || payload.agent_id === null) takeReading(deps, payload, stateDirs);
-      const pidStartTime = readPidStartTime(deps.files, deps.agentPid);
+      const pidStartTime = readPidStartTime(deps.files, deps.agentPid, deps.probe);
       if (pidStartTime === null) return EXIT.OK;
       const tool = readField(payload, "tool_name", TOOL_FIELD);
       const agent = readField(payload, "agent_id", TOOL_FIELD);
@@ -519,7 +527,7 @@ export async function cmdBeaconEmit(deps: BeaconEmitDeps): Promise<number> {
     if (registration.event === "Stop") takeReading(deps, payload, stateDirs);
     if (registration.event === "SessionStart") takeStart(deps, payload, stateDirs);
 
-    const pidStartTime = readPidStartTime(deps.files, deps.agentPid);
+    const pidStartTime = readPidStartTime(deps.files, deps.agentPid, deps.probe);
     if (pidStartTime === null) return EXIT.OK;
     const now = (deps.now ?? Date.now)();
 

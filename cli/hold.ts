@@ -2,7 +2,8 @@ import { once } from "node:events";
 import { createConnection } from "node:net";
 import { dirname } from "node:path";
 import { holdSocketPath } from "../bridge/beacon/paths.ts";
-import { parseProcStartTime, procStatPath } from "../bridge/beacon/liveness.ts";
+import type { ProcessProbe } from "../bridge/proc-probe.ts";
+import type { HoldRun } from "./codex-broker.ts";
 import type { JsonObject } from "../bridge/json.ts";
 import { asJsonString, parseJsonObject } from "../web/src/lib/json.ts";
 import {
@@ -18,7 +19,7 @@ import {
   type HoldRequest,
 } from "../web/src/lib/surface/hold.ts";
 import { loadProfiles } from "../web/src/lib/surface/profile.ts";
-import { BEACON_HARNESS, edgeStateDirs, privateDir, readEnvMarkers, type EdgeTargetDeps } from "./beacon.ts";
+import { BEACON_HARNESS, edgeStateDirs, privateDir, readEnvMarkers, readPidStartTime, type EdgeTargetDeps } from "./beacon.ts";
 import type { CliContext } from "./context.ts";
 import { EXIT } from "./io.ts";
 import type { Files } from "./sys.ts";
@@ -83,6 +84,8 @@ export interface HoldDeps {
   readonly agentPid: number;
   /** The owner uid the registry folder must have; undefined skips the check (Windows, tests). */
   readonly uid?: number;
+  /** The process probe the start time is read through (bridge/proc-probe.ts). Absent: `/proc` through {@link HoldDeps.files}. */
+  readonly probe?: ProcessProbe;
   /** The socket paths of every live bridge. Defaults to {@link holdSocketPaths}. */
   sockets?(): readonly string[];
   /** Connect within `ms`, or null. Never throws. */
@@ -94,6 +97,9 @@ export interface HoldDeps {
   readonly after?: (ms: number, run: () => void) => () => void;
 }
 
+/** What putting a request on the bridges takes, apart from reading the hook's own input. */
+export type HoldWireDeps = Pick<HoldDeps, "ctx" | "files" | "uid" | "probe" | "sockets" | "connect" | "after">;
+
 /** The request line for a payload, or null when this hook has nothing to hold. */
 export function holdRequestOf(deps: HoldDeps, payload: JsonObject, hold: HoldProfile): HoldRequest | null {
   if (payload.hook_event_name !== hold.event) return null;
@@ -101,8 +107,7 @@ export function holdRequestOf(deps: HoldDeps, payload: JsonObject, hold: HoldPro
   if (tool === undefined || !/^[\x20-\x7e]{1,128}$/u.test(tool)) return null;
   const markers = readEnvMarkers(deps.ctx.env);
   if (markers.length === 0) return null;
-  const stat = deps.files.read(procStatPath(deps.agentPid));
-  const pidStartTime = stat === null ? null : parseProcStartTime(stat);
+  const pidStartTime = readPidStartTime(deps.files, deps.agentPid, deps.probe);
   if (pidStartTime === null) return null;
   const agentRaw = asJsonString(payload.agent_id);
   const agent = agentRaw !== undefined && /^[\x20-\x7e]{1,128}$/u.test(agentRaw) ? agentRaw : null;
@@ -131,13 +136,13 @@ export function holdRequestOf(deps: HoldDeps, payload: JsonObject, hold: HoldPro
 }
 
 /** Connect to every socket at once, each with its own limit. The ones that answered, in order. */
-async function connectAll(deps: HoldDeps, paths: readonly string[]): Promise<HoldSocket[]> {
+export async function connectAll(deps: Pick<HoldDeps, "connect">, paths: readonly string[]): Promise<HoldSocket[]> {
   const sockets = await Promise.all(paths.map((path) => deps.connect(path, HOLD_CONNECT_MS).catch(() => null)));
   return sockets.filter((socket): socket is HoldSocket => socket !== null);
 }
 
 /** Wait for the first decision from any socket, or for all of them to close, or for the limit. */
-function firstDecision(deps: HoldDeps, sockets: readonly HoldSocket[], limitMs: number): Promise<{ decision: HoldDecision; from: HoldSocket } | null> {
+export function firstDecision(deps: Pick<HoldDeps, "after">, sockets: readonly HoldSocket[], limitMs: number): Promise<{ decision: HoldDecision; from: HoldSocket } | null> {
   return new Promise((resolve) => {
     let open = sockets.length;
     let done = false;
@@ -204,6 +209,63 @@ export async function cmdBeaconHold(deps: HoldDeps): Promise<number> {
       }
     }
   }
+}
+
+/**
+ * One request held on every live bridge, as a run the permission broker can stand down (cli/codex-broker.ts).
+ * The same wire as {@link cmdBeaconHold}: the request line goes to each socket, the first decision wins,
+ * the other bridges are told "answered elsewhere". Differences: `cancel()` stands every bridge down at
+ * once (another voice answered first), and a decision that arrives after that is never returned.
+ * `settled` is null for every way of ending with no decision. It never rejects and always closes its sockets.
+ */
+export function startHoldRun(deps: HoldWireDeps, request: HoldRequest, limitMs: number): HoldRun {
+  let cancelled = false;
+  let sockets: HoldSocket[] = [];
+  const line = `${JSON.stringify({ done: "elsewhere" })}\n`;
+  const closeAll = (): void => {
+    for (const socket of sockets) {
+      try {
+        socket.close();
+      } catch {
+        // A socket that will not close is a socket the process exit closes.
+      }
+    }
+  };
+  const settled = (async (): Promise<HoldDecision | null> => {
+    try {
+      const paths = [...new Set(deps.sockets?.() ?? holdSocketPaths(deps))].filter((path) => holdSocketSafe(deps, path));
+      if (paths.length === 0) return null;
+      sockets = await connectAll(deps, paths);
+      if (sockets.length === 0 || cancelled) return null;
+      for (const socket of sockets) socket.send(`${JSON.stringify(request)}\n`);
+      // A screen-only or cut request: the bridges take the line as an edge. Nothing is held.
+      if (!request.hold) return null;
+      const won = await firstDecision(deps, sockets, limitMs);
+      if (won === null || cancelled) return null;
+      for (const socket of sockets) if (socket !== won.from) socket.send(line);
+      return won.decision;
+    } catch {
+      return null;
+    } finally {
+      // A winner's sockets close after the note to the others has been written; a cancel already wrote its own.
+      closeAll();
+    }
+  })();
+  return {
+    settled,
+    cancel() {
+      if (cancelled) return;
+      cancelled = true;
+      for (const socket of sockets) {
+        try {
+          socket.send(line);
+        } catch {
+          // Gone already.
+        }
+      }
+      closeAll();
+    },
+  };
 }
 
 /** A real socket connection through `node:net`, or null when it does not accept within `ms`. */
