@@ -5298,6 +5298,20 @@ describe("OMP runs `/goal` at once in a turn (keys.commandsRunInTurn, lab 18.12.
     expect(pane.keysSeen).toEqual([]);
   });
 
+  test("an OMP 18.12.6 approval panel on screen is a lifted ask: a plain send and a command are refused not_free (not unconfirmed), nothing typed", async () => {
+    const screen = readFileSync(join(import.meta.dir, "../../web/src/fixtures/panes/omp--v18-12-6-approval-bash--w120.txt"), "utf8").replace(/\r\n/gu, "\n");
+    const pane = new FakePane("generic");
+    pane.fixed = screen;
+    const { send } = rig({ pane, harness: "omp", version: "18.12.6" });
+    const plain = await send("hello while asking");
+    // The Surface reads the dialog as an ask, where it read `unreadable` and refused `unconfirmed` before.
+    expect(plain.receipt).toMatchObject({ outcome: "refused", reason: "not_free", keys: [], saw: { modal: "ask" } });
+    const command = await send("/goal pause", { mode: "command" });
+    expect(command.receipt).toMatchObject({ outcome: "refused", reason: "not_free", keys: [] });
+    expect(pane.calls).toEqual([]);
+    expect(pane.keysSeen).toEqual([]);
+  });
+
   test("the shipped Claude profile has no in-turn command list: /goal pause matches nothing", () => {
     const log = { log: () => undefined };
     expect(runsInTurnEntry("/goal pause", profileFor("claude", "2.1.301", log))).toBeNull();

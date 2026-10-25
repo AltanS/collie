@@ -126,6 +126,9 @@ const LIFTED = new Set([
   "omp--v18-4-approval-write-long.txt",
   "omp--v18-4-approval-write-moved.txt",
   "omp--v18-4-approval-write.txt",
+  // omp 18.12.6's divided approval panel (approval.ts, the second shape): lifted for `bash`.
+  "omp--v18-12-6-approval-bash--w120.txt",
+  "omp--v18-12-6-approval-bash-later--w120.txt",
   // The compact model picker's session state is DERIVED: every `omp--v18-4-switch*` capture except the
   // declined states listed in DECLINED_SWITCH. A new capture of it lifts by default, and the conformance
   // suite fails it loudly if it does not, which is the moment a person files it as declined with a reason.
@@ -447,6 +450,8 @@ describe("the omp corpus", () => {
     "omp--v18-12-2-goal-resume-typed--w119.txt",
     "omp--v18-12-2-goal-turn-running--w119.txt",
     "omp--v18-12-2-goal-turn-running-probe--w119.txt",
+    "omp--v18-12-6-approval-bash--w120.txt",
+    "omp--v18-12-6-approval-bash-later--w120.txt",
     "omp--v18-12-band-idle--w130.txt",
     "omp--v18-12-nerd-band-done--w130.txt",
     "omp--v18-12-nerd-band-done--w80.txt",

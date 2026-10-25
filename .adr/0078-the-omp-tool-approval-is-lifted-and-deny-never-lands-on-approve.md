@@ -146,3 +146,48 @@ key sequence, the card carries the subject, and every uncaptured shape declines.
 - **Revisit** when omp passes a timeout to the tool approval, when a capture shows another tool's
   body, a third row, a body taller than the pane or another preset, or when omp changes what Enter
   or Escape mean on this dialog.
+
+## Amendment, 2026-10-25: omp 18.12.6 draws a third row and a new footer, and its list wraps
+
+omp 18.12.6 rebuilt the dialog on its overlay panel (`approval-dialog.ts`, lab capture
+`omp--v18-12-6-approval-bash--w120.txt`). The title is the same. The body is one compact row,
+`Command: …`, with no blank spacer rows. Under it come `Approve`, a new `Approve bash for this session`
+(`Approve <tool> for this session`, when the call may be granted) and `Deny`, then a divider and the
+footer `↑/↓ choose · ⏎ select · Ctrl+⏎/Ctrl+Q approve · ⎋ deny · Ctrl+O details · type to deny and steer`.
+The composer's band stays drawn under the box and takes typing, where a typed character denies the call.
+The first grammar required exactly `Approve` then `Deny` and the old footer, so on 18.12.6 the Surface
+read `modal: unreadable`, the phone had no card, and every send was refused `unconfirmed`. This is
+the case the "Revisit" line named: a third row and a changed footer.
+
+`approval.ts` now reads a second shape beside the first; both stand. The points of 0078 that change in
+the second shape:
+
+- **The card carries the third option**, `Approve bash for this session`, in the screen's own words and
+  its own position, a walk from the pointer like Approve. It grants every later call of that tool for
+  the rest of the session, which is why it is a button of its own and never the default.
+- **Deny is `Escape`, not a walk.** The panel's list wraps (`(choice + delta + count) % count`), so
+  point 3's clamped last row is gone. `Down, Enter` from Deny would approve, and `Up, Enter` would
+  approve for the session. `⎋ deny` is named by the footer and denies from any row, so a Deny tap can
+  never approve whatever a desk arrow does between the read and the send. Point 3's guarantee holds by a
+  different route. The model does not declare `clampedEnds`, since `Up, Enter` on the first row would
+  deny. There is no separate Cancel button: it would be the same key.
+- **An Approve or session tap commits with a bare `Enter` on a verified read** (ADR 0080). The window is
+  the milliseconds between the bridge's read and its send; a desk arrow there can move an approval to
+  the neighbouring row, never a denial to an approval.
+- **The body is a summary, so the card declines a row that ends in `…`.** omp hands the dialog the
+  compact prompt: each detail's first line, ` …` after it when there were more lines, every row clipped
+  to the box. A cut row may hide part of the command, so only a whole `Command:` row lifts. `write` is
+  declined on 18.12.6 (its row is always `Path: … · Content: <first row> …`, no capture holds one) and
+  keeps the Escape card.
+- **Fail closed as before:** one exact footer (the keycaps follow the install, so any other dialect
+  declines), a pointer on exactly one row, a session row naming the title's tool, a title with no
+  countdown, and under the border nothing but the composer's band and its empty prompt row. A draft in
+  the composer relabels Deny `Deny and send message`, which declines. The `always-ask-cached` grant rows,
+  a PgUp/PgDn scroll hint and the nerd preset decline. A lifted panel also takes the composer away from
+  `locateComposer`, since the box under it is not an input while the panel is up.
+
+The Deny-on-the-last-row and clamp facts of 0078 stay true for omp 18.1.17 to 18.6.1. Proven in the
+lab by raw keys on 18.12.6: Enter approves, Escape denies, Down then Enter approves for the session.
+Not probed live: the moved-pointer screens (derived in tests from the capture and the source), a
+`Reason:` row, and the two-row list of a call that cannot be granted.
+

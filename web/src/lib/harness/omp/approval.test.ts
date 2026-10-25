@@ -8,6 +8,7 @@ import { promptsEqual } from "../prompt-model";
 import { detectApproval, detectApprovalRegion } from "./approval";
 import { ompAdapter, ompBuildBlocks } from "./index";
 import { ompModalOnScreen } from "./modal";
+import { hasComposer as hasBoxComposer, locateComposer } from "./chrome";
 
 // omp's tool-approval dialog (.adr/0078). Approve runs a shell command or writes a file, so these tests
 // pin three things above all: what the card shows of the subject, that every key a tap sends is one the
@@ -61,6 +62,9 @@ const LIFTED = [
   "omp--v18-4-approval-write-moved.txt",
   "omp--v18-4-approval-write.txt",
 ];
+
+// omp 18.12.6's divided panel, the second shape (see the header of approval.ts).
+const DIVIDED = ["omp--v18-12-6-approval-bash--w120.txt", "omp--v18-12-6-approval-bash-later--w120.txt"];
 
 describe("omp 18.4.10 (`unicode` preset) lifts as Approve, Deny, Cancel", () => {
   it("approval-bash: the pointer on Approve, the command on the card", () => {
@@ -535,10 +539,226 @@ describe("tail anchoring", () => {
 });
 
 describe("the grammar claims nothing else in the corpus", () => {
-  it("lifts exactly the eight approval captures, out of every capture in the corpus", () => {
+  it("lifts exactly the ten approval captures, out of every capture in the corpus", () => {
     const all = readdirSync(PANES_DIR).filter((f) => f.endsWith(".txt"));
     expect(all.length).toBeGreaterThan(300);
     const lifted = all.filter((name) => detectApproval(load(name)) !== null);
-    expect(lifted.toSorted()).toEqual(LIFTED);
+    expect(lifted.toSorted()).toEqual([...LIFTED, ...DIVIDED].toSorted());
+  });
+});
+
+// ── omp 18.12.6: the divided panel (the second shape, approval.ts header) ─────────────────────────────
+
+const DIVIDED_FOOTER = "↑/↓ choose · ⏎ select · Ctrl+⏎/Ctrl+Q approve · ⎋ deny · Ctrl+O details · type to deny and steer";
+const BAND = " ⠙ 4s > ◒ Haiku 4.5 > 📁 …/project > $0.02 ▶──6%──────────────────────────┃─────200K─";
+
+/** The panel as omp 18.12.6 draws it, for the shapes no capture holds: the same rows as the capture. */
+function panel({
+  title = "Allow tool: bash",
+  body = ["Command: echo gang-test"],
+  choices = ["❯ Approve", "  Approve bash for this session", "  Deny"],
+  footer = DIVIDED_FOOTER,
+  under = [BAND, "╰─"],
+  width = 120,
+}: { title?: string; body?: string[]; choices?: string[]; footer?: string; under?: string[]; width?: number } = {}): string[] {
+  const row = (text: string) => `│ ${text.padEnd(width - 3)}│`;
+  return [
+    "transcript above the panel",
+    `╭─ ${title} ${"─".repeat(Math.max(1, width - title.length - 5))}╮`,
+    ...body.map(row),
+    ...choices.map(row),
+    `├${"─".repeat(width - 2)}┤`,
+    row(footer),
+    `╰${"─".repeat(width - 2)}╯`,
+    ...under,
+  ];
+}
+
+describe("omp 18.12.6 (`unicode` preset) lifts the divided panel as Approve, the session row and Deny", () => {
+  it.each(DIVIDED)("%s: the three rows, the command on the card, Deny as Escape", (name) => {
+    const model = detectApproval(load(name))!;
+    expect(model.family).toBe("permission");
+    expect(model.caption).toBe("Allow tool: bash");
+    expect(model.question).toBe("Allow tool: bash\nCommand: echo gang-test");
+    expect(model.options).toEqual([
+      { label: "Approve", description: "Command: echo gang-test", keys: ["Enter"], keyLabel: "❯" },
+      { label: "Approve bash for this session", keys: ["Down", "Enter"], keyLabel: "" },
+      { label: "Deny", keys: ["Escape"], keyLabel: "Esc" },
+    ]);
+  });
+
+  it.each(DIVIDED)("%s: the card starts at the title and the build keeps the transcript above as raw", (name) => {
+    const lines = load(name);
+    const region = detectApprovalRegion(lines)!;
+    expect(lineText(lines[region.startLine]!)).toMatch(/^╭─ Allow tool: bash ─+╮$/);
+    const blocks = ompBuildBlocks(lines);
+    expect(blocks.map((b) => b.kind)).toEqual(["raw", "prompt-select"]);
+  });
+
+  it.each(DIVIDED)("%s: the list wraps, so the model never declares clampedEnds", (name) => {
+    expect(detectApproval(load(name))!.clampedEnds).toBeUndefined();
+  });
+
+  it("the pointer on the session row: Approve walks Up, the session row is a bare Enter, Deny stays Escape", () => {
+    const model = detectApproval(fromTexts(panel({ choices: ["  Approve", "❯ Approve bash for this session", "  Deny"] })))!;
+    expect(model.options.map((o) => [o.label, o.keys, o.keyLabel])).toEqual([
+      ["Approve", ["Up", "Enter"], ""],
+      ["Approve bash for this session", ["Enter"], "❯"],
+      ["Deny", ["Escape"], "Esc"],
+    ]);
+  });
+
+  it("the pointer on Deny: Approve walks Up twice, the session row Up once, Deny is still Escape", () => {
+    const model = detectApproval(fromTexts(panel({ choices: ["  Approve", "  Approve bash for this session", "❯ Deny"] })))!;
+    expect(model.options.map((o) => o.keys)).toEqual([["Up", "Up", "Enter"], ["Up", "Enter"], ["Escape"]]);
+  });
+
+  it("a call that cannot be granted for the session has two rows (source: `session` is optional)", () => {
+    const model = detectApproval(fromTexts(panel({ choices: ["❯ Approve", "  Deny"] })))!;
+    expect(model.options.map((o) => [o.label, o.keys])).toEqual([
+      ["Approve", ["Enter"]],
+      ["Deny", ["Escape"]],
+    ]);
+  });
+
+  it("a Reason row above the command shows on the card", () => {
+    const model = detectApproval(fromTexts(panel({ body: ["Reason: matched a config pattern", "Command: rm -rf build"] })))!;
+    expect(model.question).toBe("Allow tool: bash\nReason: matched a config pattern\nCommand: rm -rf build");
+    expect(model.options[0]!.description).toBe("Reason: matched a config pattern ↵ Command: rm -rf build");
+  });
+
+  it("the pointer moves the signature but not the coreSignature, and a different command moves both", () => {
+    const a = detectApproval(fromTexts(panel()))!;
+    const moved = detectApproval(fromTexts(panel({ choices: ["  Approve", "❯ Approve bash for this session", "  Deny"] })))!;
+    expect(a.signature).not.toBe(moved.signature);
+    expect(a.coreSignature).toBe(moved.coreSignature);
+    expect(promptsEqual(a, moved)).toBe(false);
+    const other = detectApproval(fromTexts(panel({ body: ["Command: echo something-else"] })))!;
+    expect(other.coreSignature).not.toBe(a.coreSignature);
+  });
+
+  it("the composer's band under the panel stays out of the signature: it ticks", () => {
+    const a = detectApproval(fromTexts(panel()))!;
+    const b = detectApproval(fromTexts(panel({ under: [BAND.replace("4s", "9s"), "╰─"] })))!;
+    expect(promptsEqual(a, b)).toBe(true);
+  });
+
+  it("no band at all under the border lifts too (a short read)", () => {
+    expect(detectApproval(fromTexts(panel({ under: [] })))).not.toBeNull();
+  });
+
+  it("the 18.4.10 and 18.1.17 shapes still lift beside it, each as before", () => {
+    expect(detectApproval(load("omp--v18-4-approval-bash.txt"))!.options.map((o) => o.label)).toEqual(["Approve", "Deny", "Cancel"]);
+    expect(detectApproval(load("omp--approval-bash.txt"))!.options.map((o) => o.label)).toEqual(["Approve", "Deny", "Cancel"]);
+  });
+});
+
+describe("the divided panel declines everything it was not built against", () => {
+  const declines = (rows: string[]) => expect(detectApproval(fromTexts(rows))).toBeNull();
+
+  it("the unmodified synthetic panel is the capture's shape (the controls below start from a lifting screen)", () => {
+    expect(detectApproval(fromTexts(panel()))).not.toBeNull();
+  });
+
+  it.each([
+    ["a nerd preset footer", "up/down choose · enter select · Ctrl+Enter/Ctrl+Q approve · esc deny · Ctrl+O details · type to deny and steer"],
+    ["a rebound approve key", DIVIDED_FOOTER.replace("Ctrl+Q", "Ctrl+Y")],
+    ["a footer that scrolls", `${DIVIDED_FOOTER} · PgUp/PgDn scroll`],
+    ["a footer with a draft in the composer", "⏎ deny and send · Ctrl+⏎/Ctrl+Q approve · ⎋ deny · Ctrl+O details"],
+    ["the first shape's footer", UNICODE_FOOTER],
+  ])("%s", (_name, footer) => declines(panel({ footer })));
+
+  it("a draft in the composer relabels Deny and moves the pointer onto it", () => {
+    declines(panel({ choices: ["  Approve", "  Approve bash for this session", "❯ Deny and send message"] }));
+  });
+
+  it("a draft in the composer shows under the panel", () => {
+    declines(panel({ under: [BAND, "╰─ please check the build"] }));
+  });
+
+  it.each([
+    ["an always-ask-cached grant row", ["  Remember across sessions", "  Approve Directory: ~/src", "❯ Approve Once", "  Deny"]],
+    ["a session row naming another tool", ["❯ Approve", "  Approve write for this session", "  Deny"]],
+    ["a session row with no Approve above it", ["  Approve bash for this session", "❯ Deny"]],
+    ["a fourth row", ["❯ Approve", "  Approve bash for this session", "  Approve all", "  Deny"]],
+    ["two pointers", ["❯ Approve", "❯ Approve bash for this session", "  Deny"]],
+    ["no pointer", ["  Approve", "  Approve bash for this session", "  Deny"]],
+    ["Deny relabelled", ["❯ Approve", "  Approve bash for this session", "  Reject"]],
+    ["the nerd pointer", ["\u{F054} Approve", "  Approve bash for this session", "  Deny"]],
+  ])("%s", (_name, choices) => declines(panel({ choices })));
+
+  it.each([
+    ["a write", "Allow tool: write", ["Path: /tmp/a.txt · Content: hello …"]],
+    ["an edit", "Allow tool: edit", ["Command: x"]],
+    ["a title with a countdown", "Allow tool: bash (27s)", ["Command: echo hi"]],
+  ])("%s", (_name, title, body) => declines(panel({ title, body })));
+
+  it.each([
+    ["a command cut to the box", ["Command: echo a-very-long-command-that-omp-clipped…"]],
+    ["a command with more lines (omp's ` …`)", ["Command: for i in 1 2 3; do …"]],
+    ["a command that is a space and an ellipsis", ["Command: ls …"]],
+    ["a row that is not a command", ["echo hi"]],
+    ["a Reason row that was cut", ["Reason: a long reason that omp cut to the box…", "Command: ls"]],
+    ["two commands", ["Command: ls", "Command: pwd"]],
+    ["a Reason alone", ["Reason: because"]],
+    ["three body rows", ["Reason: a", "Command: b", "Path: c"]],
+    ["omp's own elision mark", ["Command: echo […4000ch elided…]"]],
+    ["a zero-width space", ["Command: ls​-la"]],
+    ["a right-to-left override", ["Command: ls ‮fdp.txt"]],
+  ])("%s", (_name, body) => declines(panel({ body })));
+
+  it("no body row at all", () => declines(panel({ body: [] })));
+
+  it("no divider, or a blank row where the first shape keeps its own", () => {
+    const rows = panel();
+    declines(rows.map((r) => (r.startsWith("├") ? `│${" ".repeat(118)}│` : r)));
+  });
+
+  it.each([
+    ["a shell prompt", ["user@host:~$ "]],
+    ["a band with nothing after it", [BAND]],
+    ["an empty prompt row without a band", ["╰─"]],
+    ["a band, the prompt row and a third row", [BAND, "╰─", "stray"]],
+    ["a pi composer rule", ["────────────────────────────────"]],
+  ])("under the border: %s declines", (_name, under) => declines(panel({ under })));
+
+  it("a panel scrolled up with ordinary output below it declines", () => {
+    declines([...panel({ under: [] }), "● Ran the command", "  ⎿  done"]);
+  });
+
+  it("two panels on one screen lift only the bottom one", () => {
+    const both = fromTexts([...panel({ body: ["Command: rm -rf /tmp/old"], under: [] }), ...panel()]);
+    const model = detectApproval(both)!;
+    expect(model.question).toContain("echo gang-test");
+    expect(model.question).not.toContain("rm -rf");
+  });
+
+  it("trailing blank rows below the band do not move the tail", () => {
+    expect(detectApproval(fromTexts([...panel(), "", "   ", ""]))).not.toBeNull();
+  });
+
+  it("a panel narrower than the footer cannot lift: the footer is one exact string", () => {
+    declines(panel({ footer: DIVIDED_FOOTER.slice(0, 60) }));
+  });
+});
+
+describe("a lifted panel owns the keyboard even though the composer stays mounted under it", () => {
+  const screens = DIVIDED.map((name) => [name, load(name)] as const);
+
+  it.each(screens)("%s: no composer, no reply path, no draft, no binding region", (_name, lines) => {
+    expect(locateComposer(lines)).toBeNull();
+    expect(hasBoxComposer(lines)).toBe(false);
+    expect(ompAdapter.composerReady!(lines)).toBe(false);
+    expect(ompAdapter.composerPrompt!(lines)).toBeNull();
+  });
+
+  it("the same band with the panel gone is a composer again", () => {
+    const lines = load("omp--v18-12-band-idle--w130.txt");
+    expect(ompAdapter.composerReady!(lines)).toBe(true);
+  });
+
+  it("a panel the grammar declines (a draft in the composer) leaves the old verdict alone", () => {
+    const lines = fromTexts(panel({ under: [BAND, "╰─ please check the build"] }));
+    expect(detectApproval(lines)).toBeNull();
   });
 });

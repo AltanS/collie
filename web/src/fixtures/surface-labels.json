@@ -4136,6 +4136,16 @@
    "version": "18.12.2",
    "state": "draft"
   },
+  "omp--v18-12-6-approval-bash--w120.txt": {
+   "harness": "omp",
+   "version": "18.12",
+   "state": "dialog"
+  },
+  "omp--v18-12-6-approval-bash-later--w120.txt": {
+   "harness": "omp",
+   "version": "18.12",
+   "state": "dialog"
+  },
   "omp--v18-12-band-idle--w130.txt": {
    "harness": "omp",
    "version": "18.12",

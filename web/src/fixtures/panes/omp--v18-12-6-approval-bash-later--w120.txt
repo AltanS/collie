@@ -1,0 +1,24 @@
+ - command: "echo gang-test"
+ - i: a concise intent
+ - timeout: I'll use a reasonable timeout like 10 seconds
+ - cwd: I can use the current working directory or null
+ - pty: false should be fine for this simple command
+ - async: false since we want the result
+ - name: null (not needed for a simple one-off command)
+ - ready: null (not needed)
+
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ $ echo gang-test                                                                                                     │
+╰─── elapsed 18.0s ────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+  ⎋ Run echo gang-test                                                               🧪 GANG: Run echo gang-test command
+╭─ Allow tool: bash ───────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ Command: echo gang-test                                                                                              │
+│ ❯ Approve                                                                                                            │
+│   Approve bash for this session                                                                                      │
+│   Deny                                                                                                               │
+├──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ ↑/↓ choose · ⏎ select · Ctrl+⏎/Ctrl+Q approve · ⎋ deny · Ctrl+O details · type to deny and steer                     │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+ ⠏ 21s > ◒ Haiku 4.5 > 📁 …ng/04-dialogs/state/harness/omp/project > $0.02 ▶──6%─────────────────────────────┃─────200K─
+╰─
