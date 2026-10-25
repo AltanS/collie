@@ -295,7 +295,7 @@ describe("Steer or queue on the Send button (M69)", () => {
     expect(screen.queryByRole("button", { name: STEER })).toBeNull();
   });
 
-  it("keeps the ordinary reply words while the turn runs on a pane that cannot steer", async () => {
+  it("keeps the ordinary reply words while the turn runs on a pane that cannot steer (a Claude Code pane: Enter queues, canSteer is false)", async () => {
     const user = userEvent.setup();
     renderSteer({ surface: running });
     expect(screen.getByPlaceholderText(/type a reply/i)).toBeInTheDocument();
