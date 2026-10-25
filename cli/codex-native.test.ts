@@ -601,7 +601,7 @@ describe("the registered command never fails its host", () => {
       const DENY = '{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"deny"}}}';
       const current = join(dir, "collie-current");
       writeFileSync(current, `#!/bin/sh\nprintf '%s' '${DENY}'\nexit 0\n`, { mode: 0o755 });
-      const run = (binary: string): { code: number | null; out: string } => {
+      const run = (binary: string) => {
         const child = Bun.spawnSync(["/bin/sh", "-c", nativeCommand(binary)], { stdin: "ignore", stdout: "pipe", stderr: "pipe" });
         return { code: child.exitCode, out: child.stdout.toString() };
       };

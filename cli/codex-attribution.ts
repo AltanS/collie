@@ -101,11 +101,11 @@ export function isAppServerArgs(args: readonly string[]): boolean {
 }
 
 /** The `codex` subcommands that run without a terminal UI, so with no pane to hold a permission on: `exec` and its alias `e`, and `review`. */
-const NON_INTERACTIVE: readonly string[] = ["exec", "e", "review"];
+const NON_INTERACTIVE: ReadonlySet<string> = new Set(["exec", "e", "review"]);
 
 /** `codex exec` (or its alias `e`) and `codex review`: non-interactive runs, with no pane of their own to hold a permission on. */
 export function isExecArgs(args: readonly string[]): boolean {
-  return basename(args[0] ?? "") === "codex" && !args.includes("app-server") && args.slice(1).some((arg) => NON_INTERACTIVE.includes(arg));
+  return basename(args[0] ?? "") === "codex" && !args.includes("app-server") && args.slice(1).some((arg) => NON_INTERACTIVE.has(arg));
 }
 
 /** The directory the session records live in. */

@@ -161,12 +161,20 @@ const isMoshiLike = (handler: JsonObject): boolean => {
   return command !== undefined && isMoshiCommand(command);
 };
 
+/** The handlers on `PermissionRequest` that are not Collie's, counted by kind. */
+export interface ForeignHandlers {
+  /** Moshi's `codex-hook`, in any spelling. */
+  readonly moshi: number;
+  /** Every other handler that is not Collie's. */
+  readonly other: number;
+}
+
 /**
  * The handlers on `PermissionRequest` that are not Collie's: how many are Moshi's `codex-hook` in any
  * spelling, and how many are something else. A hold beside a Moshi one is the issue #595 setup (Moshi's
  * card is not withdrawn when Collie decides first); another handler only shares the decision.
  */
-export function foreignPermission(document: JsonValue | null): { readonly moshi: number; readonly other: number } {
+export function foreignPermission(document: JsonValue | null): ForeignHandlers {
   const groups = asObject(asObject(document)?.hooks)?.[PERMISSION];
   let moshi = 0;
   let other = 0;
