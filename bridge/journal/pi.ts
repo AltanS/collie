@@ -530,6 +530,9 @@ export function createPiReducer(): RowReducer {
   // `subagent_result`) can find it. Kept after the work ends: a result can be asked for later. Bounded
   // by `rememberPending`; what falls off is the oldest id, whose notice the window has long passed.
   const workCards = new Map<string, PendingTool>();
+  // An Oh My Pi job card → its progress names, the `label` an end row may name it by. Weak, so a card
+  // the window and `workCards` both let go of costs nothing here.
+  const jobLabels = new WeakMap<PendingTool, readonly string[]>();
 
   /**
    * Oh My Pi's `task` start (OMP 18.6.1, read off a real session on 2026-10-25). The result answers at
@@ -552,6 +555,7 @@ export function createPiReducer(): RowReducer {
     // A second job of one name gets `<name>-2` as its job id while its progress id stays `<name>`, so
     // a progress id an ongoing card already holds is left to that card. The job id is taken last and
     // always: it is the name the end notice uses.
+    jobLabels.set(target, progress.flatMap((row) => field(row, "id") ?? []));
     for (const row of progress) {
       const id = field(row, "id");
       const held = id === undefined ? undefined : workCards.get(id);
@@ -568,17 +572,32 @@ export function createPiReducer(): RowReducer {
   }
 
   /**
+   * The one ongoing job card whose progress names include `label`, or undefined when none or several
+   * do. Two same-named jobs and a notice for an id neither holds: ending either could end the wrong
+   * one, so neither ends, and the quiet bound clears a count left too high.
+   */
+  function onlyOngoingByLabel(label: string): PendingTool | undefined {
+    const found = new Set<PendingTool>();
+    for (const card of workCards.values()) {
+      const call = card.part.call;
+      if (call?.kind === "task" && call.ongoing === true && jobLabels.get(card)?.includes(label) === true) found.add(card);
+    }
+    return found.size === 1 ? found.values().next().value : undefined;
+  }
+
+  /**
    * Oh My Pi's end of a job: an `async-result` notice (`details.jobs[]`: `jobId`, `label`) or any tool
    * result whose `details.jobs[]` rows carry a `status` (`wait`: `id`, `label`, `status`). A job is
-   * found by its id, then by its label (the name its first progress row had). Only a final status ends
-   * the card, the same set Gentle Shell's notices use.
+   * found by its id; an id no card holds falls back to its label only when exactly one ongoing card
+   * carries that label. Only a final status ends the card, the same set Gentle Shell's notices use.
    */
   function settleOmpJobs(rows: readonly JsonObject[], statusOf: (row: JsonObject, id: string) => string | undefined, changed: Set<string>): void {
     for (const row of rows) {
       const id = field(row, "jobId") ?? field(row, "id");
       const label = field(row, "label");
       const key = id ?? label;
-      const card = (id === undefined ? undefined : workCards.get(id)) ?? (label === undefined ? undefined : workCards.get(label));
+      const held = id === undefined ? undefined : workCards.get(id);
+      const card = held ?? (label === undefined ? undefined : onlyOngoingByLabel(label));
       if (card === undefined || key === undefined) continue;
       const status = statusOf(row, key);
       if (status !== undefined) settle(card, { status }, changed);
