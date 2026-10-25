@@ -118,7 +118,7 @@ import { splitLines } from "../../web/src/lib/blocks.ts";
 import { noEchoPromptIn } from "../../web/src/lib/no-echo.ts";
 import { isUploadImagePath, pastePieces } from "../../web/src/lib/upload-path.ts";
 import { pointsAt } from "../../web/src/lib/surface/command-list.ts";
-import { commandListAt, isRunningRow, noticeOver, ownCommandList, readCues, readCuesFor, runningSign, withoutCommandList, type CommandListRead, type Cue } from "../../web/src/lib/surface/cues.ts";
+import { commandListAt, isRunningRow, noticeOver, ownCommandList, readCues, readCuesFor, runningSign, withoutCommandList, withoutPromptEchoes, type CommandListRead, type Cue } from "../../web/src/lib/surface/cues.ts";
 import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
 import { findInputFrame, rowText, type Frame, type FrameRow } from "../../web/src/lib/surface/frame.ts";
 import { liftAsk, liftDialog, readerBlocks } from "../../web/src/lib/surface/lift.ts";
@@ -3261,7 +3261,9 @@ export class SendProtocol {
     // The frameless reads never see a row the profile names as a footer row (the frame found it), nor
     // the typed command's own list over or under the box (ownCommandList): Enter there picks that command.
     const ownList = ownCommandList(texts, frame, idle, rows);
-    const bare = withoutNamedRows(withoutCommandList(rows, ownList), frame);
+    // The transcript's echo of a sent prompt above the box (`idle.promptEchoes`) is no pointed list either:
+    // a long prompt wraps into rows aligned under its glyph (withoutPromptEchoes).
+    const bare = withoutPromptEchoes(withoutNamedRows(withoutCommandList(rows, ownList), frame), frame, idle);
     // A notice over the box (`idle.notices`) is left out of every read as well: its keys act only on a
     // box holding one of its digits, so its key row is no prompt that holds the keys.
     const notice = noticeOver(texts, frame, idle);

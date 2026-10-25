@@ -6194,6 +6194,46 @@ describe("real Claude Code 2.1.302 turns with a list on screen (captured 2026-10
   });
 });
 
+describe("a send into a running Claude Code turn under a wrapped prompt echo (2.1.310, live 2026-10-25)", () => {
+  // The transcript echoes the operator's long prompt as `❯ ` and rows at column 2; the whole-screen cue
+  // read took it for a pointed list (and, with the answer's numbered list, for a dialog), so the send was
+  // refused not_free and held to the turn's end. Claude's profile names the echo (`idle.promptEchoes`).
+  const liveFixture = (pane: FakePane, name: string): void => {
+    const rows = readFileSync(join(import.meta.dir, `../../web/src/fixtures/panes/${name}`), "utf8").split("\r\n");
+    // eslint-disable-next-line no-control-regex
+    const plain = (row: string): string => row.replace(/\u001b\[[0-9;]*m/gu, "");
+    const boxRow = rows.findIndex((row, i) => i > 0 && plain(row).startsWith("❯") && plain(rows[i - 1]!).startsWith("─".repeat(20)));
+    expect(boxRow).toBeGreaterThan(0);
+    pane.beforeRead = (p) => {
+      const shown = [...rows];
+      if (p.box !== "") shown[boxRow] = `❯ ${p.box}`;
+      p.fixed = shown.join("\r\n");
+    };
+  };
+
+  for (const name of ["claude--v2-1-310-working-echo-numbered--w120.txt", "claude--v2-1-310-working-echo-bullets--w120.txt"]) {
+    test(`${name}: the send goes in with Enter for Claude's queue, never refused not_free nor held`, async () => {
+      const holds = new HoldStore(join(dir, "held"));
+      const r = rig({ version: "2.1.310", holds });
+      liveFixture(r.pane, name);
+      const answer = await r.send("then give it a title");
+      expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true, keys: ["probe", "Backspace", "Enter"] });
+      expect(answer.receipt?.reason).not.toBe("not_free");
+      expect(r.pane.keysSeen.at(-1)).toBe("Enter");
+      expect(holds.list()).toEqual([]);
+    });
+  }
+
+  test("the same screen without the profile's echo rule is refused not_free and held, as it was live", async () => {
+    const holds = new HoldStore(join(dir, "held-off"));
+    const r = rig({ version: "2.1.310", holds, edit: (profile) => ({ ...profile, idle: { ...profile.idle, promptEchoes: false } }) });
+    liveFixture(r.pane, "claude--v2-1-310-working-echo-numbered--w120.txt");
+    const answer = await r.send("then give it a title");
+    expect(answer.receipt?.outcome).toBe("held");
+    expect(r.pane.keysSeen).not.toContain("Enter");
+  });
+});
+
 describe("a slash command over Claude Code's command list under the box (field case, 2.1.302, 2026-10-17)", () => {
   const V2302 = "claude--v2302-slash-model-list--w119.txt";
   const V2291 = "claude-lab--popup-slash-model-exact--w82.txt";

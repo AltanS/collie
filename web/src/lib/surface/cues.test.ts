@@ -3,9 +3,9 @@ import { describe, expect, it } from "vitest";
 
 import { lineText, type StyledLine } from "../blocks";
 import { fixtureRows, perturbations, readScreen, rowsOf, SURFACE_FIXTURES_DIR } from "../../test/surface-corpus";
-import { CLUSTER_GAP_ROWS, CLUSTER_MAX_ROWS, commandListAt, FOOTER_MAX_ROWS, isKeyHintRow, isRunningRow, noticeOver, ownCommandList, readCues, runningSign } from "./cues";
+import { CLUSTER_GAP_ROWS, CLUSTER_MAX_ROWS, commandListAt, FOOTER_MAX_ROWS, isKeyHintRow, isRunningRow, noticeOver, ownCommandList, readCues, runningSign, withoutPromptEchoes } from "./cues";
 import { isSingleKeyRow } from "./key-row";
-import { findInputFrame, plainRows, rowText } from "./frame";
+import { findInputFrame, plainRows, rowText, type FrameRow, type IdleProfile } from "./frame";
 import { requireProfile } from "./profile";
 import { isFree } from "./surface";
 
@@ -614,4 +614,84 @@ describe("running signs and the prompt row", () => {
     expect(runningSign(rows, frame, idle.runningRows)).toBe(true);
     expect(runningSign(grown, grownFrame, idle.runningRows)).toBe(true);
   });
+});
+
+describe("the transcript's echo of a sent prompt (idle.promptEchoes, Claude Code 2.1.310, live 2026-10-25)", () => {
+  // The bridge's whole-screen read over a found box (protocol.ts `bareCues`): the box's interior cut
+  // out, the rows above and under it read as a frameless cluster. A long prompt's echo wraps into
+  // rows aligned under its `❯`, which that read took for a pointed list, so a send into a running
+  // turn was refused `not_free` and held.
+  const WIDE = "─".repeat(100);
+  const ECHO = [
+    "❯ First reply with a numbered list of 6 colors, each on its own line formatted exactly like this one, and keep",
+    "  every reason short and plain. Then run this exact bash command with your bash tool, and say done when it is",
+    "  finished: for i in $(seq 1 40); do echo $i; sleep 1; done",
+  ];
+  const LIST = ["● 1. red - warns people", "  2. blue - calm", "  3. green - safe", "  4. yellow - caution"];
+  const BOX = ["", "✢ Polishing… (7s · ↓ 443 tokens)", "", WIDE, "❯ ", WIDE, "  model · ctx 3%"];
+
+  /** The whole-screen read the bridge makes over a found box, with or without the echo rule. */
+  const wholeScreen = (texts: readonly string[], idle: IdleProfile = IDLE, echoes = true): string => {
+    const rows = plainRows(texts);
+    const frame = findInputFrame(rows, idle);
+    expect(frame).not.toBeNull();
+    const bare: readonly FrameRow[] = echoes ? withoutPromptEchoes(rows, frame, idle) : rows;
+    return readCues([...bare.slice(0, frame!.interior.first), ...bare.slice(frame!.interior.last + 1)], null, null).strength;
+  };
+
+  it("a wrapped three-row echo over the box is no pointed list: none, where it was strong", () => {
+    const screen = ["", ...ECHO, "", "● Bash(for i in $(seq 1 40); do echo $i; sleep 1; done)", ...BOX];
+    expect(wholeScreen(screen, IDLE, false)).toBe("strong");
+    expect(wholeScreen(screen)).toBe("none");
+  });
+
+  it("with a numbered list in the answer under it: weak (a list alone), where it was strong", () => {
+    const screen = ["", ...ECHO, "", ...LIST, ...BOX];
+    expect(wholeScreen(screen, IDLE, false)).toBe("strong");
+    expect(wholeScreen(screen)).toBe("weak");
+  });
+
+  it("with a numbered list in an earlier answer above it: none, where it was strong", () => {
+    // The echo read as blank is a gap of blank rows that ends the cluster: an earlier turn is not read.
+    const screen = ["", ...LIST, "", ...ECHO, "", "● Done.", ...BOX];
+    expect(wholeScreen(screen, IDLE, false)).toBe("strong");
+    expect(wholeScreen(screen)).toBe("none");
+  });
+
+  it("an echo-shaped run with an option row of its own stays a list: strong", () => {
+    const screen = ["", "❯ 1. Yes, and keep going with the plan as written", "  2. No, and stop here", "  3. Ask me again", ...BOX];
+    expect(wholeScreen(screen)).toBe("strong");
+  });
+
+  it("a run that does not end on a blank row, or a profile without the flag, is left as it is", () => {
+    const glued = ["", ...ECHO, "● Bash(for i in $(seq 1 40); do echo $i; sleep 1; done)", ...BOX];
+    expect(wholeScreen(glued)).toBe("strong");
+    const { promptEchoes: _, ...plain } = IDLE;
+    expect(wholeScreen(["", ...ECHO, "", ...LIST, ...BOX], plain)).toBe("strong");
+  });
+
+  it("leaves the box's own prompt row and everything under the top edge alone", () => {
+    const rows = plainRows(["", ...ECHO, "", ...BOX]);
+    const frame = findInputFrame(rows, IDLE)!;
+    const out = withoutPromptEchoes(rows, frame, IDLE).map(rowText);
+    expect(out.slice(1, 4).every((text) => text === "")).toBe(true);
+    expect(out.slice(frame.top)).toEqual(rows.slice(frame.top).map(rowText));
+    expect(withoutPromptEchoes(rows, null, IDLE)).toBe(rows);
+  });
+
+  const CAPTURES: readonly (readonly [string, string])[] = [
+    ["claude--v2-1-310-working-echo-numbered--w120.txt", "weak"],
+    ["claude--v2-1-310-working-echo-bullets--w120.txt", "none"],
+    ["claude--v2-1-310-working-echo-one-line--w120.txt", "none"],
+  ];
+  for (const [name, strength] of CAPTURES) {
+    it(`${name}: running, no modal, an empty box; the whole-screen read is ${strength}`, () => {
+      const rows = fixtureRows(name);
+      const read = readScreen(rows, "claude", IDLE);
+      expect(read.surface).toMatchObject({ turn: "running", modal: "none", composer: "empty" });
+      const frame = findInputFrame(rows, IDLE)!;
+      const bare = withoutPromptEchoes(rows, frame, IDLE);
+      expect(readCues([...bare.slice(0, frame.interior.first), ...bare.slice(frame.interior.last + 1)], null, null).strength).toBe(strength);
+    });
+  }
 });

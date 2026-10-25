@@ -39,7 +39,7 @@
 
 import { displayWidth } from "../text-width";
 import { commandListNear, pointsAt, type CommandListRead } from "./command-list";
-import { rowText, type Frame, type FrameRow, type IdleProfile } from "./frame";
+import { promptDraft, rowText, type Frame, type FrameRow, type IdleProfile } from "./frame";
 import { isSingleKeyRow } from "./key-row";
 import { readAboveNotice, type AboveNotice } from "./notice";
 import type { CommandListRows } from "./profile";
@@ -444,6 +444,41 @@ export function ownCommandList(texts: readonly string[], frame: Frame | null, id
 function withoutSpan(rows: readonly FrameRow[], span: { readonly first: number; readonly last: number } | null): readonly FrameRow[] {
   if (span === null) return rows;
   return rows.map((row, i) => (i >= span.first && i <= span.last ? { segments: [] } : row));
+}
+
+/** Whether a row is an option row: a numbered item or a checkbox item, a pointer glyph in front allowed. */
+function isOptionRow(text: string): boolean {
+  const row = unboxed(text);
+  return numberOf(row) !== null || CHECKBOX_ITEM.test(row);
+}
+
+/**
+ * The rows with the transcript's echoes of sent prompts above a found frame read as blank, for a profile
+ * whose transcript echoes each prompt in its prompt row's shape (`idle.promptEchoes`). An echo is a row
+ * the prompt anchor matches with text behind the glyph ({@link promptDraft}), then the rows under it
+ * indented at least `frame.continuationIndent` columns, ended by a blank row or the frame's top edge.
+ * A long prompt wraps into rows that line up like a pointed list under the glyph, and the whole-screen
+ * read took them for one (Claude Code 2.1.309 and 2.1.310, live 2026-10-25). An echo with an option row
+ * of its own ({@link isOptionRow}) is left as it is: there the shape is a list, whoever drew it. Every
+ * other row, and every row of any other profile, stays as it is.
+ */
+export function withoutPromptEchoes(rows: readonly FrameRow[], frame: Frame | null, idle: IdleProfile | null): readonly FrameRow[] {
+  if (frame === null || idle?.promptEchoes !== true) return rows;
+  const texts = rows.map(rowText);
+  const echoes: { first: number; last: number }[] = [];
+  for (let i = 0; i < frame.top; i++) {
+    const draft = promptDraft(texts[i]!, idle);
+    if (draft === null || draft.length === 0) continue;
+    let last = i;
+    while (last + 1 < frame.top && !isBlank(texts[last + 1]!) && startCol(texts[last + 1]!) >= idle.frame.continuationIndent) last++;
+    const ended = last + 1 === frame.top || isBlank(texts[last + 1]!);
+    let listed = false;
+    for (let j = i; j <= last; j++) if (isOptionRow(texts[j]!)) listed = true;
+    if (ended && !listed) echoes.push({ first: i, last });
+    i = last;
+  }
+  if (echoes.length === 0) return rows;
+  return rows.map((row, i) => (echoes.some((echo) => i >= echo.first && i <= echo.last) ? { segments: [] } : row));
 }
 
 /** The rows with a command list's rows read as blank. */

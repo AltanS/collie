@@ -3074,3 +3074,22 @@ a path of the same length (OMP's shortened `…che/collie-lab/edge5fix-lab` beca
 | `claude--v2-1-309-interrupted-fresh-session--w120.txt` | `idle` | Claude Code 2.1.309 under the operator's fullscreen TUI (`"tui": "fullscreen"`), a fresh session (`/clear`): a Bash call (`find /usr /opt -type f \| xargs md5sum \| wc -l`) interrupted with Escape. The short transcript stands at the top, `⎿  Interrupted · What should Claude do instead?` on row 14, then blank rows down to the box on row 35: the stopped row stands outside the six-row band above the box. Second live pass; taken in a second private tmux server, no hooks, isolated `CLAUDE_CONFIG_DIR` |
 | `claude--v2-1-309-permission-denied-fresh-session--w120.txt` | `idle` | The same fresh fullscreen session: a Bash permission dialog answered `4. No`. `Ran 1 shell command`, the Interrupted row and `✻ Crunched for 2s` at the top, blank rows, then `◐ medium · /effort` over the box |
 | `claude--v2-1-309-stopped-prompt-restored--w120.txt` | `draft` | The same fresh fullscreen session: `Write 700 numbered lines, …` sent, Escape 1.2 s later, before the first token. Claude takes the turn back and puts the prompt into the box; no Interrupted row and no Stop hook. Only Collie's own Stop receipt tells the fold the turn ended |
+
+## The prompt echo over a running turn (captured 2026-10-25, Claude Code 2.1.310, 120 columns, Herdr)
+
+Claude Code echoes each sent prompt in the transcript as `❯ ` and the text, and a long prompt wraps to
+rows indented to column 2. The bridge's whole-screen cue read over a found box took that echo for a
+pointed list, and with a numbered list in the answer under it for a dialog: a phone send into the
+running turn was refused `not_free` and held until the turn ended, where it should have gone in with
+Enter for Claude's own queue (`idle.promptEchoes` in claude.json). Taken from a disposable pane in
+the harness lab's own Herdr session (collie-rig), read through its scratch bridge's
+`GET /api/pane/:id?lines=60`, ANSI kept, CRLF rows, Haiku, the operator's three-row statusline. The
+exec row's `/var/home/<user>` is replaced with `/home/demo/user`, a path of the same length; every
+other byte is as read. Each screen is the S0 read of a send that a turn running `for i in $(seq 1 40);
+do echo $i; sleep 1; done` took.
+
+| Fixture | State / what's in it |
+|---|---|
+| `claude--v2-1-310-working-echo-numbered--w120.txt` | A three-row echo (`❯ First reply with a numbered list of 6 colors…`, two rows at column 2), the answer's list `1.` to `6.`, the Bash call counting, the spinner over an empty box. Reads `running`, `none`, `empty`; the whole-screen cue read was strong (the send held), now weak (it queues). Labelled `running` |
+| `claude--v2-1-310-working-echo-bullets--w120.txt` | The held case with no number near the box: the earlier turns (the numbered one among them) above, then a three-row echo (`❯ First reply with a bullet list of 6 colors…`), a bullet list (`- red - …`), the Bash call and the spinner. The echo alone read as a pointed list of three rows: strong (the send held), now none. Labelled `running` |
+| `claude--v2-1-310-working-echo-one-line--w120.txt` | The same pane with a one-row echo (`❯ Run this exact bash command…`): the whole-screen read was already none and the send queued. Labelled `running` |

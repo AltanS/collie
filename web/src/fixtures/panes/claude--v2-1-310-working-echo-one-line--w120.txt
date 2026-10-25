@@ -1,0 +1,60 @@
+     [0m[2m… +37 lines (ctrl+o to expand)[0m
+
+[0m[38;2;255;255;255m● [0mDone.
+
+[0m[38;2;153;153;153m✻ Crunched for 45s · done 7:00 PM[0m
+
+[0m[38;2;153;153;153m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55msecond message[0m[48;2;55;55;55m                                                                                                        [0m
+
+[0m[38;2;255;255;255m● [0mI got your message, but it does not say what you need. What would you like me to do?
+
+[0m[38;2;153;153;153m✻ Cogitated for 1s · done 7:00 PM[0m
+
+[0m[38;2;153;153;153m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mFirst reply with a bullet list of 6 colors, each on its own line formatted exactly like "- red - a short reason" (use[0m[48;2;55;55;55m [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mdashes, no numbers). Then run this exact bash command with your bash tool, and say done: for i in $(seq 1 40); do [0m[48;2;55;55;55m    [0m
+[0m[48;2;55;55;55m  [0m[38;2;255;255;255m[48;2;55;55;55mecho $i; sleep 1; done[0m[48;2;55;55;55m                                                                                                [0m
+
+[0m[38;2;255;255;255m●[0m - red - signals danger and stop
+  - blue - calm and widely trusted
+  - green - means safe and go ahead
+  - yellow - signals caution and check first
+  - orange - stands out and draws attention
+  - purple - linked to creativity and imagination
+
+[0m[38;2;78;186;101m●[0m [0m[1mBash[0m(for i in $(seq 1 40); do echo $i; sleep 1; done)
+[0m[38;2;153;153;153m  ⎿  [0m1
+     2
+     3
+     [0m[2m… +37 lines (ctrl+o to expand)[0m
+ 
+[0m[38;2;255;255;255m● [0mDone.
+
+[0m[38;2;153;153;153m✻ Brewed for 43s · done 7:06 PM[0m
+
+[0m[38;2;153;153;153m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55msecond message[0m[48;2;55;55;55m                                                                                                        [0m
+
+[0m[38;2;255;255;255m●[0m I received "second message," but it contains no new request. Do you want me to repeat the color list and the 40-second
+  count, or do you have a different task?
+
+[0m[38;2;153;153;153m✻[0m [0m[38;2;153;153;153mBrewed for 2s · done 7:06 PM[0m
+
+[0m[38;2;153;153;153m[48;2;55;55;55m❯ [0m[38;2;255;255;255m[48;2;55;55;55mRun this exact bash command with your bash tool, then say done: for i in $(seq 1 40); do echo $i; sleep 1; done[0m[48;2;55;55;55m       [0m
+
+[0m[38;2;153;153;153m●[0m [0m[1mBash[0m(for i in $(seq 1 40); do echo $i; sleep 1; done)
+[0m[38;2;153;153;153m  ⎿  1[0m
+     [0m[38;2;153;153;153m2[0m
+     [0m[38;2;153;153;153m3[0m
+     [0m[38;2;153;153;153m4[0m
+     [0m[38;2;153;153;153m(4s)[0m
+     [0m[38;2;153;153;153m(ctrl+b to run in background)[0m
+
+[0m[38;2;215;119;87m✽[0m [0m[38;2;225;139;107mConcocting…[0m[38;2;215;119;87m [0m[38;2;153;153;153m(5s · ↓[0m [0m[38;2;153;153;153m99 tokens)[0m
+[0m[38;2;153;153;153m  ⎿  Tip: Working on a plan or design doc? Ask Claude to publish it as an artifact — a polished web page you can open in[0m
+     [0m[38;2;153;153;153myour browser.[0m
+
+[0m[38;2;136;136;136m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;2;153;153;153m❯ [0m[7m [0m
+[0m[38;2;136;136;136m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+  [0m[38;5;103mCTX:[0m[38;5;71m4%[0m[38;2;153;153;153m [0m[38;5;103mCACHE:[0m[38;5;71m99%[0m[38;2;153;153;153m [0m[38;5;103mLIMITS[0m[38;2;153;153;153m [0m[38;5;103m5h:[0m[38;5;71m9%[0m[38;5;246m/3h:21m[0m[38;2;153;153;153m [0m[38;5;103m7d:[0m[38;5;179m65%[0m[38;5;246m/2d:06h[0m                                                [0m[38;2;153;153;153m◐ medium · /effort[0m
+  [0m[38;5;75m[Haiku[0m[38;5;246m·medium[0m[38;5;75m][0m[38;2;153;153;153m [0m[1m[38;5;7m~/.cache/collie-lab/omp-gang/08-claude-turn/state/harness/claude/project[0m
+  [0m[38;2;153;153;153m⏸ manual mode on[0m

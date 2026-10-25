@@ -227,6 +227,16 @@ export function frameEdge(text: string, idle: IdleProfile): "prompt" | "bottom" 
 }
 
 /**
+ * The draft a row holds when it has the shape of the profile's prompt row (the prompt anchor matches it,
+ * in its column), trimmed; "" for a prompt row with nothing behind the glyph, null for any other row.
+ */
+export function promptDraft(text: string, idle: IdleProfile): string | null {
+  if (isBlank(text)) return null;
+  const match = anchored(text, compile(idle).prompt);
+  return match === null ? null : (match.groups?.draft ?? "").trim();
+}
+
+/**
  * Whether a row may stand inside a box whose edges are blank rows: a blank row, or a row indented at
  * least `continuationIndent` columns (a wrapped or later line of the draft). Text further left is the
  * transcript or a dialog, so the walk must stop there.
