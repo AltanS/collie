@@ -334,7 +334,7 @@ export const pt: Dictionary = {
   "composer.protocol.sent": "Enviado",
   "composer.protocol.queued": "Na fila. O agente assume depois deste turno.",
   "composer.steer.row": "Redirecionar: o agente recebe isso após o passo atual",
-  "composer.steer.hint": "Enviar coloca na fila para depois do turno. Mantenha Enviar pressionado para direcionar.",
+  "composer.steer.hint": "Mantenha Enviar pressionado para direcionar.",
   "composer.steer.queuedInstead": "Colocado na fila: o agente guardou para depois do turno.",
   "composer.steer.steered": "Direcionado: o agente processa após a etapa atual.",
   "composer.steer.unsupported": "Direcionar não está disponível neste painel. Nada foi enviado.",

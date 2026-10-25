@@ -232,7 +232,7 @@ describe("Composer on the Send Protocol (M56 specs 05 and 06)", () => {
 // the belt and the field (Altan, 2026-10-25), and a placeholder takes no height of its own.
 describe("Steer or queue on the Send button (M69)", () => {
   const running = { revision: 1, turn: "running", modal: "none", composer: "empty" } as const;
-  const HINT = "Send queues it for after the turn. Hold Send to steer.";
+  const HINT = "Hold Send to steer.";
   const STEER = "Steer: the agent takes it after its current step";
 
   /** The header status line, where a verified send leaves its words. */

@@ -380,7 +380,7 @@ export const zhTW: Dictionary = {
   "composer.protocol.sent": "已傳送",
   "composer.protocol.queued": "已排入佇列。代理會在這一輪結束後處理。",
   "composer.steer.row": "引導：代理會在目前步驟結束後處理",
-  "composer.steer.hint": "「傳送」會將其排入該輪對話之後的佇列。按住「傳送」以引導。",
+  "composer.steer.hint": "按住「傳送」以引導。",
   "composer.steer.queuedInstead": "已改為排入佇列：代理會留到這一輪結束後再處理。",
   "composer.steer.steered": "已引導：代理會在目前步驟結束後處理。",
   "composer.steer.unsupported": "此窗格不支援引導。未傳送任何內容。",

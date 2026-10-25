@@ -334,7 +334,7 @@ export const fr: Dictionary = {
   "composer.protocol.sent": "Envoyé",
   "composer.protocol.queued": "En file d'attente. L'agent le prend après ce tour.",
   "composer.steer.row": "Rediriger : l'agent le prend en compte après son étape en cours",
-  "composer.steer.hint": "Envoyer le met en file d'attente pour la fin du tour. Maintenez Envoyer pour orienter.",
+  "composer.steer.hint": "Maintenez Envoyer pour orienter.",
   "composer.steer.queuedInstead": "Mis en file d'attente à la place : l'agent l'a gardé pour la fin du tour.",
   "composer.steer.steered": "Orienté : l'agent le prend en compte après son étape actuelle.",
   "composer.steer.unsupported": "Orienter n'est pas disponible sur ce panneau. Rien n'a été envoyé.",

@@ -1672,6 +1672,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // so it opened and closed with every turn and moved the belt and the field (Altan, 2026-10-25: a
   // composer hint must not shift the layout). A placeholder takes no height of its own, and it goes
   // when the first character is typed, which is when the operator no longer needs it.
+  // The hint is ONE short sentence so it never wraps at placeholder:text-xs; a wrapped placeholder grows a
+  // `field-sizing-content` field.
   const steerWords =
     way.state !== "gone" && way.state !== "readOnly" && way.state !== "unreachable" && !direct.active && !isShell && steerRow;
   const placeholderWords =
