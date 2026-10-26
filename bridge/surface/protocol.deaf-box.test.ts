@@ -18,8 +18,10 @@ import { join } from "node:path";
 import { muxAck, muxOk, type MuxAck, type MuxGrid, type MuxGridRequest, type MuxOutcome } from "../mux/types.ts";
 import { profileFor } from "../../web/src/lib/surface/profile.ts";
 import type { SendAnswer } from "../../web/src/lib/surface/send.ts";
+import type { Surface } from "../../web/src/lib/surface/surface.ts";
 import { LaunchWindow, LAUNCH_WINDOW_MS } from "../launch-window.ts";
 import { ClearService } from "./clear.ts";
+import { HoldStore } from "./holds.ts";
 import { KeyGate } from "./key-gate.ts";
 import { PROBE_MARKER, probeResidue } from "./probe-marker.ts";
 import { RowRing, SendProtocol, SessionLocks, type SendRequest } from "./protocol.ts";
@@ -139,15 +141,18 @@ let ids = 0;
  * A protocol on `pane` for omp 18.12.6 (provisional: every send is probed), with the bridge's wiring of
  * one session's launch window on the same clock. `harness` is what the multiplexer names the pane.
  */
-function rig(pane: OmpPane, options: { harness?: string; generation?: { now: string | null } } = {}) {
+function rig(pane: OmpPane, options: { harness?: string; generation?: { now: string | null }; held?: boolean } = {}) {
   const clock = { now: 1_000_000 };
   const now = (): number => clock.now;
   const window = new LaunchWindow(now);
   const generation = options.generation ?? { now: "omp:-" };
+  const store = new RequestStore(join(dir, "sends"), now);
+  const holds = options.held === true ? new HoldStore(join(dir, "held"), now) : undefined;
   const protocol = new SendProtocol({
     mux: { readGrid: pane.readGrid, typeText: pane.typeText, pasteText: pane.pasteText },
     gate: new KeyGate(pane, now),
-    store: new RequestStore(join(dir, "sends"), now),
+    store,
+    holds,
     locks: new SessionLocks(),
     ring: new RowRing(),
     profile: (harness: string) => Promise.resolve(profileFor(harness, "18.12.6", { log: () => undefined })),
@@ -164,12 +169,12 @@ function rig(pane: OmpPane, options: { harness?: string; generation?: { now: str
   const harness = options.harness ?? "omp";
   const send = (text: string, over: Partial<SendRequest> = {}): Promise<SendAnswer> =>
     protocol.handle({ id: `req-deaf-${String(++ids).padStart(6, "0")}`, text, mode: "send", ...over }, { session: "main", paneId: "%1", harness });
-  return { send, clock, window, generation };
+  return { send, clock, window, generation, protocol, store, holds: holds! };
 }
 
 /** A pane omp was launched in a moment ago (`POST /api/launch`): the multiplexer still names a shell. */
-function launched(pane: OmpPane) {
-  const wired = rig(pane, { harness: "shell", generation: { now: "shell:-" } });
+function launched(pane: OmpPane, held = false) {
+  const wired = rig(pane, { harness: "shell", generation: { now: "shell:-" }, held });
   wired.window.mark("main", "%1", "omp");
   return wired;
 }
@@ -410,5 +415,89 @@ describe("a send that straddles the moment the multiplexer names the agent (head
     const answer = await first;
     expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "pane_gone" });
     expect(pane.calls).toEqual([]);
+  });
+});
+
+describe("a held send on a starting pane meets the multiplexer naming the agent (the hold's own generation check)", () => {
+  const FREE: Surface = { revision: 1, turn: "idle", modal: "none", composer: "empty" };
+
+  /** A send held over a draft on a pane omp was launched in (profile omp, generation `shell:-`). */
+  async function heldOnStartingPane(pane: OmpPane) {
+    const wired = launched(pane, true);
+    pane.box = "a draft";
+    const answer = await wired.send("held text", { draftHolds: true });
+    expect(answer.receipt).toMatchObject({ outcome: "held", profileId: "omp" });
+    const id = answer.receipt!.requestId;
+    const tick = (): Promise<(SendAnswer | null)[]> => Promise.all(wired.protocol.tickHolds("main", () => FREE));
+    return { ...wired, id, tick };
+  }
+
+  test("shell to omp: the hold waits, takes `omp:<id>`, and goes out on a later free read", async () => {
+    const pane = new OmpPane(OMP_UP);
+    const held = await heldOnStartingPane(pane);
+    held.generation.now = "omp:019a-session";
+    expect(await held.tick()).toEqual([]);
+    expect(held.store.get(held.id)).toMatchObject({ phase: "held", paneGeneration: "omp:019a-session" });
+    // The draft leaves; two free reads at least two seconds apart release it.
+    pane.box = "";
+    expect(await held.tick()).toEqual([]);
+    held.clock.now += 3_000;
+    const released = await held.tick();
+    expect(released).toHaveLength(1);
+    expect(released[0]?.receipt).toMatchObject({ outcome: "sent" });
+    expect(pane.submitted).toEqual(["held text"]);
+  });
+
+  test("the entry takes the agent too: a release after the launch window ran out reads omp's profile, not the blind road", async () => {
+    const pane = new OmpPane(OMP_UP);
+    const held = await heldOnStartingPane(pane);
+    expect(held.holds.get(held.id)?.harness).toBe("shell");
+    held.generation.now = "omp:019a-session";
+    expect(await held.tick()).toEqual([]);
+    expect(held.holds.get(held.id)?.harness).toBe("omp");
+    held.clock.now += LAUNCH_WINDOW_MS + 1;
+    pane.box = "";
+    pane.calls.length = 0;
+    // The first poll after the move already counted a free read, and the window's expiry is time enough.
+    const released = await held.tick();
+    expect(released).toHaveLength(1);
+    const receipt = released[0]?.receipt;
+    expect(receipt).toMatchObject({ outcome: "sent", profileId: "omp", harness: "omp" });
+    // The profile's own path: Collie's probe first, then the text and the submit key; never a blind line.
+    expect(receipt?.keys).toContain("probe");
+    expect(pane.calls[0]).toBe(`type:${P}`);
+    expect(pane.submitted).toEqual(["held text"]);
+  });
+
+  test("a later move to a shell ends a hold that had taken `omp:<id>`", async () => {
+    const pane = new OmpPane(OMP_UP);
+    const held = await heldOnStartingPane(pane);
+    held.generation.now = "omp:-";
+    expect(await held.tick()).toEqual([]);
+    expect(held.store.get(held.id)?.paneGeneration).toBe("omp:-");
+    held.generation.now = "shell:-";
+    await held.tick();
+    expect(held.store.get(held.id)?.receipt).toMatchObject({ outcome: "refused", reason: "pane_gone" });
+  });
+
+  test("still ends `pane_gone`: the pane moves to another harness", async () => {
+    const pane = new OmpPane(OMP_UP);
+    const held = await heldOnStartingPane(pane);
+    held.generation.now = "claude:-";
+    await held.tick();
+    expect(held.store.get(held.id)?.receipt).toMatchObject({ outcome: "refused", reason: "pane_gone" });
+    expect(pane.submitted).toEqual([]);
+  });
+
+  test("still ends `pane_gone`: the pane is missing for three polls", async () => {
+    const pane = new OmpPane(OMP_UP);
+    const held = await heldOnStartingPane(pane);
+    held.generation.now = null;
+    await held.tick();
+    await held.tick();
+    expect(held.store.get(held.id)?.phase).toBe("held");
+    await held.tick();
+    expect(held.store.get(held.id)?.receipt).toMatchObject({ outcome: "refused", reason: "pane_gone" });
+    expect(pane.submitted).toEqual([]);
   });
 });

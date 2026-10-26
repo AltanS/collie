@@ -183,11 +183,12 @@ import { isUploadImagePath, pastePieces } from "../../web/src/lib/upload-path.ts
 import { pointsAt, staleListUnder } from "../../web/src/lib/surface/command-list.ts";
 import type { PopupRead } from "../../web/src/lib/surface/popup.ts";
 import { commandListAt, isRunningRow, noticeOver, ownCommandList, popupAt, readCues, readCuesFor, runningSign, withoutCommandList, withoutPopup, withoutPromptEchoes, type CommandListRead, type Cue } from "../../web/src/lib/surface/cues.ts";
+import { loadProfiles } from "../../web/src/lib/surface/profile.ts";
 import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
 import { findInputFrame, rowText, type Frame, type FrameRow } from "../../web/src/lib/surface/frame.ts";
 import { liftAsk, liftDialog, readerBlocks } from "../../web/src/lib/surface/lift.ts";
 import type { AboveNotice } from "../../web/src/lib/surface/notice.ts";
-import type { CommandListRows, OtherScreenRow, ProfileMatch, QueuedRow, SteerWitness } from "../../web/src/lib/surface/profile.ts";
+import type { CommandListRows, OtherScreenRow, Profile, ProfileMatch, QueuedRow, SteerWitness } from "../../web/src/lib/surface/profile.ts";
 import {
   offersFor,
   RECEIPT_DETAIL_MAX,
@@ -2219,9 +2220,15 @@ function agentOfGeneration(generation: string): string {
 }
 
 /** Whether the multiplexer's agent name `agent` is the harness of this profile: its id, or a name the profile lists. */
-function namesProfile(match: ProfileMatch | null, agent: string): boolean {
-  if (match === null || agent === "") return false;
-  return agent === match.profile.id || (match.profile.identity.agentNames ?? []).includes(agent);
+function namesProfile(profile: Profile | null | undefined, agent: string): boolean {
+  if (profile === null || profile === undefined || agent === "") return false;
+  return agent === profile.id || (profile.identity.agentNames ?? []).includes(agent);
+}
+
+/** The profile a held send reads with: the one its held receipt names, or null for a send held with none (the blind road). */
+function heldProfile(record: SendRecord): Profile | null {
+  const id = record.receipt?.profileId;
+  return id === null || id === undefined ? null : (loadProfiles().get(id) ?? null);
 }
 
 type Verdict = "pass" | "wait" | "fail";
@@ -2779,10 +2786,21 @@ export class SendProtocol {
           continue;
         }
         const record = this.deps.store.get(entry.id);
-        const otherAgent = generation !== null && record !== null && agentOfGeneration(generation) !== agentOfGeneration(record.paneGeneration);
+        const moved = generation !== null && record !== null && generation !== record.paneGeneration;
+        // A move that only names the harness of the held send's own profile (a launch window's shell to
+        // omp, a session id that resolves) is the same program: the hold waits on and takes the new
+        // generation, as an in-flight run does ({@link checkGeneration}). Any other agent ends it.
+        const sameProgram = moved && namesProfile(heldProfile(record), agentOfGeneration(generation));
+        const otherAgent = moved && !sameProgram && agentOfGeneration(generation) !== agentOfGeneration(record.paneGeneration);
         if (record === null || otherAgent || watch.missing >= MISSING_POLLS) {
           this.endHeld(entry, "refused", "pane_gone");
           continue;
+        }
+        if (sameProgram) {
+          // The entry names the agent too: a release after the launch window ran out reads the pane with
+          // that agent's profile, and never takes the blind road into a pane that runs an agent now.
+          this.deps.store.moveHeld(entry.id, generation);
+          holds.setHarness(entry.id, agentOfGeneration(generation));
         }
         next ??= entry;
       }
@@ -3983,7 +4001,7 @@ export class SendProtocol {
   private checkGeneration(state: RunState, outcome: "refused" | "typed_not_submitted"): void {
     const now = this.deps.generation(state.target.paneId);
     if (now === state.generation) return;
-    if (now !== null && namesProfile(state.match, agentOfGeneration(now))) {
+    if (now !== null && namesProfile(state.match?.profile, agentOfGeneration(now))) {
       state.generation = now;
       return;
     }
