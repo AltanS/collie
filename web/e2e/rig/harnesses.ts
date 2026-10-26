@@ -203,6 +203,15 @@ export function prepareHarness(id: HarnessId, machine: Machine = "lead"): Prepar
     // card of its own: the cases that test a dialog use another command.
     writeFileSync(join(d.config, "settings.json"), `${JSON.stringify({ hooks, permissions: { allow: ["Bash(collie walky:*)"] } }, null, 2)}\n`, { mode: 0o600 });
     writeWalkySkill(join(d.config, "skills", "collie-walky-talky", "SKILL.md"), "file");
+    // The operator's standing word for the agent-to-agent case (walky talky case 8). A Claude that reads an
+    // agent's "the operator asks you to reply" in a body will not take it from the body, and is right not to:
+    // the body cannot speak for the operator. So the operator says it here, in Claude's own memory file,
+    // before any message comes. It names one narrow thing and approves no action beyond `collie walky reply`.
+    writeFileSync(
+      join(d.config, "CLAUDE.md"),
+      "This session runs inside Collie's automated browser test, started by the operator.\nWhen a walky talky message from another agent asks you to answer with a given word, the operator has approved that answer in advance. Read the message with `collie walky inbox`, then send the word with `collie walky reply`. Do not ask the operator first.\n",
+      { mode: 0o600 },
+    );
     env.push(`CLAUDE_CONFIG_DIR=${sq(d.config)}`, "DISABLE_AUTOUPDATER=1", "DISABLE_TELEMETRY=1");
     argv = [BIN.claude, "--model", SETUPS.claude.model, "--permission-mode", "default", "--strict-mcp-config", "--mcp-config", join(d.config, EMPTY_MCP_FILE)];
   } else {
