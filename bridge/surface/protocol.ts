@@ -120,6 +120,14 @@
 // second probe, carries the request on from that read with the send's own probe forced. The same rows
 // again, or a second probe that does not land, ends `probe_failed` with the cause `stale_screen` and
 // the key pad as the only offer; nothing is deleted. One second read per request, never a loop.
+// A probe that fails, goes out again with one Backspace and leaves text in the box proves a real
+// draft that is not Collie's (a stale row painted over the live box row): the send ends
+// `draft_present` with the draft's offers, never held (2026-10-26).
+//
+// A screen in flux (2026-10-26): for 50 to 100 ms after a resize Herdr shows the old frame re-wrapped
+// to the new width, so S0's two reads differ in grid size (row count or widest row), or the read is torn
+// (cut inside the box). That is no reason yet to hold or refuse: S0 reads once more after SETTLE_MS
+// (150 ms), before any key, and that read is judged. One more S0, never a loop; its gap is `settle`.
 //
 // A command in a running turn (M56 spec 15): a profile whose harness queues a command entered during
 // a turn (`keys.commandWhileRunning: "queues"`, measured in the lab) sends it on the queued path like a
@@ -256,6 +264,12 @@ export const CLUSTER_ROWS = 24;
 const FIRST_GAP_MS = 80;
 /** The gap between the two S0 reads. */
 const S0_GAP_MS = 120;
+/**
+ * The pause before the one more S0 of a screen whose geometry is in flux (2026-10-26, omp gang three
+ * 02-desync): for 50 to 100 ms after a resize Herdr shows the old frame re-wrapped to the new width,
+ * until the program draws again. Measured as `gapsMs.settle`, with the S0 read that saw it.
+ */
+const SETTLE_MS = 150;
 /** Emptying a box (replace, discard) borrows the S2 bound: a read after every batch, inside S2's reads and ms. */
 const CLEAR_BOUND = BOUNDS.s2;
 /** Keys per clear batch; a read sits between two batches. */
@@ -543,6 +557,31 @@ function withoutNamedRows(rows: readonly FrameRow[], frame: Frame | null): reado
   if (frame === null || frame.volatile.named.length === 0) return rows;
   const named = new Set(frame.volatile.named.map((hit) => hit.row));
   return rows.map((row, i) => (named.has(i) ? { segments: [] } : row));
+}
+
+/**
+ * A read's grid size: how many rows it has and how wide its widest row is, blanks kept. Two reads of one
+ * pane geometry share it; a resize between them (or the old frame re-wrapped to the new width, as
+ * Herdr shows it for a moment) gives two sizes. The text inside the rows plays no part.
+ */
+function gridSizeOf(snap: Snap): string {
+  let width = 0;
+  for (const row of snap.rows) width = Math.max(width, rowText(row).length);
+  return `${String(snap.rows.length)}x${String(width)}`;
+}
+
+/**
+ * Whether two reads that do not agree show the pane's geometry in flux rather than a box that changed:
+ * their grid sizes differ ({@link gridSizeOf}), or one has a frame and the other reads as nothing at all, no
+ * frame, no cue, no dialog (`no-match`, or `torn`: cut inside the box). Herdr's `visible` read keeps
+ * the pane's own row count, so the old frame re-wrapped to a narrower width can share the new size;
+ * it then has no frame. A dialog that opened is not this: it reads as a dialog.
+ */
+function inFlux(first: Snap, second: Snap): boolean {
+  if (gridSizeOf(first) !== gridSizeOf(second)) return true;
+  if ((first.frame === null) === (second.frame === null)) return false;
+  const reason = (first.frame === null ? first : second).surface.reason;
+  return reason === "no-match" || reason === "torn";
 }
 
 /** The index past the last non-blank row. */
@@ -2097,6 +2136,11 @@ interface PaneWatch {
   pollSawRunning: boolean;
   /** Polls in a row that found no pane. */
   missing: number;
+  /**
+   * The pane's holds were made from a box that was not free (no turn read), and since then no poll read
+   * a running turn and no release ran (2026-10-26). Its cause clears on the first free poll.
+   */
+  cleared?: boolean;
 }
 
 /** Polls in a row a pane must read free, after a running turn, before its oldest held request goes. */
@@ -2108,6 +2152,15 @@ const FREE_POLLS = 2;
  */
 const QUIET_FREE_POLLS = 5;
 const QUIET_FREE_MS = 10_000;
+/**
+ * A hold made from a box that was not free, with no turn read and no release since (2026-10-26, omp
+ * gang three 03-launch headline 6): its cause has cleared once this many polls in a row read the pane
+ * idle with an empty box. Its release reads S0 fresh, two reads that must agree, before any key; one that
+ * finds the box not free goes back to its place. The quiet rule stays for the requests after a release
+ * and the turn rules for a turn a poll read: there a turn may yet draw. An idle pane polls every
+ * `pollIdleMs` (12 s), so five quiet polls kept a send held for about 50 s on an idle, empty box.
+ */
+const CLEARED_FREE_POLLS = 1;
 /**
  * A marked request held over a draft (M62 spec 02) goes on two free reads in a row, and the second
  * comes at least this long after the first. The poll ticks on every screen update, so two reads can be
@@ -2140,6 +2193,8 @@ interface EndNote {
   offers?: SendOffer[];
   /** A failed probe whose one Backspace was read back: the box holds what it held at S0 (2026-10-17). */
   probeClean?: boolean;
+  /** S0's two reads differed in grid size ({@link gridSizeOf}): the pane's geometry moved between them (2026-10-26). */
+  inFlux?: boolean;
   /** Which rule decided the end, copied onto the answer ({@link SendAnswer.cause}). */
   cause?: SendCause;
 }
@@ -2470,7 +2525,9 @@ export class SendProtocol {
    * except a `draft_present` on a send its caller marked `draftHolds` (a walky talky delivery, M62
    * spec 02): that one is held, typed once the box reads empty and the pane idle.
    * A `probe_failed` whose cleanup was read back (see {@link cleanProbe}) counts as no key, and is held
-   * like `not_free`; one whose box Collie could not confirm clean stays a refusal.
+   * like `not_free`; one whose box Collie could not confirm clean stays a refusal. A cleanup that reads
+   * a draft in the box is no such end: the probe proved a real draft, and it ends `draft_present`
+   * ({@link probeCleanup}, 2026-10-26).
    *
    * The box holds (`not_free`, `bound`, a clean `probe_failed`) also need a profile and a send that is
    * not manual (review, 2026-10-17): a pane with no profile, or a screen the person confirmed with Type
@@ -2561,7 +2618,7 @@ export class SendProtocol {
    */
   private quietWatch(session: string, paneId: string): void {
     const key = `${session}\u0000${paneId}`;
-    if (!this.watches.has(key)) this.watches.set(key, { sawRunning: false, freeReads: 0, freeSince: null, pollSawRunning: false, missing: 0 });
+    if (!this.watches.has(key)) this.watches.set(key, { sawRunning: false, freeReads: 0, freeSince: null, pollSawRunning: false, missing: 0, cleared: true });
   }
 
   private watchOf(session: string, paneId: string): PaneWatch {
@@ -2594,6 +2651,7 @@ export class SendProtocol {
     watch.freeReads = 0;
     watch.freeSince = null;
     watch.pollSawRunning = false;
+    watch.cleared = false;
     const record = this.deps.store.rearm(id, this.deps.generation(entry.paneId) ?? undefined);
     if (record === null) {
       holds.remove(id);
@@ -2633,7 +2691,9 @@ export class SendProtocol {
    *    polls in a row found no pane; a session id that resolved, or a /clear, keeps them;
    *  - the oldest held request goes only once a poll read a running turn since the last release, and
    *    then two polls in a row read the pane free; or, with no turn read, once five polls in a row read
-   *    it free over at least ten seconds. A command whose Enter could steer a turn (`waitsForTurn`)
+   *    it free over at least ten seconds. A hold made from a box that was not free, with no turn read
+   *    and no release since, goes on the first poll that reads the pane free ({@link CLEARED_FREE_POLLS}):
+   *    its cause has cleared, and its run reads S0 fresh before any key. A command whose Enter could steer a turn (`waitsForTurn`)
    *    counts the hold's own read of the turn only when its two free polls also span
    *    {@link DRAFT_LEFT_MS}: a turn that ended before the first poll ends its wait there, and a turn a
    *    poll read ends it on two free polls as before. It still never goes while a poll reads the turn,
@@ -2712,11 +2772,13 @@ export class SendProtocol {
       const afterTurn = (next.waitsForTurn === true ? watch.pollSawRunning : watch.sawRunning) && watch.freeReads >= FREE_POLLS;
       const turnEnded = next.waitsForTurn === true && watch.sawRunning && watch.freeReads >= FREE_POLLS && watch.freeSince !== null && now - watch.freeSince >= DRAFT_LEFT_MS;
       const quiet = watch.freeReads >= QUIET_FREE_POLLS && watch.freeSince !== null && now - watch.freeSince >= QUIET_FREE_MS;
+      // A box hold whose cause cleared: no turn read and no release since it was made.
+      const cleared = watch.cleared === true && !watch.sawRunning && next.waitsForTurn !== true && next.draftHolds !== true && watch.freeReads >= CLEARED_FREE_POLLS;
       // A draft that left the box: two reads in a row of an empty box and an idle pane, at least
       // DRAFT_LEFT_MS apart, so a submitted draft has drawn its turn before anything is typed.
       // Only a marked request: another held send keeps its own release rules, whatever its label says.
       const draftLeft = next.draftHolds === true && holds.get(next.id)?.cause === "draft_present" && watch.freeReads >= FREE_POLLS && watch.freeSince !== null && now - watch.freeSince >= DRAFT_LEFT_MS;
-      if (busy || !(afterTurn || turnEnded || quiet || draftLeft)) continue;
+      if (busy || !(afterTurn || turnEnded || quiet || draftLeft || cleared)) continue;
       if (this.deps.releaseCheck?.(next.id, session, paneId) === false) {
         this.endHeld(next, "refused", "pane_gone");
         continue;
@@ -3208,7 +3270,7 @@ export class SendProtocol {
     }
 
     this.begin(state);
-    let s0 = await this.stableRead(state, "s0");
+    let s0 = await this.settledS0(state);
     state.marks.s0 = s0;
     // The launch window: a harness is starting in the pane, and its box is not on screen yet. No probe
     // either, for the probe would be typed into the shell. A dialog the pane's own profile lifts is the
@@ -3973,9 +4035,33 @@ export class SendProtocol {
       return snap.plain.slice(win.first, win.end).join("\n");
     };
     if ((first.frame === null) !== (second.frame === null) || key(first) !== key(second)) {
-      throw new Ended("refused", "not_free", { surface: second.surface, detail: "The input box moved between two reads." });
+      const moved = new Ended("refused", "not_free", { surface: second.surface, detail: "The input box moved between two reads." });
+      if (inFlux(first, second)) moved.extra.inFlux = true;
+      throw moved;
     }
     return second;
+  }
+
+  /**
+   * S0 with one more read when the screen's geometry is in flux (2026-10-26, omp gang three 02-desync):
+   * the two reads differ in grid size (a resize landed between them), or the read is torn (cut inside the
+   * box). Such a read is a frame on its way, not a box that is not free, so it is no reason yet to hold
+   * the send or refuse it `not_free`. After {@link SETTLE_MS} S0 reads again, once, and that read is
+   * judged by every rule as before. It runs before any key; the read in flux and the pause are
+   * `gapsMs.settle`, so `s0` stays the time of the reads that were judged.
+   */
+  private async settledS0(state: RunState): Promise<Snap> {
+    try {
+      const s0 = await this.stableRead(state, "s0");
+      if (s0.surface.reason !== "torn" || state.keys.length > 0) return s0;
+    } catch (err) {
+      if (!(err instanceof Ended) || err.extra.inFlux !== true || state.keys.length > 0) throw err;
+    }
+    this.stretch(state, SETTLE_MS + BOUNDS.s0.ms);
+    this.guard(state);
+    await this.sleep(SETTLE_MS);
+    this.lap(state, "settle");
+    return this.stableRead(state, "s0");
   }
 
   /** Reads until the test passes or fails, inside the step's (reads, ms) bound. Null when the bound ran out. */
@@ -4136,6 +4222,12 @@ export class SendProtocol {
       if (!(err instanceof StepLate)) throw err;
     }
     if (look !== null && countIn(look.texts, probe) === countIn(s0.texts, probe)) {
+      // The probe went in and out again, and the box still holds text Collie did not type: a real
+      // draft, which a probe has just proven (2026-10-26, omp gang three 02-desync h 21 and 23: a stale
+      // row painted over the live box row while the live editor held a draft). It is refused with the
+      // draft's offers, never held: a hold would type its text later, after the person's next choice.
+      // Another screen's own box (the agents screen) is not the conversation's: its text is no draft there.
+      if (probeOnly(state) && look.frame !== null && look.otherScreen === null && look.surface.modal === "none" && look.surface.composer === "draft") return draftRefusal(state, look);
       const clean = failed(PROBE_REMOVED, look);
       clean.extra.probeClean = true;
       return clean;

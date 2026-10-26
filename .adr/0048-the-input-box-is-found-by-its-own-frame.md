@@ -168,3 +168,44 @@ refused, and is not probed: nobody tapped it, and a person may be typing in that
 Trail: `bridge/surface/protocol.ts` (`draftToProve`, `proveDraft`, `draftProbe`, `takeBack`,
 `staleScreen`) · `bridge/surface/clear.ts` (`prove`, `probeBox`) · `bridge/surface/shadow.ts` (`markStale`) ·
 `protocol.test.ts` ("a draft is a reading until the probe proves it").
+
+## Addendum, 2026-10-26: a frame on its way is read again, and a proven draft is never held
+
+Omp gang three, tester 2 (screen desync) and tester 3 (launch), Herdr 0.9.5, omp 18.6.1 and 18.12.6.
+Holds have no ADR of their own (M56 spec 15 and the protocol header carry them); these rules sit
+here because each one is about what a read of the box proves.
+
+1. **A screen in flux is read once more before it holds or refuses.** For 50 to 100 ms after a client
+   resize Herdr shows the old frame re-wrapped to the new width, until the program draws again. A send
+   in that window was held `not_free` on an idle, empty box and went out about 42 s later (plain 5 of
+   8, replace 6 of 12). S0 now takes one more S0 after `SETTLE_MS` (150 ms) when its two reads differ in
+   shape (row count, or the widest row), when one read has a frame and the other reads as nothing at
+   all (`no-match` or `torn`), or when its read is `torn`. Herdr's `visible` read keeps the pane's row
+   count, so a frame re-wrapped to a narrower width can share the new size; it then has no frame. A
+   dialog that opened between the reads reads as a dialog and gets no second S0. Only before any key,
+   only once, never a loop; the read in flux and the pause are `gapsMs.settle`, and `s0` stays the
+   time of the reads that were judged. No new mux field: the reads carry the signal.
+2. **A probe that proves a draft ends `draft_present`, never a hold.** A stale row painted over the live
+   box row while the live editor held `xy`: the probe went in, one Backspace took it out, the box then
+   read `xy`, and the send was held as a clean probe. It went out later, behind the person's Replace,
+   in an order the person did not choose. Now a failed probe whose one Backspace was read back, with
+   no other key typed, and whose read shows a draft in the conversation's own box (no modal, not
+   another screen's box), ends `refused(draft_present)` with the draft's offers. A clean probe over an
+   empty box is held as before: a hold is for a box that is free but not ready.
+3. **A box hold goes on the first free poll once its cause has cleared.** A send held because the box
+   was not free (no turn read) waited for the quiet rule, five free polls over ten seconds. An idle
+   pane polls every `pollIdleMs` (12 s), so a send held at launch arrived 29 to 50 s late on an idle,
+   empty box. While no poll has read a running turn and no release has run since the hold was made,
+   the first poll that reads the pane idle with an empty box releases it (`CLEARED_FREE_POLLS`). The
+   release's own S0 is the fresh check: two reads that agree, before any key; a box not free there
+   sends it back to its place. After a running turn the two-free-polls rule stays, and after a release
+   the quiet rule stays, because a turn may yet draw.
+
+Left open, for a decision: a held send can still go out after a later send on the same pane that does
+not join the queue (a Replace, an Add to it, a Submit, a steer). Ending the held one would need a new
+reason (`superseded`), so it is not built here.
+
+Trail: `bridge/surface/protocol.ts` (`settledS0`, `inFlux`, `shapeOf`, `probeCleanup`, `tickHolds`,
+`CLEARED_FREE_POLLS`) · `bridge/surface/protocol.transient-holds.test.ts` · `protocol.test.ts` ("a send
+at a box that is not free is held") · fixtures `omp--v18-12-6-idle-w200.txt`, `omp--v18-12-6-idle-w60.txt`,
+`omp--v18-12-6-stale-row-over-live-draft.txt`.

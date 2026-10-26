@@ -1,0 +1,21 @@
+              ████████████    
+                 ██  ██       ▄▀▀▄ █▀▄▀▄ █▀▀▄
+                 ██  ██       ▀▄▄▀ █ █ █ █▄▄▀
+                 ▒▒  ██                  █
+                     ██       v18.12.6
+
+   Tip: Did you know? Each kitty/tmux/cmux/zellij/wezterm
+  split keeps its own session — `omp -c` resumes the right
+                            one
+
+                                                            
+ a1 plain 0.4s after bg resize                              
+                                                            
+
+────────────────────────────────────────────────────────────
+ ✘ 401 User not found.                                      
+ Dismissed when you send your next message.                 
+────────────────────────────────────────────────────────────
+
+ π > ◒ Haiku 4.5 > 📁 …xxxxx/xxxxxxx/xxx/xxxxxxx ▶─5%─┃200K─
+╰─                                                          
