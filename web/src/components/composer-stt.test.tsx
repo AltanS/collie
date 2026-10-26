@@ -27,6 +27,26 @@ vi.mock("@/lib/liveness", async (importOriginal) => ({
   useLive: () => true,
 }));
 
+const seenImages = vi.hoisted(() => new WeakSet<File>());
+const canvasGate = vi.hoisted(() => ({ available: true }));
+
+vi.mock("@/lib/image-edit", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/image-edit")>();
+  return { ...actual, canvasAvailable: () => canvasGate.available };
+});
+
+vi.mock("@/components/image-editor", () => ({
+  ImageEditor: (props: { file: File; onConfirm: (file: File) => void }) => {
+    if (!seenImages.has(props.file)) {
+      seenImages.add(props.file);
+      queueMicrotask(() => {
+        props.onConfirm(new File(["edited"], props.file.name, { type: props.file.type === "" ? "image/png" : props.file.type }));
+      });
+    }
+    return null;
+  },
+}));
+
 // The composer's microphone (ADR 0029). Two gates decide whether it is drawn at all — the bridge
 // publishing a provider, and this browser being able to record — and jsdom fails the second one by
 // default, so every case that wants a button installs the fake recorder first.
