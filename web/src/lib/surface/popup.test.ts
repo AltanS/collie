@@ -27,6 +27,14 @@ describe("the typeahead popups of omp's profile (idle.volatile.below.popups)", (
     ["omp--v18-6-1-hash-popup--w120.txt", "issue", false, 2],
     ["omp--v18-6-1-hash-popup-single--w120.txt", "issue", false, 1],
     ["omp--v18-6-1-hash-popup-stale--w120.txt", "issue", true, 2],
+    // omp-gang 04-readers, 2026-10-26: the first real captures of the emoji popup (one space after the glyph),
+    // the one-row path popup of a partial path, and the `@` rows left under an emptied box.
+    ["omp--v18-12-6-emoji-popup--w120.txt", "emoji", false, 8],
+    ["omp--v18-6-1-emoji-popup--w120.txt", "emoji", false, 8],
+    ["omp--v18-12-6-path-popup-partial--w120.txt", "path", false, 1],
+    ["omp--v18-6-1-at-popup-stale--w120.txt", "file", true, 2],
+    // The same rows read as a command list too (a description column); the popup is what they are.
+    ["omp--v18-12-6-at-popup-two-files--w120.txt", "file", false, 2],
   ] as const;
 
   it.each(READS)("%s: read as the %s popup (stale %s) of %i rows, the pointer on the first", (name, rule, stale, rows) => {
@@ -48,10 +56,31 @@ describe("the typeahead popups of omp's profile (idle.volatile.below.popups)", (
     expect(popupUnder(texts, bottom, "tag:#abc", POPUPS)).toBeNull();
   });
 
-  it("an empty box opens only the rule that names staleWhenEmpty", () => {
+  it("an empty box opens only the rules that name staleWhenEmpty, and every rule of omp's profile names it", () => {
     expect(popupUnder(texts, bottom, "", POPUPS)?.stale).toBe(true);
+    for (const rule of POPUPS.rules) expect(rule.staleWhenEmpty, rule.name).toBe(true);
     const file = screen("omp--v18-6-1-at-popup--w120.txt");
-    expect(popupUnder(file.texts, file.bottom, "", POPUPS)).toBeNull();
+    expect(popupUnder(file.texts, file.bottom, "", POPUPS)).toMatchObject({ name: "file", stale: true });
+    const edit = { ...POPUPS, rules: POPUPS.rules.map((rule) => ({ name: rule.name, text: rule.text, rows: rule.rows })) };
+    expect(popupUnder(file.texts, file.bottom, "", edit)).toBeNull();
+  });
+
+  it("a partial path is the path popup: a bare entry row under a text that is one path, never a slash command", () => {
+    const path = screen("omp--v18-12-6-path-popup-partial--w120.txt");
+    for (const text of ["~/src/ma", "./src/ma", "../src/ma", "/var/home/x/src/ma"]) {
+      expect(popupUnder(path.texts, path.bottom, text, POPUPS), text).toMatchObject({ name: "path", stale: false });
+    }
+    for (const text of ["/model", "/mod", "/skill:x", "src/ma", "read ~/src/ma now"]) {
+      expect(popupUnder(path.texts, path.bottom, text, POPUPS), text).toBeNull();
+    }
+  });
+
+  it("a path whose last name is already the pointed entry has no popup: omp closes it, and Enter submits (closedWhenTyped)", () => {
+    const full = screen("omp--v18-12-6-path-popup--w120.txt");
+    const typed = "/home/demo/lab1/.cache/collie-lab/omp-gang/05-images/state/rig/state/uploads/w2_p1-mvo44h6i-fd050f5a.png";
+    expect(popupUnder(full.texts, full.bottom, typed, POPUPS)).toBeNull();
+    // The same row under a prefix of it is the popup: the entry is not typed yet.
+    expect(popupUnder(full.texts, full.bottom, typed.slice(0, -10), POPUPS)).toMatchObject({ name: "path" });
   });
 
   it("a file popup is for a word that starts with @, never for a slash command", () => {
@@ -74,8 +103,8 @@ describe("the typeahead popups of omp's profile (idle.volatile.below.popups)", (
     expect(popupUnder(swap(rows.slice(0, POPUPS.maxRows)), bottom, "see @name", POPUPS)).not.toBeNull();
   });
 
-  it("the emoji popup (omp's source, no capture yet): a glyph and a :name: shortcode, the pointer on one row", () => {
-    const rows = ["❯ 😄  :smile:", "  😀  :smiley:", "  🙂  :)"];
+  it("the emoji popup: a glyph and a :name: shortcode, one space after the glyph on omp 18.6.1 and 18.12.6, the pointer on one row", () => {
+    const rows = ["❯ 😄 :smile:", "  😀  :smiley:", "  🙂 :)"];
     const read = popupUnder(swap(rows), bottom, "nice :smi", POPUPS);
     expect(read).toMatchObject({ name: "emoji", first: bottom + 1, last: bottom + 3, pointed: bottom + 1, stale: false });
     // A file name is no emoji row, and an emoji row is no file popup's.

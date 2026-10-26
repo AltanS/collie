@@ -392,6 +392,38 @@ describe("omp 18.12.6 Ask with option previews lifts, each preview on its option
   });
 });
 
+describe("omp 18.12.6 free-text-only Ask (omp-gang 04-readers F3, 2026-10-26) lifts: `Other` alone, then Cancel", () => {
+  const FREE = "omp--v18-12-6-ask-freetext--w120.txt";
+
+  it("the question, the one `Other` row (a bare Enter opens the answer editor) and Cancel", () => {
+    const model = detectAskSelect(load(FREE))!;
+    expect(model.question).toBe("What feature or API should I plan?");
+    expect(model.options).toEqual([
+      { label: OTHER, keys: ["Enter"], keyLabel: "❯" },
+      { label: "Cancel", keys: ["Escape"], keyLabel: "Esc" },
+    ]);
+    expect(model.family).toBe("select");
+    expect(ompBuildBlocks(load(FREE)).at(-1)!.kind).toBe("prompt-select");
+  });
+
+  it("the card starts at the panel's title, not at the echo block above it", () => {
+    const region = detectAskSelectRegion(load(FREE))!;
+    expect(textsOf(FREE)[region.startLine]).toMatch(/^╭─ Ask ─+╮$/);
+    expect(region.model.signature).not.toContain("Ask 1 questions");
+  });
+
+  it("a lone row that is not `Other`, and an `Other` row with no pointer, decline", () => {
+    const rows = textsOf(FREE);
+    expect(detectAskSelect(fromTexts(rows.map((t) => t.replace("Other (type your own)", "Something else"))))).toBeNull();
+    expect(detectAskSelect(fromTexts(rows.map((t) => t.replace("│ ❯ ○", "│   ○"))))).toBeNull();
+  });
+
+  it("no row at all declines", () => {
+    const rows = textsOf(FREE);
+    expect(detectAskSelect(fromTexts(rows.filter((t) => !t.includes("Other (type your own)"))))).toBeNull();
+  });
+});
+
 describe("every tap is the walk plus a key the footer printed", () => {
   const LIFTED = [
     "omp--select-menu-moved.txt",
@@ -660,11 +692,11 @@ describe("fails closed", () => {
     expect(detectAskSelect(fromTexts(twice))).toBeNull();
   });
 
-  it("with `Other` as the only row", () => {
+  it("with `Other` as the only row: omp 18.12.6 draws a free-text question so, and it lifts (see the free-text describe)", () => {
     const only = [...single.slice(0, 201), single[204]!, ...single.slice(205)].map((t, i) =>
       i === 201 ? t.replace("│   ○", "│ ❯ ○") : t,
     );
-    expect(detectAskSelect(fromTexts(only))).toBeNull();
+    expect(detectAskSelect(fromTexts(only))?.options.map((o) => o.label)).toEqual([OTHER, "Cancel"]);
   });
 
   it("with more than four question rows, or none", () => {
@@ -713,6 +745,7 @@ describe("the grammar claims nothing else in the corpus", () => {
     "omp--v18-8-ask-single-described.txt",
     "omp--v18-12-6-ask-previews--w120.txt",
     "omp--v18-12-6-ask-plan-mode--w120.txt",
+    "omp--v18-12-6-ask-freetext--w120.txt",
     "omp--v18-10-ask-single.txt",
     "omp--v18-10-ask-batch.txt",
     "omp--v18-10-ask-batch-moved.txt",

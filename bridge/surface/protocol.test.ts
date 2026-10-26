@@ -9,7 +9,7 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { muxAck, muxOk, muxRefused, muxUnreachable, type MuxAck, type MuxGrid, type MuxGridRequest, type MuxOutcome } from "../mux/types.ts";
-import { forPlatform, loadProfiles, profileFor, resetProfileLog, type Profile, type ProfileForOptions, type ProfileStatus, type VersionRange } from "../../web/src/lib/surface/profile.ts";
+import { forPlatform, loadProfiles, profileFor, resetProfileLog, type Profile, type ProfileForOptions, type PopupRule, type ProfileStatus, type VersionRange } from "../../web/src/lib/surface/profile.ts";
 import type { HeldCancelAnswer, SendAnswer } from "../../web/src/lib/surface/send.ts";
 import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { lineText, splitLines } from "../../web/src/lib/blocks.ts";
@@ -5409,6 +5409,32 @@ describe("OMP 18.12.6: composer.shape field (omp gang 11-geometry, W5)", () => {
   });
 });
 
+/** OMP 18.12.6 with `composer.shape: claude` (omp-gang 04-readers, G, 2026-10-26): a rule, `❯` on the first row, two spaces on the rest, a rule, the status row. */
+class ClaudeComposerOmpPane extends OmpPane {
+  override render(): string {
+    const rows = [...this.transcript, ""];
+    const rule = "─".repeat(120);
+    rows.push(rule);
+    this.box.split("\n").forEach((line, i) => rows.push(`${i === 0 ? "❯" : " "} ${line}`.trimEnd()));
+    rows.push(rule, " π · ◒ Haiku 4.5 · 📁 …g3/04-readers/state/harness/omp/project · ◫ 4.7%/200K ⟲");
+    return rows.join("\n");
+  }
+}
+
+describe("OMP 18.12.6: a two-line draft under composer.shape claude (omp-gang 04-readers, G)", () => {
+  test("the send is refused true and the detail says what was read: the box shape, not something that opened", async () => {
+    const { pane, send, deps } = omp({ version: "18.12.6", pane: new ClaudeComposerOmpPane() });
+    const answer = await send("first line\nsecond line", { id: "claude-shape-two-lines" });
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue" });
+    const detail = deps.store.get("claude-shape-two-lines")?.receipt?.detail ?? "";
+    expect(detail).toContain("The box shape could not be read");
+    expect(detail).toContain("known gap");
+    expect(detail).not.toContain("Something is open");
+    expect(pane.keysSeen).not.toContain("ctrl+q");
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+});
+
 describe("OMP: commands that end the process are never held (omp gang 03)", () => {
   const NEVER = "Collie does not queue this command during a turn. Send it when the turn ends.";
 
@@ -8423,7 +8449,10 @@ describe("omp's fuzzy command list under the box (1.24.1)", () => {
     const { send } = ompPane("18.12.6", "omp--v18-12-6-stale-list-row-empty-box--w120.txt", { stale: true }, (profile) => {
       const { staleWhenEmpty, ...list } = profile.idle.volatile.below.commandList!;
       void staleWhenEmpty;
-      return { ...profile, idle: { ...profile.idle, volatile: { ...profile.idle.volatile, below: { ...profile.idle.volatile.below, commandList: list } } } };
+      // The popup rules name the stale mark too (their rows are as loose as a list row's), so they go as well.
+      const popups = profile.idle.volatile.below.popups!;
+      const rules = popups.rules.map((rule) => ({ name: rule.name, text: rule.text, rows: rule.rows }));
+      return { ...profile, idle: { ...profile.idle, volatile: { ...profile.idle.volatile, below: { ...profile.idle.volatile.below, commandList: list, popups: { ...popups, rules } } } } };
     });
     const answer = await send("hello there again");
     expect(answer.receipt?.outcome).not.toBe("sent");
@@ -9542,5 +9571,111 @@ describe("omp's typeahead popups under the box (1.24.1)", () => {
       const prepared = await protocol.handle({ id: "quoted-old", text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: "omp" });
       expect(prepared.surface).toMatchObject({ modal: "unreadable" });
     });
+  });
+
+  // omp-gang 04-readers (2026-10-26), omp 18.12.6 and 18.6.1: the first real captures of three more screens.
+  const EMOJI = ["omp--v18-12-6-emoji-popup--w120.txt", "omp--v18-6-1-emoji-popup--w120.txt"] as const;
+  const emojiOpens = (box: string): boolean => /(?:^|\s):[A-Za-z0-9_+-]+$/u.test(box);
+  const withRules = (profile: Profile, edit: (rules: PopupRule[]) => PopupRule[]): Profile => {
+    const popups = profile.idle.volatile.below.popups!;
+    return { ...profile, idle: { ...profile.idle, volatile: { ...profile.idle.volatile, below: { ...profile.idle.volatile.below, popups: { ...popups, rules: edit([...popups.rules]) } } } } };
+  };
+  const twoSpaceEmoji = (profile: Profile): Profile => withRules(profile, (rules) => rules.map((rule) => (rule.name === "emoji" ? { ...rule, rows: rule.rows.replace(" {1,2}", " {2}") } : rule)));
+
+  for (const name of EMOJI) {
+    test(`${name}: hello :smi with the emoji popup open goes out with ctrl+q, and the pane reads the box`, async () => {
+      const looked = ompPane(name, { opens: emojiOpens });
+      looked.pane.box = "hello :smi";
+      const prepared = await looked.protocol.handle({ id: `emoji-prep-${String(EMOJI.indexOf(name))}`, text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: "omp" });
+      expect(prepared.surface).toMatchObject({ turn: "idle", modal: "none", composer: "draft" });
+      const { send, pane } = ompPane(name, { opens: emojiOpens });
+      const answer = await send("hello :smi", { id: `emoji-send-${String(EMOJI.indexOf(name))}`, mode: "send" });
+      expect(answer.receipt).toMatchObject({ outcome: "sent" });
+      expect(answer.receipt?.keys.at(-1)).toBe("ctrl+q");
+      expect(pane.keysSeen).not.toContain("Enter");
+      expect(pane.box).toBe("");
+      neverEscape(pane);
+    });
+  }
+
+  test("with the old two-space emoji row pattern the popup is no popup: the box reads unreadable and the send ends typed, not submitted, as the tester saw it", async () => {
+    const looked = ompPane(EMOJI[0], { opens: emojiOpens }, twoSpaceEmoji);
+    looked.pane.box = "hello :smi";
+    const prepared = await looked.protocol.handle({ id: "emoji-old-prep", text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: "omp" });
+    expect(prepared.surface).toMatchObject({ modal: "unreadable" });
+    const { send, pane } = ompPane(EMOJI[0], { opens: emojiOpens }, twoSpaceEmoji);
+    const answer = await send("hello :smi", { id: "emoji-old", mode: "send" });
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue" });
+    expect(pane.keysSeen).not.toContain("ctrl+q");
+  });
+
+  const PATH = "omp--v18-12-6-path-popup-partial--w120.txt";
+  const PARTIAL = "~/.cache/collie-lab/omp-gang/gang3/04-readers/state/harness/omp/project/src/ma";
+  const pathOpens = (box: string): boolean => box.startsWith("~/");
+
+  test("a partial path in a command send: the one-row path popup refuses Enter, with the popup notice, and Enter is not pressed", async () => {
+    const { send, pane, deps } = ompPane(PATH, { opens: pathOpens });
+    const answer = await send(PARTIAL, { id: "path-command", mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue" });
+    expect(deps.store.get("path-command")?.receipt?.detail).toBe(POPUP_NOTICE);
+    expect(pane.keysSeen).not.toContain("Enter");
+    expect(pane.keysSeen).not.toContain("ctrl+q");
+    expect(pane.box).toBe(PARTIAL);
+  });
+
+  test("the same partial path goes out with ctrl+q when the person taps Submit, and as a plain send", async () => {
+    const submitted = ompPane(PATH, { opens: pathOpens });
+    submitted.pane.box = PARTIAL;
+    const answer = await submitted.send(PARTIAL, { id: "path-submit", mode: "submit" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(answer.receipt?.keys.at(-1)).toBe("ctrl+q");
+    expect(submitted.pane.box).toBe("");
+    const plain = ompPane(PATH, { opens: pathOpens });
+    const sent = await plain.send(PARTIAL, { id: "path-plain", mode: "send" });
+    expect(sent.receipt).toMatchObject({ outcome: "sent" });
+    expect(sent.receipt?.keys.at(-1)).toBe("ctrl+q");
+    expect(plain.pane.keysSeen).not.toContain("Enter");
+  });
+
+  test("without the path rule the command send presses Enter into omp's popup and does not end sent, as the tester saw it", async () => {
+    const { send, pane } = ompPane(PATH, { opens: pathOpens }, (profile) => withRules(profile, (rules) => rules.filter((rule) => rule.name !== "path")));
+    const answer = await send(PARTIAL, { id: "path-old", mode: "command" });
+    expect(pane.keysSeen).toContain("Enter");
+    expect(answer.receipt?.detail).not.toBe(POPUP_NOTICE);
+  });
+
+  test("an @ popup whose rows also read as a command list: the command send names the popup, not another command", async () => {
+    const name = "omp--v18-12-6-at-popup-two-files--w120.txt";
+    const { send, pane, deps } = ompPane(name);
+    const answer = await send("please read @READ", { id: "at-command-detail", mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue" });
+    expect(deps.store.get("at-command-detail")?.receipt?.detail).toBe(POPUP_NOTICE);
+    expect(pane.keysSeen).not.toContain("Enter");
+    // The plain send of it goes out with ctrl+q.
+    const plain = ompPane(name);
+    const sent = await plain.send("please read @READ", { id: "at-plain", mode: "send" });
+    expect(sent.receipt).toMatchObject({ outcome: "sent" });
+    expect(sent.receipt?.keys.at(-1)).toBe("ctrl+q");
+  });
+
+  test("the @ rows left under an emptied box after Submit: the pane reads an empty box, and a plain send goes out", async () => {
+    const name = "omp--v18-6-1-at-popup-stale--w120.txt";
+    const looked = ompPane(name, { stale: true });
+    const prepared = await looked.protocol.handle({ id: "at-stale-prep", text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: "omp" });
+    expect(prepared.surface).toMatchObject({ turn: "idle", modal: "none", composer: "empty" });
+    const { send, pane } = ompPane(name, { stale: true });
+    const answer = await send("hello there", { id: "at-stale-send", mode: "send" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(answer.receipt?.keys.at(-1)).toBe("ctrl+q");
+    neverEscape(pane);
+  });
+
+  test("without the stale mark on the file and path rules the same rows read modal unknown, and the plain send does not go out, as the tester saw it", async () => {
+    const unmarked = (profile: Profile): Profile => withRules(profile, (rules) => rules.map((rule) => (rule.name === "file" || rule.name === "path" ? { name: rule.name, text: rule.text, rows: rule.rows } : rule)));
+    const { protocol, send } = ompPane("omp--v18-6-1-at-popup-stale--w120.txt", { stale: true }, unmarked);
+    const prepared = await protocol.handle({ id: "at-stale-old", text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: "omp" });
+    expect(prepared.surface).toMatchObject({ modal: "unknown" });
+    const answer = await send("hello there", { id: "at-stale-old-send", mode: "send" });
+    expect(answer.receipt?.outcome).not.toBe("sent");
   });
 });

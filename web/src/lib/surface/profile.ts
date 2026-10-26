@@ -285,6 +285,12 @@ export interface PopupRule {
    * `PR #1` and `Issue #1` under a box cleared with Ctrl+C), and go with the next key. Optional.
    */
   readonly staleWhenEmpty?: true;
+  /**
+   * The popup completes the last word of the text, and it is closed once that word is already the pointed entry: the
+   * text ends with the pointed row's `entry` group after a `/` (OMP 18.12.6 closes its path popup and Enter submits
+   * the text when the typed path equals the one entry). Needs the group `entry` in `rows`. Optional.
+   */
+  readonly closedWhenTyped?: true;
 }
 
 /** `idle.volatile.below.popups`: the popups a box's last word opens ({@link PopupRule}). */
@@ -1187,7 +1193,13 @@ function popupRows(value: JsonValue): PopupRows {
     if (rowPattern.test("") || rowPattern.test(" ")) fail(`${at}.rows`, "must not match a blank row");
     if (!rowPattern.source.includes("(?<pointer>")) fail(`${at}.rows`, "must hold the named group pointer");
     if (rule.staleWhenEmpty !== undefined && rule.staleWhenEmpty !== true) fail(`${at}.staleWhenEmpty`, "must be true when named");
-    return rule.staleWhenEmpty === true ? { name, text: opens.source, rows: rowPattern.source, staleWhenEmpty: true } : { name, text: opens.source, rows: rowPattern.source };
+    if (rule.closedWhenTyped !== undefined && rule.closedWhenTyped !== true) fail(`${at}.closedWhenTyped`, "must be true when named");
+    if (rule.closedWhenTyped === true && !rowPattern.source.includes("(?<entry>")) fail(`${at}.closedWhenTyped`, "needs the named group entry in rows");
+    return Object.assign(
+      { name, text: opens.source, rows: rowPattern.source },
+      rule.staleWhenEmpty === true ? { staleWhenEmpty: true as const } : {},
+      rule.closedWhenTyped === true ? { closedWhenTyped: true as const } : {},
+    );
   });
   if (rules.length === 0) fail(`${path}.rules`, "must name at least one rule");
   return { submitIgnores: true, maxRows, rules };

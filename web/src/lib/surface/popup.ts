@@ -57,6 +57,7 @@ export function popupUnder(texts: readonly string[], bottom: number, text: strin
   for (const { rule, text: opens, rows } of compiled(popups)) {
     if (empty ? rule.staleWhenEmpty !== true : !opens.test(text.trimEnd())) continue;
     let pointed = -1;
+    let entry: string | undefined;
     let all = true;
     for (let i = first; i <= end && all; i++) {
       const row = rows.exec(texts[i]!.trimEnd());
@@ -65,8 +66,11 @@ export function popupUnder(texts: readonly string[], bottom: number, text: strin
       } else if (row.groups?.pointer !== undefined) {
         if (pointed >= 0) all = false;
         pointed = i;
+        entry = row.groups.entry;
       }
     }
+    // A popup that completes the last word is closed when that word already is the pointed entry.
+    if (all && rule.closedWhenTyped === true && entry !== undefined && text.trimEnd().endsWith(`/${entry}`)) continue;
     if (all && pointed >= 0) return { name: rule.name, first, last: end, pointed, stale: empty };
   }
   return null;

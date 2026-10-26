@@ -4581,6 +4581,16 @@
    "version": "18.6.1",
    "state": "running"
   },
+  "omp--v18-12-6-approval-task--w120.txt": {
+   "harness": "omp",
+   "version": "18.12.6",
+   "state": "dialog"
+  },
+  "omp--v18-12-6-ask-freetext--w120.txt": {
+   "harness": "omp",
+   "version": "18.12.6",
+   "state": "dialog"
+  },
   "omp--v18-12-6-ask-plan-mode--w120.txt": {
    "harness": "omp",
    "version": "18.12.6",
@@ -4734,6 +4744,31 @@
   "omp--v18-6-1-hash-popup-stale--w120.txt": {
    "harness": "omp",
    "version": "18.6.1",
+   "state": "popup"
+  },
+  "omp--v18-12-6-emoji-popup--w120.txt": {
+   "harness": "omp",
+   "version": "18.12.6",
+   "state": "popup"
+  },
+  "omp--v18-6-1-emoji-popup--w120.txt": {
+   "harness": "omp",
+   "version": "18.6.1",
+   "state": "popup"
+  },
+  "omp--v18-12-6-path-popup-partial--w120.txt": {
+   "harness": "omp",
+   "version": "18.12.6",
+   "state": "popup"
+  },
+  "omp--v18-6-1-at-popup-stale--w120.txt": {
+   "harness": "omp",
+   "version": "18.6.1",
+   "state": "popup"
+  },
+  "omp--v18-12-6-at-popup-two-files--w120.txt": {
+   "harness": "omp",
+   "version": "18.12.6",
    "state": "popup"
   },
   "omp--v18-6-1-quoted-dialog-draft--w120.txt": {

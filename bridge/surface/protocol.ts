@@ -878,6 +878,11 @@ function modalAtBox(snap: Snap): boolean {
   return snap.frame !== null && snap.surface.modal !== "none";
 }
 
+/** Whether the framed cue read found cues and every one stands on a row of the frame itself: the box's own rows, not a list drawn under or over it. */
+function cuesInsideFrame(snap: Snap, frame: Frame): boolean {
+  return snap.cues.length > 0 && snap.cues.every((cue) => cue.row >= frame.top && cue.row <= frame.bottom);
+}
+
 /** The non-blank rows under a frame's bottom edge. */
 function rowsBelow(snap: Snap, frame: Frame): number {
   void frame;
@@ -1504,6 +1509,12 @@ const NOT_YET: ReadonlySet<SendReason> = new Set<SendReason>(["turn_running", "b
 /** How often a release may go back to the queue before it ends with the refusal it met. */
 const HOLD_TRIES = 5;
 
+/**
+ * The detail of a send left typed because the box's own rows read as a list (a cue inside the frame) while the box holds exactly
+ * the typed text: nothing opened, the box shape could not be read. The known case is a draft of two lines under a composer shape
+ * whose prompt glyph stands on the first row (omp's `claude` shape, omp-gang 04-readers, 2026-10-26).
+ */
+const BOX_UNREADABLE_DRAFT = "The box shape could not be read: the rows of the box look like a list, though nothing opened. A draft of two or more lines in a composer shape that puts a prompt glyph on its first row is a known gap. Enter was not pressed.";
 /** The detail of a send into a turn refused because something is open at the box (a popup over or under it). */
 const OPEN_AT_BOX = "Something is open at the input box.";
 /**
@@ -3175,13 +3186,13 @@ export class SendProtocol {
         // A returned card's Send goes only on an idle turn: a busy one means the text may be on its way.
         if (request.returnedCard === true && s0.surface.turn !== "idle") throw new Ended("refused", "not_free", { surface: s0.surface, detail: RETURNED_BUSY });
         const located = this.typedBox(state, s0, holds, lines);
+        // A popup first, as at the end of the typing: the command key is Enter, and Enter acts on the popup. A popup is no command list.
+        if (state.command && s0.popup !== null) {
+          throw new Ended("refused", "not_free", { surface: s0.surface, framed: true, rowsHash: s0.rowsHash, detail: POPUP_AT_ENTER });
+        }
         // Enter on a command whose list points at another one runs that one: the person picks it with the keys or discards the text.
         if (state.command && listPointsElsewhere(s0, "", lines, collapseOf(match), match?.profile.idle.volatile.below.commandList)) {
           throw new Ended("refused", "not_free", { surface: s0.surface, framed: true, rowsHash: s0.rowsHash, detail: SUBMIT_ELSEWHERE });
-        }
-        // The same for a popup: the command key is Enter, and Enter acts on it.
-        if (state.command && s0.popup !== null) {
-          throw new Ended("refused", "not_free", { surface: s0.surface, framed: true, rowsHash: s0.rowsHash, detail: POPUP_AT_ENTER });
         }
         this.lap(state, "s0");
         state.marks.s1 = s0;
@@ -4152,17 +4163,19 @@ export class SendProtocol {
         state.tailOnly = snap.frame !== null && boxHolds(snap.frame, prefix, lines, collapse, state.whole) === "tail";
         return "pass";
       }
+      // A command commits with the command key, and Enter acts on an open popup (the profile's `submitIgnores`
+      // is its submit key's only). The popup's rows are no cue, so this is where the refusal stands. It comes
+      // first: a popup is no command list, and rows that read as both are the popup (the receipt says so).
+      popupOpen = command && snap.popup !== null;
+      if (popupOpen) {
+        elsewhere = false;
+        why = "modal_cue";
+        return "wait";
+      }
       // A command whose list under the box points at another command: Enter would run that one. The list
       // may still be catching up with the paste, so the read waits; when no read passes, the text stays.
       elsewhere = command && listPointsElsewhere(snap, prefix, lines, collapse, state.match?.profile.idle.volatile.below.commandList);
       if (elsewhere) {
-        why = "modal_cue";
-        return "wait";
-      }
-      // A command commits with the command key, and Enter acts on an open popup (the profile's `submitIgnores`
-      // is its submit key's only). The popup's rows are no cue, so this is where the refusal stands.
-      popupOpen = command && snap.popup !== null;
-      if (popupOpen) {
         why = "modal_cue";
         return "wait";
       }
@@ -4247,6 +4260,8 @@ export class SendProtocol {
     if (pointedElsewhere) note.detail = LIST_ELSEWHERE;
     const popupAtEnter: boolean = popupOpen; // set inside the poll's callback
     if (popupAtEnter) note.detail = POPUP_AT_ENTER;
+    const last = result.snap;
+    if (note.detail === undefined && why === "modal_cue" && last !== null && last.frame !== null && cuesInsideFrame(last, last.frame) && boxHolds(last.frame, prefix, lines, collapse, state.whole) !== null) note.detail = BOX_UNREADABLE_DRAFT;
     throw new Ended("typed_not_submitted", why, sawNote(result.snap, note));
   }
 

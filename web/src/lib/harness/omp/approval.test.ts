@@ -68,6 +68,8 @@ const LIFTED = [
 const GOAL = ["omp--v18-6-1-approval-goal--w120.txt"];
 
 const DIVIDED = ["omp--v18-12-6-approval-bash--w120.txt", "omp--v18-12-6-approval-bash-later--w120.txt"];
+// omp 18.12.6's `Allow tool: task`: the divided panel with a summary row that omp always clips (approval.ts, SUMMARY_TOOLS).
+const TASK = ["omp--v18-12-6-approval-task--w120.txt"];
 
 describe("omp 18.4.10 (`unicode` preset) lifts as Approve, Deny, Cancel", () => {
   it("approval-bash: the pointer on Approve, the command on the card", () => {
@@ -546,7 +548,7 @@ describe("the grammar claims nothing else in the corpus", () => {
     const all = readdirSync(PANES_DIR).filter((f) => f.endsWith(".txt"));
     expect(all.length).toBeGreaterThan(300);
     const lifted = all.filter((name) => detectApproval(load(name)) !== null);
-    expect(lifted.toSorted()).toEqual([...LIFTED, ...GOAL, ...DIVIDED].toSorted());
+    expect(lifted.toSorted()).toEqual([...LIFTED, ...GOAL, ...DIVIDED, ...TASK].toSorted());
   });
 });
 
@@ -742,6 +744,66 @@ describe("the divided panel declines everything it was not built against", () =>
 
   it("a panel narrower than the footer cannot lift: the footer is one exact string", () => {
     declines(panel({ footer: DIVIDED_FOOTER.slice(0, 60) }));
+  });
+});
+
+// ── omp 18.12.6: `Allow tool: task`, a summary tool (approval.ts, SUMMARY_TOOLS) ─────────────────────────
+// Read off `omp--v18-12-6-approval-task--w120.txt` (omp-gang 04-readers X1, 2026-10-26): the divided panel, one
+// `Context: …` row that omp clipped with a `…`, and the session row `Approve task for this session`.
+
+describe("omp 18.12.6 `Allow tool: task` lifts with its summary row as the screen shows it", () => {
+  const SUMMARY = "Context: # Goal · Batch agents: scout ×1 · Agent: scout · Task: Read README.md, guide.md, main entry points (src/ma…";
+
+  it.each(TASK)("%s: the three rows, the clipped summary on the card, Deny as Escape", (name) => {
+    const model = detectApproval(load(name))!;
+    expect(model.family).toBe("permission");
+    expect(model.caption).toBe("Allow tool: task");
+    expect(model.question).toBe(`Allow tool: task\n${SUMMARY}`);
+    expect(model.options).toEqual([
+      { label: "Approve", description: SUMMARY, keys: ["Enter"], keyLabel: "❯" },
+      { label: "Approve task for this session", keys: ["Down", "Enter"], keyLabel: "" },
+      { label: "Deny", keys: ["Escape"], keyLabel: "Esc" },
+    ]);
+    expect(model.clampedEnds).toBeUndefined();
+  });
+
+  it.each(TASK)("%s: the card starts at the title and the build keeps the rest as raw", (name) => {
+    const lines = load(name);
+    const region = detectApprovalRegion(lines)!;
+    expect(lineText(lines[region.startLine]!)).toMatch(/^╭─ Allow tool: task ─+╮$/);
+    expect(ompBuildBlocks(lines).map((b) => b.kind)).toEqual(["raw", "prompt-select"]);
+    expect(locateComposer(lines)).toBeNull();
+  });
+
+  it("the pointer on the session row walks like bash's, and a different summary moves the signature", () => {
+    const moved = detectApproval(fromTexts(panel({ title: "Allow tool: task", body: [SUMMARY], choices: ["  Approve", "❯ Approve task for this session", "  Deny"] })))!;
+    expect(moved.options.map((o) => o.keys)).toEqual([["Up", "Enter"], ["Enter"], ["Escape"]]);
+    const a = detectApproval(fromTexts(panel({ title: "Allow tool: task", body: [SUMMARY], choices: ["❯ Approve", "  Approve task for this session", "  Deny"] })))!;
+    const other = detectApproval(fromTexts(panel({ title: "Allow tool: task", body: ["Task: something else"], choices: ["❯ Approve", "  Approve task for this session", "  Deny"] })))!;
+    expect(a.coreSignature).toBe(moved.coreSignature);
+    expect(other.coreSignature).not.toBe(a.coreSignature);
+  });
+
+  const declines = (body: string[], choices: string[] = ["❯ Approve", "  Approve task for this session", "  Deny"]) => expect(detectApproval(fromTexts(panel({ title: "Allow tool: task", body, choices })))).toBeNull();
+
+  it.each([
+    ["a row that opens with no task detail", ["echo hi"]],
+    ["a Command row", ["Command: ls"]],
+    ["a Reason alone", ["Reason: because"]],
+    ["three body rows", ["Reason: a", "Task: b", "Agent: c"]],
+    ["omp's own elision mark", ["Task: do […4000ch elided…]"]],
+    ["a zero-width space", ["Task: do​it"]],
+    ["a right-to-left override", ["Task: do ‮fdp.txt"]],
+  ])("declines %s", (_name, body) => declines(body));
+
+  it("declines a session row that names another tool", () => {
+    declines([SUMMARY], ["❯ Approve", "  Approve bash for this session", "  Deny"]);
+  });
+
+  it("accepts a Reason row above the summary, and a summary that fits whole (no clip mark)", () => {
+    const choices = ["❯ Approve", "  Approve task for this session", "  Deny"];
+    expect(detectApproval(fromTexts(panel({ title: "Allow tool: task", choices, body: ["Reason: matched a config pattern", "Agent: scout · Task: read the readme"] })))).not.toBeNull();
+    expect(detectApproval(fromTexts(panel({ title: "Allow tool: task", choices, body: ["Agent: scout · Task: read the readme"] })))).not.toBeNull();
   });
 });
 

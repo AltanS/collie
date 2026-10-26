@@ -127,6 +127,9 @@
 //     and moves the pointer onto it; that label is no row this grammar knows, so the screen declines.
 //   * Only the `unicode` preset is captured. `❯` is the pointer and the footer carries the glyph keycaps.
 //
+// THE SUMMARY TOOLS (`task`, 18.12.6). A subagent call's compact row is a summary by design, never the
+// whole call, so it is lifted with the clipped row as the screen shows it (see SUMMARY_TOOLS).
+//
 // Not read, and so declined: the `always-ask-cached` grants (`Remember across sessions`, `Approve
 // Directory: …`, `Approve Once`), a title with a countdown, the PgUp/PgDn scroll hint of an overflowing
 // body, a `write` or any other tool, and the nerd preset.
@@ -326,8 +329,19 @@ const DIVIDED_FOOTER = "↑/↓ choose · ⏎ select · Ctrl+⏎/Ctrl+Q approve 
 const DIVIDED_POINTER = "❯ ";
 /** The divider over the footer. */
 const DIVIDER = /^├─+┤$/;
-/** The tool whose summary row is captured; the only one the divided shape lifts. */
+/** The tool whose summary row is captured as the command itself: the divided shape lifts it whole. */
 const DIVIDED_TOOLS = new Set(["bash"]);
+/**
+ * The tools the divided shape lifts with a SUMMARY row that omp always shortens (omp 18.12.6,
+ * `omp--v18-12-6-approval-task--w120.txt`): `task` starts a subagent, and its compact prompt
+ * (`approvalSummary`) joins the first line of each detail (`Agent:`, `Name:`, `Task:`, `Context:`,
+ * `Batch agents:`) with ` · ` and clips the row to the box with a `…`. The full prompt is on the desk
+ * under Ctrl+O. Unlike a command, the row was never the whole call, so a trailing `…` says nothing a
+ * second time: the card shows the row verbatim, mark and all, and claims no more than the screen does.
+ */
+const SUMMARY_TOOLS = new Set(["task"]);
+/** The details of a `task` call, as the first words of its summary row (`TaskTool.formatApprovalDetails`). */
+const TASK_SUMMARY_ROW = /^(?:Agent|Name|Task|Context|Batch agents): \S/;
 /** A body is at most `Reason: …` and `Command: …`: one compact row per detail. */
 const MAX_DIVIDED_BODY_ROWS = 2;
 /** The session row's label: `Approve ${sessionSubject} for this session`, the subject being the tool. */
@@ -408,10 +422,10 @@ function detectDividedApproval(lines: StyledLine[]): ApprovalRegion | null {
   }
   if (titleAt < 0 || titleAt === choicesAt - 1) return null;
   const tool = TITLE.exec(texts[titleAt]!)![1]!;
-  if (!DIVIDED_TOOLS.has(tool)) return null;
+  if (!DIVIDED_TOOLS.has(tool) && !SUMMARY_TOOLS.has(tool)) return null;
   if (sessionTool !== null && sessionTool !== tool) return null;
   const body = texts.slice(titleAt + 1, choicesAt).map(bodyText);
-  const shown = summariseDivided(body);
+  const shown = SUMMARY_TOOLS.has(tool) ? summariseSummaryTool(body) : summariseDivided(body);
   if (shown === null) return null;
 
   // 5. The signature, as the first shape's: the region verbatim, title through the border. The band
@@ -464,6 +478,20 @@ function summariseDivided(body: string[]): string[] | null {
   const first = body[0]!.startsWith("Reason: ") ? 1 : 0;
   if (body.length !== first + 1) return null;
   return body[first]!.startsWith("Command: ") ? body : null;
+}
+
+/**
+ * The compact body of a summary tool (see SUMMARY_TOOLS): an optional `Reason: …` row, then the one
+ * summary row. It may end in omp's `…`; it carries neither omp's elision mark nor a hidden character.
+ */
+function summariseSummaryTool(body: string[]): string[] | null {
+  if (body.length === 0 || body.length > MAX_DIVIDED_BODY_ROWS) return null;
+  if (body.some((row) => row.length === 0)) return null;
+  if (OMP_ELISION.test(body.join("").replace(/\s+/g, ""))) return null;
+  if (body.some(hasHiddenCharacter)) return null;
+  const first = body[0]!.startsWith("Reason: ") ? 1 : 0;
+  if (body.length !== first + 1) return null;
+  return TASK_SUMMARY_ROW.test(body[first]!) ? body : null;
 }
 
 /** Whether a lifted approval dialog owns the keyboard of this screen, in either shape. */
