@@ -126,6 +126,8 @@ profile, from the pane itself or from the window. When the pane's generation the
 profile names, for example shell to omp or a session id that resolves, the send goes on. Any other move
 still ends it `changed` (after the text) or `pane_gone` (before it): another harness, a shell again, the
 pane gone, or a pane with no profile.
+A held send follows the same rule while it waits: a pane that moves to an agent the held send's profile
+names keeps the hold, which takes the new generation and that agent as its harness, and any other move ends it `pane_gone`.
 
 **What stays on the blind road.** For about the first second after a person types the agent's command
 into a shell, the shell itself is still the pane's foreground process, so a send then is a blind send to

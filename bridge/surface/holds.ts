@@ -217,6 +217,13 @@ export class HoldStore {
     return this.write(entry);
   }
 
+  /** The pane's multiplexer now names the agent of the request's own profile: the release picks the profile by it. Null when it is not held. */
+  setHarness(id: string, harness: string): HeldEntry | null {
+    const known = this.get(id);
+    if (known === null || known.state !== "held") return null;
+    return known.harness === harness ? known : this.write({ ...known, harness });
+  }
+
   /** What holds a request now: the file is written only when it changed. Null when it is not held. */
   setCause(id: string, cause: HoldCause): HeldEntry | null {
     const known = this.get(id);

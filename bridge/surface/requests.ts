@@ -430,6 +430,13 @@ export class RequestStore {
     return held;
   }
 
+  /** A held request's pane moved to an agent its own profile names: the record takes the pane's new generation. */
+  moveHeld(id: string, paneGeneration: string): void {
+    const known = this.get(id);
+    if (known === null || known.phase !== "held" || known.paneGeneration === paneGeneration) return;
+    this.write({ ...known, paneGeneration });
+  }
+
   /** A held request's release starts: it runs again as accepted, bounded from now. Null when it is not held. */
   rearm(id: string, paneGeneration?: string): SendRecord | null {
     const known = this.get(id);
