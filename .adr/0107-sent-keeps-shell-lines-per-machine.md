@@ -132,7 +132,28 @@ the box yet". A starting pane refuses a new send; it does not hold it. A send al
 hold queue does not release while the character has not shown, and a release that meets the box still
 starting goes back to its place without spending a try. Once the character shows, the residue rule
 takes it out and the send goes. The count ends with the window: the first probe that shows, the 120 s
-bound, or the harness leaving. A character that never shows keeps sends refused until then.
+bound, or the harness leaving. Each character also blocks for at most 30 s (the next paragraph).
+
+**A pending probe character blocks for 30 s, not for the window** (counsel review of 1.24.1,
+2026-10-26). A character that never shows (a program that flushes its input as it starts) kept every
+send refused and every held send waiting for the launch window's 120 s. Each pending character now
+blocks only for `PENDING_PROBE_MS`, 30 s from the moment it was typed (the deaf gap seen live was about
+20 s on omp 18.12.6). Past that the next send types one new probe, which is how Collie learns the box
+reads keys now, and a held send goes on the next free poll. The character still counts for the window:
+a box read alone does not end it, only a probe that shows or the 120 s bound. A character that shows
+later is still taken out by the residue rule, which never depended on the count. The count is memory:
+after a bridge restart it is 0, and a character that shows then is residue like any other.
+
+**A refusal after a Backspace no read confirmed says what is true** (live check W2, 9 of 14 runs). A
+send at +0.7 s typed its probe, the box showed it, Collie pressed Backspace, and no read in the probe's
+budget showed the box back; the refusal said "Backspace did not give the box back as it was", while the
+box read empty and idle a moment later. The decision stands: refused `probe_failed`, keys `[probe,
+Backspace]`. Where the reads are no proof the box is wrong (the pane is starting, or no read after
+Backspace found the box), the detail now says "Collie could not confirm the box was clean after its
+probe character (⌁). Nothing was sent. Send again in a moment." A pane that is not starting and whose
+box still shows the probe keeps the old words. The probe's budget (three reads, 900 ms, shared by the
+character and its Backspace) is the likely reason a starting box that redraws is not read back in time;
+widening it for a starting pane is not done here.
 
 **The multiplexer naming the agent mid-send is not another program.** A send reads the pane with a
 profile, from the pane itself or from the window. When the pane's generation then moves to an agent that

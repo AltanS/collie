@@ -19,7 +19,7 @@ import { muxAck, muxOk, type MuxAck, type MuxGrid, type MuxGridRequest, type Mux
 import { profileFor } from "../../web/src/lib/surface/profile.ts";
 import type { SendAnswer } from "../../web/src/lib/surface/send.ts";
 import type { Surface } from "../../web/src/lib/surface/surface.ts";
-import { LaunchWindow, LAUNCH_WINDOW_MS } from "../launch-window.ts";
+import { LaunchWindow, LAUNCH_WINDOW_MS, PENDING_PROBE_MS } from "../launch-window.ts";
 import { ClearService } from "./clear.ts";
 import { HoldStore } from "./holds.ts";
 import { KeyGate } from "./key-gate.ts";
@@ -94,6 +94,13 @@ class OmpPane {
       if ("text" in item) this.box += item.text;
       else this.key(item.key);
     }
+  }
+
+  /** omp starts reading keys and drops what the terminal buffered (a program that flushes its input as it starts). */
+  flush(): void {
+    this.deaf = false;
+    this.echoed = "";
+    this.buffered = [];
   }
 
   private render(): string {
@@ -174,7 +181,7 @@ function rig(pane: OmpPane, options: { harness?: string; generation?: { now: str
     generation: () => generation.now,
     starting: (paneId, named) => window.starting("main", paneId, named),
     framed: (paneId, harness) => window.framed("main", paneId, harness),
-    deaf: (paneId, harness) => window.deaf("main", paneId, harness),
+    deaf: (paneId, harness, typedAt) => window.deaf("main", paneId, harness, typedAt),
     pending: (paneId) => window.pending("main", paneId),
     now,
     sleep: (ms: number) => {
@@ -704,5 +711,256 @@ describe("the live checks of 1.24.1: sends while omp 18.6.1 starts (W1 to W4)", 
       r.clock.now += 2_500;
     }
     expect(pane.submitted).toEqual(["early-1 at 300ms", "early-2 at 700ms"]);
+  });
+});
+
+// The counsel review of 1.24.1's hold and probe rules (2026-10-26). A pending probe blocks for
+// PENDING_PROBE_MS from the moment it was typed, never for the whole launch window; a mark that shows
+// later is still the residue rule's; the refusal after a Backspace no read confirmed says what is true;
+// a borrowed profile never crosses agents; and pending returns to 0 on every way out.
+describe("the counsel review of 1.24.1: a pending probe's life, the truthful refusal, the borrow", () => {
+  const PENDING = "Nothing was typed: Collie's earlier probe character";
+  const UNCONFIRMED = `Collie could not confirm the box was clean after its probe character (${P}). Nothing was sent. Send again in a moment.`;
+  const surfaceOf = (pane: OmpPane): Surface => ({ revision: 1, turn: "idle", modal: "none", composer: pane.box === "" ? "empty" : "draft" });
+
+  function handStarted(pane: OmpPane) {
+    const wired = launched(pane, true);
+    const tick = (): Promise<(SendAnswer | null)[]> =>
+      Promise.all(wired.protocol.tickHolds("main", () => surfaceOf(pane), () => pane.box));
+    return { ...wired, tick };
+  }
+
+  /** The box moves between S0's two reads of the next send: that send is held, nothing typed. */
+  function movesUnderS0(pane: OmpPane): void {
+    let first: number | null = null;
+    pane.onRead = (n) => {
+      first ??= n;
+      if (n - first + 1 === 2) pane.box = "x";
+    };
+  }
+
+  /** A held send on a deaf, starting pane, released once into the deaf box: back in its place, its probe pending. */
+  async function heldIntoDeafBox(pane: OmpPane) {
+    pane.deaf = true;
+    const r = handStarted(pane);
+    movesUnderS0(pane);
+    const held = await r.send("H at 300ms");
+    pane.onRead = null;
+    pane.box = "";
+    expect(held.receipt).toMatchObject({ outcome: "held", keys: [] });
+    const [first] = await r.tick();
+    expect(first?.receipt).toMatchObject({ outcome: "held", keys: ["probe"] });
+    expect(r.window.pending("main", "%1")).toBe(1);
+    return { ...r, id: held.receipt!.requestId };
+  }
+
+  test("rule 1: a pending probe blocks a new probe for 30 s from when it was typed, then the next send types one", async () => {
+    const pane = new OmpPane(OMP_UP);
+    pane.deaf = true;
+    const { send, window, clock } = launched(pane);
+    expect((await send("A")).receipt).toMatchObject({ outcome: "refused", keys: ["probe"] });
+    clock.now += 20_000;
+    const b = await send("B at 20s");
+    expect(b.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed", keys: [] });
+    expect(b.receipt?.detail).toContain(PENDING);
+    clock.now += PENDING_PROBE_MS - 20_000;
+    expect(window.pending("main", "%1")).toBe(0);
+    // The launch window's own bound still holds the pane as starting.
+    expect(window.expecting("main", "%1")).toBe("omp");
+    const c = await send("C past the life");
+    expect(c.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed", keys: ["probe"] });
+    expect(c.receipt?.detail?.startsWith(STARTING)).toBe(true);
+    expect(pane.calls).toEqual([`type:${P}`, `type:${P}`]);
+    // Only C's character blocks now, for its own 30 s.
+    expect(window.pending("main", "%1")).toBe(1);
+  });
+
+  test("rule 1: past its life the mark that shows is still the residue rule's: a send takes it out and goes", async () => {
+    const pane = new OmpPane(OMP_UP);
+    pane.deaf = true;
+    const { send, window, clock } = launched(pane);
+    await send("A");
+    clock.now += PENDING_PROBE_MS + 1;
+    expect(window.pending("main", "%1")).toBe(0);
+    pane.wake();
+    expect(pane.box).toBe(P);
+    const b = await send("B after the mark showed");
+    expect(b.receipt?.outcome).toBe("sent");
+    expect(pane.submitted).toEqual(["B after the mark showed"]);
+    expect(pane.box).toBe("");
+  });
+
+  test("rule 1: past its life a held send releases on the mark that shows, takes it out and goes, once", async () => {
+    const pane = new OmpPane(OMP_UP);
+    const r = await heldIntoDeafBox(pane);
+    r.clock.now += PENDING_PROBE_MS + 1;
+    pane.wake();
+    expect(pane.box).toBe(P);
+    const [released] = await r.tick();
+    expect(released?.receipt).toMatchObject({ requestId: r.id, outcome: "sent" });
+    expect(pane.submitted).toEqual(["H at 300ms"]);
+    expect(pane.box).toBe("");
+  });
+
+  test("rule 2: a swallowed mark does not stall a send: after 30 s the next send probes and goes", async () => {
+    const pane = new OmpPane(OMP_UP);
+    pane.deaf = true;
+    const { send, window, clock } = launched(pane);
+    await send("A");
+    // omp starts reading keys and flushes what waited: the `⌁` never shows.
+    pane.flush();
+    clock.now += 10_000;
+    expect((await send("B at 10s")).receipt).toMatchObject({ outcome: "refused", keys: [] });
+    clock.now += PENDING_PROBE_MS - 10_000;
+    const c = await send("C past the life");
+    expect(c.receipt?.outcome).toBe("sent");
+    expect(c.receipt?.keys).toContain("probe");
+    expect(pane.submitted).toEqual(["C past the life"]);
+    expect(pane.box).toBe("");
+    // C's probe showed: the box reads keys, the window ends.
+    expect(window.expecting("main", "%1")).toBeNull();
+    expect(window.pending("main", "%1")).toBe(0);
+  });
+
+  test("rule 2: a swallowed mark does not stall a held send: it releases on the first free poll after 30 s", async () => {
+    const pane = new OmpPane(OMP_UP);
+    const r = await heldIntoDeafBox(pane);
+    pane.flush();
+    r.clock.now += 10_000;
+    expect(await r.tick()).toEqual([]);
+    r.clock.now += PENDING_PROBE_MS - 10_000;
+    const [released] = await r.tick();
+    expect(released?.receipt).toMatchObject({ requestId: r.id, outcome: "sent" });
+    expect(pane.submitted).toEqual(["H at 300ms"]);
+    expect(pane.box).toBe("");
+  });
+
+  test("rule 4 (W2, 9 of 14): a Backspace the starting box has not drawn yet is refused with words that are true", async () => {
+    const pane = new OmpPane(OMP_UP);
+    const { send } = launched(pane);
+    // The box takes the probe, then redraws as omp comes up: the Backspace waits in the terminal.
+    pane.onText = (text) => {
+      if (text === P) pane.deaf = true;
+    };
+    const answer = await send("B at 700ms");
+    pane.onText = null;
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed", keys: ["probe", "Backspace"] });
+    expect(answer.receipt?.detail).toBe(UNCONFIRMED);
+    // A moment later the box reads empty and fine, as the live runs saw.
+    pane.wake();
+    expect(pane.box).toBe("");
+    expect(pane.submitted).toEqual([]);
+  });
+
+  test("rule 4: on a pane that is not starting, a box that keeps the probe after Backspace keeps the old words", async () => {
+    const pane = new OmpPane(OMP_UP);
+    pane.floor = P;
+    const { send } = rig(pane, { harness: "omp" });
+    const answer = await send("no window");
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed", keys: ["probe", "Backspace"] });
+    expect(answer.receipt?.detail).toBe("Backspace did not give the box back as it was.");
+  });
+
+  /** A plain send held on a pane the multiplexer names omp (generation `omp:-`), with holds. */
+  async function heldOnOmp(pane: OmpPane) {
+    const wired = rig(pane, { harness: "omp", held: true });
+    movesUnderS0(pane);
+    const held = await wired.send("held for omp");
+    pane.onRead = null;
+    pane.box = "";
+    expect(held.receipt).toMatchObject({ outcome: "held", profileId: "omp" });
+    const tick = (): Promise<(SendAnswer | null)[]> =>
+      Promise.all(wired.protocol.tickHolds("main", () => surfaceOf(pane), () => pane.box));
+    return { ...wired, id: held.receipt!.requestId, tick };
+  }
+
+  test("rule 5: omp leaves and the poll sees the shell: the hold ends, and a new send borrows nothing", async () => {
+    const pane = new OmpPane(OMP_UP);
+    const r = await heldOnOmp(pane);
+    r.generation.now = "shell:-";
+    await r.tick();
+    expect(r.store.get(r.id)?.receipt).toMatchObject({ outcome: "refused", reason: "pane_gone" });
+    const fresh = await r.send("to the shell", {}, "shell");
+    expect(fresh.receipt?.profileId ?? null).toBeNull();
+    expect(fresh.receipt?.outcome).not.toBe("held");
+  });
+
+  test("rule 5: omp leaves and a send comes before the poll ends the hold: it does not take omp's profile", async () => {
+    const pane = new OmpPane(OMP_UP);
+    const r = await heldOnOmp(pane);
+    r.generation.now = "shell:-";
+    const fresh = await r.send("to the shell", {}, "shell");
+    expect(fresh.receipt?.profileId ?? null).toBeNull();
+    expect(fresh.receipt?.outcome).not.toBe("held");
+  });
+
+  test("rule 5: the pane runs another harness: a new send takes that harness's profile, not omp's", async () => {
+    const pane = new OmpPane(OMP_UP);
+    const r = await heldOnOmp(pane);
+    r.generation.now = "claude:-";
+    const fresh = await r.send("to claude", {}, "claude");
+    expect(fresh.receipt?.profileId).toBe("claude");
+    await r.tick();
+    expect(r.store.get(r.id)?.receipt).toMatchObject({ outcome: "refused", reason: "pane_gone" });
+  });
+
+  describe("rule 6: pending returns to 0 on every way out", () => {
+    async function onePending(pane: OmpPane) {
+      pane.deaf = true;
+      const wired = launched(pane);
+      expect((await wired.send("A")).receipt).toMatchObject({ outcome: "refused", keys: ["probe"] });
+      expect(wired.window.pending("main", "%1")).toBe(1);
+      return wired;
+    }
+
+    test("the mark shows and a send takes it out", async () => {
+      const pane = new OmpPane(OMP_UP);
+      const { send, window } = await onePending(pane);
+      pane.wake();
+      expect((await send("B")).receipt?.outcome).toBe("sent");
+      expect(window.pending("main", "%1")).toBe(0);
+    });
+
+    test("its 30 s life ends", async () => {
+      const pane = new OmpPane(OMP_UP);
+      const { window, clock } = await onePending(pane);
+      clock.now += PENDING_PROBE_MS + 1;
+      expect(window.pending("main", "%1")).toBe(0);
+    });
+
+    test("the launch window ends (120 s)", async () => {
+      const pane = new OmpPane(OMP_UP);
+      const { window, clock } = await onePending(pane);
+      clock.now += LAUNCH_WINDOW_MS;
+      expect(window.pending("main", "%1")).toBe(0);
+      expect(window.expecting("main", "%1")).toBeNull();
+    });
+
+    test("the agent leaves the pane (the poll names a shell again)", async () => {
+      const pane = new OmpPane(OMP_UP);
+      pane.deaf = true;
+      const wired = rig(pane, { harness: "omp" });
+      wired.window.observe("main", [{ paneId: "%1", agent: null }]);
+      wired.window.observe("main", [{ paneId: "%1", agent: "omp" }]);
+      expect((await wired.send("A")).receipt).toMatchObject({ outcome: "refused", keys: ["probe"] });
+      expect(wired.window.pending("main", "%1")).toBe(1);
+      wired.window.observe("main", [{ paneId: "%1", agent: null }]);
+      expect(wired.window.pending("main", "%1")).toBe(0);
+      expect(wired.window.expecting("main", "%1")).toBeNull();
+    });
+
+    test("the bridge restarts: pending is memory, and a mark that shows later is the residue rule's", async () => {
+      const pane = new OmpPane(OMP_UP);
+      await onePending(pane);
+      // A new bridge: a new launch window and protocol, the request store on the same disk.
+      const after = rig(pane, { harness: "omp" });
+      expect(after.window.pending("main", "%1")).toBe(0);
+      pane.wake();
+      expect(pane.box).toBe(P);
+      const b = await after.send("after the restart");
+      expect(b.receipt?.outcome).toBe("sent");
+      expect(pane.submitted).toEqual(["after the restart"]);
+      expect(pane.box).toBe("");
+    });
   });
 });
