@@ -19,9 +19,10 @@
 //
 // THE MODEL STUB (M67, ADR 0125). pi and omp never talk to OpenRouter directly in the rig: their
 // model calls go to the rig daemon's stub (replay/stub.ts), which replays cassettes or passes the call
-// on (replay/tier.ts says which, per harness). pi gets a provider extension that sets the openrouter
-// base URL, omp a models.yml that does. On the replay tier no key is loaded at all: the start script
-// does not read the key file, the harness gets a dummy key, and pi gets no auth.json, omp no agent.db.
+// on (replay/tier.ts says which, per harness: COLLIE_RIG_MODEL, COLLIE_RIG_LIVE, COLLIE_RIG_RECORD).
+// pi gets a provider extension that sets the openrouter base URL, omp a models.yml that does. On the
+// replay tier no key is loaded at all: the start script does not read the key file, the harness gets a
+// dummy key, and pi gets no auth.json, omp no agent.db.
 //
 // MODEL TURNS. A harness whose `turns` is false still starts and runs every scenario that needs no
 // model turn (the model picker); the rest report "not reached" with `noTurnsReason`. pi and omp turn
