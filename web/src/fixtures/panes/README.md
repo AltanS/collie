@@ -3383,3 +3383,12 @@ of the adapter does not read it, so `composerReady` stays false on these two.
 | `omp--v18-12-6-composer-field-two-lines--w130.txt` | `draft` | two typed lines, one `▐` row each |
 
 The shape `claude` (rule, `❯`, rule) reads empty and with one line, but not with two, and has no fixture here on purpose: a two-line draft reads `unreadable` because the cue reader takes the `❯` row and the indented row under it, between two rules, for a pointer on a listed row. `ownPrompt` is not safe on that edges entry. The wanted read is an expected-fail test, and the gap a `todo`, in `fold.pi-omp.test.ts` ("omp's composer.shape field"). Left for after 1.24.1.
+
+## omp: a path-like command over one fuzzy entry (captured 2026-10-26, omp 18.6.1 and 18.12.6, omp-gang three, tester 05)
+
+Two captures in `fixtures/surface/`, cut to the last 13 rows, the Send Protocol's tests read them (`bridge/surface/protocol.test.ts`, "a path-like command over a pointed list"). A path-like text sent as a command (`/tmp/x`, `/etc/hosts`, `/bin/sh`, `/exit/now`) makes omp 18.6.1 draw ONE fuzzy entry under the box, `❯ ↻ loop   Loop: off`, whatever the path is, and Enter runs `/loop` ("Loop mode enabled"). The profile's `commandList.notForText` keeps such a text's rows out of the Surface's read (the file popup stands there), so the check before Enter must not take its list from that read. Only the `/tmp/x` list was captured on 18.6.1: the tests type the other three paths into the same list. omp 18.12.6 draws no list for these texts; its capture is the screen after the send, an empty box, used as the base for a no-list scene.
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `omp--v18-6-1-path-like-loop-list--w120.txt` | `popup` | `/tmp/x` typed, `❯ ↻ loop        Loop: off` under it |
+| `omp--v18-12-6-path-like-no-list--w120.txt` | `idle` | 18.12.6, an empty box after `/tmp/x` went out as a message (no list is ever drawn for a path there) |

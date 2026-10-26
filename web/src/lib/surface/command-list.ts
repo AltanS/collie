@@ -265,12 +265,27 @@ export function pointsAt(read: CommandListRead, typed: string, list: CommandList
   if (read.pointed === null) return false;
   if (read.pointed === text) return true;
   if (list === undefined) return false;
+  if (pointsAtPathEnd(read, text, list)) return true;
   if (list.argumentList === true && pointsAtArgument(read, text, list.lead ?? "")) return true;
   const patterns = listPatterns(list);
   if (patterns.namespaces.length === 0 || !text.startsWith(patterns.lead) || read.entries.includes(text)) return false;
   const bare = text.slice(patterns.lead.length);
   if (bare.length === 0) return false;
   return patterns.namespaces.some((namespace) => !bare.startsWith(namespace) && read.pointed === patterns.lead + namespace + bare);
+}
+
+/**
+ * Whether `text` is a path (`commandList.notForText`) and the pointer rests on the entry that completes
+ * its last word: the popup of the path's own file, where Enter takes the typed path as it stands
+ * (`/uploads/w2.png` with the pointer on `w2.png`). A pointer on any other entry is another command's
+ * row, and Enter would run that one: a list drawn for such a text is read apart from {@link commandListNear}'s
+ * text rule, which hides it from the cue and Surface reads only.
+ */
+function pointsAtPathEnd(read: CommandListRead, text: string, list: CommandListRows): boolean {
+  const patterns = listPatterns(list);
+  if (read.pointed === null || !opensNoList(patterns, text) || !read.pointed.startsWith(patterns.lead)) return false;
+  const entry = read.pointed.slice(patterns.lead.length);
+  return entry.length > 0 && text.endsWith(`/${entry}`);
 }
 
 /**

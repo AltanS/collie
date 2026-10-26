@@ -8341,6 +8341,7 @@ describe("steer or queue (M69), replayed from the real captures (lab 2026-10-23)
 // screen under an emptied box (report 01, case 8a), which held the next plain send.
 describe("omp's fuzzy command list under the box (1.24.1)", () => {
   const PANES = join(import.meta.dir, "../../web/src/fixtures/panes");
+  const SURFACE = join(import.meta.dir, "../../web/src/fixtures/surface");
   const LIST_NOTICE = "The command list at the box pointed at another command, so Enter was not pressed.";
   const SUBMIT_NOTICE = "The command list at the box points at another command, so Enter was not pressed. Discard the text, or pick the command with the keys.";
 
@@ -8358,7 +8359,7 @@ describe("omp's fuzzy command list under the box (1.24.1)", () => {
    * into the transcript, or, with `after`, redraws the screen the command opens.
    */
   const scene = (pane: FakePane, name: string, options: SceneOptions = {}): void => {
-    const rows = readFileSync(join(PANES, name), "utf8").split(/\r?\n/u);
+    const rows = readFileSync(existsSync(join(PANES, name)) ? join(PANES, name) : join(SURFACE, name), "utf8").split(/\r?\n/u);
     const boxAt = rows.findLastIndex((row) => row.startsWith("╰─"));
     expect(boxAt, name).toBeGreaterThan(0);
     const head = rows.slice(0, boxAt - 1);
@@ -8551,6 +8552,94 @@ describe("omp's fuzzy command list under the box (1.24.1)", () => {
       const answer = await send("/mo", { id: "path-not-for-mo", mode: "command" });
       expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue" });
       expect(deps.store.get("path-not-for-mo")?.receipt?.detail).toBe(LIST_NOTICE);
+      expect(pane.keysSeen).not.toContain("Enter");
+    });
+  });
+
+  // omp-gang gang three, tester 05 (2026-10-26, W1): on omp 18.6.1 a path-like text sent as a command (`/tmp/x`,
+  // `/etc/hosts`, `/bin/sh`, `/exit/now`) draws ONE fuzzy entry under the box, `❯ ↻ loop   Loop: off`, and Enter
+  // ran `/loop` ("Loop mode enabled"), receipt `sent`, journal empty, 4 of 4. The profile's `commandList.notForText`
+  // says a path-like text opens no command list (the file popup stands there, 97c700c83), so the list was hidden
+  // from `listPointsElsewhere`. The rule: `notForText` hides a list from the Surface's reading, never from the check
+  // before a command's Enter. omp 18.12.6 draws no list for these texts and they go out. The capture is the tester's
+  // own, `mx-18.6.1-path-abs-cmd-typed`, cut to its last 13 rows.
+  describe("a path-like command over a pointed list that is no entry of the path (omp-gang three, W1)", () => {
+    const LOOP = "omp--v18-6-1-path-like-loop-list--w120.txt";
+    const TEXTS = ["/tmp/x", "/etc/hosts", "/bin/sh", "/exit/now"] as const;
+    const idOf = (head: string, text: string): string => `${head}${text.replaceAll("/", "-")}`;
+    /** The profile with the file popup's `path` rule gone: the popup read no longer stands in the list's way. */
+    const withoutPathPopup = (profile: Profile): Profile => {
+      const popups = profile.idle.volatile.below.popups!;
+      return { ...profile, idle: { ...profile.idle, volatile: { ...profile.idle.volatile, below: { ...profile.idle.volatile.below, popups: { ...popups, rules: popups.rules.filter((rule) => rule.name !== "path") } } } } };
+    };
+
+    for (const text of TEXTS) {
+      test(`18.6.1: ${text} as a command is left typed, Enter not pressed, and /loop does not run`, async () => {
+        const { send, pane } = ompPane("18.6.1", LOOP);
+        const answer = await send(text, { id: idOf("w1-", text), mode: "command" });
+        expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue", keys: ["probe", "Backspace"] });
+        expect(answer.offers).toEqual(["submit", "discard", "keys"]);
+        expect(pane.keysSeen).not.toContain("Enter");
+        expect(pane.box).toBe(text);
+        neverEscape(pane);
+      });
+
+      test(`18.6.1: ${text} with no popup rule to catch it: the pointed list is read, with the list notice and no Enter`, async () => {
+        const { send, pane, deps } = ompPane("18.6.1", LOOP, {}, withoutPathPopup);
+        const id = idOf("w1-list-", text);
+        const answer = await send(text, { id, mode: "command" });
+        expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue", keys: ["probe", "Backspace"] });
+        expect(answer.offers).toEqual(["submit", "discard", "keys"]);
+        expect(deps.store.get(id)?.receipt?.detail).toBe(LIST_NOTICE);
+        expect(pane.keysSeen).not.toContain("Enter");
+        expect(pane.box).toBe(text);
+        neverEscape(pane);
+      });
+
+      test(`18.6.1: Submit of ${text} typed in the box is refused while the list points at /loop`, async () => {
+        const { send, pane, deps } = ompPane("18.6.1", LOOP, {}, withoutPathPopup);
+        pane.box = text;
+        const id = idOf("w1-submit-", text);
+        const answer = await send(text, { id, mode: "submit" });
+        expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "not_free", keys: [] });
+        expect(deps.store.get(id)?.receipt?.detail).toBe(SUBMIT_NOTICE);
+        expect(pane.keysSeen).toEqual([]);
+        expect(pane.box).toBe(text);
+      });
+
+      test(`18.12.6: ${text} draws no list and goes out with one Enter`, async () => {
+        const { send, pane } = ompPane("18.12.6", "omp--v18-12-6-path-like-no-list--w120.txt");
+        const answer = await send(text, { id: idOf("w1-1812-", text), mode: "command" });
+        expect(answer.receipt).toMatchObject({ outcome: "sent" });
+        expect(answer.receipt?.keys.at(-1)).toBe("Enter");
+        expect(pane.box).toBe("");
+        neverEscape(pane);
+      });
+    }
+
+    test("18.6.1: a real /loop under its own list (the pointer on loop) still goes out", async () => {
+      const { send, pane } = ompPane("18.6.1", LOOP);
+      const answer = await send("/loop", { id: "w1-loop-own", mode: "command" });
+      expect(answer.receipt).toMatchObject({ outcome: "sent" });
+      expect(answer.receipt?.keys.at(-1)).toBe("Enter");
+      expect(pane.box).toBe("");
+    });
+
+    test("an upload path under its own file popup row (the pointer on the entry that ends the path) goes out, with or without the path popup rule", async () => {
+      const UPLOAD = "/home/demo/lab1/.cache/collie-lab/omp-gang/05-images/state/rig/state/uploads/w2_p1-mvo3m20o-6e1a9e71.png";
+      const bare = ompPane("18.6.1", "omp--v18-6-1-path-popup--w120.txt", {}, withoutPathPopup);
+      const answer = await bare.send(UPLOAD, { id: "w1-upload-bare", mode: "command" });
+      expect(answer.receipt).toMatchObject({ outcome: "sent" });
+      expect(answer.receipt?.keys.at(-1)).toBe("Enter");
+      const kept = ompPane("18.6.1", "omp--v18-6-1-path-popup--w120.txt");
+      expect((await kept.send(UPLOAD, { id: "w1-upload-kept", mode: "command" })).receipt).toMatchObject({ outcome: "sent" });
+    });
+
+    test("a path whose popup row names another file (pointer on x.png under /tmp/y.png) is refused", async () => {
+      const { send, pane, deps } = ompPane("18.6.1", "omp--v18-6-1-path-popup--w120.txt", {}, withoutPathPopup);
+      const answer = await send("/home/demo/lab1/other-file.png", { id: "w1-upload-other", mode: "command" });
+      expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue" });
+      expect(deps.store.get("w1-upload-other")?.receipt?.detail).toBe(LIST_NOTICE);
       expect(pane.keysSeen).not.toContain("Enter");
     });
   });
@@ -9667,11 +9756,17 @@ describe("omp's typeahead popups under the box (1.24.1)", () => {
     expect(plain.pane.keysSeen).not.toContain("Enter");
   });
 
-  test("without the path rule the command send presses Enter into omp's popup and does not end sent, as the tester saw it", async () => {
-    const { send, pane } = ompPane(PATH, { opens: pathOpens }, (profile) => withRules(profile, (rules) => rules.filter((rule) => rule.name !== "path")));
+  // The tester saw Enter pressed into omp's popup when the path rule was gone (the popup read was the only guard:
+  // `commandList.notForText` hides the popup's row from the command-list read). Since the gang-three W1 fix the
+  // check before Enter reads that list for any text, so the same screen is refused with the list notice even with
+  // no popup rule: a pointer on a row that is no entry of the typed path is another command's row.
+  test("without the path rule the command send is still refused before Enter: the list read, whatever the text, names another command", async () => {
+    const { send, pane, deps } = ompPane(PATH, { opens: pathOpens }, (profile) => withRules(profile, (rules) => rules.filter((rule) => rule.name !== "path")));
     const answer = await send(PARTIAL, { id: "path-old", mode: "command" });
-    expect(pane.keysSeen).toContain("Enter");
-    expect(answer.receipt?.detail).not.toBe(POPUP_NOTICE);
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue" });
+    expect(deps.store.get("path-old")?.receipt?.detail).toBe("The command list at the box pointed at another command, so Enter was not pressed.");
+    expect(pane.keysSeen).not.toContain("Enter");
+    expect(pane.box).toBe(PARTIAL);
   });
 
   test("an @ popup whose rows also read as a command list: the command send names the popup, not another command", async () => {
