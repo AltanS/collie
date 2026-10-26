@@ -133,6 +133,9 @@ const LIFTED = new Set([
   // omp 18.12.6's divided approval panel (approval.ts, the second shape): lifted for `bash`.
   "omp--v18-12-6-approval-bash--w120.txt",
   "omp--v18-12-6-approval-bash-later--w120.txt",
+  // omp 18.12.6's `Allow tool: task` (a summary tool) and its free-text-only Ask (`Other` alone), both lifted.
+  "omp--v18-12-6-approval-task--w120.txt",
+  "omp--v18-12-6-ask-freetext--w120.txt",
   // omp 18.6.1's `Allow tool: goal`, a dialog with no body (approval.ts, BODYLESS_TOOLS).
   "omp--v18-6-1-approval-goal--w120.txt",
   // The compact model picker's session state is DERIVED: every `omp--v18-4-switch*` capture except the
@@ -547,7 +550,9 @@ describe("the omp corpus", () => {
     "omp--v18-12-2-goal-turn-running-probe--w119.txt",
     "omp--v18-12-6-approval-bash--w120.txt",
     "omp--v18-12-6-approval-bash-later--w120.txt",
+    "omp--v18-12-6-approval-task--w120.txt",
     "omp--v18-12-6-ascii-symbols-session-list--w130.txt",
+    "omp--v18-12-6-ask-freetext--w120.txt",
     "omp--v18-12-6-ask-plan-mode--w120.txt",
     "omp--v18-12-6-ask-previews--w120.txt",
     "omp--v18-12-6-at-popup-two-files--w120.txt",

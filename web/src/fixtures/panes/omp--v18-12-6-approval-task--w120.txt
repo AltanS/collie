@@ -1,0 +1,12 @@
+
+  ⎋ Scout project structure and code for bug investigation planning
+╭─ Allow tool: task ───────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ Context: # Goal · Batch agents: scout ×1 · Agent: scout · Task: Read README.md, guide.md, main entry points (src/ma… │
+│ ❯ Approve                                                                                                            │
+│   Approve task for this session                                                                                      │
+│   Deny                                                                                                               │
+├──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ ↑/↓ choose · ⏎ select · Ctrl+⏎/Ctrl+Q approve · ⎋ deny · Ctrl+O details · type to deny and steer                     │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+ ⠋ 28s > ◒ Haiku 4.5 > 🗺 Plan ⏸ > 📁 …g3/04-readers/state/harness/omp/project > $0.10 ▶──7%────────────────────┃───200K─
+╰─

@@ -81,6 +81,8 @@ const MODALS_WITH_A_WAY_OUT = [
   // The Ask in omp 18.12.6 with option previews, LIFTED (omp/ask.ts).
   "omp--v18-12-6-ask-previews--w120.txt",
   "omp--v18-12-6-ask-plan-mode--w120.txt",
+  // The free-text-only Ask of omp 18.12.6 (`Other` alone), LIFTED.
+  "omp--v18-12-6-ask-freetext--w120.txt",
   "omp--v18-8-ask-single-described-moved.txt",
   "omp--v18-8-ask-single-described.txt",
   "omp--v18-10-ask-single.txt",

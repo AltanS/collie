@@ -428,8 +428,9 @@ function readBody(rows: string[], preset: Preset, allowSelected: boolean): Optio
     if (option === null) return null;
     options.push(option);
   }
-  // At least one real option above the `Other` row, which must be last and must be the only one.
-  if (options.length < 2) return null;
+  // `Other` is last and the only one. A question the agent gave no option (omp 18.12.6, a free-text
+  // question, `omp--v18-12-6-ask-freetext--w120.txt`) shows `Other` alone, and Enter on it opens the editor.
+  if (options.length < 1) return null;
   // A preview of blank rows only shows the person nothing, so it is no preview this card can claim.
   if (options.some((o) => o.preview !== undefined && o.preview.every((row) => row.trim() === ""))) return null;
   if (options.at(-1)!.label !== OTHER_LABEL) return null;

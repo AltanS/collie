@@ -78,6 +78,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The refusal for an `@file` word in a command names the popup.** When a command held an `@` word and OMP drew its file popup, the receipt said "the command list pointed at another command", which was not what was on screen. It now says a popup is open under the box and that Submit sends the text.
 - **Popup rows left under an emptied box no longer hold the next send on OMP.** After Submit of a text with an `@` word, OMP 18.6.1 leaves the file rows under the empty box. Collie read them as an unknown dialog and refused plain sends until you tapped the box. Every OMP popup now counts as stale under an empty box, so the box reads empty and the next send goes out.
 - **A refused two-line draft under OMP's `claude` composer shape says what Collie read.** The refusal was right, but its detail said something had opened at the box, and nothing had. It now says the box shape could not be read, and that a two-line draft in this shape is a known gap. Enter is still not pressed.
+- **The phone shows OMP 18.12.6's subagent approval and its free-text question.** `Allow tool: task` and an Ask with only "Other (type your own)" had no card, so a turn that started a subagent or asked a free-text question waited at the desk. The approval card shows the summary row as OMP draws it, clipped mark included, with Approve, the session row and Deny. The question card shows "Other (type your own)" and Cancel.
 
 ### Added
 
