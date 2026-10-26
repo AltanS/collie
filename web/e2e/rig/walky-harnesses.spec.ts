@@ -16,7 +16,7 @@
 //
 // pi and omp need a provider key (COLLIE_RIG_KEY_FILE); without one both cases report "not reached".
 import { NotReached, capture, captureScreen, message, openSession, phoneOn, resetBox, runScenario, sendFromComposer, spendTurn, tapWords, test, waitIdle, type Session } from "./leg";
-import { PHONE, REPLY_MS, addressOf, addressPattern, busyMessage, firstRow, operatorMessage, settledWalky, withoutInstance, wrapped } from "./walky-lib";
+import { PHONE, REPLY_MS, addressOf, addressPattern, busyMessage, firstRow, operatorMessage, settledWalky, whoAddress, withoutInstance, wrapped } from "./walky-lib";
 import { asJsonObject, asJsonString } from "../../src/lib/json";
 
 const claudeSession: Session = { paneId: null, startNote: "not started" };
@@ -70,12 +70,16 @@ test.describe("walky talky between agents", () => {
       const log = trail.log;
       const notes = trail.notes;
       const token = "PING-EIGHT";
-      const body = `${token}. Please answer with the single word pong.`;
+      // The operator's consent is in the body itself: a model reads an agent's message as a stranger's unless it says who asks.
+      const body = `${token}. The operator running this test asks you to answer with collie walky reply and the single word pong.`;
       const from = addressOf(piPane);
       const to = addressOf(claudePane);
+      // The address exactly as `collie walky who` prints it, `#token` included: pi has refused a bare one as incomplete.
+      const target = await rig.until(() => whoAddress(rig, claudePane), (found) => found !== null && /#[a-z0-9]{4}$/u.test(found), 40_000, 1000);
+      if (target === null) throw new NotReached(`\`collie walky who\` does not list the Claude pane ${claudePane} with a token`);
       const { context, page, recorder } = await phoneOn(browser, rig, piPane, PHONE);
       try {
-        log.push(await sendFromComposer(page, recorder, `Use walky talky to send the agent at ${to} this message: "${body}" Then stop.`, "ask pi to send"));
+        log.push(await sendFromComposer(page, recorder, `Use walky talky to send a message to the agent at ${target}. Run \`collie walky send ${target}\` with this message: "${body}" Then stop.`, "ask pi to send"));
 
         // The message reaches Claude's list as an agent's, from pi's pane.
         const sent = await firstRow(rig, claudePane, (row) => row.kind === "agent" && withoutInstance(String(asJsonObject(row.from)?.address)) === from && String(row.body).includes(token), 120_000);
