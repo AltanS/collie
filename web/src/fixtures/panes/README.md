@@ -3410,3 +3410,11 @@ Two captures in `fixtures/surface/`, the Surface's and the Stop's tests read the
 | --- | --- | --- |
 | `omp--v18-6-1-local-bash-running--w120.txt` | `running` | 18.6.1, the Running block over the empty box (derived, see above) |
 | `omp--v18-12-6-local-bash-running--w120.txt` | `running` | 18.12.6, `$ sleep 40` and its Running row over the empty box |
+
+## omp: a desk draft with the queue prefix, painted (captured 2026-10-26, omp 18.6.1, omp-gang three, tester 5)
+
+One capture in `fixtures/surface/`, cut to its last 12 rows with its colours kept (`web/src/lib/surface/fold.pi-omp.test.ts`, "omp's queue-prefix draft"). A draft typed at the desk that starts with `->` or `=>` makes omp draw its `Queueing ➤` label on the box's first row, in the grey `rgb(107,114,128)`, and the body on the row under it. That grey is also the profile's `inlineHint` colour (the empty box's ghost hint), so the capture pins that the painted label is not taken for a hint: the Surface reads `draft` with the text `Queueing ➤ hello queue draft`. The tester's view said `empty` for several seconds after the draft was typed; the view (`/api/snapshot`) is the pane's last poll, and an idle pane polls every 12 s, so a desk edit shows late. The `=>` prefix draws the same label (omp-gang 13-drafts, case 35b). The 18.12.6 screens are `omp--draft-queueing-label--v18.12.6.txt` and `omp--draft-queueing-body--v18.12.6.txt`, listed above.
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `omp--v18-6-1-draft-queueing-painted--w120.txt` | `draft` | 18.6.1, `-> hello queue draft` typed at the desk, label and body painted |

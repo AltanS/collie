@@ -9228,6 +9228,35 @@ class QueueingOmpPane extends OmpPane {
   }
 }
 
+// omp-gang three, tester 5 (2026-10-26, W4): a draft typed at the desk with omp's queue prefix (`-> text`, `=> text`)
+// shows the `Queueing ➤` label over the body, and the tester's view said `empty` for several seconds before a send
+// ended `draft_present` (probe typed, then removed). The screens read `draft` as they stand (fold.pi-omp.test.ts), so
+// the Surface is right and a send is refused `draft_present` with the person's draft untouched. The probe stays: a
+// draft read is a reading until a probe proves it (the header of protocol.ts, 2026-10-25), and a stale image of
+// an earlier layout can show such a box as well as a live one. The view's lag is the idle poll (12 s).
+describe("OMP: a draft the person typed with the queue prefix reads as a draft and is refused draft_present (gang three, W4)", () => {
+  for (const version of ["18.6.1", "18.12.6"]) {
+    for (const [prefix, key] of [["->", "arrow"], ["=>", "fat"]] as const) {
+      test(`${version}, ${prefix}: the Surface reads a draft, a send is refused draft_present after the probe, and the draft stands`, async () => {
+        const pane = new QueueingOmpPane();
+        pane.box = `${prefix}\n hello queue draft`;
+        const { send, protocol } = omp({ version, pane });
+        const prepared = await protocol.handle({ id: `qd-prep-${version}-${key}`, text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: "omp" });
+        expect(prepared.surface).toMatchObject({ turn: "idle", modal: "none", composer: "draft" });
+        expect(pane.render()).toContain("Queueing ➤");
+        const answer = await send("next message");
+        expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "draft_present", keys: ["probe", "Backspace"] });
+        expect(answer.offers).toEqual(["append", "replace", "cancel"]);
+        // Only the probe was typed, and its Backspace was the only key: the message and every submit key stayed out.
+        expect(pane.calls).toEqual(["type:⌁"]);
+        expect(pane.keysSeen).toEqual(["Backspace"]);
+        expect(pane.box).toBe(`${prefix}\n hello queue draft`);
+        neverEscape(pane);
+      });
+    }
+  }
+});
+
 describe("OMP: a text that starts with its queue prefix is refused before any key (gang 13-drafts, 3.5)", () => {
   const DETAIL = "OMP reads a leading -> as its queue prefix and rewrites the box, so this text cannot be typed as written. Start the text with a word.";
 

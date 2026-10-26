@@ -967,3 +967,36 @@ describe("omp's local shell line that is running (18.6.1 and 18.12.6)", () => {
     }
   });
 });
+
+// omp 18.6.1 and 18.12.6 (omp-gang three, tester 5, 2026-10-26, W4): a draft typed at the desk with omp's queue
+// prefix (`-> text` or `=> text`) shows omp's `Queueing ➤` label on the box's first row and the body under it. The
+// tester's view said `empty` for several seconds. These captures read `draft` as they stand: the label row and the body
+// are the box's draft display, the label painted in the grey the profile names for the empty box's ghost hint
+// (`inlineHint`, rgb(107,114,128)) included. An idle pane's view is read every `pollIdleMs` (12 s), so a desk edit
+// shows late; the screen itself reads draft.
+describe("omp's queue-prefix draft (Queueing ➤) reads as a draft (18.6.1 and 18.12.6)", () => {
+  const DRAFTS: readonly [string, string][] = [
+    ["omp--v18-6-1-draft-queueing-painted--w120.txt", "Queueing ➤ hello queue draft"],
+    ["omp--draft-queueing-body--v18.12.6.txt", "Queueing ➤ then do this"],
+    ["omp--draft-queueing-label--v18.12.6.txt", "Queueing ➤"],
+  ];
+
+  for (const [name, text] of DRAFTS) {
+    it(`${name}: composer draft, the label part of the box's text, no placeholder`, () => {
+      const read = readScreen(fixtureRows(name, SURFACE_FIXTURES_DIR), "omp", idleFor("omp"));
+      expect(read.surface).toEqual({ revision: 1, turn: "idle", modal: "none", composer: "draft" });
+      expect(read.frame?.interior.text).toBe(text);
+      expect(read.frame?.placeholder).toBe(false);
+    });
+  }
+
+  it("the painted capture keeps its label colour: the hint colour is the profile's, and the draft still reads", () => {
+    const rows = fixtureRows("omp--v18-6-1-draft-queueing-painted--w120.txt", SURFACE_FIXTURES_DIR);
+    expect(rows.some((row) => row.segments.some((segment) => segment.text.includes("Queueing ➤") && JSON.stringify(segment.style).includes("107,114,128")))).toBe(true);
+    expect(idleFor("omp")!.inlineHint?.fg).toContain("rgb(107,114,128)");
+  });
+
+  it("the empty box with its ghost hint beside it is still empty", () => {
+    expect(readScreen(fixtureRows("omp--box-empty--v18.12.6.txt", SURFACE_FIXTURES_DIR), "omp", idleFor("omp")).surface.composer).toBe("empty");
+  });
+});
