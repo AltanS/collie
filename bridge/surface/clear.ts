@@ -22,7 +22,9 @@
 //             redraws a pane, ADR 0008): an empty box -> refused no_draft; other rows whose draft takes a
 //             second probe go on; else -> refused stale_screen. Nothing is deleted on a box that did not
 //             take the probe
-//   press     the clear key, `length + slack` times in one call (at most CLEAR_BATCH), as `person_tap`
+//   press     the clear key, `length + slack` times in one call (at most CLEAR_BATCH), as `person_tap`;
+//             a box that holds only Collie's own probe characters gets one Backspace each, and its
+//             `cleared` receipt carries no draft to restore (probe-marker.ts)
 //   readback  up to four reads after the press: the box reads empty and no dialog -> `cleared`; a dialog ->
 //             refused dialog_open; else the box is read again
 // A profile with `keys.clearAll` (a key that empties a box the clear key cannot, such as a draft the
@@ -55,6 +57,7 @@ import { liftAsk, readerBlocks } from "../../web/src/lib/surface/lift.ts";
 import type { ProfileMatch } from "../../web/src/lib/surface/profile.ts";
 import type { Surface } from "../../web/src/lib/surface/surface.ts";
 import type { KeyGate } from "./key-gate.ts";
+import { probeCharOf, probeResidue } from "./probe-marker.ts";
 
 /** Rows one read asks for, as the Send Protocol and the Stop read them. */
 const CLEAR_READ_LINES = 120;
@@ -228,7 +231,10 @@ export class ClearService {
         look = proven.look;
       }
       const length = draftLength(look!.frame!);
-      if (round === 0 && !look!.frame!.placeholder) draft = boundedDraft(look!.frame!.interior.text);
+      // A box whose whole text is Collie's own probe characters (probe-marker.ts) is no draft of the
+      // person's: one Backspace each takes exactly them out, and there is nothing to restore.
+      const residue = round === 0 && !look!.frame!.placeholder ? probeResidue(look!.frame!.interior.text, probeCharOf(match)) : 0;
+      if (round === 0 && !look!.frame!.placeholder && residue === 0) draft = boundedDraft(look!.frame!.interior.text);
       // A box that did not shrink since the last press is left alone: no second blind press. The one
       // exception is the profile's own stroke key (`keys.clearAll`): the box is a draft on a read taken
       // just now (an empty box was refused above), and it goes at most once per request.
@@ -236,7 +242,7 @@ export class ClearService {
       if (unmoved && (clearAll === undefined || allPressed)) return refusal(requestId, "press_failed", pressed);
       if (!unmoved) before = length;
       const count = Math.min(CLEAR_BATCH, length + clearKey.slack);
-      const keys = unmoved ? [clearAll!.key] : Array.from({ length: count }, () => clearKey.key);
+      const keys = residue > 0 ? Array.from({ length: residue }, () => "Backspace") : unmoved ? [clearAll!.key] : Array.from({ length: count }, () => clearKey.key);
       const sent: MuxAck = await this.deps.gate.press(paneId, keys, "person_tap");
       if (!sent.ok) return refusal(requestId, "press_failed", pressed);
       pressed = true;

@@ -218,3 +218,46 @@ describe("foregroundHarnessOf", () => {
     expect(FOREGROUND_READ_MS).toBeLessThan(LAUNCH_WINDOW_MS);
   });
 });
+
+describe("the launch window: a drawn box that reads no keys (gang three, 2026-10-26)", () => {
+  test("a box read ends a window; once a probe went unseen in it, only a probe that shows does", () => {
+    const window = new LaunchWindow(() => 1_000);
+    window.mark("main", "%1", "omp");
+    window.drawn("main", "%1", "omp");
+    expect(window.expecting("main", "%1")).toBeNull();
+    window.mark("main", "%2", "omp");
+    expect(window.deaf("main", "%2", "omp")).toBe(1);
+    expect(window.deaf("main", "%2", "omp")).toBe(2);
+    window.drawn("main", "%2", "omp");
+    expect(window.expecting("main", "%2")).toBe("omp");
+    expect(window.pending("main", "%2")).toBe(2);
+    window.framed("main", "%2", "omp");
+    expect(window.expecting("main", "%2")).toBeNull();
+    expect(window.pending("main", "%2")).toBe(0);
+  });
+
+  test("a window a box read ended opens again for a deaf probe, inside the bound it opened with, never past it", () => {
+    let now = 1_000;
+    const window = new LaunchWindow(() => now);
+    window.mark("main", "%1", "omp");
+    now += 10_000;
+    window.drawn("main", "%1", "omp");
+    expect(window.deaf("main", "%1", "omp")).toBe(1);
+    expect(window.expecting("main", "%1")).toBe("omp");
+    now += LAUNCH_WINDOW_MS - 10_000;
+    expect(window.expecting("main", "%1")).toBeNull();
+    expect(window.deaf("main", "%1", "omp")).toBe(0);
+  });
+
+  test("no window, another harness, or a pane that settled from a send's proof: not starting, nothing changes", () => {
+    const window = new LaunchWindow(() => 1_000);
+    expect(window.deaf("main", "%1", "omp")).toBe(0);
+    window.mark("main", "%2", "omp");
+    expect(window.deaf("main", "%2", "claude")).toBe(0);
+    expect(window.pending("main", "%2")).toBe(0);
+    window.framed("main", "%3", "omp");
+    expect(window.deaf("main", "%3", "omp")).toBe(0);
+    expect(window.expecting("main", "%1")).toBeNull();
+    expect(window.expecting("main", "%3")).toBeNull();
+  });
+});
