@@ -3239,6 +3239,12 @@ four-row `/wx` list over an extension's widget. A widget row is drawn with ONE l
 | `omp--v18-6-1-palette-widget-and-status.txt`, `omp--v18-12-6-palette-widget-and-status.txt` | `popup` | The same, and the flush-left status row `PLAN 3/6` under the widget |
 | `omp--v18-6-1-palette-tick-below.txt`, `omp--v18-12-6-palette-tick-below.txt` | `popup` | `/wx` typed over `/tfb`: the list, then one ticking widget row |
 
+A pasted box drawing in the draft (gang three, 01-regression W1, same date and versions; in `fixtures/surface/`; the rows keep their padding to 120 columns, which is what tells the person's `│` from a border):
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `omp--v18-6-1-quoted-box-draft--w120.txt`, `omp--v18-12-6-quoted-box-draft--w120.txt` | `draft` | `Here is what omp showed me:` then a quoted `Allow tool: bash` box (`╭─ ... ─╮`, `│ ❯ Approve │`, `│   Deny │`, `╰──╯`) and `why did it ask?`. omp's box has no right border here, so every `│` and `╯` is the person's text. The row pattern named a trailing glyph as a border and cut it, so the Send Protocol saw `mismatch`; now `border` in `omp.json` is a border only when no white space follows it |
+
 ## A pane that is still a shell while the agent starts (captured 2026-10-25, omp gang tester 15, OMP 18.12.6, Collie's rig)
 
 | Fixture | State | What it shows |

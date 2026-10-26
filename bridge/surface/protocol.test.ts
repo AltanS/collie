@@ -9679,6 +9679,69 @@ describe("omp's typeahead popups under the box (1.24.1)", () => {
     expect(answer.receipt?.outcome).not.toBe("sent");
   });
 
+  // omp-gang three, 01-regression W1 (2026-10-26): a draft that holds a pasted box drawing. omp's box here has no
+  // right border, but the profile cut a trailing `│` or `╯` off every row, so the box read as the text without
+  // the glyphs that closed the quoted rows, the receipt said `mismatch` and one more tap (Submit) was needed
+  // although the box held the typed text exactly. A glyph with padding after it is the person's text.
+  describe("a pasted box drawing in the draft", () => {
+    const NAMES = ["omp--v18-6-1-quoted-box-draft--w120.txt", "omp--v18-12-6-quoted-box-draft--w120.txt"] as const;
+    const TEXT = "Here is what omp showed me:\n╭─ Allow tool: bash ───────────╮\n│ ❯ Approve                    │\n│   Deny                       │\n╰──────────────────────────────╯\nwhy did it ask?";
+    // The pane draws the box as omp does: a `╰─` row, the draft's other rows at three columns, every row padded to the width.
+    const boxPane = (name: string, edit?: (profile: Profile) => Profile) => {
+      const pane = new FakePane("generic");
+      const made = edit === undefined ? rig({ pane, harness: "omp", version: "18.6.1" }) : rig({ pane, harness: "omp", version: "18.6.1", edit });
+      const rows = readFileSync(join(PANES, "..", "surface", name), "utf8").split(/\r?\n/u);
+      const boxAt = rows.findLastIndex((row) => row.startsWith("╰─"));
+      const head = rows.slice(0, boxAt - 1);
+      const status = rows[boxAt - 1]!;
+      const above: string[] = [];
+      let taken: string | null = null;
+      pane.collapseOver = 100_000;
+      pane.beforeWrite = (p, what) => {
+        if ((what === "keys:Enter" || what === "keys:ctrl+q") && p.box !== "") taken = p.box;
+      };
+      pane.afterInput = (p, what) => {
+        if (taken === null || (what !== "keys:Enter" && what !== "keys:ctrl+q")) return;
+        above.push(` ${taken.split("\n")[0]!}`, "");
+        taken = null;
+        p.box = "";
+      };
+      pane.beforeRead = (p) => {
+        const box = p.box.split("\n").map((line, i) => `${i === 0 ? "╰─ " : "   "}${line}`.padEnd(120));
+        p.fixed = [...head.slice(Math.min(above.length, head.length)), ...above, status, ...box].join("\n");
+      };
+      return { ...made, pane };
+    };
+
+    for (const name of NAMES) {
+      test(`${name}: the box reads as the typed text, and the plain send goes out first time with ctrl+q`, async () => {
+        const looked = boxPane(name);
+        looked.pane.box = TEXT;
+        const prepared = await looked.protocol.handle({ id: `boxdraw-prep-${name.slice(10, 14)}`, text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: "omp" });
+        expect(prepared.surface).toMatchObject({ turn: "idle", modal: "none", composer: "draft" });
+        const { send, pane } = boxPane(name);
+        const answer = await send(TEXT, { id: `boxdraw-send-${name.slice(10, 14)}`, mode: "send" });
+        expect(answer.receipt).toMatchObject({ outcome: "sent" });
+        expect(answer.receipt?.keys.at(-1)).toBe("ctrl+q");
+        expect(pane.keysSeen).not.toContain("Enter");
+        expect(pane.box).toBe("");
+        neverEscape(pane);
+      });
+    }
+
+    test("a read that cuts every trailing glyph, as the profile did, ends the same send mismatch, as the tester saw it", async () => {
+      // The old patterns, with no named border: the glyph is always cut.
+      const uncut = (profile: Profile): Profile => {
+        const frame = { ...profile.idle.frame, prompt: { ...profile.idle.frame.prompt, pattern: profile.idle.frame.prompt.pattern.replace("(?<border>", "(?:") }, continuation: profile.idle.frame.continuation!.replace("(?<border>", "(?:") };
+        return { ...profile, idle: { ...profile.idle, frame } };
+      };
+      const { send, pane } = boxPane(NAMES[0], uncut);
+      const answer = await send(TEXT, { id: "boxdraw-old", mode: "send" });
+      expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "mismatch" });
+      expect(pane.keysSeen).not.toContain("ctrl+q");
+    });
+  });
+
   // omp-gang three, 01-regression S1 (2026-10-26): a text that ends in a bare `#` makes omp draw its seven-row
   // editor-action list under the box (a label and a key-chord column). It read as a dialog: the plain send ended
   // `modal_cue`, and the offered Submit and Discard answered `not_free`. It is a popup the last word opens.

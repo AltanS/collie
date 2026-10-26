@@ -26,7 +26,7 @@
         "note": "The status row above the box: the first visible left segment, the gauge, an optional right group. First token: a unicode or nerd icon, pi or the brand glyph with a profile tag (pi-work), an ascii icon in brackets ([M] [D] [wt] [T], thinking glyphs [min] [low] [med] [high] [xhi] [max] [~]), host, git:, a vim mode (NORMAL, INSERT, VISUAL, V-LINE, REPLACE or N I V L R), or the running spinner and the turn timer. Gauge, the context line between the two groups (the rule glyph is - in the ascii symbol preset): a run of three rule glyphs; the percent label between rule glyphs (-5%-), which is all the full preset keeps at 80 columns (the percent, a compaction tick and the window label shrink to ─5%─┃200K─); the window label before an overflow percent (200K-120%); or one or two rule glyphs after a space or a cap, when the groups leave that little. Read from pi-tui status-line component.ts (#buildContextGaugeFill, embeddedContextGaugeMinWidth), presets.ts, separators.ts and symbols.ts of OMP 18.12.6, and checked by rendering its own status line through every preset (default, minimal, compact, full, nerd, ascii) with every separator (powerline, powerline-thin, slash, pipe, block, none, ascii), symbol preset (unicode, nerd, ascii) and context line mode (off, percentage, annotated, embedded), at 26 widths from 8 to 200 columns, named and unnamed session, box and band layout, solid and transparent: 262,080 rows, every one matches this pattern and rows (omp-gang 11-geometry, 2026-10-25)."
       },
       "prompt": {
-        "pattern": "^(?:╰─|│) {0,2}(?<draft>(?:(?!\\s{8,}\\S).)*?)(?:\\s{8,}\\S.*?)?(?:\\s*(?:│|█|─?╯))?$",
+        "pattern": "^(?:╰─|│) {0,2}(?<draft>(?:(?!\\s{8,}\\S).)*?)(?:\\s{8,}\\S.*?)?(?<border>\\s*(?:│|█|─?╯))?$",
         "column": 0
       },
       "bottom": {
@@ -36,7 +36,7 @@
         "open": true
       },
       "rows": "^(?:(?:\\u{E0B6} |\\s?)(?:π(?:-\\S+)?|\\u{F0D57}|[⠀-⣿]\\s+\\d+[smh])\\s.*(?:▶|\\u{E0B0}).*|\\s?(?:\\u{E0B6} )?(?:(?![\\u{E0A0}-\\u{E0D7}])[\\p{Co}\\p{So}]|(?:π|pi)(?:-\\S+)?|\\[[^\\]\\s]{1,5}\\]|host|git:|NORMAL|INSERT|VISUAL|V-LINE|REPLACE|[NIVLR]|[⠀-⣿\\\\|/-]\\s+\\d+[smh])\\s.*(?:[─-]{3}|[─-]\\d[\\d.]*%[─-]|[\\dKMB][─-]\\d+%|(?<=[\\s▶>\\u{E0B0}])[─-]{1,2}(?=\\s|$|[◀<\\u{E0B2}])).*|╭─.*|╰─.*|│.*|\\s{3}.*|\\s*)$",
-      "continuation": "^(?:│|╰─)? ?(?<text>.*?)(?:\\s*(?:│|█|─?╯))?$",
+      "continuation": "^(?:│|╰─)? ?(?<text>.*?)(?<border>\\s*(?:│|█|─?╯))?$",
       "continuationIndent": 0,
       "draftIndent": 3,
       "maxDraftRows": 40,
