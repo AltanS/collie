@@ -398,14 +398,21 @@ interface OpenSend extends OpenReceipt {
 /** The most open receipts one protocol keeps. The oldest go first. */
 const OPEN_SENDS_MAX = 64;
 
+/** A profile match at the version of the program read: `binary` is the pane's own file, absent for the PATH binary. */
+export type PaneProfileMatch = ProfileMatch & { readonly binary?: string };
+
 export interface SendDeps {
   readonly mux: ProtocolMux;
   readonly gate: KeyGate;
   readonly store: RequestStore;
   readonly locks: SessionLocks;
   readonly ring: RowRing;
-  /** The harness's profile at its binary's version, or null when the harness has no profile. */
-  readonly profile: (harness: string) => Promise<ProfileMatch | null>;
+  /**
+   * The harness's profile at its binary's version, or null when the harness has no profile. With
+   * `paneId`, the version is the one the pane's own program reports when the multiplexer shows it
+   * (bridge/pane-binary.ts), and `binary` names the file that was read; else the PATH binary's.
+   */
+  readonly profile: (harness: string, paneId?: string) => Promise<PaneProfileMatch | null>;
   /**
    * The harness that is starting in this pane, or null (the launch window, `bridge/launch-window.ts`).
    * `named` is the agent the multiplexer names, for a pane with a profile of its own, and null for a
@@ -2126,7 +2133,7 @@ interface RunState {
   readonly request: SendRequest;
   readonly record: SendRecord;
   readonly target: SendTarget;
-  readonly match: ProfileMatch | null;
+  readonly match: PaneProfileMatch | null;
   readonly lockKey: string;
   /** The request's bound. Emptying a long draft moves it later by its own bound ({@link SendProtocol.stretch}). */
   deadline: number;
@@ -2568,7 +2575,7 @@ export class SendProtocol {
       const stored = accepted.record.receipt;
       if (stored !== undefined) {
         // A command's draft refusal offers no Add on a replay either: the same rule, read from the same request.
-        const command = stored.reason === "draft_present" && draftCommand(request, await this.deps.profile(target.harness));
+        const command = stored.reason === "draft_present" && draftCommand(request, await this.deps.profile(target.harness, target.paneId));
         const replay: SendAnswer = { receipt: stored, offers: offersFor(stored.outcome, stored.reason, stored.profileId !== null, command), replayed: true };
         // A send a crash cut short: read the pane now and report it beside the stored receipt.
         if (stored.outcome !== "unknown" || stored.reason !== "crash") return replay;
@@ -2598,7 +2605,7 @@ export class SendProtocol {
     // A steer never joins (M69): it is for the turn that runs now, and goes in ahead of the held sends,
     // which wait for that turn to end anyway.
     const joins = holds !== undefined && JOINS.has(request.mode) && waiting.length > 0 && !draftOnly && request.when !== "steer";
-    const match = joins ? await this.deps.profile(target.harness) : null;
+    const match = joins ? await this.deps.profile(target.harness, target.paneId) : null;
     if (match !== null && !(request.mode === "command" && runsInTurnEntry(request.text, match) !== null)) {
       const state = this.bareState(request, accepted.record, target, match);
       const refusal = textRefusal(request, match);
@@ -3039,7 +3046,7 @@ export class SendProtocol {
    * be read inside S0's bound. The request's own bound is long past, so the read gets a fresh one.
    */
   private async lookAfterCrash(request: SendRequest, record: SendRecord, target: SendTarget): Promise<Snap | null> {
-    const match = await this.deps.profile(target.harness);
+    const match = await this.deps.profile(target.harness, target.paneId);
     const until = this.now() + BOUNDS.s0.ms;
     const state: RunState = { ...this.bareState(request, record, target, match), deadline: until };
     try {
@@ -3073,7 +3080,7 @@ export class SendProtocol {
     };
   }
 
-  private bareState(request: SendRequest, record: SendRecord, target: SendTarget, match: ProfileMatch | null): RunState {
+  private bareState(request: SendRequest, record: SendRecord, target: SendTarget, match: PaneProfileMatch | null): RunState {
     const at = this.now();
     return {
       request,
@@ -3139,6 +3146,7 @@ export class SendProtocol {
       outcome,
     };
     const receipt: ReceiptDraft = { ...base };
+    if (match?.binary !== undefined) receipt.binary = match.binary;
     if (reason !== undefined) receipt.reason = reason;
     if (cap !== undefined) receipt.cap = cap;
     // A command the harness ran at once in the turn waits for nothing, so it is never `queued`.
@@ -3157,7 +3165,7 @@ export class SendProtocol {
   }
 
   private async prepare(target: SendTarget): Promise<SendAnswer> {
-    const match = await this.deps.profile(target.harness);
+    const match = await this.deps.profile(target.harness, target.paneId);
     const state = this.bareState({ id: "prepare", text: "", mode: "prepare" }, prepareRecord(target, this.now()), target, match);
     try {
       const snap = await this.stableRead(state, "prepare");
@@ -3174,11 +3182,11 @@ export class SendProtocol {
    * "not yet" sends it back to its place in the queue instead of ending it.
    */
   private async run(request: SendRequest, record: SendRecord, target: SendTarget, release = false): Promise<SendAnswer> {
-    const own = await this.deps.profile(target.harness);
+    const own = await this.deps.profile(target.harness, target.paneId);
     // A pane where a harness is starting is that harness's pane in waiting: its shell is not the place
     // for the text, and its input box is not there yet (the launch window).
     const starting = await this.startingOf(target, own);
-    const expected = own !== null || starting === null ? null : await this.deps.profile(starting);
+    const expected = own !== null || starting === null ? null : await this.deps.profile(starting, target.paneId);
     const match = own ?? expected;
     const state: RunState = {
       ...this.bareState(request, record, target, match),

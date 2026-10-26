@@ -294,3 +294,61 @@ describe("a version read that cannot hang a send (#594)", () => {
     expect(VERSION_FAILED_CACHE_MS).toBeLessThan(VERSION_CACHE_MS);
   });
 });
+
+describe("the pane's own program (ADR 0124, amended 2026-10-26)", () => {
+  const read = (runs: Array<{ argv: readonly string[]; path: string | undefined }>) =>
+    createVersionReader({
+      env: { PATH: "/usr/bin" },
+      host: hostFor("linux"),
+      loginPath: () => Promise.resolve("/home/op/.bun/bin"),
+      resolve: (binary) => `/home/op/.bun/bin/${binary}`,
+      run: (argv, path) => {
+        runs.push({ argv, path });
+        return Promise.resolve("v9.9.9");
+      },
+    });
+
+  test("runs the pane's file in place of the PATH binary, with the profile's own arguments and the merged PATH", async () => {
+    const runs: Array<{ argv: readonly string[]; path: string | undefined }> = [];
+    const [, ...args] = anyProfile!.identity.versionCommand;
+    expect(await read(runs)(anyProfile!, ["/lab/copy/bin/agent"])).toBe("9.9.9");
+    expect(runs).toEqual([{ argv: ["/lab/copy/bin/agent", ...args], path: "/home/op/.bun/bin:/usr/bin" }]);
+  });
+
+  test("an interpreter and a script: a bare interpreter name is searched on the PATH, the script kept as it is", async () => {
+    const runs: Array<{ argv: readonly string[]; path: string | undefined }> = [];
+    const [, ...args] = anyProfile!.identity.versionCommand;
+    await read(runs)(anyProfile!, ["bun", "/lab/copy/node_modules/.bin/agent"]);
+    expect(runs[0]?.argv).toEqual(["/home/op/.bun/bin/bun", "/lab/copy/node_modules/.bin/agent", ...args]);
+  });
+
+  test("a profile whose version command starts with another program keeps the PATH lookup", async () => {
+    const runs: Array<{ argv: readonly string[]; path: string | undefined }> = [];
+    const wrapped = parseProfile({
+      ...JSON.parse(JSON.stringify(anyProfile)),
+      identity: { binary: "agent", versionCommand: ["agent-launcher", "agent", "--version"], versionRegex: "\\d+\\.\\d+\\.\\d+" },
+    });
+    await read(runs)(wrapped, ["/lab/copy/bin/agent"]);
+    expect(runs[0]?.argv).toEqual(["/home/op/.bun/bin/agent-launcher", "agent", "--version"]);
+  });
+
+  test("the cache keys by the program read: two copies read two versions, one file is read once", async () => {
+    const asked: Array<readonly string[] | undefined> = [];
+    const cache = new VersionCache((_profile, pane) => {
+      asked.push(pane);
+      return Promise.resolve(pane === undefined ? "18.6.1" : pane[0] === "/a/agent" ? "18.12.6" : "18.13.0");
+    });
+    expect(await cache.versionOf(anyProfile!)).toBe("18.6.1");
+    expect(await cache.versionOf(anyProfile!, ["/a/agent"])).toBe("18.12.6");
+    expect(await cache.versionOf(anyProfile!, ["/b/agent"])).toBe("18.13.0");
+    expect(await cache.versionOf(anyProfile!, ["/a/agent"])).toBe("18.12.6");
+    expect(await cache.versionOf(anyProfile!)).toBe("18.6.1");
+    expect(asked).toEqual([undefined, ["/a/agent"], ["/b/agent"]]);
+  });
+
+  test("a pane's program that does not answer inside the budget reads as unread, never as the PATH binary's version", async () => {
+    const cache = new VersionCache((_profile, pane) => (pane === undefined ? Promise.resolve("18.6.1") : new Promise<string | null>(() => undefined)), undefined, 20);
+    expect(await cache.versionOf(anyProfile!, ["/hung/agent"])).toBeNull();
+    expect(await cache.versionOf(anyProfile!)).toBe("18.6.1");
+  });
+});

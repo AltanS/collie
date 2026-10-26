@@ -90,24 +90,44 @@ function programName(word: string): string {
   return last.replace(/\.(exe|cmd|bat|ps1)$/iu, "").toLowerCase();
 }
 
+/** Whether a path's program name is one of the generic interpreters ({@link INTERPRETERS}). */
+export function isInterpreter(word: string): boolean {
+  return INTERPRETERS.has(programName(word));
+}
+
 /**
- * The harness id one of `processes` runs, by its binary: argv[0]'s program name, or, when argv[0] is
- * an interpreter, the program name of its first argument that is not a flag. `binaries` maps a binary's
- * program name (lower case) to its harness id. Null when no process is a known harness binary.
+ * The foreground process that runs a known harness, and how: `script` is the argv word an interpreter
+ * runs (`bun /…/node_modules/.bin/omp`), absent when argv[0] itself is the harness's binary.
  */
-export function harnessOfProcesses(processes: readonly ForegroundProcess[], binaries: ReadonlyMap<string, string>): string | null {
+export interface HarnessProcess {
+  readonly harness: string;
+  readonly process: ForegroundProcess;
+  readonly script?: string;
+}
+
+/**
+ * The first of `processes` that runs a known harness, by its binary: argv[0]'s program name, or, when
+ * argv[0] is an interpreter, the program name of its first argument that is not a flag. `binaries`
+ * maps a binary's program name (lower case) to its harness id. Null when no process is a known harness binary.
+ */
+export function harnessProcessOf(processes: readonly ForegroundProcess[], binaries: ReadonlyMap<string, string>): HarnessProcess | null {
   for (const process of processes) {
     const [first, ...rest] = process.argv;
     if (first === undefined) continue;
     const name = programName(first);
     const direct = binaries.get(name);
-    if (direct !== undefined) return direct;
+    if (direct !== undefined) return { harness: direct, process };
     if (!INTERPRETERS.has(name)) continue;
     const script = rest.find((word) => !word.startsWith("-"));
     const scripted = script === undefined ? undefined : binaries.get(programName(script));
-    if (scripted !== undefined) return scripted;
+    if (scripted !== undefined && script !== undefined) return { harness: scripted, process, script };
   }
   return null;
+}
+
+/** The harness id one of `processes` runs ({@link harnessProcessOf}), or null. */
+export function harnessOfProcesses(processes: readonly ForegroundProcess[], binaries: ReadonlyMap<string, string>): string | null {
+  return harnessProcessOf(processes, binaries)?.harness ?? null;
 }
 
 /**

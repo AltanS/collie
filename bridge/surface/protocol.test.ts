@@ -10096,3 +10096,33 @@ describe("omp's typeahead popups under the box (1.24.1)", () => {
     });
   });
 });
+
+// ── the version of the pane's own program (ADR 0124, amended 2026-10-26) ──
+
+describe("a send's profile is read for its pane", () => {
+  test("the profile lookup gets the pane, and the receipt names the version and the file that was read", async () => {
+    const { deps } = rig();
+    const asked: Array<string | undefined> = [];
+    const protocol = new SendProtocol({
+      ...deps,
+      profile: async (harness: string, paneId?: string) => {
+        asked.push(paneId);
+        const match = await deps.profile(harness);
+        return match === null ? null : { ...match, version: "2.1.999", status: "provisional" as const, binary: "/lab/copy/bin/agent" };
+      },
+    });
+    const answer = await protocol.handle({ id: nextId(), text: "hello there, agent", mode: "send" }, { session: "main", paneId: "%1", harness: "claude" });
+    expect(asked).toEqual(["%1"]);
+    expect(answer.receipt).toMatchObject({ outcome: "sent", version: "2.1.999", profileStatus: "provisional", binary: "/lab/copy/bin/agent" });
+    // The file is kept in the stored receipt, and stays out of the recent-sends rows a problem report reads.
+    expect(deps.store.get(answer.receipt!.requestId)?.receipt?.binary).toBe("/lab/copy/bin/agent");
+    expect(protocol.recent("%1")[0]?.version).toBe("2.1.999");
+    expect(Object.keys(protocol.recent("%1")[0] ?? {})).not.toContain("binary");
+  });
+
+  test("a version read from the PATH binary names no file", async () => {
+    const { send } = rig();
+    const answer = await send("please fix the failing test in the parser");
+    expect(answer.receipt?.binary).toBeUndefined();
+  });
+});

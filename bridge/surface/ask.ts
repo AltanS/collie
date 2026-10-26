@@ -322,7 +322,8 @@ export interface AskDeps {
   readonly locks: SessionLocks;
   readonly book: AskBook;
   readonly ring?: RowRing;
-  readonly profile: (harness: string) => Promise<ProfileMatch | null>;
+  /** The harness's profile; with `paneId`, at the version of the pane's own program when the bridge can see it (SendDeps.profile). */
+  readonly profile: (harness: string, paneId?: string) => Promise<ProfileMatch | null>;
   readonly generation: (paneId: string) => string | null;
   readonly now?: () => number;
   readonly sleep?: (ms: number) => Promise<void>;
@@ -569,7 +570,7 @@ export class AskAnswerer {
       target,
       record: accepted.record,
       entry: undefined,
-      match: await this.deps.profile(target.harness),
+      match: await this.deps.profile(target.harness, target.paneId),
       lockKey,
       deadline,
       marks: { check: null, readBack: null, after: null },
@@ -692,7 +693,7 @@ export class AskAnswerer {
   }
 
   private async run(answer: Answer, target: AskTarget, record: AskRecord, entry: AskEntry | undefined): Promise<AskReply> {
-    const match = await this.deps.profile(target.harness);
+    const match = await this.deps.profile(target.harness, target.paneId);
     const state: AskRun = {
       answer,
       target,
@@ -822,7 +823,7 @@ export class AskAnswerer {
       const grid = await Promise.race([this.deps.mux.readGrid(target.paneId, { scope: "viewport", lines: ASK_READ_LINES, styling: "preserve" }), late]);
       if (grid === null || !grid.ok) return null;
       const dialog = liftDialog(readerBlocks(splitLines(parseAnsi(grid.value.text)), target.harness));
-      const match = await this.deps.profile(target.harness);
+      const match = await this.deps.profile(target.harness, target.paneId);
       return this.deps.book.publish(target.paneId, generation, dialog, askLifetimeOf(match));
     } catch {
       return null;

@@ -32,8 +32,12 @@ export function binaryVersion(profile: Profile, run: RunVersionCommand = spawnVe
   return output === null ? null : versionFromOutput(profile, output);
 }
 
-/** Reads a binary's version without blocking, or null. Injected so tests run no process. */
-export type AsyncVersionReader = (profile: Profile) => Promise<string | null>;
+/**
+ * Reads a binary's version without blocking, or null. Injected so tests run no process. `pane` is the
+ * program the pane runs for the harness (bridge/pane-binary.ts `PaneBinary.command`): `[file]` or
+ * `[interpreter, script]`. Given, it runs in place of the profile's binary; absent, the PATH lookup does.
+ */
+export type AsyncVersionReader = (profile: Profile, pane?: readonly string[]) => Promise<string | null>;
 
 /** Runs a resolved command with `path` as its PATH and returns what it printed, or null when it would not run. */
 export type RunResolvedCommand = (argv: readonly string[], path: string | undefined) => Promise<string | null>;
@@ -70,8 +74,8 @@ export function mergePaths(login: string | undefined, own: string | undefined, h
 export function createVersionReader(deps: VersionReaderDeps = {}): AsyncVersionReader {
   const search = createBinarySearch(deps);
   const run = deps.run ?? spawnWithPath;
-  return async (profile) => {
-    const found = await search(profile);
+  return async (profile, pane) => {
+    const found = await search(profile, pane);
     if (found === null) return null;
     const output = await run([found.binary, ...found.args], found.path);
     return output === null ? null : versionFromOutput(profile, output);
@@ -85,16 +89,33 @@ interface BinaryFound {
   readonly path: string | undefined;
 }
 
-/** The one resolution rule for a profile's binary (see {@link createVersionReader}); null when nothing on the PATH answers. */
-function createBinarySearch(deps: VersionReaderDeps): (profile: Profile) => Promise<BinaryFound | null> {
+/**
+ * Whether the pane's program can stand in for the profile's binary: the version command starts with
+ * that binary (`[binary, "--version"]`). A command that starts with another program is left to the PATH.
+ */
+export function readsOwnBinary(profile: Profile): boolean {
+  return profile.identity.versionCommand[0] === profile.identity.binary;
+}
+
+/**
+ * The one resolution rule for a profile's binary (see {@link createVersionReader}); null when nothing on
+ * the PATH answers. With the pane's program (`pane`), that program's words replace the binary, and only
+ * a bare interpreter name among them is searched on the PATH: the file the pane runs is the one read.
+ */
+function createBinarySearch(deps: VersionReaderDeps): (profile: Profile, pane?: readonly string[]) => Promise<BinaryFound | null> {
   const env = deps.env ?? process.env;
   const host = deps.host ?? HOST;
   const loginPath = deps.loginPath ?? createLoginPath({ ...deps, env, host });
   const resolve =
     deps.resolve ?? ((binary: string, path: string | undefined) => findTool(binary, { ...env, PATH: path }, homedir(), host));
-  return async (profile) => {
+  return async (profile, pane) => {
     const [command, ...args] = profile.identity.versionCommand;
     const path = mergePaths(await loginPath(), envGet(env, "PATH", host), host);
+    const [head, ...rest] = pane !== undefined && readsOwnBinary(profile) ? pane : [];
+    if (head !== undefined) {
+      const file = host.path.isAbsolute(head) ? head : resolve(head, path);
+      return file === null ? null : { binary: file, args: [...rest, ...args], path };
+    }
     const binary = command === undefined ? null : resolve(command, path);
     return binary === null ? null : { binary, args, path };
   };
@@ -131,11 +152,11 @@ export interface BinaryReaderDeps extends VersionReaderDeps {
  * child PATH) and keeps what that reader throws away: the resolved file and how the command ended.
  * `collie doctor` uses it to tell "not installed" from "installed, but the version read failed".
  */
-export function createBinaryReader(deps: BinaryReaderDeps = {}): (profile: Profile) => Promise<BinaryRead> {
+export function createBinaryReader(deps: BinaryReaderDeps = {}): (profile: Profile, pane?: readonly string[]) => Promise<BinaryRead> {
   const search = createBinarySearch(deps);
   const run = deps.runDetailed ?? spawnWithPathDetailed;
-  return async (profile) => {
-    const found = await search(profile);
+  return async (profile, pane) => {
+    const found = await search(profile, pane);
     if (found === null) return { binary: null, version: null, outcome: null };
     const outcome = await run([found.binary, ...found.args], found.path);
     return {
@@ -182,12 +203,18 @@ export const VERSION_FAILED_CACHE_MS = 60_000;
  */
 export const VERSION_READ_BUDGET_MS = 4_000;
 
+/** The most versions the cache keeps, one per profile and program read. A safety bound: the oldest goes first. */
+const VERSION_CACHE_MAX = 128;
+
 /**
- * A per-profile cache of the binary's version for the send path (M56 spec 05). The first send on a
- * profile waits for the version, so its status is never guessed; later sends use the cached value
- * for VERSION_CACHE_MS. A version that could not be read is cached too, as null, for
- * VERSION_FAILED_CACHE_MS, which `profileFor` turns into `provisional` and the probed path. The cache
- * is per bridge process, so per host; sends that ask while a read runs share that read.
+ * A cache of the harness's version for the send path (M56 spec 05), keyed by the program read: the
+ * profile and, when the pane's foreground process showed the harness's own file (bridge/pane-binary.ts),
+ * that file; else the profile's binary on the PATH. Two panes that run two copies of one harness read
+ * two versions, and two panes that run one file share one read. The first send on a key waits for the
+ * version, so its status is never guessed; later sends use the cached value for VERSION_CACHE_MS. A
+ * version that could not be read is cached too, as null, for VERSION_FAILED_CACHE_MS, which
+ * `profileFor` turns into `provisional` and the probed path. The cache is per bridge process, so per
+ * host; sends that ask while a read runs share that read.
  */
 export class VersionCache {
   private readonly known = new Map<string, { version: string | null; at: number }>();
@@ -199,27 +226,34 @@ export class VersionCache {
     private readonly budgetMs: number = VERSION_READ_BUDGET_MS,
   ) {}
 
-  async versionOf(profile: Profile): Promise<string | null> {
-    const hit = this.known.get(profile.id);
+  /** The version of `profile`'s harness: of the pane's program `pane` when given, else of the PATH binary. */
+  async versionOf(profile: Profile, pane?: readonly string[]): Promise<string | null> {
+    const key = pane === undefined ? profile.id : [profile.id, ...pane].join("\u0000");
+    const hit = this.known.get(key);
     if (hit !== undefined && this.now() - hit.at <= (hit.version === null ? VERSION_FAILED_CACHE_MS : VERSION_CACHE_MS)) return hit.version;
-    const running = this.reading.get(profile.id);
+    const running = this.reading.get(key);
     if (running !== undefined) return running;
-    const work = this.readInBudget(profile).then((version) => {
-      this.known.set(profile.id, { version, at: this.now() });
-      this.reading.delete(profile.id);
+    const work = this.readInBudget(profile, pane).then((version) => {
+      this.known.delete(key);
+      this.known.set(key, { version, at: this.now() });
+      if (this.known.size > VERSION_CACHE_MAX) {
+        const oldest = this.known.keys().next();
+        if (!oldest.done) this.known.delete(oldest.value);
+      }
+      this.reading.delete(key);
       return version;
     });
-    this.reading.set(profile.id, work);
+    this.reading.set(key, work);
     return work;
   }
 
-  private async readInBudget(profile: Profile): Promise<string | null> {
+  private async readInBudget(profile: Profile, pane: readonly string[] | undefined): Promise<string | null> {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const late = new Promise<null>((done) => {
       timer = setTimeout(() => done(null), this.budgetMs);
     });
     try {
-      return await Promise.race([this.read(profile).catch(() => null), late]);
+      return await Promise.race([(pane === undefined ? this.read(profile) : this.read(profile, pane)).catch(() => null), late]);
     } finally {
       if (timer !== undefined) clearTimeout(timer);
     }
