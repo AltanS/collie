@@ -21,12 +21,18 @@
 //    baseline: an agent already named then opens nothing, because its age is unknown.
 //
 // While the window is open the Send Protocol reads the screen with that harness's profile and presses
-// no key until the harness's input box is on screen (`SendDeps.starting`). The window ends when a frame
-// of that harness is read ({@link LaunchWindow.framed}: the protocol's own S0 read, or the poll's
-// Surface), after {@link LAUNCH_WINDOW_MS}, or when the harness is gone from the pane: the foreground
-// is a plain shell again, or the multiplexer stops naming it. A window that ended is not opened again
-// by the same harness on the same pane (`settled`) until that harness leaves the pane: a started agent
-// goes back to what the pane did before this module existed.
+// no key until the harness's input box is on screen (`SendDeps.starting`). The window ends when that
+// box takes a key ({@link LaunchWindow.framed}: a send's probe showed in it), when the poll's Surface
+// reads the box ({@link LaunchWindow.drawn}), after {@link LAUNCH_WINDOW_MS}, or when the harness is gone
+// from the pane: the foreground is a plain shell again, or the multiplexer stops naming it. A window
+// that ended is not opened again by the same harness on the same pane (`settled`) until that harness
+// leaves the pane: a started agent goes back to what the pane did before this module existed.
+//
+// A drawn box is not always a box that reads keys: omp 18.12.6 draws its box about twenty seconds
+// before it reads one (gang three, 2026-10-26). A send whose probe never showed in a drawn box says so
+// ({@link LaunchWindow.deaf}): the window stays open, or opens again inside the bound it first opened
+// with, the pane counts the probe characters that may still show, and only a probe that shows ends it.
+// The protocol takes those characters out once the box shows them (bridge/surface/probe-marker.ts).
 //
 // It fails open on missing evidence. A multiplexer with no foreground read (tmux, zellij and tuios
 // today) gets no `process` window, a read that fails or takes longer than {@link FOREGROUND_READ_MS}
@@ -59,10 +65,23 @@ type Source = "launch" | "process" | "agent";
 
 interface Window {
   readonly harness: string;
+  /** When the window opened: a window that opens again for a deaf box keeps its first bound. */
+  readonly opened: number;
   readonly until: number;
   readonly source: Source;
   /** A foreground read showed the harness's process: a shell in the foreground after that means it exited. */
   processSeen: boolean;
+  /**
+   * Probe characters a send typed into the harness's box that never showed: the box is drawn but reads
+   * no keys yet, and they may show later. A window with any is not ended by a box read alone.
+   */
+  deaf: number;
+}
+
+/** A pane whose agent's window ended: the harness, and when its window opened. */
+interface Settled {
+  readonly harness: string;
+  readonly opened: number;
 }
 
 /** The last name of a path, without a Windows program suffix, lower case: `C:\x\omp.EXE` is `omp`. */
@@ -106,7 +125,7 @@ export interface ObservedPane {
 export class LaunchWindow {
   private readonly windows = new Map<string, Window>();
   /** Panes whose agent's window ended (a frame read, or the bound), by harness. */
-  private readonly settled = new Map<string, string>();
+  private readonly settled = new Map<string, Settled>();
   /** The last poll's panes per session, pane id to agent ("" for a shell). Absent: no poll yet. */
   private readonly known = new Map<string, Map<string, string>>();
 
@@ -129,7 +148,7 @@ export class LaunchWindow {
     if (window === undefined) return null;
     if (window.until > this.now()) return window;
     this.windows.delete(key);
-    this.settle(key, window.harness);
+    this.settle(key, window.harness, window.opened);
     return null;
   }
 
@@ -138,7 +157,7 @@ export class LaunchWindow {
     for (const [other, window] of this.windows) {
       if (window.until <= at) {
         this.windows.delete(other);
-        this.settle(other, window.harness);
+        this.settle(other, window.harness, window.opened);
       }
     }
     this.windows.delete(key);
@@ -146,16 +165,20 @@ export class LaunchWindow {
       const oldest = this.windows.keys().next().value;
       if (oldest !== undefined) this.windows.delete(oldest);
     }
-    this.windows.set(key, { harness, until: at + LAUNCH_WINDOW_MS, source, processSeen });
+    this.windows.set(key, { harness, opened: at, until: at + LAUNCH_WINDOW_MS, source, processSeen, deaf: 0 });
   }
 
-  private settle(key: string, harness: string): void {
+  private settle(key: string, harness: string, opened: number): void {
     this.settled.delete(key);
     if (this.settled.size >= SETTLED_MAX) {
       const oldest = this.settled.keys().next().value;
       if (oldest !== undefined) this.settled.delete(oldest);
     }
-    this.settled.set(key, harness);
+    this.settled.set(key, { harness, opened });
+  }
+
+  private settledAs(key: string): string | null {
+    return this.settled.get(key)?.harness ?? null;
   }
 
   /** The harness left the pane: its window, of any source, and its settled mark go. */
@@ -200,17 +223,59 @@ export class LaunchWindow {
         if (was !== undefined) this.left(key);
         continue;
       }
-      if (this.open(key)?.harness === agent || this.settled.get(key) === agent) continue;
+      if (this.open(key)?.harness === agent || this.settledAs(key) === agent) continue;
       this.openWindow(key, agent, "agent");
     }
   }
 
-  /** A frame of `harness` was read on the pane: its start is over, and the pane settles. */
+  /** The box of `harness` took a key on the pane (a send's probe showed in it): its start is over, and the pane settles. */
   framed(session: string, paneId: string, harness: string): void {
     const key = LaunchWindow.keyOf(session, paneId);
     const name = this.canonical(harness);
-    if (this.windows.get(key)?.harness === name) this.windows.delete(key);
-    this.settle(key, name);
+    const window = this.windows.get(key);
+    if (window?.harness === name) this.windows.delete(key);
+    // A pane that settles with no window of its own keeps no bound to open one in again.
+    this.settle(key, name, window?.harness === name ? window.opened : this.now() - LAUNCH_WINDOW_MS);
+  }
+
+  /**
+   * The poll's Surface read a box of `harness` on the pane. A drawn box ends the window as {@link framed}
+   * does, unless a send's probe already went unseen in it ({@link deaf}): that box is drawn but reads
+   * no keys, and only a probe that shows ends its window (or the bound).
+   */
+  drawn(session: string, paneId: string, harness: string): void {
+    const key = LaunchWindow.keyOf(session, paneId);
+    const window = this.open(key);
+    if (window !== null && window.harness === this.canonical(harness) && window.deaf > 0) return;
+    this.framed(session, paneId, harness);
+  }
+
+  /**
+   * A send's probe never showed in the box of `harness` on the pane: the box is drawn but reads no keys
+   * yet. An open window for that harness stays open and counts one more character that may show later.
+   * A window a box read ended opens again, inside the bound it opened with. Answers the count, 0 when the
+   * pane is not starting (no window, another harness, or past the bound): then nothing changes.
+   */
+  deaf(session: string, paneId: string, harness: string): number {
+    const key = LaunchWindow.keyOf(session, paneId);
+    const name = this.canonical(harness);
+    const window = this.open(key);
+    if (window !== null) {
+      if (window.harness !== name) return 0;
+      window.deaf += 1;
+      return window.deaf;
+    }
+    const settled = this.settled.get(key);
+    const until = (settled?.opened ?? 0) + LAUNCH_WINDOW_MS;
+    if (settled?.harness !== name || until <= this.now()) return 0;
+    this.settled.delete(key);
+    this.windows.set(key, { harness: name, opened: settled.opened, until, source: "agent", processSeen: true, deaf: 1 });
+    return 1;
+  }
+
+  /** How many probe characters may still show in the pane's box ({@link deaf}), 0 with no open window. */
+  pending(session: string, paneId: string): number {
+    return this.open(LaunchWindow.keyOf(session, paneId))?.deaf ?? 0;
   }
 
   /**
@@ -238,7 +303,7 @@ export class LaunchWindow {
       const harness = this.canonical(seen);
       const window = this.open(key);
       if (window?.harness === harness) window.processSeen = true;
-      else if (this.settled.get(key) !== harness) this.openWindow(key, harness, "process", true);
+      else if (this.settledAs(key) !== harness) this.openWindow(key, harness, "process", true);
     }
     return this.open(key)?.harness ?? null;
   }

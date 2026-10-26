@@ -101,11 +101,30 @@ holds one window per pane, opened by any of three sources:
 While the window is open, a send reads the screen with that harness's profile. With the harness's box on
 screen it runs the normal steps. With none it ends `refused(probe_failed)` before any key, probe
 included: "The pane shows no <harness> input box yet; it may still be starting. Nothing was typed." On a
-pane the multiplexer already names, a dialog its profile lifts keeps its own path. The window ends when a
-frame of that harness is read (the send's S0, or the poll's Surface), after 120 s, or when the harness
-leaves the pane (a plain shell in the foreground after the process was seen, or the multiplexer no
-longer names it). A window that ended does not open again for the same harness on the same pane until it
-leaves. Nothing in `bridge/surface/` names a harness.
+pane the multiplexer already names, a dialog its profile lifts keeps its own path. The window ends when
+the harness's box takes a key (a send's probe shows in it) or the poll's Surface reads the box, after
+120 s, or when the harness leaves the pane (a plain shell in the foreground after the process was seen,
+or the multiplexer no longer names it). A window that ended does not open again for the same harness on
+the same pane until it leaves. Nothing in `bridge/surface/` names a harness.
+
+**A drawn box is not yet a box that reads keys** (gang three tester 3, 2026-10-26). OMP 18.12.6 draws its
+box about twenty seconds before it reads a key. A send in that gap typed its probe character, the probe
+never showed, and once omp woke it showed the buffered `⌁` as a draft that refused every later send
+`draft_present`. So, in the window, every send is probed. A probe that never shows ends
+`refused(probe_failed)` with the window's words ("it may still be starting") and presses no Backspace,
+since a Backspace would wait in the terminal too and could land in a person's text later. The window
+stays open: the poll's box read no longer ends it, and a window that read had ended opens again inside the
+bound it opened with. The window counts the probe characters that may still show. Collie's probe
+character is Collie's own residue (`bridge/surface/probe-marker.ts`): a box whose whole text is one or
+more probe characters and nothing else is no person's draft. A send, a command, Add to it, Replace,
+Discard and Clear take out exactly those characters, one Backspace each, and go on from a read that shows
+the box empty, or stop with a refusal that says so. A probe character beside any other text is never
+taken out.
+
+**What stays on the blind road.** For about the first second after a person types the agent's command
+into a shell, the shell itself is still the pane's foreground process, so a send then is a blind send to
+a shell (gang three, rows u and u2: +0.2 to +0.8 s): there is no evidence yet that a harness is starting,
+and point 1 holds for a pane that reads as a shell.
 
 It fails open where the evidence is missing. A plain shell in the foreground keeps the blind send and
 its Sent record. A foreground read that fails, refuses or runs slow counts as none. tmux, zellij and

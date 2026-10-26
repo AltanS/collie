@@ -1634,10 +1634,11 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   if (surface !== undefined) {
     engine.onUpdate((s) => {
       void surface.observe(s.agents).then(() => {
-        // A pane where an agent is starting: once the poll's read finds its input box, the launch window ends.
+        // A pane where an agent is starting: once the poll's read finds its input box, the launch window
+        // ends, unless a send's probe already went unseen in that box (it is drawn but reads no keys).
         for (const agent of s.agents) {
           if (launchWindow.expecting(name, agent.paneId) === null) continue;
-          if ((surface.boxOf(agent.paneId)?.box ?? null) !== null) launchWindow.framed(name, agent.paneId, agent.agent);
+          if ((surface.boxOf(agent.paneId)?.box ?? null) !== null) launchWindow.drawn(name, agent.paneId, agent.agent);
         }
         // A queued send whose text a read shows back in the box (ADR 0122): its card says so.
         send?.tickQueued(name, (paneId) => surface.boxOf(paneId));
@@ -1664,6 +1665,7 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
           profile: (harness) => sendProfile(harness),
           starting: (paneId, named) => launchWindow.starting(name, paneId, named, foregroundHarness?.(paneId)),
           framed: (paneId, harness) => launchWindow.framed(name, paneId, harness),
+          deaf: (paneId, harness) => launchWindow.deaf(name, paneId, harness),
           generation: generationOf,
           asks: askBook,
           holds: holdStore ?? undefined,

@@ -89,9 +89,19 @@
 // that is starting in the pane (the bridge launched it, the pane's foreground process is its binary, or
 // the multiplexer named it a moment ago), while no frame of it has been read there yet. The send then
 // reads the screen with that harness's profile: with its input box on screen it runs the normal steps,
-// and the window ends (`SendDeps.framed`); with none it ends `refused(probe_failed)` before any key, no
-// probe included, saying the pane may still be starting. On a pane the multiplexer names already, a
-// dialog the profile lifts keeps its own path. Nothing here names a harness.
+// always probed, and the window ends once the probe shows (`SendDeps.framed`); with none it ends
+// `refused(probe_failed)` before any key, no probe included, saying the pane may still be starting. On a
+// pane the multiplexer names already, a dialog the profile lifts keeps its own path. A box can be drawn
+// before it reads keys (omp 18.12.6, about twenty seconds; gang three, 2026-10-26): a probe that never
+// shows in it ends `refused(probe_failed)` with the same words, presses no Backspace (it would wait in the
+// terminal too, and land in what comes next), and tells the window (`SendDeps.deaf`), which stays open.
+// Nothing here names a harness.
+//
+// Collie's probe characters are Collie's own residue (probe-marker.ts): an idle box whose whole text is
+// one or more of them, and nothing else, is no person's draft. A send, a command, Add to it, Replace and
+// Discard prove that box as a draft, take out exactly those characters (one Backspace each), and go on
+// from a read that shows the box empty; a box that does not empty ends `probe_failed`. A probe character
+// beside any other text is never taken out.
 //
 // A manual send (the screen takes the two-tap Send: no frame found, an unreadable overlay, a weak cue)
 // compares less than a free one: the rows under the box (hints, footers, status rows) and the rest
@@ -206,6 +216,7 @@ import type { KeyGate } from "./key-gate.ts";
 import type { RequestStore, SendRecord } from "./requests.ts";
 import { HOLD_BRIDGE_MAX, HOLD_PANE_MAX, heldRow, type HeldEntry, type HoldCause, type HoldStore } from "./holds.ts";
 import { QueuedSends, type BoxReading, type ReceiptQueued } from "./queued.ts";
+import { PROBE_MARKER, probeCharOf, probeResidue } from "./probe-marker.ts";
 
 /** The step bounds, written as (max reads, max ms). */
 export const BOUNDS = {
@@ -220,8 +231,8 @@ export const BOUNDS = {
 /** The session lock's bound: the sum of the step bounds a send can take (the notice wait stands in for S1 and S2). A request past it ends `unknown`. */
 export const LOCK_BOUND_MS = BOUNDS.s0.ms + BOUNDS.probe.ms + BOUNDS.s1.ms + BOUNDS.s2.ms;
 
-/** The probe character on a pane with no profile: the slice 0 lab found it inert in every hotkey dialog. */
-export const GENERIC_PROBE = "⌁";
+/** The probe character on a pane with no profile: Collie's one probe marker (probe-marker.ts). */
+export const GENERIC_PROBE = PROBE_MARKER;
 /** The submit key on a pane with no profile. */
 const GENERIC_SUBMIT = ["Enter"] as const;
 /** The clear key on a pane with no profile. Never Escape. */
@@ -242,6 +253,17 @@ const REREAD_GAP_MS = 120;
 
 /** The detail after a failed probe whose one Backspace took the character out again. */
 const PROBE_REMOVED = "One Backspace removed the probe character, so the box is clean again.";
+/**
+ * The detail of a probe that never showed in the box of a harness that is starting: the box is drawn but
+ * reads no keys yet. The first sentence is the launch window's.
+ */
+function deafDetail(match: ProfileMatch | null, probe: string): string {
+  return `The ${match?.profile.id ?? "agent"} input box does not take keys yet; it may still be starting. Send again in a moment: Collie first takes its probe character (${probe}) out of the box.`;
+}
+/** The detail of a box that held only Collie's probe characters and did not read empty after one Backspace each. */
+function residueLeft(probe: string): string {
+  return `The box held only Collie's probe characters (${probe}), and Backspace did not empty it. Check the pane before you type.`;
+}
 /** The detail after a failed probe that left its character where Collie cannot take it out. */
 function probeMayRemain(probe: string): string {
   return `A probe character (${probe}) may remain in the box. Check the pane before you type.`;
@@ -368,8 +390,14 @@ export interface SendDeps {
    * ({@link SendProtocol}, the launch window). A throw reads as null. Absent: no pane is starting.
    */
   readonly starting?: ((paneId: string, named: string | null) => Promise<string | null> | string | null) | undefined;
-  /** A frame of `harness` was read on the pane while it was starting: its window ends. Never throws into a send. */
+  /** The box of `harness` took a key on the pane while it was starting: its window ends. Never throws into a send. */
   readonly framed?: ((paneId: string, harness: string) => void) | undefined;
+  /**
+   * The box of `harness` is on screen but its probe never showed, on a pane where it is starting: the
+   * window stays open (it opens again inside its bound if a box read ended it), and the pane counts one
+   * more probe character that may still show. Answers whether the pane is starting; 0 or a throw: not.
+   */
+  readonly deaf?: ((paneId: string, harness: string) => number) | undefined;
   /** The pane's generation now, or null when the pane is gone. */
   readonly generation: (paneId: string) => string | null;
   /** The counters, the cap and the lab's folders. Absent in a test that does not need them. */
@@ -3127,6 +3155,57 @@ export class SendProtocol {
     }
   }
 
+  /**
+   * Tell {@link SendDeps.deaf} the starting harness's box showed no probe. True when the pane is
+   * starting: this run's window, or one the dependency keeps or opens again. Never throws.
+   */
+  private noteDeaf(state: RunState): boolean {
+    const harness = state.startingNamed || !state.starting ? state.target.harness : state.match?.profile.id;
+    if (harness === undefined || harness === "" || this.deps.deaf === undefined) return state.starting;
+    try {
+      return this.deps.deaf(state.target.paneId, harness) > 0 || state.starting;
+    } catch (err) {
+      console.warn(`[send] the deaf note failed: ${err instanceof Error ? err.message : String(err)}`);
+      return state.starting;
+    }
+  }
+
+  /**
+   * How many of Collie's own probe characters an idle box holds when they are its whole text
+   * (probe-marker.ts), else 0. Only a request that would act on the box counts them: a send, a
+   * command, Add to it, Replace and Discard. A box with any other text in it is never counted.
+   */
+  private residueOf(state: RunState, s0: Snap): number {
+    const { frame, surface } = s0;
+    if (frame === null || frame.scrolled === true || state.manual || s0.notice !== null) return 0;
+    if (surface.turn !== "idle" || surface.modal !== "none" || surface.composer !== "draft") return 0;
+    const { mode } = state.request;
+    if (mode !== "send" && mode !== "command" && mode !== "append" && mode !== "replace" && mode !== "discard") return 0;
+    return probeResidue(boxText(frame), probeCharOf(state.match));
+  }
+
+  /**
+   * Takes Collie's own probe characters out of a box the draft probe just proved: one Backspace each,
+   * then reads until the box reads empty. The read is where the request goes on from; a box that does
+   * not empty ends `probe_failed`, saying what may remain, and no other key follows.
+   */
+  private async removeResidue(state: RunState, markers: number): Promise<Snap> {
+    const probe = probeCharOf(state.match);
+    const left = (snap: Snap | null): Ended => new Ended("refused", "probe_failed", sawNote(snap, { detail: residueLeft(probe), framed: true, offers: ["keys"] }));
+    this.stretch(state, BOUNDS.probe.ms);
+    try {
+      await this.keysThroughGate(state, Array.from({ length: markers }, () => "Backspace"), "refused");
+    } catch (err) {
+      if (err instanceof Ended && err.outcome === "refused") throw left(state.lastRead);
+      throw err;
+    }
+    const back = await this.poll(state, "probe", { reads: BOUNDS.probe.reads, ms: BOUNDS.probe.ms }, (snap) =>
+      snap.frame !== null && snap.surface.modal === "none" && boxText(snap.frame) === "" ? "pass" : "wait",
+    );
+    if (back.verdict !== "pass" || back.snap === null) throw left(back.snap);
+    return back.snap;
+  }
+
   /** Tell {@link SendDeps.blindSent} a blind send went out. Never throws, and never changes the answer. */
   private noteBlindSent(state: RunState): void {
     try {
@@ -3274,17 +3353,18 @@ export class SendProtocol {
     state.marks.s0 = s0;
     // The launch window: a harness is starting in the pane, and its box is not on screen yet. No probe
     // either, for the probe would be typed into the shell. A dialog the pane's own profile lifts is the
-    // harness up and asking: it keeps its own path. A box on screen ends the window.
-    if (state.starting) {
-      if (s0.frame !== null) this.noteFramed(state);
-      else if (!state.startingNamed || askOf(s0.surface.modal) === null) {
-        throw new Ended("refused", "probe_failed", { surface: s0.surface, framed: false, detail: notStartedDetail(match) });
-      }
+    // harness up and asking: it keeps its own path. A box on screen is not yet a box that reads keys
+    // (omp draws its box long before it reads one): the window ends once the probe shows in it.
+    if (state.starting && s0.frame === null && (!state.startingNamed || askOf(s0.surface.modal) === null)) {
+      throw new Ended("refused", "probe_failed", { surface: s0.surface, framed: false, detail: notStartedDetail(match) });
     }
     this.atS0(state, s0);
+    // A box whose whole text is Collie's own probe characters (a box that was drawn before it read keys
+    // kept them, probe-marker.ts) is proven like a draft, then emptied of exactly them.
+    const residue = this.residueOf(state, s0) > 0;
     // A draft read is a reading until a probe proves it (the header, 2026-10-25). A stale frame gets one
     // more S0 read, and the run goes on from it or ends refused.
-    if (this.draftToProve(state, s0, holds)) {
+    if (residue || this.draftToProve(state, s0, holds)) {
       const started = this.now();
       let proven: Snap;
       try {
@@ -3300,6 +3380,14 @@ export class SendProtocol {
         state.marks.s0 = s0;
         this.atS0(state, s0);
       }
+    }
+    const markers = this.residueOf(state, s0);
+    if (markers > 0) {
+      s0 = await this.removeResidue(state, markers);
+      state.marks.s0 = s0;
+      this.atS0(state, s0);
+      // A Discard is for what Collie typed: the box held only Collie's probe characters, and they are out.
+      if (request.mode === "discard") return;
     }
 
     switch (request.mode) {
@@ -3375,7 +3463,9 @@ export class SendProtocol {
     state.probed =
       !state.noticeKey &&
       // After a second S0 read of a stale box the box is proven by the probe again, whatever the profile says.
+      // So is a box of a harness that is starting: it may be drawn and still read no keys.
       (state.reread ||
+      state.starting ||
       state.queued ||
       s0.frame === null ||
       match === null ||
@@ -3387,6 +3477,8 @@ export class SendProtocol {
     let landing: Landing | null = null;
     if (state.probed) landing = await this.probe(state, s0, prefix);
     this.lap(state, "probe");
+    // The probe showed in the box and went again: the starting harness reads keys, its window ends.
+    if (state.starting && state.probed) this.noteFramed(state);
 
     if (!state.command && !state.noticeKey && this.deps.mux.pasteBlock !== undefined) state.whole = wholePaste(match, lines, this.deps.imageFile);
     await this.write(state, lines);
@@ -3526,7 +3618,7 @@ export class SendProtocol {
    * `stale_screen`. The request's bound grows by each step it adds.
    */
   private async proveDraft(state: RunState, s0: Snap): Promise<Snap> {
-    const probe = state.match?.profile.probe.char ?? GENERIC_PROBE;
+    const probe = probeCharOf(state.match);
     const before = countIn(s0.texts, probe);
     // The probe, then its Backspace, each with the probe's own bound.
     this.stretch(state, 2 * BOUNDS.probe.ms);
@@ -4131,7 +4223,7 @@ export class SendProtocol {
    * send lets the rows under the box and the rest of the box change (see the header).
    */
   private async probe(state: RunState, s0: Snap, prefix: string): Promise<Landing | null> {
-    const probe = state.match?.profile.probe.char ?? GENERIC_PROBE;
+    const probe = probeCharOf(state.match);
     const failed = (detail: string, snap: Snap | null): Ended => new Ended("refused", "probe_failed", sawNote(snap, { detail, framed: s0.frame !== null }));
     // Reads are shared across the two halves: the character may take two, Backspace gets the rest.
     const budget = { reads: BOUNDS.probe.reads, ms: BOUNDS.probe.ms };
@@ -4171,6 +4263,12 @@ export class SendProtocol {
       landing = probeLanding(s0.plain, snap.plain, probe, { freeBelow: state.manual });
       return landing !== null && !cueAppeared(s0, snap) ? "pass" : "fail";
     });
+    // A box on screen that showed no probe at all, on a pane where its harness is starting: the box is
+    // drawn but reads no keys yet. The character waits in the terminal and shows later, where the next
+    // send takes it out (residueOf). No Backspace now: it would wait too, and land in what comes next.
+    if (typed.verdict === "wait" && s0.frame !== null && (typed.snap === null || countIn(typed.snap.texts, probe) === countIn(s0.texts, probe)) && this.noteDeaf(state)) {
+      throw new Ended("refused", "probe_failed", sawNote(typed.snap, { detail: deafDetail(state.match, probe), framed: true }));
+    }
     if (typed.verdict !== "pass") {
       const screen = boxOnly ? (typed.snap?.otherScreen ?? null) : null;
       const why =

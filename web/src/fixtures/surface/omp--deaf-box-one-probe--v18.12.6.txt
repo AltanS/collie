@@ -1,0 +1,21 @@
+
+                                            ████████████    
+                                               ██  ██       ▄▀▀▄ █▀▄▀▄ █▀▀▄
+                                               ██  ██       ▀▄▄▀ █ █ █ █▄▄▀
+                                               ▒▒  ██                  █
+                                                   ██       v18.12.6
+
+                        Tip: Lint/type errors piling up? `omp cleanse` (or /cleanse right here)
+                          hunts project diagnostics and fixes them with parallel subagents — ⎋
+                                                        cancels
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ What's New                                                                                                             
+
+ Updated to v18.12.6 · 79 changes across 3 releases                                                                     
+ 11 added · 12 changed · 56 fixed · +29 earlier releases · Use /changelog full for history.                             
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+ π > ◒ Haiku 4.5 > 📁 …ng3/03-launch/state/harness/omp/project ▶──5%───────────────────────────────────────┃───────200K─
+╰─ ⌁                                                                                                                    
