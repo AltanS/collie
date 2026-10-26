@@ -176,8 +176,11 @@ export interface ReadMark {
  * `proof`: the probe of a draft S0 read, with its second S0 read where it needed one (2026-10-25); S0's gap leaves it out.
  * `settle`: an S0 whose screen geometry was in flux (a resize between its reads, or a torn read), and the
  * pause before the one more S0 that was judged (2026-10-26); S0's gap leaves it out too.
+ * `commandSettle`: a command on a harness with a command list, from the S1 read that first passed to the
+ * read at least the settle interval later that agreed with it on the rows under the box (2026-10-26); S1's
+ * gap ends at the first of the two.
  */
-export type SendStep = "profile" | "settle" | "s0" | "proof" | "clear" | "probe" | "write" | "s1" | "commit" | "s2";
+export type SendStep = "profile" | "settle" | "s0" | "proof" | "clear" | "probe" | "write" | "s1" | "commandSettle" | "commit" | "s2";
 
 /**
  * The receipt, a closed list of fields. It is written to disk, so it holds no screen text and no

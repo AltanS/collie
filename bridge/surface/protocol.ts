@@ -16,7 +16,10 @@
 //           paste instead (`wholePaste`: never a command, never a text that starts with a reserved lead)
 //   S1      (6, 2500) read until the box holds exactly the predicted text (or the profile's collapse
 //           form) and nothing else moved; else `typed_not_submitted`. A turn that started after an
-//           idle S0 meets S0's turn rule on that read; a send it refuses or holds ends the same way
+//           idle S0 meets S0's turn rule on that read; a send it refuses or holds ends the same way.
+//           A command on a harness whose profile declares a command list needs two such reads, at
+//           least COMMAND_SETTLE_MS (160 ms) apart, that agree on the rows under the box: a list drawn
+//           late is never what Enter acts on (`commandSettle` in gapsMs)
 //   commit  the profile's submit keys through the gate with a 150 ms token; `submit-sent` is on disk first
 //   S2      (6, 3000) read until the box is empty or a running sign shows: `sent`; else `unknown`. A command
 //           that found nothing reads once more (6, 3000): its own screen may be slow to draw
@@ -298,6 +301,20 @@ const S0_GAP_MS = 120;
  * until the program draws again. Measured as `gapsMs.settle`, with the S0 read that saw it.
  */
 const SETTLE_MS = 150;
+/**
+ * The least time between the two S1 reads a command's Enter needs, on a harness whose profile declares a
+ * command list (2026-10-26, omp gang three tester 05, W1): the list under the box is drawn after the
+ * text, by an asynchronous lookup and the next frame, and under load omp 18.6.1 drew it after S1's first
+ * read (80 ms), so Enter ran `/loop`, 4 of 4. 160 ms is S1's own second gap (twice {@link FIRST_GAP_MS}),
+ * so the read that agrees sits about 240 ms after the write, where an S1 that missed its first read
+ * reads next. The omp gang's receipts say how far a key's echo reaches: of 684 probes (the probe key,
+ * then its Backspace, each polled from 80 ms), 529 took under 200 ms and all but one under 490 ms, which
+ * is each half seen by its second read at the latest, about 240 ms after its key; one took 570 ms.
+ * Measured as `gapsMs.commandSettle`.
+ */
+export const COMMAND_SETTLE_MS = 160;
+/** The detail of a command whose S1 reads never agreed on the rows under the box before S1's bound ran out. */
+const LIST_MOVING = "The rows under the box did not hold still after the command was typed, so Enter was not pressed.";
 /** Emptying a box (replace, discard) borrows the S2 bound: a read after every batch, inside S2's reads and ms. */
 const CLEAR_BOUND = BOUNDS.s2;
 /** Keys per clear batch; a read sits between two batches. */
@@ -1565,6 +1582,33 @@ function listPointsElsewhere(snap: Snap, prefix: string, lines: readonly string[
   return !pointsAt(list, prefix + lines.join(""), rows);
 }
 
+/**
+ * Whether a send's Enter waits for two S1 reads that agree on the rows under the box (2026-10-26): a
+ * command, on a harness whose profile declares a command list. A list drawn after the first read would
+ * otherwise get the Enter, and Enter picks its pointed entry.
+ */
+function commandSettles(state: RunState): boolean {
+  return state.command && state.match?.profile.idle.volatile.below.commandList !== undefined;
+}
+
+/** Whether a read shows no list at the box: no command list, no popup, no pointer cue under the box. */
+function noListAtBox(snap: Snap): boolean {
+  return snap.commandList === null && snap.listAnyText === null && snap.ownList === null && snap.popup === null && snap.belowCues === "none";
+}
+
+/**
+ * What two S1 reads of a command must share before Enter: the rows under the box (a list there is what
+ * Enter acts on) and the rows of a list over the box, or, where both reads show no list at all, nothing
+ * more (a footer may tick there on its own). With no frame, the bottom window.
+ */
+function settleKey(snap: Snap): string {
+  if (snap.frame === null) return `rows:${snap.rowsHash}`;
+  if (noListAtBox(snap)) return "none";
+  const above = [snap.commandList, snap.listAnyText, snap.ownList].flatMap((list) => (list !== null && list.side === "above" ? [list.first] : []));
+  const from = above.length === 0 ? snap.frame.top : Math.min(...above);
+  return `list:${shortHash([...snap.plain.slice(from, snap.frame.top), "--", belowRows(snap) ?? ""].join("\n"))}`;
+}
+
 /** The detail of a typed send whose box turned out to be another screen's (the agents screen): Enter was held back. */
 function otherScreenDetail(screen: string): string {
   return `The typed text went into the ${screen}'s own box, not the conversation's, so Enter was not pressed.`;
@@ -2134,6 +2178,8 @@ interface RunState {
   streamed: boolean;
   /** Two reads with the same box text saw the rows under the box change (belowMovedAlone): a turn may run. */
   belowMoved: boolean;
+  /** When the first of the two agreeing S1 reads of a command was taken ({@link commandSettles}); null for every other send. */
+  settledFrom: number | null;
   /** S2 or the late read saw the harness's queued row with the text ({@link showsQueued}). */
   witnessed: boolean;
   /**
@@ -3055,6 +3101,7 @@ export class SendProtocol {
       queued: false,
       streamed: false,
       belowMoved: false,
+      settledFrom: null,
       witnessed: false,
       runsInTurn: false,
       previousRead: null,
@@ -3541,7 +3588,7 @@ export class SendProtocol {
 
     const s1 = await this.awaitTyped(state, s0, landing, prefix, state.whole?.lines ?? lines);
     state.marks.s1 = s1;
-    this.lap(state, "s1");
+    this.lapS1(state);
     this.checkGeneration(state, "typed_not_submitted");
 
     // A steer whose turn ended while the text went in goes as the plain send S0's read put it on: a
@@ -4022,6 +4069,21 @@ export class SendProtocol {
     state.stepStart = now;
   }
 
+  /**
+   * S1's gap, and a command's `commandSettle` beside it: S1 ends at the first of its two agreeing reads,
+   * and the wait for the second is the settle's (the cost of the rule, apart from the reads S1 needed).
+   */
+  private lapS1(state: RunState): void {
+    const from = state.settledFrom;
+    if (from === null) {
+      this.lap(state, "s1");
+      return;
+    }
+    state.gaps.s1 = from - state.stepStart;
+    state.stepStart = from;
+    this.lap(state, "commandSettle");
+  }
+
   /** Ends the request when its bound passed or another request took the lock after it. */
   private guard(state: RunState): void {
     const now = this.now();
@@ -4206,21 +4268,27 @@ export class SendProtocol {
     return this.stableRead(state, "s0");
   }
 
-  /** Reads until the test passes or fails, inside the step's (reads, ms) bound. Null when the bound ran out. */
+  /**
+   * Reads until the test passes or fails, inside the step's (reads, ms) bound. Null when the bound ran out.
+   * A test that answers `again` waits like `wait`, but its next read comes `againMs` later instead of the
+   * doubling gap (the second of a command's two agreeing S1 reads).
+   */
   private async poll(
     state: RunState,
     step: string,
     bound: { reads: number; ms: number },
-    test: (snap: Snap) => Verdict,
+    test: (snap: Snap) => Verdict | "again",
+    againMs = FIRST_GAP_MS,
   ): Promise<{ snap: Snap | null; verdict: Verdict; reads: number }> {
     const until = Math.min(this.now() + bound.ms, state.deadline);
     let gap = FIRST_GAP_MS;
+    let again = false;
     let last: Snap | null = null;
     let reads = 0;
     while (reads < bound.reads) {
       const left = until - this.now();
       if (left <= 0) break;
-      await this.sleep(Math.min(gap, left));
+      await this.sleep(Math.min(again ? againMs : gap, left));
       // A step whose end is the request's bound, woken a hair past it (a timer fires late), ends as its
       // own bound would: its outcome (`no_evidence`, `typed_not_submitted`) says more than `bound` (#594).
       if (this.now() > state.deadline) break;
@@ -4237,7 +4305,8 @@ export class SendProtocol {
       if (snap === null) continue;
       last = snap;
       const verdict = test(snap);
-      if (verdict !== "wait") return { snap, verdict, reads };
+      again = verdict === "again";
+      if (verdict !== "wait" && verdict !== "again") return { snap, verdict, reads };
     }
     return { snap: last, verdict: "wait", reads };
   }
@@ -4442,7 +4511,7 @@ export class SendProtocol {
     // it decide (2026-10-17 decision). Where Enter would steer or interrupt a turn and no queue key
     // exists, rows above that moved may be a turn Collie did not see, so the full compare stays.
     const boxOnly = s0.frame !== null && !command && !manual && queuesInTurn(state.match);
-    const result = await this.poll(state, "s1", BOUNDS.s1, (snap) => {
+    const judge = (snap: Snap): Verdict => {
       if (belowMovedAlone(earlier, snap)) state.belowMoved = true;
       earlier = snap;
       if (boxOnly) {
@@ -4535,10 +4604,52 @@ export class SendProtocol {
       if (predicted.endsWith(actual) && actual.length >= typedTail.length) return "pass";
       why = "mismatch";
       return "wait";
-    });
+    };
+    // A command on a harness with a command list (2026-10-26): Enter never goes out on the first read
+    // that passes. A list the harness draws after that read (omp 18.6.1 under load drew `❯ ↻ loop` under
+    // `/tmp/x`, and Enter ran /loop) would get the Enter. The read that passes is held as a candidate; the
+    // next read, at least COMMAND_SETTLE_MS later, must pass the same test and agree with it on the rows
+    // under the box (settleKey). A list there that points elsewhere makes the test wait, and S1 ends with the
+    // list notice as before; rows that keep moving make each read a new candidate, and S1's bound then ends
+    // with LIST_MOVING.
+    const settles = commandSettles(state);
+    let candidate: { key: string; at: number } | null = null;
+    // The last read passed and waits for the read that agrees with it.
+    let pending = false;
+    const result = await this.poll(
+      state,
+      "s1",
+      BOUNDS.s1,
+      (snap) => {
+        const verdict = judge(snap);
+        pending = settles && verdict === "pass";
+        if (!pending) {
+          candidate = null;
+          return verdict;
+        }
+        const key = settleKey(snap);
+        const at = this.now();
+        if (candidate !== null && candidate.key === key && at - candidate.at >= COMMAND_SETTLE_MS) {
+          state.settledFrom = candidate.at;
+          pending = false;
+          return "pass";
+        }
+        if (candidate?.key !== key) candidate = { key, at };
+        return "again";
+      },
+      COMMAND_SETTLE_MS,
+    );
     if (result.verdict === "pass" && result.snap !== null) {
       this.turnAtS1(state, s0, result.snap);
       return result.snap;
+    }
+    // S1's bound ran out on a read that passed but had no agreeing read after it: the rows under the box
+    // moved, or no read was left. Enter is never pressed on a list that has not held still.
+    const unsettled: boolean = pending; // set inside the poll's callback
+    if (unsettled) {
+      why = "changed";
+      elsewhere = false;
+      popupOpen = false;
     }
     // A dialog that took the box's place leaves no frame to claim it at: the last read's Surface says
     // so when it reads an ask or an unreadable dialog (a screen it cannot read is `unknown`, not one).
@@ -4559,6 +4670,7 @@ export class SendProtocol {
     if (pointedElsewhere) note.detail = LIST_ELSEWHERE;
     const popupAtEnter: boolean = popupOpen; // set inside the poll's callback
     if (popupAtEnter) note.detail = POPUP_AT_ENTER;
+    if (unsettled) note.detail = LIST_MOVING;
     const last = result.snap;
     if (note.detail === undefined && why === "modal_cue" && last !== null && last.frame !== null && cuesInsideFrame(last, last.frame) && boxHolds(last.frame, prefix, lines, collapse, state.whole) !== null) note.detail = BOX_UNREADABLE_DRAFT;
     throw new Ended("typed_not_submitted", why, sawNote(result.snap, note));

@@ -113,7 +113,7 @@ function title(input: ReportInput): string {
   return `Send not landing: ${endWord(bad)}, ${who}, ${mux}`;
 }
 
-const STEP_ORDER: readonly SendStep[] = ["settle", "s0", "clear", "probe", "write", "s1", "commit", "s2"];
+const STEP_ORDER: readonly SendStep[] = ["settle", "s0", "clear", "probe", "write", "s1", "commandSettle", "commit", "s2"];
 
 /** One send as one line: when, how it ended, its id, keys and gaps, what the bridge saw and said. */
 export function sendLine(row: SendReceiptRow, includeTyped: boolean): string {
