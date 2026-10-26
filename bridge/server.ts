@@ -7197,8 +7197,8 @@ async function runLaunch(
       }
       return { ok: false, error: sent.error, code: sent.code, detail: sent.detail };
     }
-    // The line is typed and the agent is booting: until the multiplexer names it, a send to this pane
-    // waits for the agent's input box instead of going into the shell (the Send Protocol, `launching`).
+    // The line is typed and the agent is booting: until its input box is on screen, a send to this pane
+    // waits for the agent's input box instead of going into the shell (the Send Protocol, `starting`).
     if (job.harness !== undefined) job.launchWindow?.mark(job.session, created.paneId, job.harness);
   }
   // `command` is deliberately NOT added to `METADATA_KEYS` in audit.ts. Under
