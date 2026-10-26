@@ -9,7 +9,7 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { muxAck, muxOk, muxRefused, muxUnreachable, type MuxAck, type MuxGrid, type MuxGridRequest, type MuxOutcome } from "../mux/types.ts";
-import { forPlatform, loadProfiles, profileFor, resetProfileLog, type Profile, type ProfileForOptions, type ProfileStatus, type VersionRange } from "../../web/src/lib/surface/profile.ts";
+import { forPlatform, loadProfiles, profileFor, resetProfileLog, type Profile, type ProfileForOptions, type PopupRule, type ProfileStatus, type VersionRange } from "../../web/src/lib/surface/profile.ts";
 import type { HeldCancelAnswer, SendAnswer } from "../../web/src/lib/surface/send.ts";
 import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { lineText, splitLines } from "../../web/src/lib/blocks.ts";
@@ -9542,5 +9542,41 @@ describe("omp's typeahead popups under the box (1.24.1)", () => {
       const prepared = await protocol.handle({ id: "quoted-old", text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: "omp" });
       expect(prepared.surface).toMatchObject({ modal: "unreadable" });
     });
+  });
+
+  // omp-gang 04-readers (2026-10-26), omp 18.12.6 and 18.6.1: the first real captures of three more screens.
+  const EMOJI = ["omp--v18-12-6-emoji-popup--w120.txt", "omp--v18-6-1-emoji-popup--w120.txt"] as const;
+  const emojiOpens = (box: string): boolean => /(?:^|\s):[A-Za-z0-9_+-]+$/u.test(box);
+  const withRules = (profile: Profile, edit: (rules: PopupRule[]) => PopupRule[]): Profile => {
+    const popups = profile.idle.volatile.below.popups!;
+    return { ...profile, idle: { ...profile.idle, volatile: { ...profile.idle.volatile, below: { ...profile.idle.volatile.below, popups: { ...popups, rules: edit([...popups.rules]) } } } } };
+  };
+  const twoSpaceEmoji = (profile: Profile): Profile => withRules(profile, (rules) => rules.map((rule) => (rule.name === "emoji" ? { ...rule, rows: rule.rows.replace(" {1,2}", " {2}") } : rule)));
+
+  for (const name of EMOJI) {
+    test(`${name}: hello :smi with the emoji popup open goes out with ctrl+q, and the pane reads the box`, async () => {
+      const looked = ompPane(name, { opens: emojiOpens });
+      looked.pane.box = "hello :smi";
+      const prepared = await looked.protocol.handle({ id: `emoji-prep-${String(EMOJI.indexOf(name))}`, text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: "omp" });
+      expect(prepared.surface).toMatchObject({ turn: "idle", modal: "none", composer: "draft" });
+      const { send, pane } = ompPane(name, { opens: emojiOpens });
+      const answer = await send("hello :smi", { id: `emoji-send-${String(EMOJI.indexOf(name))}`, mode: "send" });
+      expect(answer.receipt).toMatchObject({ outcome: "sent" });
+      expect(answer.receipt?.keys.at(-1)).toBe("ctrl+q");
+      expect(pane.keysSeen).not.toContain("Enter");
+      expect(pane.box).toBe("");
+      neverEscape(pane);
+    });
+  }
+
+  test("with the old two-space emoji row pattern the popup is no popup: the box reads unreadable and the send ends typed, not submitted, as the tester saw it", async () => {
+    const looked = ompPane(EMOJI[0], { opens: emojiOpens }, twoSpaceEmoji);
+    looked.pane.box = "hello :smi";
+    const prepared = await looked.protocol.handle({ id: "emoji-old-prep", text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: "omp" });
+    expect(prepared.surface).toMatchObject({ modal: "unreadable" });
+    const { send, pane } = ompPane(EMOJI[0], { opens: emojiOpens }, twoSpaceEmoji);
+    const answer = await send("hello :smi", { id: "emoji-old", mode: "send" });
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue" });
+    expect(pane.keysSeen).not.toContain("ctrl+q");
   });
 });

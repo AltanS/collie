@@ -27,6 +27,10 @@ describe("the typeahead popups of omp's profile (idle.volatile.below.popups)", (
     ["omp--v18-6-1-hash-popup--w120.txt", "issue", false, 2],
     ["omp--v18-6-1-hash-popup-single--w120.txt", "issue", false, 1],
     ["omp--v18-6-1-hash-popup-stale--w120.txt", "issue", true, 2],
+    // omp-gang 04-readers, 2026-10-26: the first real captures of the emoji popup (one space after the glyph),
+    // the one-row path popup of a partial path, and the `@` rows left under an emptied box.
+    ["omp--v18-12-6-emoji-popup--w120.txt", "emoji", false, 8],
+    ["omp--v18-6-1-emoji-popup--w120.txt", "emoji", false, 8],
   ] as const;
 
   it.each(READS)("%s: read as the %s popup (stale %s) of %i rows, the pointer on the first", (name, rule, stale, rows) => {
@@ -74,8 +78,8 @@ describe("the typeahead popups of omp's profile (idle.volatile.below.popups)", (
     expect(popupUnder(swap(rows.slice(0, POPUPS.maxRows)), bottom, "see @name", POPUPS)).not.toBeNull();
   });
 
-  it("the emoji popup (omp's source, no capture yet): a glyph and a :name: shortcode, the pointer on one row", () => {
-    const rows = ["❯ 😄  :smile:", "  😀  :smiley:", "  🙂  :)"];
+  it("the emoji popup: a glyph and a :name: shortcode, one space after the glyph on omp 18.6.1 and 18.12.6, the pointer on one row", () => {
+    const rows = ["❯ 😄 :smile:", "  😀  :smiley:", "  🙂 :)"];
     const read = popupUnder(swap(rows), bottom, "nice :smi", POPUPS);
     expect(read).toMatchObject({ name: "emoji", first: bottom + 1, last: bottom + 3, pointed: bottom + 1, stale: false });
     // A file name is no emoji row, and an emoji row is no file popup's.

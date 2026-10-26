@@ -1,0 +1,14 @@
+ ✘ 401 User not found.
+ Dismissed when you send your next message.
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+ π > ◒ Haiku 4.5 > 📁 …g3/04-readers/state/harness/omp/project ▶──4%───────────────────────────────────────┃───────200K─
+╰─ hello :smi
+❯ 😄 :smile:
+  😸 :smile_cat:
+  😃 :smiley:
+  😺 :smiley_cat:
+  🥰 :smiling_face_with_three_hearts:
+  😈 :smiling_imp:
+  😏 :smirk:
+  😼 :smirk_cat:

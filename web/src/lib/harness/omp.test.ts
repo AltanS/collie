@@ -198,12 +198,16 @@ const PATH_POPUP = [
 
 // omp 18.6.1 (omp-gang tester 12, 2026-10-25): the `@` file popup and the `#` issue and pull request popup
 // under the box, and the `#` rows left under an emptied box. All are composers.
+// The eight-row emoji popup is as tall as a palette: the composer is ready, and no region can bind.
+const EMOJI_POPUP = ["omp--v18-12-6-emoji-popup--w120.txt", "omp--v18-6-1-emoji-popup--w120.txt"];
 const TYPEAHEAD_POPUP = [
   "omp--v18-6-1-at-popup--w120.txt",
   "omp--v18-6-1-at-popup-path--w120.txt",
   "omp--v18-6-1-hash-popup--w120.txt",
   "omp--v18-6-1-hash-popup-single--w120.txt",
   "omp--v18-6-1-hash-popup-stale--w120.txt",
+  "omp--v18-12-6-emoji-popup--w120.txt",
+  "omp--v18-6-1-emoji-popup--w120.txt",
 ];
 
 // omp 18.6.1 (omp-gang tester 12, 2026-10-25): a long prompt that quotes a permission dialog, typed in the box and
@@ -445,7 +449,7 @@ describeAdapterConformance(ompAdapter, {
   // omp 18.6.1 draws a ten-row palette under its open box for `/model` and `/mod` (lab, 2026-10-17): the same trade.
   // `Allow tool: goal` has no body: every row of its region is fixed text, so a changed row stops the lift.
   fixedRegionFixtures: ["omp--v18-6-1-approval-goal--w120.txt"],
-  unboundComposerFixtures: ["omp--v18-8-slash-palette.txt", "omp--v18-8-slash-palette-w48.txt", ...TALL_PALETTE_V18_6, ...TALL_PALETTE_V18_11, ...TALL_PALETTE_V18_12, ...FUZZY_LIST_TALL, ...QUOTED_DIALOG, ...ASCII_SYMBOL_LISTS],
+  unboundComposerFixtures: ["omp--v18-8-slash-palette.txt", "omp--v18-8-slash-palette-w48.txt", ...TALL_PALETTE_V18_6, ...TALL_PALETTE_V18_11, ...TALL_PALETTE_V18_12, ...FUZZY_LIST_TALL, ...QUOTED_DIALOG, ...ASCII_SYMBOL_LISTS, ...EMOJI_POPUP],
 });
 
 // The corpus pin (mirroring claude/chrome.test.ts's): a newly-captured omp fixture must be filed into
@@ -546,6 +550,7 @@ describe("the omp corpus", () => {
     "omp--v18-12-6-composer-field-idle--w130.txt",
     "omp--v18-12-6-composer-field-two-lines--w130.txt",
     "omp--v18-12-6-draft-url-wrapped--w80.txt",
+    "omp--v18-12-6-emoji-popup--w120.txt",
     "omp--v18-12-6-image-chip--w120.txt",
     "omp--v18-12-6-path-popup--w120.txt",
     "omp--v18-12-6-path-popup-two-paths--w120.txt",
@@ -635,6 +640,7 @@ describe("the omp corpus", () => {
     "omp--v18-6-1-at-popup--w120.txt",
     "omp--v18-6-1-at-popup-path--w120.txt",
     "omp--v18-6-1-draft-cjk-wrapped--w80.txt",
+    "omp--v18-6-1-emoji-popup--w120.txt",
     "omp--v18-6-1-hash-popup--w120.txt",
     "omp--v18-6-1-hash-popup-single--w120.txt",
     "omp--v18-6-1-hash-popup-stale--w120.txt",

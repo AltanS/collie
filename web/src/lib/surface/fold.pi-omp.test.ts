@@ -675,6 +675,9 @@ describe("omp's typeahead popups under the box read as a draft (18.6.1, omp-gang
     ["omp--v18-6-1-at-popup-path--w120.txt", "@/tmp/x.png"],
     ["omp--v18-6-1-hash-popup--w120.txt", "fix item #1"],
     ["omp--v18-6-1-hash-popup-single--w120.txt", "see PR #12"],
+    // omp-gang 04-readers (2026-10-26): the first real captures of the emoji popup (one space after the glyph).
+    ["omp--v18-12-6-emoji-popup--w120.txt", "hello :smi"],
+    ["omp--v18-6-1-emoji-popup--w120.txt", "hello :smi"],
   ];
 
   for (const [name, typed] of DRAFTS) {
@@ -702,6 +705,16 @@ describe("omp's typeahead popups under the box read as a draft (18.6.1, omp-gang
     expect(read.frame?.interior.text).toBe("");
     expect(read.surface).toEqual({ revision: 1, turn: "idle", modal: "none", composer: "empty" });
     expect(read.cues?.strength).toBe("none");
+  });
+
+  it("the emoji popup with the old two-space row pattern is no popup: the eight rows read as a pointer list, unreadable", () => {
+    const name = "omp--v18-12-6-emoji-popup--w120.txt";
+    const idle = idleFor("omp")!;
+    const popups = idle.volatile.below.popups!;
+    const rules = popups.rules.map((rule) => (rule.name === "emoji" ? { ...rule, rows: rule.rows.replace(" {1,2}", " {2}") } : rule));
+    const read = readScreen(fixtureRows(name), agentOf("omp"), { ...idle, volatile: { ...idle.volatile, below: { ...idle.volatile.below, popups: { ...popups, rules } } } });
+    expect(read.cues?.strength).toBe("strong");
+    expect(read.surface.modal).toBe("unreadable");
   });
 
   it("a dialog drawn under the box is not a popup: the same box over a permission row stays a modal", () => {

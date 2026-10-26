@@ -73,6 +73,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A slash command sends in one tap on OMP's ASCII symbols.** With `symbolPreset: ascii` OMP draws the cursor of its command list as `>`, not `❯`. Collie did not read that list as the list of the command you typed, so `/session` and every other command ended with its text left in the box and a second tap to submit. It now reads all three cursors OMP draws, `❯`, the Nerd Font arrow and `>`.
 - **A wrapped draft comes back without an extra space.** A draft that OMP cut inside one token, a long URL or a run of Japanese, Chinese or Korean text with no spaces, was read back with a space at every wrap. Clear's Restore text then held one character more than you typed. Collie now keeps the space only where the row broke at a word.
 - **OMP's `field` editor shape is read.** With `composer.shape: field` OMP 18.12.6 draws the box as a run of `▐` rows with no rule, and Collie found no box: the pane read as unknown and a send was refused. It now reads that box, empty and with a draft. The `claude` shape with a two-line draft is still not read.
+- **A message with an `:emoji` word sends on OMP.** On OMP 18.6.1 and 18.12.6, typing `hello :smi` makes OMP draw up to eight emoji rows under the box, with one space after each emoji. Collie expected two spaces, took the rows for an unknown list, and the send ended "typed, not submitted" or the box read as unreadable. Collie now reads the real rows, and the message goes out with OMP's send key.
 
 ### Added
 

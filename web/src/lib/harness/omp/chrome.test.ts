@@ -204,6 +204,9 @@ const TALL_PALETTE_FIXTURES = [
   // omp 18.6.1 and 18.12.6 with symbolPreset ascii, `/session` typed: the list cursor is `>` (omp-gang 11-geometry, 2026-10-25).
   "omp--v18-12-6-ascii-symbols-session-list--w130.txt",
   "omp--v18-6-1-ascii-symbols-session-list--w130.txt",
+  // omp 18.6.1 and 18.12.6, `:smi` typed: the eight-row emoji popup under the box (omp-gang 04-readers, 2026-10-26).
+  "omp--v18-12-6-emoji-popup--w120.txt",
+  "omp--v18-6-1-emoji-popup--w120.txt",
 ];
 
 // omp 18.6.1, a nine-row draft that quotes a permission dialog (omp-gang tester 12, 2026-10-25). The composer is
@@ -436,6 +439,8 @@ describe("extractInputDraft", () => {
     { fixture: "omp--v18-6-1-hash-popup--w120.txt", draft: "fix item #1" },
     { fixture: "omp--v18-6-1-hash-popup-single--w120.txt", draft: "see PR #12" },
     { fixture: "omp--v18-6-1-hash-popup-stale--w120.txt", draft: null },
+    { fixture: "omp--v18-12-6-emoji-popup--w120.txt", draft: "hello :smi" },
+    { fixture: "omp--v18-6-1-emoji-popup--w120.txt", draft: "hello :smi" },
     // The person's own prompt quotes a permission dialog: all of it is the draft.
     {
       fixture: "omp--v18-6-1-quoted-dialog-draft--w120.txt",
@@ -1060,6 +1065,8 @@ describe("composerPrompt — the region a destructive write is bound to", () => 
       { fixture: "omp--v18-6-1-slash-open-tall--w120.txt", top: 15, bottom: 16, suggestEnd: 27 },
       { fixture: "omp--v18-12-6-ascii-symbols-session-list--w130.txt", top: 1, bottom: 2, suggestEnd: 13 },
       { fixture: "omp--v18-6-1-ascii-symbols-session-list--w130.txt", top: 1, bottom: 2, suggestEnd: 13 },
+      { fixture: "omp--v18-12-6-emoji-popup--w120.txt", top: 4, bottom: 5, suggestEnd: 14 },
+      { fixture: "omp--v18-6-1-emoji-popup--w120.txt", top: 4, bottom: 5, suggestEnd: 14 },
     ];
     expect(PINNED_TALL.map((p) => p.fixture)).toEqual(TALL_PALETTE_FIXTURES);
     for (const { fixture, top, bottom, suggestEnd } of PINNED_TALL) {
