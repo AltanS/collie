@@ -370,6 +370,13 @@ export default defineConfig({
     emptyOutDir: true,
     // A couple of small chunks beat one big one on a phone over the tailnet.
     chunkSizeWarningLimit: 900,
+    rolldownOptions: {
+      output: {
+        codeSplitting: {
+          groups: [{ name: "router", test: /node_modules\/(?:react-router|@remix-run)\// }],
+        },
+      },
+    },
   },
   server: {
     port: 5173,
