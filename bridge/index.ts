@@ -73,7 +73,7 @@ import { FolderStore } from "./folders.ts";
 import { WorktreeBaseStore } from "./worktree-bases.ts";
 import { WorktreeReceiptStore } from "./worktree-receipts.ts";
 import { LaunchReceiptStore } from "./launch-receipts.ts";
-import { LaunchWindow } from "./launch-window.ts";
+import { LaunchWindow, foregroundHarnessOf } from "./launch-window.ts";
 import { StarterReceiptStore } from "./starter-launch.ts";
 import { AnswerReceiptStore } from "./durable/answer.ts";
 import { ControlReceiptStore } from "./durable/control.ts";
@@ -854,8 +854,14 @@ await worktreeBases.load();
 // One receipt per launch the phone tagged with a request id, so a retried Start never opens a second
 // pane (ADR 0091, bridge/launch-receipts.ts). Loading writes nothing.
 const launchReceipts = new LaunchReceiptStore(cfg.stateDir);
-// The panes a launch started an agent in that the multiplexer does not name yet (the Send Protocol reads them with that agent's profile).
-const launchWindow = new LaunchWindow();
+// The panes where an agent is starting and has drawn no input box yet: launched by the bridge, a known
+// harness binary in the foreground, or newly named by the multiplexer (bridge/launch-window.ts). The
+// Send Protocol reads them with that agent's profile and types nothing until its box is on screen.
+const launchWindow = new LaunchWindow(undefined, (harness) => findProfile(loadProfiles(), harness)?.id ?? harness);
+/** Each profile's binary (lower case) to its harness id: what a foreground process is matched against. */
+let profileBinaries: ReadonlyMap<string, string> | null = null;
+const harnessBinaries = (): ReadonlyMap<string, string> =>
+  (profileBinaries ??= new Map([...loadProfiles().values()].map((profile) => [profile.identity.binary.toLowerCase(), profile.id])));
 await launchReceipts.load();
 
 // One receipt per starter run (ADR 0102, bridge/starter-launch.ts). Loading writes nothing.
@@ -1628,6 +1634,11 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   if (surface !== undefined) {
     engine.onUpdate((s) => {
       void surface.observe(s.agents).then(() => {
+        // A pane where an agent is starting: once the poll's read finds its input box, the launch window ends.
+        for (const agent of s.agents) {
+          if (launchWindow.expecting(name, agent.paneId) === null) continue;
+          if ((surface.boxOf(agent.paneId)?.box ?? null) !== null) launchWindow.framed(name, agent.paneId, agent.agent);
+        }
         // A queued send whose text a read shows back in the box (ADR 0122): its card says so.
         send?.tickQueued(name, (paneId) => surface.boxOf(paneId));
         return send?.tickHolds(name, (paneId) => surface.surfaceOf(paneId));
@@ -1639,6 +1650,8 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   // never run on one pane at once and every key leaves through the one gate.
   const locks = new SessionLocks();
   const ring = new RowRing();
+  // The pane's foreground read for the launch window, bounded; absent where the multiplexer has none (tmux, zellij, tuios).
+  const foregroundHarness = foregroundHarnessOf(herdr.foregroundProcesses?.bind(herdr), harnessBinaries);
   const send =
     sends && sendStore !== null && askBook !== undefined
       ? new SendProtocol({
@@ -1649,7 +1662,8 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
           ring,
           ledger: surfaceLedger ?? undefined,
           profile: (harness) => sendProfile(harness),
-          launching: (paneId) => launchWindow.expecting(name, paneId),
+          starting: (paneId, named) => launchWindow.starting(name, paneId, named, foregroundHarness?.(paneId)),
+          framed: (paneId, harness) => launchWindow.framed(name, paneId, harness),
           generation: generationOf,
           asks: askBook,
           holds: holdStore ?? undefined,
@@ -1660,8 +1674,16 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
           staleFrame: (paneId, frame) => surface?.markStale(paneId, frame),
         })
       : undefined;
-  // A launched pane's window ends when the multiplexer names its agent (the TTL ends it otherwise).
-  if (send !== undefined) engine.onUpdate((s) => s.agents.forEach((agent) => launchWindow.seen(name, agent.paneId, agent.agent)));
+  // Each poll tells the launch window which panes the multiplexer names an agent on now: a newly named
+  // one opens a window, a gone one is forgotten. The poll's Surface ends a window above.
+  if (send !== undefined) {
+    engine.onUpdate((s) => {
+      launchWindow.observe(name, [
+        ...s.agents.map((agent) => ({ paneId: agent.paneId, agent: agent.kind === "shell" ? null : agent.agent })),
+        ...s.shellPanes.map((shell) => ({ paneId: shell.paneId, agent: null })),
+      ]);
+    });
+  }
   const asks =
     sends && sendStore !== null && askBook !== undefined
       ? new AskAnswerer({ mux: herdr, gate: gateFor(herdr), store: sendStore, locks, ring, book: askBook, profile: (harness) => sendProfile(harness), generation: generationOf })

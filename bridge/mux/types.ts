@@ -788,10 +788,15 @@ export interface MuxAdapter {
    * The pane's foreground processes, as argv. OPTIONAL by design: a multiplexer without the
    * call simply yields no hint, exactly as today.
    *
-   * Read for ONE purpose — telling live sessions apart when several share a folder. A journal
-   * adapter that can read its session out of its own command line (Muse's `resume <uuid>`)
-   * answers the pane's own session from this; without it, discovery can only guess newest,
-   * and every pane in the folder shows the same transcript.
+   * Read for TWO purposes, and neither makes it the pane's identity:
+   *  • telling live sessions apart when several share a folder. A journal adapter that can read
+   *    its session out of its own command line (Muse's `resume <uuid>`) answers the pane's own
+   *    session from this; without it, discovery can only guess newest, and every pane in the
+   *    folder shows the same transcript.
+   *  • the launch window (`bridge/launch-window.ts`): a send to a pane the multiplexer names no
+   *    agent on reads it once, and a known harness binary there means the agent is starting, so
+   *    the send waits for that harness's input box instead of typing into the shell. It only ever
+   *    holds a send back; {@link MuxPane.agent} stays what the multiplexer said.
    */
   foregroundProcesses?(paneId: string): Promise<MuxOutcome<readonly ForegroundProcess[]>>;
 

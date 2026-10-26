@@ -74,3 +74,41 @@ leaves no trace.**
   typed. The file sits at 0600 beside the audit log.
 - To revisit: if people want agent prompts searchable, the answer is a search over the agents' own
   logs, not a wider Sent.
+
+## Addendum 2026-10-26: a pane where an agent is starting is not a shell
+
+Point 1 takes a pane "the bridge reads as a bare shell", and the Send Protocol sends to such a pane
+blind: the text, then Enter. An agent is not up at once. OMP 18.12.6 takes about twenty seconds to draw
+its input box, and for the first seconds the multiplexer still names no agent. A send in that gap was
+typed into the shell, answered `sent`, and the text later sat in the agent's box as an unsent draft that
+refused the next sends `draft_present` (omp gang tester 15, and gang three S3 on 18.6.1 and 18.12.6).
+Commit fb3a0a87a closed it for an agent the bridge launched itself (`POST /api/launch`). A person typing
+`omp` in a shell, a crew script and the multiplexer's own launcher were left out, and that is the common
+case.
+
+**The launch window is a property of the pane's process, not of who started it.** `bridge/launch-window.ts`
+holds one window per pane, opened by any of three sources:
+
+1. **launch:** the bridge typed a harness's line into a pane it created. This covers the gap before the
+   process exists.
+2. **process:** a send to a pane with no profile of its own reads the pane's foreground processes
+   (`MuxAdapter.foregroundProcesses`, bounded at 1.5 s), and one of them is a harness binary. The
+   binaries are the profiles' `identity.binary`. A script run by an interpreter (`bun …/omp`) is
+   matched by its first plain argument.
+3. **agent:** a poll finds the multiplexer naming a harness on a pane it named otherwise, or did not list,
+   on the poll before. The first poll a bridge sees is a baseline and opens nothing.
+
+While the window is open, a send reads the screen with that harness's profile. With the harness's box on
+screen it runs the normal steps. With none it ends `refused(probe_failed)` before any key, probe
+included: "The pane shows no <harness> input box yet; it may still be starting. Nothing was typed." On a
+pane the multiplexer already names, a dialog its profile lifts keeps its own path. The window ends when a
+frame of that harness is read (the send's S0, or the poll's Surface), after 120 s, or when the harness
+leaves the pane (a plain shell in the foreground after the process was seen, or the multiplexer no
+longer names it). A window that ended does not open again for the same harness on the same pane until it
+leaves. Nothing in `bridge/surface/` names a harness.
+
+It fails open where the evidence is missing. A plain shell in the foreground keeps the blind send and
+its Sent record. A foreground read that fails, refuses or runs slow counts as none. tmux, zellij and
+tuios have no foreground read today, so on them only the launch and agent sources open a window. tmux's
+`pane_current_command` is the program's name, which is `bun` or `node` for a harness shipped as a script,
+so it is not used. A send refused in the window records nothing in Sent, as any refusal.
