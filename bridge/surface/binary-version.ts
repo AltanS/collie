@@ -4,6 +4,7 @@
 // a short bound and take the first match in what it printed, on stdout or stderr. A command that will
 // not run, or prints no version, gives null, and `profileFor` turns null into `provisional`.
 
+import { statSync } from "node:fs";
 import { homedir } from "node:os";
 
 import { type Profile, versionFromOutput } from "../../web/src/lib/surface/profile.ts";
@@ -207,30 +208,102 @@ export const VERSION_READ_BUDGET_MS = 4_000;
 const VERSION_CACHE_MAX = 128;
 
 /**
+ * At most one fresh read of a pane's own program per pane inside this window. A pane that keeps
+ * changing the file it runs (or its words) would otherwise start a version command on every send; over
+ * the limit the send uses the PATH binary's version, as a pane with no evidence does.
+ */
+export const PANE_READ_INTERVAL_MS = 10_000;
+
+/** The most panes whose last fresh read is remembered. A safety bound: the oldest goes first. */
+const PANE_READS_MAX = 256;
+
+/** What identifies a file's content for the cache: its change time and size, or null when it cannot be statted. */
+export type FileStamp = (path: string) => { readonly mtimeMs: number; readonly size: number } | null;
+
+const statStamp: FileStamp = (path) => {
+  try {
+    const stat = statSync(path);
+    return { mtimeMs: stat.mtimeMs, size: stat.size };
+  } catch {
+    return null;
+  }
+};
+
+/** A version, and the pane's program that was read for it (undefined when the PATH binary was). */
+export interface ProgramVersion {
+  readonly version: string | null;
+  readonly command: readonly string[] | undefined;
+}
+
+/**
  * A cache of the harness's version for the send path (M56 spec 05), keyed by the program read: the
  * profile and, when the pane's foreground process showed the harness's own file (bridge/pane-binary.ts),
- * that file; else the profile's binary on the PATH. Two panes that run two copies of one harness read
- * two versions, and two panes that run one file share one read. The first send on a key waits for the
- * version, so its status is never guessed; later sends use the cached value for VERSION_CACHE_MS. A
- * version that could not be read is cached too, as null, for VERSION_FAILED_CACHE_MS, which
- * `profileFor` turns into `provisional` and the probed path. The cache is per bridge process, so per
- * host; sends that ask while a read runs share that read.
+ * that command plus the file's `mtimeMs` and size (the last word: the binary, or the script after an
+ * interpreter), so a file replaced in place while the old process runs reads again; else the profile's
+ * binary on the PATH. Two panes that run two copies of one harness read two versions, and two panes
+ * that run one file share one read. The first send on a key waits for the version, so its status is
+ * never guessed; later sends use the cached value for VERSION_CACHE_MS. A version that could not be
+ * read is cached too, as null, for VERSION_FAILED_CACHE_MS, which `profileFor` turns into `provisional`
+ * and the probed path. The cache is per bridge process, so per host; sends that ask while a read runs
+ * share that read. A pane's own program starts at most one fresh read per {@link PANE_READ_INTERVAL_MS}.
  */
 export class VersionCache {
   private readonly known = new Map<string, { version: string | null; at: number }>();
   private readonly reading = new Map<string, Promise<string | null>>();
+  private readonly paneReads = new Map<string, number>();
 
   constructor(
     private readonly read: AsyncVersionReader = spawnBinaryVersion,
     private readonly now: () => number = () => Date.now(),
     private readonly budgetMs: number = VERSION_READ_BUDGET_MS,
+    private readonly stamp: FileStamp = statStamp,
   ) {}
 
   /** The version of `profile`'s harness: of the pane's program `pane` when given, else of the PATH binary. */
   async versionOf(profile: Profile, pane?: readonly string[]): Promise<string | null> {
-    const key = pane === undefined ? profile.id : [profile.id, ...pane].join("\u0000");
+    return (await this.programVersion(profile, pane)).version;
+  }
+
+  /**
+   * {@link versionOf}, and which program answered. `pane` is used only when its file can be statted and,
+   * with a `paneId`, the pane has not started a fresh read inside {@link PANE_READ_INTERVAL_MS}; else the
+   * PATH binary answers and `command` is undefined.
+   */
+  async programVersion(profile: Profile, pane?: readonly string[], paneId?: string): Promise<ProgramVersion> {
+    const file = pane?.at(-1);
+    const stamped = pane === undefined || file === undefined ? null : this.stamp(file);
+    if (pane === undefined || stamped === null) return { version: await this.cached(profile, undefined, profile.id), command: undefined };
+    const key = [profile.id, ...pane, stamped.mtimeMs, stamped.size].join("\u0000");
+    if (!this.settled(key) && !this.reading.has(key) && !this.takePaneRead(paneId)) {
+      return { version: await this.cached(profile, undefined, profile.id), command: undefined };
+    }
+    return { version: await this.cached(profile, pane, key), command: pane };
+  }
+
+  /** A good or failed read still standing for `key`. */
+  private settled(key: string): boolean {
     const hit = this.known.get(key);
-    if (hit !== undefined && this.now() - hit.at <= (hit.version === null ? VERSION_FAILED_CACHE_MS : VERSION_CACHE_MS)) return hit.version;
+    return hit !== undefined && this.now() - hit.at <= (hit.version === null ? VERSION_FAILED_CACHE_MS : VERSION_CACHE_MS);
+  }
+
+  /** Records a fresh read for the pane, or says false when it started one inside the window. No pane id is no limit. */
+  private takePaneRead(paneId: string | undefined): boolean {
+    if (paneId === undefined) return true;
+    const at = this.now();
+    const last = this.paneReads.get(paneId);
+    if (last !== undefined && at - last < PANE_READ_INTERVAL_MS) return false;
+    this.paneReads.delete(paneId);
+    this.paneReads.set(paneId, at);
+    if (this.paneReads.size > PANE_READS_MAX) {
+      const oldest = this.paneReads.keys().next();
+      if (!oldest.done) this.paneReads.delete(oldest.value);
+    }
+    return true;
+  }
+
+  private async cached(profile: Profile, pane: readonly string[] | undefined, key: string): Promise<string | null> {
+    const hit = this.known.get(key);
+    if (hit !== undefined && this.settled(key)) return hit.version;
     const running = this.reading.get(key);
     if (running !== undefined) return running;
     const work = this.readInBudget(profile, pane).then((version) => {

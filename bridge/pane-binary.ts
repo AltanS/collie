@@ -10,6 +10,9 @@
 // Herdr's `pane.process_info`), and one of them runs the pane's harness (`harnessProcessOf`, the launch
 // window's argv grammar), the version read runs THAT program:
 //
+// Herdr's pid is trusted only when `/proc/<pid>/cmdline` is the argv Herdr reported ({@link ProcessProbe}):
+// otherwise the executable and folder are not read, and only an absolute argv path can still be used.
+//
 //  • argv[0] is the harness's binary: its file. An absolute argv[0] as it is; a relative one against
 //    the process's folder; a bare name (the shell found it on its own PATH, which the bridge does not
 //    know) by the process's executable, when the host shows it (`/proc/<pid>/exe` on Linux) and it is
@@ -23,11 +26,14 @@
 // have no foreground read, a read that fails or takes longer than FOREGROUND_READ_MS counts as none,
 // and a host with no `/proc` keeps a bare name on the PATH lookup.
 //
+// The version cache keys the file by its mtime and size, so a file replaced in place reads again, and
+// allows a pane one fresh read of its own program per 10 s (bridge/surface/binary-version.ts).
+//
 // One foreground read per send at most: {@link sharedForegroundRead} shares the read in flight and
 // keeps its answer for {@link FOREGROUND_REUSE_MS}, so the launch window's read and the profile's read
 // of one send are one call. No harness is named here: the binaries come from the profiles.
 
-import { readlinkSync } from "node:fs";
+import { readFileSync, readlinkSync } from "node:fs";
 
 import { findProfile, loadProfiles, profileForPlatform } from "../web/src/lib/surface/profile.ts";
 import { HOST, type Host } from "./host.ts";
@@ -99,13 +105,22 @@ async function bounded(read: (paneId: string) => Promise<ForegroundOutcome>, pan
   }
 }
 
-/** What the host shows of a running process: its executable and its folder, or null. */
+/** What the host shows of a running process: its argv, its executable and its folder, or null. */
 export interface ProcessProbe {
+  /** The process's own argv (`/proc/<pid>/cmdline`), the check that the pid is the process Herdr named. */
+  readonly cmdlineOf: (pid: number) => readonly string[] | null;
   readonly exeOf: (pid: number) => string | null;
   readonly cwdOf: (pid: number) => string | null;
 }
 
-/** Linux's `/proc/<pid>/exe` and `/proc/<pid>/cwd`; null on every other host and on any error. */
+/** `/proc/<pid>/cmdline` as an argv: NUL-separated, each word ended by a NUL. */
+export function argvFromCmdline(raw: string): string[] {
+  const words = raw.split("\0");
+  if (words.at(-1) === "") words.pop();
+  return words;
+}
+
+/** Linux's `/proc/<pid>/cmdline`, `exe` and `cwd`; null on every other host and on any error. */
 export function procProbe(host: Host = HOST): ProcessProbe {
   const link = (pid: number, name: string): string | null => {
     if (host.platform !== "linux") return null;
@@ -115,7 +130,15 @@ export function procProbe(host: Host = HOST): ProcessProbe {
       return null;
     }
   };
-  return { exeOf: (pid) => link(pid, "exe"), cwdOf: (pid) => link(pid, "cwd") };
+  const cmdline = (pid: number): readonly string[] | null => {
+    if (host.platform !== "linux") return null;
+    try {
+      return argvFromCmdline(readFileSync(`/proc/${pid}/cmdline`, "utf8"));
+    } catch {
+      return null;
+    }
+  };
+  return { cmdlineOf: cmdline, exeOf: (pid) => link(pid, "exe"), cwdOf: (pid) => link(pid, "cwd") };
 }
 
 /** The program a pane runs for a harness, as the version read runs it. */
@@ -129,7 +152,7 @@ export interface PaneBinary {
   readonly command: readonly string[];
 }
 
-const NO_PROBE: ProcessProbe = { exeOf: () => null, cwdOf: () => null };
+const NO_PROBE: ProcessProbe = { cmdlineOf: () => null, exeOf: () => null, cwdOf: () => null };
 
 /**
  * The program of the pane's harness among its foreground `processes`, made absolute (see the header),
@@ -143,7 +166,10 @@ export function paneBinaryOf(
 ): PaneBinary | null {
   const found = harnessProcessOf(processes, binaries);
   if (found === null) return null;
-  const pid = found.process.pid;
+  // The pid is Herdr's word. `/proc/<pid>` answers for that process only when its own argv is the one
+  // Herdr reported: another pid namespace, a reused pid, or a program that rewrote its title says
+  // something else, and then its executable and folder are no evidence.
+  const pid = found.process.pid !== undefined && sameArgv(probe.cmdlineOf(found.process.pid), found.process.argv) ? found.process.pid : undefined;
   const exe = pid === undefined ? null : usable(probe.exeOf(pid));
   const cwd = (): string | null => (pid === undefined ? null : usable(probe.cwdOf(pid)));
   const [first] = found.process.argv;
@@ -157,6 +183,10 @@ export function paneBinaryOf(
   if (script === null) return null;
   const interpreter = absolute(first, cwd, host) ?? (exe !== null && isInterpreter(exe) ? exe : bare(first, host) ? first : null);
   return interpreter === null ? null : { harness: found.harness, command: [interpreter, script] };
+}
+
+function sameArgv(seen: readonly string[] | null, reported: readonly string[]): boolean {
+  return seen !== null && seen.length === reported.length && seen.every((word, i) => word === reported[i]);
 }
 
 /** A word with no separator: a name the shell looked up on its PATH. */
@@ -181,7 +211,7 @@ function usable(path: string | null): string | null {
 }
 
 export interface PaneProfileDeps {
-  readonly versions: Pick<VersionCache, "versionOf">;
+  readonly versions: Pick<VersionCache, "programVersion">;
   /** Each profile's binary (lower case) to its harness id, as the launch window matches them. */
   readonly binaries: () => ReadonlyMap<string, string>;
   readonly probe?: ProcessProbe;
@@ -203,8 +233,11 @@ export function createPaneProfile(deps: PaneProfileDeps): (harness: string, pane
     const read = paneId === undefined || foreground === undefined ? undefined : await foreground(paneId);
     const pane = read?.ok === true ? paneBinaryOf(read.value, deps.binaries(), deps.probe, deps.host) : null;
     const command = pane !== null && pane.harness === profile.id ? pane.command : undefined;
-    const match = profileForPlatform(profile.id, await deps.versions.versionOf(profile, command), platform);
-    const binary = command?.at(-1);
+    // The cache says which program answered: it falls back to the PATH binary for a file it cannot stat
+    // and for a pane that read its own program a moment ago, and then no file is named.
+    const answer = await deps.versions.programVersion(profile, command, paneId);
+    const match = profileForPlatform(profile.id, answer.version, platform);
+    const binary = answer.command?.at(-1);
     return match === null || binary === undefined ? match : { ...match, binary };
   };
 }

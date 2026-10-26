@@ -197,9 +197,11 @@ export interface SendReceipt {
   readonly profileId: string | null;
   readonly profileStatus: ProfileStatus | null;
   /**
-   * The file whose version was read, when it was the pane's own program (its foreground process, ADR
-   * 0124): an absolute path, a local fact. Absent when the version came from the binary the bridge's
-   * PATH finds. The recent-sends rows, and so a problem report, do not carry it.
+   * The file whose version was read, when the read ran the pane's own program (its foreground process,
+   * ADR 0124): an absolute path, a local fact. A pane whose argv[0] is a bare `omp` carries it too, by
+   * its executable, which may be the same file the PATH holds. Absent when the bridge's PATH lookup
+   * answered (no pane, no foreground read, a file it could not stat, a pane over its read limit). The
+   * recent-sends rows, and so a problem report, do not carry it.
    */
   readonly binary?: string;
   readonly textHash: string;

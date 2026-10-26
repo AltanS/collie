@@ -23,7 +23,7 @@ import { SurfaceLedger } from "./counters.ts";
 import { HoldStore } from "./holds.ts";
 import { StopService } from "./stop.ts";
 import { AuditLog } from "../audit.ts";
-import { heldCancelRoute, sendRoute, type SendRouteRuntime } from "../server.ts";
+import { heldCancelRoute, sendReceiptsRoute, sendRoute, type SendRouteRuntime } from "../server.ts";
 import { RETURNED_CARD_DROPPED } from "../../web/src/lib/surface/send.ts";
 import { QUEUED_SEND_MS, type BoxReading } from "./queued.ts";
 
@@ -10151,6 +10151,13 @@ describe("a send's profile is read for its pane", () => {
     expect(deps.store.get(answer.receipt!.requestId)?.receipt?.binary).toBe("/lab/copy/bin/agent");
     expect(protocol.recent("%1")[0]?.version).toBe("2.1.999");
     expect(Object.keys(protocol.recent("%1")[0] ?? {})).not.toContain("binary");
+    // What a Report a problem sheet reads is `GET /api/send/receipts` (rows) and `GET /api/report/context`
+    // (this machine's setup, bridge/report.ts): the file's path is on neither wire. The route is the
+    // only way the phone sees a past send, and it answers rows.
+    const wire = await sendReceiptsRoute({ send: protocol, driver: undefined }, "%1", null).text();
+    expect(wire).toContain("2.1.999");
+    expect(wire).not.toContain("binary");
+    expect(wire).not.toContain("/lab/copy");
   });
 
   test("a version read from the PATH binary names no file", async () => {

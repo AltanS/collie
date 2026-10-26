@@ -34,6 +34,18 @@ function query(url: string): URLSearchParams {
   return new URL(url).searchParams;
 }
 
+describe("reportFields: local paths stay on the machine", () => {
+  it("never prints a row's binary, even from a bridge that sent it", () => {
+    const withPath = { ...row(1), binary: "/home/op/.local/share/omp/versions/18.12.6/omp" };
+    const input: ReportInput = { ...BASE, sends: [withPath], includeTyped: true, note: "x" };
+    const fields = reportFields(input);
+    const everything = [fields.title, fields.what, fields.sends, fields.setup, fields.screen, reportText(fields), issueLink(fields), searchLink(input)].join("\n");
+    expect(everything).not.toContain("/home/op");
+    expect(everything).not.toContain("binary");
+    expect(decodeURIComponent(everything)).not.toContain("/home/op");
+  });
+});
+
 describe("reportFields: what a report holds by default", () => {
   it("names the trouble, the harness and version from the receipt, and the mux, in the title and the signature", () => {
     const fields = reportFields(BASE);
