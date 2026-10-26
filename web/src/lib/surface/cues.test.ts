@@ -2,12 +2,12 @@ import { readdirSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import { lineText, type StyledLine } from "../blocks";
-import { fixtureRows, perturbations, readScreen, rowsOf, SURFACE_FIXTURES_DIR } from "../../test/surface-corpus";
+import { fixtureRows, loadLabels, perturbations, readScreen, rowsOf, SURFACE_FIXTURES_DIR } from "../../test/surface-corpus";
 import { CLUSTER_GAP_ROWS, CLUSTER_MAX_ROWS, commandListAt, FOOTER_MAX_ROWS, isKeyHintRow, isRunningRow, noticeOver, ownCommandList, readCues, readCuesFor, runningSign, withoutPromptEchoes } from "./cues";
 import { isSingleKeyRow } from "./key-row";
 import { findInputFrame, plainRows, rowText, type FrameRow, type IdleProfile } from "./frame";
 import { requireProfile } from "./profile";
-import { isFree } from "./surface";
+import { askOf, isFree } from "./surface";
 
 // M56 spec 04: the generic modal cues, and test (c) of the design record: transcripts that quote
 // numbered lists, pointer glyphs and "Enter to confirm" text stay free, because the cues anchor to
@@ -700,6 +700,58 @@ describe("the transcript's echo of a sent prompt (idle.promptEchoes, Claude Code
     expect(readCuesFor(rows, findInputFrame(rows, IDLE)!, IDLE).strength).toBe("none");
     const listed = plainRows(["", "❯ 1. Yes, and keep going with the plan as written", "  2. No, and stop here", "  3. Ask me again", "", WIDE, "❯ ", WIDE, "  model"]);
     expect(readCuesFor(listed, findInputFrame(listed, IDLE)!, IDLE).strength).toBe("strong");
+  });
+
+  // A phone send often holds a list ("Please do these:", "1. reply D", "2. reply E"). Only the pointer
+  // row decides: a list puts its pointer on an option, a text's own list lines stand under its first line.
+  it("over the box, a queued text with numbered lines under its first line is no list; one whose first line is numbered stays one", () => {
+    const body = plainRows(["", "❯ Please do these:", "  1. reply D", "  2. reply E", "  ctrl+enter to send now", "", WIDE, "❯ Press up to edit queued messages", WIDE, "  model · esc to interrupt"]);
+    expect(readCuesFor(body, findInputFrame(body, IDLE)!, IDLE).strength).toBe("none");
+    const first = plainRows(["", "❯ 1. reply H first", "  2. reply I second", "  ctrl+enter to send now", "", WIDE, "❯ Press up to edit queued messages", WIDE, "  model · esc to interrupt"]);
+    expect(readCuesFor(first, findInputFrame(first, IDLE)!, IDLE).strength).toBe("strong");
+  });
+
+  // Real 2.1.310 screens, 2026-10-26 (fixtures README, "Several queued messages"): each queued message is
+  // its own block, a blank row between two blocks, and only the last one carries `ctrl+enter to send now`.
+  const QUEUED: readonly (readonly [string, "none" | "strong"])[] = [
+    ["claude--v2-1-310-queued-three-blocks--w119.txt", "none"],
+    ["claude--v2-1-310-queued-over-spinner--w119.txt", "none"],
+    ["claude--v2-1-310-queued-checkbox-body--w119.txt", "none"],
+    // It read strong (an unreadable modal at S2) before only the pointer row decided.
+    ["claude--v2-1-310-queued-numbered-body--w119.txt", "none"],
+    // The known limit: a text whose first line is a numbered item has a list's pointer row.
+    ["claude--v2-1-310-queued-numbered-first--w119.txt", "strong"],
+  ];
+  for (const [name, strength] of QUEUED) {
+    it(`${name}: running, an empty box, the framed read is ${strength}`, () => {
+      const rows = fixtureRows(name, SURFACE_FIXTURES_DIR);
+      const frame = findInputFrame(rows, IDLE)!;
+      expect(readCuesFor(rows, frame, IDLE).strength).toBe(strength);
+      expect(readScreen(rows, "claude", IDLE).surface).toMatchObject({ turn: "running", modal: strength === "none" ? "none" : "unreadable", composer: "empty" });
+    });
+  }
+
+  // The negative side: the echo rule reads rows over a found box only, and Claude Code draws every
+  // pointer list in the box's place. The 2.1.310 `/resume` picker (two past sessions, an unnumbered
+  // pointer with an indented metadata row) and the rewind list (Escape Escape) have no box.
+  for (const name of ["claude--v2-1-310-resume-two-sessions--w119.txt", "claude--v2-1-310-rewind--w119.txt"]) {
+    it(`${name}: no box, an ask lifted, and the cues alone read strong`, () => {
+      const rows = fixtureRows(name, SURFACE_FIXTURES_DIR);
+      expect(findInputFrame(rows, IDLE)).toBeNull();
+      expect(askOf(readScreen(rows, "claude", IDLE).surface.modal)).not.toBeNull();
+      expect(readScreen(rows, "claude", IDLE, { lift: false }).surface.modal).toBe("unreadable");
+      expect(readCuesFor(rows, null, IDLE).strength).toBe("strong");
+    });
+  }
+
+  it("no Claude dialog fixture reads otherwise without the echo rule", () => {
+    const { promptEchoes: _, ...plain } = IDLE;
+    const dialogs = Object.entries(loadLabels().fixtures).filter(([, label]) => label.harness === "claude" && label.state === "dialog");
+    expect(dialogs.length).toBeGreaterThan(200);
+    for (const [name] of dialogs) {
+      const rows = fixtureRows(name);
+      for (const lift of [true, false]) expect([name, lift, readScreen(rows, "claude", IDLE, { lift }).surface]).toEqual([name, lift, readScreen(rows, "claude", plain, { lift }).surface]);
+    }
   });
 
   const CAPTURES: readonly (readonly [string, string])[] = [

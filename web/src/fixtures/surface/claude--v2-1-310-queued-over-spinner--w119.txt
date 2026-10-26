@@ -1,0 +1,24 @@
+❯ Write a numbered list of 150 fruits, one per line, each with a two-sentence description of its taste. No intro, no
+  outro.
+
+❯ Walky one, header line.
+  Walky one, body line: reply A.
+
+❯ Queued two: reply B.
+
+❯ Please do these:
+  1. reply C
+  2. reply D
+
+❯ Checklist:
+  - [ ] reply E
+  - [ ] reply F
+  ctrl+enter to send now
+
+✽ Wandering… (5s · thinking)
+  ⎿  Tip: Use Plan Mode to prepare for a complex request before making changes. Press shift+tab twice to enable.
+
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ Press up to edit queued messages
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⏸ manual mode on · esc to interrupt

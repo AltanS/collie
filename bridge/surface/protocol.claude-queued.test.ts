@@ -37,7 +37,7 @@ class ClaudeTurnPane {
   private queued = false;
   private reads = 0;
 
-  constructor(capture: string) {
+  constructor(capture: string, private readonly queuedScreen: string = QUEUED) {
     const rows = capture.replace(/\r/gu, "").split("\n");
     while (rows.length > 0 && rows.at(-1)!.trim() === "") rows.pop();
     const bottom = rows.findLastIndex((row) => /^─{8,}$/u.test(row));
@@ -48,7 +48,7 @@ class ClaudeTurnPane {
   }
 
   private render(): string {
-    if (this.queued) return QUEUED;
+    if (this.queued) return this.queuedScreen;
     const lines = this.box.split("\n");
     const box = lines.map((line, i) => (i === 0 ? `❯ ${line}` : `  ${line}`));
     return [...this.head, RULE, ...box, RULE, ...this.footer].join("\n");
@@ -134,5 +134,29 @@ describe("a walky talky message into a running Claude Code 2.1.310 turn (browser
     expect(answer.receipt?.reason).toBeUndefined();
     expect(pane.keysSeen.at(-1)).toBe("Enter");
     expect(pane.submitted).toEqual([envelope]);
+  });
+
+  // A phone send with a list in it, captured 2026-10-26 on 2.1.310 (fixtures README, "Several queued
+  // messages"): the block's later lines are `1. reply D` and `2. reply E`. Only the pointer row decides
+  // whether a run over the box is a list, so the block reads as no modal and the receipt says queued.
+  test("a queued text with numbered lines under its first line: sent and queued", async () => {
+    const pane = new ClaudeTurnPane(TURN, fx("claude--v2-1-310-queued-numbered-body--w119.txt"));
+    const { send } = rig(pane);
+    const text = "Please do these:\n1. reply D\n2. reply E";
+    const answer = await send(text);
+    expect(answer.receipt).toMatchObject({ outcome: "sent", queued: true, profileId: "claude" });
+    expect(answer.receipt?.reason).toBeUndefined();
+    expect(pane.submitted).toEqual([text]);
+  });
+
+  // The known limit: a text whose first line is a numbered item draws a list's pointer row (`❯ 1. …`),
+  // the shape of a real dialog's pointer on its first option. The read stays strong, and the send ends
+  // unknown(dialog_after_enter), never sent twice.
+  test("a queued text whose first line is numbered still ends unknown(dialog_after_enter)", async () => {
+    const pane = new ClaudeTurnPane(TURN, fx("claude--v2-1-310-queued-numbered-first--w119.txt"));
+    const { send } = rig(pane);
+    const answer = await send("1. reply H first\n2. reply I second");
+    expect(answer.receipt).toMatchObject({ outcome: "unknown", reason: "dialog_after_enter" });
+    expect(pane.submitted).toHaveLength(1);
   });
 });

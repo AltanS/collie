@@ -1,0 +1,24 @@
+  95. Java plum: Sweet and tangy. Purple skin, with a grape-like taste that dries the mouth.
+  96. Bael fruit: Sweet and tangy. Hard shell, with a sweet, musky pulp.
+  97. Velvet apple: Sweet and tangy. Soft, with a taste like apricot and cherry.
+  98. Umbu: Sweet and tart. Juicy, with a flavor like lime and grape.
+  99. Cupuaçu: Sweet and tangy. Creamy, with a taste like chocolate and tropical fruit.
+  100. Camu camu: Very sour. Tart, with very high vitamin C.
+  101. Ice cream bean: Sweet and soft. The white pulp tastes like cotton candy and vanilla.
+  102. Uvaia: Tart and aromatic. Tastes like a mix of guava and lemon.
+  103. Pitanga: Sweet and t
+  ⎿  Interrupted · What should Claude do instead?
+
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Rewind
+
+  Restore the code and/or conversation to the point before…
+
+    Write a numbered list of 150 fruits, one per line, each with a two-sentence description of its taste. No int…
+    No code changes
+
+  ❯ (current)
+
+
+
+  Enter to continue · Esc to cancel

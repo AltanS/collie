@@ -1,0 +1,24 @@
+  35. Cantaloupe: Sweet and musky. Soft and juicy, with a floral melon taste.
+  36. Honeydew: Mild and sweet. Crisp, with a light, cool taste.
+  37. Honeyberry: Sweet and tart. Like blueberry, with a hint of raspberry.
+  38. Cranberry: Very tart. Sour when raw, and sweeter when cooked with sugar.
+  39. Gooseberry: Tart and sweet. Juicy, with a sharp, grape-like taste.
+  40. Currant: Tart and sour. Sharp flavor, often used in jams and jellies.
+  41. Elderberry: Raw berries taste bitter and can upset the stomach. Cooked berries taste rich and fruity.
+  42. Mulberry: Sweet and mild. Soft, with a deep, honey-like taste.
+  43. Boysenberry: Sweet and tart. Rich, like a mix of blackberry and raspberry.
+  44. Loganberry: Tart and sweet. Like raspberry, with a bold, sharp taste.
+  45.
+
+❯ Walky one, header line.
+  Walky one, body line: reply A.
+
+❯ Queued two: reply B.
+
+❯ Queued three: reply C.
+  ctrl+enter to send now
+
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ Press up to edit queued messages
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⏸ manual mode on · esc to interrupt

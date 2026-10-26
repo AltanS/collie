@@ -574,8 +574,9 @@ export interface Profile {
      * message over the box in the same shape, `❯ ` and its text, its wrapped or later lines and the
      * `ctrl+enter to send now` hint indented under it. A queued message of two rows or more (every walky
      * talky message) read as a pointed list of three rows, so the Surface claimed a modal at S2 and the
-     * send ended `unknown(dialog_after_enter)` (browser leg case 16, 2.1.310, 2026-10-26). A run with an
-     * option row of its own (a number, a checkbox) stays in the read. Optional.
+     * send ended `unknown(dialog_after_enter)` (browser leg case 16, 2.1.310, 2026-10-26). A run whose
+     * first row is an option row (a number or a checkbox behind the glyph) stays in the read; the option
+     * rows of a text's own list under its first row do not count (2.1.310, 2026-10-26). Optional.
      */
     readonly promptEchoes?: boolean;
     /**
