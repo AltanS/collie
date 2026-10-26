@@ -1,0 +1,40 @@
+╭─ Models ───────────────────┬─────────────────────────────────────────────────────────────────────────────────────────╮
+│   ✦ Roles             1/15 │  All available models                                                                   │
+│   ⬢ All models         797 │  Kind: ◀ all ▶  chat ┆ tiny ┆ image ┆ tts ┆ stt ┆ search ┆ judge ┆ embedding ┆ rerank … │
+│ ────────────────────────── │  🔍 > ⌁                                                                                 │
+│   ● local               13 │                                                                                         │
+│   ● openrouter         763 │ ❯ openrouter/anthropic/claude-haiku-4.5                      56t/s  200k ◫        $1/5█ │
+│   ● web                 21 │   openrouter/openai/gpt-6-luna                       🧠 37   32t/s  1.1m ◫    $0.1/0.5│ │
+│ ────────────────────────── │   ──────────────────────────────────────────────────────────────────────────────────  │ │
+│   ○ abliteration           │   openrouter/qwen/qwen3.5-plus-20260420                               1m ◫    $0.3/1.8│ │
+│   ○ aiand                  │   openrouter/mistralai/mistral-small-2603                           262k ◫   $0.15/0.6│ │
+│   ○ aimlapi                │   openrouter/mistralai/mistral-small-2603:batch                     262k ◫   $0.07/0.3│ │
+│   ○ alibaba-coding-plan    │   openrouter/mistralai/devstral-2512                                262k ◫      $0.4/2│ │
+│   ○ alibaba-token-plan     │   openrouter/mistralai/mistral-large-2512             🧠 6          262k ◫    $0.5/1.5│ │
+│   ○ amazon-bedrock         │   openrouter/mistralai/mistral-large-2512:batch                     262k ◫  $0.25/0.75│ │
+│   ○ anthropic              │   openrouter/mistralai/codestral-2508                               256k ◫    $0.3/0.9│ │
+│   ○ azure                  │   openrouter/mistralai/codestral-2508:batch                         256k ◫  $0.15/0.45│ │
+│   ○ baseten                │   openrouter/mistralai/codestral-embed-2505                         8.2k ◫     $0.15/0│ │
+│   ○ bedrock-mantle         │   openrouter/mistralai/mistral-large-2411             🧠 6          131k ◫        $2/6│ │
+│   ○ cerebras               │   openrouter/mistralai/pixtral-large-2411                           131k ◫        $2/6│ │
+│   ○ charm-hyper            │   openrouter/mistralai/mistral-large-2407             🧠 7          131k ◫        $2/6│ │
+│   ○ cline-pass             │   openrouter/mistralai/mistral-embed-2312                           8.2k ◫      $0.1/0│ │
+│   ○ cloudflare-ai-gateway  │   openrouter/qwen/qwen-plus-2025-07-28:thinking                       1m ◫  $0.26/0.78│ │
+│   ○ commandcode            │   openrouter/deepseek/deepseek-v4.1-flash-1017       🧠 45            1m ◫   $0.15/0.6│ │
+│   ○ coreweave              │   openrouter/moonshotai/kimi-k2-0905                 🧠 24  ~40t/s  262k ◫    $0.6/2.5│ │
+│   ○ cursor                 │   openrouter/moonshotai/kimi-k2-0905:exacto          🧠 15          262k ◫    $0.6/2.5│ │
+│   ○ deepinfra              │   openrouter/qwen/qwen3.8-max-0902                   🧠 45            1m ◫        $2/6│ │
+│   ○ deepseek               │   openrouter/deepseek/deepseek-v4-pro-0813           🧠 36            1m ◫  $0.66/1.98│ │
+│   ○ devin                  │   openrouter/deepseek/deepseek-v4-pro-0813:batch                      1m ◫  $0.66/1.98│ │
+│   ○ factory-droid          │   openrouter/deepseek/deepseek-v4-flash-0731         🧠 34            1m ◫  $0.04/0.13│ │
+│   ○ firepass               │   openrouter/deepseek/deepseek-v4-flash-0731:batch                    1m ◫  $0.11/0.33│ │
+│   ○ fireworks              │   openrouter/deepseek/deepseek-v4-flash-0731:free    🧠 34            1m ◫        free│ │
+│   ○ github-copilot         │   openrouter/deepseek/deepseek-r1-0528               🧠 13          164k ◫   $0.5/2.15│ │
+│   ○ gitlab-duo             │   openrouter/qwen/qwen3.5-397b-a17b                  🧠 34  ~90t/s  262k ◫    $0.5/3.6│ │
+│   ○ gitlab-duo-agent       │   openrouter/deepseek/deepseek-chat-v3-0324                         164k ◫  $0.29/1.14│ │
+│   ○ gmi-cloud              │                                                                                         │
+│   ○ google                 │   Claude Haiku 4.5 · 200k ctx · 64k out · $1/5 per M · reasoning · vision · ~56t/s · 2… │
+│   ○ google-antigravity     │   ● default ◒ · ○ smol · ○ slow · ○ tiny · ○ memory                                     │
+├────────────────────────────┴─────────────────────────────────────────────────────────────────────────────────────────┤
+│ ⏎ assign roles · ↑/↓ models · ← providers · type to search · Alt+←/Alt+→ kind · ⎋ close                              │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯

@@ -8645,6 +8645,50 @@ describe("omp's fuzzy command list under the box (1.24.1)", () => {
   });
 });
 
+// omp-gang gang three, tester 5 (2026-10-26, W2): with the `/model` picker open on omp 18.6.1 a send typed the
+// probe into the picker's search field, twice (`🔍 > ⌁⌁`). The picker is a full-screen Models box with a search
+// row, `🔍 >`. The rule: an open picker owns the keyboard, so a send types no probe and presses no key, and the
+// first tap ends `unconfirmed` as on omp 18.12.6. The picker, drawn, reads as a dialog Collie cannot read (modal
+// `unreadable`, no box, a strong cue); Collie's own probe marker in its search field is not a box of probe markers,
+// so the deaf-box residue rule (probe-marker.ts) never takes a character out of it. What the replay cannot show: a
+// probe typed while omp has not drawn the picker yet (18.6.1 took 6 s and more to open it under load) waits in
+// the terminal and lands in the search field when the picker opens; see the 1.24.1 report.
+describe("omp's /model picker owns the keyboard: a send types nothing into its search field (omp-gang three, W2)", () => {
+  const SURFACE_DIR = join(import.meta.dirname, "../../web/src/fixtures/surface");
+  const CAPTURES = [
+    ["18.6.1", readFileSync(join(SURFACE_DIR, "omp--v18-6-1-model-picker-search-probe--w120.txt"), "utf8")],
+    ["18.12.6", readFileSync(join(SURFACE_DIR, "omp--v18-12-6-model-picker--w120.txt"), "utf8")],
+  ] as const;
+  /** The picker with `marks` probe characters in its search row, the row's width kept. */
+  const withSearch = (screen: string, marks: number): string =>
+    screen.replace(/(🔍 >)( ⌁*)( *)/u, (_all, head: string, text: string, pad: string) => {
+      const typed = marks === 0 ? "" : ` ${"⌁".repeat(marks)}`;
+      return `${head}${typed}${" ".repeat(text.length + pad.length - typed.length)}`;
+    });
+
+  for (const [version, capture] of CAPTURES) {
+    for (const marks of [0, 1, 2]) {
+      for (const mode of ["send", "command"] as const) {
+        test(`${version}, ${String(marks)} probe character(s) in the search: a ${mode} is refused unconfirmed, no text and no key reach the pane`, async () => {
+          const screen = withSearch(capture, marks);
+          expect(screen).toContain("type to search");
+          expect(screen.includes(`🔍 > ${"⌁".repeat(marks)}`)).toBe(true);
+          const pane = new FakePane("generic");
+          pane.fixed = screen;
+          const made = rig({ pane, harness: "omp", version });
+          const answer = await made.send(mode === "send" ? "hello there" : "/usage", { id: `picker-${version.replaceAll(".", "-")}-${mode}-${String(marks)}`, mode });
+          expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
+          expect(answer.receipt?.saw).toMatchObject({ turn: "unknown", modal: "unreadable", composer: "unknown" });
+          // The deaf-box rule takes Collie's markers out of a BOX that holds nothing else; here no box is found,
+          // so not even a Backspace is pressed in the search field.
+          expect(pane.calls).toEqual([]);
+          expect(pane.keysSeen).toEqual([]);
+        });
+      }
+    }
+  }
+});
+
 // ── ADR 0122: a queued send is a card until the journal shows it; Stop may give it back ──
 
 describe("a queued send that comes back to the box (ADR 0122)", () => {

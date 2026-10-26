@@ -3392,3 +3392,12 @@ Two captures in `fixtures/surface/`, cut to the last 13 rows, the Send Protocol'
 | --- | --- | --- |
 | `omp--v18-6-1-path-like-loop-list--w120.txt` | `popup` | `/tmp/x` typed, `❯ ↻ loop        Loop: off` under it |
 | `omp--v18-12-6-path-like-no-list--w120.txt` | `idle` | 18.12.6, an empty box after `/tmp/x` went out as a message (no list is ever drawn for a path there) |
+
+## omp: the /model picker with Collie's probe in its search (captured 2026-10-25 and 2026-10-26, omp 18.6.1 and 18.12.6, omp-gang three, testers 12 and 5)
+
+Two captures in `fixtures/surface/`, the full 40-row screen as read, the Send Protocol's tests read them (`bridge/surface/protocol.test.ts`, "omp's /model picker owns the keyboard"). The picker is a full-screen `Models` box with a `🔍 >` search row, no input box and no frame. The Surface reads it `unknown / unreadable / unknown` with a strong cue, so a send ends `unconfirmed` with nothing typed. The 18.6.1 capture is tester 12's Type here run: the probe `⌁` stands in the search row. The 18.12.6 capture has an empty search. The tests derive the empty and the two-character search rows from them with the row's width kept.
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `omp--v18-6-1-model-picker-search-probe--w120.txt` | `screen` | `/model` open on 18.6.1, `🔍 > ⌁` in the search row |
+| `omp--v18-12-6-model-picker--w120.txt` | `screen` | `/model` open on 18.12.6, an empty search |
