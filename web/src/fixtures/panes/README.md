@@ -3274,7 +3274,7 @@ equal to its only entry, Enter cancels the popup and submits the text; the teste
 
 ## omp 18.6.1 typeahead popups under the box (captured 2026-10-25, omp-gang tester 12)
 
-All are composers, labelled `popup`. The profile names them in `idle.volatile.below.popups` (rules `file`, `issue`, `emoji`); the Surface leaves their rows out of the cue read and the Send Protocol out of its row count, and a send committed with Ctrl+Q goes out with the popup open (omp's key handler for it runs before the autocomplete handler). The emoji rule is written from omp 18.12.6's `emoji-autocomplete.ts` and has no capture yet.
+All are composers, labelled `popup`. The profile names them in `idle.volatile.below.popups` (rules `file`, `issue`, `emoji`, `path`, `actions`); the Surface leaves their rows out of the cue read and the Send Protocol out of its row count, and a send committed with Ctrl+Q goes out with the popup open (omp's key handler for it runs before the autocomplete handler). The emoji rule is written from omp 18.12.6's `emoji-autocomplete.ts` and has no capture yet.
 
 | Fixture | What it shows |
 | --- | --- |
@@ -3284,7 +3284,14 @@ All are composers, labelled `popup`. The profile names them in `idle.volatile.be
 | `omp--v18-6-1-hash-popup-single--w120.txt` | `see PR #12`, one popup row |
 | `omp--v18-6-1-hash-popup-stale--w120.txt` | an EMPTY box after Ctrl+C with `PR #1` and `Issue #1` still under it; they go with the next key |
 
-The `#` popup that lists prompt actions (`ends with hash #`, `tag:#abc`: `Copy current line` and more) is a different popup, not a rule here; its screens read as before.
+A text that ends in a bare `#` (`ends with hash #`) makes omp draw its editor-action list (`Copy current line`, a key-chord column, seven rows). That list is the `actions` rule (omp-gang three, 2026-10-26, omp 18.6.1 and 18.12.6, cut from the 120-column captures; the status row's path names the lab folder only):
+
+| Fixture | What it shows |
+| --- | --- |
+| `omp--v18-6-1-hash-end-actions--w120.txt` | `ends with hash #`, seven action rows, the pointer on `Copy current line` |
+| `omp--v18-12-6-hash-end-actions--w120.txt` | The same list on 18.12.6 |
+
+`tag:#abc` ends in a word, not a bare `#`: it opens no popup, and its screens read as before.
 
 ## omp 18.6.1 a draft that quotes a dialog (captured 2026-10-25, omp-gang tester 12)
 

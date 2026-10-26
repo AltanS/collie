@@ -9670,12 +9670,73 @@ describe("omp's typeahead popups under the box (1.24.1)", () => {
     neverEscape(pane);
   });
 
-  test("without the stale mark on the file and path rules the same rows read modal unknown, and the plain send does not go out, as the tester saw it", async () => {
-    const unmarked = (profile: Profile): Profile => withRules(profile, (rules) => rules.map((rule) => (rule.name === "file" || rule.name === "path" ? { name: rule.name, text: rule.text, rows: rule.rows } : rule)));
+  test("without the stale mark on the popup rules the same rows read modal unknown, and the plain send does not go out, as the tester saw it", async () => {
+    const unmarked = (profile: Profile): Profile => withRules(profile, (rules) => rules.map((rule) => ({ name: rule.name, text: rule.text, rows: rule.rows })));
     const { protocol, send } = ompPane("omp--v18-6-1-at-popup-stale--w120.txt", { stale: true }, unmarked);
     const prepared = await protocol.handle({ id: "at-stale-old", text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: "omp" });
     expect(prepared.surface).toMatchObject({ modal: "unknown" });
     const answer = await send("hello there", { id: "at-stale-old-send", mode: "send" });
     expect(answer.receipt?.outcome).not.toBe("sent");
+  });
+
+  // omp-gang three, 01-regression S1 (2026-10-26): a text that ends in a bare `#` makes omp draw its seven-row
+  // editor-action list under the box (a label and a key-chord column). It read as a dialog: the plain send ended
+  // `modal_cue`, and the offered Submit and Discard answered `not_free`. It is a popup the last word opens.
+  describe("the editor-action list a trailing bare `#` opens", () => {
+    const ACTIONS = ["omp--v18-6-1-hash-end-actions--w120.txt", "omp--v18-12-6-hash-end-actions--w120.txt"] as const;
+    const TEXT = "ends with hash #";
+    const hashEnds = (box: string): boolean => /(?:^|\s)#$/u.test(box);
+    const withoutActions = (profile: Profile): Profile => withRules(profile, (rules) => rules.filter((rule) => rule.name !== "actions"));
+
+    for (const name of ACTIONS) {
+      test(`${name}: the pane reads a draft, and the plain send goes out with ctrl+q`, async () => {
+        const looked = ompPane(name, { opens: hashEnds });
+        looked.pane.box = TEXT;
+        const prepared = await looked.protocol.handle({ id: `actions-prep-${name.slice(10, 14)}`, text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: "omp" });
+        expect(prepared.surface).toMatchObject({ turn: "idle", modal: "none", composer: "draft" });
+        const { send, pane } = ompPane(name, { opens: hashEnds });
+        const answer = await send(TEXT, { id: `actions-send-${name.slice(10, 14)}`, mode: "send" });
+        expect(answer.receipt).toMatchObject({ outcome: "sent" });
+        expect(answer.receipt?.keys.at(-1)).toBe("ctrl+q");
+        expect(pane.keysSeen).not.toContain("Enter");
+        expect(pane.box).toBe("");
+        neverEscape(pane);
+      });
+
+      test(`${name}: a command send is refused with the popup notice and Enter is not pressed; Submit and Discard are taken`, async () => {
+        const command = ompPane(name, { opens: hashEnds });
+        const refused = await command.send("/note #", { id: `actions-cmd-${name.slice(10, 14)}`, mode: "command" });
+        expect(refused.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue" });
+        expect(command.deps.store.get(`actions-cmd-${name.slice(10, 14)}`)?.receipt?.detail).toBe(POPUP_NOTICE);
+        expect(command.pane.keysSeen).not.toContain("Enter");
+        expect(command.pane.box).toBe("/note #");
+        expect(refused.offers).toEqual(["submit", "discard", "keys"]);
+        const submitted = ompPane(name, { opens: hashEnds });
+        submitted.pane.box = TEXT;
+        const sent = await submitted.send(TEXT, { id: `actions-submit-${name.slice(10, 14)}`, mode: "submit" });
+        expect(sent.receipt).toMatchObject({ outcome: "sent" });
+        expect(sent.receipt?.keys.at(-1)).toBe("ctrl+q");
+        expect(submitted.pane.box).toBe("");
+        const discarded = ompPane(name, { opens: hashEnds });
+        discarded.pane.box = TEXT;
+        const gone = await discarded.send(TEXT, { id: `actions-discard-${name.slice(10, 14)}`, mode: "discard" });
+        expect(gone.receipt).toMatchObject({ outcome: "discarded" });
+        expect(discarded.pane.box).toBe("");
+      });
+    }
+
+    test("without the actions rule the list reads as a dialog, and the answer offers only the keys, because Submit and Discard would be refused not_free", async () => {
+      const name = ACTIONS[0];
+      const { send, pane } = ompPane(name, { opens: hashEnds }, withoutActions);
+      const answer = await send(TEXT, { id: "actions-old", mode: "send" });
+      expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue" });
+      expect(pane.keysSeen).not.toContain("ctrl+q");
+      expect(answer.offers).toEqual(["keys"]);
+      // What the answer offers is what the routes accept: the verbs it left out do refuse.
+      expect(answer.rowsHash).toBeDefined();
+      const submit = await send(TEXT, { id: "actions-old-submit", mode: "submit", rowsHash: answer.rowsHash! });
+      expect(submit.receipt).toMatchObject({ outcome: "refused", reason: "not_free" });
+      expect(submit.offers).toEqual(["keys"]);
+    });
   });
 });

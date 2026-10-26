@@ -679,6 +679,9 @@ describe("omp's typeahead popups under the box read as a draft (18.6.1, omp-gang
     // and of the one-row popup under a partial path.
     ["omp--v18-12-6-emoji-popup--w120.txt", "hello :smi"],
     ["omp--v18-6-1-emoji-popup--w120.txt", "hello :smi"],
+    // omp-gang three (2026-10-26): a text ending in a bare `#` draws omp's seven-row editor-action list.
+    ["omp--v18-12-6-hash-end-actions--w120.txt", "ends with hash #"],
+    ["omp--v18-6-1-hash-end-actions--w120.txt", "ends with hash #"],
     ["omp--v18-12-6-path-popup-partial--w120.txt", "~/.cache/collie-lab/omp-gang/gang3/04-readers/state/harness/omp/project/src/ma"],
   ];
 
@@ -726,6 +729,19 @@ describe("omp's typeahead popups under the box read as a draft (18.6.1, omp-gang
     const read = readScreen(fixtureRows(name), agentOf("omp"), { ...idle, volatile: { ...idle.volatile, below: { ...idle.volatile.below, popups: { ...popups, rules } } } });
     expect(read.cues?.strength).toBe("strong");
     expect(read.surface.modal).toBe("unreadable");
+  });
+
+  it("the editor-action list stands under a box only while the text ends in a bare `#`: seven rows are a popup of that word and nothing else", () => {
+    const name = "omp--v18-6-1-hash-end-actions--w120.txt";
+    const texts = fixtureRows(name).map((row) => rowText(row));
+    const typed = (text: string): string => texts.map((row) => (row.startsWith("╰─") ? `╰─ ${text}` : row)).join("\n");
+    const open = readScreen(rowsOf(typed("ends with hash #")), agentOf("omp"), idleFor("omp"));
+    expect(open.surface).toEqual({ revision: 1, turn: "idle", modal: "none", composer: "draft" });
+    expect(open.cues?.strength).toBe("none");
+    for (const text of ["ends with a word", "ends with hash # and more"]) {
+      const closed = readScreen(rowsOf(typed(text)), agentOf("omp"), idleFor("omp"));
+      expect(closed.surface.modal, text).not.toBe("none");
+    }
   });
 
   it("a dialog drawn under the box is not a popup: the same box over a permission row stays a modal", () => {

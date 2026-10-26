@@ -210,6 +210,9 @@ const TALL_PALETTE_FIXTURES = [
   // omp 18.6.1 and 18.12.6, `:smi` typed: the eight-row emoji popup under the box (omp-gang 04-readers, 2026-10-26).
   "omp--v18-12-6-emoji-popup--w120.txt",
   "omp--v18-6-1-emoji-popup--w120.txt",
+  // omp 18.6.1 and 18.12.6, a text ending in a bare `#`: the seven-row editor-action list (omp-gang three, 2026-10-26).
+  "omp--v18-12-6-hash-end-actions--w120.txt",
+  "omp--v18-6-1-hash-end-actions--w120.txt",
 ];
 
 // omp 18.6.1, a nine-row draft that quotes a permission dialog (omp-gang tester 12, 2026-10-25). The composer is
@@ -447,6 +450,8 @@ describe("extractInputDraft", () => {
     { fixture: "omp--v18-6-1-hash-popup-stale--w120.txt", draft: null },
     { fixture: "omp--v18-12-6-emoji-popup--w120.txt", draft: "hello :smi" },
     { fixture: "omp--v18-6-1-emoji-popup--w120.txt", draft: "hello :smi" },
+    { fixture: "omp--v18-12-6-hash-end-actions--w120.txt", draft: "ends with hash #" },
+    { fixture: "omp--v18-6-1-hash-end-actions--w120.txt", draft: "ends with hash #" },
     { fixture: "omp--v18-12-6-path-popup-partial--w120.txt", draft: "~/.cache/collie-lab/omp-gang/gang3/04-readers/state/harness/omp/project/src/ma" },
     { fixture: "omp--v18-6-1-at-popup-stale--w120.txt", draft: null },
     { fixture: "omp--v18-12-6-at-popup-two-files--w120.txt", draft: "please read @READ" },
@@ -1076,6 +1081,8 @@ describe("composerPrompt — the region a destructive write is bound to", () => 
       { fixture: "omp--v18-6-1-ascii-symbols-session-list--w130.txt", top: 1, bottom: 2, suggestEnd: 13 },
       { fixture: "omp--v18-12-6-emoji-popup--w120.txt", top: 4, bottom: 5, suggestEnd: 14 },
       { fixture: "omp--v18-6-1-emoji-popup--w120.txt", top: 4, bottom: 5, suggestEnd: 14 },
+      { fixture: "omp--v18-12-6-hash-end-actions--w120.txt", top: 1, bottom: 2, suggestEnd: 10 },
+      { fixture: "omp--v18-6-1-hash-end-actions--w120.txt", top: 2, bottom: 3, suggestEnd: 11 },
     ];
     expect(PINNED_TALL.map((p) => p.fixture)).toEqual(TALL_PALETTE_FIXTURES);
     for (const { fixture, top, bottom, suggestEnd } of PINNED_TALL) {

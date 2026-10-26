@@ -2159,6 +2159,23 @@ function sawNote(snap: Snap | null, note: EndNote): EndNote {
   return note;
 }
 
+/**
+ * Whether Submit and Discard would be taken on `surface`, the screen a `typed_not_submitted` answer last saw:
+ * a box that holds a draft or nothing under no modal, or a screen the manual road takes. Anything else (a
+ * torn read, a dialog, a turn nobody can read) is refused `not_free` by both verbs, so the answer must not
+ * offer them (omp-gang three, S1: the offered Submit and Discard answered `not_free`).
+ */
+function submitDiscardOpen(surface: Surface): boolean {
+  if (takesManualSend(surface)) return true;
+  return surface.turn !== "unknown" && surface.modal === "none" && (surface.composer === "draft" || surface.composer === "empty");
+}
+
+/** The offers of an end: the shared rules, but Submit and Discard only where they would be taken. */
+function offersOf(outcome: SendOutcome, reason: SendReason | undefined, framed: boolean, surface: Surface | undefined): SendOffer[] {
+  if (outcome === "typed_not_submitted" && surface !== undefined && !submitDiscardOpen(surface)) return ["keys"];
+  return offersFor(outcome, reason, framed);
+}
+
 /** An answer with the note's screen, rows hash and sentence copied on where they are set. */
 function answerWith(draft: AnswerDraft, note: EndNote): SendAnswer {
   if (note.surface !== undefined) draft.surface = note.surface;
@@ -3080,7 +3097,7 @@ export class SendProtocol {
     }
     this.count(state, receipt, end.extra.surface);
     const framed = end.extra.framed ?? (state.marks.s0?.frame ?? null) !== null;
-    return answerWith({ receipt, offers: end.extra.offers ?? offersFor(outcome, receipt.reason, framed) }, end.extra);
+    return answerWith({ receipt, offers: end.extra.offers ?? offersOf(outcome, receipt.reason, framed, end.extra.surface) }, end.extra);
   }
 
   /** The counters key of a request: harness, binary version, profile id and status, `-` where there is none. */

@@ -219,6 +219,12 @@
               "rows": "^(?:(?<pointer>❯|\\u{F054}) | {2})(?<entry>\\S.*)$",
               "staleWhenEmpty": true,
               "closedWhenTyped": true
+            },
+            {
+              "name": "actions",
+              "text": "(?:^|\\s)#$",
+              "rows": "^(?:(?<pointer>❯|\\u{F054}) | {2})\\S+(?: \\S+)* {2,}\\S.*$",
+              "staleWhenEmpty": true
             }
           ]
         }

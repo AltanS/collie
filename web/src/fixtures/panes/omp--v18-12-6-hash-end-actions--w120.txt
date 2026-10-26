@@ -1,0 +1,10 @@
+
+ π > ◒ Haiku 4.5 > 📁 …1-regression/state2/harness/omp/project ▶──5%───────────────────────────────────────┃───────200K─
+╰─ ends with hash #
+❯ Copy current line               Alt+⇧L
+  Copy whole prompt               Alt+⇧C
+  Undo                            Ctrl+-/Ctrl+_
+  Move cursor to message end      Current message
+  Move cursor to message start    Current message
+  Move cursor to line start       Home/Ctrl+A
+  Move cursor to line end         End/Ctrl+E

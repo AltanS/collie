@@ -15,6 +15,7 @@
 
 import { displayWidth, widePieces } from "../text-width";
 import { anyListRow, insideList, listedBottom, openListUnder } from "./command-list";
+import { popupUnder } from "./popup";
 import { readAboveNotice } from "./notice";
 import type { FrameAnchor, Profile } from "./profile";
 
@@ -939,7 +940,7 @@ function openFrame(rows: readonly FrameRow[], end: number, idle: IdleProfile): F
   const reach = Math.max(idle.frame.maxTailRows, idle.frame.maxWidgetRows ?? 0);
   for (let b = end - 1; b >= 0 && end - 1 - b <= reach; b--) {
     const frame = interiorFrameAt(rows, b, idle);
-    if (frame !== null) return end - 1 - b <= idle.frame.maxTailRows || widgetRun(rows, b, end, idle) ? frame : null;
+    if (frame !== null) return end - 1 - b <= idle.frame.maxTailRows || widgetRun(rows, b, end, idle) || popupRun(rows, frame, idle) ? frame : null;
     const text = rowText(rows[b]!);
     if (under === null || (!isBlank(text) && under.test(text.trimEnd()))) return null;
   }
@@ -955,6 +956,16 @@ function widgetRun(rows: readonly FrameRow[], bottom: number, end: number, idle:
   const texts = rows.map(rowText);
   for (let i = bottom + 1; i < end; i++) if (isBlank(texts[i]!)) return false;
   return !anyListRow(texts, bottom + 1, end - 1, idle.volatile.below.commandList);
+}
+
+/**
+ * Whether the rows under the open box's last row are the typeahead popup that the box's text opened
+ * ({@link popupUnder}). A popup may be as tall as a widget and its rows may read as entries of the command
+ * list (a label and a description column), which {@link widgetRun} refuses; the text that opened it is what
+ * tells them apart.
+ */
+function popupRun(rows: readonly FrameRow[], frame: Frame, idle: IdleProfile): boolean {
+  return popupUnder(rows.map(rowText), frame.bottom, frame.interior.text, idle.volatile.below.popups) !== null;
 }
 
 function findLayout(rows: readonly FrameRow[], idle: IdleProfile): Frame | null {
