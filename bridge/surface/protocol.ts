@@ -121,6 +121,11 @@
 // again, or a second probe that does not land, ends `probe_failed` with the cause `stale_screen` and
 // the key pad as the only offer; nothing is deleted. One second read per request, never a loop.
 //
+// A screen in flux (2026-10-26): for 50 to 100 ms after a resize Herdr shows the old frame re-wrapped
+// to the new width, so S0's two reads differ in grid size (row count or widest row), or the read is torn
+// (cut inside the box). That is no reason yet to hold or refuse: S0 reads once more after SETTLE_MS
+// (150 ms), before any key, and that read is judged. One more S0, never a loop; its gap is `settle`.
+//
 // A command in a running turn (M56 spec 15): a profile whose harness queues a command entered during
 // a turn (`keys.commandWhileRunning: "queues"`, measured in the lab) sends it on the queued path like a
 // message. Its popup may fill the rows under the box, so S1 asks only that the rows above scrolled.
@@ -256,6 +261,12 @@ export const CLUSTER_ROWS = 24;
 const FIRST_GAP_MS = 80;
 /** The gap between the two S0 reads. */
 const S0_GAP_MS = 120;
+/**
+ * The pause before the one more S0 of a screen whose geometry is in flux (2026-10-26, omp gang three
+ * 02-desync): for 50 to 100 ms after a resize Herdr shows the old frame re-wrapped to the new width,
+ * until the program draws again. Measured as `gapsMs.settle`, with the S0 read that saw it.
+ */
+const SETTLE_MS = 150;
 /** Emptying a box (replace, discard) borrows the S2 bound: a read after every batch, inside S2's reads and ms. */
 const CLEAR_BOUND = BOUNDS.s2;
 /** Keys per clear batch; a read sits between two batches. */
@@ -543,6 +554,31 @@ function withoutNamedRows(rows: readonly FrameRow[], frame: Frame | null): reado
   if (frame === null || frame.volatile.named.length === 0) return rows;
   const named = new Set(frame.volatile.named.map((hit) => hit.row));
   return rows.map((row, i) => (named.has(i) ? { segments: [] } : row));
+}
+
+/**
+ * A read's grid size: how many rows it has and how wide its widest row is, blanks kept. Two reads of one
+ * pane geometry share it; a resize between them (or the old frame re-wrapped to the new width, as
+ * Herdr shows it for a moment) gives two sizes. The text inside the rows plays no part.
+ */
+function gridSizeOf(snap: Snap): string {
+  let width = 0;
+  for (const row of snap.rows) width = Math.max(width, rowText(row).length);
+  return `${String(snap.rows.length)}x${String(width)}`;
+}
+
+/**
+ * Whether two reads that do not agree show the pane's geometry in flux rather than a box that changed:
+ * their grid sizes differ ({@link gridSizeOf}), or one has a frame and the other reads as nothing at all, no
+ * frame, no cue, no dialog (`no-match`, or `torn`: cut inside the box). Herdr's `visible` read keeps
+ * the pane's own row count, so the old frame re-wrapped to a narrower width can share the new size;
+ * it then has no frame. A dialog that opened is not this: it reads as a dialog.
+ */
+function inFlux(first: Snap, second: Snap): boolean {
+  if (gridSizeOf(first) !== gridSizeOf(second)) return true;
+  if ((first.frame === null) === (second.frame === null)) return false;
+  const reason = (first.frame === null ? first : second).surface.reason;
+  return reason === "no-match" || reason === "torn";
 }
 
 /** The index past the last non-blank row. */
@@ -2140,6 +2176,8 @@ interface EndNote {
   offers?: SendOffer[];
   /** A failed probe whose one Backspace was read back: the box holds what it held at S0 (2026-10-17). */
   probeClean?: boolean;
+  /** S0's two reads differed in grid size ({@link gridSizeOf}): the pane's geometry moved between them (2026-10-26). */
+  inFlux?: boolean;
   /** Which rule decided the end, copied onto the answer ({@link SendAnswer.cause}). */
   cause?: SendCause;
 }
@@ -3208,7 +3246,7 @@ export class SendProtocol {
     }
 
     this.begin(state);
-    let s0 = await this.stableRead(state, "s0");
+    let s0 = await this.settledS0(state);
     state.marks.s0 = s0;
     // The launch window: a harness is starting in the pane, and its box is not on screen yet. No probe
     // either, for the probe would be typed into the shell. A dialog the pane's own profile lifts is the
@@ -3973,9 +4011,33 @@ export class SendProtocol {
       return snap.plain.slice(win.first, win.end).join("\n");
     };
     if ((first.frame === null) !== (second.frame === null) || key(first) !== key(second)) {
-      throw new Ended("refused", "not_free", { surface: second.surface, detail: "The input box moved between two reads." });
+      const moved = new Ended("refused", "not_free", { surface: second.surface, detail: "The input box moved between two reads." });
+      if (inFlux(first, second)) moved.extra.inFlux = true;
+      throw moved;
     }
     return second;
+  }
+
+  /**
+   * S0 with one more read when the screen's geometry is in flux (2026-10-26, omp gang three 02-desync):
+   * the two reads differ in grid size (a resize landed between them), or the read is torn (cut inside the
+   * box). Such a read is a frame on its way, not a box that is not free, so it is no reason yet to hold
+   * the send or refuse it `not_free`. After {@link SETTLE_MS} S0 reads again, once, and that read is
+   * judged by every rule as before. It runs before any key; the read in flux and the pause are
+   * `gapsMs.settle`, so `s0` stays the time of the reads that were judged.
+   */
+  private async settledS0(state: RunState): Promise<Snap> {
+    try {
+      const s0 = await this.stableRead(state, "s0");
+      if (s0.surface.reason !== "torn" || state.keys.length > 0) return s0;
+    } catch (err) {
+      if (!(err instanceof Ended) || err.extra.inFlux !== true || state.keys.length > 0) throw err;
+    }
+    this.stretch(state, SETTLE_MS + BOUNDS.s0.ms);
+    this.guard(state);
+    await this.sleep(SETTLE_MS);
+    this.lap(state, "settle");
+    return this.stableRead(state, "s0");
   }
 
   /** Reads until the test passes or fails, inside the step's (reads, ms) bound. Null when the bound ran out. */
