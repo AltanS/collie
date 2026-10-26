@@ -1,0 +1,14 @@
+                                               ▒▒  ██                  █
+                                                   ██       v18.12.6
+
+                         Tip: With default keybindings, Ctrl+D deletes the character under the
+                         cursor instead of quitting your draft — see /hotkeys for your exit key
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ $ sleep 40
+
+ ⠴ Running… (⎋ to cancel)
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+ π > ◒ Haiku 4.5 > 📁 …g3/05-explore/state/harness/omp/project ▶──5%───────────────────────────────────────┃───────200K─
+╰─                                                                                          ⇧⇥ to change thinking effort

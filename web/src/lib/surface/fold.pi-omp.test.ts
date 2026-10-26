@@ -934,3 +934,36 @@ describe("omp's composer.shape field (18.12.6)", () => {
     expect(read.surface).toEqual({ revision: 1, turn: "idle", modal: "none", composer: "draft" });
   });
 });
+
+// omp 18.6.1 and 18.12.6 (omp-gang three, tester 5, 2026-10-26, W3): a local shell line typed with `!`
+// (`!sleep 25`) runs in omp's own bash block, `$ sleep 25` and `⠋ Running… (⎋ to cancel)` between two rules,
+// and no model turn is on. The profile's running rows knew only `Working…`, so the Surface read the turn idle
+// and the phone's Stop was refused `turn_idle` for a command that only Escape ends. The row says Escape on
+// its face (`⎋ to cancel`), the profile's interrupt key.
+describe("omp's local shell line that is running (18.6.1 and 18.12.6)", () => {
+  const RUNNING = ["omp--v18-6-1-local-bash-running--w120.txt", "omp--v18-12-6-local-bash-running--w120.txt"] as const;
+
+  for (const name of RUNNING) {
+    it(`${name}: the turn reads running, the box empty and no modal`, () => {
+      const rows = fixtureRows(name, SURFACE_FIXTURES_DIR);
+      const read = readScreen(rows, "omp", idleFor("omp"));
+      expect(read.surface).toEqual({ revision: 1, turn: "running", modal: "none", composer: "empty" });
+      expect(runningSign(rows, read.frame!, idleFor("omp")!.runningRows)).toBe(true);
+    });
+
+    it(`${name}: without the Running row the same screen reads idle`, () => {
+      const rows = fixtureRows(name, SURFACE_FIXTURES_DIR).map((row) => (rowText(row).includes("Running…") ? { segments: [] } : row));
+      expect(readScreen(rows, "omp", idleFor("omp")).surface.turn).toBe("idle");
+    });
+  }
+
+  it("the row's pattern is the spinner and the cancel hint, not the word Running alone", () => {
+    const idle = idleFor("omp")!;
+    const sign = (text: string): boolean => idle.runningRows!.some((source) => new RegExp(source, "u").test(text));
+    expect(sign(" ⠋ Running… (⎋ to cancel)")).toBe(true);
+    expect(sign(" ⠴ Running… (⎋ to cancel)  ")).toBe(true);
+    for (const text of [" Running… (⎋ to cancel)", " ⠋ Running tests", " Running… done", "⠋ Running… (⎋ to cancel) and more", " the Running… (⎋ to cancel)"]) {
+      expect(sign(text), text).toBe(false);
+    }
+  });
+});

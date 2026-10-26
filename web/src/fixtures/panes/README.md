@@ -3401,3 +3401,12 @@ Two captures in `fixtures/surface/`, the full 40-row screen as read, the Send Pr
 | --- | --- | --- |
 | `omp--v18-6-1-model-picker-search-probe--w120.txt` | `screen` | `/model` open on 18.6.1, `🔍 > ⌁` in the search row |
 | `omp--v18-12-6-model-picker--w120.txt` | `screen` | `/model` open on 18.12.6, an empty search |
+
+## omp: a local shell line that is running (captured 2026-10-26, omp 18.6.1 and 18.12.6, omp-gang three, tester 5)
+
+Two captures in `fixtures/surface/`, the Surface's and the Stop's tests read them (`web/src/lib/surface/fold.pi-omp.test.ts`, `bridge/surface/stop.test.ts`). A `!` line (`!sleep 25`) runs in omp's own bash block, `$ sleep 25` and `⠋ Running… (⎋ to cancel)` between two rules, with no model turn on and nothing in the journal. `idle.runningRows` knew only the `Working…` rows, so the Surface read the turn idle and Stop was refused `turn_idle`; the row is now a running row, and Escape, which the row names, is the profile's interrupt key. The 18.12.6 capture is cut to its last 14 rows. The 18.6.1 capture is derived from tester 5's `during-local-bash` screen, which was taken after a plain message was sent during the command: the echo of that message (`sent during local bash`) and the lab's `401` notice were cut, because they stand between the Running block and the box and put the row out of the volatile band (`volatile.above.maxRows`, 6). That screen as taken still reads idle on 18.6.1: a row above the band is not seen, and the band is not widened for it.
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `omp--v18-6-1-local-bash-running--w120.txt` | `running` | 18.6.1, the Running block over the empty box (derived, see above) |
+| `omp--v18-12-6-local-bash-running--w120.txt` | `running` | 18.12.6, `$ sleep 40` and its Running row over the empty box |
