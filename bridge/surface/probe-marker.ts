@@ -19,7 +19,7 @@ import type { ProfileMatch } from "../../web/src/lib/surface/profile.ts";
 export const PROBE_MARKER = "⌁";
 
 /** The probe character a send or a Clear types on this profile: its own, else {@link PROBE_MARKER}. */
-export function probeCharOf(match: ProfileMatch | null): string {
+export function probeCharOf(match: Pick<ProfileMatch, "profile"> | null): string {
   const own = match?.profile.probe.char;
   return own === undefined || own === "" ? PROBE_MARKER : own;
 }

@@ -52,6 +52,17 @@ class OmpPane {
   floor = "";
   /** Called after each text that reaches the pane (not the buffer): the multiplexer may name the agent then. */
   onText: ((text: string) => void) | null = null;
+  /** Called before each read of the screen, with its count: a test makes the pane move between two reads. */
+  onRead: ((n: number) => void) | null = null;
+  /**
+   * While deaf, the terminal echoes what is typed on the first row (the tty's echo before the agent puts it
+   * in raw mode): the character shows on screen, but not in the box. The wake-up redraws over it.
+   */
+  echo = false;
+  /** Rows the box row shows under it while the box holds this text (a row that moves with a probe). */
+  below: ((box: string) => readonly string[]) | null = null;
+  private reads = 0;
+  private echoed = "";
   private buffered: Array<{ readonly text: string } | { readonly key: string }> = [];
   private head: string[] = [];
   private tail: string[] = [];
@@ -76,6 +87,7 @@ class OmpPane {
   /** The terminal hands omp what it buffered, in order. */
   wake(): void {
     this.deaf = false;
+    this.echoed = "";
     const queued = this.buffered;
     this.buffered = [];
     for (const item of queued) {
@@ -87,17 +99,20 @@ class OmpPane {
   private render(): string {
     const lead = this.box === "" ? "╰─" : `╰─ ${this.box}`;
     const row = this.hint === "" ? lead : `${lead.padEnd(Math.max(this.hintAt, lead.length + 2))}${this.hint}`;
-    return [...this.head, row, ...this.tail].join("\n");
+    const head = this.echoed === "" ? this.head : [this.echoed, ...this.head.slice(1)];
+    return [...head, row, ...(this.below?.(this.box) ?? []), ...this.tail].join("\n");
   }
 
   readGrid = (paneId: string, request: MuxGridRequest): Promise<MuxOutcome<MuxGrid>> => {
     void request;
+    this.onRead?.(++this.reads);
     return Promise.resolve(muxOk({ paneId, text: this.render(), truncated: false, revision: 0 }));
   };
 
   typeText = (paneId: string, text: string): Promise<MuxAck> => {
     void paneId;
     this.calls.push(`type:${text}`);
+    if (this.deaf && this.echo) this.echoed += text;
     if (this.deaf) this.buffered.push({ text });
     else {
       this.box += text;
@@ -160,14 +175,16 @@ function rig(pane: OmpPane, options: { harness?: string; generation?: { now: str
     starting: (paneId, named) => window.starting("main", paneId, named),
     framed: (paneId, harness) => window.framed("main", paneId, harness),
     deaf: (paneId, harness) => window.deaf("main", paneId, harness),
+    pending: (paneId) => window.pending("main", paneId),
     now,
     sleep: (ms: number) => {
       clock.now += ms;
       return Promise.resolve();
     },
   });
-  const harness = options.harness ?? "omp";
-  const send = (text: string, over: Partial<SendRequest> = {}): Promise<SendAnswer> =>
+  const named = options.harness ?? "omp";
+  /** `harness` is what the multiplexer names the pane when this send comes (the route reads it per send). */
+  const send = (text: string, over: Partial<SendRequest> = {}, harness = named): Promise<SendAnswer> =>
     protocol.handle({ id: `req-deaf-${String(++ids).padStart(6, "0")}`, text, mode: "send", ...over }, { session: "main", paneId: "%1", harness });
   return { send, clock, window, generation, protocol, store, holds: holds! };
 }
@@ -300,17 +317,20 @@ describe("a drawn box that reads no keys yet, while omp is starting (headline 1)
     expect(window.expecting("main", "%1")).toBeNull();
   });
 
-  test("two sends in the deaf window (row m2): two pending, `⌁⌁` after the wake-up, both taken out by the next send", async () => {
+  test("two sends in the deaf window (row m2): the second types no probe, one `⌁` after the wake-up, taken out by the next send", async () => {
     const pane = new OmpPane(OMP_UP);
     pane.deaf = true;
     const { send, window, clock } = launched(pane);
     expect((await send("m2 at3s")).receipt?.detail?.startsWith(STARTING)).toBe(true);
     clock.now += 7_000;
-    expect((await send("m2 at10s")).receipt?.detail?.startsWith(STARTING)).toBe(true);
-    expect(window.pending("main", "%1")).toBe(2);
-    expect(pane.keysSeen).toEqual([]);
+    // At most one of Collie's probe characters unaccounted for per pane (live check W2, 2026-10-26).
+    const second = await send("m2 at10s");
+    expect(second.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed", keys: [] });
+    expect(second.receipt?.detail?.startsWith(STARTING)).toBe(true);
+    expect(window.pending("main", "%1")).toBe(1);
+    expect(pane.calls).toEqual([`type:${P}`]);
     pane.wake();
-    expect(pane.box).toBe(`${P}${P}`);
+    expect(pane.box).toBe(P);
     const answer = await send("m2 at24s");
     expect(answer.receipt?.outcome).toBe("sent");
     expect(pane.submitted).toEqual(["m2 at24s"]);
@@ -499,5 +519,190 @@ describe("a held send on a starting pane meets the multiplexer naming the agent 
     await held.tick();
     expect(held.store.get(held.id)?.receipt).toMatchObject({ outcome: "refused", reason: "pane_gone" });
     expect(pane.submitted).toEqual([]);
+  });
+});
+
+// The live checks of 1.24.1 on the dev lane (2026-10-26): omp 18.6.1 started by hand in a shell pane, a
+// stub model, sends at +0.3 s and +0.7 s after `omp` was typed, 14 runs. The report's W1 to W4, each
+// from its log's own timing (live-1.24.1/captures: c8u-residue-18.6.1-u*, c8t-residue-18.6.1-t3,
+// c8h-residue-18.6.1, c78-early-stub-18.6.1).
+describe("the live checks of 1.24.1: sends while omp 18.6.1 starts (W1 to W4)", () => {
+  const PENDING = "Nothing was typed: Collie's earlier probe character";
+  const BEHIND = "Earlier messages wait for this pane. Collie sends this after them.";
+
+  /** What the poll's Surface reads of the fake pane: idle, no dialog, and the box empty or a draft. */
+  const surfaceOf = (pane: OmpPane): Surface => ({ revision: 1, turn: "idle", modal: "none", composer: pane.box === "" ? "empty" : "draft" });
+
+  /** A shell pane where omp is starting (the window's `process` source, as the foreground read finds it), with holds. */
+  function handStarted(pane: OmpPane) {
+    const wired = launched(pane, true);
+    const tick = (): Promise<(SendAnswer | null)[]> =>
+      Promise.all(wired.protocol.tickHolds("main", () => surfaceOf(pane), () => pane.box));
+    return { ...wired, tick };
+  }
+
+  /** The pane moves between S0's two reads: on read `at` (counted from now) `change` runs. */
+  function between(pane: OmpPane, at: number, change: () => void): void {
+    let first: number | null = null;
+    pane.onRead = (n) => {
+      first ??= n;
+      if (n - first + 1 === at) change();
+    };
+  }
+
+  test("W1 (8 of 14): a send held behind Collie's own `⌁` takes it out on release and goes; the one behind it follows", async () => {
+    const pane = new OmpPane(OMP_UP);
+    pane.deaf = true;
+    const r = handStarted(pane);
+    // U-A at +0.3 s: the box is drawn and deaf. Refused, its probe pending.
+    const a = await r.send("U-A at 300ms");
+    expect(a.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed", keys: ["probe"] });
+    expect(a.receipt?.detail?.startsWith(STARTING)).toBe(true);
+    // U-B at +0.7 s: omp wakes between S0's two reads and shows the buffered `⌁`. Held, nothing typed.
+    r.clock.now += 400;
+    between(pane, 2, () => pane.wake());
+    const b = await r.send("U-B at 700ms");
+    pane.onRead = null;
+    expect(b.receipt).toMatchObject({ outcome: "held", keys: [] });
+    expect(pane.box).toBe(P);
+    // Herdr names omp; U-C at +10 s joins the queue behind U-B.
+    r.generation.now = "omp:-";
+    r.clock.now += 9_300;
+    const c = await r.send("U-C at 10s after residue", {}, "omp");
+    expect(c.receipt?.outcome).toBe("held");
+    expect(c.detail).toBe(BEHIND);
+    // The poll reads `╰─ ⌁`: Collie's residue, not a draft. U-B goes on that poll, the `⌁` taken out first.
+    const [released] = await r.tick();
+    expect(released?.receipt).toMatchObject({ requestId: b.receipt!.requestId, outcome: "sent" });
+    expect(pane.submitted).toEqual(["U-B at 700ms"]);
+    expect(pane.box).toBe("");
+    expect(r.window.pending("main", "%1")).toBe(0);
+    // U-C after it, on the quiet rule that follows a release (a turn may yet draw).
+    for (let i = 0; i < 6 && pane.submitted.length < 2; i++) {
+      r.clock.now += 2_500;
+      await r.tick();
+    }
+    expect(pane.submitted).toEqual(["U-B at 700ms", "U-C at 10s after residue"]);
+    expect(r.holds.list().filter((entry) => entry.state !== "ended")).toEqual([]);
+  });
+
+  test("W1: the hold's cause never says draft for a box that holds only Collie's `⌁`", async () => {
+    const pane = new OmpPane(OMP_UP);
+    pane.deaf = true;
+    const r = handStarted(pane);
+    await r.send("U-A at 300ms");
+    r.clock.now += 400;
+    between(pane, 2, () => pane.wake());
+    const b = await r.send("U-B at 700ms");
+    pane.onRead = null;
+    r.generation.now = "omp:-";
+    // Another send holds the pane's lock, so this poll cannot release U-B: it only writes the cause.
+    const lock = r.protocol["deps"].locks;
+    lock.acquire("main\u0000%1", "someone-else", r.clock.now + 60_000, r.clock.now);
+    await r.tick();
+    expect(r.holds.get(b.receipt!.requestId)?.cause).not.toBe("draft_present");
+    lock.release("main\u0000%1", "someone-else");
+  });
+
+  test("W2 (run t3): a probe that shows outside the box, then a second send: one `⌁` at most", async () => {
+    const pane = new OmpPane(OMP_UP);
+    pane.deaf = true;
+    // The tty still echoes: the `⌁` shows on the screen, but not in the box.
+    pane.echo = true;
+    const r = handStarted(pane);
+    const a = await r.send("T-A at 300ms");
+    expect(a.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed", keys: ["probe"] });
+    expect(r.window.pending("main", "%1")).toBe(1);
+    r.clock.now += 400;
+    const b = await r.send("T-B at 700ms");
+    expect(b.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed", keys: [] });
+    expect(b.receipt?.detail?.startsWith(STARTING)).toBe(true);
+    expect(b.receipt?.detail).toContain(PENDING);
+    expect(pane.calls).toEqual([`type:${P}`]);
+    // At +10 s omp shows the one `⌁`, never `⌁⌁`; the next send takes it out and goes.
+    pane.wake();
+    expect(pane.box).toBe(P);
+    r.clock.now += 9_300;
+    const c = await r.send("T-C at 10s", {}, "omp");
+    expect(c.receipt?.outcome).toBe("sent");
+    expect(pane.submitted).toEqual(["T-C at 10s"]);
+  });
+
+  test("W2: a held send released into a box that is still deaf goes back to its place, and goes once the `⌁` shows", async () => {
+    const pane = new OmpPane(OMP_UP);
+    pane.deaf = true;
+    const r = handStarted(pane);
+    // H-A at +0.3 s: a box that moves between S0's two reads holds it.
+    between(pane, 2, () => {
+      pane.box = "x";
+    });
+    const a = await r.send("H-A at 300ms");
+    pane.onRead = null;
+    pane.box = "";
+    expect(a.receipt).toMatchObject({ outcome: "held", keys: [] });
+    const id = a.receipt!.requestId;
+    // The first free poll releases it, and its probe meets the deaf box: back in its place, the try not counted.
+    const [first] = await r.tick();
+    expect(first?.receipt).toMatchObject({ outcome: "held", keys: ["probe"] });
+    expect(r.holds.get(id)).toMatchObject({ state: "held", tries: 0 });
+    expect(r.window.pending("main", "%1")).toBe(1);
+    // While that `⌁` has not shown, a poll that reads the box empty sends nothing.
+    r.clock.now += 1_500;
+    expect(await r.tick()).toEqual([]);
+    expect(pane.calls).toEqual([`type:${P}`]);
+    // omp wakes and shows it: the next poll releases H-A, which takes it out and goes, once.
+    pane.wake();
+    r.clock.now += 1_500;
+    const [second] = await r.tick();
+    expect(second?.receipt).toMatchObject({ requestId: id, outcome: "sent" });
+    expect(pane.submitted).toEqual(["H-A at 300ms"]);
+    expect(pane.box).toBe("");
+  });
+
+  test("W3 (runs t2, c8h): a held send whose cause cleared goes on the first free poll, whatever an earlier read said", async () => {
+    const pane = new OmpPane(OMP_UP);
+    const r = handStarted(pane);
+    between(pane, 2, () => {
+      pane.box = "x";
+    });
+    const a = await r.send("H-A at 300ms");
+    pane.onRead = null;
+    expect(a.receipt?.outcome).toBe("held");
+    const id = a.receipt!.requestId;
+    // A poll while someone's keys stood in the box: the cause says draft.
+    r.generation.now = "omp:-";
+    expect(await r.tick()).toEqual([]);
+    expect(r.holds.get(id)?.cause).toBe("draft_present");
+    // At +10 s the box is empty and the turn idle: that poll sends it.
+    pane.box = "";
+    r.clock.now += 9_300;
+    const [released] = await r.tick();
+    expect(released?.receipt).toMatchObject({ requestId: id, outcome: "sent" });
+    expect(pane.submitted).toEqual(["H-A at 300ms"]);
+  });
+
+  test("W4 (run c78s): two plain sends to a starting pane go out in the order they were sent", async () => {
+    const pane = new OmpPane(OMP_UP);
+    const r = handStarted(pane);
+    // early-1 at +0.3 s: held (the box moved between S0's two reads).
+    between(pane, 2, () => {
+      pane.box = "x";
+    });
+    const one = await r.send("early-1 at 300ms");
+    pane.onRead = null;
+    pane.box = "";
+    expect(one.receipt?.outcome).toBe("held");
+    // early-2 at +0.7 s on the same pane, which Herdr still names a shell: it joins behind early-1.
+    r.clock.now += 400;
+    const two = await r.send("early-2 at 700ms");
+    expect(two.receipt).toMatchObject({ outcome: "held", keys: [], profileId: "omp" });
+    expect(two.detail).toBe(BEHIND);
+    expect(pane.submitted).toEqual([]);
+    r.generation.now = "omp:-";
+    for (let i = 0; i < 8 && pane.submitted.length < 2; i++) {
+      await r.tick();
+      r.clock.now += 2_500;
+    }
+    expect(pane.submitted).toEqual(["early-1 at 300ms", "early-2 at 700ms"]);
   });
 });

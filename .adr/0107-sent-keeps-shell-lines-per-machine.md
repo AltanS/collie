@@ -121,6 +121,19 @@ Discard and Clear take out exactly those characters, one Backspace each, and go 
 the box empty, or stop with a refusal that says so. A probe character beside any other text is never
 taken out.
 
+**At most one probe character unaccounted for per pane** (live checks of 1.24.1, W2, 2026-10-26). On omp
+18.6.1 a send at +0.3 s and one at +0.7 s each typed a probe into a box that did not read keys yet, and
+the box later showed `⌁⌁`. A probe typed into the box of a harness that is starting, with no Backspace
+after it, now counts as pending in the window (`LaunchWindow.pending`): the deaf box, a probe that showed
+outside the box (the tty's echo), and a probe a stale-screen read never found. While one is pending, a
+send, a command, Add to it and Replace type no probe. A new request is refused `probe_failed` before any
+key, with the window's words and "Nothing was typed: Collie's earlier probe character has not shown in
+the box yet". A starting pane refuses a new send; it does not hold it. A send already held waits: the
+hold queue does not release while the character has not shown, and a release that meets the box still
+starting goes back to its place without spending a try. Once the character shows, the residue rule
+takes it out and the send goes. The count ends with the window: the first probe that shows, the 120 s
+bound, or the harness leaving. A character that never shows keeps sends refused until then.
+
 **The multiplexer naming the agent mid-send is not another program.** A send reads the pane with a
 profile, from the pane itself or from the window. When the pane's generation then moves to an agent that
 profile names, for example shell to omp or a session id that resolves, the send goes on. Any other move

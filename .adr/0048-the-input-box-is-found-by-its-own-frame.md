@@ -210,6 +210,41 @@ Trail: `bridge/surface/protocol.ts` (`settledS0`, `inFlux`, `shapeOf`, `probeCle
 at a box that is not free is held") · fixtures `omp--v18-12-6-idle-w200.txt`, `omp--v18-12-6-idle-w60.txt`,
 `omp--v18-12-6-stale-row-over-live-draft.txt`.
 
+## Addendum, 2026-10-26: the hold queue reads Collie's residue as an empty box, and plain sends keep their order
+
+The live checks of 1.24.1 on the dev lane, omp 18.6.1 started by hand in a shell pane, a stub model,
+sends at +0.3 s and +0.7 s, 14 runs (findings W1, W3 and W4). The addendum above put the hold rules here;
+these follow them.
+
+1. **Collie's residue is never a draft, in the hold queue too (W1, 8 of 14).** A send at +0.3 s left its
+   probe `⌁` in a box that did not read keys yet. A send at +0.7 s was held, the poll then read `╰─ ⌁` as
+   a draft, wrote the cause `draft_present`, and never released it; every later send joined behind it,
+   for up to 30 minutes. A direct send already took the residue out (ADR 0107's addendum). Now
+   `tickHolds` gets the poll's box text (`boxOf`) and reads an idle box whose whole text is the held
+   send's probe character as an empty box: no draft cause is written, and the first free poll releases
+   it. The release's run proves the box, takes out one character per marker, and goes on from a read
+   that shows the box empty, before any key of the send.
+2. **A held send whose cause cleared goes on the first free poll (W3, 2 of 14).** A pane's watch outlived
+   the requests it watched: a release that went out, or a cancel, left it behind, and the next box hold
+   on that pane inherited `cleared: false` from the release and waited for the quiet rule (five free
+   polls over ten seconds, more when a poll read the box between). A pane's first held request now
+   starts its watch afresh, and the poll drops the watch of a pane with no held request. A free read
+   also rewrites a stale `draft_present` cause on a request no draft holds to `not_free`. A walky talky
+   send held over a person's draft keeps its own rule.
+3. **Plain sends to one pane go first in, first out (W4, 1 of 14).** `early-1` at +0.3 s was held,
+   `early-2` at +0.7 s went out directly, and the journal had 2 before 1. The pane was still named a
+   shell, so it had no profile of its own, and the join to the queue needs one. A plain send (`mode:
+   send`) to such a pane that holds an earlier plain send now joins behind it with the profile that send
+   was held with, and its receipt says "Earlier messages wait for this pane".
+
+The note above stands for every other mode: a Replace, an Add to it, a Submit, a steer and a command on
+a pane with no profile of its own still do not join, and ordering them is deferred (it would need a
+reason such as `superseded`).
+
+Trail: `bridge/surface/protocol.ts` (`tickHolds` with `boxOf`, `hold`, `heldPlainProfile`) ·
+`bridge/index.ts` (the poll passes `surface.boxOf`) · `bridge/surface/protocol.deaf-box.test.ts` ("the
+live checks of 1.24.1") · `protocol.test.ts` ("live check W3").
+
 ## Addendum, 2026-10-26: a command's Enter waits for two reads that agree
 
 Omp gang three, tester 5 (W1), omp 18.6.1. A command-mode send of a path-like text (`/tmp/x`,
