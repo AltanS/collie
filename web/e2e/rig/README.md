@@ -22,8 +22,9 @@ The leg is a gate. It runs in three places:
 
 One solo run costs about 11 minutes and about 17 Claude Haiku turns on the subscription. pi and omp
 replay recorded model streams ("Replay" below), so a solo run on recordings sends nothing to
-OpenRouter. A run on a new pi or omp version runs that harness live once and records it: about 11 pi
-turns and 9 omp turns on OpenRouter Haiku 4.5 (a few cents). The crew leg adds about 4 minutes, 6 Claude turns
+OpenRouter. A run on a new pi or omp version runs that harness live once and records it: the first
+recording run (2026-10-26, pi 1.3.0, omp 18.6.1) sent 44 requests to OpenRouter Haiku 4.5, 21 for pi and
+23 for omp (a few cents). The crew leg adds about 4 minutes, 6 Claude turns
 and 4 pi turns, and the nightly run does both. The turn cap is 20 per harness. "Cost of one run" below
 has the detail.
 
