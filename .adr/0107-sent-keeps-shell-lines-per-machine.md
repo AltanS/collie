@@ -121,6 +121,12 @@ Discard and Clear take out exactly those characters, one Backspace each, and go 
 the box empty, or stop with a refusal that says so. A probe character beside any other text is never
 taken out.
 
+**The multiplexer naming the agent mid-send is not another program.** A send reads the pane with a
+profile, from the pane itself or from the window. When the pane's generation then moves to an agent that
+profile names, for example shell to omp or a session id that resolves, the send goes on. Any other move
+still ends it `changed` (after the text) or `pane_gone` (before it): another harness, a shell again, the
+pane gone, or a pane with no profile.
+
 **What stays on the blind road.** For about the first second after a person types the agent's command
 into a shell, the shell itself is still the pane's foreground process, so a send then is a blind send to
 a shell (gang three, rows u and u2: +0.2 to +0.8 s): there is no evidence yet that a harness is starting,

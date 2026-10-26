@@ -103,6 +103,11 @@
 // from a read that shows the box empty; a box that does not empty ends `probe_failed`. A probe character
 // beside any other text is never taken out.
 //
+// The pane's generation (its agent and session id) may move under a send: the multiplexer names the
+// agent a launch window read a moment ago, or the agent's session id resolves. A move whose agent is the
+// harness of the send's own profile is the same program, and the send goes on; any other move (another
+// harness, a shell again, the pane gone, a pane with no profile) ends it as before (checkGeneration).
+//
 // A manual send (the screen takes the two-tap Send: no frame found, an unreadable overlay, a weak cue)
 // compares less than a free one: the rows under the box (hints, footers, status rows) and the rest
 // of the box may change while the probe and the text go in, as a `command` lets them. The rows
@@ -2092,6 +2097,11 @@ interface RunState {
   starting: boolean;
   /** The pane has a profile of its own: a dialog the profile lifts keeps its own path in the window. */
   startingNamed: boolean;
+  /**
+   * The pane's generation this run holds to: the accepted one, or the one a move that only named the
+   * send's own harness brought ({@link SendProtocol.checkGeneration}).
+   */
+  generation: string;
   /** The text is a command: sent as one, or a draft that starts with a reserved lead (Submit and Discard of a command). */
   command: boolean;
   /** The text went, or a draft stands, as ONE paste ({@link wholePaste}); null for the write per line. */
@@ -2206,6 +2216,12 @@ const MISSING_POLLS = 3;
 function agentOfGeneration(generation: string): string {
   const at = generation.indexOf(":");
   return at < 0 ? generation : generation.slice(0, at);
+}
+
+/** Whether the multiplexer's agent name `agent` is the harness of this profile: its id, or a name the profile lists. */
+function namesProfile(match: ProfileMatch | null, agent: string): boolean {
+  if (match === null || agent === "") return false;
+  return agent === match.profile.id || (match.profile.identity.agentNames ?? []).includes(agent);
 }
 
 type Verdict = "pass" | "wait" | "fail";
@@ -3008,6 +3024,7 @@ export class SendProtocol {
       blind: false,
       starting: false,
       startingNamed: false,
+      generation: record.paneGeneration,
       command: request.mode === "command",
       whole: null,
       noticeKey: false,
@@ -3229,7 +3246,7 @@ export class SendProtocol {
         id: state.record.id,
         session: state.target.session,
         paneId: state.target.paneId,
-        generation: state.record.paneGeneration,
+        generation: state.generation,
         text: state.request.text,
         collapse: state.match?.profile.collapse.pattern ?? null,
         at: this.now(),
@@ -3957,9 +3974,19 @@ export class SendProtocol {
     return true;
   }
 
+  /**
+   * The pane still holds the program the send reads it as. A move that only names the harness whose
+   * profile the send reads with (the multiplexer naming the agent a launch window read, a session id
+   * that resolves) is that same program, and the send goes on from it. Any other move ends it: another
+   * harness, a shell again, the pane gone, or a pane with no profile to name (gang three, 2026-10-26).
+   */
   private checkGeneration(state: RunState, outcome: "refused" | "typed_not_submitted"): void {
     const now = this.deps.generation(state.target.paneId);
-    if (now === state.record.paneGeneration) return;
+    if (now === state.generation) return;
+    if (now !== null && namesProfile(state.match, agentOfGeneration(now))) {
+      state.generation = now;
+      return;
+    }
     throw new Ended(outcome, outcome === "refused" ? "pane_gone" : "changed", { detail: "The pane holds another program now." });
   }
 

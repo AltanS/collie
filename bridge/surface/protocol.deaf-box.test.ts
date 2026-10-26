@@ -36,6 +36,7 @@ const ONE_PROBE = fx("omp--deaf-box-one-probe--v18.12.6.txt");
 
 const P = PROBE_MARKER;
 const STARTING = "The omp input box does not take keys yet; it may still be starting.";
+const OTHER_PROGRAM = "The pane holds another program now.";
 
 /** An omp screen whose box row holds `box`. A deaf pane buffers every text and key until `wake`. */
 class OmpPane {
@@ -346,5 +347,68 @@ describe("a drawn box that reads no keys yet, while omp is starting (headline 1)
     expect(pane.submitted).toEqual(["hello"]);
     expect(window.expecting("main", "%1")).toBeNull();
     expect(window.pending("main", "%1")).toBe(0);
+  });
+});
+
+describe("a send that straddles the moment the multiplexer names the agent (headline 2)", () => {
+  test("shell to omp after the text went in (rows a1, a9, d2 on 18.6.1): the send goes on and Enters once", async () => {
+    const pane = new OmpPane(OMP_UP);
+    const wired = launched(pane);
+    pane.onText = (text) => {
+      if (text !== P) wired.generation.now = "omp:-";
+    };
+    const answer = await wired.send("a1861-at1s zq");
+    expect(answer.receipt).toMatchObject({ outcome: "sent", profileId: "omp" });
+    expect(pane.submitted).toEqual(["a1861-at1s zq"]);
+    expect(pane.box).toBe("");
+  });
+
+  test("shell to omp before S0: the send is not refused `pane_gone`", async () => {
+    const pane = new OmpPane(OMP_UP);
+    const wired = launched(pane);
+    pane.onText = null;
+    wired.generation.now = "shell:-";
+    const first = wired.send("before s0");
+    wired.generation.now = "omp:-";
+    const answer = await first;
+    expect(answer.receipt?.outcome).toBe("sent");
+    expect(pane.submitted).toEqual(["before s0"]);
+  });
+
+  test("omp's session id resolving mid-send is the same program", async () => {
+    const pane = new OmpPane(OMP_UP);
+    const wired = rig(pane, { generation: { now: "omp:-" } });
+    pane.onText = (text) => {
+      if (text !== P) wired.generation.now = "omp:019a-session";
+    };
+    expect((await wired.send("resolves")).receipt?.outcome).toBe("sent");
+    expect(pane.submitted).toEqual(["resolves"]);
+  });
+
+  for (const [what, next] of [
+    ["another harness", "claude:-"],
+    ["a shell again", "shell:-"],
+    ["the pane gone", null],
+  ] as const) {
+    test(`a real program change still ends \`changed\`: ${what}`, async () => {
+      const pane = new OmpPane(OMP_UP);
+      const wired = rig(pane, { generation: { now: "omp:-" } });
+      pane.onText = (text) => {
+        if (text !== P) wired.generation.now = next;
+      };
+      const answer = await wired.send("must not go");
+      expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "changed", detail: OTHER_PROGRAM });
+      expect(pane.submitted).toEqual([]);
+    });
+  }
+
+  test("a pane with no profile to name keeps the strict check: shell to omp under a blind send is refused", async () => {
+    const pane = new OmpPane(OMP_UP);
+    const wired = rig(pane, { harness: "shell", generation: { now: "shell:-" } });
+    const first = wired.send("ls -la");
+    wired.generation.now = "omp:-";
+    const answer = await first;
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "pane_gone" });
+    expect(pane.calls).toEqual([]);
   });
 });
