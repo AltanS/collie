@@ -679,6 +679,9 @@ describe("omp's typeahead popups under the box read as a draft (18.6.1, omp-gang
     // and of the one-row popup under a partial path.
     ["omp--v18-12-6-emoji-popup--w120.txt", "hello :smi"],
     ["omp--v18-6-1-emoji-popup--w120.txt", "hello :smi"],
+    // omp-gang three (2026-10-26): a text ending in a bare `#` draws omp's seven-row editor-action list.
+    ["omp--v18-12-6-hash-end-actions--w120.txt", "ends with hash #"],
+    ["omp--v18-6-1-hash-end-actions--w120.txt", "ends with hash #"],
     ["omp--v18-12-6-path-popup-partial--w120.txt", "~/.cache/collie-lab/omp-gang/gang3/04-readers/state/harness/omp/project/src/ma"],
   ];
 
@@ -728,12 +731,52 @@ describe("omp's typeahead popups under the box read as a draft (18.6.1, omp-gang
     expect(read.surface.modal).toBe("unreadable");
   });
 
+  it("the editor-action list stands under a box only while the text ends in a bare `#`: seven rows are a popup of that word and nothing else", () => {
+    const name = "omp--v18-6-1-hash-end-actions--w120.txt";
+    const texts = fixtureRows(name).map((row) => rowText(row));
+    const typed = (text: string): string => texts.map((row) => (row.startsWith("╰─") ? `╰─ ${text}` : row)).join("\n");
+    const open = readScreen(rowsOf(typed("ends with hash #")), agentOf("omp"), idleFor("omp"));
+    expect(open.surface).toEqual({ revision: 1, turn: "idle", modal: "none", composer: "draft" });
+    expect(open.cues?.strength).toBe("none");
+    for (const text of ["ends with a word", "ends with hash # and more"]) {
+      const closed = readScreen(rowsOf(typed(text)), agentOf("omp"), idleFor("omp"));
+      expect(closed.surface.modal, text).not.toBe("none");
+    }
+  });
+
   it("a dialog drawn under the box is not a popup: the same box over a permission row stays a modal", () => {
     const name = "omp--v18-6-1-hash-popup--w120.txt";
     const rows = fixtureRows(name);
     const dialog = [...rows, ...rowsOf("  Allow tool: bash\n  ❯ Approve\n    Deny")];
     const read = readScreen(dialog, agentOf("omp"), idleFor("omp"));
     expect(read.surface.modal).not.toBe("none");
+  });
+});
+
+// omp-gang three, 01-regression W1 (2026-10-26), omp 18.6.1 and 18.12.6: a draft that holds a pasted box drawing
+// (`│ ❯ Approve   │`). omp's box has no right border here, but the profile cut a trailing `│` or `╯` off every
+// row, so the read text lacked the glyphs that closed the quoted rows. A glyph with padding after it is the
+// person's text; a glyph at the row's last cell is the box's own border (the nerd-box captures at 80 columns).
+describe("a pasted box drawing in the draft keeps the glyphs that close its rows (omp-gang three W1)", () => {
+  const NAMES = ["omp--v18-6-1-quoted-box-draft--w120.txt", "omp--v18-12-6-quoted-box-draft--w120.txt"];
+  const TYPED = "Here is what omp showed me: ╭─ Allow tool: bash ───────────╮ │ ❯ Approve                    │ │   Deny                       │ ╰──────────────────────────────╯ why did it ask?";
+  const read = (name: string, rows?: StyledLine[]) => readScreen(rows ?? fixtureRows(name, SURFACE_FIXTURES_DIR), agentOf("omp"), idleFor("omp"));
+
+  it.each(NAMES)("%s: the box text is the typed text, to the last glyph, and the screen reads a draft", (name) => {
+    const r = read(name);
+    expect(r.frame?.interior.text).toBe(TYPED);
+    expect(r.surface).toEqual({ revision: 1, turn: "idle", modal: "none", composer: "draft" });
+    expect(r.cues?.strength).toBe("none");
+  });
+
+  it("a read that cut the trailing spaces cannot tell a border from the person's glyph, and cuts it as before", () => {
+    const rows = rowsOf(fixtureRows(NAMES[0]!, SURFACE_FIXTURES_DIR).map((row) => rowText(row).trimEnd()).join("\n"));
+    expect(read(NAMES[0]!, rows).frame?.interior.text).toBe("Here is what omp showed me: ╭─ Allow tool: bash ───────────╮ │ ❯ Approve │   Deny ╰───────────────────────────── why did it ask?");
+  });
+
+  it("the box's own right border at the last cell is still no part of the draft (omp's nerd box at 80 columns)", () => {
+    const r = readScreen(fixtureRows("omp--v18-11-nerd-box-two-lines--w80.txt"), agentOf("omp"), idleFor("omp"));
+    expect(r.frame?.interior.text).toBe("First line of a two-line draft. Second line of the same draft.");
   });
 });
 

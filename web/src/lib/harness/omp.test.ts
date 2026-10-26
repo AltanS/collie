@@ -202,7 +202,7 @@ const PATH_POPUP = [
 // omp 18.6.1 (omp-gang tester 12, 2026-10-25): the `@` file popup and the `#` issue and pull request popup
 // under the box, and the `#` rows left under an emptied box. All are composers.
 // The eight-row emoji popup is as tall as a palette: the composer is ready, and no region can bind.
-const EMOJI_POPUP = ["omp--v18-12-6-emoji-popup--w120.txt", "omp--v18-6-1-emoji-popup--w120.txt"];
+const EMOJI_POPUP = ["omp--v18-12-6-emoji-popup--w120.txt", "omp--v18-6-1-emoji-popup--w120.txt", "omp--v18-12-6-hash-end-actions--w120.txt", "omp--v18-6-1-hash-end-actions--w120.txt"];
 const TYPEAHEAD_POPUP = [
   "omp--v18-6-1-at-popup--w120.txt",
   "omp--v18-6-1-at-popup-path--w120.txt",
@@ -211,6 +211,9 @@ const TYPEAHEAD_POPUP = [
   "omp--v18-6-1-hash-popup-stale--w120.txt",
   "omp--v18-12-6-emoji-popup--w120.txt",
   "omp--v18-6-1-emoji-popup--w120.txt",
+  // omp-gang three, 2026-10-26: the seven-row editor-action list a trailing bare `#` opens.
+  "omp--v18-12-6-hash-end-actions--w120.txt",
+  "omp--v18-6-1-hash-end-actions--w120.txt",
   "omp--v18-12-6-path-popup-partial--w120.txt",
   "omp--v18-6-1-at-popup-stale--w120.txt",
   "omp--v18-12-6-at-popup-two-files--w120.txt",
@@ -560,6 +563,7 @@ describe("the omp corpus", () => {
     "omp--v18-12-6-composer-field-two-lines--w130.txt",
     "omp--v18-12-6-draft-url-wrapped--w80.txt",
     "omp--v18-12-6-emoji-popup--w120.txt",
+    "omp--v18-12-6-hash-end-actions--w120.txt",
     "omp--v18-12-6-image-chip--w120.txt",
     "omp--v18-12-6-path-popup--w120.txt",
     "omp--v18-12-6-path-popup-partial--w120.txt",
@@ -652,6 +656,7 @@ describe("the omp corpus", () => {
     "omp--v18-6-1-at-popup-stale--w120.txt",
     "omp--v18-6-1-draft-cjk-wrapped--w80.txt",
     "omp--v18-6-1-emoji-popup--w120.txt",
+    "omp--v18-6-1-hash-end-actions--w120.txt",
     "omp--v18-6-1-hash-popup--w120.txt",
     "omp--v18-6-1-hash-popup-single--w120.txt",
     "omp--v18-6-1-hash-popup-stale--w120.txt",

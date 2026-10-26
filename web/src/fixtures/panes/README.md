@@ -3229,6 +3229,28 @@ rig's own scratch folder, and no secret was present.
 | `omp--v18-6-1-status-row-palette-4.txt` | `popup` | 18.6.1, the same four-row list and status row |
 | `omp--v18-12-6-status-row-palette-10.txt` | `popup` | 18.12.6, `/w` typed: ten list rows with a scrollbar column, the pointer on `wx`, the status row under the list |
 
+Gang three, 01-regression (captured 2026-10-26, omp 18.6.1 and 18.12.6, 120 columns; the status row's folder names the lab only): the same
+four-row `/wx` list over an extension's widget. A widget row is drawn with ONE leading space, so `commandList.footer` (`^ ?\S`, at most
+`idle.frame.maxWidgetRows` + 1 rows) takes it as it takes a flush-left status row. Before, the footer was `^\S` and four rows, and these read as a dialog.
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `omp--v18-6-1-palette-widget-below-6.txt`, `omp--v18-12-6-palette-widget-below-6.txt` | `popup` | `/wx` typed over `/wb 6`: the list, then six widget rows (` below row 1` to ` below row 6`) |
+| `omp--v18-6-1-palette-widget-and-status.txt`, `omp--v18-12-6-palette-widget-and-status.txt` | `popup` | The same, and the flush-left status row `PLAN 3/6` under the widget |
+| `omp--v18-6-1-palette-tick-below.txt`, `omp--v18-12-6-palette-tick-below.txt` | `popup` | `/wx` typed over `/tfb`: the list, then one ticking widget row |
+
+A pasted box drawing in the draft (gang three, 01-regression W1, same date and versions; in `fixtures/surface/`; the rows keep their padding to 120 columns, which is what tells the person's `│` from a border):
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `omp--v18-6-1-quoted-box-draft--w120.txt`, `omp--v18-12-6-quoted-box-draft--w120.txt` | `draft` | `Here is what omp showed me:` then a quoted `Allow tool: bash` box (`╭─ ... ─╮`, `│ ❯ Approve │`, `│   Deny │`, `╰──╯`) and `why did it ask?`. omp's box has no right border here, so every `│` and `╯` is the person's text. The row pattern named a trailing glyph as a border and cut it, so the Send Protocol saw `mismatch`; now `border` in `omp.json` is a border only when no white space follows it |
+
+omp's `claude` composer shape (`composer.shape: claude`: a prompt glyph on the first row of a draft, the others indented) with a two-line draft (gang three, 01-regression W2, same date and versions; in `fixtures/surface/`): the rows read as a pointed list, the Surface says `unreadable`, and the shape is a known gap. A plain send is refused `unconfirmed` and a Clear is refused `unreadable` (it was `dialog_open`, though nothing opened).
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `omp--v18-6-1-composer-claude-two-lines--w100.txt`, `omp--v18-12-6-composer-claude-two-lines--w100.txt` | `unreadable` | The rule, `❯ draft line 1`, `  draft line 2`, the rule and the status row. Cut to those six rows |
+
 ## A pane that is still a shell while the agent starts (captured 2026-10-25, omp gang tester 15, OMP 18.12.6, Collie's rig)
 
 | Fixture | State | What it shows |
@@ -3274,7 +3296,7 @@ equal to its only entry, Enter cancels the popup and submits the text; the teste
 
 ## omp 18.6.1 typeahead popups under the box (captured 2026-10-25, omp-gang tester 12)
 
-All are composers, labelled `popup`. The profile names them in `idle.volatile.below.popups` (rules `file`, `issue`, `emoji`); the Surface leaves their rows out of the cue read and the Send Protocol out of its row count, and a send committed with Ctrl+Q goes out with the popup open (omp's key handler for it runs before the autocomplete handler). The emoji rule is written from omp 18.12.6's `emoji-autocomplete.ts` and has no capture yet.
+All are composers, labelled `popup`. The profile names them in `idle.volatile.below.popups` (rules `file`, `issue`, `emoji`, `path`, `actions`); the Surface leaves their rows out of the cue read and the Send Protocol out of its row count, and a send committed with Ctrl+Q goes out with the popup open (omp's key handler for it runs before the autocomplete handler). The emoji rule is written from omp 18.12.6's `emoji-autocomplete.ts` and has no capture yet.
 
 | Fixture | What it shows |
 | --- | --- |
@@ -3284,7 +3306,14 @@ All are composers, labelled `popup`. The profile names them in `idle.volatile.be
 | `omp--v18-6-1-hash-popup-single--w120.txt` | `see PR #12`, one popup row |
 | `omp--v18-6-1-hash-popup-stale--w120.txt` | an EMPTY box after Ctrl+C with `PR #1` and `Issue #1` still under it; they go with the next key |
 
-The `#` popup that lists prompt actions (`ends with hash #`, `tag:#abc`: `Copy current line` and more) is a different popup, not a rule here; its screens read as before.
+A text that ends in a bare `#` (`ends with hash #`) makes omp draw its editor-action list (`Copy current line`, a key-chord column, seven rows). That list is the `actions` rule (omp-gang three, 2026-10-26, omp 18.6.1 and 18.12.6, cut from the 120-column captures; the status row's path names the lab folder only):
+
+| Fixture | What it shows |
+| --- | --- |
+| `omp--v18-6-1-hash-end-actions--w120.txt` | `ends with hash #`, seven action rows, the pointer on `Copy current line` |
+| `omp--v18-12-6-hash-end-actions--w120.txt` | The same list on 18.12.6 |
+
+`tag:#abc` ends in a word, not a bare `#`: it opens no popup, and its screens read as before.
 
 ## omp 18.6.1 a draft that quotes a dialog (captured 2026-10-25, omp-gang tester 12)
 

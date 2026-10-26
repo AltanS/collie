@@ -1,0 +1,14 @@
+
+ π > ◒ Haiku 4.5 > 📁 …01-regression/state/harness/omp/project ▶──4%───────────────────────────────────────┃───────200K─
+╰─ /wx
+❯ 🧩 wx          clear widgets, status, ticks
+  ↻  loop        Loop: off
+  ⚡ slow        Slow mode: off
+  ◫  context     Context: 4% (8,455/200,000)
+ below row 1
+ below row 2
+ below row 3
+ below row 4
+ below row 5
+ below row 6
+PLAN 3/6

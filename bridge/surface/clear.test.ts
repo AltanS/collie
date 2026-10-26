@@ -253,6 +253,45 @@ describe("a Clear on a pane with a screen", () => {
     expect(pane.keysSeen).toEqual([]);
   });
 
+  // omp-gang three S1 (2026-10-26): the editor-action list that a text ending in a bare `#` opens stood under the
+  // box, the Surface read a dialog, and Clear answered `dialog_open`. The list is a popup; the box clears.
+  for (const name of ["omp--v18-6-1-hash-end-actions--w120.txt", "omp--v18-12-6-hash-end-actions--w120.txt"]) {
+    test(`${name}: the draft above omp's editor-action list is cleared, and the list goes with the text`, async () => {
+      const { pane, clear } = rig("ends with hash #");
+      const rows = fx(name).split("\n");
+      const boxAt = rows.findIndex((row) => row.startsWith("╰─"));
+      pane.readGrid = (paneId) => {
+        const open = /(?:^|\s)#$/u.test(pane.draft);
+        const text = [...rows.slice(0, boxAt), `╰─ ${pane.draft}`.padEnd(120), ...(open ? rows.slice(boxAt + 1) : [])].join("\n");
+        return Promise.resolve(muxOk({ paneId, text, truncated: false, revision: 0 }));
+      };
+      expect(await receipt(await clear("%2", { requestId: ID }))).toEqual({ requestId: ID, outcome: "cleared", draft: "ends with hash #" });
+      expect(pane.keysSeen).toHaveLength(1);
+      expect(pane.keysSeen[0]!.every((key) => key === "Backspace")).toBe(true);
+    });
+  }
+
+  // omp-gang three W2 (2026-10-26): omp's `claude` composer shape (a prompt glyph on the first row) with a draft of two
+  // lines has the shape of a pointed list. The Surface reads a dialog, but nothing opened: Clear answered
+  // `dialog_open`, which the phone shows as "A dialog is open". The box shape could not be read, which is
+  // `unreadable` (the plain send says the same: "The box shape could not be read"). Nothing is pressed.
+  for (const name of ["omp--v18-6-1-composer-claude-two-lines--w100.txt", "omp--v18-12-6-composer-claude-two-lines--w100.txt"]) {
+    test(`${name}: refused unreadable, not dialog_open, and no key is typed at the box`, async () => {
+      const { pane, clear } = rig(DRAFT);
+      pane.show(fx(`../surface/${name}`));
+      expect(await receipt(await clear("%2", { requestId: ID }))).toEqual({ requestId: ID, outcome: "refused", reason: "unreadable" });
+      expect(pane.keysSeen).toEqual([]);
+      expect(pane.typed).toEqual([]);
+    });
+  }
+
+  test("a picker Collie lifted as a question is still dialog_open, though its frame has text and cues on its own rows", async () => {
+    const { pane, clear } = rig(DRAFT);
+    pane.show(fx("omp--v18-4-switch.txt"));
+    expect(await receipt(await clear("%2", { requestId: ID }))).toEqual({ requestId: ID, outcome: "refused", reason: "dialog_open" });
+    expect(pane.keysSeen).toEqual([]);
+  });
+
   test("refused unreadable: a screen with no box is not cleared blind", async () => {
     const { pane, clear } = rig(DRAFT);
     pane.show(NOT_A_SCREEN);

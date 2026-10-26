@@ -35,6 +35,10 @@ describe("the typeahead popups of omp's profile (idle.volatile.below.popups)", (
     ["omp--v18-6-1-at-popup-stale--w120.txt", "file", true, 2],
     // The same rows read as a command list too (a description column); the popup is what they are.
     ["omp--v18-12-6-at-popup-two-files--w120.txt", "file", false, 2],
+    // omp-gang three, 01-regression, 2026-10-26: a text that ends in a bare `#` draws omp's editor-action list
+    // (a label, a key-chord column, seven rows). It is the popup that last word opens.
+    ["omp--v18-6-1-hash-end-actions--w120.txt", "actions", false, 7],
+    ["omp--v18-12-6-hash-end-actions--w120.txt", "actions", false, 7],
   ] as const;
 
   it.each(READS)("%s: read as the %s popup (stale %s) of %i rows, the pointer on the first", (name, rule, stale, rows) => {
@@ -90,8 +94,18 @@ describe("the typeahead popups of omp's profile (idle.volatile.below.popups)", (
     expect(popupUnder(file.texts, file.bottom, "please read@READ", POPUPS)).toBeNull();
   });
 
-  it("another list under the box is no popup: the hotkeys list `#` opens alone, a dialog row, two pointers, none", () => {
-    expect(popupUnder(swap(["❯ Copy current line               Alt+⇧L", "  Copy whole prompt               Alt+⇧C"]), bottom, "ends with hash #", POPUPS)).toBeNull();
+  it("the editor-action list a trailing bare `#` opens is the actions popup, and only a text that ends in the bare `#` opens it", () => {
+    const rows = ["❯ Copy current line               Alt+⇧L", "  Copy whole prompt               Alt+⇧C"];
+    expect(popupUnder(swap(rows), bottom, "ends with hash #", POPUPS)).toMatchObject({ name: "actions", first: bottom + 1, last: bottom + 2, pointed: bottom + 1, stale: false });
+    expect(popupUnder(swap(rows), bottom, "#", POPUPS)).toMatchObject({ name: "actions" });
+    // Until 2026-10-26 these rows were pinned as no popup, so a send over them read as a dialog (`modal_cue`),
+    // and the offered Submit and Discard were refused. A `#` word with more after it opens the issue list, not this one.
+    for (const text of ["fix item #1", "tag:#abc", "ends with hash # and more", "no hash"]) {
+      expect(popupUnder(swap(rows), bottom, text, POPUPS), text).toBeNull();
+    }
+  });
+
+  it("another list under the box is no popup: a dialog row, two pointers, none", () => {
     expect(popupUnder(swap(["❯ PR #1                           GitHub pull request", "  Issue #1                        GitHub issue", "Allow tool: bash"]), bottom, "fix item #1", POPUPS)).toBeNull();
     expect(popupUnder(swap(["❯ PR #1                           GitHub pull request", "❯ Issue #1                        GitHub issue"]), bottom, "fix item #1", POPUPS)).toBeNull();
     expect(popupUnder(swap(["  PR #1                           GitHub pull request", "  Issue #1                        GitHub issue"]), bottom, "fix item #1", POPUPS)).toBeNull();
@@ -113,8 +127,8 @@ describe("the typeahead popups of omp's profile (idle.volatile.below.popups)", (
     expect(popupUnder(swap(rows), bottom, "nice smi", POPUPS)).toBeNull();
   });
 
-  it("a slash list with an extension's status row under it (commandList.footer) is no popup, whatever the text", () => {
-    for (const name of ["omp--v18-12-6-status-row-palette-4.txt", "omp--v18-6-1-status-row-palette-4.txt", "omp--v18-12-6-status-row-palette-10.txt"]) {
+  it("a slash list with an extension's widget or status row under it (commandList.footer) is no popup, whatever the text", () => {
+    for (const name of ["omp--v18-12-6-status-row-palette-4.txt", "omp--v18-6-1-status-row-palette-4.txt", "omp--v18-12-6-status-row-palette-10.txt", "omp--v18-6-1-palette-widget-below-6.txt", "omp--v18-12-6-palette-widget-below-6.txt", "omp--v18-6-1-palette-widget-and-status.txt", "omp--v18-12-6-palette-widget-and-status.txt", "omp--v18-6-1-palette-tick-below.txt", "omp--v18-12-6-palette-tick-below.txt"]) {
       const rows = fixtureRows(name, SURFACE_FIXTURES_DIR);
       const frame = findInputFrame(rows, idleFor("omp")!)!;
       const sheet = rows.map(rowText);

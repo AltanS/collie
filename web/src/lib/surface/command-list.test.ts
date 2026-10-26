@@ -248,8 +248,10 @@ describe("omp's fuzzy list (18.6.1 and 18.12.6, 2026-10-25)", () => {
 describe("omp's slash list with an extension's status row under it (18.6.1 and 18.12.6, 2026-10-25)", () => {
   const sheet = (name: string) => fixtureRows(name, SURFACE_FIXTURES_DIR);
 
-  it("the shipped profile names the status row as the list's footer", () => {
-    expect(LIST.footer).toEqual({ pattern: "^\\S", maxRows: 4 });
+  it("the shipped profile names the rows an extension keeps under the list as its footer: a widget (one leading space) and a status row", () => {
+    expect(LIST.footer).toEqual({ pattern: "^ ?\\S", maxRows: 13 });
+    // The widget rows are the ones the frame reader accepts under an open box (`maxWidgetRows`), plus one status row.
+    expect(LIST.footer!.maxRows).toBe(OMP.frame.maxWidgetRows! + 1);
   });
 
   it.each([
@@ -272,8 +274,51 @@ describe("omp's slash list with an extension's status row under it (18.6.1 and 1
     const rows = sheet("omp--v18-12-6-status-row-palette-4.txt");
     const status = (n: number) => Array.from({ length: n }, (_, i) => ({ segments: [{ text: `STATUS ${String(i + 1)}` }] }));
     const base = rows.slice(0, rows.findLastIndex((row) => rowText(row).startsWith("PLAN")));
+    const most = LIST.footer!.maxRows;
     expect(findInputFrame([...base, ...status(4)], OMP)).not.toBeNull();
-    expect(findInputFrame([...base, ...status(5)], OMP)).toBeNull();
+    expect(findInputFrame([...base, ...status(most)], OMP)).not.toBeNull();
+    expect(findInputFrame([...base, ...status(most + 1)], OMP)).toBeNull();
+  });
+
+  // omp-gang three, 01-regression S2 (2026-10-26): `/wb 6` (a widget of six rows below the box) or `/tfb` (a ticking
+  // row below) and then `/wx`: the four-row palette stood over the widget, whose rows are drawn with one leading
+  // space and are more than the flush-left footer allowed. The list read as a dialog, `/wx` stayed in the box,
+  // and later sends were held or refused. The widget rows under a list are the rows the frame reader accepts
+  // under an open box, so the footer takes them too.
+  describe("a widget under the palette", () => {
+    const CASES = [
+      ["omp--v18-6-1-palette-widget-below-6.txt", "wb", 6],
+      ["omp--v18-12-6-palette-widget-below-6.txt", "wb", 6],
+      ["omp--v18-6-1-palette-widget-and-status.txt", "wb and a status row", 7],
+      ["omp--v18-12-6-palette-widget-and-status.txt", "wb and a status row", 7],
+      ["omp--v18-6-1-palette-tick-below.txt", "tfb", 1],
+      ["omp--v18-12-6-palette-tick-below.txt", "tfb", 1],
+    ] as const;
+
+    it.each(CASES)("%s (%s): the box holds /wx, the four-row list is its own, and the %i rows under it are the footer", (fixture, _what, below) => {
+      const rows = sheet(fixture);
+      const frame = findInputFrame(rows, OMP);
+      expect(frame, fixture).not.toBeNull();
+      expect(frame!.interior.text).toBe("/wx");
+      const texts = rows.map(rowText);
+      const list = commandListNear(texts, frame!.top, frame!.bottom, LIST);
+      expect(list).toMatchObject({ pointed: "/wx", side: "under" });
+      expect(list!.entries).toHaveLength(4);
+      expect(texts.length - 1 - list!.last).toBe(below);
+      expect(openListUnder(texts, frame!.bottom, "/wx", LIST)).not.toBeNull();
+    });
+
+    it("a blank row inside the footer ends it: the rows after it are no widget of the list", () => {
+      const rows = sheet("omp--v18-6-1-palette-widget-below-6.txt");
+      const gap = [...rows.slice(0, rows.length - 3), { segments: [{ text: "" }] }, ...rows.slice(rows.length - 3)];
+      expect(findInputFrame(gap, OMP)).toBeNull();
+    });
+
+    it("a widget under a list that points at another command is still not the typed command's list", () => {
+      const rows = sheet("omp--v18-6-1-palette-widget-below-6.txt");
+      const moved = rows.map((row) => (rowText(row).startsWith("❯ ") ? { segments: [{ text: rowText(row).replace(/^❯ /u, "  ") }] } : row));
+      expect(findInputFrame(moved, OMP)).toBeNull();
+    });
   });
 
   it("an indented row under the list is no status row", () => {

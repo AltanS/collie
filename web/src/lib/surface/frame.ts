@@ -15,6 +15,7 @@
 
 import { displayWidth, widePieces } from "../text-width";
 import { anyListRow, insideList, listedBottom, openListUnder } from "./command-list";
+import { popupUnder } from "./popup";
 import { readAboveNotice } from "./notice";
 import type { FrameAnchor, Profile } from "./profile";
 
@@ -362,6 +363,19 @@ interface DraftPiece {
   readonly row: number;
   readonly start: number;
   readonly end: number;
+}
+
+/**
+ * Where the text of a row ends when the harness's pattern cut a right border off it and that cut was wrong:
+ * the end of the pattern's `border` group, or null when the cut stands. A box's own right border is the last
+ * cell of the row, so a row that still has white space after the glyph is the person's text that happens to
+ * end in one (a pasted box drawing, `│ x │`), and the glyph belongs to the draft. A row with no white space
+ * after it may be the border at the last cell, or a read with its trailing spaces cut: the cut stands.
+ */
+function keptBorder(text: string, match: RegExpExecArray): number | null {
+  const span = match.indices?.groups?.border;
+  if (span === undefined) return null;
+  return text.length > text.trimEnd().length ? span[1] : null;
 }
 
 /** The piece of `text` from `from` to `to`, trimmed at both ends, or null when it holds nothing visible. */
@@ -724,7 +738,8 @@ function interiorPiece(row: number, text: string, continuation: RegExp | null): 
   if (continuation === null) return trimmedPiece(row, text, 0, text.length);
   const hit = continuation.exec(text.trimEnd());
   const span = hit?.indices?.groups?.text;
-  return span === undefined ? null : trimmedPiece(row, text, span[0], span[1]);
+  if (hit === null || span === undefined) return null;
+  return trimmedPiece(row, text, span[0], keptBorder(text, hit) ?? span[1]);
 }
 
 /**
@@ -804,7 +819,7 @@ function interiorFrameAt(rows: readonly FrameRow[], bottom: number, idle: IdlePr
   const holeStart = promptMatch.indices?.groups?.draft?.[0] ?? texts[prompt]!.length;
   const pieces: DraftPiece[] = [];
   for (let j = top + 1; j <= last; j++) {
-    const piece = j === prompt ? trimmedPiece(j, texts[j]!, holeStart, holeStart + (hole ?? "").length) : interiorPiece(j, texts[j]!, c.interior.continuation);
+    const piece = j === prompt ? trimmedPiece(j, texts[j]!, holeStart, keptBorder(texts[j]!, promptMatch) ?? holeStart + (hole ?? "").length) : interiorPiece(j, texts[j]!, c.interior.continuation);
     if (piece !== null) pieces.push(piece);
   }
   const text = draftText(rows, texts, pieces, c.hint);
@@ -939,7 +954,7 @@ function openFrame(rows: readonly FrameRow[], end: number, idle: IdleProfile): F
   const reach = Math.max(idle.frame.maxTailRows, idle.frame.maxWidgetRows ?? 0);
   for (let b = end - 1; b >= 0 && end - 1 - b <= reach; b--) {
     const frame = interiorFrameAt(rows, b, idle);
-    if (frame !== null) return end - 1 - b <= idle.frame.maxTailRows || widgetRun(rows, b, end, idle) ? frame : null;
+    if (frame !== null) return end - 1 - b <= idle.frame.maxTailRows || widgetRun(rows, b, end, idle) || popupRun(rows, frame, idle) ? frame : null;
     const text = rowText(rows[b]!);
     if (under === null || (!isBlank(text) && under.test(text.trimEnd()))) return null;
   }
@@ -955,6 +970,16 @@ function widgetRun(rows: readonly FrameRow[], bottom: number, end: number, idle:
   const texts = rows.map(rowText);
   for (let i = bottom + 1; i < end; i++) if (isBlank(texts[i]!)) return false;
   return !anyListRow(texts, bottom + 1, end - 1, idle.volatile.below.commandList);
+}
+
+/**
+ * Whether the rows under the open box's last row are the typeahead popup that the box's text opened
+ * ({@link popupUnder}). A popup may be as tall as a widget and its rows may read as entries of the command
+ * list (a label and a description column), which {@link widgetRun} refuses; the text that opened it is what
+ * tells them apart.
+ */
+function popupRun(rows: readonly FrameRow[], frame: Frame, idle: IdleProfile): boolean {
+  return popupUnder(rows.map(rowText), frame.bottom, frame.interior.text, idle.volatile.below.popups) !== null;
 }
 
 function findLayout(rows: readonly FrameRow[], idle: IdleProfile): Frame | null {

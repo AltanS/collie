@@ -179,6 +179,32 @@ describe("a slash command with an extension's status row under the list (omp gan
     expect(pane.submitted).toEqual(["/wx"]);
   });
 
+  // omp-gang three S2 (2026-10-26): the same palette over an extension's widget under the box (`/wb 6`, six rows
+  // drawn with a leading space) or its ticking row (`/tfb`). The four-row list read as a dialog, `/wx` stayed in
+  // the box, and later sends were held or refused.
+  test.each([
+    ["omp--v18-6-1-palette-widget-below-6.txt"],
+    ["omp--v18-12-6-palette-widget-below-6.txt"],
+    ["omp--v18-6-1-palette-widget-and-status.txt"],
+    ["omp--v18-12-6-palette-widget-and-status.txt"],
+    ["omp--v18-6-1-palette-tick-below.txt"],
+    ["omp--v18-12-6-palette-tick-below.txt"],
+  ])("%s: /wx goes in with the command keys and runs, and the next plain send is not held", async (name) => {
+    const rows = fx(name).replace(/\r/gu, "").split("\n");
+    const at = rows.findLastIndex((row) => row.startsWith("╰─"));
+    // The palette is the four rows after the box; the rest is what the extension keeps under the box all the time.
+    const idle = [...rows.slice(0, at), "╰─ ", ...rows.slice(at + 5)].join("\n");
+    const pane = new OmpPane(idle, rows.slice(at + 1, at + 5));
+    const { send } = rig(pane);
+    const answer = await send("/wx", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent", profileId: "omp" });
+    expect(answer.receipt?.keys.at(-1)).toBe("Enter");
+    expect(pane.submitted).toEqual(["/wx"]);
+    const next = await send("hello there");
+    expect(next.receipt).toMatchObject({ outcome: "sent", profileId: "omp" });
+    expect(pane.submitted).toEqual(["/wx", "hello there"]);
+  });
+
   test("a half-typed command whose ten-row list points at another one is still not entered: the text stays for the person", async () => {
     const pane = new OmpPane(fx("omp--v18-12-6-status-row-idle.txt"), listRowsOf("omp--v18-12-6-status-row-palette-10.txt"));
     const { send } = rig(pane);
