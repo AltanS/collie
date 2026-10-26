@@ -61,6 +61,10 @@ install: until the version reads, Collie treats every send to that program as pr
 that is not installed shows `not installed`. In `--json` each row also carries `harness`, `binary`,
 `version` and `profileStatus`.
 
+The row names the copy on your `PATH`, because `collie doctor` has no pane to look at. A send on
+Herdr asks the program that runs in its pane, so a pane that runs another copy, started by its full
+path or installed in a project, shows that copy's version on its receipts.
+
 
 ## Put `collie` on your PATH
 

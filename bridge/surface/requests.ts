@@ -110,6 +110,8 @@ const ASK_FILE = /^ask\.(ask-[0-9a-f]{14})\.json$/;
 
 const PHASES = ["accepted", "submit-sent", "settled", "held"] as const;
 const PROFILE_STATUSES = ["verified", "provisional", "revoked"] as const;
+/** The longest `binary` path a stored receipt keeps; a longer one is dropped. */
+const RECEIPT_BINARY_MAX = 4_096;
 const STEPS = ["profile", "settle", "s0", "proof", "clear", "probe", "write", "s1", "commandSettle", "commit", "s2"] as const;
 
 function pick<const T extends string>(value: JsonValue | undefined, allowed: readonly T[]): T | undefined {
@@ -193,6 +195,9 @@ function parseReceipt(value: JsonValue | undefined): SendReceipt | undefined {
     outcome,
   };
   const whole: ReceiptDraft = { ...receipt };
+  // `binary` is lenient like `detail`: a value that is not a path is dropped, and the receipt stays.
+  const binary = node.binary === undefined ? undefined : asJsonString(node.binary);
+  if (binary !== undefined && binary.length > 0 && binary.length <= RECEIPT_BINARY_MAX) whole.binary = binary;
   if (reason !== undefined) whole.reason = reason;
   if (cap !== undefined) whole.cap = cap;
   if (node.queued === true) whole.queued = true;

@@ -84,7 +84,8 @@ export interface ClearMux {
 export interface ClearDeps {
   readonly mux: ClearMux;
   readonly gate: Pick<KeyGate, "press">;
-  readonly profile: (harness: string) => Promise<ProfileMatch | null>;
+  /** The harness's profile; with `paneId`, at the version of the pane's own program when the bridge can see it (SendDeps.profile). */
+  readonly profile: (harness: string, paneId?: string) => Promise<ProfileMatch | null>;
   /** A box proven stale (as the Send Protocol's `staleFrame`): the bridge's Surface marks it until its rows change. */
   readonly staleFrame?: (paneId: string, frame: string) => void;
   readonly sleep?: (ms: number) => Promise<void>;
@@ -204,7 +205,7 @@ export class ClearService {
   }
 
   private async run(requestId: string, paneId: string, harness: string): Promise<Settled> {
-    const match = harness === "" ? null : await this.deps.profile(harness);
+    const match = harness === "" ? null : await this.deps.profile(harness, paneId);
     if (!readable(match)) return refusal(requestId, "no_profile", false);
     const clearKey = match.profile.keys.clear;
     const clearAll = match.profile.keys.clearAll;

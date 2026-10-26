@@ -192,9 +192,16 @@ export interface SendReceipt {
   readonly paneId: string;
   readonly paneGeneration: string;
   readonly harness: string;
+  /** The harness's version: of the pane's own program when the bridge could see it ({@link binary}), else of the binary on its PATH. */
   readonly version: string | null;
   readonly profileId: string | null;
   readonly profileStatus: ProfileStatus | null;
+  /**
+   * The file whose version was read, when it was the pane's own program (its foreground process, ADR
+   * 0124): an absolute path, a local fact. Absent when the version came from the binary the bridge's
+   * PATH finds. The recent-sends rows, and so a problem report, do not carry it.
+   */
+  readonly binary?: string;
   readonly textHash: string;
   readonly textLength: number;
   readonly s0: ReadMark | null;

@@ -74,6 +74,7 @@ import { WorktreeBaseStore } from "./worktree-bases.ts";
 import { WorktreeReceiptStore } from "./worktree-receipts.ts";
 import { LaunchReceiptStore } from "./launch-receipts.ts";
 import { LaunchWindow, foregroundHarnessOf } from "./launch-window.ts";
+import { createPaneProfile, procProbe, sharedForegroundRead } from "./pane-binary.ts";
 import { StarterReceiptStore } from "./starter-launch.ts";
 import { AnswerReceiptStore } from "./durable/answer.ts";
 import { ControlReceiptStore } from "./durable/control.ts";
@@ -242,7 +243,7 @@ import { AskAnswerer, AskBook } from "./surface/ask.ts";
 import { ClearService } from "./surface/clear.ts";
 import { StopService, type StopDeps } from "./surface/stop.ts";
 import { gateFor } from "./surface/key-gate.ts";
-import { RowRing, SendProtocol, SessionLocks } from "./surface/protocol.ts";
+import { RowRing, SendProtocol, SessionLocks, type PaneProfileMatch } from "./surface/protocol.ts";
 import { ProgramDriver, type ProgramPort } from "./surface/durable-driver.ts";
 import { RequestStore } from "./surface/requests.ts";
 import { HoldStore } from "./surface/holds.ts";
@@ -251,7 +252,7 @@ import { deliverEdge, EdgeRouter, type EdgeTarget } from "./surface/edges.ts";
 import { counterWordOf, HoldBook, HoldServer, takeHold, type HoldTarget } from "./surface/hold.ts";
 import { holdSocketPath } from "./beacon/paths.ts";
 import { VersionCache } from "./surface/binary-version.ts";
-import { findProfile, loadProfiles, profileForPlatform, type ProfileMatch } from "../web/src/lib/surface/profile.ts";
+import { findProfile, loadProfiles } from "../web/src/lib/surface/profile.ts";
 import { labelOf } from "./walky/address.ts";
 import {
   crewSkipped,
@@ -1484,12 +1485,11 @@ const holdServer =
         },
       });
 const sendVersions = new VersionCache();
-/** A harness's profile at its binary's version, for the send path. Null when the harness has none. */
-async function sendProfile(harness: string): Promise<ProfileMatch | null> {
-  const profile = findProfile(loadProfiles(), harness);
-  if (profile === undefined) return null;
-  return profileForPlatform(profile.id, await sendVersions.versionOf(profile), HOST.platform);
-}
+/**
+ * A harness's profile at its version, for the send path: of the pane's own program when the pane's
+ * foreground read shows it, else of the PATH binary (bridge/pane-binary.ts, ADR 0124).
+ */
+const sendProfile = createPaneProfile({ versions: sendVersions, binaries: harnessBinaries, probe: procProbe(), platform: HOST.platform });
 
 const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   const built = endpoint.kind === "program" ? programAdapter(endpoint.source) : terminalAdapter(endpoint.socketPath);
@@ -1651,8 +1651,11 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   // never run on one pane at once and every key leaves through the one gate.
   const locks = new SessionLocks();
   const ring = new RowRing();
-  // The pane's foreground read for the launch window, bounded; absent where the multiplexer has none (tmux, zellij, tuios).
-  const foregroundHarness = foregroundHarnessOf(herdr.foregroundProcesses?.bind(herdr), harnessBinaries);
+  // The pane's foreground read, bounded and shared by the reads of one send (the launch window's and the
+  // profile's version read); absent where the multiplexer has none (tmux, zellij, tuios).
+  const foregroundRead = sharedForegroundRead(herdr.foregroundProcesses?.bind(herdr));
+  const foregroundHarness = foregroundHarnessOf(foregroundRead, harnessBinaries);
+  const paneProfile = (harness: string, paneId?: string): Promise<PaneProfileMatch | null> => sendProfile(harness, paneId, foregroundRead);
   const send =
     sends && sendStore !== null && askBook !== undefined
       ? new SendProtocol({
@@ -1662,7 +1665,7 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
           locks,
           ring,
           ledger: surfaceLedger ?? undefined,
-          profile: (harness) => sendProfile(harness),
+          profile: paneProfile,
           starting: (paneId, named) => launchWindow.starting(name, paneId, named, foregroundHarness?.(paneId)),
           framed: (paneId, harness) => launchWindow.framed(name, paneId, harness),
           deaf: (paneId, harness) => launchWindow.deaf(name, paneId, harness),
@@ -1688,7 +1691,7 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   }
   const asks =
     sends && sendStore !== null && askBook !== undefined
-      ? new AskAnswerer({ mux: herdr, gate: gateFor(herdr), store: sendStore, locks, ring, book: askBook, profile: (harness) => sendProfile(harness), generation: generationOf })
+      ? new AskAnswerer({ mux: herdr, gate: gateFor(herdr), store: sendStore, locks, ring, book: askBook, profile: paneProfile, generation: generationOf })
       : undefined;
   // The structured driver (M56 spec 14): a program session's Surface, Send and Ask from its structured
   // state, with the Send Protocol on. It is the one driver of its session; no screen fold runs beside it.
@@ -1790,12 +1793,12 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   // Its `stopped` receipt is the stop edge the harness may not send (Claude Code fires no Stop hook on Escape).
   const stopped = surface === undefined ? undefined : (paneId: string): void => void surface.stopSeen(paneId);
   // Each read-back's box goes to the Send Protocol: a queued send the Stop gave back rides the receipt (ADR 0122).
-  const stopBase: StopDeps = { mux: herdr, gate: gateFor(herdr), profile: (harness) => sendProfile(harness) };
+  const stopBase: StopDeps = { mux: herdr, gate: gateFor(herdr), profile: paneProfile };
   const stopDeps: StopDeps = send === undefined ? stopBase : { ...stopBase, returned: (paneId, read) => send.boxRead(name, paneId, { ...read, poll: false }) };
   const stop = endpoint.kind === "terminal" ? new StopService(stopped === undefined ? stopDeps : { ...stopDeps, stopped }) : undefined;
   const withStop = stop === undefined ? withHold : { ...withHold, stop };
   // A Clear of the harness's box (ADR 0116, the Clear paragraph): the same mux, key gate and profile as the Stop.
-  const clear = endpoint.kind === "terminal" ? new ClearService({ mux: herdr, gate: gateFor(herdr), profile: (harness) => sendProfile(harness), staleFrame: (paneId, frame) => surface?.markStale(paneId, frame) }) : undefined;
+  const clear = endpoint.kind === "terminal" ? new ClearService({ mux: herdr, gate: gateFor(herdr), profile: paneProfile, staleFrame: (paneId, frame) => surface?.markStale(paneId, frame) }) : undefined;
   const withClear = clear === undefined ? withStop : { ...withStop, clear };
   return driver === undefined ? withClear : { ...withClear, driver };
 };

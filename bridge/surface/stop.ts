@@ -58,7 +58,8 @@ export interface StopMux {
 export interface StopDeps {
   readonly mux: StopMux;
   readonly gate: Pick<KeyGate, "press">;
-  readonly profile: (harness: string) => Promise<ProfileMatch | null>;
+  /** The harness's profile; with `paneId`, at the version of the pane's own program when the bridge can see it (SendDeps.profile). */
+  readonly profile: (harness: string, paneId?: string) => Promise<ProfileMatch | null>;
   readonly sleep?: (ms: number) => Promise<void>;
   /** The clock a read is stamped with, for {@link returned}. Defaults to `Date.now`. */
   readonly now?: () => number;
@@ -146,7 +147,7 @@ export class StopService {
   }
 
   private async run(requestId: string, paneId: string, harness: string): Promise<StopReceipt> {
-    const match = harness === "" ? null : await this.deps.profile(harness);
+    const match = harness === "" ? null : await this.deps.profile(harness, paneId);
     if (!readable(match)) return refusal(requestId, "no_profile");
     const { keys } = match.profile;
     // Two reads before the key, each with the same refusals: the first decides, the second is taken
