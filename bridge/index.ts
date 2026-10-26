@@ -1642,7 +1642,12 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
         }
         // A queued send whose text a read shows back in the box (ADR 0122): its card says so.
         send?.tickQueued(name, (paneId) => surface.boxOf(paneId));
-        return send?.tickHolds(name, (paneId) => surface.surfaceOf(paneId));
+        // The box text rides along: a box that holds only Collie's own probe characters is no draft.
+        return send?.tickHolds(
+          name,
+          (paneId) => surface.surfaceOf(paneId),
+          (paneId) => surface.boxOf(paneId)?.box ?? null,
+        );
       });
     });
   }
@@ -1669,6 +1674,7 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
           starting: (paneId, named) => launchWindow.starting(name, paneId, named, foregroundHarness?.(paneId)),
           framed: (paneId, harness) => launchWindow.framed(name, paneId, harness),
           deaf: (paneId, harness) => launchWindow.deaf(name, paneId, harness),
+          pending: (paneId) => launchWindow.pending(name, paneId),
           generation: generationOf,
           asks: askBook,
           holds: holdStore ?? undefined,

@@ -6329,6 +6329,39 @@ describe("a send at a box that is not free is held, not refused (2026-10-17 fiel
     neverEscape(r.pane);
   });
 
+  test("a box hold made after the pane's last held send went out goes on the first free poll (live check W3, 2026-10-26)", async () => {
+    const clock = { now: 1_000_000 };
+    const r = queued(clock);
+    r.pane.dialog = DIALOG;
+    await r.send("first", { id: "box-0000016" });
+    r.pane.dialog = null;
+    const [first] = await tick(r);
+    expect(first?.receipt).toMatchObject({ requestId: "box-0000016", outcome: "sent" });
+    expect(r.holds.list()).toEqual([]);
+    // A new hold on the same pane, its queue empty: what the pane's watch saw belonged to "first".
+    r.pane.dialog = DIALOG;
+    await r.send("second", { id: "box-0000017" });
+    r.pane.dialog = null;
+    clock.now += 12_000;
+    const [second] = await tick(r);
+    expect(second?.receipt).toMatchObject({ requestId: "box-0000017", outcome: "sent" });
+    neverEscape(r.pane);
+  });
+
+  test("a box hold made after a cancel on a pane that ran a turn goes on the first free poll too (live check W3)", async () => {
+    const r = queued();
+    r.pane.dialog = DIALOG;
+    await r.send("first", { id: "box-0000018" });
+    // A poll reads a turn, then the person cancels the held row.
+    expect(await tick(r, RUNNING)).toEqual([]);
+    expect(r.protocol.cancelHeld("main", "%1", "box-0000018")).not.toBeNull();
+    await r.send("second", { id: "box-0000019" });
+    r.pane.dialog = null;
+    const [second] = await tick(r);
+    expect(second?.receipt).toMatchObject({ requestId: "box-0000019", outcome: "sent" });
+    neverEscape(r.pane);
+  });
+
   test("a box hold whose pane then runs a turn keeps the turn rules, not the first free poll", async () => {
     const r = queued();
     r.pane.dialog = DIALOG;
