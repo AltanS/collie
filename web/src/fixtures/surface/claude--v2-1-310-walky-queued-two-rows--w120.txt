@@ -1,0 +1,24 @@
+  4. Orange: It tastes sweet and tangy. The juice is bright and fresh. The peel has a sharp citrus smell.
+  5. Lemon: It tastes very sour. The juice is sharp and bright. Small amounts add flavor to many dishes.
+  6. Lime: It tastes sour and sharp. The flavor is brighter than lemon. It adds a clean, fresh note to food.
+  7. Grapefruit: It tastes bitter and tart. The juice is sharp with a slight sweetness. Pink types taste softer.
+  8. Mandarin: It tastes sweet and light. The segments peel easily. The flavor is less sharp than orange.
+  9. Tangerine: It tastes sweet and tangy. The skin is loose and easy to peel. The juice is very aromatic.
+  10. Clementine: It tastes very sweet with little acid. It has few seeds. It is a popular snack for children.
+  11. Kumquat: It tastes sour on the outside and sweet inside. You eat the whole fruit, skin included.
+  12. Peach: It tastes sweet and juicy. The skin is fuzzy. Ripe peaches have a soft, floral aroma.
+  13. Nectarine: It tastes sweet and sharp. The skin is smooth with no fuzz. The flavor is like a peach.
+  14. Apricot: It tastes sweet with a slight tartness. The flesh is soft and dry when ripe. The flavor is mild.
+  15. Plum: It tastes sweet and tart. The skin is smooth and can be purple or yellow. The flesh is juicy.
+  16. Cherry: It tastes sweet and rich. The flesh is firm and juicy. Dark cherries taste deeper than light ones.
+  17. Sour cherry: It tastes very tart and sharp. It is rarely eaten raw. Cooks use it in pies and jams.
+  18.
+
+❯ [walky-talky wt_93st11a9o2in] from operator (browser-leg)
+  Walky busy check: reply with only the word BUSY-OK, nothing else.
+  ctrl+enter to send now
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ Press up to edit queued messages
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⏸ manual mode on · esc to interrupt

@@ -471,7 +471,9 @@ function isOptionRow(text: string): boolean {
  * A long prompt wraps into rows that line up like a pointed list under the glyph, and the whole-screen
  * read took them for one (Claude Code 2.1.309 and 2.1.310, live 2026-10-25). An echo with an option row
  * of its own ({@link isOptionRow}) is left as it is: there the shape is a list, whoever drew it. Every
- * other row, and every row of any other profile, stays as it is.
+ * other row, and every row of any other profile, stays as it is. Both the bridge's frameless read and the
+ * framed read ({@link readCuesFor}) take it: Claude Code's queued message over the box has the same
+ * shape, `❯ ` and its text with its wrapped rows and the `ctrl+enter to send now` hint under it.
  */
 export function withoutPromptEchoes(rows: readonly FrameRow[], frame: Frame | null, idle: IdleProfile | null): readonly FrameRow[] {
   if (frame === null || idle?.promptEchoes !== true) return rows;
@@ -540,13 +542,16 @@ export function noticeOver(texts: readonly string[], frame: Frame | null, idle: 
  * The cues of a screen read under a profile: the frame's own cues, or, when the profile draws its
  * dialogs where the box stands (`idle.dialogsInBox`), the cues of the rows from the box's top edge down,
  * the box rows included. The typed command's own list on either side of the box ({@link ownCommandList})
- * and a notice over the box ({@link noticeOver}) are left out of both. The second also reads the box's
+ * and a notice over the box ({@link noticeOver}) are left out of both, and so are the prompt-shaped runs
+ * over the box of a profile whose transcript echoes prompts ({@link withoutPromptEchoes}): Claude Code
+ * draws a queued message there in that shape, and its wrapped rows and send-now hint under the `❯ ` row
+ * are no pointed list. The second also reads the box's
  * own prompt glyph ({@link withoutOwnPrompt}) as blank, and the prompt glyph over a soft-wrapped draft
  * ({@link draftWrap}); a draft-shaped box cut by an ellipsis reads as no cue at all, flagged `cutWrap`.
  */
 export function readCuesFor(allRows: readonly FrameRow[], frame: Frame | null, idle: IdleProfile | null): CueRead {
   const texts = allRows.map(rowText);
-  const rows = withoutPopup(withoutCommandList(allRows, frame === null ? null : ownCommandList(texts, frame, idle, allRows)), popupAt(texts, frame, idle));
+  const rows = withoutPromptEchoes(withoutPopup(withoutCommandList(allRows, frame === null ? null : ownCommandList(texts, frame, idle, allRows)), popupAt(texts, frame, idle)), frame, idle);
   const plain = readCues(rows, frame, noticeOver(texts, frame, idle));
   if (idle?.dialogsInBox !== true || frame === null) return plain;
   // From the top edge down: a dialog in the box's place lies there, and the transcript above is no part of it.

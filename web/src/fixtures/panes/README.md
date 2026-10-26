@@ -3148,6 +3148,23 @@ do echo $i; sleep 1; done` took.
 | `claude--v2-1-310-working-echo-bullets--w120.txt` | The held case with no number near the box: the earlier turns (the numbered one among them) above, then a three-row echo (`❯ First reply with a bullet list of 6 colors…`), a bullet list (`- red - …`), the Bash call and the spinner. The echo alone read as a pointed list of three rows: strong (the send held), now none. Labelled `running` |
 | `claude--v2-1-310-working-echo-one-line--w120.txt` | The same pane with a one-row echo (`❯ Run this exact bash command…`): the whole-screen read was already none and the send queued. Labelled `running` |
 
+## A walky talky message queued in a running turn (captured 2026-10-26, Claude Code 2.1.310, 120 columns, Herdr)
+
+Browser leg case 16: a walky talky message sent while a turn streams a numbered list. Claude queues it
+and draws it over the box in the echo's shape: `❯ ` and the header line, the body and
+`ctrl+enter to send now` at column 2, a blank row, then the box with the faint placeholder
+`Press up to edit queued messages`. The framed cue read took those three rows for a pointed list, so
+the Surface claimed `unreadable` at S2 and the send ended `unknown(dialog_after_enter)`; the framed read
+now leaves out an echo-shaped run too (cues.ts `readCuesFor`). Both are the Send Protocol's own reads of
+that send in the rig's scratch bridge, cut to the last 24 rows, ANSI and trailing blanks stripped. They
+live in `web/src/fixtures/surface/` and are pinned by `cues.test.ts` and
+`bridge/surface/protocol.claude-queued.test.ts` only.
+
+| Fixture | State / what's in it |
+|---|---|
+| `claude--v2-1-310-walky-turn-empty-box--w120.txt` | S0: the answer's list up to `15.`, the empty box, `⏸ manual mode on · esc to interrupt` under it. Reads `running`, `none`, `empty` |
+| `claude--v2-1-310-walky-queued-two-rows--w120.txt` | S2, after Enter: the list up to `18.`, the three-row queued block, a blank row, the box with the placeholder. Reads `running`, `none`, `empty`; it read `unreadable` before |
+
 ## omp fuzzy command list under the box (captured 2026-10-25, omp 18.6.1 and 18.12.6, omp-gang testers 01 and 02)
 
 Real pane reads from the testers' rig: a scratch Herdr with its own bridge, `omp` on `openrouter/anthropic/claude-haiku-4.5`,
