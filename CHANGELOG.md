@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **The browser leg can answer pi and omp from recorded model streams (M67).** A local stand-in for OpenRouter replays a recorded turn with its recorded pacing, so the real pi and omp still draw every screen the phone taps. A request the recording does not hold gets a "cassette mismatch" answer, never a nearby one. `bun run e2e:recordings:check` in `web/` fails when a recording holds a key, a bearer token, an Authorization header or a home folder path.
+
 ### Fixed
 
 - **The install scripts end with the steps the install guide gives.** `install.sh` no longer asks

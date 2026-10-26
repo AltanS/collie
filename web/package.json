@@ -14,7 +14,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "e2e": "vite build && playwright test",
-    "e2e:ui": "playwright test --ui"
+    "e2e:ui": "playwright test --ui",
+    "e2e:recordings:check": "bun e2e/rig/replay/check.ts"
   },
   "dependencies": {
     "class-variance-authority": "^0.7.1",
