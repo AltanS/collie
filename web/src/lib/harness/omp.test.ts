@@ -208,6 +208,7 @@ const TYPEAHEAD_POPUP = [
   "omp--v18-6-1-hash-popup-stale--w120.txt",
   "omp--v18-12-6-emoji-popup--w120.txt",
   "omp--v18-6-1-emoji-popup--w120.txt",
+  "omp--v18-12-6-path-popup-partial--w120.txt",
 ];
 
 // omp 18.6.1 (omp-gang tester 12, 2026-10-25): a long prompt that quotes a permission dialog, typed in the box and
@@ -553,6 +554,7 @@ describe("the omp corpus", () => {
     "omp--v18-12-6-emoji-popup--w120.txt",
     "omp--v18-12-6-image-chip--w120.txt",
     "omp--v18-12-6-path-popup--w120.txt",
+    "omp--v18-12-6-path-popup-partial--w120.txt",
     "omp--v18-12-6-path-popup-two-paths--w120.txt",
     "omp--v18-12-6-rewind-picker--w120.txt",
     "omp--v18-12-6-skill-chip--w120.txt",

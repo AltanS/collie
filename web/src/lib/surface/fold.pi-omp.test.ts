@@ -675,9 +675,11 @@ describe("omp's typeahead popups under the box read as a draft (18.6.1, omp-gang
     ["omp--v18-6-1-at-popup-path--w120.txt", "@/tmp/x.png"],
     ["omp--v18-6-1-hash-popup--w120.txt", "fix item #1"],
     ["omp--v18-6-1-hash-popup-single--w120.txt", "see PR #12"],
-    // omp-gang 04-readers (2026-10-26): the first real captures of the emoji popup (one space after the glyph).
+    // omp-gang 04-readers (2026-10-26): the first real captures of the emoji popup (one space after the glyph)
+    // and of the one-row popup under a partial path.
     ["omp--v18-12-6-emoji-popup--w120.txt", "hello :smi"],
     ["omp--v18-6-1-emoji-popup--w120.txt", "hello :smi"],
+    ["omp--v18-12-6-path-popup-partial--w120.txt", "~/.cache/collie-lab/omp-gang/gang3/04-readers/state/harness/omp/project/src/ma"],
   ];
 
   for (const [name, typed] of DRAFTS) {

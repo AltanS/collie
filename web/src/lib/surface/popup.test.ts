@@ -31,6 +31,7 @@ describe("the typeahead popups of omp's profile (idle.volatile.below.popups)", (
     // the one-row path popup of a partial path, and the `@` rows left under an emptied box.
     ["omp--v18-12-6-emoji-popup--w120.txt", "emoji", false, 8],
     ["omp--v18-6-1-emoji-popup--w120.txt", "emoji", false, 8],
+    ["omp--v18-12-6-path-popup-partial--w120.txt", "path", false, 1],
   ] as const;
 
   it.each(READS)("%s: read as the %s popup (stale %s) of %i rows, the pointer on the first", (name, rule, stale, rows) => {
@@ -56,6 +57,24 @@ describe("the typeahead popups of omp's profile (idle.volatile.below.popups)", (
     expect(popupUnder(texts, bottom, "", POPUPS)?.stale).toBe(true);
     const file = screen("omp--v18-6-1-at-popup--w120.txt");
     expect(popupUnder(file.texts, file.bottom, "", POPUPS)).toBeNull();
+  });
+
+  it("a partial path is the path popup: a bare entry row under a text that is one path, never a slash command", () => {
+    const path = screen("omp--v18-12-6-path-popup-partial--w120.txt");
+    for (const text of ["~/src/ma", "./src/ma", "../src/ma", "/var/home/x/src/ma"]) {
+      expect(popupUnder(path.texts, path.bottom, text, POPUPS), text).toMatchObject({ name: "path", stale: false });
+    }
+    for (const text of ["/model", "/mod", "/skill:x", "src/ma", "read ~/src/ma now"]) {
+      expect(popupUnder(path.texts, path.bottom, text, POPUPS), text).toBeNull();
+    }
+  });
+
+  it("a path whose last name is already the pointed entry has no popup: omp closes it, and Enter submits (closedWhenTyped)", () => {
+    const full = screen("omp--v18-12-6-path-popup--w120.txt");
+    const typed = "/home/demo/lab1/.cache/collie-lab/omp-gang/05-images/state/rig/state/uploads/w2_p1-mvo44h6i-fd050f5a.png";
+    expect(popupUnder(full.texts, full.bottom, typed, POPUPS)).toBeNull();
+    // The same row under a prefix of it is the popup: the entry is not typed yet.
+    expect(popupUnder(full.texts, full.bottom, typed.slice(0, -10), POPUPS)).toMatchObject({ name: "path" });
   });
 
   it("a file popup is for a word that starts with @, never for a slash command", () => {

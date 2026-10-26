@@ -9579,4 +9579,39 @@ describe("omp's typeahead popups under the box (1.24.1)", () => {
     expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue" });
     expect(pane.keysSeen).not.toContain("ctrl+q");
   });
+
+  const PATH = "omp--v18-12-6-path-popup-partial--w120.txt";
+  const PARTIAL = "~/.cache/collie-lab/omp-gang/gang3/04-readers/state/harness/omp/project/src/ma";
+  const pathOpens = (box: string): boolean => box.startsWith("~/");
+
+  test("a partial path in a command send: the one-row path popup refuses Enter, with the popup notice, and Enter is not pressed", async () => {
+    const { send, pane, deps } = ompPane(PATH, { opens: pathOpens });
+    const answer = await send(PARTIAL, { id: "path-command", mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue" });
+    expect(deps.store.get("path-command")?.receipt?.detail).toBe(POPUP_NOTICE);
+    expect(pane.keysSeen).not.toContain("Enter");
+    expect(pane.keysSeen).not.toContain("ctrl+q");
+    expect(pane.box).toBe(PARTIAL);
+  });
+
+  test("the same partial path goes out with ctrl+q when the person taps Submit, and as a plain send", async () => {
+    const submitted = ompPane(PATH, { opens: pathOpens });
+    submitted.pane.box = PARTIAL;
+    const answer = await submitted.send(PARTIAL, { id: "path-submit", mode: "submit" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(answer.receipt?.keys.at(-1)).toBe("ctrl+q");
+    expect(submitted.pane.box).toBe("");
+    const plain = ompPane(PATH, { opens: pathOpens });
+    const sent = await plain.send(PARTIAL, { id: "path-plain", mode: "send" });
+    expect(sent.receipt).toMatchObject({ outcome: "sent" });
+    expect(sent.receipt?.keys.at(-1)).toBe("ctrl+q");
+    expect(plain.pane.keysSeen).not.toContain("Enter");
+  });
+
+  test("without the path rule the command send presses Enter into omp's popup and does not end sent, as the tester saw it", async () => {
+    const { send, pane } = ompPane(PATH, { opens: pathOpens }, (profile) => withRules(profile, (rules) => rules.filter((rule) => rule.name !== "path")));
+    const answer = await send(PARTIAL, { id: "path-old", mode: "command" });
+    expect(pane.keysSeen).toContain("Enter");
+    expect(answer.receipt?.detail).not.toBe(POPUP_NOTICE);
+  });
 });
