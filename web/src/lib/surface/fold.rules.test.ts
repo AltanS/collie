@@ -119,6 +119,13 @@ describe("an OMP extension's status row under the box and under a slash list (om
     ["omp--v18-12-6-status-row-palette-4.txt", "/wx"],
     ["omp--v18-6-1-status-row-palette-4.txt", "/wx"],
     ["omp--v18-12-6-status-row-palette-10.txt", "/w"],
+    // omp-gang three S2 (2026-10-26): a widget of one to six rows under the palette, with a status row or without.
+    ["omp--v18-6-1-palette-widget-below-6.txt", "/wx"],
+    ["omp--v18-12-6-palette-widget-below-6.txt", "/wx"],
+    ["omp--v18-6-1-palette-widget-and-status.txt", "/wx"],
+    ["omp--v18-12-6-palette-widget-and-status.txt", "/wx"],
+    ["omp--v18-6-1-palette-tick-below.txt", "/wx"],
+    ["omp--v18-12-6-palette-tick-below.txt", "/wx"],
   ])("omp %s: the typed command with its list and the status row under it reads a draft, not unreadable or torn", (name, typed) => {
     const r = read(name);
     expect(r.frame?.interior.text).toBe(typed);

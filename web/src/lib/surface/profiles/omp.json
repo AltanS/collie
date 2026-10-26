@@ -184,9 +184,10 @@
           ],
           "argumentList": true,
           "footer": {
-            "pattern": "^\\S",
-            "maxRows": 4
+            "pattern": "^ ?\\S",
+            "maxRows": 13
           },
+          "footerNote": "The rows an extension keeps under the list: a widget of up to idle.frame.maxWidgetRows painted rows (drawn with a leading space) and one flush-left status row. A flush-left row or a row with one leading space that is no list row starts it (a list entry has two), then painted rows to the screen's end with no blank row, as widgetRun accepts a widget under an open box. maxRows = maxWidgetRows + 1 (omp-gang three S2, 2026-10-26; before, ^\\S and 4 rows read a flush-left status row only).",
           "leadOpens": true,
           "staleWhenEmpty": true,
           "notForText": "^\\s*@?(?:~|\\.{1,2}|/[^\\s/]+)/"

@@ -127,8 +127,8 @@ describe("the typeahead popups of omp's profile (idle.volatile.below.popups)", (
     expect(popupUnder(swap(rows), bottom, "nice smi", POPUPS)).toBeNull();
   });
 
-  it("a slash list with an extension's status row under it (commandList.footer) is no popup, whatever the text", () => {
-    for (const name of ["omp--v18-12-6-status-row-palette-4.txt", "omp--v18-6-1-status-row-palette-4.txt", "omp--v18-12-6-status-row-palette-10.txt"]) {
+  it("a slash list with an extension's widget or status row under it (commandList.footer) is no popup, whatever the text", () => {
+    for (const name of ["omp--v18-12-6-status-row-palette-4.txt", "omp--v18-6-1-status-row-palette-4.txt", "omp--v18-12-6-status-row-palette-10.txt", "omp--v18-6-1-palette-widget-below-6.txt", "omp--v18-12-6-palette-widget-below-6.txt", "omp--v18-6-1-palette-widget-and-status.txt", "omp--v18-12-6-palette-widget-and-status.txt", "omp--v18-6-1-palette-tick-below.txt", "omp--v18-12-6-palette-tick-below.txt"]) {
       const rows = fixtureRows(name, SURFACE_FIXTURES_DIR);
       const frame = findInputFrame(rows, idleFor("omp")!)!;
       const sheet = rows.map(rowText);

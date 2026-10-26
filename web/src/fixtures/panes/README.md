@@ -3229,6 +3229,16 @@ rig's own scratch folder, and no secret was present.
 | `omp--v18-6-1-status-row-palette-4.txt` | `popup` | 18.6.1, the same four-row list and status row |
 | `omp--v18-12-6-status-row-palette-10.txt` | `popup` | 18.12.6, `/w` typed: ten list rows with a scrollbar column, the pointer on `wx`, the status row under the list |
 
+Gang three, 01-regression (captured 2026-10-26, omp 18.6.1 and 18.12.6, 120 columns; the status row's folder names the lab only): the same
+four-row `/wx` list over an extension's widget. A widget row is drawn with ONE leading space, so `commandList.footer` (`^ ?\S`, at most
+`idle.frame.maxWidgetRows` + 1 rows) takes it as it takes a flush-left status row. Before, the footer was `^\S` and four rows, and these read as a dialog.
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `omp--v18-6-1-palette-widget-below-6.txt`, `omp--v18-12-6-palette-widget-below-6.txt` | `popup` | `/wx` typed over `/wb 6`: the list, then six widget rows (` below row 1` to ` below row 6`) |
+| `omp--v18-6-1-palette-widget-and-status.txt`, `omp--v18-12-6-palette-widget-and-status.txt` | `popup` | The same, and the flush-left status row `PLAN 3/6` under the widget |
+| `omp--v18-6-1-palette-tick-below.txt`, `omp--v18-12-6-palette-tick-below.txt` | `popup` | `/wx` typed over `/tfb`: the list, then one ticking widget row |
+
 ## A pane that is still a shell while the agent starts (captured 2026-10-25, omp gang tester 15, OMP 18.12.6, Collie's rig)
 
 | Fixture | State | What it shows |
