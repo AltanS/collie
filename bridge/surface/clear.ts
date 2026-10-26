@@ -9,6 +9,8 @@
 //               no profile (or a revoked one)          -> refused no_profile
 //               the pane could not be read             -> refused pane_gone
 //               a dialog is up                         -> refused dialog_open
+//               an unreadable screen whose box holds text and whose only cues are on the box's own rows
+//               (the box shape could not be read)      -> refused unreadable
 //               no dialog claim, no box found, or the box is behind a panel -> refused unreadable
 //               the box already reads empty            -> refused no_draft   (before any key)
 //   reread    on the first round only: one more fresh read right before the press with the same refusals,
@@ -47,7 +49,7 @@ import { frameImageKey } from "../../web/src/lib/surface/surface.ts";
 import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { splitLines } from "../../web/src/lib/blocks.ts";
 import { boundedDraft, type ClearReason, type ClearReceipt } from "../../web/src/lib/surface/clear.ts";
-import { rowText, type Frame } from "../../web/src/lib/surface/frame.ts";
+import { findInputFrame, rowText, type Frame } from "../../web/src/lib/surface/frame.ts";
 import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
 import { liftAsk, readerBlocks } from "../../web/src/lib/surface/lift.ts";
 import type { ProfileMatch } from "../../web/src/lib/surface/profile.ts";
@@ -107,6 +109,12 @@ interface Look {
   readonly surface: Surface;
   readonly frame: Frame | null;
   readonly texts: readonly string[];
+  /**
+   * The box holds text, and every cue that made the Surface claim a dialog stands on a row of the box
+   * itself: the box's own rows look like a list (a composer shape that puts a prompt glyph on the first
+   * row of a two-line draft). Nothing may have opened; the box shape could not be read.
+   */
+  readonly cuesInBox: boolean;
 }
 
 /** The probe's verdict on a box: the read the clear goes on from, or the refusal. `probed` says a key left (the probe or a Backspace). */
@@ -136,7 +144,9 @@ function refusal(requestId: string, reason: ClearReason, pressed: boolean): Sett
  */
 function refusalOf(look: Look): ClearReason | null {
   const { surface, frame } = look;
-  if (surface.modal !== "none" && surface.modal !== "unknown") return "dialog_open";
+  // A dialog Collie could not read, whose only cues stand on the box's own rows, may be no dialog at all: the
+  // box shape could not be read, and that is what the receipt says. A dialog it lifted (an ask) is one.
+  if (surface.modal !== "none" && surface.modal !== "unknown") return surface.modal === "unreadable" && look.cuesInBox ? "unreadable" : "dialog_open";
   if (surface.modal === "unknown" || frame === null) return "unreadable";
   if (surface.composer === "empty") return "no_draft";
   if (surface.composer !== "draft") return "unreadable";
@@ -340,6 +350,11 @@ export class ClearService {
     const rows = splitLines(parseAnsi(grid.value.text));
     const ask = liftAsk(readerBlocks(rows, harness), grid.value.revision);
     const read = surfaceOfScreen({ seq: 0, source: "screen", at: Date.now(), revision: grid.value.revision, rows, ask }, match.profile.idle);
-    return { surface: read.surface, frame: read.frame, texts: rows.map((row) => rowText(row)) };
+    // The Surface drops the box of a profile whose dialogs draw in it once a strong cue stands (`dialogsInBox`),
+    // so the box is looked for again here, to tell a dialog from a box whose own rows read as a list.
+    const box = findInputFrame(rows, match.profile.idle);
+    const cues = read.cues?.cues ?? [];
+    const cuesInBox = box !== null && !box.placeholder && box.interior.text.length > 0 && cues.length > 0 && cues.every((cue) => cue.row >= box.top && cue.row <= box.bottom);
+    return { surface: read.surface, frame: read.frame, texts: rows.map((row) => rowText(row)), cuesInBox };
   }
 }
