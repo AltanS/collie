@@ -32,6 +32,8 @@ describe("the typeahead popups of omp's profile (idle.volatile.below.popups)", (
     ["omp--v18-12-6-emoji-popup--w120.txt", "emoji", false, 8],
     ["omp--v18-6-1-emoji-popup--w120.txt", "emoji", false, 8],
     ["omp--v18-12-6-path-popup-partial--w120.txt", "path", false, 1],
+    // The same rows read as a command list too (a description column); the popup is what they are.
+    ["omp--v18-12-6-at-popup-two-files--w120.txt", "file", false, 2],
   ] as const;
 
   it.each(READS)("%s: read as the %s popup (stale %s) of %i rows, the pointer on the first", (name, rule, stale, rows) => {

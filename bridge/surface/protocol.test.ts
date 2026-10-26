@@ -9614,4 +9614,18 @@ describe("omp's typeahead popups under the box (1.24.1)", () => {
     expect(pane.keysSeen).toContain("Enter");
     expect(answer.receipt?.detail).not.toBe(POPUP_NOTICE);
   });
+
+  test("an @ popup whose rows also read as a command list: the command send names the popup, not another command", async () => {
+    const name = "omp--v18-12-6-at-popup-two-files--w120.txt";
+    const { send, pane, deps } = ompPane(name);
+    const answer = await send("please read @READ", { id: "at-command-detail", mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue" });
+    expect(deps.store.get("at-command-detail")?.receipt?.detail).toBe(POPUP_NOTICE);
+    expect(pane.keysSeen).not.toContain("Enter");
+    // The plain send of it goes out with ctrl+q.
+    const plain = ompPane(name);
+    const sent = await plain.send("please read @READ", { id: "at-plain", mode: "send" });
+    expect(sent.receipt).toMatchObject({ outcome: "sent" });
+    expect(sent.receipt?.keys.at(-1)).toBe("ctrl+q");
+  });
 });

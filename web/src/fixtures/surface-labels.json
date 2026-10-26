@@ -4751,6 +4751,11 @@
    "version": "18.12.6",
    "state": "popup"
   },
+  "omp--v18-12-6-at-popup-two-files--w120.txt": {
+   "harness": "omp",
+   "version": "18.12.6",
+   "state": "popup"
+  },
   "omp--v18-6-1-quoted-dialog-draft--w120.txt": {
    "harness": "omp",
    "version": "18.6.1",

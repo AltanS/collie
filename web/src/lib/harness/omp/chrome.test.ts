@@ -178,6 +178,7 @@ const BOX_COMPOSER_FIXTURES = [
   "omp--v18-6-1-hash-popup-single--w120.txt",
   "omp--v18-6-1-hash-popup-stale--w120.txt",
   "omp--v18-12-6-path-popup-partial--w120.txt",
+  "omp--v18-12-6-at-popup-two-files--w120.txt",
 ];
 
 // omp 18.6.1 with `/model` or `/mod` typed (lab, 2026-10-17): a ten-row palette under the open box. The
@@ -358,6 +359,7 @@ describe("locateComposer — the real corpus, pinned so any change to the walk s
     { fixture: "omp--v18-6-1-hash-popup-single--w120.txt", top: 11, bottom: 12, suggestEnd: 14 },
     { fixture: "omp--v18-6-1-hash-popup-stale--w120.txt", top: 10, bottom: 11, suggestEnd: 14 },
     { fixture: "omp--v18-12-6-path-popup-partial--w120.txt", top: 9, bottom: 10, suggestEnd: 12 },
+    { fixture: "omp--v18-12-6-at-popup-two-files--w120.txt", top: 8, bottom: 9, suggestEnd: 12 },
   ];
 
   // These eleven indices are byte-identical to the ones the width-gated scanner produced. That is
@@ -444,6 +446,7 @@ describe("extractInputDraft", () => {
     { fixture: "omp--v18-12-6-emoji-popup--w120.txt", draft: "hello :smi" },
     { fixture: "omp--v18-6-1-emoji-popup--w120.txt", draft: "hello :smi" },
     { fixture: "omp--v18-12-6-path-popup-partial--w120.txt", draft: "~/.cache/collie-lab/omp-gang/gang3/04-readers/state/harness/omp/project/src/ma" },
+    { fixture: "omp--v18-12-6-at-popup-two-files--w120.txt", draft: "please read @READ" },
     // The person's own prompt quotes a permission dialog: all of it is the draft.
     {
       fixture: "omp--v18-6-1-quoted-dialog-draft--w120.txt",
