@@ -111,6 +111,11 @@ export interface LegMeta {
   readonly skill: string;
   readonly recordedAt: string;
   readonly cases: readonly string[];
+  /**
+   * The cases whose recording comes from a live run in which the case did not pass (the leg's verdict,
+   * leg.ts runScenario). A replay plays that run back, so such a case is re-recorded on its own.
+   */
+  readonly failed?: readonly string[];
 }
 
 // ── volatile values ──────────────────────────────────────────────────────────────────────────────
@@ -569,6 +574,26 @@ export const FORBIDDEN: readonly { readonly name: string; readonly re: RegExp }[
 
 /** The key patterns the recorder blanks in a response before it is written (a model that echoes one). */
 const KEY_PATTERNS: readonly RegExp[] = [/sk-or-v1-[A-Za-z0-9]{16,}/gu, /sk-ant-[A-Za-z0-9_-]{16,}/gu, /\bsk-[A-Za-z0-9]{32,}/gu, /\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gu];
+
+/**
+ * Drop what a Responses stream echoes of the REQUEST: OpenRouter's `response.created`,
+ * `response.in_progress` and `response.completed` events carry the request's whole `instructions`
+ * (the system prompt) and `tools`, about 30 KB each, three times per request. A cassette stores no
+ * request body, so they become `null` and `[]`. The output items, the usage and the ids stay.
+ */
+export function compactResponse(response: RecordedResponse): RecordedResponse {
+  if (response.events === undefined) return response;
+  const events = response.events.map((e) => {
+    const doc = asJsonObject(parseJson(e.data));
+    const inner = asJsonObject(doc?.response);
+    if (doc === undefined || inner === undefined || (inner.instructions === undefined && inner.tools === undefined)) return e;
+    const kept: JsonObject = { ...inner };
+    if (inner.instructions !== undefined) kept.instructions = null;
+    if (inner.tools !== undefined) kept.tools = [];
+    return { ...e, data: JSON.stringify({ ...doc, response: kept }) };
+  });
+  return { ...response, events };
+}
 
 /** Blank every key pattern in a recorded response, in its events and its body. */
 export function redactKeys(response: RecordedResponse): RecordedResponse {

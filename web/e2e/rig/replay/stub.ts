@@ -24,6 +24,7 @@ import { join } from "node:path";
 import {
   apiOf,
   caseFile,
+  compactResponse,
   digestOf,
   formatCassette,
   kindOf,
@@ -42,6 +43,7 @@ import {
   versionDir,
   volatileValues,
   type CassetteMeta,
+  type LegMeta,
   type Entry,
   type EntryKind,
   type Literal,
@@ -178,6 +180,8 @@ export async function startStub(config: StubConfig, port = 0, host = "127.0.0.1"
   const recordings = new Map<string, Recording>();
   const ordinals = new Map<string, number>();
   const recordedCases = new Map<StubHarness, Set<string>>();
+  /** Cases recorded in this run whose verdict was not `pass`, per harness. */
+  const failedCases = new Map<StubHarness, Set<string>>();
 
   const writeMeta = (plan: TierPlan) => {
     if (plan.version === null) return;
@@ -186,14 +190,13 @@ export async function startStub(config: StubConfig, port = 0, host = "127.0.0.1"
     // SAFETY: as above, the file is this function's own earlier output.
     const before = existsSync(file) ? (JSON.parse(readFileSync(file, "utf8")) as CassetteMeta) : null;
     const old = before?.legs[config.leg];
-    const kept = old !== undefined && old.model === plan.model && old.skill === plan.skill ? old.cases : [];
-    const cases = [...new Set([...kept, ...(recordedCases.get(plan.harness) ?? [])])].toSorted();
-    const meta: CassetteMeta = {
-      v: 1,
-      harness: plan.harness,
-      version: plan.version,
-      legs: { ...before?.legs, [config.leg]: { model: plan.model, skill: plan.skill, recordedAt: new Date().toISOString(), cases } },
-    };
+    const same = old !== undefined && old.model === plan.model && old.skill === plan.skill;
+    const now = recordedCases.get(plan.harness) ?? new Set<string>();
+    const cases = [...new Set([...(same ? old.cases : []), ...now])].toSorted();
+    // A case recorded again in this run keeps only this run's verdict; the others keep theirs.
+    const failed = [...new Set([...(same ? (old.failed ?? []) : []).filter((c) => !now.has(c)), ...(failedCases.get(plan.harness) ?? [])])].toSorted();
+    const legMeta: LegMeta = failed.length > 0 ? { model: plan.model, skill: plan.skill, recordedAt: new Date().toISOString(), cases, failed } : { model: plan.model, skill: plan.skill, recordedAt: new Date().toISOString(), cases };
+    const meta: CassetteMeta = { v: 1, harness: plan.harness, version: plan.version, legs: { ...before?.legs, [config.leg]: legMeta } };
     writeFileSync(file, `${JSON.stringify(meta, null, 2)}\n`);
   };
 
@@ -339,7 +342,7 @@ export async function startStub(config: StubConfig, port = 0, host = "127.0.0.1"
     if (rec === undefined || plan.version === null) return;
     let recorded: RecordedResponse = streaming ? { status: up.status, contentType, events } : { status: up.status, contentType, body: text };
     if (streaming && clientGone) recorded = { ...recorded, clientAborted: true };
-    const response = redactKeys(rewriteResponse(recorded, placeholdersFor(volatileValues(raw), config.literals)));
+    const response = redactKeys(rewriteResponse(compactResponse(recorded), placeholdersFor(volatileValues(raw), config.literals)));
     rec.slots[slot] = { kind, machine, ordinal, request: { ...summary, path: path.split("?")[0] ?? path, digest: digestOf(summary) }, response };
     if (c !== undefined) c.recorded++;
     writeCase(plan, rec);
@@ -353,6 +356,23 @@ export async function startStub(config: StubConfig, port = 0, host = "127.0.0.1"
         const asked = (JSON.parse(body) as { case: string | null }).case;
         current = asked;
         log(`case ${asked ?? "(none)"}`);
+        res.writeHead(204).end();
+        return;
+      }
+      if (url === "/_rig/verdict" && req.method === "POST") {
+        const body = await readBody(req);
+        // SAFETY: the leg's own POST (leg.ts stubVerdict), `{ "case": string, "verdict": string }`.
+        const said = JSON.parse(body) as { case: string; verdict: string };
+        for (const h of STUB_HARNESSES) {
+          const plan = config.plans[h];
+          if (!plan.record || !(recordedCases.get(h)?.has(said.case) ?? false)) continue;
+          const set = failedCases.get(h) ?? new Set<string>();
+          if (said.verdict === "pass") set.delete(said.case);
+          else set.add(said.case);
+          failedCases.set(h, set);
+          writeMeta(plan);
+          if (said.verdict !== "pass") log(`${h} ${said.case}: recorded in a case that did not pass (${said.verdict}), marked failed`);
+        }
         res.writeHead(204).end();
         return;
       }

@@ -44,7 +44,11 @@ it) with its digest, and the response: status, content type, and the server-sent
 delay after the one before. `meta.json` per version names, per leg, the model, the walky talky skill
 hash and the cases. No header is stored, so no key and no Authorization header can reach a file, and
 `bun run e2e:recordings:check` fails on a key pattern, a bearer token, an Authorization or x-api-key
-header, or a home folder path.
+header, or a home folder path. omp's Responses stream echoes the request's `instructions` and `tools`
+in its `response.created`, `response.in_progress` and `response.completed` events (about 30 KB each);
+the recorder keeps the events and empties those two fields. The leg tells the stub each case's verdict,
+and `meta.json` lists under `failed` every case recorded in a live run where it did not pass, so a
+replay that fails on one says to record that case again, alone.
 
 **Matching: case and ordinal first, the digest as the check.** The leg tells the stub which case runs
 (`POST /_rig/case`). A turn request is served the first unused turn of its case and machine whose digest
@@ -75,7 +79,11 @@ nightly ledger row keeps the tiers.
 ## Consequences
 
 - A solo leg on replay costs no OpenRouter turn. It still costs the Claude Code turns on the subscription.
-- A harness version bump costs one live run, which records. The recordings are commits like fixtures: a
+- A harness version bump costs one live run, which records. The first recording run (2026-10-26, pi
+  1.3.0 and omp 18.6.1) sent 44 requests to OpenRouter (pi 21, omp 23) and wrote 22 files, 2.3 MB.
+  Three of its cases did not pass and are marked: pi case 8 (Haiku refused the walky send under the
+  skill's rules), omp case 1 (a probe that failed before any model call) and Claude case 16 (whose omp
+  calls were recorded). The recordings are commits like fixtures: a
   person reads the diff and runs the check before committing them.
 - What a replay no longer proves: that the model still follows the walky talky skill, and that OpenRouter
   answers. A live run proves those on each new version. Spec 05 owns the guard against a replay that

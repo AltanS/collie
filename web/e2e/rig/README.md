@@ -356,15 +356,25 @@ bun run e2e:recordings:check
 git add e2e/rig/cassettes
 ```
 
-A recording run writes into this checkout's `e2e/rig/cassettes/`. A case that failed live leaves a
-recording too: run the leg again on replay before you commit, and record again if it fails. Commit the
-recordings like fixtures, after reading the diff.
+A recording run writes into this checkout's `e2e/rig/cassettes/`. A case that did not pass live
+leaves a recording too, and `meta.json` lists it under `failed` (the leg tells the stub each case's
+verdict). A replay plays that run back. When such a case fails on replay, its note says so first and
+gives the command to record that one case again:
+
+```sh
+COLLIE_RIG_LIVE=pi COLLIE_RIG_RECORD=1 COLLIE_RIG_KEY_FILE=/path/to/.env bunx playwright test -c e2e/rig/playwright.config.ts -g "<the case title>"
+```
+
+That run rewrites only that case and clears its mark when it passes. Commit the recordings like
+fixtures, after reading the diff and running the check.
 
 **Where they live.** `cassettes/<harness>/<version>/<case>.jsonl`, one file per case (`pi.walky-agents`,
 `claude.walky-broadcast` for the pi or omp calls of a Claude case), and `meta.json` per version with one
 entry per leg (`solo`, `crew`). A line holds one model request's summary (the wire format, the model, the
 tool names, the last prompt's text, the kinds of the items after it) and the recorded server-sent events
-with their delays. No request body, no header and no key is stored. Values that differ on every run
+with their delays. No request body, no header and no key is stored. omp's Responses stream echoes the
+request's `instructions` (the system prompt) and `tools` in its `response.*` events; the recorder keeps
+those events but empties the two fields. Values that differ on every run
 (walky ids, pane addresses, uuids, dates, ports, the rig's folders) are placeholders such as
 `{{walky:0}}` and `{{lab}}`, and a replay fills in this run's values (`VOLATILE` in
 `replay/cassette.ts`).

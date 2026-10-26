@@ -46,6 +46,8 @@ export interface TierPlan {
   readonly model: string;
   /** The skill hash the cassettes were (or will be) recorded with. */
   readonly skill: string;
+  /** On replay: the cases whose recording comes from a live run in which the case did not pass. */
+  readonly failed?: readonly string[];
 }
 
 /** The tier of each stub harness in one leg. */
@@ -119,7 +121,11 @@ export function decideTier(harness: StubHarness, version: string | null, leg: st
     const record = ask.record && ask.keyFile && version !== null;
     return { ...base, tier: "live", record, reason: `forced live (${ask.mode === "live" ? "COLLIE_RIG_MODEL=live" : "COLLIE_RIG_LIVE"})${record ? ", recording" : ""}` };
   }
-  if (gap === null) return { ...base, tier: "replay", record: false, reason: `cassettes ${harness}/${version ?? "?"} (${leg} leg)` };
+  if (gap === null) {
+    const failed = meta?.legs[leg]?.failed ?? [];
+    const note = failed.length === 0 ? "" : `; ${String(failed.length)} recorded in a case that did not pass: ${failed.join(", ")}`;
+    return { ...base, tier: "replay", record: false, reason: `cassettes ${harness}/${version ?? "?"} (${leg} leg)${note}`, failed };
+  }
   if (ask.mode === "replay") throw new Error(`COLLIE_RIG_MODEL=replay: ${gap}. Record them once: COLLIE_RIG_MODEL=live COLLIE_RIG_RECORD=1 COLLIE_RIG_KEY_FILE=... (web/e2e/rig/README.md)`);
   // A version miss runs live and records, so the next run replays. Never record under an unknown version.
   const record = ask.keyFile && version !== null;

@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  compactResponse,
   digestOf,
   forbiddenIn,
   formatCassette,
@@ -181,6 +182,16 @@ describe("matchTurn", () => {
   });
 });
 
+describe("compactResponse", () => {
+  it("drops the request's instructions and tools that a Responses stream echoes, and keeps the output", () => {
+    const created = JSON.stringify({ type: "response.created", response: { id: "r1", instructions: "the whole system prompt", tools: [{ name: "bash" }], output: [] } });
+    const text = JSON.stringify({ type: "response.output_text.delta", delta: "hi" });
+    const out = compactResponse({ status: 200, contentType: "text/event-stream", events: [{ ms: 5, data: created }, { ms: 1, data: text }, { ms: 0, data: "[DONE]" }] });
+    expect(out.events?.map((e) => e.data)).toEqual([JSON.stringify({ type: "response.created", response: { id: "r1", instructions: null, tools: [], output: [] } }), text, "[DONE]"]);
+    expect(out.events?.[0]?.ms).toBe(5);
+  });
+});
+
 describe("files and redaction", () => {
   it("writes and reads a cassette line for line", () => {
     const cassette = { header: { v: 1 as const, harness: "pi", version: "1.3.0", case: "pi.x", leg: "solo", recordedAt: "2026-10-26T00:00:00Z" }, entries: [entry("turn", 0, piBody("hi"), sse(delta("hello")))] };
@@ -228,6 +239,11 @@ describe("decideTier", () => {
     expect(decideTier("omp", "1.3.0", "solo", meta, "m", "s1", askOf({ COLLIE_RIG_LIVE: "pi" })).tier).toBe("replay");
     expect(decideTier("pi", "1.3.0", "solo", meta, "m", "s1", askOf({ COLLIE_RIG_LIVE: "all", COLLIE_RIG_RECORD: "1", COLLIE_RIG_KEY_FILE: "/k" }))).toMatchObject({ tier: "live", record: true });
     expect(decideTier("pi", "1.3.0", "solo", meta, "m", "s1", askOf({ COLLIE_RIG_MODEL: "live" })).tier).toBe("live");
+  });
+
+  it("replays a leg with cases recorded in a run where they did not pass, and names them", () => {
+    const marked = { ...meta, legs: { solo: { ...meta.legs.solo, failed: ["pi.walky-agents"] } } };
+    expect(decideTier("pi", "1.3.0", "solo", marked, "m", "s1", askOf({}))).toMatchObject({ tier: "replay", failed: ["pi.walky-agents"], reason: "cassettes pi/1.3.0 (solo leg); 1 recorded in a case that did not pass: pi.walky-agents" });
   });
 
   it("stops before the run with COLLIE_RIG_MODEL=replay when a cassette is missing", () => {
@@ -418,6 +434,31 @@ describe("the stub", () => {
     const quick = await ask(fast, piBody(WALKY_B));
     expect(quick.status).toBe(200);
     expect(quick.ms).toBeLessThan(120);
+  });
+
+  it("marks a case recorded in a run where it did not pass, and clears the mark when it passes again", async () => {
+    const { root, fake } = await setup();
+    const verdict = (stub: Stub, c: string, v: string) => fetch(`http://127.0.0.1:${String(stub.port)}/_rig/verdict`, { method: "POST", body: JSON.stringify({ case: c, verdict: v }) });
+    // SAFETY: meta.json is the stub's own JSON.stringify of a CassetteMeta (stub.ts writeMeta).
+    const meta = () => JSON.parse(readFileSync(join(root, "pi", "1.3.0", "meta.json"), "utf8")).legs.solo as { cases: string[]; failed?: string[] };
+    const first = await stubOn(root, fake, plan("pi", "live", true));
+    for (const c of ["pi.a", "pi.b"]) {
+      first.setCase(c);
+      await ask(first, piBody(`prompt ${c}`));
+    }
+    await verdict(first, "pi.a", "fail");
+    await verdict(first, "pi.b", "pass");
+    await verdict(first, "pi.never-recorded", "fail");
+    await first.close();
+    expect(meta()).toMatchObject({ cases: ["pi.a", "pi.b"], failed: ["pi.a"] });
+
+    const again = await stubOn(root, fake, plan("pi", "live", true));
+    again.setCase("pi.a");
+    await ask(again, piBody("prompt pi.a"));
+    await verdict(again, "pi.a", "pass");
+    await again.close();
+    expect(meta().cases).toEqual(["pi.a", "pi.b"]);
+    expect(meta().failed).toBeUndefined();
   });
 
   it("answers a catalog read with 503 and an unknown path with 404, on every tier, without calling out", async () => {
