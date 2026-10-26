@@ -2136,6 +2136,11 @@ interface PaneWatch {
   pollSawRunning: boolean;
   /** Polls in a row that found no pane. */
   missing: number;
+  /**
+   * The pane's holds were made from a box that was not free (no turn read), and since then no poll read
+   * a running turn and no release ran (2026-10-26). Its cause clears on the first free poll.
+   */
+  cleared?: boolean;
 }
 
 /** Polls in a row a pane must read free, after a running turn, before its oldest held request goes. */
@@ -2147,6 +2152,15 @@ const FREE_POLLS = 2;
  */
 const QUIET_FREE_POLLS = 5;
 const QUIET_FREE_MS = 10_000;
+/**
+ * A hold made from a box that was not free, with no turn read and no release since (2026-10-26, omp
+ * gang three 03-launch headline 6): its cause has cleared once this many polls in a row read the pane
+ * idle with an empty box. Its release reads S0 fresh, two reads that must agree, before any key; one that
+ * finds the box not free goes back to its place. The quiet rule stays for the requests after a release
+ * and the turn rules for a turn a poll read: there a turn may yet draw. An idle pane polls every
+ * `pollIdleMs` (12 s), so five quiet polls kept a send held for about 50 s on an idle, empty box.
+ */
+const CLEARED_FREE_POLLS = 1;
 /**
  * A marked request held over a draft (M62 spec 02) goes on two free reads in a row, and the second
  * comes at least this long after the first. The poll ticks on every screen update, so two reads can be
@@ -2604,7 +2618,7 @@ export class SendProtocol {
    */
   private quietWatch(session: string, paneId: string): void {
     const key = `${session}\u0000${paneId}`;
-    if (!this.watches.has(key)) this.watches.set(key, { sawRunning: false, freeReads: 0, freeSince: null, pollSawRunning: false, missing: 0 });
+    if (!this.watches.has(key)) this.watches.set(key, { sawRunning: false, freeReads: 0, freeSince: null, pollSawRunning: false, missing: 0, cleared: true });
   }
 
   private watchOf(session: string, paneId: string): PaneWatch {
@@ -2637,6 +2651,7 @@ export class SendProtocol {
     watch.freeReads = 0;
     watch.freeSince = null;
     watch.pollSawRunning = false;
+    watch.cleared = false;
     const record = this.deps.store.rearm(id, this.deps.generation(entry.paneId) ?? undefined);
     if (record === null) {
       holds.remove(id);
@@ -2676,7 +2691,9 @@ export class SendProtocol {
    *    polls in a row found no pane; a session id that resolved, or a /clear, keeps them;
    *  - the oldest held request goes only once a poll read a running turn since the last release, and
    *    then two polls in a row read the pane free; or, with no turn read, once five polls in a row read
-   *    it free over at least ten seconds. A command whose Enter could steer a turn (`waitsForTurn`)
+   *    it free over at least ten seconds. A hold made from a box that was not free, with no turn read
+   *    and no release since, goes on the first poll that reads the pane free ({@link CLEARED_FREE_POLLS}):
+   *    its cause has cleared, and its run reads S0 fresh before any key. A command whose Enter could steer a turn (`waitsForTurn`)
    *    counts the hold's own read of the turn only when its two free polls also span
    *    {@link DRAFT_LEFT_MS}: a turn that ended before the first poll ends its wait there, and a turn a
    *    poll read ends it on two free polls as before. It still never goes while a poll reads the turn,
@@ -2755,11 +2772,13 @@ export class SendProtocol {
       const afterTurn = (next.waitsForTurn === true ? watch.pollSawRunning : watch.sawRunning) && watch.freeReads >= FREE_POLLS;
       const turnEnded = next.waitsForTurn === true && watch.sawRunning && watch.freeReads >= FREE_POLLS && watch.freeSince !== null && now - watch.freeSince >= DRAFT_LEFT_MS;
       const quiet = watch.freeReads >= QUIET_FREE_POLLS && watch.freeSince !== null && now - watch.freeSince >= QUIET_FREE_MS;
+      // A box hold whose cause cleared: no turn read and no release since it was made.
+      const cleared = watch.cleared === true && !watch.sawRunning && next.waitsForTurn !== true && next.draftHolds !== true && watch.freeReads >= CLEARED_FREE_POLLS;
       // A draft that left the box: two reads in a row of an empty box and an idle pane, at least
       // DRAFT_LEFT_MS apart, so a submitted draft has drawn its turn before anything is typed.
       // Only a marked request: another held send keeps its own release rules, whatever its label says.
       const draftLeft = next.draftHolds === true && holds.get(next.id)?.cause === "draft_present" && watch.freeReads >= FREE_POLLS && watch.freeSince !== null && now - watch.freeSince >= DRAFT_LEFT_MS;
-      if (busy || !(afterTurn || turnEnded || quiet || draftLeft)) continue;
+      if (busy || !(afterTurn || turnEnded || quiet || draftLeft || cleared)) continue;
       if (this.deps.releaseCheck?.(next.id, session, paneId) === false) {
         this.endHeld(next, "refused", "pane_gone");
         continue;

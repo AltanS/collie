@@ -6263,7 +6263,7 @@ describe("a send at a box that is not free is held, not refused (2026-10-17 fiel
     const holds = new HoldStore(join(dir, "held"), () => clock.now);
     return { ...rig({ holds, clock }), holds };
   };
-  const tick = async (r: Rig, surface: typeof FREE | typeof RUNNING = FREE): Promise<(SendAnswer | null)[]> => Promise.all(r.protocol.tickHolds("main", () => surface));
+  const tick = async (r: Rig, surface: Surface = FREE): Promise<(SendAnswer | null)[]> => Promise.all(r.protocol.tickHolds("main", () => surface));
 
   test("a dialog at the box holds the message: receipt held, nothing typed, the box's line as detail", async () => {
     const r = queued();
@@ -6288,27 +6288,57 @@ describe("a send at a box that is not free is held, not refused (2026-10-17 fiel
     expect(answer.detail).toBe(BOX_HELD);
   });
 
-  test("a hold from a box that was not free has no running read: two free polls keep it, five over ten seconds send it", async () => {
+  test("a hold from a box that was not free goes on the first free poll once its cause cleared (omp gang three 03-launch, 2026-10-26)", async () => {
     const clock = { now: 1_000_000 };
     const r = queued(clock);
     r.pane.dialog = DIALOG;
     await r.send("ok for the open PRs", { id: "box-0000003" });
+    // The dialog is still up: the poll reads it, nothing goes.
+    expect(await tick(r, { revision: 1, turn: "idle", modal: "unreadable", composer: "unknown" })).toEqual([]);
     r.pane.dialog = null;
-    // A `turn_running` hold goes on the second free poll; this one does not: it read no turn.
-    expect(await tick(r)).toEqual([]);
-    clock.now += 2500;
-    expect(await tick(r)).toEqual([]);
-    clock.now += 2500;
-    expect(await tick(r)).toEqual([]);
-    clock.now += 2500;
-    expect(await tick(r)).toEqual([]);
-    expect(r.pane.calls).toEqual([]);
-    clock.now += 2500;
+    // An idle pane polls every 12 s: one free poll is enough, not five over ten seconds.
+    clock.now += 12_000;
     const [released] = await tick(r);
     expect(released?.receipt).toMatchObject({ requestId: "box-0000003", outcome: "sent" });
     expect(r.pane.transcript.at(-1)).toBe("> ok for the open PRs");
     expect(r.holds.list()).toEqual([]);
     neverEscape(r.pane);
+  });
+
+  test("after a release, the next box hold keeps the quiet rule: five free polls over ten seconds", async () => {
+    const clock = { now: 1_000_000 };
+    const r = queued(clock);
+    r.pane.dialog = DIALOG;
+    await r.send("first", { id: "box-0000013" });
+    await r.send("second", { id: "box-0000014" });
+    r.pane.dialog = null;
+    const [first] = await tick(r);
+    expect(first?.receipt).toMatchObject({ requestId: "box-0000013", outcome: "sent" });
+    // The first one may start a turn the screen has not drawn yet: the second waits for the quiet rule.
+    expect(await tick(r)).toEqual([]);
+    clock.now += 2500;
+    expect(await tick(r)).toEqual([]);
+    clock.now += 2500;
+    expect(await tick(r)).toEqual([]);
+    clock.now += 2500;
+    expect(await tick(r)).toEqual([]);
+    expect(r.pane.transcript.at(-1)).toBe("> first");
+    clock.now += 2500;
+    const [second] = await tick(r);
+    expect(second?.receipt).toMatchObject({ requestId: "box-0000014", outcome: "sent" });
+    neverEscape(r.pane);
+  });
+
+  test("a box hold whose pane then runs a turn keeps the turn rules, not the first free poll", async () => {
+    const r = queued();
+    r.pane.dialog = DIALOG;
+    await r.send("ok for the open PRs", { id: "box-0000015" });
+    r.pane.dialog = null;
+    expect(await tick(r, RUNNING)).toEqual([]);
+    // The turn ended: one free poll is not enough, two are (FREE_POLLS).
+    expect(await tick(r)).toEqual([]);
+    const [released] = await tick(r);
+    expect(released?.receipt).toMatchObject({ requestId: "box-0000015", outcome: "sent" });
   });
 
   test("a hold from a box that was not free goes after a turn a poll reads, then two free polls", async () => {
