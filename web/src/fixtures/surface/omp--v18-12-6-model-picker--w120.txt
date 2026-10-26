@@ -1,0 +1,40 @@
+╭─ Models ───────────────────┬─────────────────────────────────────────────────────────────────────────────────────────╮
+│   ✦ Roles             1/16 │  All available models                                                                   │
+│ ❯ ⬢ All models         802 │  Kind: ◀ all ▶  chat ┆ tiny ┆ image ┆ tts ┆ stt ┆ search ┆ judge ┆ embedding ┆ rerank … │
+│ ────────────────────────── │  🔍 >                                                                                   │
+│   ● local               14 │                                                                                         │
+│   ● openrouter         766 │   openrouter/anthropic/claude-haiku-4.5                      68t/s  200k ◫        $1/5█ │
+│   ● web                 22 │   openrouter/openai/gpt-5.6-sol                      🧠 61  ~77t/s  1.1m ◫       $4/20│ │
+│ ────────────────────────── │   openrouter/google/gemini-3-pro-image                              131k ◫       $2/12│ │
+│   ○ abliteration           │   web/parallel                                                                    free│ │
+│   ○ aiand                  │   local/kokoro                                                                    free│ │
+│   ○ aimlapi                │   local/parakeet-tdt-0.6b-v3                                                      free│ │
+│   ○ alibaba-coding-plan    │   openrouter/typesafe/jev-1.14                                      262k ◫     $0.04/0│ │
+│   ○ alibaba-token-plan     │   openrouter/openai/gpt-6-luna                       🧠 37   32t/s  1.1m ◫    $0.1/0.5│ │
+│   ○ amazon-bedrock         │   ──────────────────────────────────────────────────────────────────────────────────  │ │
+│   ○ anthropic              │   local/lfm2.5-350m                                                               free│ │
+│   ○ azure                  │   local/lfm2.5-230m                                                               free│ │
+│   ○ baseten                │   local/falcon-h1-90m                                                             free│ │
+│   ○ bedrock-mantle         │   local/gemma-3-1b                                                                free│ │
+│   ○ cerebras               │   local/qwen3-1.7b                                                                free│ │
+│   ○ charm-hyper            │   local/qwen2.5-1.5b                                                              free│ │
+│   ○ cline-pass             │   local/lfm2-1.2b                                                                 free│ │
+│   ○ cloudflare-ai-gateway  │   local/nemotron-streaming-en-0.6b                                                free│ │
+│   ○ cloudflare-workers-ai  │   local/llama3.2:3b                                                               free│ │
+│   ○ commandcode            │   local/whisper-base                                                              free│ │
+│   ○ coralbricks            │   local/whisper-large-v3-turbo                                                    free│ │
+│   ○ coreweave              │   local/whisper-small                                                             free│ │
+│   ○ cursor                 │   openrouter/qwen/qwen3.5-plus-20260420                               1m ◫    $0.3/1.8│ │
+│   ○ deepinfra              │   openrouter/mistralai/mistral-small-2603                           262k ◫   $0.15/0.6│ │
+│   ○ deepseek               │   openrouter/mistralai/mistral-small-2603:batch                     262k ◫   $0.07/0.3│ │
+│   ○ devin                  │   openrouter/mistralai/devstral-2512                                262k ◫      $0.4/2│ │
+│   ○ factory-droid          │   openrouter/mistralai/mistral-large-2512             🧠 6          262k ◫    $0.5/1.5│ │
+│   ○ firepass               │   openrouter/mistralai/mistral-large-2512:batch                     262k ◫  $0.25/0.75│ │
+│   ○ fireworks              │   openrouter/mistralai/codestral-2508                               256k ◫    $0.3/0.9│ │
+│   ○ github-copilot         │   openrouter/mistralai/codestral-2508:batch                         256k ◫  $0.15/0.45│ │
+│   ○ gitlab-duo             │                                                                                         │
+│   ○ gitlab-duo-agent       │   Claude Haiku 4.5 · 200k ctx · 64k out · $1/5 per M · reasoning · vision · ~68t/s · 1… │
+│   ○ gmi-cloud              │   ● default ◒ · ○ smol · ○ slow · ○ tiny · ○ memory · ○ widget                          │
+├────────────────────────────┴─────────────────────────────────────────────────────────────────────────────────────────┤
+│ ⏎/→ models · ↑/↓ providers · type to search · Alt+←/Alt+→ kind · ⎋ close                                             │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯

@@ -182,7 +182,7 @@ import { noEchoPromptIn } from "../../web/src/lib/no-echo.ts";
 import { isUploadImagePath, pastePieces } from "../../web/src/lib/upload-path.ts";
 import { pointsAt, staleListUnder } from "../../web/src/lib/surface/command-list.ts";
 import type { PopupRead } from "../../web/src/lib/surface/popup.ts";
-import { commandListAt, isRunningRow, noticeOver, ownCommandList, popupAt, readCues, readCuesFor, runningSign, withoutCommandList, withoutPopup, withoutPromptEchoes, type CommandListRead, type Cue } from "../../web/src/lib/surface/cues.ts";
+import { commandListAnyText, commandListAt, isRunningRow, noticeOver, ownCommandList, popupAt, readCues, readCuesFor, runningSign, withoutCommandList, withoutPopup, withoutPromptEchoes, type CommandListRead, type Cue } from "../../web/src/lib/surface/cues.ts";
 import { loadProfiles } from "../../web/src/lib/surface/profile.ts";
 import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
 import { findInputFrame, rowText, type Frame, type FrameRow } from "../../web/src/lib/surface/frame.ts";
@@ -572,6 +572,8 @@ interface Snap {
   readonly popup: PopupRead | null;
   /** The profile's command list at the frame and the command its pointer rests on ({@link commandListAt}); null with none. */
   readonly commandList: CommandListRead | null;
+  /** The same list read whatever the box's text is ({@link commandListAnyText}): what a pointer under a path-like text rests on. */
+  readonly listAnyText: CommandListRead | null;
   /** That list when it is the typeahead of the command the box holds ({@link ownCommandList}); null otherwise. */
   readonly ownList: CommandListRead | null;
   /** A short hash of the whole read. */
@@ -1555,7 +1557,9 @@ const TURN_STARTED = "A turn started while the text was typed, so Enter was not 
  * its own typeahead and passes; a list with no pointer is left to the cue read.
  */
 function listPointsElsewhere(snap: Snap, prefix: string, lines: readonly string[], collapse: RegExp | null, rows: CommandListRows | undefined): boolean {
-  const list = snap.commandList;
+  // The profile's `notForText` hides a list from the Surface for a path-like text (the file popup stands there),
+  // never from this check: a pointer on a row that is no entry of the path itself would be pressed by Enter.
+  const list = snap.commandList ?? snap.listAnyText;
   if (list === null || list.pointed === null || snap.frame === null) return false;
   if (!commandBoxMatches(boxText(snap.frame), prefix, lines, collapse)) return false;
   return !pointsAt(list, prefix + lines.join(""), rows);
@@ -4125,6 +4129,7 @@ export class SendProtocol {
       otherScreen: otherScreenOf(texts, frame, idle?.volatile.below.otherScreens ?? []),
       popup,
       commandList: frame === null ? null : commandListAt(texts, frame, idle?.volatile.below.commandList, rows),
+      listAnyText: frame === null ? null : commandListAnyText(texts, frame, idle?.volatile.below.commandList, rows),
       ownList,
       hash: shortHash(texts.join("\n")),
       // A running row's timer is masked (steadyRow): a ticking timer is not a screen the person did not see.

@@ -934,3 +934,69 @@ describe("omp's composer.shape field (18.12.6)", () => {
     expect(read.surface).toEqual({ revision: 1, turn: "idle", modal: "none", composer: "draft" });
   });
 });
+
+// omp 18.6.1 and 18.12.6 (omp-gang three, tester 5, 2026-10-26, W3): a local shell line typed with `!`
+// (`!sleep 25`) runs in omp's own bash block, `$ sleep 25` and `⠋ Running… (⎋ to cancel)` between two rules,
+// and no model turn is on. The profile's running rows knew only `Working…`, so the Surface read the turn idle
+// and the phone's Stop was refused `turn_idle` for a command that only Escape ends. The row says Escape on
+// its face (`⎋ to cancel`), the profile's interrupt key.
+describe("omp's local shell line that is running (18.6.1 and 18.12.6)", () => {
+  const RUNNING = ["omp--v18-6-1-local-bash-running--w120.txt", "omp--v18-12-6-local-bash-running--w120.txt"] as const;
+
+  for (const name of RUNNING) {
+    it(`${name}: the turn reads running, the box empty and no modal`, () => {
+      const rows = fixtureRows(name, SURFACE_FIXTURES_DIR);
+      const read = readScreen(rows, "omp", idleFor("omp"));
+      expect(read.surface).toEqual({ revision: 1, turn: "running", modal: "none", composer: "empty" });
+      expect(runningSign(rows, read.frame!, idleFor("omp")!.runningRows)).toBe(true);
+    });
+
+    it(`${name}: without the Running row the same screen reads idle`, () => {
+      const rows = fixtureRows(name, SURFACE_FIXTURES_DIR).map((row) => (rowText(row).includes("Running…") ? { segments: [] } : row));
+      expect(readScreen(rows, "omp", idleFor("omp")).surface.turn).toBe("idle");
+    });
+  }
+
+  it("the row's pattern is the spinner and the cancel hint, not the word Running alone", () => {
+    const idle = idleFor("omp")!;
+    const sign = (text: string): boolean => idle.runningRows!.some((source) => new RegExp(source, "u").test(text));
+    expect(sign(" ⠋ Running… (⎋ to cancel)")).toBe(true);
+    expect(sign(" ⠴ Running… (⎋ to cancel)  ")).toBe(true);
+    for (const text of [" Running… (⎋ to cancel)", " ⠋ Running tests", " Running… done", "⠋ Running… (⎋ to cancel) and more", " the Running… (⎋ to cancel)"]) {
+      expect(sign(text), text).toBe(false);
+    }
+  });
+});
+
+// omp 18.6.1 and 18.12.6 (omp-gang three, tester 5, 2026-10-26, W4): a draft typed at the desk with omp's queue
+// prefix (`-> text` or `=> text`) shows omp's `Queueing ➤` label on the box's first row and the body under it. The
+// tester's view said `empty` for several seconds. These captures read `draft` as they stand: the label row and the body
+// are the box's draft display, the label painted in the grey the profile names for the empty box's ghost hint
+// (`inlineHint`, rgb(107,114,128)) included. An idle pane's view is read every `pollIdleMs` (12 s), so a desk edit
+// shows late; the screen itself reads draft.
+describe("omp's queue-prefix draft (Queueing ➤) reads as a draft (18.6.1 and 18.12.6)", () => {
+  const DRAFTS: readonly [string, string][] = [
+    ["omp--v18-6-1-draft-queueing-painted--w120.txt", "Queueing ➤ hello queue draft"],
+    ["omp--draft-queueing-body--v18.12.6.txt", "Queueing ➤ then do this"],
+    ["omp--draft-queueing-label--v18.12.6.txt", "Queueing ➤"],
+  ];
+
+  for (const [name, text] of DRAFTS) {
+    it(`${name}: composer draft, the label part of the box's text, no placeholder`, () => {
+      const read = readScreen(fixtureRows(name, SURFACE_FIXTURES_DIR), "omp", idleFor("omp"));
+      expect(read.surface).toEqual({ revision: 1, turn: "idle", modal: "none", composer: "draft" });
+      expect(read.frame?.interior.text).toBe(text);
+      expect(read.frame?.placeholder).toBe(false);
+    });
+  }
+
+  it("the painted capture keeps its label colour: the hint colour is the profile's, and the draft still reads", () => {
+    const rows = fixtureRows("omp--v18-6-1-draft-queueing-painted--w120.txt", SURFACE_FIXTURES_DIR);
+    expect(rows.some((row) => row.segments.some((segment) => segment.text.includes("Queueing ➤") && JSON.stringify(segment.style).includes("107,114,128")))).toBe(true);
+    expect(idleFor("omp")!.inlineHint?.fg).toContain("rgb(107,114,128)");
+  });
+
+  it("the empty box with its ghost hint beside it is still empty", () => {
+    expect(readScreen(fixtureRows("omp--box-empty--v18.12.6.txt", SURFACE_FIXTURES_DIR), "omp", idleFor("omp")).surface.composer).toBe("empty");
+  });
+});

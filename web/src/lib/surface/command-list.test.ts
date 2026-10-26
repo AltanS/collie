@@ -17,6 +17,26 @@ const LIST = OMP.volatile.below.commandList!;
 
 const read = (pointed: string | null, entries: readonly string[]): CommandListRead => ({ pointed, side: "under", first: 1, last: entries.length, entries });
 
+describe("pointsAt: a path-like text and the entry that ends it (commandList.notForText)", () => {
+  it("the pointer on the entry that ends the typed path is that path's own popup row", () => {
+    expect(pointsAt(read("/x.png", ["/x.png"]), "~/.cache/x.png", LIST)).toBe(true);
+    expect(pointsAt(read("/w2.png", ["/w2.png"]), "/var/uploads/w2.png", LIST)).toBe(true);
+  });
+
+  it("a pointer on any other row is another command's: /loop under /tmp/x, a longer name, a name the path only contains", () => {
+    expect(pointsAt(read("/loop", ["/loop"]), "/tmp/x", LIST)).toBe(false);
+    expect(pointsAt(read("/loop", ["/loop"]), "/etc/hosts", LIST)).toBe(false);
+    expect(pointsAt(read("/xx.png", ["/xx.png"]), "/var/uploads/x.png", LIST)).toBe(false);
+    expect(pointsAt(read("/x.png", ["/x.png"]), "/var/uploads/ax.png", LIST)).toBe(false);
+    expect(pointsAt(read(null, ["/x.png"]), "/var/uploads/x.png", LIST)).toBe(false);
+  });
+
+  it("a text that is no path keeps the rule it had", () => {
+    expect(pointsAt(read("/x.png", ["/x.png"]), "look at /var/uploads/x.png", LIST)).toBe(false);
+    expect(pointsAt(read("/loop", ["/loop"]), "/loop", LIST)).toBe(true);
+  });
+});
+
 describe("pointsAt: the list's pointer rests on the typed command", () => {
   it("the typed command itself, and never a longer one", () => {
     expect(pointsAt(read("/model", ["/model", "/models"]), "/model", LIST)).toBe(true);

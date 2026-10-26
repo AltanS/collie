@@ -3383,3 +3383,38 @@ of the adapter does not read it, so `composerReady` stays false on these two.
 | `omp--v18-12-6-composer-field-two-lines--w130.txt` | `draft` | two typed lines, one `▐` row each |
 
 The shape `claude` (rule, `❯`, rule) reads empty and with one line, but not with two, and has no fixture here on purpose: a two-line draft reads `unreadable` because the cue reader takes the `❯` row and the indented row under it, between two rules, for a pointer on a listed row. `ownPrompt` is not safe on that edges entry. The wanted read is an expected-fail test, and the gap a `todo`, in `fold.pi-omp.test.ts` ("omp's composer.shape field"). Left for after 1.24.1.
+
+## omp: a path-like command over one fuzzy entry (captured 2026-10-26, omp 18.6.1 and 18.12.6, omp-gang three, tester 05)
+
+Two captures in `fixtures/surface/`, cut to the last 13 rows, the Send Protocol's tests read them (`bridge/surface/protocol.test.ts`, "a path-like command over a pointed list"). A path-like text sent as a command (`/tmp/x`, `/etc/hosts`, `/bin/sh`, `/exit/now`) makes omp 18.6.1 draw ONE fuzzy entry under the box, `❯ ↻ loop   Loop: off`, whatever the path is, and Enter runs `/loop` ("Loop mode enabled"). The profile's `commandList.notForText` keeps such a text's rows out of the Surface's read (the file popup stands there), so the check before Enter must not take its list from that read. Only the `/tmp/x` list was captured on 18.6.1: the tests type the other three paths into the same list. omp 18.12.6 draws no list for these texts; its capture is the screen after the send, an empty box, used as the base for a no-list scene.
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `omp--v18-6-1-path-like-loop-list--w120.txt` | `popup` | `/tmp/x` typed, `❯ ↻ loop        Loop: off` under it |
+| `omp--v18-12-6-path-like-no-list--w120.txt` | `idle` | 18.12.6, an empty box after `/tmp/x` went out as a message (no list is ever drawn for a path there) |
+
+## omp: the /model picker with Collie's probe in its search (captured 2026-10-25 and 2026-10-26, omp 18.6.1 and 18.12.6, omp-gang three, testers 12 and 5)
+
+Two captures in `fixtures/surface/`, the full 40-row screen as read, the Send Protocol's tests read them (`bridge/surface/protocol.test.ts`, "omp's /model picker owns the keyboard"). The picker is a full-screen `Models` box with a `🔍 >` search row, no input box and no frame. The Surface reads it `unknown / unreadable / unknown` with a strong cue, so a send ends `unconfirmed` with nothing typed. The 18.6.1 capture is tester 12's Type here run: the probe `⌁` stands in the search row. The 18.12.6 capture has an empty search. The tests derive the empty and the two-character search rows from them with the row's width kept.
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `omp--v18-6-1-model-picker-search-probe--w120.txt` | `screen` | `/model` open on 18.6.1, `🔍 > ⌁` in the search row |
+| `omp--v18-12-6-model-picker--w120.txt` | `screen` | `/model` open on 18.12.6, an empty search |
+
+## omp: a local shell line that is running (captured 2026-10-26, omp 18.6.1 and 18.12.6, omp-gang three, tester 5)
+
+Two captures in `fixtures/surface/`, the Surface's and the Stop's tests read them (`web/src/lib/surface/fold.pi-omp.test.ts`, `bridge/surface/stop.test.ts`). A `!` line (`!sleep 25`) runs in omp's own bash block, `$ sleep 25` and `⠋ Running… (⎋ to cancel)` between two rules, with no model turn on and nothing in the journal. `idle.runningRows` knew only the `Working…` rows, so the Surface read the turn idle and Stop was refused `turn_idle`; the row is now a running row, and Escape, which the row names, is the profile's interrupt key. The 18.12.6 capture is cut to its last 14 rows. The 18.6.1 capture is derived from tester 5's `during-local-bash` screen, which was taken after a plain message was sent during the command: the echo of that message (`sent during local bash`) and the lab's `401` notice were cut, because they stand between the Running block and the box and put the row out of the volatile band (`volatile.above.maxRows`, 6). That screen as taken still reads idle on 18.6.1: a row above the band is not seen, and the band is not widened for it.
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `omp--v18-6-1-local-bash-running--w120.txt` | `running` | 18.6.1, the Running block over the empty box (derived, see above) |
+| `omp--v18-12-6-local-bash-running--w120.txt` | `running` | 18.12.6, `$ sleep 40` and its Running row over the empty box |
+
+## omp: a desk draft with the queue prefix, painted (captured 2026-10-26, omp 18.6.1, omp-gang three, tester 5)
+
+One capture in `fixtures/surface/`, cut to its last 12 rows with its colours kept (`web/src/lib/surface/fold.pi-omp.test.ts`, "omp's queue-prefix draft"). A draft typed at the desk that starts with `->` or `=>` makes omp draw its `Queueing ➤` label on the box's first row, in the grey `rgb(107,114,128)`, and the body on the row under it. That grey is also the profile's `inlineHint` colour (the empty box's ghost hint), so the capture pins that the painted label is not taken for a hint: the Surface reads `draft` with the text `Queueing ➤ hello queue draft`. The tester's view said `empty` for several seconds after the draft was typed; the view (`/api/snapshot`) is the pane's last poll, and an idle pane polls every 12 s, so a desk edit shows late. The `=>` prefix draws the same label (omp-gang 13-drafts, case 35b). The 18.12.6 screens are `omp--draft-queueing-label--v18.12.6.txt` and `omp--draft-queueing-body--v18.12.6.txt`, listed above.
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `omp--v18-6-1-draft-queueing-painted--w120.txt` | `draft` | 18.6.1, `-> hello queue draft` typed at the desk, label and body painted |

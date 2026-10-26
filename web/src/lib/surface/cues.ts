@@ -428,6 +428,15 @@ export function commandListAt(texts: readonly string[], frame: Frame, list: Comm
 }
 
 /**
+ * The profile's command list at a frame whatever the box's text is: {@link commandListAt} without the profile's
+ * `notForText`, which keeps a path's popup rows out of the Surface's and the cues' reads. The Send Protocol asks
+ * this one before Enter, so a list drawn under such a text is never pressed over unseen.
+ */
+export function commandListAnyText(texts: readonly string[], frame: Frame, list: CommandListRows | undefined, rows?: readonly FrameRow[]): CommandListRead | null {
+  return commandListNear(texts, frame.top, frame.bottom, list, rows, frame.interior.prompt);
+}
+
+/**
  * The typeahead of the command the box holds, or null: the profile's command list on either side of
  * a found frame, its pointer on an entry whose command is the box's text ({@link pointsAt}: `/model` is
  * pointed at by `❯ /model`, never by `❯ /models`). Enter there picks the command that is already typed,
