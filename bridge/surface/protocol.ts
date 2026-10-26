@@ -109,10 +109,14 @@
 //
 // At most one of Collie's probe characters is unaccounted for per pane (live checks of 1.24.1,
 // 2026-10-26): a probe typed into the box of a harness that is starting, with no Backspace after it,
-// is pending until it shows (`SendDeps.pending`). While one is, a send, a command, Add to it and Replace
+// is pending until it shows (`SendDeps.pending`), for at most 30 s from the moment it was typed
+// (`PENDING_PROBE_MS`, launch-window.ts). While one is, a send, a command, Add to it and Replace
 // type no probe: a new request is refused `probe_failed` before any key, with the window's words, and
 // a released one goes back to its place without spending a try. The hold queue does not release while
-// the pending character has not shown. Once it shows, the residue rule takes it out.
+// the pending character has not shown. Once it shows, the residue rule takes it out, whether or not it
+// is still pending. Past its life it blocks nothing: a box that swallowed it (a program that flushes
+// its input as it starts) would otherwise keep the pane from any send for the launch window's two
+// minutes, and the next send's own probe is how Collie learns the box reads keys now.
 //
 // The pane's generation (its agent and session id) may move under a send: the multiplexer names the
 // agent a launch window read a moment ago, or the agent's session id resolves. A move whose agent is the
@@ -290,6 +294,15 @@ function residueLeft(probe: string): string {
   return `The box held only Collie's probe characters (${probe}), and Backspace did not empty it. Check the pane before you type.`;
 }
 /** The detail after a failed probe that left its character where Collie cannot take it out. */
+/**
+ * The detail of a probe whose Backspace no read confirmed, where the reads are no proof the box is
+ * wrong: the pane is starting (its box redraws while the agent comes up), or no read after Backspace
+ * found the box. Live check W2 of 1.24.1 (9 of 14 runs, 2026-10-26): the box read empty and idle a
+ * moment later, and the old words said Backspace had not given it back.
+ */
+function unconfirmedClean(probe: string): string {
+  return `Collie could not confirm the box was clean after its probe character (${probe}). Nothing was sent. Send again in a moment.`;
+}
 function probeMayRemain(probe: string): string {
   return `A probe character (${probe}) may remain in the box. Check the pane before you type.`;
 }
@@ -442,12 +455,14 @@ export interface SendDeps {
    * The box of `harness` is on screen but its probe never showed, on a pane where it is starting: the
    * window stays open (it opens again inside its bound if a box read ended it), and the pane counts one
    * more probe character that may still show. Answers whether the pane is starting; 0 or a throw: not.
+   * `typedAt` is when the run typed that character: it blocks the pane for its own life from there.
    */
-  readonly deaf?: ((paneId: string, harness: string) => number) | undefined;
+  readonly deaf?: ((paneId: string, harness: string, typedAt?: number) => number) | undefined;
   /**
    * How many probe characters a send typed into the pane's box that never showed and were never taken
-   * out ({@link deaf} counts them), while its harness is starting; 0 when none, or the window ended.
-   * While any is pending a send types no probe (the header). A throw reads as 0. Absent: none.
+   * out ({@link deaf} counts them), while its harness is starting, typed less than `PENDING_PROBE_MS`
+   * (30 s, launch-window.ts) ago; 0 when none, or the window ended. While any is pending a send types
+   * no probe (the header). A throw reads as 0. Absent: none.
    */
   readonly pending?: ((paneId: string) => number) | undefined;
   /** The pane's generation now, or null when the pane is gone. */
@@ -2163,6 +2178,8 @@ interface RunState {
   readonly gaps: Partial<Record<SendStep, number>>;
   readonly keys: string[];
   probed: boolean;
+  /** When the run last typed its probe character: a pending one's life runs from there ({@link SendDeps.deaf}). */
+  probeAt?: number;
   /** The screen at S0 took the manual Send (no frame found, an unreadable overlay, a weak cue): the probe and S1 compare less. */
   manual: boolean;
   /** The pane has no profile: the text went in blind, with no read ({@link SendProtocol.blindSend}). */
@@ -2635,7 +2652,7 @@ export class SendProtocol {
     // A steer never joins (M69): it is for the turn that runs now, and goes in ahead of the held sends,
     // which wait for that turn to end anyway.
     const joins = holds !== undefined && JOINS.has(request.mode) && waiting.length > 0 && !draftOnly && request.when !== "steer";
-    const match = joins ? ((await this.deps.profile(target.harness, target.paneId)) ?? (await this.heldPlainProfile(request, waiting, target.paneId))) : null;
+    const match = joins ? ((await this.deps.profile(target.harness, target.paneId)) ?? (await this.heldPlainProfile(request, waiting, target.paneId, generation))) : null;
     if (match !== null && !(request.mode === "command" && runsInTurnEntry(request.text, match) !== null)) {
       const state = this.bareState(request, accepted.record, target, match);
       const refusal = textRefusal(request, match);
@@ -2661,12 +2678,19 @@ export class SendProtocol {
    * earlier plain send gives a new plain send the profile that earlier one was held with, so it joins the
    * queue behind it instead of going out ahead. Null for any other mode (Replace, Add to it, Submit, a
    * steer and commands keep their own rules), and when no earlier plain send is held there.
+   *
+   * The profile never crosses agents (counsel review, 2026-10-26): only a held send taken for the pane's
+   * `generation` now lends it. A held omp send on a pane omp has left (a shell now, or another harness)
+   * is the poll's to end `pane_gone`; a send that comes before that poll would otherwise go in with
+   * omp's profile on a shell.
    */
-  private async heldPlainProfile(request: SendRequest, waiting: readonly HeldEntry[], paneId: string): Promise<PaneProfileMatch | null> {
+  private async heldPlainProfile(request: SendRequest, waiting: readonly HeldEntry[], paneId: string, generation: string): Promise<PaneProfileMatch | null> {
     if (request.mode !== "send") return null;
     for (const entry of waiting) {
       if (entry.mode !== "send") continue;
-      const id = this.deps.store.get(entry.id)?.receipt?.profileId;
+      const record = this.deps.store.get(entry.id);
+      if (record?.paneGeneration !== generation) continue;
+      const id = record.receipt?.profileId;
       if (id === null || id === undefined) continue;
       const match = await this.deps.profile(id, paneId);
       if (match !== null) return match;
@@ -3342,7 +3366,7 @@ export class SendProtocol {
     const harness = state.startingNamed || !state.starting ? state.target.harness : state.match?.profile.id;
     if (harness === undefined || harness === "" || this.deps.deaf === undefined) return state.starting;
     try {
-      return this.deps.deaf(state.target.paneId, harness) > 0 || state.starting;
+      return this.deps.deaf(state.target.paneId, harness, state.probeAt) > 0 || state.starting;
     } catch (err) {
       console.warn(`[send] the deaf note failed: ${err instanceof Error ? err.message : String(err)}`);
       return state.starting;
@@ -3870,6 +3894,7 @@ export class SendProtocol {
     const draft = boxText(frame);
     const before = countIn(s0.texts, probe);
     const failed = (detail: string, snap: Snap | null): Ended => new Ended("refused", "probe_failed", sawNote(snap, { detail, framed: true }));
+    state.probeAt = this.now();
     await this.writeText(state, probe, false);
     state.keys.push("probe");
     let away = false;
@@ -4476,6 +4501,7 @@ export class SendProtocol {
     const budget = { reads: BOUNDS.probe.reads, ms: BOUNDS.probe.ms };
     const started = this.now();
 
+    state.probeAt = this.now();
     await this.writeText(state, probe, false);
     state.keys.push("probe");
     let landing: Landing | null = null;
@@ -4539,7 +4565,11 @@ export class SendProtocol {
       }
       return snap.plain.join("\n") === s0.plain.join("\n") ? "pass" : "wait";
     });
-    if (back.verdict !== "pass") throw failed("Backspace did not give the box back as it was.", back.snap);
+    if (back.verdict !== "pass") {
+      // The decision stands (refused, nothing sent); only the words follow what the reads prove.
+      const unproven = state.starting || back.snap === null || (s0.frame !== null && back.snap.frame === null);
+      throw failed(unproven ? unconfirmedClean(probe) : "Backspace did not give the box back as it was.", back.snap);
+    }
     return landing;
   }
 

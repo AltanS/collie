@@ -241,6 +241,12 @@ The note above stands for every other mode: a Replace, an Add to it, a Submit, a
 a pane with no profile of its own still do not join, and ordering them is deferred (it would need a
 reason such as `superseded`).
 
+The borrowed profile never crosses agents (counsel review, 2026-10-26): only a held send taken for the
+pane's generation now lends it. A held omp send on a pane omp has left is the poll's to end `pane_gone`;
+a send that came before that poll took omp's profile on what was a shell by then. A pane that runs
+another harness gives a new send that harness's own profile, as before. A pending probe character holds
+the queue for at most 30 s from the moment it was typed (ADR 0107's addendum of the same day).
+
 Trail: `bridge/surface/protocol.ts` (`tickHolds` with `boxOf`, `hold`, `heldPlainProfile`) ·
 `bridge/index.ts` (the poll passes `surface.boxOf`) · `bridge/surface/protocol.deaf-box.test.ts` ("the
 live checks of 1.24.1") · `protocol.test.ts` ("live check W3").

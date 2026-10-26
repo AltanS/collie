@@ -1673,7 +1673,7 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
           profile: paneProfile,
           starting: (paneId, named) => launchWindow.starting(name, paneId, named, foregroundHarness?.(paneId)),
           framed: (paneId, harness) => launchWindow.framed(name, paneId, harness),
-          deaf: (paneId, harness) => launchWindow.deaf(name, paneId, harness),
+          deaf: (paneId, harness, typedAt) => launchWindow.deaf(name, paneId, harness, typedAt),
           pending: (paneId) => launchWindow.pending(name, paneId),
           generation: generationOf,
           asks: askBook,

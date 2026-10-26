@@ -33,6 +33,10 @@
 // ({@link LaunchWindow.deaf}): the window stays open, or opens again inside the bound it first opened
 // with, the pane counts the probe characters that may still show, and only a probe that shows ends it.
 // The protocol takes those characters out once the box shows them (bridge/surface/probe-marker.ts).
+// Each such character blocks a new probe ({@link LaunchWindow.pending}) for {@link PENDING_PROBE_MS}
+// from the moment it was typed, not for the whole window: a box that never shows it (a program that
+// flushes its input when it starts) must not keep the pane from a send for two minutes, and the next
+// probe is how Collie learns the box reads keys now (2026-10-26).
 //
 // It fails open on missing evidence. A multiplexer with no foreground read (tmux, zellij and tuios
 // today) gets no `process` window, a read that fails or takes longer than {@link FOREGROUND_READ_MS}
@@ -45,6 +49,13 @@ import type { ForegroundProcess } from "./journal/types.ts";
 
 /** How long a pane may take to show its agent's input box: omp 18.12.6 takes about 20 s. */
 export const LAUNCH_WINDOW_MS = 120_000;
+
+/**
+ * How long a probe character that never showed blocks the pane's next probe and its held sends, from the
+ * moment it was typed. The deaf gap seen live was about 20 s (omp 18.12.6); past this the character is
+ * still counted for {@link LaunchWindow.drawn}, but the next send may type one new probe.
+ */
+export const PENDING_PROBE_MS = 30_000;
 
 /** How long a send waits for the multiplexer's foreground read. Past it the read counts as none. */
 export const FOREGROUND_READ_MS = 1_500;
@@ -76,6 +87,8 @@ interface Window {
    * no keys yet, and they may show later. A window with any is not ended by a box read alone.
    */
   deaf: number;
+  /** When each of the {@link deaf} characters was typed: one blocks for {@link PENDING_PROBE_MS}. */
+  typed: number[];
 }
 
 /** A pane whose agent's window ended: the harness, and when its window opened. */
@@ -185,7 +198,7 @@ export class LaunchWindow {
       const oldest = this.windows.keys().next().value;
       if (oldest !== undefined) this.windows.delete(oldest);
     }
-    this.windows.set(key, { harness, opened: at, until: at + LAUNCH_WINDOW_MS, source, processSeen, deaf: 0 });
+    this.windows.set(key, { harness, opened: at, until: at + LAUNCH_WINDOW_MS, source, processSeen, deaf: 0, typed: [] });
   }
 
   private settle(key: string, harness: string, opened: number): void {
@@ -275,27 +288,37 @@ export class LaunchWindow {
    * yet. An open window for that harness stays open and counts one more character that may show later.
    * A window a box read ended opens again, inside the bound it opened with. Answers the count, 0 when the
    * pane is not starting (no window, another harness, or past the bound): then nothing changes.
+   * `typedAt` is when the send typed the character (default now): its {@link PENDING_PROBE_MS} run from there.
    */
-  deaf(session: string, paneId: string, harness: string): number {
+  deaf(session: string, paneId: string, harness: string, typedAt?: number): number {
     const key = LaunchWindow.keyOf(session, paneId);
     const name = this.canonical(harness);
+    const at = typedAt ?? this.now();
     const window = this.open(key);
     if (window !== null) {
       if (window.harness !== name) return 0;
       window.deaf += 1;
+      window.typed.push(at);
       return window.deaf;
     }
     const settled = this.settled.get(key);
     const until = (settled?.opened ?? 0) + LAUNCH_WINDOW_MS;
     if (settled?.harness !== name || until <= this.now()) return 0;
     this.settled.delete(key);
-    this.windows.set(key, { harness: name, opened: settled.opened, until, source: "agent", processSeen: true, deaf: 1 });
+    this.windows.set(key, { harness: name, opened: settled.opened, until, source: "agent", processSeen: true, deaf: 1, typed: [at] });
     return 1;
   }
 
-  /** How many probe characters may still show in the pane's box ({@link deaf}), 0 with no open window. */
+  /**
+   * How many probe characters ({@link deaf}) typed less than {@link PENDING_PROBE_MS} ago may still show
+   * in the pane's box: while any does, no send types another. 0 with no open window. An older one no
+   * longer blocks, though it may still show: the residue rule takes it out then (probe-marker.ts).
+   */
   pending(session: string, paneId: string): number {
-    return this.open(LaunchWindow.keyOf(session, paneId))?.deaf ?? 0;
+    const window = this.open(LaunchWindow.keyOf(session, paneId));
+    if (window === null) return 0;
+    const since = this.now() - PENDING_PROBE_MS;
+    return window.typed.filter((at) => at > since).length;
   }
 
   /**

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { FOREGROUND_READ_MS, LAUNCH_WINDOW_MS, LaunchWindow, foregroundHarnessOf, harnessOfProcesses, type ForegroundHarness } from "./launch-window.ts";
+import { FOREGROUND_READ_MS, LAUNCH_WINDOW_MS, LaunchWindow, PENDING_PROBE_MS, foregroundHarnessOf, harnessOfProcesses, type ForegroundHarness } from "./launch-window.ts";
 
 /** The profiles' binaries as `bridge/index.ts` builds them: program name to harness id. */
 const BINARIES: ReadonlyMap<string, string> = new Map([
@@ -249,7 +249,27 @@ describe("the launch window: a drawn box that reads no keys (gang three, 2026-10
     expect(window.deaf("main", "%1", "omp")).toBe(0);
   });
 
-  test("no window, another harness, or a pane that settled from a send's proof: not starting, nothing changes", () => {
+  test("each deaf character blocks for PENDING_PROBE_MS from when it was typed; it still keeps the window from a box read", () => {
+    let now = 1_000;
+    const window = new LaunchWindow(() => now);
+    window.mark("main", "%1", "omp");
+    // Typed at 1 000, noted 900 ms later after the probe's reads.
+    now += 900;
+    expect(window.deaf("main", "%1", "omp", 1_000)).toBe(1);
+    now = 1_000 + PENDING_PROBE_MS - 1;
+    expect(window.pending("main", "%1")).toBe(1);
+    now = 1_000 + PENDING_PROBE_MS;
+    expect(window.pending("main", "%1")).toBe(0);
+    // A new probe that also goes unseen blocks for its own life; the old one counts no more.
+    expect(window.deaf("main", "%1", "omp")).toBe(2);
+    expect(window.pending("main", "%1")).toBe(1);
+    // Both still keep a box read from ending the window: only a probe that shows, or the bound, does.
+    window.drawn("main", "%1", "omp");
+    expect(window.expecting("main", "%1")).toBe("omp");
+    expect(PENDING_PROBE_MS).toBeLessThan(LAUNCH_WINDOW_MS);
+  });
+
+    test("no window, another harness, or a pane that settled from a send's proof: not starting, nothing changes", () => {
     const window = new LaunchWindow(() => 1_000);
     expect(window.deaf("main", "%1", "omp")).toBe(0);
     window.mark("main", "%2", "omp");
