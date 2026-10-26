@@ -102,7 +102,10 @@ or bun copy of any harness. `bridge/pane-binary.ts` · `bridge/surface/binary-ve
    pane's harness by the launch window's argv grammar (argv[0], or the script after an interpreter),
    the version read runs that program: its file, or the same interpreter with its script. A relative
    path resolves against the process's folder and a bare argv[0] takes the process's executable,
-   where the host shows them (`/proc/<pid>/cwd` and `/proc/<pid>/exe` on Linux). An executable that is
+   where the host shows them (`/proc/<pid>/cwd` and `/proc/<pid>/exe` on Linux), and only when
+   `/proc/<pid>/cmdline` is the argv Herdr reported for that pid: another pid namespace, a reused pid
+   or a program that rewrote its title leaves the executable and folder unread, and then only an
+   absolute argv path can still be used. An executable that is
    an interpreter is no evidence (a program that renamed itself would print the interpreter's
    version), nor is a file gone since the start. The version command's own arguments follow, and the
    child gets the same merged PATH, so a `#!/usr/bin/env` script finds its interpreter. A profile whose
@@ -113,20 +116,26 @@ or bun copy of any harness. `bridge/pane-binary.ts` · `bridge/surface/binary-ve
    as the PATH binary's version.
 3. **Decision 2 and 3 above hold per program read.** The read is bounded the same way, inside the same
    budget, shared while it runs, and cached good for 10 minutes and failed for 60 s, keyed by the
-   profile and the program's words (the PATH lookup keeps the profile alone as its key). Per bridge
-   process, so per host; at most 128 keys.
+   profile, the program's words and the `mtimeMs` and size of its file (the last word), so a file
+   replaced in place reads again; a file that cannot be statted is no program, and the PATH lookup
+   stays. The PATH lookup keeps the profile alone as its key. A pane starts at most one fresh read of
+   its own program per 10 s; a pane over that limit uses the PATH result for that send. Per bridge
+   process, so per host; at most 128 keys, and 256 panes in the limit.
 4. **One foreground read per send at most**, shared with the launch window's (`sharedForegroundRead`:
    the read in flight answers every asker on the pane, and its answer stands for 1 s). It happens
    before the bound starts, so it counts in `gapsMs.profile` with the version read. Sends, asks, Stop
    and Clear all ask the profile for their pane.
 5. **The receipt names what was read.** `version` and `profileStatus` are the pane program's, and
-   `binary` is its file (the script, for an interpreter and a script), absent when the PATH binary was
-   read. `binary` stays in the stored receipt and the send answer; the recent-sends rows do not carry it,
-   so a problem report's text holds no local path.
+   `binary` is the file the version command ran (the script, for an interpreter and a script). It is
+   absent when the bridge's PATH lookup answered. A pane whose argv[0] is a bare `omp` carries it too,
+   by its `/proc` executable, which may be the same file the PATH holds. `binary` stays in the stored
+   receipt and the send answer; the recent-sends rows do not carry it, and neither does
+   `GET /api/report/context`, so a problem report's text holds no local path (pinned by tests).
 
 Left as they were: `collie doctor` has no pane, so its `harness-<name>` rows still name the PATH binary;
 a second copy is not listed, since finding one would mean asking the running bridge. The poll's Surface
 (`bridge/surface/shadow.ts`) still reads its counters' version from the PATH binary: a foreground read
 per pane per poll costs too much. An agent updated in place while an old process runs (the same file
-now holds the new version) still reads the new version; only a native binary whose old file the
-updater keeps is read right, through `/proc/<pid>/exe`.
+now holds the new version) reads the new version: the process still runs the old code, and nothing
+cheap tells the two apart, but the changed `mtimeMs` and size make the cache read the file again. Only
+a native binary whose old file the updater keeps is read right, through `/proc/<pid>/exe`.

@@ -109,6 +109,14 @@ describe("reportContextRoute (ADR 0123)", () => {
     expect(reads).toEqual([{ scope: "recent", lines: REPORT_SCREEN_ROWS, styling: "preserve" }]);
   });
 
+  test("the setup block names facts about the machine and the pane, and no file path of a program a send read", async () => {
+    const { rt } = runtime("claude ready");
+    const body = await (await reportContextRoute(rt, "%1", false, MACHINE, null)).json();
+    // The set of keys is the whole contract: a receipt's `binary` (an absolute local path) is not among them.
+    expect(Object.keys(body).toSorted()).toEqual(["arch", "collie", "harness", "line", "mux", "os", "screenable"]);
+    expect(JSON.stringify(body)).not.toMatch(/\/(?:home|Users|root)\b/u);
+  });
+
   test("a program session has no screen: screenable is false and screen=1 is a 400", async () => {
     const { rt, reads } = runtime("x", true);
     expect((await (await reportContextRoute(rt, "%1", false, MACHINE, null)).json()).screenable).toBe(false);

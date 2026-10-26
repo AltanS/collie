@@ -2,7 +2,18 @@ import { describe, expect, test } from "bun:test";
 import { dirname } from "node:path";
 
 import { hostFor } from "../host.ts";
-import { binaryVersion, createBinaryReader, createVersionReader, mergePaths, spawnBinaryVersion, VERSION_CACHE_MS, VERSION_FAILED_CACHE_MS, VersionCache } from "./binary-version.ts";
+import {
+  binaryVersion,
+  createBinaryReader,
+  createVersionReader,
+  mergePaths,
+  PANE_READ_INTERVAL_MS,
+  spawnBinaryVersion,
+  VERSION_CACHE_MS,
+  VERSION_FAILED_CACHE_MS,
+  VersionCache,
+  type FileStamp,
+} from "./binary-version.ts";
 import { boundedRun } from "../login-path.ts";
 import { SurfaceShadow } from "./shadow.ts";
 import { loadProfiles, parseProfile, profileFor } from "../../web/src/lib/surface/profile.ts";
@@ -332,12 +343,20 @@ describe("the pane's own program (ADR 0124, amended 2026-10-26)", () => {
     expect(runs[0]?.argv).toEqual(["/home/op/.bun/bin/agent-launcher", "agent", "--version"]);
   });
 
+  // Every file a test names has a stamp unless the test removes it: the cache keys a pane command by it.
+  const stamps = (files: ReadonlyMap<string, { mtimeMs: number; size: number }> = new Map()): FileStamp => (path) => files.get(path) ?? { mtimeMs: 1_000, size: 10 };
+
   test("the cache keys by the program read: two copies read two versions, one file is read once", async () => {
     const asked: Array<readonly string[] | undefined> = [];
-    const cache = new VersionCache((_profile, pane) => {
-      asked.push(pane);
-      return Promise.resolve(pane === undefined ? "18.6.1" : pane[0] === "/a/agent" ? "18.12.6" : "18.13.0");
-    });
+    const cache = new VersionCache(
+      (_profile, pane) => {
+        asked.push(pane);
+        return Promise.resolve(pane === undefined ? "18.6.1" : pane[0] === "/a/agent" ? "18.12.6" : "18.13.0");
+      },
+      undefined,
+      undefined,
+      stamps(),
+    );
     expect(await cache.versionOf(anyProfile!)).toBe("18.6.1");
     expect(await cache.versionOf(anyProfile!, ["/a/agent"])).toBe("18.12.6");
     expect(await cache.versionOf(anyProfile!, ["/b/agent"])).toBe("18.13.0");
@@ -347,8 +366,99 @@ describe("the pane's own program (ADR 0124, amended 2026-10-26)", () => {
   });
 
   test("a pane's program that does not answer inside the budget reads as unread, never as the PATH binary's version", async () => {
-    const cache = new VersionCache((_profile, pane) => (pane === undefined ? Promise.resolve("18.6.1") : new Promise<string | null>(() => undefined)), undefined, 20);
+    const cache = new VersionCache((_profile, pane) => (pane === undefined ? Promise.resolve("18.6.1") : new Promise<string | null>(() => undefined)), undefined, 20, stamps());
     expect(await cache.versionOf(anyProfile!, ["/hung/agent"])).toBeNull();
     expect(await cache.versionOf(anyProfile!)).toBe("18.6.1");
+  });
+
+  test("a file replaced in place reads again: same path with a new mtime or size is a new key, the same stamp is a hit", async () => {
+    let installed = "18.6.1";
+    let reads = 0;
+    const files = new Map([["/a/agent", { mtimeMs: 1_000, size: 10 }]]);
+    const cache = new VersionCache(
+      () => {
+        reads++;
+        return Promise.resolve(installed);
+      },
+      undefined,
+      undefined,
+      stamps(files),
+    );
+    expect(await cache.versionOf(anyProfile!, ["/a/agent"])).toBe("18.6.1");
+    expect(await cache.versionOf(anyProfile!, ["/a/agent"])).toBe("18.6.1");
+    expect(reads).toBe(1);
+    installed = "18.12.6";
+    files.set("/a/agent", { mtimeMs: 2_000, size: 10 });
+    expect(await cache.versionOf(anyProfile!, ["/a/agent"])).toBe("18.12.6");
+    expect(reads).toBe(2);
+    installed = "18.13.0";
+    files.set("/a/agent", { mtimeMs: 2_000, size: 11 });
+    expect(await cache.versionOf(anyProfile!, ["/a/agent"])).toBe("18.13.0");
+    expect(reads).toBe(3);
+  });
+
+  test("the stamp is the last word: an interpreter's script, not the interpreter", async () => {
+    const statted: string[] = [];
+    const cache = new VersionCache(() => Promise.resolve("1.0.0"), undefined, undefined, (path) => {
+      statted.push(path);
+      return { mtimeMs: 1, size: 1 };
+    });
+    await cache.versionOf(anyProfile!, ["/usr/bin/bun", "/lab/node_modules/.bin/omp"]);
+    expect(statted).toEqual(["/lab/node_modules/.bin/omp"]);
+    // The PATH lookup stats nothing.
+    await cache.versionOf(anyProfile!);
+    expect(statted).toHaveLength(1);
+  });
+
+  test("a file that cannot be statted is no pane command: the PATH binary answers, and the answer says so", async () => {
+    const asked: Array<readonly string[] | undefined> = [];
+    const cache = new VersionCache(
+      (_profile, pane) => {
+        asked.push(pane);
+        return Promise.resolve(pane === undefined ? "18.6.1" : "18.12.6");
+      },
+      undefined,
+      undefined,
+      () => null,
+    );
+    expect(await cache.programVersion(anyProfile!, ["/gone/agent"], "p1")).toEqual({ version: "18.6.1", command: undefined });
+    expect(asked).toEqual([undefined]);
+  });
+
+  test("a pane starts one fresh read of its own program per 10 s, and a pane over the limit uses the PATH result", async () => {
+    let now = 1_000_000;
+    const files = new Map([["/a/agent", { mtimeMs: 1, size: 1 }]]);
+    const asked: Array<readonly string[] | undefined> = [];
+    const cache = new VersionCache(
+      (_profile, pane) => {
+        asked.push(pane);
+        return Promise.resolve(pane === undefined ? "18.6.1" : `pane-${pane.at(-1)}`);
+      },
+      () => now,
+      undefined,
+      stamps(files),
+    );
+    expect(await cache.programVersion(anyProfile!, ["/a/agent"], "p1")).toEqual({ version: "pane-/a/agent", command: ["/a/agent"] });
+    // The file changes at once: a second fresh read on the same pane is over the limit.
+    files.set("/a/agent", { mtimeMs: 2, size: 1 });
+    now += PANE_READ_INTERVAL_MS - 1;
+    expect(await cache.programVersion(anyProfile!, ["/a/agent"], "p1")).toEqual({ version: "18.6.1", command: undefined });
+    // Another pane has its own allowance, and a cache hit is not a fresh read.
+    expect(await cache.programVersion(anyProfile!, ["/a/agent"], "p2")).toMatchObject({ command: ["/a/agent"] });
+    expect(await cache.programVersion(anyProfile!, ["/a/agent"], "p2")).toMatchObject({ command: ["/a/agent"] });
+    now += 1;
+    expect(await cache.programVersion(anyProfile!, ["/a/agent"], "p1")).toMatchObject({ command: ["/a/agent"] });
+    expect(asked).toEqual([["/a/agent"], undefined, ["/a/agent"]]);
+  });
+
+  test("the limit holds a bounded number of panes: the oldest pane's allowance goes first", async () => {
+    const files = new Map<string, { mtimeMs: number; size: number }>();
+    const cache = new VersionCache(() => Promise.resolve("1.0.0"), () => 1_000_000, undefined, stamps(files));
+    // Each pane runs its own file, so each first send is a fresh read that takes the pane's allowance.
+    for (let i = 0; i < 300; i++) expect((await cache.programVersion(anyProfile!, [`/p/${i}`], `pane-${i}`)).command).toBeDefined();
+    // Every file is replaced at the same instant: pane-299 is still limited, pane-0 was forgotten.
+    for (const i of [0, 299]) files.set(`/p/${i}`, { mtimeMs: 5, size: 1 });
+    expect((await cache.programVersion(anyProfile!, ["/p/299"], "pane-299")).command).toBeUndefined();
+    expect((await cache.programVersion(anyProfile!, ["/p/0"], "pane-0")).command).toBeDefined();
   });
 });

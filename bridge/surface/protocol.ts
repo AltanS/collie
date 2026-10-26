@@ -414,7 +414,7 @@ interface OpenSend extends OpenReceipt {
 /** The most open receipts one protocol keeps. The oldest go first. */
 const OPEN_SENDS_MAX = 64;
 
-/** A profile match at the version of the program read: `binary` is the pane's own file, absent for the PATH binary. */
+/** A profile match at the version of the program read: `binary` is the file the version command ran, set when the pane's program was read; absent when the PATH binary was found by name. */
 export type PaneProfileMatch = ProfileMatch & { readonly binary?: string };
 
 export interface SendDeps {
@@ -426,7 +426,7 @@ export interface SendDeps {
   /**
    * The harness's profile at its binary's version, or null when the harness has no profile. With
    * `paneId`, the version is the one the pane's own program reports when the multiplexer shows it
-   * (bridge/pane-binary.ts), and `binary` names the file that was read; else the PATH binary's.
+   * (bridge/pane-binary.ts), and `binary` names the file that was read (for a bare argv[0] that is the process's own executable, which may be the same file the PATH holds); else the PATH binary's, with no `binary`.
    */
   readonly profile: (harness: string, paneId?: string) => Promise<PaneProfileMatch | null>;
   /**
