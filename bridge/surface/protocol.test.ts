@@ -5409,6 +5409,32 @@ describe("OMP 18.12.6: composer.shape field (omp gang 11-geometry, W5)", () => {
   });
 });
 
+/** OMP 18.12.6 with `composer.shape: claude` (omp-gang 04-readers, G, 2026-10-26): a rule, `❯` on the first row, two spaces on the rest, a rule, the status row. */
+class ClaudeComposerOmpPane extends OmpPane {
+  override render(): string {
+    const rows = [...this.transcript, ""];
+    const rule = "─".repeat(120);
+    rows.push(rule);
+    this.box.split("\n").forEach((line, i) => rows.push(`${i === 0 ? "❯" : " "} ${line}`.trimEnd()));
+    rows.push(rule, " π · ◒ Haiku 4.5 · 📁 …g3/04-readers/state/harness/omp/project · ◫ 4.7%/200K ⟲");
+    return rows.join("\n");
+  }
+}
+
+describe("OMP 18.12.6: a two-line draft under composer.shape claude (omp-gang 04-readers, G)", () => {
+  test("the send is refused true and the detail says what was read: the box shape, not something that opened", async () => {
+    const { pane, send, deps } = omp({ version: "18.12.6", pane: new ClaudeComposerOmpPane() });
+    const answer = await send("first line\nsecond line", { id: "claude-shape-two-lines" });
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue" });
+    const detail = deps.store.get("claude-shape-two-lines")?.receipt?.detail ?? "";
+    expect(detail).toContain("The box shape could not be read");
+    expect(detail).toContain("known gap");
+    expect(detail).not.toContain("Something is open");
+    expect(pane.keysSeen).not.toContain("ctrl+q");
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+});
+
 describe("OMP: commands that end the process are never held (omp gang 03)", () => {
   const NEVER = "Collie does not queue this command during a turn. Send it when the turn ends.";
 

@@ -878,6 +878,11 @@ function modalAtBox(snap: Snap): boolean {
   return snap.frame !== null && snap.surface.modal !== "none";
 }
 
+/** Whether the framed cue read found cues and every one stands on a row of the frame itself: the box's own rows, not a list drawn under or over it. */
+function cuesInsideFrame(snap: Snap, frame: Frame): boolean {
+  return snap.cues.length > 0 && snap.cues.every((cue) => cue.row >= frame.top && cue.row <= frame.bottom);
+}
+
 /** The non-blank rows under a frame's bottom edge. */
 function rowsBelow(snap: Snap, frame: Frame): number {
   void frame;
@@ -1504,6 +1509,12 @@ const NOT_YET: ReadonlySet<SendReason> = new Set<SendReason>(["turn_running", "b
 /** How often a release may go back to the queue before it ends with the refusal it met. */
 const HOLD_TRIES = 5;
 
+/**
+ * The detail of a send left typed because the box's own rows read as a list (a cue inside the frame) while the box holds exactly
+ * the typed text: nothing opened, the box shape could not be read. The known case is a draft of two lines under a composer shape
+ * whose prompt glyph stands on the first row (omp's `claude` shape, omp-gang 04-readers, 2026-10-26).
+ */
+const BOX_UNREADABLE_DRAFT = "The box shape could not be read: the rows of the box look like a list, though nothing opened. A draft of two or more lines in a composer shape that puts a prompt glyph on its first row is a known gap. Enter was not pressed.";
 /** The detail of a send into a turn refused because something is open at the box (a popup over or under it). */
 const OPEN_AT_BOX = "Something is open at the input box.";
 /**
@@ -4249,6 +4260,8 @@ export class SendProtocol {
     if (pointedElsewhere) note.detail = LIST_ELSEWHERE;
     const popupAtEnter: boolean = popupOpen; // set inside the poll's callback
     if (popupAtEnter) note.detail = POPUP_AT_ENTER;
+    const last = result.snap;
+    if (note.detail === undefined && why === "modal_cue" && last !== null && last.frame !== null && cuesInsideFrame(last, last.frame) && boxHolds(last.frame, prefix, lines, collapse, state.whole) !== null) note.detail = BOX_UNREADABLE_DRAFT;
     throw new Ended("typed_not_submitted", why, sawNote(result.snap, note));
   }
 
