@@ -32,6 +32,7 @@ describe("the typeahead popups of omp's profile (idle.volatile.below.popups)", (
     ["omp--v18-12-6-emoji-popup--w120.txt", "emoji", false, 8],
     ["omp--v18-6-1-emoji-popup--w120.txt", "emoji", false, 8],
     ["omp--v18-12-6-path-popup-partial--w120.txt", "path", false, 1],
+    ["omp--v18-6-1-at-popup-stale--w120.txt", "file", true, 2],
     // The same rows read as a command list too (a description column); the popup is what they are.
     ["omp--v18-12-6-at-popup-two-files--w120.txt", "file", false, 2],
   ] as const;
@@ -55,10 +56,13 @@ describe("the typeahead popups of omp's profile (idle.volatile.below.popups)", (
     expect(popupUnder(texts, bottom, "tag:#abc", POPUPS)).toBeNull();
   });
 
-  it("an empty box opens only the rule that names staleWhenEmpty", () => {
+  it("an empty box opens only the rules that name staleWhenEmpty, and every rule of omp's profile names it", () => {
     expect(popupUnder(texts, bottom, "", POPUPS)?.stale).toBe(true);
+    for (const rule of POPUPS.rules) expect(rule.staleWhenEmpty, rule.name).toBe(true);
     const file = screen("omp--v18-6-1-at-popup--w120.txt");
-    expect(popupUnder(file.texts, file.bottom, "", POPUPS)).toBeNull();
+    expect(popupUnder(file.texts, file.bottom, "", POPUPS)).toMatchObject({ name: "file", stale: true });
+    const edit = { ...POPUPS, rules: POPUPS.rules.map((rule) => ({ name: rule.name, text: rule.text, rows: rule.rows })) };
+    expect(popupUnder(file.texts, file.bottom, "", edit)).toBeNull();
   });
 
   it("a partial path is the path popup: a bare entry row under a text that is one path, never a slash command", () => {

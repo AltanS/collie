@@ -709,6 +709,15 @@ describe("omp's typeahead popups under the box read as a draft (18.6.1, omp-gang
     expect(read.cues?.strength).toBe("none");
   });
 
+  it("omp--v18-6-1-at-popup-stale--w120.txt: the `@` rows left under an emptied box are a stale popup, an empty box (the file rule names staleWhenEmpty)", () => {
+    const name = "omp--v18-6-1-at-popup-stale--w120.txt";
+    const read = own(name);
+    expect(read.frame?.interior.text).toBe("");
+    expect(read.surface).toEqual({ revision: 1, turn: "idle", modal: "none", composer: "empty" });
+    expect(read.cues?.strength).toBe("none");
+    expect(labelOf(name).state).toBe("popup");
+  });
+
   it("the emoji popup with the old two-space row pattern is no popup: the eight rows read as a pointer list, unreadable", () => {
     const name = "omp--v18-12-6-emoji-popup--w120.txt";
     const idle = idleFor("omp")!;

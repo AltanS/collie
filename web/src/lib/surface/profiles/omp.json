@@ -196,11 +196,6 @@
           "maxRows": 10,
           "rules": [
             {
-              "name": "file",
-              "text": "^(?!\\s*/)[\\s\\S]*(?:^|\\s)@\\S*$",
-              "rows": "^(?:(?<pointer>❯|\\u{F054}) | {2})\\S.*$"
-            },
-            {
               "name": "issue",
               "text": "(?:^|\\s)#\\S*$",
               "rows": "^(?:(?<pointer>❯|\\u{F054}) | {2})(?:PR|Issue) #\\d+ {2,}GitHub (?:pull request|issue)$",
@@ -209,12 +204,20 @@
             {
               "name": "emoji",
               "text": "(?:^|[\\s(\\[{>]):[A-Za-z0-9_+-]+$",
-              "rows": "^(?:(?<pointer>❯|\\u{F054}) | {2})[^\\x00-\\x7F]\\S* {1,2}\\S+$"
+              "rows": "^(?:(?<pointer>❯|\\u{F054}) | {2})[^\\x00-\\x7F]\\S* {1,2}\\S+$",
+              "staleWhenEmpty": true
+            },
+            {
+              "name": "file",
+              "text": "^(?!\\s*/)[\\s\\S]*(?:^|\\s)@\\S*$",
+              "rows": "^(?:(?<pointer>❯|\\u{F054}) | {2})\\S.*$",
+              "staleWhenEmpty": true
             },
             {
               "name": "path",
               "text": "^\\s*(?:~|\\.{1,2}|/[^\\s/]+)/\\S*$",
               "rows": "^(?:(?<pointer>❯|\\u{F054}) | {2})(?<entry>\\S.*)$",
+              "staleWhenEmpty": true,
               "closedWhenTyped": true
             }
           ]

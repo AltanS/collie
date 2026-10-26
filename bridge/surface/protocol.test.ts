@@ -8423,7 +8423,10 @@ describe("omp's fuzzy command list under the box (1.24.1)", () => {
     const { send } = ompPane("18.12.6", "omp--v18-12-6-stale-list-row-empty-box--w120.txt", { stale: true }, (profile) => {
       const { staleWhenEmpty, ...list } = profile.idle.volatile.below.commandList!;
       void staleWhenEmpty;
-      return { ...profile, idle: { ...profile.idle, volatile: { ...profile.idle.volatile, below: { ...profile.idle.volatile.below, commandList: list } } } };
+      // The popup rules name the stale mark too (their rows are as loose as a list row's), so they go as well.
+      const popups = profile.idle.volatile.below.popups!;
+      const rules = popups.rules.map((rule) => ({ name: rule.name, text: rule.text, rows: rule.rows }));
+      return { ...profile, idle: { ...profile.idle, volatile: { ...profile.idle.volatile, below: { ...profile.idle.volatile.below, commandList: list, popups: { ...popups, rules } } } } };
     });
     const answer = await send("hello there again");
     expect(answer.receipt?.outcome).not.toBe("sent");
@@ -9627,5 +9630,26 @@ describe("omp's typeahead popups under the box (1.24.1)", () => {
     const sent = await plain.send("please read @READ", { id: "at-plain", mode: "send" });
     expect(sent.receipt).toMatchObject({ outcome: "sent" });
     expect(sent.receipt?.keys.at(-1)).toBe("ctrl+q");
+  });
+
+  test("the @ rows left under an emptied box after Submit: the pane reads an empty box, and a plain send goes out", async () => {
+    const name = "omp--v18-6-1-at-popup-stale--w120.txt";
+    const looked = ompPane(name, { stale: true });
+    const prepared = await looked.protocol.handle({ id: "at-stale-prep", text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: "omp" });
+    expect(prepared.surface).toMatchObject({ turn: "idle", modal: "none", composer: "empty" });
+    const { send, pane } = ompPane(name, { stale: true });
+    const answer = await send("hello there", { id: "at-stale-send", mode: "send" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(answer.receipt?.keys.at(-1)).toBe("ctrl+q");
+    neverEscape(pane);
+  });
+
+  test("without the stale mark on the file and path rules the same rows read modal unknown, and the plain send does not go out, as the tester saw it", async () => {
+    const unmarked = (profile: Profile): Profile => withRules(profile, (rules) => rules.map((rule) => (rule.name === "file" || rule.name === "path" ? { name: rule.name, text: rule.text, rows: rule.rows } : rule)));
+    const { protocol, send } = ompPane("omp--v18-6-1-at-popup-stale--w120.txt", { stale: true }, unmarked);
+    const prepared = await protocol.handle({ id: "at-stale-old", text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: "omp" });
+    expect(prepared.surface).toMatchObject({ modal: "unknown" });
+    const answer = await send("hello there", { id: "at-stale-old-send", mode: "send" });
+    expect(answer.receipt?.outcome).not.toBe("sent");
   });
 });

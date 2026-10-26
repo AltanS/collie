@@ -209,6 +209,7 @@ const TYPEAHEAD_POPUP = [
   "omp--v18-12-6-emoji-popup--w120.txt",
   "omp--v18-6-1-emoji-popup--w120.txt",
   "omp--v18-12-6-path-popup-partial--w120.txt",
+  "omp--v18-6-1-at-popup-stale--w120.txt",
   "omp--v18-12-6-at-popup-two-files--w120.txt",
 ];
 
@@ -643,6 +644,7 @@ describe("the omp corpus", () => {
     "omp--v18-6-1-ascii-symbols-session-list--w130.txt",
     "omp--v18-6-1-at-popup--w120.txt",
     "omp--v18-6-1-at-popup-path--w120.txt",
+    "omp--v18-6-1-at-popup-stale--w120.txt",
     "omp--v18-6-1-draft-cjk-wrapped--w80.txt",
     "omp--v18-6-1-emoji-popup--w120.txt",
     "omp--v18-6-1-hash-popup--w120.txt",
