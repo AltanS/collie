@@ -72,7 +72,14 @@ test("the report card floats over the mirror and moves neither the field nor the
   const cardBox = await boxOf(page, '[data-slot="report-card"]');
   expect(cardBox.y + cardBox.height).toBeLessThanOrEqual(scrollerBefore.y);
 
-  await page.getByRole("button", { name: "Close the report offer" }).click();
+  // `scroll: "none"` is a person's tap: it never scrolls anything to reach the cross. The default click
+  // does, and on the tablet that moved the strip. The card is still settling for about 250 ms after it
+  // comes (its y eases from 1028 to 976), so Playwright's first three tries find it "not stable", and its
+  // fourth retry force-aligns the button with `scrollIntoView({ block: "start", inline: "start" })`,
+  // which scrolls the strip's horizontal scroller by 360 px (the strip is wider than its pane column
+  // there; on the phone it has nothing to scroll). The app does not do that: a real tap leaves the
+  // strip at 0, and `none` fails the click if the cross is not reachable where it stands.
+  await page.getByRole("button", { name: "Close the report offer" }).click({ scroll: "none" });
   await expect(card).toHaveCount(0);
   expect(await boxOf(page, FIELD)).toEqual(before);
   expect(posts).toBe(3);
