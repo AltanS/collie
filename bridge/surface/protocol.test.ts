@@ -17,7 +17,7 @@ import { findInputFrame } from "../../web/src/lib/surface/frame.ts";
 import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
 import { isFree, type Surface, type SurfaceTurn } from "../../web/src/lib/surface/surface.ts";
 import { KeyGate } from "./key-gate.ts";
-import { BOUNDS, BOX_CHANGED, boxMatches, boxMatchesTail, commandBoxMatches, GENERIC_PROBE, wholePaste, LOCK_BOUND_MS, locateText, neverHeldEntry, probeLanding, RowRing, runsInTurnEntry, SendProtocol, SessionLocks, STALE_SCREEN, steadyRow, type SendDeps, type SendRequest } from "./protocol.ts";
+import { BOUNDS, BOX_CHANGED, boxMatches, COMMAND_SETTLE_MS, boxMatchesTail, commandBoxMatches, GENERIC_PROBE, wholePaste, LOCK_BOUND_MS, locateText, neverHeldEntry, probeLanding, RowRing, runsInTurnEntry, SendProtocol, SessionLocks, STALE_SCREEN, steadyRow, type SendDeps, type SendRequest } from "./protocol.ts";
 import { RequestStore } from "./requests.ts";
 import { SurfaceLedger } from "./counters.ts";
 import { HoldStore } from "./holds.ts";
@@ -8350,6 +8350,10 @@ describe("omp's fuzzy command list under the box (1.24.1)", () => {
     readonly stale?: boolean;
     /** The screen once Enter took the typed command. */
     readonly after?: string;
+    /** The list draws only from this read of the typed text on (1 is S1's first read): a list omp draws late. */
+    readonly lateFrom?: number;
+    /** The rows under the box at the nth read of the typed text, in place of the capture's: rows that move. */
+    readonly underAt?: (n: number) => readonly string[];
   }
 
   /**
@@ -8381,10 +8385,13 @@ describe("omp's fuzzy command list under the box (1.24.1)", () => {
       p.box = "";
       if (options.after !== undefined) pane.fixed = options.after;
     };
+    let typedReads = 0;
     pane.beforeRead = (p) => {
       if (p.fixed === options.after && options.after !== undefined && p.box === "") return;
-      const listed = options.stale === true ? p.box === "" && !touched : p.box.startsWith("/");
-      p.fixed = [...head.slice(above.length), ...above, top, boxRow(p.box), ...(listed ? under : [])].join("\n");
+      if (p.box.startsWith("/")) typedReads++;
+      const listed = options.stale === true ? p.box === "" && !touched : p.box.startsWith("/") && typedReads >= (options.lateFrom ?? 0);
+      const rowsUnder = options.underAt === undefined ? under : options.underAt(typedReads);
+      p.fixed = [...head.slice(above.length), ...above, top, boxRow(p.box), ...(listed ? rowsUnder : [])].join("\n");
     };
   };
 
@@ -8641,6 +8648,94 @@ describe("omp's fuzzy command list under the box (1.24.1)", () => {
       expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue" });
       expect(deps.store.get("w1-upload-other")?.receipt?.detail).toBe(LIST_NOTICE);
       expect(pane.keysSeen).not.toContain("Enter");
+    });
+
+    // The rest of W1 (2026-10-26): under load omp 18.6.1 drew the list AFTER S1's first read (80 ms), and the
+    // rule above never saw it. Enter on a command now never goes out on the first read after typing: a harness
+    // whose profile declares a command list needs two S1 reads, at least COMMAND_SETTLE_MS apart, that agree
+    // on the rows under the box. The cost is `gapsMs.commandSettle`.
+    describe("a list drawn after S1's first read", () => {
+      /** The S1 reads of a request, from the protocol's row ring. */
+      const s1Reads = (deps: SendDeps, id: string): number => deps.ring.of(id).filter((entry) => entry.step === "s1").length;
+
+      for (const text of TEXTS) {
+        test(`18.6.1: ${text} with the list drawn on the second read is left typed with the list notice, Enter not pressed`, async () => {
+          const { send, pane, deps } = ompPane("18.6.1", LOOP, { lateFrom: 2 }, withoutPathPopup);
+          const id = idOf("w1-late-", text);
+          const answer = await send(text, { id, mode: "command" });
+          expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue", keys: ["probe", "Backspace"] });
+          expect(deps.store.get(id)?.receipt?.detail).toBe(LIST_NOTICE);
+          expect(pane.keysSeen).not.toContain("Enter");
+          expect(pane.box).toBe(text);
+          neverEscape(pane);
+        });
+      }
+
+      test("18.6.1: with the profile as shipped (the file popup rule kept), a late list under /tmp/x still gets no Enter", async () => {
+        const { send, pane } = ompPane("18.6.1", LOOP, { lateFrom: 2 });
+        const answer = await send("/tmp/x", { id: "w1-late-shipped", mode: "command" });
+        expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", keys: ["probe", "Backspace"] });
+        expect(pane.keysSeen).not.toContain("Enter");
+        expect(pane.box).toBe("/tmp/x");
+      });
+
+      test("a late /mo list (18.12.6, ten rows, drawn on the second read) is left typed with the list notice", async () => {
+        const { send, pane, deps } = ompPane("18.12.6", "omp--v18-12-6-slash-mo-fuzzy--w120.txt", { lateFrom: 2 });
+        const answer = await send("/mo", { id: "w1-late-mo", mode: "command" });
+        expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "modal_cue" });
+        expect(deps.store.get("w1-late-mo")?.receipt?.detail).toBe(LIST_NOTICE);
+        expect(pane.keysSeen).not.toContain("Enter");
+      });
+
+      test("18.12.6: a path-like command that never draws a list goes out, after one more read the settle interval later", async () => {
+        const { send, pane, deps } = ompPane("18.12.6", "omp--v18-12-6-path-like-no-list--w120.txt");
+        const answer = await send("/tmp/x", { id: "w1-settle-none", mode: "command" });
+        expect(answer.receipt).toMatchObject({ outcome: "sent" });
+        expect(answer.receipt?.keys.at(-1)).toBe("Enter");
+        expect(s1Reads(deps, "w1-settle-none")).toBe(2);
+        expect(answer.receipt?.gapsMs.commandSettle).toBe(COMMAND_SETTLE_MS);
+        expect(answer.receipt?.gapsMs.s1).toBe(80);
+        expect(pane.box).toBe("");
+      });
+
+      test("18.6.1: a real /loop under its own list goes out once two reads agree on the list", async () => {
+        const { send, pane, deps } = ompPane("18.6.1", LOOP);
+        const answer = await send("/loop", { id: "w1-settle-loop", mode: "command" });
+        expect(answer.receipt).toMatchObject({ outcome: "sent" });
+        expect(answer.receipt?.keys.at(-1)).toBe("Enter");
+        expect(s1Reads(deps, "w1-settle-loop")).toBe(2);
+        expect(answer.receipt?.gapsMs.commandSettle).toBe(COMMAND_SETTLE_MS);
+        expect(pane.box).toBe("");
+      });
+
+      test("18.6.1: an upload path under its own path popup row still goes out with Enter", async () => {
+        const UPLOAD = "/home/demo/lab1/.cache/collie-lab/omp-gang/05-images/state/rig/state/uploads/w2_p1-mvo3m20o-6e1a9e71.png";
+        const { send, deps } = ompPane("18.6.1", "omp--v18-6-1-path-popup--w120.txt");
+        const answer = await send(UPLOAD, { id: "w1-settle-upload", mode: "command" });
+        expect(answer.receipt).toMatchObject({ outcome: "sent" });
+        expect(answer.receipt?.keys.at(-1)).toBe("Enter");
+        expect(s1Reads(deps, "w1-settle-upload")).toBe(2);
+        expect(answer.receipt?.gapsMs.commandSettle).toBe(COMMAND_SETTLE_MS);
+      });
+
+      test("a list whose rows change on every read never gets the Enter: S1's bound ends with the rows notice", async () => {
+        const moving = (n: number): readonly string[] => [`❯ ↻ loop        Loop: ${n % 2 === 0 ? "off" : "on"}`];
+        const { send, pane, deps } = ompPane("18.6.1", LOOP, { underAt: moving });
+        const answer = await send("/loop", { id: "w1-settle-moving", mode: "command" });
+        expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "changed", keys: ["probe", "Backspace"] });
+        expect(deps.store.get("w1-settle-moving")?.receipt?.detail).toBe("The rows under the box did not hold still after the command was typed, so Enter was not pressed.");
+        expect(s1Reads(deps, "w1-settle-moving")).toBe(BOUNDS.s1.reads);
+        expect(pane.keysSeen).not.toContain("Enter");
+        expect(pane.box).toBe("/loop");
+      });
+
+      test("a plain send on the same pane takes no settle read", async () => {
+        const { send, deps } = ompPane("18.6.1", LOOP);
+        const answer = await send("look at the loop", { id: "w1-settle-plain" });
+        expect(answer.receipt).toMatchObject({ outcome: "sent" });
+        expect(answer.receipt?.gapsMs.commandSettle).toBeUndefined();
+        expect(s1Reads(deps, "w1-settle-plain")).toBe(1);
+      });
     });
   });
 });
