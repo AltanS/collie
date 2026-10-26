@@ -209,3 +209,45 @@ Trail: `bridge/surface/protocol.ts` (`settledS0`, `inFlux`, `shapeOf`, `probeCle
 `CLEARED_FREE_POLLS`) · `bridge/surface/protocol.transient-holds.test.ts` · `protocol.test.ts` ("a send
 at a box that is not free is held") · fixtures `omp--v18-12-6-idle-w200.txt`, `omp--v18-12-6-idle-w60.txt`,
 `omp--v18-12-6-stale-row-over-live-draft.txt`.
+
+## Addendum, 2026-10-26: a command's Enter waits for two reads that agree
+
+Omp gang three, tester 5 (W1), omp 18.6.1. A command-mode send of a path-like text (`/tmp/x`,
+`/etc/hosts`, `/bin/sh`, `/exit/now`) ran `/loop` 4 of 4: omp drew a one-entry fuzzy list under the
+box, `❯ ↻ loop   Loop: off`, and Enter picked it. The check before a command's Enter now reads the
+list whatever the profile's `notForText` says (51088a268), and that refuses a list drawn by S1's first
+read, 80 ms after the write. Under load omp draws its list later than that, so S1 passed on a read
+with no list yet and Enter went out over the list that came next. The same holds for a late `/mo`
+list. A read of the box proves what the screen showed at that moment. It never proves what the
+program is about to draw.
+
+1. **Enter on a command never goes out on the first read after typing.** A command (mode `command`)
+   on a harness whose profile declares a command list (`idle.volatile.below.commandList`) needs two S1
+   reads that both pass S1's test and agree on the rows under the box: the same rows below the frame,
+   and the rows of a list drawn over it, or both reads with no list at all (no command list, no popup,
+   no pointer cue under the box). The second read comes at least `COMMAND_SETTLE_MS` after the first.
+2. **The settle interval is 160 ms.** This is S1's own second gap (twice `FIRST_GAP_MS`), so the read
+   that agrees sits about 240 ms after the write. An S1 that missed its first read reads there too.
+   The omp gang's receipts say how far a key's echo reaches. Of 684 probes (the probe key, then its
+   Backspace, each polled from 80 ms), 529 took under 200 ms, and all but one took under 490 ms. That
+   is each half seen by its second read at the latest, about 240 ms after its key. One took 570 ms. A
+   list is drawn after the text, by an asynchronous lookup and the next frame. A read 160 ms after the
+   first one gives it that same reach, at the cost of one poll step. The number is shared. No harness needs another yet, so the
+   profile has no field for it. A harness that needs one adds it as profile data, never as a name in
+   shared code.
+3. **The second read judges as the first did.** A list there that points at another command refuses
+   as before: `typed_not_submitted (modal_cue)` with the list notice, Enter not pressed. Rows that keep
+   changing make each read a new first read, inside S1's bound (6 reads, 2500 ms). When the bound runs
+   out with no agreeing pair, the send ends `typed_not_submitted (changed)` with the detail "The rows
+   under the box did not hold still after the command was typed". Enter is never pressed on a moving
+   list.
+4. **The cost is measured.** `gapsMs.commandSettle` runs from the first of the two agreeing reads to
+   the second; `gapsMs.s1` ends at the first. On a quiet pane it is the 160 ms interval plus one read.
+   A plain send, a command on a harness with no command list, and a Submit of a typed command are
+   untouched. A Submit's S0 already takes two reads 120 ms apart of a box typed long before.
+
+Trail: `bridge/surface/protocol.ts` (`COMMAND_SETTLE_MS`, `commandSettles`, `settleKey`, `noListAtBox`,
+`awaitTyped`, `poll` with `again`, `lapS1`) · `web/src/lib/surface/send.ts` (`SendStep`
+`commandSettle`) · `bridge/surface/protocol.test.ts` ("a list drawn after S1's first read") · fixtures
+`omp--v18-6-1-path-like-loop-list--w120.txt`, `omp--v18-12-6-path-like-no-list--w120.txt`,
+`omp--v18-12-6-slash-mo-fuzzy--w120.txt`, `omp--v18-6-1-path-popup--w120.txt`.
