@@ -1,0 +1,24 @@
+
+❯ Reply with only the word OK.
+
+● OK
+
+✻ Cogitated for 2s · done 5:23 PM
+
+❯ /resume
+
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Resume session
+  ╭─────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+  │ ⌕ Search…                                                                                                       │
+  ╰─────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+    project
+
+  ❯ Fruit taste descriptions list
+    1 minute ago · master · 196KB
+
+    Colour list and sleep test
+    3 minutes ago · master · 311KB
+
+    Ctrl+A to show all projects · Ctrl+B to only show current branch · Space to preview · Ctrl+R to rename · Type to
+    search · Esc to cancel

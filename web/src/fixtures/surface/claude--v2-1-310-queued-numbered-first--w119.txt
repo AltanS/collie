@@ -1,0 +1,24 @@
+
+❯ Walky one, header line.
+  Walky one, body line: reply A.
+
+❯ Queued two: reply B.
+
+❯ Queued three: reply C.
+
+❯ Please do these:
+  1. reply D
+  2. reply E
+
+❯ Checklist:
+  - [ ] reply F
+  - [ ] reply G
+
+❯ 1. reply H first
+  2. reply I second
+  ctrl+enter to send now
+
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ Press up to edit queued messages
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⏸ manual mode on · esc to interrupt

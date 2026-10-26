@@ -3165,6 +3165,36 @@ live in `web/src/fixtures/surface/` and are pinned by `cues.test.ts` and
 | `claude--v2-1-310-walky-turn-empty-box--w120.txt` | S0: the answer's list up to `15.`, the empty box, `⏸ manual mode on · esc to interrupt` under it. Reads `running`, `none`, `empty` |
 | `claude--v2-1-310-walky-queued-two-rows--w120.txt` | S2, after Enter: the list up to `18.`, the three-row queued block, a blank row, the box with the placeholder. Reads `running`, `none`, `empty`; it read `unreadable` before |
 
+## Several queued messages, and pickers with no box (captured 2026-10-26, Claude Code 2.1.310, 119 columns, Herdr)
+
+A throwaway Herdr server in its own `XDG_CONFIG_HOME`, a scratch git project under
+`~/.cache/collie-lab/claude-queued/`, a copied `CLAUDE_CONFIG_DIR` (credentials without the refresh token,
+deleted after the run), `claude --model haiku --permission-mode default --strict-mcp-config`, and
+`stty cols 119 rows 40` (the headless pane shows 119 columns). Messages were typed with
+`herdr pane send-text`, `ctrl+j` between lines, and Enter, while a turn streamed a numbered list of fruits.
+Each file is `herdr pane read --source visible`, cut to the last 24 rows, trailing blanks stripped; no
+path is on them.
+
+What 2.1.310 draws: each queued message is its own block, `❯ ` and its first line, the later lines at
+column 2, and a blank row between two blocks. Only the last block carries `ctrl+enter to send now`. While
+the answer streams the blocks stand straight over the box; while the model still thinks they stand over
+the spinner and its tip row. A `- [ ]` line is no checkbox to the cues (the dash comes first). A numbered
+line under the first line no longer makes the block a list (cues.ts `withoutPromptEchoes`: only the
+pointer row decides). Escape with messages queued ends the turn and sends them as the next prompt; Up
+puts them all back into the box, joined. `/resume` and the rewind list replace the box, as the 208 older
+Claude dialog captures do, so the echo rule never reads them. Pinned by `cues.test.ts` and
+`bridge/surface/protocol.claude-queued.test.ts`.
+
+| Fixture | State / what's in it |
+|---|---|
+| `claude--v2-1-310-queued-three-blocks--w119.txt` | Streaming: a two-line block, then `❯ Queued two: reply B.`, then `❯ Queued three: reply C.` with the hint, blank rows between, the box with the placeholder. Reads `running`, `none`, `empty` |
+| `claude--v2-1-310-queued-over-spinner--w119.txt` | Thinking, no answer yet: the turn's own prompt echo, then four queued blocks (two-line, one-line, a numbered body, a `- [ ]` body) over `✽ Wandering… (5s · thinking)` and a tip row. Reads `running`, `none`, `empty` |
+| `claude--v2-1-310-queued-checkbox-body--w119.txt` | Streaming, the last block `❯ Checklist:` over `  - [ ] reply F`, `  - [ ] reply G` and the hint. Reads `running`, `none`, `empty` |
+| `claude--v2-1-310-queued-numbered-body--w119.txt` | Streaming, the last block `❯ Please do these:` over `  1. reply D`, `  2. reply E` and the hint. Reads `running`, `none`, `empty`; it read `unreadable` before |
+| `claude--v2-1-310-queued-numbered-first--w119.txt` | The known limit: the last block `❯ 1. reply H first` over `  2. reply I second` and the hint, the shape of a dialog's pointer on its first option. Reads `running`, `unreadable`, `empty` |
+| `claude--v2-1-310-resume-two-sessions--w119.txt` | `/resume` with two past sessions: `  ❯ Fruit taste descriptions list` over `    1 minute ago · master · 196KB`, the second session, the two-row key footer. No box. Lifts an ask; the cues alone read strong |
+| `claude--v2-1-310-rewind--w119.txt` | Escape Escape on an empty box: `Rewind`, one earlier prompt, `  ❯ (current)`, `Enter to continue · Esc to cancel`. No box. Lifts an ask; the cues alone read strong |
+
 ## omp fuzzy command list under the box (captured 2026-10-25, omp 18.6.1 and 18.12.6, omp-gang testers 01 and 02)
 
 Real pane reads from the testers' rig: a scratch Herdr with its own bridge, `omp` on `openrouter/anthropic/claude-haiku-4.5`,

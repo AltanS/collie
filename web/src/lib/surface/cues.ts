@@ -469,9 +469,11 @@ function isOptionRow(text: string): boolean {
  * the prompt anchor matches with text behind the glyph ({@link promptDraft}), then the rows under it
  * indented at least `frame.continuationIndent` columns, ended by a blank row or the frame's top edge.
  * A long prompt wraps into rows that line up like a pointed list under the glyph, and the whole-screen
- * read took them for one (Claude Code 2.1.309 and 2.1.310, live 2026-10-25). An echo with an option row
- * of its own ({@link isOptionRow}) is left as it is: there the shape is a list, whoever drew it. Every
- * other row, and every row of any other profile, stays as it is. Both the bridge's frameless read and the
+ * read took them for one (Claude Code 2.1.309 and 2.1.310, live 2026-10-25). A run whose first row is an
+ * option row ({@link isOptionRow}, `❯ 1. Yes`, `❯ [ ] Cheese`) is left as it is: a list puts its pointer
+ * on an option, whoever drew it. Option rows under the first row do not count: a sent text's own list
+ * (`❯ Please do these:` over `  1. reply D`) stands there, and before 2026-10-26 such a queued message read
+ * as an unreadable modal at S2. Every other row, and every row of any other profile, stays as it is. Both the bridge's frameless read and the
  * framed read ({@link readCuesFor}) take it: Claude Code's queued message over the box has the same
  * shape, `❯ ` and its text with its wrapped rows and the `ctrl+enter to send now` hint under it.
  */
@@ -485,9 +487,9 @@ export function withoutPromptEchoes(rows: readonly FrameRow[], frame: Frame | nu
     let last = i;
     while (last + 1 < frame.top && !isBlank(texts[last + 1]!) && startCol(texts[last + 1]!) >= idle.frame.continuationIndent) last++;
     const ended = last + 1 === frame.top || isBlank(texts[last + 1]!);
-    let listed = false;
-    for (let j = i; j <= last; j++) if (isOptionRow(texts[j]!)) listed = true;
-    if (ended && !listed) echoes.push({ first: i, last });
+    // Only the pointer row decides: a list puts its pointer on an option (`❯ 1. Yes`), while a text's
+    // own numbered or checkbox lines stand under its first line.
+    if (ended && !isOptionRow(texts[i]!)) echoes.push({ first: i, last });
     i = last;
   }
   if (echoes.length === 0) return rows;

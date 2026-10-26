@@ -128,6 +128,33 @@ code.
     does not press it yet. Until a profile names a dequeue key and a test proves it, the card says, in
     one short line, that stopping the turn is how to take it back.
 
+## What the queued path's S2 needs (addendum, 2026-10-26)
+
+A send on the queued path (S0 read the turn running on a harness whose Enter queues, or the rows above
+moved while Collie typed) needs **no positive evidence** of a queued message. After the key, S2 passes
+when the found box reads empty. It fails, `unknown(dialog_after_enter)`, when the Surface claims any
+modal other than `none` while the box is found (`unreadable` from a strong cue and `unknown` from a weak
+one count alike), or when two reads in a row find no box. The profile's queued row (`keys.queuedRow`) is
+a witness only for a send that S0 read idle: it sets `queued` there, and it never decides a send that S0
+read running. So the queued path rests on one thing: the harness's queue drawing must not read as a
+modal over the box.
+
+On Claude Code that drawing is in the prompt echo's shape, so the echo rule (cues.ts
+`withoutPromptEchoes`, `idle.promptEchoes`) carries it. Measured on 2.1.310 (2026-10-26, fixtures README,
+"Several queued messages"): each queued message is its own block with a blank row before the next, and
+only the last carries `ctrl+enter to send now`. A run over the box counts as a list only when its first
+row is an option row (`❯ 1. Yes`); a text's own numbered or checkbox lines under its first line do not
+count, so "Please do these:" over "1. …" and "2. …" settles `sent` + `queued`. Two limits stay:
+
+- **A text whose first line is a numbered item** (`1. do x` over `2. do y`) draws a dialog's pointer row
+  and still ends `unknown(dialog_after_enter)`. The text went in once and is never sent twice; only the
+  receipt says less than it could.
+- **The rule trusts that Claude Code never draws a pointer list over a live box.** Every Claude dialog in
+  the corpus (208 captures, and the 2.1.310 `/resume` and rewind lists) replaces the box, so the echo rule,
+  which reads only rows over a found box, never sees one. A Claude version that draws an unnumbered picker
+  over its box (`❯ Title` over an indented metadata row) would read as an echo; the corpus test "no Claude
+  dialog fixture reads otherwise without the echo rule" is the guard for each new capture.
+
 ## Assumptions
 
 - **One clock.** The journal's prompt time and the receipt's submit time are compared with a 2 s skew.

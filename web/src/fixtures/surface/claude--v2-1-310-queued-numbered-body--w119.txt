@@ -1,0 +1,24 @@
+  49. Medlar: Sweet and tangy only after it softens. Raw medlars taste dry and sour.
+  50. Kumquat: Sweet skin, sour pulp. Eat the whole fruit for a mix of sweet and tart.
+  51. Starfruit: Sweet and tart. Crisp, with a light taste of grape and citrus.
+  52. Jackfruit: Sweet and fruity. Tastes like banana, mango, and pineapple.
+  53. Durian: Very strong and rich. Custard-like, with a strong smell and bold, sweet taste.
+  54. Rambutan: Sweet and mild. Juicy, with a taste like lychee.
+  55.
+
+❯ Walky one, header line.
+  Walky one, body line: reply A.
+
+❯ Queued two: reply B.
+
+❯ Queued three: reply C.
+
+❯ Please do these:
+  1. reply D
+  2. reply E
+  ctrl+enter to send now
+
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ Press up to edit queued messages
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⏸ manual mode on · esc to interrupt

@@ -1,0 +1,24 @@
+  65. Sapodilla: Very sweet. Soft, with a brown sugar and pear-like taste.
+  66. Mamey sapote: Sweet and rich. Creamy, with a taste like sweet potato and pumpkin.
+  67.
+
+❯ Walky one, header line.
+  Walky one, body line: reply A.
+
+❯ Queued two: reply B.
+
+❯ Queued three: reply C.
+
+❯ Please do these:
+  1. reply D
+  2. reply E
+
+❯ Checklist:
+  - [ ] reply F
+  - [ ] reply G
+  ctrl+enter to send now
+
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ Press up to edit queued messages
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⏸ manual mode on · esc to interrupt
