@@ -120,6 +120,9 @@
 // second probe, carries the request on from that read with the send's own probe forced. The same rows
 // again, or a second probe that does not land, ends `probe_failed` with the cause `stale_screen` and
 // the key pad as the only offer; nothing is deleted. One second read per request, never a loop.
+// A probe that fails, goes out again with one Backspace and leaves text in the box proves a real
+// draft that is not Collie's (a stale row painted over the live box row): the send ends
+// `draft_present` with the draft's offers, never held (2026-10-26).
 //
 // A screen in flux (2026-10-26): for 50 to 100 ms after a resize Herdr shows the old frame re-wrapped
 // to the new width, so S0's two reads differ in grid size (row count or widest row), or the read is torn
@@ -2508,7 +2511,9 @@ export class SendProtocol {
    * except a `draft_present` on a send its caller marked `draftHolds` (a walky talky delivery, M62
    * spec 02): that one is held, typed once the box reads empty and the pane idle.
    * A `probe_failed` whose cleanup was read back (see {@link cleanProbe}) counts as no key, and is held
-   * like `not_free`; one whose box Collie could not confirm clean stays a refusal.
+   * like `not_free`; one whose box Collie could not confirm clean stays a refusal. A cleanup that reads
+   * a draft in the box is no such end: the probe proved a real draft, and it ends `draft_present`
+   * ({@link probeCleanup}, 2026-10-26).
    *
    * The box holds (`not_free`, `bound`, a clean `probe_failed`) also need a profile and a send that is
    * not manual (review, 2026-10-17): a pane with no profile, or a screen the person confirmed with Type
@@ -4198,6 +4203,12 @@ export class SendProtocol {
       if (!(err instanceof StepLate)) throw err;
     }
     if (look !== null && countIn(look.texts, probe) === countIn(s0.texts, probe)) {
+      // The probe went in and out again, and the box still holds text Collie did not type: a real
+      // draft, which a probe has just proven (2026-10-26, omp gang three 02-desync h 21 and 23: a stale
+      // row painted over the live box row while the live editor held a draft). It is refused with the
+      // draft's offers, never held: a hold would type its text later, after the person's next choice.
+      // Another screen's own box (the agents screen) is not the conversation's: its text is no draft there.
+      if (probeOnly(state) && look.frame !== null && look.otherScreen === null && look.surface.modal === "none" && look.surface.composer === "draft") return draftRefusal(state, look);
       const clean = failed(PROBE_REMOVED, look);
       clean.extra.probeClean = true;
       return clean;

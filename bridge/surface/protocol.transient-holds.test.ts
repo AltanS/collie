@@ -1,8 +1,11 @@
-// A hold that should not have been a hold (omp gang three, tester 2 "02-desync", Herdr 0.9.5, 2026-10-26).
+// Holds that should not have been holds (omp gang three, tester 2 "02-desync", Herdr 0.9.5, 2026-10-26).
 //
 // 1. A send right after a client resize: for 50 to 100 ms Herdr shows the old frame re-wrapped to the
 //    new width, so S0 read a frame on its way and the send was held `not_free` on an idle, empty pane,
 //    then went about 42 s later. S0 now reads once more after SETTLE_MS when the geometry is in flux.
+// 2. A stale row painted over the live box row while omp's live editor held `xy` (h 21 and 23 on
+//    18.12.6): the probe went in and out cleanly, the box then read `xy`, and the send was held, so it
+//    went out later behind the person's Replace. A probe that proves a real draft now ends `draft_present`.
 //
 // The screens are the tester's captures (`web/src/fixtures/surface/omp--v18-12-6-*`), the folder path
 // masked to the same length. The re-wrapped frame is built from the 200-column capture: each row cut
@@ -26,6 +29,7 @@ const fx = (name: string): string => readFileSync(join(SURFACE, name), "utf8").r
 
 const W200 = fx("omp--v18-12-6-idle-w200.txt");
 const W60 = fx("omp--v18-12-6-idle-w60.txt");
+const STALE_OVER_LIVE = fx("omp--v18-12-6-stale-row-over-live-draft.txt");
 
 /** The old frame re-wrapped to `width` columns, the way Herdr shows it until the program draws again. */
 function rewrapped(screen: string, width: number): string {
@@ -106,8 +110,9 @@ beforeEach(() => {
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
 let ids = 0;
+const FREE: Surface = { revision: 1, turn: "idle", modal: "none", composer: "empty" };
 /** The three claims, for a match that ignores the revision. */
-const WORDS = { free: { turn: "idle", modal: "none", composer: "empty" } } as const;
+const WORDS = { free: { turn: "idle", modal: "none", composer: "empty" }, draft: { turn: "idle", modal: "none", composer: "draft" } } as const;
 
 function rig(pane: Pane) {
   const clock = { now: 1_000_000 };
@@ -205,5 +210,57 @@ describe("a send right after a resize: the old frame re-wrapped is a frame on it
     const answer = await rig(pane).send("plain");
     expect(answer.receipt).toMatchObject({ outcome: "sent" });
     expect(answer.receipt?.gapsMs.settle).toBeUndefined();
+  });
+});
+
+describe("a stale row over a live draft (h 21 and 23, omp 18.12.6): the probe proves the draft, the send is refused, never held", () => {
+  /** The h-21 screen: `and what about the design` painted over the box row, the live editor holds `xy`. */
+  const h21 = (): Pane => {
+    const pane = new Pane([STALE_OVER_LIVE]);
+    pane.live = "xy";
+    pane.stale = "and what about the design";
+    return pane;
+  };
+
+  test("the fixture: S0 reads the stale text as a draft", async () => {
+    const view = await rig(h21()).send("", { mode: "prepare" });
+    expect(view.surface).toMatchObject(WORDS.draft);
+  });
+
+  test("h 21: a plain send probes, the box reads `xy` after the Backspace: refused draft_present with its offers, nothing held", async () => {
+    const pane = h21();
+    const r = rig(pane);
+    const answer = await r.send("h2 plain send");
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "draft_present", keys: ["probe", "Backspace"] });
+    expect(answer.offers).toEqual(["append", "replace", "cancel"]);
+    expect(answer.detail).toBe("The box already holds a draft.");
+    expect(pane.live).toBe("xy");
+    expect(r.holds.list()).toEqual([]);
+  });
+
+  test("h 23: the Replace that follows sends only its own text, and no held send goes out after it", async () => {
+    const pane = h21();
+    const r = rig(pane);
+    await r.send("h2 plain send");
+    const replace = await r.send("h2 replace", { mode: "replace" });
+    expect(replace.receipt).toMatchObject({ outcome: "sent" });
+    // Before: the plain send was held, and went out after the Replace (journal `h2 replace`, `h2 plain send`).
+    for (let i = 0; i < 6; i++) {
+      r.clock.now += 3000;
+      expect(await r.tick(FREE)).toEqual([]);
+    }
+    expect(pane.submitted).toEqual(["h2 replace"]);
+  });
+
+  test("an empty box painted over a live draft: the send's own probe proves the draft, refused draft_present", async () => {
+    const pane = new Pane([STALE_OVER_LIVE]);
+    pane.live = "xy";
+    pane.stale = "";
+    const r = rig(pane);
+    const answer = await r.send("over an empty paint");
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "draft_present", keys: ["probe", "Backspace"] });
+    expect(pane.live).toBe("xy");
+    expect(pane.submitted).toEqual([]);
+    expect(r.holds.list()).toEqual([]);
   });
 });

@@ -1,0 +1,50 @@
+                                            ████████████    
+                                               ██  ██       ▄▀▀▄ █▀▄▀▄ █▀▀▄
+                                               ██  ██       ▀▄▄▀ █ █ █ █▄▄▀
+                                               ▒▒  ██                  █
+                                                   ██       v18.12.6
+
+                           Tip: Find out which model you emotionally abuse the most with `omp
+                                                         stats`
+
+
+ eclient6 the quick brown fox jumps over the lazy dog, send number 6, other types at +350ms                             
+                                                                                                                        
+
+ Error: 401 User not found.                                                                                             
+
+                                                                                                                        
+ eclient7 the quick brown fox jumps over the lazy dog, send number 7, other types at +420ms                             
+                                                                                                                        
+
+ Error: 401 User not found.                                                                                             
+
+                                                                                                                        
+ h1 plain send                                                                                                          
+                                                                                                                        
+
+ Error: 401 User not found.                                                                                             
+
+                                                                                                                        
+ h1 replace                                                                                                             
+                                                                                                                        
+
+ Error: 401 User not found.                                                                                             
+
+                                                                                                                        
+ h1b plain after heal                                                                                                   
+                                                                                                                        
+
+ Error: 401 User not found.                                                                                             
+
+                                                                                                                        
+ h2 replace                                                                                                             
+                                                                                                                        
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ✘ 401 User not found.                                                                                                  
+ Dismissed when you send your next message.                                                                             
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+ π > ◒ Haiku 4.5 > 📁 …xx/xx-xxxxxx/xxxxxx/xxxxxxx/xxx/xxxxxxx ▶──5%───────────────────────────────────────┃───────200K─
+╰─ and what about the design
