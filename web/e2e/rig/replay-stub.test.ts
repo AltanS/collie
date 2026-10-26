@@ -31,7 +31,7 @@ import {
 import { asJsonObject, asJsonString, parseJson } from "../../src/lib/json";
 import { checkCassettes } from "./replay/check";
 import { costLines } from "./replay/report";
-import { NO_CASE, startStub, upstreamUrl, type Stub } from "./replay/stub";
+import { MISMATCH_STATUS, NO_CASE, startStub, upstreamUrl, type Stub } from "./replay/stub";
 import { decideTier, readTierAsk, type TierPlan, type TierPlans } from "./replay/tier";
 
 const LAB = "/tmp/collie-lab-test/state";
@@ -389,7 +389,7 @@ describe("the stub", () => {
     expect(replay.stats()).toMatchObject({ upstream: 0, harnesses: { pi: { replayed: 1, proxied: 0 } }, mismatches: [] });
   });
 
-  it("answers a changed prompt with HTTP 599 `cassette mismatch` and counts it, never a canned answer", async () => {
+  it("answers a changed prompt with HTTP 422 `cassette mismatch` and counts it, never a canned answer", async () => {
     const { root, fake } = await setup();
     const live = await stubOn(root, fake, plan("pi", "live", true));
     live.setCase("pi.walky-reply");
@@ -399,7 +399,7 @@ describe("the stub", () => {
     const replay = await stubOn(root, fake, plan("pi", "replay"));
     replay.setCase("pi.walky-reply");
     const miss = await ask(replay, piBody("a prompt the leg never recorded"));
-    expect(miss.status).toBe(599);
+    expect(miss.status).toBe(MISMATCH_STATUS);
     expect(miss.text).toContain("cassette_mismatch");
     expect(miss.text).toContain("re-record");
     expect(replay.stats().mismatches).toEqual([expect.objectContaining({ harness: "pi", machine: "lead", case: "pi.walky-reply", kind: "turn" })]);

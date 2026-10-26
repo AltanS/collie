@@ -29,6 +29,7 @@ import { homedir } from "node:os";
 import { basename, join, resolve } from "node:path";
 
 import { asJsonObject, asJsonString, parseJson, type JsonObject } from "../../src/lib/json";
+import type { TierPlans } from "./replay/tier";
 import { XDG_HOME_NAME, shortXdgHome } from "./sock-path";
 
 /** True for the crew rig (lead and member); the solo rig otherwise. */
@@ -141,6 +142,8 @@ export interface Run {
   member?: MemberRun;
   leadId?: string;
   memberId?: string;
+  /** The model stub for pi and omp (M67, replay/stub.ts): its port, and the tier each harness runs on. */
+  stub?: { readonly port: number; readonly tiers: TierPlans };
 }
 
 export function assertUnderRoot(path: string): string {

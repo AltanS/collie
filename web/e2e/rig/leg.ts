@@ -596,7 +596,30 @@ export interface Trail {
   readonly captures: string[];
 }
 
+/**
+ * Tell the rig's model stub which case runs now (M67, replay/stub.ts): pi's and omp's model calls are
+ * filed under it, whichever harness the case belongs to (case 10's broadcast reaches pi and omp too).
+ * Returns the stub's port, or null on a rig without one.
+ */
+async function stubCase(caseId: string | null): Promise<number | null> {
+  const port = readRun()?.stub?.port;
+  if (port === undefined) return null;
+  await fetch(`http://127.0.0.1:${String(port)}/_rig/case`, { method: "POST", body: JSON.stringify({ case: caseId }) }).catch(() => undefined);
+  return port;
+}
+
+/** The stub's cassette mismatches in one case, as one note each. */
+async function stubMismatches(port: number | null, caseId: string): Promise<string[]> {
+  if (port === null) return [];
+  const stats = await fetch(`http://127.0.0.1:${String(port)}/_rig/stats`)
+    .then(async (r) => asJsonObject(parseJson(await r.text())))
+    .catch(() => undefined);
+  return jsonRows(stats?.mismatches).flatMap((m) => (m.case === caseId ? [`${String(m.harness)}: ${String(m.message)}`] : []));
+}
+
 export async function runScenario(harness: HarnessId, id: ScenarioId, session: Session, body: (paneId: string, trail: Trail) => Promise<ScenarioResult>): Promise<void> {
+  const caseId = `${harness}.${id}`;
+  const stubPort = await stubCase(caseId);
   if (session.paneId === null) {
     record({ harness, scenario: id, verdict: "not reached", taps: null, note: `no session: ${session.startNote}` });
     test.skip(true, session.startNote);
@@ -611,6 +634,12 @@ export async function runScenario(harness: HarnessId, id: ScenarioId, session: S
     if (reset !== null) trail.notes.push(reset);
     row = await body(session.paneId, trail);
   } catch (err) {
+    // A cassette mismatch is the cause whatever the case saw after it: say so first, and fail.
+    const mismatch = await stubMismatches(stubPort, caseId);
+    if (mismatch.length > 0) {
+      record({ harness, scenario: id, verdict: "fail", taps: null, note: [...mismatch, ...trail.notes].join("; "), taps_log: trail.log, captures: trail.captures });
+      throw new Error(mismatch.join("; "), { cause: err });
+    }
     const kept = [...trail.notes, ...trail.log.map(tapWords)].join("; ");
     if (err instanceof NotReached) {
       record({ harness, scenario: id, verdict: "not reached", taps: null, note: [err.message, kept].filter((x) => x !== "").join("; "), taps_log: trail.log, captures: trail.captures });
@@ -621,6 +650,8 @@ export async function runScenario(harness: HarnessId, id: ScenarioId, session: S
     record({ harness, scenario: id, verdict: "fail", taps: null, note: [`the case stopped: ${why}`, kept].filter((x) => x !== "").join("; "), taps_log: trail.log, captures: trail.captures });
     throw err;
   }
+  const mismatch = await stubMismatches(stubPort, caseId);
+  if (mismatch.length > 0) row = { ...row, verdict: "fail", note: [...mismatch, row.note].join("; ") };
   record({ harness, scenario: id, ...row });
   expect(row.verdict, row.note).not.toBe("fail");
 }

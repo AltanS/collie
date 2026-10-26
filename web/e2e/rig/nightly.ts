@@ -101,6 +101,11 @@ export interface Row extends Tuple {
   readonly crewTable?: string | undefined;
   /** The counts of both legs added up per harness (the crew leg's cases run under Claude). */
   readonly verdicts?: Verdicts | undefined;
+  /**
+   * The model tier pi and omp ran on in each leg (M67, replay/tier.ts), from each leg's model.json:
+   * `solo: pi replay, omp live+record; crew: pi replay`. Rows from before M67 have none.
+   */
+  readonly tiers?: string | undefined;
   /** One line: why it failed, or what passed. */
   readonly note?: string | undefined;
   /** When the row was claimed, epoch milliseconds. Only `running` needs it. */
@@ -185,6 +190,7 @@ function parseRow(path: string, value: JsonValue | undefined, index: number): Ro
     crewResults: asJsonString(node.crewResults),
     crewTable: asJsonString(node.crewTable),
     verdicts: parseVerdicts(node.verdicts),
+    tiers: asJsonString(node.tiers),
     note: asJsonString(node.note),
     startedAt: asJsonNumber(node.startedAt),
     pid: asJsonNumber(node.pid),
@@ -219,6 +225,7 @@ function rowJson(row: Row): JsonObject {
     crewResults: row.crewResults,
     crewTable: row.crewTable,
     verdicts: row.verdicts === undefined ? undefined : { claude: { ...row.verdicts.claude }, pi: { ...row.verdicts.pi }, omp: { ...row.verdicts.omp } },
+    tiers: row.tiers,
     note: row.note,
     startedAt: row.startedAt,
     pid: row.pid,
@@ -368,6 +375,7 @@ export interface Settlement {
   readonly crewResults?: string | undefined;
   readonly crewTable?: string | undefined;
   readonly verdicts?: Verdicts | undefined;
+  readonly tiers?: string | undefined;
 }
 
 /** Finish a claimed tuple. Throws when the tuple has no `running` row: a result needs a claim. */
@@ -380,7 +388,7 @@ export function settle(path: string, tuple: Tuple, patch: Settlement): Row {
     const { startedAt, pid, ...kept } = row;
     void startedAt;
     void pid;
-    const next: Row = { ...kept, result: patch.result, note: patch.note, results: patch.results, table: patch.table, crewResults: patch.crewResults, crewTable: patch.crewTable, verdicts: patch.verdicts };
+    const next: Row = { ...kept, result: patch.result, note: patch.note, results: patch.results, table: patch.table, crewResults: patch.crewResults, crewTable: patch.crewTable, verdicts: patch.verdicts, tiers: patch.tiers };
     writeLedger(path, { rows: ledger.rows.map((candidate) => (candidate === row ? next : candidate)) });
     return next;
   });
@@ -614,6 +622,7 @@ export interface Outcome {
   readonly crewResults?: string | undefined;
   readonly crewTable?: string | undefined;
   readonly verdicts?: Verdicts | undefined;
+  readonly tiers?: string | undefined;
 }
 
 export interface RunContext {
@@ -658,6 +667,7 @@ export function summaryLines(tuple: Tuple, outcome: Outcome): string[] {
   const lines = HARNESS_IDS.map((id) => `${id} ${tuple[id]}: ${outcome.verdicts === undefined ? "no verdict" : countsText(outcome.verdicts[id])}`);
   lines.push(outcome.table === undefined ? `table: none (${outcome.note})` : `table: ${outcome.table} (collie main ${tuple.sha.slice(0, 7)}, ${outcome.result})`);
   if (outcome.crewTable !== undefined) lines.push(`crew table: ${outcome.crewTable}`);
+  if (outcome.tiers !== undefined) lines.push(`model tiers: ${outcome.tiers}`);
   return lines;
 }
 
@@ -919,6 +929,32 @@ interface LegRun {
   readonly table: string | undefined;
   readonly rows: TableRow[] | null;
   readonly decision: Decision;
+  /** `pi replay, omp live+record`, from the leg's model.json, or undefined when it wrote none. */
+  readonly tiers: string | undefined;
+}
+
+/**
+ * The tiers a leg's teardown wrote into `<folder>/model.json` (global-teardown.ts), as words:
+ * `pi replay, omp live+record`. Undefined for a folder without one (a leg that never got that far).
+ */
+export function tiersOf(folder: string | undefined): string | undefined {
+  if (folder === undefined) return undefined;
+  const file = join(folder, "model.json");
+  if (!existsSync(file)) return undefined;
+  const tiers = asJsonObject(asJsonObject(parseJson(readFileSync(file, "utf8")))?.tiers);
+  if (tiers === undefined) return undefined;
+  const words = ["pi", "omp"].flatMap((h) => {
+    const plan = asJsonObject(tiers[h]);
+    const tier = asJsonString(plan?.tier);
+    return tier === undefined ? [] : [`${h} ${tier}${plan?.record === true ? "+record" : ""}`];
+  });
+  return words.length === 0 ? undefined : words.join(", ");
+}
+
+/** Both legs' tiers in one ledger field. */
+export function legTiers(solo: string | undefined, crew: string | undefined): string | undefined {
+  const parts = [solo === undefined ? null : `solo: ${solo}`, crew === undefined ? null : `crew: ${crew}`].filter((p): p is string => p !== null);
+  return parts.length === 0 ? undefined : parts.join("; ");
 }
 
 /**
@@ -942,7 +978,7 @@ async function runLeg(logFd: number, logPath: string, leg: "solo" | "crew", conf
   const tablePath = folder === undefined ? undefined : join(folder, "table.md");
   const table = tablePath !== undefined && existsSync(tablePath) ? tablePath : undefined;
   const rows = table !== undefined ? parseTable(readFileSync(table, "utf8")) : null;
-  return { folder, table, rows, decision: decide(rows, code, leg === "solo" ? HARNESS_IDS : ["claude"]) };
+  return { folder, table, rows, decision: decide(rows, code, leg === "solo" ? HARNESS_IDS : ["claude"]), tiers: tiersOf(folder) };
 }
 
 /** The clone, the build, the legs, the tables. Throws on any step that breaks. */
@@ -978,12 +1014,12 @@ async function executeReal(context: RunContext): Promise<Outcome> {
     const solo = await runLeg(logFd, context.log, "solo", "playwright.config.ts", stateRoot, web, env, 45 * MINUTE);
     if (!crewLegRuns(solo.rows)) {
       writeSync(logFd, `\n== ${new Date().toISOString()} the solo leg wrote no table: the crew leg is not run\n`);
-      return { ...decideLegs(solo.decision, null), results: solo.folder, table: solo.table };
+      return { ...decideLegs(solo.decision, null), results: solo.folder, table: solo.table, tiers: legTiers(solo.tiers, undefined) };
     }
     const crewState = crewStateRoot(options.root);
     if (!`${resolve(crewState)}${sep}`.startsWith(cacheLab)) throw new Error(`--root must be under ${cacheLab}: the rig keeps its state there`);
     const crew = await runLeg(logFd, context.log, "crew", "crew.config.ts", crewState, web, legEnv(context.env, crewState), 30 * MINUTE);
-    return { ...decideLegs(solo.decision, crew.decision), results: solo.folder, table: solo.table, crewResults: crew.folder, crewTable: crew.table };
+    return { ...decideLegs(solo.decision, crew.decision), results: solo.folder, table: solo.table, crewResults: crew.folder, crewTable: crew.table, tiers: legTiers(solo.tiers, crew.tiers) };
   } finally {
     closeSync(logFd);
   }

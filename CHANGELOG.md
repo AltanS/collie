@@ -26,6 +26,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Added
 
 - **The browser leg can answer pi and omp from recorded model streams (M67).** A local stand-in for OpenRouter replays a recorded turn with its recorded pacing, so the real pi and omp still draw every screen the phone taps. A request the recording does not hold gets a "cassette mismatch" answer, never a nearby one. `bun run e2e:recordings:check` in `web/` fails when a recording holds a key, a bearer token, an Authorization header or a home folder path.
+- **The browser leg replays pi and omp when it has their recordings, and records them when a version is new (M67).** Each run reads the pi and omp versions. With recordings for that version, model and walky talky skill text, the harness replays and gets no key at all; without them it runs live and records, so the next run replays. `COLLIE_RIG_MODEL=replay` stops a run that has no recording, and `COLLIE_RIG_LIVE=pi,omp` or `all` forces live. Claude Code stays live. The leg ends with the tier of each harness, the live turn count and the number of requests sent to OpenRouter, and the nightly ledger row keeps the tiers.
 
 ### Fixed
 

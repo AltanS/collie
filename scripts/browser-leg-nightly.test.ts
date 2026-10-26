@@ -26,6 +26,7 @@ import {
   emptyCounts,
   expireStale,
   legEnv,
+  legTiers,
   main,
   parseOptions,
   parseRemoteSha,
@@ -35,6 +36,7 @@ import {
   readLedger,
   resultsFolderIn,
   settle,
+  tiersOf,
   writeLedger,
   type Decision,
   type Facts,
@@ -344,6 +346,22 @@ describe("the table and the verdict", () => {
     expect(resultsFolderIn(log, "crew")).toBe("/c/results/b");
     expect(resultsFolderIn(log)).toBe("/s/results/a");
     expect(resultsFolderIn("Browser leg, run a (results in /s/results/a):\n", "crew")).toBeUndefined();
+  });
+});
+
+describe("the model tiers of a run (M67)", () => {
+  test("a leg's model.json reads as words, and both legs fit one ledger field", () => {
+    const folder = mkdtempSync(join(tmpdir(), "nightly-tiers-"));
+    try {
+      expect(tiersOf(folder)).toBeUndefined();
+      expect(tiersOf(undefined)).toBeUndefined();
+      writeFileSync(join(folder, "model.json"), JSON.stringify({ tiers: { pi: { tier: "replay", record: false }, omp: { tier: "live", record: true } }, stub: null, turns: {} }));
+      expect(tiersOf(folder)).toBe("pi replay, omp live+record");
+      expect(legTiers("pi replay, omp replay", "pi live")).toBe("solo: pi replay, omp replay; crew: pi live");
+      expect(legTiers(undefined, undefined)).toBeUndefined();
+    } finally {
+      rmSync(folder, { recursive: true, force: true });
+    }
   });
 });
 

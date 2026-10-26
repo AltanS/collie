@@ -5,7 +5,8 @@
 //
 //   replay  the request is matched to its cassette (cassette.ts) and the recorded stream is sent back
 //           with its recorded pacing. No upstream call can happen: this mode has no upstream code path.
-//           A request with no matching entry gets HTTP 599 `cassette mismatch`, never a canned answer.
+//           A request with no matching entry gets HTTP 422 `cassette mismatch` (MISMATCH_STATUS), never a
+//           canned answer.
 //   live    the request goes on to OpenRouter as it came, with the harness's own Authorization header,
 //           and the answer streams straight back. With `record`, the stream is also written into the
 //           cassettes: no header, the volatile values replaced by placeholders.
@@ -97,6 +98,14 @@ export interface Stub {
   stats(): StubStats;
   close(): Promise<void>;
 }
+
+/**
+ * The status of a cassette mismatch. Spec 03 named 599, but a 5xx is retried: omp 18.6.1 sent the
+ * same request 30 times in 90 s against a 599 (probed 2026-10-26), so a mismatch hung its case to the
+ * timeout. A 422 is retried by neither harness's client: the turn ends at once and the harness paints
+ * the error with its `cassette mismatch` text. The body's `cassette_mismatch` type is the label.
+ */
+export const MISMATCH_STATUS = 422;
 
 /** The case id of a request that comes before the leg named a case (a harness start). A valid case id. */
 export const NO_CASE = "rig.before-first-case";
@@ -207,7 +216,7 @@ export async function startStub(config: StubConfig, port = 0, host = "127.0.0.1"
     const c = counts[note.harness];
     if (c !== undefined) c.mismatches++;
     log(`MISMATCH ${note.harness}-${note.machine} ${note.case}: ${note.message}`);
-    res.writeHead(599, { "content-type": "application/json" });
+    res.writeHead(MISMATCH_STATUS, { "content-type": "application/json" });
     res.end(JSON.stringify({ type: "error", error: { type: "cassette_mismatch", message: note.message } }));
   };
 
