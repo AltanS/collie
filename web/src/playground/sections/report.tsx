@@ -23,7 +23,7 @@ export const DEF: SectionDef = {
     "with the screen switch, a screen too long for the link, and the Settings door with no pane.",
 };
 
-const CONTEXT: ReportContext = { collie: "1.24.1", line: "edge", os: "linux", arch: "x64", mux: "herdr", harness: "claude", screenable: true };
+const CONTEXT: ReportContext = { collie: "1.24.1", line: "edge", os: "linux", arch: "x64", mux: "acme-mux", harness: "claude", screenable: true };
 const AT = Date.parse("2026-10-25T18:03:00Z");
 
 function row(n: number, extra: Partial<SendReceiptRow> = {}): SendReceiptRow {
