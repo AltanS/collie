@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { lineText, type StyledLine } from "../blocks";
 import { fixtureRows, perturbations, readScreen, rowsOf, SURFACE_FIXTURES_DIR } from "../../test/surface-corpus";
-import { CLUSTER_GAP_ROWS, CLUSTER_MAX_ROWS, commandListAt, FOOTER_MAX_ROWS, isKeyHintRow, isRunningRow, noticeOver, ownCommandList, readCues, runningSign, withoutPromptEchoes } from "./cues";
+import { CLUSTER_GAP_ROWS, CLUSTER_MAX_ROWS, commandListAt, FOOTER_MAX_ROWS, isKeyHintRow, isRunningRow, noticeOver, ownCommandList, readCues, readCuesFor, runningSign, withoutPromptEchoes } from "./cues";
 import { isSingleKeyRow } from "./key-row";
 import { findInputFrame, plainRows, rowText, type FrameRow, type IdleProfile } from "./frame";
 import { requireProfile } from "./profile";
@@ -677,6 +677,29 @@ describe("the transcript's echo of a sent prompt (idle.promptEchoes, Claude Code
     expect(out.slice(1, 4).every((text) => text === "")).toBe(true);
     expect(out.slice(frame.top)).toEqual(rows.slice(frame.top).map(rowText));
     expect(withoutPromptEchoes(rows, null, IDLE)).toBe(rows);
+  });
+
+  // Claude Code draws a message queued during a turn in the echo's shape over the box: `❯ ` and its
+  // text, its later lines and the `ctrl+enter to send now` hint indented under it, a blank row, then
+  // the box with `Press up to edit queued messages`. A walky talky message is two lines, so the block
+  // is three rows, and the framed read took it for a pointed list: the Surface claimed a modal at S2
+  // and the send ended unknown(dialog_after_enter) (browser leg case 16, 2.1.310, 2026-10-26).
+  it("claude--v2-1-310-walky-queued-two-rows--w120.txt: a two-line queued message over the box is no modal", () => {
+    const rows = fixtureRows("claude--v2-1-310-walky-queued-two-rows--w120.txt", SURFACE_FIXTURES_DIR);
+    expect(readScreen(rows, "claude", IDLE).surface).toMatchObject({ turn: "running", modal: "none", composer: "empty" });
+    const frame = findInputFrame(rows, IDLE)!;
+    expect(readCuesFor(rows, frame, IDLE).strength).toBe("none");
+    // The framed read without the echo rule: the block is a pointed list of three rows.
+    const { promptEchoes: _, ...plain } = IDLE;
+    expect(readCuesFor(rows, frame, plain).strength).toBe("strong");
+  });
+
+  it("over the box, the framed read drops an echo-shaped run but keeps one with an option row of its own", () => {
+    const queued = ["", "❯ [walky-talky wt_x] from operator (phone)", "  Walky check: reply with only the word OK.", "  ctrl+enter to send now", "", WIDE, "❯ ", WIDE, "  model · esc to interrupt"];
+    const rows = plainRows(queued);
+    expect(readCuesFor(rows, findInputFrame(rows, IDLE)!, IDLE).strength).toBe("none");
+    const listed = plainRows(["", "❯ 1. Yes, and keep going with the plan as written", "  2. No, and stop here", "  3. Ask me again", "", WIDE, "❯ ", WIDE, "  model"]);
+    expect(readCuesFor(listed, findInputFrame(listed, IDLE)!, IDLE).strength).toBe("strong");
   });
 
   const CAPTURES: readonly (readonly [string, string])[] = [

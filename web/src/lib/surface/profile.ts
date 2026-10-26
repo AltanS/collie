@@ -569,8 +569,13 @@ export interface Profile {
      * after it (Claude Code's `❯ ` echo, 2.1.309 and 2.1.310, 2026-10-25). The bridge's whole-screen cue
      * read over a found box then reads such a run above the box as blank: a long prompt wraps into rows
      * that line up like a pointed list, and a numbered list in the answer under it made the read strong,
-     * so a send into a running turn was held instead of queued. A run with an option row of its own (a
-     * number, a checkbox) stays in the read. Optional.
+     * so a send into a running turn was held instead of queued. The framed cue read (cues.ts
+     * `readCuesFor`, the Surface's modal claim) reads such a run as blank too: Claude Code draws a queued
+     * message over the box in the same shape, `❯ ` and its text, its wrapped or later lines and the
+     * `ctrl+enter to send now` hint indented under it. A queued message of two rows or more (every walky
+     * talky message) read as a pointed list of three rows, so the Surface claimed a modal at S2 and the
+     * send ended `unknown(dialog_after_enter)` (browser leg case 16, 2.1.310, 2026-10-26). A run with an
+     * option row of its own (a number, a checkbox) stays in the read. Optional.
      */
     readonly promptEchoes?: boolean;
     /**

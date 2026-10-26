@@ -1,0 +1,24 @@
+
+❯ List 160 different fruits, one per line, numbered 1 to 160, each with one sentence of about twenty words about its
+  taste. Write the list as plain text in your reply and call no tool. No other text.
+
+● 1. Apple: It tastes sweet and crisp. Some apples have a light sour note. The skin adds a little bite.
+  2. Pear: It tastes sweet and soft. The flesh is juicy and smooth. Some pears taste slightly floral.
+  3. Banana: It tastes sweet and mild. The flesh is soft and creamy. Ripe bananas have a honey-like flavor.
+  4. Orange: It tastes sweet and tangy. The juice is bright and fresh. The peel has a sharp citrus smell.
+  5. Lemon: It tastes very sour. The juice is sharp and bright. Small amounts add flavor to many dishes.
+  6. Lime: It tastes sour and sharp. The flavor is brighter than lemon. It adds a clean, fresh note to food.
+  7. Grapefruit: It tastes bitter and tart. The juice is sharp with a slight sweetness. Pink types taste softer.
+  8. Mandarin: It tastes sweet and light. The segments peel easily. The flavor is less sharp than orange.
+  9. Tangerine: It tastes sweet and tangy. The skin is loose and easy to peel. The juice is very aromatic.
+  10. Clementine: It tastes very sweet with little acid. It has few seeds. It is a popular snack for children.
+  11. Kumquat: It tastes sour on the outside and sweet inside. You eat the whole fruit, skin included.
+  12. Peach: It tastes sweet and juicy. The skin is fuzzy. Ripe peaches have a soft, floral aroma.
+  13. Nectarine: It tastes sweet and sharp. The skin is smooth with no fuzz. The flavor is like a peach.
+  14. Apricot: It tastes sweet with a slight tartness. The flesh is soft and dry when ripe. The flavor is mild.
+  15.
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⏸ manual mode on · esc to interrupt
