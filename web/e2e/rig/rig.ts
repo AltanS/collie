@@ -1,6 +1,7 @@
 // The browser leg's rig CLI: an ISOLATED bridge mirroring a SCRATCH Herdr server. Run it with bun:
 //
-//   bun e2e/rig/rig.ts up [--crew] | down | status | start <harness> [--on lead|member] | pane <cmd...>
+//   bun e2e/rig/rig.ts up [--crew] | down | status | start <harness> [--on lead|member] [--replace]
+//                      | pane <cmd...> [--replace] | pane ls | pane close <paneId>... | pane close --all
 //                      | snapshot | read <pane> [lines] [--on member] | crew stop-member
 //                      | crew start-member [--env COLLIE_WALKY=off]
 //
@@ -39,6 +40,13 @@
 // is gone. No owner is recorded for a login session or a desktop app scope, and the check is skipped.
 // `down` stops the scope when it is still active; agent-reaper.sh stops a rig-*.scope whose daemon is gone.
 //
+// THE PANE CAP. A harness pane costs 46 to 64 tasks (omp), and drivers that opened one pane per case and
+// closed none filled the task limit at about one pane a minute. So `pane <cmd>` and `start <harness>` refuse
+// (exit 75) when the machine already holds COLLIE_RIG_MAX_PANES panes (default 6), and name the fix: `pane
+// close <id>` (`pane ls` lists them) or `--replace`, which closes the pane the same key opened last (the
+// harness for `start`, "pane" for `pane`) before it opens the new one. The cap lives in these two verbs only;
+// the browser leg opens its panes through rig-lib.ts and is never counted against it.
+//
 // `crew stop-member` and `crew start-member` ask the daemon (SIGUSR1, SIGUSR2) to stop the member's
 // bridge by its recorded pid and to start it again with the same dirs and port. The member's Herdr
 // and its agents keep running, as on a machine whose Collie was stopped. `start-member --env
@@ -63,6 +71,7 @@ import {
   PORT_HI,
   PORT_LO,
   STATE_ROOT,
+  VIEW_LABEL,
   assertPrivateDir,
   assertUnderRoot,
   assertUnderXdg,
@@ -73,6 +82,9 @@ import {
   machineFlag,
   memGuard,
   newWorkspacePane,
+  openPanes,
+  paneClose,
+  paneCommand,
   paneRun,
   pidAlive,
   pidIs,
@@ -83,6 +95,7 @@ import {
   writeRun,
   type Machine,
   type MemberRun,
+  type OpenPane,
   type Run,
 } from "./rig-lib";
 import { asJsonObject, asJsonString, parseJson, type JsonValue } from "../../src/lib/json";
@@ -276,6 +289,13 @@ const logName = (machine: Machine, what: string): string => join(P.logs, machine
 const MEMBER_ENV_ALLOWED: readonly string[] = ["COLLIE_WALKY"];
 const MEMBER_ENV_FILE = join(P.rig, "member-env.json");
 
+/**
+ * The pane `--replace` closes: the last one `pane` or `start` opened for a key, as { key: paneId }. A file
+ * of its own, not rig.json: the daemon writes rig.json whole from memory (a `crew start-member` would drop
+ * a field this CLI added), and pane ids start again at w1 in every rig, so `up` and `down` remove it.
+ */
+const LAST_PANES_FILE = join(P.rig, "last-panes.json");
+
 /** The allowed settings a case asked the member's bridge to start with; none when the file is absent or unreadable. */
 function memberEnvOverrides(): [string, string][] {
   try {
@@ -442,7 +462,7 @@ async function daemon(): Promise<void> {
     log(`herdr up (${machine}): ${half.socket}`);
 
     // A view workspace + an attached client that answers colour queries (as the canary does).
-    newWorkspacePane(d.work, "rig-view", machine);
+    newWorkspacePane(d.work, VIEW_LABEL, machine);
     try {
       const mod = await import(join(WORKTREE, "scripts", "harness-canary", "client.ts"));
       const attached: { close(): void; answered(): boolean } = mod.attachClient(d.session, herdrEnv(machine));
@@ -572,6 +592,7 @@ async function cmdUp(crew: boolean): Promise<void> {
   }
   rmSync(P.token, { force: true });
   rmSync(MEMBER_ENV_FILE, { force: true });
+  rmSync(LAST_PANES_FILE, { force: true });
   const port = await freePort();
   const memberPort = crew ? await freePort([port]) : null;
   const logFd = openSync(join(P.logs, "daemon.out"), "a");
@@ -657,6 +678,7 @@ async function cmdDown(): Promise<void> {
   rmSync(P.run, { force: true });
   rmSync(P.token, { force: true });
   rmSync(MEMBER_ENV_FILE, { force: true });
+  rmSync(LAST_PANES_FILE, { force: true });
   console.log(machines.length === 1 ? "down: bridge and scratch Herdr stopped" : "down: both bridges and both scratch Herdr servers stopped");
 }
 
@@ -728,9 +750,105 @@ async function api(path: string): Promise<ApiAnswer> {
   return { status: res.status, json: parseJson(text), text };
 }
 
-async function cmdPane(args: string[], machine: Machine): Promise<void> {
+// ── panes ────────────────────────────────────────────────────────────────────────────────────────
+const DEFAULT_MAX_PANES = 6;
+/** The exit code of a refused pane (EX_TEMPFAIL): nothing is wrong with the call, the machine is full. */
+const EXIT_PANE_CAP = 75;
+
+/** COLLIE_RIG_MAX_PANES when it is a positive integer, else 6: the most panes `pane` and `start` leave open on one machine. */
+function maxPanes(): number {
+  const asked = Number(process.env.COLLIE_RIG_MAX_PANES);
+  return Number.isInteger(asked) && asked > 0 ? asked : DEFAULT_MAX_PANES;
+}
+
+/** The recorded pane per key, `lead` keys bare and the member's as `member:<key>`: the two machines count their pane ids apart. */
+const paneKey = (machine: Machine, key: string): string => (machine === "lead" ? key : `${machine}:${key}`);
+
+function lastPanes(): Map<string, string> {
+  const out = new Map<string, string>();
+  try {
+    for (const [name, value] of Object.entries(asJsonObject(parseJson(readFileSync(LAST_PANES_FILE, "utf8"))) ?? {})) {
+      const id = asJsonString(value);
+      if (id !== undefined) out.set(name, id);
+    }
+  } catch {
+    /* none recorded yet */
+  }
+  return out;
+}
+
+function recordPane(machine: Machine, key: string, paneId: string): void {
+  const panes = lastPanes().set(paneKey(machine, key), paneId);
+  writeFileSync(LAST_PANES_FILE, JSON.stringify(Object.fromEntries(panes)), { mode: 0o600 });
+}
+
+/** "45s", "12m", "3h" since a `rig-<time in base 36>` workspace was made (cmdPane's label); "-" for any other label. */
+function ageOf(label: string): string {
+  const made = /^rig-([0-9a-z]+)$/.exec(label)?.[1];
+  const sec = made === undefined ? Number.NaN : Math.round((Date.now() - Number.parseInt(made, 36)) / 1000);
+  if (!(sec >= 0)) return "-";
+  return sec < 90 ? `${sec}s` : sec < 5400 ? `${Math.round(sec / 60)}m` : `${Math.round(sec / 3600)}h`;
+}
+
+/** One line per pane: id, workspace label, age, and what runs in it (its foreground command, else its cwd). */
+function paneLines(panes: readonly OpenPane[], machine: Machine): string[] {
+  return panes.map((p) => {
+    const what = paneCommand(p.paneId, machine) ?? p.cwd;
+    return `  ${p.paneId.padEnd(7)} ${p.label.padEnd(14)} ${ageOf(p.label).padEnd(5)} ${what.length > 70 ? `${what.slice(0, 67)}...` : what}`;
+  });
+}
+
+/** The flags a follow-up command needs to reach the same rig and machine. */
+const rigFlags = (machine: Machine): string => `${CREW ? " --crew" : ""}${machine === "member" ? " --on member" : ""}`;
+
+/** `pane ls`: the panes open on a machine, the rig's view pane left out. */
+function cmdPaneLs(machine: Machine): void {
+  const panes = openPanes(machine);
+  console.log(panes.length === 0 ? `no open panes on the ${machine}` : `${panes.length} open on the ${machine} (cap ${maxPanes()}):\n${paneLines(panes, machine).join("\n")}`);
+}
+
+/**
+ * `pane close <paneId>...` and `pane close --all`. An id that is not open is reported and skipped (it was
+ * closed already, or it is the view pane, which is never listed and never closed); the rest still close.
+ */
+function cmdPaneClose(ids: readonly string[], all: boolean, machine: Machine): void {
+  if (all === (ids.length > 0)) die("usage: pane close <paneId>... | pane close --all");
+  const open = openPanes(machine);
+  let refused = 0;
+  for (const id of new Set(all ? open.map((p) => p.paneId) : ids)) {
+    if (!open.some((p) => p.paneId === id)) console.log(`${id}: not open (closed already, or not a pane of this rig)`);
+    else if (paneClose(id, machine)) console.log(`${id}: closed`);
+    else {
+      console.log(`${id}: Herdr refused to close it`);
+      refused += 1;
+    }
+  }
+  process.exitCode = refused === 0 ? 0 : 1;
+}
+
+/**
+ * Before a new pane: with `--replace`, close the pane this key opened last (a pane that is gone does not
+ * matter), then refuse with exit 75 when the machine still holds the cap. The refusal lists the open panes.
+ */
+function makeRoom(machine: Machine, key: string, replace: boolean): void {
+  const old = replace ? lastPanes().get(paneKey(machine, key)) : undefined;
+  if (old !== undefined) console.log(paneClose(old, machine) ? `replace: closed ${old}` : `replace: ${old} was gone already`);
+  const open = openPanes(machine);
+  const max = maxPanes();
+  if (open.length < max) return;
+  console.error(
+    `rig: ${open.length} panes are open on the ${machine} (cap ${max}, COLLIE_RIG_MAX_PANES); no new pane started. Each harness pane costs 46 to 64 tasks.\n` +
+      `${paneLines(open, machine).join("\n")}\n` +
+      `close one: bun e2e/rig/rig.ts pane close <id>${rigFlags(machine)}   (or add --replace to close the pane this command opened last)`,
+  );
+  process.exit(EXIT_PANE_CAP);
+}
+
+/** A new pane on a machine, running `args` as one line when there are any; prints its id and records it under `key` for `--replace`. */
+async function cmdPane(args: string[], machine: Machine, key: string): Promise<void> {
   const cmd = args.join(" ");
   const paneId = newWorkspacePane(machineDirs(machine).work, `rig-${Date.now().toString(36)}`, machine);
+  recordPane(machine, key, paneId);
   if (cmd !== "") {
     await sleep(700); // let the shell print its prompt first
     paneRun(paneId, cmd, machine);
@@ -749,11 +867,11 @@ interface StatusView extends Run {
   memberHerdrAlive?: boolean;
 }
 
-/** The arguments with `--crew` and `--on <machine>` taken out. */
+/** The arguments with `--crew`, `--replace` and `--on <machine>` taken out, so none of them reaches a pane's command line. */
 function plain(args: readonly string[]): string[] {
   const out: string[] = [];
   for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--crew") continue;
+    if (args[i] === "--crew" || args[i] === "--replace") continue;
     if (args[i] === "--on") {
       i += 1;
       continue;
@@ -792,17 +910,26 @@ switch (cmd) {
   case "crew":
     await cmdCrew(rest[0], rest.slice(1));
     break;
-  case "pane":
-    await cmdPane(rest, machineFlag(argv));
+  case "pane": {
+    // `ls` and `close` are verbs here; to run a shell command of that name in a pane, write `pane sh -c ls`.
+    const machine = machineFlag(argv);
+    if (rest.length === 1 && rest[0] === "ls") cmdPaneLs(machine);
+    else if (rest[0] === "close") cmdPaneClose(rest.slice(1).filter((arg) => arg !== "--all"), rest.includes("--all"), machine);
+    else {
+      makeRoom(machine, "pane", argv.includes("--replace"));
+      await cmdPane(rest, machine, "pane");
+    }
     break;
+  }
   case "start": {
-    // A harness in a fresh pane, the way the leg starts it: `start claude|pi|omp [--on lead|member]`.
-    const id = HARNESS_IDS.find((harness) => harness === rest[0]) ?? die("usage: start claude|pi|omp [--on lead|member]");
+    // A harness in a fresh pane, the way the leg starts it: `start claude|pi|omp [--on lead|member] [--replace]`.
+    const id = HARNESS_IDS.find((harness) => harness === rest[0]) ?? die("usage: start claude|pi|omp [--on lead|member] [--replace]");
     const machine = machineFlag(argv);
     if (machine === "member" && readRun()?.member === undefined) die("this rig has no member (run `up --crew`)");
     memGuard(`harness ${id}`);
+    makeRoom(machine, id, argv.includes("--replace"));
     const { line } = prepareHarness(id, machine);
-    await cmdPane([line], machine);
+    await cmdPane([line], machine, id);
     break;
   }
   case "snapshot": {
@@ -826,8 +953,9 @@ switch (cmd) {
   }
   default:
     console.log(
-      "usage: bun e2e/rig/rig.ts up [--crew] | down | status | start claude|pi|omp [--on lead|member] | pane <cmd...> | snapshot | read <pane> [lines] [--on member] | crew stop-member | crew start-member [--env NAME=value]\n" +
-        "       add --crew to any command to reach the crew rig's state root (`crew <verb>` implies it)",
+      "usage: bun e2e/rig/rig.ts up [--crew] | down | status | start claude|pi|omp [--on lead|member] [--replace] | pane <cmd...> [--replace] | pane ls | pane close <paneId>... | pane close --all | snapshot | read <pane> [lines] [--on member] | crew stop-member | crew start-member [--env NAME=value]\n" +
+        "       add --crew to any command to reach the crew rig's state root (`crew <verb>` implies it)\n" +
+        "       pane and start refuse with exit 75 at COLLIE_RIG_MAX_PANES open panes (default 6)",
     );
     process.exitCode = cmd === undefined || cmd === "help" ? 0 : 1;
 }

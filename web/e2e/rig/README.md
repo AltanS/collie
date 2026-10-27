@@ -212,7 +212,7 @@ Results stay in `~/.cache/collie-lab/browser-leg-state/results/<run>/`: `ledger.
 tap with the bridge's receipt, `table.md` holds the table, and the phone screenshots and pane
 captures sit beside them.
 
-By hand: `bun e2e/rig/rig.ts up | down | status | start claude|pi|omp | snapshot | read <pane>`.
+By hand: `bun e2e/rig/rig.ts up | down | status | start claude|pi|omp | pane <cmd...> | pane ls | pane close <paneId>... | snapshot | read <pane>`.
 After a crash, `bun e2e/rig/rig.ts down` stops what the rig started. The crew leg's commands are in
 "The crew leg" below.
 
@@ -231,6 +231,24 @@ will outlive it, or from a plain shell. `down` stops the
 scope if it is still active, and `agent-reaper.sh` stops a `rig-*.scope` whose daemon is gone. Without
 `systemd-run` or a user bus (`$XDG_RUNTIME_DIR/bus`) the daemon runs where `up` runs, and `logs/daemon.log`
 gets one `WARNING` line.
+
+**The pane cap.** A harness pane costs 46 to 64 tasks (omp), and gang drivers that opened a pane per test case and
+closed none filled the task limit at about one pane a minute. So `pane <cmd>` and `start <harness>` count the open
+panes first (the rig's view pane is left out) and refuse when there are `COLLIE_RIG_MAX_PANES` or more: a positive
+integer, 6 when unset or not one. The refusal exits with code 75, lists the open panes and names the fix.
+
+```sh
+bun e2e/rig/rig.ts pane ls                       # the open panes: id, label, age, command (add --on member for the member)
+bun e2e/rig/rig.ts pane close w3:p1 w4:p1        # close some; an id that is already gone is reported and skipped
+bun e2e/rig/rig.ts pane close --all              # close every pane but the view pane
+bun e2e/rig/rig.ts start omp --replace           # close the omp pane `start omp` opened last, then open the new one
+bun e2e/rig/rig.ts pane --replace sleep 600      # the same for `pane`, which keeps one slot of its own
+```
+
+`--replace` never reaches the pane's command line. The last pane per key is in `rig/last-panes.json` (not
+`rig.json`, which the daemon writes whole), and `up` and `down` remove it. The cap sits in these two verbs only: the
+Playwright leg opens its panes through `rig-lib.ts` and does not meet it. `pane ls` and `pane close` are verbs, so
+run a shell command of that name as `pane sh -c ls`.
 
 Herdr binds its sockets under its `XDG_CONFIG_HOME`, and a Unix socket path holds at most 107 bytes on
 Linux (103 on macOS). A long state root, such as the nightly runner's, would push the path over that, and

@@ -324,9 +324,57 @@ export function newWorkspacePane(cwd: string, label: string, machine: Machine = 
   return paneId;
 }
 
-/** Close a rig pane, and with it the harness in it. */
-export function paneClose(paneId: string, machine: Machine = "lead"): void {
-  herdr(["pane", "close", paneId], { machine });
+/** Close a rig pane, and with it the harness in it. False when Herdr refused: the pane is already gone, or never was. */
+export function paneClose(paneId: string, machine: Machine = "lead"): boolean {
+  return herdr(["pane", "close", paneId], { machine }).code === 0;
+}
+
+/** The label of the view workspace the daemon opens first (rig.ts startHerdr): the pane its attached client shows. */
+export const VIEW_LABEL = "rig-view";
+
+/** One open pane of a machine's rig, as `rig.ts pane ls` and the pane cap see it. */
+export interface OpenPane {
+  readonly paneId: string;
+  /** The label of the pane's workspace: `rig-<time in base 36>` from `pane` and `start`, `leg-<harness>` from the leg. */
+  readonly label: string;
+  readonly cwd: string;
+}
+
+/**
+ * The panes open in a machine's Herdr, less the view pane. `newWorkspacePane` gives every pane its own
+ * workspace, and only the view workspace carries VIEW_LABEL, so the view pane is told apart by its
+ * workspace's label, not by its id.
+ */
+export function openPanes(machine: Machine = "lead"): OpenPane[] {
+  const labels = new Map<string, string>();
+  const workspaces = herdrJson(["workspace", "list"], machine).workspaces;
+  for (const w of Array.isArray(workspaces) ? workspaces : []) {
+    const ws = asJsonObject(w);
+    const id = asJsonString(ws?.workspace_id);
+    if (id !== undefined) labels.set(id, asJsonString(ws?.label) ?? "");
+  }
+  const panes = herdrJson(["pane", "list"], machine).panes;
+  const out: OpenPane[] = [];
+  for (const p of Array.isArray(panes) ? panes : []) {
+    const pane = asJsonObject(p);
+    const paneId = asJsonString(pane?.pane_id);
+    if (paneId === undefined) continue;
+    const label = labels.get(asJsonString(pane?.workspace_id) ?? "") ?? "";
+    if (label === VIEW_LABEL) continue;
+    out.push({ paneId, label, cwd: asJsonString(pane?.cwd) ?? "" });
+  }
+  return out;
+}
+
+/** The command a pane runs in its foreground (`herdr pane process-info`), or null when Herdr gives none. */
+export function paneCommand(paneId: string, machine: Machine = "lead"): string | null {
+  try {
+    const info = asJsonObject(herdrJson(["pane", "process-info", "--pane", paneId], machine).process_info);
+    const procs = info?.foreground_processes;
+    return asJsonString(asJsonObject(Array.isArray(procs) ? procs[0] : undefined)?.cmdline) ?? null;
+  } catch {
+    return null;
+  }
 }
 
 /** Type a line into a rig pane and press Enter (`herdr pane run`). */
