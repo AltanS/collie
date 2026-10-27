@@ -26,6 +26,9 @@ import type { ChatStatus } from "./chat-window";
 //   0. The pane has no screen → chat when it has a readable session, else start. Nothing below runs.
 //   1. The device chose the terminal, or this harness cannot draw Chat → terminal. So does a server
 //      that said it cannot read at all (`off`): there is no event to wait for.
+//   1b. The pane is asking for input NOW and no screen reader of Collie's knows its harness → terminal.
+//      No card can lift that dialog into Chat, so Chat over it is a question the operator cannot see,
+//      however readable the session is. Not a latch: the pane returns to Chat when it stops asking.
 //   2. The pane has a session and its log is not known to be missing → chat.
 //   3. Nothing to read, and this view did not see the pane start fresh → terminal at once.
 //   4. Nothing to read, and the pane asked for input (blocked) → terminal at once. A dialog on an
@@ -102,6 +105,12 @@ export interface ChatGateInput {
   activity: PaneActivity;
   /** A journal read started after the turn-end snapshot has answered. Read only at `ended`. */
   settled: boolean;
+  /**
+   * The pane is blocked right now and its harness has no block grammar (lib/harness/registry.ts), so
+   * no card can show the dialog it is asking with. The CURRENT state, unlike `activity`, which is a
+   * latch over the first turn. Absent reads as false.
+   */
+  unreadQuestion?: boolean;
 }
 
 /**
@@ -113,6 +122,7 @@ export type PaneBody = "chat" | "start" | "terminal";
 export function paneBody(input: ChatGateInput): PaneBody {
   if (input.grid === false) return input.session && input.journal !== "missing" ? "chat" : "start";
   if (!input.chat || input.journal === "off") return "terminal";
+  if (input.unreadQuestion === true) return "terminal";
   if (input.session && input.journal !== "missing") return "chat";
   if (input.history === "unknown") return "terminal";
   if (input.activity === "blocked" || input.activity === "stalled") return "terminal";

@@ -1123,7 +1123,11 @@ A pane falls back to the terminal when something happens that Chat cannot show: 
 question before there is anything to read, or its first turn ends and it still has no session, or no
 log file to read. The terminal then shows a line that names what is missing, and the **⋮** row says
 why. A first turn that runs for a minute with nothing to read and no other sign also falls back. A pane that was already busy when you first opened it, with no session, shows the terminal at
-once. When the session or the log arrives later, the pane goes back to Chat. Chat never hides the
+once. When the session or the log arrives later, the pane goes back to Chat.
+
+An agent that Collie has no screen reader for, such as OpenClaw, asks its questions in dialogs that
+Chat cannot draw as cards. While such a pane asks, it shows the terminal, so the dialog is on screen
+and you answer it there; when it stops asking, the pane goes back to Chat. Chat never hides the
 row, so you can tell a missing hook from a missing feature. `collie doctor` lists those
 panes under `agent-sessions` and names the integration line (`integration-<agent>`) that fixes each.
 The [troubleshooting page](troubleshooting.md) has the steps, under **a pane has no Chat or History**.

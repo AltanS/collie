@@ -22,6 +22,15 @@ const rows: [string, ChatGateInput, PaneBody][] = [
   ["a terminal device keeps the terminal on a fresh pane too", row({ chat: false }), "terminal"],
   ["a terminal device keeps the terminal over a blocked pane", row({ chat: false, activity: "blocked" }), "terminal"],
 
+  // 1b. Asking now, in a dialog no screen reader of Collie's lifts: the terminal, however readable the
+  // session, and only while it asks.
+  ["an unread question takes a readable session to the terminal",
+    row({ session: true, journal: "readable", unreadQuestion: true }), "terminal"],
+  ["an unread question takes a fresh pane to the terminal", row({ unreadQuestion: true }), "terminal"],
+  ["the same pane returns to Chat once it stops asking",
+    row({ session: true, journal: "readable", activity: "blocked", unreadQuestion: false }), "chat"],
+  ["a terminal device is unchanged by an unread question", row({ chat: false, unreadQuestion: true }), "terminal"],
+
   // 2. A session whose log is not known to be missing: Chat, whatever else this view saw.
   ["a readable session draws Chat", row({ session: true, journal: "readable" }), "chat"],
   ["a session not asked yet draws Chat", row({ session: true, journal: "unasked" }), "chat"],
@@ -95,6 +104,7 @@ describe("a pane with no screen: grid false hides the Terminal", () => {
     ["a pane that asked for input draws the start line", noScreen({ activity: "blocked" }), "start"],
     ["the last resort does not send it to the terminal", noScreen({ activity: "stalled" }), "start"],
     ["the turn ended with no session: still no terminal", noScreen({ activity: "ended" }), "start"],
+    ["an unread question keeps Chat, which is the only body", noScreen({ session: true, journal: "readable", unreadQuestion: true }), "chat"],
   ];
 
   it.each(cases)("%s", (_name, input, body) => {
