@@ -50,7 +50,7 @@ import type {
 const DB_FILE = "state.db";
 // Where named profiles live under a Hermes root (`hermes_cli/profiles.py`).
 const PROFILES_DIR = "profiles";
-const SESSION_ID_RE = /^\d{8}_\d{6}_[A-Za-z0-9]+$/;
+const SESSION_ID_RE = /^(?:\d{8}_\d{6}_[A-Za-z0-9]+|local-[a-f0-9]{64})$/;
 
 export function isHermesSessionId(value: string): boolean {
   return SESSION_ID_RE.test(value);
