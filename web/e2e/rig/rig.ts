@@ -15,10 +15,11 @@
 //   2. one attached Herdr client in a PTY (scripts/harness-canary/client.ts), so a harness that asks
 //      the terminal for its colours at start gets an answer, as it would in a person's terminal;
 //   3. `bun bridge/index.ts` from this checkout on a free port in 18700-18799.
-// The daemon runs in a systemd scope of its own, `rig-<8 hex>-<pid>.scope` in rig.slice, with
-// TasksMax=700 (1400 for `up --crew`; COLLIE_RIG_TASKS_MAX overrides, see "THE SCOPE" below). The herdr
-// server, the bridge and every pane are its children, so they follow it. Without systemd-run or the user
-// bus it runs where `up` runs, as it always did.
+// On Linux with systemd-run and the user bus the daemon runs in a systemd scope of its own,
+// `rig-<8 hex>-<pid>.scope`, with TasksMax=700 (1400 for `up --crew`; COLLIE_RIG_TASKS_MAX overrides, see
+// "THE SCOPE" below). The herdr server, the bridge and every pane are its children, so they follow it.
+// Elsewhere it runs where `up` runs, as it always did.
+//
 // Then `up` pairs one device the way `collie pair` does, but with the bridge's own pairing module in
 // the rig's own state dir, and claims the code over the real POST /api/pair. No CLI verb runs.
 //
@@ -32,20 +33,29 @@
 //
 // THE SCOPE. On 2026-10-26 five rigs started from one Claude session lived in its claude-*.scope and
 // filled the task limit of claude.slice (threads count as tasks); Bun, Node and Claude aborted when they
-// could not start a thread. `up` therefore starts the daemon with `systemd-run --user --scope
-// --slice=rig.slice` (agent-slice/rig.slice in the mypc repo): its own task cap (TasksMax 700; 1400 for the
-// crew rig's two servers and two bridges; COLLIE_RIG_TASKS_MAX overrides both), a 6 hour run limit, no core
-// dumps. rig.json records the scope and the OWNER, the cgroup `up` ran in (a Claude session's scope). The
-// daemon checks every 30 s that the owner's cgroup directory still exists, and tears the rig down when it
-// is gone. No owner is recorded for a login session or a desktop app scope, and the check is skipped.
-// `down` stops the scope when it is still active; agent-reaper.sh stops a rig-*.scope whose daemon is gone.
+// could not start a thread. `up` therefore starts the daemon with `systemd-run --user --scope`: its own task
+// cap (TasksMax 700; 1400 for the crew rig's two servers and two bridges; COLLIE_RIG_TASKS_MAX overrides
+// both), a run limit of 6 hours (COLLIE_RIG_RUNTIME_MAX_SEC overrides; systemd ends the scope then, with no
+// teardown), a stop timeout of 10 s, no core dumps (COLLIE_RIG_CORES=1 keeps them). The scope goes in the
+// user's default slice, or in COLLIE_RIG_SLICE when that names a slice the host defines (agent-slice/rig.slice
+// in the mypc repo). Once the daemon is up, `up` reads the scope's pids.max and logs one WARNING when the cap
+// is not the one asked for. systemd-run's stderr goes to logs/systemd-run.err; the plain spawn replaces it
+// only when systemd-run itself failed (spawnDaemon), never when the daemon ran and failed.
+//
+// THE OWNER WATCH, opt-in with COLLIE_RIG_OWNER_WATCH=1. `up` then records the OWNER, the cgroup it ran in
+// (a Claude session's scope), when that directory exists under /sys/fs/cgroup. The daemon stats it every 30 s
+// and tears the rig down after two checks in a row that find it gone (ENOENT; other errors are ignored). No
+// owner is recorded for a login session or a desktop app scope. `down` stops the scope when it is still
+// active; agent-reaper.sh stops a rig-*.scope whose daemon is gone. All of this runs on Linux only.
 //
 // THE PANE CAP. A harness pane costs 46 to 64 tasks (omp), and drivers that opened one pane per case and
 // closed none filled the task limit at about one pane a minute. So `pane <cmd>` and `start <harness>` refuse
 // (exit 75) when the machine already holds COLLIE_RIG_MAX_PANES panes (default 6), and name the fix: `pane
 // close <id>` (`pane ls` lists them) or `--replace`, which closes the pane the same key opened last (the
 // harness for `start`, "pane" for `pane`) before it opens the new one. The cap lives in these two verbs only;
-// the browser leg opens its panes through rig-lib.ts and is never counted against it.
+// the browser leg opens its panes through rig-lib.ts and is never counted against it. It is a soft limit, per
+// machine and rig, and not atomic across concurrent callers; the scope's TasksMax is the hard guard. `--replace`,
+// `--crew` and `--on <m>` count only before the command's first word (rig-scope.ts splitArgs).
 //
 // `crew stop-member` and `crew start-member` ask the daemon (SIGUSR1, SIGUSR2) to stop the member's
 // bridge by its recorded pid and to start it again with the same dirs and port. The member's Herdr
@@ -55,8 +65,7 @@
 import "./rig-mode";
 
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { createHash } from "node:crypto";
-import { appendFileSync, chmodSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { createConnection, createServer } from "node:net";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -79,7 +88,6 @@ import {
   herdrEnv,
   killPid,
   machineDirs,
-  machineFlag,
   memGuard,
   newWorkspacePane,
   openPanes,
@@ -102,6 +110,25 @@ import { asJsonObject, asJsonString, parseJson, type JsonValue } from "../../src
 import { BIN } from "./bins";
 import { enrolMember } from "./crew-enrol";
 import { HARNESS_IDS, harnessDirs, prepareHarness } from "./harnesses";
+import {
+  OWNER_MISSES_TO_TEARDOWN,
+  type OwnerCheck,
+  SCOPE_NAME,
+  daemonScript,
+  maxPanes as maxPanesFrom,
+  nextOwnerMisses,
+  ownerCheckOf,
+  ownerCgroupFrom,
+  paneCapReached,
+  scopeRuntimeMaxSec,
+  scopeTasksMax,
+  scopeUnitName,
+  shouldFallBack,
+  type StartObservation,
+  sliceFrom,
+  splitArgs,
+  taskCapWarning,
+} from "./rig-scope";
 import { socketPathProblem } from "./sock-path";
 
 const SELF = fileURLToPath(import.meta.url);
@@ -119,16 +146,10 @@ const die = (msg: string): never => {
 const CGROUP_ROOT = "/sys/fs/cgroup";
 /** How often the daemon checks that its owner's cgroup still exists. */
 const OWNER_CHECK_MS = 30_000;
-/** The daemon's scope limits: the task cap one rig may spend (threads count), and its longest life (6 h). */
-const SCOPE_TASKS_MAX = 700;
-const SCOPE_TASKS_MAX_CREW = 1400;
-/** COLLIE_RIG_TASKS_MAX when it is a positive integer, else the default for a solo or a crew rig. */
-function scopeTasksMax(crew: boolean): number {
-  const asked = Number(process.env.COLLIE_RIG_TASKS_MAX);
-  return Number.isInteger(asked) && asked > 0 ? asked : crew ? SCOPE_TASKS_MAX_CREW : SCOPE_TASKS_MAX;
-}
-const SCOPE_RUNTIME_MAX_SEC = 21_600;
-const SCOPE_NAME = /^rig-[0-9a-f]+-[0-9]+\.scope$/;
+/** Every systemctl call is bounded: a user bus that hangs must not hang `up`, `down` or `status`. */
+const SYSTEMCTL_TIMEOUT_MS = 15_000;
+/** Systemd's scopes, cgroups and user bus exist on Linux only; elsewhere the daemon is a plain child of `up`, and no line says so. */
+const onLinux = process.platform === "linux";
 
 const onPath = (name: string): boolean => (process.env.PATH ?? "").split(delimiter).some((dir) => dir !== "" && existsSync(join(dir, name)));
 
@@ -140,7 +161,7 @@ function isSocket(path: string): boolean {
   }
 }
 
-/** Why the daemon cannot get a scope of its own, or null when systemd-run and the user bus are there. */
+/** Why a Linux daemon cannot get a scope of its own, or null when systemd-run and the user bus are there. */
 function noScopeReason(): string | null {
   if (!onPath("systemd-run")) return "systemd-run is not on PATH";
   const runtime = process.env.XDG_RUNTIME_DIR;
@@ -149,19 +170,38 @@ function noScopeReason(): string | null {
 }
 
 /**
- * The cgroup this process runs in, when it is a unit that can end under the rig: a transient scope such as
- * a Claude session's. A login session or a desktop app scope outlives the work in it, so it is no owner.
+ * The cgroup this process runs in, for the owner watch: only with COLLIE_RIG_OWNER_WATCH=1, only on Linux,
+ * only when it is a unit that can end under the rig (ownerCgroupFrom), and only when its directory exists now.
  */
 function ownerCgroup(): string | null {
+  if (!onLinux || process.env.COLLIE_RIG_OWNER_WATCH !== "1") return null;
   try {
-    const line = readFileSync("/proc/self/cgroup", "utf8").split("\n").find((l) => l.startsWith("0::"));
-    const path = line?.slice(3) ?? "";
-    const leaf = path.split("/").pop() ?? "";
-    if (!leaf.endsWith(".scope") || /^(session|app)-/.test(leaf) || !existsSync(`${CGROUP_ROOT}${path}`)) return null;
-    return path;
+    const path = ownerCgroupFrom(readFileSync("/proc/self/cgroup", "utf8"));
+    return path !== null && existsSync(`${CGROUP_ROOT}${path}`) ? path : null;
   } catch {
     return null;
   }
+}
+
+/** One stat of the owner's cgroup directory. */
+function ownerCheck(path: string): OwnerCheck {
+  try {
+    statSync(path);
+    return "present";
+  } catch (err) {
+    return ownerCheckOf(err instanceof Error && "code" in err ? String(err.code) : undefined);
+  }
+}
+
+interface SystemctlResult {
+  readonly status: number;
+  readonly out: string;
+}
+
+/** One `systemctl --user` call, bounded by SYSTEMCTL_TIMEOUT_MS; an error of any kind comes back as a non-zero status. */
+function systemctl(args: readonly string[]): SystemctlResult {
+  const r = spawnSync("systemctl", ["--user", ...args], { encoding: "utf8", timeout: SYSTEMCTL_TIMEOUT_MS });
+  return { status: r.status ?? 1, out: r.stdout ?? "" };
 }
 
 /**
@@ -169,50 +209,96 @@ function ownerCgroup(): string | null {
  * for the daemon stopping its own scope: a blocking stop would wait for the daemon, which waits for it.
  */
 function stopScope(scope: string | null | undefined, opts: { noBlock?: boolean } = {}): void {
-  if (!scope || !SCOPE_NAME.test(scope)) return;
-  if (spawnSync("systemctl", ["--user", "is-active", "--quiet", scope]).status !== 0) return;
-  spawnSync("systemctl", ["--user", "stop", ...(opts.noBlock ? ["--no-block"] : []), scope]);
+  if (!onLinux || !scope || !SCOPE_NAME.test(scope)) return;
+  if (systemctl(["is-active", "--quiet", scope]).status !== 0) return;
+  systemctl(["stop", ...(opts.noBlock ? ["--no-block"] : []), scope]);
 }
 
-/** Why systemd-run ended before the daemon wrote rig.json, or null while it has not. */
-interface DaemonExit {
-  why: string | null;
+/** The scope's cgroup directory (`systemctl show -p ControlGroup`), or null when systemd has none for it. */
+function scopeCgroupDir(scope: string): string | null {
+  if (!onLinux || !SCOPE_NAME.test(scope)) return null;
+  const group = systemctl(["show", "-p", "ControlGroup", "--value", scope]);
+  const path = group.out.trim();
+  return group.status === 0 && path.startsWith("/") ? `${CGROUP_ROOT}${path}` : null;
+}
+
+/** A file of the scope's cgroup (`pids.max`, `pids.current`), trimmed; null when it cannot be read. */
+function readScopeFile(scope: string, name: string): string | null {
+  const dir = scopeCgroupDir(scope);
+  if (dir === null) return null;
+  try {
+    return readFileSync(join(dir, name), "utf8").trim();
+  } catch {
+    return null;
+  }
+}
+
+/** The daemon's process, and the scope it runs in (null: where `up` runs). */
+interface DaemonStart {
+  readonly child: ChildProcess;
+  readonly scope: string | null;
+}
+
+/** What `up` has seen of the systemd-run child so far. */
+interface ChildSeen {
+  exited: StartObservation["exited"];
+  spawnFailed: boolean;
 }
 
 /**
- * Start the daemon in a scope of its own in rig.slice, and fall back to a plain spawn (the daemon then
- * lives where `up` lives) with one warning line in daemon.log when systemd cannot give it one. Under
- * `systemd-run --scope` the command replaces systemd-run, so the child's pid is the daemon's.
+ * Start the daemon in a scope of its own, and fall back to a plain spawn (the daemon then lives where `up`
+ * lives, with one warning line in daemon.log) only when systemd-run itself failed: see shouldFallBack. A
+ * daemon that started and then failed gets no second one; the startup-failure path in cmdUp reports its
+ * error. Under `systemd-run --scope` the command replaces systemd-run, so the child's pid is the daemon's.
  */
-async function spawnDaemon(env: NodeJS.ProcessEnv, logFd: number, crew: boolean): Promise<{ child: ChildProcess; scope: string | null }> {
-  const stdio: ["ignore", number, number] = ["ignore", logFd, logFd];
-  let why = noScopeReason();
-  if (why === null) {
-    const scope = `rig-${createHash("sha1").update(STATE_ROOT).digest("hex").slice(0, 8)}-${process.pid}.scope`;
-    const owner = ownerCgroup();
-    const child = spawn(
-      "systemd-run",
-      [
-        "--user", "--scope", "-q", "--slice=rig.slice", `--unit=${scope}`,
-        "-p", `TasksMax=${scopeTasksMax(crew)}`, "-p", `RuntimeMaxSec=${SCOPE_RUNTIME_MAX_SEC}`,
-        "--", "sh", "-c", 'ulimit -c 0; exec "$0" "$@"', process.execPath, SELF, "_daemon",
-      ],
-      { env: { ...env, RIG_SCOPE: scope, RIG_OWNER_CGROUP: owner ?? "" }, detached: true, stdio },
-    );
-    const died: DaemonExit = { why: null };
-    child.once("error", (err) => (died.why = err.message));
-    child.once("exit", (code, signal) => (died.why = `exit ${String(code ?? signal)}`));
+async function spawnDaemon(env: NodeJS.ProcessEnv, logFd: number, crew: boolean): Promise<DaemonStart> {
+  const spawnPlain = (): DaemonStart => {
+    const child = spawn(process.execPath, [SELF, "_daemon"], { env, detached: true, stdio: ["ignore", logFd, logFd] });
     child.unref();
-    // The daemon writes rig.json as its first act; a systemd-run that failed exits before that.
-    const end = Date.now() + 5000;
-    while (died.why === null && readRun()?.daemonPid !== child.pid && Date.now() < end) await sleep(100);
-    if (died.why === null) return { child, scope };
-    why = `systemd-run did not start the daemon (${died.why}); see daemon.out`;
+    return { child, scope: null };
+  };
+  if (!onLinux) return spawnPlain();
+  const unavailable = noScopeReason();
+  if (unavailable !== null) {
+    log(`WARNING: the daemon runs without a scope of its own (${unavailable}); it shares the cgroup of \`up\``);
+    return spawnPlain();
   }
-  log(`WARNING: the daemon runs without a scope of its own (${why}); it shares the cgroup of \`up\``);
-  const child = spawn(process.execPath, [SELF, "_daemon"], { env, detached: true, stdio });
+  const scope = scopeUnitName(STATE_ROOT, process.pid);
+  const slice = sliceFrom(process.env.COLLIE_RIG_SLICE);
+  if (process.env.COLLIE_RIG_SLICE !== undefined && slice === null) log(`WARNING: COLLIE_RIG_SLICE is not a slice name (${process.env.COLLIE_RIG_SLICE}); the scope goes in the default slice`);
+  const tasksMax = scopeTasksMax(process.env.COLLIE_RIG_TASKS_MAX, crew);
+  const errPath = join(P.logs, "systemd-run.err");
+  const errFd = openSync(errPath, "w", 0o600);
+  const started = Date.now();
+  const child = spawn(
+    "systemd-run",
+    [
+      "--user", "--scope", ...(slice === null ? [] : [`--slice=${slice}`]), `--unit=${scope}`,
+      "-p", `TasksMax=${tasksMax}`, "-p", `RuntimeMaxSec=${scopeRuntimeMaxSec(process.env.COLLIE_RIG_RUNTIME_MAX_SEC)}`, "-p", "TimeoutStopSec=10",
+      "--", "sh", "-c", daemonScript(process.env.COLLIE_RIG_CORES === "1"), process.execPath, SELF, "_daemon",
+    ],
+    { env: { ...env, RIG_SCOPE: scope, RIG_OWNER_CGROUP: ownerCgroup() ?? "" }, detached: true, stdio: ["ignore", logFd, errFd] },
+  );
+  closeSync(errFd);
+  const seen: ChildSeen = { exited: null, spawnFailed: false };
+  child.once("error", () => (seen.spawnFailed = true));
+  child.once("exit", (code) => (seen.exited = { code, afterMs: Date.now() - started }));
   child.unref();
-  return { child, scope: null };
+  // The daemon writes rig.json as its first act; a systemd-run that failed exits before that.
+  const daemonWrote = () => readRun()?.daemonPid === child.pid;
+  const end = Date.now() + 5000;
+  while (seen.exited === null && !seen.spawnFailed && !daemonWrote() && Date.now() < end) await sleep(100);
+  const stderr = existsSync(errPath) ? readFileSync(errPath, "utf8") : "";
+  if (shouldFallBack({ exited: seen.exited, spawnFailed: seen.spawnFailed, daemonWrote: daemonWrote(), stderr })) {
+    const why = stderr.trim().split("\n")[0] ?? "no reason given";
+    log(`WARNING: the daemon runs without a scope of its own (systemd-run failed: ${why}); it shares the cgroup of \`up\``);
+    return spawnPlain();
+  }
+  if (daemonWrote()) {
+    const warning = taskCapWarning(readScopeFile(scope, "pids.max"), tasksMax);
+    if (warning !== null) log(warning);
+  }
+  return { child, scope };
 }
 
 async function freePort(taken: readonly number[] = []): Promise<number> {
@@ -426,11 +512,14 @@ async function daemon(): Promise<void> {
   };
   process.on("SIGTERM", () => void teardown("SIGTERM"));
   process.on("SIGINT", () => void teardown("SIGINT"));
-  // The owner is gone (its Claude session ended): nobody will run `down`, so tear down here.
+  // The owner is gone (its Claude session ended): nobody will run `down`, so tear down here. Only an ENOENT
+  // counts as gone, and only two in a row: one odd stat must not end a rig.
   const owner = run.ownerCgroup;
-  if (owner) {
+  if (onLinux && owner) {
+    let misses = 0;
     setInterval(() => {
-      if (!existsSync(`${CGROUP_ROOT}${owner}`)) void teardown(`owner cgroup ${owner} is gone`);
+      misses = nextOwnerMisses(misses, ownerCheck(`${CGROUP_ROOT}${owner}`));
+      if (misses >= OWNER_MISSES_TO_TEARDOWN) void teardown(`owner cgroup ${owner} is gone`);
     }, OWNER_CHECK_MS);
   }
 
@@ -568,6 +657,9 @@ async function daemon(): Promise<void> {
 }
 
 // ── subcommands ──────────────────────────────────────────────────────────────────────────────────
+/** The last 8 lines of one of the rig's log files, or "" when there is none. */
+const tailOf = (name: string): string => (existsSync(join(P.logs, name)) ? readFileSync(join(P.logs, name), "utf8").trim().split("\n").slice(-8).join("\n") : "");
+
 async function cmdUp(crew: boolean): Promise<void> {
   if (crew && !CREW) die("internal: `up --crew` without the crew state root");
   if (!existsSync(join(WORKTREE, "bridge", "index.ts"))) die(`${WORKTREE} is not a Collie checkout`);
@@ -607,10 +699,11 @@ async function cmdUp(crew: boolean): Promise<void> {
   }
   const run = readRun();
   if (run?.ready !== true) {
-    const tail = existsSync(join(P.logs, "daemon.log")) ? readFileSync(join(P.logs, "daemon.log"), "utf8").split("\n").slice(-8).join("\n") : "";
+    // The daemon's own log first; a daemon that died before it wrote one left its words in daemon.out, and systemd-run's in systemd-run.err.
+    const tail = tailOf("daemon.log") || tailOf("daemon.out") || tailOf("systemd-run.err");
     await cmdDown();
     stopScope(scope);
-    die(`startup failed.\n${tail}`);
+    die(`startup failed.\n${tail || "no log line was written: the daemon never started (see logs/systemd-run.err)"}`);
   }
   await pairDevice(run!.port, DEVICE_LABEL);
   console.log(`up: bridge http://127.0.0.1:${run!.port}  worktree ${WORKTREE}`);
@@ -751,15 +844,11 @@ async function api(path: string): Promise<ApiAnswer> {
 }
 
 // ── panes ────────────────────────────────────────────────────────────────────────────────────────
-const DEFAULT_MAX_PANES = 6;
 /** The exit code of a refused pane (EX_TEMPFAIL): nothing is wrong with the call, the machine is full. */
 const EXIT_PANE_CAP = 75;
 
-/** COLLIE_RIG_MAX_PANES when it is a positive integer, else 6: the most panes `pane` and `start` leave open on one machine. */
-function maxPanes(): number {
-  const asked = Number(process.env.COLLIE_RIG_MAX_PANES);
-  return Number.isInteger(asked) && asked > 0 ? asked : DEFAULT_MAX_PANES;
-}
+/** The most panes `pane` and `start` leave open on one machine (COLLIE_RIG_MAX_PANES, default 6). */
+const maxPanes = (): number => maxPanesFrom(process.env.COLLIE_RIG_MAX_PANES);
 
 /** The recorded pane per key, `lead` keys bare and the member's as `member:<key>`: the two machines count their pane ids apart. */
 const paneKey = (machine: Machine, key: string): string => (machine === "lead" ? key : `${machine}:${key}`);
@@ -779,7 +868,10 @@ function lastPanes(): Map<string, string> {
 
 function recordPane(machine: Machine, key: string, paneId: string): void {
   const panes = lastPanes().set(paneKey(machine, key), paneId);
-  writeFileSync(LAST_PANES_FILE, JSON.stringify(Object.fromEntries(panes)), { mode: 0o600 });
+  // A temp file in the same folder, then a rename: a reader never sees half a file.
+  const tmp = `${LAST_PANES_FILE}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify(Object.fromEntries(panes)), { mode: 0o600 });
+  renameSync(tmp, LAST_PANES_FILE);
 }
 
 /** "45s", "12m", "3h" since a `rig-<time in base 36>` workspace was made (cmdPane's label); "-" for any other label. */
@@ -835,7 +927,7 @@ function makeRoom(machine: Machine, key: string, replace: boolean): void {
   if (old !== undefined) console.log(paneClose(old, machine) ? `replace: closed ${old}` : `replace: ${old} was gone already`);
   const open = openPanes(machine);
   const max = maxPanes();
-  if (open.length < max) return;
+  if (!paneCapReached(open.length, max)) return;
   console.error(
     `rig: ${open.length} panes are open on the ${machine} (cap ${max}, COLLIE_RIG_MAX_PANES); no new pane started. Each harness pane costs 46 to 64 tasks.\n` +
       `${paneLines(open, machine).join("\n")}\n` +
@@ -845,7 +937,7 @@ function makeRoom(machine: Machine, key: string, replace: boolean): void {
 }
 
 /** A new pane on a machine, running `args` as one line when there are any; prints its id and records it under `key` for `--replace`. */
-async function cmdPane(args: string[], machine: Machine, key: string): Promise<void> {
+async function cmdPane(args: readonly string[], machine: Machine, key: string): Promise<void> {
   const cmd = args.join(" ");
   const paneId = newWorkspacePane(machineDirs(machine).work, `rig-${Date.now().toString(36)}`, machine);
   recordPane(machine, key, paneId);
@@ -861,34 +953,31 @@ interface StatusView extends Run {
   readonly stateRoot: string;
   /** The daemon's scope, or "none" when it runs outside one. */
   readonly scope: string;
+  /** The scope's `pids.current/pids.max`; absent without a scope or when systemd gives none. */
+  tasks?: string;
   readonly daemonAlive: boolean;
   readonly bridgeAlive: boolean;
   memberBridgeAlive?: boolean;
   memberHerdrAlive?: boolean;
 }
 
-/** The arguments with `--crew`, `--replace` and `--on <machine>` taken out, so none of them reaches a pane's command line. */
-function plain(args: readonly string[]): string[] {
-  const out: string[] = [];
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--crew" || args[i] === "--replace") continue;
-    if (args[i] === "--on") {
-      i += 1;
-      continue;
-    }
-    out.push(args[i]!);
-  }
-  return out;
+const argv = process.argv.slice(2);
+const split = splitArgs(argv);
+const cmd = split.verb;
+const rest = split.rest;
+
+/** The machine `--on` names; the lead without the flag. */
+function machineOf(on: string | null): Machine {
+  if (on === null || on === "lead") return "lead";
+  return on === "member" ? "member" : die("--on takes lead or member");
 }
 
-const argv = process.argv.slice(2);
-const [cmd, ...rest] = plain(argv);
 switch (cmd) {
   case "_daemon":
     await daemon();
     break;
   case "up":
-    await cmdUp(argv.includes("--crew"));
+    await cmdUp(split.crew);
     break;
   case "down":
     await cmdDown();
@@ -900,6 +989,9 @@ switch (cmd) {
       break;
     }
     const shown: StatusView = { stateRoot: dirname(P.rig), ...run, scope: run.scope ?? "none", daemonAlive: pidIs(run.daemonPid, DAEMON_TAG), bridgeAlive: pidIs(run.bridgePid, BRIDGE_TAG) };
+    const used = run.scope ? readScopeFile(run.scope, "pids.current") : null;
+    const cap = run.scope ? readScopeFile(run.scope, "pids.max") : null;
+    if (used !== null && cap !== null) shown.tasks = `${used}/${cap}`;
     if (run.member !== undefined) {
       shown.memberBridgeAlive = pidIs(run.member.bridgePid, BRIDGE_TAG);
       shown.memberHerdrAlive = pidIs(run.member.herdrPid, "herdr");
@@ -911,12 +1003,15 @@ switch (cmd) {
     await cmdCrew(rest[0], rest.slice(1));
     break;
   case "pane": {
-    // `ls` and `close` are verbs here; to run a shell command of that name in a pane, write `pane sh -c ls`.
-    const machine = machineFlag(argv);
-    if (rest.length === 1 && rest[0] === "ls") cmdPaneLs(machine);
-    else if (rest[0] === "close") cmdPaneClose(rest.slice(1).filter((arg) => arg !== "--all"), rest.includes("--all"), machine);
+    // `ls` and `close` are verbs here; to run a shell command of that name in a pane, write `pane sh -c ls`
+    // (or `pane -- ls`). Flags count only before the command's first word, so the command reaches the pane untouched.
+    const machine = machineOf(split.on);
+    const verb = split.literal ? undefined : rest[0];
+    if (verb === "ls" && rest.length > 1) die("`pane ls` takes no arguments; to run ls in a pane, write `pane sh -c 'ls ...'`");
+    else if (verb === "ls") cmdPaneLs(machine);
+    else if (verb === "close") cmdPaneClose(rest.slice(1).filter((arg) => arg !== "--all"), rest.includes("--all"), machine);
     else {
-      makeRoom(machine, "pane", argv.includes("--replace"));
+      makeRoom(machine, "pane", split.replace);
       await cmdPane(rest, machine, "pane");
     }
     break;
@@ -924,10 +1019,10 @@ switch (cmd) {
   case "start": {
     // A harness in a fresh pane, the way the leg starts it: `start claude|pi|omp [--on lead|member] [--replace]`.
     const id = HARNESS_IDS.find((harness) => harness === rest[0]) ?? die("usage: start claude|pi|omp [--on lead|member] [--replace]");
-    const machine = machineFlag(argv);
+    const machine = machineOf(split.on);
     if (machine === "member" && readRun()?.member === undefined) die("this rig has no member (run `up --crew`)");
     memGuard(`harness ${id}`);
-    makeRoom(machine, id, argv.includes("--replace"));
+    makeRoom(machine, id, split.replace);
     const { line } = prepareHarness(id, machine);
     await cmdPane([line], machine, id);
     break;
@@ -945,7 +1040,7 @@ switch (cmd) {
   }
   case "read": {
     const pane = rest[0] ?? die("usage: read <pane> [lines] [--on member]");
-    const host = machineFlag(argv) === "member" ? `&host=${MEMBER_ID}` : "";
+    const host = machineOf(split.on) === "member" ? `&host=${MEMBER_ID}` : "";
     const r = await api(`/api/pane/${encodeURIComponent(pane)}?lines=${Number(rest[1] ?? 60)}${host}`);
     const text = asJsonString(asJsonObject(r.json)?.text) ?? r.text;
     console.log(text.replace(new RegExp(`${String.fromCharCode(27)}\\[[0-9;?]*[ -/]*[@-~]`, "g"), ""));

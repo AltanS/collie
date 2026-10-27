@@ -115,15 +115,6 @@ export function machineDirs(machine: Machine): MachineDirs {
   return DIRS[machine];
 }
 
-/** Read a `--on lead|member` flag out of an argument list; the lead when it is absent. */
-export function machineFlag(args: readonly string[]): Machine {
-  const at = args.indexOf("--on");
-  if (at === -1) return "lead";
-  const value = args[at + 1];
-  if (value !== "lead" && value !== "member") throw new Error("--on takes lead or member");
-  return value;
-}
-
 /** The member's half of a crew rig: its port, its Herdr socket and the pids the daemon started. */
 export interface MemberRun {
   readonly port: number;
