@@ -445,25 +445,6 @@ describe.skipIf(process.platform === "win32")("scripts/install.sh", () => {
     expect(r.out).not.toContain(".env.example");
   });
 
-  // Both installers print colliepwa.dev docs links in their last lines. The site publishes
-  // `docs/<slug>.md` at `/docs/<slug>`, so a renamed page or heading breaks a link in a terminal
-  // nobody re-reads. Each link must name a page in docs/ and, with an anchor, one of its headings.
-  test("the docs links the installers print name a real page and heading", () => {
-    const slug = (heading: string) =>
-      heading.toLowerCase().replace(/[^a-z0-9 -]/g, "").trim().replace(/ /g, "-");
-    const link = /https:\/\/colliepwa\.dev\/docs\/([a-z0-9-]+)(?:#([a-z0-9-]+))?/g;
-    const links = ["install.sh", "install.ps1"].flatMap((file) =>
-      Array.from(readFileSync(join(import.meta.dir, file), "utf8").matchAll(link)),
-    );
-    expect(links.length).toBeGreaterThan(0);
-    for (const [, page, anchor] of links) {
-      const doc = readFileSync(join(import.meta.dir, "..", "docs", `${page}.md`), "utf8");
-      if (anchor === undefined) continue;
-      const headings = [...doc.matchAll(/^#+ (.+)$/gm)].map((m) => slug(m[1] ?? ""));
-      expect(headings).toContain(anchor);
-    }
-  });
-
   test("never clobbers an existing Collie install — it names `collie update` and exits clean", () => {
     const r = run({
       seed: (dir) => {
@@ -605,4 +586,24 @@ describe.skipIf(process.platform === "win32")("scripts/install.sh", () => {
     expect(r.code).toBe(1);
     expect(r.out).toContain("COLLIE_DIR");
   });
+});
+
+// Both installers print colliepwa.dev docs links in their last lines. The site publishes
+// `docs/<slug>.md` at `/docs/<slug>`, so a renamed page or heading breaks a link in a terminal
+// nobody re-reads. Each link must name a page in docs/ and, with an anchor, one of its headings.
+// It reads files only, so it runs on Windows too, outside the POSIX-only block above.
+test("the docs links the installers print name a real page and heading", () => {
+  const slug = (heading: string) =>
+    heading.toLowerCase().replace(/[^a-z0-9 -]/g, "").trim().replace(/ /g, "-");
+  const link = /https:\/\/colliepwa\.dev\/docs\/([a-z0-9-]+)(?:#([a-z0-9-]+))?/g;
+  const links = ["install.sh", "install.ps1"].flatMap((file) =>
+    Array.from(readFileSync(join(import.meta.dir, file), "utf8").matchAll(link)),
+  );
+  expect(links.length).toBeGreaterThan(0);
+  for (const [, page, anchor] of links) {
+    const doc = readFileSync(join(import.meta.dir, "..", "docs", `${page}.md`), "utf8");
+    if (anchor === undefined) continue;
+    const headings = [...doc.matchAll(/^#+ (.+)$/gm)].map((m) => slug(m[1] ?? ""));
+    expect(headings).toContain(anchor);
+  }
 });
