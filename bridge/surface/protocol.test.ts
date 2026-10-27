@@ -2956,12 +2956,25 @@ describe("commit", () => {
     expect(phaseAtEnter).toBe("submit-sent");
   });
 
-  test("a token that ages past 150 ms before the key is refused stale_token: typed_not_submitted, no Enter", async () => {
+  test("a slow submit-sent write does not spend the token: the Enter still goes out (crew browser leg case 13, 2026-10-27)", async () => {
     const r = rig();
     const realMark = r.deps.store.markSubmitSent.bind(r.deps.store);
     r.deps.store.markSubmitSent = (id: string) => {
+      r.clock.now += 400;
       realMark(id);
+    };
+    const answer = await r.send("hello world");
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+    expect(r.pane.keysSeen).toContain("Enter");
+  });
+
+  test("a token that ages past 150 ms before the key is refused stale_token: typed_not_submitted, no Enter", async () => {
+    const r = rig();
+    const realMint = r.deps.gate.mint.bind(r.deps.gate);
+    r.deps.gate.mint = (...args: Parameters<typeof realMint>) => {
+      const token = realMint(...args);
       r.clock.now += 151;
+      return token;
     };
     const answer = await r.send("hello world");
     expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "stale_token", keys: [] });

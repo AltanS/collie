@@ -35,6 +35,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
   starts the multiplexer, runs `COLLIE_MUX=herdr collie start`, opens the phone with `collie qr`,
   and pairs inside the home screen app. Its PATH note prints the exact line to add.
   `install.ps1` points to the Windows guide on the web, not to a local page with no Windows steps.
+- **A send could end "typed, not submitted" with the text left in the box when the disk was slow.** Collie wrote the send record before the submit key, and that write could use up the key's 150 ms window. The window now starts after the write.
 
 ## [1.24.1] - 2026-10-27
 

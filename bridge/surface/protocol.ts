@@ -20,7 +20,7 @@
 //           A command on a harness whose profile declares a command list needs two such reads, at
 //           least COMMAND_SETTLE_MS (160 ms) apart, that agree on the rows under the box: a list drawn
 //           late is never what Enter acts on (`commandSettle` in gapsMs)
-//   commit  the profile's submit keys through the gate with a 150 ms token; `submit-sent` is on disk first
+//   commit  the profile's submit keys through the gate with a 150 ms token minted after `submit-sent` is on disk (a slow write must not spend the token's lifetime)
 //   S2      (6, 3000) read until the box is empty or a running sign shows: `sent`; else `unknown`. A command
 //           that found nothing reads once more (6, 3000): its own screen may be slow to draw
 // A request past the sum of the bounds ends `unknown` and releases the lock. A protocol token never carries Escape; a person's Stop does, through the key gate, with a receipt (ADR 0116).
@@ -3793,8 +3793,8 @@ export class SendProtocol {
     this.guard(state);
     const { gate, store } = this.deps;
     const { paneId } = state.target;
-    const token = gate.mint(paneId, GENERIC_SUBMIT, gate.revision(paneId));
     store.markSubmitSent(state.record.id);
+    const token = gate.mint(paneId, GENERIC_SUBMIT, gate.revision(paneId));
     const result = await this.within(state, gate.commit(token));
     if (!result.ok) {
       const reason: SendReason = result.reason === "mux" ? "submit_failed" : result.reason;
@@ -4855,15 +4855,19 @@ export class SendProtocol {
     throw new Ended("typed_not_submitted", "mismatch", sawNote(result.snap, { framed: true, offers: ["keys"], detail, cause: NOTICE_KEY }));
   }
 
-  /** Commit: `submit-sent` on disk, then the submit keys through the gate on S1's revision. */
+  /**
+   * Commit: `submit-sent` on disk, then the submit keys through the gate on S1's revision. The token is
+   * minted after the write and `openSend`, right before the commit: a slow disk write must not spend the
+   * token's 150 ms lifetime. `submit-sent` is still on disk before the key goes out.
+   */
   private async commit(state: RunState, s1: Snap): Promise<void> {
     state.phase = "commit";
     this.guard(state);
     const keys = commitKeys(state);
     const { gate, store } = this.deps;
-    const token = gate.mint(state.target.paneId, keys, s1.gateRevision);
     store.markSubmitSent(state.record.id);
     this.openSend(state);
+    const token = gate.mint(state.target.paneId, keys, s1.gateRevision);
     const result = await this.within(state, gate.commit(token));
     if (!result.ok) {
       const reason: SendReason = result.reason === "mux" ? "submit_failed" : result.reason;
