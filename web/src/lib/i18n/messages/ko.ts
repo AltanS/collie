@@ -1621,6 +1621,7 @@ export const ko: Dictionary = {
   "promptAction.answer.fieldNotReached": "답변 필드에 접근할 수 없습니다. 아무것도 전송되지 않았습니다",
   "promptAction.answer.notCleared": "답변 필드를 지울 수 없습니다. 아무것도 전송되지 않았습니다",
   "promptAction.answer.notArrived": "답변이 필드에 도달하지 않았습니다. 아무것도 제출되지 않았습니다",
+  "promptAction.answer.tooLong": "이 답변은 터미널 너비에 비해 너무 깁니다. 대화 상자가 화면에 들어가지 않습니다. 답변을 줄이거나 터미널을 넓히거나, Chat about this를 선택해 메시지로 보내십시오. 아무것도 입력되지 않았습니다",
   "promptAction.answer.notTicked": "답변이 입력되었지만 해당 행이 체크되지 않았습니다. 카드에서 확인하십시오.",
 
   // --- stt (speech-to-text errors, lib/stt.ts + hooks/use-stt-recorder.ts) ---

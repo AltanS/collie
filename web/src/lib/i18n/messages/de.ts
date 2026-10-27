@@ -1634,6 +1634,7 @@ export const de: Dictionary = {
   "promptAction.answer.fieldNotReached": "Konnte das Antwortfeld nicht erreichen. Es wurde nichts gesendet",
   "promptAction.answer.notCleared": "Konnte das Antwortfeld nicht leeren. Es wurde nichts gesendet",
   "promptAction.answer.notArrived": "Deine Antwort ist nicht im Feld angekommen. Es wurde nichts übermittelt",
+  "promptAction.answer.tooLong": "Diese Antwort ist zu lang für die Breite des Terminals: Der Dialog würde nicht auf den Bildschirm passen. Kürze sie, verbreitere das Terminal oder wähle Chat about this und sende sie als Nachricht. Es wurde nichts eingegeben",
   "promptAction.answer.notTicked": "Die Antwort wurde eingegeben, aber ihre Zeile wurde nicht markiert. Prüfe sie auf der Karte.",
 
   // --- stt (speech-to-text errors, lib/stt.ts + hooks/use-stt-recorder.ts) ---

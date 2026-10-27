@@ -313,6 +313,17 @@ describe("detectWizard — the answer field", () => {
     });
   });
 
+  it("a value wrapped onto twenty-five rows keeps the step and is rejoined exactly", () => {
+    // Option 1 then sits more than 24 rows above the footer, past the scan before MAX_ANSWER_WRAP.
+    const plain = fixtureLines("claude--v2299-ask-field-wizard-focused-typed.txt").map(lineText).join("\n");
+    const text = Array(25).fill("x".repeat(140)).join(" ");
+    const wrapped = Array(25).fill("x".repeat(140)).map((row, i) => (i === 0 ? `❯ 3. ${row}` : `     ${row}`));
+    expect(plain).toContain("❯ 3. Mango");
+    const model = detectWizard(splitLines(parseAnsi(plain.replace("❯ 3. Mango", wrapped.join("\n")))));
+    expect(model?.phase).toBe("question");
+    if (model?.phase === "question") expect(model.field).toMatchObject({ focused: true, text });
+  });
+
   it("typed into: the field holds the words", () => {
     expect(step("wizard-focused-typed").field).toMatchObject({ focused: true, text: "Mango", chosen: false });
   });

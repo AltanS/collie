@@ -1726,6 +1726,7 @@ export const en = {
   "promptAction.answer.fieldNotReached": "Couldn't reach the answer field. Nothing was sent",
   "promptAction.answer.notCleared": "Couldn't clear the answer field. Nothing was sent",
   "promptAction.answer.notArrived": "Your answer didn't arrive in the field. Nothing was submitted",
+  "promptAction.answer.tooLong": "This answer is too long for the terminal's width: the dialog would not fit on its screen. Shorten it, widen the terminal, or pick Chat about this and send it as a message. Nothing was typed",
   "promptAction.answer.notTicked": "The answer was typed, but its row did not tick. Check it on the card.",
 
   // --- stt (speech-to-text errors, lib/stt.ts + hooks/use-stt-recorder.ts) ---

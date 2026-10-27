@@ -1499,6 +1499,7 @@ export const tr: Dictionary = {
   "promptAction.answer.fieldNotReached": "Yanıt alanına ulaşılamadı. Hiçbir şey gönderilmedi",
   "promptAction.answer.notCleared": "Yanıt alanı temizlenemedi. Hiçbir şey gönderilmedi",
   "promptAction.answer.notArrived": "Yanıtın alana ulaşmadı. Hiçbir şey gönderilmedi",
+  "promptAction.answer.tooLong": "Bu yanıt terminalin genişliği için çok uzun: iletişim kutusu ekrana sığmaz. Kısaltın, terminali genişletin ya da Chat about this seçip mesaj olarak gönderin. Hiçbir şey yazılmadı",
   "promptAction.answer.notTicked": "Yanıt yazıldı ama satırı işaretlenmedi. Karttan kontrol et.",
   "stt.error.busy": "Meşgul; başka bir kaydın metne dönüştürülmesi hâlâ sürüyor. Birazdan tekrar deneyin.",
   "stt.error.tooLong": "Bu kayıt çok uzun, daha kısa bir kayıt yapın.",
