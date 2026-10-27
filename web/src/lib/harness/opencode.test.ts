@@ -62,6 +62,10 @@ const LIFTED_SINGLE = [
   "oc--question--free-text--typed.txt",
   "oc--question--tall8.txt",
   "oc--question--tall9.txt",
+  // opencode 2.1.1 (2026-10-27): the same dialog behind its own `Questions` title, with the pointer
+  // painted as an accent ink instead of a background chip.
+  "oc--v211-question--single.txt",
+  "oc--v211-question--single--moved.txt",
 ];
 const LIFTED_TABS = [
   "oc--question--multi.txt",
@@ -78,11 +82,25 @@ const LIFTED_TABS = [
   "oc--question--three--q2-multi--toggled.txt",
   "oc--question--three--review.txt",
   "oc--question--three--review--incomplete.txt",
+  // opencode 2.1.1 (2026-10-27): the last chip is `Submit`, the active chip is bold instead of
+  // filled, the review body loses its `Review` heading, and a checkbox's free-text row carries a
+  // box of its own.
+  "oc--v211-question--multi.txt",
+  "oc--v211-question--multi--toggled.txt",
+  "oc--v211-question--multi--review.txt",
+  "oc--v211-question--two.txt",
+  "oc--v211-question--two--answered.txt",
+  "oc--v211-question--two--review.txt",
 ];
 const LIFTED_QUESTIONS = [...LIFTED_SINGLE, ...LIFTED_TABS];
 // Question captures that stay raw while a dialog is on screen: the card and the composer lock must
 // still work there (modalOnScreen true, composerReady false).
-const REFUSED_QUESTION_DIALOGS = ["oc--question--multi--free-text.txt", "oc--question--tall14.txt"];
+const REFUSED_QUESTION_DIALOGS = [
+  "oc--question--multi--free-text.txt",
+  "oc--question--tall14.txt",
+  // 2.1's open input: the footer turns into `enter done  esc close`, so every digit is text.
+  "oc--v211-question--multi--free-text.txt",
+];
 // The dialog is gone: the composer is back, the answer or the dismissal is in the transcript.
 const QUESTION_GONE = ["oc--question--answered.txt", "oc--question--dismissed.txt"];
 
@@ -798,6 +816,13 @@ function repaint(lines: StyledLine[], index: number, bg: string | undefined): St
   return out;
 }
 
+/** Paint one row's foreground and keep its background: how opencode 2.1 draws its pointer. */
+function reink(lines: StyledLine[], index: number, fg: string | undefined): StyledLine[] {
+  const out = lines.slice();
+  out[index] = { segments: out[index]!.segments.map((s) => Object.assign({}, s, { fg })) };
+  return out;
+}
+
 describe("opencode question dialog lift", () => {
   // The `question` tool's dialog (opencode 1.18.33, issue 329). Ground truth: QUESTION_NOTES.md and
   // the `oc--question--*` captures. One question, single select, up to nine options lifts here; the
@@ -910,26 +935,29 @@ describe("opencode question dialog lift", () => {
     // A tab bar is another grammar's (question-tabs.ts): a multi select, several questions, the
     // Confirm tab. The single lift never claims one, on any tab or width.
     for (const name of LIFTED_TABS) {
-      expect(lift(name.slice("oc--question--".length, -".txt".length)), name).toBeNull();
+      expect(detectQuestionDialog(loadLines(name)), name).toBeNull();
     }
     // The dialog is gone.
     for (const name of ["answered", "dismissed"]) expect(lift(name), name).toBeNull();
   });
 
-  it("refuses without a pointer chip, or with two", () => {
+  it("refuses with no mark at all, or with two", () => {
     const lines = loadLines("oc--question--single.txt");
     const base = lines.map((l) => lineText(l)).findIndex((t) => t.includes("1. Red"));
-    // The footer's own background is the reference. Paint the pointed row on it: no chip left.
+    const second = lines.map((l) => lineText(l)).findIndex((t) => t.includes("2. Green"));
+    // 1.x marks the pointer with a background chip and 2.1 with the row's own ink. A screen with
+    // NEITHER must refuse, so strip both: the pointed row takes the footer's background and the
+    // ordinary rows' digit ink.
     const footer = lines.findLast((l) => lineText(l).includes("esc dismiss"))!;
     const footerBg = footer.segments.find((s) => s.text.includes("esc"))!.bg;
-    const none = repaint(lines, base, footerBg);
-    expect(detectQuestionDialog(none)).toBeNull();
-    // The unedited screen lifts, so the refusal above is the missing chip and nothing else.
+    const digitInk = lines[second]!.segments.find((s) => s.text.includes("2."))!.fg;
+    const unmarked = reink(repaint(lines, base, footerBg), base, digitInk);
+    expect(detectQuestionDialog(unmarked)).toBeNull();
+    // The unedited screen lifts, so the refusal above is the missing mark and nothing else.
     expect(detectQuestionDialog(lines)).not.toBeNull();
     // A second chip: paint option 2's row like the pointed one.
-    const two = lines.findIndex((l) => lineText(l).includes("2. Green"));
     const pointedBg = lines[base]!.segments.find((s) => s.text.includes("1."))!.bg;
-    const both = repaint(lines, two, pointedBg);
+    const both = repaint(lines, second, pointedBg);
     expect(detectQuestionDialog(both)).toBeNull();
   });
 
@@ -1376,17 +1404,19 @@ describe("opencode tab-bar question dialogs lift", () => {
       // No bare bar row (the dialog's top padding) or blank row hangs at the mirror's end.
       expect(raw.at(-1), name).not.toMatch(/^\s*┃?$/);
       const lifted = blocks[1]!.lines.map((l) => lineText(l).trimEnd());
-      expect(lifted[0], name).toMatch(/^\s*┃ {3}\S/);
+      // 1.x's tab row is padded one cell by the active chip; 2.1 starts at the gutter, and the first
+      // row replaced is its `Questions` title. Both open with the bar and then words.
+      expect(lifted[0], name).toMatch(/^\s*┃ {2,}\S/);
       expect(lifted.some((t) => t.includes("esc dismiss")), name).toBe(true);
     }
   });
 
   it("the signatures run from the tab row to the footer, and end inside the bridge's tail window", () => {
     for (const name of LIFTED_TABS) {
-      const region = tabs(name.slice("oc--question--".length, -".txt".length))!;
+      const region = detectQuestionTabs(loadLines(name))!;
       const model = region.model;
       const literal = "regionSignature" in model ? model.regionSignature : model.signature;
-      expect(literal.startsWith("  ┃   "), name).toBe(true);
+      expect(literal.startsWith("  ┃  "), name).toBe(true);
       expect(literal, name).toMatch(/esc\s+dismiss$/);
       expect(model.signature.length, name).toBeGreaterThan(0);
     }
@@ -1483,14 +1513,15 @@ describe("opencode tab-bar question dialogs lift", () => {
     expect(detectQuestionTabs(wrong)).toBeNull();
   });
 
-  it("refuses without a pointer chip, or with two, on a checkbox step", () => {
+  it("refuses with no mark at all, or with two, on a checkbox step", () => {
     const lines = loadLines("oc--question--multi.txt");
     const first = lines.findIndex((l) => lineText(l).includes("1. [ ] Red"));
     const second = lines.findIndex((l) => lineText(l).includes("2. [ ] Green"));
     const footer = lines.findLast((l) => lineText(l).includes("esc dismiss"))!;
     const baseBg = footer.segments.find((s) => s.text.startsWith("esc"))!.bg;
     const chipBg = lines[first]!.segments.find((s) => s.text.includes("1."))!.bg;
-    expect(detectQuestionTabs(repaint(lines, first, baseBg))).toBeNull();
+    const digitInk = lines[second]!.segments.find((s) => s.text.includes("2."))!.fg;
+    expect(detectQuestionTabs(reink(repaint(lines, first, baseBg), first, digitInk))).toBeNull();
     expect(detectQuestionTabs(repaint(lines, second, chipBg))).toBeNull();
   });
 
@@ -1505,6 +1536,90 @@ describe("opencode tab-bar question dialogs lift", () => {
     const tabRow = lines.findIndex((l) => lineText(l).includes("Colour   Confirm"));
     const headless = [...lines.slice(0, tabRow - 1), ...lines.slice(tabRow + 1)];
     expect(detectQuestionTabs(headless)).toBeNull();
+  });
+});
+
+describe("opencode 2.1 question dialogs (2.1.1)", () => {
+  // Captured 2026-10-27 from opencode 2.1.1 in a throwaway tmux pane (oc--v211-question--*). 2.1
+  // changes four things the 1.x grammars could not read: a `Questions` title above every dialog, a
+  // pointer painted as an accent ink instead of a background chip, a last chip spelled `Submit` and
+  // drawn bold instead of filled, and a review body with no `Review` heading.
+  it("single: the title is dialog chrome, and the pointer is an ink rather than a chip", () => {
+    const lines = loadLines("oc--v211-question--single.txt");
+    const region = detectQuestionDialog(lines)!;
+    expect(region.model.question).toBe("Which colour?");
+    expect(region.model.options.map((o) => o.label)).toEqual(["Red", "Green", "Blue"]);
+    expect(region.model.options.map((o) => o.keys)).toEqual([["1"], ["2"], ["3"]]);
+    expect(region.pointed).toBe(1);
+    // The block starts at the `Questions` row, so the raw mirror does not repeat the title.
+    expect(lineText(lines[region.startLine]!)).toContain("Questions");
+  });
+
+  it("single: the ink follows the pointer, not the row's text", () => {
+    expect(detectQuestionTabs(loadLines("oc--v211-question--single--moved.txt"))).toBeNull();
+    expect(detectQuestionDialog(loadLines("oc--v211-question--single--moved.txt"))!.pointed).toBe(2);
+  });
+
+  it("multi: the last chip is Submit, and the boxed free-text row is not an option", () => {
+    const region = detectQuestionTabs(loadLines("oc--v211-question--multi.txt"))!;
+    expect(region.kind).toBe("multi-select");
+    const model = region.model;
+    if (model.phase !== "checkbox") throw new Error("expected a checkbox step");
+    expect(model.question).toBe("Which toppings?");
+    expect(model.options.map((o) => o.label)).toEqual(["Ham", "Olives", "Cheese", "Mushroom"]);
+    expect(model.pointerRow).toBe(1);
+    expect(model.advanceLabel).toBe("Submit");
+  });
+
+  it("multi: a checked row is not the pointer; the pointed row's ink is", () => {
+    const model = detectQuestionTabs(loadLines("oc--v211-question--multi--toggled.txt"))!.model;
+    if (model.phase !== "checkbox") throw new Error("expected a checkbox step");
+    expect(model.options.find((o) => o.label === "Ham")!.checked).toBe(true);
+    expect(model.pointerRow).toBe(2);
+  });
+
+  it("multi: the review body has no `Review` heading, and Submit is its active chip", () => {
+    const region = detectQuestionTabs(loadLines("oc--v211-question--multi--review.txt"))!;
+    expect(region.kind).toBe("multi-select");
+    const model = region.model;
+    if (model.phase !== "review") throw new Error("expected a review step");
+    expect(model.answers).toEqual([{ question: "Toppings", answer: "Ham, extra" }]);
+    expect(model.incomplete).toBe(false);
+  });
+
+  it("two: a bold chip names the active step, and the other one is not", () => {
+    const region = detectQuestionTabs(loadLines("oc--v211-question--two.txt"))!;
+    if (region.kind !== "wizard") throw new Error("expected a wizard");
+    const model = region.model;
+    if (model.phase !== "question") throw new Error("expected a question step");
+    expect(model.question).toBe("Which colour?");
+    expect(model.steps!.map((s) => [s.label, s.current])).toEqual([["Colour", true], ["Size", false]]);
+  });
+
+  it("two: an answered step carries the `✓` its row prints", () => {
+    const model = detectQuestionTabs(loadLines("oc--v211-question--two--answered.txt"))!.model;
+    if (model.phase !== "question") throw new Error("expected a question step");
+    expect(model.options.map((o) => o.chosen)).toEqual([true, false]);
+    expect(model.steps!.find((s) => s.current)!.answered).toBe(true);
+  });
+
+  it("two: the review reads both answers and marks each step answered", () => {
+    const region = detectQuestionTabs(loadLines("oc--v211-question--two--review.txt"))!;
+    if (region.kind !== "wizard") throw new Error("expected a wizard");
+    const model = region.model;
+    if (model.phase !== "review") throw new Error("expected a review step");
+    expect(model.answers).toEqual([
+      { question: "Colour", answer: "Red" },
+      { question: "Size", answer: "Small" },
+    ]);
+    expect(model.incomplete).toBe(false);
+    expect(model.steps!.map((s) => s.answered)).toEqual([true, true]);
+  });
+
+  it("the open free-text input refuses: its footer is not the list's", () => {
+    const lines = loadLines("oc--v211-question--multi--free-text.txt");
+    expect(detectQuestionDialog(lines)).toBeNull();
+    expect(detectQuestionTabs(lines)).toBeNull();
   });
 });
 

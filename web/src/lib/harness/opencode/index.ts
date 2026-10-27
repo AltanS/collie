@@ -47,12 +47,13 @@ function mirrorAbove(lines: StyledLine[], startLine: number): StyledLine[] {
 /**
  * The adapter's block pipeline: the permission dialog at the tail lifts into a `prompt-select`
  * block (its region [option row … tail] replaced by buttons, title and subject above kept raw), and
- * so does a single-select question dialog (its region [question … tail] replaced, issue 329). The
- * question dialogs with a tab bar lift too (`question-tabs.ts`): a multi-select question and its
- * Confirm tab into a `multi-select` block, a many-question call's steps and its Confirm tab into a
- * `wizard` or `multi-select` block, each replacing [tab row … tail]. Anything else is one raw block
- * with the composer tail stripped. The registry only ever hands this function an opencode pane, so
- * there is no per-agent gate here.
+ * so does a single-select question dialog (its region [question … tail] replaced, issue 329; from
+ * opencode 2.1 the region starts at its own `Questions` title). The question dialogs with a tab bar
+ * lift too (`question-tabs.ts`): a multi-select question and its last tab into a `multi-select`
+ * block, a many-question call's steps and its last tab into a `wizard` or `multi-select` block, each
+ * replacing [tab row … tail] (again including the title on 2.1). Anything else is one raw block with
+ * the composer tail stripped. The registry only ever hands this function an opencode pane, so there
+ * is no per-agent gate here.
  */
 export function opencodeBuildBlocks(lines: StyledLine[]): Block[] {
   const dialog = detectPermissionDialog(lines);
