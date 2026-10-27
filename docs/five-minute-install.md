@@ -12,7 +12,8 @@ install script. For other setups, see [Install](install.md).
 ## What you need
 
 - A Linux or macOS computer (the host). A Mac needs macOS 13 or newer,
-  Apple Silicon or Intel.
+  Apple Silicon or Intel. On Windows 11, follow [Collie on Windows](windows.md#zero-to-phone)
+  instead.
 - An iPhone or an Android phone.
 - A Tailscale account.
 
@@ -60,8 +61,13 @@ curl -fsSL https://colliepwa.dev/install.sh | sh
 ```
 
 The script saves the `collie` binary to `~/.local/bin`. It does not use `sudo`. If your shell
-cannot find `collie`, add `~/.local/bin` to your PATH. [Standalone](install.md#standalone)
-covers the details.
+cannot find `collie`, add `~/.local/bin` to your PATH, then open a new terminal:
+
+```bash
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc     # bash: ~/.bashrc
+```
+
+[Standalone](install.md#standalone) covers the details.
 
 ## 4. Start Collie
 
@@ -74,7 +80,8 @@ COLLIE_MUX=herdr collie start
 ready, it prints **Collie is running** and shows your URL on the `tailnet` line, for example
 `https://myhost.tail1234.ts.net`.
 
-On a remote Linux host reached by SSH, keep Collie running after logout:
+On Linux, Collie stops when you log out. To keep it running after logout and reboots, for
+example on a host you reach by SSH:
 
 ```bash
 loginctl enable-linger $USER

@@ -3,6 +3,10 @@
 Install Collie on your system, start it, and put it on your phone. Read
 [Security](security.md) first: Collie exposes remote shell access to your machine by design.
 
+> **Note.** New to Collie? [Install in five minutes](five-minute-install.md) covers the usual
+> Linux and macOS setup in five steps. On Windows, follow
+> [Zero to phone](windows.md#zero-to-phone). This page is the full reference.
+
 ## Before you start
 
 Collie needs a front door: something that serves it over HTTPS and restricts access to you.
@@ -15,7 +19,9 @@ Cloudflare Tunnel or NetBird instead, see
 
 With Tailscale, prepare three things:
 
-1. Put the host on your tailnet by installing Tailscale there and running `tailscale up`.
+1. Put the host on your tailnet by installing Tailscale there and running `tailscale up`. On
+   Linux, run `sudo tailscale up --operator=$USER`, so that your user can run `tailscale serve`.
+   On a host that is already up, `sudo tailscale set --operator=$USER` changes only that setting.
 2. Enable HTTPS certificates for the tailnet by opening the
    [admin console](https://login.tailscale.com/admin/dns) and selecting **Enable HTTPS**.
 3. Put the phone on the same tailnet by installing the Tailscale app and signing in to the same
@@ -60,7 +66,7 @@ experimental; see [Windows support](#windows-support-experimental).
 | [Bun](https://bun.sh) | Source builds | Run the bridge and build the web UI. |
 | git | Source builds and Herdr routes | Clone and update the repository. |
 | Multiplexer: Herdr, [tmux](https://github.com/tmux/tmux), [zellij](https://zellij.dev), tuios or tern | All installs | Mirrored backend set via `COLLIE_MUX`. tmux and zellij are experimental in 1.0, and tuios and tern are experimental too; see [Pointing Collie at a multiplexer](multiplexers.md#pointing-collie-at-a-multiplexer) and [`MUX_CONTRACT.md`](../MUX_CONTRACT.md). |
-| [Herdr](https://herdr.dev) ≥ 0.7.0 | Herdr backend only | Required when `COLLIE_MUX=herdr`. Check with `herdr --version`. |
+| [Herdr](https://herdr.dev) ≥ 0.7.0 (0.9.3 on Windows) | Herdr backend only | Required when `COLLIE_MUX=herdr`. Check with `herdr --version`. |
 | [Tailscale](https://tailscale.com) | The default front door | `tailscale serve` proxies Collie to your tailnet. Not needed behind [another front door](deployment.md#front-doors-one-product-at-a-time). |
 
 > **Note.** Collie enforces no minimum tmux or zellij version. The adapters were tested against tmux
@@ -222,7 +228,14 @@ curl -fsSL https://raw.githubusercontent.com/AltanS/collie/main/scripts/install.
 curl -fsSL https://raw.githubusercontent.com/AltanS/collie/main/scripts/install.sh | sh
 ```
 
-If `~/.local/bin` is not on your PATH, run the binary directly:
+If `~/.local/bin` is not on your PATH, add it in your shell profile (`~/.zshrc` or `~/.bashrc`),
+then open a new terminal:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Or run the binary directly:
 
 ```bash
 ~/.local/share/collie/current/bin/collie version
@@ -406,16 +419,23 @@ To restrict access, set `COLLIE_TRUSTED_USER=you@example.com` in `.env` and run 
 
 ## Put it on your phone
 
-Open Collie on the phone, pair the phone, and add Collie to the home screen.
+Open Collie on the phone, add it to the home screen, then pair it.
 
 1. Confirm that the phone's Tailscale app shares a tailnet with the host.
 2. Run `collie qr` on the host and scan its code, or open the URL that `collie url` prints.
-3. Run `collie pair` on the host and scan that QR code.
+3. Add Collie to the home screen ([iPhone and iPad](#iphone-and-ipad), [Android](#android)), then
+   open it from the new icon.
+4. Run `collie pair` on the host.
+5. In Collie, open **Settings → System → Paired devices**, enter the code and a name, and tap
+   **Pair this device**.
 
-The QR code from `collie pair` opens Settings → System → Paired devices with the code entered. You can also
-open Settings → System → Paired devices and enter it manually. Collie answers no device until it is
-paired, so the dashboard shows **Pair this device** until then
-([Pair a device](security.md#pair-a-device--the-write-credential)).
+Pair inside the home screen app, not in a browser tab. On an iPhone, the home screen app keeps its
+own storage, separate from Safari, so a pairing made in Safari does not carry over. For the same
+reason, type the code on a phone. The QR code that `collie pair` prints opens the code in a
+browser tab, so use it to pair a desktop browser.
+
+Collie answers no device until it is paired, so the dashboard shows **Pair this device** until
+then ([Pair a device](security.md#pair-a-device--the-write-credential)).
 
 Collie is a web app. The browser adds it to your home screen without an app store, giving it a
 standalone icon and full-screen view.
