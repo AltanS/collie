@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-25
-- **Shipped in:** unreleased (1.24.1 candidate)
+- **Shipped in:** 1.24.1
 - **Trail:** the OMP input gang, tester 03 (`~/.cache/collie-lab/omp-gang/03-running-turn/REPORT.md`, cases 0
   and 6a on OMP 18.6.1) · counsel on 2026-10-25 (two advisors, "proceed with adjustments"; the
   adjustments are folded in below) · `bridge/surface/queued.ts` · `bridge/journal/receipt-queue.ts` ·
