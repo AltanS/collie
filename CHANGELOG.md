@@ -23,6 +23,14 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **The install scripts end with the steps the install guide gives.** `install.sh` no longer asks
+  you to copy `.env.example`, which a later `cp` turned into a trap: it names Tailscale with HTTPS,
+  starts the multiplexer, runs `COLLIE_MUX=herdr collie start`, opens the phone with `collie qr`,
+  and pairs inside the home screen app. Its PATH note prints the exact line to add.
+  `install.ps1` points to the Windows guide on the web, not to a local page with no Windows steps.
+
 ## [1.24.1] - 2026-10-27
 
 **Urgent.** Since 1.22.0 omp panes can refuse, hold or silently lose sends, and a Claude send during a turn can be held or end "may have arrived".
