@@ -1080,6 +1080,9 @@ export function AgentChat({
     history: paneStart.history,
     activity: paneStart.activity,
     settled: paneStart.settled,
+    // A harness Collie has no screen reader for asks in a dialog no card can lift, so the question
+    // is on screen only in the terminal (lib/chat-gate.ts, rule 1b).
+    unreadQuestion: agent?.status === "blocked" && adapterFor(agent?.agent) === undefined,
   });
   const chatBody = body !== "terminal";
   // What the Chat body's running question card says about the dialog below it. Chat body only: the

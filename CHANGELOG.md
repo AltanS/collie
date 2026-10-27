@@ -50,6 +50,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
   A small microphone now sits next to Attach then, opens the same voice screen, and the words land
   at the caret. It steps aside while the round button reads "Answer the dialog" or "Really send?".
   Thanks @viniciosrab (#573).
+- **A question from an agent Collie cannot read is no longer hidden behind Chat.** An agent with no screen reader in Collie, such as OpenClaw, asks in a dialog Chat cannot draw as a card, so a pane with a readable session sent a "needs your answer" notification and opened on a Chat that did not show the question. While such a pane asks, it now shows the terminal, and it goes back to Chat when it stops asking. Thanks @hubrix (#605).
 
 ## [1.24.1] - 2026-10-27
 
