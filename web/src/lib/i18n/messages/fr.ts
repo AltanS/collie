@@ -1500,6 +1500,7 @@ export const fr: Dictionary = {
   "promptAction.answer.fieldNotReached": "Impossible d'atteindre le champ de réponse. Rien n'a été envoyé",
   "promptAction.answer.notCleared": "Impossible d'effacer le champ de réponse. Rien n'a été envoyé",
   "promptAction.answer.notArrived": "Votre réponse n'est pas arrivée dans le champ. Rien n'a été envoyé",
+  "promptAction.answer.tooLong": "Cette réponse est trop longue pour la largeur du terminal : le dialogue ne tiendrait pas à l'écran. Raccourcissez-la, élargissez le terminal ou choisissez Chat about this et envoyez-la comme message. Rien n'a été saisi",
   "promptAction.answer.notTicked": "La réponse a été saisie, mais sa ligne n'a pas été cochée. Vérifiez-la sur la carte.",
   "stt.error.busy": "Occupé : un autre enregistrement est encore en cours de transcription. Réessayez dans un instant.",
   "stt.error.tooLong": "Cet enregistrement est trop long : faites-en un plus court.",

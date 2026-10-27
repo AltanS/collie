@@ -1499,6 +1499,7 @@ export const pt: Dictionary = {
   "promptAction.answer.fieldNotReached": "Não foi possível acessar o campo de resposta. Nada foi enviado",
   "promptAction.answer.notCleared": "Não foi possível limpar o campo de resposta. Nada foi enviado",
   "promptAction.answer.notArrived": "Sua resposta não chegou ao campo. Nada foi enviado",
+  "promptAction.answer.tooLong": "Esta resposta é longa demais para a largura do terminal: o diálogo não caberia na tela. Encurte-a, alargue o terminal ou escolha Chat about this e envie-a como mensagem. Nada foi digitado",
   "promptAction.answer.notTicked": "A resposta foi digitada, mas a linha correspondente não foi marcada. Verifique-a no cartão.",
   "stt.error.busy": "Ocupado: outra gravação ainda está transcrevendo. Tente novamente em instantes.",
   "stt.error.tooLong": "Essa gravação é longa demais: grave uma mais curta.",

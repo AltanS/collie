@@ -30,7 +30,7 @@ import {
   questionRowText,
   ruleTop,
 } from "./markers";
-import { checkboxState, isFreeTextLabel, parseOptionRow, trailingMenuRows } from "./prompt-select";
+import { checkboxState, isFreeTextLabel, OPTION_SCAN_WINDOW, parseOptionRow, trailingMenuRows } from "./prompt-select";
 import { parseStepperLine } from "./wizard";
 import type { WizardStepChip } from "../wizard-model";
 import type {
@@ -53,8 +53,6 @@ export interface MultiSelectRegion {
   startLine: number;
 }
 
-// Same bounded-window philosophy as the sibling grammars: options sit against the footer.
-const OPTION_SCAN_WINDOW = 24;
 const MAX_FOOTER_GAP = 3;
 // How far above its anchor the stepper is looked for: above the "Ready…" prompt on the review screen
 // (its prompt + warning sit between), and above the first option on the checkbox screen, whose

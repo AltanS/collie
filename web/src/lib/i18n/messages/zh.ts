@@ -1612,6 +1612,7 @@ export const zh: Dictionary = {
   "promptAction.answer.fieldNotReached": "无法定位到回答栏，未发送任何内容",
   "promptAction.answer.notCleared": "无法清空回答栏，未发送任何内容",
   "promptAction.answer.notArrived": "回答未出现在回答栏中，未提交任何内容",
+  "promptAction.answer.tooLong": "此回答对终端宽度来说太长：对话框将无法容纳在屏幕上。请缩短回答、加宽终端，或选择 Chat about this 并以消息发送。未输入任何内容",
   "promptAction.answer.notTicked": "回答已输入，但其所在行未被勾选。请在卡片上检查。",
 
   // --- stt (speech-to-text errors, lib/stt.ts + hooks/use-stt-recorder.ts) ---

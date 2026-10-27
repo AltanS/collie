@@ -1501,6 +1501,7 @@ export const it: Dictionary = {
     "Impossibile raggiungere il campo di risposta. Non è stato inviato nulla",
   "promptAction.answer.notCleared": "Impossibile cancellare il campo di risposta. Non è stato inviato nulla",
   "promptAction.answer.notArrived": "La Sua risposta non è arrivata nel campo. Non è stato inviato nulla",
+  "promptAction.answer.tooLong": "Questa risposta è troppo lunga per la larghezza del terminale: il dialogo non entrerebbe nello schermo. La accorci, allarghi il terminale o scelga Chat about this e la invii come messaggio. Non è stato digitato nulla",
   "promptAction.answer.notTicked": "La risposta è stata digitata, ma la relativa riga non è stata spuntata. La verifichi sulla scheda.",
   "stt.error.busy": "Occupato: un'altra registrazione è ancora in trascrizione. Riprova tra poco.",
   "stt.error.tooLong": "Questa registrazione è troppo lunga: creane una più breve.",
