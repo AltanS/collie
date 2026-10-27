@@ -830,6 +830,76 @@ describe("OpencodeTranscriptSource — the V2 store", () => {
   });
 });
 
+// OpenCode 2.1 renamed its V2 `session` table to `session_v2` and keeps a 1.x install's older
+// conversations in `message`/`part` until OpenCode itself opens each session and copies them into
+// `session_message` (measured on 2.1.1, 2026-10-27: the upgraded database has `session_v2`,
+// `message`, `part` and NO `session`). Choosing the store from the table the session ROW lives in
+// read every pre-upgrade session as an empty V2 one, so History said there was no log.
+describe("OpencodeTranscriptSource — the 2.1 upgrade layout", () => {
+  const LEGACY_SID = "ses_e812a50faffeHHMW1GJ262DI3e";
+
+  /** V2 tables plus the V1 content tables the 2.1 rename left behind (no `session` table). */
+  const UPGRADED_SCHEMA = [
+    ...V2_SCHEMA,
+    ...V1_SCHEMA.filter((ddl) => !ddl.startsWith("create table session ")),
+  ] as const;
+
+  async function fixture() {
+    const base = await realpath(await mkdtemp(join(tmpdir(), "collie-opencode-21-")));
+    const root = join(base, "data");
+    await mkdir(root, { recursive: true });
+    const db = openDb(join(root, "opencode.db"), UPGRADED_SCHEMA);
+    db.run("insert into session_v2 values (?, null, 'legacy session', 1, 100)", [LEGACY_SID]);
+    db.run("insert into message values ('msg_old', ?, 10, 10, ?)", [LEGACY_SID, JSON.stringify(userData(10))]);
+    db.run("insert into part values ('prt_old', 'msg_old', ?, 10, 10, ?)", [
+      LEGACY_SID,
+      JSON.stringify(textPart("written before the upgrade")),
+    ]);
+    return { base, root, db };
+  }
+
+  test("a session row in session_v2 whose conversation is still V1 reads through V1", async () => {
+    const { base, root, db } = await fixture();
+    db.close();
+    const src = new OpencodeTranscriptSource(root);
+    const key = (await src.resolve({ kind: "id", value: LEGACY_SID }))!;
+    expect(key).toBe(`${join(root, "opencode.db")}#${LEGACY_SID}`);
+    expect(await src.stat(key)).toEqual({ size: 2, mtimeMs: 10 });
+    const entries = parseOpencodeTranscript((await src.load(key)).text);
+    expect(entries.map((e) => [e.uuid, e.role])).toEqual([["msg_old", "user"]]);
+    expect(entries[0]!.parts).toEqual([{ kind: "text", text: "written before the upgrade" }]);
+    await rm(base, { recursive: true, force: true });
+  });
+
+  test("once OpenCode copies the session across, the copied V2 rows win the tie", async () => {
+    const { base, root, db } = await fixture();
+    db.run("insert into session_message values ('msg_new', ?, 'user', 1, 10, 10, ?)", [
+      LEGACY_SID,
+      JSON.stringify(v2UserData("copied to v2", 10)),
+    ]);
+    db.close();
+    const src = new OpencodeTranscriptSource(root);
+    const key = (await src.resolve({ kind: "id", value: LEGACY_SID }))!;
+    const entries = parseOpencodeTranscript((await src.load(key)).text);
+    expect(entries.map((e) => [e.uuid, e.role])).toEqual([["msg_new", "user"]]);
+    expect(entries[0]!.parts).toEqual([{ kind: "text", text: "copied to v2" }]);
+    await rm(base, { recursive: true, force: true });
+  });
+
+  test("a fresh session with no rows yet still resolves to the generation that will write it", async () => {
+    const { base, root, db } = await fixture();
+    const fresh = "ses_freshV2session00001";
+    db.run("insert into session_v2 values (?, null, 'fresh session', 5, 6)", [fresh]);
+    db.close();
+    const src = new OpencodeTranscriptSource(root);
+    const key = (await src.resolve({ kind: "id", value: fresh }))!;
+    expect(key).toBe(`${join(root, "opencode.db")}#${fresh}`);
+    expect(await src.stat(key)).toEqual({ size: 0, mtimeMs: 0 });
+    expect((await src.load(key)).text).toBe("");
+    await rm(base, { recursive: true, force: true });
+  });
+});
+
 // A machine that upgraded keeps both generations in the same opencode.db — V1 sessions in `session`
 // and everything new in `session_v2`. Both must resolve, and each must be served by its own tables.
 describe("OpencodeTranscriptSource — both generations side by side", () => {
