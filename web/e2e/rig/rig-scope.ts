@@ -47,22 +47,43 @@ export function sliceFrom(raw: string | undefined): string | null {
   return raw !== undefined && SLICE_NAME.test(raw) ? raw : null;
 }
 
+/** The 8 hex digits of the state root's hash: the middle of every scope name of that rig. */
+export function stateRootHash(stateRoot: string): string {
+  return createHash("sha1").update(stateRoot).digest("hex").slice(0, 8);
+}
+
 /** `rig-<8 hex of the state root>-<pid of the `up` that started it>.scope`. */
 export function scopeUnitName(stateRoot: string, pid: number): string {
-  return `rig-${createHash("sha1").update(stateRoot).digest("hex").slice(0, 8)}-${pid}.scope`;
+  return `rig-${stateRootHash(stateRoot)}-${pid}.scope`;
 }
 
 /**
- * The cgroup a /proc/self/cgroup text names, when it is a unit that can end under the rig: a transient
- * scope such as a Claude session's. A login session (`session-*.scope`) or a desktop app scope
- * (`app-*.scope`) outlives the work in it, so it is no owner. Null for anything else. The caller still
- * checks that the directory exists.
+ * The scope names of this state root in the output of `systemctl --user list-units 'rig-<hash>-*.scope'
+ * --no-legend --plain`: the first word of each line, kept only when it is `rig-<hash>-<pid>.scope` for this
+ * root's hash. Another rig's scope, a glob that matched too much and a stray word give nothing.
+ */
+export function scopeUnitsFrom(listUnits: string, stateRoot: string): string[] {
+  const prefix = `rig-${stateRootHash(stateRoot)}-`;
+  const found: string[] = [];
+  for (const line of listUnits.split("\n")) {
+    const name = line.trim().split(/\s+/)[0] ?? "";
+    if (name.startsWith(prefix) && SCOPE_NAME.test(name) && !found.includes(name)) found.push(name);
+  }
+  return found;
+}
+
+/**
+ * The cgroup a /proc/self/cgroup text names, when it is a Claude session's scope (`claude-*.scope`): the
+ * only unit known to end with the work in it. An allow list: a login session (`session-*.scope`), a desktop
+ * app scope (`app-*.scope`), a `vte-spawn-*` or `tmux-spawn-*` scope and every other unit outlive or
+ * outrun the work, so none is an owner. Null for anything else. The caller still checks that the directory
+ * exists.
  */
 export function ownerCgroupFrom(procSelfCgroup: string): string | null {
   const line = procSelfCgroup.split("\n").find((l) => l.startsWith("0::"));
   const path = line?.slice(3) ?? "";
   const leaf = path.split("/").pop() ?? "";
-  if (!leaf.endsWith(".scope") || /^(session|app)-/.test(leaf)) return null;
+  if (!/^claude-.+\.scope$/.test(leaf)) return null;
   return path;
 }
 

@@ -21,6 +21,7 @@ import {
   scopeRuntimeMaxSec,
   scopeTasksMax,
   scopeUnitName,
+  scopeUnitsFrom,
   shouldFallBack,
   sliceFrom,
   splitArgs,
@@ -35,9 +36,14 @@ describe("ownerCgroupFrom", () => {
     expect(ownerCgroupFrom(`0::${CLAUDE_SCOPE}\n`)).toBe(CLAUDE_SCOPE);
   });
 
-  test("a login session or a desktop app scope is no owner", () => {
+  test("a login session, a desktop app scope and any other scope are no owner: only claude-*.scope is", () => {
     expect(ownerCgroupFrom("0::/user.slice/user-1000.slice/session-3.scope\n")).toBeNull();
     expect(ownerCgroupFrom("0::/user.slice/user-1000.slice/user@1000.service/app.slice/app-gnome-terminal-1234.scope\n")).toBeNull();
+    expect(ownerCgroupFrom("0::/user.slice/user-1000.slice/user@1000.service/app.slice/vte-spawn-1a2b.scope\n")).toBeNull();
+    expect(ownerCgroupFrom("0::/user.slice/user-1000.slice/user@1000.service/app.slice/tmux-spawn-1a2b.scope\n")).toBeNull();
+    expect(ownerCgroupFrom("0::/user.slice/user-1000.slice/user@1000.service/app.slice/rig-0123abcd-5.scope\n")).toBeNull();
+    expect(ownerCgroupFrom("0::/user.slice/user-1000.slice/user@1000.service/app.slice/claude-.scope\n")).toBeNull();
+    expect(ownerCgroupFrom("0::/user.slice/user-1000.slice/user@1000.service/app.slice/claude-4242.service\n")).toBeNull();
   });
 
   test("a service, a bare slice and the root cgroup are no owner", () => {
@@ -95,6 +101,28 @@ describe("scopeUnitName", () => {
     expect(SCOPE_NAME.test("claude-1234.scope")).toBe(false);
     expect(SCOPE_NAME.test("rig-abcd1234-1.scope/../x")).toBe(false);
     expect(SCOPE_NAME.test("rig-abcd1234-1.service")).toBe(false);
+  });
+});
+
+describe("scopeUnitsFrom", () => {
+  const ROOT = "/state/root/a";
+  const mine = scopeUnitName(ROOT, 4242);
+  const other = scopeUnitName("/state/root/b", 4243);
+
+  test("lists this root's scopes from list-units output, whatever the columns", () => {
+    const out = `${mine} loaded active running  /usr/bin/bun\n${scopeUnitName(ROOT, 99)} loaded active abandoned /usr/bin/bun\n`;
+    expect(scopeUnitsFrom(out, ROOT)).toEqual([mine, scopeUnitName(ROOT, 99)]);
+  });
+
+  test("another root's scope, a session scope and stray words are left alone", () => {
+    const out = `${other} loaded active running x\nsession-3.scope loaded active running y\nrig-${"0".repeat(8)}-1.scope loaded active running z\n${mine}.bak loaded\nnot a unit\n`;
+    expect(scopeUnitsFrom(out, ROOT)).toEqual([]);
+  });
+
+  test("empty output, blank lines, leading blanks and a repeated line", () => {
+    expect(scopeUnitsFrom("", ROOT)).toEqual([]);
+    expect(scopeUnitsFrom("\n\n", ROOT)).toEqual([]);
+    expect(scopeUnitsFrom(`  ${mine} loaded active running\n${mine} loaded active running\n`, ROOT)).toEqual([mine]);
   });
 });
 

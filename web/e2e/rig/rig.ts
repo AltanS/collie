@@ -37,16 +37,18 @@
 // cap (TasksMax 700; 1400 for the crew rig's two servers and two bridges; COLLIE_RIG_TASKS_MAX overrides
 // both), a run limit of 6 hours (COLLIE_RIG_RUNTIME_MAX_SEC overrides; systemd ends the scope then, with no
 // teardown), a stop timeout of 10 s, no core dumps (COLLIE_RIG_CORES=1 keeps them). The scope goes in the
-// user's default slice, or in COLLIE_RIG_SLICE when that names a slice the host defines (agent-slice/rig.slice
-// in the mypc repo). Once the daemon is up, `up` reads the scope's pids.max and logs one WARNING when the cap
-// is not the one asked for. systemd-run's stderr goes to logs/systemd-run.err; the plain spawn replaces it
-// only when systemd-run itself failed (spawnDaemon), never when the daemon ran and failed.
+// user's default slice, or in COLLIE_RIG_SLICE when that names a slice the host defines (a slice unit file on
+// the host). Once the daemon is up, `up` reads the scope's pids.max and warns (daemon.log and stderr of `up`)
+// when the cap is not the one asked for. systemd-run's stderr goes to logs/systemd-run.err; the plain spawn
+// replaces it only when systemd-run itself failed (spawnDaemon), never when the daemon ran and failed.
 //
 // THE OWNER WATCH, opt-in with COLLIE_RIG_OWNER_WATCH=1. `up` then records the OWNER, the cgroup it ran in
-// (a Claude session's scope), when that directory exists under /sys/fs/cgroup. The daemon stats it every 30 s
+// (only a `claude-*.scope`), when that directory exists under /sys/fs/cgroup. The daemon stats it every 30 s
 // and tears the rig down after two checks in a row that find it gone (ENOENT; other errors are ignored). No
-// owner is recorded for a login session or a desktop app scope. `down` stops the scope when it is still
-// active; agent-reaper.sh stops a rig-*.scope whose daemon is gone. All of this runs on Linux only.
+// owner is recorded for any other cgroup (a login session, a desktop app, a vte-spawn or tmux-spawn scope).
+// `down` stops the scope when it is still active, found by rig.json or, when rig.json names none, by the
+// name `rig-<hash of the state root>-*.scope`; a host may run its own reaper for scopes whose daemon is
+// gone. All of this runs on Linux only.
 //
 // THE PANE CAP. A harness pane costs 46 to 64 tasks (omp), and drivers that opened one pane per case and
 // closed none filled the task limit at about one pane a minute. So `pane <cmd>` and `start <harness>` refuse
@@ -123,6 +125,8 @@ import {
   scopeRuntimeMaxSec,
   scopeTasksMax,
   scopeUnitName,
+  scopeUnitsFrom,
+  stateRootHash,
   shouldFallBack,
   type StartObservation,
   sliceFrom,
@@ -214,6 +218,13 @@ function stopScope(scope: string | null | undefined, opts: { noBlock?: boolean }
   systemctl(["stop", ...(opts.noBlock ? ["--no-block"] : []), scope]);
 }
 
+/** The scopes of this state root that systemd still lists, found by name when rig.json has none to name. */
+function leftoverScopes(): string[] {
+  if (!onLinux) return [];
+  const hash = stateRootHash(STATE_ROOT);
+  return scopeUnitsFrom(systemctl(["list-units", `rig-${hash}-*.scope`, "--no-legend", "--plain"]).out, STATE_ROOT);
+}
+
 /** The scope's cgroup directory (`systemctl show -p ControlGroup`), or null when systemd has none for it. */
 function scopeCgroupDir(scope: string): string | null {
   if (!onLinux || !SCOPE_NAME.test(scope)) return null;
@@ -237,6 +248,8 @@ function readScopeFile(scope: string, name: string): string | null {
 interface DaemonStart {
   readonly child: ChildProcess;
   readonly scope: string | null;
+  /** The TasksMax asked for; null without a scope. */
+  readonly tasksMax: number | null;
 }
 
 /** What `up` has seen of the systemd-run child so far. */
@@ -255,12 +268,12 @@ async function spawnDaemon(env: NodeJS.ProcessEnv, logFd: number, crew: boolean)
   const spawnPlain = (): DaemonStart => {
     const child = spawn(process.execPath, [SELF, "_daemon"], { env, detached: true, stdio: ["ignore", logFd, logFd] });
     child.unref();
-    return { child, scope: null };
+    return { child, scope: null, tasksMax: null };
   };
   if (!onLinux) return spawnPlain();
   const unavailable = noScopeReason();
   if (unavailable !== null) {
-    log(`WARNING: the daemon runs without a scope of its own (${unavailable}); it shares the cgroup of \`up\``);
+    warn(`WARNING: the daemon runs without a scope of its own (${unavailable}), so this rig has no task cap and no owner watch; it shares the cgroup of \`up\``);
     return spawnPlain();
   }
   const scope = scopeUnitName(STATE_ROOT, process.pid);
@@ -291,14 +304,10 @@ async function spawnDaemon(env: NodeJS.ProcessEnv, logFd: number, crew: boolean)
   const stderr = existsSync(errPath) ? readFileSync(errPath, "utf8") : "";
   if (shouldFallBack({ exited: seen.exited, spawnFailed: seen.spawnFailed, daemonWrote: daemonWrote(), stderr })) {
     const why = stderr.trim().split("\n")[0] ?? "no reason given";
-    log(`WARNING: the daemon runs without a scope of its own (systemd-run failed: ${why}); it shares the cgroup of \`up\``);
+    warn(`WARNING: the daemon runs without a scope of its own (systemd-run failed: ${why}), so this rig has no task cap and no owner watch; it shares the cgroup of \`up\``);
     return spawnPlain();
   }
-  if (daemonWrote()) {
-    const warning = taskCapWarning(readScopeFile(scope, "pids.max"), tasksMax);
-    if (warning !== null) log(warning);
-  }
-  return { child, scope };
+  return { child, scope, tasksMax };
 }
 
 async function freePort(taken: readonly number[] = []): Promise<number> {
@@ -362,7 +371,14 @@ async function pairDevice(port: number, label: string): Promise<void> {
 }
 
 // ── the daemon ───────────────────────────────────────────────────────────────────────────────────
+// Appended, never truncated: `up` clears the logs folder once, before the daemon starts, and nothing rewrites this file.
 const log = (line: string) => appendFileSync(join(P.logs, "daemon.log"), `${new Date().toISOString()} ${line}\n`);
+
+/** A warning that means "this rig has no cap": in daemon.log, and on stderr of `up`, where the caller sees it. */
+function warn(line: string): void {
+  log(line);
+  console.error(line);
+}
 
 /** The log file of one machine's process: the lead keeps the solo rig's names. */
 const logName = (machine: Machine, what: string): string => join(P.logs, machine === "lead" ? `${what}.log` : `member-${what}.log`);
@@ -689,7 +705,7 @@ async function cmdUp(crew: boolean): Promise<void> {
   const memberPort = crew ? await freePort([port]) : null;
   const logFd = openSync(join(P.logs, "daemon.out"), "a");
   const env = memberPort === null ? { ...process.env, RIG_PORT: String(port) } : { ...process.env, RIG_PORT: String(port), RIG_MEMBER_PORT: String(memberPort) };
-  const { child, scope } = await spawnDaemon(env, logFd, crew);
+  const { child, scope, tasksMax } = await spawnDaemon(env, logFd, crew);
   // The crew rig starts twice the processes and restarts each bridge during the enrolment.
   const end = Date.now() + (crew ? 180_000 : 70_000);
   while (Date.now() < end) {
@@ -704,6 +720,10 @@ async function cmdUp(crew: boolean): Promise<void> {
     await cmdDown();
     stopScope(scope);
     die(`startup failed.\n${tail || "no log line was written: the daemon never started (see logs/systemd-run.err)"}`);
+  }
+  if (scope !== null && tasksMax !== null) {
+    const warning = taskCapWarning(readScopeFile(scope, "pids.max"), tasksMax);
+    if (warning !== null) warn(warning);
   }
   await pairDevice(run!.port, DEVICE_LABEL);
   console.log(`up: bridge http://127.0.0.1:${run!.port}  worktree ${WORKTREE}`);
@@ -767,7 +787,8 @@ async function cmdDown(): Promise<void> {
     if (run !== null && (machine === "lead" || run.member !== undefined)) await killPid(halfOf(run, machine).herdrPid, "herdr");
     retireXdgHome(machine);
   }
-  stopScope(run?.scope);
+  if (run?.scope) stopScope(run.scope);
+  else for (const scope of leftoverScopes()) stopScope(scope); // rig.json is gone or names none: a kill between its removal and the scope's stop
   rmSync(P.run, { force: true });
   rmSync(P.token, { force: true });
   rmSync(MEMBER_ENV_FILE, { force: true });

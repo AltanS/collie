@@ -226,32 +226,37 @@ overrides both), a stop timeout of 10 s, and core dumps off (`COLLIE_RIG_CORES=1
 server, the bridge and every pane are children of the daemon, so they run there too, not in the Claude
 session that ran `up`. Five rigs from one session once filled that session's task limit (threads count as
 tasks), and Bun, Node and Claude aborted. Elsewhere (macOS, Windows), or without `systemd-run` and a user bus
-(`$XDG_RUNTIME_DIR/bus`), the daemon runs where `up` runs; on Linux `logs/daemon.log` then gets one `WARNING` line.
+(`$XDG_RUNTIME_DIR/bus`), the daemon runs where `up` runs; on Linux that `WARNING` goes to `logs/daemon.log` and to stderr of `up`, and the
+rig has no task cap and no owner watch.
 
 - **Slice.** The scope goes in your default user slice, so the limit is per rig and there is no limit for all rigs
-  together. To put every rig in one slice, define the slice on the host (for example `agent-slice/rig.slice` in
-  the `mypc` repo) and set `COLLIE_RIG_SLICE=rig.slice`. The value must look like `name.slice`; anything else is
-  ignored with a `WARNING` line. Then the slice's own limits bound all rigs together.
+  together. To put every rig in one slice, define the slice in a slice unit file on the host and set `COLLIE_RIG_SLICE=rig.slice`. The value must look like
+  `name.slice`; anything else is ignored with a `WARNING` line. Then the slice's own limits bound all rigs together.
 - **Check.** Once the daemon is up, `up` reads the scope's `pids.max`. When it is not the number asked for (a host
-  that does not hand the task controller to your user), `logs/daemon.log` gets one `WARNING` line saying the task
-  cap is not enforced. `status` shows `"tasks": "<pids.current>/<pids.max>"` for the scope, and leaves it out without one.
+  that does not hand the task controller to your user), `up` prints one `WARNING` line to stderr, and
+  `logs/daemon.log` gets it too, saying the task cap is not enforced. The check runs whenever the rig came up, also when
+  the daemon was slow to write `rig.json`. `status` shows `"tasks": "<pids.current>/<pids.max>"` for the scope, and leaves it out without one.
 - **Run limit.** The scope has `RuntimeMaxSec=21600` (6 hours). It is a hard stop by systemd: it kills the scope
   with no teardown, so the Herdr home and `rig.json` stay until the next `up` or `down` clears them.
   `COLLIE_RIG_RUNTIME_MAX_SEC=<n>` (a positive integer, in seconds) changes it.
 - **Owner watch (`COLLIE_RIG_OWNER_WATCH=1`).** `up` records the OWNER, the cgroup it ran in (a Claude session's
   scope), in `rig.json`, but only on Linux and only if that directory exists at that moment. The daemon checks
   every 30 s that it still exists, and tears the rig down after two misses in a row. Only "no such directory"
-  counts as a miss; any other error is ignored. A login session or a desktop app scope is no owner, so a rig
-  started from a plain shell skips the check.
+  counts as a miss; any other error is ignored. Only a `claude-*.scope` cgroup is an owner (an allow list). Any other
+  cgroup is no owner: a login session, a desktop app, and also a `vte-spawn-*` or `tmux-spawn-*` scope. A rig started
+  from a plain shell or a terminal multiplexer skips the check.
 - **Start failure.** systemd-run's own messages go to `logs/systemd-run.err`. If systemd-run itself fails (it exits
   non-zero within 1.5 s, before the daemon ran, with an error such as a bus failure), `up` starts the daemon
-  without a scope and logs a `WARNING`. If the daemon ran and then failed, there is no second start: `up`
-  reports the daemon's own error from `logs/daemon.log`.
-- **Stop.** `down` asks the daemon to tear down first, then stops the scope if it is still active. `agent-reaper.sh`
-  stops a `rig-*.scope` whose daemon is gone. Every `systemctl` call has a 15 s limit.
+  without a scope and prints a `WARNING` to stderr (also in `logs/daemon.log`) that says the rig has no task cap and
+  no owner watch. If the daemon ran and then failed, there is no second start: `up` reports the failure text taken
+  from `logs/daemon.log`, then `logs/daemon.out`, then `logs/systemd-run.err`, the first of them that has text.
+- **Stop.** `down` asks the daemon to tear down first, then stops the scope if it is still active. It finds the scope
+  in `rig.json`; when `rig.json` is gone (a kill between its removal and the scope's stop), it lists
+  `rig-<hash of the state root>-*.scope` with `systemctl --user list-units` and stops what it finds. A host may run its
+  own reaper for scopes whose daemon is gone. Every `systemctl` call has a 15 s limit.
 
-**The pane cap.** A harness pane costs 46 to 64 tasks (omp), and gang drivers that opened a pane per test case and
-closed none filled the task limit at about one pane a minute. So `pane <cmd>` and `start <harness>` count the open
+**The pane cap.** A harness pane costs 46 to 64 tasks (omp), and scripts that open one pane per case and
+close none filled the task limit at about one pane a minute. So `pane <cmd>` and `start <harness>` count the open
 panes first (the rig's view pane is left out) and refuse when there are `COLLIE_RIG_MAX_PANES` or more: a positive
 integer, 6 when unset or not one. The refusal exits with code 75, lists the open panes and names the fix.
 The cap is a soft limit, per machine and per rig. It is not atomic across callers that start at the same moment,
