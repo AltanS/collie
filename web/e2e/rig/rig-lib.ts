@@ -142,6 +142,10 @@ export interface Run {
   bridgePid: number | null;
   ready: boolean;
   readonly startedAt: string;
+  /** The systemd scope the daemon runs in (`rig-<hash>-<pid>.scope`), or null when it runs where `up` ran. Absent in an older rig.json. */
+  readonly scope?: string | null;
+  /** The cgroup `up` ran in (a path under /sys/fs/cgroup), the owner the daemon watches; null when none was recorded. */
+  readonly ownerCgroup?: string | null;
   /** Set on a crew rig only: the member, and the ids both sides enrolled under. */
   member?: MemberRun;
   leadId?: string;

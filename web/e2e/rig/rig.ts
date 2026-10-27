@@ -14,6 +14,10 @@
 //   2. one attached Herdr client in a PTY (scripts/harness-canary/client.ts), so a harness that asks
 //      the terminal for its colours at start gets an answer, as it would in a person's terminal;
 //   3. `bun bridge/index.ts` from this checkout on a free port in 18700-18799.
+// The daemon runs in a systemd scope of its own, `rig-<8 hex>-<pid>.scope` in rig.slice, with
+// TasksMax=700 (1400 for `up --crew`; COLLIE_RIG_TASKS_MAX overrides, see "THE SCOPE" below). The herdr
+// server, the bridge and every pane are its children, so they follow it. Without systemd-run or the user
+// bus it runs where `up` runs, as it always did.
 // Then `up` pairs one device the way `collie pair` does, but with the bridge's own pairing module in
 // the rig's own state dir, and claims the code over the real POST /api/pair. No CLI verb runs.
 //
@@ -25,6 +29,16 @@
 // lead, and `up` returns once the lead reports the member reachable. Every `--crew` command works on
 // the crew rig's own state root (rig-lib.ts), so it never meets the solo rig.
 //
+// THE SCOPE. On 2026-10-26 five rigs started from one Claude session lived in its claude-*.scope and
+// filled the task limit of claude.slice (threads count as tasks); Bun, Node and Claude aborted when they
+// could not start a thread. `up` therefore starts the daemon with `systemd-run --user --scope
+// --slice=rig.slice` (agent-slice/rig.slice in the mypc repo): its own task cap (TasksMax 700; 1400 for the
+// crew rig's two servers and two bridges; COLLIE_RIG_TASKS_MAX overrides both), a 6 hour run limit, no core
+// dumps. rig.json records the scope and the OWNER, the cgroup `up` ran in (a Claude session's scope). The
+// daemon checks every 30 s that the owner's cgroup directory still exists, and tears the rig down when it
+// is gone. No owner is recorded for a login session or a desktop app scope, and the check is skipped.
+// `down` stops the scope when it is still active; agent-reaper.sh stops a rig-*.scope whose daemon is gone.
+//
 // `crew stop-member` and `crew start-member` ask the daemon (SIGUSR1, SIGUSR2) to stop the member's
 // bridge by its recorded pid and to start it again with the same dirs and port. The member's Herdr
 // and its agents keep running, as on a machine whose Collie was stopped. `start-member --env
@@ -32,8 +46,9 @@
 // that proves a machine with walky talky off; a start without `--env` clears the setting.
 import "./rig-mode";
 
-import { spawn, type ChildProcess } from "node:child_process";
-import { appendFileSync, chmodSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { createHash } from "node:crypto";
+import { appendFileSync, chmodSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { createConnection, createServer } from "node:net";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -47,6 +62,7 @@ import {
   P,
   PORT_HI,
   PORT_LO,
+  STATE_ROOT,
   assertPrivateDir,
   assertUnderRoot,
   assertUnderXdg,
@@ -85,6 +101,106 @@ const die = (msg: string): never => {
   console.error(`rig: ${msg}`);
   process.exit(1);
 };
+
+// ── the scope ────────────────────────────────────────────────────────────────────────────────────
+const CGROUP_ROOT = "/sys/fs/cgroup";
+/** How often the daemon checks that its owner's cgroup still exists. */
+const OWNER_CHECK_MS = 30_000;
+/** The daemon's scope limits: the task cap one rig may spend (threads count), and its longest life (6 h). */
+const SCOPE_TASKS_MAX = 700;
+const SCOPE_TASKS_MAX_CREW = 1400;
+/** COLLIE_RIG_TASKS_MAX when it is a positive integer, else the default for a solo or a crew rig. */
+function scopeTasksMax(crew: boolean): number {
+  const asked = Number(process.env.COLLIE_RIG_TASKS_MAX);
+  return Number.isInteger(asked) && asked > 0 ? asked : crew ? SCOPE_TASKS_MAX_CREW : SCOPE_TASKS_MAX;
+}
+const SCOPE_RUNTIME_MAX_SEC = 21_600;
+const SCOPE_NAME = /^rig-[0-9a-f]+-[0-9]+\.scope$/;
+
+const onPath = (name: string): boolean => (process.env.PATH ?? "").split(delimiter).some((dir) => dir !== "" && existsSync(join(dir, name)));
+
+function isSocket(path: string): boolean {
+  try {
+    return statSync(path).isSocket();
+  } catch {
+    return false;
+  }
+}
+
+/** Why the daemon cannot get a scope of its own, or null when systemd-run and the user bus are there. */
+function noScopeReason(): string | null {
+  if (!onPath("systemd-run")) return "systemd-run is not on PATH";
+  const runtime = process.env.XDG_RUNTIME_DIR;
+  if (runtime === undefined || !isSocket(join(runtime, "bus"))) return "no user bus at $XDG_RUNTIME_DIR/bus";
+  return null;
+}
+
+/**
+ * The cgroup this process runs in, when it is a unit that can end under the rig: a transient scope such as
+ * a Claude session's. A login session or a desktop app scope outlives the work in it, so it is no owner.
+ */
+function ownerCgroup(): string | null {
+  try {
+    const line = readFileSync("/proc/self/cgroup", "utf8").split("\n").find((l) => l.startsWith("0::"));
+    const path = line?.slice(3) ?? "";
+    const leaf = path.split("/").pop() ?? "";
+    if (!leaf.endsWith(".scope") || /^(session|app)-/.test(leaf) || !existsSync(`${CGROUP_ROOT}${path}`)) return null;
+    return path;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Stop the rig's scope when it is still active: whatever the daemon left behind goes with it. `noBlock` is
+ * for the daemon stopping its own scope: a blocking stop would wait for the daemon, which waits for it.
+ */
+function stopScope(scope: string | null | undefined, opts: { noBlock?: boolean } = {}): void {
+  if (!scope || !SCOPE_NAME.test(scope)) return;
+  if (spawnSync("systemctl", ["--user", "is-active", "--quiet", scope]).status !== 0) return;
+  spawnSync("systemctl", ["--user", "stop", ...(opts.noBlock ? ["--no-block"] : []), scope]);
+}
+
+/** Why systemd-run ended before the daemon wrote rig.json, or null while it has not. */
+interface DaemonExit {
+  why: string | null;
+}
+
+/**
+ * Start the daemon in a scope of its own in rig.slice, and fall back to a plain spawn (the daemon then
+ * lives where `up` lives) with one warning line in daemon.log when systemd cannot give it one. Under
+ * `systemd-run --scope` the command replaces systemd-run, so the child's pid is the daemon's.
+ */
+async function spawnDaemon(env: NodeJS.ProcessEnv, logFd: number, crew: boolean): Promise<{ child: ChildProcess; scope: string | null }> {
+  const stdio: ["ignore", number, number] = ["ignore", logFd, logFd];
+  let why = noScopeReason();
+  if (why === null) {
+    const scope = `rig-${createHash("sha1").update(STATE_ROOT).digest("hex").slice(0, 8)}-${process.pid}.scope`;
+    const owner = ownerCgroup();
+    const child = spawn(
+      "systemd-run",
+      [
+        "--user", "--scope", "-q", "--slice=rig.slice", `--unit=${scope}`,
+        "-p", `TasksMax=${scopeTasksMax(crew)}`, "-p", `RuntimeMaxSec=${SCOPE_RUNTIME_MAX_SEC}`,
+        "--", "sh", "-c", 'ulimit -c 0; exec "$0" "$@"', process.execPath, SELF, "_daemon",
+      ],
+      { env: { ...env, RIG_SCOPE: scope, RIG_OWNER_CGROUP: owner ?? "" }, detached: true, stdio },
+    );
+    const died: DaemonExit = { why: null };
+    child.once("error", (err) => (died.why = err.message));
+    child.once("exit", (code, signal) => (died.why = `exit ${String(code ?? signal)}`));
+    child.unref();
+    // The daemon writes rig.json as its first act; a systemd-run that failed exits before that.
+    const end = Date.now() + 5000;
+    while (died.why === null && readRun()?.daemonPid !== child.pid && Date.now() < end) await sleep(100);
+    if (died.why === null) return { child, scope };
+    why = `systemd-run did not start the daemon (${died.why}); see daemon.out`;
+  }
+  log(`WARNING: the daemon runs without a scope of its own (${why}); it shares the cgroup of \`up\``);
+  const child = spawn(process.execPath, [SELF, "_daemon"], { env, detached: true, stdio });
+  child.unref();
+  return { child, scope: null };
+}
 
 async function freePort(taken: readonly number[] = []): Promise<number> {
   for (let port = PORT_LO; port <= PORT_HI; port++) {
@@ -241,7 +357,12 @@ async function daemon(): Promise<void> {
     bridgePid: null,
     ready: false,
     startedAt: new Date().toISOString(),
+    scope: process.env.RIG_SCOPE || null,
+    ownerCgroup: process.env.RIG_OWNER_CGROUP || null,
   };
+  // Read once; the herdr server, the bridge and the panes need not inherit them.
+  delete process.env.RIG_SCOPE;
+  delete process.env.RIG_OWNER_CGROUP;
   if (crew) {
     run.member = { port: Number(process.env.RIG_MEMBER_PORT), socket: "", herdrPid: null, bridgePid: null };
     run.leadId = LEAD_ID;
@@ -280,10 +401,18 @@ async function daemon(): Promise<void> {
     }
     rmSync(P.run, { force: true });
     log("teardown done");
+    stopScope(run.scope, { noBlock: true }); // what escaped the teardown (a setsid child) goes with the scope; this process too
     process.exit(0);
   };
   process.on("SIGTERM", () => void teardown("SIGTERM"));
   process.on("SIGINT", () => void teardown("SIGINT"));
+  // The owner is gone (its Claude session ended): nobody will run `down`, so tear down here.
+  const owner = run.ownerCgroup;
+  if (owner) {
+    setInterval(() => {
+      if (!existsSync(`${CGROUP_ROOT}${owner}`)) void teardown(`owner cgroup ${owner} is gone`);
+    }, OWNER_CHECK_MS);
+  }
 
   /** One machine's Herdr server, its view workspace and its attached client. */
   const startHerdr = async (machine: Machine) => {
@@ -447,12 +576,7 @@ async function cmdUp(crew: boolean): Promise<void> {
   const memberPort = crew ? await freePort([port]) : null;
   const logFd = openSync(join(P.logs, "daemon.out"), "a");
   const env = memberPort === null ? { ...process.env, RIG_PORT: String(port) } : { ...process.env, RIG_PORT: String(port), RIG_MEMBER_PORT: String(memberPort) };
-  const child = spawn(process.execPath, [SELF, "_daemon"], {
-    env,
-    detached: true,
-    stdio: ["ignore", logFd, logFd],
-  });
-  child.unref();
+  const { child, scope } = await spawnDaemon(env, logFd, crew);
   // The crew rig starts twice the processes and restarts each bridge during the enrolment.
   const end = Date.now() + (crew ? 180_000 : 70_000);
   while (Date.now() < end) {
@@ -464,6 +588,7 @@ async function cmdUp(crew: boolean): Promise<void> {
   if (run?.ready !== true) {
     const tail = existsSync(join(P.logs, "daemon.log")) ? readFileSync(join(P.logs, "daemon.log"), "utf8").split("\n").slice(-8).join("\n") : "";
     await cmdDown();
+    stopScope(scope);
     die(`startup failed.\n${tail}`);
   }
   await pairDevice(run!.port, DEVICE_LABEL);
@@ -528,6 +653,7 @@ async function cmdDown(): Promise<void> {
     if (run !== null && (machine === "lead" || run.member !== undefined)) await killPid(halfOf(run, machine).herdrPid, "herdr");
     retireXdgHome(machine);
   }
+  stopScope(run?.scope);
   rmSync(P.run, { force: true });
   rmSync(P.token, { force: true });
   rmSync(MEMBER_ENV_FILE, { force: true });
@@ -615,6 +741,8 @@ async function cmdPane(args: string[], machine: Machine): Promise<void> {
 /** What `status` prints: rig.json, and whether each recorded process still runs. */
 interface StatusView extends Run {
   readonly stateRoot: string;
+  /** The daemon's scope, or "none" when it runs outside one. */
+  readonly scope: string;
   readonly daemonAlive: boolean;
   readonly bridgeAlive: boolean;
   memberBridgeAlive?: boolean;
@@ -653,7 +781,7 @@ switch (cmd) {
       console.log(`not up (state root ${dirname(P.rig)})`);
       break;
     }
-    const shown: StatusView = { stateRoot: dirname(P.rig), ...run, daemonAlive: pidIs(run.daemonPid, DAEMON_TAG), bridgeAlive: pidIs(run.bridgePid, BRIDGE_TAG) };
+    const shown: StatusView = { stateRoot: dirname(P.rig), ...run, scope: run.scope ?? "none", daemonAlive: pidIs(run.daemonPid, DAEMON_TAG), bridgeAlive: pidIs(run.bridgePid, BRIDGE_TAG) };
     if (run.member !== undefined) {
       shown.memberBridgeAlive = pidIs(run.member.bridgePid, BRIDGE_TAG);
       shown.memberHerdrAlive = pidIs(run.member.herdrPid, "herdr");

@@ -216,6 +216,22 @@ By hand: `bun e2e/rig/rig.ts up | down | status | start claude|pi|omp | snapshot
 After a crash, `bun e2e/rig/rig.ts down` stops what the rig started. The crew leg's commands are in
 "The crew leg" below.
 
+`up` starts the rig's daemon in a systemd scope of its own, `rig-<8 hex>-<pid>.scope` in `rig.slice`, with
+`TasksMax=700` (1400 for `up --crew`, which runs two servers and two bridges; `COLLIE_RIG_TASKS_MAX=<n>`
+overrides both), a 6 hour run limit and core dumps off. The Herdr server, the bridge and every pane are
+children of the daemon, so they run there too, not in the Claude session that ran `up`. Five rigs
+from one session once filled that session's task limit (threads count as tasks), and Bun, Node and Claude
+aborted. The unit file is `agent-slice/rig.slice` in the `mypc` repo. `rig.json` records the scope and the
+owner, the cgroup `up` ran in; `status` prints the scope (`"scope": "none"` without one). The daemon checks
+every 30 s that the owner's cgroup still exists, and tears the rig down when it is gone. A login session or
+a desktop app scope is no owner, so a rig started from a plain shell skips that check. So a rig dies with
+the Claude session that ran `up`, even when another session watches it: `make browser-leg` started in one
+session and followed from a second one stops when the first one ends. Start the leg from the session that
+will outlive it, or from a plain shell. `down` stops the
+scope if it is still active, and `agent-reaper.sh` stops a `rig-*.scope` whose daemon is gone. Without
+`systemd-run` or a user bus (`$XDG_RUNTIME_DIR/bus`) the daemon runs where `up` runs, and `logs/daemon.log`
+gets one `WARNING` line.
+
 Herdr binds its sockets under its `XDG_CONFIG_HOME`, and a Unix socket path holds at most 107 bytes on
 Linux (103 on macOS). A long state root, such as the nightly runner's, would push the path over that, and
 Herdr would exit with "local socket name length exceeds capacity of sun_path". So the rig keeps this one
