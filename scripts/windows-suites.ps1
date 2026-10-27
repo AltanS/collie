@@ -14,9 +14,10 @@
 #              cannot hide behind a removed one in another. A test must not be skipped just to get
 #              green, so a higher count is a failure. Raise a number only with a reason.
 #              Bridge went from 2 to 0 when M43 spec 04 checked the access list instead of the mode.
-#              Today, 157 in all, each one named, with its reason:
-#              bridge 91. 5 are the POSIX-only and engine cases below, 1 the /etc link scan, 4 are the hold socket tests, 5 the walky ones, 30 are the
-#                durable example apps, 10 are the durable-harness adapter test, and 36 are the durable socket tests (see "Durable, bridge" below).
+#              Today, 162 in all, each one named, with its reason:
+#              bridge 96. 5 are the POSIX-only and engine cases below, 1 the /etc link scan, 4 are the hold socket tests, 5 the walky ones, 30 are the
+#                durable example apps, 10 are the durable-harness adapter test, 36 are the durable socket tests (see "Durable, bridge" below),
+#                and 5 are the pane's program reads (see "The pane's program, bridge" below).
 #                Of the first 5, four are in bridge/stt/local-cli.test.ts. Windows has no executable bit
 #                and no file owner check in this provider:
 #                - "commandFileProblem: regular executable passes, symlinks are followed" (the
@@ -71,6 +72,13 @@
 #                win32: it starts the examples/durable-harness server with Node 24 and its Bun install, which no
 #                Windows job or VM has. The Linux job "durable example" in ci.yml runs it. The 10 are its 7 tests,
 #                the skipped placeholder, the beforeAll and the afterAll that Bun counts with them.
+#              The pane's program, bridge (5). The version read of 1.24.1 (.adr/0124) runs the pane's own binary.
+#                Each name sits on one line, so the pin test can find it:
+#                - "boundedRun answers at its cap even when a grandchild holds the pipe" (binary-version.test.ts, win32: a POSIX sh grandchild)
+#                - "boundedRun returns what a quick command printed, and its exit code" (binary-version.test.ts, win32: a POSIX sh)
+#                - "procProbe sees a live process's executable and folder" (pane-binary.test.ts, off Linux: it reads /proc)
+#                - "two copies of one harness" (pane-binary.test.ts, win32: its fake omp copies are POSIX sh scripts), its one test and
+#                  the hook Bun counts with it. The Windows path of paneBinaryOf runs on Windows with a fake host ("no /proc" tests).
 #              cli 41. 12 are every test of the "doctor durable" describe in cli/doctor.test.ts: each reads a
 #                real Unix socket. Its Windows rows are tested in cli/durable-findings.test.ts with a fake
 #                platform. The other 5:
@@ -98,7 +106,7 @@
 #                  (it needs a tmux binary, and Windows has none)
 param(
   [Parameter(Mandatory = $true)][string]$Out,
-  [int]$MaxSkipsBridge = 91,
+  [int]$MaxSkipsBridge = 96,
   [int]$MaxSkipsCli = 41,
   [int]$MaxSkipsScripts = 25
 )
