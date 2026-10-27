@@ -54,7 +54,7 @@ async function world(agents: AgentView[] = [pane("w1:p1", A), pane("w1:p2", B)])
   const cfg = loadConfig({ HOME: base, COLLIE_STATE_DIR: join(base, "state"), COLLIE_HOST: "127.0.0.1" });
   // The registry, disk source, bounded lock scan, reducer, stores and route functions below are the
   // shipped code; only the multiplexer is a stand-in.
-  const journals = buildJournalRegistry({ claude: [], codex: [], pi: [], opencode: [], grok: [], hermes: [], muse: [], openclaw: [], kiro: [root] });
+  const journals = buildJournalRegistry({ claude: [], codex: [], pi: [], opencode: [], grok: [], hermes: [], muse: [], openclaw: [], kiro: [root], "dsh-tui": [] });
   const adapter = adapterFor(journals, "kiro");
   if (adapter === undefined) throw new Error("Kiro must be registered");
   const partial: Partial<StateEngine> = {

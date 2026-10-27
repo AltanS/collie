@@ -12,6 +12,7 @@
 
 import { claudeJournal } from "./claude.ts";
 import { codexJournal } from "./codex.ts";
+import { dshJournal } from "./dsh.ts";
 import { durableJournal } from "./durable.ts";
 import { grokJournal } from "./grok.ts";
 import { hermesJournal } from "./hermes.ts";
@@ -55,6 +56,9 @@ export interface JournalRoots {
    * is not a harness, so `KNOWN_HARNESS_NAMES` (built with no roots) never lists it.
    */
   durable?: readonly string[];
+  /** DeepSeek Harness's `$DSH_HOME/sessions` — `<project>/<session-id>/session.v<N>.jsonl[.zstd]`
+   *  lives under it. The agent is dsh-tui, the TUI that runs on it. */
+  "dsh-tui": readonly string[];
   /** OpenClaw's state folder (`$OPENCLAW_STATE_DIR`, `~/.openclaw`), one SQLite per agent under
    *  `agents/<id>/agent/`. */
   openclaw: readonly string[];
@@ -87,6 +91,7 @@ export function buildJournalRegistry(roots: JournalRoots, catalogs: ModelCatalog
     kiroJournal(roots.kiro),
     museJournal(roots.muse),
     openclawJournal(roots.openclaw),
+    dshJournal(roots["dsh-tui"]),
   ];
   if (roots.durable !== undefined) adapters.push(durableJournal(roots.durable));
   return Object.fromEntries(adapters.map((a) => [a.agent, a]));
@@ -145,12 +150,14 @@ export const DRAWS_IMAGES_OFF_GRID: readonly string[] = ["omp", "pi"];
  * carry a ref and the adapter discovers the log by cwd instead (`JournalAdapter.discover`). OpenClaw
  * reports through a source of its own, which Herdr drops (#401), so its adapter reads the session
  * off the pane's footer. Herdr names no session for a Kiro pane either (kiro-cli 2.32.0, Herdr
- * 0.9.5), so its adapter matches the pane's foreground TUI to the lock it holds. The
+ * 0.9.5), so its adapter matches the pane's foreground TUI to the lock it holds. dsh-tui reports
+ * through a custom source as well, so its adapter asks the kernel which session lock the pane's
+ * foreground process holds. The
  * name list exists for the one consumer that works from names alone: `collie doctor`, whose
  * history section must not advise `herdr integration install` for an agent no hook could ever
  * report. Pinned against the adapters themselves in registry.test.ts, so the two cannot drift.
  */
-export const DISCOVERS_OWN_SESSIONS: readonly string[] = ["muse", "openclaw", "kiro"];
+export const DISCOVERS_OWN_SESSIONS: readonly string[] = ["muse", "openclaw", "kiro", "dsh-tui"];
 
 /**
  * The same pairs as a Map, which is how {@link adapterFor} asks.
@@ -195,5 +202,5 @@ export function journalAgents(registry: Record<string, JournalAdapter>): string[
  * identity off a match against it — see `bridge/mux/types.ts` § `MuxPane.agent`.
  */
 export const KNOWN_HARNESS_NAMES: readonly string[] = journalAgents(
-  buildJournalRegistry({ claude: [], codex: [], pi: [], opencode: [], grok: [], hermes: [], muse: [], openclaw: [], kiro: [] }),
+  buildJournalRegistry({ claude: [], codex: [], pi: [], opencode: [], grok: [], hermes: [], muse: [], openclaw: [], kiro: [], "dsh-tui": [] }),
 );

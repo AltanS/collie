@@ -415,6 +415,7 @@ describe("collie doctor — the contract", () => {
       "herdr-version",
       "integration-claude",
       "integration-codex",
+      "integration-dsh-tui",
       "integration-grok",
       "integration-hermes",
       "integration-kiro",

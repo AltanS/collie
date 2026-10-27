@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **dsh-tui panes get Chat and History.** Collie reads the session log DeepSeek Harness writes under `~/.dsh/sessions` (`$DSH_HOME`, or `dsh_root` / `COLLIE_DSH_ROOT`), compressed or plain: your prompts, replies, reasoning, tool calls with their results, refused approvals, slash commands, finished background jobs and compaction summaries. dsh-tui names no session to Herdr, so on Linux Collie finds it from the session lock the pane's foreground process holds; elsewhere the pane keeps its terminal view. `collie doctor` counts the new root, and the New sheet can start dsh-tui.
+
 ## [1.24.1] - 2026-10-27
 
 **Urgent.** Since 1.22.0 omp panes can refuse, hold or silently lose sends, and a Claude send during a turn can be held or end "may have arrived".

@@ -488,7 +488,7 @@ On a crew (several machines, one phone-facing lead), each machine reads its own 
 a row launches on whichever machine's dashboard or pane you tapped it from, not on the lead.
 
 The **Agent** select on the New page is Collie's own list: Claude Code, Codex, opencode, pi, omp,
-Grok, Hermes, Kiro, Muse and Antigravity. Kiro starts with its tool permissions left as you set
+Grok, Hermes, Kiro, Muse, Antigravity and dsh-TUI. Kiro starts with its tool permissions left as you set
 them. An agent that is not on the machine's login `PATH` stays in the list, disabled, marked "not
 installed". For another terminal agent, declare a row for it as above: it shows in the **Command**
 select under **Shell**, starts in a pane like any command, and Collie shows no status for it.
@@ -1109,6 +1109,13 @@ Kiro needs no Herdr integration either: Herdr names a `kiro-cli` pane agent `kir
 the pane's session by the lock the running Kiro holds in it. Collie reads Kiro V3 sessions, started
 with `--v3` or `--agent-engine v3`, or with V3 set as the engine in Kiro's own settings. A V1 or V2
 session has no Chat or History. Set `kiro_root` when Kiro keeps its sessions somewhere else.
+
+dsh-tui needs no Herdr integration for Chat. It reports its state to Herdr itself, but Herdr does
+not pass its session on, so Collie asks the kernel which session lock (`session.lock`, held with
+`flock`) the pane's foreground dsh process holds, and reads that session's log under
+`$DSH_HOME/sessions`, or `~/.dsh/sessions`, compressed or plain. This works on Linux only, where
+`/proc/locks` lists every lock and who holds it; elsewhere a dsh-tui pane keeps its terminal view.
+Set `dsh_root` when dsh keeps its sessions somewhere else.
 
 `herdr integration status` shows which integrations are installed. A hook is read when the agent
 starts, so an agent that was already running when you installed it needs a restart. Oh My Pi is the
