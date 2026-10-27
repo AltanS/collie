@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-25
-- **Shipped in:** unreleased (1.24.1 candidate)
+- **Shipped in:** 1.24.1
 - **Trail:** issue #594 (follow-up to #544) · the reporter's `collie doctor` row `surface-pi--` (`unknown-outcome 18`,
   `probed 2`, version `-`) · rig runs of 2026-10-25 under `~/.cache/collie-lab/pi-594/` (pi 1.3.0, pi-powerline-footer
   0.20.2, @baggiiiie/pi-context-chart 0.0.5, a goal widget that ticks over the box, a 254-column pane) ·
