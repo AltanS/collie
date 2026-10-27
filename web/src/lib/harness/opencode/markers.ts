@@ -197,7 +197,40 @@ export function isQuestionFooter(text: string): boolean {
   return questionFooter(text) !== null;
 }
 
+// The footer the dialog shows while a free-text input is OPEN, measured on opencode 2.1.1
+// (2026-10-27): `⇆ tab  enter done  esc close`. It has no `esc dismiss`, so no grammar claims the
+// screen — every digit would be typed into the input — but the keyboard is still the dialog's, and
+// the unread-dialog card must stand over it.
+const OPEN_INPUT_FOOTER_ROW = /\benter\s+done\s+esc\s+close$/;
+
+/** True when this row is the footer of an OPEN free-text input on a multi-select question. */
+export function isOpenInputFooter(text: string): boolean {
+  if (!isBarRow(text)) return false;
+  return OPEN_INPUT_FOOTER_ROW.test(rstrip(text).replace(/\s+/g, " "));
+}
+
+// The dialog's own TITLE, painted once at the top of a question dialog by opencode 2.1: a grey
+// `┃  Questions` row above the question paragraph (measured on 2.1.1, 2026-10-27). 1.x had no such
+// row. It is dialog chrome — not the question, not the previous screen — so the grammars treat it
+// as padding and the lifted block replaces it.
+const QUESTION_HEADER = /^\s*┃\s{2}Questions$/;
+
+/** True when this row is opencode 2.1's question-dialog title. */
+export function isQuestionHeader(text: string): boolean {
+  return QUESTION_HEADER.test(rstrip(text));
+}
+
 // The free-text row opencode adds as the LAST numbered row of every list. It is not an option: the
 // model never sent it (QUESTION_NOTES.md, "The journal"). Its label doubles as the placeholder the
 // input row shows once the row is opened.
 export const FREE_TEXT_LABEL = "Type your own answer";
+
+/**
+ * The free-text row's label as the row prints it: the bare label on a single-select step, or
+ * `[ ] Type your own answer` on a multi-select step, where opencode 2.1 gives the row a checkbox of
+ * its own (measured on 2.1.1, 2026-10-27). Null when the label is not the free-text row.
+ */
+export function freeTextLabelOf(label: string): string | null {
+  const bare = label.replace(/^\[[ ✓x]\] /, "");
+  return bare === FREE_TEXT_LABEL ? bare : null;
+}

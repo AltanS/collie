@@ -5,8 +5,8 @@
 //
 // All four shapes share one frame: a bare bar row, the TAB ROW, a bare row, the body, a bare row,
 // the FOOTER, a bare row. The tab row holds one chip per question (its header) and a last chip
-// `Confirm`, the chips two or more spaces apart. The footer's first hint is `⇆ tab`, and its
-// verb says which dialog the active tab is:
+// `Confirm` (`Submit` from opencode 2.1 on), the chips two or more spaces apart. The footer's first
+// hint is `⇆ tab`, and its verb says which dialog the active tab is:
 //
 //     ┃   Colour   Toppings   Size   Confirm        <- the active chip sits on its own background
 //     ┃
@@ -50,6 +50,11 @@
 //   * more than nine options, a numbering that does not run 1..n, no pointer chip or two, and a
 //     Confirm body whose rows are not `Header: value` in tab order.
 //
+// opencode 2.1.1 (2026-10-27, QUESTION_NOTES.md § "Round three") changes the chrome this frame reads:
+// the last chip is `Submit`, the active chip is BOLD on the dialog's background rather than filled,
+// the review body has no `Review` heading, and its `Questions` title sits above the tab row. Each
+// reading tries the 1.x shape first, so the older captures are read exactly as they were.
+//
 // The pointer is read as `question.ts` reads it and never sent: the toggles and the selects are
 // digits. It is still demanded, because zero or two chips means the screen is not one this module
 // understands.
@@ -58,7 +63,7 @@ import type { StyledLine } from "../../blocks";
 import type { MultiPointer, MultiSelectModel, MultiSelectOption } from "../multi-select-model";
 import type { WizardAnswer, WizardModel, WizardOption, WizardStepChip } from "../wizard-model";
 import { backgroundOf } from "./dialog";
-import { FREE_TEXT_LABEL, barDraftText, isBareBar, isBarRow, isOverlayRow, lineText, questionFooter, rstrip } from "./markers";
+import { FREE_TEXT_LABEL, barDraftText, isBareBar, isBarRow, isOverlayRow, isQuestionHeader, lineText, questionFooter, rstrip } from "./markers";
 import {
   MAX_OPTIONS,
   footerBackground,
@@ -86,8 +91,11 @@ const MAX_REGION_ROWS = 26;
 // A tenth question has a tab and no digit-free way to say so, and nothing was measured past three.
 const MAX_QUESTION_TABS = 9;
 
-// The last chip of every tab row, and the heading and the empty value of the Confirm body.
+// The last chip of every tab row (2.1 spells it `Submit`), and the heading and the empty value of
+// the review body.
 const CONFIRM_LABEL = "Confirm";
+const SUBMIT_TAB_LABEL = "Submit";
+const LAST_TAB_LABELS: ReadonlySet<string> = new Set([CONFIRM_LABEL, SUBMIT_TAB_LABEL]);
 const REVIEW_HEADING = "Review";
 const NOT_ANSWERED = "(not answered)";
 
@@ -121,11 +129,13 @@ interface Tab {
   answered: boolean;
 }
 
-/** The head of the dialog: its question, the row the tab row sits on, and whether any
- *  overlay evidence fired while reading it (gates the missing-padding allowance below). */
+/** The head of the dialog: its question, the row the tab row sits on, the row the lifted block
+ *  starts at (2.1's own `Questions` title when it paints one), and whether any overlay evidence
+ *  fired while reading it (gates the missing-padding allowance below). */
 interface Head {
   question: string;
   tabRow: number;
+  startLine: number;
   sawOverlay: boolean;
 }
 
@@ -218,7 +228,7 @@ function detectStep(screen: Screen, checkbox: boolean): QuestionTabsRegion | nul
     current: t.active,
   }));
 
-  const startLine = head.tabRow;
+  const startLine = head.startLine;
   const literal = texts.slice(startLine, footer + 1).join("\n");
 
   if (!checkbox) {
@@ -343,13 +353,18 @@ function detectReview(screen: Screen): QuestionTabsRegion | null {
     }
     const inner = barDraftText(texts[i]!);
     if (inner === null) return null;
-    if (inner.startsWith(" ")) {
+    // The tab row is the first row that parses AS a tab row (2.1 draws it flush at the gutter, 1.x
+    // pads it one cell for the active chip); everything under it is the review body.
+    if (readTabs(screen, i) !== null || inner.startsWith(" ")) {
       tabRow = i;
       break;
     }
     body.unshift(inner.trim());
   }
-  if (tabRow < 0 || !barePaddingAbove(texts, tabRow, sawOverlay)) return null;
+  if (tabRow < 0) return null;
+  // opencode 2.1 paints its own `Questions` title above the tab row; the block replaces it too.
+  const startLine = questionTitleAbove(texts, tabRow, sawOverlay);
+  if (startLine === null || !barePaddingAbove(texts, startLine, sawOverlay)) return null;
 
   const tabs = readTabs(screen, tabRow);
   if (tabs === null) return null;
@@ -357,20 +372,22 @@ function detectReview(screen: Screen): QuestionTabsRegion | null {
   if (!tabs[tabs.length - 1]!.active) return null;
   const questions = tabs.slice(0, -1);
 
-  // `Review`, then one `Header: value` row per question, in tab order. A value that wraps leaves a
-  // row that is not one, and the count fails: refuse rather than read half an answer.
-  if (body[0] !== REVIEW_HEADING || body.length !== questions.length + 1) return null;
+  // One `Header: value` row per question, in tab order. 1.x heads the body with `Review`; 2.1 prints
+  // no such heading (measured on 2.1.1, 2026-10-27). A value that wraps leaves a row that is not
+  // one, and the count fails: refuse rather than read half an answer.
+  const answersBody = body[0] === REVIEW_HEADING ? body.slice(1) : body;
+  if (answersBody.length !== questions.length) return null;
   const answers: WizardAnswer[] = [];
   for (const [i, tab] of questions.entries()) {
     const prefix = `${tab.label}: `;
-    const row = body[i + 1]!;
+    const row = answersBody[i]!;
     if (!row.startsWith(prefix)) return null;
     const answer = row.slice(prefix.length).trim();
     if (answer.length === 0) return null;
     answers.push({ question: tab.label, answer });
   }
   const incomplete = answers.some((a) => a.answer === NOT_ANSWERED);
-  const literal = texts.slice(tabRow, footer + 1).join("\n");
+  const literal = texts.slice(startLine, footer + 1).join("\n");
 
   // Two tabs is one multi-select question: the dialog's own Left goes back to its list. Three or
   // more is a many-question call, and the stepper's Left is already wired for it.
@@ -388,9 +405,16 @@ function detectReview(screen: Screen): QuestionTabsRegion | null {
       signature: literal,
       regionSignature: literal,
     };
-    return { kind: "multi-select", model, startLine: tabRow };
+    return { kind: "multi-select", model, startLine };
   }
-  const steps: WizardStepChip[] = questions.map((t) => ({ label: t.label, answered: t.answered, current: false }));
+  // 2.1 paints no answered ink on a chip, so the review body is where the answer really shows: a
+  // `(not answered)` value names a question with nothing to submit, and any other value names one
+  // with an answer.
+  const steps: WizardStepChip[] = questions.map((t, i) => ({
+    label: t.label,
+    answered: answers[i]!.answer !== NOT_ANSWERED,
+    current: false,
+  }));
   const model: WizardModel = {
     phase: "review",
     steps,
@@ -401,7 +425,7 @@ function detectReview(screen: Screen): QuestionTabsRegion | null {
     cancelLabel: CANCEL_LABEL,
     signature: literal,
   };
-  return { kind: "wizard", model, startLine: tabRow };
+  return { kind: "wizard", model, startLine };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -429,6 +453,9 @@ function locateHead(screen: Screen, firstOption: number): Head | null {
       q--;
       continue;
     }
+    // The tab row is the paragraph's ceiling. 2.1 draws it flush at the bar's gutter (no chip pad),
+    // so it would otherwise read as one more line of the question.
+    if (readTabs(screen, q) !== null) break;
     const inner = isBarRow(texts[q]!) ? barDraftText(texts[q]!) : null;
     if (inner === null) break;
     const shared = stripOverlayShared(inner);
@@ -450,9 +477,33 @@ function locateHead(screen: Screen, firstOption: number): Head | null {
   if (!seenGap && !sawOverlay) return null;
   if (q < 0 || footer - q > MAX_REGION_ROWS) return null;
   const inner = isBarRow(texts[q]!) ? barDraftText(texts[q]!) : null;
-  if (inner === null || !inner.startsWith(" ") || inner.trim().length === 0) return null;
-  if (!barePaddingAbove(texts, q, sawOverlay)) return null;
-  return { question: parts.join(" "), tabRow: q, sawOverlay };
+  if (inner === null || inner.trim().length === 0) return null;
+  // 1.x pads the tab row by one cell (the active chip's fill); 2.1 starts it at the gutter. Either
+  // way the chips are what name the row, so a row that parses as tabs needs no pad — and a 1.x row
+  // that does not parse keeps the old pad rule.
+  if (readTabs(screen, q) === null && !inner.startsWith(" ")) return null;
+  const startLine = questionTitleAbove(texts, q, sawOverlay);
+  if (startLine === null) return null;
+  if (!barePaddingAbove(texts, startLine, sawOverlay)) return null;
+  return { question: parts.join(" "), tabRow: q, startLine, sawOverlay };
+}
+
+/**
+ * The dialog's title row above `row` — opencode 2.1's `┃  Questions` — or `row` itself when there
+ * is none (1.x). The title sits under padding of its own, and the block replaces it along with the
+ * rest of the dialog.
+ */
+function questionTitleAbove(texts: string[], row: number, sawOverlay: boolean): number | null {
+  let q = row - 1;
+  let seen = false;
+  while (q >= 0 && (isBareBar(texts[q]!) || isOverlayRow(texts[q]!))) {
+    seen = true;
+    if (isOverlayRow(texts[q]!)) sawOverlay = true;
+    q--;
+  }
+  if (!seen && !sawOverlay) return null;
+  if (q < 0 || !isQuestionHeader(texts[q]!)) return row;
+  return q;
 }
 
 /** The dialog's top padding: bare bar rows, with overlay rows counting as padding too — they
@@ -474,9 +525,14 @@ function barePaddingAbove(texts: string[], tabRow: number, sawOverlay: boolean):
 
 /**
  * The chips of the tab row, or null when the row is not one: fewer than two chips, more than nine
- * questions, a last chip that is not `Confirm`, a repeated label, no active chip or two, or a chip
- * that is neither bright nor grey. A chip is a run of words one space apart; two or more spaces end
- * it. The active chip is the one whose label is on another background than the footer's.
+ * questions, a last chip that is neither `Confirm` (1.x) nor `Submit` (2.1), a repeated label, no
+ * active chip or two, or a chip that is neither bright nor grey. A chip is a run of words one space
+ * apart; two or more spaces end it.
+ *
+ * The ACTIVE chip is style, read two ways for the same reason the pointer is (`question.ts`): 1.x
+ * inverts it onto another background, while 2.1.1 leaves the background alone and makes it BOLD
+ * (measured 2026-10-27). The background reading wins whenever any chip sits on one, so a 1.x screen
+ * is read exactly as before.
  */
 function readTabs(screen: Screen, tabRow: number): Tab[] | null {
   const { lines, texts, base, inks } = screen;
@@ -491,13 +547,17 @@ function readTabs(screen: Screen, tabRow: number): Tab[] | null {
     found.push({ label: m[0], start: m.index, end: m.index + m[0].length });
   }
   if (found.length < 2 || found.length > MAX_QUESTION_TABS + 1) return null;
-  if (found[found.length - 1]!.label !== CONFIRM_LABEL) return null;
+  if (!LAST_TAB_LABELS.has(found[found.length - 1]!.label)) return null;
   if (new Set(found.map((c) => c.label)).size !== found.length) return null;
+
+  const byBackground = found.map((c) => (backgroundOf(line, c.start, c.end) ?? "") !== base);
+  const activeMarks = byBackground.some(Boolean) ? byBackground : found.map((c) => isBold(line, c.start, c.end));
+  if (activeMarks.filter(Boolean).length !== 1) return null;
 
   const tabs: Tab[] = [];
   for (const [i, c] of found.entries()) {
-    const active = (backgroundOf(line, c.start, c.end) ?? "") !== base;
-    // `Confirm` holds no answer, so its ink says nothing; every question chip's does.
+    const active = activeMarks[i]!;
+    // The last chip holds no answer, so its ink says nothing; every question chip's does.
     if (active || i === found.length - 1) {
       tabs.push({ label: c.label, active, answered: false });
       continue;
@@ -506,8 +566,24 @@ function readTabs(screen: Screen, tabRow: number): Tab[] | null {
     if (ink !== inks.bright && ink !== inks.grey) return null;
     tabs.push({ label: c.label, active, answered: ink === inks.bright });
   }
-  if (tabs.filter((t) => t.active).length !== 1) return null;
   return tabs;
+}
+
+/** True when every visible cell of [start, end) on `line` is bold, and there is one. */
+function isBold(line: StyledLine, start: number, end: number): boolean {
+  let at = 0;
+  let seen = false;
+  for (const seg of line.segments) {
+    const from = Math.max(at, start);
+    const to = Math.min(at + seg.text.length, end);
+    if (to > from && seg.text.slice(from - at, to - at).trim().length > 0) {
+      if (seg.bold !== true) return false;
+      seen = true;
+    }
+    at += seg.text.length;
+    if (at >= end) break;
+  }
+  return seen;
 }
 
 /** The first and last column of the text on a bar row (past the bar and its gutter), or null when

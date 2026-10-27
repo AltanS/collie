@@ -2443,6 +2443,29 @@ The last seven rows were captured on opencode 1.18.34, the rest of this corpus o
 `QUESTION_NOTES.md`). Each of the seven was checked for user and host names, home paths, tokens and
 session ids and holds only probe strings and the model name.
 
+## opencode 2.1 question corpus (captured 2026-10-27, opencode 2.1.1, throwaway tmux pane)
+
+Captures of the same `question` tool dialog on **opencode 2.1.1**, in a throwaway tmux session at
+120 by 40, `OPENCODE_DISABLE_AUTOUPDATE=1`, with the prompts sent by hand. Read with
+`tmux capture-pane -p -e`. Byte-faithful; the only text above the dialog is the probe prompts and
+the model's own short replies. The differences from 1.18 are measured in
+`web/src/lib/harness/opencode/QUESTION_NOTES.md` → "Round three": a `Questions` title row, the
+pointer painted as an accent ink rather than a chip, `Submit` in place of `Confirm`, a bold active
+chip, a review body with no `Review` heading, and a checkbox on the free-text row.
+
+| Fixture | State / what's in it | Herdr status |
+| --- | --- | --- |
+| `oc--v211-question--single.txt` | One single-select question, `Which colour?`, three options with descriptions plus `4. Type your own answer`, `Questions` title above, pointer (accent ink on the digit and label) on `1. Red`, footer `↑↓ select  enter submit  esc dismiss` | not read |
+| `oc--v211-question--single--moved.txt` | After one `Down`: the accent ink is on `2. Green`, nothing else changed | not read |
+| `oc--v211-question--multi.txt` | One multi-select question, four options: tab bar `Toppings  Submit`, `[ ]` boxes, the free-text row reads `5. [ ] Type your own answer`, footer `⇆ tab  ↑↓ select  enter toggle  esc dismiss` | not read |
+| `oc--v211-question--multi--toggled.txt` | After `Enter` on `1. [ ] Ham` and one `Down`: `1. [✓] Ham` (accent box, bright label, grey digit) and the pointer's accent ink on `2. Olives` | not read |
+| `oc--v211-question--multi--review.txt` | The `Submit` tab of a lone multi call: `Toppings: Ham, extra` with no `Review` heading, footer `⇆ tab  enter submit  esc dismiss` | not read |
+| `oc--v211-question--two.txt` | Two questions in one call: tab bar `Colour  Size  Submit`, `Colour` active (bold), footer `⇆ tab  ↑↓ select  enter confirm  esc dismiss` | not read |
+| `oc--v211-question--two--answered.txt` | Back on `Colour` after answering it: `1. Red ✓`, the pointer on it, `Size` still unanswered | not read |
+| `oc--v211-question--two--review.txt` | The `Submit` tab with both answered: `Colour: Red` and `Size: Small` on consecutive rows, no `Review` heading | not read |
+| `oc--v211-question--multi--free-text.txt` | The free-text input OPEN: the row reads `5. [✓] <typed>`, the list's footer gives way to `⇆ tab  enter done  esc close`. Stays raw; the card with Escape covers it | not read |
+
+
 ## Claude Code box table with a VS16 emoji (captured 2026-10-13, Claude Code 2.1.296, herdr 0.9.0, sandbox pane)
 
 One `format:ansi` read of a sandbox Claude asked to echo a markdown table, cut to the reply's eleven
