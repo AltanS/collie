@@ -6,7 +6,7 @@
     "solo": {
       "model": "openrouter/anthropic/claude-haiku-4.5",
       "skill": "48a9501916764efa",
-      "recordedAt": "2026-10-26T09:02:37.609Z",
+      "recordedAt": "2026-10-28T08:51:25.491Z",
       "cases": [
         "claude.walky-broadcast",
         "pi.load-older",
@@ -18,9 +18,16 @@
         "pi.walky-agents",
         "pi.walky-busy",
         "pi.walky-operator"
-      ],
-      "failed": [
-        "pi.walky-agents"
+      ]
+    },
+    "crew": {
+      "model": "openrouter/anthropic/claude-haiku-4.5",
+      "skill": "48a9501916764efa",
+      "recordedAt": "2026-10-28T08:54:26.108Z",
+      "cases": [
+        "claude.walky-crew-agents",
+        "claude.walky-crew-broadcast",
+        "claude.walky-crew-member-to-lead"
       ]
     }
   }
