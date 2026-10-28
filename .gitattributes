@@ -1,3 +1,8 @@
+# Captured fixtures are read raw (readFileSync) and compared byte for byte, so they stay byte-exact on
+# every platform. A CRLF checkout puts `\r` on every row and the Surface tests (clear-all, protocol)
+# fail. GitHub's windows.yml sets core.autocrlf=false before checkout; a contributor's own Windows
+# checkout (Git for Windows defaults to autocrlf=true) does not, so the attribute carries it.
+
 # TypeScript sources are text, always. multi-select-action.ts uses a NUL as a map-key separator, and
 # a single such byte makes git classify the whole file as binary — which silently hid every change to
 # the race guard from `git show` and from PR review. The byte is now a source escape, but this keeps
@@ -20,3 +25,13 @@ cli/skills/*.md text eol=lf
 
 # Recorded model streams of the browser leg (M67): fixtures, never reviewed line by line.
 web/e2e/rig/cassettes/**/*.jsonl linguist-generated=true
+
+# Terminal screens, session logs and recorded tool output that tests read raw. The rule is per folder,
+# never `* -text`: sources and docs keep normal handling.
+web/src/fixtures/** -text
+bridge/surface/fixtures/** -text
+bridge/journal/fixtures/** -text
+bridge/fixtures/** -text
+bridge/mux/herdr/captures/** -text
+bridge/mux/tern/captures/** -text
+bridge/mux/durable/fixtures/** -text
