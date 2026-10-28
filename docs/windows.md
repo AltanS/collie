@@ -51,12 +51,12 @@ You need these:
 - **Windows 11 on x64.** WSL is not Windows here. Inside WSL, follow the Linux install in
   [Install](install.md).
 - **PowerShell.** The Windows PowerShell 5.1 that comes with Windows 11 is enough.
-- **Herdr 0.9.3 or newer for Windows.** Step 2 below installs it. The Herdr project makes its
+- **Herdr 0.9.3 or newer for Windows.** Step 3 of Zero to phone installs it. The Herdr project makes its
   Windows build, and Collie depends on it.
 - **A phone** with a browser, an iPhone or an Android phone.
 - **A free Tailscale account.** You create it when you first sign in to the Tailscale app. The PC
-  and the phone must sign in to the same one. The phone reaches the PC through it. Step 1 installs
-  it, and step 7 publishes Collie on it.
+  and the phone must sign in to the same one. The phone reaches the PC through it. Steps 1 and 2
+  of Zero to phone set it up, and step 7 publishes Collie on it.
 
 Check whether Smart App Control is on, because it can block `collie.exe`. Open Windows Security,
 then **App & browser control**, then **Smart App Control settings**. It has three states:
@@ -72,95 +72,49 @@ lists your choices.
 
 ## Zero to phone
 
-Follow these steps in order. After the list, you find what you should see after each step. To read
-the installer script before you run it, see [Install](#install).
+The step list lives in one place: the [Windows path in the guide](five-minute-install.md#windows).
+Follow its steps in order, then pair the phone with
+[Put Collie on your phone and pair it](five-minute-install.md#put-collie-on-your-phone-and-pair-it).
+To read the installer script before you run it, see [Install](#install).
 
-1. Install Tailscale on the PC and on the phone, sign in to the same account on both, then turn on
-   MagicDNS and select **Enable HTTPS** in the [admin console](https://login.tailscale.com/admin/dns):
-   [tailscale.com/download](https://tailscale.com/download).
-
-2. Install Herdr with its own installer, then check the version:
-
-   ```powershell
-   irm https://herdr.dev/install.ps1 | iex
-   herdr --version
-   ```
-
-3. Install Collie with its installer:
-
-   ```powershell
-   irm https://colliepwa.dev/install.ps1 | iex
-   ```
-
-4. Open a NEW terminal, start Herdr there, and leave it open:
-
-   ```powershell
-   herdr
-   ```
-
-5. Open a second terminal, or a new Herdr pane, then start Collie and print its address:
-
-   ```powershell
-   collie start
-   collie url
-   ```
-
-6. In a Herdr pane, start your agent, for example Claude Code:
-
-   ```powershell
-   claude
-   ```
-
-7. Publish Collie on your tailnet with [Reaching it from your phone](#reaching-it-from-your-phone),
-   which the project ran over HTTP only on Windows. Collie answers no device until you pair one.
-
-8. On the phone, open the address and add Collie to the home screen, as shown in
-   [Open it on your phone](#open-it-on-your-phone):
-
-   ```powershell
-   collie qr
-   ```
-
-9. Pair the phone by running this on the PC:
-
-   ```powershell
-   collie pair
-   ```
-
-What you should see after each step:
+What you should see after each step of the guide:
 
 1. The Tailscale app on the PC and on the phone shows both devices on one tailnet. Over plain
-   HTTP, which a Headscale tailnet uses, the home screen install in step 8 is not available, and
-   Collie stays a browser tab.
-2. Herdr prints its installer output. `herdr --version` prints 0.9.3 or newer. This page has no
+   HTTP, which a Headscale tailnet uses, the home screen install is not available, and Collie
+   stays a browser tab.
+2. The admin console shows MagicDNS on and HTTPS enabled.
+3. Herdr prints its installer output. `herdr --version` prints 0.9.3 or newer. This page has no
    Herdr command of its own, because the Herdr project owns the installer. If this one fails, open
    [herdr.dev](https://herdr.dev) and follow its Windows steps.
-3. The script prints each step. It ends with a line that starts with `OK  Collie` and a list of next
+4. The script prints each step. It ends with a line that starts with `OK  Collie` and a list of next
    steps, which begins with `Next steps. This script does not take them for you:`, then
    `1. Open a NEW terminal window.` and `3. Start Collie, then print its address:`. To read the
    script first, see [Install](#install).
 
    No service starts and nothing stays running. The script runs `collie.exe version` once, to check
    that Windows lets it run, and that is all.
-4. Herdr opens and takes over that terminal. A new terminal is needed because Windows gives the new
+5. Herdr opens and takes over that terminal. A new terminal is needed because Windows gives the new
    PATH only to windows opened after the install.
-5. A second terminal is needed because Herdr holds the first one. `collie start` prints the
+6. A second terminal is needed because Herdr holds the first one. `collie start` prints the
    **Collie is running** banner and a note that Collie publishes no front door here. A front door is
    the HTTPS address in front of Collie that your phone opens. That note is
-   expected on Windows: step 7 does that part by hand. If Tailscale is not signed in on the PC, it
-   also prints this line on stderr: `error: 'tailscale status' named no host for this node`. Sign
+   expected on Windows: steps 7 to 10 do that part by hand. If Tailscale is not signed in on the PC,
+   it also prints this line on stderr: `error: 'tailscale status' named no host for this node`. Sign
    in (step 1), and the line goes away. If it stays, run `tailscale status` and check that it
-   lists this PC.
-6. Your agent starts in the pane. Collie shows it on its dashboard.
-7. `tailscale serve status` shows your tailnet address, and `collie url` prints it. Before this
-   step, `collie url` may print a loopback address (`127.0.0.1`), an address that only this PC can
-   open. You can open that one in a browser on this PC to see the dashboard.
-8. `collie qr` prints the address as a QR code. Scan it with the phone camera, or type the address
-   in. The phone shows Collie and asks you to pair it.
-9. `collie pair` prints a code of eight characters, then a line like `single-use · expires
-   <time> (10 minutes)`, then a QR code. Type the code into Collie on the phone, in the app you
-   opened from the home screen. Then the phone is paired, and the dashboard shows your panes.
-   Panes that wait for you come first.
+   lists this PC. Start your agent in a Herdr pane, for example `claude`. Collie shows it on its
+   dashboard.
+7. `tailscale serve status` shows your tailnet address. Before this step, `collie url` may print a
+   loopback address (`127.0.0.1`), an address that only this PC can open. You can open that one in
+   a browser on this PC to see the dashboard.
+8. Notepad opens `.env`, or offers to create it. Click **Yes**.
+9. The file holds the two lines, with the name from step 7.
+10. `collie url` prints the tailnet address. [Reaching it from your phone](#reaching-it-from-your-phone)
+    has the detail for steps 7 to 10.
+
+After step 10, go on with the guide's phone section. There, `collie qr` prints the address as a QR
+code, and `collie pair` prints a code of eight characters, then a line like `single-use · expires
+<time> (10 minutes)`. When the phone is paired, the dashboard shows your panes. Panes that wait for
+you come first.
 
 ## Install
 
@@ -218,8 +172,9 @@ door is not asked: its only door is mutual TLS.
 
 ## Reaching it from your phone
 
-Step 7 of Zero to phone, in full. These are the same steps as on Linux and macOS, done by hand.
-If you did step 1 of Zero to phone, Tailscale is already set up: start at step 3 below.
+Steps 7 to 10 of Zero to phone, in full. These are the same steps as on Linux and macOS, done by
+hand. If you did steps 1 and 2 of Zero to phone, Tailscale is already set up: start at step 3
+below.
 The project ran them once on Windows, over HTTP, on a Headscale tailnet (Headscale is a self-hosted
 Tailscale server), with a desktop browser at phone size. The HTTPS form below was not run, and no
 real phone or agent was used. If a step fails, report it ([where](#when-something-breaks)).
@@ -323,25 +278,19 @@ prompt, because Collie listens on this machine only.
 
 ### Open it on your phone
 
-1. Run `collie qr` on the PC and scan the code with the phone camera, or type in the address
-   from `collie url`. On an iPhone, open it in Safari. On an Android phone, open it in Chrome. The
-   phone needs the Tailscale app, signed in to your tailnet.
-2. Add Collie to the home screen, so that it opens full screen like an app:
-   - **iPhone:** in Safari, tap **Share**, tap **Add to Home Screen**, then tap **Add**.
-   - **Android:** in Chrome, open Collie **Settings** and tap **Install** on the top card.
-3. Open Collie from the new icon.
-4. In the app, open **Settings**, then **System**, then **Paired devices**.
-5. Run `collie pair` on the PC, type the code and a name, then tap **Pair this device**.
+The steps are the same as on every system:
+[Put Collie on your phone and pair it](five-minute-install.md#put-collie-on-your-phone-and-pair-it).
+These notes are the Windows part.
 
-Over plain HTTP, steps 2 and 3 are not available, because the home screen install needs HTTPS.
-Pair in the browser tab instead.
-
-With HTTPS, type the code in the app that you opened from the icon. Do not scan the QR code that `collie pair`
-prints: the camera opens it in a browser tab, and on an iPhone the home screen app keeps its own
-storage, separate from Safari, so a pairing made in the tab does not carry over.
-
-The code is good for 10 minutes and works once. Run `collie pair` again if it ran out. Pairing ends the open access in the Caution above
-([Pair a device](security.md#pair-a-device--the-write-credential)).
+- **Over plain HTTP,** the home screen install is not available, because it needs HTTPS. Pair in
+  the browser tab instead.
+- **With HTTPS,** type the code in the app that you opened from the icon, as the guide says.
+- **The phone needs the Tailscale app,** signed in to your tailnet, to reach the address that
+  `collie url` prints.
+- **The code is good for 10 minutes and works once.** Run `collie pair` again if it ran out.
+  Pairing ends the open access in the Note at the top of
+  [Reaching it from your phone](#reaching-it-from-your-phone)
+  ([Pair a device](security.md#pair-a-device--the-write-credential)).
 
 ## Everyday commands
 

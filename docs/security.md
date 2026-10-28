@@ -23,8 +23,9 @@ bin/collie pair
 
 Pairing is always on, and reads need the pairing token as well as writes. Until a device is
 paired, Collie answers every phone and browser with `403 device not paired`. Open Collie on the
-phone first. On an iPhone, add it to the home screen and open it from the icon, because the home
-screen app keeps its own storage, separate from Safari. Then run `collie pair` on the host.
+phone first, in the home screen app, because that app keeps its own storage, separate from Safari.
+Then run `collie pair` on the host. The steps are in
+[Put Collie on your phone and pair it](five-minute-install.md#put-collie-on-your-phone-and-pair-it).
 
 In Collie, go to **Settings** → **System** → **Paired devices**, and enter the code with a label
 for the device. On a desktop, you can instead scan or open the QR code printed by the command,
