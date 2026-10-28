@@ -4,9 +4,11 @@ This guide sets up Collie on your phone. Install three tools on your computer, s
 and pair your phone.
 
 It uses the recommended setup: Tailscale as the front door, Herdr as the multiplexer, and the
-install script. For other setups, see [Install](install.md).
+install script.
 
 Pick your system: [macOS](#macos) · [Linux](#linux) · [Windows](#windows).
+
+Other ways to install (Arch, Nix, Herdr plugin, from source): [Install](install.md#install).
 
 > **Note.** Collie gives remote shell access to your machine by design. Read
 > [Security](security.md) before you install it.
@@ -27,7 +29,12 @@ phone on one private network, your tailnet. Collie is reachable only on that net
 Install Tailscale and Herdr, install Collie, and start it. Run the commands in Terminal.
 
 1. Install Tailscale from [tailscale.com/download](https://tailscale.com/download), sign in, and
-   install the `tailscale` command from the app settings.
+   install the `tailscale` command from the app settings, then check that the command works.
+
+   ```bash
+   tailscale version
+   ```
+
 2. Install the Tailscale app on your phone and sign in with the same account.
 3. Open the [admin console](https://login.tailscale.com/admin/dns) and select **Enable HTTPS**.
 4. Install Herdr.
@@ -48,7 +55,8 @@ Install Tailscale and Herdr, install Collie, and start it. Run the commands in T
    curl -fsSL https://colliepwa.dev/install.sh | sh
    ```
 
-7. If your shell cannot find `collie`, add `~/.local/bin` to your PATH and open a new terminal.
+7. Run `collie version`. If it prints a version, skip this step. Otherwise add `~/.local/bin` to
+   your PATH and open a new terminal.
 
    ```bash
    echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
@@ -100,7 +108,8 @@ Install Tailscale and Herdr, install Collie, and start it. Run the commands in a
    curl -fsSL https://colliepwa.dev/install.sh | sh
    ```
 
-7. If your shell cannot find `collie`, add `~/.local/bin` to your PATH and open a new terminal.
+7. Run `collie version`. If it prints a version, skip this step. Otherwise add `~/.local/bin` to
+   your PATH and open a new terminal.
 
    ```bash
    echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
@@ -193,24 +202,28 @@ collie qr
    - **iPhone:** in Safari, tap **Share**, tap **Add to Home Screen**, and tap **Add**.
    - **Android:** in Chrome, open Collie **Settings** and tap **Install** on the top card.
 3. Open Collie from the new icon.
-4. On the host, print an 8-character code, valid for 10 minutes.
+
+> **Note.** Pair inside the home screen app, not in the browser tab. On an iPhone, the home screen
+> app keeps its own storage, separate from Safari, so a pairing made in Safari does not carry over.
+
+1. On the host, print an 8-character code, valid for 10 minutes.
 
    ```bash
    collie pair
    ```
 
-5. In Collie, open **Settings → System → Paired devices**.
-6. Enter the code and a name, for example `my phone`, and tap **Pair this device**.
+2. In Collie, open **Settings → System → Paired devices**.
+3. Enter the code and a name, for example `my phone`, and tap **Pair this device**.
 
-Pair inside the home screen app, not in the browser tab. On an iPhone, the home screen app keeps
-its own storage, separate from Safari. A pairing made in Safari does not carry over.
-
-Collie answers no device until it is paired: before step 6, the dashboard shows **Pair this
+Collie answers no device until it is paired: before step 3, the dashboard shows **Pair this
 device** and no panes. Only paired devices can read or type into your panes. On a tailnet shared
 with other people, also set `COLLIE_TRUSTED_USER` ([Configure](configure.md#configure)).
 
 The dashboard lists your Herdr panes. Panes waiting for input appear first. Tap a pane to
 view output and reply.
+
+If the phone shows nothing or cannot connect, run `collie doctor` on the host: it names what is
+missing.
 
 ## Next steps
 
