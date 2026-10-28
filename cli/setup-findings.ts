@@ -16,7 +16,13 @@ import { classifyLink, linkDir, linkPath, type LinkReader } from "./link.ts";
 import { explicitMux, probeMuxes, refusedMux, type MuxSighting } from "./mux.ts";
 import { crewModeOnDisk } from "./serve.ts";
 import type { Exec, Files } from "./sys.ts";
-import { certDomains, HTTPS_DISABLED_HINT, NO_CERTIFICATES_HTTP_HINT, selfDnsName } from "./tailnet.ts";
+import {
+  certDomains,
+  HTTPS_DISABLED_HINT,
+  NO_CERTIFICATES_HTTP_HINT,
+  selfDnsName,
+  TAILSCALE_PROBE_MS,
+} from "./tailnet.ts";
 
 // The setup check: what a machine needs before `collie start` can put Collie on a phone, in words an
 // operator who never read the docs understands. `collie start` prints the rows that are not fine,
@@ -57,8 +63,8 @@ export interface SetupDeps {
 /** What the multiplexer check reads. */
 export type MuxDeps = Pick<SetupDeps, "ctx" | "exec" | "files">;
 
-/** How long one `tailscale` call may take before it reads as "did not answer". */
-export const TAILSCALE_PROBE_MS = 3000;
+// Defined in `./tailnet.ts` (the doctor and `url` paths bound their calls with it too).
+export { TAILSCALE_PROBE_MS };
 
 /**
  * Every setup row, in the order `start` prints them: the three Tailscale rows (two off Linux), then

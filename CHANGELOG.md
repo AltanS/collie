@@ -41,6 +41,13 @@ Running a crew? Update the lead first; members follow on their own. Details:
   removed by `collie uninstall` or `collie unserve` like any mapping Collie recorded. `COLLIE_PUBLIC_HOSTS`
   and `COLLIE_PUBLIC_URL` are no longer needed for the default setup.
 
+### Fixed
+
+- **Collie never waits on a stuck Tailscale.** Every `tailscale` call the CLI makes is bounded to
+  three seconds inside Collie itself. Before, the ACL probe went through an external `timeout`
+  command, which on Windows is a wait command, so `collie start` and `collie doctor` could stall or
+  skip the check.
+
 ### Docs
 
 - **A docs fix can reach colliepwa.dev before the next release.** A branch `docs/<tag>`, named for the
