@@ -9,19 +9,13 @@
       "recordedAt": "2026-10-28T08:51:07.622Z",
       "cases": [
         "claude.walky-broadcast",
-        "claude.walky-busy",
         "omp.load-older",
         "omp.permission",
         "omp.pick-many",
-        "omp.picker",
         "omp.queued-omp",
         "omp.stream-send",
         "omp.walky-busy",
         "omp.walky-operator"
-      ],
-      "failed": [
-        "claude.walky-busy",
-        "omp.picker"
       ]
     }
   }
