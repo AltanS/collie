@@ -27,6 +27,35 @@ The input box uses a standard text field compatible with system voice dictation.
 includes built-in [voice input](./docs/voice-and-push.md#voice-input-optional) that remains disabled
 until explicitly configured.
 
+## Get it on your phone in 3 steps
+
+You need [Tailscale](https://tailscale.com) on your computer and your phone, and
+[Herdr](https://herdr.dev) (or tmux or zellij, experimental) running on your computer. New to
+either? **[Install in five minutes](./docs/five-minute-install.md)** has one path per system. On
+Windows, follow [Install in five minutes → Windows](./docs/five-minute-install.md#windows).
+
+**1. Install** on your computer (no `sudo`, checksum-verified):
+
+```bash
+curl -fsSL https://colliepwa.dev/install.sh | sh
+```
+
+**2. Start** it on your tailnet:
+
+```bash
+COLLIE_MUX=herdr collie start          # or: tmux, zellij
+```
+
+**3. Pair your phone.** Run `collie qr` and scan it. Add Collie to your home screen and open it from
+the icon. Then run `collie pair` and type the code under **Settings → System → Paired devices**.
+
+That's it: agents waiting on you show up first. Tap one to reply.
+
+> Collie is remote shell access to your machine. Keep it on your tailnet (`tailscale serve`, never
+> `funnel`) and read [Security](#security--read-this-first) before you run it.
+
+Prefer to have your agent do it? Ask it to run `collie skill` and follow the brief.
+
 **Features**
 
 - **React Router + Vite** with TypeScript, Tailwind, shadcn, and a Bun bridge
@@ -122,10 +151,10 @@ curl -fsSL https://colliepwa.dev/install.sh | sh
 ```
 
 The script downloads the latest release for your platform, verifies the sha256 checksum, installs
-the files, and puts `collie` on your PATH. It then prints the remaining manual steps: seed a config,
-then run `collie start`. You do not need to specify a multiplexer ahead of time. On its first run,
-`collie start` detects Herdr, tmux, and zellij, then prompts for your choice. If you prefer to build
-from source, **[`docs/install.md`](./docs/install.md)** covers manual builds, each system and
+the files, and puts `collie` on your PATH. It then prints the remaining steps, the same as
+[Get it on your phone in 3 steps](#get-it-on-your-phone-in-3-steps). Without `COLLIE_MUX`,
+`collie start` in a terminal detects Herdr, tmux, and zellij, then prompts for your choice. If you
+prefer to build from source, **[`docs/install.md`](./docs/install.md)** covers manual builds, each system and
 package, Herdr routes, and adding Collie to the home screen of an iPhone or Android phone.
 
 ColliePWA is not in the App Store or Google Play. You add it to your home screen from the browser,
