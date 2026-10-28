@@ -23,6 +23,16 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Docs
+
+- **A docs fix can reach colliepwa.dev before the next release.** A branch `docs/<tag>`, named for the
+  newest release tag, carries docs-only commits, and the website quotes it in place of the tag until
+  the next release is tagged. `bun scripts/docs-line.ts <commit>...` cherry-picks the commits onto it
+  with `-x` and pushes it. It refuses a commit that touches a path outside `docs/` and `README.md`,
+  checks that the tag is an ancestor of the result, and lists older `docs/v*` branches with the
+  command to delete each one. A push to the branch asks the website to re-sync, and its daily run
+  picks the branch up too.
+
 ## [1.24.2] - 2026-10-28
 
 **Urgent.** A slow disk could end a send "typed, not submitted". Also fixed: slash commands under a live widget, pi on WSL, the Update tap.
