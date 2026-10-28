@@ -3320,6 +3320,13 @@ extension's eight-row widget over the editor ticks its top row every 100 ms, sev
 | `codex--v0-163-0-welcome-idle.txt` | `idle` | A fresh Codex: the header, the braille welcome picture, the empty box |
 | `codex--v0-163-0-welcome-slash-status.txt` | `popup` | The same with `/status` typed: the picture's rows went blank and the command list stands over the box. A command here was left typed (`changed`) until its S1 compare took `idle.volatile.above.losesText` |
 
+A Codex 0.163.0 idle footer with a warning (captured 2026-10-28 in Collie's rig; in `fixtures/surface/`; plain text, so the empty box's placeholder carries no faint paint, and the cwd became `~/project`). The footer row reads `? for shortcuts` and, after wide spacing, `⚠ 1 warning · f2 to view`. A command sent in a turn was refused `probe_failed` ("The probe character changed more than the box") until `idle.volatile.below.hints` took that trailing segment, because the footer then becomes `tab to queue message`.
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `codex--v0-163-0-idle-warning.txt` | `idle` | A turn's `Waiting for background terminal` row over the empty box; the footer row carries the warning segment |
+| `codex--v0-163-0-in-turn-probe.txt` | `idle` | The same screen with the probe character typed: `› ⌁`, and the footer row now `tab to queue message` |
+
 A pasted box drawing in the draft (gang three, 01-regression W1, same date and versions; in `fixtures/surface/`; the rows keep their padding to 120 columns, which is what tells the person's `│` from a border):
 
 | Fixture | State | What it shows |

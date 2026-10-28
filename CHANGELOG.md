@@ -30,6 +30,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **A slash command sent from the phone during a Codex turn is no longer refused.** Codex 0.163.0 can draw a warning segment after wide spacing on its idle footer row (`? for shortcuts` then `⚠ 1 warning · f2 to view`). Collie did not know that row as a hint, so when the footer became `tab to queue message` in the turn, the send read it as a change outside the box and ended "The probe character changed more than the box". The Codex profile now accepts the trailing segment on both `? for shortcuts` hint rows.
 - **On a host with a named instance, the Update tap could update the default instance instead.** The
   phone's updater ran without the instance keys and took the default service, moved its checkout and
   rewrote its unit. The updater now carries `COLLIE_INSTANCE`, `COLLIE_MUX` and `COLLIE_CONFIG_DIR`, as

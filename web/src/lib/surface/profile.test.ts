@@ -324,6 +324,19 @@ describe("the codex profile (M56 spec 13)", () => {
     expect(hints.some((hint) => hint.test("  GPT-6-Luna low · ~/project"))).toBe(false);
   });
 
+  it("codex: the footer hint takes a trailing segment after wide spacing, such as the warning count (lab, 0.163.0, 2026-10-28)", () => {
+    const codex = parseProfile(rawCodex());
+    const hints = codex.idle.volatile.below.hints!.map((source) => new RegExp(source, "u"));
+    const isHint = (row: string): boolean => hints.some((hint) => hint.test(row));
+    expect(isHint("  ? for shortcuts" + " ".repeat(94) + "⚠ 1 warning · f2 to view")).toBe(true);
+    expect(isHint("  ← for agents · ? for shortcuts" + " ".repeat(60) + "⚠ 2 warnings · f2 to view")).toBe(true);
+    // One space is no wide spacing, and a row that only begins with the words is not the hint.
+    expect(isHint("  ? for shortcuts now")).toBe(false);
+    expect(isHint("  ? for shortcuts, and more")).toBe(false);
+    // The in-turn hint keeps its strict shape.
+    expect(isHint("  tab to queue message  ⚠ 1 warning")).toBe(false);
+  });
+
   it("codex: the running rows take the queued-message hint Codex 0.163.0 draws in a turn", () => {
     const signs = parseProfile(rawCodex()).idle.runningRows!.map((source) => new RegExp(source, "u"));
     expect(signs.some((sign) => sign.test("  shift+← edit last queued message"))).toBe(true);

@@ -10180,6 +10180,40 @@ describe("a send's profile is read for its pane", () => {
   });
 });
 
+describe("a command into a Codex 0.163.0 turn whose idle footer carries a warning segment (lab, 2026-10-28)", () => {
+  // The footer row is `? for shortcuts` with `⚠ 1 warning · f2 to view` after wide spacing; a turn swaps it for `tab to queue message`.
+  /** The idle capture while the box is empty; the capture with the probe typed, its box row redrawn, once it holds text. */
+  const inTurn = (): FakePane => {
+    // The lab capture is plain text: the empty box's placeholder gets the faint paint Codex draws it in (`idle.placeholders.sgr`).
+    const idle = surfaceFixture("codex--v0-163-0-idle-warning.txt")
+      .replace("› Ask Codex to do anything", "\u001b[1m›\u001b[0m \u001b[2mAsk Codex to do anything\u001b[0m")
+      .split("\n");
+    const typed = surfaceFixture("codex--v0-163-0-in-turn-probe.txt").split("\n");
+    const at = typed.findLastIndex((row) => row.startsWith("› "));
+    const pane = new FakePane("codex");
+    pane.render = () => (pane.box === "" ? idle : typed.map((row, i) => (i === at ? `› ${pane.box}` : row))).join("\r\n");
+    return pane;
+  };
+  /** The Codex profile as it was before the footer hint took a trailing segment. */
+  const strictHint = (profile: Profile): Profile => ({
+    ...profile,
+    idle: { ...profile.idle, volatile: { ...profile.idle.volatile, below: { ...profile.idle.volatile.below, hints: ["^\\s*← for agents · \\? for shortcuts$", "^\\s*\\? for shortcuts$", "^\\s*[Tt]ab to queue message$"] } } },
+  });
+
+  test("the probe passes: the footer row only changed from one hint to another, so the command is not refused probe_failed", async () => {
+    const pane = inTurn();
+    const answer = await rig({ pane, harness: "codex", version: "0.163.0" }).send("/status", { mode: "command" });
+    expect(answer.receipt).not.toMatchObject({ outcome: "refused", reason: "probe_failed" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+  });
+
+  test("without the trailing segment in the hint the warning row counts as a screen that moved, and the command is refused probe_failed, as it was live", async () => {
+    const pane = inTurn();
+    const answer = await rig({ pane, harness: "codex", version: "0.163.0", edit: strictHint }).send("/status", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed" });
+  });
+});
+
 describe("a command on a fresh Codex 0.163.0 screen, whose welcome picture hides once the box holds text (rig, 2026-10-28)", () => {
   // eslint-disable-next-line no-control-regex
   const plain = (row: string): string => row.replace(/\u001b\[[0-9;:?]*[ -/]*[@-~]/gu, "");
