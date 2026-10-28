@@ -14,7 +14,7 @@ const FIXTURE = readFileSync(FIXTURE_PATH, "utf8");
 const ROWS = FIXTURE.split("\n").filter((row) => row !== "");
 const ID = "3f6c2a9e-1b7d-4c55-9e0a-6d2f8b4a7c11";
 
-const scratch = realpathSync(mkdtempSync(join(tmpdir(), "collie-dsh-")));
+const scratch = realpathSync.native(mkdtempSync(join(tmpdir(), "collie-dsh-")));
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 let made = 0;
 
