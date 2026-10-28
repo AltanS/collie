@@ -1,6 +1,6 @@
 import { forwardRef, useContext, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import type { ChangeEvent, ClipboardEvent, CSSProperties, ReactNode } from "react";
+import type { ChangeEvent, ClipboardEvent, CSSProperties, MouseEvent, ReactNode } from "react";
 import { useRevalidator } from "react-router";
 import { Check, FileText, Image, Keyboard, ListEnd, ListTodo, Loader2, Mic, Monitor, Navigation, Paperclip, Pencil, Send, Settings2, Slash, Square, Terminal, TriangleAlert, X, Zap } from "lucide-react";
 
@@ -995,6 +995,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const blockPad = composing ? "pb-2" : "pb-[calc(env(safe-area-inset-bottom)_+_0.5rem)]";
   const blockRef = useRef<HTMLDivElement>(null);
   const openedByKeyboard = useRef(false);
+  // Which mic opened the takeover, so focus returns to that button: the round primary one on an empty
+  // box, or the small one beside Attach while the box holds a draft.
+  const micOpener = useRef<"primary" | "draft">("primary");
   // When the takeover goes away, focus goes back to the round button at the end of the row (the mic,
   // or Send once a transcript landed), but only if focus was on the takeover or nowhere: a pane
   // switch that moved focus elsewhere is not ours to take back.
@@ -1015,7 +1018,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     let frame = 0;
     let frames = 0;
     const settle = () => {
-      const target = blockRef.current?.querySelector<HTMLElement>('[data-slot="composer-primary"]');
+      const block = blockRef.current;
+      const target =
+        (micOpener.current === "draft"
+          ? block?.querySelector<HTMLElement>('[data-slot="composer-mic-draft"]')
+          : null) ?? block?.querySelector<HTMLElement>('[data-slot="composer-primary"]');
       if (!target) return;
       const now = document.activeElement;
       if (now !== null && now !== document.body && !blockRef.current?.contains(now)) return;
@@ -1688,6 +1695,32 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const confirmingSend = sendConfirm.pending === "send";
   // A modal ask owns the agent's keyboard: the Send slot and the placeholder say so (spec 10).
   const askOwnsKeys = slot === "answer" && !direct.active;
+  // The mic beside Attach, for a box that holds a draft or a chip (issue 573): the round button is Send
+  // then, and a second clip is how a person adds to what is already written. Two mics never show at
+  // once. It stays away while the round slot holds a word ("Answer the dialog" / "Really send?"), where
+  // the row is already tight.
+  const draftMicShown = micShown && !direct.active && hasDraft && !askOwnsKeys && !confirmingSend;
+  const micAriaLabel = !micAvailable
+    ? (stt?.reason ?? translate("composer.mic.unavailable"))
+    : recorder.phase === "recording"
+      ? translate("composer.mic.stopAria")
+      : translate("composer.mic.recordAria");
+  const micIcon =
+    recorder.phase === "transcribing" ? (
+      <Loader2 className="size-4 animate-spin" />
+    ) : recorder.phase === "recording" ? (
+      <Square className="size-4 fill-current" />
+    ) : (
+      <Mic className="size-4" />
+    );
+  const micDisabled = !micAvailable || locked || offline || sending || recorder.phase === "transcribing";
+  function onMicClick(e: MouseEvent, opener: "primary" | "draft") {
+    // `detail` is 0 for a click the keyboard made: the takeover then shows its focus mark.
+    openedByKeyboard.current = e.detail === 0;
+    micOpener.current = opener;
+    if (recorder.phase === "recording") recorder.stopAndSend();
+    else recorder.start();
+  }
   // The refusal's reason at the thumb. Not in Type mode, and not beside the password notice, which
   // already says why at this spot. With an ask it stands beside the "Answer the dialog" word: a send
   // that came from a quick reply has no other place to be told.
@@ -2830,6 +2863,26 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               <Paperclip className="size-4" />
             )}
           </Button>
+          {draftMicShown && (
+            // The second microphone (issue 573), beside Attach and so mirrored with it under
+            // `hand="left"`. It opens the same takeover, and the transcript lands at the caret
+            // through `insertTranscript`; a draft is never sent by voice (`acceptTranscript`).
+            <Button
+              data-slot="composer-mic-draft"
+              type="button"
+              variant="ghost"
+              size="icon"
+              className={cn(TOOLBAR_TAP_TARGET, "size-9 rounded-full text-muted-foreground")}
+              disabled={micDisabled}
+              aria-pressed={recorder.busy}
+              aria-label={micAriaLabel}
+              title={micAvailable ? undefined : stt?.reason}
+              onPointerDown={(e) => e.preventDefault()}
+              onClick={(e) => onMicClick(e, "draft")}
+            >
+              {micIcon}
+            </Button>
+          )}
           {/* The picker, anchored to the BOX so it opens above the whole shape rather than over
               the button that opened it (ui/anchored-menu.tsx carries the measurement, and the
               box's own `relative` is the anchor). It is not anchored to the attach button itself
@@ -2928,42 +2981,26 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             // moment there is anything to send. It used to be a second, permanent control tucked
             // inside the field beside the attach button — deliberately, to avoid a split primary
             // action. The v1 beta said that reads the workflow wrong: you either dictate a message
-            // or you type one, and nobody dictates into the middle of a draft. So the field paid
-            // 36px of its width, on every render, for a control that is only ever wanted on an empty
-            // box. An empty box has no Send either (`send` refuses a blank value), so this branch
-            // takes over a button that could do nothing anyway — it replaces no capability.
+            // or you type one. So the field paid 36px of its width, on every render, for a control
+            // that is mostly wanted on an empty box. An empty box has no Send either (`send` refuses
+            // a blank value), so this branch takes over a button that could do nothing anyway. It
+            // replaces no capability. A box that already holds a draft gets the small mic beside
+            // Attach instead (issue 573), because a second clip is how a person adds to it.
             <Button
               data-slot="composer-primary"
               size="icon"
               variant={recorder.busy ? "destructive" : "default"}
               className={cn(TOOLBAR_TAP_TARGET, "size-9 shrink-0 rounded-full")}
-              disabled={!micAvailable || locked || offline || sending || recorder.phase === "transcribing"}
+              disabled={micDisabled}
               aria-pressed={recorder.busy}
               // The bridge's own words when it cannot serve — the operator's next move is on the
               // host, so the button says what is wrong rather than just refusing.
-              aria-label={
-                !micAvailable
-                  ? (stt?.reason ?? translate("composer.mic.unavailable"))
-                  : recorder.phase === "recording"
-                    ? translate("composer.mic.stopAria")
-                    : translate("composer.mic.recordAria")
-              }
+              aria-label={micAriaLabel}
               title={micAvailable ? undefined : stt?.reason}
               onPointerDown={(e) => e.preventDefault()}
-              onClick={(e) => {
-                // `detail` is 0 for a click the keyboard made: the takeover then shows its focus mark.
-                openedByKeyboard.current = e.detail === 0;
-                if (recorder.phase === "recording") recorder.stopAndSend();
-                else recorder.start();
-              }}
+              onClick={(e) => onMicClick(e, "primary")}
             >
-              {recorder.phase === "transcribing" ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : recorder.phase === "recording" ? (
-                <Square className="size-4 fill-current" />
-              ) : (
-                <Mic className="size-4" />
-              )}
+              {micIcon}
             </Button>
           ) : (
             <Button

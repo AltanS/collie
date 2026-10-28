@@ -40,6 +40,11 @@ Running a crew? Update the lead first; members follow on their own. Details:
   and pairs inside the home screen app. Its PATH note prints the exact line to add.
   `install.ps1` points to the Windows guide on the web, not to a local page with no Windows steps.
 - **A send could end "typed, not submitted" with the text left in the box when the disk was slow.** Collie wrote the send record before the submit key, and that write could use up the key's 150 ms window. The window now starts after the write.
+- **A microphone stays beside Attach while the box holds a draft.** The round button turns into Send
+  as soon as you type or attach something, which left no way to dictate a second clip into a draft.
+  A small microphone now sits next to Attach then, opens the same voice screen, and the words land
+  at the caret. It steps aside while the round button reads "Answer the dialog" or "Really send?".
+  Thanks @viniciosrab (#573).
 
 ## [1.24.1] - 2026-10-27
 
