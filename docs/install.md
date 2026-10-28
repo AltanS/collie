@@ -379,6 +379,12 @@ tailscale serve (https) → tailnet :443 -> 127.0.0.1:8787
 If the health check fails (`⚠ Collie isn't answering on :8787 yet`), see
 [Troubleshooting](troubleshooting.md#troubleshooting).
 
+Before it launches the bridge, `collie start` checks your setup and prints one `setup:` line for
+each missing piece, with the fix after the arrow: Tailscale not installed or not signed in, MagicDNS
+or HTTPS off, the operator setting on Linux, no multiplexer or several without `COLLIE_MUX`, and no
+`collie` on your PATH. The check never stops `start`. Fix what it names, then run `collie start`
+again. `collie doctor` repeats the same check.
+
 The bridge runs as a `systemd --user` service or macOS launchd agent. It starts at login and
 restarts on failure ([`ARCHITECTURE.md`](../ARCHITECTURE.md) §3). On Linux,
 `loginctl enable-linger $USER` keeps it running across reboots

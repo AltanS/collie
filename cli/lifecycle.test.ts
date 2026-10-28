@@ -583,6 +583,90 @@ describe("the first-run multiplexer gate", () => {
   });
 });
 
+// The setup check (`cli/setup-findings.ts`) runs after the multiplexer gate and before anything is
+// launched. It prints the rows that need the operator and never stops `start`.
+describe("the setup check in start", () => {
+  const NO_HTTPS = JSON.stringify({ BackendState: "Running", Self: { DNSName: "desk.tail.ts.net." } });
+
+  test("HTTPS off and no PATH line: two plain lines and the closing sentence, and the bridge still starts", async () => {
+    let served = 0;
+    const h = harness({
+      answers: [
+        ...NO_SYSTEMD,
+        ["tailscale status --json", { stdout: NO_HTTPS }],
+        ["tailscale debug prefs", { stdout: JSON.stringify({ OperatorUser: "pat" }) }],
+      ],
+      env: { USER: "pat", PATH: "/usr/bin" },
+      serve: () => {
+        served++;
+        return Promise.resolve(EXIT.OK);
+      },
+    });
+    h.deps.link = fakeLinkFs();
+    expect(await cmdStart(h.deps)).toBe(EXIT.OK);
+    expect(h.io.stderr).toEqual([
+      "setup: HTTPS certificates are off for your tailnet → enable HTTPS in the admin console" +
+        ' (https://login.tailscale.com/admin/dns, "Enable HTTPS"), then run `collie serve` again;' +
+        " on Headscale or a tailnet without certificates, set COLLIE_SERVE_MODE=http",
+      "setup: no `collie` is on PATH, so typing `collie` in a new terminal does not run it → run `collie link`," +
+        ' then add this line to ~/.zshrc or ~/.bashrc, then open a new terminal: export PATH="$HOME/.local/bin:$PATH"',
+      "Fix these, then run collie start again. collie doctor repeats this check.",
+    ]);
+    // It never blocks: the bridge was launched and the front door was still asked for.
+    expect(h.exec.spawned).toHaveLength(1);
+    expect(served).toBe(1);
+    expect(h.io.stdout).toContain("bridge started (pid 4242, unsupervised)");
+  });
+
+  test("`restart` reaches the same start path and prints no setup line, nor does the restart inside `update`", async () => {
+    const h = harness({
+      answers: [...NO_SYSTEMD, ["tailscale status --json", { stdout: NO_HTTPS }]],
+      env: { USER: "pat", PATH: "/usr/bin" },
+    });
+    h.deps.link = fakeLinkFs();
+    expect(await cmdRestart(h.deps)).toBe(EXIT.OK);
+    expect(h.io.stderr.filter((l) => l.startsWith("setup:") || l.startsWith("Fix these"))).toEqual([]);
+    expect(h.exec.spawned).toHaveLength(1);
+  });
+
+  test("http mode chosen on a tailnet with no certificates: no line for it", async () => {
+    const h = harness({
+      answers: [...NO_SYSTEMD, ["tailscale status --json", { stdout: NO_HTTPS }], ["tailscale debug prefs", { stdout: JSON.stringify({ OperatorUser: "pat" }) }]],
+      env: { USER: "pat", PATH: "/usr/bin", COLLIE_SERVE_MODE: "http" },
+      files: { "/usr/bin/collie": "" },
+    });
+    h.deps.ctx = { ...h.deps.ctx, serveMode: "http" };
+    h.deps.link = fakeLinkFs();
+    expect(await cmdStart(h.deps)).toBe(EXIT.OK);
+    expect(h.io.stderr.filter((l) => l.startsWith("setup:") || l.startsWith("Fix these"))).toEqual([]);
+  });
+
+  test("every row fine: not one setup line", async () => {
+    const h = harness({
+      answers: [
+        ...NO_SYSTEMD,
+        ["tailscale status --json", { stdout: JSON.stringify({ BackendState: "Running", Self: { DNSName: "desk.tail.ts.net." }, CertDomains: ["desk.tail.ts.net"] }) }],
+        ["tailscale debug prefs", { stdout: JSON.stringify({ OperatorUser: "pat" }) }],
+      ],
+      env: { USER: "pat", PATH: "/usr/bin" },
+      files: { "/usr/bin/collie": "" },
+    });
+    h.deps.link = fakeLinkFs();
+    expect(await cmdStart(h.deps)).toBe(EXIT.OK);
+    expect(h.io.stderr.filter((l) => l.startsWith("setup:") || l.startsWith("Fix these"))).toEqual([]);
+  });
+
+  test("a Windows start with Tailscale missing says so in Windows words, then starts the task anyway", async () => {
+    const h = harness({ host: hostFor("win32"), answers: NO_SYSTEMD, absent: ["tailscale"], env: { COLLIE_SUPERVISOR: "unsupervised" } });
+    expect(await cmdStart(h.deps)).toBe(EXIT.OK);
+    const said = h.io.stderr.join("\n");
+    expect(said).toContain("setup: Tailscale is not installed on this machine → install Tailscale from https://tailscale.com/download");
+    expect(said).not.toContain("sudo");
+    expect(said).toContain("Fix these, then run collie start again.");
+    expect(h.exec.spawned).toHaveLength(1);
+  });
+});
+
 // On Windows the bridge runs under Task Scheduler: the task runs `collie _supervise`, which runs the
 // bridge and records both pids in `collie-processes` (cli/task-scheduler.ts). These cases drive that
 // tier with `hostFor("win32")` and fakes: they prove the logic, and the Windows VM proves Windows.

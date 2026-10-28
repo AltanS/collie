@@ -23,6 +23,15 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **collie start and collie doctor name any missing setup in plain words.** Tailscale not installed
+  or not signed in, MagicDNS or HTTPS off, the operator flag on Linux, no multiplexer or several
+  without COLLIE_MUX, and the PATH line. `collie start` prints one `setup:` line per missing piece
+  with its fix and never stops for it; `collie doctor` adds the rows `tailscale`, `tailnet-https`
+  and `tailscale-operator`, which warn and never hold back an update, and its `path-link` row now
+  warns when no `collie` is on PATH.
+
 ### Changed
 
 - **Windows: collie start publishes the tailnet front door.** It runs `tailscale serve` through the

@@ -6,7 +6,7 @@ import { delimiter, join } from "node:path";
 
 import { CREW_PROTOCOL_VERSION } from "../bridge/crew/enrollment.ts";
 import { leadStore, member, CREW, peerStore, T0 } from "../bridge/crew/fixtures.ts";
-import { HOST, hostFor } from "../bridge/host.ts";
+import { binaryName, HOST, hostFor } from "../bridge/host.ts";
 import { markerFor } from "../bridge/crew/staleness.ts";
 import { serializeTrustStore, TrustStore, type TrustStoreData, type TrustStoreIo } from "../bridge/crew/trust-store.ts";
 import { fakeBeaconReader, FAKE_BEACON_NOW, type FakeBeacon } from "../bridge/beacon/fake.ts";
@@ -72,6 +72,13 @@ const LINK_DIR = join(HOME, ".local", "bin");
 const LINK_AT = join(LINK_DIR, "collie");
 /** This checkout's compiled binary: `bin/collie` on POSIX, `bin/collie.exe` on Windows. */
 const OWN_BINARY = collieBinary(ROOT);
+/**
+ * A PATH entry that holds a `collie`, as a package or the Windows installer leaves one. Both names,
+ * so a test that pins another host than the machine's still finds its own.
+ */
+const PATH_DIR = "/usr/local/bin";
+const PATH_COLLIE = join(PATH_DIR, binaryName(HOST));
+const PATH_COLLIE_OTHER = join(PATH_DIR, binaryName(hostFor(HOST.platform === "win32" ? "linux" : "win32")));
 const SOCKET = "/home/pat/.config/herdr/herdr.sock";
 const HOSTPORT = "laptop.tail.ts.net:443";
 const PROXY = "http://127.0.0.1:8787";
@@ -151,6 +158,9 @@ function healthyFiles(): SeededFiles {
     // One paired device. Pairing is always on (ADR 0086), so a healthy install has one: with none,
     // `pairing` warns that every route but health and pair answers `device not paired`.
     [PAIRED_DEVICES]: pairedRegistry([{ label: "phone" }]),
+    // A `collie` on PATH: a fresh install with none warns on `path-link` (the setup check).
+    [PATH_COLLIE]: "",
+    [PATH_COLLIE_OTHER]: "",
   };
 }
 
@@ -298,7 +308,7 @@ function harness(
     deps: {
       // As in cli/crew.test.ts: the peer client races the fake fetch against a REAL timer, so the
       // budget is set far above anything this process could stall for.
-      ctx: context({ COLLIE_CREW_TIMEOUT_MS: "60000", ...over.env }, contextOver(over)),
+      ctx: context({ COLLIE_CREW_TIMEOUT_MS: "60000", PATH: PATH_DIR, ...over.env }, contextOver(over)),
       host: HOST,
       io: out,
       exec,
@@ -402,6 +412,10 @@ describe("collie doctor — the contract", () => {
       "herdr-socket",
       "bind",
       "bind-wildcard",
+      // The setup check's Tailscale rows; the operator row is Linux only, and this suite runs on the real host.
+      "tailscale",
+      "tailnet-https",
+      ...(HOST.platform === "linux" ? ["tailscale-operator"] : []),
       "acl",
       "front-door",
       "pairing",
@@ -624,14 +638,30 @@ describe("collie doctor — the local checks", () => {
 
   // ── path-link (ADR 0021) ───────────────────────────────────────────────────
   // Reported, never repaired: `doctor` holds a `LinkReader`, which has no way to publish or remove a
-  // name. Not being linked is an ordinary state, so it is `ok`; a name that reaches somewhere else is
-  // what earns a warning.
-  test("path-link: not linked is ok, and names the verb that would publish it", async () => {
+  // name. Not being linked is an ordinary state when a `collie` on PATH runs anyway, so it is `ok`; a
+  // name that reaches somewhere else, or no `collie` on PATH at all, is what earns a warning.
+  test("path-link: not linked is ok while a `collie` is on PATH, and names the verb that would publish it", async () => {
     const { code, byCheck } = await findings(harness(null));
     const f = byCheck.get("path-link");
     expect(f?.status).toBe("ok");
     expect(f?.detail).toContain("not linked");
     expect(f?.detail).toContain(LINK_AT);
+    expect(code).toBe(EXIT.OK);
+  });
+
+  test("path-link: a fresh install with no `collie` on PATH warns, with the profile line", async () => {
+    const files = healthyFiles();
+    delete files[PATH_COLLIE];
+    delete files[PATH_COLLIE_OTHER];
+    const { code, byCheck } = await findings(harness(null, [], { files, env: { PATH: "/usr/bin" } }));
+    const f = byCheck.get("path-link");
+    expect(f?.status).toBe("warn");
+    expect(f?.detail).toContain("no `collie` is on PATH");
+    // Off Windows: link it, then add the line `scripts/install.sh` prints. Windows names its own fix.
+    if (HOST.platform !== "win32") {
+      expect(f?.remedy).toContain("`collie link`");
+      expect(f?.remedy).toContain('export PATH="$HOME/.local/bin:$PATH"');
+    }
     expect(code).toBe(EXIT.OK);
   });
 
@@ -652,7 +682,8 @@ describe("collie doctor — the local checks", () => {
     });
     const f = (await findings(h)).byCheck.get("path-link");
     expect(f?.status).toBe("warn");
-    expect(f?.remedy).toContain(LINK_DIR);
+    expect(f?.detail).toContain(LINK_DIR);
+    expect(f?.remedy).toContain('export PATH="$HOME/.local/bin:$PATH"');
   });
 
   test("path-link: another checkout's link warns, naming the checkout a bare `collie` reaches", async () => {
@@ -1647,6 +1678,9 @@ describe("the finding set is scoped by the chosen multiplexer", () => {
       "update-source",
       "bind",
       "bind-wildcard",
+      "tailscale",
+      "tailnet-https",
+      ...(HOST.platform === "linux" ? ["tailscale-operator"] : []),
       "acl",
       "front-door",
       "pairing",

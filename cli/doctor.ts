@@ -19,26 +19,11 @@ import { DEFAULT_PORT, envBool, isLoopbackBindHost, nonLoopbackBindRefusal, reso
 import { configFilePaths } from "../bridge/config-source.ts";
 import { localAuthHeader, readLocalSecret } from "../bridge/local-secret.ts";
 import type { MuxCapabilityDeclaration } from "../bridge/mux/capabilities.ts";
-import {
-  buildMuxRegistry,
-  DEFAULT_MUX,
-  factoryFor,
-  muxEndpointVar,
-  muxNames,
-  type MuxTarget,
-} from "../bridge/mux/registry.ts";
-import { TMUX_BINARY_OPTION, TMUX_MUX, TMUX_VERSION_ARGS } from "../bridge/mux/tmux/adapter.ts";
-import {
-  resolveTmuxBinary,
-  TMUX_BINARY_CANDIDATES,
-  tmuxServerArgs,
-  tmuxServerLabel,
-} from "../bridge/mux/tmux/exec.ts";
-import { ZELLIJ_BINARY_OPTION, ZELLIJ_MUX } from "../bridge/mux/zellij/adapter.ts";
+import { buildMuxRegistry, DEFAULT_MUX, factoryFor, type MuxTarget } from "../bridge/mux/registry.ts";
+import { TMUX_BINARY_OPTION } from "../bridge/mux/tmux/adapter.ts";
+import { ZELLIJ_BINARY_OPTION } from "../bridge/mux/zellij/adapter.ts";
 import { DURABLE_MUX } from "../bridge/mux/durable/adapter.ts";
 import { TERN_BINARY_OPTION } from "../bridge/mux/tern/adapter.ts";
-import { resolveZellijBinary, zellijBinaryCandidates } from "../bridge/mux/zellij/exec.ts";
-import { chooseSession, parseSessionList, ZELLIJ_LIST_SESSIONS_ARGS } from "../bridge/mux/zellij/protocol.ts";
 import { bindIsWildcard } from "../bridge/crew/config.ts";
 import { deriveMode } from "../bridge/crew/mode.ts";
 import { crewUrl, type HelloResult, type CrewFetch, type PeerOutcome } from "../bridge/crew/peer-client.ts";
@@ -62,7 +47,7 @@ import { collieVersionBare, type CliContext } from "./context.ts";
 import { aboutCrew, bad, ok, skipped, warn, type DoctorStatus, type Finding } from "./finding.ts";
 import { parseAccountWindowsSetting } from "../bridge/account-windows-setting.ts";
 import { accountWindowsDoctorLine, grokAuthPath, hasOpencodeGoEntry, opencodeAuthPath } from "../bridge/account-windows.ts";
-import { explicitMux, probeMuxes, refusedMux, type MuxSighting } from "./mux.ts";
+import { muxFinding, muxSettings, pathLinkFinding, tailscaleFindings, type MuxSettings } from "./setup-findings.ts";
 import { cacheFindings } from "./cache-findings.ts";
 import { surfaceFindings } from "./surface-findings.ts";
 import { harnessFindings, harnessReader, type ReadHarness } from "./harness-findings.ts";
@@ -83,7 +68,7 @@ import {
   PACKAGED_SENTENCE,
 } from "./install-kind.ts";
 import { packageCommand } from "./package-command.ts";
-import { classifyLink, linkDir, linkPath, type LinkReader, onPath, realLinkFs, resolveLinkTarget } from "./link.ts";
+import { linkPath, type LinkReader, realLinkFs, resolveLinkTarget } from "./link.ts";
 import { classifyExe, exePathOf, type ExeEvidence } from "../bridge/exe-replaced.ts";
 import { queryTask, taskOwner, windowsPathKey } from "./task-scheduler.ts";
 import { agentLabel, collieBinary, unitName } from "./unit.ts";
@@ -241,7 +226,7 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
     identity(deps),
     configFile(deps),
     webDist(deps),
-    pathLink(deps),
+    pathLinkFinding(deps),
     installKind(deps, install),
     versionsLayout(deps, install),
     updateSource(deps, install),
@@ -249,10 +234,14 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
     herdrSocket(deps),
     bindCheck(deps, mode, leadIsOnLoopback(data?.lead?.address ?? null)),
     bindWildcard(deps),
+    // The setup check's Tailscale rows (`cli/setup-findings.ts`): installed and signed in, a tailnet
+    // name with HTTPS certificates, and on Linux the operator setting. `collie start` prints the
+    // same rows when they are not fine; `mux` and `path-link` are its other two, at their own lines.
+    ...tailscaleFindings(deps),
     acl(deps),
     frontDoor(deps, mode),
     pairedDevices(deps, mode),
-    mux(deps),
+    muxFinding(deps),
     // A durable program has no binary or listing to ask. Six rows say which transport is configured,
     // whether its socket or its URL and token may be used, and whether the program answers, and a
     // seventh whether the lead is new enough to show its panes: only when `durable` is the
@@ -533,46 +522,6 @@ function webDist(deps: DoctorDeps): Finding {
     return bad("web-dist", `${dist} has no index.html — a half-finished build`, "`collie build`");
   }
   return ok("web-dist", `${entries.length} entries, index.html present`);
-}
-
-/**
- * The name on PATH (`collie link`, ADR 0021). Not being linked is a perfectly good state — the verb
- * is opt-in — so it reads `ok` and merely names what would publish it. What is worth a warning is a
- * name that exists and does NOT reach this checkout: another instance's link, or something Collie
- * never published. The verdict comes from `classifyLink`, the same pure function `link` decides on,
- * so `doctor` cannot disagree with the verb about what it is looking at.
- */
-function pathLink(deps: DoctorDeps): Finding {
-  const at = linkPath(deps.ctx.home);
-  const own = publishedBinary(deps.ctx.root, deps.link, deps.host);
-  const verdict = classifyLink(deps.link.probe(at), own);
-  switch (verdict.action) {
-    case "create":
-      return ok("path-link", `not linked — \`collie link\` would publish ${at} → ${own}`);
-    case "keep": {
-      const dir = linkDir(deps.ctx.home);
-      if (!onPath(dir, deps.ctx.env.PATH)) {
-        return warn(
-          "path-link",
-          `${at} → ${own} (this checkout), but ${dir} is not on PATH — the name is published and the shell cannot find it`,
-          `add ${dir} to your shell profile's PATH`,
-        );
-      }
-      return ok("path-link", `${at} → ${own} (this checkout)`);
-    }
-    case "replace":
-      return warn(
-        "path-link",
-        `${at} → ${verdict.previous} — a DIFFERENT checkout owns the name, so a bare \`collie\` runs that one`,
-        "`collie link` here to take it over, or leave it to that instance",
-      );
-    case "refuse":
-      return warn(
-        "path-link",
-        `${at} is ${verdict.reason} — Collie will not touch it`,
-        `move it aside yourself, then \`collie link\``,
-      );
-  }
 }
 
 /**
@@ -1497,77 +1446,6 @@ function clock(inCrew: boolean, probes: Map<string, PeerOutcome<HelloResult>>): 
 // multiplexer cannot leave this file quietly reporting a stale set. What is written out per mux —
 // the argv of the liveness probe — is exactly what cannot be shared: each one has its own CLI.
 
-/**
- * What decided the multiplexer this collie drives — the other half of the `mux` line since M14/03.
- *
- * `undecided` is a real state and not an error state to hide: with no `COLLIE_MUX` and no single
- * multiplexer running, `collie start` REFUSES, and a doctor that reported a cheerful "herdr" for that
- * host would be reporting a bridge that is never going to come up.
- */
-type MuxOrigin =
-  | { readonly kind: "explicit" }
-  | { readonly kind: "auto"; readonly evidence: string }
-  | { readonly kind: "undecided"; readonly found: readonly MuxSighting[] };
-
-/** The mux settings, read from the CLI's merged env exactly as `bridge/config.ts` reads them. */
-interface MuxSettings {
-  readonly name: string;
-  readonly endpoint: string;
-  readonly tmuxBin: string;
-  readonly zellijBin: string;
-  readonly ternBin: string;
-  readonly origin: MuxOrigin;
-}
-
-/**
- * `COLLIE_MUX` and the endpoint it addresses, resolved as `collie start` resolves them.
- *
- * Herdr's endpoint IS the Herdr socket path (`bridge/config.ts`), so it comes from the context that
- * already resolved `HERDR_SOCKET_PATH` — the same value `herdr-socket` probes, which is why the
- * `mux` line defers to that check instead of stating a path twice.
- *
- * With nothing configured this asks `cli/mux.ts`'s probe rather than falling to `DEFAULT_MUX`, so
- * `doctor` names the multiplexer the next `start` would actually pick, and the evidence for it. The
- * probe is a read (see that module's header); running it costs one listing per installed adapter.
- */
-function muxSettings(deps: DoctorDeps): MuxSettings {
-  const env = deps.ctx.env;
-  const tmuxBin = (env.COLLIE_TMUX_BIN ?? "").trim();
-  const zellijBin = (env.COLLIE_ZELLIJ_BIN ?? "").trim();
-  const ternBin = (env.COLLIE_TERN_BIN ?? "").trim();
-  const named = explicitMux(env);
-  if (named !== null) {
-    return {
-      name: named,
-      endpoint: named === DEFAULT_MUX ? deps.ctx.socket : (env[muxEndpointVar(named)] ?? "").trim(),
-      tmuxBin,
-      zellijBin,
-      ternBin,
-      origin: { kind: "explicit" },
-    };
-  }
-  const found = probeMuxes(deps);
-  const only = found.length === 1 ? found[0] : undefined;
-  if (only === undefined) {
-    return { name: DEFAULT_MUX, endpoint: "", tmuxBin, zellijBin, ternBin, origin: { kind: "undecided", found } };
-  }
-  return {
-    name: only.mux,
-    endpoint: only.mux === DEFAULT_MUX ? deps.ctx.socket : only.endpoint,
-    tmuxBin,
-    zellijBin,
-    ternBin,
-    origin: { kind: "auto", evidence: only.evidence },
-  };
-}
-
-/** How the name was arrived at, appended to whatever the per-mux branch found. */
-function originSuffix(origin: MuxOrigin): string {
-  if (origin.kind === "explicit") return " · set by COLLIE_MUX";
-  if (origin.kind === "auto") return ` · no COLLIE_MUX, so \`start\` picks it: ${origin.evidence}`;
-  return "";
-}
-
 /** The target the bridge would build for these settings (`bridge/index.ts`), minus nothing. */
 function muxTarget(settings: MuxSettings): MuxTarget {
   return {
@@ -1597,14 +1475,6 @@ function muxDeclaration(settings: MuxSettings): MuxCapabilityDeclaration | null 
   return factory === undefined ? null : factory.create(muxTarget(settings)).capabilities;
 }
 
-/**
- * `mux` — which multiplexer this collie drives, where it would look for it, and whether anything
- * answered there.
- *
- * An unreachable multiplexer is an `error` and not a warning: it is not a degraded Collie, it is a
- * Collie with no panes at all, and the symptom an operator sees first is an empty home screen or the
- * disconnected banner — neither of which names the socket, the session or the binary.
- */
 /** Where Windows keeps the long-path switch, and the value `reg query` reads. */
 export const LONG_PATHS_KEY = "HKLM\\SYSTEM\\CurrentControlSet\\Control\\FileSystem";
 /** An install folder longer than this leaves little room under 260 characters for what sits inside it. */
@@ -1754,144 +1624,6 @@ export function windowsTask(deps: Pick<DoctorDeps, "ctx" | "exec" | "host" | "li
       return ok(check, `Task ${name} runs ${query.program} (${query.state})`);
     }
   }
-}
-
-function mux(deps: DoctorDeps): Finding {
-  const settings = muxSettings(deps);
-  const registry = buildMuxRegistry();
-  if (settings.origin.kind === "undecided") {
-    const { detail, remedy } = refusedMux(settings.origin.found, deps.ctx.configDir, deps.ctx.env);
-    return bad("mux", `${detail}, so \`collie start\` refuses`, remedy);
-  }
-  if (factoryFor(registry, settings.name) === undefined) {
-    return bad(
-      "mux",
-      `COLLIE_MUX="${settings.name}" is not a multiplexer this build drives, so the bridge refuses to start`,
-      `set COLLIE_MUX to one of ${muxNames(registry).join(", ")} in ${join(deps.ctx.configDir, ".env")},` +
-        " then `collie restart`",
-    );
-  }
-  if (settings.name === DEFAULT_MUX) {
-    return ok("mux", `${DEFAULT_MUX} — see herdr-socket${originSuffix(settings.origin)}`);
-  }
-  if (settings.name === TMUX_MUX) return tmuxMux(deps, settings);
-  if (settings.name === ZELLIJ_MUX) return zellijMux(deps, settings);
-  // A durable program is asked by the six `durable-*` rows (and `durable-lead` in a crew), so this
-  // line defers to them as the Herdr line defers to `herdr-socket`.
-  if (settings.name === DURABLE_MUX) return ok("mux", `${DURABLE_MUX}, see the durable-* lines${originSuffix(settings.origin)}`);
-  // Registered, and this verb has no probe for it. `skipped` rather than a pass, for the reason
-  // `acl` gives: a check that could not run must never render as one that did.
-  return skipped(
-    "mux",
-    `${settings.name} — registered, but \`collie doctor\` has no liveness probe for it`,
-    `ask that multiplexer whether it is running, by hand; \`collie doctor\` reports ${TMUX_MUX} and ${ZELLIJ_MUX}`,
-  );
-}
-
-/** The first non-empty line of a tool's complaint — a doctor line is one line. */
-function firstLine(text: string): string {
-  return text.split("\n").map((l) => l.trim()).find((l) => l !== "") ?? "it said nothing";
-}
-
-/**
- * tmux, in ONE invocation: the version and the session list, `;`-joined the way the adapter joins
- * its own listing (`bridge/mux/tmux/protocol.ts` § LISTING_ARGS). Neither command starts a server.
- */
-function tmuxMux(deps: DoctorDeps, settings: MuxSettings): Finding {
-  const where = tmuxServerLabel(settings.endpoint);
-  const dotenv = join(deps.ctx.configDir, ".env");
-  const binary = resolveTmuxBinary(settings.tmuxBin, (p) => deps.files.exists(p));
-  if (binary === null) {
-    const why =
-      settings.tmuxBin === ""
-        ? `nothing executable at ${TMUX_BINARY_CANDIDATES.join(", ")}`
-        : `COLLIE_TMUX_BIN="${settings.tmuxBin}" is not an absolute path to a file that is there`;
-    return bad(
-      "mux",
-      `tmux — ${where}, and there is no tmux binary to run: ${why} (a Herdr plugin action gets no` +
-        " login shell, so PATH is never consulted)",
-      `install tmux, or set COLLIE_TMUX_BIN to its absolute path in ${dotenv}, then \`collie restart\``,
-    );
-  }
-  const serverArgs = tmuxServerArgs(settings.endpoint);
-  const asked = deps.exec.capture(binary, [
-    ...serverArgs,
-    ...TMUX_VERSION_ARGS,
-    ";",
-    "list-sessions",
-    "-F",
-    "#{session_name}",
-  ]);
-  if (!asked.found || asked.code !== 0) {
-    const detail = asked.found ? firstLine(asked.stderr || asked.stdout) : `${binary} could not be run`;
-    return bad(
-      "mux",
-      `tmux — ${binary} is there, but no server answered on ${where}: ${detail}`,
-      `start one (\`tmux ${[...serverArgs, "new", "-d"].join(" ")}\`), or point ` +
-        `${muxEndpointVar(TMUX_MUX)} at the server you already run, in ${dotenv}, then \`collie restart\``,
-    );
-  }
-  // The version is the first line the joined invocation printed; every line after it is a session.
-  const lines = asked.stdout.split("\n").map((l) => l.trim()).filter((l) => l !== "");
-  const version = lines[0] ?? "?";
-  const sessions = lines.length === 0 ? 0 : lines.length - 1;
-  return ok(
-    "mux",
-    `tmux ${version} · ${where} · ${String(sessions)} session${sessions === 1 ? "" : "s"}` +
-      originSuffix(settings.origin),
-  );
-}
-
-/**
- * zellij: one `list-sessions`, read by the SAME two pure functions the adapter's session binding
- * reads it with (`parseSessionList` + `chooseSession`), so `doctor` and the bridge cannot disagree
- * about which session this collie drives — or about why there is none.
- */
-function zellijMux(deps: DoctorDeps, settings: MuxSettings): Finding {
-  const dotenv = join(deps.ctx.configDir, ".env");
-  const candidates = zellijBinaryCandidates(deps.ctx.home);
-  const binary = resolveZellijBinary(settings.zellijBin, (p) => deps.files.exists(p), candidates);
-  if (binary === null) {
-    const why =
-      settings.zellijBin === ""
-        ? `nothing executable at ${candidates.join(", ")}`
-        : `COLLIE_ZELLIJ_BIN="${settings.zellijBin}" is not an absolute path to a file that is there`;
-    return bad(
-      "mux",
-      `zellij — there is no zellij binary to run: ${why} (a Herdr plugin action gets no login shell,` +
-        " so PATH is never consulted)",
-      `install zellij, or set COLLIE_ZELLIJ_BIN to its absolute path in ${dotenv}, then \`collie restart\``,
-    );
-  }
-  const asked = deps.exec.capture(binary, [...ZELLIJ_LIST_SESSIONS_ARGS]);
-  if (!asked.found) {
-    return bad(
-      "mux",
-      `zellij — ${binary} could not be run`,
-      `set COLLIE_ZELLIJ_BIN to a zellij that runs, in ${dotenv}, then \`collie restart\``,
-    );
-  }
-  // A box with no sessions exits non-zero and says so on stderr; the chooser turns that, the
-  // ambiguity and the exited session into one sentence — the same one the adapter would print.
-  const sessions = parseSessionList(asked.code === 0 ? asked.stdout : "");
-  const choice = chooseSession(sessions, settings.endpoint);
-  const running = sessions.filter((session) => session.running).length;
-  if (!choice.ok) {
-    const named = settings.endpoint.trim();
-    return bad(
-      "mux",
-      `zellij — ${binary} answered, and ${choice.detail}`,
-      named === ""
-        ? `start one (\`zellij -s <name>\`) and name it in ${muxEndpointVar(ZELLIJ_MUX)} in ${dotenv}, then \`collie restart\``
-        : `start it (\`zellij -s ${named}\`) or attach once to resurrect it — Collie never creates or` +
-          ` resurrects a session; then \`collie restart\``,
-    );
-  }
-  return ok(
-    "mux",
-    `zellij · session ${choice.session} · ${String(running)} running of ${String(sessions.length)} listed` +
-      originSuffix(settings.origin),
-  );
 }
 
 // ── The agent's own hooks, and the beacons they write (M11/05) ───────────────

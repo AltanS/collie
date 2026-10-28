@@ -314,7 +314,7 @@ export function cmdServeVerb(deps: ServeDeps): number {
  * Sync and file-shaped because `cmdServe` is: it runs inside `start`, which has no `await` to spare
  * for a `TrustStore` handle it would otherwise have to thread through four call sites.
  */
-export function crewModeOnDisk(deps: ServeDeps): CrewMode {
+export function crewModeOnDisk(deps: Pick<ServeDeps, "ctx" | "files">): CrewMode {
   const raw = deps.files.read(trustStorePath(deps.ctx.stateDir));
   return deriveMode(enrollmentOf(raw === null ? null : parseTrustStore(raw))).mode;
 }
