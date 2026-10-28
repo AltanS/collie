@@ -1,11 +1,12 @@
 # Install Collie
 
+> **Note.** New to Collie? [Install in five minutes](five-minute-install.md) has one path per
+> system with every command in order: [macOS](five-minute-install.md#macos),
+> [Linux](five-minute-install.md#linux) and [Windows](five-minute-install.md#windows). This page is
+> the reference: the install routes, what each one does, and the details around them.
+
 Install Collie on your system, start it, and put it on your phone. Read
 [Security](security.md) first: Collie exposes remote shell access to your machine by design.
-
-> **Note.** New to Collie? [Install in five minutes](five-minute-install.md) covers the usual
-> Linux and macOS setup in five steps. On Windows, follow
-> [Zero to phone](windows.md#zero-to-phone). This page is the full reference.
 
 ## Before you start
 
@@ -17,15 +18,14 @@ network. The rest of this page assumes Tailscale. For an identity-aware proxy, a
 Cloudflare Tunnel or NetBird instead, see
 [Front doors, one product at a time](deployment.md#front-doors-one-product-at-a-time).
 
-With Tailscale, prepare three things:
+With Tailscale, prepare three things. The commands are in the guide for your system.
 
-1. Put the host on your tailnet by installing Tailscale there and running `tailscale up`. On
-   Linux, run `sudo tailscale up --operator=$USER`, so that your user can run `tailscale serve`.
-   On a host that is already up, `sudo tailscale set --operator=$USER` changes only that setting.
-2. Enable HTTPS certificates for the tailnet by opening the
-   [admin console](https://login.tailscale.com/admin/dns) and selecting **Enable HTTPS**.
-3. Put the phone on the same tailnet by installing the Tailscale app and signing in to the same
-   account.
+- **The host is on your tailnet.** Install Tailscale there and sign in. On Linux, bring it up with
+  `--operator=$USER`, so that your user can run `tailscale serve`. On a host that is already up,
+  `sudo tailscale set --operator=$USER` changes only that setting.
+- **HTTPS certificates are on.** Open the [admin console](https://login.tailscale.com/admin/dns)
+  and select **Enable HTTPS**.
+- **The phone is on the same tailnet.** Install the Tailscale app and sign in to the same account.
 
 `collie start` exits with an error if HTTPS is off. The phone also requires HTTPS to install
 Collie to the home screen and receive Web Push.
@@ -187,10 +187,8 @@ notepad install.ps1
 powershell -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
-Then open a new terminal and start Herdr. Herdr takes over that terminal, so open a second terminal
-or a Herdr pane and run `collie start` there.
-[Zero to phone](windows.md#zero-to-phone) has every step, including how to open Collie on your
-phone.
+[The Windows path in the guide](five-minute-install.md#windows) has every step, from Tailscale to
+a running Collie.
 
 What to know before you start:
 
@@ -419,26 +417,13 @@ To restrict access, set `COLLIE_TRUSTED_USER=you@example.com` in `.env` and run 
 
 ## Put it on your phone
 
-Open Collie on the phone, add it to the home screen, then pair it.
-
-1. Confirm that the phone's Tailscale app shares a tailnet with the host.
-2. Run `collie qr` on the host and scan its code, or open the URL that `collie url` prints.
-3. Add Collie to the home screen ([iPhone and iPad](#iphone-and-ipad), [Android](#android)), then
-   open it from the new icon.
-4. Run `collie pair` on the host.
-5. In Collie, open **Settings → System → Paired devices**, enter the code and a name, and tap
-   **Pair this device**.
-
-Pair inside the home screen app, not in a browser tab. On an iPhone, the home screen app keeps its
-own storage, separate from Safari, so a pairing made in Safari does not carry over. For the same
-reason, type the code on a phone. The QR code that `collie pair` prints opens the code in a
-browser tab, so use it to pair a desktop browser.
-
-Collie answers no device until it is paired, so the dashboard shows **Pair this device** until
-then ([Pair a device](security.md#pair-a-device--the-write-credential)).
+The steps live in the guide, in
+[Put Collie on your phone and pair it](five-minute-install.md#put-collie-on-your-phone-and-pair-it).
+This section holds the details per device.
 
 Collie is a web app. The browser adds it to your home screen without an app store, giving it a
-standalone icon and full-screen view.
+standalone icon and full-screen view. Collie answers no device until it is paired, so the dashboard
+shows **Pair this device** until then ([Pair a device](security.md#pair-a-device--the-write-credential)).
 
 ### iPhone and iPad
 
