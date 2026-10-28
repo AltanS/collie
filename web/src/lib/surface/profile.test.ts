@@ -1156,7 +1156,7 @@ describe("the Claude ranges and the ledger", () => {
 describe("keys that differ by platform (M56 spec 14 review)", () => {
   const raw = (): JsonObject => parseJsonObject(readFileSync(join(PROFILES_DIR, "pi.json"), "utf8"))!;
 
-  it("pi sends and queues with Alt+Enter, and with Ctrl+Q on Windows", () => {
+  it("pi sends and queues with Alt+Enter, and with Ctrl+Q on Windows and under WSL", () => {
     const pi = loadProfiles().get("pi")!;
     expect(pi.keys.submit).toEqual(["alt+Enter"]);
     expect(pi.keys.queueKey).toBe("alt+Enter");
@@ -1166,6 +1166,22 @@ describe("keys that differ by platform (M56 spec 14 review)", () => {
     expect(win.keys.commandSubmit).toEqual(["Enter"]);
     expect(forPlatform(pi, "linux")).toBe(pi);
     expect(forPlatform(pi, "darwin")).toBe(pi);
+    const wsl = forPlatform(pi, "wsl");
+    expect(wsl.keys.submit).toEqual(["ctrl+q"]);
+    expect(wsl.keys.queueKey).toBe("ctrl+q");
+    expect(wsl.keys.commandSubmit).toEqual(["Enter"]);
+    expect(forPlatform(pi, "linux").keys.submit).toEqual(["alt+Enter"]);
+    expect(forPlatform(pi, "linux").keys.queueKey).toBe("alt+Enter");
+  });
+
+  it("a profile with no wsl entry keeps its default keys under WSL", () => {
+    const claude = loadProfiles().get("claude")!;
+    const wsl = forPlatform(claude, "wsl");
+    expect(wsl).toBe(claude);
+    expect(wsl.keys.submit).toEqual(claude.keys.submit);
+    expect(wsl.keys.queueKey).toBe(claude.keys.queueKey);
+    const omp = loadProfiles().get("omp")!;
+    expect(forPlatform(omp, "wsl")).toBe(omp);
   });
 
   it("the bridge's match carries the platform's keys", () => {
@@ -1173,6 +1189,7 @@ describe("keys that differ by platform (M56 spec 14 review)", () => {
     expect(match?.profile.keys.submit).toEqual(["ctrl+q"]);
     expect(match?.status).toBe("verified");
     expect(profileForPlatform("pi", "0.87.1", "linux", { log: () => {} })?.profile.keys.submit).toEqual(["alt+Enter"]);
+    expect(profileForPlatform("pi", "0.87.1", "wsl", { log: () => {} })?.profile.keys.submit).toEqual(["ctrl+q"]);
     expect(profileForPlatform("nothing-known", "1.0.0", "win32")).toBeNull();
   });
 
@@ -1186,6 +1203,8 @@ describe("keys that differ by platform (M56 spec 14 review)", () => {
     expect(failure(change(raw(), ["keys", "submit"], { win32: ["ctrl+q"] })).path).toBe("keys.submit.default");
     expect(failure(change(raw(), ["keys", "submit"], { default: ["alt+Enter"], plan9: ["ctrl+q"] })).path).toBe("keys.submit.plan9");
     expect(failure(change(raw(), ["keys", "submit"], { default: ["alt+Enter"], win32: [] })).path).toBe("keys.submit.win32");
+    expect(parseProfile(change(raw(), ["keys", "submit"], { default: ["alt+Enter"], wsl: ["ctrl+q"] })).keys.submitByPlatform).toEqual({ wsl: ["ctrl+q"] });
+    expect(failure(change(raw(), ["keys", "submit"], { default: ["alt+Enter"], wsl: [] })).path).toBe("keys.submit.wsl");
   });
 
   it("keys.queueKey names one key per platform, never Enter or Escape", () => {

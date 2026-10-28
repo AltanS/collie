@@ -11,6 +11,7 @@ import {
   isInside,
   isSameOrInside,
   splitPath,
+  surfacePlatform,
 } from "./host.ts";
 
 const WIN = hostFor("win32");
@@ -113,5 +114,48 @@ describe("isInside, isSameOrInside and isBelow", () => {
       (hostFor("linux") as { exeSuffix: string }).exeSuffix = ".exe";
     }).toThrow();
     expect(hostFor("linux").exeSuffix).toBe("");
+  });
+});
+
+describe("surfacePlatform", () => {
+  // Real /proc/version lines: WSL1 (Microsoft with a capital M), WSL2 (microsoft-standard-WSL2) and Fedora.
+  const WSL1 = "Linux version 4.4.0-19041-Microsoft (Microsoft@Microsoft.com) (gcc version 5.4.0 (GCC) ) #1237-Microsoft Sat Sep 11 14:32:00 PST 2021";
+  const WSL2 = "Linux version 5.15.153.1-microsoft-standard-WSL2 (root@941d701f84f1) (gcc (GCC) 11.2.0, GNU ld (GNU Binutils) 2.37) #1 SMP Fri Mar 29 23:14:13 UTC 2024";
+  const FEDORA = "Linux version 6.11.4-301.fc41.x86_64 (mockbuild@d4b8f2a1c3e84f2f8a7d6c5b4e3f2a10) (gcc (GCC) 14.2.1 20240912 (Red Hat 14.2.1-3), GNU ld version 2.43.1-2.fc41) #1 SMP PREEMPT_DYNAMIC Tue Oct 15 14:47:03 UTC 2024";
+  const source = (platform: string, env: Record<string, string> = {}, procVersion: string | null = FEDORA) => ({
+    platform,
+    env,
+    readProcVersion: () => procVersion,
+  });
+
+  test("a WSL1 /proc/version line is WSL", () => {
+    expect(surfacePlatform(source("linux", {}, WSL1))).toBe("wsl");
+  });
+
+  test("a WSL2 /proc/version line is WSL", () => {
+    expect(surfacePlatform(source("linux", {}, WSL2))).toBe("wsl");
+  });
+
+  test("a plain Fedora /proc/version line is Linux", () => {
+    expect(surfacePlatform(source("linux", {}, FEDORA))).toBe("linux");
+    expect(surfacePlatform(source("linux", {}, null))).toBe("linux");
+  });
+
+  test("WSL_DISTRO_NAME or WSL_INTEROP alone is WSL, with a plain /proc/version", () => {
+    expect(surfacePlatform(source("linux", { WSL_DISTRO_NAME: "Ubuntu" }, FEDORA))).toBe("wsl");
+    expect(surfacePlatform(source("linux", { WSL_INTEROP: "/run/WSL/8_interop" }, FEDORA))).toBe("wsl");
+    expect(surfacePlatform(source("linux", { WSL_DISTRO_NAME: "" }, FEDORA))).toBe("linux");
+  });
+
+  test("win32 stays win32, whatever the signals say", () => {
+    expect(surfacePlatform(source("win32", { WSL_DISTRO_NAME: "Ubuntu" }, WSL2))).toBe("win32");
+    expect(surfacePlatform(source("darwin", {}, WSL2))).toBe("darwin");
+  });
+
+  test("the env settles it without reading /proc/version", () => {
+    let reads = 0;
+    const answer = surfacePlatform({ platform: "linux", env: { WSL_INTEROP: "/run/WSL/1_interop" }, readProcVersion: () => { reads += 1; return null; } });
+    expect(answer).toBe("wsl");
+    expect(reads).toBe(0);
   });
 });

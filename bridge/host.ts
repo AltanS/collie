@@ -68,6 +68,28 @@ export function hostFor(platform: NodeJS.Platform | string): Host {
 /** The machine this process runs on. The default wherever a host is injected. */
 export const HOST: Host = hostFor(process.platform);
 
+/** What {@link surfacePlatform} reads: the platform, the environment and the text of `/proc/version`. */
+export interface SurfacePlatformSource {
+  readonly platform: string;
+  readonly env: Readonly<Record<string, string | undefined>>;
+  /** The text of `/proc/version`, or null when it cannot be read. Called at most once, and only on Linux. */
+  readonly readProcVersion: () => string | null;
+}
+
+/**
+ * The platform name a harness profile's per-platform keys are looked up by. It is `process.platform`,
+ * except under WSL: a Linux kernel that is Microsoft's, where an agent program may take the Windows
+ * key set. A profile opts in with a `wsl` entry; one without keeps its default keys. WSL shows in `WSL_DISTRO_NAME` or
+ * `WSL_INTEROP`, or in a `/proc/version` line that names Microsoft; either signal counts. Only the
+ * profile lookup reads this: paths, units and checks keep reading {@link HOST}.
+ */
+export function surfacePlatform(source: SurfacePlatformSource): string {
+  if (source.platform !== "linux") return source.platform;
+  const { WSL_DISTRO_NAME: distro, WSL_INTEROP: interop } = source.env;
+  if ((distro ?? "") !== "" || (interop ?? "") !== "") return "wsl";
+  return /microsoft/i.test(source.readProcVersion() ?? "") ? "wsl" : "linux";
+}
+
 // ── The one place a collie binary file name is written ───────────────────────
 
 /** `collie`, or `collie.exe` on Windows. */

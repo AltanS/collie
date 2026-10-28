@@ -854,7 +854,8 @@ function textList(value: JsonValue | undefined, path: string, minLength: number)
   return items.map((item, i) => text(item, `${path}[${String(i)}]`));
 }
 
-const PLATFORMS = ["win32", "darwin", "linux"] as const;
+// `wsl` is Linux under Windows Subsystem for Linux, where an agent program may take the Windows keys.
+const PLATFORMS = ["win32", "darwin", "linux", "wsl"] as const;
 
 /** A key list as the file wrote it: the default, and the lists of the platforms that differ. */
 interface PlatformLists {

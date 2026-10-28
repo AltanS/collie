@@ -7,7 +7,7 @@ import { classifyInstall, probeInstall } from "../cli/install-kind.ts";
 import { realLinkFs } from "../cli/link.ts";
 import { packageCommand } from "../cli/package-command.ts";
 import { realExec, realFiles } from "../cli/sys.ts";
-import { collieBinary as collieBinaryOf, HOST } from "./host.ts";
+import { collieBinary as collieBinaryOf, HOST, surfacePlatform } from "./host.ts";
 import { ActivityLedger } from "./activity.ts";
 import { trackActivity } from "./activity-tracking.ts";
 import { CacheTracker } from "./cache/tracker.ts";
@@ -1486,11 +1486,23 @@ const holdServer =
         },
       });
 const sendVersions = new VersionCache();
+/** The platform the harness profiles pick their keys by: `process.platform`, or `wsl` under WSL. Decided once, here. */
+const SURFACE_PLATFORM = surfacePlatform({
+  platform: HOST.platform,
+  env: process.env,
+  readProcVersion: () => {
+    try {
+      return readFileSync("/proc/version", "utf8");
+    } catch {
+      return null;
+    }
+  },
+});
 /**
  * A harness's profile at its version, for the send path: of the pane's own program when the pane's
  * foreground read shows it, else of the PATH binary (bridge/pane-binary.ts, ADR 0124).
  */
-const sendProfile = createPaneProfile({ versions: sendVersions, binaries: harnessBinaries, probe: procProbe(), platform: HOST.platform });
+const sendProfile = createPaneProfile({ versions: sendVersions, binaries: harnessBinaries, probe: procProbe(), platform: SURFACE_PLATFORM });
 
 const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   const built = endpoint.kind === "program" ? programAdapter(endpoint.source) : terminalAdapter(endpoint.socketPath);

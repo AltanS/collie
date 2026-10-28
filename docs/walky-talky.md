@@ -160,7 +160,7 @@ message never steers, whoever sends it.
 | `muse` | queue key | Tab queues it; Enter would steer, so Collie never presses it there |
 | `omp` | queue key | Ctrl+Q queues it; Enter would steer, so Collie never presses it there |
 | `opencode` | queue | Enter queues it in the harness, and it runs after the turn |
-| `pi` | queue key | Alt+Enter (Ctrl+Q on Windows) queues it; Enter would steer |
+| `pi` | queue key | Alt+Enter (Ctrl+Q on Windows and in WSL) queues it; Enter would steer |
 
 The queue and the queue key need a harness version Collie knows. With an unknown version, Collie
 holds the message instead. The browser rig does not report a Claude version, so there Collie holds

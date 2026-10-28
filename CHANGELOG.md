@@ -34,6 +34,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
   phone's updater ran without the instance keys and took the default service, moved its checkout and
   rewrote its unit. The updater now carries `COLLIE_INSTANCE`, `COLLIE_MUX` and `COLLIE_CONFIG_DIR`, as
   the CLI's own runner does.
+- **pi under WSL sends with Ctrl+Q, as on Windows.** pi 1.4.0 in WSL reports Linux but takes Ctrl+Q to send, so every send ended "The submit key went out, but the box did not show it was taken". The bridge now picks the profile keys by a `wsl` platform when it runs under WSL (the `WSL_DISTRO_NAME` or `WSL_INTEROP` variable, or Microsoft in `/proc/version`), and pi's profile names Ctrl+Q for it. Other agents keep their keys. Reported by @npo-mmenke (#594).
 - **The install scripts end with the steps the install guide gives.** `install.sh` no longer asks
   you to copy `.env.example`, which a later `cp` turned into a trap: it names Tailscale with HTTPS,
   starts the multiplexer, runs `COLLIE_MUX=herdr collie start`, opens the phone with `collie qr`,
