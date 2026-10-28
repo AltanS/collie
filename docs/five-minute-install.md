@@ -131,7 +131,7 @@ Next, go to [Put Collie on your phone and pair it](#put-collie-on-your-phone-and
 
 ## Windows
 
-Install Tailscale and Herdr, install Collie, start it, and publish it on your tailnet by hand.
+Install Tailscale, Herdr and Collie, start Collie, and print the address for your phone.
 Run the commands in PowerShell.
 
 1. Install Tailscale on the PC and on the phone from
@@ -163,39 +163,18 @@ Run the commands in PowerShell.
    collie start
    ```
 
-7. In any terminal, publish Collie's port 8787 on your tailnet.
+7. Print the address to open on the phone.
 
    ```powershell
-   tailscale serve --bg --set-path=/ 8787
+   collie url
    ```
-
-8. Create the Collie config folder if it is missing, then open its `.env` file.
-
-   ```powershell
-   New-Item -ItemType Directory -Force "$env:APPDATA\herdr\plugins\config\herdr.collie"
-   notepad "$env:APPDATA\herdr\plugins\config\herdr.collie\.env"
-   ```
-
-9. Add these two lines at the end of the file, with the name step 7 printed, and save.
-
-   ```text
-   COLLIE_PUBLIC_HOSTS=myhost.tail1234.ts.net
-   COLLIE_PUBLIC_URL=https://myhost.tail1234.ts.net
-   ```
-
-10. Restart Collie, then print its address.
-
-    ```powershell
-    collie restart
-    collie url
-    ```
 
 Step 5 needs a new terminal because Windows gives the new PATH only to windows opened after the
 install. In the Herdr pane, start your agent, for example `claude`.
 
-In 1.24.1, `collie start` on Windows publishes no front door, the HTTPS address your phone opens.
-Steps 7 to 9 do that by hand, and
-[Reaching it from your phone](windows.md#reaching-it-from-your-phone) explains them.
+`collie start` runs `tailscale serve` for you, and prints the setup check if something is missing.
+If it could not publish, [Reaching it from your phone](windows.md#reaching-it-from-your-phone) has
+the steps by hand.
 [Zero to phone](windows.md#zero-to-phone) lists what you should see after each step.
 
 Next, go to [Put Collie on your phone and pair it](#put-collie-on-your-phone-and-pair-it).

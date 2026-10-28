@@ -27,6 +27,8 @@ for when `collie start` cannot publish.
 > - An update between two real releases on Windows.
 > - The HTTPS form of Tailscale Serve on Windows, and with it the home screen install, Web Push and
 >   the microphone.
+> - Publishing from `collie start` on a real tailnet on Windows. Only unit tests and HTTP on the
+>   project's Headscale test tailnet have run it.
 > - Windows 10, Windows Server, Windows on ARM, and the other items in
 >   [What is not tested](#what-is-not-tested).
 >
@@ -57,7 +59,7 @@ You need these:
 - **A phone** with a browser, an iPhone or an Android phone.
 - **A free Tailscale account.** You create it when you first sign in to the Tailscale app. The PC
   and the phone must sign in to the same one. The phone reaches the PC through it. Steps 1 and 2
-  of Zero to phone set it up, and step 7 publishes Collie on it.
+  of Zero to phone set it up, and step 6 publishes Collie on it.
 
 Check whether Smart App Control is on, because it can block `collie.exe`. Open Windows Security,
 then **App & browser control**, then **Smart App Control settings**. It has three states:
@@ -97,22 +99,18 @@ What you should see after each step of the guide:
 5. Herdr opens and takes over that terminal. A new terminal is needed because Windows gives the new
    PATH only to windows opened after the install.
 6. A second terminal is needed because Herdr holds the first one. `collie start` prints the
-   **Collie is running** banner and a note that Collie publishes no front door here. A front door is
-   the HTTPS address in front of Collie that your phone opens. That note is
-   expected on Windows: steps 7 to 10 do that part by hand. If Tailscale is not signed in on the PC,
-   it also prints this line on stderr: `error: 'tailscale status' named no host for this node`. Sign
-   in (step 1), and the line goes away. If it stays, run `tailscale status` and check that it
-   lists this PC. Start your agent in a Herdr pane, for example `claude`. Collie shows it on its
-   dashboard.
-7. `tailscale serve status` shows your tailnet address. Before this step, `collie url` may print a
-   loopback address (`127.0.0.1`), an address that only this PC can open. You can open that one in
-   a browser on this PC to see the dashboard.
-8. Notepad opens `.env`, or offers to create it. Click **Yes**.
-9. The file holds the two lines, with the name from step 7.
-10. `collie url` prints the tailnet address. [Reaching it from your phone](#reaching-it-from-your-phone)
-    has the detail for steps 7 to 10.
+   **Collie is running** banner and your tailnet address on the `tailnet` line. It runs
+   `tailscale serve` for you, and it adopts a mapping that you made by hand with an older version of
+   this page. If Tailscale is missing, signed out or without HTTPS, it prints one line that begins
+   with `setup:` for each problem, with the fix, and still starts Collie on this PC. Start your
+   agent in a Herdr pane, for example `claude`. Collie shows it on its dashboard.
+7. `collie url` prints the tailnet address. `tailscale serve status` shows the mapping that `start`
+   made. If `collie url` prints a loopback address (`127.0.0.1`), an address that only this PC can
+   open, `start` could not publish: see
+   [Reaching it from your phone](#reaching-it-from-your-phone). You can open that address in a
+   browser on this PC to see the dashboard.
 
-After step 10, go on with the guide's phone section. There, `collie qr` prints the address as a QR
+After step 7, go on with the guide's phone section. There, `collie qr` prints the address as a QR
 code, and `collie pair` prints a code of eight characters, then a line like `single-use · expires
 <time> (10 minutes)`. When the phone is paired, the dashboard shows your panes. Panes that wait for
 you come first.
@@ -173,7 +171,7 @@ door is not asked: its only door is mutual TLS.
 
 ## Reaching it from your phone
 
-Step 7 of Zero to phone, in full: set up Tailscale once, and `collie start` publishes Collie on
+Step 6 of Zero to phone, in full: set up Tailscale once, and `collie start` publishes Collie on
 your tailnet, the same way as on Linux and macOS.
 
 1. Install Tailscale on the PC and on the phone, and sign in to the same account on both:
@@ -312,7 +310,7 @@ These notes are the Windows part.
 - **The phone needs the Tailscale app,** signed in to your tailnet, to reach the address that
   `collie url` prints.
 - **The code is good for 10 minutes and works once.** Run `collie pair` again if it ran out.
-  Pairing ends the open access in the Note at the top of
+  Pairing ends the open access in the Note in
   [Reaching it from your phone](#reaching-it-from-your-phone)
   ([Pair a device](security.md#pair-a-device--the-write-credential)).
 
@@ -392,8 +390,10 @@ $k.SetValue('Path', (($k.GetValue('Path', '', 'DoNotExpandEnvironmentNames') -sp
 $k.Close()
 ```
 
-Copy the lines from Collie's own output when you can. Collie does not remove a `tailscale serve`
-mapping that you made by hand ([Reaching it from your phone](#reaching-it-from-your-phone)).
+Copy the lines from Collie's own output when you can. Collie removes the `tailscale serve`
+mapping it recorded, which includes a hand-made mapping that `collie start` adopted
+([Reaching it from your phone](#reaching-it-from-your-phone)). A mapping that it never recorded
+stays.
 
 ## When something breaks
 
@@ -533,7 +533,7 @@ A **crew** is several machines that each run a Collie, shown behind one URL ([Cr
 | Multiplexer | Herdr 0.9.3 or newer for Windows | tmux, zellij and tuios: none has a native Windows build |
 | Service | Task Scheduler, one Collie per machine | A Windows service, winget and MSI |
 | Crew | Collie on one machine | A Windows machine joining a crew |
-| Front door | You publish it yourself, by hand | A front door that Collie manages |
+| Front door | `collie start` publishes it with `tailscale serve`; the by-hand path is the fallback | A reverse proxy or another tunnel |
 | Binary | `collie.exe`, unsigned, with a sha256 | A signed binary |
 
 These limits also hold:
@@ -647,6 +647,8 @@ Plain list, so nothing here reads as a promise:
   it the home screen install, Web Push and the microphone. Also a real phone, an agent running in a
   Herdr pane, and a reverse proxy, in place of
   [Tailscale Serve](#reaching-it-from-your-phone).
+- Publishing from `collie start` on a real tailnet on Windows. It has unit tests, and HTTP ran on
+  the project's Headscale test tailnet.
 - A manual `collie update --rollback` on Windows. The automatic rollback after a failed update was
   rehearsed.
 - Moving from a source checkout to the zip install, and updating a source checkout by hand.

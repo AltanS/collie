@@ -196,9 +196,9 @@ What to know before you start:
   covered.
 - **The binary is unsigned.** SmartScreen can ask before it runs, and Smart App Control can block it.
   [Windows page](windows.md#unsigned-binary-smartscreen-and-smart-app-control).
-- **You publish the address yourself.** On Linux and macOS `collie start` runs `tailscale serve`
-  for you. On Windows it does not, so you run it by hand: [Reaching it from your phone](windows.md#reaching-it-from-your-phone) has the
-  steps with Tailscale, and
+- **`collie start` publishes the address for you.** It runs `tailscale serve`, as on Linux and
+  macOS. If it cannot, [Reaching it from your phone](windows.md#reaching-it-from-your-phone) has
+  the steps by hand, and
   [Variant C](deployment.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale) covers a
   reverse proxy.
 - **A Windows machine cannot join a crew in this release.**
@@ -355,7 +355,8 @@ collie start                                             # standalone
 `start` will:
 1. Build `web/dist` if missing.
 2. Launch the bridge under `systemd --user` (or launchd/`nohup`).
-3. Run `tailscale serve --bg 8787` (HTTPS :443 → 127.0.0.1:8787).
+3. Publish Collie on your tailnet with `tailscale serve`, on Linux, macOS and Windows alike
+   (HTTPS :443 → 127.0.0.1:8787).
 4. Print the connection banner.
 
 ### First run: what you'll see
@@ -379,11 +380,11 @@ tailscale serve (https) → tailnet :443 -> 127.0.0.1:8787
 If the health check fails (`⚠ Collie isn't answering on :8787 yet`), see
 [Troubleshooting](troubleshooting.md#troubleshooting).
 
-Before it launches the bridge, `collie start` checks your setup and prints one `setup:` line for
-each missing piece, with the fix after the arrow: Tailscale not installed or not signed in, MagicDNS
-or HTTPS off, the operator setting on Linux, no multiplexer or several without `COLLIE_MUX`, and no
-`collie` on your PATH. The check never stops `start`. Fix what it names, then run `collie start`
-again. `collie doctor` repeats the same check.
+Before it launches the bridge, `collie start` checks your setup. It prints a line that begins with
+`setup:` for each missing piece, with what is missing and the fix: Tailscale not installed or not
+signed in, MagicDNS or HTTPS off, the operator setting on Linux, no multiplexer or several without
+`COLLIE_MUX`, and no `collie` on your PATH. The check never stops `start`. Fix what it names, then
+run `collie start` again. `collie doctor` repeats the same lines.
 
 The bridge runs as a `systemd --user` service or macOS launchd agent. It starts at login and
 restarts on failure ([`ARCHITECTURE.md`](../ARCHITECTURE.md) §3). On Linux,
