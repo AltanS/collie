@@ -405,7 +405,7 @@ The package has its own version, apart from Collie's, and names the wire version
 
 | | today | what it means |
 | --- | --- | --- |
-| `SDK_VERSION` | 0.1.0 | The package version. Until the package leaves the dist-tag experimental, a minor release may change the API |
+| `SDK_VERSION` | 0.2.0 | The package version. Until the package leaves the dist-tag experimental, a minor release may change the API |
 | `WIRE_VERSION` | 1 | The durable wire version the package speaks |
 
 Collie speaks one wire version and accepts the one before it for one minor release after a new one
