@@ -337,7 +337,7 @@ describe("serve — publishing", () => {
     expect(h.exec.calls).toContain("tailscale serve --bg --set-path=/ 8787");
   });
 
-  test("an adopted mapping is announced once, with the line that says `collie stop` removes it", () => {
+  test("an adopted mapping is announced once, with the line that names uninstall and unserve", () => {
     const h = harness({
       serveMode: "http",
       serveStatus: `{${tcp(8787, "HTTP")},${web("host:8787", "/", OURS)}}`,
@@ -345,7 +345,7 @@ describe("serve — publishing", () => {
     expect(cmdServe(h.deps)).toBe(EXIT.OK);
     const notes = h.io.stdout.filter((l) => l.startsWith("note: adopted"));
     expect(notes).toEqual([
-      "note: adopted an existing tailscale serve mapping for this collie; `collie stop` removes it with the rest",
+      "note: adopted an existing tailscale serve mapping for this collie; `collie uninstall` or `collie unserve` removes it with the rest",
     ]);
     // A free root is not an adoption, so it prints no such note.
     const free = harness({ serveMode: "http" });

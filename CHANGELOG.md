@@ -38,7 +38,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
   same code as Linux and macOS, records the mapping, and removes only that mapping on
   `collie uninstall`. A mapping made by hand from the old Windows guide is adopted and recorded on
   the first `collie start`, and `collie doctor` warns about it until then. An adopted mapping is
-  removed by `collie stop` like any mapping Collie recorded. `COLLIE_PUBLIC_HOSTS`
+  removed by `collie uninstall` or `collie unserve` like any mapping Collie recorded. `COLLIE_PUBLIC_HOSTS`
   and `COLLIE_PUBLIC_URL` are no longer needed for the default setup.
 
 ### Docs
