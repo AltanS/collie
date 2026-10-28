@@ -369,6 +369,11 @@ function removeRecord(deps: FrontDoorDeps): boolean {
 /** The live fingerprint, or null when the CLI failed or its JSON was unreadable. */
 function readFingerprint(deps: FrontDoorDeps, record: OwnershipRecord): string | null {
   const r = deps.exec.capture("tailscale", ["serve", "status", "--json"], SERVE_STATUS_PROBE_MS);
+  // 124 is the `Exec` seam's answer to an expired bound (`cli/sys.ts`). Say so: the caller's next
+  // line reads "cannot inspect", and that is a slow daemon here, not a broken one.
+  if (r.found && r.code === 124) {
+    deps.io.err("warn: tailscale serve status did not answer within 3 s; the mapping stays");
+  }
   if (!r.found || r.code !== 0) return null;
   try {
     return fingerprintRoot(parseServeStatus(r.stdout), record.hostPort, record.port, record.path);

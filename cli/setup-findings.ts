@@ -192,6 +192,12 @@ function tailscaleRow(deps: SetupDeps, state: TailscaleState): Finding {
       const said = state.state === null ? "" : ` (it reports ${state.state})`;
       return warn("tailscale", `Tailscale is installed but not signed in or not running${said}`, upRemedy(deps));
     }
+    case "slow":
+      return warn(
+        "tailscale",
+        `Tailscale did not answer within ${TAILSCALE_PROBE_MS / 1000} seconds`,
+        "run `tailscale status` by hand; when it answers, run `collie start` again",
+      );
     case "unreadable":
       return skipped(
         "tailscale",

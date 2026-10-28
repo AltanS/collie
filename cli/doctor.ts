@@ -82,7 +82,7 @@ import {
   soloCrewHint,
   VERSION_REPORTED_SINCE,
 } from "./crew.ts";
-import { fingerprintRoot, mountName, parseRecord, parseServeStatus, rootAvailability } from "./serve.ts";
+import { fingerprintRoot, handMadeDoors, mountName, parseRecord, parseServeStatus, rootAvailability } from "./serve.ts";
 import type { Exec, Files } from "./sys.ts";
 import { whistleModelFindings, type WhistleSeams } from "./stt-whistle.ts";
 import { BUILD_MARKER, currentVersionDir, listVersions, platformId, readBuildMarker } from "./update.ts";
@@ -1005,6 +1005,13 @@ function frontDoor(deps: DoctorDeps, mode: string): Finding {
       "fix the tailscale line first, then run `collie doctor` again",
     );
   }
+  if (state.kind === "slow") {
+    return skipped(
+      "front-door",
+      `\`tailscale status --json\` did not answer within ${TAILSCALE_PROBE_MS / 1000} seconds, so the published mapping cannot be read yet`,
+      "run `tailscale status` by hand, then `collie doctor` again",
+    );
+  }
   if (state.kind === "unreadable") {
     return skipped(
       "front-door",
@@ -1070,6 +1077,8 @@ function frontDoor(deps: DoctorDeps, mode: string): Finding {
     }
     const detail = `no Collie-managed mapping is recorded and nothing of ours is published on :${listener}`;
     const publishRemedy = "`collie serve` here (or COLLIE_SKIP_SERVE=1 if you own the ingress)";
+    const stray = handMadeDoorFinding(deps, status, listener);
+    if (stray !== null) return stray;
     return mode === "lead"
       ? bad(
           "front-door",
@@ -1108,10 +1117,10 @@ function frontDoor(deps: DoctorDeps, mode: string): Finding {
   const fingerprint = fingerprintRoot(status, record.hostPort, record.port, record.path);
   if (fingerprint === `${record.mode}|proxy:${record.proxy}`) {
     const at = record.path === "/" ? "" : ` at ${record.path}`;
-    return ok("front-door", `${record.hostPort}${at} → ${record.proxy} (recorded and live)`);
+    return handMadeDoorFinding(deps, status, record.port) ?? ok("front-door", `${record.hostPort}${at} → ${record.proxy} (recorded and live)`);
   }
   if (fingerprint === "absent") {
-    return warn(
+    return handMadeDoorFinding(deps, status, record.port) ?? warn(
       "front-door",
       `the record names ${record.hostPort}, but no root mount is published there`,
       "`collie serve` here to republish it",
@@ -1122,6 +1131,27 @@ function frontDoor(deps: DoctorDeps, mode: string): Finding {
     `the record names ${record.hostPort} → ${record.proxy}, but that root is now ${fingerprint} —` +
       " something else owns it and Collie will not touch it",
     `\`collie serve\` here, or clear ${deps.ctx.handlerFile} if that mapping is deliberately someone else's`,
+  );
+}
+
+/**
+ * A root mount on a listener other than `ownPort` that still proxies to this Collie's loopback: a
+ * door made by hand (the old Headscale recipe used port 80). Collie never adopts it and
+ * `collie uninstall` never removes it, so it is named. Null when there is none. Callers use it only
+ * when the own door is fine or missing, so no other answer is hidden behind it.
+ */
+function handMadeDoorFinding(
+  deps: DoctorDeps,
+  status: NonNullable<ReturnType<typeof liveServeStatus>>,
+  ownPort: number,
+): Finding | null {
+  const proxy = `http://127.0.0.1:${deps.ctx.port}`;
+  const stray = handMadeDoors(status, ownPort, proxy, deps.ctx.basePath)[0];
+  if (stray === undefined) return null;
+  return warn(
+    "front-door",
+    `:${stray.listener} proxies to ${proxy}, made by hand on a port Collie does not manage; collie uninstall will not remove it`,
+    `remove it with \`tailscale serve --${stray.protocol}=${stray.listener} --set-path=${deps.ctx.basePath} off\`, then run \`collie start\`, which publishes on Collie's own port (docs/windows.md)`,
   );
 }
 

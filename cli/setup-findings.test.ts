@@ -430,3 +430,15 @@ describe("phoneBlocked — only the Tailscale rows stand between the phone and t
     expect(phoneBlocked(rows, LINUX)).toBe(false);
   });
 });
+
+describe("a Tailscale that times out", () => {
+  test("reads as slow, not as signed out, and the rows after it wait", () => {
+    const rows = tailscaleFindings(deps({ answers: [["tailscale status --json", { code: 124 }]] }));
+    const first = row(rows, "tailscale");
+    expect(first.status).toBe("warn");
+    expect(first.detail).toBe(`Tailscale did not answer within ${TAILSCALE_PROBE_MS / 1000} seconds`);
+    expect(first.detail).not.toContain("not signed in");
+    expect(first.remedy).toBe("run `tailscale status` by hand; when it answers, run `collie start` again");
+    expect(row(rows, "tailnet-https").status).toBe("skipped");
+  });
+});

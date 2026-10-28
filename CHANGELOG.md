@@ -58,6 +58,14 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **`collie status`, `collie doctor` and `collie serve` no longer hang on a stuck Tailscale.** Their
   reads of the serve configuration, and the bridge's check before it removes a mapping, give up after
   three seconds.
+- **A slow Tailscale is reported as slow, not as signed out.** When `tailscale status` does not answer
+  within three seconds, `collie start` and `collie doctor` now say that Tailscale did not answer and
+  to run `tailscale status` by hand, instead of telling you to sign in or blaming the HTTPS
+  certificates.
+- **Doctor names a hand-made tailnet mapping on another port that still points at Collie.** The
+  `front-door` row warns when a root mount on a port Collie does not manage, such as port 80 from the
+  old Headscale recipe, proxies to Collie, and names the `tailscale serve ... off` command that
+  removes it. `collie serve` in http mode prints a note about such a mapping and still publishes.
 
 ### Docs
 

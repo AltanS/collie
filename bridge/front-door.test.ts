@@ -276,3 +276,13 @@ describe("teardown bounds its read of the serve status, never its removal", () =
     expect(h.calls).toContain("tailscale serve --http=8788 --set-path=/ off");
   });
 });
+
+describe("a slow serve status", () => {
+  test("is named once, and the mapping stays", () => {
+    const h = harness();
+    const slow: FrontDoorExec = { which: h.deps.exec.which, capture: () => ({ code: 124, stdout: "", stderr: "", found: true }) };
+    expect(releaseManagedFrontDoor({ ...h.deps, exec: slow })).toBe(false);
+    expect(h.err.filter((l) => l.includes("did not answer within 3 s"))).toHaveLength(1);
+    expect(h.record()).toBe(RECORD);
+  });
+});

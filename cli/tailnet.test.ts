@@ -13,6 +13,7 @@ import {
   TAILSCALE_PROBE_MS,
   tailnetCertDomains,
   tailnetHosts,
+  readTailscale,
   tailnetInboundBlocked,
   tailnetName,
 } from "./tailnet.ts";
@@ -196,5 +197,14 @@ describe("every other tailscale call is bounded too", () => {
       { call: "tailscale status --json", ms: TAILSCALE_PROBE_MS },
       { call: "tailscale status --json", ms: TAILSCALE_PROBE_MS },
     ]);
+  });
+});
+
+describe("readTailscale", () => {
+  test("code 124 (the seam's expiry) is slow; any other failure is down", () => {
+    const slow = fakeExec({ answers: [["tailscale status --json", { code: 124 }]] });
+    expect(readTailscale(slow)).toEqual({ kind: "slow" });
+    const down = fakeExec({ answers: [["tailscale status --json", { code: 1 }]] });
+    expect(readTailscale(down)).toEqual({ kind: "down", state: null });
   });
 });

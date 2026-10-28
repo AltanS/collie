@@ -226,6 +226,8 @@ export type TailscaleState =
   | { readonly kind: "down"; readonly state: string | null }
   /** Exit 0 with a document this build cannot read: no verdict either way. */
   | { readonly kind: "unreadable" }
+  /** The call outlived {@link TAILSCALE_PROBE_MS}: a wedged or starting daemon, not a signed-out one. */
+  | { readonly kind: "slow" }
   | { readonly kind: "running"; readonly json: string };
 
 /** One bounded `tailscale status --json`, read into what it says about this machine. */
@@ -233,6 +235,10 @@ export function readTailscale(exec: Exec): TailscaleState {
   if (exec.which("tailscale") === null) return { kind: "absent" };
   const r = exec.capture("tailscale", ["status", "--json"], TAILSCALE_PROBE_MS);
   if (!r.found) return { kind: "absent" };
+  // BEFORE the non-zero branch: `capture` turns every expiry into code 124 (`cli/sys.ts`, the
+  // `code: timedOut ? 124 : …` line in `realExec`), and 124 is not "signed out". A slow daemon read
+  // as `down` told the operator to sign in to a Tailscale that was merely not answering.
+  if (r.code === 124) return { kind: "slow" };
   if (r.code !== 0) return { kind: "down", state: null };
   let data: unknown;
   try {

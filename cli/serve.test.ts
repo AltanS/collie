@@ -249,6 +249,29 @@ describe("serve — publishing", () => {
     expect(h.io.stdout.join("\n")).toContain("tailscale serve (http) → tailnet :8787");
   });
 
+  describe("a hand-made door on another listener", () => {
+    const PORT_80 = JSON.stringify({
+      TCP: { "80": { HTTP: true } },
+      Web: { "host.example:80": { Handlers: { "/": { Proxy: "http://127.0.0.1:8787" } } } },
+    });
+    const NOTE =
+      "note: tailnet :80 already proxies to http://127.0.0.1:8787, made by hand on a port Collie does not" +
+      " manage; collie uninstall will not remove it (docs/windows.md)";
+
+    test("an http publish prints one note and still publishes", () => {
+      const h = harness({ serveMode: "http", serveStatus: PORT_80 });
+      expect(cmdServe(h.deps)).toBe(EXIT.OK);
+      expect(h.io.stdout.filter((l) => l.startsWith("note: tailnet"))).toEqual([NOTE]);
+      expect(h.exec.calls).toContain("tailscale serve --bg --http=8787 --set-path=/ 8787");
+    });
+
+    test("no such mapping, no note", () => {
+      const h = harness({ serveMode: "http" });
+      expect(cmdServe(h.deps)).toBe(EXIT.OK);
+      expect(h.io.stdout.some((l) => l.startsWith("note: tailnet"))).toBe(false);
+    });
+  });
+
   test("https publishes on :443 while the proxy target stays the bridge port", () => {
     const h = harness();
     expect(cmdServe(h.deps)).toBe(EXIT.OK);
