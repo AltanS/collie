@@ -1698,6 +1698,8 @@ export const en = {
   // Second-tap wording (#339): the first tap arms the key, the second sends it.
   "unreadDialog.confirmKey": "Tap again to send {key}",
   "unreadDialog.confirmDismiss": "Tap again to dismiss",
+  // Report a problem from the card (ADR 0123, amendment 2026-10-28): opens the same sheet as the pane menu.
+  "unreadDialog.report": "Report a problem",
   "dialog.preview.currentAnswerAria": "Current answer",
   "dialog.preview.previewedBelowAria": "Previewed below",
   "dialog.preview.previewLabel": "Preview · {label}",
@@ -1726,6 +1728,7 @@ export const en = {
   "promptAction.answer.fieldNotReached": "Couldn't reach the answer field. Nothing was sent",
   "promptAction.answer.notCleared": "Couldn't clear the answer field. Nothing was sent",
   "promptAction.answer.notArrived": "Your answer didn't arrive in the field. Nothing was submitted",
+  "promptAction.answer.tooLong": "This answer is too long for the terminal's width: the dialog would not fit on its screen. Shorten it, widen the terminal, or pick Chat about this and send it as a message. Nothing was typed",
   "promptAction.answer.notTicked": "The answer was typed, but its row did not tick. Check it on the card.",
 
   // --- stt (speech-to-text errors, lib/stt.ts + hooks/use-stt-recorder.ts) ---

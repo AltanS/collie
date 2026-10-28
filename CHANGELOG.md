@@ -23,18 +23,46 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+## [1.24.2] - 2026-10-28
+
+**Urgent.** A slow disk could end a send "typed, not submitted". Also fixed: slash commands under a live widget, pi on WSL, the Update tap.
+
 ### Added
 
-- **The browser leg can answer pi and omp from recorded model streams (M67).** A local stand-in for OpenRouter replays a recorded turn with its recorded pacing, so the real pi and omp still draw every screen the phone taps. A request the recording does not hold gets a "cassette mismatch" answer, never a nearby one. `bun run e2e:recordings:check` in `web/` fails when a recording holds a key, a bearer token, an Authorization header or a home folder path.
-- **The browser leg replays pi and omp when it has their recordings, and records them when a version is new (M67).** Each run reads the pi and omp versions. With recordings for that version, model and walky talky skill text, the harness replays and gets no key at all; without them it runs live and records, so the next run replays. `COLLIE_RIG_MODEL=replay` stops a run that has no recording, and `COLLIE_RIG_LIVE=pi,omp` or `all` forces live. Claude Code stays live. The leg ends with the tier of each harness, the live turn count and the number of requests sent to OpenRouter, and the nightly ledger row keeps the tiers.
+- **The browser leg can answer pi and omp from recorded model streams (M67).** A local stand-in for OpenRouter replays a recorded turn with its recorded pacing, so the real pi and omp still draw every screen the phone taps. A request the recording does not hold gets a "cassette mismatch" answer, never a nearby one. `bun run e2e:recordings:check` in `web/` fails when a recording holds a key, a bearer token, an Authorization header or a home folder path. ([558d01d](https://github.com/AltanS/collie/commit/558d01d))
+- **The browser leg replays pi and omp when it has their recordings, and records them when a version is new (M67).** Each run reads the pi and omp versions. With recordings for that version, model and walky talky skill text, the harness replays and gets no key at all; without them it runs live and records, so the next run replays. `COLLIE_RIG_MODEL=replay` stops a run that has no recording, and `COLLIE_RIG_LIVE=pi,omp` or `all` forces live. Claude Code stays live. The leg ends with the tier of each harness, the live turn count and the number of requests sent to OpenRouter, and the nightly ledger row keeps the tiers. ([558d01d](https://github.com/AltanS/collie/commit/558d01d))
 
 ### Fixed
 
+- **A slash command sent from the phone during a Codex turn is no longer refused.** Codex 0.163.0 can draw a warning segment after wide spacing on its idle footer row (`? for shortcuts` then `⚠ 1 warning · f2 to view`). Collie did not know that row as a hint, so when the footer became `tab to queue message` in the turn, the send read it as a change outside the box and ended "The probe character changed more than the box". The Codex profile now accepts the trailing segment on both `? for shortcuts` hint rows. ([92ad108](https://github.com/AltanS/collie/commit/92ad108))
+- **On a host with a named instance, the Update tap could update the default instance instead.** The
+  phone's updater ran without the instance keys and took the default service, moved its checkout and
+  rewrote its unit. The updater now carries `COLLIE_INSTANCE`, `COLLIE_MUX` and `COLLIE_CONFIG_DIR`, as
+  the CLI's own runner does. ([411c0a4](https://github.com/AltanS/collie/commit/411c0a4))
+- **pi under WSL sends with Ctrl+Q, as on Windows.** pi 1.4.0 in WSL reports Linux but takes Ctrl+Q to send, so every send ended "The submit key went out, but the box did not show it was taken". The bridge now picks the profile keys by a `wsl` platform when it runs under WSL (the `WSL_DISTRO_NAME` or `WSL_INTEROP` variable, or Microsoft in `/proc/version`), and pi's profile names Ctrl+Q for it. Other agents keep their keys. Reported by @npo-mmenke (#594). ([1864b81](https://github.com/AltanS/collie/commit/1864b81))
 - **The install scripts end with the steps the install guide gives.** `install.sh` no longer asks
   you to copy `.env.example`, which a later `cp` turned into a trap: it names Tailscale with HTTPS,
   starts the multiplexer, runs `COLLIE_MUX=herdr collie start`, opens the phone with `collie qr`,
   and pairs inside the home screen app. Its PATH note prints the exact line to add.
-  `install.ps1` points to the Windows guide on the web, not to a local page with no Windows steps.
+  `install.ps1` points to the Windows guide on the web, not to a local page with no Windows steps. ([5cb4204](https://github.com/AltanS/collie/commit/5cb4204))
+- **A send could end "typed, not submitted" with the text left in the box when the disk was slow.** Collie wrote the send record before the submit key, and that write could use up the key's 150 ms window. The window now starts after the write. ([2efc568](https://github.com/AltanS/collie/commit/2efc568))
+- **A microphone stays beside Attach while the box holds a draft.** The round button turns into Send
+  as soon as you type or attach something, which left no way to dictate a second clip into a draft.
+  A small microphone now sits next to Attach then, opens the same voice screen, and the words land
+  at the caret. It steps aside while the round button reads "Answer the dialog" or "Really send?".
+  Thanks @viniciosrab (#573). ([0ccd97e](https://github.com/AltanS/collie/commit/0ccd97e))
+- **A question from an agent Collie cannot read is no longer hidden behind Chat.** An agent with no screen reader in Collie, such as OpenClaw, asks in a dialog Chat cannot draw as a card, so a pane with a readable session sent a "needs your answer" notification and opened on a Chat that did not show the question. While such a pane asks, it now shows the terminal, and it goes back to Chat when it stops asking. Thanks @hubrix (#605). ([12e094d](https://github.com/AltanS/collie/commit/12e094d))
+- **An OpenCode 2 pane recognizes its question dialogs again.** opencode 2.1 paints its own `Questions` title above the dialog, marks the pointed row with an accent ink instead of a background chip, ends the tab row with `Submit` and draws the active chip bold, and drops the `Review` heading from the confirm screen. Collie now reads all of that, so a single question, a multi-select list and a several-question wizard lift into cards again, and the open free-text input still shows the card with Escape. Thanks @butzist (#607). ([17f96b3](https://github.com/AltanS/collie/commit/17f96b3))
+- **History reads a session from before an OpenCode 2.1 upgrade.** 2.1 renames the `session` table to `session_v2` and copies an older session's turns into `session_message` only when OpenCode itself opens that session. A session row in `session_v2` therefore no longer means the conversation is there; Collie picks the store by where the turns actually are, so an upgraded pane shows its history instead of "no transcript". Thanks @butzist (#607). ([aa20a79](https://github.com/AltanS/collie/commit/aa20a79))
+- **A long answer to a question card is typed whole.** The answer field no longer shares the plan row's 240-character cap: an answer up to 4000 characters is typed and proved while the dialog fits the pane, and one that would not fit is refused before any key, pointing at Chat about this. Thanks @eseninik (#606). ([090eee2](https://github.com/AltanS/collie/commit/090eee2))
+- **A Hermes pane with an interactive session id reads its history again.** Hermes 0.22 names interactive sessions `local-` followed by 64 hex digits, and Collie only knew the dated and subagent ids, so the pane fell back to the terminal view with no records. Collie now accepts the `local-` id (fixes #601). Thanks @NCheuk (#602). ([372438c](https://github.com/AltanS/collie/commit/372438c))
+- **Linked git worktrees fold under their open root workspace on the dashboard.** The workspace filter lists the root checkout instead of each linked worktree separately, and choosing a root workspace shows its worktrees' panes under the root heading with each worktree named on its row while keeping separate working-tree rows on the Files tab (fixes #587). Thanks @GGGODLIN (#608). ([6f42a72](https://github.com/AltanS/collie/commit/6f42a72))
+- **A slash command reaches omp and pi under a live widget.** An extension's widget over the input
+  box that ticks a spinner, a clock or a counter no longer makes a `/command` or a two-tap Send
+  refuse with "The probe character changed more than the box" or "The screen moved since you
+  looked". A row that changes its words, or a new row, still stops the send. A command on a fresh
+  Codex screen is no longer left typed when Codex hides its welcome picture. ([ea58062](https://github.com/AltanS/collie/commit/ea58062))
+- **The "Collie cannot read this dialog" card can report the screen it could not read.** The card now has Report a problem, which opens the same sheet as the pane menu. The report names the dialog in its title, and instead of sends it lists each of the agent's dialog readers with what it answered on that screen: found, null, or the error it threw. "Include the screen" starts on for this report, and the preview shows the masked rows before anything leaves. The setup adds the app and bridge builds, the browser, the viewport and whether the app runs installed. Nothing new is stored and no new route is asked. Thanks @leftos (#554). ([efc69b6](https://github.com/AltanS/collie/commit/efc69b6))
 
 ## [1.24.1] - 2026-10-27
 

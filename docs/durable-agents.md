@@ -1,8 +1,8 @@
 # Durable agents (experimental)
 
-> **Experimental.** The wire, the SDK and this page may change, or the feature may be removed, in a
-> later minor release. Today only Collie's own examples speak the wire. [The exit](#the-exit) says
-> what decides whether it stays. If you attach no durable agent, Collie looks and works as before.
+> **Experimental.** The wire, the SDK and this page may change in a later minor release. Today only
+> Collie's own examples speak the wire. Collie keeps durable agents as a feature ([The exit](#the-exit)).
+> If you attach no durable agent, Collie looks and works as before.
 
 If you built a durable agent with Pi Durable, with Vercel's durable-harness, or any program that serves
 the wire, Collie can show it on your phone. It gets approval prompts, history and a chat view without any UI code.
@@ -28,9 +28,9 @@ npm install @colliepwa/durable-sdk@experimental
 bun add @colliepwa/durable-sdk@experimental
 ```
 
-The package is published under the npm dist-tag `experimental`, never `latest`, and it follows the
-exit in [ADR 0104](../.adr/0104-a-program-is-a-session.md): if the durable wire goes, the package
-is deprecated ([ADR 0105](../.adr/0105-the-durable-sdk-is-an-npm-package.md)).
+The package is published under the npm dist-tag `experimental` until the wire leaves its experimental status.
+The `latest` tag carries no promise, so install `@colliepwa/durable-sdk@experimental`. If the package is ever
+retired, it is deprecated ([ADR 0105](../.adr/0105-the-durable-sdk-is-an-npm-package.md)).
 
 The SDK's Pi Durable entry is tested with Pi Durable 1.1.0 and 1.2.0. Node 22.19 is the floor of
 Pi Durable 1.2.0.
@@ -584,11 +584,9 @@ Update the older side.
 
 ## The exit
 
-The feature stays only if someone outside this repository uses it.
+Collie keeps durable agents as a feature. No outside use and no date is required
+([ADR 0104](../.adr/0104-a-program-is-a-session.md#the-exit)).
 
-By the 1.24.0 release, one of two things must be true: a public repository that speaks the wire
-exists, or an outside issue or discussion about a durable agent exists. If neither does, the
-durable code moves out of the release into `experiments/`, and this page goes
-([ADR 0104](../.adr/0104-a-program-is-a-session.md#the-exit)). On removal, a `sources.json` entry is ignored with one log line for one release, the socket keeps
+If the feature is ever retired, a `sources.json` entry is ignored with one log line for one release, the socket keeps
 working for your durable agent, and the npm package is deprecated, not deleted
 ([ADR 0105](../.adr/0105-the-durable-sdk-is-an-npm-package.md#the-exit)).

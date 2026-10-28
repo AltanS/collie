@@ -59,6 +59,14 @@ not need a terminal, and a gate that nobody opens only hides the screen the prod
      once, as before.
    - The fallback is one quiet swap and is not sticky: a session or log that arrives later takes the
      pane back to Chat.
+   - *(Amended 2026-10-27.)* A pane that asks for input NOW, in a harness with no block grammar
+     (`web/src/lib/harness/registry.ts`), draws the terminal while it asks, however readable its
+     session. No card can lift that dialog into Chat, so Chat over it was the same unseen question the
+     empty-Chat rule above exists to prevent, only with turns above it. The notification still said
+     the pane needed an answer. This one reads the CURRENT status, not the first-turn latch, and
+     returns the pane to Chat when it stops asking. Harnesses with a grammar are unchanged: their
+     dialogs are cards in Chat, and an unread one has its own card
+     ([ADR 0053](./0053-an-unread-dialog-still-has-a-way-out.md)).
 
    This replaced "a pane with no session keeps the terminal and its menu row says why". A device
    that chose Terminal sees no change.

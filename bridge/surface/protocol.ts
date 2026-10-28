@@ -20,7 +20,7 @@
 //           A command on a harness whose profile declares a command list needs two such reads, at
 //           least COMMAND_SETTLE_MS (160 ms) apart, that agree on the rows under the box: a list drawn
 //           late is never what Enter acts on (`commandSettle` in gapsMs)
-//   commit  the profile's submit keys through the gate with a 150 ms token; `submit-sent` is on disk first
+//   commit  the profile's submit keys through the gate with a 150 ms token minted after `submit-sent` is on disk (a slow write must not spend the token's lifetime)
 //   S2      (6, 3000) read until the box is empty or a running sign shows: `sent`; else `unknown`. A command
 //           that found nothing reads once more (6, 3000): its own screen may be slow to draw
 // A request past the sum of the bounds ends `unknown` and releases the lock. A protocol token never carries Escape; a person's Stop does, through the key gate, with a receipt (ADR 0116).
@@ -611,6 +611,8 @@ interface Snap {
   /** {@link plain} as read, nothing masked: what the lab's example keeps. */
   readonly plainRaw: readonly string[];
   readonly frame: Frame | null;
+  /** The profile's `idle.volatile.above.ticks`: the rows above the box are read through {@link tickMarked}. */
+  readonly ticks: boolean;
   readonly surface: Surface;
   readonly cueStrength: "none" | "weak" | "strong";
   /** The cues of the framed read behind {@link cueStrength}, for a refusal's example. */
@@ -724,12 +726,20 @@ const BRACKET = /\([^()]*\)/gu;
  */
 export function steadyRow(row: string, signs: readonly RegExp[] = []): string {
   // A row the profile names as a running row (idle.runningRows) shows its spinner glyph as a fixed mark.
-  if (signs.some((sign) => sign.test(row.trimEnd()))) return row.replace(/[\u2800-\u28ff]/gu, "*").replace(/\d+/gu, "0");
+  if (signs.some((sign) => sign.test(row.trimEnd()))) return tickMarked(row);
   // A spinner row with or without its bracket group reads as the glyph mark and the verb alone.
   const verb = SPINNER_VERB_ROW.exec(row);
   if (verb !== null) return `${verb[1] ?? ""}*${verb[2] ?? ""}`;
   if (!isRunningRow(row)) return row;
   return row.replace(SPINNER_LEAD, "$1*").replace(BRACKET, (run) => run.replace(/\d+/gu, "0"));
+}
+
+/**
+ * A row with its braille glyphs and its digit runs read as fixed marks: a spinner that turned, a
+ * counter or a clock that ticked reads the same. Every other character still counts.
+ */
+function tickMarked(row: string): string {
+  return row.replace(/[\u2800-\u28ff]/gu, "*").replace(/\d+/gu, "0");
 }
 
 function mark(snap: Snap | null): ReadMark | null {
@@ -1076,7 +1086,8 @@ function otherScreenOf(texts: readonly string[], frame: Frame | null, screens: r
 function transcriptAbove(snap: Snap, frame: Frame): string[] {
   const band = frame.volatile.above === null ? frame.top : frame.volatile.above.first;
   const end = snap.ownList?.side === "above" ? Math.min(band, snap.ownList.first) : band;
-  const rows = snap.texts.slice(0, end).map((t) => t.trimEnd());
+  // A profile whose rows above may tick in place (`idle.volatile.above.ticks`): a counter that moved is no moved screen.
+  const rows = snap.texts.slice(0, end).map((t) => (snap.ticks ? tickMarked(t) : t).trimEnd());
   while (rows.length > 0 && rows[rows.length - 1]!.length === 0) rows.pop();
   return rows;
 }
@@ -1722,10 +1733,10 @@ function ownListScroll(before: Snap, after: Snap): number {
 /** How many non-blank transcript rows must still show above the box before blank rows under a list may count as scroll. */
 const SCROLL_ANCHOR_ROWS = 2;
 
-/** {@link aboveUnchanged} for a manual send: the transcript above the box may lose text, never gain it. */
-function aboveLostOnly(before: Snap, after: Snap): boolean {
+/** {@link aboveUnchanged} for a manual send: the transcript above the box may lose text, never gain it. `topSlack` as in {@link lostTextOnly}. */
+function aboveLostOnly(before: Snap, after: Snap, topSlack = 0): boolean {
   if (before.frame === null || after.frame === null) return false;
-  return lostTextOnly(transcriptAbove(before, before.frame), transcriptAbove(after, after.frame));
+  return lostTextOnly(transcriptAbove(before, before.frame), transcriptAbove(after, after.frame), topSlack);
 }
 
 /** What a manual send asks of a framed pane: no modal cue grew, and the transcript above the box only lost text. */
@@ -3793,8 +3804,8 @@ export class SendProtocol {
     this.guard(state);
     const { gate, store } = this.deps;
     const { paneId } = state.target;
-    const token = gate.mint(paneId, GENERIC_SUBMIT, gate.revision(paneId));
     store.markSubmitSent(state.record.id);
+    const token = gate.mint(paneId, GENERIC_SUBMIT, gate.revision(paneId));
     const result = await this.within(state, gate.commit(token));
     if (!result.ok) {
       const reason: SendReason = result.reason === "mux" ? "submit_failed" : result.reason;
@@ -4294,6 +4305,10 @@ export class SendProtocol {
     const plainRaw = rows.map(plainOf);
     const signs = (idle?.runningRows ?? []).map((source) => new RegExp(source, "u"));
     const plain = plainRaw.map((row) => steadyRow(row, signs));
+    const ticks = idle?.volatile.above.ticks === true;
+    // The rows a person checks, with the rows above the box read as the compares read them: a counter
+    // that ticked over the box between the look and the tap is no screen the person did not see.
+    const checked = ticks && frame !== null ? plain.map((row, i) => (i < frame.top ? tickMarked(row) : row)) : plain;
     const win = bottomWindow(texts);
     this.deps.ring.push({ requestId: state.record.id, step, at: this.now(), rows: texts });
     const framed = readCuesFor(rows, frame, idle);
@@ -4316,6 +4331,7 @@ export class SendProtocol {
       plain,
       plainRaw,
       frame,
+      ticks,
       surface,
       cueStrength: framed.strength,
       cuesUnderBox: frame !== null && framed.cues.length > 0 && framed.cues.every((cue) => cue.row > frame.bottom),
@@ -4348,7 +4364,7 @@ export class SendProtocol {
       ownList,
       hash: shortHash(texts.join("\n")),
       // A running row's timer is masked (steadyRow): a ticking timer is not a screen the person did not see.
-      rowsHash: shortHash(plain.slice(win.first, win.end).join("\n")),
+      rowsHash: shortHash(checked.slice(win.first, win.end).join("\n")),
     };
     state.previousRead = state.lastRead;
     state.lastRead = snap;
@@ -4743,7 +4759,9 @@ export class SendProtocol {
           : manual
             ? aboveLostOnly(s0, snap)
             : command
-              ? aboveUnchanged(s0, snap, ownListScroll(s0, snap))
+              ? // A profile whose rows above lose text once the box holds a character (Codex hides its
+                // welcome picture) loses them for a command too, as the probe allows (outsideUnchanged).
+                aboveUnchanged(s0, snap, ownListScroll(s0, snap)) || (aboveLosesText(state) && aboveLostOnly(s0, snap, SCROLLBACK_SLACK))
               : outsideUnchanged(s0, snap, aboveLosesText(state)) || this.aboveMovedInTurn(state, s0, snap);
         if (!outside) {
           why = "changed";
@@ -4855,15 +4873,19 @@ export class SendProtocol {
     throw new Ended("typed_not_submitted", "mismatch", sawNote(result.snap, { framed: true, offers: ["keys"], detail, cause: NOTICE_KEY }));
   }
 
-  /** Commit: `submit-sent` on disk, then the submit keys through the gate on S1's revision. */
+  /**
+   * Commit: `submit-sent` on disk, then the submit keys through the gate on S1's revision. The token is
+   * minted after the write and `openSend`, right before the commit: a slow disk write must not spend the
+   * token's 150 ms lifetime. `submit-sent` is still on disk before the key goes out.
+   */
   private async commit(state: RunState, s1: Snap): Promise<void> {
     state.phase = "commit";
     this.guard(state);
     const keys = commitKeys(state);
     const { gate, store } = this.deps;
-    const token = gate.mint(state.target.paneId, keys, s1.gateRevision);
     store.markSubmitSent(state.record.id);
     this.openSend(state);
+    const token = gate.mint(state.target.paneId, keys, s1.gateRevision);
     const result = await this.within(state, gate.commit(token));
     if (!result.ok) {
       const reason: SendReason = result.reason === "mux" ? "submit_failed" : result.reason;

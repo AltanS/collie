@@ -7,8 +7,8 @@
 
 import { lineText, type Block, type StyledLine } from "../blocks";
 import { adapterFor, hasBlockGrammar } from "./registry";
-import { unreadDialogSignature } from "./unread-dialog-model";
-import type { HarnessAdapter } from "./types";
+import { unreadDialogSignature, type DetectorVerdict } from "./unread-dialog-model";
+import type { DialogDetector, HarnessAdapter } from "./types";
 import {
   decorateMuseDisplay,
   rendersNativeMirror,
@@ -126,10 +126,13 @@ export function withUnreadDialog(
     }
     if (!modal) return blocks;
   }
+  const cancel = { key, agent: adapter.agent, signature: unreadDialogSignature(texts) };
   return [
     {
       kind: "unread-dialog",
-      cancel: { key, agent: adapter.agent, signature: unreadDialogSignature(texts) },
+      // The verdicts are taken on the original `lines`, like the probes above: that is what the
+      // adapter's own `buildBlocks` was handed.
+      cancel: adapter.dialogDetectors === undefined ? cancel : { ...cancel, verdicts: detectorVerdicts(adapter.dialogDetectors, lines) },
       // The lines the pass was HANDED, not the ones it probed: every block here is raw, and on a
       // native-mirror agent they have already been through the display passes. The card renders this
       // region itself, so it must be what the mirror would have drawn. The probes above stay on the
@@ -138,6 +141,24 @@ export function withUnreadDialog(
       lines: blocks.flatMap((b) => b.lines),
     },
   ];
+}
+
+/** The longest thrown message a verdict keeps. A report has a length budget, and the start says enough. */
+const VERDICT_MESSAGE_MAX = 160;
+
+/**
+ * Run each named detector on `lines` and say what it answered: `found`, `null`, or `threw: <message>`.
+ * A throw is caught here and stays in its own verdict, so one broken detector does not hide the rest.
+ */
+export function detectorVerdicts(detectors: readonly DialogDetector[], lines: StyledLine[]): DetectorVerdict[] {
+  return detectors.map(({ name, detect }): DetectorVerdict => {
+    try {
+      return { name, result: detect(lines) == null ? "null" : "found" };
+    } catch (error) {
+      const message = (error instanceof Error ? error.message : String(error)).replace(/\s+/gu, " ").trim();
+      return { name, result: `threw: ${message.slice(0, VERDICT_MESSAGE_MAX)}` };
+    }
+  });
 }
 
 export { adapterFor, hasBlockGrammar };

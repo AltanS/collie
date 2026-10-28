@@ -759,6 +759,7 @@ describe("ompBuildBlocks emits nothing but raw, bar the four lifted screens", ()
         "cancelKey", // the unread-dialog card's one key, a declaration (.adr/0053, .adr/0076)
         "composerPrompt", // the row a destructive write BINDS to; it sends nothing itself
         "composerReady", // the pre-flight's refusal
+        "dialogDetectors", // names for the card's report, read only (ADR 0123 amendment 2026-10-28)
         "modalOnScreen", // positive evidence a modal is up: the card's fifth condition
         "replyChunks", // lossless transport plan, not a dialog action
         "draftIsOpaque", // never take over an opaque paste chip as literal text

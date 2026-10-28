@@ -1,0 +1,39 @@
+ 
+  [0m[38;2;99;168;248m>_ [0m[1mOpenAI Codex[0m[2m (v0.163.0)[0m
+     [0m[2m~/.cache/collie-lab/omp-band-lab/s5-codex/proj[0m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[0m[1m[38;2;0;0;46m[48;2;99;168;248m› /status      [0m[38;2;0;0;46m[48;2;99;168;248mshow current session configuration and token usage[0m[1m[38;2;0;0;46m[48;2;99;168;248m                                                       [0m
+  /[0m[1mstatus[0mline  [0m[2mconfigure which items appear in the status line[0m
+[0m[48;2;57;57;71m                                                                                                                        [0m
+[0m[1m[48;2;57;57;71m›[0m[48;2;57;57;71m /status                                                                                                               [0m
+[0m[48;2;57;57;71m                                                                                                                        [0m
+  [0m[38;2;246;226;183mGPT-6.1-Sol low[0m[38;2;135;140;164m · [0m[38;2;171;223;167m~/.cache/collie-lab/omp-band-lab/s5-codex/proj[0m

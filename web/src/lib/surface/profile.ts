@@ -482,6 +482,13 @@ export interface Profile {
          * that hides). The Send Protocol then accepts rows above that only lost text. Optional.
          */
         readonly losesText?: true;
+        /**
+         * Rows above the box may repaint by themselves in place: a counter, a clock or a spinner that
+         * an extension's widget draws over the editor. The Send Protocol then reads every digit run
+         * and braille glyph above the box as a fixed mark; a row that changes any other character,
+         * or a new row, still moves the screen. Optional.
+         */
+        readonly ticks?: true;
       };
       readonly below: {
         readonly maxRows: number;
@@ -854,7 +861,8 @@ function textList(value: JsonValue | undefined, path: string, minLength: number)
   return items.map((item, i) => text(item, `${path}[${String(i)}]`));
 }
 
-const PLATFORMS = ["win32", "darwin", "linux"] as const;
+// `wsl` is Linux under Windows Subsystem for Linux, where an agent program may take the Windows keys.
+const PLATFORMS = ["win32", "darwin", "linux", "wsl"] as const;
 
 /** A key list as the file wrote it: the default, and the lists of the platforms that differ. */
 interface PlatformLists {
@@ -1051,12 +1059,15 @@ function parseVersions(value: JsonValue | undefined, path: string): [VersionRang
  * problem throws a {@link ProfileError} that names the field path.
  */
 
-/** `idle.volatile.above`: its row count, and `losesText` only when the profile sets it (it may only be true). */
+/** `idle.volatile.above`: its row count, and `losesText` and `ticks` only when the profile sets them (each may only be true). */
 function volatileAbove(node: JsonObject): Profile["idle"]["volatile"]["above"] {
   const maxRows = whole(field(node, "maxRows", "idle.volatile.above"), "idle.volatile.above.maxRows", 0);
-  if (node.losesText === undefined) return { maxRows };
-  if (node.losesText !== true) fail("idle.volatile.above.losesText", "must be true when present");
-  return { maxRows, losesText: true };
+  if (node.losesText !== undefined && node.losesText !== true) fail("idle.volatile.above.losesText", "must be true when present");
+  if (node.ticks !== undefined && node.ticks !== true) fail("idle.volatile.above.ticks", "must be true when present");
+  if (node.losesText === true && node.ticks === true) return { maxRows, losesText: true, ticks: true };
+  if (node.losesText === true) return { maxRows, losesText: true };
+  if (node.ticks === true) return { maxRows, ticks: true };
+  return { maxRows };
 }
 
 /** `idle.volatile.below.footerRows`: each row a unique name and a pattern that cannot match a blank row. */

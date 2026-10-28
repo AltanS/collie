@@ -271,6 +271,47 @@ describe("detectPromptSelect — the plan-approval feedback row is an INPUT, in 
       });
     });
 
+    it("a value wrapped onto twenty display lines of a wide pane keeps the dialog and is rejoined exactly", () => {
+      // The layout of a live capture on Claude Code 2.1.306 in a 153x48 pane: a 2834-character answer
+      // re-flowed on word boundaries one column short of the row, continuation rows indented five columns, options 1 and 2 left 28
+      // rows above the footer (grammar/ASK_FIELD_NOTES.md, "Long answers").
+      const sentence = "да по поводу deep research я думаю что нужно сначала собрать аналоги и посмотреть их кабинеты.";
+      const text = Array(40).fill(sentence).join(" ").slice(0, 2834).trimEnd();
+      const rows: string[] = [];
+      for (const word of text.split(" ")) {
+        const last = rows.length - 1;
+        if (last >= 0 && rows[last]!.length + 1 + word.length <= 147) rows[last] += ` ${word}`;
+        else rows.push(word);
+      }
+      // Twenty continuation rows put option 1 more than 24 rows above the footer.
+      expect(rows.length).toBeGreaterThanOrEqual(20);
+      const screen = [
+        "❯ Ask me which color I prefer.",
+        "─".repeat(153),
+        " ☐ Color",
+        "",
+        "Which color do you prefer?",
+        "",
+        "  1. Red",
+        "     Red",
+        "  2. Blue",
+        "     Blue",
+        `❯ 3. ${rows[0]}`,
+        ...rows.slice(1).map((row) => `     ${row}`),
+        "─".repeat(153),
+        "  4. Chat about this",
+        "",
+        "Enter to select · ↑/↓ to navigate · ctrl+g to edit in VS Code · Esc to cancel",
+      ].join("\n");
+      expect(detectPromptSelect(splitLines(parseAnsi(screen)))?.feedback).toEqual({
+        key: "3",
+        focused: true,
+        text,
+        purpose: "answer",
+        pointer: "on",
+      });
+    });
+
     it("focusing the field keeps the dialog's identity, though the footer gains its ctrl+g hint", () => {
       const offRow = detectPromptSelect(fixtureLines("claude--v2299-ask-field-single-typed-off-row.txt"))!;
       const focused = detectPromptSelect(fixtureLines("claude--v2299-ask-field-single-focused-typed.txt"))!;

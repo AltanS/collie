@@ -1,7 +1,7 @@
 # Durable agents on the phone
 
-> **Experimental.** What a durable agent shows on the phone may change, or the feature may be removed, in
-> a later minor release. [Durable agents](durable-agents.md#the-exit) says what decides whether it stays.
+> **Experimental.** What a durable agent shows on the phone may change in a later minor release.
+> Collie keeps durable agents as a feature ([Durable agents](durable-agents.md#the-exit)).
 
 This page shows every place a durable agent appears on your phone: its row on the dashboard, its list of
 conversations, its questions, the chat, its starters and its pushes. [Durable agents](durable-agents.md)

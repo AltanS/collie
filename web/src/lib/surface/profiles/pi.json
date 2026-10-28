@@ -73,7 +73,8 @@
     "volatile": {
       "above": {
         "maxRows": 6,
-        "losesText": true
+        "losesText": true,
+        "ticks": true
       },
       "below": {
         "maxRows": 4,
@@ -107,6 +108,9 @@
       ],
       "win32": [
         "ctrl+q"
+      ],
+      "wsl": [
+        "ctrl+q"
       ]
     },
     "commandSubmit": [
@@ -131,7 +135,8 @@
     "enterWhileRunning": "steers",
     "queueKey": {
       "default": "alt+Enter",
-      "win32": "ctrl+q"
+      "win32": "ctrl+q",
+      "wsl": "ctrl+q"
     },
     "queuedRow": {
       "pattern": "^\\s*Follow-up: (?<text>\\S.*?)\\s*$",

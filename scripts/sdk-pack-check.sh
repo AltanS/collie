@@ -11,7 +11,7 @@
 #      (scripts/sdk-pack-check.ts).
 #   4. The ./durable-harness entry (M66): the same project also installs durable-harness, @workflow/world,
 #      @workflow/world-local and the three Pi packages (optional peers of both) with bun, at the versions examples/durable-harness pins and under its bunfig.toml (the
-#      cooldown and the names it excludes until they are seven days old), and a program imports collieRoute and
+#      seven-day cooldown, with no exclusions), and a program imports collieRoute and
 #      withCollie from the installed package. No session is opened.
 #
 # It never publishes and never logs in. Publishing is Altan's, by hand (packages/durable-sdk/README.md, "Publish").
@@ -59,7 +59,7 @@ bun scripts/sdk-pack-check.ts "$work/app" bun "$version"
 # ── 4. The ./durable-harness entry ─────────────────────────────────────────────────────────────────────────────────────
 # The versions come from the example's package.json, so one pin serves the example and this check. The Pi packages are
 # optional peers of the SDK and of durable-harness, so a program that uses the Pi variant installs them too. The example's bunfig.toml
-# comes along: the same cooldown, the same exclusions, and spec 06 of M66 removes them in one place.
+# comes along, so the scratch project has the same seven-day cooldown and no exclusions.
 cp "$root/examples/durable-harness/bunfig.toml" "$work/app/bunfig.toml"
 pins="$(node -e '
   const deps = require(process.argv[1]).dependencies;

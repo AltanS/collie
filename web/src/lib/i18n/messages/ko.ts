@@ -1593,6 +1593,7 @@ export const ko: Dictionary = {
   "unreadDialog.caption": "Collie가 이 대화상자를 읽을 수 없습니다", // wordsmith
   "unreadDialog.confirmKey": "{key}을(를) 보내려면 다시 누르세요", // wordsmith
   "unreadDialog.confirmDismiss": "닫으려면 다시 누르세요", // wordsmith
+  "unreadDialog.report": "문제 신고",
   "dialog.preview.currentAnswerAria": "현재 답변",
   "dialog.preview.previewedBelowAria": "하단 미리보기",
   "dialog.preview.previewLabel": "미리보기 · {label}",
@@ -1621,6 +1622,7 @@ export const ko: Dictionary = {
   "promptAction.answer.fieldNotReached": "답변 필드에 접근할 수 없습니다. 아무것도 전송되지 않았습니다",
   "promptAction.answer.notCleared": "답변 필드를 지울 수 없습니다. 아무것도 전송되지 않았습니다",
   "promptAction.answer.notArrived": "답변이 필드에 도달하지 않았습니다. 아무것도 제출되지 않았습니다",
+  "promptAction.answer.tooLong": "이 답변은 터미널 너비에 비해 너무 깁니다. 대화 상자가 화면에 들어가지 않습니다. 답변을 줄이거나 터미널을 넓히거나, Chat about this를 선택해 메시지로 보내십시오. 아무것도 입력되지 않았습니다",
   "promptAction.answer.notTicked": "답변이 입력되었지만 해당 행이 체크되지 않았습니다. 카드에서 확인하십시오.",
 
   // --- stt (speech-to-text errors, lib/stt.ts + hooks/use-stt-recorder.ts) ---

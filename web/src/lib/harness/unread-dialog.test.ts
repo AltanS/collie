@@ -316,6 +316,9 @@ const CARD_FIXTURES = {
       "oc--question--multi--free-text.txt",
       "oc--question--tall14.txt",
       "oc--update-available.txt",
+      // opencode 2.1.1's open free-text input: the list's footer becomes `enter done  esc close`, so
+      // no grammar lifts it and the card still has to stand over it (2026-10-27).
+      "oc--v211-question--multi--free-text.txt",
     ],
     notModals: [],
   },

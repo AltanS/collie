@@ -48,8 +48,8 @@
         "maxRows": 2,
         "footerMaxRows": 2,
         "hints": [
-          "^\\s*← for agents · \\? for shortcuts$",
-          "^\\s*\\? for shortcuts$",
+          "^\\s*← for agents · \\? for shortcuts(?:\\s{2,}\\S.*)?$",
+          "^\\s*\\? for shortcuts(?:\\s{2,}\\S.*)?$",
           "^\\s*[Tt]ab to queue message$"
         ]
       }

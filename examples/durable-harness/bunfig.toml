@@ -3,14 +3,3 @@
 # the window in which a bad release is usually caught. `--frozen-lockfile` installs what bun.lock pins.
 [install]
 minimumReleaseAge = 604800 # 7 days, in seconds
-#
-# Excluded from the cooldown until each is seven days old (M66 spec 03, 2026-10-21). These are the
-# exact versions the M66 spike tested; nothing else in the tree is excluded. Remove each name on or
-# after its date, and the whole line once the last one clears (spec 04 does that). This is the one
-# place this bunfig differs from the root one.
-#   durable-harness 0.0.1-beta.6        published 2026-10-19 17:45 UTC, clears 2026-10-26 17:46 UTC
-#   @workflow/world-local 5.1.2         published 2026-10-20 20:34 UTC, clears 2026-10-27 20:35 UTC
-#   @workflow/world 5.0.5               published 2026-10-20 20:35 UTC, clears 2026-10-27 20:36 UTC
-#   @workflow/errors 5.0.5              published 2026-10-20 20:34 UTC, clears 2026-10-27 20:35 UTC
-#     (pinned exactly by @workflow/world-local 5.1.2, not a dependency of this example)
-minimumReleaseAgeExcludes = ["durable-harness", "@workflow/world-local", "@workflow/world", "@workflow/errors"]

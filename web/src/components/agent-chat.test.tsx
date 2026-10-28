@@ -4281,6 +4281,31 @@ describe("AgentChat: a new agent pane draws Chat from the first frame", () => {
     swapsOnlyUnderCover(view.frames);
   });
 
+  it("(f) a question no screen reader lifts takes a readable session to the terminal while it asks", async () => {
+    // OpenClaw has a journal reader and no block grammar, as dsh-tui does: its dialogs are never cards.
+    const view = renderShell();
+    await handOver(view, agentOf("openclaw", "working", true));
+    await advance(view, 500);
+    expect(view.container.querySelector('[data-slot="session-stream"]')).not.toBeNull();
+    view.set(agentOf("openclaw", "blocked", true));
+    expect(view.container.querySelector('[data-slot="session-stream"]')).toBeNull();
+    expect(screen.getByText(/recent pane output/)).toBeInTheDocument();
+    view.set(agentOf("openclaw", "working", true));
+    await advance(view, 500);
+    expect(view.container.querySelector('[data-slot="session-stream"]')).not.toBeNull();
+    // The shell's terminal, then Chat, the question's terminal, and Chat again.
+    expect(bodies(view.frames)).toEqual(["terminal", "chat", "terminal", "chat"]);
+  });
+
+  it("(f) a question a screen reader lifts keeps a readable session on Chat", async () => {
+    const view = renderShell();
+    await handOver(view, agentOf("claude", "working", true));
+    await advance(view, 500);
+    view.set(agentOf("claude", "blocked", true));
+    expect(view.container.querySelector('[data-slot="session-stream"]')).not.toBeNull();
+    expect(bodies(view.frames)).toEqual(["terminal", "chat"]);
+  });
+
   it("(e) a device on the terminal sees the terminal throughout, and the cover still lifts once", async () => {
     localStorage.setItem("collie:dash-prefs:v1", JSON.stringify({ paneView: "terminal" }));
     const view = renderShell();
