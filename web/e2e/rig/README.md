@@ -20,8 +20,11 @@ The leg is a gate. It runs in three places:
   it on the branch. A unit test cannot show that a tap works on a real screen.
 - **Every night**, on `origin/main`, through `nightly.ts` (below).
 
-One solo run costs about 11 minutes, about 17 Claude Haiku turns on the subscription, and about 11 pi turns
-and 9 omp turns on OpenRouter Haiku 4.5 (a few cents). The crew leg adds about 4 minutes, 6 Claude turns
+One solo run costs about 11 minutes and about 17 Claude Haiku turns on the subscription. pi and omp
+replay recorded model streams ("Replay" below), so a solo run on recordings sends nothing to
+OpenRouter. A run on a new pi or omp version runs that harness live once and records it: the first
+recording run (2026-10-26, pi 1.3.0, omp 18.6.1) sent 44 requests to OpenRouter Haiku 4.5, 21 for pi and
+23 for omp (a few cents). The crew leg adds about 4 minutes, 6 Claude turns
 and 4 pi turns, and the nightly run does both. The turn cap is 20 per harness. "Cost of one run" below
 has the detail.
 
@@ -212,9 +215,74 @@ Results stay in `~/.cache/collie-lab/browser-leg-state/results/<run>/`: `ledger.
 tap with the bridge's receipt, `table.md` holds the table, and the phone screenshots and pane
 captures sit beside them.
 
-By hand: `bun e2e/rig/rig.ts up | down | status | start claude|pi|omp | snapshot | read <pane>`.
+By hand: `bun e2e/rig/rig.ts up | down | status | start claude|pi|omp | pane <cmd...> | pane ls | pane close <paneId>... | snapshot | read <pane>`.
 After a crash, `bun e2e/rig/rig.ts down` stops what the rig started. The crew leg's commands are in
 "The crew leg" below.
+
+With `COLLIE_RIG_OWNER_WATCH=1` a rig dies with the session that ran `up`. `make browser-leg` started in one
+Claude session and followed from a second one then stops when the first one ends. Start the leg from the session
+that will outlive it, from a plain shell, or leave the variable unset. It is off by default.
+
+On Linux, `up` starts the rig's daemon in a systemd scope of its own, `rig-<8 hex>-<pid>.scope`, with
+`TasksMax=700` (1400 for `up --crew`, which runs two servers and two bridges; `COLLIE_RIG_TASKS_MAX=<n>`
+overrides both), a stop timeout of 10 s, and core dumps off (`COLLIE_RIG_CORES=1` keeps them). The Herdr
+server, the bridge and every pane are children of the daemon, so they run there too, not in the Claude
+session that ran `up`. Five rigs from one session once filled that session's task limit (threads count as
+tasks), and Bun, Node and Claude aborted. Elsewhere (macOS, Windows), or without `systemd-run` and a user bus
+(`$XDG_RUNTIME_DIR/bus`), the daemon runs where `up` runs; on Linux that `WARNING` goes to `logs/daemon.log` and to stderr of `up`, and the
+rig has no task cap and no owner watch.
+
+- **Slice.** The scope goes in your default user slice, so the limit is per rig and there is no limit for all rigs
+  together. To put every rig in one slice, define the slice in a slice unit file on the host and set `COLLIE_RIG_SLICE=rig.slice`. The value must look like
+  `name.slice`; anything else is ignored with a `WARNING` line. Then the slice's own limits bound all rigs together.
+- **Check.** Once the daemon is up, `up` reads the scope's `pids.max`. When it is not the number asked for (a host
+  that does not hand the task controller to your user), `up` prints one `WARNING` line to stderr, and
+  `logs/daemon.log` gets it too, saying the task cap is not enforced. The check runs whenever the rig came up, also when
+  the daemon was slow to write `rig.json`. `status` shows `"tasks": "<pids.current>/<pids.max>"` for the scope, and leaves it out without one.
+- **Run limit.** The scope has `RuntimeMaxSec=21600` (6 hours). It is a hard stop by systemd: it kills the scope
+  with no teardown, so the Herdr home and `rig.json` stay until the next `up` or `down` clears them.
+  `COLLIE_RIG_RUNTIME_MAX_SEC=<n>` (a positive integer, in seconds) changes it.
+- **Owner watch (`COLLIE_RIG_OWNER_WATCH=1`).** `up` records the OWNER, the cgroup it ran in (a Claude session's
+  scope), in `rig.json`, but only on Linux and only if that directory exists at that moment. The daemon checks
+  every 30 s that it still exists, and tears the rig down after two misses in a row. Only "no such directory"
+  counts as a miss; any other error is ignored. Only a `claude-*.scope` cgroup is an owner (an allow list). Any other
+  cgroup is no owner: a login session, a desktop app, and also a `vte-spawn-*` or `tmux-spawn-*` scope. A rig started
+  from a plain shell or a terminal multiplexer skips the check.
+- **Start failure.** systemd-run's own messages go to `logs/systemd-run.err`. If systemd-run itself fails (it exits
+  non-zero within 1.5 s, before the daemon ran, with an error such as a bus failure), `up` starts the daemon
+  without a scope and prints a `WARNING` to stderr (also in `logs/daemon.log`) that says the rig has no task cap and
+  no owner watch. If the daemon ran and then failed, there is no second start: `up` reports the failure text taken
+  from `logs/daemon.log`, then `logs/daemon.out`, then `logs/systemd-run.err`, the first of them that has text.
+- **Stop.** `down` asks the daemon to tear down first, then stops the scope if it is still active. It finds the scope
+  in `rig.json`; when `rig.json` is gone (a kill between its removal and the scope's stop), it lists
+  `rig-<hash of the state root>-*.scope` with `systemctl --user list-units` and stops what it finds. A host may run its
+  own reaper for scopes whose daemon is gone. Every `systemctl` call has a 15 s limit.
+
+**The pane cap.** A harness pane costs 46 to 64 tasks (omp), and scripts that open one pane per case and
+close none filled the task limit at about one pane a minute. So `pane <cmd>` and `start <harness>` count the open
+panes first (the rig's view pane is left out) and refuse when there are `COLLIE_RIG_MAX_PANES` or more: a positive
+integer, 6 when unset or not one. The refusal exits with code 75, lists the open panes and names the fix.
+The cap is a soft limit, per machine and per rig. It is not atomic across callers that start at the same moment,
+so several can pass the check together. The scope's `TasksMax` is the hard guard.
+
+```sh
+bun e2e/rig/rig.ts pane ls                       # the open panes: id, label, age, command (add --on member for the member)
+bun e2e/rig/rig.ts pane close w3:p1 w4:p1        # close some; an id that is already gone is reported and skipped
+bun e2e/rig/rig.ts pane close --all              # close every pane but the view pane
+bun e2e/rig/rig.ts start omp --replace           # close the omp pane `start omp` opened last, then open the new one
+bun e2e/rig/rig.ts pane --replace sleep 600      # the same for `pane`, which keeps one slot of its own
+```
+
+`--replace`, `--crew` and `--on <machine>` count only before the first word of the command, or anywhere before a
+literal `--`. Everything after reaches the pane as typed: `pane sh -c 'echo --replace'` keeps its `--replace`, and so
+does `pane sleep 600 --replace`. The last pane per key is in `rig/last-panes.json` (written to a temp file and
+renamed; not `rig.json`, which the daemon writes whole), and `up` and `down` remove it. The cap sits in these two
+verbs only: the Playwright leg opens its panes through `rig-lib.ts` and does not meet it. `pane ls` and `pane close`
+are verbs, so run a shell command of that name as `pane sh -c ls` or `pane -- ls`; `pane ls <more words>` prints that
+hint and starts nothing.
+
+The pure helpers (owner, unit name, environment settings, argument split, cap, start fallback) are in `rig-scope.ts`.
+`scripts/browser-leg-rig-scope.test.ts` tests them, and `bun test ./scripts` (and so CI) runs it.
 
 Herdr binds its sockets under its `XDG_CONFIG_HOME`, and a Unix socket path holds at most 107 bytes on
 Linux (103 on macOS). A long state root, such as the nightly runner's, would push the path over that, and
@@ -235,19 +303,116 @@ COLLIE_RIG_KEY_FILE=/path/to/.env bunx playwright test -c e2e/rig/playwright.con
 ```
 
 `harnesses.ts` (`SETUPS`) is the one place for this. Claude runs on Haiku with its own login. pi and
-omp run on `openrouter/anthropic/claude-haiku-4.5` and read `OPENROUTER_API_KEY`.
+omp run on `openrouter/anthropic/claude-haiku-4.5` and read `OPENROUTER_API_KEY`. Their model calls
+never go to OpenRouter directly: they go to the rig's model stub, which replays them or passes them on
+("Replay" below).
 `COLLIE_RIG_KEY_FILE` names a dotenv file that holds it. Each start script reads that one name from
 the file in a subshell, straight into the harness's environment. The key never goes into a file, a
 pane's command line or the leg's own processes, and pi gets no `auth.json`, so the key wins.
 
-Without a key file, the pi and omp scenarios that need a turn report "not reached". Other knobs:
+Without a key file, a pi or omp with no recording for its version reports "not reached" for the
+scenarios that need a turn. With a recording it replays, and needs no key. Other knobs:
 `COLLIE_RIG_PI_MODEL`, `COLLIE_RIG_OMP_MODEL`, and `COLLIE_RIG_PI_TURNS=0` or
 `COLLIE_RIG_OMP_TURNS=0` to keep one harness off.
 
 The teardown scrubs the key from every text file of the run, the rig's logs and Playwright's test
 results, and drops a screenshot whose capture held it. It prints a count, never the key.
 
+## Replay: recorded model streams for pi and omp
+
+The rig fakes the model, not the agent (ADR 0125). The rig daemon starts a stub on 127.0.0.1, on a free
+port in the rig's range, before the first harness. pi's base URL goes to it through a provider extension
+(`collie-rig-stub.ts` in its scratch folder), omp's through `models.yml`. The real pi and omp binaries
+still run in real Herdr panes and draw every screen the phone taps. Claude Code is not routed through the
+stub: it runs live on its own login.
+
+**The tier.** The global setup reads each harness's `--version` and picks one tier for the run:
+
+- **replay**: `cassettes/<harness>/<version>/meta.json` lists this leg, with the same model and the same
+  walky talky skill text (`cli/skills/walky-talky.md`, by hash). The stub answers every model call from
+  the recordings, with their recorded pacing. It has no path to OpenRouter on this tier. The harness gets
+  a dummy key, its start script does not open the key file, pi gets no `auth.json` and omp no `agent.db`.
+- **live**: there is no recording for this version, model or skill text. The stub passes each call on to
+  OpenRouter with the harness's own key and records it, so the next run replays. Without a key file it
+  records nothing and the turn scenarios are "not reached".
+
+```sh
+COLLIE_RIG_MODEL=replay ...     # replay or stop: a harness with no recording fails the run before it starts
+COLLIE_RIG_LIVE=pi ...          # pi live this run (pi,omp or all: both); the rest by the rule
+COLLIE_RIG_MODEL=live ...       # both live
+COLLIE_RIG_RECORD=1 ...         # a forced live run records too (a version miss always records)
+COLLIE_RIG_REPLAY_SPEED=4 ...   # replay four times faster than recorded (default 1, never slower)
+```
+
+The run's first lines say the tier of each harness and why. Its last lines say which harness replayed,
+the live model turns, and `OpenRouter requests this run: N`. A replay run says 0 there. The same numbers
+go to `model.json` in the run folder, and the nightly ledger row keeps the tiers (`tiers`).
+
+**Record.** Run the leg once with a key file on the new version (`make browser-leg DIR=...` from the
+workspace does this on its own after a version bump), or force it:
+
+```sh
+COLLIE_RIG_LIVE=all COLLIE_RIG_RECORD=1 COLLIE_RIG_KEY_FILE=/path/to/.env bunx playwright test -c e2e/rig/playwright.config.ts
+bun run e2e:recordings:check
+git add e2e/rig/cassettes
+```
+
+A recording run writes into this checkout's `e2e/rig/cassettes/`. A case that did not pass live
+leaves a recording too, and `meta.json` lists it under `failed` (the leg tells the stub each case's
+verdict). A replay plays that run back. When such a case fails on replay, its note says so first and
+gives the command to record that one case again:
+
+```sh
+COLLIE_RIG_LIVE=pi COLLIE_RIG_RECORD=1 COLLIE_RIG_KEY_FILE=/path/to/.env bunx playwright test -c e2e/rig/playwright.config.ts -g "<the case title>"
+```
+
+That run rewrites only that case and clears its mark when it passes. Commit the recordings like
+fixtures, after reading the diff and running the check.
+
+A record run settles each case when its verdict arrives.
+A case that passes with no model call removes that harness's recording of it.
+A case that passes with calls overwrites the file and clears the mark.
+A case that fails keeps an earlier good recording and logs one line.
+A good recording has the same model and skill, and no mark.
+Without a good recording, the failed case writes the new one and marks it.
+A replay run never changes a cassette.
+A harness version bump leaves the old `<version>` folder.
+Delete that folder in the same commit that records the new version.
+
+**Where they live.** `cassettes/<harness>/<version>/<case>.jsonl`, one file per case (`pi.walky-agents`,
+`claude.walky-broadcast` for the pi or omp calls of a Claude case), and `meta.json` per version with one
+entry per leg (`solo`, `crew`). A line holds one model request's summary (the wire format, the model, the
+tool names, the last prompt's text, the kinds of the items after it) and the recorded server-sent events
+with their delays. No request body, no header and no key is stored. omp's Responses stream echoes the
+request's `instructions` (the system prompt) and `tools` in its `response.*` events; the recorder keeps
+those events but empties the two fields. Values that differ on every run
+(walky ids, pane addresses, uuids, dates, ports, the rig's folders) are placeholders such as
+`{{walky:0}}` and `{{lab}}`, and a replay fills in this run's values (`VOLATILE` in
+`replay/cassette.ts`).
+
+**A mismatch.** When a request has no recording, for example because a case's prompt or the skill text
+changed, the stub answers HTTP 422 `cassette mismatch ... re-record`, the harness ends the turn and
+paints that text, and the case fails with the stub's message first. It never gets a nearby answer.
+Record again.
+
+**The redaction check.** `bun run e2e:recordings:check` in `web/` reads every file under
+`e2e/rig/cassettes/`. It fails on any of these:
+
+- an OpenRouter, Anthropic or OpenAI key pattern, or a bearer token;
+- an Authorization or x-api-key header;
+- a home path, or a host or company name of the owner;
+- a `.jsonl` file over 1 MiB;
+- a case listed under `failed` in a `meta.json`.
+
+It prints the file and line, never the matched text. The vitest
+`e2e/rig/cassettes-check.test.ts` runs the same check on every CI test run. Run it before every commit
+that adds recordings. The recorder blanks a key pattern the model echoes, and stores no header, so the
+check is the second line.
+
 ## Cost of one run
+
+On replay, pi and omp spend no OpenRouter turn: the stub serves them. The turn counts below are what the
+leg asks of each harness, and on a live run (a new version, or forced) they are paid OpenRouter turns.
 
 - Claude: 24 model turns on Haiku (the count of `turns-claude` in the run folder): the permission
   request, the pick-many question, the long list plus one message sent while it streams, seven prompts for the Load older history (each reads four tiny files and
@@ -257,7 +422,7 @@ results, and drops a screenshot whose capture held it. It prints a count, never 
   forged header (11, two), the long list and the message sent during it (16), and the question and the
   message that waited behind it (17). The picker and case 18 need no turn. A run caps each harness at 25 turns (`TURN_CAP` in `leg.ts`), and every turn is logged in
   `~/.cache/collie-lab/browser-leg-state/turns.log`.
-- pi and omp: 11 turns each on Haiku 4.5 with a key file, none without. Case 26 adds 1 on pi (the long turn; the steered line is answered inside it). Case 28 adds none. Walky talky adds 6 on pi (case 7,
+- pi and omp: 11 turns each, replayed from the recordings (no cost), or on Haiku 4.5 when live. Case 26 adds 1 on pi (the long turn; the steered line is answered inside it). Case 28 adds none. Walky talky adds 6 on pi (case 7,
   the send and the reply nudge of case 8, the broadcast, and the two of case 16) and 4 on omp (case 7, the
   broadcast and the two of case 16). Their "Load older" history is
   seven prompts ("Reply with exactly DONE-n") and 45 shell lines (`!echo`) after the first, which run
@@ -272,8 +437,8 @@ results, and drops a screenshot whose capture held it. It prints a count, never 
 
 - The operator's Herdr server and its panes. Every `herdr` call runs with the rig's own
   `XDG_CONFIG_HOME` and drops every inherited `HERDR_*` name (`rig-lib.ts`).
-- Any Collie lane, port 8787-8799, 5198, 5199, or a `collie*.service` unit. The bridge listens on
-  127.0.0.1:18700-18799 with its own HOME, state and config. The crew leg's two bridges do the same,
+- Any Collie lane, port 8787-8799, 5198, 5199, or a `collie*.service` unit. The bridge and the model
+  stub listen on 127.0.0.1:18700-18799, the bridge with its own HOME, state and config. The crew leg's two bridges do the same,
   each with its own.
 - Any `collie` CLI verb. The rig pairs with the bridge's own pairing module, and the crew leg enrols
   with the verbs' own functions, whose restart, `serve`, `exec` and push are the rig's stand-ins.
@@ -283,8 +448,9 @@ results, and drops a screenshot whose capture held it. It prints a count, never 
   rig's bridge is not listed there, because it registers under its own HOME.
 - The operator's agent config. Each harness gets a scratch config under
   `~/.cache/collie-lab/browser-leg-state/harness/<id>/`. Only what it needs is copied there at
-  0600: Claude's OAuth file without its refresh token, omp's `agent.db`, and pi's `auth.json` only
-  when no key file is set. The bridge reads the journals of these scratch homes, never
+  0600: Claude's OAuth file without its refresh token, and pi's `auth.json` only when there is no key
+  file and pi does not replay. omp gets no copy of `agent.db`: its key comes from the environment
+  through the stub, or it replays and needs none. The bridge reads the journals of these scratch homes, never
   `~/.claude/projects`.
 - The checkout the nightly runner starts from. It works in its own clone, ledger and logs only.
 - Processes it did not start. Every kill is by a recorded pid after `/proc/<pid>/cmdline` matched.

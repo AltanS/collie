@@ -1,0 +1,22 @@
+{
+  "v": 1,
+  "harness": "omp",
+  "version": "18.6.1",
+  "legs": {
+    "solo": {
+      "model": "openrouter/anthropic/claude-haiku-4.5",
+      "skill": "48a9501916764efa",
+      "recordedAt": "2026-10-28T08:51:07.622Z",
+      "cases": [
+        "claude.walky-broadcast",
+        "omp.load-older",
+        "omp.permission",
+        "omp.pick-many",
+        "omp.queued-omp",
+        "omp.stream-send",
+        "omp.walky-busy",
+        "omp.walky-operator"
+      ]
+    }
+  }
+}

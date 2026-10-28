@@ -4,7 +4,7 @@
 Each version names the durable wire version it speaks. Until the package leaves the `experimental` dist-tag, a minor
 release may change the API.
 
-## 0.2.0 (Unreleased)
+## [0.2.0]
 
 - **A journal for a host with no process.** `core/journal.ts` defines the records of that host (`ask`, `answer`, `expire`, `receipt`) and `foldJournal`, a pure fold: the first terminal record of an ask id wins, an `ask` after its terminal record is ignored, and a `receipt` of phase `done` closes its `pending`. It returns the open asks, the decided outcomes, the winning record of each and the request ids.
 - **Seams for a host that rebuilds its state on every request.** All optional; the memory path is unchanged. `CoreOptions.epoch` and `CoreOptions.rev` fix the epoch and the snapshot's `rev`. A pane takes `turnId` (fixed, never minted) and `sendWhenIdleOnly` (`canSend` is false while a turn runs). `pane.seedAsk(record, sink)` opens an ask with no promise: an answer goes to `sink.answer`, and is `taken` only when the sink says so, else 409 `decided` or `too-late`. `pane.seedDecided(outcomes)` restores the first outcomes. A seeded ask past its `expiresAt` closes as `timeout` at exactly `expiresAt`.

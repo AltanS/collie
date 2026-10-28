@@ -18,7 +18,7 @@
 // web/src/fixtures/panes/README.md's opencode section and PERMISSION_NOTES.md beside this file.
 
 import { isBlank, lineText, type Block, type StyledLine } from "../../blocks";
-import type { HarnessAdapter } from "../types";
+import type { DialogDetector, HarnessAdapter } from "../types";
 import {
   composerPrompt,
   extractInputDraft,
@@ -47,13 +47,21 @@ function mirrorAbove(lines: StyledLine[], startLine: number): StyledLine[] {
 /**
  * The adapter's block pipeline: the permission dialog at the tail lifts into a `prompt-select`
  * block (its region [option row … tail] replaced by buttons, title and subject above kept raw), and
- * so does a single-select question dialog (its region [question … tail] replaced, issue 329). The
- * question dialogs with a tab bar lift too (`question-tabs.ts`): a multi-select question and its
- * Confirm tab into a `multi-select` block, a many-question call's steps and its Confirm tab into a
- * `wizard` or `multi-select` block, each replacing [tab row … tail]. Anything else is one raw block
- * with the composer tail stripped. The registry only ever hands this function an opencode pane, so
- * there is no per-agent gate here.
+ * so does a single-select question dialog (its region [question … tail] replaced, issue 329; from
+ * opencode 2.1 the region starts at its own `Questions` title). The question dialogs with a tab bar
+ * lift too (`question-tabs.ts`): a multi-select question and its last tab into a `multi-select`
+ * block, a many-question call's steps and its last tab into a `wizard` or `multi-select` block, each
+ * replacing [tab row … tail] (again including the title on 2.1). Anything else is one raw block with
+ * the composer tail stripped. The registry only ever hands this function an opencode pane, so there
+ * is no per-agent gate here.
  */
+/** The detectors `opencodeBuildBlocks` runs, in its order, for the unread-dialog card's report (ADR 0123). */
+const OPENCODE_DIALOG_DETECTORS: readonly DialogDetector[] = [
+  { name: "permission", detect: detectPermissionDialog },
+  { name: "question", detect: detectQuestionDialog },
+  { name: "question-tabs", detect: detectQuestionTabs },
+];
+
 export function opencodeBuildBlocks(lines: StyledLine[]): Block[] {
   const dialog = detectPermissionDialog(lines);
   if (dialog !== null) {
@@ -94,6 +102,7 @@ export const opencodeAdapter: HarnessAdapter = {
   // cannot stand over a healthy narrow pane.
   cancelKey: "Escape",
   modalOnScreen,
+  dialogDetectors: OPENCODE_DIALOG_DETECTORS,
   overlayHoldsKeyboard,
   composerPrompt,
   replyChunks: opencodeReplyChunks,

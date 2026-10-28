@@ -5,7 +5,7 @@
 - **Shipped in:** pending
 - **Amends in scope:** the rules of `bridge/mux/durable/WIRE.md` section 8, point 1 (a new random epoch
   on every start), for a host that has no start. [ADR 0104](./0104-a-program-is-a-session.md) and
-  [ADR 0105](./0105-the-durable-sdk-is-an-npm-package.md) are not changed, and their exit applies.
+  [ADR 0105](./0105-the-durable-sdk-is-an-npm-package.md) are not changed. (Their exit was withdrawn on 2026-10-28.)
 - **Trail:** Altan, 2026-10-21: "i'd like collie to become the visual layer for these types of durable
   agents. we already have the sdk that supports Pi durable, lets add this one to it." Vercel's
   `durable-harness`, first published 2026-10-15 and beta.6 on 2026-10-19, makes Pi durable on a log it calls a World and has no
@@ -103,12 +103,10 @@ response is written, so a state rebuilt after a request equals the state that an
 
 ## The exit
 
-This decision follows the exit of [ADR 0104](./0104-a-program-is-a-session.md#the-exit): by the 1.24.0
-release, a public repository that speaks the wire or an outside issue or discussion about a durable
-agent must exist. If neither does, the durable code moves to `experiments/`, and the `./durable-harness`
-entry goes with it, in the same commit. The package is deprecated, never unpublished
-([ADR 0105](./0105-the-durable-sdk-is-an-npm-package.md#the-exit)). A discussion that Altan opens on
-`vercel-labs/durable-harness` may count as the outside one. Altan decides that, not this record.
+[ADR 0104](./0104-a-program-is-a-session.md#the-exit) withdrew its exit on 2026-10-28, so this decision needs no
+outside signal and no date. (amended 2026-10-28) If the entry is ever retired, the `./durable-harness` entry goes with the durable code, in the
+same commit, and the package is deprecated, never unpublished
+([ADR 0105](./0105-the-durable-sdk-is-an-npm-package.md#the-exit)).
 
 Two more things end the entry sooner. `durable-harness` is a beta, and the SDK pins it exactly: if a
 later version moves its API and the entry is not ported within one minor release of Collie, the entry
@@ -135,4 +133,4 @@ the cause, and the Vercel steps leave the page.
 - The kernel harnesses of `durable-harness` (`/pi`, `/opencode`, `/claude-code`, `/codex`) are a later
   source over the same route. They are not in this record.
 - Revisit this decision if Vercel's World refuses a stream named `<runId>_collie`, or drops it before the
-  run, if a World gains a stop primitive for an outside caller, or if the exit above fires.
+  run, or if a World gains a stop primitive for an outside caller. (amended 2026-10-28: the exit no longer fires)

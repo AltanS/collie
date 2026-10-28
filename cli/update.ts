@@ -18,6 +18,7 @@ import {
   parsePrereleaseTag,
   parseReleaseManifest,
   readAllTags,
+  RUNNER_ENV_KEYS,
 } from "../bridge/update.ts";
 import {
   STALE_AFTER_MS,
@@ -77,7 +78,6 @@ import { unitName } from "./unit.ts";
 import {
   driveApply,
   HEALTH_POLL_MS,
-  HEALTH_TIMEOUT_ENV,
   bootEvidenceOf,
   updateHealthProbe,
   probeConfigOf,
@@ -2998,34 +2998,6 @@ export function applyArgv(a: ApplyArgs): string[] {
     ...(a.switch === true ? ["--switch"] : []),
   ];
 }
-
-/**
- * The environment the detached runner is started with.
- *
- * A NARROW, NAMED list, and that is the point on the `systemd-run` path: `--setenv=` puts a value on
- * a command line every process on the box can read out of `ps`. None of these is a credential — they
- * are the instance's identity and its paths. Everything else the runner needs it re-reads from the
- * same `.env` this process did (`cli/context.ts`), which is where the secrets stay.
- */
-export const RUNNER_ENV_KEYS = [
-  "HOME",
-  "PATH",
-  "XDG_RUNTIME_DIR",
-  "COLLIE_INSTANCE",
-  // The multiplexer this install mirrors. The runner RESTARTS the service, and `restart` refuses to
-  // guess a mux — so a runner without it dies on a question nobody is there to answer.
-  "COLLIE_MUX",
-  "COLLIE_CONFIG_DIR",
-  // The base config file's path, when the operator moved it. The runner re-reads `~/.collie/config.toml`
-  // from its own $HOME and the instance file from its own config dir, exactly as it re-reads the
-  // `.env` — but a path nobody can re-derive has to travel (ADR 0040).
-  "COLLIE_CONFIG",
-  "COLLIE_STATE_DIR",
-  "COLLIE_PLUGIN_ROOT",
-  "COLLIE_PORT",
-  "COLLIE_KEEP_VERSIONS",
-  HEALTH_TIMEOUT_ENV,
-] as const;
 
 export function runnerEnv(env: Environment): EnvVars {
   const out: EnvVars = {};

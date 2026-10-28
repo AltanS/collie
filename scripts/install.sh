@@ -181,7 +181,9 @@ publish_name() {
     echo "note: \`collie link\` did not publish the name — run \`$DIR/current/bin/collie link\` to see why."
   case ":${PATH}:" in
     *":$HOME/.local/bin:"*) ;;
-    *) echo "note: $HOME/.local/bin is not on your PATH, so a bare \`collie\` will not resolve yet. Add it in your shell profile, or spell the verbs $DIR/current/bin/collie <verb>." ;;
+    *) echo "note: $HOME/.local/bin is not on your PATH, so a bare \`collie\` will not resolve yet. Add this line to ~/.zshrc or ~/.bashrc (fish: fish_add_path ~/.local/bin), then open a new terminal:"
+       echo "        export PATH=\"\$HOME/.local/bin:\$PATH\""
+       echo "      Or spell the verbs $DIR/current/bin/collie <verb>." ;;
   esac
 }
 
@@ -231,25 +233,30 @@ publish_name
 # ── What is left, which is yours ─────────────────────────────────────────────
 cat <<EOF
 
-✓ Collie $TAG is installed at $DIR — and nothing is running yet.
+✓ Collie $TAG is installed at $DIR, and nothing is running yet.
 
-Four steps left, and each one is a decision:
+Collie gives remote shell access to this machine, by design. Read this before you open it on a
+phone: $DIR/current/docs/security.md
 
-  1. Seed the config:
-       mkdir -p ~/.config/collie
-       cp $DIR/current/.env.example ~/.config/collie/.env
+By default, Collie needs Tailscale on this machine and on your phone, with HTTPS turned on for
+your tailnet. The whole path, step by step: https://colliepwa.dev/docs/five-minute-install
 
-  2. Name your multiplexer in that file — COLLIE_MUX=herdr, tmux or zellij. Leave it out and the
-     first \`collie start\` probes for one and asks you.
-     Herdr needs its server running; tmux and zellij need an endpoint naming which server or
-     session to mirror. Both walkthroughs: $DIR/current/docs/multiplexers.md
+Four steps left:
 
-  3. Start it, and read the banner it prints:
-       collie start
+  1. Start your multiplexer and leave it open, then start your agent inside it, for example
+     \`claude\`. Herdr takes over this terminal:
+       herdr
+     No Herdr yet: https://herdr.dev. tmux and zellij work too: $DIR/current/docs/multiplexers.md
 
-  4. Pair your phone. Collie answers no device until one is paired:
+  2. In a second terminal, start Collie and name your multiplexer. Collie runs in the background
+     and saves the name, so a bare \`collie start\` is enough next time:
+       COLLIE_MUX=herdr collie start          # or: tmux, zellij
+
+  3. Print a QR code, scan it with your phone, then add Collie to the home screen:
+       collie qr
+
+  4. Pair your phone. Collie answers no device until one is paired. Run this, then type the code
+     on the phone in Settings, System, Paired devices. On an iPhone, use the home screen app,
+     not Safari:
        collie pair
-
-Read $DIR/current/docs/security.md before you open the URL on a phone. A Collie is remote shell
-access to your machine, by design.
 EOF

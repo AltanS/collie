@@ -606,7 +606,7 @@ on the last rows stops it: Collie types nothing there, and the phone offers Type
 | Agent | Enter during a turn | Send key | Probe | Checked against |
 | ----- | ------------------- | -------- | ----------------- | --------------- |
 | OpenCode | Queues the message | Enter | Yes | 1.18.33 |
-| pi | Steers the turn; Alt+Enter queues | Alt+Enter, Ctrl+Q on Windows | Short texts and sends into a turn | 1.1.0 |
+| pi | Steers the turn; Alt+Enter queues | Alt+Enter, Ctrl+Q on Windows and in WSL | Short texts and sends into a turn | 1.1.0 |
 | OMP | Steers the turn; Ctrl+Q queues | Ctrl+Q | Yes | 18.4.10 |
 | Grok | Not measured | Enter | Yes | 1.0.41 |
 | Antigravity (`agy`) | Not measured | Enter | Yes | Screens of 1.1.17 |
@@ -629,7 +629,7 @@ Collie checks that the character lands in the box, then removes it.
   A pi dialog opens between the same two rules.
   So Collie reads the key hints and the list from the top rule down.
   In pi, Enter steers a running turn, but Alt+Enter sends on an idle box and queues in a turn.
-  So Collie sends with Alt+Enter, and with Ctrl+Q on Windows.
+  So Collie sends with Alt+Enter, and with Ctrl+Q on Windows and in WSL.
   pi shows a queued message as a `Follow-up:` row above the box.
   A box taller than 30 rows does not read as a box. The screen reads as unknown, and a send needs your tap.
 

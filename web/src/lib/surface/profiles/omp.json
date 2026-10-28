@@ -165,7 +165,8 @@
     },
     "volatile": {
       "above": {
-        "maxRows": 6
+        "maxRows": 6,
+        "ticks": true
       },
       "below": {
         "maxRows": 2,

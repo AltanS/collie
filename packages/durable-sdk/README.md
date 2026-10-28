@@ -5,8 +5,8 @@ private Unix socket, or serves the same wire over HTTPS with a bearer token, lay
 asks its questions there. Collie dials the socket or the URL and shows each question as a card on the phone, with chat
 and history, and you answer with one tap.
 
-**Experimental.** The package is published under the npm dist-tag `experimental`, never `latest`. The durable wire may
-change, or the feature may be removed, in a later minor release of Collie. The full guide is the
+**Experimental.** The package is published under the npm dist-tag `experimental`. The `latest` tag carries no promise. The durable wire may
+change in a later minor release of Collie. The full guide is the
 [Durable agents page](https://colliepwa.dev/docs/durable-agents).
 
 ## Install

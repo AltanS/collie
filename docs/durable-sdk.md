@@ -405,7 +405,7 @@ The package has its own version, apart from Collie's, and names the wire version
 
 | | today | what it means |
 | --- | --- | --- |
-| `SDK_VERSION` | 0.1.0 | The package version. Until the package leaves the dist-tag experimental, a minor release may change the API |
+| `SDK_VERSION` | 0.2.0 | The package version. Until the package leaves the dist-tag experimental, a minor release may change the API |
 | `WIRE_VERSION` | 1 | The durable wire version the package speaks |
 
 Collie speaks one wire version and accepts the one before it for one minor release after a new one
@@ -414,6 +414,6 @@ version, for example
 `collie: Collie speaks wire v2, this durable agent speaks v1. Update the agent's SDK, or Collie.` The phone says the mismatch
 on the durable agent's home, in Collie's own words. Update the older side.
 
-The package is published under the npm dist-tag experimental, never latest. If the durable wire goes
-at [the exit](durable-agents.md#the-exit), the package is deprecated
+The package is published under the npm dist-tag experimental until the wire leaves its experimental status. The
+latest tag carries no promise. If the package is ever retired ([the exit](durable-agents.md#the-exit)), it is deprecated
 ([ADR 0105](../.adr/0105-the-durable-sdk-is-an-npm-package.md)).

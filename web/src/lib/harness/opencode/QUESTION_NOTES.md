@@ -361,27 +361,35 @@ row is never an option. Its box and committed text show in the signature only.
 digit alone, because a digit selects and advances (measured). A row that ends in ` ✓` is the answered
 option, `chosen`, with the mark taken off the label. `escape` is false on every option.
 
-**The Confirm tab.** A body of `Review`, then one `Header: value` row per question, each header the tab's
-own label and in tab order. The value is the labels joined by `, ` with free text last, or
+**The last tab.** A body of one `Header: value` row per question, each header the tab's own label and in
+tab order. 1.x puts a `Review` heading over it and calls the chip `Confirm`; 2.1 prints neither heading and
+spells the chip `Submit` (both accepted). The value is the labels joined by `, ` with free text last, or
 `(not answered)`, which makes the review `incomplete`. Both reviews submit with `["Enter"]` and cancel with
 `["Escape"]`. The cancel button says `Dismiss`, the footer's own word, because Escape ends the whole turn.
 With two tabs the review is a `multi-select` with `submit: "keys"`, `backKeys: ["Left"]` (back to the
 list, measured) and `pointer: null`. With three or more it is a `wizard` review, whose way back is the
 stepper's own `Left`.
 
-**Tab chips are read from style, never by colour name.** The active chip is the one whose label sits on
-another background than the footer's `esc dismiss`. A chip that is not active is painted in the footer's
+**Tab chips are read from style, never by colour name.** The active chip is read two ways, one per
+generation: 1.x inverts it onto another background than the footer's `esc dismiss`, and 2.1 leaves the
+background alone and makes it BOLD (see "Round three"). The background reading wins whenever any chip sits
+on one, so a 1.x screen reads exactly as before. A chip that is not active is painted in the footer's
 bright ink (the `esc` word) when its question holds an answer, and in the footer's grey ink (the `dismiss`
-word) when it does not. An ink that is neither refuses the screen. The active chip's own colours are
-inverted, so its answer comes from the body: a ` ✓` row on a single-select step, a `[✓]` box on a checkbox
-step. On the Confirm tab no question chip is current. The screen is refused when the active chip count is
-not one, the last chip is not `Confirm`, two chips share a label, the footer's two inks are one, or there
-are more than nine questions.
+word) when it does not; 2.1 paints it grey either way, which is why a review's steps take their `answered`
+from the body. The active chip's own colours are inverted (1.x) or bold (2.1), so its answer comes from
+the body: a ` ✓` row on a single-select step, a `[✓]` box on a checkbox step. On the last tab no question
+chip is current. The screen is refused when the active chip count is not one, the last chip is neither
+`Confirm` (1.x) nor `Submit` (2.1), two chips share a label, the footer's two inks are one, or there are
+more than nine questions.
 
-**The pointer.** It is read, never sent. The chip is the one numbered row whose `N.` run sits on another
-background than the footer's own. Zero chips or two refuse the dialog. On a checkbox step the model reports
-`pointer: "option"` with `pointerRow`, or `"other"` on the free-text row. A digit does not care where the
-chip is, so a moved chip changes no signature, which is text.
+**The pointer.** It is read, never sent. 1.x marks it with a background chip: the one numbered row whose
+`N.` run sits on another background than the footer's own. 2.1 dropped the chip and paints the pointed
+row's words in the accent ink on the dialog's own background, so a second reading runs only when no row
+carries a chip: exactly one numbered row whose `N.` run is in an ink no other row uses. (The digit alone:
+a checked box is accent too, and its label bright, but a checked UNPOINTED row's digit stays grey.) Zero
+marks, two, or more than two inks refuse the dialog. On a checkbox step the model reports `pointer:
+"option"` with `pointerRow`, or `"other"` on the free-text row. A digit does not care where the mark is,
+so a moved pointer changes no signature, which is text.
 
 **The free-text row on a checkbox step.** A row under it is the input or the committed text. Text equal to
 the placeholder means the input is open, so the lift refuses. Otherwise the row's ink decides: bright is
@@ -390,7 +398,8 @@ the row is still not an option (`multi--free-text--committed`). Any other ink re
 step has no committed state, so any row under its free-text row refuses — except a pure sidebar
 tail while the pointer chip sits on a real option, which is foreign chrome, never input (#347).
 
-**Signatures.** The checkbox phase's `signature` is the rows from the tab row to the footer with every
+**Signatures.** The block starts at the tab row, or at 2.1's `Questions` title above it when one is
+painted. The checkbox phase's `signature` is the rows from there to the footer with every
 `[✓]` and `[x]` normalised to `[ ]`, so a toggle moves `checked` and not the signature. Its
 `regionSignature` is the same rows literal, run through the static footer, and ends inside the bridge's
 tail window. The wizard question and both reviews sign the literal rows. The block replaces the dialog
@@ -398,7 +407,10 @@ from the tab row down, and the mirror keeps what is above it.
 
 **What stays raw, and why.**
 - A free-text input that is open (`multi--free-text`). A digit is typed into it as text, and no card
-  button could say so.
+  button could say so. 2.1 gives that state its own footer (`enter done  esc close`), which no question
+  grammar matches; `modalOnScreen` reads it so the card can still stand over the input.
+- A 2.1 multi-select whose free text was typed and closed: the typed words live in the row's own label,
+  indistinguishable from a last option (Round three, "Known limit").
 - More than nine options (`tall14`). A tenth option has no single key. Nine options lift (`tall9`).
 - A numbering that does not run 1..n, no pointer chip, two chips, a Confirm row that is not
   `Header: value`, or ordinary output more than two rows under the footer.
@@ -530,3 +542,106 @@ Still holds. With `Red`, `Blue` and the free-text `mineZ` toggled, `Confirm` rea
 - The model sometimes writes the description into the label (`Red (warm)`) and leaves the description
   empty. The dialog is the same shape, one bare bar row under each label. Fixtures were captured from
   calls where the label held the colour word alone.
+
+## Round three (opencode 2.1.1, 2026-10-27)
+
+Captured in a throwaway tmux pane (120 by 40) running opencode 2.1.1 with the user's own config,
+the `question` tool prompted by hand. The dialog still paints in the heavy `┃` run and still answers
+to the same digits, but 2.1 changed five things the 1.x grammars could not read. All of them are
+style or chrome — no key moved.
+
+| What | 1.x | 2.1.1 |
+| --- | --- | --- |
+| A title row above the dialog | none | `┃  Questions`, grey, one row, under a bare row of its own |
+| The pointer | a background chip on the `N. label` run (`30;30;30` on `20;20;20`) | the pointed row's digit, box and label in the accent ink (`250;178;131` here) on the dialog's own background. A checked, unpointed box is accent too, but its DIGIT stays grey — the digit is the only cell the pointer owns |
+| The last tab chip | `Confirm` | `Submit` |
+| The active tab chip | inverted onto a background | bold (`SGR 1`) on the dialog's background; inactive chips stay grey whether the question is answered or not |
+| The review body | `Review`, then `Header: value` rows with a bare row between | the `Header: value` rows alone, one per line, no heading and no bare row between |
+| A multi-select free-text row | `5. Type your own answer` | `5. [ ] Type your own answer` (a box of its own) |
+| An OPEN free-text input | the list's footer stays | the footer becomes `⇆ tab  enter done  esc close`, and the row's label is replaced by the typed words (`5. [✓] extra`) |
+
+The dialog's rows, reading top to bottom:
+
+```
+  ┃
+  ┃  Questions                    <- 2.1's title
+  ┃
+  ┃  Toppings  Submit             <- the tab row, last chip Submit, active chip bold
+  ┃
+  ┃  Which toppings?
+  ┃
+  ┃  1. [ ] Ham                   <- the pointed row is ALL accent ink (digit, box, label)
+  ┃         Add ham
+  ┃  2. [ ] Olives                <- unchecked: grey digit, grey box, bright label
+  ┃         Add olives
+  ┃  5. [ ] Type your own answer
+  ┃
+  ┃  ⇆ tab  ↑↓ select  enter toggle  esc dismiss
+  ┃
+```
+
+### The keys are unchanged
+
+A digit still selects (single select) or toggles (multi select) the option it numbers, a digit on the
+free-text row opens the input, `Tab`/`Right`/`Left` walk the tabs and wrap, `Enter` confirms or
+submits, and `Escape` dismisses the dialog and ends the turn. The probe reproduced each of those on
+2.1.1 before the captures were taken. A confirmed answer still reads `1. Red ✓` on a revisit.
+
+### Fixtures added
+
+`oc--v211-question--single`, `--single--moved`, `--multi`, `--multi--toggled`, `--multi--review`,
+`--two`, `--two--answered`, `--two--review` and `--multi--free-text` (the open input, which stays
+raw and shows the unread-dialog card). All are 120 by 40, ANSI, and listed in
+`web/src/fixtures/panes/README.md`.
+
+### Known limit: committed free text
+
+Once the person types into a multi-select free-text row and closes it, 2.1 keeps the text IN the
+row's label (`5. [ ] extra`) instead of showing it on a grey row under `Type your own answer` as
+1.x did. The screen then carries nothing that tells that row from a fifth option, so the lift reads
+it as one: its digit is offered, and pressing it re-opens the editor (whose footer changes, so the
+tap guard refuses the write). No wrong answer is sent. A future capture with a different theme may
+find a style difference worth reading. There is no fixture for this state on purpose.
+
+### How the grammars read it
+
+1. **A title row above the dialog.** `┃  Questions`, grey, once, over a bare row. It sits above the
+   question paragraph on a lone question, and above the tab row on a tabbed one. It is the dialog's,
+   not the transcript's, so `startLine` is that row: the block replaces it and the mirror above it
+   never shows a stray title. `markers.ts § isQuestionHeader` names it, and both grammars consume the
+   padding above it before the "nothing but the transcript" rule.
+2. **The pointer is an ink, not a chip.** The pointed row's digit, box and label are painted
+   `250;178;131` on the dialog's own `20;20;20` background — the same background every other row
+   has — so the 1.x background comparison finds no chip at all. `question.ts § pointedEntry` tries
+   the chip first (so a 1.x screen is read exactly as before) and then reads ACROSS the list: exactly
+   one row whose `N.` run wears an ink no other row's digit does. A checked box is not a pointer: its
+   box and label take the accent while its digit stays grey (`oc--v211-question--multi--toggled`),
+   which is why only the digit run is compared. Zero rows, two rows, or three distinct digit inks all
+   refuse.
+3. **The last chip is `Submit`, and the active chip is bold.** The tab row is `Toppings  Submit` at
+   the bar's gutter (1.x pads it one cell with the active chip's fill). The active chip is BOLD
+   (`1m`) on the dialog's background, not inverted; an inactive chip is grey whether or not its
+   question holds an answer, so the review body is where `answered` is read from on this version.
+   `question-tabs.ts § readTabs` accepts both spellings and both active marks, and a row whose chips
+   carry a fill is still read by the fill first.
+4. **The review body lost its `Review` heading.** It is now just `Header: value`, one row per
+   question, with no bare row between them. `detectReview` accepts both bodies: a leading `Review`
+   row is consumed when it is there.
+
+The multi-select free-text row also gained a checkbox of its own: `5. [ ] Type your own answer`.
+`parseRow` already strips a checkbox for the step, so it is still recognised as the free-text row and
+never becomes an option. While the input is open the row reads `5. [✓] Type your own answer` (or the
+typed text) and the footer becomes `⇆ tab  enter done  esc close`: no grammar claims it, and
+`modalOnScreen` reads that footer so the unread-dialog card still stands over the screen.
+
+The keyword `custom` is on for every call measured (the model never sends it), which is why the
+free-text row is the last numbered row in all of them.
+
+### What surprised
+
+- **The composer did not change.** It still paints `┃` and the `╹▀` rule, so the tail walk and
+  `stripChrome` needed nothing.
+- **An answered tab chip is grey.** 1.x painted a question chip bright once it held an answer; 2.1
+  paints every inactive chip grey, answered or not. The body is the only witness.
+- **`Enter` on the free-text row opens the editor and checks nothing.** The first `Enter` while the
+  input is open commits the text; the row then reads `[ ] mine` with the normal footer.

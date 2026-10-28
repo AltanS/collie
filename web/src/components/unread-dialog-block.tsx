@@ -1,3 +1,4 @@
+import { Bug } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { cn } from "@/lib/utils";
@@ -24,6 +25,12 @@ export interface UnreadDialogBlockProps {
   /** The device's Wrap lines setting, so the whole-pane mirror wraps or pans as the pane mirror
    *  does (#372). Default false: it pans, as RawMirror does. */
   wrap?: boolean;
+  /**
+   * Opens the Report a problem sheet for this screen (ADR 0123, amendment 2026-10-28). Absent, the
+   * card draws no report row (a crew member's pane, which the report route does not read yet). It is
+   * a read, so a read-only device keeps it.
+   */
+  onReport?: () => void;
 }
 
 // The UNREAD-DIALOG CARD — one declared key over a screen Collie could not read (.adr/0053).
@@ -53,7 +60,7 @@ export interface UnreadDialogBlockProps {
 // the screen's own rows print `esc dismiss`; otherwise it names the key, never a verb.
 const NAMES_A_DISMISS = /\besc\s+dismiss\b/i;
 
-export function UnreadDialogBlock({ cancel, lines, onAction, disabled, wrap }: UnreadDialogBlockProps) {
+export function UnreadDialogBlock({ cancel, lines, onAction, disabled, wrap, onReport }: UnreadDialogBlockProps) {
   useLocale();
   const [sending, setSending] = useState(false);
   const locked = disabled || sending;
@@ -120,6 +127,19 @@ export function UnreadDialogBlock({ cancel, lines, onAction, disabled, wrap }: U
       <span role="status" className="sr-only">
         {armed ? armedLabel : ""}
       </span>
+      {/* Report a problem: a quiet row under the key, always there when offered, so nothing moves.
+          It only opens the sheet; nothing leaves the phone without the person's own taps there. */}
+      {onReport !== undefined && (
+        <button
+          type="button"
+          data-slot="unread-dialog-report"
+          onClick={onReport}
+          className="inline-flex min-h-11 w-full items-center justify-center gap-1.5 text-xs text-muted-foreground underline underline-offset-2"
+        >
+          <Bug className="size-3.5" />
+          {t("unreadDialog.report")}
+        </button>
+      )}
 
       <RawMirror lines={lines} wrap={wrap} />
     </PromptPanel>

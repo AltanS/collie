@@ -217,8 +217,12 @@ describe("Composer — the microphone IS the primary button, until you type", ()
     await screen.findByRole("button", { name: /record a voice message/i });
 
     await user.type(box, "x");
+    // The round slot is Send now; the one microphone left is the small one beside Attach (issue 573).
     await waitFor(() =>
-      expect(screen.queryByRole("button", { name: /record a voice message/i })).toBeNull(),
+      expect(screen.getByRole("button", { name: /record a voice message/i })).toHaveAttribute(
+        "data-slot",
+        "composer-mic-draft",
+      ),
     );
     expect(screen.getByRole("button", { name: /send/i })).toBeInTheDocument();
 
@@ -227,7 +231,7 @@ describe("Composer — the microphone IS the primary button, until you type", ()
   });
 
   // ADR 0060: a chip is something to send, so a box holding only chips shows Send.
-  it("a box holding only chips shows Send, not the microphone", async () => {
+  it("a box holding only chips shows Send, with the microphone beside Attach", async () => {
     server.use(
       configHandler(CONFIG_WITH_STT),
       http.post(/\/api\/pane\/[^/]+\/upload$/, () => HttpResponse.json({ ok: true, path: "/a.png" })),
@@ -242,7 +246,11 @@ describe("Composer — the microphone IS the primary button, until you type", ()
     await waitFor(() => expect(box).toHaveValue("[Image #1] "));
     fireEvent.change(box, { target: { value: "" } });
 
-    expect(screen.queryByRole("button", { name: /record a voice message/i })).toBeNull();
+    // The round slot is Send; the microphone is the small one beside Attach (issue 573).
+    expect(screen.getByRole("button", { name: /record a voice message/i })).toHaveAttribute(
+      "data-slot",
+      "composer-mic-draft",
+    );
     expect(screen.getByRole("button", { name: /^send$/i })).toBeEnabled();
   });
 

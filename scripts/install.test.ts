@@ -438,6 +438,11 @@ describe.skipIf(process.platform === "win32")("scripts/install.sh", () => {
     // Pairing is always on (ADR 0086): the install names `collie pair` as a step of its own.
     expect(r.out).toContain("collie pair");
     expect(r.out).toContain("docs/security.md");
+    // The steps follow the five-minute guide: start, open on the phone, then pair. A `cp` of
+    // `.env.example` after a start overwrites the saved COLLIE_MUX, so the steps never ask for one.
+    expect(r.out.indexOf("collie start")).toBeLessThan(r.out.indexOf("collie qr"));
+    expect(r.out.indexOf("collie qr")).toBeLessThan(r.out.indexOf("collie pair"));
+    expect(r.out).not.toContain(".env.example");
   });
 
   test("never clobbers an existing Collie install — it names `collie update` and exits clean", () => {
@@ -580,5 +585,140 @@ describe.skipIf(process.platform === "win32")("scripts/install.sh", () => {
     });
     expect(r.code).toBe(1);
     expect(r.out).toContain("COLLIE_DIR");
+  });
+});
+
+// Both installers print colliepwa.dev docs links in their last lines. The site publishes
+// `docs/<slug>.md` at `/docs/<slug>`, so a renamed page or heading breaks a link in a terminal
+// nobody re-reads. Each link must name a page in docs/ and, with an anchor, one of its headings.
+// It reads files only, so it runs on Windows too, outside the POSIX-only block above.
+test("the docs links the installers print name a real page and heading", () => {
+  const slug = (heading: string) =>
+    heading.toLowerCase().replace(/[^a-z0-9 -]/g, "").trim().replace(/ /g, "-");
+  const link = /https:\/\/colliepwa\.dev\/docs\/([a-z0-9-]+)(?:#([a-z0-9-]+))?/g;
+  const links = ["install.sh", "install.ps1"].flatMap((file) =>
+    Array.from(readFileSync(join(import.meta.dir, file), "utf8").replace(/\r\n/g, "\n").matchAll(link)),
+  );
+  expect(links.length).toBeGreaterThan(0);
+  for (const [, page, anchor] of links) {
+    const doc = readFileSync(join(import.meta.dir, "..", "docs", `${page}.md`), "utf8").replace(/\r\n/g, "\n");
+    if (anchor === undefined) continue;
+    const headings = [...doc.matchAll(/^#+ (.+)$/gm)].map((m) => slug(m[1] ?? ""));
+    expect(headings).toContain(anchor);
+  }
+});
+
+// Both installers end by printing the commands a user types next. The five-minute guide
+// (docs/five-minute-install.md) holds the one numbered path per system, so every command an
+// installer prints must also be a command in a fenced code block of that system's section, or the
+// terminal and the guide drift apart. The shared phone section counts for every system, because
+// `collie qr` and `collie pair` live there. It reads files only, so it runs on Windows too, outside
+// the POSIX-only block above.
+//
+// To extend it: a command line in an installer's next-steps block is found by its INDENT, so a new
+// command needs no change here while it keeps the current wording style. install.sh prints a
+// command indented seven spaces inside the closing heredoc, after "What is left, which is yours".
+// install.ps1 prints it as `Write-CollieLine "       <command>"` (seven spaces) after "Next steps.".
+// Prose lines use fewer spaces. If an installer changes that style, change the two readers below.
+describe("the installers' next steps match the five-minute guide", () => {
+  const root = join(import.meta.dir, "..");
+  // A Windows checkout may hold `\r\n` line endings, which would leave a `\r` at the end of every
+  // matched line and break the `\nEOF\n` and `\n}\n` cuts. Every file this block reads goes through here.
+  const read = (path: string): string => readFileSync(path, "utf8").replace(/\r\n/g, "\n");
+  const slug = (heading: string) =>
+    heading.toLowerCase().replace(/[^a-z0-9 -]/g, "").trim().replace(/ /g, "-");
+
+  /** The text of a `## ` section, from its heading to the next `## ` heading. */
+  const section = (doc: string, heading: string): string => {
+    const lines = doc.split("\n");
+    const start = lines.findIndex(
+      (line) => line.startsWith("## ") && slug(line.slice(3)) === slug(heading),
+    );
+    expect(start).toBeGreaterThanOrEqual(0);
+    const rest = lines.slice(start + 1);
+    const end = rest.findIndex((line) => line.startsWith("## "));
+    return rest.slice(0, end === -1 ? undefined : end).join("\n");
+  };
+
+  /** Normalise one command line for comparison: no trailing `# comment`, no prompt, one space. */
+  const clean = (line: string): string =>
+    line
+      .replace(/\s+#.*$/, "")
+      .replace(/^(\$|PS>)\s+/, "")
+      .replace(/\s+/g, " ")
+      .trim();
+
+  /** Every command line inside a fenced code block of `text`, cleaned. */
+  const commandLines = (text: string): Set<string> => {
+    const found = new Set<string>();
+    let fenced = false;
+    for (const line of text.split("\n")) {
+      if (/^\s*```/.test(line)) {
+        fenced = !fenced;
+        continue;
+      }
+      if (fenced && line.trim() !== "") found.add(clean(line));
+    }
+    return found;
+  };
+
+  /** The commands install.sh prints in its closing heredoc. */
+  const shCommands = (): string[] => {
+    const script = read(join(import.meta.dir, "install.sh"));
+    const block = script.split("# ── What is left, which is yours")[1]?.split("\nEOF\n")[0] ?? "";
+    return [...block.matchAll(/^ {7}(\S.*)$/gm)].map((m) => clean(m[1] ?? ""));
+  };
+
+  /**
+   * The commands install.ps1 prints after "Next steps.". The script names its own binary with
+   * `$collie`, which is `collie` or a full path to `collie.exe`, so a leading `$collie ` is
+   * normalised to `collie ` here: the guide always spells the bare name.
+   */
+  const psCommands = (): string[] => {
+    const script = read(join(import.meta.dir, "install.ps1"));
+    const block = script.split('Write-CollieLine "Next steps.')[1]?.split("\n}\n")[0] ?? "";
+    return [...block.matchAll(/Write-CollieLine " {7}(\S[^"]*)"/g)].map((m) =>
+      clean((m[1] ?? "").replace(/^\$collie /, "collie ")),
+    );
+  };
+
+  const guide = read(join(root, "docs", "five-minute-install.md"));
+  const phone = section(guide, "Put Collie on your phone and pair it");
+
+  const cases: Array<[string, string, () => string[]]> = [
+    ["install.sh", "Linux", shCommands],
+    ["install.sh", "macOS", shCommands],
+    ["install.ps1", "Windows", psCommands],
+  ];
+
+  for (const [file, os, printed] of cases) {
+    test(`${file} prints only commands that the ${os} section of the guide shows`, () => {
+      const commands = printed();
+      // Rot guard: a changed print style must not turn this into an empty, passing test.
+      expect(commands.length).toBeGreaterThanOrEqual(4);
+      const known = commandLines(`${section(guide, os)}\n${phone}`);
+      for (const command of commands) expect(known).toContain(command);
+    });
+  }
+
+  // The README is the GitHub front door and keeps a short copy of the setup. It prints no command
+  // that the guide does not. This checks the command lines in fenced blocks of its phone section,
+  // plus the inline spans for the verbs the section names in prose. To extend it: add a verb to
+  // INLINE_VERBS when the README names another command inline that the guide also prints.
+  const INLINE_VERBS = /^collie (qr|pair|url|start)$/;
+
+  test("the README quick setup prints only commands the guide prints", () => {
+    const readme = read(join(root, "README.md"));
+    const quick = section(readme, "Get it on your phone in 3 steps");
+    const fenced = [...commandLines(quick)];
+    const inline = [...quick.matchAll(/`([^`\n]+)`/g)]
+      .map((m) => clean(m[1] ?? ""))
+      .filter((span) => INLINE_VERBS.test(span));
+    // Rot guard: the section must still hold the install, start, qr and pair commands.
+    expect(fenced.length).toBeGreaterThanOrEqual(2);
+    expect(inline).toContain("collie qr");
+    expect(inline).toContain("collie pair");
+    const known = commandLines(guide);
+    for (const command of [...fenced, ...inline]) expect(known).toContain(command);
   });
 });

@@ -26,6 +26,7 @@ import { BIN } from "./bins";
 import { SETUPS, harnessDirs, prepareHarness, type HarnessId } from "./harnesses";
 import type { ScenarioId } from "./scenarios";
 import { MEMBER_ID, P, STATE_ROOT, memGuard, newWorkspacePane, paneRun, readRun, readToken, sleep, type Machine } from "./rig-lib";
+import { STUB_HARNESSES, tiersFromEnv } from "./replay/tier";
 
 export { expect };
 
@@ -596,9 +597,58 @@ export interface Trail {
   readonly captures: string[];
 }
 
+/**
+ * Tell the rig's model stub which case runs now (M67, replay/stub.ts): pi's and omp's model calls are
+ * filed under it, whichever harness the case belongs to (case 10's broadcast reaches pi and omp too).
+ * Returns the stub's port, or null on a rig without one.
+ */
+async function stubCase(caseId: string | null): Promise<number | null> {
+  const port = readRun()?.stub?.port;
+  if (port === undefined) return null;
+  await fetch(`http://127.0.0.1:${String(port)}/_rig/case`, { method: "POST", body: JSON.stringify({ case: caseId }) }).catch(() => undefined);
+  return port;
+}
+
+/** Tell the stub how a case ended, so a recording made in a case that did not pass is marked (meta.json `failed`). */
+async function stubVerdict(port: number | null, caseId: string, verdict: string): Promise<void> {
+  if (port === null) return;
+  await fetch(`http://127.0.0.1:${String(port)}/_rig/verdict`, { method: "POST", body: JSON.stringify({ case: caseId, verdict }) }).catch(() => undefined);
+}
+
+/**
+ * The note for a case that did not pass on a replayed recording that was itself made in a case that
+ * did not pass: the replay played that run back, so the fix is to record the case again, alone.
+ */
+function staleRecordingNotes(caseId: string, title: string): string[] {
+  const tiers = tiersFromEnv();
+  if (tiers === null) return [];
+  return STUB_HARNESSES.flatMap((h) => {
+    const plan = tiers[h];
+    if (plan === undefined || plan.tier !== "replay" || !(plan.failed ?? []).includes(caseId)) return [];
+    return [`${h}: this case replays a recording made in a live run where it did not pass; record it again: COLLIE_RIG_LIVE=${h} COLLIE_RIG_RECORD=1 COLLIE_RIG_KEY_FILE=... bunx playwright test -c e2e/rig/playwright.config.ts -g ${JSON.stringify(title)}`];
+  });
+}
+
+/** The stub's cassette mismatches in one case, as one note each. */
+async function stubMismatches(port: number | null, caseId: string): Promise<string[]> {
+  if (port === null) return [];
+  const stats = await fetch(`http://127.0.0.1:${String(port)}/_rig/stats`)
+    .then(async (r) => asJsonObject(parseJson(await r.text())))
+    .catch(() => undefined);
+  return jsonRows(stats?.mismatches).flatMap((m) => (m.case === caseId ? [`${String(m.harness)}: ${String(m.message)}`] : []));
+}
+
 export async function runScenario(harness: HarnessId, id: ScenarioId, session: Session, body: (paneId: string, trail: Trail) => Promise<ScenarioResult>): Promise<void> {
+  const caseId = `${harness}.${id}`;
+  const stubPort = await stubCase(caseId);
+  // Every end of the case writes its row and tells the stub the verdict (M67).
+  const settle = async (r: Parameters<typeof record>[0]): Promise<void> => {
+    const stale = r.verdict === "pass" ? [] : staleRecordingNotes(caseId, test.info().title);
+    record(stale.length === 0 ? r : { ...r, note: [...stale, r.note].join("; ") });
+    await stubVerdict(stubPort, caseId, r.verdict);
+  };
   if (session.paneId === null) {
-    record({ harness, scenario: id, verdict: "not reached", taps: null, note: `no session: ${session.startNote}` });
+    await settle({ harness, scenario: id, verdict: "not reached", taps: null, note: `no session: ${session.startNote}` });
     test.skip(true, session.startNote);
     return;
   }
@@ -611,17 +661,25 @@ export async function runScenario(harness: HarnessId, id: ScenarioId, session: S
     if (reset !== null) trail.notes.push(reset);
     row = await body(session.paneId, trail);
   } catch (err) {
+    // A cassette mismatch is the cause whatever the case saw after it: say so first, and fail.
+    const mismatch = await stubMismatches(stubPort, caseId);
+    if (mismatch.length > 0) {
+      await settle({ harness, scenario: id, verdict: "fail", taps: null, note: [...mismatch, ...trail.notes].join("; "), taps_log: trail.log, captures: trail.captures });
+      throw new Error(mismatch.join("; "), { cause: err });
+    }
     const kept = [...trail.notes, ...trail.log.map(tapWords)].join("; ");
     if (err instanceof NotReached) {
-      record({ harness, scenario: id, verdict: "not reached", taps: null, note: [err.message, kept].filter((x) => x !== "").join("; "), taps_log: trail.log, captures: trail.captures });
+      await settle({ harness, scenario: id, verdict: "not reached", taps: null, note: [err.message, kept].filter((x) => x !== "").join("; "), taps_log: trail.log, captures: trail.captures });
       test.skip(true, err.message);
       return;
     }
     const why = err instanceof Error ? (err.message.split("\n")[0] ?? "") : String(err);
-    record({ harness, scenario: id, verdict: "fail", taps: null, note: [`the case stopped: ${why}`, kept].filter((x) => x !== "").join("; "), taps_log: trail.log, captures: trail.captures });
+    await settle({ harness, scenario: id, verdict: "fail", taps: null, note: [`the case stopped: ${why}`, kept].filter((x) => x !== "").join("; "), taps_log: trail.log, captures: trail.captures });
     throw err;
   }
-  record({ harness, scenario: id, ...row });
+  const mismatch = await stubMismatches(stubPort, caseId);
+  if (mismatch.length > 0) row = { ...row, verdict: "fail", note: [...mismatch, row.note].join("; ") };
+  await settle({ harness, scenario: id, ...row });
   expect(row.verdict, row.note).not.toBe("fail");
 }
 

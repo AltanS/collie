@@ -12,6 +12,9 @@ local:
   ✓        herdr-socket          /home/pat/.config/herdr/herdr.sock
   ✓        bind                  127.0.0.1 (mode solo)
   ✓        bind-wildcard         bound to one address
+  ✓        tailscale             running and signed in, this machine is laptop.tail.ts.net
+  ✓        tailnet-https         MagicDNS name laptop.tail.ts.net, HTTPS certificates on
+  ✓        tailscale-operator    tailscale serve answers this user
   ✓        acl                   inbound packet filter is non-empty — can't disprove reachability; non-empty proves nothing
   ✓        front-door            laptop.tail.ts.net:443 → http://127.0.0.1:8787 (recorded and live)
   ✓        pairing               1 device(s) paired
@@ -58,6 +61,9 @@ local:
   ✓        herdr-socket          /home/pat/.config/herdr/herdr.sock
   ✓        bind                  127.0.0.1 (mode solo)
   ✓        bind-wildcard         bound to one address
+  ✓        tailscale             running and signed in, this machine is laptop.tail.ts.net
+  ✓        tailnet-https         MagicDNS name laptop.tail.ts.net, HTTPS certificates on
+  ✓        tailscale-operator    tailscale serve answers this user
   ✓        acl                   inbound packet filter is non-empty — can't disprove reachability; non-empty proves nothing
   ✓        front-door            laptop.tail.ts.net:443 → http://127.0.0.1:8787 (recorded and live)
   ✓        pairing               1 device(s) paired

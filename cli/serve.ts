@@ -16,6 +16,7 @@ import {
 } from "../bridge/front-door.ts";
 import { deriveMode, type CrewMode } from "../bridge/crew/mode.ts";
 import { enrollmentOf, parseTrustStore, trustStorePath } from "../bridge/crew/trust-store.ts";
+import { HOST, type Host } from "../bridge/host.ts";
 import { EXIT, type Io } from "./io.ts";
 import type { Exec, Files } from "./sys.ts";
 import {
@@ -56,6 +57,12 @@ export interface ServeDeps {
   io: Io;
   exec: Exec;
   files: Files;
+  /**
+   * The machine the door is published from (`bridge/host.ts`). It changes one sentence: the hint
+   * after a failed publish, because `tailscale set --operator` exists on Linux only. Absent means
+   * this machine, which is what every production caller passes anyway.
+   */
+  host?: Host;
 }
 
 export type Availability = "free" | "adoptable" | "occupied" | "protocol-mismatch";
@@ -272,11 +279,7 @@ export function cmdServe(deps: ServeDeps): number {
     return EXIT.OK;
   }
   deps.files.remove(deps.ctx.handlerFile);
-  deps.io.out(
-    deps.ctx.serveMode === "http"
-      ? "note: tailscale serve failed (try 'sudo tailscale set --operator=$USER')"
-      : "note: tailscale serve (https) failed — on Headscale/.internal domains use COLLIE_SERVE_MODE=http",
-  );
+  deps.io.out(publishFailedNote(deps.ctx.serveMode, deps.host ?? HOST));
   // No echo of the failure text: tailscale printed it on this terminal as it happened.
   return EXIT.FAIL;
 }
@@ -311,9 +314,23 @@ export function cmdServeVerb(deps: ServeDeps): number {
  * Sync and file-shaped because `cmdServe` is: it runs inside `start`, which has no `await` to spare
  * for a `TrustStore` handle it would otherwise have to thread through four call sites.
  */
-export function crewModeOnDisk(deps: ServeDeps): CrewMode {
+export function crewModeOnDisk(deps: Pick<ServeDeps, "ctx" | "files">): CrewMode {
   const raw = deps.files.read(trustStorePath(deps.ctx.stateDir));
   return deriveMode(enrollmentOf(raw === null ? null : parseTrustStore(raw))).mode;
+}
+
+/**
+ * The one line after a failed publish. Tailscale printed its own reason above it; this names the
+ * usual fix. The operator flag is a Linux setting (a user who is not the operator may not change
+ * the serve config there), so macOS and Windows are pointed at the reason tailscale printed instead.
+ */
+export function publishFailedNote(mode: ServeMode, host: Host): string {
+  if (mode === "https") {
+    return "note: tailscale serve (https) failed — on Headscale/.internal domains use COLLIE_SERVE_MODE=http";
+  }
+  return host.platform === "linux"
+    ? "note: tailscale serve failed (try 'sudo tailscale set --operator=$USER')"
+    : "note: tailscale serve failed; tailscale printed the reason above";
 }
 
 /**
@@ -368,6 +385,8 @@ function ensureRootAvailable(
   }
   if (verdict === "adoptable") {
     deps.io.out(`tailscale serve: adopting the existing Collie ${name} on :${port}`);
+    // The record is written right after this gate returns, so from here `collie uninstall` and `collie unserve` own it.
+    deps.io.out("note: adopted an existing tailscale serve mapping for this collie; `collie uninstall` or `collie unserve` removes it with the rest");
   }
   return true;
 }

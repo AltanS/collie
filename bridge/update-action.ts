@@ -5,7 +5,7 @@ import type { JsonObject, JsonValue } from "./json.ts";
 import type { UpdateStatus } from "./types.ts";
 import type { PeerHealth } from "./crew/registry.ts";
 import { apiError, type ApiErrorBody, type ApiErrorDetail, type ErrorCode } from "./error-codes.ts";
-import { compareSemver, UPDATE_MIRROR_ENV } from "./update.ts";
+import { compareSemver, RUNNER_ENV_KEYS, UPDATE_MIRROR_ENV } from "./update.ts";
 import { inFlight, type UpdateRun, type UpdateRunState } from "./update-run.ts";
 import { isRequestId } from "./worktree-receipts.ts";
 
@@ -1204,6 +1204,14 @@ export function updateStartCommand(a: {
    */
   readonly mirror?: string | null;
   /**
+   * The bridge's own environment. The systemd-run tier forwards the {@link RUNNER_ENV_KEYS} that are
+   * set in it, one `--setenv=` each, for the same reason the mirror is forwarded: the transient unit
+   * has a bare environment, and without `COLLIE_INSTANCE`, `COLLIE_MUX` and `COLLIE_CONFIG_DIR` the
+   * CLI there resolves the DEFAULT instance and updates and restarts the wrong service (seen
+   * 2026-10-28: the Update tap on `next` took `collie.service`). The other tiers inherit it.
+   */
+  readonly env?: Readonly<Record<string, string | undefined>>;
+  /**
    * The phone's rollback (M60 spec 01): `update --rollback --run-id <id>`, which the CLI hands to the
    * same detached runner as a run with `action: "rollback"`. `major` and `toTag` mean nothing to it
    * and are dropped.
@@ -1224,7 +1232,12 @@ export function updateStartCommand(a: {
   if (a.rollback !== true && a.line !== undefined && a.line !== null) verb.push("--line", a.line);
   if (a.runId !== undefined && a.runId !== null) verb.push("--run-id", a.runId);
   if (a.platform === "linux" && a.hasSystemdRun) {
-    const setenv = a.mirror === undefined || a.mirror === null ? [] : [`--setenv=${UPDATE_MIRROR_ENV}=${a.mirror}`];
+    const setenv: string[] = [];
+    for (const key of RUNNER_ENV_KEYS) {
+      const value = a.env?.[key];
+      if (value !== undefined && value !== "") setenv.push(`--setenv=${key}=${value}`);
+    }
+    if (a.mirror !== undefined && a.mirror !== null) setenv.push(`--setenv=${UPDATE_MIRROR_ENV}=${a.mirror}`);
     return {
       command: ["systemd-run", "--user", "--collect", "--unit", `collie-api-update-${a.stamp}`, ...setenv, a.binary, ...verb],
       detach: false,

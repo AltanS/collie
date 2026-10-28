@@ -445,6 +445,17 @@ describe("detectMultiSelect — the answer field", () => {
     expect(m.pointer).toBe("field");
   });
 
+  it("a value wrapped onto twenty-five rows keeps the question and is rejoined exactly", () => {
+    // Option 1 then sits more than 24 rows above the footer, past the scan before MAX_ANSWER_WRAP.
+    const plain = fixtureLines("claude--v2299-ask-field-multi-focused-typed.txt").map(lineText).join("\n");
+    const text = Array(25).fill("x".repeat(140)).join(" ");
+    const wrapped = Array(25).fill("x".repeat(140)).map((row, i) => (i === 0 ? `❯ 4. [✔] ${row}` : `         ${row}`));
+    expect(plain).toContain("❯ 4. [✔] Pineapple");
+    const m = detectMultiSelect(splitLines(parseAnsi(plain.replace("❯ 4. [✔] Pineapple", wrapped.join("\n")))));
+    expect(m?.phase).toBe("checkbox");
+    if (m?.phase === "checkbox") expect(m.field).toMatchObject({ n: 4, focused: true, text, checked: true, lines: 25 });
+  });
+
   it("Enter on the focused field unticks it and keeps the text", () => {
     expect(capture("multi-focused-unticked").field).toMatchObject({ text: "Pineapple", checked: false, focused: true });
   });

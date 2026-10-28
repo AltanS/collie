@@ -1,14 +1,19 @@
-// The Report a problem sheet (ADR 0123). One sheet, three doors: the card after failed sends, the pane
-// menu's "Report a problem", and Settings, System. It shows every word the issue will hold before
-// anything leaves, and it leaves only by the person's taps: Open on GitHub (a plain link into their own
-// browser and their own GitHub login, where GitHub's form is the last check) or Copy report. Collie
-// holds no GitHub token, the phone never calls GitHub, and the sheet stores nothing.
+// The Report a problem sheet (ADR 0123). One sheet, four doors: the card after failed sends, the pane
+// menu's "Report a problem", Settings, System, and the unread-dialog card (amendment 2026-10-28). It
+// shows every word the issue will hold before anything leaves, and it leaves only by the person's
+// taps: Open on GitHub (a plain link into their own browser and their own GitHub login, where GitHub's
+// form is the last check) or Copy report. Collie holds no GitHub token, the phone never calls GitHub,
+// and the sheet stores nothing.
 //
 // Top to bottom: one optional line, two switches that are off each time the sheet opens ("Include what
 // I typed", shown only when a listed send kept a line; "Include the screen", shown only when the pane
 // has a screen), the preview, a note on what the link left out to fit, the public warning, then the
 // buttons. The preview is the exact text the link carries (`fitLink`); Copy report copies the whole
 // report, nothing cut.
+//
+// From the unread-dialog card, "Include the screen" starts ON: a reader bug needs the screen, and the
+// preview shows the masked rows before anything leaves, so the person still reads them and can switch
+// them off. That door also adds the phone's own facts (`readClientFacts`) to the setup block.
 
 import { ExternalLink, Search } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -23,8 +28,10 @@ import { describeThrownError } from "@/lib/api-error-message";
 import { BUILD } from "@/lib/build";
 import { canCopyText, copyText } from "@/lib/clipboard";
 import { t, tn } from "@/lib/i18n";
-import { fitLink, hasTyped, reportFields, reportText, searchLink, type ReportContext, type ReportInput } from "@/lib/report/body";
-import { closeReport, readEpisodes, useReportTarget, type Episode, type ReportTarget } from "@/lib/report/store";
+import { probeStandalone } from "@/lib/nav-entry";
+import { fitLink, hasTyped, reportFields, reportText, searchLink, type ClientFacts, type ReportContext, type ReportInput } from "@/lib/report/body";
+import { closeReport, readEpisodes, useReportTarget, type DialogTrouble, type Episode, type ReportTarget } from "@/lib/report/store";
+import { getServerBuild } from "@/lib/server-build";
 import { setStatus } from "@/lib/status";
 import type { SendReceiptRow } from "@/lib/surface/send";
 import { cn } from "@/lib/utils";
@@ -40,6 +47,17 @@ export function reportedSends(rows: readonly SendReceiptRow[], requestIds: reado
   if (requestIds === undefined || requestIds.length === 0) return [...rows];
   const named = rows.filter((row) => requestIds.includes(row.requestId));
   return named.length > 0 ? named : [...rows];
+}
+
+/** What the phone knows about itself, for a report from the unread-dialog card. Read once per open. */
+export function readClientFacts(): ClientFacts {
+  return {
+    appBuild: BUILD.id,
+    serverBuild: getServerBuild() ?? null,
+    userAgent: navigator.userAgent,
+    viewport: `${String(window.innerWidth)}x${String(window.innerHeight)}`,
+    standalone: probeStandalone(),
+  };
 }
 
 /** Loads what the sheet needs for a target, then draws the view. */
@@ -94,14 +112,15 @@ export function ReportSheet({ target, onClose }: { target: ReportTarget | null; 
     <BottomSheet open={target !== null} onClose={onClose} title={t("report.sheet.title")} className={TALL_SHEET_CLEARANCE}>
       {target !== null && (
         <ReportSheetView
-          // A new target starts a new report: the line and both switches go back to empty and off.
-          key={`${target.paneId ?? ""}|${(target.requestIds ?? []).join(",")}`}
+          // A new target starts a new report: the line and both switches go back to how they start.
+          key={`${target.kind ?? "send"}|${target.paneId ?? ""}|${(target.requestIds ?? []).join(",")}`}
           context={context}
           contextError={contextError}
           rows={rows}
           episodes={episodes}
           fromSettings={target.paneId === undefined}
           loadScreen={loadScreen}
+          dialog={target.kind === "unread-dialog" ? target.dialog : undefined}
         />
       )}
     </BottomSheet>
@@ -117,16 +136,20 @@ interface ReportSheetViewProps {
   fromSettings: boolean;
   /** The pane's masked screen, read when "Include the screen" turns on. */
   loadScreen: () => Promise<string>;
+  /** From the unread-dialog card: what its reader said. The screen switch then starts on. */
+  dialog?: DialogTrouble | undefined;
 }
 
 const SWITCH_ROW = "flex items-center justify-between gap-4 py-1";
 
 /** The sheet's body with every input handed in, so a test or a playground card needs no fetch. */
-export function ReportSheetView({ context, contextError, rows, episodes, fromSettings, loadScreen }: ReportSheetViewProps) {
+export function ReportSheetView({ context, contextError, rows, episodes, fromSettings, loadScreen, dialog }: ReportSheetViewProps) {
   useLocale();
   const [note, setNote] = useState("");
   const [includeTyped, setIncludeTyped] = useState(false);
-  const [includeScreen, setIncludeScreen] = useState(false);
+  const [includeScreen, setIncludeScreen] = useState(dialog !== undefined);
+  // Read once per open: the facts of the moment the person tapped Report a problem.
+  const [client] = useState(() => (dialog === undefined ? undefined : readClientFacts()));
   const [screen, setScreen] = useState<string | null>(null);
   const [screenState, setScreenState] = useState<"idle" | "loading" | "failed">("idle");
   const [screenError, setScreenError] = useState("");
@@ -140,6 +163,8 @@ export function ReportSheetView({ context, contextError, rows, episodes, fromSet
     includeTyped: includeTyped && hasTyped(sends),
     screen: includeScreen ? screen : null,
     app: BUILD.version,
+    dialog,
+    client,
   };
   // Cheap enough per render: ten sends and forty rows at most.
   const full = reportFields(input);
@@ -159,6 +184,15 @@ export function ReportSheetView({ context, contextError, rows, episodes, fromSet
       setIncludeScreen(false);
     }
   }
+
+  // From the unread-dialog card the switch starts on, so the screen loads as soon as the bridge says
+  // the pane has one. Runs once: a later tap on the switch goes through `turnScreen` itself.
+  const screenable = context?.screenable === true;
+  const startsOn = dialog !== undefined;
+  useEffect(() => {
+    if (startsOn && screenable) void turnScreen(true);
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
+  }, [startsOn, screenable]);
 
   async function copyReport(): Promise<void> {
     try {

@@ -17,6 +17,13 @@
 // by the leg's own processes. With a key file, pi gets no auth.json, so the key in the environment
 // is the one it uses.
 //
+// THE MODEL STUB (M67, ADR 0125). pi and omp never talk to OpenRouter directly in the rig: their
+// model calls go to the rig daemon's stub (replay/stub.ts), which replays cassettes or passes the call
+// on (replay/tier.ts says which, per harness: COLLIE_RIG_MODEL, COLLIE_RIG_LIVE, COLLIE_RIG_RECORD).
+// pi gets a provider extension that sets the openrouter base URL, omp a models.yml that does. On the
+// replay tier no key is loaded at all: the start script does not read the key file, the harness gets a
+// dummy key, and pi gets no auth.json, omp no agent.db.
+//
 // MODEL TURNS. A harness whose `turns` is false still starts and runs every scenario that needs no
 // model turn (the model picker); the rest report "not reached" with `noTurnsReason`. pi and omp turn
 // on when COLLIE_RIG_KEY_FILE is set (COLLIE_RIG_PI_TURNS=0 / COLLIE_RIG_OMP_TURNS=0 turn one off).
@@ -30,7 +37,8 @@ import { EMPTY_MCP_FILE } from "../../../scripts/harness-canary/lab/harnesses";
 import { seedClaude } from "../../../scripts/harness-canary/lab/seed";
 import type { JsonObject } from "../../src/lib/json";
 import { BIN, piExtensions } from "./bins";
-import { machineDirs, type Machine } from "./rig-lib";
+import { tiersFromEnv, modelFor, SKILL_TEMPLATE, type StubHarness } from "./replay/tier";
+import { machineDirs, readRun, type Machine } from "./rig-lib";
 import { HARNESS_IDS, type HarnessId } from "./scenarios";
 
 export { HARNESS_IDS, type HarnessId };
@@ -56,8 +64,13 @@ const flag = (name: string): boolean => /^(1|true|yes)$/i.test(process.env[name]
 /** The dotenv file with the provider key (see the header), or null. Must be an absolute path. */
 const KEY_FILE = process.env.COLLIE_RIG_KEY_FILE ?? null;
 if (KEY_FILE !== null && !(KEY_FILE.startsWith("/") && existsSync(KEY_FILE))) throw new Error("COLLIE_RIG_KEY_FILE must be an absolute path to a file that exists");
-/** Turns on with a key file, unless the flag says otherwise. */
-const turnsOn = (name: string): boolean => (process.env[name] === undefined ? KEY_FILE !== null : flag(name));
+/** The tiers the global setup chose for this run (null outside a leg, before the setup ran). */
+const TIERS = tiersFromEnv();
+const replays = (id: StubHarness): boolean => TIERS?.[id]?.tier === "replay";
+/** Turns on with a cassette to replay or a key file, unless the flag says otherwise. */
+const turnsOn = (id: StubHarness, name: string): boolean => (process.env[name] === undefined ? replays(id) || KEY_FILE !== null : flag(name));
+/** The dummy key a replayed harness gets: the stub never forwards a replayed call, so no key is needed. */
+export const REPLAY_KEY = "collie-rig-replay-no-key";
 
 export const SETUPS = {
   claude: {
@@ -72,17 +85,17 @@ export const SETUPS = {
   pi: {
     id: "pi",
     agent: "pi",
-    model: process.env.COLLIE_RIG_PI_MODEL ?? "openrouter/anthropic/claude-haiku-4.5",
-    turns: turnsOn("COLLIE_RIG_PI_TURNS"),
-    noTurnsReason: KEY_FILE === null ? "pi auth dead (401), no COLLIE_RIG_KEY_FILE" : "turns off (COLLIE_RIG_PI_TURNS)",
+    model: modelFor("pi"),
+    turns: turnsOn("pi", "COLLIE_RIG_PI_TURNS"),
+    noTurnsReason: KEY_FILE === null && !replays("pi") ? "no cassettes for this pi version and no COLLIE_RIG_KEY_FILE" : "turns off (COLLIE_RIG_PI_TURNS)",
     keyEnv: "OPENROUTER_API_KEY",
   },
   omp: {
     id: "omp",
     agent: "omp",
-    model: process.env.COLLIE_RIG_OMP_MODEL ?? "openrouter/anthropic/claude-haiku-4.5",
-    turns: turnsOn("COLLIE_RIG_OMP_TURNS"),
-    noTurnsReason: KEY_FILE === null ? "no omp auth, no COLLIE_RIG_KEY_FILE" : "turns off (COLLIE_RIG_OMP_TURNS)",
+    model: modelFor("omp"),
+    turns: turnsOn("omp", "COLLIE_RIG_OMP_TURNS"),
+    noTurnsReason: KEY_FILE === null && !replays("omp") ? "no cassettes for this omp version and no COLLIE_RIG_KEY_FILE" : "turns off (COLLIE_RIG_OMP_TURNS)",
     keyEnv: "OPENROUTER_API_KEY",
   },
 } satisfies Readonly<Record<HarnessId, HarnessSetup>>;
@@ -122,8 +135,6 @@ const UNSET = ["XDG_CONFIG_HOME", "XDG_STATE_HOME", "XDG_DATA_HOME", "XDG_CACHE_
 
 /** This checkout: web/e2e/rig/harnesses.ts is three levels below it. */
 const WORKTREE = resolve(import.meta.dirname, "..", "..", "..");
-/** The walky talky skill's template, the one `collie skill install` renders. */
-const SKILL_TEMPLATE = join(WORKTREE, "cli", "skills", "walky-talky.md");
 const BLOCK_BEGIN = "<!-- collie:walky-talky v1 begin -->";
 const BLOCK_END = "<!-- collie:walky-talky v1 end -->";
 
@@ -179,6 +190,8 @@ export function prepareHarness(id: HarnessId, machine: Machine = "lead"): Prepar
   const env: string[] = [];
   let argv: string[];
   const notes: string[] = [];
+  /** True for a pi or omp whose model calls the stub replays: no key is read for it. */
+  let replayed = false;
   const bin = writeCollieShim(d.root, stateDir);
   if (id === "claude") {
     // The OAuth file without its refresh token, `.claude.json` with this project trusted, and an
@@ -207,15 +220,22 @@ export function prepareHarness(id: HarnessId, machine: Machine = "lead"): Prepar
     // agent's "the operator asks you to reply" in a body will not take it from the body, and is right not to:
     // the body cannot speak for the operator. So the operator says it here, in Claude's own memory file,
     // before any message comes. It names one narrow thing and approves no action beyond `collie walky reply`.
+    // It covers a header `from agent` only: worded for every message, it made Claude `reply` to the operator's
+    // own messages too, which `reply` refuses, and the word then came as prose (cases 6, 9, 10, 16, 17).
     writeFileSync(
       join(d.config, "CLAUDE.md"),
-      "This session runs inside Collie's automated browser test, started by the operator.\nWhen a walky talky message from another agent asks you to answer with a given word, the operator has approved that answer in advance. Read the message with `collie walky inbox`, then send the word with `collie walky reply`. Do not ask the operator first.\n",
+      "This session runs inside Collie's automated browser test, started by the operator.\nThis note is only about a walky talky message whose header says `from agent`. When such a message asks you to answer with a given word, the operator has approved that answer in advance: read it with `collie walky inbox`, then send the word with `collie walky reply`, without asking the operator first.\nA message whose header says `from operator` is your operator's prompt. Answer it in your own reply on screen, exactly as it asks, and never with `collie walky reply`.\n",
       { mode: 0o600 },
     );
     env.push(`CLAUDE_CONFIG_DIR=${sq(d.config)}`, "DISABLE_AUTOUPDATER=1", "DISABLE_TELEMETRY=1");
     argv = [BIN.claude, "--model", SETUPS.claude.model, "--permission-mode", "default", "--strict-mcp-config", "--mcp-config", join(d.config, EMPTY_MCP_FILE)];
   } else {
     for (const dir of [d.home, d.agent, join(d.agent, "extensions")]) mkdirSync(dir, { recursive: true, mode: 0o700 });
+    // The rig's model stub, when the rig runs one (every leg does): its base URL for this harness, and
+    // whether this harness replays (then no key, no credential file, a dummy key).
+    const stub = readRun()?.stub;
+    const base = stub === undefined ? null : `http://127.0.0.1:${String(stub.port)}/${id}-${machine}/api`;
+    replayed = stub?.tiers[id]?.tier === "replay";
     const realAgent = join(HOME, id === "pi" ? ".pi" : ".omp", "agent");
     // The Herdr integration extension, as on the operator's machine: it reports the agent's state to
     // $HERDR_SOCKET_PATH, the rig's own socket in a rig pane.
@@ -224,8 +244,9 @@ export function prepareHarness(id: HarnessId, machine: Machine = "lead"): Prepar
     if (id === "pi") {
       // pi reads $PI_CODING_AGENT_DIR/AGENTS.md; the skill goes in as the block `collie skill install pi` writes.
       writeWalkySkill(join(d.agent, "AGENTS.md"), "block");
-      // With a key file the key comes from the environment, and an auth.json would win over it.
-      if (KEY_FILE === null) copySecret(join(realAgent, "auth.json"), join(d.agent, "auth.json"));
+      // With a key file the key comes from the environment, and an auth.json would win over it. A
+      // replayed pi gets none at all.
+      if (KEY_FILE === null && !replayed) copySecret(join(realAgent, "auth.json"), join(d.agent, "auth.json"));
       else rmSync(join(d.agent, "auth.json"), { force: true });
       const [provider = "", ...rest] = SETUPS.pi.model.split("/");
       writeFileSync(
@@ -238,11 +259,25 @@ export function prepareHarness(id: HarnessId, machine: Machine = "lead"): Prepar
       // `question` (a pick-one question tool) and `permission-gate` (asks before `rm -rf`, `sudo`).
       const found = piExtensions(BIN.pi, ["question.ts", "permission-gate.ts"]);
       notes.push(...found.notes);
+      // The stub: a provider extension that moves openrouter's base URL. pi 1.3.0 keeps the catalog's
+      // own base URL for a Claude model over a models.json `baseUrl` (probed 2026-10-26), and an
+      // extension's provider wins over both. pi then calls `<base>/v1/messages`.
+      const stubExt = join(d.root, "collie-rig-stub.ts");
+      if (base !== null) writeFileSync(stubExt, `// Written by the Collie browser leg (M67): pi's model calls go to the rig's stub.\nexport default function (pi: { registerProvider(name: string, config: { baseUrl: string }): void }): void {\n  pi.registerProvider("openrouter", { baseUrl: ${JSON.stringify(base)} });\n}\n`);
+      else rmSync(stubExt, { force: true });
       // `--approve` trusts the scratch project for this run, so no trust question comes first.
-      argv = [BIN.pi, "--provider", provider, "--model", rest.join("/"), "--thinking", "off", "--offline", "--approve", ...found.paths.flatMap((path) => ["-e", path])];
+      argv = [BIN.pi, "--provider", provider, "--model", rest.join("/"), "--thinking", "off", "--offline", "--approve", ...found.paths.flatMap((path) => ["-e", path]), ...(base === null ? [] : ["-e", stubExt])];
     } else {
-      copySecret(join(realAgent, "agent.db"), join(d.agent, "agent.db"));
-      writeFileSync(join(d.agent, "config.yml"), `setupVersion: 2\nmodelRoles:\n  default: ${SETUPS.omp.model}\n`);
+      // With the stub the key comes from the environment (live) or is not needed (replay), so omp gets
+      // no copy of the operator's agent.db: a fresh one each start, with no credential in it.
+      if (base === null) copySecret(join(realAgent, "agent.db"), join(d.agent, "agent.db"));
+      else for (const name of ["agent.db", "agent.db-wal", "agent.db-shm", "models.db"]) rmSync(join(d.agent, name), { force: true });
+      // Skills off: omp would find the operator's skills up the folder tree (the project sits under the
+      // home folder) and ask a second model to compress their descriptions at every start.
+      writeFileSync(join(d.agent, "config.yml"), `setupVersion: 2\nmodelRoles:\n  default: ${SETUPS.omp.model}\nskills:\n  enabled: false\n`);
+      // The stub: models.yml moves openrouter's base URL; omp then calls `<base>/v1/responses`.
+      if (base !== null) writeFileSync(join(d.agent, "models.yml"), `# Written by the Collie browser leg (M67): omp's model calls go to the rig's stub.\nproviders:\n  openrouter:\n    baseUrl: ${base}/v1\n`);
+      else rmSync(join(d.agent, "models.yml"), { force: true });
       // `write`: a bash, write or edit call asks first, so the permission scenario has a card to tap.
       argv = [BIN.omp, "--approval-mode", "write"];
     }
@@ -266,7 +301,8 @@ export function prepareHarness(id: HarnessId, machine: Machine = "lead"): Prepar
   // The provider key: ONE name read from the key file in a subshell, exported to the harness only.
   // The script holds the file's path, never the key, and prints nothing.
   const keyEnv = SETUPS[id].keyEnv;
-  const key = KEY_FILE !== null && keyEnv !== null ? `${keyEnv}=$(set -a; . ${sq(KEY_FILE)} >/dev/null 2>&1; printf '%s' "\${${keyEnv}-}")\nexport ${keyEnv}\n` : "";
+  // A replayed harness gets the dummy key instead, and the key file is not opened.
+  const key = replayed && keyEnv !== null ? `${keyEnv}=${REPLAY_KEY}\nexport ${keyEnv}\n` : KEY_FILE !== null && keyEnv !== null ? `${keyEnv}=$(set -a; . ${sq(KEY_FILE)} >/dev/null 2>&1; printf '%s' "\${${keyEnv}-}")\nexport ${keyEnv}\n` : "";
   writeFileSync(d.start, `#!/bin/sh\ncd ${sq(d.project)} || exit 1\n${path}${key}exec env ${unset} ${env.join(" ")} ${argv.map(sq).join(" ")}\n`, { mode: 0o700 });
   chmodSync(d.start, 0o700);
   return { line: `exec ${sq(d.start)}`, project: d.project, notes };

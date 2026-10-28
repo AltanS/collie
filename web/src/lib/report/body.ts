@@ -21,12 +21,20 @@
 // characters: the screen loses rows from its top first, then the oldest sends go, then the person's
 // own line is cut. The sheet says what was cut, and Copy report holds the whole text.
 //
+// ── FROM THE UNREAD-DIALOG CARD ──────────────────────────────────────────────
+// The fourth door (amendment 2026-10-28, #554). The trouble is a screen the phone's reader could not
+// read, not a send, so the trouble field holds the card's own reason line and what each of the
+// adapter's dialog detectors answered on that screen (`found`, `null`, `threw: …`), and the setup
+// adds what only the phone knows: its build and the bridge's, the browser, the viewport and whether
+// the app runs installed. The screen switch starts on for this door (the sheet decides that), because
+// a reader bug needs the screen. Nothing new is written anywhere and no new route is asked.
+//
 // The report's own words stay English on purpose: it is filed in an English tracker. The sheet around
 // it is translated.
 
 import type { ReportContext } from "./context";
 import type { SendReceiptRow, SendStep } from "../surface/send";
-import type { Episode } from "./store";
+import type { DialogTrouble, Episode } from "./store";
 
 export type { ReportContext } from "./context";
 
@@ -55,6 +63,23 @@ export interface ReportInput {
   readonly screen: string | null;
   /** The phone's own build, from the bundle. */
   readonly app?: string;
+  /** From the unread-dialog card: what its reader said about the screen. */
+  readonly dialog?: DialogTrouble | undefined;
+  /** From the unread-dialog card: what only the phone knows about itself. */
+  readonly client?: ClientFacts | undefined;
+}
+
+/** The phone's own facts a reader bug needs, read by the sheet when the unread-dialog card opens it. */
+export interface ClientFacts {
+  /** The bundle's build id (`BUILD.id`). */
+  readonly appBuild: string;
+  /** The build id the bridge last stamped on a response, or null before one landed. */
+  readonly serverBuild: string | null;
+  readonly userAgent: string;
+  /** The window's inner size, `<width>x<height>` in CSS pixels. */
+  readonly viewport: string;
+  /** Whether the app runs installed (display-mode standalone). */
+  readonly standalone: boolean;
 }
 
 /** The issue's title and the four fields, as the form receives them. */
@@ -86,11 +111,14 @@ interface HarnessFacts {
   readonly version: string | null;
 }
 
-/** The newest receipt names the harness and its version; the context names the pane's agent when none does. */
+/**
+ * The newest receipt names the harness and its version; the context names the pane's agent when none
+ * does, and the unread-dialog card's adapter when the context did not answer.
+ */
 function harnessOf(input: ReportInput): HarnessFacts {
   const newest = input.sends[0];
   if (newest !== undefined) return { harness: harnessWord(newest.harness), version: newest.version };
-  return { harness: harnessWord(input.context?.harness), version: null };
+  return { harness: harnessWord(input.context?.harness ?? input.dialog?.agent), version: null };
 }
 
 /**
@@ -99,6 +127,7 @@ function harnessOf(input: ReportInput): HarnessFacts {
  */
 export function signature(input: ReportInput): string {
   const { harness, version } = harnessOf(input);
+  if (input.dialog !== undefined) return `collie-sig: dialog/unread/${harness}@${version ?? "-"}/${input.context?.mux ?? "-"}`;
   const bad = input.sends.find(failed);
   const what = bad === undefined ? "none" : (bad.reason ?? bad.outcome);
   return `collie-sig: send/${what}/${harness}@${version ?? "-"}/${input.context?.mux ?? "-"}`;
@@ -108,6 +137,7 @@ function title(input: ReportInput): string {
   const { harness, version } = harnessOf(input);
   const mux = input.context?.mux ?? "unknown mux";
   const who = version === null ? harness : `${harness} ${version}`;
+  if (input.dialog !== undefined) return `Cannot read a dialog: ${who}, ${mux}`;
   const bad = input.sends.find(failed);
   if (bad === undefined) return `Problem report: ${who}, ${mux}`;
   return `Send not landing: ${endWord(bad)}, ${who}, ${mux}`;
@@ -134,6 +164,34 @@ function episodeLine(episode: Episode): string {
   return `${new Date(episode.at).toISOString()}  pane=${episode.paneId}  ${ends.join("; ")}`;
 }
 
+/**
+ * The unread-dialog card's trouble as one entry: its reason line, then indented the key it offers and
+ * each detector's answer. One entry, so the link's fit never drops the reason and keeps the verdicts.
+ */
+function dialogLines(dialog: DialogTrouble): string[] {
+  const verdicts = dialog.verdicts.length > 0 ? dialog.verdicts.map((v) => `    ${v.name}: ${v.result}`) : ["    (this adapter names no dialog detectors)"];
+  return ["Collie cannot read this dialog.", `    card key: ${dialog.key}`, `    detectors of the ${dialog.agent} reader on this screen:`, ...verdicts];
+}
+
+/** The phone's facts as the setup block prints them. */
+interface ClientSetup {
+  readonly appBuild: string;
+  readonly serverBuild: string | null;
+  readonly userAgent: string;
+  readonly viewport: string;
+  readonly standalone: "yes" | "no";
+}
+
+function clientSetup(client: ClientFacts): ClientSetup {
+  return {
+    appBuild: client.appBuild,
+    serverBuild: client.serverBuild,
+    userAgent: client.userAgent,
+    viewport: client.viewport,
+    standalone: client.standalone ? "yes" : "no",
+  };
+}
+
 function setup(input: ReportInput): string {
   const { harness, version } = harnessOf(input);
   const newest = input.sends[0];
@@ -148,7 +206,7 @@ function setup(input: ReportInput): string {
     profile: newest?.profileId ?? null,
     profileStatus: newest?.profileStatus ?? null,
   } satisfies Record<string, string | null>;
-  return JSON.stringify(block, null, 2);
+  return JSON.stringify(input.client === undefined ? block : { ...block, ...clientSetup(input.client) }, null, 2);
 }
 
 /** Whether any listed send carries a kept line, so "Include what I typed" has something to add. */
@@ -156,9 +214,15 @@ export function hasTyped(sends: readonly SendReceiptRow[]): boolean {
   return sends.some((row) => row.line !== undefined);
 }
 
+/** The app's own line under What happened, when the person wrote none. */
+function summary(input: ReportInput): string {
+  return input.dialog === undefined ? "Sending kept failing on one pane." : "The phone showed a dialog it could not read.";
+}
+
 /** The full report, nothing cut. */
 export function reportFields(input: ReportInput): ReportFields {
-  const sendLines = input.sends.toReversed().map((row) => sendLine(row, input.includeTyped));
+  // From the unread-dialog card the trouble is the screen, so the sends are not listed.
+  const sendLines = input.dialog !== undefined ? dialogLines(input.dialog) : input.sends.toReversed().map((row) => sendLine(row, input.includeTyped));
   const episodes = (input.episodes ?? []).map(episodeLine);
   const sendsBlock = [
     ...(sendLines.length > 0 ? sendLines : []),
@@ -168,7 +232,7 @@ export function reportFields(input: ReportInput): ReportFields {
   const note = input.note.trim();
   return {
     title: title(input),
-    what: note === "" ? "Sending kept failing on one pane." : note,
+    what: note === "" ? summary(input) : note,
     sends: sendsBlock,
     setup: setup(input),
     screen: input.screen ?? "",
@@ -180,7 +244,7 @@ export function reportText(fields: ReportFields): string {
   const sections = [
     fields.title,
     `### What happened\n\n${fields.what}`,
-    `### The failing sends\n\n${fields.sends}`,
+    `### What went wrong\n\n${fields.sends}`,
     `### Setup\n\n${fields.setup}`,
   ];
   if (fields.screen !== "") sections.push(`### The screen\n\n${fields.screen}`);

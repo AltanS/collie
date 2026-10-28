@@ -1,5 +1,5 @@
 // "Report a problem" (ADR 0123): one failure streak per pane, the small log of past episodes, and the
-// one sheet the card, the pane menu and Settings all open.
+// one sheet the card, the pane menu, Settings and the unread-dialog card all open.
 //
 // ── THE STREAK LIVES IN MEMORY ───────────────────────────────────────────────
 // Keyed by `paneScopeKey`, like the unread marks, and gone with the page, like the composer's own
@@ -16,6 +16,7 @@ import { useSyncExternalStore } from "react";
 
 import { asJsonNumber, asJsonObject, asJsonString, parseJson, type JsonValue } from "../json";
 import { SEND_OUTCOMES, SEND_REASONS, type SendOutcome, type SendReason } from "../surface/send";
+import type { DetectorVerdict, UnreadDialogModel } from "../harness/unread-dialog-model";
 import type { Scope } from "../scope";
 import { closeOffer, NO_TROUBLE, noteSettled, offersReport, type SettledSend, type Trouble } from "./trouble";
 
@@ -145,14 +146,31 @@ function logEpisode(episode: Episode, now: number): void {
 // ── The sheet ────────────────────────────────────────────────────────────────
 
 /**
- * What the sheet reports on. With a pane: that pane's recent sends (and, from the card, the streak's
- * request ids first). With none (Settings): this machine's setup and the episode log.
+ * What the unread-dialog card knew when its Report a problem was tapped (ADR 0123, amendment
+ * 2026-10-28): the agent whose adapter read the screen, the key the card offers, and what each of the
+ * adapter's dialog detectors answered on that screen. Names and results only, never the screen.
  */
-export interface ReportTarget {
+export interface DialogTrouble {
+  readonly agent: string;
+  readonly key: string;
+  readonly verdicts: readonly DetectorVerdict[];
+}
+
+/**
+ * What the sheet reports on. With a pane: that pane's recent sends (and, from the card, the streak's
+ * request ids first). With none (Settings): this machine's setup and the episode log. From the
+ * unread-dialog card, `kind: "unread-dialog"` and what the card knew.
+ */
+export type ReportTarget = {
   readonly paneId?: string | undefined;
   readonly scope?: Scope | undefined;
   /** The streak's request ids, from the card; the sheet lists these sends. */
   readonly requestIds?: readonly string[] | undefined;
+} & ({ readonly kind?: "send" | undefined } | { readonly kind: "unread-dialog"; readonly dialog: DialogTrouble });
+
+/** The target the unread-dialog card opens: its pane, and what its reader said about the screen. */
+export function unreadDialogReport(paneId: string, scope: Scope | undefined, cancel: UnreadDialogModel): ReportTarget {
+  return { paneId, scope, kind: "unread-dialog", dialog: { agent: cancel.agent, key: cancel.key, verdicts: cancel.verdicts ?? [] } };
 }
 
 let target: ReportTarget | null = null;
