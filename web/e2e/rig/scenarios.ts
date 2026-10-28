@@ -56,6 +56,15 @@ export type ScenarioId = (typeof SCENARIOS)[number]["id"];
 /** The two legs: the solo rig (playwright.config.ts) and the crew rig (crew.config.ts). */
 export type Leg = "solo" | "crew";
 
+/**
+ * The harnesses each leg starts. The crew leg runs Claude on the lead and pi on the member; omp never
+ * runs there, so the model tier planner (replay/tier.ts) plans nothing for it and asks for no cassette.
+ */
+export const LEG_HARNESSES = {
+  solo: ["claude", "pi", "omp"],
+  crew: ["claude", "pi"],
+} as const satisfies Record<Leg, readonly HarnessId[]>;
+
 /** The leg a scenario runs on: the solo leg, unless it says otherwise. */
 export function legOf(scenario: (typeof SCENARIOS)[number]): Leg {
   return "leg" in scenario ? scenario.leg : "solo";

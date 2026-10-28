@@ -515,7 +515,7 @@ async function daemon(): Promise<void> {
     }
     if (stub !== null) {
       // The last counters, for a `down` that comes before the teardown read them (a crashed leg).
-      writeFileSync(join(P.logs, "stub-stats.json"), `${JSON.stringify(stub.stats(), null, 2)}\n`);
+      writeFileSync(P.stubStats, `${JSON.stringify(stub.stats(), null, 2)}\n`);
       await stub.close();
     }
     for (const machine of machines.toReversed()) {

@@ -23,6 +23,7 @@ import { join, resolve } from "node:path";
 
 import { BIN } from "../bins";
 import { parseVersion } from "../nightly";
+import { LEG_HARNESSES, type Leg } from "../scenarios";
 import { shortHash, versionDir, type CassetteMeta, type Literal } from "./cassette";
 
 /** The harnesses whose model calls go through the stub. */
@@ -50,10 +51,10 @@ export interface TierPlan {
   readonly failed?: readonly string[];
 }
 
-/** The tier of each stub harness in one leg. */
+/** The tier of each stub harness the leg runs. A harness the leg does not start (omp on the crew leg) has no plan. */
 export interface TierPlans {
-  readonly pi: TierPlan;
-  readonly omp: TierPlan;
+  pi?: TierPlan;
+  omp?: TierPlan;
 }
 
 /** The `--version` of each stub harness's binary, null where it did not answer. */
@@ -161,15 +162,19 @@ export function rigLiterals(stateRoot: string): Literal[] {
   ];
 }
 
-/** Plan both harnesses for a leg. */
-export function planTiers(leg: string, env: Readonly<Record<string, string | undefined>>, versions: HarnessVersions, root: string = CASSETTE_ROOT): TierPlans {
+/** Plan the stub harnesses a leg runs (LEG_HARNESSES in scenarios.ts). A harness the leg does not run needs no cassette. */
+export function planTiers(leg: Leg, env: Readonly<Record<string, string | undefined>>, versions: HarnessVersions, root: string = CASSETTE_ROOT): TierPlans {
   const ask = readTierAsk(env);
   const skill = skillHash();
   const plan = (h: StubHarness): TierPlan => {
     const version = versions[h];
     return decideTier(h, version, leg, version === null ? null : readMeta(root, h, version), modelFor(h, env), skill, ask);
   };
-  return { pi: plan("pi"), omp: plan("omp") };
+  const runs = (h: StubHarness): boolean => LEG_HARNESSES[leg].some((id) => id === h);
+  const plans: TierPlans = {};
+  if (runs("pi")) plans.pi = plan("pi");
+  if (runs("omp")) plans.omp = plan("omp");
+  return plans;
 }
 
 /** The plans this process was given (the global setup sets them before the rig and the workers start), or null. */

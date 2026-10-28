@@ -66,7 +66,7 @@ const KEY_FILE = process.env.COLLIE_RIG_KEY_FILE ?? null;
 if (KEY_FILE !== null && !(KEY_FILE.startsWith("/") && existsSync(KEY_FILE))) throw new Error("COLLIE_RIG_KEY_FILE must be an absolute path to a file that exists");
 /** The tiers the global setup chose for this run (null outside a leg, before the setup ran). */
 const TIERS = tiersFromEnv();
-const replays = (id: StubHarness): boolean => TIERS?.[id].tier === "replay";
+const replays = (id: StubHarness): boolean => TIERS?.[id]?.tier === "replay";
 /** Turns on with a cassette to replay or a key file, unless the flag says otherwise. */
 const turnsOn = (id: StubHarness, name: string): boolean => (process.env[name] === undefined ? replays(id) || KEY_FILE !== null : flag(name));
 /** The dummy key a replayed harness gets: the stub never forwards a replayed call, so no key is needed. */
@@ -235,7 +235,7 @@ export function prepareHarness(id: HarnessId, machine: Machine = "lead"): Prepar
     // whether this harness replays (then no key, no credential file, a dummy key).
     const stub = readRun()?.stub;
     const base = stub === undefined ? null : `http://127.0.0.1:${String(stub.port)}/${id}-${machine}/api`;
-    replayed = stub?.tiers[id].tier === "replay";
+    replayed = stub?.tiers[id]?.tier === "replay";
     const realAgent = join(HOME, id === "pi" ? ".pi" : ".omp", "agent");
     // The Herdr integration extension, as on the operator's machine: it reports the agent's state to
     // $HERDR_SOCKET_PATH, the rig's own socket in a rig pane.

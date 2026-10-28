@@ -624,7 +624,7 @@ function staleRecordingNotes(caseId: string, title: string): string[] {
   if (tiers === null) return [];
   return STUB_HARNESSES.flatMap((h) => {
     const plan = tiers[h];
-    if (plan.tier !== "replay" || !(plan.failed ?? []).includes(caseId)) return [];
+    if (plan === undefined || plan.tier !== "replay" || !(plan.failed ?? []).includes(caseId)) return [];
     return [`${h}: this case replays a recording made in a live run where it did not pass; record it again: COLLIE_RIG_LIVE=${h} COLLIE_RIG_RECORD=1 COLLIE_RIG_KEY_FILE=... bunx playwright test -c e2e/rig/playwright.config.ts -g ${JSON.stringify(title)}`];
   });
 }

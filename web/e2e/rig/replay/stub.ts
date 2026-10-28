@@ -152,14 +152,17 @@ export async function startStub(config: StubConfig, port = 0, host = "127.0.0.1"
   const mismatches: Mismatch[] = [];
   const written = new Set<string>();
   const counts: Record<string, HarnessCounts> = {};
-  for (const h of STUB_HARNESSES) counts[h] = { tier: config.plans[h].tier, replayed: 0, proxied: 0, recorded: 0, mismatches: 0 };
+  for (const h of STUB_HARNESSES) {
+    const planned = config.plans[h];
+    if (planned !== undefined) counts[h] = { tier: planned.tier, replayed: 0, proxied: 0, recorded: 0, mismatches: 0 };
+  }
 
   // ── replay: every cassette of the leg, loaded once ───────────────────────────────────────────
   const cassettes = new Map<StubHarness, Map<string, Entry[]>>();
   const sidePool = new Map<StubHarness, Entry[]>();
   for (const h of STUB_HARNESSES) {
     const plan = config.plans[h];
-    if (plan.tier !== "replay" || plan.version === null) continue;
+    if (plan === undefined || plan.tier !== "replay" || plan.version === null) continue;
     const dir = join(config.root, h, versionDir(plan.version));
     // SAFETY: meta.json is this file's own output (writeMeta); tier.ts already read it to choose replay.
     const meta = JSON.parse(readFileSync(join(dir, "meta.json"), "utf8")) as CassetteMeta;
@@ -365,7 +368,7 @@ export async function startStub(config: StubConfig, port = 0, host = "127.0.0.1"
         const said = JSON.parse(body) as { case: string; verdict: string };
         for (const h of STUB_HARNESSES) {
           const plan = config.plans[h];
-          if (!plan.record || !(recordedCases.get(h)?.has(said.case) ?? false)) continue;
+          if (plan === undefined || !plan.record || !(recordedCases.get(h)?.has(said.case) ?? false)) continue;
           const set = failedCases.get(h) ?? new Set<string>();
           if (said.verdict === "pass") set.delete(said.case);
           else set.add(said.case);
@@ -425,7 +428,7 @@ export async function startStub(config: StubConfig, port = 0, host = "127.0.0.1"
   });
   // SAFETY: a TCP listener's address() is an AddressInfo once `listen` has called back.
   const bound = (server.address() as AddressInfo).port;
-  log(`stub on ${host}:${String(bound)} (${STUB_HARNESSES.map((h) => `${h} ${config.plans[h].tier}${config.plans[h].record ? "+record" : ""}`).join(", ")})`);
+  log(`stub on ${host}:${String(bound)} (${Object.values(config.plans).map((p) => `${p.harness} ${p.tier}${p.record ? "+record" : ""}`).join(", ")})`);
   return {
     port: bound,
     setCase: (caseId) => {

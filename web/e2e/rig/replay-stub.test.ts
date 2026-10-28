@@ -33,7 +33,7 @@ import { asJsonObject, asJsonString, parseJson } from "../../src/lib/json";
 import { checkCassettes } from "./replay/check";
 import { costLines } from "./replay/report";
 import { MISMATCH_STATUS, NO_CASE, startStub, upstreamUrl, type Stub } from "./replay/stub";
-import { decideTier, readTierAsk, type TierPlan, type TierPlans } from "./replay/tier";
+import { decideTier, modelFor, planTiers, readTierAsk, skillHash, type TierPlan, type TierPlans } from "./replay/tier";
 
 const LAB = "/tmp/collie-lab-test/state";
 const LITERALS = [[LAB, "{{lab}}"]] as const;
@@ -253,6 +253,38 @@ describe("decideTier", () => {
   });
 });
 
+describe("planTiers", () => {
+  /** A cassette root holding pi 1.3.0 for the given legs only; omp has no folder at all. */
+  const rootWith = (legs: readonly string[]): string => {
+    const root = mkdtempSync(join(tmpdir(), "m67-plan-"));
+    roots.push(root);
+    mkdirSync(join(root, "pi", "1.3.0"), { recursive: true });
+    const meta = { v: 1, harness: "pi", version: "1.3.0", legs: Object.fromEntries(legs.map((leg) => [leg, { model: modelFor("pi", {}), skill: skillHash(), recordedAt: "t", cases: [] }])) };
+    writeFileSync(join(root, "pi", "1.3.0", "meta.json"), JSON.stringify(meta));
+    return root;
+  };
+  const roots: string[] = [];
+  afterEach(() => {
+    for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  });
+  const versions = { pi: "1.3.0", omp: "18.6.1" };
+
+  it("plans the crew leg for pi only: omp does not run there, so it needs no cassette and has no tier", () => {
+    const plans = planTiers("crew", { COLLIE_RIG_MODEL: "replay" }, versions, rootWith(["crew"]));
+    expect(plans.pi).toMatchObject({ tier: "replay", leg: "crew", version: "1.3.0" });
+    expect(plans.omp).toBeUndefined();
+    expect(Object.keys(plans)).toEqual(["pi"]);
+  });
+
+  it("still throws on the solo leg for a missing omp cassette under replay, and records under live", () => {
+    const root = rootWith(["solo"]);
+    expect(() => planTiers("solo", { COLLIE_RIG_MODEL: "replay" }, versions, root)).toThrow(/no cassettes for omp 18\.6\.1 \(solo leg\)/u);
+    const plans = planTiers("solo", { COLLIE_RIG_KEY_FILE: "/k" }, versions, root);
+    expect(plans.pi).toMatchObject({ tier: "replay" });
+    expect(plans.omp).toMatchObject({ tier: "live", record: true });
+  });
+});
+
 // ── report.ts, check.ts ───────────────────────────────────────────────────────────────────────
 
 const plan = (harness: "pi" | "omp", tier: "replay" | "live", record = false): TierPlan => ({ harness, leg: "solo", version: harness === "pi" ? "1.3.0" : "18.6.1", tier, record, reason: "r", model: "m", skill: "s" });
@@ -267,6 +299,11 @@ describe("costLines", () => {
       "live model turns: claude 17 (subscription)",
       "OpenRouter requests this run: 0 (no provider key was loaded for a replayed harness)",
     ]);
+  });
+
+  it("prints no line for a harness the leg does not run", () => {
+    const lines = costLines({ tiers: { pi: plan("pi", "replay") }, stub: { upstream: 0, harnesses: { pi: { tier: "replay", replayed: 3, proxied: 0, recorded: 0, mismatches: 0 } }, mismatches: [], written: [] }, turns: { claude: 2 } });
+    expect(lines.filter((l) => l.startsWith("model:"))).toEqual(["model: pi 1.3.0: replay (r), 3 model calls replayed"]);
   });
 
   it("counts a live harness's turns and calls", () => {

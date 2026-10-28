@@ -89,7 +89,7 @@ async function stubStats(): Promise<StubStats | null> {
     const live = text === null ? null : (JSON.parse(text) as StubStats);
     if (live !== null) return live;
   }
-  const file = join(P.logs, "stub-stats.json");
+  const file = P.stubStats;
   // SAFETY: the daemon's own JSON.stringify(stub.stats()) (rig.ts teardown).
   return existsSync(file) ? (JSON.parse(readFileSync(file, "utf8")) as StubStats) : null;
 }
