@@ -174,6 +174,7 @@ describe("docs-line end to end", () => {
     expect(res.code).toBe(0);
     expect(res.out).toContain("docs: fix a");
     expect(res.out).toContain("dry run");
+    expect(res.out).toContain("the site would not be told");
     expect(originBranches()).toEqual([]);
   });
 
@@ -181,6 +182,9 @@ describe("docs-line end to end", () => {
     const doc = git(clone, "rev-parse", "HEAD").trim();
     const res = docsLine(doc);
     expect(res.code).toBe(0);
+    expect(res.out).toContain(
+      "the branch has no docs-line.yml, so the site is not told; run: gh workflow run sync-docs.yml -R AltanS/collie-website",
+    );
     expect(originBranches()).toEqual(["docs/v0.1.0"]);
     const body = git(origin, "log", "--format=%B", "v0.1.0..docs/v0.1.0");
     expect(body).toContain(`(cherry picked from commit ${doc})`);

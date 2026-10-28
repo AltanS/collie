@@ -35,6 +35,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const REMOTE = "origin";
+const DISPATCH_WORKFLOW = ".github/workflows/docs-line.yml";
+const SYNC_COMMAND = "gh workflow run sync-docs.yml -R AltanS/collie-website";
 
 /** `[major, minor, patch]` of a plain `vX.Y.Z` tag, or null for anything else (a suffix, a typo). */
 export function parseReleaseTag(tag: string): [number, number, number] | null {
@@ -220,11 +222,19 @@ export function run(opts: Options, cwd: string): void {
     }
     say(`checked: ${tag} is an ancestor, ${changed.length} changed path(s), all docs-only`);
 
+    // The dispatch workflow fires only when the pushed branch itself holds the file, and a branch
+    // based on an old tag may predate it.
+    const toldSite = gitOk(["cat-file", "-e", `HEAD:${DISPATCH_WORKFLOW}`], tree);
     if (opts.dryRun) {
       say("dry run, nothing pushed");
+      if (!toldSite) say(`dry run: ${branch} has no docs-line.yml, so the site would not be told`);
     } else {
-      git(["push", REMOTE, `HEAD:refs/heads/${branch}`], tree);
+      // --no-verify: the branch is docs-only by construction and both guards just ran. The pre-push
+      // hook's test suites and typecheck are about code and need an installed worktree, which this
+      // temporary one is not.
+      git(["push", "--no-verify", REMOTE, `HEAD:refs/heads/${branch}`], tree);
       say(`pushed ${branch} to ${REMOTE}`);
+      if (!toldSite) say(`the branch has no docs-line.yml, so the site is not told; run: ${SYNC_COMMAND}`);
     }
     say(`git log --oneline ${tag}..HEAD`);
     console.log(git(["log", "--oneline", `refs/tags/${tag}..HEAD`], tree).trimEnd());

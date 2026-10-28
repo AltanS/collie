@@ -49,6 +49,9 @@ Running a crew? Update the lead first; members follow on their own. Details:
   checks that the tag is an ancestor of the result, and lists older `docs/v*` branches with the
   command to delete each one. A push to the branch asks the website to re-sync, and its daily run
   picks the branch up too.
+- **The docs line says when the site must be synced by hand.** A `docs/<tag>` branch based on an old
+  tag may lack `docs-line.yml`, so its push does not tell the site. The script then prints the
+  `gh workflow run sync-docs.yml` command, and a dry run says it would be needed.
 
 ## [1.24.2] - 2026-10-28
 
