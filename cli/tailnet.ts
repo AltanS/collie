@@ -258,5 +258,8 @@ export function tailnetCertDomains(exec: Exec): string[] | null {
  * What `collie serve` and `collie doctor` both say when the tailnet has no certificates. One string,
  * because two copies of an instruction drift and the operator only ever sees one of them.
  */
+/** The way out on a tailnet that will never have certificates, such as one run by Headscale. */
+export const NO_CERTIFICATES_HTTP_HINT = "on Headscale or a tailnet without certificates, set COLLIE_SERVE_MODE=http";
+
 export const HTTPS_DISABLED_HINT =
   'enable HTTPS in the admin console (https://login.tailscale.com/admin/dns, "Enable HTTPS"), then run `collie serve` again';

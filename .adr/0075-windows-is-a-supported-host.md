@@ -163,3 +163,16 @@ against a Task Scheduler tier (point 4). The older decisions stand only as histo
 - **Open follow-ups, none of them part of this decision:** a stable launcher outside `versions\`
   so no version folder stays held; building from source without Git's `bash`; a managed front door on
   Windows; the harness core moving into the repo as a nightly run.
+
+## Addendum, 2026-10-28: Windows publishes the front door
+
+Status is unchanged: **Accepted**. Nothing above this line is rewritten. This addendum closes the
+follow-up "a managed front door on Windows". Until now `collie start` on Windows published nothing:
+the Task Scheduler backend opted out, and `docs/windows.md` told the operator to run
+`tailscale serve` by hand and to set `COLLIE_PUBLIC_HOSTS` and `COLLIE_PUBLIC_URL`. Now Windows
+drives `tailscale serve` through the same `cli/serve.ts` as Linux and macOS, so it is still ADR
+0001's one managed front door, recorded in `tailscale-managed-handler` and torn down only when the
+record matches. A door the operator made by hand from the old docs proxies to this collie, so the
+first `collie start` after the update adopts it and writes the record; `collie doctor` warns about
+such a door until then. The by-hand path stays as the fallback when `collie start` cannot publish,
+and `COLLIE_SKIP_SERVE=1` still hands the ingress to the operator.

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { leadStore, member, peerStore } from "../bridge/crew/fixtures.ts";
 import { serializeTrustStore } from "../bridge/crew/trust-store.ts";
+import { hostFor } from "../bridge/host.ts";
 import {
   capture,
   CONFIG,
@@ -23,6 +24,7 @@ import {
   formatRecord,
   parseRecord,
   parseServeStatus,
+  publishFailedNote,
   rootAvailability,
   type ServeDeps,
   type ServeStatus,
@@ -302,13 +304,67 @@ describe("serve — publishing", () => {
       serveMode: "http",
       answers: [["tailscale serve --bg", { code: 1, stderr: "access denied\n" }]],
     });
-    expect(cmdServe(h.deps)).toBe(EXIT.FAIL);
+    // Pinned to Linux: the operator flag is a Linux setting, and the hint follows the host.
+    expect(cmdServe({ ...h.deps, host: hostFor("linux") })).toBe(EXIT.FAIL);
     expect(h.files.exists(HANDLER_FILE)).toBe(false);
     expect(h.io.stdout.join("\n")).toContain("sudo tailscale set --operator=$USER");
     // Tailscale's own words are not re-printed here: the publish runs on OUR stdio, so "access
     // denied" reached the terminal as tailscale said it, and nothing is captured to echo back (#172).
     expect(h.io.stdout.join("\n")).not.toContain("access denied");
     expect(h.files.exists(`${CONFIG}/serve.out`)).toBe(false);
+  });
+
+  test("the failure hint names the operator flag on Linux only", () => {
+    expect(publishFailedNote("http", hostFor("linux"))).toContain("sudo tailscale set --operator=$USER");
+    for (const platform of ["darwin", "win32"]) {
+      const note = publishFailedNote("http", hostFor(platform));
+      expect(note).not.toContain("--operator");
+      expect(note).toContain("tailscale printed the reason above");
+    }
+    // The https note is about Headscale on every host.
+    expect(publishFailedNote("https", hostFor("win32"))).toContain("COLLIE_SERVE_MODE=http");
+  });
+
+  test("Windows adopts the mapping its old docs had the operator make by hand, and records it", () => {
+    // `tailscale serve --bg --set-path=/ 8787`, typed in PowerShell before 2026-10-28: an https root
+    // on :443 that proxies to this collie, and no record of it anywhere.
+    const h = harness({
+      serveStatus: `{${tcp(443, "HTTPS")},${web("host.example:443", "/", OURS)}}`,
+    });
+    expect(cmdServe({ ...h.deps, host: hostFor("win32") })).toBe(EXIT.OK);
+    expect(h.io.stdout.join("\n")).toContain("adopting the existing Collie root mount on :443");
+    expect(h.files.read(HANDLER_FILE)).toBe("https:443|host.example:443|http://127.0.0.1:8787\n");
+    expect(h.exec.calls).toContain("tailscale serve --bg --set-path=/ 8787");
+  });
+
+  test("an adopted mapping is announced once, with the line that names uninstall and unserve", () => {
+    const h = harness({
+      serveMode: "http",
+      serveStatus: `{${tcp(8787, "HTTP")},${web("host:8787", "/", OURS)}}`,
+    });
+    expect(cmdServe(h.deps)).toBe(EXIT.OK);
+    const notes = h.io.stdout.filter((l) => l.startsWith("note: adopted"));
+    expect(notes).toEqual([
+      "note: adopted an existing tailscale serve mapping for this collie; `collie uninstall` or `collie unserve` removes it with the rest",
+    ]);
+    // A free root is not an adoption, so it prints no such note.
+    const free = harness({ serveMode: "http" });
+    expect(cmdServe(free.deps)).toBe(EXIT.OK);
+    expect(free.io.stdout.join("\n")).not.toContain("adopted");
+  });
+
+  test("the old Windows by-hand setup (COLLIE_PUBLIC_HOSTS, COLLIE_PUBLIC_URL, a matching mapping) is adopted, not flagged or rewritten", () => {
+    const h = harness({
+      env: { COLLIE_PUBLIC_HOSTS: "host.example", COLLIE_PUBLIC_URL: "https://host.example" },
+      serveStatus: `{${tcp(443, "HTTPS")},${web("host.example:443", "/", OURS)}}`,
+      files: { [`${CONFIG}/.env`]: "COLLIE_PUBLIC_HOSTS=host.example\nCOLLIE_PUBLIC_URL=https://host.example\n" },
+    });
+    expect(cmdServe({ ...h.deps, host: hostFor("win32") })).toBe(EXIT.OK);
+    expect(h.io.stderr).toEqual([]);
+    expect(h.files.read(HANDLER_FILE)).toBe("https:443|host.example:443|http://127.0.0.1:8787\n");
+    expect(h.files.read(`${CONFIG}/.env`)).toBe(
+      "COLLIE_PUBLIC_HOSTS=host.example\nCOLLIE_PUBLIC_URL=https://host.example\n",
+    );
   });
 
   test("the https failure hint names the Headscale escape hatch", () => {

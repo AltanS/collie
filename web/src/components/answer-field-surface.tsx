@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { MessageSquarePlus } from "lucide-react";
 
 import { InlineEditor, InlineEditorOffer } from "@/components/ui/inline-editor";
-import { FEEDBACK_MAX_LENGTH } from "@/lib/answer-field";
+import { ANSWER_MAX_LENGTH } from "@/lib/answer-field";
 import type { WizardStepChip } from "@/lib/harness/wizard-model";
 import { t } from "@/lib/i18n";
 
@@ -236,7 +236,7 @@ export function AnswerFieldSurface(props: AnswerFieldSurfaceProps) {
         label={copy.editorLabel}
         value={editor.draft}
         onChange={editor.setDraft}
-        maxLength={FEEDBACK_MAX_LENGTH}
+        maxLength={ANSWER_MAX_LENGTH}
         placeholder={copy.placeholder}
         help={copy.help}
         textAriaLabel={copy.textAria}

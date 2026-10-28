@@ -57,7 +57,7 @@
 //      buttons whose taps would type into the filter.
 
 import { lineText, trimTrailingBlank, type Block, type StyledLine } from "../../blocks";
-import type { HarnessAdapter } from "../types";
+import type { DialogDetector, HarnessAdapter } from "../types";
 import { detectApprovalRegion } from "./approval";
 import { museAttachCarriesSend } from "./attach";
 import { detectCheckboxRegion } from "./checkbox";
@@ -75,6 +75,22 @@ import { museDraftIsOpaque, musePasteCarriesSend } from "./paste";
 import { detectQuestionRegion } from "./question";
 import { detectTrustRegion } from "./trust";
 import { detectSessionPicker } from "../session-picker";
+
+/** The resume session picker. The highlighted session row starts at column 0 (`⟩ 1h ago      oak-thebe
+ *  · …`); the search field's `  ⟩ Search` is indented, so it never counts as a session. */
+function sessionPickerRegion(lines: StyledLine[]) {
+  const texts = lines.map((l) => rstrip(lineText(l)));
+  return detectSessionPicker(texts, /^⟩ \S/, (from, to) => regionSignature(texts, from, to));
+}
+
+/** The detectors `museBuildBlocks` runs, in its order, for the unread-dialog card's report (ADR 0123). */
+const MUSE_DIALOG_DETECTORS: readonly DialogDetector[] = [
+  { name: "approval", detect: detectApprovalRegion },
+  { name: "question", detect: detectQuestionRegion },
+  { name: "checkbox", detect: detectCheckboxRegion },
+  { name: "trust", detect: detectTrustRegion },
+  { name: "session-picker", detect: sessionPickerRegion },
+];
 
 /**
  * Muse's pane → blocks. The four dialog arms run in the build order of the dialog notes (approval →
@@ -133,10 +149,7 @@ export function museBuildBlocks(lines: StyledLine[]): Block[] {
       lines: lines.slice(trust.startLine),
     });
   }
-  // The highlighted session row starts at column 0 (`⟩ 1h ago      oak-thebe · …`); the search
-  // field's `  ⟩ Search` is indented, so it never counts as a session.
-  const texts = lines.map((l) => rstrip(lineText(l)));
-  const picker = detectSessionPicker(texts, /^⟩ \S/, (from, to) => regionSignature(texts, from, to));
+  const picker = sessionPickerRegion(lines);
   if (picker !== null) {
     return lift(lines, picker.startLine, picker.model.signature, {
       kind: "menu",
@@ -211,6 +224,7 @@ export const museAdapter: HarnessAdapter = {
   // promises "cancel".
   cancelKey: "Escape",
   modalOnScreen: museModalOnScreen,
+  dialogDetectors: MUSE_DIALOG_DETECTORS,
   extractInputDraft,
   extractStatusLines,
   extractAgentsFooter,

@@ -2,8 +2,9 @@
 
 > **Experimental.** This wire may change in any minor release of Collie, and so may the version
 > range the `durable` adapter speaks. A program outside this repository may speak it, on its own or
-> through the npm package `@colliepwa/durable-sdk` under the dist-tag `experimental`, and the exit in
-> ADR 0104 decides by the 1.24.0 release whether the wire stays. A new version follows the version
+> through the npm package `@colliepwa/durable-sdk` under the dist-tag `experimental`. The wire is
+> experimental. Collie keeps durable agents as a feature, and ADR 0104's exit was withdrawn on 2026-10-28
+> (amended 2026-10-28). A new version follows the version
 > policy (section 2): Collie accepts the previous version for one minor release after it ships. A
 > program and a Collie that do not share a version get a named `incompatible`, so a mismatch is
 > visible, not silent.

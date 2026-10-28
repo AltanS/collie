@@ -96,6 +96,27 @@ question, and the result was `"Which toppings?"="Pineapple", "Which size?"="Smal
   in two or three rounds. A round on an empty field changes nothing.
 - So the recipe is: send a round, re-read, repeat until the field reads empty, with a cap.
 
+## Long answers
+
+Measured **2026-10-27** on Claude Code **2.1.306** in a 153×48 tmux pane (the test "a value
+wrapped onto twenty display lines" in `harness/claude/prompt-select.test.ts` rebuilds that
+screen):
+
+- The field never windows or collapses a paste: a 2834-character answer re-flowed onto 21 display
+  rows, every continuation row indented five columns. At 60 columns the same answer took about 55
+  rows and pushed the question and the first options off a 48-row screen.
+- The field is not the last row (`Chat about this` follows it), so its wrap does not move the footer
+  away from the last option, as the plan row's does. It moves the FIRST options away from the footer:
+  in the capture they sit 28 rows above it, past the old 24-row option scan, and the whole dialog fell
+  to the raw mirror.
+- So the grammars add `MAX_ANSWER_WRAP` (24 rows) to their option scan, and `lib/answer-field.ts`
+  counts the rows an answer will take at the pane's width (`answerFits`, after the widest label
+  prefix, a multi-select's `❯ 4. [✔] `) and refuses before any key when the field would pass that
+  allowance or the whole dialog would pass the option scan. The editor's own cap is `ANSWER_MAX_LENGTH` (4000), apart from the plan
+  row's `FEEDBACK_MAX_LENGTH` (240), which is bound by the footer.
+- `Chat about this` answers the tool with "User declined to answer questions"; a text too long for
+  the pane goes as an ordinary message after it.
+
 ## Hazards for anyone automating this
 
 1. **Never send a filled field's digit.** On a single question and a wizard step it submits the held

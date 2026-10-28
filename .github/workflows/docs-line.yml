@@ -1,0 +1,32 @@
+name: docs-line
+
+# THE DOCS LINE. A branch `docs/<newest release tag>` carries docs-only commits so colliepwa.dev can
+# publish a docs fix before the next release (CLAUDE.md → Versioning, `scripts/docs-line.ts`). A push
+# to such a branch asks the website to re-sync within minutes instead of waiting for its daily run.
+#
+# This job decides nothing about the content. The website guards it: it quotes the branch only when
+# the newest release tag is an ancestor of the head and `git diff --name-only <tag> HEAD` lists only
+# paths under `docs/` or `README.md`. A branch that fails the guard is ignored and the site keeps
+# quoting the tag.
+#
+# The credential is the one the `notify-website` job in release.yml uses. When it expires, this call
+# answers 401 and the job fails. That is harmless: the website's daily cron reads the same branch and
+# heals it within a day.
+on:
+  push:
+    branches: ["docs/**"]
+
+permissions:
+  contents: read
+
+jobs:
+  notify-website:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ask colliepwa.dev to re-quote the docs
+        env:
+          GH_TOKEN: ${{ secrets.COLLIE_GITHUB_REPO_TOKEN }}
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY_OWNER}/collie-website/dispatches" \
+            -f event_type=collie-docs-pushed \
+            -f "client_payload[tag]=$GITHUB_REF_NAME"

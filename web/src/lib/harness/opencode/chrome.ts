@@ -31,6 +31,7 @@ import {
   isBlank,
   isModelRow,
   isOverlayRow,
+  isOpenInputFooter,
   isQuestionFooter,
   isRuleRow,
   lineText,
@@ -437,7 +438,7 @@ export function modalOnScreen(lines: StyledLine[]): boolean {
     const text = rstrip(lineText(lines[i]!));
     if (isBlank(text)) continue;
     seen++;
-    if (isBarRow(text) && (hasFooterHints(text) || isQuestionFooter(text))) return true;
+    if (isBarRow(text) && (hasFooterHints(text) || isQuestionFooter(text) || isOpenInputFooter(text))) return true;
   }
   return false;
 }

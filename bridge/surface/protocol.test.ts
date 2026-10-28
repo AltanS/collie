@@ -2956,12 +2956,25 @@ describe("commit", () => {
     expect(phaseAtEnter).toBe("submit-sent");
   });
 
-  test("a token that ages past 150 ms before the key is refused stale_token: typed_not_submitted, no Enter", async () => {
+  test("a slow submit-sent write does not spend the token: the Enter still goes out (crew browser leg case 13, 2026-10-27)", async () => {
     const r = rig();
     const realMark = r.deps.store.markSubmitSent.bind(r.deps.store);
     r.deps.store.markSubmitSent = (id: string) => {
+      r.clock.now += 400;
       realMark(id);
+    };
+    const answer = await r.send("hello world");
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+    expect(r.pane.keysSeen).toContain("Enter");
+  });
+
+  test("a token that ages past 150 ms before the key is refused stale_token: typed_not_submitted, no Enter", async () => {
+    const r = rig();
+    const realMint = r.deps.gate.mint.bind(r.deps.gate);
+    r.deps.gate.mint = (...args: Parameters<typeof realMint>) => {
+      const token = realMint(...args);
       r.clock.now += 151;
+      return token;
     };
     const answer = await r.send("hello world");
     expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "stale_token", keys: [] });
@@ -10164,5 +10177,68 @@ describe("a send's profile is read for its pane", () => {
     const { send } = rig();
     const answer = await send("please fix the failing test in the parser");
     expect(answer.receipt?.binary).toBeUndefined();
+  });
+});
+
+describe("a command into a Codex 0.163.0 turn whose idle footer carries a warning segment (lab, 2026-10-28)", () => {
+  // The footer row is `? for shortcuts` with `⚠ 1 warning · f2 to view` after wide spacing; a turn swaps it for `tab to queue message`.
+  /** The idle capture while the box is empty; the capture with the probe typed, its box row redrawn, once it holds text. */
+  const inTurn = (): FakePane => {
+    // The lab capture is plain text: the empty box's placeholder gets the faint paint Codex draws it in (`idle.placeholders.sgr`).
+    const idle = surfaceFixture("codex--v0-163-0-idle-warning.txt")
+      .replace("› Ask Codex to do anything", "\u001b[1m›\u001b[0m \u001b[2mAsk Codex to do anything\u001b[0m")
+      .split("\n");
+    const typed = surfaceFixture("codex--v0-163-0-in-turn-probe.txt").split("\n");
+    const at = typed.findLastIndex((row) => row.startsWith("› "));
+    const pane = new FakePane("codex");
+    pane.render = () => (pane.box === "" ? idle : typed.map((row, i) => (i === at ? `› ${pane.box}` : row))).join("\r\n");
+    return pane;
+  };
+  /** The Codex profile as it was before the footer hint took a trailing segment. */
+  const strictHint = (profile: Profile): Profile => ({
+    ...profile,
+    idle: { ...profile.idle, volatile: { ...profile.idle.volatile, below: { ...profile.idle.volatile.below, hints: ["^\\s*← for agents · \\? for shortcuts$", "^\\s*\\? for shortcuts$", "^\\s*[Tt]ab to queue message$"] } } },
+  });
+
+  test("the probe passes: the footer row only changed from one hint to another, so the command is not refused probe_failed", async () => {
+    const pane = inTurn();
+    const answer = await rig({ pane, harness: "codex", version: "0.163.0" }).send("/status", { mode: "command" });
+    expect(answer.receipt).not.toMatchObject({ outcome: "refused", reason: "probe_failed" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+  });
+
+  test("without the trailing segment in the hint the warning row counts as a screen that moved, and the command is refused probe_failed, as it was live", async () => {
+    const pane = inTurn();
+    const answer = await rig({ pane, harness: "codex", version: "0.163.0", edit: strictHint }).send("/status", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed" });
+  });
+});
+
+describe("a command on a fresh Codex 0.163.0 screen, whose welcome picture hides once the box holds text (rig, 2026-10-28)", () => {
+  // eslint-disable-next-line no-control-regex
+  const plain = (row: string): string => row.replace(/\u001b\[[0-9;:?]*[ -/]*[@-~]/gu, "");
+  /** The idle capture while the box is empty; the capture with `/status` typed, its box row redrawn, once it holds text. */
+  const welcome = (): FakePane => {
+    const idle = surfaceFixture("codex--v0-163-0-welcome-idle.txt").split("\n");
+    const typed = surfaceFixture("codex--v0-163-0-welcome-slash-status.txt").split("\n");
+    const at = typed.findLastIndex((row) => plain(row).startsWith("› "));
+    const pane = new FakePane("codex");
+    pane.render = () => (pane.box === "" ? idle : typed.map((row, i) => (i === at ? `› ${pane.box}` : row))).join("\r\n");
+    return pane;
+  };
+  const noLosesText = (profile: Profile): Profile => ({ ...profile, idle: { ...profile.idle, volatile: { ...profile.idle.volatile, above: { maxRows: profile.idle.volatile.above.maxRows } } } });
+
+  test("the command is entered: the picture only lost its rows (idle.volatile.above.losesText), as the probe already allows", async () => {
+    const pane = welcome();
+    const answer = await rig({ pane, harness: "codex", version: "0.163.0" }).send("/status", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(pane.keysSeen).toContain("Enter");
+  });
+
+  test("without the profile's word the picture going reads as a moved screen, and the text stays typed, as it did live", async () => {
+    const pane = welcome();
+    const answer = await rig({ pane, harness: "codex", version: "0.163.0", edit: noLosesText }).send("/status", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "changed" });
+    expect(pane.keysSeen).not.toContain("Enter");
   });
 });

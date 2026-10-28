@@ -385,6 +385,31 @@ describe("update hands off — the command that leaves this process's cgroup", (
     });
   });
 
+  test("the instance keys reach the transient unit's bare environment, before the binary", () => {
+    // Seen 2026-10-28: without these the CLI in the unit resolved the DEFAULT instance and updated
+    // collie.service instead of the named one.
+    const env = { COLLIE_INSTANCE: "next", COLLIE_MUX: "herdr", COLLIE_CONFIG_DIR: "/home/u/.config/herdr/plugins/config/herdr.collie-next", UNRELATED: "x" };
+    const command = updateStartCommand({ ...base, major: false, hasSystemdRun: true, hasSetsid: true, env, mirror: "http://127.0.0.1:47321" }).command;
+    expect(command).toContain("--setenv=COLLIE_INSTANCE=next");
+    expect(command).toContain("--setenv=COLLIE_MUX=herdr");
+    expect(command).toContain(`--setenv=COLLIE_CONFIG_DIR=${env.COLLIE_CONFIG_DIR}`);
+    expect(command).toContain("--setenv=COLLIE_UPDATE_MIRROR=http://127.0.0.1:47321");
+    expect(command.some((part) => part.includes("UNRELATED"))).toBe(false);
+    const binaryAt = command.indexOf("/opt/collie/bin/collie");
+    for (const part of command.filter((p) => p.startsWith("--setenv="))) expect(command.indexOf(part)).toBeLessThan(binaryAt);
+    // The other tiers inherit the environment and add nothing.
+    expect(updateStartCommand({ ...base, major: false, hasSystemdRun: false, hasSetsid: true, env }).command).toEqual([
+      "setsid", "/opt/collie/bin/collie", "update",
+    ]);
+  });
+
+  test("with none of the instance keys set, the systemd-run argv adds no --setenv beyond the mirror", () => {
+    const bare = updateStartCommand({ ...base, major: false, hasSystemdRun: true, hasSetsid: true, env: { UNRELATED: "x", COLLIE_INSTANCE: "" } }).command;
+    expect(bare.some((part) => part.startsWith("--setenv="))).toBe(false);
+    const mirrored = updateStartCommand({ ...base, major: false, hasSystemdRun: true, hasSetsid: true, env: {}, mirror: "http://127.0.0.1:1" }).command;
+    expect(mirrored.filter((part) => part.startsWith("--setenv="))).toEqual(["--setenv=COLLIE_UPDATE_MIRROR=http://127.0.0.1:1"]);
+  });
+
   test("a major crossing hands the CLI its own consent flag (ADR 0020)", () => {
     const plan = updateStartCommand({ ...base, major: true, hasSystemdRun: true, hasSetsid: true });
     expect(plan.command.slice(-2)).toEqual(["update", "--major"]);

@@ -10,6 +10,7 @@ import {
   type FakeFiles,
   fakeFiles,
   fakeLinkFs,
+  HANDLER_FILE,
   HOME,
   ROOT,
   STATE,
@@ -54,6 +55,7 @@ import {
   systemdUserReachable,
   writeUnit,
 } from "./lifecycle.ts";
+import { cmdServe } from "./serve.ts";
 import { formatTaskRecord, taskRecordPath, taskRestartPath } from "./task-scheduler.ts";
 
 // The lifecycle, driven end to end against fakes for the two seams (cli/fakes.ts). The shell could
@@ -581,6 +583,118 @@ describe("the first-run multiplexer gate", () => {
   });
 });
 
+// The setup check (`cli/setup-findings.ts`) runs after the multiplexer gate and before anything is
+// launched. It prints the rows that need the operator and never stops `start`.
+describe("the setup check in start", () => {
+  const NO_HTTPS = JSON.stringify({ BackendState: "Running", Self: { DNSName: "desk.tail.ts.net." } });
+
+  test("HTTPS off and no PATH line: two plain lines and the closing sentence, and the bridge still starts", async () => {
+    let served = 0;
+    const h = harness({
+      answers: [
+        ...NO_SYSTEMD,
+        ["tailscale status --json", { stdout: NO_HTTPS }],
+        ["tailscale debug prefs", { stdout: JSON.stringify({ OperatorUser: "pat" }) }],
+      ],
+      env: { USER: "pat", PATH: "/usr/bin" },
+      serve: () => {
+        served++;
+        return Promise.resolve(EXIT.OK);
+      },
+    });
+    h.deps.link = fakeLinkFs();
+    expect(await cmdStart(h.deps)).toBe(EXIT.OK);
+    expect(h.io.stderr).toEqual([
+      "setup: HTTPS certificates are off for your tailnet",
+      "  fix: enable HTTPS in the admin console" +
+        ' (https://login.tailscale.com/admin/dns, "Enable HTTPS"), then run `collie serve` again',
+      "       on Headscale or a tailnet without certificates, set COLLIE_SERVE_MODE=http",
+      "setup: no `collie` is on PATH, so typing `collie` in a new terminal does not run it",
+      "  fix: run `collie link`," +
+        ' then add this line to ~/.zshrc or ~/.bashrc, then open a new terminal: export PATH="$HOME/.local/bin:$PATH"',
+      "Running, but your phone cannot reach it yet. Fix the setup lines above, then run collie start again. collie doctor repeats this check.",
+    ]);
+    // It never blocks: the bridge was launched and the front door was still asked for.
+    expect(h.exec.spawned).toHaveLength(1);
+    expect(served).toBe(1);
+    expect(h.io.stdout).toContain("bridge started (pid 4242, unsupervised)");
+  });
+
+  test("the closing sentence comes after the status banner, not before the start", async () => {
+    const order: string[] = [];
+    const h = harness({
+      answers: [...NO_SYSTEMD, ["tailscale status --json", { stdout: NO_HTTPS }], ["tailscale debug prefs", { stdout: JSON.stringify({ OperatorUser: "pat" }) }]],
+      env: { USER: "pat", PATH: "/usr/bin" },
+    });
+    h.deps.link = fakeLinkFs();
+    const { out, err } = h.deps.io;
+    h.deps.io.out = (line: string) => {
+      order.push(`out:${line}`);
+      out(line);
+    };
+    h.deps.io.err = (line: string) => {
+      order.push(line.startsWith("Running, but") ? "closing" : line.startsWith("setup:") ? "setup" : "err");
+      err(line);
+    };
+    expect(await cmdStart(h.deps)).toBe(EXIT.OK);
+    const closing = order.indexOf("closing");
+    const lastOut = order.findLastIndex((o) => o.startsWith("out:"));
+    const started = order.findIndex((o) => o.startsWith("out:bridge started"));
+    expect(closing).toBe(order.length - 1);
+    expect(closing).toBeGreaterThan(lastOut);
+    expect(order.indexOf("setup")).toBeLessThan(started);
+  });
+
+  test("`restart` reaches the same start path and prints no setup line, nor does the restart inside `update`", async () => {
+    const h = harness({
+      answers: [...NO_SYSTEMD, ["tailscale status --json", { stdout: NO_HTTPS }]],
+      env: { USER: "pat", PATH: "/usr/bin" },
+    });
+    h.deps.link = fakeLinkFs();
+    expect(await cmdRestart(h.deps)).toBe(EXIT.OK);
+    expect(h.io.stderr.filter((l) => l.startsWith("setup:") || l.startsWith("Running, but"))).toEqual([]);
+    expect(h.exec.spawned).toHaveLength(1);
+  });
+
+  test("http mode chosen on a tailnet with no certificates: no line for it", async () => {
+    const h = harness({
+      answers: [...NO_SYSTEMD, ["tailscale status --json", { stdout: NO_HTTPS }], ["tailscale debug prefs", { stdout: JSON.stringify({ OperatorUser: "pat" }) }]],
+      env: { USER: "pat", PATH: "/usr/bin", COLLIE_SERVE_MODE: "http" },
+      files: { "/usr/bin/collie": "" },
+    });
+    h.deps.ctx = { ...h.deps.ctx, serveMode: "http" };
+    h.deps.link = fakeLinkFs();
+    expect(await cmdStart(h.deps)).toBe(EXIT.OK);
+    expect(h.io.stderr.filter((l) => l.startsWith("setup:") || l.startsWith("Running, but"))).toEqual([]);
+  });
+
+  test("every row fine: not one setup line", async () => {
+    const h = harness({
+      answers: [
+        ...NO_SYSTEMD,
+        ["tailscale status --json", { stdout: JSON.stringify({ BackendState: "Running", Self: { DNSName: "desk.tail.ts.net." }, CertDomains: ["desk.tail.ts.net"] }) }],
+        ["tailscale debug prefs", { stdout: JSON.stringify({ OperatorUser: "pat" }) }],
+      ],
+      env: { USER: "pat", PATH: "/usr/bin" },
+      files: { "/usr/bin/collie": "" },
+    });
+    h.deps.link = fakeLinkFs();
+    expect(await cmdStart(h.deps)).toBe(EXIT.OK);
+    expect(h.io.stderr.filter((l) => l.startsWith("setup:") || l.startsWith("Running, but"))).toEqual([]);
+  });
+
+  test("a Windows start with Tailscale missing says so in Windows words, then starts the task anyway", async () => {
+    const h = harness({ host: hostFor("win32"), answers: NO_SYSTEMD, absent: ["tailscale"], env: { COLLIE_SUPERVISOR: "unsupervised" } });
+    expect(await cmdStart(h.deps)).toBe(EXIT.OK);
+    const said = h.io.stderr.join("\n");
+    expect(said).toContain("setup: no `tailscale` command was found on PATH\n  fix: install Tailscale from tailscale.com/download and sign in");
+    expect(said).not.toContain("sudo");
+    expect(said).not.toContain("→");
+    expect(said).toContain("Running, but your phone cannot reach it yet.");
+    expect(h.exec.spawned).toHaveLength(1);
+  });
+});
+
 // On Windows the bridge runs under Task Scheduler: the task runs `collie _supervise`, which runs the
 // bridge and records both pids in `collie-processes` (cli/task-scheduler.ts). These cases drive that
 // tier with `hostFor("win32")` and fakes: they prove the logic, and the Windows VM proves Windows.
@@ -654,10 +768,29 @@ describe("the Task Scheduler tier (Windows)", () => {
       expect(xml).toContain(`HERDR_PLUGIN_CONFIG_DIR=${CONFIG}`);
       expect(xml).toContain(`<WorkingDirectory>${ROOT}</WorkingDirectory>`);
       expect(h.io.stdout).toContain("bridge started (Task Scheduler: herdr.collie)");
-      // No unsupervised bridge beside the task, and no front door: Collie publishes none on Windows.
+      // No unsupervised bridge beside the task. The front door is published as on Linux and macOS
+      // (ADR 0075, addendum 2026-10-28), so `serve` runs once and no "publishes nothing" note is left.
       expect(h.exec.spawned).toHaveLength(0);
-      expect(served).toBe(0);
-      expect(h.io.stdout.join("\n")).toContain("note: Collie publishes no front door here");
+      expect(served).toBe(1);
+      expect(h.io.stdout.join("\n")).not.toContain("publishes no front door");
+    });
+
+    test("the first start after the update adopts the door the old docs had the operator make by hand", async () => {
+      // `tailscale serve --bg --set-path=/ 8787`, typed in PowerShell: an https root on :443 that
+      // proxies to this collie, and no ownership record. The real `cmdServe` runs, through fakes.
+      const handMade = '{"TCP":{"443":{"HTTPS":true}},"Web":{"desk.tail.ts.net:443":{"Handlers":{"/":{"Proxy":"http://127.0.0.1:8787"}}}}}';
+      const h = windows({
+        answers: [
+          ["tailscale status --json", { stdout: JSON.stringify({ Self: { DNSName: "desk.tail.ts.net." }, CertDomains: ["desk.tail.ts.net"] }) }],
+          ["tailscale serve status --json", { stdout: handMade }],
+        ],
+      });
+      h.deps.serve = (into) => Promise.resolve(cmdServe({ ...h.deps, io: into ?? h.deps.io }));
+      expect(await cmdStart(h.deps)).toBe(EXIT.OK);
+      expect(h.io.stdout.join("\n")).toContain("tailscale serve: adopting the existing Collie root mount on :443");
+      expect(h.files.read(HANDLER_FILE)).toBe("https:443|desk.tail.ts.net:443|http://127.0.0.1:8787\n");
+      expect(h.exec.calls).toContain("tailscale serve --bg --set-path=/ 8787");
+      expect(h.io.stderr.join("\n")).not.toContain("front door did not come up");
     });
 
     test("a path with a '%' is refused before the task is written: Task Scheduler would expand it", async () => {

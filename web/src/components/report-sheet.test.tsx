@@ -156,3 +156,44 @@ describe("ReportSheet", () => {
     expect(getByText("Report a problem")).toBeInTheDocument();
   });
 });
+
+describe("ReportSheet from the unread-dialog card (amendment 2026-10-28, #554)", () => {
+  const DIALOG = { agent: "claude", key: "Escape", verdicts: [{ name: "prompt-select", result: "null" as const }, { name: "menu", result: "found" as const }] };
+
+  it("starts with Include the screen ON, reads the masked screen once, and lists the verdicts and the phone's facts", async () => {
+    const asked: string[] = [];
+    server.use(
+      http.get(/\/api\/report\/context/, ({ request }) => {
+        const search = new URL(request.url).search;
+        asked.push(search);
+        return HttpResponse.json(search.includes("screen=1") ? { ...CONTEXT, screen: "❯ 1. Yes\n  2. No\n  Esc to cancel" } : CONTEXT);
+      }),
+      http.get(/\/api\/send\/receipts/, () => HttpResponse.json({ receipts: SENDS })),
+    );
+    const { getByRole } = render(<ReportSheet target={{ paneId: "w1:p1", kind: "unread-dialog", dialog: DIALOG }} onClose={() => {}} />);
+    const previewOf = () => document.body.querySelector('[data-slot="report-preview"]')?.textContent ?? "";
+    await waitFor(() => expect(previewOf()).toContain("### The screen\n\n❯ 1. Yes\n  2. No\n  Esc to cancel"));
+    expect(getByRole("switch", { name: "Include the screen" })).toHaveAttribute("aria-checked", "true");
+    expect(asked).toEqual(["?pane=w1%3Ap1", "?pane=w1%3Ap1&screen=1"]);
+    const text = previewOf();
+    expect(text).toContain("Cannot read a dialog: claude 2.1.291, herdr");
+    expect(text).toContain("Collie cannot read this dialog.\n    card key: Escape");
+    expect(text).toContain("    prompt-select: null\n    menu: found");
+    expect(text).not.toContain("id=sheet-00003");
+    expect(text).toContain(`"appBuild": "${BUILD.id}"`);
+    expect(text).toContain('"userAgent": ');
+    expect(text).toMatch(/"viewport": "\d+x\d+"/u);
+    expect(text).toContain('"standalone": "no"');
+  });
+
+  it("the person can switch the screen off before anything leaves", async () => {
+    const user = userEvent.setup();
+    const { container, getByRole } = render(
+      <ReportSheetView context={CONTEXT} contextError={null} rows={[]} episodes={[]} fromSettings={false} loadScreen={async () => "a row"} dialog={DIALOG} />,
+    );
+    await waitFor(() => expect(preview(container)).toContain("### The screen\n\na row"));
+    await user.click(getByRole("switch", { name: "Include the screen" }));
+    expect(preview(container)).not.toContain("### The screen");
+    expect(container.querySelector<HTMLAnchorElement>('[data-slot="report-open"]')?.getAttribute("href")).not.toContain("screen=");
+  });
+});

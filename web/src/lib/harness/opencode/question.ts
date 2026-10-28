@@ -4,6 +4,11 @@
 // opencode 1.18.33, 2026-10-01; the ground truth is QUESTION_NOTES.md beside this file, pinned by
 // `web/src/fixtures/panes/oc--question--*.txt`.
 //
+// opencode 2.1.1 (2026-10-27, QUESTION_NOTES.md § "Round three") draws the same dialog with two
+// differences this module reads: a grey `┃  Questions` title row above the question, which the block
+// replaces, and a pointer painted as an accent INK on the pointed row instead of a background chip.
+// `oc--v211-question--*.txt` pins both.
+//
 //     ┃                                     <- a bare bar row (padding)
 //     ┃  Which colour?                      <- the question (the header is NOT drawn)
 //     ┃
@@ -41,7 +46,19 @@
 import type { StyledLine } from "../../blocks";
 import type { PromptFeedback, PromptModel, PromptOption } from "../prompt-model";
 import { backgroundOf } from "./dialog";
-import { FREE_TEXT_LABEL, barDraftText, isBareBar, isBarRow, isBlank, isOverlayRow, lineText, questionFooter, rstrip } from "./markers";
+import {
+  FREE_TEXT_LABEL,
+  barDraftText,
+  freeTextLabelOf,
+  isBareBar,
+  isBarRow,
+  isBlank,
+  isOverlayRow,
+  isQuestionHeader,
+  lineText,
+  questionFooter,
+  rstrip,
+} from "./markers";
 
 // How far above the footer the dialog may start. Nine options with descriptions need 22 rows from
 // the first text row to the footer (QUESTION_NOTES.md, "Height"); a few more for a wrapped question.
@@ -86,17 +103,19 @@ export function detectQuestionDialog(lines: StyledLine[]): QuestionRegion | null
   let sawOverlay = walked.sawOverlay;
   const firstOption = entries[0]!.row;
 
-  // 4. The free-text row: the last numbered row, when it carries opencode's own label. It is not an
-  //    option. Without it (a call that turns the custom answer off, not measured) every row is one.
+  // 4. The free-text row: the last numbered row, when it carries opencode's own label (bare, or
+  //    behind the checkbox 2.1 gives it on a multi-select step). It is not an option. Without it (a
+  //    call that turns the custom answer off, not measured) every row is one.
   const last = entries[entries.length - 1]!;
-  const freeText = last.label === FREE_TEXT_LABEL ? last : null;
+  const freeText = freeTextLabelOf(last.label) !== null ? last : null;
   const choices = freeText === null ? entries : entries.slice(0, -1);
   if (choices.length === 0 || choices.length > MAX_OPTIONS) return null;
   // No other row may be the free-text label: that would be an option the digit cannot tell apart.
-  if (choices.some((e) => e.label === FREE_TEXT_LABEL)) return null;
+  if (choices.some((e) => freeTextLabelOf(e.label) !== null)) return null;
 
-  // 5. The pointer: exactly one numbered row whose `N.` run is on another background than the
-  //    footer's. Zero or two: refuse rather than guess what a tap would do.
+  // 5. The pointer: exactly one numbered row wearing the mark — another background than the
+  //    footer's (1.x), or an ink no other digit uses (2.1). Zero or two: refuse rather than guess
+  //    what a tap would do.
   const pointed = pointedEntry(lines, texts, entries, base);
   if (pointed < 0) return null;
 
@@ -135,6 +154,18 @@ export function detectQuestionDialog(lines: StyledLine[]): QuestionRegion | null
     seenPadding = true;
     if (isOverlayRow(texts[q]!)) sawOverlay = true;
     q--;
+  }
+  // opencode 2.1 paints its own title above the question's padding: `┃  Questions`, grey, once.
+  // It is the dialog's, not the transcript's, so the block replaces it too — and the padding above
+  // it is the one that must touch the transcript.
+  if (q >= 0 && isQuestionHeader(texts[q]!)) {
+    startLine = q;
+    q--;
+    while (q >= 0 && (isBareBar(texts[q]!) || isOverlayRow(texts[q]!))) {
+      seenPadding = true;
+      if (isOverlayRow(texts[q]!)) sawOverlay = true;
+      q--;
+    }
   }
   if (!seenPadding && !sawOverlay) return null;
   if (q >= 0 && isBarRow(texts[q]!) && !isBareBar(texts[q]!)) return null;
@@ -314,21 +345,52 @@ export function walkEntries(
 }
 
 /**
- * The pointer: the one numbered row whose `N.` run sits on another background than `base`, the
- * footer's own. Its `n`, or -1 when no row or two rows carry a chip.
+ * The pointer: the one numbered row the screen marks as pointed. Its `n`, or -1 when no row or two
+ * rows are marked.
+ *
+ * TWO READINGS, because opencode changed its mind. 1.x paints the pointed row's `N.` run on another
+ * BACKGROUND than the footer's (a chip). 2.1 dropped the chip and paints the pointed row's own words
+ * in the accent ink on the dialog's background instead (measured on 2.1.1, 2026-10-27). Both are
+ * styles, never a colour name: the background reading is relative to the footer's own background and
+ * the ink reading to the other rows' digits, so a theme change moves both with it.
  */
 export function pointedEntry(lines: StyledLine[], texts: string[], entries: Entry[], base: string): number {
-  let pointed = -1;
+  const byBackground: number[] = [];
   for (const e of entries) {
     const text = texts[e.row]!;
     const digit = `${e.n}.`;
     const start = text.indexOf(digit);
     const bg = backgroundOf(lines[e.row]!, start, start + digit.length) ?? "";
-    if (bg === base) continue;
-    if (pointed >= 0) return -1;
-    pointed = e.n;
+    if (bg !== base) byBackground.push(e.n);
   }
-  return pointed;
+  if (byBackground.length === 1) return byBackground[0]!;
+  if (byBackground.length > 1) return -1;
+  return pointedByInk(lines, texts, entries);
+}
+
+/**
+ * The pointer on a screen that paints no chip: the one row whose `N.` run is a second ink. Read
+ * ACROSS the list rather than against a fixed colour — exactly two inks must be present and exactly
+ * one row must hold the minority one, or the answer is "cannot tell" (-1), which refuses the lift.
+ *
+ * The chosen-but-not-pointed row is why the comparison is on the digit alone: on a multi-select step
+ * a checked row's box and label are the accent ink while its digit stays the ordinary one, so the
+ * digit is the only cell the pointer owns.
+ */
+function pointedByInk(lines: StyledLine[], texts: string[], entries: Entry[]): number {
+  const inks = entries.map((e) => {
+    const text = texts[e.row]!;
+    const digit = `${e.n}.`;
+    const start = text.indexOf(digit);
+    return foregroundOf(lines[e.row]!, start, start + digit.length) ?? "";
+  });
+  if (new Set(inks).size !== 2) return -1;
+  const counts = new Map<string, number>();
+  for (const ink of inks) counts.set(ink, (counts.get(ink) ?? 0) + 1);
+  const minority = [...counts.entries()].filter(([, n]) => n === 1).map(([ink]) => ink);
+  if (minority.length !== 1) return -1;
+  const at = inks.indexOf(minority[0]!);
+  return entries[at]!.n;
 }
 
 /** The background the footer's `esc dismiss` hint is painted on, as a comparable key ("" when the

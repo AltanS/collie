@@ -29,6 +29,7 @@ import { homedir } from "node:os";
 import { basename, join, resolve } from "node:path";
 
 import { asJsonObject, asJsonString, parseJson, type JsonObject } from "../../src/lib/json";
+import type { TierPlans } from "./replay/tier";
 import { XDG_HOME_NAME, shortXdgHome } from "./sock-path";
 
 /** True for the crew rig (lead and member); the solo rig otherwise. */
@@ -62,6 +63,7 @@ export const P = {
   xdg: shortXdgHome(STATE_ROOT, SESSION, RUNTIME_DIR !== undefined && existsSync(RUNTIME_DIR) ? RUNTIME_DIR : undefined), // XDG_CONFIG_HOME for herdr only; short, so its sockets fit sun_path
   xdgState: join(RIG, "xdg-state"), // XDG_STATE_HOME for herdr only (its agent-detection status file)
   logs: join(RIG, "logs"),
+  stubStats: join(RIG, "logs", "stub-stats.json"), // the stub's last counters, written by the rig daemon's teardown; startRun removes it
   work: join(RIG, "work"), // cwd of the view workspace
   bridgeHome: join(RIG, "bridge-home"), // HOME of the bridge
   run: join(RIG, "rig.json"),
@@ -115,15 +117,6 @@ export function machineDirs(machine: Machine): MachineDirs {
   return DIRS[machine];
 }
 
-/** Read a `--on lead|member` flag out of an argument list; the lead when it is absent. */
-export function machineFlag(args: readonly string[]): Machine {
-  const at = args.indexOf("--on");
-  if (at === -1) return "lead";
-  const value = args[at + 1];
-  if (value !== "lead" && value !== "member") throw new Error("--on takes lead or member");
-  return value;
-}
-
 /** The member's half of a crew rig: its port, its Herdr socket and the pids the daemon started. */
 export interface MemberRun {
   readonly port: number;
@@ -142,10 +135,16 @@ export interface Run {
   bridgePid: number | null;
   ready: boolean;
   readonly startedAt: string;
+  /** The systemd scope the daemon runs in (`rig-<hash>-<pid>.scope`), or null when it runs where `up` ran. Absent in an older rig.json. */
+  readonly scope?: string | null;
+  /** The cgroup `up` ran in (a path under /sys/fs/cgroup), the owner the daemon watches; null when none was recorded. */
+  readonly ownerCgroup?: string | null;
   /** Set on a crew rig only: the member, and the ids both sides enrolled under. */
   member?: MemberRun;
   leadId?: string;
   memberId?: string;
+  /** The model stub for pi and omp (M67, replay/stub.ts): its port, and the tier each harness runs on. */
+  stub?: { readonly port: number; readonly tiers: TierPlans };
 }
 
 export function assertUnderRoot(path: string): string {
@@ -320,9 +319,57 @@ export function newWorkspacePane(cwd: string, label: string, machine: Machine = 
   return paneId;
 }
 
-/** Close a rig pane, and with it the harness in it. */
-export function paneClose(paneId: string, machine: Machine = "lead"): void {
-  herdr(["pane", "close", paneId], { machine });
+/** Close a rig pane, and with it the harness in it. False when Herdr refused: the pane is already gone, or never was. */
+export function paneClose(paneId: string, machine: Machine = "lead"): boolean {
+  return herdr(["pane", "close", paneId], { machine }).code === 0;
+}
+
+/** The label of the view workspace the daemon opens first (rig.ts startHerdr): the pane its attached client shows. */
+export const VIEW_LABEL = "rig-view";
+
+/** One open pane of a machine's rig, as `rig.ts pane ls` and the pane cap see it. */
+export interface OpenPane {
+  readonly paneId: string;
+  /** The label of the pane's workspace: `rig-<time in base 36>` from `pane` and `start`, `leg-<harness>` from the leg. */
+  readonly label: string;
+  readonly cwd: string;
+}
+
+/**
+ * The panes open in a machine's Herdr, less the view pane. `newWorkspacePane` gives every pane its own
+ * workspace, and only the view workspace carries VIEW_LABEL, so the view pane is told apart by its
+ * workspace's label, not by its id.
+ */
+export function openPanes(machine: Machine = "lead"): OpenPane[] {
+  const labels = new Map<string, string>();
+  const workspaces = herdrJson(["workspace", "list"], machine).workspaces;
+  for (const w of Array.isArray(workspaces) ? workspaces : []) {
+    const ws = asJsonObject(w);
+    const id = asJsonString(ws?.workspace_id);
+    if (id !== undefined) labels.set(id, asJsonString(ws?.label) ?? "");
+  }
+  const panes = herdrJson(["pane", "list"], machine).panes;
+  const out: OpenPane[] = [];
+  for (const p of Array.isArray(panes) ? panes : []) {
+    const pane = asJsonObject(p);
+    const paneId = asJsonString(pane?.pane_id);
+    if (paneId === undefined) continue;
+    const label = labels.get(asJsonString(pane?.workspace_id) ?? "") ?? "";
+    if (label === VIEW_LABEL) continue;
+    out.push({ paneId, label, cwd: asJsonString(pane?.cwd) ?? "" });
+  }
+  return out;
+}
+
+/** The command a pane runs in its foreground (`herdr pane process-info`), or null when Herdr gives none. */
+export function paneCommand(paneId: string, machine: Machine = "lead"): string | null {
+  try {
+    const info = asJsonObject(herdrJson(["pane", "process-info", "--pane", paneId], machine).process_info);
+    const procs = info?.foreground_processes;
+    return asJsonString(asJsonObject(Array.isArray(procs) ? procs[0] : undefined)?.cmdline) ?? null;
+  } catch {
+    return null;
+  }
 }
 
 /** Type a line into a rig pane and press Enter (`herdr pane run`). */

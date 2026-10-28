@@ -50,7 +50,7 @@ write it as the sentence an operator reads there. Do not touch the three version
 
 **A release needs something to ship.** Before you cut one, read `git log --oneline <last tag>..HEAD`.
 If the range holds only docs, tests and chores, do not release: the docs go out with the next real
-release, and the site's docs sync follows it. A docs-only release makes every self-updating lane
+release or on the docs line (below), and the site's docs sync follows either. A docs-only release makes every self-updating lane
 and crew member update for nothing. Never offer a release as "put the docs live"; name it as a
 release. 1.14.2 was cut this way on 2026-09-28.
 
@@ -149,11 +149,20 @@ is nothing to record. Touch one of them *and* the code under it and the ordinary
 source file is what the line is about. This is enforced two ways, but **you are the first line — do
 it as part of the change, not after**:
 
-**A docs change reaches colliepwa.dev only with a release.** Collie's `release.yml` tells the website
-on every tag, and the website re-quotes `docs/*.md` at the newest published release — so a doc-only
-fix pushed to `main` and not released sits unpublished, and the website's daily cron will not pick it
-up either. To publish sooner, run the website's sync by hand against a ref:
-`gh workflow run sync-docs.yml -R AltanS/collie-website -f ref=main`.
+**A docs change reaches colliepwa.dev with the next release, or sooner on the docs line.** Collie's
+`release.yml` tells the website on every tag, and the website re-quotes `docs/*.md` at the newest
+published release. A doc-only fix that sits on `main` waits for that release. To publish it sooner,
+put it on the docs line: a branch `docs/<newest tag>` (for example `docs/v1.24.1`) that the site
+quotes in place of the tag. Run `bun scripts/docs-line.ts <commit>...` (add `--dry-run` to see the
+result first). It cherry-picks the commits with `-x` onto the branch and pushes it. Two guards hold,
+in the script and again on the site: every path is under `docs/` or is `README.md`, and the tag is an
+ancestor of the branch head. The human rule is yours: put only a docs commit that describes the
+RELEASED version on the line. Docs for a feature that has not shipped stay on `main` until its
+release, or the site describes something users cannot run. The site syncs within minutes of the push
+and again in its daily run. When the next release is tagged, the site follows the new tag and
+ignores the old branch; the script prints the command to delete it. Do not use
+`gh workflow run sync-docs.yml -R AltanS/collie-website -f ref=main` any more: it quotes `main` for
+one run, and the next cron reverts it.
 
 - `scripts/check-version.sh` runs inside `collie build` (a release can't build while versions
   disagree).

@@ -28,7 +28,7 @@
 // always-approve and is never a button.
 
 import { lineText, trimTrailingBlank, type Block, type StyledLine } from "../../blocks";
-import type { HarnessAdapter } from "../types";
+import type { DialogDetector, HarnessAdapter } from "../types";
 import {
   composerPrompt,
   composerReady,
@@ -43,6 +43,16 @@ import { detectPermissionRegion } from "./permission";
 import { detectPlanMenuRegion } from "./plan-menu";
 import { detectModelPickerRegion } from "./model-picker";
 import { detectTrustRegion } from "./trust";
+
+/** The detectors `grokBuildBlocks` runs, in its order, for the unread-dialog card's report (ADR 0123).
+ *  Detection is text-based, so the canvas strip `grokBuildBlocks` does first changes no answer. */
+const GROK_DIALOG_DETECTORS: readonly DialogDetector[] = [
+  { name: "permission", detect: detectPermissionRegion },
+  { name: "ask", detect: detectAskRegion },
+  { name: "plan-menu", detect: detectPlanMenuRegion },
+  { name: "model-picker", detect: detectModelPickerRegion },
+  { name: "trust", detect: detectTrustRegion },
+];
 
 export function grokBuildBlocks(lines: StyledLine[]): Block[] {
   // Drop Grok's full-screen theme-canvas paint before any block is built, so every rendered
@@ -144,6 +154,7 @@ export const grokAdapter: HarnessAdapter = {
   // view. Ctrl+C is the cancel.
   cancelKey: "ctrl+c",
   modalOnScreen: grokModalOnScreen,
+  dialogDetectors: GROK_DIALOG_DETECTORS,
   composerPrompt,
   // Drops the scrollbar track and the terminal padding from the phone mirror's wrapped view.
   prepareDisplay: prepareGrokDisplay,

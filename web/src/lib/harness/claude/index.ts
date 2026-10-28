@@ -9,7 +9,7 @@
 // on it could mis-lift a menu, strip real output as "chrome", or paint a bogus status strip.
 
 import { lineText, trimTrailingBlank, type Block, type StyledLine } from "../../blocks";
-import type { HarnessAdapter } from "../types";
+import type { DialogDetector, HarnessAdapter } from "../types";
 import { detectPreviewSelectRegion } from "./preview-select";
 import { detectWizardRegion } from "./wizard";
 import { detectMultiSelectRegion } from "./multi-select";
@@ -205,6 +205,29 @@ export function claudeBuildBlocks(input: StyledLine[]): Block[] {
 
 export { extractStatusLines, extractAgentsFooter, extractInputDraft };
 
+/** A detector over the rows `claudeBuildBlocks` reads: the closing rule and task checklist taken off. */
+function onPrepared(detect: (lines: StyledLine[]) => object | null): DialogDetector["detect"] {
+  return (input) => detect(dropClosingRule(dropTaskChecklist(input)));
+}
+
+/**
+ * The detectors `claudeBuildBlocks` runs, in its order, for the unread-dialog card's report (ADR 0123,
+ * amendment 2026-10-28). The completion popup is gated on the box's tail exactly as it is above.
+ */
+const CLAUDE_DIALOG_DETECTORS: readonly DialogDetector[] = [
+  { name: "preview-select", detect: onPrepared(detectPreviewSelectRegion) },
+  { name: "wizard", detect: onPrepared(detectWizardRegion) },
+  { name: "multi-select", detect: onPrepared(detectMultiSelectRegion) },
+  { name: "prompt-select", detect: onPrepared(detectPromptSelectRegion) },
+  { name: "effort", detect: onPrepared(detectEffortRegion) },
+  { name: "resume-picker", detect: onPrepared(detectResumePickerRegion) },
+  { name: "switch-model", detect: onPrepared(detectSwitchModelRegion) },
+  { name: "marketplaces", detect: onPrepared(detectMarketplacesRegion) },
+  { name: "menu", detect: onPrepared(detectMenuRegion) },
+  { name: "above-prompt-notice", detect: onPrepared(detectAbovePromptNotice) },
+  { name: "autocomplete", detect: onPrepared((lines) => (inputBoxTail(lines) === "autocomplete" ? detectAutocompleteRegion(lines) : null)) },
+];
+
 // How many of the screen's last non-blank rows may carry a modal's mark. A footer wraps onto at most
 // three rows (menu-hints MAX_FOOTER_ROWS), and a hint can sit a row or two above it.
 const MODAL_HINT_ROWS = 6;
@@ -246,6 +269,7 @@ export const claudeAdapter: HarnessAdapter = {
   // unread-dialog.test.ts), and a missed select still shows its `❯ N.` pointer. The shell prompt
   // under a starting or exiting Claude shows none of these.
   modalOnScreen: tailNamesAKey,
+  dialogDetectors: CLAUDE_DIALOG_DETECTORS,
   // Long sends never appear in the box as themselves — Claude collapses them into `[Pasted text #N
   // +M lines]` — so the reply guard's literal match can't verify them and the send stalls. These two
   // read that token: as send evidence when it's consistent with what we typed (.adr/0010), and as

@@ -63,13 +63,13 @@ The public docs call a session's place a terminal or a program and keep the word
 
 ## The exit
 
-This is a step, and a step needs a way back. By the 1.24.0 release, one of two things must be true: a
-public repository that speaks the wire exists, or an outside issue or discussion about a durable
-program exists. If neither does, the durable code moves to `experiments/`, the docs page is
-removed, and the homepage block on colliepwa.dev goes with the docs page. Sources stay a file and a registry rule, so the move removes an adapter and a verb, not a
-model.
+The exit was withdrawn on 2026-10-28. Durable agents are a feature Collie keeps, by Altan's decision. No outside
+signal is required and no date replaces the old one. The first text set a condition: a public repository that speaks the
+wire, or an outside issue or discussion about a durable program, by the 1.24.0 release. It was written so that leaving
+would be cheap, and that still holds: sources stay a file and a registry rule, so a retirement removes an adapter and a
+verb, not a model. (amended 2026-10-28)
 
-On removal, a person who attached a program gets notice first. A `sources.json` entry is ignored
+If the feature is ever retired, a person who attached a program gets notice first. A `sources.json` entry is ignored
 with one log line for one minor release before the code moves to `experiments/`. The program's own socket
 keeps working for the program itself. The npm package
 `@colliepwa/durable-sdk` is deprecated with `npm deprecate`, naming the last Collie version that speaks the wire,
@@ -89,5 +89,5 @@ commit per repository.
   are not held up by it, because each session has its own poller.
 - The wire stays experimental. This decision does not make it stable, and it does not publish the SDK;
   [ADR 0105](./0105-the-durable-sdk-is-an-npm-package.md) does, under the dist-tag `experimental`.
-- Revisit this decision if the exit above fires, or if a second kind of source (a hook, a local
-  socket for a coding agent) needs a field that `kind` and `name` cannot carry.
+- Revisit this decision if a second kind of source (a hook, a local
+  socket for a coding agent) needs a field that `kind` and `name` cannot carry. (amended 2026-10-28: the exit no longer fires)

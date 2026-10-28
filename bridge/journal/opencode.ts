@@ -21,10 +21,16 @@
 //         `system`, `idle`, `agent-switched`, `model-switched`, `location-switched`), and each
 //         turn's parts are INLINE in `data.content` instead of joined from a `part` table.
 //
-// A machine that upgraded keeps its V1 sessions in `session` while every new one lands in
-// `session_v2`. A session can exist in BOTH — the migration copied it, and it may have kept running
-// in V1 afterwards — so the adapter compares the two stores' newest rows and serves the newer one
-// (see `sessionStore`), rather than trusting a fixed order.
+// A machine that upgraded keeps its V1 sessions in `message`/`part` while every new one lands in
+// `session_message`. A session can exist in BOTH — the migration copied it, and it may have kept
+// running in V1 afterwards — so the adapter compares the two stores' newest rows and serves the newer
+// one (see `sessionStore`), rather than trusting a fixed order.
+//
+// OpenCode 2.1 RENAMED the V2 `session` table to `session_v2` and kept the V1 tables in place, so an
+// upgraded install has NO `session` table at all while its old sessions' conversations still live in
+// `message`/`part` — they are copied into `session_message` only when OpenCode itself opens that
+// session. A session row in `session_v2` therefore says nothing about where its conversation is;
+// `sessionStore` asks the stores, not the session table.
 //
 // SECURITY — THE SAME DATABASE HOLDS OAUTH TOKENS. `account`, `credential` and `control_account` are
 // tables in this very file. So: this module queries `session`, `message`, `part`, `session_v2` and
@@ -175,31 +181,63 @@ function tableNames(db: Database): ReadonlySet<string> {
 /**
  * Which store holds this session, or null when neither does.
  *
- * Both generations live in the same database and neither migrates the other away, so a session can
- * exist in BOTH: the migration copied V1 sessions into `session_v2`, and a session that kept running
- * in V1 afterwards has newer rows there (measured live: 1 of 30 overlapping ids). The newer content
- * wins — a fixed V2-first order would serve the migration's snapshot and hide that tail — and a tie
- * reads as V2, the generation every current OpenCode writes.
+ * WHERE THE CONVERSATION IS, NOT WHERE THE SESSION ROW IS. OpenCode 2.1 renamed its V2 `session`
+ * table to `session_v2`, and an install that came from 1.x keeps the older sessions' rows in
+ * `message`/`part` until OpenCode itself opens that session and copies them into `session_message`
+ * (lazily, one session at a time). So a session row in `session_v2` does NOT mean its conversation
+ * is in the V2 store: on an upgraded machine it usually is not yet, and asking the V2 tables
+ * answered an empty transcript — History said there was no log at all.
+ *
+ * So each store is "present" when it holds ROWS for the session; only a session with no rows at all
+ * falls back to the table its own row lives in, which is what names a fresh, still-empty session's
+ * generation. When both hold rows the newer one wins — the migration's copy, and a session that kept
+ * running in V1 afterwards (measured live: 1 of 30 overlapping ids) — and a tie reads as V2, because
+ * the migration copies a row's own timestamps across unchanged.
  */
 function sessionStore(db: Database, sessionId: string): OpencodeStore | null {
   const tables = tableNames(db);
-  const inV2 =
-    tables.has("session_v2") &&
-    db.query<{ id: string }, [string]>("select id from session_v2 where id = ?").get(sessionId) !== null;
-  const inV1 =
-    tables.has("session") &&
-    db.query<{ id: string }, [string]>("select id from session where id = ?").get(sessionId) !== null;
-  if (inV2 && inV1) return newerStore(db, sessionId, tables);
-  if (inV2) return "v2";
-  if (inV1) return "v1";
+  // PRESENCE costs one indexed lookup per store, not a count over the session: `resolve` runs on
+  // every chat poll, and a big session's part rows are not something to walk 40 times a minute.
+  const v1Rows = hasV1Rows(db, tables, sessionId);
+  const v2Rows = tables.has("session_message") && hasRow(db, "session_message", sessionId);
+  if (v1Rows && v2Rows) {
+    const v1 = sessionMetaV1(db, sessionId).mtimeMs;
+    const v2 = sessionMetaV2(db, sessionId).mtimeMs;
+    return v2 >= v1 ? "v2" : "v1";
+  }
+  if (v2Rows) return "v2";
+  if (v1Rows) return "v1";
+  // No content yet: the generation that will write it is the one whose session table names it.
+  if (inSessionTable(db, tables, "session_v2", sessionId)) return "v2";
+  if (inSessionTable(db, tables, "session", sessionId)) return "v1";
   return null;
 }
 
-/** The store whose newest row is newer, for a session both tables hold. A tie reads as V2. */
-function newerStore(db: Database, sessionId: string, tables: ReadonlySet<string>): OpencodeStore {
-  const v1 = tables.has("message") && tables.has("part") ? sessionMetaV1(db, sessionId).mtimeMs : 0;
-  const v2 = tables.has("session_message") ? sessionMetaV2(db, sessionId).mtimeMs : 0;
-  return v2 >= v1 ? "v2" : "v1";
+/** True when a 1.x conversation store holds any row for this session. Both tables are required:
+ *  `sessionMetaV1` and the composer read them as one store, so a database with only one of them is
+ *  not one this adapter can serve. */
+function hasV1Rows(db: Database, tables: ReadonlySet<string>, sessionId: string): boolean {
+  if (!tables.has("message") || !tables.has("part")) return false;
+  return hasRow(db, "message", sessionId) || hasRow(db, "part", sessionId);
+}
+
+/** `select 1 … limit 1`: is there at least one row for this session in `table`? */
+function hasRow(db: Database, table: "message" | "part" | "session_message", sessionId: string): boolean {
+  const row = db
+    .query<{ one: number }, [string]>(`select 1 as one from ${table} where session_id = ? limit 1`)
+    .get(sessionId);
+  return row !== null;
+}
+
+/** True when `table` exists and holds a row for this session. */
+function inSessionTable(
+  db: Database,
+  tables: ReadonlySet<string>,
+  table: "session" | "session_v2",
+  sessionId: string,
+): boolean {
+  if (!tables.has(table)) return false;
+  return db.query<{ id: string }, [string]>(`select id from ${table} where id = ?`).get(sessionId) !== null;
 }
 
 interface CountRow {

@@ -23,13 +23,15 @@ import {
   sendBoundKeys,
   type DialogTarget,
 } from "./dialog-guard";
+import { MAX_ANSWER_WRAP, OPTION_SCAN_WINDOW } from "./harness/claude/prompt-select";
 import { DIALOG_CONTRACT, type DialogKind, type DialogModels } from "./harness/dialog-contract";
 import { sanitizeTypedText, type ActionResult, type GuardOutcome, type Sleep } from "./harness/guard";
 import type { AnswerFieldPointer } from "./harness/prompt-model";
 import { t } from "./i18n";
+import { displayWidth } from "./text-width";
 
 /**
- * Longest text Collie types into a dialog's input field.
+ * Longest text Collie types into the plan dialog's feedback row.
  *
  * Not a comfort limit — a grammar one. The row does not window long text: Claude re-flows the whole
  * value across as many display lines as it needs, which pushes the dialog's footer away from its
@@ -41,6 +43,18 @@ import { t } from "./i18n";
 export const FEEDBACK_MAX_LENGTH = 240;
 
 /**
+ * Longest text Collie types into AskUserQuestion's answer field: the editor's cap, before the pane's
+ * width is known. That field is not the dialog's last row, so its wrap does not move the footer; what
+ * bounds it is {@link MAX_ANSWER_WRAP}, checked against the pane's width before anything is typed
+ * ({@link answerFits}). 4000 characters is about 25 rows of a 160-column pane.
+ */
+export const ANSWER_MAX_LENGTH = 4000;
+
+/** Columns before the field's text: `❯ 4. ` on a single question and a wizard step, `❯ 4. [✔] ` on a
+ *  multi-select question. The wider one counts for all three, so the estimate never runs short. */
+const ANSWER_INDENT = 9;
+
+/**
  * Most arrows the walk sends before it gives up. A Claude AskUserQuestion menu holds at most four
  * options, the field and `Chat about this`; a wizard or multi-select step adds `Submit`/`Next`. Twelve
  * covers the longest such list from either end with room for a repaint that swallowed a key.
@@ -48,11 +62,46 @@ export const FEEDBACK_MAX_LENGTH = 240;
 export const MAX_WALK = 12;
 
 /**
- * Most `ctrl+u ctrl+k` rounds the clear sends. A {@link FEEDBACK_MAX_LENGTH} value is at most about six
- * visual lines on a phone-width pane, and each round clears at least one, so eight always suffices
- * for a field Collie could have filled; a value that outlasts it is left as it is.
+ * Most `ctrl+u ctrl+k` rounds the clear sends. A value Collie typed is at most `MAX_ANSWER_WRAP` + 1
+ * visual lines ({@link answerFits}), and each round clears at least one, so this always suffices for
+ * a field Collie could have filled; a value that outlasts it is left as it is.
  */
-export const MAX_CLEAR_ROUNDS = 8;
+export const MAX_CLEAR_ROUNDS = MAX_ANSWER_WRAP + 2;
+
+/**
+ * Whether `text`, typed into the field of a dialog whose rows are `region` while the field holds
+ * `held`, keeps the dialog readable so the text can be proved: the field wraps onto no more than
+ * {@link MAX_ANSWER_WRAP} continuation rows, and the whole region, with `held`'s rows swapped for the
+ * text's, stays inside the grammars' {@link OPTION_SCAN_WINDOW}. The region starts at or above the
+ * first option, so the second bound is on the safe side. The pane's width is the widest row of the
+ * region (the dialog's rules span the pane). Claude wraps on word boundaries one column short of the
+ * row (2.1.306), so the count is a greedy word wrap that wide, after the widest label prefix.
+ */
+export function answerFits(text: string, region: string, held = ""): boolean {
+  const rows = region.split("\n");
+  const room = Math.max(0, ...rows.map(displayWidth)) - ANSWER_INDENT - 1;
+  if (room <= 0) return false;
+  const typed = wrappedRows(text, room);
+  return typed <= MAX_ANSWER_WRAP + 1 && rows.length - wrappedRows(held, room) + typed <= OPTION_SCAN_WINDOW;
+}
+
+/** The rows a greedy word wrap of `text` takes at `room` columns; an empty value is its placeholder's one row. */
+function wrappedRows(text: string, room: number): number {
+  let rows = 1;
+  let used = 0;
+  for (const word of text.split(" ")) {
+    const w = displayWidth(word);
+    if (used > 0 && used + 1 + w <= room) {
+      used += 1 + w;
+      continue;
+    }
+    if (used > 0) rows++;
+    // A word wider than the row breaks across rows of its own.
+    rows += Math.max(0, Math.ceil(w / room) - 1);
+    used = w % room || (w === 0 ? 0 : room);
+  }
+  return rows;
+}
 
 /** The field's state as one kind's model reports it. */
 export interface AnswerFieldState {
@@ -100,8 +149,9 @@ function sendBoundTo<K extends DialogKind>(target: Target<K>, keys: string[], m:
 
 /**
  * Fill the answer field of `target.model` with `text`, sanitised and cut to
- * {@link FEEDBACK_MAX_LENGTH}. Sends no committing key. Refuses (`changed`, with the step in `why`)
- * when the dialog or the field moved under it; errors when a step's awaited state never came.
+ * {@link ANSWER_MAX_LENGTH}. Sends no committing key. Refuses (`changed`, with the step in `why`)
+ * when the dialog or the field moved under it; errors when a step's awaited state never came, or,
+ * before any key, when the text would wrap the dialog off the pane's screen.
  */
 export async function fillAnswerField<K extends DialogKind>(
   target: Target<K>,
@@ -110,11 +160,12 @@ export async function fillAnswerField<K extends DialogKind>(
 ): Promise<FillOutcome<K>> {
   const seen = access.fieldOf(target.model);
   if (seen === null) return refuse("entry");
-  const clean = sanitizeTypedText(text, FEEDBACK_MAX_LENGTH);
+  const clean = sanitizeTypedText(text, ANSWER_MAX_LENGTH);
   if (clean.length === 0) return fail(t("promptAction.feedback.empty"));
   try {
     const guarded = await guardDialog(target);
     if (!guarded.ok) return notSent(guarded.result, "entry");
+    if (!answerFits(clean, guarded.region, seen.text)) return fail(t("promptAction.answer.tooLong"));
     const reached = await reachField(target, access, seen, guarded);
     if (!reached.ok) return reached;
     const cleared = await clearField(target, access, reached.proof);

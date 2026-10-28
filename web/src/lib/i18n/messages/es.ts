@@ -1606,6 +1606,7 @@ export const es: Dictionary = {
   "unreadDialog.caption": "Collie no puede leer este diálogo", // wordsmith
   "unreadDialog.confirmKey": "Pulsa de nuevo para enviar {key}", // wordsmith
   "unreadDialog.confirmDismiss": "Pulsa de nuevo para descartar", // wordsmith
+  "unreadDialog.report": "Informar de un problema",
   "dialog.preview.currentAnswerAria": "Respuesta actual",
   "dialog.preview.previewedBelowAria": "Vista previa a continuación",
   "dialog.preview.previewLabel": "Vista previa · {label}",
@@ -1634,6 +1635,7 @@ export const es: Dictionary = {
   "promptAction.answer.fieldNotReached": "No se pudo acceder al campo de respuesta. No se envió nada",
   "promptAction.answer.notCleared": "No se pudo vaciar el campo de respuesta. No se envió nada",
   "promptAction.answer.notArrived": "Su respuesta no llegó al campo. No se envió nada",
+  "promptAction.answer.tooLong": "Esta respuesta es demasiado larga para el ancho del terminal: el diálogo no cabría en la pantalla. Acórtela, amplíe el terminal o elija Chat about this y envíela como mensaje. No se escribió nada",
   "promptAction.answer.notTicked": "La respuesta se escribió, pero su fila no se marcó. Compruébela en la tarjeta.",
 
   // --- stt (speech-to-text errors, lib/stt.ts + hooks/use-stt-recorder.ts) ---

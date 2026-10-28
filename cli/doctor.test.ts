@@ -6,7 +6,7 @@ import { delimiter, join } from "node:path";
 
 import { CREW_PROTOCOL_VERSION } from "../bridge/crew/enrollment.ts";
 import { leadStore, member, CREW, peerStore, T0 } from "../bridge/crew/fixtures.ts";
-import { HOST, hostFor } from "../bridge/host.ts";
+import { binaryName, HOST, hostFor } from "../bridge/host.ts";
 import { markerFor } from "../bridge/crew/staleness.ts";
 import { serializeTrustStore, TrustStore, type TrustStoreData, type TrustStoreIo } from "../bridge/crew/trust-store.ts";
 import { fakeBeaconReader, FAKE_BEACON_NOW, type FakeBeacon } from "../bridge/beacon/fake.ts";
@@ -72,6 +72,13 @@ const LINK_DIR = join(HOME, ".local", "bin");
 const LINK_AT = join(LINK_DIR, "collie");
 /** This checkout's compiled binary: `bin/collie` on POSIX, `bin/collie.exe` on Windows. */
 const OWN_BINARY = collieBinary(ROOT);
+/**
+ * A PATH entry that holds a `collie`, as a package or the Windows installer leaves one. Both names,
+ * so a test that pins another host than the machine's still finds its own.
+ */
+const PATH_DIR = "/usr/local/bin";
+const PATH_COLLIE = join(PATH_DIR, binaryName(HOST));
+const PATH_COLLIE_OTHER = join(PATH_DIR, binaryName(hostFor(HOST.platform === "win32" ? "linux" : "win32")));
 const SOCKET = "/home/pat/.config/herdr/herdr.sock";
 const HOSTPORT = "laptop.tail.ts.net:443";
 const PROXY = "http://127.0.0.1:8787";
@@ -151,6 +158,9 @@ function healthyFiles(): SeededFiles {
     // One paired device. Pairing is always on (ADR 0086), so a healthy install has one: with none,
     // `pairing` warns that every route but health and pair answers `device not paired`.
     [PAIRED_DEVICES]: pairedRegistry([{ label: "phone" }]),
+    // A `collie` on PATH: a fresh install with none warns on `path-link` (the setup check).
+    [PATH_COLLIE]: "",
+    [PATH_COLLIE_OTHER]: "",
   };
 }
 
@@ -298,7 +308,7 @@ function harness(
     deps: {
       // As in cli/crew.test.ts: the peer client races the fake fetch against a REAL timer, so the
       // budget is set far above anything this process could stall for.
-      ctx: context({ COLLIE_CREW_TIMEOUT_MS: "60000", ...over.env }, contextOver(over)),
+      ctx: context({ COLLIE_CREW_TIMEOUT_MS: "60000", PATH: PATH_DIR, ...over.env }, contextOver(over)),
       host: HOST,
       io: out,
       exec,
@@ -402,6 +412,10 @@ describe("collie doctor — the contract", () => {
       "herdr-socket",
       "bind",
       "bind-wildcard",
+      // The setup check's Tailscale rows; the operator row is Linux only, and this suite runs on the real host.
+      "tailscale",
+      "tailnet-https",
+      ...(HOST.platform === "linux" ? ["tailscale-operator"] : []),
       "acl",
       "front-door",
       "pairing",
@@ -625,14 +639,30 @@ describe("collie doctor — the local checks", () => {
 
   // ── path-link (ADR 0021) ───────────────────────────────────────────────────
   // Reported, never repaired: `doctor` holds a `LinkReader`, which has no way to publish or remove a
-  // name. Not being linked is an ordinary state, so it is `ok`; a name that reaches somewhere else is
-  // what earns a warning.
-  test("path-link: not linked is ok, and names the verb that would publish it", async () => {
+  // name. Not being linked is an ordinary state when a `collie` on PATH runs anyway, so it is `ok`; a
+  // name that reaches somewhere else, or no `collie` on PATH at all, is what earns a warning.
+  test("path-link: not linked is ok while a `collie` is on PATH, and names the verb that would publish it", async () => {
     const { code, byCheck } = await findings(harness(null));
     const f = byCheck.get("path-link");
     expect(f?.status).toBe("ok");
     expect(f?.detail).toContain("not linked");
     expect(f?.detail).toContain(LINK_AT);
+    expect(code).toBe(EXIT.OK);
+  });
+
+  test("path-link: a fresh install with no `collie` on PATH warns, with the profile line", async () => {
+    const files = healthyFiles();
+    delete files[PATH_COLLIE];
+    delete files[PATH_COLLIE_OTHER];
+    const { code, byCheck } = await findings(harness(null, [], { files, env: { PATH: "/usr/bin" } }));
+    const f = byCheck.get("path-link");
+    expect(f?.status).toBe("warn");
+    expect(f?.detail).toContain("no `collie` is on PATH");
+    // Off Windows: link it, then add the line `scripts/install.sh` prints. Windows names its own fix.
+    if (HOST.platform !== "win32") {
+      expect(f?.remedy).toContain("`collie link`");
+      expect(f?.remedy).toContain('export PATH="$HOME/.local/bin:$PATH"');
+    }
     expect(code).toBe(EXIT.OK);
   });
 
@@ -653,7 +683,8 @@ describe("collie doctor — the local checks", () => {
     });
     const f = (await findings(h)).byCheck.get("path-link");
     expect(f?.status).toBe("warn");
-    expect(f?.remedy).toContain(LINK_DIR);
+    expect(f?.detail).toContain(LINK_DIR);
+    expect(f?.remedy).toContain('export PATH="$HOME/.local/bin:$PATH"');
   });
 
   test("path-link: another checkout's link warns, naming the checkout a bare `collie` reaches", async () => {
@@ -844,54 +875,42 @@ describe("collie doctor — the local checks", () => {
     expect(byCheck.get("front-door")?.remedy).toContain("https://login.tailscale.com/admin/dns");
   });
 
-  test("front-door: on a Windows host the no-certificates remedy names the by-hand command, not `collie serve` (#172)", async () => {
-    const answers: NonNullable<Scripted["answers"]> = [
+  // Since 2026-10-28 `collie start` publishes the door on Windows too (ADR 0075, addendum), so the
+  // front-door remedies are one set for every host. The hosts below are pinned, never the machine's.
+  test("front-door: Windows and Linux are told the same remedies, and both name `collie serve`", async () => {
+    const noCerts: NonNullable<Scripted["answers"]> = [
       ["tailscale status --json", { stdout: JSON.stringify({ Self: { DNSName: "laptop.tail.ts.net." } }) }],
-      ["tailscale serve status --json", { stdout: SERVE_OK }],
       ...netmapAnswers(NETMAP_OPEN),
     ];
-    const win = harness(null, [], { answers });
-    win.deps = { ...win.deps, host: hostFor("win32") };
-    const winFinding = (await findings(win)).byCheck.get("front-door")!;
-    expect(winFinding.status).toBe("warn");
-    expect(winFinding.detail).toContain("no HTTPS certificates");
-    expect(winFinding.remedy).toContain("https://login.tailscale.com/admin/dns");
-    expect(winFinding.remedy).toContain(`tailscale serve --bg --set-path=/ ${win.deps.ctx.port}`);
-    expect(winFinding.remedy).toContain(`tailscale serve --bg --http=80 --set-path=/ ${win.deps.ctx.port}`);
-    expect(winFinding.remedy).toContain("pair a device");
-    expect(winFinding.remedy).toContain("docs/windows.md");
-    expect(winFinding.remedy).not.toContain("collie serve");
-
-    const posix = harness(null, [], { answers });
-    posix.deps = { ...posix.deps, host: hostFor("linux") };
-    const posixFinding = (await findings(posix)).byCheck.get("front-door")!;
-    expect(posixFinding.remedy).toContain("collie serve");
-    expect(posixFinding.remedy).not.toContain("tailscale serve --bg");
-  });
-
-  test("front-door: on a Windows host a solo collie with no mapping is told the by-hand command, not `collie serve`", async () => {
     const files = healthyFiles();
     delete files[HANDLER];
-    const answers: NonNullable<Scripted["answers"]> = [
+    const nothing: NonNullable<Scripted["answers"]> = [
       ["tailscale status --json", { stdout: CERTS_ONLY }],
       ["tailscale serve status --json", { stdout: "{}" }],
       ...netmapAnswers(NETMAP_OPEN),
     ];
-    const win = harness(null, [], { files, answers });
-    win.deps = { ...win.deps, host: hostFor("win32") };
-    const winFinding = (await findings(win)).byCheck.get("front-door")!;
-    expect(winFinding.status).toBe("warn");
-    expect(winFinding.remedy).toContain(`tailscale serve --bg --set-path=/ ${win.deps.ctx.port}`);
-    expect(winFinding.remedy).toContain("pair a device");
-    expect(winFinding.remedy).toContain("COLLIE_SKIP_SERVE=1");
-    expect(winFinding.remedy).not.toContain("collie serve");
+    for (const platform of ["win32", "linux"]) {
+      const certs = harness(null, [], { answers: noCerts });
+      certs.deps = { ...certs.deps, host: hostFor(platform) };
+      const certFinding = (await findings(certs)).byCheck.get("front-door")!;
+      expect(certFinding.status).toBe("warn");
+      expect(certFinding.detail).toContain("no HTTPS certificates");
+      expect(certFinding.remedy).toContain("https://login.tailscale.com/admin/dns");
+      expect(certFinding.remedy).toContain("collie serve");
+      expect(certFinding.remedy).not.toContain("tailscale serve --bg");
 
-    const posix = harness(null, [], { files, answers });
-    posix.deps = { ...posix.deps, host: hostFor("linux") };
-    expect((await findings(posix)).byCheck.get("front-door")?.remedy).toContain("`collie serve` here");
+      const solo = harness(null, [], { files, answers: nothing });
+      solo.deps = { ...solo.deps, host: hostFor(platform) };
+      const soloFinding = (await findings(solo)).byCheck.get("front-door")!;
+      expect(soloFinding.status).toBe("warn");
+      expect(soloFinding.remedy).toContain("`collie serve` here");
+      expect(soloFinding.remedy).toContain("COLLIE_SKIP_SERVE=1");
+    }
   });
 
-  test("front-door: on a Windows host a hand-made root mount that proxies to this collie passes; a POSIX host still warns", async () => {
+  test("front-door: a hand-made root mount that proxies to this collie, with no record, warns and names `collie start`", async () => {
+    // The door docs/windows.md had the operator make by hand before 2026-10-28. It works, but Collie
+    // cannot tear down what it did not record, so it is not a pass on any host any more.
     const files = healthyFiles();
     delete files[HANDLER];
     const answers: NonNullable<Scripted["answers"]> = [
@@ -899,57 +918,16 @@ describe("collie doctor — the local checks", () => {
       ["tailscale serve status --json", { stdout: SERVE_OK }],
       ...netmapAnswers(NETMAP_OPEN),
     ];
-    const win = harness(null, [], { files, answers });
-    win.deps = { ...win.deps, host: hostFor("win32") };
-    const winFinding = (await findings(win)).byCheck.get("front-door")!;
-    expect(winFinding.status).toBe("ok");
-    expect(winFinding.detail).toContain(`proxies to http://127.0.0.1:${win.deps.ctx.port}`);
-    expect(winFinding.detail).toContain("published by hand");
-
-    const posix = harness(null, [], { files, answers });
-    posix.deps = { ...posix.deps, host: hostFor("linux") };
-    const posixFinding = (await findings(posix)).byCheck.get("front-door")!;
-    expect(posixFinding.status).toBe("warn");
-    expect(posixFinding.remedy).toContain("`collie serve` here");
-  });
-
-  test("front-door: on a Windows host a hand-made HTTP mount on :80 passes on a tailnet with no certificates (Headscale)", async () => {
-    const files = healthyFiles();
-    delete files[HANDLER];
-    const serveHttp80 = JSON.stringify({
-      TCP: { "80": { HTTP: true } },
-      Web: { "laptop.tail.ts.net:80": { Handlers: { "/": { Proxy: PROXY } } } },
-    });
-    const answers: NonNullable<Scripted["answers"]> = [
-      ["tailscale status --json", { stdout: JSON.stringify({ Self: { DNSName: "laptop.tail.ts.net." } }) }],
-      ["tailscale serve status --json", { stdout: serveHttp80 }],
-      ...netmapAnswers(NETMAP_OPEN),
-    ];
-    const win = harness(null, [], { files, answers });
-    win.deps = { ...win.deps, host: hostFor("win32") };
-    const winFinding = (await findings(win)).byCheck.get("front-door")!;
-    expect(winFinding.status).toBe("ok");
-    expect(winFinding.detail).toContain(`:80 proxies to http://127.0.0.1:${win.deps.ctx.port}`);
-
-    // A mount on :80 that proxies somewhere else is not ours: the certificate warning stays.
-    const elsewhere = harness(null, [], {
-      files,
-      answers: [
-        answers[0]!,
-        ["tailscale serve status --json", { stdout: serveHttp80.replace(PROXY, "http://127.0.0.1:9999") }],
-        ...netmapAnswers(NETMAP_OPEN),
-      ],
-    });
-    elsewhere.deps = { ...elsewhere.deps, host: hostFor("win32") };
-    const elsewhereFinding = (await findings(elsewhere)).byCheck.get("front-door")!;
-    expect(elsewhereFinding.status).toBe("warn");
-    expect(elsewhereFinding.detail).toContain("no HTTPS certificates");
-
-    const posix = harness(null, [], { files, answers });
-    posix.deps = { ...posix.deps, host: hostFor("linux") };
-    const posixFinding = (await findings(posix)).byCheck.get("front-door")!;
-    expect(posixFinding.status).toBe("warn");
-    expect(posixFinding.detail).toContain("no HTTPS certificates");
+    for (const platform of ["win32", "linux"]) {
+      const h = harness(null, [], { files, answers });
+      h.deps = { ...h.deps, host: hostFor(platform) };
+      const f = (await findings(h)).byCheck.get("front-door")!;
+      expect(f.status).toBe("warn");
+      expect(f.detail).toContain(`proxies to http://127.0.0.1:${h.deps.ctx.port}`);
+      expect(f.detail).toContain("no record of this mapping");
+      expect(f.remedy).toBe("run `collie start` once; it adopts this mapping and records it");
+      expect(f.detail).not.toContain("records no mapping on Windows");
+    }
   });
 
   test("front-door: a LEAD with no mapping and no COLLIE_SKIP_SERVE is an error", async () => {
@@ -963,7 +941,6 @@ describe("collie doctor — the local checks", () => {
         ...netmapAnswers(NETMAP_OPEN),
       ],
     });
-    // The remedy names `collie serve` on a POSIX host only; a Windows host is told the by-hand command.
     lead.deps = { ...lead.deps, host: hostFor("linux") };
     const { code, byCheck } = await findings(lead);
     expect(byCheck.get("front-door")?.status).toBe("error");
@@ -1702,6 +1679,9 @@ describe("the finding set is scoped by the chosen multiplexer", () => {
       "update-source",
       "bind",
       "bind-wildcard",
+      "tailscale",
+      "tailnet-https",
+      ...(HOST.platform === "linux" ? ["tailscale-operator"] : []),
       "acl",
       "front-door",
       "pairing",

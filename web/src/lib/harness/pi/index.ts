@@ -9,7 +9,7 @@
 // (panel.ts). Rows keep their indices. A question read from a cropped view binds to the columns it
 // was read from (`bindColumns`); the editor beside the panel binds nothing.
 import { trimTrailingBlank, type Block, type StyledLine } from "../../blocks";
-import type { HarnessAdapter } from "../types";
+import type { DialogDetector, HarnessAdapter } from "../types";
 import { detectPiQuestion, piModalOnScreen, piQuestionBanner, type PiQuestion } from "./ask";
 import { composerDraft, composerPrompt, composerStatusLines, locateComposer } from "./composer";
 import { piView, type PiView } from "./panel";
@@ -30,8 +30,7 @@ export function piBuildBlocks(lines: StyledLine[]): Block[] {
     );
     return blocks;
   }
-  // The trust prompt fills the screen before any editor or side panel exists, so it is read whole.
-  const trust = view.column === null ? detectPiTrust(lines) : null;
+  const trust = trustOn(view, lines);
   if (trust !== null) {
     const before = trimTrailingBlank(lines.slice(0, trust.startLine));
     const blocks: Block[] = before.length > 0 ? [{ kind: "raw", lines: before }] : [];
@@ -58,6 +57,17 @@ function boundQuestion(view: PiView): PiQuestion | null {
   if (question.kind !== "prompt-select") return null;
   return { ...question, model: { ...question.model, bindColumns: { start: 0, end: view.column } } };
 }
+
+/** The trust prompt fills the screen before any editor or side panel exists, so it is read whole. */
+function trustOn(view: PiView, lines: StyledLine[]): ReturnType<typeof detectPiTrust> {
+  return view.column === null ? detectPiTrust(lines) : null;
+}
+
+/** The detectors `piBuildBlocks` runs, in its order, for the unread-dialog card's report (ADR 0123). */
+const PI_DIALOG_DETECTORS: readonly DialogDetector[] = [
+  { name: "question", detect: (lines) => boundQuestion(piView(lines)) },
+  { name: "trust", detect: (lines) => trustOn(piView(lines), lines) },
+];
 
 /** The editor is on screen and no pi modal is: the only screen a reply may be typed into. A question's
  *  inline answer editor is not a place the phone types (.adr/0098), so it answers false. */
@@ -97,4 +107,5 @@ export const piAdapter: HarnessAdapter = {
   questionPending: (lines) => piQuestionBanner(piView(lines).lines),
   // The trust prompt ends at its bottom rule with no status rows under it, so it is not a pi frame.
   modalOnScreen: (lines) => piModalOnScreen(piView(lines).lines) || detectPiTrust(lines) !== null,
+  dialogDetectors: PI_DIALOG_DETECTORS,
 };

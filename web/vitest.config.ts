@@ -81,6 +81,12 @@ export default defineConfig({
         extends: true,
         test: { ...shared, name: "logic", environment: "node", include: LOGIC },
       },
+      // The browser leg's model stub (M67): node only, and no MSW, because its tests stand up real
+      // 127.0.0.1 listeners (the stub and a fake OpenRouter) and MSW would answer their fetches.
+      {
+        extends: true,
+        test: { globals: true, css: false, name: "rig", environment: "node", include: ["e2e/rig/**/*.test.ts"] },
+      },
       {
         extends: true,
         test: {

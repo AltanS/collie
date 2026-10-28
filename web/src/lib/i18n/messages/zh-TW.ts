@@ -1581,6 +1581,7 @@ export const zhTW: Dictionary = {
   "unreadDialog.caption": "Collie 無法讀取此對話框", // wordsmith
   "unreadDialog.confirmKey": "再次點擊以傳送 {key}", // wordsmith
   "unreadDialog.confirmDismiss": "再次點擊以關閉", // wordsmith
+  "unreadDialog.report": "回報問題",
   "dialog.preview.currentAnswerAria": "目前回答",
   "dialog.preview.previewedBelowAria": "下方顯示預覽",
   "dialog.preview.previewLabel": "預覽 · {label}",
@@ -1608,6 +1609,7 @@ export const zhTW: Dictionary = {
   "promptAction.answer.fieldNotReached": "無法移到回答欄，未傳送任何內容",
   "promptAction.answer.notCleared": "無法清空回答欄，未傳送任何內容",
   "promptAction.answer.notArrived": "回答未出現在回答欄中，未提交任何內容",
+  "promptAction.answer.tooLong": "此回答對終端寬度來說太長：對話框將無法容納在畫面上。請縮短回答、加寬終端，或選擇 Chat about this 並以訊息傳送。未輸入任何內容",
   "promptAction.answer.notTicked": "回答已輸入，但其所在列未被勾選。請在卡片上檢查。",
 
   // --- stt (speech-to-text errors, lib/stt.ts + hooks/use-stt-recorder.ts) ---

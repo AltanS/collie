@@ -1595,6 +1595,7 @@ export const ja: Dictionary = {
   "unreadDialog.caption": "Collie はこの対話を読み取れません", // wordsmith
   "unreadDialog.confirmKey": "もう一度タップして{key}を送信", // wordsmith
   "unreadDialog.confirmDismiss": "もう一度タップして閉じる", // wordsmith
+  "unreadDialog.report": "問題を報告",
   "dialog.preview.currentAnswerAria": "現在の回答",
   "dialog.preview.previewedBelowAria": "プレビューを下に表示中",
   "dialog.preview.previewLabel": "プレビュー · {label}",
@@ -1623,6 +1624,7 @@ export const ja: Dictionary = {
   "promptAction.answer.fieldNotReached": "回答欄にアクセスできませんでした。何も送信されませんでした",
   "promptAction.answer.notCleared": "回答欄をクリアできませんでした。何も送信されませんでした",
   "promptAction.answer.notArrived": "回答が回答欄に表示されませんでした。何も送信されていません。",
+  "promptAction.answer.tooLong": "この回答はターミナルの幅に対して長すぎます。ダイアログが画面に収まりません。短くするか、ターミナルを広げるか、Chat about this を選んでメッセージとして送信してください。何も入力されていません",
   "promptAction.answer.notTicked": "回答は入力されましたが、該当する行にチェックが入りませんでした。カード上で確認してください。",
 
   // --- stt (speech-to-text errors, lib/stt.ts + hooks/use-stt-recorder.ts) ---

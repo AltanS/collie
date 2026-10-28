@@ -2443,6 +2443,29 @@ The last seven rows were captured on opencode 1.18.34, the rest of this corpus o
 `QUESTION_NOTES.md`). Each of the seven was checked for user and host names, home paths, tokens and
 session ids and holds only probe strings and the model name.
 
+## opencode 2.1 question corpus (captured 2026-10-27, opencode 2.1.1, throwaway tmux pane)
+
+Captures of the same `question` tool dialog on **opencode 2.1.1**, in a throwaway tmux session at
+120 by 40, `OPENCODE_DISABLE_AUTOUPDATE=1`, with the prompts sent by hand. Read with
+`tmux capture-pane -p -e`. Byte-faithful; the only text above the dialog is the probe prompts and
+the model's own short replies. The differences from 1.18 are measured in
+`web/src/lib/harness/opencode/QUESTION_NOTES.md` → "Round three": a `Questions` title row, the
+pointer painted as an accent ink rather than a chip, `Submit` in place of `Confirm`, a bold active
+chip, a review body with no `Review` heading, and a checkbox on the free-text row.
+
+| Fixture | State / what's in it | Herdr status |
+| --- | --- | --- |
+| `oc--v211-question--single.txt` | One single-select question, `Which colour?`, three options with descriptions plus `4. Type your own answer`, `Questions` title above, pointer (accent ink on the digit and label) on `1. Red`, footer `↑↓ select  enter submit  esc dismiss` | not read |
+| `oc--v211-question--single--moved.txt` | After one `Down`: the accent ink is on `2. Green`, nothing else changed | not read |
+| `oc--v211-question--multi.txt` | One multi-select question, four options: tab bar `Toppings  Submit`, `[ ]` boxes, the free-text row reads `5. [ ] Type your own answer`, footer `⇆ tab  ↑↓ select  enter toggle  esc dismiss` | not read |
+| `oc--v211-question--multi--toggled.txt` | After `Enter` on `1. [ ] Ham` and one `Down`: `1. [✓] Ham` (accent box, bright label, grey digit) and the pointer's accent ink on `2. Olives` | not read |
+| `oc--v211-question--multi--review.txt` | The `Submit` tab of a lone multi call: `Toppings: Ham, extra` with no `Review` heading, footer `⇆ tab  enter submit  esc dismiss` | not read |
+| `oc--v211-question--two.txt` | Two questions in one call: tab bar `Colour  Size  Submit`, `Colour` active (bold), footer `⇆ tab  ↑↓ select  enter confirm  esc dismiss` | not read |
+| `oc--v211-question--two--answered.txt` | Back on `Colour` after answering it: `1. Red ✓`, the pointer on it, `Size` still unanswered | not read |
+| `oc--v211-question--two--review.txt` | The `Submit` tab with both answered: `Colour: Red` and `Size: Small` on consecutive rows, no `Review` heading | not read |
+| `oc--v211-question--multi--free-text.txt` | The free-text input OPEN: the row reads `5. [✓] <typed>`, the list's footer gives way to `⇆ tab  enter done  esc close`. Stays raw; the card with Escape covers it | not read |
+
+
 ## Claude Code box table with a VS16 emoji (captured 2026-10-13, Claude Code 2.1.296, herdr 0.9.0, sandbox pane)
 
 One `format:ansi` read of a sandbox Claude asked to echo a markdown table, cut to the reply's eleven
@@ -3285,6 +3308,24 @@ four-row `/wx` list over an extension's widget. A widget row is drawn with ONE l
 | `omp--v18-6-1-palette-widget-below-6.txt`, `omp--v18-12-6-palette-widget-below-6.txt` | `popup` | `/wx` typed over `/wb 6`: the list, then six widget rows (` below row 1` to ` below row 6`) |
 | `omp--v18-6-1-palette-widget-and-status.txt`, `omp--v18-12-6-palette-widget-and-status.txt` | `popup` | The same, and the flush-left status row `PLAN 3/6` under the widget |
 | `omp--v18-6-1-palette-tick-below.txt`, `omp--v18-12-6-palette-tick-below.txt` | `popup` | `/wx` typed over `/tfb`: the list, then one ticking widget row |
+
+A live band over the box (captured 2026-10-28, OMP 18.13.1 and Codex 0.163.0, Collie's rig; in `fixtures/surface/`; the folder names
+the lab only). The OMP pair is plain text; the Codex pair keeps its SGR, so the empty box's faint placeholder reads as one. A lab
+extension's eight-row widget over the editor ticks its top row every 100 ms, seven rows over the status row and outside
+`idle.volatile.above.maxRows`: every `/command` refused `probe_failed` and a message went in, until `idle.volatile.above.ticks`.
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `omp--v18-13-1-live-band-8.txt` | `idle` | The widget's rows (`⠦ waiting on 1 job · 15.3s · 962 tok/s · 2938 tok`, then `band row 2 of 8` to `band row 8 of 8`) over the status row and the empty box |
+| `codex--v0-163-0-welcome-idle.txt` | `idle` | A fresh Codex: the header, the braille welcome picture, the empty box |
+| `codex--v0-163-0-welcome-slash-status.txt` | `popup` | The same with `/status` typed: the picture's rows went blank and the command list stands over the box. A command here was left typed (`changed`) until its S1 compare took `idle.volatile.above.losesText` |
+
+A Codex 0.163.0 idle footer with a warning (captured 2026-10-28 in Collie's rig; in `fixtures/surface/`; plain text, so the empty box's placeholder carries no faint paint, and the cwd became `~/project`). The footer row reads `? for shortcuts` and, after wide spacing, `⚠ 1 warning · f2 to view`. A command sent in a turn was refused `probe_failed` ("The probe character changed more than the box") until `idle.volatile.below.hints` took that trailing segment, because the footer then becomes `tab to queue message`.
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `codex--v0-163-0-idle-warning.txt` | `idle` | A turn's `Waiting for background terminal` row over the empty box; the footer row carries the warning segment |
+| `codex--v0-163-0-in-turn-probe.txt` | `idle` | The same screen with the probe character typed: `› ⌁`, and the footer row now `tab to queue message` |
 
 A pasted box drawing in the draft (gang three, 01-regression W1, same date and versions; in `fixtures/surface/`; the rows keep their padding to 120 columns, which is what tells the person's `│` from a border):
 

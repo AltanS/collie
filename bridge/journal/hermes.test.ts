@@ -13,12 +13,15 @@ import {
 } from "./hermes.ts";
 
 const SID = "20260909_154520_9e0b91";
+const LOCAL_SID = "local-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
 describe("Hermes session ids", () => {
   test("accepts Hermes ids and rejects path-shaped input", () => {
     expect(isHermesSessionId(SID)).toBe(true);
+    expect(isHermesSessionId(LOCAL_SID)).toBe(true);
     expect(isHermesSessionId("../../state.db")).toBe(false);
     expect(isHermesSessionId("2026_bad")).toBe(false);
+    expect(isHermesSessionId("local-abc")).toBe(false);
   });
 });
 

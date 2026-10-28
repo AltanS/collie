@@ -307,6 +307,14 @@ describe("the codex profile (M56 spec 13)", () => {
     expect(commandOf(list.entry, "  muse-wonder-full-1.0 · xhigh · /tmp · YOLO")).toBeNull();
   });
 
+  it("omp and pi: an extension's widget over the box may tick in place; no other profile says so (rig, 2026-10-28)", () => {
+    const profiles = loadProfiles();
+    expect(profiles.get("omp")!.idle.volatile.above.ticks).toBe(true);
+    expect(profiles.get("pi")!.idle.volatile.above).toMatchObject({ losesText: true, ticks: true });
+    const ticking = [...profiles.values()].filter((profile) => profile.idle.volatile.above.ticks === true).map((profile) => profile.id);
+    expect(ticking.toSorted()).toEqual(["omp", "pi"]);
+  });
+
   it("codex: the rows above may lose text, and the hint rows under the box are named (lab, 0.163.0)", () => {
     const codex = parseProfile(rawCodex());
     expect(codex.idle.volatile.above.losesText).toBe(true);
@@ -314,6 +322,19 @@ describe("the codex profile (M56 spec 13)", () => {
     expect(hints.some((hint) => hint.test("  ← for agents · ? for shortcuts"))).toBe(true);
     expect(hints.some((hint) => hint.test("  tab to queue message"))).toBe(true);
     expect(hints.some((hint) => hint.test("  GPT-6-Luna low · ~/project"))).toBe(false);
+  });
+
+  it("codex: the footer hint takes a trailing segment after wide spacing, such as the warning count (lab, 0.163.0, 2026-10-28)", () => {
+    const codex = parseProfile(rawCodex());
+    const hints = codex.idle.volatile.below.hints!.map((source) => new RegExp(source, "u"));
+    const isHint = (row: string): boolean => hints.some((hint) => hint.test(row));
+    expect(isHint("  ? for shortcuts" + " ".repeat(94) + "⚠ 1 warning · f2 to view")).toBe(true);
+    expect(isHint("  ← for agents · ? for shortcuts" + " ".repeat(60) + "⚠ 2 warnings · f2 to view")).toBe(true);
+    // One space is no wide spacing, and a row that only begins with the words is not the hint.
+    expect(isHint("  ? for shortcuts now")).toBe(false);
+    expect(isHint("  ? for shortcuts, and more")).toBe(false);
+    // The in-turn hint keeps its strict shape.
+    expect(isHint("  tab to queue message  ⚠ 1 warning")).toBe(false);
   });
 
   it("codex: the running rows take the queued-message hint Codex 0.163.0 draws in a turn", () => {
@@ -371,6 +392,7 @@ describe("the codex profile (M56 spec 13)", () => {
     ["codex: a blank anchor off column 0", ["idle", "frame", "top", "column"], 2, "idle.frame.top.column"],
     ["codex: a running row that is no expression", ["idle", "runningRows", 0], "[unclosed", "idle.runningRows[0]"],
     ["codex: losesText that is not true", ["idle", "volatile", "above", "losesText"], false, "idle.volatile.above.losesText"],
+    ["codex: ticks that is not true", ["idle", "volatile", "above", "ticks"], false, "idle.volatile.above.ticks"],
     ["codex: a hint row that is no expression", ["idle", "volatile", "below", "hints", 0], "[unclosed", "idle.volatile.below.hints[0]"],
     ["codex: hint rows that are no list", ["idle", "volatile", "below", "hints"], "? for shortcuts", "idle.volatile.below.hints"],
     ["codex: no command that runs in a turn", ["keys", "commandsRunInTurn"], [], "keys.commandsRunInTurn"],
@@ -1156,7 +1178,7 @@ describe("the Claude ranges and the ledger", () => {
 describe("keys that differ by platform (M56 spec 14 review)", () => {
   const raw = (): JsonObject => parseJsonObject(readFileSync(join(PROFILES_DIR, "pi.json"), "utf8"))!;
 
-  it("pi sends and queues with Alt+Enter, and with Ctrl+Q on Windows", () => {
+  it("pi sends and queues with Alt+Enter, and with Ctrl+Q on Windows and under WSL", () => {
     const pi = loadProfiles().get("pi")!;
     expect(pi.keys.submit).toEqual(["alt+Enter"]);
     expect(pi.keys.queueKey).toBe("alt+Enter");
@@ -1166,6 +1188,22 @@ describe("keys that differ by platform (M56 spec 14 review)", () => {
     expect(win.keys.commandSubmit).toEqual(["Enter"]);
     expect(forPlatform(pi, "linux")).toBe(pi);
     expect(forPlatform(pi, "darwin")).toBe(pi);
+    const wsl = forPlatform(pi, "wsl");
+    expect(wsl.keys.submit).toEqual(["ctrl+q"]);
+    expect(wsl.keys.queueKey).toBe("ctrl+q");
+    expect(wsl.keys.commandSubmit).toEqual(["Enter"]);
+    expect(forPlatform(pi, "linux").keys.submit).toEqual(["alt+Enter"]);
+    expect(forPlatform(pi, "linux").keys.queueKey).toBe("alt+Enter");
+  });
+
+  it("a profile with no wsl entry keeps its default keys under WSL", () => {
+    const claude = loadProfiles().get("claude")!;
+    const wsl = forPlatform(claude, "wsl");
+    expect(wsl).toBe(claude);
+    expect(wsl.keys.submit).toEqual(claude.keys.submit);
+    expect(wsl.keys.queueKey).toBe(claude.keys.queueKey);
+    const omp = loadProfiles().get("omp")!;
+    expect(forPlatform(omp, "wsl")).toBe(omp);
   });
 
   it("the bridge's match carries the platform's keys", () => {
@@ -1173,6 +1211,7 @@ describe("keys that differ by platform (M56 spec 14 review)", () => {
     expect(match?.profile.keys.submit).toEqual(["ctrl+q"]);
     expect(match?.status).toBe("verified");
     expect(profileForPlatform("pi", "0.87.1", "linux", { log: () => {} })?.profile.keys.submit).toEqual(["alt+Enter"]);
+    expect(profileForPlatform("pi", "0.87.1", "wsl", { log: () => {} })?.profile.keys.submit).toEqual(["ctrl+q"]);
     expect(profileForPlatform("nothing-known", "1.0.0", "win32")).toBeNull();
   });
 
@@ -1186,6 +1225,8 @@ describe("keys that differ by platform (M56 spec 14 review)", () => {
     expect(failure(change(raw(), ["keys", "submit"], { win32: ["ctrl+q"] })).path).toBe("keys.submit.default");
     expect(failure(change(raw(), ["keys", "submit"], { default: ["alt+Enter"], plan9: ["ctrl+q"] })).path).toBe("keys.submit.plan9");
     expect(failure(change(raw(), ["keys", "submit"], { default: ["alt+Enter"], win32: [] })).path).toBe("keys.submit.win32");
+    expect(parseProfile(change(raw(), ["keys", "submit"], { default: ["alt+Enter"], wsl: ["ctrl+q"] })).keys.submitByPlatform).toEqual({ wsl: ["ctrl+q"] });
+    expect(failure(change(raw(), ["keys", "submit"], { default: ["alt+Enter"], wsl: [] })).path).toBe("keys.submit.wsl");
   });
 
   it("keys.queueKey names one key per platform, never Enter or Escape", () => {

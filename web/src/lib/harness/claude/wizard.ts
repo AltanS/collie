@@ -22,6 +22,7 @@ import {
   coreRegionSignature,
   freeTextRowIndex,
   isFreeTextLabel,
+  OPTION_SCAN_WINDOW,
   parseOptionRow,
   trailingMenuRows,
 } from "./prompt-select";
@@ -125,8 +126,6 @@ export function parseStepperLine(line: StyledLine): ParsedStepper | null {
 // Detection
 // ---------------------------------------------------------------------------------------------
 
-// Same bounded windows philosophy as prompt-select: options sit against the footer.
-const OPTION_SCAN_WINDOW = 24;
 const MAX_FOOTER_GAP = 3;
 // How far above its anchor the stepper is looked for. The review step lists every answered question
 // (2–3 lines each) between the stepper and the submit rows, and a question step's question wraps to
