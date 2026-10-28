@@ -217,6 +217,39 @@ export function tailnetInboundBlocked(exec: Exec): boolean {
   return packetFilterDeniesAll(r.stdout);
 }
 
+// ── What is Tailscale doing here? ────────────────────────────────────────────
+
+/** What one bounded `tailscale status --json` said about this machine. */
+export type TailscaleState =
+  | { readonly kind: "absent" }
+  /** Ran, and said the daemon is down, logged out or stopped. `state` is its `BackendState`. */
+  | { readonly kind: "down"; readonly state: string | null }
+  /** Exit 0 with a document this build cannot read: no verdict either way. */
+  | { readonly kind: "unreadable" }
+  | { readonly kind: "running"; readonly json: string };
+
+/** One bounded `tailscale status --json`, read into what it says about this machine. */
+export function readTailscale(exec: Exec): TailscaleState {
+  if (exec.which("tailscale") === null) return { kind: "absent" };
+  const r = exec.capture("tailscale", ["status", "--json"], TAILSCALE_PROBE_MS);
+  if (!r.found) return { kind: "absent" };
+  if (r.code !== 0) return { kind: "down", state: null };
+  let data: unknown;
+  try {
+    data = JSON.parse(r.stdout);
+  } catch {
+    return { kind: "unreadable" };
+  }
+  if (!(data instanceof Object)) return { kind: "unreadable" };
+  // SAFETY: narrowed to an object above, and the field is only compared and stringified, never
+  // trusted as a shape. An absent state reads as running: every Tailscale build that writes this
+  // document names it, so its absence is a document from somewhere else, and the rows below read
+  // what it does say.
+  const state = (data as { BackendState?: unknown }).BackendState;
+  if (state !== undefined && state !== null && state !== "Running") return { kind: "down", state: String(state) };
+  return { kind: "running", json: r.stdout };
+}
+
 // ── Does this tailnet have HTTPS at all? ─────────────────────────────────────
 // `tailscale serve` on :443 does not FAIL on a tailnet without certificates. It prints a question —
 // "HTTPS must be enabled, do you want to enable it?" — and waits. A caller that captures its output

@@ -20,8 +20,10 @@ import {
   certDomains,
   HTTPS_DISABLED_HINT,
   NO_CERTIFICATES_HTTP_HINT,
+  readTailscale,
   selfDnsName,
   TAILSCALE_PROBE_MS,
+  type TailscaleState,
 } from "./tailnet.ts";
 
 // The setup check: what a machine needs before `collie start` can put Collie on a phone, in words an
@@ -98,36 +100,6 @@ export const SETUP_CLOSING =
   "Running, but your phone cannot reach it yet. Fix the setup lines above, then run collie start again. collie doctor repeats this check.";
 
 // ── Tailscale ────────────────────────────────────────────────────────────────
-
-/** What one bounded `tailscale status --json` said about this machine. */
-type TailscaleState =
-  | { readonly kind: "absent" }
-  /** Ran, and said the daemon is down, logged out or stopped. `state` is its `BackendState`. */
-  | { readonly kind: "down"; readonly state: string | null }
-  /** Exit 0 with a document this build cannot read: no verdict either way. */
-  | { readonly kind: "unreadable" }
-  | { readonly kind: "running"; readonly json: string };
-
-function readTailscale(exec: Exec): TailscaleState {
-  if (exec.which("tailscale") === null) return { kind: "absent" };
-  const r = exec.capture("tailscale", ["status", "--json"], TAILSCALE_PROBE_MS);
-  if (!r.found) return { kind: "absent" };
-  if (r.code !== 0) return { kind: "down", state: null };
-  let data: unknown;
-  try {
-    data = JSON.parse(r.stdout);
-  } catch {
-    return { kind: "unreadable" };
-  }
-  if (!(data instanceof Object)) return { kind: "unreadable" };
-  // SAFETY: narrowed to an object above, and the field is only compared and stringified, never
-  // trusted as a shape. An absent state reads as running: every Tailscale build that writes this
-  // document names it, so its absence is a document from somewhere else, and the rows below read
-  // what it does say.
-  const state = (data as { BackendState?: unknown }).BackendState;
-  if (state !== undefined && state !== null && state !== "Running") return { kind: "down", state: String(state) };
-  return { kind: "running", json: r.stdout };
-}
 
 /** The user name a remedy can name, or the shell's `$USER` when the environment does not say. */
 function userName(deps: Pick<SetupDeps, "ctx">): string | null {

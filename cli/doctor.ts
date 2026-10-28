@@ -89,8 +89,9 @@ import { BUILD_MARKER, currentVersionDir, listVersions, platformId, readBuildMar
 import { settingsHold } from "./hold-entry.ts";
 import { loadProfiles } from "../web/src/lib/surface/profile.ts";
 import {
+  certDomains,
   HTTPS_DISABLED_HINT,
-  tailnetCertDomains,
+  readTailscale,
   tailnetInboundBlocked,
   tailnetName,
 } from "./tailnet.ts";
@@ -993,10 +994,27 @@ function frontDoor(deps: DoctorDeps, mode: string): Finding {
       "install tailscale and `collie serve`, or set COLLIE_SKIP_SERVE=1 if you own the ingress (docs/deployment.md Variant E)",
     );
   }
+  // Read the state before the certificates: a signed-out Tailscale answers `status --json` with
+  // exit 0 and no `CertDomains`, which reads as "no HTTPS" and blames the wrong thing.
+  const state = readTailscale(deps.exec);
+  if (state.kind === "down") {
+    return skipped(
+      "front-door",
+      "Tailscale is not running here, so the published mapping cannot be read yet",
+      "fix the tailscale line first, then run `collie doctor` again",
+    );
+  }
+  if (state.kind === "unreadable") {
+    return skipped(
+      "front-door",
+      "`tailscale status --json` did not answer readably",
+      "run it by hand, then `collie doctor` again",
+    );
+  }
   // No certificates, no https door — and `tailscale serve` says so by asking a question at a
   // terminal a service has not got (#172). `collie serve` refuses on this same fact; doctor names it
   // here so the operator reads it before they type the verb.
-  if (deps.ctx.serveMode === "https" && tailnetCertDomains(deps.exec)?.length === 0) {
+  if (deps.ctx.serveMode === "https" && state.kind === "running" && certDomains(state.json)?.length === 0) {
     return warn(
       "front-door",
       "this tailnet has no HTTPS certificates, so an https front door cannot be published",

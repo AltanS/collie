@@ -47,6 +47,9 @@ Running a crew? Update the lead first; members follow on their own. Details:
   three seconds inside Collie itself. Before, the ACL probe went through an external `timeout`
   command, which on Windows is a wait command, so `collie start` and `collie doctor` could stall or
   skip the check.
+- **Doctor no longer blames the certificates when Tailscale is signed out.** The `front-door` row now
+  reads the Tailscale state first and says the check cannot run yet, instead of "this tailnet has no
+  HTTPS certificates".
 
 ### Docs
 

@@ -874,6 +874,20 @@ describe("collie doctor — the local checks", () => {
     expect(byCheck.get("front-door")?.remedy).toContain("https://login.tailscale.com/admin/dns");
   });
 
+  test("front-door: a signed-out Tailscale is not blamed on the certificates", async () => {
+    const { byCheck } = await findings(
+      harness(null, [], {
+        answers: [
+          ["tailscale status --json", { stdout: JSON.stringify({ BackendState: "NeedsLogin" }) }],
+          ...netmapAnswers(NETMAP_OPEN),
+        ],
+      }),
+    );
+    expect(byCheck.get("front-door")?.status).toBe("skipped");
+    expect(byCheck.get("front-door")?.detail).toContain("Tailscale is not running here");
+    expect(byCheck.get("front-door")?.detail).not.toContain("no HTTPS certificates");
+  });
+
   // Since 2026-10-28 `collie start` publishes the door on Windows too (ADR 0075, addendum), so the
   // front-door remedies are one set for every host. The hosts below are pinned, never the machine's.
   test("front-door: Windows and Linux are told the same remedies, and both name `collie serve`", async () => {
