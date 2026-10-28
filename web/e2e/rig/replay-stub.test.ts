@@ -372,10 +372,10 @@ describe("checkFile", () => {
     ]);
   });
 
-  it("fails a .jsonl over 512 KiB and keeps the existing checks", () => {
-    const big = `${head}{"pad":"${"x".repeat(512 * 1024)}"}\n`;
-    expect(check("a.jsonl", big)).toEqual(["a.jsonl: 513 KiB is over the 512 KiB limit"]);
-    expect(check("a.jsonl", `${head}{"pad":"${"x".repeat(512 * 1024 - head.length - 20)}"}\n`)).toEqual([]);
+  it("fails a .jsonl over 1 MiB and keeps the existing checks", () => {
+    const big = `${head}{"pad":"${"x".repeat(1024 * 1024)}"}\n`;
+    expect(check("a.jsonl", big)).toEqual(["a.jsonl: 1025 KiB is over the 1024 KiB limit"]);
+    expect(check("a.jsonl", `${head}{"pad":"${"x".repeat(1024 * 1024 - head.length - 20)}"}\n`)).toEqual([]);
     expect(check("a.jsonl", "not json\n")).toHaveLength(1);
     expect(check("a.jsonl", `${head}{"a":"Authorization: x"}\n`)).toEqual(["a.jsonl: line 2: an Authorization header"]);
   });

@@ -1,7 +1,7 @@
 // `bun run e2e:recordings:check` (in web/): the check of the browser leg's cassettes (M67, ADR 0125). It
 // reads every file under web/e2e/rig/cassettes/ and fails when one holds a key, a bearer token, an
 // Authorization or x-api-key header, a path into a home folder (cassette.ts FORBIDDEN), the owner's
-// host names or company names (HOSTS), when a .jsonl is over 512 KiB, when a .jsonl does not parse, or
+// host names or company names (HOSTS), when a .jsonl is over 1 MiB, when a .jsonl does not parse, or
 // when a meta.json lists a case under `failed`: a merged tree holds no recording from a case that did not
 // pass. `checkFile` is the pure core over (path, text); the vitest in cassettes-check.test.ts runs it
 // over the committed tree on every CI test run. It prints the file and line of each finding, never the
@@ -25,8 +25,8 @@ function files(dir: string): string[] {
   });
 }
 
-/** The biggest a cassette file may be. A bigger one is a recording of a case that streams too much. */
-export const MAX_CASSETTE_BYTES = 512 * 1024;
+/** The biggest a cassette file may be: 1 MiB. The longest legitimate turn so far (omp, 160 queued items) is about 370 KB per stream. */
+export const MAX_CASSETTE_BYTES = 1024 * 1024;
 
 /** What must not appear in any cassette beyond cassette.ts FORBIDDEN: the owner's machines and companies. */
 export const HOSTS: readonly { readonly name: string; readonly re: RegExp }[] = [

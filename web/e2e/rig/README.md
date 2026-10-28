@@ -369,8 +369,15 @@ COLLIE_RIG_LIVE=pi COLLIE_RIG_RECORD=1 COLLIE_RIG_KEY_FILE=/path/to/.env bunx pl
 That run rewrites only that case and clears its mark when it passes. Commit the recordings like
 fixtures, after reading the diff and running the check.
 
-A record run settles each case on its verdict: a pass with no model call removes that harness's recording of it, a pass with calls overwrites the file and clears the mark, and a failure keeps an earlier good recording (same model and skill, no mark) and logs one line, or else writes the new one and marks it, while a replay run never changes a cassette.
-A harness version bump leaves the old `<version>` folder, so delete it in the same commit that records the new one.
+A record run settles each case when its verdict arrives.
+A case that passes with no model call removes that harness's recording of it.
+A case that passes with calls overwrites the file and clears the mark.
+A case that fails keeps an earlier good recording and logs one line.
+A good recording has the same model and skill, and no mark.
+Without a good recording, the failed case writes the new one and marks it.
+A replay run never changes a cassette.
+A harness version bump leaves the old `<version>` folder.
+Delete that folder in the same commit that records the new version.
 
 **Where they live.** `cassettes/<harness>/<version>/<case>.jsonl`, one file per case (`pi.walky-agents`,
 `claude.walky-broadcast` for the pi or omp calls of a Claude case), and `meta.json` per version with one
@@ -389,11 +396,18 @@ paints that text, and the case fails with the stub's message first. It never get
 Record again.
 
 **The redaction check.** `bun run e2e:recordings:check` in `web/` reads every file under
-`e2e/rig/cassettes/` and fails on an OpenRouter, Anthropic or OpenAI key pattern, a bearer token, an
-Authorization or x-api-key header, a home path, a host name, a `.jsonl` over 512 KiB, or a case under
-`failed` in a `meta.json`. It prints the file and line, never the matched text. The vitest
-`e2e/rig/cassettes-check.test.ts` runs the same check on every CI test run. Run it before every commit that adds recordings. The recorder blanks a key pattern the
-model echoes, and stores no header, so the check is the second line.
+`e2e/rig/cassettes/`. It fails on any of these:
+
+- an OpenRouter, Anthropic or OpenAI key pattern, or a bearer token;
+- an Authorization or x-api-key header;
+- a home path, or a host or company name of the owner;
+- a `.jsonl` file over 1 MiB;
+- a case listed under `failed` in a `meta.json`.
+
+It prints the file and line, never the matched text. The vitest
+`e2e/rig/cassettes-check.test.ts` runs the same check on every CI test run. Run it before every commit
+that adds recordings. The recorder blanks a key pattern the model echoes, and stores no header, so the
+check is the second line.
 
 ## Cost of one run
 
