@@ -27,8 +27,10 @@ published by Altan alone.**
 1. **The name.** `@colliepwa/durable-sdk`. It is written in one place, the package's `package.json`; a test reads the
    docs against it, so a rename is one edit there and a run of the tests. Altan confirms the scope before the first
    publish.
-2. **The dist-tag.** Every version goes out under the dist-tag `experimental`, never `latest`, until the exit in ADR
-   0104 has passed. The docs install `@colliepwa/durable-sdk@experimental`.
+2. **The dist-tag.** Every version is published with `--tag experimental` until the wire leaves its experimental
+   status. npm sets `latest` on a package's first publish and keeps one, so `latest` points at 0.1.0 today and carries
+   no promise. The docs install `@colliepwa/durable-sdk@experimental` and never rely on `latest`. (amended 2026-10-28;
+   the first text tied this to the exit in ADR 0104, which is withdrawn)
 3. **One import.** The root import serves Node and Bun. `openCollie` picks the server at run time: on Bun the Bun
    server with the descendant check, elsewhere the `node:http` server, which cannot run that check and writes one line
    at start that says so. The two servers stay two files. `./bun` and `./node` force one, `./pi` is the Pi Durable
@@ -49,8 +51,9 @@ published by Altan alone.**
 
 ## The exit
 
-The package follows the exit of ADR 0104. Unpublishing is not the way out: npm allows it only in narrow cases, and a
-program that pinned a version would break. So if that exit fires, Altan runs `npm deprecate @colliepwa/durable-sdk`
+ADR 0104's exit was withdrawn on 2026-10-28, so nothing retires this package by a date or a condition. (amended
+2026-10-28) Unpublishing is not the way out: npm allows it only in narrow cases, and a
+program that pinned a version would break. So if the package is ever retired, Altan runs `npm deprecate @colliepwa/durable-sdk`
 with a message that says the durable wire was withdrawn and points to the repo, and no new version is published. The
 source moves with the durable code.
 
@@ -60,7 +63,7 @@ source moves with the durable code.
   No folder to copy.
 - A release of Collie and a version of the SDK are two events. A change to the wire needs both: Collie accepts the
   previous wire version for one minor, and the SDK names the version it speaks.
-- The package's name on npm outlives the experiment: an exit deprecates it, it cannot remove it.
-- Revisit this decision if the exit in ADR 0104 passes (the dist-tag rule then ends, and `latest` becomes the
-  question), or if a second runtime needs a server of its own.
+- The package's name on npm outlives the experiment: a retirement deprecates it, it cannot remove it.
+- Revisit this decision when the wire leaves its experimental status (the dist-tag rule then ends, and `latest` becomes the
+  question), or if a second runtime needs a server of its own. (amended 2026-10-28)
 - Wording, 2026-10-16: as of 1.22.0 the user-facing term for what this ADR and ADR 0104 call a program is "durable agent". The API channel, the code and these records keep the word program.
