@@ -212,9 +212,74 @@ Results stay in `~/.cache/collie-lab/browser-leg-state/results/<run>/`: `ledger.
 tap with the bridge's receipt, `table.md` holds the table, and the phone screenshots and pane
 captures sit beside them.
 
-By hand: `bun e2e/rig/rig.ts up | down | status | start claude|pi|omp | snapshot | read <pane>`.
+By hand: `bun e2e/rig/rig.ts up | down | status | start claude|pi|omp | pane <cmd...> | pane ls | pane close <paneId>... | snapshot | read <pane>`.
 After a crash, `bun e2e/rig/rig.ts down` stops what the rig started. The crew leg's commands are in
 "The crew leg" below.
+
+With `COLLIE_RIG_OWNER_WATCH=1` a rig dies with the session that ran `up`. `make browser-leg` started in one
+Claude session and followed from a second one then stops when the first one ends. Start the leg from the session
+that will outlive it, from a plain shell, or leave the variable unset. It is off by default.
+
+On Linux, `up` starts the rig's daemon in a systemd scope of its own, `rig-<8 hex>-<pid>.scope`, with
+`TasksMax=700` (1400 for `up --crew`, which runs two servers and two bridges; `COLLIE_RIG_TASKS_MAX=<n>`
+overrides both), a stop timeout of 10 s, and core dumps off (`COLLIE_RIG_CORES=1` keeps them). The Herdr
+server, the bridge and every pane are children of the daemon, so they run there too, not in the Claude
+session that ran `up`. Five rigs from one session once filled that session's task limit (threads count as
+tasks), and Bun, Node and Claude aborted. Elsewhere (macOS, Windows), or without `systemd-run` and a user bus
+(`$XDG_RUNTIME_DIR/bus`), the daemon runs where `up` runs; on Linux that `WARNING` goes to `logs/daemon.log` and to stderr of `up`, and the
+rig has no task cap and no owner watch.
+
+- **Slice.** The scope goes in your default user slice, so the limit is per rig and there is no limit for all rigs
+  together. To put every rig in one slice, define the slice in a slice unit file on the host and set `COLLIE_RIG_SLICE=rig.slice`. The value must look like
+  `name.slice`; anything else is ignored with a `WARNING` line. Then the slice's own limits bound all rigs together.
+- **Check.** Once the daemon is up, `up` reads the scope's `pids.max`. When it is not the number asked for (a host
+  that does not hand the task controller to your user), `up` prints one `WARNING` line to stderr, and
+  `logs/daemon.log` gets it too, saying the task cap is not enforced. The check runs whenever the rig came up, also when
+  the daemon was slow to write `rig.json`. `status` shows `"tasks": "<pids.current>/<pids.max>"` for the scope, and leaves it out without one.
+- **Run limit.** The scope has `RuntimeMaxSec=21600` (6 hours). It is a hard stop by systemd: it kills the scope
+  with no teardown, so the Herdr home and `rig.json` stay until the next `up` or `down` clears them.
+  `COLLIE_RIG_RUNTIME_MAX_SEC=<n>` (a positive integer, in seconds) changes it.
+- **Owner watch (`COLLIE_RIG_OWNER_WATCH=1`).** `up` records the OWNER, the cgroup it ran in (a Claude session's
+  scope), in `rig.json`, but only on Linux and only if that directory exists at that moment. The daemon checks
+  every 30 s that it still exists, and tears the rig down after two misses in a row. Only "no such directory"
+  counts as a miss; any other error is ignored. Only a `claude-*.scope` cgroup is an owner (an allow list). Any other
+  cgroup is no owner: a login session, a desktop app, and also a `vte-spawn-*` or `tmux-spawn-*` scope. A rig started
+  from a plain shell or a terminal multiplexer skips the check.
+- **Start failure.** systemd-run's own messages go to `logs/systemd-run.err`. If systemd-run itself fails (it exits
+  non-zero within 1.5 s, before the daemon ran, with an error such as a bus failure), `up` starts the daemon
+  without a scope and prints a `WARNING` to stderr (also in `logs/daemon.log`) that says the rig has no task cap and
+  no owner watch. If the daemon ran and then failed, there is no second start: `up` reports the failure text taken
+  from `logs/daemon.log`, then `logs/daemon.out`, then `logs/systemd-run.err`, the first of them that has text.
+- **Stop.** `down` asks the daemon to tear down first, then stops the scope if it is still active. It finds the scope
+  in `rig.json`; when `rig.json` is gone (a kill between its removal and the scope's stop), it lists
+  `rig-<hash of the state root>-*.scope` with `systemctl --user list-units` and stops what it finds. A host may run its
+  own reaper for scopes whose daemon is gone. Every `systemctl` call has a 15 s limit.
+
+**The pane cap.** A harness pane costs 46 to 64 tasks (omp), and scripts that open one pane per case and
+close none filled the task limit at about one pane a minute. So `pane <cmd>` and `start <harness>` count the open
+panes first (the rig's view pane is left out) and refuse when there are `COLLIE_RIG_MAX_PANES` or more: a positive
+integer, 6 when unset or not one. The refusal exits with code 75, lists the open panes and names the fix.
+The cap is a soft limit, per machine and per rig. It is not atomic across callers that start at the same moment,
+so several can pass the check together. The scope's `TasksMax` is the hard guard.
+
+```sh
+bun e2e/rig/rig.ts pane ls                       # the open panes: id, label, age, command (add --on member for the member)
+bun e2e/rig/rig.ts pane close w3:p1 w4:p1        # close some; an id that is already gone is reported and skipped
+bun e2e/rig/rig.ts pane close --all              # close every pane but the view pane
+bun e2e/rig/rig.ts start omp --replace           # close the omp pane `start omp` opened last, then open the new one
+bun e2e/rig/rig.ts pane --replace sleep 600      # the same for `pane`, which keeps one slot of its own
+```
+
+`--replace`, `--crew` and `--on <machine>` count only before the first word of the command, or anywhere before a
+literal `--`. Everything after reaches the pane as typed: `pane sh -c 'echo --replace'` keeps its `--replace`, and so
+does `pane sleep 600 --replace`. The last pane per key is in `rig/last-panes.json` (written to a temp file and
+renamed; not `rig.json`, which the daemon writes whole), and `up` and `down` remove it. The cap sits in these two
+verbs only: the Playwright leg opens its panes through `rig-lib.ts` and does not meet it. `pane ls` and `pane close`
+are verbs, so run a shell command of that name as `pane sh -c ls` or `pane -- ls`; `pane ls <more words>` prints that
+hint and starts nothing.
+
+The pure helpers (owner, unit name, environment settings, argument split, cap, start fallback) are in `rig-scope.ts`.
+`scripts/browser-leg-rig-scope.test.ts` tests them, and `bun test ./scripts` (and so CI) runs it.
 
 Herdr binds its sockets under its `XDG_CONFIG_HOME`, and a Unix socket path holds at most 107 bytes on
 Linux (103 on macOS). A long state root, such as the nightly runner's, would push the path over that, and
