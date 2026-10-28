@@ -2,7 +2,7 @@
 // THE DOCS LINE. A branch `docs/<newest release tag>` on origin that carries docs-only commits, so
 // colliepwa.dev can publish a docs fix before the next release.
 //
-//   bun scripts/docs-line.ts <commit>... [--dry-run]
+//   bun scripts/docs-line.ts <commit>... [--dry-run] [--allow-unmerged]
 //
 // Why it exists. The website quotes `docs/*.md` at the newest published release tag. A docs fix on
 // `main` therefore sat unpublished until the next release, and a docs-only release makes every
@@ -15,15 +15,22 @@
 //
 // What it does, in order:
 //   1. Finds the newest `vX.Y.Z` tag on origin (`git ls-remote`, no suffixed tags). That is T.
-//   2. Refuses any given commit that touches a path outside `docs/` and `README.md`. Nothing has
-//      been touched yet when it does.
+//   2. Refuses any given commit that is not on `origin/main`, that touches a path outside `docs/`
+//      and `README.md`, or that deletes or renames a `docs/*.md` page. Nothing has been touched yet
+//      when it does.
 //   3. Fetches T and `docs/T` (when origin has it), and makes a temporary detached worktree at
 //      `origin/docs/T`, else at T. Your checkout, index and branch are never touched.
-//   4. Cherry-picks each commit with `-x`. A conflict aborts the pick, removes the worktree, exits 1.
-//   5. Re-checks both guards on the result, then pushes `HEAD:refs/heads/docs/T` (no force).
+//   4. Cherry-picks each commit with `-x`. A commit already on the line (its `-x` trailer is in
+//      `T..HEAD`) is skipped. A conflict aborts the pick, removes the worktree, exits 1.
+//   5. Re-checks the guards on the result, prints the tag, the commits and `git diff --stat T HEAD`
+//      so the operator sees what goes public, then pushes `HEAD:refs/heads/docs/T` (no force).
 //   6. Lists older `docs/v*` branches with the exact delete command. It never deletes one.
 //
 // `--dry-run` does everything except the push and prints `git log --oneline T..HEAD`.
+//
+// `--allow-unmerged` lifts the `origin/main` requirement. The line is a mirror of main's docs: a fix
+// that lives only on the line vanishes at the next tag, and its `-x` trailer would name a sha that
+// is rebased away.
 //
 // Only a docs commit that describes the RELEASED version belongs on the line. Docs for a feature
 // that has not shipped stay on main until its release (CLAUDE.md → Versioning).
@@ -88,6 +95,38 @@ export function pathsOutsideDocs(paths: readonly string[]): string[] {
   return paths.filter((p) => p !== "" && !isDocsPath(p));
 }
 
+/** One line of `git ... --name-status --no-renames` output: a status letter and a path. */
+export interface PathStatus {
+  status: string;
+  path: string;
+}
+
+/** Splits `git ... --name-status --no-renames` output into entries. */
+export function splitNameStatus(output: string): PathStatus[] {
+  const entries: PathStatus[] = [];
+  for (const line of output.split(/\r?\n/)) {
+    const tab = line.indexOf("\t");
+    if (tab <= 0) continue;
+    entries.push({ status: line.slice(0, tab), path: line.slice(tab + 1) });
+  }
+  return entries;
+}
+
+/**
+ * The `docs/*.md` pages an entry list deletes. With `--no-renames` a rename shows as a delete plus an
+ * add, so a renamed page is caught too. `release.yml` prints one embedded page by name and the
+ * website keeps a generated copy per page, so a renamed or deleted page breaks the next release run
+ * (CLAUDE.md, "Traps").
+ */
+export function deletedDocsPages(entries: readonly PathStatus[]): string[] {
+  return entries.filter((e) => e.status === "D" && /^docs\/[^/]+\.md$/.test(e.path)).map((e) => e.path);
+}
+
+/** True when `body` (`git log --format=%b` output) holds the `cherry-pick -x` trailer for `sha`. */
+export function hasPickTrailer(body: string, sha: string): boolean {
+  return body.includes(`(cherry picked from commit ${sha})`);
+}
+
 /** Splits `git ... --name-only` output into paths. */
 export function splitPaths(output: string): string[] {
   return output.split(/\r?\n/).filter((l) => l !== "");
@@ -130,21 +169,24 @@ function say(line: string): void {
 export interface Options {
   commits: string[];
   dryRun: boolean;
+  allowUnmerged: boolean;
 }
 
 /** Parses argv (without the runtime and script). Throws a {@link DocsLineError} on bad usage. */
 export function parseArgs(argv: readonly string[]): Options {
   const commits: string[] = [];
   let dryRun = false;
+  let allowUnmerged = false;
   for (const arg of argv) {
     if (arg === "--dry-run") dryRun = true;
+    else if (arg === "--allow-unmerged") allowUnmerged = true;
     else if (arg.startsWith("-")) throw new DocsLineError(`unknown option ${arg}`);
     else commits.push(arg);
   }
   if (commits.length === 0) {
-    throw new DocsLineError("usage: bun scripts/docs-line.ts [--dry-run] <commit>...");
+    throw new DocsLineError("usage: bun scripts/docs-line.ts [--dry-run] [--allow-unmerged] <commit>...");
   }
-  return { commits, dryRun };
+  return { commits, dryRun, allowUnmerged };
 }
 
 /** Runs the docs line from `cwd`, a clone whose `origin` is the Collie repository. */
@@ -154,6 +196,9 @@ export function run(opts: Options, cwd: string): void {
   if (tag === null) throw new DocsLineError(`no vX.Y.Z release tag on ${REMOTE}`);
   const branch = `docs/${tag}`;
   say(`newest release tag is ${tag}, so the line is ${branch}`);
+
+  const mainRef = `refs/remotes/${REMOTE}/main`;
+  if (!opts.allowUnmerged) git(["fetch", "--quiet", REMOTE, `+refs/heads/main:${mainRef}`], cwd);
 
   const shas: string[] = [];
   const refused: string[] = [];
@@ -166,14 +211,20 @@ export function run(opts: Options, cwd: string): void {
     }
     const parents = git(["rev-list", "--parents", "-n", "1", sha], cwd).trim().split(/\s+/);
     if (parents.length > 2) throw new DocsLineError(`${commit} is a merge commit; pick its parts`);
-    const files = splitPaths(git(["diff-tree", "--no-commit-id", "--name-only", "-r", sha], cwd));
-    const outside = pathsOutsideDocs(files);
-    for (const p of outside) refused.push(`  ${commit}: ${p}`);
+    if (!opts.allowUnmerged && !gitOk(["merge-base", "--is-ancestor", sha, mainRef], cwd)) {
+      throw new DocsLineError(`${commit} is not on ${REMOTE}/main; land it there first, or pass --allow-unmerged`);
+    }
+    // --no-renames: a rename out of `cli/` into `docs/` lists both paths, and the old one is refused.
+    const entries = splitNameStatus(
+      git(["diff-tree", "--no-commit-id", "--no-renames", "--name-status", "-r", sha], cwd),
+    );
+    for (const p of pathsOutsideDocs(entries.map((e) => e.path))) refused.push(`  ${commit}: ${p}`);
+    for (const p of deletedDocsPages(entries)) refused.push(`  ${commit}: deletes or renames the page ${p}`);
     shas.push(sha);
   }
   if (refused.length > 0) {
     throw new DocsLineError(
-      `refused, these paths are outside docs/ and README.md:\n${refused.join("\n")}\nnothing was changed`,
+      `refused, these paths are outside docs/ and README.md, or delete or rename a docs page:\n${refused.join("\n")}\nnothing was changed`,
     );
   }
   say(`${shas.length} commit(s) touch only docs/ and README.md`);
@@ -201,7 +252,12 @@ export function run(opts: Options, cwd: string): void {
     say(`worktree at ${branchExists ? `${REMOTE}/${branch}` : tag}`);
     git(["worktree", "add", "--quiet", "--detach", tree, start], cwd);
     added = true;
+    const onLine = git(["log", "--format=%b", `refs/tags/${tag}..HEAD`], tree);
     for (const sha of shas) {
+      if (hasPickTrailer(onLine, sha)) {
+        say(`${sha.slice(0, 10)} is already on the line, skipped`);
+        continue;
+      }
       try {
         git(["cherry-pick", "-x", sha], tree);
       } catch (err) {
@@ -215,12 +271,22 @@ export function run(opts: Options, cwd: string): void {
     if (!gitOk(["merge-base", "--is-ancestor", `refs/tags/${tag}`, "HEAD"], tree)) {
       throw new DocsLineError(`${tag} is not an ancestor of the result, nothing pushed`);
     }
-    const changed = splitPaths(git(["diff", "--name-only", `refs/tags/${tag}`, "HEAD"], tree));
+    const entries = splitNameStatus(git(["diff", "--no-renames", "--name-status", `refs/tags/${tag}`, "HEAD"], tree));
+    const changed = entries.map((e) => e.path);
     const bad = pathsOutsideDocs(changed);
     if (bad.length > 0) {
       throw new DocsLineError(`the result differs from ${tag} outside docs/:\n  ${bad.join("\n  ")}`);
     }
+    const gone = deletedDocsPages(entries);
+    if (gone.length > 0) {
+      throw new DocsLineError(`the result deletes or renames a docs page, nothing pushed:\n  ${gone.join("\n  ")}`);
+    }
     say(`checked: ${tag} is an ancestor, ${changed.length} changed path(s), all docs-only`);
+
+    // What goes public, shown before the push (and in a dry run).
+    say(`tag ${tag}, branch ${branch}, commits on the line:`);
+    console.log(git(["log", "--format=%h %s", `refs/tags/${tag}..HEAD`], tree).trimEnd());
+    console.log(git(["diff", "--stat", `refs/tags/${tag}`, "HEAD"], tree).trimEnd());
 
     // The dispatch workflow fires only when the pushed branch itself holds the file, and a branch
     // based on an old tag may predate it.
@@ -234,7 +300,7 @@ export function run(opts: Options, cwd: string): void {
       // temporary one is not.
       git(["push", "--no-verify", REMOTE, `HEAD:refs/heads/${branch}`], tree);
       say(`pushed ${branch} to ${REMOTE}`);
-      if (!toldSite) say(`the branch has no docs-line.yml, so the site is not told; run: ${SYNC_COMMAND}`);
+      if (!toldSite) say(`the branch has no docs-line.yml, so the site is not told; run: ${SYNC_COMMAND}; the daily sync picks the branch up within a day in any case`);
     }
     say(`git log --oneline ${tag}..HEAD`);
     console.log(git(["log", "--oneline", `refs/tags/${tag}..HEAD`], tree).trimEnd());

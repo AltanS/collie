@@ -1,16 +1,18 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 import { peerStore } from "../bridge/crew/fixtures.ts";
 import { serializeTrustStore, trustStorePath } from "../bridge/crew/trust-store.ts";
 import { hostFor, type Host } from "../bridge/host.ts";
 import { HOME, STATE, context, fakeExec, fakeFiles, fakeLinkFs, type Scripted } from "./fakes.ts";
 import type { Finding } from "./finding.ts";
-import { linkPath } from "./link.ts";
+import { linkDir, linkPath } from "./link.ts";
 import {
   PATH_PROFILE_LINE,
   SETUP_CLOSING,
   setupFindings,
-  setupLine,
+  setupLines,
   TAILSCALE_PROBE_MS,
   tailscaleFindings,
   type SetupDeps,
@@ -59,6 +61,8 @@ function deps(over: Setup = {}): SetupDeps & { exec: ReturnType<typeof fakeExec>
   return { ...built, link: fakeLinkFs() };
 }
 
+const SKIP_SERVE_OUT = "; if you do not use Tailscale, set COLLIE_SKIP_SERVE=1 (docs/deployment.md Variant E)";
+
 const row = (rows: readonly Finding[], check: string): Finding => {
   const found = rows.find((f) => f.check === check);
   if (found === undefined) throw new Error(`no ${check} row`);
@@ -69,14 +73,20 @@ describe("the tailscale row", () => {
   test("not installed: a warning, and the install line follows the host", () => {
     const linux = row(tailscaleFindings(deps({ absent: ["tailscale"] })), "tailscale");
     expect(linux.status).toBe("warn");
-    expect(linux.detail).toBe("Tailscale is not installed on this machine");
+    expect(linux.detail).toBe("no `tailscale` command was found on PATH");
     expect(linux.remedy).toContain("curl -fsSL https://tailscale.com/install.sh | sh");
     expect(linux.remedy).toContain("sudo tailscale up --operator=pat");
+    expect(linux.remedy).toEndWith(SKIP_SERVE_OUT);
 
-    for (const host of [MAC, WIN]) {
-      const other = row(tailscaleFindings(deps({ host, absent: ["tailscale"] })), "tailscale");
+    const mac = row(tailscaleFindings(deps({ host: MAC, absent: ["tailscale"] })), "tailscale");
+    expect(mac.remedy).toBe(
+      "install Tailscale from tailscale.com/download, then turn on the `tailscale` command in the app's settings" +
+        SKIP_SERVE_OUT,
+    );
+    const win = row(tailscaleFindings(deps({ host: WIN, absent: ["tailscale"] })), "tailscale");
+    expect(win.remedy).toBe(`install Tailscale from tailscale.com/download and sign in${SKIP_SERVE_OUT}`);
+    for (const other of [mac, win]) {
       expect(other.status).toBe("warn");
-      expect(other.remedy).toContain("https://tailscale.com/download");
       expect(other.remedy).not.toContain("sudo");
     }
   });
@@ -278,7 +288,11 @@ describe("the path-link row", () => {
   });
 
   test("with ~/.local/bin already on PATH the fix is only `collie link`", () => {
-    const d = deps({ host: MAC, link: true, env: { PATH: `/usr/bin:${HOME}/.local/bin` } });
+    // The folder comes from `linkDir` (the function the row compares against, built with `join`) and
+    // the entries are joined with the host's own delimiter, so a Windows runner running the macOS
+    // branch still sees the same string on both sides.
+    const onPath = ["/usr/bin", linkDir(HOME)].join(MAC.path.delimiter);
+    const d = deps({ host: MAC, link: true, env: { PATH: onPath } });
     expect(row(setupFindings(d), "path-link").remedy).toBe("run `collie link`");
   });
 
@@ -342,11 +356,48 @@ describe("the whole check", () => {
     expect(`${f.detail} ${f.remedy ?? ""}`).toContain("COLLIE_MUX");
   });
 
-  test("a printed line is the detail, an arrow and the remedy; the closing sentence is fixed", () => {
-    const f = row(tailscaleFindings(deps({ absent: ["tailscale"], host: WIN })), "tailscale");
-    expect(setupLine(f)).toBe(
-      "setup: Tailscale is not installed on this machine → install Tailscale from https://tailscale.com/download, sign in, then run `collie start` again",
+  test("a printed row is two lines, no arrow glyph; a remedy with several actions gets one line each", () => {
+    const win = row(tailscaleFindings(deps({ absent: ["tailscale"], host: WIN })), "tailscale");
+    expect(setupLines(win)).toEqual([
+      "setup: no `tailscale` command was found on PATH",
+      `  fix: install Tailscale from tailscale.com/download and sign in`,
+      "       if you do not use Tailscale, set COLLIE_SKIP_SERVE=1 (docs/deployment.md Variant E)",
+    ]);
+    const linux = row(tailscaleFindings(deps({ absent: ["tailscale"] })), "tailscale");
+    expect(setupLines(linux)).toEqual([
+      "setup: no `tailscale` command was found on PATH",
+      "  fix: install it with `curl -fsSL https://tailscale.com/install.sh | sh`",
+      "       then sign in with `sudo tailscale up --operator=pat`",
+      "       if you do not use Tailscale, set COLLIE_SKIP_SERVE=1 (docs/deployment.md Variant E)",
+    ]);
+    // The PATH row keeps its copyable line at the end of the fix line.
+    const path = row(setupFindings(deps({ link: true, env: { PATH: "/usr/bin" } })), "path-link");
+    const last = setupLines(path).at(-1) ?? "";
+    expect(last).toEndWith(PATH_PROFILE_LINE);
+    for (const line of [...setupLines(win), ...setupLines(linux), ...setupLines(path)]) {
+      expect(line).not.toContain("→");
+    }
+    expect(SETUP_CLOSING).toBe(
+      "Running, but your phone cannot reach it yet. Fix the setup lines above, then run collie start again. collie doctor repeats this check.",
     );
-    expect(SETUP_CLOSING).toBe("Fix these, then run collie start again. collie doctor repeats this check.");
+  });
+});
+
+describe("the host seam is the rule", () => {
+  test("neither setup-findings.ts nor serve.ts reads process.platform", () => {
+    for (const file of ["setup-findings.ts", "serve.ts"]) {
+      expect(readFileSync(join(import.meta.dir, file), "utf8")).not.toContain("process.platform");
+    }
+  });
+});
+
+describe("a tailscale that is not running costs one bound, not three", () => {
+  test("only `status --json` is asked when the first row is not ok, and it is asked once", () => {
+    const down = deps({ answers: [["tailscale status --json", { code: 1 }]] });
+    tailscaleFindings(down);
+    expect(down.exec.calls.filter((c) => c.startsWith("tailscale"))).toEqual(["tailscale status --json"]);
+    const none = deps({ absent: ["tailscale"] });
+    tailscaleFindings(none);
+    expect(none.exec.calls.filter((c) => c.startsWith("tailscale"))).toEqual([]);
   });
 });

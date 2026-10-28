@@ -69,11 +69,27 @@ export function setupFindings(deps: SetupDeps): Finding[] {
   return deps.link === undefined ? rows : [...rows, pathLinkFinding({ ...deps, link: deps.link })];
 }
 
-/** One row as `collie start` prints it: what is missing, then the one thing to do. */
-export const setupLine = (f: Finding): string => `setup: ${f.detail} → ${f.remedy ?? ""}`;
+/**
+ * One row as `collie start` prints it, in two or more lines and with no arrow glyph (a legacy
+ * Windows console prints `→` as garbage): `setup: <detail>`, then `  fix: <remedy>`. A command to
+ * copy stands at the END of its line. A remedy with several actions puts each on its own indented
+ * line: it splits at `; `, and a part with two commands splits again at `, then `. Doctor renders a
+ * row its own way and does not use this.
+ */
+export function setupLines(f: Finding): string[] {
+  const parts = (f.remedy ?? "")
+    .split("; ")
+    .flatMap((part) => ((part.match(/`/g) ?? []).length >= 4 ? part.split(/, (?=then )/) : [part]));
+  const [first = "", ...rest] = parts;
+  return [`setup: ${f.detail}`, `  fix: ${first}`, ...rest.map((part) => `       ${part}`)];
+}
 
-/** The line `collie start` closes the setup rows with. */
-export const SETUP_CLOSING = "Fix these, then run collie start again. collie doctor repeats this check.";
+/**
+ * The sentence `collie start` prints on stderr AFTER the status banner when any setup row printed.
+ * Before the banner it read as "stopped"; after it, the bridge is plainly up and the phone is not.
+ */
+export const SETUP_CLOSING =
+  "Running, but your phone cannot reach it yet. Fix the setup lines above, then run collie start again. collie doctor repeats this check.";
 
 // ── Tailscale ────────────────────────────────────────────────────────────────
 
@@ -115,11 +131,20 @@ function userName(deps: Pick<SetupDeps, "ctx">): string | null {
 
 const isLinux = (host: Host): boolean => host.platform === "linux";
 
+/** Appended to every "no tailscale" remedy: the way out for a machine that never uses Tailscale. */
+const SKIP_SERVE_OUT = "; if you do not use Tailscale, set COLLIE_SKIP_SERVE=1 (docs/deployment.md Variant E)";
+
 function installRemedy(deps: SetupDeps): string {
-  if (!isLinux(deps.host)) return "install Tailscale from https://tailscale.com/download, sign in, then run `collie start` again";
+  const host = deps.host.platform;
+  if (host === "darwin") {
+    // The App Store build keeps its command line tool inside the app bundle until the app's setting
+    // links it, so "no `tailscale` on PATH" can also mean "installed, command not turned on".
+    return `install Tailscale from tailscale.com/download, then turn on the \`tailscale\` command in the app's settings${SKIP_SERVE_OUT}`;
+  }
+  if (!isLinux(deps.host)) return `install Tailscale from tailscale.com/download and sign in${SKIP_SERVE_OUT}`;
   return (
     "install it with `curl -fsSL https://tailscale.com/install.sh | sh`, then sign in with" +
-    ` \`sudo tailscale up --operator=${userName(deps) ?? "$USER"}\``
+    ` \`sudo tailscale up --operator=${userName(deps) ?? "$USER"}\`${SKIP_SERVE_OUT}`
   );
 }
 
@@ -165,7 +190,7 @@ export function tailscaleFindings(deps: SetupDeps): Finding[] {
 function tailscaleRow(deps: SetupDeps, state: TailscaleState): Finding {
   switch (state.kind) {
     case "absent":
-      return warn("tailscale", "Tailscale is not installed on this machine", installRemedy(deps));
+      return warn("tailscale", "no `tailscale` command was found on PATH", installRemedy(deps));
     case "down": {
       const said = state.state === null ? "" : ` (it reports ${state.state})`;
       return warn("tailscale", `Tailscale is installed but not signed in or not running${said}`, upRemedy(deps));

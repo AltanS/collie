@@ -9,7 +9,7 @@ import type { LinkReader } from "./link.ts";
 import { ensureMuxChosen } from "./mux.ts";
 import type { StatusView, Ui } from "./render.ts";
 import { cmdUnserve, crewModeOnDisk, type ServeDeps } from "./serve.ts";
-import { SETUP_CLOSING, setupFindings, setupLine } from "./setup-findings.ts";
+import { SETUP_CLOSING, setupFindings, setupLines } from "./setup-findings.ts";
 import { pairedRegistryOf } from "./pairing.ts";
 import { type Exec, type Files, PROCESS_QUERY_SLOW_START_MS, type ProcessLookup, type ProcessRow } from "./sys.ts";
 import {
@@ -1066,27 +1066,35 @@ export function serviceBackend(deps: LifecycleDeps): ServiceBackend {
 
 // ── Verbs ────────────────────────────────────────────────────────────────────
 
-/** `collie start` as typed: the bridge, with the setup check in front of it. */
-export const cmdStart = (deps: LifecycleDeps): Promise<number> => startBridge(deps, true);
-
 /**
- * The start path. `setupCheck` is true only for a direct `collie start`: `restart`, and the restart
- * inside `update` and the crew verbs, reach this too, and there the setup lines would repeat on a
- * machine whose operator did not ask to be told about setup.
+ * `collie start` as typed: the bridge, with the setup check in front of it. The rows print after the
+ * multiplexer is settled and before anything launches; the closing sentence prints after the status
+ * banner, so a reader sees a bridge that is up and a phone that cannot reach it yet. `restart`, and
+ * the restart inside `update` and the crew verbs, go through {@link startBridge} alone: there the
+ * setup lines would repeat on a machine whose operator did not ask to be told about setup.
  */
-async function startBridge(deps: LifecycleDeps, setupCheck: boolean): Promise<number> {
+export async function cmdStart(deps: LifecycleDeps): Promise<number> {
+  const chosen = await ensureMuxChosen(deps);
+  if (chosen !== EXIT.OK) return chosen;
+  const open = reportSetup(deps);
+  const code = await launchBridge(deps);
+  if (code === EXIT.OK && open) deps.io.err(SETUP_CLOSING);
+  return code;
+}
+
+/** The start path of `restart`: settle the multiplexer, then launch. No setup check. */
+async function startBridge(deps: LifecycleDeps): Promise<number> {
   // Which multiplexer, decided BEFORE anything is written or launched (M14/03). It returns
   // immediately when `COLLIE_MUX` is set, which is every run after the first; when it is not, this
   // is the one place the question gets asked, and a `start` that cannot answer it must not go on to
   // put a bridge in front of no panes at all.
   const chosen = await ensureMuxChosen(deps);
   if (chosen !== EXIT.OK) return chosen;
+  return launchBridge(deps);
+}
 
-  // The setup check (`cli/setup-findings.ts`), before anything is launched, so the operator reads
-  // what is missing while they are standing at this terminal. It never stops `start`: a bridge on
-  // loopback is still worth having, and `doctor` repeats every row.
-  if (setupCheck) reportSetup(deps);
-
+/** Build if needed, start the service, publish the front door, print the banner. */
+async function launchBridge(deps: LifecycleDeps): Promise<number> {
   // The lazy first build. It warns rather than fails: a host whose UI won't build still gets its
   // API, and the 503 is legible where a refused `start` is not.
   ensureBuild(deps);
@@ -1108,15 +1116,15 @@ async function startBridge(deps: LifecycleDeps, setupCheck: boolean): Promise<nu
 }
 
 /**
- * Print each setup row that needs the operator, one plain line each, and one closing sentence.
- * Nothing when every row is fine. `skipped` rows stay with `doctor`: they are a check that could not
+ * Print each setup row that needs the operator, as the lines of {@link setupLines}. Returns whether
+ * any row printed, so `cmdStart` can close with {@link SETUP_CLOSING} after the banner. Nothing is
+ * printed when every row is fine. `skipped` rows stay with `doctor`: they are a check that could not
  * run, or a front door the operator chose not to use, and neither is something to fix.
  */
-function reportSetup(deps: LifecycleDeps): void {
+function reportSetup(deps: LifecycleDeps): boolean {
   const open = setupFindings(deps).filter((f) => f.status === "warn" || f.status === "error");
-  if (open.length === 0) return;
-  for (const f of open) deps.io.err(setupLine(f));
-  deps.io.err(SETUP_CLOSING);
+  for (const f of open) for (const line of setupLines(f)) deps.io.err(line);
+  return open.length > 0;
 }
 
 export async function cmdStop(deps: LifecycleDeps, verb: StopVerb = "stop"): Promise<number> {
@@ -1194,7 +1202,7 @@ export async function cmdRestart(deps: LifecycleDeps): Promise<number> {
 
   const stopped = await cmdStop(deps, "restart");
   if (stopped !== EXIT.OK) return stopped;
-  return startBridge(deps, false);
+  return startBridge(deps);
 }
 
 export async function cmdStatus(deps: LifecycleDeps): Promise<number> {

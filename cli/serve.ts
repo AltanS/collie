@@ -385,6 +385,8 @@ function ensureRootAvailable(
   }
   if (verdict === "adoptable") {
     deps.io.out(`tailscale serve: adopting the existing Collie ${name} on :${port}`);
+    // The record is written right after this gate returns, so from here `collie stop` owns it.
+    deps.io.out("note: adopted an existing tailscale serve mapping for this collie; `collie stop` removes it with the rest");
   }
   return true;
 }

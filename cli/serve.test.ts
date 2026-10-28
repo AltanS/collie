@@ -337,6 +337,36 @@ describe("serve — publishing", () => {
     expect(h.exec.calls).toContain("tailscale serve --bg --set-path=/ 8787");
   });
 
+  test("an adopted mapping is announced once, with the line that says `collie stop` removes it", () => {
+    const h = harness({
+      serveMode: "http",
+      serveStatus: `{${tcp(8787, "HTTP")},${web("host:8787", "/", OURS)}}`,
+    });
+    expect(cmdServe(h.deps)).toBe(EXIT.OK);
+    const notes = h.io.stdout.filter((l) => l.startsWith("note: adopted"));
+    expect(notes).toEqual([
+      "note: adopted an existing tailscale serve mapping for this collie; `collie stop` removes it with the rest",
+    ]);
+    // A free root is not an adoption, so it prints no such note.
+    const free = harness({ serveMode: "http" });
+    expect(cmdServe(free.deps)).toBe(EXIT.OK);
+    expect(free.io.stdout.join("\n")).not.toContain("adopted");
+  });
+
+  test("the old Windows by-hand setup (COLLIE_PUBLIC_HOSTS, COLLIE_PUBLIC_URL, a matching mapping) is adopted, not flagged or rewritten", () => {
+    const h = harness({
+      env: { COLLIE_PUBLIC_HOSTS: "host.example", COLLIE_PUBLIC_URL: "https://host.example" },
+      serveStatus: `{${tcp(443, "HTTPS")},${web("host.example:443", "/", OURS)}}`,
+      files: { [`${CONFIG}/.env`]: "COLLIE_PUBLIC_HOSTS=host.example\nCOLLIE_PUBLIC_URL=https://host.example\n" },
+    });
+    expect(cmdServe({ ...h.deps, host: hostFor("win32") })).toBe(EXIT.OK);
+    expect(h.io.stderr).toEqual([]);
+    expect(h.files.read(HANDLER_FILE)).toBe("https:443|host.example:443|http://127.0.0.1:8787\n");
+    expect(h.files.read(`${CONFIG}/.env`)).toBe(
+      "COLLIE_PUBLIC_HOSTS=host.example\nCOLLIE_PUBLIC_URL=https://host.example\n",
+    );
+  });
+
   test("the https failure hint names the Headscale escape hatch", () => {
     const h = harness({ answers: [["tailscale serve --bg", { code: 1 }]] });
     expect(cmdServe(h.deps)).toBe(EXIT.FAIL);

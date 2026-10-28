@@ -597,11 +597,11 @@ test("the docs links the installers print name a real page and heading", () => {
     heading.toLowerCase().replace(/[^a-z0-9 -]/g, "").trim().replace(/ /g, "-");
   const link = /https:\/\/colliepwa\.dev\/docs\/([a-z0-9-]+)(?:#([a-z0-9-]+))?/g;
   const links = ["install.sh", "install.ps1"].flatMap((file) =>
-    Array.from(readFileSync(join(import.meta.dir, file), "utf8").matchAll(link)),
+    Array.from(readFileSync(join(import.meta.dir, file), "utf8").replace(/\r\n/g, "\n").matchAll(link)),
   );
   expect(links.length).toBeGreaterThan(0);
   for (const [, page, anchor] of links) {
-    const doc = readFileSync(join(import.meta.dir, "..", "docs", `${page}.md`), "utf8");
+    const doc = readFileSync(join(import.meta.dir, "..", "docs", `${page}.md`), "utf8").replace(/\r\n/g, "\n");
     if (anchor === undefined) continue;
     const headings = [...doc.matchAll(/^#+ (.+)$/gm)].map((m) => slug(m[1] ?? ""));
     expect(headings).toContain(anchor);
@@ -622,6 +622,9 @@ test("the docs links the installers print name a real page and heading", () => {
 // Prose lines use fewer spaces. If an installer changes that style, change the two readers below.
 describe("the installers' next steps match the five-minute guide", () => {
   const root = join(import.meta.dir, "..");
+  // A Windows checkout may hold `\r\n` line endings, which would leave a `\r` at the end of every
+  // matched line and break the `\nEOF\n` and `\n}\n` cuts. Every file this block reads goes through here.
+  const read = (path: string): string => readFileSync(path, "utf8").replace(/\r\n/g, "\n");
   const slug = (heading: string) =>
     heading.toLowerCase().replace(/[^a-z0-9 -]/g, "").trim().replace(/ /g, "-");
 
@@ -661,7 +664,7 @@ describe("the installers' next steps match the five-minute guide", () => {
 
   /** The commands install.sh prints in its closing heredoc. */
   const shCommands = (): string[] => {
-    const script = readFileSync(join(import.meta.dir, "install.sh"), "utf8");
+    const script = read(join(import.meta.dir, "install.sh"));
     const block = script.split("# ── What is left, which is yours")[1]?.split("\nEOF\n")[0] ?? "";
     return [...block.matchAll(/^ {7}(\S.*)$/gm)].map((m) => clean(m[1] ?? ""));
   };
@@ -672,14 +675,14 @@ describe("the installers' next steps match the five-minute guide", () => {
    * normalised to `collie ` here: the guide always spells the bare name.
    */
   const psCommands = (): string[] => {
-    const script = readFileSync(join(import.meta.dir, "install.ps1"), "utf8");
+    const script = read(join(import.meta.dir, "install.ps1"));
     const block = script.split('Write-CollieLine "Next steps.')[1]?.split("\n}\n")[0] ?? "";
     return [...block.matchAll(/Write-CollieLine " {7}(\S[^"]*)"/g)].map((m) =>
       clean((m[1] ?? "").replace(/^\$collie /, "collie ")),
     );
   };
 
-  const guide = readFileSync(join(root, "docs", "five-minute-install.md"), "utf8");
+  const guide = read(join(root, "docs", "five-minute-install.md"));
   const phone = section(guide, "Put Collie on your phone and pair it");
 
   const cases: Array<[string, string, () => string[]]> = [
@@ -705,7 +708,7 @@ describe("the installers' next steps match the five-minute guide", () => {
   const INLINE_VERBS = /^collie (qr|pair|url|start)$/;
 
   test("the README quick setup prints only commands the guide prints", () => {
-    const readme = readFileSync(join(root, "README.md"), "utf8");
+    const readme = read(join(root, "README.md"));
     const quick = section(readme, "Get it on your phone in 3 steps");
     const fenced = [...commandLines(quick)];
     const inline = [...quick.matchAll(/`([^`\n]+)`/g)]
