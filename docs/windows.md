@@ -3,12 +3,13 @@
 How to install Collie on Windows 11, open it on your phone, and fix what can go wrong. Read
 [Security](security.md) first: Collie gives remote shell access to your machine by design.
 
-On Linux and macOS, `collie start` can publish Collie to your phone for you, with Tailscale Serve.
-Tailscale is a service that joins your own devices into a private network, called a tailnet.
+`collie start` publishes Collie to your phone for you, with Tailscale Serve, on Windows as on Linux
+and macOS. Tailscale is a service that joins your own devices into a private network, called a
+tailnet.
 
-On Windows, Collie does not publish itself. Tailscale Serve gives Collie an HTTPS address on your
-tailnet, and on Windows you run that one step by hand.
-[Reaching it from your phone](#reaching-it-from-your-phone) shows how.
+Tailscale Serve gives Collie an HTTPS address on your tailnet, and `collie start` runs it for you.
+[Reaching it from your phone](#reaching-it-from-your-phone) shows the setup, and the steps by hand
+for when `collie start` cannot publish.
 
 > **Experimental.** Experimental means the maintainer owns and tests the Windows code, and the
 > parts below are not all proven yet. This is the whole status:
@@ -172,16 +173,8 @@ door is not asked: its only door is mutual TLS.
 
 ## Reaching it from your phone
 
-Steps 7 to 10 of Zero to phone, in full. These are the same steps as on Linux and macOS, done by
-hand. If you did steps 1 and 2 of Zero to phone, Tailscale is already set up: start at step 3
-below.
-The project ran them once on Windows, over HTTP, on a Headscale tailnet (Headscale is a self-hosted
-Tailscale server), with a desktop browser at phone size. The HTTPS form below was not run, and no
-real phone or agent was used. If a step fails, report it ([where](#when-something-breaks)).
-
-> **Note.** After the `tailscale serve` command (step 3 below), every device on your tailnet can
-> reach Collie, but it answers each one `device not paired` until you run `collie pair` and enter
-> the code on the phone. Read [Security](security.md) on how to limit who may reach Collie.
+Step 7 of Zero to phone, in full: set up Tailscale once, and `collie start` publishes Collie on
+your tailnet, the same way as on Linux and macOS.
 
 1. Install Tailscale on the PC and on the phone, and sign in to the same account on both:
    [tailscale.com/download](https://tailscale.com/download).
@@ -189,92 +182,123 @@ real phone or agent was used. If a step fails, report it ([where](#when-somethin
 2. In the Tailscale [admin console](https://login.tailscale.com/admin/dns), open **DNS**, turn on
    MagicDNS, then select **Enable HTTPS**.
 
-3. In a new terminal on the PC, publish Collie's local port, 8787 by default, on your tailnet:
+3. Start Collie, which publishes it on your tailnet:
 
    ```powershell
-   tailscale serve --bg --set-path=/ 8787
+   collie start
    ```
 
-4. Create the Collie config folder if it is missing, then open its `.env` file:
+4. Print the address to open on the phone:
+
+   ```powershell
+   collie url
+   ```
+
+> **Note.** Once `collie start` publishes Collie, every device on your tailnet can reach it, but it
+> answers each one `device not paired` until you run `collie pair` and enter the code on the phone.
+> Read [Security](security.md) on how to limit who may reach Collie.
+
+Collie listens on this PC only, at a loopback address that only this PC can reach. `collie start`
+then runs `tailscale serve --bg --set-path=/ 8787` for you and prints a line like
+`tailscale serve (https) → tailnet :443 -> 127.0.0.1:8787`. That is the "managed front door":
+Collie publishes the address itself and records the mapping in `tailscale-managed-handler` in its
+config folder.
+
+`collie start` also reads this PC's tailnet name from Tailscale and gives it to the Host check, so
+the default setup needs no `COLLIE_PUBLIC_HOSTS` and no `COLLIE_PUBLIC_URL`. The Host check refuses
+any website name that is not this PC's, which stops a web page from reaching Collie through DNS
+rebinding. Open Collie by the full name: the Host check refuses the short name.
+
+Publishing from `collie start` on Windows is new, and the project has tested it with unit tests
+only, not yet on a real tailnet. If a step fails, report it ([where](#when-something-breaks)).
+
+Collie removes only the mapping it recorded. `collie stop` leaves it in place, and
+`collie uninstall` removes it. `tailscale serve status` shows it. Never use `tailscale funnel`:
+Funnel puts Collie on the public internet.
+
+On a tailnet with HTTPS on, Tailscale gives the address a certificate that the phone trusts.
+Installing to the home screen, Web Push (notifications to your phone) and the microphone need
+HTTPS. Over plain HTTP they stay off ([Voice input and Web Push](voice-and-push.md)).
+
+### If you published by hand before
+
+The first `collie start` after the update takes over your mapping and records it.
+
+Earlier versions of this page told you to run `tailscale serve` by hand. When that mapping sends
+`/` to Collie's port on the listener Collie would use, `collie start` prints
+`tailscale serve: adopting the existing Collie root mount on :443` and records it. Until then,
+`collie doctor` warns on its `front-door` line. The `COLLIE_PUBLIC_HOSTS` and `COLLIE_PUBLIC_URL`
+lines in your `.env` keep working, and you may delete them.
+
+### When `collie start` cannot publish
+
+`collie start` prints `note: the tailnet front door did not come up`, and the lines above it say why.
+Collie still runs on this PC, so fix the cause and run `collie start` again.
+
+On a Headscale tailnet (a self-hosted Tailscale server) there are no HTTPS certificates, so the
+HTTPS form cannot work. Publish over HTTP instead. Add this line to the `.env` file (step 1 of the
+steps by hand below shows where it is), then restart and publish:
+
+```text
+COLLIE_SERVE_MODE=http
+```
+
+```powershell
+collie restart
+collie serve
+```
+
+Collie then publishes on its own port, and the address is `http://<name>:8787`. Plain HTTP is
+acceptable here because Tailscale encrypts the traffic between tailnet devices (WireGuard), and the
+HTTP hop stays inside the tailnet.
+
+If Collie still cannot publish, or you want to run Tailscale Serve yourself, do it by hand:
+
+1. Open the Collie config folder's `.env` file, and create the folder if it is missing:
 
    ```powershell
    New-Item -ItemType Directory -Force "$env:APPDATA\herdr\plugins\config\herdr.collie"
    notepad "$env:APPDATA\herdr\plugins\config\herdr.collie\.env"
    ```
 
-5. Add these two lines at the end of the file, with your own name from step 3, and save:
+2. Publish Collie's local port, 8787 by default, on your tailnet:
+
+   ```powershell
+   tailscale serve --bg --set-path=/ 8787
+   ```
+
+3. Add these two lines at the end of the `.env` file, with your own name from step 2, and save:
 
    ```text
    COLLIE_PUBLIC_HOSTS=myhost.tail1234.ts.net
    COLLIE_PUBLIC_URL=https://myhost.tail1234.ts.net
    ```
 
-6. Restart the bridge, then print the address:
+4. Restart the bridge, then print the address:
 
    ```powershell
    collie restart
    collie url
    ```
 
-Collie listens on this PC only, at a loopback address that only this PC can reach. On Linux and
-macOS, `collie start` runs Tailscale Serve for you. That is what "managed front door" means: Collie
-publishes the address itself. On Windows, `collie start` does not, so you run Tailscale Serve
-yourself.
-
-In step 3, Tailscale prints a line with an address like `https://myhost.tail1234.ts.net`. The name
-is the part after `https://`. Copy it. `tailscale serve status` shows the same address:
-
-```text
-https://myhost.tail1234.ts.net (tailnet only)
-|-- / proxy http://127.0.0.1:8787
-```
-
-The command is the same one that `collie start` runs for you on Linux and macOS. `--set-path=/`
-replaces whatever this PC already serves at `/` on your tailnet.
-
-> **Note.** On a Headscale tailnet, the HTTPS command in step 3 fails with
-> `error enabling https feature: error 501 Not Implemented`, because Headscale issues no HTTPS
-> certificates. Until you publish, `collie doctor` warns on its `front-door` line:
-> `this tailnet has no HTTPS certificates, so an https front door cannot be published`.
->
-> There, publish over HTTP, which is the form the project ran on Windows:
-> `tailscale serve --bg --http=80 --set-path=/ 8787`. It publishes on tailnet port 80, so the
-> address is `http://<name>` with no port. Use that `http://` address in `COLLIE_PUBLIC_URL`.
-> After that command, the `front-door` line passes. In 1.16.0 it keeps the warning.
->
-> Plain HTTP is acceptable here because Tailscale encrypts the traffic between tailnet devices
-> (WireGuard), and the HTTP hop stays inside the tailnet. Never use `tailscale funnel`. Over HTTP
-> the home screen install, Web Push and the microphone stay off.
->
-> On Linux and macOS, Collie's own HTTP mode publishes on the bridge port instead
-> ([`COLLIE_SERVE_MODE`](configure.md#the-environment-still-wins)). Collie does not run Serve on
-> Windows, so that variable changes no publishing here.
-
-On a tailnet with HTTPS on, Tailscale gives the address a certificate that the phone trusts. On
-Headscale, see the Note above. Installing to the home screen, Web Push (notifications to your
-phone) and the microphone need HTTPS. Over plain HTTP they stay off
-([Voice input and Web Push](voice-and-push.md)).
-
-In step 4, Notepad asks whether to create the file if it is not there. Click **Yes**. The folder
+In step 1, Notepad asks whether to create the file if it is not there. Click **Yes**. The folder
 is the Herdr plugin config folder for `herdr.collie`, by default
-`%APPDATA%\herdr\plugins\config\herdr.collie`. Collie asks Herdr for it, so
-`herdr plugin config-dir herdr.collie` prints it.
+`%APPDATA%\herdr\plugins\config\herdr.collie`. `herdr plugin config-dir herdr.collie` prints it.
 
-`COLLIE_PUBLIC_HOSTS` is the Host check: Collie reads the website name in each request and refuses
-any name that is not on this list, which stops a web page from reaching it through DNS rebinding.
-`COLLIE_PUBLIC_URL` is the address that `collie url` and the QR code of `collie pair` print. Open
-Collie by the full name: the Host check refuses the tailnet IP address and the short name.
-Collie also tries to find the tailnet name itself at start. The two lines make it certain.
+In step 2, Tailscale prints a line with an address like `https://myhost.tail1234.ts.net`. The name
+is the part after `https://`. On Headscale use `tailscale serve --bg --http=80 --set-path=/ 8787`,
+and put `http://<name>` in `COLLIE_PUBLIC_URL`. `--set-path=/` replaces whatever this PC already
+serves at `/` on your tailnet.
 
-Collie does not manage this mapping on Windows. `collie stop` and `collie uninstall` leave it in
-place. `tailscale serve status` shows it, and `tailscale serve reset` clears every Serve mapping
-on the PC. Never use `tailscale funnel`: Funnel puts Collie on the public internet.
+`COLLIE_PUBLIC_URL` is the address that `collie url` and the QR code of `collie pair` print. A
+mapping made by hand that Collie later adopts becomes Collie's to remove; any other one stays
+yours, and `tailscale serve reset` clears every Serve mapping on the PC.
 
 If you prefer a reverse proxy, a program that forwards web requests to Collie, or another tunnel,
 [Deployment](deployment.md) describes the variants. That is
 [Variant C](deployment.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale), with
-`COLLIE_PUBLIC_HOSTS` set to the name your phone opens. The first `collie start` raises no firewall
-prompt, because Collie listens on this machine only.
+`COLLIE_SKIP_SERVE=1` and `COLLIE_PUBLIC_HOSTS` set to the name your phone opens. The first
+`collie start` raises no firewall prompt, because Collie listens on this machine only.
 
 ### Open it on your phone
 

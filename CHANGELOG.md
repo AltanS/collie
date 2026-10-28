@@ -23,6 +23,14 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Changed
+
+- **Windows: collie start publishes the tailnet front door.** It runs `tailscale serve` through the
+  same code as Linux and macOS, records the mapping, and removes only that mapping on
+  `collie uninstall`. A mapping made by hand from the old Windows guide is adopted and recorded on
+  the first `collie start`, and `collie doctor` warns about it until then. `COLLIE_PUBLIC_HOSTS`
+  and `COLLIE_PUBLIC_URL` are no longer needed for the default setup.
+
 ### Docs
 
 - **A docs fix can reach colliepwa.dev before the next release.** A branch `docs/<tag>`, named for the

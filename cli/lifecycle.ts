@@ -974,11 +974,6 @@ export interface ServiceBackend {
   restart?(deps: LifecycleDeps): Promise<number | null>;
   /** `collie logs` from the supervisor's own store (the journal); without it, the log file. */
   logs?(deps: LifecycleDeps, lines: number): number;
-  /**
-   * Whether `start` publishes the front door. Not on Windows, where Collie publishes no ingress
-   * yet (M43 spec 09) and the community script never did.
-   */
-  readonly publishesFrontDoor: boolean;
 }
 
 const pidfileDescription = (deps: LifecycleDeps): string | undefined =>
@@ -1016,7 +1011,6 @@ const BACKENDS = {
       }
       return r.code === 0 ? EXIT.OK : EXIT.FAIL;
     },
-    publishesFrontDoor: true,
   },
   launchd: {
     start: startLaunchd,
@@ -1043,7 +1037,6 @@ const BACKENDS = {
       if (pid !== undefined) return `pid ${pid} (unsupervised — launchd bootstrap refused)`;
       return `launchd (${agentLabel(deps.ctx.instance)}) · not loaded`;
     },
-    publishesFrontDoor: true,
   },
   taskscheduler: {
     start: startTaskScheduler,
@@ -1051,7 +1044,6 @@ const BACKENDS = {
     remove: removeTaskScheduler,
     describe: describeTaskScheduler,
     restart: restartTaskScheduler,
-    publishesFrontDoor: false,
   },
   unsupervised: {
     start: startUnsupervised,
@@ -1063,7 +1055,6 @@ const BACKENDS = {
       const pid = pidfileDescription(deps);
       return pid !== undefined ? `pid ${pid} (unsupervised)` : "not supervised";
     },
-    publishesFrontDoor: true,
   },
 } satisfies Readonly<Record<Tier, ServiceBackend>>;
 
@@ -1085,18 +1076,15 @@ export async function cmdStart(deps: LifecycleDeps): Promise<number> {
   // The lazy first build. It warns rather than fails: a host whose UI won't build still gets its
   // API, and the 503 is legible where a refused `start` is not.
   ensureBuild(deps);
-  const backend = serviceBackend(deps);
-  const started = await backend.start(deps);
+  const started = await serviceBackend(deps).start(deps);
   if (started !== EXIT.OK) return started;
 
   // A front door that won't come up must not abort `start`. The bridge is already running on
   // loopback, and the banner is what the README's troubleshooting flow tells people to read.
-  // `serve` reports its own reason.
-  if (!backend.publishesFrontDoor) {
-    deps.io.out(
-      `note: Collie publishes no front door here; the bridge is on ${localBridgeHostPort(deps.ctx.env, deps.ctx.port)}`,
-    );
-  } else if ((await deps.serve(deps.io)) !== EXIT.OK) {
+  // `serve` reports its own reason, and says itself when it publishes nothing on purpose
+  // (`COLLIE_SKIP_SERVE=1`, a crew peer). Every supervisor takes this path, Task Scheduler too:
+  // since 2026-10-28 Windows publishes through the same `cli/serve.ts` (ADR 0075, addendum).
+  if ((await deps.serve(deps.io)) !== EXIT.OK) {
     deps.io.err(
       `note: the tailnet front door did not come up; the bridge is still on ${localBridgeHostPort(deps.ctx.env, deps.ctx.port)}`,
     );

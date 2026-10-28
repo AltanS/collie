@@ -10,6 +10,7 @@ import {
   type FakeFiles,
   fakeFiles,
   fakeLinkFs,
+  HANDLER_FILE,
   HOME,
   ROOT,
   STATE,
@@ -54,6 +55,7 @@ import {
   systemdUserReachable,
   writeUnit,
 } from "./lifecycle.ts";
+import { cmdServe } from "./serve.ts";
 import { formatTaskRecord, taskRecordPath, taskRestartPath } from "./task-scheduler.ts";
 
 // The lifecycle, driven end to end against fakes for the two seams (cli/fakes.ts). The shell could
@@ -654,10 +656,29 @@ describe("the Task Scheduler tier (Windows)", () => {
       expect(xml).toContain(`HERDR_PLUGIN_CONFIG_DIR=${CONFIG}`);
       expect(xml).toContain(`<WorkingDirectory>${ROOT}</WorkingDirectory>`);
       expect(h.io.stdout).toContain("bridge started (Task Scheduler: herdr.collie)");
-      // No unsupervised bridge beside the task, and no front door: Collie publishes none on Windows.
+      // No unsupervised bridge beside the task. The front door is published as on Linux and macOS
+      // (ADR 0075, addendum 2026-10-28), so `serve` runs once and no "publishes nothing" note is left.
       expect(h.exec.spawned).toHaveLength(0);
-      expect(served).toBe(0);
-      expect(h.io.stdout.join("\n")).toContain("note: Collie publishes no front door here");
+      expect(served).toBe(1);
+      expect(h.io.stdout.join("\n")).not.toContain("publishes no front door");
+    });
+
+    test("the first start after the update adopts the door the old docs had the operator make by hand", async () => {
+      // `tailscale serve --bg --set-path=/ 8787`, typed in PowerShell: an https root on :443 that
+      // proxies to this collie, and no ownership record. The real `cmdServe` runs, through fakes.
+      const handMade = '{"TCP":{"443":{"HTTPS":true}},"Web":{"desk.tail.ts.net:443":{"Handlers":{"/":{"Proxy":"http://127.0.0.1:8787"}}}}}';
+      const h = windows({
+        answers: [
+          ["tailscale status --json", { stdout: JSON.stringify({ Self: { DNSName: "desk.tail.ts.net." }, CertDomains: ["desk.tail.ts.net"] }) }],
+          ["tailscale serve status --json", { stdout: handMade }],
+        ],
+      });
+      h.deps.serve = (into) => Promise.resolve(cmdServe({ ...h.deps, io: into ?? h.deps.io }));
+      expect(await cmdStart(h.deps)).toBe(EXIT.OK);
+      expect(h.io.stdout.join("\n")).toContain("tailscale serve: adopting the existing Collie root mount on :443");
+      expect(h.files.read(HANDLER_FILE)).toBe("https:443|desk.tail.ts.net:443|http://127.0.0.1:8787\n");
+      expect(h.exec.calls).toContain("tailscale serve --bg --set-path=/ 8787");
+      expect(h.io.stderr.join("\n")).not.toContain("front door did not come up");
     });
 
     test("a path with a '%' is refused before the task is written: Task Scheduler would expand it", async () => {
