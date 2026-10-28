@@ -20,6 +20,8 @@ and `web/package.json`, which `scripts/check-version.sh` checks. See [`CLAUDE.md
 newest tag. The phone PWA updates itself within about a minute; no reload needed.
 Running a crew? Update the lead first; members follow on their own. Details:
 `docs/crew.md` → *Updating from 1.7.0*.
+- **An OpenCode 2 pane recognizes its question dialogs again.** opencode 2.1 paints its own `Questions` title above the dialog, marks the pointed row with an accent ink instead of a background chip, ends the tab row with `Submit` and draws the active chip bold, and drops the `Review` heading from the confirm screen. Collie now reads all of that, so a single question, a multi-select list and a several-question wizard lift into cards again, and the open free-text input still shows the card with Escape. Thanks @butzist (#607).
+- **History reads a session from before an OpenCode 2.1 upgrade.** 2.1 renames the `session` table to `session_v2` and copies an older session's turns into `session_message` only when OpenCode itself opens that session. A session row in `session_v2` therefore no longer means the conversation is there; Collie picks the store by where the turns actually are, so an upgraded pane shows its history instead of "no transcript". Thanks @butzist (#607).
 
 ## [Unreleased]
 
