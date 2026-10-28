@@ -24,6 +24,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **History reads a session from before an OpenCode 2.1 upgrade.** 2.1 renames the `session` table to `session_v2` and copies an older session's turns into `session_message` only when OpenCode itself opens that session. A session row in `session_v2` therefore no longer means the conversation is there; Collie picks the store by where the turns actually are, so an upgraded pane shows its history instead of "no transcript". Thanks @butzist (#607).
 - **A long answer to a question card is typed whole.** The answer field no longer shares the plan row's 240-character cap: an answer up to 4000 characters is typed and proved while the dialog fits the pane, and one that would not fit is refused before any key, pointing at Chat about this. Thanks @eseninik (#606).
 - **A Hermes pane with an interactive session id reads its history again.** Hermes 0.22 names interactive sessions `local-` followed by 64 hex digits, and Collie only knew the dated and subagent ids, so the pane fell back to the terminal view with no records. Collie now accepts the `local-` id (fixes #601). Thanks @NCheuk (#602).
+- **Linked git worktrees fold under their open root workspace on the dashboard.** The workspace filter lists the root checkout instead of each linked worktree separately, and choosing a root workspace shows its worktrees' panes under the root heading with each worktree named on its row while keeping separate working-tree rows on the Files tab (fixes #587). Thanks @GGGODLIN (#608).
 
 ## [Unreleased]
 
