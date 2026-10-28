@@ -592,6 +592,260 @@ describe("the dashboard's footer (ADR 0066, ADR 0085)", () => {
     expect(stored().isolatedSpaces).toEqual([]);
   });
 
+  it("folds linked worktrees under their open root workspace in the filter and pane list (issue #587)", async () => {
+    const repo = "/home/you/membero";
+    const data = homeData({
+      agents: [
+        {
+          ...fixtureAgents[0]!,
+          paneId: "w1:p1",
+          workspaceId: "w1",
+          workspaceLabel: "membero",
+          workspaceNumber: 1,
+          tabId: "w1:t1",
+          tabLabel: "1",
+          sessionName: "root-agent",
+          status: "idle",
+        },
+        {
+          ...fixtureAgents[0]!,
+          paneId: "w2:p1",
+          workspaceId: "w2",
+          workspaceLabel: "lucky-meadow-d1ec",
+          workspaceNumber: 2,
+          tabId: "w2:t1",
+          tabLabel: "1",
+          sessionName: "worktree-agent",
+          status: "blocked",
+        },
+        {
+          ...fixtureAgents[1]!,
+          paneId: "w3:p1",
+          workspaceId: "w3",
+          workspaceLabel: "collie",
+          workspaceNumber: 3,
+          tabId: "w3:t1",
+          tabLabel: "code",
+          sessionName: "other-agent",
+          status: "idle",
+        },
+      ],
+      shellPanes: [],
+      workspaces: [
+        { workspaceId: "w1", number: 1, label: "membero", focused: true, activeTabId: "w1:t1", tabCount: 1, paneCount: 1, repoRoot: repo, isWorktree: false },
+        { workspaceId: "w2", number: 2, label: "lucky-meadow-d1ec", focused: false, activeTabId: "w2:t1", tabCount: 1, paneCount: 1, repoRoot: repo, isWorktree: true },
+        { workspaceId: "w3", number: 3, label: "collie", focused: false, activeTabId: "w3:t1", tabCount: 1, paneCount: 1 },
+      ],
+      tabs: [
+        { tabId: "w1:t1", workspaceId: "w1", number: 1, label: "1", focused: true, paneCount: 1 },
+        { tabId: "w2:t1", workspaceId: "w2", number: 1, label: "1", focused: false, paneCount: 1 },
+        { tabId: "w3:t1", workspaceId: "w3", number: 1, label: "code", focused: false, paneCount: 1 },
+      ],
+    });
+    renderHome(data);
+    await userEvent.click(await settled());
+    const sheet = () => screen.getByRole("dialog", { name: "Workspaces" });
+    // Only the root workspace and the unrelated workspace are listed in the filter sheet;
+    // the root's state word reflects its blocked worktree pane.
+    expect(within(sheet()).getAllByRole("checkbox").map((o) => o.textContent)).toEqual([
+      "All workspaces",
+      "membero · needs you",
+      "collie",
+    ]);
+    await userEvent.click(within(sheet()).getByRole("checkbox", { name: /^membero/ }));
+    expect(screen.queryByRole("heading", { name: "collie" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "lucky-meadow-d1ec" })).not.toBeInTheDocument();
+    const section = groupSection("membero");
+    const rows = rowsOf(section);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toHaveTextContent("root-agent");
+    expect(rows[1]).toHaveTextContent("worktree-agent");
+    // The worktree pane shows its worktree name on line 2 so it can be told apart from the root's pane.
+    expect(rows[1]!.querySelector('[data-slot="agent-row-detail"]')).toHaveTextContent("lucky-meadow-d1ec");
+    // On the Files tab, both the root checkout and its linked worktree keep their own change rows.
+    await userEvent.click(within(sheet()).getByRole("button", { name: "Close" }));
+    await userEvent.click(tab(/^Files$/));
+    const changesList = await screen.findByRole("list", { name: "Changes by workspace" });
+    expect(within(changesList).getAllByRole("button").map((r) => r.textContent)).toEqual([
+      expect.stringMatching(/^membero/),
+      expect.stringMatching(/^lucky-meadow-d1ec/),
+    ]);
+  });
+
+  it("promotes an isolated orphan worktree to its root workspace when the root opens, and creates new tabs in the root (#587)", async () => {
+    const repo = "/home/you/membero";
+    const wtPane = {
+      ...fixtureAgents[0]!,
+      paneId: "w2:p1",
+      workspaceId: "w2",
+      workspaceLabel: "lucky-meadow-d1ec",
+      workspaceNumber: 2,
+      tabId: "w2:t1",
+      tabLabel: "1",
+      sessionName: "worktree-agent",
+      status: "working" as const,
+    };
+    const otherPane = {
+      ...fixtureAgents[1]!,
+      paneId: "w3:p1",
+      workspaceId: "w3",
+      workspaceLabel: "collie",
+      workspaceNumber: 3,
+      tabId: "w3:t1",
+      tabLabel: "code",
+      sessionName: "other-agent",
+      status: "idle" as const,
+    };
+    const wtSpace = {
+      workspaceId: "w2",
+      number: 2,
+      label: "lucky-meadow-d1ec",
+      focused: true,
+      activeTabId: "w2:t1",
+      tabCount: 1,
+      paneCount: 1,
+      repoRoot: repo,
+      isWorktree: true,
+    };
+    const rootSpace = {
+      workspaceId: "w1",
+      number: 1,
+      label: "membero",
+      focused: false,
+      activeTabId: "w1:t1",
+      tabCount: 1,
+      paneCount: 0,
+      repoRoot: repo,
+      isWorktree: false,
+    };
+    const otherSpace = {
+      workspaceId: "w3",
+      number: 3,
+      label: "collie",
+      focused: false,
+      activeTabId: "w3:t1",
+      tabCount: 1,
+      paneCount: 1,
+    };
+    // 1. Start with the worktree open as an orphan and isolate it in the filter.
+    localStorage.setItem(
+      "collie:dash-prefs:v1",
+      JSON.stringify({ isolatedSpaces: ["\u0000\u0000lucky-meadow-d1ec"] }),
+    );
+    let createdTabBody = "";
+    server.use(
+      http.post("/api/tab", async ({ request }) => {
+        createdTabBody = await request.text();
+        return HttpResponse.json({
+          tabId: "w1:t2",
+          workspaceId: "w1",
+          pane: { ...wtPane, paneId: "w1:p2", workspaceId: "w1", tabId: "w1:t2" },
+        });
+      }),
+    );
+    // 2. Render after the root workspace `membero` has been opened (even with 0 own panes).
+    renderHome(
+      homeData({
+        agents: [wtPane, otherPane],
+        shellPanes: [],
+        workspaces: [rootSpace, wtSpace, otherSpace],
+        tabs: [
+          { tabId: "w2:t1", workspaceId: "w2", number: 1, label: "1", focused: true, paneCount: 1 },
+          { tabId: "w3:t1", workspaceId: "w3", number: 1, label: "code", focused: false, paneCount: 1 },
+        ],
+      }),
+    );
+    const filterButton = await settled();
+    // Both the pane list and Spaces keep isolating the membero project rather than dropping the filter as stale.
+    expect(filterButton).toHaveTextContent("membero");
+    expect(screen.queryByRole("heading", { name: "collie" })).not.toBeInTheDocument();
+    const section = groupSection("membero");
+    expect(rowsOf(section)).toHaveLength(1);
+    expect(rowsOf(section)[0]).toHaveTextContent("worktree-agent");
+    // Clicking "+" on the root heading opens a tab in the root workspace (`w1`), not the worktree (`w2`).
+    await userEvent.click(screen.getByRole("button", { name: "New tab in membero" }));
+    await waitFor(() => expect(createdTabBody).toBe(JSON.stringify({ workspaceId: "w1" })));
+    // Spaces below also shows both membero and lucky-meadow-d1ec, not lucky-meadow-d1ec alone.
+    expect(screen.getByRole("button", { name: /membero.*0 panes/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /lucky-meadow-d1ec.*1 pane/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /collie.*1 pane/i })).not.toBeInTheDocument();
+  });
+
+  it("folds a peer machine's linked worktree under its root workspace when loaded through rootLoader on a crew (#587)", async () => {
+    const repo = "/home/peer/audiolink";
+    server.use(
+      http.get("/api/snapshot", () =>
+        HttpResponse.json({
+          bridge: "connected",
+          servers: [
+            { id: "lodge", name: "lodge", isLead: true, reachable: true, lastSeenAt: 1_000 },
+            { id: "attic", name: "attic", isLead: false, reachable: true, lastSeenAt: 1_000 },
+          ],
+          agents: [
+            {
+              ...fixtureAgents[0]!,
+              host: "lodge",
+              paneId: "w1:p1",
+              workspaceId: "w1",
+              workspaceLabel: "collie",
+              workspaceNumber: 1,
+              tabId: "w1:t1",
+              tabLabel: "main",
+              sessionName: "lead-agent",
+              status: "idle",
+            },
+            {
+              ...fixtureAgents[0]!,
+              host: "attic",
+              paneId: "w1:p1",
+              workspaceId: "w1",
+              workspaceLabel: "audiolink",
+              workspaceNumber: 1,
+              tabId: "w1:t1",
+              tabLabel: "main",
+              sessionName: "peer-root-agent",
+              status: "idle",
+            },
+            {
+              ...fixtureAgents[1]!,
+              host: "attic",
+              paneId: "w2:p1",
+              workspaceId: "w2",
+              workspaceLabel: "lucky-forest-e65c",
+              workspaceNumber: 2,
+              tabId: "w2:t1",
+              tabLabel: "work",
+              sessionName: "peer-wt-agent",
+              status: "working",
+            },
+          ],
+          shellPanes: [],
+          workspaces: [
+            { host: "lodge", workspaceId: "w1", number: 1, label: "collie", focused: true, activeTabId: "w1:t1", tabCount: 1, paneCount: 1 },
+            { host: "attic", workspaceId: "w1", number: 1, label: "audiolink", focused: true, activeTabId: "w1:t1", tabCount: 1, paneCount: 1, repoRoot: repo, isWorktree: false },
+            { host: "attic", workspaceId: "w2", number: 2, label: "lucky-forest-e65c", focused: false, activeTabId: "w2:t1", tabCount: 1, paneCount: 1, repoRoot: repo, isWorktree: true },
+          ],
+          tabs: [
+            { host: "lodge", tabId: "w1:t1", workspaceId: "w1", number: 1, label: "main", focused: true, paneCount: 1 },
+            { host: "attic", tabId: "w1:t1", workspaceId: "w1", number: 1, label: "main", focused: true, paneCount: 1 },
+            { host: "attic", tabId: "w2:t1", workspaceId: "w2", number: 1, label: "work", focused: false, paneCount: 1 },
+          ],
+        }),
+      ),
+    );
+    const { rootLoader } = await import("@/lib/loaders");
+    const data = await rootLoader({ request: new Request("http://localhost/") });
+    renderHome(data);
+    await userEvent.click(await settled());
+    const sheet = () => screen.getByRole("dialog", { name: "Workspaces" });
+    expect(within(sheet()).getAllByRole("checkbox").map((o) => o.textContent)).toEqual([
+      "All workspaces",
+      "collie",
+      "audiolink · working",
+    ]);
+  });
+
+
   it("a device that stored the single-workspace choice keeps its old filter", async () => {
     // Learn the key the collie workspace is remembered by from a first visit.
     renderHome(solo());
