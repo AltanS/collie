@@ -9,7 +9,7 @@ import type { LinkReader } from "./link.ts";
 import { ensureMuxChosen } from "./mux.ts";
 import type { StatusView, Ui } from "./render.ts";
 import { cmdUnserve, crewModeOnDisk, type ServeDeps } from "./serve.ts";
-import { SETUP_CLOSING, setupFindings, setupLines } from "./setup-findings.ts";
+import { phoneBlocked, SETUP_CLOSING, setupFindings, setupLines } from "./setup-findings.ts";
 import { pairedRegistryOf } from "./pairing.ts";
 import { type Exec, type Files, PROCESS_QUERY_SLOW_START_MS, type ProcessLookup, type ProcessRow } from "./sys.ts";
 import {
@@ -1106,25 +1106,29 @@ async function launchBridge(deps: LifecycleDeps): Promise<number> {
   // `serve` reports its own reason, and says itself when it publishes nothing on purpose
   // (`COLLIE_SKIP_SERVE=1`, a crew peer). Every supervisor takes this path, Task Scheduler too:
   // since 2026-10-28 Windows publishes through the same `cli/serve.ts` (ADR 0075, addendum).
-  if ((await deps.serve(deps.io)) !== EXIT.OK) {
+  const doorUp = (await deps.serve(deps.io)) === EXIT.OK;
+  if (!doorUp) {
     deps.io.err(
       `note: the tailnet front door did not come up; the bridge is still on ${localBridgeHostPort(deps.ctx.env, deps.ctx.port)}`,
     );
   }
-  await printStatusBanner(deps);
+  await printStatusBanner(deps, { doorUp });
   return EXIT.OK;
 }
 
 /**
  * Print each setup row that needs the operator, as the lines of {@link setupLines}. Returns whether
- * any row printed, so `cmdStart` can close with {@link SETUP_CLOSING} after the banner. Nothing is
- * printed when every row is fine. `skipped` rows stay with `doctor`: they are a check that could not
- * run, or a front door the operator chose not to use, and neither is something to fix.
+ * the PHONE is blocked ({@link phoneBlocked}: a Tailscale row is open), so `cmdStart` can close with
+ * {@link SETUP_CLOSING} after the banner. Every open row prints, `path-link` and `mux` too, but only
+ * a Tailscale row makes the closing sentence true. Nothing is printed when every row is fine.
+ * `skipped` rows stay with `doctor`: they are a check that could not run, or a front door the
+ * operator chose not to use, and neither is something to fix.
  */
 function reportSetup(deps: LifecycleDeps): boolean {
-  const open = setupFindings(deps).filter((f) => f.status === "warn" || f.status === "error");
+  const findings = setupFindings(deps);
+  const open = findings.filter((f) => f.status === "warn" || f.status === "error");
   for (const f of open) for (const line of setupLines(f)) deps.io.err(line);
-  return open.length > 0;
+  return phoneBlocked(findings, deps.host);
 }
 
 export async function cmdStop(deps: LifecycleDeps, verb: StopVerb = "stop"): Promise<number> {
@@ -1296,12 +1300,22 @@ export async function statusBanner(deps: LifecycleDeps): Promise<string[]> {
   return bannerLines(await statusView(deps));
 }
 
+/** What the caller knows that the banner cannot read off the machine. */
+export interface StatusOptions {
+  /**
+   * False when `start` just tried to publish the front door and it did not come up. The `tailnet` row
+   * then says so, because the address it would print is not served. Absent reads as true: `status`
+   * and every other caller describe a door they did not just try to open.
+   */
+  readonly doorUp?: boolean;
+}
+
 /**
  * The banner as a value: one verdict and a label/value block. Both renderings read this — the plain
  * lines below, and the boxed terminal view in `cli/ui/` — so "is it up", the instance, the service
  * and the URLs can never say two different things depending on where you looked.
  */
-export async function statusView(deps: LifecycleDeps): Promise<StatusView> {
+export async function statusView(deps: LifecycleDeps, options: StatusOptions = {}): Promise<StatusView> {
   const version = collieVersion(deps.ctx.root);
   // The bridge does not always bind loopback (a peer sets COLLIE_HOST to its tailnet address — the
   // documented Variant-E shape). Probing 127.0.0.1 there would find nothing home and print "isn't
@@ -1347,7 +1361,8 @@ export async function statusView(deps: LifecycleDeps): Promise<StatusView> {
       value: url ?? "(COLLIE_SKIP_SERVE=1 — set COLLIE_PUBLIC_URL to your reverse-proxy URL)",
     });
   } else {
-    rows.push({ label: "tailnet", value: bridgeUrl(deps.exec, deps.ctx) });
+    const url = bridgeUrl(deps.exec, deps.ctx);
+    rows.push({ label: "tailnet", value: options.doorUp === false ? `${url} (not published yet, see the lines above)` : url });
   }
   // Pairing is always on (ADR 0086): with nothing paired the URL above opens onto a pair screen and
   // nothing else, so the first start says what to run. Only then: a paired install's banner is
@@ -1378,8 +1393,8 @@ export function bannerLines(view: StatusView): string[] {
   ];
 }
 
-async function printStatusBanner(deps: LifecycleDeps): Promise<void> {
-  const view = await statusView(deps);
+async function printStatusBanner(deps: LifecycleDeps, options: StatusOptions = {}): Promise<void> {
+  const view = await statusView(deps, options);
   if (deps.ui != null) {
     await deps.ui.status(view);
     return;

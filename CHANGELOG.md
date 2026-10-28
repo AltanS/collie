@@ -50,6 +50,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **Doctor no longer blames the certificates when Tailscale is signed out.** The `front-door` row now
   reads the Tailscale state first and says the check cannot run yet, instead of "this tailnet has no
   HTTPS certificates".
+- **`collie start` says "your phone cannot reach it yet" only when that is true.** The closing sentence
+  now follows the Tailscale rows alone; a missing PATH link no longer triggers it. When the front
+  door did not come up, the banner's tailnet row says so instead of printing a working-looking
+  address.
 
 ### Docs
 

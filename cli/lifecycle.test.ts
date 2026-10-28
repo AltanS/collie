@@ -20,6 +20,7 @@ import { leadStore, member, peerStore } from "../bridge/crew/fixtures.ts";
 import { hostFor, type Host } from "../bridge/host.ts";
 import { serializeTrustStore } from "../bridge/crew/trust-store.ts";
 import { EXIT, type Io } from "./io.ts";
+import { SETUP_CLOSING } from "./setup-findings.ts";
 import { POWERSHELL_UTF8, PROCESS_QUERY_SLOW_START_MS } from "./sys.ts";
 import { collieBinary, taskFilePath } from "./unit.ts";
 
@@ -681,6 +682,46 @@ describe("the setup check in start", () => {
     h.deps.link = fakeLinkFs();
     expect(await cmdStart(h.deps)).toBe(EXIT.OK);
     expect(h.io.stderr.filter((l) => l.startsWith("setup:") || l.startsWith("Running, but"))).toEqual([]);
+  });
+
+  test("a missing PATH link alone prints its lines but not the closing sentence", async () => {
+    const h = harness({
+      answers: [
+        ...NO_SYSTEMD,
+        ["tailscale status --json", { stdout: JSON.stringify({ BackendState: "Running", Self: { DNSName: "desk.tail.ts.net." }, CertDomains: ["desk.tail.ts.net"] }) }],
+        ["tailscale debug prefs", { stdout: JSON.stringify({ OperatorUser: "pat" }) }],
+      ],
+      env: { USER: "pat", PATH: "/usr/bin" },
+    });
+    h.deps.link = fakeLinkFs();
+    expect(await cmdStart(h.deps)).toBe(EXIT.OK);
+    expect(h.io.stderr.some((l) => l.startsWith("setup: no `collie` is on PATH"))).toBe(true);
+    expect(h.io.stderr.some((l) => l.startsWith("Running, but"))).toBe(false);
+  });
+
+  test("an open tailnet-https row earns the closing sentence", async () => {
+    const h = harness({
+      answers: [...NO_SYSTEMD, ["tailscale status --json", { stdout: NO_HTTPS }], ["tailscale debug prefs", { stdout: JSON.stringify({ OperatorUser: "pat" }) }]],
+      env: { USER: "pat", PATH: "/usr/bin" },
+      files: { "/usr/bin/collie": "" },
+    });
+    h.deps.link = fakeLinkFs();
+    expect(await cmdStart(h.deps)).toBe(EXIT.OK);
+    expect(h.io.stderr.some((l) => l.startsWith("setup: HTTPS certificates are off"))).toBe(true);
+    expect(h.io.stderr.at(-1)).toBe(SETUP_CLOSING);
+  });
+
+  test("the banner's tailnet row says so when the front door did not come up", async () => {
+    const failed = harness({ serve: () => Promise.resolve(EXIT.FAIL) });
+    expect(await cmdStart(failed.deps)).toBe(EXIT.OK);
+    const failedRow = failed.io.stdout.find((l) => l.trimStart().startsWith("tailnet"));
+    expect(failedRow).toContain("not published yet, see the lines above");
+
+    const up = harness();
+    expect(await cmdStart(up.deps)).toBe(EXIT.OK);
+    const upRow = up.io.stdout.find((l) => l.trimStart().startsWith("tailnet"));
+    expect(upRow).toBeDefined();
+    expect(upRow).not.toContain("not published yet");
   });
 
   test("a Windows start with Tailscale missing says so in Windows words, then starts the task anyway", async () => {

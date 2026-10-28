@@ -93,8 +93,10 @@ export function setupLines(f: Finding): string[] {
 }
 
 /**
- * The sentence `collie start` prints on stderr AFTER the status banner when any setup row printed.
- * Before the banner it read as "stopped"; after it, the bridge is plainly up and the phone is not.
+ * The sentence `collie start` prints on stderr AFTER the status banner when a Tailscale row is open
+ * ({@link phoneBlocked}). Before the banner it read as "stopped"; after it, the bridge is plainly up
+ * and the phone is not. A `path-link` or `mux` row alone does not earn it: those print, and the phone
+ * still reaches the door.
  */
 export const SETUP_CLOSING =
   "Running, but your phone cannot reach it yet. Fix the setup lines above, then run collie start again. collie doctor repeats this check.";
@@ -152,9 +154,26 @@ function tailscaleNotUsed(deps: SetupDeps): { detail: string; remedy: string } |
 const notYet = (check: string): Finding =>
   skipped(check, "Tailscale is not running here, so this cannot be checked yet", "fix the tailscale line first, then run `collie doctor` again");
 
+/**
+ * The check names of the Tailscale rows, in print order: `tailscale`, `tailnet-https`, and on Linux
+ * `tailscale-operator`. These are the rows that decide whether a phone can reach the front door.
+ */
+export function reachabilityChecks(host: Host): readonly string[] {
+  return isLinux(host) ? ["tailscale", "tailnet-https", "tailscale-operator"] : ["tailscale", "tailnet-https"];
+}
+
+/**
+ * Does an open Tailscale row stand between the phone and the front door? `mux` and `path-link` are
+ * setup rows too, but neither one is about the phone: a missing PATH link leaves a door that works.
+ */
+export function phoneBlocked(findings: readonly Finding[], host: Host): boolean {
+  const checks = reachabilityChecks(host);
+  return findings.some((f) => checks.includes(f.check) && (f.status === "warn" || f.status === "error"));
+}
+
 /** The `tailscale`, `tailnet-https` and (Linux only) `tailscale-operator` rows. */
 export function tailscaleFindings(deps: SetupDeps): Finding[] {
-  const checks = isLinux(deps.host) ? ["tailscale", "tailnet-https", "tailscale-operator"] : ["tailscale", "tailnet-https"];
+  const checks = reachabilityChecks(deps.host);
   const unused = tailscaleNotUsed(deps);
   if (unused !== null) return checks.map((check) => skipped(check, unused.detail, unused.remedy));
 
