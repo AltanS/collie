@@ -1,0 +1,27 @@
+[38;5;174m ▐[48;5;16m▛███▛█[39m[49m   [1mClaude[0m [1mCode[0m [38;5;246mv2.1.309[39m
+[38;5;174m▝▜[48;5;16m█████[49m█▀[39m  [38;5;246mOpus[39m [38;5;246m5.5[39m [38;5;246m·[39m [38;5;246mAmazon[39m [38;5;246mBedrock[39m
+[38;5;174m ▝▝[39m   [38;5;174m▝▝[39m   [38;5;246m/home/demo/work/demo[39m
+
+
+[38;5;153m╭──────────────────────────────────────────────────────────────╮
+│[39m [1m[38;5;153mAuthentication[0m                                               [38;5;153m│
+│[39m                                                              [38;5;153m│
+│[39m [38;5;246mBrowser will not be automatically opened.[39m                    [38;5;153m│
+│[39m [38;5;246mPlease visit the following URL: [39m                             [38;5;153m│
+│[39m [38;5;246m]8;id=1mos4nj;https://example.awsapps.com/start/#/device\https://example.awsapps.com/start/#/device]8;;\ Then enter the [39m   [38;5;153m│
+│[39m [38;5;246mcode: ABCD-EFGH Alternatively, you may visit the following [39m  [38;5;153m│
+│[39m [38;5;246mURL which will autofill the code upon loading: https://examp[39m [38;5;153m│
+│[39m [38;5;246mle.awsapps.com/start/#/device?user_code=ABCD-EFGH >>> [39m       [38;5;153m│
+│[39m [38;5;246mOne-tap login URL (code pre-filled): https://example.awsapps[39m [38;5;153m│
+│[39m [38;5;246m.com/start/#/device?user_code=ABCD-EFGH See[39m [38;5;246m~/.aws/config [39m   [38;5;153m│
+│[39m [38;5;246m--profile[39m [38;5;246me.g.[39m [38;5;246mv2.1[39m [38;5;246mdocs[39m [38;5;246mat[39m [38;5;246mhttps://docs.example.com/cli/lat[39m [38;5;153m│
+│[39m [38;5;246mest/userguide/sso-configure-profile-token.html[39m [38;5;246mfor[39m [38;5;246mdetails.[39m  [38;5;153m│
+╰──────────────────────────────────────────────────────────────╯
+
+
+[38;5;244m────────────────────────────────────────────────────────────────
+[39m❯ [7m [0m
+[38;5;244m────────────────────────────────────────────────────────────────
+[39m  [38;5;246mContext:[39m [38;5;246m--%[39m [38;5;246m│[39m [2m[38;5;246m💰[0m [2m[38;5;246m$0.00[0m
+  [38;5;246m--[39m [38;5;246mINSERT[39m [38;5;246m--[39m [38;5;220m⏵⏵[39m [38;5;220mauto[39m [38;5;220mmode[39m [38;5;220mon[38;5;246m (shift+tab[39m [38;5;246mto[39m [38;5;246mcycle)[39m
+  [38;5;246mtmux focus-events off · add 'set -g focus-events on'[39m [38;5;246mto ~/.…[39m

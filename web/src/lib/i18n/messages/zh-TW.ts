@@ -1571,6 +1571,8 @@ export const zhTW: Dictionary = {
   "dialog.backToOptions": "返回選項",
   "dialog.endsQuestionsSuffix": "（結束問答）",
   "dialog.autocomplete.title": "斜線指令",
+  "dialog.authBox.label": "登入輸出",
+  "dialog.authBox.waiting": "登入指令尚未輸出任何內容。",
   "dialog.menu.moveUp": "上移",
   "dialog.menu.moveDown": "下移",
   "dialog.menu.noticeDraft": "請先清空輸入框：數字會接在框裡的文字後面。",

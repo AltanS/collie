@@ -497,6 +497,38 @@ export function paneTextWithDraft(base = "hello from the pane"): string {
   return `${base}\n${BOX_RULE}\n❯ ${typedDraft}\n${BOX_RULE}`;
 }
 
+const AUTH_BOX_INNER = 59;
+/**
+ * The long Authentication box's last address. It is `?c=LAST-CODE`, not `?user_code=ABCD-EFGH`: that
+ * URL is 62 characters and the 61-wide box holds 57 cells per row, so it would break the box's edges.
+ */
+export const AUTH_BOX_LAST_URL = "https://example.awsapps.com/start/#/device?c=LAST-CODE";
+/**
+ * A Claude pane showing a filled Authentication box of `rowCount` text rows over the live input box,
+ * the last row `AUTH_BOX_LAST_URL`. `label` words the filler rows, so two calls draw one box with
+ * other text.
+ */
+export function paneTextWithAuthBox(rowCount: number, label = "Login output row", innerWidth = AUTH_BOX_INNER): string {
+  const row = (text: string): string => `│ ${text.padEnd(innerWidth - 2)} │`;
+  const filler = Array.from({ length: rowCount - 1 }, (_, i) => row(`${label} ${i + 1}`));
+  return [
+    "Claude Code v2.1.307",
+    "",
+    `╭${"─".repeat(innerWidth)}╮`,
+    row("Authentication"),
+    row(""),
+    ...filler,
+    row(AUTH_BOX_LAST_URL),
+    `╰${"─".repeat(innerWidth)}╯`,
+    "",
+    "─".repeat(innerWidth + 2),
+    `❯ ${typedDraft}`,
+    "─".repeat(innerWidth + 2),
+    "  Context: --% │ 💰 $0.00",
+    "  -- INSERT -- ⏵⏵ auto mode on (shift+tab to cycle)",
+  ].join("\n");
+}
+
 // ── The fake bridge's Send Protocol (M56 spec 06) ────────────────────────────────────────────────
 // Every text the composer sends is one request to `POST /api/send` (a pane on this machine) or to the
 // pane's reply route with an `id` (a pane on a crew member, which answers under `send`). The fake

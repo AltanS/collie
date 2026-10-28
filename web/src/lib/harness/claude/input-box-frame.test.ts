@@ -162,6 +162,18 @@ describe("parity with the old walk on the real corpus", () => {
     "claude--v2303-titled-edge-working--w160.txt",
     // The survey's transcript question, 2.1.306 (captured 2026-10-21): the box stands under it.
     "claude--v2306-transcript-survey--w153.txt",
+    "claude--v2307-auth-refresh-before-output--w61.txt",
+    "claude--v2307-auth-refresh-output--w61.txt",
+    "claude--v2309-auth-refresh-locked--w120.txt",
+    "claude--v2309-auth-refresh-locked--w52.txt",
+    "claude--v2309-auth-refresh-locked--w80.txt",
+    "claude--v2309-auth-refresh-output--w40.txt",
+    "claude--v2309-auth-refresh-output--w52.txt",
+    "claude--v2309-auth-refresh-output--w64.txt",
+    "claude--v2309-auth-refresh-output--w120.txt",
+    "claude--v2310-auth-refresh-before-output-spinner--w52.txt",
+    "claude--v2310-auth-refresh-output-spinner--w52.txt",
+    "claude--v2310-auth-refresh-output-spinner-timer--w52.txt",
     "claude--working-esc-to-interrupt.txt",
     "claude--working.txt",
   ]);

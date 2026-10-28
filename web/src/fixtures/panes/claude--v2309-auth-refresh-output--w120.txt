@@ -1,0 +1,23 @@
+[38;5;174m ▐[48;5;16m▛███▛█[39m[49m   [1mClaude[0m [1mCode[0m [38;5;246mv2.1.309[39m
+[38;5;174m▝▜[48;5;16m█████[49m█▀[39m  [38;5;246mOpus[39m [38;5;246m5.5[39m [38;5;246m·[39m [38;5;246mAmazon[39m [38;5;246mBedrock[39m
+[38;5;174m ▝▝[39m   [38;5;174m▝▝[39m   [38;5;246m/home/demo/c/sandbox/auth-refresh-lab/work-lab-lab-lab-lab-lab-lab-lab-l[39m
+
+
+[38;5;153m╭───────────────────────────────────────────────────────────────────────────────────────────────────────────────╮[39m
+[38;5;153m│[39m [1m[38;5;153mAuthentication[0m                                                                                                [38;5;153m│[39m
+[38;5;153m│[39m                                                                                                               [38;5;153m│[39m
+[38;5;153m│[39m [38;5;246mBrowser will not be automatically opened.[39m                                                                     [38;5;153m│[39m
+[38;5;153m│[39m [38;5;246mPlease visit the following URL: ]8;id=1mos4nj;https://example.awsapps.com/start/#/device\https://example.awsapps.com/start/#/device]8;;\ Then enter the code: ABCD-EFGH [39m    [38;5;153m│[39m
+[38;5;153m│[39m [38;5;246mAlternatively, you may visit the following URL which will autofill the code upon loading: [39m                    [38;5;153m│[39m
+[38;5;153m│[39m [38;5;246mhttps://example.awsapps.com/start/#/device?user_code=ABCD-EFGH >>> One-tap login URL (code pre-filled): [39m      [38;5;153m│[39m
+[38;5;153m│[39m [38;5;246mhttps://example.awsapps.com/start/#/device?user_code=ABCD-EFGH See ~/.aws/config --profile e.g. v2.1 docs at [39m [38;5;153m│[39m
+[38;5;153m│[39m [38;5;246mhttps://docs.example.com/cli/latest/userguide/sso-configure-profile-token.html for details.[39m                   [38;5;153m│[39m
+[38;5;153m╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────╯[39m
+
+
+[38;5;244m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[39m❯ [7m [0m
+[38;5;244m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[39m  [38;5;246mContext:[39m [38;5;246m--%[39m [38;5;246m│[39m [2m[38;5;246m💰[0m [2m[38;5;246m$0.00[0m
+  [38;5;246m--[39m [38;5;246mINSERT[39m [38;5;246m--[39m [38;5;220m⏵⏵[39m [38;5;220mauto[39m [38;5;220mmode[39m [38;5;220mon[38;5;246m (shift+tab[39m [38;5;246mto[39m [38;5;246mcycle)[39m
+                  [38;5;246mtmux[39m [38;5;246mfocus-events[39m [38;5;246moff[39m [38;5;246m·[39m [38;5;246madd[39m [38;5;246m'set[39m [38;5;246m-g[39m [38;5;246mfocus-events[39m [38;5;246mon'[39m [38;5;246mto[39m [38;5;246m~/.tmux.conf[39m [38;5;246mand[39m [38;5;246mreattach[39m [38;5;246mfor[39m [38;5;246mfocus[39m [38;5;246mtracking[39m

@@ -3465,3 +3465,36 @@ One capture in `fixtures/surface/`, cut to its last 12 rows with its colours kep
 | Fixture | State | What it shows |
 | --- | --- | --- |
 | `omp--v18-6-1-draft-queueing-painted--w120.txt` | `draft` | 18.6.1, `-> hello queue draft` typed at the desk, label and body painted |
+
+## Claude Code Authentication box (2.1.307, 2.1.309 and 2.1.310, issue 542)
+
+The box Claude Code draws above its live input box while its `awsAuthRefresh` command runs, filled with
+what the command prints. The 2.1.307 capture comes from a Herdr pane (SGR truecolour, no OSC 8), cut to
+the last status row. The 2.1.309 captures come from detached tmux panes running a stand-in command that
+prints device-code style output with fake codes (`ABCD-EFGH`) and `example.awsapps.com` addresses: tmux
+256-colour SGR, OSC 8 hyperlinks around the addresses (Herdr strips them), and trailing blank rows cut.
+tmux's own `tmux focus-events off` hint stays under the statusline as a third status row.
+
+The three 2.1.310 captures come from a private tmux pane 52 columns wide, with the same kind of stand-in
+command, after a message (`hi`) was sent while the box was up: Claude Code then draws its turn spinner row
+between the box's bottom edge and the input box's rule, with a blank row on each side of it. The temporary
+folder in the header was replaced with a same-length placeholder.
+
+The files are named for the width they were drawn at, which is the input box's rule, not the box's own
+edge: `output--w61` is a 61-wide edge (57 content cells) and `output--w120` a 113-wide edge (109 content
+cells) on a 120-column pane. Every path that showed this machine's temporary folder in Claude Code's
+header was replaced with a neutral path of the same length, and the `…`-shortened copy of it with the
+same characters, so no rule or box width moves.
+
+| Fixture suffix | State |
+| --- | --- |
+| `v2307-auth-refresh-output--w61` | Filled box, both mid-word breaks (`ABCD` / `-EFGH`, `https://ex` / `ample...`) |
+| `v2307-auth-refresh-before-output--w61` | Title-only box before the command prints: three rows, 18 cells wide (the box shrinks to its title), over the 61-wide input rule |
+| `v2309-auth-refresh-output--w40` | Filled box, 36 content cells: two addresses broken next to a `/` one column short of the edge (`.../start/#` / `/device?...`, 35 of 36) among the mid-word breaks that fill the row |
+| `v2309-auth-refresh-output--w52` | Filled box, 48 content cells: an address broken right after a `/` one column short of the edge (`https://example.awsapps.com/` / `start/#/...`, 47 of 48) beside two mid-word breaks |
+| `v2309-auth-refresh-output--w64` | Filled box, 60 content cells: three addresses broken mid-word at the last column (`https://examp` / `le...`, `https://example.awsapps` / `.com/...`, `.../lat` / `est/...`) |
+| `v2309-auth-refresh-output--w120` | Filled box, no break: four addresses, a 113-wide edge on a 120-column pane |
+| `v2309-auth-refresh-locked--w{52,80,120}` | Another Claude Code process runs the command: text only, no address |
+| `v2310-auth-refresh-before-output-spinner--w52` | Title-only box after a message was sent, `✢ Whirlpooling… ` (no timer yet) under it: a turn runs, and the surface reads it free because the running sign needs the timer |
+| `v2310-auth-refresh-output-spinner--w52` | Filled box, 48 content cells, `✶ Garnishing… ` (no timer yet) under it: the same free read of a running turn |
+| `v2310-auth-refresh-output-spinner-timer--w52` | Filled box, `✻ Moonwalking… (49s)` under it: the timer is drawn, and the surface reads the turn as running |

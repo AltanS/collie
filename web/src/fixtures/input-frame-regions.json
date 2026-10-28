@@ -1818,6 +1818,198 @@
   }
  },
  {
+  "fixture": "claude--v2307-auth-refresh-before-output--w61.txt",
+  "frame": {
+   "top": 10,
+   "prompt": 11,
+   "bottom": 12,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 13,
+    "last": 15
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2307-auth-refresh-output--w61.txt",
+  "frame": {
+   "top": 19,
+   "prompt": 20,
+   "bottom": 21,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 22,
+    "last": 23
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2309-auth-refresh-locked--w120.txt",
+  "frame": {
+   "top": 13,
+   "prompt": 14,
+   "bottom": 15,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 16,
+    "last": 18
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2309-auth-refresh-locked--w52.txt",
+  "frame": {
+   "top": 15,
+   "prompt": 16,
+   "bottom": 17,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 18,
+    "last": 20
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2309-auth-refresh-locked--w80.txt",
+  "frame": {
+   "top": 14,
+   "prompt": 15,
+   "bottom": 16,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 17,
+    "last": 19
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2309-auth-refresh-output--w120.txt",
+  "frame": {
+   "top": 17,
+   "prompt": 18,
+   "bottom": 19,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 20,
+    "last": 22
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2309-auth-refresh-output--w40.txt",
+  "frame": {
+   "top": 28,
+   "prompt": 29,
+   "bottom": 30,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 31,
+    "last": 33
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2309-auth-refresh-output--w52.txt",
+  "frame": {
+   "top": 23,
+   "prompt": 24,
+   "bottom": 25,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 26,
+    "last": 28
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2309-auth-refresh-output--w64.txt",
+  "frame": {
+   "top": 21,
+   "prompt": 22,
+   "bottom": 23,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 24,
+    "last": 26
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2310-auth-refresh-before-output-spinner--w52.txt",
+  "frame": {
+   "top": 14,
+   "prompt": 15,
+   "bottom": 16,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 17,
+    "last": 19
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2310-auth-refresh-output-spinner--w52.txt",
+  "frame": {
+   "top": 27,
+   "prompt": 28,
+   "bottom": 29,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 30,
+    "last": 31
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2310-auth-refresh-output-spinner-timer--w52.txt",
+  "frame": {
+   "top": 27,
+   "prompt": 28,
+   "bottom": 29,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 30,
+    "last": 31
+   },
+   "footer": null
+  }
+ },
+ {
   "fixture": "claude--wizard-multiselect-checked.txt",
   "frame": null
  },

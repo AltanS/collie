@@ -13,6 +13,9 @@ import {
   homeCrew,
   homeSolo,
   noEchoPrompt,
+  paneAuthBoxFilled,
+  paneAuthBoxLocked,
+  paneAuthBoxWaiting,
   paneBlocked,
   paneHeadsUp,
   paneHeadsUpDismissed,
@@ -229,6 +232,42 @@ export function PaneSection() {
         >
           <PhoneFrameCard height={800}>
             <PaneRouter home={homeSolo} fixture={paneHeadsUpExplained} />
+          </PhoneFrameCard>
+        </Card>
+
+        <Card
+          state="pane-auth-box-waiting"
+          label="2: a title-only Authentication box shows a waiting card"
+          reach="Claude Code 2.1.307 draws the Authentication box over the input box as soon as awsAuthRefresh starts, before the command prints anything."
+          note="Real pane view over a capture at 61 columns (before-output). The box holds its title alone and lifts as a card headed Authentication with Collie's own line saying nothing has printed yet; no link, no button, and the composer stays free."
+          span={2}
+        >
+          <PhoneFrameCard height={800}>
+            <PaneRouter home={homeSolo} fixture={paneAuthBoxWaiting} />
+          </PhoneFrameCard>
+        </Card>
+
+        <Card
+          state="pane-auth-box-filled"
+          label="1: a filled Authentication box shows its text with the login URL as one link"
+          reach="Claude Code 2.1.307 prints the login command's output into the Authentication box: a URL, broken mid-word at the box edge, and a device code."
+          note="Real pane view over a capture at 61 columns (output). The card shows the box's rows and joins the broken URL into one link that opens in a tap; the waiting line is gone."
+          span={2}
+        >
+          <PhoneFrameCard height={800}>
+            <PaneRouter home={homeSolo} fixture={paneAuthBoxFilled} />
+          </PhoneFrameCard>
+        </Card>
+
+        <Card
+          state="pane-auth-box-locked"
+          label="1: a box saying another process runs the login shows that sentence with no link"
+          reach="Claude Code 2.1.309 prints one sentence in the Authentication box when another process already runs the awsAuthRefresh command."
+          note="Real pane view over a capture at 52 columns (locked). The card shows the sentence as text; there is no link and no waiting line."
+          span={2}
+        >
+          <PhoneFrameCard height={800}>
+            <PaneRouter home={homeSolo} fixture={paneAuthBoxLocked} />
           </PhoneFrameCard>
         </Card>
       </Group>
