@@ -1,5 +1,6 @@
 import { type Host } from "../bridge/host.ts";
 import { answersThisBuild } from "../bridge/version.ts";
+import { HEALTH_TIMEOUT_ENV } from "../bridge/update.ts";
 import {
   inFlight,
   LOCK_MAX_HOLD_MS,
@@ -257,7 +258,7 @@ export function releaseLock(files: Files, stateDir: string): void {
 // ── The health gate ──────────────────────────────────────────────────────────
 
 /** The env name that moves the health budget, and the default it moves off. */
-export const HEALTH_TIMEOUT_ENV = "COLLIE_UPDATE_HEALTH_TIMEOUT_MS";
+export { HEALTH_TIMEOUT_ENV };
 /**
  * 30 s, which is a MEASURED bound and not a law: it has to clear a cold start on the slowest lane
  * actually in use, and a timeout tuned on fast hardware turns a healthy slow machine into a spurious

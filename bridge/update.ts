@@ -501,6 +501,37 @@ export async function readAllTags<F>(
 // the bridge's release check keeps asking GitHub and says why. No token goes to a mirror, because a
 // token goes to `api.github.com` alone ({@link githubHeaders}). A loud line says the seam is set.
 
+/** The env name that moves the update health budget (`cli/update-run.ts` reads it). */
+export const HEALTH_TIMEOUT_ENV = "COLLIE_UPDATE_HEALTH_TIMEOUT_MS";
+
+/**
+ * The environment the detached runner is started with.
+ *
+ * A NARROW, NAMED list, and that is the point on the `systemd-run` path: `--setenv=` puts a value on
+ * a command line every process on the box can read out of `ps`. None of these is a credential — they
+ * are the instance's identity and its paths. Everything else the runner needs it re-reads from the
+ * same `.env` this process did (`cli/context.ts`), which is where the secrets stay.
+ */
+export const RUNNER_ENV_KEYS = [
+  "HOME",
+  "PATH",
+  "XDG_RUNTIME_DIR",
+  "COLLIE_INSTANCE",
+  // The multiplexer this install mirrors. The runner RESTARTS the service, and `restart` refuses to
+  // guess a mux — so a runner without it dies on a question nobody is there to answer.
+  "COLLIE_MUX",
+  "COLLIE_CONFIG_DIR",
+  // The base config file's path, when the operator moved it. The runner re-reads `~/.collie/config.toml`
+  // from its own $HOME and the instance file from its own config dir, exactly as it re-reads the
+  // `.env` — but a path nobody can re-derive has to travel (ADR 0040).
+  "COLLIE_CONFIG",
+  "COLLIE_STATE_DIR",
+  "COLLIE_PLUGIN_ROOT",
+  "COLLIE_PORT",
+  "COLLIE_KEEP_VERSIONS",
+  HEALTH_TIMEOUT_ENV,
+] as const;
+
 /** The variable that names a rehearsal mirror. A test seam only; see the section above. */
 export const UPDATE_MIRROR_ENV = "COLLIE_UPDATE_MIRROR";
 

@@ -30,6 +30,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **On a host with a named instance, the Update tap could update the default instance instead.** The
+  phone's updater ran without the instance keys and took the default service, moved its checkout and
+  rewrote its unit. The updater now carries `COLLIE_INSTANCE`, `COLLIE_MUX` and `COLLIE_CONFIG_DIR`, as
+  the CLI's own runner does.
 - **The install scripts end with the steps the install guide gives.** `install.sh` no longer asks
   you to copy `.env.example`, which a later `cp` turned into a trap: it names Tailscale with HTTPS,
   starts the multiplexer, runs `COLLIE_MUX=herdr collie start`, opens the phone with `collie qr`,

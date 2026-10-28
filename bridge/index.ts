@@ -1165,6 +1165,7 @@ const startDetachedUpdate = (a: {
     runId: a.runId,
     toTag: a.toTag ?? null,
     mirror: mirrorValue(process.env),
+    env: process.env,
   });
   // THE RUNNER'S OWN OUTPUT IS KEPT (#283): a runner that dies before it writes a run record used to
   // leave nothing behind at all.
