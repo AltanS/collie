@@ -177,12 +177,35 @@ door is not asked: its only door is mutual TLS.
 Step 6 of Zero to phone, in full: set up Tailscale once, and `collie start` publishes Collie on
 your tailnet, the same way as on Linux and macOS.
 
-If you already ran `tailscale serve` by hand, do nothing. The first `collie start` after the
-update keeps your mapping and records it as Collie's, and `collie uninstall` removes it with the
-rest. `COLLIE_PUBLIC_HOSTS` and `COLLIE_PUBLIC_URL` in `.env` are harmless and can stay. If your
-mapping on that port sends traffic somewhere other than Collie, or uses the other protocol,
-Collie leaves it alone. `collie start` then prints an error that says it refuses to overwrite the
-mapping, and `collie doctor` reports a root mount Collie does not own.
+If you already ran `tailscale serve` by hand on Collie's own listener, do nothing. That is tailnet
+port 443 in https mode, or Collie's own port (8787 by default) in http mode. The first
+`collie start` after the update keeps your mapping and records it as Collie's, and
+`collie uninstall` removes it with the rest. `COLLIE_PUBLIC_HOSTS` and `COLLIE_PUBLIC_URL` in
+`.env` are harmless and can stay. If your mapping on that port sends traffic somewhere other than
+Collie, or uses the other protocol, Collie leaves it alone. `collie start` then prints an error that
+says it refuses to overwrite the mapping, and `collie doctor` reports a root mount Collie does not
+own.
+
+If your hand-made mapping came from the old Headscale recipe on port 80 (`--http=80`), Collie does
+not adopt it, and `collie uninstall` does not remove it. Move it to Collie's own port:
+
+1. Put `COLLIE_SERVE_MODE=http` in the `.env` file (step 1 of the steps by hand below shows where).
+
+2. Remove the port-80 mapping:
+
+   ```powershell
+   tailscale serve --http=80 --set-path=/ off
+   ```
+
+3. Remove `COLLIE_PUBLIC_URL` from the `.env` file, or change it to `http://<name>:8787`.
+
+4. Start Collie, which publishes on Collie's own port:
+
+   ```powershell
+   collie start
+   ```
+
+For a new setup, follow these steps:
 
 1. Install Tailscale on the PC and on the phone, and sign in to the same account on both:
    [tailscale.com/download](https://tailscale.com/download).
@@ -294,9 +317,10 @@ is the Herdr plugin config folder for `herdr.collie`, by default
 `%APPDATA%\herdr\plugins\config\herdr.collie`. `herdr plugin config-dir herdr.collie` prints it.
 
 In step 2, Tailscale prints a line with an address like `https://myhost.tail1234.ts.net`. The name
-is the part after `https://`. On Headscale use `tailscale serve --bg --http=80 --set-path=/ 8787`,
-and put `http://<name>` in `COLLIE_PUBLIC_URL`. `--set-path=/` replaces whatever this PC already
-serves at `/` on your tailnet.
+is the part after `https://`. On Headscale use `tailscale serve --bg --http=8787 --set-path=/ 8787`,
+and put `http://<name>:8787` in `COLLIE_PUBLIC_URL`. That mapping sits on Collie's own listener, so
+the next `collie start` adopts it. A mapping on port 80 is not adopted. `--set-path=/` replaces
+whatever this PC already serves at `/` on that port.
 
 `COLLIE_PUBLIC_URL` is the address that `collie url` and the QR code of `collie pair` print. A
 mapping made by hand that Collie later adopts becomes Collie's to remove; any other one stays
