@@ -17,7 +17,7 @@
 // pickers are deliberately left to the unread-dialog card.
 
 import { lineText, trimTrailingBlank, type Block, type StyledLine } from "../../blocks";
-import type { HarnessAdapter } from "../types";
+import type { DialogDetector, HarnessAdapter } from "../types";
 import {
   composerPrompt,
   composerReady,
@@ -36,6 +36,20 @@ import { codexDraftCarriesSend } from "./paste";
 function raw(lines: StyledLine[]): Block {
   return { kind: "raw", lines: decorateCodexDisplay(lines) };
 }
+
+/** The resume session picker. The highlighted session row is indented two columns: `  › 2d ago      Reply with OK`. */
+function sessionPickerRegion(lines: StyledLine[]) {
+  const texts = lines.map((l) => rstrip(lineText(l)));
+  return detectSessionPicker(texts, /^\s*› \S/, (from, to) => regionSignature(lines, from, to + 1));
+}
+
+/** The detectors `codexBuildBlocks` runs, in its order, for the unread-dialog card's report (ADR 0123). */
+const CODEX_DIALOG_DETECTORS: readonly DialogDetector[] = [
+  { name: "trust", detect: detectTrustRegion },
+  { name: "approval", detect: detectApprovalRegion },
+  { name: "ask", detect: detectAskRegion },
+  { name: "session-picker", detect: sessionPickerRegion },
+];
 
 export function codexBuildBlocks(lines: StyledLine[]): Block[] {
   const trust = detectTrustRegion(lines);
@@ -69,9 +83,7 @@ export function codexBuildBlocks(lines: StyledLine[]): Block[] {
     return blocks;
   }
 
-  // The highlighted session row is indented two columns: `  › 2d ago      Reply with OK`.
-  const texts = lines.map((l) => rstrip(lineText(l)));
-  const picker = detectSessionPicker(texts, /^\s*› \S/, (from, to) => regionSignature(lines, from, to + 1));
+  const picker = sessionPickerRegion(lines);
   if (picker) {
     const before = trimTrailingBlank(lines.slice(0, picker.startLine));
     const blocks: Block[] = [];
@@ -118,6 +130,7 @@ export const codexAdapter: HarnessAdapter = {
   // `Press enter to confirm or esc to cancel`.
   cancelKey: "Escape",
   modalOnScreen: codexModalOnScreen,
+  dialogDetectors: CODEX_DIALOG_DETECTORS,
   composerPrompt,
   draftCarriesSend: codexDraftCarriesSend,
 };

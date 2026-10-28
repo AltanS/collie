@@ -3,11 +3,17 @@
 // Other captured panels stay terminal-only, with Escape on the unread-dialog card.
 
 import { trimTrailingBlank, type Block, type StyledLine } from "../../blocks";
-import type { HarnessAdapter } from "../types";
+import type { DialogDetector, HarnessAdapter } from "../types";
 import { detectApprovalRegion } from "./approval";
 import { composerReady, extractInputDraft, extractStatusLines, stripChrome } from "./chrome";
 import { modalOnScreen } from "./markers";
 import { detectWorkspaceTrust } from "./workspace-trust";
+
+/** The detectors `kiroBuildBlocks` runs, in its order, for the unread-dialog card's report (ADR 0123). */
+const KIRO_DIALOG_DETECTORS: readonly DialogDetector[] = [
+  { name: "workspace-trust", detect: detectWorkspaceTrust },
+  { name: "approval", detect: detectApprovalRegion },
+];
 
 /** Captured startup trust and tool approvals, or the transcript with composer chrome removed. */
 function kiroBuildBlocks(lines: StyledLine[]): Block[] {
@@ -35,4 +41,5 @@ export const kiroAdapter: HarnessAdapter = {
   // editor; both were pressed in kiro-cli 2.32.0 (APPROVAL_NOTES.md, 2026-10-17).
   cancelKey: "Escape",
   modalOnScreen,
+  dialogDetectors: KIRO_DIALOG_DETECTORS,
 };

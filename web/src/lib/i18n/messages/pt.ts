@@ -1476,6 +1476,7 @@ export const pt: Dictionary = {
   "unreadDialog.caption": "O Collie não consegue ler esta caixa de diálogo",
   "unreadDialog.confirmKey": "Toque novamente para enviar {key}",
   "unreadDialog.confirmDismiss": "Toque novamente para dispensar",
+  "unreadDialog.report": "Relatar um problema",
   "dialog.preview.currentAnswerAria": "Resposta atual",
   "dialog.preview.previewedBelowAria": "Pré-visualizado abaixo",
   "dialog.preview.previewLabel": "Pré-visualização · {label}",

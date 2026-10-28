@@ -58,6 +58,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
   refuse with "The probe character changed more than the box" or "The screen moved since you
   looked". A row that changes its words, or a new row, still stops the send. A command on a fresh
   Codex screen is no longer left typed when Codex hides its welcome picture.
+- **The "Collie cannot read this dialog" card can report the screen it could not read.** The card now has Report a problem, which opens the same sheet as the pane menu. The report names the dialog in its title, and instead of sends it lists each of the agent's dialog readers with what it answered on that screen: found, null, or the error it threw. "Include the screen" starts on for this report, and the preview shows the masked rows before anything leaves. The setup adds the app and bridge builds, the browser, the viewport and whether the app runs installed. Nothing new is stored and no new route is asked. Thanks @leftos (#554).
 
 ## [1.24.1] - 2026-10-27
 

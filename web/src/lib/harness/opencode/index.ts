@@ -18,7 +18,7 @@
 // web/src/fixtures/panes/README.md's opencode section and PERMISSION_NOTES.md beside this file.
 
 import { isBlank, lineText, type Block, type StyledLine } from "../../blocks";
-import type { HarnessAdapter } from "../types";
+import type { DialogDetector, HarnessAdapter } from "../types";
 import {
   composerPrompt,
   extractInputDraft,
@@ -55,6 +55,13 @@ function mirrorAbove(lines: StyledLine[], startLine: number): StyledLine[] {
  * the composer tail stripped. The registry only ever hands this function an opencode pane, so there
  * is no per-agent gate here.
  */
+/** The detectors `opencodeBuildBlocks` runs, in its order, for the unread-dialog card's report (ADR 0123). */
+const OPENCODE_DIALOG_DETECTORS: readonly DialogDetector[] = [
+  { name: "permission", detect: detectPermissionDialog },
+  { name: "question", detect: detectQuestionDialog },
+  { name: "question-tabs", detect: detectQuestionTabs },
+];
+
 export function opencodeBuildBlocks(lines: StyledLine[]): Block[] {
   const dialog = detectPermissionDialog(lines);
   if (dialog !== null) {
@@ -95,6 +102,7 @@ export const opencodeAdapter: HarnessAdapter = {
   // cannot stand over a healthy narrow pane.
   cancelKey: "Escape",
   modalOnScreen,
+  dialogDetectors: OPENCODE_DIALOG_DETECTORS,
   overlayHoldsKeyboard,
   composerPrompt,
   replyChunks: opencodeReplyChunks,

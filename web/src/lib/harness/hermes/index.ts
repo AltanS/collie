@@ -17,7 +17,7 @@
 // (harness/types.ts); they stay so their tests keep pinning the screens.
 
 import { trimTrailingBlank, type Block, type StyledLine } from "../../blocks";
-import type { HarnessAdapter } from "../types";
+import type { DialogDetector, HarnessAdapter } from "../types";
 import { detectApprovalRegion } from "./approval";
 import {
   composerPrompt,
@@ -28,6 +28,12 @@ import {
   stripChrome,
 } from "./chrome";
 import { detectClarifyRegion } from "./clarify";
+
+/** The detectors `hermesBuildBlocks` runs, in its order, for the unread-dialog card's report (ADR 0123). */
+const HERMES_DIALOG_DETECTORS: readonly DialogDetector[] = [
+  { name: "approval", detect: detectApprovalRegion },
+  { name: "clarify", detect: detectClarifyRegion },
+];
 
 export function hermesBuildBlocks(lines: StyledLine[]): Block[] {
   const dialog = detectApprovalRegion(lines) ?? detectClarifyRegion(lines);
@@ -70,6 +76,7 @@ export const hermesAdapter: HarnessAdapter = {
   // its clarify or approval panels.
   cancelKey: "ctrl+c",
   modalOnScreen: hermesModalOnScreen,
+  dialogDetectors: HERMES_DIALOG_DETECTORS,
   overlayHoldsKeyboard: (lines) => pickerOpen(lines),
   // An Enter that lands within 50 ms of the input's last change is taken as a pasted newline, not a
   // submit (`_RAPID_INPUT_ENTER_WINDOW_S` in hermes_cli/cli_tui_mixin.py); live, a text and an Enter

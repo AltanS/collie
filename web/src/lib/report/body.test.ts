@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import type { SendReceiptRow } from "../surface/send";
 import { readReportContext } from "./context";
-import { FIELD_IDS, fitLink, hasTyped, ISSUE_URL_MAX, issueLink, reportFields, reportText, searchLink, sendLine, signature, type ReportContext, type ReportInput } from "./body";
+import { FIELD_IDS, fitLink, hasTyped, ISSUE_URL_MAX, issueLink, reportFields, reportText, searchLink, sendLine, signature, type ClientFacts, type ReportContext, type ReportInput } from "./body";
+import type { DialogTrouble } from "./store";
 
 const CONTEXT: ReportContext = { collie: "1.24.1+abc1234", line: "edge", os: "linux", arch: "x64", mux: "herdr", harness: "claude", screenable: true };
 const AT = Date.parse("2026-10-25T18:00:00Z");
@@ -179,5 +180,74 @@ describe("readReportContext", () => {
     expect(readReportContext({ ...CONTEXT, line: "nightly", harness: null })).toEqual({ ...CONTEXT, line: null, harness: null });
     expect(readReportContext({ collie: "1.0.0" })).toBeNull();
     expect(readReportContext("<html>")).toBeNull();
+  });
+});
+
+describe("reportFields: from the unread-dialog card (amendment 2026-10-28, #554)", () => {
+  const DIALOG: DialogTrouble = {
+    agent: "claude",
+    key: "Escape",
+    verdicts: [
+      { name: "prompt-select", result: "null" },
+      { name: "menu", result: "threw: row 3 out of range" },
+      { name: "autocomplete", result: "found" },
+    ],
+  };
+  const CLIENT: ClientFacts = { appBuild: "1.24.2-abc1234", serverBuild: "1.24.2-def5678", userAgent: "Mozilla/5.0 (Linux; Android 16) Test", viewport: "412x915", standalone: true };
+  const INPUT: ReportInput = { ...BASE, dialog: DIALOG, client: CLIENT };
+
+  it("titles the report by the dialog, with the harness and version from the receipt and the mux", () => {
+    expect(reportFields(INPUT).title).toBe("Cannot read a dialog: claude 2.1.291, herdr");
+    expect(reportFields({ ...INPUT, sends: [] }).title).toBe("Cannot read a dialog: claude, herdr");
+    // No receipt and no context: the card's own adapter names the harness.
+    expect(reportFields({ ...INPUT, sends: [], context: null }).title).toBe("Cannot read a dialog: claude, unknown mux");
+  });
+
+  it("holds the card's reason line and every detector's verdict instead of the sends, then the signature", () => {
+    const fields = reportFields(INPUT);
+    expect(fields.sends).toBe(
+      [
+        "Collie cannot read this dialog.",
+        "    card key: Escape",
+        "    detectors of the claude reader on this screen:",
+        "    prompt-select: null",
+        "    menu: threw: row 3 out of range",
+        "    autocomplete: found",
+        "collie-sig: dialog/unread/claude@2.1.291/herdr",
+      ].join("\n"),
+    );
+    expect(fields.sends).not.toContain("rep-000003");
+    expect(signature(INPUT)).toBe("collie-sig: dialog/unread/claude@2.1.291/herdr");
+    expect(fields.what).toBe("The phone showed a dialog it could not read.");
+    expect(reportText(fields)).toContain("### What went wrong\n\nCollie cannot read this dialog.");
+  });
+
+  it("says so when the adapter names no detectors", () => {
+    expect(reportFields({ ...INPUT, dialog: { ...DIALOG, verdicts: [] } }).sends).toContain("    (this adapter names no dialog detectors)");
+  });
+
+  it("adds the phone's build, the bridge's build, the browser, the viewport and standalone to the setup", () => {
+    const setup: unknown = JSON.parse(reportFields(INPUT).setup);
+    expect(setup).toMatchObject({
+      collie: "1.24.1+abc1234",
+      mux: "herdr",
+      appBuild: "1.24.2-abc1234",
+      serverBuild: "1.24.2-def5678",
+      userAgent: "Mozilla/5.0 (Linux; Android 16) Test",
+      viewport: "412x915",
+      standalone: "yes",
+    });
+    expect(JSON.parse(reportFields({ ...INPUT, client: { ...CLIENT, standalone: false, serverBuild: null } }).setup)).toMatchObject({ standalone: "no", serverBuild: null });
+    // A report about sends keeps its setup as it was.
+    expect(JSON.parse(reportFields(BASE).setup)).not.toHaveProperty("userAgent");
+  });
+
+  it("cuts the screen to fit and never the reason line or a verdict", () => {
+    const screen = Array.from({ length: 40 }, (_, i) => `row ${String(i)} ${"x".repeat(200)}`).join("\n");
+    const link = fitLink(reportFields({ ...INPUT, screen }));
+    expect(link.url.length).toBeLessThanOrEqual(ISSUE_URL_MAX);
+    expect(link.cut.screen).not.toBe("none");
+    expect(link.cut.sends).toBe(0);
+    expect(link.fields.sends).toBe(reportFields(INPUT).sends);
   });
 });

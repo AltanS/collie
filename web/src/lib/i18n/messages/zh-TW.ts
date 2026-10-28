@@ -1581,6 +1581,7 @@ export const zhTW: Dictionary = {
   "unreadDialog.caption": "Collie 無法讀取此對話框", // wordsmith
   "unreadDialog.confirmKey": "再次點擊以傳送 {key}", // wordsmith
   "unreadDialog.confirmDismiss": "再次點擊以關閉", // wordsmith
+  "unreadDialog.report": "回報問題",
   "dialog.preview.currentAnswerAria": "目前回答",
   "dialog.preview.previewedBelowAria": "下方顯示預覽",
   "dialog.preview.previewLabel": "預覽 · {label}",

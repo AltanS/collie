@@ -1477,6 +1477,7 @@ export const it: Dictionary = {
   "unreadDialog.caption": "Collie non può leggere questo dialogo",
   "unreadDialog.confirmKey": "Tocca di nuovo per inviare {key}",
   "unreadDialog.confirmDismiss": "Tocca di nuovo per chiudere",
+  "unreadDialog.report": "Segnala un problema",
   "dialog.preview.currentAnswerAria": "Risposta corrente",
   "dialog.preview.previewedBelowAria": "Anteprima sotto",
   "dialog.preview.previewLabel": "Anteprima · {label}",

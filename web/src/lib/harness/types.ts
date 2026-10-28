@@ -18,6 +18,17 @@
 
 import type { Block, StyledLine } from "../blocks";
 
+/**
+ * One dialog detector an adapter runs in its `buildBlocks`, named so the unread-dialog card's report
+ * can say what each one answered (ADR 0123, amendment 2026-10-28). `detect` runs on the rows the
+ * post-pass holds, so an adapter that prepares its rows first (Claude drops a closing rule) does the
+ * same preparation here. Any value but null or undefined counts as found.
+ */
+export interface DialogDetector {
+  readonly name: string;
+  detect(lines: StyledLine[]): object | null | undefined;
+}
+
 export interface HarnessAdapter {
   /** Lossless transport pastes. Intermediate parts must be verified before continuing;
    * only the complete reply can authorise Enter. Other harnesses stay single-paste. */
@@ -101,6 +112,16 @@ export interface HarnessAdapter {
    * captures, and pinned by the card's allow-list test.
    */
   modalOnScreen?(lines: StyledLine[]): boolean;
+  /**
+   * The dialog detectors this adapter's `buildBlocks` runs, in its own order and under its own names.
+   * The unread-dialog pass runs each one again on the screen it gives a card, and records what each
+   * answered on the card's model (`UnreadDialogModel.verdicts`), so a report from the phone says which
+   * reader looked at the screen and what it said. Keep it in step with `buildBlocks`: the drift test
+   * in unread-dialog.test.ts wants a found verdict on every fixture the adapter lifts.
+   *
+   * OPTIONAL. Absent, the card carries no verdicts. Detection only: nothing acts on the answers.
+   */
+  dialogDetectors?: readonly DialogDetector[];
   /**
    * A question waits in the terminal that no card answers, while the input box stays ready: OmO's
    * `? Question pending` banner (pi/ask.ts `piQuestionBanner`). A reply sent then is the harness's

@@ -1546,6 +1546,7 @@ export const ru: Dictionary = {
   "unreadDialog.caption": "Collie не может прочитать этот диалог",
   "unreadDialog.confirmKey": "Нажмите еще раз, чтобы отправить {key}",
   "unreadDialog.confirmDismiss": "Нажмите еще раз, чтобы закрыть",
+  "unreadDialog.report": "Сообщить о проблеме",
   "dialog.preview.currentAnswerAria": "Текущий ответ",
   "dialog.preview.previewedBelowAria": "Предпросмотр ниже",
   "dialog.preview.previewLabel": "Предпросмотр · {label}",

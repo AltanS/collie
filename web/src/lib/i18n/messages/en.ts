@@ -1698,6 +1698,8 @@ export const en = {
   // Second-tap wording (#339): the first tap arms the key, the second sends it.
   "unreadDialog.confirmKey": "Tap again to send {key}",
   "unreadDialog.confirmDismiss": "Tap again to dismiss",
+  // Report a problem from the card (ADR 0123, amendment 2026-10-28): opens the same sheet as the pane menu.
+  "unreadDialog.report": "Report a problem",
   "dialog.preview.currentAnswerAria": "Current answer",
   "dialog.preview.previewedBelowAria": "Previewed below",
   "dialog.preview.previewLabel": "Preview · {label}",

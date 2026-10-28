@@ -1476,6 +1476,7 @@ export const tr: Dictionary = {
   "unreadDialog.caption": "Collie bu iletişim kutusunu okuyamıyor",
   "unreadDialog.confirmKey": "{key} göndermek için tekrar dokunun",
   "unreadDialog.confirmDismiss": "Kapatmak için tekrar dokunun",
+  "unreadDialog.report": "Sorun bildir",
   "dialog.preview.currentAnswerAria": "Geçerli yanıt",
   "dialog.preview.previewedBelowAria": "Aşağıda önizleniyor",
   "dialog.preview.previewLabel": "Önizleme · {label}",

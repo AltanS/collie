@@ -1595,6 +1595,7 @@ export const ja: Dictionary = {
   "unreadDialog.caption": "Collie はこの対話を読み取れません", // wordsmith
   "unreadDialog.confirmKey": "もう一度タップして{key}を送信", // wordsmith
   "unreadDialog.confirmDismiss": "もう一度タップして閉じる", // wordsmith
+  "unreadDialog.report": "問題を報告",
   "dialog.preview.currentAnswerAria": "現在の回答",
   "dialog.preview.previewedBelowAria": "プレビューを下に表示中",
   "dialog.preview.previewLabel": "プレビュー · {label}",

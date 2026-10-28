@@ -1606,6 +1606,7 @@ export const de: Dictionary = {
   "unreadDialog.caption": "Collie kann diesen Dialog nicht lesen", // wordsmith
   "unreadDialog.confirmKey": "Erneut tippen, um {key} zu senden", // wordsmith
   "unreadDialog.confirmDismiss": "Erneut tippen, um zu verwerfen", // wordsmith
+  "unreadDialog.report": "Problem melden",
   "dialog.preview.currentAnswerAria": "Aktuelle Antwort",
   "dialog.preview.previewedBelowAria": "Vorschau unten",
   "dialog.preview.previewLabel": "Vorschau: {label}",

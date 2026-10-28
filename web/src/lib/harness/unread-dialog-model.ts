@@ -19,6 +19,17 @@
  *  identity of the screen. */
 const SIGNATURE_TAIL_LINES = 12;
 
+/**
+ * What one of the adapter's dialog detectors answered on the screen the card was built from: it found
+ * its dialog, it declined (`null`), or it threw. The adapter names its own detectors
+ * (`HarnessAdapter.dialogDetectors`), so nothing here knows a harness. The unread-dialog card's
+ * Report a problem lists these (ADR 0123, amendment 2026-10-28); nothing else reads them.
+ */
+export interface DetectorVerdict {
+  readonly name: string;
+  readonly result: "found" | "null" | `threw: ${string}`;
+}
+
 /** A screen no grammar read, plus the one key its harness declared as the way out of a modal. */
 export interface UnreadDialogModel {
   /** The adapter's declared `cancelKey`, verbatim — a Herdr key token ("Escape", "ctrl+c"). */
@@ -31,6 +42,11 @@ export interface UnreadDialogModel {
    * when the tail's text changes.
    */
   signature: string;
+  /**
+   * Each dialog detector the adapter declares, run on the same rows, in its declared order. Absent
+   * when the adapter declares none. Not part of the identity: the comparators below ignore it.
+   */
+  verdicts?: readonly DetectorVerdict[];
 }
 
 /** The signature of a screen's non-blank tail — the last {@link SIGNATURE_TAIL_LINES} rows that
