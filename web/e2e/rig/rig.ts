@@ -133,6 +133,8 @@ import {
   splitArgs,
   taskCapWarning,
 } from "./rig-scope";
+import { startStub, type Stub } from "./replay/stub";
+import { CASSETTE_ROOT, planTiers, readVersions, rigLiterals, tiersFromEnv } from "./replay/tier";
 import { socketPathProblem } from "./sock-path";
 
 const SELF = fileURLToPath(import.meta.url);
@@ -494,6 +496,8 @@ async function daemon(): Promise<void> {
   const machines: readonly Machine[] = crew ? MACHINES : ["lead"];
 
   const clients: { close(): void }[] = [];
+  /** The model stub for pi and omp, up before any harness starts (M67, ADR 0125). */
+  let stub: Stub | null = null;
   /** The bridge child each machine runs now. A child that is not the current one exits quietly: the rig stopped it. */
   const children = new Map<Machine, ChildProcess>();
   let tearing = false;
@@ -508,6 +512,11 @@ async function daemon(): Promise<void> {
       } catch {
         /* ignore */
       }
+    }
+    if (stub !== null) {
+      // The last counters, for a `down` that comes before the teardown read them (a crashed leg).
+      writeFileSync(P.stubStats, `${JSON.stringify(stub.stats(), null, 2)}\n`);
+      await stub.close();
     }
     for (const machine of machines.toReversed()) {
       const half = halfOf(run, machine);
@@ -637,6 +646,13 @@ async function daemon(): Promise<void> {
   };
 
   try {
+    // The tiers the global setup chose (COLLIE_RIG_TIERS), or the same rule here for a rig brought up by hand.
+    const leg = crew ? "crew" : "solo";
+    const tiers = tiersFromEnv() ?? planTiers(leg, process.env, readVersions());
+    const taken = [run.port, ...(run.member === undefined ? [] : [run.member.port])];
+    stub = await startStub({ root: CASSETTE_ROOT, leg, plans: tiers, literals: rigLiterals(STATE_ROOT), speed: Number(process.env.COLLIE_RIG_REPLAY_SPEED ?? "1") || 1, log: (line) => log(`stub: ${line}`) }, await freePort(taken));
+    run.stub = { port: stub.port, tiers };
+    writeRun(run);
     for (const machine of machines) await startHerdr(machine);
     for (const machine of machines) spawnBridge(machine);
     for (const machine of machines) {

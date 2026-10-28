@@ -6,8 +6,10 @@ import { join, resolve } from "node:path";
 
 import { HARNESS_IDS, SETUPS } from "./harnesses";
 import type { LedgerRow } from "./leg";
+import { costLines, type ModelReport } from "./replay/report";
+import type { StubStats } from "./replay/stub";
 import { SCENARIOS, scenarioApplies, type Leg } from "./scenarios";
-import { P } from "./rig-lib";
+import { P, readRun } from "./rig-lib";
 
 const WEB = resolve(import.meta.dirname, "..", "..");
 
@@ -68,6 +70,30 @@ function scrubKey(roots: readonly string[]): void {
   }
 }
 
+function turnsOf(dir: string, harness: string): number {
+  try {
+    return Number(readFileSync(join(dir, `turns-${harness}`), "utf8")) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+/** The stub's counters: asked of the running stub, or the file its daemon left at teardown. */
+async function stubStats(): Promise<StubStats | null> {
+  const port = readRun()?.stub?.port;
+  if (port !== undefined) {
+    const text = await fetch(`http://127.0.0.1:${String(port)}/_rig/stats`)
+      .then(async (r) => (r.ok ? await r.text() : null))
+      .catch(() => null);
+    // SAFETY: the stub's own JSON.stringify(stats()) (replay/stub.ts, GET /_rig/stats).
+    const live = text === null ? null : (JSON.parse(text) as StubStats);
+    if (live !== null) return live;
+  }
+  const file = P.stubStats;
+  // SAFETY: the daemon's own JSON.stringify(stub.stats()) (rig.ts teardown).
+  return existsSync(file) ? (JSON.parse(readFileSync(file, "utf8")) as StubStats) : null;
+}
+
 /**
  * The end of a run of one leg: scrub the key, print and write the table, bring the rig down. The solo
  * leg's teardown is this with `solo`; crew-teardown.ts calls it with `crew`, and `rig.ts down` then
@@ -85,7 +111,10 @@ export async function finishRun(leg: Leg): Promise<void> {
   scrubKey([join(P.results, id), P.logs, join(WEB, "e2e", "rig", "test-results")]);
   const text = table(rows, leg);
   writeFileSync(join(P.results, id, "table.md"), `${text}\n`);
-  console.log(`\nBrowser leg${leg === "crew" ? " (crew)" : ""}, run ${id} (results in ${join(P.results, id)}):\n\n${text}\n`);
+  const dir = join(P.results, id);
+  const report: ModelReport = { tiers: readRun()?.stub?.tiers ?? null, stub: await stubStats(), turns: Object.fromEntries(HARNESS_IDS.map((h) => [h, turnsOf(dir, h)])) };
+  writeFileSync(join(dir, "model.json"), `${JSON.stringify(report, null, 2)}\n`);
+  console.log(`\nBrowser leg${leg === "crew" ? " (crew)" : ""}, run ${id} (results in ${dir}):\n\n${text}\n\n${costLines(report).join("\n")}\n`);
   if (process.env.COLLIE_RIG_KEEP === "1") return;
   execFileSync("bun", [join(WEB, "e2e", "rig", "rig.ts"), "down", ...(leg === "crew" ? ["--crew"] : [])], { cwd: WEB, stdio: "inherit", timeout: 90_000 });
 }
