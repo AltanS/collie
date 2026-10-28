@@ -3309,6 +3309,17 @@ four-row `/wx` list over an extension's widget. A widget row is drawn with ONE l
 | `omp--v18-6-1-palette-widget-and-status.txt`, `omp--v18-12-6-palette-widget-and-status.txt` | `popup` | The same, and the flush-left status row `PLAN 3/6` under the widget |
 | `omp--v18-6-1-palette-tick-below.txt`, `omp--v18-12-6-palette-tick-below.txt` | `popup` | `/wx` typed over `/tfb`: the list, then one ticking widget row |
 
+A live band over the box (captured 2026-10-28, OMP 18.13.1 and Codex 0.163.0, Collie's rig; in `fixtures/surface/`; the folder names
+the lab only). The OMP pair is plain text; the Codex pair keeps its SGR, so the empty box's faint placeholder reads as one. A lab
+extension's eight-row widget over the editor ticks its top row every 100 ms, seven rows over the status row and outside
+`idle.volatile.above.maxRows`: every `/command` refused `probe_failed` and a message went in, until `idle.volatile.above.ticks`.
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `omp--v18-13-1-live-band-8.txt` | `idle` | The widget's rows (`⠦ waiting on 1 job · 15.3s · 962 tok/s · 2938 tok`, then `band row 2 of 8` to `band row 8 of 8`) over the status row and the empty box |
+| `codex--v0-163-0-welcome-idle.txt` | `idle` | A fresh Codex: the header, the braille welcome picture, the empty box |
+| `codex--v0-163-0-welcome-slash-status.txt` | `popup` | The same with `/status` typed: the picture's rows went blank and the command list stands over the box. A command here was left typed (`changed`) until its S1 compare took `idle.volatile.above.losesText` |
+
 A pasted box drawing in the draft (gang three, 01-regression W1, same date and versions; in `fixtures/surface/`; the rows keep their padding to 120 columns, which is what tells the person's `│` from a border):
 
 | Fixture | State | What it shows |

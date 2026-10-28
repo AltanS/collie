@@ -52,6 +52,11 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A long answer to a question card is typed whole.** The answer field no longer shares the plan row's 240-character cap: an answer up to 4000 characters is typed and proved while the dialog fits the pane, and one that would not fit is refused before any key, pointing at Chat about this. Thanks @eseninik (#606).
 - **A Hermes pane with an interactive session id reads its history again.** Hermes 0.22 names interactive sessions `local-` followed by 64 hex digits, and Collie only knew the dated and subagent ids, so the pane fell back to the terminal view with no records. Collie now accepts the `local-` id (fixes #601). Thanks @NCheuk (#602).
 - **Linked git worktrees fold under their open root workspace on the dashboard.** The workspace filter lists the root checkout instead of each linked worktree separately, and choosing a root workspace shows its worktrees' panes under the root heading with each worktree named on its row while keeping separate working-tree rows on the Files tab (fixes #587). Thanks @GGGODLIN (#608).
+- **A slash command reaches omp and pi under a live widget.** An extension's widget over the input
+  box that ticks a spinner, a clock or a counter no longer makes a `/command` or a two-tap Send
+  refuse with "The probe character changed more than the box" or "The screen moved since you
+  looked". A row that changes its words, or a new row, still stops the send. A command on a fresh
+  Codex screen is no longer left typed when Codex hides its welcome picture.
 
 ## [1.24.1] - 2026-10-27
 

@@ -307,6 +307,14 @@ describe("the codex profile (M56 spec 13)", () => {
     expect(commandOf(list.entry, "  muse-wonder-full-1.0 · xhigh · /tmp · YOLO")).toBeNull();
   });
 
+  it("omp and pi: an extension's widget over the box may tick in place; no other profile says so (rig, 2026-10-28)", () => {
+    const profiles = loadProfiles();
+    expect(profiles.get("omp")!.idle.volatile.above.ticks).toBe(true);
+    expect(profiles.get("pi")!.idle.volatile.above).toMatchObject({ losesText: true, ticks: true });
+    const ticking = [...profiles.values()].filter((profile) => profile.idle.volatile.above.ticks === true).map((profile) => profile.id);
+    expect(ticking.toSorted()).toEqual(["omp", "pi"]);
+  });
+
   it("codex: the rows above may lose text, and the hint rows under the box are named (lab, 0.163.0)", () => {
     const codex = parseProfile(rawCodex());
     expect(codex.idle.volatile.above.losesText).toBe(true);
@@ -371,6 +379,7 @@ describe("the codex profile (M56 spec 13)", () => {
     ["codex: a blank anchor off column 0", ["idle", "frame", "top", "column"], 2, "idle.frame.top.column"],
     ["codex: a running row that is no expression", ["idle", "runningRows", 0], "[unclosed", "idle.runningRows[0]"],
     ["codex: losesText that is not true", ["idle", "volatile", "above", "losesText"], false, "idle.volatile.above.losesText"],
+    ["codex: ticks that is not true", ["idle", "volatile", "above", "ticks"], false, "idle.volatile.above.ticks"],
     ["codex: a hint row that is no expression", ["idle", "volatile", "below", "hints", 0], "[unclosed", "idle.volatile.below.hints[0]"],
     ["codex: hint rows that are no list", ["idle", "volatile", "below", "hints"], "? for shortcuts", "idle.volatile.below.hints"],
     ["codex: no command that runs in a turn", ["keys", "commandsRunInTurn"], [], "keys.commandsRunInTurn"],

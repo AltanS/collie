@@ -73,7 +73,8 @@
     "volatile": {
       "above": {
         "maxRows": 6,
-        "losesText": true
+        "losesText": true,
+        "ticks": true
       },
       "below": {
         "maxRows": 4,

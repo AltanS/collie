@@ -8,7 +8,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { muxAck, muxOk, type MuxAck, type MuxGrid, type MuxGridRequest, type MuxOutcome } from "../mux/types.ts";
-import { profileFor } from "../../web/src/lib/surface/profile.ts";
+import { loadProfiles, profileFor, type Profile } from "../../web/src/lib/surface/profile.ts";
 import type { SendAnswer } from "../../web/src/lib/surface/send.ts";
 import { KeyGate } from "./key-gate.ts";
 import { RowRing, SendProtocol, SessionLocks, type SendRequest } from "./protocol.ts";
@@ -116,6 +116,8 @@ function rig(
     starting?: (paneId: string, named: string | null) => Promise<string | null> | string | null;
     framed?: (paneId: string, harness: string) => void;
     harness?: string;
+    /** The profile as edited for this test, matched as the bridge would match it. */
+    edit?: (profile: Profile) => Profile;
   } = {},
 ) {
   const clock = { now: 1_000_000 };
@@ -126,7 +128,11 @@ function rig(
     store: new RequestStore(join(dir, "sends"), now),
     locks: new SessionLocks(),
     ring: new RowRing(),
-    profile: (harness: string) => Promise.resolve(profileFor(harness, "18.12.6", { log: () => undefined })),
+    profile: (harness: string) => {
+      const base = loadProfiles().get(harness);
+      const profiles = extra.edit === undefined || base === undefined ? undefined : new Map([[harness, extra.edit(base)]]);
+      return Promise.resolve(profileFor(harness, "18.12.6", profiles === undefined ? { log: () => undefined } : { log: () => undefined, profiles }));
+    },
     generation: () => "gen-1",
     starting: extra.starting,
     framed: extra.framed,
@@ -381,5 +387,79 @@ describe("a pane where omp is starting that the bridge did not launch (gang thre
     expect(answer.receipt?.outcome).toBe("refused");
     expect(answer.receipt?.detail).not.toBe("The pane shows no omp input box yet; it may still be starting. Nothing was typed.");
     expect(pane.calls).toEqual([]);
+  });
+});
+
+describe("a live band taller than the volatile band over the box (omp 18.13.1, rig 2026-10-28)", () => {
+  // An extension's widget of eight rows over the editor whose top row ticks (a spinner, seconds and
+  // token counters), as omp draws a job's telemetry. That row stands seven rows over the status row,
+  // outside `idle.volatile.above.maxRows`. Live, every command refused `probe_failed` there and a
+  // message went in; `idle.volatile.above.ticks` reads its digits and its braille glyph as fixed marks.
+  const BAND = "omp--v18-13-1-live-band-8.txt";
+  const SPIN = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏";
+
+  /** The capture with its ticker row redrawn on every read, then `change` applied to the rows from the third read on. */
+  function ticking(change: (rows: string[]) => string[] = (rows) => rows): OmpPane {
+    const pane = new OmpPane(fx(BAND));
+    const inner = pane.readGrid;
+    let reads = 0;
+    pane.readGrid = async (paneId, request) => {
+      const read = await inner(paneId, request);
+      if (!read.ok) return read;
+      reads++;
+      const n = reads;
+      const rows = read.value.text.split("\n").map((row) => (row.includes("waiting on 1 job") ? ` ${SPIN[n % SPIN.length]!} waiting on 1 job · ${String(n * 7)}.${String(n % 10)}s · ${String((n * 37) % 997)} tok/s · ${String(n * 113)} tok` : row));
+      return muxOk({ ...read.value, text: (n > 2 ? change(rows) : rows).join("\n") });
+    };
+    return pane;
+  }
+
+  /** omp's profile without `ticks`: what every profile reads today. */
+  const noTicks = (profile: Profile): Profile => ({ ...profile, idle: { ...profile.idle, volatile: { ...profile.idle.volatile, above: { maxRows: profile.idle.volatile.above.maxRows } } } });
+
+  test("a command goes in while the row ticks, and so does a message", async () => {
+    const pane = ticking();
+    const { send } = rig(pane);
+    expect((await send("/noop", { mode: "command" })).receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"] });
+    expect((await send("hello there")).receipt).toMatchObject({ outcome: "sent" });
+    expect(pane.submitted).toEqual(["/noop", "hello there"]);
+  });
+
+  test("without the profile's word the same tick refuses the command, as it did live", async () => {
+    const pane = ticking();
+    const answer = await rig(pane, { edit: noTicks }).send("/noop", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed", keys: ["probe", "Backspace"] });
+    expect(pane.submitted).toEqual([]);
+  });
+
+  test("a row over the box that gains a word still refuses the command", async () => {
+    const pane = ticking((rows) => rows.map((row) => (row.includes("waiting on 1 job") ? `${row} · job bg_1 failed` : row)));
+    const answer = await rig(pane).send("/noop", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed" });
+    expect(pane.submitted).toEqual([]);
+  });
+
+  test("a new row over the box still refuses the command, even one of digits only", async () => {
+    for (const added of [" Steering: what about the tests?", " 42"]) {
+      const pane = ticking((rows) => {
+        const at = rows.findIndex((row) => row.includes("waiting on 1 job"));
+        return [...rows.slice(1, at), added, ...rows.slice(at)];
+      });
+      const answer = await rig(pane).send("/noop", { mode: "command" });
+      expect(answer.receipt, added).toMatchObject({ outcome: "refused", reason: "probe_failed" });
+      expect(pane.submitted, added).toEqual([]);
+    }
+  });
+
+  test("the rows hash a person checks before a two-tap send holds across a tick, and moves without the profile's word", async () => {
+    const hashes = async (edit?: (profile: Profile) => Profile): Promise<(string | undefined)[]> => {
+      const { send } = rig(ticking(), edit === undefined ? {} : { edit });
+      return [(await send("", { mode: "prepare" })).rowsHash, (await send("", { mode: "prepare" })).rowsHash];
+    };
+    const [first, second] = await hashes();
+    expect(first).toBeDefined();
+    expect(second).toBe(first);
+    const [before, after] = await hashes(noTicks);
+    expect(after).not.toBe(before);
   });
 });

@@ -10179,3 +10179,32 @@ describe("a send's profile is read for its pane", () => {
     expect(answer.receipt?.binary).toBeUndefined();
   });
 });
+
+describe("a command on a fresh Codex 0.163.0 screen, whose welcome picture hides once the box holds text (rig, 2026-10-28)", () => {
+  // eslint-disable-next-line no-control-regex
+  const plain = (row: string): string => row.replace(/\u001b\[[0-9;:?]*[ -/]*[@-~]/gu, "");
+  /** The idle capture while the box is empty; the capture with `/status` typed, its box row redrawn, once it holds text. */
+  const welcome = (): FakePane => {
+    const idle = surfaceFixture("codex--v0-163-0-welcome-idle.txt").split("\n");
+    const typed = surfaceFixture("codex--v0-163-0-welcome-slash-status.txt").split("\n");
+    const at = typed.findLastIndex((row) => plain(row).startsWith("› "));
+    const pane = new FakePane("codex");
+    pane.render = () => (pane.box === "" ? idle : typed.map((row, i) => (i === at ? `› ${pane.box}` : row))).join("\r\n");
+    return pane;
+  };
+  const noLosesText = (profile: Profile): Profile => ({ ...profile, idle: { ...profile.idle, volatile: { ...profile.idle.volatile, above: { maxRows: profile.idle.volatile.above.maxRows } } } });
+
+  test("the command is entered: the picture only lost its rows (idle.volatile.above.losesText), as the probe already allows", async () => {
+    const pane = welcome();
+    const answer = await rig({ pane, harness: "codex", version: "0.163.0" }).send("/status", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(pane.keysSeen).toContain("Enter");
+  });
+
+  test("without the profile's word the picture going reads as a moved screen, and the text stays typed, as it did live", async () => {
+    const pane = welcome();
+    const answer = await rig({ pane, harness: "codex", version: "0.163.0", edit: noLosesText }).send("/status", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "changed" });
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+});

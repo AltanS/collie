@@ -1,0 +1,26 @@
+
+                                            ████████████
+                                               ██  ██       ▄▀▀▄ █▀▄▀▄ █▀▀▄
+                                               ██  ██       ▀▄▄▀ █ █ █ █▄▄▀
+                                               ▒▒  ██                  █
+                                                   ██       v18.13.1
+
+                        Tip: Bulk data to classify or triage? Say `jevify` in your message — the
+                         eval kernel's `judge()` processes the batch and you read only what it
+                                           flags — watch it glow as you type
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Update Available
+ New version 18.13.2 is available. Run: omp update
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+ ⠦ waiting on 1 job · 15.3s · 962 tok/s · 2938 tok
+   band row 2 of 8
+   band row 3 of 8
+   band row 4 of 8
+   band row 5 of 8
+   band row 6 of 8
+   band row 7 of 8
+   band row 8 of 8
+ π > ◒ Haiku 4.5 > 📁 …/omp-band-lab/state/harness/omp/project ▶──5%───────────────────────────────────────┃───────200K─
+╰─                                                                                          ⇧⇥ to change thinking effort
