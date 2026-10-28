@@ -118,6 +118,8 @@ export interface HomeData {
   agents: AgentView[];
   shellPanes: AgentView[];
   workspaces: WorkspaceView[];
+  /** Every machine's workspaces from the snapshot (issue #587), so the herd list folds linked worktrees on peers too. */
+  herdWorkspaces?: WorkspaceView[];
   tabs: TabView[];
   /** The bridge's session registry (primary-first); empty on a single-session / older bridge. */
   sessions: SessionSummary[];
@@ -378,6 +380,7 @@ function toHomeData(
     // carries every machine's spaces. A solo body carries no host on any row, so both calls pass
     // everything through by identity and nothing about a solo dashboard changes.
     workspaces: ambientSpaces(snap.workspaces ?? [], scope, snap.servers),
+    herdWorkspaces: snap.workspaces ?? [],
     tabs: ambientSpaces(snap.tabs ?? [], scope, snap.servers),
     sessions: snap.sessions ?? [],
     servers: snap.servers ?? [],
