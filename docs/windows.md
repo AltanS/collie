@@ -101,9 +101,12 @@ What you should see after each step of the guide:
 6. A second terminal is needed because Herdr holds the first one. `collie start` prints the
    **Collie is running** banner and your tailnet address on the `tailnet` line. It runs
    `tailscale serve` for you, and it adopts a mapping that you made by hand with an older version of
-   this page. If Tailscale is missing, signed out or without HTTPS, it prints one line that begins
-   with `setup:` for each problem, with the fix, and still starts Collie on this PC. Start your
-   agent in a Herdr pane, for example `claude`. Collie shows it on its dashboard.
+   this page. If Tailscale is missing, signed out or without HTTPS, it prints one line
+   `setup: <what is missing>` for each problem, each followed by an indented line
+   `fix: <what to do>`, and still starts Collie on this PC. After the status banner it ends with
+   `Running, but your phone cannot reach it yet. Fix the setup lines above, then run collie start
+   again. collie doctor repeats this check.` Start your agent in a Herdr pane, for example
+   `claude`. Collie shows it on its dashboard.
 7. `collie url` prints the tailnet address. `tailscale serve status` shows the mapping that `start`
    made. If `collie url` prints a loopback address (`127.0.0.1`), an address that only this PC can
    open, `start` could not publish: see
@@ -173,6 +176,13 @@ door is not asked: its only door is mutual TLS.
 
 Step 6 of Zero to phone, in full: set up Tailscale once, and `collie start` publishes Collie on
 your tailnet, the same way as on Linux and macOS.
+
+If you already ran `tailscale serve` by hand, do nothing. The first `collie start` after the
+update keeps your mapping and records it as Collie's, and `collie uninstall` removes it with the
+rest. `COLLIE_PUBLIC_HOSTS` and `COLLIE_PUBLIC_URL` in `.env` are harmless and can stay. If your
+mapping on that port sends traffic somewhere other than Collie, or uses the other protocol,
+Collie leaves it alone. `collie start` then prints an error that says it refuses to overwrite the
+mapping, and `collie doctor` reports a root mount Collie does not own.
 
 1. Install Tailscale on the PC and on the phone, and sign in to the same account on both:
    [tailscale.com/download](https://tailscale.com/download).
