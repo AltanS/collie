@@ -92,6 +92,7 @@ import {
   certDomains,
   HTTPS_DISABLED_HINT,
   readTailscale,
+  TAILSCALE_PROBE_MS,
   tailnetInboundBlocked,
   tailnetName,
 } from "./tailnet.ts";
@@ -1126,7 +1127,7 @@ function frontDoor(deps: DoctorDeps, mode: string): Finding {
 
 /** `tailscale serve status --json`, parsed — `null` for every "can't tell", as everywhere else. */
 function liveServeStatus(deps: DoctorDeps): ReturnType<typeof parseServeStatus> | null {
-  const r = deps.exec.capture("tailscale", ["serve", "status", "--json"]);
+  const r = deps.exec.capture("tailscale", ["serve", "status", "--json"], TAILSCALE_PROBE_MS);
   if (!r.found || r.code !== 0) return null;
   try {
     return parseServeStatus(r.stdout);

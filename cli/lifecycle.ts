@@ -30,6 +30,7 @@ import {
   dialableBridgeHost,
   localBridgeHostPort,
   localBridgeUrl,
+  TAILSCALE_PROBE_MS,
   tailnetHosts,
 } from "./tailnet.ts";
 import {
@@ -1216,7 +1217,7 @@ export async function cmdStatus(deps: LifecycleDeps): Promise<number> {
     return EXIT.OK;
   }
   deps.io.out("  serve config:");
-  const r = deps.exec.capture("tailscale", ["serve", "status"]);
+  const r = deps.exec.capture("tailscale", ["serve", "status"], TAILSCALE_PROBE_MS);
   if (r.found && r.code === 0) {
     for (const line of r.stdout.replace(/\n$/, "").split("\n")) {
       if (line !== "") deps.io.out(`    ${line}`);

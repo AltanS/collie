@@ -21,6 +21,7 @@ import { hostFor, type Host } from "../bridge/host.ts";
 import { serializeTrustStore } from "../bridge/crew/trust-store.ts";
 import { EXIT, type Io } from "./io.ts";
 import { SETUP_CLOSING } from "./setup-findings.ts";
+import { TAILSCALE_PROBE_MS } from "./tailnet.ts";
 import { POWERSHELL_UTF8, PROCESS_QUERY_SLOW_START_MS } from "./sys.ts";
 import { collieBinary, taskFilePath } from "./unit.ts";
 
@@ -1958,6 +1959,7 @@ describe("the status banner", () => {
     await cmdStatus(h.deps);
     expect(h.io.stdout).toContain("  serve config:");
     expect(h.io.stdout).toContain("    https://host (tailnet only)");
+    expect(h.exec.timeouts).toContainEqual({ call: "tailscale serve status", ms: TAILSCALE_PROBE_MS });
 
     const skipped = harness({ env: { COLLIE_SKIP_SERVE: "1" } });
     await cmdStatus(skipped.deps);

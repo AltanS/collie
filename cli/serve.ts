@@ -23,6 +23,7 @@ import {
   bridgeUrl,
   HTTPS_DISABLED_HINT,
   localBridgeHostPort,
+  TAILSCALE_PROBE_MS,
   tailnetCertDomains,
   tailnetName,
 } from "./tailnet.ts";
@@ -357,7 +358,7 @@ function ensureRootAvailable(
   path: string,
 ): boolean {
   const name = mountName(path);
-  const r = deps.exec.capture("tailscale", ["serve", "status", "--json"]);
+  const r = deps.exec.capture("tailscale", ["serve", "status", "--json"], TAILSCALE_PROBE_MS);
   if (!r.found || r.code !== 0) {
     deps.io.err(
       `error: cannot inspect Tailscale serve status; refusing to overwrite the ${name} on :${port}`,

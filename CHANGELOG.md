@@ -43,10 +43,11 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
-- **Collie never waits on a stuck Tailscale.** Every `tailscale` call the CLI makes is bounded to
-  three seconds inside Collie itself. Before, the ACL probe went through an external `timeout`
-  command, which on Windows is a wait command, so `collie start` and `collie doctor` could stall or
-  skip the check.
+- **Collie never waits on a stuck Tailscale.** Every read-only `tailscale` call the CLI makes is
+  bounded to three seconds inside Collie itself. Publishing and removing a mapping still wait for
+  Tailscale, because killing a half-done change is worse than waiting. Before, the ACL probe went
+  through an external `timeout` command, which on Windows is a wait command, so `collie start` and
+  `collie doctor` could stall or skip the check.
 - **Doctor no longer blames the certificates when Tailscale is signed out.** The `front-door` row now
   reads the Tailscale state first and says the check cannot run yet, instead of "this tailnet has no
   HTTPS certificates".
@@ -54,6 +55,9 @@ Running a crew? Update the lead first; members follow on their own. Details:
   now follows the Tailscale rows alone; a missing PATH link no longer triggers it. When the front
   door did not come up, the banner's tailnet row says so instead of printing a working-looking
   address.
+- **`collie status`, `collie doctor` and `collie serve` no longer hang on a stuck Tailscale.** Their
+  reads of the serve configuration, and the bridge's check before it removes a mapping, give up after
+  three seconds.
 
 ### Docs
 
