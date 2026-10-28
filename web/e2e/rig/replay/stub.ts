@@ -16,7 +16,7 @@
 // The leg tells the stub which case runs (`POST /_rig/case`, leg.ts runScenario), and reads its
 // counters and mismatches (`GET /_rig/stats`, global-teardown.ts). The stub never reads a key file
 // and never logs a header.
-import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync, existsSync, rmSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
@@ -136,11 +136,49 @@ async function readBody(req: IncomingMessage): Promise<string> {
   return Buffer.concat(chunks).toString("utf8");
 }
 
+/** What a case's files held before this run recorded into them: the way back when the case fails. */
+interface Before {
+  /** The case's cassette file as it was, or null when there was none. */
+  readonly caseText: string | null;
+  /** meta.json as it was, or null when there was none. */
+  readonly metaText: string | null;
+  /** True when the file was a recording this run would still replay (same model and skill) and not marked failed. */
+  readonly good: boolean;
+}
+
 /** A case's entries, recorded in this run, in arrival order. */
 interface Recording {
   readonly harness: StubHarness;
   readonly caseId: string;
   readonly slots: (Entry | null)[];
+  readonly before: Before;
+}
+
+/**
+ * Remove a case's recording: its cassette file, and its name from `cases` and `failed` of the leg in
+ * meta.json. The stub calls it when a record run's case passes and the harness made no model call in
+ * it (an empty recording is the truth). A case with no file and no meta entry changes nothing.
+ * Returns true when it removed or edited anything.
+ */
+export function dropRecording(root: string, leg: string, harness: string, version: string, caseId: string): boolean {
+  const dir = join(root, harness, versionDir(version));
+  const file = join(dir, caseFile(caseId));
+  let changed = false;
+  if (existsSync(file)) {
+    rmSync(file);
+    changed = true;
+  }
+  const metaFile = join(dir, "meta.json");
+  if (!existsSync(metaFile)) return changed;
+  // SAFETY: meta.json is the stub's own output (writeMeta).
+  const meta = JSON.parse(readFileSync(metaFile, "utf8")) as CassetteMeta;
+  const old = meta.legs[leg];
+  if (old === undefined || !(old.cases.includes(caseId) || (old.failed ?? []).includes(caseId))) return changed;
+  const cases = old.cases.filter((c) => c !== caseId);
+  const failed = (old.failed ?? []).filter((c) => c !== caseId);
+  const legMeta: LegMeta = failed.length > 0 ? { model: old.model, skill: old.skill, recordedAt: old.recordedAt, cases, failed } : { model: old.model, skill: old.skill, recordedAt: old.recordedAt, cases };
+  writeFileSync(metaFile, `${JSON.stringify({ ...meta, legs: { ...meta.legs, [leg]: legMeta } }, null, 2)}\n`);
+  return true;
 }
 
 export async function startStub(config: StubConfig, port = 0, host = "127.0.0.1"): Promise<Stub> {
@@ -203,6 +241,20 @@ export async function startStub(config: StubConfig, port = 0, host = "127.0.0.1"
     writeFileSync(file, `${JSON.stringify(meta, null, 2)}\n`);
   };
 
+  /** The case's files before this run touches them (see Before). */
+  const snapshot = (plan: TierPlan, caseId: string): Before => {
+    if (plan.version === null) return { caseText: null, metaText: null, good: false };
+    const dir = join(config.root, plan.harness, versionDir(plan.version));
+    const file = join(dir, caseFile(caseId));
+    const metaFile = join(dir, "meta.json");
+    const caseText = existsSync(file) ? readFileSync(file, "utf8") : null;
+    const metaText = existsSync(metaFile) ? readFileSync(metaFile, "utf8") : null;
+    // SAFETY: as in writeMeta, meta.json is this file's own earlier output.
+    const old = metaText === null ? undefined : (JSON.parse(metaText) as CassetteMeta).legs[config.leg];
+    const good = caseText !== null && old !== undefined && old.model === plan.model && old.skill === plan.skill && old.cases.includes(caseId) && !(old.failed ?? []).includes(caseId);
+    return { caseText, metaText, good };
+  };
+
   const writeCase = (plan: TierPlan, rec: Recording) => {
     if (plan.version === null) return;
     const dir = join(config.root, plan.harness, versionDir(plan.version));
@@ -215,6 +267,46 @@ export async function startStub(config: StubConfig, port = 0, host = "127.0.0.1"
     set.add(rec.caseId);
     recordedCases.set(plan.harness, set);
     writeMeta(plan);
+  };
+
+  /**
+   * The life-cycle of a recording, decided where the verdict arrives (the case ran under recording):
+   *  - pass, no model call by this harness: its file and its meta entries are removed;
+   *  - pass, with calls: the file is the new recording and the failed mark is cleared;
+   *  - fail, and the file held a good recording (same model and skill, not marked failed): the old
+   *    file and the old meta come back, and one log line says so;
+   *  - fail otherwise: the new recording stays and the case is marked failed.
+   */
+  const settleRecording = (plan: TierPlan, caseId: string, verdict: string) => {
+    const h = plan.harness;
+    const key = `${h}|${caseId}`;
+    const rec = recordings.get(key);
+    const passed = verdict === "pass";
+    if (rec === undefined) {
+      if (passed && plan.version !== null && dropRecording(config.root, config.leg, h, plan.version, caseId)) log(`${h} ${caseId}: passed with no model call, recording removed`);
+      return;
+    }
+    if (passed || !rec.before.good) {
+      const set = failedCases.get(h) ?? new Set<string>();
+      if (passed) set.delete(caseId);
+      else set.add(caseId);
+      failedCases.set(h, set);
+      writeMeta(plan);
+      if (!passed) log(`${h} ${caseId}: recorded in a case that did not pass (${verdict}), marked failed`);
+      return;
+    }
+    if (plan.version === null) return;
+    const dir = join(config.root, h, versionDir(plan.version));
+    const file = join(dir, caseFile(caseId));
+    // A good recording had both files.
+    if (rec.before.caseText !== null) writeFileSync(file, rec.before.caseText);
+    if (rec.before.metaText !== null) writeFileSync(join(dir, "meta.json"), rec.before.metaText);
+    written.delete(file);
+    recordedCases.get(h)?.delete(caseId);
+    failedCases.get(h)?.delete(caseId);
+    recordings.delete(key);
+    for (const k of ordinals.keys()) if (k.startsWith(`${h}|`) && k.split("|")[2] === caseId) ordinals.delete(k);
+    log(`${h} ${caseId}: failed live (${verdict}), the earlier recording was not marked failed, kept`);
   };
 
   const fail = (res: ServerResponse, note: Mismatch) => {
@@ -285,7 +377,7 @@ export async function startStub(config: StubConfig, port = 0, host = "127.0.0.1"
       const recKey = `${h}|${caseId}`;
       rec = recordings.get(recKey);
       if (rec === undefined) {
-        rec = { harness: h, caseId, slots: [] };
+        rec = { harness: h, caseId, slots: [], before: snapshot(plan, caseId) };
         recordings.set(recKey, rec);
       }
       slot = rec.slots.push(null) - 1;
@@ -368,13 +460,9 @@ export async function startStub(config: StubConfig, port = 0, host = "127.0.0.1"
         const said = JSON.parse(body) as { case: string; verdict: string };
         for (const h of STUB_HARNESSES) {
           const plan = config.plans[h];
-          if (plan === undefined || !plan.record || !(recordedCases.get(h)?.has(said.case) ?? false)) continue;
-          const set = failedCases.get(h) ?? new Set<string>();
-          if (said.verdict === "pass") set.delete(said.case);
-          else set.add(said.case);
-          failedCases.set(h, set);
-          writeMeta(plan);
-          if (said.verdict !== "pass") log(`${h} ${said.case}: recorded in a case that did not pass (${said.verdict}), marked failed`);
+          // Only a live run that records changes a cassette; a replay run never does.
+          if (plan === undefined || plan.tier !== "live" || !plan.record || plan.version === null) continue;
+          settleRecording(plan, said.case, said.verdict);
         }
         res.writeHead(204).end();
         return;

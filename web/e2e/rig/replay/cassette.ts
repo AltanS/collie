@@ -561,12 +561,12 @@ export function shortHash(text: string): string {
 
 // ── the redaction check ──────────────────────────────────────────────────────────────────────────
 
-/** What must never be in a cassette, as data: `check.ts` fails a file on any of these. */
+/** What must never be in a cassette, as data: `check.ts` fails a file on any of these (the owner's host and company names are in check.ts HOSTS). */
 export const FORBIDDEN: readonly { readonly name: string; readonly re: RegExp }[] = [
-  { name: "an OpenRouter key", re: /sk-or-v1-[A-Za-z0-9]{16,}/u },
+  { name: "an OpenRouter key", re: /sk-or-v1-[A-Za-z0-9]{8,}/u },
   { name: "an Anthropic key", re: /sk-ant-[A-Za-z0-9_-]{16,}/u },
   { name: "an OpenAI-style key", re: /\bsk-[A-Za-z0-9]{32,}/u },
-  { name: "a bearer token", re: /\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/u },
+  { name: "a bearer token", re: /\bBearer\s+\S{8,}/u },
   { name: "an Authorization header", re: /"?authorization"?\s*[:=]/iu },
   { name: "an x-api-key header", re: /"?x-api-key"?\s*[:=]/iu },
   { name: "a home folder path", re: /(?:\/var\/home|\/home|\/Users)\/[A-Za-z0-9._-]+/u },

@@ -17,3 +17,6 @@ web/public/stt/** -text
 # rendered skill. The code strips it as well (cli/docs-embed.ts), because an installed copy can be CRLF.
 cli/skill.md text eol=lf
 cli/skills/*.md text eol=lf
+
+# Recorded model streams of the browser leg (M67): fixtures, never reviewed line by line.
+web/e2e/rig/cassettes/**/*.jsonl linguist-generated=true

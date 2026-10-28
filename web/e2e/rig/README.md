@@ -369,6 +369,9 @@ COLLIE_RIG_LIVE=pi COLLIE_RIG_RECORD=1 COLLIE_RIG_KEY_FILE=/path/to/.env bunx pl
 That run rewrites only that case and clears its mark when it passes. Commit the recordings like
 fixtures, after reading the diff and running the check.
 
+A record run settles each case on its verdict: a pass with no model call removes that harness's recording of it, a pass with calls overwrites the file and clears the mark, and a failure keeps an earlier good recording (same model and skill, no mark) and logs one line, or else writes the new one and marks it, while a replay run never changes a cassette.
+A harness version bump leaves the old `<version>` folder, so delete it in the same commit that records the new one.
+
 **Where they live.** `cassettes/<harness>/<version>/<case>.jsonl`, one file per case (`pi.walky-agents`,
 `claude.walky-broadcast` for the pi or omp calls of a Claude case), and `meta.json` per version with one
 entry per leg (`solo`, `crew`). A line holds one model request's summary (the wire format, the model, the
@@ -387,8 +390,9 @@ Record again.
 
 **The redaction check.** `bun run e2e:recordings:check` in `web/` reads every file under
 `e2e/rig/cassettes/` and fails on an OpenRouter, Anthropic or OpenAI key pattern, a bearer token, an
-Authorization or x-api-key header, or a path into a home folder. It prints the file and line, never the
-matched text. Run it before every commit that adds recordings. The recorder blanks a key pattern the
+Authorization or x-api-key header, a home path, a host name, a `.jsonl` over 512 KiB, or a case under
+`failed` in a `meta.json`. It prints the file and line, never the matched text. The vitest
+`e2e/rig/cassettes-check.test.ts` runs the same check on every CI test run. Run it before every commit that adds recordings. The recorder blanks a key pattern the
 model echoes, and stores no header, so the check is the second line.
 
 ## Cost of one run

@@ -27,12 +27,13 @@ import {
   valuesFor,
   volatileValues,
   type Entry,
+  type LegMeta,
   type RecordedResponse,
 } from "./replay/cassette";
 import { asJsonObject, asJsonString, parseJson } from "../../src/lib/json";
-import { checkCassettes } from "./replay/check";
+import { checkCassettes, checkFile } from "./replay/check";
 import { costLines } from "./replay/report";
-import { MISMATCH_STATUS, NO_CASE, startStub, upstreamUrl, type Stub } from "./replay/stub";
+import { MISMATCH_STATUS, NO_CASE, dropRecording, startStub, upstreamUrl, type Stub } from "./replay/stub";
 import { decideTier, modelFor, planTiers, readTierAsk, skillHash, type TierPlan, type TierPlans } from "./replay/tier";
 
 const LAB = "/tmp/collie-lab-test/state";
@@ -330,6 +331,56 @@ describe("checkCassettes", () => {
   });
 });
 
+describe("checkFile", () => {
+  const head = '{"v":1,"harness":"pi","version":"1.3.0","case":"pi.x","leg":"solo","recordedAt":"t"}\n';
+  const check = (path: string, text: string): string[] => checkFile(path, text);
+  const meta = (failed: string[] | undefined): string => {
+    const base = { model: "m", skill: "s", recordedAt: "t", cases: ["pi.a", "pi.b"] };
+    const leg: LegMeta = failed === undefined ? base : { ...base, failed };
+    return JSON.stringify({ v: 1, harness: "pi", version: "1.3.0", legs: { solo: leg } });
+  };
+
+  it("passes a clean cassette and a clean meta, and the recorder's placeholders", () => {
+    expect(check("pi/1.3.0/pi.x.jsonl", `${head}{"text":"cd {{lab}}/work and {{home}}/x, reply {{walky:0}} at <time>"}\n`)).toEqual([]);
+    expect(check("pi/1.3.0/meta.json", meta(undefined))).toEqual([]);
+  });
+
+  it("fails every case listed under failed, in any leg, and names the file and the case", () => {
+    expect(check("pi/1.3.0/meta.json", meta(["pi.b"]))).toEqual(["pi/1.3.0/meta.json: leg solo: pi.b is marked failed (re-record it alone, a merged tree holds none)"]);
+    expect(check("pi/1.3.0/meta.json", "{")).toHaveLength(1);
+  });
+
+  it("fails a key pattern from 8 characters, and a bearer token from 8 non-space characters", () => {
+    expect(check("a.jsonl", `${head}{"k":"sk-or-v1-abcd1234"}\n`)).toEqual(["a.jsonl: line 2: an OpenRouter key"]);
+    expect(check("a.jsonl", `${head}{"k":"sk-or-v1-abc"}\n`)).toEqual([]);
+    expect(check("a.jsonl", `${head}{"h":"Bearer x.y-z_12345"}\n`)).toEqual(["a.jsonl: line 2: a bearer token"]);
+    expect(check("a.jsonl", `${head}{"h":"Bearer short"}\n`)).toEqual([]);
+  });
+
+  it("fails a home path of the owner, with /var/home or /home and a user name", () => {
+    expect(check("a.jsonl", `${head}{"p":"/var/home/someone/x"}\n`)).toEqual(["a.jsonl: line 2: a home folder path"]);
+    expect(check("a.jsonl", `${head}{"p":"/home/someone/x"}\n`)).toEqual(["a.jsonl: line 2: a home folder path"]);
+    expect(check("a.jsonl", `${head}{"p":"/usr/local/home"}\n`)).toEqual([]);
+  });
+
+  it("fails the host and company names, in any letter case", () => {
+    expect(check("a.jsonl", `${head}{"h":"bluefin"}\n{"h":"MiniBuch"}\n{"h":"x.sprqvntrs.com"}\n{"h":"Sportsight"}\n`)).toEqual([
+      "a.jsonl: line 2: the host name bluefin",
+      "a.jsonl: line 3: the host name minibuch",
+      "a.jsonl: line 4: the name sprqvntrs",
+      "a.jsonl: line 5: the name sportsight",
+    ]);
+  });
+
+  it("fails a .jsonl over 512 KiB and keeps the existing checks", () => {
+    const big = `${head}{"pad":"${"x".repeat(512 * 1024)}"}\n`;
+    expect(check("a.jsonl", big)).toEqual(["a.jsonl: 513 KiB is over the 512 KiB limit"]);
+    expect(check("a.jsonl", `${head}{"pad":"${"x".repeat(512 * 1024 - head.length - 20)}"}\n`)).toEqual([]);
+    expect(check("a.jsonl", "not json\n")).toHaveLength(1);
+    expect(check("a.jsonl", `${head}{"a":"Authorization: x"}\n`)).toEqual(["a.jsonl: line 2: an Authorization header"]);
+  });
+});
+
 // ── stub.ts: a real listener, against a fake OpenRouter ──────────────────────────────────────
 
 interface Fake {
@@ -496,6 +547,93 @@ describe("the stub", () => {
     await again.close();
     expect(meta().cases).toEqual(["pi.a", "pi.b"]);
     expect(meta().failed).toBeUndefined();
+  });
+
+  describe("the life-cycle of a recording", () => {
+    const post = (stub: Stub, c: string, v: string) => fetch(`http://127.0.0.1:${String(stub.port)}/_rig/verdict`, { method: "POST", body: JSON.stringify({ case: c, verdict: v }) });
+    const dirOf = (root: string) => join(root, "pi", "1.3.0");
+    // SAFETY: meta.json is the stub's own JSON.stringify of a CassetteMeta (stub.ts writeMeta).
+    const legOf = (root: string) => JSON.parse(readFileSync(join(dirOf(root), "meta.json"), "utf8")).legs.solo as { cases: string[]; failed?: string[]; recordedAt: string };
+    const treeOf = (root: string): Record<string, string> => Object.fromEntries(readdirSync(dirOf(root)).map((name) => [name, readFileSync(join(dirOf(root), name), "utf8")]));
+    const logged: string[] = [];
+
+    /** A record run of pi: each case asks once (or not at all) and gets its verdict; the stub is closed after. */
+    async function recordRun(root: string, fake: Fake, cases: Record<string, { prompt: string | null; verdict: string }>, tier: "live" | "replay" = "live"): Promise<void> {
+      const stub = await startStub({ root, leg: "solo", plans: plans(plan("pi", tier, tier === "live")), literals: [...LITERALS], upstream: fake.origin, log: (line) => logged.push(line) });
+      for (const [c, { prompt, verdict }] of Object.entries(cases)) {
+        stub.setCase(c);
+        if (prompt !== null) await ask(stub, piBody(prompt));
+        await post(stub, c, verdict);
+      }
+      await stub.close();
+    }
+
+    it("removes the file and the meta entries of a case that passes with no model call", async () => {
+      const { root, fake } = await setup();
+      await recordRun(root, fake, { "pi.a": { prompt: "first a", verdict: "fail" }, "pi.b": { prompt: "first b", verdict: "pass" } });
+      expect(legOf(root)).toMatchObject({ cases: ["pi.a", "pi.b"], failed: ["pi.a"] });
+      const stamp = legOf(root).recordedAt;
+      logged.length = 0;
+      await recordRun(root, fake, { "pi.a": { prompt: null, verdict: "pass" } });
+      expect(readdirSync(dirOf(root)).toSorted()).toEqual(["meta.json", "pi.b.jsonl"]);
+      expect(legOf(root)).toMatchObject({ cases: ["pi.b"], recordedAt: stamp });
+      expect(legOf(root).failed).toBeUndefined();
+      expect(logged.filter((l) => l.includes("pi.a"))).toEqual(["pi pi.a: passed with no model call, recording removed"]);
+      // A case that was never recorded changes nothing, and a case that fails with no call is left alone.
+      const before = treeOf(root);
+      await recordRun(root, fake, { "pi.never": { prompt: null, verdict: "pass" }, "pi.b": { prompt: null, verdict: "fail" } });
+      expect(treeOf(root)).toEqual(before);
+    });
+
+    it("drops a case by hand the same way (dropRecording), and only that case", async () => {
+      const { root, fake } = await setup();
+      await recordRun(root, fake, { "pi.a": { prompt: "first a", verdict: "fail" }, "pi.b": { prompt: "first b", verdict: "fail" } });
+      expect(dropRecording(root, "solo", "pi", "1.3.0", "pi.a")).toBe(true);
+      expect(dropRecording(root, "solo", "pi", "1.3.0", "pi.a")).toBe(false);
+      expect(readdirSync(dirOf(root)).toSorted()).toEqual(["meta.json", "pi.b.jsonl"]);
+      expect(legOf(root)).toMatchObject({ cases: ["pi.b"], failed: ["pi.b"] });
+    });
+
+    it("overwrites the file and clears the mark when a case passes with calls", async () => {
+      const { root, fake } = await setup();
+      await recordRun(root, fake, { "pi.a": { prompt: "first a", verdict: "fail" } });
+      const first = treeOf(root)["pi.a.jsonl"];
+      await recordRun(root, fake, { "pi.a": { prompt: "second a", verdict: "pass" } });
+      expect(treeOf(root)["pi.a.jsonl"]).not.toBe(first);
+      expect(treeOf(root)["pi.a.jsonl"]).toContain("second a");
+      expect(legOf(root).cases).toEqual(["pi.a"]);
+      expect(legOf(root).failed).toBeUndefined();
+    });
+
+    it("keeps a good recording when the case fails once, leaves meta as it was, and says so in one line", async () => {
+      const { root, fake } = await setup();
+      await recordRun(root, fake, { "pi.a": { prompt: "good a", verdict: "pass" }, "pi.b": { prompt: "good b", verdict: "pass" } });
+      const before = treeOf(root);
+      logged.length = 0;
+      await new Promise((done) => setTimeout(done, 5));
+      await recordRun(root, fake, { "pi.a": { prompt: "flaky a", verdict: "fail" } });
+      expect(treeOf(root)).toEqual(before);
+      expect(logged.filter((l) => l.includes("kept"))).toEqual(["pi pi.a: failed live (fail), the earlier recording was not marked failed, kept"]);
+      expect(logged.some((l) => l.includes("recorded in a case that did not pass"))).toBe(false);
+    });
+
+    it("writes and marks the new recording when the case fails and there is none, or the old one is already marked", async () => {
+      const { root, fake } = await setup();
+      await recordRun(root, fake, { "pi.a": { prompt: "bad a", verdict: "fail" } });
+      expect(legOf(root)).toMatchObject({ cases: ["pi.a"], failed: ["pi.a"] });
+      await recordRun(root, fake, { "pi.a": { prompt: "worse a", verdict: "fail" } });
+      expect(treeOf(root)["pi.a.jsonl"]).toContain("worse a");
+      expect(legOf(root)).toMatchObject({ cases: ["pi.a"], failed: ["pi.a"] });
+    });
+
+    it("changes no cassette and no meta on a replay run, whatever the verdicts", async () => {
+      const { root, fake } = await setup();
+      await recordRun(root, fake, { "pi.a": { prompt: "good a", verdict: "pass" }, "pi.b": { prompt: "bad b", verdict: "fail" } });
+      const before = treeOf(root);
+      await new Promise((done) => setTimeout(done, 5));
+      await recordRun(root, fake, { "pi.a": { prompt: null, verdict: "pass" }, "pi.b": { prompt: null, verdict: "fail" }, "pi.c": { prompt: null, verdict: "fail" } }, "replay");
+      expect(treeOf(root)).toEqual(before);
+    });
   });
 
   it("answers a catalog read with 503 and an unknown path with 404, on every tier, without calling out", async () => {
