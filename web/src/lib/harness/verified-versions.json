@@ -93,11 +93,11 @@
       }
     },
     "opencode": {
-      "version": "1.19.3",
-      "verified": "2026-10-18",
+      "version": "1.19.5",
+      "verified": "2026-10-29",
       "how": "canary",
       "adapter": true,
-      "evidence": "harness lab 2026-10-18 on opencode 1.19.3: walk, Surface on 4 screens, one probed send (sent), one ask answer (sent, declined file made: false); 3 model turns",
+      "evidence": "harness lab 2026-10-29 on opencode 1.19.5: walk, Surface on 4 screens, one probed send (sent), one ask answer (sent, declined file made: false); 3 model turns",
       "journal": {
         "version": "1.18.33",
         "verified": "2026-09-30",
