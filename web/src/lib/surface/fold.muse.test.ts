@@ -133,4 +133,56 @@ describe("the typed command's own slash palette inside Muse's box (MUSE-03, #519
       expect(labelOf(name).state, name).toBe("dialog");
     }
   });
+
+  it("a multiline prose draft is the box's own text, not a pointed list (live capture 2026-10-21)", () => {
+    // muse--draft-multiline-live.txt is a real `pane read --format ansi`
+    // capture of Muse 1.4.11 with a three-line draft typed but not sent:
+    // prompt row plus soft-wrapped continuation rows over the bottom rule.
+    const rows = fixtureRows("muse--draft-multiline-live.txt");
+    const found = findInputFrame(rows, IDLE);
+    expect(found).not.toBeNull();
+    expect(found?.interior.text).toContain("first line of a long draft");
+    expect(found?.interior.text).toContain("third line continues here as well");
+    const read = readScreen(rows, "muse", IDLE);
+    expect(read.surface).toMatchObject({ modal: "none", composer: "draft" });
+    expect(read.cues?.cues.map((cue) => cue.kind)).not.toContain("pointer-row");
+    expect(read.cues?.strength).toBe("none");
+  });
+
+  // The rule that reads it so (`frame.draftLines`, cues.ts `draftWrap`): Muse's dialogs point with `›` and
+  // `⟩`, never with the prompt's `❯`, so rows under `❯` that hold no option, no key hint and no named
+  // command list are the draft's own lines. Each piece of that is pinned here against the same capture.
+  const row = (text: string) => ({ segments: [{ text, style: {}, muted: false }] });
+  const LIVE = "muse--draft-multiline-live.txt";
+
+  it("the same capture without the layout's draftLines still reads as a pointed list, never as free", () => {
+    const idle = { ...IDLE, frame: { ...IDLE.frame, draftLines: undefined } };
+    const read = readScreen(fixtureRows(LIVE), "muse", idle);
+    expect(read.cues?.strength).toBe("strong");
+    expect(read.surface.modal).toBe("unreadable");
+    expect(isFree(read.surface)).toBe(false);
+  });
+
+  const LISTS: readonly [string, number, string][] = [
+    ["a numbered row", 4, "  2. second line continues here"],
+    ["a checkbox row", 4, "  [ ] second line continues here"],
+    ["a key hint row", 6, "  Enter to select"],
+  ];
+  for (const [what, at, text] of LISTS) {
+    it(`a newline draft with ${what} under the glyph stays a list, never a draft`, () => {
+      const rows = fixtureRows(LIVE).map((line, i) => (i === at ? row(text) : line));
+      const read = readScreen(rows, "muse", IDLE);
+      expect(read.surface.composer).not.toBe("draft");
+      expect(read.surface.modal).not.toBe("none");
+      expect(isFree(read.surface)).toBe(false);
+    });
+  }
+
+  // The blanket strip of the prompt glyph read this real palette, pointed at another command, as a draft
+  // (Enter would run /resume-claude). The profile's command list in the box keeps it a list.
+  it("muse--palette-hint-moved.txt stays unreadable: a named command list in the box is no draft's lines", () => {
+    const read = own("muse--palette-hint-moved.txt");
+    expect(read.surface).toMatchObject({ modal: "unreadable", composer: "unknown" });
+    expect(read.cues?.strength).toBe("strong");
+  });
 });

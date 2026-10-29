@@ -34,6 +34,8 @@
 // a prompt glyph over a draft soft-wrapped to the box's width ({@link draftWrap}) is read as blank: the
 // wrapped rows under it line up like a pointed list between two rules, and they are one paragraph.
 // The same rows with a row cut by an ellipsis read as neither: no cue, flagged `cutWrap`, unreadable.
+// A layout that names `frame.draftLines` reads a draft typed with newlines the same way, when its rows
+// hold no option, key hint or named command list: its dialogs never point with the prompt glyph.
 //
 // Pure: the same rows always give the same answer.
 
@@ -560,10 +562,10 @@ export function readCuesFor(allRows: readonly FrameRow[], frame: Frame | null, i
   // The box's own prompt glyph, where the layout names one (`frame.ownPrompt`), is no pointer there.
   const at = frame.top;
   // A draft-shaped box with a row cut by an ellipsis is neither a draft nor a dialog: claim unreadable.
-  if (plain.strength !== "strong" && wrapUnderGlyph(withoutOwnPrompt(rows, frame).map(rowText), frame) === "cut") {
+  if (plain.strength !== "strong" && wrapUnderGlyph(withoutOwnPrompt(rows, frame).map(rowText), frame, idle) === "cut") {
     return { ...plain, cues: [], strength: "none", cutWrap: true };
   }
-  const down = readCues(withoutDraftContinuation(withoutPromptGlyph(withoutOwnPrompt(rows, frame), frame), frame, idle).slice(at), null, null);
+  const down = readCues(withoutDraftContinuation(withoutPromptGlyph(withoutOwnPrompt(rows, frame), frame, idle), frame, idle).slice(at), null, null);
   // A weak shape inside the box is the box's own hint row (OMP draws "to change thinking effort" there).
   if (down.strength !== "strong" || plain.strength === "strong") return plain;
   return { ...down, cluster: down.cluster.map((i) => i + at), cues: down.cues.map((cue) => ({ kind: cue.kind, row: cue.row + at })) };
@@ -589,6 +591,11 @@ function withoutDraftContinuation(rows: readonly FrameRow[], frame: Frame, idle:
  * (within {@link WRAP_SLACK}). A draft typed with newlines has short rows and fails this (`no`), so it
  * reads as a list still: the conservative side, a send refused, never a dialog typed into.
  *
+ * `lines`: a layout that names `frame.draftLines` says no dialog in its box points with the prompt glyph.
+ * There a box that fails the wrap test is still the draft's own lines when {@link ownLines} holds: no row
+ * holds an option or a key hint, and no list the profile names stands in the box. Any of those keeps
+ * the box a list.
+ *
  * `cut`: the rows pass that test, but a row ends in an ellipsis ({@link endsInEllipsis}). pi cuts a menu
  * or hint row wider than the box with `…` (or `...`), so the row fills the width the way a soft wrap
  * does, and a wrapped draft and a cut menu cannot be told apart. A row cut so is taken as filled. Neither
@@ -596,7 +603,14 @@ function withoutDraftContinuation(rows: readonly FrameRow[], frame: Frame, idle:
  * a tap's Enter would submit the draft. So `cut` makes the read unreadable ({@link CueRead.cutWrap}):
  * no dialog card, no taps, no free Send. Unreadable is the safe failure; a wrong dialog is not.
  */
-function draftWrap(texts: readonly string[], frame: Frame): "wrapped" | "cut" | "no" {
+function draftWrap(texts: readonly string[], frame: Frame, idle: IdleProfile): DraftRead {
+  const soft = softWrap(texts, frame);
+  if (soft !== "no" || idle.frame.draftLines !== true) return soft;
+  return ownLines(texts, frame, idle) ? "lines" : "no";
+}
+
+/** The {@link draftWrap} test of one paragraph soft-wrapped to the box's width, for every layout. */
+function softWrap(texts: readonly string[], frame: Frame): DraftRead {
   // The top edge spans the box: an open box's bottom row is its last row (a statusline), not a rule.
   const width = displayWidth(texts[frame.top]!.trimEnd());
   // A blank top edge gives no width to fill: read no wrap.
@@ -617,6 +631,29 @@ function draftWrap(texts: readonly string[], frame: Frame): "wrapped" | "cut" | 
   return cut ? "cut" : "wrapped";
 }
 
+/** What a found box's rows under its prompt glyph are ({@link draftWrap}). */
+type DraftRead = "wrapped" | "lines" | "cut" | "no";
+
+/**
+ * Whether the rows of a box, from its prompt row down to its last non-blank row, are a draft typed with
+ * newlines, for a layout whose prompt glyph is never a dialog's pointer (`frame.draftLines`). Two rows or
+ * more; none an option row ({@link isOptionRow}) or a key hint; and no list the profile names for its
+ * typed commands in the box ({@link commandListAt}), the one list such a harness
+ * draws under its prompt glyph.
+ */
+function ownLines(texts: readonly string[], frame: Frame, idle: IdleProfile): boolean {
+  const { prompt } = frame.interior;
+  let last = frame.interior.last;
+  while (last > prompt && isBlank(texts[last]!)) last--;
+  if (last === prompt) return false;
+  for (let i = prompt; i <= last; i++) {
+    const text = texts[i]!;
+    if (isBlank(text)) continue;
+    if (isOptionRow(text) || KEY_HINT.test(unboxed(text))) return false;
+  }
+  return commandListAt(texts, frame, idle.volatile.below.commandList) === null;
+}
+
 /** Whether a row's text ends in an ellipsis: the character `…` or three ASCII dots. */
 function endsInEllipsis(text: string): boolean {
   const end = text.trimEnd();
@@ -625,19 +662,20 @@ function endsInEllipsis(text: string): boolean {
 
 /** The {@link draftWrap} of a box whose prompt row opens on a pointer glyph the frame took as the prompt
  *  marker (the draft does not start with it), or `no` for any other box. */
-function wrapUnderGlyph(texts: readonly string[], frame: Frame): "wrapped" | "cut" | "no" {
+function wrapUnderGlyph(texts: readonly string[], frame: Frame, idle: IdleProfile): DraftRead {
   if (frame.placeholder) return "no";
   const glyph = texts[frame.interior.prompt]!.trimStart()[0];
   if (glyph === undefined || !POINTERS.includes(glyph) || frame.interior.text.startsWith(glyph)) return "no";
-  return draftWrap(texts, frame);
+  return draftWrap(texts, frame, idle);
 }
 
 /** The rows with the pointer glyph the box's prompt row opens on read as blank, when the frame took it as
- *  the prompt marker (the draft does not start with it) and the draft under it is soft-wrapped
- *  ({@link draftWrap}). */
-function withoutPromptGlyph(rows: readonly FrameRow[], frame: Frame): readonly FrameRow[] {
+ *  the prompt marker (the draft does not start with it) and the draft under it is soft-wrapped or the
+ *  layout's own lines ({@link draftWrap}). */
+function withoutPromptGlyph(rows: readonly FrameRow[], frame: Frame, idle: IdleProfile): readonly FrameRow[] {
   const texts = rows.map(rowText);
-  if (wrapUnderGlyph(texts, frame) !== "wrapped") return rows;
+  const draft = wrapUnderGlyph(texts, frame, idle);
+  if (draft !== "wrapped" && draft !== "lines") return rows;
   const glyph = texts[frame.interior.prompt]!.trimStart()[0]!;
   const segments = [...rows[frame.interior.prompt]!.segments];
   const at = segments.findIndex((run) => run.text.includes(glyph));

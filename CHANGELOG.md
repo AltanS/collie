@@ -62,6 +62,13 @@ Running a crew? Update the lead first; members follow on their own. Details:
   row key through the route's own scope, so a shell pane, which is no agent row, silences nothing.
 - **The Authentication box Claude prints during an awsAuthRefresh login lifts as a card.** On Bedrock, Claude shows a sign-in link inside a box while it refreshes AWS credentials. Collie now lifts that box as a card with the sign-in link. The link opens only on a tap, and nothing is typed into the pane. Thanks @cooldaemon (#542, #585).
 - **The detector drift guard now knows the Authentication box.** The Claude dialog list names the auth box, so the guard no longer fails on its fixtures.
+- **A Muse draft typed over several lines no longer reads as a dialog.** Muse's prompt glyph and the
+  draft's lines under it looked like a pointed list between two rules, so Collie showed an unread
+  dialog and held Send. Thanks @jpcarranza94 (#552).
+- **A Muse draft of several lines reads as a draft only when no list is in the box.** Muse's
+  profile now says its dialogs never point with its prompt glyph `❯`, so the lines under it are the
+  draft's own, unless a row holds an option, a key hint or the slash palette. pi and omp draw menus
+  with the same glyph and keep holding Send there. (#552)
 
 ## [1.25.0] - 2026-10-29
 

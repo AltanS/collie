@@ -790,6 +790,7 @@ describe("the frame schema of the interior walk (M56 spec 14)", () => {
     ["an underPainted flag that is no boolean", ["idle", "frame", "underPainted"], "yes", "idle.frame.underPainted"],
     ["an underPainted flag with no under pattern", ["idle", "frame", "underPainted"], true, "idle.frame.underPainted"],
     ["an ownPrompt flag that is no boolean", ["idle", "frame", "ownPrompt"], "yes", "idle.frame.ownPrompt"],
+    ["a draftLines flag that is no boolean", ["idle", "frame", "draftLines"], "yes", "idle.frame.draftLines"],
     ["a dialogsInBox flag that is no boolean", ["idle", "dialogsInBox"], "yes", "idle.dialogsInBox"],
     ["a promptEchoes flag that is no boolean", ["idle", "promptEchoes"], "yes", "idle.promptEchoes"],
     ["a placeholder prefix list that is no list", ["idle", "placeholders", "prefixes"], "Ask", "idle.placeholders.prefixes"],
@@ -835,6 +836,17 @@ describe("the frame schema of the interior walk (M56 spec 14)", () => {
     const pi = parseProfile(parseJsonObject(readFileSync(join(PROFILES_DIR, "pi.json"), "utf8"))!);
     expect(pi.idle.frame.ownPrompt).toBeUndefined();
     expect(pi.idle.frameAlternates?.map((frame) => frame.ownPrompt)).toEqual([true]);
+  });
+
+  it("names a newline draft as the box's own lines (`draftLines`) on Muse alone, never on pi (#552)", () => {
+    const read = (id: string) => parseProfile(parseJsonObject(readFileSync(join(PROFILES_DIR, `${id}.json`), "utf8"))!).idle;
+    expect(read("muse").frame.draftLines).toBe(true);
+    // pi and omp draw a menu with the prompt's own glyph in the box: a newline draft there stays a list.
+    for (const id of ["pi", "omp"]) {
+      expect(read(id).frame.draftLines, id).toBeUndefined();
+      expect(read(id).frameAlternates?.every((frame) => frame.draftLines === undefined) ?? true, id).toBe(true);
+    }
+    expect(parseProfile(change(rawClaude(), ["idle", "frame", "draftLines"], false)).idle.frame.draftLines).toBeUndefined();
   });
 
   it("takes keys.interruptClearsDraft as a boolean and nothing else (M68 spec 01)", () => {

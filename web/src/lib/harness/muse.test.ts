@@ -58,6 +58,7 @@ const PINNED = [
   "muse--draft-1410.txt",
   "muse--draft-blank-row.txt",
   "muse--draft-image-chip.txt",
+  "muse--draft-multiline-live.txt",
   "muse--draft-paste-token.txt",
   "muse--draft-quoted-path.txt",
   "muse--draft-single.txt",

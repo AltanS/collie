@@ -348,6 +348,16 @@ export interface FrameLayout {
    * place starts at the box's own column. Optional, 1 or more.
    */
   readonly draftIndent?: number;
+  /**
+   * For a profile that draws its dialogs in the box's place (`dialogsInBox`): true when no dialog the
+   * harness draws there points with the prompt glyph, so the glyph on the prompt row is always the box's
+   * own and the only list under it is the profile's command list (`volatile.below.commandList`). A draft
+   * typed with newlines then reads as the box's own lines, not as a pointed list between two rules, when
+   * no row of it is an option row or a key hint and no named command list stands in
+   * the box (cues.ts `draftWrap`). Muse points with `›` and `⟩` in its dialogs and keeps `❯` for its
+   * prompt (#552). pi draws its menus with the same `❯` as its prompt, so it must not name this. Optional.
+   */
+  readonly draftLines?: boolean;
   readonly maxDraftRows: number;
   /** How many rows above the last non-blank row the bottom edge may sit (the frame module's
    *  search bound, M56 spec 03): the tallest thing the harness draws under a live box. */
@@ -1314,7 +1324,9 @@ function parseFrame(frameNode: JsonObject): FrameLayout {
   const maxWidgetRows = frameNode.maxWidgetRows === undefined ? undefined : whole(frameNode.maxWidgetRows, "idle.frame.maxWidgetRows", 1);
   const withWidgets = maxWidgetRows === undefined ? anchors : { ...anchors, maxWidgetRows };
   const withIndent = frameNode.draftIndent === undefined ? withWidgets : { ...withWidgets, draftIndent: whole(frameNode.draftIndent, "idle.frame.draftIndent", 1) };
-  const base = frameNode.scroll === undefined ? withIndent : { ...withIndent, scroll: parseScroll(frameNode.scroll, maxDraftRows) };
+  if (frameNode.draftLines !== undefined && frameNode.draftLines !== true && frameNode.draftLines !== false) fail("idle.frame.draftLines", "must be true or false");
+  const withLines = frameNode.draftLines === true ? { ...withIndent, draftLines: true } : withIndent;
+  const base = frameNode.scroll === undefined ? withLines : { ...withLines, scroll: parseScroll(frameNode.scroll, maxDraftRows) };
   if (walk === "edges") {
     for (const key of ["rows", "trailer", "continuation", "ownPrompt", "maxWidgetRows"] as const) {
       if (frameNode[key] !== undefined) fail(`idle.frame.${key}`, "belongs to the interior walk");
