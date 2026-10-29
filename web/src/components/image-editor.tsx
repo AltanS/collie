@@ -404,6 +404,12 @@ export function ImageEditor({ file, startInEdit = false, onConfirm, onCancel, on
   }
 
   function handleImageError() {
+    // On the preview nothing was edited, so a picture the browser cannot decode still attaches as it
+    // is, the way it did before the editor. The failure text is for the tools only.
+    if (mode === "preview") {
+      onConfirm(file);
+      return;
+    }
     dispatch({ type: "imageFailed" });
     onFailRef.current("failed");
   }

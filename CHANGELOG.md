@@ -27,6 +27,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **Edit and annotate a photo before it goes up.** Picking or pasting an image opens a sheet with a crop, a pen, a circle and an arrow, drawn on a native canvas, and the edited picture uploads as a PNG. Thanks @GGGODLIN (#600).
 - **A picked photo shows a preview first, with Attach one tap away.** The sheet opens on the picture. Attach sends the original file, untouched. Edit opens the crop and draw tools, and a photo that was cropped or marked goes up as a PNG. A photo with no change goes up as it was. A photo already in the composer opens the same tools from a tap on its thumbnail, and the edited photo takes its place under the same number. A browser with no canvas attaches the photo as it is.
+- **A photo the browser cannot show still attaches.** If the preview cannot decode the picture, Attach happens on its own and the file goes up as it was, with no error.
 
 ## [1.25.0] - 2026-10-29
 

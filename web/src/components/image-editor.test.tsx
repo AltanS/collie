@@ -231,6 +231,22 @@ describe("ImageEditor sheet shell and native canvas tools", () => {
     expect(toDataURL).not.toHaveBeenCalled();
   });
 
+  it("a file whose preview cannot be decoded attaches once as it is, with no failure notice", () => {
+    const onConfirm = vi.fn<(file: File) => void>();
+    const onFail = vi.fn();
+    const onReject = vi.fn();
+    const picked = new File(["heic-bytes"], "photo.heic", { type: "image/heic" });
+    render(<ImageEditor file={picked} onConfirm={onConfirm} onCancel={vi.fn()} onFail={onFail} onReject={onReject} />);
+    const dialog = screen.getByRole("dialog", { name: "Edit image" });
+    const img = dialog.querySelector<HTMLImageElement>("[data-slot='image-editor-source']");
+    if (img === null) throw new Error("editor source img missing");
+    fireEvent.error(img);
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+    expect(onConfirm.mock.calls[0]?.[0]).toBe(picked);
+    expect(onFail).not.toHaveBeenCalled();
+    expect(onReject).not.toHaveBeenCalled();
+  });
+
   it("Edit then Use this image with no change behaves like Attach", () => {
     const toDataURL = vi.spyOn(HTMLCanvasElement.prototype, "toDataURL");
     const onConfirm = vi.fn<(file: File) => void>();
