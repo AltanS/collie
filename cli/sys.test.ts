@@ -559,7 +559,7 @@ describe("realNet().download clocks (a local server, injected small clocks)", ()
   const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
   const bytes = (n: number): Uint8Array => new Uint8Array(n).fill(7);
   // The production clocks are 20 s and 60 s; the rule under test is the same at 200 ms and 150 ms.
-  const TIMING = { headersMs: 200, stallMs: 150 };
+  const TIMING = { headersMs: 200, stallMs: 150, totalMs: 60_000 };
   const scratch = (): string => mkdtempSync(join(tmpdir(), "collie-dl-"));
 
   test("a slow body that keeps moving outlives the stall window and completes", async () => {
@@ -614,6 +614,61 @@ describe("realNet().download clocks (a local server, injected small clocks)", ()
         expect(got.failure.kind).toBe("stall");
         expect(got.failure.status).toBeNull();
         expect(got.failure.message).toBe("stalled: no data for 0.15 s after 1.5 MB of 57.3 MB");
+      }
+      expect(existsSync(dest)).toBe(false);
+    } finally {
+      server.closeAllConnections();
+      server.close();
+      rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    }
+  });
+
+  test("headers arrive, zero body bytes ever: the stall path, with 0.0 MB", async () => {
+    const server = createServer((_req, res) => {
+      res.writeHead(200, { "content-length": "57339962" });
+      res.flushHeaders(); // and not one body byte
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    // SAFETY: a server listening on a TCP port reports an `AddressInfo`, never a pipe path string.
+    const port = (server.address() as AddressInfo).port;
+    const dir = scratch();
+    try {
+      const dest = join(dir, "asset.tgz");
+      const got = await realNet(null, TIMING).download(`http://127.0.0.1:${port}/a`, dest);
+      expect(got.ok).toBe(false);
+      if (!got.ok) {
+        expect(got.failure.kind).toBe("stall");
+        expect(got.failure.message).toBe("stalled: no data for 0.15 s after 0.0 MB of 57.3 MB");
+      }
+      expect(existsSync(dest)).toBe(false);
+    } finally {
+      server.closeAllConnections();
+      server.close();
+      rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    }
+  });
+
+  test("a trickle that never stalls still ends at the total cap, as 'slow', with no file", async () => {
+    // A byte every 40 ms never trips the 150 ms stall clock; the 300 ms total cap ends it.
+    const server = createServer((_req, res) => {
+      res.writeHead(200, { "content-length": "57339962" });
+      const tick = setInterval(() => res.write(bytes(1)), 40);
+      res.on("close", () => clearInterval(tick));
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    // SAFETY: a server listening on a TCP port reports an `AddressInfo`, never a pipe path string.
+    const port = (server.address() as AddressInfo).port;
+    const dir = scratch();
+    try {
+      const dest = join(dir, "asset.tgz");
+      const started = Date.now();
+      const got = await realNet(null, { ...TIMING, totalMs: 300 }).download(`http://127.0.0.1:${port}/a`, dest);
+      expect(Date.now() - started).toBeLessThan(2_000);
+      expect(got.ok).toBe(false);
+      if (!got.ok) {
+        expect(got.failure.kind).toBe("slow");
+        expect(got.failure.status).toBeNull();
+        expect(got.failure.message).toMatch(/^took longer than 0\.3 s \(0\.0 MB of 57\.3 MB\)$/);
       }
       expect(existsSync(dest)).toBe(false);
     } finally {

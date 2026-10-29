@@ -322,11 +322,12 @@ export interface NetFailure {
   status: number | null;
   message: string;
   /**
-   * `"stall"` when the answer began and then went quiet: a download whose body stopped moving. The
+   * `"stall"` when the answer began and then went quiet: a download whose body stopped moving.
+   * `"slow"` when it kept moving but passed the total cap ({@link DOWNLOAD_TOTAL_MS}). Either way the
    * host WAS reached, so the caller must not say it was not. `message` then reads on from the
    * caller's own "downloading <asset>", for example `stalled: no data for 60 s after 12.3 MB`.
    */
-  kind?: "stall";
+  kind?: "stall" | "slow";
 }
 
 export type NetJson = { ok: true; value: unknown } | { ok: false; failure: NetFailure };
@@ -395,15 +396,26 @@ const NET_TIMEOUT_MS = 20_000;
  * moving never aborts, however long it takes.
  */
 const DOWNLOAD_STALL_MS = 60_000;
+/**
+ * The backstop for a trickle: a server that sends one byte every 59 s never trips the stall clock.
+ * 30 minutes is about 32 KB/s for the 57 MB asset, slower than any link worth updating over, and far
+ * past the 20 s that failed #613. It runs from the first body byte's turn, not from the request.
+ */
+const DOWNLOAD_TOTAL_MS = 30 * 60_000;
 
-/** The two clocks of {@link realNet}'s `download`. Production uses the constants; a test injects small ones. */
+/** The three clocks of {@link realNet}'s `download`. Production uses the constants; a test injects small ones. */
 export interface NetTiming {
-  /** How long to wait for the response headers. */
+  /** How long to wait for the response headers, redirects included. */
   readonly headersMs: number;
   /** How long a download body may stay silent. */
   readonly stallMs: number;
+  /** How long a download body may take in all, however steadily it moves. */
+  readonly totalMs: number;
 }
-const DEFAULT_TIMING: NetTiming = { headersMs: NET_TIMEOUT_MS, stallMs: DOWNLOAD_STALL_MS };
+const DEFAULT_TIMING: NetTiming = { headersMs: NET_TIMEOUT_MS, stallMs: DOWNLOAD_STALL_MS, totalMs: DOWNLOAD_TOTAL_MS };
+
+/** `1800000` as `30 min`, `150` as `0.15 s`: the clock in the words a person reads it in. */
+const spell = (ms: number): string => (ms >= 60_000 ? `${ms / 60_000} min` : `${ms / 1000} s`);
 
 const megabytes = (bytes: number): string => (bytes / 1_000_000).toFixed(1);
 /** One TLS handshake on this machine. The health gate polls, so a hung port must not eat the whole poll budget. */
@@ -487,30 +499,31 @@ export function realNet(credential: GithubCredential | null = null, timing: NetT
       });
     },
     async download(url, dest, opts) {
-      // One controller, two clocks: the headers clock runs until the response starts, then the stall
-      // clock restarts on every chunk. `stalled` tells the catch which of them fired.
+      // One controller, three clocks. The headers clock runs until the final response starts (fetch
+      // follows redirects, GitHub's hop to objects.githubusercontent.com among them, inside this one
+      // signal). Then the stall clock restarts on every non-empty chunk, and the total clock runs once.
+      // `why` tells the catch which of them fired.
       const controller = new AbortController();
-      let stalled = false;
+      let why: "stall" | "slow" | null = null;
       let timer: ReturnType<typeof setTimeout> | undefined;
-      const arm = (ms: number, onFire: () => void): void => {
+      let totalTimer: ReturnType<typeof setTimeout> | undefined;
+      const armStall = (ms: number, reason: "stall" | null): void => {
         clearTimeout(timer);
         timer = setTimeout(() => {
-          onFire();
+          why = reason;
           controller.abort();
         }, ms);
       };
-      const armStall = (): void =>
-        arm(timing.stallMs, () => {
-          stalled = true;
-        });
       let size = 0;
       let total: number | null = null;
       let sink: Bun.FileSink | null = null;
+      let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
       try {
         const init: RequestInit = { headers: { "user-agent": "collie-update" }, signal: controller.signal };
         if (opts?.redirect !== undefined) init.redirect = opts.redirect;
-        arm(timing.headersMs, () => {});
+        armStall(timing.headersMs, null);
         const res = await fetch(url, init);
+        clearTimeout(timer); // the final response is here: the headers clock is done
         if (!res.ok) return { ok: false, failure: { status: res.status, message: `HTTP ${res.status}` } };
         if (res.body === null) return { ok: false, failure: { status: res.status, message: "empty response" } };
         const length = Number(res.headers.get("content-length"));
@@ -518,29 +531,46 @@ export function realNet(credential: GithubCredential | null = null, timing: NetT
         mkdirSync(dirname(dest), { recursive: true });
         const hasher = new Bun.CryptoHasher("sha256");
         sink = Bun.file(dest).writer();
-        armStall();
-        for await (const chunk of res.body) {
-          armStall();
-          hasher.update(chunk);
-          size += chunk.byteLength;
-          sink.write(chunk);
+        reader = res.body.getReader();
+        armStall(timing.stallMs, "stall");
+        totalTimer = setTimeout(() => {
+          why = "slow";
+          controller.abort();
+        }, timing.totalMs);
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          // An empty chunk is not progress: it must not buy another stall window.
+          if (value.byteLength === 0) continue;
+          armStall(timing.stallMs, "stall");
+          hasher.update(value);
+          size += value.byteLength;
+          sink.write(value);
         }
         clearTimeout(timer);
+        clearTimeout(totalTimer);
         await sink.end();
         return { ok: true, sha256: hasher.digest("hex"), size };
       } catch (err) {
         clearTimeout(timer);
-        // Never leave half an asset where the caller expects a whole one.
+        clearTimeout(totalTimer);
+        // The abort has already errored the body; cancelling the reader releases the socket either way.
+        if (reader !== null) await reader.cancel().catch(() => undefined);
+        // Close the sink BEFORE the unlink: Windows cannot delete an open file. Never leave half an
+        // asset where the caller expects a whole one.
         if (sink !== null) await Promise.resolve(sink.end()).catch(() => undefined);
         rmSync(dest, { force: true });
-        if (stalled) {
-          const seconds = timing.stallMs / 1000;
-          const of = total === null ? "" : ` of ${megabytes(total)} MB`;
-          return { ok: false, failure: { status: null, kind: "stall", message: `stalled: no data for ${seconds} s after ${megabytes(size)} MB${of}` } };
+        const of = total === null ? "" : ` of ${megabytes(total)} MB`;
+        if (why === "stall") {
+          return { ok: false, failure: { status: null, kind: "stall", message: `stalled: no data for ${timing.stallMs / 1000} s after ${megabytes(size)} MB${of}` } };
+        }
+        if (why === "slow") {
+          return { ok: false, failure: { status: null, kind: "slow", message: `took longer than ${spell(timing.totalMs)} (${megabytes(size)} MB${of})` } };
         }
         return { ok: false, failure: netFailure(err instanceof Error ? err.message : String(err)) };
       } finally {
         clearTimeout(timer);
+        clearTimeout(totalTimer);
       }
     },
   };
