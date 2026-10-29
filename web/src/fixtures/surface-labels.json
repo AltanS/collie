@@ -2301,6 +2301,16 @@
    "version": "0.165.0",
    "state": "idle"
   },
+  "codex--v0165-ultra-draft--w170.txt": {
+   "harness": "codex",
+   "version": "0.165.0",
+   "state": "draft"
+  },
+  "codex--v0165-ultra-empty--w170.txt": {
+   "harness": "codex",
+   "version": "0.165.0",
+   "state": "idle"
+  },
   "codex--working.txt": {
    "harness": "codex",
    "version": "unversioned",
