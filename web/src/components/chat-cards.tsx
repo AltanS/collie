@@ -58,6 +58,7 @@ import {
 } from "lucide-react";
 
 import { DiffView, TokenLine, useSyntaxTokens } from "@/components/changes-view";
+import { JournalImage } from "@/components/journal-image";
 import { isPlainClick, useFileLinks } from "@/components/file-links";
 import { MarkdownText } from "@/components/markdown-text";
 import { MIRROR_INVERT, MIRROR_SPACE } from "@/components/mirror-space";
@@ -77,6 +78,7 @@ import { findFilePaths } from "@/lib/file-paths";
 import type { PendingState } from "@/lib/durable-pending";
 import { clockTime } from "@/lib/format";
 import { t, tn, type PluralKey } from "@/lib/i18n";
+import { useScope } from "@/lib/session";
 import {
   directionOf,
   parseWalkyCommand,
@@ -184,6 +186,8 @@ export const SubagentSheetCtx = createContext<SubagentSheetHandle | null>(null);
  */
 export function standsAlone(item: ChatItem): boolean {
   if (item.kind !== "tool") return false;
+  // A picture the call returned is the reason to look at it, so it never folds out of sight.
+  if (item.image !== undefined) return true;
   if (item.tool.kind === "task" || item.tool.kind === "question") return true;
   const line = shellLineOf(item.tool);
   const walky = line === null ? null : parseWalkyCommand(line);
@@ -421,10 +425,27 @@ export const ItemView = memo(function ItemView({ item }: { item: ChatItem }) {
       return <Notice item={item} />;
     case "compacted":
       return <Compacted item={item} />;
+    case "image":
+      return <ChatImage url={item.url} alt={t("transcript.attachmentAlt")} />;
     case "tool":
-      return <ToolCard tool={item.tool} status={item.status} waiting={waiting} />;
+      if (item.image === undefined) return <ToolCard tool={item.tool} status={item.status} waiting={waiting} />;
+      return (
+        <div className="flex flex-col gap-1.5">
+          <ToolCard tool={item.tool} status={item.status} waiting={waiting} />
+          <ChatImage url={item.image} alt={t("transcript.toolImageAlt")} />
+        </div>
+      );
   }
 });
+
+function ChatImage({ url, alt }: { url: string; alt: string }) {
+  const scope = useScope();
+  return (
+    <div className="min-w-0">
+      <JournalImage ref_={url} alt={alt} scope={scope} />
+    </div>
+  );
+}
 
 /**
  * A text the program is still writing (WIRE.md 7.15): `data-partial` makes the stylesheet put a cursor at the end of its

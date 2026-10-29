@@ -12,6 +12,7 @@ import {
   piJournal,
   PiTranscriptSource,
   resolveBlobPath,
+  MAX_INLINE_IMAGE_CHARS,
   resolveImageUrl,
 } from "./pi.ts";
 import { LiveWindows, TICK_FLOOR_MS } from "./live.ts";
@@ -1027,6 +1028,10 @@ describe("resolveImageUrl — only this collie's own blobs and inline images", (
     expect(resolveImageUrl("AAAA")).toBeNull();
     expect(resolveImageUrl("AAAA", "text/plain")).toBeNull();
     expect(resolveImageUrl("AAAA", "image/gif")).toBe("data:image/gif;base64,AAAA");
+    // The cap: one inline picture over MAX_INLINE_IMAGE_CHARS is dropped, a blob reference never counts.
+    expect(resolveImageUrl("A".repeat(MAX_INLINE_IMAGE_CHARS + 4), "image/png")).toBeNull();
+    expect(resolveImageUrl(`data:image/png;base64,${"A".repeat(MAX_INLINE_IMAGE_CHARS)}`)).toBeNull();
+    expect(resolveImageUrl("A".repeat(MAX_INLINE_IMAGE_CHARS), "image/png")).not.toBeNull();
   });
 });
 

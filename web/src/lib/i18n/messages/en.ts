@@ -757,7 +757,6 @@ export const en = {
   "chat.card.diff.less": "Show less",
   // One journal part that is a picture, drawn as a notice because there is no image block in the
   // stream. `{url}` is the journal's own reference and is shown as it stands.
-  "chat.card.image": "Image: {url}",
   // --- chat.run (a fold over several steps) ---
   // Each pair is counted on its own and the parts are joined with a comma, so each one has to read
   // as a standalone noun phrase.

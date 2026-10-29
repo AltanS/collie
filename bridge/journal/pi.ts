@@ -83,6 +83,19 @@ const BLOB_ROUTE_PREFIX = "/api/blobs/";
 /** Base64, with the whitespace a wrapped payload carries. A closed charset, never an escaper. */
 const BASE64_PAYLOAD_RE = /^[A-Za-z0-9+/=\s]+$/;
 
+/**
+ * The most characters of ONE inline picture (`data:` URL or bare base64) a journal part may carry.
+ *
+ * An inline picture rides in every journal page and live frame the phone loads, so a huge one
+ * (a full-resolution screenshot a tool returned) would bloat each of them. Text is clamped for the
+ * same reason (`MAX_RESULT_CHARS`); a picture cannot be cut mid-payload, so one over this cap is
+ * DROPPED and its tool card or message keeps everything else. 2 MiB of base64 is about 1.5 MB of
+ * image, well under the 10 MB upload limit (`DEFAULT_MAX_UPLOAD_MB`, uploads.ts) and above what the
+ * agents downscale their own pictures to. A `/api/blobs/<hash>` reference is a short URL and is not
+ * counted: the bytes stay on disk and the phone fetches them on demand.
+ */
+export const MAX_INLINE_IMAGE_CHARS = 2 * 1024 * 1024;
+
 /** Flatten a pi content list into text, keeping only `text` blocks. */
 function textBlocks(content: JsonValue | undefined): string {
   if (typeof content === "string") return content;
@@ -106,13 +119,15 @@ function textBlocks(content: JsonValue | undefined): string {
  * untrusted content: an `http://`/`https://` value would make the phone fetch an arbitrary host on
  * the agent's word — a request the operator never made, from a page inside the tailnet — so it is
  * DROPPED rather than passed through. `resolveImageUrl` returning null is how a block with nothing
- * renderable simply produces no part.
+ * renderable simply produces no part. An inline picture over {@link MAX_INLINE_IMAGE_CHARS} is
+ * dropped the same way.
  */
 export function resolveImageUrl(data: string, mimeType?: string): string | null {
   if (data.startsWith(BLOB_REF_PREFIX)) {
     const hash = data.slice(BLOB_REF_PREFIX.length);
     return isBlobHash(hash) ? `${BLOB_ROUTE_PREFIX}${hash}` : null;
   }
+  if (data.length > MAX_INLINE_IMAGE_CHARS) return null;
   // A `data:` value is taken as written, so only an image one is taken at all — `data:text/html`
   // would be a document, not a picture.
   if (data.startsWith("data:")) return data.startsWith("data:image/") ? data : null;

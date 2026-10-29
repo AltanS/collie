@@ -627,7 +627,6 @@ export const ru: Dictionary = {
   "chat.card.output.showAll.few": "Показать все {count} строки",
   "chat.card.output.showAll.many": "Показать все {count} строк",
   "chat.card.diff.less": "Показать меньше",
-  "chat.card.image": "Изображение: {url}",
   "chat.run.commands.one": "{count} команда",
   "chat.run.commands.other": "Команд: {count}",
   "chat.run.commands.few": "{count} команды",

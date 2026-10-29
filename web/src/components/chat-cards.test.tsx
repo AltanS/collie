@@ -69,6 +69,12 @@ describe("groupRuns", () => {
     expect(groupRuns([x("a"), agent, x("b")], 1).map((g) => g.length)).toEqual([1, 1, 1]);
   });
 
+  it("never folds a step that returned a picture", () => {
+    const shot = tool({ kind: "read", path: "/shot.png" }, { id: "shot", image: "data:image/png;base64,AAAA" });
+    expect(groupRuns([t("a"), t("b"), shot, t("c")]).map((g) => g.map((i) => i.id).join(""))).toEqual(["a", "b", "shot", "c"]);
+    expect(groupRuns([shot], 1).map((g) => g.length)).toEqual([1]);
+  });
+
   it("never folds the agent's own walky talky send or reply, but folds who, status and inbox", () => {
     const x = (id: string): ChatItem => tool({ kind: "execute", command: "ls" }, { id });
     const walky = (id: string, command: string): ChatItem => tool({ kind: "execute", command }, { id });

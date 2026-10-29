@@ -879,7 +879,7 @@ describe("terminal mirror image placeholders", () => {
     );
     await firstImg(container);
     expect(container.textContent).toContain("matched by order, open History to check");
-    expect(container.querySelector("a[title]")?.getAttribute("title")).toBe(
+    expect(container.querySelector("button[title]")?.getAttribute("title")).toBe(
       "matched by order, open History to check",
     );
   });
@@ -915,8 +915,8 @@ describe("terminal mirror image placeholders", () => {
       <AnsiOutput text={`header\n${KITTY_PLACEHOLDER}\nfooter`} images={[BLOB]} />,
     );
     const img = await firstImg(container);
-    // The link around the picture is the object URL the page minted itself, not the bridge path.
-    expect(img.closest("a")?.getAttribute("href")).toMatch(/^blob:/);
+    // The picture is the object URL the page minted itself, not the bridge path.
+    expect(img.getAttribute("src")).toMatch(/^blob:/);
     expect(seen).toEqual([{ path: BLOB, auth: "Bearer tok-test-placeholder" }]);
   });
 
