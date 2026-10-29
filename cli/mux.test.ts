@@ -193,6 +193,27 @@ describe("with no terminal", () => {
     expect(h.deps.ctx.env.COLLIE_MUX).toBe("herdr");
   });
 
+  test("herdr-core, auto-selected, says which core session it drives (M74 spec 04)", async () => {
+    const core = "/run/user/7/herdr-core/default.sock";
+    const h = host({ env: { XDG_RUNTIME_DIR: "/run/user/7" }, files: { [core]: "" } });
+    expect(await ensureMuxChosen(h.deps)).toBe(EXIT.OK);
+    const said = h.io.stdout.join("\n");
+    expect(said).toContain("auto-selected herdr-core");
+    expect(said).toContain(`driving the herdr-core session "default" on ${core}`);
+    expect(said).toContain("HC_SESSION");
+    expect(h.deps.ctx.env.COLLIE_MUX).toBe("herdr-core");
+  });
+
+  test("herdr-core named in the shell names its HC_SESSION too, and no other multiplexer gets the line", async () => {
+    const named = host({ env: { COLLIE_MUX: "herdr-core", HC_SESSION: "work", XDG_RUNTIME_DIR: "/run/user/7" } });
+    expect(await ensureMuxChosen(named.deps)).toBe(EXIT.OK);
+    expect(named.io.stdout.join("\n")).toContain('driving the herdr-core session "work" on /run/user/7/herdr-core/work.sock');
+
+    const tmux = host({ env: { COLLIE_MUX: "tmux" } });
+    await ensureMuxChosen(tmux.deps);
+    expect(tmux.io.stdout.join("\n")).not.toContain("herdr-core");
+  });
+
   test("none found refuses, naming the variable and the line that answers it", async () => {
     const h = host();
     expect(await ensureMuxChosen(h.deps)).toBe(EXIT.FAIL);
