@@ -264,6 +264,10 @@ describe("ancestorsOf / isAncestor: the level tree", () => {
     ["/pane/w1%3Ap1", "/pane/w1%3Ap1/history", true],
     ["/pane/w1%3Ap2", "/pane/w1%3Ap1/history", false],
     ["/pane/w1%3Ap1/history", "/pane/w1%3Ap1", false],
+    // The zoomed output sits under its pane, as History does.
+    ["/pane/w1%3Ap1?h=badger", "/pane/w1%3Ap1/zoom", true],
+    ["/pane/w1%3Ap2", "/pane/w1%3Ap1/zoom", false],
+    ["/pane/w1%3Ap1/zoom", "/pane/w1%3Ap1", false],
     ["/pane/w1%3Ap1", "/pane/w1%3Ap1/changes", true],
     ["/", "/space/w1/changes", true],
     ["/space/w1", "/space/w1/changes", true],
@@ -366,6 +370,7 @@ describe("parentChain: what a cold deep link gets behind it", () => {
     ["/pane/w1%3Ap1", "", ["/"]],
     ["/pane/w1%3Ap1", "?h=badger&s=demo", ["/?h=badger&s=demo"]],
     ["/pane/w1%3Ap1/history", "?h=badger", ["/?h=badger", "/pane/w1%3Ap1?h=badger"]],
+    ["/pane/w1%3Ap1/zoom", "?h=badger", ["/?h=badger", "/pane/w1%3Ap1?h=badger"]],
     ["/pane/w1%3Ap1/changes", "", ["/", "/pane/w1%3Ap1"]],
     ["/pane/w1%3Ap1/changes", "?repo=.&path=a.ts", ["/", "/pane/w1%3Ap1", "/pane/w1%3Ap1/changes"]],
     ["/space/w1", "", ["/"]],

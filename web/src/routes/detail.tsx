@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from "react";
-import { useLoaderData, useLocation, useParams } from "react-router";
+import { useLoaderData, useLocation, useMatch, useParams } from "react-router";
 
 import { AgentChat } from "@/components/agent-chat";
 import { WalkyLogProvider } from "@/components/walky-log";
@@ -13,7 +13,7 @@ import { usePaneFold } from "@/hooks/use-fold-posture";
 import { useWidthClass } from "@/hooks/use-width-class";
 import { type PaneData } from "@/lib/loaders";
 import { GLIDE_PAIRS, glideBack } from "@/lib/glide";
-import { canStepBack, homePath, panePath, readFrom, upTarget } from "@/lib/nav";
+import { canStepBack, homePath, panePath, readFrom, upTarget, zoomPath } from "@/lib/nav";
 import { paneScopeKey } from "@/lib/scope";
 import { findPane, paneScope } from "@/lib/hosts";
 import { setStatus } from "@/lib/status";
@@ -88,9 +88,20 @@ export function DetailRoute() {
   // transient poll failure or reconnect doesn't evict a still-valid pane. Up, not a replace onto
   // Home: the dead pane must not stay in history for the next swipe to land on (ADR 0067). Once per
   // pane, because an up can be a step back, and a second one would climb a level too far.
+  //
+  // From the zoomed output the first up only closes it, back onto this pane, and is not counted: the
+  // effect runs again on the pane itself and climbs from there.
+  //
+  // The output, zoomed (`/pane/:id/zoom`, a child of this route): opening it is a step down, its ✕ an
+  // up, so the ✕ steps back onto this pane and the phone's back does the same (ADR 0067).
+  const zoomed = useMatch("/pane/:paneId/zoom") !== null;
   const exited = useRef<string | null>(null);
   useEffect(() => {
     if (gone && root.bridge === "connected" && !root.error && exited.current !== paneId) {
+      if (zoomed) {
+        nav.up(panePath(paneId, scope));
+        return;
+      }
       exited.current = paneId;
       // The operator did not close this pane from this phone. It went away under them — from
       // another device, from the terminal itself, or because the agent exited — and a poll is what
@@ -99,7 +110,7 @@ export function DetailRoute() {
       setStatus("Pane closed", "info");
       nav.up(homePath(scope));
     }
-  }, [gone, root.bridge, root.error, nav, scope, paneId]);
+  }, [gone, root.bridge, root.error, nav, scope, paneId, zoomed]);
 
   // Up one level: to the space or the dashboard the pane was opened from (ADR 0067). A pane with no screen
   // is a durable program's conversation, and its way up is the machine's home, which is the conversation
@@ -160,6 +171,11 @@ export function DetailRoute() {
         // The pane's read got no answer and the phone keeps no text for it.
         noSavedCopy={pane.error && pane.text === ""}
         onBack={up}
+        zoom={{
+          open: zoomed,
+          onOpen: () => nav.down(zoomPath(paneId, scope)),
+          onClose: () => nav.up(panePath(paneId, scope)),
+        }}
         onBackArrow={backArrow}
         inStrip={widthClass !== "compact"}
         // Tabletop: the belt and the reply box stand in the bottom segment, under the fold.

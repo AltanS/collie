@@ -150,7 +150,19 @@ export const router = createBrowserRouter([
       },
       // Named, so RootLayout can ask for THIS route's data by id (react-router hands back undefined
       // whenever it isn't the active route) — see the "last seen" note there.
-      { id: PANE_ROUTE_ID, path: "pane/:paneId", loader: paneLoader, element: <DetailRoute /> },
+      //
+      // `zoom` is the pane's output, zoomed (components/output-zoom.tsx): a level below the pane, so
+      // the phone's back closes it (ADR 0067), and a CHILD of this route rather than a sibling like
+      // History, so the pane route stays matched and mounted under it: the same loader keeps the
+      // text live, and the composer, its draft and the mirror's place are all still there when the
+      // view closes. The child draws nothing itself; AgentChat reads the match and draws the view.
+      {
+        id: PANE_ROUTE_ID,
+        path: "pane/:paneId",
+        loader: paneLoader,
+        element: <DetailRoute />,
+        children: [{ path: "zoom", element: null }],
+      },
       {
         path: "pane/:paneId/history",
         loader: historyLoader,

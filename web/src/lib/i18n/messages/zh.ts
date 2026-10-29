@@ -2197,6 +2197,11 @@ export const zh: Dictionary = {
 
   // --- changes (ADR 0065) ---
   "chat.changes.label": "文件",
+  "zoom.open": "放大输出",
+  "zoom.title": "放大的输出",
+  "zoom.in": "放大",
+  "zoom.out": "缩小",
+  "zoom.reset": "重置缩放（{scale}）",
   "chat.model.aria": "模型 {name}",
   "chat.usage.context": "ctx",
   "chat.usage.context.aria": "上下文已使用 {percent}%",
