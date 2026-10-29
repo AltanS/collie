@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **Terminal symbols render on phones.** A 19 KB subset of JuliaMono (`terminal-symbols-0.63.2.woff2`, OFL 1.1, renamed "Terminal Symbols" as the licence asks) covers the Miscellaneous Technical and Mathematical Symbols-B glyphs agents use for their own chrome (`⎿`, `⏺`, `⏵⏵`, `⏸`, `⧉`, `⧖`), lazy-cached on first use like the Nerd Font subsets, while two-cell emoji stay with the system face. Thanks @GGGODLIN (#618).
+
 ### Fixed
 
 - **Pi and Muse status lines no longer show twice while a question or dialog is open.** Both readers now put a status line in the strip only when their blocks took that row off the mirror on a ready composer. A new test holds every reader with captured screens to the same rule. Thanks @GGGODLIN (#616).

@@ -133,6 +133,7 @@ export const UI_COMPANION_FONT_URLS = ["/fonts/ui-play-2.101-cyrillic.woff2"] as
 export const FONT_URLS = [
   "/fonts/nerd-symbols-3.5.0-pua.woff2",
   "/fonts/nerd-symbols-3.5.0-spua.woff2",
+  "/fonts/terminal-symbols-0.63.2.woff2",
   ...UI_FONT_URLS,
   ...UI_COMPANION_FONT_URLS,
 ] as const;
