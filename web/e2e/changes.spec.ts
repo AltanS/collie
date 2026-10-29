@@ -65,21 +65,27 @@ async function listSettled(page: Page) {
   );
 }
 
-// EXPERIMENT (operator, 2026-09-23): the entry is a pill on the belt's pinned block, immediately
-// left of the switcher mark, no longer a row in the pane menu.
+// EXPERIMENT (operator, 2026-09-23): the entry is a pill on the belt's pinned block, left of the
+// switcher mark, no longer a row in the pane menu. The pinned order is Files, Zoom, Switch (the
+// Zoom pill joined between them in PR 536).
 test("the belt's Files pill opens Files, the list groups by repo, and a diff wraps", async ({ page }) => {
   await page.goto(`/pane/${encodeURIComponent(PANE.paneId)}`);
   const pill = page.getByRole("button", { name: en["chat.changes.label"] });
+  const zoom = page.getByRole("button", { name: en["zoom.open"] });
   const switcher = page.getByRole("button", { name: en["chat.switcher.aria"] });
   await expect(pill).toBeVisible();
-  const [p, s] = [(await pill.boundingBox())!, (await switcher.boundingBox())!];
-  // Same box as the mark, on the same line, directly to its left: 37px square at the belt's default
-  // 1.15 scale (it was 32px before the belt scaled, 2026-09-23).
+  const [p, z, s] = [(await pill.boundingBox())!, (await zoom.boundingBox())!, (await switcher.boundingBox())!];
+  // Same box as the mark, on the same line: 37px square at the belt's default 1.15 scale (it was
+  // 32px before the belt scaled, 2026-09-23). Files ends next to Zoom, and Zoom next to Switch.
   expect(p.width).toBe(37);
   expect(p.height).toBe(s.height);
+  expect(z.height).toBe(s.height);
   expect(p.y).toBe(s.y);
-  expect(p.x + p.width).toBeLessThanOrEqual(s.x);
-  expect(s.x - (p.x + p.width)).toBeLessThanOrEqual(8);
+  expect(z.y).toBe(s.y);
+  expect(p.x + p.width).toBeLessThanOrEqual(z.x);
+  expect(z.x - (p.x + p.width)).toBeLessThanOrEqual(8);
+  expect(z.x + z.width).toBeLessThanOrEqual(s.x);
+  expect(s.x - (z.x + z.width)).toBeLessThanOrEqual(8);
   expect(p.height).toBe(37);
   // The pane menu no longer carries it.
   await page.getByRole("button", { name: en["chat.paneMenu.aria"] }).click();

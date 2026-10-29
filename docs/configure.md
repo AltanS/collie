@@ -231,19 +231,20 @@ becomes Undo, which puts the text and the attachments back. Undo stays until you
 keystroke, an attachment, a send, a tap on another belt button, or leaving the pane. Scrolling the
 belt keeps it.
 
-A Zoom button, the magnifier with a plus, sits directly left of the Switch button. It opens the
-pane's output on its own, over the whole screen, and the text keeps updating while it is open.
+A Zoom button, a magnifier with a plus, sits just left of the Switch button. It opens the pane's
+output alone, over the whole screen. The text keeps updating while the view is open.
 
-The zoomed output is never wrapped, whatever **Wrap** says: each terminal line stays one line, so a
-pinch only makes it bigger and never reflows it. Drag sideways to read past the edge of the screen.
+Pinch with two fingers to make the text bigger, up to six times. Drag with one finger to move around
+it. Double-tap a line to zoom in on it, and double-tap again to return to the normal size. The minus
+and plus buttons at the top do the same in steps, and the number between them resets the zoom.
+
+The zoomed output never wraps, whatever **Wrap** says. Each terminal line stays one line, so a pinch
+only makes the text bigger and never reflows it. Drag sideways to read past the edge of the screen.
 The pane view keeps your Wrap setting.
 
-Pinch with two fingers to make the text bigger, up to six times, and drag with one finger to move
-around it. Double-tap to zoom in on a line, and double-tap again to go back to the normal size. The
-minus and plus buttons at the top do the same in steps, and the number between them resets it.
-
 The X at the top, the Back button at the bottom on a phone, and the phone's own back gesture all
-close it. Zooming changes nothing on the computer: the pane keeps its size in the terminal.
+close the zoomed output. Zooming changes nothing on the computer. The pane keeps its size in the
+terminal.
 
 Left-handed? Set **Settings → Appearance → Hand** to **Left**. The belt turns round: the Switch, Zoom
 and X buttons move to its left end, still above Send, and Keys becomes the rightmost button, with the rest

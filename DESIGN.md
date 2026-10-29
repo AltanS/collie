@@ -876,13 +876,13 @@ On a phone the edge swipe is history back, so the history stack must be the leve
   and every automatic exit. Never push a parent.
 - **A new route** gets its place in `ancestorsOf` and `parentChain` (`web/src/lib/nav.ts`) in the
   same change.
-- **A sheet owns no history entry.** It opens and closes without navigating. A full-screen view the
-  phone's back must close is a level instead, with a path of its own: the zoomed output is
-  `/pane/:id/zoom`, a child of the pane route so the pane stays mounted under it.
+- **A sheet owns no history entry.** It opens and closes without navigating. A full-screen view that
+  the phone's back must close is not a sheet. It is a level with its own path. The zoomed output is
+  `/pane/:id/zoom`, a child of the pane route, so the pane stays mounted under it.
 - **On phones, a screen below a pane repeats its Back at the bottom on the thumb side.** The header
-  arrow is out of reach of a thumb on a large phone. The bottom Back (`BackBar` in
-  `components/back-bar.tsx`, on `ui/bottom-bar.tsx`) takes the
-  same handler and the same name as the arrow, from one object, so the two cannot drift; it sits at
+  arrow is out of reach of a thumb on a large phone. The bottom Back (`BackBar`, in
+  `components/back-bar.tsx`, built on `ui/bottom-bar.tsx`) takes the same handler and the same name
+  as the arrow, from one object, so the two cannot drift; it sits at
   the right end, or the left with the `hand` pref on `left`, and it hides while the keyboard is up.
   The arrow stays at every width.
 

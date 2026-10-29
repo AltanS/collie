@@ -31,6 +31,11 @@ Running a crew? Update the lead first; members follow on their own. Details:
   with its fix and never stops for it; `collie doctor` adds the rows `tailscale`, `tailnet-https`
   and `tailscale-operator`, which warn and never hold back an update, and its `path-link` row now
   warns when no `collie` is on PATH.
+- **A Zoom button on the belt opens a pane's output full screen.** It sits just left of the Switch
+  button. A pinch zooms up to 6x, one finger pans, a double tap toggles between 1x and 2.5x, and the
+  text keeps updating. Lines never wrap in this view, so a pinch does not reflow them. It is a level
+  below the pane (`/pane/:paneId/zoom`), so the pane and its draft stay mounted and the phone's back
+  closes it. It is read-only and never resizes the pane. Thanks @neuralyze (#536).
 
 ### Changed
 
