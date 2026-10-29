@@ -26,6 +26,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Added
 
 - **Chat draws the pictures Claude's tools return, and attached images.** A `Read` of a screenshot, or a screenshot tool, now shows the picture inside its tool card, and an attached image opens in a sheet instead of a bare link. Thanks @SergioGhisler (#590).
+- **A huge picture in a tool result no longer bloats the chat.** One inline picture over 2 MiB of base64 is now dropped from the transcript, in every harness reader, and the tool card keeps its text.
 
 ## [1.25.0] - 2026-10-29
 
