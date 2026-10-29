@@ -1596,6 +1596,32 @@ describe("mux", () => {
     expect(code).toBe(EXIT.OK);
   });
 
+  test("herdr-core: hc-socket dials the core and reads its version and terminal count; no herdr rows (M74 spec 04)", async () => {
+    const core = "/run/user/7/herdr-core/default.sock";
+    const h = harness(null, [], {
+      env: { COLLIE_MUX: "herdr-core", XDG_RUNTIME_DIR: "/run/user/7" },
+      files: { ...healthyFiles(), [core]: "" },
+    });
+    h.deps = { ...h.deps, hcDial: () => Promise.resolve({ version: "0.1.14", generation: 1, live: 4 }) };
+    const { byCheck } = await findings(h);
+    expect(byCheck.get("hc-socket")?.status).toBe("ok");
+    expect(byCheck.get("hc-socket")?.detail).toBe(`${core}: herdr-core 0.1.14, 4 live terminals`);
+    expect(byCheck.has("herdr-socket")).toBe(false);
+  });
+
+  test("herdr-core: a socket file with no core behind it is an error with the start remedy", async () => {
+    const core = "/run/user/7/herdr-core/default.sock";
+    const h = harness(null, [], {
+      env: { COLLIE_MUX: "herdr-core", XDG_RUNTIME_DIR: "/run/user/7" },
+      files: { ...healthyFiles(), [core]: "" },
+    });
+    h.deps = { ...h.deps, hcDial: () => Promise.reject(new Error("connect ECONNREFUSED")) };
+    const { byCheck, code } = await findings(h);
+    expect(byCheck.get("hc-socket")?.status).toBe("error");
+    expect(byCheck.get("hc-socket")?.remedy).toContain("hc server start");
+    expect(code).toBe(EXIT.FAIL);
+  });
+
   // Since M14/03 an unset COLLIE_MUX is not silently "herdr" — `collie start` probes and decides, so
   // `doctor` names the multiplexer that decision would land on, and the evidence for it.
   test("with nothing configured it names what `start` would pick, and why", async () => {

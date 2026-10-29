@@ -54,7 +54,7 @@ import { surfaceFindings } from "./surface-findings.ts";
 import { harnessFindings, harnessReader, type ReadHarness } from "./harness-findings.ts";
 import { sendsSection } from "./send-findings.ts";
 import { durableFindings, sourcesFindings } from "./durable-findings.ts";
-import { herdrCoreFindings } from "./herdr-core-findings.ts";
+import { herdrCoreFindings, type HcDial } from "./herdr-core-findings.ts";
 import { historyFindings, type SnapshotRead } from "./history.ts";
 import { EXIT, type Io } from "./io.ts";
 import {
@@ -181,6 +181,11 @@ export interface DoctorDeps {
    * the tests that are not about it see.
    */
   readonly harnesses?: ReadHarness;
+  /**
+   * The herdr-core dial the `hc-socket` row makes (`hello` and `server.status`). Absent means the real
+   * socket; the tests that are not about it never reach it, because they have no core socket file.
+   */
+  readonly hcDial?: HcDial;
 }
 
 // ── §8.6's window, and the shoulder before it ────────────────────────────────
@@ -259,7 +264,7 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
     // multiplexer this install drives.
     ...(chosen.name === DURABLE_MUX ? await durableFindings({ ctx: deps.ctx, crew: { mode, marker: runtimeMarker } }) : []),
     // herdr-core's socket and `hc --version`, in place of the two Herdr rows `appliesToMux` drops (M74).
-    ...(chosen.name === HERDR_CORE_MUX ? herdrCoreFindings({ env: deps.ctx.env, exec: deps.exec, files: deps.files, endpoint: chosen.endpoint }) : []),
+    ...(chosen.name === HERDR_CORE_MUX ? await herdrCoreFindings({ env: deps.ctx.env, exec: deps.exec, files: deps.files, endpoint: chosen.endpoint, dial: deps.hcDial }) : []),
     // The programs in `sources.json` (M55): one row for the file, then one block per program, each row
     // named `<row>:<program>`. Nothing when there is no file. The `durable-lead` row comes once: with
     // the env form's rows above on a durable-only install, after these blocks otherwise.

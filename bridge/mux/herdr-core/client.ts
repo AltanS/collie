@@ -53,6 +53,13 @@ export interface WireHello {
   readonly coreName: string;
 }
 
+/** What `server.status` says about the core: its version and how many terminals it keeps. */
+export interface WireServerStatus {
+  readonly version: string;
+  readonly live: number;
+  readonly finished: number;
+}
+
 /** A program's own OSC 7501 report. Words are the program's; nothing is translated. */
 export interface WireStatus {
   /** `idle`, `working`, `done`, `blocked` or `error`. */
@@ -405,6 +412,12 @@ export class HcClient {
     };
   }
 
+  /** `server.status`: how many terminals the core keeps right now (M74 spec 04, `collie doctor`). */
+  async serverStatus(): Promise<WireServerStatus> {
+    const result = asObject(await this.call("server.status", {}));
+    return { version: str(result, "version"), live: num(result, "live"), finished: num(result, "finished") };
+  }
+
   /** Every LIVE terminal: this machine's, then each added machine's (`machine/t7`). */
   async listTerminals(): Promise<WireTerminal[]> {
     const result = asObject(await this.call("terminal.list", {}));
@@ -632,4 +645,19 @@ export class HcClient {
     socket.on("close", () => fireDown("connection closed"));
     return { close: () => fireDown("closed") };
   }
+}
+
+/** What `collie doctor` learns by dialling the core: `hello` then `server.status`. */
+export interface HcCoreReading {
+  readonly version: string;
+  readonly generation: number;
+  readonly live: number;
+}
+
+/** The two calls the `hc-socket` doctor row makes, each under `timeoutMs`. Rejects on any failure. */
+export async function readHcCore(socketPath: string, timeoutMs: number): Promise<HcCoreReading> {
+  const client = new HcClient(socketPath, timeoutMs);
+  const hello = await client.hello();
+  const status = await client.serverStatus();
+  return { version: hello.version || status.version, generation: hello.generation, live: status.live };
 }

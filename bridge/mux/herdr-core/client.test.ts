@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { asJsonObject, asJsonString, parseJsonObject } from "../../../web/src/lib/json.ts";
 import type { JsonObject, JsonValue } from "../../json.ts";
-import { defaultHcSocket, HcClient, HcError, type WireEvent } from "./client.ts";
+import { defaultHcSocket, HcClient, HcError, readHcCore, type WireEvent } from "./client.ts";
 
 // A unix-socket stand-in for the core, speaking the two modes HC_API.md records: plain JSON-RPC
 // lines, and framed mode after `hello {framed:true}`. Enough of each to prove the client's wire.
@@ -175,6 +175,30 @@ describe("HcClient over a unix socket", () => {
       caught = err instanceof HcError ? "core" : err instanceof Error ? "transport" : "other";
     }
     expect(caught).toBe("transport");
+  });
+});
+
+describe("the doctor dial (M74 spec 04)", () => {
+  test("readHcCore asks hello then server.status and reports version, generation and live count", async () => {
+    const seen: string[] = [];
+    const core = stand((socket, message) => {
+      seen.push(String(message.method));
+      if (message.method === "hello") reply(socket, message.id, { generation: 1, version: "0.1.14", core: { id: "x", name: "h" } });
+      else reply(socket, message.id, { version: "0.1.14", live: 3, finished: 1 });
+    });
+    expect(await readHcCore(core.path, 2000)).toEqual({ version: "0.1.14", generation: 1, live: 3 });
+    expect(seen).toEqual(["hello", "server.status"]);
+  });
+
+  test("a core that never answers is a timeout, not a hang", async () => {
+    const core = stand(() => undefined);
+    let said = "";
+    try {
+      await readHcCore(core.path, 100);
+    } catch (err) {
+      said = err instanceof Error ? err.message : "";
+    }
+    expect(said).toContain("timed out");
   });
 });
 
