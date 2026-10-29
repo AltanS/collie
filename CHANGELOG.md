@@ -31,6 +31,9 @@ Running a crew? Update the lead first; members follow on their own. Details:
   ended `probe_failed`. The Codex input profile now names the row as a hint, in its long form and the
   narrow `⚠ 1 · f2` form. The logo Codex 0.166 draws over an empty box on a tall pane was already
   covered and stays so, with tests on the real screens.
+- **The harness lab starts Codex without `-c` settings.** It writes the update check, the low effort
+  and the person as reviewer into the run's own `config.toml`, so Codex 0.166 shows no warning row in
+  the lab's screens. The canary keeps its flags, because it runs on the operator's own Codex config.
 
 ## [1.25.0] - 2026-10-29
 

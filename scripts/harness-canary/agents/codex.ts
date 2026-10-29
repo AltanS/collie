@@ -11,6 +11,11 @@ const TRUST_YES = "Trust and continue";
  * The launch arguments every canary codex shares. `check_for_update_on_startup=false` keeps codex's
  * "Update available" prompt away: its default answer is "Update now", which would change the user's
  * install, and it takes the place of the composer the canary waits for.
+ *
+ * These stay `-c` flags, though from 0.166.0 any `-c` draws `⚠ 1 warning · f2 to view` in the footer: the
+ * canary runs on the operator's own `~/.codex` and never writes its `config.toml`. The harness lab has a
+ * throwaway `CODEX_HOME` and puts them there instead (lab/harnesses.ts, codexConfig). The Surface reads the
+ * warning row as a hint (`idle.volatile.below.hints` in the codex profile).
  */
 export const CODEX_ARGS = `-c 'model_reasoning_effort="low"' -c check_for_update_on_startup=false`;
 

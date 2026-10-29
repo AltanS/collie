@@ -105,6 +105,19 @@ export function codexTrust(project: string): string {
   return `[projects.${JSON.stringify(project)}]\ntrust_level = "trusted"\n`;
 }
 
+/**
+ * The settings a Codex run starts with, as top-level keys of its throwaway `config.toml`: no update prompt,
+ * low effort on the default model, and the person as reviewer. Not `-c`: from 0.166.0 any `-c` override
+ * draws `⚠ 1 warning · f2 to view` in the footer (it needs Codex's embedded mode), a row a person's Codex
+ * does not show.
+ */
+export const CODEX_SETTINGS = 'check_for_update_on_startup = false\nmodel_reasoning_effort = "low"\napprovals_reviewer = "user"\n';
+
+/** The whole `config.toml` of a Codex run: {@link CODEX_SETTINGS}, then the trust table ({@link codexTrust}). Top-level keys go before the first table. */
+export function codexConfig(project: string): string {
+  return `${CODEX_SETTINGS}\n${codexTrust(project)}`;
+}
+
 /** Where a run's omp reads its `config.yml`. */
 export function ompConfigFile(dirs: RunDirs): string {
   return join(dirs.home, ".omp", "agent", "config.yml");
@@ -133,14 +146,14 @@ export const HARNESSES: Readonly<HarnessTable> = {
     id: "codex",
     npm: "@openai/codex",
     binName: "codex",
-    // As the canary starts it (agents/codex.ts, dialogs.ts): no update prompt, low effort on the default model,
-    // and `-a on-request -s read-only` with the person as reviewer, so a shell command asks first.
-    startArgs: () => ["-c", "check_for_update_on_startup=false", "-c", 'model_reasoning_effort="low"', "-c", "approvals_reviewer=user", "-a", "on-request", "-s", "read-only"],
+    // `-a on-request -s read-only`, so a shell command asks first; the rest of the canary's start (no update prompt,
+    // low effort, the person as reviewer) is in the run's `config.toml` (codexConfig), never `-c`.
+    startArgs: () => ["-a", "on-request", "-s", "read-only"],
     env: (dirs) => ({ ...homeEnv(dirs), CODEX_HOME: codexHome(dirs) }),
     login: "codex",
     folders: (dirs) => [codexHome(dirs)],
-    // Codex 0.163.0 reads the trust of a folder from the config and does not ask. Without this line it asks first.
-    files: (dirs) => ({ [join(codexHome(dirs), "config.toml")]: codexTrust(dirs.project) }),
+    // Codex 0.163.0 reads the trust of a folder from the config and does not ask. Without the trust table it asks first.
+    files: (dirs) => ({ [join(codexHome(dirs), "config.toml")]: codexConfig(dirs.project) }),
     decline: DECLINE_NO,
     turnCap: TURN_CAP,
     phone: false,

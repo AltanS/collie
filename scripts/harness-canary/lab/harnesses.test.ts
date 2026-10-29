@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { codexTrust, HARNESSES, harnessSpec, OPENCODE_ASK_FILE, runDirs, TURN_CAP } from "./harnesses";
+import { CODEX_SETTINGS, codexConfig, codexTrust, HARNESSES, harnessSpec, OPENCODE_ASK_FILE, runDirs, TURN_CAP } from "./harnesses";
 import { REPLY_ROW } from "./legs";
 import { prepareRun } from "./seed";
 
@@ -44,7 +44,8 @@ describe("the harness table", () => {
     prepareRun(harnessSpec("codex"), dirs, sources());
     const home = harnessSpec("codex").env(dirs).CODEX_HOME ?? "";
     expect(JSON.parse(readFileSync(join(home, "auth.json"), "utf8")).OPENAI_API_KEY).toBe("sk-test-not-real");
-    expect(readFileSync(join(home, "config.toml"), "utf8")).toBe(codexTrust(dirs.project));
+    expect(readFileSync(join(home, "config.toml"), "utf8")).toBe(codexConfig(dirs.project));
+    expect(readFileSync(join(home, "config.toml"), "utf8")).toContain(codexTrust(dirs.project));
   });
 
   test("the Codex trust file is a TOML table named by the project path, with the path escaped", () => {
@@ -55,8 +56,21 @@ describe("the harness table", () => {
   test("Codex starts so that a shell command asks first, with the person as reviewer, and with no update prompt", () => {
     const args = harnessSpec("codex").startArgs(runDirs("/run"));
     expect(args.join(" ")).toContain("-a on-request -s read-only");
-    expect(args).toContain("approvals_reviewer=user");
-    expect(args).toContain("check_for_update_on_startup=false");
+    expect(CODEX_SETTINGS).toContain('approvals_reviewer = "user"');
+    expect(CODEX_SETTINGS).toContain("check_for_update_on_startup = false");
+    expect(CODEX_SETTINGS).toContain('model_reasoning_effort = "low"');
+  });
+
+  test("Codex starts with no -c override: from 0.166.0 any -c draws a warning row in the footer (harness lab drift, 2026-10-29)", () => {
+    const args = harnessSpec("codex").startArgs(runDirs("/run"));
+    expect(args).not.toContain("-c");
+    expect(args.some((arg) => arg.includes("="))).toBe(false);
+  });
+
+  test("the Codex settings are top-level keys, before the trust table, so TOML does not read them into it", () => {
+    const config = codexConfig("/lab/project");
+    expect(config.startsWith(CODEX_SETTINGS)).toBe(true);
+    expect(config.indexOf("[projects.")).toBeGreaterThan(config.indexOf("approvals_reviewer"));
   });
 
   test("OpenCode starts with a scratch config that asks before bash and edit, written into the run folder", () => {
