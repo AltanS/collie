@@ -3540,3 +3540,12 @@ same characters, so no rule or box width moves.
 | `v2310-auth-refresh-before-output-spinner--w52` | Title-only box after a message was sent, `✢ Whirlpooling… ` (no timer yet) under it: a turn runs, and the surface reads it free because the running sign needs the timer |
 | `v2310-auth-refresh-output-spinner--w52` | Filled box, 48 content cells, `✶ Garnishing… ` (no timer yet) under it: the same free read of a running turn |
 | `v2310-auth-refresh-output-spinner-timer--w52` | Filled box, `✻ Moonwalking… (49s)` under it: the timer is drawn, and the surface reads the turn as running |
+
+## Codex Ultra prompt glyph (derived 2026-10-29, issue 615)
+
+Codex 0.164.0 and 0.165.0 draw the composer prompt as `»` (U+00BB) at Ultra effort and `›` (U+203A) at Max. The reporter's capture is not attached, so these two are **derived, not captured**: each is a copy of the named original with ONLY the composer row's leading `›` swapped for `»`. Every other byte is unchanged. Replace them with the reporter's capture when it arrives.
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `codex--v0165-ultra-empty--w120.txt` | `idle` | Derived from `codex--v0164-queue-done--w120.txt`: the empty dim `» Ask Codex to do anything` composer under a finished turn (the `› ` echoes in the transcript stay as they were), status row and hint row. Both readers must find the box and report it empty and free |
+| `codex--v0165-ultra-draft.txt` | `draft` | Derived from `codex--v0156-headless-draft.txt`: the draft `» hello from the phone probe` over the status row. The draft must read back |

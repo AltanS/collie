@@ -24,7 +24,7 @@
         "blank": true
       },
       "prompt": {
-        "pattern": "^›(?: (?!\\d{1,2}\\. )(?<draft>.*))?$",
+        "pattern": "^[›»](?: (?!\\d{1,2}\\. )(?<draft>.*))?$",
         "column": 0
       },
       "bottom": {
@@ -106,7 +106,7 @@
         "hintAbove": true
       },
       {
-        "pattern": "^› (?<text>\\S.*?)\\s*$",
+        "pattern": "^[›»] (?<text>\\S.*?)\\s*$",
         "transcript": true
       }
     ]

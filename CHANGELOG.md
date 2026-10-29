@@ -86,6 +86,12 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **Codex at Ultra effort no longer blocks sends from the phone.** Codex 0.164 and 0.165 draw the
+  composer prompt as `»` at Ultra effort and as `›` at Max. Both readers knew only `›`, so Collie
+  could not find the input box and asked you to confirm a send by hand. Both glyphs now count, in
+  the Codex profile and in the Codex reader. The reader keeps one list of the two glyphs, and a test
+  checks that the profile spells the same pair. A numbered option row is still not a prompt. (#615)
+  Thanks @Skydev0h for the diagnosis.
 - **The service worker ignores a push with a malformed tag instead of failing the push.** A push whose tag is missing, null or not a string no longer throws out of the push handler, so the notification still shows and the icon count is left as it was.
 - **`collie doctor` prints every row in full at any width.** The plain output sizes the label column to the longest check id in its section, wraps a long value at the terminal width (80 when piped) with its next lines under the value, and breaks a path longer than the line at the edge. The terminal view wraps its detail and remedy the same way and never cuts one.
 - **The done line no longer repeats when a crew's machines share a pane id.** Two machines can both

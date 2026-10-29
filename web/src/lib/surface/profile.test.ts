@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { PROMPT_GLYPHS } from "../harness/codex/markers";
 import ledgerJson from "../harness/verified-versions.json";
 import { asJsonObject, parseJsonObject, type JsonObject, type JsonValue } from "../json";
 import {
@@ -133,6 +134,17 @@ describe("the codex profile (M56 spec 13)", () => {
     expect(versionFromOutput(codex, "codex-cli 0.163.0")).toBe("0.163.0");
     expect(codex.idle.frame.top).toMatchObject({ blank: true, column: 0 });
     expect(codex.idle.frame.prompt.pattern).toContain("(?<draft>");
+    // Issue 615: the profile spells the glyph class as data, the markers spell it once as a string.
+    expect(codex.idle.frame.prompt.pattern.startsWith(`^[${PROMPT_GLYPHS}]`)).toBe(true);
+    const prompt = new RegExp(codex.idle.frame.prompt.pattern, "u");
+    for (const glyph of PROMPT_GLYPHS) {
+      expect(prompt.exec(`${glyph} Ask Codex to do anything`)?.groups?.draft).toBe("Ask Codex to do anything");
+      expect(prompt.exec(glyph)?.groups?.draft).toBeUndefined();
+      expect(prompt.test(`${glyph} 1. Yes, proceed (y)`), glyph).toBe(false);
+    }
+    expect(prompt.test("> hello")).toBe(false);
+    const echo = codex.keys.steerWitness?.find((w) => w.transcript === true);
+    expect(echo?.pattern.startsWith(`^[${PROMPT_GLYPHS}]`)).toBe(true);
     expect(codex.idle.frame.bottom.column).toBe(2);
     expect(codex.idle.placeholders.sgr).toBe(2);
     expect(codex.idle.runningRows?.length).toBeGreaterThan(0);
@@ -1338,7 +1350,7 @@ describe("the steer keys (M69)", () => {
   it("Codex: the `Messages to be submitted after next tool call` header over `↳ <line>` at 0.1 s, the line as `› <line>` by 2 s", () => {
     const [block, transcript] = witnesses("codex");
     expect(block).toEqual({ pattern: "^\\s*↳ (?<text>\\S.*?)\\s*$", hint: "^\\s*• Messages to be submitted after next tool call\\b", hintGap: 0, hintAbove: true });
-    expect(transcript).toEqual({ pattern: "^› (?<text>\\S.*?)\\s*$", transcript: true });
+    expect(transcript).toEqual({ pattern: "^[›»] (?<text>\\S.*?)\\s*$", transcript: true });
     const now = rowsOf("codex--v0164-steer-after-now");
     const header = now.findIndex((row) => new RegExp(block!.hint!, "u").test(row));
     expect(header).toBeGreaterThan(0);

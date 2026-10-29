@@ -26,6 +26,7 @@ import {
   lineText,
   isSparkle,
   PLACEHOLDER,
+  PROMPT_HEAD_LENGTH,
   promptText,
   rstrip,
   withoutSparkles,
@@ -60,7 +61,6 @@ const MAX_DRAFT_ROWS = 100;
 // checked first in the same test), and Codex separates every section of a screen with one. A `› `
 // or `• ` row still starts at column 0, so neither can pass as a continuation.
 const CONTINUATION = /^ {2}\s*\S/;
-const PROMPT_PREFIX = "› ";
 
 /** The exact placeholder text is still a valid thing an operator might deliberately type. Codex
  * distinguishes its empty hint by painting the whole body dim, so extraction should use that
@@ -69,7 +69,7 @@ function isEmptyPlaceholder(line: StyledLine): boolean {
   const text = rstrip(lineText(line));
   if (promptText(text) !== PLACEHOLDER) return false;
 
-  const bodyStart = PROMPT_PREFIX.length;
+  const bodyStart = PROMPT_HEAD_LENGTH;
   const bodyEnd = bodyStart + PLACEHOLDER.length;
   let offset = 0;
   let sawBody = false;
