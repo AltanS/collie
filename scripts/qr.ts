@@ -84,7 +84,7 @@ export async function qrModules(url: string): Promise<string[]> {
     QRCode = (await import("qrcode-terminal/vendor/QRCode/index.js")).default;
     level = (await import("qrcode-terminal/vendor/QRCode/QRErrorCorrectLevel.js")).default;
   } catch {
-    throw new Error("qrcode-terminal isn't installed — run 'bun install' in the plugin root");
+    throw new Error("qrcode-terminal isn't installed, run 'bun install' in the plugin root");
   }
   const qr = new QRCode(-1, level.L);
   qr.addData(url);
