@@ -184,6 +184,25 @@ describe("the Ultra prompt glyph (issue 615)", () => {
     }
   });
 
+  it("an output line starting with `» ` above a `›` composer is not the composer (and the reverse)", () => {
+    const withLines = (name: string, glyphLine: string) => {
+      const lines = fixtureLines(name);
+      const box = locateComposer(lines)!;
+      const extra = splitLines(parseAnsi([glyphLine, "» Bonjour, dit-il.", "› 1. Yes, proceed (y)"].join("\n")));
+      return { box, shifted: locateComposer([...lines.slice(0, box.top), ...extra, ...lines.slice(box.top)]), by: extra.length };
+    };
+    for (const name of ["codex--v0164-queue-done--w120.txt", "codex--v0165-ultra-empty--w120.txt", "codex--v0156-headless-draft.txt", "codex--v0165-ultra-draft.txt"]) {
+      const { box, shifted, by } = withLines(name, "» ~/src/collie main \u2713");
+      expect(shifted, name).not.toBeNull();
+      expect(shifted!.promptRow, name).toBe(box.promptRow + by);
+    }
+  });
+
+  it("a prompt-shaped line with no Codex status row under it is no composer", () => {
+    expect(locateComposer(splitLines(parseAnsi(["• done", "", "» ~/src/collie main", "", "$ "].join("\n"))))).toBeNull();
+    expect(codexAdapter.composerReady!(splitLines(parseAnsi(["• done", "", "» ~/src/collie main", "", "$ "].join("\n"))))).toBe(false);
+  });
+
   it("a numbered option row is not a prompt under either glyph", () => {
     for (const glyph of PROMPT_GLYPHS) {
       expect(locateComposer(splitLines(parseAnsi([`${glyph} 1. Yes, proceed (y)`, "  2. No (esc)", "  Press enter to confirm or esc to cancel"].join("\n"))))).toBeNull();
