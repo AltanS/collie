@@ -243,6 +243,7 @@ const CLAUDE_DIALOG_DETECTORS: readonly DialogDetector[] = [
   { name: "marketplaces", detect: onPrepared(detectMarketplacesRegion) },
   { name: "menu", detect: onPrepared(detectMenuRegion) },
   { name: "above-prompt-notice", detect: onPrepared(detectAbovePromptNotice) },
+  { name: "auth-box", detect: onPrepared(detectAuthBox) },
   { name: "autocomplete", detect: onPrepared((lines) => (inputBoxTail(lines) === "autocomplete" ? detectAutocompleteRegion(lines) : null)) },
 ];
 

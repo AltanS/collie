@@ -737,7 +737,7 @@ Stated so nobody reads this document as a description of a clean tree.
    the box goes, the card unmounts, and a link that held keyboard focus takes it to `<body>`.
    Handing focus to the composer was tried and taken back: a tapped link holds focus too on
    Android, so the hand-off opened the soft keyboard over a phone that had just come back from
-   the login tab, the case `focusFromMirror` (`agent-chat.tsx:1957`) declines for the mirror's
+   the login tab, the case `focusFromMirror` (in `agent-chat.tsx`) declines for the mirror's
    own links. Closing it needs a target that takes focus without raising the keyboard.
 
 ---
