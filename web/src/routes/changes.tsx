@@ -93,7 +93,6 @@ import {
   changesCommitPath,
   changesPath,
   changesSettingsPath,
-  decodedPath,
   filesParent,
   filesPath,
   historyIdx,
@@ -113,6 +112,10 @@ import {
   type FilesAt,
 } from "@/lib/nav";
 import { markInAppBack } from "@/lib/nav-entry";
+import { stepsBackToPane } from "@/lib/back-to-pane";
+import { clearDiffComments } from "@/lib/diff-comment-store";
+import { findPane, paneRowKey } from "@/lib/hosts";
+import { useDiffComments } from "@/hooks/use-diff-comments";
 import { navTrail } from "@/lib/nav-trail";
 import { useHoldReload } from "@/lib/reload-guard";
 import { useRootData } from "@/lib/route-data";
@@ -986,8 +989,9 @@ function ChangesScreen() {
     diffText: "",
     keys: [],
   });
-  const [comments, setComments] = useState<DiffComment[]>([]);
-  const nextCommentId = useRef(1);
+  // Held in sessionStorage per scope and target, so leaving Changes and coming back in this tab
+  // restores the batch; staging it into a draft clears it (lib/diff-comment-store.ts).
+  const { comments, setComments, nextId: nextCommentId } = useDiffComments(scope, targetKey);
   const [commentSheet, setCommentSheet] = useState<
     | {
         mode: "new";
@@ -1003,12 +1007,14 @@ function ChangesScreen() {
   >(null);
   const [commentText, setCommentText] = useState("");
   const [basketOpen, setBasketOpen] = useState(false);
-  const [chosenPaneId, setChosenPaneId] = useState<string>("");
+  // The picked agent as a ROW (`paneRowKey`): on a crew two machines can both hold `w6:p1`. The bare
+  // id rides along only to name the pick in the button when that agent has exited.
+  const [chosen, setChosen] = useState<{ rowKey: string; paneId: string } | null>(null);
 
   useHoldReload("changes-comments", comments.length > 0 || commentSheet !== null);
 
   const askingAgentPane =
-    target.kind === "pane" ? root.agents.find((a) => a.paneId === paneId) : undefined;
+    target.kind === "pane" ? findPane(root.agents, paneId, scope, root.servers, root.sessions) : undefined;
   const spaceAgentPanes = useMemo(
     () =>
       root.agents.filter(
@@ -1020,11 +1026,11 @@ function ChangesScreen() {
   const targetPane =
     target.kind === "pane"
       ? askingAgentPane
-      : chosenPaneId !== ""
-        ? spaceAgentPanes.find((p) => p.paneId === chosenPaneId)
+      : chosen !== null
+        ? spaceAgentPanes.find((p) => paneRowKey(p) === chosen.rowKey)
         : spaceAgentPanes[0];
   const targetAgentName =
-    targetPane?.agent ?? targetPane?.paneLabel ?? targetPane?.paneId ?? (chosenPaneId || paneId);
+    targetPane?.agent ?? targetPane?.paneLabel ?? targetPane?.paneId ?? (chosen?.paneId || paneId);
 
   const currentDiffText = shownDiff && !shownDiff.binary && !shownDiff.directory ? shownDiff.diff : "";
   const currentParsed = useMemo(
@@ -1138,7 +1144,7 @@ function ChangesScreen() {
       return;
     }
     const entry: DiffComment = {
-      id: nextCommentId.current++,
+      id: nextCommentId(),
       fileKey: commentSheet.fileKey,
       repo: commentSheet.repo,
       path: commentSheet.path,
@@ -1169,25 +1175,17 @@ function ChangesScreen() {
     if (!targetPane || comments.length === 0) return;
     const dest = panePath(targetPane.paneId, scope);
     stageDiffCommentsToDraft(scope, targetPane.paneId, comments);
-    setComments([]);
+    // Cleared here as well as by the hook's write: the navigation below can unmount the screen
+    // before that write runs, and a batch left in storage would come back after it was staged.
+    clearDiffComments(scope, targetKey);
+    setComments(() => []);
     setBasketOpen(false);
     if (target.kind === "pane") {
-      const idx = historyIdx();
-      const entries = navTrail.entries();
-      const destPath = decodedPath(pathOnly(dest));
-      const changesPrefix = `${destPath}/changes`;
-      if (idx !== undefined) {
-        for (let stepIdx = idx - 1; stepIdx >= 0; stepIdx--) {
-          const href = entries.get(stepIdx);
-          if (href === undefined) break;
-          const p = decodedPath(pathOnly(href));
-          if (p === destPath) {
-            markInAppBack(pathOnly(dest));
-            void navigate(-(idx - stepIdx));
-            return;
-          }
-          if (p !== changesPrefix && !p.startsWith(`${changesPrefix}/`)) break;
-        }
+      const steps = stepsBackToPane(dest, historyIdx(), navTrail.entries());
+      if (steps !== null) {
+        markInAppBack(pathOnly(dest));
+        void navigate(-steps);
+        return;
       }
       nav.upTo(dest);
       return;
@@ -1515,12 +1513,13 @@ function ChangesScreen() {
                   {spaceAgentPanes.map((p) => {
                     const sub = p.paneLabel ?? p.sessionName ?? p.paneId;
                     const label = p.agent ? `${p.agent} · ${sub}` : sub;
-                    const active = p.paneId === targetPane?.paneId;
+                    const rowKey = paneRowKey(p);
+                    const active = targetPane !== undefined && rowKey === paneRowKey(targetPane);
                     return (
                       <button
-                        key={p.paneId}
+                        key={rowKey}
                         type="button"
-                        onClick={() => setChosenPaneId(p.paneId)}
+                        onClick={() => setChosen({ rowKey, paneId: p.paneId })}
                         className={cn(
                           "flex items-center justify-between rounded-md border px-3 py-2 text-left text-xs transition-colors",
                           active
@@ -1550,7 +1549,7 @@ function ChangesScreen() {
                       type="button"
                       onClick={() => {
                         const remaining = comments.filter((item) => item.id !== c.id);
-                        setComments(remaining);
+                        setComments(() => remaining);
                         if (remaining.length === 0) setBasketOpen(false);
                       }}
                       className="text-muted-foreground hover:text-foreground"

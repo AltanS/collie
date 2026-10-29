@@ -29,6 +29,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
   select them, add a note, and keep adding notes across files. One tap then stages every note, with
   the lines it is about, into the agent's draft in the pane. In a space with several agents you pick
   which one gets them. Thanks @GGGODLIN (#561).
+- **Diff comments survive leaving Changes.** The batch is kept for the tab, so a Back and a return
+  restores it, and staging it into the agent's draft clears it. On a crew the agent that gets the
+  batch is found by its full address, so a twin pane id on another machine is never picked. The
+  pill on a commented line shows an icon instead of an emoji.
 
 ## [1.25.0] - 2026-10-29
 

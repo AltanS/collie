@@ -77,6 +77,7 @@ const KEYS = new Map<string, KeyFate>([
   ["collie:hidden-machines:v1", { area: "local", prefix: false, fate: "kept", why: "machine names hidden here" }],
   ["collie:mirror-native:", { area: "local", prefix: true, fate: "kept", why: "a per-pane colour choice" }],
   ["collie:tour:v1", { area: "local", prefix: false, fate: "kept", why: "the tour was seen" }],
+  ["collie:diff-comments:v1:", { area: "session", prefix: true, fate: "wiped", why: "the Changes batch of diff comments: quoted lines and the notes on them" }],
   ["collie:new-sheet:again:v1", { area: "local", prefix: false, fate: "wiped", why: "the last start per machine names its folders" }],
   ["collie:no-prompts-confirmed:v1", { area: "local", prefix: false, fate: "wiped", why: "the per-device No prompts confirms name machines and command lines" }],
   ["collie:new-page:kind:v1", { area: "local", prefix: false, fate: "kept", why: "Agent or Command per machine, one word, no folder" }],

@@ -43,6 +43,7 @@
 // and the database delete is not blocked by it (lib/store.ts listens).
 
 import { mounted } from "@/lib/base-path";
+import { forgetAllDiffComments } from "@/lib/diff-comment-store";
 import { clearAllDrafts, clearDraft } from "@/lib/drafts";
 import { forgetAgain } from "@/lib/new-page";
 import { forgetNoPromptsConfirms } from "@/lib/no-prompts";
@@ -155,6 +156,13 @@ const BUILT_IN: readonly (readonly [string, WipeCleaner])[] = [
     (context) => {
       if (context.reason === "password") clearDraft(context.pane.scope, context.pane.paneId);
       else clearAllDrafts();
+    },
+  ],
+  [
+    // The Changes screen's batch of diff comments (sessionStorage): quoted lines and the notes on them.
+    "diff-comments",
+    (context) => {
+      if (context.reason !== "password") forgetAllDiffComments();
     },
   ],
   [

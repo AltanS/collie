@@ -12,9 +12,9 @@ import { loadDraft } from "@/lib/drafts";
 import { en } from "@/lib/i18n/messages/en";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
 import type { NavState } from "@/lib/nav";
-import type { AgentView, PaneChangesResponse, WorkspaceView } from "@/lib/types";
+import type { AgentView, PaneChangesResponse, ServerSummary, WorkspaceView } from "@/lib/types";
 import { summarizeChanges } from "@/lib/workspace-changes";
-import { fixtureAgents, fixtureChangeDiff, fixtureChanges } from "@/test/handlers";
+import { fixtureAgents, fixtureChangeDiff, fixtureChanges, fixtureServers } from "@/test/handlers";
 import { withHeaderHost } from "@/test/header-host";
 import { server } from "@/test/setup";
 
@@ -24,6 +24,7 @@ import { ChangesRoute } from "./changes";
 // `afterEach` puts the fixture back.
 let loaderAgents: AgentView[] = fixtureAgents;
 let loaderWorkspaces: WorkspaceView[] = [];
+let loaderServers: ServerSummary[] = [];
 
 const connected = (): HomeData => ({
   bridge: "connected",
@@ -33,7 +34,7 @@ const connected = (): HomeData => ({
   tabs: [],
   device: undefined,
   sessions: [],
-  servers: [],
+  servers: loaderServers,
   ts: 0,
   scope: {},
   viewAll: false,
@@ -85,10 +86,12 @@ beforeEach(() => {
 
 afterEach(() => {
   localStorage.clear();
+  sessionStorage.clear();
   resetChangesListCache();
   resetChangeCountCache();
   loaderAgents = fixtureAgents;
   loaderWorkspaces = [];
+  loaderServers = [];
 });
 
 describe("ChangesRoute — the branch in the header", () => {
@@ -641,6 +644,7 @@ describe("ChangesRoute — batch diff comments", () => {
   it("accumulates comments across two files in two repos (including on a crew lead pane), keeps the open sheet snapshot across a diff poll, and stages the batch into the asking pane's draft", async () => {
     const user = userEvent.setup();
     loaderAgents = [{ ...fixtureAgents[0]!, host: "bluefin" }, ...fixtureAgents.slice(1)];
+    loaderServers = fixtureServers;
     let mutatedCart = false;
     server.use(
       http.get(/\/api\/pane\/[^/]+\/changes/, ({ request }) => {
@@ -742,3 +746,66 @@ describe("ChangesRoute — batch diff comments", () => {
   });
 });
 
+describe("ChangesRoute, batch diff comments: the agent row and the kept batch", () => {
+  async function commentOnCart(user: ReturnType<typeof userEvent.setup>, note: string) {
+    await user.click(await screen.findByRole("button", { name: /^1\s*\+.*cartTotal/ }));
+    await user.click(screen.getByRole("button", { name: "Comment on selected (1)" }));
+    await user.type(screen.getByPlaceholderText("Write your comment for these lines…"), note);
+    await user.click(screen.getByRole("button", { name: "Add comment" }));
+  }
+
+  it("finds the asking pane by its full address when another machine holds the same pane id", async () => {
+    const user = userEvent.setup();
+    loaderServers = fixtureServers;
+    // The peer's twin comes FIRST: a lookup by the bare pane id would take it for the lead's pane.
+    loaderAgents = [
+      { ...fixtureAgents[0]!, host: "workshop", agent: "codex" },
+      { ...fixtureAgents[0]!, host: "bluefin", agent: "claude" },
+    ];
+    renderAt("/pane/w1%3Ap1/changes?repo=.&path=src%2Flib%2Fcart.ts");
+    await commentOnCart(user, "Name the lead's agent.");
+    await user.click(screen.getByRole("button", { name: "Pending comments (1) · Bring to agent" }));
+    expect(screen.getByRole("button", { name: "Bring to claude draft (1)" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: /Bring to codex/ })).toBeNull();
+  });
+
+  it("restores the batch when Changes is left and opened again in the same tab", async () => {
+    const user = userEvent.setup();
+    const url = "/pane/w1%3Ap1/changes?repo=.&path=src%2Flib%2Fcart.ts";
+    renderAt(url);
+    await commentOnCart(user, "Keep me across a Back.");
+    expect(sessionStorage.length).toBe(1);
+    cleanup();
+
+    const router = renderAt(url);
+    await user.click(await screen.findByRole("button", { name: "Pending comments (1) · Bring to agent" }));
+    expect(screen.getAllByText("Keep me across a Back.").length).toBeGreaterThan(0);
+
+    // A new comment takes the next id, so the restored one is not overwritten.
+    await user.keyboard("{Escape}");
+    await user.click(await screen.findByRole("button", { name: /^1\s*\+.*cartTotal/ }));
+    await user.click(screen.getByRole("button", { name: "Comment on selected (1)" }));
+    await user.type(screen.getByPlaceholderText("Write your comment for these lines…"), "Second note.");
+    await user.click(screen.getByRole("button", { name: "Add comment" }));
+    await user.click(screen.getByRole("button", { name: "Pending comments (2) · Bring to agent" }));
+    expect(screen.getAllByText("Keep me across a Back.").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Second note.").length).toBeGreaterThan(0);
+    expect(router.state.location.pathname).toBe("/pane/w1%3Ap1/changes");
+  });
+
+  it("clears the kept batch once it is staged into the draft", async () => {
+    const user = userEvent.setup();
+    const url = "/pane/w1%3Ap1/changes?repo=.&path=src%2Flib%2Fcart.ts";
+    renderAt(url);
+    await commentOnCart(user, "Staged once.");
+    await user.click(screen.getByRole("button", { name: "Pending comments (1) · Bring to agent" }));
+    await user.click(screen.getByRole("button", { name: "Bring to claude draft (1)" }));
+    expect(loadDraft(undefined, "w1:p1")).toContain("Staged once.");
+    expect(sessionStorage.length).toBe(0);
+    cleanup();
+
+    renderAt(url);
+    await screen.findByRole("button", { name: /^1\s*\+.*cartTotal/ });
+    expect(screen.queryByRole("button", { name: /Pending comments/ })).toBeNull();
+  });
+});

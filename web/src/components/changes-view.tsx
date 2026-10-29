@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, Fragment } from "react";
-import { ChevronRight, ListFilter, ListTree, Search, X } from "lucide-react";
+import { ChevronRight, ListFilter, ListTree, MessageSquare, Search, X } from "lucide-react";
 
 import { LIST_ROW_CORNERS, ListGroup } from "@/components/ui/list-group";
 import { SectionLabel } from "@/components/ui/section-label";
@@ -972,7 +972,10 @@ export function DiffView({
                 className="my-1 mr-3 ml-12 flex max-w-[calc(100%-3.75rem)] items-center justify-between gap-2 rounded-md border border-primary/40 bg-primary/10 px-2.5 py-1.5 font-sans text-xs text-foreground transition-colors hover:border-primary"
               >
                 <span className="min-w-0 flex-1 truncate text-left">
-                  <span className="font-mono font-semibold text-primary">💬 {c.lineLabel}: </span>
+                  <span className="font-mono font-semibold text-primary">
+                    <MessageSquare aria-hidden className="mr-1 inline size-3 align-[-1px]" />
+                    {c.lineLabel}:{" "}
+                  </span>
                   {c.note}
                 </span>
                 <ChevronRight aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
@@ -989,7 +992,10 @@ export function DiffView({
           className="my-1 mr-3 ml-3 flex max-w-[calc(100%-1.5rem)] items-center justify-between gap-2 rounded-md border border-primary/40 bg-primary/10 px-2.5 py-1.5 font-sans text-xs text-foreground transition-colors hover:border-primary"
         >
           <span className="min-w-0 flex-1 truncate text-left">
-            <span className="font-mono font-semibold text-primary">💬 {c.lineLabel}: </span>
+            <span className="font-mono font-semibold text-primary">
+              <MessageSquare aria-hidden className="mr-1 inline size-3 align-[-1px]" />
+              {c.lineLabel}:{" "}
+            </span>
             {c.note}
           </span>
           <ChevronRight aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
