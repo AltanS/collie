@@ -111,3 +111,14 @@ stayed empty). The `SessionStart` hook input already carries `model` in an inter
 
 The blast radius is unchanged: a hostile edge can make a tag name a wrong model, a lie on screen. No
 rule, TTL, cache state or send reads it.
+
+## Amended 2026-10-30: on herdr-core a beacon adds only the session ref
+
+On herdr-core the core names the agent and its status from the program's own report, so the
+decorator wraps it in a session-only mode (M74 spec 04, `bridge/beacon/decorate.ts`): a live beacon
+adds only the agent session ref (`agentSessionRef`) to a pane the core already reads as that harness,
+and never sets the agent or the status. The decorator's rule that a wrapped adapter declares neither
+capability is narrowed to neither the agent nor the status: an adapter that declares
+`agentSessionRef` is still refused at construction, and one that declares only `agentDetection` gets
+the session ref and nothing else. The blast radius shrinks: a hostile edge can make such a pane look
+up a wrong session, a lie on screen, and can no longer rename it or change its status.
