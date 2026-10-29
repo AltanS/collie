@@ -1929,7 +1929,9 @@ run_stripped HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" COLLIE_STATE
   COLLIE_PLUGIN_ROOT="$EMPTY_ROOT" PATH="$BIN_DIR" "$BIN" doctor || rc=$?
 assert_eq "$rc" "1"
 assert_contains "$STDOUT" "error:"
-assert_contains "$STDOUT" "collie build"
+# Rows wrap at 80 columns when piped, so a remedy can break across lines: compare it with the
+# line breaks and continuation indent folded to single spaces.
+assert_contains "$(printf '%s' "$STDOUT" | tr -s ' \n' '  ')" "collie build"
 assert_contains "$STDOUT" "crew: none"
 
 # ── Device pairing ───────────────────────────────────────────────────────────

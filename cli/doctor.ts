@@ -73,7 +73,8 @@ import { classifyExe, exePathOf, type ExeEvidence } from "../bridge/exe-replaced
 import { queryTask, taskOwner, windowsPathKey } from "./task-scheduler.ts";
 import { agentLabel, collieBinary, unitName } from "./unit.ts";
 import { pidFilePath } from "./lifecycle.ts";
-import type { Ui } from "./render.ts";
+import { DEFAULT_COLUMNS, type Ui } from "./render.ts";
+import { layoutFindings } from "./doctor-layout.ts";
 import {
   failureLine,
   type MemberReach,
@@ -164,6 +165,11 @@ export interface DoctorDeps {
    * every test and every piped run sees — means the plain lines below, unchanged.
    */
   readonly ui?: Ui | null;
+  /**
+   * The width the plain lines wrap at. The edge reads it once (`terminalColumns`, `cli/render.ts`)
+   * and passes it in, so this verb reads no global. Absent means 80, which is what every pipe sees.
+   */
+  readonly columns?: number;
   /** The Whistle model check's stand-in pin, for the tests. Production leaves it. */
   readonly whistle?: WhistleSeams;
   /**
@@ -420,11 +426,12 @@ async function render(
     });
     return;
   }
+  const columns = deps.columns ?? DEFAULT_COLUMNS;
   deps.io.out(instance);
   deps.io.out(heading);
   deps.io.out("");
   deps.io.out("local:");
-  for (const f of local) deps.io.out(line(f));
+  for (const l of layoutFindings(local, columns)) deps.io.out(l);
   deps.io.out("");
   if (crew.length === 0) {
     // One line, exactly as `crew status` does — never a column of padded `skipped` crew checks,
@@ -433,18 +440,7 @@ async function render(
     return;
   }
   deps.io.out(`crew: ${data?.crew?.name ?? "?"}`);
-  for (const f of crew) deps.io.out(line(f));
-}
-
-/** One check, one line. The status leads, the identifier is the second word, the remedy closes it. */
-function line(f: Finding): string {
-  const head = f.status === "ok" ? "✓" : `${f.status}:`;
-  // 22 = longest check id ("integration-opencode", 20 chars) + 2, so every id gets
-  // at least one space before the detail. Grow this if a longer check id lands.
-  // A detail of more than one line (the Windows `secrets-private` line puts a path on its own)
-  // continues under its first line. No other detail holds a line break.
-  const body = `  ${head.padEnd(9)}${f.check.padEnd(22)}${f.detail.replaceAll("\n", `\n${" ".repeat(33)}`)}`;
-  return f.remedy === null ? body : `${body} → ${f.remedy}`;
+  for (const l of layoutFindings(crew, columns)) deps.io.out(l);
 }
 
 // ── Local checks ─────────────────────────────────────────────────────────────
@@ -2125,6 +2121,7 @@ export function doctorDeps(base: {
   exec: Exec;
   files: Files;
   ui?: Ui | null;
+  columns?: number;
   host?: Host;
 }): DoctorDeps {
   return {

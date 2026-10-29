@@ -40,6 +40,21 @@ describe("the doctor table", () => {
     expect(frame).toContain(view.crewTitle);
   });
 
+  test("a 400-character detail wraps and every word of it is on screen", () => {
+    const words = Array.from({ length: 60 }, (_, i) => `w${String(i).padStart(2, "0")}xyz`);
+    const detail = words.join(" ");
+    expect(detail.length).toBeGreaterThanOrEqual(400);
+    const long: DoctorView = {
+      ...view,
+      local: [{ check: "surface-claude-2.1.312", status: "ok", detail, remedy: null }],
+      crew: [],
+      crewNote: [],
+    };
+    const frame = plain(render(<Doctor view={long} />).lastFrame());
+    for (const w of words) expect(frame).toContain(w);
+    expect(frame).not.toContain("…");
+  });
+
   test("a solo collie gets the note instead of an empty crew table — and no bare `crew:` heading", () => {
     const solo: DoctorView = {
       ...view,
