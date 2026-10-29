@@ -37,8 +37,9 @@
 # one in place.
 
 # A self-closing peek with an explicit label — it runs, shows output, and when you quit the
-# Space or tab goes away with it. No cwd, so it opens wherever you tapped it: your home dir from
-# the dashboard, the current pane's own folder from the switcher.
+# Space or tab goes away with it. No cwd, so it opens wherever you tapped it: the session's folder
+# from sessions.toml `[folders]` (else your home dir) from the dashboard, the current pane's own
+# folder from the switcher.
 # [[launchers]]
 # command = "rumen-peek"
 # label = "Runs & quota"

@@ -63,7 +63,7 @@ interface LaunchersDocument {
  * [[launchers]]
  * command = "rumen-peek"        # required; the shell line, typed verbatim
  * label = "Runs & quota"        # optional; defaults to the command's first whitespace-separated token
- * cwd = "~/dev/collie"          # optional; absent means "here" (home from the dashboard, the pane's own dir from a pane); leading ~ expanded
+ * cwd = "~/dev/collie"          # optional; absent means "here" (the session's `[folders]` entry in sessions.toml, else home, from the dashboard; the pane's own dir from a pane); leading ~ expanded
  * harness = "claude"            # optional; the agent that reads this row, so the sheet lists it under Agents (ADR 0094)
  * no_prompts = true             # optional; the line skips permission prompts (an alias hides its flags)
  * ```
@@ -122,7 +122,8 @@ export function validateOperatorLaunchers(
     }
 
     // `cwd` is the directory the new Space (or tab) opens in. Absent → "here": resolved on the
-    // bridge at launch time, to the operator's home dir from the dashboard or to the pane's own cwd
+    // bridge at launch time, to the session's sessions.toml `[folders]` entry (else the operator's
+    // home dir) from the dashboard or to the pane's own cwd
     // from a pane (server.ts § launch/createTab), never defaulted here. A leading `~`/`~/...` is
     // expanded to the operator's home dir, because that is how the operator already spells paths in
     // their shell. Present but not a non-empty string → fail closed rather than silently falling

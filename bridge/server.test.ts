@@ -4303,6 +4303,23 @@ describe("POST /api/workspace — a create that worked records the folder the mu
     }
   });
 
+  test("an empty folder opens in the session's own folder when the operator named one", async () => {
+    const mux = new FakeSpaceMux("/srv/yt");
+    await createWorkspace(asSpaceMux(mux), engine, body(JSON.stringify({ cwd: "" })), new AuditLog(() => {}), null, "project-yt", undefined, "/srv/yt");
+    expect(mux.created?.cwd).toBe("/srv/yt");
+    await createWorkspace(asSpaceMux(mux), engine, body(JSON.stringify({ cwd: "/srv/typed" })), new AuditLog(() => {}), null, "project-yt", undefined, "/srv/yt");
+    expect(mux.created?.cwd).toBe("/srv/typed");
+  });
+
+  test("a session folder is the operator's default, not the person's ask: it never joins Recent", async () => {
+    const recorded: string[] = [];
+    const store = { recordRecent: (f: string) => Promise.resolve(void recorded.push(f)) };
+    const mux = new FakeSpaceMux("/srv/yt");
+    await createWorkspace(asSpaceMux(mux), engine, body(JSON.stringify({ cwd: "" })), new AuditLog(() => {}), null, "project-yt", store, "/srv/yt");
+    expect(mux.created?.cwd).toBe("/srv/yt");
+    expect(recorded).toEqual([]);
+  });
+
   test("with no store (a bridge built by hand), the create is exactly today's", async () => {
     const mux = new FakeSpaceMux("/home/op/proj");
     const res = await createWorkspace(asSpaceMux(mux), engine, body(JSON.stringify({ cwd: "~/proj" })), new AuditLog(() => {}), null, "default");
@@ -4532,7 +4549,9 @@ describe("the folder routes — GET /api/folders and POST /api/folders/star", ()
     // Wired once, inside serveSessionRoute, so a crew peer's dispatch reaches it too (§5).
     expect([...src.matchAll(/await serveFolderRoute\(req, pathname, caller, folders, folderBrowse\)/g)]).toHaveLength(1);
     // And the create is handed the same store, so a peer records into its OWN list.
-    expect(src).toContain("return createWorkspace(rt.herdr, rt.engine, req, caller.audit, caller.device(), rt.name, folders);");
+    expect(src).toContain("return createWorkspace(rt.herdr, rt.engine, req, caller.audit, caller.device(), rt.name, folders, await sessionFolderOf(rt.name));");
+    // A launch reads the same session folder, so both creates from the dashboard open in one place.
+    expect(src).toContain("sessionFolder: await sessionFolderOf(rt.name),");
   });
 });
 

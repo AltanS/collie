@@ -23,6 +23,13 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **Labels and a default folder per terminal session, in an operator file.** You name a session
+  with a label of your own and the switcher shows it, and you name a folder where a launch from the
+  dashboard opens when nothing else names one. A label is display-only and links keep the session
+  name. Thanks @eseninik (#539).
+
 ## [1.25.0] - 2026-10-29
 
 ### Added

@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { useNav } from "@/hooks/use-nav";
 import { BottomSheet } from "@/components/ui/sheet";
 import { homePath } from "@/lib/nav";
+import { sessionDisplayName } from "@/lib/hosts";
 import type { Scope } from "@/lib/scope";
 import type { SessionSummary } from "@/lib/types";
 import { t, tn } from "@/lib/i18n";
@@ -37,10 +38,14 @@ export function SessionSwitcher({ sessions, scope, viewAll }: SessionSwitcherPro
   if (reachableCount <= 1 && !onNonPrimary && !viewAll) return null;
 
   // The name to show on the trigger: "All sessions" when widened, else the current session — or the
-  // primary's registry name when on it.
+  // primary when on it — by its operator label when it has one (sessions.toml), else its registry name.
+  const currentSession =
+    current === undefined ? sessions.find((s) => s.isPrimary) : sessions.find((s) => s.name === current);
   const currentName = viewAll
     ? t("connection.session.all")
-    : (current ?? sessions.find((s) => s.isPrimary)?.name ?? "default");
+    : currentSession !== undefined
+      ? sessionDisplayName(currentSession)
+      : (current ?? "default");
   const isActive = (s: SessionSummary): boolean =>
     viewAll ? false : current === undefined ? s.isPrimary : s.name === current;
 
@@ -126,6 +131,8 @@ export function SessionSwitcher({ sessions, scope, viewAll }: SessionSwitcherPro
             </li>
             {sessions.map((s) => {
               const active = isActive(s);
+              // The label is display-only; the row still selects by `s.name`.
+              const shown = sessionDisplayName(s);
               return (
                 <li key={s.name}>
                   <button
@@ -151,7 +158,7 @@ export function SessionSwitcher({ sessions, scope, viewAll }: SessionSwitcherPro
                     <Layers className="size-4 shrink-0 text-muted-foreground" />
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="truncate text-sm font-medium">{s.name}</span>
+                        <span className="truncate text-sm font-medium">{shown}</span>
                         {s.isPrimary && (
                           <span className="rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium label-caps text-muted-foreground">
                             {t("connection.session.primary")}
@@ -163,6 +170,14 @@ export function SessionSwitcher({ sessions, scope, viewAll }: SessionSwitcherPro
                           </span>
                         )}
                       </div>
+                      {/* A labelled row keeps its registry name underneath, in mono: it is the
+                          machine's identifier (the folder the session lives in), the one a
+                          `?s=` link and the terminal both spell. */}
+                      {shown !== s.name && (
+                        <span className="mt-0.5 block truncate font-mono text-[11px] text-muted-foreground">
+                          {s.name}
+                        </span>
+                      )}
                       {s.reachable && (s.blocked > 0 || s.working > 0) && (
                         <div className="mt-1 flex items-center gap-1.5">
                           {s.blocked > 0 && (

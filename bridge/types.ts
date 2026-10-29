@@ -724,6 +724,12 @@ export function muxFaultOf(message: string): MuxFault | undefined {
 export interface SessionSummary {
   /** Registry name, e.g. "default" or "collie-demo". Client passes this back as `?session=`. */
   name: string;
+  /**
+   * The operator's display label from `sessions.toml` (bridge/operator-session-labels.ts), already
+   * cleaned of controls and capped. Display-only: {@link name} stays the identity. Absent when the
+   * operator gave this session none, so an install without the file sends the bytes it always did.
+   */
+  label?: string;
   /** The session cfg.socketPath points at — all pre-multi-session behaviour maps to it. */
   isPrimary: boolean;
   /** Whether this session's last poll succeeded (a stale/unreachable socket reads false). */
@@ -1849,7 +1855,8 @@ export interface Launcher {
   label: string;
   /**
    * Absolute directory the new Space (or tab) opens in. Absent means "here": from the dashboard,
-   * the operator's home dir; from a pane, that pane's own cwd. Present, it is pinned and wins
+   * the session's `[folders]` entry in sessions.toml, else the operator's home dir; from a pane,
+   * that pane's own cwd. Present, it is pinned and wins
    * either way.
    */
   cwd?: string;
@@ -1956,7 +1963,7 @@ export interface LaunchersResponse {
 export interface RecentRunWire {
   /** The line, exactly as it ran. Running it again is `POST /api/launch` with `{ run: line }`. */
   line: string;
-  /** The folder it last ran in, absolute, or `null` for home. */
+  /** The folder it last ran in, absolute, or `null` for "here" (the session's folder, else home). */
   cwd: string | null;
   /** Epoch ms of the last run. */
   at: number;
@@ -1992,7 +1999,7 @@ export interface SentEntry {
   /** Stable per line on its machine: the first 16 hex characters of the line's sha256. */
   id: string;
   line: string;
-  /** Absolute, or `null` for home. */
+  /** Absolute, or `null` for "here" (the session's folder, else home). */
   cwd: string | null;
   /** Epoch ms of the newest record. */
   at: number;
