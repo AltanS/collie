@@ -1416,6 +1416,14 @@ describe("a command (M56 spec 06)", () => {
     expect(pane.readsSeen).toBe(0);
   });
 
+  test("the path of a saved upload is no command: a plain send of it is not refused reserved_lead", async () => {
+    const { send } = rig();
+    const path = "/home/me/.local/state/collie/uploads/w7C_pF-mvtrpn7j-e4f81595.png";
+    expect((await send(path)).receipt?.reason).not.toBe("reserved_lead");
+    expect((await send(`${path} what is wrong here?`)).receipt?.reason).not.toBe("reserved_lead");
+    expect((await send("/usr")).receipt).toMatchObject({ outcome: "refused", reason: "reserved_lead" });
+  });
+
   test("a shell line whose bang turns into the prompt glyph matches the box without its lead", async () => {
     const { pane, send } = rig();
     pane.bangPrompt = true;

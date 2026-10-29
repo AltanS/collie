@@ -25,6 +25,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **A screenshot sent with no words is sent to the agent again.** The phone saves the picture under the state folder and sends its path as the message. The path starts with `/`, so the Send Protocol read it as a slash command and refused it as `reserved_lead`. A message whose first word is the path of a saved upload is now a plain message, with or without text after it. `/compact`, `/model opus`, `/usr` and every other command shape are still reserved.
 - **A message with a screenshot in it is sent to Claude Code 2.1.312 again.** Claude Code 2.1.312 attaches an upload path only when the path is the whole paste; a path inside a longer message stays text. Collie expected the `[Image #N]` token, read the box as not holding the typed text, and left the message typed and never submitted (the field case of 2026-10-29: a two-paragraph message whose first paragraph ended with the screenshot path). The compare now takes both forms, the path attached or the path as text, and both are still the exact typed text.
 
 ## [1.25.0] - 2026-10-29
