@@ -22,6 +22,7 @@ import type { BeaconMatcher } from "../beacon/decorate.ts";
 import type { HostCandidate, HostProbe } from "./host-candidates.ts";
 import { durableMuxFactory } from "./durable/adapter.ts";
 import { herdrMuxFactory } from "./herdr/adapter.ts";
+import { herdrCoreMuxFactory } from "./herdr-core/adapter.ts";
 import { ternMuxFactory } from "./tern/adapter.ts";
 import { tmuxMuxFactory } from "./tmux/adapter.ts";
 import { tuiosMuxFactory } from "./tuios/adapter.ts";
@@ -110,7 +111,7 @@ export interface MuxAdapterFactory {
  * Deliberately a list of factories and not a map — the map is derived below, so a key can never
  * drift from the factory it points at.
  */
-export const MUX_ADAPTERS: readonly MuxAdapterFactory[] = [herdrMuxFactory, ternMuxFactory, tmuxMuxFactory, zellijMuxFactory, tuiosMuxFactory, durableMuxFactory];
+export const MUX_ADAPTERS: readonly MuxAdapterFactory[] = [herdrMuxFactory, ternMuxFactory, tmuxMuxFactory, zellijMuxFactory, tuiosMuxFactory, durableMuxFactory, herdrCoreMuxFactory];
 
 /** One provider's answer, tagged with the multiplexer it came from — the row's source. */
 export interface MuxHostCandidates {

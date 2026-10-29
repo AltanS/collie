@@ -30,6 +30,7 @@ import { BEACON_SCHEMA_VERSION, type BeaconMarker, type BeaconStatus } from "../
 import type { MuxConformanceFixture, MuxConformanceWorld } from "./conformance.ts";
 import { durableConformanceFixture, durableHttpConformanceFixture } from "./durable/fixture.ts";
 import { herdrConformanceFixture } from "./herdr/fixture.ts";
+import { herdrCoreConformanceFixture } from "./herdr-core/fixture.ts";
 import { tmuxMuxFactory } from "./tmux/adapter.ts";
 import { FakeTmux, FAKE_TMUX_SOCKET, tmuxConformanceFixture, tmuxWorld } from "./tmux/fixture.ts";
 import { tmuxBeaconMatcher } from "./tmux/markers.ts";
@@ -158,6 +159,7 @@ export const MUX_CONFORMANCE_FIXTURES: readonly MuxConformanceFixture[] = [
   tuiosConformanceFixture,
   durableConformanceFixture,
   durableHttpConformanceFixture,
+  herdrCoreConformanceFixture,
   { mux: ternMuxFactory.mux, variant: "beacons, hooks installed", create: () => ternDecoratedWorld(true) },
   { mux: ternMuxFactory.mux, variant: "beacons, hooks absent", create: () => ternDecoratedWorld(false) },
   { mux: tmuxMuxFactory.mux, variant: "beacons, hooks installed", create: () => tmuxDecoratedWorld(true) },
