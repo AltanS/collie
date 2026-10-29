@@ -606,3 +606,44 @@ describe("a turn stopped without its Stop hook (Claude Code 2.1.309, live rerun 
     expect(state.lostStops).toBe(0);
   });
 });
+
+// Live check 2026-10-30, Claude Code 2.1.312 over tmux, 120 columns (release 1.25.0): a fresh pane
+// draws `You've used 75% of your weekly limit · … · /usage-credits to keep using Claude Code` under
+// the footer and drops it once the box holds two rows. The reader must read it as no dialog and the
+// box as empty and free; the Send Protocol leaves it out of the rows under the box (`below.hints`).
+describe("the usage-limit row under a fresh box (Claude Code 2.1.312, live check 2026-10-30)", () => {
+  const NAME = "claude--v2312-weekly-limit-row--w120.txt";
+  const ROWS = fixtureRows(NAME);
+  const LIMIT_ROW = /^\s*You've used 75% of your weekly limit · .* · \/usage-credits to keep using Claude Code$/u;
+
+  it("the capture holds the row under the footer, the last row of the screen", () => {
+    const texts = ROWS.map((row) => rowText(row).trimEnd()).filter((text) => text.length > 0);
+    const frame = findInputFrame(ROWS, CLAUDE);
+    expect(frame).not.toBeNull();
+    expect(texts.at(-1)).toMatch(LIMIT_ROW);
+    expect(texts.findIndex((text) => LIMIT_ROW.test(text))).toBeGreaterThan(frame!.bottom);
+  });
+
+  it("reads idle, no dialog, the composer empty: free", () => {
+    const read = readScreen(ROWS, agentOf("claude"), idleFor("claude"));
+    expect(read.surface).toEqual({ revision: 1, turn: "idle", modal: "none", composer: "empty" });
+    expect(isFree(read.surface)).toBe(true);
+    expect(read.cues?.strength ?? "none").toBe("none");
+  });
+
+  it("the profile's hint takes the row and its likely variants, never the footer or a dialog row", () => {
+    const hints = (CLAUDE.volatile.below.hints ?? []).map((source) => new RegExp(source, "u"));
+    const isHint = (text: string): boolean => hints.some((hint) => hint.test(text));
+    const row = ROWS.map((r) => rowText(r).trimEnd()).find((text) => LIMIT_ROW.test(text));
+    expect(row).toBeDefined();
+    expect(isHint(row!)).toBe(true);
+    for (const text of [
+      "   You've used 90% of your 5-hour limit · resets 4pm (UTC) · /usage-credits to keep using Claude Code",
+      "   You’ve used 100% of your Opus weekly limit · resets Nov 4, 2am (UTC)",
+      "   You've used 80% of your session limit",
+    ])
+      expect(isHint(text), text).toBe(true);
+    for (const text of ["  ⏸ manual mode on · ? for shortcuts", " Do you want to proceed?", "   You've used the weekly limit", "● You've used 75% of your weekly limit, says the docs"])
+      expect(isHint(text), text).toBe(false);
+  });
+});

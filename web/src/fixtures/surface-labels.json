@@ -1251,6 +1251,11 @@
    "version": "2.1.312",
    "state": "draft"
   },
+  "claude--v2312-weekly-limit-row--w120.txt": {
+   "harness": "claude",
+   "version": "2.1.312",
+   "state": "idle"
+  },
   "claude--v2304-select-preview-cjk-moved.txt": {
    "harness": "claude",
    "version": "2.1.304",

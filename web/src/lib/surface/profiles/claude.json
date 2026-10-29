@@ -31,6 +31,8 @@
       "below": {
         "maxRows": 8,
         "footerMaxRows": 8,
+        "hints": ["^\\s*You(?:'|’)ve used \\d+% of your (?:[\\w-]+ )*limit\\b.*$"],
+        "hintsNote": "Live check 2026-10-30, Claude Code 2.1.312 over tmux, 120 columns: a fresh pane draws `You've used 75% of your weekly limit · resets Nov 4, 2am (…) · /usage-credits to keep using Claude Code` under the footer, and drops it once the box grows to two rows. The rows under the box went from 2 to 1 and the send ended typed_not_submitted (changed). The pattern covers any percentage and any limit name (`weekly`, `5-hour`, `Opus weekly`); the tail after `limit` is free. Fixture claude--v2312-weekly-limit-row--w120.",
         "footerRows": [
           { "name": "agents-panel-main", "pattern": "^\\s*(?:❯\\s+)?●\\s+main(?:\\s.*)?$" },
           { "name": "agents-panel-agent", "pattern": "^\\s*(?:❯\\s+)?◯\\s+\\S.*$" },

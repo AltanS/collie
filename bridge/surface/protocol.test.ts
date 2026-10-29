@@ -10536,3 +10536,55 @@ describe("a probed message into a tall Codex 0.166.0 pane (harness lab drift, 20
     expect(isHint("  ⚠ Heads up, you have less than 5% of your weekly limit left")).toBe(false);
   });
 });
+
+// Live check 2026-10-30, Claude Code 2.1.312 over tmux (release 1.25.0): a fresh pane draws a usage
+// row under the footer (claude--v2312-weekly-limit-row--w120) and drops it once the box holds two
+// rows. The rows under the box went from 2 to 1, and the send ended typed_not_submitted (changed),
+// keys probe, Backspace, ctrl+j, ctrl+j. The profile names the row a hint (`idle.volatile.below.hints`).
+describe("the usage-limit row under a fresh Claude Code box (2.1.312)", () => {
+  const FOOTER = "  ⏸ manual mode on · ? for shortcuts";
+  const LIMIT = "   You've used 75% of your weekly limit · resets Nov 4, 2am (Europe/Lisbon) · /usage-credits to keep using Claude Code";
+  /** The row stands at S0 and through the probe, and goes when the box grows to a second row, as live. */
+  const fresh = (pane: FakePane): void => {
+    pane.status = [FOOTER, LIMIT];
+    pane.afterInput = (p) => {
+      p.status = p.box === "" ? [FOOTER, LIMIT] : p.box.includes("\n") ? ["  ⏸ manual mode on                ctrl+g to edit in VS Code"] : ["  ⏸ manual mode on", LIMIT];
+    };
+  };
+  const text = "also mobile looks off\n\nmenu should be centered";
+
+  test("the row present at S0 and gone after the probe: sent", async () => {
+    const pane = new FakePane("claude");
+    fresh(pane);
+    const { send } = rig({ pane });
+    expect((await send(text)).receipt).toMatchObject({ outcome: "sent", keys: ["ctrl+j", "ctrl+j", "Enter"] });
+    expect(pane.transcript.at(-1)).toBe("> also mobile looks off  menu should be centered");
+  });
+
+  test("the row gone at the first character: sent", async () => {
+    const pane = new FakePane("claude");
+    pane.status = [FOOTER, LIMIT];
+    pane.statusWithText = ["  ⏸ manual mode on"];
+    const { send } = rig({ pane });
+    expect((await send("hello there")).receipt).toMatchObject({ outcome: "sent" });
+  });
+
+  test("without the profile's hint the same pair ends typed_not_submitted (changed): the defect", async () => {
+    const pane = new FakePane("claude");
+    fresh(pane);
+    const { send } = rig({ pane, edit: (profile) => ({ ...profile, idle: { ...profile.idle, volatile: { ...profile.idle.volatile, below: { ...profile.idle.volatile.below, hints: [] } } } }) });
+    expect((await send(text)).receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "changed" });
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+
+  test("a row that is no hint still counts: a new row under the box keeps Enter back", async () => {
+    const pane = new FakePane("claude");
+    fresh(pane);
+    pane.afterInput = (p) => {
+      p.status = p.box.includes("\n") ? [FOOTER, LIMIT, "  Do you want to proceed?"] : [FOOTER, LIMIT];
+    };
+    const { send } = rig({ pane });
+    expect((await send(text)).receipt?.outcome).toBe("typed_not_submitted");
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+});
