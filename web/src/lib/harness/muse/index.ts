@@ -66,7 +66,7 @@ import {
   composerReady,
   extractAgentsFooter,
   extractInputDraft,
-  extractStatusLines,
+  extractStatusLines as tailStatusLines,
   regionReachesTail,
   stripChrome,
 } from "./chrome";
@@ -187,6 +187,18 @@ function lift(lines: StyledLine[], startLine: number, region: string, dialog: Bl
   }
   before = trimTrailingBlank(before);
   return before.length > 0 ? [{ kind: "raw", lines: before }, dialog] : [dialog];
+}
+
+/**
+ * The statusline for the strip, only when the blocks took it off the mirror. A lifted dialog's card
+ * runs from the dialog to the screen's last row, statusline included, and that region is what a tap
+ * is bound to, so it is not trimmed. While a card shows the row the strip stays empty rather than
+ * draw it twice (the 2026-10-20 field report; status-strip.test.ts holds every adapter to this).
+ */
+function extractStatusLines(lines: StyledLine[]): StyledLine[] {
+  const status = tailStatusLines(lines);
+  if (status.length === 0) return status;
+  return museBuildBlocks(lines).every((block) => block.kind === "raw") ? status : [];
 }
 
 /**

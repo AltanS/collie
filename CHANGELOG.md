@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **Pi and Muse status lines no longer show twice while a question or dialog is open.** Both readers now put a status line in the strip only when their blocks took that row off the mirror on a ready composer. A new test holds every reader with captured screens to the same rule. Thanks @GGGODLIN (#616).
+
 ## [1.25.0] - 2026-10-29
 
 ### Added

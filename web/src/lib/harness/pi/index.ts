@@ -90,7 +90,12 @@ function boundPrompt(lines: StyledLine[]): string | null {
 export const piAdapter: HarnessAdapter = {
   agent: "pi",
   buildBlocks: piBuildBlocks,
-  extractStatusLines: (lines) => composerStatusLines(piView(lines).lines),
+  // Only the rows piBuildBlocks took off the mirror, which it does on a ready editor alone. With a
+  // question, picker or dialog open they stay in the mirror or the card, and a strip copy doubles them.
+  extractStatusLines: (lines) => {
+    const view = piView(lines).lines;
+    return ready(view) ? composerStatusLines(view) : [];
+  },
   extractInputDraft: (lines) => {
     const view = piView(lines).lines;
     return ready(view) ? composerDraft(view) : null;
