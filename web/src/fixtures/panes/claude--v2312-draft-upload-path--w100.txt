@@ -1,0 +1,40 @@
+
+ ▐▛███▛█   Claude Code v2.1.312
+▝▜██████▀  Opus 5.5 with high effort · Claude Max
+ ▝▝   ▝▝   ~/.cache/collie-lab/draft-lab/run-claude
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                                                            ctrl+g to edit in nano
+────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ also mobile looks off
+  /home/operator1/.local/state/collie-next/uploads/w7C_pF-mvtrpn7j-e4f81595.png
+
+  menu should be a bottom sheet on the phone, not the side drawer, and the tab row needs the same
+  height as the belt
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  [Opus·high] ~/.cache/collie-lab/draft-lab/run-claude
+  ⏸ manual mode on

@@ -89,6 +89,8 @@ describe("parity with the old walk on the real corpus", () => {
     // inside the frame is draft text (ADR 0048 addendum 2026-09-26).
     "claude--v2283-draft-prompt.txt",
     "claude--v2283-draft-rule.txt",
+    // Claude Code 2.1.312: a two-paragraph draft whose upload path stays text on its own row (lab 2026-10-30).
+    "claude--v2312-draft-upload-path--w100.txt",
     // Claude Code 2.1.283 after the `/plugin` Marketplaces tab applied an update: the menu closed and
     // the chat holds "✔ Updated 1 marketplace" above an ordinary box, in both renderers.
     "claude--v2283-fullscreen-plugin-marketplaces-updated--w120.txt",

@@ -97,7 +97,7 @@
     "bracketed": true,
     "block": true,
     "image": "\\[Image #\\d+\\]",
-    "imageNote": "Lab 2026-10-21, Claude Code 2.1.305 over herdr: a whole-text paste loses each piece (cut at a newline, and at a space before an absolute path) that is an existing .png/.jpg/.jpeg/.gif/.webp file at an absolute path, any case; each shows as `[Image #N]` before the rest, and the kept pieces are joined by newlines. A missing file, a .txt, a file without extension, a `~/` or a relative path, and a path with words after it stay text.",
+    "imageNote": "Lab 2026-10-21, Claude Code 2.1.305 over herdr: a whole-text paste loses each piece (cut at a newline, and at a space before an absolute path) that is an existing .png/.jpg/.jpeg/.gif/.webp file at an absolute path, any case; each shows as `[Image #N]` before the rest, and the kept pieces are joined by newlines. A missing file, a .txt, a file without extension, a `~/` or a relative path, and a path with words after it stay text. Lab 2026-10-30, Claude Code 2.1.312 over tmux: the path is attached only when it is the WHOLE paste (`[Image #1]`); a path among other text stays text, cut onto a row of its own after the space, and a fold counts every typed line break (42 lines with a path: `+41 lines`; one 900-character line with the path: `[Pasted text #1]`). The compare takes both forms (`WholePaste.literal`), after the field case of 2026-10-29 where a two-paragraph message with the path was typed and never submitted.",
     "blockNote": "Lab 2026-10-20, Claude Code 2.1.304 over herdr: one bracketed paste of the whole text folds to `[Pasted text #N +M lines]`, M the line breaks (60 lines: +59; 30 short lines: +29); 3 short lines land literally; a 700-word line folds to `[Pasted text #N]`."
   },
   "ask": {
