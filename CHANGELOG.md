@@ -39,6 +39,13 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Fixed
 
 - **`collie doctor` prints every row in full at any width.** The plain output sizes the label column to the longest check id in its section, wraps a long value at the terminal width (80 when piped) with its next lines under the value, and breaks a path longer than the line at the edge. The terminal view wraps its detail and remedy the same way and never cuts one.
+- **The done line no longer repeats when a crew's machines share a pane id.** Two machines can both
+  hold `w6:p1`, and the line that says an agent finished compared panes by that bare id, so the pair
+  traded places on every poll and the line came back each time. It now keys a pane by its full
+  address, host and session included, and silences only the pane you have open, not its twin on
+  another machine. Thanks @OowhitecatoO (#614).
+- **The done line's open-pane lookup has a test.** The root layout resolves the pane on screen to a
+  row key through the route's own scope, so a shell pane, which is no agent row, silences nothing.
 
 ## [1.25.0] - 2026-10-29
 

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 
 import type { AgentStatus, AgentView } from "@/lib/types";
+import { paneRowKey } from "@/lib/hosts";
 import { setStatus } from "@/lib/status";
 
 // In-app lifecycle notifications. We diff each snapshot against the previous one and surface a
@@ -15,17 +16,22 @@ import { setStatus } from "@/lib/status";
 //
 // The first snapshot never fires (prev is null), so opening the app doesn't spam the status line
 // for agents that were already blocked — matching the server's transition semantics.
-export function useAgentTransitions(agents: AgentView[], openPaneId: string | null) {
+// `openPaneKey` is the open pane's `paneRowKey`, not its bare id, for the same reason the diff is keyed
+// by it: on a crew another machine's pane can share the open pane's id.
+export function useAgentTransitions(agents: AgentView[], openPaneKey: string | null) {
   const prev = useRef<Map<string, AgentStatus> | null>(null);
 
   useEffect(() => {
-    const now = new Map(agents.map((a) => [a.paneId, a.status]));
+    // Keyed by the full row identity, not the pane id: a crew lead's herd holds every member's panes,
+    // and two machines that both have a `w6:p1` would otherwise diff against each other on every poll.
+    const now = new Map(agents.map((a) => [paneRowKey(a), a.status]));
     const before = prev.current;
     if (before) {
       for (const a of agents) {
-        const was = before.get(a.paneId);
+        const key = paneRowKey(a);
+        const was = before.get(key);
         if (!was || was === a.status) continue;
-        if (a.paneId === openPaneId) continue; // you're already looking at it
+        if (key === openPaneKey) continue; // you're already looking at it
         if (a.status === "blocked") {
           setStatus(`${a.agent} needs you · ${a.workspaceLabel}`, "warn");
         } else if (a.status === "done") {
@@ -34,5 +40,5 @@ export function useAgentTransitions(agents: AgentView[], openPaneId: string | nu
       }
     }
     prev.current = now;
-  }, [agents, openPaneId]);
+  }, [agents, openPaneKey]);
 }
