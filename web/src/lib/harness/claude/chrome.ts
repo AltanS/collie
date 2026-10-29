@@ -397,13 +397,14 @@ function tailNamesAMenu(text: string, texts: string[]): boolean {
 // while background tasks or monitors exist. Claude Code 2.1.301 paints "↓ to view" on the mode row
 // while background tasks run (the 2026-10-16 incident on lane 8788, the agents panel under the box). A modal's footer says "Esc to cancel" / "to close" /
 // "to select", never these. The footer is clipped with "…" on a narrow pane, so "esc to inter…" is
-// the same hint cut short.
-const ESC_TO_INTERRUPT = /^esc to (?:interrupt|i(?:n(?:t(?:e(?:r(?:r(?:u(?:p)?)?)?)?)?)?)?…|…)$/i;
-const DOWN_TO_MANAGE = /^↓ to (?:manage|m(?:a(?:n(?:a(?:g)?)?)?)?…|…)$/i;
-const DOWN_TO_VIEW = /^↓ to (?:view|v(?:i(?:e)?)?…)$/i;
+// the same hint cut short, and so is "esc to interrupt…", where the clip fell on the separator after
+// the whole hint (namesAModalKey folds the " ·…" form of that clip into this one).
+const ESC_TO_INTERRUPT = /^esc to (?:interrupt…?|i(?:n(?:t(?:e(?:r(?:r(?:u(?:p)?)?)?)?)?)?)?…|…)$/i;
+const DOWN_TO_MANAGE = /^↓ to (?:manage…?|m(?:a(?:n(?:a(?:g)?)?)?)?…|…)$/i;
+const DOWN_TO_VIEW = /^↓ to (?:view…?|v(?:i(?:e)?)?…)$/i;
 // Claude Code 2.1.301 with the tasks pill focused (one ↓ from the box, lab 2026-10-16): the mode
 // row's last segment reads "Enter to view tasks", or that hint cut short.
-const ENTER_TO_VIEW_TASKS = /^enter to (?:view tasks|view t(?:a(?:s(?:k)?)?)?…|v(?:i(?:e(?:w)?)?)?…)$/i;
+const ENTER_TO_VIEW_TASKS = /^enter to (?:view tasks…?|view t(?:a(?:s(?:k)?)?)?…|v(?:i(?:e(?:w)?)?)?…)$/i;
 
 // Claude Code 2.1.291 prints "ctrl+g to edit in <editor>" while the draft holds more than one line:
 // right-aligned on the statusline's row, or on a row of its own at 40 columns
@@ -411,6 +412,18 @@ const ENTER_TO_VIEW_TASKS = /^enter to (?:view tasks|view t(?:a(?:s(?:k)?)?)?…
 // the hint is the composer's only while that dialog's own words are NOT on screen (namesPlanDialog),
 // the rule classifyFooter applies to the plan family (ADR 0053).
 const DRAFT_EDIT_HINT = /^ctrl\+g to edit\b[^·]*$/i;
+
+// A row clipped just after a separator ends in " ·…", which SEGMENT_SPLIT leaves glued to the last
+// segment. It is the same clip as a "…" straight after that segment.
+const CLIPPED_AT_SEPARATOR = /\s+·…$/;
+
+// Claude right-aligns a field of its own at the far end of the hint row ("0% until auto-compact",
+// "/rc"), padded out with spaces, so the last " · " segment carries it: "↓ to manage      0% until
+// auto-compact". Read whole, that segment is no status hint, its "↓" reads as a modal's key, and the
+// unread-dialog card covered a working pane (2026-10-06, the field report in PR 616; chrome.test.ts
+// holds its shapes, "status hints clipped at 59 columns"). A run of two or more spaces is that
+// padding, and no hint holds one, so a segment is split there before its fields are matched.
+const RIGHT_FIELD_PADDING = /\s{2,}/;
 
 function isStatusHint(segment: string, draftEditHint: boolean): boolean {
   const t = segment.trim();
@@ -429,9 +442,16 @@ function isStatusHint(segment: string, draftEditHint: boolean): boolean {
  */
 export function namesAModalKey(text: string, texts?: string[]): boolean {
   const draftEditHint = texts !== undefined && !namesPlanDialog(texts);
-  const segments = text.trim().split(SEGMENT_SPLIT);
-  const kept = segments.filter((segment) => !isStatusHint(segment, draftEditHint));
-  if (kept.length === segments.length) return namesAMenuKey(text);
+  // The " ·…" fold runs per field, since a clip on a separator can be followed by a right field.
+  const fields = text
+    .trim()
+    .split(SEGMENT_SPLIT)
+    .flatMap((segment) => segment.trim().split(RIGHT_FIELD_PADDING))
+    .map((field) => field.replace(CLIPPED_AT_SEPARATOR, "…"));
+  // Only an exact status hint is set aside, field by field; everything else, a right-aligned field
+  // included, is still matched as a key hint. With nothing set aside the row is read as it always was.
+  const kept = fields.filter((field) => !isStatusHint(field, draftEditHint));
+  if (kept.length === fields.length) return namesAMenuKey(text);
   return kept.length > 0 && namesAMenuKey(kept.join(" · "));
 }
 

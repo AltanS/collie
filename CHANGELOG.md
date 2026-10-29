@@ -27,6 +27,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **Pi and Muse status lines no longer show twice while a question or dialog is open.** Both readers now put a status line in the strip only when their blocks took that row off the mirror on a ready composer. A new test holds every reader with captured screens to the same rule. Thanks @GGGODLIN (#616).
 - **A narrow pi pane keeps the Cancel option of a question.** Below 47 columns pi wraps its key hint onto two rows, and when the break fell between two hints Collie lost the Escape that cancels. Collie now reads the wrapped hint both ways and keeps the reading with more hints. Thanks @GGGODLIN (#616).
+- **A narrow pane with a running turn or a right-aligned footer field no longer shows the unread-dialog card.** When Claude's footer was cut off right after a whole hint (`esc to interrupt…` or `·…`) or padded a right-aligned field (`0% until auto-compact`, `/rc`, or an update notice) after `↓ to manage`, Collie read the hint as a modal key and hid the input box. Both shapes now keep the composer live, and a real modal footer padded the same way still reads as a dialog. Thanks @GGGODLIN (#616).
 
 ## [1.25.0] - 2026-10-29
 
