@@ -353,6 +353,7 @@ function NewPage({ search }: { search: string }) {
     const outcome = await start(
       {
         what: ask.what,
+        rowHarness: ask.what.kind === "row" && kindOf(ask.what, offer) === "agent" ? itemOf(offer, ask.what)?.harness : undefined,
         cwd: sendCwd,
         requestId: requestId.current,
         legacyShell: legacy,

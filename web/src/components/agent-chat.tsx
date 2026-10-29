@@ -24,6 +24,8 @@ import { useNoPromptsGuard } from "@/hooks/use-no-prompts-guard";
 import { buzz } from "@/lib/haptics";
 import { handOf, mirrorFont, paneNavOf, useDisplayPrefs } from "@/hooks/use-display-prefs";
 import { useChatWindow } from "@/hooks/use-chat-window";
+import { useStartupReadiness } from "@/hooks/use-startup-readiness";
+import type { AgentLaunch } from "@/lib/agent-startup";
 import { useChatReady } from "@/hooks/use-chat-ready";
 import { usePaneStart } from "@/hooks/use-pane-start";
 import { useHandover, useHeldBody } from "@/hooks/use-handover";
@@ -158,6 +160,10 @@ interface AgentChatProps {
   /** Which machine + which named session this pane lives in — scopes every read/write + the safety chip. */
   scope?: Scope;
   agent: AgentView | undefined;
+  /** A launch this phone started, scoped to this pane: Send stays gated until its first screen is read. */
+  agentLaunch?: AgentLaunch;
+  /** Retires {@link agentLaunch} once its gate opens. Sends nothing. */
+  onLaunchReady?: () => void;
   agents: AgentView[];
   shellPanes: AgentView[];
   tabs: TabView[];
@@ -250,6 +256,8 @@ export function AgentChat({
   paneId,
   scope,
   agent,
+  agentLaunch,
+  onLaunchReady,
   agents,
   shellPanes,
   tabs,
@@ -730,6 +738,16 @@ export function AgentChat({
   // badge its row wears in the Spaces list. A terminal session's header is untouched.
   const experimental = wearsExperimental(useSessionCard(scope));
   const gridless = !paneGrid.capable;
+  const paneLive = useLive(paneId, scope);
+  // A launch this phone started: Send waits for the bridge to read the agent's first screen, the read
+  // that also ends the bridge's launch window, so the button never offers a send the bridge refuses.
+  const startup = useStartupReadiness({
+    launch: gridless ? undefined : agentLaunch,
+    agent: agent?.agent,
+    surface: agent?.surface,
+    live: paneLive && !connecting && !stale && !noSavedCopy && hostBlock === undefined,
+    onReady: onLaunchReady,
+  });
   // In a large screen's strip the space header holds the tabs and the sidebar the panes (ADR 0120).
   const stripsExist = !inStrip && !gridless && (canFold || tabPanes.length > 1);
   const folded = canFold && stripsFolded;
@@ -1765,7 +1783,6 @@ export function AgentChat({
   // Resolves false when no key went out, which is the card's cue to drop its pending face at once.
   const dialogPresentRef = useRef(dialogPresent);
   dialogPresentRef.current = dialogPresent;
-  const paneLive = useLive(paneId, scope);
   // The same fact for the structural writes: the tab and pane sheets (rename, close, focus) take it
   // as `savedCopy`, and the create hook above reads it through the ref. Nothing saved can act.
   const savedCopyWrites = actsDisabledByCache || !paneLive;
@@ -3159,6 +3176,7 @@ export function AgentChat({
                   // What owns the agent's keyboard, as the bridge read it (M56 spec 06). See
                   // `composerSurface` above for the facts folded in before any read.
                   surface={composerSurface}
+                  starting={startup.starting}
                   unreachableNote={unreachableNote}
                   scope={scope}
                   stale={actsDisabledByCache}
@@ -3296,7 +3314,7 @@ export function AgentChat({
                         closeDrawer();
                         // Beside THIS pane — the switcher's launch always opens a tab in this pane's
                         // Space, on this pane's own host (server.ts resolves `paneId` there).
-                        void launch(command, paneId);
+                        void launch(command, paneId, row?.kind === "agent" ? row.harness : undefined);
                       },
                     });
                   }

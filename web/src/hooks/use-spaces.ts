@@ -6,7 +6,9 @@ import { describeApiError, describeThrownError } from "@/lib/api-error-message";
 import { t } from "@/lib/i18n";
 import { setStatus } from "@/lib/status";
 import { stampTopology } from "@/lib/poll-intent";
-import { panePath } from "@/lib/nav";
+import { panePath, type NavExtras } from "@/lib/nav";
+import { mintRequestId } from "@/lib/worktree-name";
+import { startupHarness } from "@/lib/agent-startup";
 import { useNav } from "@/hooks/use-nav";
 import {
   isReadOnly,
@@ -16,12 +18,14 @@ import {
   type WorktreeFolderChoice,
 } from "@/lib/types";
 import { usePairing } from "@/lib/pairing";
-import { scopeKey, type Scope } from "@/lib/scope";
+import { paneScopeKey, scopeKey, type Scope } from "@/lib/scope";
 import { useOptionalRootData } from "@/lib/route-data";
 
 /** What the New page asks `start` to do. Exactly one `what`; `branch` makes it a new branch first. */
 export interface StartAsk {
   what: api.StartWhat;
+  /** An agent row's existing harness metadata; never inferred from its command line. */
+  rowHarness?: string;
   /** The folder, as typed or picked; absent is home (or a row's pinned folder). */
   cwd?: string;
   /** One id per intent, minted by the page and kept by a retry of the same ask. */
@@ -121,7 +125,7 @@ export function useSpaceActions(canWrite?: () => boolean) {
     // the SAME scope, or the phone would open the new pane's id on the machine it was looking at —
     // where that id is a different terminal, which is the one mistake the host dimension exists to
     // prevent. Absent means the ambient scope, which is every caller that cannot re-address.
-    (res: CreateResponse, what: "tab" | "space", at?: Scope) => {
+    (res: CreateResponse, what: "tab" | "space", at?: Scope, harness?: string) => {
       if (!res.ok) {
         setStatus(describeApiError(res), "error");
         return;
@@ -147,7 +151,10 @@ export function useSpaceActions(canWrite?: () => boolean) {
       revalidatorRef.current.revalidate();
       // `open`: a step DOWN from a dashboard or a space, SIDEWAYS from a pane (a new tab opened
       // from inside one), so the new pane's way up is the level the operator started from (ADR 0067).
-      nav.open(panePath(p.paneId, at ?? scopeRef.current), { freshPane: fresh });
+      const scope = at ?? scopeRef.current;
+      const state: NavExtras = { freshPane: fresh };
+      if (harness !== undefined) state.agentLaunch = { id: mintRequestId(), paneKey: paneScopeKey(scope, p.paneId), harness };
+      nav.open(panePath(p.paneId, scope), state);
     },
     [nav],
   );
@@ -245,7 +252,7 @@ export function useSpaceActions(canWrite?: () => boolean) {
             scope,
           );
           if (!res.ok) return { kind: "refused", message: describeApiError(res) };
-          open(res, "space", scope);
+          open(res, "space", scope, res.launcherStarted ? startupHarness(ask.what, ask.rowHarness) : undefined);
           if (ask.what.kind !== "shell" && !res.launcherStarted) setStatus(t("branchOff.launcherFailed"), "error");
           return { kind: "done" };
         }
@@ -260,7 +267,7 @@ export function useSpaceActions(canWrite?: () => boolean) {
               : await api.createTab(beside.workspaceId, cwd, scope)
             : await api.startLaunch(ask.what, { cwd: ask.cwd, requestId: ask.requestId, besidePaneId: beside?.paneId }, scope);
         if (!res.ok) return { kind: "refused", message: describeApiError(res) };
-        open(res, beside === undefined ? "space" : "tab", scope);
+        open(res, beside === undefined ? "space" : "tab", scope, startupHarness(ask.what, ask.rowHarness));
         return { kind: "done" };
       } catch (e) {
         if (api.outcomeUnknown(e)) return { kind: "unknown" };
@@ -288,14 +295,15 @@ export function useSpaceActions(canWrite?: () => boolean) {
   const launch = useCallback(
     // `beside` is the pane id to open a tab next to — the switcher's row passes the current pane;
     // the dashboard's row passes nothing, and the bridge creates a throwaway Space instead.
-    async (command: string, beside?: string) => {
+    async (command: string, beside?: string, rowHarness?: string) => {
       if (readOnlyRef.current) return setStatus(blockedText(), "error");
       if (refusedAsSavedCopy()) return;
       if (launchingRef.current.has(command)) return;
       launchingRef.current.add(command);
       setLaunching(new Set(launchingRef.current));
+      const scope = scopeRef.current;
       try {
-        open(await api.launch(command, beside, scopeRef.current), beside !== undefined ? "tab" : "space");
+        open(await api.launch(command, beside, scope), beside !== undefined ? "tab" : "space", scope, rowHarness);
       } catch (e) {
         setStatus(describeThrownError(e), "error");
       } finally {

@@ -1,3 +1,4 @@
+import { readAgentLaunch } from "@/lib/agent-startup";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -487,6 +488,7 @@ describe("the New page: Start", () => {
     expect(summary()).toHaveTextContent("Codex in ~/src/app");
     await userEvent.click(screen.getByRole("button", { name: "Start" }));
     await waitFor(() => expect(router.state.location.pathname).toBe("/pane/w9%3Ap1"));
+    expect(readAgentLaunch(router.state.location.state, "w9:p1")?.harness).toBe("codex");
     expect(bodies).toEqual([{ harness: "codex", cwd: "~/src/app", requestId: expect.stringMatching(/^[0-9a-f-]{36}$/) }]);
     // The page was REPLACED by the pane, so Back from the pane does not land on a used form.
     await router.navigate(-1);
@@ -519,6 +521,7 @@ describe("the New page: Start", () => {
     await userEvent.click(await screen.findByRole("button", { name: /Again: Codex/ }));
     await waitFor(() => expect(bodies).toHaveLength(2));
     expect(bodies[1]).toMatchObject({ harness: "codex" });
+    await waitFor(() => expect(readAgentLaunch(router.state.location.state, "w9:p1")?.harness).toBe("codex"));
   });
 
   it("an older Collie starts Shell through its space create", async () => {

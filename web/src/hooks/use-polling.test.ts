@@ -4,6 +4,7 @@ import {
   BURST_MS,
   HOME_BUSY_MS,
   HOT_MS,
+  STARTUP_HOT_MS,
   IDLE_MS,
   RETRY_MS,
   SUPERSEDE_MS,
@@ -617,5 +618,55 @@ describe("an update in flight is the fastest thing on the screen it is on", () =
     // a mirror somebody is reading.
     const data = withRun({ run: run("staging") });
     expect(intervalFor(data, "w1:p1", { bursting: true, following: true, changed: false })).toBe(BURST_MS);
+  });
+});
+
+
+interface StartupPollProps { id: string | undefined }
+
+describe("startup watch uses the existing bounded poller", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    rr.state = "idle";
+    rr.revalidate.mockClear();
+    resetPollIntent();
+    resetIdleLock();
+  });
+  afterEach(() => {
+    resetIdleLock();
+    resetPollIntent();
+    vi.useRealTimers();
+  });
+
+  it("watches a named new pane even before its first snapshot, without changing home cadence", () => {
+    const intent: PollIntent = { bursting: false, following: true, changed: false, starting: true };
+    expect(intervalFor(makeData([]), "new:p1", intent)).toBe(HOT_MS);
+    expect(intervalFor(makeData([]), null, intent)).toBe(IDLE_MS);
+    expect(intervalFor(makeData([]), "new:p1", { ...intent, topologyBursting: true })).toBe(BURST_MS);
+  });
+
+  it("retires the watch with the launch marker; expiry slows polling but never claims readiness", () => {
+    const data = makeData([]);
+    const initial: StartupPollProps = { id: "launch" };
+    const { result, rerender } = renderHook(({ id }: StartupPollProps) => usePolling(data, "new:p1", undefined, true, id), { initialProps: initial });
+    expect(result.current).toBe(HOT_MS);
+    act(() => vi.advanceTimersByTime(HOT_MS));
+    expect(rr.revalidate).toHaveBeenCalledOnce();
+    rerender({ id: undefined });
+    expect(result.current).toBe(IDLE_MS);
+    rerender({ id: "another launch" });
+    expect(result.current).toBe(HOT_MS);
+    act(() => vi.advanceTimersByTime(STARTUP_HOT_MS));
+    rerender({ id: "another launch" });
+    expect(result.current).toBe(IDLE_MS);
+    rerender({ id: "fresh intent" });
+    expect(result.current).toBe(HOT_MS);
+  });
+
+  it("startup polling still pauses behind the idle cover", () => {
+    renderHook(() => usePolling(makeData([]), "new:p1", undefined, true, "launch"));
+    act(() => setLocked(true));
+    act(() => vi.advanceTimersByTime(HOT_MS * 3));
+    expect(rr.revalidate).not.toHaveBeenCalled();
   });
 });

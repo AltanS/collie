@@ -6,6 +6,7 @@ import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
 import { resetPollIntent, topologyBursting } from "@/lib/poll-intent";
 import type { Scope } from "@/lib/scope";
 import { clearStatus, setStatus, useStatus } from "@/lib/status";
+import { readAgentLaunch } from "@/lib/agent-startup";
 import { tabCreateKey, useSpaceActions } from "./use-spaces";
 
 // Stub the bridge's create endpoints at the api seam — same idiom launch-strip.test.tsx uses for
@@ -295,6 +296,38 @@ describe("useSpaceActions — start", () => {
     expect(mockStartLaunch).toHaveBeenCalledWith({ kind: "harness", id: "claude" }, { cwd: "~/src/app", requestId: REQUEST_ID }, {});
     expect(document.body.dataset.outcome).toBe("done");
     expect(router.state.location.pathname).toBe("/pane/w7%3Ap1");
+  });
+
+  it.each([
+    [{ kind: "harness", id: "kiro" }, undefined, "kiro"],
+    [{ kind: "row", command: "kiro --flag" }, "kiro", "kiro"],
+    [{ kind: "row", command: "kiro" }, undefined, undefined],
+    [{ kind: "shell" }, undefined, undefined],
+    [{ kind: "starter", id: "start" }, undefined, undefined],
+  ] as const)("launch intent uses existing metadata for %j", async (what, rowHarness, expected) => {
+    mockStartLaunch.mockResolvedValueOnce(pane("w7"));
+    const router = await press({ what, rowHarness, requestId: REQUEST_ID });
+    expect(readAgentLaunch(router.state.location.state, "w7:p1", {})?.harness).toBe(expected);
+    expect(router.state.location.state?.freshPane.agent).toBe("shell");
+    expect(router.state.location.state?.from).toBe("/");
+  });
+
+  it("an agent started beside a pane keeps both tab creation and startup intent", async () => {
+    mockStartLaunch.mockResolvedValueOnce(pane("w7"));
+    const what = { kind: "harness", id: "kiro" } as const;
+    const router = await press({ what, cwd: "~/src/app", requestId: REQUEST_ID,
+      beside: { paneId: "w7:p2", workspaceId: "w7" } });
+    expect(mockStartLaunch).toHaveBeenCalledWith(what, { cwd: "~/src/app", requestId: REQUEST_ID, besidePaneId: "w7:p2" }, {});
+    expect(router.state.location.pathname).toBe("/pane/w7%3Ap1");
+    expect(readAgentLaunch(router.state.location.state, "w7:p1", {})?.harness).toBe("kiro");
+    expect(screen.getByTestId("status-probe")).toHaveTextContent("New tab ready, launch your agent");
+  });
+
+  it.each([true, false])("a worktree carries launch intent only if launcherStarted is %s", async (launcherStarted) => {
+    mockCreateWorktreeAt.mockResolvedValueOnce({ ...pane("w7"), launcherStarted, alreadyOpen: false });
+    const router = await press({ what: { kind: "harness", id: "kiro" }, requestId: REQUEST_ID,
+      branch: { cwd: "~/src", name: "fix", base: { kind: "default" }, folder: { kind: "default" } } });
+    expect(readAgentLaunch(router.state.location.state, "w7:p1", {})?.harness).toBe(launcherStarted ? "kiro" : undefined);
   });
 
   it("a one-off line goes to startRun with its folder and the request id, and lands on the pane", async () => {

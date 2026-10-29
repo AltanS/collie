@@ -73,3 +73,22 @@ trust decision and does not widen the send profile's verified version range.
 complete subjects, bridge binding and conservative refusal. `kiro.test.ts` includes these
 screens in adapter conformance, `walk-pairs.ts` declares the selected-row pairs, and the
 Surface labels and binding-region corpus pin every added capture.
+
+## Startup gate on the phone (2026-10-22, refit 2026-10-29)
+
+A launch's successful response means the agent's line was typed into a shell, not that the agent
+has drawn anything. The bridge's launch window (`bridge/launch-window.ts`) already refuses a send
+into that pane until the agent's input box is on screen, and a send held at the trust dialog goes
+on the first free poll after the dialog leaves. Neither needs anything Kiro-specific.
+
+What the phone adds is the button. A launch it started carries a scoped intent in the route's
+state, and while it stands the composer keeps the draft editable and local, and Send, steer,
+hands-free voice and the offer strip send nothing. The gate opens when the bridge's Surface for the
+pane names the launched harness and reads a dialog or an input box, the same read that ends the
+launch window. A trust prompt then goes to the composer's ordinary answer slot. The gate also opens
+when the agent leaves the pane, and after the launch window's two-minute bound. It opens once per
+launch and never closes again. The pane view polls at its hot cadence for the first twenty
+seconds of a launch, so the read that opens the gate arrives quickly. That clock never opens it.
+
+A live Pixel 7 run on 2026-10-22, against the branch before this refit, saw trust appear without a
+Send tap and the draft stay local through Trust. It has not been repeated on the refit.

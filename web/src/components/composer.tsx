@@ -144,6 +144,11 @@ interface ComposerProps {
    * cannot reach, a bridge whose Send Protocol is off), and names the reason in `unreachableNote`.
    */
   surface: Surface;
+  /**
+   * A launch this phone started has not shown its first screen to the bridge yet: the draft stays
+   * editable and on the phone, and nothing sends it. The keys and Type here stay as they are.
+   */
+  starting?: boolean;
   /** Why the box cannot be reached, for the placeholder, when `surface.composer` is `unreachable`. */
   unreachableNote?: string;
   /** Which machine + which named session the pane lives in — scopes every write to the right Herdr. */
@@ -456,7 +461,7 @@ interface ClearedDraft {
 
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, instance, surface, unreachableNote, scope, stopOffered = false, agent, canSteer, returnedDraft = false, isShell, cwd, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, onOpenMessages, held: heldRows, chatEntries, pullHandle, draftNoticeSlot, changesPill, stale, hand = "right", aboveBelt, floatingHint, screen, todos, subagents },
+  { paneId, instance, surface, starting = false, unreachableNote, scope, stopOffered = false, agent, canSteer, returnedDraft = false, isShell, cwd, gone, readOnly, composing, onAnswerDialog, dialogCard = false, text, terminalDraft, rawTerminalDraft, prefs, display, onSent, onOpenMessages, held: heldRows, chatEntries, pullHandle, draftNoticeSlot, changesPill, stale, hand = "right", aboveBelt, floatingHint, screen, todos, subagents },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -979,7 +984,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const micIsPrimary = micShown && !direct.active && !hasDraft;
   // The Send button's hold (M62). Offered only where a message could leave: not on a locked field, not
   // offline, not while Type mode owns the button as its Stop control, and not mid-send.
-  const canMessage = hasDraft && !locked && !offline && !direct.active && !sending && !walky.sending;
+  const canMessage = hasDraft && !starting && !locked && !offline && !direct.active && !sending && !walky.sending;
   // M69: the Steer row of that menu. Only while the turn reads running, only where the bridge says the
   // profile has a steer key, and never for a reply in message mode (a walky message always queues).
   const steerRow = canSteer === true && shownSurface.turn === "running" && walky.aim === null;
@@ -1055,7 +1060,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   function acceptTranscript(transcript: string) {
     const draftEmpty = inputValueRef.current.trim() === "" && attachmentsRef.current.length === 0;
     const mayHandsFree =
-      handsFree && draftEmpty && noEchoRef.current === null && !locked && !offline && slot !== "answer";
+      handsFree && draftEmpty && noEchoRef.current === null && !starting && !locked && !offline && slot !== "answer";
     if (mayHandsFree) {
       void send(transcript, false);
       return;
@@ -1540,7 +1545,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     // check and the mode read the fully trimmed text on both, so neither sees a difference.
     const trimmed = value.trim();
     const t = isShell ? value.trimEnd() : trimmed;
-    if (!trimmed || locked || sending) return false;
+    if (!trimmed || starting || locked || sending) return false;
     if (offlineRef.current) {
       setSendRefusal(phoneRefusal(translate("composer.send.reconnect")));
       return false;
@@ -1562,6 +1567,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // `resend` is a resend of an ended held row: the request carries the old id and an empty text, the
   // bridge takes the row's own text, and `shown` (the row's text, maybe masked) is only for the preview.
   async function sendThroughProtocol(t: string, isDraft: boolean, mode: SendMode, rowsHash: string | null, capAck = false, resend?: { oldId: string; shown: string }, when?: SendWhen): Promise<boolean> {
+    if (starting) return false;
     setSending(true);
     setSendRefusal(null);
     setPendingUnknown(null); // a new send supersedes the last one's open question (#511)
@@ -1636,13 +1642,14 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // the box holds). Never a draft, so the box keeps whatever the person is typing now. True when the
   // bridge took it.
   function resendHeld(row: HeldRow, action: HeldAction): Promise<boolean> {
-    if (sending || locked) return Promise.resolve(false);
+    if (starting || sending || locked) return Promise.resolve(false);
     if (action === "resend") return sendThroughProtocol("", false, row.mode, null, false, { oldId: row.requestId, shown: row.text });
     return sendThroughProtocol(row.text, false, action, null);
   }
 
   // A tap on an offer the last answer made: a new request with a new id, or nothing (`cancel`).
   function onProtocolOffer(offer: SendOffer) {
+    if (starting) return;
     const held = protocolOffer;
     setProtocolOffer(null);
     setSendRefusal(null);
@@ -1665,6 +1672,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // turn. A destructive line arms "Really send?", and the confirming tap must send what was armed, so
   // `armedWhen` keeps the choice across the two taps (the confirm button calls this with it).
   function onSendClick(when?: SendWhen) {
+    if (starting) return;
     // A reply in message mode goes to the other session through the bridge's walky route, and is not
     // typed into this pane by us, so the destructive-command guard (a shell concern) does not apply.
     if (walky.aim !== null) {
@@ -2471,6 +2479,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             reason and shares that place, one notice at a time, and so does the held-send card
             (amended 2026-10-18), above the notice. See `floating` above; it renders here. */}
         {draftNoticeSlot ? createPortal(floating, draftNoticeSlot) : floating}
+        {/* A launch this phone started, before the bridge has read its first screen: Send waits, and
+            this says why for as long as it is true. */}
+        <Collapse open={starting && !locked && !direct.active}>
+          <Notice variant="box" tone="info" announce="status">{translate("newPage.starting")}</Notice>
+        </Collapse>
         {/* The Send Protocol's offers (M56 spec 05), at the thumb: Add / Replace / Cancel on a draft,
             Submit / Discard on text that was typed and not sent, and the second tap on a screen
             Collie cannot read. Each is a new request; the ✕ drops the strip and sends nothing. */}
@@ -2478,7 +2491,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           {protocolOffer !== null && (
             <SendOfferStrip
               offers={protocolOffer.offers}
-              disabled={sending || locked}
+              disabled={starting || sending || locked}
               onOffer={onProtocolOffer}
               // The ✕ drops the strip and hides the notice over it: a notice that still says "tap Type
               // here" with no Type here to tap is a sentence about a button that is gone.
@@ -2970,7 +2983,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               variant="destructive"
               className={cn(TOOLBAR_TAP_TARGET, "h-9 shrink-0 rounded-md px-3 text-sm font-semibold")}
               onClick={() => onSendClick(armedWhen.current)}
-              disabled={locked || offline || !hasDraft || sending}
+              disabled={starting || locked || offline || !hasDraft || sending}
               title={offline ? translate("composer.send.reconnect") : undefined}
               aria-label={offline ? translate("composer.send.reconnect") : translate("composer.send.reallySend")}
             >
@@ -3009,7 +3022,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               {...sendHold}
               className={cn(TOOLBAR_TAP_TARGET, "size-9 shrink-0 select-none rounded-full [-webkit-touch-callout:none]")}
               onClick={direct.active ? () => direct.deactivate() : () => onSendClick()}
-              disabled={locked || sending || (offline && !direct.active)}
+              disabled={locked || sending || ((starting || offline) && !direct.active)}
               title={offline && !direct.active ? translate("composer.send.reconnect") : undefined}
               aria-label={
                 direct.active
@@ -3046,7 +3059,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           hand={hand}
           padClassName={blockPad}
           keyboardOpened={openedByKeyboard.current}
-          sends={handsFree && !hasDraft && noEcho === null}
+          sends={!starting && handsFree && !hasDraft && noEcho === null}
           engine={recorder.engine}
           failure={recorder.failure}
           onSendToHost={recorder.canSendToHost ? recorder.sendToHost : null}
