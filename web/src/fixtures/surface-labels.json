@@ -2296,6 +2296,31 @@
    "version": "0.165.0",
    "state": "idle"
   },
+  "codex--v0166-art-backspace--w120.txt": {
+   "harness": "codex",
+   "version": "0.166.0",
+   "state": "idle"
+  },
+  "codex--v0166-art-empty--w120.txt": {
+   "harness": "codex",
+   "version": "0.166.0",
+   "state": "idle"
+  },
+  "codex--v0166-art-typed--w120.txt": {
+   "harness": "codex",
+   "version": "0.166.0",
+   "state": "draft"
+  },
+  "codex--v0166-warning-art-empty--w120.txt": {
+   "harness": "codex",
+   "version": "0.166.0",
+   "state": "idle"
+  },
+  "codex--v0166-warning-typed--w120.txt": {
+   "harness": "codex",
+   "version": "0.166.0",
+   "state": "draft"
+  },
   "codex--working.txt": {
    "harness": "codex",
    "version": "unversioned",

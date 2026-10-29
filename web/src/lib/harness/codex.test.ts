@@ -94,6 +94,13 @@ const PINNED = [
   // Issue 615, derived (not captured): the empty and draft composers with `»` for `›` (Ultra effort).
   "codex--v0165-ultra-draft.txt",
   "codex--v0165-ultra-empty--w120.txt",
+  // 0.166.0, harness lab drift: the braille logo over an empty box on a pane of 32 rows or more, gone at the
+  // first character and back after Backspace; and the footer's `⚠ 1 warning · f2 to view` that any `-c` draws.
+  "codex--v0166-art-backspace--w120.txt",
+  "codex--v0166-art-empty--w120.txt",
+  "codex--v0166-art-typed--w120.txt",
+  "codex--v0166-warning-art-empty--w120.txt",
+  "codex--v0166-warning-typed--w120.txt",
   "codex--working.txt",
 ];
 
@@ -156,6 +163,29 @@ describe("composerReady — the gate the reply path pre-flights on", () => {
 
   it.each([...DIALOG, "codex--ask-notes-focused.txt"])("%s: a modal owns the screen ⇒ false", (name) => {
     expect(codexAdapter.composerReady!(fixtureLines(name))).toBe(false);
+  });
+});
+
+describe("Codex 0.166.0: the logo over an empty box and the lone warning row (harness lab drift, 2026-10-29)", () => {
+  it.each([
+    ["codex--v0166-art-empty--w120.txt", null],
+    ["codex--v0166-art-typed--w120.txt", "x"],
+    ["codex--v0166-art-backspace--w120.txt", null],
+    ["codex--v0166-warning-art-empty--w120.txt", null],
+    ["codex--v0166-warning-typed--w120.txt", "x"],
+  ] as const)("%s: the box is found on the same row, and its draft reads back", (name, draft) => {
+    const lines = fixtureLines(name);
+    expect(codexAdapter.composerReady!(lines)).toBe(true);
+    expect(codexAdapter.extractInputDraft(lines)).toBe(draft);
+    expect(locateComposer(lines)?.promptRow).toBe(locateComposer(fixtureLines("codex--v0166-art-empty--w120.txt"))?.promptRow);
+  });
+
+  it("the logo lifts no block and no dialog", () => {
+    for (const name of ["codex--v0166-art-empty--w120.txt", "codex--v0166-warning-art-empty--w120.txt"]) {
+      expect(detectApprovalRegion(fixtureLines(name)), name).toBeNull();
+      expect(detectAskRegion(fixtureLines(name)), name).toBeNull();
+      expect(detectTrustRegion(fixtureLines(name)), name).toBeNull();
+    }
   });
 });
 

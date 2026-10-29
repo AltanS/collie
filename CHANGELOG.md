@@ -23,6 +23,15 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **A send into Codex 0.166 is no longer refused when its footer shows a warning.** Codex 0.166 shows
+  `⚠ 1 warning · f2 to view` in the footer when it was started with a `-c` setting, and keeps that row
+  alone once the box holds text. Collie read the lone row as a screen that moved, so every checked send
+  ended `probe_failed`. The Codex input profile now names the row as a hint, in its long form and the
+  narrow `⚠ 1 · f2` form. The logo Codex 0.166 draws over an empty box on a tall pane was already
+  covered and stays so, with tests on the real screens.
+
 ## [1.25.0] - 2026-10-29
 
 ### Added

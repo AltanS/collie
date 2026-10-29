@@ -10290,3 +10290,87 @@ describe("a command on a fresh Codex 0.163.0 screen, whose welcome picture hides
     expect(pane.keysSeen).not.toContain("Enter");
   });
 });
+
+describe("a probed message into a tall Codex 0.166.0 pane (harness lab drift, 2026-10-29)", () => {
+  // eslint-disable-next-line no-control-regex
+  const plain = (row: string): string => row.replace(/\u001b\[[0-9;:?]*[ -/]*[@-~]/gu, "");
+  const pane = (name: string): string[] => readFileSync(join(import.meta.dirname, "..", "..", "web", "src", "fixtures", "panes", name), "utf8").replace(/\n$/u, "").split("\n");
+  /**
+   * The captures as Codex draws them: `empty` until the first key, `typed` with its box row redrawn while
+   * the box holds text, and `back` once the box is empty again (the logo returns after the probe's Backspace).
+   */
+  const codex0166 = (empty: string, typed: string, back: string): FakePane => {
+    const before = pane(empty);
+    const holding = pane(typed);
+    const after = pane(back);
+    const at = holding.findLastIndex((row) => plain(row).startsWith("› "));
+    const fake = new FakePane("codex");
+    let touched = false;
+    fake.afterInput = () => {
+      touched = true;
+    };
+    fake.render = () => (fake.box !== "" ? holding.map((row, i) => (i === at ? `\u001b[1m›\u001b[0m ${fake.box}` : row)) : touched ? after : before).join("\n");
+    return fake;
+  };
+  const logo = (): FakePane => codex0166("codex--v0166-art-empty--w120.txt", "codex--v0166-art-typed--w120.txt", "codex--v0166-art-backspace--w120.txt");
+  const warning = (): FakePane => codex0166("codex--v0166-warning-art-empty--w120.txt", "codex--v0166-warning-typed--w120.txt", "codex--v0166-warning-art-empty--w120.txt");
+  const noLosesText = (profile: Profile): Profile => ({ ...profile, idle: { ...profile.idle, volatile: { ...profile.idle.volatile, above: { maxRows: profile.idle.volatile.above.maxRows } } } });
+  /** The Codex profile as it was before the warning row of its own took a hint. */
+  const noWarningHint = (profile: Profile): Profile => ({
+    ...profile,
+    idle: {
+      ...profile.idle,
+      volatile: { ...profile.idle.volatile, below: { ...profile.idle.volatile.below, hints: (profile.idle.volatile.below.hints ?? []).filter((hint) => !hint.includes("⚠")) } },
+    },
+  });
+
+  test("the 17-row logo hides at the probe character and returns after Backspace: the rows above only lost text, so the probe passes and Tab sends", async () => {
+    const fake = logo();
+    const answer = await rig({ pane: fake, harness: "codex", version: "0.166.0" }).send("reply with one word: ready");
+    expect(answer.receipt).toMatchObject({ outcome: "sent", profileStatus: "provisional", keys: ["probe", "Backspace", "Tab"] });
+    expect(fake.transcript.at(-1)).toBe("› reply with one word: ready");
+  });
+
+  test("a message's probe reads only the box and the rows under it (Codex takes text in a turn): the logo is no factor, with or without losesText", async () => {
+    const answer = await rig({ pane: logo(), harness: "codex", version: "0.166.0", edit: noLosesText }).send("reply with one word: ready");
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Tab"] });
+  });
+
+  test("a command compares the rows above too: the logo only lost its rows (idle.volatile.above.losesText), so /status goes in", async () => {
+    const fake = logo();
+    const answer = await rig({ pane: fake, harness: "codex", version: "0.166.0" }).send("/status", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"] });
+  });
+
+  test("without losesText the logo going reads as a moved screen for a command, and its probe is refused", async () => {
+    const fake = logo();
+    const answer = await rig({ pane: fake, harness: "codex", version: "0.166.0", edit: noLosesText }).send("/status", { mode: "command" });
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed" });
+    expect(fake.keysSeen).not.toContain("Enter");
+  });
+
+  test("a lone `⚠ 1 warning · f2 to view` row under the box once it holds text is a hint, so the probe passes and Tab sends", async () => {
+    const fake = warning();
+    const answer = await rig({ pane: fake, harness: "codex", version: "0.166.0" }).send("reply with one word: ready");
+    expect(answer.receipt).toMatchObject({ outcome: "sent", profileStatus: "provisional", keys: ["probe", "Backspace", "Tab"] });
+    expect(fake.transcript.at(-1)).toBe("› reply with one word: ready");
+  });
+
+  test("without the warning hint the lone warning row counts as a screen that moved, and the probe is refused, as it was in the lab", async () => {
+    const fake = warning();
+    const answer = await rig({ pane: fake, harness: "codex", version: "0.166.0", edit: noWarningHint }).send("reply with one word: ready");
+    expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed" });
+    expect(fake.keysSeen.filter((key) => key === "Tab" || key === "Enter")).toEqual([]);
+  });
+
+  test("the warning hint takes the full and the narrow notice, and no other row", () => {
+    const hints = (loadProfiles().get("codex")?.idle.volatile.below.hints ?? []).map((source) => new RegExp(source, "u"));
+    const isHint = (row: string): boolean => hints.some((hint) => hint.test(row));
+    expect(isHint(`${" ".repeat(95)}⚠ 1 warning · f2 to view`)).toBe(true);
+    expect(isHint(`${" ".repeat(20)}⚠ 12 warnings · f2 to view`)).toBe(true);
+    expect(isHint("  ⚠ 1 · f2")).toBe(true);
+    expect(isHint("  ⚠ 1 warning · f2 to view the diff")).toBe(false);
+    expect(isHint("  GPT-6.1-Sol default · ~/project")).toBe(false);
+    expect(isHint("  ⚠ Heads up, you have less than 5% of your weekly limit left")).toBe(false);
+  });
+});
