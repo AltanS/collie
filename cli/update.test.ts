@@ -1342,7 +1342,7 @@ interface BinaryOptions {
   /** The digest the download reports — a different one is the corruption case. */
   digest?: string;
   tagsFailure?: { status: number | null; message: string };
-  downloadFailure?: { status: number | null; message: string; kind?: "stall" };
+  downloadFailure?: { status: number | null; message: string; kind?: "stall" | "slow" };
   restart?: number;
   smoke?: { pre?: boolean; post?: boolean };
   /** The laid candidate's whole answer to `version`, when a case needs more than a wrong word. */
@@ -3681,6 +3681,15 @@ describe("staging reports itself while it builds", () => {
     expect(err).toContain(`error: downloading collie-${NEW}-linux-x64.tar.gz ${message}. Nothing was changed.`);
     expect(err).not.toContain("could not reach");
     expect(h.files.exists(`${INST}/versions/${NEW}`)).toBe(false);
+  });
+
+  test("a download that passed the total cap says so, and not 'could not reach' (#613)", async () => {
+    const message = "took longer than 30 min (20.0 MB of 57.3 MB)";
+    const h = binaryHarness({ downloadFailure: { status: null, kind: "slow", message } });
+    expect(await cmdUpdate(h.deps, ["--run-id", RUN])).toBe(EXIT.FAIL);
+    const err = h.io.stderr.join("\n");
+    expect(err).toContain(`error: downloading collie-${NEW}-linux-x64.tar.gz ${message}. Nothing was changed.`);
+    expect(err).not.toContain("could not reach");
   });
 
   test("a second update beside a live one writes nothing: `update.json` keeps one writer", async () => {

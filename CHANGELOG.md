@@ -33,9 +33,16 @@ Running a crew? Update the lead first; members follow on their own. Details:
   Thanks @Skydev0h for the diagnosis.
 - **An update no longer fails because the release download is slow.** The release download had a 20
   second total deadline, so on a link under about 23 Mbit/s the 57 MB asset timed out and Collie said
-  it could not reach github.com. The download now has no total deadline. It stops only when no bytes
-  arrive for 60 seconds, and the error then says the download stalled, with how much had arrived.
-  Connecting and the small release lookups keep their 20 second limit. ([#613](https://github.com/AltanS/collie/issues/613)) Thanks @mglasner for the diagnosis.
+  it could not reach github.com. The download now stops only when no bytes arrive for 60 seconds, and
+  the error then says the download stalled, with how much had arrived. Connecting and the small release
+  lookups keep their 20 second limit. If your update already fails with "could not reach github.com",
+  run `curl -fsSL https://colliepwa.dev/install.sh | COLLIE_TAG=v1.24.3 sh` once by hand (the Stable
+  patch that carries this fix); after that updates work from the phone again, on Stable and on Edge.
+  ([#613](https://github.com/AltanS/collie/issues/613)) Thanks @mglasner for the diagnosis.
+- **A very slow release download now ends after 30 minutes instead of trickling on.** A server that
+  sends a few bytes just inside each 60 second window never counts as stalled, so the download has a
+  total cap of 30 minutes (about 32 KB/s for the 57 MB asset). The error says the download took longer
+  than 30 minutes and how much had arrived, and nothing is changed. ([#613](https://github.com/AltanS/collie/issues/613))
 
 ## [1.24.2] - 2026-10-28
 
