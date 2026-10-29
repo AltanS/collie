@@ -12,7 +12,8 @@ import { readTail, TAIL_BYTES, windowFromModel } from "./context-reading.ts";
 import { beaconFileName, beaconKey, EDGE_FILE, EDGE_MAX_AGE_MS, EDGE_SPOOL_MAX } from "../bridge/beacon/paths.ts";
 import { hookTargetFileName } from "../bridge/beacon/hook-targets.ts";
 import { BEACON_SCHEMA_VERSION, type EdgeRecord } from "../bridge/beacon/types.ts";
-import { BEACON_HARNESS, BEACON_HOOKS, type BeaconEmitDeps, cmdBeaconEmit, readEnvMarkers, runBeaconEmit, unwrapPrompt } from "./beacon.ts";
+import { HERDR_CORE_MUX } from "../bridge/mux/herdr-core/adapter.ts";
+import { BEACON_HARNESS, BEACON_HOOKS, HERDR_CORE_NAMESPACE, type BeaconEmitDeps, cmdBeaconEmit, readEnvMarkers, runBeaconEmit, unwrapPrompt } from "./beacon.ts";
 import { context, fakeFiles, HOME, STATE } from "./fakes.ts";
 import { EXIT } from "./io.ts";
 import type { Environment } from "./context.ts";
@@ -94,6 +95,40 @@ describe("the environment gate", () => {
 
   test("a plain terminal has nothing at all", () => {
     expect(readEnvMarkers({ HOME: "/home/pat" })).toEqual([]);
+  });
+});
+
+// herdr-core (M74 spec 04): the core exports the terminal's address and its own socket into every
+// terminal it runs. Probed 2026-10-29 on hc 0.1.14: HC_TERMINAL_ID=t1 and HC_TERMINAL_SOCKET, which
+// stays the core's own path when HC_SOCKET names another one.
+describe("a herdr-core terminal", () => {
+  const CORE: Environment = { HC_TERMINAL_ID: "t3", HC_TERMINAL_SOCKET: "/run/user/1000/herdr-core/default.sock" };
+
+  test("the namespace is the adapter's registry key", () => {
+    expect(HERDR_CORE_NAMESPACE).toBe(HERDR_CORE_MUX);
+  });
+
+  test("the address is the pane and the core's socket is the scope, raw", () => {
+    expect(readEnvMarkers(CORE)).toEqual([{ namespace: "herdr-core", scope: "/run/user/1000/herdr-core/default.sock", pane: "t3" }]);
+  });
+
+  test("a terminal without the socket variable, or with only HC_SESSION, carries no marker", () => {
+    expect(readEnvMarkers({ HC_TERMINAL_ID: "t3" })).toEqual([]);
+    expect(readEnvMarkers({ HC_SESSION: "work", HC_SOCKET: "/x.sock" })).toEqual([]);
+  });
+
+  test("a core terminal started inside the Herdr TUI carries both markers, each naming its own", () => {
+    const both = readEnvMarkers({ ...CORE, HERDR_PANE_ID: "w6Y:pG", HERDR_SOCKET_PATH: "/home/pat/.config/herdr/herdr.sock" });
+    expect(both.map((m) => m.namespace)).toEqual(["herdr", "herdr-core"]);
+  });
+
+  test("the emitter writes a beacon keyed by the core terminal, with the session id", async () => {
+    const d = deps({ env: CORE });
+    expect(await cmdBeaconEmit(d)).toBe(EXIT.OK);
+    const [text] = [...beacons(d.files).values()];
+    const record = parseBeacon(text ?? "");
+    expect(record?.markers).toEqual([{ namespace: "herdr-core", scope: "/run/user/1000/herdr-core/default.sock", pane: "t3" }]);
+    expect(record?.session).toEqual({ kind: "id", value: SESSION });
   });
 });
 

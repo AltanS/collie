@@ -222,6 +222,14 @@ export interface HistoryDeps {
    * herdr-core). Absent on every multiplexer that can report one.
    */
   readonly noSessionRefs?: string | undefined;
+  /** What to do about {@link noSessionRefs}, when something can be done (install the hooks). */
+  readonly noSessionRefsRemedy?: string | undefined;
+  /**
+   * The multiplexer names agents itself and a hook adds the session (herdr-core, M74 spec 04), and
+   * hooks are installed: `agent-sessions` reads the bridge's panes as usual, but its remedy is the
+   * hook and not `herdr integration install`.
+   */
+  readonly sessionsFromHooks?: boolean | undefined;
 }
 
 /**
@@ -260,8 +268,12 @@ export async function historyFindings(deps: HistoryDeps): Promise<Finding[]> {
     ...JOURNAL_AGENT_NAMES.map((agent) => integration(agent, status, verdicts)),
     python(deps),
     deps.noSessionRefs === undefined
-      ? sessions(verdicts, read)
-      : skipped("agent-sessions", `no pane can report an agent session here: ${deps.noSessionRefs}`, "nothing to do; History needs a multiplexer that reports the session"),
+      ? sessions(verdicts, read, deps.sessionsFromHooks === true ? HOOK_REMEDY : undefined)
+      : skipped(
+          "agent-sessions",
+          `no pane can report an agent session here: ${deps.noSessionRefs}`,
+          deps.noSessionRefsRemedy ?? "nothing to do; History needs a multiplexer that reports the session",
+        ),
     journalRoots(deps),
   ];
 }
@@ -412,7 +424,7 @@ function python(deps: HistoryDeps): Finding {
  * observed consequence. A journalled agent pane without `hasSession` is precisely the pane whose
  * History link the phone will not draw.
  */
-function sessions(verdicts: readonly PaneVerdict[] | null, read: SnapshotRead): Finding {
+function sessions(verdicts: readonly PaneVerdict[] | null, read: SnapshotRead, remedy?: string): Finding {
   const check = "agent-sessions";
   if (verdicts === null) {
     // A REFUSAL IS NOT A SILENCE (issue #238). The bridge fails closed on a request carrying no
@@ -462,10 +474,15 @@ function sessions(verdicts: readonly PaneVerdict[] | null, read: SnapshotRead): 
     check,
     `${summary}; ${String(faulty.length)} report NO session: ${namePanes(faulty)} — their History link and icon are` +
       ` hidden, and the pane looks otherwise normal${notYet}`,
-    `\`herdr integration install <agent>\` for each agent named above (the \`integration-…\` lines say which),` +
-      ` ${INSTALL_NOTE}`,
+    remedy ??
+      `\`herdr integration install <agent>\` for each agent named above (the \`integration-…\` lines say which),` +
+        ` ${INSTALL_NOTE}`,
   );
 }
+
+/** The remedy where the hook adds the session and not Herdr (herdr-core, M74 spec 04). */
+const HOOK_REMEDY =
+  "`collie hooks install claude`, then relaunch the Claude in each pane named above; the hook writes the session id on its first event";
 
 /**
  * `journal-roots` — `COLLIE_TRANSCRIPT`, and whether a journal could be read at all.

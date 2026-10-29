@@ -55,7 +55,7 @@ import { harnessFindings, harnessReader, type ReadHarness } from "./harness-find
 import { sendsSection } from "./send-findings.ts";
 import { durableFindings, sourcesFindings } from "./durable-findings.ts";
 import { herdrCoreFindings, type HcDial } from "./herdr-core-findings.ts";
-import { historyFindings, type SnapshotRead } from "./history.ts";
+import { historyFindings, type HistoryDeps, type SnapshotRead } from "./history.ts";
 import { EXIT, type Io } from "./io.ts";
 import {
   binaryLayout,
@@ -228,6 +228,9 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
   // about an adapter this install does not drive.
   const chosen = muxSettings(deps);
   const declaration = muxDeclaration(chosen);
+  // A multiplexer that names its agents but not their sessions gets the session id from the hooks
+  // (herdr-core, M74 spec 04): the join is the decorator's session-only mode.
+  const sessionsFromHooks = lacksSessionRef(chosen, declaration);
   // How this Collie got here, and where its updates come from — read once, and by the same functions
   // `collie update` decides on, so the two verbs can never disagree about what they are looking at.
   const install = classifyInstall(probeInstall(deps, deps.ctx.root));
@@ -273,7 +276,7 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
     // whether the secret folders are owner-only by their access list (M43 spec 04). No line elsewhere:
     // on POSIX the mode bits are checked where the files are read, as before.
     ...(deps.host.platform === "win32" ? [windowsTask(deps), windowsLongPaths(deps), secretsPrivate(deps)] : []),
-    beaconHooks(deps, hookEntries, declaration?.supports.agentDetection ?? true),
+    beaconHooks(deps, hookEntries, declaration?.supports.agentDetection ?? true, sessionsFromHooks),
     await beacons(deps, hookEntries.length > 0),
     skillWalkyTalky(deps),
     ...walkyRefusals(deps),
@@ -290,12 +293,7 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
       files: deps.files,
       snapshot: ownRead,
       host: deps.host,
-      // A multiplexer that names agents itself gets no beacon, so without its own session ref no
-      // pane can ever report a session, and `agent-sessions` must not read that as a fault (M74).
-      noSessionRefs:
-        declaration !== null && declaration.supports.agentDetection && !declaration.supports.agentSessionRef
-          ? (declaration.notes.agentSessionRef ?? `${chosen.name} reports no agent session`)
-          : undefined,
+      ...sessionRefDeps(declaration, chosen, sessionsFromHooks, hookEntries.length > 0),
     })),
     // Whether the prompt-cache chip is telling the truth: every TTL's date, and the one variable
     // `doctor` can read that the bridge deliberately cannot (ADR 0041). Its own module for the same
@@ -1540,6 +1538,47 @@ function muxDeclaration(settings: MuxSettings): MuxCapabilityDeclaration | null 
   return factory === undefined ? null : factory.create(muxTarget(settings)).capabilities;
 }
 
+/**
+ * What the history section is told about session ids on this install (M74).
+ *
+ * A multiplexer that names agents itself but not their sessions reports one only through the hooks:
+ * with none installed `agent-sessions` is skipped and says to install them, and with them installed it
+ * is the observed result and its remedy is the hook. A multiplexer with no hook path at all (a
+ * declaration with no matcher) is skipped with the adapter's own note.
+ */
+function sessionRefDeps(
+  declaration: MuxCapabilityDeclaration | null,
+  chosen: MuxSettings,
+  sessionsFromHooks: boolean,
+  hooksInstalled: boolean,
+): Pick<HistoryDeps, "noSessionRefs" | "noSessionRefsRemedy" | "sessionsFromHooks"> {
+  if (sessionsFromHooks) {
+    return hooksInstalled
+      ? { noSessionRefs: undefined, noSessionRefsRemedy: undefined, sessionsFromHooks: true }
+      : {
+          noSessionRefs: "the hooks are not installed, and a hook is what adds a Claude pane's session",
+          noSessionRefsRemedy: "`collie hooks install claude`, then relaunch the Claude in the pane",
+          sessionsFromHooks: false,
+        };
+  }
+  const bare = declaration !== null && declaration.supports.agentDetection && !declaration.supports.agentSessionRef;
+  return {
+    noSessionRefs: bare ? (declaration.notes.agentSessionRef ?? `${chosen.name} reports no agent session`) : undefined,
+    noSessionRefsRemedy: undefined,
+    sessionsFromHooks: false,
+  };
+}
+
+/**
+ * Does this multiplexer name its agents on its own wire and still lack the session id, so that only
+ * a hook can supply it? True when it declares `agentDetection`, no `agentSessionRef`, and has a
+ * beacon matcher to join the hook to its panes.
+ */
+function lacksSessionRef(settings: MuxSettings, declaration: MuxCapabilityDeclaration | null): boolean {
+  if (declaration === null || !declaration.supports.agentDetection || declaration.supports.agentSessionRef) return false;
+  return factoryFor(buildMuxRegistry(), settings.name)?.beaconMatcher !== undefined;
+}
+
 /** Where Windows keeps the long-path switch, and the value `reg query` reads. */
 export const LONG_PATHS_KEY = "HKLM\\SYSTEM\\CurrentControlSet\\Control\\FileSystem";
 /** An install folder longer than this leaves little room under 260 characters for what sits inside it. */
@@ -1754,6 +1793,7 @@ function beaconHooks(
   deps: DoctorDeps,
   entries: readonly InstalledEntry[],
   muxReportsAgents: boolean,
+  hooksGiveSessions: boolean,
 ): Finding {
   const check = "beacon-hooks-claude";
   const would = resolveHookCommand(deps.ctx, deps.link);
@@ -1762,6 +1802,14 @@ function beaconHooks(
     `\`collie hooks install claude\` (writes ${String(BEACON_HOOKS.length)} marked entries into` +
     " ~/.claude/settings.json; running Claudes must be relaunched)";
   if (entries.length === 0) {
+    // The multiplexer names agents, and only a hook can add the session id that gives a pane History.
+    if (muxReportsAgents && hooksGiveSessions) {
+      return skipped(
+        check,
+        `${name} names each agent itself; the hooks add a Claude pane's session, which is what gives it History. Hooks installed: no`,
+        install,
+      );
+    }
     return muxReportsAgents
       ? ok(check, `not needed — ${name} reports agents itself; hooks installed: no`)
       : bad(
@@ -1816,7 +1864,11 @@ function beaconHooks(
   // Installed under a multiplexer that names its own agents is still `ok`. That multiplexer does not
   // need the hooks to name an agent, so the line says what they still give: the hook edges of the
   // input surface (M56 spec 11).
-  const spare = muxReportsAgents ? `; ${name} names agents itself and does not need them for that, so they give hook edges only` : "";
+  const spare = !muxReportsAgents
+    ? ""
+    : hooksGiveSessions
+      ? `; ${name} names agents itself, so they give hook edges and each Claude pane's session (its History)`
+      : `; ${name} names agents itself and does not need them for that, so they give hook edges only`;
   // The permission hold (M56 spec 12): which files hold permissions for the phone, if any.
   const holdEvent = loadProfiles().get("claude")?.hold?.event;
   const holding = holdEvent === undefined ? 0 : [...perFile.keys()].filter((path) => settingsHold(deps.files.read(path), holdEvent)).length;

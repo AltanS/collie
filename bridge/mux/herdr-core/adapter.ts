@@ -63,6 +63,7 @@ import {
 } from "../types.ts";
 import { DEFAULT_HC_TIMEOUT_MS, defaultHcSocket, HC_GENERATION, HcClient, HcError, type HcRpc, type WireLayout, type WireTerminal } from "./client.ts";
 import { routeEvent } from "./events.ts";
+import { herdrCoreBeaconMatcher } from "./markers.ts";
 import { HERDR_CORE_LOGO_SVG } from "./logo.ts";
 import { HC_UNSENDABLE_KEYS, toHcKey, type HcKey } from "./keys.ts";
 import { IMPLICIT_SPACE_ID, isLocalAddress, SPACE_LABEL, TAB_LABEL, toSnapshot } from "./layout.ts";
@@ -90,7 +91,7 @@ const HERDR_CORE_CAPABILITIES = declareCapabilities({
     paneGrid: "herdr-core hands out the screen as plain text, so the mirror shows no colour.",
     agentDetection:
       "herdr-core names the agent in a terminal from the agent's own status report. A program that sends no report reads as a shell.",
-    agentSessionRef: "herdr-core keeps an agent's status but not its conversation id, so a pane's history is not available.",
+    agentSessionRef: "herdr-core keeps an agent's status but not its conversation id. The agent's own hook supplies it: install the hooks with `collie hooks install claude`.",
     sendKeys:
       "herdr-core presses keys by name. A Super or Command chord, Ctrl+Enter, and a modified key it has no name for (such as Ctrl+$) are refused.",
     renamePane: "herdr-core has no command that renames a terminal.",
@@ -437,6 +438,13 @@ export const herdrCoreMuxFactory: MuxAdapterFactory = {
   mux: HERDR_CORE_MUX,
   create(target: MuxTarget) {
     return new HerdrCoreMux(new HcClient(herdrCoreSocketFor(target.endpoint), target.timeoutMs || DEFAULT_HC_TIMEOUT_MS));
+  },
+  /**
+   * herdr-core's half of the beacon join (M74 spec 04): the hook edges land on a core terminal, and
+   * a Claude's session id reaches the pane, because `HC_TERMINAL_ID` and `HC_TERMINAL_SOCKET` name it.
+   */
+  beaconMatcher(target: MuxTarget) {
+    return herdrCoreBeaconMatcher(HERDR_CORE_MUX, herdrCoreSocketFor(target.endpoint));
   },
   describeTarget(endpoint: string) {
     return `socket ${herdrCoreSocketFor(endpoint)}`;

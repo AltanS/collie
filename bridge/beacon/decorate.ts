@@ -15,8 +15,23 @@
 //
 // An adapter whose multiplexer reports the agent and its session from its own wire has a STRONGER
 // source of truth than a beacon. Wrapping it would put a second, weaker one beside it, and the two
-// would disagree the moment a hook was missed. So a wrapped adapter declaring either capability is
+// would disagree the moment a hook was missed. So a wrapped adapter declaring `agentSessionRef` is
 // refused loudly, at construction, rather than silently producing a pane with two identities.
+//
+// ── ONE EXCEPTION, AND IT IS A KEY, NOT AN IDENTITY (M74 spec 04) ─────────────────────────────────
+//
+// An adapter that names the agent from its own wire but cannot know the agent's SESSION (herdr-core:
+// the core keeps the program's status, not its conversation id) is decorated in SESSION-ONLY mode.
+// The decorator then lifts `agentSessionRef` alone and touches nothing the adapter reported:
+//
+//  - a pane's `agent` and `status` stay the adapter's, always;
+//  - a LIVE beacon adds its session ref only to a pane whose adapter-reported agent is the beacon's
+//    own harness. A beacon for `claude` on a pane the adapter reads as `codex` or as a shell adds
+//    nothing, so a stale or misplaced beacon can never rename a pane or hand it another agent's log;
+//  - an EXPIRED beacon adds the journal key (`agentSession` and `sessionAgent`) only to a pane the
+//    adapter reads as a shell, exactly the pane an ended agent leaves behind.
+//
+// The session ref is the journal's lookup key (ADR 0024), and the adapter's identity is the only one.
 //
 // ── THE DECORATOR HOLDS NO MULTIPLEXER KNOWLEDGE ──────────────────────────────────────────────────
 //
@@ -171,16 +186,31 @@ export function identityOf(reading: BeaconReading): BeaconIdentity | null {
 const LIFTED = ["agentDetection", "agentSessionRef"] as const;
 
 /**
+ * What the decorator adds: a blind adapter's whole identity, or (M74 spec 04) only the session ref
+ * of an adapter that already names its agents.
+ */
+type BeaconMode = "identity" | "session-only";
+
+/** The capabilities a mode lifts. */
+const liftedBy = (mode: BeaconMode): readonly (typeof LIFTED)[number][] =>
+  mode === "identity" ? LIFTED : ["agentSessionRef"];
+
+/**
  * The wrapped declaration, lifted or not.
  *
  * Rebuilt through {@link declareCapabilities} rather than spread over the wrapped one, so the
  * fail-closed total it produces stays total: a capability added to the port later cannot arrive here
  * as a silent `true` any more than it can on an adapter.
  */
-function declarationFor(adapter: MuxAdapter, matcher: BeaconMatcher, lifted: boolean): MuxCapabilityDeclaration {
+function declarationFor(
+  adapter: MuxAdapter,
+  matcher: BeaconMatcher,
+  lifted: boolean,
+  mode: BeaconMode,
+): MuxCapabilityDeclaration {
   const inherited = MUX_CAPABILITIES.filter((capability) => adapter.capabilities.supports[capability]);
   const notes = { ...adapter.capabilities.notes };
-  for (const capability of LIFTED) {
+  for (const capability of liftedBy(mode)) {
     // The wrapped adapter's note says its multiplexer cannot know what an agent is, which stops being
     // the operator's answer either way: with hooks installed it is no longer true of this build, and
     // without them the useful sentence is the one that says how to turn it on.
@@ -188,7 +218,7 @@ function declarationFor(adapter: MuxAdapter, matcher: BeaconMatcher, lifted: boo
     else notes[capability] = matcher.notesWithoutHooks[capability];
   }
   return declareCapabilities({
-    supports: lifted ? [...inherited, ...LIFTED] : inherited,
+    supports: lifted ? [...inherited, ...liftedBy(mode)] : inherited,
     unsupportedKeys: adapter.capabilities.unsupportedKeys,
     notes,
     // Carried through, because a beacon changes what Collie knows about a PANE and never how many
@@ -245,11 +275,13 @@ function decoratePane(
   readings: readonly BeaconReading[],
   matcher: BeaconMatcher,
   scope: string,
+  mode: BeaconMode,
 ): MuxPane {
   const reading = beaconForPane(pane, readings, matcher, scope);
   if (reading === null) return pane;
   const identity = identityOf(reading);
   if (identity === null) return pane;
+  if (mode === "session-only") return withSessionOnly(pane, reading, identity);
   // Assigned onto a copy, never conditionally spread, so a field the beacon does not supply stays
   // absent — the rule every adapter in this tree follows for `MuxPane`.
   if (reading.liveness === "expired") {
@@ -259,28 +291,39 @@ function decoratePane(
 }
 
 /**
+ * Session-only mode (see the header): the beacon's session ref on a pane the adapter itself reads as
+ * running that harness, and nothing else. `agent` and `status` are the adapter's and stay so.
+ */
+function withSessionOnly(pane: MuxPane, reading: BeaconReading, identity: BeaconIdentity): MuxPane {
+  if (reading.liveness === "live") {
+    return pane.agent === identity.agent ? { ...pane, agentSession: identity.session } : pane;
+  }
+  return pane.agent === "shell" ? { ...pane, agentSession: identity.session, sessionAgent: identity.agent } : pane;
+}
+
+/**
  * `adapter`, seeing agents through their own beacons.
  *
- * Throws when the wrapped adapter already declares either capability — see the header. That is a
- * wiring mistake, it is the same on every start, and a silent second source of truth is exactly what
- * this refusal is here to prevent.
+ * Throws when the wrapped adapter already declares `agentSessionRef`, which is the stronger source of
+ * truth for a pane's whole identity. An adapter that declares `agentDetection` alone is decorated in
+ * session-only mode — see the header. A refusal is a wiring mistake, it is the same on every start,
+ * and a silent second source of truth is exactly what it is here to prevent.
  */
 export function withAgentBeacons(
   adapter: MuxAdapter,
   reader: BeaconSweepDeps,
   deps: AgentBeaconDeps,
 ): MuxAdapter {
-  for (const capability of LIFTED) {
-    if (adapter.capabilities.supports[capability]) {
-      throw new Error(
-        `refusing to wrap the "${adapter.mux}" adapter with agent beacons: it already declares ` +
-          `${capability} from its own multiplexer, and a beacon beside a stronger source of truth is a ` +
-          "second identity for the same pane",
-      );
-    }
+  if (adapter.capabilities.supports.agentSessionRef) {
+    throw new Error(
+      `refusing to wrap the "${adapter.mux}" adapter with agent beacons: it already declares ` +
+        "agentSessionRef from its own multiplexer, and a beacon beside a stronger source of truth is a " +
+        "second identity for the same pane",
+    );
   }
-  const lifted = declarationFor(adapter, deps.matcher, true);
-  const plain = declarationFor(adapter, deps.matcher, false);
+  const mode: BeaconMode = adapter.capabilities.supports.agentDetection ? "session-only" : "identity";
+  const lifted = declarationFor(adapter, deps.matcher, true, mode);
+  const plain = declarationFor(adapter, deps.matcher, false, mode);
 
   return {
     // The adapter's own data fields, carried across unchanged — and gathered by ONE helper rather
@@ -312,7 +355,7 @@ export function withAgentBeacons(
       if (scope === null) return snapshot;
       const readings = await readBeacons(reader);
       if (readings.length === 0) return snapshot;
-      return { ...snapshot, panes: snapshot.panes.map((pane) => decoratePane(pane, readings, deps.matcher, scope)) };
+      return { ...snapshot, panes: snapshot.panes.map((pane) => decoratePane(pane, readings, deps.matcher, scope, mode)) };
     },
 
     // ── Everything below is the wrapped adapter's, verbatim ────────────────────

@@ -288,6 +288,38 @@ event        → {"type":"status","terminal":"t1","seq":13,
 ← {"templates":[]}
 ```
 
+## The terminal's own environment
+
+The core puts the terminal's address into the environment of every process in it. Probed on
+2026-10-29 in the private `collie-lab` session (`hc send` of `env | grep -i ^HC` into a terminal that
+`hc run --bg` had started), and again in a second session on a custom `HC_SOCKET`:
+
+```
+HC_TERMINAL_ID=t1                                           the address, as terminal.list gives it
+HC_TERMINAL_SOCKET=/run/user/1000/herdr-core/collie-lab.sock   the client socket of the core that owns it
+HC_SESSION=collie-lab                                       only when the core was started with it
+HC_SOCKET=/…/sockdir/alt.sock                               only when the core was started with it
+HC_SCOPE=149630853-9e24dfaafae6250d2164f4f959c07c58         opaque; changes with each core process
+```
+
+- `HC_TERMINAL_ID` is the pane id the adapter uses, unchanged, and `hc --skill` documents it as "your
+  address". Addresses restart at `t1` in every core session, so the id alone is not an identity.
+- `HC_TERMINAL_SOCKET` is the core's own client socket, and it stayed the core's path when the core
+  ran on a custom `HC_SOCKET` (session `collie-lab-b`, socket `sockdir/alt.sock`, the variable held
+  that path). It is the scope that joins an address to one core.
+- Collie's beacon emitter reads `HC_TERMINAL_ID` and `HC_TERMINAL_SOCKET` as the `herdr-core`
+  marker (`cli/beacon.ts`), so a Claude hook edge and the agent's session id reach the right pane.
+  Collie's own check: a shell in a lab terminal reported `claude-code` through OSC 7501, then ran
+  `collie beacon emit` with a fake `SessionStart` payload (`session_id` `lab-session-0001`). The
+  scratch bridge then listed the terminal as `agent: claude`, `status: idle` (the core's report, not
+  the beacon's) and `hasSession: true`.
+- A core started from a shell that sits inside the Herdr TUI hands its terminals that TUI's
+  `HERDR_PANE_ID`, `HERDR_SOCKET_PATH` and friends as well (the lab core did). The beacon then
+  carries both a `herdr` and a `herdr-core` marker. Each names only its own adapter's pane.
+- A program that clears its environment does not carry them. A terminal on an added machine is
+  `box/t7` to this core and (by the docs, not probed) plain `t7` on its own, so only the owning
+  machine's Collie matches it; the adapter drops `box/t7` anyway.
+
 ## What does not fit Collie's mux port
 
 - **No colour.** `paneGrid` is plain text. A harness reader that keys on SGR (a dim placeholder, an
@@ -297,6 +329,7 @@ event        → {"type":"status","terminal":"t1","seq":13,
 - **No revision.** The adapter derives one from the text it reads.
 - **No focus, no rename, no tab or space verbs.** Focus lives in herdr-app per screen; structure
   changes go through herdr-app commands. Spec 05 of M74 plans a mod for both.
-- **No session id.** The core keeps the program's status, not the agent's conversation id, so
-  `agentSessionRef` (pane History) is absent.
+- **No session id.** The core keeps the program's status, not the agent's conversation id. Collie
+  gets it from the agent's own hook through `HC_TERMINAL_ID` (see above), so a pane has History once
+  `collie hooks install claude` is done, and not before.
 - **No history depth.** `readableLines` cannot be stated.

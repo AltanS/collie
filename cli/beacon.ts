@@ -90,6 +90,13 @@ export { privateDir };
 const HERDR_NAMESPACE = "herdr";
 
 /**
+ * The marker namespace of a herdr-core terminal, which is that adapter's registry key. A literal, not
+ * an import, because this verb runs on every hook event and must stay a handful of module loads;
+ * `cli/beacon.test.ts` pins it to the adapter's own constant.
+ */
+export const HERDR_CORE_NAMESPACE = "herdr-core";
+
+/**
  * Where a multiplexer's pane identity lives in the environment of a process running inside it.
  *
  * THE GATE IS THIS TABLE, and it is consulted BEFORE stdin is read. An agent in a plain terminal has
@@ -143,6 +150,15 @@ const MUX_ENV_MARKERS: readonly MuxEnvMarker[] = [
     namespace: HERDR_NAMESPACE,
     paneVar: "HERDR_PANE_ID",
     scopeVar: "HERDR_SOCKET_PATH",
+    scopeOf: (raw) => raw,
+  },
+  {
+    // The new Herdr core exports the terminal's address and the socket of the core that owns it
+    // (M74 spec 04, probed 2026-10-29 on hc 0.1.14). A core terminal started from inside the Herdr
+    // TUI inherits that TUI's variables too, so a pane can carry both markers; each names only its own.
+    namespace: HERDR_CORE_NAMESPACE,
+    paneVar: "HC_TERMINAL_ID",
+    scopeVar: "HC_TERMINAL_SOCKET",
     scopeOf: (raw) => raw,
   },
 ];

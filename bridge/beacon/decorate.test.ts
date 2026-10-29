@@ -243,16 +243,79 @@ async function paneOf(adapter: MuxAdapter, paneId: string): Promise<MuxPane> {
 }
 
 describe("withAgentBeacons refuses an adapter that already sees", () => {
-  test("an adapter declaring agentDetection is refused at construction", () => {
-    const adapter = new StubAdapter();
-    adapter.capabilities = declareCapabilities({ supports: ["agentDetection"], topologyLatency: { kind: "push" } });
-    expect(() => decorate(adapter, [])).toThrow(/already declares agentDetection/u);
-  });
-
   test("an adapter declaring agentSessionRef is refused at construction", () => {
     const adapter = new StubAdapter();
     adapter.capabilities = declareCapabilities({ supports: ["agentSessionRef"], topologyLatency: { kind: "push" } });
     expect(() => decorate(adapter, [])).toThrow(/already declares agentSessionRef/u);
+  });
+});
+
+// SESSION-ONLY MODE (M74 spec 04): an adapter that names its agents but not their sessions.
+//
+// The pane's agent and status stay the adapter's. The beacon adds the journal key to a pane the
+// adapter itself reads as running the beacon's harness, and to nothing else.
+describe("session-only mode, for an adapter that names agents but not sessions", () => {
+  /** A seeing adapter: it declares agentDetection and no session ref, and reports `claude` on %1 and a shell on %2. */
+  function seeing(): StubAdapter {
+    const adapter = new StubAdapter();
+    adapter.capabilities = declareCapabilities({
+      supports: ["paneGrid", "agentDetection"],
+      notes: { agentSessionRef: "the adapter's own session note" },
+      topologyLatency: { kind: "push" },
+    });
+    adapter.panes = [{ ...shellPane("%1"), agent: "claude", status: "idle" }, shellPane("%2")];
+    return adapter;
+  }
+
+  test("it lifts agentSessionRef and nothing else, and only while the hooks are installed", () => {
+    const on = decorate(seeing(), [], true).capabilities;
+    expect(on.supports.agentSessionRef).toBe(true);
+    expect(on.supports.agentDetection).toBe(true);
+    expect(on.supports.paneGrid).toBe(true);
+    const off = decorate(seeing(), [], false).capabilities;
+    expect(off.supports.agentSessionRef).toBe(false);
+    expect(off.supports.agentDetection).toBe(true);
+    expect(off.notes.agentSessionRef).toBe("install the hooks and the agent supplies its session");
+    expect(off.notes.agentDetection).toBeUndefined();
+  });
+
+  test("a live beacon adds its session to the pane the adapter reads as the same harness, and changes nothing else", async () => {
+    const adapter = decorate(seeing(), [beacon([marker("%1")], "working", 1)]);
+    const pane = await paneOf(adapter, "%1");
+    expect(pane.agentSession).toEqual({ kind: "id", value: "session-1" });
+    // The adapter's status stands: the beacon says "working", the adapter said "idle".
+    expect(pane.agent).toBe("claude");
+    expect(pane.status).toBe("idle");
+    expect(pane.sessionAgent).toBeUndefined();
+  });
+
+  test("a live beacon never gives an identity or a session to a shell pane, or to another agent's pane", async () => {
+    const adapter = decorate(seeing(), [beacon([marker("%2")], "working", 2)]);
+    const shell = await paneOf(adapter, "%2");
+    expect(shell.agent).toBe("shell");
+    expect(shell.agentSession).toBeUndefined();
+
+    const other = seeing();
+    other.panes = [{ ...shellPane("%1"), agent: "codex", status: "idle" }, shellPane("%2")];
+    const pane = await paneOf(decorate(other, [beacon([marker("%1")], "working", 3)]), "%1");
+    expect(pane.agent).toBe("codex");
+    expect(pane.agentSession).toBeUndefined();
+  });
+
+  test("an expired beacon leaves the journal key on a shell pane, and on no agent pane", async () => {
+    const adapter = decorate(seeing(), [beacon([marker("%1")], "working", 4, false), beacon([marker("%2")], "idle", 5, false)]);
+    const agent = await paneOf(adapter, "%1");
+    expect(agent.agentSession).toBeUndefined();
+    expect(agent.sessionAgent).toBeUndefined();
+    const shell = await paneOf(adapter, "%2");
+    expect(shell.agent).toBe("shell");
+    expect(shell.agentSession).toEqual({ kind: "id", value: "session-5" });
+    expect(shell.sessionAgent).toBe("claude");
+  });
+
+  test("without the hooks the panes are the adapter's own", async () => {
+    const adapter = decorate(seeing(), [beacon([marker("%1")], "working", 6)], false);
+    expect((await paneOf(adapter, "%1")).agentSession).toBeUndefined();
   });
 });
 
