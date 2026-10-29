@@ -23,6 +23,14 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **The done line no longer repeats when a crew's machines share a pane id.** Two machines can both
+  hold `w6:p1`, and the line that says an agent finished compared panes by that bare id, so the pair
+  traded places on every poll and the line came back each time. It now keys a pane by its full
+  address, host and session included, and silences only the pane you have open, not its twin on
+  another machine. Thanks @OowhitecatoO (#614).
+
 ## [1.25.0] - 2026-10-29
 
 ### Added
