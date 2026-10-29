@@ -18,6 +18,7 @@ import {
   blockers,
   claim,
   claudeMinutesLeft,
+  claudeReplays,
   countsText,
   crewLegRuns,
   crewStateRoot,
@@ -82,7 +83,7 @@ describe("versions and the remote", () => {
 });
 
 describe("the blockers", () => {
-  const ok: Facts = { memKb: MIN_MEM_KB, bun: true, herdr: true, git: true, keyFile: "ok", claudeMinutesLeft: MIN_CLAUDE_MINUTES };
+  const ok: Facts = { memKb: MIN_MEM_KB, bun: true, herdr: true, git: true, keyFile: "ok", claudeMinutesLeft: MIN_CLAUDE_MINUTES, claudeReplays: false };
 
   test("a machine that has everything has no blocker, and the floors are inclusive", () => {
     expect(blockers(ok)).toEqual([]);
@@ -102,6 +103,23 @@ describe("the blockers", () => {
   test("a Claude login with under 25 minutes left blocks, and an expired one says 0", () => {
     expect(blockers({ ...ok, claudeMinutesLeft: 24.9 })).toEqual(["the Claude login has 24 min left, the leg needs 25"]);
     expect(blockers({ ...ok, claudeMinutesLeft: -50 })).toEqual(["the Claude login has 0 min left, the leg needs 25"]);
+  });
+
+  test("a Claude that replays on both legs needs no login (M67 spec 07)", () => {
+    expect(blockers({ ...ok, claudeReplays: true, claudeMinutesLeft: null })).toEqual([]);
+    expect(blockers({ ...ok, claudeReplays: true, claudeMinutesLeft: 3 })).toEqual([]);
+    expect(blockers({ ...ok, claudeReplays: true, herdr: false })).toEqual(["herdr is not on PATH"]);
+  });
+
+  test("Claude replays when its recordings name both legs on Haiku and this skill text", () => {
+    const leg = (skill: string, model = "haiku") => ({ model, skill, recordedAt: "2026-10-29T14:06:25.662Z", cases: [] });
+    const meta = (legs: Partial<Record<"solo" | "crew", ReturnType<typeof leg>>>) => JSON.stringify({ v: 1, harness: "claude", version: "2.1.312", legs });
+    expect(claudeReplays(meta({ solo: leg("abc"), crew: leg("abc") }), "abc")).toBe(true);
+    expect(claudeReplays(meta({ solo: leg("abc") }), "abc")).toBe(false);
+    expect(claudeReplays(meta({ solo: leg("abc"), crew: leg("old") }), "abc")).toBe(false);
+    expect(claudeReplays(meta({ solo: leg("abc", "sonnet"), crew: leg("abc") }), "abc")).toBe(false);
+    expect(claudeReplays(undefined, "abc")).toBe(false);
+    expect(claudeReplays("not json", "abc")).toBe(false);
   });
 
   test("several blockers come out as several words, in one list", () => {
@@ -490,7 +508,7 @@ describe("the command line", () => {
 
 // ── main(), with a world made of fakes ───────────────────────────────────────────────────────────
 
-const GOOD: Facts = { memKb: MIN_MEM_KB * 2, bun: true, herdr: true, git: true, keyFile: "ok", claudeMinutesLeft: 200 };
+const GOOD: Facts = { memKb: MIN_MEM_KB * 2, bun: true, herdr: true, git: true, keyFile: "ok", claudeMinutesLeft: 200, claudeReplays: false };
 
 interface Rig {
   readonly world: World;
