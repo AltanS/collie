@@ -1,10 +1,11 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ChevronRight, ListFilter, ListTree, Search, X } from "lucide-react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, Fragment } from "react";
+import { ChevronRight, ListFilter, ListTree, MessageSquare, Search, X } from "lucide-react";
 
 import { LIST_ROW_CORNERS, ListGroup } from "@/components/ui/list-group";
 import { SectionLabel } from "@/components/ui/section-label";
 import { ToggleButton } from "@/components/ui/toggle-button";
 import { useLocale } from "@/hooks/use-locale";
+import { diffCommentRowKey, type DiffComment } from "@/lib/diff-comments";
 import {
   buildChangeTree,
   FILTER_STATUSES,
@@ -822,14 +823,51 @@ export function diffRowKeys(rows: readonly DiffRow[]): string[] {
   });
 }
 
+export interface DiffViewCommentProps {
+  selectedKeys: ReadonlySet<string>;
+  onToggleRow: (rowKey: string) => void;
+  comments: readonly DiffComment[];
+  onEditComment: (comment: DiffComment) => void;
+}
+
 /**
  * One file's diff: two line-number gutters, a sign, the line. Long lines WRAP (a phone cannot
  * scroll sideways through code comfortably), anywhere, so a minified line cannot push the page wide.
  * With `path` naming a language sugar-high knows, the lines take syntax colour once it loads.
  */
-export function DiffView({ diff, path }: { diff: string; path?: string }) {
+export function DiffView({
+  diff,
+  path,
+  commenting,
+}: {
+  diff: string;
+  path?: string;
+  commenting?: DiffViewCommentProps;
+}) {
   const parsed = useMemo(() => parseUnifiedDiff(diff), [diff]);
   const keys = useMemo(() => diffRowKeys(parsed.rows), [parsed]);
+  const commentKeys = useMemo(
+    () =>
+      parsed.rows.map((row) =>
+        row.kind === "context" || row.kind === "add" || row.kind === "del"
+          ? diffCommentRowKey(row)
+          : null,
+      ),
+    [parsed],
+  );
+  const activeCommentKeySet = useMemo(
+    () => new Set(commentKeys.filter((k): k is string => k !== null)),
+    [commentKeys],
+  );
+  const unanchoredComments = useMemo(
+    () =>
+      commenting
+        ? commenting.comments.filter(
+            (c) => c.rowKeys.length === 0 || !c.rowKeys.every((k) => activeCommentKeySet.has(k)),
+          )
+        : [],
+    [commenting, activeCommentKeySet],
+  );
   const syntax = useSyntaxTokens(parsed.rows, path);
   // Both gutters sized once, by the widest number, so no row's text starts at a different x.
   const gutter = { width: `calc(${Math.max(String(parsed.maxLineNo).length, 2)}ch + 0.5rem)` };
@@ -842,10 +880,11 @@ export function DiffView({ diff, path }: { diff: string; path?: string }) {
       data-highlighted={syntax ? "" : undefined}
     >
       {parsed.rows.map((row, i) => {
+        const rowKey = keys[i]!;
         if (row.kind === "hunk") {
           return (
             <div
-              key={keys[i]}
+              key={rowKey}
               className="border-y border-border px-3 py-1 text-muted-foreground wrap-anywhere whitespace-pre-wrap first:border-t-0"
             >
               {row.header}
@@ -854,17 +893,25 @@ export function DiffView({ diff, path }: { diff: string; path?: string }) {
         }
         if (row.kind === "note") {
           return (
-            <div key={keys[i]} className="px-3 text-muted-foreground italic">
+            <div key={rowKey} className="px-3 text-muted-foreground italic">
               {row.text}
             </div>
           );
         }
-        return (
-          <div key={keys[i]} className={cn("flex pl-1", ROW_TONE[row.kind])}>
-            <span aria-hidden className="shrink-0 select-none pr-2 text-right text-muted-foreground tabular-nums" style={gutter}>
+        const rowCells = (
+          <>
+            <span
+              aria-hidden={commenting && row.newNo === null ? undefined : true}
+              className="shrink-0 select-none pr-2 text-right text-muted-foreground tabular-nums"
+              style={gutter}
+            >
               {row.oldNo ?? ""}
             </span>
-            <span aria-hidden className="shrink-0 select-none pr-2 text-right text-muted-foreground tabular-nums" style={gutter}>
+            <span
+              aria-hidden={commenting && row.newNo !== null ? undefined : true}
+              className="shrink-0 select-none pr-2 text-right text-muted-foreground tabular-nums"
+              style={gutter}
+            >
               {row.newNo ?? ""}
             </span>
             <span aria-hidden className={cn("w-[2ch] shrink-0 select-none text-center", SIGN_TONE[row.kind])}>
@@ -875,9 +922,85 @@ export function DiffView({ diff, path }: { diff: string; path?: string }) {
               {row.kind === "del" && <span className="sr-only">− </span>}
               {syntax?.[i] ? <TokenLine tokens={syntax[i]} /> : row.text}
             </span>
+          </>
+        );
+        if (!commenting) {
+          return (
+            <div key={rowKey} className={cn("flex pl-1", ROW_TONE[row.kind])}>
+              {rowCells}
+            </div>
+          );
+        }
+        const commentKey = commentKeys[i]!;
+        const selected = commenting.selectedKeys.has(commentKey);
+        const pinned =
+          commenting.comments.length > 0
+            ? commenting.comments.filter(
+                (c) =>
+                  c.rowKeys.at(-1) === commentKey &&
+                  c.rowKeys.every((k) => activeCommentKeySet.has(k)),
+              )
+            : [];
+        const lineEl = (
+          <div
+            key={rowKey}
+            className={cn(
+              "flex pl-1",
+              ROW_TONE[row.kind],
+              selected && "bg-primary/15 shadow-[inset_3px_0_0_var(--primary)]",
+            )}
+          >
+            <button
+              type="button"
+              aria-pressed={selected}
+              onClick={() => commenting.onToggleRow(commentKey)}
+              className="flex min-h-7 min-w-0 flex-1 cursor-pointer items-baseline py-0.5 text-left font-mono text-xs leading-5"
+            >
+              {rowCells}
+            </button>
           </div>
         );
+        if (pinned.length === 0) return lineEl;
+        return (
+          <Fragment key={rowKey}>
+            {lineEl}
+            {pinned.map((c) => (
+              <button
+                key={`comment-${c.id}`}
+                type="button"
+                onClick={() => commenting?.onEditComment(c)}
+                className="my-1 mr-3 ml-12 flex max-w-[calc(100%-3.75rem)] items-center justify-between gap-2 rounded-md border border-primary/40 bg-primary/10 px-2.5 py-1.5 font-sans text-xs text-foreground transition-colors hover:border-primary"
+              >
+                <span className="min-w-0 flex-1 truncate text-left">
+                  <span className="font-mono font-semibold text-primary">
+                    <MessageSquare aria-hidden className="mr-1 inline size-3 align-[-1px]" />
+                    {c.lineLabel}:{" "}
+                  </span>
+                  {c.note}
+                </span>
+                <ChevronRight aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+              </button>
+            ))}
+          </Fragment>
+        );
       })}
+      {unanchoredComments.map((c) => (
+        <button
+          key={`comment-${c.id}`}
+          type="button"
+          onClick={() => commenting?.onEditComment(c)}
+          className="my-1 mr-3 ml-3 flex max-w-[calc(100%-1.5rem)] items-center justify-between gap-2 rounded-md border border-primary/40 bg-primary/10 px-2.5 py-1.5 font-sans text-xs text-foreground transition-colors hover:border-primary"
+        >
+          <span className="min-w-0 flex-1 truncate text-left">
+            <span className="font-mono font-semibold text-primary">
+              <MessageSquare aria-hidden className="mr-1 inline size-3 align-[-1px]" />
+              {c.lineLabel}:{" "}
+            </span>
+            {c.note}
+          </span>
+          <ChevronRight aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+        </button>
+      ))}
     </div>
   );
 }

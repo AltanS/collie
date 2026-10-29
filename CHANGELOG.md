@@ -37,6 +37,14 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A huge picture in a tool result no longer bloats the chat.** One inline picture over 2 MiB of base64 is now dropped from the transcript, in every harness reader, and the tool card keeps its text.
 - **The installed app's icon counts the panes blocked on you.** The count also includes finished panes you have not opened, while the Finished preference is on. The herd push sets it in the service worker, and the open dashboard sets it too. A browser without the Badging API keeps no count. Thanks @SergioGhisler (#591).
 - **The open dashboard sets the icon's count only when it shows every session.** On one session of several it writes nothing, because the pushes count every session and machine and would overwrite a smaller number.
+- **Changes lets you pick lines in a diff and comment on them as one batch.** Tap diff lines to
+  select them, add a note, and keep adding notes across files. One tap then stages every note, with
+  the lines it is about, into the agent's draft in the pane. In a space with several agents you pick
+  which one gets them. Thanks @GGGODLIN (#561).
+- **Diff comments survive leaving Changes.** The batch is kept for the tab, so a Back and a return
+  restores it, and staging it into the agent's draft clears it. On a crew the agent that gets the
+  batch is found by its full address, so a twin pane id on another machine is never picked. The
+  pill on a commented line shows an icon instead of an emoji.
 
 ### Changed
 

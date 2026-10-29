@@ -29,6 +29,7 @@ import {
   folderKey,
   StatusLetter,
   type ChangeRef,
+  type DiffViewCommentProps,
 } from "@/components/changes-view";
 import { BackBar, BackButton, PHONE_QUERY, type BackControl } from "@/components/back-bar";
 import { BottomBar } from "@/components/ui/bottom-bar";
@@ -38,6 +39,7 @@ import { STRIP_TAP_TARGET } from "@/components/ui/labelled-strip";
 import { Notice } from "@/components/ui/notice";
 import { SectionLabel } from "@/components/ui/section-label";
 import { Segmented } from "@/components/ui/segmented";
+import { BottomSheet, TALL_SHEET_CLEARANCE } from "@/components/ui/sheet";
 import { useDashPrefs } from "@/hooks/use-dash-prefs";
 import { handOf, useDisplayPrefs, type Hand } from "@/hooks/use-display-prefs";
 import { useLocale } from "@/hooks/use-locale";
@@ -69,6 +71,16 @@ import {
 } from "@/lib/changes-tree";
 import { keepChangesList, keptChangesList } from "@/lib/changes-list-cache";
 import { unavailableKey } from "@/lib/changes-reason";
+import {
+  captureDiffLines,
+  diffCommentRowKey,
+  displayDiffPath,
+  formatDiffLineLabel,
+  stageDiffCommentsToDraft,
+  type DiffCodeRow,
+  type DiffComment,
+} from "@/lib/diff-comments";
+import { parseUnifiedDiff } from "@/lib/unified-diff";
 import { folderView, isNameFilterOn } from "@/lib/files-filter";
 import { changeAt, EMPTY_CHANGE_INDEX, indexChanges, markFolder, type MarkedFolder, type RootChange } from "@/lib/files-marks";
 import { baseName, formatBytes, headerFolder, previewKindFor, rootPathOf } from "@/lib/files-view";
@@ -83,8 +95,10 @@ import {
   changesSettingsPath,
   filesParent,
   filesPath,
+  historyIdx,
   pairedDevicesPath,
   panePath,
+  pathOnly,
   readFrom,
   readPreviewAsked,
   readViaLink,
@@ -97,6 +111,13 @@ import {
   type TreeUpLanding,
   type FilesAt,
 } from "@/lib/nav";
+import { markInAppBack } from "@/lib/nav-entry";
+import { stepsBackToPane } from "@/lib/back-to-pane";
+import { clearDiffComments } from "@/lib/diff-comment-store";
+import { findPane, paneRowKey } from "@/lib/hosts";
+import { useDiffComments } from "@/hooks/use-diff-comments";
+import { navTrail } from "@/lib/nav-trail";
+import { useHoldReload } from "@/lib/reload-guard";
 import { useRootData } from "@/lib/route-data";
 import { useScope } from "@/lib/session";
 import { shareEqual } from "@/lib/share-equal";
@@ -962,6 +983,216 @@ function ChangesScreen() {
     </span>
   );
 
+  // ── Batch diff comments ──────────────────────────────────────────────────
+  const [selection, setSelection] = useState<{ fileKey: string; diffText: string; keys: string[] }>({
+    fileKey: "",
+    diffText: "",
+    keys: [],
+  });
+  // Held in sessionStorage per scope and target, so leaving Changes and coming back in this tab
+  // restores the batch; staging it into a draft clears it (lib/diff-comment-store.ts).
+  const { comments, setComments, nextId: nextCommentId } = useDiffComments(scope, targetKey);
+  const [commentSheet, setCommentSheet] = useState<
+    | {
+        mode: "new";
+        fileKey: string;
+        repo: string;
+        path: string;
+        rowKeys: readonly string[];
+        lineLabel: string;
+        linesText: readonly string[];
+      }
+    | { mode: "edit"; id: number }
+    | null
+  >(null);
+  const [commentText, setCommentText] = useState("");
+  const [basketOpen, setBasketOpen] = useState(false);
+  // The picked agent as a ROW (`paneRowKey`): on a crew two machines can both hold `w6:p1`. The bare
+  // id rides along only to name the pick in the button when that agent has exited.
+  const [chosen, setChosen] = useState<{ rowKey: string; paneId: string } | null>(null);
+
+  useHoldReload("changes-comments", comments.length > 0 || commentSheet !== null);
+
+  const askingAgentPane =
+    target.kind === "pane" ? findPane(root.agents, paneId, scope, root.servers, root.sessions) : undefined;
+  const spaceAgentPanes = useMemo(
+    () =>
+      root.agents.filter(
+        (p) => p.workspaceId === headWorkspace && p.host === (space?.host ?? pane?.host),
+      ),
+    [root.agents, headWorkspace, space?.host, pane?.host],
+  );
+  const canComment = target.kind === "pane" ? askingAgentPane !== undefined : spaceAgentPanes.length > 0;
+  const targetPane =
+    target.kind === "pane"
+      ? askingAgentPane
+      : chosen !== null
+        ? spaceAgentPanes.find((p) => paneRowKey(p) === chosen.rowKey)
+        : spaceAgentPanes[0];
+  const targetAgentName =
+    targetPane?.agent ?? targetPane?.paneLabel ?? targetPane?.paneId ?? (chosen?.paneId || paneId);
+
+  const currentDiffText = shownDiff && !shownDiff.binary && !shownDiff.directory ? shownDiff.diff : "";
+  const currentParsed = useMemo(
+    () => (currentDiffText !== "" ? parseUnifiedDiff(currentDiffText) : null),
+    [currentDiffText],
+  );
+  const currentCommentKeys = useMemo(
+    () =>
+      currentParsed
+        ? currentParsed.rows.map((row) =>
+            row.kind === "context" || row.kind === "add" || row.kind === "del"
+              ? diffCommentRowKey(row)
+              : null,
+          )
+        : [],
+    [currentParsed],
+  );
+  const currentCommentKeyOrder = useMemo(
+    () => currentCommentKeys.filter((k): k is string => k !== null),
+    [currentCommentKeys],
+  );
+  const currentCommentKeySet = useMemo(
+    () => new Set(currentCommentKeyOrder),
+    [currentCommentKeyOrder],
+  );
+  const activeSelectedKeys = useMemo(
+    () =>
+      openKey !== null && selection.fileKey === openKey && selection.diffText === currentDiffText
+        ? new Set(selection.keys.filter((k) => currentCommentKeySet.has(k)))
+        : new Set<string>(),
+    [openKey, selection, currentDiffText, currentCommentKeySet],
+  );
+  const selectedCodeRows = useMemo<DiffCodeRow[]>(() => {
+    if (!currentParsed || activeSelectedKeys.size === 0) return [];
+    return currentParsed.rows.flatMap((row, idx) => {
+      const key = currentCommentKeys[idx];
+      return (row.kind === "context" || row.kind === "add" || row.kind === "del") &&
+        key !== null &&
+        key !== undefined &&
+        activeSelectedKeys.has(key)
+        ? [row]
+        : [];
+    });
+  }, [currentParsed, currentCommentKeys, activeSelectedKeys]);
+
+  const fileComments = useMemo(
+    () =>
+      diffRef === null || openKey === null
+        ? []
+        : comments.filter((c) =>
+            c.fileKey !== undefined
+              ? c.fileKey === openKey
+              : c.repo === diffRef.repo && c.path === diffRef.path,
+          ),
+    [comments, diffRef, openKey],
+  );
+
+  const commenting = useMemo<DiffViewCommentProps | undefined>(() => {
+    if (!canComment || openKey === null) return undefined;
+    return {
+      selectedKeys: activeSelectedKeys,
+      onToggleRow: (rowKey: string) => {
+        setSelection((currentSel) => {
+          const base =
+            currentSel.fileKey === openKey && currentSel.diffText === currentDiffText
+              ? currentSel.keys.filter((k) => currentCommentKeySet.has(k))
+              : [];
+          const updatedKeys = base.includes(rowKey)
+            ? base.filter((k) => k !== rowKey)
+            : [...base, rowKey].toSorted(
+                (a, b) => currentCommentKeyOrder.indexOf(a) - currentCommentKeyOrder.indexOf(b),
+              );
+          return { fileKey: openKey, diffText: currentDiffText, keys: updatedKeys };
+        });
+      },
+      comments: fileComments,
+      onEditComment: (comment: DiffComment) => {
+        setCommentText(comment.note);
+        setCommentSheet({ mode: "edit", id: comment.id });
+      },
+    };
+  }, [canComment, openKey, currentDiffText, activeSelectedKeys, currentCommentKeySet, currentCommentKeyOrder, fileComments]);
+
+  const editingComment =
+    commentSheet?.mode === "edit" ? comments.find((c) => c.id === commentSheet.id) : undefined;
+
+  const openNewCommentSheet = () => {
+    if (diffRef === null || openKey === null || selectedCodeRows.length === 0) return;
+    const orderedKeys = currentCommentKeyOrder.filter((k) => activeSelectedKeys.has(k));
+    setCommentText("");
+    setCommentSheet({
+      mode: "new",
+      fileKey: openKey,
+      repo: diffRef.repo,
+      path: diffRef.path,
+      rowKeys: orderedKeys,
+      lineLabel: formatDiffLineLabel(selectedCodeRows),
+      linesText: captureDiffLines(selectedCodeRows),
+    });
+  };
+
+  const saveComment = () => {
+    const trimmed = commentText.trim();
+    if (trimmed === "" || commentSheet === null) return;
+    if (commentSheet.mode === "edit") {
+      setComments((currentList) =>
+        currentList.map((c) => (c.id === commentSheet.id ? { ...c, note: trimmed } : c)),
+      );
+      setCommentSheet(null);
+      setCommentText("");
+      return;
+    }
+    const entry: DiffComment = {
+      id: nextCommentId(),
+      fileKey: commentSheet.fileKey,
+      repo: commentSheet.repo,
+      path: commentSheet.path,
+      rowKeys: commentSheet.rowKeys,
+      lineLabel: commentSheet.lineLabel,
+      linesText: commentSheet.linesText,
+      note: trimmed,
+    };
+    setComments((currentList) => [...currentList, entry]);
+    setSelection((currentSel) =>
+      currentSel.fileKey === commentSheet.fileKey
+        ? { fileKey: commentSheet.fileKey, diffText: currentDiffText, keys: [] }
+        : currentSel,
+    );
+    setCommentSheet(null);
+    setCommentText("");
+  };
+
+  const deleteEditingComment = () => {
+    if (commentSheet?.mode !== "edit") return;
+    const targetId = commentSheet.id;
+    setComments((currentList) => currentList.filter((c) => c.id !== targetId));
+    setCommentSheet(null);
+    setCommentText("");
+  };
+
+  const bringCommentsToAgent = () => {
+    if (!targetPane || comments.length === 0) return;
+    const dest = panePath(targetPane.paneId, scope);
+    stageDiffCommentsToDraft(scope, targetPane.paneId, comments);
+    // Cleared here as well as by the hook's write: the navigation below can unmount the screen
+    // before that write runs, and a batch left in storage would come back after it was staged.
+    clearDiffComments(scope, targetKey);
+    setComments(() => []);
+    setBasketOpen(false);
+    if (target.kind === "pane") {
+      const steps = stepsBackToPane(dest, historyIdx(), navTrail.entries());
+      if (steps !== null) {
+        markInAppBack(pathOnly(dest));
+        void navigate(-steps);
+        return;
+      }
+      nav.upTo(dest);
+      return;
+    }
+    void navigate(dest, { replace: true, state: { from: spacePath(spaceId, scope) } });
+  };
+
   return (
     // The pane's own column, like History: this view is one hop from the pane and keeps its edges.
     <div className="mx-auto flex min-h-0 w-full min-w-0 max-w-[100dvw] flex-1 flex-col md:max-w-screen-md lg:max-w-screen-lg xl:max-w-screen-xl 2xl:max-w-[1400px]">
@@ -1093,6 +1324,7 @@ function ChangesScreen() {
             gone={gone}
             onPreview={previewOf === null ? undefined : () => previewInFiles(previewOf)}
             state={fileState}
+            commenting={commenting}
             prev={prev}
             next={next}
             onStep={stepTo}
@@ -1129,6 +1361,7 @@ function ChangesScreen() {
             view={treeView}
             onView={(view) => setViewChoice({ path: treeFile, view })}
             diff={fileState}
+            commenting={commenting}
             read={filesState}
             links={fileLinks}
             images={fileImages}
@@ -1177,9 +1410,173 @@ function ChangesScreen() {
           </div>
         )}
       </main>
+      {(selectedCodeRows.length > 0 || comments.length > 0) && (
+        <div className="flex items-center justify-between gap-2 border-t border-border bg-chrome px-4 py-2">
+          {selectedCodeRows.length > 0 ? (
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  openKey !== null && setSelection({ fileKey: openKey, diffText: currentDiffText, keys: [] })
+                }
+              >
+                {t("changes.comment.clearSelection", { count: selectedCodeRows.length })}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                className="flex-1"
+                onClick={openNewCommentSheet}
+              >
+                {t("changes.comment.selectedButton", { count: selectedCodeRows.length })}
+              </Button>
+            </>
+          ) : (
+            <Button
+              type="button"
+              size="sm"
+              className="w-full"
+              onClick={() => setBasketOpen(true)}
+            >
+              {t("changes.comment.pendingBar", { count: comments.length })}
+            </Button>
+          )}
+        </div>
+      )}
       {/* A phone's thumb cannot reach the header arrow: the same Back repeats here, under the
           scroller so nothing scrolls behind it. A file's diff carries it in its Previous / Next bar. */}
       {phone && !current && <BackBar back={back} hand={hand} />}
+      {commentSheet !== null && (
+        <BottomSheet
+          open
+          onClose={() => setCommentSheet(null)}
+          className={TALL_SHEET_CLEARANCE}
+          title={t("changes.comment.sheetTitle", {
+            path:
+              commentSheet.mode === "edit"
+                ? baseName(editingComment?.path ?? "")
+                : baseName(commentSheet.path),
+            lines:
+              commentSheet.mode === "edit"
+                ? (editingComment?.lineLabel ?? "")
+                : commentSheet.lineLabel,
+          })}
+        >
+          <div className="flex flex-col gap-3">
+            <pre className="rounded-md border border-border bg-background p-2.5 font-mono text-xs leading-relaxed text-muted-foreground whitespace-pre-wrap">
+              {(commentSheet.mode === "edit"
+                ? (editingComment?.linesText ?? [])
+                : commentSheet.linesText
+              ).join("\n")}
+            </pre>
+            <textarea
+              value={commentText}
+              onChange={(e) => setCommentText(e.target.value)}
+              placeholder={t("changes.comment.placeholder")}
+              rows={4}
+              className="w-full resize-y rounded-md border border-input bg-background p-2.5 text-base leading-relaxed text-foreground focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
+            />
+            <div className="flex items-center justify-end gap-2">
+              {commentSheet.mode === "edit" && (
+                <Button type="button" variant="destructive" size="sm" onClick={deleteEditingComment}>
+                  {t("changes.comment.delete")}
+                </Button>
+              )}
+              <Button
+                type="button"
+                size="sm"
+                disabled={commentText.trim() === ""}
+                onClick={saveComment}
+              >
+                {t(commentSheet.mode === "edit" ? "changes.comment.save" : "changes.comment.add")}
+              </Button>
+            </div>
+          </div>
+        </BottomSheet>
+      )}
+      {basketOpen && comments.length > 0 && (
+        <BottomSheet
+          open
+          onClose={() => setBasketOpen(false)}
+          className={TALL_SHEET_CLEARANCE}
+          title={t("changes.comment.basketTitle", { count: comments.length })}
+        >
+          <div className="flex flex-col gap-3">
+            {target.kind === "space" && (spaceAgentPanes.length > 1 || targetPane === undefined) && (
+              <div className="flex flex-col gap-1.5">
+                <span className="text-xs font-medium text-muted-foreground">
+                  {t("changes.comment.pickAgent")}
+                </span>
+                <div className="flex flex-col gap-1.5">
+                  {spaceAgentPanes.map((p) => {
+                    const sub = p.paneLabel ?? p.sessionName ?? p.paneId;
+                    const label = p.agent ? `${p.agent} · ${sub}` : sub;
+                    const rowKey = paneRowKey(p);
+                    const active = targetPane !== undefined && rowKey === paneRowKey(targetPane);
+                    return (
+                      <button
+                        key={rowKey}
+                        type="button"
+                        onClick={() => setChosen({ rowKey, paneId: p.paneId })}
+                        className={cn(
+                          "flex items-center justify-between rounded-md border px-3 py-2 text-left text-xs transition-colors",
+                          active
+                            ? "border-primary bg-primary/10 font-medium text-foreground"
+                            : "border-border bg-background text-muted-foreground hover:bg-muted",
+                        )}
+                      >
+                        <span className="truncate">{label}</span>
+                        {active && <span aria-hidden>✓</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            <ul className="flex flex-col gap-2">
+              {comments.map((c) => (
+                <li
+                  key={c.id}
+                  className="flex flex-col gap-1 rounded-md border border-border bg-background p-2.5 text-xs"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate font-mono font-medium text-primary">
+                      {displayDiffPath(c.repo, c.path)} ({c.lineLabel})
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const remaining = comments.filter((item) => item.id !== c.id);
+                        setComments(() => remaining);
+                        if (remaining.length === 0) setBasketOpen(false);
+                      }}
+                      className="text-muted-foreground hover:text-foreground"
+                    >
+                      {t("changes.comment.delete")}
+                    </button>
+                  </div>
+                  <div className="truncate font-mono text-[11px] text-muted-foreground">
+                    {c.linesText[0] ?? ""}
+                  </div>
+                  <div className="text-foreground">{c.note}</div>
+                </li>
+              ))}
+            </ul>
+            <Button
+              type="button"
+              disabled={!targetPane}
+              onClick={bringCommentsToAgent}
+            >
+              {t("changes.comment.bringToDraft", {
+                agent: targetAgentName,
+                count: comments.length,
+              })}
+            </Button>
+          </div>
+        </BottomSheet>
+      )}
     </div>
   );
 }
@@ -1353,6 +1750,7 @@ export function FileScreen({
   gone,
   onPreview,
   state,
+  commenting,
   prev,
   next,
   onStep,
@@ -1367,6 +1765,7 @@ export function FileScreen({
   /** Open this file in Files. Set for every file; the header offers it for a previewable one that is not deleted. */
   onPreview: (() => void) | undefined;
   state: FileState | null;
+  commenting?: DiffViewCommentProps;
   prev: ChangeRef | undefined;
   next: ChangeRef | undefined;
   onStep: (ref: ChangeRef) => void;
@@ -1401,7 +1800,7 @@ export function FileScreen({
       </div>
 
       <div className="flex-1 py-2">
-        <FileBody state={state} />
+        <FileBody state={state} commenting={commenting} />
       </div>
 
       {/* Across what the list shows, repos included: the filtered files, in the layout's order.
@@ -1424,7 +1823,7 @@ export function FileScreen({
   );
 }
 
-function FileBody({ state }: { state: FileState | null }) {
+function FileBody({ state, commenting }: { state: FileState | null; commenting?: DiffViewCommentProps }) {
   if (state === null || state.phase === "loading") return <Loading label={t("changes.loading")} />;
   if (state.phase === "error") {
     return (
@@ -1452,7 +1851,7 @@ function FileBody({ state }: { state: FileState | null }) {
   if (data.diff.trim() === "" || !data.diff.includes("@@")) return <Quiet>{t("changes.file.noLines")}</Quiet>;
   return (
     <>
-      <DiffView diff={data.diff} path={data.path} />
+      <DiffView diff={data.diff} path={data.path} commenting={commenting} />
       {data.truncated && <p className="px-4 pt-3 text-xs text-muted-foreground">{t("changes.file.truncated")}</p>}
     </>
   );
@@ -1473,6 +1872,7 @@ function TreeFileScreen({
   view,
   onView,
   diff,
+  commenting,
   read,
   links,
   images,
@@ -1489,6 +1889,7 @@ function TreeFileScreen({
   view: TreeView;
   onView: (view: TreeView) => void;
   diff: FileState | null;
+  commenting?: DiffViewCommentProps;
   read: FilesReadState<TreeRead>;
   links: FileLinks;
   /** Where a picture's bytes come from (ADR 0090). */
@@ -1502,7 +1903,7 @@ function TreeFileScreen({
   const size = read.phase === "ready" && read.data.available && "size" in read.data ? read.data.size : null;
   let body: React.ReactNode;
   if (waiting) body = <FilesLoading />;
-  else if (view === "diff") body = <FileBody state={diff} />;
+  else if (view === "diff") body = <FileBody state={diff} commenting={commenting} />;
   else if (read.phase === "loading") body = <FilesLoading />;
   else if (read.phase === "error") {
     body = (
