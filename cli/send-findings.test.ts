@@ -23,6 +23,7 @@ import {
   SENDS_WINDOW_MS,
   type SendsFinding,
 } from "./send-findings.ts";
+import { posixKey } from "./fakes.ts";
 import { realFiles, type Files } from "./sys.ts";
 
 const STATE = "/state";
@@ -72,11 +73,18 @@ function recordFile(id: string, send: Send): string {
   return JSON.stringify(phase === "accepted" || phase === "submit-sent" ? base : { ...base, receipt: receiptOf(id, send) });
 }
 
-/** A fake `Files` over a map of paths, which records any write the module would attempt (it has none to call). */
+/**
+ * A fake `Files` over a map of paths, which records any write the module would attempt (it has none to call).
+ * The module joins with the machine's separator, so both sides fold to the POSIX spelling like `fakes.ts` does.
+ */
 function fakeFiles(entries: Record<string, string>): Pick<Files, "list" | "read"> {
+  const folded = new Map(Object.entries(entries).map(([p, text]) => [posixKey(p), text]));
   return {
-    list: (path) => Object.keys(entries).filter((p) => p.startsWith(`${path}/`)).map((p) => p.slice(path.length + 1)),
-    read: (path) => entries[path] ?? null,
+    list: (path) => {
+      const dir = posixKey(path);
+      return [...folded.keys()].filter((p) => p.startsWith(`${dir}/`)).map((p) => p.slice(dir.length + 1));
+    },
+    read: (path) => folded.get(posixKey(path)) ?? null,
   };
 }
 

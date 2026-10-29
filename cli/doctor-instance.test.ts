@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 import { instanceAmbient, listInstances, loadContext } from "./context.ts";
 import { chooseDoctorInstance } from "./doctor-instance.ts";
-import { capture } from "./fakes.ts";
+import { capture, posixKey } from "./fakes.ts";
 import { EXIT } from "./io.ts";
 import { COMMANDS, run } from "./program.ts";
 
@@ -18,9 +18,10 @@ const ROOT = `${HOME}/.config/herdr/plugins/config`;
 /** A fake config root: the dirs `readdir` lists, and the `.env` files that exist. */
 function fakeFs(dirs: readonly string[], envs: readonly string[]) {
   const files = new Set(envs);
+  // `listInstances` joins with the machine's separator, so a lookup folds to the POSIX spelling first.
   return {
-    fileExists: (p: string) => files.has(p),
-    listDir: (p: string): string[] => (p === ROOT ? [...dirs] : []),
+    fileExists: (p: string) => files.has(posixKey(p)),
+    listDir: (p: string): string[] => (posixKey(p) === ROOT ? [...dirs] : []),
   };
 }
 
