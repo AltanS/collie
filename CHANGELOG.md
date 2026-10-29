@@ -41,6 +41,32 @@ Running a crew? Update the lead first; members follow on their own. Details:
   removed by `collie uninstall` or `collie unserve` like any mapping Collie recorded. `COLLIE_PUBLIC_HOSTS`
   and `COLLIE_PUBLIC_URL` are no longer needed for the default setup.
 
+### Fixed
+
+- **Collie never waits on a stuck Tailscale.** Every read-only `tailscale` call the CLI makes is
+  bounded to three seconds inside Collie itself. Publishing and removing a mapping still wait for
+  Tailscale, because killing a half-done change is worse than waiting. Before, the ACL probe went
+  through an external `timeout` command, which on Windows is a wait command, so `collie start` and
+  `collie doctor` could stall or skip the check.
+- **Doctor no longer blames the certificates when Tailscale is signed out.** The `front-door` row now
+  reads the Tailscale state first and says the check cannot run yet, instead of "this tailnet has no
+  HTTPS certificates".
+- **`collie start` says "your phone cannot reach it yet" only when that is true.** The closing sentence
+  now follows the Tailscale rows alone; a missing PATH link no longer triggers it. When the front
+  door did not come up, the banner's tailnet row says so instead of printing a working-looking
+  address.
+- **`collie status`, `collie doctor` and `collie serve` no longer hang on a stuck Tailscale.** Their
+  reads of the serve configuration, and the bridge's check before it removes a mapping, give up after
+  three seconds.
+- **A slow Tailscale is reported as slow, not as signed out.** When `tailscale status` does not answer
+  within three seconds, `collie start` and `collie doctor` now say that Tailscale did not answer and
+  to run `tailscale status` by hand, instead of telling you to sign in or blaming the HTTPS
+  certificates.
+- **Doctor names a hand-made tailnet mapping on another port that still points at Collie.** The
+  `front-door` row warns when a root mount on a port Collie does not manage, such as port 80 from the
+  old Headscale recipe, proxies to Collie, and names the `tailscale serve ... off` command that
+  removes it. `collie serve` in http mode prints a note about such a mapping and still publishes.
+
 ### Docs
 
 - **A docs fix can reach colliepwa.dev before the next release.** A branch `docs/<tag>`, named for the

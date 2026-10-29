@@ -5,6 +5,13 @@ import type { CliContext, Environment, ServeMode } from "./context.ts";
 import { DEFAULT_SERVE_PORT } from "./context.ts";
 import type { Exec } from "./sys.ts";
 
+/**
+ * How long one `tailscale` call may take before it reads as "did not answer". The bound is the
+ * `Exec` seam's own (`capture` kills the child and answers code 124), so it holds on every OS: no
+ * external `timeout` binary stands between Collie and a wedged tailscaled.
+ */
+export const TAILSCALE_PROBE_MS = 3000;
+
 // `tailscale status --json` → this host's name. The shell piped that JSON through an inline
 // interpreter one-liner (the pre-shim collie-ctl.sh) — exactly the runtime interpreter
 // dependency the compiled binary exists to remove — so the parse moves in-process.
@@ -66,7 +73,7 @@ export function selfHosts(statusJson: string): string[] {
 
 /** {@link selfHosts} over a live `tailscale status --json`. A missing or down CLI reads as no hosts. */
 export function tailnetHosts(exec: Exec): string[] {
-  const r = exec.capture("tailscale", ["status", "--json"]);
+  const r = exec.capture("tailscale", ["status", "--json"], TAILSCALE_PROBE_MS);
   if (!r.found || r.code !== 0) return [];
   return selfHosts(r.stdout);
 }
@@ -144,7 +151,7 @@ export function localBridgeUrl(env: Environment, port: number): string {
 
 /** {@link selfDnsName} over a live `tailscale status --json`. A missing CLI reads as no name. */
 export function tailnetName(exec: Exec): string | null {
-  const r = exec.capture("tailscale", ["status", "--json"]);
+  const r = exec.capture("tailscale", ["status", "--json"], TAILSCALE_PROBE_MS);
   if (!r.found || r.code !== 0) return null;
   return selfDnsName(r.stdout);
 }
@@ -196,21 +203,57 @@ export function packetFilterDeniesAll(netmapJson: string): boolean {
  * an UNDOCUMENTED surface with no stability guarantee, so no CLI, a non-zero exit, unparseable JSON
  * and a missing key all read as "can't tell" — false.
  *
- * Bounded through `timeout(1)` where it exists, because a diagnostic must never hold its caller
- * hostage: a wedged tailscaled (daemon alive, socket accepting, LocalAPI not answering) would
- * otherwise block indefinitely. Stock macOS ships no `timeout`, so there it stays unbounded rather
- * than gaining a dependency for a nice-to-have (the pre-shim collie-ctl.sh).
+ * Bounded by the `Exec` seam, not by an external `timeout`: a diagnostic must never hold its
+ * caller hostage, and a wedged tailscaled (daemon alive, socket accepting, LocalAPI not answering)
+ * would otherwise block indefinitely. `capture` kills the child after {@link TAILSCALE_PROBE_MS}
+ * and answers code 124, which reads as "can't tell". This once shelled out to `timeout(1)`, and
+ * that was wrong on two hosts: on Windows `timeout` resolves to System32 `timeout.exe`, a wait
+ * command, and stock macOS ships none.
  */
 export function tailnetInboundBlocked(exec: Exec): boolean {
-  const tailscale = exec.which("tailscale");
-  if (tailscale === null) return false;
-  const bounded = exec.which("timeout");
-  const r =
-    bounded === null
-      ? exec.capture("tailscale", ["debug", "netmap"])
-      : exec.capture("timeout", ["3", tailscale, "debug", "netmap"]);
+  if (exec.which("tailscale") === null) return false;
+  const r = exec.capture("tailscale", ["debug", "netmap"], TAILSCALE_PROBE_MS);
   if (!r.found || r.code !== 0) return false;
   return packetFilterDeniesAll(r.stdout);
+}
+
+// ── What is Tailscale doing here? ────────────────────────────────────────────
+
+/** What one bounded `tailscale status --json` said about this machine. */
+export type TailscaleState =
+  | { readonly kind: "absent" }
+  /** Ran, and said the daemon is down, logged out or stopped. `state` is its `BackendState`. */
+  | { readonly kind: "down"; readonly state: string | null }
+  /** Exit 0 with a document this build cannot read: no verdict either way. */
+  | { readonly kind: "unreadable" }
+  /** The call outlived {@link TAILSCALE_PROBE_MS}: a wedged or starting daemon, not a signed-out one. */
+  | { readonly kind: "slow" }
+  | { readonly kind: "running"; readonly json: string };
+
+/** One bounded `tailscale status --json`, read into what it says about this machine. */
+export function readTailscale(exec: Exec): TailscaleState {
+  if (exec.which("tailscale") === null) return { kind: "absent" };
+  const r = exec.capture("tailscale", ["status", "--json"], TAILSCALE_PROBE_MS);
+  if (!r.found) return { kind: "absent" };
+  // BEFORE the non-zero branch: `capture` turns every expiry into code 124 (`cli/sys.ts`, the
+  // `code: timedOut ? 124 : …` line in `realExec`), and 124 is not "signed out". A slow daemon read
+  // as `down` told the operator to sign in to a Tailscale that was merely not answering.
+  if (r.code === 124) return { kind: "slow" };
+  if (r.code !== 0) return { kind: "down", state: null };
+  let data: unknown;
+  try {
+    data = JSON.parse(r.stdout);
+  } catch {
+    return { kind: "unreadable" };
+  }
+  if (!(data instanceof Object)) return { kind: "unreadable" };
+  // SAFETY: narrowed to an object above, and the field is only compared and stringified, never
+  // trusted as a shape. An absent state reads as running: every Tailscale build that writes this
+  // document names it, so its absence is a document from somewhere else, and the rows below read
+  // what it does say.
+  const state = (data as { BackendState?: unknown }).BackendState;
+  if (state !== undefined && state !== null && state !== "Running") return { kind: "down", state: String(state) };
+  return { kind: "running", json: r.stdout };
 }
 
 // ── Does this tailnet have HTTPS at all? ─────────────────────────────────────
@@ -249,7 +292,7 @@ export function certDomains(statusJson: string): string[] | null {
 
 /** {@link certDomains} over a live `tailscale status --json`. A missing or down CLI can't tell. */
 export function tailnetCertDomains(exec: Exec): string[] | null {
-  const r = exec.capture("tailscale", ["status", "--json"]);
+  const r = exec.capture("tailscale", ["status", "--json"], TAILSCALE_PROBE_MS);
   if (!r.found || r.code !== 0) return null;
   return certDomains(r.stdout);
 }

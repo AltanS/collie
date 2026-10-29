@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
+import { fakeExec } from "./fakes.ts";
 import {
   bridgeUrlFrom,
   certDomains,
@@ -9,6 +10,12 @@ import {
   localBridgeUrl,
   selfDnsName,
   selfHosts,
+  TAILSCALE_PROBE_MS,
+  tailnetCertDomains,
+  tailnetHosts,
+  readTailscale,
+  tailnetInboundBlocked,
+  tailnetName,
 } from "./tailnet.ts";
 
 // The shell piped `tailscale status --json` through a one-liner interpreter to get at one field —
@@ -144,5 +151,60 @@ describe("certDomains — has this tailnet got HTTPS at all? (#172)", () => {
 
   test("blank entries are dropped, so a list of nothing reads as no certificates", () => {
     expect(certDomains('{"CertDomains":["  ",""]}')).toEqual([]);
+  });
+});
+
+describe("tailnetInboundBlocked — bounded inside Collie, on every OS", () => {
+  const NETMAP: [string, { stdout: string; code?: number }] = ["tailscale debug netmap", { stdout: "{}" }];
+
+  test("a netmap call that timed out (code 124) is `can't tell`, not blocked", () => {
+    const exec = fakeExec({ answers: [["tailscale debug netmap", { code: 124, stdout: '{"PacketFilter":[]}' }]] });
+    expect(tailnetInboundBlocked(exec)).toBe(false);
+  });
+
+  test("it asks the seam for the three-second bound and never looks for an external `timeout`", () => {
+    const whichAsked: string[] = [];
+    const exec = fakeExec({ answers: [NETMAP] });
+    const which = exec.which;
+    exec.which = (tool) => {
+      whichAsked.push(tool);
+      return which(tool);
+    };
+    tailnetInboundBlocked(exec);
+    expect(exec.calls).toEqual(["tailscale debug netmap"]);
+    expect(exec.timeouts).toEqual([{ call: "tailscale debug netmap", ms: TAILSCALE_PROBE_MS }]);
+    expect(whichAsked).not.toContain("timeout");
+  });
+
+  test("an empty packet filter with exit 0 is blocked", () => {
+    const exec = fakeExec({ answers: [["tailscale debug netmap", { stdout: '{"PacketFilter":[]}' }]] });
+    expect(tailnetInboundBlocked(exec)).toBe(true);
+  });
+
+  test("no tailscale on PATH is `can't tell`", () => {
+    expect(tailnetInboundBlocked(fakeExec({ absent: ["tailscale"] }))).toBe(false);
+  });
+});
+
+describe("every other tailscale call is bounded too", () => {
+  test("hosts, name and certificate reads pass the probe bound", () => {
+    const exec = fakeExec({ answers: [["tailscale status --json", { stdout: "{}" }]] });
+    tailnetHosts(exec);
+    tailnetName(exec);
+    tailnetCertDomains(exec);
+    expect(exec.timeouts).toEqual([
+      { call: "tailscale status --json", ms: TAILSCALE_PROBE_MS },
+      { call: "tailscale status --json", ms: TAILSCALE_PROBE_MS },
+      { call: "tailscale status --json", ms: TAILSCALE_PROBE_MS },
+    ]);
+  });
+});
+
+describe("readTailscale", () => {
+  test("code 124 (the seam's expiry) is slow; any other failure is down", () => {
+    const slow = fakeExec({ answers: [["tailscale status --json", { code: 124 }]] });
+    expect(readTailscale(slow)).toEqual({ kind: "slow" });
+    const down = fakeExec({ answers: [["tailscale status --json", { code: 1 }]] });
+    expect(readTailscale(down)).toEqual({ kind: "down", state: null });
   });
 });

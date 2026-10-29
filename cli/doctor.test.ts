@@ -93,15 +93,8 @@ const NETMAP_OPEN = JSON.stringify({ PacketFilter: [{ IPProto: ["tcp"] }] });
 /** A netmap whose inbound packet filter is EMPTY — deny-all, the only thing this probe can prove. */
 const NETMAP_DENY = JSON.stringify({ PacketFilter: [] });
 
-/**
- * The netmap probe is bounded through `timeout(1)` where it exists, and the fake `Exec` says every
- * tool exists — so the call it actually makes is `timeout 3 /fake/tailscale debug netmap`. Both
- * spellings are scripted, so the fixture does not silently stop matching if that bound is dropped.
- */
-const netmapAnswers = (json: string): NonNullable<Scripted["answers"]> => [
-  ["timeout 3 /fake/tailscale debug netmap", { stdout: json }],
-  ["tailscale debug netmap", { stdout: json }],
-];
+/** The netmap probe is bounded by the `Exec` seam itself, so the call is plain `tailscale debug netmap`. */
+const netmapAnswers = (json: string): NonNullable<Scripted["answers"]> => [["tailscale debug netmap", { stdout: json }]];
 
 /** `herdr integration status` on a host where every journalled agent's hook is current (issue #137). */
 const INTEGRATION_OK = [
@@ -872,6 +865,110 @@ describe("collie doctor — the local checks", () => {
     expect(byCheck.get("front-door")?.status).toBe("warn");
     expect(byCheck.get("front-door")?.detail).toContain("no HTTPS certificates");
     expect(byCheck.get("front-door")?.remedy).toContain("https://login.tailscale.com/admin/dns");
+  });
+
+  test("front-door: a signed-out Tailscale is not blamed on the certificates", async () => {
+    const { byCheck } = await findings(
+      harness(null, [], {
+        answers: [
+          ["tailscale status --json", { stdout: JSON.stringify({ BackendState: "NeedsLogin" }) }],
+          ...netmapAnswers(NETMAP_OPEN),
+        ],
+      }),
+    );
+    expect(byCheck.get("front-door")?.status).toBe("skipped");
+    expect(byCheck.get("front-door")?.detail).toContain("Tailscale is not running here");
+    expect(byCheck.get("front-door")?.detail).not.toContain("no HTTPS certificates");
+  });
+
+  test("front-door: a Tailscale that times out is reported as slow, not as signed out or as no certificates", async () => {
+    const { byCheck } = await findings(
+      harness(null, [], {
+        answers: [["tailscale status --json", { code: 124 }], ...netmapAnswers(NETMAP_OPEN)],
+      }),
+    );
+    const row = byCheck.get("front-door");
+    expect(row?.status).toBe("skipped");
+    expect(row?.detail).toContain("did not answer within 3 seconds");
+    expect(row?.detail).not.toContain("no HTTPS certificates");
+    expect(byCheck.get("tailscale")?.detail).toContain("did not answer");
+    expect(byCheck.get("tailscale")?.detail).not.toContain("not signed in");
+  });
+
+  describe("front-door: a hand-made door on another listener", () => {
+    const OWN_HTTP = `http:8787|laptop.tail.ts.net:8787|${PROXY}\n`;
+    const OWN_ONLY = JSON.stringify({
+        TCP: { "8787": { HTTP: true } },
+        Web: { "laptop.tail.ts.net:8787": { Handlers: { "/": { Proxy: PROXY } } } },
+      });
+    const WITH_PORT_80 = JSON.stringify({
+      TCP: { "8787": { HTTP: true }, "80": { HTTP: true } },
+      Web: {
+        "laptop.tail.ts.net:8787": { Handlers: { "/": { Proxy: PROXY } } },
+        "laptop.tail.ts.net:80": { Handlers: { "/": { Proxy: PROXY } } },
+      },
+    });
+    const run = async (serve: string, files: Record<string, string> = { ...healthyFiles(), [HANDLER]: OWN_HTTP }) => {
+      const h = harness(null, [], {
+        files,
+        answers: [
+          ["tailscale status --json", { stdout: JSON.stringify({ Self: { DNSName: "laptop.tail.ts.net." } }) }],
+          ["tailscale serve status --json", { stdout: serve }],
+          ...netmapAnswers(NETMAP_OPEN),
+        ],
+      });
+      h.deps = { ...h.deps, ctx: { ...h.deps.ctx, serveMode: "http" } };
+      return (await findings(h)).byCheck.get("front-door");
+    };
+
+    test("a port-80 mount that proxies to Collie is named, with the removal command", async () => {
+      const row = await run(WITH_PORT_80);
+      expect(row?.status).toBe("warn");
+      expect(row?.detail).toBe(
+        `:80 proxies to ${PROXY}, made by hand on a port Collie does not manage; collie uninstall will not remove it`,
+      );
+      expect(row?.remedy).toContain("`tailscale serve --http=80 --set-path=/ off`");
+      expect(row?.remedy).toContain("then run `collie start`");
+    });
+
+    test("the same status without the :80 mount keeps the ok row", async () => {
+      expect((await run(OWN_ONLY))?.status).toBe("ok");
+    });
+
+    test("any other port counts, and an https mount gets the --https flag", async () => {
+      const row = await run(
+        JSON.stringify({
+          TCP: { "8787": { HTTP: true }, "8443": { HTTPS: true } },
+          Web: {
+            "laptop.tail.ts.net:8787": { Handlers: { "/": { Proxy: PROXY } } },
+            "laptop.tail.ts.net:8443": { Handlers: { "/": { Proxy: PROXY } } },
+          },
+        }),
+      );
+      expect(row?.detail).toContain(":8443 proxies to");
+      expect(row?.remedy).toContain("`tailscale serve --https=8443 --set-path=/ off`");
+    });
+
+    test("a mount on another port that proxies elsewhere is nobody's business", async () => {
+      const other = JSON.stringify({
+        TCP: { "8787": { HTTP: true }, "80": { HTTP: true } },
+        Web: {
+          "laptop.tail.ts.net:8787": { Handlers: { "/": { Proxy: PROXY } } },
+          "laptop.tail.ts.net:80": { Handlers: { "/": { Proxy: "http://127.0.0.1:9000" } } },
+        },
+      });
+      expect((await run(other))?.status).toBe("ok");
+    });
+
+    test("with COLLIE_SKIP_SERVE=1 the existing answer stands", async () => {
+      const { [HANDLER]: _recorded, ...unrecorded } = healthyFiles();
+      const h = harness(null, [], {
+        env: { COLLIE_SKIP_SERVE: "1" },
+        files: unrecorded,
+        answers: [["tailscale serve status --json", { stdout: WITH_PORT_80 }], ...netmapAnswers(NETMAP_OPEN)],
+      });
+      expect((await findings(h)).byCheck.get("front-door")?.status).toBe("ok");
+    });
   });
 
   // Since 2026-10-28 `collie start` publishes the door on Windows too (ADR 0075, addendum), so the

@@ -48,6 +48,8 @@ const THEIRS = JSON.stringify({
 interface Harness {
   deps: FrontDoorDeps;
   calls: string[];
+  /** The bound each call asked for, keyed like `calls`; absent means unbounded. */
+  bounds: Map<string, number | undefined>;
   out: string[];
   err: string[];
   record(): string | null;
@@ -56,12 +58,14 @@ interface Harness {
 function harness(over: { record?: string | null; status?: string; missing?: boolean } = {}): Harness {
   let record = over.record === undefined ? RECORD : over.record;
   const calls: string[] = [];
+  const bounds = new Map<string, number | undefined>();
   const out: string[] = [];
   const err: string[] = [];
   const exec: FrontDoorExec = {
     which: (tool) => (over.missing === true ? null : `/usr/bin/${tool}`),
-    capture(tool, args) {
+    capture(tool, args, timeoutMs) {
       calls.push(`${tool} ${args.join(" ")}`);
+      bounds.set(`${tool} ${args.join(" ")}`, timeoutMs);
       const stdout = args[1] === "status" ? (over.status ?? OURS) : "";
       return { code: 0, stdout, stderr: "", found: true };
     },
@@ -76,6 +80,7 @@ function harness(over: { record?: string | null; status?: string; missing?: bool
   return {
     deps: { handlerFile: HANDLER, io: { out: (l) => out.push(l), err: (l) => err.push(l) }, exec, files },
     calls,
+    bounds,
     out,
     err,
     record: () => record,
@@ -259,5 +264,25 @@ describe("realFrontDoorExec", () => {
     expect(r.found).toBe(true);
     expect(r.code).toBe(0);
     expect(r.stdout.trim()).toBe("ok");
+  });
+});
+
+describe("teardown bounds its read of the serve status, never its removal", () => {
+  test("`serve status --json` carries a three-second bound; the `off` call carries none", () => {
+    const h = harness();
+    expect(releaseManagedFrontDoor(h.deps)).toBe(true);
+    expect(h.bounds.get("tailscale serve status --json")).toBe(3000);
+    expect(h.bounds.get("tailscale serve --http=8788 --set-path=/ off")).toBeUndefined();
+    expect(h.calls).toContain("tailscale serve --http=8788 --set-path=/ off");
+  });
+});
+
+describe("a slow serve status", () => {
+  test("is named once, and the mapping stays", () => {
+    const h = harness();
+    const slow: FrontDoorExec = { which: h.deps.exec.which, capture: () => ({ code: 124, stdout: "", stderr: "", found: true }) };
+    expect(releaseManagedFrontDoor({ ...h.deps, exec: slow })).toBe(false);
+    expect(h.err.filter((l) => l.includes("did not answer within 3 s"))).toHaveLength(1);
+    expect(h.record()).toBe(RECORD);
   });
 });

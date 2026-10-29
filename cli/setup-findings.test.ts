@@ -10,6 +10,8 @@ import type { Finding } from "./finding.ts";
 import { linkDir, linkPath } from "./link.ts";
 import {
   PATH_PROFILE_LINE,
+  phoneBlocked,
+  reachabilityChecks,
   SETUP_CLOSING,
   setupFindings,
   setupLines,
@@ -399,5 +401,44 @@ describe("a tailscale that is not running costs one bound, not three", () => {
     const none = deps({ absent: ["tailscale"] });
     tailscaleFindings(none);
     expect(none.exec.calls.filter((c) => c.startsWith("tailscale"))).toEqual([]);
+  });
+});
+
+describe("phoneBlocked — only the Tailscale rows stand between the phone and the door", () => {
+  const f = (check: string, status: Finding["status"]): Finding => ({ check, status, detail: "x", remedy: null });
+
+  test("a path-link or mux warning alone does not block the phone", () => {
+    expect(phoneBlocked([f("path-link", "warn"), f("mux", "warn")], LINUX)).toBe(false);
+    expect(phoneBlocked([f("mux", "error")], LINUX)).toBe(false);
+  });
+
+  test("an open Tailscale row blocks it, a skipped one does not", () => {
+    expect(phoneBlocked([f("tailscale", "ok"), f("tailscale", "warn")], LINUX)).toBe(true);
+    expect(phoneBlocked([f("tailnet-https", "warn"), f("path-link", "ok")], MAC)).toBe(true);
+    expect(phoneBlocked([f("tailscale", "skipped")], LINUX)).toBe(false);
+  });
+
+  test("tailscale-operator counts on Linux only", () => {
+    expect(phoneBlocked([f("tailscale-operator", "warn")], LINUX)).toBe(true);
+    expect(phoneBlocked([f("tailscale-operator", "warn")], WIN)).toBe(false);
+    expect(reachabilityChecks(LINUX)).toEqual(["tailscale", "tailnet-https", "tailscale-operator"]);
+  });
+
+  test("every row fine is not blocked", () => {
+    const rows = tailscaleFindings(deps());
+    expect(rows.map((r) => r.status)).toEqual(["ok", "ok", "ok"]);
+    expect(phoneBlocked(rows, LINUX)).toBe(false);
+  });
+});
+
+describe("a Tailscale that times out", () => {
+  test("reads as slow, not as signed out, and the rows after it wait", () => {
+    const rows = tailscaleFindings(deps({ answers: [["tailscale status --json", { code: 124 }]] }));
+    const first = row(rows, "tailscale");
+    expect(first.status).toBe("warn");
+    expect(first.detail).toBe(`Tailscale did not answer within ${TAILSCALE_PROBE_MS / 1000} seconds`);
+    expect(first.detail).not.toContain("not signed in");
+    expect(first.remedy).toBe("run `tailscale status` by hand; when it answers, run `collie start` again");
+    expect(row(rows, "tailnet-https").status).toBe("skipped");
   });
 });
