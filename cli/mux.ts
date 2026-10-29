@@ -1,6 +1,7 @@
 import { join } from "node:path";
 
 import { HERDR_MUX } from "../bridge/mux/herdr/adapter.ts";
+import { herdrCoreInPlaceOfTui } from "../bridge/mux/herdr-core/pick.ts";
 import { buildMuxRegistry, muxEndpointVar, muxNames } from "../bridge/mux/registry.ts";
 import { TMUX_MUX } from "../bridge/mux/tmux/adapter.ts";
 import { resolveTmuxBinary, tmuxServerArgs, tmuxServerLabel } from "../bridge/mux/tmux/exec.ts";
@@ -80,7 +81,7 @@ export function explicitMux(env: Pick<CliContext, "env">["env"]): string | null 
  * being asked is "what is here", not "is this one healthy".
  */
 export function probeMuxes(deps: MuxProbeDeps): MuxSighting[] {
-  return [probeHerdr(deps), probeTmux(deps), probeZellij(deps)].filter(
+  return [probeHerdr(deps), probeHerdrCore(deps), probeTmux(deps), probeZellij(deps)].filter(
     (sighting): sighting is MuxSighting => sighting !== null,
   );
 }
@@ -89,6 +90,19 @@ function probeHerdr(deps: MuxProbeDeps): MuxSighting | null {
   const socket = deps.ctx.socket;
   if (!deps.files.exists(socket)) return null;
   return { mux: HERDR_MUX, endpoint: "", evidence: `a Herdr socket at ${socket}` };
+}
+
+/**
+ * herdr-core, seen only where the Herdr TUI is not: no Herdr socket, and a herdr-core socket where
+ * `hc` would dial (`bridge/mux/herdr-core/pick.ts`, the bridge asks the same function). A box with
+ * both is a Herdr TUI box, as it always was, and `COLLIE_MUX=herdr-core` is how it says otherwise.
+ * The endpoint stays the operator's own `COLLIE_MUX_ENDPOINT_HERDR_CORE`, or empty for the core's
+ * default, so `HC_SESSION` keeps working after the choice is written down.
+ */
+function probeHerdrCore(deps: MuxProbeDeps): MuxSighting | null {
+  const core = herdrCoreInPlaceOfTui(deps.ctx.socket, deps.ctx.env, (path) => deps.files.exists(path));
+  if (core === null) return null;
+  return { mux: core.mux, endpoint: (deps.ctx.env[muxEndpointVar(core.mux)] ?? "").trim(), evidence: core.evidence };
 }
 
 function probeTmux(deps: MuxProbeDeps): MuxSighting | null {

@@ -1341,6 +1341,7 @@ const muxRegistry = buildMuxRegistry();
 // silent — the log named one only when it could not be reached — so `collie logs` could not answer
 // the first question a tmux or zellij operator asks (docs/multiplexers.md → "Did it work?").
 console.log(`[bridge] mux: ${describeMux(muxRegistry, cfg.mux, cfg.muxEndpoint)}`);
+if (cfg.muxPickedBecause !== "") console.log(`[bridge] mux: no COLLIE_MUX, so ${cfg.mux}: ${cfg.muxPickedBecause}`);
 // And each program beside it, one line each, from the source's own settings. Never the token.
 for (const source of programs.others) {
   console.log(`[bridge] program "${source.name}": ${DURABLE_MUX}, ${describeDurableTarget(sourceTransportEnv(source))}`);

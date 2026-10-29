@@ -70,6 +70,15 @@ describe("the probe", () => {
     expect(probeMuxes(host().deps)).toEqual([]);
   });
 
+  test("herdr-core is seen only where the Herdr TUI socket is not (M74)", () => {
+    const core = "/run/user/7/herdr-core/default.sock";
+    const env = { XDG_RUNTIME_DIR: "/run/user/7" };
+    expect(probeMuxes(host({ env, files: { [core]: "" } }).deps)).toEqual([
+      { mux: "herdr-core", endpoint: "", evidence: `a herdr-core socket at ${core}, and no Herdr socket at ${SOCKET}` },
+    ]);
+    expect(probeMuxes(host({ env, files: { [core]: "", [SOCKET]: "" } }).deps).map((s) => s.mux)).toEqual(["herdr"]);
+  });
+
   test("tmux is a running server, asked for with the one listing that never starts one", () => {
     const h = host({ files: { [TMUX_BIN]: "" }, answers: TMUX_RUNNING });
     expect(probeMuxes(h.deps)).toEqual([
@@ -191,7 +200,7 @@ describe("with no terminal", () => {
     expect(said).toContain("no COLLIE_MUX is set");
     expect(said).toContain("no multiplexers are running");
     // No hint is possible with nothing found, so the name is left as the choice it is.
-    expect(said).toContain("  COLLIE_MUX=<durable|herdr|tern|tmux|tuios|zellij> collie start");
+    expect(said).toContain("  COLLIE_MUX=<durable|herdr|herdr-core|tern|tmux|tuios|zellij> collie start");
     expect(h.dotenv()).toBeNull();
   });
 
@@ -204,7 +213,7 @@ describe("with no terminal", () => {
     expect(said).toContain("  tmux     a tmux server on tmux's own default server — 2 sessions");
     // Nothing in this environment names one of them, so nothing is suggested.
     expect(said).not.toContain("You probably want");
-    expect(said).toContain("  COLLIE_MUX=<durable|herdr|tern|tmux|tuios|zellij> collie start");
+    expect(said).toContain("  COLLIE_MUX=<durable|herdr|herdr-core|tern|tmux|tuios|zellij> collie start");
     expect(h.dotenv()).toBeNull();
   });
 
@@ -231,7 +240,7 @@ describe("with no terminal", () => {
     expect(await ensureMuxChosen(h.deps)).toBe(EXIT.FAIL);
     const said = h.io.stderr.join("\n");
     expect(said).not.toContain("You probably want");
-    expect(said).toContain("  COLLIE_MUX=<durable|herdr|tern|tmux|tuios|zellij> collie start");
+    expect(said).toContain("  COLLIE_MUX=<durable|herdr|herdr-core|tern|tmux|tuios|zellij> collie start");
   });
 
   test("a prompt seam that is there is still never used without a terminal", async () => {

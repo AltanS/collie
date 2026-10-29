@@ -472,6 +472,15 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     doc: "The tuios daemon socket to drive. Empty takes the socket tuios itself uses.",
     configField: "muxEndpoint",
   },
+  {
+    key: "mux_endpoint_herdr_core",
+    env: "COLLIE_MUX_ENDPOINT_HERDR_CORE",
+    section: "mux",
+    kind: "string",
+    default: "",
+    doc: "The herdr-core socket to drive. Empty takes the socket hc itself dials: HC_SOCKET, else the HC_SESSION socket under XDG_RUNTIME_DIR.",
+    configField: "muxEndpoint",
+  },
 
   // ── access ─────────────────────────────────────────────────────────────────
   {

@@ -614,3 +614,28 @@ describe("normaliseBasePath — COLLIE_BASE_PATH as the bridge mounts it", () =>
     expect(loadConfig().basePath).toBe("/");
   });
 });
+
+describe("loadConfig picks herdr-core with no COLLIE_MUX only when the Herdr TUI socket is absent (M74)", () => {
+  const core = "/run/user/7/herdr-core/default.sock";
+  const env = { XDG_RUNTIME_DIR: "/run/user/7", HERDR_SOCKET_PATH: "/home/dev/.config/herdr/herdr.sock" };
+
+  test.skipIf(process.platform === "win32")("only the core socket: herdr-core on that socket, with the reason", () => {
+    const cfg = loadConfig(env, (path) => path === core);
+    expect(cfg.mux).toBe("herdr-core");
+    expect(cfg.muxEndpoint).toBe(core);
+    expect(cfg.muxPickedBecause).toContain(core);
+  });
+
+  test("the TUI socket is there: herdr, as before", () => {
+    const cfg = loadConfig(env, () => true);
+    expect(cfg.mux).toBe("herdr");
+    expect(cfg.muxEndpoint).toBe(env.HERDR_SOCKET_PATH);
+    expect(cfg.muxPickedBecause).toBe("");
+  });
+
+  test("an explicit COLLIE_MUX is never second-guessed", () => {
+    const cfg = loadConfig({ ...env, COLLIE_MUX: "herdr" }, (path) => path === core);
+    expect(cfg.mux).toBe("herdr");
+    expect(cfg.muxPickedBecause).toBe("");
+  });
+});

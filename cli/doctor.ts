@@ -23,6 +23,7 @@ import { buildMuxRegistry, DEFAULT_MUX, factoryFor, type MuxTarget } from "../br
 import { TMUX_BINARY_OPTION } from "../bridge/mux/tmux/adapter.ts";
 import { ZELLIJ_BINARY_OPTION } from "../bridge/mux/zellij/adapter.ts";
 import { DURABLE_MUX } from "../bridge/mux/durable/adapter.ts";
+import { HERDR_CORE_MUX } from "../bridge/mux/herdr-core/adapter.ts";
 import { TERN_BINARY_OPTION } from "../bridge/mux/tern/adapter.ts";
 import { bindIsWildcard } from "../bridge/crew/config.ts";
 import { deriveMode } from "../bridge/crew/mode.ts";
@@ -53,6 +54,7 @@ import { surfaceFindings } from "./surface-findings.ts";
 import { harnessFindings, harnessReader, type ReadHarness } from "./harness-findings.ts";
 import { sendsSection } from "./send-findings.ts";
 import { durableFindings, sourcesFindings } from "./durable-findings.ts";
+import { herdrCoreFindings } from "./herdr-core-findings.ts";
 import { historyFindings, type SnapshotRead } from "./history.ts";
 import { EXIT, type Io } from "./io.ts";
 import {
@@ -256,6 +258,8 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
     // seventh whether the lead is new enough to show its panes: only when `durable` is the
     // multiplexer this install drives.
     ...(chosen.name === DURABLE_MUX ? await durableFindings({ ctx: deps.ctx, crew: { mode, marker: runtimeMarker } }) : []),
+    // herdr-core's socket and `hc --version`, in place of the two Herdr rows `appliesToMux` drops (M74).
+    ...(chosen.name === HERDR_CORE_MUX ? herdrCoreFindings({ env: deps.ctx.env, exec: deps.exec, files: deps.files, endpoint: chosen.endpoint }) : []),
     // The programs in `sources.json` (M55): one row for the file, then one block per program, each row
     // named `<row>:<program>`. Nothing when there is no file. The `durable-lead` row comes once: with
     // the env form's rows above on a durable-only install, after these blocks otherwise.

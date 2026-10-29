@@ -1,4 +1,4 @@
-import { chmodSync, statSync } from "node:fs";
+import { chmodSync, existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 
@@ -19,6 +19,7 @@ import { secretFileVerdict } from "./owner-only.ts";
 import type { AuditContent } from "./audit.ts";
 import type { DialMode } from "./dial.ts";
 import type { JournalRoots, ModelCatalogs } from "./journal/registry.ts";
+import { herdrCoreInPlaceOfTui } from "./mux/herdr-core/pick.ts";
 import { DEFAULT_MUX, muxEndpointVar } from "./mux/registry.ts";
 import { DEFAULT_MAX_UPLOAD_MB } from "./uploads.ts";
 
@@ -182,6 +183,12 @@ export interface Config {
    * for tmux, tmux's own default server. Documented per adapter, never guessed here.
    */
   muxEndpoint: string;
+  /**
+   * Why {@link mux} was picked with no `COLLIE_MUX`, when it is not the default: the evidence the
+   * bridge logs once at boot. Empty when `COLLIE_MUX` named it or the default stands
+   * (`bridge/mux/herdr-core/pick.ts`).
+   */
+  muxPickedBecause: string;
   /**
    * Absolute path to the `tmux` binary, when the operator has one somewhere unusual. Empty (the
    * default) probes a short list of fixed paths — never `PATH`, which a systemd unit and a Herdr
@@ -723,7 +730,7 @@ export function holdPrivateFile(path: string, repairAcl = false): PrivateFileVer
   return tightenPrivateFile(path, diskFilePerms, repairAcl);
 }
 
-export function loadConfig(env: Environment = process.env): Config {
+export function loadConfig(env: Environment = process.env, exists: (path: string) => boolean = existsSync): Config {
   const stateDir = resolveStateDir(env);
 
   const submitKeys = envList("COLLIE_SUBMIT_KEYS", env);
@@ -738,14 +745,19 @@ export function loadConfig(env: Environment = process.env): Config {
   // that is. ~/.config/collie is the same last-resort default the shim ends on.
   const configDir = resolveConfigDir(env);
 
-  const mux = (env.COLLIE_MUX ?? "").trim() || DEFAULT_MUX;
+  const named = (env.COLLIE_MUX ?? "").trim();
   const socketPath = env.HERDR_SOCKET_PATH ?? defaultSocketPath(HOST, env);
+  // No name, no Herdr TUI socket, and a herdr-core socket: the new core, said once at boot (M74).
+  // herdr-core runs on Linux and macOS only, so Windows keeps the default without a look.
+  const picked = named === "" && HOST.platform !== "win32" ? herdrCoreInPlaceOfTui(socketPath, env, exists) : null;
+  const mux = named || picked?.mux || DEFAULT_MUX;
 
   return {
     mux,
     // Herdr's endpoint IS its socket path, so the default adapter keeps reading exactly the setting
     // it always read and nothing about an existing deployment moves.
-    muxEndpoint: mux === DEFAULT_MUX ? socketPath : (env[muxEndpointVar(mux)] ?? "").trim(),
+    muxEndpoint: mux === DEFAULT_MUX ? socketPath : picked?.socket ?? (env[muxEndpointVar(mux)] ?? "").trim(),
+    muxPickedBecause: picked?.evidence ?? "",
     tmuxBin: (env.COLLIE_TMUX_BIN ?? "").trim(),
     zellijBin: (env.COLLIE_ZELLIJ_BIN ?? "").trim(),
     ternBin: (env.COLLIE_TERN_BIN ?? "").trim(),

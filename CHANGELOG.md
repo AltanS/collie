@@ -26,6 +26,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Added
 
 - **Collie can drive the new Herdr core, `herdr-core`, as its terminal host.** Set `COLLIE_MUX=herdr-core` and Collie reads the core's socket from `HC_SOCKET`, or `$XDG_RUNTIME_DIR/herdr-core/<HC_SESSION or default>.sock`. It shows this machine's terminals in herdr-app's spaces and tabs, reads each screen as plain text, types, presses keys, closes a terminal and opens a new tab. The agent and its state come from the program's own status report, so Claude Code reads as `claude`. Focus, renames, new spaces and worktrees are not available yet. The `herdr` adapter for the Herdr TUI is unchanged. (M74)
+- **With no `COLLIE_MUX`, Collie picks `herdr-core` on a machine that runs the new core and not the Herdr TUI.** This happens only when the Herdr TUI socket is absent and the herdr-core socket is present. The bridge logs the reason once at start, and `collie start` writes the choice to `.env` as for any other multiplexer. A machine with the Herdr TUI socket keeps `herdr`. `collie doctor` shows two new rows on such an install: `hc-socket` checks the core's socket, and `hc-version` shows `hc --version`. (M74)
 
 ## [1.25.0] - 2026-10-29
 
