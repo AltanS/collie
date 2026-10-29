@@ -27,6 +27,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **Terminal symbols render on phones.** A 19 KB subset of JuliaMono (`terminal-symbols-0.63.2.woff2`, OFL 1.1, renamed "Terminal Symbols" as the licence asks) covers the Miscellaneous Technical and Mathematical Symbols-B glyphs agents use for their own chrome (`⎿`, `⏺`, `⏵⏵`, `⏸`, `⧉`, `⧖`), lazy-cached on first use like the Nerd Font subsets, while two-cell emoji stay with the system face. Thanks @GGGODLIN (#618).
 - **History find searches inside tool output.** Searching in History now matches text inside tool call results, unfolds a matching tool call to highlight the hit, lets you collapse or re-open it with a tap, and hides the disclosure chevron on tool calls whose output is empty. Thanks @GGGODLIN (#618).
+- **Antigravity 1.4.8 panels show as cards on the phone.** The `/model`, `/effort`, `/usage`, `/context`, `/artifact` and `Keyboard:` panels of Antigravity CLI 1.4.4 to 1.4.8 now lift into cards, and a busy agy pane keeps its composer live instead of showing the unread-dialog card over its `esc to cancel` status. The agy reader is now checked against 1.4.8, from captures @GGGODLIN took on macOS; no live send has been probed in Collie's own lab yet. Thanks @GGGODLIN (#619).
 
 ### Fixed
 

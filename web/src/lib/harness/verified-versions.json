@@ -54,18 +54,18 @@
       }
     },
     "agy": {
-      "version": "1.1.17",
-      "verified": "2026-08-26",
+      "version": "1.4.8",
+      "verified": "2026-10-29",
       "how": "capture",
       "adapter": true,
-      "evidence": "web/src/fixtures/panes/README.md § \"agy corpus (captured 2026-08-26, Antigravity CLI 1.1.17, sandbox panes)\""
+      "evidence": "web/src/lib/harness/agy/fixtures/: 1.4.4–1.4.8 captures for /usage, /context, /effort, /model, /resume, /artifact, and Keyboard: modals, plus web/src/fixtures/panes/agy--ask-multi.txt"
     },
     "antigravity": {
-      "version": "1.1.17",
-      "verified": "2026-08-26",
+      "version": "1.4.8",
+      "verified": "2026-10-29",
       "how": "capture",
       "adapter": true,
-      "evidence": "Same binary as agy, filed under Herdr's other name for it (agent-commands.ts CATALOG comment) — web/src/fixtures/panes/README.md § \"agy corpus (captured 2026-08-26, Antigravity CLI 1.1.17, sandbox panes)\""
+      "evidence": "Same binary as agy, filed under Herdr's other name for it (agent-commands.ts CATALOG comment) — web/src/lib/harness/agy/fixtures/"
     },
     "muse": {
       "version": "1.4.7",

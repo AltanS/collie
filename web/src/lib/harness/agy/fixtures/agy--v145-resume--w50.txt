@@ -1,0 +1,15 @@
+[0m[1m  Conversations[0m
+[0m[2m  Type to search conversations...[0m
+[0m[38;5;12m> xxxxx xxx xxxx xx xxxx[0m[3m[38;5;12m   xxx xxxxx[0m  [0m[3m[38;5;12m      xx xxx[0m
+  xxx xxxxxxx xxxxxxxxxx[0m[2m     x xxxxx       xxx xxx[0m
+  xxxxxxx xxxxxxxx xxxxx[0m[2m     x xxxxx       xxx xxx[0m
+  xxxxxxx x xxxxxxx xxxx[0m[2m     x xxxxx       xxx xxx[0m
+  xxxxxxx x xxxxxxx xxxx[0m[2m     x xxxxx       xxx xxx[0m
+  xxxxxxx x xxxxxxx xx x[0m[2m     x xxxxx       xxx xxx[0m
+  xxx xxxxxx xxxxx xxxx [0m[2m     x xxxxx       xxx xxx[0m
+  xxxxxxx xxxxxxxx xxx x[0m[2m     x xxxxx       xxx xxx[0m
+
+[0m[1mKeyboard: [0m[38;5;12menter[0m [0m[38;5;8mSelect[0m  [0m[38;5;12mf2[0m [0m[38;5;8mRename[0m  [0m[38;5;12mf4[0m [0m[38;5;8mDelete[0m
+  [0m[38;5;12mtab[0m [0m[38;5;8mSwitch Tab[0m  [0m[38;5;12mesc[0m [0m[38;5;8mGo back / Clear search[0m
+
+auto  idle  Gemini 4 Argon (High)  ctx 100%  main

@@ -1,0 +1,12 @@
+[0m[1m part1.md [0m
+[0m[38;5;12m> [0m[1m[38;5;12m  1[0m     [0m[1m Plan Part 1 [0m
+
+  [0m[2m  2[0m     Step 1: Prepare environment and
+          prerequisites.
+  [0m[2m  3[0m     Review and confirm requirements
+          before execution.
+
+  [0m[1m[38;5;12mc[0m[38;5;8m comment · [0m[1m[38;5;12mctrl+g[0m[38;5;8m editor · [0m[1m[38;5;12mt[0m[38;5;8m outline[0m
+  [0m[1m[38;5;12ml[0m[38;5;8m hide lines · [0m[1m[38;5;12m/[0m[38;5;8m search · [0m[1m[38;5;12mg/G[0m[38;5;8m top/bottom[0m
+  [0m[1m[38;5;12mctrl+u/ctrl+d[0m[38;5;8m half page · [0m[1m[38;5;12mesc[0m[38;5;8m close[0m
+Gemini 3.8 Flash (Low)  plan  reviewing  ctx 98%

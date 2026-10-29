@@ -1,0 +1,9 @@
+[0m[1mAction required (1 left)[0m
+  [0m[38;5;2m✓ approved[0m part1.md
+[0m[38;5;12m› [0m[38;5;8m□ new[0m [0m[38;5;12mpart2.md[0m  [0m[7m[38;5;4m open [0m [0m[1m[38;5;2mapprove[0m [0m[1m[38;5;1mreject[0m
+  [0m[38;5;2m✓ approved[0m plan.md
+
+[0m[1mKeyboard: [0m[38;5;12m↑/↓[0m [0m[38;5;8mNavigate[0m  [0m[38;5;12my/n[0m [0m[38;5;8mApprove/reject[0m  [0m[38;5;12mshift+a[0m [0m[38;5;8mApprove all[0m  [0m[38;5;12mp[0m [0m[38;5;8mPreview[0m  [0m[38;5;12mctrl+g[0m [0m[38;5;8mopen in editor[0m
+  [0m[38;5;12mesc[0m [0m[38;5;8mDone[0m
+
+Gemini 3.8 Flash (Low)  plan  reviewing  ctx 98%  main  Gemini 5h 90.9% ↻4h31m · 7d 84.9% ↻4d2h  Cla
