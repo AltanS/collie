@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { agentOf, fixtureRows, incidentScreens, perturbations, readScreen, rowsOf } from "../../test/surface-corpus";
 import { readCues } from "./cues";
-import { findInputFrame } from "./frame";
+import { findInputFrame, rowText } from "./frame";
 import { requireProfile } from "./profile";
 import { askOf, isFree } from "./surface";
 import { CORPUS_WALK, FIXTURES, labelOf, NEGATIVE, own, towardFree } from "../../test/surface-fold";
@@ -46,6 +46,99 @@ describe("the codex profile over the Codex fixtures (M56 spec 13)", () => {
       expect(read(ultra).surface).toMatchObject({ turn: "idle", modal: "none", composer });
       expect(isFree(read(ultra).surface), ultra).toBe(composer === "empty");
     }
+  });
+
+  // Counsel on issue 615: the prompt pattern widened from `›` to `[›»]`, so show what it does NOT
+  // take. The frame needs its blank top row, a column-0 prompt row, and the Codex status row below
+  // (profiles/codex.json idle.frame); the profile only reads panes the mux names as Codex.
+  describe("the widened prompt glyph takes no output line for the box (issue 615)", () => {
+    const EMPTY = "codex--v0164-queue-done--w120.txt"; // composer `›`
+    const ULTRA = "codex--v0165-ultra-empty--w120.txt"; // the same screen, composer `»`
+    const above = (rows: ReturnType<typeof fixtureRows>, extra: ReturnType<typeof rowsOf>, gap: number) => {
+      const top = findInputFrame(rows, CODEX)!.top;
+      return [...rows.slice(0, top - gap), ...extra, ...rows.slice(top - gap)];
+    };
+    const outputLines = rowsOf(["» ~/src/collie main ✓", "» Bonjour, dit-il, « ça va » ?", "» "].join("\n"));
+
+    it("a column-0 `» ` output line above a `›` composer is not the box, flush or one row apart", () => {
+      const rows = fixtureRows(EMPTY);
+      const base = findInputFrame(rows, CODEX)!;
+      for (const gap of [0, 1, 2]) {
+        const screen = above(rows, outputLines, gap);
+        const frame = findInputFrame(screen, CODEX);
+        expect(frame, `gap ${gap}`).not.toBeNull();
+        expect(frame!.interior.prompt, `gap ${gap}`).toBe(base.interior.prompt + outputLines.length);
+        expect(frame!.placeholder, `gap ${gap}`).toBe(true);
+        const r = readScreen(screen, "codex", CODEX);
+        expect(r.surface, `gap ${gap}`).toMatchObject({ turn: "idle", modal: "none", composer: "empty" });
+        expect(isFree(r.surface), `gap ${gap}`).toBe(true);
+      }
+    });
+
+    it("the same lines above a `»` composer leave the box where it is", () => {
+      const rows = fixtureRows(ULTRA);
+      const base = findInputFrame(rows, CODEX)!;
+      const frame = findInputFrame(above(rows, outputLines, 0), CODEX)!;
+      expect(frame.interior.prompt).toBe(base.interior.prompt + outputLines.length);
+      expect(isFree(readScreen(above(rows, outputLines, 0), "codex", CODEX).surface)).toBe(true);
+    });
+
+    it("a `»` line is never a box on its own: with no Codex status row under it there is no frame", () => {
+      const screen = rowsOf(["• done", "", "» ~/src/collie main ✓", "", "$ "].join("\n"));
+      expect(findInputFrame(screen, CODEX)).toBeNull();
+      expect(isFree(readScreen(screen, "codex", CODEX).surface)).toBe(false);
+    });
+
+    const dialogQuote = [
+      "• Here is the dialog you asked about:",
+      "  Would you like to run the following command?",
+      "› 1. Yes, proceed (y)",
+      "  2. No, and tell Codex what to do differently (esc)",
+      "  Press enter to confirm or esc to cancel",
+      "",
+      "• That is all it shows.",
+    ].join("\n");
+
+    it("mixed: a `»` composer under a quoted `›` dialog stays free, and the box is the `»` row", () => {
+      const rows = fixtureRows(ULTRA);
+      const base = findInputFrame(rows, CODEX)!;
+      const quote = rowsOf(dialogQuote);
+      const quoted = [...rows.slice(0, base.top - quote.length - 2), ...quote, ...rows.slice(base.top - 2)];
+      const r = readScreen(quoted, "codex", CODEX);
+      expect(r.frame).not.toBeNull();
+      expect(rowText(quoted[r.frame!.interior.prompt]!).startsWith("» ")).toBe(true);
+      expect(isFree(r.surface)).toBe(true);
+      expect(readCues(quote.slice(1, 5), null, null).strength).toBe("strong");
+    });
+
+    it("mixed: the same dialog flush on a `»` box is never free, as on a `›` box", () => {
+      const rows = fixtureRows(ULTRA);
+      const top = findInputFrame(rows, CODEX)!.top;
+      const dialog = rowsOf(["  Would you like to run the following command?", "› 1. Yes, proceed (y)", "  2. No (esc)", "  Press enter to confirm or esc to cancel"].join("\n"));
+      const flush = [...rows.slice(0, top - dialog.length), ...dialog, ...rows.slice(top)];
+      expect(isFree(readScreen(flush, "codex", CODEX).surface)).toBe(false);
+      const plain = fixtureRows(EMPTY);
+      const plainTop = findInputFrame(plain, CODEX)!.top;
+      const plainFlush = [...plain.slice(0, plainTop - dialog.length), ...dialog, ...plain.slice(plainTop)];
+      expect(isFree(readScreen(plainFlush, "codex", CODEX).surface)).toBe(isFree(readScreen(flush, "codex", CODEX).surface));
+    });
+
+    it("reverse mixed: a `›` composer under a quoted dialog drawn with `»` pointers stays free", () => {
+      const rows = fixtureRows(EMPTY);
+      const base = findInputFrame(rows, CODEX)!;
+      const quote = rowsOf(dialogQuote.replace("› 1.", "» 1."));
+      const quoted = [...rows.slice(0, base.top - quote.length - 2), ...quote, ...rows.slice(base.top - 2)];
+      const r = readScreen(quoted, "codex", CODEX);
+      expect(r.frame).not.toBeNull();
+      expect(rowText(quoted[r.frame!.interior.prompt]!).startsWith("› ")).toBe(true);
+      expect(isFree(r.surface)).toBe(true);
+    });
+
+    it("no Codex dialog capture has a composer to mistake, so the glyph widening frees none of them", () => {
+      const dialogs = codexFixtures.filter((name) => NEGATIVE.has(labelOf(name).state));
+      expect(dialogs.length).toBeGreaterThan(10);
+      expect(dialogs.filter((name) => isFree(read(name).surface))).toEqual([]);
+    });
   });
 
   it("codex: a draft reads as a draft, never free, and a running turn never reads idle", () => {
