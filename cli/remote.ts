@@ -23,7 +23,7 @@ import {
   type SourcedCandidates,
 } from "./candidates.ts";
 import { collieVersion, collieVersionBare, INSTANCE_PATTERN, PLUGIN_ID } from "./context.ts";
-import { detectInstall, updateRepoOf, type InstallKind } from "./install-kind.ts";
+import { DEFAULT_UPDATE_REPO, detectInstall, updateRepoOf, type InstallKind } from "./install-kind.ts";
 import { INSTALLER_SH } from "./installer-embed.ts";
 import { EXIT, type Io } from "./io.ts";
 import { realLinkFs } from "./link.ts";
@@ -502,7 +502,10 @@ export function installScript(opts: {
   readonly root: string;
   readonly commit: string;
   readonly version: string;
+  /** The `owner/repo` updates come from — the member's `origin` is set to it. */
+  readonly repo?: string;
 }): string {
+  const repo = opts.repo ?? DEFAULT_UPDATE_REPO;
   return [
     "set -eu",
     "umask 077",
@@ -512,6 +515,8 @@ export function installScript(opts: {
     `ROOT=${shqPath(opts.root)}`,
     `COMMIT=${shq(opts.commit)}`,
     `EXPECT=${shq(opts.version)}`,
+    // `originMatches` also accepts a COLLIE_UPDATE_REPO spelled as a URL or path; that goes verbatim.
+    `ORIGIN=${shq(/^[^/:\s]+\/[^/:\s]+$/.test(repo) ? `https://github.com/${repo}.git` : repo)}`,
     'WORK=$(mktemp -d "${TMPDIR:-/tmp}/collie-add.XXXXXX")',
     `trap 'rm -rf "$WORK"' EXIT INT TERM`,
     // BSD and GNU `base64` disagree on the decode flag; ask rather than guess.
@@ -535,6 +540,11 @@ export function installScript(opts: {
     '    "$GIT" -C "$ROOT" bundle unbundle "$WORK/bundle" >/dev/null 2>>"$WORK/fetch.err" || { cat "$WORK/fetch.err" >&2; echo "error: the pushed bundle could not be applied to $ROOT" >&2; exit 28; }',
     "  fi",
     '  "$GIT" -C "$ROOT" checkout --detach "$COMMIT"',
+    // A checkout an earlier push cloned still names that push's deleted bundle as `origin`, which
+    // `collie update` and `doctor` refuse. Any other origin is the operator's and is left alone.
+    '  case "$("$GIT" -C "$ROOT" remote get-url origin 2>/dev/null || true)" in',
+    '    */collie-add.*/bundle) "$GIT" -C "$ROOT" remote set-url origin "$ORIGIN" ;;',
+    "  esac",
     // Never `mv` a fresh clone onto an existing non-checkout: `mv a b` when `b` is a directory puts
     // `a` INSIDE it, which would leave a working Collie at a path nothing else knows about.
     'elif [ -e "$ROOT" ]; then',
@@ -545,6 +555,8 @@ export function installScript(opts: {
     '  rm -rf "$ROOT.part"',
     '  "$GIT" clone -q "$WORK/bundle" "$ROOT.part"',
     '  "$GIT" -C "$ROOT.part" checkout --detach "$COMMIT"',
+    // The clone's `origin` is `$WORK/bundle`, gone when this leg exits.
+    '  "$GIT" -C "$ROOT.part" remote set-url origin "$ORIGIN"',
     '  mv "$ROOT.part" "$ROOT"',
     "fi",
     // Either way the commit may now name a parent this checkout does not have. Record the commit as
@@ -589,7 +601,7 @@ export function installScript(opts: {
  */
 export async function runInstall(
   runner: RemoteRunner,
-  opts: { readonly root: string; readonly commit: string; readonly version: string },
+  opts: { readonly root: string; readonly commit: string; readonly version: string; readonly repo?: string },
   bundle: string,
 ): Promise<{ readonly result: RemoteResult; readonly version: string | null }> {
   const result = await runner.run(installScript(opts), bundle);
@@ -1360,7 +1372,7 @@ async function addOverSsh(deps: Wired, runner: RemoteRunner, opts: AddOptions): 
           probe,
           memberKind,
         })
-      : await bundleLeg(deps, runner, { host, root, probe, memberKind });
+      : await bundleLeg(deps, runner, { host, root, repo: opts.repo, probe, memberKind });
   if ("code" in installed) return installed.code;
   const replaced = installed.replaced;
 
@@ -1402,7 +1414,7 @@ type Installed = { readonly code: number } | { readonly replaced: boolean };
 async function bundleLeg(
   deps: Wired,
   runner: RemoteRunner,
-  o: { host: string; root: string; probe: Probe; memberKind: MemberKind },
+  o: { host: string; root: string; repo: string; probe: Probe; memberKind: MemberKind },
 ): Promise<Installed> {
   const { probe } = o;
   if (o.memberKind === "binary") {
@@ -1436,7 +1448,7 @@ async function bundleLeg(
     });
     return { replaced: false };
   }
-  const blocked = await installLeg(deps, runner, { host: o.host, root: o.root, commit, version, probe });
+  const blocked = await installLeg(deps, runner, { host: o.host, root: o.root, commit, version, repo: o.repo, probe });
   if (blocked !== null) return { code: blocked };
   return { replaced: true };
 }
@@ -1568,6 +1580,7 @@ async function installLeg(
     root: string;
     commit: string;
     version: string;
+    repo: string;
     probe: Probe;
   },
 ): Promise<number | null> {
@@ -1612,7 +1625,7 @@ async function installLeg(
   });
   const { result: installed, version: built } = await runInstall(
     runner,
-    { root: o.root, commit: o.commit, version: o.version },
+    { root: o.root, commit: o.commit, version: o.version, repo: o.repo },
     bundle,
   );
   const transport = transportFailure(deps.io, o.host, installed);

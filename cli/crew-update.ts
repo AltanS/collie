@@ -215,8 +215,9 @@ interface Build {
    * whole of the contract on that route — the stamp under it belongs to whoever built the release.
    */
   readonly expected: string;
-  /** release only: the tag every member installs, and the `owner/repo` it takes that tag from. */
+  /** release only: the tag every member installs. */
   readonly tag: string;
+  /** The `owner/repo` updates come from: release takes its tag there, bundle sets `origin` to it. */
   readonly repo: string;
 }
 
@@ -415,7 +416,7 @@ function bundleBuild(deps: Wired): Decided {
   // What a levelled member should answer `hello` with — the version the commit carries PLUS that
   // commit's build metadata, which is what this lead itself runs after building the same commit.
   const expected = expectedAnswer(deps, version, commit);
-  return { build: { route: "bundle", version, commit, expected, tag: "", repo: "" } };
+  return { build: { route: "bundle", version, commit, expected, tag: "", repo: updateRepoOf(deps.ctx.env) } };
 }
 
 /**
@@ -1188,7 +1189,7 @@ function pushLeg(
   // and a run that could not make one never reaches here.
   const bundle = o.bundle ?? "";
   line(deps, `  pushing ${build.commit.slice(0, 12)} (${Math.round(bundle.length / 1024)} KiB base64) to ${root}…`);
-  return runInstall(runner, { root, commit: build.commit, version: build.version }, bundle);
+  return runInstall(runner, { root, commit: build.commit, version: build.version, repo: build.repo }, bundle);
 }
 
 /**

@@ -290,7 +290,8 @@ export function forwardAuditAction(route: string, method?: string): string | nul
   if (route.startsWith("space/")) return "space.rename";
   const action = route.split("/")[2];
   if (isPaneRead(action)) return null; // reads, and a read is audited on neither side
-  if (action === "close" || action === "rename") return `pane.${action}`;
+  // close, rename and focus namespace themselves on the peer's own handler; the rest stay bare.
+  if (action === "close" || action === "rename" || action === "focus") return `pane.${action}`;
   // The member writes the same name for the message it takes (bridge/walky/crew.ts).
   if (action === "walky") return "walky.deliver";
   return action; // reply | keys | upload

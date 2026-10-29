@@ -357,6 +357,7 @@ describe("which routes cross a link", () => {
     expect(forwardAuditAction("pane/w1:p1/answer")).toBe("answer");
     expect(forwardAuditAction("pane/w1:p1/close")).toBe("pane.close");
     expect(forwardAuditAction("pane/w1:p1/rename")).toBe("pane.rename");
+    expect(forwardAuditAction("pane/w1:p1/focus")).toBe("pane.focus");
     expect(forwardAuditAction("tab")).toBe("tab.create");
     expect(forwardAuditAction("tab/w1:t1/rename")).toBe("tab.rename");
     expect(forwardAuditAction("space/w1/rename")).toBe("space.rename");
