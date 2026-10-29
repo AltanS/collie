@@ -100,6 +100,33 @@ function isEnvelope(tag: string, text: string): boolean {
 }
 
 /**
+ * A bracketed paste as Claude Code records it in a `user` row: the pasted text between an opening
+ * and a closing tag that both carry the same id (or an unlabelled close), each on a line of its own,
+ * with blank lines in front when nothing was typed before the paste (measured on Claude Code 2.1.287,
+ * 2026-10-05):
+ *
+ *     "\n\n<pasted_content id=\"6100\">\n…pasted lines…\n</pasted_content id=\"6100\">\n"
+ *
+ * Collie sends every long reply and voice note this way (#349), so this is the common shape of what
+ * the operator said, not an edge case. The tags are Claude Code's own and the operator never typed
+ * them; drawn as text they open the turn with markup, and in the queue row they took a tenth of its
+ * 200 characters.
+ */
+const PASTED_CONTENT = /(^|\n)<pasted_content id="([0-9a-f]+)">\n?([\s\S]*?)\n?<\/pasted_content(?:\s+id="\2")?>/g;
+
+/** The text with each recorded paste replaced by what was pasted, trimmed at both ends. A tag with no
+ *  matching close (same id) is left as it is.
+ *
+ *  TWIN: `unwrapPrompt` in cli/beacon.ts cuts the same wrapper off a `UserPromptSubmit` prompt before
+ *  it is hashed against a send's receipt. They stay two on purpose: that one takes any id, needs a
+ *  labelled close, matches anywhere and keeps the ends, and a change to it moves which prompts match
+ *  a receipt. Change the two together when Claude Code changes the wrapper. */
+export function unwrapPastes(text: string): string {
+  if (!text.includes("<pasted_content ")) return text;
+  return text.replace(PASTED_CONTENT, "$1$3").trim();
+}
+
+/**
  * Classify a `user` row's string content.
  *
  * Only about half of these are things a human typed — Claude Code reuses the user role as the
@@ -141,7 +168,8 @@ export function classifyUserText(
     return summary ? { role: "note", text: summary } : null;
   }
 
-  return text.trim() === "" ? null : { role: "user", text };
+  const spoken = unwrapPastes(text);
+  return spoken.trim() === "" ? null : { role: "user", text: spoken };
 }
 
 /**
@@ -400,6 +428,10 @@ const QUEUE_ID_CHARS = 256;
 /** How much raw text {@link readQueueEntry} looks at: room for colour codes and runs of spaces. */
 const QUEUE_READ_CHARS = QUEUE_ID_CHARS * 16;
 
+/** How much raw text {@link readQueueEntry} reads for the operator's own words, so a recorded paste's
+ *  closing tag is still in the read and {@link unwrapPastes} can take both tags off. */
+const QUEUE_PASTE_READ_CHARS = QUEUE_READ_CHARS * 8;
+
 /** ANSI off, whitespace runs to one space, ends trimmed: the spelling-proof form of a message. */
 function queueNormal(text: string): string {
   return stripAnsi(text).replace(/\s+/g, " ").trim().slice(0, QUEUE_ID_CHARS);
@@ -429,7 +461,22 @@ function readQueueEntry(content: string): QueueEntry {
   }
   const notice = QUEUE_NOTICES.find((prefix) => text.startsWith(prefix));
   if (notice !== undefined) return { kind: notice, id: queueNormal(text), text: null };
-  return { kind: null, id: queueNormal(text), text: text === "" ? null : clamp(text, MAX_QUEUED_CHARS).text };
+  // Unwrapped BEFORE the cap, or the tags spend the row's budget. A cut message ends in "…", so the
+  // row never reads as the whole of what is waiting. Still bounded, but wider than `text`: a paste's
+  // closing tag sits after the whole pasted text, and a read cut short of it leaves both tags in. A
+  // paste longer than the wider read keeps its tags, which costs the row its look, never its identity:
+  // both sides of a match are cut the same way.
+  const queued = unwrapPastes(stripAnsi(content.slice(0, QUEUE_PASTE_READ_CHARS))).trim();
+  return {
+    kind: null,
+    id: queueNormal(queued),
+    text:
+      queued === ""
+        ? null
+        : queued.length <= MAX_QUEUED_CHARS
+          ? queued
+          : `${queued.slice(0, MAX_QUEUED_CHARS - 1).trimEnd()}…`,
+  };
 }
 
 /** A string content, or the first text block of an array one: what a delivered message says. */
@@ -880,8 +927,10 @@ export function createClaudeReducer(opts: { includeSidechains?: boolean } = {}):
         // A `continue` over the BLOCK, not the row: the other blocks of this turn still count.
         if (b === null || typeof b !== "object" || Array.isArray(b)) continue;
         if (b.type === "text" && typeof b.text === "string") {
-          if (b.text.trim() !== "")
-            parts.push({ kind: "text", ...clamp(stripAnsi(b.text), MAX_TEXT_CHARS) });
+          if (b.text.trim() !== "") {
+            const text = type === "user" || absorbed !== null ? unwrapPastes(stripAnsi(b.text)) : stripAnsi(b.text);
+            if (text.trim() !== "") parts.push({ kind: "text", ...clamp(text, MAX_TEXT_CHARS) });
+          }
         } else if (b.type === "thinking" && typeof b.thinking === "string") {
           if (b.thinking.trim() !== "")
             parts.push({ kind: "thinking", ...clamp(stripAnsi(b.thinking), MAX_TEXT_CHARS) });
