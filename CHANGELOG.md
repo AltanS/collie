@@ -23,6 +23,12 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **Edit and annotate a photo before it goes up.** Picking or pasting an image opens a sheet with a crop, a pen, a circle and an arrow, drawn on a native canvas, and the edited picture uploads as a PNG. Thanks @GGGODLIN (#600).
+- **A picked photo shows a preview first, with Attach one tap away.** The sheet opens on the picture. Attach sends the original file, untouched. Edit opens the crop and draw tools, and a photo that was cropped or marked goes up as a PNG. A photo with no change goes up as it was. A photo already in the composer opens the same tools from a tap on its thumbnail, and the edited photo takes its place under the same number. A browser with no canvas attaches the photo as it is.
+- **A photo the browser cannot show still attaches.** If the preview cannot decode the picture, Attach happens on its own and the file goes up as it was, with no error.
+
 ### Changed
 
 - **The browser leg can answer Claude Code from recorded model streams too (M67).** Claude Code reaches the leg's local stub through `ANTHROPIC_BASE_URL`, beside pi and omp, with recordings kept per Claude Code version and walky talky skill text. On a recorded version Claude replays on a dummy login, so a run needs no Claude login and spends no Claude turn, and a recorded tool call still makes the real Claude draw its permission card. A new version runs live once on the real login and records; the stub passes the login through to Anthropic and never stores it. `COLLIE_RIG_LIVE=claude` runs Claude live and direct, as before. The leg's summary now prints `live model turns: claude 0` on a replay and counts the requests sent to Anthropic.
