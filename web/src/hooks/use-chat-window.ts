@@ -110,6 +110,7 @@ export interface ChatFeed {
 export function useChatWindow({
   paneId,
   scope,
+  instance,
   enabled,
   savedCopy = false,
   seen = true,
@@ -117,6 +118,12 @@ export function useChatWindow({
   paneId: string;
   /** Which machine + which named session this pane lives in — every other pane read carries it. */
   scope?: Scope;
+  /**
+   * The pane's session instance (`AgentView.instance`): another session that takes the same pane id
+   * carries another one, and neither the held window nor the saved copy crosses from one to the other.
+   * A pane that gains its first instance keeps its held window (see the reset below).
+   */
+  instance?: string;
   /** False for a pane with no journal, and for every pane while the operator is on the terminal. */
   enabled: boolean;
   /**
@@ -161,17 +168,42 @@ export function useChatWindow({
   // is a different terminal in every session and on every machine, and merging one machine's turns
   // into another's is the one mistake this whole module exists to avoid. Reset during render rather
   // than in an effect, so the first paint after a switch is empty rather than the previous pane's.
-  const address = paneScopeKey(scope, paneId);
-  const [shownAddress, setShownAddress] = useState(address);
-  if (shownAddress !== address) {
-    setShownAddress(address);
+  //
+  // The pane's session instance is part of that identity, but only once it is known on both sides.
+  // A live pane can go from no instance to one: a pane the phone just opened is drawn from the
+  // `freshPane` it built itself (hooks/use-spaces.ts), which carries none, until the snapshot names
+  // it; a saved herd or an older crew member carries none either. That is the same session, so the
+  // held window stays and the instance is adopted. Only two known instances that differ (a new
+  // session took the pane id) reset it. The saved copy is stricter: it is read under the exact
+  // instance the pane carries now (lib/chat-tail.ts).
+  const paneAddress = paneScopeKey(scope, paneId);
+  const [shown, setShown] = useState<{ pane: string; instance: string | undefined; epoch: number }>({
+    pane: paneAddress,
+    instance,
+    epoch: 0,
+  });
+  const switched =
+    shown.pane !== paneAddress || (shown.instance !== undefined && instance !== undefined && shown.instance !== instance);
+  const epoch = switched ? shown.epoch + 1 : shown.epoch;
+  // The identity the effects below compare after an await. It moves on a reset and never on an
+  // adopted instance, so a read in flight while the instance arrives still lands.
+  const address = `${paneAddress}@${epoch}`;
+  // The instance this window is known to belong to, for the write-through: a pane that drops its
+  // instance for a render (a saved herd) still writes under the one it had.
+  const knownInstance = instance ?? (switched ? undefined : shown.instance);
+  // The address the effects below are working for, read after an await: a saved copy or live read
+  // that comes back after a pane or instance switch belongs to the one that asked, not the one on screen.
+  const addressNow = useRef(address);
+  if (switched) {
+    setShown({ pane: paneAddress, instance, epoch });
+    addressNow.current = address;
     window.current = EMPTY_CHAT_WINDOW;
+    busy.current = false;
     setHeld(EMPTY_CHAT_WINDOW);
     setLoadingOlder(false);
+  } else if (instance !== undefined && shown.instance !== instance) {
+    setShown({ pane: paneAddress, instance, epoch });
   }
-  // The address the effects below are working for, read after an await: a saved copy that comes back
-  // from the store after a pane switch belongs to the pane that asked, not the one on screen.
-  const addressNow = useRef(address);
   useEffect(() => {
     addressNow.current = address;
   }, [address]);
@@ -205,14 +237,14 @@ export function useChatWindow({
     const last = lastSaved.current;
     if (last !== null && last.window === current && at - last.at < REWRITE_AFTER_MS) return;
     lastSaved.current = { window: current, at };
-    void saveChatTail(scope, paneId, current.entries, keepChatOf(loadDisplayPrefs()), at);
-  }, [paneId, scope]);
+    void saveChatTail(scope, paneId, current.entries, keepChatOf(loadDisplayPrefs()), at, knownInstance);
+  }, [paneId, scope, knownInstance]);
 
   /** Draw the saved copy into a window that holds nothing. A window with turns is never touched. */
   const readSaved = useCallback(async () => {
     if (window.current.entries.length > 0) return;
     const askedFor = address;
-    const saved = await loadChatTail(scope, paneId);
+    const saved = await loadChatTail(scope, paneId, instance);
     // Only into the same empty window it was asked for: a pane switch, or a live answer that landed
     // while the store was being read, wins.
     if (saved === null || !alive.current || addressNow.current !== askedFor || window.current.entries.length > 0) {
@@ -221,7 +253,7 @@ export function useChatWindow({
     const copy = savedChatWindow(saved.entries, saved.at);
     window.current = copy;
     setHeld(copy);
-  }, [address, paneId, scope]);
+  }, [address, paneId, scope, instance]);
 
   /**
    * A read failed for want of a bridge: keep what is held and mark it, or draw the saved copy into an
@@ -273,6 +305,7 @@ export function useChatWindow({
     void (async () => {
       if (busy.current) return;
       busy.current = true;
+      const askedFor = address;
       const number = ++counter.current;
       setAsked(number);
       // THE COLD OPEN (see the header). Only an empty window; `readSaved` re-checks that after its own
@@ -292,12 +325,14 @@ export function useChatWindow({
           undefined,
           { seen },
         );
+        if (!alive.current || addressNow.current !== askedFor) return;
         apply(answer);
         lastAnsweredAt.current = Date.now();
         serverFailures.current = 0;
         writeThrough();
-        if (alive.current) setAnswered(number);
+        setAnswered(number);
       } catch (error) {
+        if (!alive.current || addressNow.current !== askedFor) return;
         // Keep what we hold — see the module header. A failure for want of a bridge may draw the
         // saved copy; a refusal is an answer and draws nothing it did not draw before. The one thing a
         // refusal takes away is a saved copy the cold open drew: a phone the bridge refuses for want
@@ -305,7 +340,7 @@ export function useChatWindow({
         if (isPairingRefusal(error)) {
           if (window.current.savedAt !== null && window.current.gen === 0) {
             window.current = EMPTY_CHAT_WINDOW;
-            if (alive.current) setHeld(EMPTY_CHAT_WINDOW);
+            setHeld(EMPTY_CHAT_WINDOW);
           }
         } else if (!isRefusalStatus(error)) {
           const kind = readFailureKind(error);
@@ -315,8 +350,10 @@ export function useChatWindow({
           await readBack(outage);
         }
       } finally {
-        busy.current = false;
-        if (alive.current) setTriedAddress(address);
+        if (addressNow.current === askedFor) {
+          busy.current = false;
+          if (alive.current) setTriedAddress(askedFor);
+        }
       }
     })();
     // `scope` is safe in a dependency array: scopes read off a URL are interned to one frozen
@@ -327,6 +364,7 @@ export function useChatWindow({
     const cursor = window.current;
     const oldest = cursor.entries[0];
     if (loadingOlder || !cursor.hasOlder || oldest === undefined) return;
+    const askedFor = addressNow.current;
     setLoadingOlder(true);
     void (async () => {
       try {
@@ -337,13 +375,15 @@ export function useChatWindow({
           { limit: OLDER_PAGE, before: { seq: cursor.oldest, uuid: oldest.uuid } },
           scope,
         );
+        if (!alive.current || addressNow.current !== askedFor) return;
         apply(answer);
       } catch {
+        if (!alive.current || addressNow.current !== askedFor) return;
         // A tap the operator made and is watching, so this one speaks: the floating status is the
         // app's answer for a failure with no other surface (DESIGN.md §11).
         setStatus(t("chat.stream.loadOlderFailed"), "error");
       } finally {
-        if (alive.current) setLoadingOlder(false);
+        if (alive.current && addressNow.current === askedFor) setLoadingOlder(false);
       }
     })();
   }, [apply, loadingOlder, paneId, scope]);

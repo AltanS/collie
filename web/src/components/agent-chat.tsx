@@ -1079,7 +1079,13 @@ export function AgentChat({
   const warming = historyAvailable && switchSheetOpen;
   // `savedCopy`: when the loaders drew the mirror from the saved copy, an empty Chat window reads its
   // own saved copy at once rather than waiting for its read to fail (M46 pass 3).
-  const chatFeed = useChatWindow({ paneId, scope, enabled: chatFetch || warming, savedCopy: stale });
+  const chatFeed = useChatWindow({
+    paneId,
+    scope,
+    instance: agent?.instance,
+    enabled: chatFetch || warming,
+    savedCopy: stale,
+  });
   const chatStatus = chatFeed.window.status;
   const journal: JournalReading = journalReadingOf(chatStatus);
   // What this view has seen of how the agent began, for the gate (hooks/use-pane-start.ts): the

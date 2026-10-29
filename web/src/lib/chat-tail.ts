@@ -60,7 +60,14 @@ export function keepChatTtl(keep: KeepChat): number {
 /** What one stored tail holds. A version field, so a later shape can be told apart and dropped. */
 interface StoredTail {
   v: 1;
+  /** The pane's session instance that wrote it (AgentView.instance); absent when the wire carried none. */
+  instance?: string;
   entries: ChatEntry[];
+}
+
+/** The stored shape, key order fixed so `fitChatTail` measures exactly what `saveChatTail` writes. */
+function tailEnvelope(instance: string | undefined, entries: ChatEntry[]): StoredTail {
+  return instance === undefined ? { v: 1, entries } : { v: 1, instance, entries };
 }
 
 /** A tail as a reader gets it: the entries, oldest first, and when the bridge answered with them. */
@@ -74,10 +81,10 @@ export interface SavedTail {
  * agent rewound past are dropped first: the Chat body never draws them (components/session-stream.tsx),
  * so keeping them would spend the budget on text nobody sees. Exported for the tests.
  */
-export function fitChatTail(entries: readonly ChatEntry[]): ChatEntry[] {
+export function fitChatTail(entries: readonly ChatEntry[], instance?: string): ChatEntry[] {
   const drawn = entries.filter((entry) => entry.abandoned !== true);
-  // The envelope `{"v":1,"entries":[]}` and one comma between each pair of entries.
-  let size = utf8Bytes(JSON.stringify({ v: 1, entries: [] }));
+  // The envelope (with the `instance` it will carry) and one comma between each pair of entries.
+  let size = utf8Bytes(JSON.stringify(tailEnvelope(instance, [])));
   let start = drawn.length;
   for (let i = drawn.length - 1; i >= 0; i--) {
     const cost = utf8Bytes(JSON.stringify(drawn[i])) + (i < drawn.length - 1 ? 1 : 0);
@@ -128,6 +135,8 @@ function heldForPassword(key: string, at: number): boolean {
 /**
  * Write through the newest turns of a pane's window, under the lifetime `keep` asks for. Resolves
  * true when a record was written. Off, an empty window and a pane at a password prompt write nothing.
+ * `instance` is the pane's session instance (AgentView.instance): a multiplexer reuses a closed pane's
+ * id, so the tail is only the one `loadChatTail` is asked for under the same instance.
  */
 export function saveChatTail(
   scope: Scope | undefined,
@@ -135,15 +144,15 @@ export function saveChatTail(
   entries: readonly ChatEntry[],
   keep: KeepChat,
   at: number = Date.now(),
+  instance?: string,
 ): Promise<boolean> {
   registerTailWipe();
   const ttlMs = keepChatTtl(keep);
   const key = paneScopeKey(scope, paneId);
   if (ttlMs <= 0 || heldForPassword(key, at)) return Promise.resolve(false);
-  const fitted = fitChatTail(entries);
+  const fitted = fitChatTail(entries, instance);
   if (fitted.length === 0) return Promise.resolve(false);
-  const value: StoredTail = { v: 1, entries: fitted };
-  return putRecord("chat-tail", key, value, { fetchedAt: at, ttlMs, pane: { scope, paneId } });
+  return putRecord("chat-tail", key, tailEnvelope(instance, fitted), { fetchedAt: at, ttlMs, pane: { scope, paneId } });
 }
 
 /** Whether one parsed entry has the three fields the Chat body places and draws it by. */
@@ -157,14 +166,24 @@ function isDrawableEntry(value: JsonValue): boolean {
   );
 }
 
-/** The last tail this phone kept for a pane, or null: a miss, an expired record, or another shape. */
-export async function loadChatTail(scope: Scope | undefined, paneId: string): Promise<SavedTail | null> {
+/**
+ * The last tail this phone kept for a pane under this session `instance`, or null: a miss, an expired
+ * record, another shape, or another instance. Identity is compared exactly: a record with no instance
+ * (an older phone's, or a bridge that sent none) answers only a caller with none, so an unknown identity
+ * never draws a known other session's turns.
+ */
+export async function loadChatTail(
+  scope: Scope | undefined,
+  paneId: string,
+  instance?: string,
+): Promise<SavedTail | null> {
   const record = await getRecord("chat-tail", paneScopeKey(scope, paneId));
   if (record === null) return null;
   // SAFETY: the store hands back `JSON.parse` of the text it stored (lib/store.ts `toRecord`), and
   // `JSON.parse` output IS a JsonValue by construction. The checks below narrow it from there.
   const stored = asJsonObject(record.value as JsonValue);
   if (stored === undefined || asJsonNumber(stored.v) !== 1) return null;
+  if (asJsonString(stored.instance) !== instance) return null;
   const entries = stored.entries;
   if (!Array.isArray(entries) || entries.length === 0) return null;
   // Every entry or none: a tail with a hole in it would draw a conversation that never happened.
