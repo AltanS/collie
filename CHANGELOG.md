@@ -23,6 +23,13 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **`collie doctor --instance <name>` reads one lane without an exported variable.** The flag wins
+  over `COLLIE_INSTANCE`, ignores a `HERDR_PLUGIN_CONFIG_DIR`, `COLLIE_STATE_DIR` or `COLLIE_PORT`
+  exported for another lane, and `--instance default` reads the unsuffixed lane. An unknown name
+  exits 2 before any check and lists the instances on this machine. Only `doctor` takes the flag.
+
 ## [1.25.0] - 2026-10-29
 
 ### Added

@@ -50,7 +50,10 @@ a pipe, file, systemd journal, or CI runner, falls back to raw line output.
 name in `COLLIE_INSTANCE`) and the state directory it reads. If you run two lanes on one machine,
 check that line before you trust the rest, because a shell with the wrong `COLLIE_INSTANCE` reads
 the wrong lane. `--json` gives the same two values as `instance` and `stateDir` on the `collie`
-entry.
+entry. To read a lane without exporting anything, run `collie doctor --instance <name>`. It reads
+that lane and wins over `COLLIE_INSTANCE`; `--instance default` reads the unsuffixed one. A name
+this machine has no config for stops with exit 2 and lists the instances it does have. Only
+`doctor` takes the flag. Every other command still reads `COLLIE_INSTANCE`.
 
 **`collie doctor` lists your agent programs.** Each program Collie has an input profile for gets
 one `harness-<name>` row: the file Collie would run on your login shell's `PATH`, the version it
