@@ -3543,9 +3543,13 @@ same characters, so no rule or box width moves.
 
 ## Codex Ultra prompt glyph (derived 2026-10-29, issue 615)
 
-Codex 0.164.0 and 0.165.0 draw the composer prompt as `»` (U+00BB) at Ultra effort and `›` (U+203A) at Max. The reporter's capture is not attached, so these two are **derived, not captured**: each is a copy of the named original with ONLY the composer row's leading `›` swapped for `»`. Every other byte is unchanged. Replace them with the reporter's capture when it arrives.
+Codex 0.164.0 and 0.165.0 draw the composer prompt as `»` (U+00BB) at Ultra effort and `›` (U+203A) at Max. The first two fixtures below are **derived, not captured**: each is a copy of the named original with ONLY the composer row's leading `›` swapped for `»`. Every other byte is unchanged. They stay because the tests pair each with its `›` original and prove the glyph is the only difference. The last two are the reporter's real captures from the issue (see below).
 
 | Fixture | State | What it shows |
 | --- | --- | --- |
 | `codex--v0165-ultra-empty--w120.txt` | `idle` | Derived from `codex--v0164-queue-done--w120.txt`: the empty dim `» Ask Codex to do anything` composer under a finished turn (the `› ` echoes in the transcript stay as they were), status row and hint row. Both readers must find the box and report it empty and free |
 | `codex--v0165-ultra-draft.txt` | `draft` | Derived from `codex--v0156-headless-draft.txt`: the draft `» hello from the phone probe` over the status row. The draft must read back |
+| `codex--v0165-ultra-empty--w170.txt` | `idle` | **Real capture.** The reporter's Codex 0.165.0 pane on issue 615 (GPT Ultra, model `GPT-6.1-Sol ultra fast`, purple `»` prompt): empty dim `» Ask Codex to do anything` composer on a filled grey band, the long status row (`GPT-6.1-Sol ultra fast · ~ · Context 1% used · weekly 90% left ...`), and a hint row with `? for shortcuts` and `⚠ 2 warnings · f2 to view`, under the welcome header and blank rows. Both readers must find the box and report it empty and free |
+| `codex--v0165-ultra-draft--w170.txt` | `draft` | **Real capture.** The same pane with the draft `» Hello, test draft` typed and not sent; the hint row shows only the `⚠ 2 warnings · f2 to view` notice. The draft must read back as `Hello, test draft` |
+
+The two `--w170` files came from the reporter of issue 615 (@Skydev0h): `herdr pane read --source visible --format ansi`, 170 columns by 82 rows, the working directory `~`, nothing sensitive. They are stored as read, with the transport CRLF line ends and the SGR bytes untouched.

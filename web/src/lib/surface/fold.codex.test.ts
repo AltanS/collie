@@ -48,6 +48,14 @@ describe("the codex profile over the Codex fixtures (M56 spec 13)", () => {
     }
   });
 
+  it("codex: the reporter's real Ultra captures (issue 615, 170 columns) read as an empty and a draft composer", () => {
+    for (const [name, composer] of [["codex--v0165-ultra-empty--w170.txt", "empty"], ["codex--v0165-ultra-draft--w170.txt", "draft"]] as const) {
+      expect(findInputFrame(fixtureRows(name), CODEX), name).not.toBeNull();
+      expect(read(name).surface, name).toMatchObject({ turn: "idle", modal: "none", composer });
+      expect(isFree(read(name).surface), name).toBe(composer === "empty");
+    }
+  });
+
   // Counsel on issue 615: the prompt pattern widened from `›` to `[›»]`, so show what it does NOT
   // take. The frame needs its blank top row, a column-0 prompt row, and the Codex status row below
   // (profiles/codex.json idle.frame); the profile only reads panes the mux names as Codex.

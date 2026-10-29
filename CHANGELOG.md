@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **The Codex Ultra prompt fixtures are now real captures.** The reporter's Codex 0.165.0 panes from issue 615 (the empty and the draft composer, 170 columns) join the corpus beside the two derived ones. Thanks @Skydev0h. (#615)
+
 ## [1.25.0] - 2026-10-29
 
 ### Added
