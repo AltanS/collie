@@ -2621,6 +2621,8 @@ export const it: Dictionary = {
   "report.sheet.copied": "Segnalazione copiata.",
   "report.sheet.search": "Già segnalato?",
   "report.sheet.cutScreen": "Lo schermo è stato tagliato per stare nel link. La segnalazione copiata contiene tutto.",
+  "report.sheet.cutDoctor.one": "{count} riga di doctor è stata omessa dalla configurazione per stare nel link. La segnalazione copiata contiene tutto.",
+  "report.sheet.cutDoctor.other": "{count} righe di doctor sono state omesse dalla configurazione per stare nel link. La segnalazione copiata contiene tutto.",
   "report.sheet.cutSends.one": "{count} invio più vecchio è stato omesso per stare nel link. La segnalazione copiata contiene tutto.",
   "report.sheet.cutSends.other": "{count} invii più vecchi sono stati omessi per stare nel link. La segnalazione copiata contiene tutto.",
   "report.sheet.cutNote": "Le tue parole sono state tagliate per stare nel link. La segnalazione copiata contiene tutto.",

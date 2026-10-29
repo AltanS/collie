@@ -276,6 +276,9 @@ const red = (id: string, reason: string, remedy?: string): PreflightCheck =>
  */
 const PACKAGE_CHECK_ID = "package";
 
+/** The doctor rows that say sends do not arrive (cli/send-findings.ts): amber here even as an error. */
+const SENDS_CHECK_PREFIX = "sends-";
+
 // ── Instance checks ──────────────────────────────────────────────────────────
 
 /**
@@ -305,8 +308,14 @@ export async function doctorCheck(deps: UpdateCheckDeps): Promise<PreflightCheck
   //
   // ADR 0045's floor check is NOT here and is untouched — it is `skewCheck`, its own preflight check
   // on the member walk. A member the update would strand still blocks the confirm.
+  //
+  // ONE LOCAL ERROR IS AMBER: a `sends-<harness>` row (M71 spec 01, cli/send-findings.ts). It says
+  // Collie cannot send to that harness on this machine, and a new version is often the fix: a reader
+  // or a profile that does not know the harness's new build. Holding the update back on it would keep
+  // the machine on the version that cannot send. It is named by check id, like a crew error.
   const errors = findings.filter((f) => f.status === "error");
-  const local = errors.filter(isLocal).map((f) => f.check);
+  const sends = errors.filter((f) => isLocal(f) && f.check.startsWith(SENDS_CHECK_PREFIX)).map((f) => f.check);
+  const local = errors.filter((f) => isLocal(f) && !f.check.startsWith(SENDS_CHECK_PREFIX)).map((f) => f.check);
   if (local.length > 0) {
     return red(
       "doctor",
@@ -328,9 +337,11 @@ export async function doctorCheck(deps: UpdateCheckDeps): Promise<PreflightCheck
   // unreachable and, once a rotation passes it, enrolled but inactive — and reporting one would hide
   // the other behind a fault the operator then cannot see.
   const crew = errors.filter((f) => !isLocal(f)).map((f) => f.check);
+  const notSent = sends.length === 0 ? "" : `; sends do not arrive: ${sends.join(", ")}, and an update may fix them`;
   if (crew.length > 0) {
-    return amber("doctor", `this machine can still update; the crew reports: ${crew.join(", ")}`);
+    return amber("doctor", `this machine can still update; the crew reports: ${crew.join(", ")}${notSent}`);
   }
+  if (sends.length > 0) return amber("doctor", `this machine can still update${notSent}`);
   const warns = findings.filter((f) => f.status === "warn").map((f) => f.check);
   if (warns.length > 0) {
     return amber("doctor", `collie doctor warns about ${warns.join(", ")} — an update still proceeds`);

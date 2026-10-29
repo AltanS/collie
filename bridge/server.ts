@@ -148,7 +148,7 @@ import {
   type PreflightReport,
 } from "./update-action.ts";
 import { type ReleaseLine, type UpdateLineRecord, withLine } from "./update-line.ts";
-import { REPORT_SCREEN_ROWS, reportScreen, type ReportContext } from "./report.ts";
+import { REPORT_SCREEN_ROWS, reportDoctorRows, reportScreen, type DoctorRowSource, type ReportContext, type ReportDoctorRow } from "./report.ts";
 import type { StateEngine } from "./state-engine.ts";
 import { adapterFor, buildJournalRegistry } from "./journal/registry.ts";
 import { readClaudeSubagent } from "./journal/claude.ts";
@@ -1116,6 +1116,8 @@ export function startServer(opts: {
   updateAction?: UpdateActionDeps;
   /** The release line record (M60 spec 01). See {@link UpdateLineDeps}. */
   updateLine?: UpdateLineDeps;
+  /** The doctor's send rows for Report a problem (M71 spec 05). See {@link ReportMachine.sendHealth}. */
+  sendHealth?: () => readonly DoctorRowSource[];
   /**
    * The BARE version string this process answers with (`bridge/version.ts`'s `collieVersionBare`) —
    * `<semver>` or `<semver>+<short sha>`. Resolved once in index.ts, never re-read here: it is the
@@ -2820,7 +2822,13 @@ export function startServer(opts: {
         if (host.kind === "member") return text("a report reads this machine's panes only for now", 400);
         const rt = localRuntime(sessionName, req.headers.get("accept-encoding"));
         if (rt instanceof Response) return rt;
-        const machine: ReportMachine = { collie: opts.version, line: opts.updateLine?.read().line ?? null, os: HOST.platform, arch: process.arch };
+        const machine: ReportMachine = {
+          collie: opts.version,
+          line: opts.updateLine?.read().line ?? null,
+          os: HOST.platform,
+          arch: process.arch,
+          sendHealth: opts.sendHealth,
+        };
         return reportContextRoute(rt, url.searchParams.get("pane"), url.searchParams.get("screen") === "1", machine, req.headers.get("accept-encoding"));
       }
       // ── Walky talky (M62) ────────────────────────────────────────────────
@@ -8236,13 +8244,29 @@ export interface ReportRouteRuntime extends Pick<SendRouteRuntime, "send" | "eng
   readonly herdr: Pick<MuxAdapter, "controlTurn" | "readGrid" | "mux">;
 }
 
-/** What `reportContextRoute` takes of this machine: its version and its release line. */
+/** What `reportContextRoute` takes of this machine: its version, its release line and its send rows. */
 export interface ReportMachine {
   readonly collie: string;
   readonly line: ReleaseLine | null;
   /** `HOST.platform` and `process.arch`, read at the edge. */
   readonly os: string;
   readonly arch: string;
+  /**
+   * The doctor's sends section over this bridge's state dir (M71 spec 05), read when the route is
+   * called, never on a poll. index.ts wires it to `sendsReportRows` (cli/send-findings.ts); undefined
+   * with the Send Protocol off, and the answer then carries no `doctor` field.
+   */
+  readonly sendHealth?: () => readonly DoctorRowSource[];
+}
+
+/** The report's doctor rows, or undefined when there is no reader or it threw: the route never fails for them. */
+function reportDoctor(machine: ReportMachine, harness: string | null): readonly ReportDoctorRow[] | undefined {
+  if (machine.sendHealth === undefined) return undefined;
+  try {
+    return reportDoctorRows(machine.sendHealth(), harness);
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -8263,7 +8287,9 @@ export async function reportContextRoute(
   const harness = pane === null ? null : replySendOf(rt).harnessOf(pane);
   if (pane !== null && harness === null) return text("no such pane", 404);
   const screenable = pane !== null && rawInputRefusal(rt.herdr) === null;
-  const context: ReportContext = { collie: machine.collie, line: machine.line, os: machine.os, arch: machine.arch, mux: rt.herdr.mux, harness, screenable };
+  const doctor = reportDoctor(machine, harness);
+  const facts: ReportContext = { collie: machine.collie, line: machine.line, os: machine.os, arch: machine.arch, mux: rt.herdr.mux, harness, screenable };
+  const context: ReportContext = doctor === undefined ? facts : { ...facts, doctor };
   if (!wantScreen) return json(context, acceptEncoding);
   if (pane === null || !screenable) return text("this pane has no screen to include", 400);
   // The mirror's own read shape (`readPane`): `recent` with styling kept, which leaves the operator's

@@ -255,6 +255,7 @@ export function ReportSheetView({ context, contextError, rows, episodes, fromSet
           {preview}
         </pre>
         {link.cut.screen !== "none" && <p data-slot="report-cut" className="text-xs text-muted-foreground">{t("report.sheet.cutScreen")}</p>}
+        {link.cut.doctor > 0 && <p data-slot="report-cut" className="text-xs text-muted-foreground">{tn("report.sheet.cutDoctor", link.cut.doctor)}</p>}
         {link.cut.sends > 0 && <p data-slot="report-cut" className="text-xs text-muted-foreground">{tn("report.sheet.cutSends", link.cut.sends)}</p>}
         {link.cut.note && <p data-slot="report-cut" className="text-xs text-muted-foreground">{t("report.sheet.cutNote")}</p>}
       </section>

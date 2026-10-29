@@ -2619,6 +2619,8 @@ export const pt: Dictionary = {
   "report.sheet.copied": "Relato copiado.",
   "report.sheet.search": "Já relatado?",
   "report.sheet.cutScreen": "A tela foi cortada para caber no link. O relato copiado tem tudo.",
+  "report.sheet.cutDoctor.one": "{count} linha do doctor ficou de fora da configuração para caber no link. O relato copiado tem tudo.",
+  "report.sheet.cutDoctor.other": "{count} linhas do doctor ficaram de fora da configuração para caber no link. O relato copiado tem tudo.",
   "report.sheet.cutSends.one": "{count} envio mais antigo ficou de fora para caber no link. O relato copiado tem tudo.",
   "report.sheet.cutSends.other": "{count} envios mais antigos ficaram de fora para caber no link. O relato copiado tem tudo.",
   "report.sheet.cutNote": "Suas palavras foram cortadas para caber no link. O relato copiado tem tudo.",

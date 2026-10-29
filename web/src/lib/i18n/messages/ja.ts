@@ -2788,6 +2788,8 @@ export const ja: Dictionary = {
   "report.sheet.copied": "報告をコピーしました。",
   "report.sheet.search": "報告済み？",
   "report.sheet.cutScreen": "リンクに収めるため画面を短くしました。コピーした報告にはすべて含まれます。",
+  "report.sheet.cutDoctor.one": "リンクに収めるため設定から doctor の行を{count}件省きました。コピーした報告にはすべて含まれます。",
+  "report.sheet.cutDoctor.other": "リンクに収めるため設定から doctor の行を{count}件省きました。コピーした報告にはすべて含まれます。",
   "report.sheet.cutSends.one": "リンクに収めるため古い送信を{count}件省きました。コピーした報告にはすべて含まれます。",
   "report.sheet.cutSends.other": "リンクに収めるため古い送信を{count}件省きました。コピーした報告にはすべて含まれます。",
   "report.sheet.cutNote": "リンクに収めるため文章を短くしました。コピーした報告にはすべて含まれます。",

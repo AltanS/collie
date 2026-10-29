@@ -86,6 +86,18 @@ local:
                                  shipped rule
   ✓        cache-env             no Claude Code cache variable is set in this
                                  shell
+  ✓        sends-agy             no sends in the last 7 days
+  ✓        sends-claude          no sends in the last 7 days
+  ✓        sends-codex           no sends in the last 7 days
+  ✓        sends-cursor          no sends in the last 7 days
+  ✓        sends-grok            no sends in the last 7 days
+  ✓        sends-hermes          no sends in the last 7 days
+  ✓        sends-kiro            no sends in the last 7 days
+  ✓        sends-muse            no sends in the last 7 days
+  ✓        sends-omp             no sends in the last 7 days
+  ✓        sends-opencode        no sends in the last 7 days
+  ✓        sends-pi              no sends in the last 7 days
+  ✓        holds                 no held sends open
   skipped: restart-pending       the running bridge records no version —
                                  `crew-runtime.json` carries its boot time, pid,
                                  mode and roster, and nothing names the code it
@@ -189,6 +201,18 @@ local:
                                  shipped rule
   ✓        cache-env             no Claude Code cache variable is set in this
                                  shell
+  ✓        sends-agy             no sends in the last 7 days
+  ✓        sends-claude          no sends in the last 7 days
+  ✓        sends-codex           no sends in the last 7 days
+  ✓        sends-cursor          no sends in the last 7 days
+  ✓        sends-grok            no sends in the last 7 days
+  ✓        sends-hermes          no sends in the last 7 days
+  ✓        sends-kiro            no sends in the last 7 days
+  ✓        sends-muse            no sends in the last 7 days
+  ✓        sends-omp             no sends in the last 7 days
+  ✓        sends-opencode        no sends in the last 7 days
+  ✓        sends-pi              no sends in the last 7 days
+  ✓        holds                 no held sends open
   skipped: restart-pending       the running bridge records no version —
                                  `crew-runtime.json` carries its boot time, pid,
                                  mode and roster, and nothing names the code it

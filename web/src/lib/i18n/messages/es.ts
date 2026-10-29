@@ -2804,6 +2804,8 @@ export const es: Dictionary = {
   "report.sheet.copied": "Informe copiado.",
   "report.sheet.search": "¿Ya se informó?",
   "report.sheet.cutScreen": "La pantalla se recortó para que quepa en el enlace. El informe copiado lo tiene todo.",
+  "report.sheet.cutDoctor.one": "Se omitió {count} fila de doctor de la configuración para que quepa en el enlace. El informe copiado lo tiene todo.",
+  "report.sheet.cutDoctor.other": "Se omitieron {count} filas de doctor de la configuración para que quepan en el enlace. El informe copiado lo tiene todo.",
   "report.sheet.cutSends.one": "Se omitió {count} envío antiguo para que quepa en el enlace. El informe copiado lo tiene todo.",
   "report.sheet.cutSends.other": "Se omitieron {count} envíos antiguos para que quepan en el enlace. El informe copiado lo tiene todo.",
   "report.sheet.cutNote": "Sus palabras se recortaron para que quepan en el enlace. El informe copiado las tiene todas.",

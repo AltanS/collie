@@ -2781,6 +2781,8 @@ export const ko: Dictionary = {
   "report.sheet.copied": "보고서를 복사했습니다.",
   "report.sheet.search": "이미 신고됐나요?",
   "report.sheet.cutScreen": "링크에 맞추려고 화면을 잘랐습니다. 복사한 보고서에는 모두 들어 있습니다.",
+  "report.sheet.cutDoctor.one": "링크에 맞추려고 설정에서 doctor 행 {count}개를 뺐습니다. 복사한 보고서에는 모두 들어 있습니다.",
+  "report.sheet.cutDoctor.other": "링크에 맞추려고 설정에서 doctor 행 {count}개를 뺐습니다. 복사한 보고서에는 모두 들어 있습니다.",
   "report.sheet.cutSends.one": "링크에 맞추려고 오래된 전송 {count}개를 뺐습니다. 복사한 보고서에는 모두 들어 있습니다.",
   "report.sheet.cutSends.other": "링크에 맞추려고 오래된 전송 {count}개를 뺐습니다. 복사한 보고서에는 모두 들어 있습니다.",
   "report.sheet.cutNote": "링크에 맞추려고 입력한 글을 잘랐습니다. 복사한 보고서에는 모두 들어 있습니다.",

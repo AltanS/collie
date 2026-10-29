@@ -155,3 +155,28 @@ this machine's panes only.
   not taken. The existing read-gated `GET /api/report/context` is the one read.
 - The issue form's second field is now labelled "What went wrong", since it holds either the sends or
   the dialog. Its id `sends` stays, so the prefill and older links still fill it.
+
+## Amendment, 2026-10-29: the setup block carries the doctor's send rows
+
+M71 spec 05. A maintainer reading an issue about failed sends needed `collie doctor --json` from the
+reporter to see why. The setup block now carries those facts itself.
+
+- **What it carries.** The doctor's `sends-<harness>`, `holds-<harness>` and `screen-<harness>` rows,
+  one line each, `<status> <check>: <detail>`, under a `doctor` key, in the doctor's order. From a
+  pane, every such row for the pane's harness (a bare shell is the doctor's `-`). From Settings, with
+  no pane, every such row that says more than "nothing here" (a harness with no sends, no hold open,
+  no stale screen is left out). The row that says no hold is open is never carried.
+- **Where it comes from.** The one route above, `GET /api/report/context`, answers an optional
+  `doctor` array of `{ check, status, detail, harness }`. The bridge builds it with the same function
+  `collie doctor` calls (`cli/send-findings.ts`), over its own state dir, when the route is called and
+  never on a poll. It reads files only and spawns no `collie doctor`, which would probe the network
+  and the crew. A bridge with the Send Protocol off, or a read that throws, leaves the field out and
+  answers as before. An older phone ignores the field.
+- **What it never carries.** No text, no held text and no typed line: the held files keep the text
+  in plain form, and the rows name a hold by its age, cause and request id only. No remedy, because a
+  remedy is advice for the person at the machine. The `collie doctor --json` array keeps its shape.
+- **The person reads them.** The rows sit in the preview like every other line of the setup, before
+  anything leaves. No new route, form field or collection.
+- **The link's length.** `fitLink` cuts these rows after the screen and before the oldest sends:
+  `screen-*` rows first, then `holds-*`, then `sends-*`. The sheet says how many it left out, and
+  Copy report keeps all of them.

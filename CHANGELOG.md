@@ -45,6 +45,26 @@ Running a crew? Update the lead first; members follow on their own. Details:
   restores it, and staging it into the agent's draft clears it. On a crew the agent that gets the
   batch is found by its full address, so a twin pane id on another machine is never picked. The
   pill on a commented line shows an icon instead of an emoji.
+- **collie doctor says whether sends reach each agent program.** A `sends-<harness>` row per
+  program counts its sends by outcome over its newest 50 of the last 7 days, read from the send
+  receipts. It warns when 3 or more sends ended and none went through, or when 5 or more ended and
+  at least 30 percent were lost for a reason Report a problem counts, and turns red at 10 or more
+  with none through. A red row makes `collie doctor` exit 1 but leaves `collie update --check` amber,
+  because an update is often the fix. The `surface-*` rows no longer warn on refusals after ten
+  sends, which never caught a program with no send through at all (#594).
+- **collie doctor lists the held sends and counts the stale screens.** A `holds-<harness>` row lists
+  each send still held for a program, oldest first, with its age in minutes, the reason the phone
+  shows and its request id, and never the held text. It warns when a hold has waited more than 10
+  minutes. A `screen-<harness>` row counts the sends that met a stale screen and the other probe
+  failures over the same window as the `sends-*` row, and warns when 3 or more in a row ended that
+  way. Both read files only and keep the `collie doctor` write-nothing rule.
+- **Report a problem carries the doctor's send rows.** The setup block of an issue filed from the
+  phone lists the `sends-<harness>`, `holds-<harness>` and `screen-<harness>` rows `collie doctor`
+  prints for the pane's agent, one line each with the status, the check and the detail. From
+  Settings it lists every row that says more than "nothing here". The bridge reads them from its own
+  state folder when the sheet opens, and never adds a remedy, a held text or a typed line. When the
+  link is too long, these rows go after the screen and before the oldest sends, and the sheet says
+  how many it left out.
 
 ### Changed
 
