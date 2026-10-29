@@ -222,7 +222,7 @@ The page has these parts, from the top:
 - **New worktree.** A switch, described [above](#run-several-claude-code-sessions-at-once).
 - **A line** that says what will start where, and **Start**, pinned at the foot above the keyboard.
 
-**Agent** lists Claude Code, Codex, opencode, pi, omp, Grok, Hermes, Kiro, Muse and Antigravity.
+**Agent** lists Claude Code, Codex, opencode, pi, omp, Grok, Hermes, Kiro, Muse, Antigravity and dsh-TUI.
 Each machine checks which of them are installed, on the `PATH` your login shell uses. An agent
 installed through nvm, or in your home folder, counts. An agent that is not found stays in the list.
 It is disabled, and the reason follows its name in brackets, for example "not installed". Nothing

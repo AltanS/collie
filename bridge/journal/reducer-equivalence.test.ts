@@ -13,6 +13,7 @@ import { createOpenclawReducer, parseOpenclawTranscript } from "./openclaw.ts";
 import { createOpencodeReducer, parseOpencodeTranscript } from "./opencode.ts";
 import { createPiReducer, parsePiTranscript } from "./pi.ts";
 import { createKiroReducer, parseKiroTranscript } from "./kiro.ts";
+import { createDshReducer, parseDshTranscript } from "./dsh.ts";
 import type { TranscriptEntry } from "./types.ts";
 
 // ── THE GATE FOR THE ROW REDUCER ────────────────────────────────────────────────────────────────
@@ -107,6 +108,7 @@ const COVERED = [
   "kiro",
   "muse",
   "openclaw",
+  "dsh-tui",
 ] as const;
 
 test("every harness the registry knows has an equivalence section here", () => {
@@ -408,5 +410,18 @@ describe("the line feeder", () => {
     // `text.split("\n")` yields an empty string per blank row, and the reducers skip them. A feeder
     // that dropped them would still agree, but only by luck: nothing here may decide what a row means.
     expect(createLineFeeder().push("a\n\n\nb\n")).toEqual(["a", "", "", "b"]);
+  });
+});
+
+describe("dsh-tui: a reducer reads a torn stream the way the parser reads a whole file", () => {
+  const fixture = readFileSync(join(import.meta.dir, "fixtures", "dsh", "session.v4.jsonl"), "utf8");
+  const extra = [
+    { type: "assistant/message", seq: 900, time: 1790000100000, data: { message: { role: "assistant", id: "unicode", content: [{ type: "text", text: "First line.\nSecond line: café 日本語." }, { type: "tool-call", id: "late", name: "read", arguments: JSON.stringify({ path: "/example/sample.txt" }) }] } } },
+    { type: "tool/result", seq: 901, time: 1790000100500, data: { message: { role: "tool", id: "late-result", toolCallId: "late", content: [{ type: "text", text: "first\nsecond" }], isError: false } } },
+  ].map((row) => JSON.stringify(row));
+  const text = fixture + [...extra, ...RUBBISH].join("\n");
+
+  test("whole history, complete rows and arbitrary chunks agree", () => {
+    expectEquivalent(createDshReducer, parseDshTranscript, text);
   });
 });

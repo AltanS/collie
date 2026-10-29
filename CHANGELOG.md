@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **dsh-tui panes get Chat and History.** Collie reads the zstd compressed or plain session log that DeepSeek Harness writes under `~/.dsh/sessions`. You see your prompts, replies, reasoning, tool calls with their results, refused approvals, slash commands, finished background jobs and compaction summaries. dsh-tui names no session to Herdr, so Collie finds the log through the session lock that the pane's foreground process holds. This works on Linux only. On other systems the pane keeps its terminal view. Set the root with `dsh_root` or `COLLIE_DSH_ROOT`, or let `$DSH_HOME` name it. `collie doctor` counts the new root, and the New sheet can start dsh-tui. Thanks @hubrix (#604).
+
 ## [1.25.0] - 2026-10-29
 
 ### Added

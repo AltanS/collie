@@ -213,6 +213,7 @@ function cfg(overrides: Partial<Config> = {}): Config {
       muse: ["/nope/muse"],
       openclaw: ["/nope/openclaw"],
       kiro: ["/nope/kiro"],
+      "dsh-tui": ["/nope/dsh"],
     },
     submitKeys: ["Enter"],
     commandsFile: "/nope/commands.toml",
