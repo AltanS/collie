@@ -430,11 +430,19 @@ export function isHintRow(text: string, line?: StyledLine): boolean {
   return !isStatusRow(text, line);
 }
 
-// The `› ` prompt row. Column 0 — but transcript ECHOES of submitted messages paint the same
-// prefix, so callers must only trust this at the located composer position.
-const PROMPT = /^› (.*)$/;
+/** The glyphs Codex draws in front of the composer: `›` (U+203A) at most efforts, `»` (U+00BB) at
+ * Ultra (0.164.0 and 0.165.0, issue 615). The ONE spelling of the pair: the reader below and the
+ * composer's own width (`PROMPT_HEAD_LENGTH`) use it, and profiles/codex.json spells the same class
+ * as data, which profile.test.ts checks against this string. */
+export const PROMPT_GLYPHS = "›»";
+/** The glyph and its one space: where the composer's text starts on the prompt row. */
+export const PROMPT_HEAD_LENGTH = 2;
 
-/** Body of a `› ` prompt-shaped row (rstripped), or null when the line is not one. */
+// The `› ` / `» ` prompt row. Column 0 — but transcript ECHOES of submitted messages paint the same
+// prefix, so callers must only trust this at the located composer position.
+const PROMPT = new RegExp(`^[${PROMPT_GLYPHS}] (.*)$`);
+
+/** Body of a `› ` or `» ` prompt-shaped row (rstripped), or null when the line is not one. */
 export function promptText(text: string): string | null {
   const m = PROMPT.exec(rstrip(text));
   return m === null ? null : m[1]!;

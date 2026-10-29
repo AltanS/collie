@@ -23,6 +23,15 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **Codex at Ultra effort no longer blocks sends from the phone.** Codex 0.164 and 0.165 draw the
+  composer prompt as `»` at Ultra effort and as `›` at Max. Both readers knew only `›`, so Collie
+  could not find the input box and asked you to confirm a send by hand. Both glyphs now count, in
+  the Codex profile and in the Codex reader. The reader keeps one list of the two glyphs, and a test
+  checks that the profile spells the same pair. A numbered option row is still not a prompt. (#615)
+  Thanks @Skydev0h for the diagnosis.
+
 ## [1.25.0] - 2026-10-29
 
 ### Added
