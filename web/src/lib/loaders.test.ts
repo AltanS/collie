@@ -3,6 +3,7 @@ import { delay, http, HttpResponse } from "msw";
 import { paneScopeKey, scopeKey } from "@/lib/scope";
 import { FakeIDBFactory, uninstallFakeIndexedDB } from "@/test/fake-indexeddb";
 import { server } from "@/test/setup";
+import { NETWORK_LATCH_MS } from "./connection-health";
 import {
   fixtureAgents,
   fixtureCrewSnapshot,
@@ -1276,17 +1277,25 @@ describe("loaders — a failed poll keeps the herd and the mirror", () => {
   // file-level teardown uninstalls the database, or a write left over from the last case fires into a
   // torn-down jsdom under a loaded run.
   afterEach(() => new Promise<void>((resolve) => setTimeout(resolve, 50)));
+  afterEach(() => vi.useRealTimers());
+  // A later read with no answer latches once no live answer has come for NETWORK_LATCH_MS (2026-10-29).
+  const pastLatchWindow = () => vi.setSystemTime(Date.now() + NETWORK_LATCH_MS);
 
   const dropSnapshot = () => server.use(http.get("/api/snapshot", () => HttpResponse.error()));
   const dropPane = () => server.use(http.get(/\/api\/pane\/[^/]+$/, () => HttpResponse.error()));
 
-  it("the first herd read that gets no answer keeps every row and marks the herd as of its last answer", async () => {
+  it("a herd read that gets no answer is one strike; the second in a row keeps every row and marks the herd as of its last answer", async () => {
     const { rootLoader } = await import("./loaders");
     const before = Date.now();
     await rootLoader({ request: new Request("http://localhost/") });
     const after = Date.now();
 
     dropSnapshot();
+    const strike = await rootLoader({ request: new Request("http://localhost/") });
+    expect(strike.error).toBe(true);
+    expect(strike.stale).toBe(false);
+    expect(strike.agents).toHaveLength(2);
+    pastLatchWindow();
     const data = await rootLoader({ request: new Request("http://localhost/") });
     expect(data.error).toBe(true);
     expect(data.stale).toBe(true);
@@ -1322,14 +1331,20 @@ describe("loaders — a failed poll keeps the herd and the mirror", () => {
     expect(live.stale).toBe(false);
   });
 
-  it("a pane read that gets no answer is the saved copy at once, from memory, even before the herd read fails", async () => {
+  it("a pane read that gets no answer waits for the herd read, then is the saved copy from memory", async () => {
     const { paneLoader } = await import("./loaders");
-    const { isLostLatched } = await import("./connection-health");
+    const { isLostLatched, noteNetworkFailure } = await import("./connection-health");
     await paneLoader({ params: { paneId: "w1:p1" } });
 
     dropPane();
-    const data = await paneLoader({ params: { paneId: "w1:p1" } });
+    const early = await paneLoader({ params: { paneId: "w1:p1" } });
     expect(isLostLatched()).toBe(false);
+    expect(early.stale).toBe(false);
+    noteNetworkFailure();
+    pastLatchWindow();
+    noteNetworkFailure();
+    const data = await paneLoader({ params: { paneId: "w1:p1" } });
+    expect(isLostLatched()).toBe(true);
     expect(data.stale).toBe(true);
     expect(data.text).toBe(paneTextWithDraft());
     expect(data.lastSeenAt).toBeTypeOf("number");
@@ -1356,6 +1371,7 @@ describe("loaders — a failed poll keeps the herd and the mirror", () => {
     expect(mirror.text).toBe(paneTextWithDraft());
 
     // The pane read lands first on the retry too, so it still sees the strike; the herd read latches.
+    pastLatchWindow();
     const retryPane = await pane();
     expect(retryPane.stale).toBe(false);
     const retryHerd = await home();

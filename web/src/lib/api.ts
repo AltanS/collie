@@ -8,7 +8,6 @@ import {
   endLongUpload,
   markLive,
   noteNetworkFailure,
-  noteReadStart,
   noteServerFailure,
   type ReadFailureKind,
 } from "./connection-health";
@@ -576,9 +575,6 @@ export async function fetchSnapshot(
 ): Promise<SnapshotResponse> {
   const path = withScope("/api/snapshot", scope);
   let snap: SnapshotResponse;
-  // When this read began, and whether the page was hidden: a read with no answer right after a wake
-  // is one strike, not the outage (lib/connection-health.ts `noteNetworkFailure`).
-  noteReadStart();
   try {
     snap = await req<SnapshotResponse>(all ? `${path}${path.includes("?") ? "&" : "?"}sessions=all` : path, {
       signal,

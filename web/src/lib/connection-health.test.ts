@@ -8,10 +8,10 @@ import {
   latchLost,
   markLive,
   markWake,
+  NETWORK_LATCH_MS,
   noteNetworkFailure,
-  noteReadStart,
+  strikeHolds,
   subscribeHealth,
-  wakeStrikeHolds,
 } from "./connection-health";
 
 // Fake timers drive Date.now in Vitest, so the wall-clock anchors advance deterministically. Re-pin
@@ -151,48 +151,79 @@ describe("connection-health store", () => {
   });
 
   // The pane and Chat reads fail in the same poll as the herd read, in either order. Whichever lands
-  // first, neither may draw the saved copy over the strike the herd read took (2026-10-08).
-  describe("wakeStrikeHolds", () => {
-    it("holds nothing with no wake: a read with no answer is the outage", () => {
-      noteReadStart();
-      expect(wakeStrikeHolds()).toBe(false);
-    });
-
-    it("holds while the wake's read is in flight, before the herd read has failed", () => {
-      markWake();
-      noteReadStart();
-      expect(wakeStrikeHolds()).toBe(true);
-    });
-
-    it("holds after the herd read took the strike, and stops once the retry latches", () => {
-      markWake();
-      noteReadStart();
+  // first, neither may draw the saved copy over the strike the herd read takes (2026-10-08, always
+  // since 2026-10-29): the herd read decides.
+  describe("strikeHolds", () => {
+    it("holds before the herd read has failed and after it took the strike", () => {
+      expect(strikeHolds()).toBe(true);
       noteNetworkFailure();
       expect(isLostLatched()).toBe(false);
-      expect(wakeStrikeHolds()).toBe(true);
-      noteReadStart();
+      expect(strikeHolds()).toBe(true);
+    });
+
+    it("stops once a later read with no answer latches", () => {
+      noteNetworkFailure();
+      vi.advanceTimersByTime(NETWORK_LATCH_MS);
       noteNetworkFailure();
       expect(isLostLatched()).toBe(true);
-      expect(wakeStrikeHolds()).toBe(false);
+      expect(strikeHolds()).toBe(false);
     });
 
-    it("a live answer ends it", () => {
-      markWake();
-      noteReadStart();
-      noteNetworkFailure();
+    // A read that fails at once (the phone moving between Wi-Fi and the mobile network) fails its retry
+    // 0.5s later too: failures that close together prove nothing until no live answer has come for
+    // NETWORK_LATCH_MS (2026-10-29).
+    it("failures close to the last live answer latch nothing; the first past NETWORK_LATCH_MS does", () => {
+      vi.advanceTimersByTime(30_000);
       markLive();
-      vi.advanceTimersByTime(60_000);
-      noteReadStart();
-      expect(wakeStrikeHolds()).toBe(false);
+      for (let t = 0; t < NETWORK_LATCH_MS - 500; t += 500) {
+        noteNetworkFailure();
+        vi.advanceTimersByTime(500);
+      }
+      noteNetworkFailure();
+      expect(isLostLatched()).toBe(false);
+      expect(strikeHolds()).toBe(true);
+      vi.advanceTimersByTime(500);
+      noteNetworkFailure();
+      expect(isLostLatched()).toBe(true);
     });
 
-    it("__resetConnectionHealth leaves no wake and no strike behind", () => {
+    it("the window runs from a wake too", () => {
+      vi.advanceTimersByTime(60_000);
       markWake();
-      noteReadStart();
+      noteNetworkFailure();
+      vi.advanceTimersByTime(NETWORK_LATCH_MS - 1);
+      noteNetworkFailure();
+      expect(isLostLatched()).toBe(false);
+      vi.advanceTimersByTime(1);
+      noteNetworkFailure();
+      expect(isLostLatched()).toBe(true);
+    });
+
+    it("a live answer gives the strike back", () => {
+      noteNetworkFailure();
+      vi.advanceTimersByTime(NETWORK_LATCH_MS);
+      markLive();
+      vi.advanceTimersByTime(NETWORK_LATCH_MS);
+      noteNetworkFailure();
+      expect(isLostLatched()).toBe(false);
+      expect(strikeHolds()).toBe(true);
+    });
+
+    it("a wake gives the strike back", () => {
+      noteNetworkFailure();
+      vi.advanceTimersByTime(NETWORK_LATCH_MS);
+      markWake();
+      vi.advanceTimersByTime(NETWORK_LATCH_MS);
+      noteNetworkFailure();
+      expect(isLostLatched()).toBe(false);
+    });
+
+    it("__resetConnectionHealth gives the strike back", () => {
       noteNetworkFailure();
       __resetConnectionHealth();
-      noteReadStart();
-      expect(wakeStrikeHolds()).toBe(false);
+      vi.advanceTimersByTime(NETWORK_LATCH_MS);
+      noteNetworkFailure();
+      expect(isLostLatched()).toBe(false);
       noteNetworkFailure();
       expect(isLostLatched()).toBe(true);
     });
