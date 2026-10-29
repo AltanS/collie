@@ -23,6 +23,14 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **An update no longer fails because the release download is slow.** The release download had a 20
+  second total deadline, so on a link under about 23 Mbit/s the 57 MB asset timed out and Collie said
+  it could not reach github.com. The download now has no total deadline. It stops only when no bytes
+  arrive for 60 seconds, and the error then says the download stalled, with how much had arrived.
+  Connecting and the small release lookups keep their 20 second limit. ([#613](https://github.com/AltanS/collie/issues/613)) Thanks @mglasner for the diagnosis.
+
 ## [1.25.0] - 2026-10-29
 
 ### Added
