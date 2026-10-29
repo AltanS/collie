@@ -28,6 +28,7 @@ import {
   containedRealpath,
   FIRST_TAIL_BYTES,
   loadTail,
+  MAX_FRAME_OUTPUT_BYTES,
   MAX_TRANSCRIPT_BYTES,
   readSinceFile,
   rootList,
@@ -130,10 +131,15 @@ export function scanFrames(bytes: Uint8Array): { frames: Frame[]; complete: numb
   return { frames, complete: at };
 }
 
-/** The rows one frame holds, or null when it does not decode (its checksum or its blocks are wrong). */
-function frameRows(bytes: Uint8Array, frame: Frame): string[] | null {
+/**
+ * The rows one frame holds, or null when it does not decode (its checksum or its blocks are wrong)
+ * or expands past `limit` bytes. Never throws.
+ */
+export function frameRows(bytes: Uint8Array, frame: Frame, limit: number = MAX_FRAME_OUTPUT_BYTES): string[] | null {
   try {
-    const text = new TextDecoder().decode(zstdDecompressSync(bytes.subarray(frame.start, frame.end)));
+    const text = new TextDecoder().decode(
+      zstdDecompressSync(bytes.subarray(frame.start, frame.end), { maxOutputLength: limit }),
+    );
     return text.split("\n").filter((row) => row !== "");
   } catch {
     return null;

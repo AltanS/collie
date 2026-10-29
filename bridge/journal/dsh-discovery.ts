@@ -32,7 +32,7 @@ import { HOST } from "../host.ts";
 import type { JsonValue } from "../json.ts";
 import { asRecord } from "./cache-probe.ts";
 import { DSH_LOCK_NAME, isDshSessionId, newestLog, scanFrames } from "./dsh-sessions.ts";
-import { containedRealpath } from "./files.ts";
+import { containedRealpath, MAX_FRAME_OUTPUT_BYTES } from "./files.ts";
 import type { AgentSessionRef, DiscoverHints, TranscriptSource } from "./types.ts";
 
 const MAX_PID = 4194304;
@@ -101,7 +101,7 @@ async function topLevel(folder: string): Promise<boolean> {
     const frame = scanFrames(bytes)?.frames[0];
     if (frame === undefined) return true;
     try {
-      first = new TextDecoder().decode(zstdDecompressSync(bytes.subarray(frame.start, frame.end)));
+      first = new TextDecoder().decode(zstdDecompressSync(bytes.subarray(frame.start, frame.end), { maxOutputLength: MAX_FRAME_OUTPUT_BYTES }));
     } catch {
       return true;
     }

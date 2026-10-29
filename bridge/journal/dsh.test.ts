@@ -5,7 +5,8 @@ import { join } from "node:path";
 import { zstdCompressSync } from "node:zlib";
 import { NO_CURSOR } from "./cursor.ts";
 import { createDshDiscovery, fileKey, flocksOf, type ProcReader } from "./dsh-discovery.ts";
-import { DshTranscriptSource, scanFrames } from "./dsh-sessions.ts";
+import { DshTranscriptSource, frameRows, scanFrames } from "./dsh-sessions.ts";
+import { MAX_FRAME_OUTPUT_BYTES } from "./files.ts";
 import { dshJournal, parseDshTranscript } from "./dsh.ts";
 import type { TranscriptEntry, TranscriptPart } from "./types.ts";
 
@@ -134,6 +135,34 @@ describe("DshTranscriptSource", () => {
     const torn = scanFrames(whole.subarray(0, whole.length - 3));
     expect(torn?.frames).toHaveLength(batches().length - 1);
     expect(scanFrames(Buffer.from("not a frame"))).toBeNull();
+  });
+
+  test("refuses a frame that expands past the output cap, and never throws", () => {
+    const small = frame(["a", "b"]);
+    const bomb = frame(["x".repeat(200_000)]);
+    const frameOf = (bytes: Uint8Array) => scanFrames(bytes)?.frames[0];
+    const smallFrame = frameOf(small);
+    const bombFrame = frameOf(bomb);
+    expect(smallFrame).toBeDefined();
+    expect(bombFrame).toBeDefined();
+    if (smallFrame === undefined || bombFrame === undefined) return;
+    expect(frameRows(small, smallFrame, 1024)).toEqual(["a", "b"]);
+    expect(frameRows(bomb, bombFrame, 1024)).toBeNull();
+    expect(frameRows(bomb, bombFrame, 1024 * 1024)).toHaveLength(1);
+  });
+
+  test("a frame past the real cap ends the tail like a frame that does not decode", async () => {
+    const root = newRoot();
+    const huge = zstdCompressSync(`${"x".repeat(MAX_FRAME_OUTPUT_BYTES + 1)}\n`);
+    expect(huge.length).toBeLessThan(1024 * 1024);
+    const folder = join(root, "--home-operator-project--", "11111111-2222-3333-4444-555555555555");
+    mkdirSync(folder, { recursive: true });
+    const path = join(folder, "session.v4.jsonl.zstd");
+    writeFileSync(path, Buffer.concat([frame(["first"]), huge]));
+    const source = new DshTranscriptSource(root);
+    const loaded = await source.load(path);
+    expect(loaded.text).toBe("");
+    expect(loaded.complete).toBe(false);
   });
 
   test("resolves a session to its newest generation, inside the root", async () => {
