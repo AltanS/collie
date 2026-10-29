@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { harnessSpec, runDirs } from "./harnesses";
-import { codexLoginText, LabDeferred, loginEnv, openrouterKey, prepareRun, runState, seedClaude, seedCodex, withoutRefresh, type SeedSource } from "./seed";
+import { codexLoginText, LabDeferred, loginEnv, openrouterKey, prepareRun, REPLAY_TOKEN, replayLogin, runState, seedClaude, seedClaudeReplay, seedCodex, withoutRefresh, type SeedSource } from "./seed";
 
 let dirs: string[] = [];
 afterEach(() => {
@@ -68,6 +68,30 @@ describe("the Claude login copy", () => {
     expect(state.projects["/lab/project"].hasTrustDialogAccepted).toBe(true);
     expect(state.fullscreenUpsellSeenCount).toBe(3);
     expect(state.theme).toBeUndefined();
+  });
+});
+
+describe("the replayed Claude's login (M67 spec 07)", () => {
+  test("keeps the plan and scopes, never the access or refresh token, and lasts a day", () => {
+    const now = 1_000_000;
+    const parsed = JSON.parse(replayLogin(login(60), now)).claudeAiOauth;
+    expect(parsed).toEqual({ scopes: ["a"], subscriptionType: "max", accessToken: REPLAY_TOKEN, expiresAt: now + 86_400_000 });
+    expect(replayLogin(login(60))).not.toMatch(/access-token-value|refresh/u);
+  });
+
+  test("needs no real login: with none it writes a Max login with the inference scope", () => {
+    expect(JSON.parse(replayLogin(null, 0)).claudeAiOauth).toEqual({ scopes: ["user:inference"], subscriptionType: "max", accessToken: REPLAY_TOKEN, expiresAt: 86_400_000 });
+    const empty = temp();
+    const target = join(temp(), "config");
+    seedClaudeReplay(target, "/p", { configDir: empty, stateFile: join(empty, "none.json") });
+    expect(JSON.parse(readFileSync(join(target, ".credentials.json"), "utf8")).claudeAiOauth.accessToken).toBe(REPLAY_TOKEN);
+    expect(JSON.parse(readFileSync(join(target, ".claude.json"), "utf8")).projects["/p"].hasTrustDialogAccepted).toBe(true);
+  });
+
+  test("ignores the 25-minute rule: an expiring real login still seeds a replay", () => {
+    const target = join(temp(), "config");
+    seedClaudeReplay(target, "/p", source(1));
+    expect(readFileSync(join(target, ".credentials.json"), "utf8")).not.toContain("access-token-value");
   });
 });
 

@@ -92,6 +92,42 @@ export function seedClaude(configDir: string, project: string, source: SeedSourc
   return minutesLeft;
 }
 
+/** The access token of a replayed Claude (M67 spec 07): not a token at all, and shaped like no key. */
+export const REPLAY_TOKEN = "collie-rig-replay-no-token";
+
+/**
+ * The credentials text of a replayed Claude, pure: the real file's `scopes`, `subscriptionType` and
+ * `rateLimitTier` (so the screen's header reads as it does live), the dummy access token, an expiry one
+ * day ahead, and no refresh token. With no real file (`null`), a Max login with the inference scope.
+ * The real access token is never read into the result.
+ */
+export function replayLogin(text: string | null, now: number = Date.now()): string {
+  const oauth = text === null ? undefined : asJsonObject(asJsonObject(parseJson(text))?.claudeAiOauth);
+  const copy: JsonObject = { scopes: ["user:inference"], subscriptionType: "max" };
+  for (const key of ["scopes", "subscriptionType", "rateLimitTier"]) {
+    const value = oauth?.[key];
+    if (value !== undefined) copy[key] = value;
+  }
+  return JSON.stringify({ claudeAiOauth: { ...copy, accessToken: REPLAY_TOKEN, expiresAt: now + 24 * 60 * 60_000 } });
+}
+
+/**
+ * Seed a Claude whose model calls the rig's stub replays (M67 spec 07): the same config as seedClaude,
+ * but a dummy login, so a replay needs no Claude login and never meets the 25-minute rule. Claude
+ * 2.1.312 starts and answers from the stub on such a file (probed 2026-10-29); with it, its own calls
+ * to Anthropic (account extras) fail quietly, and nothing real is ever sent.
+ */
+export function seedClaudeReplay(configDir: string, project: string, source: SeedSource = defaultSource()): void {
+  const credentials = join(source.configDir, ".credentials.json");
+  mkdirSync(configDir, { recursive: true, mode: 0o700 });
+  const target = join(configDir, ".credentials.json");
+  writeFileSync(target, replayLogin(existsSync(credentials) ? readFileSync(credentials, "utf8") : null), { mode: 0o600 });
+  chmodSync(target, 0o600);
+  const state = existsSync(source.stateFile) ? readFileSync(source.stateFile, "utf8") : "{}";
+  writeFileSync(join(configDir, ".claude.json"), runState(state, project), { mode: 0o600 });
+  writeFileSync(join(configDir, EMPTY_MCP_FILE), `${JSON.stringify({ mcpServers: {} })}\n`);
+}
+
 /** The person's Codex login file, default `~/.codex/auth.json`. */
 export interface CodexSource {
   readonly authFile: string;

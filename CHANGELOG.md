@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Changed
+
+- **The browser leg can answer Claude Code from recorded model streams too (M67).** Claude Code reaches the leg's local stub through `ANTHROPIC_BASE_URL`, beside pi and omp, with recordings kept per Claude Code version and walky talky skill text. On a recorded version Claude replays on a dummy login, so a run needs no Claude login and spends no Claude turn, and a recorded tool call still makes the real Claude draw its permission card. A new version runs live once on the real login and records; the stub passes the login through to Anthropic and never stores it. `COLLIE_RIG_LIVE=claude` runs Claude live and direct, as before. The leg's summary now prints `live model turns: claude 0` on a replay and counts the requests sent to Anthropic.
+
 ## [1.25.0] - 2026-10-29
 
 ### Added

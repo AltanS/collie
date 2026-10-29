@@ -1,7 +1,8 @@
-// Which model tier each of pi and omp runs on in one leg (M67, ADR 0125): `replay` (the stub answers
-// from the cassettes in web/e2e/rig/cassettes, no key is loaded, nothing reaches OpenRouter) or `live`
-// (the stub passes each request on to OpenRouter with the harness's own key, and records when asked).
-// Claude Code is not here: it always runs live on its own login.
+// Which model tier each of pi, omp and Claude Code runs on in one leg (M67, ADR 0125): `replay` (the
+// stub answers from the cassettes in web/e2e/rig/cassettes, no key or login is loaded, nothing leaves
+// the machine) or `live` (the stub passes each request on with the harness's own credentials, pi and
+// omp to OpenRouter, Claude to Anthropic, and records when asked). Claude joined in spec 07: a forced
+// live Claude that does not record skips the stub and runs on its own login, as before M67.
 //
 // THE RULE (auto, the default). A harness replays when the cassettes hold its version for this leg,
 // recorded with the same model and the same walky talky skill text. Otherwise it runs live and its
@@ -11,11 +12,11 @@
 //   COLLIE_RIG_MODEL=auto     the rule above (default)
 //   COLLIE_RIG_MODEL=replay   replay or stop: a harness with no cassette fails the run before it starts
 //   COLLIE_RIG_MODEL=live     every harness live; records only with COLLIE_RIG_RECORD=1
-//   COLLIE_RIG_LIVE=pi,omp    these harnesses live (`all`: both); the rest by the rule
+//   COLLIE_RIG_LIVE=pi,claude these harnesses live (`all`: every one); the rest by the rule
 //   COLLIE_RIG_RECORD=1       a live harness writes its cassettes (a version miss records anyway)
 //
-// A live harness needs COLLIE_RIG_KEY_FILE. Without it, a live harness spends no turn (harnesses.ts
-// turns it off, as before M67) and records nothing.
+// A live pi or omp needs COLLIE_RIG_KEY_FILE. Without it, it spends no turn (harnesses.ts turns it off,
+// as before M67) and records nothing. A live Claude needs its own login instead (seed.ts), never the key.
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -24,11 +25,17 @@ import { join, resolve } from "node:path";
 import { BIN } from "../bins";
 import { parseVersion } from "../nightly";
 import { LEG_HARNESSES, type Leg } from "../scenarios";
-import { shortHash, versionDir, type CassetteMeta, type Literal } from "./cassette";
+import { shortHash, versionDir, type CassetteMeta, type Literal, type Vendor } from "./cassette";
 
 /** The harnesses whose model calls go through the stub. */
-export const STUB_HARNESSES = ["pi", "omp"] as const;
+export const STUB_HARNESSES = ["pi", "omp", "claude"] as const;
 export type StubHarness = (typeof STUB_HARNESSES)[number];
+
+/** Whose wire each harness speaks: the stub's upstream and the summary's reading (cassette.ts Vendor). */
+export const VENDOR = { pi: "openrouter", omp: "openrouter", claude: "anthropic" } as const satisfies Record<StubHarness, Vendor>;
+
+/** True for a harness whose live tier needs COLLIE_RIG_KEY_FILE. Claude signs in with its own login. */
+const NEEDS_KEY_FILE = { pi: true, omp: true, claude: false } as const satisfies Record<StubHarness, boolean>;
 
 export type ModelMode = "auto" | "replay" | "live";
 export type Tier = "replay" | "live";
@@ -43,7 +50,7 @@ export interface TierPlan {
   /** A live harness writes its cassettes in this run. */
   readonly record: boolean;
   readonly reason: string;
-  /** The model the harness starts on, `openrouter/anthropic/claude-haiku-4.5`. */
+  /** The model the harness starts on: `openrouter/anthropic/claude-haiku-4.5`, `haiku` for Claude. */
   readonly model: string;
   /** The skill hash the cassettes were (or will be) recorded with. */
   readonly skill: string;
@@ -55,12 +62,14 @@ export interface TierPlan {
 export interface TierPlans {
   pi?: TierPlan;
   omp?: TierPlan;
+  claude?: TierPlan;
 }
 
 /** The `--version` of each stub harness's binary, null where it did not answer. */
 export interface HarnessVersions {
   readonly pi: string | null;
   readonly omp: string | null;
+  readonly claude: string | null;
 }
 
 /** The environment name the plans travel in, from the global setup to the rig daemon and the workers. */
@@ -77,8 +86,9 @@ export function skillHash(): string {
   return shortHash(readFileSync(SKILL_TEMPLATE, "utf8"));
 }
 
-/** The model a harness starts on (harnesses.ts SETUPS reads it from here). */
+/** The model a harness starts on (harnesses.ts SETUPS reads it from here). Claude: Haiku, the cheap one. */
 export function modelFor(harness: StubHarness, env: Readonly<Record<string, string | undefined>> = process.env): string {
+  if (harness === "claude") return env.COLLIE_RIG_CLAUDE_MODEL ?? "haiku";
   return (harness === "pi" ? env.COLLIE_RIG_PI_MODEL : env.COLLIE_RIG_OMP_MODEL) ?? "openrouter/anthropic/claude-haiku-4.5";
 }
 
@@ -97,12 +107,16 @@ export function readTierAsk(env: Readonly<Record<string, string | undefined>>): 
   for (const word of (env.COLLIE_RIG_LIVE ?? "").split(",").map((w) => w.trim())) {
     if (word === "") continue;
     if (word === "all") STUB_HARNESSES.forEach((h) => live.add(h));
-    else if (word === "pi" || word === "omp") live.add(word);
-    else throw new Error(`COLLIE_RIG_LIVE names pi, omp or all, not "${word}"`);
+    else if (isStubHarness(word)) live.add(word);
+    else throw new Error(`COLLIE_RIG_LIVE names pi, omp, claude or all, not "${word}"`);
   }
   if (mode === "live") STUB_HARNESSES.forEach((h) => live.add(h));
   if (mode === "replay" && live.size > 0) throw new Error("COLLIE_RIG_MODEL=replay and COLLIE_RIG_LIVE ask for opposite things");
   return { mode, live, record: /^(1|true|yes)$/iu.test(env.COLLIE_RIG_RECORD ?? ""), keyFile: (env.COLLIE_RIG_KEY_FILE ?? "") !== "" };
+}
+
+export function isStubHarness(word: string): word is StubHarness {
+  return STUB_HARNESSES.some((h) => h === word);
 }
 
 /** Why a leg's cassettes do not cover this run, or null when they do. */
@@ -118,8 +132,9 @@ export function coverGap(meta: CassetteMeta | null, harness: StubHarness, versio
 export function decideTier(harness: StubHarness, version: string | null, leg: string, meta: CassetteMeta | null, model: string, skill: string, ask: TierAsk): TierPlan {
   const base = { harness, leg, version, model, skill };
   const gap = version === null ? `the ${harness} version could not be read` : coverGap(meta, harness, version, leg, model, skill);
+  const credentials = !NEEDS_KEY_FILE[harness] || ask.keyFile;
   if (ask.live.has(harness)) {
-    const record = ask.record && ask.keyFile && version !== null;
+    const record = ask.record && credentials && version !== null;
     return { ...base, tier: "live", record, reason: `forced live (${ask.mode === "live" ? "COLLIE_RIG_MODEL=live" : "COLLIE_RIG_LIVE"})${record ? ", recording" : ""}` };
   }
   if (gap === null) {
@@ -129,8 +144,8 @@ export function decideTier(harness: StubHarness, version: string | null, leg: st
   }
   if (ask.mode === "replay") throw new Error(`COLLIE_RIG_MODEL=replay: ${gap}. Record them once: COLLIE_RIG_MODEL=live COLLIE_RIG_RECORD=1 COLLIE_RIG_KEY_FILE=... (web/e2e/rig/README.md)`);
   // A version miss runs live and records, so the next run replays. Never record under an unknown version.
-  const record = ask.keyFile && version !== null;
-  return { ...base, tier: "live", record, reason: `${gap}: live${record ? ", recording" : ask.keyFile ? "" : ", no key file: no turns"}` };
+  const record = credentials && version !== null;
+  return { ...base, tier: "live", record, reason: `${gap}: live${record ? ", recording" : credentials ? "" : ", no key file: no turns"}` };
 }
 
 export function readMeta(root: string, harness: StubHarness, version: string): CassetteMeta | null {
@@ -147,18 +162,27 @@ export function binaryVersion(harness: StubHarness): string | null {
 }
 
 export function readVersions(): HarnessVersions {
-  return { pi: binaryVersion("pi"), omp: binaryVersion("omp") };
+  return { pi: binaryVersion("pi"), omp: binaryVersion("omp"), claude: binaryVersion("claude") };
+}
+
+/** A folder as Claude Code names it in a file name: every character that is not a letter or a digit is a dash. */
+export function dashed(path: string): string {
+  return path.replace(/[^A-Za-z0-9]/gu, "-");
 }
 
 /**
  * The folders a cassette never names as they are: the rig's state root, this checkout and the home
- * folder. The recorder writes the placeholder, and a replay puts its own folder back in.
+ * folder, and each in Claude Code's dashed form (its memory folder `projects/-var-home-...-project/`
+ * is in its system prompt). The recorder writes the placeholder, and a replay puts its own folder back in.
  */
-export function rigLiterals(stateRoot: string): Literal[] {
+export function rigLiterals(stateRoot: string, home: string = homedir()): Literal[] {
   return [
     [stateRoot, "{{lab}}"],
     [WORKTREE, "{{worktree}}"],
-    [homedir(), "{{home}}"],
+    [home, "{{home}}"],
+    [dashed(stateRoot), "{{labdash}}"],
+    [dashed(WORKTREE), "{{worktreedash}}"],
+    [dashed(home), "{{homedash}}"],
   ];
 }
 
@@ -174,6 +198,7 @@ export function planTiers(leg: Leg, env: Readonly<Record<string, string | undefi
   const plans: TierPlans = {};
   if (runs("pi")) plans.pi = plan("pi");
   if (runs("omp")) plans.omp = plan("omp");
+  if (runs("claude")) plans.claude = plan("claude");
   return plans;
 }
 

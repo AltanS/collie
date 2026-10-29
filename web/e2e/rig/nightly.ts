@@ -102,8 +102,9 @@ export interface Row extends Tuple {
   /** The counts of both legs added up per harness (the crew leg's cases run under Claude). */
   readonly verdicts?: Verdicts | undefined;
   /**
-   * The model tier pi and omp ran on in each leg (M67, replay/tier.ts), from each leg's model.json:
-   * `solo: pi replay, omp live+record; crew: pi replay`. Rows from before M67 have none.
+   * The model tier pi, omp and Claude ran on in each leg (M67, replay/tier.ts), from each leg's model.json:
+   * `solo: pi replay, omp live+record, claude replay; crew: pi replay, claude replay`. Rows from before
+   * M67 have none, and rows from before spec 07 name no Claude tier (Claude was live then).
    */
   readonly tiers?: string | undefined;
   /** One line: why it failed, or what passed. */
@@ -943,7 +944,7 @@ export function tiersOf(folder: string | undefined): string | undefined {
   if (!existsSync(file)) return undefined;
   const tiers = asJsonObject(asJsonObject(parseJson(readFileSync(file, "utf8")))?.tiers);
   if (tiers === undefined) return undefined;
-  const words = ["pi", "omp"].flatMap((h) => {
+  const words = ["pi", "omp", "claude"].flatMap((h) => {
     const plan = asJsonObject(tiers[h]);
     const tier = asJsonString(plan?.tier);
     return tier === undefined ? [] : [`${h} ${tier}${plan?.record === true ? "+record" : ""}`];
