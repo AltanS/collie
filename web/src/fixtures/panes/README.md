@@ -3554,3 +3554,26 @@ Codex 0.164.0 and 0.165.0 draw the composer prompt as `»` (U+00BB) at Ultra eff
 | `codex--v0165-ultra-draft--w170.txt` | `draft` | **Real capture.** The same pane with the draft `» Hello, test draft` typed and not sent; the hint row shows only the `⚠ 2 warnings · f2 to view` notice. The draft must read back as `Hello, test draft` |
 
 The two `--w170` files came from the reporter of issue 615 (@Skydev0h): `herdr pane read --source visible --format ansi`, 170 columns by 82 rows, the working directory `~`, nothing sensitive. They are stored as read, with the transport CRLF line ends and the SGR bytes untouched.
+
+## Codex 0.166.0 logo and warning row (captured 2026-10-29, harness lab drift, scratch tmux, 120 by 40)
+
+Codex 0.166.0 draws a 17-row braille logo over an EMPTY box when the pane has 32 rows or more. It goes at the first
+character in the box and comes back after Backspace, on a fresh start and on plain `codex`, and it is absent at 31 rows
+or fewer. Any `-c` override also adds `⚠ 1 warning · f2 to view` to the footer ("command-line configuration overrides
+... requires embedded mode"); once the box holds text, the `? for shortcuts` hint goes and the warning stays alone on
+its row. The harness lab's probed send was refused `probe_failed` until `idle.volatile.below.hints` named that row. A
+message's probe on Codex reads only the box and the rows under it, so the logo never reached it; a command's probe also
+compares the rows above, where `idle.volatile.above.losesText` already lets the logo go.
+
+Taken with `tmux capture-pane -p -e` in a private tmux server (`tmux -L`), isolated `HOME` and `CODEX_HOME`, no Herdr.
+The `art-*` and `warning-*` files come from the lab's manual run; `art-backspace` from a second session of the same
+version, read right after the probe's Backspace (only its colour depth differs from `art-empty`). The lab's folder was
+replaced with `/home/demo/sandbox/collie-labs/codex-v0166-logo-arts/project`, a path of the same length.
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `codex--v0166-art-empty--w120.txt` | `idle` | Header, the logo, the empty dim `› Ask Codex to do anything` box, the status row and `← for agents · ? for shortcuts` |
+| `codex--v0166-art-typed--w120.txt` | `draft` | `x` typed: the logo and the hint row are gone, the box and the status row stand where they were |
+| `codex--v0166-art-backspace--w120.txt` | `idle` | After Backspace: the logo and the hint row are back |
+| `codex--v0166-warning-art-empty--w120.txt` | `idle` | Started with a `-c` override: the logo, the empty box, and `? for shortcuts` with `⚠ 1 warning · f2 to view` after wide spacing |
+| `codex--v0166-warning-typed--w120.txt` | `draft` | `x` typed: the logo is gone, and `⚠ 1 warning · f2 to view` stands alone on the footer row |

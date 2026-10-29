@@ -50,7 +50,8 @@
         "hints": [
           "^\\s*← for agents · \\? for shortcuts(?:\\s{2,}\\S.*)?$",
           "^\\s*\\? for shortcuts(?:\\s{2,}\\S.*)?$",
-          "^\\s*[Tt]ab to queue message$"
+          "^\\s*[Tt]ab to queue message$",
+          "^\\s*⚠ \\d+(?: warnings?)? · f2(?: to view)?$"
         ]
       }
     },

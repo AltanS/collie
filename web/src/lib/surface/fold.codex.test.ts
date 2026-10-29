@@ -56,6 +56,24 @@ describe("the codex profile over the Codex fixtures (M56 spec 13)", () => {
     }
   });
 
+  it("codex 0.166.0: the logo over the box and the lone warning row read as the box they frame (harness lab drift, 2026-10-29)", () => {
+    const cases = [
+      ["codex--v0166-art-empty--w120.txt", "empty"],
+      ["codex--v0166-art-typed--w120.txt", "draft"],
+      ["codex--v0166-art-backspace--w120.txt", "empty"],
+      ["codex--v0166-warning-art-empty--w120.txt", "empty"],
+      ["codex--v0166-warning-typed--w120.txt", "draft"],
+    ] as const;
+    const box = findInputFrame(fixtureRows("codex--v0166-art-empty--w120.txt"), CODEX)!;
+    for (const [name, composer] of cases) {
+      const frame = findInputFrame(fixtureRows(name), CODEX);
+      expect(frame, name).not.toBeNull();
+      expect(frame!.interior.prompt, name).toBe(box.interior.prompt);
+      expect(read(name).surface, name).toMatchObject({ turn: "idle", modal: "none", composer });
+      expect(isFree(read(name).surface), name).toBe(composer === "empty");
+    }
+  });
+
   // Counsel on issue 615: the prompt pattern widened from `›` to `[›»]`, so show what it does NOT
   // take. The frame needs its blank top row, a column-0 prompt row, and the Codex status row below
   // (profiles/codex.json idle.frame); the profile only reads panes the mux names as Codex.
