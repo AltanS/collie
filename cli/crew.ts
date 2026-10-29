@@ -77,6 +77,7 @@ import {
   standbyDoorLines,
 } from "./crew-status-deputy.ts";
 import type { Tone, TonedLine, Ui } from "./render.ts";
+import { probeConfigOf, probeTarget } from "./update-run.ts";
 // Type-only, so it is erased: the runtime edge to `cli/remote.ts` is the dynamic import in `cmdCrew`.
 import type { CrewAddDeps } from "./remote.ts";
 import type { Exec, Files } from "./sys.ts";
@@ -147,6 +148,14 @@ export interface CrewDeps {
   serve(io?: Io): Promise<number>;
   /** `collie unserve` — a peer publishes nothing (§3), so joining tears our own mapping down. */
   unserve(): number;
+  /**
+   * One `/api/health` request against this machine's own bridge: `true` when it answered ok. Absent
+   * reads as "yes", so a verb that waits on it never waits where no probe was wired. `crew invite`
+   * polls it after its restart, so the join line is printed only once a joiner can be answered.
+   */
+  bridgeAnswers?(): Promise<boolean>;
+  /** The wait between two {@link bridgeAnswers} polls. Absent: a real timer. */
+  sleep?(ms: number): Promise<void>;
   /** Push a `clear` to every subscribed device for these notification slots. Best effort. */
   clearNotifications(tags: readonly string[]): Promise<void>;
   /** The terminal renderer, when this run landed on one (`cli/render.ts`). Absent ⇒ plain lines. */
@@ -447,7 +456,8 @@ function publicFrontDoor(deps: CrewDeps): string | null {
  * domain, and is what a person can retype) on the default port, and appends `:<port>` only when this
  * lead moved off 8787. `COLLIE_PUBLIC_URL` wins over both, because it is the operator telling Collie
  * which ingress this machine actually publishes; its port is made explicit (443 for https, 80 for
- * http) so the joiner dials the door that is really there.
+ * http) so the joiner dials the door that is really there. On https 443 that is the origin,
+ * `https://<host>`, because a typed `host:443` is the shape that once fell back to :8787.
  *
  * `null` when this node has no Tailscale name and no configured URL — the caller prints a
  * placeholder, exactly as it did before.
@@ -457,6 +467,9 @@ export function joinHost(deps: CrewDeps): string | null {
   if (configured !== null) {
     const url = new URL(configured);
     const port = url.port === "" ? (url.protocol === "http:" ? 80 : DEFAULT_SERVE_PORT) : Number(url.port);
+    // 443 is spelt as the origin, never `host:443`: the joiner's dial and the typed port must agree,
+    // and `https://host` is the one spelling that cannot be read as "no port given" (see {@link leadOrigin}).
+    if (url.protocol === "https:" && port === DEFAULT_SERVE_PORT) return url.origin;
     return port === DEFAULT_PORT ? url.hostname : `${url.hostname}:${port}`;
   }
   const name = tailnetName(deps.exec);
@@ -672,6 +685,16 @@ export async function cmdCrewInvite(deps: CrewDeps, args: readonly string[]): Pr
   );
   if (minted === null) return EXIT.FAIL;
 
+  // The invite lives in the trust store, and the running bridge reads that once per process, so the
+  // bridge is restarted to load it. `restart` returns while the new process is still booting, and a
+  // `crew join` in that gap is answered 401 by nothing that knows the token. Wait until it answers.
+  await applyLocally(deps, "the freshly minted invite");
+  if (!(await bridgeAnswersWithin(deps, INVITE_WAIT_MS))) {
+    deps.io.err(`error: the bridge did not answer after its restart (waited ${INVITE_WAIT_MS / 1000} s), so no join line is printed.`);
+    deps.io.err("       A joiner would be refused while it is down. Check `collie logs`, then run `collie crew invite` again.");
+    return EXIT.FAIL;
+  }
+
   // The host the joiner types after `collie crew join` — this lead's, and `--address` still wins.
   const target = flags.address !== undefined && flags.address !== "" ? flags.address : joinHost(deps);
   // The operator carries `<token>.<lead-fingerprint>` (§8.2): the token still authenticates the joiner
@@ -692,8 +715,24 @@ export async function cmdCrewInvite(deps: CrewDeps, args: readonly string[]): Pr
   deps.io.out(`    collie crew join ${host}`);
   deps.io.out(`    collie crew join ${host} -   # paste the token on stdin`);
   deps.io.out("  Passing it as an argument instead leaves it in `ps` output for every local uid.");
-  await applyLocally(deps, "the freshly minted invite");
   return EXIT.OK;
+}
+
+/** How long `crew invite` waits for the restarted bridge, and how often it asks. */
+const INVITE_WAIT_MS = 30_000;
+const INVITE_POLL_MS = 500;
+
+/** Poll {@link CrewDeps.bridgeAnswers} every {@link INVITE_POLL_MS} until it says yes or `budgetMs` is spent. */
+async function bridgeAnswersWithin(deps: CrewDeps, budgetMs: number): Promise<boolean> {
+  const probe = deps.bridgeAnswers;
+  if (probe === undefined) return true;
+  const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  const attempts = Math.ceil(budgetMs / INVITE_POLL_MS);
+  for (let i = 0; i < attempts; i++) {
+    if (await probe().catch(() => false)) return true;
+    await sleep(INVITE_POLL_MS);
+  }
+  return false;
 }
 
 // ── join (on the joining machine) ────────────────────────────────────────────
@@ -984,7 +1023,8 @@ export async function cmdJoin(deps: CrewDeps, args: readonly string[]): Promise<
   }
 
   if (res.status === 401) {
-    deps.io.err("error: the lead refused the token — spent, expired (10 minutes), or this is not its address.");
+    deps.io.err("error: the lead refused the token — spent, expired (10 minutes), this is not its address,");
+    deps.io.err("       or the lead is still restarting after `crew invite`.");
     deps.io.err("       Mint a fresh one on the lead: `collie crew invite`.");
     return EXIT.REFUSED;
   }
@@ -1075,8 +1115,17 @@ export function leadOrigin(address: string): URL | null {
   }
   if (base.username !== "" || base.password !== "" || base.search !== "" || base.hash !== "") return null;
   if (base.pathname !== "/" || base.host === "") return null;
-  if (!typedScheme && base.port === "") base.port = String(DEFAULT_PORT);
+  // Decided from what was TYPED, not from `base.port`: the URL parser drops a default port, so a
+  // typed `host:443` reads back as `port === ""` and would be rewritten to :8787 — a door nothing
+  // answers on a lead behind `tailscale serve`.
+  if (!typedScheme && !typedPort(address)) base.port = String(DEFAULT_PORT);
   return base;
+}
+
+/** Did the operator type a `:port` after the host of a schemeless address? `[v6]:port` counts, `[v6]` does not. */
+function typedPort(address: string): boolean {
+  const authority = (address.split(/[/?#]/, 1)[0] ?? "").replace(/^.*@/, "");
+  return /:\d+$/.test(authority);
 }
 
 /** The enrollment URL for an operator-typed address. `null` when it is not a bare host. */
@@ -2505,8 +2554,16 @@ export function crewDeps(
     prompt: (question) => (process.stdin.isTTY === true ? prompt(question) : null),
     hostname: () => hostname(),
     clearNotifications: (tags) => clearViaPush(base.ctx, tags),
+    bridgeAnswers: () => ownBridgeAnswers(base.ctx, base.files),
     host: HOST,
   };
+}
+
+/** One `/api/health` GET at the address this instance bound (`probeTarget`); ok means HTTP 2xx. */
+async function ownBridgeAnswers(ctx: CliContext, files: Files): Promise<boolean> {
+  const target = probeTarget(probeConfigOf(ctx.env, files, ctx.stateDir, ctx.port));
+  const res = await fetch(target.url, { signal: AbortSignal.timeout(1500) }).catch(() => null);
+  return res !== null && res.ok;
 }
 
 /** Send one `clear` per notification slot through the bridge's own `Push`. Silent when push is off. */

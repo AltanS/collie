@@ -112,8 +112,12 @@ Collie installed and running.
    ```
 
 Tokens are single-use, valid for ten minutes, and displayed once. The lead stores only the hash.
-Running `invite` restarts the lead process so it can accept the incoming enrollment, and it prints
-the join line with the lead name included.
+Running `invite` restarts the lead process so it can accept the incoming enrollment. It waits until
+the restarted lead answers, for up to 30 seconds, and only then prints the token and the join line
+with the lead name included. If the lead does not answer in that time, `invite` says so and prints no
+join line, because a `join` would be refused while the lead is down. Check `collie logs`, then run
+`invite` again. A `join` that is refused with "the lead refused the token" shortly after an `invite`
+can also mean the lead is still restarting.
 
 Step 3 is a second restart, and `join` says so on the way out. `invite` restarted the lead so it
 could accept the enrollment. `join` then wrote the new member to disk, and the running process does
@@ -131,11 +135,13 @@ prints a warning, because process listings expose arguments to all local users
 ([`CREW_PROTOCOL.md` §8.3](../CREW_PROTOCOL.md)).
 
 Set the lead address to any hostname or `host:port` reachable from this node. An address without a
-scheme and port resolves to `https://<host>:8787`, the port Collie's own listener binds.
+scheme and port resolves to `https://<host>:8787`, the port Collie's own listener binds. A port you
+type is kept: `host:443` dials `https://host` on port 443, and `host:8788` dials port 8788.
 
 What `crew invite` prints depends on how the lead is published. In the default HTTPS mode, the lead
 listens on loopback and `tailscale serve` publishes it on port 443. So `invite` prints
-`https://<full-tailnet-name>`, which dials port 443. If you moved the front door with
+`https://<full-tailnet-name>`, which dials port 443. A lead published on 443 through
+`COLLIE_PUBLIC_URL` prints `https://<host>` the same way. If you moved the front door with
 `COLLIE_SERVE_PORT`, it prints `<name>:<port>`. With `COLLIE_SERVE_MODE=http` the lead's own
 listener answers on port 8787 over plain HTTP, and `invite` prints the short name, with the port
 only if you changed it. `join` prompts once before sending the token over plain HTTP, and
@@ -148,6 +154,16 @@ would mean port 8787, which a lead behind `tailscale serve` does not open to the
 `--address` on `crew join` is the address the lead dials this machine at, and it needs a port:
 `--address <host>:8787`. `join` refuses one without a port, because the lead would dial port 443.
 An `https://host:8787` address is still accepted and stored as `host:8787`.
+
+**A second instance on the same host** joins with `--address 127.0.0.1:<port>`, where `<port>` is that
+instance's own port:
+
+```bash
+collie crew join https://lead.tail1234.ts.net - --address 127.0.0.1:8788
+```
+
+A member's listener is pinned mutual TLS, so a browser or `curl` cannot reach it directly. You reach
+that member only through the lead.
 
 **Multiplexer selection is local to each node.** Configure `COLLIE_MUX` in that node's own `.env`,
 at `~/.config/collie/.env` on a binary install or in Herdr's plugin config dir on a Herdr install.

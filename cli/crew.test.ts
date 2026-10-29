@@ -186,6 +186,9 @@ function harness(initial: TrustStoreData | null, replies: Reply[] = [], over: Pa
       unserves.push(requests.length);
       return EXIT.OK;
     },
+    // The bridge answers at once and no real timer runs; `crew invite` tests override both.
+    bridgeAnswers: () => Promise.resolve(true),
+    sleep: () => Promise.resolve(),
     clearNotifications: (tags) => {
       cleared.push([...tags]);
       return Promise.resolve();
@@ -429,6 +432,20 @@ describe("enrollUrl", () => {
     expect(enrollUrl("http://desk.ts.net")).toBe("http://desk.ts.net/crew/v1/enroll");
   });
 
+  // `new URL("https://host:443")` drops the default port, so the old "no port typed" test (`port === ""`)
+  // read a typed :443 as absent and sent the dial to :8787, where nothing answers.
+  test("a typed :443 is kept — the URL parser drops it, the rule must not read that as 'no port'", () => {
+    expect(enrollUrl("desk.ts.net:443")).toBe("https://desk.ts.net/crew/v1/enroll");
+    expect(leadOrigin("desk.ts.net:443")!.port).toBe("");
+    expect(leadOrigin("desk.ts.net:443")!.host).toBe("desk.ts.net");
+    expect(enrollUrl("[fd7a:115c::1]:443")).toBe("https://[fd7a:115c::1]/crew/v1/enroll");
+    expect(enrollUrl("desk.ts.net:8788")).toBe("https://desk.ts.net:8788/crew/v1/enroll");
+    expect(enrollUrl("desk.ts.net")).toBe("https://desk.ts.net:8787/crew/v1/enroll");
+    expect(enrollUrl("[fd7a:115c::1]")).toBe("https://[fd7a:115c::1]:8787/crew/v1/enroll");
+    expect(enrollUrl("https://desk.ts.net")).toBe("https://desk.ts.net/crew/v1/enroll");
+    expect(enrollUrl("http://127.0.0.1:8788")).toBe("http://127.0.0.1:8788/crew/v1/enroll");
+  });
+
   test("an address carrying a path, a query or credentials is refused", () => {
     for (const bad of ["desk.ts.net/api", "desk.ts.net?x=1", "user:pw@desk.ts.net", "", "::::"]) {
       expect(enrollUrl(bad)).toBeNull();
@@ -508,7 +525,7 @@ describe("on a Windows host, the verbs that form a crew refuse and change nothin
   test("off Windows the same invite is minted as before", async () => {
     const h = harness(leadStore(), [], { host: hostFor("linux") });
     expect(await cmdCrewInvite(h.deps, [])).toBe(EXIT.OK);
-    expect(h.io.stdout[0]).toBe(`r1.${fp("desk")}`);
+    expect(h.io.stdout).toContain(`r1.${fp("desk")}`);
     expect(text(h.io)).not.toContain("On Windows");
   });
 });
@@ -519,7 +536,7 @@ describe("collie crew invite", () => {
   test("mints a token, prints `<token>.<lead-fingerprint>` once, and stores only the token's hash", async () => {
     const h = harness(leadStore());
     expect(await cmdCrewInvite(h.deps, [])).toBe(EXIT.OK);
-    const printed = h.io.stdout[0]!;
+    const printed = h.io.stdout.find((l) => l.startsWith("r1."))!;
     // The operator carries the wire token AND this lead's own certificate fingerprint (§8.2), so `join`
     // can authenticate the lead back. `fp("desk")` is `leadStore`'s `self.fingerprint`.
     expect(printed).toBe(`r1.${fp("desk")}`);
@@ -576,7 +593,9 @@ describe("collie crew invite", () => {
         ctx: context({ COLLIE_PUBLIC_URL: "https://collie.example.com" }, { serveMode }),
       });
       await cmdCrewInvite(published.deps, []);
-      expect(text(published.io)).toContain("collie crew join collie.example.com:443");
+      // 443 is spelt as the origin: `host:443` once fell back to :8787 in `leadOrigin`.
+      expect(text(published.io)).toContain("collie crew join https://collie.example.com\n");
+      expect(text(published.io)).not.toContain("collie.example.com:443");
     }
   });
 
@@ -603,6 +622,54 @@ describe("collie crew invite", () => {
     const h = harness(leadStore());
     await cmdCrewInvite(h.deps, []);
     expect(h.restarts).toHaveLength(1);
+  });
+
+  test("it waits for the restarted bridge to answer before it prints the token and the join line", async () => {
+    let asked = 0;
+    const slept: number[] = [];
+    const h = harness(leadStore(), [], {
+      // Down for the first four polls, as a bridge still booting is.
+      bridgeAnswers: () => Promise.resolve(++asked > 4),
+      sleep: (ms) => {
+        slept.push(ms);
+        return Promise.resolve();
+      },
+    });
+    expect(await cmdCrewInvite(h.deps, [])).toBe(EXIT.OK);
+    expect(asked).toBe(5);
+    expect(slept).toEqual([500, 500, 500, 500]);
+    // Restarted first, polled after: nothing is printed for a joiner until the poll said yes.
+    expect(h.restarts).toHaveLength(1);
+    const lines = h.io.stdout;
+    expect(lines.findIndex((l) => l.includes("restarting the bridge"))).toBeLessThan(
+      lines.findIndex((l) => l.startsWith("r1.")),
+    );
+    expect(text(h.io)).toContain("collie crew join https://laptop.tail.ts.net");
+  });
+
+  test("a bridge that never answers is said so, and no token or join line is printed for it", async () => {
+    let asked = 0;
+    const h = harness(leadStore(), [], {
+      bridgeAnswers: () => {
+        asked++;
+        return Promise.resolve(false);
+      },
+    });
+    expect(await cmdCrewInvite(h.deps, [])).toBe(EXIT.FAIL);
+    // 30 s at one poll per 500 ms.
+    expect(asked).toBe(60);
+    expect(text(h.io)).toContain("did not answer after its restart");
+    expect(text(h.io)).not.toContain("collie crew join");
+    expect(text(h.io)).not.toContain(`r1.${fp("desk")}`);
+  });
+
+  test("a probe that throws counts as no answer, not as a crash", async () => {
+    let asked = 0;
+    const h = harness(leadStore(), [], {
+      bridgeAnswers: () => (++asked < 3 ? Promise.reject(new Error("ECONNREFUSED")) : Promise.resolve(true)),
+    });
+    expect(await cmdCrewInvite(h.deps, [])).toBe(EXIT.OK);
+    expect(asked).toBe(3);
   });
 });
 
@@ -734,6 +801,30 @@ describe("collie join", () => {
     expect(await cmdJoin(h.deps, joinArgs)).toBe(EXIT.UNREACHABLE);
     expect(text(h.io)).toContain("could not reach desk.ts.net");
     expect(h.data()!.crew).toBeNull();
+  });
+
+  test("the 401 refusal also names a lead that is still restarting after `crew invite`", async () => {
+    const h = harness(null, [new Response(JSON.stringify({ error: "unauthorized" }), { status: 401 })]);
+    expect(await cmdJoin(h.deps, joinArgs)).toBe(EXIT.REFUSED);
+    expect(text(h.io)).toContain("still restarting after `crew invite`");
+  });
+
+  test("`host:443` dials https://host on 443, not :8787; a bare host still dials :8787", async () => {
+    const door = harness(null, [jsonReply(ENROLLED, 200, "desk")]);
+    expect(await cmdJoin(door.deps, ["desk.ts.net:443", "-"])).toBe(EXIT.OK);
+    expect(door.requests[0]!.url).toBe("https://desk.ts.net/crew/v1/enroll");
+    const bare = harness(null, [jsonReply(ENROLLED, 200, "desk")]);
+    expect(await cmdJoin(bare.deps, ["desk.ts.net", "-"])).toBe(EXIT.OK);
+    expect(bare.requests[0]!.url).toBe("https://desk.ts.net:8787/crew/v1/enroll");
+    const moved = harness(null, [jsonReply(ENROLLED, 200, "desk")]);
+    expect(await cmdJoin(moved.deps, ["desk.ts.net:8788", "-"])).toBe(EXIT.OK);
+    expect(moved.requests[0]!.url).toBe("https://desk.ts.net:8788/crew/v1/enroll");
+    const scheme = harness(null, [jsonReply(ENROLLED, 200, "desk")]);
+    expect(await cmdJoin(scheme.deps, ["https://desk.ts.net", "-"])).toBe(EXIT.OK);
+    expect(scheme.requests[0]!.url).toBe("https://desk.ts.net/crew/v1/enroll");
+    const plain = harness(null, [jsonReply(ENROLLED, 200, "desk")]);
+    expect(await cmdJoin(plain.deps, ["http://127.0.0.1:8788", "-", "--insecure"])).toBe(EXIT.OK);
+    expect(plain.requests[0]!.url).toBe("http://127.0.0.1:8788/crew/v1/enroll");
   });
 
   test("an unreachable lead does not hang forever — the dial has a bounded budget", async () => {
