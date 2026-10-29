@@ -293,6 +293,18 @@ describe("Steer or queue on the Send button (M69)", () => {
     expect(steer.compareDocumentPosition(message) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
+  it("a launch still starting offers neither Send nor its steer menu, and keeps the draft", async () => {
+    const user = userEvent.setup();
+    const { sends } = bridge([]);
+    renderSteer({ starting: true, surface: running, canSteer: true });
+    await openMenu(user, "wait for startup");
+    expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: STEER })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Send as message" })).toBeNull();
+    expect(field()).toHaveValue("wait for startup");
+    expect(sends).toEqual([]);
+  });
+
   it("the empty field's placeholder is the hint, smaller than the reply words, while the turn runs on a pane that can steer", () => {
     renderSteer({ surface: running, canSteer: true });
     expect(field()).toHaveAttribute("placeholder", HINT);

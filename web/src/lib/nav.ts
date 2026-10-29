@@ -9,6 +9,7 @@
 import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString, type JsonValue } from "./json";
 import { scopeFromSearchParams, scopeSearch, SESSION_PARAM, type Scope } from "./scope";
 import type { AgentView } from "./types";
+import type { AgentLaunch } from "./agent-startup";
 
 // The two Machines paths live in `machine-paths.ts` so the service worker can build them: this file
 // reads `window`, which a worker has no type for. Re-exported, so every caller still asks nav.ts.
@@ -370,12 +371,14 @@ export function pairLandingPath(search: string): string | null {
 // components and `lib/nav-entry.ts` seeds a cold deep link.
 
 /**
- * What Collie keeps in `location.state`: where a DOWN move came from, beside the one other field a
- * navigation carries (`freshPane`, a just-created pane the snapshot does not list yet).
+ * What Collie keeps in `location.state`: where a DOWN move came from, beside route-local extras
+ * such as a just-created pane and its independently scoped launch intent.
  */
 export interface NavState {
   from?: string;
   freshPane?: AgentView;
+  /** A named terminal-agent launch, scoped separately from the optimistic shell bootstrap. */
+  agentLaunch?: AgentLaunch;
   /**
    * The Changes tree opened this file from a `link` row. A symlink is listed and never followed, so
    * the row cannot say whether it points at a file or a folder, and the file read answers

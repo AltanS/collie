@@ -37,6 +37,7 @@ const { mockLaunch } = vi.hoisted(() => ({
 // pass-through to the network.
 vi.mock("@/lib/api", () => ({ launch: mockLaunch }));
 
+import { readAgentLaunch } from "@/lib/agent-startup";
 import { LaunchStrip } from "./launch-strip";
 
 const peek: Launcher = { command: "rumen-peek", label: "Runs & quota", cwd: "/home/op/project" };
@@ -255,4 +256,17 @@ describe("LaunchStrip", () => {
       expect(screen.queryByRole("dialog", { name: "Start without prompts?" })).toBeNull();
     });
   });
+});
+
+
+it.each([
+  [{ command: "kiro", label: "Kiro", kind: "agent", harness: "kiro" }, "kiro"],
+  [{ command: "kiro", label: "Kiro", kind: "command" }, undefined],
+] satisfies [Launcher, string | undefined][])("launch strip carries only existing agent metadata for %j", async (row, expected) => {
+  launchersValue.current = { launchers: [row], home: "/home", harnesses: null, items: null, adding: null, loadedFor: null };
+  const router = makeRouter(undefined);
+  render(<RouterProvider router={router} />);
+  await userEvent.click(await screen.findByRole("button", { name: /Kiro/ }));
+  await waitFor(() => expect(router.state.location.pathname).toBe("/pane/p1"));
+  expect(readAgentLaunch(router.state.location.state, "p1")?.harness).toBe(expected);
 });

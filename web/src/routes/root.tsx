@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
   Outlet,
   useLoaderData,
+  useLocation,
   useNavigation,
   useParams,
   useRouteError,
@@ -9,6 +10,7 @@ import {
 } from "react-router";
 
 import { useNavTrail } from "@/hooks/use-nav";
+import { readAgentLaunch } from "@/lib/agent-startup";
 import { usePolling } from "@/hooks/use-polling";
 import { usePollBusy } from "@/hooks/use-poll-busy";
 import { useBusyWhile } from "@/lib/busy";
@@ -86,7 +88,9 @@ export function RootLayout() {
 
   // The scope rides along so a "look now" on foreground lands on the machine and session the page is
   // actually showing — a refresh aimed at the lead would leave a peer's herd exactly as stale.
-  const pollMs = usePolling(data, paneId, data.scope);
+  const location = useLocation();
+  const launch = paneId === undefined ? undefined : readAgentLaunch(location.state, paneId, data.scope);
+  const pollMs = usePolling(data, paneId, data.scope, undefined, launch?.id);
   // Surface the busy bar when a navigation or a poll runs slow, each against its own threshold —
   // routine fast polls/navigations stay invisible. Mounted here so the whole app shares one
   // detector inside the router context.

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useLoaderData, useLocation, useMatch, useParams } from "react-router";
 
 import { AgentChat } from "@/components/agent-chat";
@@ -14,6 +14,7 @@ import { useWidthClass } from "@/hooks/use-width-class";
 import { type PaneData } from "@/lib/loaders";
 import { GLIDE_PAIRS, glideBack } from "@/lib/glide";
 import { canStepBack, homePath, panePath, readFrom, upTarget, zoomPath } from "@/lib/nav";
+import { readAgentLaunch } from "@/lib/agent-startup";
 import { paneScopeKey } from "@/lib/scope";
 import { findPane, paneScope } from "@/lib/hosts";
 import { setStatus } from "@/lib/status";
@@ -47,8 +48,8 @@ export function DetailRoute() {
   const fold = usePaneFold(widthClass);
 
   // SAFETY: `location.state` is whatever the navigation that got here attached — `unknown` by
-  // definition. The only shape Collie ever puts there is `{ freshPane }` (components/agent-list's
-  // optimistic open), and the optional chain means any other state reads as "not carried".
+  // definition. Collie puts `{ freshPane }` there (components/agent-list's optimistic open), beside
+  // an agent launch's intent, and the optional chain means any other state reads as "not carried".
   const fresh = (location.state as { freshPane?: AgentView } | null)?.freshPane;
   const inSnapshot =
     root.agents.some((a) => a.paneId === paneId) ||
@@ -65,6 +66,17 @@ export function DetailRoute() {
   const seenPaneId = useRef<string | null>(null);
   if (inSnapshot) seenPaneId.current = paneId;
   const seen = seenPaneId.current === paneId;
+  // A launch the phone started keeps Send gated until the agent's first screen is read (AgentChat).
+  // Once it is, the intent is retired from this entry, so Back and Forward never gate the pane again.
+  const agentLaunch = readAgentLaunch(location.state, paneId, scope);
+  const launchReady = useCallback(() => {
+    // SAFETY: the same `location.state` the launch above was read from; only its intent is dropped,
+    // so the optimistic row stays and `side` carries `from` over.
+    const state = location.state as { agentLaunch?: unknown; freshPane?: AgentView } | null;
+    if (state?.agentLaunch === undefined) return;
+    const { agentLaunch: _retired, ...rest } = state;
+    nav.side(`${location.pathname}${location.search}`, rest);
+  }, [location.state, location.pathname, location.search, nav]);
 
   // Looked up WITHIN the scope's host: `w1:p1` exists on every machine in a crew, so a match by id
   // alone could hand this view another machine's pane — rendering its space, tab and cwd around a
@@ -153,6 +165,8 @@ export function DetailRoute() {
         paneId={paneId}
         scope={scope}
         agent={agent}
+        agentLaunch={agentLaunch}
+        onLaunchReady={launchReady}
         agents={root.agents}
         shellPanes={root.shellPanes}
         tabs={root.tabs}

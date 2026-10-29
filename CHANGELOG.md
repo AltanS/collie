@@ -72,6 +72,11 @@ Running a crew? Update the lead first; members follow on their own. Details:
   old Headscale recipe, proxies to Collie, and names the `tailscale serve ... off` command that
   removes it. `collie serve` in http mode prints a note about such a mapping and still publishes.
 - **The zoomed output keeps your place and follows no link.** Closing it returns focus to the Zoom button, a tap on a printed web address opens nothing, and the browser's own Ctrl zoom keys leave the view's scale alone. Refines #536.
+- **Send waits for a launched agent's first screen.** The draft stays editable and is never sent on
+  its own, so a workspace-trust dialog shows before any text reaches the agent. Send reads Starting...
+  until the agent's first screen is read, the agent leaves the pane, or two minutes pass. The page
+  also polls faster for the first 20 seconds after a launch, so the pane appears sooner. Thanks
+  @aahung (#574).
 
 ### Docs
 
