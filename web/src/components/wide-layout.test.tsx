@@ -925,11 +925,14 @@ describe("folded postures", () => {
       const { container } = await mount("w1:p1", 1200);
       expect(frame(container).dataset.fold).toBe("tabletop");
       const view = chat(container);
+      const field = document.body.appendChild(document.createElement("textarea"));
+      act(() => field.focus());
       kb.open(400);
       await waitFor(() => expect(frame(container).dataset.fold).toBe("flat"));
       expect(chat(container).dataset.tabletop).toBe("false");
       // The same pane view, not a new one: the keyboard's field keeps its focus.
       expect(chat(container)).toBe(view);
+      field.remove();
     } finally {
       kb.restore();
     }
