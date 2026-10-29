@@ -7,7 +7,7 @@ import { splitLines } from "../blocks";
 import { draftCarriesSend } from "../draft-match";
 import { codexAdapter } from "./codex";
 import { composerPrompt, extractInputDraft, locateComposer, stripChrome } from "./codex/chrome";
-import { isStatusRow, lineText, PLACEHOLDER } from "./codex/markers";
+import { isStatusRow, lineText, PLACEHOLDER, PROMPT_GLYPHS, promptText } from "./codex/markers";
 import { detectApprovalRegion } from "./codex/approval";
 import { detectAskRegion } from "./codex/ask";
 import { detectTrustRegion } from "./codex/trust";
@@ -91,6 +91,9 @@ const PINNED = [
   "codex--v0164-steer-after-now--w120.txt",
   "codex--v0164-steer-done--w120.txt",
   "codex--v0164-steer-typed--w120.txt",
+  // Issue 615, derived (not captured): the empty and draft composers with `»` for `›` (Ultra effort).
+  "codex--v0165-ultra-draft.txt",
+  "codex--v0165-ultra-empty--w120.txt",
   "codex--working.txt",
 ];
 
@@ -153,6 +156,38 @@ describe("composerReady — the gate the reply path pre-flights on", () => {
 
   it.each([...DIALOG, "codex--ask-notes-focused.txt"])("%s: a modal owns the screen ⇒ false", (name) => {
     expect(codexAdapter.composerReady!(fixtureLines(name))).toBe(false);
+  });
+});
+
+describe("the Ultra prompt glyph (issue 615)", () => {
+  it("promptText reads every glyph of PROMPT_GLYPHS and nothing else", () => {
+    for (const glyph of PROMPT_GLYPHS) {
+      expect(promptText(`${glyph} hello`), glyph).toBe("hello");
+      expect(promptText(`${glyph} ${PLACEHOLDER}`), glyph).toBe(PLACEHOLDER);
+    }
+    expect([...PROMPT_GLYPHS]).toEqual(["\u203a", "\u00bb"]);
+    expect(promptText("> hello")).toBeNull();
+    expect(promptText("\u00bbhello")).toBeNull();
+  });
+
+  it("finds the composer, and reads the draft or the empty placeholder, under both glyphs", () => {
+    const pairs = [
+      ["codex--v0164-queue-done--w120.txt", "codex--v0165-ultra-empty--w120.txt", null],
+      ["codex--v0156-headless-draft.txt", "codex--v0165-ultra-draft.txt", "hello from the phone probe"],
+    ] as const;
+    for (const [original, ultra, draft] of pairs) {
+      expect(locateComposer(fixtureLines(ultra)), ultra).not.toBeNull();
+      expect(locateComposer(fixtureLines(ultra))?.promptRow, ultra).toBe(locateComposer(fixtureLines(original))?.promptRow);
+      expect(codexAdapter.composerReady!(fixtureLines(ultra)), ultra).toBe(true);
+      expect(codexAdapter.extractInputDraft(fixtureLines(ultra)), ultra).toBe(draft);
+      expect(codexAdapter.extractInputDraft(fixtureLines(original)), original).toBe(draft);
+    }
+  });
+
+  it("a numbered option row is not a prompt under either glyph", () => {
+    for (const glyph of PROMPT_GLYPHS) {
+      expect(locateComposer(splitLines(parseAnsi([`${glyph} 1. Yes, proceed (y)`, "  2. No (esc)", "  Press enter to confirm or esc to cancel"].join("\n"))))).toBeNull();
+    }
   });
 });
 

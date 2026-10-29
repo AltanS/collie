@@ -35,6 +35,19 @@ describe("the codex profile over the Codex fixtures (M56 spec 13)", () => {
     }
   });
 
+  it("codex: the Ultra glyph (issue 615) reads exactly as the original glyph does", () => {
+    const pairs = [
+      ["codex--v0164-queue-done--w120.txt", "codex--v0165-ultra-empty--w120.txt", "empty"],
+      ["codex--v0156-headless-draft.txt", "codex--v0165-ultra-draft.txt", "draft"],
+    ] as const;
+    for (const [original, ultra, composer] of pairs) {
+      expect(findInputFrame(fixtureRows(ultra), CODEX), ultra).not.toBeNull();
+      expect(read(ultra).surface, ultra).toEqual(read(original).surface);
+      expect(read(ultra).surface).toMatchObject({ turn: "idle", modal: "none", composer });
+      expect(isFree(read(ultra).surface), ultra).toBe(composer === "empty");
+    }
+  });
+
   it("codex: a draft reads as a draft, never free, and a running turn never reads idle", () => {
     for (const name of codexFixtures.filter((n) => labelOf(n).state === "draft")) {
       expect(read(name).surface.composer, name).toBe("draft");
