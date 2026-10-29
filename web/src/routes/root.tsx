@@ -27,6 +27,7 @@ import { CrewProvider } from "@/components/crew-provider";
 import { CollieMark } from "@/components/collie-mark";
 import { TourHost } from "@/components/tour-sheet";
 import { describeThrownError } from "@/lib/api-error-message";
+import { findPane, paneRowKey } from "@/lib/hosts";
 import { homePath } from "@/lib/nav";
 import { scopeFromUrl } from "@/lib/session";
 import { noteLeadName, noteSnapshotCrew, noteSnapshotRun } from "@/lib/update-run-store";
@@ -101,7 +102,12 @@ export function RootLayout() {
   useBusyWhile(useNavigation().state !== "idle");
   // The history the tab has walked, for the Files breadcrumb's pop (lib/nav-trail.ts).
   useNavTrail();
-  useAgentTransitions(data.agents, paneId ?? null);
+  // The open pane as a ROW, so a peer's pane that shares its id is not silenced along with it.
+  const openPane =
+    paneId === undefined
+      ? undefined
+      : findPane(data.agents, paneId, pane?.scope ?? data.scope, data.servers, data.sessions);
+  useAgentTransitions(data.agents, openPane ? paneRowKey(openPane) : null);
   // THE PUSH RACE. `usePushSetup` can raise the browser's permission prompt on its own, behind the
   // tour's backdrop, so it waits until the tour has decided it is not showing. "pending" is what
   // makes this correct rather than racy: a child's effect runs before the parent's, but the state it
