@@ -1,6 +1,8 @@
 import {
   matchingEntries,
+  matchingIndexed,
   searchableText,
+  searchIndex,
   splitHighlight,
   step,
   userTurnIndices,
@@ -39,6 +41,32 @@ describe("searchableText", () => {
       ],
     });
     expect(searchableText(e)).not.toContain("SECRET_TOKEN");
+  });
+
+  // History unfolds a tool call whose output matches, so it may search the bodies (#618).
+  it("includes tool result bodies when asked", () => {
+    const e = entry({
+      parts: [
+        { kind: "tool", name: "Read", summary: "/a.ts", result: { text: "SECRET_TOKEN=abc" } },
+        { kind: "tool", name: "Bash", summary: "ls" },
+      ],
+    });
+    expect(searchableText(e, { includeToolResults: true })).toContain("SECRET_TOKEN");
+  });
+});
+
+describe("searchIndex and matchingIndexed", () => {
+  it("lowercases once and matches like matchingEntries", () => {
+    const entries = [
+      entry({ parts: [{ kind: "text", text: "Add a Guard" }] }),
+      entry({ parts: [{ kind: "tool", name: "Bash", summary: "ls", result: { text: "GUARD.ts" } }] }),
+    ];
+    const index = searchIndex(entries, { includeToolResults: true });
+    expect(index[0]).toBe("add a guard");
+    expect(matchingIndexed(index, "gUaRd")).toEqual([0, 1]);
+    expect(matchingIndexed(searchIndex(entries), "guard")).toEqual(matchingEntries(entries, "guard"));
+    expect(matchingEntries(entries, "guard", { includeToolResults: true })).toEqual([0, 1]);
+    expect(matchingIndexed(index, "   ")).toEqual([]);
   });
 });
 

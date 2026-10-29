@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
@@ -131,5 +132,39 @@ describe("HistoryRoute — a rewound branch", () => {
     render(<RouterProvider router={makeRouter(plain)} />);
     expect(await screen.findByText("a question")).toBeInTheDocument();
     expect(screen.getByText("an answer")).toBeInTheDocument();
+  });
+});
+
+describe("HistoryRoute — find inside tool output", () => {
+  afterEach(() => localStorage.clear());
+
+  it("matches a query present only in a tool result's text and unfolds the highlighted output", async () => {
+    const withToolOutput = (): HistoryData => ({
+      ...emptyHistory(),
+      total: 1,
+      entries: [
+        {
+          uuid: "t1",
+          ts: "",
+          role: "assistant",
+          parts: [
+            {
+              kind: "tool",
+              name: "Bash",
+              summary: "cat /etc/hosts",
+              result: { text: "127.0.0.1 SECRET_TOKEN_XYZ" },
+            },
+          ],
+        },
+      ],
+    });
+    const user = userEvent.setup();
+    const { container } = render(<RouterProvider router={makeRouter(withToolOutput)} />);
+    const findBtn = await screen.findByRole("button", { name: /Find in history/i });
+    await user.click(findBtn);
+    const input = await screen.findByRole("textbox", { name: /Find in history/i });
+    await user.type(input, "SECRET_TOKEN");
+    expect(screen.getByText("1/1")).toBeInTheDocument();
+    expect(container.querySelector("pre mark")).toHaveTextContent("SECRET_TOKEN");
   });
 });

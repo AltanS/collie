@@ -4,19 +4,29 @@
 // find, and in a thousand-turn thread the only landmarks are the handful of messages YOU wrote (20
 // human turns in 900 is typical), so stepping between them is the fastest way to navigate.
 //
-// WHAT IS SEARCHED — deliberately, only what is VISIBLE with tool output collapsed: prose text and
-// the one-line tool summaries. Tool RESULT bodies are excluded even though we hold them, because
-// matching inside a collapsed body would jump you to a turn where nothing on screen matches. Every
-// hit this returns is a hit you can actually see.
+// WHAT IS SEARCHED — by default, only what is VISIBLE with tool output collapsed: prose text and the
+// one-line tool summaries. Matching inside a collapsed body would jump you to a turn where nothing on
+// screen matches, so every hit the default returns is a hit you can actually see.
+//
+// `{ includeToolResults: true }` adds the tool RESULT bodies. Only a view that unfolds a tool call
+// whose output matches may ask for it: History does (components/transcript-view.tsx, `ToolPart`
+// opens on a hit and marks it), so the turn a jump lands on still shows the match (#618).
 
 import type { TranscriptEntry } from "@/lib/types";
 
-/** The text a search runs against for one turn — the visible surface, nothing hidden. */
-export function searchableText(entry: TranscriptEntry): string {
+/** What a search covers beyond the visible surface. */
+export interface SearchOptions {
+  /** Tool result bodies too. Only for a view that unfolds a call whose output matches. */
+  readonly includeToolResults?: boolean;
+}
+
+/** The text a search runs against for one turn: the visible surface, and tool output when asked. */
+export function searchableText(entry: TranscriptEntry, opts: SearchOptions = {}): string {
   const parts: string[] = [];
   for (const part of entry.parts) {
     if (part.kind === "tool") {
       parts.push(part.name, part.summary);
+      if (opts.includeToolResults === true && part.result !== undefined) parts.push(part.result.text);
     } else if (part.kind === "image") {
       // Deliberately skipped: an image part carries a URL and a mime type, and neither is text the
       // operator typed or the agent said. Indexing the URL would make a find hit on a sha-256.
@@ -29,17 +39,32 @@ export function searchableText(entry: TranscriptEntry): string {
 }
 
 /**
- * Indices of entries matching `query`, oldest-first. Case-insensitive substring — not a regex, since
- * this is a phone find bar and a stray `(` shouldn't throw or silently match nothing.
+ * Each entry's search text, lowercased once. A view that searches on every keystroke builds this
+ * when the entries change (a `useMemo` keyed on them) and matches against it with
+ * {@link matchingIndexed}, so a tool output is not lowercased again for each letter typed.
  */
-export function matchingEntries(entries: TranscriptEntry[], query: string): number[] {
+export function searchIndex(entries: readonly TranscriptEntry[], opts: SearchOptions = {}): string[] {
+  return entries.map((entry) => searchableText(entry, opts).toLowerCase());
+}
+
+/** Indices into a {@link searchIndex} whose text holds `query`, oldest-first. */
+export function matchingIndexed(index: readonly string[], query: string): number[] {
   const needle = query.trim().toLowerCase();
   if (needle === "") return [];
   const hits: number[] = [];
-  for (let i = 0; i < entries.length; i++) {
-    if (searchableText(entries[i]!).toLowerCase().includes(needle)) hits.push(i);
+  for (let i = 0; i < index.length; i++) {
+    if (index[i]!.includes(needle)) hits.push(i);
   }
   return hits;
+}
+
+/**
+ * Indices of entries matching `query`, oldest-first. Case-insensitive substring — not a regex, since
+ * this is a phone find bar and a stray `(` shouldn't throw or silently match nothing.
+ */
+export function matchingEntries(entries: readonly TranscriptEntry[], query: string, opts: SearchOptions = {}): number[] {
+  if (query.trim() === "") return [];
+  return matchingIndexed(searchIndex(entries, opts), query);
 }
 
 /** Indices of the turns the user typed — the thread's landmarks. */

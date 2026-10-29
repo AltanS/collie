@@ -26,6 +26,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Added
 
 - **Terminal symbols render on phones.** A 19 KB subset of JuliaMono (`terminal-symbols-0.63.2.woff2`, OFL 1.1, renamed "Terminal Symbols" as the licence asks) covers the Miscellaneous Technical and Mathematical Symbols-B glyphs agents use for their own chrome (`⎿`, `⏺`, `⏵⏵`, `⏸`, `⧉`, `⧖`), lazy-cached on first use like the Nerd Font subsets, while two-cell emoji stay with the system face. Thanks @GGGODLIN (#618).
+- **History find searches inside tool output.** Searching in History now matches text inside tool call results, unfolds a matching tool call to highlight the hit, lets you collapse or re-open it with a tap, and hides the disclosure chevron on tool calls whose output is empty. Thanks @GGGODLIN (#618).
 
 ### Fixed
 

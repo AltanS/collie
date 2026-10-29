@@ -12,7 +12,7 @@ import { HISTORY_PAGE_SIZE, type HistoryData } from "@/lib/loaders";
 import { useMuxCapability } from "@/lib/mux-capability";
 import { panePath } from "@/lib/nav";
 import { setStatus } from "@/lib/status";
-import { matchingEntries, step, userTurnIndices } from "@/lib/transcript-search";
+import { matchingIndexed, searchIndex, step, userTurnIndices } from "@/lib/transcript-search";
 import type { TranscriptEntry } from "@/lib/types";
 import { useRootData } from "@/lib/route-data";
 import { t } from "@/lib/i18n";
@@ -86,7 +86,7 @@ export function HistoryRoute() {
     // this view, this find or this jump either. Only pi can say so (`abandoned`, set by its reader
     // when a row's parent is not the row before it), and the journal KEEPS the turn rather than
     // dropping it, because a `?before=` cursor still has to resolve its uuid on the bridge. So hiding
-    // is the reader's job, and it belongs here: this is the one array the view, `matchingEntries`,
+    // is the reader's job, and it belongs here: this is the one array the view, `searchIndex`,
     // `userTurnIndices`, the render window and the paging cursor all read.
     //
     // The `some` guard keeps the array IDENTITY for every session that never forked, which is almost
@@ -107,7 +107,10 @@ export function HistoryRoute() {
   // Index into `entries` (not `shown`) of the turn a find/jump landed on; -1 = nowhere yet.
   const [cursor, setCursor] = useState(-1);
 
-  const matches = useMemo(() => matchingEntries(entries, query), [entries, query]);
+  // Tool output is searched too: TranscriptView unfolds a call whose output matches, so the turn a
+  // jump lands on shows the hit (#618). Lowercased once per change of entries, not per keystroke.
+  const searchable = useMemo(() => searchIndex(entries, { includeToolResults: true }), [entries]);
+  const matches = useMemo(() => matchingIndexed(searchable, query), [searchable, query]);
   const userTurns = useMemo(() => userTurnIndices(entries), [entries]);
   const focusedUuid = cursor >= 0 ? entries[cursor]?.uuid : undefined;
 
