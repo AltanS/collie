@@ -23,6 +23,14 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **The installed app's icon counts the panes blocked on you.** The count also includes finished panes you have not opened, while the Finished preference is on. The herd push sets it in the service worker, and the open dashboard sets it too. A browser without the Badging API keeps no count. Thanks @SergioGhisler (#591).
+
+### Changed
+
+- **Opening a finished pane retracts its alert.** The bridge drops the alert once the pane has been opened (`retractSeen` in `bridge/notifications.ts`), which also removes its lock-screen notification. A blocked pane's alert stays until you answer it.
+
 ## [1.25.0] - 2026-10-29
 
 ### Added

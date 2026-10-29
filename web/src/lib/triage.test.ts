@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  countAlerting,
   countBlocked,
   flipDir,
   hasReady,
@@ -281,5 +282,22 @@ describe("countBlocked and hasReady — the Focus tab's two marks (ADR 0066)", (
     // Seen since it settled: not ready any more.
     expect(hasReady([agent("s1", "done", { active: 1, seen: 2 })])).toBe(false);
     expect(hasReady([])).toBe(false);
+  });
+});
+
+describe("countAlerting — the installed app's icon count", () => {
+  const herd = [
+    agent("b1", "blocked"),
+    agent("u1", "done", { active: 2, seen: 1 }),
+    agent("u2", "idle", { active: 2, seen: 1 }),
+    agent("w1", "working"),
+    agent("s1", "done", { active: 1, seen: 2 }),
+  ];
+
+  it("counts the finished panes you have not opened only while finished panes notify", () => {
+    expect(countAlerting(herd, { blocked: true, done: true })).toBe(3);
+    expect(countAlerting(herd, { blocked: true, done: false })).toBe(1);
+    expect(countAlerting(herd, { blocked: false, done: true })).toBe(2);
+    expect(countAlerting([], { blocked: true, done: true })).toBe(0);
   });
 });

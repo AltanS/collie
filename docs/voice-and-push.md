@@ -507,6 +507,24 @@ includes one a `/model` switch made cold with time still left.
 > second window. A five-minute cache, Codex, OpenCode, pi and omp, warns about two and a half minutes
 > before it goes cold instead.
 
+### The count on the app icon
+
+The installed app's icon shows how many alerts are waiting on you: every pane blocked on you, and,
+with Finished switched on, every finished pane you have not opened yet. It follows the same switches
+as the pushes, so it counts exactly what notifies you.
+
+Opening a finished pane in Collie retracts its alert, from the lock screen and from the count. A
+blocked pane's alert stays until you answer it.
+
+Each herd push carries the count for its session, and the phone adds up every session and machine in
+the crew. Opening the dashboard sets it again from what is on screen, and unpairing the device clears
+it.
+
+> **Note.** The count needs a browser with the Badging API and an installed app: on an iPhone,
+> iOS 16.4 or later, Collie added to the Home Screen, and notifications allowed. With every kind of
+> agent alert switched off, no push carries a count, so the icon changes only when you open the
+> dashboard.
+
 Stale subscriptions can accumulate over time because home-screen reinstalls and service-worker
 resets create new endpoints without always returning an HTTP 410. Collie updates the record when a
 device re-registers. You can view and delete stored endpoints directly:

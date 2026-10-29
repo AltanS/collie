@@ -264,6 +264,8 @@ export interface PushMessage {
    */
   topic?: string;
   renotify?: boolean;
+  /** How many alerts a herd slot holds: the phone adds every slot's up for the app icon's badge. */
+  badge?: number;
 }
 
 /**

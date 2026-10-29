@@ -34,6 +34,8 @@ export interface PushPayload {
   tag?: string;
   /** Re-alert when replacing the slot (a new agent arrived) vs. update it silently (a retraction). */
   renotify?: boolean;
+  /** How many alerts this slot holds: its share of the icon's badge (lib/app-badge.ts). */
+  badge?: number;
   /**
    * `session` is the registry name the pane lives in — carried so the click deep-links into it.
    * `host` is the crew member the pane lives ON, stamped by the bridge for a peer's pane only

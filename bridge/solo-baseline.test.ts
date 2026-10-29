@@ -1587,6 +1587,7 @@ describe("solo zero-tax — notifications", () => {
       body: "demo · /home/you",
       paneId: "p1",
       renotify: true,
+      badge: 1,
     });
     sink.clear();
     expect(sent).toEqual([
@@ -1598,6 +1599,7 @@ describe("solo zero-tax — notifications", () => {
         tag: "collie:herd",
         paneId: "p1",
         renotify: true,
+        badge: 1,
       },
       { type: "clear", tag: "collie:herd" },
     ]);

@@ -140,6 +140,7 @@ export class PeerNotifier<H = unknown> {
       entry.coordinator.onTransition(t.pane as AgentView, t.from, t.to);
     }
     for (const id of diff.removed) entry.coordinator.onRemove(id);
+    entry.coordinator.retractSeen(body.agents);
     // The ask guard runs HERE, on the lead, because the lead is the one that pushes for a peer's
     // panes (§5); the peer's own herd path is muted and runs no guard. A guarded push goes through
     // the coordinator with the cause `ask`, so it reads "Permission needed in <pane>" and nothing of

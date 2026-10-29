@@ -1600,6 +1600,14 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
     notifications.onTransition(agent, from, to);
   });
   engine.onRemove((paneId) => notifications.onRemove(paneId));
+  engine.onUpdate((s) =>
+    notifications.retractSeen(
+      s.agents.map(({ paneId }) => {
+        const a = activity.get(name, paneId);
+        return { paneId, lastActiveAt: a?.activeAt, lastSeenAt: a?.seenAt };
+      }),
+    ),
+  );
   if (guarded) {
     engine.onUpdate((s) =>
       askPush.observe(
