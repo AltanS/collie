@@ -394,6 +394,8 @@ export const es: Dictionary = {
   "composer.imageEdit.redo": "Rehacer",
   "composer.imageEdit.reset": "Restablecer",
   "composer.imageEdit.loading": "Cargando…",
+  "composer.imageEdit.attach": "Adjuntar",
+  "composer.imageEdit.edit": "Editar",
   "composer.noEcho.title": "Solicitud de contraseña: sin eco en terminal",
   "composer.noEcho.noLiveTyped":
     "El texto introducido está en el panel sin enviar. Esta vista no está en vivo y no permite enviar datos; responde directamente en la terminal.",

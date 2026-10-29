@@ -337,6 +337,8 @@ export const it: Dictionary = {
   "composer.imageEdit.redo": "Ripeti",
   "composer.imageEdit.reset": "Reimposta",
   "composer.imageEdit.loading": "Caricamento…",
+  "composer.imageEdit.attach": "Allega",
+  "composer.imageEdit.edit": "Modifica",
   "composer.noEcho.title": "Richiesta password: non viene mostrato nulla",
   "composer.noEcho.noLiveTyped": "Ciò che hai digitato è già nel riquadro, non inviato, ma questa vista non è in tempo reale, quindi non è possibile inviare nulla da qui. Rispondi dal terminale.",
   "composer.noEcho.noLiveUntyped": "Non è stato digitato nulla. Questa vista non è in tempo reale, quindi i tasti utili non possono essere inviati da qui.",

@@ -343,6 +343,8 @@ export const ru: Dictionary = {
   "composer.imageEdit.redo": "Повторить",
   "composer.imageEdit.reset": "Сбросить",
   "composer.imageEdit.loading": "Загрузка…",
+  "composer.imageEdit.attach": "Прикрепить",
+  "composer.imageEdit.edit": "Изменить",
   "composer.noEcho.title": "Запрос пароля: символы не отображаются",
   "composer.noEcho.noLiveTyped": "Введенный текст уже в панели и не отправлен: этот вид не интерактивный, отсюда отправить ничего нельзя. Ответьте в терминале.",
   "composer.noEcho.noLiveUntyped": "Ничего не введено. Этот вид не интерактивный, поэтому нужные клавиши отсюда отправить нельзя.",

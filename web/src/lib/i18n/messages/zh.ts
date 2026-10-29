@@ -381,6 +381,8 @@ export const zh: Dictionary = {
   "composer.imageEdit.redo": "重做",
   "composer.imageEdit.reset": "重置",
   "composer.imageEdit.loading": "加载中…",
+  "composer.imageEdit.attach": "附加",
+  "composer.imageEdit.edit": "编辑",
   "composer.noEcho.title": "密码提示（无回显）",
   "composer.noEcho.noLiveTyped":
     "已键入内容已在窗格中但未提交。当前视图非实时，无法在此发送。请直接在终端中处理。",

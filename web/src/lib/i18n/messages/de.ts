@@ -396,6 +396,8 @@ export const de: Dictionary = {
   "composer.imageEdit.redo": "Wiederholen",
   "composer.imageEdit.reset": "Zurücksetzen",
   "composer.imageEdit.loading": "Wird geladen…",
+  "composer.imageEdit.attach": "Anhängen",
+  "composer.imageEdit.edit": "Bearbeiten",
   "composer.noEcho.title": "Passwortabfrage ohne Echo",
   "composer.noEcho.noLiveTyped":
     "Der Text steht unbestätigt im Pane. Da diese Ansicht nicht live ist, kann von hier aus nichts gesendet werden. Die Eingabe direkt im Terminal beantworten.",

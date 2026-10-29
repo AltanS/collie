@@ -423,6 +423,8 @@ export const en = {
   "composer.imageEdit.redo": "Redo",
   "composer.imageEdit.reset": "Reset",
   "composer.imageEdit.loading": "Loading…",
+  "composer.imageEdit.attach": "Attach",
+  "composer.imageEdit.edit": "Edit",
   "composer.noEcho.title": "Password prompt, nothing echoes",
   "composer.noEcho.noLiveTyped":
     "What you typed is already in the pane but unsubmitted. This view isn't live, so nothing can be sent from here. Answer it at the terminal.",

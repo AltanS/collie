@@ -44,6 +44,11 @@ const MAX_PREVIEW_DIMENSION = 1200;
 
 export interface ImageEditorProps {
   file: File;
+  /** Open on the tools, for an image already attached (the chip's Edit). A fresh pick opens on the
+   *  plain preview, where Attach is the one-tap answer. */
+  startInEdit?: boolean;
+  /** Called with the ORIGINAL `file` (same object, no re-encode) from Attach, and from "Use this
+   *  image" when nothing was changed. Called with a new PNG only when a crop or a mark was made. */
   onConfirm: (file: File) => void;
   onCancel: () => void;
   /** The editor cannot run. The parent must not upload. */
@@ -315,7 +320,7 @@ function paintEditorStage(
   return true;
 }
 
-export function ImageEditor({ file, onConfirm, onCancel, onFail, onReject }: ImageEditorProps) {
+export function ImageEditor({ file, startInEdit = false, onConfirm, onCancel, onFail, onReject }: ImageEditorProps) {
   useLocale();
   const titleId = useId();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -331,6 +336,8 @@ export function ImageEditor({ file, onConfirm, onCancel, onFail, onReject }: Ima
   }, [onFail, onReject, onCancel]);
 
   const [url, setUrl] = useState<string | null>(null);
+  // "preview": the picture and Attach. "edit": the tools. A fresh pick starts on the preview.
+  const [mode, setMode] = useState<"preview" | "edit">(startInEdit ? "edit" : "preview");
   const [session, dispatch] = useReducer(editorSessionReducer, INITIAL_SESSION_STATE);
 
   useEffect(() => {
@@ -353,7 +360,7 @@ export function ImageEditor({ file, onConfirm, onCancel, onFail, onReject }: Ima
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (canvas === null || session.loadedImage === null || session.broken) return;
+    if (mode !== "edit" || canvas === null || session.loadedImage === null || session.broken) return;
     const activeCrop =
       session.gesture?.kind === "crop" ? session.gesture.draftCrop : session.history.crop;
     const activeAnnotations =
@@ -377,6 +384,7 @@ export function ImageEditor({ file, onConfirm, onCancel, onFail, onReject }: Ima
       onFailRef.current("failed");
     }
   }, [
+    mode,
     session.loadedImage,
     session.broken,
     session.tool,
@@ -442,9 +450,18 @@ export function ImageEditor({ file, onConfirm, onCancel, onFail, onReject }: Ima
     dispatch({ type: "pointerCancel", pointerId: event.pointerId });
   }
 
+  // Attach, and "Use this image" with nothing changed: the picked bytes go on exactly as they are.
+  function useOriginal() {
+    onConfirm(file);
+  }
+
   function confirm() {
     if (session.loadedImage === null || session.broken) {
       onRejectRef.current();
+      return;
+    }
+    if (!isEditorDirty(session.history)) {
+      useOriginal();
       return;
     }
     try {
@@ -479,6 +496,7 @@ export function ImageEditor({ file, onConfirm, onCancel, onFail, onReject }: Ima
 
   const stageReady = session.loadedImage !== null && url !== null && !session.broken;
   const canConfirm = stageReady && session.gesture === null;
+  const editing = mode === "edit";
 
   const sheet = (
     <BottomSheet
@@ -492,50 +510,53 @@ export function ImageEditor({ file, onConfirm, onCancel, onFail, onReject }: Ima
         <h2 id={titleId} className="sr-only">
           {translate("composer.imageEdit.title")}
         </h2>
-        <div className="image-editor-toolbar flex flex-col gap-2">
-          <Segmented
-            label={translate("composer.imageEdit.title")}
-            options={toolOptions}
-            value={session.tool}
-            onChange={(nextTool) => dispatch({ type: "selectTool", tool: nextTool })}
-            tight
-          />
-          <div className="flex items-center justify-end gap-1.5">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={!canUndoEditor(session.history)}
-              onClick={() => dispatch({ type: "undo" })}
-            >
-              {translate("composer.imageEdit.undo")}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={!canRedoEditor(session.history)}
-              onClick={() => dispatch({ type: "redo" })}
-            >
-              {translate("composer.imageEdit.redo")}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={!isEditorDirty(session.history)}
-              onClick={() => dispatch({ type: "reset" })}
-            >
-              {translate("composer.imageEdit.reset")}
-            </Button>
+        {editing && (
+          <div className="image-editor-toolbar flex flex-col gap-2">
+            <Segmented
+              label={translate("composer.imageEdit.title")}
+              options={toolOptions}
+              value={session.tool}
+              onChange={(nextTool) => dispatch({ type: "selectTool", tool: nextTool })}
+              tight
+            />
+            <div className="flex items-center justify-end gap-1.5">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={!canUndoEditor(session.history)}
+                onClick={() => dispatch({ type: "undo" })}
+              >
+                {translate("composer.imageEdit.undo")}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={!canRedoEditor(session.history)}
+                onClick={() => dispatch({ type: "redo" })}
+              >
+                {translate("composer.imageEdit.redo")}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={!isEditorDirty(session.history)}
+                onClick={() => dispatch({ type: "reset" })}
+              >
+                {translate("composer.imageEdit.reset")}
+              </Button>
+            </div>
           </div>
-        </div>
+        )}
         <div className="image-editor-stage relative flex min-h-48 max-h-[56dvh] flex-1 items-center justify-center overflow-hidden rounded-sm border border-border bg-muted/40">
           {url !== null && (
             <img
               src={url}
-              alt=""
-              hidden
+              alt={file.name}
+              hidden={editing || !stageReady}
+              className="block max-h-[54dvh] max-w-full object-contain"
               data-slot="image-editor-source"
               onLoad={handleImageLoad}
               onError={handleImageError}
@@ -549,7 +570,7 @@ export function ImageEditor({ file, onConfirm, onCancel, onFail, onReject }: Ima
             data-slot="image-editor-canvas"
             aria-label={translate("composer.imageEdit.title")}
             className={
-              stageReady
+              stageReady && editing
                 ? "block max-h-[54dvh] max-w-full cursor-crosshair touch-none select-none"
                 : "hidden"
             }
@@ -575,15 +596,39 @@ export function ImageEditor({ file, onConfirm, onCancel, onFail, onReject }: Ima
           >
             {translate("composer.imageEdit.cancel")}
           </Button>
-          <Button
-            type="button"
-            size="lg"
-            className="min-h-11 flex-1"
-            disabled={!canConfirm}
-            onClick={confirm}
-          >
-            {translate("composer.imageEdit.confirm")}
-          </Button>
+          {editing ? (
+            <Button
+              type="button"
+              size="lg"
+              className="min-h-11 flex-1"
+              disabled={!canConfirm}
+              onClick={confirm}
+            >
+              {translate("composer.imageEdit.confirm")}
+            </Button>
+          ) : (
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                size="lg"
+                className="min-h-11 flex-1"
+                disabled={!stageReady}
+                onClick={() => setMode("edit")}
+              >
+                {translate("composer.imageEdit.edit")}
+              </Button>
+              <Button
+                type="button"
+                size="lg"
+                className="min-h-11 flex-1"
+                disabled={url === null}
+                onClick={useOriginal}
+              >
+                {translate("composer.imageEdit.attach")}
+              </Button>
+            </>
+          )}
         </div>
       </div>
     </BottomSheet>

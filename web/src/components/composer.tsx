@@ -587,11 +587,18 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const draftPaneRef = useRef({ scope, scopeId, paneId });
   // The image editor's open session. Epoch bumps on pane/scope change, lock, or unmount so a confirm
   // that resolves after the operator has moved on cannot upload into the pane now on screen.
-  const [editSession, setEditSession] = useState<{ id: number; file: File } | null>(null);
+  const [editSession, setEditSession] = useState<{ id: number; file: File; startInEdit: boolean } | null>(null);
   const editSessionSeq = useRef(0);
   const editResolveRef = useRef<((result: File | "cancel") => void) | null>(null);
   const editEpoch = useRef(0);
   const editTargetRef = useRef<(EditTarget & { epoch: number }) | null>(null);
+  // A chip edit's session carries the picked file; "Use this image" with no change hands the same
+  // object back, and that means: nothing to upload, nothing to replace.
+  const editReplaceRef = useRef<File | null>(null);
+  // The bytes behind each photo chip made in this page session, so Edit needs no re-download. The
+  // bridge's CSP (`connect-src 'self'`) blocks fetching the chip's blob: URL. Keyed by the chip
+  // object, so a chip that leaves takes its file with it, and a restored chip has none (no Edit).
+  const attachmentFilesRef = useRef(new WeakMap<ComposerAttachment, File>());
   const mountedRef = useRef(true);
   const abortEditRef = useRef<() => void>(() => {});
   // THE BELT'S X AND ITS UNDO (M40 spec 04, issue #291). The X empties this box in one tap
@@ -1888,6 +1895,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     const resolve = editResolveRef.current;
     editResolveRef.current = null;
     editTargetRef.current = null;
+    editReplaceRef.current = null;
     // Batch `uploading = true` into the same commit that clears `editSession` so `useHoldReload`
     // never drops to false during the Promise microtask between `finishEdit` and `uploadFile`.
     const acquiredUpload = mountedRef.current && result !== "cancel" && resolve !== null;
@@ -1903,15 +1911,16 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 
   // Epoch stays put while an edit is open. Abort is the only thing that moves it, so a confirm
   // callback captured by the dialog can see that it no longer belongs to this pane.
-  function requestEdit(file: File): Promise<File | "cancel"> {
+  function requestEdit(file: File, startInEdit = false): Promise<File | "cancel"> {
     const epoch = editEpoch.current;
     const target = draftPaneRef.current;
     editTargetRef.current = { paneId: target.paneId, scopeId: target.scopeId, epoch };
+    editReplaceRef.current = startInEdit ? file : null;
     editSessionSeq.current += 1;
     const sessionId = editSessionSeq.current;
     return new Promise((resolve) => {
       editResolveRef.current = resolve;
-      setEditSession({ id: sessionId, file });
+      setEditSession({ id: sessionId, file, startInEdit });
     });
   }
 
@@ -1920,6 +1929,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     if (target === null || target.epoch !== editEpoch.current) return;
     if (!sameEditTarget(target, draftPaneRef.current)) return;
     if (lockedRef.current) return;
+    if (editReplaceRef.current !== null && file === editReplaceRef.current) {
+      finishEdit("cancel");
+      return;
+    }
     if (offlineRef.current) {
       setStatus(translate("composer.send.reconnect"), "error");
       return;
@@ -1961,6 +1974,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     targetPaneId = paneId,
     targetScope = scope,
     alreadyHeld = false,
+    replaceN?: number,
   ) {
     if (lockedRef.current) return;
     const refusal = rejectAttachment(file, limits);
@@ -1977,7 +1991,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       const res = await api.uploadFile(targetPaneId, file, targetScope);
       if (res.ok) {
         direct.deactivateSilently();
-        addAttachment(file, res.path);
+        if (replaceN === undefined) addAttachment(file, res.path);
+        else if (draftPaneRef.current.paneId === targetPaneId) replaceAttachment(replaceN, file, res.path);
         setStatus(translate("composer.upload.success"), "success");
       } else {
         setStatus(describeApiError(res), "error");
@@ -2005,6 +2020,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     if (kind === "image") {
       const previewUrl = makePreview(file);
       if (previewUrl !== undefined) attachment.previewUrl = previewUrl;
+      attachmentFilesRef.current.set(attachment, file);
     }
     const field = inputRef.current;
     const caret =
@@ -2015,6 +2031,47 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     caretRef.current = placed.caret;
     updateInput(placed.text);
     focusInputAt(placed.caret);
+  }
+
+  /**
+   * The chip's Edit, after a finished upload: the same chip (its number, so its marker in the text
+   * stays where it is) now points at the new path and shows the new picture. The old upload is not
+   * deleted: the bridge has no delete route, and the file is only a path in the pane's folder that
+   * nothing refers to any more. A chip the person removed while the upload ran is not brought back.
+   */
+  function replaceAttachment(n: number, file: File, path: string) {
+    const old = attachmentsRef.current.find((a) => a.n === n);
+    if (old === undefined) return;
+    revokePreview(old);
+    const next: ComposerAttachment = { n, path, name: file.name, kind: old.kind };
+    const previewUrl = makePreview(file);
+    if (previewUrl !== undefined) next.previewUrl = previewUrl;
+    attachmentFilesRef.current.set(next, file);
+    attachmentsRef.current = attachmentsRef.current.map((a) => (a.n === n ? next : a));
+    setAttachments(attachmentsRef.current);
+    persistDraft();
+  }
+
+  /** The chip's Edit: open the editor on the chip's own bytes, on the tools. A result that is a new
+   *  file uploads once and replaces the chip. The same file back means nothing changed. */
+  async function editAttachment(attachment: ComposerAttachment) {
+    const file = attachmentFilesRef.current.get(attachment);
+    if (file === undefined || editSession !== null || lockedRef.current) return;
+    if (offlineRef.current) {
+      setStatus(translate("composer.send.reconnect"), "error");
+      return;
+    }
+    const epoch = editEpoch.current;
+    const edited = await requestEdit(file, true);
+    if (edited === "cancel") return;
+    try {
+      if (!mountedRef.current || epoch !== editEpoch.current) return;
+      if (lockedRef.current || offlineRef.current) return;
+      const target = draftPaneRef.current;
+      await uploadFile(edited, target.paneId, target.scope, true, attachment.n);
+    } finally {
+      endUpload();
+    }
   }
 
   /** The chip's x: the chip goes, and so does its marker (with one space beside it). Deleting the
@@ -2186,7 +2243,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     caretRef.current = e.currentTarget.selectionStart;
   }
 
-  // Images wait for the editor. Anything else keeps the old path: refuse locally, then upload.
+  // Images wait for the sheet: a preview with Attach (the original bytes) and Edit. Anything else keeps the old path: refuse locally, then upload.
   // `announceBadType` is false for a paste, which has always swallowed a file it cannot take so the
   // textarea can still receive a plain-text paste on the same clipboard.
   async function presentFiles(files: File[], announceBadType: boolean) {
@@ -2209,7 +2266,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           return;
         }
         if (!canvasAvailable()) {
-          setStatus(translate("composer.imageEdit.unavailable"), "error");
+          // No canvas, no editor: the picture goes up as it is, the way it did before the editor.
+          const target = draftPaneRef.current;
+          await uploadFile(file, target.paneId, target.scope);
           continue;
         }
         const edited = await requestEdit(file);
@@ -2890,6 +2949,14 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                   key={attachment.n}
                   attachment={attachment}
                   onRemove={() => removeAttachment(attachment)}
+                  onEdit={
+                    attachment.kind === "image" &&
+                    !locked &&
+                    canvasAvailable() &&
+                    attachmentFilesRef.current.has(attachment)
+                      ? () => void editAttachment(attachment)
+                      : undefined
+                  }
                   onSelect={
                     attachment.kind === "paste"
                       ? () => setEditingPaste({ paneId, scopeId, n: attachment.n })
@@ -3287,6 +3354,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         <ImageEditor
           key={editSession.id}
           file={editSession.file}
+          startInEdit={editSession.startInEdit}
           onConfirm={confirmEdit}
           onCancel={() => finishEdit("cancel")}
           onFail={(reason) => {

@@ -380,6 +380,8 @@ export const zhTW: Dictionary = {
   "composer.imageEdit.redo": "重做",
   "composer.imageEdit.reset": "重設",
   "composer.imageEdit.loading": "載入中…",
+  "composer.imageEdit.attach": "附加",
+  "composer.imageEdit.edit": "編輯",
   "composer.noEcho.title": "密碼提示（無回顯）",
   "composer.noEcho.noLiveTyped":
     "已輸入內容目前位於窗格中但尚未提交。目前檢視不是即時狀態，無法在此傳送。請直接在終端機中處理。",

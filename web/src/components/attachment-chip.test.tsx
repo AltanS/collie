@@ -94,3 +94,42 @@ describe("a collapsed paste chip", () => {
     }
   });
 });
+
+describe("a photo chip with Edit", () => {
+  const photo: ComposerAttachment = { n: 1, path: "/up/shot.png", name: "shot.png", kind: "image", previewUrl: "blob:x/1" };
+
+  it("taps the thumbnail to edit, on a 44px reach, and keeps the x as its own button", async () => {
+    const onEdit = vi.fn();
+    const onRemove = vi.fn();
+    render(
+      <ul>
+        <AttachmentChip attachment={photo} onRemove={onRemove} onEdit={onEdit} />
+      </ul>,
+    );
+    const edit = screen.getByRole("button", { name: "Edit" });
+    for (const cls of ["relative", "before:absolute", "before:-inset-x-0.5", "before:-top-[4px]", "before:-bottom-[2px]"]) {
+      expect(edit).toHaveClass(cls);
+    }
+    edit.click();
+    expect(onEdit).toHaveBeenCalledTimes(1);
+    screen.getByRole("button", { name: "Remove shot.png" }).click();
+    expect(onRemove).toHaveBeenCalledTimes(1);
+    expect(onEdit).toHaveBeenCalledTimes(1);
+  });
+
+  it("is a plain thumbnail without onEdit, and a tile with no preview never gets the button", () => {
+    const { unmount } = render(
+      <ul>
+        <AttachmentChip attachment={photo} onRemove={() => {}} />
+      </ul>,
+    );
+    expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+    unmount();
+    render(
+      <ul>
+        <AttachmentChip attachment={{ ...photo, previewUrl: undefined }} onRemove={() => {}} onEdit={() => {}} />
+      </ul>,
+    );
+    expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+  });
+});

@@ -337,6 +337,8 @@ export const tr: Dictionary = {
   "composer.imageEdit.redo": "Yinele",
   "composer.imageEdit.reset": "Sıfırla",
   "composer.imageEdit.loading": "Yükleniyor…",
+  "composer.imageEdit.attach": "Ekle",
+  "composer.imageEdit.edit": "Düzenle",
   "composer.noEcho.title": "Parola istemi: Hiçbir şey gösterilmez",
   "composer.noEcho.noLiveTyped": "Yazdıklarınız zaten bölmede ve gönderilmedi; ancak bu görünüm canlı olmadığından buradan hiçbir şey gönderilemez. Yanıtı terminalde verin.",
   "composer.noEcho.noLiveUntyped": "Hiçbir şey yazılmadı. Bu görünüm canlı olmadığından çalışacak tuşlar buradan gönderilemez.",

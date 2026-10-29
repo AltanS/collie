@@ -78,6 +78,13 @@ describe("ImageEditor sheet shell and native canvas tools", () => {
     );
     const dialog = screen.getByRole("dialog", { name: "Edit image" });
     expect(dialog.querySelector(".FIE_root")).toBeNull();
+    loadEditorImage(dialog, 300, 150);
+    // A fresh pick opens on the preview: the picture, Cancel, Edit, Attach. No tools yet.
+    expect(screen.queryByRole("radio", { name: "Crop" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Attach" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Use this image" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    expect(screen.queryByRole("button", { name: "Attach" })).toBeNull();
     expect(screen.getByRole("radio", { name: "Crop" })).toHaveAttribute("aria-checked", "true");
     expect(screen.getByRole("radio", { name: "Draw" })).toHaveAttribute("aria-checked", "false");
     expect(screen.getByRole("radio", { name: "Circle" })).toHaveAttribute("aria-checked", "false");
@@ -85,9 +92,6 @@ describe("ImageEditor sheet shell and native canvas tools", () => {
     expect(screen.getByRole("button", { name: "Undo" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Redo" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Reset" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Use this image" })).toBeDisabled();
-
-    loadEditorImage(dialog, 300, 150);
     expect(screen.getByRole("button", { name: "Use this image" })).toBeEnabled();
     const canvas = dialog.querySelector<HTMLCanvasElement>("[data-slot='image-editor-canvas']");
     expect(canvas).not.toBeNull();
@@ -110,6 +114,7 @@ describe("ImageEditor sheet shell and native canvas tools", () => {
     );
     const dialog = screen.getByRole("dialog", { name: "Edit image" });
     loadEditorImage(dialog, 200, 100);
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
 
     const canvas = dialog.querySelector<HTMLCanvasElement>("[data-slot='image-editor-canvas']");
     if (canvas === null) throw new Error("canvas missing");
@@ -182,6 +187,7 @@ describe("ImageEditor sheet shell and native canvas tools", () => {
     );
     const stageDialog = screen.getByRole("dialog", { name: "Edit image" });
     loadEditorImage(stageDialog, 200, 100);
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     expect(onStageFail).toHaveBeenCalledWith("failed");
     expect(screen.getByRole("button", { name: "Use this image" })).toBeDisabled();
     stageFailed.unmount();
@@ -210,7 +216,78 @@ describe("ImageEditor sheet shell and native canvas tools", () => {
     expect(document.body.contains(dialog)).toBe(true);
     expect(document.querySelector("dialog")).toBeNull();
     expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Use this image" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Attach" })).toBeInTheDocument();
+  });
+
+  it("Attach hands back the picked file itself, with no re-encode and no canvas export", () => {
+    const toDataURL = vi.spyOn(HTMLCanvasElement.prototype, "toDataURL");
+    const onConfirm = vi.fn<(file: File) => void>();
+    const picked = new File(["raw-jpeg"], "photo.jpg", { type: "image/jpeg" });
+    render(<ImageEditor file={picked} onConfirm={onConfirm} onCancel={vi.fn()} onFail={vi.fn()} onReject={vi.fn()} />);
+    loadEditorImage(screen.getByRole("dialog", { name: "Edit image" }));
+    fireEvent.click(screen.getByRole("button", { name: "Attach" }));
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+    expect(onConfirm.mock.calls[0]?.[0]).toBe(picked);
+    expect(toDataURL).not.toHaveBeenCalled();
+  });
+
+  it("Edit then Use this image with no change behaves like Attach", () => {
+    const toDataURL = vi.spyOn(HTMLCanvasElement.prototype, "toDataURL");
+    const onConfirm = vi.fn<(file: File) => void>();
+    const picked = new File(["raw"], "shot.png", { type: "image/png" });
+    render(<ImageEditor file={picked} onConfirm={onConfirm} onCancel={vi.fn()} onFail={vi.fn()} onReject={vi.fn()} />);
+    loadEditorImage(screen.getByRole("dialog", { name: "Edit image" }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    fireEvent.click(screen.getByRole("button", { name: "Use this image" }));
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+    expect(onConfirm.mock.calls[0]?.[0]).toBe(picked);
+    expect(toDataURL).not.toHaveBeenCalled();
+  });
+
+  it("Edit then a crop hands back a PNG export, once", () => {
+    const png = `data:image/png;base64,${btoa("cropped")}`;
+    vi.spyOn(HTMLCanvasElement.prototype, "toDataURL").mockReturnValue(png);
+    const onConfirm = vi.fn<(file: File) => void>();
+    const picked = new File(["raw"], "shot.jpg", { type: "image/jpeg" });
+    render(<ImageEditor file={picked} onConfirm={onConfirm} onCancel={vi.fn()} onFail={vi.fn()} onReject={vi.fn()} />);
+    const dialog = screen.getByRole("dialog", { name: "Edit image" });
+    loadEditorImage(dialog, 200, 100);
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    const canvas = dialog.querySelector<HTMLCanvasElement>("[data-slot='image-editor-canvas']");
+    if (canvas === null) throw new Error("canvas missing");
+    // The crop tool is the default. Drag a new box inside the picture.
+    fireEvent.pointerDown(canvas, { button: 0, pointerId: 1, clientX: 20, clientY: 20 });
+    fireEvent.pointerMove(canvas, { pointerId: 1, clientX: 100, clientY: 60 });
+    fireEvent.pointerUp(canvas, { pointerId: 1, clientX: 100, clientY: 60 });
+    fireEvent.click(screen.getByRole("button", { name: "Use this image" }));
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+    const out = onConfirm.mock.calls[0]?.[0];
+    expect(out).not.toBe(picked);
+    expect(out?.type).toBe("image/png");
+  });
+
+  it("Cancel on the preview calls onCancel and never onConfirm", () => {
+    const onConfirm = vi.fn();
+    const onCancel = vi.fn();
+    render(
+      <ImageEditor file={new File(["x"], "shot.png", { type: "image/png" })} onConfirm={onConfirm} onCancel={onCancel} onFail={vi.fn()} onReject={vi.fn()} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it("startInEdit opens on the tools, and an unchanged Use this image returns the same file", () => {
+    const onConfirm = vi.fn<(file: File) => void>();
+    const picked = new File(["raw"], "shot.png", { type: "image/png" });
+    render(
+      <ImageEditor file={picked} startInEdit onConfirm={onConfirm} onCancel={vi.fn()} onFail={vi.fn()} onReject={vi.fn()} />,
+    );
+    loadEditorImage(screen.getByRole("dialog", { name: "Edit image" }));
+    expect(screen.getByRole("radio", { name: "Crop" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Attach" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Use this image" }));
+    expect(onConfirm.mock.calls[0]?.[0]).toBe(picked);
   });
 
   it("a touchmove inside the editor reaches the window and does not drag or close the sheet", () => {

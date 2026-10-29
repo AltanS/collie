@@ -390,6 +390,8 @@ export const ja: Dictionary = {
   "composer.imageEdit.redo": "やり直す",
   "composer.imageEdit.reset": "リセット",
   "composer.imageEdit.loading": "読み込み中…",
+  "composer.imageEdit.attach": "添付",
+  "composer.imageEdit.edit": "編集",
   "composer.noEcho.title": "パスワード入力プロンプト: エコーバック無効",
   "composer.noEcho.noLiveTyped":
     "入力内容はペインに存在しますが未送信です。このビューはライブではないため送信できません。ターミナルで直接操作してください。",

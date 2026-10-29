@@ -391,6 +391,8 @@ export const ko: Dictionary = {
   "composer.imageEdit.redo": "다시 실행",
   "composer.imageEdit.reset": "초기화",
   "composer.imageEdit.loading": "불러오는 중…",
+  "composer.imageEdit.attach": "첨부",
+  "composer.imageEdit.edit": "편집",
   "composer.noEcho.title": "비밀번호 입력 프롬프트. 입력 내용이 표시되지 않습니다.",
   "composer.noEcho.noLiveTyped":
     "입력한 내용은 이미 터미널에 전달되었지만 아직 제출되지 않았습니다. 현재 화면은 실시간 상태가 아니므로 여기서 전송할 수 없습니다. 터미널에서 직접 처리하세요.",

@@ -337,6 +337,8 @@ export const fr: Dictionary = {
   "composer.imageEdit.redo": "Rétablir",
   "composer.imageEdit.reset": "Réinitialiser",
   "composer.imageEdit.loading": "Chargement…",
+  "composer.imageEdit.attach": "Joindre",
+  "composer.imageEdit.edit": "Modifier",
   "composer.noEcho.title": "Invite de mot de passe : rien ne s'affiche",
   "composer.noEcho.noLiveTyped": "Ce que vous avez saisi est déjà dans le volet, non envoyé. Cette vue n'est pas active, rien ne peut être envoyé d'ici. Répondez dans le terminal.",
   "composer.noEcho.noLiveUntyped": "Rien n'a été saisi. Cette vue n'est pas active, les touches correspondantes ne peuvent donc pas être envoyées d'ici.",
