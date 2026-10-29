@@ -1,7 +1,14 @@
 # Collie panel for herdr-app
 
 A small panel inside [herdr-app](https://herdr.dev) for Collie, the phone app for your agents. It
-does what the Herdr plugin's actions did, and it pairs a phone:
+does what the Herdr plugin's actions did, and it pairs a phone.
+
+**This panel is experimental.** It passes `herdr-app check`, but it has not yet run in a live
+herdr-app window. Collie does not install it: the installer, `collie start` and `collie update`
+never copy it. You install it by hand, by copying this folder (see Install below). Its behaviour may
+change in any release.
+
+What it does:
 
 - It shows whether the Collie bridge runs, its version, its mode, its port, its service and how
   many devices are paired.
@@ -15,7 +22,7 @@ does what the Herdr plugin's actions did, and it pairs a phone:
 
 ## What it needs
 
-- Collie 1.26.0 or newer, with `collie` on your PATH. The panel reads `collie status --json` and
+- Collie 1.25.0 or newer, with `collie` on your PATH. The panel reads `collie status --json` and
   `collie pair --json`. An older Collie shows "This Collie is too old for the panel": run
   `collie update`.
 - herdr-app 0.1.7 or newer.
