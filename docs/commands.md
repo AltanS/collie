@@ -86,6 +86,11 @@ into (a stale screen) and the other probe failures. It warns when 3 or more in a
 with no other send between them. In `--json` both carry `harness`, and a holds row also carries a
 `holds` array of `requestId`, `cause`, `ageMs` and `state`.
 
+Receipts with no agent program, which come from a plain shell pane, make a separate `-` group
+(`sends--`, `holds--`, `screen--`). Those rows only show counts and always print `ok`. A shell has no
+agent to confirm that a send was submitted, so its outcomes say nothing about whether sends reach an
+agent program.
+
 
 ## Put `collie` on your PATH
 

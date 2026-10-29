@@ -65,6 +65,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
   state folder when the sheet opens, and never adds a remedy, a held text or a typed line. When the
   link is too long, these rows go after the screen and before the oldest sends, and the sheet says
   how many it left out.
+- **`collie doctor` treats sends from a shell pane as information only.** The `sends--`, `holds--` and
+  `screen--` rows, for receipts with no agent program, always print `ok` with their counts. A shell
+  has no agent to confirm a submit, so its outcomes say nothing about whether sends reach an agent
+  program, and no warn or error rule reads them.
 
 ### Changed
 

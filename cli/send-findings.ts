@@ -46,6 +46,13 @@ export const SENDS_LOST_WARN_RATE = 0.3;
 
 /** The group of a receipt with an empty harness, as the `surface-*` rows name it. */
 const NO_HARNESS = "-";
+/**
+ * The `-` group is informational only: its `sends--`, `holds--` and `screen--` rows always print `ok`
+ * with their counts, and no warn or error rule reads it. A receipt with no harness comes from a shell
+ * pane, and a shell has no agent to confirm a submit, so its outcomes (mostly `unknown`) say nothing
+ * about whether sends reach a harness.
+ */
+const informational = (harness: string): boolean => harness === NO_HARNESS;
 /** Outcomes that are the person's own choice: the send never asked the harness for anything. */
 const NOT_RECEIVED: ReadonlySet<SendOutcome> = new Set(["discarded", "cancelled"]);
 const SUCCEEDED: ReadonlySet<SendOutcome> = new Set(["sent", "effective", "steered"]);
@@ -135,6 +142,7 @@ function row(harness: string, records: readonly Receipted[], capped: boolean): S
   const { counts, words } = countWords(records);
   const detail = [...words, capped ? `last ${String(SENDS_WINDOW_COUNT)}` : `last ${String(days)} days`].join(" · ");
   const base = { harness, window, counts };
+  if (informational(harness)) return { ...ok(check, detail), ...base };
   const got = records.filter(received);
   const n = got.length;
   const none = n > 0 && !got.some((record) => SUCCEEDED.has(record.receipt.outcome));
@@ -285,6 +293,7 @@ function holdRow(harness: string, open: readonly HeldEntry[], now: number): Hold
   const holds = entries.map((entry): HoldJson => ({ requestId: entry.id, cause: entry.cause ?? null, ageMs: Math.max(0, now - entry.heldAt), state: entry.state }));
   const check = `holds-${harness}`;
   const detail = entries.map((entry, n) => holdWords(entry, holds[n]!.ageMs)).join(" · ");
+  if (informational(harness)) return { ...ok(check, detail), harness, holds };
   if (!holds.some((hold) => hold.ageMs > HOLD_WARN_MS)) return { ...ok(check, detail), harness, holds };
   const atBox = entries.some((entry) => HELD_CAUSE_WORDS[entry.cause ?? "turn_running"] === HELD_CAUSE_WORDS.not_free);
   return { ...warn(check, detail, HOLDS_REMEDY + (atBox ? HOLDS_BOX_REMEDY : "")), harness, holds };
@@ -327,7 +336,7 @@ function screenRow(harness: string, records: readonly Receipted[]): ScreenFindin
   const run = longestProbeRun(records);
   if (stale + other === 0) return { ...ok(check, SCREEN_CLEAN), harness };
   const detail = `stale screen ${String(stale)} · probe failed ${String(other)} · longest run ${String(run)}`;
-  if (run < PROBE_RUN_WARN) return { ...ok(check, detail), harness };
+  if (run < PROBE_RUN_WARN || informational(harness)) return { ...ok(check, detail), harness };
   return { ...warn(check, detail, `${String(run)} sends to ${harness} in a row met a screen Collie could not type into; ${SCREEN_REMEDY}`), harness };
 }
 

@@ -161,6 +161,17 @@ describe("sends rows (M71 spec 01)", () => {
     expect(codex.window.count).toBe(1);
   });
 
+  test("the no-harness group is informational: 12 unknown receipts are ok, and the same with claude are an error", () => {
+    const shell = rows(filesOf(times(12, { outcome: "unknown", reason: "no_evidence", harness: "" }))).get("-")!;
+    expect(shell.check).toBe("sends--");
+    expect(shell.status).toBe("ok");
+    expect(shell.remedy).toBeNull();
+    expect(shell.counts).toEqual({ unknown: 12 });
+    expect(shell.detail).toBe("12 unknown (no_evidence 12) · last 7 days");
+    const claude = rows(filesOf(times(12, { outcome: "unknown", reason: "no_evidence", harness: "claude" }))).get("claude")!;
+    expect(claude.status).toBe("error");
+  });
+
   test("every harness with a profile gets a row, one with no receipts says no sends and is ok", () => {
     const all = sendFindings({ ctx: { stateDir: STATE }, files: fakeFiles(filesOf([{ outcome: "sent", harness: "zed" }, { outcome: "sent", harness: "" }])), now: () => NOW });
     expect(all.map((f) => f.harness)).toEqual([...loadProfiles().keys(), "-", "zed"]);
@@ -280,6 +291,14 @@ describe("holds rows (M71 spec 02)", () => {
       ].join(" · "),
     );
     expect(row!.holds.map((hold) => hold.cause)).toEqual([...HELD_CAUSES, null]);
+  });
+
+  test("a hold with no harness is listed but never warns, however old", () => {
+    const [row] = holdRows(heldFiles([{ harness: "", ago: 60, cause: "not_free" }]));
+    expect(row!.check).toBe("holds--");
+    expect(row!.status).toBe("ok");
+    expect(row!.remedy).toBeNull();
+    expect(row!.holds).toHaveLength(1);
   });
 
   test("a version that could not be read, and a command, say so; oldest first", () => {
@@ -421,6 +440,14 @@ describe("screen rows (M71 spec 02)", () => {
     expect(held.status).toBe("ok");
     const other = screenRows(filesOf([{ ...stale, ago: 50 }, { outcome: "sent", harness: "claude", ago: 40 }, { ...stale, ago: 30 }, { ...stale, ago: 20 }])).get("codex")!;
     expect(other.status).toBe("warn");
+  });
+
+  test("the no-harness group never warns, even with a run of probe failures", () => {
+    const shell = screenRows(filesOf(times(5, { ...stale, harness: "" }))).get("-")!;
+    expect(shell.check).toBe("screen--");
+    expect(shell.status).toBe("ok");
+    expect(shell.detail).toBe("stale screen 5 · probe failed 0 · longest run 5");
+    expect(shell.remedy).toBeNull();
   });
 
   test("the window is spec 01's: a stale refusal older than 7 days is not counted", () => {
