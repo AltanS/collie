@@ -2676,7 +2676,9 @@ describe("plain output parity (M43 spec 04, wrapped at 80 by M71 spec 03)", () =
     // Paths in the output are joined with the machine's own separator, so the byte comparison runs
     // where the golden was made (POSIX). Windows compares the check ids and statuses line by line.
     if (process.platform !== "win32") expect(out).toBe(golden);
-    const ids = (text: string) => text.split("\n").map((l) => /^\s+(\S+)\s+(\S+)/.exec(l)?.slice(1, 3).join(" ")).filter(Boolean);
+    // Only the rows, not the lines a long detail wraps onto: a Windows path is longer (`\opt\collie\bin\collie.exe`),
+    // so it wraps at other words than the golden does.
+    const ids = (text: string) => text.split("\n").map((l) => /^ {2}([^\s`]\S*)\s+(\S+)/.exec(l)?.slice(1, 3).join(" ")).filter(Boolean);
     expect(ids(out)).toEqual(ids(golden));
     expect(out).not.toContain("secrets-private");
   });
