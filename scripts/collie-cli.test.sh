@@ -539,8 +539,10 @@ assert_contains "$STDOUT" "⚠ Collie isn't answering on :${DEAD_PORT} yet"
 F_HOME="${TMP_ROOT}/firstrun-home"
 F_CONFIG="${TMP_ROOT}/firstrun-config"
 mkdir -p "$F_HOME" "$F_CONFIG"
+# XDG_RUNTIME_DIR points at an empty scratch folder: herdr-core's socket sits under it, and without
+# it the probe falls back to /run/user/<uid>, where a herdr-core on the test host would be found.
 firstrun() {
-  run_stripped HOME="$F_HOME" HERDR_PLUGIN_CONFIG_DIR="$F_CONFIG" PATH="$L_BIN" \
+  run_stripped HOME="$F_HOME" HERDR_PLUGIN_CONFIG_DIR="$F_CONFIG" PATH="$L_BIN" XDG_RUNTIME_DIR="${F_HOME}/run" \
     COLLIE_PORT="$PORT" COLLIE_TMUX_BIN=/nonexistent/tmux COLLIE_ZELLIJ_BIN=/nonexistent/zellij "$@"
 }
 
@@ -550,7 +552,7 @@ firstrun HERDR_SOCKET_PATH="${F_HOME}/absent.sock" "$BIN" start \
   && fail "\`collie start\` came up with no multiplexer to mirror"
 assert_contains "$STDERR" "no COLLIE_MUX is set"
 assert_contains "$STDERR" "no multiplexers are running"
-assert_contains "$STDERR" "COLLIE_MUX=<durable|herdr|tern|tmux|tuios|zellij> collie start"
+assert_contains "$STDERR" "COLLIE_MUX=<durable|herdr|herdr-core|tern|tmux|tuios|zellij> collie start"
 [ -f "${F_CONFIG}/.env" ] && fail "a refused start still wrote a config"
 
 # Exactly one found, and no terminal to ask at: auto-selected, said out loud, and written down.

@@ -2,6 +2,7 @@ import { basename, dirname, join } from "node:path";
 
 import { binaryName, collieBinary, HOST, type Host } from "../bridge/host.ts";
 import { envGet } from "../bridge/tools.ts";
+import { drivesHerdrCore } from "../bridge/mux/herdr-core/pick.ts";
 import type { JsonValue } from "../bridge/json.ts";
 import {
   type ApiTag,
@@ -783,7 +784,7 @@ export function updateCheckout(
 
   if (!isGitCheckout(deps.exec, root)) {
     deps.io.err(`error: ${root} is not a git checkout — refresh it with:`);
-    deps.io.err("       herdr plugin install AltanS/collie --yes");
+    deps.io.err(`       ${refreshHint(deps)}`);
     return { code: EXIT.FAIL, moved: false, to: null, higher: null };
   }
 
@@ -990,6 +991,22 @@ function detachOnto(deps: UpdateDeps, git: (args: readonly string[]) => number, 
 }
 
 /**
+ * Does this install drive herdr-core (M74 spec 04)? Then no `herdr plugin` command runs, and the
+ * refresh hints name the installer instead of `herdr plugin install`.
+ */
+export function drivesCore(deps: Pick<UpdateDeps, "ctx" | "files" | "host">): boolean {
+  if (deps.host.platform === "win32") return false;
+  return drivesHerdrCore(deps.ctx.socket, deps.ctx.env, (path) => deps.files.exists(path));
+}
+
+/** The line that refreshes a checkout that is not a git checkout: Herdr's installer, or Collie's own. */
+function refreshHint(deps: Pick<UpdateDeps, "ctx" | "files" | "host">): string {
+  return drivesCore(deps)
+    ? "run the installer again (docs/install.md)"
+    : "herdr plugin install AltanS/collie --yes";
+}
+
+/**
  * After an update, Herdr's plugin registry still holds the action set + version CACHED at the last
  * `plugin link`, so a newly added action returns `plugin_action_not_found` until a re-link. Re-link
  * here so `update` self-heals it. Best-effort: never fails the update — Herdr may be down, or this
@@ -1000,6 +1017,8 @@ function detachOnto(deps: UpdateDeps, git: (args: readonly string[]) => number, 
  * reinstall that is the operator's only other way to refresh (ADR 0006).
  */
 export function refreshRegistry(deps: UpdateDeps, at: string = deps.ctx.root): void {
+  // A herdr-core host has no Herdr plugin registry, and `herdr` there may be a TUI it does not use.
+  if (drivesCore(deps)) return;
   // `at` is the path Herdr should register, which on a STAGED checkout is the `current` symlink —
   // so a plugin action always runs the version that is live, not the one that happened to be live
   // when the link was made. Whether we may re-link at all is still decided from the checkout we are
@@ -1358,7 +1377,7 @@ export async function cmdUpdate(deps: UpdateDeps, args: readonly string[] = []):
   if (install.kind === "unknown") {
     deps.io.err(`error: cannot tell how this Collie was installed (${unknownEvidence(deps, install.why)}).`);
     deps.io.err("       `collie update` will not guess. A git checkout refreshes with:");
-    deps.io.err("       herdr plugin install AltanS/collie --yes");
+    deps.io.err(`       ${refreshHint(deps)}`);
     deps.io.err("       A downloaded install — and a staged checkout — lives under a `versions/` layout");
     deps.io.err("       with a `current` symlink beside it; see docs/install.md.");
     return EXIT.FAIL;
@@ -2686,7 +2705,7 @@ async function updateStagedCheckout(
 
   if (!isGitCheckout(deps.exec, git)) {
     deps.io.err(`error: ${git} is not a git checkout — refresh it with:`);
-    deps.io.err("       herdr plugin install AltanS/collie --yes");
+    deps.io.err(`       ${refreshHint(deps)}`);
     return EXIT.FAIL;
   }
   // BEFORE any fetch. See {@link assertOrigin}: a fork's tags are not this install's to take.

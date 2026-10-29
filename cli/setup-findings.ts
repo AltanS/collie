@@ -2,6 +2,7 @@ import { join } from "node:path";
 
 import { binaryName, type Host } from "../bridge/host.ts";
 import { DURABLE_MUX } from "../bridge/mux/durable/adapter.ts";
+import { HERDR_CORE_MUX } from "../bridge/mux/herdr-core/adapter.ts";
 import { buildMuxRegistry, DEFAULT_MUX, factoryFor, muxEndpointVar, muxNames } from "../bridge/mux/registry.ts";
 import { TMUX_MUX, TMUX_VERSION_ARGS } from "../bridge/mux/tmux/adapter.ts";
 import { resolveTmuxBinary, TMUX_BINARY_CANDIDATES, tmuxServerArgs, tmuxServerLabel } from "../bridge/mux/tmux/exec.ts";
@@ -508,6 +509,8 @@ export function muxFinding(deps: MuxDeps): Finding {
   // A durable program is asked by the six `durable-*` rows (and `durable-lead` in a crew), so this
   // line defers to them as the Herdr line defers to `herdr-socket`.
   if (settings.name === DURABLE_MUX) return ok("mux", `${DURABLE_MUX}, see the durable-* lines${originSuffix(settings.origin)}`);
+  // herdr-core is asked by its own two rows, `hc-socket` and `hc-version` (cli/herdr-core-findings.ts).
+  if (settings.name === HERDR_CORE_MUX) return ok("mux", `${HERDR_CORE_MUX}, see hc-socket${originSuffix(settings.origin)}`);
   // Registered, and this verb has no probe for it. `skipped` rather than a pass, for the reason
   // `acl` gives: a check that could not run must never render as one that did.
   return skipped(

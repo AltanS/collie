@@ -1,6 +1,8 @@
 import { join } from "node:path";
 
 import { HERDR_MUX } from "../bridge/mux/herdr/adapter.ts";
+import { HERDR_CORE_MUX, herdrCoreSocketFor } from "../bridge/mux/herdr-core/adapter.ts";
+import { herdrCoreInPlaceOfTui } from "../bridge/mux/herdr-core/pick.ts";
 import { buildMuxRegistry, muxEndpointVar, muxNames } from "../bridge/mux/registry.ts";
 import { TMUX_MUX } from "../bridge/mux/tmux/adapter.ts";
 import { resolveTmuxBinary, tmuxServerArgs, tmuxServerLabel } from "../bridge/mux/tmux/exec.ts";
@@ -80,7 +82,7 @@ export function explicitMux(env: Pick<CliContext, "env">["env"]): string | null 
  * being asked is "what is here", not "is this one healthy".
  */
 export function probeMuxes(deps: MuxProbeDeps): MuxSighting[] {
-  return [probeHerdr(deps), probeTmux(deps), probeZellij(deps)].filter(
+  return [probeHerdr(deps), probeHerdrCore(deps), probeTmux(deps), probeZellij(deps)].filter(
     (sighting): sighting is MuxSighting => sighting !== null,
   );
 }
@@ -89,6 +91,19 @@ function probeHerdr(deps: MuxProbeDeps): MuxSighting | null {
   const socket = deps.ctx.socket;
   if (!deps.files.exists(socket)) return null;
   return { mux: HERDR_MUX, endpoint: "", evidence: `a Herdr socket at ${socket}` };
+}
+
+/**
+ * herdr-core, seen only where the Herdr TUI is not: no Herdr socket, and a herdr-core socket where
+ * `hc` would dial (`bridge/mux/herdr-core/pick.ts`, the bridge asks the same function). A box with
+ * both is a Herdr TUI box, as it always was, and `COLLIE_MUX=herdr-core` is how it says otherwise.
+ * The endpoint stays the operator's own `COLLIE_MUX_ENDPOINT_HERDR_CORE`, or empty for the core's
+ * default, so `HC_SESSION` keeps working after the choice is written down.
+ */
+function probeHerdrCore(deps: MuxProbeDeps): MuxSighting | null {
+  const core = herdrCoreInPlaceOfTui(deps.ctx.socket, deps.ctx.env, (path) => deps.files.exists(path));
+  if (core === null) return null;
+  return { mux: core.mux, endpoint: (deps.ctx.env[muxEndpointVar(core.mux)] ?? "").trim(), evidence: core.evidence };
 }
 
 function probeTmux(deps: MuxProbeDeps): MuxSighting | null {
@@ -376,7 +391,21 @@ function landExplicit(deps: MuxSettleDeps, mux: string): number {
   deps.files.write(envPath, upsertEnvVars(text, vars), 0o600);
   const also = vars[endpointVar] === undefined ? "" : ` and ${endpointVar}`;
   deps.io.out(`took COLLIE_MUX=${mux} from your environment; wrote COLLIE_MUX=${mux}${also} to ${envPath}`);
+  const driving = coreSessionNote(mux, deps.ctx.env);
+  if (driving !== null) deps.io.out(driving);
   return EXIT.OK;
+}
+
+/**
+ * The line that names which core session a herdr-core install drives (M74 spec 04), or `null` for any
+ * other multiplexer. The core runs several named sessions and Collie drives one, so the first-run
+ * message says which: the session `hc` would use, and the socket it dials.
+ */
+export function coreSessionNote(mux: string, env: CliContext["env"]): string | null {
+  if (mux !== HERDR_CORE_MUX) return null;
+  const socket = herdrCoreSocketFor((env[muxEndpointVar(HERDR_CORE_MUX)] ?? "").trim(), env);
+  const session = (env.HC_SESSION ?? "").trim() || "default";
+  return `driving the herdr-core session "${session}" on ${socket}; name another with HC_SESSION, then \`collie restart\``;
 }
 
 /**
@@ -408,6 +437,8 @@ export async function ensureMuxChosen(deps: MuxSettleDeps): Promise<number> {
   Object.assign(deps.ctx.env, vars);
   const how = decision.kind === "auto" ? "auto-selected" : "chose";
   deps.io.out(`${how} ${sighting.mux} — ${sighting.evidence}; wrote COLLIE_MUX=${sighting.mux} to ${envPath}`);
+  const driving = coreSessionNote(sighting.mux, deps.ctx.env);
+  if (driving !== null) deps.io.out(driving);
   // The one thing a written `COLLIE_MUX` cannot settle: which of several zellij sessions. The bridge
   // refuses that at boot in a sentence naming them, so say it here, where the operator is standing.
   if (sighting.mux === ZELLIJ_MUX && sighting.endpoint === "") {

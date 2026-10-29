@@ -12,6 +12,7 @@ import {
   collieVersionBare,
   collieVersionFrom,
   deriveSettings,
+  drivesCore,
   effectiveServePort,
   parseEnvFile,
   parseServePort,
@@ -539,5 +540,21 @@ describe("deriveSettings — COLLIE_BASE_PATH", () => {
     expect(deriveSettings({}, HOME).basePath).toBe("/");
     expect(deriveSettings({ COLLIE_BASE_PATH: "collie" }, HOME).basePath).toBe("/collie/");
     expect(deriveSettings({ COLLIE_BASE_PATH: "/apps/collie/" }, HOME).basePath).toBe("/apps/collie/");
+  });
+});
+
+// A herdr-core host has no Herdr plugin registry, so the config dir lookup never asks `herdr` there
+// (M74 spec 04). The lookup itself needs no change: with no Herdr answer, Collie's own dir stands.
+describe("config dir on a herdr-core host", () => {
+  test("drivesCore: named, picked from the sockets, or neither", () => {
+    const core = "/run/user/7/herdr-core/default.sock";
+    expect(drivesCore({ COLLIE_MUX: "herdr-core" }, HOME, () => false)).toBe(true);
+    expect(drivesCore({ COLLIE_MUX: "herdr" }, HOME, (p) => p === core)).toBe(false);
+    expect(drivesCore({ XDG_RUNTIME_DIR: "/run/user/7" }, HOME, (p) => p === core)).toBe(true);
+    expect(drivesCore({ XDG_RUNTIME_DIR: "/run/user/7" }, HOME, () => true)).toBe(false);
+  });
+
+  test("with no Herdr answer and no .env, the dir is ~/.config/collie", () => {
+    expect(resolve({ herdr: null }).dir).toBe(join(HOME, ".config", "collie"));
   });
 });

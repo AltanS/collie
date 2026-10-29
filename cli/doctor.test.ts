@@ -1596,6 +1596,32 @@ describe("mux", () => {
     expect(code).toBe(EXIT.OK);
   });
 
+  test("herdr-core: hc-socket dials the core and reads its version and terminal count; no herdr rows (M74 spec 04)", async () => {
+    const core = "/run/user/7/herdr-core/default.sock";
+    const h = harness(null, [], {
+      env: { COLLIE_MUX: "herdr-core", XDG_RUNTIME_DIR: "/run/user/7" },
+      files: { ...healthyFiles(), [core]: "" },
+    });
+    h.deps = { ...h.deps, hcDial: () => Promise.resolve({ version: "0.1.14", generation: 1, live: 4 }) };
+    const { byCheck } = await findings(h);
+    expect(byCheck.get("hc-socket")?.status).toBe("ok");
+    expect(byCheck.get("hc-socket")?.detail).toBe(`${core}: herdr-core 0.1.14, 4 live terminals`);
+    expect(byCheck.has("herdr-socket")).toBe(false);
+  });
+
+  test("herdr-core: a socket file with no core behind it is an error with the start remedy", async () => {
+    const core = "/run/user/7/herdr-core/default.sock";
+    const h = harness(null, [], {
+      env: { COLLIE_MUX: "herdr-core", XDG_RUNTIME_DIR: "/run/user/7" },
+      files: { ...healthyFiles(), [core]: "" },
+    });
+    h.deps = { ...h.deps, hcDial: () => Promise.reject(new Error("connect ECONNREFUSED")) };
+    const { byCheck, code } = await findings(h);
+    expect(byCheck.get("hc-socket")?.status).toBe("error");
+    expect(byCheck.get("hc-socket")?.remedy).toContain("hc server start");
+    expect(code).toBe(EXIT.FAIL);
+  });
+
   // Since M14/03 an unset COLLIE_MUX is not silently "herdr" — `collie start` probes and decides, so
   // `doctor` names the multiplexer that decision would land on, and the evidence for it.
   test("with nothing configured it names what `start` would pick, and why", async () => {
@@ -1613,7 +1639,7 @@ describe("mux", () => {
     const finding = byCheck.get("mux")!;
     expect(finding.status).toBe("error");
     expect(finding.detail).toContain("no multiplexers are running");
-    expect(finding.remedy).toContain("COLLIE_MUX=<durable|herdr|tern|tmux|tuios|zellij> collie start");
+    expect(finding.remedy).toContain("COLLIE_MUX=<durable|herdr|herdr-core|tern|tmux|tuios|zellij> collie start");
   });
 
   test("nothing configured and two multiplexers running is an error naming both", async () => {
@@ -1881,6 +1907,36 @@ describe("beacon-hooks-claude", () => {
     expect(finding.detail).toContain("herdr reports agents itself");
     expect(finding.detail).toContain("hooks installed: no");
     expect(code).toBe(EXIT.OK);
+  });
+
+  test("under herdr-core, which names agents but not sessions, no install is a skip naming the hook, never an error (M74 spec 04)", async () => {
+    const core = "/run/user/7/herdr-core/default.sock";
+    const h = harness(null, [], {
+      env: { COLLIE_MUX: "herdr-core", XDG_RUNTIME_DIR: "/run/user/7" },
+      files: { ...without(healthyFiles(), SETTINGS), [core]: "" },
+    });
+    h.deps = { ...h.deps, hcDial: () => Promise.resolve({ version: "0.1.14", generation: 1, live: 1 }) };
+    const { byCheck } = await findings(h);
+    const hooks = byCheck.get("beacon-hooks-claude")!;
+    expect(hooks.status).toBe("skipped");
+    expect(hooks.detail).toContain("History");
+    expect(hooks.remedy).toContain("collie hooks install claude");
+    const sessions = byCheck.get("agent-sessions")!;
+    expect(sessions.status).toBe("skipped");
+    expect(sessions.remedy).toContain("collie hooks install claude");
+  });
+
+  test("under herdr-core, an install says the hooks give edges and the session, and agent-sessions reads the bridge's panes", async () => {
+    const core = "/run/user/7/herdr-core/default.sock";
+    const h = harness(null, [], {
+      env: { COLLIE_MUX: "herdr-core", XDG_RUNTIME_DIR: "/run/user/7" },
+      files: { ...healthyFiles(), [core]: "" },
+    });
+    h.deps = { ...h.deps, hcDial: () => Promise.resolve({ version: "0.1.14", generation: 1, live: 1 }) };
+    const { byCheck } = await findings(h);
+    expect(byCheck.get("beacon-hooks-claude")?.status).toBe("ok");
+    expect(byCheck.get("beacon-hooks-claude")?.detail).toContain("each Claude pane's session");
+    expect(byCheck.get("agent-sessions")?.detail ?? "").not.toContain("no pane can report");
   });
 
   test("under a mux that does NOT, no install is an ERROR naming the install verb", async () => {

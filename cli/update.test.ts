@@ -757,6 +757,19 @@ describe("refreshRegistry", () => {
     expect(h.io.stdout.join("\n")).toContain("re-linked");
   });
 
+  test("a herdr-core host runs no herdr command at all (M74 spec 04)", () => {
+    const named = harness({ answers: LINKED, env: { COLLIE_MUX: "herdr-core" } });
+    refreshRegistry(named.deps);
+    expect(named.exec.calls.some((c) => c.startsWith("herdr"))).toBe(false);
+    expect(named.io.stdout).toEqual([]);
+
+    const core = "/run/user/501/herdr-core/default.sock";
+    const picked = harness({ answers: LINKED, env: { XDG_RUNTIME_DIR: "/run/user/501" } });
+    picked.files.write(core, "");
+    refreshRegistry(picked.deps);
+    expect(picked.exec.calls.some((c) => c.startsWith("herdr"))).toBe(false);
+  });
+
   test("is best-effort: no herdr, or a herdr that refuses, never fails the update", () => {
     const none = harness({ absent: ["herdr"], answers: LINKED });
     refreshRegistry(none.deps);

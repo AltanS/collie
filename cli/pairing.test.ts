@@ -22,6 +22,7 @@ import {
   cmdDevicesSetExpiry,
   cmdPair,
   type PairingDeps,
+  type PairJson,
 } from "./pairing.ts";
 
 // The two operator-side verbs of device pairing, against fake seams. What is asserted here is what
@@ -209,6 +210,54 @@ describe("collie pair", () => {
       expect(await cmdPair(d, args)).toBe(EXIT.USAGE);
       expect(d.files.entries.has(PENDING)).toBe(false);
     }
+  });
+
+  // `pair --json` is read by a program (the herdr-app mod), so its shape is a contract: one line of
+  // JSON, the same code the file holds the hash of, and the QR as a bitmap the program draws itself.
+  describe("--json", () => {
+    const parse = (d: ReturnType<typeof deps>): PairJson => {
+      expect(d.io.stdout).toHaveLength(1);
+      // SAFETY: `pair --json` prints `JSON.stringify` of a `PairJson` as its one stdout line, just
+      // asserted; every field the tests read is then compared against a literal or a pattern.
+      return JSON.parse(d.io.stdout[0]!) as PairJson;
+    };
+
+    test("one JSON line: the code, its expiry, the Settings URL and the QR bitmap", async () => {
+      const d = deps();
+      expect(await cmdPair(d, ["--json"])).toBe(EXIT.OK);
+      const out = parse(d);
+      expect(d.io.stderr).toEqual([]);
+      const code = out.code;
+      expect(code).toHaveLength(CODE_LENGTH);
+      expect(coercePending(JSON.parse(d.files.entries.get(PENDING)!.text))!.codeHash).toBe(sha256Hex(code));
+      expect(out.expiresAt).toBe(new Date(NOW + CODE_TTL_MS).toISOString());
+      expect(out.tokenLifetimeMs).toBeNull();
+      expect(out.replaced).toBe(false);
+      expect(out.url).toBe(`https://host.example/settings?pair=${code}`);
+      const qr = out.qr ?? [];
+      expect(qr.length).toBeGreaterThanOrEqual(21);
+      for (const row of qr) expect(row).toMatch(new RegExp(`^[01]{${qr.length}}$`));
+    });
+
+    test("--expires rides along, and a second code says it replaced the first", async () => {
+      const d = deps();
+      await cmdPair(d, ["--json"]);
+      const second = { ...deps(), files: d.files };
+      expect(await cmdPair(second, ["--expires", "30d", "--json"])).toBe(EXIT.OK);
+      const out = parse(second);
+      expect(out.tokenLifetimeMs).toBe(30 * 86_400_000);
+      expect(out.replaced).toBe(true);
+    });
+
+    test("no tailnet name: the code still comes, with no URL and no QR, and the reason on stderr", async () => {
+      const d = deps({}, "{}");
+      expect(await cmdPair(d, ["--json"])).toBe(EXIT.OK);
+      const out = parse(d);
+      expect(out.code).toHaveLength(CODE_LENGTH);
+      expect(out.url).toBeNull();
+      expect(out.qr).toBeNull();
+      expect(d.io.stderr.join("\n")).toContain("no URL to encode");
+    });
   });
 
   test("an unwritable state dir is an operational failure, not a code the phone can never spend", async () => {

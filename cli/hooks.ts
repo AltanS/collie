@@ -696,7 +696,7 @@ export function cmdHooksInstall(deps: HooksDeps, args: readonly string[]): numbe
   if (failed) return EXIT.FAIL;
   deps.io.out(`  ${BEACON_HOOKS.map((r) => r.event).join(", ")} → \`${binary} beacon emit\``);
   deps.io.out(`  ${PINNED_NOTE[source]}`);
-  deps.io.out("  Outside a multiplexer the hook exits at once and writes nothing. In Herdr it writes hook edges only.");
+  deps.io.out("  Outside a multiplexer the hook exits at once and writes nothing. In Herdr it writes hook edges only. In herdr-core it also names the Claude session, which gives the pane History.");
   deps.io.out(`  Hook edges go to each running bridge listed in ${hookTargetsDir(deps.ctx.env, deps.ctx.home)}.`);
   deps.io.out("  With no bridge listed there, they go to the default state dir.");
   deps.io.out("  A running agent reloads its hooks on its own. If no edges come, restart it.");

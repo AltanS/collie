@@ -48,6 +48,7 @@ const SPEC: ServiceSpec = {
   socket: "/home/pat/.config/herdr/herdr.sock",
   port: 8787,
   tailscaleHosts: "",
+  core: null,
 };
 
 describe("the discovered Host allowlist", () => {
@@ -70,6 +71,41 @@ describe("the discovered Host allowlist", () => {
     expect(bakedTailscaleHosts(launchAgentPlist(spec))).toBe("desk.ts.net");
     expect(bakedTailscaleHosts(systemdUnit(SPEC))).toBe("");
     expect(bakedTailscaleHosts(null)).toBe("");
+  });
+});
+
+describe("the herdr-core pass-through (M74 spec 04)", () => {
+  const CORE: ServiceSpec = { ...SPEC, core: { session: "", socket: "" } };
+
+  test("no other install's unit or plist names the core or its variables", () => {
+    for (const text of [systemdUnit(SPEC), launchAgentPlist(SPEC)]) {
+      expect(text).not.toContain("COLLIE_MUX");
+      expect(text).not.toContain("HC_SESSION");
+      expect(text).not.toContain("HC_SOCKET");
+    }
+  });
+
+  test("a herdr-core install carries COLLIE_MUX, and no empty HC_ line", () => {
+    const unit = systemdUnit(CORE);
+    expect(unit).toContain("Environment=COLLIE_MUX=herdr-core\n");
+    expect(unit).not.toContain("HC_SESSION");
+    expect(unit).not.toContain("HC_SOCKET");
+    expect(launchAgentPlist(CORE)).toContain("<key>COLLIE_MUX</key>\n        <string>herdr-core</string>");
+  });
+
+  test("HC_SESSION and HC_SOCKET are written when the operator set them, in both supervisors", () => {
+    const spec: ServiceSpec = { ...SPEC, core: { session: "work", socket: "/run/user/1000/herdr-core/work.sock" } };
+    const unit = systemdUnit(spec);
+    expect(unit).toContain("Environment=HC_SESSION=work\n");
+    expect(unit).toContain("Environment=HC_SOCKET=/run/user/1000/herdr-core/work.sock\n");
+    expect(launchAgentPlist(spec)).toContain("<key>HC_SESSION</key>\n        <string>work</string>");
+  });
+
+  test("the unit still carries the binary and the Collie config dir, and no Herdr plugin command", () => {
+    const unit = systemdUnit(CORE);
+    expect(unit).toContain("ExecStart=/opt/collie/bin/collie _exec-bridge");
+    expect(unit).toContain("Environment=HERDR_PLUGIN_CONFIG_DIR=/home/pat/.config/collie");
+    expect(unit).not.toContain("herdr plugin");
   });
 });
 
@@ -277,6 +313,7 @@ describe("the Task Scheduler task (Windows)", () => {
     socket: "\\\\.\\pipe\\herdr",
     port: 8787,
     tailscaleHosts: "",
+    core: null,
   };
   const CONHOST = "C:\\WINDOWS\\system32\\conhost.exe";
 

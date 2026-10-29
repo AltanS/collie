@@ -1341,6 +1341,7 @@ const muxRegistry = buildMuxRegistry();
 // silent — the log named one only when it could not be reached — so `collie logs` could not answer
 // the first question a tmux or zellij operator asks (docs/multiplexers.md → "Did it work?").
 console.log(`[bridge] mux: ${describeMux(muxRegistry, cfg.mux, cfg.muxEndpoint)}`);
+if (cfg.muxPickedBecause !== "") console.log(`[bridge] mux: no COLLIE_MUX, so ${cfg.mux}: ${cfg.muxPickedBecause}`);
 // And each program beside it, one line each, from the source's own settings. Never the token.
 for (const source of programs.others) {
   console.log(`[bridge] program "${source.name}": ${DURABLE_MUX}, ${describeDurableTarget(sourceTransportEnv(source))}`);
@@ -1353,19 +1354,22 @@ for (const source of programs.others) {
 const hooksInstalled = hooksInstalledProbe({ home: homedir(), env: process.env });
 
 /**
- * The adapter, with agent beacons around it when the multiplexer cannot see agents on its own.
+ * The adapter, with agent beacons around it when the multiplexer cannot see agents, or cannot see
+ * their sessions, on its own.
  *
  * A multiplexer that reports the agent and its session from its own wire is left ALONE — it has the
  * stronger source of truth, and the decorator refuses to wrap it anyway (bridge/beacon/decorate.ts).
- * The two conditions are the same one, read from two sides: an adapter contributes a beacon matcher
- * exactly when it is blind, and the decorator refuses exactly when it is not.
+ * The condition is the decorator's own, read from the caller's side: it refuses exactly an adapter
+ * that declares `agentSessionRef`, and one that declares only `agentDetection` gets the session ref
+ * alone.
  */
 function withBeaconsIfBlind(adapter: MuxAdapter, target: MuxTarget): MuxAdapter {
   const matcher = factoryFor(muxRegistry, adapter.mux)?.beaconMatcher?.(target);
-  // Herdr has a matcher too since M56 spec 11, for the hook edges, but it sees agents on its own wire:
-  // the decorator wraps only an adapter that cannot.
-  const blind = matcher !== undefined && !adapter.capabilities.supports.agentDetection && !adapter.capabilities.supports.agentSessionRef;
-  const seeing = blind ? withAgentBeacons(adapter, beaconReader(cfg.stateDir), { matcher, hooksInstalled }) : adapter;
+  // Herdr has a matcher too since M56 spec 11, for the hook edges, but it sees agents and their sessions
+  // on its own wire: the decorator wraps only an adapter that cannot see a session. One that names its
+  // agent but not the session (herdr-core, M74 spec 04) is wrapped in session-only mode.
+  const needsSession = matcher !== undefined && !adapter.capabilities.supports.agentSessionRef;
+  const seeing = needsSession ? withAgentBeacons(adapter, beaconReader(cfg.stateDir), { matcher, hooksInstalled }) : adapter;
   // The hint tier sits OUTSIDE the decorator, so it reads the DECORATED declaration and retires
   // itself the moment that declaration says agents are visible (M11/05). Applied to every adapter,
   // including one that was never decorated: it suppresses itself there for the same reason.

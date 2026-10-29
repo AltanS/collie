@@ -94,6 +94,7 @@ Find your system below, run its commands, then go on to [Start it](#start-it).
 | macOS, Apple Silicon or Intel | [The install script](#macos) |
 | Windows 11 (x64, with Herdr) | [`install.ps1`, experimental](#windows-support-experimental) |
 | Any of these, inside Herdr | [Herdr plugin](#herdr-plugin) |
+| A machine that runs herdr-app and the Herdr core, with no Herdr TUI | [The binary and `hc`](#herdr-app-and-the-herdr-core) |
 
 ### Linux
 
@@ -275,6 +276,25 @@ bin/collie link
 A source build requires Bun and git. Start it with `bin/collie start`, or `collie start` after
 linking.
 
+### herdr-app and the Herdr core
+
+herdr-app and the Herdr core (`hc`) need no Herdr plugin and no `herdr` command. Install Collie as a
+binary, with the [install script](#standalone) or a package, and make sure the core runs:
+
+```bash
+curl -fsSL https://colliepwa.dev/install.sh | sh
+hc server status      # or open herdr-app, which starts the core
+collie start
+```
+
+When you name no multiplexer, the Herdr TUI socket is missing and the core's socket is there,
+Collie picks the core on its own. `collie start` says so and writes `COLLIE_MUX=herdr-core` to
+`~/.config/collie/.env`, which is Collie's own config folder on this install. The service unit
+carries the same choice. `collie update` then runs no `herdr plugin` command. To drive one named
+core session, export `HC_SESSION` or `HC_SOCKET` before `collie start`; the unit keeps them. Install
+the Claude hooks with `collie hooks install claude` for History. What the core can and cannot do is
+in [herdr-core notes](multiplexers.md#herdr-core-notes).
+
 ### Herdr plugin
 
 ```bash
@@ -313,10 +333,10 @@ your package manager manages this tree.
 
 ## Name your multiplexer
 
-Collie mirrors one backend: `COLLIE_MUX=herdr` (default), `tmux`, or `zellij`.
+Collie mirrors one backend: `COLLIE_MUX=herdr` (default), `herdr-core`, `tmux`, or `zellij`.
 
-You do not need to set it before the first start. `start` looks for a live Herdr socket, a running
-tmux server and zellij sessions, prints what it found, and writes your choice to the config `.env`,
+You do not need to set it before the first start. `start` looks for a live Herdr socket, a Herdr
+core socket without a Herdr socket, a running tmux server and zellij sessions, prints what it found, and writes your choice to the config `.env`,
 creating the file if needed.
 
 Without a terminal prompt, `start` picks the single backend it found and reports it. If it finds

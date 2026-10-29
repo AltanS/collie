@@ -198,6 +198,9 @@ async function run(
     /** What `herdr --version` prints. */
     herdr?: string;
     platform?: string;
+    noSessionRefs?: string;
+    noSessionRefsRemedy?: string;
+    sessionsFromHooks?: boolean;
   } = {},
 ): Promise<Map<string, Finding>> {
   const answers: Scripted["answers"] = [
@@ -214,6 +217,9 @@ async function run(
       return { kind: "body", text: over.snapshot ?? snapshotOf([]) };
     },
     host: hostFor(over.platform ?? "linux"),
+    noSessionRefs: over.noSessionRefs,
+    noSessionRefsRemedy: over.noSessionRefsRemedy,
+    sessionsFromHooks: over.sessionsFromHooks,
   });
   return new Map(findings.map((f) => [f.check, f]));
 }
@@ -290,6 +296,30 @@ describe("the history section", () => {
 
     const good = await run({ snapshot: snapshotOf([{ paneId: "w1:p1", agent: "claude", hasSession: true }]) });
     expect(good.get("agent-sessions")?.status).toBe("ok");
+  });
+
+  test("agent-sessions is skipped, not an error, where the multiplexer can report no session (M74)", async () => {
+    const found = await run({ snapshot: snapshotOf([{ paneId: "t1", agent: "claude" }]), noSessionRefs: "herdr-core keeps no conversation id" });
+    expect(found.get("agent-sessions")?.status).toBe("skipped");
+    expect(found.get("agent-sessions")?.detail).toContain("herdr-core keeps no conversation id");
+  });
+
+  test("where a hook adds the session, the skip names the hook and a missing session names it too (M74 spec 04)", async () => {
+    const skippedRow = await run({
+      snapshot: snapshotOf([{ paneId: "t1", agent: "claude" }]),
+      noSessionRefs: "the hooks are not installed",
+      noSessionRefsRemedy: "`collie hooks install claude`",
+    });
+    expect(skippedRow.get("agent-sessions")?.status).toBe("skipped");
+    expect(skippedRow.get("agent-sessions")?.remedy).toContain("collie hooks install claude");
+
+    const missing = await run({ snapshot: snapshotOf([{ paneId: "t1", agent: "claude" }]), sessionsFromHooks: true });
+    expect(missing.get("agent-sessions")?.status).toBe("error");
+    expect(missing.get("agent-sessions")?.remedy).toContain("collie hooks install claude");
+    expect(missing.get("agent-sessions")?.remedy).not.toContain("herdr integration install");
+
+    const present = await run({ snapshot: snapshotOf([{ paneId: "t1", agent: "claude", hasSession: true }]), sessionsFromHooks: true });
+    expect(present.get("agent-sessions")?.status).toBe("ok");
   });
 
   // An omp pane reads through pi's adapter, so the bridge hides its History and Chat when it names no

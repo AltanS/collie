@@ -974,6 +974,7 @@ describe("solo zero-tax — routes", () => {
 const CONFIG_KEYS = {
   mux: true,
   muxEndpoint: true,
+  muxPickedBecause: true,
   tmuxBin: true,
   zellijBin: true,
   ternBin: true,
@@ -1055,6 +1056,7 @@ describe("solo zero-tax — config", () => {
       "multiSession",
       "mux",
       "muxEndpoint",
+      "muxPickedBecause",
       "notifyDelayMs",
       "pollIdleMs",
       "pollMs",

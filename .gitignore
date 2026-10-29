@@ -71,3 +71,8 @@ web/playwright-report/
 # `vite build` runs, produced fresh whenever the swappable server starts, plus the one-line pointer
 # that says which of them is being served. Build output, like `dist/` — never committed.
 web/e2e/.builds/
+
+# `herdr-app check` writes its editor types into the mod folder it checks. They belong to the
+# installed app's version, never to the repo.
+herdr-app-mod/*/gpui-kit.d.ts
+herdr-app-mod/*/jsconfig.json
