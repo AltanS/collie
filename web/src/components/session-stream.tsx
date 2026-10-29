@@ -48,12 +48,12 @@ import { cn } from "@/lib/utils";
 /**
  * One block of the stream.
  *
- * `content-visibility: auto` skips layout and paint for a block off screen, and the intrinsic size
- * remembers the last real height so the scrollbar does not lie. The 12px padding with a matching
- * negative margin keeps a card's shadow and focus outline inside the paint clip containment adds.
- * Lifted verbatim from the prototype this screen came out of (experiments/session-stream).
+ * NO `content-visibility: auto`. A block never yet on screen is laid out at a placeholder height, so
+ * scrolling UP from the tail grows each one as it enters from above and shoves the turn being read
+ * down. Chromium hides that with scroll anchoring; iOS Safari has none, so it stuttered there. The
+ * 12px padding with a matching negative margin is the spacing between blocks (the margins collapse).
  */
-const STREAM_BLOCK = "flex min-w-0 flex-col [content-visibility:auto] [contain-intrinsic-size:auto_64px] -m-3 p-3";
+const STREAM_BLOCK = "flex min-w-0 flex-col -m-3 p-3";
 
 /**
  * THE TAIL ROW: a turn is in flight and nothing has landed yet.

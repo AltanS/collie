@@ -65,6 +65,30 @@ export function nextKeyboardOpen(
     : keyboardLikelyOpen(baselineHeight, currentHeight, KEYBOARD_MIN_PX);
 }
 
+// ── AND WHY THE ANSWER ALSO NEEDS A FOCUSED FIELD (2026-10-24) ──────────────────
+// The height alone stranded the operator's iPhone in the composing layout with no keyboard on
+// screen: the status line gone and the composer pressed against the home indicator, on one pane
+// and not the one next to it. Two iOS 26 home-screen behaviours can leave the height reading low
+// with the keyboard down: the visual viewport not coming all the way back after the keyboard
+// closes, and a transient taller reading on return from the background ratcheting `baseline` up. A
+// pane mounted before either keeps answering "open"; a pane mounted after re-baselines and looks
+// right, which is exactly the one-pane-broken picture.
+//
+// A soft keyboard cannot be on screen unless a field that types has focus, so the answer is the
+// height test AND that. This does not undo the focus-blindness above: focus is a necessary
+// condition here, never a sufficient one. A hardware keyboard still has focus with no height drop
+// (closed), and Android's collapse that keeps focus still closes on the height.
+
+/** Input types that take focus without raising a soft keyboard. */
+const NO_KEYBOARD_INPUTS = new Set(["button", "checkbox", "color", "file", "hidden", "image", "radio", "range", "reset", "submit"]);
+
+/** Whether focus on `el` can have raised the soft keyboard: a field that types. Exported for tests. */
+export function raisesKeyboard(el: EventTarget | null): boolean {
+  if (el instanceof HTMLTextAreaElement) return !el.readOnly && !el.disabled;
+  if (el instanceof HTMLInputElement) return !NO_KEYBOARD_INPUTS.has(el.type) && !el.readOnly && !el.disabled;
+  return el instanceof HTMLElement && el.isContentEditable === true;
+}
+
 export function useKeyboardOpen(): boolean {
   const [open, setOpen] = useState(false);
   useEffect(() => {
@@ -72,11 +96,16 @@ export function useKeyboardOpen(): boolean {
     if (!vv) return;
     let baseline = vv.height;
     let baselineWidth = vv.width;
-    // The previous ANSWER, kept here rather than read back out of React state: `update` is a stable
-    // closure registered once, so it would capture the first `open` forever. This is the input the
-    // hysteresis above needs, and it must be the value the last event produced, not the value the
-    // last render saw.
+    // The previous HEIGHT answer, kept here rather than read back out of React state: `update` is a
+    // stable closure registered once, so it would capture the first `open` forever. This is the
+    // input the hysteresis above needs, and it must be the value the last event produced, not the
+    // value the last render saw. Focus does not feed it: the hysteresis is about the height only.
     let wasOpen = false;
+    // The field that has focus, kept from the events: on focusout `relatedTarget` is where focus goes
+    // next, so a move between two fields never holds <body> even for the instant between the events
+    // (React batches the two answers into one render either way; this keeps each answer exact).
+    let focused: EventTarget | null = document.activeElement;
+    const answer = () => setOpen(wasOpen && raisesKeyboard(focused));
     const update = () => {
       // A width change is an orientation/layout change, not the keyboard — re-baseline so a portrait
       // baseline doesn't read as "open" in landscape.
@@ -84,16 +113,30 @@ export function useKeyboardOpen(): boolean {
         baselineWidth = vv.width;
         baseline = vv.height;
         wasOpen = false;
-        setOpen(false);
+        answer();
         return;
       }
       baseline = Math.max(baseline, vv.height);
       wasOpen = nextKeyboardOpen(wasOpen, baseline, vv.height);
-      setOpen(wasOpen);
+      answer();
+    };
+    const onFocusIn = (e: FocusEvent) => {
+      focused = e.target;
+      answer();
+    };
+    const onFocusOut = (e: FocusEvent) => {
+      focused = e.relatedTarget;
+      answer();
     };
     update();
     vv.addEventListener("resize", update);
-    return () => vv.removeEventListener("resize", update);
+    document.addEventListener("focusin", onFocusIn);
+    document.addEventListener("focusout", onFocusOut);
+    return () => {
+      vv.removeEventListener("resize", update);
+      document.removeEventListener("focusin", onFocusIn);
+      document.removeEventListener("focusout", onFocusOut);
+    };
   }, []);
   return open;
 }

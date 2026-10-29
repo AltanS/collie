@@ -157,10 +157,31 @@ function footerAt(
     // A footer row is painted (dim or coloured) in every capture. A plain row is text someone typed,
     // such as a key hint quoted in a draft (pi/ask.test.ts, "quoted key hints").
     if (start <= 0 || !indent.test(texts[start]!) || !styledRow(lines[start]!)) break;
-    const footer = parsePiFooter(texts.slice(start, footerEnd + 1).map((t) => t.trim()).join(" "));
+    const rows = texts.slice(start, footerEnd + 1).map((t) => t.trim());
+    const footer = wrappedFooter(rows);
     if (footer !== null) best = { start, footer };
   }
   return best;
+}
+
+/**
+ * A footer read across the rows a narrow pane wrapped it onto. The terminal breaks a row between words,
+ * so the break is either inside one hint (`enter` / `select`) or between two (`… enter select` /
+ * `escape/ctrl+c cancel`). Joined with one space the second reads as one hint whose verb swallows the
+ * next key, and the Escape the footer names is lost. So both joins are read, and the one that parses
+ * into more hints wins: a hint split across the break does not parse as two, and falls back to one.
+ */
+function wrappedFooter(rows: string[]): PiFooter | null {
+  const joined = parsePiFooter(rows.join(" "));
+  if (rows.length < 2) return joined;
+  const apart = parsePiFooter(rows.join("  "));
+  if (apart === null) return joined;
+  if (joined === null) return apart;
+  return hintCount(apart.text) > hintCount(joined.text) ? apart : joined;
+}
+
+function hintCount(text: string): number {
+  return text.split(/\s+[•·]\s+|\s{2,}/).filter((s) => s.trim() !== "" && s.trim() !== "•").length;
 }
 
 /** Read the frame at the tail of `lines`, or null. Says nothing yet about what is inside it. A frame

@@ -81,6 +81,21 @@ describe("SessionStream", () => {
     expect(screen.getByText("second")).toBeInTheDocument();
   });
 
+  it("lays out every turn up front without content-visibility, so scrolling up on iOS Safari never stutters", () => {
+    const { container } = renderStream(
+      feedOf({
+        status: { kind: "live" },
+        entries: [entry("a", BASE, "first"), entry("b", BASE + 1, "second")],
+      }),
+    );
+    const blocks = [...container.querySelectorAll<HTMLElement>("[data-block]")];
+    expect(blocks).toHaveLength(2);
+    for (const block of blocks) {
+      expect(block.className).not.toContain("content-visibility");
+      expect(block.className).not.toContain("contain-intrinsic-size");
+    }
+  });
+
   it("says nothing at all before the first answer has landed", () => {
     const { container } = renderStream(feedOf({}));
     expect(container.querySelectorAll("[data-block]")).toHaveLength(0);

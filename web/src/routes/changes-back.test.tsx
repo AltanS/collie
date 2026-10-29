@@ -220,12 +220,18 @@ describe("Changes: the phone's bottom Back", () => {
       renderAt(CHANGES);
       await screen.findByText("webapp · 3 files");
       expect(bar()).not.toBeNull();
+      // A soft keyboard only stands on a focused field (use-keyboard.ts). The filter that raises it
+      // here is not drawn for three files, so a stand-in field takes the caret: the bar reads only
+      // whether the keyboard is up, not which field holds it.
+      const field = document.body.appendChild(document.createElement("input"));
+      act(() => field.focus());
       screenView.height = 450;
       act(() => listeners.forEach((fn) => fn()));
       expect(bar()).toBeNull();
       screenView.height = 800;
       act(() => listeners.forEach((fn) => fn()));
       expect(bar()).not.toBeNull();
+      field.remove();
     });
   });
 
