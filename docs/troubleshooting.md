@@ -8,7 +8,7 @@ reboot** · **a pane is stuck narrow** · **Collie refuses to open a tmux window
 **`tmux list: output did not parse`** · **`herdr plugin list` shows the old version** ·
 **stale UI after a rebuild** · **I saved a machine in Herdr and the phone does not show it** ·
 **an update started from the phone stays at staging** · **a phone update on macOS leaves Collie
-unloaded** · **on macOS, `collie status` says "loaded, not running"** · **a pane shows no prompt-cache chip** · **a Kiro pane's History opens empty** · **a pane has no Chat or History** · **a new Codex pane says it has no history
+unloaded** · **on macOS, `collie status` says "loaded, not running"** · **a pane shows no prompt-cache chip** · **a Kiro pane's History opens empty** · **a pane has no Chat or History** · **`hc-socket` is red in `collie doctor`** · **a new Codex pane says it has no history
 yet** · **the phone says Collie cannot read a screen the agent is not showing** · **sending failed 3 times
 and the phone offers a report** · **an agent is greyed
 out on the New page** · **Start says there is no folder, or says it could not confirm** ·
@@ -184,7 +184,8 @@ steps.
 the agent's session log, and Collie finds the log only when the agent reports its session through the
 multiplexer. On Herdr that report comes from the agent's own integration, so a missing or old one hides
 both with no other symptom. `collie doctor` names the pane under `agent-sessions` and the fix under
-`integration-<agent>`.
+`integration-<agent>`. On the Herdr core (`herdr-core`) the report comes from Claude's hook instead:
+run `collie hooks install claude`, then restart the Claude in that pane.
 
 1. Run `herdr integration status`. If the agent is `not installed` or `outdated`, run
    `herdr integration install <agent>`. Oh My Pi is `omp`, and pi is `pi`: each needs its own.
@@ -306,6 +307,20 @@ means the folder is not on the machine that runs the start, so nothing started. 
 Recent. The second means the phone lost the reply. Look at the dashboard first, because the pane may
 exist. **Try again** sends the same request and never opens a second pane
 ([Start an agent or a shell from the phone](claude-code-on-your-phone.md#start-an-agent-or-a-shell-from-the-phone)).
+
+**`collie doctor` shows `hc-socket` as an error.** The bridge shows the Herdr core's terminals, and
+everything it shows comes through the core's socket. The row dials the socket and shows the core's
+version and how many terminals it keeps. It reads as an error in two cases.
+
+1. *No herdr-core socket at …* means no file is there. Start the core with `hc server start`, or
+   open herdr-app, which starts it. If the core runs in a named session, export the same
+   `HC_SESSION` (or `HC_SOCKET`) before `collie start`, so the unit carries it, then `collie restart`.
+2. *The socket file exists, but no core answers on it* means the core stopped and left its socket
+   file behind, or it is stuck. Run `hc server status`. If it answers, `collie restart`. If it does
+   not, start the core with `hc server start`.
+
+A core at another protocol generation reads as an error too, and the row names both numbers. Update
+Collie or the core so they match.
 
 ## Walky talky
 

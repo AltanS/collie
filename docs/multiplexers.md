@@ -1,7 +1,8 @@
 # Terminals
 
-These are the terminals Collie reads [sessions](sessions.md) from: Herdr, tmux, zellij, tuios and
-Tern. Collie drives one terminal per install, and Herdr is the default. This page covers pointing
+These are the terminals Collie reads [sessions](sessions.md) from: Herdr, the Herdr core
+(`herdr-core`), tmux, zellij, tuios and Tern. Collie drives one terminal per install, and Herdr is
+the default. This page covers pointing
 Collie at any of them, what each one can answer, and the beacons Collie uses to detect an agent in
 a pane. A durable agent with no screen is not a terminal, and [Durable agents](durable-agents.md) covers it.
 
@@ -22,6 +23,7 @@ Name the multiplexer on the command line:
 
 ```bash
 COLLIE_MUX=herdr collie start
+COLLIE_MUX=herdr-core collie start
 COLLIE_MUX=tmux collie start
 COLLIE_MUX=zellij collie start
 COLLIE_MUX=tuios collie start
@@ -44,7 +46,9 @@ COLLIE_MUX_ENDPOINT_ZELLIJ=collie-zellij
 
 | variable | value | what it means |
 | --- | --- | --- |
-| `COLLIE_MUX` | `herdr`, `tern`, `tmux`, `zellij` or `tuios` | which terminal this install drives |
+| `COLLIE_MUX` | `herdr`, `herdr-core`, `tern`, `tmux`, `zellij` or `tuios` | which terminal this install drives |
+| `COLLIE_MUX_ENDPOINT_HERDR_CORE` | `/run/user/1000/herdr-core/work.sock` | the core's socket PATH |
+| `COLLIE_MUX_ENDPOINT_HERDR_CORE` | empty | the socket `hc` would dial: `HC_SOCKET`, else `$XDG_RUNTIME_DIR/herdr-core/<HC_SESSION or default>.sock` |
 | `COLLIE_MUX_ENDPOINT_TMUX` | `/run/user/1000/collie-tmux.sock` | a socket PATH (`tmux -S`), because it has a `/` |
 | `COLLIE_MUX_ENDPOINT_TMUX` | `work` | a socket NAME (`tmux -L work`), no `/` |
 | `COLLIE_MUX_ENDPOINT_TMUX` | empty | tmux's own default server |
@@ -199,6 +203,56 @@ Some things work differently on tuios:
   tuios cannot move a terminal to another tuios session. If no terminal shows the pane's tuios session,
   Collie refuses and names the tuios session the terminal shows.
 - The **New worktree** switch on the New page stays, off, and says it needs Herdr.
+
+### herdr-core notes
+
+`herdr-core` is the new Herdr core. `hc` is its command line, and herdr-app is the window that draws
+its terminals. The core keeps terminals alive and knows nothing about panes, tabs or spaces.
+herdr-app keeps those in a document inside the core, and Collie reads that document to show the same
+spaces and tabs. The Herdr TUI (`herdr`) is another product with another socket, and Collie keeps it
+as a separate multiplexer.
+
+```bash
+COLLIE_MUX=herdr-core collie start
+collie hooks install claude   # History and Chat for Claude panes
+```
+
+With `COLLIE_MUX` unset, Collie picks the core on its own when the Herdr TUI socket is missing and the
+core's socket is there. The bridge says why in one log line, and `collie start` writes the choice to
+`.env`. A machine that has the Herdr TUI socket keeps `herdr`. Name `herdr-core` to say otherwise.
+
+The core can run several named sessions. Collie drives one of them. It dials the socket that `hc`
+would: `HC_SOCKET`, else `$XDG_RUNTIME_DIR/herdr-core/<HC_SESSION or default>.sock`. Pick another
+session with `HC_SESSION` or `COLLIE_MUX_ENDPOINT_HERDR_CORE`, then `collie restart`. `collie start`
+writes `COLLIE_MUX`, `HC_SESSION` and `HC_SOCKET` (when you set them) into the service unit, so a
+restart dials the same session. `HERDR_SOCKET_PATH` is the TUI's and the core ignores it.
+
+What works:
+
+- Panes, with their screens, from the core. The screen is plain text, so the mirror shows no colour.
+- Typing, and the keys in the Keys tray. A Super or Command chord, Ctrl+Enter, and a modified key the
+  core has no name for are refused.
+- Which agent runs in a pane and what it does. The core takes this from the program's own status
+  report, so Claude Code reads as `claude`, and a program that sends no report reads as a shell.
+- Closing a terminal, and opening a new tab in a space (a new shell that herdr-app shows as a tab).
+- Live updates. The core pushes terminal and layout changes, so the phone does not wait for a poll.
+- History and Chat for a Claude pane, once `collie hooks install claude` is done. The core does not
+  know the agent's conversation, so the hook supplies it from the terminal's `HC_TERMINAL_ID`. The
+  hook never changes the agent name or the status the core reported.
+
+What the core cannot do:
+
+- Rename a terminal, a tab or a space, and create a space. The names belong to herdr-app.
+- Focus a terminal, so "Show in terminal" is missing. herdr-app keeps focus on its own screen.
+- Show colour. The core hands out the screen as text only.
+- Show History for an agent other than Claude yet, or for any pane before its hooks are installed.
+- Show a terminal on another machine. Terminals of machines added to the core (`box/t7`) are not
+  shown. Add that machine to your [crew](crew.md) and its own Collie shows them.
+- Open a worktree, or list sessions.
+
+`collie doctor` has two rows for it. `hc-socket` dials the socket and shows the core's version and how
+many terminals it keeps. `hc-version` shows `hc --version`. [Troubleshooting](troubleshooting.md)
+lists the fixes.
 
 ### Did it work?
 
