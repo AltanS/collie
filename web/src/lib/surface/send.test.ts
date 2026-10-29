@@ -21,6 +21,38 @@ describe("reservedLead", () => {
     expect(reservedLead("  /model", ["/", "!", "@"])).toBe("/");
     expect(reservedLead("see @file", ["/", "!", "@"])).toBeNull();
   });
+
+  const leads = ["/", "!", "@"];
+  const upload = "/home/me/.local/state/collie-next/uploads/w7C_pF-mvtrpn7j-e4f81595.png";
+
+  it("does not read the path of a saved upload as a slash command", () => {
+    expect(reservedLead(upload, leads)).toBeNull();
+    expect(reservedLead(`  ${upload}`, leads)).toBeNull();
+    expect(reservedLead(`${upload} what is wrong here?`, leads)).toBeNull();
+    expect(reservedLead(`${upload}\nsecond line`, leads)).toBeNull();
+    expect(reservedLead("/tmp/state/uploads/1-mvtrpn7j-e4f81595.txt", leads)).toBeNull();
+  });
+
+  it("keeps every real command shape reserved", () => {
+    expect(reservedLead("/compact", leads)).toBe("/");
+    expect(reservedLead("/help", leads)).toBe("/");
+    expect(reservedLead("/model opus", leads)).toBe("/");
+    expect(reservedLead("/clear", leads)).toBe("/");
+    expect(reservedLead("/usr", leads)).toBe("/");
+    expect(reservedLead("/usr/uploads", leads)).toBe("/");
+  });
+
+  it("reads a path that only looks like an upload as a command, and the lead after it as text", () => {
+    expect(reservedLead("/home/me/uploads/photo.png", leads)).toBe("/");
+    expect(reservedLead("/home/me/other/w7C_pF-mvtrpn7j-e4f81595.png", leads)).toBe("/");
+    expect(reservedLead("/uploads/w7C_pF-mvtrpn7j-e4f81595.png/extra", leads)).toBe("/");
+    expect(reservedLead(`/compact ${upload}`, leads)).toBe("/");
+    expect(reservedLead(`!${upload}`, leads)).toBe("!");
+  });
+
+  it("takes a saved-upload path that no longer exists on disk as an upload, since the check is the shape", () => {
+    expect(reservedLead("/gone/uploads/x-aaaaaaa-00000000.webp", leads)).toBeNull();
+  });
 });
 
 describe("offersFor", () => {

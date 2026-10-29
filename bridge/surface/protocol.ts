@@ -1804,8 +1804,16 @@ export interface WholePaste {
   readonly images: number;
   /** The profile's image token, or null when the profile names none (then `images` is 0). */
   readonly image: RegExp | null;
-  /** The text that stays in the paste, as lines. */
+  /** The text that stays in the paste, as lines, when the harness takes the images off it. */
   readonly lines: readonly string[];
+  /**
+   * The text as typed, as lines: what the box shows when the harness takes NO image off the paste.
+   * Claude Code 2.1.312 attaches an upload path only when the path is the whole paste; a path
+   * among other text stays text, on its own row (lab, 2026-10-30, after the field case of
+   * 2026-10-29: a two-paragraph message ending its first paragraph with the upload path was typed,
+   * read back with the path as text, and never submitted). Equal to `lines` when `images` is 0.
+   */
+  readonly literal: readonly string[];
 }
 
 /**
@@ -1840,12 +1848,12 @@ export function wholePaste(match: ProfileMatch | null, lines: readonly string[],
   const text = lines.join("\n");
   if (lines.length === 1 && text.length <= WHOLE_PASTE_MIN_CHARS) return null;
   if (reservedLead(lines[0] ?? "", match.profile.reservedLeads) !== null) return null;
-  if (paste.image === undefined) return { images: 0, image: null, lines };
+  if (paste.image === undefined) return { images: 0, image: null, lines, literal: lines };
   const image = new RegExp(paste.image, "uy");
   const pieces = pastePieces(text);
   const kept = pieces.filter((piece) => !(isUploadImagePath(piece) && imageFile(piece.trim())));
   const images = pieces.length - kept.length;
-  return { images, image, lines: images === 0 ? lines : kept.join("\n").split("\n") };
+  return { images, image, lines: images === 0 ? lines : kept.join("\n").split("\n"), literal: lines };
 }
 
 /**
@@ -1884,6 +1892,16 @@ function boxHolds(frame: Frame, prefix: string, lines: readonly string[], collap
  * is read: a profile that writes per line keeps the rule above.
  */
 export function boxMatches(box: string, prefix: string, lines: readonly string[], collapse: RegExp | null, whole: WholePaste | null = null): boolean {
+  if (boxMatchesForm(box, prefix, lines, collapse, whole)) return true;
+  // A paste the protocol expected to lose its images may have kept them as text: Claude Code 2.1.305
+  // took an upload path out of a text (the `images` form above), 2.1.312 leaves it in unless the path
+  // is the whole paste (`literal`). Both forms hold exactly the typed text, so either proves the box;
+  // a box that holds neither still fails.
+  return whole !== null && whole.images > 0 && boxMatchesForm(box, prefix, whole.literal, collapse, { ...whole, images: 0, lines: whole.literal });
+}
+
+/** {@link boxMatches} for one form of the box: the images taken off (`whole.images`) or none. */
+function boxMatchesForm(box: string, prefix: string, lines: readonly string[], collapse: RegExp | null, whole: WholePaste | null): boolean {
   let p = 0;
   const skip = (): void => {
     while (isSpace(box[p])) p++;

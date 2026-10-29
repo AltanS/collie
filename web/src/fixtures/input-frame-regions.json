@@ -2010,6 +2010,22 @@
   }
  },
  {
+  "fixture": "claude--v2312-draft-upload-path--w100.txt",
+  "frame": {
+   "top": 31,
+   "prompt": 32,
+   "bottom": 37,
+   "label": null,
+   "text": "also mobile looks off /home/operator1/.local/state/collie-next/uploads/w7C_pF-mvtrpn7j-e4f81595.png menu should be a bottom sheet on the phone, not the side drawer, and the tab row needs the same height as the belt",
+   "placeholder": false,
+   "status": {
+    "first": 38,
+    "last": 39
+   },
+   "footer": null
+  }
+ },
+ {
   "fixture": "claude--wizard-multiselect-checked.txt",
   "frame": null
  },

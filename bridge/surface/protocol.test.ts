@@ -105,6 +105,8 @@ class FakePane {
   blockLiteralLines = 3;
   /** The image files a {@link pasteBlock} paste takes off, each drawn as `[Image #N]` before the rest. */
   imageFiles: readonly string[] = [];
+  /** Claude Code 2.1.312 (lab, 2026-10-30): an upload path is attached only when it is the whole paste; among other text it stays text. */
+  imagesOnlyAlone = false;
   pastes = 0;
   readFails = false;
   readsSeen = 0;
@@ -280,7 +282,7 @@ class FakePane {
     // Claude cuts the paste at each newline and at a space before an absolute path, and attaches the
     // pieces that are image files (lab, 2.1.305); the kept pieces stay, joined by newlines.
     const pieces = text.split(/\n| (?=\/)/u);
-    const kept = pieces.filter((piece) => !this.imageFiles.includes(piece.trim()));
+    const kept = this.imagesOnlyAlone && pieces.length > 1 ? pieces : pieces.filter((piece) => !this.imageFiles.includes(piece.trim()));
     for (let i = kept.length; i < pieces.length; i++) this.box += `[Image #${String(++this.pastes)}]`;
     if (kept.length < pieces.length) text = kept.join("\n");
     const breaks = text.split("\n").length - 1;
@@ -688,6 +690,30 @@ describe("a send that goes through", () => {
     const { send } = rig({ block: true, pane, imageFiles: [shot] });
     expect((await send(`line one\n${shot}\nline three`)).receipt?.outcome).toBe("sent");
     expect(pane.transcript.at(-1)).toBe("> [Image #1]line one line three");
+  });
+
+  test("a two-paragraph message that ends its first paragraph with an upload path is sent when Claude Code keeps the path as text (2.1.312, the field case of 2026-10-29)", async () => {
+    const shot = "/home/me/.local/state/collie/uploads/w1_p1-mf3x9q-0a1b2c3d.jpg";
+    const pane = new FakePane("claude");
+    pane.imageFiles = [shot];
+    pane.imagesOnlyAlone = true;
+    // Three short lines land literally in Claude Code (215 characters in the lab); the fake folds at 120 by default.
+    pane.collapseOver = 1000;
+    const { send } = rig({ block: true, pane, imageFiles: [shot] });
+    const text = `also mobile looks off ${shot}\n\nmenu should be a bottom sheet on the phone`;
+    expect((await send(text)).receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+    expect(pane.transcript.at(-1)).toBe(`> ${text.replaceAll("\n", " ")}`);
+  });
+
+  test("a long message with an upload path in it folds with every typed line break when Claude Code keeps the path (2.1.312), and is sent", async () => {
+    const shot = "/home/me/.local/state/collie/uploads/w1_p1-mf3x9q-0a1b2c3d.jpg";
+    const pane = new FakePane("claude");
+    pane.imageFiles = [shot];
+    pane.imagesOnlyAlone = true;
+    const { send } = rig({ block: true, pane, imageFiles: [shot] });
+    const lines = Array.from({ length: 10 }, (_, i) => `line ${String(i)}`);
+    expect((await send([...lines.slice(0, 5), shot, ...lines.slice(5)].join("\n"))).receipt?.outcome).toBe("sent");
+    expect(pane.transcript.at(-1)).toBe("> [Pasted text #1 +10 lines]");
   });
 
   test("Discard finds and clears a box that holds the image token and the folded paste", async () => {
@@ -1388,6 +1414,14 @@ describe("a command (M56 spec 06)", () => {
     const { pane, send } = rig();
     expect((await send("/compact")).receipt).toMatchObject({ outcome: "refused", reason: "reserved_lead" });
     expect(pane.readsSeen).toBe(0);
+  });
+
+  test("the path of a saved upload is no command: a plain send of it is not refused reserved_lead", async () => {
+    const { send } = rig();
+    const path = "/home/me/.local/state/collie/uploads/w7C_pF-mvtrpn7j-e4f81595.png";
+    expect((await send(path)).receipt?.reason).not.toBe("reserved_lead");
+    expect((await send(`${path} what is wrong here?`)).receipt?.reason).not.toBe("reserved_lead");
+    expect((await send("/usr")).receipt).toMatchObject({ outcome: "refused", reason: "reserved_lead" });
   });
 
   test("a shell line whose bang turns into the prompt glyph matches the box without its lead", async () => {
@@ -3469,7 +3503,7 @@ describe("pure helpers", () => {
   test("boxMatches takes ONE collapse form for a whole multi-line text only when it claims the text's line breaks", () => {
     const collapse = /\[Pasted text #(?<n>\d+)(?: \+(?<lines>\d+) lines)?\]/uy;
     const three = ["a", "b", "c"];
-    const whole = { images: 0, image: null, lines: three };
+    const whole = { images: 0, image: null, lines: three, literal: three };
     expect(boxMatches("[Pasted text #4 +2 lines]", "", three, collapse, whole)).toBe(true);
     expect(boxMatches(" [Pasted text #4 +2 lines] ", "", three, collapse, whole)).toBe(true);
     expect(boxMatches("[Pasted text #4 +3 lines]", "", three, collapse, whole)).toBe(false);
@@ -3484,16 +3518,42 @@ describe("pure helpers", () => {
   test("boxMatches reads a whole paste's image tokens before its text, as many as were taken off", () => {
     const collapse = /\[Pasted text #(?<n>\d+)(?: \+(?<lines>\d+) lines)?\]/uy;
     const image = /\[Image #\d+\]/uy;
-    const one = { images: 1, image, lines: ["look at this"] };
+    const shot = "/srv/collie/uploads/w1_p1-mf3x9q-0a1b2c3d.jpg";
+    const one = { images: 1, image, lines: ["look at this"], literal: [`look at this ${shot}`] };
     expect(boxMatches("[Image #3]look at this", "", one.lines, collapse, one)).toBe(true);
     expect(boxMatches("look at this", "", one.lines, collapse, one)).toBe(false);
-    const two = { images: 2, image, lines: ["a", "b"] };
+    const two = { images: 2, image, lines: ["a", "b"], literal: ["a", shot, "b", shot] };
     expect(boxMatches("[Image #9] [Image #10][Pasted text #11 +1 lines]", "", two.lines, collapse, two)).toBe(true);
     expect(boxMatches("[Image #9][Pasted text #11 +1 lines]", "", two.lines, collapse, two)).toBe(false);
     // The box may wrap inside a token (ADR 0010): the row break reads as white space.
     expect(boxMatches("draft [Image #1][Pasted text #2 +1 li nes]", "draft", two.lines, collapse, { ...two, images: 1 })).toBe(true);
-    expect(boxMatches("[Ima ge #1][Pasted text #2]", "", ["one long line"], collapse, { images: 1, image, lines: ["one long line"] })).toBe(true);
-    expect(boxMatches("[Pasted text #2 +1 lines]", "", ["one long line"], collapse, { images: 0, image, lines: ["one long line"] })).toBe(false);
+    expect(boxMatches("[Ima ge #1][Pasted text #2]", "", ["one long line"], collapse, { images: 1, image, lines: ["one long line"], literal: [`one long line ${shot}`] })).toBe(true);
+    expect(boxMatches("[Pasted text #2 +1 lines]", "", ["one long line"], collapse, { images: 0, image, lines: ["one long line"], literal: ["one long line"] })).toBe(false);
+  });
+
+  test("boxMatches also takes the literal form of a paste whose images the harness kept as text (Claude Code 2.1.312)", () => {
+    const collapse = /\[Pasted text #(?<n>\d+)(?: \+(?<lines>\d+) lines)?\]/uy;
+    const image = /\[Image #\d+\]/uy;
+    const shot = "/srv/collie/uploads/w1_p1-mf3x9q-0a1b2c3d.jpg";
+    // The field case of 2026-10-29: the first paragraph ends with the upload path, a blank line, a second paragraph.
+    const literal = [`also mobile looks off ${shot}`, "", "menu should be a bottom sheet"];
+    const whole = { images: 1, image, lines: ["also mobile looks off", "", "menu should be a bottom sheet"], literal };
+    // 2.1.305 took the path off the paste; 2.1.312 leaves it in, on a row of its own (the frame joins rows with a space).
+    expect(boxMatches("[Image #1]also mobile looks off menu should be a bottom sheet", "", whole.lines, collapse, whole)).toBe(true);
+    expect(boxMatches(`also mobile looks off ${shot} menu should be a bottom sheet`, "", whole.lines, collapse, whole)).toBe(true);
+    // Neither form: the path gone AND no token, or a token AND the path.
+    expect(boxMatches("also mobile looks off menu should be a bottom sheet", "", whole.lines, collapse, whole)).toBe(false);
+    expect(boxMatches(`[Image #1]also mobile looks off ${shot} menu should be a bottom sheet`, "", whole.lines, collapse, whole)).toBe(false);
+    // A folded literal paste counts every typed line break (lab: 42 lines with the path in them fold to +41); the images form one fewer.
+    const three = { images: 1, image, lines: ["see", "b"], literal: ["see", shot, "b"] };
+    expect(boxMatches("[Image #1][Pasted text #2 +1 lines]", "", three.lines, collapse, three)).toBe(true);
+    expect(boxMatches("[Pasted text #1 +2 lines]", "", three.lines, collapse, three)).toBe(true);
+    expect(boxMatches("[Pasted text #1 +1 lines]", "", three.lines, collapse, three)).toBe(false);
+    expect(boxMatches("[Pasted text #1 +3 lines]", "", three.lines, collapse, three)).toBe(false);
+    // Without images there is no second form.
+    const none = { images: 0, image, lines: ["see", "b"], literal: ["see", "b"] };
+    expect(boxMatches("[Pasted text #1 +1 lines]", "", none.lines, collapse, none)).toBe(true);
+    expect(boxMatches("[Pasted text #1 +2 lines]", "", none.lines, collapse, none)).toBe(false);
   });
 
   test("wholePaste: only a profile that measured it, only a long or multi-line text without a reserved lead, upload images taken off", () => {
@@ -3509,7 +3569,7 @@ describe("pure helpers", () => {
     expect(wholePaste(match, ["a", "b"], isShot)).toMatchObject({ images: 0, lines: ["a", "b"] });
     for (const lead of ["/", "!", "@"]) expect(wholePaste(match, [`${lead}x`, "b"], isShot)).toBeNull();
     expect(wholePaste(match, ["see", shot], isShot)).toMatchObject({ images: 1, lines: ["see"] });
-    expect(wholePaste(match, [`see ${shot}`, "b"], isShot)).toMatchObject({ images: 1, lines: ["see", "b"] });
+    expect(wholePaste(match, [`see ${shot}`, "b"], isShot)).toMatchObject({ images: 1, lines: ["see", "b"], literal: [`see ${shot}`, "b"] });
     expect(wholePaste(match, [`see ${shot} here`, "b"], isShot)).toMatchObject({ images: 0 });
     expect(wholePaste(match, ["see /srv/collie/uploads/w1_p1-mf3x9q-ffffffff.jpg", "b"], isShot)).toMatchObject({ images: 0 });
     // Any other image file on the disk stays text: only Collie's own upload shape is taken off.

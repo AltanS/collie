@@ -1246,6 +1246,11 @@
    "version": "2.1.304",
    "state": "dialog"
   },
+  "claude--v2312-draft-upload-path--w100.txt": {
+   "harness": "claude",
+   "version": "2.1.312",
+   "state": "draft"
+  },
   "claude--v2304-select-preview-cjk-moved.txt": {
    "harness": "claude",
    "version": "2.1.304",

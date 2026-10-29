@@ -45,6 +45,11 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The browser leg's nightly runner no longer asks for a Claude login when Claude replays (M67).** It checks the login only when the Claude version on the machine has no recording for both legs on Haiku and the current walky talky skill text, because a replay starts Claude on a dummy login.
 - **The herdr-core check of `collie update` and the config folder takes the host as an input (M74).** Windows still never drives herdr-core. The Windows test run now asserts that with a Windows host and no longer depends on the platform it runs on.
 
+### Fixed
+
+- **A screenshot sent with no words is sent to the agent again.** The phone saves the picture under the state folder and sends its path as the message. The path starts with `/`, so the Send Protocol read it as a slash command and refused it as `reserved_lead`. A message whose first word is the path of a saved upload is now a plain message, with or without text after it. `/compact`, `/model opus`, `/usr` and every other command shape are still reserved.
+- **A message with a screenshot in it is sent to Claude Code 2.1.312 again.** Claude Code 2.1.312 attaches an upload path only when the path is the whole paste; a path inside a longer message stays text. Collie expected the `[Image #N]` token, read the box as not holding the typed text, and left the message typed and never submitted (the field case of 2026-10-29: a two-paragraph message whose first paragraph ended with the screenshot path). The compare now takes both forms, the path attached or the path as text, and both are still the exact typed text.
+
 ### Docs
 
 - **The docs now cover the Herdr core, `herdr-core`.** The terminals page has a section on what works and what the core cannot do, the install page has the herdr-app path with no Herdr plugin, troubleshooting explains a red `hc-socket` row, and `MUX_CONTRACT.md` has a herdr-core column that points at `HC_API.md`. (M74)
