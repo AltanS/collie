@@ -162,13 +162,35 @@ export const VOLATILE: readonly { readonly name: string; readonly re: RegExp }[]
  */
 const CLAUDE_BILLING = /cc_version=[^;\s"\\]*/gu;
 
+/** The address and pane classes after a JSON line or tab escape (volatileValues). */
+const ESCAPED = new Map([
+  ["address", /(?<=\\[nt])(?:local|rig-lead|rig-member)\/[A-Za-z0-9_.:%@+=-]+#[a-z0-9]{4}\b/gu],
+  ["pane", /(?<=\\[nt])(?:local|rig-lead|rig-member)\/(?!all\b)[A-Za-z0-9_.:%@+=-]+/gu],
+]);
+
 /** A literal the stub knows, and its placeholder: the rig's state root (`{{lab}}`), the home (`{{home}}`). */
 export type Literal = readonly [value: string, placeholder: string];
+
+/**
+ * The walky cases' own marks: a case writes `id.slice(3, 9)` of its message id into the body
+ * (`Walky dialog check k5bosk: ...`, walky.spec.ts) to find the message on the screen. A mark is as
+ * volatile as its id, so each walky id in a text makes its mark a volatile value of the class `mark`.
+ */
+function marksOf(text: string): string[] {
+  const walky = VOLATILE.find((v) => v.name === "walky")?.re;
+  if (walky === undefined) return [];
+  return [...new Set([...text.matchAll(walky)].map((m) => m[0].slice(3, 9)))];
+}
+
+/** Each mark as a standalone word: never inside a longer word or an id. */
+const markRe = (mark: string): RegExp => new RegExp(`(?<![A-Za-z0-9_])${mark}(?![A-Za-z0-9])`, "gu");
 
 /** Replace every literal (longest first), then every volatile value by its class marker. */
 export function normalizeText(text: string, literals: readonly Literal[] = []): string {
   let out = replaceLiterals(text, literals);
+  const marks = marksOf(out);
   for (const { name, re } of VOLATILE) out = out.replace(re, `<${name}>`);
+  for (const mark of marks) out = out.replace(markRe(mark), "<mark>");
   return out;
 }
 
@@ -191,14 +213,26 @@ export type VolatileValues = Map<string, string[]>;
 export function volatileValues(text: string): VolatileValues {
   const out: VolatileValues = new Map();
   let masked = text;
-  for (const { name, re } of VOLATILE) {
+  const marks = marksOf(text);
+  const take = (name: string, res: readonly RegExp[]) => {
     const last = new Map<string, number>();
-    for (const match of masked.matchAll(re)) last.set(match[0], match.index);
+    for (const re of res) for (const match of masked.matchAll(re)) last.set(match[0], Math.max(last.get(match[0]) ?? -1, match.index));
     out.set(
       name,
       [...last.entries()].toSorted((a, b) => b[1] - a[1]).map(([value]) => value),
     );
-    masked = masked.replace(re, (value) => "\u0000".repeat(value.length));
+    for (const re of res) masked = masked.replace(re, (value) => "\u0000".repeat(value.length));
+  };
+  for (const { name, re } of VOLATILE) {
+    take(name, [re]);
+    // A mark is read right after the ids it comes from are masked (marksOf).
+    if (name === "walky") take("mark", marks.map(markRe));
+    // An address or pane that starts a line of a tool's output (`collie walky who`) follows a JSON
+    // `\n` or `\t` escape in the raw body, which the class's own look-behind reads as a word. It
+    // gets a class of its own, `lineaddress` or `linepane`, so the ranks of `address` and `pane` stay
+    // what every recording before it was written with.
+    const escaped = ESCAPED.get(name);
+    if (escaped !== undefined) take(`line${name}`, [escaped]);
   }
   return out;
 }

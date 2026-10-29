@@ -126,6 +126,31 @@ describe("normalizeText", () => {
     );
   });
 
+  it("masks a walky case's mark (the id's characters 3 to 9) as volatile as its id, in the prompt and in an answer", () => {
+    const a = `[walky-talky wt_k5bosk123456 from operator] Walky dialog check k5bosk: answer with only the word ZEBRA-NINE.`;
+    const b = `[walky-talky wt_1r5257abcdef from operator] Walky dialog check 1r5257: answer with only the word ZEBRA-NINE.`;
+    expect(normalizeText(a)).toBe("[walky-talky <walky> from operator] Walky dialog check <mark>: answer with only the word ZEBRA-NINE.");
+    expect(normalizeText(b)).toBe(normalizeText(a));
+    expect(volatileValues(a).get("mark")).toEqual(["k5bosk"]);
+    const stored = rewriteResponse(sse(delta("saw k5bosk")), placeholdersFor(volatileValues(a), []));
+    expect(stored.events?.[0]?.data).toContain("{{mark:0}}");
+    expect(rewriteResponse(stored, valuesFor(volatileValues(b), [])).events?.[0]?.data).toContain("saw 1r5257");
+    // Not a mark: the same six characters inside a longer word.
+    expect(normalizeText("[walky-talky wt_k5bosk123456] xk5bosk")).toBe("[walky-talky <walky>] xk5bosk");
+  });
+
+  it("reads an address that starts a line of `collie walky who` in a raw body, where a JSON `\\n` comes before it", () => {
+    const who = (member: string) =>
+      JSON.stringify({ content: `ADDRESS                 MACHINE     HARNESS\nlocal/w1:p1#aaaa        rig-lead    claude  (you)\n${member}  rig-member  pi` });
+    const a = who("rig-member/w2:p1#jva8");
+    const b = who("rig-member/w2:p1#q7xd");
+    expect(volatileValues(a).get("address")).toEqual([]);
+    expect(volatileValues(a).get("lineaddress")).toEqual(["rig-member/w2:p1#jva8", "local/w1:p1#aaaa"]);
+    const stored = rewriteResponse(sse(delta("collie walky send 'rig-member/w2:p1#jva8' hi")), placeholdersFor(volatileValues(a), []));
+    expect(stored.events?.[0]?.data).toContain("{{lineaddress:0}}");
+    expect(rewriteResponse(stored, valuesFor(volatileValues(b), [])).events?.[0]?.data).toContain("'rig-member/w2:p1#q7xd'");
+  });
+
   it("leaves a path with `local` in it alone: /usr/local/bin is not a pane", () => {
     expect(normalizeText("PATH=/usr/local/bin:/opt/local/x")).toBe("PATH=/usr/local/bin:/opt/local/x");
   });
