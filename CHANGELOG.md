@@ -32,6 +32,12 @@ Running a crew? Update the lead first; members follow on their own. Details:
   with none through. A red row makes `collie doctor` exit 1 but leaves `collie update --check` amber,
   because an update is often the fix. The `surface-*` rows no longer warn on refusals after ten
   sends, which never caught a program with no send through at all (#594).
+- **collie doctor lists the held sends and counts the stale screens.** A `holds-<harness>` row lists
+  each send still held for a program, oldest first, with its age in minutes, the reason the phone
+  shows and its request id, and never the held text. It warns when a hold has waited more than 10
+  minutes. A `screen-<harness>` row counts the sends that met a stale screen and the other probe
+  failures over the same window as the `sends-*` row, and warns when 3 or more in a row ended that
+  way. Both read files only and keep the `collie doctor` write-nothing rule.
 
 ## [1.25.0] - 2026-10-29
 

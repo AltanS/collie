@@ -1,9 +1,10 @@
 import { join } from "node:path";
+import { parseHeldEntry, type HeldEntry } from "../bridge/surface/holds.ts";
 import { parseSendRecord, type SendRecord } from "../bridge/surface/requests.ts";
 import { parseJson } from "../web/src/lib/json.ts";
 import { troubleStep } from "../web/src/lib/report/trouble.ts";
 import { loadProfiles } from "../web/src/lib/surface/profile.ts";
-import { REQUEST_ID, SEND_OUTCOMES, type SendOutcome, type SendReceipt } from "../web/src/lib/surface/send.ts";
+import { REQUEST_ID, SEND_OUTCOMES, STALE_SCREEN, type HeldCause, type HeldState, type SendOutcome, type SendReceipt } from "../web/src/lib/surface/send.ts";
 import type { CliContext } from "./context.ts";
 import { bad, ok, warn, type Finding } from "./finding.ts";
 import type { Files } from "./sys.ts";
@@ -21,6 +22,11 @@ import type { Files } from "./sys.ts";
 //
 // "Points at Collie" is ADR 0123's table, reached through `troubleStep` (web/src/lib/report/trouble.ts),
 // the same rule that offers Report a problem on the phone. This module keeps no list of reasons.
+//
+// Spec 02 adds two row kinds over the same window and the same read-only seam: `holds-<harness>` (the
+// held sends still open, read from `<stateDir>/held/*.json`) and `screen-<harness>` (how often a send met
+// a screen it could not type into). The held files hold the person's TEXT in plain form, because the
+// bridge must type it later. Nothing here prints it, its length or any part of it.
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -93,13 +99,13 @@ function lost(record: Receipted): boolean {
   return LOST.has(outcome) && troubleStep({ outcome, reason: reason ?? null, cap: cap !== undefined }) === "count";
 }
 
-/** `12 sent · 3 unknown (no_evidence 2, crash 1)`: most frequent first, ties in `SEND_OUTCOMES` order. */
 /** A row's outcome counts, and the words the detail prints for them. */
 interface Counted {
   readonly counts: Partial<Record<SendOutcome, number>>;
   readonly words: readonly string[];
 }
 
+/** The words of a row's counts, for example `12 sent · 3 unknown (no_evidence 2, crash 1)`: most frequent first, ties in `SEND_OUTCOMES` order. */
 function countWords(records: readonly Receipted[]): Counted {
   const counts: Partial<Record<SendOutcome, number>> = {};
   const reasons = new Map<SendOutcome, Map<string, number>>();
@@ -142,11 +148,15 @@ function row(harness: string, records: readonly Receipted[], capped: boolean): S
   return { ...ok(check, detail), ...base };
 }
 
-/**
- * The sends table: one row per harness with a profile, in the order of the profile files, then one per
- * other harness a receipt names, by name. A harness with no receipt in its window is one `ok` row.
- */
-export function sendFindings(deps: SendsDeps): SendsFinding[] {
+/** Receipts of one harness, newest first, and whether the window was cut at {@link SENDS_WINDOW_COUNT}. */
+interface Window {
+  readonly harness: string;
+  readonly records: readonly Receipted[];
+  readonly capped: boolean;
+}
+
+/** Every harness's window: one per harness with a profile, in the order of the profile files, then one per other harness a receipt names, by name. */
+function windowsOf(deps: SendsDeps): Window[] {
   const since = deps.now() - SENDS_WINDOW_MS;
   const recent = readSendRecords(deps)
     .filter(hasReceipt)
@@ -158,10 +168,171 @@ export function sendFindings(deps: SendsDeps): SendsFinding[] {
     if (group === undefined) byHarness.set(harnessOf(record), [record]);
     else group.push(record);
   }
-  const profiled = [...loadProfiles().keys()];
-  const others = [...byHarness.keys()].filter((harness) => !profiled.includes(harness)).toSorted();
-  return [...profiled, ...others].map((harness) => {
+  return harnessOrder(byHarness.keys()).map((harness) => {
     const all = byHarness.get(harness) ?? [];
-    return row(harness, all.slice(0, SENDS_WINDOW_COUNT), all.length > SENDS_WINDOW_COUNT);
+    return { harness, records: all.slice(0, SENDS_WINDOW_COUNT), capped: all.length > SENDS_WINDOW_COUNT };
   });
+}
+
+/** The harnesses with a profile in the order of the profile files, then the others the data names, by name. */
+function harnessOrder(named: Iterable<string>): string[] {
+  const profiled = [...loadProfiles().keys()];
+  const others = [...new Set(named)].filter((harness) => !profiled.includes(harness)).toSorted();
+  return [...profiled, ...others];
+}
+
+/**
+ * The sends table: one row per harness with a profile, in the order of the profile files, then one per
+ * other harness a receipt names, by name. A harness with no receipt in its window is one `ok` row.
+ */
+export function sendFindings(deps: SendsDeps): SendsFinding[] {
+  return windowsOf(deps).map(({ harness, records, capped }) => row(harness, records, capped));
+}
+
+// ── Holds and screen rows (M71 spec 02) ──────────────────────────────────────
+
+/** Age at which an open hold warns: past this the person has had time to look at it. */
+export const HOLD_WARN_MS = 10 * 60 * 1000;
+/** `probe_failed` receipts in a row, with no other receipt of the harness between, at which a screen row warns. */
+export const PROBE_RUN_WARN = 3;
+
+/**
+ * The phone's words for what holds a send (`heldKey` in web/src/components/composer-held.tsx). A new
+ * {@link HeldCause} fails `tsc` here until it has words.
+ */
+export const HELD_CAUSE_WORDS = {
+  turn_running: "a running turn",
+  not_free: "something open at the box",
+  bound: "something open at the box",
+  draft_present: "a draft in the box",
+  probe_failed: "something open at the box",
+} as const satisfies Record<HeldCause, string>;
+
+/** The words for a hold with this cause: no cause is a running turn, as on the phone. */
+export function heldCauseWords(cause: HeldCause | undefined, versionUnread: boolean): string {
+  const words = HELD_CAUSE_WORDS[cause ?? "turn_running"];
+  return versionUnread ? `${words}, version unread` : words;
+}
+
+/** One open hold as `--json` carries it. No text, no length. */
+export interface HoldJson {
+  readonly requestId: string;
+  readonly cause: HeldCause | null;
+  readonly ageMs: number;
+  readonly state: HeldState;
+}
+
+/** A finding for the held sends of one harness, or the one `ok` row when none is open. */
+export interface HoldsFinding extends Finding {
+  /** The harness as the entries name it. Absent on the one row that says no hold is open. */
+  readonly harness?: string;
+  /** The open holds, oldest first. */
+  readonly holds: readonly HoldJson[];
+}
+
+const HOLDS_REMEDY =
+  "open the pane on the phone, read the held row, and send or cancel it";
+const HOLDS_BOX_REMEDY =
+  "; if it keeps saying something is open at the box, tap Report a problem in the pane menu and paste `collie doctor --json` into the issue";
+
+/** Every held entry in `<stateDir>/held/` that is open (state `held` or `running`), unsorted. `.tmp` leftovers and files that do not parse are skipped. */
+export function readOpenHolds(deps: Pick<SendsDeps, "ctx" | "files">): HeldEntry[] {
+  const dir = join(deps.ctx.stateDir, "held");
+  const out: HeldEntry[] = [];
+  for (const name of deps.files.list(dir)) {
+    if (!name.endsWith(".json")) continue;
+    const stem = name.slice(0, -".json".length);
+    if (!REQUEST_ID.test(stem)) continue;
+    const text = deps.files.read(join(dir, name));
+    const entry = text === null ? null : parseHeldEntry(parseJson(text));
+    if (entry !== null && entry.id === stem && entry.state !== "ended") out.push(entry);
+  }
+  return out;
+}
+
+/** `held 14 min for a running turn (req-a1b2c3d4)`, `, command` after the cause words for a command. */
+function holdWords(entry: HeldEntry, ageMs: number): string {
+  const minutes = String(Math.max(0, Math.floor(ageMs / 60_000)));
+  const mode = entry.mode === "command" ? ", command" : "";
+  return `held ${minutes} min for ${heldCauseWords(entry.cause, entry.versionUnread === true)}${mode} (${entry.id})`;
+}
+
+const NO_HOLDS: HoldsFinding = { ...ok("holds", "no held sends open"), holds: [] };
+
+/**
+ * The holds table: one row per harness with at least one open hold, in the order of the profile files and
+ * then by name, each hold oldest first. No open hold at all is one `ok` row.
+ */
+export function holdFindings(deps: Pick<SendsDeps, "ctx" | "files" | "now">): HoldsFinding[] {
+  const now = deps.now();
+  const byHarness = new Map<string, HeldEntry[]>();
+  for (const entry of readOpenHolds(deps)) {
+    const harness = entry.harness === "" ? NO_HARNESS : entry.harness;
+    const group = byHarness.get(harness);
+    if (group === undefined) byHarness.set(harness, [entry]);
+    else group.push(entry);
+  }
+  if (byHarness.size === 0) return [NO_HOLDS];
+  return harnessOrder(byHarness.keys())
+    .filter((harness) => byHarness.has(harness))
+    .map((harness) => holdRow(harness, byHarness.get(harness)!, now));
+}
+
+/** One harness's holds row from its open holds. */
+function holdRow(harness: string, open: readonly HeldEntry[], now: number): HoldsFinding {
+  const entries = open.toSorted((a, b) => a.heldAt - b.heldAt || a.seq - b.seq);
+  const holds = entries.map((entry): HoldJson => ({ requestId: entry.id, cause: entry.cause ?? null, ageMs: Math.max(0, now - entry.heldAt), state: entry.state }));
+  const check = `holds-${harness}`;
+  const detail = entries.map((entry, n) => holdWords(entry, holds[n]!.ageMs)).join(" · ");
+  if (!holds.some((hold) => hold.ageMs > HOLD_WARN_MS)) return { ...ok(check, detail), harness, holds };
+  const atBox = entries.some((entry) => HELD_CAUSE_WORDS[entry.cause ?? "turn_running"] === HELD_CAUSE_WORDS.not_free);
+  return { ...warn(check, detail, HOLDS_REMEDY + (atBox ? HOLDS_BOX_REMEDY : "")), harness, holds };
+}
+
+/** A finding for how often sends to one harness met a screen it could not type into. */
+export interface ScreenFinding extends Finding {
+  readonly harness: string;
+}
+
+const SCREEN_REMEDY =
+  "focus the pane on the desktop or resize it so the screen redraws, then send again; if it keeps happening, tap Report a problem in the pane menu and paste `collie doctor --json` into the issue";
+
+const isProbeFailed = (record: Receipted): boolean => record.receipt.outcome === "refused" && record.receipt.reason === "probe_failed";
+const isStale = (record: Receipted): boolean => isProbeFailed(record) && (record.receipt.detail ?? "").startsWith(STALE_SCREEN);
+
+/** The longest run of `probe_failed` receipts with no other receipt between, by `acceptedAt`. */
+function longestProbeRun(records: readonly Receipted[]): number {
+  let longest = 0;
+  let run = 0;
+  for (const record of records.toSorted((a, b) => a.acceptedAt - b.acceptedAt)) {
+    run = isProbeFailed(record) ? run + 1 : 0;
+    longest = Math.max(longest, run);
+  }
+  return longest;
+}
+
+/** One screen row per harness with a receipt in its sends window (the same window as the `sends-*` rows). */
+export function screenFindings(deps: SendsDeps): ScreenFinding[] {
+  return windowsOf(deps).filter(({ records }) => records.length > 0).map(({ harness, records }) => screenRow(harness, records));
+}
+
+function screenRow(harness: string, records: readonly Receipted[]): ScreenFinding {
+  const check = `screen-${harness}`;
+  const stale = records.filter(isStale).length;
+  const other = records.filter(isProbeFailed).length - stale;
+  const run = longestProbeRun(records);
+  if (stale + other === 0) return { ...ok(check, "no stale screen, no probe failure"), harness };
+  const detail = `stale screen ${String(stale)} · probe failed ${String(other)} · longest run ${String(run)}`;
+  if (run < PROBE_RUN_WARN) return { ...ok(check, detail), harness };
+  return { ...warn(check, detail, `${String(run)} sends to ${harness} in a row met a screen Collie could not type into; ${SCREEN_REMEDY}`), harness };
+}
+
+/** The whole sends section in print order: `sends-*`, then `holds-*`, then `screen-*`. The receipts are read once. */
+export function sendsSection(deps: SendsDeps): Finding[] {
+  const windows = windowsOf(deps);
+  return [
+    ...windows.map(({ harness, records, capped }) => row(harness, records, capped)),
+    ...holdFindings(deps),
+    ...windows.filter(({ records }) => records.length > 0).map(({ harness, records }) => screenRow(harness, records)),
+  ];
 }

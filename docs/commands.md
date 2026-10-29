@@ -73,6 +73,16 @@ sends ended and none went through, or when 5 or more ended and at least 30 perce
 problem on the phone. It turns red when 10 or more ended and none went through. A red row makes
 `collie doctor` exit 1, but it does not hold back an update, because an update is often the fix.
 
+Two more kinds of row follow the `sends-*` rows. A `holds-<harness>` row lists the sends still held
+for that program, oldest first, each with how long it has waited, the reason the phone shows
+(`a running turn`, `something open at the box`, `a draft in the box`) and its request id. It never
+prints the held text. It warns when a hold has waited more than 10 minutes, and says to open the pane
+on the phone and send or cancel it. With no hold open, one `holds` row says so. A `screen-<harness>`
+row counts, over the same window as the sends row, the sends that met a screen Collie could not type
+into (a stale screen) and the other probe failures. It warns when 3 or more in a row ended that way
+with no other send between them. In `--json` both carry `harness`, and a holds row also carries a
+`holds` array of `requestId`, `cause`, `ageMs` and `state`.
+
 
 ## Put `collie` on your PATH
 

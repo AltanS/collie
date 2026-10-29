@@ -110,8 +110,11 @@ function pick<const T extends string>(value: JsonValue | undefined, allowed: rea
   return allowed.find((word) => word === value);
 }
 
-/** An entry read back from its file, every field checked; null when it is not one this module wrote. */
-function parseEntry(raw: JsonValue | undefined): HeldEntry | null {
+/**
+ * An entry read back from its file, every field checked; null when it is not one this module wrote.
+ * Pure: the store reads its files with it, and `collie doctor` reads them through its own seam (M71 spec 02).
+ */
+export function parseHeldEntry(raw: JsonValue | undefined): HeldEntry | null {
   const node = asJsonObject(raw);
   if (node === undefined) return null;
   const id = asJsonString(node.id);
@@ -176,8 +179,8 @@ export class HoldStore {
       if (!REQUEST_ID.test(stem)) continue;
       let entry: HeldEntry | null = null;
       try {
-        // SAFETY: `JSON.parse` output IS a JsonValue; `parseEntry` checks every field.
-        entry = parseEntry(JSON.parse(readFileSync(join(dir, name), "utf8")) as JsonValue);
+        // SAFETY: `JSON.parse` output IS a JsonValue; `parseHeldEntry` checks every field.
+        entry = parseHeldEntry(JSON.parse(readFileSync(join(dir, name), "utf8")) as JsonValue);
       } catch {
         entry = null;
       }

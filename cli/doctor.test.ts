@@ -441,6 +441,7 @@ describe("collie doctor — the contract", () => {
       "cache-rules",
       "cache-env",
       ...SENDS_CHECKS,
+      "holds",
       "restart-pending",
       "clock",
     ]);
@@ -520,10 +521,11 @@ describe("collie doctor — the contract", () => {
       // Four keys on every finding, plus `scope` on a crew one and ONLY on a crew one (ADR 0050).
       // Absent is the local answer, so a script written before the field keeps reading correctly.
       // The `collie` finding adds `instance` and `stateDir`, and a harness row `harness`, `binary`,
-      // `version` and `profileStatus` (1.24.1), and a sends row `harness`, `window` and `counts` (M71
-      // spec 01); no other finding carries a fifth key.
+      // `version` and `profileStatus` (1.24.1), a sends row `harness`, `window` and `counts` (M71
+      // spec 01), a holds row `harness` and `holds` (the one that says none is open carries `holds`
+      // alone) and a screen row `harness` (spec 02); no other finding carries a fifth key.
       const keys = Object.keys(f).toSorted();
-      const extra = f.check === "collie" ? ["instance", "stateDir"] : f.check.startsWith("sends-") ? ["counts", "harness", "window"] : [];
+      const extra = f.check === "collie" ? ["instance", "stateDir"] : f.check.startsWith("sends-") ? ["counts", "harness", "window"] : f.check.startsWith("holds") ? ["harness", "holds"] : f.check.startsWith("screen-") ? ["harness"] : [];
       expect(keys.filter((k) => k !== "scope" && !extra.includes(k))).toEqual(["check", "detail", "remedy", "status"]);
       if (keys.includes("scope")) expect(f.scope).toBe("crew");
       expect(["ok", "warn", "error", "skipped"]).toContain(f.status);
@@ -1798,6 +1800,7 @@ describe("the finding set is scoped by the chosen multiplexer", () => {
       "cache-rules",
       "cache-env",
       ...SENDS_CHECKS,
+      "holds",
       "restart-pending",
       "clock",
     ]);
@@ -2655,7 +2658,8 @@ describe("POSIX parity (M43 spec 04)", () => {
   });
 
   // The golden was written by this same block run before spec 04, then gained the integration-omp row from main and
-  // the eleven `sends-*` rows of M71 spec 01, one per profile with no receipts (the
+  // the eleven `sends-*` rows of M71 spec 01, one per profile with no receipts, and the one `holds` row of
+  // spec 02 (no screen row: a harness with no receipt has none) (the
   // healthy solo fixture, then a config.toml secret the mode rule could not tighten). The
   // `secrets-private` line is Windows-only: on a POSIX host it does not exist at all.
   test("the plain doctor output on a POSIX host is byte-identical to the one before spec 04", async () => {

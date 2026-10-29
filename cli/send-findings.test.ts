@@ -2,12 +2,19 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { HOLD_COMMAND_MS, HOLD_MS, HoldStore, parseHeldEntry, type HeldEntry } from "../bridge/surface/holds.ts";
 import { RequestStore, type RequestPhase } from "../bridge/surface/requests.ts";
 import { troubleStep } from "../web/src/lib/report/trouble.ts";
 import { loadProfiles } from "../web/src/lib/surface/profile.ts";
-import type { SendOutcome, SendReason, SendReceipt } from "../web/src/lib/surface/send.ts";
+import { HELD_CAUSES, STALE_SCREEN, type HeldCause, type HeldState, type SendMode, type SendOutcome, type SendReason, type SendReceipt } from "../web/src/lib/surface/send.ts";
 import {
+  HELD_CAUSE_WORDS,
+  HOLD_WARN_MS,
+  holdFindings,
+  PROBE_RUN_WARN,
+  screenFindings,
   sendFindings,
+  sendsSection,
   SENDS_ERROR_MIN,
   SENDS_LOST_WARN_MIN,
   SENDS_LOST_WARN_RATE,
@@ -30,6 +37,8 @@ interface Send {
   /** Minutes before NOW. */
   readonly ago?: number;
   readonly phase?: RequestPhase;
+  /** The receipt's detail line. */
+  readonly detail?: string;
 }
 
 function receiptOf(id: string, send: Send): SendReceipt {
@@ -51,7 +60,8 @@ function receiptOf(id: string, send: Send): SendReceipt {
     keys: [],
     outcome: send.outcome,
   };
-  return send.reason === undefined ? receipt : { ...receipt, reason: send.reason };
+  const withReason = send.reason === undefined ? receipt : { ...receipt, reason: send.reason };
+  return send.detail === undefined ? withReason : { ...withReason, detail: send.detail };
 }
 
 /** One request file as the store writes it, settled unless the send says otherwise. */
@@ -216,5 +226,214 @@ describe("sends rows on disk", () => {
     expect(codex.status).toBe("warn");
     expect(codex.detail).toBe("3 refused (probe_failed 3) · last 7 days");
     expect(readdirSync(join(dir, "sends")).toSorted()).toEqual(before);
+  });
+});
+
+const SECRET_TEXT = "the-held-text-fixture-xyzzy";
+
+interface Hold {
+  readonly cause?: HeldCause;
+  readonly versionUnread?: true;
+  readonly state?: HeldState;
+  readonly mode?: SendMode;
+  readonly harness?: string;
+  /** Minutes before NOW. */
+  readonly ago?: number;
+}
+
+/** One held file as `HoldStore` writes it, carrying the person's text in plain form. */
+function heldFile(id: string, hold: Hold): string {
+  const heldAt = NOW - (hold.ago ?? 1) * MINUTE;
+  const entry: HeldEntry = {
+    id, session: "main", paneId: "%1", harness: hold.harness ?? "codex", mode: hold.mode ?? "send", text: SECRET_TEXT, revision: 1,
+    heldAt, expiresAt: heldAt + HOLD_MS, seq: 1, state: hold.state ?? "held", tries: 0,
+  };
+  let full = entry;
+  if (hold.cause !== undefined) full = { ...full, cause: hold.cause };
+  if (hold.versionUnread === true) full = { ...full, versionUnread: true };
+  return JSON.stringify(full);
+}
+
+const HELD = join(STATE, "held");
+const heldId = (n: number): string => `req-h${String(n).padStart(3, "0")}-abcdef`;
+
+function heldFiles(holds: readonly Hold[]): Record<string, string> {
+  return Object.fromEntries(holds.map((hold, n) => [join(HELD, `${heldId(n)}.json`), heldFile(heldId(n), hold)]));
+}
+
+const holdRows = (entries: Record<string, string>) => holdFindings({ ctx: { stateDir: STATE }, files: fakeFiles(entries), now: () => NOW });
+const screenRows = (entries: Record<string, string>) => new Map(screenFindings({ ctx: { stateDir: STATE }, files: fakeFiles(entries), now: () => NOW }).map((f) => [f.harness, f]));
+
+describe("holds rows (M71 spec 02)", () => {
+  test("the cause words are the phone's, for all five causes and for none", () => {
+    expect(Object.keys(HELD_CAUSE_WORDS)).toEqual([...HELD_CAUSES]);
+    const causes: (HeldCause | undefined)[] = [...HELD_CAUSES, undefined];
+    const [row] = holdRows(heldFiles(causes.map((cause, n): Hold => (cause === undefined ? { ago: 6 - n } : { cause, ago: 6 - n }))));
+    expect(row!.detail).toBe(
+      [
+        "held 6 min for a running turn (req-h000-abcdef)",
+        "held 5 min for something open at the box (req-h001-abcdef)",
+        "held 4 min for something open at the box (req-h002-abcdef)",
+        "held 3 min for a draft in the box (req-h003-abcdef)",
+        "held 2 min for something open at the box (req-h004-abcdef)",
+        "held 1 min for a running turn (req-h005-abcdef)",
+      ].join(" · "),
+    );
+    expect(row!.holds.map((hold) => hold.cause)).toEqual([...HELD_CAUSES, null]);
+  });
+
+  test("a version that could not be read, and a command, say so; oldest first", () => {
+    const [row] = holdRows(heldFiles([{ ago: 2, mode: "command", cause: "draft_present" }, { ago: 9, versionUnread: true }]));
+    expect(row!.check).toBe("holds-codex");
+    expect(row!.harness).toBe("codex");
+    expect(row!.status).toBe("ok");
+    expect(row!.detail).toBe("held 9 min for a running turn, version unread (req-h001-abcdef) · held 2 min for a draft in the box, command (req-h000-abcdef)");
+    expect(row!.holds).toEqual([
+      { requestId: "req-h001-abcdef", cause: null, ageMs: 9 * MINUTE, state: "held" },
+      { requestId: "req-h000-abcdef", cause: "draft_present", ageMs: 2 * MINUTE, state: "held" },
+    ]);
+  });
+
+  test("an open hold warns past 10 minutes, not at 10, and the box cause names Report a problem", () => {
+    expect(HOLD_WARN_MS).toBe(10 * MINUTE);
+    expect(HOLD_WARN_MS).toBe(HOLD_COMMAND_MS);
+    expect(holdRows(heldFiles([{ ago: 10, cause: "not_free" }]))[0]!.status).toBe("ok");
+    const turn = holdRows(heldFiles([{ ago: 11 }]))[0]!;
+    expect(turn.status).toBe("warn");
+    expect(turn.remedy).toBe("open the pane on the phone, read the held row, and send or cancel it");
+    const box = holdRows(heldFiles([{ ago: 11, cause: "bound" }, { ago: 1 }]))[0]!;
+    expect(box.status).toBe("warn");
+    expect(box.remedy).toStartWith("open the pane on the phone, read the held row, and send or cancel it; ");
+    expect(box.remedy).toContain("Report a problem");
+    const draft = holdRows(heldFiles([{ ago: 30, cause: "draft_present" }]))[0]!;
+    expect(draft.remedy).not.toContain("Report a problem");
+  });
+
+  test("ended entries are left out; running ones are listed", () => {
+    const open = holdRows(heldFiles([{ state: "ended" }, { state: "running", ago: 3 }]));
+    expect(open).toHaveLength(1);
+    expect(open[0]!.holds).toEqual([{ requestId: "req-h001-abcdef", cause: null, ageMs: 3 * MINUTE, state: "running" }]);
+    const none = holdRows(heldFiles([{ state: "ended" }]));
+    expect(none).toEqual([{ check: "holds", status: "ok", detail: "no held sends open", remedy: null, holds: [] }]);
+    expect(holdRows({})).toEqual(none);
+  });
+
+  test("the held text never reaches a detail, a remedy or the json", () => {
+    const all = holdRows({ ...heldFiles([{ ago: 20, cause: "not_free" }, { ago: 3, mode: "command" }, { ago: 5, harness: "claude", versionUnread: true }]) });
+    expect(all.map((f) => f.check)).toEqual(["holds-claude", "holds-codex"]);
+    const dump = JSON.stringify(all);
+    expect(dump).not.toContain(SECRET_TEXT);
+    expect(dump).not.toContain("xyzzy");
+    expect(dump).not.toContain(String(SECRET_TEXT.length));
+    expect(dump).not.toContain("textLength");
+  });
+
+  test(".tmp leftovers, files that do not parse and a name that is not the id are skipped", () => {
+    const entries = {
+      ...heldFiles([{ ago: 2 }]),
+      [join(HELD, `${heldId(5)}.json.tmp`)]: heldFile(heldId(5), {}),
+      [join(HELD, `${heldId(6)}.json`)]: "{ torn",
+      [join(HELD, `${heldId(7)}.json`)]: JSON.stringify({ id: heldId(7) }),
+      [join(HELD, `${heldId(8)}.json`)]: heldFile(heldId(9), {}),
+      [join(HELD, "notes.txt")]: "x",
+    };
+    expect(holdRows(entries)[0]!.holds.map((hold) => hold.requestId)).toEqual([heldId(0)]);
+  });
+
+  test("the pure parser reads what the store writes", () => {
+    expect(parseHeldEntry(JSON.parse(heldFile(heldId(0), { cause: "bound" })))?.cause).toBe("bound");
+    expect(parseHeldEntry(undefined)).toBeNull();
+  });
+
+  test("reads a real HoldStore folder and leaves it as it was", () => {
+    const dir = mkdtempSync(join(tmpdir(), "collie-holds-findings-"));
+    try {
+      const store = new HoldStore(join(dir, "held"), () => NOW - 12 * MINUTE);
+      store.add({ id: heldId(0), session: "main", paneId: "%1", harness: "codex", mode: "send", text: SECRET_TEXT, revision: 1, command: false, cause: "turn_running" });
+      const before = readdirSync(join(dir, "held")).toSorted();
+      const found = holdFindings({ ctx: { stateDir: dir }, files: realFiles, now: () => NOW });
+      expect(found[0]!.status).toBe("warn");
+      expect(found[0]!.detail).toBe(`held 12 min for a running turn (${heldId(0)})`);
+      expect(JSON.stringify(found)).not.toContain(SECRET_TEXT);
+      expect(readdirSync(join(dir, "held")).toSorted()).toEqual(before);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a missing held folder is no holds and writes nothing", () => {
+    const dir = mkdtempSync(join(tmpdir(), "collie-holds-findings-"));
+    try {
+      expect(holdFindings({ ctx: { stateDir: dir }, files: realFiles, now: () => NOW }).map((f) => f.detail)).toEqual(["no held sends open"]);
+      expect(readdirSync(dir)).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("screen rows (M71 spec 02)", () => {
+  const stale: Send = { outcome: "refused", reason: "probe_failed", detail: `${STALE_SCREEN} A probe character may remain.` };
+  const plain: Send = { outcome: "refused", reason: "probe_failed", detail: "The pane may still be starting." };
+
+  test("a stale screen is told apart from a plain probe_failed, and counts come out in the detail", () => {
+    const codex = screenRows(filesOf([stale, plain, { outcome: "sent" }, stale, { outcome: "sent" }])).get("codex")!;
+    expect(codex.check).toBe("screen-codex");
+    expect(codex.status).toBe("ok");
+    expect(codex.detail).toBe("stale screen 2 · probe failed 1 · longest run 2");
+    expect(codex.remedy).toBeNull();
+  });
+
+  test("a refusal with another reason that starts alike, or no detail, is not a stale screen", () => {
+    const codex = screenRows(filesOf([{ outcome: "refused", reason: "not_free", detail: STALE_SCREEN }, { outcome: "refused", reason: "probe_failed" }, { outcome: "sent" }])).get("codex")!;
+    expect(codex.detail).toBe("stale screen 0 · probe failed 1 · longest run 1");
+  });
+
+  test("none of either says so; a harness with no receipts has no screen row", () => {
+    const all = screenRows(filesOf([{ outcome: "sent" }, { outcome: "sent", harness: "claude" }]));
+    expect([...all.keys()]).toEqual(["claude", "codex"]);
+    expect(all.get("codex")!.detail).toBe("no stale screen, no probe failure");
+    expect(all.get("codex")!.status).toBe("ok");
+    expect(screenRows({}).size).toBe(0);
+  });
+
+  test("a run of 3 in a row, newest or not, warns and names the longest run", () => {
+    expect(PROBE_RUN_WARN).toBe(3);
+    // Oldest first by `ago`: sent, three stale, sent.
+    const sends: Send[] = [{ outcome: "sent", ago: 50 }, { ...stale, ago: 40 }, { ...plain, ago: 30 }, { ...stale, ago: 20 }, { outcome: "sent", ago: 10 }];
+    const codex = screenRows(filesOf(sends)).get("codex")!;
+    expect(codex.status).toBe("warn");
+    expect(codex.detail).toBe("stale screen 2 · probe failed 1 · longest run 3");
+    expect(codex.remedy).toContain("focus the pane on the desktop or resize it");
+    expect(codex.remedy).toContain("Report a problem");
+    expect(codex.remedy).toStartWith("3 sends to codex in a row ");
+  });
+
+  test("a run broken by a sent does not warn, and the order is by acceptedAt, not by file", () => {
+    const broken: Send[] = [{ ...stale, ago: 50 }, { ...stale, ago: 40 }, { outcome: "sent", ago: 30 }, { ...stale, ago: 20 }, { ...stale, ago: 10 }];
+    const codex = screenRows(filesOf(broken)).get("codex")!;
+    expect(codex.status).toBe("ok");
+    expect(codex.detail).toBe("stale screen 4 · probe failed 0 · longest run 2");
+    // The same sends, listed in reverse file order, give the same answer.
+    expect(screenRows(filesOf(broken.toReversed())).get("codex")!.detail).toBe(codex.detail);
+    // A held receipt between them breaks a run too; another harness's receipt does not.
+    const held = screenRows(filesOf([{ ...stale, ago: 50 }, { outcome: "held", ago: 40 }, { ...stale, ago: 30 }, { ...stale, ago: 20 }])).get("codex")!;
+    expect(held.status).toBe("ok");
+    const other = screenRows(filesOf([{ ...stale, ago: 50 }, { outcome: "sent", harness: "claude", ago: 40 }, { ...stale, ago: 30 }, { ...stale, ago: 20 }])).get("codex")!;
+    expect(other.status).toBe("warn");
+  });
+
+  test("the window is spec 01's: a stale refusal older than 7 days is not counted", () => {
+    const codex = screenRows(filesOf([{ ...stale, ago: 7 * 24 * 60 + 1 }, { outcome: "sent" }])).get("codex")!;
+    expect(codex.detail).toBe("no stale screen, no probe failure");
+  });
+});
+
+describe("the sends section (M71 spec 02)", () => {
+  test("prints sends rows, then holds rows, then screen rows", () => {
+    const entries = { ...filesOf([{ outcome: "sent" }]), ...heldFiles([{}]) };
+    const checks = sendsSection({ ctx: { stateDir: STATE }, files: fakeFiles(entries), now: () => NOW }).map((f) => f.check);
+    const sends = [...loadProfiles().keys()].map((id) => `sends-${id}`);
+    expect(checks).toEqual([...sends, "holds-codex", "screen-codex"]);
   });
 });
