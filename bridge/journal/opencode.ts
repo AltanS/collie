@@ -106,7 +106,7 @@ import {
 import { clamp, MAX_RESULT_CHARS, MAX_TEXT_CHARS, oneLine, stripAnsi, summarizeToolInput } from "./text.ts";
 import { parseUnifiedDiff } from "./diff.ts";
 // The shared guard on what an image block may become — see the note at claude.ts's own import.
-import { resolveImageUrl } from "./pi.ts";
+import { resolveImage } from "./pi.ts";
 import { classifyToolCall, type Hunk, type ToolCall } from "./tool-call.ts";
 import type {
   AgentSessionRef,
@@ -808,10 +808,12 @@ export function opencodePart(data: JsonValue | undefined): TranscriptPart | null
     // exists in the store, and `TranscriptPart` has no attachment kind to put one in, so a rendering
     // for it would be invented rather than read.
     const mime = typeof d.mime === "string" ? d.mime : undefined;
-    const url = typeof d.url === "string" ? resolveImageUrl(d.url, mime) : null;
-    if (url === null) return null;
+    const image = typeof d.url === "string" ? resolveImage(d.url, mime) : null;
+    if (image === null) return null;
+    // A picture over the cap becomes a text line, so the person sees it was left out.
+    if ("note" in image) return { kind: "text", text: image.note };
     // Assigned, never conditionally spread: an unnamed mime type leaves the key OFF.
-    const part: Extract<TranscriptPart, { kind: "image" }> = { kind: "image", url };
+    const part: Extract<TranscriptPart, { kind: "image" }> = { kind: "image", url: image.url };
     if (mime !== undefined) part.mimeType = mime;
     return part;
   }

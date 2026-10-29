@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { badgeTotal, parseBadgeSlots, recordSlot, showBadge, slotCount, withSlot, type BadgeCaches } from "./app-badge";
+import { badgeTotal, parseBadgeSlots, recordSlot, showBadge, slotCount, withSlot, type BadgeCaches, type BadgePush } from "./app-badge";
+
+/** A push body as the worker gets it: parsed JSON of whatever shape the sender wrote. */
+function wire(text: string): BadgePush {
+  return JSON.parse(text);
+}
 
 // The icon's count. The load-bearing rules: only a herd push moves it, a bridge that predates the
 // field never zeroes a slot, a retraction does, and the icon shows every slot added up.
@@ -26,6 +31,62 @@ describe("slotCount", () => {
   it("refuses a count that is not a whole, non-negative number", () => {
     expect(slotCount({ tag: "collie:herd", badge: -1 })).toBeUndefined();
     expect(slotCount({ tag: "collie:herd", badge: 1.5 })).toBeUndefined();
+  });
+
+  it("treats a badge that is not a number like a missing one, and never throws", () => {
+    // A push body is parsed JSON from the wire, so the field can be any type.
+    for (const badge of ['"2"', '""', "null", "true", "false", "{}", "[]", "[2]", '"NaN"']) {
+      expect(slotCount(wire(`{"tag":"collie:herd","badge":${badge}}`))).toBeUndefined();
+    }
+    for (const body of ["{}", "[]", '{"badge":2}', '{"type":"clear"}']) {
+      expect(() => slotCount(wire(body))).not.toThrow();
+      expect(slotCount(wire(body))).toBeUndefined();
+    }
+  });
+});
+
+describe("a herd push from an older bridge (no badge field, or a badge that is no number)", () => {
+  // What `handlePush` in sw.ts does: record a slot only when `slotCount` has a count to give.
+  function worker() {
+    const store = new Map<string, string>();
+    const caches: BadgeCaches = {
+      open: async () => ({
+        match: async (key: RequestInfo | URL) => {
+          const text = store.get(String(key));
+          return text === undefined ? undefined : new Response(text);
+        },
+        put: async (key: RequestInfo | URL, res: Response) => void store.set(String(key), await res.text()),
+      }),
+    };
+    const shown: number[] = [];
+    const target = { setAppBadge: async (n?: number) => void shown.push(n ?? 0), clearAppBadge: async () => void shown.push(0) };
+    return {
+      shown,
+      store,
+      async push(body: BadgePush) {
+        const count = slotCount(body);
+        if (count !== undefined && body.tag !== undefined) await showBadge(target, await recordSlot(caches, "https://h", "/", body.tag, count));
+      },
+    };
+  }
+
+  it("leaves the stored slot count as it was", async () => {
+    const w = worker();
+    await w.push({ tag: "collie:herd", badge: 2 });
+    const stored = [...w.store.values()];
+    for (const old of ['{"tag":"collie:herd","title":"Done"}', '{"tag":"collie:herd","badge":"3"}', '{"tag":"collie:herd","badge":null}', '{"tag":"collie:herd","badge":{"n":1}}']) {
+      await expect(w.push(wire(old))).resolves.toBeUndefined();
+    }
+    expect([...w.store.values()]).toEqual(stored);
+    expect(w.shown).toEqual([2]);
+  });
+
+  it("is still closed by a retraction", async () => {
+    const w = worker();
+    await w.push({ tag: "collie:herd", badge: 2 });
+    await w.push({ tag: "collie:herd" });
+    await w.push({ type: "clear", tag: "collie:herd" });
+    expect(w.shown).toEqual([2, 0]);
   });
 });
 

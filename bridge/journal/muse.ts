@@ -63,7 +63,7 @@ import {
 } from "./reduce.ts";
 import { RENAME_TITLE_MAX, shortLine } from "../mux/durable/clean.ts";
 import { containedRealpath, exists, head, loadTail, readSinceFile, rootList, statFile } from "./files.ts";
-import { isBlobHash, resolveImageUrl } from "./pi.ts";
+import { isBlobHash, resolveImage, type InlineImage } from "./pi.ts";
 import { clamp, MAX_RESULT_CHARS, MAX_TEXT_CHARS, oneLine, stripAnsi, summarizeToolInput } from "./text.ts";
 import { parseUnifiedDiff } from "./diff.ts";
 import { answerLabels, classifyToolCall, questionKey, type ToolCall } from "./tool-call.ts";
@@ -127,6 +127,19 @@ function str(value: JsonValue | undefined): string {
 
 /** A tool part's answered output — {@link clamp}'s pair, plus the flags the output earns. */
 type ToolResult = NonNullable<Extract<TranscriptPart, { kind: "tool" }>["result"]>;
+
+/**
+ * A tool's picture on its result: the URL, or, for a picture over the cap, a line of text after the
+ * result's own (journal/pi.ts § MAX_INLINE_IMAGE_CHARS). The line goes on once.
+ */
+function applyImage(result: ToolResult, image: InlineImage): void {
+  if ("url" in image) {
+    if (result.imageUrl === undefined) result.imageUrl = image.url;
+    return;
+  }
+  if (result.text.split("\n").includes(image.note)) return;
+  result.text = result.text === "" ? image.note : `${result.text}\n${image.note}`;
+}
 
 /**
  * Unwrap a batch result's text to what the operator would recognise as the output.
@@ -417,7 +430,7 @@ export function createMuseReducer(): RowReducer {
   const taskToCall = new Map<string, string>();
   const failedCalls = new Map<string, true>();
   const deniedCalls = new Map<string, true>();
-  const imageForCall = new Map<string, string>();
+  const imageForCall = new Map<string, InlineImage>();
   const questionIdsByCall = new Map<string, (string | undefined)[]>();
   const queue: string[] = [];
   const unknown = createUnknownCounter(MUSE_KNOWN);
@@ -496,9 +509,14 @@ export function createMuseReducer(): RowReducer {
                   : typeof block.mimeType === "string"
                     ? block.mimeType
                     : undefined;
-              const url = resolveImageUrl(raw, mediaType);
-              if (url === null) continue;
-              const part: Extract<TranscriptPart, { kind: "image" }> = { kind: "image", url };
+              const image = resolveImage(raw, mediaType);
+              if (image === null) continue;
+              // A picture over the cap becomes a text line, so the person sees it was left out.
+              if ("note" in image) {
+                texts.push(image.note);
+                continue;
+              }
+              const part: Extract<TranscriptPart, { kind: "image" }> = { kind: "image", url: image.url };
               if (mediaType !== undefined) part.mimeType = mediaType;
               images.push(part);
             }
@@ -612,8 +630,8 @@ export function createMuseReducer(): RowReducer {
           if (unwrapped.denied === true) result.denied = true;
           if (callId !== "" && failedCalls.has(callId)) result.isError = true;
           if (callId !== "" && deniedCalls.has(callId)) result.denied = true;
-          const imageUrl = callId === "" ? undefined : imageForCall.get(callId);
-          if (imageUrl !== undefined) result.imageUrl = imageUrl;
+          const image = callId === "" ? undefined : imageForCall.get(callId);
+          if (image !== undefined) applyImage(result, image);
           if (target !== undefined) {
             // Mutated in place — the part already sits in an emitted entry, which is exactly why
             // results attach without reordering anything. The pending entry STAYS: an image or a
@@ -662,12 +680,12 @@ export function createMuseReducer(): RowReducer {
           // that here would render it twice.
           if (blockKind !== "image" || typeof block.base64_data !== "string") continue;
           const mimeType = typeof block.media_type === "string" ? block.media_type : undefined;
-          const url = resolveImageUrl(block.base64_data, mimeType);
-          if (url === null) continue;
-          rememberPending(imageForCall, callId, url);
+          const image = resolveImage(block.base64_data, mimeType);
+          if (image === null) continue;
+          rememberPending(imageForCall, callId, image);
           const target = pendingTools.get(callId);
-          if (target !== undefined && target.part.result !== undefined && target.part.result.imageUrl === undefined) {
-            target.part.result.imageUrl = url;
+          if (target !== undefined && target.part.result !== undefined && ("note" in image || target.part.result.imageUrl === undefined)) {
+            applyImage(target.part.result, image);
             changed.add(target.uuid);
           }
         }

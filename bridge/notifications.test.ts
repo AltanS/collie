@@ -503,6 +503,43 @@ describe("NotificationCoordinator — a finished pane you opened", () => {
     expect(sink.events.at(-1)).toEqual({ kind: "clear" });
   });
 
+  test("a pane that finished, was opened, then finished again raises a fresh alert", () => {
+    const { clock, sink, coord } = setup();
+    // First finish, delivered.
+    coord.onTransition(agent("p1", "done"), "working", "done");
+    clock.fireAll();
+    expect(sink.last).toMatchObject({ paneId: "p1", renotify: true, badge: 1 });
+    // Opened: the alert is retracted and the herd cleared.
+    coord.retractSeen([{ paneId: "p1", lastActiveAt: 10, lastSeenAt: 20 }]);
+    expect(sink.events.at(-1)).toEqual({ kind: "clear" });
+    const afterRetract = sink.events.length;
+    // The pane works again and finishes again; the debounce runs. Its newer activity outranks the open.
+    coord.onTransition(agent("p1", "working"), "done", "working");
+    coord.retractSeen([{ paneId: "p1", lastActiveAt: 25, lastSeenAt: 20 }]);
+    coord.onTransition(agent("p1", "done"), "working", "done");
+    coord.retractSeen([{ paneId: "p1", lastActiveAt: 30, lastSeenAt: 20 }]);
+    clock.fireAll();
+    expect(sink.events).toHaveLength(afterRetract + 1);
+    expect(sink.last).toMatchObject({ paneId: "p1", renotify: true, badge: 1 });
+    // And opening it again retracts that one too.
+    coord.retractSeen([{ paneId: "p1", lastActiveAt: 30, lastSeenAt: 40 }]);
+    expect(sink.events.at(-1)).toEqual({ kind: "clear" });
+  });
+
+  test("an old open does not retract a pane that finishes again while the new alert debounces", () => {
+    const { clock, sink, coord } = setup();
+    coord.onTransition(agent("p1", "done"), "working", "done");
+    clock.fireAll();
+    coord.retractSeen([{ paneId: "p1", lastActiveAt: 10, lastSeenAt: 20 }]);
+    // The next finish is still in its window, and the poll's stamps show it newer than the last open.
+    coord.onTransition(agent("p1", "done"), "working", "done");
+    coord.retractSeen([{ paneId: "p1", lastActiveAt: 30, lastSeenAt: 20 }]);
+    expect(clock.armed).toBe(1);
+    clock.fireAll();
+    expect(sink.last).toMatchObject({ paneId: "p1", renotify: true });
+    expect(sink.events.at(-1)).not.toEqual({ kind: "clear" });
+  });
+
   test("keeps it while unread, or when a timestamp is missing", () => {
     const { clock, sink, coord } = setup();
     coord.onTransition(agent("p1", "done"), "working", "done");

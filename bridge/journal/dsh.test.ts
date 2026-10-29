@@ -1,10 +1,11 @@
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, spyOn, test } from "bun:test";
+import * as fsPromises from "node:fs/promises";
 import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { zstdCompressSync } from "node:zlib";
 import { NO_CURSOR } from "./cursor.ts";
-import { createDshDiscovery, fileKey, flocksOf, type ProcReader } from "./dsh-discovery.ts";
+import { createDshDiscovery, fileKey, flocksOf, LINUX_PROC, type ProcReader } from "./dsh-discovery.ts";
 import { DshTranscriptSource, frameRows, scanFrames } from "./dsh-sessions.ts";
 import { MAX_FRAME_OUTPUT_BYTES } from "./files.ts";
 import { dshJournal, parseDshTranscript } from "./dsh.ts";
@@ -247,6 +248,24 @@ describe("flocksOf", () => {
     expect([...flocksOf(table, 4242)]).toEqual(["259:3:25690149"]);
   });
 
+  test("a malformed or truncated line is skipped and never throws", () => {
+    const table = [
+      "",
+      "garbage",
+      "1: FLOCK",
+      "2: FLOCK  ADVISORY  WRITE 4242",
+      "3: FLOCK  ADVISORY  WRITE 4242 nonsense 0 EOF",
+      "4: FLOCK  ADVISORY  WRITE 4242 zz:03:25690149 0 EOF",
+      "5: FLOCK  ADVISORY  WRITE 4242 103:03:notanumber 0 EOF",
+      "6: FLOCK  ADVISORY  WRITE not-a-pid 103:03:1 0 EOF",
+      "\u0000\u0001 FLOCK",
+      "7: FLOCK  ADVISORY  WRITE 4242 103:03:777 0 EOF",
+    ].join("\n");
+    expect([...flocksOf(table, 4242)]).toEqual(["259:3:777"]);
+    expect([...flocksOf("1: FLOCK  ADVISORY  WRITE 4242 103:", 4242)]).toEqual([]);
+    expect([...flocksOf("", 4242)]).toEqual([]);
+  });
+
   test("names a file the way the lock table does", () => {
     // 259:3 is an NVMe partition; Linux packs major 259 and minor 3 into dev_t as 0x10303.
     expect(fileKey(0x10303n, 25690149n)).toBe("259:3:25690149");
@@ -310,6 +329,26 @@ describe("dsh discovery", () => {
     const stray = join(outside, "..", "session.lock");
     const foreign = createDshDiscovery([root], source, proc({ 10: [stray] }));
     expect(await foreign("/", { processes: [{ argv: [], pid: 10 }] })).toBeNull();
+  });
+
+  test("an unreadable /proc/locks (EACCES or ENOENT) means no session and no throw", async () => {
+    if (process.platform !== "linux") return;
+    const { root, source, lock } = setup();
+    writeSession(root, ID, batches());
+    for (const code of ["EACCES", "ENOENT"]) {
+      // Discovery reads nothing else through `readFile` before it reaches the lock table.
+      const read = spyOn(fsPromises, "readFile").mockRejectedValue(Object.assign(new Error(`${code}: /proc/locks`), { code }));
+      try {
+        expect(await LINUX_PROC.flocks(10)).toBeNull();
+        expect(await createDshDiscovery([root], source, LINUX_PROC)("/", { processes: [{ argv: ["dsh"], pid: 10 }] })).toBeNull();
+        expect(read).toHaveBeenCalledWith("/proc/locks", "utf8");
+      } finally {
+        read.mockRestore();
+      }
+    }
+    // Control: the same session is found when the table is readable and names its lock.
+    const ok = createDshDiscovery([root], source, { flocks: async () => new Set([fileKey(statSync(lock(ID), { bigint: true }).dev, statSync(lock(ID), { bigint: true }).ino)]) });
+    expect(await ok("/", { processes: [{ argv: ["dsh"], pid: 10 }] })).toEqual({ kind: "id", value: ID });
   });
 
   test("answers null when /proc cannot be read", async () => {

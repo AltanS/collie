@@ -12,7 +12,9 @@ import {
   piJournal,
   PiTranscriptSource,
   resolveBlobPath,
+  imageTooLargeNote,
   MAX_INLINE_IMAGE_CHARS,
+  resolveImage,
   resolveImageUrl,
 } from "./pi.ts";
 import { LiveWindows, TICK_FLOOR_MS } from "./live.ts";
@@ -147,6 +149,41 @@ describe("parsePiTranscript", () => {
       result: { imageUrl: "data:image/webp;base64,base64data" },
     });
   });
+  test("a picture just under the cap is kept and one just over becomes a visible line, in a tool card and in a turn", () => {
+    const fits = "A".repeat(MAX_INLINE_IMAGE_CHARS);
+    const big = "A".repeat(MAX_INLINE_IMAGE_CHARS + 4);
+    const note = "Picture too large to show here (3.0 MB)";
+    const result = (data: string) =>
+      parsePiTranscript(
+        [
+          row("a", { role: "assistant", content: [{ type: "toolCall", id: "call_big", name: "screenshot", arguments: {} }] }),
+          row("b", {
+            role: "toolResult",
+            toolCallId: "call_big",
+            toolName: "screenshot",
+            content: [{ type: "text", text: "taken" }, { type: "image", data, mimeType: "image/png" }],
+          }),
+        ].join("\n"),
+      )[0]!.parts[0];
+    expect(result(fits)).toMatchObject({ result: { text: "taken", imageUrl: `data:image/png;base64,${fits}` } });
+    const over = result(big);
+    expect(over).toMatchObject({ result: { text: `taken\n${note}` } });
+    expect(over).not.toHaveProperty("result.imageUrl");
+    const turn = parsePiTranscript(row("c", { role: "assistant", content: [{ type: "image", data: big, mimeType: "image/png" }] }));
+    expect(turn[0]!.parts).toEqual([{ kind: "text", text: note }]);
+  });
+
+  test("the too-large line carries the decoded size, and a huge value that is no picture says nothing", () => {
+    expect(imageTooLargeNote(MAX_INLINE_IMAGE_CHARS * 2)).toBe("Picture too large to show here (6.0 MB)");
+    const big = "A".repeat(MAX_INLINE_IMAGE_CHARS + 4);
+    expect(resolveImage(big, "image/png")).toEqual({ note: "Picture too large to show here (3.0 MB)" });
+    expect(resolveImage(`data:image/png;base64,${big}`)).toEqual({ note: expect.stringContaining("Picture too large") });
+    expect(resolveImage(big, "text/plain")).toBeNull();
+    expect(resolveImage(big)).toBeNull();
+    expect(resolveImage(`data:text/html;base64,${big}`)).toBeNull();
+    expect(resolveImage("https://evil.example/".padEnd(MAX_INLINE_IMAGE_CHARS + 4, "x"), "image/png")).toBeNull();
+  });
+
   test("a toolResult with blob:sha256: content maps to /api/blobs/<hash>", () => {
     const hash = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
     const entries = parsePiTranscript(

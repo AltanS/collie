@@ -2020,6 +2020,15 @@ describe("parseOpencodeTranscript — patch and file parts", () => {
     ]);
   });
 
+  test("an attached image over the cap becomes a visible line beside the text", () => {
+    const big = `data:image/png;base64,${"A".repeat(4 * 1024 * 1024 + 4)}`;
+    const entries = parseOpencodeTranscript(line("msg_a", userData(), [textPart("look"), filePart("image/png", big)]));
+    expect(entries[0]!.parts).toEqual([
+      { kind: "text", text: "look" },
+      { kind: "text", text: expect.stringMatching(/^Picture too large to show here \(\d+\.\d MB\)$/) },
+    ]);
+  });
+
   test("an http url on the agent's word never becomes a fetch the phone makes", () => {
     const entries = parseOpencodeTranscript(
       line("msg_a", userData(), [filePart("image/png", "http://evil.example/x.png"), textPart("look")]),

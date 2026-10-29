@@ -86,15 +86,31 @@ const BASE64_PAYLOAD_RE = /^[A-Za-z0-9+/=\s]+$/;
 /**
  * The most characters of ONE inline picture (`data:` URL or bare base64) a journal part may carry.
  *
- * An inline picture rides in every journal page and live frame the phone loads, so a huge one
- * (a full-resolution screenshot a tool returned) would bloat each of them. Text is clamped for the
- * same reason (`MAX_RESULT_CHARS`); a picture cannot be cut mid-payload, so one over this cap is
- * DROPPED and its tool card or message keeps everything else. 2 MiB of base64 is about 1.5 MB of
- * image, well under the 10 MB upload limit (`DEFAULT_MAX_UPLOAD_MB`, uploads.ts) and above what the
- * agents downscale their own pictures to. A `/api/blobs/<hash>` reference is a short URL and is not
- * counted: the bytes stay on disk and the phone fetches them on demand.
+ * This measures the base64 TEXT, not decoded bytes: base64 spends four characters on three bytes, so
+ * 4 MiB of text is about 3 MB of picture. That covers a phone screenshot saved as PNG, and is well
+ * under the 10 MB upload limit (`DEFAULT_MAX_UPLOAD_MB`, uploads.ts).
+ *
+ * An inline picture rides in every journal page and live frame the phone loads, so a huge one would
+ * bloat each of them. Text is clamped for the same reason (`MAX_RESULT_CHARS`); a picture cannot be
+ * cut mid-payload, so one over this cap is LEFT OUT and its tool card or message keeps everything
+ * else, plus one line saying a picture was left out ({@link imageTooLargeNote}). A
+ * `/api/blobs/<hash>` reference is a short URL and is not counted: the bytes stay on disk and the
+ * phone fetches them on demand.
  */
-export const MAX_INLINE_IMAGE_CHARS = 2 * 1024 * 1024;
+export const MAX_INLINE_IMAGE_CHARS = 4 * 1024 * 1024;
+
+/**
+ * The line that stands in for an inline picture over {@link MAX_INLINE_IMAGE_CHARS}, so the person
+ * sees that something was left out. English only: it is a journal note written by the bridge, not a
+ * string of the web catalogs. The size is the picture's decoded size, from the base64 text length.
+ */
+export function imageTooLargeNote(chars: number): string {
+  const megabytes = ((chars * 3) / 4 / (1024 * 1024)).toFixed(1);
+  return `Picture too large to show here (${megabytes} MB)`;
+}
+
+/** What an image value comes to: a URL the phone may load, or the note that stands in for one it may not. */
+export type InlineImage = { readonly url: string } | { readonly note: string };
 
 /** Flatten a pi content list into text, keeping only `text` blocks. */
 function textBlocks(content: JsonValue | undefined): string {
@@ -119,18 +135,35 @@ function textBlocks(content: JsonValue | undefined): string {
  * untrusted content: an `http://`/`https://` value would make the phone fetch an arbitrary host on
  * the agent's word — a request the operator never made, from a page inside the tailnet — so it is
  * DROPPED rather than passed through. `resolveImageUrl` returning null is how a block with nothing
- * renderable simply produces no part. An inline picture over {@link MAX_INLINE_IMAGE_CHARS} is
- * dropped the same way.
+ * renderable simply produces no part. An inline picture over {@link MAX_INLINE_IMAGE_CHARS} gives no
+ * URL either; {@link resolveImage} is the form that also says so.
  */
 export function resolveImageUrl(data: string, mimeType?: string): string | null {
+  const image = resolveImage(data, mimeType);
+  return image !== null && "url" in image ? image.url : null;
+}
+
+/**
+ * {@link resolveImageUrl}, but an inline picture over {@link MAX_INLINE_IMAGE_CHARS} that looks like
+ * a picture (a `data:image/` value, or bare base64 beside an `image/` mime type) comes back as the
+ * {@link imageTooLargeNote} instead of `null`. A huge value that is no picture is still `null`.
+ */
+export function resolveImage(data: string, mimeType?: string): InlineImage | null {
   if (data.startsWith(BLOB_REF_PREFIX)) {
     const hash = data.slice(BLOB_REF_PREFIX.length);
-    return isBlobHash(hash) ? `${BLOB_ROUTE_PREFIX}${hash}` : null;
+    return isBlobHash(hash) ? { url: `${BLOB_ROUTE_PREFIX}${hash}` } : null;
   }
-  if (data.length > MAX_INLINE_IMAGE_CHARS) return null;
+  if (data.length > MAX_INLINE_IMAGE_CHARS) {
+    // Only the head is looked at: a value this size is not scanned.
+    const head = data.slice(0, 256);
+    const pictureLike = data.startsWith("data:")
+      ? data.startsWith("data:image/")
+      : mimeType !== undefined && mimeType.startsWith("image/") && BASE64_PAYLOAD_RE.test(head);
+    return pictureLike ? { note: imageTooLargeNote(data.length) } : null;
+  }
   // A `data:` value is taken as written, so only an image one is taken at all — `data:text/html`
   // would be a document, not a picture.
-  if (data.startsWith("data:")) return data.startsWith("data:image/") ? data : null;
+  if (data.startsWith("data:")) return data.startsWith("data:image/") ? { url: data } : null;
   // Anything left is bare base64, which the block's own `mimeType` names. An absent or non-image
   // mime type is not guessed at: png was a guess, and a guess here is a data URL nobody declared.
   if (mimeType === undefined || !mimeType.startsWith("image/")) return null;
@@ -138,20 +171,30 @@ export function resolveImageUrl(data: string, mimeType?: string): string | null 
   // `http://evil.example/x.png` came back out as a data URL wrapping a remote address, which is the
   // http case sneaking through the branch that was meant to have dropped it.
   if (!BASE64_PAYLOAD_RE.test(data)) return null;
-  return `data:${mimeType};base64,${data}`;
+  return { url: `data:${mimeType};base64,${data}` };
 }
 
-/** The first renderable image URL in a content block list, or undefined when there is none. */
-function extractImageUrl(content: JsonValue | undefined): string | undefined {
-  if (!Array.isArray(content)) return undefined;
+/** What a tool result's picture blocks come to: the first renderable URL, and a note for each one left out for size. */
+interface ResultImage {
+  readonly url?: string;
+  readonly notes: readonly string[];
+}
+
+/** The first renderable image URL in a content block list, and a note for every picture over the cap. */
+function extractImage(content: JsonValue | undefined): ResultImage {
+  const notes: string[] = [];
+  let url: string | undefined;
+  if (!Array.isArray(content)) return { notes };
   for (const b of content) {
     if (b === null || typeof b !== "object" || Array.isArray(b)) continue;
     if (b.type !== "image" || typeof b.data !== "string") continue;
     const mimeType = typeof b.mimeType === "string" ? b.mimeType : undefined;
-    const url = resolveImageUrl(b.data, mimeType);
-    if (url !== null) return url;
+    const image = resolveImage(b.data, mimeType);
+    if (image === null) continue;
+    if ("note" in image) notes.push(image.note);
+    else if (url === undefined) url = image.url;
   }
-  return undefined;
+  return url === undefined ? { notes } : { url, notes };
 }
 
 /** A session-log line, once JSON.parse has admitted it is an object at all. */
@@ -179,11 +222,13 @@ type ToolResult = Clamped & { isError?: boolean; imageUrl?: string; denied?: boo
 const PI_BLOCKED = /^Tool execution was blocked/;
 
 /** One row's `toolResult` payload, folded onto the call it answers. */
-function toolResult(text: string, isError: boolean, imageUrl?: string): ToolResult {
+function toolResult(text: string, isError: boolean, image: ResultImage = { notes: [] }): ToolResult {
   const result: ToolResult = clamp(text, MAX_RESULT_CHARS);
+  // The note rides after the clamp, so a long result never cuts it off.
+  if (image.notes.length > 0) result.text = [result.text, ...image.notes].filter((line) => line !== "").join("\n");
   // Assigned, never conditionally spread: `isError` is ABSENT when false, not `false`.
   if (isError) result.isError = true;
-  if (imageUrl) result.imageUrl = imageUrl;
+  if (image.url !== undefined) result.imageUrl = image.url;
   if (isError && PI_BLOCKED.test(text)) result.denied = true;
   return result;
 }
@@ -786,7 +831,7 @@ export function createPiReducer(): RowReducer {
       const target = pendingTools.get(id);
       const resultText = stripAnsi(textBlocks(m.content));
       const isError = m.isError === true;
-      const imageUrl = extractImageUrl(m.content);
+      const image = extractImage(m.content);
       if (target?.foldInto) {
         // A call that drew no part of its own: its result lands on the card it folds into.
         const card = target.foldInto;
@@ -797,7 +842,7 @@ export function createPiReducer(): RowReducer {
         } else {
           // `subagent_result`: the answer replaces the start notice's text. The work is over only
           // when the status it reports says so: one asked for too early answers "running".
-          card.part.result = toolResult(resultText, isError, imageUrl);
+          card.part.result = toolResult(resultText, isError, image);
           const info = detailsOf(m.details, "gentleAgents");
           if (info !== undefined) settle(card, info, changed);
         }
@@ -806,7 +851,7 @@ export function createPiReducer(): RowReducer {
         // Mutated in place — the part already sits in an emitted entry, which is why results attach
         // without reordering anything.
         pendingTools.delete(id);
-        target.part.result = toolResult(resultText, isError, imageUrl);
+        target.part.result = toolResult(resultText, isError, image);
         // `details` rides on the RESULT ROW, not on a content block — it is pi's own record of what
         // the call did, and the only place a patch or an answer ever appears.
         if (target.part.call) enrichCall(target.part.call, m.details, resultText, isError, target.questionIds);
@@ -817,7 +862,7 @@ export function createPiReducer(): RowReducer {
         const info = detailsOf(m.details, "gentleAgents");
         const other = workCards.get(field(info, "taskId") ?? "");
         if (info !== undefined && other !== undefined && other !== target) settle(other, info, changed);
-      } else if (resultText.trim() !== "" || imageUrl) {
+      } else if (resultText.trim() !== "" || image.url !== undefined || image.notes.length > 0) {
         // Orphan result (its call fell outside a tail-read window) — kept unattached so the window
         // never silently drops output.
         entries.push({
@@ -829,7 +874,7 @@ export function createPiReducer(): RowReducer {
               kind: "tool",
               name: typeof m.toolName === "string" ? m.toolName : "result",
               summary: "",
-              result: toolResult(resultText, isError, imageUrl),
+              result: toolResult(resultText, isError, image),
             },
           ],
         });
@@ -867,11 +912,14 @@ export function createPiReducer(): RowReducer {
           parts.push({ kind: "thinking", ...clamp(stripAnsi(b.thinking), MAX_TEXT_CHARS) });
       } else if (b.type === "image" && typeof b.data === "string") {
         const mimeType = typeof b.mimeType === "string" ? b.mimeType : undefined;
-        const url = resolveImageUrl(b.data, mimeType);
+        const image = resolveImage(b.data, mimeType);
         // A reference this build refuses to load contributes NO part, rather than a broken <img>.
+        // A picture over the cap becomes a text line, so the person sees it was left out.
         // Assigned, never conditionally spread: an unnamed mime type leaves the key OFF.
-        if (url !== null) {
-          const part: Extract<TranscriptPart, { kind: "image" }> = { kind: "image", url };
+        if (image !== null && "note" in image) {
+          parts.push({ kind: "text", text: image.note });
+        } else if (image !== null) {
+          const part: Extract<TranscriptPart, { kind: "image" }> = { kind: "image", url: image.url };
           if (mimeType !== undefined) part.mimeType = mimeType;
           parts.push(part);
         }

@@ -12,6 +12,7 @@ import {
 } from "./muse.ts";
 import type { JsonValue } from "../json.ts";
 import { RENAME_TITLE_MAX } from "../mux/durable/clean.ts";
+import { MAX_INLINE_IMAGE_CHARS } from "./pi.ts";
 
 // Row builders mirroring the verified on-disk shape (bridge/journal/muse.ts header): the envelope
 // fields the adapter reads plus the payload under test, nothing else.
@@ -622,6 +623,24 @@ describe("parseMuseTranscript tool calls", () => {
     expect(entries[0]?.parts?.[0]).toMatchObject({
       result: { text: "a picture", imageUrl: `data:image/png;base64,${png}` },
     });
+  });
+
+  test("an oversize image becomes a line on the result, before or after its batch", () => {
+    const big = "A".repeat(MAX_INLINE_IMAGE_CHARS + 4);
+    const note = "Picture too large to show here (3.0 MB)";
+    const image = runEvent("row-2", {
+      kind: "tool_result_model_visible_content",
+      message_id: "m1",
+      call_id: "call_1",
+      content: [{ kind: "image", path: "/a.png", media_type: "image/png", base64_data: big }],
+    });
+    const calls = toolCalls("row-1", [{ call_id: "call_1", name: "read_file", args: {} }]);
+    const batch = batchResults("row-3", [{ tool_call_id: "call_1", text: "a picture" }]);
+    for (const order of [[calls, image, batch], [calls, batch, image]]) {
+      const part = parseMuseTranscript(order.join("\n"))[0]?.parts?.[0];
+      expect(part).toMatchObject({ result: { text: `a picture\n${note}` } });
+      expect(part).not.toHaveProperty("result.imageUrl");
+    }
   });
 
   test("an image arriving after its batch mutates the turn and names it changed", () => {

@@ -51,7 +51,7 @@ import { choicesBeforeFirstTurn, claudeResets, effortChosenAfter, lastTwoTurns, 
 // resolves pi's `blob:sha256:` refs against pi's own store, and `bridge/server.ts` reaches for it
 // from there for the same reason. The rule it enforces is not pi's, though: a journal is an AGENT's
 // output, so an `http://` value in a block never becomes a fetch the phone makes.
-import { resolveImageUrl } from "./pi.ts";
+import { resolveImage } from "./pi.ts";
 import {
   containedRealpath,
   exists,
@@ -174,29 +174,40 @@ function toolResultText(content: JsonValue | undefined): string {
  * `{ type: "image", source: { type: "base64", media_type, data } }`, png or jpeg. It is NOT pi's
  * `{ data, mimeType }`, which is why the shared resolver is fed the two fields rather than the block.
  * A `source.type` of `url` is refused for pi's reason: a reference this build will not load
- * contributes nothing, rather than a broken <img>.
+ * contributes nothing, rather than a broken <img>. A base64 picture over the cap comes back as a
+ * `note` (journal/pi.ts § MAX_INLINE_IMAGE_CHARS), so the caller can say it was left out.
  */
-function imageBlock(b: JsonObject): { url: string; mimeType?: string } | null {
+function imageBlock(b: JsonObject): { url: string; mimeType?: string } | { note: string } | null {
   const source = b.source;
   const src = source !== null && typeof source === "object" && !Array.isArray(source) ? source : {};
   const mimeType = typeof src.media_type === "string" ? src.media_type : undefined;
-  const url = src.type === "base64" && typeof src.data === "string" ? resolveImageUrl(src.data, mimeType) : null;
-  if (url === null) return null;
-  return mimeType === undefined ? { url } : { url, mimeType };
+  const image = src.type === "base64" && typeof src.data === "string" ? resolveImage(src.data, mimeType) : null;
+  if (image === null || "note" in image) return image;
+  return mimeType === undefined ? { url: image.url } : { url: image.url, mimeType };
+}
+
+/** What a tool result's pictures come to: the first loadable URL, and a note for each one left out for size. */
+interface ResultImage {
+  readonly url?: string;
+  readonly notes: readonly string[];
 }
 
 /**
  * The first loadable image in a `tool_result.content`: what `Read` returns for a picture, and what a
- * screenshot tool returns. A plain-string content has none.
+ * screenshot tool returns. A plain-string content has none. Each picture over the cap adds a note.
  */
-function toolResultImage(content: JsonValue | undefined): string | undefined {
-  if (!Array.isArray(content)) return undefined;
+function toolResultImage(content: JsonValue | undefined): ResultImage {
+  const notes: string[] = [];
+  let url: string | undefined;
+  if (!Array.isArray(content)) return { notes };
   for (const b of content) {
     if (b === null || typeof b !== "object" || Array.isArray(b) || b.type !== "image") continue;
     const image = imageBlock(b);
-    if (image !== null) return image.url;
+    if (image === null) continue;
+    if ("note" in image) notes.push(image.note);
+    else if (url === undefined) url = image.url;
   }
-  return undefined;
+  return url === undefined ? { notes } : { url, notes };
 }
 
 /** A `tool` part's answered result — {@link Clamped} plus the error flag and image the result row carried. */
@@ -213,11 +224,13 @@ const REFUSED =
   /The user doesn't want to proceed|Request interrupted by user for tool use|user rejected|was rejected|dismissed the question/i;
 
 /** One row's `tool_result` payload, folded onto the call it answers. */
-function toolResult(text: string, isError: boolean, imageUrl?: string): ToolResult {
+function toolResult(text: string, isError: boolean, image: ResultImage = { notes: [] }): ToolResult {
   const result: ToolResult = clamp(text, MAX_RESULT_CHARS);
+  // The note rides after the clamp, so a long result never cuts it off.
+  if (image.notes.length > 0) result.text = [result.text, ...image.notes].filter((line) => line !== "").join("\n");
   // Assigned, never conditionally spread: `isError` is ABSENT when false, not `false`.
   if (isError) result.isError = true;
-  if (imageUrl) result.imageUrl = imageUrl;
+  if (image.url !== undefined) result.imageUrl = image.url;
   if (isError && REFUSED.test(text)) result.denied = true;
   return result;
 }
@@ -874,7 +887,10 @@ export function createClaudeReducer(opts: { includeSidechains?: boolean } = {}):
             parts.push({ kind: "thinking", ...clamp(stripAnsi(b.thinking), MAX_TEXT_CHARS) });
         } else if (b.type === "image") {
           const image = imageBlock(b);
-          if (image !== null) parts.push({ kind: "image", ...image });
+          if (image === null) continue;
+          // A picture over the cap becomes a text line, so the person sees it was left out.
+          if ("note" in image) parts.push({ kind: "text", text: image.note });
+          else parts.push({ kind: "image", ...image });
         } else if (b.type === "tool_use") {
           const name = typeof b.name === "string" ? b.name : "tool";
           const summary = summarizeToolInput(b.input);
@@ -900,7 +916,7 @@ export function createClaudeReducer(opts: { includeSidechains?: boolean } = {}):
           // Tool output routinely carries colour codes (any command run through a shell) — strip
           // them, since this view renders text nodes rather than interpreting escapes.
           const resultText = stripAnsi(toolResultText(b.content));
-          const imageUrl = toolResultImage(b.content);
+          const image = toolResultImage(b.content);
           if (target) {
             pendingTools.delete(id);
             // `toolUseResult` rides on the ROW, not on the content block: it is Claude's own record of
@@ -922,18 +938,18 @@ export function createClaudeReducer(opts: { includeSidechains?: boolean } = {}):
               const aid = target.part.call?.kind === "task" ? target.part.call.agentId : undefined;
               if (aid !== undefined) rememberPending(asyncTasks, aid, target);
             } else {
-              target.part.result = toolResult(resultText, b.is_error === true, imageUrl);
+              target.part.result = toolResult(resultText, b.is_error === true, image);
             }
             // The mutation above landed in a turn that went out rows ago. Name it.
             changed.add(target.uuid);
-          } else if (resultText.trim() !== "" || imageUrl !== undefined) {
+          } else if (resultText.trim() !== "" || image.url !== undefined || image.notes.length > 0) {
             // Orphan result (its call fell outside a tail-read window) — keep it, unattached, so the
             // window never silently drops output.
             parts.push({
               kind: "tool",
               name: "result",
               summary: "",
-              result: toolResult(resultText, b.is_error === true, imageUrl),
+              result: toolResult(resultText, b.is_error === true, image),
             });
           }
         }
