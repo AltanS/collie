@@ -48,6 +48,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The browser leg holds Claude Code 2.1.312 recordings for both legs (M67).** All 22 Claude cases replay with no Claude turn. A walky case's mark, the six characters of its message id it writes into the body to find it on screen, is now as volatile as the id, so a replay of that case no longer misses on it. An address that starts a line of `collie walky who` is now volatile too, so a replayed send goes to the pane of this run and not the one recorded.
 - **The browser leg's nightly runner no longer asks for a Claude login when Claude replays (M67).** It checks the login only when the Claude version on the machine has no recording for both legs on Haiku and the current walky talky skill text, because a replay starts Claude on a dummy login.
 - **The herdr-core check of `collie update` and the config folder takes the host as an input (M74).** Windows still never drives herdr-core. The Windows test run now asserts that with a Windows host and no longer depends on the platform it runs on.
+- **The harness lab installs a day-one agent version in its own prefix.** The install sets npm's `min-release-age` to 0 for that one call, and only inside the lab's throwaway run folder. Your `~/.npmrc` keeps its own rule, and every other npm call keeps it. Before, an agent version younger than your release age failed to install, and the lab kept a `failed` row for the pair.
 
 ### Fixed
 

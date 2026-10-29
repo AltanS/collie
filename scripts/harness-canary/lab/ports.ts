@@ -7,7 +7,7 @@ import { resolveTmuxBinary } from "../../../bridge/mux/tmux/exec";
 import { gateFor } from "../../../bridge/surface/key-gate";
 import { profileFor } from "../../../web/src/lib/surface/profile";
 import { loadSlashLists } from "../slash-commands";
-import { binaryPath, serverEnv, type EnvMap, type HarnessSpec, type RunDirs } from "./harnesses";
+import { binaryPath, npmInstallCommand, serverEnv, type EnvMap, type HarnessSpec, type RunDirs } from "./harnesses";
 import { LabCounters, labProfile, runAskLeg, runSendLeg, TmuxPane, type LegEnv } from "./legs";
 import { ensureClone } from "./clone";
 import { openIssue, publishPass } from "./publish";
@@ -205,7 +205,8 @@ export function realPorts(options: RealOptions = {}): LabPorts {
     async install(spec, dirs, version, log): Promise<string> {
       mkdirSync(dirs.bin, { recursive: true });
       const base = { ...serverEnv(env), npm_config_update_notifier: "false", npm_config_fund: "false" };
-      const result = await run(["npm", "install", "--prefix", dirs.bin, "--no-audit", "--no-fund", "--no-save", `${spec.npm}@${version}`], dirs.bin, base, INSTALL_TIMEOUT_MS);
+      const command = npmInstallCommand(spec, dirs, version, base);
+      const result = await run([...command.argv], dirs.bin, command.env, INSTALL_TIMEOUT_MS);
       if (result.code !== 0) throw new LabInfraError(`npm install ${spec.npm}@${version} exited ${String(result.code)}: ${result.out.trim().split("\n").slice(-3).join(" ")}`);
       const printed = await run([binaryPath(dirs, spec), "--version"], dirs.root, { ...base, ...spec.env(dirs) }, 30_000);
       const found = VERSION_IN_TEXT.exec(printed.out)?.[0];

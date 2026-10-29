@@ -213,6 +213,28 @@ export function binaryPath(dirs: RunDirs, spec: HarnessSpec): string {
   return join(dirs.bin, "node_modules", ".bin", spec.binName);
 }
 
+/** What the lab runs for its install: the argument list and the whole environment of that one process. */
+export interface NpmInstallCommand {
+  readonly argv: readonly string[];
+  readonly env: EnvMap;
+}
+
+/**
+ * The command and the environment of the lab's one `npm install`.
+ *
+ * Decision by Altan, 2026-10-30: the lab installs a day-one agent version, so the install sets npm's
+ * `min-release-age` to 0. The setting rides on this one call as `npm_config_min_release_age`, which beats
+ * the `min-release-age=7` in the person's `~/.npmrc`. It never goes into that file, and it reaches no other
+ * npm call: the install prefix is a throwaway under the run directory. Without it, a version younger than
+ * seven days fails with ETARGET and the ledger keeps a permanent `failed` row for the pair.
+ */
+export function npmInstallCommand(spec: HarnessSpec, dirs: RunDirs, version: string, base: Readonly<Record<string, string>>): NpmInstallCommand {
+  return {
+    argv: ["npm", "install", "--prefix", dirs.bin, "--no-audit", "--no-fund", "--no-save", `${spec.npm}@${version}`],
+    env: { ...base, npm_config_min_release_age: "0" },
+  };
+}
+
 /** The environment a tmux server gets: a short list, never the whole environment of the caller. */
 export const SERVER_ENV_KEYS = ["PATH", "HOME", "USER", "LOGNAME", "LANG", "LC_ALL", "TERM", "TMPDIR", "SHELL"] as const;
 
