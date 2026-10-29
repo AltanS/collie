@@ -23,6 +23,13 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **Changes lets you pick lines in a diff and comment on them as one batch.** Tap diff lines to
+  select them, add a note, and keep adding notes across files. One tap then stages every note, with
+  the lines it is about, into the agent's draft in the pane. In a space with several agents you pick
+  which one gets them. Thanks @GGGODLIN (#561).
+
 ## [1.25.0] - 2026-10-29
 
 ### Added
