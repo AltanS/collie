@@ -1467,6 +1467,8 @@ export const it: Dictionary = {
   "dialog.backToOptions": "Torna alle opzioni",
   "dialog.endsQuestionsSuffix": ": termina le domande",
   "dialog.autocomplete.title": "Comandi slash",
+  "dialog.authBox.label": "Output dell'accesso",
+  "dialog.authBox.waiting": "Il comando di accesso non ha ancora stampato nulla.",
   "dialog.menu.moveUp": "Sposta su",
   "dialog.menu.moveDown": "Sposta giù",
   "dialog.menu.noticeDraft": "Svuota prima la casella: una cifra si aggiungerebbe al testo che c'è.",

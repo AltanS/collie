@@ -65,7 +65,7 @@ import { cropRawColumns, type ColumnRange } from "../column-range";
 import { MAX_TAIL_LINES } from "../tail-lines";
 import { trailingTaskChecklistStart } from "../task-checklist";
 import { findInputFrame, plainRows } from "../surface/frame";
-import { loadProfiles } from "../surface/profile";
+import { loadProfiles, requireProfile } from "../surface/profile";
 import {
   DIALOG_CONTRACT,
   dialogComparators,
@@ -198,6 +198,11 @@ function lastNonBlank(lines: StyledLine[]): number {
 /** Whether a block is a menu lifted off a notice above a live box (`MenuModel.liveBox`). */
 function isNoticeMenu(block: Block): boolean {
   return block.kind === "menu" && block.menu.liveBox !== undefined;
+}
+
+/** Whether a block is the keyless card a titled box above the live input box lifts as. */
+function isBoxText(block: Block): boolean {
+  return block.kind === "box-text";
 }
 
 /** The notice heads a profile marks `letters`: a card lifted off one of them prints single letters, not digits. */
@@ -445,7 +450,9 @@ export function isValidHerdrKey(key: string): boolean {
 // (harness/autocomplete-model.ts), so the block emits nothing, races nothing, and has no row in the
 // dialog contract. Its fixtures still take the fail-closed and tail-anchoring legs above, which is
 // where a popup grammar could actually do harm.
-const KEYLESS_FUTURE_KINDS = new Set<string>(["autocomplete"]);
+//
+// `box-text` is the other: the Authentication box's text and links are shown, and nothing is sent.
+const KEYLESS_FUTURE_KINDS = new Set<string>(["autocomplete", "box-text"]);
 
 /**
  * Every keystroke an interactive block can emit, walked off its model + the family's control
@@ -727,7 +734,25 @@ export function describeAdapterConformance(
           // input box under it, whose status rows cannot be told from output walked as status rows. Its
           // binding region runs through the box's bottom edge, so the bridge binds the tap only while
           // that box still stands inside its tail window: the leg below holds both halves of that.
-          expect(interactiveBlocks(adapter.buildBlocks(scrolled)).filter((b) => !isNoticeMenu(b))).toEqual([]);
+          //
+          // A `box-text` card is exempt for its own reason. It emits no keystroke, so a stale card costs a
+          // wrong or expired link and never a key typed into a terminal, and under a live frame output rows
+          // cannot be told from status rows. The leg below holds the one rule that bounds the stale case.
+          expect(interactiveBlocks(adapter.buildBlocks(scrolled)).filter((b) => !isNoticeMenu(b) && !isBoxText(b))).toEqual([]);
+        });
+      }
+
+      const boxTextFixtures = ownFixtures.filter((fixture) => adapter.buildBlocks(loadLines(fixture)).some(isBoxText));
+      if (adapter.agent === "claude") {
+        it("claude's own fixtures lift at least one box-text card", () => {
+          expect(boxTextFixtures).not.toEqual([]);
+        });
+      }
+      for (const name of boxTextFixtures) {
+        it(`${name}: a box-text card is buried once ordinary output passes the status-row cap under the input box`, () => {
+          const statusRowCap = requireProfile(adapter.agent).idle.volatile.below.maxRows;
+          const output = Array.from({ length: statusRowCap + 1 }, (_, i) => textLine(`output row ${String(i)}`));
+          expect(adapter.buildBlocks([...loadLines(name), ...output]).some(isBoxText)).toBe(false);
         });
       }
 

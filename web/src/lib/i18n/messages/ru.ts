@@ -1536,6 +1536,8 @@ export const ru: Dictionary = {
   "dialog.backToOptions": "Назад к вариантам",
   "dialog.endsQuestionsSuffix": "- завершает вопросы",
   "dialog.autocomplete.title": "Команды со слэшем",
+  "dialog.authBox.label": "Вывод входа",
+  "dialog.authBox.waiting": "Команда входа ещё ничего не вывела.",
   "dialog.menu.moveUp": "Вверх",
   "dialog.menu.moveDown": "Вниз",
   "dialog.menu.noticeDraft": "Сначала очистите поле: цифра добавится к тексту в нём.",
