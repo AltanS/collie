@@ -28,6 +28,7 @@ import {
 } from "./hooks.ts";
 import { lifecycleDeps, updateDeps } from "./deps.ts";
 import { cmdDoctor, doctorDeps } from "./doctor.ts";
+import { chooseDoctorInstanceHere } from "./doctor-instance.ts";
 import { cmdDocs, cmdSkill } from "./docs.ts";
 import {
   cmdSkillInstall,
@@ -644,9 +645,16 @@ export const COMMANDS: readonly Command[] = [
   // one left out — no service manager, no front door, no store write.
   {
     name: "doctor",
-    summary: "check this install for the traps that fail silently",
+    summary: "check this install for the traps that fail silently (--json, --instance <name>)",
     run: async (args, s) => {
-      const deps = lifecycleDeps(s.io);
+      // The lane flag is read, and the name checked against this machine's instances, BEFORE the
+      // context is built: an unknown name exits 2 with the list, and no check runs (M71/04).
+      const chosen = chooseDoctorInstanceHere(args, process.env);
+      if (!chosen.ok) {
+        s.io.err(chosen.message);
+        return EXIT.USAGE;
+      }
+      const deps = lifecycleDeps(s.io, null, { instance: chosen.instance });
       return cmdDoctor(
         doctorDeps({
           ctx: deps.ctx,
@@ -657,7 +665,7 @@ export const COMMANDS: readonly Command[] = [
           // Read once, here at the edge: the plain lines wrap at the terminal's width, else at 80.
           columns: terminalColumns(process.stdout.isTTY === true, process.stdout.columns),
         }),
-        args,
+        chosen.rest,
       );
     },
   },

@@ -19,9 +19,10 @@ import { githubCredential } from "../bridge/update.ts";
  * filesystem seams, and the clock. Real implementations here; `cli/lifecycle.test.ts` supplies
  * fakes for the same interfaces.
  */
-export function lifecycleDeps(io: Io, ui: Ui | null = null, opts: { readonly repairAcl?: boolean } = {}): LifecycleDeps {
+export function lifecycleDeps(io: Io, ui: Ui | null = null, opts: { readonly repairAcl?: boolean; readonly instance?: string } = {}): LifecycleDeps {
   // `repairAcl`: only the bridge process may change an access list (M43 spec 04, `cli/context.ts`).
-  const ctx = loadContext(io.err, { repairAcl: opts.repairAcl === true });
+  // `instance`: the lane `collie doctor --instance <name>` chose, and no other verb passes (M71/04).
+  const ctx = loadContext(io.err, { repairAcl: opts.repairAcl === true, instance: opts.instance });
   const deps: LifecycleDeps = {
     ctx,
     io,
