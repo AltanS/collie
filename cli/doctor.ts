@@ -285,6 +285,12 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
       files: deps.files,
       snapshot: ownRead,
       host: deps.host,
+      // A multiplexer that names agents itself gets no beacon, so without its own session ref no
+      // pane can ever report a session, and `agent-sessions` must not read that as a fault (M74).
+      noSessionRefs:
+        declaration !== null && declaration.supports.agentDetection && !declaration.supports.agentSessionRef
+          ? (declaration.notes.agentSessionRef ?? `${chosen.name} reports no agent session`)
+          : undefined,
     })),
     // Whether the prompt-cache chip is telling the truth: every TTL's date, and the one variable
     // `doctor` can read that the bridge deliberately cannot (ADR 0041). Its own module for the same

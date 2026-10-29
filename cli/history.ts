@@ -215,6 +215,13 @@ export interface HistoryDeps {
   readonly snapshot: () => Promise<SnapshotRead>;
   /** Which platform's Herdr minimum applies; the running machine's when absent. */
   readonly host?: Host;
+  /**
+   * Why no pane can report a session on this install, when that is so by design: the multiplexer
+   * names agents itself (so no beacon adds a session) and declares no agent session ref. Then
+   * `agent-sessions` is skipped with this reason instead of an error no install step can fix (M74,
+   * herdr-core). Absent on every multiplexer that can report one.
+   */
+  readonly noSessionRefs?: string | undefined;
 }
 
 /**
@@ -252,7 +259,9 @@ export async function historyFindings(deps: HistoryDeps): Promise<Finding[]> {
     herdr,
     ...JOURNAL_AGENT_NAMES.map((agent) => integration(agent, status, verdicts)),
     python(deps),
-    sessions(verdicts, read),
+    deps.noSessionRefs === undefined
+      ? sessions(verdicts, read)
+      : skipped("agent-sessions", `no pane can report an agent session here: ${deps.noSessionRefs}`, "nothing to do; History needs a multiplexer that reports the session"),
     journalRoots(deps),
   ];
 }

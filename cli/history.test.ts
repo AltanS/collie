@@ -198,6 +198,7 @@ async function run(
     /** What `herdr --version` prints. */
     herdr?: string;
     platform?: string;
+    noSessionRefs?: string;
   } = {},
 ): Promise<Map<string, Finding>> {
   const answers: Scripted["answers"] = [
@@ -214,6 +215,7 @@ async function run(
       return { kind: "body", text: over.snapshot ?? snapshotOf([]) };
     },
     host: hostFor(over.platform ?? "linux"),
+    noSessionRefs: over.noSessionRefs,
   });
   return new Map(findings.map((f) => [f.check, f]));
 }
@@ -290,6 +292,12 @@ describe("the history section", () => {
 
     const good = await run({ snapshot: snapshotOf([{ paneId: "w1:p1", agent: "claude", hasSession: true }]) });
     expect(good.get("agent-sessions")?.status).toBe("ok");
+  });
+
+  test("agent-sessions is skipped, not an error, where the multiplexer can report no session (M74)", async () => {
+    const found = await run({ snapshot: snapshotOf([{ paneId: "t1", agent: "claude" }]), noSessionRefs: "herdr-core keeps no conversation id" });
+    expect(found.get("agent-sessions")?.status).toBe("skipped");
+    expect(found.get("agent-sessions")?.detail).toContain("herdr-core keeps no conversation id");
   });
 
   // An omp pane reads through pi's adapter, so the bridge hides its History and Chat when it names no
