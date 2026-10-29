@@ -1,0 +1,128 @@
+[
+  {
+    "check": "surface----",
+    "status": "ok",
+    "detail": "- - · free 0 · unknown 0 · modal 0 · refused 0 · probed 0 · manual 0 · sent 2 · effective 0 · unknown-outcome 0 · typed-not-submitted 0 · discarded 0",
+    "remedy": null
+  },
+  {
+    "check": "surface-claude--",
+    "status": "ok",
+    "detail": "- - · free 0 · unknown 0 · modal 0 · refused 0 · probed 0 · manual 0 · sent 0 · effective 0 · unknown-outcome 0 · typed-not-submitted 0 · discarded 0 · edges 78 (dropped 58, start 18, end 2)",
+    "remedy": null
+  },
+  {
+    "check": "surface-claude-2.1.309",
+    "status": "ok",
+    "detail": "2.1.309 provisional · free 2143 · unknown 227 (contested 205, no-match 22) · modal 62 (permission 52, unreadable 6, menu 3, question 1) · refused 0 · probed 0 · manual 0 · sent 0 · effective 0 · unknown-outcome 0 · typed-not-submitted 0 · discarded 0 · edges 1224 (tool 820, prompt 177, stop 112, reread 44, start 27, dialog 16, end 15, lost-stop 13) · held asks 5 (void 4, timeout 1)",
+    "remedy": null
+  },
+  {
+    "check": "surface-claude-2.1.310",
+    "status": "ok",
+    "detail": "2.1.310 provisional · free 7271 · unknown 530 (contested 500, no-match 30) · modal 80 (permission 61, unreadable 10, question 5, menu 4) · refused 0 · probed 4 · manual 0 · sent 0 · effective 4 · unknown-outcome 0 · typed-not-submitted 0 · discarded 0 · edges 3341 (tool 2301, prompt 471, stop 373, reread 100, start 52, end 27, dialog 9, lost-stop 8) · held asks 1 (void 1)",
+    "remedy": null
+  },
+  {
+    "check": "surface-claude-2.1.311",
+    "status": "ok",
+    "detail": "2.1.311 provisional · free 1284 · unknown 208 (contested 144, weak-cue 47, no-match 17) · modal 30 (menu 10, unreadable 9, question 9, permission 2) · refused 0 · probed 0 · manual 0 · sent 0 · effective 0 · unknown-outcome 0 · typed-not-submitted 0 · discarded 0 · edges 1032 (tool 697, prompt 153, stop 114, reread 36, start 14, end 9, dialog 8, lost-stop 1) · held asks 1 (desk 1)",
+    "remedy": null
+  },
+  {
+    "check": "surface-claude-2.1.312",
+    "status": "ok",
+    "detail": "2.1.312 provisional · free 9900 · unknown 997 (contested 946, no-match 40, weak-cue 11) · modal 390 (unreadable 307, question 42, permission 27, menu 14) · refused 0 · probed 8 · manual 0 · sent 0 · effective 8 · unknown-outcome 0 · typed-not-submitted 0 · discarded 0 · edges 5578 (tool 3657, prompt 873, stop 666, reread 242, start 60, dialog 36, end 28, lost-stop 16) · held asks 3 (desk 3)",
+    "remedy": null
+  },
+  {
+    "check": "surface-codex-0.164.0",
+    "status": "ok",
+    "detail": "0.164.0 provisional · free 6 · unknown 1 (no-match 1) · modal 5 (permission 4, unreadable 1) · refused 0 · probed 0 · manual 0 · sent 0 · effective 0 · unknown-outcome 0 · typed-not-submitted 0 · discarded 0",
+    "remedy": null
+  },
+  {
+    "check": "surface-omp-18.6.1",
+    "status": "ok",
+    "detail": "18.6.1 verified · free 257 · unknown 15 (torn 8, no-match 6, weak-cue 1) · modal 7 (unreadable 7) · refused 0 · probed 2 · manual 0 · sent 2 · effective 0 · unknown-outcome 0 · typed-not-submitted 0 · discarded 0",
+    "remedy": null
+  },
+  {
+    "check": "surface-opencode-1.19.2",
+    "status": "ok",
+    "detail": "1.19.2 verified · free 1 · unknown 1 (no-match 1) · modal 0 · refused 0 · probed 0 · manual 0 · sent 0 · effective 0 · unknown-outcome 0 · typed-not-submitted 0 · discarded 0",
+    "remedy": null
+  },
+  {
+    "check": "surface-pi-1.3.0",
+    "status": "ok",
+    "detail": "1.3.0 provisional · free 7 · unknown 0 · modal 0 · refused 0 · probed 0 · manual 0 · sent 0 · effective 0 · unknown-outcome 0 · typed-not-submitted 0 · discarded 0",
+    "remedy": null
+  },
+  {
+    "check": "harness-agy",
+    "status": "ok",
+    "detail": "not installed",
+    "remedy": null
+  },
+  {
+    "check": "harness-claude",
+    "status": "ok",
+    "detail": "/home/user/playground/mypc/agent-slice/bin/claude · 2.1.312 · provisional, note: above the verified range; sends in a turn are trusted, dialogs may drift",
+    "remedy": null
+  },
+  {
+    "check": "harness-codex",
+    "status": "ok",
+    "detail": "/home/user/.local/bin/codex · 0.165.0 · provisional, note: above the verified range; sends in a turn are trusted, dialogs may drift",
+    "remedy": null
+  },
+  {
+    "check": "harness-cursor",
+    "status": "ok",
+    "detail": "not installed",
+    "remedy": null
+  },
+  {
+    "check": "harness-grok",
+    "status": "ok",
+    "detail": "not installed",
+    "remedy": null
+  },
+  {
+    "check": "harness-hermes",
+    "status": "ok",
+    "detail": "not installed",
+    "remedy": null
+  },
+  {
+    "check": "harness-kiro",
+    "status": "ok",
+    "detail": "not installed",
+    "remedy": null
+  },
+  {
+    "check": "harness-muse",
+    "status": "ok",
+    "detail": "not installed",
+    "remedy": null
+  },
+  {
+    "check": "harness-omp",
+    "status": "ok",
+    "detail": "/home/user/.bun/bin/omp · 18.6.1 · verified",
+    "remedy": null
+  },
+  {
+    "check": "harness-opencode",
+    "status": "ok",
+    "detail": "/home/user/.opencode/bin/opencode · 1.19.2 · verified",
+    "remedy": null
+  },
+  {
+    "check": "harness-pi",
+    "status": "ok",
+    "detail": "/home/user/.config/nvm/versions/node/v24.22.1/bin/pi · 1.3.0 · provisional, note: above the verified range; sends in a turn are trusted, dialogs may drift",
+    "remedy": null
+  }
+]

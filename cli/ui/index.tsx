@@ -65,8 +65,12 @@ function Findings({ findings }: { findings: readonly UiFinding[] }): React.React
             <Text bold>{f.check}</Text>
           </Box>
           <Box flexDirection="column" flexGrow={1}>
-            <Text>{f.detail}</Text>
-            {f.remedy === null ? null : <Text color="cyan">→ {f.remedy}</Text>}
+            <Text wrap="wrap">{f.detail}</Text>
+            {f.remedy === null ? null : (
+              <Text color="cyan" wrap="wrap">
+                → {f.remedy}
+              </Text>
+            )}
           </Box>
         </Box>
       ))}

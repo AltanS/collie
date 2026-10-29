@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **`collie doctor` prints every row in full at any width.** The plain output sizes the label column to the longest check id in its section, wraps a long value at the terminal width (80 when piped) with its next lines under the value, and breaks a path longer than the line at the edge. The terminal view wraps its detail and remedy the same way and never cuts one.
+
 ## [1.25.0] - 2026-10-29
 
 ### Added

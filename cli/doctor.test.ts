@@ -215,6 +215,9 @@ function fakeOwnerOnly(
   };
 }
 
+/** A width no row reaches, so a plain row stays one line. */
+const WIDE = 10_000;
+
 const WIN_HOME = "C:\\Users\\Rehearse Ünal";
 const WIN_SID = "S-1-5-21-1678274354-1849132225-3673151578-1000";
 
@@ -322,6 +325,9 @@ function harness(
       now: () => T0,
       // Every secret path present and owner-only. The `secrets-private` cases build their own.
       ownerOnly: fakeOwnerOnly({}),
+      // Wide enough that no row wraps: the cases below read one row as one line. The layout has its
+      // own suite (doctor-layout.test.ts), and the golden below runs at 80.
+      columns: WIDE,
     },
     io: out,
     files,
@@ -2626,12 +2632,12 @@ describe("windows-task", () => {
 });
 
 // ── POSIX parity (M43 spec 04) ──────────────────────────────────────────────
-describe("POSIX parity (M43 spec 04)", () => {
+describe("plain output parity (M43 spec 04, wrapped at 80 by M71 spec 03)", () => {
   const GOLDEN = join(import.meta.dir, "testdata", "doctor-posix.golden.txt");
   // The identity line names the machine the suite runs on, so it is the one line normalised.
   const render = async (over: Parameters<typeof harness>[2] = {}): Promise<string> => {
     const h = harness(null, [], over);
-    h.deps = { ...h.deps, host: hostFor("linux") };
+    h.deps = { ...h.deps, host: hostFor("linux"), columns: 80 };
     await cmdDoctor(h.deps, []);
     // Two lines are normalised: the machine's identity, and the age of the oldest cache claim, which
     // grows by one every day and must not fail this test on the day after it was written.
@@ -2649,9 +2655,10 @@ describe("POSIX parity (M43 spec 04)", () => {
   });
 
   // The golden was written by this same block run before spec 04, then gained the integration-omp row from main (the
-  // healthy solo fixture, then a config.toml secret the mode rule could not tighten). The
+  // healthy solo fixture, then a config.toml secret the mode rule could not tighten). M71 spec 03
+  // moved it once more: rows wrap at 80 columns, so a long detail continues under the value column. The
   // `secrets-private` line is Windows-only: on a POSIX host it does not exist at all.
-  test("the plain doctor output on a POSIX host is byte-identical to the one before spec 04", async () => {
+  test("the plain doctor output on a POSIX host matches the golden, wrapped at 80 columns", async () => {
     const out = `${await render()}---\n${await render(blocked())}`;
     const golden = readFileSync(GOLDEN, "utf8");
     // Paths in the output are joined with the machine's own separator, so the byte comparison runs

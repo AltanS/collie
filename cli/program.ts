@@ -89,7 +89,7 @@ import {
 } from "./push.ts";
 import { cmdPushKeys } from "./push-keys.ts";
 import { cmdQr } from "./qr.ts";
-import { loadUi, renderInputs, takePlainFlag, type Ui, wantsRich } from "./render.ts";
+import { loadUi, renderInputs, takePlainFlag, terminalColumns, type Ui, wantsRich } from "./render.ts";
 import { cmdCrewDeputy } from "./crew-deputy.ts";
 import { cmdCrewUpdate } from "./crew-update.ts";
 import { cmdCrewAdd, crewAddDeps, type CrewAddDeps } from "./remote.ts";
@@ -648,7 +648,15 @@ export const COMMANDS: readonly Command[] = [
     run: async (args, s) => {
       const deps = lifecycleDeps(s.io);
       return cmdDoctor(
-        doctorDeps({ ctx: deps.ctx, io: s.io, exec: deps.exec, files: deps.files, ui: await s.ui() }),
+        doctorDeps({
+          ctx: deps.ctx,
+          io: s.io,
+          exec: deps.exec,
+          files: deps.files,
+          ui: await s.ui(),
+          // Read once, here at the edge: the plain lines wrap at the terminal's width, else at 80.
+          columns: terminalColumns(process.stdout.isTTY === true, process.stdout.columns),
+        }),
         args,
       );
     },
