@@ -10,7 +10,7 @@ import type { JsonObject } from "./json.ts";
 import { LaunchWindow } from "./launch-window.ts";
 import { launch, launchersRoute, type LaunchDeps } from "./server.ts";
 import type { StateEngine } from "./state-engine.ts";
-import type { CreateResponse, Launcher, LaunchersResponse } from "./types.ts";
+import type { AgentView, CreateResponse, Launcher, LaunchersResponse } from "./types.ts";
 import {
   muxAck,
   muxOk,
@@ -21,6 +21,7 @@ import {
   type MuxGrid,
   type MuxOutcome,
   type MuxSpaceRequest,
+  type MuxTabRequest,
 } from "./mux/types.ts";
 import { declareCapabilities } from "./mux/capabilities.ts";
 
@@ -274,6 +275,46 @@ describe("POST /api/launch — by id", () => {
     const second = await run(mux, { shell: true, cwd: "later", requestId: ID }, { receipts, fs: dirs([join("/home/op", "later")]) });
     expect(second.body?.ok).toBe(true);
     expect(mux.spaces).toHaveLength(1);
+  });
+
+  test("with no folder named, a launch opens in the session's own folder, never over a named one", async () => {
+    const mux = new FakeMux();
+    const UNPINNED: Launcher = { command: "claude 1", label: "Claude" };
+    const sessionFolder = "/home/op/projects/yt";
+    const res = await launch(asMux(mux), engine(), post({ command: "claude 1" }), new AuditLog(() => {}), null, "project-yt",
+      () => Promise.resolve([UNPINNED]), clock(), { home: "/home/op", fs: dirs(), sessionFolder });
+    expect(res.status).toBe(200);
+    await run(mux, { shell: true }, { sessionFolder });
+    await run(mux, { shell: true, cwd: "/home/op/typed" }, { sessionFolder });
+    await run(mux, { command: "htop" }, { sessionFolder });
+    expect(mux.spaces.map((s) => s.cwd)).toEqual([sessionFolder, sessionFolder, "/home/op/typed", "/home/op/pinned"]);
+  });
+
+  test("from a pane, the pane's own folder wins over the session folder", async () => {
+    const tabs: MuxTabRequest[] = [];
+    const mux = new FakeMux();
+    const createTab = (request: MuxTabRequest): Promise<MuxOutcome<MuxCreatedPane>> => {
+      tabs.push(request);
+      return Promise.resolve(muxOk({ paneId: "w1:p2", spaceId: "w1", spaceLabel: "s", tabId: "w1:t2", cwd: request.cwd ?? "/" }));
+    };
+    // SAFETY: `launch` reads only `paneId`, `workspaceId` and `cwd` off the beside pane.
+    const pane = { paneId: "w1:p1", workspaceId: "w1", cwd: "/home/op/pane" } as AgentView;
+    const withPane: Partial<StateEngine> = {
+      pokeNow: () => {},
+      current: () => ({ agents: [], shellPanes: [pane], workspaces: [], tabs: [], bridge: "connected" }),
+    };
+    // SAFETY: as engine() above, with one shell pane to launch beside.
+    const res = await launch(asMux(Object.assign(mux, { createTab })), withPane as StateEngine, post({ shell: true, paneId: "w1:p1" }),
+      new AuditLog(() => {}), null, "project-yt", () => Promise.resolve([]), clock(), { home: "/home/op", fs: dirs(), sessionFolder: "/srv/yt" });
+    expect(res.status).toBe(200);
+    expect(tabs.map((t) => t.cwd)).toEqual(["/home/op/pane"]);
+  });
+
+  test("a session folder is the operator's default, not the person's ask: it never joins Recent", async () => {
+    const recorded: string[] = [];
+    const folders = { recordRecent: (f: string) => Promise.resolve(void recorded.push(f)) };
+    await run(new FakeMux(), { shell: true }, { folders, sessionFolder: "/home/op/projects/yt" });
+    expect(recorded).toEqual([]);
   });
 
   test("a folder that worked joins Recent; a pinned one does not", async () => {

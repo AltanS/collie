@@ -172,3 +172,44 @@ describe("SessionSwitcher — the widened view", () => {
     expect(screen.getByRole("button", { name: /showing every session/i })).toBeInTheDocument();
   });
 });
+
+// ── Operator labels (spaces.toml) ──────────────────────────────────────────
+//
+// A label is display-only: the sheet and the trigger print it, the row still navigates by the
+// registry name, and the name stays visible under the label.
+describe("SessionSwitcher — operator labels", () => {
+  const labelled: SessionSummary = { ...demo, label: "УТ ОП" };
+
+  it("prints the label in place of the name, keeps the name beneath it, and still selects by name", async () => {
+    const user = userEvent.setup();
+    const router = renderSwitcher([primary, labelled], undefined);
+    await user.click(screen.getByRole("button", { name: /switch session/i }));
+
+    const row = within(screen.getByRole("dialog")).getByRole("button", { name: /УТ ОП/ });
+    expect(row).toHaveTextContent("collie-demo");
+    await user.click(row);
+    await waitFor(() => expect(location(router)).toBe("/?s=collie-demo"));
+  });
+
+  it("names the current session by its label on the trigger", () => {
+    renderSwitcher([primary, labelled], "collie-demo", "/?s=collie-demo");
+    const trigger = screen.getByRole("button", { name: "Session: УТ ОП. Switch session" });
+    expect(trigger).toHaveTextContent("УТ ОП");
+  });
+
+  it("a row without a label shows its name once, as before", async () => {
+    const user = userEvent.setup();
+    renderSwitcher([primary, labelled], undefined);
+    await user.click(screen.getByRole("button", { name: /switch session/i }));
+    const row = within(screen.getByRole("dialog")).getByRole("button", { name: /default/ });
+    expect(within(row).getAllByText("default")).toHaveLength(1);
+  });
+
+  it("an empty label falls back to the name", async () => {
+    const user = userEvent.setup();
+    renderSwitcher([primary, { ...demo, label: "" }], undefined);
+    await user.click(screen.getByRole("button", { name: /switch session/i }));
+    const row = within(screen.getByRole("dialog")).getByRole("button", { name: /collie-demo/ });
+    expect(within(row).getAllByText("collie-demo")).toHaveLength(1);
+  });
+});

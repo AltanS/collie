@@ -83,6 +83,8 @@ const SESSION_SUMMARY_KEYS = {
   experimental: true,
   // Rides only on a program card refused for its wire version (M55 spec 14), so no solo byte moved.
   notice: true,
+  // The operator's display label from spaces.toml: absent without the file, so no solo byte moved.
+  label: true,
 } satisfies Record<keyof SessionSummary, true>;
 
 const AGENT_VIEW_KEYS = {

@@ -278,6 +278,8 @@ const SESSION_SUMMARY_KEYS = {
   working: true,
   blocked: true,
   host: true,
+  // NOT a crew dimension, the operator's display label from spaces.toml, absent without the file.
+  label: true,
 } satisfies Record<keyof SessionSummary, true>;
 
 const PANE_WIRE_KEYS = {
@@ -486,12 +488,15 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
     ]);
   });
 
-  test("SessionSummary gained `host` and nothing else", () => {
+  // `label` is the operator's spaces.toml display label: not a crew dimension, and absent from
+  // every body here because no baseline writes the file.
+  test("SessionSummary gained `host` as its one crew dimension, and the optional `label`", () => {
     expect(Object.keys(SESSION_SUMMARY_KEYS).toSorted()).toEqual([
       "agents",
       "blocked",
       "host",
       "isPrimary",
+      "label",
       "name",
       "reachable",
       "working",
@@ -984,6 +989,7 @@ const CONFIG_KEYS = {
   fontsDir: true,
   launchersFile: true,
   cacheRulesFile: true,
+  spacesFile: true,
   maxUploadBytes: true,
   port: true,
   host: true,
@@ -1061,6 +1067,7 @@ describe("solo zero-tax — config", () => {
       "sent",
       "skipServe",
       "socketPath",
+      "spacesFile",
       "stateDir",
       "submitKeys",
       "surfaceShadow",

@@ -73,3 +73,38 @@ describe("SessionChip — when it does", () => {
     expect(screen.queryByRole("link")).toBeNull();
   });
 });
+
+describe("SessionChip — an operator label", () => {
+  it("prints the label from spaces.toml instead of the registry name", () => {
+    mount("work", [registry[0]!, { ...registry[1]!, label: "Клиентский кабинет" }]);
+    expect(screen.getByLabelText("In session: Клиентский кабинет")).toHaveTextContent("Клиентский кабинет");
+  });
+
+  it("on a crew, takes the label of the session on the pane's own machine", () => {
+    const sessions: SessionSummary[] = [
+      { ...registry[0]!, host: "lead" },
+      { ...registry[1]!, host: "lead", label: "Lead work" },
+      { ...registry[0]!, host: "box" },
+      { ...registry[1]!, host: "box", label: "Box work" },
+    ];
+    render(
+      <CrewProvider servers={undefined} sessions={sessions}>
+        <SessionChip session="work" host="box" />
+      </CrewProvider>,
+    );
+    expect(screen.getByLabelText("In session: Box work")).toBeInTheDocument();
+  });
+
+  it("never borrows another machine's label when the pane's machine lists no such session", () => {
+    const sessions: SessionSummary[] = [
+      { ...registry[0]!, host: "lead" },
+      { ...registry[1]!, host: "lead", label: "Lead work" },
+    ];
+    render(
+      <CrewProvider servers={undefined} sessions={sessions}>
+        <SessionChip session="work" host="box" />
+      </CrewProvider>,
+    );
+    expect(screen.getByLabelText("In session: work")).toBeInTheDocument();
+  });
+});

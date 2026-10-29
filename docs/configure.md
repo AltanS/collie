@@ -125,7 +125,7 @@ Without this setting, the UI will load as an empty page. See
 ## Your own slash commands
 
 Put machine-specific commands, such as a Herdr plugin `/fork-in-herdr` or a custom `/deploy`, in
-`commands.toml`. This is one of six config files that share the same reader and load pattern:
+`commands.toml`. This is one of seven config files that share the same reader and load pattern:
 
 | file | scope | confirm/danger flag | live reload |
 | --- | --- | --- | --- |
@@ -135,6 +135,7 @@ Put machine-specific commands, such as a Herdr plugin `/fork-in-herdr` or a cust
 | `theme.toml` | none, the faces are a device setting | none | yes, on the next page reload |
 | `launchers.toml` | none, matched by exact command instead; `[phone]` switches the rows a phone adds | none | yes, but an already-open tab re-reads the rows only on its next load |
 | `cache-rules.toml` | none, matched by exact rule id instead | none | yes, no restart needed |
+| `spaces.toml` | none, matched by exact registry name instead | none | yes, within a few seconds |
 
 These files are unchanged by the config file. They share the instance `config.toml`'s
 directory, they keep their own formats and their own live reload, and nothing merges them into it.
@@ -907,6 +908,60 @@ By default, one Collie instance serves every Herdr session it finds.
 config root, switchable from the header. Setting `COLLIE_MULTI_SESSION=off` serves only the primary
 Herdr session. Every discovered Herdr session is accessible through the same URL, including private or sandbox
 sessions. [Security](security.md) lists this behavior as a sharp edge.
+
+### Your own space labels
+
+Give a space a label of your own in `spaces.toml`, next to `keys.toml`:
+
+```bash
+cp spaces.toml.example ~/.config/collie/spaces.toml
+```
+
+The phone calls a terminal grouping a space. Herdr calls the same thing a session, and its registry
+names one by the folder its socket lives in, so `<config root>/sessions/project-yt/` shows as
+`project-yt`. In Collie's own words a session is one agent conversation, which is why the file is
+called `spaces.toml`. A label replaces the registry name in the space
+switcher, on its trigger, on the space tag of a row in **All sessions**, and on a durable agent's
+row. The switcher keeps the registry name under the label.
+
+```toml
+[labels]
+"project-yt" = "Video"
+default = "Home"
+```
+
+The key is the Herdr session name the switcher shows today, and `default` is the primary space. Quote
+a name that holds anything but letters, digits, `-` and `_`.
+
+> **Note.** A label is display-only. Links (`?s=`), notifications, the crew and the terminal keep
+> using the registry name, so a label can change at any time without breaking a bookmark.
+
+Collie applies a few rules to every row:
+
+| rule | what happens |
+| --- | --- |
+| a name no space has | the row is kept and never shown |
+| a value that is not a string, or is blank | the row is dropped and logged |
+| a control or invisible format character, tab or line break | replaced by a space |
+| more than 48 characters | cut to 48 and logged |
+
+A dropped row never costs you the rest of the file. Edits show within a few seconds, with no
+restart. In a crew, each machine labels its own spaces in its own `spaces.toml`.
+
+### A folder for each space
+
+When each space is one project, a launch from the dashboard should start in that project, not in
+your home folder. Name the folder in the same file, under the same registry name:
+
+```toml
+[folders]
+"project-yt" = "~/projects/yt"
+```
+
+A launcher row with no `cwd`, or a new space with an empty Where field, opens in the space's
+folder. A row's own `cwd`, a folder typed in Where, and a pane's own folder all still win. The folder
+is absolute or starts with `~/`; a row with a `..` segment or a control character is dropped and
+logged. A folder that is not on disk at launch time falls back to home.
 
 ## Usage windows
 
