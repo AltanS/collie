@@ -1,0 +1,42 @@
+{
+  "v": 1,
+  "harness": "claude",
+  "version": "2.1.312",
+  "legs": {
+    "solo": {
+      "model": "haiku",
+      "skill": "48a9501916764efa",
+      "recordedAt": "2026-10-29T14:06:25.662Z",
+      "cases": [
+        "claude.load-older",
+        "claude.permission",
+        "claude.pick-many",
+        "claude.stream-send",
+        "claude.walky",
+        "claude.walky-broadcast",
+        "claude.walky-busy",
+        "claude.walky-drop",
+        "claude.walky-forged",
+        "claude.walky-inbox",
+        "claude.walky-question",
+        "claude.walky-replaced",
+        "pi.walky-agents",
+        "rig.before-first-case"
+      ]
+    },
+    "crew": {
+      "model": "haiku",
+      "skill": "48a9501916764efa",
+      "recordedAt": "2026-10-29T14:09:28.717Z",
+      "cases": [
+        "claude.walky-crew-agents",
+        "claude.walky-crew-broadcast",
+        "claude.walky-crew-member-to-lead",
+        "claude.walky-crew-off",
+        "claude.walky-crew-pair-limit",
+        "claude.walky-crew-unreachable",
+        "rig.before-first-case"
+      ]
+    }
+  }
+}

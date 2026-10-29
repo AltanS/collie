@@ -1,17 +1,20 @@
-// The rig's model stub (M67, ADR 0125): a local OpenRouter stand-in for pi and omp. The rig daemon
-// starts it on 127.0.0.1 before the first harness and stops it with the rig. Every pi and omp of the
-// rig sends its model calls here (a provider extension sets the base URL, harnesses.ts), on a path
-// that names the harness instance: `/pi-lead/api/v1/messages`, `/omp-member/api/v1/responses`.
+// The rig's model stub (M67, ADR 0125): a local OpenRouter stand-in for pi and omp, and a local Anthropic
+// stand-in for Claude Code (spec 07). The rig daemon starts it on 127.0.0.1 before the first harness and
+// stops it with the rig. Every pi and omp of the rig sends its model calls here (a provider extension
+// sets the base URL, harnesses.ts), and so does Claude (ANTHROPIC_BASE_URL), on a path that names the
+// harness instance: `/pi-lead/api/v1/messages`, `/omp-member/api/v1/responses`, `/claude-lead/v1/messages`.
 //
 //   replay  the request is matched to its cassette (cassette.ts) and the recorded stream is sent back
 //           with its recorded pacing. No upstream call can happen: this mode has no upstream code path.
 //           A request with no matching entry gets HTTP 422 `cassette mismatch` (MISMATCH_STATUS), never a
 //           canned answer.
-//   live    the request goes on to OpenRouter as it came, with the harness's own Authorization header,
-//           and the answer streams straight back. With `record`, the stream is also written into the
+//   live    the request goes on to OpenRouter (pi, omp) or Anthropic (Claude) as it came, with the
+//           harness's own Authorization header, and the answer streams straight back. The header lives
+//           in memory for that one request only. With `record`, the stream is also written into the
 //           cassettes: no header, the volatile values replaced by placeholders.
 //
-// Anything else (a catalog read, a key check) gets a 503 on every tier and never leaves the machine.
+// Claude's `HEAD /api/hello` (its reachability check) gets a 200 on every tier, here. Anything else (a
+// catalog read, a key check) gets a 503 on every tier and never leaves the machine.
 //
 // The leg tells the stub which case runs (`POST /_rig/case`, leg.ts runScenario), and reads its
 // counters and mismatches (`GET /_rig/stats`, global-teardown.ts). The stub never reads a key file
@@ -49,8 +52,9 @@ import {
   type Literal,
   type RecordedResponse,
   type SseEvent,
+  type Vendor,
 } from "./cassette";
-import { STUB_HARNESSES, type StubHarness, type TierPlan, type TierPlans } from "./tier";
+import { STUB_HARNESSES, VENDOR, isStubHarness, type StubHarness, type TierPlan, type TierPlans } from "./tier";
 
 export interface StubConfig {
   /** The cassette root (web/e2e/rig/cassettes). */
@@ -61,6 +65,8 @@ export interface StubConfig {
   readonly literals: readonly Literal[];
   /** OpenRouter's origin; a test points it at a local fake. */
   readonly upstream?: string;
+  /** Anthropic's origin, for Claude; a test points it at a local fake. */
+  readonly anthropic?: string;
   /** Replay pacing: recorded delays are divided by this (1: as recorded). Never below 1. */
   readonly speed?: number;
   readonly log?: (line: string) => void;
@@ -86,7 +92,7 @@ export interface HarnessCounts {
 }
 
 export interface StubStats {
-  /** Every request that left this machine for OpenRouter, all harnesses. */
+  /** Every request that left this machine, all harnesses: OpenRouter's and Anthropic's. */
   readonly upstream: number;
   readonly harnesses: Record<string, HarnessCounts>;
   readonly mismatches: readonly Mismatch[];
@@ -112,10 +118,13 @@ export const MISMATCH_STATUS = 422;
 /** The case id of a request that comes before the leg named a case (a harness start). A valid case id. */
 export const NO_CASE = "rig.before-first-case";
 const INSTANCE = /^\/([a-z]+)-(lead|member)(\/[^#]*)$/u;
+/** Claude Code's reachability check, before its first model call. */
+const HELLO = /^\/api\/hello(?:\?|$)/u;
 const sleep = (ms: number): Promise<void> => new Promise((done) => setTimeout(done, ms));
 
-/** `/api/v1/messages?beta=true` and `/api/responses` to OpenRouter's `/api/v1/...`. */
-export function upstreamUrl(origin: string, rest: string): string {
+/** `/api/v1/messages?beta=true` and `/api/responses` to OpenRouter's `/api/v1/...`; Claude's path as it came. */
+export function upstreamUrl(origin: string, rest: string, vendor: Vendor = "openrouter"): string {
+  if (vendor === "anthropic") return `${origin}${rest}`;
   const tail = rest.startsWith("/api/") ? rest.slice(4) : rest;
   return `${origin}/api${tail.startsWith("/v1/") ? tail : `/v1${tail}`}`;
 }
@@ -184,7 +193,7 @@ export function dropRecording(root: string, leg: string, harness: string, versio
 export async function startStub(config: StubConfig, port = 0, host = "127.0.0.1"): Promise<Stub> {
   const log = config.log ?? (() => undefined);
   const speed = Math.max(1, config.speed ?? 1);
-  const upstreamOrigin = config.upstream ?? "https://openrouter.ai";
+  const origins = { openrouter: config.upstream ?? "https://openrouter.ai", anthropic: config.anthropic ?? "https://api.anthropic.com" } satisfies Record<Vendor, string>;
   let current: string | null = null;
   let upstream = 0;
   const mismatches: Mismatch[] = [];
@@ -337,7 +346,7 @@ export async function startStub(config: StubConfig, port = 0, host = "127.0.0.1"
   };
 
   const replay = async (h: StubHarness, machine: string, caseId: string, path: string, raw: string, res: ServerResponse) => {
-    const summary = summarize(path, raw, config.literals);
+    const summary = summarize(path, raw, config.literals, VENDOR[h]);
     const kind = kindOf(summary);
     let entry: Entry;
     if (kind === "turn") {
@@ -367,7 +376,8 @@ export async function startStub(config: StubConfig, port = 0, host = "127.0.0.1"
 
   const live = async (plan: TierPlan, machine: string, caseId: string, path: string, req: IncomingMessage, raw: string, res: ServerResponse) => {
     const h = plan.harness;
-    const summary = summarize(path, raw, config.literals);
+    const vendor = VENDOR[h];
+    const summary = summarize(path, raw, config.literals, vendor);
     const kind = kindOf(summary);
     // The slot is taken on arrival, so the cassette keeps the order the requests came in.
     let rec: Recording | undefined;
@@ -393,10 +403,10 @@ export async function startStub(config: StubConfig, port = 0, host = "127.0.0.1"
     try {
       const init: RequestInit = { method: req.method ?? "POST", headers: forwardHeaders(req) };
       if (raw !== "") init.body = raw;
-      up = await fetch(upstreamUrl(upstreamOrigin, path), init);
+      up = await fetch(upstreamUrl(origins[vendor], path, vendor), init);
     } catch (err) {
       res.writeHead(502, { "content-type": "application/json" });
-      res.end(JSON.stringify({ type: "error", error: { type: "stub_upstream", message: `the rig stub could not reach OpenRouter: ${err instanceof Error ? err.message : String(err)}` } }));
+      res.end(JSON.stringify({ type: "error", error: { type: "stub_upstream", message: `the rig stub could not reach ${vendor === "anthropic" ? "Anthropic" : "OpenRouter"}: ${err instanceof Error ? err.message : String(err)}` } }));
       return;
     }
     const contentType = up.headers.get("content-type") ?? "application/octet-stream";
@@ -474,15 +484,21 @@ export async function startStub(config: StubConfig, port = 0, host = "127.0.0.1"
       }
       const m = INSTANCE.exec(url);
       const h = m?.[1];
-      const plan = h === "pi" || h === "omp" ? config.plans[h] : undefined;
+      const plan = h !== undefined && isStubHarness(h) ? config.plans[h] : undefined;
       if (m === null || plan === undefined) {
         res.writeHead(404, { "content-type": "application/json" });
-        res.end(JSON.stringify({ type: "error", error: { type: "not_found", message: `the rig stub serves /pi-lead/... and /omp-lead/..., not ${url}` } }));
+        res.end(JSON.stringify({ type: "error", error: { type: "not_found", message: `the rig stub serves /pi-lead/..., /omp-lead/... and /claude-lead/..., not ${url}` } }));
         return;
       }
       const machine = m[2] ?? "lead";
       const path = m[3] ?? "/";
       const raw = await readBody(req);
+      // Claude's reachability check: answered here on every tier, so a replay never needs Anthropic.
+      if (VENDOR[plan.harness] === "anthropic" && HELLO.test(path)) {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(req.method === "HEAD" ? undefined : "{}");
+        return;
+      }
       // Only a model call is answered. A catalog read (omp lists OpenRouter's models at start) gets a
       // 503 on every tier, so the harness keeps its bundled catalog and the stub's base URL, and the
       // run does not depend on what OpenRouter lists today.

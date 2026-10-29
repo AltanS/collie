@@ -22,7 +22,9 @@
 // on (replay/tier.ts says which, per harness: COLLIE_RIG_MODEL, COLLIE_RIG_LIVE, COLLIE_RIG_RECORD).
 // pi gets a provider extension that sets the openrouter base URL, omp a models.yml that does. On the
 // replay tier no key is loaded at all: the start script does not read the key file, the harness gets a
-// dummy key, and pi gets no auth.json, omp no agent.db.
+// dummy key, and pi gets no auth.json, omp no agent.db. Claude Code (spec 07) gets ANTHROPIC_BASE_URL
+// when it replays or records; on replay its login is a dummy (seed.ts seedClaudeReplay), so the real
+// access token is not even copied. A live Claude that does not record runs on its own login, direct.
 //
 // MODEL TURNS. A harness whose `turns` is false still starts and runs every scenario that needs no
 // model turn (the model picker); the rest report "not reached" with `noTurnsReason`. pi and omp turn
@@ -34,7 +36,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
 import { EMPTY_MCP_FILE } from "../../../scripts/harness-canary/lab/harnesses";
-import { seedClaude } from "../../../scripts/harness-canary/lab/seed";
+import { seedClaude, seedClaudeReplay } from "../../../scripts/harness-canary/lab/seed";
 import type { JsonObject } from "../../src/lib/json";
 import { BIN, piExtensions } from "./bins";
 import { tiersFromEnv, modelFor, SKILL_TEMPLATE, type StubHarness } from "./replay/tier";
@@ -77,7 +79,7 @@ export const SETUPS = {
     id: "claude",
     agent: "claude",
     // Haiku is the cheap model. The picker scenario commits Haiku again, so the session stays on it.
-    model: "haiku",
+    model: modelFor("claude"),
     turns: true,
     noTurnsReason: "",
     keyEnv: null,
@@ -130,8 +132,11 @@ function copySecret(from: string, to: string): boolean {
   return true;
 }
 
-/** The names the rig's pane shell carries that a harness must not see: the rig's Herdr home. */
-const UNSET = ["XDG_CONFIG_HOME", "XDG_STATE_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "HERDR_CONFIG_PATH"];
+/**
+ * The names the rig's pane shell carries that a harness must not see: the rig's Herdr home, and an
+ * Anthropic key or base URL of the operator's shell (Claude runs on its own login, or on the stub).
+ */
+const UNSET = ["XDG_CONFIG_HOME", "XDG_STATE_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "HERDR_CONFIG_PATH", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL"];
 
 /** This checkout: web/e2e/rig/harnesses.ts is three levels below it. */
 const WORKTREE = resolve(import.meta.dirname, "..", "..", "..");
@@ -193,10 +198,20 @@ export function prepareHarness(id: HarnessId, machine: Machine = "lead"): Prepar
   /** True for a pi or omp whose model calls the stub replays: no key is read for it. */
   let replayed = false;
   const bin = writeCollieShim(d.root, stateDir);
+  // The rig's model stub, when the rig runs one (every leg does): its port and each harness's tier.
+  const stub = readRun()?.stub;
   if (id === "claude") {
-    // The OAuth file without its refresh token, `.claude.json` with this project trusted, and an
-    // empty MCP file. Throws (LabDeferred) when the access token has under 25 minutes left.
-    seedClaude(d.config, d.project);
+    const plan = stub?.tiers.claude;
+    replayed = plan?.tier === "replay";
+    // Through the stub when it replays or records. A forced live Claude that does not record goes
+    // direct, so it is the live run of before spec 07, rate-limit notices and account extras included.
+    const base = stub !== undefined && plan !== undefined && (replayed || plan.record) ? `http://127.0.0.1:${String(stub.port)}/claude-${machine}` : null;
+    // Live: the OAuth file without its refresh token, `.claude.json` with this project trusted, and
+    // an empty MCP file; throws (LabDeferred) when the access token has under 25 minutes left. Replay:
+    // the same, with a dummy login in place of the OAuth file.
+    if (replayed) seedClaudeReplay(d.config, d.project);
+    else seedClaude(d.config, d.project);
+    if (base !== null) env.push(`ANTHROPIC_BASE_URL=${sq(base)}`);
     // The operator's one Herdr integration hook (SessionStart), copied, so the rig's Herdr learns the
     // session the way it does on the operator's machine. It writes only to $HERDR_SOCKET_PATH, which
     // in a rig pane is the rig's own socket.
@@ -231,9 +246,8 @@ export function prepareHarness(id: HarnessId, machine: Machine = "lead"): Prepar
     argv = [BIN.claude, "--model", SETUPS.claude.model, "--permission-mode", "default", "--strict-mcp-config", "--mcp-config", join(d.config, EMPTY_MCP_FILE)];
   } else {
     for (const dir of [d.home, d.agent, join(d.agent, "extensions")]) mkdirSync(dir, { recursive: true, mode: 0o700 });
-    // The rig's model stub, when the rig runs one (every leg does): its base URL for this harness, and
-    // whether this harness replays (then no key, no credential file, a dummy key).
-    const stub = readRun()?.stub;
+    // The stub's base URL for this harness, and whether this harness replays (then no key, no
+    // credential file, a dummy key).
     const base = stub === undefined ? null : `http://127.0.0.1:${String(stub.port)}/${id}-${machine}/api`;
     replayed = stub?.tiers[id]?.tier === "replay";
     const realAgent = join(HOME, id === "pi" ? ".pi" : ".omp", "agent");

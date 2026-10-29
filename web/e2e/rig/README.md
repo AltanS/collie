@@ -20,9 +20,10 @@ The leg is a gate. It runs in three places:
   it on the branch. A unit test cannot show that a tap works on a real screen.
 - **Every night**, on `origin/main`, through `nightly.ts` (below).
 
-One solo run costs about 11 minutes and about 17 Claude Haiku turns on the subscription. pi and omp
-replay recorded model streams ("Replay" below), so a solo run on recordings sends nothing to
-OpenRouter. A run on a new pi or omp version runs that harness live once and records it: the first
+One solo run costs about 11 minutes. Claude Code, pi and omp replay recorded model streams ("Replay"
+below), so a run on recordings sends nothing to OpenRouter or Anthropic and spends no Claude turn. A run
+on a new Claude Code version runs Claude live once and records it, about 24 Claude Haiku turns on the
+subscription for the solo leg and 6 for the crew leg. A run on a new pi or omp version runs that harness live once and records it: the first
 recording run (2026-10-26, pi 1.3.0, omp 18.6.1) sent 44 requests to OpenRouter Haiku 4.5, 21 for pi and
 23 for omp (a few cents). The crew leg adds about 4 minutes, 6 Claude turns
 and 4 pi turns, and the nightly run does both. The turn cap is 20 per harness. "Cost of one run" below
@@ -302,7 +303,8 @@ For development, `COLLIE_RIG_KEEP=1` leaves the rig and the harnesses up after a
 COLLIE_RIG_KEY_FILE=/path/to/.env bunx playwright test -c e2e/rig/playwright.config.ts
 ```
 
-`harnesses.ts` (`SETUPS`) is the one place for this. Claude runs on Haiku with its own login. pi and
+`harnesses.ts` (`SETUPS`) is the one place for this. Claude runs on Haiku (`COLLIE_RIG_CLAUDE_MODEL`)
+with its own login when it runs live, and on a dummy login when it replays. pi and
 omp run on `openrouter/anthropic/claude-haiku-4.5` and read `OPENROUTER_API_KEY`. Their model calls
 never go to OpenRouter directly: they go to the rig's model stub, which replays them or passes them on
 ("Replay" below).
@@ -318,13 +320,27 @@ scenarios that need a turn. With a recording it replays, and needs no key. Other
 The teardown scrubs the key from every text file of the run, the rig's logs and Playwright's test
 results, and drops a screenshot whose capture held it. It prints a count, never the key.
 
-## Replay: recorded model streams for pi and omp
+## Replay: recorded model streams for pi, omp and Claude Code
 
 The rig fakes the model, not the agent (ADR 0125). The rig daemon starts a stub on 127.0.0.1, on a free
 port in the rig's range, before the first harness. pi's base URL goes to it through a provider extension
-(`collie-rig-stub.ts` in its scratch folder), omp's through `models.yml`. The real pi and omp binaries
-still run in real Herdr panes and draw every screen the phone taps. Claude Code is not routed through the
-stub: it runs live on its own login.
+(`collie-rig-stub.ts` in its scratch folder), omp's through `models.yml`, and Claude Code's through
+`ANTHROPIC_BASE_URL` (`http://127.0.0.1:<port>/claude-lead`, M67 spec 07). The real binaries still run in
+real Herdr panes and draw every screen the phone taps, the permission card included: a recorded
+`tool_use` answer makes the real Claude draw it.
+
+**Claude Code.** The stub answers Claude's `HEAD /api/hello` itself on every tier. On replay Claude gets a
+dummy login (`seedClaudeReplay` in `scripts/harness-canary/lab/seed.ts`): the real access token is not
+copied, the 25-minute token rule does not apply, and Claude's own calls to Anthropic for account extras
+(a passes banner, the agents hint) fail quietly, so the replay screen is the same on every run. When Claude
+records, it runs on the real login (no refresh token) and the stub passes each call to
+`https://api.anthropic.com` with Claude's own headers; the token is in memory for that one request and is
+never logged or stored. A forced live Claude that does not record (`COLLIE_RIG_LIVE=claude`) gets no base
+URL at all: it is the live run of before M67. Claude's summary keeps each `<system-reminder>` of the
+prompt to its first line, plus any memory file the rig wrote, because the reminders carry the operator's
+own `~/.claude/CLAUDE.md` (Claude finds it on its walk up from the project) and the account's email. It
+leaves Claude's `role: system` items out (the OS version, the session's scratchpad), and adds a digest of
+the system prompt and the tool definitions, so a new tool list is a mismatch.
 
 **The tier.** The global setup reads each harness's `--version` and picks one tier for the run:
 
@@ -333,19 +349,21 @@ stub: it runs live on its own login.
   the recordings, with their recorded pacing. It has no path to OpenRouter on this tier. The harness gets
   a dummy key, its start script does not open the key file, pi gets no `auth.json` and omp no `agent.db`.
 - **live**: there is no recording for this version, model or skill text. The stub passes each call on to
-  OpenRouter with the harness's own key and records it, so the next run replays. Without a key file it
-  records nothing and the turn scenarios are "not reached".
+  OpenRouter (pi, omp) or Anthropic (Claude) with the harness's own key or login and records it, so the
+  next run replays. Without a key file, pi and omp record nothing and their turn scenarios are "not
+  reached". Claude needs no key file, only its login.
 
 ```sh
 COLLIE_RIG_MODEL=replay ...     # replay or stop: a harness with no recording fails the run before it starts
-COLLIE_RIG_LIVE=pi ...          # pi live this run (pi,omp or all: both); the rest by the rule
-COLLIE_RIG_MODEL=live ...       # both live
+COLLIE_RIG_LIVE=pi ...          # pi live this run (pi,omp,claude or all); the rest by the rule
+COLLIE_RIG_MODEL=live ...       # all three live
 COLLIE_RIG_RECORD=1 ...         # a forced live run records too (a version miss always records)
 COLLIE_RIG_REPLAY_SPEED=4 ...   # replay four times faster than recorded (default 1, never slower)
 ```
 
 The run's first lines say the tier of each harness and why. Its last lines say which harness replayed,
-the live model turns, and `OpenRouter requests this run: N`. A replay run says 0 there. The same numbers
+the live model turns (`live model turns: claude 0` on a Claude replay), `OpenRouter requests this run: N`
+and `Anthropic requests this run: N`. A replay run says 0 there. The same numbers
 go to `model.json` in the run folder, and the nightly ledger row keeps the tiers (`tiers`).
 
 **Record.** Run the leg once with a key file on the new version (`make browser-leg DIR=...` from the
@@ -380,15 +398,16 @@ A harness version bump leaves the old `<version>` folder.
 Delete that folder in the same commit that records the new version.
 
 **Where they live.** `cassettes/<harness>/<version>/<case>.jsonl`, one file per case (`pi.walky-agents`,
-`claude.walky-broadcast` for the pi or omp calls of a Claude case), and `meta.json` per version with one
+`claude.walky-broadcast` for the pi or omp calls of a Claude case, `cassettes/claude/2.1.312/pi.walky-agents`
+for Claude's calls in a pi case), and `meta.json` per version with one
 entry per leg (`solo`, `crew`). A line holds one model request's summary (the wire format, the model, the
 tool names, the last prompt's text, the kinds of the items after it) and the recorded server-sent events
 with their delays. No request body, no header and no key is stored. omp's Responses stream echoes the
 request's `instructions` (the system prompt) and `tools` in its `response.*` events; the recorder keeps
 those events but empties the two fields. Values that differ on every run
-(walky ids, pane addresses, uuids, dates, ports, the rig's folders) are placeholders such as
-`{{walky:0}}` and `{{lab}}`, and a replay fills in this run's values (`VOLATILE` in
-`replay/cassette.ts`).
+(walky ids, pane addresses, uuids, dates, ports, the rig's folders, and the folders in Claude's dashed
+form) are placeholders such as `{{walky:0}}`, `{{lab}}` and `{{labdash}}`, and a replay fills in this
+run's values (`VOLATILE` in `replay/cassette.ts`).
 
 **A mismatch.** When a request has no recording, for example because a case's prompt or the skill text
 changed, the stub answers HTTP 422 `cassette mismatch ... re-record`, the harness ends the turn and
@@ -411,8 +430,9 @@ check is the second line.
 
 ## Cost of one run
 
-On replay, pi and omp spend no OpenRouter turn: the stub serves them. The turn counts below are what the
-leg asks of each harness, and on a live run (a new version, or forced) they are paid OpenRouter turns.
+On replay, pi, omp and Claude spend no model turn: the stub serves them. The turn counts below are what the
+leg asks of each harness, and on a live run (a new version, or forced) they are paid turns: OpenRouter
+for pi and omp, the subscription for Claude.
 
 - Claude: 24 model turns on Haiku (the count of `turns-claude` in the run folder): the permission
   request, the pick-many question, the long list plus one message sent while it streams, seven prompts for the Load older history (each reads four tiny files and
@@ -448,7 +468,7 @@ leg asks of each harness, and on a live run (a new version, or forced) they are 
   rig's bridge is not listed there, because it registers under its own HOME.
 - The operator's agent config. Each harness gets a scratch config under
   `~/.cache/collie-lab/browser-leg-state/harness/<id>/`. Only what it needs is copied there at
-  0600: Claude's OAuth file without its refresh token, and pi's `auth.json` only when there is no key
+  0600: Claude's OAuth file without its refresh token (a dummy login when Claude replays), and pi's `auth.json` only when there is no key
   file and pi does not replay. omp gets no copy of `agent.db`: its key comes from the environment
   through the stub, or it replays and needs none. The bridge reads the journals of these scratch homes, never
   `~/.claude/projects`.

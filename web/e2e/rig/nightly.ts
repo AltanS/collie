@@ -29,7 +29,8 @@
 // the clone or the rig.
 //
 // A CANNOT-START case costs nothing, writes no row and appends one line to
-// ~/.local/state/collie-browser-leg/notify.log: a Claude login with under 25 minutes left, no herdr,
+// ~/.local/state/collie-browser-leg/notify.log: a Claude login with under 25 minutes left (only when
+// Claude runs live: claudeReplays), no herdr,
 // bun or git, under 8 GB of free memory, no key file, an unreadable binary, an unreachable remote or an
 // unreadable ledger. `--plan` shows the same blockers and writes nothing.
 //
@@ -41,6 +42,7 @@
 // finish (it could not start, a step broke, or a case was not reached or not applicable, which proves
 // nothing).
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
+import { createHash } from "node:crypto";
 import { accessSync, appendFileSync, closeSync, constants, existsSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, rmdirSync, statSync, writeFileSync, writeSync } from "node:fs";
 import { homedir } from "node:os";
 import { delimiter, dirname, isAbsolute, join, resolve, sep } from "node:path";
@@ -102,8 +104,9 @@ export interface Row extends Tuple {
   /** The counts of both legs added up per harness (the crew leg's cases run under Claude). */
   readonly verdicts?: Verdicts | undefined;
   /**
-   * The model tier pi and omp ran on in each leg (M67, replay/tier.ts), from each leg's model.json:
-   * `solo: pi replay, omp live+record; crew: pi replay`. Rows from before M67 have none.
+   * The model tier pi, omp and Claude ran on in each leg (M67, replay/tier.ts), from each leg's model.json:
+   * `solo: pi replay, omp live+record, claude replay; crew: pi replay, claude replay`. Rows from before
+   * M67 have none, and rows from before spec 07 name no Claude tier (Claude was live then).
    */
   readonly tiers?: string | undefined;
   /** One line: why it failed, or what passed. */
@@ -419,6 +422,23 @@ export function claudeMinutesLeft(credentials: string, now: number): number | un
   return expiresAt === undefined ? undefined : (expiresAt - now) / 60_000;
 }
 
+/** The model the leg starts Claude on: the leg keeps no COLLIE_RIG_CLAUDE_MODEL (KEPT_RIG_NAMES), so tier.ts modelFor's default. */
+const LEG_CLAUDE_MODEL = "haiku";
+
+/**
+ * Whether Claude replays on both legs (M67 spec 07): the recordings' meta.json names a solo and a crew
+ * leg on this model and this walky talky skill hash (tier.ts coverGap). A replay starts Claude on a
+ * dummy login, so it needs no real one. Pure.
+ */
+export function claudeReplays(metaText: string | undefined, skill: string, model: string = LEG_CLAUDE_MODEL): boolean {
+  if (metaText === undefined) return false;
+  const legs = asJsonObject(asJsonObject(parseJson(metaText))?.legs);
+  return ["solo", "crew"].every((leg) => {
+    const meta = asJsonObject(legs?.[leg]);
+    return asJsonString(meta?.model) === model && asJsonString(meta?.skill) === skill;
+  });
+}
+
 /** What the machine says, before a run. `null`: could not be read. */
 export interface Facts {
   readonly memKb: number | null;
@@ -428,6 +448,14 @@ export interface Facts {
   /** Whether COLLIE_RIG_KEY_FILE is set, and whether it names a readable file. */
   readonly keyFile: "unset" | "unusable" | "ok";
   readonly claudeMinutesLeft: number | null;
+  /**
+   * True when Claude replays on both legs, so the login check does not apply. Read from the
+   * recordings of THIS checkout, the one the runner started from: main is cloned after the row is
+   * written. When main has recorded a version since, this says false and keeps the check. When main
+   * has changed the skill text since, this says true and main runs Claude live: the leg's own seed
+   * check (seed.ts MIN_MINUTES_LEFT) then stops Claude at its start, never half way.
+   */
+  readonly claudeReplays: boolean;
 }
 
 /** The reasons a run cannot start. Empty: it can. Pure; the words are what `notify.log` gets. */
@@ -435,8 +463,11 @@ export function blockers(facts: Facts): string[] {
   const out: string[] = [];
   if (facts.keyFile === "unset") out.push("COLLIE_RIG_KEY_FILE is not set");
   else if (facts.keyFile === "unusable") out.push("COLLIE_RIG_KEY_FILE does not name a readable file");
-  if (facts.claudeMinutesLeft === null) out.push("no usable Claude login in ~/.claude/.credentials.json");
-  else if (facts.claudeMinutesLeft < MIN_CLAUDE_MINUTES) out.push(`the Claude login has ${String(Math.max(0, Math.floor(facts.claudeMinutesLeft)))} min left, the leg needs ${String(MIN_CLAUDE_MINUTES)}`);
+  // A Claude replay starts on a dummy login, so the real one is checked only for a live Claude.
+  if (!facts.claudeReplays) {
+    if (facts.claudeMinutesLeft === null) out.push("no usable Claude login in ~/.claude/.credentials.json");
+    else if (facts.claudeMinutesLeft < MIN_CLAUDE_MINUTES) out.push(`the Claude login has ${String(Math.max(0, Math.floor(facts.claudeMinutesLeft)))} min left, the leg needs ${String(MIN_CLAUDE_MINUTES)}`);
+  }
   if (!facts.herdr) out.push("herdr is not on PATH");
   if (!facts.bun) out.push("bun is not on PATH");
   if (!facts.git) out.push("git is not on PATH");
@@ -660,7 +691,7 @@ function notify(options: Options, out: Out, now: number, line: string): void {
 }
 
 /** What `--plan` says about the second leg. The crew leg needs nothing the solo leg does not. */
-export const PLAN_CREW = "plan: includes the crew leg after the solo leg (its own rig state, about 1 more minute, 4 Claude turns and 2 pi turns)";
+export const PLAN_CREW = "plan: includes the crew leg after the solo leg (its own rig state, about 1 more minute, 4 Claude turns and 2 pi turns when they run live)";
 
 /** The summary: one line per harness (both legs' counts), then the solo table's path, then the crew table's. */
 export function summaryLines(tuple: Tuple, outcome: Outcome): string[] {
@@ -816,7 +847,21 @@ function realFacts(env: Readonly<Record<string, string | undefined>>, now: numbe
     git: which("git", env.PATH),
     keyFile: keyFileState(env.COLLIE_RIG_KEY_FILE),
     claudeMinutesLeft: minutes,
+    claudeReplays: recordedHere(),
   };
+}
+
+/** claudeReplays for the Claude version on PATH, against this checkout's recordings and skill text. */
+function recordedHere(): boolean {
+  try {
+    const version = versionOf("claude");
+    if (!/^[0-9A-Za-z.+-]+$/u.test(version)) return false;
+    const meta = join(HERE_ROOT, "web", "e2e", "rig", "cassettes", "claude", version, "meta.json");
+    const skill = createHash("sha256").update(readFileSync(join(HERE_ROOT, "cli", "skills", "walky-talky.md"), "utf8")).digest("hex").slice(0, 16);
+    return claudeReplays(existsSync(meta) ? readFileSync(meta, "utf8") : undefined, skill);
+  } catch {
+    return false;
+  }
 }
 
 function remoteShaOf(repo: string): string {
@@ -943,7 +988,7 @@ export function tiersOf(folder: string | undefined): string | undefined {
   if (!existsSync(file)) return undefined;
   const tiers = asJsonObject(asJsonObject(parseJson(readFileSync(file, "utf8")))?.tiers);
   if (tiers === undefined) return undefined;
-  const words = ["pi", "omp"].flatMap((h) => {
+  const words = ["pi", "omp", "claude"].flatMap((h) => {
     const plan = asJsonObject(tiers[h]);
     const tier = asJsonString(plan?.tier);
     return tier === undefined ? [] : [`${h} ${tier}${plan?.record === true ? "+record" : ""}`];

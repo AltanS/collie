@@ -18,7 +18,7 @@ export async function startRun(crew: boolean): Promise<void> {
   const id = new Date().toISOString().replace(/[:.]/g, "-").replace(/-\d{3}Z$/, "Z");
   process.env.COLLIE_RIG_RUN_ID = id;
   mkdirSync(join(P.results, id), { recursive: true });
-  // The model tier of pi and omp (M67, replay/tier.ts), chosen once, before the rig starts: the daemon's
+  // The model tier of pi, omp and Claude (M67, replay/tier.ts), chosen once, before the rig starts: the daemon's
   // stub serves it and the workers start the harnesses for it. COLLIE_RIG_MODEL=replay with no cassette
   // for a harness version stops the run here, before anything starts or spends.
   const kept = readRun();
@@ -32,7 +32,7 @@ export async function startRun(crew: boolean): Promise<void> {
     const plan = tiers[h];
     return plan === undefined ? [] : [tierLine(plan)];
   });
-  console.log(`model tiers: ${lines.join("; ")}; claude live (its own login)`);
+  console.log(`model tiers: ${lines.join("; ")}`);
   if (reuse) return;
   execFileSync("bun", [join(WEB, "e2e", "rig", "rig.ts"), "up", ...(crew ? ["--crew"] : [])], { cwd: WEB, stdio: "inherit", timeout: crew ? 300_000 : 120_000 });
 }

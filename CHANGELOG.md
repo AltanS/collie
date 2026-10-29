@@ -23,6 +23,12 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Changed
+
+- **The browser leg can answer Claude Code from recorded model streams too (M67).** Claude Code reaches the leg's local stub through `ANTHROPIC_BASE_URL`, beside pi and omp, with recordings kept per Claude Code version and walky talky skill text. On a recorded version Claude replays on a dummy login, so a run needs no Claude login and spends no Claude turn, and a recorded tool call still makes the real Claude draw its permission card. A new version runs live once on the real login and records; the stub passes the login through to Anthropic and never stores it. `COLLIE_RIG_LIVE=claude` runs Claude live and direct, as before. The leg's summary now prints `live model turns: claude 0` on a replay and counts the requests sent to Anthropic.
+- **The browser leg holds Claude Code 2.1.312 recordings for both legs (M67).** All 22 Claude cases replay with no Claude turn. A walky case's mark, the six characters of its message id it writes into the body to find it on screen, is now as volatile as the id, so a replay of that case no longer misses on it. An address that starts a line of `collie walky who` is now volatile too, so a replayed send goes to the pane of this run and not the one recorded.
+- **The browser leg's nightly runner no longer asks for a Claude login when Claude replays (M67).** It checks the login only when the Claude version on the machine has no recording for both legs on Haiku and the current walky talky skill text, because a replay starts Claude on a dummy login.
+
 ## [1.25.0] - 2026-10-29
 
 ### Added
