@@ -111,8 +111,13 @@ export function OutputZoom({ text, logicalText, fontSize, agent, nativeMirror, f
   const apply = useCallback(
     (next: ZoomView) => {
       pendingScroll.current = next.scroll;
-      if (next.scale === scaleRef.current) flushScroll();
-      else setScale(next.scale);
+      // The ref moves now, not at the next render: a second move in the same frame compares against
+      // this scale. `setScale` bails out on an equal value, and the layout effect that flushes the
+      // offset runs only on a change, so an unchanged scale flushes it here.
+      const changed = next.scale !== scaleRef.current;
+      scaleRef.current = next.scale;
+      setScale(next.scale);
+      if (!changed) flushScroll();
     },
     [flushScroll],
   );
@@ -166,6 +171,8 @@ export function OutputZoom({ text, logicalText, fontSize, agent, nativeMirror, f
   // Escape closes, as on every full-screen surface here; + − 0 zoom for a keyboard.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // Ctrl, Cmd and Alt with + - 0 are the browser's own page zoom, not this view's.
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
       if (e.key === "Escape") onClose();
       else if (e.key === "+" || e.key === "=") zoomCentred(stepScale(scaleRef.current, 1));
       else if (e.key === "-") zoomCentred(stepScale(scaleRef.current, -1));
@@ -321,6 +328,14 @@ export function OutputZoom({ text, logicalText, fontSize, agent, nativeMirror, f
         // arrow keys and Page Up / Down scroll the text at once, and out of the Tab order.
         tabIndex={-1}
         onScroll={onScroll}
+        // READ-ONLY, AND LEAVES THE APP FOR NOTHING. A web address the agent printed is still an
+        // `<a target="_blank">` inside AnsiOutput, and a double tap's first tap would follow it.
+        onClickCapture={(e) => {
+          if (e.target instanceof Element && e.target.closest("a[href]")) {
+            e.preventDefault();
+            e.stopPropagation();
+          }
+        }}
         // `pan-x pan-y`: one finger scrolls natively, and the browser's own pinch and double-tap zoom
         // stand down so the listeners above own them. `overscroll-contain` keeps a pan at the edge
         // from pulling the page (or a refresh) behind the view.

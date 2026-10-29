@@ -147,6 +147,20 @@ describe("OutputZoom", () => {
     expect(screen.getByRole("dialog")).toHaveTextContent("line three");
   });
 
+  it("leaves the browser's own Ctrl, Cmd and Alt zoom keys alone", () => {
+    zoom();
+    fireEvent.keyDown(window, { key: "+", ctrlKey: true });
+    fireEvent.keyDown(window, { key: "=", ctrlKey: true });
+    fireEvent.keyDown(window, { key: "=", metaKey: true });
+    fireEvent.keyDown(window, { key: "=", altKey: true });
+    expect(readout()).toHaveTextContent("1×");
+    fireEvent.keyDown(window, { key: "=" });
+    expect(readout()).toHaveTextContent("1.5×");
+    fireEvent.keyDown(window, { key: "-", ctrlKey: true });
+    fireEvent.keyDown(window, { key: "0", metaKey: true });
+    expect(readout()).toHaveTextContent("1.5×");
+  });
+
   it("says so when the pane has printed nothing", () => {
     zoom({ text: "" });
     expect(screen.getByRole("dialog")).toHaveTextContent("(no recent output)");
@@ -162,6 +176,16 @@ describe("OutputZoom", () => {
     const dialog = screen.getByRole("dialog");
     expect(dialog).toHaveTextContent("src/lib/nav.ts:12");
     expect(dialog.querySelector("a")).toBeNull();
+  });
+
+  it("follows no web address: a click on a printed URL is stopped before the browser acts on it", () => {
+    zoom({ text: "see https://example.com/x for more" });
+    const link = screen.getByRole("dialog").querySelector<HTMLAnchorElement>("a[href='https://example.com/x']")!;
+    expect(link).not.toBeNull();
+    // `fireEvent` returns false when a handler called `preventDefault()`.
+    expect(fireEvent.click(link)).toBe(false);
+    // The viewport itself still clicks through as before.
+    expect(fireEvent.click(viewport())).toBe(true);
   });
 
   it("never wraps: each terminal row is one line, as wide as it is, and nothing inside takes a sideways drag", () => {

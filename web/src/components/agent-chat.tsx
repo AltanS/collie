@@ -3235,16 +3235,16 @@ export function AgentChat({
                       ? { onClick: () => nav.down(filesEntryPath), label: t("chat.changes.label") }
                       : undefined
                   }
-                  // The output, zoomed: the pill beside the switcher mark opens it full screen. The
+                  // The output, zoomed: the pill beside the switcher mark opens it full screen. A text
                   // field gives up focus first, so the soft keyboard is not left standing over a view
-                  // with no input in it (the reason `enterZen` blurs).
+                  // with no input in it (the reason `enterZen` blurs). Any other focus stays, so the
+                  // view hands it back to the pill when it closes.
                   zoomPill={
                     zoom
                       ? {
                           onClick: () => {
-                            // SAFETY: as in `enterZen` — the optional call is the narrowing for a
-                            // non-HTMLElement or null `activeElement`.
-                            (document.activeElement as HTMLElement | null)?.blur();
+                            const active = document.activeElement;
+                            if (active instanceof HTMLTextAreaElement || active instanceof HTMLInputElement) active.blur();
                             zoom.onOpen();
                           },
                           label: t("zoom.open"),

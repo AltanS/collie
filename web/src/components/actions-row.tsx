@@ -247,8 +247,9 @@ export function switchPillInset(scale: number, pills: number): number {
 /** Each pinned pill's answered box, by where it stands in the block. On the block's outer side it
  *  reaches 7px: on the left into the 8px beside the hairline, on the right into `pr-3`. Toward a
  *  neighbour it reaches 3px, half the 6px gap, so two reaches never meet. At the default scale that
- *  is 37 + 7 + 3 = 47px across for an end pill and 43px for the middle one, over the 44px floor
- *  either way. Literal class names, so Tailwind's scan finds all four. */
+ *  is 37 + 7 + 3 = 47px across for an end pill and 43px for the middle one. The end pill clears the
+ *  44px floor. The middle one stays one pixel under it, accepted because the 6px gap between pinned
+ *  pills cannot grow without moving the block. Literal class names, so Tailwind's scan finds all four. */
 function pinnedReach(first: boolean, last: boolean, hand: Hand = "right"): string {
   // The left-hand block runs mirrored (`flex-row-reverse`), so the DOM-first pill stands on the
   // block's INNER side, the right, and the DOM-last on its outer side, the left.

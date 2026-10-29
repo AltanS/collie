@@ -792,7 +792,7 @@ describe("ActionsRow: Stop (M68 spec 02)", () => {
 
 // THE OUTPUT, ZOOMED: an icon-only pill directly left of the Switch mark, on the pinned block. The
 // pane decides whether there is one (agent-chat.tsx); this file draws it and makes room for it.
-describe("ActionsRow — the Zoom pill", () => {
+describe("ActionsRow, the Zoom pill", () => {
   const handle = () => ({ ref: vi.fn(), onClick: vi.fn(), label: "Switch pane" });
   const changes = () => ({ onClick: vi.fn(), label: "Changes" });
   const zoomPill = (onClick = vi.fn()) => ({ onClick, label: "Zoom output" });

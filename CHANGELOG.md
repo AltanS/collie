@@ -71,6 +71,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
   `front-door` row warns when a root mount on a port Collie does not manage, such as port 80 from the
   old Headscale recipe, proxies to Collie, and names the `tailscale serve ... off` command that
   removes it. `collie serve` in http mode prints a note about such a mapping and still publishes.
+- **The zoomed output keeps your place and follows no link.** Closing it returns focus to the Zoom button, a tap on a printed web address opens nothing, and the browser's own Ctrl zoom keys leave the view's scale alone. Refines #536.
 
 ### Docs
 

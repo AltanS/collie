@@ -165,6 +165,20 @@ describe("the pane's output, zoomed", () => {
     expect(screen.getByRole("button", { name: "Zoom output" })).toBeInTheDocument();
   });
 
+  it("hands focus back to the Zoom pill when the ✕ closes the view", async () => {
+    const user = userEvent.setup();
+    const router = makeRouter();
+    render(<RouterProvider router={router} />);
+    const pill = await screen.findByRole("button", { name: "Zoom output" });
+    await user.click(pill);
+    const dialog = await screen.findByRole("dialog", { name: "Zoomed output" });
+    expect(dialog.contains(document.activeElement)).toBe(true);
+
+    await user.click(within(dialog).getByRole("button", { name: "Back to the pane" }));
+    await waitFor(() => expect(zoomDialog()).toBeNull());
+    expect(screen.getByRole("button", { name: "Zoom output" })).toHaveFocus();
+  });
+
   it("closes on the phone's back", async () => {
     const user = userEvent.setup();
     const router = makeRouter();

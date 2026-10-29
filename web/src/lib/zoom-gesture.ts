@@ -66,7 +66,7 @@ export function contentPointAt(view: ZoomView, at: Point): Point {
 }
 
 /**
- * Zoom to `nextScale` (clamped) keeping the content under `at` exactly where it is on screen — the
+ * Zoom to `nextScale` (clamped) keeping the content under `at` exactly where it is on screen, the
  * one rule that makes a pinch feel anchored between the fingers. Not clamped to the box: the caller
  * clamps once, against the box it actually has, after the scale is applied.
  */
