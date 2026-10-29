@@ -176,7 +176,7 @@ export function PaneColumnBody({
   // The body the device would draw for this pane, by the pane view's own first test: Chat where the
   // pane has a session to read and the device chose Chat (or the pane has no screen at all).
   const chat = !isShell && sessionLog.capable && pane.hasSession === true && (gridless || dash.prefs.paneView === "chat");
-  const feed = useChatWindow({ paneId: pane.paneId, scope, enabled: chat, seen: false });
+  const feed = useChatWindow({ paneId: pane.paneId, scope, instance: pane.instance, enabled: chat, seen: false });
   const screenText = usePaneScreen(pane.paneId, scope, !chat && !gridless);
   const lines = useMemo(() => (screenText === null ? [] : splitLines(parseAnsi(screenText))), [screenText]);
   const listRef = useRef<ChatMessageListHandle>(null);

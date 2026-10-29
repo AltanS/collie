@@ -5,7 +5,17 @@ import { describe, expect, it } from "vitest";
 import { parseAnsi } from "../../ansi";
 import { splitLines, type StyledLine } from "../../blocks";
 import { draftCarriesSend } from "../../draft-match";
-import { extractAgentsFooter, extractInputDraft, extractStatusLines, hasInputBox, stripChrome } from "./chrome";
+import { withUnreadDialog } from "../index";
+import {
+  extractAgentsFooter,
+  extractInputDraft,
+  extractStatusLines,
+  hasInputBox,
+  inputBoxTail,
+  namesAModalKey,
+  stripChrome,
+} from "./chrome";
+import { claudeAdapter } from "./index";
 import { lineText } from "./markers";
 
 /** The statusline run as plain text. extractStatusLines returns STYLED lines — a statusline tells
@@ -1174,5 +1184,73 @@ describe("a session name in the box's top edge (2.1.303, 160 columns)", () => {
   it("reads the draft under the titled edge, without the name", () => {
     expect(extractInputDraft(fixtureLines("claude--v2303-titled-edge-draft--w160.txt"))).toBe("ok merge the five, running the crew update now");
     expect(extractInputDraft(fixtureLines("claude--v2303-titled-edge-idle--w160.txt"))).toBeNull();
+  });
+});
+
+// The shapes below are hand-built from the field report in PR 616 (@GGGODLIN), the case the
+// RIGHT_FIELD_PADDING comment in chrome.ts dates 2026-10-06: a 59-column footer the terminal clipped
+// right after a whole hint or its separator, and a wide footer whose last hint is padded out to a
+// field Claude right-aligns ("0% until auto-compact", "/rc", an update notice). No capture of either
+// is in the corpus yet; replace these with captures when the lab draws one.
+describe("status hints clipped at 59 columns or followed by a right-aligned field", () => {
+  const CLIPPED_W59 = [
+    "\u001b[38;5;244m───────────────────────────────────────────────────────────",
+    "\u001b[38;5;246m❯ \u001b[39m",
+    "\u001b[38;5;244m───────────────────────────────────────────────────────────",
+    "\u001b[39m  \u001b[38;5;211m⏵⏵ bypass permissions on\u001b[38;5;246m · \u001b[38;5;44m2 shells\u001b[38;5;246m · esc to interrupt…\u001b[39m",
+    "",
+    "\u001b[1m \u001b[0m \u001b[1m●\u001b[0m \u001b[1mmain\u001b[0m",
+    "\u001b[38;5;246m \u001b[39m \u001b[38;5;246m◯\u001b[39m \u001b[38;5;246mgeneral-purpose\u001b[39m  \u001b[38;5;246mBackground\u001b[39m \u001b[38;5;246mslee…\u001b[39m \u001b[38;5;246m9s\u001b[39m \u001b[38;5;246m·\u001b[39m \u001b[38;5;246m↓\u001b[39m \u001b[38;5;246m22.9k\u001b[39m \u001b[38;5;246mtokens\u001b[39m",
+  ].join("\n");
+
+  const RIGHT_FIELD_W256 = [
+    "─".repeat(255),
+    "❯",
+    "─".repeat(255),
+    `  ⏵⏵ bypass permissions on (shift+tab to cycle) · esc to interrupt · ← for agents · ↓ to manage${" ".repeat(147)}0% until auto-compact`,
+    "  ● main",
+    `  ◯ general-purpose  Reading the logs for the failing check${" ".repeat(148)}5m 30s · ↓ 139.8k tokens`,
+  ].join("\n");
+
+  it.each([
+    ["59-column clipped footer", CLIPPED_W59],
+    ["256-column right-aligned field", RIGHT_FIELD_W256],
+  ])("%s keeps its input box and draws no unread-dialog card", (_label, raw) => {
+    const lines = splitLines(parseAnsi(raw));
+    expect(hasInputBox(lines)).toBe(true);
+    expect(inputBoxTail(lines)).toBe("statusline");
+    expect(withUnreadDialog(claudeAdapter, lines, claudeAdapter.buildBlocks(lines)).map((b) => b.kind)).not.toContain(
+      "unread-dialog",
+    );
+  });
+
+  it.each([
+    "⏵⏵ bypass permissions on · 1 shell · esc to interrupt…",
+    "⏵⏵ bypass permissions on · 1 shell · esc to interrupt ·…",
+    "⏵⏵ bypass permissions on · 2 shells · ← for agents · ↓ to manage…",
+    "⏵⏵ bypass permissions on · 2 shells · ← for agents · ↓ to manage ·…",
+    `⏵⏵ bypass permissions on · 1 monitor · esc to interrupt · ← for agents · ↓ to manage${" ".repeat(60)}0% until auto-compact`,
+    `⏵⏵ bypass permissions on (shift+tab to cycle) · esc to interrupt · ← for agents${" ".repeat(40)}/rc`,
+    "⏵⏵ bypass permissions on · 1 shell · esc to interrupt ·…  /rc",
+    "⏵⏵ bypass permissions on · 1 shell · esc to i…   /rc",
+    "⏵⏵ bypass permissions on · ↓ to man…  0% until auto-compact",
+    `⏵⏵ bypass permissions on (shift+tab to cycle) · ← 2 agents · ↓ to manage${" ".repeat(27)}✔ Update installed · Restart to update`,
+    "⏵⏵ bypass permissions on · ↓ to view  0% until auto-compact",
+    "⏵⏵ bypass permissions on · Enter to view tasks  0% until auto-compact",
+  ])("does not take %j for a modal footer", (row) => {
+    expect(namesAModalKey(row)).toBe(false);
+  });
+
+  it.each([
+    "Esc to cancel…",
+    "Enter to select · Esc to cancel ·…",
+    "↓ to manage      Esc to cancel",
+    "esc to interrupt ·…   Esc to cancel",
+    // A real modal footer padded out to a right-aligned field: the split on two spaces must not
+    // turn its key into a status hint.
+    "Esc to cancel  0% until auto-compact",
+    "Enter to select · Esc to cancel  /rc",
+  ])("still takes %j for a modal footer", (row) => {
+    expect(namesAModalKey(row)).toBe(true);
   });
 });

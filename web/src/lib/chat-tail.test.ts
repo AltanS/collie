@@ -51,6 +51,17 @@ describe("the Chat tail", () => {
     expect(await loadChatTail(undefined, "w1:p2")).toBeNull();
   });
 
+  it("answers only the session instance that wrote it, and treats a missing identity as its own", async () => {
+    await saveChatTail(undefined, "w1:p1", [entry("a", 1, "hi")], "1d", clock, "aaaa");
+    expect((await loadChatTail(undefined, "w1:p1", "aaaa"))?.entries[0]?.uuid).toBe("a");
+    expect(await loadChatTail(undefined, "w1:p1", "bbbb")).toBeNull();
+    expect(await loadChatTail(undefined, "w1:p1", undefined)).toBeNull();
+    // A record from before identity was kept never answers a pane that now has one.
+    await saveChatTail(undefined, "w1:p2", [entry("b", 1, "hi")], "1d", clock);
+    expect(await loadChatTail(undefined, "w1:p2", "aaaa")).toBeNull();
+    expect((await loadChatTail(undefined, "w1:p2", undefined))?.entries[0]?.uuid).toBe("b");
+  });
+
   it("stores the entries only: no cursor, no queue, no mirror text", async () => {
     await saveChatTail(undefined, "w1:p1", [entry("a", 1, "hi")], "1d", clock);
     const record = await getRecord("chat-tail", paneScopeKey(undefined, "w1:p1"));
@@ -71,6 +82,16 @@ describe("the Chat tail", () => {
     // One more entry would not have fitted.
     const one = entries.slice(40 - fitted.length - 1);
     expect(utf8Bytes(JSON.stringify({ v: 1, entries: one }))).toBeGreaterThan(PANE_KIND_SHARE_BYTES);
+  });
+
+  it("counts the instance it stores against the share, so the written record stays within the cap", async () => {
+    // One entry that fills the share to the byte with no instance: the instance's bytes tip it over.
+    const base = utf8Bytes(JSON.stringify({ v: 1, entries: [entry("a", 1, "")] }));
+    const exact = entry("a", 1, "x".repeat(PANE_KIND_SHARE_BYTES - base));
+    expect(utf8Bytes(JSON.stringify({ v: 1, entries: [exact] }))).toBe(PANE_KIND_SHARE_BYTES);
+    expect(fitChatTail([exact])).toHaveLength(1);
+    expect(fitChatTail([exact], "ab12")).toEqual([]);
+    expect(await saveChatTail(undefined, "w1:p1", [exact], "1d", clock, "ab12")).toBe(false);
   });
 
   it("drops turns the agent rewound past, which the Chat body never draws", () => {

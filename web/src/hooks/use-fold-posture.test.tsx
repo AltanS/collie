@@ -63,13 +63,16 @@ describe("usePaneFold", () => {
       removeEventListener: (_: string, fn: () => void) => void listeners.delete(fn),
     };
     Object.defineProperty(window, "visualViewport", { value: vv, configurable: true });
+    const field = document.body.appendChild(document.createElement("textarea"));
     const { result } = renderHook(() => usePaneFold("compact"));
     expect(result.current).toBe("tabletop");
+    act(() => field.focus());
     vv.height = 420;
     act(() => listeners.forEach((fn) => fn()));
     expect(result.current).toBe("flat");
     vv.height = 800;
     act(() => listeners.forEach((fn) => fn()));
     expect(result.current).toBe("tabletop");
+    field.remove();
   });
 });

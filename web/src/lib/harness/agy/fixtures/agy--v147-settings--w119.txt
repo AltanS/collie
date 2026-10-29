@@ -1,0 +1,40 @@
+[0m[1m[38;5;4m  ⎿  [0m[38;5;7mExited /skills command[0m
+
+[0m[1m[38;5;4m> /tasks[0m
+[0m[1m[38;5;4m  ⎿  [0m[38;5;7mExited /tasks command[0m
+
+[0m[38;5;8m───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;5;12m>[0m
+[0m[38;5;8m───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[1mSettings[0m
+
+  Search: [0m[7m[38;5;7m [0m
+          [0m[38;5;8m────────────────────[0m
+
+[0m[38;5;12m> Agent Mode                   auto[0m
+  Animation Speed              slow
+  Artifact Review              agent decides
+  Color Scheme                 terminal
+  Conversation Picker Grouping none
+  Copy on Select               on
+  Editor                       auto ($EDITOR)
+  Editor Mode                  default
+  Enable Telemetry             off
+  Non-Workspace Access         on
+  Notifications                off
+  Queued Messages              Send Immediately
+  Rendering Mode               native terminal (inline)
+  Sandbox Mode                 off
+  Seasonal Themes              off
+  Show Active Tasks            on
+  Show Feedback Survey         off
+  Show Tips                    off
+
+  [0m[2m'default': standard behavior. 'accept-edits': auto-approve file edits, prompt for commands. 'auto': auto-approve[0m
+  [0m[2medits and safe commands, prompt on irreversible actions. 'plan': research and plan without making changes[0m
+
+[0m[38;5;8m  [1-18 of 21 items][0m
+
+[0m[1mKeyboard: [0m[38;5;12m↑/↓[0m [0m[38;5;8mNavigate[0m  [0m[38;5;12m←/→[0m [0m[38;5;8mChange[0m  [0m[38;5;12menter[0m [0m[38;5;8mSelect[0m  [0m[38;5;12mesc[0m [0m[38;5;8mClear Search/Exit[0m
+
+Gemini 4 Argon (High)  auto  idle  ctx 100%  Gemini 5h 83% ↻3h41m · 7d 78.4% ↻3d14h  Claude/GPT 5h 100% ↻5h0m · 7d 55.8

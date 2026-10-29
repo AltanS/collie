@@ -205,6 +205,7 @@ function cfg(overrides: Partial<Config> = {}): Config {
     transcript: true,
     accountWindows: [],
     journalRoots: {
+      agy: ["/nope/agy"],
       claude: ["/tmp/claude-projects"],
       codex: ["/nope/codex"],
       pi: ["/nope/pi"],

@@ -1,0 +1,42 @@
+stty cols 50 && agy
+[0m[1m[38;5;2m➜  [0m[1m[38;5;6mproject[0m stty cols 50 && agy
+  [0m[38;5;8m/tmp/project[0m
+
+[0m[38;5;8m──────────────────────────────────────────────────[0m
+[0m[38;5;12m>[0m
+[0m[38;5;8m──────────────────────────────────────────────────[0m
+[0m[1m[38;5;7m└ Models & Quota[0m
+
+  Account: [0m[38;5;7moperator@example.com[0m
+
+[0m[1mGEMINI MODELS[0m
+  [0m[2mModels within this group: Gemini Flash, Gemini P[0m
+
+  [0m[1mWeekly Limit Remaining[0m
+    [[0m[38;5;2m███████████████████████████[0m[2m░░░░░░░░░░░[0m][0m[2m 69.79[0m
+    [0m[38;5;2mRefreshes in 15h 22m[0m
+
+  [0m[1mFive Hour Limit Remaining[0m
+    [[0m[38;5;2m████████████████████████████████████[0m[2m░░[0m][0m[2m 95.09[0m
+    [0m[38;5;2mRefreshes in 4h 46m[0m
+
+
+[0m[1mCLAUDE AND GPT MODELS[0m
+  [0m[2mModels within this group: Claude Opus, Claude So[0m
+
+  [0m[1mWeekly Limit Remaining[0m
+    [[0m[38;5;1m██[0m[2m░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░[0m][0m[2m 4.34%[0m
+    [0m[38;5;1mRefreshes in 36h 40m[0m
+
+  [0m[1mFive Hour Limit Remaining[0m
+    [[0m[38;5;2m██████████████████████████████████████[0m][0m[2m 100.0[0m
+    [0m[38;5;2mQuota available[0m
+
+
+  [0m[38;5;8m│[0m[2mWithin each group, models share a weekly limit[0m
+  [0m[38;5;8m│[0m[2mand a 5-hour limit. Quota is consumed[0m
+[0m[2m  (1–26 of 33 lines)[0m
+
+  [0m[1m[38;5;12m↑/↓[0m[38;5;8m Scroll · [0m[1m[38;5;12mpgup/pgdown[0m[38;5;8m Page · [0m[1m[38;5;12mctrl+end[0m[38;5;8m Bottom[0m
+  [0m[1m[38;5;12mctrl+home[0m[38;5;8m Top · [0m[1m[38;5;12mesc[0m[38;5;8m Close[0m
+Gemini 4 Argon (High)  idle  ctx 100%  Gemini 5h 9

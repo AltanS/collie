@@ -1125,6 +1125,7 @@ describe("solo zero-tax — config", () => {
       "COLLIE_ACCESS_AUD",
       "COLLIE_ACCESS_TEAM",
       "COLLIE_ACCOUNT_WINDOWS",
+      "COLLIE_AGY_ROOT",
       "COLLIE_ALLOWED_ORIGINS",
       "COLLIE_ALLOW_ANY_HOST",
       "COLLIE_ALLOW_NON_LOOPBACK_BIND",

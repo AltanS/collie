@@ -631,6 +631,15 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
 
   // ── journal ────────────────────────────────────────────────────────────────
   {
+    key: "agy_root",
+    env: "COLLIE_AGY_ROOT",
+    section: "journal",
+    kind: "roots",
+    default: [],
+    doc: "Where Antigravity CLI keeps conversations and presence locks. Empty takes ~/.gemini/antigravity-cli.",
+    configField: "journalRoots",
+  },
+  {
     key: "transcript_root",
     env: "COLLIE_TRANSCRIPT_ROOT",
     section: "journal",

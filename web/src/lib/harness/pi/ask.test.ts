@@ -1059,3 +1059,48 @@ describe("transcript text above a real frame", () => {
     expect(actual(lines)).toBe(plan);
   });
 });
+
+describe("a pi question whose key hint a narrow pane wrapped", () => {
+  const RAW_NARROW = raw("pi--v0871-question-narrow.txt");
+  const HINT_NARROW = " \x1b[0m\x1b[38;2;102;102;102m↑↓ navigate • Enter to select • Esc to cancel\x1b[0m";
+  const dim = (text: string) => ` \x1b[0m\x1b[38;2;102;102;102m${text}\x1b[0m`;
+  const GATE_NARROW = raw("pi--v0871-permission-gate-narrow.txt");
+
+  function questionModel(text: string): PromptModel | null {
+    const found = detectPiQuestion(linesOf(text));
+    return found?.kind === "prompt-select" ? found.model : null;
+  }
+
+  it("reads a two-space footer wrapped between two hints, Escape included", () => {
+    expect(RAW_NARROW).toContain(HINT_NARROW);
+    const wrapped = RAW_NARROW.replace(
+      HINT_NARROW,
+      `${dim("↑↓ navigate  enter select")}\n${dim("escape/ctrl+c cancel")}`,
+    );
+    const model = questionModel(wrapped);
+    expect(model?.options.at(-1)).toMatchObject({ label: "Cancel", keys: ["Escape"] });
+    expect(model?.options.map((o) => o.label).slice(0, 3)).toEqual(["Red", "Green", "Blue"]);
+  });
+
+  it("still reads a footer wrapped inside one hint, as before", () => {
+    const wrapped = RAW_NARROW.replace(
+      HINT_NARROW,
+      `${dim("↑↓ navigate • Enter to")}\n${dim("select • Esc to cancel")}`,
+    );
+    expect(questionModel(wrapped)?.options.at(-1)).toMatchObject({ label: "Cancel", keys: ["Escape"] });
+  });
+
+  it("reads pi's own selector with its hint wrapped below 47 columns, as the permission gate draws it", () => {
+    const rows = GATE_NARROW.split(/\r?\n/);
+    const hint = rows.findIndex((r) => r.includes("escape/ctrl+c"));
+    const cut = rows[hint]!.indexOf("  \x1b[0m\x1b[38;2;102;102;102mescape");
+    expect(cut).toBeGreaterThan(0);
+    rows.splice(hint, 1, rows[hint]!.slice(0, cut), ` ${rows[hint]!.slice(cut + 2)}`);
+    const model = questionModel(rows.join("\n"));
+    expect(model?.options.map((o) => [o.label, o.keys])).toEqual([
+      ["Yes", ["Enter"]],
+      ["No", ["Down", "Enter"]],
+      ["Cancel", ["Escape"]],
+    ]);
+  });
+});

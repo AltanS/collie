@@ -700,7 +700,7 @@
   --color-host-9: var(--host-9);
 
   --font-mono:
-    "Nerd Font Symbols", "JetBrains Mono", "Cascadia Mono", "Cascadia Code",
+    "Nerd Font Symbols", "Terminal Symbols", "JetBrains Mono", "Cascadia Mono", "Cascadia Code",
     "Roboto Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
     "Liberation Mono", monospace;
 
@@ -760,6 +760,25 @@
   src: url("/fonts/nerd-symbols-3.5.0-spua.woff2") format("woff2");
   font-display: swap;
   unicode-range: U+F0000-F1AFF;
+}
+
+/* Terminal Symbols: the agents' own chrome, which phones mostly have no glyph for. Claude Code
+ * prints ⎿ under every tool call, ⏺ before every message, ⏵⏵ in its mode line and ⧉ for an IDE
+ * selection, and each of those was a tofu box in the mirror. Lazy and out of the precache on the
+ * same terms as the Nerd Font faces above, and in the same position in `--font-mono`: the range
+ * leaves out U+0020, so it can never be the face that sets the line.
+ *
+ * A subset of JuliaMono v0.63.2 (OFL — public/fonts/LICENSE.txt), renamed as the licence
+ * requires, 19 KB, built by scripts/build-terminal-symbols.py. Unlike the Nerd Font faces it does
+ * override codepoints some platforms already draw, and on purpose: a monospace glyph fills one
+ * cell, where a phone's own ⏺ is often a colour emoji twice as wide. The range leaves out the
+ * block's two-cell codepoints (⌚⌛ 〈〉 ⏩-⏬ ⏰ ⏳); the script says why. */
+@font-face {
+  font-family: "Terminal Symbols";
+  src: url("/fonts/terminal-symbols-0.63.2.woff2") format("woff2");
+  font-display: swap;
+  unicode-range: U+2300-2319, U+231C-2328, U+232B-23E8, U+23ED-23EF, U+23F1-23F2, U+23F4-23FF,
+    U+2980-29FF;
 }
 
 /* The UI typefaces — Space Grotesk (the default) and Aldrich, both bundled. The app's own voice,

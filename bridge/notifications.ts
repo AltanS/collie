@@ -133,16 +133,45 @@ export function makeNotifySink(
 // (`push.ts` § redactPushMessage), but the title stays out by rule, not by luck. Written down in
 // docs/security.md too.
 
+const CONTROL_AND_BIDI_CHARS = /[\p{Cc}\p{Bidi_Control}]+/gu;
+
+/**
+ * Strip C0/C1 control characters and Unicode bidirectional overrides/isolates from notification
+ * strings so embedded RLO/LRO or control bytes in a label, place or description cannot reorder
+ * lock-screen text.
+ */
+export function stripControlChars(value: string): string {
+  return value.replace(CONTROL_AND_BIDI_CHARS, "");
+}
+
 /**
  * What a push calls a pane: the operator's label (`paneLabel`), Claude's `/rename` name, or the
  * operator's name for a one-pane tab; else `shell` or the harness word. Never `terminalTitle`.
  */
 export function pushName(pane: NameableP): string {
-  if (pane.paneLabel) return pane.paneLabel;
-  if (pane.sessionName) return pane.sessionName;
+  if (pane.paneLabel) {
+    const clean = stripControlChars(pane.paneLabel);
+    if (clean) return clean;
+  }
+  if (pane.sessionName) {
+    const clean = stripControlChars(pane.sessionName);
+    if (clean) return clean;
+  }
   const tab = soleTabName(pane);
-  if (tab !== null) return tab;
-  return pane.kind === "shell" ? "shell" : pane.agent;
+  if (tab !== null) {
+    const clean = stripControlChars(tab);
+    if (clean) return clean;
+  }
+  return pane.kind === "shell" ? "shell" : stripControlChars(pane.agent);
+}
+
+function cleanAskText(askText: AskPushText): AskPushText {
+  const title = askText.title === undefined ? undefined : stripControlChars(askText.title);
+  const line = askText.line === undefined ? undefined : stripControlChars(askText.line);
+  if (title !== undefined && line !== undefined) return { title, line };
+  if (title !== undefined) return { title };
+  if (line !== undefined) return { line };
+  return {};
 }
 
 /** A pane's two activity timestamps, as a snapshot carries them. */
@@ -215,9 +244,9 @@ export class NotificationCoordinator<H = unknown> {
     // (Re)arm the debounce. A blocked→done flip lands here too, so only the latest verb survives.
     this.cancelPending(id);
     const alert: Alert = {
-      agent: agent.agent,
+      agent: stripControlChars(agent.agent),
       label: pushName(agent),
-      place: panePlace(agent),
+      place: stripControlChars(panePlace(agent)),
       // SAFETY: `onTransition` is only reached for a status the prefs call notifiable, and the
       // notifiable set IS `NotifiableStatus` (blocked/done) — `isNotifiable` returns false for
       // every other member of `AgentStatus`, so this branch cannot be entered with one.
@@ -225,7 +254,7 @@ export class NotificationCoordinator<H = unknown> {
     };
     if (cause === "ask" && to === "blocked") {
       alert.ask = true;
-      if (askText !== undefined) alert.askText = askText;
+      if (askText !== undefined) alert.askText = cleanAskText(askText);
     }
     const handle = this.clock.schedule(() => {
       this.pending.delete(id);

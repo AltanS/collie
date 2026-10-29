@@ -404,7 +404,9 @@ describe("the leg scripts", () => {
   test("nothing is piped into a shell, and no leg dials a URL of its own", () => {
     for (const [file, script] of GOLDEN) {
       expect(`${file}: ${script}`).not.toContain("wget");
-      expect(`${file}: ${script}`).not.toMatch(/https?:\/\//);
+      // The bundle leg NAMES one URL, as the value it sets `origin` to; it never fetches it.
+      const dialled = script.split("\n").filter((l) => !l.startsWith("ORIGIN="));
+      expect(`${file}: ${dialled.join("\n")}`).not.toMatch(/https?:\/\//);
       expect(script).not.toMatch(/\|\s*(ba)?sh\b/);
       // Two legs NAME `curl`, and both only resolve it: the probe reports where it is, and the
       // release leg puts that directory on PATH for the installer it hands to `/bin/sh`. The fetch
@@ -1954,13 +1956,24 @@ describe.skipIf(process.platform === "win32")("installScript from a shallow lead
     }
   });
 
-  test("a fresh install from the bundle is a connected checkout", async () => {
+  test("a fresh install from the bundle is a connected checkout and repairs a temp-bundle origin", async () => {
     const lead = await shallowLeadFixture();
     try {
       const root = join(lead.home, ".collie");
       lead.install(root);
       expect(lead.connected(root)).toBe(true);
       expect(lead.shallowFile(root)).toBe(`${lead.tip}\n`);
+      expect(lead.git(root, "remote", "get-url", "origin")).toBe("https://github.com/AltanS/collie.git");
+
+      const behind = join(lead.home, "behind");
+      lead.git(behind, "remote", "set-url", "origin", "/var/folders/4f/x/T//collie-add.frYLZF/bundle");
+      lead.install(behind);
+      expect(lead.git(behind, "remote", "get-url", "origin")).toBe("https://github.com/AltanS/collie.git");
+
+      const current = join(lead.home, "current");
+      lead.git(current, "remote", "set-url", "origin", "git@example.com:pat/collie.git");
+      lead.install(current);
+      expect(lead.git(current, "remote", "get-url", "origin")).toBe("git@example.com:pat/collie.git");
     } finally {
       lead.cleanup();
     }

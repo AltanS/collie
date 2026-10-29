@@ -656,3 +656,44 @@ describe("makeNotifySink", () => {
     expect(push.sent).toEqual([]);
   });
 });
+
+describe("NotificationCoordinator — Bidi and C0/C1 control character stripping", () => {
+  test("removes embedded bidi and control characters from pane labels and places", () => {
+    const { clock, sink, coord } = setup();
+    coord.onTransition(
+      agentNamed("p1", "claude", "blocked", {
+        paneLabel: "Auth\u{202E}cod.exe\u{202C}\u{0007} review",
+        workspaceLabel: "demo\u{202E}ws\u{202C}",
+        tabLabel: "UI\u{2066}tab\u{2069}\u{009B}",
+      }),
+      "working",
+      "blocked",
+    );
+    clock.fireAll();
+    expect(sink.last?.body).toBe("demows › UItab");
+
+    coord.onTransition(
+      agentNamed("p2", "codex", "blocked", {
+        paneLabel: "Web\u{202D}app\u{202C}",
+      }),
+      "working",
+      "blocked",
+    );
+    clock.fireAll();
+    expect(sink.last?.body).toBe("Authcod.exe review, Webapp");
+  });
+
+  test("strips bidi and control characters from ask push words", () => {
+    const { clock, sink, coord } = setup();
+    coord.onTransition(
+      agentNamed("p1", "durable", "blocked", { paneLabel: "Triage\u{202E}" }),
+      "working",
+      "blocked",
+      "ask",
+      { title: "Run \u{202E}exe.sh\u{202C}", line: "Line \u{0007}one" },
+    );
+    clock.fireAll();
+    expect(sink.last?.title).toBe("Triage: Run exe.sh");
+    expect(sink.last?.body).toBe("Line one");
+  });
+});

@@ -18,6 +18,7 @@ BUN=$(collie_tool bun) || { echo "error: no bun on this machine" >&2; exit 21; }
 ROOT='/home/pat/.collie'
 COMMIT='abc123'
 EXPECT='1.2.3'
+ORIGIN='https://github.com/AltanS/collie.git'
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/collie-add.XXXXXX")
 trap 'rm -rf "$WORK"' EXIT INT TERM
 if printf '' | base64 -d >/dev/null 2>&1; then B64D="base64 -d"; else B64D="base64 -D"; fi
@@ -32,6 +33,9 @@ if [ -d "$ROOT/.git" ]; then
     "$GIT" -C "$ROOT" bundle unbundle "$WORK/bundle" >/dev/null 2>>"$WORK/fetch.err" || { cat "$WORK/fetch.err" >&2; echo "error: the pushed bundle could not be applied to $ROOT" >&2; exit 28; }
   fi
   "$GIT" -C "$ROOT" checkout --detach "$COMMIT"
+  case "$("$GIT" -C "$ROOT" remote get-url origin 2>/dev/null || true)" in
+    */collie-add.*/bundle) "$GIT" -C "$ROOT" remote set-url origin "$ORIGIN" ;;
+  esac
 elif [ -e "$ROOT" ]; then
   echo "error: $ROOT exists and is not a git checkout — move it aside or pass --path" >&2
   exit 27
@@ -40,6 +44,7 @@ else
   rm -rf "$ROOT.part"
   "$GIT" clone -q "$WORK/bundle" "$ROOT.part"
   "$GIT" -C "$ROOT.part" checkout --detach "$COMMIT"
+  "$GIT" -C "$ROOT.part" remote set-url origin "$ORIGIN"
   mv "$ROOT.part" "$ROOT"
 fi
 for PARENT in $("$GIT" -C "$ROOT" cat-file commit "$COMMIT" | sed -n '/^$/q; s/^parent //p'); do

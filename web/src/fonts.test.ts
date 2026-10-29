@@ -41,6 +41,35 @@ describe("bundled fonts", () => {
     expect(css).toContain("unicode-range: U+F0000-F1AFF");
   });
 
+  // Off the space, so it never sets the line; off the two-cell emoji, so the phone draws those.
+  it("keeps the terminal-symbol face to one-cell symbols", () => {
+    const range = /font-family: "Terminal Symbols";[\s\S]*?unicode-range: ([^;]+);/.exec(css)?.[1];
+    const inRange = (cp: number) =>
+      range!.split(",").some((r) => {
+        const [lo, hi = lo] = r.trim().slice(2).split("-").map((h) => Number.parseInt(h, 16));
+        return cp >= lo! && cp <= hi!;
+      });
+    expect(inRange(0x23bf)).toBe(true); // ⎿
+    expect(inRange(0x29c9)).toBe(true); // ⧉
+    for (const cp of [0x20, 0x231a, 0x231b, 0x2329, 0x232a, 0x23e9, 0x23ec, 0x23f0, 0x23f3]) {
+      expect(inRange(cp)).toBe(false);
+    }
+  });
+
+  // pyftsubset strips nameIDs above 6 unless told to keep them, which would silently drop the OFL
+  // copyright/trademark/licence records (0, 7, 13, 14) before the rename loop runs.
+  it("preserves OFL name records in build-terminal-symbols.py and ships both symbol licences", () => {
+    const buildScript = readFileSync(resolve(root, "../scripts/build-terminal-symbols.py"), "utf8");
+    expect(buildScript).toContain("--name-IDs=0,1,2,3,4,5,6,7,13,14");
+
+    const license = read("public/fonts/LICENSE.txt");
+    expect(license).toContain("The MIT License (MIT)");
+    expect(license).toContain("Copyright (c) 2014 Ryan L McIntyre");
+    expect(license).toContain("Copyright (c) 2020 cormullion (https://github.com/cormullion/juliamono)");
+    expect(license).toContain("Terminal Symbols");
+    expect(license).toContain("SIL OPEN FONT LICENSE Version 1.1");
+  });
+
   // Drift here is the whole failure mode: the SW sweeps every font-cache entry it can't name, so a
   // stylesheet URL missing from FONT_URLS would be re-fetched on every cold load, forever.
   it("names the same files in the stylesheet and the service worker", () => {

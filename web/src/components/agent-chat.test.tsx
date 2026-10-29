@@ -2228,6 +2228,9 @@ describe("the pane fits its viewport", () => {
       const { container } = renderChat({ text: STATUS_TEXT });
       expect(screen.queryByRole("button", { name: "Switch pane" })).not.toBeNull();
 
+      // A soft keyboard only stands on a focused field (use-keyboard.ts), so the caret goes in first,
+      // the way tapping the composer does on the phone.
+      act(() => document.querySelector<HTMLTextAreaElement>('[data-slot="chat-input"]')!.focus());
       kb.open(460); // a soft keyboard: -384px, well past the open threshold
 
       // `Collapse` unmounts at the END of its exit, so the statusline leaves the tree — and leaving

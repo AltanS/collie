@@ -429,6 +429,7 @@ describe("collie doctor — the contract", () => {
       "skill-walky-talky",
       "account-windows",
       "herdr-version",
+      "integration-agy",
       "integration-claude",
       "integration-codex",
       "integration-dsh-tui",
@@ -440,6 +441,7 @@ describe("collie doctor — the contract", () => {
       "integration-opencode",
       "integration-pi",
       "integration-omp",
+      "integration-antigravity",
       // Not on Windows: Herdr's hooks there are PowerShell (M43 spec 08).
       ...(HOST.platform === "win32" ? [] : ["hook-python3"]),
       "agent-sessions",
@@ -2631,8 +2633,11 @@ describe("secrets-private (M43 spec 04)", () => {
     };
     await cmdDoctor(loose.deps, []);
     const out = loose.io.stdout.join("\n");
-    expect(out).toContain(`secrets-private       the Collie state folder can be read by other accounts`);
-    expect(out).toContain(`\n${" ".repeat(33)}${WIN_STATE} → Fix: restart Collie, or run: icacls`);
+    // The value column sits two past the section's longest check id (doctor-layout.ts), so the
+    // spacing follows the id list; the path line starts exactly under the value.
+    const valueAt = out.indexOf("the Collie state folder") - out.lastIndexOf("\n", out.indexOf("secrets-private")) - 1;
+    expect(out).toMatch(/secrets-private {2,}the Collie state folder can be read by other accounts/);
+    expect(out).toContain(`\n${" ".repeat(valueAt)}${WIN_STATE} → Fix: restart Collie, or run: icacls`);
   });
 });
 

@@ -1187,6 +1187,14 @@ not pass its session on, so Collie asks the kernel which session lock (`session.
 `/proc/locks` lists every lock and who holds it; elsewhere a dsh-tui pane keeps its terminal view.
 Set `dsh_root` when dsh keeps its sessions somewhere else.
 
+Antigravity CLI (`agy`, which Herdr may also call `antigravity`) needs no Herdr integration for Chat
+either. Collie asks `lsof` which `presence/<uuid>.lock` file the pane's foreground agy process holds,
+and reads that conversation from `conversations/<uuid>.db` under `~/.gemini/antigravity-cli`,
+read-only, or from its `transcript.jsonl` when the database is empty. It never guesses the newest
+conversation in a folder. This needs `lsof` on the machine, so it works on Linux and macOS, not on
+Windows; without it an agy pane keeps its terminal view. Set `agy_root`, or `COLLIE_AGY_ROOT`, when
+Antigravity keeps its home somewhere else.
+
 `herdr integration status` shows which integrations are installed. A hook is read when the agent
 starts, so an agent that was already running when you installed it needs a restart. Oh My Pi is the
 `omp` integration, not the `pi` one: they are two agents with two hooks, and they share one log

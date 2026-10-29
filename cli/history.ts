@@ -345,7 +345,8 @@ function integration(
   if (line === undefined) {
     // An adapter that discovers its own session needs no hook at all: no Herdr build lists one,
     // and none has to. Green, not skipped — there is nothing to do here.
-    if (DISCOVERS_OWN_SESSIONS.includes(agent)) {
+    const canonical = Object.entries(AGENT_ALIASES).find(([alias]) => alias === agent)?.[1] ?? agent;
+    if (DISCOVERS_OWN_SESSIONS.includes(canonical)) {
       return ok(check, "no hook — the adapter finds the session log itself");
     }
     return skipped(

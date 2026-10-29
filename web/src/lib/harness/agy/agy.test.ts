@@ -1,15 +1,18 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { parseAnsi } from "../../ansi";
 import { lineText, splitLines } from "../../blocks";
-import { agyAdapter, antigravityAdapter } from "./index";
+import { agyAdapter, antigravityAdapter, normalizeAgyScreenRows } from "./index";
 import { detectPromptSelect } from "./prompt-select";
 import { describeAdapterConformance } from "../conformance";
 import { buildBlocks } from "../index";
 
 const PANES_DIR = join(import.meta.dirname, "..", "..", "..", "fixtures", "panes");
+const LOCAL_FIXTURES_DIR = join(import.meta.dirname, "fixtures");
+const fixtureFile = (name: string) =>
+  existsSync(join(LOCAL_FIXTURES_DIR, name)) ? join(LOCAL_FIXTURES_DIR, name) : join(PANES_DIR, name);
 
 /** AGY paints its composer between two full-width rules; 60 columns clears isBoxBorder. */
 const RULE = "────────────────────────────────────────────────────────────";
@@ -51,13 +54,6 @@ const KNOWN_FOREIGN_CLAIMS = new Set([
   // The same shape on 2.1.303: a background agent's Bash permission with a tall command (2026-10-19).
   "claude--v2303-permission-bash-bg-agent-rm--w160.txt",
   "claude--v2303-permission-bash-bg-agent-rm--w80.txt",
-  // A Japanese AskUserQuestion on 2.1.296 (issue 543): its question ends in a fullwidth "？", which agy
-  // reads as a question now that both readers share hasQuestionMark. No agy pane paints it.
-  "claude--v2296-question-fullwidth--w150.txt",
-  // A Claude AskUserQuestion on 2.1.304 whose question has no "?" at all: both readers take the
-  // question under the single-question chip, and the scrubbed transcript names Claude nowhere. No agy
-  // pane paints it.
-  "claude--v2304-ask-no-question-mark-plain--w135.txt",
 ]);
 
 const ownFixtures = allAgyFixtures.filter((f) => !NEUTRAL.has(f));
@@ -657,5 +653,350 @@ describe("agy: a question takes its digit alone (1.3.5)", () => {
     });
     expect(rows.some((t) => t.includes("[ ]"))).toBe(false);
     expect(promptOf(splitLines(parseAnsi(rows.join("\n"))))).toBeNull();
+  });
+});
+
+describe("agy: background task rail", () => {
+  const captured = readFileSync(fixtureFile("agy--v145-background-task--w80.txt"), "utf8");
+  const rows = () => splitLines(parseAnsi(captured));
+
+  it.each([agyAdapter, antigravityAdapter])("keeps task progress and finds the composer for $agent", (adapter) => {
+    const lines = rows();
+    expect(adapter.composerReady!(lines)).toBe(true);
+    expect(adapter.extractInputDraft!(lines)).toBeNull();
+    expect(adapter.extractStatusLines!(lines).map(lineText)).toEqual([lineText(lines[5]!)]);
+    const blocks = buildBlocks(lines, { agent: adapter.agent });
+    expect(blocks.map((block) => block.kind)).toEqual(["raw"]);
+    expect(blocks[0]!.lines.map(lineText)).toEqual(["", "", "", lineText(lines[3]!), lineText(lines[4]!)]);
+  });
+
+  it("reads a real draft without including task progress", () => {
+    const lines = rows();
+    lines[1] = splitLines(parseAnsi("> typed draft"))[0]!;
+    expect(agyAdapter.extractInputDraft!(lines)).toBe("typed draft");
+  });
+
+  it.each(["unexpected task row", "enter Confirm · esc Cancel", "  1. Allow\n  2. Deny"])("refuses unknown or modal rows: %s", (extra) => {
+    const lines = rows();
+    lines.splice(4, 0, ...splitLines(parseAnsi(extra)));
+    expect(agyAdapter.composerReady!(lines)).toBe(false);
+    expect(agyAdapter.extractInputDraft!(lines)).toBeNull();
+  });
+});
+
+describe("AGY /artifact review and detail viewer (1.4.7)", () => {
+  const load = (name: string) => splitLines(parseAnsi(readFileSync(fixtureFile(name), "utf8")));
+
+  it("extracts the reviewing statusline when the composer is idle awaiting artifact review", () => {
+    const lines = load("agy--v147-reviewing-idle--w119.txt");
+    expect(agyAdapter.composerReady!(lines)).toBe(true);
+    const status = agyAdapter.extractStatusLines!(lines).map(lineText);
+    expect(status).toEqual([
+      "Gemini 3.8 Flash (Low)  plan  reviewing  ctx 98%  main  Gemini 5h 98.4% ↻4h56m · 7d 86.8% ↻4d2h  Cla",
+    ]);
+  });
+
+  it.each([
+    [
+      "agy--v147-artifact-review--w119.txt",
+      "Action required (1 left)",
+      true,
+      [
+        ["Approve", ["y"]],
+        ["Reject", ["n"]],
+        ["Preview", ["p"]],
+        ["Open", ["Enter"]],
+        ["Done", ["Escape"]],
+      ],
+    ],
+    [
+      "agy--v147-artifact-review-preview--w119.txt",
+      "Action required (1 left)",
+      true,
+      [
+        ["Approve", ["y"]],
+        ["Reject", ["n"]],
+        ["Preview", ["p"]],
+        ["Open", ["Enter"]],
+        ["Done", ["Escape"]],
+      ],
+    ],
+    [
+      "agy--v147-artifact-review--w50.txt",
+      "Action required (1 left)",
+      true,
+      [
+        ["Approve", ["y"]],
+        ["Reject", ["n"]],
+        ["Preview", ["p"]],
+        ["Open", ["Enter"]],
+        ["Done", ["Escape"]],
+      ],
+    ],
+    [
+      "agy--v147-artifact-review-submit--w50.txt",
+      "Action required (1 left)",
+      false,
+      [
+        ["Submit", ["Enter"]],
+        ["Dismiss", ["Escape"]],
+      ],
+    ],
+    [
+      "agy--v147-artifact-list--w119.txt",
+      "Artifacts",
+      true,
+      [
+        ["Preview", ["p"]],
+        ["Open", ["Enter"]],
+        ["Dismiss", ["Escape"]],
+      ],
+    ],
+    [
+      "agy--v147-artifact-detail--w119.txt",
+      "plan.md",
+      true,
+      [
+        ["Outline", ["t"]],
+        ["Hide lines", ["l"]],
+        ["Close", ["Escape"]],
+      ],
+    ],
+    [
+      "agy--v147-artifact-detail--w50.txt",
+      "part1.md",
+      true,
+      [
+        ["Outline", ["t"]],
+        ["Hide lines", ["l"]],
+        ["Close", ["Escape"]],
+      ],
+    ],
+  ])("%s lifts into a menu card and preserves the bottom statusline", (name, title, upDown, expectedActions) => {
+    const lines = load(name);
+    expect(agyAdapter.composerReady!(lines)).toBe(false);
+    const blocks = agyAdapter.buildBlocks(lines);
+    const menuBlock = blocks.find((b) => b.kind === "menu");
+    expect(menuBlock?.kind).toBe("menu");
+    if (menuBlock?.kind !== "menu") return;
+    expect(menuBlock.menu.title).toBe(title);
+    expect(menuBlock.menu.nav).toEqual({ upDown });
+    expect(menuBlock.menu.actions.map((a) => [a.label, a.keys])).toEqual(expectedActions);
+    const status = agyAdapter.extractStatusLines!(lines).map(lineText);
+    expect(status).toHaveLength(1);
+    expect(status[0]).toMatch(/Gemini 3\.8 Flash \(Low\)\s+plan\s+(?:reviewing|idle)\s+ctx 98%/);
+  });
+
+  it("switches the Submit action to Tab+Enter when Dismiss is focused in confirm-exit mode", () => {
+    const raw = readFileSync(fixtureFile("agy--v147-artifact-review-submit--w50.txt"), "utf8").replace(
+      "  \u001b[0m\u001b[7m\u001b[38;5;2m Submit \u001b[0m \u001b[0m\u001b[38;5;8mDismiss\u001b[0m",
+      "  \u001b[0m\u001b[1m\u001b[38;5;2mSubmit\u001b[0m \u001b[0m\u001b[1m\u001b[38;5;3mDismiss\u001b[0m",
+    );
+    const blocks = agyAdapter.buildBlocks(splitLines(parseAnsi(raw)));
+    const menuBlock = blocks.find((b) => b.kind === "menu");
+    expect(menuBlock?.kind).toBe("menu");
+    if (menuBlock?.kind !== "menu") return;
+    expect(menuBlock.menu.nav).toEqual({ upDown: false });
+    expect(menuBlock.menu.actions.map((a) => [a.label, a.keys])).toEqual([
+      ["Submit", ["Tab", "Enter"]],
+      ["Dismiss", ["Escape"]],
+    ]);
+  });
+
+  it("lifts ArtifactDetailModel outline and unsent-comment confirmation views", () => {
+    const outlineText = [
+      " part1.md — Outline ",
+      "> H1  Plan Part 1",
+      "  ↑/↓ navigate · enter jump · t back",
+      "Gemini 3.8 Flash (Low)  plan  reviewing  ctx 98%",
+    ].join("\n");
+    const outlineBlocks = agyAdapter.buildBlocks(splitLines(parseAnsi(outlineText)));
+    const outlineMenu = outlineBlocks.find((b) => b.kind === "menu");
+    expect(outlineMenu?.kind).toBe("menu");
+    if (outlineMenu?.kind === "menu") {
+      expect(outlineMenu.menu.title).toBe("part1.md — Outline");
+      expect(outlineMenu.menu.nav).toEqual({ upDown: true });
+      expect(outlineMenu.menu.actions.map((a) => [a.label, a.keys])).toEqual([
+        ["Jump", ["Enter"]],
+        ["Back", ["Escape"]],
+      ]);
+    }
+
+    const unsentText = [
+      " part2.md (1 comment) ",
+      ">   1 💬   Plan Part 2 ",
+      "      │ Looks good",
+      "  You have 1 unsent comment(s). Send to agent?",
+      "  y send + close · n discard + close · esc cancel",
+      "Gemini 3.8 Flash (Low)  plan  reviewing  ctx 98%",
+    ].join("\n");
+    const unsentBlocks = agyAdapter.buildBlocks(splitLines(parseAnsi(unsentText)));
+    const unsentMenu = unsentBlocks.find((b) => b.kind === "menu");
+    expect(unsentMenu?.kind).toBe("menu");
+    if (unsentMenu?.kind === "menu") {
+      expect(unsentMenu.menu.title).toBe("part2.md");
+      expect(unsentMenu.menu.nav).toEqual({ upDown: false });
+      expect(unsentMenu.menu.actions.map((a) => [a.label, a.keys])).toEqual([
+        ["Send & close", ["y"]],
+        ["Discard & close", ["n"]],
+        ["Cancel", ["Escape"]],
+      ]);
+    }
+  });
+});
+
+describe("AGY native Keyboard & scrollPanel modals (1.4.7 / 1.4.8)", () => {
+  const load = (name: string) => splitLines(parseAnsi(readFileSync(fixtureFile(name), "utf8")));
+
+  it.each([
+    [
+      "agy--v147-rewind--w119.txt",
+      "Rewind Conversation",
+      { upDown: true, leftRight: undefined },
+      [
+        ["Select", ["Enter"]],
+        ["Cancel", ["Escape"]],
+      ],
+    ],
+    [
+      "agy--v147-agents--w119.txt",
+      "Available Agents",
+      { upDown: true, leftRight: undefined },
+      [
+        ["Select", ["Enter"]],
+        ["Go back", ["Escape"]],
+      ],
+    ],
+    [
+      "agy--v147-skills--w119.txt",
+      "Skills",
+      { upDown: true, leftRight: undefined },
+      [
+        ["View", ["Enter"]],
+        ["Cancel", ["Escape"]],
+      ],
+    ],
+    [
+      "agy--v147-tasks--w119.txt",
+      "Tasks",
+      { upDown: false, leftRight: undefined },
+      [["Close", ["Escape"]]],
+    ],
+    [
+      "agy--v147-mcp--w119.txt",
+      "MCP Servers",
+      { upDown: false, leftRight: undefined },
+      [["Exit", ["Escape"]]],
+    ],
+    [
+      "agy--v147-settings--w119.txt",
+      "Settings",
+      { upDown: true, leftRight: { verb: "Change", label: "auto" } },
+      [
+        ["Select", ["Enter"]],
+        ["Exit", ["Escape"]],
+      ],
+    ],
+    [
+      "agy--v147-permissions--w119.txt",
+      "Permission Config Editor",
+      { upDown: true, leftRight: undefined },
+      [
+        ["Save", ["Enter"]],
+        ["Close", ["Escape"]],
+      ],
+    ],
+    [
+      "agy--v147-usage--w119.txt",
+      "Models & Quota",
+      { upDown: true },
+      [["Close", ["Escape"]]],
+    ],
+    [
+      "agy--v147-usage--w50.txt",
+      "Models & Quota",
+      { upDown: true },
+      [["Close", ["Escape"]]],
+    ],
+  ])("%s lifts into a safe MenuModel card without unread-dialog", (name, title, nav, actions) => {
+    const lines = load(name);
+    for (const adapter of [agyAdapter, antigravityAdapter]) {
+      expect(adapter.composerReady!(lines)).toBe(false);
+      expect(adapter.extractStatusLines!(lines)).toHaveLength(1);
+      const blocks = buildBlocks(lines, { agent: adapter.agent });
+      expect(blocks.some((b) => b.kind === "unread-dialog")).toBe(false);
+      const menuBlock = blocks.find((b) => b.kind === "menu");
+      expect(menuBlock?.kind).toBe("menu");
+      if (menuBlock?.kind === "menu") {
+        expect(menuBlock.menu.title).toBe(title);
+        expect(menuBlock.menu.nav).toEqual(nav);
+        expect(menuBlock.menu.actions.map((a) => [a.label, a.keys])).toEqual(actions);
+      }
+    }
+  });
+
+  it("lifts the Context Usage scroll panel ('└ Context Usage') as a MenuModel card", () => {
+    const contextUsage = [
+      RULE,
+      ">",
+      RULE,
+      "\u001b[1m\u001b[38;5;7m└ Context Usage\u001b[0m",
+      "□ □ □ □ □ □ □ □     Gemini 4 Argon (High) · 0/1.0M tokens",
+      "□ □ □ □ □ □ □ □     Estimated usage (awaiting generation)",
+      "□ □ □ □ □ □ □ □     □ Free space: 1.0M (100.0%)",
+      "",
+      "Related: /artifact · /skill · /rewind",
+      "  ↑/↓ Scroll · pgup/pgdown Page · ctrl+end Bottom · ctrl+home Top · esc Close",
+      "Gemini 4 Argon (High)  idle  ctx 100%",
+    ].join("\n");
+    const lines = splitLines(parseAnsi(contextUsage));
+    expect(agyAdapter.composerReady!(lines)).toBe(false);
+    expect(agyAdapter.extractStatusLines!(lines)).toHaveLength(1);
+    const blocks = buildBlocks(lines, { agent: "agy" });
+    expect(blocks.some((b) => b.kind === "unread-dialog")).toBe(false);
+    const menuBlock = blocks.find((b) => b.kind === "menu");
+    expect(menuBlock?.kind).toBe("menu");
+    if (menuBlock?.kind === "menu") {
+      expect(menuBlock.menu.title).toBe("Context Usage");
+      expect(menuBlock.menu.nav).toEqual({ upDown: true });
+      expect(menuBlock.menu.actions.map((a) => [a.label, a.keys])).toEqual([["Close", ["Escape"]]]);
+    }
+  });
+
+  it("strips trailing dim or ansi-8 inline autocomplete hints (e.g. 'reload' after '/skills') while preserving placeholders", () => {
+    for (const ghostSgr of ["\u001b[2m", "\u001b[38;5;8m"]) {
+      const skillsDraft = [
+        RULE,
+        `> /skills\u001b[7m\u001b[47m\u001b[30m \u001b[0m${ghostSgr}reload                                                                                      \u001b[0m`,
+        RULE,
+        "\u001b[1m\u001b[34m> /skills\u001b[0m  \u001b[38;5;8mList available skills\u001b[0m",
+        "  \u001b[38;5;8m↑/↓ Navigate · enter Select · tab Complete\u001b[0m",
+        "\u001b[38;5;8mesc to cancel\u001b[0m  \u001b[38;5;4mGemini 3.8 Flash\u001b[0m \u001b[38;5;8m(High)\u001b[0m",
+      ].join("\n");
+      const lines = splitLines(parseAnsi(skillsDraft));
+      const normalized = normalizeAgyScreenRows(lines);
+      expect(lineText(normalized[1]!).trim()).toBe("> /skills");
+      expect(lineText(normalized[1]!).length).toBe(lineText(lines[1]!).length);
+      expect(agyAdapter.composerReady!(lines)).toBe(true);
+      expect(agyAdapter.extractInputDraft!(lines)).toBe("/skills");
+      expect(agyAdapter.extractStatusLines!(lines)).toHaveLength(1);
+    }
+  });
+
+  it("recognizes parenthesized command aliases like '/config (settings)' in completion popups", () => {
+    const settingsDraft = [
+      RULE,
+      "> /settings\u001b[7m\u001b[47m\u001b[30m \u001b[0m                                                                                          ",
+      RULE,
+      "\u001b[1m\u001b[34m> /config (settings)\u001b[0m  \u001b[38;5;8mOpen settings panel\u001b[0m",
+      "  \u001b[38;5;8m↑/↓ Navigate · enter Select · tab Complete\u001b[0m",
+      "\u001b[38;5;8mesc to cancel\u001b[0m  \u001b[38;5;4mGemini 3.8 Flash\u001b[0m \u001b[38;5;8m(High)\u001b[0m",
+    ].join("\n");
+    const lines = splitLines(parseAnsi(settingsDraft));
+    const normalized = normalizeAgyScreenRows(lines);
+    expect(lineText(normalized[3]!)).toBe("> /settings           Open settings panel");
+    expect(agyAdapter.composerReady!(lines)).toBe(true);
+    expect(agyAdapter.extractInputDraft!(lines)).toBe("/settings");
+    expect(agyAdapter.extractStatusLines!(lines)).toHaveLength(1);
   });
 });

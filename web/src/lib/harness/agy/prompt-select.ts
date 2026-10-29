@@ -77,6 +77,7 @@ const QUESTION_SCAN_LIMIT = 12;
 export interface PromptRegion {
   model: PromptModel;
   startLine: number;
+  statusStartLine: number;
 }
 
 export function coreRegionSignature(texts: string[], from: number, footer: number): string {
@@ -128,6 +129,7 @@ export function detectPromptSelectRegionIn(texts: string[]): PromptRegion | null
 
   const firstOpt = menu[0]!.index;
   const lastOpt = menu[menu.length - 1]!.index;
+  if (texts.slice(firstOpt, lastOpt).some(isHorizontalRule)) return null;
 
   // A checkbox question: Space ticks a row and a digit's effect there is unmeasured, so no recipe here
   // answers it. It stays raw and the unread-dialog card offers Escape. It is known by a box on any of
@@ -210,7 +212,7 @@ export function detectPromptSelectRegionIn(texts: string[]): PromptRegion | null
   for (let i = questionAt + 1; i < firstOpt; i++) {
     if (!isBlank(texts[i]!) && !isHorizontalRule(texts[i]!)) startLine = firstOpt;
   }
-  return { model: { question, options, family, signature, coreSignature }, startLine };
+  return { model: { question, options, family, signature, coreSignature }, startLine, statusStartLine: footerIndex + 1 };
 }
 
 export function detectPromptSelect(lines: StyledLine[]): PromptModel | null {

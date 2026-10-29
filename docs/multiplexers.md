@@ -663,7 +663,7 @@ on the last rows stops it: Collie types nothing there, and the phone offers Type
 | pi | Steers the turn; Alt+Enter queues | Alt+Enter, Ctrl+Q on Windows and in WSL | Short texts and sends into a turn | 1.1.0 |
 | OMP | Steers the turn; Ctrl+Q queues | Ctrl+Q | Yes | 18.4.10 |
 | Grok | Not measured | Enter | Yes | 1.0.41 |
-| Antigravity (`agy`) | Not measured | Enter | Yes | Screens of 1.1.17 |
+| Antigravity (`agy`) | Not measured | Enter | Yes | Screens of 1.4.8 |
 | Muse | Not measured | Enter | Yes | 1.4.7 |
 | Hermes (classic CLI) | Interrupts the turn by default; Hermes's `/busy` can make it queue or steer | Enter | Yes | 0.22.2 |
 | Cursor CLI (`cursor-agent`) | Queues the message | Enter | Yes | 2026.10.16 |
@@ -709,6 +709,9 @@ Collie checks that the character lands in the box, then removes it.
 - **Antigravity** (`agy`) draws its box as a rule, a `>` row and a rule, with a `? for shortcuts` footer.
   The turn shows a spinner row with `...` above the box and `esc to cancel` under it.
   Herdr names this agent `agy` or `antigravity`. Collie files both under `agy`.
+  The `/model`, `/effort`, `/usage`, `/context`, `/artifact` and `Keyboard:` panels of 1.4.x show as cards.
+  Chat finds the conversation through the presence lock the agy process holds, which Collie asks `lsof` for.
+  So Chat for agy needs `lsof`, and does not work on Windows ([configure](configure.md)).
 
 - **Muse** draws its box as a rule that may carry a label, a `❯` row and a rule.
   An empty box shows a grey hint, and Collie reads that hint as no text.

@@ -37,6 +37,8 @@
  *  this list and cannot ask for one without the list. Still a NAME LIST and still never a detector:
  *  read it to enumerate, ask {@link hasJournalAdapter} to decide. */
 export const JOURNAL_AGENT_NAMES: ReadonlySet<string> = new Set([
+  "agy",
+  "antigravity",
   "claude",
   "codex",
   "dsh-tui",

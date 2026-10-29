@@ -1263,4 +1263,11 @@ describe("a member that takes releases, on a lead that pushes a commit", () => {
     expect(legs(h)).toEqual(["nas.example:probe"]);
     expect(h.bundles).toBe(0);
   });
+
+  test("the bundle push sets origin to the configured update repo (AltanS/collie by default)", async () => {
+    const h = harness();
+    expect(await cmdCrewUpdate(h.deps, ["nas"])).toBe(EXIT.OK);
+    const installCall = h.calls.find((c) => c.leg === "install");
+    expect(installCall?.script).toContain("ORIGIN='https://github.com/AltanS/collie.git'");
+  });
 });

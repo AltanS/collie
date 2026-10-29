@@ -394,7 +394,11 @@ export function writeEdge(deps: BeaconEmitDeps, stateDir: string, record: EdgeRe
 /**
  * The prompt as Claude Code hands it, unwrapped. A collapsed paste arrives as
  * `\n\n<pasted_content id="f27a">\n<text>\n</pasted_content id="f27a">\n` (M56 spec 01 lab, Table 5),
- * so the wrapper is cut before the hash. Only this emitter knows that form.
+ * so the wrapper is cut before the hash. Only this emitter hashes that form.
+ *
+ * TWIN: `unwrapPastes` in bridge/journal/claude.ts takes the same wrapper off what the Chat and the
+ * queue row draw. It is stricter (hex ids, a tag at a line start, an unlabelled close allowed, ends
+ * trimmed); this one stays as it is because the hash it feeds must keep matching the send receipts.
  */
 export function unwrapPrompt(prompt: string): string {
   return prompt.replace(/<pasted_content id="[^"]*">\n?([\s\S]*?)\n?<\/pasted_content id="[^"]*">/gu, "$1");
