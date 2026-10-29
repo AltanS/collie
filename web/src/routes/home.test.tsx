@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
-import { vi } from "vitest";
+import { afterEach, beforeEach, vi } from "vitest";
 
 import { CrewProvider } from "@/components/crew-provider";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
@@ -357,6 +357,44 @@ describe("the dashboard across sessions", () => {
     renderHome(widened(), "/?all=1");
     await settled();
     expect(screen.getAllByLabelText(/1 pane/i).length).toBe(1);
+  });
+});
+
+// The installed app's icon (lib/app-badge.ts). The service worker sums every session's slot, so the page
+// writes the count only when it shows the whole herd: one session of several would write a smaller number.
+describe("the app icon's count from the open dashboard", () => {
+  const setAppBadge = vi.fn(async () => undefined);
+  const clearAppBadge = vi.fn(async () => undefined);
+  beforeEach(() => {
+    setAppBadge.mockClear();
+    clearAppBadge.mockClear();
+    Object.defineProperty(navigator, "setAppBadge", { value: setAppBadge, configurable: true });
+    Object.defineProperty(navigator, "clearAppBadge", { value: clearAppBadge, configurable: true });
+  });
+  afterEach(() => {
+    Reflect.deleteProperty(navigator, "setAppBadge");
+    Reflect.deleteProperty(navigator, "clearAppBadge");
+  });
+
+  // fixtureAgents holds one blocked pane, and the default prefs notify for blocked ones.
+  it("writes nothing on one session of several, and leaves the worker's sum standing", async () => {
+    renderHome(solo());
+    await settled();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(setAppBadge).not.toHaveBeenCalled();
+    expect(clearAppBadge).not.toHaveBeenCalled();
+  });
+
+  it("writes its count when the view is all sessions", async () => {
+    renderHome({ ...solo(), viewAll: true });
+    await settled();
+    await waitFor(() => expect(setAppBadge).toHaveBeenCalledWith(1));
+  });
+
+  it("writes its count on a solo machine with a single session", async () => {
+    renderHome(homeData({ agents: fixtureAgents, shellPanes: fixtureShellPanes, sessions: fixtureSessions.slice(0, 1) }));
+    await settled();
+    await waitFor(() => expect(setAppBadge).toHaveBeenCalledWith(1));
   });
 });
 

@@ -44,6 +44,8 @@ export interface HerdSummary {
   paneId?: string;
   /** Re-alert (buzz) the device — true when a new alert arrived, false on a silent retraction update. */
   renotify: boolean;
+  /** How many alerts are outstanding: this slot's share of the app icon's badge. */
+  badge: number;
 }
 
 export interface NotifySink {
@@ -105,6 +107,7 @@ export function makeNotifySink(
         tag: herdTag,
         paneId: s.paneId,
         renotify: s.renotify,
+        badge: s.badge,
       };
       if (s.titleCode !== undefined) msg.titleCode = s.titleCode;
       if (s.titleDetail !== undefined) msg.titleDetail = s.titleDetail;
@@ -140,6 +143,13 @@ export function pushName(pane: NameableP): string {
   const tab = soleTabName(pane);
   if (tab !== null) return tab;
   return pane.kind === "shell" ? "shell" : pane.agent;
+}
+
+/** A pane's two activity timestamps, as a snapshot carries them. */
+export interface SeenStamps {
+  paneId: string;
+  lastActiveAt?: number;
+  lastSeenAt?: number;
 }
 
 interface Alert {
@@ -253,6 +263,25 @@ export class NotificationCoordinator<H = unknown> {
   }
 
   /**
+   * Retract the finished alerts of panes opened since they finished, from each poll's timestamps
+   * (bridge/activity.ts). A finished pane stays `done` or `idle` after you read it, so no transition
+   * would ever retract its alert, and it would sit on the lock screen and in the icon's count. A
+   * blocked alert stays: only an answer clears it. A pane without both timestamps is left alone.
+   */
+  retractSeen(panes: Iterable<SeenStamps>): void {
+    let removed = false;
+    for (const { paneId, lastActiveAt, lastSeenAt } of panes) {
+      if (lastActiveAt === undefined || lastSeenAt === undefined || lastSeenAt < lastActiveAt) continue;
+      if (this.pending.get(paneId)?.status === "done") this.cancelPending(paneId);
+      if (this.outstanding.get(paneId)?.status === "done") {
+        this.outstanding.delete(paneId);
+        removed = true;
+      }
+    }
+    if (removed) this.emit(false);
+  }
+
+  /**
    * Tear down this session's notifications: cancel every pending timer and retract everything
    * outstanding, closing the herd slot. Called when a session is disposed (its socket vanished) so
    * its alerts never linger on the lock screen with no live session behind them.
@@ -305,6 +334,7 @@ export class NotificationCoordinator<H = unknown> {
         body: a.ask === true && a.askText?.line !== undefined ? a.askText.line : a.place,
         paneId,
         renotify,
+        badge: 1,
       };
     }
     const alerts = entries.map(([, a]) => a);
@@ -312,7 +342,7 @@ export class NotificationCoordinator<H = unknown> {
     const allBlocked = alerts.every((a) => a.status === "blocked");
     const allDone = alerts.every((a) => a.status === "done");
     const code = allBlocked ? "herd.blocked" : allDone ? "herd.done" : "herd.mixed";
-    return { ...pushTitle(code, { count: n }), body: digestLabels(alerts).join(", "), renotify };
+    return { ...pushTitle(code, { count: n }), body: digestLabels(alerts).join(", "), renotify, badge: n };
   }
 
   private cancelPending(id: string): void {

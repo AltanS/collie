@@ -35,6 +35,12 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A dsh-tui session log cannot swell past a fixed size when it is read.** Collie now stops a compressed frame that expands beyond 64 MiB, twice the 32 MB cap on the log itself, and treats it like a frame that does not decode: the reader stops at that frame and never stitches rows across it. Nothing throws. (#604)
 - **Chat draws the pictures Claude's tools return, and attached images.** A `Read` of a screenshot, or a screenshot tool, now shows the picture inside its tool card, and an attached image opens in a sheet instead of a bare link. Thanks @SergioGhisler (#590).
 - **A huge picture in a tool result no longer bloats the chat.** One inline picture over 2 MiB of base64 is now dropped from the transcript, in every harness reader, and the tool card keeps its text.
+- **The installed app's icon counts the panes blocked on you.** The count also includes finished panes you have not opened, while the Finished preference is on. The herd push sets it in the service worker, and the open dashboard sets it too. A browser without the Badging API keeps no count. Thanks @SergioGhisler (#591).
+- **The open dashboard sets the icon's count only when it shows every session.** On one session of several it writes nothing, because the pushes count every session and machine and would overwrite a smaller number.
+
+### Changed
+
+- **Opening a finished pane retracts its alert.** The bridge drops the alert once the pane has been opened (`retractSeen` in `bridge/notifications.ts`), which also removes its lock-screen notification. A blocked pane's alert stays until you answer it.
 
 ### Fixed
 
