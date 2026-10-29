@@ -65,6 +65,14 @@ The row names the copy on your `PATH`, because `collie doctor` has no pane to lo
 Herdr asks the program that runs in its pane, so a pane that runs another copy, started by its full
 path or installed in a project, shows that copy's version on its receipts.
 
+**`collie doctor` says whether sends reach each agent program.** Each program gets one
+`sends-<harness>` row that counts its sends by outcome, over its newest 50 sends of the last 7 days.
+A send you discarded or cancelled, or one still held, does not count. The row warns when 3 or more
+sends ended and none went through, or when 5 or more ended and at least 30 percent were `unknown` or
+`typed_not_submitted` for a reason that points at Collie, the same reasons that offer Report a
+problem on the phone. It turns red when 10 or more ended and none went through. A red row makes
+`collie doctor` exit 1, but it does not hold back an update, because an update is often the fix.
+
 
 ## Put `collie` on your PATH
 

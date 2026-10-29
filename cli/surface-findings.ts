@@ -1,6 +1,5 @@
 import { counterDates, DEFAULT_CAP, readDays, summarize, SUMMARY_DAYS, totalsOf, unknownTotal, type CounterRow } from "../bridge/surface/counters.ts";
 import { join } from "node:path";
-import type { SendReason } from "../web/src/lib/surface/send.ts";
 import type { CliContext } from "./context.ts";
 import { ok, warn, type Finding } from "./finding.ts";
 import type { Files } from "./sys.ts";
@@ -16,43 +15,10 @@ import type { Files } from "./sys.ts";
 // A row is `warn` when the person typed past an unreadable screen as often as the cap allows
 // (DEFAULT_CAP in 24 hours is the cap's own number, here read over seven days as a plain signal that a
 // harness version needs a profile): the frames those sends were confirmed on are in `inbox.jsonl`.
-// A row is also `warn` when the reader refuses its sends too often (READER_REFUSALS only): more than
-// REFUSAL_WARN_RATE such refusals per send that went out (`sent` + `effective`), over at least
-// REFUSAL_WARN_MIN_SENDS such sends. The line names the most common of those reasons, since that is
-// the reader rule to look at first (2026-10-17: seven
-// `not_free` refusals in fourteen seconds on Claude Code 2.1.302 showed only as a number in this table).
+// Whether sends arrive is not asked here: the counters are per day and cannot say what the last sends
+// did. The `sends-*` rows (cli/send-findings.ts, M71 spec 01) read the receipts for that, and replaced
+// the refusal-rate warning these rows carried until then.
 // No row is ever `error`: a counter is a number, and `collie doctor` exits 0 on warnings.
-
-/** Refusals per send that went out above which a row warns. */
-export const REFUSAL_WARN_RATE = 0.3;
-/** The fewest sends that went out (`sent` + `effective`) before the refusal rate counts. */
-export const REFUSAL_WARN_MIN_SENDS = 10;
-
-/**
- * The refusals that say the reader could not take the screen (review, 2026-10-17): a box that was not
- * free, a screen that would not hold still, a probe that failed. The rest are the person's or the
- * pane's (`draft_present`, `unconfirmed`, `stale_surface`, `busy`, `id_reused`, `pane_gone`,
- * `turn_running`, ...) and do not count. `modal_cue` is a `typed_not_submitted` reason, and torn,
- * no-match and unreadable are Surface words, so none of them is a refusal reason in the counters.
- */
-export const READER_REFUSALS: readonly SendReason[] = ["not_free", "bound", "probe_failed"];
-
-/**
- * The warning for a row whose sends the reader refuses too often, or null: the counts, the most common
- * reader reason (ties go to the reason first in the counters), and where the receipts and examples are.
- */
-export function refusalWarning(row: CounterRow, dir: string): string | null {
-  const reader = Object.entries(row.refused).filter(([reason]) => READER_REFUSALS.some((known) => known === reason));
-  const refused = reader.reduce((sum, [, n]) => sum + n, 0);
-  const went = row.sent + row.effective;
-  if (went < REFUSAL_WARN_MIN_SENDS || refused <= REFUSAL_WARN_RATE * went) return null;
-  const top = reader.toSorted(([, a], [, b]) => b - a)[0];
-  const reason = top === undefined ? "" : `, most of them ${top[0]} (${String(top[1])})`;
-  return (
-    `${String(refused)} sends refused by the reader against ${String(went)} that went out on ${row.harness} ${row.version}${reason}; ` +
-    `read the recent sends on the pane's session page and the examples in ${join(dir, "examples")}, and report the screen to the lab`
-  );
-}
 
 /** What this section reaches: the context, one directory listing and file reads, and the clock. */
 export interface SurfaceDeps {
@@ -129,11 +95,9 @@ export function surfaceFindings(deps: SurfaceDeps): Finding[] {
   const lines = rows.map((row) => {
     const check = `surface-${row.harness}-${row.version}`;
     const detail = rowLine(row);
-    const remedies = [
-      ...(row.manual >= DEFAULT_CAP ? [`a person typed past an unreadable screen ${String(row.manual)} times; send the frames in ${join(dir, "inbox.jsonl")} to the lab and add a profile for ${row.harness} ${row.version}`] : []),
-      ...[refusalWarning(row, dir)].filter((line): line is string => line !== null),
-    ];
-    return remedies.length > 0 ? warn(check, detail, remedies.join(". ")) : ok(check, detail);
+    if (row.manual < DEFAULT_CAP) return ok(check, detail);
+    const remedy = `a person typed past an unreadable screen ${String(row.manual)} times; send the frames in ${join(dir, "inbox.jsonl")} to the lab and add a profile for ${row.harness} ${row.version}`;
+    return warn(check, detail, remedy);
   });
   return [summary, ...lines];
 }

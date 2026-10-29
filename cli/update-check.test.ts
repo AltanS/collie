@@ -345,6 +345,51 @@ describe("preflight — the doctor check", () => {
     const h = harness({ findings: [{ check: "bind", status: "error", detail: "wildcard", remedy: "set COLLIE_HOST" }] });
     expect(byId(await preflight(h.deps), "doctor").verdict).toBe("red");
   });
+
+  // M71 spec 01: a `sends-<harness>` error is local, and still amber. An update is often the fix for
+  // a harness Collie cannot send to, so it must not turn the phone's Update button off.
+  test("a sends error is amber and named by its check id, so an update can still fix it", async () => {
+    const h = harness({ findings: [{ check: "sends-codex", status: "error", detail: "18 unknown (no_evidence 18) · last 7 days", remedy: "…" }] });
+    const report = await preflight(h.deps);
+    const check = byId(report, "doctor");
+    expect(check.verdict).toBe("amber");
+    expect(report.verdict).toBe("amber");
+    expect(check.reason).toContain("this machine can still update");
+    expect(check.reason).toContain("sends-codex");
+    expect(check.reason).not.toContain("no_evidence");
+    expect(await cmdUpdateCheck(h.deps, ["--json"])).toBe(EXIT.OK);
+  });
+
+  test("a sends error beside another local error leaves the red to the other one, and beside a crew error both are named", async () => {
+    const red = byId(
+      await preflight(
+        harness({
+          findings: [
+            { check: "web-dist", status: "error", detail: "missing", remedy: "collie build" },
+            { check: "sends-codex", status: "error", detail: "…", remedy: "…" },
+          ],
+        }).deps,
+      ),
+      "doctor",
+    );
+    expect(red.verdict).toBe("red");
+    expect(red.reason).toContain("1 problem: web-dist");
+    expect(red.reason).not.toContain("sends-codex");
+    const both = byId(
+      await preflight(
+        harness({
+          findings: [
+            { check: "member-reach", status: "error", detail: "…", remedy: "…", scope: "crew" },
+            { check: "sends-codex", status: "error", detail: "…", remedy: "…" },
+          ],
+        }).deps,
+      ),
+      "doctor",
+    );
+    expect(both.verdict).toBe("amber");
+    expect(both.reason).toContain("member-reach");
+    expect(both.reason).toContain("sends-codex");
+  });
 });
 
 describe("preflight — the disk check", () => {

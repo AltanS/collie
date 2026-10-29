@@ -40,6 +40,17 @@ local:
   ✓        cache-claims          12 cache rules and 8 reset rules, every claim carrying the page it was read on; the oldest was checked <N> days ago
   ✓        cache-rules           no /cfg/cache-rules.toml — every TTL is the shipped rule
   ✓        cache-env             no Claude Code cache variable is set in this shell
+  ✓        sends-agy             no sends in the last 7 days
+  ✓        sends-claude          no sends in the last 7 days
+  ✓        sends-codex           no sends in the last 7 days
+  ✓        sends-cursor          no sends in the last 7 days
+  ✓        sends-grok            no sends in the last 7 days
+  ✓        sends-hermes          no sends in the last 7 days
+  ✓        sends-kiro            no sends in the last 7 days
+  ✓        sends-muse            no sends in the last 7 days
+  ✓        sends-omp             no sends in the last 7 days
+  ✓        sends-opencode        no sends in the last 7 days
+  ✓        sends-pi              no sends in the last 7 days
   skipped: restart-pending       the running bridge records no version — `crew-runtime.json` carries its boot time, pid, mode and roster, and nothing names the code it is executing → `collie restart` after any build if in doubt; `collie logs` dates the running process
   skipped: clock                 solo — there is no far side to compare against, and inventing a reference clock is worse than silence → re-run `collie doctor` once this collie is in a crew
 
@@ -88,6 +99,17 @@ local:
   ✓        cache-claims          12 cache rules and 8 reset rules, every claim carrying the page it was read on; the oldest was checked <N> days ago
   ✓        cache-rules           no /cfg/cache-rules.toml — every TTL is the shipped rule
   ✓        cache-env             no Claude Code cache variable is set in this shell
+  ✓        sends-agy             no sends in the last 7 days
+  ✓        sends-claude          no sends in the last 7 days
+  ✓        sends-codex           no sends in the last 7 days
+  ✓        sends-cursor          no sends in the last 7 days
+  ✓        sends-grok            no sends in the last 7 days
+  ✓        sends-hermes          no sends in the last 7 days
+  ✓        sends-kiro            no sends in the last 7 days
+  ✓        sends-muse            no sends in the last 7 days
+  ✓        sends-omp             no sends in the last 7 days
+  ✓        sends-opencode        no sends in the last 7 days
+  ✓        sends-pi              no sends in the last 7 days
   skipped: restart-pending       the running bridge records no version — `crew-runtime.json` carries its boot time, pid, mode and roster, and nothing names the code it is executing → `collie restart` after any build if in doubt; `collie logs` dates the running process
   skipped: clock                 solo — there is no far side to compare against, and inventing a reference clock is worse than silence → re-run `collie doctor` once this collie is in a crew
 

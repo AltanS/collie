@@ -7,7 +7,7 @@ import { AskAnswerer } from "./ask.ts";
 import { HOST } from "../host.ts";
 import { isOwnerOnly } from "../owner-only.ts";
 import { SendProtocol } from "./protocol.ts";
-import { RequestStore, type AcceptInput, type SendRecord } from "./requests.ts";
+import { parseSendRecord, RequestStore, type AcceptInput, type SendRecord } from "./requests.ts";
 
 let dir: string;
 beforeEach(() => {
@@ -376,5 +376,19 @@ describe("ask answers in the same store", () => {
     now += 8 * 24 * 60 * 60 * 1000;
     expect(store.prune()).toBe(1);
     expect(store.listAsks()).toEqual([]);
+  });
+});
+
+describe("parseSendRecord", () => {
+  // M71 spec 01: `collie doctor` parses the same files without a store, whose constructor writes.
+  test("reads back what the store wrote, and refuses what it did not write", () => {
+    const store = new RequestStore(join(dir, "sends"), () => 5000);
+    const { record } = store.accept(input());
+    const settled = store.settle(ID, receiptFor(record, "refused"))!;
+    const raw = JSON.parse(readFileSync(join(dir, "sends", `${ID}.json`), "utf8"));
+    expect(parseSendRecord(raw)).toEqual(settled);
+    expect(parseSendRecord({ ...raw, phase: "lost" })).toBeNull();
+    expect(parseSendRecord({ ...raw, receipt: { ...raw.receipt, outcome: "maybe" } })).toBeNull();
+    expect(parseSendRecord(undefined)).toBeNull();
   });
 });

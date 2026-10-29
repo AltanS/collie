@@ -51,6 +51,7 @@ import { muxFinding, muxSettings, pathLinkFinding, tailscaleFindings, type MuxSe
 import { cacheFindings } from "./cache-findings.ts";
 import { surfaceFindings } from "./surface-findings.ts";
 import { harnessFindings, harnessReader, type ReadHarness } from "./harness-findings.ts";
+import { sendFindings } from "./send-findings.ts";
 import { durableFindings, sourcesFindings } from "./durable-findings.ts";
 import { historyFindings, type SnapshotRead } from "./history.ts";
 import { EXIT, type Io } from "./io.ts";
@@ -284,6 +285,9 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
     ...surfaceFindings({ ctx: deps.ctx, files: deps.files, now: deps.now }),
     // The binary and version of every harness with a profile, and what the profile says (1.24.1).
     ...(deps.harnesses === undefined ? [] : await harnessFindings(deps.harnesses)),
+    // Whether sends reach each harness (M71 spec 01): the outcomes of its recent sends, read from the
+    // receipts in `<stateDir>/sends/` without a store, and three rules over them. Local: no stamp.
+    ...sendFindings({ ctx: deps.ctx, files: deps.files, now: deps.now }),
     restartPending(deps, install, runtimeMarker, await ownRead()),
     // STAMPED `crew` when it is a comparison at all (ADR 0050), while still PRINTING here, where it
     // always has. `clock` measures this machine against a member's `Date` header and its own remedy

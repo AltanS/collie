@@ -23,6 +23,16 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **collie doctor says whether sends reach each agent program.** A `sends-<harness>` row per
+  program counts its sends by outcome over its newest 50 of the last 7 days, read from the send
+  receipts. It warns when 3 or more sends ended and none went through, or when 5 or more ended and
+  at least 30 percent were lost for a reason Report a problem counts, and turns red at 10 or more
+  with none through. A red row makes `collie doctor` exit 1 but leaves `collie update --check` amber,
+  because an update is often the fix. The `surface-*` rows no longer warn on refusals after ten
+  sends, which never caught a program with no send through at all (#594).
+
 ## [1.25.0] - 2026-10-29
 
 ### Added
