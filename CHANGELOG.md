@@ -77,6 +77,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
   until the agent's first screen is read, the agent leaves the pane, or two minutes pass. The page
   also polls faster for the first 20 seconds after a launch, so the pane appears sooner. Thanks
   @aahung (#574).
+- **The Send gate after a launch opens when the agent is gone.** A launch that fell back to a plain shell no longer keeps Send on Starting… for two minutes, and the large-screen launcher gets the same gate as the belt. Refines #574.
 
 ### Docs
 

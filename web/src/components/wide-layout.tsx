@@ -807,7 +807,7 @@ function SidebarList({ agent, paneId, scope, onSelect }: { agent: AgentView | un
                   item: row ?? { command },
                   machine: scope.host ?? "",
                   folder: shortenHome(row?.cwd ?? agent?.cwd ?? launchersHome, launchersHome) || "~",
-                  go: () => void launch(command, paneId),
+                  go: () => void launch(command, paneId, row?.kind === "agent" ? row.harness : undefined),
                 });
               }
         }

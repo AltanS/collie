@@ -55,6 +55,19 @@ describe("the startup gate", () => {
     expect(onReady).toHaveBeenCalledOnce();
   });
 
+  it("opens when the agent falls back to a plain shell that names no agent", () => {
+    const onReady = vi.fn();
+    const { result, rerender } = hook({ ...input, onReady });
+    // Before the agent was ever seen, a pane naming no agent is still the temporary shell.
+    rerender({ ...input, agent: undefined, onReady });
+    expect(result.current.starting).toBe(true);
+    rerender({ ...input, agent: "kiro", surface: UNREAD_SURFACE, onReady });
+    expect(result.current.starting).toBe(true);
+    rerender({ ...input, agent: undefined, surface: undefined, onReady });
+    expect(result.current.starting).toBe(false);
+    expect(onReady).toHaveBeenCalledOnce();
+  });
+
   it("opens at the launch window's bound on a screen it never reads", () => {
     vi.useFakeTimers();
     try {

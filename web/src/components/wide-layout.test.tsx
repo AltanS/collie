@@ -9,6 +9,7 @@ import { paneRowKey } from "@/lib/hosts";
 import { asJsonObject, asJsonString, parseJsonObject } from "@/lib/json";
 import { ROOT_ROUTE_ID, type HomeData, type PaneData } from "@/lib/loaders";
 import { panePath } from "@/lib/nav";
+import { readAgentLaunch } from "@/lib/agent-startup";
 import { __resetOpenBeside } from "@/lib/open-beside";
 import { paneScopeKey } from "@/lib/scope";
 import { statusLabel, type AgentView, type DeviceAuth, type TabView } from "@/lib/types";
@@ -294,6 +295,23 @@ describe("the sidebar", () => {
     // The same tap as the open sidebar.
     fireEvent.click(sidebarRow(container, A2)!);
     await waitFor(() => expect(router.state.location.pathname).toBe(panePath("w1:p2")));
+  });
+});
+
+describe("the sidebar launcher", () => {
+  it("opens a launched agent with the launch intent that gates its Send", async () => {
+    server.use(
+      http.get("/api/launchers", () =>
+        HttpResponse.json({ home: "/home", launchers: [{ command: "kiro", label: "Launch Kiro", kind: "agent", harness: "kiro" }] }),
+      ),
+      http.post("/api/launch", () =>
+        HttpResponse.json({ ok: true, pane: { paneId: "new:p1", workspaceId: "new", workspaceLabel: "Kiro", tabId: "new:t1", cwd: "/home" } }),
+      ),
+    );
+    const { router, container } = await mount("w1:p1", 1200);
+    fireEvent.click(await within(q(container, "aside")!).findByText("Launch Kiro"));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/pane/new%3Ap1"));
+    expect(readAgentLaunch(router.state.location.state, "new:p1")?.harness).toBe("kiro");
   });
 });
 

@@ -31,8 +31,9 @@ export function useStartupReadiness(input: {
   const current = latch.current;
   if (current !== null && launch !== undefined && !current.done && live) {
     if (agent === launch.harness) current.observed = true;
-    // A named agent that is no longer named has left the pane: nothing is starting there any more.
-    const exited = current.observed && agent !== undefined && agent !== launch.harness;
+    // An agent seen on the pane that is no longer named has left it: nothing is starting there any more.
+    // A pane that fell back to a plain shell names no agent at all, so `undefined` counts as gone too.
+    const exited = current.observed && agent !== launch.harness;
     if (exited || firstScreenRead(launch.harness, agent, surface)) current.done = true;
   }
   // The bound needs a render of its own: a pane whose screen stopped moving may not poll again soon.
