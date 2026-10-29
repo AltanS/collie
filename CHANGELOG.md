@@ -28,6 +28,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A Muse draft typed over several lines no longer reads as a dialog.** Muse's prompt glyph and the
   draft's lines under it looked like a pointed list between two rules, so Collie showed an unread
   dialog and held Send. Thanks @jpcarranza94 (#552).
+- **A Muse draft of several lines reads as a draft only when no list is in the box.** Muse's
+  profile now says its dialogs never point with its prompt glyph `❯`, so the lines under it are the
+  draft's own, unless a row holds an option, a key hint or the slash palette. pi and omp draw menus
+  with the same glyph and keep holding Send there. (#552)
 
 ## [1.25.0] - 2026-10-29
 

@@ -33,6 +33,7 @@
         "column": 0
       },
       "continuationIndent": 2,
+      "draftLines": true,
       "maxDraftRows": 60,
       "maxTailRows": 3
     },
