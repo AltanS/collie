@@ -1582,6 +1582,8 @@ export const ko: Dictionary = {
   "dialog.backToOptions": "선택지로 돌아가기",
   "dialog.endsQuestionsSuffix": " (질문 종료)",
   "dialog.autocomplete.title": "슬래시 명령",
+  "dialog.authBox.label": "로그인 출력",
+  "dialog.authBox.waiting": "로그인 명령이 아직 아무것도 출력하지 않았습니다.",
   "dialog.menu.moveUp": "위로 이동",
   "dialog.menu.moveDown": "아래로 이동",
   "dialog.menu.noticeDraft": "먼저 입력란을 비우세요. 숫자가 입력란의 글에 덧붙여집니다.",

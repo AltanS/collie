@@ -1584,6 +1584,8 @@ export const ja: Dictionary = {
   "dialog.backToOptions": "選択肢に戻る",
   "dialog.endsQuestionsSuffix": "（質問を終了）",
   "dialog.autocomplete.title": "スラッシュコマンド",
+  "dialog.authBox.label": "ログインの出力",
+  "dialog.authBox.waiting": "ログインコマンドはまだ何も出力していません。",
   "dialog.menu.moveUp": "上へ移動",
   "dialog.menu.moveDown": "下へ移動",
   "dialog.menu.noticeDraft": "先に入力欄を空にしてください。数字は入力中の文字に付け足されます。",

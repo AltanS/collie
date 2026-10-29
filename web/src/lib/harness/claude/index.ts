@@ -21,6 +21,7 @@ import { detectMarketplacesRegion } from "./marketplaces";
 import { detectMenuRegion } from "./menu";
 import { detectAutocompleteRegion } from "./autocomplete";
 import { detectAbovePromptNotice } from "./above-prompt-notice";
+import { detectAuthBox } from "./auth-box";
 import {
   stripChrome,
   extractStatusLines,
@@ -162,7 +163,7 @@ export function claudeBuildBlocks(input: StyledLine[]): Block[] {
     return blocks;
   }
 
-  // A NOTICE above the live box (above-prompt-notice.ts): the one card on a screen whose box keeps the
+  // A NOTICE above the live box (above-prompt-notice.ts): a card on a screen whose input box keeps the
   // keyboard. Every grammar above needs the box gone or a footer that names keys, so none claims it;
   // the transcript above the notice stays raw, and the box is stripped as on any idle screen.
   const noticeRegion = detectAbovePromptNotice(lines);
@@ -174,7 +175,24 @@ export function claudeBuildBlocks(input: StyledLine[]): Block[] {
     return blocks;
   }
 
-  // The COMPLETION POPUP (autocomplete.ts) — the one non-raw block that is not a dialog. It runs last
+  // The AUTHENTICATION BOX (auth-box.ts) Claude draws over its live input box while `awsAuthRefresh`
+  // runs: a card of the box's text and links, lifted out of the mirror. Like the notice above it, it
+  // leaves the keyboard to the input box, so it owns none; the transcript above it stays raw and the
+  // input box and the status rows under it are stripped as on any idle screen.
+  const authBoxRegion = detectAuthBox(lines);
+  if (authBoxRegion) {
+    const before = trimTrailingBlank(lines.slice(0, authBoxRegion.startLine));
+    const blocks: Block[] = [];
+    if (before.length > 0) blocks.push({ kind: "raw", lines: before });
+    blocks.push({
+      kind: "box-text",
+      boxText: authBoxRegion.model,
+      lines: lines.slice(authBoxRegion.startLine, authBoxRegion.endLine + 1),
+    });
+    return blocks;
+  }
+
+  // The COMPLETION POPUP (autocomplete.ts) — a non-raw block that is not a dialog. It runs last
   // because it is the least specific tail shape, and it is gated on the input box's tail being
   // CLASSIFIED as the popup (chrome.ts), because that is what separates a live composer with a popup
   // under it from a modal, and from popup-shaped rows under a box whose draft is not a slash command.
@@ -225,6 +243,7 @@ const CLAUDE_DIALOG_DETECTORS: readonly DialogDetector[] = [
   { name: "marketplaces", detect: onPrepared(detectMarketplacesRegion) },
   { name: "menu", detect: onPrepared(detectMenuRegion) },
   { name: "above-prompt-notice", detect: onPrepared(detectAbovePromptNotice) },
+  { name: "auth-box", detect: onPrepared(detectAuthBox) },
   { name: "autocomplete", detect: onPrepared((lines) => (inputBoxTail(lines) === "autocomplete" ? detectAutocompleteRegion(lines) : null)) },
 ];
 

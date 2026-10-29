@@ -1465,6 +1465,8 @@ export const pt: Dictionary = {
   "dialog.backToOptions": "Voltar para as opções",
   "dialog.endsQuestionsSuffix": "- encerra as perguntas",
   "dialog.autocomplete.title": "Comandos de barra",
+  "dialog.authBox.label": "Saída do login",
+  "dialog.authBox.waiting": "O comando de login ainda não imprimiu nada.",
   "dialog.menu.moveUp": "Mover para cima",
   "dialog.menu.moveDown": "Mover para baixo",
   "dialog.menu.noticeDraft": "Esvazie a caixa primeiro: um dígito se juntaria ao texto que está lá.",

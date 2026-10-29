@@ -1465,6 +1465,8 @@ export const tr: Dictionary = {
   "dialog.backToOptions": "Seçeneklere geri dön",
   "dialog.endsQuestionsSuffix": "- soruları bitirir",
   "dialog.autocomplete.title": "Bölü çizgisi komutları",
+  "dialog.authBox.label": "Oturum açma çıktısı",
+  "dialog.authBox.waiting": "Oturum açma komutu henüz hiçbir şey yazdırmadı.",
   "dialog.menu.moveUp": "Yukarı taşı",
   "dialog.menu.moveDown": "Aşağı taşı",
   "dialog.menu.noticeDraft": "Önce kutuyu boşaltın: Bir rakam oradaki metne eklenir.",

@@ -1684,6 +1684,8 @@ export const en = {
   "dialog.backToOptions": "Back to the options",
   "dialog.endsQuestionsSuffix": "(ends the questions)",
   "dialog.autocomplete.title": "Slash commands",
+  "dialog.authBox.label": "Login output",
+  "dialog.authBox.waiting": "The login command has not printed anything yet.",
   "dialog.menu.moveUp": "Move up",
   "dialog.menu.moveDown": "Move down",
   "dialog.menu.noticeDraft": "Empty the box first: a digit would join the text there.",

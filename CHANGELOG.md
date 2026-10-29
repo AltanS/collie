@@ -60,6 +60,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
   another machine. Thanks @OowhitecatoO (#614).
 - **The done line's open-pane lookup has a test.** The root layout resolves the pane on screen to a
   row key through the route's own scope, so a shell pane, which is no agent row, silences nothing.
+- **The Authentication box Claude prints during an awsAuthRefresh login lifts as a card.** On Bedrock, Claude shows a sign-in link inside a box while it refreshes AWS credentials. Collie now lifts that box as a card with the sign-in link. The link opens only on a tap, and nothing is typed into the pane. Thanks @cooldaemon (#542, #585).
+- **The detector drift guard now knows the Authentication box.** The Claude dialog list names the auth box, so the guard no longer fails on its fixtures.
 
 ## [1.25.0] - 2026-10-29
 

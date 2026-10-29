@@ -1595,6 +1595,8 @@ export const de: Dictionary = {
   "dialog.backToOptions": "Zurück zu den Optionen",
   "dialog.endsQuestionsSuffix": "- beendet den Fragenteil",
   "dialog.autocomplete.title": "Slash-Befehle",
+  "dialog.authBox.label": "Anmeldeausgabe",
+  "dialog.authBox.waiting": "Der Anmeldebefehl hat noch nichts ausgegeben.",
   "dialog.menu.moveUp": "Nach oben",
   "dialog.menu.moveDown": "Nach unten",
   "dialog.menu.noticeDraft": "Leere zuerst das Eingabefeld: Eine Ziffer würde an den Text dort angehängt.",

@@ -39,7 +39,7 @@ import { __resetOperatorCommands } from "@/lib/operator-config";
 import { paneMirrorOverride, setPaneMirrorOverride } from "@/lib/mirror-invert";
 import { submitPromptOption } from "@/lib/prompt-action";
 import { submitWizardKeys } from "@/lib/wizard-action";
-import { fixtureAgents, fixtureShellPanes, fixtureTabs, fixtureTranscriptWithImage, paneTextWithDraft, sendAnswer, sendHandler } from "@/test/handlers";
+import { fixtureAgents, fixtureShellPanes, fixtureTabs, fixtureTranscriptWithImage, paneTextWithDraft, recordedSends, sendAnswer, sendHandler } from "@/test/handlers";
 import type { Ask, Surface } from "@/lib/surface/surface";
 import { parseAnsi } from "@/lib/ansi";
 import { splitLines } from "@/lib/blocks";
@@ -5047,5 +5047,239 @@ describe("AgentChat — a tabletop fold (ADR 0120, folded postures)", () => {
   it("marks nothing when the screen is flat", () => {
     const { container } = renderChat();
     expect(container.querySelector("[data-segment]")).toBeNull();
+  });
+});
+
+describe("AgentChat — the Authentication box lifts as a card", () => {
+  afterEach(() => localStorage.clear());
+
+  const FILLED = "claude--v2307-auth-refresh-output--w61.txt";
+  const DEVICE = "https://example.awsapps.com/start/#/device";
+  const paneText = (name: string): string => readFileSync(join(import.meta.dirname, "..", "fixtures", "panes", name), "utf8");
+  const chooseBody = (paneView: "chat" | "terminal") => {
+    localStorage.setItem("collie:dash-prefs:v1", JSON.stringify({ paneView, showToolCalls: true }));
+  };
+  const follows = (earlier: Node, later: Node): boolean => (earlier.compareDocumentPosition(later) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+
+  it("shows the card in Terminal view between the mirror and the composer, and keeps the box's rows out of the mirror", () => {
+    chooseBody("terminal");
+    const { container } = renderChat({ text: paneText(FILLED) });
+    const card = screen.getByRole("group", { name: "Login output" });
+    const mirror = container.querySelector("pre")!;
+    expect(within(card).getByText("Authentication")).toBeInTheDocument();
+    expect(within(card).getByRole("link", { name: DEVICE })).toHaveAttribute("href", DEVICE);
+    expect(mirror.textContent).toContain("Claude Code");
+    expect(mirror.textContent).not.toContain("Authentication");
+    expect(mirror.textContent).not.toContain("╭");
+    expect(follows(mirror, card)).toBe(true);
+    expect(follows(card, screen.getByPlaceholderText(/type a reply/i))).toBe(true);
+  });
+
+  it("shows the card in Chat view below the conversation and above the composer", async () => {
+    chooseBody("chat");
+    renderChat({ agent: { ...fixtureAgents[0]!, hasSession: true }, text: paneText(FILLED) });
+    const turn = await screen.findByText("what changed today?");
+    const card = screen.getByRole("group", { name: "Login output" });
+    expect(within(card).getByRole("link", { name: DEVICE })).toBeInTheDocument();
+    expect(follows(turn, card)).toBe(true);
+    expect(follows(card, screen.getByPlaceholderText(/type a reply/i))).toBe(true);
+  });
+
+  it("keeps the composer a normal message box while the card shows, and a typed message goes out on one tap", async () => {
+    chooseBody("terminal");
+    const user = userEvent.setup();
+    renderChat({ text: paneText(FILLED) });
+    expect(screen.getByRole("group", { name: "Login output" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Answer the dialog" })).toBeNull();
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    expect(box).not.toBeDisabled();
+    await user.type(box, "hello");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(recordedSends().map((sent) => sent.text)).toEqual(["hello"]));
+    await waitFor(() => expect(box).toHaveValue(""));
+  });
+
+  it("leaves the link open to a read-only device", () => {
+    chooseBody("terminal");
+    renderChat({ text: paneText(FILLED), device: { enforced: true, device: "spare-phone", authorized: false } });
+    expect(screen.getByPlaceholderText(/read-only, not authorised/i)).toBeDisabled();
+    const link = within(screen.getByRole("group", { name: "Login output" })).getByRole("link", { name: DEVICE });
+    expect(link).toHaveAttribute("href", DEVICE);
+    expect(link).not.toHaveAttribute("aria-disabled");
+  });
+
+  it("shows the box's rows in the mirror and lifts no card under the Raw terminal preference", () => {
+    chooseBody("terminal");
+    localStorage.setItem("collie:display-prefs:v4", JSON.stringify({ wrap: true, fontSize: 11, rawTerminal: true }));
+    const { container } = renderChat({ text: paneText(FILLED) });
+    expect(screen.queryByRole("group", { name: "Login output" })).toBeNull();
+    expect(container.querySelector("pre")!.textContent).toContain("╭");
+    expect(container.querySelector("pre")!.textContent).toContain("Authentication");
+  });
+
+  it("shows the box's rows in the mirror on a pane that is not a Claude Code pane", () => {
+    chooseBody("terminal");
+    const codex = { ...fixtureAgents[1]!, paneId: fixtureAgents[0]!.paneId };
+    const { container } = renderChat({ agent: codex, agents: [codex], text: paneText(FILLED) });
+    expect(screen.queryByRole("group", { name: "Login output" })).toBeNull();
+    expect(container.querySelector("pre")!.textContent).toContain("Authentication");
+  });
+
+  it("the Screen pill brings back the box's rows in place of the card, and a second tap shows the card again", async () => {
+    chooseBody("terminal");
+    const user = userEvent.setup();
+    const { container } = renderChat({ text: paneText(FILLED) });
+    expect(screen.getByRole("group", { name: "Login output" })).toBeInTheDocument();
+    const pill = screen.getByRole("button", { name: "Show the screen rows, without cards" });
+    await user.click(pill);
+    expect(screen.queryByRole("group", { name: "Login output" })).toBeNull();
+    expect(container.querySelector("pre")!.textContent).toContain("╭");
+    expect(container.querySelector("pre")!.textContent).toContain("Authentication");
+    await user.click(pill);
+    const card = await screen.findByRole("group", { name: "Login output" });
+    expect(within(card).getByRole("link", { name: DEVICE })).toHaveAttribute("href", DEVICE);
+    expect(container.querySelector("pre")!.textContent).not.toContain("Authentication");
+  });
+
+  it("shows the lock message as text with no link", () => {
+    chooseBody("terminal");
+    renderChat({ text: paneText("claude--v2309-auth-refresh-locked--w80.txt") });
+    const card = screen.getByRole("group", { name: "Login output" });
+    expect(within(card).getByText(/Another Claude Code process is running your awsAuthRefresh command\./u)).toBeInTheDocument();
+    expect(within(card).queryAllByRole("link")).toEqual([]);
+  });
+
+  function renderRefreshingChat(initial: string) {
+    let setText: (text: string) => void = () => {};
+    function Harness() {
+      const [text, set] = useState(initial);
+      setText = set;
+      const agent = fixtureAgents[0]!;
+      return (
+        <AgentChat paneId={agent.paneId} agent={agent} agents={fixtureAgents} shellPanes={[]} tabs={[]} text={text} onBack={vi.fn()} onSelect={vi.fn()} />
+      );
+    }
+    const router = createMemoryRouter([{ path: "/", element: withHeaderHost(<Harness />) }]);
+    render(<RouterProvider router={router} />);
+    return (text: string) => act(() => setText(text));
+  }
+
+  it("shows no card on the refresh that no longer holds the box", () => {
+    chooseBody("terminal");
+    const refresh = renderRefreshingChat(paneText(FILLED));
+    expect(screen.getByRole("group", { name: "Login output" })).toBeInTheDocument();
+    refresh(paneTextWithDraft("recent pane output"));
+    expect(screen.queryByRole("group", { name: "Login output" })).toBeNull();
+    expect(screen.queryByRole("link", { name: DEVICE })).toBeNull();
+  });
+
+  it("shows the new code and no link that still carries the old one when the box is redrawn", () => {
+    chooseBody("terminal");
+    const refresh = renderRefreshingChat(paneText(FILLED));
+    const oldCard = screen.getByRole("group", { name: "Login output" });
+    expect(within(oldCard).getAllByRole("link").some((link) => link.getAttribute("href")!.includes("ABCD-EFGH"))).toBe(true);
+    refresh(paneText(FILLED).replaceAll("ABCD", "WXYZ").replaceAll("EFGH", "1234"));
+    const card = screen.getByRole("group", { name: "Login output" });
+    const links = within(card).getAllByRole("link");
+    expect(links.some((link) => link.getAttribute("href")!.endsWith("user_code=WXYZ-1234"))).toBe(true);
+    expect(links.filter((link) => /ABCD|EFGH/u.test(link.getAttribute("href")!))).toEqual([]);
+    expect(card.textContent).toContain("WXYZ-1234");
+    expect(card.textContent).not.toMatch(/ABCD|EFGH/u);
+  });
+
+  it("shows only the text of the current screen when the filled box is redrawn with other text", () => {
+    chooseBody("terminal");
+    const refresh = renderRefreshingChat(paneText(FILLED));
+    expect(within(screen.getByRole("group", { name: "Login output" })).getAllByRole("link").length).toBeGreaterThan(0);
+    refresh(paneText("claude--v2309-auth-refresh-locked--w80.txt"));
+    const card = screen.getByRole("group", { name: "Login output" });
+    expect(within(card).getByText(/Another Claude Code process is running your awsAuthRefresh command\./u)).toBeInTheDocument();
+    expect(card.textContent).not.toContain("awsapps");
+    expect(card.textContent).not.toContain("Browser will not be automatically opened");
+    expect(within(card).queryAllByRole("link")).toEqual([]);
+  });
+
+  it("keeps the same card in the same dock when the filled box is redrawn", () => {
+    chooseBody("terminal");
+    const refresh = renderRefreshingChat(paneText(FILLED));
+    const card = screen.getByRole("group", { name: "Login output" });
+    const dock = card.closest('[data-slot="card-dock"]');
+    refresh(paneText(FILLED).replaceAll("ABCD", "WXYZ").replaceAll("EFGH", "1234"));
+    expect(screen.getByRole("group", { name: "Login output" })).toBe(card);
+    expect(card.closest('[data-slot="card-dock"]')).toBe(dock);
+    expect(card.isConnected).toBe(true);
+  });
+
+  const WAITING = "claude--v2307-auth-refresh-before-output--w61.txt";
+  const WAITING_LINE = "The login command has not printed anything yet.";
+
+  it("shows a waiting card headed by the box's title, with the waiting line and no link", () => {
+    chooseBody("terminal");
+    const { container } = renderChat({ text: paneText(WAITING) });
+    const card = screen.getByRole("group", { name: "Login output" });
+    expect(within(card).getByText("Authentication")).toBeInTheDocument();
+    expect(within(card).getByText(WAITING_LINE)).toBeInTheDocument();
+    expect(within(card).queryAllByRole("link")).toEqual([]);
+    expect(within(card).queryAllByRole("button")).toEqual([]);
+    expect(container.querySelector("pre")!.textContent).not.toContain("Authentication");
+    expect(follows(card, screen.getByPlaceholderText(/type a reply/i))).toBe(true);
+  });
+
+  it("keeps the composer a normal message box while the waiting card shows", async () => {
+    chooseBody("terminal");
+    const user = userEvent.setup();
+    renderChat({ text: paneText(WAITING) });
+    expect(screen.getByRole("group", { name: "Login output" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Answer the dialog" })).toBeNull();
+    await user.type(screen.getByPlaceholderText(/type a reply/i), "hello");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(recordedSends().map((sent) => sent.text)).toEqual(["hello"]));
+  });
+
+  it("shows the box's text in place of the waiting line, in the same card, when the command prints", () => {
+    chooseBody("terminal");
+    const refresh = renderRefreshingChat(paneText(WAITING));
+    const card = screen.getByRole("group", { name: "Login output" });
+    const dock = card.closest('[data-slot="card-dock"]');
+    refresh(paneText(FILLED));
+    expect(screen.getAllByRole("group", { name: "Login output" })).toEqual([card]);
+    expect(card.closest('[data-slot="card-dock"]')).toBe(dock);
+    expect(within(card).queryByText(WAITING_LINE)).toBeNull();
+    expect(within(card).getByRole("link", { name: DEVICE })).toHaveAttribute("href", DEVICE);
+  });
+
+  it("shows no card on the refresh after the title-only box left without printing anything", () => {
+    chooseBody("terminal");
+    const refresh = renderRefreshingChat(paneText(WAITING));
+    expect(screen.getByRole("group", { name: "Login output" })).toBeInTheDocument();
+    refresh(paneTextWithDraft("recent pane output"));
+    expect(screen.queryByRole("group", { name: "Login output" })).toBeNull();
+    expect(screen.queryByText(WAITING_LINE)).toBeNull();
+  });
+
+  it("shows each waiting pane's own box: the waiting card for one pane, the code for another, and no stale code back on the first", () => {
+    chooseBody("terminal");
+    const paneA = { ...fixtureAgents[0]!, paneId: "w8:p1" };
+    const paneB = { ...fixtureAgents[0]!, paneId: "w9:p1" };
+    let show: (pane: typeof paneA, text: string) => void = () => {};
+    function Harness() {
+      const [view, set] = useState({ pane: paneB, text: paneText(WAITING) });
+      show = (pane, text) => set({ pane, text });
+      return (
+        <AgentChat paneId={view.pane.paneId} agent={view.pane} agents={[paneA, paneB]} shellPanes={[]} tabs={[]} text={view.text} onBack={vi.fn()} onSelect={vi.fn()} />
+      );
+    }
+    render(<RouterProvider router={createMemoryRouter([{ path: "/", element: withHeaderHost(<Harness />) }])} />);
+    const cardB = screen.getByRole("group", { name: "Login output" });
+    expect(within(cardB).getByText(WAITING_LINE)).toBeInTheDocument();
+    expect(cardB.textContent).not.toContain("ABCD-EFGH");
+    act(() => show(paneA, paneText(FILLED)));
+    const cardA = screen.getByRole("group", { name: "Login output" });
+    expect(cardA.textContent).toContain("ABCD-EFGH");
+    expect(within(cardA).queryByText(WAITING_LINE)).toBeNull();
+    act(() => show(paneB, paneText(WAITING)));
+    const backOnB = screen.getByRole("group", { name: "Login output" });
+    expect(within(backOnB).getByText(WAITING_LINE)).toBeInTheDocument();
+    expect(backOnB.textContent).not.toContain("ABCD-EFGH");
   });
 });
