@@ -103,13 +103,16 @@ export function configuredPublicUrl(env: Environment): string | null {
  * suffix when it is not 443: an https URL carrying `:443` would be the same address typed longer,
  * and every line Collie prints for a default install must read as it always did.
  */
+/** The note {@link bridgeUrlFrom} appends when there is no tailnet name; a URL carrying it is not a door. */
+export const TAILNET_NAME_UNAVAILABLE = "(Tailscale name unavailable)";
+
 export function bridgeUrlFrom(
   name: string | null,
   mode: ServeMode,
   port: number,
   servePort: number,
 ): string {
-  if (name === null) return `http://127.0.0.1:${port} (Tailscale name unavailable)`;
+  if (name === null) return `http://127.0.0.1:${port} ${TAILNET_NAME_UNAVAILABLE}`;
   if (mode === "http") return `http://${name}:${port}`;
   return servePort === DEFAULT_SERVE_PORT ? `https://${name}` : `https://${name}:${servePort}`;
 }
