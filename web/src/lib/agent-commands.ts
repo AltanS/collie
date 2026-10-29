@@ -442,7 +442,7 @@ export function commandsFor(
   mine: readonly OperatorCommand[] = [],
   found: readonly ClaudeCommand[] = [],
 ): readonly AgentCommand[] {
-  const shipped = withFound(agent, catalogFor(agent), found);
+  const shipped = withFound(catalogFor(agent), found);
   const aimed = rowsFor(mine, agent, (row) => row.command);
   // Rule 2: nothing of yours points here, so this pane was never part of what you were choosing.
   if (aimed.length === 0) return shipped;
@@ -461,34 +461,17 @@ export function commandsFor(
 }
 
 /**
- * The agents the bridge reads skills and command files off disk for: Claude Code (`bridge/claude-commands.ts`)
- * and the seven harnesses in `bridge/agent-skills.ts`. `antigravity` is agy's second name, filed the way
- * the catalog files it.
- */
-export const FOUND_AGENTS: ReadonlySet<string> = new Set([
-  "claude",
-  "codex",
-  "opencode",
-  "pi",
-  "omp",
-  "grok",
-  "agy",
-  "antigravity",
-  "muse",
-]);
-
-/**
  * The reference catalog with the on-disk skill and command candidates folded in.
  * Shipped built-in rows stay untouched (`common`, `dangerous`, `takesArg`, `description`); discovered
  * candidates join as searchable rows (`common: false`) with `takesArg: true` so tapping one stages
- * `/cmd ` (or `$skill `) into the composer for review rather than submitting immediately.
+ * `/cmd ` (or `$skill `) into the composer for review rather than submitting immediately. No agent
+ * name is checked here: the bridge answers an empty list for an agent it has no loader for.
  */
 function withFound(
-  agent: string | undefined | null,
   shipped: readonly AgentCommand[],
   found: readonly ClaudeCommand[],
 ): readonly AgentCommand[] {
-  if (found.length === 0 || !FOUND_AGENTS.has(canonicalAgent(agent?.toLowerCase().trim() ?? ""))) return shipped;
+  if (found.length === 0) return shipped;
   const seen = new Set(shipped.map((row) => row.command));
   const merged = [...shipped];
   for (const row of found) {

@@ -486,8 +486,9 @@ describe("commandsFor with the commands found on the pane's machine", () => {
     expect(commandsFor("antigravity", [], [toSpec]).some((c) => c.command === "/to-spec")).toBe(true);
   });
 
-  it("stays out of an agent the bridge has no loader for", () => {
-    expect(commandsFor("hermes", [], [toSpec]).some((c) => c.command === "/to-spec")).toBe(false);
+  it("adds what the bridge answered for any agent, and nothing when it answered an empty list", () => {
+    expect(commandsFor("hermes", [], [toSpec]).some((c) => c.command === "/to-spec")).toBe(true);
+    expect(commandsFor("hermes", [], [])).toEqual(commandsFor("hermes"));
   });
 
   it("leaves ADR 0018's replacement rule to the operator's rows on a non-Claude pane", () => {

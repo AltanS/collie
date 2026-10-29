@@ -164,7 +164,6 @@ export function parseJson(text: string): JsonValue {
  * an ordinary command file.
  */
 export function parseFrontmatter(text: string): Frontmatter | null {
-
   const body = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
   if (!/^---\r?\n/.test(body)) return {};
   const end = body.search(/\r?\n---[ \t]*(\r?\n|$)/);

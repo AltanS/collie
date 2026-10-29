@@ -4,7 +4,7 @@ import { realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
 
-import { discoverAgentSkills, isSkillAgent, type SkillAgent } from "./agent-skills.ts";
+import { discoverAgentSkills, isSkillAgent, skillAgentFor, type SkillAgent } from "./agent-skills.ts";
 import { MAX_COMMANDS, MAX_SCAN_OPS, MAX_SETTINGS_BYTES, type DiscoveryIo } from "./claude-commands.ts";
 
 interface FakeTree {
@@ -74,6 +74,12 @@ describe("agent skill discovery", () => {
   test("recognises only the seven skill agents", () => {
     expect(agents.every(isSkillAgent)).toBe(true);
     for (const other of ["claude", "Codex", "", "toString"]) expect(isSkillAgent(other)).toBe(false);
+  });
+
+  test("the adapter folds Herdr's second name for agy onto its loader and knows no other alias", () => {
+    expect(skillAgentFor("antigravity")).toBe("agy");
+    for (const agent of agents) expect(skillAgentFor(agent)).toBe(agent);
+    for (const other of ["claude", "hermes", "", "toString", "constructor"]) expect(skillAgentFor(other)).toBeUndefined();
   });
 
   test("a missing home folder yields an empty list for every agent", async () => {

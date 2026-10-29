@@ -44,6 +44,15 @@ export function isSkillAgent(agent: string): agent is SkillAgent {
   return KNOWN_AGENTS.has(agent);
 }
 
+/** Other names Herdr reports an agent under, each filed under the loader's own name. */
+const SKILL_AGENT_ALIASES = new Map<string, SkillAgent>([["antigravity", "agy"]]);
+
+/** The loader for an agent name as the pane reports it, aliases folded in; undefined when there is none. */
+export function skillAgentFor(agent: string): SkillAgent | undefined {
+  if (isSkillAgent(agent)) return agent;
+  return SKILL_AGENT_ALIASES.get(agent);
+}
+
 export interface SkillDiscovery {
   home: string;
   /** The pane's cwd as the multiplexer reported it; null reads only what is not per-project. */

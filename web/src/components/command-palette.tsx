@@ -6,7 +6,7 @@ import { SearchField } from "@/components/ui/search-field";
 import { BottomSheet } from "@/components/ui/sheet";
 import { AgentIcon } from "@/components/agent-icon";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
-import { commandsFor, FOUND_AGENTS, type AgentCommand } from "@/lib/agent-commands";
+import { commandsFor, type AgentCommand } from "@/lib/agent-commands";
 import { fetchClaudeCommands, type ClaudeCommand } from "@/lib/api";
 import { canonicalAgent, rowsFor } from "@/lib/operator-scope";
 import type { Scope } from "@/lib/scope";
@@ -47,7 +47,9 @@ export function useClaudeCommands(
     rows: [],
   });
   const family = canonicalAgent(agent?.toLowerCase().trim() ?? "");
-  const readsFound = FOUND_AGENTS.has(family);
+  // A pane with no agent (a plain shell) has nothing to load; every agent pane asks, and the bridge
+  // answers an empty list for one it has no loader for.
+  const readsFound = family !== "";
   const hasOperatorRows = rowsFor(mine, agent, (row) => row.command).length > 0;
   const host = scope?.host ?? "";
   const session = scope?.session ?? "";

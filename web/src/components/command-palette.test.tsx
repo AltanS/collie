@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 
@@ -210,6 +210,29 @@ describe("CommandPalette", () => {
     await user.click(item);
     expect(onInsert).toHaveBeenCalledExactlyOnceWith("$my-skill ");
     expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("asks the bridge for any agent pane, and not for a pane with no agent", async () => {
+    let calls = 0;
+    server.use(
+      http.get("/api/pane/w1%3Ap1/claude-commands", () => {
+        calls += 1;
+        return HttpResponse.json({ commands: [] });
+      }),
+    );
+    const { rerender } = render(
+      <CommandPalette open onClose={vi.fn()} agent="hermes" paneId="w1:p1" onInsert={vi.fn()} onSubmit={vi.fn()} />,
+    );
+    await waitFor(() => expect(calls).toBe(1));
+    // An empty answer leaves the shipped catalog (none for hermes) and the sheet intact.
+    expect(screen.getByPlaceholderText(/Search \d+ commands/)).toBeInTheDocument();
+
+    for (const shell of [null, undefined, ""]) {
+      rerender(<CommandPalette open onClose={vi.fn()} agent={shell} paneId="w1:p1" onInsert={vi.fn()} onSubmit={vi.fn()} />);
+    }
+    // Let any stray request settle before counting.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(calls).toBe(1);
   });
 
   it("clears previously discovered rows when a later refresh fails, and skips the fetch when operator rows replace the palette", async () => {
