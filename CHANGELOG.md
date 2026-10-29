@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+## [1.24.3] - 2026-10-29
+
+A bugfix release, not urgent. You need it if you update Collie over a slow link, or if you run Codex at Ultra effort.
+
 ### Fixed
 
 - **Codex at Ultra effort no longer blocks sends from the phone.** Codex 0.164 and 0.165 draw the
