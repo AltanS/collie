@@ -1196,15 +1196,18 @@ export async function fetchFilesExist(
   return exists.map(asJsonString).filter((p): p is string => p !== undefined && asked.has(p));
 }
 
-/** One slash command Claude Code would load in a pane's cwd, read off its machine's disk. */
+/**
+ * One command an agent would load in a pane's cwd, read off its machine's disk: Claude Code's and
+ * seven other agents'. A Codex skill is spelled `$name`, its mention sigil.
+ */
 export interface ClaudeCommand {
   command: string;
   description: string;
   argHint: string;
 }
 
-/** Validated shape of a discovered Claude slash command: `/` followed by up to 120 safe characters. */
-const CLAUDE_COMMAND_RE = /^\/[\p{L}\p{N}._:-]{1,120}$/u;
+/** Validated shape of a discovered command or skill: `/` or `$` followed by up to 120 safe characters. */
+const CLAUDE_COMMAND_RE = /^[/$][\p{L}\p{N}._:/-]{1,120}$/u;
 
 /**
  * The commands this pane's Claude Code would offer, from the skills and command files on its machine.

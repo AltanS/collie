@@ -42,7 +42,7 @@ export interface DiscoveryIo {
 /** Frontmatter sits at the top; a skill or command file larger than this is read only this far. */
 const MAX_FILE_BYTES = 64 * 1024;
 /** Settings files are parsed as whole JSON documents; larger files are skipped with a warning. */
-const MAX_SETTINGS_BYTES = 256 * 1024;
+export const MAX_SETTINGS_BYTES = 256 * 1024;
 /** Maximum commands returned in one response. */
 export const MAX_COMMANDS = 1000;
 /** Maximum directory entries inspected in a single folder. */
@@ -53,7 +53,7 @@ export const MAX_SCAN_OPS = 1000;
 const MAX_WALK = 32;
 const MAX_DESCRIPTION = 200;
 /** A single folder, skill, or file name segment: letters, digits and `._-` (no colons or control chars). */
-const NAME_SEGMENT = /^[\p{L}\p{N}._-]{1,64}$/u;
+export const NAME_SEGMENT = /^[\p{L}\p{N}._-]{1,64}$/u;
 /** Full command name after the leading slash: letters, digits and `._:-`, up to 120 characters. */
 const COMMAND_BODY = /^[\p{L}\p{N}._:-]{1,120}$/u;
 
@@ -131,6 +131,10 @@ export interface Frontmatter {
   description?: string;
   argumentHint?: string;
   userInvocable?: boolean;
+  /** omp's `enabled: false`; Claude Code ignores it. */
+  enabled?: boolean;
+  /** Antigravity's `disable-slash-command: true`; Claude Code ignores it. */
+  disableSlashCommand?: boolean;
 }
 
 export function asObject(value: JsonValue | undefined): JsonObject | null {
@@ -149,6 +153,11 @@ function stringEntries(value: JsonValue | undefined): Map<string, OverrideState>
   return out;
 }
 
+export function parseJson(text: string): JsonValue {
+  // SAFETY: `JSON.parse` answers with a JSON value by definition, and every reader below narrows it
+  // through asObject/asString/stringEntries/booleanEntries before believing a field.
+  return JSON.parse(text) as JsonValue;
+}
 /**
  * The YAML block at the top of a skill or command file. Null when the file opens with a block that
  * does not parse, which the caller reports; an empty object when there is no block at all, which is
@@ -171,11 +180,15 @@ export function parseFrontmatter(text: string): Frontmatter | null {
   const fields = asObject(doc);
   if (fields === null) return null;
   const invocable = fields["user-invocable"];
+  const enabled = fields.enabled;
+  const disabled = fields["disable-slash-command"];
   return {
     name: asString(fields.name),
     description: asString(fields.description),
     argumentHint: asString(fields["argument-hint"]),
     userInvocable: invocable === true || invocable === false ? invocable : undefined,
+    enabled: enabled === true || enabled === false ? enabled : undefined,
+    disableSlashCommand: disabled === true || disabled === false ? disabled : undefined,
   };
 }
 
@@ -183,6 +196,25 @@ export function cleanDescription(raw: string | undefined): string {
   // Control characters out: the text reaches a phone screen, and Claude Code strips them as well.
   const flat = (raw ?? "").replace(/[\p{Cc}\p{Cf}]+/gu, " ").replace(/\s+/g, " ").trim();
   return flat.length > MAX_DESCRIPTION ? `${flat.slice(0, MAX_DESCRIPTION - 1)}…` : flat;
+}
+
+/**
+ * Read a settings or trust file up to {@link MAX_SETTINGS_BYTES}; null when absent or oversized so a
+ * truncated document is never parsed as a partial configuration.
+ */
+export async function readSettingsText(
+  io: DiscoveryIo,
+  path: string,
+  roots: readonly string[],
+  onOversize?: () => void,
+): Promise<string | null> {
+  const text = await io.read(path, roots, { maxBytes: MAX_SETTINGS_BYTES, truncate: false });
+  if (text === null) return null;
+  if (Buffer.byteLength(text, "utf8") > MAX_SETTINGS_BYTES) {
+    onOversize?.();
+    return null;
+  }
+  return text;
 }
 
 /** One JSON file as an object; null when absent, oversized or unparseable (the last two reported). */
@@ -193,15 +225,12 @@ async function readJsonObject(
   warn: (m: string) => void,
   ignored = "its skill and plugin settings are ignored",
 ): Promise<JsonObject | null> {
-  const text = await io.read(path, roots, { maxBytes: MAX_SETTINGS_BYTES, truncate: false });
+  const text = await readSettingsText(io, path, roots, () =>
+    warn(`${path} exceeds ${String(MAX_SETTINGS_BYTES)} bytes; ${ignored}`),
+  );
   if (text === null) return null;
-  if (Buffer.byteLength(text, "utf8") > MAX_SETTINGS_BYTES) {
-    warn(`${path} exceeds ${String(MAX_SETTINGS_BYTES)} bytes; ${ignored}`);
-    return null;
-  }
   try {
-    // SAFETY: `JSON.parse` answers with a JSON value by definition, narrowed via asObject.
-    return asObject(JSON.parse(text) as JsonValue);
+    return asObject(parseJson(text));
   } catch (err) {
     warn(`${path} could not be parsed (${String(err)}); ${ignored}`);
     return null;
@@ -432,8 +461,7 @@ async function pluginRows(
   let manifest: JsonObject = {};
   if (text !== null) {
     try {
-      // SAFETY: `JSON.parse` answers with a JSON value by definition, narrowed via asObject.
-      manifest = asObject(JSON.parse(text) as JsonValue) ?? {};
+      manifest = asObject(parseJson(text)) ?? {};
     } catch (err) {
       warn(`${manifestPath} could not be parsed (${String(err)}); the plugin is left out`);
       return [];

@@ -29,6 +29,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
   over `COLLIE_INSTANCE`, ignores a `HERDR_PLUGIN_CONFIG_DIR`, `COLLIE_STATE_DIR` or `COLLIE_PORT`
   exported for another lane, and `--instance default` reads the unsuffixed lane. An unknown name
   exits 2 before any check and lists the instances on this machine. Only `doctor` takes the flag.
+- **The command palette now finds the skills and commands of seven more agents on disk.** Codex, opencode, pi, omp, Grok, Antigravity and Muse each get their own loader, which reads the folders that agent reads and offers what it finds as searchable rows. Tapping a row stages it in the composer, as for Claude Code, and a Codex skill is spelled `$name`. Thanks @GGGODLIN (#584).
+- **The phone asks for found commands on every agent pane, and the bridge alone decides which agents have a loader.** The web app no longer keeps a closed list of agent names, a pane with no agent still makes no request, and the Antigravity alias now lives with the loaders in `bridge/agent-skills.ts`.
 
 ### Fixed
 

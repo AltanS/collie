@@ -479,8 +479,21 @@ describe("commandsFor with the commands found on the pane's machine", () => {
     expect(rows[0]).toMatchObject({ description: "My own to-spec", common: true, takesArg: false });
   });
 
-  it("stays out of every other harness", () => {
-    expect(commandsFor("codex", [], [toSpec]).some((c) => c.command === "/to-spec")).toBe(false);
+  it("joins the other agents with a loader too, as searchable staged rows", () => {
+    const mention = { command: "$my-skill", description: "Mine", argHint: "" };
+    const row = commandsFor("codex", [], [mention]).find((c) => c.command === "$my-skill");
+    expect(row).toMatchObject({ description: "Mine", takesArg: true, common: false, dangerous: false });
+    expect(commandsFor("antigravity", [], [toSpec]).some((c) => c.command === "/to-spec")).toBe(true);
+  });
+
+  it("adds what the bridge answered for any agent, and nothing when it answered an empty list", () => {
+    expect(commandsFor("hermes", [], [toSpec]).some((c) => c.command === "/to-spec")).toBe(true);
+    expect(commandsFor("hermes", [], [])).toEqual(commandsFor("hermes"));
+  });
+
+  it("leaves ADR 0018's replacement rule to the operator's rows on a non-Claude pane", () => {
+    const mine = { agent: "codex", command: "/deploy", description: "Mine", takesArg: false, argHint: "" };
+    expect(commandsFor("codex", [mine], [toSpec]).map((c) => c.command)).toEqual(["/deploy"]);
   });
 });
 
