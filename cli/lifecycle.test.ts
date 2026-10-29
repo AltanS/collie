@@ -42,6 +42,7 @@ import {
   cmdRestart,
   cmdStart,
   cmdStatus,
+  type StatusJson,
   cmdStop,
   cmdUninstall,
   cmdUrl,
@@ -2006,6 +2007,69 @@ describe("the status banner", () => {
     const skipped = harness({ env: { COLLIE_SKIP_SERVE: "1" } });
     await cmdStatus(skipped.deps);
     expect(skipped.io.stdout).toContain("  serve config: skipped (COLLIE_SKIP_SERVE=1)");
+  });
+});
+
+// `status --json` is read by a program (the herdr-app mod, herdr-app-mod/collie/), so its shape is a
+// contract: one line of JSON on stdout, nothing on stderr, no serve config, and the same facts the
+// banner prints.
+describe("status --json", () => {
+  const NAMED: Scripted["answers"] = [["tailscale status --json", { stdout: '{"Self":{"DNSName":"host.example."},"CertDomains":["host.example"]}' }]];
+
+  const json = async (h: Harness): Promise<StatusJson> => {
+    expect(await cmdStatus(h.deps, ["--json"])).toBe(EXIT.OK);
+    expect(h.io.stdout).toHaveLength(1);
+    expect(h.io.stderr).toEqual([]);
+    // SAFETY: `status --json` prints `JSON.stringify` of a `StatusJson` as its one stdout line, just
+    // asserted; every field the tests read is then compared against a literal.
+    return JSON.parse(h.io.stdout[0]!) as StatusJson;
+  };
+
+  test("a running solo collie: version, port, both URLs, the service and no device paired", async () => {
+    const h = harness({ ready: true, answers: NAMED });
+    const out = await json(h);
+    expect(out).toMatchObject({
+      running: true,
+      instance: null,
+      port: 8787,
+      localUrl: "http://127.0.0.1:8787",
+      phoneUrl: "https://host.example",
+      crew: "solo",
+      pairedDevices: 0,
+    });
+    expect(out.version).not.toBe("");
+    expect(out.service).toContain("systemd");
+    expect(h.exec.calls).not.toContain("tailscale serve status");
+  });
+
+  test("a stopped bridge says running false and still names where it would answer", async () => {
+    const out = await json(harness({ ready: false, answers: NAMED }));
+    expect(out.running).toBe(false);
+    expect(out.localUrl).toBe("http://127.0.0.1:8787");
+  });
+
+  test("no tailnet name, or a peer, or a proxy without a URL: no phone URL, never a loopback one", async () => {
+    expect((await json(harness({ ready: true }))).phoneUrl).toBeNull();
+    const peer = await json(
+      harness({
+        ready: true,
+        env: { COLLIE_HOST: "192.168.77.2" },
+        files: { [`${STATE}/crew-trust.json`]: serializeTrustStore(peerStore()) },
+      }),
+    );
+    expect(peer.crew).toBe("peer");
+    expect(peer.phoneUrl).toBeNull();
+    expect((await json(harness({ ready: true, env: { COLLIE_SKIP_SERVE: "1" } }))).phoneUrl).toBeNull();
+  });
+
+  test("a proxy's COLLIE_PUBLIC_URL is the phone URL, and the tailnet is not asked", async () => {
+    const h = harness({ ready: true, env: { COLLIE_SKIP_SERVE: "1", COLLIE_PUBLIC_URL: "https://c.example" } });
+    expect((await json(h)).phoneUrl).toBe("https://c.example");
+    expect(h.exec.calls.join("\n")).not.toContain("tailscale status");
+  });
+
+  test("a named instance names itself", async () => {
+    expect((await json(harness({ ready: true, instance: "next" }))).instance).toBe("next");
   });
 });
 

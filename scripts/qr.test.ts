@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { createRequire } from "node:module";
 import jsQR from "jsqr";
-import { renderQr } from "./qr.ts";
+import { qrModules, renderQr } from "./qr.ts";
 
 // A QR test that only asserts "it printed something" would pass on a code no camera can read, which
 // is the one failure that matters. So these SCAN what gets printed: the rendered characters are
@@ -132,6 +132,25 @@ describe("qr", () => {
       expect(line.startsWith("\x1b[97;40m")).toBe(true);
       expect(line.endsWith("\x1b[0m")).toBe(true);
     }
+  });
+
+  // The bitmap `collie pair --json` hands a program that draws its own code (the herdr-app mod).
+  for (const url of URLS) {
+    test(`the bitmap of ${url} scans, is the encoder's own and has no quiet zone`, async () => {
+      const rows = await qrModules(url);
+      const modules = rows.map((row) => [...row].map((m) => m === "1"));
+      expect(modules).toEqual(truthMatrix(url));
+      // A drawer adds its own margin; scan it with the spec's four modules around it.
+      const n = modules.length;
+      const pad = (row: boolean[]) => [...Array(4).fill(false), ...row, ...Array(4).fill(false)];
+      const blank = Array(n + 8).fill(false);
+      const framed = [...Array(4).fill(blank), ...modules.map(pad), ...Array(4).fill(blank)];
+      expect(scan(framed)).toBe(url);
+    });
+  }
+
+  test("refuses a url too long for the bitmap too", async () => {
+    await expect(qrModules("https://" + "x".repeat(600))).rejects.toThrow(/too long/);
   });
 
   test("refuses a url too long to encode", async () => {

@@ -70,6 +70,31 @@ export async function renderQr(url: string): Promise<string> {
   return colourAndPad(code);
 }
 
+/**
+ * The same code as a bitmap, for a program that draws it itself (the herdr-app mod draws it in its
+ * own panel, from `collie pair --json`): one string per row, `1` for a dark module and `0` for a
+ * light one, with NO quiet zone, since the drawer owns its margins. The encoder and the error level
+ * are the ones `renderQr`'s library uses (`L`), so both spellings of one URL are the same symbol.
+ */
+export async function qrModules(url: string): Promise<string[]> {
+  if (url.length > MAX_URL_LEN) throw new Error(`url too long to render as a QR code (${url.length} > ${MAX_URL_LEN})`);
+  let QRCode: typeof import("qrcode-terminal/vendor/QRCode/index.js").default;
+  let level: typeof import("qrcode-terminal/vendor/QRCode/QRErrorCorrectLevel.js").default;
+  try {
+    QRCode = (await import("qrcode-terminal/vendor/QRCode/index.js")).default;
+    level = (await import("qrcode-terminal/vendor/QRCode/QRErrorCorrectLevel.js")).default;
+  } catch {
+    throw new Error("qrcode-terminal isn't installed, run 'bun install' in the plugin root");
+  }
+  const qr = new QRCode(-1, level.L);
+  qr.addData(url);
+  qr.make();
+  const n = qr.getModuleCount();
+  return Array.from({ length: n }, (_row, r) =>
+    Array.from({ length: n }, (_col, c) => (qr.isDark(r, c) ? "1" : "0")).join(""),
+  );
+}
+
 if (import.meta.main) {
   const url = process.argv[2];
   if (!url) {

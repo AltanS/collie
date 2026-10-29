@@ -1,7 +1,7 @@
 import type { CliContext } from "./context.ts";
 import { EXIT, type Io } from "./io.ts";
 import type { Exec } from "./sys.ts";
-import { bridgeUrl, configuredPublicUrl, tailnetInboundBlocked } from "./tailnet.ts";
+import { bridgeUrl, configuredPublicUrl, TAILNET_NAME_UNAVAILABLE, tailnetInboundBlocked } from "./tailnet.ts";
 import { renderQr } from "../scripts/qr.ts";
 
 // `qr` — scan your way onto the bridge instead of typing a MagicDNS name on a phone keyboard.
@@ -46,7 +46,7 @@ export function urlToEncode(deps: QrDeps): string | null {
     return null;
   }
   const url = bridgeUrl(deps.exec, deps.ctx);
-  if (url.includes("(Tailscale name unavailable)")) {
+  if (url.includes(TAILNET_NAME_UNAVAILABLE)) {
     deps.io.err("no URL to encode: the tailnet front door isn't up (run 'collie serve')");
     return null;
   }
