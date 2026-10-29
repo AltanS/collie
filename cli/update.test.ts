@@ -1342,7 +1342,7 @@ interface BinaryOptions {
   /** The digest the download reports — a different one is the corruption case. */
   digest?: string;
   tagsFailure?: { status: number | null; message: string };
-  downloadFailure?: { status: number | null; message: string };
+  downloadFailure?: { status: number | null; message: string; kind?: "stall" };
   restart?: number;
   smoke?: { pre?: boolean; post?: boolean };
   /** The laid candidate's whole answer to `version`, when a case needs more than a wrong word. */
@@ -3671,6 +3671,16 @@ describe("staging reports itself while it builds", () => {
         expect(run?.reason).toBe("staging stopped before the new version was laid down");
       }
     });
+  });
+
+  test("a download that stalled says so, and does not claim github.com was unreachable (#613)", async () => {
+    const message = "stalled: no data for 60 s after 12.3 MB of 57.3 MB";
+    const h = binaryHarness({ downloadFailure: { status: null, kind: "stall", message } });
+    expect(await cmdUpdate(h.deps, ["--run-id", RUN])).toBe(EXIT.FAIL);
+    const err = h.io.stderr.join("\n");
+    expect(err).toContain(`error: downloading collie-${NEW}-linux-x64.tar.gz ${message}. Nothing was changed.`);
+    expect(err).not.toContain("could not reach");
+    expect(h.files.exists(`${INST}/versions/${NEW}`)).toBe(false);
   });
 
   test("a second update beside a live one writes nothing: `update.json` keeps one writer", async () => {

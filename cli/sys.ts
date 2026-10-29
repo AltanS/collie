@@ -321,6 +321,12 @@ export interface NetFailure {
   /** The HTTP status, or null when the request never got one (DNS, TLS, timeout). */
   status: number | null;
   message: string;
+  /**
+   * `"stall"` when the answer began and then went quiet: a download whose body stopped moving. The
+   * host WAS reached, so the caller must not say it was not. `message` then reads on from the
+   * caller's own "downloading <asset>", for example `stalled: no data for 60 s after 12.3 MB`.
+   */
+  kind?: "stall";
 }
 
 export type NetJson = { ok: true; value: unknown } | { ok: false; failure: NetFailure };
@@ -377,8 +383,29 @@ export interface Net {
   tlsCertificate(host: string, port: number): Promise<NetCertificate>;
 }
 
-/** Same budget as the bridge's tag check — a hung request must never wedge a verb. */
+/**
+ * Same budget as the bridge's tag check — a hung request must never wedge a verb. It bounds a small
+ * JSON request from start to end, and for a download it bounds only the wait for the response
+ * headers. The body of a download has no total deadline (see {@link DOWNLOAD_STALL_MS}).
+ */
 const NET_TIMEOUT_MS = 20_000;
+/**
+ * A release download aborts when no bytes arrive for this long. The 57 MB asset needs about 23 Mbit/s
+ * to finish inside the 20 s above, and a slower link is slow, not broken (#613): a download that keeps
+ * moving never aborts, however long it takes.
+ */
+const DOWNLOAD_STALL_MS = 60_000;
+
+/** The two clocks of {@link realNet}'s `download`. Production uses the constants; a test injects small ones. */
+export interface NetTiming {
+  /** How long to wait for the response headers. */
+  readonly headersMs: number;
+  /** How long a download body may stay silent. */
+  readonly stallMs: number;
+}
+const DEFAULT_TIMING: NetTiming = { headersMs: NET_TIMEOUT_MS, stallMs: DOWNLOAD_STALL_MS };
+
+const megabytes = (bytes: number): string => (bytes / 1_000_000).toFixed(1);
 /** One TLS handshake on this machine. The health gate polls, so a hung port must not eat the whole poll budget. */
 const TLS_HANDSHAKE_TIMEOUT_MS = 5_000;
 
@@ -394,7 +421,7 @@ const netFailure = (message: string): NetFailure => ({ status: null, message });
  * and `githubHeaders` sends it to `api.github.com` alone: `download` and `probe` never carry it,
  * because neither ever addresses the API.
  */
-export function realNet(credential: GithubCredential | null = null): Net {
+export function realNet(credential: GithubCredential | null = null, timing: NetTiming = DEFAULT_TIMING): Net {
   return {
     async getJson(url, opts) {
       try {
@@ -460,25 +487,60 @@ export function realNet(credential: GithubCredential | null = null): Net {
       });
     },
     async download(url, dest, opts) {
+      // One controller, two clocks: the headers clock runs until the response starts, then the stall
+      // clock restarts on every chunk. `stalled` tells the catch which of them fired.
+      const controller = new AbortController();
+      let stalled = false;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const arm = (ms: number, onFire: () => void): void => {
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+          onFire();
+          controller.abort();
+        }, ms);
+      };
+      const armStall = (): void =>
+        arm(timing.stallMs, () => {
+          stalled = true;
+        });
+      let size = 0;
+      let total: number | null = null;
+      let sink: Bun.FileSink | null = null;
       try {
-        const init: RequestInit = { headers: { "user-agent": "collie-update" }, signal: AbortSignal.timeout(NET_TIMEOUT_MS) };
+        const init: RequestInit = { headers: { "user-agent": "collie-update" }, signal: controller.signal };
         if (opts?.redirect !== undefined) init.redirect = opts.redirect;
+        arm(timing.headersMs, () => {});
         const res = await fetch(url, init);
         if (!res.ok) return { ok: false, failure: { status: res.status, message: `HTTP ${res.status}` } };
         if (res.body === null) return { ok: false, failure: { status: res.status, message: "empty response" } };
+        const length = Number(res.headers.get("content-length"));
+        total = Number.isFinite(length) && length > 0 ? length : null;
         mkdirSync(dirname(dest), { recursive: true });
         const hasher = new Bun.CryptoHasher("sha256");
-        const sink = Bun.file(dest).writer();
-        let size = 0;
+        sink = Bun.file(dest).writer();
+        armStall();
         for await (const chunk of res.body) {
+          armStall();
           hasher.update(chunk);
           size += chunk.byteLength;
           sink.write(chunk);
         }
+        clearTimeout(timer);
         await sink.end();
         return { ok: true, sha256: hasher.digest("hex"), size };
       } catch (err) {
+        clearTimeout(timer);
+        // Never leave half an asset where the caller expects a whole one.
+        if (sink !== null) await Promise.resolve(sink.end()).catch(() => undefined);
+        rmSync(dest, { force: true });
+        if (stalled) {
+          const seconds = timing.stallMs / 1000;
+          const of = total === null ? "" : ` of ${megabytes(total)} MB`;
+          return { ok: false, failure: { status: null, kind: "stall", message: `stalled: no data for ${seconds} s after ${megabytes(size)} MB${of}` } };
+        }
         return { ok: false, failure: netFailure(err instanceof Error ? err.message : String(err)) };
+      } finally {
+        clearTimeout(timer);
       }
     },
   };
