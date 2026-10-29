@@ -926,6 +926,11 @@ There is no discovery, no enumeration, and no overlay-network integration — ev
 > port stays `<name>:<port>`. A joiner's `--address` is the other direction and is checked: it must be
 > `host:port` (the same rule `collie crew set-address` applies), because a portless one is dialled on 443.
 > An `https://host:port` override is accepted for compatibility and stored as `host:port`.
+>
+> **Amended 2026-10-30.** A typed port is kept as typed, including `:443`: `collie join host:443` dials
+> `https://host` on 443, and only an address with no scheme and no typed port falls back to :8787. A
+> `COLLIE_PUBLIC_URL` on 443 is printed by `crew invite` as `https://<host>`. `crew invite` also waits until
+> the restarted lead answers `/api/health` (30 s at most) before it prints the token.
 
 > **Amended 2026-08-07 — what actually authenticates an enrollment, stated rather than implied.**
 >
