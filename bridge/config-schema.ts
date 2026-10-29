@@ -685,6 +685,15 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     configField: "journalRoots",
   },
   {
+    key: "dsh_root",
+    env: "COLLIE_DSH_ROOT",
+    section: "journal",
+    kind: "roots",
+    default: [],
+    doc: "Where DeepSeek Harness keeps the sessions dsh-tui writes. Empty follows DSH_HOME, else ~/.dsh/sessions.",
+    configField: "journalRoots",
+  },
+  {
     key: "muse_root",
     env: "COLLIE_MUSE_ROOT",
     section: "journal",

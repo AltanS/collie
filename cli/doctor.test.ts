@@ -428,6 +428,7 @@ describe("collie doctor — the contract", () => {
       "herdr-version",
       "integration-claude",
       "integration-codex",
+      "integration-dsh-tui",
       "integration-grok",
       "integration-hermes",
       "integration-kiro",
@@ -2642,7 +2643,7 @@ describe("plain output parity (M43 spec 04, wrapped at 80 by M71 spec 03)", () =
     // Two lines are normalised: the machine's identity, and the age of the oldest cache claim, which
     // grows by one every day and must not fail this test on the day after it was written.
     const text = h.io.stdout.join("\n").replace(/ · [a-z0-9]+-[a-z0-9]+$/m, " · <platform>");
-    return `${text.replace(/the oldest was checked \d+ days? ago/g, "the oldest was checked <N> days ago")}\n`;
+    return `${text.replace(/was checked \d+ days? ago/g, "was checked <N> days ago")}\n`;
   };
   // A config.toml secret that could not be made private: the POSIX `config-file` remedy is pinned too.
   const blocked = (): Parameters<typeof harness>[2] => ({

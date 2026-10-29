@@ -8,7 +8,7 @@
 // has nothing to explain: there is no transcript to read, ever, and a sentence about it would be
 // noise. An agent that HAS one and still reported no session is the case an operator can fix
 // (issue #137: a missing or outdated `herdr integration install <agent>` hook), and silence there
-// reads as a bug in Collie. A discovering adapter (Muse, OpenClaw, Kiro) never lands here: its panes
+// reads as a bug in Collie. A discovering adapter (Muse, OpenClaw, Kiro, dsh-tui) never lands here: its panes
 // always offer the affordance, since no hook could fix what discovery already finds.
 //
 // So the frontend needs the name list, and it is a NAME LIST, never a detector: nothing may key a
@@ -22,7 +22,7 @@
 //
 // This is NOT `lib/harness/registry.ts`, and the two must not be folded together — that one owns
 // block grammars for the LIVE MIRROR (claude, codex, grok, omp, agy), this one owns reading an
-// on-disk log (claude, codex, grok, hermes, kiro, muse, openclaw, opencode, pi). A harness can plausibly have
+// on-disk log (claude, codex, dsh-tui, grok, hermes, kiro, muse, openclaw, opencode, pi). A harness can plausibly have
 // either without the other, which is exactly why the bridge keeps two registries too.
 //
 // Kept in step with `bridge/journal/registry.ts` by hand, deliberately: the list is not on the wire
@@ -39,6 +39,7 @@
 export const JOURNAL_AGENT_NAMES: ReadonlySet<string> = new Set([
   "claude",
   "codex",
+  "dsh-tui",
   "grok",
   "hermes",
   "kiro",

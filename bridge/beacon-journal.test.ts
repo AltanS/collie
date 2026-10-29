@@ -153,7 +153,7 @@ async function fixture() {
   await Bun.write(`${base}/outside/secrets.jsonl`, piRows(PI_SESSION, "not yours to read"));
   const escape = `${pi}/-repo-/escape.jsonl`;
   await symlink(`${base}/outside/secrets.jsonl`, escape);
-  const registry = buildJournalRegistry({ claude: [claude], codex: [], pi: [pi], opencode: [], grok: [], hermes: [], muse: [], openclaw: [], kiro: [] });
+  const registry = buildJournalRegistry({ claude: [claude], codex: [], pi: [pi], opencode: [], grok: [], hermes: [], muse: [], openclaw: [], kiro: [], "dsh-tui": [] });
   return { base, claude, pi, piLog, escape, outside: `${base}/outside/secrets.jsonl`, registry };
 }
 

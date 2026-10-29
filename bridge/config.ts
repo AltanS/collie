@@ -642,6 +642,9 @@ export function resolveJournalRoots(
       join(env.XDG_DATA_HOME ?? join(home, ".local", "share"), "muse", "sessions"),
       env,
     ),
+    // DeepSeek Harness keeps one folder per session under $DSH_HOME/sessions, ~/.dsh when DSH_HOME is
+    // unset (the dsh-tui launcher reads it the same way). dsh-tui panes are read from here.
+    "dsh-tui": envRoots("COLLIE_DSH_ROOT", join(env.DSH_HOME?.trim() || join(home, ".dsh"), "sessions"), env),
     // OpenClaw keeps one SQLite per agent under its state folder, which `OPENCLAW_STATE_DIR` moves.
     openclaw: envRoots("COLLIE_OPENCLAW_ROOT", env.OPENCLAW_STATE_DIR ?? join(home, ".openclaw"), env),
   };

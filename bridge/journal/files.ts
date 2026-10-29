@@ -67,6 +67,13 @@ import { type Cursor, decodeCursor, encodeCursor, type ReadSince } from "./curso
 export const MAX_TRANSCRIPT_BYTES = 32 * 1024 * 1024; // 32 MB
 
 /**
+ * Most bytes one Zstandard frame may expand to. The input is bounded by `MAX_TRANSCRIPT_BYTES`, but a
+ * small frame can expand by orders of magnitude, so a reader passes this as `maxOutputLength` and
+ * refuses a frame that passes it, the way it refuses a frame that does not decode.
+ */
+export const MAX_FRAME_OUTPUT_BYTES = 2 * MAX_TRANSCRIPT_BYTES; // 64 MiB
+
+/**
  * The real path of `path`. On Windows this is the OS's own answer (`fs.realpath.native`), which
  * expands an 8.3 short name (`PAIRED~1.JSO`) to the long one, so the deny rules read the name the
  * disk holds. Elsewhere it is the ordinary `realpath`.

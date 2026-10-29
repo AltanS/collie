@@ -144,6 +144,19 @@
         "how": "capture",
         "evidence": "bridge/journal/fixtures/openclaw/: SQLite rows re-captured on OpenClaw 2026.10.2 and on the reporter's 2026.9.8 (both schema 24) against a scripted local model, plus the 2026-10-12 lab session rebuilt from its chat.history (experiments/openclaw-401). openclaw.test.ts reads all three; no canary runs OpenClaw."
       }
+    },
+    "dsh-tui": {
+      "version": "0.0.0",
+      "verified": "2026-10-27",
+      "how": "unverified",
+      "adapter": false,
+      "evidence": "No block grammar: a dsh-tui pane keeps the raw mirror. The entry exists for the journal reader beside it, and 0.0.0 is the floor, so the first install reads as NEWER.",
+      "journal": {
+        "version": "0.17.0",
+        "verified": "2026-10-27",
+        "how": "capture",
+        "evidence": "bridge/journal/fixtures/dsh/: a dsh-tui 0.17.0 session (DeepSeek Harness format v4) captured on Linux on 2026-10-27 — slash commands, a shell call, a rejected escalation, a background job, /compact and a Unicode turn — read with 0 unrecognised rows or content kinds. The same day the adapter read a live 1,847-row session (248 turns, 262 of 262 tool calls joined to a result) and found it by its session lock from inside a systemd user service. No canary runs dsh-tui."
+      }
     }
   }
 }

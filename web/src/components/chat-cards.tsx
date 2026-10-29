@@ -111,6 +111,7 @@ const HARNESS_LABELS = new Map([
   ["hermes", "Hermes Agent"],
   ["muse", "Muse"],
   ["kiro", "Kiro"],
+  ["dsh-tui", "dsh-TUI"],
 ]);
 
 /** The harness's own name for itself, or the key back when nobody has taught us one. */
