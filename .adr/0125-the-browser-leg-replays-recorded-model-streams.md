@@ -20,7 +20,7 @@ nightly run, and the nightly ritual was paused on 2026-10-20 for that cost. A pa
 The counsel of 2026-10-21 (two advisors, the same answer, Altan accepted) was to fake the model and keep
 the agent. Rejected then and still: a PTY recording replayed into Herdr (it cannot react to a keystroke,
 so it proves nothing about a tap), a tiny local model (flaky, not deterministic), and prompt caching as
-the main lever. Claude Code stays live, because a base URL override changes its auth path and its screen.
+the main lever. Claude Code stayed live, because a base URL override changes its auth path and its screen (amended 2026-10-30, see below).
 
 Probed on 2026-10-26 with an empty cassette and no key: pi 1.3.0 keeps the catalog's own base URL for a
 Claude model over a `models.json` `baseUrl`, but a provider an extension registers wins over both; omp
@@ -34,7 +34,7 @@ body's message.
 the rig's range) before the first harness and stops it with the rig. pi's base URL goes to it through a
 provider extension, omp's through `models.yml`, on a path that names the instance (`/pi-lead/api`,
 `/omp-member/api/v1`). The real binaries, the real TUI in a real Herdr pane, the real bridge and the real
-Chromium phone stay. Claude Code is not routed through the stub.
+Chromium phone stay. Claude Code was not routed through the stub at first (amended 2026-10-30, see below).
 
 **A cassette is a recorded stream, never a request.** One file per (harness, version, case):
 `web/e2e/rig/cassettes/<harness>/<version>/<case>.jsonl`, a header line, then one entry per model
@@ -78,7 +78,7 @@ nightly ledger row keeps the tiers.
 
 ## Consequences
 
-- A solo leg on replay costs no OpenRouter turn. It still costs the Claude Code turns on the subscription.
+- A solo leg on replay costs no OpenRouter turn. It costs no Claude Code turn either (amended 2026-10-30, see below).
 - A harness version bump costs one live run, which records. The first recording run (2026-10-26, pi
   1.3.0 and omp 18.6.1) sent 44 requests to OpenRouter (pi 21, omp 23) and wrote 22 files, 2.3 MB.
   Three of its cases did not pass and are marked: pi case 8 (Haiku refused the walky send under the
@@ -93,5 +93,20 @@ nightly ledger row keeps the tiers.
   not. A mismatch is 422, not the 599 of spec 03, because a 5xx is retried.
 - The nightly runner checks out a clean clone each run, so recordings it writes there are lost. Until
   spec 04 hands them back, the nightly replays only what the checked-in recordings cover.
-- Revisit when Claude Code can take a base URL without a new auth path or screen, or when a harness
-  moves its model calls off a base URL the rig can set.
+- Revisit when a harness moves its model calls off a base URL the rig can set. (The Claude Code half of this
+  line is settled, see the amendment below.)
+
+## Amended 2026-10-30
+
+Since M67 spec 07, Claude Code replays through the same stub as pi and omp. A run on a recorded Claude, pi
+and omp version sends nothing to OpenRouter or Anthropic and spends no Claude turn, and the replay seeds a
+dummy login, so it needs no Claude login at all. The first doubt, that a base URL override changes Claude's
+auth path and its screen, did not hold: `ANTHROPIC_BASE_URL` with a path prefix (`/claude-lead`) leaves the
+real binary, its TUI and its pane as they were. The live tier remains for a new Claude version: the first run
+on it goes live once, spends the subscription turns (24 on the solo leg, 6 on the crew leg for 2.1.312) and
+records, and the nightly login check runs only when Claude runs live. The cassettes sit in
+`web/e2e/rig/cassettes/claude/<version>/`, keyed on the Claude Code version and the walky talky skill hash,
+and the stub forwards to api.anthropic.com in memory only when it records. The masking classes guard against
+a run-to-run difference reaching the digest: the `cc_version` build hash in Claude's first system block, the
+walky case mark, and the addresses and panes that start a line after a JSON `\n` (`lineaddress`, `linepane`),
+so a replay sends to the pane of this run and not the recorded one.
