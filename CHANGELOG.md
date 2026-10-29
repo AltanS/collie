@@ -23,6 +23,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+## [1.25.0] - 2026-10-29
+
 ### Added
 
 - **`collie doctor --instance <name>` reads one lane without an exported variable.** The flag wins
@@ -79,10 +81,27 @@ Running a crew? Update the lead first; members follow on their own. Details:
   your Herdr sessions, which the phone shows as spaces, carries the phone's word. The reader
   module, the config key and the docs follow, and the `[labels]` and `[folders]` tables keep the
   Herdr session names as keys. Thanks @eseninik (#539).
+- **collie start and collie doctor name any missing setup in plain words.** Tailscale not installed
+  or not signed in, MagicDNS or HTTPS off, the operator flag on Linux, no multiplexer or several
+  without COLLIE_MUX, and the PATH line. `collie start` prints one `setup:` line per missing piece
+  with its fix and never stops for it; `collie doctor` adds the rows `tailscale`, `tailnet-https`
+  and `tailscale-operator`, which warn and never hold back an update, and its `path-link` row now
+  warns when no `collie` is on PATH. ([94ec3cc](https://github.com/AltanS/collie/commit/94ec3cc))
+- **A Zoom button on the belt opens a pane's output full screen.** It sits just left of the Switch
+  button. A pinch zooms up to 6x, one finger pans, a double tap toggles between 1x and 2.5x, and the
+  text keeps updating. Lines never wrap in this view, so a pinch does not reflow them. It is a level
+  below the pane (`/pane/:paneId/zoom`), so the pane and its draft stay mounted and the phone's back
+  closes it. It is read-only and never resizes the pane. Closing it returns focus to the Zoom button, a tap on a printed web address opens nothing, and the browser's own Ctrl zoom keys leave the view alone. Thanks @neuralyze (#536). ([9bfd276](https://github.com/AltanS/collie/commit/9bfd276)) ([649fdcb](https://github.com/AltanS/collie/commit/649fdcb)) ([4a896ce](https://github.com/AltanS/collie/commit/4a896ce))
 
 ### Changed
 
 - **Opening a finished pane retracts its alert.** The bridge drops the alert once the pane has been opened (`retractSeen` in `bridge/notifications.ts`), which also removes its lock-screen notification. A blocked pane's alert stays until you answer it.
+- **Windows: collie start publishes the tailnet front door.** It runs `tailscale serve` through the
+  same code as Linux and macOS, records the mapping, and removes only that mapping on
+  `collie uninstall`. A mapping made by hand from the old Windows guide is adopted and recorded on
+  the first `collie start`, and `collie doctor` warns about it until then. An adopted mapping is
+  removed by `collie uninstall` or `collie unserve` like any mapping Collie recorded. `COLLIE_PUBLIC_HOSTS`
+  and `COLLIE_PUBLIC_URL` are no longer needed for the default setup. ([e9d7970](https://github.com/AltanS/collie/commit/e9d7970)) ([0c6b6e6](https://github.com/AltanS/collie/commit/0c6b6e6)) ([24044c5](https://github.com/AltanS/collie/commit/24044c5))
 
 ### Fixed
 
@@ -122,34 +141,6 @@ Running a crew? Update the lead first; members follow on their own. Details:
   profile now says its dialogs never point with its prompt glyph `❯`, so the lines under it are the
   draft's own, unless a row holds an option, a key hint or the slash palette. pi and omp draw menus
   with the same glyph and keep holding Send there. (#552)
-
-## [1.25.0] - 2026-10-29
-
-### Added
-
-- **collie start and collie doctor name any missing setup in plain words.** Tailscale not installed
-  or not signed in, MagicDNS or HTTPS off, the operator flag on Linux, no multiplexer or several
-  without COLLIE_MUX, and the PATH line. `collie start` prints one `setup:` line per missing piece
-  with its fix and never stops for it; `collie doctor` adds the rows `tailscale`, `tailnet-https`
-  and `tailscale-operator`, which warn and never hold back an update, and its `path-link` row now
-  warns when no `collie` is on PATH. ([94ec3cc](https://github.com/AltanS/collie/commit/94ec3cc))
-- **A Zoom button on the belt opens a pane's output full screen.** It sits just left of the Switch
-  button. A pinch zooms up to 6x, one finger pans, a double tap toggles between 1x and 2.5x, and the
-  text keeps updating. Lines never wrap in this view, so a pinch does not reflow them. It is a level
-  below the pane (`/pane/:paneId/zoom`), so the pane and its draft stay mounted and the phone's back
-  closes it. It is read-only and never resizes the pane. Closing it returns focus to the Zoom button, a tap on a printed web address opens nothing, and the browser's own Ctrl zoom keys leave the view alone. Thanks @neuralyze (#536). ([9bfd276](https://github.com/AltanS/collie/commit/9bfd276)) ([649fdcb](https://github.com/AltanS/collie/commit/649fdcb)) ([4a896ce](https://github.com/AltanS/collie/commit/4a896ce))
-
-### Changed
-
-- **Windows: collie start publishes the tailnet front door.** It runs `tailscale serve` through the
-  same code as Linux and macOS, records the mapping, and removes only that mapping on
-  `collie uninstall`. A mapping made by hand from the old Windows guide is adopted and recorded on
-  the first `collie start`, and `collie doctor` warns about it until then. An adopted mapping is
-  removed by `collie uninstall` or `collie unserve` like any mapping Collie recorded. `COLLIE_PUBLIC_HOSTS`
-  and `COLLIE_PUBLIC_URL` are no longer needed for the default setup. ([e9d7970](https://github.com/AltanS/collie/commit/e9d7970)) ([0c6b6e6](https://github.com/AltanS/collie/commit/0c6b6e6)) ([24044c5](https://github.com/AltanS/collie/commit/24044c5))
-
-### Fixed
-
 - **Collie never waits on a stuck Tailscale.** Every read-only `tailscale` call the CLI makes is
   bounded to three seconds inside Collie itself. Publishing and removing a mapping still wait for
   Tailscale, because killing a half-done change is worse than waiting. Before, the ACL probe went
@@ -192,6 +183,31 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The docs line says when the site must be synced by hand.** A `docs/<tag>` branch based on an old
   tag may lack `docs-line.yml`, so its push does not tell the site. The script then prints the
   `gh workflow run sync-docs.yml` command, and a dry run says it would be needed. ([fea7c61](https://github.com/AltanS/collie/commit/fea7c61))
+
+## [1.24.3] - 2026-10-29
+
+A bugfix release, not urgent. You need it if you update Collie over a slow link, or if you run Codex at Ultra effort.
+
+### Fixed
+
+- **Codex at Ultra effort no longer blocks sends from the phone.** Codex 0.164 and 0.165 draw the
+  composer prompt as `»` at Ultra effort and as `›` at Max. Both readers knew only `›`, so Collie
+  could not find the input box and asked you to confirm a send by hand. Both glyphs now count, in
+  the Codex profile and in the Codex reader. The reader keeps one list of the two glyphs, and a test
+  checks that the profile spells the same pair. A numbered option row is still not a prompt. (#615)
+  Thanks @Skydev0h for the diagnosis.
+- **An update no longer fails because the release download is slow.** The release download had a 20
+  second total deadline, so on a link under about 23 Mbit/s the 57 MB asset timed out and Collie said
+  it could not reach github.com. The download now stops only when no bytes arrive for 60 seconds, and
+  the error then says the download stalled, with how much had arrived. Connecting and the small release
+  lookups keep their 20 second limit. If your update already fails with "could not reach github.com",
+  run `curl -fsSL https://colliepwa.dev/install.sh | COLLIE_TAG=v1.24.3 sh` once by hand (the Stable
+  patch that carries this fix); after that updates work from the phone again, on Stable and on Edge.
+  ([#613](https://github.com/AltanS/collie/issues/613)) Thanks @mglasner for the diagnosis.
+- **A very slow release download now ends after 30 minutes instead of trickling on.** A server that
+  sends a few bytes just inside each 60 second window never counts as stalled, so the download has a
+  total cap of 30 minutes (about 32 KB/s for the 57 MB asset). The error says the download took longer
+  than 30 minutes and how much had arrived, and nothing is changed. ([#613](https://github.com/AltanS/collie/issues/613))
 
 ## [1.24.2] - 2026-10-28
 
