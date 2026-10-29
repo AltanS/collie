@@ -34,3 +34,19 @@ export function herdrCoreInPlaceOfTui(
   if (!exists(socket)) return null;
   return { mux: HERDR_CORE_MUX, socket, evidence: `a herdr-core socket at ${socket}, and no Herdr socket at ${tuiSocket}` };
 }
+
+/**
+ * Does this environment drive herdr-core: `COLLIE_MUX` names it, or nobody named a multiplexer and
+ * {@link herdrCoreInPlaceOfTui} picks it? `collie update` and the config-dir lookup ask this to
+ * leave every `herdr plugin` command alone on such a host (M74 spec 04): the Herdr TUI's plugin
+ * registry is not part of a herdr-core install.
+ */
+export function drivesHerdrCore(
+  tuiSocket: string,
+  env: Readonly<Record<string, string | undefined>>,
+  exists: (path: string) => boolean,
+): boolean {
+  const named = (env.COLLIE_MUX ?? "").trim();
+  if (named !== "") return named === HERDR_CORE_MUX;
+  return herdrCoreInPlaceOfTui(tuiSocket, env, exists) !== null;
+}

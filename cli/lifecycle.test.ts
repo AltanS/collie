@@ -57,6 +57,7 @@ import {
   systemdUserReachable,
   writeUnit,
 } from "./lifecycle.ts";
+import { ensureMuxChosen } from "./mux.ts";
 import { cmdServe } from "./serve.ts";
 import { formatTaskRecord, taskRecordPath, taskRestartPath } from "./task-scheduler.ts";
 
@@ -178,6 +179,47 @@ describe("the Host allowlist discovery", () => {
     expect(h.files.read(`${HOME}/.config/systemd/user/collie.service`)).not.toContain(
       "COLLIE_TAILSCALE_HOSTS",
     );
+  });
+});
+
+// A herdr-core host (M74 spec 04): the unit names the core, and the operator's session travels.
+describe("the unit of a herdr-core install", () => {
+  const UNIT = `${HOME}/.config/systemd/user/collie.service`;
+
+  test("COLLIE_MUX and the operator's HC_SESSION and HC_SOCKET are written into the unit", () => {
+    const h = harness({
+      env: { COLLIE_MUX: "herdr-core", HC_SESSION: "work", HC_SOCKET: "/run/user/501/herdr-core/work.sock" },
+      answers: [["tailscale status --json", { code: 1 }]],
+    });
+    expect(writeUnit(h.deps)).toBe(true);
+    const unit = h.files.read(UNIT) ?? "";
+    expect(unit).toContain("Environment=COLLIE_MUX=herdr-core\n");
+    expect(unit).toContain("Environment=HC_SESSION=work\n");
+    expect(unit).toContain("Environment=HC_SOCKET=/run/user/501/herdr-core/work.sock\n");
+  });
+
+  test("no session set: only COLLIE_MUX, and the Herdr TUI install keeps its unit unchanged", () => {
+    const core = harness({ env: { COLLIE_MUX: "herdr-core" }, answers: [["tailscale status --json", { code: 1 }]] });
+    writeUnit(core.deps);
+    const coreUnit = core.files.read(UNIT) ?? "";
+    expect(coreUnit).toContain("Environment=COLLIE_MUX=herdr-core\n");
+    expect(coreUnit).not.toContain("HC_SESSION");
+
+    const tui = harness({ env: { HC_SESSION: "work" }, answers: [["tailscale status --json", { code: 1 }]] });
+    writeUnit(tui.deps);
+    const tuiUnit = tui.files.read(UNIT) ?? "";
+    expect(tuiUnit).not.toContain("COLLIE_MUX");
+    expect(tuiUnit).not.toContain("HC_SESSION");
+  });
+
+  test("an auto-pick lands in the unit: start writes COLLIE_MUX into the env it hands the unit", async () => {
+    const core = "/run/user/501/herdr-core/default.sock";
+    const h = harness({ env: { COLLIE_MUX: undefined, XDG_RUNTIME_DIR: "/run/user/501" }, answers: [["tailscale status --json", { code: 1 }]] });
+    h.files.write(core, "");
+    expect(await ensureMuxChosen(h.deps)).toBe(EXIT.OK);
+    expect(h.io.stdout.join("\n")).toContain("auto-selected herdr-core");
+    writeUnit(h.deps);
+    expect(h.files.read(UNIT) ?? "").toContain("Environment=COLLIE_MUX=herdr-core\n");
   });
 });
 

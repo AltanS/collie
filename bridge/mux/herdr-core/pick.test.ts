@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { herdrCoreInPlaceOfTui } from "./pick.ts";
+import { drivesHerdrCore, herdrCoreInPlaceOfTui } from "./pick.ts";
 
 const TUI = "/home/dev/.config/herdr/herdr.sock";
 const ENV = { XDG_RUNTIME_DIR: "/run/user/7" };
@@ -28,5 +28,22 @@ describe("herdr-core in place of the Herdr TUI", () => {
     const named = { ...ENV, COLLIE_MUX_ENDPOINT_HERDR_CORE: "/srv/core.sock" };
     expect(herdrCoreInPlaceOfTui(TUI, named, (path) => path === "/srv/core.sock")?.socket).toBe("/srv/core.sock");
     expect(herdrCoreInPlaceOfTui(TUI, named, (path) => path === CORE)).toBeNull();
+  });
+});
+
+describe("does this environment drive herdr-core", () => {
+  test("a COLLIE_MUX that names it, whatever sockets exist", () => {
+    expect(drivesHerdrCore(TUI, { ...ENV, COLLIE_MUX: "herdr-core" }, () => true)).toBe(true);
+  });
+
+  test("a COLLIE_MUX that names another multiplexer, even where only the core is", () => {
+    expect(drivesHerdrCore(TUI, { ...ENV, COLLIE_MUX: "tmux" }, (path) => path === CORE)).toBe(false);
+    expect(drivesHerdrCore(TUI, { ...ENV, COLLIE_MUX: "herdr" }, (path) => path === CORE)).toBe(false);
+  });
+
+  test("no name: the auto-pick decides", () => {
+    expect(drivesHerdrCore(TUI, ENV, (path) => path === CORE)).toBe(true);
+    expect(drivesHerdrCore(TUI, ENV, () => true)).toBe(false);
+    expect(drivesHerdrCore(TUI, ENV, () => false)).toBe(false);
   });
 });

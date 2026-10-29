@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import { DEFAULT_PORT, defaultSocketPath, normaliseBasePath, resolveStateDir } from "../bridge/config.ts";
 import { HOST } from "../bridge/host.ts";
+import { drivesHerdrCore } from "../bridge/mux/herdr-core/pick.ts";
 import {
   configFilePaths,
   hostFilePerms,
@@ -611,7 +612,9 @@ export function loadContext(
     env: ambient,
     home,
     fileExists: existsSync,
-    askHerdr: () => askHerdrConfigDir(ambient, home),
+    // Never on a herdr-core host (M74 spec 04): it has no Herdr plugin registry to ask, and the
+    // config dir is Collie's own, `~/.config/collie`, unless the operator injected another.
+    askHerdr: () => (drivesCore(ambient, home) ? null : askHerdrConfigDir(ambient, home)),
   });
   if (note !== null) warn(note);
 
@@ -655,6 +658,12 @@ export function loadContext(
     stateDir: resolveStateDir(env, home),
     ...deriveSettings(env, home),
   };
+}
+
+/** Does the ambient environment drive herdr-core, named or picked? Windows has no core. */
+export function drivesCore(env: Environment, home: string, exists: (path: string) => boolean = existsSync): boolean {
+  if (HOST.platform === "win32") return false;
+  return drivesHerdrCore(env.HERDR_SOCKET_PATH?.trim() || defaultSocketPath(HOST, env, home), env, exists);
 }
 
 function askHerdrConfigDir(env: Environment, home: string): string | null {
