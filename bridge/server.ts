@@ -38,7 +38,7 @@ import type { GitHeadSurface } from "./git-head.ts";
 import { localWatchPane, peerWatchPane, type CacheWarnPane } from "./cache/watch-key.ts";
 import { watchKeyOf, type CacheWatchSurface } from "./cache/watch.ts";
 import { createCacheRulesReader } from "./operator-cache-rules.ts";
-import { createSessionFolders, createSessionLabels, resolveSessionFolder, withSessionLabels } from "./operator-session-labels.ts";
+import { createSessionFolders, createSessionLabels, resolveSessionFolder, withSessionLabels } from "./operator-space-labels.ts";
 import { computeEtag, gzipJsonResponse, notModified, wantsGzip } from "./http-cache.ts";
 import { pluginRoot } from "./root.ts";
 import { DEFAULT_NOTIFY_PREFS, type NotifyPrefs, type NotifyPrefsStore } from "./notify-prefs.ts";
@@ -1546,14 +1546,14 @@ export function startServer(opts: {
   };
   // The sixth on that contract: the operator's own prompt-cache TTLs, cache-rules.toml off the hot path.
   const operatorCacheRules = createCacheRulesReader(cfg.cacheRulesFile);
-  // The seventh: the operator's display labels for their sessions, sessions.toml. `localSnapshot` is
+  // The seventh: the operator's display labels for their sessions, spaces.toml. `localSnapshot` is
   // synchronous, so the reader holds the labels and each snapshot refreshes them behind its answer:
   // an edit shows on the next poll, browser and crew sweep alike. The first read starts here.
-  const sessionLabels = createSessionLabels(cfg.sessionsFile ?? null);
+  const sessionLabels = createSessionLabels(cfg.spacesFile ?? null);
   void sessionLabels.refresh();
   // The same file's `[folders]`: where a launch or a new space in a session opens when nothing named
   // a folder. Read per launch, and only a folder that is there on disk is used; else home, as before.
-  const sessionFolders = createSessionFolders(cfg.sessionsFile ?? null);
+  const sessionFolders = createSessionFolders(cfg.spacesFile ?? null);
   const sessionFolderOf = (name: string) => resolveSessionFolder(sessionFolders, name, diskFolderFs);
   // ONE registry for the process, built by the caller so the cache tracker probes through the same
   // adapters (and therefore the same memoised path caches) the history route reads.
@@ -5928,7 +5928,7 @@ async function createTab(
 }
 
 // Create a new workspace ("space") with a fresh shell pane. `cwd` defaults to the session's folder
-// from `sessions.toml` `[folders]`, else the user's home dir, when the client doesn't specify one (typing a path on a phone is painful) — it's a shell, so you
+// from `spaces.toml` `[folders]`, else the user's home dir, when the client doesn't specify one (typing a path on a phone is painful), it's a shell, so you
 // can cd from there. Same structural-only threat model as createTab.
 //
 // A create that WORKED, and that named a folder, puts the folder the multiplexer REPORTED for the new
@@ -5945,7 +5945,7 @@ export async function createWorkspace(
   device: string | null,
   session: string,
   folders?: Pick<FolderSurface, "recordRecent">,
-  // The operator's folder for this session (`sessions.toml` `[folders]`), already checked to exist.
+  // The operator's folder for this session (`spaces.toml` `[folders]`), already checked to exist.
   sessionFolder?: string,
 ): Promise<Response> {
   let body: JsonValue;
@@ -7041,7 +7041,7 @@ export interface LaunchDeps {
   sent?: Pick<SentSurface, "record">;
   /** The launch window (bridge/launch-window.ts): a `harness` launch marks its pane. Absent: nothing is marked. */
   launchWindow?: Pick<LaunchWindow, "mark"> | undefined;
-  /** The operator's folder for this session (`sessions.toml` `[folders]`), checked to exist. Absent: home. */
+  /** The operator's folder for this session (`spaces.toml` `[folders]`), checked to exist. Absent: home. */
   sessionFolder?: string;
 }
 

@@ -725,7 +725,7 @@ export interface SessionSummary {
   /** Registry name, e.g. "default" or "collie-demo". Client passes this back as `?session=`. */
   name: string;
   /**
-   * The operator's display label from `sessions.toml` (bridge/operator-session-labels.ts), already
+   * The operator's display label from `spaces.toml` (bridge/operator-space-labels.ts), already
    * cleaned of controls and capped. Display-only: {@link name} stays the identity. Absent when the
    * operator gave this session none, so an install without the file sends the bytes it always did.
    */
@@ -1855,7 +1855,7 @@ export interface Launcher {
   label: string;
   /**
    * Absolute directory the new Space (or tab) opens in. Absent means "here": from the dashboard,
-   * the session's `[folders]` entry in sessions.toml, else the operator's home dir; from a pane,
+   * the session's `[folders]` entry in spaces.toml, else the operator's home dir; from a pane,
    * that pane's own cwd. Present, it is pinned and wins
    * either way.
    */

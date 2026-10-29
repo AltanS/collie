@@ -173,7 +173,7 @@ describe("SessionSwitcher — the widened view", () => {
   });
 });
 
-// ── Operator labels (sessions.toml) ──────────────────────────────────────────
+// ── Operator labels (spaces.toml) ──────────────────────────────────────────
 //
 // A label is display-only: the sheet and the trigger print it, the row still navigates by the
 // registry name, and the name stays visible under the label.

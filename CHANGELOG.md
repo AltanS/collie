@@ -29,6 +29,11 @@ Running a crew? Update the lead first; members follow on their own. Details:
   with a label of your own and the switcher shows it, and you name a folder where a launch from the
   dashboard opens when nothing else names one. A label is display-only and links keep the session
   name. Thanks @eseninik (#539).
+- **The operator file for space labels and folders is `spaces.toml`.** In Collie's words a session is
+  one agent conversation and a terminal grouping on the phone is a space, so the file that labels
+  your Herdr sessions, which the phone shows as spaces, carries the phone's word. The reader
+  module, the config key and the docs follow, and the `[labels]` and `[folders]` tables keep the
+  Herdr session names as keys. Thanks @eseninik (#539).
 
 ## [1.25.0] - 2026-10-29
 

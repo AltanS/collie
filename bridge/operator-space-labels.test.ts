@@ -11,12 +11,12 @@ import {
   validateSessionFolders,
   validateSessionLabels,
   withSessionLabels,
-} from "./operator-session-labels.ts";
+} from "./operator-space-labels.ts";
 import type { OperatorFileIo } from "./operator-file.ts";
 import type { SessionEntry } from "./types.ts";
 
-// `sessions.toml`: the operator's display labels for their sessions. Driven like the other operator
-// files — the validator with parsed TOML, the reader through a fake io.
+// `spaces.toml`: the operator's display labels for their sessions. Driven like the other operator
+// files, the validator with parsed TOML, the reader through a fake io.
 
 const quiet = () => {};
 
@@ -148,7 +148,7 @@ describe("createSessionLabels", () => {
 
   test("nothing is labelled before the first refresh, and a missing file labels nothing", async () => {
     const state = { mtime: null, text: "", reads: 0 };
-    const labels = createSessionLabels("/cfg/sessions.toml", fakeIo(state), quiet);
+    const labels = createSessionLabels("/cfg/spaces.toml", fakeIo(state), quiet);
     expect(labels.labelOf("default")).toBeUndefined();
     await labels.refresh();
     expect(labels.labelOf("default")).toBeUndefined();
@@ -157,7 +157,7 @@ describe("createSessionLabels", () => {
 
   test("an edit is live on the next refresh, and an unchanged mtime is not re-read", async () => {
     const state = { mtime: 1, text: `[labels]\nwork = "A"`, reads: 0 };
-    const labels = createSessionLabels("/cfg/sessions.toml", fakeIo(state), quiet);
+    const labels = createSessionLabels("/cfg/spaces.toml", fakeIo(state), quiet);
     await labels.refresh();
     await labels.refresh();
     expect(labels.labelOf("work")).toBe("A");
@@ -171,7 +171,7 @@ describe("createSessionLabels", () => {
 
   test("a file that stops parsing keeps the last good labels", async () => {
     const state = { mtime: 1, text: `[labels]\nwork = "A"`, reads: 0 };
-    const labels = createSessionLabels("/cfg/sessions.toml", fakeIo(state), quiet);
+    const labels = createSessionLabels("/cfg/spaces.toml", fakeIo(state), quiet);
     await labels.refresh();
     state.text = "[labels] this is not toml";
     state.mtime = 2;
@@ -180,7 +180,7 @@ describe("createSessionLabels", () => {
   });
 });
 
-// The wiring, pinned at the source the way server.test.ts pins the snapshot route: sessions.toml rides
+// The wiring, pinned at the source the way server.test.ts pins the snapshot route: spaces.toml rides
 // the ONE snapshot builder, so the browser poll and the crew sweep both carry the labels and both keep
 // the reader fresh. Display-only: the summaries are labelled, never renamed.
 describe("server.ts wiring", () => {
@@ -190,7 +190,7 @@ describe("server.ts wiring", () => {
     const builder = src.slice(src.indexOf("const localSnapshot = ("), src.indexOf("const watchedPaneIds = ()"));
     expect(builder).toContain("void sessionLabels.refresh();");
     expect(builder).toContain("sessions: withSessionLabels(registry.list(), sessionLabels.labelOf),");
-    expect(src).toContain("createSessionLabels(cfg.sessionsFile ?? null)");
+    expect(src).toContain("createSessionLabels(cfg.spacesFile ?? null)");
   });
 });
 
@@ -254,7 +254,7 @@ describe("createSessionFolders", () => {
         return state.text;
       },
     };
-    const live = createSessionFolders("/x/sessions.toml", io, quiet);
+    const live = createSessionFolders("/x/spaces.toml", io, quiet);
     await live.refresh();
     expect(live.folderOf("work")).toBe("/srv/w");
     expect(live.folderOf("other")).toBeUndefined();
@@ -272,7 +272,7 @@ describe("resolveSessionFolder", () => {
   });
 
   test("a folder on disk is the default; one that is gone, or a disk that throws, is home (undefined)", async () => {
-    const folders = createSessionFolders("/x/sessions.toml", io, quiet);
+    const folders = createSessionFolders("/x/spaces.toml", io, quiet);
     expect(await resolveSessionFolder(folders, "work", disk(true))).toBe("/srv/w");
     expect(await resolveSessionFolder(folders, "work", disk(false))).toBeUndefined();
     expect(await resolveSessionFolder(folders, "work", disk("throws"))).toBeUndefined();

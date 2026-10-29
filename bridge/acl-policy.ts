@@ -109,7 +109,7 @@ const KNOWN_NAMES: ReadonlySet<string> = new Set([
   "keys.toml",
   "launchers.toml",
   "quick-replies.toml",
-  "sessions.toml",
+  "spaces.toml",
   "theme.toml",
 ]);
 

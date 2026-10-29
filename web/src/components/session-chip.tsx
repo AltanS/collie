@@ -41,7 +41,7 @@ export function SessionChip({ session, host, className }: SessionChipProps) {
   useLocale();
   const { sessions } = useCrew();
   if (session === undefined || session === primarySession(sessions)) return null;
-  // The operator's label when sessions.toml gives one, else the registry name. Display-only.
+  // The operator's label when spaces.toml gives one, else the registry name. Display-only.
   const shown = sessionDisplayNameOf(session, sessions, host);
   return (
     <AddressTag

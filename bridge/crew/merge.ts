@@ -1,5 +1,5 @@
 import type { JsonObject, JsonValue } from "../json.ts";
-import { cleanSessionLabel } from "../operator-session-labels.ts";
+import { cleanSessionLabel } from "../operator-space-labels.ts";
 import { NARROW_VIEW, type SnapshotView } from "../sessions.ts";
 import { STATUS_RANK } from "../types.ts";
 import type { PaneWire, ServerSummary, SessionSummary, SnapshotResponse, TabView, WorkspaceView } from "../types.ts";
@@ -413,7 +413,7 @@ function tag(pane: PaneWire, host: string): PaneWire {
 }
 
 /**
- * A peer's session without its own `host` claim. Its `label` (sessions.toml, display-only) is the
+ * A peer's session without its own `host` claim. Its `label` (spaces.toml, display-only) is the
  * member's word and reaches the phone as text, so it is kept only as a string and cleaned and capped
  * again by the lead's own rule; anything else is dropped, as an older member sends none.
  */

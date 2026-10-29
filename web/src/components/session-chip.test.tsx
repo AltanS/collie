@@ -75,7 +75,7 @@ describe("SessionChip — when it does", () => {
 });
 
 describe("SessionChip — an operator label", () => {
-  it("prints the label from sessions.toml instead of the registry name", () => {
+  it("prints the label from spaces.toml instead of the registry name", () => {
     mount("work", [registry[0]!, { ...registry[1]!, label: "Клиентский кабинет" }]);
     expect(screen.getByLabelText("In session: Клиентский кабинет")).toHaveTextContent("Клиентский кабинет");
   });

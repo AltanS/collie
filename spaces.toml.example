@@ -1,0 +1,29 @@
+# Your own labels and folders for Collie's spaces. Copy to your plugin config dir, next to `.env`:
+#   cp spaces.toml.example "$(herdr plugin config-dir herdr.collie)/spaces.toml"
+#
+# The phone calls a terminal grouping a space; Herdr calls it a session and names it by the folder its
+# socket lives in: `<config root>/sessions/project-yt/` is `project-yt`, and the primary one is
+# `default`. A label replaces that name in the space switcher, on the space tag of a row in
+# "All sessions" and on a durable agent's row; the switcher keeps the registry name under the label.
+#
+# A LABEL IS DISPLAY-ONLY. Links (`?s=`), notifications, the crew and the terminal keep using the
+# registry name, so a label can change at any time without breaking anything.
+#
+# Edits are picked up live, no restart. The phone shows them within a few seconds.
+#
+# Rules: the key is the registry name, quoted when it holds anything but letters, digits, `-` and `_`.
+# The value is any string. A name no space has is ignored; a value that is not a string, or is
+# blank, drops that row with a line in the log, never the rest of the file. Control characters,
+# invisible format characters, tabs and line breaks become spaces, and a label longer than 48
+# characters is cut to 48.
+
+# [labels]
+# default = "Home"
+# "project-yt" = "Video"
+# "ai-system-setup" = "Agent setup"
+
+# The folder a space's project lives in. A launcher row with no `cwd`, or a new space with an empty
+# Where field, opens here instead of in home. Absolute or `~/`; a folder not on disk falls back to home.
+
+# [folders]
+# "project-yt" = "~/projects/yt"

@@ -6,9 +6,15 @@ import { createOperatorFileReader, diskIo, type OperatorFileIo } from "./operato
 import type { SessionEntry } from "./types.ts";
 import { expandHome } from "./worktree-folder.ts";
 
-// The operator's own names for their sessions, read from `sessions.toml` next to their `.env` — the
+// The operator's own names for their spaces, read from `spaces.toml` next to their `.env`, the
 // seventh file on the operator-file contract (operator-file.ts owns the discovery rule, the mtime
 // cache and the hold-the-last-good-rows failure posture).
+//
+// WHY `spaces.toml` AND NOT `sessions.toml`. In Collie's public words a "session" is one agent
+// conversation, and a terminal grouping on the phone is a "space". This file labels Herdr sessions,
+// which the phone shows as spaces, so the file carries the phone's word. Inside the code the registry
+// keeps its own name, `SessionEntry`, and the `[labels]` and `[folders]` keys are Herdr session names.
+// (Decided by the owner on 2026-10-29; the file never shipped as `sessions.toml`.)
 //
 // WHY THIS FILE EXISTS. A session is named by its endpoint's directory (`sessionNameFor`,
 // bridge/sessions.ts), so a bridge fronting twenty Herdr sessions shows twenty directory names in the
@@ -24,7 +30,7 @@ import { expandHome } from "./worktree-folder.ts";
 /** The longest label kept, in code points. A switcher row is one line on a phone; the rest is noise. */
 export const MAX_SESSION_LABEL = 48;
 
-/** A parsed `sessions.toml` document, before a byte of it is believed. */
+/** A parsed `spaces.toml` document, before a byte of it is believed. */
 interface SessionLabelsDocument {
   labels?: unknown;
   folders?: unknown;
@@ -81,7 +87,7 @@ export function validateSessionLabels(
   const table = doc?.labels;
   if (table === undefined || table === null) return [];
   if (typeof table !== "object" || Array.isArray(table)) {
-    warn("`labels` must be a table of \"session name\" = \"label\" rows — ignoring the file's rows");
+    warn("`labels` must be a table of \"session name\" = \"label\" rows, ignoring the file's rows");
     return [];
   }
   // SAFETY: a TOML table parses to a plain object; every value is checked below before it is believed.
@@ -94,17 +100,17 @@ export function validateSessionLabels(
       continue;
     }
     if (typeof value !== "string") {
-      warn(`ignoring the label for "${name}" — it must be a string`);
+      warn(`ignoring the label for "${name}", it must be a string`);
       continue;
     }
     const flat = flatten(value);
     if (flat === "") {
-      warn(`ignoring the label for "${name}" — it is blank`);
+      warn(`ignoring the label for "${name}", it is blank`);
       continue;
     }
     const label = cut(flat);
     if (label !== flat) {
-      warn(`the label for "${name}" is longer than ${String(MAX_SESSION_LABEL)} characters — it is cut`);
+      warn(`the label for "${name}" is longer than ${String(MAX_SESSION_LABEL)} characters, it is cut`);
     }
     out.push({ name, label });
   }
@@ -124,9 +130,9 @@ export interface SessionLabels {
 }
 
 /**
- * A reader for the operator's `sessions.toml`. The snapshot is assembled synchronously, so the rows
+ * A reader for the operator's `spaces.toml`. The snapshot is assembled synchronously, so the rows
  * are held here and {@link SessionLabels.refresh} is awaited where a request can wait (the browser's
- * snapshot poll) — the same mtime check every other operator file takes per request.
+ * snapshot poll), the same mtime check every other operator file takes per request.
  */
 export function createSessionLabels(path: string | null, io: OperatorFileIo = diskIo, warn = defaultWarn): SessionLabels {
   let labels = new Map<string, string>();
@@ -145,7 +151,7 @@ export function createSessionLabels(path: string | null, io: OperatorFileIo = di
 
 /**
  * The snapshot's `sessions` with each labelled entry carrying its `label`. An entry the operator gave
- * no label is passed through as the same object, so an install with no `sessions.toml` sends the
+ * no label is passed through as the same object, so an install with no `spaces.toml` sends the
  * bytes it always sent (solo-baseline.test.ts).
  */
 export function withSessionLabels(
@@ -189,10 +195,10 @@ export function validateSessionFolders(
   const table = doc?.folders;
   if (table === undefined || table === null) return [];
   if (typeof table !== "object" || Array.isArray(table)) {
-    warn("`folders` must be a table of \"session name\" = \"folder\" rows — ignoring the file's folders");
+    warn("`folders` must be a table of \"session name\" = \"folder\" rows, ignoring the file's folders");
     return [];
   }
-  // SAFETY: as validateSessionLabels — a TOML table parses to a plain object, every value checked.
+  // SAFETY: as validateSessionLabels, a TOML table parses to a plain object, every value checked.
   const rows = table as JsonObject;
   const out: SessionFolderRow[] = [];
   for (const [rawName, value] of Object.entries(rows)) {
@@ -202,17 +208,17 @@ export function validateSessionFolders(
       continue;
     }
     if (typeof value !== "string" || value.trim() === "") {
-      warn(`ignoring the folder for "${name}" — it must be a non-empty string`);
+      warn(`ignoring the folder for "${name}", it must be a non-empty string`);
       continue;
     }
     const raw = value.trim();
     if (/[\p{Cc}]/u.test(raw) || raw.split(/[\\/]+/u).includes("..")) {
-      warn(`ignoring the folder for "${name}" — it carries a control character or a \`..\` segment`);
+      warn(`ignoring the folder for "${name}", it carries a control character or a \`..\` segment`);
       continue;
     }
     const folder = expandHome(raw, home);
     if (!isAbsolute(folder)) {
-      warn(`ignoring the folder for "${name}" — it must be absolute or start with ~/`);
+      warn(`ignoring the folder for "${name}", it must be absolute or start with ~/`);
       continue;
     }
     out.push({ name, folder });
@@ -244,7 +250,7 @@ export async function resolveSessionFolder(
   return (await fs.isDirectory(folder).catch(() => false)) ? folder : undefined;
 }
 
-/** A reader for the `[folders]` table of the operator's `sessions.toml`. */
+/** A reader for the `[folders]` table of the operator's `spaces.toml`. */
 export function createSessionFolders(path: string | null, io: OperatorFileIo = diskIo, warn = defaultWarn): SessionFolders {
   let folders = new Map<string, string>();
   if (path === null) return { refresh: async () => {}, folderOf: (name) => folders.get(name) };

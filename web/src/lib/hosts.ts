@@ -167,9 +167,9 @@ export function primarySession(
 }
 
 /**
- * What the phone PRINTS for a session: the operator's `sessions.toml` label when there is one, else
+ * What the phone PRINTS for a session: the operator's `spaces.toml` label when there is one, else
  * the registry name. Display-only — every address, `?s=` included, keeps carrying `name`. The bridge
- * cleans and caps the label (bridge/operator-session-labels.ts); an empty one reads as none. It is
+ * cleans and caps the label (bridge/operator-space-labels.ts); an empty one reads as none. It is
  * rendered as a text node either way.
  */
 export function sessionDisplayName(session: Pick<SessionSummary, "name" | "label">): string {

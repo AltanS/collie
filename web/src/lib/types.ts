@@ -569,7 +569,7 @@ export interface SessionSummary {
   /** Registry name, e.g. "default", "collie-demo". The identity: `?s=` and `?session=` carry it. */
   name: string;
   /**
-   * The operator's display label for this session (`sessions.toml`). Display-only — print it through
+   * The operator's display label for this session (`spaces.toml`). Display-only, print it through
    * `sessionDisplayName` (lib/hosts.ts), never address by it. Absent from an older bridge, and from a
    * session the operator gave no label.
    */

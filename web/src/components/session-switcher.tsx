@@ -38,7 +38,7 @@ export function SessionSwitcher({ sessions, scope, viewAll }: SessionSwitcherPro
   if (reachableCount <= 1 && !onNonPrimary && !viewAll) return null;
 
   // The name to show on the trigger: "All sessions" when widened, else the current session — or the
-  // primary when on it — by its operator label when it has one (sessions.toml), else its registry name.
+  // primary when on it, by its operator label when it has one (spaces.toml), else its registry name.
   const currentSession =
     current === undefined ? sessions.find((s) => s.isPrimary) : sessions.find((s) => s.name === current);
   const currentName = viewAll

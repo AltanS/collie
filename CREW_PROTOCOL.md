@@ -1359,7 +1359,7 @@ prevents (`web/src/lib/api.ts:201-203`).
   instance token, four characters of `[a-z0-9]`; the merge keeps it only in that form (§21, "Pane
   instances").
 - **A session may carry `label`** (additive-optional, §7.1, added 2026-10-19): the display label
-  the member's own operator wrote in its `sessions.toml`. It is display-only: `name` stays the
+  the member's own operator wrote in its `spaces.toml`. It is display-only: `name` stays the
   session's identity on the link and in every address. The lead keeps it only as a string and runs
   its own cleaning rule over it again (control and format characters out, at most 48 characters), as
   it does for a pane's `instance`; anything else is dropped. A lead that predates the field passes it
