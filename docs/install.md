@@ -287,8 +287,10 @@ hc server status      # or open herdr-app, which starts the core
 collie start
 ```
 
-When you name no multiplexer, the Herdr TUI socket is missing and the core's socket is there,
-Collie picks the core on its own. `collie start` says so and writes `COLLIE_MUX=herdr-core` to
+When you name no multiplexer, the Herdr TUI is not installed on this machine and the core's socket
+is there, Collie picks the core on its own. A machine with the Herdr TUI installed keeps `herdr`
+even while the TUI is not running, so name the core there with `COLLIE_MUX=herdr-core collie start`.
+When it picks the core, `collie start` says so and writes `COLLIE_MUX=herdr-core` to
 `~/.config/collie/.env`, which is Collie's own config folder on this install. The service unit
 carries the same choice. `collie update` then runs no `herdr plugin` command. To drive one named
 core session, export `HC_SESSION` or `HC_SOCKET` before `collie start`; the unit keeps them. Install

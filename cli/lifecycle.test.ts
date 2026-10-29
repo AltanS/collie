@@ -2042,6 +2042,31 @@ describe("status --json", () => {
     expect(h.exec.calls).not.toContain("tailscale serve status");
   });
 
+  test("the multiplexer: named, or picked with the reason, in the JSON and the banner", async () => {
+    const named = await json(harness({ ready: true, answers: NAMED }));
+    expect(named.mux).toBe("herdr");
+    expect(named.muxPickedBecause).toBeNull();
+
+    const core = "/run/user/7/herdr-core/default.sock";
+    const env = { COLLIE_MUX: "", XDG_RUNTIME_DIR: "/run/user/7" };
+    const picked = await json(harness({ ready: true, answers: NAMED, env, files: { [core]: "" }, host: hostFor("linux") }));
+    expect(picked.mux).toBe("herdr-core");
+    expect(picked.muxPickedBecause).toContain(core);
+
+    const banner = (await statusBanner(harness({ ready: true, answers: NAMED, env, files: { [core]: "" }, host: hostFor("linux") }).deps)).join("\n");
+    expect(banner).toContain(`mux       herdr-core · no COLLIE_MUX, picked: a herdr-core socket at ${core}`);
+
+    // A Herdr TUI install on the host: the default, and the banner says why the core was passed over.
+    const tuiConfig = "/home/pat/.config/herdr/config.toml";
+    const files = { [core]: "", [tuiConfig]: "" };
+    const declined = await json(harness({ ready: true, answers: NAMED, env, files, host: hostFor("linux") }));
+    expect(declined.mux).toBe("herdr");
+    expect(declined.muxPickedBecause).toBeNull();
+    const said = (await statusBanner(harness({ ready: true, answers: NAMED, env, files, host: hostFor("linux") }).deps)).join("\n");
+    expect(said).toContain("mux       herdr · no COLLIE_MUX, the default; a herdr-core socket at");
+    expect(said).toContain(`this host has a Herdr TUI install (${tuiConfig})`);
+  });
+
   test("a stopped bridge says running false and still names where it would answer", async () => {
     const out = await json(harness({ ready: false, answers: NAMED }));
     expect(out.running).toBe(false);
@@ -2334,6 +2359,7 @@ describe("restart off Windows, golden", () => {
     "",
     "  ✓ Collie is running  ·  vunknown",
     `    service   ${service}`,
+    "    mux       herdr",
     "    local     http://127.0.0.1:8787",
     "    tailnet   http://127.0.0.1:8787 (Tailscale name unavailable)",
     // These fakes hold no paired device, so the banner names `collie pair` (ADR 0086).

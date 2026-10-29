@@ -217,9 +217,14 @@ COLLIE_MUX=herdr-core collie start
 collie hooks install claude   # History and Chat for Claude panes
 ```
 
-With `COLLIE_MUX` unset, Collie picks the core on its own when the Herdr TUI socket is missing and the
-core's socket is there. The bridge says why in one log line, and `collie start` writes the choice to
-`.env`. A machine that has the Herdr TUI socket keeps `herdr`. Name `herdr-core` to say otherwise.
+With `COLLIE_MUX` unset, Collie picks the core on its own only when the core's socket is there and
+the Herdr TUI is neither running nor installed. Installed means `~/.config/herdr/config.toml` or a
+`herdr.collie` folder under `~/.config/herdr/plugins/config/`. The bridge says why in one log line,
+also when it does not pick the core, and `collie start` writes the choice to `.env`. A machine with
+the Herdr TUI keeps `herdr`, even while the TUI is not running yet. Name `herdr-core` to say
+otherwise. A socket file left by a core that stopped is still picked on a machine without the TUI,
+and then reads as unreachable in the log and in `collie doctor`. `collie status` shows the
+multiplexer and, when nobody named it, why.
 
 The core can run several named sessions. Collie drives one of them. It dials the socket that `hc`
 would: `HC_SOCKET`, else `$XDG_RUNTIME_DIR/herdr-core/<HC_SESSION or default>.sock`. Pick another

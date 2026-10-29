@@ -660,15 +660,34 @@ export function loadContext(
   };
 }
 
-/** Does the ambient environment drive herdr-core, named or picked? Windows has no core. */
+/**
+ * Does the ambient environment drive herdr-core? `COLLIE_MUX` first, then a Herdr TUI install on
+ * this host (never the core), and only then the sockets. Windows has no core.
+ *
+ * The ambient environment is all there is here: this answers which config dir to use, so that dir's
+ * `.env` is not read yet. The unit passes `HERDR_PLUGIN_CONFIG_DIR`, so a supervised bridge never
+ * gets this far. A shell run on a TUI host has its install marker, so the socket being briefly gone
+ * (mid-update) does not stop Herdr being asked. Asking Herdr or not never moves a dir that holds a
+ * `.env`: Herdr's answer wins only where its `.env` exists, and that is the conventional dir anyway.
+ */
 export function drivesCore(
   env: Environment,
   home: string,
   exists: (path: string) => boolean = existsSync,
   host: Host = HOST,
+  list: (dir: string) => readonly string[] = listDirQuietly,
 ): boolean {
   if (host.platform === "win32") return false;
-  return drivesHerdrCore(env.HERDR_SOCKET_PATH?.trim() || defaultSocketPath(host, env, home), env, exists);
+  const tuiSocket = env.HERDR_SOCKET_PATH?.trim() || defaultSocketPath(host, env, home);
+  return drivesHerdrCore(tuiSocket, env, { home, exists, list });
+}
+
+function listDirQuietly(dir: string): readonly string[] {
+  try {
+    return readdirSync(dir);
+  } catch {
+    return [];
+  }
 }
 
 function askHerdrConfigDir(env: Environment, home: string): string | null {

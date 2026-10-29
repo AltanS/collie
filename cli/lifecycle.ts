@@ -7,7 +7,8 @@ import { collieVersion, type CliContext, type Environment, type EnvVars } from "
 import { binaryLayout, publishedRoot } from "./install-kind.ts";
 import { EXIT, type Io } from "./io.ts";
 import type { LinkReader } from "./link.ts";
-import { ensureMuxChosen } from "./mux.ts";
+import { ensureMuxChosen, pickHostOf } from "./mux.ts";
+import { resolveMux } from "../bridge/mux/herdr-core/pick.ts";
 import type { StatusView, Ui } from "./render.ts";
 import { cmdUnserve, crewModeOnDisk, type ServeDeps } from "./serve.ts";
 import { phoneBlocked, SETUP_CLOSING, setupFindings, setupLines } from "./setup-findings.ts";
@@ -1330,6 +1331,7 @@ export async function statusView(deps: LifecycleDeps, options: StatusOptions = {
   // this is the line that says WHICH Collie answered (the unit name on the next line agrees).
   if (facts.instance !== null) rows.push({ label: "instance", value: facts.instance });
   rows.push({ label: "service", value: facts.service });
+  rows.push({ label: "mux", value: muxRowValue(facts) });
   // F13: the address the bridge BOUND, not a hardcoded loopback string — see `localBridgeUrl`.
   // A peer's main listener is mutual TLS only (ADR 0013), so an `http://` address there never
   // answers. Name it as the crew link it is.
@@ -1391,6 +1393,14 @@ interface StatusFacts {
   /** `bridgeUrl`, asked only when Collie publishes the door itself and this is not a peer. */
   readonly tailnetUrl: string | null;
   readonly pairedDevices: number;
+  /** The multiplexer this instance drives, resolved as the bridge resolves it at boot. */
+  readonly mux: string;
+  /** Why {@link mux} was picked with no `COLLIE_MUX`, or `null` when it was named or is the default. */
+  readonly muxPickedBecause: string | null;
+  /** Why a herdr-core socket that is present was not picked, or `null`. */
+  readonly muxNotPickedBecause: string | null;
+  /** Did `COLLIE_MUX` name {@link mux}? */
+  readonly muxNamed: boolean;
 }
 
 async function statusFacts(deps: LifecycleDeps): Promise<StatusFacts> {
@@ -1427,7 +1437,27 @@ async function statusFacts(deps: LifecycleDeps): Promise<StatusFacts> {
     publicUrl: skipServe ? configuredPublicUrl(deps.ctx.env) : null,
     tailnetUrl: asksTailnet ? bridgeUrl(deps.exec, deps.ctx) : null,
     pairedDevices: crew === "peer" ? 0 : pairedRegistryOf(deps.files, deps.ctx.stateDir).devices.length,
+    ...statusMux(deps),
   };
+}
+
+/** The mux rows' facts: `COLLIE_MUX`, or the bridge's own pick (`bridge/mux/herdr-core/pick.ts`). */
+function statusMux(deps: LifecycleDeps): Pick<StatusFacts, "mux" | "muxPickedBecause" | "muxNotPickedBecause" | "muxNamed"> {
+  const resolved = resolveMux(deps.ctx.socket, deps.ctx.env, pickHostOf(deps), deps.host.platform);
+  return {
+    mux: resolved.mux,
+    muxPickedBecause: resolved.pickedBecause === "" ? null : resolved.pickedBecause,
+    muxNotPickedBecause: resolved.notPickedBecause === "" ? null : resolved.notPickedBecause,
+    muxNamed: (deps.ctx.env.COLLIE_MUX ?? "").trim() !== "",
+  };
+}
+
+/** The banner's `mux` row: the name, and why when nobody named it. */
+function muxRowValue(facts: StatusFacts): string {
+  if (facts.muxNamed) return facts.mux;
+  if (facts.muxPickedBecause !== null) return `${facts.mux} · no COLLIE_MUX, picked: ${facts.muxPickedBecause}`;
+  const why = facts.muxNotPickedBecause === null ? "" : `; ${facts.muxNotPickedBecause}`;
+  return `${facts.mux} · no COLLIE_MUX, the default${why}`;
 }
 
 /**
@@ -1447,6 +1477,10 @@ export interface StatusJson {
   readonly crew: CrewMode;
   readonly service: string;
   readonly pairedDevices: number;
+  /** The multiplexer this instance drives (`COLLIE_MUX`, or the bridge's own pick). */
+  readonly mux: string;
+  /** Why {@link mux} was picked with no `COLLIE_MUX`; `null` when it was named or is the default. */
+  readonly muxPickedBecause: string | null;
 }
 
 export function statusJson(facts: StatusFacts): StatusJson {
@@ -1462,6 +1496,8 @@ export function statusJson(facts: StatusFacts): StatusJson {
     crew: facts.crew,
     service: facts.service,
     pairedDevices: facts.pairedDevices,
+    mux: facts.mux,
+    muxPickedBecause: facts.muxPickedBecause,
   };
 }
 

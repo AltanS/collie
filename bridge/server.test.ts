@@ -191,6 +191,7 @@ function cfg(overrides: Partial<Config> = {}): Config {
     mux: "herdr",
     muxEndpoint: "/tmp/herdr.sock",
     muxPickedBecause: "",
+    muxNotPickedBecause: "",
     tmuxBin: "",
     zellijBin: "",
     ternBin: "",

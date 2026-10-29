@@ -770,6 +770,21 @@ describe("refreshRegistry", () => {
     expect(picked.exec.calls.some((c) => c.startsWith("herdr"))).toBe(false);
   });
 
+  test("a Herdr TUI host whose socket is briefly gone keeps its herdr plugin steps", () => {
+    const core = "/run/user/501/herdr-core/default.sock";
+    const marker = harness({ answers: LINKED, env: { XDG_RUNTIME_DIR: "/run/user/501" } });
+    marker.files.write(core, "");
+    marker.files.write(`${marker.deps.ctx.home}/.config/herdr/config.toml`, "");
+    refreshRegistry(marker.deps);
+    expect(marker.exec.calls).toContain(`herdr plugin link ${ROOT}`);
+
+    // The instance's own COLLIE_MUX (its .env, merged into ctx.env) decides before any marker.
+    const pinned = harness({ answers: LINKED, env: { XDG_RUNTIME_DIR: "/run/user/501", COLLIE_MUX: "herdr" } });
+    pinned.files.write(core, "");
+    refreshRegistry(pinned.deps);
+    expect(pinned.exec.calls).toContain(`herdr plugin link ${ROOT}`);
+  });
+
   test("is best-effort: no herdr, or a herdr that refuses, never fails the update", () => {
     const none = harness({ absent: ["herdr"], answers: LINKED });
     refreshRegistry(none.deps);

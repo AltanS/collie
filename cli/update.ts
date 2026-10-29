@@ -996,7 +996,13 @@ function detachOnto(deps: UpdateDeps, git: (args: readonly string[]) => number, 
  */
 export function drivesCore(deps: Pick<UpdateDeps, "ctx" | "files" | "host">): boolean {
   if (deps.host.platform === "win32") return false;
-  return drivesHerdrCore(deps.ctx.socket, deps.ctx.env, (path) => deps.files.exists(path));
+  // `ctx.env` is the merged one, so the instance's own `COLLIE_MUX` (its `.env`, its unit) decides
+  // first; then a Herdr TUI install; only then the sockets (`bridge/mux/herdr-core/pick.ts`).
+  return drivesHerdrCore(deps.ctx.socket, deps.ctx.env, {
+    home: deps.ctx.home,
+    exists: (path) => deps.files.exists(path),
+    list: (dir) => deps.files.list(dir),
+  });
 }
 
 /** The line that refreshes a checkout that is not a git checkout: Herdr's installer, or Collie's own. */

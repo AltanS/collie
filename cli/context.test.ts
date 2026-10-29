@@ -557,6 +557,20 @@ describe("config dir on a herdr-core host", () => {
     expect(drivesCore({ XDG_RUNTIME_DIR: "/run/user/7" }, HOME, () => true, linux)).toBe(false);
   });
 
+  test("drivesCore: a Herdr TUI install is never the core, even while its socket is gone (mid-update)", () => {
+    const linux = hostFor("linux");
+    const core = "/run/user/7/herdr-core/default.sock";
+    const env = { XDG_RUNTIME_DIR: "/run/user/7" };
+    const tuiConfig = `${HOME}/.config/herdr/config.toml`;
+    const plugins = `${HOME}/.config/herdr/plugins/config`;
+    const none = (): readonly string[] => [];
+    expect(drivesCore(env, HOME, (p) => p === core || p === tuiConfig, linux, none)).toBe(false);
+    expect(drivesCore(env, HOME, (p) => p === core, linux, (dir) => (dir === plugins ? ["herdr.collie"] : []))).toBe(false);
+    // The instance's own name still wins over the marker.
+    expect(drivesCore({ ...env, COLLIE_MUX: "herdr-core" }, HOME, (p) => p === core || p === tuiConfig, linux, none)).toBe(true);
+    expect(drivesCore(env, HOME, (p) => p === core, linux, none)).toBe(true);
+  });
+
   test("drivesCore: Windows has no core, named or picked", () => {
     const win = hostFor("win32");
     expect(drivesCore({ COLLIE_MUX: "herdr-core" }, HOME, () => true, win)).toBe(false);

@@ -79,6 +79,26 @@ describe("the probe", () => {
     expect(probeMuxes(host({ env, files: { [core]: "", [SOCKET]: "" } }).deps).map((s) => s.mux)).toEqual(["herdr"]);
   });
 
+  test("herdr-core is not seen on a host with a Herdr TUI install, even while its socket is gone", () => {
+    const core = "/run/user/7/herdr-core/default.sock";
+    const env = { XDG_RUNTIME_DIR: "/run/user/7" };
+    const tuiConfig = `${HOME}/.config/herdr/config.toml`;
+    const pluginDir = `${HOME}/.config/herdr/plugins/config/herdr.collie/.env`;
+    expect(probeMuxes(host({ env, files: { [core]: "", [tuiConfig]: "" } }).deps)).toEqual([]);
+    expect(probeMuxes(host({ env, files: { [core]: "", [pluginDir]: "" } }).deps)).toEqual([]);
+  });
+
+  test("a start that refuses there names the core socket it stood down from, and the line that drives it", async () => {
+    const core = "/run/user/7/herdr-core/default.sock";
+    const tuiConfig = `${HOME}/.config/herdr/config.toml`;
+    const h = host({ env: { XDG_RUNTIME_DIR: "/run/user/7" }, files: { [core]: "", [tuiConfig]: "" } });
+    expect(await ensureMuxChosen(h.deps)).toBe(EXIT.FAIL);
+    const said = h.io.stderr.join("\n");
+    expect(said).toContain(`Also here: a herdr-core socket at ${core}. It was not picked: this host has a Herdr TUI install (${tuiConfig}).`);
+    expect(said).toContain("COLLIE_MUX=herdr-core collie start");
+    expect(h.deps.ctx.env.COLLIE_MUX).toBeUndefined();
+  });
+
   test("tmux is a running server, asked for with the one listing that never starts one", () => {
     const h = host({ files: { [TMUX_BIN]: "" }, answers: TMUX_RUNNING });
     expect(probeMuxes(h.deps)).toEqual([

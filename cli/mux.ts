@@ -2,7 +2,7 @@ import { join } from "node:path";
 
 import { HERDR_MUX } from "../bridge/mux/herdr/adapter.ts";
 import { HERDR_CORE_MUX, herdrCoreSocketFor } from "../bridge/mux/herdr-core/adapter.ts";
-import { herdrCoreInPlaceOfTui } from "../bridge/mux/herdr-core/pick.ts";
+import { herdrCoreInPlaceOfTui, lookForHerdrCore, type PickHost } from "../bridge/mux/herdr-core/pick.ts";
 import { buildMuxRegistry, muxEndpointVar, muxNames } from "../bridge/mux/registry.ts";
 import { TMUX_MUX } from "../bridge/mux/tmux/adapter.ts";
 import { resolveTmuxBinary, tmuxServerArgs, tmuxServerLabel } from "../bridge/mux/tmux/exec.ts";
@@ -94,16 +94,22 @@ function probeHerdr(deps: MuxProbeDeps): MuxSighting | null {
 }
 
 /**
- * herdr-core, seen only where the Herdr TUI is not: no Herdr socket, and a herdr-core socket where
- * `hc` would dial (`bridge/mux/herdr-core/pick.ts`, the bridge asks the same function). A box with
- * both is a Herdr TUI box, as it always was, and `COLLIE_MUX=herdr-core` is how it says otherwise.
+ * herdr-core, seen only where the Herdr TUI is not: no Herdr socket, no Herdr TUI install, and a
+ * herdr-core socket where `hc` would dial (`bridge/mux/herdr-core/pick.ts`, the bridge asks the same
+ * function). A box with both is a Herdr TUI box, as it always was, and `COLLIE_MUX=herdr-core` is
+ * how it says otherwise.
  * The endpoint stays the operator's own `COLLIE_MUX_ENDPOINT_HERDR_CORE`, or empty for the core's
  * default, so `HC_SESSION` keeps working after the choice is written down.
  */
 function probeHerdrCore(deps: MuxProbeDeps): MuxSighting | null {
-  const core = herdrCoreInPlaceOfTui(deps.ctx.socket, deps.ctx.env, (path) => deps.files.exists(path));
+  const core = herdrCoreInPlaceOfTui(deps.ctx.socket, deps.ctx.env, pickHostOf(deps));
   if (core === null) return null;
   return { mux: core.mux, endpoint: (deps.ctx.env[muxEndpointVar(core.mux)] ?? "").trim(), evidence: core.evidence };
+}
+
+/** The herdr-core pick's view of this host, through the verb's own file seam. */
+export function pickHostOf(deps: Pick<MuxProbeDeps, "ctx" | "files">): PickHost {
+  return { home: deps.ctx.home, exists: (path) => deps.files.exists(path), list: (dir) => deps.files.list(dir) };
 }
 
 function probeTmux(deps: MuxProbeDeps): MuxSighting | null {
@@ -308,7 +314,13 @@ export function refusedMux(
 }
 
 function refusal(deps: MuxChoiceDeps, found: readonly MuxSighting[]): MuxDecision {
-  return { kind: "refused", ...refusedMux(found, deps.ctx.configDir, deps.ctx.env) };
+  const refused = refusedMux(found, deps.ctx.configDir, deps.ctx.env);
+  // A herdr-core socket the pick stood down from (a Herdr TUI install is here) is not a sighting, but
+  // an operator who runs herdr-app on such a host needs the one line that drives it.
+  const look = lookForHerdrCore(deps.ctx.socket, deps.ctx.env, pickHostOf(deps));
+  if (look.kind !== "declined" || deps.files.exists(deps.ctx.socket)) return { kind: "refused", ...refused };
+  const seen = `Also here: a herdr-core socket at ${look.socket}. It was not picked: ${look.reason}. To drive it:`;
+  return { kind: "refused", ...refused, lines: [...refused.lines, "", seen, `  ${fixCommand(HERDR_CORE_MUX)}`] };
 }
 
 /** The interactive half: print what was found, take a number or a name, or `null` for no answer. */
