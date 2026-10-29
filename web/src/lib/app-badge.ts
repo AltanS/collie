@@ -11,7 +11,7 @@
 //
 // Imported by both sides, so this module holds no state and has no side effect at load.
 
-import { asJsonNumber, parseJsonObject } from "./json";
+import { asJsonNumber, asJsonString, parseJsonObject } from "./json";
 
 /** The Badging API's two calls, optional because most browsers have neither. */
 export interface BadgeTarget {
@@ -44,7 +44,9 @@ export interface BadgePush {
  * kind of push, or a herd push from a bridge that predates the field, which must not zero a slot.
  */
 export function slotCount(push: BadgePush): number | undefined {
-  if (push.tag === undefined || !push.tag.startsWith(HERD_TAG)) return undefined;
+  // A push body is parsed JSON, so `tag` can be any type: only a string can name a herd slot.
+  const tag = asJsonString(push.tag);
+  if (tag === undefined || !tag.startsWith(HERD_TAG)) return undefined;
   if (push.type === "clear") return 0;
   if (push.type !== undefined) return undefined;
   const n = push.badge;

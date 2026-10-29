@@ -77,6 +77,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **The service worker ignores a push with a malformed tag instead of failing the push.** A push whose tag is missing, null or not a string no longer throws out of the push handler, so the notification still shows and the icon count is left as it was.
 - **`collie doctor` prints every row in full at any width.** The plain output sizes the label column to the longest check id in its section, wraps a long value at the terminal width (80 when piped) with its next lines under the value, and breaks a path longer than the line at the edge. The terminal view wraps its detail and remedy the same way and never cuts one.
 - **The done line no longer repeats when a crew's machines share a pane id.** Two machines can both
   hold `w6:p1`, and the line that says an agent finished compared panes by that bare id, so the pair

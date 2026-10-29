@@ -38,7 +38,7 @@ describe("slotCount", () => {
     for (const badge of ['"2"', '""', "null", "true", "false", "{}", "[]", "[2]", '"NaN"']) {
       expect(slotCount(wire(`{"tag":"collie:herd","badge":${badge}}`))).toBeUndefined();
     }
-    for (const body of ["{}", "[]", '{"badge":2}', '{"type":"clear"}']) {
+    for (const body of ["{}", "[]", '{"badge":2}', '{"type":"clear"}', '{"tag":5}', '{"tag":null,"badge":2}', '{"tag":5,"type":"clear"}', '{"tag":["collie:herd"],"badge":1}']) {
       expect(() => slotCount(wire(body))).not.toThrow();
       expect(slotCount(wire(body))).toBeUndefined();
     }

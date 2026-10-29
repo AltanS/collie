@@ -6,6 +6,7 @@ import { clientsClaim } from "workbox-core";
 import { decidePush, notificationPath, type NotifData, type PushPayload } from "./lib/push-decision";
 import { askInApp, openNotificationTarget, type OpenOutcome, type OpenTargetClient } from "./lib/notification-open";
 import { recordSlot, showBadge, slotCount } from "./lib/app-badge";
+import { asJsonString } from "./lib/json";
 import { readPushTitles } from "./lib/push-title-store";
 import { FONT_URLS, navigationNetworkOnlyUnder } from "./lib/sw-routes";
 import { stripMount, sttCacheName, sttCopyToStore, sttStorable, sttSweepKeeps } from "./lib/stt-cache";
@@ -233,9 +234,10 @@ async function handlePush(event: PushEvent): Promise<void> {
 
   // Before the decision, because a push a visible tab suppresses still moves the icon's count.
   const count = slotCount(payload);
-  if (count !== undefined && payload.tag !== undefined) {
+  const slotTag = asJsonString(payload.tag);
+  if (count !== undefined && slotTag !== undefined) {
     try {
-      await showBadge(self.navigator, await recordSlot(self.caches, self.location.origin, MOUNT, payload.tag, count));
+      await showBadge(self.navigator, await recordSlot(self.caches, self.location.origin, MOUNT, slotTag, count));
     } catch {
       // Cache Storage refused: the notification below matters more than the count.
     }
