@@ -1124,6 +1124,8 @@ describe("real corpus — pinned so any change to the walk shows up as a diff", 
     { fixture: "v2304-ask-two-paragraph--w80", statusRows: 0, draft: null, stripped: 0 },
     // Claude Code 2.1.312: a two-paragraph paste with an upload path kept as text on its own row (M62 field case, 2026-10-29).
     { fixture: "v2312-draft-upload-path--w100", statusRows: 2, draft: "also mobile looks off /home/ope", stripped: 10 },
+    // Claude Code 2.1.312: a fresh pane's usage row under the footer (`You've used 75% of your weekly limit`, live check 2026-10-30).
+    { fixture: "v2312-weekly-limit-row--w120", statusRows: 2, draft: null, stripped: 6 },
     { fixture: "v2304-select-preview-cjk", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "v2304-select-preview-cjk-moved", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "wizard-multiselect-checked", statusRows: 0, draft: null, stripped: 0 },

@@ -1814,6 +1814,12 @@ export interface WholePaste {
    * read back with the path as text, and never submitted). Equal to `lines` when `images` is 0.
    */
   readonly literal: readonly string[];
+  /**
+   * False for a paste the harness never folds into its collapse form: a lone upload path
+   * ({@link uploadAlone}) is one short line, far under {@link WHOLE_PASTE_MIN_CHARS}, so a fold in
+   * its box is not the typed text. Absent: the paste may fold.
+   */
+  readonly folds?: false;
 }
 
 /**
@@ -1833,7 +1839,8 @@ function isImageFile(path: string): boolean {
 /**
  * Whether a text goes as ONE paste, and what the box then shows of it; null for the write per line.
  * Only where the profile measured it (`paste.block`), only for a message of more than one line or of
- * more than {@link WHOLE_PASTE_MIN_CHARS} on one line (a dictation is often one long line), and never
+ * more than {@link WHOLE_PASTE_MIN_CHARS} on one line (a dictation is often one long line), or for a
+ * lone upload path of any length ({@link uploadAlone}), and never
  * for a text that starts with a reserved lead: a slash command, a shell line or a file mention keeps
  * the write it has always had, so the harness reads the lead as typed. With the profile's image
  * token, the pieces that are Collie's own uploads (the shape the web adapter's `liftedPaste` reads,
@@ -1845,6 +1852,8 @@ function isImageFile(path: string): boolean {
 export function wholePaste(match: ProfileMatch | null, lines: readonly string[], imageFile: (path: string) => boolean = isImageFile): WholePaste | null {
   const paste = match?.profile.paste;
   if (match === null || paste?.block !== true) return null;
+  const alone = uploadAlone(match, lines, imageFile);
+  if (alone !== null) return alone;
   const text = lines.join("\n");
   if (lines.length === 1 && text.length <= WHOLE_PASTE_MIN_CHARS) return null;
   if (reservedLead(lines[0] ?? "", match.profile.reservedLeads) !== null) return null;
@@ -1854,6 +1863,26 @@ export function wholePaste(match: ProfileMatch | null, lines: readonly string[],
   const kept = pieces.filter((piece) => !(isUploadImagePath(piece) && imageFile(piece.trim())));
   const images = pieces.length - kept.length;
   return { images, image, lines: images === 0 ? lines : kept.join("\n").split("\n"), literal: lines };
+}
+
+/**
+ * A message that is nothing but the path of one saved upload (a screenshot sent with no words): the
+ * whole text, trimmed, is one piece in Collie's upload shape ({@link isUploadImagePath}, the shape
+ * `startsWithUploadPath` reads for the reserved lead) and still a file on this disk. Its one paste
+ * is the whole paste, so the harness may attach it: Claude Code 2.1.312 shows `[Image #1]` and
+ * nothing else (live check 2026-10-30, release 1.25.0: a 94-character path ended
+ * typed_not_submitted, `mismatch`, because one short line was compared only as its literal text).
+ * The image form holds the token and no text; the literal form (`literal`) holds the path as typed,
+ * for a version that keeps it as text. Either form is exactly the typed text; anything else fails.
+ * Null for any other text, and on a profile with no image token. Not tied to `pasteBlock`: one line
+ * is one paste on every multiplexer (the write per line), so tmux reads it the same way.
+ */
+export function uploadAlone(match: ProfileMatch | null, lines: readonly string[], imageFile: (path: string) => boolean = isImageFile): WholePaste | null {
+  const image = match?.profile.paste?.image;
+  if (image === undefined || lines.length !== 1) return null;
+  const path = (lines[0] ?? "").trim();
+  if (pastePieces(path).length !== 1 || !isUploadImagePath(path) || !imageFile(path)) return null;
+  return { images: 1, image: new RegExp(image, "uy"), lines: [""], literal: lines, folds: false };
 }
 
 /**
@@ -1950,7 +1979,7 @@ function boxMatchesForm(box: string, prefix: string, lines: readonly string[], c
     };
     for (let i = 0; i < whole.images; i++) if (take(whole.image) === null) return false;
     const after = q;
-    const m = take(collapse);
+    const m = whole.folds === false ? null : take(collapse);
     const count = m?.groups?.lines;
     if (m !== null && q === squeezed.length && (count === undefined ? lines.length === 1 : Number(count) === lines.length - 1)) return true;
     p = at[after]!;
@@ -3590,8 +3619,9 @@ export class SendProtocol {
     // A Replace whose text starts with a reserved lead empties the box and then sends a command, so it is one from here on.
     if ((request.mode === "submit" || request.mode === "discard" || request.mode === "replace") && reservedLead(lines[0] ?? "", leads) !== null) state.command = true;
     // A draft that went as one paste is read the way the send read it.
-    if ((request.mode === "submit" || request.mode === "discard") && !state.command && this.deps.mux.pasteBlock !== undefined) {
-      state.whole = wholePaste(match, lines, this.deps.imageFile);
+    // A lone upload path is one paste on every multiplexer, so its image form is read without `pasteBlock` too (uploadAlone).
+    if ((request.mode === "submit" || request.mode === "discard") && !state.command) {
+      state.whole = this.deps.mux.pasteBlock !== undefined ? wholePaste(match, lines, this.deps.imageFile) : uploadAlone(match, lines, this.deps.imageFile);
     }
     const { whole } = state;
     // On a box at its scroll height the text Collie typed is compared by the rows in view (boxHolds).
@@ -3746,7 +3776,10 @@ export class SendProtocol {
     // The probe showed in the box and went again: the starting harness reads keys, its window ends.
     if (state.starting && state.probed) this.noteFramed(state);
 
-    if (!state.command && !state.noticeKey && this.deps.mux.pasteBlock !== undefined) state.whole = wholePaste(match, lines, this.deps.imageFile);
+    if (!state.command && !state.noticeKey) {
+      // A lone upload path is one paste on every multiplexer (the write per line), so the harness may attach it there too (uploadAlone).
+      state.whole = this.deps.mux.pasteBlock !== undefined ? wholePaste(match, lines, this.deps.imageFile) : uploadAlone(match, lines, this.deps.imageFile);
+    }
     await this.write(state, lines);
     this.lap(state, "write");
 

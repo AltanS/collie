@@ -2026,6 +2026,22 @@
   }
  },
  {
+  "fixture": "claude--v2312-weekly-limit-row--w120.txt",
+  "frame": {
+   "top": 4,
+   "prompt": 5,
+   "bottom": 6,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 7,
+    "last": 8
+   },
+   "footer": null
+  }
+ },
+ {
   "fixture": "claude--wizard-multiselect-checked.txt",
   "frame": null
  },

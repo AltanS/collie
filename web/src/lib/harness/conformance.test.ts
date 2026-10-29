@@ -125,6 +125,8 @@ const NEUTRAL = new Set([
   "claude--v2301-working-queued-message--w100.txt",
   // Claude Code 2.1.312: a two-paragraph draft with an upload path kept as text (2026-10-30 lab). A draft, no dialog.
   "claude--v2312-draft-upload-path--w100.txt",
+  // Claude Code 2.1.312: a fresh empty box with the usage row under its footer (live check 2026-10-30). No dialog.
+  "claude--v2312-weekly-limit-row--w120.txt",
   // Claude Code 2.1.309 after Escape and after a refused permission (live rerun 2026-10-23):
   // `Interrupted · What should Claude do instead?` over an empty box. An ordinary box, no dialog.
   "claude--v2-1-309-interrupted--w120.txt",

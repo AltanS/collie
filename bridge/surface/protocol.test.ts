@@ -17,7 +17,7 @@ import { findInputFrame } from "../../web/src/lib/surface/frame.ts";
 import { surfaceOfScreen } from "../../web/src/lib/surface/fold.ts";
 import { isFree, type Surface, type SurfaceTurn } from "../../web/src/lib/surface/surface.ts";
 import { KeyGate } from "./key-gate.ts";
-import { BOUNDS, BOX_CHANGED, boxMatches, COMMAND_SETTLE_MS, boxMatchesTail, commandBoxMatches, GENERIC_PROBE, wholePaste, LOCK_BOUND_MS, locateText, neverHeldEntry, probeLanding, RowRing, runsInTurnEntry, SendProtocol, SessionLocks, STALE_SCREEN, steadyRow, type SendDeps, type SendRequest } from "./protocol.ts";
+import { BOUNDS, BOX_CHANGED, boxMatches, COMMAND_SETTLE_MS, boxMatchesTail, commandBoxMatches, GENERIC_PROBE, uploadAlone, wholePaste, LOCK_BOUND_MS, locateText, neverHeldEntry, probeLanding, RowRing, runsInTurnEntry, SendProtocol, SessionLocks, STALE_SCREEN, steadyRow, type SendDeps, type SendRequest } from "./protocol.ts";
 import { RequestStore } from "./requests.ts";
 import { SurfaceLedger } from "./counters.ts";
 import { HoldStore } from "./holds.ts";
@@ -264,7 +264,13 @@ class FakePane {
     const held = this.beforeWrite?.(this, `paste:${text}`);
     if (held !== undefined) return held.then(() => muxAck());
     this.calls.push(`paste:${text}`);
-    this.take(text, true);
+    // A paste that is one image file and nothing else is attached, on 2.1.305 and 2.1.312 alike.
+    if (this.imageFiles.includes(text.trim()) && this.dialog === null && !this.swallow) {
+      this.box += `[Image #${String(++this.pastes)}]`;
+      this.bump();
+    } else {
+      this.take(text, true);
+    }
     this.afterInput?.(this, `paste:${text}`);
     return Promise.resolve(muxAck());
   };
@@ -714,6 +720,67 @@ describe("a send that goes through", () => {
     const lines = Array.from({ length: 10 }, (_, i) => `line ${String(i)}`);
     expect((await send([...lines.slice(0, 5), shot, ...lines.slice(5)].join("\n"))).receipt?.outcome).toBe("sent");
     expect(pane.transcript.at(-1)).toBe("> [Pasted text #1 +10 lines]");
+  });
+
+  test("a message that is only an upload path is sent when Claude Code attaches it as [Image #1] (2.1.312, live check 2026-10-30), on tmux and on Herdr", async () => {
+    const shot = "/home/me/.local/state/collie/uploads/_0-mvu6nr4p-8ab21b25.png";
+    for (const block of [false, true]) {
+      const pane = new FakePane("claude");
+      pane.imageFiles = [shot];
+      pane.imagesOnlyAlone = true;
+      const { send } = rig({ block, pane, imageFiles: [shot] });
+      expect((await send(shot)).receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+      expect(pane.transcript.at(-1)).toBe("> [Image #1]");
+      expect(pane.calls).toEqual(block ? [`block:${shot}`] : [`paste:${shot}`]);
+    }
+  });
+
+  test("a message that is only an upload path is sent when the harness keeps the path as text", async () => {
+    const shot = "/home/me/.local/state/collie/uploads/_0-mvu6nr4p-8ab21b25.png";
+    for (const block of [false, true]) {
+      // The pane attaches nothing; the protocol still knows the file is on disk.
+      const { pane, send } = rig({ block, imageFiles: [shot] });
+      expect((await send(shot)).receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+      expect(pane.transcript.at(-1)).toBe(`> ${shot}`);
+    }
+  });
+
+  test("a message that is only an upload path stays typed when the box holds anything but the token or the path", async () => {
+    const shot = "/home/me/.local/state/collie/uploads/_0-mvu6nr4p-8ab21b25.png";
+    const pane = new FakePane("claude");
+    pane.imageFiles = [shot];
+    // The harness attaches the path and adds a word: neither exact form.
+    pane.afterInput = (p, what) => {
+      if (what.startsWith("paste:")) p.box += " x";
+    };
+    const { send } = rig({ pane, imageFiles: [shot] });
+    expect((await send(shot)).receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "mismatch" });
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+
+  test("an upload path that is no file on this disk is compared as text only: an attached token leaves the send typed", async () => {
+    const shot = "/home/me/.local/state/collie/uploads/_0-mvu6nr4p-8ab21b25.png";
+    const pane = new FakePane("claude");
+    pane.imageFiles = [shot];
+    const { send } = rig({ pane });
+    expect((await send(shot)).receipt?.outcome).toBe("typed_not_submitted");
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+
+  test("a short one-line message with an upload path inside is compared as its literal text only", async () => {
+    const shot = "/home/me/.local/state/collie/uploads/_0-mvu6nr4p-8ab21b25.png";
+    const text = `menu should be centered ${shot}`;
+    // 2.1.312 keeps a path among other text as text: sent.
+    const kept = rig({ imageFiles: [shot] });
+    expect((await kept.send(text)).receipt).toMatchObject({ outcome: "sent", keys: ["Enter"] });
+    // A box that shows the image form of that text is not what 2.1.312 draws there: no Enter.
+    const pane = new FakePane("claude");
+    pane.afterInput = (p, what) => {
+      if (what.startsWith("paste:")) p.box = "[Image #1]menu should be centered";
+    };
+    const { send } = rig({ pane, imageFiles: [shot] });
+    expect((await send(text)).receipt?.outcome).toBe("typed_not_submitted");
+    expect(pane.keysSeen).not.toContain("Enter");
   });
 
   test("Discard finds and clears a box that holds the image token and the folded paste", async () => {
@@ -3554,6 +3621,41 @@ describe("pure helpers", () => {
     const none = { images: 0, image, lines: ["see", "b"], literal: ["see", "b"] };
     expect(boxMatches("[Pasted text #1 +1 lines]", "", none.lines, collapse, none)).toBe(true);
     expect(boxMatches("[Pasted text #1 +2 lines]", "", none.lines, collapse, none)).toBe(false);
+  });
+
+  test("uploadAlone: a lone upload path takes the image form or the literal path, nothing else", () => {
+    const match = profileFor("claude", "2.1.312", { log: () => undefined });
+    const collapse = /\[Pasted text #(?<n>\d+)(?: \+(?<lines>\d+) lines)?\]/uy;
+    const shot = "/srv/collie/uploads/_0-mvu6nr4p-8ab21b25.png";
+    const windows = String.raw`C:\Users\Me Too\collie\uploads\w1-mf3x9q-0a1b2c3d.PNG`;
+    const isShot = (path: string): boolean => path === shot || path === windows || path === "/srv/shots/a.png";
+    const alone = uploadAlone(match, [shot], isShot);
+    expect(alone).toMatchObject({ images: 1, lines: [""], literal: [shot], folds: false });
+    // wholePaste reads it the same way, under its 800-character floor.
+    expect(wholePaste(match, [shot], isShot)).toMatchObject({ images: 1, lines: [""], literal: [shot] });
+    expect(wholePaste(match, [`  ${shot} `], isShot)).toMatchObject({ images: 1 });
+    expect(uploadAlone(match, [windows], isShot)).toMatchObject({ images: 1 });
+    for (const box of ["[Image #1]", " [Image #12] ", "[Ima ge #1]", shot, `${shot.slice(0, 40)} ${shot.slice(40)}`]) {
+      expect(boxMatches(box, "", alone?.lines ?? [], collapse, alone)).toBe(true);
+    }
+    for (const box of ["", "[Image #1] x", "[Image #1][Image #2]", `[Image #1]${shot}`, "[Pasted text #1]", "[Image #1][Pasted text #2]", `${shot} x`, shot.slice(1)]) {
+      expect(boxMatches(box, "", alone?.lines ?? [], collapse, alone)).toBe(false);
+    }
+    // Add to a draft: the draft, then either form.
+    expect(boxMatches("draft [Image #1]", "draft", alone?.lines ?? [], collapse, alone)).toBe(true);
+    expect(boxMatches(`draft ${shot}`, "draft", alone?.lines ?? [], collapse, alone)).toBe(true);
+    // Not alone: words around the path, two lines, a missing file, another image path, no image token.
+    expect(uploadAlone(match, [`see ${shot}`], isShot)).toBeNull();
+    expect(wholePaste(match, [`see ${shot}`], isShot)).toBeNull();
+    expect(uploadAlone(match, [shot, "b"], isShot)).toBeNull();
+    expect(uploadAlone(match, ["/srv/collie/uploads/_0-mvu6nr4p-ffffffff.png"], isShot)).toBeNull();
+    expect(uploadAlone(match, ["/srv/shots/a.png"], isShot)).toBeNull();
+    expect(uploadAlone(match, ["/srv/collie/uploads/_0-mvu6nr4p-8ab21b25.txt"], () => true)).toBeNull();
+    expect(uploadAlone(match === null ? null : { ...match, profile: { ...match.profile, paste: { bracketed: true } } }, [shot], isShot)).toBeNull();
+    expect(uploadAlone(null, [shot], isShot)).toBeNull();
+    // A path inside a short line is compared as written: the literal text, never an image form.
+    expect(boxMatches(`see ${shot}`, "", [`see ${shot}`], collapse, null)).toBe(true);
+    expect(boxMatches("[Image #1]see", "", [`see ${shot}`], collapse, null)).toBe(false);
   });
 
   test("wholePaste: only a profile that measured it, only a long or multi-line text without a reserved lead, upload images taken off", () => {
@@ -10432,5 +10534,57 @@ describe("a probed message into a tall Codex 0.166.0 pane (harness lab drift, 20
     expect(isHint("  ⚠ 1 warning · f2 to view the diff")).toBe(false);
     expect(isHint("  GPT-6.1-Sol default · ~/project")).toBe(false);
     expect(isHint("  ⚠ Heads up, you have less than 5% of your weekly limit left")).toBe(false);
+  });
+});
+
+// Live check 2026-10-30, Claude Code 2.1.312 over tmux (release 1.25.0): a fresh pane draws a usage
+// row under the footer (claude--v2312-weekly-limit-row--w120) and drops it once the box holds two
+// rows. The rows under the box went from 2 to 1, and the send ended typed_not_submitted (changed),
+// keys probe, Backspace, ctrl+j, ctrl+j. The profile names the row a hint (`idle.volatile.below.hints`).
+describe("the usage-limit row under a fresh Claude Code box (2.1.312)", () => {
+  const FOOTER = "  ⏸ manual mode on · ? for shortcuts";
+  const LIMIT = "   You've used 75% of your weekly limit · resets Nov 4, 2am (Europe/Lisbon) · /usage-credits to keep using Claude Code";
+  /** The row stands at S0 and through the probe, and goes when the box grows to a second row, as live. */
+  const fresh = (pane: FakePane): void => {
+    pane.status = [FOOTER, LIMIT];
+    pane.afterInput = (p) => {
+      p.status = p.box === "" ? [FOOTER, LIMIT] : p.box.includes("\n") ? ["  ⏸ manual mode on                ctrl+g to edit in VS Code"] : ["  ⏸ manual mode on", LIMIT];
+    };
+  };
+  const text = "also mobile looks off\n\nmenu should be centered";
+
+  test("the row present at S0 and gone after the probe: sent", async () => {
+    const pane = new FakePane("claude");
+    fresh(pane);
+    const { send } = rig({ pane });
+    expect((await send(text)).receipt).toMatchObject({ outcome: "sent", keys: ["ctrl+j", "ctrl+j", "Enter"] });
+    expect(pane.transcript.at(-1)).toBe("> also mobile looks off  menu should be centered");
+  });
+
+  test("the row gone at the first character: sent", async () => {
+    const pane = new FakePane("claude");
+    pane.status = [FOOTER, LIMIT];
+    pane.statusWithText = ["  ⏸ manual mode on"];
+    const { send } = rig({ pane });
+    expect((await send("hello there")).receipt).toMatchObject({ outcome: "sent" });
+  });
+
+  test("without the profile's hint the same pair ends typed_not_submitted (changed): the defect", async () => {
+    const pane = new FakePane("claude");
+    fresh(pane);
+    const { send } = rig({ pane, edit: (profile) => ({ ...profile, idle: { ...profile.idle, volatile: { ...profile.idle.volatile, below: { ...profile.idle.volatile.below, hints: [] } } } }) });
+    expect((await send(text)).receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "changed" });
+    expect(pane.keysSeen).not.toContain("Enter");
+  });
+
+  test("a row that is no hint still counts: a new row under the box keeps Enter back", async () => {
+    const pane = new FakePane("claude");
+    fresh(pane);
+    pane.afterInput = (p) => {
+      p.status = p.box.includes("\n") ? [FOOTER, LIMIT, "  Do you want to proceed?"] : [FOOTER, LIMIT];
+    };
+    const { send } = rig({ pane });
+    expect((await send(text)).receipt?.outcome).toBe("typed_not_submitted");
+    expect(pane.keysSeen).not.toContain("Enter");
   });
 });
