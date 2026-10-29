@@ -23,6 +23,12 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **A Muse draft typed over several lines no longer reads as a dialog.** Muse's prompt glyph and the
+  draft's lines under it looked like a pointed list between two rules, so Collie showed an unread
+  dialog and held Send. Thanks @jpcarranza94 (#552).
+
 ## [1.25.0] - 2026-10-29
 
 ### Added
