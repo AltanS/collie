@@ -92,6 +92,11 @@ Running a crew? Update the lead first; members follow on their own. Details:
   the Codex profile and in the Codex reader. The reader keeps one list of the two glyphs, and a test
   checks that the profile spells the same pair. A numbered option row is still not a prompt. (#615)
   Thanks @Skydev0h for the diagnosis.
+- **An update no longer fails because the release download is slow.** The release download had a 20
+  second total deadline, so on a link under about 23 Mbit/s the 57 MB asset timed out and Collie said
+  it could not reach github.com. The download now has no total deadline. It stops only when no bytes
+  arrive for 60 seconds, and the error then says the download stalled, with how much had arrived.
+  Connecting and the small release lookups keep their 20 second limit. ([#613](https://github.com/AltanS/collie/issues/613)) Thanks @mglasner for the diagnosis.
 - **The service worker ignores a push with a malformed tag instead of failing the push.** A push whose tag is missing, null or not a string no longer throws out of the push handler, so the notification still shows and the icon count is left as it was.
 - **`collie doctor` prints every row in full at any width.** The plain output sizes the label column to the longest check id in its section, wraps a long value at the terminal width (80 when piped) with its next lines under the value, and breaks a path longer than the line at the edge. The terminal view wraps its detail and remedy the same way and never cuts one.
 - **The done line no longer repeats when a crew's machines share a pane id.** Two machines can both

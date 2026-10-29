@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
 
@@ -546,6 +548,102 @@ describe("realNet and a rehearsal mirror (a local server, no network)", () => {
       expect((await net.getJson(`${base}/hop`)).ok).toBe(true);
       expect(seen.length).toBeGreaterThanOrEqual(4);
       expect(seen.every((h) => h === null)).toBe(true);
+    } finally {
+      server.stop(true);
+      rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    }
+  });
+});
+
+describe("realNet().download clocks (a local server, injected small clocks)", () => {
+  const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+  const bytes = (n: number): Uint8Array => new Uint8Array(n).fill(7);
+  // The production clocks are 20 s and 60 s; the rule under test is the same at 200 ms and 150 ms.
+  const TIMING = { headersMs: 200, stallMs: 150 };
+  const scratch = (): string => mkdtempSync(join(tmpdir(), "collie-dl-"));
+
+  test("a slow body that keeps moving outlives the stall window and completes", async () => {
+    // 20 chunks, one every 50 ms: 1 s in all, far past both clocks, and never silent for 150 ms.
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch() {
+        const body = new ReadableStream<Uint8Array>({
+          async start(controller) {
+            for (let i = 0; i < 20; i++) {
+              controller.enqueue(bytes(1000));
+              await sleep(50);
+            }
+            controller.close();
+          },
+        });
+        return new Response(body, { headers: { "content-length": "20000" } });
+      },
+    });
+    const dir = scratch();
+    try {
+      const dest = join(dir, "asset.tgz");
+      const got = await realNet(null, TIMING).download(`http://127.0.0.1:${server.port}/a`, dest);
+      expect(got.ok).toBe(true);
+      if (got.ok) expect(got.size).toBe(20000);
+      expect(readFileSync(dest).byteLength).toBe(20000);
+    } finally {
+      server.stop(true);
+      rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    }
+  });
+
+  test("headers, then silence: it aborts with the stall message and lays no file down", async () => {
+    // `node:http`, because `Bun.serve` drops a hand-set content-length from a streamed body.
+    const server = createServer((_req, res) => {
+      res.writeHead(200, { "content-length": "57339962" });
+      res.write(bytes(1_500_000));
+      // ...and then nothing: the stall clock fires first, and `server.closeAllConnections` ends this.
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    // SAFETY: a server listening on a TCP port reports an `AddressInfo`, never a pipe path string.
+    const port = (server.address() as AddressInfo).port;
+    const dir = scratch();
+    try {
+      const dest = join(dir, "asset.tgz");
+      const started = Date.now();
+      const got = await realNet(null, TIMING).download(`http://127.0.0.1:${port}/a`, dest);
+      expect(Date.now() - started).toBeLessThan(2_000);
+      expect(got.ok).toBe(false);
+      if (!got.ok) {
+        expect(got.failure.kind).toBe("stall");
+        expect(got.failure.status).toBeNull();
+        expect(got.failure.message).toBe("stalled: no data for 0.15 s after 1.5 MB of 57.3 MB");
+      }
+      expect(existsSync(dest)).toBe(false);
+    } finally {
+      server.closeAllConnections();
+      server.close();
+      rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    }
+  });
+
+  test("a server that never answers fails inside the headers clock, as a reach failure, not a stall", async () => {
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      async fetch() {
+        await sleep(5_000); // no headers, ever (server.stop ends it)
+        return new Response("late");
+      },
+    });
+    const dir = scratch();
+    try {
+      const dest = join(dir, "asset.tgz");
+      const started = Date.now();
+      const got = await realNet(null, TIMING).download(`http://127.0.0.1:${server.port}/a`, dest);
+      expect(Date.now() - started).toBeLessThan(2_000);
+      expect(got.ok).toBe(false);
+      if (!got.ok) {
+        expect(got.failure.kind).toBeUndefined();
+        expect(got.failure.status).toBeNull();
+      }
+      expect(existsSync(dest)).toBe(false);
     } finally {
       server.stop(true);
       rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
