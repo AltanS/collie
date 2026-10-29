@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **Edit and annotate a photo before it goes up.** Picking or pasting an image opens a sheet with a crop, a pen, a circle and an arrow, drawn on a native canvas, and the edited picture uploads as a PNG. Thanks @GGGODLIN (#600).
+
 ## [1.25.0] - 2026-10-29
 
 ### Added
