@@ -195,6 +195,23 @@ describe("CommandPalette", () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
+  it("finds a Codex pane's own skills too, spelled the way Codex mentions them, and stages on tap", async () => {
+    server.use(
+      http.get("/api/pane/w1%3Ap1/claude-commands", () =>
+        HttpResponse.json({ commands: [{ command: "$my-skill", description: "Mine", argHint: "" }] }),
+      ),
+    );
+    const onInsert = vi.fn();
+    const onSubmit = vi.fn();
+    const user = userEvent.setup();
+    render(<CommandPalette open onClose={vi.fn()} agent="codex" paneId="w1:p1" onInsert={onInsert} onSubmit={onSubmit} />);
+    await user.type(screen.getByPlaceholderText(/Search \d+ commands/), "my-skill");
+    const item = await screen.findByText("$my-skill");
+    await user.click(item);
+    expect(onInsert).toHaveBeenCalledExactlyOnceWith("$my-skill ");
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
   it("clears previously discovered rows when a later refresh fails, and skips the fetch when operator rows replace the palette", async () => {
     let calls = 0;
     let failNext = false;

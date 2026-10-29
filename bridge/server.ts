@@ -74,7 +74,8 @@ import {
   type WorktreeReceipt,
   type WorktreeReceiptSurface,
 } from "./worktree-receipts.ts";
-import { claudeConfigDir, discoverClaudeCommands } from "./claude-commands.ts";
+import { discoverAgentSkills, isSkillAgent } from "./agent-skills.ts";
+import { claudeConfigDir, discoverClaudeCommands, type ClaudeCommand } from "./claude-commands.ts";
 import { canonicalAgent } from "../web/src/lib/operator-scope.ts";
 import { createOperatorCommands } from "./operator-commands.ts";
 import { createOperatorKeys } from "./operator-keys.ts";
@@ -581,11 +582,13 @@ const PANE_FILES_IMAGE_ROUTE = /^\/api\/pane\/([^/]+)\/files\/image$/;
 const WORKSPACE_FILES_IMAGE_ROUTE = /^\/api\/workspace\/([^/]+)\/files\/image$/;
 
 /**
- * `GET /api/pane/<id>/claude-commands`: the slash commands Claude Code would load in that pane's cwd,
- * read off this machine's disk. The pane id is only looked up in the snapshot; the cwd the read
- * starts from is the one the multiplexer reported, never the request's. Not in `FORWARDABLE`: a pane
- * on a crew member answers the lead's 501, and the phone keeps the palette it already had. A read
- * of this machine's disk, so it asks `device-read` like the Files routes.
+ * `GET /api/pane/<id>/claude-commands`: the commands the pane's agent would load in its cwd, read off
+ * this machine's disk: Claude Code's and seven other agents' (`bridge/agent-skills.ts`, which keeps
+ * the route's first name). Any other agent answers an empty list. The pane id is only looked up in
+ * the snapshot; the cwd the read starts from is the one the multiplexer reported, never the
+ * request's. Not in `FORWARDABLE`: a pane on a crew member answers the lead's 501, and the phone
+ * keeps the palette it already had. A read of this machine's disk, so it asks `device-read` like the
+ * Files routes.
  */
 const PANE_CLAUDE_COMMANDS_ROUTE = /^\/api\/pane\/([^/]+)\/claude-commands$/;
 
@@ -2043,18 +2046,28 @@ export function startServer(opts: {
         return text("malformed URL", 400);
       }
       const pane = rt.engine.current().agents.find((p) => p.paneId === paneId);
-      if (pane === undefined || canonicalAgent(pane.agent?.toLowerCase().trim() ?? "") !== "claude") {
+      if (pane === undefined) {
         return json({ commands: [] }, req.headers.get("accept-encoding"));
       }
       const home = homedir();
+      const cwd = pane.cwd === "" ? null : pane.cwd;
       // Fail closed: a fault anywhere in the scan is an empty list, never a 500 that names a path.
-      let commands: Awaited<ReturnType<typeof discoverClaudeCommands>> = [];
+      let commands: ClaudeCommand[] = [];
       try {
-        commands = await discoverClaudeCommands({
-          home,
-          cwd: pane.cwd === "" ? null : pane.cwd,
-          configDir: claudeConfigDir(cfg.journalRoots.claude, home),
-        });
+        if (canonicalAgent(pane.agent?.toLowerCase().trim() ?? "") !== "claude") {
+          const family = canonicalAgent(pane.agent?.toLowerCase().trim() ?? "");
+          // Herdr reports agy under two names; the loader is filed under one.
+          const skillAgent = family === "antigravity" ? "agy" : family;
+          if (isSkillAgent(skillAgent)) {
+            commands = await discoverAgentSkills(skillAgent, { home, cwd, env: process.env });
+          }
+        } else {
+          commands = await discoverClaudeCommands({
+            home,
+            cwd,
+            configDir: claudeConfigDir(cfg.journalRoots.claude, home),
+          });
+        }
       } catch (err) {
         console.warn(`[claude-commands] the scan failed, answering an empty list: ${String(err)}`);
       }
