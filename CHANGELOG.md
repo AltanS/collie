@@ -23,6 +23,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+## [1.25.0] - 2026-10-29
+
 ### Added
 
 - **collie start and collie doctor name any missing setup in plain words.** Tailscale not installed
@@ -30,12 +32,12 @@ Running a crew? Update the lead first; members follow on their own. Details:
   without COLLIE_MUX, and the PATH line. `collie start` prints one `setup:` line per missing piece
   with its fix and never stops for it; `collie doctor` adds the rows `tailscale`, `tailnet-https`
   and `tailscale-operator`, which warn and never hold back an update, and its `path-link` row now
-  warns when no `collie` is on PATH.
+  warns when no `collie` is on PATH. ([94ec3cc](https://github.com/AltanS/collie/commit/94ec3cc))
 - **A Zoom button on the belt opens a pane's output full screen.** It sits just left of the Switch
   button. A pinch zooms up to 6x, one finger pans, a double tap toggles between 1x and 2.5x, and the
   text keeps updating. Lines never wrap in this view, so a pinch does not reflow them. It is a level
   below the pane (`/pane/:paneId/zoom`), so the pane and its draft stay mounted and the phone's back
-  closes it. It is read-only and never resizes the pane. Thanks @neuralyze (#536).
+  closes it. It is read-only and never resizes the pane. Closing it returns focus to the Zoom button, a tap on a printed web address opens nothing, and the browser's own Ctrl zoom keys leave the view alone. Thanks @neuralyze (#536). ([9bfd276](https://github.com/AltanS/collie/commit/9bfd276)) ([649fdcb](https://github.com/AltanS/collie/commit/649fdcb)) ([4a896ce](https://github.com/AltanS/collie/commit/4a896ce))
 
 ### Changed
 
@@ -44,7 +46,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
   `collie uninstall`. A mapping made by hand from the old Windows guide is adopted and recorded on
   the first `collie start`, and `collie doctor` warns about it until then. An adopted mapping is
   removed by `collie uninstall` or `collie unserve` like any mapping Collie recorded. `COLLIE_PUBLIC_HOSTS`
-  and `COLLIE_PUBLIC_URL` are no longer needed for the default setup.
+  and `COLLIE_PUBLIC_URL` are no longer needed for the default setup. ([e9d7970](https://github.com/AltanS/collie/commit/e9d7970)) ([0c6b6e6](https://github.com/AltanS/collie/commit/0c6b6e6)) ([24044c5](https://github.com/AltanS/collie/commit/24044c5))
 
 ### Fixed
 
@@ -52,32 +54,31 @@ Running a crew? Update the lead first; members follow on their own. Details:
   bounded to three seconds inside Collie itself. Publishing and removing a mapping still wait for
   Tailscale, because killing a half-done change is worse than waiting. Before, the ACL probe went
   through an external `timeout` command, which on Windows is a wait command, so `collie start` and
-  `collie doctor` could stall or skip the check.
+  `collie doctor` could stall or skip the check. ([796255e](https://github.com/AltanS/collie/commit/796255e)) ([51597d8](https://github.com/AltanS/collie/commit/51597d8))
 - **Doctor no longer blames the certificates when Tailscale is signed out.** The `front-door` row now
   reads the Tailscale state first and says the check cannot run yet, instead of "this tailnet has no
-  HTTPS certificates".
+  HTTPS certificates". ([b547bdc](https://github.com/AltanS/collie/commit/b547bdc))
 - **`collie start` says "your phone cannot reach it yet" only when that is true.** The closing sentence
   now follows the Tailscale rows alone; a missing PATH link no longer triggers it. When the front
   door did not come up, the banner's tailnet row says so instead of printing a working-looking
-  address.
+  address. ([5c27867](https://github.com/AltanS/collie/commit/5c27867))
 - **`collie status`, `collie doctor` and `collie serve` no longer hang on a stuck Tailscale.** Their
   reads of the serve configuration, and the bridge's check before it removes a mapping, give up after
-  three seconds.
+  three seconds. ([51597d8](https://github.com/AltanS/collie/commit/51597d8))
 - **A slow Tailscale is reported as slow, not as signed out.** When `tailscale status` does not answer
   within three seconds, `collie start` and `collie doctor` now say that Tailscale did not answer and
   to run `tailscale status` by hand, instead of telling you to sign in or blaming the HTTPS
-  certificates.
+  certificates. ([7689a80](https://github.com/AltanS/collie/commit/7689a80))
 - **Doctor names a hand-made tailnet mapping on another port that still points at Collie.** The
   `front-door` row warns when a root mount on a port Collie does not manage, such as port 80 from the
   old Headscale recipe, proxies to Collie, and names the `tailscale serve ... off` command that
-  removes it. `collie serve` in http mode prints a note about such a mapping and still publishes.
-- **The zoomed output keeps your place and follows no link.** Closing it returns focus to the Zoom button, a tap on a printed web address opens nothing, and the browser's own Ctrl zoom keys leave the view's scale alone. Refines #536.
+  removes it. `collie serve` in http mode prints a note about such a mapping and still publishes. ([7689a80](https://github.com/AltanS/collie/commit/7689a80))
 - **Send waits for a launched agent's first screen.** The draft stays editable and is never sent on
-  its own, so a workspace-trust dialog shows before any text reaches the agent. Send reads Starting...
+  its own, so a workspace-trust dialog shows before any text reaches the agent. Send reads Starting…
   until the agent's first screen is read, the agent leaves the pane, or two minutes pass. The page
-  also polls faster for the first 20 seconds after a launch, so the pane appears sooner. Thanks
-  @aahung (#574).
-- **The Send gate after a launch opens when the agent is gone.** A launch that fell back to a plain shell no longer keeps Send on Starting… for two minutes, and the large-screen launcher gets the same gate as the belt. Refines #574.
+  also polls faster for the first 20 seconds after a launch, so the pane appears sooner. A launch that
+  fell back to a plain shell no longer keeps Send on Starting… for two minutes, and the large-screen
+  launcher has the same gate. Thanks @aahung (#574). ([198d00c](https://github.com/AltanS/collie/commit/198d00c)) ([00b6fe1](https://github.com/AltanS/collie/commit/00b6fe1))
 
 ### Docs
 
@@ -87,10 +88,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
   with `-x` and pushes it. It refuses a commit that touches a path outside `docs/` and `README.md`,
   checks that the tag is an ancestor of the result, and lists older `docs/v*` branches with the
   command to delete each one. A push to the branch asks the website to re-sync, and its daily run
-  picks the branch up too.
+  picks the branch up too. ([8569959](https://github.com/AltanS/collie/commit/8569959))
 - **The docs line says when the site must be synced by hand.** A `docs/<tag>` branch based on an old
   tag may lack `docs-line.yml`, so its push does not tell the site. The script then prints the
-  `gh workflow run sync-docs.yml` command, and a dry run says it would be needed.
+  `gh workflow run sync-docs.yml` command, and a dry run says it would be needed. ([fea7c61](https://github.com/AltanS/collie/commit/fea7c61))
 
 ## [1.24.2] - 2026-10-28
 
