@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import { resolveJournalRoots } from "../bridge/config.ts";
 import { hostFor } from "../bridge/host.ts";
-import { adapterFor, buildJournalRegistry, DISCOVERS_OWN_SESSIONS } from "../bridge/journal/registry.ts";
+import { adapterFor, AGENT_ALIASES, buildJournalRegistry, DISCOVERS_OWN_SESSIONS } from "../bridge/journal/registry.ts";
 import { toPaneWire, type AgentView } from "../bridge/types.ts";
 import { context, fakeExec, fakeFiles, HOME, type Scripted, type SeededFiles } from "./fakes.ts";
 import type { Finding } from "./finding.ts";
@@ -359,7 +359,8 @@ describe("the history section", () => {
     for (const agent of JOURNAL_AGENT_NAMES) {
       // The exception proves the rule: an adapter that discovers its own sessions needs no hook, so
       // its ok does not come from Herdr's answer and Herdr's silence cannot take it away.
-      if (DISCOVERS_OWN_SESSIONS.includes(agent)) {
+      const canonical = Object.entries(AGENT_ALIASES).find(([alias]) => alias === agent)?.[1] ?? agent;
+      if (DISCOVERS_OWN_SESSIONS.includes(canonical)) {
         expect(byCheck.get(`integration-${agent}`)?.status).toBe("ok");
       } else {
         expect(byCheck.get(`integration-${agent}`)?.status).toBe("skipped");
@@ -405,7 +406,7 @@ describe("the history section", () => {
     const none = await run({ files: {} });
     expect(none.get("journal-roots")?.status).toBe("warn");
     // pi has two default roots; every other harness has one.
-    expect(none.get("journal-roots")?.detail).toContain("none of the 11 journal roots is there");
+    expect(none.get("journal-roots")?.detail).toContain("none of the 12 journal roots is there");
 
     // `list` answers `[]` for a directory this user cannot read AND for an empty one; the finding
     // says both, because the seam cannot tell them apart and a doctor may not guess.

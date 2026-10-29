@@ -31,6 +31,7 @@ import { loadConfig } from "../bridge/config.ts";
 import { isGrokSessionId } from "../bridge/journal/grok.ts";
 import { kiroSessionIdOf } from "../bridge/journal/kiro-sessions.ts";
 import { adapterFor, buildJournalRegistry } from "../bridge/journal/registry.ts";
+import { readSqlite } from "../bridge/journal/sqlite-read.ts";
 import type { AgentSessionRef, JournalAdapter, TranscriptEntry } from "../bridge/journal/types.ts";
 
 /**
@@ -167,6 +168,7 @@ async function candidateRefsUnder(
     }
   }
 
+  if (agent === "agy") return agyCandidates(root);
   if (agent === "openclaw") return openclawCandidates(root);
   if (agent === "hermes") return hermesCandidates(root);
 
@@ -219,6 +221,35 @@ async function openclawCandidates(root: string): Promise<{ refs: AgentSessionRef
 }
 
 /**
+ * Antigravity CLI keeps one SQLite per conversation under `<root>/conversations/<uuid>.db` (or a
+ * plaintext `transcript.jsonl` under `<root>/brain/<uuid>/.system_generated/logs/`). Candidate refs
+ * are the newest conversation UUIDs by file mtime.
+ */
+async function agyCandidates(root: string): Promise<{ refs: AgentSessionRef[]; total: number }> {
+  const convDir = join(root, "conversations");
+  const found: { id: string; mtimeMs: number }[] = [];
+  try {
+    for (const name of await readdir(convDir)) {
+      const m = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.db$/i.exec(name);
+      if (m === null) continue;
+      try {
+        const st = await stat(join(convDir, name));
+        found.push({ id: m[1]!, mtimeMs: st.mtimeMs });
+      } catch {
+        // disappeared mid-scan
+      }
+    }
+  } catch {
+    // no conversations dir
+  }
+  const newest = found.toSorted((a, b) => b.mtimeMs - a.mtimeMs);
+  return {
+    refs: newest.slice(0, MAX_CANDIDATES).map((f) => ({ kind: "id", value: f.id })),
+    total: found.length,
+  };
+}
+
+/**
  * Hermes keeps one SessionDB per profile: `<root>/state.db` for the default profile and
  * `<root>/profiles/<name>/state.db` for each named one. Herdr names a session by its id, so the
  * candidates are the newest ids of every one of those databases, the adapter's own search order.
@@ -235,22 +266,12 @@ async function hermesCandidates(root: string): Promise<{ refs: AgentSessionRef[]
   }
   const refs: AgentSessionRef[] = [];
   for (const path of dbs) {
-    let db: Database;
-    try {
-      db = new Database(path, { readonly: true });
-    } catch {
-      continue;
-    }
-    try {
-      const rows = db
-        .query<{ id: string }, [number]>("select id from sessions order by started_at desc limit ?")
-        .all(MAX_CANDIDATES);
-      for (const r of rows) refs.push({ kind: "id", value: r.id });
-    } catch {
-      // a database of another shape: the adapter's own resolve says so when it is asked
-    } finally {
-      db.close();
-    }
+    // A closed WAL database in a folder this user cannot write still reads (bridge/journal/sqlite-read.ts).
+    // A database of another shape answers null: the adapter's own resolve says so when it is asked.
+    const rows = readSqlite(path, (db) =>
+      db.query<{ id: string }, [number]>("select id from sessions order by started_at desc limit ?").all(MAX_CANDIDATES),
+    );
+    for (const r of rows ?? []) refs.push({ kind: "id", value: r.id });
   }
   return { refs, total: refs.length };
 }

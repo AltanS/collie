@@ -14,6 +14,7 @@ import { createOpencodeReducer, parseOpencodeTranscript } from "./opencode.ts";
 import { createPiReducer, parsePiTranscript } from "./pi.ts";
 import { createKiroReducer, parseKiroTranscript } from "./kiro.ts";
 import { createDshReducer, parseDshTranscript } from "./dsh.ts";
+import { agyJournal, createAgyReducer } from "./agy.ts";
 import type { TranscriptEntry } from "./types.ts";
 
 // ── THE GATE FOR THE ROW REDUCER ────────────────────────────────────────────────────────────────
@@ -99,6 +100,7 @@ function expectEquivalent(make: () => RowReducer, parse: (text: string) => Trans
  * equivalence proof is an adapter whose tail nobody has checked.
  */
 const COVERED = [
+  "agy",
   "claude",
   "codex",
   "opencode",
@@ -113,6 +115,22 @@ const COVERED = [
 
 test("every harness the registry knows has an equivalence section here", () => {
   expect([...KNOWN_HARNESS_NAMES].toSorted()).toEqual([...COVERED].toSorted());
+});
+
+test("AGY whole, row and torn-chunk reads agree", () => {
+  const text = [
+    JSON.stringify({ step_index: 0, type: "USER_INPUT", content: "Inspect the repo", created_at: "2026-10-22T10:00:00.000Z" }),
+    JSON.stringify({
+      step_index: 1,
+      type: "PLANNER_RESPONSE",
+      content: "I will check the files.",
+      tool_calls: [{ name: "view_file", args: { path: "/repo/README.md" } }],
+      created_at: "2026-10-22T10:00:02.000Z",
+    }),
+    JSON.stringify({ step_index: 2, type: "GENERIC", content: "# Repo", created_at: "2026-10-22T10:00:04.000Z" }),
+    ...RUBBISH,
+  ].join("\n");
+  expectEquivalent(createAgyReducer, agyJournal([]).parse, text);
 });
 
 // Rubbish every corpus below ends with, because a tail read produces all of it: a blank row, a

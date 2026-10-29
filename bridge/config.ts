@@ -601,6 +601,7 @@ export function resolveJournalRoots(
     // roots (comma-separated) because `CLAUDE_CONFIG_DIR` gives each Claude profile its own
     // projects tree, and a herd routinely mixes them (issue #92); one value is still one root.
     claude: envRoots("COLLIE_TRANSCRIPT_ROOT", join(home, ".claude", "projects"), env),
+    agy: envRoots("COLLIE_AGY_ROOT", join(home, ".gemini", "antigravity-cli"), env),
     // Each harness's own home var is honoured first, so relocating the agent relocates its journal
     // without a second Collie setting to keep in sync. The Collie override takes a list too — the
     // multi-home case isn't Claude's alone, and one setting shouldn't behave differently per agent.
