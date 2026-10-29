@@ -26,6 +26,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Added
 
 - **The installed app's icon counts the panes blocked on you.** The count also includes finished panes you have not opened, while the Finished preference is on. The herd push sets it in the service worker, and the open dashboard sets it too. A browser without the Badging API keeps no count. Thanks @SergioGhisler (#591).
+- **The open dashboard sets the icon's count only when it shows every session.** On one session of several it writes nothing, because the pushes count every session and machine and would overwrite a smaller number.
 
 ### Changed
 

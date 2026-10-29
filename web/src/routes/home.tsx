@@ -167,9 +167,6 @@ export function HomeRoute() {
   // the bridge's notification kinds rather than guess them.
   const { prefs: notifyKinds } = useNotifyPrefs();
   const alerting = notifyKinds === null ? null : countAlerting(data.agents, notifyKinds);
-  useEffect(() => {
-    if (alerting !== null) void showBadge(navigator, alerting);
-  }, [alerting]);
   const lookup = useMemo<ChangesLookup>(
     () => ({ depth: prefs.changesDepth, nested: prefs.changesNested }),
     [prefs.changesDepth, prefs.changesNested],
@@ -196,6 +193,16 @@ export function HomeRoute() {
   const navHost = ambientHost(data.servers, data.scope.host);
   // Sessions are a per-host registry, so the session switcher only ever lists this host's.
   const sessionsHere = sessionsOnHost(data.sessions ?? [], data.scope, data.servers);
+  // WHO SETS THE ICON'S COUNT WHILE THIS PAGE IS OPEN. The service worker sets it on every herd push from
+  // the sum of every slot, and the slots count every session and machine. This page counts only the
+  // panes in the view it shows, so on one session of several it would write a smaller number, and the
+  // next push would replace it with the sum anyway: the last writer wins. The page therefore writes only
+  // when it holds the whole picture (all sessions shown, or the only session on a solo machine), and
+  // otherwise leaves the worker's sum standing.
+  const wholeHerd = data.viewAll || (!multi && sessionsHere.length <= 1);
+  useEffect(() => {
+    if (alerting !== null && wholeHerd) void showBadge(navigator, alerting);
+  }, [alerting, wholeHerd]);
   // …AND THE ADDRESSED HOST IS ALSO SESSION-LOCAL, which is the half the widened view would otherwise break.
   // Workspace ids collide across sessions exactly as they collide across machines, and the space
   // navigator keys by `(host, workspaceId)` with no session in it — so on a widened body another

@@ -517,8 +517,9 @@ Opening a finished pane in Collie retracts its alert, from the lock screen and f
 blocked pane's alert stays until you answer it.
 
 Each herd push carries the count for its session, and the phone adds up every session and machine in
-the crew. Opening the dashboard sets it again from what is on screen, and unpairing the device clears
-it.
+the crew. Opening the dashboard sets it again from what is on screen when it shows every session, and
+unpairing the device clears it. A dashboard that shows one session of several leaves the count to the
+pushes, because it cannot see the others.
 
 > **Note.** The count needs a browser with the Badging API and an installed app: on an iPhone,
 > iOS 16.4 or later, Collie added to the Home Screen, and notifications allowed. With every kind of
