@@ -2757,6 +2757,8 @@ export const zh: Dictionary = {
   "report.sheet.copied": "报告已复制。",
   "report.sheet.search": "已有人报告？",
   "report.sheet.cutScreen": "为适应链接长度，屏幕已截短。复制的报告包含全部内容。",
+  "report.sheet.cutDoctor.one": "为适应链接长度，设置中省略了 {count} 行 doctor 结果。复制的报告包含全部内容。",
+  "report.sheet.cutDoctor.other": "为适应链接长度，设置中省略了 {count} 行 doctor 结果。复制的报告包含全部内容。",
   "report.sheet.cutSends.one": "为适应链接长度，省略了 {count} 条较早的发送。复制的报告包含全部内容。",
   "report.sheet.cutSends.other": "为适应链接长度，省略了 {count} 条较早的发送。复制的报告包含全部内容。",
   "report.sheet.cutNote": "为适应链接长度，你的文字已截短。复制的报告包含全部内容。",

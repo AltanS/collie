@@ -38,6 +38,13 @@ Running a crew? Update the lead first; members follow on their own. Details:
   minutes. A `screen-<harness>` row counts the sends that met a stale screen and the other probe
   failures over the same window as the `sends-*` row, and warns when 3 or more in a row ended that
   way. Both read files only and keep the `collie doctor` write-nothing rule.
+- **Report a problem carries the doctor's send rows.** The setup block of an issue filed from the
+  phone lists the `sends-<harness>`, `holds-<harness>` and `screen-<harness>` rows `collie doctor`
+  prints for the pane's agent, one line each with the status, the check and the detail. From
+  Settings it lists every row that says more than "nothing here". The bridge reads them from its own
+  state folder when the sheet opens, and never adds a remedy, a held text or a typed line. When the
+  link is too long, these rows go after the screen and before the oldest sends, and the sheet says
+  how many it left out.
 
 ## [1.25.0] - 2026-10-29
 

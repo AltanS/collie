@@ -2751,6 +2751,8 @@ export const zhTW: Dictionary = {
   "report.sheet.copied": "回報已複製。",
   "report.sheet.search": "已有人回報？",
   "report.sheet.cutScreen": "為配合連結長度，畫面已截短。複製的回報包含全部內容。",
+  "report.sheet.cutDoctor.one": "為配合連結長度，設定中省略了 {count} 行 doctor 結果。複製的回報包含全部內容。",
+  "report.sheet.cutDoctor.other": "為配合連結長度，設定中省略了 {count} 行 doctor 結果。複製的回報包含全部內容。",
   "report.sheet.cutSends.one": "為配合連結長度，省略了 {count} 筆較早的傳送。複製的回報包含全部內容。",
   "report.sheet.cutSends.other": "為配合連結長度，省略了 {count} 筆較早的傳送。複製的回報包含全部內容。",
   "report.sheet.cutNote": "為配合連結長度，你的文字已截短。複製的回報包含全部內容。",

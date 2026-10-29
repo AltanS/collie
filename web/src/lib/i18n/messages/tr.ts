@@ -2607,6 +2607,8 @@ export const tr: Dictionary = {
   "report.sheet.copied": "Rapor kopyalandı.",
   "report.sheet.search": "Zaten bildirildi mi?",
   "report.sheet.cutScreen": "Ekran bağlantıya sığması için kısaltıldı. Kopyalanan raporda hepsi var.",
+  "report.sheet.cutDoctor.one": "Bağlantıya sığması için kurulumdan {count} doctor satırı çıkarıldı. Kopyalanan raporda hepsi var.",
+  "report.sheet.cutDoctor.other": "Bağlantıya sığması için kurulumdan {count} doctor satırı çıkarıldı. Kopyalanan raporda hepsi var.",
   "report.sheet.cutSends.one": "Bağlantıya sığması için {count} eski gönderim çıkarıldı. Kopyalanan raporda hepsi var.",
   "report.sheet.cutSends.other": "Bağlantıya sığması için {count} eski gönderim çıkarıldı. Kopyalanan raporda hepsi var.",
   "report.sheet.cutNote": "Yazdıklarınız bağlantıya sığması için kısaltıldı. Kopyalanan raporda hepsi var.",

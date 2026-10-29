@@ -2795,6 +2795,8 @@ export const de: Dictionary = {
   "report.sheet.copied": "Bericht kopiert.",
   "report.sheet.search": "Schon gemeldet?",
   "report.sheet.cutScreen": "Der Bildschirm wurde für den Link gekürzt. Der kopierte Bericht enthält alles.",
+  "report.sheet.cutDoctor.one": "{count} Doctor-Zeile wurde für den Link aus dem Setup weggelassen. Der kopierte Bericht enthält alles.",
+  "report.sheet.cutDoctor.other": "{count} Doctor-Zeilen wurden für den Link aus dem Setup weggelassen. Der kopierte Bericht enthält alles.",
   "report.sheet.cutSends.one": "{count} ältere Sendung wurde für den Link weggelassen. Der kopierte Bericht enthält alles.",
   "report.sheet.cutSends.other": "{count} ältere Sendungen wurden für den Link weggelassen. Der kopierte Bericht enthält alles.",
   "report.sheet.cutNote": "Deine Worte wurden für den Link gekürzt. Der kopierte Bericht enthält alles.",

@@ -2608,6 +2608,8 @@ export const fr: Dictionary = {
   "report.sheet.copied": "Rapport copié.",
   "report.sheet.search": "Déjà signalé ?",
   "report.sheet.cutScreen": "L'écran a été coupé pour tenir dans le lien. Le rapport copié contient tout.",
+  "report.sheet.cutDoctor.one": "{count} ligne de doctor a été omise de la configuration pour tenir dans le lien. Le rapport copié contient tout.",
+  "report.sheet.cutDoctor.other": "{count} lignes de doctor ont été omises de la configuration pour tenir dans le lien. Le rapport copié contient tout.",
   "report.sheet.cutSends.one": "{count} envoi plus ancien a été omis pour tenir dans le lien. Le rapport copié contient tout.",
   "report.sheet.cutSends.other": "{count} envois plus anciens ont été omis pour tenir dans le lien. Le rapport copié contient tout.",
   "report.sheet.cutNote": "Vos mots ont été coupés pour tenir dans le lien. Le rapport copié contient tout.",

@@ -2985,6 +2985,8 @@ export const en = {
   "report.sheet.copied": "Report copied.",
   "report.sheet.search": "Already reported?",
   "report.sheet.cutScreen": "The screen was cut to fit the link. Copy report has all of it.",
+  "report.sheet.cutDoctor.one": "{count} doctor row was left out of the setup to fit the link. Copy report has all of it.",
+  "report.sheet.cutDoctor.other": "{count} doctor rows were left out of the setup to fit the link. Copy report has all of it.",
   "report.sheet.cutSends.one": "{count} older send was left out to fit the link. Copy report has all of it.",
   "report.sheet.cutSends.other": "{count} older sends were left out to fit the link. Copy report has all of it.",
   "report.sheet.cutNote": "Your words were cut to fit the link. Copy report has all of them.",

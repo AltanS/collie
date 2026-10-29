@@ -2,9 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import type { SendReceiptRow } from "../surface/send";
 import { readReportContext } from "./context";
-import { FIELD_IDS, fitLink, hasTyped, ISSUE_URL_MAX, issueLink, reportFields, reportText, searchLink, sendLine, signature, type ClientFacts, type ReportContext, type ReportInput } from "./body";
+import { asJsonObject, asJsonString, parseJson, type JsonObject } from "../json";
+import type { ReportDoctorRow } from "./context";
+import { doctorLine, FIELD_IDS, fitLink, hasTyped, ISSUE_URL_MAX, issueLink, reportFields, reportText, searchLink, sendLine, signature, type ClientFacts, type ReportContext, type ReportInput } from "./body";
 import type { DialogTrouble } from "./store";
 
+// The bridge's answer as JSON, for the reader.
+const WIRE: JsonObject = { collie: "1.24.1+abc1234", line: "edge", os: "linux", arch: "x64", mux: "herdr", harness: "claude", screenable: true };
 const CONTEXT: ReportContext = { collie: "1.24.1+abc1234", line: "edge", os: "linux", arch: "x64", mux: "herdr", harness: "claude", screenable: true };
 const AT = Date.parse("2026-10-25T18:00:00Z");
 
@@ -127,7 +131,7 @@ describe("the link", () => {
   it("a short report fits whole: nothing cut, the preview is the whole text", () => {
     const fields = reportFields(BASE);
     const link = fitLink(fields);
-    expect(link.cut).toEqual({ screen: "none", sends: 0, note: false });
+    expect(link.cut).toEqual({ screen: "none", doctor: 0, sends: 0, note: false });
     expect(link.fields).toEqual(fields);
     expect(link.url.length).toBeLessThanOrEqual(ISSUE_URL_MAX);
   });
@@ -176,8 +180,8 @@ describe("the link", () => {
 
 describe("readReportContext", () => {
   it("reads the bridge's answer field by field and refuses a body that is not one", () => {
-    expect(readReportContext({ ...CONTEXT, screen: "x" })).toEqual({ ...CONTEXT, screen: "x" });
-    expect(readReportContext({ ...CONTEXT, line: "nightly", harness: null })).toEqual({ ...CONTEXT, line: null, harness: null });
+    expect(readReportContext({ ...WIRE, screen: "x" })).toEqual({ ...CONTEXT, screen: "x" });
+    expect(readReportContext({ ...WIRE, line: "nightly", harness: null })).toEqual({ ...CONTEXT, line: null, harness: null });
     expect(readReportContext({ collie: "1.0.0" })).toBeNull();
     expect(readReportContext("<html>")).toBeNull();
   });
@@ -249,5 +253,90 @@ describe("reportFields: from the unread-dialog card (amendment 2026-10-28, #554)
     expect(link.cut.screen).not.toBe("none");
     expect(link.cut.sends).toBe(0);
     expect(link.fields.sends).toBe(reportFields(INPUT).sends);
+  });
+});
+
+describe("the doctor rows in the setup block (M71 spec 05)", () => {
+  const DOCTOR: readonly ReportDoctorRow[] = [
+    { check: "sends-claude", status: "warn", detail: `3 refused (probe_failed 3) · last 7 days ${"s".repeat(200)}`, harness: "claude" },
+    { check: "sends-codex", status: "ok", detail: `2 sent · last 7 days ${"t".repeat(200)}`, harness: "codex" },
+    { check: "holds-claude", status: "warn", detail: `held 12 min for a running turn (req-h000-abcdef) ${"h".repeat(200)}`, harness: "claude" },
+    { check: "screen-claude", status: "warn", detail: `stale screen 0 · probe failed 3 · longest run 3 ${"c".repeat(200)}`, harness: "claude" },
+    { check: "screen-codex", status: "ok", detail: `stale screen 1 · probe failed 0 · longest run 1 ${"x".repeat(200)}`, harness: "codex" },
+  ];
+  const WITH_DOCTOR: ReportInput = { ...BASE, context: { ...CONTEXT, doctor: DOCTOR } };
+  const setupOf = (fields: { readonly setup: string }): JsonObject => asJsonObject(parseJson(fields.setup)) ?? {};
+  const kept = (fields: { readonly setup: string }): string[] => {
+    const doctor = setupOf(fields).doctor;
+    return Array.isArray(doctor) ? doctor.flatMap((line) => asJsonString(line) ?? []) : [];
+  };
+
+  it("lists one line per row, `<status> <check>: <detail>`, in the bridge's order", () => {
+    const setup = setupOf(reportFields(WITH_DOCTOR));
+    expect(setup.doctor).toEqual(DOCTOR.map(doctorLine));
+    expect(doctorLine(DOCTOR[0]!)).toBe(`warn sends-claude: ${DOCTOR[0]!.detail}`);
+    // The rows sit with the rest of the setup, which keeps every key it had.
+    expect(setup).toMatchObject({ collie: "1.24.1+abc1234", mux: "herdr", harness: "claude" });
+    expect(reportText(reportFields(WITH_DOCTOR))).toContain("warn sends-claude: 3 refused (probe_failed 3)");
+  });
+
+  it("has no doctor key when there are no rows, or the bridge sent none", () => {
+    expect(setupOf(reportFields(BASE))).not.toHaveProperty("doctor");
+    expect(setupOf(reportFields({ ...BASE, context: { ...CONTEXT, doctor: [] } }))).not.toHaveProperty("doctor");
+    expect(setupOf(reportFields({ ...BASE, context: null }))).not.toHaveProperty("doctor");
+  });
+
+  it("the rows follow the phone's own facts from the unread-dialog card", () => {
+    const client: ClientFacts = { appBuild: "a1", serverBuild: "b2", userAgent: "UA", viewport: "390x844", standalone: true };
+    const keys = Object.keys(setupOf(reportFields({ ...WITH_DOCTOR, client })));
+    expect(keys.at(-1)).toBe("doctor");
+    expect(keys).toContain("appBuild");
+  });
+
+  it("cuts after the screen: the screen goes whole before one doctor row leaves", () => {
+    const full = reportFields({ ...WITH_DOCTOR, screen: "z".repeat(600) });
+    const withoutScreen = issueLink({ ...full, screen: "" }).length;
+    const link = fitLink(full, withoutScreen - 1);
+    expect(link.cut.screen).toBe("all");
+    expect(link.cut.doctor).toBe(1);
+    expect(link.cut.sends).toBe(0);
+    expect(kept(link.fields)).toEqual(DOCTOR.slice(0, 4).map(doctorLine));
+  });
+
+  it("cuts screen-* rows first, then holds-*, then sends-*, and every doctor row before any send", () => {
+    const full = reportFields(WITH_DOCTOR);
+    const order: string[] = [];
+    let sawSendCut = false;
+    for (let max = issueLink(full).length; max > 400; max -= 40) {
+      const link = fitLink(full, max);
+      expect(link.url.length <= max || link.cut.note).toBe(true);
+      const left = kept(link.fields).map((line) => line.split(" ")[1]!.replace(/:$/u, ""));
+      expect(link.cut.doctor).toBe(DOCTOR.length - left.length);
+      // A send leaves only once no doctor row is left, and then the doctor key is gone from the setup.
+      if (link.cut.sends > 0) {
+        sawSendCut = true;
+        expect(left).toEqual([]);
+        expect(setupOf(link.fields)).not.toHaveProperty("doctor");
+      }
+      // What is left is always a prefix in kind order: a screen row stays only with every holds and sends row.
+      const kinds = left.map((check) => check.split("-")[0]!);
+      if (kinds.includes("screen")) expect(kinds.filter((kind) => kind !== "screen")).toEqual(["sends", "sends", "holds"]);
+      if (kinds.includes("holds")) expect(kinds.filter((kind) => kind === "sends")).toHaveLength(2);
+      for (const check of DOCTOR.map((doctorRow) => doctorRow.check)) if (!left.includes(check) && !order.includes(check)) order.push(check);
+      // The signature line is never cut.
+      expect(link.fields.sends.split("\n").at(-1)).toBe(signature(WITH_DOCTOR));
+    }
+    expect(sawSendCut).toBe(true);
+    expect(order).toEqual(["screen-codex", "screen-claude", "holds-claude", "sends-codex", "sends-claude"]);
+  });
+
+  it("the rest of the setup survives the cut byte for byte, and Copy report keeps every row", () => {
+    const full = reportFields(WITH_DOCTOR);
+    const link = fitLink(full, issueLink(full).length - 1);
+    expect(link.cut.doctor).toBe(1);
+    const { doctor: _cut, ...rest } = setupOf(link.fields);
+    const { doctor: _all, ...whole } = setupOf(full);
+    expect(rest).toEqual(whole);
+    expect(kept(full)).toHaveLength(DOCTOR.length);
   });
 });

@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { classifyInstall, probeInstall } from "../cli/install-kind.ts";
 import { realLinkFs } from "../cli/link.ts";
 import { packageCommand } from "../cli/package-command.ts";
+import { sendsReportRows } from "../cli/send-findings.ts";
 import { realExec, realFiles } from "../cli/sys.ts";
 import { collieBinary as collieBinaryOf, HOST, surfacePlatform } from "./host.ts";
 import { ActivityLedger } from "./activity.ts";
@@ -2901,6 +2902,10 @@ const server = startServer({
   // string, resolved once, so the detached updater's health gate and a peer can never be told two
   // different things about this machine (M15/04).
   version: crewVersion,
+  // Report a problem's doctor rows (M71 spec 05): the same sends section `collie doctor` prints, over
+  // this bridge's own state dir, read when the route is called. Read-only: it lists and reads
+  // `sends/` and `held/` and builds no store. None with the Send Protocol off.
+  sendHealth: cfg.sendProtocol ? () => sendsReportRows({ ctx: { stateDir: cfg.stateDir }, files: realFiles, now: Date.now }) : undefined,
   // The Surface counters' totals for `/api/health` (M56 spec 09); null with no ledger.
   surfaceTotals: () => surfaceLedger?.totals() ?? null,
   audit,

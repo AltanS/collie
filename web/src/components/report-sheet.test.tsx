@@ -95,6 +95,19 @@ describe("ReportSheetView (ADR 0123)", () => {
     expect(href.length).toBeLessThanOrEqual(6000);
   });
 
+  it("the preview shows the doctor rows in the setup, and the cut line counts the ones the link left out (M71 spec 05)", () => {
+    const doctor = Array.from({ length: 30 }, (_, i) => ({ check: `sends-h${String(i)}`, status: "warn" as const, detail: "d".repeat(200), harness: `h${String(i)}` }));
+    const context: ReportContext = { ...CONTEXT, doctor: [{ check: "sends-claude", status: "warn", detail: "3 refused (probe_failed 3) · last 7 days", harness: "claude" }] };
+    const small = render(<ReportSheetView context={context} contextError={null} rows={SENDS} episodes={[]} fromSettings={false} loadScreen={vi.fn()} />);
+    expect(preview(small.container)).toContain("warn sends-claude: 3 refused (probe_failed 3) · last 7 days");
+    expect(small.container.querySelector('[data-slot="report-cut"]')).toBeNull();
+    small.unmount();
+    const { container } = render(<ReportSheetView context={{ ...CONTEXT, doctor }} contextError={null} rows={SENDS} episodes={[]} fromSettings={false} loadScreen={vi.fn()} />);
+    const cut = fitLink(reportFields(base({ context: { ...CONTEXT, doctor } }))).cut.doctor;
+    expect(cut).toBeGreaterThan(1);
+    expect(container.querySelector('[data-slot="report-cut"]')).toHaveTextContent(`${String(cut)} doctor rows were left out of the setup to fit the link. Copy report has all of it.`);
+  });
+
   it("a screen that cannot be read turns the switch back off and says why", async () => {
     const user = userEvent.setup();
     const { container, getByRole } = render(

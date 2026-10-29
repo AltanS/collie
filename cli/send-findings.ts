@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import type { DoctorRowSource } from "../bridge/report.ts";
 import { parseHeldEntry, type HeldEntry } from "../bridge/surface/holds.ts";
 import { parseSendRecord, type SendRecord } from "../bridge/surface/requests.ts";
 import { parseJson } from "../web/src/lib/json.ts";
@@ -297,6 +298,9 @@ export interface ScreenFinding extends Finding {
 const SCREEN_REMEDY =
   "focus the pane on the desktop or resize it so the screen redraws, then send again; if it keeps happening, tap Report a problem in the pane menu and paste `collie doctor --json` into the issue";
 
+/** A screen row's detail when no send met a screen it could not type into. */
+const SCREEN_CLEAN = "no stale screen, no probe failure";
+
 const isProbeFailed = (record: Receipted): boolean => record.receipt.outcome === "refused" && record.receipt.reason === "probe_failed";
 const isStale = (record: Receipted): boolean => isProbeFailed(record) && (record.receipt.detail ?? "").startsWith(STALE_SCREEN);
 
@@ -321,18 +325,45 @@ function screenRow(harness: string, records: readonly Receipted[]): ScreenFindin
   const stale = records.filter(isStale).length;
   const other = records.filter(isProbeFailed).length - stale;
   const run = longestProbeRun(records);
-  if (stale + other === 0) return { ...ok(check, "no stale screen, no probe failure"), harness };
+  if (stale + other === 0) return { ...ok(check, SCREEN_CLEAN), harness };
   const detail = `stale screen ${String(stale)} · probe failed ${String(other)} · longest run ${String(run)}`;
   if (run < PROBE_RUN_WARN) return { ...ok(check, detail), harness };
   return { ...warn(check, detail, `${String(run)} sends to ${harness} in a row met a screen Collie could not type into; ${SCREEN_REMEDY}`), harness };
 }
 
+/** A row of the sends section. */
+export type SendsSectionFinding = SendsFinding | HoldsFinding | ScreenFinding;
+
 /** The whole sends section in print order: `sends-*`, then `holds-*`, then `screen-*`. The receipts are read once. */
-export function sendsSection(deps: SendsDeps): Finding[] {
+export function sendsSection(deps: SendsDeps): SendsSectionFinding[] {
   const windows = windowsOf(deps);
   return [
     ...windows.map(({ harness, records, capped }) => row(harness, records, capped)),
     ...holdFindings(deps),
     ...windows.filter(({ records }) => records.length > 0).map(({ harness, records }) => screenRow(harness, records)),
   ];
+}
+
+// ── The rows Report a problem carries (M71 spec 05) ──────────────────────────
+
+/** Whether a row says only "nothing here": no sends in its window, no hold open, no stale screen. */
+function quiet(finding: SendsSectionFinding): boolean {
+  if ("window" in finding) return finding.window.count === 0;
+  if ("holds" in finding) return finding.holds.length === 0;
+  return finding.status === "ok" && finding.detail === SCREEN_CLEAN;
+}
+
+/**
+ * The sends section as the bridge's report route takes it (bridge/report.ts): the same rows doctor
+ * prints, in its order, as check, status, detail and harness, and whether each says only "nothing
+ * here". No remedy, and no field of a hold: the route picks from these and copies them field by field.
+ */
+export function sendsReportRows(deps: SendsDeps): DoctorRowSource[] {
+  return sendsSection(deps).map((finding) => ({
+    check: finding.check,
+    status: finding.status,
+    detail: finding.detail,
+    harness: finding.harness ?? null,
+    quiet: quiet(finding),
+  }));
 }
