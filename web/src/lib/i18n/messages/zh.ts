@@ -670,7 +670,6 @@ export const zh: Dictionary = {
   "chat.card.output.showAll.one": "显示全部 {count} 行",
   "chat.card.output.showAll.other": "显示全部 {count} 行",
   "chat.card.diff.less": "收起",
-  "chat.card.image": "图片：{url}",
   "chat.run.commands.one": "{count} 个命令",
   "chat.run.commands.other": "{count} 个命令",
   "chat.run.edits.one": "{count} 处编辑",

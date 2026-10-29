@@ -680,7 +680,6 @@ export const ja: Dictionary = {
   "chat.card.output.showAll.one": "全 {count} 行を表示",
   "chat.card.output.showAll.other": "全 {count} 行を表示",
   "chat.card.diff.less": "表示を減らす",
-  "chat.card.image": "画像: {url}",
   "chat.run.commands.one": "コマンド {count} 件",
   "chat.run.commands.other": "コマンド {count} 件",
   "chat.run.edits.one": "編集 {count} 件",

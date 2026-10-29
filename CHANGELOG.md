@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **Chat draws the pictures Claude's tools return, and attached images.** A `Read` of a screenshot, or a screenshot tool, now shows the picture inside its tool card, and an attached image opens in a sheet instead of a bare link. Thanks @SergioGhisler (#590).
+
 ## [1.25.0] - 2026-10-29
 
 ### Added

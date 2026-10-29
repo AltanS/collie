@@ -615,7 +615,6 @@ export const pt: Dictionary = {
   "chat.card.output.showAll.one": "Mostrar tudo: {count} linha",
   "chat.card.output.showAll.other": "Mostrar tudo: {count} linhas",
   "chat.card.diff.less": "Mostrar menos",
-  "chat.card.image": "Imagem: {url}",
   "chat.run.commands.one": "{count} comando",
   "chat.run.commands.other": "{count} comandos",
   "chat.run.edits.one": "{count} edição",

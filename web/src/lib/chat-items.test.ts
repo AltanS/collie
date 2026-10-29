@@ -66,9 +66,17 @@ describe("itemsOf", () => {
     expect(itemsOf(entry({ parts: [toolPart()] }))[0]!.id).toBe("u1:0");
   });
 
-  it("names an image in a notice rather than dropping the part", () => {
+  it("draws an image part as an image block", () => {
     const [item] = itemsOf(entry({ parts: [{ kind: "image", url: "/api/image/7" }] }));
-    expect(item).toMatchObject({ kind: "notice", text: "Image: /api/image/7" });
+    expect(item).toEqual({ id: "u1:0", ts: "2026-09-30T08:00:00.000Z", kind: "image", url: "/api/image/7" });
+  });
+
+  it("carries a picture a tool returned onto its card, and leaves the key off when there is none", () => {
+    const url = "data:image/png;base64,AAAA";
+    const [withImage] = itemsOf(entry({ parts: [toolPart({ result: { text: "", imageUrl: url } })] }));
+    expect(withImage).toMatchObject({ kind: "tool", status: "done", image: url });
+    const [without] = itemsOf(entry({ parts: [toolPart({ result: { text: "ok" } })] }));
+    expect(without).not.toHaveProperty("image");
   });
 
   it("carries a turn's timestamp onto every block, and drops an empty one", () => {
