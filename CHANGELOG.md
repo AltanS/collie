@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Changed
+
+- **The harness lab installs a day-one agent version in its own prefix.** The install sets npm's `min-release-age` to 0 for that one call, and only inside the lab's throwaway run folder. Your `~/.npmrc` keeps its own rule, and every other npm call keeps it. Before, an agent version younger than your release age failed to install, and the lab kept a `failed` row for the pair.
+
 ## [1.25.0] - 2026-10-29
 
 ### Added

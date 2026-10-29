@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { codexTrust, HARNESSES, harnessSpec, OPENCODE_ASK_FILE, runDirs, TURN_CAP } from "./harnesses";
+import { codexTrust, HARNESSES, harnessSpec, npmInstallCommand, OPENCODE_ASK_FILE, runDirs, TURN_CAP } from "./harnesses";
 import { REPLY_ROW } from "./legs";
 import { prepareRun } from "./seed";
 
@@ -102,6 +102,24 @@ describe("the harness table", () => {
 
   test("every spec in the table is found by its own id", () => {
     for (const [id, spec] of Object.entries(HARNESSES)) expect(spec?.id).toBe(id);
+  });
+});
+
+describe("the npm install", () => {
+  const dirs = runDirs("/tmp/lab-run/opencode-1.19.5");
+  const command = npmInstallCommand(harnessSpec("opencode"), dirs, "1.19.5", { HOME: "/home/x", npm_config_fund: "false" });
+
+  test("it installs the exact version under the run's own prefix", () => {
+    expect(command.argv).toEqual(["npm", "install", "--prefix", dirs.bin, "--no-audit", "--no-fund", "--no-save", "opencode-ai@1.19.5"]);
+  });
+
+  test("it sets min-release-age to 0 in the environment of that call and keeps the rest", () => {
+    expect(command.env.npm_config_min_release_age).toBe("0");
+    expect(command.env).toMatchObject({ HOME: "/home/x", npm_config_fund: "false" });
+  });
+
+  test("it writes no config file and takes no config flag, so the person's ~/.npmrc stays as it is", () => {
+    expect(command.argv.some((arg) => arg.startsWith("--userconfig") || arg.startsWith("--globalconfig") || arg.includes("min-release-age"))).toBe(false);
   });
 });
 
