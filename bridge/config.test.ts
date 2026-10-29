@@ -619,8 +619,14 @@ describe("loadConfig picks herdr-core with no COLLIE_MUX only when the Herdr TUI
   const core = "/run/user/7/herdr-core/default.sock";
   const env = { XDG_RUNTIME_DIR: "/run/user/7", HERDR_SOCKET_PATH: "/home/dev/.config/herdr/herdr.sock" };
 
-  test.skipIf(process.platform === "win32")("only the core socket: herdr-core on that socket, with the reason", () => {
+  // herdr-core runs on Linux and macOS only (M74), so Windows keeps `herdr` on the same sockets.
+  test("only the core socket: herdr-core on that socket, with the reason; Windows keeps herdr", () => {
     const cfg = loadConfig(env, (path) => path === core);
+    if (process.platform === "win32") {
+      expect(cfg.mux).toBe("herdr");
+      expect(cfg.muxPickedBecause).toBe("");
+      return;
+    }
     expect(cfg.mux).toBe("herdr-core");
     expect(cfg.muxEndpoint).toBe(core);
     expect(cfg.muxPickedBecause).toContain(core);
