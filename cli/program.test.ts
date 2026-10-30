@@ -9,6 +9,7 @@ import { CONFIG_SUBCOMMANDS } from "./config.ts";
 import { WALKY_SUBCOMMANDS } from "./walky.ts";
 import { DURABLE_SUBCOMMANDS } from "./durable-attach.ts";
 import { MUX_SUBCOMMANDS } from "./mux-list.ts";
+import { SESSIONS_VERB } from "./sessions.ts";
 import {
   type Command,
   COMMANDS,
@@ -98,7 +99,9 @@ const CONFIG_VERBS = ["config"];
 const DURABLE_VERBS = ["durable"];
 // `mux list` (M76 spec 02). Declared after `durable`: it reads the multiplexers the durable adapter is one of.
 const MUX_VERBS = ["mux"];
-// Walky talky (M62). Declared after `durable`. One spelling: the `wt` alias was dropped before
+// The agent-session list (M76 spec 03), declared right after `mux`. The name is `SESSIONS_VERB`.
+const SESSIONS_VERBS = [SESSIONS_VERB];
+// Walky talky (M62). Declared after `sessions`. One spelling: the `wt` alias was dropped before
 // release, because Windows Terminal's binary is `wt.exe`.
 const WALKY_VERBS = ["walky"];
 // The manual, printed out of the binary: `collie skill` for an AI agent, `collie docs` for the
@@ -124,6 +127,7 @@ describe("the verb table", () => {
       ...CONFIG_VERBS,
       ...DURABLE_VERBS,
       ...MUX_VERBS,
+      ...SESSIONS_VERBS,
       ...WALKY_VERBS,
       ...CREW_VERBS,
       ...MANUAL_VERBS,
@@ -577,6 +581,8 @@ describe("exit codes", () => {
       // `walky` talks to this host's running bridges over their local sockets, and a `send`
       // would type into a real pane. cli/walky.test.ts drives every sub-verb against a temp socket.
       ...WALKY_VERBS,
+      // `sessions` dials this host's own running bridge for its snapshot. cli/sessions.test.ts drives it against a fake fetch.
+      ...SESSIONS_VERBS,
     ];
     // `skill` and `docs` print text compiled into this binary. They read nothing, resolve no state
     // dir and touch no machine, so the suite may run them for real.

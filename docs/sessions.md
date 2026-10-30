@@ -39,3 +39,40 @@ second Collie and no crew. Both appear under the same URL.
 
 Several machines need a crew. A crew puts every machine's Collie behind one lead and one URL
 ([Crews](crew.md)). A machine in the crew can carry its own terminal and its own durable agents.
+
+## List the sessions from a terminal
+
+`collie sessions` prints every agent session the running Collie sees, one row each. It reads this
+Collie's own snapshot and changes nothing.
+
+```text
+$ collie sessions
+MEMBER   MUX    SEAT          HARNESS                 STATE    SESSION  ACTIVE
+bluefin  herdr  collie (t1)   claude claude-opus-5-5  blocked  yes      3m
+bluefin  herdr  docs (t2)     codex gpt-9             working  yes      2h
+bluefin  -      -             desk                    working  yes      1m
+lab      -      api (p9)      claude                  idle     yes      12m
+
+4 sessions: 1 blocked, 2 working, 1 idle
+```
+
+- **MEMBER** is the machine in the crew. Rows are sorted by member, then workspace.
+- **MUX** is the terminal program that holds the pane. It shows `-` where Collie has no name for it.
+- **SEAT** is the workspace and the pane. A durable agent has no pane, so it shows `-`.
+- **HARNESS** is the agent program, with its model when Collie knows it. A durable agent shows its own name.
+- **STATE** is what the agent is doing: `working`, `blocked`, `idle`, `done` or `unknown`.
+- **SESSION** says `yes` when Collie knows the agent's session, so Chat can read it, and `no` when it does not.
+- **ACTIVE** is the time since you last opened or drove the pane from Collie.
+
+Run it on the lead to see the whole crew. On a member it lists that member's own panes, and the
+last line says so.
+
+| Flag | What it does |
+| ---- | ------------ |
+| `--state <state>` | Keep one state, for example `blocked`. |
+| `--member <member>` | Keep one member, by its id or its name. |
+| `--all` | Add the panes that hold no agent, such as a plain shell. |
+| `--json` | Print `{ "rows": [...] }`. Each row has the snapshot's own fields, such as `paneId`, `host`, `agent`, `status`, `cwd`, `workspaceLabel`, `hasSession`, `lastActiveAt` and `model`, and the columns above as `member`, `mux`, `seat`, `harness`, `state`, `session` and `active`. |
+
+With no Collie running the command prints one line and exits 1. If Collie refuses the read, it
+prints the same advice as `collie doctor` and exits 1.

@@ -107,6 +107,7 @@ import {
 } from "./stt.ts";
 import { cmdSttWhistle } from "./stt-whistle.ts";
 import { cmdMux, cmdMuxList, MUX_SUBCOMMANDS, type MuxListDeps } from "./mux-list.ts";
+import { cmdSessions, SESSIONS_VERB, type SessionsDeps } from "./sessions.ts";
 import { cmdDurable, cmdDurableAttach, cmdDurableDetach, cmdDurableList, DURABLE_SUBCOMMANDS, type DurableAttachDeps } from "./durable-attach.ts";
 import { realExec, realFiles } from "./sys.ts";
 import { HOST } from "../bridge/host.ts";
@@ -369,6 +370,12 @@ function durableVerbDeps(io: Io): DurableAttachDeps {
     fetch: (url, init) => fetch(url, init),
     restart: () => cmdRestart(deps),
   };
+}
+
+/** `sessions`: the context, the filesystem, and the one network read of this instance's own bridge. */
+function sessionsDeps(io: Io): SessionsDeps {
+  const deps = lifecycleDeps(io);
+  return { ctx: deps.ctx, io, files: deps.files, fetch: (url, init) => fetch(url, init) };
 }
 
 function beaconDeps(): BeaconEmitDeps {
@@ -954,6 +961,13 @@ export const COMMANDS: readonly Command[] = [
       },
     ],
     run: async (args, s) => await cmdMux(muxListDeps(s.io), args),
+  },
+  // ── Agent sessions (M76 spec 03) ───────────────────────────────────────────
+  // One read of this bridge's own snapshot, printed as a table. The name is `SESSIONS_VERB`, in one place.
+  {
+    name: SESSIONS_VERB,
+    summary: "list the agent sessions of the crew: member, mux, seat, harness, state (--state, --member, --all, --json)",
+    run: (args, s) => cmdSessions(sessionsDeps(s.io), args),
   },
   // ── Walky talky (M62) ──────────────────────────────────────────────────────
   // Messages between agent sessions, typed by an agent inside its pane or by the operator outside one.
