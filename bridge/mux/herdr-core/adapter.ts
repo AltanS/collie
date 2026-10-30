@@ -135,16 +135,12 @@ function remoteRefusal(paneId: string): MuxRefusalOutcome | null {
 
 /**
  * One pane's derived revision. The core reports none, so the adapter counts: the number moves when
- * a read of the SAME view (scope and lines, a view) returns different text, and never goes back. Keyed by
- * view so that a viewport read and a history read of one quiet pane do not bump each other.
+ * the pane's screen text differs from the last screen text any read saw, and never goes back.
  */
 interface PaneRevision {
   revision: number;
-  readonly lastText: Map<string, string>;
+  lastScreen: string;
 }
-
-/** At most this many read views are remembered per pane; the oldest is forgotten first. */
-const MAX_VIEWS_PER_PANE = 8;
 
 /**
  * How long a read with scrollback may take before the screen alone answers it. A read with `lines`
@@ -239,11 +235,13 @@ export class HerdrCoreMux implements MuxAdapter {
     const remote = remoteRefusal(paneId);
     if (remote !== null) return remote;
     const lines = Math.max(1, request.lines);
-    const view = `${request.scope}:${String(request.scope === "viewport" ? 0 : lines)}`;
     try {
-      if (request.scope === "viewport") return muxOk(this.gridOf(paneId, view, await this.rpc.readTerminal(paneId, 0), { keep: null, truncated: false }));
+      if (request.scope === "viewport") {
+        const screen = await this.rpc.readTerminal(paneId, 0);
+        return muxOk(this.gridOf(paneId, screen, screen, { keep: null, truncated: false }));
+      }
       const answered = await this.historyOrScreen(paneId, lines);
-      return muxOk(this.gridOf(paneId, view, answered.read, { keep: lines, truncated: answered.truncated }));
+      return muxOk(this.gridOf(paneId, answered.read, answered.screen, { keep: lines, truncated: answered.truncated }));
     } catch (err) {
       return refusalFor(err);
     }
@@ -254,7 +252,7 @@ export class HerdrCoreMux implements MuxAdapter {
    * budget. A history read that fails inside the budget fails the read, as it always did; a late answer
    * of either kind is dropped.
    */
-  private async historyOrScreen(paneId: string, lines: number): Promise<{ read: WireRead; truncated: boolean }> {
+  private async historyOrScreen(paneId: string, lines: number): Promise<{ read: WireRead; screen: WireRead; truncated: boolean }> {
     const history = this.rpc.readTerminal(paneId, lines);
     const screen = this.rpc.readTerminal(paneId, 0);
     // Whichever is not used must not surface as an unhandled rejection.
@@ -268,7 +266,7 @@ export class HerdrCoreMux implements MuxAdapter {
       const read = await Promise.race([history, late]);
       if (read !== null) {
         this.slowHistory.delete(paneId);
-        return { read, truncated: false };
+        return { read, screen: await screen, truncated: false };
       }
     } finally {
       clearTimeout(timer);
@@ -277,14 +275,19 @@ export class HerdrCoreMux implements MuxAdapter {
       this.slowHistory.add(paneId);
       this.log(`[herdr-core] the history read of ${paneId} gave no answer in ${String(this.historyBudgetMs)} ms; its screen answers without scrollback until it does`);
     }
-    return { read: await screen, truncated: true };
+    const shown = await screen;
+    return { read: shown, screen: shown, truncated: true };
   }
 
-  /** One read as a grid: its rows (the last `keep` of them, when set), its derived revision, `partial` when the core says so. */
-  private gridOf(paneId: string, view: string, read: WireRead, cut: { keep: number | null; truncated: boolean }): MuxGrid {
+  /**
+   * One read as a grid: its rows (the last `keep` of them, when set), `partial` when the core says so,
+   * and a revision derived from `screen`, the screen read beside it (the read itself for a viewport
+   * read), never from the rows of `read`.
+   */
+  private gridOf(paneId: string, read: WireRead, screen: WireRead, cut: { keep: number | null; truncated: boolean }): MuxGrid {
     const rows = read.text.replace(/\n$/u, "").split("\n");
     const text = (cut.keep === null ? rows : rows.slice(-cut.keep)).join("\n");
-    const grid: MutableGrid = { paneId, text, truncated: cut.truncated, revision: this.revisionFor(paneId, view, text) };
+    const grid: MutableGrid = { paneId, text, truncated: cut.truncated, revision: this.revisionFor(paneId, screen.text.replace(/\n$/u, "")) };
     if (!read.complete) grid.partial = true;
     return grid;
   }
@@ -470,21 +473,23 @@ export class HerdrCoreMux implements MuxAdapter {
     }
   }
 
-  /** The revision for this read: the same as last time unless this view's text moved. */
-  private revisionFor(paneId: string, view: string, text: string): number {
-    let entry = this.revisions.get(paneId);
+  /**
+   * The revision of a pane: one counter per pane that moves exactly when the pane's SCREEN text
+   * differs from the last screen text any read saw. The core has no revision of its own, and the
+   * phone's tap guard compares the revision of the card it drew with that of a fresh read, so every
+   * view (the phone's 40 lines, the rig's 80, the bridge's own poll) must see the same number for one
+   * screen. A counter per view bumped once per view for one change and made the guard refuse a tap
+   * right after the screen changed as "changed". History and stitched rows never feed it.
+   */
+  private revisionFor(paneId: string, screenText: string): number {
+    const entry = this.revisions.get(paneId);
     if (entry === undefined) {
-      entry = { revision: 1, lastText: new Map() };
-      this.revisions.set(paneId, entry);
+      this.revisions.set(paneId, { revision: 1, lastScreen: screenText });
+      return 1;
     }
-    const last = entry.lastText.get(view);
-    if (last !== undefined && last !== text) entry.revision += 1;
-    entry.lastText.delete(view);
-    entry.lastText.set(view, text);
-    if (entry.lastText.size > MAX_VIEWS_PER_PANE) {
-      const oldest = entry.lastText.keys().next();
-      if (oldest.done !== true) entry.lastText.delete(oldest.value);
-    }
+    if (entry.lastScreen === screenText) return entry.revision;
+    entry.revision += 1;
+    entry.lastScreen = screenText;
     return entry.revision;
   }
 
