@@ -3615,7 +3615,8 @@ matching `…e/.cache`; no other private text was on screen. The lab is
 | `pi--v130-core-idle--w120.txt` | Empty editor; pi's two offline warnings (no `fd`, no `rg` on the lab PATH) above | composer, empty, free |
 | `pi--v130-core-draft--w120.txt` | `collie core draft probe` typed | composer, draft read back |
 | `pi--v130-core-working--w120.txt` | A held turn, `── ⠧ Working ──` on the top rule | running |
-| `pi--v130-core-question--w120.txt` | The stock `question` tool: Red, Green, Blue, `4. Type something.`, `>` on 1, `↑↓ navigate • Enter to select • Esc to cancel` | **unreadable** (an Escape card). True reading: a question ask with three options. The same dialog with its colour lifts (`pi--v110-question-single.txt`); stripped of its escapes it reads unreadable too |
+| `pi--v130-core-question--w120.txt` | The stock `question` tool: Red, Green, Blue, `4. Type something.`, `>` on 1, `↑↓ navigate • Enter to select • Esc to cancel` | question ask with three options, walk (M78 spec 07: read by text on a read with no styling; it read unreadable before) |
+| `pi--v130-core-question-moved--w120.txt` | The same question after two Down presses through the bridge's keys route: `>` on 3 (M78 spec 07 lab, the lab path's user name replaced) | question ask with three options, walk from 3, pair |
 | `omp--v1861-core-idle--w120.txt` | Banner, update notice, the status rule and the empty `╰─` row | composer, empty, free |
 | `omp--v1861-core-draft--w120.txt` | `collie core draft probe` typed; omp draws a grey ghost completion `s` after it, which the plain text cannot tell apart | composer, draft `collie core draft probes` (**wrong text**: the true draft ends in `probe`) |
 | `omp--v1861-core-working--w120.txt` | A held turn, `⎋ Working…`, the spinner in the status rule | running |

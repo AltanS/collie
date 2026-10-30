@@ -11,6 +11,8 @@ import { buildBlocks } from "../index";
 import { piAdapter } from "./index";
 import { piView } from "./panel";
 import { idleFor, readScreen } from "../../../test/surface-corpus";
+import { liftDialog } from "../../surface/lift";
+import { stripSgr } from "../../surface/plain";
 import { askOf, modalWord } from "../../surface/surface";
 
 const PANES = join(import.meta.dirname, "../../../fixtures/panes");
@@ -94,6 +96,9 @@ const LIFTS_397 = new Map<string, Expect>([
   // screen's last row (L12 of odd/tasks/gentle-pi-chat-cards.md).
   ["pi--v130-gentle-review-consent.txt", "walk"],
   ["pi--v130-gentle-review-consent-moved.txt", "walk"],
+  // pi 1.3.0's stock question through a herdr-core bridge: a read with no styling at all (M78 spec 07).
+  ["pi--v130-core-question--w120.txt", "walk"],
+  ["pi--v130-core-question-moved--w120.txt", "walk"],
 ]);
 /** Screens with a pi modal up that stay raw: the Escape card's evidence. */
 const RAW_MODALS = new Set([
@@ -1102,5 +1107,112 @@ describe("a pi question whose key hint a narrow pane wrapped", () => {
       ["No", ["Down", "Enter"]],
       ["Cancel", ["Escape"]],
     ]);
+  });
+});
+
+// M78 spec 07: herdr-core's `terminal.read` hands Collie the screen with no styling at all, so every
+// paint test stands for a text fact there (ask.ts header, "A READ WITH NO STYLING"). Styled reads keep
+// every paint test, which the rest of this file pins.
+describe("a read with no styling (herdr-core)", () => {
+  const plain = (name: string) => linesOf(stripSgr(raw(name)));
+  const CORE = "pi--v130-core-question--w120.txt";
+  const text = (row: string): StyledLine => ({ segments: [{ text: row, style: {}, muted: false }] });
+
+  it("lifts pi 1.3.0's question through a core bridge with its options, the pointer's walk and Escape", () => {
+    const model = prompt(load(CORE));
+    expect(model.question).toBe("Which colour should the lab use?");
+    expect(model.options.map((o) => [o.label, o.keys])).toEqual([
+      ["Red", ["Enter"]],
+      ["Green", ["Down", "Enter"]],
+      ["Blue", ["Down", "Down", "Enter"]],
+      ["Cancel", ["Escape"]],
+    ]);
+    expect(model.feedback?.purpose).toBe("free-text");
+    expect(piAdapter.modalOnScreen?.(load(CORE))).toBe(true);
+    expect(piAdapter.composerReady?.(load(CORE))).toBe(false);
+  });
+
+  it("gives the same ask hash on two reads of the same screen, and reads as an ask on the Surface", () => {
+    const first = liftDialog(piAdapter.buildBlocks(load(CORE)));
+    const second = liftDialog(piAdapter.buildBlocks(load(CORE)));
+    expect(first?.hash).toBeDefined();
+    expect(second?.hash).toBe(first?.hash);
+    const read = readScreen(load(CORE), "pi", idleFor("pi"));
+    expect(modalWord(read.surface.modal)).toBe("ask");
+    expect(askOf(read.surface.modal)?.options.map((o) => o.label)).toEqual(["Red", "Green", "Blue", "Cancel"]);
+  });
+
+  it.each([
+    "pi--v0871-question-single.txt",
+    "pi--v110-question-single-moved.txt",
+    "pi--v0871-permission-gate.txt",
+    "pi--omo-v5130-single-described.txt",
+    "pi--v110-questionnaire-single.txt",
+    "pi--v130-gentle-choice.txt",
+  ])("%s stripped lifts the styled read's question, options, keys and signatures", (name) => {
+    const styled = prompt(load(name));
+    const stripped = prompt(plain(name));
+    expect(stripped).toEqual(styled);
+  });
+
+  it("lifts a tab page of several questions uncaptioned, the current chip being a colour only", () => {
+    for (const name of ["pi--v110-questionnaire-tabs.txt", "pi--v110-questionnaire-tabs-second-moved.txt"]) {
+      const styled = prompt(load(name));
+      const stripped = prompt(plain(name));
+      expect(styled.caption, name).toBeDefined();
+      expect(stripped.caption, name).toBeUndefined();
+      expect({ ...stripped, caption: styled.caption }, name).toEqual(styled);
+    }
+  });
+
+  it("lifts the Submit page as the styled read's review: a strip with no option row under it", () => {
+    for (const name of ["pi--v0871-questionnaire-submit-ready.txt", "pi--v110-questionnaire-submit-ready.txt"]) {
+      expect(detectPiQuestion(plain(name)), name).toEqual(detectPiQuestion(load(name)));
+    }
+    // An incomplete Submit page stays raw stripped as styled.
+    expect(detectPiQuestion(plain("pi--v110-questionnaire-submit-incomplete.txt"))).toBeNull();
+  });
+
+  it("keeps a quoted dialog raw: above the editor, and above a shell after pi exited", () => {
+    for (const name of ["pi--prose-quoted-dialog-above-editor.txt", "pi--prose-quoted-omo-dialog-above-editor.txt", "pi--prose-quoted-dialog-in-tool-result.txt", "pi--prose-quoted-dialog-then-shell.txt"]) {
+      expect(detectPiQuestion(plain(name)), name).toBeNull();
+      expect(piAdapter.buildBlocks(plain(name)).every((b) => b.kind === "raw"), name).toBe(true);
+    }
+  });
+
+  it("refuses pi's status rows once a shell prompt or two output rows stand under them", () => {
+    const core = load(CORE);
+    expect(detectPiQuestion(core)?.kind).toBe("prompt-select");
+    for (const shell of ["$ ", "alice@box:~/project$ ", "# ", "❯ "]) {
+      expect(detectPiQuestion([...core, text(shell)]), shell).toBeNull();
+    }
+    expect(detectPiQuestion([...core, text("● Wrote the file"), text("  ⎿  done")])).toBeNull();
+    // The limit, stated: one plain row under stock pi's two is an extension's status row, as on a
+    // styled read (paintedStatus lets the last row be plain), so one output row there still lifts.
+    expect(detectPiQuestion([...core, text("● Wrote the file")])?.kind).toBe("prompt-select");
+  });
+
+  it("refuses status rows that are not pi's own: no working directory first, or no session cost", () => {
+    const core = load(CORE);
+    const bottom = core.findLastIndex((line) => /^─{8,}$/.test(lineText(line).trimEnd()));
+    const frame = core.slice(0, bottom + 1);
+    expect(detectPiQuestion([...frame, text("/tmp/project"), text("↑10 ↓20 $0.000 0.0%/200k (auto)")])?.kind).toBe("prompt-select");
+    expect(detectPiQuestion([...frame, text("↑10 ↓20 $0.000 0.0%/200k (auto)")])).toBeNull();
+    expect(detectPiQuestion([...frame, text("/tmp/project"), text("↑10 ↓20 0.0%/200k (auto)")])).toBeNull();
+    expect(detectPiQuestion([...frame, text("Agent resumed"), text("done")])).toBeNull();
+    // Nothing under the bottom rule is a frame on a styled read too (issue 455): the same limit.
+    expect(detectPiQuestion(frame)?.kind).toBe("prompt-select");
+  });
+
+  it("takes no key hints typed into a draft for a dialog", () => {
+    const typed = replaceLast(stripSgr(raw("pi--v0871-draft.txt")), "collie stock pi draft probe", "see this:\r\n ↑↓ navigate • Enter to select • Esc to cancel");
+    expect(detectPiQuestion(linesOf(typed))).toBeNull();
+  });
+
+  it("states what stays paint-only: a frameless dialog, and an extension footer with no session cost", () => {
+    expect(detectPiQuestion(load("pi--v130-gentle-review-consent.txt"))?.kind).toBe("prompt-select");
+    expect(detectPiQuestion(plain("pi--v130-gentle-review-consent.txt"))).toBeNull();
+    expect(detectPiQuestion(load("pi--v110-single.txt"))?.kind).toBe("prompt-select");
+    expect(detectPiQuestion(plain("pi--v110-single.txt"))).toBeNull();
   });
 });

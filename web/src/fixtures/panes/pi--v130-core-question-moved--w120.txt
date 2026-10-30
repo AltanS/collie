@@ -1,0 +1,40 @@
+
+ Warning: fd not found. Offline mode enabled, skipping download.
+ Warning: ripgrep not found. Offline mode enabled, skipping download.
+
+
+ M78QUESTION ask me one question
+
+
+
+ question Which colour should the lab use?
+   Options: 1. Red, 2. Green, 3. Blue, 4. Type something.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Which colour should the lab use?
+
+  1. Red
+  2. Green
+> 3. Blue
+  4. Type something.
+
+ ↑↓ navigate • Enter to select • Esc to cancel
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+/var/home/alice/.cache/collie-lab/m78-07-lab/pi/project
+↑10 ↓20 $0.000 0.0%/200k (auto)                                                anthropic/claude-haiku-4.5 • thinking off

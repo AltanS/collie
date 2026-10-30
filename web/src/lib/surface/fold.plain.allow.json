@@ -531,333 +531,74 @@
     "propose": "Upstream: the cursor column in terminal.read (ghost text sits after it). Text only: none.",
     "effect": "HOTFIX: the draft shows more text than was typed, so a send that verifies the box can end typed_not_submitted"
   },
-  "pi--omo-v5130-nocolor-question.txt": {
-    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
-    "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
-    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
-    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
-  },
   "pi--omo-v5130-panel-question-cut.txt": {
-    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "why": "OmO's side panel beside a dialog taller than the pane is found by sign (c): the lowest rule run is the frame's top rule, and its title row under it must be painted (panel.ts mayBeOpenFrame, paintedSome). A plain read finds no panel, so the rows are not cut at the panel's column, the rule runs into the panel's text, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
     "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
-    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "rule": "web/src/lib/harness/pi/panel.ts:161 mayBeOpenFrame and :154 paintedSome (sign c, openColumn)",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: the title's place alone would let a quoted dialog cut at the last row give a crop width, so none is proposed here.",
     "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
   },
   "pi--omo-v5130-panel-question.txt": {
-    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "why": "OmO's side panel is found from the editor's status rows at the tail (panel.ts, signs a and b, through composer.ts tailRule), and those rows must be painted (paintedStatus). A plain read finds no panel, so the rows are not cut at the panel's column, the frame's rules run into the panel's text, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
     "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
-    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
-    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
-  },
-  "pi--omo-v5130-plain-question.txt": {
-    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
-    "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
-    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
-    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
-  },
-  "pi--omo-v5130-single-described-moved.txt": {
-    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
-    "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
-    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
-    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
-  },
-  "pi--omo-v5130-single-described.txt": {
-    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
-    "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
-    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
-    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
-  },
-  "pi--v0871-nocolor-question.txt": {
-    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
-    "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
-    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
-    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
-  },
-  "pi--v0871-permission-gate-moved.txt": {
-    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
-    "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
-    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
-    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
-  },
-  "pi--v0871-permission-gate-narrow-moved.txt": {
-    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
-    "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
-    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
-    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
-  },
-  "pi--v0871-permission-gate-narrow.txt": {
-    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
-    "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
-    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
-    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
-  },
-  "pi--v0871-permission-gate.txt": {
-    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
-    "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
-    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
-    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
-  },
-  "pi--v0871-question-narrow-moved.txt": {
-    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
-    "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
-    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
-    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
-  },
-  "pi--v0871-question-narrow.txt": {
-    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
-    "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
-    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
-    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
-  },
-  "pi--v0871-question-plain-moved.txt": {
-    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
-    "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
-    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
-    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
-  },
-  "pi--v0871-question-plain.txt": {
-    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
-    "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
-    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
-    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
-  },
-  "pi--v0871-question-single-moved.txt": {
-    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
-    "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
-    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
-    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
-  },
-  "pi--v0871-question-single.txt": {
-    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
-    "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
-    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
-    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
-  },
-  "pi--v0871-questionnaire-single-moved.txt": {
-    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
-    "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
-    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
-    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
-  },
-  "pi--v0871-questionnaire-single.txt": {
-    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
-    "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
-    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
-    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
-  },
-  "pi--v0871-questionnaire-submit-ready.txt": {
-    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
-    "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
-    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
-    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
-  },
-  "pi--v0871-questionnaire-tabs-answered.txt": {
-    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
-    "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
-    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
-    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
-  },
-  "pi--v0871-questionnaire-tabs-moved.txt": {
-    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
-    "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
-    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
-    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
-  },
-  "pi--v0871-questionnaire-tabs-second-moved.txt": {
-    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
-    "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
-    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
-    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
-  },
-  "pi--v0871-questionnaire-tabs-second.txt": {
-    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
-    "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
-    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
-    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
-  },
-  "pi--v0871-questionnaire-tabs.txt": {
-    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
-    "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
-    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
-    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
-  },
-  "pi--v110-question-narrow-moved.txt": {
-    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
-    "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
-    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
-    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
-  },
-  "pi--v110-question-narrow.txt": {
-    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
-    "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
-    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
-    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
-  },
-  "pi--v110-question-plain-moved.txt": {
-    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
-    "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
-    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
-    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
-  },
-  "pi--v110-question-plain.txt": {
-    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
-    "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
-    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
-    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
-  },
-  "pi--v110-question-single-moved.txt": {
-    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
-    "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
-    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
-    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
-  },
-  "pi--v110-question-single.txt": {
-    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
-    "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
-    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
-    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
-  },
-  "pi--v110-questionnaire-single-moved.txt": {
-    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
-    "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
-    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
-    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
-  },
-  "pi--v110-questionnaire-single.txt": {
-    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
-    "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
-    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
-    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
-  },
-  "pi--v110-questionnaire-submit-ready.txt": {
-    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
-    "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
-    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
-    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
-  },
-  "pi--v110-questionnaire-tabs-answered.txt": {
-    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
-    "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
-    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
-    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
-  },
-  "pi--v110-questionnaire-tabs-moved.txt": {
-    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
-    "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
-    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
-    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
-  },
-  "pi--v110-questionnaire-tabs-second-moved.txt": {
-    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
-    "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
-    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
-    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
-  },
-  "pi--v110-questionnaire-tabs-second.txt": {
-    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
-    "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
-    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
-    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
-  },
-  "pi--v110-questionnaire-tabs.txt": {
-    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
-    "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
-    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "rule": "web/src/lib/harness/pi/panel.ts:121 anchored and :136 overrunColumn via pi/composer.ts:154 tailRule and :100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: the session-cost rule of ask.ts textStatus could stand for paintedStatus in tailRule too, but tailRule also decides the editor and the send, which is out of scope for M78 spec 07.",
     "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
   },
   "pi--v110-review-complete.txt": {
-    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "why": "On a read with no styling pi's status rows are told by text: the first row opens with the working directory and one of the first two carries pi's session cost (ask.ts textStatus). The PR 397 extension replaces pi's footer with its own row (`⎇ main`), which prints no cost, so the plain read finds no frame and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
     "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
-    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "rule": "web/src/lib/harness/pi/ask.ts:181 textStatus (statusTailBottom on a plain read); styled: pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: accepting any footer row under the rule would also accept output under a quoted dialog, so no wider text rule is proposed.",
     "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
   },
   "pi--v110-single-desc.txt": {
-    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "why": "On a read with no styling pi's status rows are told by text: the first row opens with the working directory and one of the first two carries pi's session cost (ask.ts textStatus). The PR 397 extension replaces pi's footer with its own row (`⎇ main`), which prints no cost, so the plain read finds no frame and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
     "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
-    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "rule": "web/src/lib/harness/pi/ask.ts:181 textStatus (statusTailBottom on a plain read); styled: pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: accepting any footer row under the rule would also accept output under a quoted dialog, so no wider text rule is proposed.",
     "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
   },
   "pi--v110-single-moved.txt": {
-    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "why": "On a read with no styling pi's status rows are told by text: the first row opens with the working directory and one of the first two carries pi's session cost (ask.ts textStatus). The PR 397 extension replaces pi's footer with its own row (`⎇ main`), which prints no cost, so the plain read finds no frame and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
     "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
-    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "rule": "web/src/lib/harness/pi/ask.ts:181 textStatus (statusTailBottom on a plain read); styled: pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: accepting any footer row under the rule would also accept output under a quoted dialog, so no wider text rule is proposed.",
     "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
   },
   "pi--v110-single-narrow.txt": {
-    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "why": "On a read with no styling pi's status rows are told by text: the first row opens with the working directory and one of the first two carries pi's session cost (ask.ts textStatus). The PR 397 extension replaces pi's footer with its own row (`⎇ main`), which prints no cost, so the plain read finds no frame and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
     "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
-    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "rule": "web/src/lib/harness/pi/ask.ts:181 textStatus (statusTailBottom on a plain read); styled: pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: accepting any footer row under the rule would also accept output under a quoted dialog, so no wider text rule is proposed.",
     "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
   },
   "pi--v110-single.txt": {
-    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "why": "On a read with no styling pi's status rows are told by text: the first row opens with the working directory and one of the first two carries pi's session cost (ask.ts textStatus). The PR 397 extension replaces pi's footer with its own row (`⎇ main`), which prints no cost, so the plain read finds no frame and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
     "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
-    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "rule": "web/src/lib/harness/pi/ask.ts:181 textStatus (statusTailBottom on a plain read); styled: pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: accepting any footer row under the rule would also accept output under a quoted dialog, so no wider text rule is proposed.",
     "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
   },
   "pi--v110-tabs-compact.txt": {
-    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "why": "On a read with no styling pi's status rows are told by text: the first row opens with the working directory and one of the first two carries pi's session cost (ask.ts textStatus). The PR 397 extension replaces pi's footer with its own row (`⎇ main`), which prints no cost, so the plain read finds no frame and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
     "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
-    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "rule": "web/src/lib/harness/pi/ask.ts:181 textStatus (statusTailBottom on a plain read); styled: pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: accepting any footer row under the rule would also accept output under a quoted dialog, so no wider text rule is proposed.",
     "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
   },
   "pi--v110-tabs-single-recorded.txt": {
-    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "why": "On a read with no styling pi's status rows are told by text: the first row opens with the working directory and one of the first two carries pi's session cost (ask.ts textStatus). The PR 397 extension replaces pi's footer with its own row (`⎇ main`), which prints no cost, so the plain read finds no frame and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
     "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
-    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "rule": "web/src/lib/harness/pi/ask.ts:181 textStatus (statusTailBottom on a plain read); styled: pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: accepting any footer row under the rule would also accept output under a quoted dialog, so no wider text rule is proposed.",
     "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
   },
   "pi--v110-tabs-single.txt": {
-    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "why": "On a read with no styling pi's status rows are told by text: the first row opens with the working directory and one of the first two carries pi's session cost (ask.ts textStatus). The PR 397 extension replaces pi's footer with its own row (`⎇ main`), which prints no cost, so the plain read finds no frame and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
     "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
-    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "rule": "web/src/lib/harness/pi/ask.ts:181 textStatus (statusTailBottom on a plain read); styled: pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: accepting any footer row under the rule would also accept output under a quoted dialog, so no wider text rule is proposed.",
     "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
   },
   "pi--v130-custom-footer-draft.txt": {
@@ -874,32 +615,18 @@
     "propose": "Upstream: per-row dim or fg flag. Text only: none, a plain row under a rule is also what a shell prompt after pi exited looks like.",
     "effect": "HOTFIX: an idle box reads composer unknown, so a send is held or refused(not_free) and a probe can end probe_failed"
   },
-  "pi--v130-gentle-choice-moved.txt": {
-    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
-    "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
-    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
-    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
-  },
-  "pi--v130-gentle-choice.txt": {
-    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
-    "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
-    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
-    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
-  },
   "pi--v130-gentle-review-consent-moved.txt": {
-    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "why": "A dialog with no rules (the Gentle AI review-consent screen) is told from prose by its paint alone: a painted footer as the screen's last row, a painted title and painted note rows. On a read with no styling the frameless reading is not tried, so the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
     "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
-    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "rule": "web/src/lib/harness/pi/ask.ts:285 framelessFrame (skipped on a plain read in readPiFrame :234)",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: none; with no rules and no status rows, numbered rows over a key-hint line are also what agent prose quoting the screen looks like.",
     "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
   },
   "pi--v130-gentle-review-consent.txt": {
-    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "why": "A dialog with no rules (the Gentle AI review-consent screen) is told from prose by its paint alone: a painted footer as the screen's last row, a painted title and painted note rows. On a read with no styling the frameless reading is not tried, so the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
     "class": "colour-needed",
-    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
-    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "rule": "web/src/lib/harness/pi/ask.ts:285 framelessFrame (skipped on a plain read in readPiFrame :234)",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: none; with no rules and no status rows, numbered rows over a key-hint line are also what agent prose quoting the screen looks like.",
     "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
   }
 }

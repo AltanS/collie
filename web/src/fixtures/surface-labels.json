@@ -6011,6 +6011,11 @@
    "version": "1.3.0",
    "state": "dialog"
   },
+  "pi--v130-core-question-moved--w120.txt": {
+   "harness": "pi",
+   "version": "1.3.0",
+   "state": "dialog"
+  },
   "omp--v1861-core-idle--w120.txt": {
    "harness": "omp",
    "version": "18.6.1",

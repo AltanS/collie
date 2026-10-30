@@ -110,6 +110,9 @@ export const WALK_PAIRS: readonly WalkPair[] = [
   ["pi", "pi--v110-question-narrow.txt", "pi--v110-question-narrow-moved.txt"],
   ["pi", "pi--v0871-question-plain.txt", "pi--v0871-question-plain-moved.txt"],
   ["pi", "pi--v110-question-plain.txt", "pi--v110-question-plain-moved.txt"],
+  // The same stock `question` on pi 1.3.0 through a herdr-core bridge, a read with no styling: the
+  // pointer moved from 1 to 3 by two Down presses (M78 spec 07, live lab 2026-10-30).
+  ["pi", "pi--v130-core-question--w120.txt", "pi--v130-core-question-moved--w120.txt"],
   // pi's stock `questionnaire` example: one question, then both pages of a tabbed one.
   ["pi", "pi--v0871-questionnaire-single.txt", "pi--v0871-questionnaire-single-moved.txt"],
   ["pi", "pi--v110-questionnaire-single.txt", "pi--v110-questionnaire-single-moved.txt"],
