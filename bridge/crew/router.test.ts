@@ -821,6 +821,26 @@ describe("POST /crew/v1/enroll — admitted by the TOKEN, not by the two factors
     expect(h.data().invites).toEqual([]);
   });
 
+  test("a name the lead already uses is refused with 422 and a reason; the invite is spent, nothing is pinned", async () => {
+    const h = invited();
+    const handler = createCrewRouter({ store: h.store, audit: h.audit, now: () => T0 + 1, hostname: () => "bluefin.lan" });
+    const res = (await call(handler, CREW_ENROLL_PATH, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-crew-protocol": "2" },
+      body: JSON.stringify(body({ token: h.token, label: "Bluefin" })),
+    }))!;
+    expect(res.status).toBe(422);
+    expect(res.headers.get("x-crew-protocol")).toBe("2");
+    expect(await res.json()).toEqual({
+      error: 'the name "Bluefin" is already taken by the lead. Pass --label <another name>.',
+      code: "label_taken",
+      label: "Bluefin",
+      takenBy: "lead",
+    });
+    expect(h.data().peers).toEqual([]);
+    expect(h.data().invites).toEqual([]);
+  });
+
   test("the token is single-use — the same request twice is refused the second time", async () => {
     const h = invited();
     const handler = createCrewRouter({ store: h.store, audit: h.audit, now: () => T0 + 1 });

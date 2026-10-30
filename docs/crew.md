@@ -164,6 +164,15 @@ instance's own port:
 collie crew join https://lead.tail1234.ts.net - --address 127.0.0.1:8788
 ```
 
+**Every machine has its own name.** `--label <name>` is the name a member shows in the crew. Without it, a
+member takes the host name. A named instance (`COLLIE_INSTANCE=hc`) takes `<hostname>-<instance>`, so a
+second instance on the lead's host joins as `bluefin-hc`, not as a second `bluefin`. The lead refuses a
+name that is its own, or one that another member already has, with a reason like `the name "bluefin" is
+already taken by the lead. Pass --label <another name>.` The match ignores capital letters. The lead has
+spent the invite by then, so run `collie crew invite` again and join with another `--label`. A member that
+joins again under its own name is not refused. This needs a lead on 1.25.0 or later. An older lead
+still adds a random suffix to a name that is taken.
+
 A member's listener is pinned mutual TLS, so a browser or `curl` cannot reach it directly. You reach
 that member only through the lead.
 
@@ -270,8 +279,9 @@ collie crew join <lead-address> --label desk-agents
 
 One Collie carries one terminal multiplexer and every durable agent attached to it, so a Herdr instance
 and its durable agents are one peer, and it needs no label of its own. A durable-only instance
-(`COLLIE_MUX=durable`) is a peer of its own. It joins under the host name unless you pass `--label`,
-so give it a name when another peer already uses that host.
+(`COLLIE_MUX=durable`) is a peer of its own. It joins under the host name unless you pass `--label` (a named
+instance joins as `<hostname>-<instance>`), and the lead refuses a name that is taken, so give it a name when
+another peer already uses that host.
 
 | What | Where it happens |
 | --- | --- |

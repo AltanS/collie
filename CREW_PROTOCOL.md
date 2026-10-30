@@ -923,6 +923,23 @@ Run **on the peer**, once.
 
 4. The lead's roster gains the peer; the peer's roster gains exactly one entry — its lead.
 
+   > **Note, added in 1.25.0. A name that is already taken is refused, not suffixed.** The `label` in the
+   > enroll request is the member id the joiner asks for. Before 1.25.0 a lead whose roster already held
+   > that id minted `<label>-<random>` instead, so a second `bluefin` joined as `bluefin-x7k2` and two
+   > rows read alike. A 1.25.0 lead now refuses a **new** member whose label is the lead's own display
+   > name (the short hostname, `servers[0].name`) or an enrolled member's id, compared without regard to
+   > case and as the member id the label would become. The answer is **`422`** with the body
+   > `{ "error": "<sentence>", "code": "label_taken", "label": "<the name asked for>", "takenBy": "lead" | "member" }`.
+   > `error` is the sentence to show the operator: it names the taken name and says to pass
+   > `--label <another name>`. The answer is **ADDITIVE-OPTIONAL** (§7.1): it is a new refusal on a path
+   > that already refuses, `CREW_PROTOCOL_VERSION` stays 2, and the success answer is unchanged. A joiner
+   > that predates 1.25.0 reads any non-401, non-409 status as "the lead answered HTTP 422" and exits
+   > non-zero; 422 is used instead of 409 because those joiners read every 409 as a protocol mismatch.
+   > The refusal comes after the token is checked, so it tells an unauthenticated caller nothing, and the
+   > token is **spent** (it is single-use whatever follows, step 1), so the operator mints a fresh invite.
+   > A member that joins again with the same fingerprint keeps its id and is never refused. An older
+   > lead keeps the suffix behaviour.
+
 **`<lead-address>` is whatever the operator can reach.** Any network: tailnet, LAN, WireGuard,
 someone else's overlay, an SSH tunnel. Collie owns authentication; **the operator owns reachability**.
 There is no discovery, no enumeration, and no overlay-network integration — ever.

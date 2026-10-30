@@ -6,6 +6,7 @@ import {
   isMemberId,
   mintIdentity,
   mintMemberId,
+  slugifyMemberId,
   normalizeFingerprint,
   randomToken,
   secretEquals,
@@ -304,6 +305,55 @@ export function parseEnrollResponse(value: JsonValue | undefined): EnrollRespons
 }
 
 /**
+ * The lead turned a joining machine's name away (CREW_PROTOCOL.md §8.2, added 1.25.0). Not a
+ * {@link CrewChange}: nothing is written, but the invite was spent before this was decided.
+ */
+export interface EnrollRefusal {
+  readonly refused: "label_taken";
+  /** The name the joiner asked for, as it typed it. */
+  readonly label: string;
+  /** Who holds it: the lead's own display name, or an enrolled member's id. */
+  readonly takenBy: "lead" | "member";
+  /** The sentence the wire carries. It names the taken name and says to pass `--label`. */
+  readonly message: string;
+}
+
+/** The joining side's reader for the 422 body: the sentence to show, or `null` for any other answer. */
+export function parseEnrollRefusal(value: JsonValue | undefined): string | null {
+  if (value === null || value === undefined || typeof value !== "object" || Array.isArray(value)) return null;
+  const v: JsonObject = value;
+  return v.code === "label_taken" && typeof v.error === "string" && v.error !== "" ? v.error : null;
+}
+
+export function isEnrollRefusal(value: CrewChange<EnrollResponse> | EnrollRefusal | null): value is EnrollRefusal {
+  return value !== null && "refused" in value;
+}
+
+/**
+ * Does `label` collide with the lead's display name or an enrolled member's id? Compared as typed
+ * (case-insensitive) and as the member id it would become, so `Bluefin` and `bluefin!` are both the
+ * lead's `bluefin`. An unusable label (no letters or digits) mints a random id and collides with nothing.
+ */
+function labelRefusal(data: TrustStoreData, label: string, leadName: string): EnrollRefusal | null {
+  const typed = label.trim();
+  const slug = slugifyMemberId(typed);
+  const refuse = (takenBy: "lead" | "member", holder: string): EnrollRefusal => ({
+    refused: "label_taken",
+    label: typed,
+    takenBy,
+    message: `the name "${typed}" is already taken by ${holder}. Pass --label <another name>.`,
+  });
+  const lead = leadName.trim().toLowerCase();
+  if (typed.toLowerCase() === lead || (slug !== null && slug === slugifyMemberId(lead))) {
+    return refuse("lead", "the lead");
+  }
+  if (slug === null) return null;
+  if (slug === data.self.memberId) return refuse("lead", "the lead");
+  const holder = data.peers.find((p) => p.memberId === slug);
+  return holder === undefined ? null : refuse("member", `the member "${holder.memberId}"`);
+}
+
+/**
  * Lead side: pin the joining peer and mint its member id.
  *
  * Called only after {@link consumeInvite} accepted the token — this function does not check it, so
@@ -314,15 +364,27 @@ export function parseEnrollResponse(value: JsonValue | undefined): EnrollRespons
  * was replaced. What it must never do is silently accept a *new* certificate for a member that is
  * still enrolled — but that case cannot arrive here, because reaching this point required a fresh
  * invite the operator minted by hand.
+ *
+ * **A new member whose label is the lead's display name, or an enrolled member's id, is refused**
+ * (1.25.0) rather than suffixed: before, `bluefin` twice became `bluefin` and `bluefin-x7k2`, and the
+ * operator could not tell which row was which machine. The invite is spent either way.
  */
 export function enrollPeer(
   data: TrustStoreData,
   req: { fingerprint: string; certPem: string; address: string; label: string | null },
   now: number,
   random: RandomSource = randomToken,
-): CrewChange<EnrollResponse> | null {
+  /** The lead's own display name (`leadLabel`). Absent: only member ids are checked. */
+  leadName: string = data.self.memberId,
+): CrewChange<EnrollResponse> | EnrollRefusal | null {
   if (data.crew === null) return null;
   const existing = data.peers.find((p) => p.fingerprint === req.fingerprint);
+  // A name is never made unique by a silent suffix: two machines both called `bluefin` is the
+  // confusion this refuses (1.25.0). A re-join (same fingerprint) keeps its own id and is not asked.
+  if (existing === undefined && req.label !== null) {
+    const refusal = labelRefusal(data, req.label, leadName);
+    if (refusal !== null) return refusal;
+  }
   const taken = new Set(data.peers.map((p) => p.memberId).concat(data.self.memberId));
   const memberId = existing?.memberId ?? mintMemberId(req.label, taken, random);
   const member: TrustedMember = {

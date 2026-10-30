@@ -1,3 +1,4 @@
+import { hostname } from "node:os";
 import type { AuditLog } from "../audit.ts";
 import type { JsonObject, JsonValue } from "../json.ts";
 import {
@@ -22,6 +23,7 @@ import { CREW_MACHINE_FIELD } from "../machine-stats.ts";
 import type { MachineSample } from "../types.ts";
 import { LEAD_LINE_HEADER, LEAD_RELEASE_HEADER, UPDATE_TURN_HEADER } from "./follow.ts";
 import { apiPathFor } from "./forward.ts";
+import { leadLabel } from "./merge.ts";
 import { HOST_PARAM } from "./registry.ts";
 import {
   adoptLead,
@@ -32,12 +34,14 @@ import {
   enrollPeer,
   isDemotionRefused,
   isLeading,
+  isEnrollRefusal,
   parseEnrollRequest,
   parseRosterEntry,
   recordSignedRequest,
   removeMember,
   CREW_PROTOCOL_VERSION,
   type DemotionRefused,
+  type EnrollRefusal,
 } from "./enrollment.ts";
 import { randomToken, type RandomSource } from "./identity.ts";
 import {
@@ -373,6 +377,8 @@ export interface StandbySurface {
 export interface CrewRouterDeps {
   readonly store: TrustStore;
   readonly audit: AuditLog | null;
+  /** This machine's hostname, for the lead's own display name when a joiner asks for it. Absent: `os.hostname`. */
+  readonly hostname?: () => string;
   /** Absent ⇒ `/crew/v1/snapshot` 404s like any unimplemented route. */
   readonly snapshot?: SnapshotSource;
   /** Absent ⇒ the per-pane/tab/workspace half of §5's table 404s. */
@@ -848,6 +854,20 @@ function resolveDial(
     return { memberId: deputy.memberId, isDeputy: true };
   }
   return null;
+}
+
+/** The lead refuses a joiner's name (CREW_PROTOCOL.md §8.2, 1.25.0): 422, never 409, which old joiners read as a protocol mismatch. */
+function enrollLabelRefusedResponse(refusal: EnrollRefusal): Response {
+  return new Response(
+    JSON.stringify({ error: refusal.message, code: refusal.refused, label: refusal.label, takenBy: refusal.takenBy }),
+    {
+      status: 422,
+      headers: {
+        "content-type": "application/json; charset=utf-8",
+        [PROTOCOL_HEADER]: String(CREW_PROTOCOL_VERSION),
+      },
+    },
+  );
 }
 
 export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
@@ -1705,21 +1725,30 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
     // single-use token the operator carried out of band, and the pin is trust-on-first-use at this
     // instant — `parseEnrollRequest` has already refused a payload whose certificate and fingerprint
     // are not the same certificate, so what is pinned is what the joiner will actually present.
-    const response = await commitCrewChange(deps.store, deps.audit, (data) =>
-      data === null
-        ? null
-        : enrollPeer(
-            data,
-            {
-              fingerprint: parsed.fingerprint,
-              certPem: parsed.certPem,
-              address: parsed.address,
-              label: parsed.label ?? invite.label,
-            },
-            now(),
-            random,
-          ),
-    );
+    // A refused name writes nothing, so it travels out of the commit in a variable: the store's
+    // `update` takes a change or null, and null already means "not a crew member" below.
+    let refusal: EnrollRefusal | null = null;
+    const response = await commitCrewChange(deps.store, deps.audit, (data) => {
+      if (data === null) return null;
+      const outcome = enrollPeer(
+        data,
+        {
+          fingerprint: parsed.fingerprint,
+          certPem: parsed.certPem,
+          address: parsed.address,
+          label: parsed.label ?? invite.label,
+        },
+        now(),
+        random,
+        leadLabel((deps.hostname ?? hostname)(), data.self.memberId),
+      );
+      if (!isEnrollRefusal(outcome)) return outcome;
+      refusal = outcome;
+      return null;
+    });
+    // The token proved good above, so this answer is not an oracle for an unauthenticated caller.
+    // 422, not 409: a pre-1.25.0 `crew join` reads every 409 as a protocol mismatch.
+    if (refusal !== null) return enrollLabelRefusedResponse(refusal);
     if (response === null) return refuse(CREW_ENROLL_PATH, "not-a-crew-member");
 
     // The peer is in the roster on disk; this process still holds the one it booted with (§8.2's

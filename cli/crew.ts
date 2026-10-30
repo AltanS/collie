@@ -16,6 +16,7 @@ import {
   liveHandover,
   markSecretDelivered,
   mintInvite,
+  parseEnrollRefusal,
   parseEnrollResponse,
   parseRoster,
   promoteSelf,
@@ -761,6 +762,10 @@ async function bridgeAnswersWithin(deps: CrewDeps, budgetMs: number): Promise<bo
 
 const JOIN_USAGE = "usage: collie crew join <lead-address> [<token>|-|@file] [--address <mine>] [--label <name>]";
 
+/** Said under every `join` usage: what the name is, because two machines may not share one. */
+export const JOIN_LABEL_NOTE =
+  "       --label names this machine in the crew. Default: the hostname, or <hostname>-<instance> for a named instance.";
+
 /** What the operator is asked when they gave no token and there is a terminal to ask at. */
 const TOKEN_PROMPT = "Paste the invite token from `collie crew invite` on the lead:";
 
@@ -791,17 +796,23 @@ async function resolveToken(deps: CrewDeps, address: string, given: string | und
 }
 
 /**
- * `--label`, or this machine's hostname.
+ * `--label`, or this machine's hostname, or `<hostname>-<instance>` for a named instance.
  *
  * The label becomes the member id on both sides, and an unlabelled join used to mint `collie-8f3a2b1c`
  * — a name that identifies the machine to nobody. The box's own name is the answer everyone would
  * have typed, so it is the default; `--label` still wins, and a machine with no hostname to read
  * falls back to the random id rather than to an empty string.
+ *
+ * A second instance on the same box (`COLLIE_INSTANCE=hc`, `ctx.instance`) would join under the very
+ * name its lead already shows for the box, and the lead now refuses that. So a named instance adds
+ * its name: `bluefin-hc`. The unnamed instance keeps the bare hostname.
  */
-function joinLabel(deps: CrewDeps, flag: string | undefined): string | undefined {
+export function joinLabel(deps: CrewDeps, flag: string | undefined): string | undefined {
   if (flag !== undefined && flag !== "") return flag;
   const host = deps.hostname?.().trim();
-  return host === undefined || host === "" ? undefined : host;
+  if (host === undefined || host === "") return undefined;
+  const instance = deps.ctx.instance;
+  return instance === null || instance === "" ? host : `${host}-${instance}`;
 }
 
 /** One enrollment POST. `res` absent means nothing answered; see {@link looksLikePlaintextListener}. */
@@ -912,6 +923,7 @@ export async function cmdJoin(deps: CrewDeps, args: readonly string[]): Promise<
   const [address, tokenArg] = positional;
   if (address === undefined) {
     deps.io.err(JOIN_USAGE);
+    deps.io.err(JOIN_LABEL_NOTE);
     deps.io.err("       Mint the token on the lead with `collie crew invite`; it is single-use and lasts 10 minutes.");
     return EXIT.USAGE;
   }
@@ -1049,6 +1061,14 @@ export async function cmdJoin(deps: CrewDeps, args: readonly string[]): Promise<
     deps.io.err("       or the lead is still restarting after `crew invite`.");
     deps.io.err("       Mint a fresh one on the lead: `collie crew invite`.");
     return EXIT.REFUSED;
+  }
+  if (res.status === 422) {
+    const reason = parseEnrollRefusal(await res.json().catch(() => null));
+    if (reason !== null) {
+      deps.io.err(`error: the lead refused this machine's name: ${reason}`);
+      deps.io.err("       The lead spent this invite. Mint a fresh one on the lead: `collie crew invite`.");
+      return EXIT.REFUSED;
+    }
   }
   if (res.status === 409) {
     deps.io.err(`error: protocol mismatch — this build speaks ${CREW_PROTOCOL_VERSION}; update the older machine.`);

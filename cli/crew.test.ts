@@ -1190,6 +1190,42 @@ describe("collie join", () => {
     // SAFETY: the body is the `EnrollRequest` `cmdJoin` just serialised, whose `label` is the flag.
     expect(JSON.parse(h.requests[0]!.body).label).toBe("nas");
   });
+
+  test("with no `--label` the unnamed instance joins as the hostname, a named one as `<hostname>-<instance>`", async () => {
+    const plain = harness(null, [jsonReply(ENROLLED, 200, "desk")]);
+    expect(await cmdJoin(plain.deps, joinArgs)).toBe(EXIT.OK);
+    // SAFETY: the body is the `EnrollRequest` `cmdJoin` just serialised.
+    expect(JSON.parse(plain.requests[0]!.body).label).toBe("laptop-box");
+
+    const named = harness(null, [jsonReply(ENROLLED, 200, "desk")], {
+      ctx: context({ COLLIE_INSTANCE: "hc", COLLIE_PORT: "8794" }, { instance: "hc", port: 8794 }),
+    });
+    expect(await cmdJoin(named.deps, joinArgs)).toBe(EXIT.OK);
+    expect(JSON.parse(named.requests[0]!.body).label).toBe("laptop-box-hc");
+
+    const flagged = harness(null, [jsonReply(ENROLLED, 200, "desk")], {
+      ctx: context({}, { instance: "hc", port: 8794 }),
+    });
+    expect(await cmdJoin(flagged.deps, [...joinArgs, "--label", "nas"])).toBe(EXIT.OK);
+    expect(JSON.parse(flagged.requests[0]!.body).label).toBe("nas");
+  });
+
+  test("a name the lead refuses is printed as the lead's reason, exits REFUSED and stores no crew", async () => {
+    const reason = 'the name "laptop-box" is already taken by the lead. Pass --label <another name>.';
+    const h = harness(null, [
+      jsonReply({ error: reason, code: "label_taken", label: "laptop-box", takenBy: "lead" }, 422, "desk"),
+    ]);
+    expect(await cmdJoin(h.deps, joinArgs)).toBe(EXIT.REFUSED);
+    expect(text(h.io)).toContain(`error: the lead refused this machine's name: ${reason}`);
+    expect(text(h.io)).toContain("collie crew invite");
+    expect(h.data()!.crew).toBeNull();
+  });
+
+  test("the `join` usage says what `--label` defaults to", async () => {
+    const h = harness(null);
+    expect(await cmdJoin(h.deps, [])).toBe(EXIT.USAGE);
+    expect(text(h.io)).toContain("<hostname>-<instance>");
+  });
 });
 
 // ── one verb, two spellings ──────────────────────────────────────────────────

@@ -14,6 +14,7 @@ import {
   HANDOVER_TTL_MS,
   identityMinter,
   isDemotionRefused,
+  isEnrollRefusal,
   isLeading,
   liveHandover,
   parseRoster,
@@ -34,12 +35,19 @@ import {
   rotateCrewSecret,
   selfIdentity,
 } from "./enrollment.ts";
-import { fingerprintOfCert, hashToken, isMemberId } from "./identity.ts";
+import { fingerprintOfCert, hashToken } from "./identity.ts";
 import { mintWarrant } from "./warrant.ts";
 import { TrustStore, type TrustStoreData, type TrustStoreIo } from "./trust-store.ts";
 import { counterRandom, fp, leadStore, material, member, CREW, peerStore, T0 } from "./fixtures.ts";
 
 const R = () => counterRandom("r");
+
+/** An enrollment the test expects the lead to take; anything else is a fixture failure. */
+const enrollOk = (...args: Parameters<typeof enrollPeer>) => {
+  const change = enrollPeer(...args);
+  if (change === null || isEnrollRefusal(change)) throw new Error("fixture: expected an enrollment");
+  return change;
+};
 
 describe("this collie's own identity", () => {
   test("identityMinter really mints — the fingerprint matches the certificate, and the PEMs parse", async () => {
@@ -167,12 +175,12 @@ describe("the exchange — §8.2's transfer table, both directions", () => {
   const lead = leadStore();
 
   test("the lead pins the peer, mints its id, and hands back every listed item", () => {
-    const change = enrollPeer(
+    const change = enrollOk(
       lead,
       { fingerprint: fp("laptop"), certPem: material("laptop").certPem, address: "laptop.ts.net:8787", label: "laptop" },
       T0,
       R(),
-    )!;
+    );
     expect(change.next.peers).toEqual([
       {
         memberId: "laptop",
@@ -207,33 +215,65 @@ describe("the exchange — §8.2's transfer table, both directions", () => {
     ).toBeNull();
   });
 
-  test("a member id never collides with an existing peer or with the lead itself", () => {
-    const crowded = leadStore({ peers: [member({ memberId: "laptop" })] });
-    const minted = enrollPeer(
-      crowded,
-      { fingerprint: fp("other"), certPem: material("other").certPem, address: "a", label: "laptop" },
-      T0,
-      R(),
-    )!;
-    expect(minted.result.memberId).toBe("laptop-r1");
-    const asLead = enrollPeer(
-      leadStore(),
-      { fingerprint: fp("other"), certPem: material("other").certPem, address: "a", label: "desk" },
-      T0,
-      R(),
-    )!;
-    expect(asLead.result.memberId).toBe("desk-r1");
-    expect(isMemberId(asLead.result.memberId)).toBe(true);
+  describe("a name is never shared (1.25.0): refused, not suffixed", () => {
+    const join = (data: TrustStoreData, label: string | null, who = "other", leadName?: string) =>
+      enrollPeer(
+        data,
+        { fingerprint: fp(who), certPem: material(who).certPem, address: "a", label },
+        T0,
+        R(),
+        leadName,
+      );
+
+    test("the lead's own display name is refused, case-insensitively and as the id it would become", () => {
+      for (const label of ["bluefin", "Bluefin", " BLUEFIN ", "bluefin!"]) {
+        const refusal = join(leadStore(), label, "other", "bluefin");
+        if (refusal === null || !isEnrollRefusal(refusal)) throw new Error(`expected a refusal for ${label}`);
+        expect(refusal.takenBy).toBe("lead");
+        expect(refusal.message).toBe(`the name "${label.trim()}" is already taken by the lead. Pass --label <another name>.`);
+      }
+    });
+
+    test("the lead's member id is refused too, when the display name differs", () => {
+      const refusal = join(leadStore(), "desk", "other", "bluefin");
+      expect(refusal !== null && isEnrollRefusal(refusal) && refusal.takenBy).toBe("lead");
+    });
+
+    test("an existing member's id is refused, and the roster is untouched", () => {
+      const crowded = leadStore({ peers: [member({ memberId: "laptop" })] });
+      for (const label of ["laptop", "LAPTOP"]) {
+        const refusal = join(crowded, label, "other", "bluefin");
+        if (refusal === null || !isEnrollRefusal(refusal)) throw new Error(`expected a refusal for ${label}`);
+        expect(refusal.takenBy).toBe("member");
+        expect(refusal.message).toBe(`the name "${label}" is already taken by the member "laptop". Pass --label <another name>.`);
+      }
+      expect(crowded.peers).toHaveLength(1);
+    });
+
+    test("a free name is taken as it is typed, and no label still mints a random id", () => {
+      const crowded = leadStore({ peers: [member({ memberId: "laptop" })] });
+      const free = join(crowded, "bluefin-hc", "other", "bluefin");
+      expect(free !== null && !isEnrollRefusal(free) && free.result.memberId).toBe("bluefin-hc");
+      const none = join(crowded, null, "other", "bluefin");
+      expect(none !== null && !isEnrollRefusal(none) && none.result.memberId).toBe("collie-r1");
+    });
+
+    test("the SAME fingerprint re-joining keeps its own label and id", () => {
+      const held = leadStore({ peers: [member({ memberId: "bluefin-hc", fingerprint: fp("hc"), status: "unenrolled" })] });
+      const again = join(held, "bluefin-hc", "hc", "bluefin");
+      expect(again !== null && !isEnrollRefusal(again) && again.result.memberId).toBe("bluefin-hc");
+      expect(again !== null && !isEnrollRefusal(again) && again.audit.detail!.rejoin).toBe(true);
+    });
   });
 
   test("a RE-JOIN keeps the member id and re-pins — the documented recovery from a missed rotation", () => {
     const dropped = leadStore({ peers: [member({ memberId: "laptop", fingerprint: fp("laptop"), status: "unenrolled" })] });
-    const again = enrollPeer(
+    const again = enrollOk(
       dropped,
       { fingerprint: fp("laptop"), certPem: material("laptop").certPem, address: "new.addr:1", label: "whatever" },
       T0 + 5,
       R(),
-    )!;
+    );
     expect(again.result.memberId).toBe("laptop");
     expect(again.next.peers).toHaveLength(1);
     expect(again.next.peers[0]!.status).toBe("enrolled");
@@ -243,12 +283,12 @@ describe("the exchange — §8.2's transfer table, both directions", () => {
 
   test("the peer adopts the crew, pins the lead, and takes the id the lead minted", () => {
     const joining = createTrustStore(selfIdentity("placeholder", material("laptop"), T0));
-    const res = enrollPeer(
+    const res = enrollOk(
       lead,
       { fingerprint: fp("laptop"), certPem: material("laptop").certPem, address: "a", label: "laptop" },
       T0,
       R(),
-    )!.result;
+    ).result;
     const change = acceptEnrollment(joining, res, "desk.ts.net:8787", T0 + 1);
     expect(change.next.self.memberId).toBe("laptop");
     expect(change.next.self.keyPem).toBe(joining.self.keyPem);
@@ -274,12 +314,12 @@ describe("the exchange — §8.2's transfer table, both directions", () => {
 
   test("a peer's roster gains EXACTLY one entry — a peer has no peers", () => {
     const confused = { ...peerStore(), peers: [member({ memberId: "nas" })] };
-    const res = enrollPeer(
+    const res = enrollOk(
       lead,
       { fingerprint: fp("laptop"), certPem: material("laptop").certPem, address: "a", label: "laptop" },
       T0,
       R(),
-    )!.result;
+    ).result;
     expect(acceptEnrollment(confused, res, "a", T0).next.peers).toEqual([]);
   });
 });
@@ -803,13 +843,12 @@ describe("the enroll answer's crew id", () => {
 
   test("the writer emits `crewId` and never `packId`", () => {
     const minted = mintInvite(leadStore({ peers: [] }), { now: T0, label: "nas", random: R() });
-    const change = enrollPeer(
+    const change = enrollOk(
       minted.next,
       { fingerprint: fp("nas"), certPem: material("nas").certPem, address: "nas.example:8787", label: "nas" },
       T0,
       counterRandom("m"),
     );
-    if (change === null) throw new Error("fixture: expected an enrollment");
     const document = JSON.stringify(change.result);
     expect(document).toContain('"crewId"');
     expect(document).not.toContain('"packId"');
