@@ -697,15 +697,6 @@ export class StateEngine {
         if (tabPanes.get(v.tabId) === 1 && raw?.tabNamed === true && label) v.soleTabName = label;
       }
 
-      // Detect transitions against the previous poll. First sighting of a pane never fires a
-      // transition (so we don't notify for agents already blocked when the bridge starts).
-      for (const a of agents) {
-        const prev = this.prevStatus.get(a.paneId);
-        if (prev !== undefined && prev !== a.status) {
-          for (const fn of this.transitionListeners) fn(a, prev, a.status);
-        }
-        this.prevStatus.set(a.paneId, a.status);
-      }
       const live = new Set(agents.map((a) => a.paneId));
       for (const id of this.prevStatus.keys()) {
         if (live.has(id)) continue;
@@ -725,6 +716,18 @@ export class StateEngine {
         if (p.revision !== undefined) revisions.set(p.paneId, p.revision);
       }
       await this.enrichSessionNames(agents, revisions);
+
+      // Detect transitions against the previous poll. First sighting of a pane never fires a
+      // transition (so we don't notify for agents already blocked when the bridge starts). This runs
+      // AFTER the enrichment above: a listener reads the pane on the spot (the push coordinator takes
+      // its push name there), so the session name must already be on it.
+      for (const a of agents) {
+        const prev = this.prevStatus.get(a.paneId);
+        if (prev !== undefined && prev !== a.status) {
+          for (const fn of this.transitionListeners) fn(a, prev, a.status);
+        }
+        this.prevStatus.set(a.paneId, a.status);
+      }
 
       this.agents = agents;
       fresh = agents;
