@@ -809,6 +809,7 @@ describe("the frame schema of the interior walk (M56 spec 14)", () => {
     ["a placeholder pattern list that is no list", ["idle", "placeholders", "patterns"], "^Try", "idle.placeholders.patterns"],
     ["an empty placeholder pattern list", ["idle", "placeholders", "patterns"], [], "idle.placeholders.patterns"],
     ["a placeholder pattern that is no expression", ["idle", "placeholders", "patterns"], ["[unclosed"], "idle.placeholders.patterns[0]"],
+    ["a placeholder anyText flag that is no boolean", ["idle", "placeholders", "anyText"], "yes", "idle.placeholders.anyText"],
     ["an answer prompt that is no expression", ["idle", "answerPrompt"], "[unclosed", "idle.answerPrompt"],
   ];
   for (const [name, path, value, field] of cases) {
@@ -822,6 +823,12 @@ describe("the frame schema of the interior walk (M56 spec 14)", () => {
     expect(failure(change(rawClaude(), ["idle", "frame", "rows"], "^x$")).path).toBe("idle.frame.rows");
     expect(failure(change(rawClaude(), ["idle", "frame", "bottom", "open"], true)).path).toBe("idle.frame.bottom.open");
     expect(failure(change(rawClaude(), ["idle", "frame", "ownPrompt"], true)).path).toBe("idle.frame.ownPrompt");
+  });
+
+  it("reads a placeholder that may be any text (`anyText`, M78 spec 06): Claude says so, a false flag reads as absent", () => {
+    expect(parseProfile(rawClaude()).idle.placeholders.anyText).toBe(true);
+    expect(parseProfile(rawOpencode()).idle.placeholders.anyText).toBeUndefined();
+    expect(parseProfile(change(rawClaude(), ["idle", "placeholders", "anyText"], false)).idle.placeholders.anyText).toBeUndefined();
   });
 
   it("reads a scrolling box (`scroll`, omp gang 2026-10-25) and refuses a bad one", () => {

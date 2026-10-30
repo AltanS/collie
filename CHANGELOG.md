@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **A send to Claude Code on a plain-text multiplexer is no longer refused when only its grey suggestion shows.** herdr-core hands out the screen with no colour, so Claude's faint prompt suggestion (`cat hello.txt to verify`) read as a draft and a send was refused `draft_present`. On a read with no styling Collie now probes the box: the probe character lands at the start of the box for a suggestion, and the send goes on into the empty box; it lands after the text for a typed draft, which is refused as before. A styled read is unchanged.
+
 ## [1.25.1] - 2026-10-30
 
 A bugfix release, not urgent. You need it if you run two Collies on one machine, such as the Herdr TUI and the Herdr core, or if you send walky talky messages to Claude Code on herdr-core.
