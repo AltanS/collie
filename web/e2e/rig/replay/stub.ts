@@ -53,6 +53,7 @@ import {
   type RecordedResponse,
   type SseEvent,
   type Vendor,
+  withoutQueued,
 } from "./cassette";
 import { STUB_HARNESSES, VENDOR, isStubHarness, type StubHarness, type TierPlan, type TierPlans } from "./tier";
 
@@ -448,7 +449,7 @@ export async function startStub(config: StubConfig, port = 0, host = "127.0.0.1"
     let recorded: RecordedResponse = streaming ? { status: up.status, contentType, events } : { status: up.status, contentType, body: text };
     if (streaming && clientGone) recorded = { ...recorded, clientAborted: true };
     const response = redactKeys(rewriteResponse(compactResponse(recorded), placeholdersFor(volatileValues(raw), config.literals)));
-    rec.slots[slot] = { kind, machine, ordinal, request: { ...summary, path: path.split("?")[0] ?? path, digest: digestOf(summary) }, response };
+    rec.slots[slot] = { kind, machine, ordinal, request: { ...withoutQueued(summary), path: path.split("?")[0] ?? path, digest: digestOf(summary) }, response };
     if (c !== undefined) c.recorded++;
     writeCase(plan, rec);
   };

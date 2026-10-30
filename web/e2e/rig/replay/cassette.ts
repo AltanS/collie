@@ -64,7 +64,17 @@ export interface RequestSummary {
    * folder layout changes it.
    */
   readonly context?: string;
+  /**
+   * The `anthropic` vendor only, and only when the last prompt is a queued message (Claude Code's
+   * {@link QUEUED_PREFIX} wrapper: a message that reached the pane while the turn ran). The prompt and
+   * tail of the conversation as it stood before that message. Never recorded and never in a digest: a
+   * live request that finds no entry of its own is matched on this instead (matchTurn).
+   */
+  readonly beneathQueued?: { readonly prompt: string; readonly tail: readonly string[] };
 }
+
+/** How Claude Code opens a message that reached its pane during a turn and rides the next request. */
+export const QUEUED_PREFIX = "The user sent a new message while you were working:";
 
 /** Whose wire a request is read as: pi and omp go through OpenRouter, Claude Code to Anthropic. */
 export type Vendor = "openrouter" | "anthropic";
@@ -378,7 +388,24 @@ export function summarize(path: string, raw: string, literals: readonly Literal[
     prompt: normalizeText(prompt, literals),
     tail: items.slice(at + 1).map(tailWord),
   };
-  return claude ? { ...summary, context: contextOf(body, literals) } : summary;
+  if (!claude) return summary;
+  const withContext = { ...summary, context: contextOf(body, literals) };
+  if (!summary.prompt.startsWith(QUEUED_PREFIX)) return withContext;
+  const before = items.slice(0, at).findLastIndex(isPrompt);
+  if (before === -1) return withContext;
+  const beforeBlocks = texts(items[before]?.content);
+  const beforePrompt = normalizeText(beforeBlocks.map((block) => cutReminder(replaceLiterals(block, literals))).join("\n"), literals);
+  // Claude Code may put the queued text in the same user item as the last tool results: those results are
+  // then part of the conversation the queued message sits on, though `tailWord` reads the item as a prompt.
+  const resultsWithIt = list(items[at]?.content).some((block) => asJsonString(asJsonObject(block)?.type) === "tool_result");
+  const tail = [...items.slice(before + 1, at).map(tailWord), ...(resultsWithIt ? ["result"] : [])];
+  return { ...withContext, beneathQueued: { prompt: beforePrompt, tail } };
+}
+
+/** The summary as a cassette stores it: without the live-only `beneathQueued`. */
+export function withoutQueued(summary: RequestSummary): RequestSummary {
+  const { beneathQueued: _beneath, ...stored } = summary;
+  return stored;
 }
 
 export function kindOf(summary: RequestSummary): EntryKind {
@@ -616,10 +643,18 @@ export function matchTurn(entries: readonly Entry[] | undefined, machine: string
   const mine = entries.map((entry, index) => ({ entry, index })).filter(({ entry, index }) => entry.kind === "turn" && entry.machine === machine && !used.has(index));
   const hit = mine.find(({ entry }) => matchKeyOf(entry.request) === key);
   if (hit !== undefined) return hit;
+  // A message that reached Claude's pane during its turn rides the next request as a queued prompt (the
+  // designed behaviour, case 16). Which turn that request is does not depend on when the message came:
+  // on herdr-core pi's reply reaches Claude before its last turn (M79 spec 04), on Herdr after it. So a
+  // request with no entry of its own is read as the turn it continues, with the queued message left out.
+  const under = summary.beneathQueued;
+  const queuedKey = under === undefined ? null : matchKeyOf({ ...summary, prompt: under.prompt, tail: under.tail });
+  const queuedHit = queuedKey === null ? undefined : mine.find(({ entry }) => matchKeyOf(entry.request) === queuedKey);
+  if (queuedHit !== undefined) return queuedHit;
   const next = mine[0]?.entry;
   if (next === undefined) return { mismatch: `cassette mismatch: case ${caseId} has no turn left for this request (prompt "${clip(summary.prompt)}"); ${RERECORD}` };
   const context = next.request.context !== summary.context && next.request.prompt === summary.prompt ? ` (same prompt, another system prompt or tool list: context ${next.request.context ?? "-"}, got ${summary.context ?? "-"})` : "";
-  return { mismatch: `cassette mismatch: case ${caseId} turn ${String(next.ordinal)} expected prompt "${clip(next.request.prompt)}" tail [${next.request.tail.join(" ")}], got "${clip(summary.prompt)}" tail [${summary.tail.join(" ")}]${context}; ${RERECORD}` };
+  return { mismatch: `cassette mismatch: case ${caseId} turn ${String(next.ordinal)} expected prompt "${clip(next.request.prompt)}" tail [${next.request.tail.join(" ")}], got "${clip(summary.prompt)}" tail [${summary.tail.join(" ")}]${summary.beneathQueued === undefined ? "" : ` (a queued message over tail [${summary.beneathQueued.tail.join(" ")}])`}${context}; ${RERECORD}` };
 }
 
 /** A turn found in a case: which case, which entry, and its index there. */

@@ -603,8 +603,9 @@ async function daemon(): Promise<void> {
   /**
    * One machine's scratch herdr-core (M78 spec 03): `hc server start` with the rig's HC_SESSION, HC_SOCKET
    * and XDG homes (rig-lib.ts coreEnv). The core daemonises into a systemd user service of its own and
-   * answers with its pid, which rig.json keeps in `herdrPid` (the mux server's pid, whichever mux). No view
-   * pane and no attached client: the core renders every terminal itself and answers a program's colour query.
+   * answers with its pid, which rig.json keeps in `herdrPid` (the mux server's pid, whichever mux). No attached
+   * client: the core renders every terminal itself and answers a program's colour query. One plain shell
+   * terminal labelled VIEW_LABEL stands in for the Herdr rig's view pane (the shell pane case 10 skips).
    */
   const startCore = async (machine: Machine) => {
     const half = halfOf(run, machine);
@@ -621,6 +622,10 @@ async function daemon(): Promise<void> {
     half.socket = assertUnderXdg(c.socket, machine);
     writeRun(run);
     log(`herdr-core up (${machine}): session ${c.session}, socket ${half.socket}, pid ${String(pid)}`);
+    // The Herdr rig's view workspace is a plain shell pane the walky talky broadcast case (10) must skip.
+    // The core has no view client to need, but the same shell terminal under the same label gives that case its pane.
+    const shell = newWorkspacePane(machineDirs(machine).work, VIEW_LABEL, machine);
+    log(`shell terminal (${machine}): ${shell}`);
   };
 
   const spawnBridge = (machine: Machine) => {

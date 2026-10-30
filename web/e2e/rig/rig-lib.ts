@@ -487,7 +487,9 @@ function coreOpenPanes(machine: Machine): OpenPane[] {
     const row = asJsonObject(t);
     const paneId = asJsonString(row?.address);
     if (paneId === undefined) continue;
-    out.push({ paneId, label: asJsonString(asJsonObject(row?.labels)?.[CORE_RIG_LABEL]) ?? "", cwd: asJsonString(row?.cwd) ?? "" });
+    const label = asJsonString(asJsonObject(row?.labels)?.[CORE_RIG_LABEL]) ?? "";
+    if (label === VIEW_LABEL) continue;
+    out.push({ paneId, label, cwd: asJsonString(row?.cwd) ?? "" });
   }
   return out;
 }

@@ -23,7 +23,8 @@ import {
   type ForwardTransport,
 } from "./forward.ts";
 import { crewDeviceOf } from "./peer-gate.ts";
-import { crewTimeoutBudget, WRITE_BUDGET_MS, type CrewLink, type PeerOutcome } from "./peer-client.ts";
+import { HISTORY_READ_BUDGET_MS } from "../mux/herdr-core/adapter.ts";
+import { crewTimeoutBudget, PANE_READ_BUDGET_MS, WRITE_BUDGET_MS, type CrewLink, type PeerOutcome } from "./peer-client.ts";
 import { member } from "./fixtures.ts";
 import { CrewRegistry, type PeerState } from "./registry.ts";
 import { readSend, readSendReply } from "../../web/src/lib/send-protocol.ts";
@@ -1007,10 +1008,29 @@ describe("a forwarded write carries its own budget (§10.1)", () => {
     }
   });
 
-  test("a read passes NO budget, so it keeps the poll budget and its bootstrap credit", async () => {
+  test("a pane's screen read dials on PANE_READ_BUDGET_MS, longer than the member's 2 s history budget", async () => {
+    // M79 spec 04: a herdr-core member answers its first history read of a changed pi pane screen-only after
+    // HISTORY_READ_BUDGET_MS (2 s); the 1200 ms poll budget refused it with a 503 first.
+    const { transport, calls } = transportOf(() => ok(new Response("{}")));
+    const [req, url] = get("/api/pane/t2?lines=60&host=laptop");
+    await forward(req, url, { transport });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.budgetMs).toBe(PANE_READ_BUDGET_MS);
+    expect(PANE_READ_BUDGET_MS).toBeGreaterThan(HISTORY_READ_BUDGET_MS + crewTimeoutBudget(1500, {}));
+  });
+
+  test("a member that answers a pane read after 2.1 s is read, not called unreachable", async () => {
+    const dial = budgeted(2100);
+    const [req, url] = get("/api/pane/t2?lines=60&host=laptop");
+    const res = await forward(req, url, { transport: dial.transport });
+    expect(res.status).toBe(200);
+    expect(dial.calls).toEqual([PANE_READ_BUDGET_MS]);
+  });
+
+  test("every other read passes NO budget, so it keeps the poll budget and its bootstrap credit", async () => {
     // The transport's own default is `PeerClient.proxy`'s: the strict per-poll budget plus the one
     // patient attempt a cold link is owed. Passing anything here would take that credit away.
-    for (const path of ["/api/pane/w1:p1", "/api/pane/w1:p1/history", "/api/launchers", "/api/folders"]) {
+    for (const path of ["/api/pane/w1:p1/history", "/api/launchers", "/api/folders"]) {
       const { transport, calls } = transportOf(() => ok(new Response("{}")));
       const [req, url] = get(`${path}?host=laptop`);
       await forward(req, url, { transport });

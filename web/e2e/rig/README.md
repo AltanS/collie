@@ -264,12 +264,35 @@ does not bound the harnesses on the core.
   pi that showed a dialog did not answer in 30 s, while the plain screen read answered at once. The
   bridge gives up after 5 s and reads the pane as unreadable, so pi's permission and question cards
   never reach the phone.
+- **The first scrollback read of a pi terminal is slow.** After any change of its screen, the first
+  `hc read --lines N` of a pi terminal takes hc 0.1.14 about 2.4 s whatever N is (the same read again,
+  a plain screen read and a shell terminal take 0 s; measured 2026-10-30). The bridge gives a history
+  read 2 s and then answers with the screen alone, marked `truncated`, so the first read of a changed
+  pi pane answers after about 2 s. Through a lead that was a 503 (`pane/t2: timed out after 1200ms`):
+  the lead's poll budget ran out first. Since M79 spec 04 the lead gives a forwarded pane read 5 s
+  (`PANE_READ_BUDGET_MS`), and the crew cases that read the member's pi pane (13 and 21) get an answer.
+- **pi answers before Claude's last turn ends.** In crew case 13 a send from Claude to a pi on the core
+  costs Claude's `collie walky send` the core's key hold and slow reads, so pi's whole reply (three
+  replayed turns) lands first and its nudge reaches Claude during its turn. Claude Code then carries it as a
+  queued prompt on the request that follows its tool results, which no recording holds (the recordings have
+  the nudge after the turn). That is the designed behaviour (case 16), not a fault, and it happened in every
+  core run (2026-10-30, twice). The replay stub now reads such a request as the turn it continues, with
+  the queued message left out (`beneathQueued`, `matchTurn`), after the exact match found nothing.
+- **Crew 19 and 20 stay red with the member on the core.** Two causes, neither is a Collie fault in what
+  the case checks (2026-10-30). The nudge from pi names its sender as `(pi, leg-pi-<stamp>)`, the core
+  terminal's name, where the recording has `(pi, project)`, the folder name Herdr gives, so Claude's first
+  request misses its recording. And a `reply` forwarded to a pi on the core takes the core's key hold and
+  slow reads, longer than the lead's 5 s write budget (`WRITE_BUDGET_MS`): the phone gets
+  `write_outcome_unknown` (504) over a reply that was delivered. Case 20 fails behind case 19's
+  unconsumed nudge. 12 is the missing Chat card (above).
 - **A red Claude case stops the rest.** Claude's recordings replay one session in order. A card left
   up and then cleared with Escape puts "Request interrupted" into Claude's next prompt, and a case left
   out moves the session's first prompt. Either way every later Claude request misses its recording. So
   on the core, as on Herdr, a Claude case after a red one says nothing until the red one is fixed.
-- **No view pane and no attached client.** The core keeps each terminal's screen itself, with no
-  client attached. A terminal started over the API is 200 x 120.
+- **No attached client, but a shell terminal.** The core keeps each terminal's screen itself, with no
+  client attached. A terminal started over the API is 200 x 120. The rig still opens one plain shell
+  terminal per machine, named `rig-view-<stamp>` like the Herdr rig's view pane, so the walky talky
+  broadcast case (10) has a shell pane to skip. `pane ls` and the pane cap leave it out, as on Herdr.
 
 ## Prerequisites
 

@@ -27,6 +27,7 @@ import {
   summarize,
   valuesFor,
   volatileValues,
+  withoutQueued,
   type Entry,
   type LegMeta,
   type RecordedResponse,
@@ -261,6 +262,65 @@ describe("volatile values in a recorded answer", () => {
     expect(stored.events?.[0]?.data).toContain("{{lab}}/a.txt");
     const other = [["/tmp/other/state", "{{lab}}"]] as const;
     expect(rewriteResponse(stored, valuesFor(new Map(), other)).events?.[0]?.data).toContain("/tmp/other/state/a.txt");
+  });
+});
+
+describe("a message that reached Claude during its turn (M79 spec 04)", () => {
+  const read = (body: string) => summarize("/v1/messages?beta=true", body, claudeLiterals(LAB), "anthropic");
+  const NUDGE = "[walky-talky wt_abcdefghij12] from agent rig-member/t2#ab12 (pi, leg-pi) reply to wt_zyxwvutsrq98: a message from another agent.";
+  /** A Claude request that carries the nudge as a queued prompt after the tool results, as Claude Code 2.1.314 sends it. */
+  const queued = (body: string): string => {
+    const doc = asJsonObject(parseJson(body)) ?? {};
+    const messages = Array.isArray(doc.messages) ? doc.messages : [];
+    const last = messages.pop();
+    messages.push({ role: "user", content: [{ type: "text", text: `The user sent a new message while you were working: ${NUDGE}` }] }, last ?? null);
+    return JSON.stringify({ ...doc, messages });
+  };
+  const finalTurn = (): Entry => {
+    const turn = read(claudeBody("send it", { tail: "tool" }));
+    return { kind: "turn", machine: "lead", ordinal: 3, request: { ...turn, path: "/v1/messages", digest: digestOf(turn) }, response: sse(delta("Sent.")) };
+  };
+
+  it("reads the conversation before the queued message as beneathQueued, and leaves it out of the digest", () => {
+    const plain = read(claudeBody("send it", { tail: "tool" }));
+    const live = read(queued(claudeBody("send it", { tail: "tool" })));
+    expect(live.prompt).toMatch(/^The user sent a new message while you were working:/u);
+    expect(live.tail).toEqual([]);
+    expect(live.beneathQueued).toEqual({ prompt: plain.prompt, tail: plain.tail });
+    expect(plain.beneathQueued).toBeUndefined();
+    expect("beneathQueued" in withoutQueued(live)).toBe(false);
+  });
+
+  it("counts the tool results that share an item with the queued text", () => {
+    const doc = asJsonObject(parseJson(claudeBody("send it", { tail: "tool" }))) ?? {};
+    const messages = Array.isArray(doc.messages) ? [...doc.messages] : [];
+    const last = messages.pop();
+    const results = messages.pop();
+    const resultBlocks = asJsonObject(results)?.content;
+    const content = [...(Array.isArray(resultBlocks) ? resultBlocks : []), { type: "text", text: `The user sent a new message while you were working: ${NUDGE}` }];
+    messages.push({ role: "user", content }, last ?? null);
+    const live = read(JSON.stringify({ ...doc, messages }));
+    expect(live.beneathQueued?.tail).toEqual(read(claudeBody("send it", { tail: "tool" })).tail);
+  });
+
+  it("serves the turn the request continues when the message came before it, not after", () => {
+    const turn = finalTurn();
+    const live = read(queued(claudeBody("send it", { tail: "tool" })));
+    const hit = matchTurn([turn], "lead", live, new Set(), "claude.walky-crew-agents");
+    expect("entry" in hit && hit.index).toBe(0);
+  });
+
+  it("still refuses a request whose conversation before the queued message is another turn", () => {
+    const turn = finalTurn();
+    const live = read(queued(claudeBody("another prompt", { tail: "tool" })));
+    expect("mismatch" in matchTurn([turn], "lead", live, new Set(), "claude.walky-crew-agents")).toBe(true);
+  });
+
+  it("matches a recorded queued turn exactly first (case 16 keeps its own entry)", () => {
+    const live = read(queued(claudeBody("send it", { tail: "tool" })));
+    const own: Entry = { kind: "turn", machine: "lead", ordinal: 4, request: { ...withoutQueued(live), path: "/v1/messages", digest: digestOf(live) }, response: sse(delta("Got it.")) };
+    const hit = matchTurn([finalTurn(), own], "lead", live, new Set(), "claude.walky-queued");
+    expect("entry" in hit && hit.index).toBe(1);
   });
 });
 
