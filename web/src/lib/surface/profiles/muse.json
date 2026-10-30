@@ -41,7 +41,8 @@
       "texts": [
         "Start a message with ! to run a shell command yourself",
         "/loop 10m <prompt> schedules a recurring prompt",
-        "Paste an image with Ctrl+V — file paths and URLs work too"
+        "Paste an image with Ctrl+V — file paths and URLs work too",
+        "Press ? on an empty composer to see keyboard shortcuts"
       ],
       "sgr": 2,
       "fg": [

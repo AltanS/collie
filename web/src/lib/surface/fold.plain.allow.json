@@ -125,13 +125,6 @@
     "propose": "Upstream: cursor column. Text only: a bracketed run after a known command from the command list is the shape, but a typed bracketed argument is identical, which the colour rule exists to tell apart.",
     "effect": "HOTFIX: the draft shows more text than was typed, so a send that verifies the box can end typed_not_submitted"
   },
-  "muse--prompt-hint-1410.txt": {
-    "why": "muse draws its tip 'Press ? on an empty composer to see keyboard shortcuts' in the placeholder grey. A plain read shows it as a typed draft.",
-    "class": "text-rule-possible",
-    "rule": "web/src/lib/surface/frame.ts:329 holeIsGhostColoured (profile muse.json idle.placeholders.fg)",
-    "propose": "idle.placeholders.texts: the tip.",
-    "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
-  },
   "muse--prompt-hint.txt": {
     "why": "muse shows a suggested prompt as its placeholder in the placeholder grey. 'Run the test suite and fix any failures' is a sentence a person could type, so a text rule alone would hide a real draft with that text.",
     "class": "text-rule-possible",
