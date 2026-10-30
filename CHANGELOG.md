@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **Codex's grey hint `Ask Codex to do anything` no longer counts as a draft on herdr-core.** The core hands out the screen as plain text, so the faint hint read as typed text and a send or a walky talky delivery to an empty Codex box was refused or held as "draft present". The profile now knows the hint's text.
+
 ## [1.25.1] - 2026-10-30
 
 A bugfix release, not urgent. You need it if you run two Collies on one machine, such as the Herdr TUI and the Herdr core, or if you send walky talky messages to Claude Code on herdr-core.
