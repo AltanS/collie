@@ -478,7 +478,7 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     section: "mux",
     kind: "string",
     default: "",
-    doc: "The herdr-core socket to drive. Empty takes the socket hc itself dials: HC_SOCKET, else the HC_SESSION socket under XDG_RUNTIME_DIR.",
+    doc: "The herdr-core socket to drive. Empty takes the socket hc itself dials: HC_SOCKET, else the HC_SESSION socket under XDG_RUNTIME_DIR or an existing /run/user/<uid>, else in the session's state directory (XDG_STATE_HOME or ~/.local/state, as on macOS).",
     configField: "muxEndpoint",
   },
 

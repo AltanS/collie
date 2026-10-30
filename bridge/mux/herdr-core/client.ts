@@ -1,4 +1,6 @@
+import { existsSync } from "node:fs";
 import { createConnection, type Socket } from "node:net";
+import { homedir } from "node:os";
 import type { JsonObject, JsonValue } from "../../json.ts";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -173,17 +175,29 @@ export class HcError extends Error {
  * The client socket an `hc` in this environment would dial, when the operator named none.
  *
  * The core's own rule (herdr-core docs/security.md § State and endpoints): `HC_SOCKET`, else
- * `$XDG_RUNTIME_DIR/herdr-core/<session>.sock`, else `/run/user/<uid>/herdr-core/<session>.sock`,
- * with the session from `HC_SESSION` or `default`. The core's last fallback, its state directory,
- * and a `socket` setting in its config file are not followed: a bridge that cannot find the socket
- * here says where it looked, and `COLLIE_MUX_ENDPOINT_HERDR_CORE` names any other path.
+ * `$XDG_RUNTIME_DIR/herdr-core/<session>.sock`, else `/run/user/<uid>/herdr-core/<session>.sock`
+ * when `/run/user/<uid>` exists, else the session's state directory,
+ * `${XDG_STATE_HOME:-~/.local/state}/herdr-core/<session>/<session>.sock`, with the session from
+ * `HC_SESSION` or `default`. macOS has neither `XDG_RUNTIME_DIR` nor `/run`, so its core sits in the
+ * state directory. A `socket` setting in the core's config file is not followed: a bridge that
+ * cannot find the socket here says where it looked, and `COLLIE_MUX_ENDPOINT_HERDR_CORE` names any
+ * other path.
  */
-export function defaultHcSocket(env: Readonly<Record<string, string | undefined>>, uid: number): string {
+export function defaultHcSocket(
+  env: Readonly<Record<string, string | undefined>>,
+  uid: number,
+  dirExists: (path: string) => boolean = existsSync,
+  home: string = homedir(),
+): string {
   const named = (env.HC_SOCKET ?? "").trim();
   if (named.length > 0) return named;
   const session = (env.HC_SESSION ?? "").trim() || "default";
-  const runtime = (env.XDG_RUNTIME_DIR ?? "").trim() || `/run/user/${String(uid)}`;
-  return `${runtime}/herdr-core/${session}.sock`;
+  const runtime = (env.XDG_RUNTIME_DIR ?? "").trim();
+  if (runtime.length > 0) return `${runtime}/herdr-core/${session}.sock`;
+  const userRun = `/run/user/${String(uid)}`;
+  if (dirExists(userRun)) return `${userRun}/herdr-core/${session}.sock`;
+  const stateHome = (env.XDG_STATE_HOME ?? "").trim() || `${home}/.local/state`;
+  return `${stateHome}/herdr-core/${session}/${session}.sock`;
 }
 
 // ── Field readers, the parse. Every `typeof` in this file sits in one of these. ──
