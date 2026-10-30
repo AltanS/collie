@@ -1659,6 +1659,9 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   // The held sends (M56 spec 15) ride the same poll: once the Surface has read the panes, a pane that
   // reads free releases its oldest held request, and the queue ends what expired or lost its pane.
   // `send` is declared below; the poll's first update comes after `engine.start()`.
+  // The screen wins for an ask (M78 spec 07): a pane whose last read shows an ask is `blocked` on the
+  // phone and in the push, also where the multiplexer says `working` (herdr-core with pi's question).
+  if (surface !== undefined) engine.liftScreenAsks((paneId) => surface.askOnScreen(paneId));
   if (surface !== undefined) {
     engine.onUpdate((s) => {
       void surface.observe(s.agents).then(() => {

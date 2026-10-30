@@ -9,7 +9,8 @@ import { join } from "node:path";
 
 import { loadProfiles } from "../../web/src/lib/surface/profile.ts";
 import { loadConfig } from "../config.ts";
-import type { MuxGrid, MuxGridRequest, MuxOutcome } from "../mux/types.ts";
+import type { MuxAdapter, MuxGrid, MuxGridRequest, MuxOutcome, MuxPane } from "../mux/types.ts";
+import { StateEngine } from "../state-engine.ts";
 import { guard, paneCanSteer, SURFACE_OFF_TEXT, surfaceRoute } from "../server.ts";
 import type { AgentView } from "../types.ts";
 import { askOf, frameImageKey } from "../../web/src/lib/surface/surface.ts";
@@ -139,6 +140,35 @@ describe("surface shadow", () => {
     expect(askOf(surface.modal)?.kind).toBe("permission");
     expect(r.shadow.report().counters[`${HARNESS}@2.1.296`]!.modal).toEqual({ permission: 1 });
     expect(r.lines).toEqual([]);
+  });
+
+  // M78 spec 07: herdr-core hands a plain screen and reports pi `working` while its question waits.
+  test("pi's question on a plain read is an ask on screen, and the poll lifts the working pane to blocked", async () => {
+    const r = rig("1.3.0");
+    r.mux.set("t5", "pi--v130-core-question--w120.txt", 0);
+    const pi = { ...agent("t5", "pi"), status: "working" as const };
+    await r.shadow.observe([pi]);
+    const ask = askOf(r.shadow.surfaceOf("t5")!.modal);
+    expect(ask?.kind).toBe("question");
+    expect(ask?.options.map((option) => option.label)).toEqual(["Red", "Green", "Blue", "Cancel"]);
+    expect(r.shadow.askOnScreen("t5")).toBe(true);
+
+    const core: MuxPane = { paneId: "t5", spaceId: "w1", spaceLabel: "one", spaceNumber: 1, tabId: "w1:t1", agent: "pi", status: "working", cwd: "/x", focused: false, alive: true };
+    const herd: Pick<MuxAdapter, "snapshot"> = { snapshot: async () => ({ panes: [core], spaces: [], tabs: [] }) };
+    // SAFETY: a poll of a pi pane reaches `snapshot` alone (the session-name scrape reads Claude and
+    // Muse panes only), so the members this stub leaves out are never called.
+    const engine = new StateEngine(herd as MuxAdapter, 1000);
+    engine.liftScreenAsks((paneId) => r.shadow.askOnScreen(paneId));
+    await engine["poll"]();
+    expect(engine.current().agents[0]!.status).toBe("blocked");
+  });
+
+  test("no ask on screen: an idle box and a pane never read lift nothing", async () => {
+    const r = rig();
+    r.mux.set("w1:p1", IDLE, 1);
+    await r.shadow.observe([agent("w1:p1")]);
+    expect(r.shadow.askOnScreen("w1:p1")).toBe(false);
+    expect(r.shadow.askOnScreen("w1:p9")).toBe(false);
   });
 
   test("a strong cue no reader lifted reads unreadable and is counted", async () => {

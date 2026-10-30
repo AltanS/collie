@@ -188,6 +188,13 @@ export class SurfaceShadow {
     return this.panes.get(paneId)?.read?.surface;
   }
 
+  /** Whether the pane's newest read shows an ask (a card the phone can answer). The poll lifts such a
+   *  pane to `blocked` (state-engine.ts `liftScreenAsks`, M78 spec 07). A box proven stale is no ask. */
+  askOnScreen(paneId: string): boolean {
+    const surface = this.surfaceOf(paneId);
+    return surface !== undefined && surface.staleFrame !== true && askOf(surface.modal) !== null;
+  }
+
   /**
    * The input box of the pane's newest screen read, when it was read and the turn the Surface claimed
    * (ADR 0122): the box's text, "" when

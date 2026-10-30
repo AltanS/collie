@@ -191,6 +191,40 @@ describe("StateEngine — transition detection", () => {
   });
 });
 
+// M78 spec 07: herdr-core reports pi `working` while pi's question waits. The screen's ask wins.
+describe("StateEngine — the screen's ask wins for blocked", () => {
+  test("a pane the mux calls working is blocked while its screen shows an ask, and the push sees the transition", async () => {
+    const { herdr, engine, transitions, poll } = makeEngine();
+    const asking = new Set<string>();
+    engine.liftScreenAsks((paneId) => asking.has(paneId));
+    herdr.panes = [pane("w1:p1", "w1", "working", "pi")];
+    await poll(); // first sighting
+    asking.add("w1:p1");
+    await poll();
+    expect(engine.current().agents[0]!.status).toBe("blocked");
+    expect(transitions).toEqual([{ pane: "w1:p1", from: "working", to: "blocked" }]);
+    asking.delete("w1:p1");
+    await poll();
+    expect(engine.current().agents[0]!.status).toBe("working");
+    expect(transitions.at(-1)).toEqual({ pane: "w1:p1", from: "blocked", to: "working" });
+  });
+
+  test("only raises: idle and done lift to blocked, blocked stays, and no ask leaves every status as reported", async () => {
+    const { herdr, engine, poll } = makeEngine();
+    engine.liftScreenAsks((paneId) => paneId !== "w1:p4");
+    herdr.panes = [pane("w1:p1", "w1", "idle", "pi"), pane("w1:p2", "w1", "done", "pi"), pane("w1:p3", "w1", "blocked", "pi"), pane("w1:p4", "w1", "working", "pi")];
+    await poll();
+    expect(engine.current().agents.map((a) => a.status)).toEqual(["blocked", "blocked", "blocked", "working"]);
+  });
+
+  test("with no screen reader wired the mux status stands", async () => {
+    const { herdr, engine, poll } = makeEngine();
+    herdr.panes = [pane("w1:p1", "w1", "working", "pi")];
+    await poll();
+    expect(engine.current().agents[0]!.status).toBe("working");
+  });
+});
+
 describe("StateEngine — activity ledger binding", () => {
   test("seeds idle agents, tracks completions, and resets unread activity on agent exit", async () => {
     const { herdr, engine, poll } = makeEngine();

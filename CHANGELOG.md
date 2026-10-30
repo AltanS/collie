@@ -36,6 +36,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **omp counts as an agent on herdr-core.** omp sends no status report, so the core listed it as a shell and its sends went unprobed; Collie now names the agent from the foreground process when a program reports nothing.
 - **`collie hooks install claude` writes where Claude Code reads.** It used `~/.claude/settings.json` even when `CLAUDE_CONFIG_DIR` was set, so the hooks never reached Claude; install, uninstall, status and the doctor now use `$CLAUDE_CONFIG_DIR/settings.json` first.
 - **A pi question on herdr-core shows its options, and a tap answers it.** The core hands out the screen with no colour, and Collie found pi's question only by the paint of its footer and status rows, so the card read unreadable and offered Escape alone. On a read with no styling the question is now found by its text: the footer's words, the numbered rows with the `>` pointer, and pi's own status rows with the session cost. A styled read is unchanged.
+- **A pane with a question on its screen says it needs you.** herdr-core reports pi as working while pi's question waits, so the pane showed no "needs you" mark and sent no push. A pane whose screen shows a card the phone can answer is now blocked, whatever the multiplexer reports.
 
 ## [1.25.1] - 2026-10-30
 
