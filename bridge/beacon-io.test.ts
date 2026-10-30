@@ -3,6 +3,7 @@ import { join } from "node:path";
 
 import { documentCarriesOurHooks, hooksInstalledProbe, HOOKS_PROBE_TTL_MS } from "./beacon-io.ts";
 import { HOOK_MARKER } from "../cli/hooks.ts";
+import { parseHookTarget } from "./beacon/hook-targets.ts";
 
 // The one question the bridge asks about the agent's settings: are OUR hooks in it? The filesystem
 // half of this module needs a real disk and is exercised by the CLI's own suite; what is pinned here
@@ -67,5 +68,28 @@ describe("hooksInstalledProbe", () => {
     expect(probe()).toBe(false);
     clock += 2;
     expect(probe()).toBe(true);
+  });
+});
+
+describe("parseHookTarget, the optional identity fields (M76 spec 02)", () => {
+  const base = { schemaVersion: 1, stateDir: "/srv/a", pid: 4242, pidStartTime: 7, bootedAt: 1 };
+
+  test("a record without mux, instance and port still parses, and reads them as unknown", () => {
+    expect(parseHookTarget(JSON.stringify(base))).toEqual({ ...base, mux: null, instance: null, port: null });
+  });
+
+  test("a record with all three carries them", () => {
+    expect(parseHookTarget(JSON.stringify({ ...base, mux: "herdr", instance: "next", port: 8788 }))).toMatchObject({ mux: "herdr", instance: "next", port: 8788 });
+  });
+
+  test("a field of the wrong type or range is dropped, never a reason to refuse the record", () => {
+    const wrong = { ...base, mux: 7, instance: "", port: 70000 };
+    expect(parseHookTarget(JSON.stringify(wrong))).toEqual({ ...base, mux: null, instance: null, port: null });
+    expect(parseHookTarget(JSON.stringify({ ...base, mux: "x".repeat(200), port: 1.5 }))).toMatchObject({ mux: null, port: null });
+    expect(parseHookTarget(JSON.stringify({ ...base, mux: ["herdr"], instance: {}, port: "8788" }))).toMatchObject({ mux: null, instance: null, port: null });
+  });
+
+  test("the required fields still decide: a record with no state dir is not a record", () => {
+    expect(parseHookTarget(JSON.stringify({ ...base, stateDir: "", mux: "herdr" }))).toBeNull();
   });
 });

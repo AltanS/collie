@@ -10,6 +10,7 @@ import { fileEdgeSpool, fileSourceStore, registerHookTarget } from "../beacon-io
 import { hookTargetFileName, hookTargetsDir, parseHookTarget } from "./hook-targets.ts";
 import { herdrMuxFactory } from "../mux/herdr/adapter.ts";
 import { herdrBeaconMatcher } from "../mux/herdr/markers.ts";
+import { asJsonObject, parseJson } from "../../web/src/lib/json.ts";
 import { parseEdge } from "./parse.ts";
 import { edgesDir } from "./paths.ts";
 import { EDGE_SCHEMA_VERSION, type EdgeRecord } from "./types.ts";
@@ -147,6 +148,30 @@ describe("the hook target registry on disk", () => {
     writeFileSync(path, JSON.stringify({ schemaVersion: 1, stateDir: "/srv/lab-state", pid: process.pid + 1, pidStartTime: null, bootedAt: 1 }));
     target.keep();
     expect(parseHookTarget(readFileSync(path, "utf8"))?.pid).toBe(process.pid);
+    target.remove();
+  });
+
+  test("a bridge that says what it drives writes mux, instance and port; the first Collie is `default`", () => {
+    const env = { XDG_STATE_HOME: join(dir, "xdg") };
+    const path = (state: string): string => join(hookTargetsDir(env, "/nowhere"), hookTargetFileName(state));
+    const named = registerHookTarget("/srv/named", env, "/nowhere", { mux: "herdr-core", instance: "hc", port: 8794 });
+    expect(parseHookTarget(readFileSync(path("/srv/named"), "utf8"))).toMatchObject({ mux: "herdr-core", instance: "hc", port: 8794, pid: process.pid });
+    const first = registerHookTarget("/srv/first", env, "/nowhere", { mux: "herdr", instance: null, port: 8787 });
+    expect(parseHookTarget(readFileSync(path("/srv/first"), "utf8"))).toMatchObject({ mux: "herdr", instance: "default", port: 8787 });
+    // `keep` rewrites the same identity after an emitter deleted the file.
+    rmSync(path("/srv/named"));
+    named.keep();
+    expect(parseHookTarget(readFileSync(path("/srv/named"), "utf8"))).toMatchObject({ mux: "herdr-core", instance: "hc", port: 8794 });
+    named.remove();
+    first.remove();
+  });
+
+  test("a bridge that says nothing writes none of the three fields, and the record still parses", () => {
+    const env = { XDG_STATE_HOME: join(dir, "xdg") };
+    const target = registerHookTarget("/srv/silent", env, "/nowhere");
+    const text = readFileSync(join(hookTargetsDir(env, "/nowhere"), hookTargetFileName("/srv/silent")), "utf8");
+    expect(Object.keys(asJsonObject(parseJson(text)) ?? {})).toEqual(["schemaVersion", "stateDir", "pid", "pidStartTime", "bootedAt"]);
+    expect(parseHookTarget(text)).toMatchObject({ mux: null, instance: null, port: null });
     target.remove();
   });
 

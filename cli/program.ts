@@ -106,6 +106,7 @@ import {
   type SttDeps,
 } from "./stt.ts";
 import { cmdSttWhistle } from "./stt-whistle.ts";
+import { cmdMux, cmdMuxList, MUX_SUBCOMMANDS, type MuxListDeps } from "./mux-list.ts";
 import { cmdDurable, cmdDurableAttach, cmdDurableDetach, cmdDurableList, DURABLE_SUBCOMMANDS, type DurableAttachDeps } from "./durable-attach.ts";
 import { realExec, realFiles } from "./sys.ts";
 import { HOST } from "../bridge/host.ts";
@@ -403,6 +404,12 @@ function holdDeps(): HoldDeps {
       await Bun.write(Bun.stdout, `${text}\n`);
     },
   };
+}
+
+/** `mux list`'s seams: the resolved context, the process and filesystem, and the user id the registry folder is checked against. */
+function muxListDeps(io: Io): MuxListDeps {
+  const ctx = loadContext(io.err);
+  return { ctx, io, exec: realExec(ctx.env, ctx.home), files: realFiles, uid: process.getuid?.() };
 }
 
 /** A verb whose body is a lifecycle function over {@link lifecycleDeps}. */
@@ -932,6 +939,21 @@ export const COMMANDS: readonly Command[] = [
       },
     ],
     run: async (args, s) => await cmdDurable(durableVerbDeps(s.io), args),
+  },
+  // ── Multiplexers (M76 spec 02) ─────────────────────────────────────────────
+  // A read: the probes `start` and `doctor` make, and the live bridges' hook target records. Nothing
+  // is written, started or restarted. A bare `mux` prints the list.
+  {
+    name: "mux",
+    summary: `the multiplexers this machine has and who drives them: ${MUX_SUBCOMMANDS.join(", ")}`,
+    subcommands: [
+      {
+        name: "list",
+        summary: "every multiplexer this build knows, which are here, which instance drives each, how to start one (--json)",
+        run: (args, s) => cmdMuxList(muxListDeps(s.io), args),
+      },
+    ],
+    run: async (args, s) => await cmdMux(muxListDeps(s.io), args),
   },
   // ── Walky talky (M62) ──────────────────────────────────────────────────────
   // Messages between agent sessions, typed by an agent inside its pane or by the operator outside one.

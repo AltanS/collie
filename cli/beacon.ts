@@ -2,7 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { isAbsolute, join } from "node:path";
 
 import { BEACON_DIR_MODE, beaconFileName, beaconKey, beaconsDir, EDGE_FILE, EDGE_MAX_AGE_MS, EDGE_SPOOL_MAX, edgesDir } from "../bridge/beacon/paths.ts";
-import { HOOK_TARGET_FILE, HOOK_TARGETS_MAX, hookTargetsDir, parseHookTarget } from "../bridge/beacon/hook-targets.ts";
+import { HOOK_TARGET_FILE, HOOK_TARGETS_MAX, hookTargetsDir, parseHookTarget, type HookTargetRecord } from "../bridge/beacon/hook-targets.ts";
 import { edgeModelOf } from "../bridge/beacon/parse.ts";
 import { parseProcStartTime, procStatPath } from "../bridge/beacon/liveness.ts";
 import { HOST } from "../bridge/host.ts";
@@ -425,23 +425,32 @@ export function promptHashOf(deps: BeaconEmitDeps, stateDir: string, payload: Js
  * the edge goes to this emitter's own state dir, as it did before the registry.
  */
 export function edgeStateDirs(deps: EdgeTargetDeps): string[] {
-  const dirs: string[] = [];
-  const registry = hookTargetsDir(deps.ctx.env, deps.ctx.home);
-  if (privateDir(deps, registry)) {
-    for (const name of deps.files.list(registry).filter((entry) => HOOK_TARGET_FILE.test(entry)).slice(0, HOOK_TARGETS_MAX)) {
-      const path = join(registry, name);
-      const target = parseHookTarget(deps.files.read(path) ?? "");
-      if (target === null) continue;
-      const start = readPidStartTime(deps.files, target.pid);
-      if (start === null || (target.pidStartTime !== null && start !== target.pidStartTime)) {
-        deps.files.remove(path);
-        continue;
-      }
-      dirs.push(target.stateDir);
-    }
-  }
+  const dirs = liveHookTargets(deps).map((target) => target.stateDir);
   if ((deps.ctx.env.COLLIE_STATE_DIR ?? "").trim() !== "" || dirs.length === 0) dirs.push(deps.ctx.stateDir);
   return [...new Set(dirs.map((dir) => deps.files.realpath(dir) ?? dir))];
+}
+
+/**
+ * The bridges in the hook target registry whose pid still runs as the same process, in file order. A
+ * dead or reused pid's file is deleted. Read by the emitter ({@link edgeStateDirs}) and by `collie
+ * mux list`, so both agree on what "live" means. A registry folder that is not private reads as empty.
+ */
+export function liveHookTargets(deps: EdgeTargetDeps): HookTargetRecord[] {
+  const live: HookTargetRecord[] = [];
+  const registry = hookTargetsDir(deps.ctx.env, deps.ctx.home);
+  if (!privateDir(deps, registry)) return live;
+  for (const name of deps.files.list(registry).filter((entry) => HOOK_TARGET_FILE.test(entry)).slice(0, HOOK_TARGETS_MAX)) {
+    const path = join(registry, name);
+    const target = parseHookTarget(deps.files.read(path) ?? "");
+    if (target === null) continue;
+    const start = readPidStartTime(deps.files, target.pid);
+    if (start === null || (target.pidStartTime !== null && start !== target.pidStartTime)) {
+      deps.files.remove(path);
+      continue;
+    }
+    live.push(target);
+  }
+  return live;
 }
 
 /** True when every marker is a Herdr one: Herdr names its agents itself, so no beacon is written. */

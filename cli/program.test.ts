@@ -8,6 +8,7 @@ import { STT_SUBCOMMANDS } from "./stt.ts";
 import { CONFIG_SUBCOMMANDS } from "./config.ts";
 import { WALKY_SUBCOMMANDS } from "./walky.ts";
 import { DURABLE_SUBCOMMANDS } from "./durable-attach.ts";
+import { MUX_SUBCOMMANDS } from "./mux-list.ts";
 import {
   type Command,
   COMMANDS,
@@ -95,6 +96,8 @@ const STT_VERBS = ["stt"];
 /** The config-file tree (ADR 0040). Declared right after `stt`, for the same reasons. */
 const CONFIG_VERBS = ["config"];
 const DURABLE_VERBS = ["durable"];
+// `mux list` (M76 spec 02). Declared after `durable`: it reads the multiplexers the durable adapter is one of.
+const MUX_VERBS = ["mux"];
 // Walky talky (M62). Declared after `durable`. One spelling: the `wt` alias was dropped before
 // release, because Windows Terminal's binary is `wt.exe`.
 const WALKY_VERBS = ["walky"];
@@ -120,6 +123,7 @@ describe("the verb table", () => {
       ...STT_VERBS,
       ...CONFIG_VERBS,
       ...DURABLE_VERBS,
+      ...MUX_VERBS,
       ...WALKY_VERBS,
       ...CREW_VERBS,
       ...MANUAL_VERBS,
@@ -424,6 +428,10 @@ describe("the subcommand trees", () => {
     expect(findCommand("durable")?.subcommands?.map((s) => s.name)).toEqual([...DURABLE_SUBCOMMANDS]);
   });
 
+  test("`mux` declares exactly `cli/mux-list.ts`'s sub-verbs, in its order", () => {
+    expect(findCommand("mux")?.subcommands?.map((s) => s.name)).toEqual([...MUX_SUBCOMMANDS]);
+  });
+
   test("no other verb declares a tree — the grammar is one level deep everywhere else", () => {
     expect(COMMANDS.filter((c) => c.subcommands !== undefined).map((c) => c.name)).toEqual([
       // `serve` publishes; `serve status` reads what tailscale serve publishes (M76).
@@ -435,6 +443,7 @@ describe("the subcommand trees", () => {
       "stt",
       "config",
       "durable",
+      "mux",
       "walky",
       "crew",
       // The alias carries the SAME array — that is what `cli/crew.test.ts` pins.
@@ -562,6 +571,9 @@ describe("exit codes", () => {
       // fakes in a temp dir.
       ...CONFIG_VERBS,
       ...DURABLE_VERBS,
+      // `mux list` resolves the real context and reads the real hook target registry, and removes the
+      // record of a dead bridge there. cli/mux-list.test.ts drives it against fakes.
+      ...MUX_VERBS,
       // `walky` talks to this host's running bridges over their local sockets, and a `send`
       // would type into a real pane. cli/walky.test.ts drives every sub-verb against a temp socket.
       ...WALKY_VERBS,

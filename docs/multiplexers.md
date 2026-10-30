@@ -259,6 +259,35 @@ What the core cannot do:
 many terminals it keeps. `hc-version` shows `hc --version`. [Troubleshooting](troubleshooting.md)
 lists the fixes.
 
+### Which multiplexers this machine has
+
+```bash
+collie mux list          # a table; add --json for a program
+```
+
+One row for every multiplexer this build can drive, found or not. `PRESENT` says whether it is on
+this machine (`yes, not answering` is a socket that exists with nothing behind it). `DRIVEN BY`
+names the Collie instance and port that drives it, read from the running bridges without dialling
+them. `HINT` is the command that starts a Collie on a multiplexer that is here and that nobody
+drives. The command only reads: it starts and writes nothing.
+
+```text
+MUX         PRESENT                    DRIVEN BY    HINT
+herdr       yes                        next (8788)
+herdr-core  yes                        hc (8794)
+tern        no                         -
+tmux        yes                        tmux (8789)
+tuios       no                         -
+zellij      yes                        -            COLLIE_INSTANCE=<name> COLLIE_PORT=<port> COLLIE_MUX=zellij collie start
+durable     a program, not a terminal  -
+```
+
+`durable` is a program and not a terminal, so nothing looks for it. A bridge from a build before
+this command does not say which multiplexer it drives; it is listed under the table with `?`.
+`--json` prints `{ "rows": [...], "unplaced": [...] }`. Each row has `mux`, `kind`, `present`,
+`answering`, `where`, `version`, `drivenBy` (a list of `{ instance, port, pid }`), `drivenByText`
+and `hint`.
+
 ### Did it work?
 
 ```bash

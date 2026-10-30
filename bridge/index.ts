@@ -1878,7 +1878,10 @@ edgeRouter?.start();
 // registry finds the socket listening. A bridge that cannot own the socket (another bridge holds it,
 // or the path is not safe) runs with no holds: every permission stays a screen ask.
 if (holdServer !== null && (await holdServer.start())) console.log(`[surface] hold socket at ${holdSocketPath(cfg.stateDir)}`);
-hookTarget = edgeRouter === null ? null : registerHookTarget(cfg.stateDir);
+// The target file also says which multiplexer this bridge drives, under which instance, on which port,
+// so `collie mux list` reads the live bridges without dialling them (M76 spec 02).
+hookTarget =
+  edgeRouter === null ? null : registerHookTarget(cfg.stateDir, undefined, undefined, { mux: cfg.mux, instance: collieInstance, port: cfg.port });
 
 // Walky talky (M62): messages between agent sessions. The log is `<stateDir>/walky/`, the local
 // socket `<stateDir>/walky/sock` (0600). A message is logged first, then typed through the pane's

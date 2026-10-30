@@ -13,7 +13,7 @@ import { beaconFileName, beaconKey, EDGE_FILE, EDGE_MAX_AGE_MS, EDGE_SPOOL_MAX }
 import { hookTargetFileName } from "../bridge/beacon/hook-targets.ts";
 import { BEACON_SCHEMA_VERSION, type EdgeRecord } from "../bridge/beacon/types.ts";
 import { HERDR_CORE_MUX } from "../bridge/mux/herdr-core/adapter.ts";
-import { BEACON_HARNESS, BEACON_HOOKS, HERDR_CORE_NAMESPACE, type BeaconEmitDeps, cmdBeaconEmit, readEnvMarkers, runBeaconEmit, unwrapPrompt } from "./beacon.ts";
+import { BEACON_HARNESS, BEACON_HOOKS, HERDR_CORE_NAMESPACE, type BeaconEmitDeps, cmdBeaconEmit, liveHookTargets, readEnvMarkers, runBeaconEmit, unwrapPrompt } from "./beacon.ts";
 import { context, fakeFiles, HOME, STATE } from "./fakes.ts";
 import { EXIT } from "./io.ts";
 import type { Environment } from "./context.ts";
@@ -573,6 +573,23 @@ describe("the hook target registry (M56 spec 11)", () => {
     await cmdBeaconEmit(reused);
     expect(edgesIn(reused.files, A.dir)).toEqual([]);
     expect(edgesIn(reused.files, STATE)).toHaveLength(1);
+  });
+
+  test("records that carry mux, instance and port are read as before: the emitter ignores all three", async () => {
+    const d = withTargets([A, B]);
+    for (const [t, extra] of [[A, { mux: "herdr", instance: "next", port: 8788 }], [B, { mux: "x".repeat(300), instance: 5, port: "no" }]] as const) {
+      d.files.write(`${REGISTRY}/${hookTargetFileName(t.dir)}`, JSON.stringify({ schemaVersion: 1, stateDir: t.dir, pid: t.pid, pidStartTime: t.start, bootedAt: 1, ...extra }), 0o600);
+    }
+    await cmdBeaconEmit(d);
+    expect(edgesIn(d.files, A.dir).map((edge) => edge.promptHash)).toEqual([hash(A.salt)]);
+    expect(edgesIn(d.files, B.dir).map((edge) => edge.promptHash)).toEqual([hash(B.salt)]);
+  });
+
+  test("liveHookTargets returns the live records with their identity, and deletes the dead one's file", () => {
+    const d = withTargets([A, { ...B, alive: false }]);
+    d.files.write(`${REGISTRY}/${hookTargetFileName(A.dir)}`, JSON.stringify({ schemaVersion: 1, stateDir: A.dir, pid: A.pid, pidStartTime: A.start, bootedAt: 1, mux: "tmux", instance: "tmux", port: 8789 }), 0o600);
+    expect(liveHookTargets(d).map((t) => [t.stateDir, t.mux, t.instance, t.port])).toEqual([[A.dir, "tmux", "tmux", 8789]]);
+    expect(d.files.read(`${REGISTRY}/${hookTargetFileName(B.dir)}`)).toBeNull();
   });
 
   test("no registry: the edge goes to the emitter's own state dir, as before", async () => {

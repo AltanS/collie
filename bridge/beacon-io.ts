@@ -17,7 +17,7 @@ import { readdir, readFile, lstat, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { HOOK_TARGET_SCHEMA_VERSION, hookTargetFileName, hookTargetsDir, parseHookTarget, type HookTargetEnv, type HookTargetRecord } from "./beacon/hook-targets.ts";
+import { HOOK_TARGET_SCHEMA_VERSION, hookTargetFileName, hookTargetsDir, identityFields, parseHookTarget, type HookTargetEnv, type HookTargetIdentity } from "./beacon/hook-targets.ts";
 
 import { parseProcStartTime, procStatPath } from "./beacon/liveness.ts";
 import { parseEdge } from "./beacon/parse.ts";
@@ -238,7 +238,12 @@ export interface HookTargetRegistration {
  * one warning until a later write works: the emitter then falls back to the default state dir, as
  * before the registry.
  */
-export function registerHookTarget(stateDir: string, env: HookTargetEnv = process.env, home: string = homedir()): HookTargetRegistration {
+export function registerHookTarget(
+  stateDir: string,
+  env: HookTargetEnv = process.env,
+  home: string = homedir(),
+  identity: HookTargetIdentity = {},
+): HookTargetRegistration {
   const dir = hookTargetsDir(env, home);
   const path = join(dir, hookTargetFileName(stateDir));
   let pidStartTime: number | null = null;
@@ -247,7 +252,8 @@ export function registerHookTarget(stateDir: string, env: HookTargetEnv = proces
   } catch {
     // No /proc: the emitter checks the pid alone.
   }
-  const record: HookTargetRecord = { schemaVersion: HOOK_TARGET_SCHEMA_VERSION, stateDir, pid: process.pid, pidStartTime, bootedAt: Date.now() };
+  // The wire form, not a HookTargetRecord: the identity fields are written only when the caller knows them.
+  const record = { schemaVersion: HOOK_TARGET_SCHEMA_VERSION, stateDir, pid: process.pid, pidStartTime, bootedAt: Date.now(), ...identityFields(identity) };
   const temp = join(dir, `.${String(process.pid)}.tmp`);
   let warned = false;
   const write = (): void => {
