@@ -5935,6 +5935,96 @@
    "harness": "omp",
    "version": "18.6.1",
    "state": "draft"
+  },
+  "claude--v21314-core-idle--w120.txt": {
+   "harness": "claude",
+   "version": "2.1.314",
+   "state": "idle"
+  },
+  "claude--v21314-core-idle--w60.txt": {
+   "harness": "claude",
+   "version": "2.1.314",
+   "state": "idle"
+  },
+  "claude--v21314-core-draft--w120.txt": {
+   "harness": "claude",
+   "version": "2.1.314",
+   "state": "draft"
+  },
+  "claude--v21314-core-draft--w60.txt": {
+   "harness": "claude",
+   "version": "2.1.314",
+   "state": "draft"
+  },
+  "claude--v21314-core-draft-two-paragraphs--w120.txt": {
+   "harness": "claude",
+   "version": "2.1.314",
+   "state": "draft"
+  },
+  "claude--v21314-core-working--w120.txt": {
+   "harness": "claude",
+   "version": "2.1.314",
+   "state": "running"
+  },
+  "claude--v21314-core-permission--w120.txt": {
+   "harness": "claude",
+   "version": "2.1.314",
+   "state": "dialog"
+  },
+  "claude--v21314-core-permission--w60.txt": {
+   "harness": "claude",
+   "version": "2.1.314",
+   "state": "dialog"
+  },
+  "claude--v21314-core-ask--w120.txt": {
+   "harness": "claude",
+   "version": "2.1.314",
+   "state": "dialog"
+  },
+  "claude--v21314-core-menu-model--w120.txt": {
+   "harness": "claude",
+   "version": "2.1.314",
+   "state": "dialog"
+  },
+  "claude--v21314-core-slash-list--w120.txt": {
+   "harness": "claude",
+   "version": "2.1.314",
+   "state": "popup"
+  },
+  "pi--v130-core-idle--w120.txt": {
+   "harness": "pi",
+   "version": "1.3.0",
+   "state": "idle"
+  },
+  "pi--v130-core-draft--w120.txt": {
+   "harness": "pi",
+   "version": "1.3.0",
+   "state": "draft"
+  },
+  "pi--v130-core-working--w120.txt": {
+   "harness": "pi",
+   "version": "1.3.0",
+   "state": "running"
+  },
+  "pi--v130-core-question--w120.txt": {
+   "harness": "pi",
+   "version": "1.3.0",
+   "state": "dialog"
+  },
+  "omp--v1861-core-idle--w120.txt": {
+   "harness": "omp",
+   "version": "18.6.1",
+   "state": "idle"
+  },
+  "omp--v1861-core-draft--w120.txt": {
+   "harness": "omp",
+   "version": "18.6.1",
+   "state": "draft"
+  },
+  "omp--v1861-core-working--w120.txt": {
+   "harness": "omp",
+   "version": "18.6.1",
+   "state": "running"
   }
  },
  "knownMismatches": {

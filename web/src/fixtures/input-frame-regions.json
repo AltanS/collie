@@ -618,6 +618,131 @@
   }
  },
  {
+  "fixture": "claude--v21314-core-ask--w120.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v21314-core-draft--w120.txt",
+  "frame": {
+   "top": 6,
+   "prompt": 7,
+   "bottom": 8,
+   "label": null,
+   "text": "collie core draft probe",
+   "placeholder": false,
+   "status": {
+    "first": 9,
+    "last": 9
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v21314-core-draft--w60.txt",
+  "frame": {
+   "top": 7,
+   "prompt": 8,
+   "bottom": 9,
+   "label": null,
+   "text": "collie core draft probe",
+   "placeholder": false,
+   "status": {
+    "first": 10,
+    "last": 10
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v21314-core-draft-two-paragraphs--w120.txt",
+  "frame": {
+   "top": 6,
+   "prompt": 7,
+   "bottom": 10,
+   "label": null,
+   "text": "First paragraph of a core draft probe. Second paragraph after an empty line.",
+   "placeholder": false,
+   "status": {
+    "first": 11,
+    "last": 11
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v21314-core-idle--w120.txt",
+  "frame": {
+   "top": 6,
+   "prompt": 7,
+   "bottom": 8,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 9,
+    "last": 9
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v21314-core-idle--w60.txt",
+  "frame": {
+   "top": 7,
+   "prompt": 8,
+   "bottom": 9,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 10,
+    "last": 10
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v21314-core-menu-model--w120.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v21314-core-permission--w120.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v21314-core-permission--w60.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--v21314-core-slash-list--w120.txt",
+  "frame": {
+   "top": 35,
+   "prompt": 36,
+   "bottom": 37,
+   "label": null,
+   "text": "/",
+   "placeholder": false,
+   "status": null,
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v21314-core-working--w120.txt",
+  "frame": {
+   "top": 69,
+   "prompt": 70,
+   "bottom": 71,
+   "label": null,
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 72,
+    "last": 72
+   },
+   "footer": null
+  }
+ },
+ {
   "fixture": "claude--v2283-ask-long-question--w50.txt",
   "frame": null
  },

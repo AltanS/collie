@@ -3578,3 +3578,47 @@ replaced with `/home/demo/sandbox/collie-labs/codex-v0166-logo-arts/project`, a 
 | `codex--v0166-art-backspace--w120.txt` | `idle` | After Backspace: the logo and the hint row are back |
 | `codex--v0166-warning-art-empty--w120.txt` | `idle` | Started with a `-c` override: the logo, the empty box, and `? for shortcuts` with `⚠ 1 warning · f2 to view` after wide spacing |
 | `codex--v0166-warning-typed--w120.txt` | `draft` | `x` typed: the logo is gone, and `⚠ 1 warning · f2 to view` stands alone on the footer row |
+
+## herdr-core corpus (captured 2026-10-30, M78 spec 04, hc 0.1.14, Claude Code 2.1.314, pi 1.3.0, omp 18.6.1)
+
+The first captures taken through a bridge on `COLLIE_MUX=herdr-core`: a scratch core (`HC_SESSION=m78-lab`,
+its own `HC_SOCKET`), a scratch bridge from the worktree, and each harness in a named core terminal,
+read with `scripts/capture-fixture.sh` (`/api/pane/:id?lines=300`). **Plain text, no escape byte at all**:
+the core's `terminal.read` hands out text only (HC_API.md), so a grey hint, a ghost completion or an
+inverse selection looks like any other text here. The core's history keeps a screen the harness redrew,
+so several files start with an older screen (an earlier slash list, a repeated welcome banner) above the
+live one; that is what the phone reads on a core, and it is kept.
+
+Width: a terminal started over the API is 200 x 120, and the last ACTIVE viewer sets the size, so each
+capture ran while a viewer of the named size (`--w120`: 120 x 40, `--w60`: 60 x 40) was attached from a
+pty; after the viewer leaves the core puts the terminal back to 200 x 120. Claude ran on Haiku with
+`--permission-mode default` and a scratch `CLAUDE_CONFIG_DIR`; pi and omp called a local fake model (no
+spend). pi carries its stock `examples/extensions/question.ts`. Drafts were typed through the bridge's
+reply route (`submit: false`, the core's framed attach), the two paragraphs with `ctrl+j` between.
+Privacy: the user name in the lab paths became `alice` (same length), and omp's `…n/.cache` the
+matching `…e/.cache`; no other private text was on screen. The lab is
+`experiments/herdr-core-coverage/lab/` in the workspace, the findings `04-live-lab.md` there.
+
+| Fixture | State | Reads as (current reader) |
+| --- | --- | --- |
+| `claude--v21314-core-idle--w120.txt` | A fresh session, empty box, no `Try "…"` hint (the hint did not come up in the lab) | composer, empty, free |
+| `claude--v21314-core-idle--w60.txt` | The same at 60 columns, after a cleared draft | composer, empty, free |
+| `claude--v21314-core-draft--w120.txt` | `collie core draft probe` typed | composer, draft read back |
+| `claude--v21314-core-draft--w60.txt` | The same at 60 columns; the banner's path is shortened to `/…/` | composer, draft read back |
+| `claude--v21314-core-draft-two-paragraphs--w120.txt` | Two paragraphs with an empty row between, `ctrl+g to edit in nano` on the status row | composer, draft (both paragraphs, joined) |
+| `claude--v21314-core-working--w120.txt` | One second into a turn, `✽ Synthesizing… (1s · thinking)`, a tip row, `esc to interrupt` | running |
+| `claude--v21314-core-permission--w120.txt` | `Bash command` card for `touch probe.txt`, four options, `Esc to cancel · Tab to amend`; history above holds an older slash list | permission ask, four options |
+| `claude--v21314-core-permission--w60.txt` | The same card at 60 columns, option 2 and 3 wrapped | permission ask, four options |
+| `claude--v21314-core-ask--w120.txt` | AskUserQuestion `Which colour do you prefer?`, Red, Green, Blue, `Type something.`, `Chat about this` | question ask, four options |
+| `claude--v21314-core-menu-model--w120.txt` | `/model` menu, `❯ 5. Haiku ✔`, effort row, `Enter to set as default · s to use this session only · Esc to cancel` | menu ask |
+| `claude--v21314-core-slash-list--w120.txt` | `/` typed: the whole command list under the box, `❯` on `/add-dir` | draft `/`, modal unreadable (the TUI's slash-all captures read unknown or none) |
+| `pi--v130-core-idle--w120.txt` | Empty editor; pi's two offline warnings (no `fd`, no `rg` on the lab PATH) above | composer, empty, free |
+| `pi--v130-core-draft--w120.txt` | `collie core draft probe` typed | composer, draft read back |
+| `pi--v130-core-working--w120.txt` | A held turn, `── ⠧ Working ──` on the top rule | running |
+| `pi--v130-core-question--w120.txt` | The stock `question` tool: Red, Green, Blue, `4. Type something.`, `>` on 1, `↑↓ navigate • Enter to select • Esc to cancel` | **unreadable** (an Escape card). True reading: a question ask with three options. The same dialog with its colour lifts (`pi--v110-question-single.txt`); stripped of its escapes it reads unreadable too |
+| `omp--v1861-core-idle--w120.txt` | Banner, update notice, the status rule and the empty `╰─` row | composer, empty, free |
+| `omp--v1861-core-draft--w120.txt` | `collie core draft probe` typed; omp draws a grey ghost completion `s` after it, which the plain text cannot tell apart | composer, draft `collie core draft probes` (**wrong text**: the true draft ends in `probe`) |
+| `omp--v1861-core-working--w120.txt` | A held turn, `⎋ Working…`, the spinner in the status rule | running |
+
+On the bridge itself omp 18.6.1 reads as a **shell** on herdr-core: it sends no OSC 7501 status, and
+the core adapter names an agent only from that report, so the omp profile above is not applied live.

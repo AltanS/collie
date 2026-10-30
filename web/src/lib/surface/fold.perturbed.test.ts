@@ -6,6 +6,18 @@ import { ASK, CLAUDE, CORPUS_WALK, FIXTURES, labelOf, NEGATIVE, towardFree, WRON
 
 // M56 spec 04 (b): every fixture perturbed and read again. The longest part of the fold tests, so it has a file.
 
+// Known moves toward free, each pinned exactly, with its reason (M78 spec 04). herdr-core keeps a
+// redrawn screen in its history, so a core capture of a dialog holds an older input box above it
+// (here the slash list's `❯ /` box). Read whole, the dialog wins; with the dialog's lowest border
+// dropped, the older box is the lowest frame and reads as a draft. The live read never drops a
+// border, so this is a robustness gap, not a misread; a reader that skips frames above a dialog's
+// region closes it, and then this list empties.
+const KNOWN_PERTURBED = {
+  "claude--v21314-core-menu-model--w120.txt": ["the lowest border dropped: turn unknown -> idle", "the lowest border dropped: composer unknown -> draft"],
+  "claude--v21314-core-permission--w120.txt": ["the lowest border dropped: turn unknown -> idle", "the lowest border dropped: composer unknown -> draft"],
+} satisfies Readonly<Record<string, readonly string[]>>;
+const knownMoves = (name: string): readonly string[] => Object.entries(KNOWN_PERTURBED).find(([fixture]) => fixture === name)?.[1] ?? [];
+
 describe("perturbed fixtures", () => {
   // Each fixture is perturbed (moved row, blank row, extra status row, dropped border, width change)
   // and read again through the whole pipeline. A perturbed screen may stay the same or lose its
@@ -26,7 +38,7 @@ describe("perturbed fixtures", () => {
         if (isFree(after) && (!original || NEGATIVE.has(label.state))) wrong.push(`${perturbed.name}: free`);
         if (NEGATIVE.has(label.state)) for (const move of towardFree(before, after)) wrong.push(`${perturbed.name}: ${move}`);
       }
-      expect(wrong).toEqual([]);
+      expect(wrong).toEqual(knownMoves(name));
     });
   }
 

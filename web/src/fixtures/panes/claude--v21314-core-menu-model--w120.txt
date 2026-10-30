@@ -1,0 +1,49 @@
+ ▐▛███▛█   Claude Code v2.1.314
+▝▜██████▀  Haiku 5.5 · Claude Max
+ ▝▝   ▝▝   /var/home/alice/.cache/collie-lab/m78-lab/claude/project
+
+▎ [✻] [✻] [✻] · Share Claude Code and earn $10 in usage credits · /passes
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ /
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ❯ /add-dir                    Add a new working directory
+    /artifacts                  Browse your published and shared artifacts
+    /auto-mode-setup            Teach auto mode about your environment, plus optional rule tweaks
+    /autocompact                Set how full the context gets before auto-summarizing
+    /autofix-pr                 Monitor and autofix any issues with the current PR
+    /background                 Send this session to the background and free the terminal
+    /branch                     Create a branch of the current conversation at this point
+    /btw                        Ask a quick side question without interrupting the main conversation
+    /bug                        Report a bug or share your conversation
+    /cd                         Move this session to a new working directory
+    /chrome                     Open Claude in Chrome settings
+    /clear                      Start a new session with empty context; previous session stays on disk (resumable with /resume)
+    /color                      Set the prompt bar color for this session
+    /compact                    Free up context by summarizing the conversation so far
+    /config                     Open settings
+    /context                    Visualize current context usage as a colored grid
+    /copy                       Copy Claude's last response to clipboard (or /copy N for the Nth-latest)
+    /design-login               Authorize design-system access for /design-sync with your claude.ai account
+ ▐▛███▛█   Claude Code v2.1.314
+▝▜██████▀  Haiku 5.5 · Claude Max
+ ▝▝   ▝▝   /var/home/alice/.cache/collie-lab/m78-lab/claude/project
+
+▎ [✻] [✻] [✻] · Share Claude Code and earn $10 in usage credits · /passes
+
+❯ /model
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Select model
+  Switch between Claude models. Your pick becomes the default for new sessions. For other/previous model names,
+  specify with --model.
+
+    1. Default (recommended)  Opus 5.5 · Best for everyday, complex tasks
+    2. Opus                   Opus 5.5 · Best for everyday, complex tasks
+    3. Fable                  Fable 5.1 · Most capable for your hardest and longest-running tasks
+    4. Sonnet                 Sonnet 5.5 · Efficient for routine tasks
+  ❯ 5. Haiku ✔                Haiku 5.5 · Fastest for quick answers
+
+  ◐ Medium effort (default) ←/→ to adjust
+
+  Enter to set as default · s to use this session only · Esc to cancel

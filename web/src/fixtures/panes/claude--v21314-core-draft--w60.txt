@@ -1,0 +1,11 @@
+ ▐▛███▛█   Claude Code v2.1.314
+▝▜██████▀  Haiku 5.5 · Claude Max
+ ▝▝   ▝▝   /…/.cache/collie-lab/m78-lab/claude/project
+
+▎ [✻] [✻] [✻] · Share Claude Code and earn $10 in usage
+▎ credits · /passes
+
+────────────────────────────────────────────────────────────
+❯ collie core draft probe
+────────────────────────────────────────────────────────────
+  ⏸ manual mode on
