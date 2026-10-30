@@ -548,6 +548,14 @@ describe("collie crew invite", () => {
     expect(text(h.io)).toContain("expires");
   });
 
+  test("stdout is machine-readable: the token is its first line, and the restart notice is on stderr", async () => {
+    const h = harness(leadStore());
+    expect(await cmdCrewInvite(h.deps, [])).toBe(EXIT.OK);
+    expect(h.io.stdout[0]).toBe(`r1.${fp("desk")}`);
+    expect(h.io.stdout.join("\n")).not.toContain("restarting the bridge");
+    expect(h.io.stderr).toContain("  restarting the bridge so the freshly minted invite takes effect…");
+  });
+
   test("https mode: the banner prints the front door, the full name, and it is a whole command", async () => {
     const h = harness(leadStore());
     await cmdCrewInvite(h.deps, []);

@@ -116,8 +116,9 @@ Running `invite` restarts the lead process so it can accept the incoming enrollm
 the restarted lead answers, for up to 30 seconds, and only then prints the token and the join line
 with the lead name included. If the lead does not answer in that time, `invite` says so and prints no
 join line, because a `join` would be refused while the lead is down. Check `collie logs`, then run
-`invite` again. A `join` that is refused with "the lead refused the token" shortly after an `invite`
-can also mean the lead is still restarting.
+`invite` again. The token is the first line of stdout, and the restart notice goes to stderr, so a
+script can read the token from the first line. A `join` that is refused with "the lead refused the
+token" shortly after an `invite` can also mean the lead is still restarting.
 
 Step 3 is a second restart, and `join` says so on the way out. `invite` restarted the lead so it
 could accept the enrollment. `join` then wrote the new member to disk, and the running process does

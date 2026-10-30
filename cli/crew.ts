@@ -586,9 +586,14 @@ export async function ensureStore(deps: CrewDeps, label: string | undefined): Pr
   }
 }
 
-/** Restart the local service so the running bridge sees the change, and say why. */
-async function applyLocally(deps: CrewDeps, what: string): Promise<void> {
-  deps.io.out(`  restarting the bridge so ${what} takes effect…`);
+/**
+ * Restart the local service so the running bridge sees the change, and say why.
+ *
+ * `notice` picks the stream for the "restarting…" line. `crew invite` sends it to stderr, because
+ * its stdout is machine-readable: the first line is the token, and a script reads it from there.
+ */
+async function applyLocally(deps: CrewDeps, what: string, notice: "out" | "err" = "out"): Promise<void> {
+  deps.io[notice](`  restarting the bridge so ${what} takes effect…`);
   const code = await deps.restart();
   if (code !== EXIT.OK) {
     deps.io.err("warn: the restart failed — the trust store IS updated, but the running bridge still");
@@ -688,7 +693,8 @@ export async function cmdCrewInvite(deps: CrewDeps, args: readonly string[]): Pr
   // The invite lives in the trust store, and the running bridge reads that once per process, so the
   // bridge is restarted to load it. `restart` returns while the new process is still booting, and a
   // `crew join` in that gap is answered 401 by nothing that knows the token. Wait until it answers.
-  await applyLocally(deps, "the freshly minted invite");
+  // The notice goes to stderr so stdout starts with the token (`<token>.<fingerprint>`) for a script.
+  await applyLocally(deps, "the freshly minted invite", "err");
   if (!(await bridgeAnswersWithin(deps, INVITE_WAIT_MS))) {
     deps.io.err(`error: the bridge did not answer after its restart (waited ${INVITE_WAIT_MS / 1000} s), so no join line is printed.`);
     deps.io.err("       A joiner would be refused while it is down. Check `collie logs`, then run `collie crew invite` again.");

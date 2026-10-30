@@ -64,7 +64,7 @@ const NO_EXEC = {
 };
 
 /** The `CrewDeps` one verb runs against, on one machine of the rig (the harness's `depsFor`). */
-function depsFor(m: Loaded, worktree: string, side: EnrolSide, out: string[], err: string[]) {
+function depsFor(m: Loaded, worktree: string, side: EnrolSide, out: string[], err: string[], stdin = "") {
   const d = machineDirs(side.machine);
   const id = side.machine === "lead" ? LEAD_ID : MEMBER_ID;
   const ctx = {
@@ -96,7 +96,7 @@ function depsFor(m: Loaded, worktree: string, side: EnrolSide, out: string[], er
     now: () => Date.now(),
     random: m.identity.randomToken,
     mintIdentity: () => Promise.resolve(m.identity.mintIdentity({ commonName: `collie-${id}`, sans: ["127.0.0.1", "localhost"] })),
-    readStdin: () => Promise.resolve(""),
+    readStdin: () => Promise.resolve(stdin),
     restart: () => side.restart(),
     serve: () => Promise.resolve(0),
     unserve: () => 0,
@@ -104,10 +104,11 @@ function depsFor(m: Loaded, worktree: string, side: EnrolSide, out: string[], er
   };
 }
 
-async function verb(m: Loaded, worktree: string, side: EnrolSide, run: (deps: ReturnType<typeof depsFor>) => Promise<number>): Promise<Printed> {
+/** Run one verb against one side. `stdin` is what a `-` token argument reads, as a pipe would feed it. */
+async function verb(m: Loaded, worktree: string, side: EnrolSide, run: (deps: ReturnType<typeof depsFor>) => Promise<number>, stdin = ""): Promise<Printed> {
   const out: string[] = [];
   const err: string[] = [];
-  const code = await run(depsFor(m, worktree, side, out, err));
+  const code = await run(depsFor(m, worktree, side, out, err, stdin));
   return { code, out: out.join("\n"), err: err.join("\n") };
 }
 
@@ -115,15 +116,26 @@ async function verb(m: Loaded, worktree: string, side: EnrolSide, run: (deps: Re
  * Enrol the member into the lead's crew: invite, join, the lead's restart. Throws with the verb's own
  * error lines when a step fails. The invite token is never logged: it is single-use and spent here.
  */
+/** The invite line `crew invite` prints: `<token>.<lead-fingerprint>`. Found by shape, not by position. */
+const INVITE_TOKEN = /^[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}$/;
+
 export async function enrolMember(worktree: string, lead: EnrolSide, member: EnrolSide, log: (line: string) => void): Promise<void> {
   const m = await load(worktree);
   const invited = await verb(m, worktree, lead, (deps) => m.crew.cmdCrewInvite(deps, ["--as", LEAD_ID, "--label", MEMBER_ID]));
   if (invited.code !== 0) throw new Error(`crew invite on the lead exited ${String(invited.code)}: ${invited.err}`);
-  const token = invited.out.split("\n")[0]?.trim() ?? "";
-  if (token.length < 20) throw new Error("crew invite printed no token");
+  const token = invited.out
+    .split("\n")
+    .map((line) => line.trim())
+    .find((line) => INVITE_TOKEN.test(line));
+  if (token === undefined) throw new Error("crew invite printed no `<token>.<fingerprint>` line");
   log("enrol: the lead minted an invite (and restarted)");
-  const joined = await verb(m, worktree, member, (deps) =>
-    m.crew.cmdJoin(deps, [`http://127.0.0.1:${String(lead.port)}`, token, "--insecure", "--address", `127.0.0.1:${String(member.port)}`, "--label", MEMBER_ID]),
+  // The token goes in on stdin (`-`), as a script pipes it: never as an argument, which `ps` shows.
+  const joined = await verb(
+    m,
+    worktree,
+    member,
+    (deps) => m.crew.cmdJoin(deps, [`http://127.0.0.1:${String(lead.port)}`, "-", "--insecure", "--address", `127.0.0.1:${String(member.port)}`, "--label", MEMBER_ID]),
+    token,
   );
   if (joined.code !== 0) throw new Error(`crew join on the member exited ${String(joined.code)}: ${joined.err}`);
   log("enrol: the member joined (and restarted in peer mode)");
