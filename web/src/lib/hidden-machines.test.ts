@@ -7,6 +7,7 @@ import {
   machinesHiddenFrom,
   MAX_HIDDEN_MACHINES,
   setMachineHidden,
+  setMachinesHidden,
   useHiddenMachines,
 } from "./hidden-machines";
 import type { ServerSummary } from "./types";
@@ -126,5 +127,32 @@ describe("hidden machines — what the dashboard leaves out", () => {
 
   it("filters nothing with an id the roster does not list", () => {
     expect(machinesHiddenFrom(["cellar"], crew, undefined).size).toBe(0);
+  });
+});
+
+describe("hidden machines: one physical machine, several member ids (M77)", () => {
+  const twoPerHost = [member("bluefin", true), member("bluefin-hc"), member("minibuch"), member("minibuch-hc")];
+
+  it("hides every instance of a machine in one write and shows them again", () => {
+    setMachinesHidden(["minibuch", "minibuch-hc"], true, twoPerHost);
+    expect(currentHiddenMachines()).toEqual(["minibuch", "minibuch-hc"]);
+    expect(stored()).toEqual(["minibuch", "minibuch-hc"]);
+    setMachinesHidden(["minibuch", "minibuch-hc"], false, twoPerHost);
+    expect(currentHiddenMachines()).toEqual([]);
+  });
+
+  it("keeps the ids per member, so the dashboard filter still reads them one by one", () => {
+    setMachinesHidden(["minibuch", "minibuch-hc"], true, twoPerHost);
+    expect([...machinesHiddenFrom(currentHiddenMachines(), twoPerHost, undefined)]).toEqual([
+      "minibuch",
+      "minibuch-hc",
+    ]);
+  });
+
+  it("leaves another machine's stored ids alone and never stores an id twice", () => {
+    setMachineHidden("bluefin-hc", true, twoPerHost);
+    setMachinesHidden(["minibuch", "minibuch-hc"], true, twoPerHost);
+    setMachinesHidden(["minibuch", "minibuch-hc"], true, twoPerHost);
+    expect(currentHiddenMachines()).toEqual(["bluefin-hc", "minibuch", "minibuch-hc"]);
   });
 });

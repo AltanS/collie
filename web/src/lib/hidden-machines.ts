@@ -135,9 +135,23 @@ export function setMachineHidden(
   hide: boolean,
   servers: readonly ServerSummary[] | undefined,
 ): void {
+  setMachinesHidden([id], hide, servers);
+}
+
+/**
+ * Hide or show several member ids in one write: every instance of one physical machine (M77), which
+ * the Machines sheet draws as one row with one switch. The stored ids stay member ids, so
+ * `machinesHiddenFrom` and the stand-in chip keep working per id. Same roster rule and bound as
+ * {@link setMachineHidden}; the ids just hidden are the newest.
+ */
+export function setMachinesHidden(
+  ids: readonly string[],
+  hide: boolean,
+  servers: readonly ServerSummary[] | undefined,
+): void {
   const roster = new Set((servers ?? []).map((s) => s.id));
-  const kept = currentHiddenMachines().filter((h) => h !== id && roster.has(h));
-  const next = hide ? [...kept, id] : kept;
+  const kept = currentHiddenMachines().filter((h) => !ids.includes(h) && roster.has(h));
+  const next = hide ? [...kept, ...ids] : kept;
   save(next.slice(-MAX_HIDDEN_MACHINES));
 }
 

@@ -387,3 +387,116 @@ describe("CrewRoute — the per-host tint", () => {
     expect(document.body.innerHTML).not.toMatch(/host-\d/);
   });
 });
+
+// M77: a host running two Collie instances is ONE machine. The page draws a card per machine with a
+// line per instance once some host runs two; a crew of one instance per host keeps the formation.
+describe("CrewRoute: one card per machine when a host runs two instances (M77)", () => {
+  const instance = (over: Partial<CrewMemberStatus> & Pick<CrewMemberStatus, "id">): CrewMemberStatus => ({
+    name: over.id,
+    isLead: false,
+    health: "reachable",
+    lastSeenAt: 1_000,
+    version: "1.25.0",
+    secretBehind: false,
+    provisional: false,
+    ...over,
+  });
+  const twoPerHost: CrewData = {
+    status: {
+      ...fixtureCrewStatus,
+      self: { id: "bluefin", name: "bluefin", version: "1.25.0" },
+      deputy: { id: "minibuch", warrantGeneration: 2 },
+      members: [
+        instance({ id: "bluefin", isLead: true, host: "bluefin", mux: "herdr" }),
+        instance({ id: "bluefin-hc", host: "bluefin", mux: "herdr-core" }),
+        instance({ id: "minibuch", host: "minibuch", mux: "herdr" }),
+        instance({ id: "minibuch-hc", host: "minibuch", mux: "herdr-core", health: "unreachable", lastSeenAt: 500 }),
+      ],
+    },
+    error: false,
+  };
+  const cards = async () => screen.findAllByRole("group", { name: /^(bluefin|minibuch),/ });
+
+  it("draws two machine cards with two instance lines each, lead's machine first", async () => {
+    renderCrew(twoPerHost);
+    const [blue, mini] = await cards();
+    expect(blue).toHaveAccessibleName("bluefin, reachable");
+    expect(mini).toHaveAccessibleName("minibuch, degraded");
+    expect(within(blue!).getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual([
+      "bluefin, lead, reachable",
+      "bluefin-hc, reachable",
+    ]);
+    expect(within(mini!).getAllByRole("button").map((b) => b.getAttribute("aria-label"))).toEqual([
+      "minibuch, deputy, reachable",
+      "minibuch-hc, unreachable",
+    ]);
+    // No formation drawing beside the cards.
+    expect(screen.queryByRole("group", { name: /^Crew formation/ })).not.toBeInTheDocument();
+  });
+
+  it("shows each instance's mux, version, panes and link state, and the deputy badge on the warrant holder", async () => {
+    renderCrew(twoPerHost);
+    const [, mini] = await cards();
+    const [tui, core] = within(mini!).getAllByRole("button");
+    expect(within(tui!).getByText("herdr")).toBeInTheDocument();
+    expect(within(tui!).getByText("deputy")).toBeInTheDocument();
+    expect(within(tui!).getByText("1.25.0")).toBeInTheDocument();
+    expect(within(tui!).getByText("0 panes")).toBeInTheDocument();
+    expect(within(core!).getByText("herdr-core")).toBeInTheDocument();
+    expect(within(core!).getByText("unreachable")).toBeInTheDocument();
+    expect(within(core!).queryByText("deputy")).not.toBeInTheDocument();
+  });
+
+  it("names the instance that is down in the degraded card's header", async () => {
+    renderCrew(twoPerHost);
+    const [blue, mini] = await cards();
+    expect(within(mini!).getByText("herdr-core unreachable")).toBeInTheDocument();
+    expect(within(blue!).queryByText(/unreachable$/)).not.toBeInTheDocument();
+  });
+
+  it("captions the cards with machines and reachable instances", async () => {
+    renderCrew(twoPerHost);
+    expect(await screen.findByText("home · 2 machines · 3 of 4 instances reachable")).toBeInTheDocument();
+  });
+
+  it("opens an instance's paperwork from its line, without navigating", async () => {
+    const user = userEvent.setup();
+    const router = renderCrew(twoPerHost);
+    await user.click(await screen.findByRole("button", { name: "minibuch-hc, unreachable" }));
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe("/crew");
+  });
+
+  it("groups by the snapshot's host when the census does not carry one yet", async () => {
+    const bare: CrewData = {
+      status: { ...twoPerHost.status!, members: twoPerHost.status!.members.map(({ host: _host, ...m }) => m) },
+      error: false,
+    };
+    const roster: ServerSummary[] = twoPerHost.status!.members.map((m) => ({
+      id: m.id,
+      name: m.name,
+      isLead: m.isLead,
+      reachable: m.health === "reachable",
+      protocol: "ok",
+      lastSeenAt: m.lastSeenAt,
+      host: m.host,
+    }));
+    renderCrew(bare, "/crew", roster);
+    expect(await cards()).toHaveLength(2);
+  });
+
+  const onItsOwnHost = (m: CrewMemberStatus): CrewMemberStatus => ({ ...m, host: `${m.id}.local`, mux: "herdr" });
+
+  it("keeps the formation for a crew that reports hosts but runs one instance on each", async () => {
+    renderCrew({
+      status: {
+        ...fixtureCrewStatus,
+        members: fixtureCrewStatus.members.map(onItsOwnHost),
+      },
+      error: false,
+    });
+    const nodes = await screen.findAllByRole("button", { name: /bluefin|workshop|attic/ });
+    expect(nodes.map((n) => n.tagName.toLowerCase())).toEqual(["g", "g", "g"]);
+    expect(screen.queryAllByRole("group", { name: /^(bluefin|workshop|attic),/ })).toHaveLength(0);
+  });
+});

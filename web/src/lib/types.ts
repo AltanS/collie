@@ -653,9 +653,14 @@ export interface ServerSummary {
   linkState?: "reconnecting" | "attention";
   /**
    * The registry name of the multiplexer this member drives, for `collie sessions`; mirrors
-   * `ServerSummary.mux` in bridge/types.ts. Absent when the member never said. The web does not show it.
+   * `ServerSummary.mux` in bridge/types.ts. Absent when the member never said. The Machines sheet
+   * lists it under a machine that runs more than one instance (M77).
    */
   mux?: string;
+  /**
+   * The hostname the member reads itself (M77). Two rows with the same `host` are one machine
+   * (lib/machines.ts). Absent on an older member: such a row is a machine of its own.
+   */
   readonly host?: string;
   /** Epoch ms, stamped by the LEAD on receipt — never the peer's clock (§10.2). `0` = never answered. */
   lastSeenAt: number;
@@ -739,6 +744,10 @@ export interface CrewMemberStatus {
    * the word it always printed.
    */
   linkState?: "reconnecting" | "attention";
+  /** The multiplexer this member drives, by registry name (M76). Absent when it has not said. */
+  mux?: string;
+  /** The hostname the member reads itself (M77), the key the crew page groups by. Absent: its own machine. */
+  readonly host?: string;
 }
 
 /**

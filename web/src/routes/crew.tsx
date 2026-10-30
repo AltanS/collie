@@ -10,18 +10,27 @@ import { Card } from "@/components/ui/card";
 import { ListGroup } from "@/components/ui/list-group";
 import { BottomSheet } from "@/components/ui/sheet";
 import { useCrew } from "@/components/crew-provider";
-import { healthTone, healthWord, CrewFormation } from "@/components/crew-formation";
+import { asServerSummary, healthTone, healthWord, CrewFormation } from "@/components/crew-formation";
+import { CrewMachines } from "@/components/crew-machines";
 import { useLocale } from "@/hooks/use-locale";
 import { useNav } from "@/hooks/use-nav";
 import { timeAgoShort } from "@/lib/format";
+import type { HostHealth } from "@/lib/host-health";
 import { hostCounts } from "@/lib/hosts";
+import { groupByHost, hasSharedHost, type Machine } from "@/lib/machines";
 import { t } from "@/lib/i18n";
 import { type CrewData } from "@/lib/loaders";
 import { homePath, machinePath } from "@/lib/nav";
 import { usePairing } from "@/lib/pairing";
 import { useOptionalRootData } from "@/lib/route-data";
 import { useScope } from "@/lib/session";
-import { isReadOnly, type AgentView, type CrewMemberStatus, type CrewStatusResponse } from "@/lib/types";
+import {
+  isReadOnly,
+  type AgentView,
+  type CrewMemberStatus,
+  type CrewStatusResponse,
+  type ServerSummary,
+} from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { BandMain } from "@/components/ui/strip-host";
 import { WalkyBroadcastSheet } from "@/components/walky-broadcast-sheet";
@@ -84,6 +93,9 @@ export function CrewRoute() {
   const mayNotSend = isReadOnly(root?.device) || notPaired;
   const mayNotSendId = useId();
   const selected = status?.members.find((m) => m.id === openId) ?? null;
+  // One card per MACHINE once some host runs two instances (M77); until then the formation, as before.
+  const machines = status === null ? NO_MACHINES : crewMachines(status, servers, health);
+  const grouped = hasSharedHost(machines);
 
   return (
     <div className="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col">
@@ -124,13 +136,23 @@ export function CrewRoute() {
         {status === null ? (
           <EmptyCard error={data.error} />
         ) : (
-          <CrewFormation
-            status={status}
-            health={health}
-            counts={counts}
-            servers={servers}
-            onSelect={(m) => setOpenId(m.id)}
-          />
+          grouped ? (
+            <CrewMachines
+              status={status}
+              machines={machines}
+              counts={counts}
+              servers={servers}
+              onSelect={(m) => setOpenId(m.id)}
+            />
+          ) : (
+            <CrewFormation
+              status={status}
+              health={health}
+              counts={counts}
+              servers={servers}
+              onSelect={(m) => setOpenId(m.id)}
+            />
+          )
         )}
         {status !== null && (
           // The lead's line is the crew's line (M60 spec 01, ADR 0110): members take the lead's line
@@ -209,6 +231,24 @@ export function CrewRoute() {
 // sits at module scope).
 const EMPTY_CREW: CrewData = { status: null, error: false };
 const NO_AGENTS: AgentView[] = [];
+const NO_MACHINES: Machine[] = [];
+
+/**
+ * The census grouped by host. A member's own `host` and `mux` win; a lead that does not send them yet
+ * lets the snapshot's roster row fill them in, so the page groups as soon as either side knows.
+ */
+function crewMachines(
+  status: CrewStatusResponse,
+  servers: readonly ServerSummary[],
+  health: ReadonlyMap<string, HostHealth>,
+): Machine[] {
+  const rows = status.members.map((m) => {
+    const row = asServerSummary(m);
+    const known = servers.find((s) => s.id === m.id);
+    return { ...row, host: row.host ?? known?.host, mux: row.mux ?? known?.mux };
+  });
+  return groupByHost(rows, { health, deputyId: status.deputy?.id ?? null });
+}
 
 /**
  * One machine's paperwork — everything the formation's node had no room for.

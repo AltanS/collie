@@ -545,6 +545,18 @@ export const rosterFive: ServerSummary[] = [
   },
 ];
 
+/**
+ * Two instances per host (M77): two machines, each running the Herdr TUI and Herdr core side by side,
+ * so four members read as two machines. `workshop-hc` has stopped answering, which turns its machine
+ * degraded and names herdr-core as the instance that is down.
+ */
+export const rosterTwoPerHost: ServerSummary[] = [
+  { ...lead, host: "lodge", mux: "herdr" },
+  { id: "lodge-hc", name: "lodge-hc", isLead: false, reachable: true, protocol: "ok", lastSeenAt: TS - 3 * SEC, host: "lodge", mux: "herdr-core" },
+  { id: "workshop", name: "workshop", isLead: false, reachable: true, protocol: "ok", lastSeenAt: TS - 3 * SEC, host: "workshop", mux: "herdr" },
+  { id: "workshop-hc", name: "workshop-hc", isLead: false, reachable: false, protocol: "ok", lastSeenAt: TS - 6 * MIN, host: "workshop", mux: "herdr-core" },
+];
+
 /** Nine machines — enough that the formation's V has to wrap onto a third and fourth row. */
 export const rosterNine: ServerSummary[] = [
   lead,
@@ -696,6 +708,27 @@ export const censusNine: CrewStatusResponse = {
   ts: TS,
 };
 
+/** Two instances per host, the census that pairs with {@link rosterTwoPerHost}: two machine cards. */
+export const censusTwoPerHost: CrewStatusResponse = {
+  crew: crewMeta,
+  self: crewSelf,
+  deputy: { id: "workshop", warrantGeneration: 3 },
+  members: [
+    { ...selfMember, host: "lodge", mux: "herdr" },
+    member("lodge-hc", "reachable", { host: "lodge", mux: "herdr-core", address: "lodge.tail1a2b.ts.net:8794" }),
+    member("workshop", "reachable", { host: "workshop", mux: "herdr", enrolledAt: TS - 120 * DAY }),
+    member("workshop-hc", "unreachable", {
+      host: "workshop",
+      mux: "herdr-core",
+      address: "workshop.tail1a2b.ts.net:8795",
+      reason: "connect ECONNREFUSED 100.71.4.9:8795",
+      linkState: "reconnecting",
+      lastSeenAt: TS - 6 * MIN,
+    }),
+  ],
+  ts: TS,
+};
+
 /**
  * The loud one: `attic` believes ANOTHER collie leads this crew, under a warrant generation higher
  * than the deputy's. Two collies both convinced they are the lead is not a transient the next poll
@@ -787,6 +820,13 @@ export const homeCrew: HomeData = {
 
 /** A three-machine crew, on the trio roster — pairs with {@link censusTrio}. */
 export const homeTrio: HomeData = { ...homeCrew, servers: rosterTrio };
+
+/** Two instances per host, pairs with {@link censusTwoPerHost}. The third machine's panes move to `lodge-hc`. */
+export const homeTwoPerHost: HomeData = {
+  ...homeCrew,
+  agents: homeCrew.agents.map((a) => (a.host === "attic" ? onHost(a, "lodge-hc") : a)),
+  servers: rosterTwoPerHost,
+};
 
 /** A nine-machine crew — pairs with {@link censusNine}. */
 export const homeNine: HomeData = { ...homeCrew, servers: rosterNine };

@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, MemoryRouter, RouterProvider } from "react-router";
 
@@ -344,5 +344,72 @@ describe("ServerSwitcher — the show switch", () => {
     renderSwitcher([lead, peer], undefined, [agentOn("workshop", "w1:p1", "blocked")]);
     await userEvent.click(trigger()!);
     expect(within(row(/workshop/i)).getByText("1 needs you")).toBeInTheDocument();
+  });
+});
+
+describe("ServerSwitcher: one row per machine when a host runs two instances (M77)", () => {
+  const blueTui: ServerSummary = { ...lead, host: "bluefin", mux: "herdr" };
+  const blueCore: ServerSummary = { ...peer, id: "bluefin-hc", name: "bluefin-hc", host: "bluefin", mux: "herdr-core" };
+  const miniTui: ServerSummary = { ...peer, id: "minibuch", name: "minibuch", host: "minibuch", mux: "herdr" };
+  const miniCore: ServerSummary = { ...peer, id: "minibuch-hc", name: "minibuch-hc", host: "minibuch", mux: "herdr-core" };
+  const twoPerHost = [blueTui, miniCore, blueCore, miniTui];
+  const showSwitch = (name: RegExp) =>
+    within(screen.getByRole("list")).getByRole("switch", { name: new RegExp(`^Show on the dashboard ${name.source}`) });
+
+  it("draws one row per machine, named by the host, with its instances' muxes under it", async () => {
+    renderSwitcher(twoPerHost, undefined);
+    await userEvent.click(trigger()!);
+    const rows = within(screen.getByRole("list")).getAllByRole("button");
+    expect(rows).toHaveLength(2);
+    expect(within(rows[0]!).getByText("bluefin")).toBeInTheDocument();
+    expect(within(rows[0]!).getByText("herdr · herdr-core")).toBeInTheDocument();
+    expect(within(rows[1]!).getByText("minibuch")).toBeInTheDocument();
+    expect(within(rows[1]!).getByText("herdr · herdr-core")).toBeInTheDocument();
+    expect(within(screen.getByRole("list")).getAllByRole("switch")).toHaveLength(2);
+  });
+
+  it("hides and shows every instance of the machine with its one switch", async () => {
+    renderSwitcher(twoPerHost, undefined);
+    await userEvent.click(trigger()!);
+    await userEvent.click(showSwitch(/minibuch/));
+    expect(currentHiddenMachines()).toEqual(["minibuch", "minibuch-hc"]);
+    expect(showSwitch(/minibuch/)).toHaveAttribute("aria-checked", "false");
+    await userEvent.click(showSwitch(/minibuch/));
+    expect(currentHiddenMachines()).toEqual([]);
+  });
+
+  it("marks the machine holding the addressed member active, and a tap on it keeps that member", async () => {
+    const router = renderSwitcher(twoPerHost, "minibuch-hc");
+    await userEvent.click(trigger()!);
+    expect(row(/minibuch/)).toHaveAttribute("aria-current", "true");
+    expect(showSwitch(/minibuch/)).toBeDisabled();
+    await userEvent.click(row(/minibuch/));
+    expect(location(router)).toBe("/?h=minibuch-hc");
+  });
+
+  it("selects a machine's first instance: the lead on the lead's machine, the TUI before the core elsewhere", async () => {
+    // The scope is a prop here, fixed at render, so each direction gets its own render.
+    const fromCore = renderSwitcher(twoPerHost, "bluefin-hc");
+    await userEvent.click(trigger()!);
+    await userEvent.click(row(/minibuch/));
+    expect(location(fromCore)).toBe("/?h=minibuch");
+    cleanup();
+
+    const fromMinibuch = renderSwitcher(twoPerHost, "minibuch-hc");
+    await userEvent.click(trigger()!);
+    await userEvent.click(row(/bluefin/));
+    expect(location(fromMinibuch)).toBe("/");
+  });
+
+  it("names the instance that is down and sums the machine's counts", async () => {
+    renderSwitcher([blueTui, blueCore, miniTui, { ...miniCore, reachable: false }], undefined, [
+      agentOn("minibuch", "w1:p1", "blocked"),
+      agentOn("minibuch-hc", "w1:p2", "blocked"),
+    ]);
+    await userEvent.click(trigger()!);
+    expect(within(row(/minibuch/)).getByText("herdr-core unreachable")).toBeInTheDocument();
+    expect(within(row(/minibuch/)).getByText("2 needs you")).toBeInTheDocument();
+    // Degraded, not down: the row keeps its full ink.
+    expect(row(/minibuch/).className).not.toContain("opacity-60");
   });
 });

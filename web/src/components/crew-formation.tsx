@@ -158,6 +158,9 @@ export function asServerSummary(m: CrewMemberStatus): ServerSummary {
     // value has to stay absent all the way to `linkPresentation` or this page would invent a
     // distinction the lead never made.
     linkState: m.linkState,
+    // The two facts the crew page groups and names instances by (M77), carried as they came.
+    mux: m.mux,
+    host: m.host,
   };
 }
 

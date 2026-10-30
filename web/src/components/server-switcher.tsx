@@ -1,6 +1,6 @@
 import { useId, useState } from "react";
 import { createPortal } from "react-dom";
-import { Check, Crown, Network, Server } from "lucide-react";
+import { Check, Network, Server } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useNav } from "@/hooks/use-nav";
@@ -9,8 +9,10 @@ import { Switch } from "@/components/ui/switch";
 import { crewPath, homePath } from "@/lib/nav";
 import { hostHealth, linkPresentation, type HostHealth } from "@/lib/host-health";
 import { useCrew } from "@/components/crew-provider";
-import { HOST_TEXT_CLASSES, countsFor, hostCounts, hostSlot, isMultiHost } from "@/lib/hosts";
-import { setMachineHidden, useHiddenMachines } from "@/lib/hidden-machines";
+import { HOST_TEXT_CLASSES, countsFor, hostCounts, hostSlot, isMultiHost, type HostCounts } from "@/lib/hosts";
+import { setMachinesHidden, useHiddenMachines } from "@/lib/hidden-machines";
+import { groupByHost, instanceLabel, type Machine } from "@/lib/machines";
+import { CrewRoleBadge } from "@/components/crew-role-badge";
 import type { Scope } from "@/lib/scope";
 import type { AgentView, ServerSummary } from "@/lib/types";
 import { t, tn } from "@/lib/i18n";
@@ -95,9 +97,18 @@ export function ServerSwitcher({ servers, scope, agents = NO_PANES }: ServerSwit
   const isActive = (s: ServerSummary): boolean => (current === undefined ? s.isLead : s.id === current);
   const currentName = servers.find(isActive)?.name ?? current ?? lead?.name ?? t("connection.host.lead");
   const counts = hostCounts(agents);
+  // One row per physical MACHINE (M77): the instances one host runs share a row, a switch and a
+  // health that is their sum (lib/machines.ts). A crew of one instance per host is one row per
+  // member, as before. The keys underneath stay member ids: `?h=` and the hidden set.
+  const machines = groupByHost(servers, { health });
+  const isActiveMachine = (m: Machine): boolean => m.instances.some(isActive);
 
-  function select(s: ServerSummary): void {
+  function select(m: Machine): void {
     setOpen(false);
+    // Already on this machine: the addressed instance stays addressed.
+    if (isActiveMachine(m)) return;
+    // Otherwise its first instance, which on the lead's machine is the lead.
+    const s = m.instances[0]!;
     // The lead carries no `?h=` — absent means the lead, so selecting it restores today's bare URL.
     const target = s.isLead ? undefined : s.id;
     if (target === current) return;
@@ -127,25 +138,31 @@ export function ServerSwitcher({ servers, scope, agents = NO_PANES }: ServerSwit
             {t("connection.server.show")}
           </p>
           <ul className="flex flex-col gap-1">
-            {servers.map((s, i) => {
-              const active = isActive(s);
+            {machines.map((m, i) => {
+              const s = m.instances[0]!;
+              const shared = m.instances.length > 1;
+              const ids = m.instances.map((x) => x.id);
+              const active = isActiveMachine(m);
               const nameId = `${nameIdBase}-name-${i}`;
               const switchId = `${nameIdBase}-switch-${i}`;
               // The addressed machine always shows, whatever is stored (lib/hidden-machines.ts), so its
-              // switch reads on and cannot be turned off.
-              const onDashboard = active || !hiddenMachines.includes(s.id);
-              const c = countsFor(counts, s.id);
+              // switch reads on and cannot be turned off. A machine reads hidden only when every one
+              // of its instances is.
+              const onDashboard = active || !ids.every((id) => hiddenMachines.includes(id));
+              const c = shared ? sumCounts(m, counts) : countsFor(counts, s.id);
               const h = health.get(s.id) ?? hostHealth(s, { at: 0, pollMs: 0 });
+              // A shared machine is dimmed only when none of it answers; a single row keeps its own reading.
+              const dimmed = shared ? m.health === "down" : !h.writable;
               // This sheet names machines WITHOUT a HostChip — the rows are its own — so it carries
               // the identity tint itself, on the glyph that is already standing at the head of the
               // row. A dot beside that glyph would be a second mark for the same fact.
               const slot = hostSlot(servers, s.id);
               return (
-                <li key={s.id}>
+                <li key={m.key}>
                   <div className="flex items-center gap-1">
                     <button
                       type="button"
-                      onClick={() => select(s)}
+                      onClick={() => select(m)}
                       aria-current={active ? "true" : undefined}
                       className={cn(
                         "flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-3 py-2.5 text-left transition-colors",
@@ -157,7 +174,7 @@ export function ServerSwitcher({ servers, scope, agents = NO_PANES }: ServerSwit
                           : "hover:bg-accent active:bg-accent",
                         // Dimmed, not disabled: what you will find there is last-known and read-only,
                         // and the row says both — but it still goes there (see the note above).
-                        !h.writable && "opacity-60",
+                        dimmed && "opacity-60",
                       )}
                     >
                       <Server
@@ -170,18 +187,19 @@ export function ServerSwitcher({ servers, scope, agents = NO_PANES }: ServerSwit
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-1.5">
                           <span id={nameId} className="truncate text-sm font-medium">
-                            {s.name || s.id}
+                            {m.name}
                           </span>
-                          {s.isLead && (
-                            <span className="flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium label-caps text-muted-foreground">
-                              <Crown className="size-2.5" aria-hidden />
-                              {t("connection.host.lead")}
-                            </span>
-                          )}
+                          {s.isLead && <CrewRoleBadge kind="lead" />}
                           {/* Listed, never hidden (CREW_PROTOCOL.md §10.2): a member that is down or
                               speaking another protocol keeps its row, its counts and an honest reason.
                               A vanished machine reads as "I have no agents there", which is a lie. */}
-                          {h.incompatible ? (
+                          {shared ? (
+                            m.health !== "ok" && (
+                              <span className="text-[11px] text-muted-foreground">
+                                {t("crew.machine.unreachable", { instances: m.downInstances.join(", ") })}
+                              </span>
+                            )
+                          ) : h.incompatible ? (
                             <span className="text-[11px] font-medium text-status-blocked">
                               {t("connection.host.incompatible")}
                             </span>
@@ -203,9 +221,16 @@ export function ServerSwitcher({ servers, scope, agents = NO_PANES }: ServerSwit
                             )
                           )}
                         </div>
+                        {/* The instances this machine runs, by multiplexer, so two Collies on one host
+                            read as one machine and still say what each of them drives. */}
+                        {shared && (
+                          <p className="truncate text-[11px] text-muted-foreground">
+                            {m.instances.map((x) => instanceLabel(x, m.instances)).join(" · ")}
+                          </p>
+                        )}
                         {/* The peer's refusal reason, verbatim — never paraphrased, because the
                             operator's next move is to read it and go fix a version somewhere. */}
-                        {h.incompatible && h.protocolDetail && (
+                        {!shared && h.incompatible && h.protocolDetail && (
                           <p className="mt-0.5 break-words font-mono text-[10px] leading-tight text-muted-foreground">
                             {s.protocolDetail}
                           </p>
@@ -238,7 +263,7 @@ export function ServerSwitcher({ servers, scope, agents = NO_PANES }: ServerSwit
                         id={switchId}
                         checked={onDashboard}
                         disabled={active}
-                        onCheckedChange={(on) => setMachineHidden(s.id, !on, servers)}
+                        onCheckedChange={(on) => setMachinesHidden(ids, !on, servers)}
                         aria-labelledby={`${captionId} ${nameId}`}
                         aria-describedby={active ? reasonId : undefined}
                       />
@@ -293,4 +318,16 @@ function degradedLabel(h: HostHealth): string {
   if (link === "reconnecting") return t("connection.host.reconnectingSuffix", { label: h.lastSeenLabel });
   if (link === "attention") return t("connection.host.attentionSuffix", { label: h.lastSeenLabel });
   return t("connection.host.unreachableSuffix", { label: h.lastSeenLabel });
+}
+
+/** A shared machine's counts: the sum of its instances' rows. */
+function sumCounts(m: Machine, counts: Map<string, HostCounts>): HostCounts {
+  const out: HostCounts = { agents: 0, working: 0, blocked: 0 };
+  for (const x of m.instances) {
+    const c = countsFor(counts, x.id);
+    out.agents += c.agents;
+    out.working += c.working;
+    out.blocked += c.blocked;
+  }
+  return out;
 }

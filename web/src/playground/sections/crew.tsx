@@ -9,10 +9,12 @@ import {
   censusFive,
   censusNine,
   censusTrio,
+  censusTwoPerHost,
   homeCrew,
   homeNine,
   homeSolo,
   homeTrio,
+  homeTwoPerHost,
   hostIncompatible,
   hostNeverSeen,
   hostUnreachable,
@@ -21,6 +23,7 @@ import {
   paneHostUnreachable,
   rosterFive,
   rosterPalette,
+  rosterTwoPerHost,
 } from "../fixtures";
 import { CrewRouter, PackedRootRouter, PaneRouter } from "../harness";
 import { Card, Group, Section, Stage, type SectionDef } from "../layout";
@@ -30,7 +33,7 @@ export const DEF: SectionDef = {
   id: "crew",
   title: "Crew",
   intent:
-    "More than one machine. The formation drawing at four sizes, the cards for a crew that isn't one, the host switcher, and the tier-2 banners that name a machine, not a link, as the thing that broke.",
+    "More than one machine. The formation drawing at four sizes, the machine cards for a crew with two instances per host, the cards for a crew that isn't one, the host switcher, and the tier-2 banners that name a machine, not a link, as the thing that broke.",
 };
 
 export function CrewSection() {
@@ -79,6 +82,18 @@ export function CrewSection() {
         >
           <PhoneFrameCard height={640}>
             <CrewRouter home={homeTrio} crew={{ status: censusConflicted, error: false }} />
+          </PhoneFrameCard>
+        </Card>
+
+        <Card
+          state="crew-two-instances-per-host"
+          label="crew: two instances per host"
+          reach="run Herdr TUI and Herdr core side by side on each machine, each as its own crew member. Four members are two machines, so the page draws a card per machine with a line per instance."
+          note="The machine's health is the sum of its instances: workshop-hc has stopped answering, so the workshop card reads degraded and names herdr-core. A crew with one instance per host keeps the formation above."
+          span={2}
+        >
+          <PhoneFrameCard height={640}>
+            <CrewRouter home={homeTwoPerHost} crew={{ status: censusTwoPerHost, error: false }} />
           </PhoneFrameCard>
         </Card>
       </Group>
@@ -144,6 +159,21 @@ export function CrewSection() {
             <PackedRootRouter data={homeCrew}>
               <div className="flex items-center gap-2 p-3">
                 <ServerSwitcher servers={rosterFive} scope={{}} agents={homeCrew.agents} />
+              </div>
+            </PackedRootRouter>
+          </Stage>
+        </Card>
+
+        <Card
+          state="host-switcher-two-instances-per-host"
+          label="host switcher, crew: two instances per host"
+          reach="be on a crew where each host runs two Collie instances. Tap the chip: one row per machine, its instances' muxes under the name, and one switch that hides or shows both."
+          note="workshop-hc is down, so the workshop row names herdr-core as unreachable and stays in full ink: the TUI instance still answers."
+        >
+          <Stage height={120}>
+            <PackedRootRouter data={homeTwoPerHost}>
+              <div className="flex items-center gap-2 p-3">
+                <ServerSwitcher servers={rosterTwoPerHost} scope={{}} agents={homeTwoPerHost.agents} />
               </div>
             </PackedRootRouter>
           </Stage>
