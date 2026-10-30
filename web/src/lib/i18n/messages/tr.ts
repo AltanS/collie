@@ -1553,6 +1553,7 @@ export const tr: Dictionary = {
   "apiError.reply.not_submitted": "Mesajınız bölmeye yazıldı ancak gönderilmedi, tekrar göndermeden önce bölmeyi kontrol edin.",
   "apiError.reply.send_failed": "Mesaj gönderilemedi: {reason}",
   "apiError.keys.send_failed": "Bu tuşlar gönderilemedi: {reason}",
+  "apiError.keys.unconfirmed": "Bu tuşlar zamanında onaylanmadı ve hâlâ ulaşabilir, tekrar göndermeden önce bölmeyi kontrol edin.",
   "apiError.prompt_changed": "Bu gönderilmeden önce ekran değişti, bölmeyi kontrol edin.",
   "apiError.prompt.read_failed": "Gönderilmeden önce bölme okunamadı, {mux} yanıtı: {detail}",
   "apiError.pane.close_failed": "Bölme kapatılamadı: {reason}",

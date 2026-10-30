@@ -116,6 +116,7 @@ import {
   muxGone,
   muxOk,
   muxRefused,
+  muxUnconfirmed,
   muxUnreachable,
   type MuxConversationItems,
   type MuxConversationPage,
@@ -966,6 +967,29 @@ describe("pane write prompt binding", () => {
       code: "keys.send_failed",
       detail: { reason: "no such pane" },
     });
+  });
+
+  test("a key batch the multiplexer did not confirm in time answers keys.unconfirmed, never send_failed, and is audited as sent", async () => {
+    // herdr-core held a terminal's keys behind its slow history reads and delivered them after the
+    // client gave up (M78 report 10, case 2). "Couldn't be sent" was wrong and invited a second send.
+    const mux = asMux(new FakePaneClient());
+    let calls = 0;
+    mux.writeKeys = () => {
+      calls++;
+      return Promise.resolve(muxUnconfirmed("herdr-core did not confirm the keys in time"));
+    };
+    const { audit, entries } = auditEntries();
+    const res = await keysPane(mux, cfg(), "w1:p1", request({ keys: ["Down"] }), audit, null, "default");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      ok: false,
+      error: "the keys were not confirmed in time and may still arrive: check the pane before you send them again",
+      code: "keys.unconfirmed",
+      detail: { reason: "herdr-core did not confirm the keys in time" },
+    });
+    expect(calls).toBe(1);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({ action: "keys", paneId: "w1:p1", detail: { keys: ["Down"], sent: "unconfirmed" } });
   });
 
   test("rejects oversized and non-string expected_prompt before a keys write", async () => {

@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **A key that herdr-core did not confirm in time is reported as not confirmed, not as failed, and is never sent twice.** The core can deliver a key after Collie stopped waiting for it, so a `Down` reported as failed still moved the pointer. The Keys board now says the keys may still arrive and asks you to check the pane, and an answer to a card goes on to its next read, which decides: the pointer must still be on your choice before Enter goes, and a dialog that stays after the keys ends the answer as unknown.
+
 ## [1.25.2] - 2026-10-30
 
 A bugfix release, not urgent, that fixes failing inputs on the Herdr core (sends refused, cards that could not be answered, keys that lost their case) and takes two contributor fixes. You need it if you run Collie on the Herdr core (the new herdr-app) or send to omp or pi there.

@@ -1672,6 +1672,7 @@ export const zh: Dictionary = {
   "apiError.reply.not_submitted": "消息已填入窗格但未提交。重新发送前请检查窗格状态。",
   "apiError.reply.send_failed": "消息发送失败：{reason}",
   "apiError.keys.send_failed": "按键发送失败：{reason}",
+  "apiError.keys.unconfirmed": "按键未能及时确认，可能仍会送达。重新发送前请检查窗格状态。",
   "apiError.prompt_changed": "发送前屏幕内容已改变，请检查窗格。",
   "apiError.prompt.read_failed": "发送前读取窗格失败，{mux} 返回：{detail}",
   "apiError.pane.close_failed": "关闭窗格失败：{reason}",

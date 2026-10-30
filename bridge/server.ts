@@ -5400,6 +5400,14 @@ export async function keysPane(
     });
     return json({ ok: true } satisfies ActionResponse, ae);
   }
+  if (!sent.ok && sent.reason === "unconfirmed") {
+    // The keys left and the multiplexer did not confirm them in time: they may still land (MuxRefusal,
+    // `unconfirmed`). Recorded as sent-unconfirmed, and answered as "not confirmed", never "failed",
+    // so nobody sends them twice on a wrong word.
+    keysDetail.sent = "unconfirmed";
+    audit.record({ action: "keys", paneId, session, device, detail: keysDetail });
+    return json({ ok: false, ...apiError("keys.unconfirmed", { reason: sent.detail }) } satisfies ActionResponse, ae);
+  }
   if (binding) {
     audit.record({
       action: "keys",

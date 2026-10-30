@@ -57,6 +57,11 @@ export const ERROR_CODES = {
   /** The multiplexer refused the key batch. */
   "keys.send_failed": "{reason}",
   /**
+   * The keys left, and the multiplexer did not confirm them in time: they may still land. NOT a
+   * failure, and the phone must not resend on it; the next read of the pane shows what happened.
+   */
+  "keys.unconfirmed": "the keys were not confirmed in time and may still arrive: check the pane before you send them again",
+  /**
    * The screen moved between the client reading it and the write arriving, so the bound write was
    * refused (409). GRANDFATHERED SPELLING: this code was already on the wire before the catalogue
    * existed and `web/src/lib/dialog-guard.ts` + friends match it literally, so it keeps its

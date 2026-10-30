@@ -40,6 +40,7 @@ import {
   muxGone,
   muxOk,
   muxRefused,
+  muxUnconfirmed,
   muxUnreachable,
   muxUnsupported,
   requestedCwd,
@@ -62,7 +63,7 @@ import {
   type MuxWorktreeOpened,
   type MuxWorktreeScope,
 } from "../types.ts";
-import { DEFAULT_HC_TIMEOUT_MS, defaultHcSocket, HC_GENERATION, HcClient, HcError, type HcRpc, type WireLayout, type WireRead, type WireTerminal } from "./client.ts";
+import { DEFAULT_HC_TIMEOUT_MS, defaultHcSocket, HC_GENERATION, HcClient, HcError, HcTimeout, type HcRpc, type WireLayout, type WireRead, type WireTerminal } from "./client.ts";
 import { routeEvent } from "./events.ts";
 import { herdrCoreBeaconMatcher } from "./markers.ts";
 import { HERDR_CORE_LOGO_SVG } from "./logo.ts";
@@ -321,7 +322,7 @@ export class HerdrCoreMux implements MuxAdapter {
       translated.push(result.key);
     }
     if (translated.length === 0) return muxAck();
-    return this.attempt(async () => {
+    return this.attemptKeys(paneId, async () => {
       let names: string[] = [];
       const flush = async () => {
         if (names.length === 0) return;
@@ -457,6 +458,23 @@ export class HerdrCoreMux implements MuxAdapter {
         return `This herdr-core does not speak protocol generation ${String(HC_GENERATION)}, which this Collie needs. Update Collie or herdr-core so the two match. herdr-core said: ${err.message}`;
       }
       throw err;
+    }
+  }
+
+  /**
+   * {@link attempt} for keys. A call the core did not answer in time is `unconfirmed`, not a failure:
+   * the core may still deliver the key (it did, M78 report 10 case 2). Nothing here sends it again;
+   * the next read of the pane shows whether it landed.
+   */
+  private async attemptKeys(paneId: string, call: () => Promise<void>): Promise<MuxAck> {
+    try {
+      await call();
+      return muxAck();
+    } catch (err) {
+      if (err instanceof HcTimeout) {
+        return muxUnconfirmed(`herdr-core did not confirm the keys on ${paneId} in time (${err.message}). They may still arrive, so they were not sent again.`);
+      }
+      return refusalFor(err);
     }
   }
 

@@ -1553,6 +1553,7 @@ export const pt: Dictionary = {
   "apiError.reply.not_submitted": "Sua mensagem foi digitada no painel, mas não enviada: confira o painel antes de reenviar.",
   "apiError.reply.send_failed": "Não foi possível enviar a mensagem: {reason}",
   "apiError.keys.send_failed": "Não foi possível enviar essas teclas: {reason}",
+  "apiError.keys.unconfirmed": "Essas teclas não foram confirmadas a tempo e ainda podem chegar: confira o painel antes de reenviar.",
   "apiError.prompt_changed": "A tela mudou antes do envio: confira o painel.",
   "apiError.prompt.read_failed": "Não foi possível ler o painel antes de enviar. O {mux} informou: {detail}",
   "apiError.pane.close_failed": "Não foi possível fechar o painel: {reason}",

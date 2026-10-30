@@ -172,6 +172,19 @@ export class HcError extends Error {
 }
 
 /**
+ * A call the core did not answer within the client's limit. The request had left: the core may still
+ * be running it, and a write may still land (hc 0.1.14 holds a terminal's keys behind its slow
+ * history reads, then delivers them). A plain `Error` subclass, so a caller that does not care reads it
+ * as the transport failure it always was; the adapter's key path tells it apart.
+ */
+export class HcTimeout extends Error {
+  constructor(method: string, timeoutMs: number) {
+    super(`herdr-core ${method}: timed out after ${String(timeoutMs)}ms`);
+    this.name = "HcTimeout";
+  }
+}
+
+/**
  * The client socket an `hc` in this environment would dial, when the operator named none.
  *
  * The core's own rule (herdr-core docs/security.md § State and endpoints): `HC_SOCKET`, else
@@ -385,7 +398,7 @@ export class HcClient {
         fn();
       };
       const timer = setTimeout(
-        () => finish(() => reject(new Error(`herdr-core ${method}: timed out after ${String(this.timeoutMs)}ms`))),
+        () => finish(() => reject(new HcTimeout(method, this.timeoutMs))),
         this.timeoutMs,
       );
       socket.setEncoding("utf8");
@@ -511,7 +524,7 @@ export class HcClient {
         fn();
       };
       const timer = setTimeout(
-        () => finish(() => reject(new Error(`herdr-core terminal.attach: timed out after ${String(this.timeoutMs)}ms`))),
+        () => finish(() => reject(new HcTimeout("terminal.attach", this.timeoutMs))),
         this.timeoutMs,
       );
       const sendRpc = (id: number, method: string, params: JsonObject) => {
