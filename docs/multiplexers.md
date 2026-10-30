@@ -522,6 +522,7 @@ file when it stops cleanly. A running bridge writes its file again within two se
 missing. The hook writes each edge into every listed bridge whose process still runs. It deletes the
 file of a bridge that is gone. With no bridge listed, the hook writes into the
 default state dir. A `COLLIE_STATE_DIR` in the agent's own environment always gets the edges too.
+The session beacon, which names the pane's session for the History link, goes to the same bridges.
 
 #### The pane info
 

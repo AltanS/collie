@@ -588,6 +588,47 @@ describe("the hook target registry (M56 spec 11)", () => {
     expect(edgesIn(d.files, STATE)).toHaveLength(1);
   });
 
+  describe("the beacon follows the edge", () => {
+    const beaconsIn = (files: ReturnType<typeof fakeFiles>, dir: string): [string, string][] =>
+      [...files.entries.entries()]
+        .filter(([path]) => path.startsWith(`${dir}/beacons/`) && path.endsWith(".json"))
+        .map(([path, entry]) => [path.slice(`${dir}/beacons/`.length), entry.text]);
+    const sessionOf = (text: string): string | undefined => parseBeacon(text)?.session.value;
+
+    test("two live targets: the beacon lands in both, under one name, carrying the session id", async () => {
+      const d = withTargets([A, B]);
+      await cmdBeaconEmit(d);
+      const inA = beaconsIn(d.files, A.dir);
+      const inB = beaconsIn(d.files, B.dir);
+      expect(inA).toHaveLength(1);
+      expect(inB.map(([name]) => name)).toEqual(inA.map(([name]) => name));
+      expect(inA.map(([, text]) => sessionOf(text))).toEqual([SESSION]);
+      expect(inB.map(([, text]) => sessionOf(text))).toEqual([SESSION]);
+      expect(beaconsIn(d.files, STATE)).toEqual([]);
+    });
+
+    test("no target: the beacon goes to the emitter's own state dir only, as before", async () => {
+      const d = deps();
+      await cmdBeaconEmit(d);
+      expect(beaconsIn(d.files, STATE)).toHaveLength(1);
+      expect(beaconsIn(d.files, A.dir)).toEqual([]);
+    });
+
+    test("one target that cannot be written costs the others neither their beacon nor their edge", async () => {
+      const d = withTargets([A, B]);
+      const mkdirp = d.files.mkdirp.bind(d.files);
+      d.files.mkdirp = (path, mode) => {
+        if (path.startsWith(`${A.dir}/beacons`)) throw new Error("EACCES");
+        mkdirp(path, mode);
+      };
+      expect(await cmdBeaconEmit(d)).toBe(EXIT.OK);
+      expect(beaconsIn(d.files, A.dir)).toEqual([]);
+      expect(beaconsIn(d.files, B.dir)).toHaveLength(1);
+      expect(edgesIn(d.files, A.dir)).toHaveLength(1);
+      expect(edgesIn(d.files, B.dir)).toHaveLength(1);
+    });
+  });
+
   test("XDG_STATE_HOME moves the registry", async () => {
     const d = deps({ env: { ...TMUX, XDG_STATE_HOME: "/xdg" }, stdin: payload({ hook_event_name: "Stop" }) });
     d.files.mkdirp("/xdg/collie/hook-targets", 0o700);

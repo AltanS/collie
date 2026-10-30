@@ -317,8 +317,8 @@ export function readPidStartTime(files: Files, pid: number): number | null {
  * this one, never half of either. The temp name carries the pid so two hooks firing at once in two
  * panes cannot collide on it.
  */
-function writeBeacon(deps: BeaconEmitDeps, record: BeaconRecord): void {
-  const dir = beaconsDir(deps.ctx.stateDir);
+function writeBeacon(deps: BeaconEmitDeps, stateDir: string, record: BeaconRecord): void {
+  const dir = beaconsDir(stateDir);
   const key = beaconKey(record.markers);
   const temp = join(dir, `.${key}.${record.pid}.tmp`);
   deps.files.mkdirp(dir, BEACON_DIR_MODE);
@@ -575,7 +575,9 @@ export async function cmdBeaconEmit(deps: BeaconEmitDeps): Promise<number> {
     const session = readField(payload, "session_id", SESSION_ID);
     if (session === null) return EXIT.OK;
 
-    writeBeacon(deps, {
+    // The beacon follows the edge: one per bridge that took the edge, so a bridge of another
+    // instance finds the session too. Each in its own guard, like the edges.
+    const beacon: BeaconRecord = {
       schemaVersion: BEACON_SCHEMA_VERSION,
       harness: BEACON_HARNESS,
       session: { kind: "id", value: session },
@@ -584,7 +586,14 @@ export async function cmdBeaconEmit(deps: BeaconEmitDeps): Promise<number> {
       pidStartTime,
       markers,
       heartbeatMs: now,
-    });
+    };
+    for (const stateDir of stateDirs()) {
+      try {
+        writeBeacon(deps, stateDir, beacon);
+      } catch {
+        // No beacon for this target. Its pane reads as having no session until the next event.
+      }
+    }
     return EXIT.OK;
   } catch {
     // Every failure is the same failure: there is no beacon for this pane right now.
