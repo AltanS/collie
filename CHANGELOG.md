@@ -37,6 +37,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **`collie hooks install claude` writes where Claude Code reads.** It used `~/.claude/settings.json` even when `CLAUDE_CONFIG_DIR` was set, so the hooks never reached Claude; install, uninstall, status and the doctor now use `$CLAUDE_CONFIG_DIR/settings.json` first.
 - **A pi question on herdr-core shows its options, and a tap answers it.** The core hands out the screen with no colour, and Collie found pi's question only by the paint of its footer and status rows, so the card read unreadable and offered Escape alone. On a read with no styling the question is now found by its text: the footer's words, the numbered rows with the `>` pointer, and pi's own status rows with the session cost. A styled read is unchanged.
 - **A pane with a question on its screen says it needs you.** herdr-core reports pi as working while pi's question waits, so the pane showed no "needs you" mark and sent no push. A pane whose screen shows a card the phone can answer is now blocked, whatever the multiplexer reports.
+- **A tap on a Claude Code permission card is answered on herdr-core.** The core hands out the screen with no bold, and Collie found the top edge of the dialog only by its bold title (`Bash command`), so every Yes from the phone was refused with "Collie did not find the top edge of this dialog". On a screen with no styling at all the title is now told by its text.
 
 ### Changed
 
