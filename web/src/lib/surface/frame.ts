@@ -344,9 +344,21 @@ function isPlaceholderText(text: string, idle: IdleProfile, patterns: readonly R
 }
 
 /**
+ * Whether the read carries no styling at all: no run has a foreground colour or an attribute flag.
+ * That is what a plain-text multiplexer hands out (herdr-core). A typed draft is unstyled on a
+ * coloured read too (default ink), so the hole alone cannot tell the two apart; the prompt marker,
+ * the rules and the footer of a coloured read carry colour, and a plain read carries none anywhere.
+ */
+function readIsUnstyled(rows: readonly FrameRow[]): boolean {
+  return rows.every((row) => row.segments.every((run) => run.fg === undefined && RUN_FLAGS.every((flag) => run[flag] !== true)));
+}
+
+/**
  * Whether the hole shows the profile's placeholder, by its text, its attribute or its colours; each
  * way that holds adds its anchor to `anchorsHit`. The three tests are whole-hole: one visible run
- * that is neither faint nor ghost-coloured leaves the text a draft.
+ * that is neither faint nor ghost-coloured leaves the text a draft. The profile's text patterns are
+ * a fallback for a read with no styling: on a styled read the attribute and colour tests decide, so
+ * a person's typed text of the hint's shape stays a draft.
  */
 function readPlaceholder(
   rows: readonly FrameRow[],
@@ -359,7 +371,7 @@ function readPlaceholder(
   patterns: readonly RegExp[],
   anchorsHit: FrameAnchorHit[],
 ): boolean {
-  const byText = isPlaceholderText(text, idle, patterns);
+  const byText = isPlaceholderText(text, idle, patterns.length > 0 && readIsUnstyled(rows) ? patterns : []);
   const bySgr = holeIsFaint(rows, prompt, holeStart, last, idle.placeholders.sgr);
   const byFg = holeIsGhostColoured(rows, prompt, holeStart, last, colours);
   if (byText) anchorsHit.push("placeholder-text");

@@ -469,6 +469,31 @@ describe("findInputFrame", () => {
     }
   });
 
+  it("counts the `Try \"…\"` shape only on a read with no styling: a typed one on a coloured read stays a draft", () => {
+    // tmux, zellij and the Herdr TUI hand out colour. Typed text is default ink there, with no colour or
+    // flag of its own, but the prompt marker and the rules carry colour, so the read is styled and the
+    // shape rule stands down. Only a read with no styling anywhere (herdr-core) lets the shape decide.
+    const GREY = "rgb(153,153,153)";
+    const rule: FrameRow = { segments: [{ text: RULE, fg: GREY }] };
+    const marker: FrameRun = { text: "❯ ", fg: GREY };
+    const hint = 'Try "fix lint errors"';
+
+    const typed = findInputFrame([rule, { segments: [marker, { text: hint }] }, rule], IDLE)!;
+    expect(typed.placeholder).toBe(false);
+    expect(typed.interior.text).toBe(hint);
+    expect(typed.anchorsHit).not.toContain("placeholder-text");
+
+    const faint = findInputFrame([rule, { segments: [marker, { text: hint, dim: true }] }, rule], IDLE)!;
+    expect(faint.placeholder).toBe(true);
+    expect(faint.interior.text).toBe(hint);
+    expect(faint.anchorsHit).toContain("placeholder-sgr");
+    expect(faint.anchorsHit).not.toContain("placeholder-text");
+
+    const plain = findInputFrame(plainRows([RULE, `❯ ${hint}`, RULE]), IDLE)!;
+    expect(plain.placeholder).toBe(true);
+    expect(plain.anchorsHit).toContain("placeholder-text");
+  });
+
   it("a faint marker in front of a real draft is not a placeholder", () => {
     const frame = findInputFrame([styled(plainRun(RULE)), styled(dim("❯ "), plainRun("real draft")), styled(plainRun(RULE))], IDLE)!;
     expect(frame.placeholder).toBe(false);

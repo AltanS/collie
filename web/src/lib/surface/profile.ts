@@ -478,8 +478,10 @@ export interface Profile {
        * Regular expressions (sources); a draft text that one matches whole, blanks at its ends cut,
        * is a placeholder too. For a harness whose placeholder rotates through hints of one shape and
        * whose screen may come as plain text, with no faint attribute or colour to mark it (Claude
-       * Code's `Try "…"` hints on herdr-core, 2026-10-30). Optional. A typed draft of that exact
-       * shape reads as a placeholder.
+       * Code's `Try "…"` hints on herdr-core, 2026-10-30). Optional. A fallback: it counts only on a
+       * read with no styling anywhere (no colour, no attribute), so on a coloured multiplexer the
+       * faint and colour tests decide and a typed draft of that shape stays a draft. On a plain read
+       * a typed draft of that exact shape still reads as a placeholder.
        */
       readonly patterns?: readonly string[];
       /** The SGR attribute the placeholder renders with (2 is faint). */
