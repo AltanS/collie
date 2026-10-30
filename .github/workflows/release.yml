@@ -127,7 +127,7 @@ jobs:
   #     with SIGILL on older hardware, which is exactly the hardware a self-hosted tool lives on.
   #     Collie is I/O-bound (a Unix socket and static files), so the baseline penalty is not
   #     observable here.
-  # The matrix ships all four targets; macos-x64 is cross-compiled on the macos-14 row (#385). A
+  # The matrix ships all four targets; macos-x64 is cross-compiled on the macos-15 row (arm64, like macos-14 before it; #385). A
   # platform with no row gets `collie update`'s honest "no artifact for your platform, build from
   # source" rather than a wrong binary.
   payload:
@@ -140,13 +140,13 @@ jobs:
             runs-on: ubuntu-latest
             bun-target: bun-linux-x64-baseline
           - platform: macos-arm64
-            runs-on: macos-14
+            runs-on: macos-15
             bun-target: bun-darwin-arm64
           - platform: linux-arm64
             runs-on: ubuntu-24.04-arm
             bun-target: bun-linux-arm64
           - platform: macos-x64
-            runs-on: macos-14
+            runs-on: macos-15
             bun-target: bun-darwin-x64-baseline
     runs-on: ${{ matrix.runs-on }}
     steps:
