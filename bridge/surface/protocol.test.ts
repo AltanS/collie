@@ -211,7 +211,10 @@ class FakePane {
     }
     // Muse mode: the queued block between the running rows and the box (muse--queued-input-1410.txt).
     const museQueued = this.mode === "muse" && this.queued.length > 0 ? ["", "◆ Queued input · ↑ to edit", ...this.queued.map((text) => `└ ${text}`)] : [];
-    rows.push(...this.over, ...museQueued, RULE, ...this.boxRows(), RULE);
+    // Claude Code paints its rules grey, so a Claude read is styled even while the box holds a typed
+    // draft: the read-with-no-styling paths (M78 spec 06) stay off unless a test strips the colour.
+    const rule = this.mode === "claude" ? `\u001b[38;2;136;136;136m${RULE}\u001b[0m` : RULE;
+    rows.push(...this.over, ...museQueued, rule, ...this.boxRows(), rule);
     if (this.mode === "generic") rows.push(this.footer);
     else rows.push(...(this.popup ?? (this.box.length > 0 && this.statusWithText !== null ? this.statusWithText : this.status)));
     return (this.height === null ? rows : rows.slice(-this.height)).join("\n");

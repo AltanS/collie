@@ -105,8 +105,9 @@ describe("surface shadow", () => {
     r.mux.set("w1:p2", "omp--v18-6-1-queued-before-stop--w119.txt", 3);
     expect(r.shadow.boxOf("w1:p1")).toBeNull(); // not read yet
     await r.shadow.observe([agent("w1:p1", "omp"), agent("w1:p2", "omp")]);
-    expect(r.shadow.boxOf("w1:p1")).toEqual({ box: "second message", at: 1_000_000, turn: "idle" });
-    expect(r.shadow.boxOf("w1:p2")).toEqual({ box: "", at: 1_000_000, turn: "running" });
+    // These two captures were saved as plain text, so the reads carry no styling.
+    expect(r.shadow.boxOf("w1:p1")).toEqual({ box: "second message", at: 1_000_000, turn: "idle", plain: true });
+    expect(r.shadow.boxOf("w1:p2")).toEqual({ box: "", at: 1_000_000, turn: "running", plain: true });
     // A read the multiplexer could not take has no box: it says nothing about the text.
     r.mux.failing.add("w1:p1");
     r.tick(1_000);

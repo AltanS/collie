@@ -1670,11 +1670,13 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
         }
         // A queued send whose text a read shows back in the box (ADR 0122): its card says so.
         send?.tickQueued(name, (paneId) => surface.boxOf(paneId));
-        // The box text rides along: a box that holds only Collie's own probe characters is no draft.
+        // The box text rides along: a box that holds only Collie's own probe characters is no draft. So
+        // does whether the read carried no styling: there a draft may be the placeholder (M78 spec 06).
         return send?.tickHolds(
           name,
           (paneId) => surface.surfaceOf(paneId),
           (paneId) => surface.boxOf(paneId)?.box ?? null,
+          (paneId) => surface.boxOf(paneId)?.plain === true,
         );
       });
     });
