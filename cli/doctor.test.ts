@@ -7,7 +7,7 @@ import { delimiter, join } from "node:path";
 import { CREW_PROTOCOL_VERSION } from "../bridge/crew/enrollment.ts";
 import { leadStore, member, CREW, peerStore, T0 } from "../bridge/crew/fixtures.ts";
 import { binaryName, HOST, hostFor } from "../bridge/host.ts";
-import { markerFor } from "../bridge/crew/staleness.ts";
+import { markerFor, NO_RUNTIME_FACTS } from "../bridge/crew/staleness.ts";
 import { serializeTrustStore, TrustStore, type TrustStoreData, type TrustStoreIo } from "../bridge/crew/trust-store.ts";
 import { fakeBeaconReader, FAKE_BEACON_NOW, type FakeBeacon } from "../bridge/beacon/fake.ts";
 import { BEACON_SCHEMA_VERSION } from "../bridge/beacon/types.ts";
@@ -750,6 +750,43 @@ describe("collie doctor — the local checks", () => {
       expect(byCheck.get("bind")?.status, address).toBe("ok");
       expect(byCheck.get("bind")?.detail, address).toContain("reaches its lead on loopback too");
     }
+  });
+
+  // A member enrolled at 127.0.0.1 on the lead's own machine joined by the lead's public name, so its
+  // stored lead address is not loopback. The marker's `leadLastDialledAt` is the only proof it has.
+  test("bind: loopback on a PEER the lead has dialled shares the lead's machine, and the time is shown", async () => {
+    const peer = peerStore({ lead: member({ memberId: "desk", role: "lead", address: "https://collie.example.net" }) });
+    const dialledAt = T0 + 60_000;
+    const { byCheck } = await findings(
+      harness(peer, [hello({ memberId: "desk" })], {
+        files: without(
+          {
+            ...healthyFiles(),
+            [`${STATE}/crew-runtime.json`]: JSON.stringify(
+              markerFor(peer, T0, 42, { ...NO_RUNTIME_FACTS, leadLastDialledAt: dialledAt }),
+            ),
+          },
+          HANDLER,
+        ),
+      }),
+    );
+    expect(byCheck.get("bind")?.status).toBe("ok");
+    expect(byCheck.get("bind")?.detail).toContain(new Date(dialledAt).toISOString());
+    expect(byCheck.get("bind")?.detail).toContain("shares this machine");
+  });
+
+  test("bind: loopback on a PEER the lead has not dialled yet is still the trap, worded as not yet", async () => {
+    const peer = peerStore({ lead: member({ memberId: "desk", role: "lead", address: "https://collie.example.net" }) });
+    const { byCheck } = await findings(
+      harness(peer, [hello({ memberId: "desk" })], {
+        files: without({ ...healthyFiles(), ...markerFile(peer) }, HANDLER),
+      }),
+    );
+    const bind = byCheck.get("bind");
+    expect(bind?.status).toBe("error");
+    expect(bind?.detail).toContain("probe has not landed yet");
+    expect(bind?.detail).not.toContain("never lands");
+    expect(bind?.remedy).toContain("COLLIE_HOST=laptop.tail.ts.net");
   });
 
   test("bind: loopback on a lead or solo is the RIGHT answer, not a finding", async () => {

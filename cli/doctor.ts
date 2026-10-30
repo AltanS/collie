@@ -251,7 +251,12 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
     updateSource(deps, install),
     ...quarantine(deps, install),
     herdrSocket(deps),
-    bindCheck(deps, mode, leadIsOnLoopback(data?.lead?.address ?? null)),
+    bindCheck({
+      deps,
+      mode,
+      leadOnLoopback: leadIsOnLoopback(data?.lead?.address ?? null),
+      leadLastDialledAt: runtimeMarker?.leadLastDialledAt ?? null,
+    }),
     bindWildcard(deps),
     // The setup check's Tailscale rows (`cli/setup-findings.ts`): installed and signed in, a tailnet
     // name with HTTPS certificates, and on Linux the operator setting. `collie start` prints the
@@ -852,19 +857,37 @@ function leadIsOnLoopback(address: string | null): boolean {
  * that same tunnel, and loopback is the right bind: ADR 0013's table names both rows. This peer
  * cannot see the lead's dial, so a tunnel that runs one way only is the lead's `member-reach` to
  * catch.
+ *
+ * Or when the lead has already dialled this listener. A peer never stores its own advertised
+ * address (only the lead holds `peers[].address`), so a member enrolled at `127.0.0.1:<port>` on the
+ * lead's own machine, joined by the lead's public name, looks like the trap from here. The runtime
+ * marker's `leadLastDialledAt` is the proof: an admitted call from the lead reached a loopback bind,
+ * so the lead shares this machine or the tunnel.
  */
-function bindCheck(deps: DoctorDeps, mode: string, leadOnLoopback: boolean): Finding {
+function bindCheck(input: {
+  readonly deps: DoctorDeps;
+  readonly mode: string;
+  readonly leadOnLoopback: boolean;
+  readonly leadLastDialledAt: number | null;
+}): Finding {
+  const { deps, mode, leadOnLoopback, leadLastDialledAt } = input;
   const host = resolvedBind(deps);
   const shown = bindIsWildcard(host) ? "0.0.0.0/:: (COLLIE_HOST empty)" : host;
   if (mode === "peer" && isLoopbackBind(host)) {
     if (leadOnLoopback) {
       return ok("bind", `${shown} (mode peer: this peer listens on loopback, and it reaches its lead on loopback too, so the lead sits on this host or at the end of a tunnel)`);
     }
+    if (leadLastDialledAt !== null) {
+      return ok(
+        "bind",
+        `COLLIE_HOST=${host} on a peer, and the lead dialled this listener at ${new Date(leadLastDialledAt).toISOString()}, so it shares this machine`,
+      );
+    }
     const suggestion = tailnetName(deps.exec) ?? "<address the lead can dial>";
     return bad(
       "bind",
       `COLLIE_HOST=${host} on a PEER — only this machine can reach the crew listener, so the lead's` +
-        " probe never lands and the member stays provisional",
+        " probe has not landed yet and the member stays provisional until it does",
       `set COLLIE_HOST=${suggestion} in ${join(deps.ctx.configDir, ".env")}, then \`collie restart\``,
     );
   }
