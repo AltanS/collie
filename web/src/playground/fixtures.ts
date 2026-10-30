@@ -548,13 +548,13 @@ export const rosterFive: ServerSummary[] = [
 /**
  * Two instances per host (M77): two machines, each running the Herdr TUI and Herdr core side by side,
  * so four members read as two machines. `workshop-hc` has stopped answering, which turns its machine
- * degraded and names herdr-core as the instance that is down.
+ * degraded and names the core instance as the one that is down.
  */
 export const rosterTwoPerHost: ServerSummary[] = [
-  { ...lead, host: "lodge", mux: "herdr" },
-  { id: "lodge-hc", name: "lodge-hc", isLead: false, reachable: true, protocol: "ok", lastSeenAt: TS - 3 * SEC, host: "lodge", mux: "herdr-core" },
-  { id: "workshop", name: "workshop", isLead: false, reachable: true, protocol: "ok", lastSeenAt: TS - 3 * SEC, host: "workshop", mux: "herdr" },
-  { id: "workshop-hc", name: "workshop-hc", isLead: false, reachable: false, protocol: "ok", lastSeenAt: TS - 6 * MIN, host: "workshop", mux: "herdr-core" },
+  { ...lead, host: "lodge", mux: "tui" },
+  { id: "lodge-hc", name: "lodge-hc", isLead: false, reachable: true, protocol: "ok", lastSeenAt: TS - 3 * SEC, host: "lodge", mux: "core" },
+  { id: "workshop", name: "workshop", isLead: false, reachable: true, protocol: "ok", lastSeenAt: TS - 3 * SEC, host: "workshop", mux: "tui" },
+  { id: "workshop-hc", name: "workshop-hc", isLead: false, reachable: false, protocol: "ok", lastSeenAt: TS - 6 * MIN, host: "workshop", mux: "core" },
 ];
 
 /** Nine machines — enough that the formation's V has to wrap onto a third and fourth row. */
@@ -714,12 +714,12 @@ export const censusTwoPerHost: CrewStatusResponse = {
   self: crewSelf,
   deputy: { id: "workshop", warrantGeneration: 3 },
   members: [
-    { ...selfMember, host: "lodge", mux: "herdr" },
-    member("lodge-hc", "reachable", { host: "lodge", mux: "herdr-core", address: "lodge.tail1a2b.ts.net:8794" }),
-    member("workshop", "reachable", { host: "workshop", mux: "herdr", enrolledAt: TS - 120 * DAY }),
+    { ...selfMember, host: "lodge", mux: "tui" },
+    member("lodge-hc", "reachable", { host: "lodge", mux: "core", address: "lodge.tail1a2b.ts.net:8794" }),
+    member("workshop", "reachable", { host: "workshop", mux: "tui", enrolledAt: TS - 120 * DAY }),
     member("workshop-hc", "unreachable", {
       host: "workshop",
-      mux: "herdr-core",
+      mux: "core",
       address: "workshop.tail1a2b.ts.net:8795",
       reason: "connect ECONNREFUSED 100.71.4.9:8795",
       linkState: "reconnecting",
