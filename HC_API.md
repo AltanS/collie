@@ -337,17 +337,58 @@ HC_SCOPE=149630853-9e24dfaafae6250d2164f4f959c07c58         opaque; changes with
 
 ## What does not fit Collie's mux port
 
-- **No colour.** `paneGrid` is plain text. A harness reader that keys on SGR (a dim placeholder, an
-  inverse selection) sees none. A `format: "ansi"` option on `terminal.read` would close it.
-- **No raw-text method.** Typing without Enter needs a framed attach and its size rule. A plain
-  `terminal.type {terminal, text}` would remove the attach.
-- **No revision.** The adapter derives one from the text it reads.
-- **No focus, no rename, no tab or space verbs.** Focus lives in herdr-app per screen; structure
-  changes go through herdr-app commands. Spec 05 of M74 plans a mod for both.
+Collie's mux port was built for a multiplexer that hands out a coloured screen and a revision. The
+core does not, and M78 (2026-10-30, hc 0.1.14) ran the readers, the sends and the browser leg against
+it. This section has two parts: what Collie now handles itself, and what stays an upstream ask.
+
+### What Collie handles now
+
+- **No colour.** `paneGrid` is plain text. The Surface falls back to text shapes where a reader keyed
+  on SGR: the placeholder of an empty box (Claude, Codex, Hermes, Muse), and Claude's prompt
+  suggestion, which a probe tells from a typed draft (the probe lands at the start of the box for a
+  suggestion, after the text for a draft). pi's question is found by the footer's words and the
+  numbered rows. Claude's permission title is found without the bold header. Where a colour-only
+  fact has no text twin (see the asks below), the dialog reads as unreadable and the card offers
+  Escape alone.
+- **`complete: false`.** The read reaches the mirror with its rows, marked `partial`, and the Send
+  Protocol takes it as no read.
+- **The key hold.** The probe and the landing check of the Send Protocol wait out the core's 3 s after
+  a raw write, so a send takes about 6 s on the core instead of a fraction of one. Nothing is mis-sent.
+- **Upper case keys.** The core reads key names without regard to case, so `G` arrived as `g`. Collie
+  sends `shift+g`.
 - **No agent name without a report.** A program that sends no OSC 7501 report (omp 18.6.1) has
   `status: null`. The adapter names its agent from `foreground.name` through the table a report uses,
   and the pane has no status until the program reports.
 - **No session id.** The core keeps the program's status, not the agent's conversation id. Collie
-  gets it from the agent's own hook through `HC_TERMINAL_ID` (see above), so a pane has History once
-  `collie hooks install claude` is done, and not before.
-- **No history depth.** `readableLines` cannot be stated.
+  gets it from the agent's own hook through `HC_TERMINAL_ID` (see above), so a Claude pane has
+  History once `collie hooks install claude` is done, and not before. pi and omp have no such hook,
+  so their panes have no History and no Chat card on the core.
+- **No focus, no rename, no tab or space verbs.** Focus lives in herdr-app per screen; structure
+  changes go through herdr-app commands. Spec 05 of M74 plans a mod for both.
+
+### What stays an upstream ask
+
+Each line is a thing the core could do that would close a gap Collie cannot close alone.
+
+- **Colour.** A `format: "ansi"` (or another styled) option on `terminal.read`. Plain text hides every
+  fact that a harness paints and does not write: about 100 dialog readings on pi, opencode and omp
+  (the pointer row, the stepper chip, the selected tab) are colour only, so a dialog of those three
+  whose pointer is colour only cannot be answered from the phone. Claude, Codex and the placeholders
+  have a text twin and are done.
+- **A history read that answers.** `terminal.read` with `lines` above 0 did not answer in 30 s on a
+  pi that showed a permission or question dialog, while the viewport read (`lines: 0`) answered in
+  0.1 s. Collie gives up at 5 s and reads the pane as unreadable. The ask: a history read must not
+  wait on a full-screen program that shows a dialog.
+- **`blocked` for pi's question.** The core's status stays `working` while pi waits on its question,
+  because pi reports no blocked state for an extension's question. Collie marks the pane "needs you"
+  from the screen. The ask: pi reports it, or the core says so.
+- **A raw-text method.** Typing without Enter needs a framed attach and its size rule. A plain
+  `terminal.type {terminal, text}` would remove the attach.
+- **A revision.** The adapter derives one from the text it reads. A revision on the terminal record
+  would make that exact and cheap.
+- **A size that stays.** When the last viewer detaches, the core sets a terminal back to 200 x 120.
+  Collie then reads an unviewed terminal at 200 columns, and herdr-app on a phone makes a narrow
+  Claude. The ask: keep the size the last viewer set, or take it as a setting of the terminal.
+- **A program that reports.** omp 18.6.1 sends no OSC 7501 report, so its pane has no status. The ask
+  is for omp (or a hook of omp's own); the foreground-name table stands in until then.
+- **No history depth.** `readableLines` cannot be stated, because no read says how far it can reach.

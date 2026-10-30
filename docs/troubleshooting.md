@@ -10,7 +10,8 @@ reboot** · **a pane is stuck narrow** · **Collie refuses to open a tmux window
 **an update started from the phone stays at staging** · **a phone update on macOS leaves Collie
 unloaded** · **on macOS, `collie status` says "loaded, not running"** · **a pane shows no prompt-cache chip** · **a Kiro pane's History opens empty** · **a pane has no Chat or History** · **`hc-socket` is red in `collie doctor`** · **the phone shows the Herdr TUI's panes, not herdr-app's** · **a new Codex pane says it has no history
 yet** · **the phone says Collie cannot read a screen the agent is not showing** · **sending failed 3 times
-and the phone offers a report** · **an agent is greyed
+and the phone offers a report** · **something looks wrong on a Herdr core (`herdr-core`) pane** ·
+**an agent is greyed
 out on the New page** · **Start says there is no folder, or says it could not confirm** ·
 **walky talky: send is refused, "run this inside a pane"** · **walky talky: the message sits in the
 inbox and was not typed** · **walky talky: "no log record on this machine"** · **walky talky: the
@@ -327,6 +328,59 @@ Collie or the core so they match.
 Herdr TUI installed never picks the core on its own, and an instance whose `.env` names `herdr`
 keeps it. To see both, run a second instance on the core:
 [Two Collies on one machine](multiplexers.md#two-collies-on-one-machine).
+
+## Herdr core
+
+These entries are for a pane on the Herdr core (`herdr-core`).
+[The core's notes](multiplexers.md#herdr-core-notes) say what looks different there on purpose.
+
+**A Claude permission card says "refused", and the detail says Collie did not find the top edge of the
+dialog.** The core sends no colour, and Collie used to need the dialog's bold title to find the card. A
+tap sent no key. Fix: update Collie to 1.25.2 or newer. Until then, answer on the screen or with the
+Keys tray.
+
+**A pi question shows only Escape, and the pane does not say it needs you.** The core reports pi as
+working while its question waits, and the card used to read pi's colours. Fix: update Collie to 1.25.2
+or newer. The card then lists the options, and the pane says it needs you.
+
+**An Oh My Pi (`omp`) pane reads as a shell, and a send to it is not checked.** The core names an agent
+from its own status report, and omp sends none. Fix: update Collie to 1.25.2 or newer. It then names
+omp from the program that runs.
+
+**A send to an empty Claude box is refused as "draft present", and the box shows a grey suggestion.**
+The core sends no colour, so the suggestion read as typed text. Fix: update Collie to 1.25.2 or newer.
+Collie then tells a suggestion from a draft with a one-key probe, and the send goes on.
+
+**A pane has no History and no Chat card.** For Claude, run `collie hooks install claude`, then restart
+the Claude in that pane. For pi and Oh My Pi nothing fixes it yet: the core keeps no conversation, and
+those two agents have no hook that names it. The pane keeps its screen, sends and cards.
+
+**A dialog of a pi pane does not show on the phone.** On the core, a read of older lines can stall
+while pi shows a dialog, and Collie then reads the pane as unreadable after five seconds. This is
+known and waits for the core. Answer on the screen, or press the keys in the Keys tray.
+
+**A dialog of pi, opencode or Oh My Pi has no tappable options.** These dialogs mark the chosen row by
+colour alone, and the core sends no colour. Escape works. Answer with the Keys tray. This waits for a
+colour option in the core.
+
+**A send takes about six seconds.** The core holds a key for three seconds after Collie types, and a
+send has two such waits. Nothing is wrong, and a send is not sent twice. Wait for the receipt.
+
+**A pane is narrow on the phone after herdr-app showed it.** The last window that looked at the
+terminal sets its width. Look at the pane in herdr-app on a wider window, or close the herdr-app view.
+When no window looks at the terminal, its width goes back to 200 columns.
+
+**The key `G` in the Keys tray typed a lower case `g`.** The core read key names without regard to
+case. Fix: update Collie to 1.25.2 or newer.
+
+**`collie hooks install claude` wrote to `~/.claude/settings.json`, and Claude uses another folder.**
+Claude reads `$CLAUDE_CONFIG_DIR/settings.json` when that variable is set, and the install ignored it.
+Fix: update Collie to 1.25.2 or newer, then run `collie hooks install claude` again.
+
+**A send to an Oh My Pi pane ends "typed, not submitted", and the text stays in the box.** omp shows a
+grey completion after your last word, and the core sends it as plain text. Collie sees more text than
+it typed and does not press Enter. Clear the box with the Keys tray and send again, or press Enter
+on the screen. This is known.
 
 ## Walky talky
 

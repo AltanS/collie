@@ -243,12 +243,34 @@ What works:
 - Typing, and the keys in the Keys tray. A Super or Command chord, Ctrl+Enter, and a modified key the
   core has no name for are refused.
 - Which agent runs in a pane and what it does. The core takes this from the program's own status
-  report, so Claude Code reads as `claude`, and a program that sends no report reads as a shell.
+  report, so Claude Code reads as `claude`. A program that sends no report, such as Oh My Pi (`omp`),
+  is named from the program that runs in the terminal, and its pane shows no status.
 - Closing a terminal, and opening a new tab in a space (a new shell that herdr-app shows as a tab).
 - Live updates. The core pushes terminal and layout changes, so the phone does not wait for a poll.
 - History and Chat for a Claude pane, once `collie hooks install claude` is done. The core does not
   know the agent's conversation, so the hook supplies it from the terminal's `HC_TERMINAL_ID`. The
   hook never changes the agent name or the status the core reported.
+
+What looks different on the core:
+
+- **The mirror has no colour.** The core hands out the screen as plain text. The phone shows the
+  words and the layout of the screen, and none of the agent's colours.
+- **History needs a hook.** The core does not know the agent's conversation. A Claude pane has History
+  and Chat once `collie hooks install claude` is done. pi and Oh My Pi have no such hook, so their
+  panes have no History and no Chat card on the core. Their screen, their sends and their cards still
+  work.
+- **A send takes a few seconds longer.** The core holds a key for about three seconds after Collie
+  types text. Collie waits for it, and a send to an agent takes about six seconds.
+- **The last viewer sets the width.** The terminal has the width of the last window that looked at it.
+  herdr-app on a phone makes Claude narrow, and the phone then shows it narrow too. When no window
+  looks at the terminal, it goes back to 200 columns.
+- **Some dialogs cannot be answered from the phone yet.** A dialog of pi, opencode or Oh My Pi that
+  marks the chosen row by colour alone shows no tappable options on the core, because the core sends
+  no colour. The card offers Escape, and you answer on the screen. This waits for a colour option in
+  the core (`HC_API.md` lists the ask). Claude and Codex dialogs are read from their words and work.
+  So does pi's question, when the core answers the read.
+- **A history read can stall behind a dialog.** On a pi pane that shows a dialog, the core may not
+  answer a read of older lines. The phone then shows no card for that dialog.
 
 What the core cannot do:
 

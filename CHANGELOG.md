@@ -26,6 +26,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Changed
 
 - **The nightly browser leg adds the hc version to its tuple and runs the core leg.** After the solo and crew legs, a run now repeats the solo leg on herdr-core under the same ledger row, in a rig state of its own. A row from before the change reads as hc `none`. The nightly stays paused.
+- **The browser leg runs on herdr-core with `MUX=herdr-core`.** `COLLIE_RIG_MUX` starts a scratch core per machine instead of a scratch Herdr server, `herdr,herdr-core` puts the crew leg's member on the core, and Herdr stays the default.
 
 ### Fixed
 
@@ -42,9 +43,9 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A pi question on herdr-core shows its options, and a tap answers it.** The core hands out the screen with no colour, and Collie found pi's question only by the paint of its footer and status rows, so the card read unreadable and offered Escape alone. On a read with no styling the question is now found by its text: the footer's words, the numbered rows with the `>` pointer, and pi's own status rows with the session cost. A styled read is unchanged.
 - **A pane with a question on its screen says it needs you.** herdr-core reports pi as working while pi's question waits, so the pane showed no "needs you" mark and sent no push. A pane whose screen shows a card the phone can answer is now blocked, whatever the multiplexer reports.
 
-### Changed
+### Docs
 
-- **The browser leg runs on herdr-core with `MUX=herdr-core`.** `COLLIE_RIG_MUX` starts a scratch core per machine instead of a scratch Herdr server, `herdr,herdr-core` puts the crew leg's member on the core, and Herdr stays the default.
+- **The Herdr core notes say what the phone shows differently there, and the troubleshooting page has an entry for each core problem you can meet.** The notes cover the mirror without colour, History that needs `collie hooks install claude`, the few seconds a send takes longer, the width the last viewer sets, and the dialogs that wait for a colour option in the core. `HC_API.md` lists what Collie now handles and what stays an upstream ask.
 
 
 ## [1.25.1] - 2026-10-30
