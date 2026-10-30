@@ -1,15 +1,16 @@
 import type { JsonObject, JsonValue } from "../bridge/json.ts";
 import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString, parseJson } from "../web/src/lib/json.ts";
 import { LOCAL_MEMBER } from "../bridge/walky/address.ts";
-import { localAuthHeader, readLocalSecret } from "../bridge/local-secret.ts";
 import { DURABLE_AGENT } from "../bridge/mux/durable/protocol.ts";
 import { HOST_PARAM } from "../bridge/crew/registry.ts";
 import { SESSIONS_ALL, SESSIONS_PARAM } from "../bridge/sessions.ts";
+import type { CrewFetch } from "../bridge/crew/peer-client.ts";
 import type { CliContext } from "./context.ts";
 import { EXIT, type Io } from "./io.ts";
 import { crewModeOnDisk } from "./serve.ts";
 import type { Files } from "./sys.ts";
-import { dialableBridgeHost } from "./tailnet.ts";
+import type { SnapshotRead } from "./history.ts";
+import { readOwnSnapshot } from "./snapshot-read.ts";
 
 // `collie sessions`: every agent session this bridge sees, one row each. A READ of this bridge's own
 // `/api/snapshot` and nothing else; it writes no file and restarts nothing.
@@ -38,7 +39,7 @@ export interface SessionsDeps {
   readonly ctx: CliContext;
   readonly io: Io;
   readonly files: Files;
-  readonly fetch: (url: string, init: { signal: AbortSignal; headers: Record<string, string> }) => Promise<Response>;
+  readonly fetch: CrewFetch;
   /** The clock, for the ACTIVE column. Absent reads as now. */
   readonly now?: () => number;
 }
@@ -48,36 +49,18 @@ export const SESSIONS_USAGE = `usage: collie ${SESSIONS_VERB} [--state <state>] 
 /** What the footer says on a member, whose snapshot holds its own panes only. */
 export const MEMBER_FOOTER = "this member's panes only; run on the lead for the crew";
 
-/** Long enough for a busy loopback bridge, short enough that a wedged one does not hold the verb. */
-const SNAPSHOT_BUDGET_MS = 3000;
-
-// ── the snapshot read (the part `collie status` shares; see the report) ───────
-
-/** What one read of the bridge's snapshot came to. */
-export type SnapshotAnswer =
-  | { readonly kind: "body"; readonly text: string }
-  | { readonly kind: "refused"; readonly status: number }
-  | { readonly kind: "silent" };
-
 /**
- * One GET of this bridge's `/api/snapshot` with the local read credential (`<stateDir>/local-secret`,
- * bridge/local-secret.ts) and the configured login, exactly as `collie doctor` sends them
- * (`ownSnapshot`, cli/doctor.ts). The bridge's bound address is dialled, loopback for a wildcard bind.
+ * The login this verb shows its own bridge next to the local read credential, or nothing when none
+ * is configured: the same header `collie doctor` sends (issue #238).
  */
-export async function readOwnSnapshot(deps: SessionsDeps, query: string): Promise<SnapshotAnswer> {
-  const host = dialableBridgeHost(deps.ctx.env);
-  const bracketed = host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
-  const secret = readLocalSecret(deps.ctx.stateDir, (p) => deps.files.read(p));
+function identityHeader(deps: SessionsDeps): Record<string, string> | undefined {
   const login = deps.ctx.env.COLLIE_TRUSTED_USER ?? "";
-  const headers = login === "" ? localAuthHeader(secret) : { ...localAuthHeader(secret), "Tailscale-User-Login": login };
-  const url = `http://${bracketed}:${String(deps.ctx.port)}/api/snapshot${query === "" ? "" : `?${query}`}`;
-  try {
-    const answer = await deps.fetch(url, { signal: AbortSignal.timeout(SNAPSHOT_BUDGET_MS), headers });
-    if (answer.ok) return { kind: "body", text: await answer.text() };
-    return { kind: "refused", status: answer.status };
-  } catch {
-    return { kind: "silent" };
-  }
+  return login === "" ? undefined : { "Tailscale-User-Login": login };
+}
+
+/** One read of this bridge's own snapshot through the shared reader (`cli/snapshot-read.ts`). */
+function readSnapshot(deps: SessionsDeps, query: string): Promise<SnapshotRead> {
+  return readOwnSnapshot(deps, { query, extraHeaders: identityHeader(deps) });
 }
 
 /** The sentence for a refused read: the one `collie doctor` prints for the same case. */
@@ -264,7 +247,7 @@ function usage(deps: SessionsDeps, why: string): number {
 }
 
 /** Read one answer into a body, or say why not and give the exit code. */
-function bodyOrFail(deps: SessionsDeps, answer: SnapshotAnswer): { readonly body: Body } | { readonly code: number } {
+function bodyOrFail(deps: SessionsDeps, answer: SnapshotRead): { readonly body: Body } | { readonly code: number } {
   if (answer.kind === "silent") {
     deps.io.err("error: no bridge answers here; start it with `collie start`, then run this again");
     return { code: EXIT.FAIL };
@@ -284,7 +267,7 @@ export async function cmdSessions(deps: SessionsDeps, args: readonly string[]): 
   const options = parseArgs(args);
   if ("error" in options) return usage(deps, options.error);
 
-  const read = bodyOrFail(deps, await readOwnSnapshot(deps, `${SESSIONS_PARAM}=${SESSIONS_ALL}`));
+  const read = bodyOrFail(deps, await readSnapshot(deps, `${SESSIONS_PARAM}=${SESSIONS_ALL}`));
   if ("code" in read) return read.code;
   const first = read.body;
 
@@ -292,7 +275,7 @@ export async function cmdSessions(deps: SessionsDeps, args: readonly string[]): 
   const bodies = new Map<string, Body>();
   for (const server of first.servers ?? []) {
     if (server.isLead || !server.reachable) continue;
-    const wide = await readOwnSnapshot(deps, `${HOST_PARAM}=${encodeURIComponent(server.id)}&${SESSIONS_PARAM}=${SESSIONS_ALL}`);
+    const wide = await readSnapshot(deps, `${HOST_PARAM}=${encodeURIComponent(server.id)}&${SESSIONS_PARAM}=${SESSIONS_ALL}`);
     const parsed = wide.kind === "body" ? parseBody(wide.text) : null;
     if (parsed === null) {
       deps.io.err(`note: could not read ${server.id} wide; its primary session only`);

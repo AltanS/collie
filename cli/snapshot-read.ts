@@ -8,7 +8,7 @@ import type { Files } from "./sys.ts";
 
 // One read of THIS bridge's own `/api/snapshot`, for the verbs that run beside the bridge: `collie
 // doctor` (its history and restart checks), `collie status` (the sessions block of the census) and,
-// next, `collie sessions`. They all had the same four questions to answer, so they ask one function:
+// `collie sessions`. They all had the same four questions to answer, so they ask one function:
 // where did the bridge bind, what credential does a local read carry, how long may it take, and what
 // does a silence look like against a refusal.
 
@@ -41,18 +41,20 @@ export function localReadHeaders(deps: Pick<SnapshotReadDeps, "ctx" | "files">):
  * 127.0.0.1, and dialling loopback there would report "the bridge is down" against a bridge that is
  * up. A wildcard bind answers everywhere, so loopback is the right dial for it.
  *
- * A READ, and the only route these verbs ask their own bridge for. `extraHeaders` is for the one
- * caller (`doctor`, issue #238) that also sends its configured login.
+ * A READ, and the only route these verbs ask their own bridge for. `extraHeaders` is for the callers
+ * (`doctor`, issue #238, and `sessions`) that also send their configured login. `query` is the
+ * query string without its `?` (`collie sessions` asks `sessions=all`).
  */
 export async function readOwnSnapshot(
   deps: SnapshotReadDeps,
-  options: { readonly budgetMs?: number; readonly extraHeaders?: Record<string, string> } = {},
+  options: { readonly budgetMs?: number; readonly extraHeaders?: Record<string, string>; readonly query?: string } = {},
 ): Promise<SnapshotRead> {
   const host = resolveBridgeHost(deps.ctx.env);
   const dialled = bindIsWildcard(host) ? "127.0.0.1" : host;
   const bracketed = dialled.includes(":") && !dialled.startsWith("[") ? `[${dialled}]` : dialled;
+  const query = options.query === undefined || options.query === "" ? "" : `?${options.query}`;
   try {
-    const answer = await deps.fetch(`http://${bracketed}:${String(deps.ctx.port)}/api/snapshot`, {
+    const answer = await deps.fetch(`http://${bracketed}:${String(deps.ctx.port)}/api/snapshot${query}`, {
       signal: AbortSignal.timeout(options.budgetMs ?? SNAPSHOT_BUDGET_MS),
       headers: { ...options.extraHeaders, ...localReadHeaders(deps) },
     });

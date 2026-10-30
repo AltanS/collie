@@ -87,7 +87,8 @@ function harness(
     now: () => NOW,
     fetch: async (url, init) => {
       urls.push(url);
-      headers.push(init.headers);
+      // SAFETY: this verb always sends a plain object of string headers, never a Headers or a tuple list.
+      headers.push({ ...(init.headers as Record<string, string> | undefined) });
       const r = answer(url);
       if (r instanceof Error) throw r;
       return r;
