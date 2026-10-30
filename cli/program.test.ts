@@ -282,6 +282,22 @@ describe("dispatch", () => {
     }
   });
 
+  // `serve` now has a child, and a parent with children runs outside the guard in front of every leaf.
+  // The bare verb publishes a front door, so it answers `--help` itself; `serve status` only reads.
+  test("`serve --help` prints usage and never publishes; `serve status` reaches the sub-verb", async () => {
+    // The REAL table here, because the guard under test is part of the real `serve` row (a spy would
+    // replace it). Safe: `--help` is answered before any body runs, which is what this pins.
+    for (const argv of [["serve", "--help"], ["serve", "-h"]]) {
+      const io = capture();
+      expect(await run(argv, io, COMMANDS)).toBe(EXIT.OK);
+      expect(io.stdout[0]).toBe("usage: collie serve [options]");
+      expect(io.stderr).toEqual([]);
+    }
+    const { table, ran } = spied();
+    expect(await run(["serve", "status"], capture(), table)).toBe(EXIT.OK);
+    expect(ran).toEqual(["serve status"]);
+  });
+
   test("`_apply-update --help` runs nothing and exits non-zero", async () => {
     const { table, ran } = spied();
     const io = capture();
@@ -410,6 +426,8 @@ describe("the subcommand trees", () => {
 
   test("no other verb declares a tree — the grammar is one level deep everywhere else", () => {
     expect(COMMANDS.filter((c) => c.subcommands !== undefined).map((c) => c.name)).toEqual([
+      // `serve` publishes; `serve status` reads what tailscale serve publishes (M76).
+      "serve",
       "hooks",
       "beacon",
       "devices",

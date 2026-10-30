@@ -10,7 +10,8 @@ import type { LinkReader } from "./link.ts";
 import { ensureMuxChosen, pickHostOf } from "./mux.ts";
 import { resolveMux } from "../bridge/mux/herdr-core/pick.ts";
 import type { StatusView, Ui } from "./render.ts";
-import { cmdUnserve, crewModeOnDisk, type ServeDeps } from "./serve.ts";
+import { censusLines, type CensusReader } from "./census.ts";
+import { cmdServeStatus, cmdUnserve, crewModeOnDisk, type ServeDeps } from "./serve.ts";
 import { phoneBlocked, SETUP_CLOSING, setupFindings, setupLines } from "./setup-findings.ts";
 import { pairedRegistryOf } from "./pairing.ts";
 import { type Exec, type Files, PROCESS_QUERY_SLOW_START_MS, type ProcessLookup, type ProcessRow } from "./sys.ts";
@@ -33,7 +34,6 @@ import {
   localBridgeHostPort,
   localBridgeUrl,
   TAILNET_NAME_UNAVAILABLE,
-  TAILSCALE_PROBE_MS,
   tailnetHosts,
 } from "./tailnet.ts";
 import {
@@ -1213,25 +1213,37 @@ export async function cmdRestart(deps: LifecycleDeps): Promise<number> {
   return startBridge(deps);
 }
 
-export async function cmdStatus(deps: LifecycleDeps, args: readonly string[] = []): Promise<number> {
+/**
+ * `collie status`: the head (the banner), then the census (members, devices, agent sessions).
+ *
+ * `--verbose` adds the `tailscale serve` dump after the census, which is also what `collie serve
+ * status` prints on its own. It used to be there always, and on a machine that runs eight instances
+ * it was most of the screen. `census` is the reader that fills the three blocks; absent, the head
+ * prints alone (the lifecycle tests that pin the banner pass none).
+ *
+ * `--json` keeps every key it ever had and adds `census`. It is stdout and nothing else: a program
+ * reads it.
+ */
+export async function cmdStatus(
+  deps: LifecycleDeps,
+  args: readonly string[] = [],
+  census: CensusReader | null = null,
+): Promise<number> {
+  const facts = await statusFacts(deps);
   if (args.includes("--json")) {
-    // stdout and nothing else: a program reads it. No serve config, no surface.
-    deps.io.out(JSON.stringify(statusJson(await statusFacts(deps))));
+    const body = statusJson(facts);
+    const read = census === null ? null : await census({ running: facts.running, crew: facts.crew });
+    deps.io.out(JSON.stringify(read === null ? body : { ...body, census: read }));
     return EXIT.OK;
   }
-  await printStatusBanner(deps);
-  if (deps.ctx.env.COLLIE_SKIP_SERVE === "1") {
-    deps.io.out("  serve config: skipped (COLLIE_SKIP_SERVE=1)");
-    return EXIT.OK;
+  await printStatusBanner(deps, {}, facts);
+  if (census !== null) {
+    const read = await census({ running: facts.running, crew: facts.crew });
+    for (const line of censusLines(read, facts.crew)) deps.io.out(line);
+    deps.io.out("");
   }
-  deps.io.out("  serve config:");
-  const r = deps.exec.capture("tailscale", ["serve", "status"], TAILSCALE_PROBE_MS);
-  if (r.found && r.code === 0) {
-    for (const line of r.stdout.replace(/\n$/, "").split("\n")) {
-      if (line !== "") deps.io.out(`    ${line}`);
-    }
-  }
-  return EXIT.OK;
+  if (!args.includes("--verbose")) return EXIT.OK;
+  return cmdServeStatus(deps);
 }
 
 export function cmdUrl(deps: LifecycleDeps): number {
@@ -1324,8 +1336,12 @@ export interface StatusOptions {
  * lines below, and the boxed terminal view in `cli/ui/` — so "is it up", the instance, the service
  * and the URLs can never say two different things depending on where you looked.
  */
-export async function statusView(deps: LifecycleDeps, options: StatusOptions = {}): Promise<StatusView> {
-  const facts = await statusFacts(deps);
+export async function statusView(
+  deps: LifecycleDeps,
+  options: StatusOptions = {},
+  known?: StatusFacts,
+): Promise<StatusView> {
+  const facts = known ?? (await statusFacts(deps));
   const rows: { label: string; value: string }[] = [];
   // Only a suffixed instance says so — a solo host's banner is unchanged, and on a host running two
   // this is the line that says WHICH Collie answered (the unit name on the next line agrees).
@@ -1377,7 +1393,7 @@ export async function statusView(deps: LifecycleDeps, options: StatusOptions = {
  * {@link statusView}; the JSON in {@link statusJson}. Neither reads the machine on its own, so the
  * two can never describe two different bridges.
  */
-interface StatusFacts {
+export interface StatusFacts {
   readonly running: boolean;
   readonly version: string;
   readonly instance: string | null;
@@ -1515,8 +1531,8 @@ export function bannerLines(view: StatusView): string[] {
   ];
 }
 
-async function printStatusBanner(deps: LifecycleDeps, options: StatusOptions = {}): Promise<void> {
-  const view = await statusView(deps, options);
+async function printStatusBanner(deps: LifecycleDeps, options: StatusOptions = {}, known?: StatusFacts): Promise<void> {
+  const view = await statusView(deps, options, known);
   if (deps.ui != null) {
     await deps.ui.status(view);
     return;

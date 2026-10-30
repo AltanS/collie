@@ -14,7 +14,8 @@ If the host runs multiple instances, prepend `COLLIE_INSTANCE=<name>` to every v
 | **Start** | `collie start` | Build if needed, serve, print the URL |
 | **Stop** | `collie stop` | Pause the bridge; removes nothing |
 | **Restart** | `collie restart` | Stop, then start |
-| **Status** | `collie status` · `collie status --json` | The *Collie is running* banner + URLs. `--json` prints the same facts as one line of JSON for a program to read: `running`, `version`, `instance`, `port`, `localUrl`, `phoneUrl`, `crew`, `service` and `pairedDevices` |
+| **Status** | `collie status` · `collie status --verbose` · `collie status --json` | The *Collie is running* banner + URLs, then three short blocks: the crew's members (name, link, version, mux, panes), the paired devices, and the agent sessions by state. `--verbose` adds the `tailscale serve` dump. `--json` prints the same facts as one line of JSON for a program to read: `running`, `version`, `instance`, `port`, `localUrl`, `phoneUrl`, `crew`, `service`, `pairedDevices`, `mux`, `muxPickedBecause` and `census` (see below) |
+| **Serve status** | `collie serve status` | Print what `tailscale serve` publishes on this machine, which is every front door on it and not only Collie's. Read only. `collie status --verbose` prints the same |
 | **URL** | `collie url` | Print the tailnet URL |
 | **QR** | `collie qr` | The same URL as a scannable code |
 | **Version** | `collie version` | The running version (`0.x.y+sha`) |
@@ -34,13 +35,34 @@ If the host runs multiple instances, prepend `COLLIE_INSTANCE=<name>` to every v
 | **Push keys** | `collie push-keys` | Generate the VAPID keypair into your `.env` |
 | **Push test** | `collie push-test` | Send one notification to prove it works |
 
-The CLI also includes `build`, `serve`, `unserve`, `doctor`, and `crew …` for less frequent tasks.
+The CLI also includes `build`, `serve` (publish the front door; `serve status` reads it), `unserve`, `doctor`, and `crew …` for less frequent tasks.
 
 Both `start` and `status` output the **Collie is running** banner: a health mark and the version,
 then a `service`, a `local` and a `tailnet` line.
 [First run](install.md#first-run-what-youll-see) shows it in full, including what a failed health
 check prints instead. The reported version reads from the served bundle stamp, reflecting the active
 build.
+
+**What `collie status` prints under the banner.** Three blocks, each short:
+
+- `members` has one line per machine in the crew: its name, the link (`reachable`, `unreachable`,
+  `incompatible` or `unenrolled`), the version it reports, its mux and its pane count. A member that
+  does not answer shows `unreachable` and the other lines still print. Mux and pane count show `-`
+  until the crew reports them. A machine with no crew prints `no crew` and no members block.
+- `devices` has the count of paired phones, and their names when there are five or fewer.
+- `sessions` counts this bridge's agent sessions by state (`working`, `blocked`, `idle`, `done`,
+  `unknown`) and says how many report a session id. On a lead the count covers the whole crew. With
+  no bridge running it says `bridge not running`, and the command still exits 0.
+
+The sessions block reads the bridge's own snapshot with the local read credential in the state
+folder, the same way `collie doctor` does. It never sends a Tailscale header. The member lines use
+the same dial as `collie crew status`, and the dials run at the same time.
+
+`collie status --json` keeps every key it had and adds `census`, an object with three parts:
+`members` (a list of `{ name, role, link, version, mux, panes }`, empty without a crew), `devices`
+(`{ count, names }`) and `sessions` (`{ read, refusedWith, total, byState, withSessionId }`).
+`read` is `ok`, `bridge-not-running`, `refused` or `unreadable`. When it is not `ok`, `total`,
+`byState` and `withSessionId` are `null`, because a count that was not read is not zero.
 
 **Ink or plain text.** The `start`, `status`, `doctor`, `crew add`, and `crew status` commands
 render an interactive terminal UI when stdout is a TTY. Passing `--plain`, or redirecting output to
@@ -130,7 +152,7 @@ Collie registers these actions in `herdr-plugin.toml`. Invoke them with
 | `start` | `collie start` | Build if needed, start the service, `tailscale serve`, print URL + banner |
 | `stop` | `collie stop` | Pause the bridge; removes nothing |
 | `restart` | `collie restart` | `stop` + `start` |
-| `status` | `collie status` | The *Collie is running* banner — readiness ✓/⚠, version, URLs |
+| `status` | `collie status` | The *Collie is running* banner (readiness ✓/⚠, version, URLs), then members, devices and agent sessions |
 | `url` | `collie url` | Print the tailnet URL |
 | `version` | `collie version` | Print the running version (`0.x.y+sha`) |
 | `update` | `collie update` | Advance the checkout (pull, or fetch + re-detach) + rebuild + restart |

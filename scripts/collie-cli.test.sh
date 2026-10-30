@@ -510,8 +510,23 @@ assert_contains "$STDERR" "the tailnet front door did not come up"
 
 cli "$BIN" status || fail "\`collie status\` failed"
 assert_contains "$STDOUT" "✓ Collie is running"
+# M76: the head, then the census. The tailscale serve dump left `status`: it is `serve status` now,
+# and `status --verbose` still prints it.
+assert_contains "$STDOUT" "no crew"
+assert_contains "$STDOUT" "  devices   "
+assert_contains "$STDOUT" "  sessions  "
+case "$STDOUT" in *"serve config:"*) fail "\`collie status\` still prints the serve dump" ;; esac
+
+cli "$BIN" status --verbose || fail "\`collie status --verbose\` failed"
 assert_contains "$STDOUT" "serve config:"
 assert_contains "$STDOUT" "    https://host.example (tailnet only)"
+
+cli "$BIN" serve status || fail "\`collie serve status\` failed"
+assert_contains "$STDOUT" "serve config:"
+assert_contains "$STDOUT" "    https://host.example (tailnet only)"
+
+cli "$BIN" status --json || fail "\`collie status --json\` failed"
+assert_contains "$STDOUT" '"census":{"members":[],"devices":'
 
 cli "$BIN" restart || fail "\`collie restart\` failed"
 assert_contains "$(cat "$L_CALLS")" "systemctl --user disable --now collie"

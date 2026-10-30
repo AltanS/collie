@@ -20,6 +20,7 @@ import { leadStore, member, peerStore } from "../bridge/crew/fixtures.ts";
 import { hostFor, type Host } from "../bridge/host.ts";
 import { serializeTrustStore } from "../bridge/crew/trust-store.ts";
 import { EXIT, type Io } from "./io.ts";
+import type { Census, CensusInput, CensusReader } from "./census.ts";
 import { SETUP_CLOSING } from "./setup-findings.ts";
 import { TAILSCALE_PROBE_MS } from "./tailnet.ts";
 import { POWERSHELL_UTF8, PROCESS_QUERY_SLOW_START_MS } from "./sys.ts";
@@ -1997,18 +1998,89 @@ describe("the status banner", () => {
     expect((await statusBanner(unset.deps)).join("\n")).toContain("set COLLIE_PUBLIC_URL");
   });
 
-  test("status appends the serve config, or says it was skipped", async () => {
+  test("status prints no serve dump by default, and --verbose adds it or says it was skipped", async () => {
     const h = harness({ answers: [["tailscale serve status", { stdout: "https://host (tailnet only)\n" }]] });
     await cmdStatus(h.deps);
-    expect(h.io.stdout).toContain("  serve config:");
-    expect(h.io.stdout).toContain("    https://host (tailnet only)");
-    expect(h.exec.timeouts).toContainEqual({ call: "tailscale serve status", ms: TAILSCALE_PROBE_MS });
+    expect(h.io.stdout).not.toContain("  serve config:");
+    expect(h.exec.calls).not.toContain("tailscale serve status");
+
+    const verbose = harness({ answers: [["tailscale serve status", { stdout: "https://host (tailnet only)\n" }]] });
+    await cmdStatus(verbose.deps, ["--verbose"]);
+    expect(verbose.io.stdout).toContain("  serve config:");
+    expect(verbose.io.stdout).toContain("    https://host (tailnet only)");
+    expect(verbose.exec.timeouts).toContainEqual({ call: "tailscale serve status", ms: TAILSCALE_PROBE_MS });
 
     const skipped = harness({ env: { COLLIE_SKIP_SERVE: "1" } });
-    await cmdStatus(skipped.deps);
+    await cmdStatus(skipped.deps, ["--verbose"]);
     expect(skipped.io.stdout).toContain("  serve config: skipped (COLLIE_SKIP_SERVE=1)");
   });
+
+  test("status prints the census under the head: members, devices, sessions", async () => {
+    const reads: CensusInput[] = [];
+    const census: CensusReader = async (input) => {
+      reads.push(input);
+      return FAKE_CENSUS;
+    };
+    const h = harness({
+      ready: true,
+      answers: [["tailscale serve status", { stdout: "https://host (tailnet only)\n" }]],
+      files: { [`${STATE}/crew-trust.json`]: serializeTrustStore(leadStore({ peers: [member({ memberId: "nas" })] })) },
+    });
+    expect(await cmdStatus(h.deps, [], census)).toBe(EXIT.OK);
+    // The reader is told what the head already knows, so it does not dial a bridge that is down.
+    expect(reads).toEqual([{ running: true, crew: "lead" }]);
+    const out = h.io.stdout.join("\n");
+    expect(out.indexOf("Collie is running")).toBeLessThan(out.indexOf("  members"));
+    expect(out).toContain("  members");
+    // Columns are padded to the widest name, link and version, so the rows line up.
+    expect(out).toContain("\n    minibuch     reachable    1.25.0  mux -  panes -\n");
+    expect(out).toContain("\n    minibuch-hc  unreachable  -       mux -  panes -\n");
+    expect(out).toContain("  devices   2 paired (Pixel, iPad)");
+    expect(out).toContain("  sessions  5 agents  working 2  blocked 1  idle 1  done 1  unknown 0  (3 report a session id)");
+    expect(out).not.toContain("serve config");
+  });
+
+  test("a solo install prints no members block, and a bridge that is down says so", async () => {
+    const solo: CensusReader = async () => ({
+      members: [],
+      devices: { count: 0, names: [] },
+      sessions: { read: "bridge-not-running", refusedWith: null, total: null, byState: null, withSessionId: null },
+    });
+    const h = harness({ ready: false });
+    expect(await cmdStatus(h.deps, [], solo)).toBe(EXIT.OK);
+    const out = h.io.stdout.join("\n");
+    expect(out).toContain("  crew      no crew, this install is solo");
+    expect(out).not.toContain("  members");
+    expect(out).toContain("  devices   none paired");
+    expect(out).toContain("  sessions  bridge not running");
+  });
+
+  test("six devices print the count and no names", async () => {
+    const many: CensusReader = async () => ({
+      ...FAKE_CENSUS,
+      devices: { count: 6, names: ["a", "b", "c", "d", "e", "f"] },
+    });
+    const h = harness({ ready: true });
+    await cmdStatus(h.deps, [], many);
+    expect(h.io.stdout.join("\n")).toContain("  devices   6 paired\n");
+  });
 });
+
+/** A crew of two (one answering, one not), two devices and five agent sessions. */
+const FAKE_CENSUS: Census = {
+  members: [
+    { name: "minibuch", role: "peer", link: "reachable", version: "1.25.0", mux: null, panes: null },
+    { name: "minibuch-hc", role: "peer", link: "unreachable", version: null, mux: null, panes: null },
+  ],
+  devices: { count: 2, names: ["Pixel", "iPad"] },
+  sessions: {
+    read: "ok",
+    refusedWith: null,
+    total: 5,
+    byState: { working: 2, blocked: 1, idle: 1, done: 1, unknown: 0 },
+    withSessionId: 3,
+  },
+};
 
 // `status --json` is read by a program (the herdr-app mod, herdr-app-mod/collie/), so its shape is a
 // contract: one line of JSON on stdout, nothing on stderr, no serve config, and the same facts the
@@ -2039,6 +2111,33 @@ describe("status --json", () => {
     });
     expect(out.version).not.toBe("");
     expect(out.service).toContain("systemd");
+    expect(h.exec.calls).not.toContain("tailscale serve status");
+  });
+
+  test("census rides beside every old key, which all stay", async () => {
+    const h = harness({ ready: true, answers: NAMED });
+    expect(await cmdStatus(h.deps, ["--json"], async () => FAKE_CENSUS)).toBe(EXIT.OK);
+    expect(h.io.stdout).toHaveLength(1);
+    expect(h.io.stderr).toEqual([]);
+    // SAFETY: `status --json` prints `JSON.stringify` of a `StatusJson` plus `census` as its one stdout
+    // line, just asserted; every field is compared against a literal below.
+    const body = JSON.parse(h.io.stdout[0]!) as StatusJson & { census: Census };
+    expect(Object.keys(body).toSorted()).toEqual([
+      "census",
+      "crew",
+      "instance",
+      "localUrl",
+      "mux",
+      "muxPickedBecause",
+      "pairedDevices",
+      "phoneUrl",
+      "port",
+      "running",
+      "service",
+      "version",
+    ]);
+    expect(body.census).toEqual(FAKE_CENSUS);
+    expect(Object.keys(body.census)).toEqual(["members", "devices", "sessions"]);
     expect(h.exec.calls).not.toContain("tailscale serve status");
   });
 

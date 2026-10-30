@@ -16,9 +16,12 @@ import {
   type Scripted,
 } from "./fakes.ts";
 import { EXIT } from "./io.ts";
+import { TAILSCALE_PROBE_MS } from "./tailnet.ts";
 import {
   cmdServe,
+  cmdServeStatus,
   cmdServeVerb,
+  SERVE_SUBCOMMANDS,
   cmdUnserve,
   fingerprintRoot,
   formatRecord,
@@ -789,5 +792,34 @@ describe("serve — under a mount (COLLIE_BASE_PATH)", () => {
     expect(rootAvailability(both, 8787, "http", OURS)).toBe("occupied");
     expect(rootAvailability(both, 8787, "http", OURS, "/collie/")).toBe("adoptable");
     expect(rootAvailability(both, 8787, "http", OURS, "/other/")).toBe("free");
+  });
+});
+
+describe("serve status, the dump `collie status` used to print", () => {
+  test("prints what tailscale serve publishes, indented, and changes nothing", () => {
+    const h = harness({ answers: [["tailscale serve status", { stdout: "https://host (tailnet only)\n|-- / proxy http://127.0.0.1:8787\n\n" }]] });
+    expect(cmdServeStatus(h.deps)).toBe(EXIT.OK);
+    expect(h.io.stdout).toEqual(["  serve config:", "    https://host (tailnet only)", "    |-- / proxy http://127.0.0.1:8787"]);
+    expect(h.exec.timeouts).toContainEqual({ call: "tailscale serve status", ms: TAILSCALE_PROBE_MS });
+    // A read: no publish, no teardown, no record written.
+    expect(h.exec.calls.filter((c) => c.startsWith("tailscale serve") && c !== "tailscale serve status")).toEqual([]);
+    expect(h.files.ops).toEqual([]);
+  });
+
+  test("COLLIE_SKIP_SERVE says it was skipped and does not ask tailscale", () => {
+    const h = harness({ env: { COLLIE_SKIP_SERVE: "1" } });
+    expect(cmdServeStatus(h.deps)).toBe(EXIT.OK);
+    expect(h.io.stdout).toEqual(["  serve config: skipped (COLLIE_SKIP_SERVE=1)"]);
+    expect(h.exec.calls).toEqual([]);
+  });
+
+  test("a missing tailscale prints the heading and exits 0, as the dump always did", () => {
+    const h = harness({ absent: ["tailscale"] });
+    expect(cmdServeStatus(h.deps)).toBe(EXIT.OK);
+    expect(h.io.stdout).toEqual(["  serve config:"]);
+  });
+
+  test("the sub-verb list is status", () => {
+    expect([...SERVE_SUBCOMMANDS]).toEqual(["status"]);
   });
 });

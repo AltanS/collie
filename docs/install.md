@@ -430,10 +430,13 @@ $ collie status
     local     http://127.0.0.1:8787
     tailnet   https://myhost.tail1234.ts.net
 
-  serve config:
-    https://myhost.tail1234.ts.net (tailnet only)
-    |-- / proxy http://127.0.0.1:8787
+  crew      no crew, this install is solo
+  devices   1 paired (Pixel)
+  sessions  3 agents  working 1  blocked 0  idle 2  done 0  unknown 0  (3 report a session id)
 ```
+
+`collie status --verbose` adds what `tailscale serve` publishes, and `collie serve status` prints
+that alone.
 
 ```console
 $ collie logs        # journal timestamps trimmed here

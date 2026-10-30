@@ -17,7 +17,6 @@ import { beaconReader } from "../bridge/beacon-io.ts";
 import { readBeacons, type BeaconSweepDeps } from "../bridge/beacon/reader.ts";
 import { DEFAULT_PORT, envBool, isLoopbackBindHost, nonLoopbackBindRefusal, resolveBridgeHost } from "../bridge/config.ts";
 import { configFilePaths } from "../bridge/config-source.ts";
-import { localAuthHeader, readLocalSecret } from "../bridge/local-secret.ts";
 import type { MuxCapabilityDeclaration } from "../bridge/mux/capabilities.ts";
 import { buildMuxRegistry, DEFAULT_MUX, factoryFor, type MuxTarget } from "../bridge/mux/registry.ts";
 import { TMUX_BINARY_OPTION } from "../bridge/mux/tmux/adapter.ts";
@@ -45,6 +44,7 @@ import { sidName } from "../bridge/sddl.ts";
 import { DEVICES_FILENAME, isExpired, parseRegistryText } from "../bridge/pairing.ts";
 import { pairedRegistryOf } from "./pairing.ts";
 import { sameBuild } from "../bridge/version.ts";
+import { readOwnSnapshot } from "./snapshot-read.ts";
 import { collieVersionBare, type CliContext } from "./context.ts";
 import { aboutCrew, bad, ok, skipped, warn, type DoctorStatus, type Finding } from "./finding.ts";
 import { parseAccountWindowsSetting } from "../bridge/account-windows-setting.ts";
@@ -1217,19 +1217,9 @@ function liveServeStatus(deps: DoctorDeps): ReturnType<typeof parseServeStatus> 
  * "it did not answer".
  */
 async function ownSnapshot(deps: DoctorDeps): Promise<SnapshotRead> {
-  const host = resolvedBind(deps);
-  const dialled = bindIsWildcard(host) ? "127.0.0.1" : host;
-  const bracketed = dialled.includes(":") && !dialled.startsWith("[") ? `[${dialled}]` : dialled;
-  try {
-    const answer = await deps.fetch(`http://${bracketed}:${String(deps.ctx.port)}/api/snapshot`, {
-      signal: AbortSignal.timeout(SNAPSHOT_BUDGET_MS),
-      headers: ownReadHeaders(deps),
-    });
-    if (answer.ok) return { kind: "body", text: await answer.text() };
-    return { kind: "refused", status: answer.status };
-  } catch {
-    return { kind: "silent" };
-  }
+  // The configured login (issue #238, below) rides beside the bridge's local read credential, which
+  // `readOwnSnapshot` adds itself: reads need a pairing token now (ADR 0086) and this process holds none.
+  return readOwnSnapshot(deps, { extraHeaders: identityHeader(deps) });
 }
 
 /**
@@ -1254,24 +1244,6 @@ function identityHeader(deps: DoctorDeps): Record<string, string> | undefined {
   const login = deps.ctx.env.COLLIE_TRUSTED_USER ?? "";
   return login === "" ? undefined : { "Tailscale-User-Login": login };
 }
-
-/**
- * Everything this verb shows its own bridge on a read: the configured login (issue #238, above) and
- * the bridge's local read credential (`<stateDir>/local-secret`, bridge/local-secret.ts), because
- * reads need a pairing token now (ADR 0086) and this process holds none. The credential reads only,
- * and only from this host (loopback or the host's own bound address); with no file (the bridge is
- * down, or older) nothing is sent and the bridge refuses as it did before, which `ownAnswerSentence`
- * and the history section report as a refusal.
- */
-function ownReadHeaders(deps: DoctorDeps) {
-  return {
-    ...identityHeader(deps),
-    ...localAuthHeader(readLocalSecret(deps.ctx.stateDir, (p) => deps.files.read(p))),
-  };
-}
-
-/** Long enough for a busy loopback bridge, short enough that a wedged one does not hold the verb. */
-const SNAPSHOT_BUDGET_MS = 3000;
 
 /** A thunk that runs at most once: the first caller pays, every later one shares the same promise. */
 function once<T>(run: () => Promise<T>): () => Promise<T> {

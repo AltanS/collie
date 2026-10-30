@@ -53,6 +53,9 @@ export {
   type ServeStatus,
 };
 
+/** The sub-verbs of `collie serve`. The bare verb publishes; these read. */
+export const SERVE_SUBCOMMANDS = ["status"] as const;
+
 export interface ServeDeps {
   ctx: CliContext;
   io: Io;
@@ -333,6 +336,28 @@ export function cmdServeVerb(deps: ServeDeps): number {
   if (code !== EXIT.OK) return code;
   if (crewModeOnDisk(deps) === "peer") return EXIT.OK;
   deps.io.out(`open: ${bridgeUrl(deps.exec, deps.ctx)}`);
+  return EXIT.OK;
+}
+
+/**
+ * `collie serve status`: what `tailscale serve` publishes on this machine, which is every front door
+ * on it and not only Collie's. It is the dump `collie status` printed until M76; `status --verbose`
+ * still prints it, from this same function, so the two can never word it differently.
+ *
+ * Read only. `COLLIE_SKIP_SERVE=1` means this Collie sits behind its own proxy, and it says so rather
+ * than asking `tailscale` about a door nobody published.
+ */
+export function cmdServeStatus(deps: Pick<ServeDeps, "ctx" | "io" | "exec">): number {
+  if (deps.ctx.env.COLLIE_SKIP_SERVE === "1") {
+    deps.io.out("  serve config: skipped (COLLIE_SKIP_SERVE=1)");
+    return EXIT.OK;
+  }
+  deps.io.out("  serve config:");
+  const r = deps.exec.capture("tailscale", ["serve", "status"], TAILSCALE_PROBE_MS);
+  if (!r.found || r.code !== 0) return EXIT.OK;
+  for (const line of r.stdout.replace(/\n$/, "").split("\n")) {
+    if (line !== "") deps.io.out(`    ${line}`);
+  }
   return EXIT.OK;
 }
 

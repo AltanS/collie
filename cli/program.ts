@@ -94,7 +94,8 @@ import { loadUi, renderInputs, takePlainFlag, terminalColumns, type Ui, wantsRic
 import { cmdCrewDeputy } from "./crew-deputy.ts";
 import { cmdCrewUpdate } from "./crew-update.ts";
 import { cmdCrewAdd, crewAddDeps, type CrewAddDeps } from "./remote.ts";
-import { cmdServe, cmdServeVerb, cmdUnserve } from "./serve.ts";
+import { gatherCensus } from "./census.ts";
+import { cmdServe, cmdServeStatus, cmdServeVerb, cmdUnserve, SERVE_SUBCOMMANDS } from "./serve.ts";
 import {
   cmdStt,
   cmdSttOff,
@@ -422,6 +423,30 @@ function lifecycleCommand(
   };
 }
 
+/**
+ * `serve` publishes the front door and `serve status` reads what `tailscale serve` publishes. The
+ * bare verb is still the publisher, so it answers `--help` itself: a parent with children runs outside
+ * the guard in {@link buildProgram}, and publishing a door to answer a request for usage is the
+ * mistake that guard exists to stop (#392).
+ */
+function serveCommand(): Command {
+  const summary = "publish the single managed `tailscale serve` front door; `serve status` shows what tailscale serve publishes";
+  const publish: Command["run"] = async (args, s) =>
+    helpGuard(s, asksForHelp(args), "serve", summary, false, args, async () => cmdServeVerb(lifecycleDeps(s.io)));
+  return {
+    name: "serve",
+    summary,
+    subcommands: [
+      {
+        name: SERVE_SUBCOMMANDS[0],
+        summary: "what tailscale serve publishes on this machine (read only; `status --verbose` prints the same)",
+        run: (_args, s) => cmdServeStatus(lifecycleDeps(s.io)),
+      },
+    ],
+    run: publish,
+  };
+}
+
 /** A `crew` sub-verb whose body takes the crew dependency set; `rich` marks a surface in `cli/ui/`. */
 function crewSubcommand(
   name: (typeof CREW_SUBCOMMANDS)[number],
@@ -611,9 +636,21 @@ export const COMMANDS: readonly Command[] = [
   // Invoked directly, `serve` also prints where to point a phone (the pre-shim collie-ctl.sh) —
   // `start` does not, because its banner already carries the URL. That extra line is `cmdServeVerb`,
   // which lives beside the publish decision it depends on (a peer prints none — F24).
-  lifecycleCommand("serve", "publish the single managed `tailscale serve` front door", cmdServeVerb),
+  serveCommand(),
   lifecycleCommand("unserve", "tear down the front door we published", cmdUnserve),
-  lifecycleCommand("status", "is it running, and on what URLs", cmdStatus, { rich: true }),
+  {
+    name: "status",
+    summary:
+      "is it running, and on what URLs; then crew members, paired devices and agent sessions (`--json` for a program, `--verbose` adds the tailscale serve dump)",
+    run: async (args, s) => {
+      const deps = lifecycleDeps(s.io, await s.ui());
+      // The census reads: a `hello` per crew member and this bridge's own snapshot. Built here, where
+      // the real transport lives, so `cmdStatus` stays a function over values the tests can pass.
+      const census = (input: Parameters<typeof gatherCensus>[1]) =>
+        gatherCensus({ ctx: deps.ctx, files: deps.files, fetch: (url, init) => fetch(url, init), now: () => Date.now() }, input);
+      return cmdStatus(deps, args, census);
+    },
+  },
   lifecycleCommand("url", "print the bridge URL", cmdUrl),
   lifecycleCommand("qr", "print the bridge URL as a scannable QR code", (deps) => cmdQr(deps)),
   {
