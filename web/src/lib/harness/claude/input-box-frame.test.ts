@@ -60,6 +60,14 @@ describe("parity with the old walk on the real corpus", () => {
   // Measured against the walk this replaced, on every Claude capture: the same 17 screens have a box,
   // the rest are refused. The one addition is the hand-built clipped-popup screen, the bug itself.
   const BOXES = new Set([
+    // herdr-core captures (M78 spec 04), plain text: the box is found by its rules alone.
+    "claude--v21314-core-draft--w120.txt",
+    "claude--v21314-core-draft--w60.txt",
+    "claude--v21314-core-draft-two-paragraphs--w120.txt",
+    "claude--v21314-core-idle--w120.txt",
+    "claude--v21314-core-idle--w60.txt",
+    "claude--v21314-core-slash-list--w120.txt",
+    "claude--v21314-core-working--w120.txt",
     "claude--autocomplete-slash-clipped.txt",
     "claude--autocomplete-slash-long.txt",
     "claude--autocomplete-slash-short.txt",
@@ -424,6 +432,8 @@ describe("invariant: rows appended below a box never change the box or its draft
     "claude--v2302-slash-effort-list--w120--h40.txt": true,
     "claude--v2302-slash-model-list--w120--h40.txt": true,
     "claude--v2302-slash-model-list-padded--w120--h36.txt": true,
+    // 2.1.314's whole slash list on herdr-core (M78 spec 04): `  ❯ /add-dir` stands in the tail.
+    "claude--v21314-core-slash-list--w120.txt": true,
   } satisfies Record<string, true>;
 
   it.each(BOX_FIXTURES.filter((name) => !Object.hasOwn(POINTER_TAILS, name)))("%s", (name) => {

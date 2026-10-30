@@ -29,6 +29,14 @@ const PANES_DIR = join(import.meta.dirname, "..", "..", "fixtures", "panes");
 // `claude--working.txt` left this set on 2026-10-19: the rating survey over its box is a notice now
 // (ADR 0109), and lifts its card.
 const NEUTRAL = new Set([
+  // herdr-core captures (M78 spec 04), plain text: an empty box, a draft, two paragraphs and a running
+  // turn, each under a live box. Composer chrome, never a dialog.
+  "claude--v21314-core-idle--w120.txt",
+  "claude--v21314-core-idle--w60.txt",
+  "claude--v21314-core-draft--w120.txt",
+  "claude--v21314-core-draft--w60.txt",
+  "claude--v21314-core-draft-two-paragraphs--w120.txt",
+  "claude--v21314-core-working--w120.txt",
   // The default footer's own hints ("esc to interrupt", "↓ to manage") sit under a live box.
   "claude--working-esc-to-interrupt.txt",
   "claude--idle-background-shell.txt",

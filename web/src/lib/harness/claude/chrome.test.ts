@@ -1146,6 +1146,18 @@ describe("real corpus — pinned so any change to the walk shows up as a diff", 
     { fixture: "workflow-view", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "working", statusRows: 2, draft: null, stripped: 6 },
     { fixture: "working-esc-to-interrupt", statusRows: 1, draft: null, stripped: 5 },
+    // herdr-core captures (M78 spec 04): plain text, no SGR. The same walk, with no styling to lean on.
+    { fixture: "v21314-core-ask--w120", statusRows: 0, draft: null, stripped: 0 },
+    { fixture: "v21314-core-draft--w120", statusRows: 1, draft: "collie core draft probe", stripped: 5 },
+    { fixture: "v21314-core-draft--w60", statusRows: 1, draft: "collie core draft probe", stripped: 5 },
+    { fixture: "v21314-core-draft-two-paragraphs--w120", statusRows: 1, draft: "First paragraph of a core draft", stripped: 7 },
+    { fixture: "v21314-core-idle--w120", statusRows: 1, draft: null, stripped: 5 },
+    { fixture: "v21314-core-idle--w60", statusRows: 1, draft: null, stripped: 5 },
+    { fixture: "v21314-core-menu-model--w120", statusRows: 0, draft: null, stripped: 0 },
+    { fixture: "v21314-core-permission--w120", statusRows: 0, draft: null, stripped: 0 },
+    { fixture: "v21314-core-permission--w60", statusRows: 0, draft: null, stripped: 0 },
+    { fixture: "v21314-core-slash-list--w120", statusRows: 0, draft: "/", stripped: 24 },
+    { fixture: "v21314-core-working--w120", statusRows: 1, draft: null, stripped: 5 },
   ];
 
   it("pins every claude fixture on disk, so a new capture can't slip past this table", () => {

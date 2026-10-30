@@ -180,6 +180,10 @@ const BOX_COMPOSER_FIXTURES = [
   "omp--v18-12-6-path-popup-partial--w120.txt",
   "omp--v18-6-1-at-popup-stale--w120.txt",
   "omp--v18-12-6-at-popup-two-files--w120.txt",
+  // omp 18.6.1 on herdr-core (M78 spec 04, 2026-10-30): a plain-text read, no SGR at all.
+  "omp--v1861-core-draft--w120.txt",
+  "omp--v1861-core-idle--w120.txt",
+  "omp--v1861-core-working--w120.txt",
 ];
 
 // omp 18.6.1 with `/model` or `/mod` typed (lab, 2026-10-17): a ten-row palette under the open box. The
@@ -365,6 +369,10 @@ describe("locateComposer — the real corpus, pinned so any change to the walk s
     { fixture: "omp--v18-12-6-path-popup-partial--w120.txt", top: 9, bottom: 10, suggestEnd: 12 },
     { fixture: "omp--v18-6-1-at-popup-stale--w120.txt", top: 10, bottom: 11, suggestEnd: 14 },
     { fixture: "omp--v18-12-6-at-popup-two-files--w120.txt", top: 8, bottom: 9, suggestEnd: 12 },
+    // omp 18.6.1 on herdr-core (M78 spec 04): the box sits at the tail of a plain-text read.
+    { fixture: "omp--v1861-core-draft--w120.txt", top: 14, bottom: 15, suggestEnd: 16 },
+    { fixture: "omp--v1861-core-idle--w120.txt", top: 14, bottom: 15, suggestEnd: 16 },
+    { fixture: "omp--v1861-core-working--w120.txt", top: 19, bottom: 20, suggestEnd: 21 },
   ];
 
   // These eleven indices are byte-identical to the ones the width-gated scanner produced. That is
@@ -487,6 +495,12 @@ describe("extractInputDraft", () => {
     { fixture: "omp--v18-6-1-stop-returned--w119.txt", draft: "second message" },
     // The stale frame's old text, not the live editor's: a reading the probe has to prove.
     { fixture: "omp--v18-6-1-stale-frame-below-live--w120.txt", draft: "and what about the design" },
+    // omp 18.6.1 on herdr-core (M78 spec 04): a plain-text read carries no colour, so neither the muted
+    // ghost completion nor the muted effort hint can be told from typed text. Both readings are WRONG and
+    // pinned as findings: the true draft is `collie core draft probe`, and the idle box is empty.
+    { fixture: "omp--v1861-core-draft--w120.txt", draft: "collie core draft probes" },
+    { fixture: "omp--v1861-core-idle--w120.txt", draft: "⇧⇥ to change thinking effort" },
+    { fixture: "omp--v1861-core-working--w120.txt", draft: null },
   ];
 
   it.each(DRAFTS)("$fixture reads its draft", ({ fixture, draft }) => {
@@ -505,6 +519,9 @@ const PLAIN_READ_FIXTURES = [
   "omp--v18-6-1-queued-before-stop--w119.txt",
   "omp--v18-6-1-stop-returned--w119.txt",
   "omp--v18-6-skill-chip--w120.txt",
+  "omp--v1861-core-draft--w120.txt",
+  "omp--v1861-core-idle--w120.txt",
+  "omp--v1861-core-working--w120.txt",
 ];
 
 describe("extractStatusLines", () => {
@@ -541,7 +558,8 @@ describe("extractStatusLines", () => {
         !f.startsWith("omp--v18-6-") &&
         !f.startsWith("omp--v18-11-") &&
         !f.startsWith("omp--v18-12-") &&
-        !f.startsWith("omp--v18.11.1-"),
+        !f.startsWith("omp--v18.11.1-") &&
+        !f.startsWith("omp--v1861-core-"),
     ),
   )(
     "%s: trims the border glyphs off both ends, keeping the whole powerline",

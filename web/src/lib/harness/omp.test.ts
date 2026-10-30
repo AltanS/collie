@@ -358,6 +358,10 @@ const DECLINED = new Set([
   "omp--v18-rule-effort-hint.txt",
   "omp--v18-rule-wrapped.txt",
   "omp--working.txt",
+  // omp 18.6.1 on herdr-core (M78 spec 04): plain-text reads of the box.
+  "omp--v1861-core-draft--w120.txt",
+  "omp--v1861-core-idle--w120.txt",
+  "omp--v1861-core-working--w120.txt",
   // — The slash palette is composer chrome too, and it is drawn BELOW the box, so it is stripped along
   //   with it rather than lifted. What replaces it on the phone is collie's own palette for omp
   //   (lib/agent-commands.ts's `omp` catalog), not a lifted block.
@@ -707,6 +711,10 @@ describe("the omp corpus", () => {
     "omp--v18.11.1-powerline-transparent-draft--w120.txt",
     "omp--v18.11.1-powerline-transparent-idle--w120.txt",
     "omp--v18.11.1-slash-idle--w120.txt",
+    // omp 18.6.1 on herdr-core (M78 spec 04, 2026-10-30).
+    "omp--v1861-core-draft--w120.txt",
+    "omp--v1861-core-idle--w120.txt",
+    "omp--v1861-core-working--w120.txt",
     "omp--working.txt",
   ];
 
@@ -858,6 +866,10 @@ const COMPOSER_FIXTURES = [
   "omp--v18-12-2-goal-resume-probe--w119.txt",
   "omp--v18-12-2-goal-resume-result--w119.txt",
   "omp--v18-12-2-goal-resume-typed--w119.txt",
+  // omp 18.6.1 on herdr-core (M78 spec 04, 2026-10-30): plain-text reads of the box.
+  "omp--v1861-core-draft--w120.txt",
+  "omp--v1861-core-idle--w120.txt",
+  "omp--v1861-core-working--w120.txt",
   "omp--v18-12-2-goal-turn-running--w119.txt",
   "omp--v18-12-2-goal-turn-running-probe--w119.txt",
   // omp 18.6.1 mid-turn with a line typed, then after a steer (Enter) or a queue (Ctrl+Q), and once the
