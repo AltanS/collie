@@ -108,6 +108,24 @@ export type PeerLinkState = "reconnecting" | "attention";
  */
 export const LINK_BUDGET_SWEEPS = TURN_MISSED_SWEEPS;
 
+/** Silent sweeps in a row before a reachable member reads unreachable: one blip under host load must not refuse the phone's writes or flip the UI. */
+export const UNREACHABLE_AFTER_SWEEPS = 2;
+
+/**
+ * Whether a failed call leaves a reachable member's verdict standing, for now.
+ *
+ * Only SILENCE is held, and only the first of it: a call that reached the transport and heard
+ * nothing, after a member that was answering. An answer the lead cannot use (a 401, a foreign
+ * protocol, another crew) and a call that provably never left this process are verdicts already,
+ * and holding them would only delay the truth by a sweep.
+ */
+function holdsReachable(previous: PeerState, outcome: PeerFailure, failedRuns: number): boolean {
+  if (previous.health !== "reachable") return false;
+  if (failedRuns >= UNREACHABLE_AFTER_SWEEPS) return false;
+  if (outcome.state !== "unreachable") return false;
+  return outcome.authRefused !== true && outcome.attempted !== false;
+}
+
 /**
  * Which reading a failed call earns, given how many failures preceded it. Pure, and the only place
  * the split is decided — a second site would let the chip and the crew page disagree about one
@@ -336,6 +354,22 @@ export class CrewRegistry {
     // This call included. A landed call spends nothing and clears what the silence had run up, which
     // is the same shape `foldPeerMemory` gives the incompatible ladder one level up.
     const failedRuns = outcome.ok ? 0 : (previous?.failedRuns ?? 0) + 1;
+    if (!outcome.ok && previous !== undefined && holdsReachable(previous, outcome, failedRuns)) {
+      // THE FIRST MISS IS HELD (UNREACHABLE_AFTER_SWEEPS). The verdict stays `reachable`, so a write
+      // is still attempted and every surface keyed on health stays put. The miss is not hidden: its
+      // reason and the `reconnecting` split ride the same fields a real outage uses, so the crew
+      // page's member row (status-wire.ts) reads "reachable", "reconnecting" and the reason.
+      const held: PeerState = {
+        ...previous,
+        version,
+        preflight,
+        failedRuns,
+        linkState: linkStateFor(outcome.state, false, failedRuns),
+        reason: outcome.reason,
+      };
+      this.peers.set(memberId, held);
+      return held;
+    }
     const next: PeerState = outcome.ok
       ? {
           memberId,

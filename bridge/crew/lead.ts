@@ -16,7 +16,7 @@ import {
   type SnapshotPlan,
 } from "./merge.ts";
 import { parsePeerVersion, sweepPeers, type CrewLink, type PeerOutcome } from "./peer-client.ts";
-import type { HostResolution, HostSelector, CrewRegistry, PeerState } from "./registry.ts";
+import type { HostResolution, HostSelector, CrewRegistry, PeerHealth, PeerState } from "./registry.ts";
 import { PAIRING_LABEL_COLLISION } from "./router.ts";
 import {
   pairingPushNeeded,
@@ -135,6 +135,9 @@ export const CONTACT_RESET_FLOOR_MS = 10_000;
  * thing that settles the question: an `ok` answer to a real dial.
  */
 export const MAX_CONTACT_RESETS = 5;
+
+/** How often one member's dropped stale replies make a journal line. Every drop still happens. */
+export const STALE_DIAL_LOG_REPEAT_MS = 60_000;
 
 /**
  * `memory` with its incompatible backoff forgotten — pure, and the only shape a reset may take.
@@ -466,6 +469,8 @@ export class CrewLead {
    * owns that word (`registry.ts`, `warrant.ts`), and these two must never be read as the same thing.
    */
   private readonly dialGenerations = new Map<string, number>();
+  /** Per member: when {@link staleDial} last wrote its line. See {@link STALE_DIAL_LOG_REPEAT_MS}. */
+  private readonly staleLogged = new Map<string, number>();
 
   constructor(private readonly deps: CrewLeadDeps) {
     this.now = deps.now ?? Date.now;
@@ -492,6 +497,12 @@ export class CrewLead {
   private staleDial(memberId: string, dialGeneration: number, what: string): boolean {
     const current = this.dialGenerations.get(memberId) ?? 0;
     if (dialGeneration >= current) return false;
+    // A patient hello overtaken by the next sweep is routine under host load, so the LINE is
+    // rate-limited per member. The drop above it is not.
+    const now = this.now();
+    const last = this.staleLogged.get(memberId);
+    if (last !== undefined && now - last < STALE_DIAL_LOG_REPEAT_MS) return true;
+    this.staleLogged.set(memberId, now);
     this.log(`[crew] ${memberId}: dropped a stale ${what} reply, dial ${dialGeneration} of ${current}`);
     return true;
   }
@@ -525,6 +536,7 @@ export class CrewLead {
         this.loggedState.delete(id);
         this.contactResets.delete(id);
         this.dialGenerations.delete(id);
+        this.staleLogged.delete(id);
         this.deps.onPeerGone?.(id);
       }
 
@@ -587,7 +599,7 @@ export class CrewLead {
         // SAFETY: `value` is a peer's HTTP body after `res.json()` — a JsonValue by construction,
         // the same cast and the same reason as `foldPeerMemory`'s below.
         const seen = outcome.ok ? parsePeerVersion(outcome.value as JsonValue) : null;
-        this.deps.registry.record(memberId, outcome, seen === null ? undefined : { version: seen });
+        const recorded = this.deps.registry.record(memberId, outcome, seen === null ? undefined : { version: seen });
         // A sweep that died on its OWN clock has learned nothing about the machine (§10.4). Re-ask on
         // the patient budget, off this tick — never awaited, so the strict budget still bounds the
         // poll exactly as §10.1 requires. A refusal, a reset or a DNS failure is skipped: those are
@@ -632,7 +644,7 @@ export class CrewLead {
         // The question the reset counter exists to ask is now settled for this member: it answered a
         // real dial. Whatever it took to get here, the ladder starts from zero again (M20/02).
         if (outcome.ok) this.contactResets.delete(memberId);
-        this.logVerdict(memberId, outcome, previous, next);
+        this.logVerdict(memberId, outcome, previous, next, recorded.health);
         // Identity, not equality: `parsePeerSnapshot` mints a fresh object on every success and the
         // fold RETAINS the old one on every failure, so `!==` is exactly "this poll produced a body".
         // An unchanged peer still yields a new object each poll — a diff of nothing, which is what
@@ -750,7 +762,12 @@ export class CrewLead {
     outcome: PeerOutcome<unknown>,
     previous: PeerMemory | undefined,
     next: PeerMemory,
+    health: PeerHealth,
   ): void {
+    // A miss the registry HELD (UNREACHABLE_AFTER_SWEEPS) is not a transition: the verdict is still
+    // `reachable`, so it writes nothing and leaves the key alone. A blip and its recovery are then
+    // silent, and a real outage still writes one pair, on its second miss and on its return.
+    if (!outcome.ok && health === "reachable") return;
     // The runs count is part of the key: each step of the ladder is its own transition, and the
     // operator needs the step it reached, not just that it is on one.
     const key = outcome.ok

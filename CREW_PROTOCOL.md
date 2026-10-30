@@ -1425,7 +1425,7 @@ never crosses a crew link.
 
 | State | Meaning | Retried on the poll? | Presented as |
 |---|---|---|---|
-| **reachable** | Last poll succeeded within budget | yes | live |
+| **reachable** | Last poll succeeded within budget, or only the last one was silent (held, below) | yes | live |
 | **unreachable** | Timeout, connection refused, TLS failure, auth failure, or an answer with **no** protocol header at all (§7) | yes | last-good state, **stale**, with `lastSeenAt` — and split for the operator into Reconnecting and Attention, below |
 | **incompatible** | `X-Crew-Protocol` names a version this build cannot speak (§7) | no (probed on a slow backoff) | last-good state, **incompatible**, with the peer's reason |
 | **conflicted** *(added 2026-08-20)* | The member answered §18.10's named `409`: it follows a **different lead** | no — there is nothing useful to fetch from a machine that belongs to someone else's view of the crew | last-good state, **conflicted**, naming the lead it follows and that lead's warrant generation |
@@ -1475,10 +1475,15 @@ never crosses a crew link.
 
   - **`health` does not change, and `CREW_PROTOCOL_VERSION` stays `1`.** An unreachable member is
     still `unreachable` on the wire, so a released phone renders exactly what it renders today.
-  - **The field is OMITTED when there is nothing to say** — every reachable member, and every member
-    of a lead older than the field. An absent value beside a member that is *not* reachable therefore
+  - **The field is OMITTED when there is nothing to say** — every reachable member that answered its
+    last sweep, and every member of a lead older than the field. An absent value beside a member that is *not* reachable therefore
     means "this lead offers no distinction", and the surface prints the single old word rather than
     inventing one. Absent is never read as `reconnecting`.
+  - **One silent sweep does not flip `health`.** *(added 2026-10-30)* A `reachable` member reads
+    `unreachable` only after two silent sweeps in a row. On the first it stays `reachable`, with
+    `reconnecting` and the miss's reason beside it, so a blip under host load neither refuses a
+    write (§10.3) nor changes a chip. An answer re-dialling cannot fix (a bare 401, §7, §18.10) is
+    not held. (`bridge/crew/registry.ts` → `UNREACHABLE_AFTER_SWEEPS`.)
   - **The budget is a count of silent sweeps**, and it is the same count that fails a run's leg
     (§20), so one lead holds one idea of how much silence is too much. It is lead-local, never on the
     wire, and moving it needs no protocol change.

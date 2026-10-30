@@ -13,6 +13,7 @@ import {
   incompatibleBackoffMs,
   INCOMPATIBLE_BACKOFF_MS,
   MAX_CONTACT_RESETS,
+  STALE_DIAL_LOG_REPEAT_MS,
   CrewLead,
   type PeerMemory,
 } from "./lead.ts";
@@ -198,6 +199,8 @@ describe("CrewLead — a peer's sessions never vanish (§10.2)", () => {
     expect(h.lead.contributions()[0]!.body?.agents).toHaveLength(1);
 
     h.advance(30_000);
+    await h.lead.sweep();
+    // Two misses in a row: the first is held (UNREACHABLE_AFTER_SWEEPS), the second is the verdict.
     await h.lead.sweep();
     const c = h.lead.contributions()[0]!;
     expect(c.state.health).toBe("unreachable");
@@ -508,6 +511,7 @@ describe("a landed forward refreshes the receipt (§10.2)", () => {
     );
     await h.lead.sweep();
     sweepOk = false;
+    await h.lead.sweep();
     await h.lead.sweep();
     expect(h.health()).toBe("unreachable");
 
@@ -1186,10 +1190,39 @@ describe("CrewLead — the journal names a verdict once per transition", () => {
     expect(h.journal).toEqual([]);
     answer = false;
     await h.lead.sweep();
+    await h.lead.sweep();
     answer = true;
     await h.lead.sweep();
     await h.lead.sweep();
     expect(h.journal).toEqual(["[crew] laptop: unreachable (timed out)", "[crew] laptop: reachable again"]);
+  });
+
+  test("a member that flaps one sweep at a time writes nothing — each miss is held", async () => {
+    // The 2026-10-29 journal: under host load one snapshot in many missed its budget, and every miss
+    // wrote an unreachable / reachable-again pair. A held miss is not a transition, so neither is
+    // the answer after it.
+    let answer = true;
+    const h = lead([member({ memberId: "laptop" })], () => (answer ? ok(body) : down));
+    await h.lead.sweep();
+    for (let i = 0; i < 3; i += 1) {
+      answer = false;
+      await h.lead.sweep();
+      expect(h.registry.state("laptop").health).toBe("reachable");
+      answer = true;
+      await h.lead.sweep();
+    }
+    expect(h.journal).toEqual([]);
+  });
+
+  test("two misses in a row write the verdict once", async () => {
+    let answer = true;
+    const h = lead([member({ memberId: "laptop" })], () => (answer ? ok(body) : down));
+    await h.lead.sweep();
+    answer = false;
+    await h.lead.sweep();
+    expect(h.journal).toEqual([]);
+    await h.lead.sweep();
+    expect(h.journal).toEqual(["[crew] laptop: unreachable (timed out)"]);
   });
 });
 
@@ -1459,6 +1492,40 @@ describe("a reply from an older dial is dropped, never merged (M22/05)", () => {
     await Bun.sleep(5);
     // Sweep 1 claimed dial 1, its probe claimed 2, sweep 2 claimed 3. The reply carries 2.
     expect(h.journal).toContain("[crew] laptop: dropped a stale hello reply, dial 2 of 3");
+  });
+
+  test(`the drop's line is written once per member per ${STALE_DIAL_LOG_REPEAT_MS / 1000} s, and every drop still happens`, async () => {
+    // The 2026-10-29 journal again: the patient hello overtaken by the next sweep is routine under
+    // load, and fourteen lines an hour said one thing.
+    const lands: ((v: PeerOutcome<{ version: string | null }>) => void)[] = [];
+    let miss = true;
+    const h = lead([member({ memberId: "laptop" })], () => (miss ? budgetMissed : ok(body)), {
+      hello: () =>
+        new Promise((resolve) => {
+          lands.push(resolve);
+        }),
+    });
+    await h.lead.sweep();
+    const cycle = async () => {
+      miss = true;
+      await h.lead.sweep();
+      await Bun.sleep(1);
+      miss = false;
+      await h.lead.sweep();
+      for (const land of lands.splice(0)) land(helloDown);
+      await Bun.sleep(1);
+      // Dropped every time: the newer answer stands, whatever the journal says.
+      expect(h.registry.state("laptop").reason).toBeNull();
+    };
+    const dropped = () => h.journal.filter((l) => l.includes("dropped a stale")).length;
+    await cycle();
+    expect(dropped()).toBe(1);
+    h.advance(1500);
+    await cycle();
+    expect(dropped()).toBe(1);
+    h.advance(STALE_DIAL_LOG_REPEAT_MS);
+    await cycle();
+    expect(dropped()).toBe(2);
   });
 
   test("nothing about the dropped reply reaches the merge", async () => {

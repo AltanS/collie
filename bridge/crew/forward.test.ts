@@ -23,7 +23,8 @@ import {
 } from "./forward.ts";
 import { crewDeviceOf } from "./peer-gate.ts";
 import { crewTimeoutBudget, WRITE_BUDGET_MS, type CrewLink, type PeerOutcome } from "./peer-client.ts";
-import type { PeerState } from "./registry.ts";
+import { member } from "./fixtures.ts";
+import { CrewRegistry, type PeerState } from "./registry.ts";
 import { readSend, readSendReply } from "../../web/src/lib/send-protocol.ts";
 
 // The lead's forwarding path (CREW_PROTOCOL.md §5, §9.1, §10.3, §12, §13).
@@ -757,6 +758,28 @@ describe("a write to a member that is not reachable (§10.3)", () => {
     expect(String(body.error)).toContain("connection refused");
     // NOTHING WAS SENT. That is the whole difference between this and the unknown-outcome case.
     expect(calls).toHaveLength(0);
+  });
+
+  test("a member on its FIRST missed sweep is not refused — the write is attempted (UNREACHABLE_AFTER_SWEEPS)", async () => {
+    // One blip under host load must not answer the phone's write with a 503. The registry holds the
+    // verdict on the first miss, and the forward's own failure handling covers a real outage.
+    const registry = new CrewRegistry({ sessions: { get: () => undefined }, self: "desk", members: () => [member({ memberId: "laptop" })] });
+    registry.record("laptop", { ok: true, value: {}, status: 200, member: "laptop", receivedAt: 1, date: null });
+    const missed: PeerOutcome<unknown> = { ok: false, state: "unreachable", reason: "snapshot: timed out after 1200ms", timedOut: true, receivedAt: 2 };
+    const firstMiss = registry.record("laptop", missed);
+    expect(firstMiss.failedRuns).toBe(1);
+
+    const { transport, calls } = transportOf(() => ok(new Response(`{"ok":true}`)));
+    const [req, url] = post("/api/pane/w1:p1/reply?host=laptop", `{"text":"hi"}`);
+    const res = await forward(req, url, { transport, state: firstMiss });
+    expect(await res.json()).toEqual({ ok: true });
+    expect(calls).toHaveLength(1);
+
+    // The second miss in a row is the verdict, and that one IS refused before it is attempted.
+    const [again, againUrl] = post("/api/pane/w1:p1/reply?host=laptop", `{"text":"hi"}`);
+    const refused = await forward(again, againUrl, { transport, state: registry.record("laptop", missed) });
+    expect((await failureBody(refused)).code).toBe("host_unreachable");
+    expect(calls).toHaveLength(1);
   });
 
   test("an incompatible member is refused with the protocol-mismatch reason", async () => {
