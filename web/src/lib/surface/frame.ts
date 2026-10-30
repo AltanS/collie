@@ -349,7 +349,7 @@ function isPlaceholderText(text: string, idle: IdleProfile, patterns: readonly R
  * coloured read too (default ink), so the hole alone cannot tell the two apart; the prompt marker,
  * the rules and the footer of a coloured read carry colour, and a plain read carries none anywhere.
  */
-function readIsUnstyled(rows: readonly FrameRow[]): boolean {
+export function readIsUnstyled(rows: readonly FrameRow[]): boolean {
   return rows.every((row) => row.segments.every((run) => run.fg === undefined && RUN_FLAGS.every((flag) => run[flag] !== true)));
 }
 

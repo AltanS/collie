@@ -31,6 +31,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A screen herdr-core calls incomplete decides no send.** A read the core marks `complete: false` now reaches the mirror with its rows and a `partial` flag, and the Send Protocol takes it as no read: it types and presses nothing until a whole screen reads, and ends `refused(probe_failed)` with nothing typed if none does.
 - **The herdr-core socket is found on macOS.** With no `XDG_RUNTIME_DIR` and no `/run/user/<uid>`, Collie now looks in the core's state directory, `~/.local/state/herdr-core/<session>/`, as the core does, instead of a path that cannot exist there. Thanks to @bilipp.
 - **A push names a pane by its session name.** The state engine now fires transitions after it reads session names, so a digest shows the pane's own name instead of two panes both called `claude · build`. Thanks to @OowhitecatoO.
+- **A send to Claude Code on a plain-text multiplexer is no longer refused when only its grey suggestion shows.** herdr-core hands out the screen with no colour, so Claude's faint prompt suggestion (`cat hello.txt to verify`) read as a draft and a send was refused `draft_present`. On a read with no styling Collie now probes the box: the probe character lands at the start of the box for a suggestion, and the send goes on into the empty box; it lands after the text for a typed draft, which is refused as before. A walky talky message held behind the suggestion goes out too, at the next check of its hold. A styled read is unchanged.
 
 ## [1.25.1] - 2026-10-30
 

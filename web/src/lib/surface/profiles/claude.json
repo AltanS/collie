@@ -26,7 +26,9 @@
       "texts": ["Press up to edit queued messages"],
       "patterns": ["^Try \"[^\"]*\"$"],
       "patternsNote": "Live 2026-10-30, Claude Code 2.1.314 on herdr-core: the empty box rotates faint hints (`Try \"refactor <filepath>\"`, `Try \"fix lint errors\"`, `Try \"how do I log an error?\"`). herdr-core reads the screen as plain text, so the faint attribute is gone and the hint read as a draft; a walky talky delivery stayed held as draft present. The shape counts only on a read with no styling at all; on a styled read the faint attribute decides, so a typed `Try \"…\"` stays a draft. Fixture surface/claude--v2-1-314-placeholder-plain--w120 (plain text, as herdr-core reads it).",
-      "sgr": 2
+      "sgr": 2,
+      "anyText": true,
+      "anyTextNote": "M78 spec 06, 2026-10-30: after a turn the empty box shows a faint prompt suggestion in free words (`cat hello.txt to verify`, `fix it`, `save it to docs/terminal-history.md`). No text, prefix or pattern names it; on herdr-core the faint attribute is gone and the suggestion read as a draft, so a send was refused draft_present. On a read with no styling the Send Protocol proves such a box by its probe: a suggestion is not in the input, so the probe character lands at the start of the box. Fixtures claude--done, claude--ghost-suggestion and the claude-lab--statusline-* set, stripped of SGR."
     },
     "volatile": {
       "above": { "maxRows": 6 },

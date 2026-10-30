@@ -493,6 +493,15 @@ export interface Profile {
        * too; one run in any other colour is typed text. Optional.
        */
       readonly fg?: readonly string[];
+      /**
+       * The empty box may show any text as its placeholder: a suggestion the harness writes itself
+       * (Claude Code's prompt suggestion, `cat hello.txt to verify`), which no text, prefix or pattern
+       * can name, marked only by the SGR attribute or the colours above. On a read with no styling
+       * (herdr-core) such a box reads as a draft, so the Send Protocol proves it by where its probe
+       * character lands: after the text, a typed draft; at the start of the box, the placeholder, and
+       * the box is empty. Optional; a styled read never takes that path.
+       */
+      readonly anyText?: true;
     };
     readonly volatile: {
       readonly above: {
@@ -1299,8 +1308,10 @@ function parsePlaceholders(node: JsonObject): Profile["idle"]["placeholders"] {
     node.patterns === undefined
       ? withPrefixes
       : { ...withPrefixes, patterns: textList(node.patterns, "idle.placeholders.patterns", 1).map((item, i) => pattern(item, `idle.placeholders.patterns[${String(i)}]`).source) };
-  if (node.fg === undefined) return withPatterns;
-  return { ...withPatterns, fg: colourList(node.fg, "idle.placeholders.fg") };
+  if (node.anyText !== undefined && node.anyText !== true && node.anyText !== false) fail("idle.placeholders.anyText", "must be true or false");
+  const withAnyText = node.anyText === true ? { ...withPatterns, anyText: true as const } : withPatterns;
+  if (node.fg === undefined) return withAnyText;
+  return { ...withAnyText, fg: colourList(node.fg, "idle.placeholders.fg") };
 }
 
 /** `idle.frame.trailer`: the last row inside the box, and the padding rows under it. */
