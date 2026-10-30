@@ -30,7 +30,8 @@ that a break needs a new generation.
 
 - **Socket path.** `HC_SOCKET` if set. Otherwise `$XDG_RUNTIME_DIR/herdr-core/<session>.sock`,
   where the session is `HC_SESSION` or `default`. Without `XDG_RUNTIME_DIR` the core uses
-  `/run/user/<uid>/herdr-core/` when that directory exists, then the session's state directory.
+  `/run/user/<uid>/herdr-core/` when that directory exists, then the session's state directory,
+  `${XDG_STATE_HOME:-~/.local/state}/herdr-core/<session>/<session>.sock` (macOS).
   A `socket` setting in `~/.config/herdr-core/config.toml` can also move it (not read by Collie).
   Holder sockets sit beside the client socket as `<session>.holder.<id>.sock`; they are not for
   clients.

@@ -49,7 +49,7 @@ COLLIE_MUX_ENDPOINT_ZELLIJ=collie-zellij
 | --- | --- | --- |
 | `COLLIE_MUX` | `herdr`, `herdr-core`, `tern`, `tmux`, `zellij` or `tuios` | which terminal this install drives |
 | `COLLIE_MUX_ENDPOINT_HERDR_CORE` | `/run/user/1000/herdr-core/work.sock` | the core's socket PATH |
-| `COLLIE_MUX_ENDPOINT_HERDR_CORE` | empty | the socket `hc` would dial: `HC_SOCKET`, else `$XDG_RUNTIME_DIR/herdr-core/<HC_SESSION or default>.sock` |
+| `COLLIE_MUX_ENDPOINT_HERDR_CORE` | empty | the socket `hc` would dial: `HC_SOCKET`, else `$XDG_RUNTIME_DIR/herdr-core/<session>.sock`, else `/run/user/<uid>/herdr-core/<session>.sock` when that directory exists, else `${XDG_STATE_HOME:-~/.local/state}/herdr-core/<session>/<session>.sock` (macOS); the session is `HC_SESSION` or `default` |
 | `COLLIE_MUX_ENDPOINT_TMUX` | `/run/user/1000/collie-tmux.sock` | a socket PATH (`tmux -S`), because it has a `/` |
 | `COLLIE_MUX_ENDPOINT_TMUX` | `work` | a socket NAME (`tmux -L work`), no `/` |
 | `COLLIE_MUX_ENDPOINT_TMUX` | empty | tmux's own default server |
@@ -229,7 +229,10 @@ and then reads as unreachable in the log and in `collie doctor`. `collie status`
 multiplexer and, when nobody named it, why.
 
 The core can run several named sessions. Collie drives one of them. It dials the socket that `hc`
-would: `HC_SOCKET`, else `$XDG_RUNTIME_DIR/herdr-core/<HC_SESSION or default>.sock`. Pick another
+would: `HC_SOCKET`, else `$XDG_RUNTIME_DIR/herdr-core/<session>.sock`, else
+`/run/user/<uid>/herdr-core/<session>.sock` when that directory exists, else
+`${XDG_STATE_HOME:-~/.local/state}/herdr-core/<session>/<session>.sock` (macOS). The session is
+`HC_SESSION` or `default`. Pick another
 session with `HC_SESSION` or `COLLIE_MUX_ENDPOINT_HERDR_CORE`, then `collie restart`. `collie start`
 writes `COLLIE_MUX`, `HC_SESSION` and `HC_SOCKET` (when you set them) into the service unit, so a
 restart dials the same session. `HERDR_SOCKET_PATH` is the TUI's and the core ignores it.
