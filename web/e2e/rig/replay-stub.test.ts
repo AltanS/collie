@@ -14,6 +14,7 @@ import {
   digestOf,
   forbiddenIn,
   formatCassette,
+  matchKeyOf,
   matchSide,
   matchTurn,
   matchTurnAcross,
@@ -219,6 +220,15 @@ describe("summarize, the anthropic vendor (Claude Code, spec 07)", () => {
     expect("context" in summarize("/api/v1/responses", ompBody("hi"))).toBe(false);
   });
 
+  it("masks this machine's own name, so a recording never carries it and both sides digest the same", () => {
+    expect(rigLiterals("/tmp/x/state", "/home/someone", "runner7.tail1.example")).toEqual(expect.arrayContaining([["runner7", "{{host}}"]]));
+    expect(rigLiterals("/tmp/x/state", "/home/someone", "localhost").some(([, p]) => p === "{{host}}")).toBe(false);
+    // The skill text's example names (bluefin, minibuch) are masked on every machine, so the digest does not move with the host.
+    expect(rigLiterals("/tmp/x/state", "/home/someone", "runner7")).toEqual(expect.arrayContaining([["bluefin", "{{skillhosta}}"], ["minibuch", "{{skillhostb}}"]]));
+    const on = (host: string) => summarize("/v1/messages?beta=true", claudeBody(`example bluefin and minibuch, run on ${host}`), rigLiterals(LAB, "/home/someone", host), "anthropic");
+    expect(digestOf(on("machine-two"))).toBe(digestOf(on("runner7")));
+  });
+
   it("names the dashed forms of the rig's folders as literals", () => {
     expect(claudeLiterals("/tmp/x/state")).toEqual(expect.arrayContaining([["-tmp-x-state", "{{labdash}}"], ["-home-someone", "{{homedash}}"]]));
     expect(dashed("/var/home/a/.cache/collie-lab")).toBe("-var-home-a--cache-collie-lab");
@@ -308,6 +318,20 @@ describe("matchTurn", () => {
       if ("entry" in hit) usedIn(hit.caseId).add(hit.index);
     }
     expect("entry" in matchTurn([first], "lead", summarize("/api/v1/messages", piBody("List fruits")), new Set(), "omp.queued")).toBe(true);
+  });
+
+  it("matches a Claude turn with or without the reminder blocks that lead a session's first message", () => {
+    const full = claudeBody("Use walky talky.");
+    // SAFETY: claudeBody above builds this JSON with exactly these message and content fields.
+    const parsed = JSON.parse(full) as { messages: { role: string; content: unknown[] }[] };
+    // The same request in a later message of the session: no reminder blocks in front of the prompt.
+    const first = parsed.messages[0];
+    if (first === undefined) throw new Error("no first message");
+    first.content = first.content.slice(2);
+    const make = (raw: string) => summarize("/v1/messages?beta=true", raw, claudeLiterals(LAB), "anthropic");
+    expect(digestOf(make(full))).not.toBe(digestOf(make(JSON.stringify(parsed))));
+    expect(matchKeyOf(make(full))).toBe(matchKeyOf(make(JSON.stringify(parsed))));
+    expect(matchKeyOf(make(full))).not.toBe(matchKeyOf(make(claudeBody("Use walky talky now."))));
   });
 
   it("matches a side request by digest alone, from the pool", () => {

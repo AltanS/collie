@@ -27,8 +27,9 @@
     "crew": {
       "model": "haiku",
       "skill": "76601c7f4900fdf8",
-      "recordedAt": "2026-10-30T12:21:23.582Z",
+      "recordedAt": "2026-10-30T13:50:07.527Z",
       "cases": [
+        "claude.walky-crew-agents",
         "claude.walky-crew-broadcast",
         "claude.walky-crew-member-to-lead",
         "claude.walky-crew-off",

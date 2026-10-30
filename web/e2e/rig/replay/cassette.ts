@@ -405,11 +405,20 @@ export function digestOf(summary: RequestSummary): string {
 const SESSION_REMINDER = /^<system-reminder>\nToday: [^\n]*\n<\/system-reminder>\n/u;
 
 /**
- * What a request is matched on: its digest with omp's session reminder left out of the prompt. Computed
- * from a stored entry's summary and from a live request alike, so the cassettes keep their digests.
+ * Claude Code's reminder blocks (cutReminder: the rig's CLAUDE.md, the context and commit-attribution
+ * notes) lead only the FIRST user message of a session. Where a case falls in the run decides whether its
+ * prompt has them: case 13 recorded alone is the session's first message, and in the full leg it follows
+ * case 12 in the same session. The match key leaves the leading blocks out, the same way as omp's.
+ */
+const LEADING_REMINDERS = /^(?:<system-reminder>\n(?:(?!<\/system-reminder>)[\s\S])*<\/system-reminder>\n)+/u;
+
+/**
+ * What a request is matched on: its digest with the session reminders left out of the prompt (omp's and
+ * Claude's). Computed from a stored entry's summary and from a live request alike, so the cassettes keep
+ * their digests.
  */
 export function matchKeyOf(summary: RequestSummary): string {
-  const prompt = summary.prompt.replace(SESSION_REMINDER, "");
+  const prompt = summary.prompt.replace(SESSION_REMINDER, "").replace(LEADING_REMINDERS, "");
   return prompt === summary.prompt ? digestOf(summary) : digestOf({ ...summary, prompt });
 }
 

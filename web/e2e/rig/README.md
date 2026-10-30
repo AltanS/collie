@@ -406,7 +406,8 @@ with their delays. No request body, no header and no key is stored. omp's Respon
 request's `instructions` (the system prompt) and `tools` in its `response.*` events; the recorder keeps
 those events but empties the two fields. Values that differ on every run
 (walky ids, pane addresses, uuids, dates, ports, the rig's folders, and the folders in Claude's dashed
-form) are placeholders such as `{{walky:0}}`, `{{lab}}` and `{{labdash}}`, and a replay fills in this
+form) and the machine's own host name (`{{host}}`, the first label of `os.hostname()`, which `collie walky who`
+prints) are placeholders such as `{{walky:0}}`, `{{lab}}` and `{{labdash}}`, and a replay fills in this
 run's values (`VOLATILE` in `replay/cassette.ts`).
 
 **A mismatch.** When a request has no recording, for example because a case's prompt or the skill text

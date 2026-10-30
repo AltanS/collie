@@ -19,7 +19,7 @@
 // as before M67) and records nothing. A live Claude needs its own login instead (seed.ts), never the key.
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, hostname } from "node:os";
 import { join, resolve } from "node:path";
 
 import { BIN } from "../bins";
@@ -171,12 +171,38 @@ export function dashed(path: string): string {
 }
 
 /**
+ * This machine's own name (`{{host}}`): the lead's `collie walky who` and the bridge's pane labels print
+ * `os.hostname()`, and a cassette must not carry the name of whoever recorded it (cassettes-check HOSTS).
+ * The first label maps to the placeholder (a full name keeps its domain after it), so a replay restores exactly what was recorded. A name too generic to mask safely
+ * (`localhost`, under four characters) is left alone.
+ */
+export function hostLiterals(host: string): Literal[] {
+  const first = host.split(".")[0] ?? "";
+  if (first.length < 4 || first.toLowerCase() === "localhost") return [];
+  if (OWNER_HOSTS.some(([name]) => name === first.toLowerCase())) return [];
+  return [[first, "{{host}}"]];
+}
+
+/**
+ * The owner's host names that the shipped walky talky skill text names in its `collie walky who` example
+ * (cli/skills/walky-talky.md). Claude loads that text into its prompt, so a recording would carry them
+ * on every machine. They are fixed, so they are masked the same way everywhere; the digest of a prompt
+ * is then the same on every machine. Changing the skill text changes its hash and re-records anyway.
+ */
+export const OWNER_HOSTS: readonly Literal[] = [
+  ["bluefin", "{{skillhosta}}"],
+  ["minibuch", "{{skillhostb}}"],
+];
+
+/**
  * The folders a cassette never names as they are: the rig's state root, this checkout and the home
  * folder, and each in Claude Code's dashed form (its memory folder `projects/-var-home-...-project/`
  * is in its system prompt). The recorder writes the placeholder, and a replay puts its own folder back in.
  */
-export function rigLiterals(stateRoot: string, home: string = homedir()): Literal[] {
+export function rigLiterals(stateRoot: string, home: string = homedir(), host: string = hostname()): Literal[] {
   return [
+    ...hostLiterals(host),
+    ...OWNER_HOSTS,
     [stateRoot, "{{lab}}"],
     [WORKTREE, "{{worktree}}"],
     [home, "{{home}}"],
