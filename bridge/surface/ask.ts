@@ -327,6 +327,8 @@ export interface AskDeps {
   readonly generation: (paneId: string) => string | null;
   readonly now?: () => number;
   readonly sleep?: (ms: number) => Promise<void>;
+  /** Where a refused tap is told, one line each. Defaults to `console.log`. */
+  readonly log?: (line: string) => void;
 }
 
 /** One read as the answerer sees it. */
@@ -396,10 +398,12 @@ export class AskAnswerer {
   private readonly now: () => number;
   private readonly sleep: (ms: number) => Promise<void>;
   private readonly inFlight = new Map<string, Promise<AskReply>>();
+  private readonly log: (line: string) => void;
 
   constructor(private readonly deps: AskDeps) {
     this.now = deps.now ?? (() => Date.now());
     this.sleep = deps.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+    this.log = deps.log ?? ((line) => console.log(line));
   }
 
   /** The receipt an answer that never settled gets after a restart (RequestStore.recoverAsks). */
@@ -423,12 +427,26 @@ export class AskAnswerer {
     };
   }
 
-  /** One answer, start to receipt. Never throws for a pane's state; every end is a reply. */
+  /**
+   * One answer, start to receipt. Never throws for a pane's state; every end is a reply. A refused tap
+   * leaves one log line with the ask id, the pane and the reason, so a refusal the phone showed can be
+   * found in the bridge's log (M78 spec 03: a `no_plan` refusal left none).
+   */
   async handle(answer: Answer, target: AskTarget): Promise<AskReply> {
+    const reply = await this.answerOnce(answer, target);
+    const { receipt } = reply;
+    if (receipt?.outcome === "refused" && reply.replayed !== true) {
+      const detail = reply.detail === undefined ? "" : `: ${reply.detail}`;
+      this.log(`[ask] ${receipt.askId} on pane ${receipt.paneId} refused (${receipt.reason ?? "no reason"})${detail}`);
+    }
+    return reply;
+  }
+
+  private async answerOnce(answer: Answer, target: AskTarget): Promise<AskReply> {
     const running = this.inFlight.get(answer.askId);
     if (running !== undefined) {
       await running;
-      return this.handle(answer, target);
+      return this.answerOnce(answer, target);
     }
     // A hook-held permission (M56 spec 12) is answered through its hook. It never reaches the keys.
     const held = this.deps.book.holds?.byAskId(answer.askId);

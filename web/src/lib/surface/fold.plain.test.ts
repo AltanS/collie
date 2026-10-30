@@ -2,6 +2,8 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { dialogModelOf } from "../harness/dialog-contract";
+import { commitKeysFor, splitWalk } from "../harness/prompt-model";
 import { agentOf, idleFor, PANES_DIR, rowsOf } from "../../test/surface-corpus";
 import { CORPUS_WALK, FIXTURES, labelOf } from "../../test/surface-fold";
 import { surfaceOfScreen } from "./fold";
@@ -16,6 +18,11 @@ import { modalWord } from "./surface";
 // fold.plain.allow.json with a reason and a class, and an entry that no longer differs fails (a stale
 // allowlist). The allowlist is the gap list of the Surface on a multiplexer with no colour; the report
 // is experiments/herdr-core-coverage/01-plain-corpus.md in the workspace.
+//
+// M78 spec 09: the ask alone was not enough. On herdr-core every Claude permission card showed its
+// options and refused every tap `no_plan`, because the dialog's top edge was found by a bold title the
+// core does not paint. So the reading carries what an answer needs as well: whether the dialog has a
+// region (its edge, the binding of the ask id) and the keys the bridge would send for each option.
 
 type Class = "colour-needed" | "text-rule-possible";
 interface AllowEntry {
@@ -30,6 +37,52 @@ interface Reading {
   readonly ask: { readonly kind: string; readonly options: readonly string[]; readonly pointer: string } | null;
   readonly draft: string;
   readonly anchors: string;
+  /** What a tap needs: the dialog's region found (or not), and each option's walk and commit keys. */
+  readonly answer: { readonly region: boolean; readonly plans: readonly string[] } | null;
+}
+
+type Lifted = NonNullable<ReturnType<typeof liftDialog>>;
+
+/**
+ * Option `index`'s keys as `walk | commit`, or null where the bridge sends none. The same reading as
+ * `planFor` in bridge/surface/ask.ts, which this project cannot import (the bridge is Bun code): the
+ * option's own keys, a walk split into arrows and the commit, a pointed row's commit from the contract.
+ */
+function planOf(dialog: Lifted, index: number): string | null {
+  const keys = (arrows: readonly string[], commit: readonly string[]): string => `${arrows.join(" ")} | ${commit.join(" ")}`;
+  switch (dialog.blockKind) {
+    case "prompt-select": {
+      const m = dialogModelOf(dialog.block, "prompt-select");
+      const option = m?.options[index];
+      if (m === null || option === undefined || m.feedback?.focused === true) return null;
+      const split = splitWalk(option.keys);
+      return split === null ? keys([], option.keys) : keys(split.walk, commitKeysFor(m, index));
+    }
+    case "wizard": {
+      const m = dialogModelOf(dialog.block, "wizard");
+      if (m === null || m.phase !== "question" || m.field?.focused === true) return null;
+      const option = m.options[index];
+      if (option === undefined) return null;
+      const split = splitWalk(option.keys);
+      return split === null ? keys([], option.keys) : keys(split.walk, split.commit);
+    }
+    case "menu": {
+      const action = dialogModelOf(dialog.block, "menu")?.actions[index];
+      return action === undefined || action.keys.length === 0 ? null : keys([], action.keys);
+    }
+    case "preview-select":
+    case "multi-select":
+    case "unread-dialog":
+      return null;
+  }
+}
+
+/** The answer side of a lifted dialog: the region's presence and the plan per option. */
+function answerOf(dialog: ReturnType<typeof liftDialog>, options: number): Reading["answer"] {
+  if (dialog === null) return null;
+  const plans: string[] = [];
+  for (let index = 0; index < options; index++) plans.push(planOf(dialog, index) ?? "(none)");
+  return { region: dialog.region !== null, plans };
 }
 
 function readOne(raw: string, harness: string): Reading {
@@ -51,6 +104,7 @@ function readOne(raw: string, harness: string): Reading {
     // (the hole is a placeholder or it is not). A styled read hits sgr or fg, a plain read hits text since
     // the text patterns count on an unstyled read only, so which one hits is no divergence.
     anchors: frame === null ? "(no frame)" : frame.anchorsHit.filter((hit) => !hit.startsWith("placeholder-")).join(","),
+    answer: answerOf(dialog, ask?.options.length ?? 0),
   };
 }
 
@@ -63,6 +117,9 @@ function differences(styled: Reading, plain: Reading): string[] {
   if (a !== b) out.push(`ask: ${a} -> ${b}`);
   if (styled.draft !== plain.draft) out.push(`draft: ${JSON.stringify(styled.draft)} -> ${JSON.stringify(plain.draft)}`);
   if (styled.anchors !== plain.anchors) out.push(`anchors: ${styled.anchors} -> ${plain.anchors}`);
+  const c = JSON.stringify(styled.answer);
+  const d = JSON.stringify(plain.answer);
+  if (c !== d) out.push(`answer: ${c} -> ${d}`);
   return out;
 }
 

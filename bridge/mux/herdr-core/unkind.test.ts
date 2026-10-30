@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { STATUS_RANK } from "../../types.ts";
-import { HerdrCoreMux } from "./adapter.ts";
+import { HerdrCoreMux, HISTORY_READ_BUDGET_MS } from "./adapter.ts";
 import { DEFAULT_HC_TIMEOUT_MS, type WireRead } from "./client.ts";
 import { FakeHcCore, KEY_HOLD_MS, ManualClock } from "./fake-core.ts";
 
@@ -125,6 +125,90 @@ describe("terminal.read: incomplete while a full-screen app works (HC_API.md, te
       expect(grid.value.truncated).toBe(false);
       expect(grid.value.text).toContain("Allow edit to src/x.ts?");
     }
+  });
+});
+
+describe("a history read that hangs (HC_API.md, terminal.read `lines` and `how: stitched`; M78 spec 03, pi 2 and 3)", () => {
+  // The real core gave no answer to `lines: 60` in 30 s while a pi dialog stood, and answered
+  // `lines: 0` in 0.1 s. Fixed: before the budget the read waited out the client's 5 s and refused.
+  function slow(budget = 40): Built & { lines: string[] } {
+    const fake = new FakeHcCore();
+    const lines: string[] = [];
+    return { fake, adapter: new HerdrCoreMux(fake, "/home/dev", { historyBudgetMs: budget, log: (line) => lines.push(line) }), clock: new ManualClock(), lines };
+  }
+
+  test("the budget is 2 s, inside the client's own call budget", () => {
+    expect(HISTORY_READ_BUDGET_MS).toBe(2000);
+    expect(HISTORY_READ_BUDGET_MS).toBeLessThan(DEFAULT_HC_TIMEOUT_MS);
+  });
+
+  test("a history read that never answers: the screen's rows, truncated, within the budget (the default 2 s)", async () => {
+    const fake = new FakeHcCore();
+    const adapter = new HerdrCoreMux(fake, "/home/dev", { log: () => undefined });
+    fake.hangHistoryReads("t1");
+    const started = performance.now();
+    const grid = await adapter.readGrid("t1", RECENT);
+    const took = performance.now() - started;
+    if (!grid.ok) throw new Error(grid.detail);
+    expect(took).toBeGreaterThanOrEqual(HISTORY_READ_BUDGET_MS - 20);
+    expect(took).toBeLessThan(HISTORY_READ_BUDGET_MS + 500);
+    expect(grid.value.truncated).toBe(true);
+    expect(grid.value.partial).toBeUndefined();
+    expect(grid.value.text).toContain("Allow edit to src/x.ts?");
+    expect(grid.value.text).not.toContain("earlier line");
+  });
+
+  test("a fast history read is unchanged: history rows, not truncated, no log line", async () => {
+    const { adapter, lines } = slow();
+    const grid = await adapter.readGrid("t1", RECENT);
+    if (!grid.ok) throw new Error(grid.detail);
+    expect(grid.value.truncated).toBe(false);
+    expect(grid.value.text).toContain("earlier line 1");
+    expect(grid.value.text).toContain("Allow edit to src/x.ts?");
+    expect(lines).toEqual([]);
+  });
+
+  test("the hang is logged once per pane, not once per poll, and again after the pane's history answered", async () => {
+    const { fake, adapter, lines } = slow();
+    fake.hangHistoryReads("t1");
+    for (let poll = 0; poll < 3; poll++) expect((await adapter.readGrid("t1", RECENT)).ok).toBe(true);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("t1");
+    expect(lines[0]).not.toMatch(/claude|pi\b|codex/i);
+    fake.hangHistoryReads("t1", false);
+    expect((await adapter.readGrid("t1", RECENT)).ok).toBe(true);
+    fake.hangHistoryReads("t1");
+    expect((await adapter.readGrid("t1", RECENT)).ok).toBe(true);
+    expect(lines).toHaveLength(2);
+  });
+
+  test("the late history answer is dropped: the next read is a fresh one, and nothing throws", async () => {
+    const { fake, adapter } = slow();
+    fake.hangHistoryReads("t1");
+    const cut = await adapter.readGrid("t1", RECENT);
+    if (!cut.ok) throw new Error(cut.detail);
+    fake.hangHistoryReads("t1", false);
+    fake.answerHungReads();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const whole = await adapter.readGrid("t1", RECENT);
+    if (!whole.ok) throw new Error(whole.detail);
+    expect(whole.value.truncated).toBe(false);
+    expect(whole.value.text).toContain("earlier line 1");
+  });
+
+  test("the viewport read is never held by the switch", async () => {
+    const { fake, adapter, lines } = slow();
+    fake.hangHistoryReads("t1");
+    const grid = await adapter.readGrid("t1", VIEWPORT);
+    if (!grid.ok) throw new Error(grid.detail);
+    expect(grid.value.truncated).toBe(false);
+    expect(lines).toEqual([]);
+  });
+
+  test("a history read that fails inside the budget still fails the read", async () => {
+    const { adapter } = slow();
+    const grid = await adapter.readGrid("t99", RECENT);
+    expect(reason(grid)).not.toBe("ok");
   });
 });
 

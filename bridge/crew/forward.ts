@@ -547,6 +547,36 @@ export function classifyReadFailure(failure: PeerFailure, memberId: string): Res
   return forwardError(code, `host ${memberId}: ${failure.reason}`, 503, { host: memberId });
 }
 
+/** How many failing (member, pane) reads {@link MemberPaneReads} remembers; the oldest is forgotten first. */
+const MAX_FAILING_READS = 256;
+
+/**
+ * The lead's log line for a member's pane that it could not read for the phone. A failed forwarded
+ * read changed nothing, so the phone only redraws its last mirror; without a line the lead's log
+ * said nothing at all (M78 spec 03, crew case 21: a member pane read answered 503). One line per
+ * (member, pane) when a read starts failing or fails with another status, none per poll while it
+ * keeps failing, and the next answered read clears it.
+ */
+export class MemberPaneReads {
+  private readonly failing = new Map<string, number>();
+
+  constructor(private readonly log: (line: string) => void = (line) => console.log(line)) {}
+
+  /** One forwarded read of `paneId` on `memberId` ended with `status`; `why` says what the lead learned. */
+  record(memberId: string, paneId: string, status: number, why: string): void {
+    const key = `${memberId}\u0000${paneId}`;
+    if (status < 400) {
+      this.failing.delete(key);
+      return;
+    }
+    if (this.failing.get(key) === status) return;
+    this.failing.delete(key);
+    this.failing.set(key, status);
+    if (this.failing.size > MAX_FAILING_READS) this.failing.delete(this.failing.keys().next().value!);
+    this.log(`[crew] ${memberId}: a read of pane ${paneId} through the lead failed, status ${String(status)} (${why})`);
+  }
+}
+
 /**
  * The transport, narrowed to what forwarding needs — {@link CrewLead.forward} in production.
  *
@@ -603,6 +633,8 @@ export interface ForwardDeps {
    * a text submit to this member's reply route before any peer call ({@link REPLY_OLD_MEMBER_TEXT}).
    */
   readonly surfaceVersion?: number | null | undefined;
+  /** Where a pane read that fails is logged ({@link MemberPaneReads}). Absent, nothing is logged. */
+  readonly paneReads?: MemberPaneReads | undefined;
 }
 
 /**
@@ -865,6 +897,7 @@ export async function forwardToPeer(req: Request, url: URL, deps: ForwardDeps): 
           ? "refused"
           : "unknown",
     );
+    if (kind === "read" && paneId !== undefined) deps.paneReads?.record(deps.link.memberId, paneId, response.status, `${outcome.state}: ${outcome.reason}`);
     return response;
   }
 
@@ -872,6 +905,7 @@ export async function forwardToPeer(req: Request, url: URL, deps: ForwardDeps): 
   // `receivedAt` is when the response landed on this lead, not when the phone finished reading it.
   deps.onExchange?.(outcome.receivedAt);
   record(`http ${outcome.value.status}`);
+  if (kind === "read" && paneId !== undefined) deps.paneReads?.record(deps.link.memberId, paneId, outcome.value.status, "the member answered it");
   const answered =
     answer === null || deps.mask === undefined
       ? outcome.value

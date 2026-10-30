@@ -562,6 +562,7 @@ describe("askRoute", () => {
     let clock = 0;
     const book = new AskBook(() => clock, "route-salt");
     const asks = new AskAnswerer({
+      log: () => undefined,
       mux: pane,
       gate: new KeyGate(pane, () => clock),
       store: new RequestStore(join(dir, "sends"), () => clock),

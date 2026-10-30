@@ -738,6 +738,47 @@ describe("detectPromptSelectRegion — the dialog's subject", () => {
     }
   });
 
+  // ── A read with no styling (herdr-core, M78 spec 09) ─────────────────────────────────────────
+  // The core paints no bold, so the title row is told by its text shape; a styled read keeps the bold.
+  it("the core's captures of a permission card have their edge, so a tap has a region to bind to", () => {
+    for (const name of ["claude--v21314-core-permission--w120.txt", "claude--v21314-core-permission--w60.txt"]) {
+      const region = detectPromptSelectRegion(fixtureLines(name))!;
+      expect(region.model.askRegion, name).toMatch(/Bash command/);
+      expect(region.model.subject?.[0]?.segments.map((s) => s.text).join(""), name).toBe("Bash command");
+    }
+  });
+
+  const plainDialog = (title: string, body: string[]): StyledLine[] =>
+    splitLines(parseAnsi(["● Some earlier output", "─".repeat(40), ` ${title}`, ...body, "", " Do you want to proceed?", " ❯ 1. Yes", "   2. No", "", " Esc to cancel"].join("\n")));
+
+  it("a plain read takes a known title, a subagent's title and a short title over a body as the edge", () => {
+    for (const title of ["Read file", "Tool use", "Bash command · from the general-purpose agent", "Notebook edit"]) {
+      const region = detectPromptSelectRegion(plainDialog(title, [" some/path.ts"]))!;
+      expect(region.model.askRegion, title).not.toBeNull();
+    }
+    // A known title needs no body.
+    expect(detectPromptSelectRegion(plainDialog("Web fetch", []))!.model.askRegion).not.toBeNull();
+  });
+
+  it("a plain read does not take prose, a marker row or a bare short heading as a title", () => {
+    for (const [title, body] of [
+      ["Summary of the changes made today", [" more prose"]],
+      ["● Bash(touch x)", [" more prose"]],
+      ["the next steps", [" more prose"]],
+      ["Done.", [" more prose"]],
+      ["Next steps", []],
+    ] as const) {
+      const region = detectPromptSelectRegion(plainDialog(title, [...body]))!;
+      expect(region.model.askRegion, title).toBeNull();
+    }
+  });
+
+  it("a styled read keeps the bold test: a plain-looking title among painted rows is not an edge", () => {
+    // The same title shape, not bold, on a screen that carries colour elsewhere: no edge.
+    const texts = ["\u001b[31m● Some earlier output\u001b[0m", "─".repeat(40), " Read file", " some/path.ts", "", " Do you want to proceed?", " ❯ 1. Yes", "   2. No", "", " Esc to cancel"];
+    expect(detectPromptSelectRegion(splitLines(parseAnsi(texts.join("\n"))))!.model.askRegion).toBeNull();
+  });
+
   // ── The stepper chip is chrome ───────────────────────────────────────────────────────────────
   it("AskUserQuestion: the `☐ Color Theme` chip is not subject, and the question is unchanged", () => {
     const lines = fixtureLines("claude--select-menu.txt");

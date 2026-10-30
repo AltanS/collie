@@ -38,6 +38,7 @@ const BG_RM = fx("claude--v2303-permission-bash-bg-agent-rm--w160.txt");
 const BG_RM_W80 = fx("claude--v2303-permission-bash-bg-agent-rm--w80.txt");
 const RESUME_FIRST = fx("claude--v2303-menu-resume-picker--w160-first.txt");
 const RESUME_SECOND = fx("claude--v2303-menu-resume-picker--w160-second.txt");
+const CORE_PERMISSION = fx("claude--v21314-core-permission--w120.txt");
 
 const HARNESS = "claude";
 const PANE = "%1";
@@ -107,6 +108,8 @@ interface Rig {
   /** One poll: lift the screen as the shadow does and publish it, the ask the phone would see. */
   poll: () => Ask | null;
   answer: (ask: Ask, optionId: string, over?: Partial<Answer>) => Promise<AskReply>;
+  /** The answerer's log lines. */
+  logs: string[];
 }
 
 function rig(screen: string, harness: string = HARNESS, version = "2.1.200"): Rig {
@@ -117,7 +120,9 @@ function rig(screen: string, harness: string = HARNESS, version = "2.1.200"): Ri
   const store = new RequestStore(join(dir, "sends"), now);
   const book = new AskBook(now, "test-salt");
   const generation: Generation = { value: GEN };
+  const logs: string[] = [];
   const answerer = new AskAnswerer({
+    log: (line) => logs.push(line),
     mux: pane,
     gate,
     store,
@@ -138,7 +143,7 @@ function rig(screen: string, harness: string = HARNESS, version = "2.1.200"): Ri
   };
   const answer = (ask: Ask, optionId: string, over: Partial<Answer> = {}): Promise<AskReply> =>
     answerer.handle({ askId: ask.id, hash: ask.hash, optionId, origin: "person_tap", ...over }, { session: "main", paneId: PANE, harness });
-  return { pane, gate, store, book, answerer, clock, generation, poll, answer };
+  return { pane, gate, store, book, answerer, clock, generation, poll, answer, logs };
 }
 
 function idOf(ask: Ask, label: string): string {
@@ -270,6 +275,52 @@ describe("the ask binding covers the dialog block only", () => {
     expect(reply.receipt).toMatchObject({ outcome: "refused", reason: "no_plan", keys: [] });
     expect(reply.detail).toBe(NO_EDGE_DETAIL);
     expect(pane.keysSeen).toEqual([]);
+  });
+
+  test("a refused tap leaves one log line with the ask id, the pane and the reason; a sent one leaves none", async () => {
+    const rows = W82.split("\n");
+    const edge = rows.findIndex((row) => row.includes("─".repeat(20)));
+    const edgeless = [...rows.slice(0, edge), ...rows.slice(edge + 1)].join("\n");
+    const refused = rig(edgeless);
+    const ask = refused.poll()!;
+    await refused.answer(ask, idOf(ask, "Yes"));
+    expect(refused.logs).toEqual([`[ask] ${ask.id} on pane ${PANE} refused (no_plan): ${NO_EDGE_DETAIL}`]);
+    expect(refused.logs[0]).not.toMatch(/claude/iu);
+
+    const sent = rig(W82);
+    sent.pane.onKeys = (_keys, p) => {
+      p.screen = IDLE;
+    };
+    const live = sent.poll()!;
+    expect((await sent.answer(live, idOf(live, "Yes"))).receipt?.outcome).toBe("sent");
+    expect(sent.logs).toEqual([]);
+  });
+
+  test("an unknown id is refused with a log line too", async () => {
+    const { poll, answer, logs } = rig(BASH);
+    const ask = poll()!;
+    await answer({ ...ask, id: "ask-00000000000000" }, idOf(ask, "Yes"));
+    expect(logs).toEqual([`[ask] ask-00000000000000 on pane ${PANE} refused (ask_unknown): Collie does not know this dialog any more. Check the screen and tap again.`]);
+  });
+});
+
+// M78 spec 09: herdr-core hands out the screen with no styling. The captured card had options and
+// every tap on it was refused no_plan, because its edge was found by a bold title.
+describe("a permission card read through herdr-core, with no styling", () => {
+  test("the lift has a region, and a tap on Yes sends its digit", async () => {
+    const dialog = liftOf(CORE_PERMISSION);
+    expect(dialog.kind).toBe("permission");
+    expect(dialog.region).not.toBeNull();
+    expect(dialog.region!.split("\n")[1]).toBe(" Bash command");
+    const { pane, poll, answer, logs } = rig(CORE_PERMISSION, HARNESS, "2.1.314");
+    pane.onKeys = (keys, p) => {
+      if (keys.join(",") === "1") p.screen = IDLE;
+    };
+    const ask = poll()!;
+    const reply = await answer(ask, idOf(ask, "Yes"));
+    expect(reply.receipt).toMatchObject({ outcome: "sent", keys: ["1"] });
+    expect(pane.keysSeen).toEqual(["1"]);
+    expect(logs).toEqual([]);
   });
 });
 
