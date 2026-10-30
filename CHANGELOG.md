@@ -34,6 +34,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A send to Claude Code on a plain-text multiplexer is no longer refused when only its grey suggestion shows.** herdr-core hands out the screen with no colour, so Claude's faint prompt suggestion (`cat hello.txt to verify`) read as a draft and a send was refused `draft_present`. On a read with no styling Collie now probes the box: the probe character lands at the start of the box for a suggestion, and the send goes on into the empty box; it lands after the text for a typed draft, which is refused as before. A walky talky message held behind the suggestion goes out too, at the next check of its hold. A styled read is unchanged.
 - **A capital letter key reaches a herdr-core program as a capital.** The core takes key names without regard to case, so `G` from the Keys tray or the vim pad arrived as `g`; Collie now sends `shift+g`.
 - **omp counts as an agent on herdr-core.** omp sends no status report, so the core listed it as a shell and its sends went unprobed; Collie now names the agent from the foreground process when a program reports nothing.
+- **`collie hooks install claude` writes where Claude Code reads.** It used `~/.claude/settings.json` even when `CLAUDE_CONFIG_DIR` was set, so the hooks never reached Claude; install, uninstall, status and the doctor now use `$CLAUDE_CONFIG_DIR/settings.json` first.
 
 ## [1.25.1] - 2026-10-30
 

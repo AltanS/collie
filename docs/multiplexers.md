@@ -416,7 +416,9 @@ would install: /home/you/collie/bin/collie beacon emit  (this checkout)
 
 Because tmux, zellij and tern expose panes as generic shells, agents must announce themselves. This
 requires installing Collie's [beacon](#agent-beacons-optional-linux) hooks into Claude Code's
-configuration. On Herdr, the same hooks give [hook edges](#hook-edges) only.
+configuration. On Herdr, the same hooks give [hook edges](#hook-edges) only. The file is
+`$CLAUDE_CONFIG_DIR/settings.json` when that variable is set to an absolute path, and
+`~/.claude/settings.json` otherwise, which is where Claude Code reads it.
 
 The output references the `bin/collie` path from this repository. Package installs use the installed
 binary path (`~/.local/bin/collie` or `~/.local/share/collie/current/bin/collie`) rather than

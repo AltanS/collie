@@ -1,4 +1,4 @@
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, isAbsolute, join } from "node:path";
 
 import { BEACON_HOOKS, type HookRegistration } from "./beacon.ts";
 import { cmdCodexHooksInstall, cmdCodexHooksUninstall, codexHooksStatusLine } from "./codex-hooks.ts";
@@ -10,7 +10,7 @@ import { EXIT, type Io } from "./io.ts";
 import { type LinkReader, linkPath, resolveLinkTarget } from "./link.ts";
 import type { Files } from "./sys.ts";
 import { collieBinary } from "./unit.ts";
-import { HOLD_VERB, holdCommandIn } from "./hold-entry.ts";
+import { agentConfigRoot, HOLD_VERB, holdCommandIn } from "./hold-entry.ts";
 import { loadProfiles } from "../web/src/lib/surface/profile.ts";
 import { compareSemver } from "../web/src/lib/semver.ts";
 import { binaryVersion } from "../bridge/surface/binary-version.ts";
@@ -22,8 +22,9 @@ import { statusLineBehind, statusLineState, unwrapStatusLine, wrapStatusLine } f
 //
 // ── THE SCOPE IS GLOBAL, AND THAT IS THE MILESTONE'S PREMISE ──────────────────────────────────────
 //
-// The targets are `~/.claude/settings.json` and the same file in every `CLAUDE_CONFIG_DIR` profile
-// the journal registry already knows about (issue #92). PROJECT SETTINGS ARE NEVER WRITTEN — not
+// The targets are `${CLAUDE_CONFIG_DIR:-~/.claude}/settings.json`, which is the file Claude Code reads
+// in this environment, and the same file in every `CLAUDE_CONFIG_DIR` profile the journal registry
+// already knows about (issue #92). PROJECT SETTINGS ARE NEVER WRITTEN — not
 // `.claude/settings.json`, not `.claude/settings.local.json`. The operator adopts panes *anywhere on
 // the host*, so a per-project install would make a pane's identity depend on which directory the
 // agent happened to be started in, which is precisely the fragility beacons exist to remove. The cost
@@ -219,7 +220,9 @@ export const backupPath = (target: HookTarget): string => `${target.path}.collie
 /**
  * Every settings file this install writes to.
  *
- * `~/.claude` always, plus the parent of each configured Claude journal root — the bridge resolves
+ * The config dir of this environment first (`$CLAUDE_CONFIG_DIR` when it is set to an absolute path,
+ * else `~/.claude`: Claude Code reads exactly one of them, so a set variable means `~/.claude` is
+ * not touched), plus the parent of each configured Claude journal root — the bridge resolves
  * those from `COLLIE_TRANSCRIPT_ROOT` (a comma-separated list, because `CLAUDE_CONFIG_DIR` gives each
  * profile its own tree, issue #92), and a profile's `settings.json` sits beside its `projects/`. So
  * the set of homes Collie can already READ a journal from is exactly the set it installs hooks into;
@@ -232,7 +235,9 @@ export const backupPath = (target: HookTarget): string => `${target.path}.collie
  * capability declared over beacons that will never be written.
  */
 export function claudeSettingsTargets(ctx: Pick<CliContext, "home" | "env">): HookTarget[] {
-  const dirs = [join(ctx.home, ".claude")];
+  // A relative value names no folder Collie could find again (the same rule as `claudeProfileDirs`).
+  const own = ctx.env.CLAUDE_CONFIG_DIR?.trim() ?? "";
+  const dirs = [own !== "" && isAbsolute(own) ? agentConfigRoot(ctx.env, ctx.home).replace(/[\\/]+$/u, "") || own : join(ctx.home, ".claude")];
   for (const root of (ctx.env.COLLIE_TRANSCRIPT_ROOT ?? "").split(",")) {
     const trimmed = root.trim();
     if (trimmed !== "") dirs.push(dirname(trimmed));

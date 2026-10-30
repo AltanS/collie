@@ -53,6 +53,9 @@ const COMMAND = `${OWN} beacon emit ${HOOK_MARKER}`;
 /** A second Claude profile, named by `COLLIE_TRANSCRIPT_ROOT`, and the settings file beside its journal. */
 const OPS_PROFILE = join("/srv", "ops");
 const OPS_SETTINGS = join(OPS_PROFILE, "settings.json");
+/** A profile named by `CLAUDE_CONFIG_DIR` alone, the way Claude Code is pointed at it. */
+const WORK_PROFILE = join("/srv", "work-profile");
+const WORK_SETTINGS = join(WORK_PROFILE, "settings.json");
 /** Where a stow/chezmoi-style `~/.claude` link points. */
 const DOTFILES = join("/dotfiles", "claude");
 /** A path segment that only a version directory has — the hook command must never contain it. */
@@ -87,6 +90,16 @@ describe("the targets", () => {
       { dir: work, path: join(work, "settings.json") },
       { dir: OPS_PROFILE, path: OPS_SETTINGS },
     ]);
+  });
+
+  test("are the CLAUDE_CONFIG_DIR profile alone when the variable is set, because Claude reads only that one", () => {
+    expect(claudeSettingsTargets(context({ CLAUDE_CONFIG_DIR: WORK_PROFILE }))).toEqual([{ dir: WORK_PROFILE, path: WORK_SETTINGS }]);
+  });
+
+  test("ignore a CLAUDE_CONFIG_DIR that is relative or empty, and keep ~/.claude", () => {
+    for (const value of ["", "  ", "profiles/work"]) {
+      expect(claudeSettingsTargets(context({ CLAUDE_CONFIG_DIR: value }))).toEqual([{ dir: CLAUDE_DIR, path: SETTINGS }]);
+    }
   });
 
   test("never name a project settings file, and never repeat one", () => {
@@ -357,6 +370,17 @@ describe("install", () => {
     expect(cmdHooksInstall(d, ["claude"])).toBe(EXIT.OK);
     expect(d.files.entries.has(SETTINGS)).toBe(true);
     expect(d.files.entries.has(OPS_SETTINGS)).toBe(true);
+  });
+
+  test("with CLAUDE_CONFIG_DIR set, writes that profile and touches nothing under ~/.claude", () => {
+    const mine = serializeSettings({ model: "opus" });
+    const d = deps({ env: { CLAUDE_CONFIG_DIR: WORK_PROFILE }, files: { [SETTINGS]: mine } });
+    expect(cmdHooksInstall(d, ["claude"])).toBe(EXIT.OK);
+    expect(d.files.entries.has(WORK_SETTINGS)).toBe(true);
+    expect(d.files.entries.get(SETTINGS)!.text).toBe(mine);
+    // No backup, no temp file, no new file beside the seeded one, and no operation names the folder.
+    expect([...d.files.entries.keys()].filter((key) => key.includes(".claude"))).toEqual([posixKey(SETTINGS)]);
+    expect(d.files.ops.filter((op) => op.includes(".claude"))).toEqual([]);
   });
 
   test("refuses a symlinked settings file, untouched, with a remedy", () => {
@@ -652,6 +676,16 @@ describe("uninstall", () => {
     cmdHooksInstall(d, ["claude"]);
     expect(cmdHooksUninstall(d, ["claude"])).toBe(EXIT.OK);
     expect(settingsOf(d)).toEqual({ model: "opus", hooks: { Stop: [THEIRS] } });
+  });
+
+  test("with CLAUDE_CONFIG_DIR set, removes from that profile and touches nothing under ~/.claude", () => {
+    const mine = serializeSettings({ model: "opus" });
+    const d = deps({ env: { CLAUDE_CONFIG_DIR: WORK_PROFILE }, files: { [SETTINGS]: mine } });
+    cmdHooksInstall(d, ["claude"]);
+    expect(cmdHooksUninstall(d, ["claude"])).toBe(EXIT.OK);
+    expect(settingsOf(d, WORK_SETTINGS)).toEqual({});
+    expect(d.files.entries.get(SETTINGS)!.text).toBe(mine);
+    expect(d.files.ops.filter((op) => op.includes(".claude"))).toEqual([]);
   });
 
   test("says so when there is nothing of ours anywhere", () => {
