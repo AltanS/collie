@@ -234,10 +234,20 @@ does not bound the harnesses on the core.
   wait it out, so a send takes longer.
 - **No History without hooks.** The core keeps no conversation id. On the core the rig writes the
   beacon hooks `collie hooks install claude` would write into Claude's scratch settings, with the rig's
-  own `collie`, so a Claude pane has History and Chat as it does for an operator who installed them.
+  own `collie`, so a Claude pane has History and Chat as it does for an operator who installed them. pi
+  has no such hook, so a pi pane on the core has no History: its Load older case and the Chat card of
+  its walky talky case fail there.
 - **An agent names itself.** The core names a terminal's agent only from the program's own OSC 7501
-  report. Claude Code and pi send one; omp 18.6.1 does not, so its pane reads as a shell and its cases
-  are not reached.
+  report. Claude Code 2.1.314 and pi 1.3.0 send one; omp 18.6.1 does not, so its pane reads as a shell
+  and every omp case is not reached.
+- **A history read can hang.** On 2026-10-30 a `terminal.read` with history (`hc read --lines 60`) on a
+  pi that showed a dialog did not answer in 30 s, while the plain screen read answered at once. The
+  bridge gives up after 5 s and reads the pane as unreadable, so pi's permission and question cards
+  never reach the phone.
+- **A red Claude case stops the rest.** Claude's recordings replay one session in order. A card left
+  up and then cleared with Escape puts "Request interrupted" into Claude's next prompt, and a case left
+  out moves the session's first prompt. Either way every later Claude request misses its recording. So
+  on the core, as on Herdr, a Claude case after a red one says nothing until the red one is fixed.
 - **No view pane and no attached client.** The core keeps each terminal's screen itself, with no
   client attached. A terminal started over the API is 200 x 120.
 
