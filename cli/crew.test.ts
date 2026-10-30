@@ -552,8 +552,27 @@ describe("collie crew invite", () => {
     const h = harness(leadStore());
     expect(await cmdCrewInvite(h.deps, [])).toBe(EXIT.OK);
     expect(h.io.stdout[0]).toBe(`r1.${fp("desk")}`);
-    expect(h.io.stdout.join("\n")).not.toContain("restarting the bridge");
+    expect(h.io.stdout).toHaveLength(1);
     expect(h.io.stderr).toContain("  restarting the bridge so the freshly minted invite takes effect…");
+  });
+
+  test("stdout is exactly the token line, and every restart line and the banner are on stderr", async () => {
+    // The real restart prints through the `Io` it is given; the fake does the same, so a route that
+    // forgot to hand it a stderr `Io` would put these two lines on stdout, before the token.
+    const h = harness(leadStore(), [], {
+      restart: (into) => {
+        const io = into ?? h.deps.io;
+        io.out("bridge stopped (systemd --user: collie.service)");
+        io.out("bridge started (systemd --user: collie.service)");
+        return Promise.resolve(EXIT.OK);
+      },
+    });
+    expect(await cmdCrewInvite(h.deps, [])).toBe(EXIT.OK);
+    expect(h.io.stdout).toEqual([`r1.${fp("desk")}`]);
+    expect(h.io.stderr).toContain("bridge stopped (systemd --user: collie.service)");
+    expect(h.io.stderr).toContain("bridge started (systemd --user: collie.service)");
+    expect(h.io.stderr.join("\n")).toContain("single-use");
+    expect(h.io.stderr.join("\n")).toContain("collie crew join");
   });
 
   test("https mode: the banner prints the front door, the full name, and it is a whole command", async () => {

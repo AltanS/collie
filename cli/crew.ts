@@ -587,14 +587,23 @@ export async function ensureStore(deps: CrewDeps, label: string | undefined): Pr
 }
 
 /**
+ * An `Io` whose `out` writes to stderr. A verb whose stdout is machine-readable hands this to the
+ * nested lifecycle verbs, so their "bridge stopped" and "bridge started" lines cannot reach stdout.
+ */
+function allToStderr(io: Io): Io {
+  return { out: io.err, err: io.err, errIsTty: io.errIsTty };
+}
+
+/**
  * Restart the local service so the running bridge sees the change, and say why.
  *
- * `notice` picks the stream for the "restarting…" line. `crew invite` sends it to stderr, because
- * its stdout is machine-readable: the first line is the token, and a script reads it from there.
+ * `notice` picks the stream for the "restarting…" line. `crew invite` sends it, and every line the
+ * nested restart prints, to stderr, because its stdout is machine-readable: it carries the token
+ * first, and nothing from the restart path.
  */
 async function applyLocally(deps: CrewDeps, what: string, notice: "out" | "err" = "out"): Promise<void> {
   deps.io[notice](`  restarting the bridge so ${what} takes effect…`);
-  const code = await deps.restart();
+  const code = await deps.restart(notice === "err" ? allToStderr(deps.io) : undefined);
   if (code !== EXIT.OK) {
     deps.io.err("warn: the restart failed — the trust store IS updated, but the running bridge still");
     deps.io.err("      holds the previous roster. Run `collie restart` before relying on this change.");
@@ -711,16 +720,18 @@ export async function cmdCrewInvite(deps: CrewDeps, args: readonly string[]): Pr
   // enrollment-path MITM/relay: a token that names no lead is a token `join` will not act on.
   const leadFp = data.self.fingerprint;
   deps.io.out(`${minted.token}.${leadFp}`);
-  deps.io.out("");
-  deps.io.out(`  single-use · expires ${new Date(minted.expiresAt).toISOString()} (10 minutes)`);
-  deps.io.out("  Shown once — only its hash is stored. Run this on the machine that is joining:");
+  // Stdout carries the token and nothing else, so `collie crew invite | ssh member 'collie crew join …'` works.
+  // The banner for the person at the terminal goes to stderr, where the restart notice already went.
+  deps.io.err("");
+  deps.io.err(`  single-use · expires ${new Date(minted.expiresAt).toISOString()} (10 minutes)`);
+  deps.io.err("  Shown once — only its hash is stored. Run this on the machine that is joining:");
   const host = target ?? "<this-lead-address>";
   // The short form first, because it is the one a person types: `join` asks for the token at a
   // prompt when none is given, so nothing else has to be remembered. The stdin form stays right
   // underneath it — it is what a script uses, and it is still the only form that takes no keystrokes.
-  deps.io.out(`    collie crew join ${host}`);
-  deps.io.out(`    collie crew join ${host} -   # paste the token on stdin`);
-  deps.io.out("  Passing it as an argument instead leaves it in `ps` output for every local uid.");
+  deps.io.err(`    collie crew join ${host}`);
+  deps.io.err(`    collie crew join ${host} -   # paste the token on stdin`);
+  deps.io.err("  Passing it as an argument instead leaves it in `ps` output for every local uid.");
   return EXIT.OK;
 }
 

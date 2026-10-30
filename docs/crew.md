@@ -86,10 +86,11 @@ Collie installed and running.
 1. On the lead, mint the token.
 
    ```bash
-   collie crew invite        # prints the token, then the join command to run
+   collie crew invite        # prints the token, and the join command to run on stderr
    ```
 
-   The token is one line: `<token>.<lead-fingerprint>`.
+   The token is one line: `<token>.<lead-fingerprint>`. It is the only thing on stdout. The restart
+   lines and the join command go to stderr, so `collie crew invite | ssh member 'collie crew join <address> -'` works.
 
 2. On the joining machine, join the crew and paste the token when it asks.
 
