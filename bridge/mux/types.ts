@@ -406,6 +406,22 @@ export interface MuxGridRequest {
   readonly scope: "viewport" | "recent";
   readonly lines: number;
   readonly styling: "preserve" | "strip";
+  /** What the bridge knows about the pane that the multiplexer may not. See {@link MuxReadHint}. */
+  readonly hint?: MuxReadHint;
+}
+
+/**
+ * What the bridge knows about the pane that the multiplexer may not; an adapter may ignore it.
+ * OPTIONAL on both sides: a caller that knows nothing sends none, and the conformance suite never
+ * requires an adapter to act on it.
+ *
+ * `blocked`: the bridge's state engine reads the pane as waiting on a person (the screen shows an
+ * ask), even when the multiplexer reports the program `working`, as herdr-core does for pi's
+ * dialogs. herdr-core reads such a pane's screen alone and starts no history read, because the core
+ * holds the terminal's keys behind a history read (herdr-core/adapter.ts, HISTORY_READ_BACKOFF_MS).
+ */
+export interface MuxReadHint {
+  readonly blocked?: boolean;
 }
 
 /**

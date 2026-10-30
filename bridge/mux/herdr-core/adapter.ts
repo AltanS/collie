@@ -156,28 +156,44 @@ export const HISTORY_READ_BUDGET_MS = 2000;
 
 /**
  * How long a pane whose history read ran past {@link HISTORY_READ_BUDGET_MS} reads its screen alone,
- * counted from the end of that slow read. A new screen text ends it sooner.
+ * counted from when the core ended that slow read. Time alone ends it: a screen change does not.
+ * Each further slow read in a row doubles the wait, up to {@link HISTORY_READ_BACKOFF_MAX_MS}, and a
+ * history read that answers inside the budget sets it back to this.
  *
  * WHY: giving up on Collie's side does not stop the core. hc 0.1.14 runs a terminal's history reads
  * and key presses one at a time; under pi's permission dialog one history read took 25 s and answered
  * `complete: false, how: screen`, and every `terminal.keys` on that terminal waited behind it. The
  * phone reads `recent` every 1.5 s, so a fresh history read per poll grew the queue for good and the
  * pane's keys stopped answering (M78 report 10, case 2: nine minutes). So a pane has at most one
- * history read on the core, none while its program reports `blocked`, and none during this backoff.
+ * history read on the core, none while its program reports `blocked` or the bridge's hint says so,
+ * and none during this backoff.
+ *
+ * WHY NOT "until the screen changes": a pane with a dialog redraws every frame (pi's spinner, the
+ * cursor), so its screen text changed on every read and such a backoff ended at once. The first fix
+ * ended it that way, and one pi dialog still started ten 25 s history reads back to back (M78
+ * report 10, the int/1.25.3 core leg).
  */
 export const HISTORY_READ_BACKOFF_MS = 30_000;
+
+/** The longest wait {@link HISTORY_READ_BACKOFF_MS} doubles to: 5 minutes. */
+export const HISTORY_READ_BACKOFF_MAX_MS = 300_000;
 
 /** What a test may change about the adapter: the history read's budget and backoff, the clock, and where its log lines go. */
 export interface HerdrCoreOptions {
   readonly historyBudgetMs?: number;
   readonly historyBackoffMs?: number;
+  readonly historyBackoffMaxMs?: number;
   readonly now?: () => number;
   readonly log?: (line: string) => void;
 }
 
-/** A pane's backoff after a slow history read: the screen text it saw, and when it ends (`Infinity` while the slow read still runs). */
+/**
+ * A pane's backoff after a slow history read: the wait it earned, and when it ends (`Infinity`
+ * while the slow read still runs on the core). The entry outlives its end, so the next slow read
+ * knows it came right after one and doubles the wait; a history read inside the budget removes it.
+ */
 interface HistoryBackoff {
-  readonly screen: string;
+  readonly waitMs: number;
   until: number;
 }
 
@@ -191,16 +207,15 @@ export class HerdrCoreMux implements MuxAdapter {
   /** Whether the core on the socket was last seen speaking our generation. `null`: not asked yet. */
   private compatible: boolean | null = null;
 
-  /** Panes whose history read ran past its budget and were logged; one line per pane until it answers again. */
-  private readonly slowHistory = new Set<string>();
   /** Per pane, the history read the core still runs, until it settles; Collie's budget does not end it. */
   private readonly historyPending = new Map<string, Promise<WireRead>>();
-  /** Per pane, the backoff after a slow history read. */
+  /** Per pane, the backoff after a slow history read, and the wait the next slow one doubles. */
   private readonly historyBackoff = new Map<string, HistoryBackoff>();
   /** Panes whose program reported `blocked` in the last snapshot: a dialog is up. */
   private readonly blockedPanes = new Set<string>();
   private readonly historyBudgetMs: number;
   private readonly historyBackoffMs: number;
+  private readonly historyBackoffMaxMs: number;
   private readonly now: () => number;
   private readonly log: (line: string) => void;
 
@@ -211,6 +226,7 @@ export class HerdrCoreMux implements MuxAdapter {
   ) {
     this.historyBudgetMs = options.historyBudgetMs ?? HISTORY_READ_BUDGET_MS;
     this.historyBackoffMs = options.historyBackoffMs ?? HISTORY_READ_BACKOFF_MS;
+    this.historyBackoffMaxMs = options.historyBackoffMaxMs ?? HISTORY_READ_BACKOFF_MAX_MS;
     this.now = options.now ?? (() => Date.now());
     this.log = options.log ?? ((line) => console.log(line));
   }
@@ -263,8 +279,9 @@ export class HerdrCoreMux implements MuxAdapter {
    *
    * A `recent` read whose history read has not answered within {@link HISTORY_READ_BUDGET_MS} is
    * answered with the screen's rows, read beside it, and marked `truncated`. So is a `recent` read
-   * that starts no history read: one is still running on the core, the program reports `blocked`, or
-   * the pane is in its {@link HISTORY_READ_BACKOFF_MS} backoff.
+   * that starts no history read: one is still running on the core, the program reports `blocked`,
+   * the request's hint says the bridge reads the pane as blocked, or the pane is in its
+   * {@link HISTORY_READ_BACKOFF_MS} backoff.
    */
   async readGrid(paneId: string, request: MuxGridRequest): Promise<MuxOutcome<MuxGrid>> {
     const remote = remoteRefusal(paneId);
@@ -275,7 +292,7 @@ export class HerdrCoreMux implements MuxAdapter {
         const screen = await this.rpc.readTerminal(paneId, 0);
         return muxOk(this.gridOf(paneId, screen, screen, { keep: null, truncated: false }));
       }
-      const answered = await this.historyOrScreen(paneId, lines);
+      const answered = await this.historyOrScreen(paneId, lines, request.hint?.blocked === true);
       return muxOk(this.gridOf(paneId, answered.read, answered.screen, { keep: lines, truncated: answered.truncated }));
     } catch (err) {
       return refusalFor(err);
@@ -288,22 +305,17 @@ export class HerdrCoreMux implements MuxAdapter {
    * of either kind is dropped.
    *
    * At most one history read per pane runs on the core (see {@link HISTORY_READ_BACKOFF_MS}). While it
-   * runs, while the program reports `blocked`, and during the backoff after a slow one, the screen read
-   * alone answers, marked `truncated`, and no history read starts.
+   * runs, while the program reports `blocked` or the bridge's hint does (`hintBlocked`), and during the
+   * backoff after a slow one, the screen read alone answers, marked `truncated`, and no history read
+   * starts.
    */
-  private async historyOrScreen(paneId: string, lines: number): Promise<{ read: WireRead; screen: WireRead; truncated: boolean }> {
+  private async historyOrScreen(paneId: string, lines: number, hintBlocked: boolean): Promise<{ read: WireRead; screen: WireRead; truncated: boolean }> {
     const screen = this.rpc.readTerminal(paneId, 0);
     // Whichever is not used must not surface as an unhandled rejection.
     screen.catch(() => undefined);
-    if (this.historyPending.has(paneId) || this.blockedPanes.has(paneId)) {
+    if (this.historyPending.has(paneId) || this.blockedPanes.has(paneId) || hintBlocked || this.inBackoff(paneId)) {
       const shown = await screen;
       return { read: shown, screen: shown, truncated: true };
-    }
-    const backoff = this.historyBackoff.get(paneId);
-    if (backoff !== undefined) {
-      const shown = await screen;
-      if (this.now() < backoff.until && shown.text === backoff.screen) return { read: shown, screen: shown, truncated: true };
-      this.historyBackoff.delete(paneId);
     }
     const history = this.startHistoryRead(paneId, lines);
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -313,15 +325,21 @@ export class HerdrCoreMux implements MuxAdapter {
     try {
       const read = await Promise.race([history, late]);
       if (read !== null) {
-        this.slowHistory.delete(paneId);
+        this.historyBackoff.delete(paneId);
         return { read, screen: await screen, truncated: false };
       }
     } finally {
       clearTimeout(timer);
     }
+    this.startBackoff(paneId, history);
     const shown = await screen;
-    this.startBackoff(paneId, history, shown.text);
     return { read: shown, screen: shown, truncated: true };
+  }
+
+  /** Is this pane inside its backoff after a slow history read? An entry past its end is not, and stays for the doubling. */
+  private inBackoff(paneId: string): boolean {
+    const backoff = this.historyBackoff.get(paneId);
+    return backoff !== undefined && this.now() < backoff.until;
   }
 
   /** One history read on the core, remembered as the pane's pending one until it settles, however late. */
@@ -332,21 +350,28 @@ export class HerdrCoreMux implements MuxAdapter {
       if (this.historyPending.get(paneId) !== history) return;
       this.historyPending.delete(paneId);
       const backoff = this.historyBackoff.get(paneId);
-      if (backoff !== undefined && backoff.until === Number.POSITIVE_INFINITY) backoff.until = this.now() + this.historyBackoffMs;
+      if (backoff !== undefined && backoff.until === Number.POSITIVE_INFINITY) backoff.until = this.now() + backoff.waitMs;
     };
     history.then(settled, settled);
     return history;
   }
 
-  /** The backoff after a slow history read. Its clock starts when the core ends that read. Logged once per pane until a read answers in time. */
-  private startBackoff(paneId: string, history: Promise<WireRead>, screen: string): void {
+  /**
+   * The backoff after a slow history read. Its clock starts when the core ends that read. A slow read
+   * right after a backoff doubles the wait, up to the cap. Logged when a pane's backoff starts and each
+   * time its wait doubles, never once per read.
+   */
+  private startBackoff(paneId: string, history: Promise<WireRead>): void {
+    const previous = this.historyBackoff.get(paneId);
+    const waitMs = previous === undefined ? this.historyBackoffMs : Math.min(previous.waitMs * 2, this.historyBackoffMaxMs);
     const running = this.historyPending.get(paneId) === history;
-    this.historyBackoff.set(paneId, { screen, until: running ? Number.POSITIVE_INFINITY : this.now() + this.historyBackoffMs });
-    if (this.slowHistory.has(paneId)) return;
-    this.slowHistory.add(paneId);
-    this.log(
-      `[herdr-core] pane ${paneId}: history read slow (no answer in ${String(this.historyBudgetMs)} ms), screen-only reads for ${String(Math.round(this.historyBackoffMs / 1000))} s after it ends, or until the screen changes`,
-    );
+    this.historyBackoff.set(paneId, { waitMs, until: running ? Number.POSITIVE_INFINITY : this.now() + waitMs });
+    const wait = `${String(Math.round(waitMs / 1000))} s`;
+    if (previous === undefined) {
+      this.log(`[herdr-core] pane ${paneId}: history read slow (no answer in ${String(this.historyBudgetMs)} ms), screen-only reads for ${wait} after it ends`);
+      return;
+    }
+    if (waitMs > previous.waitMs) this.log(`[herdr-core] pane ${paneId}: history read slow again, screen-only reads for ${wait} after it ends`);
   }
 
   /**
@@ -599,9 +624,6 @@ export class HerdrCoreMux implements MuxAdapter {
     const live = new Set(snapshot.panes.map((pane) => pane.paneId));
     for (const paneId of this.revisions.keys()) {
       if (!live.has(paneId)) this.revisions.delete(paneId);
-    }
-    for (const paneId of this.slowHistory) {
-      if (!live.has(paneId)) this.slowHistory.delete(paneId);
     }
   }
 }
