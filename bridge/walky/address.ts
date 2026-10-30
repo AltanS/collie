@@ -133,3 +133,34 @@ export function labelOf(facts: LabelFacts, titles: boolean): string {
   if (titles && facts.terminalTitle !== undefined && facts.terminalTitle.trim() !== "") return headerField(facts.terminalTitle, WALKY_LABEL_MAX);
   return headerField(repo !== "" ? repo : facts.paneId, WALKY_LABEL_MAX);
 }
+
+/** A workspace scope: a folder name, on one branch or on any (`branch: null`). */
+export interface WalkyScope {
+  readonly repo: string;
+  readonly branch: string | null;
+}
+
+/** Whether an address is a scope (`<repo>`, `<repo>#<branch>`, `here`): the lead expands it into one delivery per pane. */
+export function isScopeAddress(address: WalkyAddress | null): address is Extract<WalkyAddress, { kind: "workspace" | "here" }> {
+  return address !== null && (address.kind === "workspace" || address.kind === "here");
+}
+
+/**
+ * The scope a pane's label stands in: the part before its first `#` as the repo and the rest as the
+ * branch (`labelOf` writes `<repo>#<branch>`), or the whole label with no branch. Null when the label
+ * names no folder: it is the pane id itself, or empty (`-`).
+ */
+export function labelScope(label: string, paneId: string): WalkyScope | null {
+  if (label === "" || label === "-" || label === paneId) return null;
+  const hash = label.indexOf("#");
+  if (hash < 0) return { repo: label, branch: null };
+  const repo = label.slice(0, hash);
+  return repo === "" ? null : { repo, branch: label.slice(hash + 1) };
+}
+
+/** Whether a pane's label sits in a scope: the same repo, and the same branch when the scope names one. */
+export function inScope(label: string, paneId: string, scope: WalkyScope): boolean {
+  const own = labelScope(label, paneId);
+  if (own === null || own.repo !== scope.repo) return false;
+  return scope.branch === null || own.branch === scope.branch;
+}

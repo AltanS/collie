@@ -7,13 +7,13 @@
 // device, through `POST /api/walky`, and nothing else: the local socket refuses a send that names no
 // pane, so the kind fails closed. The local uid can lie about its pane (decision 4); the docs say so.
 
-import { isSelf, paneAddress, parseAddress, LOCAL_MEMBER } from "./address.ts";
+import { isScopeAddress, isSelf, paneAddress, parseAddress, LOCAL_MEMBER } from "./address.ts";
 import { signMessage } from "./canonical.ts";
 import { BODY_TOO_LONG, cleanBody } from "./clean.ts";
-import { CANCELLED_BY_SENDER, DROPPED_BY_OWNER, isFanOut, withoutAnsweredLegs, WalkyDeliverer, type DelivererDeps, type SenderPane, type TakeBack, type WalkyPane } from "./deliver.ts";
+import { CANCELLED_BY_SENDER, DROPPED_BY_OWNER, isFanOut, sendIdOf, withoutAnsweredLegs, WalkyDeliverer, type DelivererDeps, type SenderPane, type TakeBack, type WalkyPane } from "./deliver.ts";
 import { sameInstance, type LogRecord, type WalkyLog } from "./log.ts";
-import type { RefusalCounts } from "./refusals.ts";
-import { headerField, WALKY_LABEL_MAX, type WalkyEntry, type WalkyMessage, type WalkyReceipt, type WalkySkipped, type WalkyTarget, type WalkyVerified } from "./types.ts";
+import { MEMBER_UNREACHABLE, type RefusalCounts } from "./refusals.ts";
+import { headerField, WALKY_LABEL_MAX, type WalkyEntry, type WalkyMessage, type WalkyReceipt, type WalkyReceiptState, type WalkySkipped, type WalkyTarget, type WalkyVerified } from "./types.ts";
 
 /** Who is sending: an agent's pane, or an operator by label. */
 export type WalkySenderRef = { readonly kind: "agent"; readonly pane: WalkyPane } | { readonly kind: "operator"; readonly label: string };
@@ -40,18 +40,7 @@ export interface WalkyServiceDeps extends DelivererDeps {
   readonly machine: string;
   /** The PKCS#8 key behind this collie's crew certificate, or null (solo: nothing is signed). */
   readonly keyPem: () => string | null;
-  /**
-   * THE CREW SEAM FOR `who`. Spec 03 fills it: the targets the lead knows on other members. Absent,
-   * `who` lists this machine's panes only.
-   */
-  readonly remoteTargets?: () => readonly WalkyTarget[];
-  /**
-   * True on a crew member that is not the lead. Such a bridge hands a message for another machine to
-   * its lead, and learns how it ended there only when the lead pushes the outcome back (CREW_PROTOCOL
-   * §21). Until then `status` names those targets, and `who` says the other machines are the lead's
-   * to list.
-   */
-  readonly outcomesOnLead?: boolean;
+  // `remoteTargets` and `outcomesOnLead` sit on DelivererDeps (deliver.ts): a scope send reads them too (M75).
   /** On a member: its lead's member id, named in the `who` note. */
   readonly leadName?: () => string | null;
   /** On a lead: the shell panes the crew's members report, which a broadcast skips. */
@@ -63,10 +52,56 @@ export function whoElsewhereNote(lead: string | null): string {
   return `other machines: run \`collie walky who\` on the lead${lead === null ? "" : ` (${lead})`}, or use the phone`;
 }
 
+/**
+ * One delivery of a scope send (M75), as `status` lists it under the parent: the message id. Each is a
+ * receipt of its own, keyed `(id, target)` as every receipt is, so a reader of one receipt reads it
+ * as before.
+ */
+export interface WalkyDelivery {
+  /** The pane, `<member>/<pane>`; `<member>/all` for a member the lead could not reach. */
+  readonly address: string;
+  readonly member: string;
+  /** The receipt's state, or `unreachable` for a member the lead could not reach. */
+  readonly outcome: WalkyReceiptState | "unreachable";
+  readonly reason?: string;
+  /** The delivery's own id: the Send Protocol request id its pane's bridge types it under (`sendIdOf`). */
+  readonly id: string;
+}
+
+/** A scope's totals: how many deliveries ended in each outcome. */
+export type WalkyTotals = Record<string, number>;
+
+/** What `status` adds for a scope send (M75): the deliveries under the parent, and its totals. */
+export interface ScopeStatus {
+  readonly deliveries: WalkyDelivery[];
+  readonly totals: WalkyTotals;
+}
+
+/** A scope's deliveries and their totals per outcome, from the receipts `status` shows. */
+export function deliveriesOf(receipts: readonly WalkyReceipt[]): ScopeStatus {
+  const deliveries: WalkyDelivery[] = [];
+  for (const receipt of receipts) {
+    const address = parseAddress(receipt.target);
+    if (address?.kind !== "pane" && address?.kind !== "member-all") continue;
+    const unreachable = address.kind === "member-all" && receipt.state === "refused" && receipt.reason === MEMBER_UNREACHABLE;
+    const base = { address: receipt.target, member: address.memberId, outcome: unreachable ? ("unreachable" as const) : receipt.state, id: sendIdOf(receipt.id, receipt.target) };
+    deliveries.push(receipt.reason === undefined || unreachable ? base : { ...base, reason: receipt.reason });
+  }
+  const totals: WalkyTotals = {};
+  for (const delivery of deliveries) totals[delivery.outcome] = (totals[delivery.outcome] ?? 0) + 1;
+  return { deliveries, totals };
+}
+
 /** A message's receipts on this bridge, and the message itself when the log holds it. */
 export interface WalkyStatus {
   readonly receipts: WalkyReceipt[];
   readonly message: WalkyMessage | null;
+  /**
+   * A scope send (M75): one line per delivery, and the parent's totals per outcome. Absent for any
+   * other address, so an older reader of `receipts` reads the answer as before.
+   */
+  readonly deliveries?: WalkyDelivery[];
+  readonly totals?: WalkyTotals;
   /**
    * The targets among `receipts` that are still `accepted` on another machine, on a member whose lead
    * holds their outcome until it pushes it back ({@link WalkyServiceDeps.outcomesOnLead}). Empty
@@ -201,8 +236,9 @@ export class WalkyService {
    * (bridge/walky/crew.ts checked its signature first). It reaches this machine's panes, and on a
    * lead it is routed on to the members it names; `verified` says how its sender was known.
    */
-  async receive(message: WalkyMessage, verified: WalkyVerified, localOnly: boolean, via?: string): Promise<WalkyReceipt[]> {
-    return this.deliverer.deliver(message, null, via === undefined ? { verified, localOnly } : { verified, localOnly, via });
+  async receive(message: WalkyMessage, verified: WalkyVerified, localOnly: boolean, via?: string, pane?: string): Promise<WalkyReceipt[]> {
+    const options = via === undefined ? { verified, localOnly } : { verified, localOnly, via };
+    return this.deliverer.deliver(message, null, pane === undefined ? options : { ...options, pane });
   }
 
   /** The line `who` prints below this machine's targets, or null when it lists the whole crew. */
@@ -300,7 +336,9 @@ export class WalkyService {
             })
             .map((receipt) => receipt.target)
         : [];
-    return { receipts: shown, message: records[0]?.message ?? null, elsewhere };
+    const message = records[0]?.message ?? null;
+    if (message === null || !isScopeAddress(parseAddress(message.to))) return { receipts: shown, message, elsewhere };
+    return { receipts: shown, message, elsewhere, ...deliveriesOf(shown) };
   }
 
   /**

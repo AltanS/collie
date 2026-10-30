@@ -34,7 +34,7 @@ import { fingerprintOfCert } from "../crew/identity.ts";
 import type { PeerSnapshotBody } from "../crew/merge.ts";
 import { signCanonical, verifyCanonical } from "../crew/signing.ts";
 import type { TrustedMember, TrustStoreData } from "../crew/trust-store.ts";
-import { bareAddress, INSTANCE_TOKEN, labelOf, LOCAL_MEMBER, paneAddress, parseAddress, type WalkyAddress } from "./address.ts";
+import { bareAddress, INSTANCE_TOKEN, isPaneId, isScopeAddress, labelOf, LOCAL_MEMBER, paneAddress, parseAddress, type WalkyAddress } from "./address.ts";
 import { attestationString, verifyMessage, voucherString } from "./canonical.ts";
 import { cleanBody } from "./clean.ts";
 import type { RouteRemote } from "./deliver.ts";
@@ -84,17 +84,22 @@ function cleanEnough(body: string): boolean {
   return body !== "" && [...body].length <= WALKY_BODY_MAX && cleanBody(body).body === body;
 }
 
-/** An address a crew hop may carry: `all`, or one that names its member (`local` is a solo word). */
+/** An address a crew hop may carry: `all`, a scope (M75), or one that names its member (`local` is a solo word). */
 function crewAddressable(to: string): boolean {
   const address = parseAddress(to);
-  if (address === null || address.kind === "workspace" || address.kind === "here") return false;
-  return address.kind === "all" || address.memberId !== LOCAL_MEMBER;
+  if (address === null) return false;
+  if (address.kind === "all" || isScopeAddress(address)) return true;
+  return address.memberId !== LOCAL_MEMBER;
 }
 
-/** Whether a route segment names an address on this member. A workspace or here address is expanded by the lead and never rides a hop whole. */
+/**
+ * Whether a route segment names an address on this member. A scope (M75) names no member: the lead
+ * expanded it and routes it one pane at a time, so its segment is a pane id, never `all`, and the
+ * member checks that pane's label against the scope itself (deliver.ts `scopeDelivery`).
+ */
 function routeFits(to: WalkyAddress, self: string, segment: string): boolean {
   if (to.kind === "all") return segment === WALKY_ALL_SEGMENT;
-  if (to.kind === "workspace" || to.kind === "here") return false;
+  if (isScopeAddress(to)) return segment !== WALKY_ALL_SEGMENT && isPaneId(segment);
   if (to.memberId !== self) return false;
   return to.kind === "member-all" ? segment === WALKY_ALL_SEGMENT : segment === to.paneId;
 }
@@ -298,8 +303,10 @@ export class WalkyCrew {
     const { message, verified } = checked;
     if (!fresh(message, this.now())) return { status: 200, body: { receipts: [this.deps.service.deliverer.refusal(message.id, message.to, "stale", verified)] } };
     this.deps.audit?.({ action: "walky.deliver", detail: { via: "crew", from, to: message.to, verified, textLength: message.body.length } });
-    // This machine's panes only: a message a crew hop brought is never routed on.
-    return { status: 200, body: { receipts: await this.deps.service.receive(message, verified, true) } };
+    // This machine's panes only: a message a crew hop brought is never routed on. A scope (M75) is
+    // delivered to the one pane the route names, and only while that pane's label sits in the scope.
+    const pane = isScopeAddress(parseAddress(message.to)) ? segment : undefined;
+    return { status: 200, body: { receipts: await this.deps.service.receive(message, verified, true, undefined, pane) } };
   }
 
   /**
@@ -329,7 +336,8 @@ export function writeOutcomes(log: WalkyLog, self: string, receipts: readonly Wa
   for (const receipt of receipts) {
     if (!canonicalTarget(receipt.target)) continue;
     const address = parseAddress(receipt.target);
-    if (address === null || address.kind === "workspace" || address.kind === "here" || (address.kind !== "all" && address.memberId === self)) continue;
+    // A scope's own line is the sender's word on its own machine: the lead never sends one back.
+    if (address === null || isScopeAddress(address) || (address.kind !== "all" && address.memberId === self)) continue;
     const held = log.get(receipt.id, receipt.target);
     if (held === null) {
       // A pane of a leg this member sent as a whole and never heard pane by pane (a slow leg): the
@@ -465,18 +473,35 @@ export function olderThanWalky(version: string | null, own: string, compare: (a:
   return compare(version, floor) < 0;
 }
 
+/** One dial of the lead's seam: the member, the route's pane segment, and the target its receipts name. */
+interface Leg {
+  readonly memberId: string;
+  readonly segment: string;
+  readonly target: string;
+}
+
 /**
  * The lead's seam: a message for another member goes to `/crew/v1/pane/<pane | all>/walky` there,
  * with the lead's attestation beside it. `all` goes to every member but the sender's own machine,
- * which delivered to its panes itself before it asked the lead.
+ * which delivered to its panes itself before it asked the lead. A scope (M75, `panes` given) goes to
+ * one member, one leg per pane the lead's expansion named there, the sender's own machine included:
+ * the sender's machine handed the scope over whole and delivered nothing itself.
  */
 export function leadRouteRemote(deps: LeadRouteDeps): RouteRemote {
   const now = deps.now ?? Date.now;
-  return async (message, members) => {
+  return async (message, members, panes) => {
     const roster = deps.members();
-    const targets = members === WALKY_ALL_SEGMENT ? roster.filter((id) => id !== message.from.memberId && id !== deps.self) : [members];
     const address = parseAddress(message.to);
-    const segment = address?.kind === "pane" ? address.paneId : WALKY_ALL_SEGMENT;
+    const whole = address?.kind === "pane" ? address.paneId : WALKY_ALL_SEGMENT;
+    const legs: Leg[] =
+      panes !== undefined
+        ? panes.map((paneId) => ({ memberId: members, segment: paneId, target: `${members}/${paneId}` }))
+        : (members === WALKY_ALL_SEGMENT ? roster.filter((id) => id !== message.from.memberId && id !== deps.self) : [members]).map((memberId) => ({
+            memberId,
+            segment: whole,
+            // A receipt names the pane id, never the instance token the address may carry.
+            target: members === WALKY_ALL_SEGMENT ? `${memberId}/${WALKY_ALL_SEGMENT}` : bareAddress(message.to),
+          }));
     const signing = deps.signing();
     // One block per message: the voucher names the sender, not the receiver. Never for this lead's own
     // message, which every member checks against the one certificate it pins already.
@@ -484,9 +509,7 @@ export function leadRouteRemote(deps: LeadRouteDeps): RouteRemote {
     const senderCert = signing === null || signer === null || signer === deps.self ? null : (deps.senderCert?.(signer) ?? null);
     const sender = senderCert === null || signing === null || signer === null ? null : senderBlockFor(signer, senderCert, signing.keyPem, signing.crewId);
     const lists = await Promise.all(
-      targets.map(async (memberId): Promise<WalkyReceipt[]> => {
-        // A receipt names the pane id, never the instance token the address may carry.
-        const target = members === WALKY_ALL_SEGMENT ? `${memberId}/${WALKY_ALL_SEGMENT}` : bareAddress(message.to);
+      legs.map(async ({ memberId, segment, target }): Promise<WalkyReceipt[]> => {
         if (!roster.includes(memberId)) return [ownReceipt(message, target, "refused", deps.self, now(), "no such member")];
         if (deps.older?.(memberId) === true) return [ownReceipt(message, target, "refused", deps.self, now(), "older member")];
         if (signing === null) return [ownReceipt(message, target, "refused", deps.self, now(), "no crew key")];
@@ -498,7 +521,7 @@ export function leadRouteRemote(deps: LeadRouteDeps): RouteRemote {
         const receipts = receiptsOfAnswer(message, target, answer, deps.self, now(), "older member");
         // Only a 200 carries the member's own receipts; every other answer is this lead's word.
         if (answer.kind !== "answer" || answer.status !== 200) return receipts;
-        const scoped = scopedToMember(receipts, memberId, target);
+        const scoped = scopedToMember(receipts, memberId, target, panes !== undefined);
         return scoped.length > 0 ? scoped : [ownReceipt(message, target, "accepted", deps.self, now())];
       }),
     );
@@ -514,11 +537,12 @@ export function leadRouteRemote(deps: LeadRouteDeps): RouteRemote {
  * read as the whole broadcast refused. A receipt in another machine's name (this lead's included), or
  * for a pane on another machine, is dropped.
  */
-function scopedToMember(receipts: readonly WalkyReceipt[], memberId: string, target: string): WalkyReceipt[] {
+function scopedToMember(receipts: readonly WalkyReceipt[], memberId: string, target: string, onePane: boolean): WalkyReceipt[] {
   return receipts.flatMap((receipt) => {
     if (receipt.by !== memberId) return [];
     const address = parseAddress(receipt.target);
-    if (address?.kind === "pane") return address.memberId === memberId ? [receipt] : [];
+    // A scope's leg names one pane (M75): the member answers for that pane, never for a sibling.
+    if (address?.kind === "pane") return address.memberId === memberId && (!onePane || receipt.target === target) ? [receipt] : [];
     return [{ ...receipt, target }];
   });
 }
@@ -660,7 +684,9 @@ export class WalkyReport {
 
   /**
    * Listen on a log: every receipt for a message from elsewhere, placed on a pane here, past `accepted`,
-   * and a held one (`accepted` with the reason that holds it, M62 spec 02).
+   * and a held one (`accepted` with the reason that holds it, M62 spec 02). A scope this member sent
+   * (M75) counts as from elsewhere: the lead expanded it and routed this machine's panes back here,
+   * so only the report tells the lead how they ended.
    */
   listen(log: WalkyLog): void {
     log.onReceipt((record) => this.note(record));
@@ -668,7 +694,8 @@ export class WalkyReport {
 
   /** Hold one record's newest receipt when it belongs in the report. A newer state replaces the older. */
   note(record: LogRecord): void {
-    if (record.session === null || record.message.from.memberId === this.self) return;
+    if (record.session === null) return;
+    if (record.message.from.memberId === this.self && !isScopeAddress(parseAddress(record.message.to))) return;
     if (!reportable(record.receipt)) return;
     this.held = this.held.filter((held) => !(held.receipt.id === record.receipt.id && held.receipt.target === record.receipt.target));
     this.seq += 1;
@@ -817,7 +844,7 @@ export class WalkyLeadSide {
     if (memberId === null || memberId === this.deps.self || !reportable(record.receipt)) return;
     const address = parseAddress(record.target);
     // Only for a target on another machine: the sender's own panes are the sender's word.
-    if (address === null || address.kind === "workspace" || address.kind === "here" || (address.kind !== "all" && address.memberId === memberId)) return;
+    if (address === null || isScopeAddress(address) || (address.kind !== "all" && address.memberId === memberId)) return;
     const box = this.boxes.get(memberId) ?? new Map<string, HeldReceipt>();
     const key = outboxKey(record.receipt);
     box.delete(key);

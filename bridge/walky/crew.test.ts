@@ -3,7 +3,9 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { CREW, leadStore, material, member, peerStore } from "../crew/fixtures.ts";
+import { createTrustStore, selfIdentity } from "../crew/enrollment.ts";
+import { CREW, leadStore, material, member, peerStore, T0 } from "../crew/fixtures.ts";
+import type { TrustStoreData } from "../crew/trust-store.ts";
 import type { PaneWire } from "../types.ts";
 import { compareSemver } from "../update.ts";
 import { signMessage, attestationString } from "./canonical.ts";
@@ -34,10 +36,11 @@ import type { SendResult, WalkyHost, WalkyPane } from "./deliver.ts";
 import { WalkyLog } from "./log.ts";
 import { readWalkyReport } from "./parse.ts";
 import { RateLimiter } from "./rate.ts";
+import { OUT_OF_SCOPE, scopeEmpty, scopeIsMember } from "./refusals.ts";
 import { WalkyService, type WalkyServiceDeps } from "./service.ts";
 import type { JsonValue } from "../json.ts";
 import { parseJson } from "../../web/src/lib/json.ts";
-import { movesForward, type WalkyMessage, type WalkyReceipt } from "./types.ts";
+import { movesForward, type WalkyMessage, type WalkyReceipt, type WalkyTarget } from "./types.ts";
 
 /** A value as it arrives off the wire: through JSON, so a test hands a handler exactly what a request would. */
 function wire<T>(value: T): JsonValue {
@@ -1271,5 +1274,111 @@ describe("a pane receipt under a leg sent as a whole (§21, added 2026-10-18)", 
     const theirs = signed("wt_aaaaaaaaaaa2", "desk", "all");
     laptop.log.record(theirs, "other/all", placement, { ...accepted(theirs.id, "other/all") });
     expect(writeOutcomes(laptop.log, "laptop", [pane8(theirs.id, "other/w1:p9", "other")])).toBe(0);
+  });
+});
+
+describe("a workspace scope across a crew of two members (M75 spec 02)", () => {
+  /** `who` on the lead, from a member's panes: what its sweep would hold. */
+  const listed = (memberId: string, panes: readonly WalkyPane[]): WalkyTarget[] =>
+    panes.filter((p) => p.agent).map((p) => ({ address: `${memberId}/${p.paneId}#${p.instance}`, memberId, machine: memberId, harness: p.harness, label: p.label, state: "idle" }));
+  const otherStore = (): TrustStoreData => peerStore({ self: createTrustStore(selfIdentity("other", material("other"), T0)).self });
+
+  /** A lead `desk` and two members, `laptop` and `other`, wired end to end through the real crew halves. */
+  function crewOfThree() {
+    const crews = new Map<string, WalkyCrew>();
+    const deskPanes = [pane("w1:p1", { label: "collie-workspace#main" }), pane("w1:p2", { label: "elsewhere#main" })];
+    const laptopPanes = [pane("w1:p8", { label: "collie-workspace#main" }), pane("w1:p9", { label: "collie-workspace#feat" })];
+    const otherPanes = [pane("w2:p1", { label: "collie-workspace#main" }), pane("w2:p2", { label: "elsewhere#main" })];
+    const legs: string[] = [];
+    const lead = service(
+      "desk",
+      deskPanes,
+      async (memberId, segment, payload) => {
+        legs.push(`${memberId} ${segment}`);
+        // SAFETY: the route posts the JSON it built itself.
+        const answer = await crews.get(memberId)!.fromLead(segment, JSON.parse(payload) as JsonValue, "desk");
+        return { kind: "answer", status: answer.status, body: wire(answer.body) };
+      },
+      { remoteTargets: () => [...listed("laptop", laptopPanes), ...listed("other", otherPanes)], knownMembers: () => ["desk", "laptop", "other"] },
+    );
+    const leadCrew = new WalkyCrew({ service: lead.service, trust: () => leadStore(), now: () => AT });
+    const laptop = service("laptop", laptopPanes, undefined, {
+      outcomesOnLead: true,
+      knownMembers: () => ["laptop", "desk"],
+      routeRemote: memberRouteRemote({
+        self: "laptop",
+        post: async (payload) => {
+          // SAFETY: the member posts the JSON it built itself.
+          const answer = await leadCrew.fromMember(JSON.parse(payload) as JsonValue, member({ memberId: "laptop" }));
+          return { kind: "answer", status: answer.status, body: wire(answer.body) };
+        },
+        now: () => AT,
+      }),
+    });
+    const other = service("other", otherPanes);
+    crews.set("laptop", new WalkyCrew({ service: laptop.service, trust: () => peerStore(), now: () => AT }));
+    crews.set("other", new WalkyCrew({ service: other.service, trust: otherStore, now: () => AT }));
+    return { lead, laptop, other, laptopPanes, legs };
+  }
+
+  const settledAll = async (...rigs: Rig[]) => {
+    for (const r of rigs) await r.service.deliverer.settled();
+  };
+
+  test("a scope from a member's pane: the lead expands it once, one delivery per matching pane on every member, each with its own receipt", async () => {
+    const { lead, laptop, other, laptopPanes, legs } = crewOfThree();
+    const answer = await laptop.service.send({ id: "wt_aaaaaaaaaaa1", to: "collie-workspace", body: "hi", replyTo: null }, { kind: "agent", pane: laptopPanes[0]! });
+    const receipts = answer.ok ? answer.receipts : [];
+    expect(receipts.map((r) => `${r.target} ${r.state} ${r.by}`)).toEqual(["desk/w1:p1 accepted desk", "laptop/w1:p9 accepted laptop", "other/w2:p1 accepted other"]);
+    // One leg per pane, the sender's own machine included: it handed the scope over whole.
+    expect(legs.toSorted()).toEqual(["laptop w1:p9", "other w2:p1"]);
+    await settledAll(lead, laptop, other);
+    expect(lead.host.sends).toEqual(["w1:p1"]);
+    expect(laptop.host.sends).toEqual(["w1:p9"]);
+    expect(other.host.sends).toEqual(["w2:p1"]);
+    // Every machine logged its own delivery under the one parent id, with `to` as typed.
+    for (const [r, target] of [
+      [lead, "desk/w1:p1"],
+      [laptop, "laptop/w1:p9"],
+      [other, "other/w2:p1"],
+    ] as const) {
+      expect(r.log.get("wt_aaaaaaaaaaa1", target)?.receipt.state).toBe("delivered");
+      expect(r.log.get("wt_aaaaaaaaaaa1", target)?.message.to).toBe("collie-workspace");
+    }
+    // The lead's parent lists all three, each with its member.
+    expect(lead.service.status("wt_aaaaaaaaaaa1").deliveries?.map((d) => `${d.address} ${d.member}`)).toEqual(["desk/w1:p1 desk", "laptop/w1:p9 laptop", "other/w2:p1 other"]);
+    // The sender's own machine reports its delivery, though the message is its own: the lead routed it there.
+    const report = new WalkyReport("laptop", { epoch: "0a1b2c3d", now: () => AT });
+    report.note(laptop.log.get("wt_aaaaaaaaaaa1", "laptop/w1:p9")!);
+    expect(report.report()?.receipts).toMatchObject([{ target: "laptop/w1:p9", state: "delivered", by: "laptop" }]);
+    expect(mergeReport(lead.log, "laptop", report.report()!.receipts)).toBe(1);
+    expect(lead.log.get("wt_aaaaaaaaaaa1", "laptop/w1:p9")?.receipt.state).toBe("delivered");
+  });
+
+  test("`here` from a member's pane reaches its siblings on both members and never the sender", async () => {
+    const { laptop, lead, other, laptopPanes } = crewOfThree();
+    const answer = await laptop.service.send({ id: "wt_aaaaaaaaaaa2", to: "here", body: "hi", replyTo: null }, { kind: "agent", pane: laptopPanes[0]! });
+    expect(answer.ok && answer.receipts.map((r) => r.target)).toEqual(["desk/w1:p1", "laptop/w1:p9", "other/w2:p1"]);
+    await settledAll(lead, laptop, other);
+    expect(laptop.host.sends).toEqual(["w1:p9"]);
+  });
+
+  test("a member refuses a routed scope for a pane whose label is not in it, and a scope routed to `all`", async () => {
+    const { other } = crewOfThree();
+    const crew = new WalkyCrew({ service: other.service, trust: () => peerStore({ self: createTrustStore(selfIdentity("other", material("other"), T0)).self }), now: () => AT });
+    const message = signed("wt_aaaaaaaaaaa3", "desk", "collie-workspace", OPERATOR("desk"));
+    const body = { message, attest: attestFor(message, material("desk").keyPem, CREW.crewId, "other") };
+    expect(await fromLeadOf(crew, "w2:p2", body, "desk")).toMatchObject({ status: 200, body: { receipts: [{ target: "other/w2:p2", state: "refused", reason: OUT_OF_SCOPE }] } });
+    expect(await fromLeadOf(crew, "all", body, "desk")).toMatchObject({ status: 400 });
+    await other.service.deliverer.settled();
+    expect(other.host.sends).toEqual([]);
+  });
+
+  test("the lead refuses a member's id as a bare word, and a scope with no pane, before anything is dialled", async () => {
+    const { laptop, laptopPanes, legs } = crewOfThree();
+    const send = (id: string, to: string) => laptop.service.send({ id, to, body: "hi", replyTo: null }, { kind: "agent", pane: laptopPanes[0]! });
+    expect(await send("wt_aaaaaaaaaaa4", "other")).toMatchObject({ ok: true, receipts: [{ target: "other", state: "refused", reason: scopeIsMember("other") }] });
+    expect(await send("wt_aaaaaaaaaaa5", "nowhere")).toMatchObject({ ok: true, receipts: [{ target: "nowhere", state: "refused", reason: scopeEmpty("nowhere") }] });
+    expect(legs).toEqual([]);
   });
 });

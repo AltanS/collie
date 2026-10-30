@@ -3363,7 +3363,8 @@ is two hops, A to the lead and the lead to B.
   pin. Only a collie that leads answers it; a peer answers 404.
 - `/crew/v1/pane/:id/walky` is a **forwarded write** (§5's table, `FORWARDABLE` in
   `bridge/crew/forward.ts`). `:id` is the pane id when the message names one pane, and `all` when it
-  names `<member>/all` or `all`. The lead sends it through its own forward, so it gets the write budget
+  names `<member>/all` or `all`. For a scope it is the pane id of one pane the lead's expansion
+  picked, one dial per pane, and never `all` (see "Workspace scopes", added 2026-10-30). The lead sends it through its own forward, so it gets the write budget
   and §10.3's rules: refused before it is attempted when the member is not taking writes, and an
   attempted write whose outcome is unknown is written `unknown` and never sent again. The dial
   attestation rides it like every lead → peer dial (§8.6).
@@ -3419,7 +3420,12 @@ collie-walky-voucher-v1\n<crewId>\n<memberId>\n<fingerprint>
 `fingerprint` is the SHA-256 of the sending member's pinned certificate over its DER, lowercase hex,
 the value the trust store pins (`fingerprintOfCert`, `bridge/crew/identity.ts`).
 
-`from.label` is display data and is not signed. `to` is signed, so a message cannot be re-aimed. The
+`from.label` is display data and is not signed. `to` is signed, so a message cannot be re-aimed.
+A walky message's `to` may also be a scope as the sender typed it (added 2026-10-30, M75): `<repo>`,
+`<repo>#<branch>` or `here`. It stays the signed `to` on every hop, so a recipient reads the group the
+message was addressed to, not its own pane address. A member that delivers a scope reads the label of
+the pane the route names at that moment, and delivers only while the label sits in the scope (for
+`here`, in the repo of the sender's `from.label`), so a pane outside the scope cannot ride it. The
 attestation binds the crew and the receiver (§16's rule for a broadened pin), so a member cannot
 present an attested message at a sibling or in another crew. The voucher binds the crew and names the
 member and its certificate; it names no message, so the attestation is still what binds one message
@@ -3454,6 +3460,8 @@ that does not match the signer is the uniform 401.
 4. The lead delivers to its own panes, with `verified: "origin"`, and routes to the members the
    address names: one member for `<member>/<pane>` and `<member>/all`, every member but the sender's
    own machine for `all`. The sender's machine already delivered to its own panes before it asked.
+   A scope is expanded here, once, into one delivery per pane on every member, the sender's own
+   machine included (see "Workspace scopes", added 2026-10-30).
 
 The lead counts the caps again, as every delivering bridge does (`bridge/walky/rate.ts`): 30 tokens
 per sender in 10 minutes, keyed by `kind`, `from.memberId` and `from.address` and never the label; 6
@@ -3687,6 +3695,40 @@ before this subsection cannot parse an address with a token. As a member it answ
 whose `to` carries one with a 400, which the lead never builds for it, because its panes carry no
 token. As a lead it answers a member's agent message whose `from.address` carries one with a 400, so
 an agent on a newer member cannot message through an older lead; an operator's message still goes.
+
+### Workspace scopes (added 2026-10-30, M75)
+
+A scope names the agent panes of one folder on every machine of the crew: `<repo>` on any branch,
+`<repo>#<branch>` on one, and `here` for the sender's own folder without the sender's own pane. The
+key is the `<repo>` part of a pane's walky label, the part before its first `#` (`labelOf`,
+`bridge/walky/address.ts`); a label that is the bare pane id names no folder.
+
+- **Where it is expanded.** On the lead, once, when the send arrives: from one of its panes, from the
+  phone, or on `/crew/v1/walky` from a member. A member hands a scope to its lead whole, as it hands
+  over `all`, and delivers nothing itself. The lead reads its merged `who` list, keeps the agent panes
+  whose label sits in the scope, drops the sender's own pane, and for `here` takes the repo from the
+  sender's `from.label`. A solo install expands over its own panes.
+- **One delivery per pane.** Each pane gets its own receipt under the message id, which is the
+  group's one parent id. The lead logs each pane of another member as `accepted` before it dials, then
+  dials `/crew/v1/pane/<pane>/walky` once per pane, the sender's own machine included. Receipts keep
+  their shape and match by `(id, target)` as before; the report and the push carry them unchanged. A
+  member reports the receipts of a scope it sent itself too, because the lead routed those panes back
+  to it.
+- **What the member checks.** The route's `:id` names a pane, never `all`, and the member delivers to
+  that pane only while its label sits in the scope (`out of scope` otherwise). It does not count the
+  sender's token again; it counts the pair's.
+- **Caps.** The scope takes one token from the sender's bucket on the lead, and one per delivery from
+  the dialling member's outer bucket and from each pair's. A full pair refuses that delivery only.
+- **Refusals, before anything is logged.** A bare word that is a member id or `local` (`member word`,
+  naming `<word>/all`), a scope with no pane in it (`no panes in scope`), more than 50 panes (`scope
+  too wide`, with the count), `here` from an operator (`here from a phone`), and `here` from a pane
+  whose label names no folder (`here without a folder`).
+- **A member the lead cannot reach** contributes no deliveries. The lead writes one line for it,
+  `<member>/all`, `refused` with the reason `unreachable`, and never retries.
+
+A member that predates this subsection answers a routed scope with a 400 (its shape check reads the
+`to` as no address), which the lead writes as that pane's refusal. A lead that predates it answers a
+member's scope the same way, and the member writes the refusal on the scope's own line.
 
 ### Compatibility
 

@@ -27,13 +27,14 @@
 
 import { createHash } from "node:crypto";
 
-import { bareAddress, LOCAL_MEMBER, isSelf, paneAddress, parseAddress } from "./address.ts";
+import { bareAddress, inScope, isScopeAddress, LOCAL_MEMBER, isSelf, labelScope, paneAddress, parseAddress, type WalkyAddress, type WalkyScope } from "./address.ts";
 import { canonicalMessage } from "./canonical.ts";
+import { WALKY_LEG_PANES_MAX } from "./crew.ts";
 import type { LogRecord, Placement, WalkyLog } from "./log.ts";
 import { MEMBER_LIMIT, PAIR_LIMIT, pairKey, RateLimiter, senderKey } from "./rate.ts";
-import { RefusalCounter, type RefusalCounts } from "./refusals.ts";
+import { HERE_FROM_PHONE, hereWithoutFolder, MEMBER_UNREACHABLE, OUT_OF_SCOPE, RefusalCounter, scopeEmpty, scopeIsMember, scopeTooWide, type RefusalCounts } from "./refusals.ts";
 import { seenHash, WalkySeen } from "./seen.ts";
-import { formatEnvelope, receiptReason, SEND_ID, type WalkyMessage, type WalkyReceipt, type WalkyReceiptState, type WalkyVerified } from "./types.ts";
+import { formatEnvelope, receiptReason, SEND_ID, type WalkyMessage, type WalkyReceipt, type WalkyReceiptState, type WalkyTarget, type WalkyVerified } from "./types.ts";
 
 /**
  * How long a held send may wait before the message is left in the inbox only: one clock per message,
@@ -124,8 +125,12 @@ export interface WalkyHost {
  * THE CREW SEAM. Spec 03 fills it: hand a message to the crew for one other member (`memberId`) or
  * for every other member (`"all"`), and answer the receipts the crew wrote. Absent, an address on
  * another member is refused `crew routing not built`, and `all` reaches this machine's panes only.
+ * `panes` (M75): a scope's panes on that one member, as the lead's expansion named them, one leg each.
  */
-export type RouteRemote = (message: WalkyMessage, members: string) => Promise<readonly WalkyReceipt[]>;
+export type RouteRemote = (message: WalkyMessage, members: string, panes?: readonly string[]) => Promise<readonly WalkyReceipt[]>;
+
+/** The folder a scope names, or why it names none (deliver.ts `scopeOf`). */
+type ScopeOf = { readonly ok: true; readonly scope: WalkyScope } | { readonly ok: false; readonly reason: string };
 
 /** How one delivery runs. The defaults are a message this bridge built itself. */
 export interface DeliverOptions {
@@ -145,6 +150,11 @@ export interface DeliverOptions {
    * bucket of 60 tokens per 10 minutes is counted too.
    */
   readonly via?: string;
+  /**
+   * On a member, the pane id the lead's route named (`/crew/v1/pane/<pane>/walky`). Read for a scope
+   * only (M75): it is the one pane the lead's expansion picked here, and this member checks its label.
+   */
+  readonly pane?: string;
 }
 
 /** The parts of a receipt beside its id, target and state. */
@@ -166,9 +176,9 @@ export function sameMessage(a: WalkyMessage, b: WalkyMessage): boolean {
   return canonicalMessage({ ...a, at: 0 }) === canonicalMessage({ ...b, at: 0 });
 }
 
-/** Whether a target names a fan-out (`all` or `<member>/all`), not one pane. */
+/** Whether a target names a fan-out (`all`, `<member>/all`, or a scope a member handed its lead whole), not one pane. */
 export function isFanOut(target: string): boolean {
-  return target === "all" || target.endsWith("/all");
+  return target === "all" || target.endsWith("/all") || isScopeAddress(parseAddress(target));
 }
 
 /**
@@ -215,6 +225,20 @@ export interface DelivererDeps {
   /** The lead's outer cap, 60 per member per 10 minutes. */
   readonly members?: RateLimiter;
   readonly routeRemote?: RouteRemote;
+  /**
+   * THE CREW SEAM FOR `who`. Spec 03 fills it: the targets the lead knows on other members. Absent,
+   * `who` lists this machine's panes only. A scope send (M75) expands over the same list.
+   */
+  readonly remoteTargets?: () => readonly WalkyTarget[];
+  /**
+   * True on a crew member that is not the lead. Such a bridge hands a message for another machine to
+   * its lead, and learns how it ended there only when the lead pushes the outcome back (CREW_PROTOCOL
+   * §21). Until then `status` names those targets, and `who` says the other machines are the lead's
+   * to list. A scope (M75) goes to the lead whole: the lead expands it.
+   */
+  readonly outcomesOnLead?: boolean;
+  /** Every member id of the crew this bridge knows, read per message: a bare word that names one is no scope (M75). */
+  readonly knownMembers?: () => readonly string[];
   /** The dedupe file, `<stateDir>/walky/seen.json`. Absent: in memory, for a test. */
   readonly seen?: WalkySeen;
   /** The refusal counter, `<stateDir>/walky/refusals.json`. Absent: in memory. */
@@ -373,7 +397,7 @@ export class WalkyDeliverer {
     const refuse = (reason: string): WalkyReceipt[] => [this.refusal(message.id, message.to, reason, verified)];
     const address = parseAddress(message.to);
     if (address === null) return refuse("no such pane");
-    if (address.kind === "workspace" || address.kind === "here") return refuse("workspace addresses are not supported on this path yet");
+    if (isScopeAddress(address)) return this.deliverScope(message, address, sender, options);
     // The same id again: the receipts of the targets it already has. One pane, or another machine,
     // ends here; a fan-out goes on and finishes the targets it lacks (a crashed fan-out resumes).
     const done = this.prior(message, verified);
@@ -440,18 +464,234 @@ export class WalkyDeliverer {
         receipts.push(held);
         continue;
       }
-      const accepted = this.receipt(message.id, target, "accepted", { verified });
-      // Seen first, then logged, then typed: a crash between any two never types twice.
-      this.seen.add(message, target);
-      const record = this.deps.log.record(message, target, { session: pane.session, paneId: pane.paneId, instance: pane.instance }, accepted, sender);
-      this.deps.log.inboxAdd(pane.session, pane.paneId, pane.instance, message);
-      receipts.push(accepted);
-      this.track(this.inLane(record, pane));
+      receipts.push(this.place(message, target, pane, sender, verified));
     }
     // The crew leg: routed now, or (on a repeat) the receipts its first run wrote.
     if (routesOn) receipts.push(...(await this.remote(message, "all", sender)));
     else if (routes) receipts.push(...[...done].filter(([target]) => !targets.some((pane) => `${self}/${pane.paneId}` === target)).map(([, receipt]) => receipt));
     return withoutAnsweredLegs(receipts);
+  }
+
+  /**
+   * Log one message for one pane of this bridge and start typing it: seen first, then logged, then
+   * typed, so a crash between any two never types twice. Answers the `accepted` receipt.
+   */
+  private place(message: WalkyMessage, target: string, pane: WalkyPane, sender: SenderPane | null, verified: WalkyVerified): WalkyReceipt {
+    const accepted = this.receipt(message.id, target, "accepted", { verified });
+    this.seen.add(message, target);
+    const record = this.deps.log.record(message, target, { session: pane.session, paneId: pane.paneId, instance: pane.instance }, accepted, sender);
+    this.deps.log.inboxAdd(pane.session, pane.paneId, pane.instance, message);
+    this.track(this.inLane(record, pane));
+    return accepted;
+  }
+
+  /** Whether a bare word names a member: `local`, this bridge, or any member the crew lists. */
+  private isMemberWord(word: string): boolean {
+    if (isSelf(word, this.deps.memberId)) return true;
+    if ((this.deps.knownMembers?.() ?? []).includes(word)) return true;
+    return (this.deps.remoteTargets?.() ?? []).some((target) => target.memberId === word);
+  }
+
+  /**
+   * The folder a scope names: the address's own for `<repo>` and `<repo>#<branch>`; for `here`, the
+   * repo of the sender's pane label (any branch). A refusal's reason when there is none: a phone has
+   * no pane, and a label that is the bare pane id names no folder.
+   */
+  private scopeOf(message: WalkyMessage, address: Extract<WalkyAddress, { kind: "workspace" | "here" }>): ScopeOf {
+    if (address.kind === "workspace") return { ok: true, scope: { repo: address.repo, branch: address.branch } };
+    const from = message.from.address === null ? null : parseAddress(message.from.address);
+    if (message.kind === "operator" || from?.kind !== "pane") return { ok: false, reason: HERE_FROM_PHONE };
+    const own = labelScope(message.from.label, from.paneId);
+    return own === null ? { ok: false, reason: hereWithoutFolder(message.from.label) } : { ok: true, scope: { repo: own.repo, branch: null } };
+  }
+
+  /**
+   * A scope (M75): `<repo>`, `<repo>#<branch>` or `here`. THE EXPANSION RUNS HERE, on the lead (or a solo
+   * install), once, when the send arrives: from a local pane, from the phone, or over the crew hop from
+   * a member. It reads the merged `who` list (this machine's agent panes and `remoteTargets`), keeps the
+   * panes whose label sits in the scope, drops the sender's own pane, and makes one delivery per pane:
+   * this machine's through the same log-then-type step as a fan-out, another member's through the crew
+   * seam, one leg per pane. Every delivery has its own receipt under the message id, which is the
+   * group's one parent id. A member the lead cannot reach gets one `<member>/all` line, `refused:
+   * unreachable`, and no delivery. A member hands the scope to its lead whole; a member the lead dialled
+   * checks the one pane the route names ({@link scopeDelivery}).
+   */
+  private async deliverScope(
+    message: WalkyMessage,
+    address: Extract<WalkyAddress, { kind: "workspace" | "here" }>,
+    sender: SenderPane | null,
+    options: DeliverOptions,
+  ): Promise<WalkyReceipt[]> {
+    const verified = options.verified ?? "local";
+    const refuse = (reason: string): WalkyReceipt[] => [this.refusal(message.id, message.to, reason, verified)];
+    const done = this.prior(message, verified);
+    if (done === null) return refuse("id reused");
+    if (options.localOnly === true) return this.scopeDelivery(message, address, options, done);
+    // The same id again: what it already holds. A scope is expanded once.
+    if (done.size > 0) return withoutAnsweredLegs([...done.values()]);
+    const resolved = this.scopeOf(message, address);
+    if (!resolved.ok) return refuse(resolved.reason);
+    const { scope } = resolved;
+    if (address.kind === "workspace" && address.branch === null && this.isMemberWord(address.repo)) return refuse(scopeIsMember(address.repo));
+    if (this.threadDepth(message) > THREAD_DEPTH_MAX) return refuse("thread depth");
+    // A member hands the scope to its lead whole: one token from the sender's bucket, and the lead expands it.
+    if (this.deps.outcomesOnLead === true && this.deps.routeRemote !== undefined) {
+      const caps = this.scopeCaps(message, [], options, true);
+      if ("refused" in caps) return refuse(caps.refused);
+      return this.remote(message, message.to, sender);
+    }
+    const self = this.deps.memberId ?? LOCAL_MEMBER;
+    const from = message.from.address === null ? null : parseAddress(this.normal(message.from.address));
+    const isFrom = (memberId: string, paneId: string): boolean => from?.kind === "pane" && from.memberId === memberId && from.paneId === paneId;
+    const panes = this.deps.host.panes();
+    const counts = new Map<string, number>();
+    for (const pane of panes) counts.set(pane.paneId, (counts.get(pane.paneId) ?? 0) + 1);
+    const local: WalkyPane[] = [];
+    const ambiguous = new Set<string>();
+    for (const pane of panes) {
+      if (!pane.agent || (sender !== null && isPaneOf(pane, sender)) || isFrom(self, pane.paneId) || !inScope(pane.label, pane.paneId, scope)) continue;
+      if ((counts.get(pane.paneId) ?? 0) > 1) ambiguous.add(`${self}/${pane.paneId}`);
+      else local.push(pane);
+    }
+    // Every other member's panes, from the bodies the lead's sweep holds: no dial.
+    const remote = new Map<string, string[]>();
+    const unreachable = new Set<string>();
+    for (const target of this.deps.remoteTargets?.() ?? []) {
+      const at = parseAddress(target.address);
+      if (at?.kind !== "pane" || at.memberId === self || isFrom(at.memberId, at.paneId) || !inScope(target.label, at.paneId, scope)) continue;
+      if (target.state === "unreachable") {
+        unreachable.add(at.memberId);
+        continue;
+      }
+      const list = remote.get(at.memberId) ?? [];
+      if (!list.includes(at.paneId)) list.push(at.paneId);
+      remote.set(at.memberId, list);
+    }
+    const targets = [...local.map((pane) => `${self}/${pane.paneId}`), ...[...remote].flatMap(([memberId, ids]) => ids.map((paneId) => `${memberId}/${paneId}`))];
+    if (targets.length === 0 && unreachable.size === 0 && ambiguous.size === 0) return refuse(scopeEmpty(message.to.trim()));
+    if (targets.length > WALKY_LEG_PANES_MAX) return refuse(scopeTooWide(targets.length, WALKY_LEG_PANES_MAX));
+    if (!this.deps.enabled()) return refuse("off");
+    const caps = this.scopeCaps(message, targets, options, true);
+    if ("refused" in caps) return refuse(caps.refused);
+    const receipts: WalkyReceipt[] = [...ambiguous].map((target) => this.refusal(message.id, target, "ambiguous pane", verified));
+    for (const target of caps.full) receipts.push(this.refusal(message.id, target, "pair limit", verified));
+    for (const pane of local) {
+      const target = `${self}/${pane.paneId}`;
+      if (!caps.full.has(target)) receipts.push(this.place(message, target, pane, sender, verified));
+    }
+    for (const memberId of unreachable) receipts.push(this.unreachableLine(message, memberId, sender, verified));
+    const legs = await Promise.all([...remote].map(([memberId, ids]) => this.remoteScope(message, memberId, ids.filter((paneId) => !caps.full.has(`${memberId}/${paneId}`)), sender)));
+    receipts.push(...legs.flat());
+    return receipts;
+  }
+
+  /**
+   * On a member, one pane of a scope its lead routed here (M75). The member does not trust the lead's
+   * list: it reads the label of the pane the route names NOW and delivers only while that label sits in
+   * the scope the signed `to` names (for `here`, the repo of the sender's label), so a pane outside it
+   * cannot ride a scope. The lead counted the sender's token; this member counts the pair's.
+   */
+  private scopeDelivery(
+    message: WalkyMessage,
+    address: Extract<WalkyAddress, { kind: "workspace" | "here" }>,
+    options: DeliverOptions,
+    done: ReadonlyMap<string, WalkyReceipt>,
+  ): WalkyReceipt[] {
+    const verified = options.verified ?? "local";
+    if (options.pane === undefined) return [this.refusal(message.id, message.to, "no such pane", verified)];
+    const target = `${this.deps.memberId ?? LOCAL_MEMBER}/${options.pane}`;
+    const refuse = (reason: string): WalkyReceipt[] => [this.refusal(message.id, target, reason, verified)];
+    const held = done.get(target);
+    if (held !== undefined) return [held];
+    const resolved = this.scopeOf(message, address);
+    if (!resolved.ok) return refuse(resolved.reason);
+    if (this.threadDepth(message) > THREAD_DEPTH_MAX) return refuse("thread depth");
+    if (!this.deps.enabled()) return refuse("off");
+    const named = this.deps.host.panes().filter((pane) => pane.paneId === options.pane);
+    if (named.length > 1) return refuse("ambiguous pane");
+    const pane = named[0];
+    if (pane === undefined) return refuse("no such pane");
+    if (!pane.agent) return refuse("not an agent pane");
+    if (message.from.address !== null && this.ownPane(message.from.address, target)) return refuse("that is your own pane");
+    if (!inScope(pane.label, pane.paneId, resolved.scope)) return refuse(OUT_OF_SCOPE);
+    const caps = this.scopeCaps(message, [target], options, false);
+    if ("refused" in caps) return refuse(caps.refused);
+    if (caps.full.has(target)) return refuse("pair limit");
+    return [this.place(message, target, pane, null, verified)];
+  }
+
+  /**
+   * The caps of a scope (M75), checked together and taken together: one token from the sender's bucket
+   * for the whole send (`sender` false on a member the lead dialled: the lead counted it), one per
+   * delivery from the dialling member's bucket on a lead, and one per delivery from each pair's. A full
+   * sender or member bucket refuses the send; a full pair refuses that delivery only.
+   */
+  private scopeCaps(message: WalkyMessage, targets: readonly string[], options: DeliverOptions, sender: boolean): { readonly refused: string } | { readonly full: ReadonlySet<string> } {
+    const now = this.now();
+    const key = senderKey(message.kind, message.from.memberId, message.from.address === null ? null : bareAddress(message.from.address));
+    const from = message.from.address === null ? null : bareAddress(this.normal(message.from.address));
+    if (sender && !this.rate.room(key, now)) return { refused: "rate limit" };
+    if (options.via !== undefined && targets.length > 0 && !this.members.room(options.via, now, targets.length)) return { refused: "rate limit" };
+    const full = new Set(from === null ? [] : targets.filter((target) => !this.pairs.room(pairKey(from, target), now)));
+    const taken = targets.filter((target) => !full.has(target));
+    if (sender) this.rate.take(key, now);
+    if (options.via !== undefined && taken.length > 0) this.members.take(options.via, now, taken.length);
+    if (from !== null) for (const target of taken) this.pairs.take(pairKey(from, target), now);
+    return { full };
+  }
+
+  /** The line of a member the lead cannot reach (M75): `<member>/all`, `refused: unreachable`, logged, no delivery and no retry. */
+  private unreachableLine(message: WalkyMessage, memberId: string, sender: SenderPane | null, verified: WalkyVerified): WalkyReceipt {
+    const line = this.receipt(message.id, `${memberId}/all`, "refused", { reason: MEMBER_UNREACHABLE, verified });
+    this.deps.log.record(message, line.target, { session: null, paneId: null, instance: null }, line, sender);
+    return line;
+  }
+
+  /**
+   * A scope's panes on one other member (M75): one `accepted` line per pane, logged before the dial,
+   * then one leg per pane through the crew seam. The member's answer replaces a line only while it is
+   * `accepted`; a dial that failed leaves each pane `unknown`, never sent again.
+   */
+  private async remoteScope(message: WalkyMessage, memberId: string, paneIds: readonly string[], sender: SenderPane | null): Promise<WalkyReceipt[]> {
+    if (paneIds.length === 0) return [];
+    const targets = paneIds.map((paneId) => `${memberId}/${paneId}`);
+    const route = this.deps.routeRemote;
+    if (route === undefined) return targets.map((target) => this.refusal(message.id, target, "crew routing not built"));
+    const placement: Placement = { session: null, paneId: null, instance: null };
+    const accepted = targets.map((target) => {
+      const receipt = this.receipt(message.id, target, "accepted");
+      this.seen.add(message, target);
+      this.deps.log.record(message, target, placement, receipt, sender);
+      return receipt;
+    });
+    try {
+      const answered = (await route(message, memberId, paneIds)).filter((receipt) => receipt.id === message.id);
+      for (const receipt of answered) this.logAnswer(message, receipt, placement, sender);
+      return accepted.map((line) => answered.find((receipt) => receipt.target === line.target) ?? line);
+    } catch (err) {
+      return accepted.map((line) => {
+        const failed = this.receipt(message.id, line.target, "unknown", { reason: `crew: ${err instanceof Error ? err.message : String(err)}` });
+        if (this.deps.log.get(message.id, line.target)?.receipt.state === "accepted") this.deps.log.update(failed);
+        return failed;
+      });
+    }
+  }
+
+  /**
+   * One receipt the crew answered, into this bridge's log: a target of its own when the log holds none
+   * for it, else over an `accepted` only (CREW_PROTOCOL §21). A receipt for a pane placed on this
+   * bridge is its own delivery's word and is left alone: a scope the lead routed back to the sender's
+   * own machine (M75) answers it twice.
+   */
+  private logAnswer(message: WalkyMessage, receipt: WalkyReceipt, placement: Placement, sender: SenderPane | null): void {
+    // A refusal the routing side wrote itself (an older member, a bad signature) counts here too.
+    if (receipt.state === "refused" && receipt.reason !== undefined && receipt.by === this.by) this.refusals.count(receipt.reason);
+    const held = this.deps.log.get(message.id, receipt.target);
+    if (held === null) this.deps.log.record(message, receipt.target, placement, receipt, sender);
+    // The answer of this dial replaces only `accepted`: while it was on its way, a member's report or
+    // the lead's push may have written the real outcome, and a slow leg's `unknown` or a late
+    // `accepted` must not go over it.
+    else if (held.session === null && held.receipt.state === "accepted") this.deps.log.update(receipt);
   }
 
   /**
@@ -519,17 +759,7 @@ export class WalkyDeliverer {
       const receipts = [...(await route(message, members))];
       // A fan-out comes back as one receipt per pane on the far side: each is logged as a target of
       // its own, so `status` and the outcome report (crew.ts) can find it by id and target.
-      for (const receipt of receipts) {
-        if (receipt.id !== message.id) continue;
-        // A refusal the routing side wrote itself (an older member, a bad signature) counts here too.
-        if (receipt.state === "refused" && receipt.reason !== undefined && receipt.by === this.by) this.refusals.count(receipt.reason);
-        const held = this.deps.log.get(message.id, receipt.target);
-        if (held === null) this.deps.log.record(message, receipt.target, placement, receipt, sender);
-        // The answer of this dial replaces only `accepted` (CREW_PROTOCOL §21): while it was on its
-        // way, a member's report or the lead's push may have written the real outcome, and a slow
-        // leg's `unknown` or a late `accepted` must not go over it.
-        else if (held.receipt.state === "accepted") this.deps.log.update(receipt);
-      }
+      for (const receipt of receipts) if (receipt.id === message.id) this.logAnswer(message, receipt, placement, sender);
       return receipts.length === 0 ? [accepted] : receipts;
     } catch (err) {
       const failed = this.receipt(message.id, accepted.target, "unknown", { reason: `crew: ${err instanceof Error ? err.message : String(err)}` });

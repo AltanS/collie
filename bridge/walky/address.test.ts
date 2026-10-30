@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { bareAddress, isSelf, labelOf, paneAddress, parseAddress } from "./address.ts";
+import { bareAddress, inScope, isSelf, labelOf, labelScope, paneAddress, parseAddress } from "./address.ts";
 
 describe("an address", () => {
   test("names one pane, one machine's panes, or every pane", () => {
@@ -90,5 +90,24 @@ describe("a workspace address", () => {
 
   test("a bare word is only marked as a workspace: member ids are not checked here", () => {
     expect(parseAddress("local")).toEqual({ kind: "workspace", repo: "local", branch: null });
+  });
+});
+
+describe("the scope a label stands in (M75)", () => {
+  test("`<repo>#<branch>` splits on the first `#`; a label with none is a folder on no branch; the bare pane id is no folder", () => {
+    expect(labelScope("collie-workspace#main", "w1:p1")).toEqual({ repo: "collie-workspace", branch: "main" });
+    expect(labelScope("collie#feat/x#2", "w1:p1")).toEqual({ repo: "collie", branch: "feat/x#2" });
+    expect(labelScope("notes", "w1:p1")).toEqual({ repo: "notes", branch: null });
+    expect(labelScope("w1:p1", "w1:p1")).toBeNull();
+    expect(labelScope("-", "w1:p1")).toBeNull();
+    expect(labelScope("#main", "w1:p1")).toBeNull();
+  });
+
+  test("a pane is in a scope when its repo matches, and its branch too when the scope names one", () => {
+    expect(inScope("collie-workspace#main", "w1:p1", { repo: "collie-workspace", branch: null })).toBe(true);
+    expect(inScope("collie-workspace#feat", "w1:p1", { repo: "collie-workspace", branch: "main" })).toBe(false);
+    expect(inScope("collie-workspace#main", "w1:p1", { repo: "collie-workspace", branch: "main" })).toBe(true);
+    expect(inScope("collie#main", "w1:p1", { repo: "collie-workspace", branch: null })).toBe(false);
+    expect(inScope("w1:p1", "w1:p1", { repo: "w1:p1", branch: null })).toBe(false);
   });
 });

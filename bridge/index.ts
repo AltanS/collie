@@ -1956,7 +1956,7 @@ const walkyRoute: RouteRemote | undefined =
   walkyMemberId === null
     ? undefined
     : crew.mode === "lead"
-      ? (message, members) => (walkyLeadHalf === null ? Promise.reject(new Error("the crew is not wired yet")) : walkyLeadHalf.route(message, members))
+      ? (message, members, panes) => (walkyLeadHalf === null ? Promise.reject(new Error("the crew is not wired yet")) : walkyLeadHalf.route(message, members, panes))
       : memberRouteRemote({ self: walkyMemberId, post: (payload) => walkyToLead(payload) });
 const walky = new WalkyService({
   log: walkyLog,
@@ -1971,6 +1971,12 @@ const walky = new WalkyService({
   routeRemote: walkyRoute,
   remoteTargets: crew.mode === "lead" ? () => walkyLeadHalf?.targets() ?? [] : undefined,
   outcomesOnLead: crew.mode === "peer",
+  // A bare word that names one of these is a member, never a folder (M75): this machine, its lead, its roster.
+  knownMembers: () => {
+    const held = trustStore.current();
+    if (held === null) return [];
+    return [held.self.memberId, ...(held.lead === null ? [] : [held.lead.memberId]), ...held.peers.map((member) => member.memberId)];
+  },
   leadName: () => trustStore.current()?.lead?.memberId ?? null,
   remoteSkipped: crew.mode === "lead" ? () => walkyLeadHalf?.skipped() ?? [] : undefined,
 });

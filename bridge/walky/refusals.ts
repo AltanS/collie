@@ -93,3 +93,36 @@ export class RefusalCounter {
     return { since: this.state.since, counts: Object.fromEntries(this.state.counts) };
   }
 }
+
+// ── The refusals of a workspace scope (M75 spec 02) ─────────────────────────────────────────────
+// Each reason opens with a fixed key before its first `:`, so the counter keeps one line per kind
+// (`reasonKey`), never one per folder or member. What follows names the word and the way out.
+
+/** A bare word that is a member id, or `local`: its panes are `<word>/all`, never a folder. */
+export function scopeIsMember(word: string): string {
+  return `member word: \`${word}\` is a member; write \`${word}/all\` for its panes`;
+}
+
+/** No agent pane anywhere sits in the scope. */
+export function scopeEmpty(scope: string): string {
+  return `no panes in scope: none in \`${scope}\`, \`collie walky who\` shows the labels`;
+}
+
+/** More panes sit in the scope than one message may reach. */
+export function scopeTooWide(count: number, max: number): string {
+  return `scope too wide: ${String(count)} panes, the most is ${String(max)}`;
+}
+
+/** `here` from the phone, or from anyone with no pane. */
+export const HERE_FROM_PHONE = "here from a phone: a phone has no workspace, name the folder";
+
+/** `here` from a pane whose label names no folder (the bare pane id). */
+export function hereWithoutFolder(label: string): string {
+  return `here without a folder: the label \`${label}\` names no folder, name the folder`;
+}
+
+/** A member's own check of a scope delivery: the pane the lead named is not in the scope now. */
+export const OUT_OF_SCOPE = "out of scope: the pane's label is not in this scope";
+
+/** The line a scope send writes for a member the lead cannot reach: no delivery, no retry. */
+export const MEMBER_UNREACHABLE = "unreachable";

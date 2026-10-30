@@ -349,6 +349,20 @@ describe("reply, inbox, status, who", () => {
     expect(await cmdWalkyStatus(deps(b), ["../x"])).toBe(EXIT.USAGE);
   });
 
+  socketTest("a scope send (M75) passes the bare word through; status lists each delivery and the parent's totals, and --json carries them", async () => {
+    const b = await bridge();
+    const sent = deps(b, inPane("%1"));
+    expect(await cmdWalkySend(sent, ["here", "hi"])).toBe(EXIT.OK);
+    expect(sent.io.stdout).toEqual(["wt_aaaaaaaaaaa1", "to here", "typed into the pane"]);
+    expect(b.service?.status("wt_aaaaaaaaaaa1").message?.to).toBe("here");
+    const d = deps(b);
+    expect(await cmdWalkyStatus(d, ["wt_aaaaaaaaaaa1"])).toBe(EXIT.OK);
+    expect(d.io.stdout).toEqual(["wt_aaaaaaaaaaa1", "to here", "local/%2: typed into the pane (this machine)", "1 delivery: delivered 1"]);
+    const json = deps(b);
+    expect(await cmdWalkyStatus(json, ["wt_aaaaaaaaaaa1", "--json"])).toBe(EXIT.OK);
+    expect(JSON.parse(json.io.stdout[0]!)).toMatchObject({ id: "wt_aaaaaaaaaaa1", deliveries: [{ address: "local/%2", member: "local", outcome: "delivered" }], totals: { delivered: 1 } });
+  });
+
   socketTest("who on a solo install with only the asking agent pane says a message needs two", async () => {
     const lone: WalkyHost = {
       panes: () => [

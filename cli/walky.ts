@@ -5,9 +5,10 @@ import { readEnvMarkers, edgeStateDirs, type EdgeTargetDeps } from "./beacon.ts"
 import { holdSocketSafe } from "./hold.ts";
 import { EXIT, type Io } from "./io.ts";
 import type { JsonObject, JsonValue } from "../bridge/json.ts";
-import { asJsonObject, asJsonString, parseJsonObject } from "../web/src/lib/json.ts";
+import { asJsonNumber, asJsonObject, asJsonString, parseJsonObject } from "../web/src/lib/json.ts";
 import { LOCAL_MEMBER, parseAddress } from "../bridge/walky/address.ts";
 import { readMessage, readReceipt } from "../bridge/walky/parse.ts";
+import type { WalkyTotals } from "../bridge/walky/service.ts";
 import { walkySocketPath } from "../bridge/walky/socket.ts";
 import { formatRead, mintWalkyId, OUTCOME_ON_LEAD, WALKY_ID, type WalkyMessage, type WalkyReceipt } from "../bridge/walky/types.ts";
 
@@ -426,6 +427,8 @@ export async function cmdWalkyStatus(deps: WalkyDeps, args: readonly string[]): 
   let elsewhere = new Set<string>();
   let signer: string | null = null;
   let reached = false;
+  // A scope send (M75): one line per delivery and the parent's totals, as the bridge counted them.
+  let scope: ScopeAnswer | null = null;
   for (const path of socketPaths(deps)) {
     const answer = await request(deps, { op: "status", id }, path);
     if (!answer.ok) continue;
@@ -434,11 +437,12 @@ export async function cmdWalkyStatus(deps: WalkyDeps, args: readonly string[]): 
     elsewhere = elsewhereOf(answer.body.elsewhere);
     const message = readMessage(answer.body.message);
     signer = message?.signer ?? message?.from.memberId ?? null;
+    scope = message === null || !Array.isArray(answer.body.deliveries) ? null : { to: message.to, deliveries: answer.body.deliveries, totals: totalsOf(answer.body.totals) };
     if (receipts.length > 0) break;
   }
   if (!reached) return failure(deps, { error: "no running Collie bridge answers on this machine" });
   if (json) {
-    deps.io.out(JSON.stringify({ id, receipts }));
+    deps.io.out(JSON.stringify(scope === null ? { id, receipts } : { id, receipts, deliveries: scope.deliveries, totals: scope.totals }));
     return receipts.length === 0 ? EXIT.STATE : exitOf(receipts);
   }
   if (receipts.length === 0) {
@@ -446,9 +450,36 @@ export async function cmdWalkyStatus(deps: WalkyDeps, args: readonly string[]): 
     return EXIT.STATE;
   }
   deps.io.out(id);
+  if (scope !== null) deps.io.out(`to ${shown(scope.to)}`);
   for (const receipt of receipts) deps.io.out(`${receiptLine(receipt, true, elsewhere)} (${verifiedWords(receipt, signer)})`);
+  if (scope !== null) deps.io.out(totalsLine(scope.totals));
   if (receipts.some(isHeld)) deps.io.out(HELD_HINT);
   return exitOf(receipts);
+}
+
+/** What a status answer adds for a scope send (M75): the scope as typed, its deliveries as sent, and the totals. */
+interface ScopeAnswer {
+  readonly to: string;
+  readonly deliveries: JsonValue;
+  readonly totals: WalkyTotals;
+}
+
+/** A scope's totals per outcome as the bridge sent them: whole counts only, anything else dropped. */
+function totalsOf(value: JsonValue | undefined): WalkyTotals {
+  const out: WalkyTotals = {};
+  for (const [outcome, raw] of Object.entries(asJsonObject(value) ?? {})) {
+    const count = asJsonNumber(raw);
+    if (count !== undefined && Number.isSafeInteger(count) && count > 0) out[outcome] = count;
+  }
+  return out;
+}
+
+/** The parent's totals of a scope send (M75), one line: `3 deliveries: delivered 2, unreachable 1`. */
+export function totalsLine(totals: Readonly<Record<string, number>>): string {
+  const entries = Object.entries(totals).toSorted((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const count = entries.reduce((sum, [, n]) => sum + n, 0);
+  const parts = entries.map(([outcome, n]) => `${shown(outcome)} ${String(n)}`).join(", ");
+  return `${String(count)} ${count === 1 ? "delivery" : "deliveries"}${parts === "" ? "" : `: ${parts}`}`;
 }
 
 /** One target's answer to a take-back, as `cancel` prints it (M62 spec 03). */

@@ -7,7 +7,7 @@
 //   send    { id, to, body, replyTo }   → { ok, receipts, target? }
 //   inbox   { all, ack, id? }           → { ok, pane, messages }   (`id`: that one message)
 //   who     {}                          → { ok, self, targets, note? }
-//   status  { id }                      → { ok, receipts, message, elsewhere }
+//   status  { id }                      → { ok, receipts, message, elsewhere, deliveries?, totals? }
 //   ack     { ids | null }              → { ok, acked }
 //   cancel  { id }                      → { ok, results }   (M62 spec 03: the sender takes a held message back)
 // A refusal is `{ ok: false, error }`. `not here` means the markers name no pane of this bridge, so
@@ -23,7 +23,7 @@ import type { BeaconMatcher } from "../beacon/decorate.ts";
 import type { BeaconMarker } from "../beacon/types.ts";
 import { HOST, type Host } from "../host.ts";
 import { parseWalkyRequest, WALKY_LINE_MAX, type WalkyRequest } from "./parse.ts";
-import type { WalkyService } from "./service.ts";
+import type { WalkyDelivery, WalkyService } from "./service.ts";
 import type { TakeBack } from "./deliver.ts";
 import type { WalkyEntry, WalkyMessage, WalkyReceipt, WalkyTarget } from "./types.ts";
 
@@ -84,7 +84,15 @@ export interface WalkyServerDeps {
 export type WalkyAnswer =
   | { readonly ok: false; readonly error: string }
   | { readonly ok: true; readonly receipts: readonly WalkyReceipt[]; readonly target?: WalkyTarget }
-  | { readonly ok: true; readonly receipts: readonly WalkyReceipt[]; readonly message: WalkyMessage | null; readonly elsewhere: readonly string[] }
+  | {
+      readonly ok: true;
+      readonly receipts: readonly WalkyReceipt[];
+      readonly message: WalkyMessage | null;
+      readonly elsewhere: readonly string[];
+      /** A scope send (M75): one line per delivery and the parent's totals. Absent for any other address. */
+      readonly deliveries?: readonly WalkyDelivery[];
+      readonly totals?: Readonly<Record<string, number>>;
+    }
   | { readonly ok: true; readonly self: string | null; readonly targets: readonly WalkyTarget[]; readonly note?: string }
   | { readonly ok: true; readonly pane: string | null; readonly messages: readonly WalkyEntry[] }
   | { readonly ok: true; readonly acked: number }
@@ -114,8 +122,9 @@ export async function answerRequest(service: WalkyService, request: WalkyRequest
       return note === null ? { ok: true, self, targets: service.who() } : { ok: true, self, targets: service.who(), note };
     }
     case "status": {
-      const { receipts, message, elsewhere } = service.status(request.id);
-      return { ok: true, receipts, message, elsewhere };
+      const { receipts, message, elsewhere, deliveries, totals } = service.status(request.id);
+      if (deliveries === undefined || totals === undefined) return { ok: true, receipts, message, elsewhere };
+      return { ok: true, receipts, message, elsewhere, deliveries, totals };
     }
     case "inbox": {
       if (request.id !== null) {

@@ -2292,8 +2292,11 @@ describe("walky talky in a crew of four, on the real wire", () => {
     return [...transcript, "", "─".repeat(40), ...rows, "─".repeat(40), "  sonnet · project · main"].join("\n");
   }
 
+  /** The pane label the lead's and A's panes share: one folder on two machines, for the scope case (M75). */
+  const SCOPE_LABEL = "scope-ws#main";
+
   /** `startHerdr` for an instance whose pane is {@link claudeScreen}: the fake's `text` is read per `pane.read`. */
-  function startLiveHerdr(at: Instance): void {
+  function startLiveHerdr(at: Instance, label = at.name): void {
     at.herdr = startFakeHerdr({
       socketPath: at.socketPath,
       workspaceLabel: at.name,
@@ -2302,7 +2305,7 @@ describe("walky talky in a crew of four, on the real wire", () => {
           paneId: at.paneId,
           tabId: "t1",
           workspaceId: "w1",
-          label: at.name,
+          label,
           get text() {
             return claudeScreen(at.herdr?.writes ?? []);
           },
@@ -2487,7 +2490,7 @@ describe("walky talky in a crew of four, on the real wire", () => {
     wa = new Instance("wa", "w1:p2", "");
     wb = new Instance("wb", "w1:p3", "");
     wo = new Instance("wold", "w1:p4", "", { COLLIE_PLUGIN_ROOT: oldRoot });
-    for (const i of [wl, wa, wb, wo]) startLiveHerdr(i);
+    for (const i of [wl, wa, wb, wo]) startLiveHerdr(i, i === wl || i === wa ? SCOPE_LABEL : i.name);
     await Promise.all([wl.start(), wa.start(), wb.start(), wo.start()]);
     await enrol(wl, wa);
     await enrol(wl, wb);
@@ -2651,6 +2654,56 @@ describe("walky talky in a crew of four, on the real wire", () => {
     expect(status.out).toEqual([id, `${paneOf(wb)}: typed into the pane (signed by ${idOf(wa)})`]);
     expect(typedFor(wb, id)).toHaveLength(1);
   }, 60_000);
+
+  test("a scope send (M75) from a member's pane reaches the lead's pane in that folder and comes back `delivered`, and `here` from the lead reaches the member", async () => {
+    // The lead's pane and A's share the folder label `scope-ws#main` (beforeAll); B's and the old member's do
+    // not. It runs before the phone-reply case, which stops A mid-send and leaves a draft in A's box.
+    await waitFor(
+      async () => {
+        const listed = JSON.stringify(await walky(wl, { op: "who" }));
+        return listed.includes(`"${paneOf(wa)}#`) && listed.includes(`"label":"${SCOPE_LABEL}"`);
+      },
+      20_000,
+      async () => `the lead's who never listed A in the scope: ${JSON.stringify(await walky(wl, { op: "who" }))}`,
+    );
+    // Member to lead: A hands the scope to the lead whole, the lead expands it to its own pane only.
+    const up = "wt_scopeup00001";
+    const sent = await agentSend(wa, up, "scope-ws", "to every agent in scope-ws");
+    expect(sent).toMatchObject({ ok: true, receipts: [{ id: up, target: paneOf(wl), by: idOf(wl), verified: "origin" }] });
+    await settled(wl, up);
+    expect(await walky(wl, { op: "status", id: up })).toMatchObject({
+      ok: true,
+      receipts: [{ target: paneOf(wl), state: "delivered" }],
+      message: { to: "scope-ws", from: { address: tokened(wa) } },
+      deliveries: [{ address: paneOf(wl), member: idOf(wl), outcome: "delivered" }],
+      totals: { delivered: 1 },
+    });
+    // And back: the lead pushes the outcome to A, whose own status names the one delivery.
+    await waitFor(
+      async () => readReceiptsAnswer(await walky(wa, { op: "status", id: up })).some((r) => r.target === paneOf(wl) && r.state === "delivered"),
+      20_000,
+      async () => `A never learned the lead's outcome: ${JSON.stringify(await walky(wa, { op: "status", id: up }))}`,
+    );
+    expect(await walky(wa, { op: "status", id: up })).toMatchObject({ ok: true, deliveries: [{ address: paneOf(wl), outcome: "delivered" }], elsewhere: [] });
+    expect(typedFor(wl, up)).toHaveLength(1);
+    expect(typedFor(wa, up)).toEqual([]);
+    expect(typedFor(wb, up)).toEqual([]);
+
+    // Lead to member: `here` from the lead's pane is its folder without itself, so A's pane, checked by A.
+    const down = "wt_scopedown001";
+    const back = await agentSend(wl, down, "here", "to my siblings in scope-ws");
+    expect(back).toMatchObject({ ok: true, receipts: [{ id: down, target: paneOf(wa), by: idOf(wa), verified: "origin" }] });
+    await settled(wa, down);
+    expect(await walky(wa, { op: "status", id: down })).toMatchObject({ ok: true, receipts: [{ target: paneOf(wa), state: "delivered" }], message: { to: "here" } });
+    // A's report carries the outcome to the lead's parent.
+    await waitFor(
+      async () => readReceiptsAnswer(await walky(wl, { op: "status", id: down })).some((r) => r.target === paneOf(wa) && r.state === "delivered"),
+      20_000,
+      async () => `the lead never learned A's outcome: ${JSON.stringify(await walky(wl, { op: "status", id: down }))}`,
+    );
+    expect(typedFor(wa, down)).toHaveLength(1);
+    expect(typedFor(wl, down)).toEqual([]);
+  }, 90_000);
 
   test("a sender block whose certificate the lead did not vouch for is the uniform 401, and the vouched one reads `origin`", async () => {
     const leadData = wl.store()!;

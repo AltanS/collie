@@ -15,7 +15,9 @@ import { RequestStore } from "../surface/requests.ts";
 import { CANCELLED_BY_SENDER, DROPPED_BY_OWNER, HELD_LIMIT_MS, HELD_POLL_MS, reasonOf, sendIdOf, type SendResult, type WalkyHold, type WalkyHost, type WalkyPane } from "./deliver.ts";
 import { WalkyLog } from "./log.ts";
 import { RateLimiter } from "./rate.ts";
+import { OUT_OF_SCOPE } from "./refusals.ts";
 import { NOT_THE_SENDER, WalkyService, type WalkyServiceDeps } from "./service.ts";
+import type { WalkyTarget } from "./types.ts";
 
 const roots: string[] = [];
 afterEach(() => {
@@ -1225,5 +1227,196 @@ describe("a held message is taken back (M62 spec 03)", () => {
     expect(after.get("wt_aaaaaaaaaaa1", TARGET)?.receipt).toMatchObject({ state: "inbox-only", reason: CANCELLED_BY_SENDER });
     expect(after.get("wt_aaaaaaaaaaa2", TARGET)?.receipt).toMatchObject({ state: "inbox-only", reason: DROPPED_BY_OWNER });
     expect(after.pending()).toEqual([]);
+  });
+});
+
+describe("a workspace scope (M75 spec 02)", () => {
+  const ws = (paneId: string, label: string, over: Partial<WalkyPane> = {}) => pane(paneId, { label, ...over });
+  const agentOf = (from: WalkyPane) => ({ kind: "agent" as const, pane: from });
+  /** A target the lead's sweep holds for another member, as `who` lists it. */
+  const far = (memberId: string, paneId: string, label: string, state = "idle"): WalkyTarget => ({
+    address: `${memberId}/${paneId}#bbbb`,
+    memberId,
+    machine: memberId,
+    harness: "agent-x",
+    label,
+    state,
+  });
+  const targetsOf = (answer: Awaited<ReturnType<WalkyService["send"]>>) => (answer.ok ? answer.receipts.map((receipt) => `${receipt.target} ${receipt.state}`) : [answer.error]);
+
+  test("`<repo>` reaches every agent pane in that folder on any branch, one receipt each, never the sender, a shell or another folder", async () => {
+    const panes = [ws("w1:p1", "collie-workspace#main"), ws("w1:p2", "collie-workspace#feat"), ws("w1:p3", "other#main"), ws("w1:p4", "collie-workspace#main", { agent: false })];
+    const r = rig(panes);
+    const answer = await r.service.send(send("wt_aaaaaaaaaaa1", "collie-workspace"), agentOf(panes[0]!));
+    expect(targetsOf(answer)).toEqual(["local/w1:p2 accepted"]);
+    await r.service.deliverer.settled();
+    expect(r.host.sends.map((sent) => sent.pane)).toEqual(["w1:p2"]);
+    // The signed `to` is the scope as typed: the recipient reads that it was sent to the folder.
+    expect(r.service.status("wt_aaaaaaaaaaa1").message?.to).toBe("collie-workspace");
+    const fromPhone = await r.service.send(send("wt_aaaaaaaaaaa2", "collie-workspace"), operator);
+    expect(targetsOf(fromPhone)).toEqual(["local/w1:p1 accepted", "local/w1:p2 accepted"]);
+  });
+
+  test("`<repo>#<branch>` narrows to one branch", async () => {
+    const r = rig([ws("w1:p1", "collie-workspace#main"), ws("w1:p2", "collie-workspace#feat")]);
+    expect(targetsOf(await r.service.send(send("wt_aaaaaaaaaaa1", "collie-workspace#feat"), operator))).toEqual(["local/w1:p2 accepted"]);
+  });
+
+  test("`here` is the sender's folder on every branch, without the sender's own pane", async () => {
+    const panes = [ws("w1:p1", "collie-workspace#main"), ws("w1:p2", "collie-workspace#feat"), ws("w1:p3", "other#main")];
+    const r = rig(panes);
+    expect(targetsOf(await r.service.send(send("wt_aaaaaaaaaaa1", "here"), agentOf(panes[0]!)))).toEqual(["local/w1:p2 accepted"]);
+  });
+
+  test("the status of the parent lists every delivery, its member and outcome, and the totals", async () => {
+    const r = rig([ws("w1:p1", "collie-workspace#main"), ws("w1:p2", "collie-workspace#feat")]);
+    await r.service.send(send("wt_aaaaaaaaaaa1", "collie-workspace"), operator);
+    await r.service.deliverer.settled();
+    const status = r.service.status("wt_aaaaaaaaaaa1");
+    expect(status.deliveries).toEqual([
+      { address: "local/w1:p1", member: "local", outcome: "delivered", id: sendIdOf("wt_aaaaaaaaaaa1", "local/w1:p1") },
+      { address: "local/w1:p2", member: "local", outcome: "delivered", id: sendIdOf("wt_aaaaaaaaaaa1", "local/w1:p2") },
+    ]);
+    expect(status.totals).toEqual({ delivered: 2 });
+    // A one-pane message keeps its old answer: no delivery list.
+    await r.service.send(send("wt_aaaaaaaaaaa2", "local/w1:p1"), operator);
+    expect(r.service.status("wt_aaaaaaaaaaa2").deliveries).toBeUndefined();
+  });
+
+  test("`cancel <parent>` takes back every held delivery", async () => {
+    const panes = [ws("w1:p1", "collie-workspace#main"), ws("w1:p2", "collie-workspace#main"), ws("w1:p3", "collie-workspace#main")];
+    // The hold watchers wait on this gate, so both deliveries stay held until the cancel.
+    const gate = Promise.withResolvers<void>();
+    const r = rig(panes, { sleep: () => gate.promise });
+    r.host.answer = { outcome: "held", reason: "turn_running" };
+    await r.service.send(send("wt_aaaaaaaaaaa1", "here"), agentOf(panes[0]!));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const answer = r.service.cancel("wt_aaaaaaaaaaa1", { kind: "agent", pane: panes[0]! });
+    expect(answer.ok && answer.results.map((result) => `${result.target} ${result.result}`)).toEqual(["local/w1:p2 taken", "local/w1:p3 taken"]);
+    gate.resolve();
+    await r.service.deliverer.settled();
+    expect(r.service.status("wt_aaaaaaaaaaa1").totals).toEqual({ "inbox-only": 2 });
+  });
+
+  test("a scope send takes one token from the sender, and each delivery one from its pair", async () => {
+    const panes = [ws("w1:p1", "repo#main"), ws("w1:p2", "repo#main"), ws("w1:p3", "repo#main")];
+    const pairs = new RateLimiter(1);
+    const r = rig(panes, { rate: new RateLimiter(2), pairs });
+    // Two deliveries, one sender token: a second send still fits the sender's two.
+    expect(targetsOf(await r.service.send(send("wt_aaaaaaaaaaa1", "here"), agentOf(panes[0]!)))).toEqual(["local/w1:p2 accepted", "local/w1:p3 accepted"]);
+    // Every pair is full now: each delivery is refused on its own, and the send itself is counted.
+    const second = await r.service.send(send("wt_aaaaaaaaaaa2", "here"), agentOf(panes[0]!));
+    expect(targetsOf(second)).toEqual(["local/w1:p2 refused", "local/w1:p3 refused"]);
+    expect(second.ok && second.receipts.every((receipt) => receipt.reason === "pair limit")).toBe(true);
+    // The third has no sender token left.
+    expect(await r.service.send(send("wt_aaaaaaaaaaa3", "here"), agentOf(panes[0]!))).toMatchObject({ ok: true, receipts: [{ target: "here", state: "refused", reason: "rate limit" }] });
+  });
+
+  test("on a lead: one delivery per matching pane on every member, one leg per pane, and an unreachable member is listed, not dialled", async () => {
+    const legs: string[] = [];
+    const lead = [ws("w1:p1", "collie-workspace#main"), ws("w1:p2", "elsewhere#main")];
+    const r = rig(lead, {
+      memberId: "desk",
+      knownMembers: () => ["desk", "laptop", "other", "gone"],
+      remoteTargets: () => [
+        far("laptop", "w1:p8", "collie-workspace#main"),
+        far("laptop", "w1:p9", "collie-workspace#feat"),
+        far("laptop", "w1:p7", "elsewhere#main"),
+        far("other", "w2:p1", "collie-workspace#main"),
+        far("gone", "w3:p1", "collie-workspace#main", "unreachable"),
+      ],
+      routeRemote: async (m, members, panes) => {
+        legs.push(`${members} ${(panes ?? []).join(",")}`);
+        return (panes ?? []).map((paneId) => ({ id: m.id, target: `${members}/${paneId}`, state: "accepted" as const, verified: "lead" as const, at: 1, by: members }));
+      },
+    });
+    const answer = await r.service.send(send("wt_aaaaaaaaaaa1", "collie-workspace"), operator);
+    expect(targetsOf(answer)).toEqual(["desk/w1:p1 accepted", "gone/all refused", "laptop/w1:p8 accepted", "laptop/w1:p9 accepted", "other/w2:p1 accepted"]);
+    expect(legs).toEqual(["laptop w1:p8,w1:p9", "other w2:p1"]);
+    // Each delivery is a target of its own under the one parent id; the far ones are the members' word.
+    expect(r.log.get("wt_aaaaaaaaaaa1", "laptop/w1:p9")?.receipt).toMatchObject({ state: "accepted", by: "laptop" });
+    await r.service.deliverer.settled();
+    const status = r.service.status("wt_aaaaaaaaaaa1");
+    expect(status.deliveries?.map((delivery) => `${delivery.address} ${delivery.member} ${delivery.outcome}`)).toEqual([
+      "desk/w1:p1 desk delivered",
+      "gone/all gone unreachable",
+      "laptop/w1:p8 laptop accepted",
+      "laptop/w1:p9 laptop accepted",
+      "other/w2:p1 other accepted",
+    ]);
+    expect(status.totals).toEqual({ delivered: 1, unreachable: 1, accepted: 3 });
+    // The same id again answers what it holds and dials nothing more.
+    await r.service.send(send("wt_aaaaaaaaaaa1", "collie-workspace"), operator);
+    expect(legs).toHaveLength(2);
+  });
+
+  test("on a lead, `here` from a member's pane reaches its siblings on every machine, the sender's own machine included, never the sender", async () => {
+    const legs: string[] = [];
+    const r = rig([ws("w1:p1", "collie-workspace#main")], {
+      memberId: "desk",
+      remoteTargets: () => [far("laptop", "w1:p8", "collie-workspace#main"), far("laptop", "w1:p9", "collie-workspace#feat")],
+      routeRemote: async (_message, members, panes) => {
+        legs.push(`${members} ${(panes ?? []).join(",")}`);
+        return [];
+      },
+    });
+    const message = {
+      v: 1 as const,
+      id: "wt_aaaaaaaaaaa1",
+      kind: "agent" as const,
+      from: { memberId: "laptop", address: "laptop/w1:p8#bbbb", harness: "agent-x", label: "collie-workspace#main" },
+      to: "here",
+      replyTo: null,
+      at: 1_786_000_000_000,
+      body: "hello",
+      signer: "laptop",
+      signature: "c2ln",
+    };
+    const receipts = await r.service.receive(message, "origin", false, "laptop");
+    expect(receipts.map((receipt) => `${receipt.target} ${receipt.state}`)).toEqual(["desk/w1:p1 accepted", "laptop/w1:p9 accepted"]);
+    expect(legs).toEqual(["laptop w1:p9"]);
+  });
+
+  test("a member hands the scope to its lead whole, and delivers nothing itself", async () => {
+    const routed: string[] = [];
+    const panes = [ws("w1:p8", "collie-workspace#main"), ws("w1:p9", "collie-workspace#main")];
+    const r = rig(panes, {
+      memberId: "laptop",
+      outcomesOnLead: true,
+      routeRemote: async (m, members, legPanes) => {
+        routed.push(`${m.to} ${members} ${legPanes === undefined ? "-" : legPanes.join(",")}`);
+        return [{ id: m.id, target: "desk/w1:p1", state: "accepted", verified: "origin", at: 1, by: "desk" }];
+      },
+    });
+    const answer = await r.service.send(send("wt_aaaaaaaaaaa1", "here"), agentOf(panes[0]!));
+    expect(routed).toEqual(["here here -"]);
+    expect(targetsOf(answer)).toEqual(["desk/w1:p1 accepted"]);
+    expect(r.host.sends).toEqual([]);
+    // The scope's own line is the leg, hidden once a pane answers for it.
+    expect(r.log.get("wt_aaaaaaaaaaa1", "here")?.receipt.state).toBe("accepted");
+    expect(r.service.status("wt_aaaaaaaaaaa1")).toMatchObject({ receipts: [{ target: "desk/w1:p1" }], deliveries: [{ address: "desk/w1:p1", member: "desk", outcome: "accepted" }], elsewhere: ["desk/w1:p1"] });
+  });
+
+  test("a member delivers a routed scope only to the pane the route names, and only while its label sits in the scope", async () => {
+    const r = rig([ws("w1:p8", "collie-workspace#main"), ws("w1:p9", "other#main"), ws("w1:p7", "collie-workspace#main", { agent: false })], { memberId: "laptop" });
+    const message = (id: string, to: string) => ({
+      v: 1 as const,
+      id,
+      kind: "operator" as const,
+      from: { memberId: "desk", address: null, harness: null, label: "phone" },
+      to,
+      replyTo: null,
+      at: 1_786_000_000_000,
+      body: "hello",
+      signer: "desk",
+      signature: "c2ln",
+    });
+    expect(await r.service.receive(message("wt_aaaaaaaaaaa1", "collie-workspace"), "lead", true, undefined, "w1:p8")).toMatchObject([{ target: "laptop/w1:p8", state: "accepted" }]);
+    // A pane outside the scope cannot ride it, whatever the route names.
+    expect(await r.service.receive(message("wt_aaaaaaaaaaa2", "collie-workspace"), "lead", true, undefined, "w1:p9")).toMatchObject([{ target: "laptop/w1:p9", state: "refused", reason: OUT_OF_SCOPE }]);
+    expect(await r.service.receive(message("wt_aaaaaaaaaaa3", "collie-workspace"), "lead", true, undefined, "w1:p7")).toMatchObject([{ state: "refused", reason: "not an agent pane" }]);
+    expect(await r.service.receive(message("wt_aaaaaaaaaaa4", "collie-workspace"), "lead", true, undefined, "w9:p9")).toMatchObject([{ state: "refused", reason: "no such pane" }]);
+    await r.service.deliverer.settled();
+    expect(r.host.sends.map((sent) => sent.pane)).toEqual(["w1:p8"]);
   });
 });
