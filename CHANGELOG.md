@@ -38,6 +38,11 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A pi question on herdr-core shows its options, and a tap answers it.** The core hands out the screen with no colour, and Collie found pi's question only by the paint of its footer and status rows, so the card read unreadable and offered Escape alone. On a read with no styling the question is now found by its text: the footer's words, the numbered rows with the `>` pointer, and pi's own status rows with the session cost. A styled read is unchanged.
 - **A pane with a question on its screen says it needs you.** herdr-core reports pi as working while pi's question waits, so the pane showed no "needs you" mark and sent no push. A pane whose screen shows a card the phone can answer is now blocked, whatever the multiplexer reports.
 
+### Changed
+
+- **The browser leg runs on herdr-core with `MUX=herdr-core`.** `COLLIE_RIG_MUX` starts a scratch core per machine instead of a scratch Herdr server, `herdr,herdr-core` puts the crew leg's member on the core, and Herdr stays the default.
+
+
 ## [1.25.1] - 2026-10-30
 
 A bugfix release, not urgent. You need it if you run two Collies on one machine, such as the Herdr TUI and the Herdr core, or if you send walky talky messages to Claude Code on herdr-core.

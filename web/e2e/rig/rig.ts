@@ -86,11 +86,15 @@ import {
   assertPrivateDir,
   assertUnderRoot,
   assertUnderXdg,
+  coreDirs,
+  coreRunning,
   herdr,
   herdrEnv,
+  hc,
   killPid,
   machineDirs,
   memGuard,
+  muxOf,
   newWorkspacePane,
   openPanes,
   paneClose,
@@ -102,13 +106,14 @@ import {
   readToken,
   retireXdgHome,
   sleep,
+  stopCore,
   writeRun,
   type Machine,
   type MemberRun,
   type OpenPane,
   type Run,
 } from "./rig-lib";
-import { asJsonObject, asJsonString, parseJson, type JsonValue } from "../../src/lib/json";
+import { asJsonNumber, asJsonObject, asJsonString, parseJson, type JsonValue } from "../../src/lib/json";
 import { BIN } from "./bins";
 import { enrolMember } from "./crew-enrol";
 import { HARNESS_IDS, harnessDirs, prepareHarness } from "./harnesses";
@@ -135,7 +140,8 @@ import {
 } from "./rig-scope";
 import { startStub, type Stub } from "./replay/stub";
 import { CASSETTE_ROOT, planTiers, readVersions, rigLiterals, tiersFromEnv } from "./replay/tier";
-import { socketPathProblem } from "./sock-path";
+import { coreSocketIn } from "./rig-mux";
+import { socketPathProblem, sunPathLimit } from "./sock-path";
 
 const SELF = fileURLToPath(import.meta.url);
 /** This checkout: web/e2e/rig/rig.ts is three levels below it. */
@@ -430,7 +436,7 @@ function bridgeEnv(machine: Machine, port: number, socket: string) {
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env)) {
     if (value === undefined) continue;
-    if (/^(COLLIE_|HERDR_|CLAUDECODE$|CLAUDE_CODE_|CLAUDE_PID$|CLAUDE_EFFORT$|TAILSCALE|XDG_|RIG_|PI_CODING_AGENT_DIR$|CODEX_HOME$)/.test(key)) continue;
+    if (/^(COLLIE_|HERDR_|HC_|CLAUDECODE$|CLAUDE_CODE_|CLAUDE_PID$|CLAUDE_EFFORT$|TAILSCALE|XDG_|RIG_|PI_CODING_AGENT_DIR$|CODEX_HOME$)/.test(key)) continue;
     env[key] = value;
   }
   mkdirSync(d.bridgeHome, { recursive: true, mode: 0o700 });
@@ -455,8 +461,9 @@ function bridgeEnv(machine: Machine, port: number, socket: string) {
     HERDR_PLUGIN_CONFIG_DIR: d.config,
     COLLIE_CONFIG: d.homeCfg,
     COLLIE_INSTANCE: machine === "lead" ? "rig" : "rig-member",
-    COLLIE_MUX: "herdr",
-    HERDR_SOCKET_PATH: socket,
+    // The machine's mux (COLLIE_RIG_MUX): Herdr's API socket, or the scratch core's client socket under
+    // the core's endpoint name (bridge/mux/registry.ts muxEndpointVar, spelled out: the web typecheck does not reach bridge/).
+    ...(muxOf(machine) === "herdr-core" ? { COLLIE_MUX: "herdr-core", COLLIE_MUX_ENDPOINT_HERDR_CORE: socket } : { COLLIE_MUX: "herdr", HERDR_SOCKET_PATH: socket }),
     COLLIE_SKIP_SERVE: "1",
     COLLIE_MULTI_SESSION: "0",
     // The release check is the bridge's only outbound call; a loopback mirror with nothing
@@ -522,12 +529,15 @@ async function daemon(): Promise<void> {
       const half = halfOf(run, machine);
       const session = machineDirs(machine).session;
       await killPid(half.bridgePid, BRIDGE_TAG);
-      herdr(["session", "stop", session], { session: false, machine });
-      for (let i = 0; i < 25; i++) {
-        if (herdr(["session", "delete", session], { session: false, machine }).code === 0) break;
-        await sleep(200);
+      if (muxOf(machine) === "herdr-core") await stopCore(machine, half.herdrPid);
+      else {
+        herdr(["session", "stop", session], { session: false, machine });
+        for (let i = 0; i < 25; i++) {
+          if (herdr(["session", "delete", session], { session: false, machine }).code === 0) break;
+          await sleep(200);
+        }
+        await killPid(half.herdrPid, "herdr");
       }
-      await killPid(half.herdrPid, "herdr");
       retireXdgHome(machine);
     }
     rmSync(P.run, { force: true });
@@ -588,6 +598,29 @@ async function daemon(): Promise<void> {
     } catch (err) {
       log(`client not attached on the ${machine} (${err instanceof Error ? err.message : String(err)}); panes still work, colour queries go unanswered`);
     }
+  };
+
+  /**
+   * One machine's scratch herdr-core (M78 spec 03): `hc server start` with the rig's HC_SESSION, HC_SOCKET
+   * and XDG homes (rig-lib.ts coreEnv). The core daemonises into a systemd user service of its own and
+   * answers with its pid, which rig.json keeps in `herdrPid` (the mux server's pid, whichever mux). No view
+   * pane and no attached client: the core renders every terminal itself and answers a program's colour query.
+   */
+  const startCore = async (machine: Machine) => {
+    const half = halfOf(run, machine);
+    const c = coreDirs(machine);
+    for (const dir of [c.data, c.cache]) mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const started = hc(["server", "start", "--json"], machine, { start: true });
+    const pid = asJsonNumber(asJsonObject(parseJson(started.out))?.pid);
+    if (started.code !== 0 || pid === undefined) throw new Error(`the ${machine}'s scratch core did not start: ${(started.err || started.out).trim()}`);
+    half.herdrPid = pid;
+    writeRun(run);
+    const end = Date.now() + 15_000;
+    while (Date.now() < end && !coreRunning(machine)) await sleep(100);
+    if (!coreRunning(machine)) throw new Error(`the ${machine}'s scratch core did not bind ${c.socket} in 15 s`);
+    half.socket = assertUnderXdg(c.socket, machine);
+    writeRun(run);
+    log(`herdr-core up (${machine}): session ${c.session}, socket ${half.socket}, pid ${String(pid)}`);
   };
 
   const spawnBridge = (machine: Machine) => {
@@ -653,7 +686,7 @@ async function daemon(): Promise<void> {
     stub = await startStub({ root: CASSETTE_ROOT, leg, plans: tiers, literals: rigLiterals(STATE_ROOT), speed: Number(process.env.COLLIE_RIG_REPLAY_SPEED ?? "1") || 1, log: (line) => log(`stub: ${line}`) }, await freePort(taken));
     run.stub = { port: stub.port, tiers };
     writeRun(run);
-    for (const machine of machines) await startHerdr(machine);
+    for (const machine of machines) await (muxOf(machine) === "herdr-core" ? startCore(machine) : startHerdr(machine));
     for (const machine of machines) spawnBridge(machine);
     for (const machine of machines) {
       if (!(await bridgeReady(machine))) throw new Error(`the ${machine}'s bridge did not answer in 30 s (see logs/${machine === "lead" ? "" : "member-"}bridge.log)`);
@@ -703,11 +736,17 @@ async function cmdUp(crew: boolean): Promise<void> {
     const d = machineDirs(machine);
     const tooLong = socketPathProblem(d.xdg, d.session); // Herdr fails on a long path only after it starts, and the rig would wait 15 s
     if (tooLong !== null) die(tooLong);
+    // The core binds `hc.holder.<8 hex>.sock` beside its socket, the longer of its two.
+    const holder = coreSocketIn(d.xdg).replace(/hc\.sock$/, "hc.holder.00000000.sock");
+    if (Buffer.byteLength(holder) > sunPathLimit()) die(`the herdr-core socket path is ${Buffer.byteLength(holder)} bytes, over the ${sunPathLimit()} a Unix socket allows: ${holder}`);
   }
   memGuard(crew ? "the crew rig (two Herdr servers + two bridges)" : "the rig (Herdr + bridge)");
   // A leftover from a crashed run lives only in the rig's own Herdr homes.
-  if (machines.some((machine) => existsSync(join(machineDirs(machine).xdg, "herdr")))) await cmdDown();
-  const dirs = machines.flatMap((machine) => [machineDirs(machine).state, machineDirs(machine).config]);
+  if (machines.some((machine) => existsSync(join(machineDirs(machine).xdg, "herdr")) || coreRunning(machine))) await cmdDown();
+  // A scratch core keeps its terminals' records in its state home and gives a parked one a shell at its next
+  // start, so a core machine starts from an empty one: no terminal of an earlier run comes back.
+  const coreHomes = machines.filter((machine) => muxOf(machine) === "herdr-core").map((machine) => join(machineDirs(machine).xdgState, "herdr-core"));
+  const dirs = [...machines.flatMap((machine) => [machineDirs(machine).state, machineDirs(machine).config]), ...coreHomes];
   for (const dir of [...dirs, P.logs]) rmSync(assertUnderRoot(dir), { recursive: true, force: true });
   for (const machine of machines) {
     const d = machineDirs(machine);
@@ -743,7 +782,7 @@ async function cmdUp(crew: boolean): Promise<void> {
   }
   await pairDevice(run!.port, DEVICE_LABEL);
   console.log(`up: bridge http://127.0.0.1:${run!.port}  worktree ${WORKTREE}`);
-  console.log(`    herdr session ${machineDirs("lead").session}  socket ${run!.socket}`);
+  console.log(`    ${muxLine("lead")}  socket ${run!.socket}`);
   if (crew) {
     const member = halfOf(run!, "member");
     // The lead learns the member on its own sweep, which rides its poll (bridge/crew/lead.ts): wait for it.
@@ -752,10 +791,13 @@ async function cmdUp(crew: boolean): Promise<void> {
       await cmdDown();
       die(`the lead never reported the member reachable in 90 s (last: ${reachable ?? "no answer"}); see logs/daemon.log and logs/member-bridge.log`);
     }
-    console.log(`    member ${MEMBER_ID}: bridge 127.0.0.1:${String(member.port)} (pinned TLS)  herdr session ${machineDirs("member").session}  socket ${member.socket}`);
+    console.log(`    member ${MEMBER_ID}: bridge 127.0.0.1:${String(member.port)} (pinned TLS)  ${muxLine("member")}  socket ${member.socket}`);
     console.log(`    lead ${LEAD_ID} reports the member reachable`);
   }
 }
+
+/** "herdr session collie-rig" or "herdr-core session collie-rig-<hex>": what `up` prints per machine. */
+const muxLine = (machine: Machine): string => (muxOf(machine) === "herdr-core" ? `herdr-core session ${coreDirs(machine).session}` : `herdr session ${machineDirs(machine).session}`);
 
 /** The lead's word for the member (`GET /api/crew`), polled until `ok` holds or `ms` ran out; the last word, or null. */
 async function memberHealth(ms: number, ok: (health: string) => boolean): Promise<string | null> {
@@ -800,7 +842,9 @@ async function cmdDown(): Promise<void> {
         }
       }
     }
-    if (run !== null && (machine === "lead" || run.member !== undefined)) await killPid(halfOf(run, machine).herdrPid, "herdr");
+    const serverPid = run !== null && (machine === "lead" || run.member !== undefined) ? halfOf(run, machine).herdrPid : null;
+    if (muxOf(machine) === "herdr-core" || coreRunning(machine)) await stopCore(machine, serverPid);
+    else await killPid(serverPid, "herdr");
     retireXdgHome(machine);
   }
   if (run?.scope) stopScope(run.scope);
@@ -809,7 +853,8 @@ async function cmdDown(): Promise<void> {
   rmSync(P.token, { force: true });
   rmSync(MEMBER_ENV_FILE, { force: true });
   rmSync(LAST_PANES_FILE, { force: true });
-  console.log(machines.length === 1 ? "down: bridge and scratch Herdr stopped" : "down: both bridges and both scratch Herdr servers stopped");
+  const what = machines.map((machine) => (muxOf(machine) === "herdr-core" ? "scratch core" : "scratch Herdr"));
+  console.log(machines.length === 1 ? `down: bridge and ${what[0]} stopped` : `down: both bridges, the lead's ${what[0]} and the member's ${what[1]} stopped`);
 }
 
 /** `crew stop-member` / `crew start-member`: the daemon does it, and this waits until rig.json and the port agree. */
@@ -988,6 +1033,8 @@ async function cmdPane(args: readonly string[], machine: Machine, key: string): 
 /** What `status` prints: rig.json, and whether each recorded process still runs. */
 interface StatusView extends Run {
   readonly stateRoot: string;
+  /** The mux of each machine (COLLIE_RIG_MUX): one name, or `<lead>,<member>` on the crew rig. */
+  readonly mux: string;
   /** The daemon's scope, or "none" when it runs outside one. */
   readonly scope: string;
   /** The scope's `pids.current/pids.max`; absent without a scope or when systemd gives none. */
@@ -1025,7 +1072,7 @@ switch (cmd) {
       console.log(`not up (state root ${dirname(P.rig)})`);
       break;
     }
-    const shown: StatusView = { stateRoot: dirname(P.rig), ...run, scope: run.scope ?? "none", daemonAlive: pidIs(run.daemonPid, DAEMON_TAG), bridgeAlive: pidIs(run.bridgePid, BRIDGE_TAG) };
+    const shown: StatusView = { stateRoot: dirname(P.rig), mux: CREW || run.member !== undefined ? `${muxOf("lead")},${muxOf("member")}` : muxOf("lead"), ...run, scope: run.scope ?? "none", daemonAlive: pidIs(run.daemonPid, DAEMON_TAG), bridgeAlive: pidIs(run.bridgePid, BRIDGE_TAG) };
     const used = run.scope ? readScopeFile(run.scope, "pids.current") : null;
     const cap = run.scope ? readScopeFile(run.scope, "pids.max") : null;
     if (used !== null && cap !== null) shown.tasks = `${used}/${cap}`;

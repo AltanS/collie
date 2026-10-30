@@ -35,7 +35,7 @@ import {
   type TapRecorder,
   type Trail,
 } from "./leg";
-import { DEVICE_LABEL, machineDirs, memGuard, newWorkspacePane, paneRun, readRun, sleep, type Machine } from "./rig-lib";
+import { DEVICE_LABEL, machineDirs, memGuard, paneMarkers, readRun, sleep, startInPane, type Machine } from "./rig-lib";
 
 export const PHONE = devices[PHONE_DEVICE];
 
@@ -344,9 +344,7 @@ const quoted = (word: string): string => `'${word.replaceAll("'", `'\\''`)}'`;
 export async function startExtraAgent(rig: Rig, id: HarnessId): Promise<string> {
   memGuard(`an extra ${id}`);
   const dirs = harnessDirs(id);
-  const paneId = newWorkspacePane(dirs.project, `leg-${id}-extra`);
-  await sleep(800);
-  paneRun(paneId, `exec ${quoted(dirs.start)}`);
+  const paneId = await startInPane(dirs.project, `leg-${id}-extra`, `exec ${quoted(dirs.start)}`);
   const up = await rig.until(() => rig.pane(paneId), (pane) => pane !== null && pane.agent === SETUPS[id].agent && (freeSurface(pane) || (pane.surface === null && pane.status === "idle")), 90_000, 700);
   if (up === null) throw new NotReached(`an extra ${id} did not come up idle in 90 s`);
   return paneId;
@@ -365,7 +363,7 @@ export interface CliSend {
 
 /**
  * `collie walky send` as an agent's Bash tool runs it, with no model turn: this checkout's CLI, the
- * sender pane's own Herdr markers (`HERDR_PANE_ID`, the machine's socket) and its machine's state dir.
+ * sender pane's own mux markers (Herdr's `HERDR_PANE_ID` or the core's `HC_TERMINAL_ID`, and the machine's socket) and its machine's state dir.
  * The HOME is the bridge's empty one, so the CLI can reach no bridge but the rig's own. The bridge
  * proves the sender the way it proves an agent's: the markers name the pane.
  */
@@ -396,7 +394,7 @@ async function runCli(senderPane: string, args: readonly string[], machine: Mach
   const socket = machine === "lead" ? run?.socket : run?.member?.socket;
   if (socket === undefined || socket === "") throw new Error(`the rig has no ${machine} socket`);
   const dirs = machineDirs(machine);
-  const env = { PATH: process.env.PATH ?? "", HOME: dirs.bridgeHome, COLLIE_STATE_DIR: dirs.state, HERDR_PANE_ID: senderPane, HERDR_SOCKET_PATH: socket };
+  const env = { PATH: process.env.PATH ?? "", HOME: dirs.bridgeHome, COLLIE_STATE_DIR: dirs.state, ...paneMarkers(senderPane, socket, machine) };
   return new Promise<{ code: number; out: string }>((done) => {
     const child = spawn("bun", [join(WORKTREE, "cli", "main.ts"), "walky", ...args], { env, timeout: 60_000, stdio: ["ignore", "pipe", "ignore"] });
     let out = "";

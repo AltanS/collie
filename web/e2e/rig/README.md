@@ -191,6 +191,56 @@ bun e2e/rig/rig.ts down --crew
 the one writer of `rig.json`. The member's Herdr and its agents keep running, as on a machine whose
 Collie stopped.
 
+## On herdr-core
+
+By default every machine of the rig runs a scratch Herdr TUI server. `COLLIE_RIG_MUX` picks another
+multiplexer, and `make browser-leg DIR=... MUX=...` passes it on:
+
+```sh
+COLLIE_RIG_MUX=herdr-core bunx playwright test -c e2e/rig/playwright.config.ts          # the solo leg on the core
+COLLIE_RIG_MUX=herdr,herdr-core bunx playwright test -c e2e/rig/crew.config.ts          # lead on Herdr, member on the core
+bun e2e/rig/rig.ts up                                                                   # by hand: the same variable, on every command
+```
+
+One name puts both machines on that mux. Two names, `<lead>,<member>`, split them; that is the dev
+lane's own shape. Unset or `herdr` is the gate as it always ran. The rules are in `rig-mux.ts`.
+
+**How the core starts.** The daemon runs `hc server start` for each machine with `HC_SESSION`
+`collie-rig-<8 hex>` (the name of the rig's short home) and `HC_SOCKET` `<short home>/hc.sock`, under
+XDG homes of the rig's own. The short home is the folder Herdr gets (above), because the core binds its
+holder socket beside `hc.sock` and a long state root would push it past `sun_path`. Every `hc` call
+drops each inherited `HC_` name and carries that socket, so the operator's core
+(`$XDG_RUNTIME_DIR/herdr-core/default.sock`) is never dialled. The bridge gets `COLLIE_MUX=herdr-core`
+and `COLLIE_MUX_ENDPOINT_HERDR_CORE`. A harness starts with `hc run --bg --name leg-<harness>-<stamp>
+--cwd <project> --no-parent --no-notify -- sh -c "exec '<start.sh>'"`: a terminal whose program is the
+start script, with no shell beneath. A program started over the API gets the core's environment, not
+the caller's, so the start script carries every setting the harness needs, as it does on Herdr. The
+specs find a pane by the id the start returns, which is the bridge's own pane id on both muxes (a Herdr
+`w1:p1`, a core address `t1`), and read it through `/api/snapshot`.
+
+**Teardown.** `hc server stop` ends the core, its holder and every terminal's program. Then the rig
+kills the recorded server pid and any `herdr-core` process still bound to this rig's socket (by its
+command line or its `HC_SOCKET`), and removes the socket. Two facts of hc 0.1.14 shape this. Every `hc`
+call starts a core when none answers, `hc server status` included, so the rig calls `hc` only while the
+socket file is there. And the core places its server and holder in systemd user services of their own
+(`hc-serve-<hex>.service`, `hc-hold-<hex>.service`), outside the rig's scope, so the scope's `TasksMax`
+does not bound the harnesses on the core.
+
+**What differs from Herdr** (`HC_API.md` has the probes):
+
+- **A plain mirror.** The core hands out text with no colour and no SGR attribute, so a reader that
+  keys on a dim or inverse cell sees none.
+- **The key hold.** The core answers a key about 3 s after a raw write. The Send Protocol's probe and S1
+  wait it out, so a send takes longer.
+- **No History without hooks.** The core keeps no conversation id. On the core the rig writes the
+  beacon hooks `collie hooks install claude` would write into Claude's scratch settings, with the rig's
+  own `collie`, so a Claude pane has History and Chat as it does for an operator who installed them.
+- **An agent names itself.** The core names a terminal's agent only from the program's own OSC 7501
+  report. Claude Code and pi send one; omp 18.6.1 does not, so its pane reads as a shell and its cases
+  are not reached.
+- **No view pane and no attached client.** The core keeps each terminal's screen itself, with no
+  client attached. A terminal started over the API is 200 x 120.
+
 ## Prerequisites
 
 - `bun install` in the checkout root and in `web/`, then `bun run build` in `web/`. The bridge serves

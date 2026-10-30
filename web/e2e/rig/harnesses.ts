@@ -40,7 +40,8 @@ import { seedClaude, seedClaudeReplay } from "../../../scripts/harness-canary/la
 import type { JsonObject } from "../../src/lib/json";
 import { BIN, piExtensions } from "./bins";
 import { tiersFromEnv, modelFor, SKILL_TEMPLATE, type StubHarness } from "./replay/tier";
-import { machineDirs, readRun, type Machine } from "./rig-lib";
+import { machineDirs, muxOf, readRun, type Machine } from "./rig-lib";
+import { BEACON_EVENTS, beaconHookCommand } from "./rig-mux";
 import { HARNESS_IDS, type HarnessId } from "./scenarios";
 
 export { HARNESS_IDS, type HarnessId };
@@ -226,6 +227,16 @@ export function prepareHarness(id: HarnessId, machine: Machine = "lead"): Prepar
           hooks: [{ type: "command", command: `bash ${sq(join(d.config, "hooks", "herdr-agent-state.sh"))} session`, timeout: 10 }],
         },
       ];
+    }
+    // On herdr-core, the beacon hooks too (rig-mux.ts): the core keeps no conversation id, and an operator on
+    // the core installs them with `collie hooks install claude`. They run the rig's own `collie` shim, so the
+    // beacon lands in this machine's state dir and names the pane by HC_TERMINAL_ID.
+    if (muxOf(machine) === "herdr-core") {
+      const group = { hooks: [{ type: "command", command: beaconHookCommand(join(bin, "collie")), timeout: 10 }] };
+      for (const event of BEACON_EVENTS) {
+        const existing = hooks[event];
+        hooks[event] = [...(Array.isArray(existing) ? existing : []), group];
+      }
     }
     // `collie walky` is the verb the walky talky cases run through the agent, so it needs no permission
     // card of its own: the cases that test a dialog use another command.

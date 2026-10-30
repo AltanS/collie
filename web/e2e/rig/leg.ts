@@ -25,7 +25,7 @@ import { TOUR_STORAGE_KEY, TOUR_VERSION } from "../../src/lib/tour";
 import { BIN } from "./bins";
 import { SETUPS, harnessDirs, prepareHarness, type HarnessId } from "./harnesses";
 import type { ScenarioId } from "./scenarios";
-import { MEMBER_ID, P, STATE_ROOT, memGuard, newWorkspacePane, paneRun, readRun, readToken, sleep, type Machine } from "./rig-lib";
+import { MEMBER_ID, P, STATE_ROOT, memGuard, readRun, readToken, sleep, startInPane, type Machine } from "./rig-lib";
 import { STUB_HARNESSES, tiersFromEnv } from "./replay/tier";
 
 export { expect };
@@ -264,9 +264,7 @@ export async function startHarness(rig: Rig, id: HarnessId, machine: Machine = "
   if (!existsSync(BIN[id])) throw new NotReached(`${id} binary not found at ${BIN[id]}; set COLLIE_RIG_${id.toUpperCase()}_BIN`);
   const { line, notes } = prepareHarness(id, machine);
   const host = hostOf(machine);
-  const paneId = newWorkspacePane(harnessDirs(id, machine).project, `leg-${id}`, machine);
-  await sleep(800); // the shell's prompt first
-  paneRun(paneId, line, machine);
+  const paneId = await startInPane(harnessDirs(id, machine).project, `leg-${id}`, line, machine);
   const up = await rig.until(() => rig.pane(paneId, host), (pane) => pane !== null && pane.agent === SETUPS[id].agent && (freeSurface(pane) || (pane.surface === null && pane.status === "idle")), 90_000, 700);
   if (up === null) {
     const last = await rig.pane(paneId, host).catch(() => null);
