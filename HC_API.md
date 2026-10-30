@@ -375,10 +375,21 @@ Each line is a thing the core could do that would close a gap Collie cannot clos
   (the pointer row, the stepper chip, the selected tab) are colour only, so a dialog of those three
   whose pointer is colour only cannot be answered from the phone. Claude, Codex and the placeholders
   have a text twin and are done.
-- **A history read that answers.** `terminal.read` with `lines` above 0 did not answer in 30 s on a
-  pi that showed a permission or question dialog, while the viewport read (`lines: 0`) answered in
-  0.1 s. Collie gives up at 5 s and reads the pane as unreadable. The ask: a history read must not
-  wait on a full-screen program that shows a dialog.
+- **A history read that answers, and keys that do not wait for it.** `terminal.read` with `lines`
+  above 0 did not answer in 30 s on a pi that showed a permission or question dialog, while the
+  viewport read (`lines: 0`) answered in 0.1 s. Waited out, one such read took 25.03 s and answered
+  `{"complete": false, "how": "screen"}` (M78 report 10, case 2, hc 0.1.14). The core runs one
+  terminal's history reads and key presses one at a time: three history reads fired together ended at
+  +25, +50 and +75 s, and a `terminal.keys` sent 2 s into a history read answered after 23.1 s, 100 ms
+  after the read ended. A read the client gave up on still runs to its end. Another terminal in the
+  same core answered keys and history reads in 0.1 s, so the hold is per terminal. The effect: a key
+  call timed out at the client's 5 s and still reached pi later, and with a phone polling the pane
+  every 1.5 s the terminal's keys stayed held for over nine minutes. Collie now keeps at most one
+  history read per terminal on the core, starts none while the program reports `blocked`, backs off
+  for 30 s after a slow one (or until the screen changes), and reports a key call that timed out as
+  not confirmed instead of failed. The asks: a history read must not wait 25 s on a program that shows
+  a dialog; `terminal.keys` must not wait behind pending reads on the same terminal; and a read whose
+  client gave up (closed the connection) should be cancelled on the core.
 - **`blocked` for pi's question.** The core's status stays `working` while pi waits on its question,
   because pi reports no blocked state for an extension's question. Collie marks the pane "needs you"
   from the screen. The ask: pi reports it, or the core says so.
