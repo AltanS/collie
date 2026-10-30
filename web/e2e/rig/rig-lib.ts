@@ -30,7 +30,7 @@ import { basename, join, resolve } from "node:path";
 
 import { asJsonObject, asJsonString, parseJson, type JsonObject } from "../../src/lib/json";
 import type { TierPlans } from "./replay/tier";
-import { coreSocketIn, rigMuxFrom, type RigMux } from "./rig-mux";
+import { CORE_RIG_LABEL, coreRunArgs, coreSocketIn, rigMuxFrom, type RigMux } from "./rig-mux";
 import { XDG_HOME_NAME, shortXdgHome } from "./sock-path";
 
 /** True for the crew rig (lead and member); the solo rig otherwise. */
@@ -464,16 +464,9 @@ function hcJson(args: readonly string[], machine: Machine): JsonObject {
   return doc;
 }
 
-/** A terminal name the core takes: 1-32 of a-z 0-9 - _, unique among live terminals, so it carries a time stamp. */
-function coreName(label: string): string {
-  const stamp = Date.now().toString(36).slice(-5);
-  const base = label.toLowerCase().replace(/[^a-z0-9_-]+/g, "-").slice(0, 32 - stamp.length - 1);
-  return `${base}-${stamp}`;
-}
-
 /** A new terminal on the machine's core, in `cwd`, running `argv` (none: the machine's own shell); its address. */
 function coreNewTerminal(cwd: string, label: string, argv: readonly string[], machine: Machine): string {
-  const doc = hcJson(["run", "--bg", "--name", coreName(label), "--cwd", cwd, "--no-parent", "--no-notify", ...(argv.length === 0 ? [] : ["--", ...argv])], machine);
+  const doc = hcJson(coreRunArgs(cwd, label, argv), machine);
   const address = asJsonString(doc.address);
   if (address === undefined) throw new Error("hc run gave no address");
   return address;
@@ -486,7 +479,7 @@ function coreClose(address: string, machine: Machine): boolean {
   return killed;
 }
 
-/** The live terminals of the machine's core, as `pane ls` and the pane cap see them; the label is the terminal's name. */
+/** The live terminals of the machine's core, as `pane ls` and the pane cap see them; the label is the rig's hc label. */
 function coreOpenPanes(machine: Machine): OpenPane[] {
   const rows = hcJson(["ls"], machine).terminals;
   const out: OpenPane[] = [];
@@ -494,7 +487,7 @@ function coreOpenPanes(machine: Machine): OpenPane[] {
     const row = asJsonObject(t);
     const paneId = asJsonString(row?.address);
     if (paneId === undefined) continue;
-    out.push({ paneId, label: (asJsonString(row?.name) ?? "").replace(/-[0-9a-z]{1,5}$/, ""), cwd: asJsonString(row?.cwd) ?? "" });
+    out.push({ paneId, label: asJsonString(asJsonObject(row?.labels)?.[CORE_RIG_LABEL]) ?? "", cwd: asJsonString(row?.cwd) ?? "" });
   }
   return out;
 }

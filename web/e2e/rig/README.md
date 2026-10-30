@@ -228,9 +228,12 @@ XDG homes of the rig's own. The short home is the folder Herdr gets (above), bec
 holder socket beside `hc.sock` and a long state root would push it past `sun_path`. Every `hc` call
 drops each inherited `HC_` name and carries that socket, so the operator's core
 (`$XDG_RUNTIME_DIR/herdr-core/default.sock`) is never dialled. The bridge gets `COLLIE_MUX=herdr-core`
-and `COLLIE_MUX_ENDPOINT_HERDR_CORE`. A harness starts with `hc run --bg --name leg-<harness>-<stamp>
+and `COLLIE_MUX_ENDPOINT_HERDR_CORE`. A harness starts with `hc run --bg --label collie-rig.label=leg-<harness>
 --cwd <project> --no-parent --no-notify -- sh -c "exec '<start.sh>'"`: a terminal whose program is the
-start script, with no shell beneath. A program started over the API gets the core's environment, not
+start script, with no shell beneath. The rig gives a terminal no name: the bridge reads a core
+terminal's name as the pane's label, and a walky talky header names its sender by that label. On Herdr
+the rig labels the workspace, not the pane, so the header says the folder (`(pi, project)`), and the
+recordings hold that (M79 spec 03). A program started over the API gets the core's environment, not
 the caller's, so the start script carries every setting the harness needs, as it does on Herdr. The
 specs find a pane by the id the start returns, which is the bridge's own pane id on both muxes (a Herdr
 `w1:p1`, a core address `t1`), and read it through `/api/snapshot`.
