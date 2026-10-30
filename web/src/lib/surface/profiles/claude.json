@@ -24,6 +24,8 @@
     },
     "placeholders": {
       "texts": ["Press up to edit queued messages"],
+      "patterns": ["^Try \"[^\"]*\"$"],
+      "patternsNote": "Live 2026-10-30, Claude Code 2.1.314 on herdr-core: the empty box rotates faint hints (`Try \"refactor <filepath>\"`, `Try \"fix lint errors\"`, `Try \"how do I log an error?\"`). herdr-core reads the screen as plain text, so the faint attribute is gone and the hint read as a draft; a walky talky delivery stayed held as draft present. The shape marks it on any read. Fixture surface/claude--v2-1-314-placeholder-plain--w120 (plain text, as herdr-core reads it).",
       "sgr": 2
     },
     "volatile": {

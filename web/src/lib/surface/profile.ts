@@ -474,6 +474,14 @@ export interface Profile {
        * which stalls a send and never sends one into a dialog.
        */
       readonly prefixes?: readonly string[];
+      /**
+       * Regular expressions (sources); a draft text that one matches whole, blanks at its ends cut,
+       * is a placeholder too. For a harness whose placeholder rotates through hints of one shape and
+       * whose screen may come as plain text, with no faint attribute or colour to mark it (Claude
+       * Code's `Try "…"` hints on herdr-core, 2026-10-30). Optional. A typed draft of that exact
+       * shape reads as a placeholder.
+       */
+      readonly patterns?: readonly string[];
       /** The SGR attribute the placeholder renders with (2 is faint). */
       readonly sgr: number;
       /**
@@ -1278,15 +1286,19 @@ function parseInlineHint(value: JsonValue): InlineHint {
   return { fg: colourList(field(node, "fg", path), `${path}.fg`) };
 }
 
-/** `idle.placeholders`: the texts and the SGR attribute, and the prefixes and colours only when the profile names them. */
+/** `idle.placeholders`: the texts and the SGR attribute, and the prefixes, patterns and colours only when the profile names them. */
 function parsePlaceholders(node: JsonObject): Profile["idle"]["placeholders"] {
   const base = {
     texts: textList(field(node, "texts", "idle.placeholders"), "idle.placeholders.texts", 0),
     sgr: whole(field(node, "sgr", "idle.placeholders"), "idle.placeholders.sgr", 0),
   };
   const withPrefixes = node.prefixes === undefined ? base : { ...base, prefixes: textList(node.prefixes, "idle.placeholders.prefixes", 1) };
-  if (node.fg === undefined) return withPrefixes;
-  return { ...withPrefixes, fg: colourList(node.fg, "idle.placeholders.fg") };
+  const withPatterns =
+    node.patterns === undefined
+      ? withPrefixes
+      : { ...withPrefixes, patterns: textList(node.patterns, "idle.placeholders.patterns", 1).map((item, i) => pattern(item, `idle.placeholders.patterns[${String(i)}]`).source) };
+  if (node.fg === undefined) return withPatterns;
+  return { ...withPatterns, fg: colourList(node.fg, "idle.placeholders.fg") };
 }
 
 /** `idle.frame.trailer`: the last row inside the box, and the padding rows under it. */

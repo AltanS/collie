@@ -806,6 +806,9 @@ describe("the frame schema of the interior walk (M56 spec 14)", () => {
     ["a dialogsInBox flag that is no boolean", ["idle", "dialogsInBox"], "yes", "idle.dialogsInBox"],
     ["a promptEchoes flag that is no boolean", ["idle", "promptEchoes"], "yes", "idle.promptEchoes"],
     ["a placeholder prefix list that is no list", ["idle", "placeholders", "prefixes"], "Ask", "idle.placeholders.prefixes"],
+    ["a placeholder pattern list that is no list", ["idle", "placeholders", "patterns"], "^Try", "idle.placeholders.patterns"],
+    ["an empty placeholder pattern list", ["idle", "placeholders", "patterns"], [], "idle.placeholders.patterns"],
+    ["a placeholder pattern that is no expression", ["idle", "placeholders", "patterns"], ["[unclosed"], "idle.placeholders.patterns[0]"],
     ["an answer prompt that is no expression", ["idle", "answerPrompt"], "[unclosed", "idle.answerPrompt"],
   ];
   for (const [name, path, value, field] of cases) {

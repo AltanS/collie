@@ -27,6 +27,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **`walky inbox`, `status` and `reply` no longer stop at an older bridge that knows the pane but not the message.** On a machine that runs two Collies on one multiplexer the first bridge asked could answer "no message for this pane" for a message the other bridge held; such a bridge now answers not here and the CLI asks the next one.
 - **The home footer and the welcome sheet count machines, not members, and a pane row keeps its member name.** With two Collies on one machine the footer said four machines for two; it now says two machines and how many of the four instances answer, the first-run sheet says the same, and the row chip no longer clips a two-part label at phone width.
+- **Claude Code's grey hint in an empty box no longer counts as a draft.** On a herdr-core pane the screen comes as plain text, so the placeholder `Try "refactor <filepath>"` read as typed text and a walky talky delivery to that pane stayed held as "draft present" although nothing was typed; the Claude reader now knows the hint's shape and reads such a box as empty.
 
 ## [1.25.0] - 2026-10-30
 

@@ -451,6 +451,24 @@ describe("findInputFrame", () => {
     expect(nearMiss.placeholder).toBe(false);
   });
 
+  it("marks Claude Code's rotating `Try \"…\"` hint by its shape on a plain-text read (herdr-core, 2026-10-30)", () => {
+    // herdr-core reads the screen as plain text: the hint's faint attribute is gone, so only its shape
+    // tells it from typed text. Live on Claude Code 2.1.314; a walky talky delivery stayed held.
+    const capture = readFileSync(join(FIXTURES_DIR, "surface", "claude--v2-1-314-placeholder-plain--w120.txt"), "utf8");
+    const live = findInputFrame(splitLines(parseAnsi(capture)), IDLE)!;
+    expect(live.interior.text).toBe('Try "refactor <filepath>"');
+    expect(live.placeholder).toBe(true);
+    expect(live.anchorsHit).toContain("placeholder-text");
+    for (const hint of ['Try "fix lint errors"', 'Try "how do I log an error?"', 'Try ""']) {
+      expect(findInputFrame(lines(RULE, `❯ ${hint}`, RULE), IDLE)!.placeholder).toBe(true);
+      expect(findInputFrame(lines(RULE, `❯\u00a0${hint}`, RULE), IDLE)!.placeholder).toBe(true);
+    }
+    // Typed text around the shape, or a quote inside it, is a draft.
+    for (const draft of ['Try "fix lint errors" now', 'please Try "fix lint errors"', 'Try "a" and "b"', 'Try "unclosed', "Try fix lint errors"]) {
+      expect(findInputFrame(lines(RULE, `❯ ${draft}`, RULE), IDLE)!.placeholder).toBe(false);
+    }
+  });
+
   it("a faint marker in front of a real draft is not a placeholder", () => {
     const frame = findInputFrame([styled(plainRun(RULE)), styled(dim("❯ "), plainRun("real draft")), styled(plainRun(RULE))], IDLE)!;
     expect(frame.placeholder).toBe(false);

@@ -1,0 +1,9 @@
+❯ say hello to the crew
+
+⏺ Hello. The walky talky message went out to both panes.
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ Try "refactor <filepath>"
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  [Opus·medium] ~/project on main
+  ⏵⏵ bypass permissions on (shift+tab to cycle)

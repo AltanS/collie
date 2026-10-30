@@ -11,6 +11,8 @@ import { muxAck, muxOk, type MuxAck, type MuxGrid, type MuxOutcome } from "../mu
 import { HoldStore } from "../surface/holds.ts";
 import { KeyGate } from "../surface/key-gate.ts";
 import { RowRing, SendProtocol, SessionLocks } from "../surface/protocol.ts";
+import { SurfaceShadow } from "../surface/shadow.ts";
+import type { AgentView } from "../types.ts";
 import { RequestStore } from "../surface/requests.ts";
 import { CANCELLED_BY_SENDER, DROPPED_BY_OWNER, HELD_LIMIT_MS, HELD_POLL_MS, reasonOf, sendIdOf, type SendResult, type WalkyHold, type WalkyHost, type WalkyPane } from "./deliver.ts";
 import { WalkyLog } from "./log.ts";
@@ -745,8 +747,15 @@ class BoxPane {
   running = false;
   calls: string[] = [];
   keysSeen: string[] = [];
+  /**
+   * Set: the empty box shows these hints as plain text, the next one on each read, as Claude Code
+   * rotates them and herdr-core reads them (no faint attribute, live 2026-10-30). Null: one faint hint.
+   */
+  plainHints: readonly string[] | null = null;
+  private reads = 0;
 
   private boxRows(): string[] {
+    if (this.box === "" && this.plainHints !== null) return [`❯ ${this.plainHints[this.reads % this.plainHints.length]!}`];
     if (this.box === "") return ['❯ \u001b[2mTry "fix the failing tests"\u001b[0m'];
     const rows: string[] = [];
     this.box.split("\n").forEach((line, li) => {
@@ -762,8 +771,10 @@ class BoxPane {
     return { revision: this.revision, turn: "idle", modal: "none", composer: this.box === "" ? "empty" : "draft" };
   }
 
-  readGrid = (paneId: string): Promise<MuxOutcome<MuxGrid>> =>
-    Promise.resolve(muxOk({ paneId, text: [...this.transcript, "", RULE, ...this.boxRows(), RULE, "  sonnet · project · main"].join("\n"), truncated: false, revision: this.revision }));
+  readGrid = (paneId: string): Promise<MuxOutcome<MuxGrid>> => {
+    this.reads++;
+    return Promise.resolve(muxOk({ paneId, text: [...this.transcript, "", RULE, ...this.boxRows(), RULE, "  sonnet · project · main"].join("\n"), truncated: false, revision: this.revision }));
+  };
 
   private take(text: string): void {
     this.box += text;
@@ -826,7 +837,7 @@ describe("a draft holds the message, through the Send Protocol (M62 spec 02)", (
    * the bridge wires them (index.ts): the send is marked, a held one reads what holds it from its hold
    * file, and the release asks walky first. Each walky poll is one Surface poll of the pane.
    */
-  function wired(): Wired {
+  function wired(options: { readonly realSurface?: boolean; readonly version?: string } = {}): Wired {
     const root = mkdtempSync(join(tmpdir(), "walky-protocol-"));
     roots.push(root);
     const clock = { now: 1_786_000_000_000 };
@@ -842,7 +853,7 @@ describe("a draft holds the message, through the Send Protocol (M62 spec 02)", (
       store,
       locks: new SessionLocks(),
       ring: new RowRing(),
-      profile: () => Promise.resolve(profileFor("claude", "2.1.200", { log: () => undefined, profiles: new Map([["claude", { ...base, versions: TEST_RANGE }]]) })),
+      profile: () => Promise.resolve(profileFor("claude", options.version ?? "2.1.200", { log: () => undefined, profiles: new Map([["claude", { ...base, versions: TEST_RANGE }]]) })),
       generation: () => "claude:s1",
       holds,
       releaseCheck: (id, session, paneId) => check(id, session, paneId),
@@ -867,6 +878,15 @@ describe("a draft holds the message, through the Send Protocol (M62 spec 02)", (
       cancelHeld: (session, paneId, sendId) => void protocol.cancelHeld(session, paneId, sendId),
     };
     const polls: Surface[] = [];
+    // With `realSurface` each poll reads the pane through the bridge's own Surface poll (shadow.ts over
+    // fold.ts and the Claude profile), as index.ts wires it, instead of the box's own word.
+    const shadow = options.realSurface === true ? new SurfaceShadow({ mux: { readGrid: box.readGrid }, pollMs: 1000, log: () => undefined, now, version: () => Promise.resolve("2.1.200"), compare: false }) : null;
+    const view: AgentView = { paneId: "%1", workspaceId: "w1", workspaceLabel: "one", workspaceNumber: 1, tabId: "w1:t1", agent: "claude", status: "idle", cwd: "/x", focused: false };
+    const pollSurface = async (): Promise<Surface> => {
+      if (shadow === null) return box.surface();
+      await shadow.observe([view]);
+      return shadow.surfaceOf("%1")!;
+    };
     const log = new WalkyLog(join(root, "walky"), now);
     const service = new WalkyService({
       log,
@@ -881,9 +901,9 @@ describe("a draft holds the message, through the Send Protocol (M62 spec 02)", (
         clock.now += ms;
         wiredRig.desk(polls.length);
         await state.hold;
-        const surface = box.surface();
+        const surface = await pollSurface();
         polls.push(surface);
-        await Promise.all(protocol.tickHolds("main", () => surface));
+        await Promise.all(protocol.tickHolds("main", () => surface, shadow === null ? undefined : (paneId) => shadow.boxOf(paneId)?.box ?? null));
       },
     });
     check = (id, session, paneId) => service.deliverer.stillMeant(id, session, paneId);
@@ -940,6 +960,56 @@ describe("a draft holds the message, through the Send Protocol (M62 spec 02)", (
     expect(r.polls.length).toBe(emptiedAt + 2);
     expect(r.box.calls.filter((call) => call.includes(header))).toHaveLength(1);
     expect(r.box.transcript.at(-1)).toContain(header);
+    expect(r.holds.list()).toEqual([]);
+  });
+
+  // Live 2026-10-30, Claude Code 2.1.314 on herdr-core: the core reads the screen as plain text, so the
+  // empty box's faint `Try "…"` hint came as typed text and a delivery stayed `held: draft present`.
+  const HINTS = ['Try "refactor <filepath>"', 'Try "fix lint errors"', 'Try "how do I log an error?"'];
+
+  test("an empty box that shows only Claude Code's plain-text hint takes the message at once: typed, never held", async () => {
+    const r = wired({ realSurface: true });
+    r.box.plainHints = HINTS;
+    await r.service.send(send(ID, "local/%1"), operator);
+    await r.service.deliverer.settled();
+    expect(r.service.status(ID).receipts[0]).toMatchObject({ state: "delivered" });
+    expect(r.box.calls.filter((call) => call.includes(header))).toHaveLength(1);
+    expect(r.box.transcript.at(-1)).toContain(header);
+    expect(r.polls).toEqual([]);
+    expect(r.holds.list()).toEqual([]);
+  });
+
+  test("on a version past the verified range the probe runs over the plain-text hint: its character and Backspace, the box read clean", async () => {
+    // Claude Code 2.1.314 sat past the profile's verified range on 2026-10-30, so each send probed.
+    const r = wired({ realSurface: true, version: "2.1.314" });
+    r.box.plainHints = HINTS;
+    await r.service.send(send(ID, "local/%1"), operator);
+    await r.service.deliverer.settled();
+    expect(r.service.status(ID).receipts[0]).toMatchObject({ state: "delivered" });
+    expect(r.box.keysSeen[0]).toBe("Backspace");
+    expect(r.box.calls.filter((call) => call.includes(header))).toHaveLength(1);
+    expect(r.box.transcript.at(-1)).toContain(header);
+    expect(r.polls).toEqual([]);
+  });
+
+  test("a draft cleared back to the plain-text hint releases the held message on two reads, the Surface poll reading it as empty", async () => {
+    const r = wired({ realSurface: true });
+    r.box.plainHints = HINTS;
+    r.box.box = "half a thought";
+    let emptiedAt = -1;
+    r.desk = (poll) => {
+      if (poll === 2) {
+        r.box.box = "";
+        emptiedAt = poll;
+      }
+    };
+    await r.service.send(send(ID, "local/%1"), operator);
+    await r.service.deliverer.settled();
+    expect(r.service.status(ID).receipts[0]).toMatchObject({ state: "delivered" });
+    expect(r.polls.slice(0, emptiedAt).every((surface) => surface.composer === "draft")).toBe(true);
+    expect(r.polls.slice(emptiedAt).every((surface) => surface.composer === "empty")).toBe(true);
+    expect(r.polls.length).toBe(emptiedAt + 2);
+    expect(r.box.calls.filter((call) => call.includes(header))).toHaveLength(1);
     expect(r.holds.list()).toEqual([]);
   });
 
