@@ -1,6 +1,12 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-import { TourSheet, type TourSheetProps } from "./tour-sheet";
+import { createMemoryRouter, RouterProvider } from "react-router";
+
+import { TourHost, TourSheet, type TourSheetProps } from "./tour-sheet";
+import { CrewProvider } from "./crew-provider";
+import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
+import { __resetTourStore } from "@/lib/tour";
+import type { ServerSummary } from "@/lib/types";
 import { en } from "@/lib/i18n/messages/en";
 import { t } from "@/lib/i18n";
 import type { PushState } from "@/lib/push";
@@ -279,5 +285,73 @@ describe("TourSheet — the focus trap", () => {
   it("cycles with two live cards on screen", () => {
     renderScreen({ readOnly: true, panes: 0 });
     expectTrapped();
+  });
+});
+
+// M77: the first-run sheet counts MACHINES. The gate hands it the roster, and two Collies on one host
+// are one machine, so a crew of four members on two hosts reads "2 machines".
+describe("TourHost — machines, not members", () => {
+  beforeEach(() => __resetTourStore());
+  afterEach(() => __resetTourStore());
+
+  const member = (id: string, over: Partial<ServerSummary> = {}): ServerSummary => ({
+    id,
+    name: id,
+    isLead: false,
+    reachable: true,
+    protocol: "ok",
+    lastSeenAt: 1_000,
+    ...over,
+  });
+
+  function renderHost(servers: ServerSummary[]) {
+    const home: HomeData = {
+      bridge: "connected",
+      agents: [],
+      shellPanes: [],
+      workspaces: [],
+      tabs: [],
+      device: undefined,
+      sessions: [],
+      servers,
+      ts: 0,
+      scope: {},
+      viewAll: false,
+      snoozedUntil: null,
+      update: undefined,
+      error: false,
+      authError: false,
+    };
+    const router = createMemoryRouter(
+      [
+        {
+          id: ROOT_ROUTE_ID,
+          path: "/",
+          element: (
+            <CrewProvider servers={servers}>
+              <TourHost home={home} onDecision={() => {}} />
+            </CrewProvider>
+          ),
+        },
+      ],
+      { initialEntries: ["/"] },
+    );
+    return render(<RouterProvider router={router} />);
+  }
+
+  it("says two machines for four members on two hosts", () => {
+    // The shape of the playground's two-per-host roster, copied rather than imported.
+    renderHost([
+      member("lodge", { isLead: true, host: "lodge", mux: "herdr" }),
+      member("lodge-hc", { host: "lodge", mux: "herdr-core" }),
+      member("workshop", { host: "workshop", mux: "herdr" }),
+      member("workshop-hc", { host: "workshop", mux: "herdr-core" }),
+    ]);
+    expect(screen.getByText("2 machines in your crew")).toBeInTheDocument();
+  });
+
+  it("counts members as before when none reports a host", () => {
+    renderHost([member("lodge", { isLead: true }), member("workshop"), member("attic")]);
+    expect(screen.getByText("3 machines in your crew")).toBeInTheDocument();
   });
 });

@@ -16,6 +16,7 @@ import { reasonText } from "@/lib/push-copy";
 import type { EnableResult, PushState } from "@/lib/push";
 import type { HomeData } from "@/lib/loaders";
 import { leadHost, hostName, paneScope } from "@/lib/hosts";
+import { groupByHost } from "@/lib/machines";
 import { useMuxName } from "@/lib/mux-capability";
 import { homePath, newPath, pairedDevicesPath, panePath } from "@/lib/nav";
 import { triage } from "@/lib/triage";
@@ -478,7 +479,9 @@ function FirstRunLive({ home, onClosed }: { home: HomeData; onClosed: () => void
       host={host}
       panes={home.agents.length}
       needsYou={needs.length}
-      machines={home.servers.length}
+      // Machines, not members (M77): two Collies on one host are one machine. A crew of older builds,
+      // which report no host, groups to exactly its rows.
+      machines={groupByHost(home.servers).length}
       readOnly={isReadOnly(home.device)}
       pushState={state}
       pushBusy={busy}

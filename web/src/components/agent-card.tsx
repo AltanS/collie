@@ -343,6 +343,7 @@ export function AgentCard({
               host={agent.host}
               cache={agent.cache}
               session={agent.session}
+              plainHost
               className="ml-auto self-baseline"
             />
           </div>

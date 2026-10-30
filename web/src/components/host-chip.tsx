@@ -52,6 +52,12 @@ interface HostChipProps {
    * this cannot simply be the variant's default.
    */
   sends?: boolean;
+  /**
+   * Name the member plainly, even on a crew where a host runs two instances. The pane HEADER has the
+   * room for `<host> · <mux>`; a dashboard row does not (it clipped at 390px), and the row's neighbours
+   * already say the rest. Default: the two-part name where the crew shares a host.
+   */
+  plain?: boolean;
   className?: string;
 }
 
@@ -78,7 +84,7 @@ function useHostChipShown(host: string | undefined): boolean {
   return multi && host !== undefined;
 }
 
-export function HostChip({ host, state, variant = "tag", sends, className }: HostChipProps) {
+export function HostChip({ host, state, variant = "tag", sends, plain = false, className }: HostChipProps) {
   useLocale();
   const { servers } = useCrew();
   const health = useHostHealth(host);
@@ -89,7 +95,7 @@ export function HostChip({ host, state, variant = "tag", sends, className }: Hos
   // is a render decision, not a reason to call a hook conditionally.)
   if (!shown || host === undefined) return null;
 
-  const name = chipName(servers, machines, host);
+  const name = plain ? (hostName(servers, host) ?? host) : chipName(servers, machines, host);
   // The machine's IDENTITY tint, or null when there is nothing to tell apart (lib/hosts.ts). It is
   // read here and not in AddressTag for the same reason the hide rule is here: which machine a row
   // is about is a fact about the snapshot, and this is the one component that already holds it.

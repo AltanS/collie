@@ -139,3 +139,39 @@ describe("the reading is a control on one screen only", () => {
     expect(chip.tagName).toBe("SPAN");
   });
 });
+
+// ── M77: the row keeps the member's name, the header gets the two-part label ──
+
+describe("the host run on a crew where a machine runs two instances", () => {
+  const member = (id: string, host: string, mux: string, isLead = false): ServerSummary => ({
+    id,
+    name: id,
+    isLead,
+    reachable: true,
+    protocol: "ok",
+    lastSeenAt: 1_000,
+    host,
+    mux,
+  });
+  // The shape of the playground's two-per-host roster, copied rather than imported.
+  const twoPerHost = [
+    member("lodge", "lodge", "herdr", true),
+    member("lodge-hc", "lodge", "herdr-core"),
+    member("workshop", "workshop", "herdr"),
+    member("workshop-hc", "workshop", "herdr-core"),
+  ];
+  const shared = ({ children }: { children: React.ReactNode }) => (
+    <CrewProvider servers={twoPerHost}>{children}</CrewProvider>
+  );
+
+  it("reads <host> · <mux> in the pane header, as it did", () => {
+    render(<PaneMeta host="workshop-hc" cache={undefined} />, { wrapper: shared });
+    expect(screen.getByLabelText("Host: workshop · herdr-core")).toBeInTheDocument();
+  });
+
+  it("keeps the plain member name on a dashboard row, which has no room for two parts", () => {
+    render(<PaneMeta host="workshop-hc" cache={undefined} plainHost />, { wrapper: shared });
+    expect(screen.getByLabelText("Host: workshop-hc")).toBeInTheDocument();
+    expect(screen.queryByLabelText(/·/)).toBeNull();
+  });
+});

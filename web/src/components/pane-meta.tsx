@@ -66,16 +66,18 @@ interface PaneMetaProps {
    * a plain span, because the dashboard card is already one button and may not hold a second.
    */
   onOpenCache?: () => void;
+  /** The member's plain name on the host chip, never `<host> · <mux>`: the dashboard row has no room for two parts. */
+  plainHost?: boolean;
   className?: string;
 }
 
-export function PaneMeta({ host, cache, session, onOpenCache, className }: PaneMetaProps) {
+export function PaneMeta({ host, cache, session, onOpenCache, plainHost, className }: PaneMetaProps) {
   return (
     <div
       data-slot="pane-meta"
       className={cn("flex h-3 shrink-0 items-baseline gap-1.5", className)}
     >
-      <HostChip host={host} variant="bare" />
+      <HostChip host={host} variant="bare" plain={plainHost} />
       <SessionChip session={session} host={host} />
       {/* THE SEPARATOR IS THE CSS'S TO DECIDE, NOT A PREDICATE'S. The dot belongs between the
           address and the reading and nowhere else, and asking "is the host shown?" here would be a
