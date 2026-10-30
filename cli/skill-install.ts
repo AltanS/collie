@@ -115,7 +115,9 @@ export interface SkillTarget {
  * could find again, so it is left out.
  */
 export function claudeProfileDirs(ctx: Pick<CliContext, "home" | "env">): string[] {
-  const dirs = claudeSettingsTargets(ctx).map((t) => t.dir);
+  // `~/.claude` stays in the list even when `CLAUDE_CONFIG_DIR` replaces it in the hooks' targets: the
+  // skill goes beside it as it always did (this change is about where hooks are written).
+  const dirs = [join(ctx.home, ".claude"), ...claudeSettingsTargets(ctx).map((t) => t.dir)];
   const own = ctx.env.CLAUDE_CONFIG_DIR?.trim() ?? "";
   if (own !== "" && isAbsolute(own)) dirs.push(own.replace(/[\\/]+$/u, "") || own);
   return [...new Set(dirs)];

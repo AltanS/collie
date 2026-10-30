@@ -26,6 +26,18 @@ describe("HerdrCoreMux over a fake core", () => {
     ]);
   });
 
+  test("omp sends no report, so its foreground process names the agent; a shell stays a shell; a report wins", async () => {
+    const { fake, adapter } = build();
+    const omp = fake.add({ status: null, foreground: { name: "omp", cwd: "/home/dev" } });
+    const shell = fake.add({ status: null, foreground: { name: "zsh", cwd: "/home/dev" } });
+    const reported = fake.add({ status: { state: "working", app: "claude-code", kind: "" }, foreground: { name: "omp", cwd: "/home/dev" } });
+    const snapshot = await adapter.snapshot();
+    const agentOf = (id: string) => snapshot.panes.find((p) => p.paneId === id)?.agent;
+    expect(agentOf(omp)).toBe("omp");
+    expect(agentOf(shell)).toBe("shell");
+    expect(agentOf(reported)).toBe("claude");
+  });
+
   test("a core at another generation is unreachable, and the snapshot says what to update", async () => {
     const { fake, adapter } = build();
     fake.generation = 2;

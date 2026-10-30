@@ -1995,6 +1995,23 @@ describe("beacon-hooks-claude", () => {
     expect(code).toBe(EXIT.FAIL);
   });
 
+  test("CLAUDE_CONFIG_DIR names the file the check reads: an install there is ok, and one only under ~/.claude is not", async () => {
+    const profile = "/srv/work-profile";
+    const profileSettings = `${profile}/settings.json`;
+    const there = harness(null, [], {
+      env: { ...ON_ZELLIJ, CLAUDE_CONFIG_DIR: profile },
+      files: { ...without(healthyFiles(), SETTINGS), [profileSettings]: settingsWith(hookCommand(OWN_BINARY)), [ZELLIJ_BIN]: "" },
+      answers: zellijAnswers("work\n"),
+    });
+    expect((await findings(there)).byCheck.get("beacon-hooks-claude")?.status).toBe("ok");
+    const elsewhere = harness(null, [], {
+      env: { ...ON_ZELLIJ, CLAUDE_CONFIG_DIR: profile },
+      files: { ...healthyFiles(), [ZELLIJ_BIN]: "" },
+      answers: zellijAnswers("work\n"),
+    });
+    expect((await findings(elsewhere)).byCheck.get("beacon-hooks-claude")?.status).toBe("error");
+  });
+
   test("an install under a blind mux is the ordinary ✓", async () => {
     const h = harness(null, [], {
       env: ON_ZELLIJ,

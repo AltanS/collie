@@ -2,7 +2,7 @@ import { meaningfulTabLabel, meaningfulTerminalTitle } from "../../activity.ts";
 import type { AgentStatus } from "../../types.ts";
 import { MUX_AGENT_NAMES, MUX_SHELL_AGENT } from "../agents.ts";
 import type { MuxPane, MuxSnapshot, MuxSpace, MuxTab } from "../types.ts";
-import type { WireLayout, WireStatus, WireTerminal } from "./client.ts";
+import type { WireForeground, WireLayout, WireStatus, WireTerminal } from "./client.ts";
 
 // THE MAPPING, pure: core terminals plus herdr-app's layout document in, the port's snapshot out.
 // Its own module so every rule below is tested without a socket (layout.test.ts).
@@ -81,11 +81,22 @@ interface PaneAgent {
   readonly status: AgentStatus;
 }
 
-/** The pane's agent and status, from the program's own report and nothing else. */
-function agentOf(status: WireStatus | null): PaneAgent {
-  const agent = status === null ? null : agentForApp(status.app);
-  if (status === null || agent === null) return { agent: MUX_SHELL_AGENT, status: "unknown" };
-  return { agent, status: agentStatus(status.state) };
+/**
+ * The pane's agent and status. The program's own OSC 7501 report wins. A program that sends none
+ * (omp 18.6.1), or whose report names no app, is named from the foreground process, through the same table as a report: a shell,
+ * or any process Collie has no harness for, stays a shell. A name taken from the process carries no
+ * status, because only a report says what the program is doing.
+ */
+function agentOf(status: WireStatus | null, foreground: WireForeground | null): PaneAgent {
+  if (status !== null && status.app.trim() !== "") {
+    // A program that names itself decides, even when Collie has no harness for the name.
+    const reported = agentForApp(status.app);
+    if (reported === null) return { agent: MUX_SHELL_AGENT, status: "unknown" };
+    return { agent: reported, status: agentStatus(status.state) };
+  }
+  const running = foreground === null ? null : agentForApp(foreground.name);
+  if (running !== null) return { agent: running, status: "unknown" };
+  return { agent: MUX_SHELL_AGENT, status: "unknown" };
 }
 
 /** The last part of a path, `~` for the home folder, or `""`. */
@@ -218,7 +229,7 @@ interface PanePlace {
 }
 
 function toPane(terminal: WireTerminal, place: PanePlace): MuxPane {
-  const { agent, status } = agentOf(terminal.status);
+  const { agent, status } = agentOf(terminal.status, terminal.foreground);
   const pane: MutableMuxPane = {
     paneId: terminal.address,
     spaceId: place.space.id,

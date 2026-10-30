@@ -62,9 +62,22 @@ export type HcKeyRejection = "unparsed" | "meta" | "extended" | "unnamed";
 export type HcKeyResult = { readonly ok: true; readonly key: HcKey } | { readonly ok: false; readonly reason: HcKeyRejection };
 
 /**
+ * The modifiers a key name needs to keep the letter's case. The core lower-cases every name, so `G`
+ * would arrive as `g` (the lab sent 0x67 for `G`, and the route answered ok). A capital is therefore
+ * `shift+g`, which the lab measured as 0x47. `ctrl+G` is `ctrl+g` to a terminal (0x07), so a ctrl
+ * chord only loses the capital. Everything that is not a capital letter passes unchanged.
+ */
+function withCase(modifiers: readonly string[], key: string): readonly string[] {
+  if (!/^[A-Z]$/u.test(key)) return modifiers;
+  if (modifiers.includes("ctrl") || modifiers.includes("shift")) return modifiers;
+  return [...modifiers, "shift"];
+}
+
+/**
  * One neutral chord in hc's spelling.
  *
- * - A named key or a nameable character, with or without modifiers, is a key name.
+ * - A named key or a nameable character, with or without modifiers, is a key name. A capital
+ *   letter keeps its case as `shift+<letter>`, because the core takes names case-insensitively.
  * - A single printable character hc has no name for (`$`, `!`, `ä`), with NO modifier, is typed as
  *   raw input: a plain character is its own bytes, which is exactly what a terminal sends for it.
  * - A modifier on such a character (`ctrl+$`) has no encoding to fall back on, and is refused.
@@ -80,7 +93,7 @@ export function toHcKey(spelling: string): HcKeyResult {
   const named = NAMED_BY_CONTRACT_SPELLING.get(parsed.key);
   if (named !== undefined) return { ok: true, key: { kind: "key", name: [...parsed.modifiers, named].join("+") } };
   if (parsed.key === " ") return { ok: true, key: { kind: "key", name: [...parsed.modifiers, "space"].join("+") } };
-  if (HC_NAMEABLE_CHAR.test(parsed.key)) return { ok: true, key: { kind: "key", name: [...parsed.modifiers, parsed.key].join("+") } };
+  if (HC_NAMEABLE_CHAR.test(parsed.key)) return { ok: true, key: { kind: "key", name: [...withCase(parsed.modifiers, parsed.key), parsed.key.toLowerCase()].join("+") } };
   if (parsed.modifiers.length === 0) return { ok: true, key: { kind: "text", text: parsed.key } };
   return { ok: false, reason: "unnamed" };
 }

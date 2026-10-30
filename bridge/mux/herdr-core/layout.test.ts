@@ -99,13 +99,18 @@ describe("the herdr-core snapshot mapping", () => {
     expect(isLocalAddress("")).toBe(false);
   });
 
-  test("the agent comes from the program's own report, never from the foreground process", () => {
+  test("the agent comes from the program's own report, and from the foreground process when there is none", () => {
     const snapshot = toSnapshot(
       [
         terminal({ address: "t1", status: { state: "blocked", app: "claude-code", kind: "permission" }, foreground: { name: "claude", cwd: "/x" } }),
         terminal({ address: "t2", status: null, foreground: { name: "claude", cwd: "/x" } }),
         terminal({ address: "t3", status: { state: "working", app: "some-other-tool", kind: "" } }),
         terminal({ address: "t4", status: { state: "error", app: "codex", kind: "" } }),
+        terminal({ address: "t5", status: null, foreground: { name: "omp", cwd: "/x" } }),
+        terminal({ address: "t6", status: null, foreground: { name: "zsh", cwd: "/x" } }),
+        terminal({ address: "t7", status: { state: "idle", app: "codex", kind: "" }, foreground: { name: "omp", cwd: "/x" } }),
+        terminal({ address: "t8", status: { state: "idle", app: "some-other-tool", kind: "" }, foreground: { name: "omp", cwd: "/x" } }),
+        terminal({ address: "t9", status: { state: "idle", app: "", kind: "" }, foreground: { name: "omp", cwd: "/x" } }),
       ],
       null,
       "/home/dev",
@@ -113,9 +118,14 @@ describe("the herdr-core snapshot mapping", () => {
     const rows = snapshot.panes.map((p) => [p.paneId, p.agent, p.status, p.foregroundCommand]);
     expect(rows).toEqual([
       ["t1", "claude", "blocked", "claude"],
-      ["t2", "shell", "unknown", "claude"],
+      ["t2", "claude", "unknown", "claude"],
       ["t3", "shell", "unknown", "bash"],
       ["t4", "codex", "unknown", "bash"],
+      ["t5", "omp", "unknown", "omp"],
+      ["t6", "shell", "unknown", "zsh"],
+      ["t7", "codex", "idle", "omp"],
+      ["t8", "shell", "unknown", "omp"],
+      ["t9", "omp", "unknown", "omp"],
     ]);
   });
 

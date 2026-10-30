@@ -1796,7 +1796,7 @@ function beaconHooks(
   const name = muxSettings(deps).name;
   const install =
     `\`collie hooks install claude\` (writes ${String(BEACON_HOOKS.length)} marked entries into` +
-    " ~/.claude/settings.json; running Claudes must be relaunched)";
+    " ${CLAUDE_CONFIG_DIR:-~/.claude}/settings.json; running Claudes must be relaunched)";
   if (entries.length === 0) {
     // The multiplexer names agents, and only a hook can add the session id that gives a pane History.
     if (muxReportsAgents && hooksGiveSessions) {

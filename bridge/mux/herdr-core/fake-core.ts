@@ -73,6 +73,24 @@ export function coreKnowsKey(name: string): boolean {
   return NAMED.has(key.toLowerCase()) || NAMEABLE_CHAR.test(key);
 }
 
+/**
+ * The bytes a program in raw mode receives for a key name, for the letter keys whose bytes the lab
+ * measured (keys-probe.txt): `g` is 0x67, `shift+g` is 0x47, `ctrl+g` is 0x07, `alt+g` is ESC g. The
+ * core takes names case-insensitively, so a bare `G` is `g`, NOT a capital: a mapping that leaves
+ * an upper case letter as it is sends the lower case byte, and only these bytes show it. `null` for
+ * any other name (the named keys and punctuation are pinned by their names).
+ */
+export function keyBytes(name: string): number[] | null {
+  const parts = name.toLowerCase().split("+");
+  const letter = parts.at(-1) ?? "";
+  if (!/^[a-z]$/u.test(letter)) return null;
+  const mods = new Set(parts.slice(0, -1));
+  if ([...mods].some((mod) => mod !== "ctrl" && mod !== "alt" && mod !== "shift")) return null;
+  const code = letter.charCodeAt(0);
+  const base = mods.has("ctrl") ? code & 0x1f : mods.has("shift") ? code - 0x20 : code;
+  return mods.has("alt") ? [0x1b, base] : [base];
+}
+
 /** The time a fake core waits on. Tests share one with the code under test, so a 3 s hold costs no real second. */
 export interface FakeClock {
   now(): number;
@@ -117,6 +135,8 @@ interface FakeTerminal {
   /** A kept terminal that has not got its new shell yet answers `unavailable`. */
   waiting: boolean;
   onInput: ((input: FakeInput) => void) | null;
+  /** The bytes the program received from letter keys, in order (see {@link keyBytes}). */
+  received: number[];
 }
 
 interface Subscriber {
@@ -175,6 +195,11 @@ export class FakeHcCore implements HcRpc {
     return this.recorded;
   }
 
+  /** The bytes a program in this terminal received from letter keys, as a real program would see them. */
+  receivedBytes(address: string): readonly number[] {
+    return this.known(address).received;
+  }
+
   /** Add a terminal as the core would after `terminal.run`, and announce it. */
   add(partial: Partial<Omit<FakeTerminal, "address">> & { address?: string }): string {
     const address = partial.address ?? this.mint();
@@ -195,6 +220,7 @@ export class FakeHcCore implements HcRpc {
       fullScreen: partial.fullScreen ?? null,
       waiting: false,
       onInput: null,
+      received: [],
     };
     this.terminals.push(terminal);
     this.emit("created", address);
@@ -523,6 +549,7 @@ export class FakeHcCore implements HcRpc {
 
   private deliverKeys(terminal: FakeTerminal, keys: readonly string[]): void {
     this.recorded.push({ paneId: terminal.address, kind: "keys", payload: [...keys] });
+    for (const key of keys) terminal.received.push(...(keyBytes(key) ?? []));
     terminal.onInput?.({ kind: "keys", keys });
   }
 
