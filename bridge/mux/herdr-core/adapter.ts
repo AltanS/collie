@@ -23,7 +23,7 @@
 // ── WHAT IS DECLARED, AND WHAT IS NOT ────────────────────────────────────────────────────────────
 //
 // Declared, each from a probe: the grid (plain text, a derived revision), scrollback, agent
-// detection from the program's own OSC 7501 report, typing (a framed attach, see client.ts), keys,
+// detection (the program's own OSC 7501 report, else the foreground process name), typing (a framed attach, see client.ts), keys,
 // closing a pane, a new tab (a shell carrying herdr-app's labels), and both push channels.
 // Declined: focus, every rename, closing a tab, a new space, worktrees, sessions, and an agent
 // session ref. The core has no verb for any of them, and the layout belongs to herdr-app, which
@@ -92,7 +92,7 @@ const HERDR_CORE_CAPABILITIES = declareCapabilities({
   notes: {
     paneGrid: "herdr-core hands out the screen as plain text, so the mirror shows no colour.",
     agentDetection:
-      "herdr-core names the agent in a terminal from the agent's own status report. A program that sends no report reads as a shell.",
+      "herdr-core names the agent in a terminal from the agent's own status report. A program that sends no report is named from the process in the foreground, through the same table (omp sends none), and then has no status. A shell, or a process Collie has no harness for, reads as a shell.",
     agentSessionRef: "herdr-core keeps an agent's status but not its conversation id. The agent's own hook supplies it: install the hooks with `collie hooks install claude`.",
     sendKeys:
       "herdr-core presses keys by name. A Super or Command chord, Ctrl+Enter, and a modified key it has no name for (such as Ctrl+$) are refused.",

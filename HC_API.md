@@ -107,7 +107,7 @@ What each field means for Collie:
 | `status` | The program's own OSC 7501 report, or null. See *Status*. |
 | `turn` | Goes up each time the status leaves `working`. |
 | `title` | The OSC title the program set. |
-| `foreground` | The foreground process group's leader: `{pid, name, argv, cwd}`, read about twice a second. A process name, not an agent identity. |
+| `foreground` | The foreground process group's leader: `{pid, name, argv, cwd}`, read about twice a second. A process name, not an agent identity. The adapter takes an agent from it only when the program sends no report (omp 18.6.1 sends none), through the same table as a report, with no status. |
 | `cols`, `rows` | The terminal size. The last ACTIVE attached viewer sets it. |
 | `keep` | Replace a lost program with a shell in place. herdr-app sets it on the terminals it shows. |
 | `parent`, `notify` | The terminal that started it, and whether that parent gets notes typed into it. |
@@ -344,6 +344,9 @@ HC_SCOPE=149630853-9e24dfaafae6250d2164f4f959c07c58         opaque; changes with
 - **No revision.** The adapter derives one from the text it reads.
 - **No focus, no rename, no tab or space verbs.** Focus lives in herdr-app per screen; structure
   changes go through herdr-app commands. Spec 05 of M74 plans a mod for both.
+- **No agent name without a report.** A program that sends no OSC 7501 report (omp 18.6.1) has
+  `status: null`. The adapter names its agent from `foreground.name` through the table a report uses,
+  and the pane has no status until the program reports.
 - **No session id.** The core keeps the program's status, not the agent's conversation id. Collie
   gets it from the agent's own hook through `HC_TERMINAL_ID` (see above), so a pane has History once
   `collie hooks install claude` is done, and not before.

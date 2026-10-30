@@ -12,8 +12,8 @@
 // the socket, and the join keeps a terminal of another session off this one's panes. The two paths are
 // compared after `realpath` (Fedora Atomic spells `/home` as `/var/home`).
 //
-// herdr-core names the agent and its status from the program's own report, so this matcher lifts no
-// agent. What a hook adds is the agent's session id, the key History and Chat read a journal by, which
+// herdr-core names the agent and its status from the program's own report (or, with none, from the
+// foreground process name, see layout.ts), so this matcher lifts no agent. What a hook adds is the agent's session id, the key History and Chat read a journal by, which
 // the core cannot know. `withAgentBeacons` joins it in session-only mode (bridge/beacon/decorate.ts).
 
 import type { BeaconMatcher } from "../../beacon/decorate.ts";
