@@ -104,46 +104,11 @@
     "propose": "Upstream: the cursor column (a suggestion sits after the cursor, a draft ends at it), or a dim flag per row. Claude side: a hook that reports the suggestion. Text only: none, the suggestion is free prose.",
     "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
   },
-  "hermes--done.txt": {
-    "why": "hermes draws its fixed hint placeholder in italic (SGR 3). A plain read shows the hint as a typed draft.",
-    "class": "text-rule-possible",
-    "rule": "web/src/lib/surface/frame.ts:323 holeIsFaint (profile hermes.json idle.placeholders.sgr 3)",
-    "propose": "idle.placeholders.texts: the idle hint and the busy hint.",
-    "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
-  },
   "hermes--idle-w60.txt": {
     "why": "hermes draws a rotating example question in italic as its placeholder. The text is free prose, so there is no fixed string to match; a plain read shows it as a draft.",
     "class": "text-rule-possible",
     "rule": "web/src/lib/surface/frame.ts:323 holeIsFaint (profile hermes.json idle.placeholders.sgr 3)",
     "propose": "Take the placeholder list from hermes's source and add each as idle.placeholders.texts, or a pattern if the list has a shape. Not added: the corpus holds one sample and the list is not known.",
-    "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
-  },
-  "hermes--idle.txt": {
-    "why": "hermes draws its fixed hint placeholder in italic (SGR 3). A plain read shows the hint as a typed draft.",
-    "class": "text-rule-possible",
-    "rule": "web/src/lib/surface/frame.ts:323 holeIsFaint (profile hermes.json idle.placeholders.sgr 3)",
-    "propose": "idle.placeholders.texts: the idle hint and the busy hint.",
-    "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
-  },
-  "hermes--model-picker.txt": {
-    "why": "hermes draws its fixed hint placeholder in italic (SGR 3). A plain read shows the hint as a typed draft.",
-    "class": "text-rule-possible",
-    "rule": "web/src/lib/surface/frame.ts:323 holeIsFaint (profile hermes.json idle.placeholders.sgr 3)",
-    "propose": "idle.placeholders.texts: the idle hint and the busy hint.",
-    "effect": "none: the state is unchanged (a picker is open); only the draft text differs"
-  },
-  "hermes--palette.txt": {
-    "why": "hermes draws its fixed hint placeholder in italic (SGR 3). A plain read shows the hint as a typed draft.",
-    "class": "text-rule-possible",
-    "rule": "web/src/lib/surface/frame.ts:323 holeIsFaint (profile hermes.json idle.placeholders.sgr 3)",
-    "propose": "idle.placeholders.texts: the idle hint and the busy hint.",
-    "effect": "none: the state is unchanged (a picker is open); only the draft text differs"
-  },
-  "hermes--running.txt": {
-    "why": "hermes draws its fixed hint placeholder in italic (SGR 3). A plain read shows the hint as a typed draft.",
-    "class": "text-rule-possible",
-    "rule": "web/src/lib/surface/frame.ts:323 holeIsFaint (profile hermes.json idle.placeholders.sgr 3)",
-    "propose": "idle.placeholders.texts: the idle hint and the busy hint.",
     "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
   },
   "muse--palette-hint-skills.txt": {
