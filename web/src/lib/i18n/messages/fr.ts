@@ -1554,6 +1554,7 @@ export const fr: Dictionary = {
   "apiError.reply.not_submitted": "Votre message a été saisi dans le volet mais non envoyé : vérifiez le volet avant de le renvoyer.",
   "apiError.reply.send_failed": "Le message n'a pas pu être envoyé : {reason}",
   "apiError.keys.send_failed": "Ces touches n'ont pas pu être envoyées : {reason}",
+  "apiError.keys.unconfirmed": "Ces touches n'ont pas été confirmées à temps et peuvent encore arriver : vérifiez le volet avant de les renvoyer.",
   "apiError.prompt_changed": "L'écran a changé avant l'envoi : vérifiez le volet.",
   "apiError.prompt.read_failed": "Le volet n'a pas pu être lu avant l'envoi, {mux} a indiqué : {detail}",
   "apiError.pane.close_failed": "Le volet n'a pas pu être fermé : {reason}",

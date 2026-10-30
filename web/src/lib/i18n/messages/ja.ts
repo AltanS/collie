@@ -1687,6 +1687,7 @@ export const ja: Dictionary = {
     "メッセージはペインに入力されましたが送信されていません。再送前にペインを確認してください。",
   "apiError.reply.send_failed": "メッセージの送信に失敗しました: {reason}",
   "apiError.keys.send_failed": "キーの送信に失敗しました: {reason}",
+  "apiError.keys.unconfirmed": "キーの送信が時間内に確認できませんでした。まだ届く可能性があります。再送前にペインを確認してください。",
   "apiError.prompt_changed": "送信前に画面が変更されました。ペインを確認してください。",
   "apiError.prompt.read_failed":
     "送信前のペイン読み取りに失敗しました。{mux} の応答: {detail}",

@@ -658,6 +658,8 @@ export class ProgramDriver {
     }
     if (!result.ok) {
       if (result.reason === "gone") return { outcome: "refused", reason: "pane_gone", detail: result.detail };
+      // It left and was not confirmed: it may have landed, never "failed" (MuxRefusal, `unconfirmed`).
+      if (result.reason === "unconfirmed") return { outcome: "unknown", reason: "no_evidence", detail: ASK_NOT_ACKED };
       return { outcome: "refused", reason: "write_failed", detail: result.detail };
     }
     const said = result.value;

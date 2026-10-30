@@ -45,7 +45,7 @@ export { canonicalMuxKey, formatMuxKey, isMuxKey, parseMuxKey } from "./keys.ts"
 // ── The one refusal shape ─────────────────────────────────────────────────────
 
 /**
- * Why a call did not happen. Four reasons, and the first one is not a failure at all:
+ * Why a call did not happen, or may not have. Five reasons, and the first one is not a failure at all:
  *
  *  • `unsupported` — this multiplexer has no such thing, and never will while it is this
  *    multiplexer. The route renders an explanation, not an error (M10/06). It names the
@@ -56,6 +56,11 @@ export { canonicalMuxKey, formatMuxKey, isMuxKey, parseMuxKey } from "./keys.ts"
  *    not take). Retrying the same call gets the same answer.
  *  • `unreachable` — the multiplexer did not answer. This is the only one worth retrying, and it is
  *    what drives the connected/disconnected banner.
+ *  • `unconfirmed` — a write left Collie and the multiplexer did not confirm it in time (herdr-core
+ *    holds a terminal's keys behind its slow history reads and delivers them later). The call MAY
+ *    STILL HAPPEN, so it is neither a failure nor worth a retry. THE RULE: a caller never sends the
+ *    same write again on this answer; the next read of the pane decides what happened. A route says
+ *    "not confirmed", never "failed".
  *
  * An adapter MUST return this rather than throw for anything it declared absent — that is checked by
  * conformance (M10/03), because a throw is what forces every route to guess.
@@ -64,7 +69,8 @@ export type MuxRefusal =
   | { readonly reason: "unsupported"; readonly capability: MuxCapability; readonly detail: string }
   | { readonly reason: "gone"; readonly detail: string }
   | { readonly reason: "refused"; readonly detail: string }
-  | { readonly reason: "unreachable"; readonly detail: string };
+  | { readonly reason: "unreachable"; readonly detail: string }
+  | { readonly reason: "unconfirmed"; readonly detail: string };
 
 /** A refusal, as a failed outcome. */
 export type MuxRefusalOutcome = { readonly ok: false } & MuxRefusal;
@@ -150,6 +156,11 @@ export function muxRefused(detail: string): MuxRefusalOutcome {
 /** "The multiplexer did not answer." */
 export function muxUnreachable(detail: string): MuxRefusalOutcome {
   return { ok: false, reason: "unreachable", detail };
+}
+
+/** "Sent, and not confirmed in time: it may still land." Never retried; see {@link MuxRefusal}. */
+export function muxUnconfirmed(detail: string): MuxRefusalOutcome {
+  return { ok: false, reason: "unconfirmed", detail };
 }
 
 /**

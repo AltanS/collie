@@ -1699,6 +1699,7 @@ export const es: Dictionary = {
     "El mensaje se escribió en el panel pero no se envió. Revise el panel antes de reintentar.",
   "apiError.reply.send_failed": "Error al enviar el mensaje: {reason}",
   "apiError.keys.send_failed": "Error al enviar las pulsaciones de teclado: {reason}",
+  "apiError.keys.unconfirmed": "Las pulsaciones de teclado no se confirmaron a tiempo y aún pueden llegar. Revise el panel antes de enviarlas de nuevo.",
   "apiError.prompt_changed": "El estado del terminal cambió antes de enviar. Revise el panel.",
   "apiError.prompt.read_failed":
     "No se pudo leer el panel antes de enviar. Respuesta de {mux}: {detail}",

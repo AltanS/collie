@@ -1682,6 +1682,7 @@ export const ko: Dictionary = {
     "메시지가 창에 입력되었으나 전송되지 않았습니다. 재전송 전에 창을 확인하세요.",
   "apiError.reply.send_failed": "메시지를 전송하지 못했습니다: {reason}",
   "apiError.keys.send_failed": "키 입력을 전송하지 못했습니다: {reason}",
+  "apiError.keys.unconfirmed": "키 입력이 제때 확인되지 않았으며 아직 도착할 수 있습니다. 다시 보내기 전에 창을 확인하세요.",
   "apiError.prompt_changed": "전송 전에 화면 상태가 변경되었습니다. 창을 확인하세요.",
   "apiError.prompt.read_failed": "전송 전 창 상태를 읽지 못했습니다. {mux} 응답: {detail}",
   "apiError.pane.close_failed": "창을 닫지 못했습니다: {reason}",

@@ -26,6 +26,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Fixed
 
 - **A tap on a card right after the screen changed is no longer refused as "changed" on the Herdr core.** The core has no revision, so the adapter counted one per reader view, and one screen change moved it several times; the phone's guard saw a new number for the same text and sent no key. The revision now follows the pane's screen alone, the same for every reader.
+- **The phone's keys no longer wait behind herdr-core's slow scrollback reads under a dialog.** While pi showed a permission dialog, one read with scrollback took the core 25 s, and the core holds a terminal's keys until its reads are done. Collie started such a read on every refresh of the pane, so the keys of that pane stopped answering for minutes. Collie now runs at most one scrollback read per pane and shows the screen alone while it runs, reads no scrollback of a pane whose program waits on a dialog, and after a slow read reads the screen alone for 30 s or until the screen changes.
+- **A key that herdr-core did not confirm in time is reported as not confirmed, not as failed, and is never sent twice.** The core can deliver a key after Collie stopped waiting for it, so a `Down` reported as failed still moved the pointer. The Keys board now says the keys may still arrive and asks you to check the pane, and an answer to a card goes on to its next read, which decides: the pointer must still be on your choice before Enter goes, and a dialog that stays after the keys ends the answer as unknown.
 
 ## [1.25.2] - 2026-10-30
 

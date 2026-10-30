@@ -1623,6 +1623,7 @@ export const ru: Dictionary = {
   "apiError.reply.not_submitted": "Сообщение набрано в панели, но не отправлено: проверьте панель перед повторной отправкой.",
   "apiError.reply.send_failed": "Не удалось отправить сообщение: {reason}",
   "apiError.keys.send_failed": "Не удалось отправить эти клавиши: {reason}",
+  "apiError.keys.unconfirmed": "Эти клавиши не были подтверждены вовремя и ещё могут дойти: проверьте панель перед повторной отправкой.",
   "apiError.prompt_changed": "Экран изменился до отправки: проверьте панель.",
   "apiError.prompt.read_failed": "Не удалось прочитать панель перед отправкой, {mux} сообщил: {detail}",
   "apiError.pane.close_failed": "Не удалось закрыть панель: {reason}",

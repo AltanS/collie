@@ -238,6 +238,9 @@ function settleOnce(outcome: MuxOutcome<MuxAnswerResult>): Settled {
       // Nothing was sent, but the program may take the same answer later: the receipt stays open.
       case "unreachable":
         return { reply: { status: 504, body: { ok: false, outcome: "unknown", detail: outcome.detail } }, state: "unsent" };
+      // It left and was not confirmed: it may have landed, so the receipt keeps it as unknown.
+      case "unconfirmed":
+        return { reply: { status: 504, body: { ok: false, outcome: "unknown", detail: outcome.detail } }, state: "unknown" };
       case "unsupported":
       case "refused":
         return { reply: refused(outcome.reason, outcome.detail), state: "refused", reason: outcome.reason, detail: outcome.detail };

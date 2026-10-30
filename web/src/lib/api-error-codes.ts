@@ -37,6 +37,7 @@ export const API_ERROR_CODES = [
   "reply.not_submitted",
   "reply.send_failed",
   "keys.send_failed",
+  "keys.unconfirmed",
   // Grandfathered spelling: already on the wire before the catalogue existed, matched literally by
   // `lib/dialog-guard.ts`, `lib/preview-action.ts` and `components/composer.tsx`. Not renamed.
   "prompt_changed",

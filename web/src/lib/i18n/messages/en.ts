@@ -1799,6 +1799,7 @@ export const en = {
     "Your message was typed into the pane but not sent. Check the pane before sending it again.",
   "apiError.reply.send_failed": "The message couldn't be sent: {reason}",
   "apiError.keys.send_failed": "Those keys couldn't be sent: {reason}",
+  "apiError.keys.unconfirmed": "Those keys weren't confirmed in time and may still arrive. Check the pane before you send them again.",
   "apiError.prompt_changed": "The screen changed before that could be sent. Check the pane.",
   "apiError.prompt.read_failed": "The pane couldn't be read before sending. {mux} said: {detail}",
   "apiError.pane.close_failed": "The pane couldn't be closed: {reason}",

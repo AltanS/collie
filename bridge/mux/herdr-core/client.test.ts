@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { asJsonObject, asJsonString, parseJsonObject } from "../../../web/src/lib/json.ts";
 import type { JsonObject, JsonValue } from "../../json.ts";
-import { defaultHcSocket, HcClient, HcError, readHcCore, type WireEvent } from "./client.ts";
+import { defaultHcSocket, HcClient, HcError, HcTimeout, readHcCore, type WireEvent } from "./client.ts";
 
 // A unix-socket stand-in for the core, speaking the two modes HC_API.md records: plain JSON-RPC
 // lines, and framed mode after `hello {framed:true}`. Enough of each to prove the client's wire.
@@ -199,6 +199,17 @@ describe("the doctor dial (M74 spec 04)", () => {
       said = err instanceof Error ? err.message : "";
     }
     expect(said).toContain("timed out");
+  });
+
+  test("a key call the core never answers is an HcTimeout, which the adapter reads as not confirmed", async () => {
+    const core = stand(() => undefined);
+    let caught = "";
+    try {
+      await new HcClient(core.path, 100).pressKeys("t1", ["down"]);
+    } catch (err) {
+      caught = err instanceof HcTimeout ? err.message : `not an HcTimeout: ${String(err)}`;
+    }
+    expect(caught).toBe("herdr-core terminal.keys: timed out after 100ms");
   });
 });
 

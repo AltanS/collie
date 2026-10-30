@@ -1700,6 +1700,7 @@ export const de: Dictionary = {
     "Nachricht wurde in das Pane eingefügt, aber nicht gesendet. Bitte Pane vor erneutem Senden prüfen.",
   "apiError.reply.send_failed": "Nachricht konnte nicht gesendet werden: {reason}",
   "apiError.keys.send_failed": "Tasteneingaben konnten nicht gesendet werden: {reason}",
+  "apiError.keys.unconfirmed": "Die Tasteneingaben wurden nicht rechtzeitig bestätigt und können noch ankommen. Bitte Pane vor erneutem Senden prüfen.",
   "apiError.prompt_changed":
     "Terminalinhalt hat sich vor dem Senden geändert. Bitte Pane prüfen.",
   "apiError.prompt.read_failed":

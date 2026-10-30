@@ -1555,6 +1555,7 @@ export const it: Dictionary = {
   "apiError.reply.not_submitted": "Il messaggio è stato digitato nel riquadro ma non inviato: controlla il riquadro prima di inviarlo di nuovo.",
   "apiError.reply.send_failed": "Impossibile inviare il messaggio: {reason}",
   "apiError.keys.send_failed": "Impossibile inviare questi tasti: {reason}",
+  "apiError.keys.unconfirmed": "Questi tasti non sono stati confermati in tempo e potrebbero ancora arrivare: controlla il riquadro prima di inviarli di nuovo.",
   "apiError.prompt_changed": "La schermata è cambiata prima dell'invio: controlla il riquadro.",
   "apiError.prompt.read_failed": "Impossibile leggere il riquadro prima dell'invio, {mux} ha segnalato: {detail}",
   "apiError.pane.close_failed": "Impossibile chiudere il riquadro: {reason}",

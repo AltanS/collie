@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { muxAck, muxOk, type MuxAck, type MuxGrid, type MuxGridRequest, type MuxOutcome } from "../mux/types.ts";
+import { muxAck, muxOk, muxUnconfirmed, type MuxAck, type MuxGrid, type MuxGridRequest, type MuxOutcome } from "../mux/types.ts";
 import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { splitLines } from "../../web/src/lib/blocks.ts";
 import type { Answer, AskReply } from "../../web/src/lib/surface/ask.ts";
@@ -17,7 +17,7 @@ import { liftDialog, readerBlocks } from "../../web/src/lib/surface/lift.ts";
 import { loadProfiles, profileFor, resetProfileLog } from "../../web/src/lib/surface/profile.ts";
 import { askOf, type Ask } from "../../web/src/lib/surface/surface.ts";
 import type { AgentView } from "../types.ts";
-import { ASK_LIFETIME_MS, AskAnswerer, AskBook, askBinding, NO_EDGE_DETAIL, planFor, planKeysFor } from "./ask.ts";
+import { ASK_LIFETIME_MS, AskAnswerer, AskBook, askBinding, NO_EDGE_DETAIL, planFor, planKeysFor, UNCONFIRMED_COMMIT_DETAIL, UNCONFIRMED_WALK_DETAIL } from "./ask.ts";
 import { KeyGate, type TokenOrigin, type KeyToken } from "./key-gate.ts";
 import { RowRing, SessionLocks } from "./protocol.ts";
 import { RequestStore } from "./requests.ts";
@@ -53,6 +53,8 @@ class ScriptPane {
   onKeys: (keys: readonly string[], pane: ScriptPane) => void = () => undefined;
   /** Runs before every read; may change the screen. */
   beforeRead: ((pane: ScriptPane, n: number) => void) | null = null;
+  /** What the multiplexer answers to a key batch. The default confirms it. */
+  keysAnswer: (keys: readonly string[]) => MuxAck = () => muxAck();
 
   constructor(screen: string) {
     this.screen = screen;
@@ -69,7 +71,7 @@ class ScriptPane {
     void paneId;
     this.keysSeen.push(...keys);
     this.onKeys(keys, this);
-    return Promise.resolve(muxAck());
+    return Promise.resolve(this.keysAnswer(keys));
   };
 }
 
@@ -469,6 +471,61 @@ describe("answers that go through", () => {
     expect(ask.kind).toBe("menu");
     const reply = await answer(ask, idOf(ask, "Cancel"));
     expect(reply.receipt).toMatchObject({ outcome: "sent", keys: ["Escape"] });
+  });
+});
+
+describe("keys the multiplexer did not confirm in time (herdr-core, M78 report 10 case 2)", () => {
+  // The core held a terminal's keys behind its slow history reads and delivered them later, after the
+  // client had timed out. Such keys may still land: the answer never sends them again, and the next
+  // read decides. Fixed: before the change the receipt said refused(write_failed) for a key that landed.
+  const unconfirmed = (key: string) => (keys: readonly string[]) => (keys.includes(key) ? muxUnconfirmed("herdr-core did not confirm the keys in time") : muxAck());
+
+  test("an unconfirmed commit that lands is sent: the dialog closed after it, and the key went once", async () => {
+    const { pane, poll, answer, gate } = rig(BASH);
+    pane.keysAnswer = unconfirmed("1");
+    pane.onKeys = (keys, p) => {
+      if (keys.join(",") === "1") p.screen = IDLE;
+    };
+    const ask = poll()!;
+    const reply = await answer(ask, idOf(ask, "Yes"));
+    expect(reply.receipt).toMatchObject({ outcome: "sent", keys: ["1"] });
+    expect(pane.keysSeen).toEqual(["1"]);
+    expect(gate.sentBy().person_tap).toBe(1);
+  });
+
+  test("an unconfirmed commit whose dialog still shows is unknown, not refused, and the key is not sent twice", async () => {
+    const { pane, poll, answer, gate } = rig(BASH);
+    pane.keysAnswer = unconfirmed("1");
+    const ask = poll()!;
+    const reply = await answer(ask, idOf(ask, "Yes"));
+    expect(reply.receipt).toMatchObject({ outcome: "unknown", reason: "no_evidence", keys: ["1"] });
+    expect(reply.detail).toBe(UNCONFIRMED_COMMIT_DETAIL);
+    expect(pane.keysSeen).toEqual(["1"]);
+    expect(gate.sentBy().person_tap).toBe(1);
+  });
+
+  test("an unconfirmed walk still reads back: the pointer on the choice lets Enter go, once each", async () => {
+    const { pane, poll, answer } = rig(SWITCH_YES);
+    pane.keysAnswer = unconfirmed("Down");
+    pane.onKeys = (keys, p) => {
+      if (keys.join(",") === "Down" && p.screen === SWITCH_YES) p.screen = SWITCH_NO;
+      else if (keys.join(",") === "Enter") p.screen = PICKER;
+    };
+    const ask = poll()!;
+    const reply = await answer(ask, idOf(ask, "No, go back"));
+    expect(reply.receipt).toMatchObject({ outcome: "sent", keys: ["Down", "Enter"] });
+    expect(pane.keysSeen).toEqual(["Down", "Enter"]);
+  });
+
+  test("an unconfirmed walk whose pointer did not move is refused ask_mismatch with no Enter, and says the arrows may still arrive", async () => {
+    const { pane, poll, answer } = rig(SWITCH_YES);
+    pane.keysAnswer = unconfirmed("Down");
+    const ask = poll()!;
+    const reply = await answer(ask, idOf(ask, "No, go back"));
+    expect(reply.receipt).toMatchObject({ outcome: "refused", reason: "ask_mismatch", keys: ["Down"] });
+    expect(reply.detail).toBe(UNCONFIRMED_WALK_DETAIL);
+    expect(pane.keysSeen).toEqual(["Down"]);
+    neverEnter(pane);
   });
 });
 

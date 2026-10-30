@@ -1668,6 +1668,7 @@ export const zhTW: Dictionary = {
   "apiError.reply.not_submitted": "訊息已填入窗格但尚未提交。重新傳送前請檢查窗格狀態。",
   "apiError.reply.send_failed": "訊息傳送失敗：{reason}",
   "apiError.keys.send_failed": "按鍵傳送失敗：{reason}",
+  "apiError.keys.unconfirmed": "按鍵未能及時確認，可能仍會送達。重新傳送前請檢查窗格狀態。",
   "apiError.prompt_changed": "傳送前畫面內容已變更，請檢查窗格。",
   "apiError.prompt.read_failed": "傳送前讀取窗格失敗，{mux} 回傳：{detail}",
   "apiError.pane.close_failed": "關閉窗格失敗：{reason}",
