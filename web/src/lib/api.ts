@@ -653,15 +653,24 @@ export function textBeforeLastSend(paneId: string, scope?: Scope): string | unde
 /**
  * Read one pane's mirror. `seen: false` leaves the pane's unseen mark alone: the read a finger
  * starts on `pointerdown` (lib/pane-prefetch.ts) may be the start of a scroll, not an open.
+ *
+ * `older: true` is a person's Load older (`?purpose=older`). Every other read is the mirror's poll,
+ * which herdr-core answers from the screen alone: its history read can hold the pane's keys, so it
+ * reads history only when asked (bridge/mux/herdr-core/adapter.ts, `readGrid`). Other multiplexers
+ * answer both alike.
  */
 export async function fetchPane(
   paneId: string,
   lines?: number,
   scope?: Scope,
   signal?: AbortSignal,
-  { seen = true }: { seen?: boolean } = {},
+  { seen = true, older = false }: { seen?: boolean; older?: boolean } = {},
 ): Promise<PaneReadResponse> {
-  const q = lines ? `?lines=${lines}` : "";
+  const params = new URLSearchParams();
+  if (lines) params.set("lines", String(lines));
+  if (older) params.set("purpose", "older");
+  const query = params.toString();
+  const q = query ? `?${query}` : "";
   const url = withScope(`/api/pane/${encodeURIComponent(paneId)}${q}`, scope);
   // Pane ids are unique only within one session on one machine (each session is its own Herdr
   // server; each crew member is its own machine again), so the ETag/body cache is keyed by the full

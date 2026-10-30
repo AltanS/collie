@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **On the Herdr core the mirror reads the screen, and older lines come only when you tap Load older.** The core holds a terminal's keys while it reads older lines, and under a dialog one such read takes 25 s. 1.25.2 kept one such read per pane with a backoff, but that one read could still hold a send or a key for up to 25 s right after a dialog appeared, so sends were refused `probe_failed`. The phone's refresh and the bridge's own checks now read the screen alone and start no read of older lines; Load older starts one, at most one per pane, shows the lines above the screen, and says why when it brings none: the agent waits on you, or the core is still reading. The backoff is gone. Other multiplexers are unchanged.
+
 ## [1.25.2] - 2026-10-30
 
 A bugfix release, not urgent, that fixes failing inputs on the Herdr core (sends refused, cards that could not be answered, keys that lost their case) and takes two contributor fixes. It also fixes two failing inputs which the browser leg found on the core: a tap on a card refused as "changed" right after the screen moved, and keys that waited behind the core's slow history reads while a dialog showed. The history reads now run one at a time with a backoff that follows time alone, none runs on a pane the bridge reads as blocked, and a key the core did not confirm is reported as not confirmed and never sent twice. You need it if you run Collie on the Herdr core (the new herdr-app) or send to omp or pi there.

@@ -269,8 +269,10 @@ What looks different on the core:
   no colour. The card offers Escape, and you answer on the screen. This waits for a colour option in
   the core (`HC_API.md` lists the ask). Claude and Codex dialogs are read from their words and work.
   So does pi's question, when the core answers the read.
-- **A history read can stall behind a dialog.** On a pi pane that shows a dialog, the core may not
-  answer a read of older lines. The phone then shows no card for that dialog.
+- **The mirror shows the screen; older lines come when you ask.** The core holds a terminal's keys
+  while it reads older lines, and under a dialog one such read takes about 25 seconds. So the phone's
+  mirror reads the screen alone, and Load older at the top of the mirror reads the lines above it,
+  once per tap. While the agent waits on you, Load older waits too, and says so.
 
 What the core cannot do:
 

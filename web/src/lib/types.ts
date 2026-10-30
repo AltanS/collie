@@ -1304,6 +1304,12 @@ export interface PaneReadResponse {
    * URL; absent for every other pane.
    */
   logicalText?: string;
+  /**
+   * Sent only on a Load older read (`?purpose=older`) that came back without the rows above the
+   * screen: one sentence that says why, in the multiplexer's words (herdr-core: the agent waits on
+   * you, or the core still reads them). The mirror shows it under Load older.
+   */
+  olderNote?: string;
   /** Set to true by the client when the server returns 304 Not Modified. Never sent over the wire. */
   notModified?: boolean;
 }

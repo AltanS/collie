@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { STATUS_RANK } from "../../types.ts";
-import { HerdrCoreMux, HISTORY_READ_BACKOFF_MAX_MS, HISTORY_READ_BACKOFF_MS, HISTORY_READ_BUDGET_MS } from "./adapter.ts";
+import { HerdrCoreMux, HISTORY_READ_BUDGET_MS, OLDER_NOTE_BLOCKED, OLDER_NOTE_READING } from "./adapter.ts";
 import { DEFAULT_HC_TIMEOUT_MS, type WireRead } from "./client.ts";
 import { FakeHcCore, KEY_HOLD_MS, ManualClock } from "./fake-core.ts";
 
@@ -21,7 +21,10 @@ function build(): Built {
 }
 
 const VIEWPORT = { scope: "viewport", lines: 120, styling: "preserve" } as const;
+/** The mirror's poll: no `purpose`, which is `poll`. */
 const RECENT = { scope: "recent", lines: 200, styling: "preserve" } as const;
+/** Load older: the one read that reads history on the core (M79 spec 01). */
+const OLDER = { scope: "recent", lines: 200, styling: "preserve", purpose: "older" } as const;
 
 function reason(outcome: { ok: boolean; reason?: string }): string {
   return outcome.ok ? "ok" : (outcome.reason ?? "?");
@@ -85,7 +88,7 @@ describe("terminal.read: incomplete while a full-screen app works (HC_API.md, te
     fake.fullScreenApp("t1", true);
     const wire = await fake.readTerminal("t1", 200);
     expect(wire).toMatchObject({ how: "stitched", complete: false, why: "working" });
-    const grid = await adapter.readGrid("t1", RECENT);
+    const grid = await adapter.readGrid("t1", OLDER);
     if (!grid.ok) throw new Error(grid.detail);
     expect(grid.value.partial).toBe(true);
     expect(grid.value.truncated).toBe(false);
@@ -118,24 +121,58 @@ describe("terminal.read: incomplete while a full-screen app works (HC_API.md, te
       }
     }
     const adapter = new HerdrCoreMux(new PartialScreen(), "/home/dev");
-    for (const request of [VIEWPORT, RECENT]) {
+    for (const request of [VIEWPORT, OLDER]) {
       const grid = await adapter.readGrid("t1", request);
       if (!grid.ok) throw new Error(grid.detail);
       expect(grid.value.partial).toBe(true);
       expect(grid.value.truncated).toBe(false);
       expect(grid.value.text).toContain("Allow edit to src/x.ts?");
     }
+    // The poll reads the screen alone: partial as the core says, and its scrollback cut.
+    const poll = await adapter.readGrid("t1", RECENT);
+    if (!poll.ok) throw new Error(poll.detail);
+    expect(poll.value.partial).toBe(true);
+    expect(poll.value.truncated).toBe(true);
+  });
+});
+
+describe("the poll reads the screen; history is read on demand (M79 spec 01)", () => {
+  // The phone polls the mirror every 1.5 s. On the core every history read can hold the terminal's
+  // keys (below), so a poll reads the screen alone and only Load older (`purpose: older`) reads history.
+  test("a poll reads the screen alone, marked truncated, and asks the core for no history", async () => {
+    const { fake, adapter } = build();
+    const grid = await adapter.readGrid("t1", RECENT);
+    if (!grid.ok) throw new Error(grid.detail);
+    expect(grid.value.truncated).toBe(true);
+    expect(grid.value.olderNote).toBeUndefined();
+    expect(grid.value.text).toContain("Allow edit to src/x.ts?");
+    expect(grid.value.text).not.toContain("earlier line");
+    expect(fake.historyReads("t1")).toBe(0);
+  });
+
+  test("Load older on an idle pane returns the rows above the screen, not truncated, with no note", async () => {
+    const { fake, adapter } = build();
+    const poll = await adapter.readGrid("t1", RECENT);
+    const older = await adapter.readGrid("t1", OLDER);
+    if (!poll.ok || !older.ok) throw new Error("a read failed");
+    expect(older.value.truncated).toBe(false);
+    expect(older.value.olderNote).toBeUndefined();
+    expect(older.value.text).toContain("earlier line 1");
+    expect(older.value.text).toContain("Allow edit to src/x.ts?");
+    expect(older.value.text.split("\n").length).toBeGreaterThan(poll.value.text.split("\n").length);
+    // One screen, one revision: the older rows do not move it.
+    expect(older.value.revision).toBe(poll.value.revision);
+    expect(fake.historyReads("t1")).toBe(1);
   });
 });
 
 describe("a history read that hangs (HC_API.md, terminal.read `lines` and `how: stitched`; M78 spec 03, pi 2 and 3)", () => {
   // The real core gave no answer to `lines: 60` in 30 s while a pi dialog stood, and answered
   // `lines: 0` in 0.1 s. Fixed: before the budget the read waited out the client's 5 s and refused.
-  // No backoff here: these pin the budget alone. The backoff has its own describe below.
   function slow(budget = 40): Built & { lines: string[] } {
     const fake = new FakeHcCore();
     const lines: string[] = [];
-    return { fake, adapter: new HerdrCoreMux(fake, "/home/dev", { historyBudgetMs: budget, historyBackoffMs: 0, log: (line) => lines.push(line) }), clock: new ManualClock(), lines };
+    return { fake, adapter: new HerdrCoreMux(fake, "/home/dev", { historyBudgetMs: budget, log: (line) => lines.push(line) }), clock: new ManualClock(), lines };
   }
 
   test("the budget is 2 s, inside the client's own call budget", () => {
@@ -143,25 +180,26 @@ describe("a history read that hangs (HC_API.md, terminal.read `lines` and `how: 
     expect(HISTORY_READ_BUDGET_MS).toBeLessThan(DEFAULT_HC_TIMEOUT_MS);
   });
 
-  test("a history read that never answers: the screen's rows, truncated, within the budget (the default 2 s)", async () => {
+  test("a Load older whose history read never answers: the screen's rows, truncated, with the reading note, within the budget (the default 2 s)", async () => {
     const fake = new FakeHcCore();
     const adapter = new HerdrCoreMux(fake, "/home/dev", { log: () => undefined });
     fake.hangHistoryReads("t1");
     const started = performance.now();
-    const grid = await adapter.readGrid("t1", RECENT);
+    const grid = await adapter.readGrid("t1", OLDER);
     const took = performance.now() - started;
     if (!grid.ok) throw new Error(grid.detail);
     expect(took).toBeGreaterThanOrEqual(HISTORY_READ_BUDGET_MS - 20);
     expect(took).toBeLessThan(HISTORY_READ_BUDGET_MS + 500);
     expect(grid.value.truncated).toBe(true);
+    expect(grid.value.olderNote).toBe(OLDER_NOTE_READING);
     expect(grid.value.partial).toBeUndefined();
     expect(grid.value.text).toContain("Allow edit to src/x.ts?");
     expect(grid.value.text).not.toContain("earlier line");
   });
 
-  test("a fast history read is unchanged: history rows, not truncated, no log line", async () => {
+  test("a fast history read: history rows, not truncated, no log line", async () => {
     const { adapter, lines } = slow();
-    const grid = await adapter.readGrid("t1", RECENT);
+    const grid = await adapter.readGrid("t1", OLDER);
     if (!grid.ok) throw new Error(grid.detail);
     expect(grid.value.truncated).toBe(false);
     expect(grid.value.text).toContain("earlier line 1");
@@ -169,37 +207,33 @@ describe("a history read that hangs (HC_API.md, terminal.read `lines` and `how: 
     expect(lines).toEqual([]);
   });
 
-  test("the hang is logged once per pane, not once per poll, and again after the pane's history answered", async () => {
+  test("each Load older past the budget logs one line that names the pane and no agent; a poll logs nothing", async () => {
     const { fake, adapter, lines } = slow();
     fake.hangHistoryReads("t1");
     for (let poll = 0; poll < 3; poll++) expect((await adapter.readGrid("t1", RECENT)).ok).toBe(true);
-    expect(lines).toHaveLength(1);
-    expect(lines[0]).toContain("t1");
+    expect(lines).toEqual([]);
+    expect((await adapter.readGrid("t1", OLDER)).ok).toBe(true);
+    expect(lines).toEqual(["[herdr-core] pane t1: history read slow (no answer in 40 ms), Load older answered the screen alone"]);
     expect(lines[0]).not.toMatch(/claude|pi\b|codex/i);
-    // The held read must end first: while it runs on the core, no other history read starts.
-    fake.hangHistoryReads("t1", false);
-    fake.answerHungReads();
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    const answered = await adapter.readGrid("t1", RECENT);
-    if (!answered.ok) throw new Error(answered.detail);
-    expect(answered.value.truncated).toBe(false);
-    fake.hangHistoryReads("t1");
-    expect((await adapter.readGrid("t1", RECENT)).ok).toBe(true);
-    expect(lines).toHaveLength(2);
   });
 
-  test("the late history answer is dropped: the next read is a fresh one, and nothing throws", async () => {
+  test("a second Load older while the first one's read still runs waits for that read and starts none; its late answer is not lost", async () => {
     const { fake, adapter } = slow();
     fake.hangHistoryReads("t1");
-    const cut = await adapter.readGrid("t1", RECENT);
-    if (!cut.ok) throw new Error(cut.detail);
+    const first = await adapter.readGrid("t1", OLDER);
+    if (!first.ok) throw new Error(first.detail);
+    expect(first.value.olderNote).toBe(OLDER_NOTE_READING);
+    const second = adapter.readGrid("t1", OLDER);
     fake.hangHistoryReads("t1", false);
     fake.answerHungReads();
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    const whole = await adapter.readGrid("t1", RECENT);
+    const whole = await second;
     if (!whole.ok) throw new Error(whole.detail);
     expect(whole.value.truncated).toBe(false);
     expect(whole.value.text).toContain("earlier line 1");
+    expect(fake.historyReads("t1")).toBe(1);
+    // Settled: the next Load older is a fresh read.
+    expect((await adapter.readGrid("t1", OLDER)).ok).toBe(true);
+    expect(fake.historyReads("t1")).toBe(2);
   });
 
   test("the viewport read is never held by the switch", async () => {
@@ -213,15 +247,16 @@ describe("a history read that hangs (HC_API.md, terminal.read `lines` and `how: 
 
   test("a history read that fails inside the budget still fails the read", async () => {
     const { adapter } = slow();
-    const grid = await adapter.readGrid("t99", RECENT);
+    const grid = await adapter.readGrid("t99", OLDER);
     expect(reason(grid)).not.toBe("ok");
   });
 });
 
 describe("a slow history read holds the terminal's keys (M78 report 10, case 2; hc 0.1.14 under pi's permission dialog)", () => {
   // The real core took 25 s for one history read under the dialog, ran a terminal's history reads and
-  // key presses one at a time, and kept running a read Collie had given up on. Fixed: before the change
-  // every `recent` poll queued one more 25 s read, and the pane's keys never answered again.
+  // key presses one at a time, and kept running a read Collie had given up on. 1.25.2 kept one read per
+  // pane with a backoff, and that one read still held the keys for up to 25 s after a dialog appeared
+  // (pi 3 and pi 26 refused probe_failed). Fixed in M79 spec 01: the poll starts no history read.
   const tick = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
   const DIALOG = "Allow edit to src/x.ts?";
 
@@ -232,10 +267,10 @@ describe("a slow history read holds the terminal's keys (M78 report 10, case 2; 
   }
 
   /** t1 with slow history reads, an adapter with a 20 ms budget, and its log lines. */
-  function jam(now: () => number = () => Date.now(), keysTimeoutMs: number | null = null): Jammed {
+  function jam(keysTimeoutMs: number | null = null): Jammed {
     const fake = new FakeHcCore();
     const lines: string[] = [];
-    const adapter = new HerdrCoreMux(fake, "/home/dev", { historyBudgetMs: 20, now, log: (line) => lines.push(line) });
+    const adapter = new HerdrCoreMux(fake, "/home/dev", { historyBudgetMs: 20, log: (line) => lines.push(line) });
     fake.slowHistoryReads("t1", { keysTimeoutMs });
     return { fake, adapter, lines };
   }
@@ -244,185 +279,109 @@ describe("a slow history read holds the terminal's keys (M78 report 10, case 2; 
     return fake.writes().filter((w) => w.kind === "keys").map((w) => w.payload);
   }
 
-  test("the backoff is 30 s", () => {
-    expect(HISTORY_READ_BACKOFF_MS).toBe(30_000);
-  });
-
-  test("ten recent reads during one slow history read start one core read and answer the screen alone; a key then waits for that one read only", async () => {
-    const { fake, adapter } = jam();
-    const grids = await Promise.all(Array.from({ length: 10 }, () => adapter.readGrid("t1", RECENT)));
+  test("fifty polls during a slow history switch start no core history read, and a key answers at once (fixed)", async () => {
+    const { fake, adapter, lines } = jam();
+    const grids = await Promise.all(Array.from({ length: 50 }, () => adapter.readGrid("t1", RECENT)));
     for (const grid of grids) {
       if (!grid.ok) throw new Error(grid.detail);
       expect(grid.value.truncated).toBe(true);
+      expect(grid.value.olderNote).toBeUndefined();
+      expect(grid.value.text).toContain(DIALOG);
+    }
+    expect(fake.historyReads("t1")).toBe(0);
+    expect(fake.pendingSlowReads("t1")).toBe(0);
+    expect(await adapter.writeKeys("t1", ["Down"])).toEqual({ ok: true, value: undefined });
+    expect(keysSent(fake)).toEqual([["down"]]);
+    expect(lines).toEqual([]);
+  });
+
+  test("ten Load older reads during one slow history read start one core read and answer the screen with the reading note; a key waits for that one read only", async () => {
+    const { fake, adapter } = jam();
+    const grids = await Promise.all(Array.from({ length: 10 }, () => adapter.readGrid("t1", OLDER)));
+    for (const grid of grids) {
+      if (!grid.ok) throw new Error(grid.detail);
+      expect(grid.value.truncated).toBe(true);
+      expect(grid.value.olderNote).toBe(OLDER_NOTE_READING);
       expect(grid.value.text).toContain(DIALOG);
       expect(grid.value.text).not.toContain("earlier line");
     }
-    // Polls past the budget, while the read still runs on the core: still that one read.
+    // Polls and more Load older reads past the budget, while the read still runs on the core: still that one read.
     for (let poll = 0; poll < 5; poll++) expect((await adapter.readGrid("t1", RECENT)).ok).toBe(true);
+    expect((await adapter.readGrid("t1", OLDER)).ok).toBe(true);
     expect(fake.historyReads("t1")).toBe(1);
     expect(fake.pendingSlowReads("t1")).toBe(1);
     const key = adapter.writeKeys("t1", ["Down"]);
     expect(fake.endSlowRead("t1")).toBe(true);
     expect(await key).toEqual({ ok: true, value: undefined });
-    // Nothing else queued: before the fix fourteen more reads stood between the key and the program.
     expect(fake.pendingSlowReads("t1")).toBe(0);
     expect(keysSent(fake)).toEqual([["down"]]);
   });
 
-  test("a pane whose program reports blocked starts no history read at all, so its keys answer at once", async () => {
+  test("after the slow read ends, the next Load older reads history again: no backoff is left", async () => {
+    const { fake, adapter } = jam();
+    expect((await adapter.readGrid("t1", OLDER)).ok).toBe(true);
+    fake.endSlowRead("t1");
+    await tick();
+    fake.slowHistoryReads("t1", { on: false });
+    const grid = await adapter.readGrid("t1", OLDER);
+    if (!grid.ok) throw new Error(grid.detail);
+    expect(grid.value.truncated).toBe(false);
+    expect(grid.value.text).toContain("earlier line 1");
+    expect(fake.historyReads("t1")).toBe(2);
+  });
+
+  test("Load older on a pane whose program reports blocked starts no history read and says why, so its keys answer at once", async () => {
     const { fake, adapter } = jam();
     await adapter.snapshot(); // t1 is Claude, blocked on a permission
-    for (let poll = 0; poll < 3; poll++) {
-      const grid = await adapter.readGrid("t1", RECENT);
+    for (let tap = 0; tap < 3; tap++) {
+      const grid = await adapter.readGrid("t1", OLDER);
       if (!grid.ok) throw new Error(grid.detail);
       expect(grid.value.truncated).toBe(true);
+      expect(grid.value.olderNote).toBe(OLDER_NOTE_BLOCKED);
       expect(grid.value.text).toContain(DIALOG);
     }
     expect(fake.historyReads("t1")).toBe(0);
     expect(await adapter.writeKeys("t1", ["Down"])).toEqual({ ok: true, value: undefined });
     expect(keysSent(fake)).toEqual([["down"]]);
-    // Off the dialog, the next snapshot frees the history read again.
+    // Off the dialog, the next snapshot frees Load older again.
     fake.slowHistoryReads("t1", { on: false });
     fake.reportState("t1", "working");
     await adapter.snapshot();
-    const grid = await adapter.readGrid("t1", RECENT);
+    const grid = await adapter.readGrid("t1", OLDER);
     if (!grid.ok) throw new Error(grid.detail);
     expect(grid.value.truncated).toBe(false);
+    expect(grid.value.olderNote).toBeUndefined();
     expect(grid.value.text).toContain("earlier line 1");
     expect(fake.historyReads("t1")).toBe(1);
   });
 
-  test("a screen that changes on every read does not end the backoff: no second history read for 30 s, one log line (fixed)", async () => {
-    // pi's dialog redraws every frame (its spinner, the cursor). Before the fix a new screen text
-    // ended the backoff, and one dialog started ten 25 s history reads back to back.
-    let now = 1_000;
-    let frame = 0;
-    const { fake, adapter, lines } = jam(() => now);
-    const spin = (): void => {
-      frame += 1;
-      fake.setScreen("t1", ["pi", "", DIALOG, `  ${"|/-\\"[frame % 4] ?? "|"} waiting ${String(frame)}`]);
-    };
-    spin();
-    expect((await adapter.readGrid("t1", RECENT)).ok).toBe(true);
-    expect(lines).toEqual(["[herdr-core] pane t1: history read slow (no answer in 20 ms), screen-only reads for 30 s after it ends"]);
-    for (let poll = 0; poll < 5; poll++) {
-      spin();
-      expect((await adapter.readGrid("t1", RECENT)).ok).toBe(true);
-    }
-    fake.endSlowRead("t1");
-    await tick();
-    for (let poll = 0; poll < 10; poll++) {
-      spin();
-      now += 1_500;
-      const grid = await adapter.readGrid("t1", RECENT);
-      if (!grid.ok) throw new Error(grid.detail);
-      expect(grid.value.truncated).toBe(true);
-      expect(grid.value.text).toContain(`waiting ${String(frame)}`);
-    }
-    now += HISTORY_READ_BACKOFF_MS - 15_000 - 1;
-    spin();
-    expect((await adapter.readGrid("t1", RECENT)).ok).toBe(true);
-    expect(fake.historyReads("t1")).toBe(1);
-    // The keys answer at once: no history read stands in front of them.
-    expect(await adapter.writeKeys("t1", ["Down"])).toEqual({ ok: true, value: undefined });
-    fake.slowHistoryReads("t1", { on: false });
-    now += 1;
-    const grid = await adapter.readGrid("t1", RECENT);
-    if (!grid.ok) throw new Error(grid.detail);
-    expect(grid.value.truncated).toBe(false);
-    expect(fake.historyReads("t1")).toBe(2);
-    expect(lines).toHaveLength(1);
-  });
-
-  test("each slow read in a row doubles the wait up to 5 min, logged once per doubling; a fast read resets it to 30 s", async () => {
-    expect(HISTORY_READ_BACKOFF_MAX_MS).toBe(300_000);
-    let now = 1_000;
-    const { fake, adapter, lines } = jam(() => now);
-    const waits = [30_000, 60_000, 120_000, 240_000, 300_000, 300_000];
-    for (const [index, wait] of waits.entries()) {
-      expect((await adapter.readGrid("t1", RECENT)).ok).toBe(true);
-      expect(fake.historyReads("t1")).toBe(index + 1);
-      fake.endSlowRead("t1");
-      await tick();
-      now += wait - 1;
-      expect((await adapter.readGrid("t1", RECENT)).ok).toBe(true);
-      expect(fake.historyReads("t1")).toBe(index + 1);
-      now += 1;
-    }
-    expect(lines).toEqual([
-      "[herdr-core] pane t1: history read slow (no answer in 20 ms), screen-only reads for 30 s after it ends",
-      "[herdr-core] pane t1: history read slow again, screen-only reads for 60 s after it ends",
-      "[herdr-core] pane t1: history read slow again, screen-only reads for 120 s after it ends",
-      "[herdr-core] pane t1: history read slow again, screen-only reads for 240 s after it ends",
-      "[herdr-core] pane t1: history read slow again, screen-only reads for 300 s after it ends",
-    ]);
-    // A history read inside the budget resets the wait: the next slow one waits 30 s again.
-    fake.slowHistoryReads("t1", { on: false });
-    const fast = await adapter.readGrid("t1", RECENT);
-    if (!fast.ok) throw new Error(fast.detail);
-    expect(fast.value.truncated).toBe(false);
-    fake.slowHistoryReads("t1");
-    expect((await adapter.readGrid("t1", RECENT)).ok).toBe(true);
-    fake.endSlowRead("t1");
-    await tick();
-    const reads = fake.historyReads("t1");
-    now += HISTORY_READ_BACKOFF_MS - 1;
-    expect((await adapter.readGrid("t1", RECENT)).ok).toBe(true);
-    expect(fake.historyReads("t1")).toBe(reads);
-    fake.slowHistoryReads("t1", { on: false });
-    now += 1;
-    expect((await adapter.readGrid("t1", RECENT)).ok).toBe(true);
-    expect(fake.historyReads("t1")).toBe(reads + 1);
-    expect(lines.slice(5)).toEqual(["[herdr-core] pane t1: history read slow (no answer in 20 ms), screen-only reads for 30 s after it ends"]);
-  });
-
-  test("a read whose hint says blocked starts no history read, so a pane the core reports working takes keys at once", async () => {
+  test("Load older whose hint says blocked starts no history read, so a pane the core reports working takes keys at once", async () => {
     // pi reports `working` while its dialog waits; the bridge's engine reads the screen's ask and says so.
     const { fake, adapter, lines } = jam();
     fake.reportState("t1", "working");
     await adapter.snapshot();
-    for (let poll = 0; poll < 3; poll++) {
-      const grid = await adapter.readGrid("t1", { ...RECENT, hint: { blocked: true } });
+    for (let tap = 0; tap < 3; tap++) {
+      const grid = await adapter.readGrid("t1", { ...OLDER, hint: { blocked: true } });
       if (!grid.ok) throw new Error(grid.detail);
       expect(grid.value.truncated).toBe(true);
+      expect(grid.value.olderNote).toBe(OLDER_NOTE_BLOCKED);
       expect(grid.value.text).toContain(DIALOG);
     }
     expect(fake.historyReads("t1")).toBe(0);
     expect(await adapter.writeKeys("t1", ["Down"])).toEqual({ ok: true, value: undefined });
     expect(keysSent(fake)).toEqual([["down"]]);
     expect(lines).toEqual([]);
-    // Without the hint the history read runs again.
+    // Without the hint Load older reads history again.
     fake.slowHistoryReads("t1", { on: false });
-    const grid = await adapter.readGrid("t1", { ...RECENT, hint: { blocked: false } });
+    const grid = await adapter.readGrid("t1", { ...OLDER, hint: { blocked: false } });
     if (!grid.ok) throw new Error(grid.detail);
     expect(grid.value.truncated).toBe(false);
     expect(fake.historyReads("t1")).toBe(1);
-  });
-
-  test("or until the backoff passed, counted from the end of the slow read, not from the budget", async () => {
-    let now = 1_000;
-    const { fake, adapter } = jam(() => now);
-    expect((await adapter.readGrid("t1", RECENT)).ok).toBe(true);
-    // The core still runs the read a minute later: no second one starts.
-    now += 60_000;
-    expect((await adapter.readGrid("t1", RECENT)).ok).toBe(true);
-    expect(fake.historyReads("t1")).toBe(1);
-    fake.endSlowRead("t1");
-    await tick();
-    fake.slowHistoryReads("t1", { on: false });
-    now += HISTORY_READ_BACKOFF_MS - 1;
-    expect((await adapter.readGrid("t1", RECENT)).ok).toBe(true);
-    expect(fake.historyReads("t1")).toBe(1);
-    now += 1;
-    const grid = await adapter.readGrid("t1", RECENT);
-    if (!grid.ok) throw new Error(grid.detail);
-    expect(grid.value.truncated).toBe(false);
-    expect(fake.historyReads("t1")).toBe(2);
   });
 
   test("a key the core does not confirm in time is unconfirmed, not a failure, and lands once when its turn comes", async () => {
-    const { fake, adapter } = jam(undefined, 20);
-    const held = fake.readTerminal("t1", 60); // a history read already on the core, as from an earlier poll
+    const { fake, adapter } = jam(20);
+    const held = fake.readTerminal("t1", 60); // a history read already on the core, as from a Load older
     const sent = await adapter.writeKeys("t1", ["Down"]);
     expect(reason(sent)).toBe("unconfirmed");
     if (sent.ok) throw new Error("expected unconfirmed");

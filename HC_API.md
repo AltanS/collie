@@ -135,7 +135,8 @@ There is no focus field and no content revision on a terminal.
   and the Send Protocol takes such a read as no read: it types nothing and presses nothing on a screen
   that may lack rows. Only a stitched read (`lines` above 0) was seen incomplete; the viewport read the
   protocol uses (`lines: 0`) was always complete.
-- No history depth is reported anywhere, so how far a read can reach is unknown in advance.
+- No history depth is reported anywhere, so how far a read can reach is unknown in advance. The phone
+  therefore offers Load older on the core while the text it shows is cut (`truncated`), not by a depth.
 
 ## Typing: `send`, `put`, `keys` and raw input
 
@@ -384,17 +385,17 @@ Each line is a thing the core could do that would close a gap Collie cannot clos
   after the read ended. A read the client gave up on still runs to its end. Another terminal in the
   same core answered keys and history reads in 0.1 s, so the hold is per terminal. The effect: a key
   call timed out at the client's 5 s and still reached pi later, and with a phone polling the pane
-  every 1.5 s the terminal's keys stayed held for over nine minutes. Collie now keeps at most one
-  history read per terminal on the core, starts none while the program reports `blocked` or while
-  Collie reads an ask on the screen, backs off on time alone after a slow one (30 s from the end of
-  that read, doubling for each further slow read in a row up to 5 minutes, back to 30 s after a fast
-  one), and reports a key call that timed out as not confirmed instead of failed. A screen that
-  redraws every frame makes any "retry when the screen changes" rule useless: pi's dialog redraws its
-  spinner and cursor on every read, and Collie's first backoff, which ended on a screen change,
-  still started ten 25 s history reads back to back under one dialog. So Collie backs off on time
-  alone. The asks: a history read must not wait 25 s on a program that shows a dialog;
-  `terminal.keys` must not wait behind pending reads on the same terminal; and a read whose client
-  gave up (closed the connection) should be cancelled on the core.
+  every 1.5 s the terminal's keys stayed held for over nine minutes. Collie now reads history on
+  demand only (M79 spec 01): the phone's poll, and every read of the bridge's own, reads the screen
+  (`lines: 0`) and marks the scrollback as cut. A history read starts only when a person taps Load
+  older, at most one per terminal, none while the program reports `blocked` or while Collie reads an
+  ask on the screen (the phone then says that Load older waits), and past a 2 s budget the screen
+  answers while the core finishes the read. A key call that timed out is reported as not confirmed
+  instead of failed. The 1.25.2 backoff (one read per terminal, then screen-only reads for 30 s to
+  5 min) is gone: it still let the one read hold the keys for up to 25 s after a dialog appeared. The
+  asks: a history read must not wait 25 s on a program that shows a dialog; `terminal.keys` must not
+  wait behind pending reads on the same terminal; and a read whose client gave up (closed the
+  connection) should be cancelled on the core. With those, the poll could read history again.
 - **`blocked` for pi's question.** The core's status stays `working` while pi waits on its question,
   because pi reports no blocked state for an extension's question. Collie marks the pane "needs you"
   from the screen. The ask: pi reports it, or the core says so.

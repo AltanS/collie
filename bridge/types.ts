@@ -1286,6 +1286,12 @@ export interface PaneReadResponse {
    * to repair — the payload stays byte-identical to what it was for every other pane.
    */
   logicalText?: string;
+  /**
+   * Set only on a Load older read (`?purpose=older`) the multiplexer answered without the rows above
+   * the screen: one sentence that says why, for the phone to show (mux/types.ts `MuxGrid.olderNote`).
+   * Absent on every other read.
+   */
+  olderNote?: string;
 }
 
 /**

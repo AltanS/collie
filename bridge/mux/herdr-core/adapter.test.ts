@@ -107,7 +107,7 @@ describe("HerdrCoreMux over a fake core", () => {
   test("the derived revision moves with one view's text and not across views", async () => {
     const { fake, adapter } = build();
     const viewport = () => adapter.readGrid("t1", { scope: "viewport", lines: 40, styling: "preserve" });
-    const recent = () => adapter.readGrid("t1", { scope: "recent", lines: 200, styling: "preserve" });
+    const recent = () => adapter.readGrid("t1", { scope: "recent", lines: 200, styling: "preserve", purpose: "older" });
     const first = await viewport();
     const history = await recent();
     const second = await viewport();
@@ -129,7 +129,7 @@ describe("HerdrCoreMux over a fake core", () => {
         adapter.readGrid("t1", { scope: "recent", lines: 40, styling: "preserve" }),
         adapter.readGrid("t1", { scope: "recent", lines: 80, styling: "preserve" }),
         adapter.readGrid("t1", { scope: "viewport", lines: 40, styling: "preserve" }),
-        adapter.readGrid("t1", { scope: "recent", lines: 600, styling: "preserve" }),
+        adapter.readGrid("t1", { scope: "recent", lines: 600, styling: "preserve", purpose: "older" }),
       ]);
       return outcomes.map((outcome) => {
         if (!outcome.ok) throw new Error("a read failed");

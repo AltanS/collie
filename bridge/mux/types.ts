@@ -408,7 +408,22 @@ export interface MuxGridRequest {
   readonly styling: "preserve" | "strip";
   /** What the bridge knows about the pane that the multiplexer may not. See {@link MuxReadHint}. */
   readonly hint?: MuxReadHint;
+  /**
+   * Why the bridge reads, for a `recent` read. OPTIONAL, and absent means `poll`.
+   *
+   * - `poll`: the mirror's refresh, every 1.5 s while a phone looks at the pane, and the bridge's own
+   *   checks of a send.
+   * - `older`: a person tapped Load older and asks for the rows above the screen.
+   *
+   * An adapter that reads its scrollback at no cost answers both alike and may ignore the field.
+   * herdr-core reads history only on `older`: its history read can hold the terminal's keys for 25 s
+   * (herdr-core/adapter.ts, `readGrid`), so a `poll` there reads the screen alone, marked `truncated`.
+   */
+  readonly purpose?: MuxReadPurpose;
 }
+
+/** Why the bridge reads a pane's scrollback. See {@link MuxGridRequest.purpose}. */
+export type MuxReadPurpose = "poll" | "older";
 
 /**
  * What the bridge knows about the pane that the multiplexer may not; an adapter may ignore it.
@@ -417,8 +432,9 @@ export interface MuxGridRequest {
  *
  * `blocked`: the bridge's state engine reads the pane as waiting on a person (the screen shows an
  * ask), even when the multiplexer reports the program `working`, as herdr-core does for pi's
- * dialogs. herdr-core reads such a pane's screen alone and starts no history read, because the core
- * holds the terminal's keys behind a history read (herdr-core/adapter.ts, HISTORY_READ_BACKOFF_MS).
+ * dialogs. herdr-core answers an `older` read of such a pane with its screen alone and starts no
+ * history read, because the core holds the terminal's keys behind a history read
+ * (herdr-core/adapter.ts, `readGrid`).
  */
 export interface MuxReadHint {
   readonly blocked?: boolean;
@@ -442,6 +458,12 @@ export interface MuxGrid {
    * as no read and waits for a whole one. Absent on a whole read, and on every adapter that cannot tell.
    */
   readonly partial?: true;
+  /**
+   * A sentence for the person, set only on an `older` read ({@link MuxGridRequest.purpose}) that
+   * answered without the rows above the screen, and saying why: on herdr-core, the agent waits on a
+   * person, or the core still runs an earlier history read. Absent on every other read and adapter.
+   */
+  readonly olderNote?: string;
   /**
    * A number that CHANGES when this pane's content changes and never decreases while the pane lives.
    *

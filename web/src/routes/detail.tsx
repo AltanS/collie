@@ -174,6 +174,9 @@ export function DetailRoute() {
         text={pane.text}
         logicalText={pane.logicalText}
         requestedLines={pane.requestedLines}
+        truncated={pane.truncated}
+        olderRead={pane.olderRead === true}
+        olderNote={pane.olderNote}
         revision={pane.revision}
         device={root.device}
         bridge={root.bridge}

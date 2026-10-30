@@ -5023,6 +5023,38 @@ describe("the state engine's blocked hint reaches the pane's recent reads (herdr
   });
 });
 
+describe("the read's purpose: the mirror's poll, or Load older (M79 spec 01)", () => {
+  test("`?purpose=older` reaches the adapter as purpose older with its note on the body; any other read carries no purpose and no note", async () => {
+    const requests: MuxGridRequest[] = [];
+    const stub: Partial<MuxAdapter> = {
+      mux: "herdr-core",
+      readGrid: (paneId: string, request: MuxGridRequest) => {
+        requests.push(request);
+        const grid = { paneId, text: "$ ls", truncated: true, revision: 3 };
+        return Promise.resolve(muxOk(request.purpose === "older" ? { ...grid, olderNote: "wait" } : grid));
+      },
+      writeKeys: () => Promise.resolve(muxAck()),
+    };
+    // SAFETY: readPane and keysPane reach `mux`, `readGrid` and the key write, all present above.
+    const adapter = stub as MuxAdapter;
+    const read = async (query: string) => {
+      const res = await readPane(adapter, cfg(), "w1:p1", new URL(`http://x/api/pane/w1:p1${query}`), new Request(`http://x/api/pane/w1:p1${query}`));
+      // SAFETY: the bridge's own JSON, served by the call above.
+      return (await res.json()) as PaneReadResponse;
+    };
+    const older = await read("?lines=1000&purpose=older");
+    const poll = await read("?lines=1000");
+    const other = await read("?lines=1000&purpose=history");
+    const keys = new Request("http://x/api/pane/w1:p1/keys", { method: "POST", body: JSON.stringify({ keys: ["1"], expected_prompt: "$ ls" }) });
+    await keysPane(adapter, cfg(), "w1:p1", keys, new AuditLog(() => undefined), "phone", "default");
+    expect(requests.map((request) => request.purpose)).toEqual(["older", undefined, undefined, undefined]);
+    expect(requests.slice(1).every((request) => !("purpose" in request))).toBe(true);
+    expect(older.olderNote).toBe("wait");
+    expect("olderNote" in poll).toBe(false);
+    expect("olderNote" in other).toBe(false);
+  });
+});
+
 // ── The hot intent after an input (state-engine.ts § noteInput) ─────────────────────────────────
 //
 // Herdr announces nothing when an agent reports its session, so a bridge relaxed to its 12 s idle

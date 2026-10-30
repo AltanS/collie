@@ -1105,13 +1105,14 @@ const scrollbackReachesFurther: MuxWorldCheck = {
       if (!declares(adapter, "gridScrollback")) return [];
       const panes = livePanes(await adapter.snapshot());
       if (panes.length === 0) return ["the fixture's world has no pane to read"];
-      // The first pane whose `recent` read is whole must reach. A read marked `truncated` says the
-      // adapter cut the scrollback on purpose, and is skipped: herdr-core reads no scrollback of a pane
-      // whose program shows a dialog (M78 report 10, case 2). An adapter that never cuts is held to
-      // its first pane, as before.
+      // The first pane whose `recent` read is whole must reach. The read is Load older's
+      // (`purpose: older`): herdr-core reads history on that alone, and answers the mirror's poll from
+      // the screen (M79 spec 01). A read marked `truncated` says the adapter cut the scrollback on
+      // purpose, and is skipped: herdr-core reads no scrollback of a pane whose program shows a dialog
+      // (M78 report 10, case 2). An adapter that never cuts is held to its first pane, as before.
       for (const pane of panes) {
         const viewport = await adapter.readGrid(pane.paneId, { scope: "viewport", lines: 200, styling: "preserve" });
-        const recent = await adapter.readGrid(pane.paneId, { scope: "recent", lines: 200, styling: "preserve" });
+        const recent = await adapter.readGrid(pane.paneId, { scope: "recent", lines: 200, styling: "preserve", purpose: "older" });
         if (!viewport.ok) return [`a viewport read answered ${describeRefusal(viewport)}`];
         if (!recent.ok) return [`a scrollback read answered ${describeRefusal(recent)}`];
         if (recent.value.truncated) continue;
