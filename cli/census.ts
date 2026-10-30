@@ -5,6 +5,7 @@ import { escapeLabelForTerminal } from "../bridge/pairing.ts";
 import type { AgentStatus } from "../bridge/types.ts";
 import type { CliContext } from "./context.ts";
 import { memberStatusOf, probeMemberReach } from "./crew.ts";
+import { groupMembersByHost } from "./host-groups.ts";
 import { pairedRegistryOf } from "./pairing.ts";
 import { readOwnSnapshot } from "./snapshot-read.ts";
 import type { Files } from "./sys.ts";
@@ -179,15 +180,28 @@ function memberLines(members: readonly CensusMember[], crew: CrewMode): string[]
   if (crew === "solo") return ["  crew      no crew, this install is solo"];
   if (members.length === 0) return ["  members   none yet, mint an invite and run `collie join` on the other machine"];
   const name = Math.max(...members.map((m) => m.name.length));
+  const role = Math.max(...members.map((m) => m.role.length));
   const link = Math.max(...members.map((m) => m.link.length));
   const version = Math.max(...members.map((m) => dash(m.version).length));
-  return [
-    "  members",
-    ...members.map(
-      (m) =>
-        `    ${m.name.padEnd(name)}  ${m.link.padEnd(link)}  ${dash(m.version).padEnd(version)}  mux ${dash(m.mux)}  panes ${dash(m.panes)}`,
-    ),
-  ];
+  const tail = (m: CensusMember): string => `mux ${dash(m.mux)}  panes ${dash(m.panes)}`;
+  const grouping = groupMembersByHost(members, { idOf: (m) => m.name, hostOf: (m) => m.host });
+  // Flat, exactly as before, unless some machine runs two instances (M77).
+  if (!grouping.shared) {
+    return [
+      "  members",
+      ...members.map((m) => `    ${m.name.padEnd(name)}  ${m.link.padEnd(link)}  ${dash(m.version).padEnd(version)}  ${tail(m)}`),
+    ];
+  }
+  const lines = ["  members"];
+  for (const g of grouping.groups) {
+    lines.push(`    ${g.host}`);
+    for (const m of g.members) {
+      lines.push(
+        `      ${m.name.padEnd(name)}  ${m.role.padEnd(role)}  ${m.link.padEnd(link)}  ${dash(m.version).padEnd(version)}  ${tail(m)}`,
+      );
+    }
+  }
+  return lines;
 }
 
 function deviceLine(devices: CensusDevices, crew: CrewMode): string {

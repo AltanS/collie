@@ -134,7 +134,8 @@ and each one has a `--json` form for a program.
 Start with `collie status`. It gives the counts. Go to `collie sessions` for the rows behind the
 session count, to `collie mux list` for the multiplexer behind a mux name, and to `collie crew status`
 for one member's link in detail. A member older than 1.25.0 shows `-` for its mux and pane count in
-`status` and `crew status`.
+`status` and `crew status`. When one machine runs two Collies, `collie status` and `collie crew status`
+group the members under that machine's name, one line per instance.
 
 ## Put `collie` on your PATH
 

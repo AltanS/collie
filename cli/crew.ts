@@ -67,6 +67,7 @@ import { herdTagFor } from "../bridge/sessions.ts";
 import { compareSemver } from "../bridge/update.ts";
 import { sameBuild } from "../bridge/version.ts";
 import { collieVersionBare, DEFAULT_SERVE_PORT, type CliContext } from "./context.ts";
+import { groupMembersByHost } from "./host-groups.ts";
 import { EXIT, type Io } from "./io.ts";
 import { dropEnvAssignments } from "./push-keys.ts";
 import {
@@ -1437,21 +1438,34 @@ export async function cmdCrewStatus(deps: CrewDeps, args: readonly string[]): Pr
 
   emit("");
   emit("members:", "dim");
-  for (const m of members) {
+  // M77: when some host runs two instances, a host line heads the instances it holds and their rows sit
+  // one step deeper; otherwise the roster prints exactly as it always did. The host is what a member
+  // said on its snapshot, so an unprobed (`--no-probe`) or silent member is a group of its own.
+  const grouping = groupMembersByHost(members, {
+    idOf: (m) => m.memberId,
+    hostOf: (m) => memberStatusOf(reaches.get(m.memberId)).host,
+  });
+  const ordered = grouping.shared
+    ? grouping.groups.flatMap((g) => g.members.map((m, i) => ({ m, headedBy: i === 0 ? g.host : null })))
+    : members.map((m) => ({ m, headedBy: null }));
+  const pad = grouping.shared ? "  " : "";
+  for (const { m, headedBy } of ordered) {
+    if (headedBy !== null) emit(`  ${headedBy}`, "plain");
+    const row = (text: string, tone: Tone = "plain"): void => emit(`${pad}${text}`, tone);
     const behind = m.status === "enrolled" && m.secretGeneration !== data.crew.secretGeneration;
-    emit(`  ${m.memberId}  (${m.role})  ${m.address}`, "plain");
-    emit(`    pinned  ${m.fingerprint.slice(0, 16)}…  enrolled ${new Date(m.enrolledAt).toISOString()}`, "dim");
-    emit(
+    row(`  ${m.memberId}  (${m.role})  ${m.address}`, "plain");
+    row(`    pinned  ${m.fingerprint.slice(0, 16)}…  enrolled ${new Date(m.enrolledAt).toISOString()}`, "dim");
+    row(
       `    secret  generation ${m.secretGeneration}` +
         (behind ? " — HAS NOT picked up the current secret" : " — current"),
       behind ? "warn" : "dim",
     );
     // §9's unfinished business, above the link line rather than under it: a member still owed the
     // proof is usually the unreachable one, and the row must not be conditional on it answering.
-    if (data.lead === null) for (const l of memberRePinLines(m)) emit(l.text, l.tone);
+    if (data.lead === null) for (const l of memberRePinLines(m)) row(l.text, l.tone);
     if (m.status === "unenrolled") {
-      emit("    status  unenrolled — dropped by a rotation it was offline for (§8.4).", "warn");
-      emit(`            Recovery is deliberate: \`collie crew invite\` here, \`collie join\` there.`, "dim");
+      row("    status  unenrolled — dropped by a rotation it was offline for (§8.4).", "warn");
+      row(`            Recovery is deliberate: \`collie crew invite\` here, \`collie join\` there.`, "dim");
       continue;
     }
     const reach = reaches.get(m.memberId);
@@ -1461,30 +1475,30 @@ export async function cmdCrewStatus(deps: CrewDeps, args: readonly string[]): Pr
     // and must never read as provisional. A number is a real contact time. Suppressed when this very
     // probe succeeded: a member reachable right now is not half-finished (it is stamped just below).
     if (m.contactedAt === null && outcome?.ok !== true) {
-      emit("    status  provisional — enrolled but never once reachable; a half-finished join looks exactly", "warn");
-      emit(`            like this (§8.2). If you did not complete a join for "${m.memberId}", clear it:`, "dim");
-      emit(`            \`collie crew remove ${m.memberId}\`.`, "dim");
+      row("    status  provisional — enrolled but never once reachable; a half-finished join looks exactly", "warn");
+      row(`            like this (§8.2). If you did not complete a join for "${m.memberId}", clear it:`, "dim");
+      row(`            \`collie crew remove ${m.memberId}\`.`, "dim");
     }
     if (outcome === undefined) {
-      emit("    link    not probed (--no-probe)", "dim");
+      row("    link    not probed (--no-probe)", "dim");
       continue;
     }
     if (outcome.ok) {
-      emit(`    link    reachable · answered at ${new Date(outcome.receivedAt).toISOString()}`, "good");
+      row(`    link    reachable · answered at ${new Date(outcome.receivedAt).toISOString()}`, "good");
       // The second question. `hello` says the machine is there; this says the phone can actually be
       // fed from it, on the strict per-poll budget that every real read runs under.
-      for (const line of dataLines(reach)) emit(line.text, line.tone);
-      for (const line of versionLines(outcome.value.version, ours, m.memberId)) emit(line, "dim");
-      emit(muxLine(memberStatusOf(reach)), "dim");
+      for (const line of dataLines(reach)) row(line.text, line.tone);
+      for (const line of versionLines(outcome.value.version, ours, m.memberId)) row(line, "dim");
+      row(muxLine(memberStatusOf(reach)), "dim");
       // The Surface reader it sent on `hello` (M56): none means an older build, to which this lead refuses text.
-      emit(`    surface ${outcome.value.surfaceVersion === undefined ? "none (older build)" : `reader ${String(outcome.value.surfaceVersion)}`}`, "dim");
+      row(`    surface ${outcome.value.surfaceVersion === undefined ? "none (older build)" : `reader ${String(outcome.value.surfaceVersion)}`}`, "dim");
       // The two phases of RFC §5, for this member: what it says it holds, and whether its listener
       // came up holding it (§18.17). Lead-side only — a peer has no roster to report anchoring for.
       if (data.lead === null) {
         const record = opsRecords?.members[m.memberId] ?? null;
         const active = outcome.value.warrantActiveGeneration;
         for (const l of memberWarrantLines(data, outcome.value.warrantGeneration, record, m.memberId, active)) {
-          emit(l.text, l.tone);
+          row(l.text, l.tone);
         }
         await convergeAnchor(deps, data, record, m.memberId, active);
       }
@@ -1510,24 +1524,24 @@ export async function cmdCrewStatus(deps: CrewDeps, args: readonly string[]): Pr
       continue;
     }
     if (outcome.state === "incompatible") {
-      emit(`    link    INCOMPATIBLE · ${outcome.reason}`, "bad");
-      emit(
+      row(`    link    INCOMPATIBLE · ${outcome.reason}`, "bad");
+      row(
         `            Not retried on the poll cadence. If this machine is the newer one:` +
           ` \`collie crew update ${m.memberId}\`.`,
         "dim",
       );
       continue;
     }
-    emit(`    link    unreachable · ${outcome.reason}`, "bad");
+    row(`    link    unreachable · ${outcome.reason}`, "bad");
     if (outcome.reason.includes("unauthorized")) {
-      emit("            A bare 401 is deliberately one answer for two causes (§8.1): an unpinned", "dim");
-      emit("            certificate or a secret this member no longer holds. The local column above", "dim");
-      emit("            says which is likelier — a member a generation behind is the secret.", "dim");
+      row("            A bare 401 is deliberately one answer for two causes (§8.1): an unpinned", "dim");
+      row("            certificate or a secret this member no longer holds. The local column above", "dim");
+      row("            says which is likelier — a member a generation behind is the secret.", "dim");
     }
     // …and the one cause the address itself gives away. Below the reason, not instead of it: the
     // scheme is a strong suspicion about an unreachable member, never a diagnosis of the failure.
-    for (const l of schemedAddressLines(m.memberId, m.address, m.role)) emit(l.text, l.tone);
-    for (const l of unreachableLeadLines(m)) emit(l.text, l.tone);
+    for (const l of schemedAddressLines(m.memberId, m.address, m.role)) row(l.text, l.tone);
+    for (const l of unreachableLeadLines(m)) row(l.text, l.tone);
   }
   if (deps.ui != null) await deps.ui.crewMembers(banked);
   return EXIT.OK;

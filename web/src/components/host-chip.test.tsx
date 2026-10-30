@@ -468,3 +468,69 @@ describe("HostChip — the glyph variant is the machine as tint and shape alone"
     expect(chips()).toHaveLength(0);
   });
 });
+
+// ── M77: the chip names the instance when a machine runs two ─────────────────
+
+describe("HostChip — <host> · <mux> only when a machine runs two instances", () => {
+  const row = (id: string, over: Partial<ServerSummary> = {}): ServerSummary => ({
+    id,
+    name: id,
+    isLead: false,
+    reachable: true,
+    protocol: "ok",
+    lastSeenAt: 1_000,
+    ...over,
+  });
+  const wrap = (servers: ServerSummary[]) =>
+    function Wrap({ children }: { children: React.ReactNode }) {
+      return <CrewProvider servers={servers}>{children}</CrewProvider>;
+    };
+
+  const shared = [
+    row("bluefin", { isLead: true, host: "bluefin", mux: "herdr" }),
+    row("bluefin-hc", { host: "bluefin", mux: "herdr-core" }),
+    row("workshop", { host: "workshop", mux: "tmux" }),
+  ];
+
+  it("reads host and mux for each instance of a shared machine", () => {
+    render(<HostChip host="bluefin-hc" />, { wrapper: wrap(shared) });
+    expect(screen.getByLabelText("Host: bluefin · herdr-core")).toBeInTheDocument();
+    cleanup();
+    render(<HostChip host="bluefin" variant="bare" />, { wrapper: wrap(shared) });
+    expect(screen.getByLabelText("Host: bluefin · herdr")).toBeInTheDocument();
+  });
+
+  it("uses the same two parts for a one-instance machine of that crew", () => {
+    render(<HostChip host="workshop" />, { wrapper: wrap(shared) });
+    expect(screen.getByLabelText("Host: workshop · tmux")).toBeInTheDocument();
+  });
+
+  it("keeps the plain member name when no host carries two instances", () => {
+    const apart = [
+      row("bluefin", { isLead: true, host: "bluefin", mux: "herdr" }),
+      row("workshop", { host: "workshop", mux: "tmux" }),
+    ];
+    render(<HostChip host="workshop" />, { wrapper: wrap(apart) });
+    expect(screen.getByLabelText("Host: workshop")).toBeInTheDocument();
+  });
+
+  it("keeps the plain member name for members that report no host", () => {
+    render(<HostChip host="workshop" />, { wrapper: crew });
+    expect(screen.getByLabelText("Host: workshop")).toBeInTheDocument();
+  });
+
+  it("falls back to the member name when two instances on a host share a mux", () => {
+    const twins = [
+      row("bluefin", { isLead: true, host: "bluefin", mux: "herdr" }),
+      row("bluefin-b", { host: "bluefin", mux: "herdr" }),
+    ];
+    render(<HostChip host="bluefin-b" />, { wrapper: wrap(twins) });
+    expect(screen.getByLabelText("Host: bluefin · bluefin-b")).toBeInTheDocument();
+  });
+
+  it("keeps the member's identity tint", () => {
+    render(<HostChip host="bluefin-hc" variant="glyph" />, { wrapper: wrap(shared) });
+    const glyph = screen.getByLabelText(/bluefin · herdr-core/).querySelector("svg");
+    expect(glyph?.getAttribute("class") ?? "").toMatch(/text-/);
+  });
+});

@@ -2027,6 +2027,35 @@ describe("collie crew status", () => {
     expect(text(starting.io)).not.toContain("0 panes");
   });
 
+  test("two members on one host print under one host line; a lone host keeps the flat roster (M77)", async () => {
+    const shared = harness(leadStore({ peers: [member({ memberId: "nas" }), member({ memberId: "nas-hc" }), member({ memberId: "attic" })] }), [
+      jsonReply({ protocol: 2, member: "nas", version: "1.25.0" }, 200, "nas"),
+      jsonReply({ protocol: 2, member: "nas-hc", version: "1.25.0" }, 200, "nas-hc"),
+      jsonReply({ protocol: 2, member: "attic", version: "1.25.0" }, 200, "attic"),
+      jsonReply({ bridge: "connected", agents: [], mux: "herdr", panes: 1, host: "nas-box" }, 200, "nas"),
+      jsonReply({ bridge: "connected", agents: [], mux: "herdr-core", panes: 2, host: "nas-box" }, 200, "nas-hc"),
+      jsonReply({ bridge: "connected", agents: [], mux: "tmux", panes: 3, host: "attic-box" }, 200, "attic"),
+    ]);
+    await cmdCrewStatus(shared.deps, []);
+    const lines = text(shared.io).split("\n");
+    const hostLine = lines.indexOf("  nas-box");
+    expect(hostLine).toBeGreaterThan(-1);
+    expect(lines[hostLine + 1]).toMatch(/^ {4}nas {2}\(peer\)/);
+    expect(lines).toContain("      mux     herdr · 1 pane");
+    expect(lines).toContain("      mux     herdr-core · 2 panes");
+    expect(lines.indexOf("  attic-box")).toBeGreaterThan(hostLine);
+
+    const flat = harness(leadStore({ peers: [member({ memberId: "nas" }), member({ memberId: "attic" })] }), [
+      jsonReply({ protocol: 2, member: "nas", version: "1.25.0" }, 200, "nas"),
+      jsonReply({ protocol: 2, member: "attic", version: "1.25.0" }, 200, "attic"),
+      jsonReply({ bridge: "connected", agents: [], mux: "herdr", panes: 1, host: "nas-box" }, 200, "nas"),
+      jsonReply({ bridge: "connected", agents: [], mux: "tmux", panes: 3, host: "attic-box" }, 200, "attic"),
+    ]);
+    await cmdCrewStatus(flat.deps, []);
+    expect(text(flat.io)).not.toContain("  nas-box");
+    expect(text(flat.io)).toContain("    mux     herdr · 1 pane");
+  });
+
   test("--json is one document with mux and panes per member, and it writes nothing", async () => {
     const h = harness(leadStore({ peers: [member({ memberId: "nas" }), member({ memberId: "attic" })] }), [
       // The replies are consumed in call order: both hellos go out first, then each member's snapshot.

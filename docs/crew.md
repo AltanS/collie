@@ -320,6 +320,33 @@ list from that member's log, so the cards and the Messages sheet look the same o
 > message to an older member is refused `not sent: older member`, and a member under an older lead
 > gets `not sent: older lead`. Run `collie crew update --all` to level the crew ([Update a crew](upgrading.md#updating-the-rest-of-the-crew)).
 
+## A machine can run several Collies
+
+A crew member is one Collie instance: one bridge and one multiplexer. One machine can run more than
+one, for example the Herdr TUI and the Herdr core side by side, and each is its own member. A member
+that is not the default instance joins as `<hostname>-<instance>` unless you pass `--label`.
+
+Each member sends its host name with its status. The app groups members that report the same host
+into one machine. The Crew page draws one card per machine, with a line for each instance, and the
+Machines sheet shows one row per machine. A member that sends no host, because it is older than
+1.25.0, is a machine of its own.
+
+A machine has a health that sums its instances:
+
+| Health | What it means |
+| --- | --- |
+| ok | Every instance answers |
+| degraded | Some instances answer and some do not. The card names the ones that do not |
+| down | No instance answers |
+
+When a machine runs two instances, a pane's chip reads `<host> · <mux>`, for example
+`bluefin · herdr-core`. On a crew where every machine runs one instance, the chip shows the member
+name as before. `collie status` and `collie crew status` group members under their host in the same
+way.
+
+Only the view is grouped. The member id stays the key: it is what a walky talky address, the
+`--member` filters and the `?h=` link in the app use.
+
 ## Machines
 
 Every Collie measures its own machine, the lead keeps a day of it for each machine in the crew, and

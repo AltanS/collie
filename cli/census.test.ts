@@ -4,7 +4,7 @@ import type { JsonValue } from "../bridge/json.ts";
 import { CREW_PROTOCOL_VERSION } from "../bridge/crew/enrollment.ts";
 import { leadStore, member, peerStore } from "../bridge/crew/fixtures.ts";
 import { serializeTrustStore } from "../bridge/crew/trust-store.ts";
-import { countSessions, gatherCensus, type CensusInput } from "./census.ts";
+import { censusLines, countSessions, gatherCensus, type Census, type CensusInput, type CensusMember } from "./census.ts";
 import { context, fakeFiles, STATE } from "./fakes.ts";
 
 // The census `collie status` prints under its head, gathered from fakes: a fake crew dial (the `hello`
@@ -271,5 +271,60 @@ describe("sessions", () => {
       byState: { working: 0, blocked: 0, idle: 0, done: 0, unknown: 0 },
       withSessionId: 0,
     });
+  });
+});
+
+describe("members, grouped by host (M77)", () => {
+  const row = (name: string, over: Partial<CensusMember> = {}): CensusMember => ({
+    name,
+    role: "peer",
+    link: "reachable",
+    version: "1.25.0",
+    mux: "herdr",
+    panes: 2,
+    host: null,
+    ...over,
+  });
+  const census = (members: CensusMember[]): Census => ({
+    members,
+    devices: { count: 0, names: [] },
+    sessions: { read: "bridge-not-running", refusedWith: null, total: null, byState: null, withSessionId: null },
+  });
+  const memberBlock = (members: CensusMember[]): string[] => censusLines(census(members), "lead").slice(0, 1 + members.length + new Set(members.map((m) => m.host ?? m.name)).size);
+
+  test("a host that runs two instances gets one host line with both instances under it", () => {
+    const lines = censusLines(
+      census([
+        row("bluefin", { role: "lead", host: "bluefin" }),
+        row("minibuch", { host: "minibuch" }),
+        row("bluefin-hc", { host: "bluefin", mux: "herdr-core" }),
+        row("minibuch-hc", { host: "minibuch", mux: "herdr-core", link: "unreachable", version: null, panes: null }),
+      ]),
+      "lead",
+    );
+    expect(lines.slice(0, 7)).toEqual([
+      "  members",
+      "    bluefin",
+      "      bluefin      lead  reachable    1.25.0  mux herdr  panes 2",
+      "      bluefin-hc   peer  reachable    1.25.0  mux herdr-core  panes 2",
+      "    minibuch",
+      "      minibuch     peer  reachable    1.25.0  mux herdr  panes 2",
+      "      minibuch-hc  peer  unreachable  -       mux herdr-core  panes -",
+    ]);
+    expect(lines.filter((l) => /^\s+(bluefin|minibuch)\s*$/.test(l))).toHaveLength(2);
+  });
+
+  test("a member without a host is its own group, under its id", () => {
+    const lines = memberBlock([row("a", { host: "box" }), row("b", { host: "box" }), row("old")]);
+    expect(lines.filter((l) => /^ {4}\S+$/.test(l))).toEqual(["    box", "    old"]);
+  });
+
+  test("when no host carries two instances the list stays flat, as before", () => {
+    const lines = censusLines(census([row("bluefin", { host: "bluefin" }), row("minibuch", { host: "minibuch" })]), "lead");
+    expect(lines.slice(0, 3)).toEqual([
+      "  members",
+      "    bluefin   reachable  1.25.0  mux herdr  panes 2",
+      "    minibuch  reachable  1.25.0  mux herdr  panes 2",
+    ]);
   });
 });
