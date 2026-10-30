@@ -89,6 +89,7 @@ function lead(
     ) => Promise<PeerOutcome<{ readonly version: string | null; readonly mux?: MuxConfig | null; readonly surfaceVersion?: number }>>;
     turns?: UpdateTurns;
     proxy?: ForwardTransport;
+    selfMux?: () => string | null;
   } = {},
 ) {
   const roster = [...members];
@@ -110,6 +111,7 @@ function lead(
     proxy: opts.proxy ?? neverProxy,
     hello: opts.hello,
     self: { id: "desk", name: "the herd" },
+    selfMux: opts.selfMux,
     maxUploadBytes: DEFAULT_MAX_UPLOAD_BYTES,
     now: () => clock,
     follow:
@@ -231,6 +233,20 @@ describe("CrewLead — a peer's sessions never vanish (§10.2)", () => {
     expect(h.lead.merge(localBody(), NARROW_PLAN).servers).toEqual([
       { id: "desk", name: "the herd", isLead: true, reachable: true, protocol: "ok", lastSeenAt: NOW },
     ]);
+  });
+});
+
+describe("CrewLead — the multiplexer on the merged servers rows (M76)", () => {
+  test("the lead's row states its own, read on every merge; a member's row states the one it reported", async () => {
+    let own: string | null = "herdr";
+    const h = lead([member({ memberId: "laptop" })], () => ok(body), { selfMux: () => own });
+    await h.lead.sweep();
+    h.registry.recordStatus("laptop", { mux: "herdr-core", panes: 2 });
+    const rows = h.lead.merge(localBody(), NARROW_PLAN).servers!;
+    expect(rows.find((r) => r.id === "desk")!.mux).toBe("herdr");
+    expect(rows.find((r) => r.id === "laptop")!.mux).toBe("herdr-core");
+    own = null;
+    expect("mux" in h.lead.merge(localBody(), NARROW_PLAN).servers![0]!).toBe(false);
   });
 });
 

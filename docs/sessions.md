@@ -47,17 +47,17 @@ Collie's own snapshot and changes nothing.
 
 ```text
 $ collie sessions
-MEMBER   MUX    SEAT          HARNESS                 STATE    SESSION  ACTIVE
-bluefin  herdr  collie (t1)   claude claude-opus-5-5  blocked  yes      3m
-bluefin  herdr  docs (t2)     codex gpt-9             working  yes      2h
-bluefin  -      -             desk                    working  yes      1m
-lab      -      api (p9)      claude                  idle     yes      12m
+MEMBER   MUX         SEAT         HARNESS                 STATE    SESSION  ACTIVE
+bluefin  herdr       collie (t1)  claude claude-opus-5-5  blocked  yes      3m
+bluefin  herdr       docs (t2)    codex gpt-9             working  yes      2h
+bluefin  durable     -            desk                    working  yes      1m
+lab      herdr-core  api (p9)     claude                  idle     yes      12m
 
 4 sessions: 1 blocked, 2 working, 1 idle
 ```
 
-- **MEMBER** is the machine in the crew. Rows are sorted by member, then workspace.
-- **MUX** is the terminal program that holds the pane. It shows `-` where Collie has no name for it.
+- **MEMBER** is the machine in the crew, by its name, or by its id when it has no name. Rows are sorted by member, then workspace.
+- **MUX** is the terminal program that holds the pane. A durable agent shows its own program. Every other row shows the program the lead reads from that machine. It shows `-` where Collie has no name for it, for example for a member on an older build.
 - **SEAT** is the workspace and the pane. A durable agent has no pane, so it shows `-`.
 - **HARNESS** is the agent program, with its model when Collie knows it. A durable agent shows its own name.
 - **STATE** is what the agent is doing: `working`, `blocked`, `idle`, `done` or `unknown`.
@@ -72,7 +72,7 @@ last line says so.
 | `--state <state>` | Keep one state, for example `blocked`. |
 | `--member <member>` | Keep one member, by its id or its name. |
 | `--all` | Add the panes that hold no agent, such as a plain shell. |
-| `--json` | Print `{ "rows": [...] }`. Each row has the snapshot's own fields, such as `paneId`, `host`, `agent`, `status`, `cwd`, `workspaceLabel`, `hasSession`, `lastActiveAt` and `model`, and the columns above as `member`, `mux`, `seat`, `harness`, `state`, `session` and `active`. |
+| `--json` | Print `{ "rows": [...] }`. Each row has the snapshot's own fields, such as `paneId`, `host`, `agent`, `status`, `cwd`, `workspaceLabel`, `hasSession`, `lastActiveAt` and `model`, and the columns above as `member` (the id), `memberName` (the name the table shows), `mux`, `seat`, `harness`, `state`, `session` and `active`. |
 
 With no Collie running the command prints one line and exits 1. If Collie refuses the read, it
 prints the same advice as `collie doctor` and exits 1.

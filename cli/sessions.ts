@@ -22,9 +22,10 @@ import { readOwnSnapshot } from "./snapshot-read.ts";
 // `?host=<id>&sessions=all` and contributes its own rows from that second answer.
 //
 // ── WHAT IS NOT IN THE SNAPSHOT ──────────────────────────────────────────────
-// A mux name per host. A session summary carries one (`SessionCard.mux`) only on an instance that
-// runs a durable program. Where it is absent the MUX column prints `-`; M76 spec 04 brings the name
-// over the status wire.
+// A mux name on every session summary. A summary carries one (`SessionCard.mux`) only on an instance
+// that runs a durable program. For every other row the MUX column takes the name from the snapshot's
+// `servers` row for that host (the lead states its own, and banks each member's off the status
+// answer), and prints `-` where neither names one.
 //
 // No harness name and no mux name is written in this file: the columns print what the snapshot says.
 
@@ -93,6 +94,8 @@ interface Server {
   readonly name: string;
   readonly isLead: boolean;
   readonly reachable: boolean;
+  /** The multiplexer this host drives, when the lead knows it. */
+  readonly mux: string | undefined;
 }
 
 interface Body {
@@ -110,7 +113,7 @@ function parseBody(raw: string): Body | null {
     ? list(parsed.servers).flatMap((s): Server[] => {
         const id = text(s.id);
         if (id === undefined) return [];
-        return [{ id, name: text(s.name) ?? id, isLead: asJsonBoolean(s.isLead) === true, reachable: asJsonBoolean(s.reachable) !== false }];
+        return [{ id, name: text(s.name) ?? id, isLead: asJsonBoolean(s.isLead) === true, reachable: asJsonBoolean(s.reachable) !== false, mux: text(s.mux) }];
       })
     : null;
   return { agents: list(parsed.agents), shellPanes: list(parsed.shellPanes), sessions: list(parsed.sessions), servers };
@@ -120,7 +123,10 @@ function parseBody(raw: string): Body | null {
 
 /** One session as `--json` carries it: the snapshot's own fields, then the derived columns. */
 export interface SessionRow extends Json {
+  /** The member id: what `--member` and scripts match on. */
   readonly member: string;
+  /** The server's name when it has one, else its id: what the MEMBER column prints. */
+  readonly memberName: string;
   readonly mux: string | null;
   readonly seat: string | null;
   readonly harness: string;
@@ -146,9 +152,10 @@ export function ageOf(then: number, now: number): string {
   return `${String(Math.floor(seconds / 86_400))}d`;
 }
 
-function rowOf(pane: Json, body: Body, selfMember: string, now: number): SessionRow {
+function rowOf(pane: Json, body: Body, servers: readonly Server[], selfMember: string, now: number): SessionRow {
   const host = text(pane.host);
   const member = host ?? selfMember;
+  const server = servers.find((s) => s.id === member);
   const sessionName = text(pane.session);
   const entry = body.sessions.find((s) => text(s.host) === host && text(s.name) === sessionName);
   const durable = text(pane.agent) === DURABLE_AGENT || text(entry?.kind) === "program";
@@ -160,7 +167,8 @@ function rowOf(pane: Json, body: Body, selfMember: string, now: number): Session
   return {
     ...pane,
     member,
-    mux: muxOf(body.sessions, host, sessionName),
+    memberName: server?.name ?? member,
+    mux: muxOf(body.sessions, host, sessionName) ?? server?.mux ?? null,
     seat: durable ? null : label === undefined ? paneId : `${label} (${paneId})`,
     harness: durable ? (sessionName ?? label ?? agent) : model === undefined ? agent : `${agent} ${model}`,
     state: text(pane.status) ?? "unknown",
@@ -173,6 +181,7 @@ function rowOf(pane: Json, body: Body, selfMember: string, now: number): Session
 function byPlace(a: SessionRow, b: SessionRow): number {
   const number = (row: SessionRow): number => num(row.workspaceNumber) ?? Number.MAX_SAFE_INTEGER;
   return (
+    a.memberName.localeCompare(b.memberName) ||
     a.member.localeCompare(b.member) ||
     number(a) - number(b) ||
     String(a.workspaceLabel ?? "").localeCompare(String(b.workspaceLabel ?? "")) ||
@@ -232,7 +241,7 @@ function footerOf(rows: readonly SessionRow[], member: boolean): string[] {
 }
 
 function tableOf(rows: readonly SessionRow[]): string[] {
-  const cells = rows.map((r) => [r.member, r.mux ?? "-", r.seat ?? "-", r.harness, r.state, r.session, r.active ?? "-"]);
+  const cells = rows.map((r) => [r.memberName, r.mux ?? "-", r.seat ?? "-", r.harness, r.state, r.session, r.active ?? "-"]);
   const widths = HEAD.map((title, c) => Math.max(title.length, ...cells.map((row) => row[c]!.length)));
   const line = (row: readonly string[]): string => row.map((cell, c) => cell.padEnd(widths[c]!)).join("  ").trimEnd();
   return [line(HEAD), ...cells.map(line)];
@@ -299,9 +308,9 @@ export async function cmdSessions(deps: SessionsDeps, args: readonly string[]): 
   ];
   const wanted = options.all ? [...panes((b) => b.agents), ...panes((b) => b.shellPanes)] : panes((b) => b.agents);
   const rows = wanted
-    .map(({ pane, body }) => rowOf(pane, body, selfMember, now))
+    .map(({ pane, body }) => rowOf(pane, body, first.servers ?? [], selfMember, now))
     .filter((row) => options.state === null || row.state.toLowerCase() === options.state.toLowerCase())
-    .filter((row) => options.member === null || row.member === options.member || (first.servers ?? []).some((s) => s.id === row.member && s.name === options.member))
+    .filter((row) => options.member === null || row.member === options.member || row.memberName === options.member)
     .toSorted(byPlace);
 
   // A member's snapshot holds its own panes and no `servers`; the trust store on disk says it is one.

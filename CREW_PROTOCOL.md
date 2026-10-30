@@ -3139,6 +3139,9 @@ which multiplexer the answering machine drives, and how many agent panes it serv
   replaced by every answer, so a count that was true a sweep ago is never shown as the current one.
   `GET /api/crew` copies them into the member's row, and `collie crew status` and `collie status`
   print them (`-` where a field is absent). Neither is persisted, and `TRUST_STORE_VERSION` stays `1`.
+  The merged snapshot's `servers` rows carry the name too, as an optional `mux` (the lead's own from
+  the primary session's adapter, a member's from this bank), so `collie sessions` can fill its MUX
+  column. The key is absent where the lead does not know the name.
 - It is a **report**, like the rest of this section: no route, verb or decision branches on it.
 - No new route, no new dial, no new budget. The field rides an answer §10.1 already collects.
 

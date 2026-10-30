@@ -208,6 +208,22 @@ describe("mergeSnapshot — reachable / unreachable / incompatible, never confla
     expect(merged.agents.every((p) => p.host === "desk")).toBe(true);
   });
 
+  test("each row carries the multiplexer it drives: the lead's own, and a member's banked one", () => {
+    const merged = mergeSnapshot(localBody(), {
+      self: { ...SELF, mux: "herdr" },
+      peers: [
+        contribution({ state: state({ memberId: "laptop", mux: "herdr-core" }) }),
+        contribution({ state: state({ memberId: "old-box" }) }),
+      ],
+      now: NOW,
+    });
+    expect(merged.servers!.find((s) => s.id === "desk")!.mux).toBe("herdr");
+    expect(merged.servers!.find((s) => s.id === "laptop")!.mux).toBe("herdr-core");
+    // A member that never said, and a lead that names none, carry no `mux` key at all.
+    expect("mux" in merged.servers!.find((s) => s.id === "old-box")!).toBe(false);
+    expect("mux" in mergeSnapshot(localBody(), { self: SELF, peers: [], now: NOW }).servers![0]!).toBe(false);
+  });
+
   test("the lead's own entry is present, first, and always current", () => {
     const merged = mergeSnapshot(localBody(), { self: SELF, peers: [], now: NOW });
     expect(merged.servers![0]).toEqual({

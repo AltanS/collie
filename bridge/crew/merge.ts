@@ -249,8 +249,11 @@ function primarySessionOf(body: PeerSnapshotBody): string | undefined {
 }
 
 export interface MergeContext {
-  /** This collie: its member id and label. Always the first entry in `servers` (§9.2). */
-  readonly self: { readonly id: string; readonly name: string };
+  /**
+   * This collie: its member id and label. Always the first entry in `servers` (§9.2). `mux` is the
+   * registry name of the multiplexer it drives (the one `hello` states), absent while it names none.
+   */
+  readonly self: { readonly id: string; readonly name: string; readonly mux?: string };
   readonly peers: readonly PeerContribution[];
   /** The lead's clock, for its own `lastSeenAt`. Peers' timestamps come from their `PeerState`. */
   readonly now: number;
@@ -286,6 +289,9 @@ export function serverSummaryFor(c: PeerContribution): ServerSummary {
   // §10.2's presentation split, carried the same way and for the same reason: the registry owns the
   // verdict, this copies it, and an absent key is what an older lead sends and an older phone reads.
   if (c.state.linkState !== undefined) summary.linkState = c.state.linkState;
+  // M76: the multiplexer name the member's last status answer carried, banked by the registry.
+  // Absent when the member never said (an older build), never an empty string.
+  if (c.state.mux !== undefined) summary.mux = c.state.mux;
   return summary;
 }
 
@@ -309,20 +315,20 @@ export function mergeSnapshot(local: SnapshotResponse, ctx: MergeContext): Snaps
   const self = ctx.self.id;
   const peers = ctx.peers.toSorted((a, b) => a.state.memberId.localeCompare(b.state.memberId));
 
-  const servers: ServerSummary[] = [
-    {
-      id: self,
-      name: ctx.self.name,
-      isLead: true,
-      // The lead is answering this very request, so it is reachable, current and speaking its own
-      // protocol by construction. Listing it (§9.2: "the lead's own entry is present too") is what
-      // lets the phone render one uniform host list instead of special-casing "here".
-      reachable: true,
-      protocol: "ok",
-      lastSeenAt: ctx.now,
-    },
-    ...peers.map(serverSummaryFor),
-  ];
+  const leadEntry: ServerSummary = {
+    id: self,
+    name: ctx.self.name,
+    isLead: true,
+    // The lead is answering this very request, so it is reachable, current and speaking its own
+    // protocol by construction. Listing it (§9.2: "the lead's own entry is present too") is what
+    // lets the phone render one uniform host list instead of special-casing "here".
+    reachable: true,
+    protocol: "ok",
+    lastSeenAt: ctx.now,
+  };
+  // Assigned, never conditionally spread: a lead that names no multiplexer carries no `mux` key.
+  if (ctx.self.mux !== undefined && ctx.self.mux !== "") leadEntry.mux = ctx.self.mux;
+  const servers: ServerSummary[] = [leadEntry, ...peers.map(serverSummaryFor)];
 
   const sessions: SessionSummary[] = [
     ...local.sessions.map((s) => ({ ...s, host: self })),

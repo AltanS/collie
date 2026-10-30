@@ -651,6 +651,11 @@ export interface ServerSummary {
    * keeps a new phone honest in front of an old lead (§7.1).
    */
   linkState?: "reconnecting" | "attention";
+  /**
+   * The registry name of the multiplexer this member drives, for `collie sessions`; mirrors
+   * `ServerSummary.mux` in bridge/types.ts. Absent when the member never said. The web does not show it.
+   */
+  mux?: string;
   /** Epoch ms, stamped by the LEAD on receipt — never the peer's clock (§10.2). `0` = never answered. */
   lastSeenAt: number;
 }

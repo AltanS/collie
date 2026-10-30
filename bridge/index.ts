@@ -2288,6 +2288,9 @@ const crewLead = (() => {
     // (§10.1's 2026-09-08 amendment), and a write's WRITE_BUDGET_MS must not be a wiring detail.
     proxy: (link, route, params, init, budgetMs) => client.proxy(link, route, params, init, budgetMs),
     self: crewSelfOf(data),
+    // The multiplexer this lead drives, for its `servers` row: the primary session's adapter, the
+    // same one `hello` publishes.
+    selfMux: () => registry.get()?.herdr.mux ?? null,
     // Notifications for a peer's panes, derived on the lead from the body this sweep just parsed and
     // pushed through the same coordinator machinery a local session uses (M4/06).
     onPeerSnapshot: (memberId, body) => {

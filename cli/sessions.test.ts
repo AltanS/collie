@@ -35,23 +35,23 @@ const pane = (over: JsonObject): JsonObject => ({
 // The member `lab` comes back narrow here: its primary session only, and no durable agent.
 const LEAD_WIDE = {
   agents: [
-    pane({ host: "bluefin", paneId: "t2", workspaceLabel: "zeta", workspaceNumber: 2, agent: "codex", model: "gpt-9", status: "working", session: "default", lastActiveAt: NOW - 2 * 3600_000 }),
-    pane({ host: "bluefin", paneId: "t1", session: "default", status: "blocked", model: "claude-opus-5-5", instance: "ab12" }),
+    pane({ host: "collie-04rj6a", paneId: "t2", workspaceLabel: "zeta", workspaceNumber: 2, agent: "codex", model: "gpt-9", status: "working", session: "default", lastActiveAt: NOW - 2 * 3600_000 }),
+    pane({ host: "collie-04rj6a", paneId: "t1", session: "default", status: "blocked", model: "claude-opus-5-5", instance: "ab12" }),
     pane({ host: "lab", paneId: "p9", workspaceLabel: "narrow", session: "default" }),
   ],
-  shellPanes: [pane({ host: "bluefin", paneId: "t3", agent: "shell", kind: "shell", status: "unknown", hasSession: undefined, lastActiveAt: undefined, workspaceLabel: "scratch", workspaceNumber: 3, session: "default" })],
+  shellPanes: [pane({ host: "collie-04rj6a", paneId: "t3", agent: "shell", kind: "shell", status: "unknown", hasSession: undefined, lastActiveAt: undefined, workspaceLabel: "scratch", workspaceNumber: 3, session: "default" })],
   sessions: [
-    { name: "default", isPrimary: true, reachable: true, agents: 2, working: 1, blocked: 1, host: "bluefin", mux: "herdr", kind: "terminal" },
-    { name: "desk", isPrimary: false, reachable: true, agents: 1, working: 0, blocked: 0, host: "bluefin", mux: "durable", kind: "program" },
+    { name: "default", isPrimary: true, reachable: true, agents: 2, working: 1, blocked: 1, host: "collie-04rj6a", kind: "terminal" },
+    { name: "desk", isPrimary: false, reachable: true, agents: 1, working: 0, blocked: 0, host: "collie-04rj6a", mux: "durable", kind: "program" },
   ],
   servers: [
-    { id: "bluefin", name: "bluefin", isLead: true, reachable: true, protocol: "ok", lastSeenAt: NOW },
-    { id: "lab", name: "lab", isLead: false, reachable: true, protocol: "ok", lastSeenAt: NOW },
+    { id: "collie-04rj6a", name: "bluefin", isLead: true, reachable: true, protocol: "ok", lastSeenAt: NOW, mux: "herdr" },
+    { id: "lab", name: "lab", isLead: false, reachable: true, protocol: "ok", lastSeenAt: NOW, mux: "herdr-core" },
   ],
 };
 // The durable agent is a pane of its own session `desk`, found only on the widened read.
 LEAD_WIDE.agents.push(
-  pane({ host: "bluefin", paneId: "d1", workspaceLabel: "Desk workspace", workspaceNumber: 0, agent: "durable", status: "working", session: "desk" }),
+  pane({ host: "collie-04rj6a", paneId: "d1", workspaceLabel: "Desk workspace", workspaceNumber: 0, agent: "durable", status: "working", session: "desk" }),
 );
 
 // The same lead asked for member `lab` wide: its pane list now holds the durable agent as well.
@@ -125,8 +125,8 @@ describe("collie sessions", () => {
       ["bluefin", "durable", "-", "desk", "working", "yes", "3m"],
       ["bluefin", "herdr", "collie (t1)", "claude claude-opus-5-5", "blocked", "yes", "3m"],
       ["bluefin", "herdr", "zeta (t2)", "codex gpt-9", "working", "yes", "2h"],
-      ["lab", "-", "-", "edge", "idle", "yes", "3m"],
-      ["lab", "-", "narrow (p9)", "claude", "idle", "yes", "3m"],
+      ["lab", "herdr-core", "-", "edge", "idle", "yes", "3m"],
+      ["lab", "herdr-core", "narrow (p9)", "claude", "idle", "yes", "3m"],
     ]);
     expect(lines.at(-1)).toBe("5 sessions: 1 blocked, 2 working, 2 idle");
     expect(out(h)).not.toContain(MEMBER_FOOTER);
@@ -158,11 +158,55 @@ describe("collie sessions", () => {
     expect(h.io.stdout.at(-1)).toBe("2 sessions: 2 working");
   });
 
-  test("--member keeps one member, by id", async () => {
+  test("--member keeps one member, by id or by name", async () => {
     const h = harness(crew);
     await cmdSessions(h.deps, ["--member", "lab"]);
     expect(h.io.stdout.slice(1, 3).every((l) => l.startsWith("lab"))).toBe(true);
     expect(h.io.stdout.at(-1)).toBe("2 sessions: 2 idle");
+
+    const byId = harness(crew);
+    await cmdSessions(byId.deps, ["--member", "collie-04rj6a"]);
+    expect(byId.io.stdout.at(-1)).toBe("3 sessions: 1 blocked, 2 working");
+    const byName = harness(crew);
+    await cmdSessions(byName.deps, ["--member", "bluefin"]);
+    expect(byName.io.stdout.at(-1)).toBe("3 sessions: 1 blocked, 2 working");
+  });
+
+  test("the MEMBER column shows the server's name, and --json keeps the id beside it", async () => {
+    const h = harness(crew);
+    await cmdSessions(h.deps, ["--json"]);
+    const { rows } = parsed(h);
+    const lead = rows.find((r) => r.paneId === "t1")!;
+    expect(lead.member).toBe("collie-04rj6a");
+    expect(lead.memberName).toBe("bluefin");
+    const member = rows.find((r) => r.paneId === "p9")!;
+    expect(member.member).toBe("lab");
+    expect(member.memberName).toBe("lab");
+
+    const table = harness(crew);
+    await cmdSessions(table.deps, []);
+    expect(table.io.stdout.join("\n")).not.toContain("collie-04rj6a");
+  });
+
+  test("the MUX column: a durable row keeps its own, others take the host's, none shows a dash", async () => {
+    const snapshot = {
+      ...LEAD_WIDE,
+      servers: [
+        { id: "collie-04rj6a", name: "bluefin", isLead: true, reachable: true, protocol: "ok", lastSeenAt: NOW, mux: "herdr" },
+        { id: "old", name: "old", isLead: false, reachable: true, protocol: "ok", lastSeenAt: NOW },
+      ],
+      agents: [...LEAD_WIDE.agents.filter((a) => a.host === "collie-04rj6a"), pane({ host: "old", paneId: "o1", session: "default" })],
+    };
+    const h = harness(() => json(snapshot));
+    await cmdSessions(h.deps, ["--json"]);
+    const mux = (paneId: string): JsonValue | undefined => parsed(h).rows.find((r) => r.paneId === paneId)?.mux;
+    expect(mux("d1")).toBe("durable");
+    expect(mux("t1")).toBe("herdr");
+    expect(mux("o1")).toBeNull();
+
+    const table = harness(() => json(snapshot));
+    await cmdSessions(table.deps, []);
+    expect(table.io.stdout.find((l) => l.startsWith("old"))).toMatch(/^old\s+-\s+collie \(o1\)/);
   });
 
   test("a shell pane is not listed, and --all adds it", async () => {
@@ -186,7 +230,7 @@ describe("collie sessions", () => {
     const row = rows.find((r) => r.paneId === "t1")!;
     expect(row).toMatchObject({
       paneId: "t1",
-      host: "bluefin",
+      host: "collie-04rj6a",
       instance: "ab12",
       agent: "claude",
       status: "blocked",
@@ -196,7 +240,8 @@ describe("collie sessions", () => {
       lastActiveAt: NOW - 180_000,
       kind: "agent",
       model: "claude-opus-5-5",
-      member: "bluefin",
+      member: "collie-04rj6a",
+      memberName: "bluefin",
       mux: "herdr",
       seat: "collie (t1)",
       harness: "claude claude-opus-5-5",
@@ -204,7 +249,8 @@ describe("collie sessions", () => {
       session: "yes",
       active: "3m",
     });
-    expect(rows.map((r) => r.member)).toEqual(["bluefin", "bluefin", "bluefin", "lab", "lab"]);
+    expect(rows.map((r) => r.member)).toEqual(["collie-04rj6a", "collie-04rj6a", "collie-04rj6a", "lab", "lab"]);
+    expect(rows.map((r) => r.memberName)).toEqual(["bluefin", "bluefin", "bluefin", "lab", "lab"]);
   });
 
   test("on a member the footer says its panes only, and --json carries the same note", async () => {

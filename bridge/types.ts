@@ -866,6 +866,12 @@ export interface ServerSummary {
    */
   linkState?: "reconnecting" | "attention";
   /**
+   * The registry name of the multiplexer this member drives (`herdr`, `herdr-core`, `tmux`, ...), for
+   * `collie sessions`. The lead states its own; a member's comes off its last status answer. Additive
+   * and optional (§7.1): absent when the member never said, or from a lead that predates the field.
+   */
+  mux?: string;
+  /**
    * Epoch ms, **stamped by the lead on receipt — never the peer's clock** (§10.2). The client
    * derives "stale since …" from it (stale once older than 3 × pollMs or 15 s, whichever is first);
    * `0` means this member has never answered.

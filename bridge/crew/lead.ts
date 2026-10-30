@@ -227,6 +227,11 @@ export interface CrewLeadDeps {
   /** This collie's member id and label — the `servers[0]` entry (§9.2). */
   readonly self: { readonly id: string; readonly name: string };
   /**
+   * The registry name of the multiplexer this lead drives, read on every merge (the primary session
+   * can change under a running bridge). The same source `hello` states; `null` or absent when none.
+   */
+  readonly selfMux?: () => string | null;
+  /**
    * Called with a body **that just parsed on this sweep** — never with a retained last-good one.
    * That distinction is the whole contract: `PeerNotifier` derives transitions by diffing successive
    * bodies, so re-offering the retained body of an unreachable peer would make a peer going down
@@ -1239,6 +1244,12 @@ export class CrewLead {
     );
   }
 
+  /** This lead's id and label, plus the multiplexer it drives when it names one. */
+  private selfWithMux(): { readonly id: string; readonly name: string; readonly mux?: string } {
+    const mux = this.deps.selfMux?.() ?? null;
+    return mux === null || mux === "" ? this.deps.self : { ...this.deps.self, mux };
+  }
+
   /**
    * Fold the lead's own body into the merged one. The only re-serialisation on a crew link (§9.2).
    *
@@ -1249,7 +1260,7 @@ export class CrewLead {
    */
   merge(local: SnapshotResponse, plan: SnapshotPlan): SnapshotResponse {
     return mergeSnapshot(local, {
-      self: this.deps.self,
+      self: this.selfWithMux(),
       peers: this.contributions().map((c) =>
         Object.assign({}, c, { body: narrowPeerBody(c.body, plan.peer(c.state.memberId)) }),
       ),
