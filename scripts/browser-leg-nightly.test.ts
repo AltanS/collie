@@ -12,6 +12,7 @@ import {
   LedgerError,
   MIN_CLAUDE_MINUTES,
   MIN_MEM_KB,
+  PLAN_CORE,
   PLAN_CREW,
   STALE_RUNNING_MS,
   addVerdicts,
@@ -21,6 +22,8 @@ import {
   claudeReplays,
   countsText,
   crewLegRuns,
+  CORE_MUX,
+  coreStateRoot,
   crewStateRoot,
   decide,
   decideLegs,
@@ -38,6 +41,7 @@ import {
   resultsFolderIn,
   settle,
   tiersOf,
+  tupleText,
   writeLedger,
   type Decision,
   type Facts,
@@ -50,7 +54,7 @@ import {
 } from "../web/e2e/rig/nightly";
 
 const SHA = "0a7ee1d2".padEnd(40, "0");
-const TUPLE: Tuple = { sha: SHA, claude: "2.1.302", pi: "0.87.1", omp: "18.6.1" };
+const TUPLE: Tuple = { sha: SHA, claude: "2.1.302", pi: "0.87.1", omp: "18.6.1", hc: "0.1.14" };
 const T0 = Date.UTC(2026, 9, 18, 3, 0, 0);
 const DEAD: (pid: number) => boolean = () => false;
 const LIVE: (pid: number) => boolean = () => true;
@@ -64,6 +68,37 @@ beforeEach(() => {
 });
 afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
+});
+
+describe("the tuple", () => {
+  test("it names the hc version, and a different hc is a different tuple", () => {
+    expect(tupleText(TUPLE)).toBe("collie main 0a7ee1d, claude 2.1.302, pi 0.87.1, omp 18.6.1, hc 0.1.14");
+    expect(planOf({ rows: [row()] }, { ...TUPLE, hc: "0.2.0" }).kind).toBe("run");
+    expect(planOf({ rows: [row()] }, TUPLE).kind).toBe("skip");
+  });
+
+  test("`hc --version` output reads as a version", () => {
+    expect(parseVersion("hc 0.1.14\n")).toBe("0.1.14");
+  });
+
+  test("a row from before the tuple carried hc reads as hc none and is never the same tuple as one with an hc", () => {
+    const path = join(dir, "ledger.json");
+    const { hc, ...old } = { ...TUPLE, date: "2026-10-17", result: "pass", log: "/log" };
+    void hc;
+    writeFileSync(path, JSON.stringify({ rows: [old] }));
+    const [parsed] = readLedger(path).rows;
+    expect(parsed?.hc).toBe("none");
+    expect(planOf(readLedger(path), TUPLE).kind).toBe("run");
+  });
+
+  test("a row with the core leg's folder and table survives a write and a read", () => {
+    const path = join(dir, "ledger.json");
+    const all = row({ results: "/r", table: "/r/table.md", crewResults: "/c", crewTable: "/c/table.md", coreResults: "/k", coreTable: "/k/table.md" });
+    writeLedger(path, { rows: [all] });
+    expect(readLedger(path).rows[0]).toEqual(all);
+    writeLedger(path, { rows: [row()] });
+    expect(readFileSync(path, "utf8")).not.toContain("coreTable");
+  });
 });
 
 describe("versions and the remote", () => {
@@ -224,6 +259,7 @@ describe("the stop rule", () => {
     expect(planOf(ledger, { ...TUPLE, claude: "2.1.303" }).kind).toBe("run");
     expect(planOf(ledger, { ...TUPLE, pi: "0.87.2" }).kind).toBe("run");
     expect(planOf(ledger, { ...TUPLE, omp: "18.7.0" }).kind).toBe("run");
+    expect(planOf(ledger, { ...TUPLE, hc: "0.1.15" }).kind).toBe("run");
   });
 
   test("a live run of another tuple holds the line for every tuple", () => {
@@ -376,6 +412,7 @@ describe("the model tiers of a run (M67)", () => {
       writeFileSync(join(folder, "model.json"), JSON.stringify({ tiers: { pi: { tier: "replay", record: false }, omp: { tier: "live", record: true } }, stub: null, turns: {} }));
       expect(tiersOf(folder)).toBe("pi replay, omp live+record");
       expect(legTiers("pi replay, omp replay", "pi live")).toBe("solo: pi replay, omp replay; crew: pi live");
+      expect(legTiers("pi replay", "pi replay", "pi replay, omp replay")).toBe("solo: pi replay; crew: pi replay; core: pi replay, omp replay");
       expect(legTiers(undefined, undefined)).toBeUndefined();
     } finally {
       rmSync(folder, { recursive: true, force: true });
@@ -388,6 +425,8 @@ describe("the crew table and the two-leg verdict", () => {
   const crewTable = (...verdicts: string[]): string => ["| harness | scenario | verdict | taps | note |", "|---|---|---|---|---|", ...verdicts.map((v) => line("claude", v))].join("\n");
   const soloPass: Decision = { result: "pass", note: "15 cases passed", verdicts: VERDICTS_15 };
   const crew = (...verdicts: string[]): Decision => decide(parseTable(crewTable(...verdicts)), 0, ["claude"]);
+  const soloFailOf = (): Decision => decide(parseTable(["| harness | scenario | verdict | taps | note |", ...["claude", "pi", "omp"].map((h) => line(h, h === "pi" ? "fail" : "pass"))].join("\n")), 1);
+  const corePass: Decision = { result: "pass", note: "15 cases passed", verdicts: VERDICTS_15 };
 
   test("the crew table has Claude cases only, and that is a full table for the crew leg", () => {
     expect(decide(parseTable(crewTable("pass", "pass", "pass")), 0, ["claude"])).toMatchObject({ result: "pass", note: "3 cases passed" });
@@ -410,13 +449,13 @@ describe("the crew table and the two-leg verdict", () => {
   });
 
   test("pass only when both legs passed every case", () => {
-    const both = decideLegs(soloPass, crew("pass", "pass", "pass"));
-    expect(both).toMatchObject({ result: "pass", note: "18 cases passed (solo 15, crew 3)" });
-    expect(both.verdicts?.claude.pass).toBe(8);
+    const both = decideLegs(soloPass, crew("pass", "pass", "pass"), corePass);
+    expect(both).toMatchObject({ result: "pass", note: "33 cases passed (solo 15, crew 3, core 15)" });
+    expect(both.verdicts?.claude.pass).toBe(13);
   });
 
   test("a case not reached in the crew leg makes the row failed, and the note names the crew leg", () => {
-    const d = decideLegs(soloPass, crew("pass", "not reached", "pass"));
+    const d = decideLegs(soloPass, crew("pass", "not reached", "pass"), corePass);
     expect(d.result).toBe("failed");
     expect(d.note).toBe("crew leg: 1 case(s) proved nothing: not reached claude 1");
     expect(d.verdicts?.claude["not reached"]).toBe(1);
@@ -424,35 +463,45 @@ describe("the crew table and the two-leg verdict", () => {
 
   test("a case not reached or n/a in the solo leg makes the row failed, and the note names the solo leg", () => {
     const solo = decide(parseTable(["| harness | scenario | verdict | taps | note |", ...["claude", "pi", "omp"].map((h) => line(h, h === "omp" ? "n/a" : "pass"))].join("\n")), 0);
-    const d = decideLegs(solo, crew("pass", "pass", "pass"));
+    const d = decideLegs(solo, crew("pass", "pass", "pass"), corePass);
     expect(d.result).toBe("failed");
     expect(d.note).toStartWith("solo leg: ");
     expect(d.note).not.toContain("crew leg");
   });
 
   test("a failed case in either leg is fail, and a fail outranks a case not reached in the other leg", () => {
-    expect(decideLegs(soloPass, crew("pass", "fail", "pass"))).toMatchObject({ result: "fail", note: "crew leg: 1 case(s) failed: claude 1" });
+    expect(decideLegs(soloPass, crew("pass", "fail", "pass"), corePass)).toMatchObject({ result: "fail", note: "crew leg: 1 case(s) failed: claude 1" });
     const soloFail = decide(parseTable(["| harness | scenario | verdict | taps | note |", ...["claude", "pi", "omp"].map((h) => line(h, h === "pi" ? "fail" : "pass"))].join("\n")), 1);
-    expect(decideLegs(soloFail, crew("pass", "pass", "pass")).result).toBe("fail");
-    const d = decideLegs(soloFail, crew("not reached", "pass", "pass"));
+    expect(decideLegs(soloFail, crew("pass", "pass", "pass"), corePass).result).toBe("fail");
+    const d = decideLegs(soloFail, crew("not reached", "pass", "pass"), corePass);
     expect(d.result).toBe("fail");
     expect(d.note).toContain("solo leg: 1 case(s) failed: pi 1; crew leg: 1 case(s) proved nothing");
   });
 
   test("the crew leg writing no table is failed, even when the solo leg passed", () => {
-    const d = decideLegs(soloPass, decide(null, 1, ["claude"]));
+    const d = decideLegs(soloPass, decide(null, 1, ["claude"]), corePass);
     expect(d).toMatchObject({ result: "failed", note: "crew leg: the leg wrote no table (exit 1)" });
-    expect(d.verdicts).toEqual(soloPass.verdicts);
+    expect(d.verdicts).toEqual(addVerdicts(soloPass.verdicts, corePass.verdicts));
   });
 
   test("a crew leg that did not run is never a pass, and the note says it was not run", () => {
-    expect(decideLegs(soloPass, null)).toMatchObject({ result: "failed", note: "crew leg: not run" });
+    expect(decideLegs(soloPass, null, null)).toMatchObject({ result: "failed", note: "crew leg: not run; core leg: not run" });
     const noTable = decide(null, 1);
-    expect(decideLegs(noTable, null)).toMatchObject({ result: "failed", note: "solo leg: the leg wrote no table (exit 1); crew leg: not run" });
+    expect(decideLegs(noTable, null, null)).toMatchObject({ result: "failed", note: "solo leg: the leg wrote no table (exit 1); crew leg: not run; core leg: not run" });
+  });
+
+  test("a fail from the core leg is a fail, a core leg that wrote no table or did not run is failed", () => {
+    const coreFail = decide(parseTable(["| harness | scenario | verdict | taps | note |", ...["claude", "pi", "omp"].map((h) => line(h, h === "pi" ? "fail" : "pass"))].join("\n")), 1);
+    const d = decideLegs(soloPass, crew("pass", "pass", "pass"), coreFail);
+    expect(d).toMatchObject({ result: "fail", note: "core leg: 1 case(s) failed: pi 1" });
+    expect(d.verdicts?.pi).toEqual({ pass: 5, fail: 1, "not reached": 0, "n/a": 0 });
+    expect(decideLegs(soloPass, crew("pass", "pass", "pass"), decide(null, 1))).toMatchObject({ result: "failed", note: "core leg: the leg wrote no table (exit 1)" });
+    expect(decideLegs(soloPass, crew("pass", "pass", "pass"), null)).toMatchObject({ result: "failed", note: "core leg: not run" });
+    expect(decideLegs(soloFailOf(), crew("pass", "pass", "pass"), coreFail).note).toBe("solo leg: 1 case(s) failed: pi 1; core leg: 1 case(s) failed: pi 1");
   });
 
   test("a crew leg with a clean table but a bad exit is failed", () => {
-    expect(decideLegs(soloPass, decide(parseTable(crewTable("pass", "pass", "pass")), 1, ["claude"])).result).toBe("failed");
+    expect(decideLegs(soloPass, decide(parseTable(crewTable("pass", "pass", "pass")), 1, ["claude"]), corePass).result).toBe("failed");
   });
 });
 
@@ -472,6 +521,25 @@ describe("the leg's environment", () => {
       "/nightly/state",
     );
     expect(env).toEqual({ PATH: "/bin", COLLIE_RIG_KEY_FILE: "/k/.env", COLLIE_RIG_CLAUDE_BIN: "/c", COLLIE_RIG_STATE: "/nightly/state" });
+  });
+});
+
+describe("the core leg's environment", () => {
+  test("the core rig state sits beside the other two, under the same root", () => {
+    expect(coreStateRoot("/nightly")).toBe(join("/nightly", "core-state"));
+    expect(new Set([join("/nightly", "state"), crewStateRoot("/nightly"), coreStateRoot("/nightly")]).size).toBe(3);
+  });
+
+  test("the operator's own COLLIE_RIG_MUX never reaches a leg, and the core leg sets herdr-core after the drop", () => {
+    const base = { PATH: "/bin", COLLIE_RIG_KEY_FILE: "/k/.env", COLLIE_RIG_MUX: "herdr,herdr-core" };
+    expect("COLLIE_RIG_MUX" in legEnv(base, "/nightly/state")).toBe(false);
+    const core = { ...legEnv(base, coreStateRoot("/nightly")), COLLIE_RIG_MUX: CORE_MUX };
+    expect(Object.entries(core).toSorted(([a], [b]) => a.localeCompare(b))).toEqual([
+      ["COLLIE_RIG_KEY_FILE", "/k/.env"],
+      ["COLLIE_RIG_MUX", "herdr-core"],
+      ["COLLIE_RIG_STATE", join("/nightly", "core-state")],
+      ["PATH", "/bin"],
+    ]);
   });
 });
 
@@ -559,8 +627,10 @@ describe("main --plan", () => {
   test("says it would run, and writes nothing at all", async () => {
     const r = rig();
     expect(await main(argv("--plan"), {}, r.world, r.out)).toBe(0);
-    expect(r.lines).toEqual(["plan: collie main 0a7ee1d, claude 2.1.302, pi 0.87.1, omp 18.6.1", "plan: would run", PLAN_CREW]);
+    expect(r.lines).toEqual(["plan: collie main 0a7ee1d, claude 2.1.302, pi 0.87.1, omp 18.6.1, hc 0.1.14", "plan: would run", PLAN_CREW, PLAN_CORE]);
     expect(PLAN_CREW).toContain("includes the crew leg");
+    expect(PLAN_CORE).toContain("includes the core solo leg after the crew leg");
+    expect(PLAN_CORE).toContain("herdr-core");
     expect(r.counter.executed).toBe(0);
     expect(existsSync(join(dir, "state"))).toBe(false);
   });
@@ -610,6 +680,21 @@ describe("main, a real run", () => {
     expect(ledgerRows()[0]).toMatchObject({ result: "pass", results: "/r", table: "/r/table.md", crewResults: "/c", crewTable: "/c/table.md" });
     expect(r.lines).toEqual(["claude 2.1.302: 8 pass", "pi 0.87.1: 5 pass", "omp 18.6.1: 5 pass", "table: /r/table.md (collie main 0a7ee1d, pass)", "crew table: /c/table.md"]);
     expect(notifyLog()).toEqual([]);
+  });
+
+  test("a run with a core leg keeps its folder and table, adds a core line, and a core fail tells the operator", async () => {
+    const withCore = { crewResults: "/c", crewTable: "/c/table.md", coreResults: "/k", coreTable: "/k/table.md" };
+    const ok = rig({ outcome: { ...PASS, ...withCore } });
+    expect(await main(argv(), {}, ok.world, ok.out)).toBe(0);
+    expect(ledgerRows()[0]).toMatchObject({ hc: "0.1.14", coreResults: "/k", coreTable: "/k/table.md" });
+    expect(ok.lines.at(-1)).toBe("core table: /k/table.md");
+
+    rmSync(join(dir, "state"), { recursive: true, force: true });
+    const bad = rig({ outcome: { result: "fail", note: "core leg: 2 case(s) failed: pi 2", ...withCore, table: "/r/table.md", verdicts: VERDICTS_PASS } });
+    expect(await main(argv(), {}, bad.world, bad.out)).toBe(1);
+    expect(notifyLog()).toHaveLength(1);
+    expect(notifyLog()[0]).toContain("hc 0.1.14 fail: core leg: 2 case(s) failed: pi 2");
+    expect(notifyLog()[0]).toContain("core table /k/table.md");
   });
 
   test("a bad run names the failing leg in the one notify line, with both tables", async () => {

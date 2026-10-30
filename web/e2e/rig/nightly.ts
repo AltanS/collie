@@ -8,15 +8,17 @@
 // the checkout it was started from: the legs run in a clone of its own (default
 // ~/.cache/collie-lab/browser-leg-nightly/clone), detached at the main commit of the tuple.
 //
-// TWO LEGS, ONE RUN. The solo leg (playwright.config.ts) runs first and the crew leg (crew.config.ts,
-// a lead and a member) runs after it, in the same run and under the same row. The crew leg has a rig
-// state of its own beside the solo one (`<root>/crew-state`, through COLLIE_RIG_STATE, the name rig-lib.ts
-// reads for both), so the two legs share no folder, Herdr home, port or socket; the solo rig is brought
-// down before the crew rig comes up. If the solo leg could not start (it wrote no table), the crew leg is
-// not run. If the solo leg ran and failed, the crew leg still runs, for a full picture of the tuple.
+// THREE LEGS, ONE RUN. The solo leg (playwright.config.ts) runs first, the crew leg (crew.config.ts,
+// a lead and a member) after it, and the core solo leg (playwright.config.ts again, on herdr-core through
+// COLLIE_RIG_MUX=herdr-core, M78) last, all in the same run and under the same row. The crew leg and
+// the core leg each have a rig state of their own beside the solo one (`<root>/crew-state`,
+// `<root>/core-state`, through COLLIE_RIG_STATE, the name rig-lib.ts reads for all), so the legs share no
+// folder, Herdr home, port or socket; the previous rig is brought down before the next one comes up. If
+// the solo leg could not start (it wrote no table), the later legs are not run. If the solo leg ran and
+// failed, the later legs still run, for a full picture of the tuple.
 //
-// THE TUPLE is (collie main sha, Claude Code version, pi version, omp version). The versions come from
-// the binaries bins.ts names. The ledger (~/.local/state/collie-browser-leg/ledger.json) keeps one row
+// THE TUPLE is (collie main sha, Claude Code version, pi version, omp version, hc version). The versions
+// come from the binaries bins.ts names, and `hc --version` for the herdr-core command line. The ledger (~/.local/state/collie-browser-leg/ledger.json) keeps one row
 // per tuple, and a tuple with a row is never run again, whatever the result. The rules are the harness
 // lab's (scripts/harness-canary/lab/lab-ledger.ts):
 //   - a `running` row is written BEFORE the first paid step (before the clone, so a crash anywhere
@@ -61,13 +63,21 @@ export interface Tuple {
   readonly claude: string;
   readonly pi: string;
   readonly omp: string;
+  /** The herdr-core command line's version, from `hc --version` (`hc 0.1.14`). Rows from before the core leg read `none`. */
+  readonly hc: string;
 }
+
+/** The ledger word for a row written before the tuple carried the hc version. */
+export const HC_NONE = "none";
+
+/** The versions the tuple reads from a binary: the three harnesses, and `hc`. */
+export type VersionId = HarnessId | "hc";
 
 /**
  * How a tuple ended.
  *  - `running`: claimed, not finished. Never final: the next start turns an old one into `failed`.
- *  - `pass`: every case of every harness passed, in the solo leg and in the crew leg.
- *  - `fail`: a leg ran and at least one case failed.
+ *  - `pass`: every case of every harness passed, in the solo leg, the crew leg and the core leg.
+ *  - `fail`: a leg ran and at least one case failed (the core leg counts like the others).
  *  - `failed`: the run could not finish, or finished without proving every case (not reached, n/a), in either leg.
  */
 export const RESULTS = ["running", "pass", "fail", "failed"] as const;
@@ -101,11 +111,15 @@ export interface Row extends Tuple {
   readonly crewResults?: string | undefined;
   /** The crew leg's table.md. Rows written before the crew leg existed have none. */
   readonly crewTable?: string | undefined;
-  /** The counts of both legs added up per harness (the crew leg's cases run under Claude). */
+  /** The core solo leg's results folder. Rows written before the core leg existed have none. */
+  readonly coreResults?: string | undefined;
+  /** The core solo leg's table.md. Rows written before the core leg existed have none. */
+  readonly coreTable?: string | undefined;
+  /** The counts of all legs added up per harness (the crew leg's cases run under Claude). */
   readonly verdicts?: Verdicts | undefined;
   /**
    * The model tier pi, omp and Claude ran on in each leg (M67, replay/tier.ts), from each leg's model.json:
-   * `solo: pi replay, omp live+record, claude replay; crew: pi replay, claude replay`. Rows from before
+   * `solo: pi replay, omp live+record, claude replay; crew: pi replay, claude replay; core: ...`. Rows from before
    * M67 have none, and rows from before spec 07 name no Claude tier (Claude was live then).
    */
   readonly tiers?: string | undefined;
@@ -140,9 +154,9 @@ export const REPO_URL = "https://github.com/AltanS/collie.git";
 export const defaultStateDir = (home: string = homedir()): string => join(home, ".local", "state", "collie-browser-leg");
 export const defaultRoot = (home: string = homedir()): string => join(home, ".cache", "collie-lab", "browser-leg-nightly");
 
-export const sameTuple = (a: Tuple, b: Tuple): boolean => a.sha === b.sha && a.claude === b.claude && a.pi === b.pi && a.omp === b.omp;
+export const sameTuple = (a: Tuple, b: Tuple): boolean => a.sha === b.sha && a.claude === b.claude && a.pi === b.pi && a.omp === b.omp && a.hc === b.hc;
 
-export const tupleText = (t: Tuple): string => `collie main ${t.sha.slice(0, 7)}, claude ${t.claude}, pi ${t.pi}, omp ${t.omp}`;
+export const tupleText = (t: Tuple): string => `collie main ${t.sha.slice(0, 7)}, claude ${t.claude}, pi ${t.pi}, omp ${t.omp}, hc ${t.hc}`;
 
 export const emptyCounts = (): Counts => ({ pass: 0, fail: 0, "not reached": 0, "n/a": 0 });
 
@@ -185,6 +199,7 @@ function parseRow(path: string, value: JsonValue | undefined, index: number): Ro
     claude: text("claude"),
     pi: text("pi"),
     omp: text("omp"),
+    hc: asJsonString(node.hc) ?? HC_NONE,
     date,
     result,
     log: text("log"),
@@ -192,6 +207,8 @@ function parseRow(path: string, value: JsonValue | undefined, index: number): Ro
     table: asJsonString(node.table),
     crewResults: asJsonString(node.crewResults),
     crewTable: asJsonString(node.crewTable),
+    coreResults: asJsonString(node.coreResults),
+    coreTable: asJsonString(node.coreTable),
     verdicts: parseVerdicts(node.verdicts),
     tiers: asJsonString(node.tiers),
     note: asJsonString(node.note),
@@ -220,6 +237,7 @@ function rowJson(row: Row): JsonObject {
     claude: row.claude,
     pi: row.pi,
     omp: row.omp,
+    hc: row.hc,
     date: row.date,
     result: row.result,
     log: row.log,
@@ -227,6 +245,8 @@ function rowJson(row: Row): JsonObject {
     table: row.table,
     crewResults: row.crewResults,
     crewTable: row.crewTable,
+    coreResults: row.coreResults,
+    coreTable: row.coreTable,
     verdicts: row.verdicts === undefined ? undefined : { claude: { ...row.verdicts.claude }, pi: { ...row.verdicts.pi }, omp: { ...row.verdicts.omp } },
     tiers: row.tiers,
     note: row.note,
@@ -377,6 +397,8 @@ export interface Settlement {
   readonly table?: string | undefined;
   readonly crewResults?: string | undefined;
   readonly crewTable?: string | undefined;
+  readonly coreResults?: string | undefined;
+  readonly coreTable?: string | undefined;
   readonly verdicts?: Verdicts | undefined;
   readonly tiers?: string | undefined;
 }
@@ -391,7 +413,7 @@ export function settle(path: string, tuple: Tuple, patch: Settlement): Row {
     const { startedAt, pid, ...kept } = row;
     void startedAt;
     void pid;
-    const next: Row = { ...kept, result: patch.result, note: patch.note, results: patch.results, table: patch.table, crewResults: patch.crewResults, crewTable: patch.crewTable, verdicts: patch.verdicts, tiers: patch.tiers };
+    const next: Row = { ...kept, result: patch.result, note: patch.note, results: patch.results, table: patch.table, crewResults: patch.crewResults, crewTable: patch.crewTable, coreResults: patch.coreResults, coreTable: patch.coreTable, verdicts: patch.verdicts, tiers: patch.tiers };
     writeLedger(path, { rows: ledger.rows.map((candidate) => (candidate === row ? next : candidate)) });
     return next;
   });
@@ -558,21 +580,23 @@ export function addVerdicts(a: Verdicts | undefined, b: Verdicts | undefined): V
 const passes = (verdicts: Verdicts | undefined): number => (verdicts === undefined ? 0 : HARNESS_IDS.reduce((all, id) => all + verdicts[id].pass, 0));
 
 /**
- * The row's result from both legs. `crew` is null when the crew leg did not run.
+ * The row's result from all three legs. `crew` and `core` are null when that leg did not run.
  *  - any leg with a `fail`: `fail`;
- *  - else any leg `failed` (no table, not reached, n/a, a bad exit), or a crew leg that did not run: `failed`;
- *  - else `pass`: both legs passed every case.
- * The note names each leg that did not pass (`solo leg: ...; crew leg: ...`), so the notify line says
- * which leg to look at. The counts are the legs' added up.
+ *  - else any leg `failed` (no table, not reached, n/a, a bad exit), or a leg that did not run: `failed`;
+ *  - else `pass`: every leg passed every case.
+ * The core leg counts like the others: a `fail` or `failed` from it holds the row.
+ * The note names each leg that did not pass (`solo leg: ...; crew leg: ...; core leg: ...`), so the
+ * notify line says which leg to look at. The counts are the legs' added up.
  */
-export function decideLegs(solo: Decision, crew: Decision | null): Decision {
-  const verdicts = addVerdicts(solo.verdicts, crew?.verdicts);
+export function decideLegs(solo: Decision, crew: Decision | null, core: Decision | null): Decision {
+  const verdicts = addVerdicts(addVerdicts(solo.verdicts, crew?.verdicts), core?.verdicts);
   const legs: ReadonlyArray<readonly [string, Decision | null]> = [
     ["solo", solo],
     ["crew", crew],
+    ["core", core],
   ];
   const bad = legs.filter(([, decision]) => decision === null || decision.result !== "pass");
-  if (bad.length === 0) return { result: "pass", note: `${String(passes(verdicts))} cases passed (solo ${String(passes(solo.verdicts))}, crew ${String(passes(crew?.verdicts))})`, verdicts };
+  if (bad.length === 0) return { result: "pass", note: `${String(passes(verdicts))} cases passed (solo ${String(passes(solo.verdicts))}, crew ${String(passes(crew?.verdicts))}, core ${String(passes(core?.verdicts))})`, verdicts };
   const note = bad.map(([label, decision]) => `${label} leg: ${decision === null ? "not run" : decision.note}`).join("; ");
   const result = legs.some(([, decision]) => decision?.result === "fail") ? "fail" : "failed";
   return { result, note, verdicts };
@@ -591,13 +615,13 @@ export interface Options {
 
 export const USAGE = `Usage: bun web/e2e/rig/nightly.ts [options]
 
-Runs the browser leg (the solo leg, then the crew leg) on origin/main once per tuple: (collie main sha, Claude Code version, pi version,
-omp version). A tuple with a row in the ledger never runs again, whatever the result. A person reruns
+Runs the browser leg (the solo leg, the crew leg, then the solo leg again on herdr-core) on origin/main once per tuple: (collie main sha,
+Claude Code version, pi version, omp version, hc version). A tuple with a row in the ledger never runs again, whatever the result. A person reruns
 a tuple by deleting its row. The runner never deletes one.
 
   --plan             print the tuple and whether it would run, and any blocker. Spends nothing, writes nothing
   --state-dir DIR    ledger.json and notify.log (default ~/.local/state/collie-browser-leg, or $${LEDGER_ENV})
-  --root DIR         the runner's clone, rig states (state, crew-state) and logs (default ~/.cache/collie-lab/browser-leg-nightly,
+  --root DIR         the runner's clone, rig states (state, crew-state, core-state) and logs (default ~/.cache/collie-lab/browser-leg-nightly,
                      or $${ROOT_ENV}). A run needs it under ~/.cache/collie-lab
   --repo URL         the repository to clone and read main from (default ${REPO_URL})
   -h, --help         print this
@@ -652,6 +676,8 @@ export interface Outcome {
   readonly table?: string | undefined;
   readonly crewResults?: string | undefined;
   readonly crewTable?: string | undefined;
+  readonly coreResults?: string | undefined;
+  readonly coreTable?: string | undefined;
   readonly verdicts?: Verdicts | undefined;
   readonly tiers?: string | undefined;
 }
@@ -669,7 +695,7 @@ export interface World {
   /** Throws with a reason when the remote cannot be read. */
   remoteSha(repo: string): string;
   /** Throws with a reason when the binary cannot be run. */
-  version(id: HarnessId): string;
+  version(id: VersionId): string;
   facts(env: Readonly<Record<string, string | undefined>>): Facts;
   alive: Alive;
   pid: number;
@@ -693,11 +719,15 @@ function notify(options: Options, out: Out, now: number, line: string): void {
 /** What `--plan` says about the second leg. The crew leg needs nothing the solo leg does not. */
 export const PLAN_CREW = "plan: includes the crew leg after the solo leg (its own rig state, about 1 more minute, 4 Claude turns and 2 pi turns when they run live)";
 
-/** The summary: one line per harness (both legs' counts), then the solo table's path, then the crew table's. */
+/** What `--plan` says about the third leg: the solo leg again, on herdr-core. It has a rig state of its own and the same model rules. */
+export const PLAN_CORE = "plan: includes the core solo leg after the crew leg (herdr-core, its own rig state, about 30 more minutes; the same turns as the solo leg when a harness version is new, none on replay)";
+
+/** The summary: one line per harness (all legs' counts), then the solo table's path, then the crew table's, then the core table's. */
 export function summaryLines(tuple: Tuple, outcome: Outcome): string[] {
   const lines = HARNESS_IDS.map((id) => `${id} ${tuple[id]}: ${outcome.verdicts === undefined ? "no verdict" : countsText(outcome.verdicts[id])}`);
   lines.push(outcome.table === undefined ? `table: none (${outcome.note})` : `table: ${outcome.table} (collie main ${tuple.sha.slice(0, 7)}, ${outcome.result})`);
   if (outcome.crewTable !== undefined) lines.push(`crew table: ${outcome.crewTable}`);
+  if (outcome.coreTable !== undefined) lines.push(`core table: ${outcome.coreTable}`);
   if (outcome.tiers !== undefined) lines.push(`model tiers: ${outcome.tiers}`);
   return lines;
 }
@@ -734,7 +764,7 @@ export async function main(argv: readonly string[], env: Readonly<Record<string,
   let tuple: Tuple;
   try {
     const sha = world.remoteSha(opts.repo);
-    tuple = { sha, claude: world.version("claude"), pi: world.version("pi"), omp: world.version("omp") };
+    tuple = { sha, claude: world.version("claude"), pi: world.version("pi"), omp: world.version("omp"), hc: world.version("hc") };
   } catch (error) {
     return cannot(error instanceof Error ? error.message : String(error));
   }
@@ -760,6 +790,7 @@ export async function main(argv: readonly string[], env: Readonly<Record<string,
   if (opts.plan) {
     out.line(problems.length === 0 ? "plan: would run" : "plan: would not start");
     out.line(PLAN_CREW);
+    out.line(PLAN_CORE);
     for (const problem of problems) out.line(`plan: blocked: ${problem}`);
     return 0;
   }
@@ -791,7 +822,7 @@ export async function main(argv: readonly string[], env: Readonly<Record<string,
     out.error(`browser leg nightly: ${error instanceof Error ? error.message : String(error)}`);
   }
   for (const line of summaryLines(tuple, outcome)) out.line(line);
-  if (outcome.result !== "pass") notify(opts, out, world.now(), `browser leg: ${tupleText(tuple)} ${outcome.result}: ${outcome.note} (log ${log}${outcome.table === undefined ? "" : `, table ${outcome.table}`}${outcome.crewTable === undefined ? "" : `, crew table ${outcome.crewTable}`})`);
+  if (outcome.result !== "pass") notify(opts, out, world.now(), `browser leg: ${tupleText(tuple)} ${outcome.result}: ${outcome.note} (log ${log}${outcome.table === undefined ? "" : `, table ${outcome.table}`}${outcome.crewTable === undefined ? "" : `, crew table ${outcome.crewTable}`}${outcome.coreTable === undefined ? "" : `, core table ${outcome.coreTable}`})`);
   return exitCodeOf(outcome.result);
 }
 
@@ -871,10 +902,13 @@ function remoteShaOf(repo: string): string {
   return sha;
 }
 
-function versionOf(id: HarnessId): string {
-  const r = spawnSync(BIN[id], ["--version"], { encoding: "utf8", timeout: 30_000 });
+/** The program a version is read from: the harness binaries bins.ts names, and `hc` from PATH. */
+const binaryOf = (id: VersionId): string => (id === "hc" ? "hc" : BIN[id]);
+
+function versionOf(id: VersionId): string {
+  const r = spawnSync(binaryOf(id), ["--version"], { encoding: "utf8", timeout: 30_000 });
   const version = r.status === 0 ? parseVersion(`${r.stdout}${r.stderr}`) : undefined;
-  if (version === undefined) throw new Error(`cannot read the ${id} version from ${BIN[id]} --version (exit ${String(r.status)})`);
+  if (version === undefined) throw new Error(`cannot read the ${id} version from ${binaryOf(id)} --version (exit ${String(r.status)})`);
   return version;
 }
 
@@ -908,6 +942,12 @@ export function resultsFolderIn(logText: string, leg: "solo" | "crew" = "solo"):
 
 /** The crew leg's rig state, beside the solo leg's (`<root>/state`). */
 export const crewStateRoot = (root: string): string => join(root, "crew-state");
+
+/** The core solo leg's rig state, beside the other two. */
+export const coreStateRoot = (root: string): string => join(root, "core-state");
+
+/** The multiplexer the core leg's rig runs (rig-mux.ts), set on the leg's environment after the operator's own COLLIE_RIG_MUX was dropped. */
+export const CORE_MUX = "herdr-core";
 
 const MINUTE = 60_000;
 let activeChild: ChildProcess | null = null;
@@ -997,8 +1037,8 @@ export function tiersOf(folder: string | undefined): string | undefined {
 }
 
 /** Both legs' tiers in one ledger field. */
-export function legTiers(solo: string | undefined, crew: string | undefined): string | undefined {
-  const parts = [solo === undefined ? null : `solo: ${solo}`, crew === undefined ? null : `crew: ${crew}`].filter((p): p is string => p !== null);
+export function legTiers(solo: string | undefined, crew: string | undefined, core?: string | undefined): string | undefined {
+  const parts = [solo === undefined ? null : `solo: ${solo}`, crew === undefined ? null : `crew: ${crew}`, core === undefined ? null : `core: ${core}`].filter((p): p is string => p !== null);
   return parts.length === 0 ? undefined : parts.join("; ");
 }
 
@@ -1007,23 +1047,26 @@ export function legTiers(solo: string | undefined, crew: string | undefined): st
  * crew leg's config and `down --crew` pick the crew rig; the state root and the environment are the
  * caller's. A leg that exits badly is a result, not a throw. Only a signal throws.
  */
-async function runLeg(logFd: number, logPath: string, leg: "solo" | "crew", config: string, stateRoot: string, web: string, env: Record<string, string>, timeoutMs: number): Promise<LegRun> {
+async function runLeg(logFd: number, logPath: string, leg: "solo" | "crew" | "core", config: string, stateRoot: string, web: string, env: Record<string, string>, timeoutMs: number): Promise<LegRun> {
   // A folder that was there before the leg started is an earlier run's, never this run's.
   const before = new Set(runFolders(stateRoot));
   let code: number | null = null;
   try {
-    code = await step(logFd, leg === "solo" ? "the leg" : "the crew leg", "bun", ["x", "playwright", "test", "-c", `e2e/rig/${config}`], web, env, timeoutMs);
+    code = await step(logFd, leg === "solo" ? "the leg" : leg === "crew" ? "the crew leg" : "the core leg", "bun", ["x", "playwright", "test", "-c", `e2e/rig/${config}`], web, env, timeoutMs);
   } finally {
     // The leg's teardown stops the rig. This stops what a crashed or killed leg left, by recorded pid.
     writeSync(logFd, `\n== ${new Date().toISOString()} rig down${leg === "crew" ? " --crew" : ""}\n`);
     spawnSync("bun", ["e2e/rig/rig.ts", "down", ...(leg === "crew" ? ["--crew"] : [])], { cwd: web, env, stdio: ["ignore", logFd, logFd], timeout: MINUTE });
   }
   if (interrupted) throw new Error("interrupted by a signal");
-  const folder = resultsFolderIn(readFileSync(logPath, "utf8"), leg) ?? runFolders(stateRoot).findLast((dir) => !before.has(dir));
+  // The core leg prints the solo leg's teardown line (the same config), so a line outside its own state is the solo leg's, never its own.
+  const logged = resultsFolderIn(readFileSync(logPath, "utf8"), leg === "crew" ? "crew" : "solo");
+  const own = logged !== undefined && (leg !== "core" || resolve(logged).startsWith(`${resolve(stateRoot)}${sep}`)) ? logged : undefined;
+  const folder = own ?? runFolders(stateRoot).findLast((dir) => !before.has(dir));
   const tablePath = folder === undefined ? undefined : join(folder, "table.md");
   const table = tablePath !== undefined && existsSync(tablePath) ? tablePath : undefined;
   const rows = table !== undefined ? parseTable(readFileSync(table, "utf8")) : null;
-  return { folder, table, rows, decision: decide(rows, code, leg === "solo" ? HARNESS_IDS : ["claude"]), tiers: tiersOf(folder) };
+  return { folder, table, rows, decision: decide(rows, code, leg === "crew" ? ["claude"] : HARNESS_IDS), tiers: tiersOf(folder) };
 }
 
 /** The clone, the build, the legs, the tables. Throws on any step that breaks. */
@@ -1054,17 +1097,21 @@ async function executeReal(context: RunContext): Promise<Outcome> {
     await mustStep(logFd, "bun install (web)", "bun", ["install", "--frozen-lockfile"], web, env, 15 * MINUTE);
     await mustStep(logFd, "web build", "bun", ["run", "build"], web, env, 15 * MINUTE);
     await mustStep(logFd, "playwright browser", "bun", ["x", "playwright", "install", "chromium"], web, env, 15 * MINUTE);
-    // The solo leg, then the crew leg, each with a rig state of its own (COLLIE_RIG_STATE, the name
-    // rig-lib.ts reads). The solo rig is down before the crew rig comes up, and they share nothing.
+    // The solo leg, the crew leg, then the core solo leg, each with a rig state of its own
+    // (COLLIE_RIG_STATE, the name rig-lib.ts reads). Each rig is down before the next one comes up, and
+    // they share nothing.
     const solo = await runLeg(logFd, context.log, "solo", "playwright.config.ts", stateRoot, web, env, 45 * MINUTE);
     if (!crewLegRuns(solo.rows)) {
-      writeSync(logFd, `\n== ${new Date().toISOString()} the solo leg wrote no table: the crew leg is not run\n`);
-      return { ...decideLegs(solo.decision, null), results: solo.folder, table: solo.table, tiers: legTiers(solo.tiers, undefined) };
+      writeSync(logFd, `\n== ${new Date().toISOString()} the solo leg wrote no table: the crew leg and the core leg are not run\n`);
+      return { ...decideLegs(solo.decision, null, null), results: solo.folder, table: solo.table, tiers: legTiers(solo.tiers, undefined) };
     }
     const crewState = crewStateRoot(options.root);
     if (!`${resolve(crewState)}${sep}`.startsWith(cacheLab)) throw new Error(`--root must be under ${cacheLab}: the rig keeps its state there`);
     const crew = await runLeg(logFd, context.log, "crew", "crew.config.ts", crewState, web, legEnv(context.env, crewState), 30 * MINUTE);
-    return { ...decideLegs(solo.decision, crew.decision), results: solo.folder, table: solo.table, crewResults: crew.folder, crewTable: crew.table, tiers: legTiers(solo.tiers, crew.tiers) };
+    const coreState = coreStateRoot(options.root);
+    if (!`${resolve(coreState)}${sep}`.startsWith(cacheLab)) throw new Error(`--root must be under ${cacheLab}: the rig keeps its state there`);
+    const core = await runLeg(logFd, context.log, "core", "playwright.config.ts", coreState, web, { ...legEnv(context.env, coreState), COLLIE_RIG_MUX: CORE_MUX }, 60 * MINUTE);
+    return { ...decideLegs(solo.decision, crew.decision, core.decision), results: solo.folder, table: solo.table, crewResults: crew.folder, crewTable: crew.table, coreResults: core.folder, coreTable: core.table, tiers: legTiers(solo.tiers, crew.tiers, core.tiers) };
   } finally {
     closeSync(logFd);
   }

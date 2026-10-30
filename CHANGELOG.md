@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Changed
+
+- **The nightly browser leg adds the hc version to its tuple and runs the core leg.** After the solo and crew legs, a run now repeats the solo leg on herdr-core under the same ledger row, in a rig state of its own. A row from before the change reads as hc `none`. The nightly stays paused.
+
 ### Fixed
 
 - **Muse's tip `Press ? on an empty composer to see keyboard shortcuts` no longer counts as a draft on herdr-core.** On a plain-text screen the grey tip read as typed text and held a send to an empty Muse box. The profile now knows the tip's text.

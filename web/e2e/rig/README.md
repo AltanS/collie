@@ -11,13 +11,19 @@ Tier 1's config ignores `e2e/rig/`.
 
 ## When it runs
 
-The leg is a gate. It runs in three places:
+The leg is a gate. It runs in these places:
 
 - **Before every release tag**, on the release head. All forty-one cases pass on the first tap:
   thirty-four on the solo leg (three harnesses with five cases each, fourteen walky talky cases, case 22, case 25, case 26, case 28, and case 29) and
   seven on the crew leg (below). A case that fails, or is not reached, holds the tag.
+- **Before every minor or major release tag**, also on herdr-core (M78, "On herdr-core" below): the solo
+  leg with `make browser-leg DIR=... MUX=herdr-core` (replay, about 30 minutes), and the crew leg with
+  the member on the core, `MUX=herdr,herdr-core`. A core case passes, or its red has a named cause in
+  `HC_API.md` ("What does not fit Collie's mux port") or below. A patch tag runs the Herdr legs only.
+  One red Claude case on the core makes every later Claude case fail on a recording mismatch ("A red Claude case stops the rest" below), so read only the first one.
 - **Before merging a change** to a harness reader, the Surface, the Send Protocol or the ask code. Run
-  it on the branch. A unit test cannot show that a tap works on a real screen.
+  it on the branch, solo on Herdr and solo on herdr-core. A unit test cannot show that a tap works on a
+  real screen.
 - **Every night**, on `origin/main`, through `nightly.ts` (below).
 
 One solo run costs about 11 minutes. Claude Code, pi and omp replay recorded model streams ("Replay"
@@ -26,7 +32,7 @@ on a new Claude Code version runs Claude live once and records it, about 24 Clau
 subscription for the solo leg and 6 for the crew leg. A run on a new pi or omp version runs that harness live once and records it: the first
 recording run (2026-10-26, pi 1.3.0, omp 18.6.1) sent 44 requests to OpenRouter Haiku 4.5, 21 for pi and
 23 for omp (a few cents). The crew leg adds about 4 minutes, 6 Claude turns
-and 4 pi turns, and the nightly run does both. The turn cap is 20 per harness. "Cost of one run" below
+and 4 pi turns, and the nightly run does both and then the core leg (about 30 more minutes). The turn cap is 20 per harness. "Cost of one run" below
 has the detail.
 
 ### The nightly runner
@@ -40,10 +46,11 @@ bun web/e2e/rig/nightly.ts          # runs the leg if this tuple has no row yet
 never writes into the checkout it starts from. It keeps a clone of its own at
 `~/.cache/collie-lab/browser-leg-nightly/clone`, fetches `origin/main` into it and checks it out
 detached, runs `bun install` in the root and in `web/`, builds `web/`, and runs the solo leg, then the
-crew leg (below), in the same run and under the same ledger row. Each leg uses a rig state of its own
-(`~/.cache/collie-lab/browser-leg-nightly/state` and `.../crew-state`, set through `COLLIE_RIG_STATE`),
-so a leg that a person runs by hand is never taken down by a nightly run, and the two legs share no
-folder, Herdr home, port or socket. The solo rig is down before the crew rig comes up.
+crew leg (below), then the solo leg again on herdr-core (`COLLIE_RIG_MUX=herdr-core`, "On herdr-core"
+below), in the same run and under the same ledger row. Each leg uses a rig state of its own
+(`~/.cache/collie-lab/browser-leg-nightly/state`, `.../crew-state` and `.../core-state`, set through
+`COLLIE_RIG_STATE`), so a leg that a person runs by hand is never taken down by a nightly run, and the
+legs share no folder, Herdr home, port or socket. The previous rig is down before the next one comes up.
 
 **The crew leg in a nightly run.** It runs `bunx playwright test -c e2e/rig/crew.config.ts` in the clone's
 `web/`, with the same environment as the solo leg, so the key file passes through untouched. It needs
@@ -51,8 +58,18 @@ nothing that the solo leg does not need: it has the same 8 GB memory guard, beca
 first. If the solo leg could not start (it wrote no table), the crew leg does not run and the row is
 `failed`. If the solo leg ran and a case failed, the crew leg still runs, for a full picture of the tuple.
 
-**Once per tuple.** A tuple is the main commit, the Claude Code version, the pi version and the omp
-version. The versions come from the binaries `bins.ts` names. The ledger
+**The core leg in a nightly run.** It runs `bunx playwright test -c e2e/rig/playwright.config.ts` in the
+clone's `web/` with `COLLIE_RIG_MUX=herdr-core`, after the crew leg, with a 60 minute limit. It adds
+about 30 minutes to a run and, on recorded versions, no model turn. If the solo leg wrote no table, the
+crew leg and the core leg do not run and the row is `failed`. A `fail` or `failed` from the core leg
+counts like the others: it makes the row `fail` or `failed`, and the note says `core leg: ...`. A core
+case with a named cause in `HC_API.md` still counts as a `fail` here; the runner does not know the
+named causes. `--plan` names the core leg.
+
+**Once per tuple.** A tuple is the main commit, the Claude Code version, the pi version, the omp
+version and the hc version (`hc --version`, `hc 0.1.14`). The versions come from the binaries `bins.ts`
+names, and `hc` from `PATH`. A ledger row from before the tuple carried the hc version reads as hc
+`none`, so it is never the same tuple as a new one. The ledger
 `~/.local/state/collie-browser-leg/ledger.json` has one row per tuple, and a tuple with a row never
 runs again, whatever the result (`pass`, `fail` or `failed`). To run a tuple again, delete its row by
 hand. The runner never deletes a row. A new commit on main is a new tuple, so how often something
