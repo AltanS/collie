@@ -651,9 +651,12 @@ describe("StateEngine — session name enrichment", () => {
     sessionSnapshot() {
       return Promise.resolve({ version: "0.7.2", protocol: 16, workspaces: [ws("w1", 1)], tabs: [], panes: this.panes });
     }
+    // Panes whose read rejects, as a socket error mid-read would.
+    failing = new Set<string>();
     readPane(...args: Parameters<HerdrClient["readPane"]>): Promise<PaneRead> {
       const [paneId] = args;
       this.reads.push(args);
+      if (this.failing.has(paneId)) return Promise.reject(new Error("read failed"));
       return Promise.resolve({ pane_id: paneId, text: this.texts.get(paneId) ?? "", truncated: false, revision: 0 });
     }
   }
@@ -674,6 +677,46 @@ describe("StateEngine — session name enrichment", () => {
     await poll();
     expect(agent("w1:p1").sessionName).toBe("my-feature");
     expect(agent("w1:p2").sessionName).toBeUndefined();
+  });
+
+  // The push names its pane from what the listener is handed (see the transition loop in poll).
+  test("a transition listener sees the pane's session name", async () => {
+    const { herdr, engine, poll } = makeNameEngine();
+    const seen: Array<string | undefined> = [];
+    engine.onTransition((a) => seen.push(a.sessionName));
+    herdr.panes = [pane("w1:p1", "w1", "working", "claude")];
+    herdr.texts.set("w1:p1", named("lss-port"));
+    await poll(); // first sighting: learns the name, fires nothing
+    herdr.panes = [pane("w1:p1", "w1", "done", "claude")];
+    await poll();
+    expect(seen).toEqual(["lss-port"]);
+  });
+
+  test("a transition listener sees a session name first read on the same poll", async () => {
+    const { herdr, engine, poll } = makeNameEngine();
+    const seen: Array<string | undefined> = [];
+    engine.onTransition((a) => seen.push(a.sessionName));
+    herdr.panes = [{ ...pane("w1:p1", "w1", "working", "claude"), revision: 1 }];
+    herdr.texts.set("w1:p1", plainBox);
+    await poll();
+    herdr.panes = [{ ...pane("w1:p1", "w1", "done", "claude"), revision: 2 }];
+    herdr.texts.set("w1:p1", named("lss-port"));
+    await poll();
+    expect(seen).toEqual(["lss-port"]);
+  });
+
+  test("a transition still fires when the session-name read fails", async () => {
+    const { herdr, engine, poll } = makeNameEngine();
+    const seen: Array<string | undefined> = [];
+    engine.onTransition((a) => seen.push(a.sessionName));
+    herdr.panes = [{ ...pane("w1:p1", "w1", "working", "claude"), revision: 1 }];
+    herdr.texts.set("w1:p1", named("lss-port"));
+    await poll();
+    herdr.panes = [{ ...pane("w1:p1", "w1", "done", "claude"), revision: 2 }];
+    herdr.failing.add("w1:p1");
+    await poll();
+    expect(herdr.reads).toHaveLength(2); // the second poll did read, and the read failed
+    expect(seen).toEqual(["lss-port"]); // the last-known name, and the transition was not lost
   });
 
   // The scroll-jump guard. A `recent` read that wants more rows than the pane shows makes Herdr
