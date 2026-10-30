@@ -791,6 +791,11 @@ Collie saves the file under `<state-dir>/uploads` with owner-only permissions an
 absolute path to your draft. The agent reads it from that path, because a terminal cannot take a
 pasted file. Uploads are swept 48 hours after they are written.
 
+A picked or pasted photo opens a sheet with a preview first. **Attach** sends the original file,
+untouched. **Edit** opens the tools Crop, Draw, Circle and Arrow, and a photo you changed goes up as
+a PNG. A tap on a photo's thumbnail in the composer opens the same tools, and the edited photo takes
+its place. A photo the browser cannot show attaches as it is, with no error.
+
 | Setting | Default | What it does |
 | --- | --- | --- |
 | `COLLIE_MAX_UPLOAD_MB` | `10` | Largest file accepted, in whole megabytes. Out of range or not a whole number falls back to the default and logs a warning. |

@@ -13,7 +13,8 @@ tmux and zellij call their own top-level group a session. Collie shows it as a s
 Name the backend in `COLLIE_MUX`, point it at an endpoint, restart, and install the beacon hooks.
 
 > **Experimental.** tmux and zellij (since 1.0) were tested on **tmux 3.6b** and **zellij 0.44.2**,
-> on a single host. tuios (since 1.15.0) was tested on **tuios 0.8.4**. Tern was probed by its
+> on a single host. tuios (since 1.15.0) was tested on **tuios 0.8.4**. The Herdr core (since 1.25.0)
+> was tested on **hc 0.1.14**, a 0.x preview. Tern was probed by its
 > contributor on **tern 0.4.5**, a closed beta that the maintainers cannot run.
 > Herdr is the default and the primary supported backend. **Testers wanted:** open an issue on
 > [AltanS/collie](https://github.com/AltanS/collie/issues/new) titled `tmux: …`, `zellij: …`,
@@ -88,7 +89,8 @@ claude                         # in that window or tab
 writes the name to `.env`, so running `collie start` later drives the same multiplexer.
 
 With `COLLIE_MUX` unset, `start` probes for Herdr, tmux, and zellij, prompts for a backend, and
-writes the answer to `.env`. For the full configuration reference, see
+writes the answer to `.env`. It looks for the Herdr core too, but only on a machine without the
+Herdr TUI ([herdr-core notes](#herdr-core-notes)). For the full configuration reference, see
 [`MUX_CONTRACT.md` → Pointing a collie at a multiplexer](../MUX_CONTRACT.md#pointing-a-collie-at-a-multiplexer).
 
 `collie hooks install claude` installs Collie's [beacon](#agent-beacons-optional-linux) hooks, which
@@ -258,6 +260,94 @@ What the core cannot do:
 `collie doctor` has two rows for it. `hc-socket` dials the socket and shows the core's version and how
 many terminals it keeps. `hc-version` shows `hc --version`. [Troubleshooting](troubleshooting.md)
 lists the fixes.
+
+### The Collie panel for herdr-app
+
+herdr-app can show a small Collie panel: the bridge's state, the phone URL, and a button to pair a
+phone. Collie never installs it. Copy the folder into herdr-app's mods folder by hand:
+
+```bash
+git clone --depth 1 https://github.com/AltanS/collie /tmp/collie-mod
+cp -r /tmp/collie-mod/herdr-app-mod/collie ~/.config/herdr-app/mods/collie
+herdr-app check ~/.config/herdr-app/mods/collie
+```
+
+> **Experimental.** The panel passes `herdr-app check`, but it has not run in a live herdr-app
+> window yet. It needs Collie 1.25.0 or newer on your PATH and herdr-app 0.1.7 or newer.
+
+The panel shows whether the bridge runs, its version, mode, port and service, the phone URL and how
+many devices are paired. Its buttons run `collie start`, `stop`, `restart` and `push-test`. **Pair a
+phone** shows a single-use code and its QR code, and writes the code nowhere. On a machine with two
+Collies, give the panel's block the prop `{ "instance": "hc" }` in your layout to watch the named
+instance. To remove the panel, delete `~/.config/herdr-app/mods/collie`. The
+[mod's README](https://github.com/AltanS/collie/blob/main/herdr-app-mod/collie/README.md) lists every program it runs.
+
+### Two Collies on one machine
+
+One Collie drives one multiplexer. To mirror the Herdr TUI and the Herdr core on one machine, run
+two Collie instances and join them in one crew. Here the default instance drives the Herdr TUI and
+becomes the lead. A second instance, `hc`, drives the core.
+
+1. Make the config folder for the instance `hc`.
+
+   ```bash
+   mkdir -p ~/.config/herdr/plugins/config/herdr.collie-hc
+   ```
+
+2. Write its `.env` with its own name, port, state folder and multiplexer.
+
+   ```bash
+   # ~/.config/herdr/plugins/config/herdr.collie-hc/.env
+   COLLIE_INSTANCE=hc
+   COLLIE_PORT=8794
+   COLLIE_STATE_DIR=/home/you/.local/state/collie-hc
+   COLLIE_MUX=herdr-core
+   # the lead's URL serves this instance, so it needs no front door of its own
+   COLLIE_SKIP_SERVE=1
+   ```
+
+3. Start the instance.
+
+   ```bash
+   COLLIE_INSTANCE=hc collie start
+   ```
+
+4. On the default instance, make an invite.
+
+   ```bash
+   collie crew invite
+   ```
+
+5. Join the crew from the instance `hc`, with its own port as the address, and paste the token.
+
+   ```bash
+   COLLIE_INSTANCE=hc collie crew join https://lead.tail1234.ts.net \
+     --address 127.0.0.1:8794
+   ```
+
+6. Restart the lead, so it links to the new member.
+
+   ```bash
+   collie restart
+   ```
+
+7. Install the Claude hooks once, for History and Chat in the core's Claude panes.
+
+   ```bash
+   collie hooks install claude
+   ```
+
+In step 5, use the lead address that `invite` prints. The instance `hc` joins as `<hostname>-hc`,
+for example `bluefin-hc`. Pass `--label` to pick another name. The phone pairs with the lead and shows the panes of both instances under one URL.
+Every verb for the second instance needs `COLLIE_INSTANCE=hc` in front of it. A hook reaches every
+running bridge on the machine, so one hook install serves both. `collie mux list` shows which
+instance drives which multiplexer.
+
+The phone draws the two instances as one machine, with a line for each instance. A pane's chip
+reads `<host> · <mux>`, for example `bluefin · herdr-core`. [A machine can run several
+Collies](crew.md#a-machine-can-run-several-collies) explains the machine card and its health, and
+[Multiple Collie instances on one host](deployment.md#multiple-collie-instances-on-one-host) has
+the service unit and the refusal rules.
 
 ### Which multiplexers this machine has
 

@@ -8,7 +8,7 @@ reboot** · **a pane is stuck narrow** · **Collie refuses to open a tmux window
 **`tmux list: output did not parse`** · **`herdr plugin list` shows the old version** ·
 **stale UI after a rebuild** · **I saved a machine in Herdr and the phone does not show it** ·
 **an update started from the phone stays at staging** · **a phone update on macOS leaves Collie
-unloaded** · **on macOS, `collie status` says "loaded, not running"** · **a pane shows no prompt-cache chip** · **a Kiro pane's History opens empty** · **a pane has no Chat or History** · **`hc-socket` is red in `collie doctor`** · **a new Codex pane says it has no history
+unloaded** · **on macOS, `collie status` says "loaded, not running"** · **a pane shows no prompt-cache chip** · **a Kiro pane's History opens empty** · **a pane has no Chat or History** · **`hc-socket` is red in `collie doctor`** · **the phone shows the Herdr TUI's panes, not herdr-app's** · **a new Codex pane says it has no history
 yet** · **the phone says Collie cannot read a screen the agent is not showing** · **sending failed 3 times
 and the phone offers a report** · **an agent is greyed
 out on the New page** · **Start says there is no folder, or says it could not confirm** ·
@@ -322,6 +322,12 @@ version and how many terminals it keeps. It reads as an error in two cases.
 A core at another protocol generation reads as an error too, and the row names both numbers. Update
 Collie or the core so they match.
 
+**The phone shows the Herdr TUI's panes, not herdr-app's.** This Collie drives the Herdr TUI. The
+`mux` row of `collie status` names the multiplexer and, when nobody named it, why. A machine with the
+Herdr TUI installed never picks the core on its own, and an instance whose `.env` names `herdr`
+keeps it. To see both, run a second instance on the core:
+[Two Collies on one machine](multiplexers.md#two-collies-on-one-machine).
+
 ## Walky talky
 
 Six symptoms of walky talky come up most. Each one has a command that shows the cause
@@ -339,6 +345,9 @@ present" or "held: turn running". The box holds a draft, or the agent is working
 message when the box clears or the turn ends, up to 60 minutes. Do not send it again. To let it in
 now, send or clear the draft in that pane. Under an older lead, "queued (outcome known on the lead)"
 also means wait.
+
+> **Note.** Known issue in 1.25.0: on a Herdr core (`herdr-core`) pane, Claude Code's grey hint in
+> an empty box can read as a draft, so a message stays held there. The fix is planned for 1.25.1.
 
 **The message sits in the inbox and was not typed.** `collie walky status <id>` prints "waiting in the
 inbox, not typed" and the reason. "held past 60 minutes" means a draft stayed in the box, the pane

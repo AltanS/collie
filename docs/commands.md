@@ -64,7 +64,7 @@ the same dials as `collie crew status` (a `hello` and a `snapshot` per member), 
 the same time.
 
 `collie status --json` keeps every key it had and adds `census`, an object with three parts:
-`members` (a list of `{ name, role, link, version, mux, panes }`, empty without a crew), `devices`
+`members` (a list of `{ name, role, link, version, mux, panes, host }`, empty without a crew), `devices`
 (`{ count, names }`) and `sessions` (`{ read, refusedWith, total, byState, withSessionId }`).
 `read` is `ok`, `bridge-not-running`, `refused` or `unreadable`. When it is not `ok`, `total`,
 `byState` and `withSessionId` are `null`, because a count that was not read is not zero.
@@ -136,6 +136,14 @@ session count, to `collie mux list` for the multiplexer behind a mux name, and t
 for one member's link in detail. A member older than 1.25.0 shows `-` for its mux and pane count in
 `status` and `crew status`. When one machine runs two Collies, `collie status` and `collie crew status`
 group the members under that machine's name, one line per instance.
+
+`collie crew status --json` prints one line. With a crew it holds `crew` (an object with `id` and
+`name`), `mode`, `self` and `members`. Without a crew it holds only `mode` and `members`, as in
+`{"mode":"solo","members":[]}`. Each member has
+`id`, `role`, `address`, `link`, `version`, `mux`, `panes` and `host`. `link` is `reachable`,
+`unreachable`, `incompatible`, `unenrolled`, or `not-probed` under `--no-probe`. The list of what
+`tailscale serve` publishes left `collie status` in 1.25.0. Run `collie serve status` for it, or
+`collie status --verbose`.
 
 ## Put `collie` on your PATH
 

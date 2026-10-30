@@ -51,7 +51,7 @@ A Herdr plugin is still the same `collie` binary; the actions forward to it
 the verbs that have no action (`pair`, `qr`, `logs`, `link`, `devices`, `stt`, `config`) run from
 the plugin's directory as `bin/collie <verb>`.
 
-Herdr is also one of the five multiplexers Collie can mirror (Herdr, tmux, zellij, tuios and tern). Which one you mirror is a separate
+Herdr is also one of the multiplexers Collie can mirror (Herdr, the Herdr core, tmux, zellij, tuios and tern). Which one you mirror is a separate
 choice ([Name your multiplexer](#name-your-multiplexer)): a standalone Collie can mirror Herdr, and
 a Herdr plugin can mirror tmux.
 
@@ -296,6 +296,12 @@ carries the same choice. `collie update` then runs no `herdr plugin` command. To
 core session, export `HC_SESSION` or `HC_SOCKET` before `collie start`; the unit keeps them. Install
 the Claude hooks with `collie hooks install claude` for History. What the core can and cannot do is
 in [herdr-core notes](multiplexers.md#herdr-core-notes).
+
+A Collie that already drives the Herdr TUI keeps it, because its `.env` names `herdr` and wins over
+the shell. To mirror the core on that machine too, run a second instance beside it:
+[Two Collies on one machine](multiplexers.md#two-collies-on-one-machine). herdr-app can also show a
+Collie panel that pairs a phone. It is experimental and you copy it in by hand:
+[The Collie panel for herdr-app](multiplexers.md#the-collie-panel-for-herdr-app).
 
 ### Herdr plugin
 

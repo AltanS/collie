@@ -120,7 +120,7 @@ changes.
 ## What you need
 
 - A Linux or macOS host with Claude Code installed.
-- A terminal multiplexer: Herdr, tmux, zellij, tuios or tern. Herdr and tuios detect agents directly. On tmux, zellij
+- A terminal multiplexer: Herdr, the Herdr core, tmux, zellij, tuios or tern. Herdr and tuios detect agents directly. On tmux, zellij
   and tern, Collie uses beacon hooks, which require Linux.
 - Tailscale installed on the host and phone, with HTTPS enabled on your tailnet. For other setups,
   see [Deployment](deployment.md).
@@ -233,6 +233,11 @@ also add a launcher from the phone, with a few option chips such as "Skip permis
 ([Launchers added from a phone](configure.md#launchers-added-from-a-phone)). A launcher that skips
 permission prompts carries a **No prompts** badge, and the phone asks you once before it first starts
 it.
+
+**Send waits for the agent's first screen.** After a start, Send reads Starting… and your draft stays
+editable. Collie sends nothing on its own, so a dialog such as workspace trust shows before any text
+reaches the agent. Send is ready once Collie reads the agent's first screen, the agent leaves the
+pane, or two minutes pass.
 
 A refused Start shows its reason in a notice above Start, in your language. A folder that does not
 exist on the machine that runs the start, for example, starts nothing and says so.

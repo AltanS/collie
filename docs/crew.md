@@ -325,6 +325,7 @@ list from that member's log, so the cards and the Messages sheet look the same o
 A crew member is one Collie instance: one bridge and one multiplexer. One machine can run more than
 one, for example the Herdr TUI and the Herdr core side by side, and each is its own member. A member
 that is not the default instance joins as `<hostname>-<instance>` unless you pass `--label`.
+[Two Collies on one machine](multiplexers.md#two-collies-on-one-machine) has the steps.
 
 Each member sends its host name with its status. The app groups members that report the same host
 into one machine. The Crew page draws one card per machine, with a line for each instance, and the
@@ -346,6 +347,10 @@ way.
 
 Only the view is grouped. The member id stays the key: it is what a walky talky address, the
 `--member` filters and the `?h=` link in the app use.
+
+`collie crew status --json` carries the same facts for a program. Each member has `id`, `role`,
+`address`, `link`, `version`, `mux`, `panes` and `host`. `link` is never `null`. `mux`, `panes`, `host` and `version` are `null` when the member did not
+report them, never `0`, and a member with no `host` is a machine of its own.
 
 ## Machines
 
