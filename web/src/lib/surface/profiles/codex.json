@@ -36,8 +36,9 @@
       "maxTailRows": 4
     },
     "placeholders": {
-      "texts": [
-        "Ask Codex to do anything"
+      "texts": [],
+      "patterns": [
+        "^Ask Codex to do anything$"
       ],
       "sgr": 2
     },

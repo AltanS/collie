@@ -38,9 +38,11 @@
     },
     "placeholders": {
       "texts": [
-        "type your answer here and press Enter",
-        "Type / to browse commands, or Ctrl+P for the palette",
-        "msg=interrupt · /queue · /bg · /steer · Ctrl+C cancel"
+        "type your answer here and press Enter"
+      ],
+      "patterns": [
+        "^Type / to browse commands, or Ctrl\\+P for the palette$",
+        "^msg=interrupt · /queue · /bg · /steer · Ctrl\\+C cancel$"
       ],
       "sgr": 3
     },

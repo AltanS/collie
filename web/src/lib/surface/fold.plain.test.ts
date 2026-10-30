@@ -47,9 +47,10 @@ function readOne(raw: string, harness: string): Reading {
     state: `turn ${surface.turn} / modal ${modalWord(surface.modal)} / composer ${surface.composer}${reason}`,
     ask: ask === null ? null : { kind: ask.kind, options: ask.options.map((option) => option.label), pointer },
     draft: frame === null ? "(no frame)" : frame.placeholder ? "(placeholder)" : frame.interior.text,
-    // placeholder-sgr and placeholder-fg are colour tests of the same fact `draft` already carries (the
-    // hole is a placeholder or it is not); a plain read that loses one and keeps the text rule reads the same.
-    anchors: frame === null ? "(no frame)" : frame.anchorsHit.filter((hit) => hit !== "placeholder-sgr" && hit !== "placeholder-fg").join(","),
+    // The three placeholder anchors (text, sgr, fg) are three tests of the one fact `draft` already carries
+    // (the hole is a placeholder or it is not). A styled read hits sgr or fg, a plain read hits text since
+    // the text patterns count on an unstyled read only, so which one hits is no divergence.
+    anchors: frame === null ? "(no frame)" : frame.anchorsHit.filter((hit) => !hit.startsWith("placeholder-")).join(","),
   };
 }
 
