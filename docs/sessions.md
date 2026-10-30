@@ -12,7 +12,7 @@ uses "session" only for the conversation.
 
 Sessions come from two places:
 
-- **A terminal.** Herdr, tmux, zellij, tuios or Tern holds your shells, and an agent runs in one of
+- **A terminal.** Herdr, the Herdr core, tmux, zellij, tuios or Tern holds your shells, and an agent runs in one of
   them. Collie reads the panes from it and finds the agent's session. This is how most people use
   Collie. [Terminals](multiplexers.md) says how to point Collie at yours.
 - **A durable agent.** One that you wrote or run has no screen, and each of its

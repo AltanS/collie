@@ -153,6 +153,13 @@ A scope send counts as one message against your 30 in 10 minutes, and as one mes
 against the limits of each machine. A scope that holds more than 50 panes is refused with the
 count. A word that is a member id, such as `bluefin`, is refused, and the refusal names
 `bluefin/all`. `here` from the phone is refused: a phone has no workspace, so name the folder.
+A scope with no agent pane is refused with `no panes in scope`, and the refusal names
+`collie walky who`.
+
+Each delivery is one send into one pane, so it follows the rules of
+[Into a busy pane](#into-a-busy-pane). A pane with a draft in its box, or a running turn, holds its
+delivery, and `status <id>` shows that line as held. Before it types, the member that holds the
+pane reads the pane's label again. A pane that left the scope is refused `out of scope`.
 
 ## What the target pane receives
 

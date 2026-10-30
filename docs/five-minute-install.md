@@ -10,6 +10,9 @@ Pick your system: [macOS](#macos) · [Linux](#linux) · [Windows](#windows).
 
 Other ways to install (Arch, Nix, Herdr plugin, from source): [Install](install.md#install).
 
+On herdr-app and the Herdr core, with no Herdr TUI, skip the Herdr steps and follow
+[herdr-app and the Herdr core](install.md#herdr-app-and-the-herdr-core).
+
 > **Note.** Collie gives remote shell access to your machine by design. Read
 > [Security](security.md) before you install it.
 

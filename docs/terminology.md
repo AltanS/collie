@@ -8,6 +8,8 @@ Where another tool uses a different word for the same thing, the entry says so.
 One running bridge process. It serves one phone URL and watches one terminal, and it can show
 durable agents beside it. A host can run more than one, each with its own port and state folder
 ([Multiple Collie instances on one host](deployment.md#multiple-collie-instances-on-one-host)).
+In a crew, the instances of one host show as one machine
+([A machine can run several Collies](crew.md#a-machine-can-run-several-collies)).
 
 ## Session
 
@@ -34,9 +36,13 @@ On a large screen several panes show side by side ([Large screens](configure.md#
 
 ## Terminal (mux)
 
-Herdr, tmux, zellij, tuios or Tern, the program that holds your shells and agents. Other tools call
-it a multiplexer, or a mux. You choose it with `COLLIE_MUX`
+Herdr, the Herdr core (`herdr-core`), tmux, zellij, tuios or Tern, the program that holds your
+shells and agents. Other tools call it a multiplexer, or a mux. You choose it with `COLLIE_MUX`
 ([Terminals](multiplexers.md#pointing-collie-at-a-multiplexer)).
+
+The Herdr TUI (`herdr`) and the Herdr core (`herdr-core`) are two products. `hc` is the core's
+command line, and herdr-app is the window that draws its terminals. One Collie drives one of them
+([herdr-core notes](multiplexers.md#herdr-core-notes)).
 
 ## Durable agent
 
