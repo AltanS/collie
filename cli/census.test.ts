@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
+import type { JsonValue } from "../bridge/json.ts";
 import { CREW_PROTOCOL_VERSION } from "../bridge/crew/enrollment.ts";
 import { leadStore, member, peerStore } from "../bridge/crew/fixtures.ts";
 import { serializeTrustStore } from "../bridge/crew/trust-store.ts";
@@ -94,6 +95,13 @@ const hello = (memberId: string, version: string): Response =>
     },
   });
 
+/** A member's `/crew/v1/snapshot` answer: crew headers on, the body as given. */
+const crewSnapshot = (memberId: string, body: Record<string, JsonValue>): Response =>
+  new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { "content-type": "application/json", "x-crew-protocol": String(CREW_PROTOCOL_VERSION), "x-crew-member": memberId },
+  });
+
 const snapshot = (body = SNAPSHOT): Response => new Response(body, { status: 200 });
 
 const RUNNING_LEAD: CensusInput = { running: true, crew: "lead" };
@@ -101,10 +109,12 @@ const lead = (...peers: string[]): string =>
   serializeTrustStore(leadStore({ peers: peers.map((memberId) => member({ memberId })) }));
 
 describe("members", () => {
-  test("one row per member, from the same hello dial crew status makes", async () => {
+  test("one row per member, from the same hello and snapshot dials crew status makes", async () => {
     const r = rig(
       { [TRUST]: lead("minibuch", "minibuch-hc") },
       {
+        // The snapshot answer is listed before the hello, since a fragment matches the first key that fits.
+        "minibuch.example:8787/crew/v1/snapshot": crewSnapshot("minibuch", { bridge: "connected", agents: [], mux: "herdr", panes: 4 }),
         "minibuch.example": hello("minibuch", "1.25.0"),
         "minibuch-hc.example": new Error("timed out"),
         "/api/snapshot": snapshot(),
@@ -112,14 +122,48 @@ describe("members", () => {
     );
     const census = await gatherCensus(r.deps, RUNNING_LEAD);
     expect(census.members).toEqual([
-      { name: "minibuch", role: "peer", link: "reachable", version: "1.25.0", mux: null, panes: null },
+      { name: "minibuch", role: "peer", link: "reachable", version: "1.25.0", mux: "herdr", panes: 4 },
       { name: "minibuch-hc", role: "peer", link: "unreachable", version: null, mux: null, panes: null },
     ]);
-    // `hello` only: the second question of `crew status` (a snapshot read per member) is not asked.
+    // Both questions of `crew status` for a member that answered, and only `hello` for one that did not.
     expect(r.seen.filter((s) => s.url.includes("/crew/v1/")).map((s) => s.url)).toEqual([
       "https://minibuch.example:8787/crew/v1/hello",
       "https://minibuch-hc.example:8787/crew/v1/hello",
+      "https://minibuch.example:8787/crew/v1/snapshot",
     ]);
+  });
+
+  test("an older member shows a dash for panes, a member still starting shows none, never zero", async () => {
+    const r = rig(
+      { [TRUST]: lead("old", "booting") },
+      {
+        // `old` gets the bare hello for its snapshot, so neither field arrives; `booting` names its mux and sends no count.
+        "booting.example:8787/crew/v1/snapshot": crewSnapshot("booting", { bridge: "disconnected", agents: [], mux: "tmux" }),
+        "old.example": hello("old", "1.24.2"),
+        "booting.example": hello("booting", "1.25.0"),
+        "/api/snapshot": snapshot(),
+      },
+    );
+    const census = await gatherCensus(r.deps, RUNNING_LEAD);
+    expect(census.members.map((m) => [m.name, m.mux, m.panes])).toEqual([
+      ["old", null, null],
+      ["booting", "tmux", null],
+    ]);
+  });
+
+  test("the hello mux block names the multiplexer when the snapshot answer carries no name", async () => {
+    const withBlock = new Response(
+      JSON.stringify({
+        protocol: CREW_PROTOCOL_VERSION,
+        member: "nas",
+        version: "1.24.2",
+        mux: { name: "zellij", capabilities: {}, unsupportedKeys: [], notes: {} },
+      }),
+      { status: 200, headers: { "content-type": "application/json", "x-crew-protocol": String(CREW_PROTOCOL_VERSION), "x-crew-member": "nas" } },
+    );
+    const r = rig({ [TRUST]: lead("nas") }, { "nas.example": withBlock, "/api/snapshot": snapshot() });
+    const census = await gatherCensus(r.deps, RUNNING_LEAD);
+    expect(census.members.map((m) => [m.name, m.mux, m.panes])).toEqual([["nas", "zellij", null]]);
   });
 
   test("a member that never answers shows unreachable and the other blocks still fill", async () => {

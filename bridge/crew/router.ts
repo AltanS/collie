@@ -110,6 +110,15 @@ export const CREW_MUX_FIELD = "mux";
 export const CREW_SESSIONS_FIELD = "sessions";
 
 /**
+ * The two OPTIONAL fields a `snapshot` answer carries beside the body (M76 spec 04, 1.25.0): `mux`,
+ * the registry name of the multiplexer this member drives, and `panes`, how many agent panes it
+ * serves. **Absent means "this answer said nothing"**, never an empty multiplexer and never zero
+ * panes: a member whose bridge has not read its multiplexer yet sends no `panes` at all.
+ */
+export const CREW_STATUS_MUX_FIELD = "mux";
+export const CREW_PANES_FIELD = "panes";
+
+/**
  * The OPTIONAL field a `hello` answer carries its Surface reader version on (M56 spec 09): one small
  * integer (`SURFACE_VERSION`), so a lead can show which reader judged a member's panes. **Absent means
  * "a build that computes no Surface"**, never version 0, and it refuses nothing.
@@ -325,6 +334,8 @@ export interface CrewSurface {
   readonly sessions?: SessionCardSource;
   /** This collie's Surface reader version, for `hello` (M56 spec 09). Absent on a build that computes no Surface. */
   readonly surfaceVersion?: number | undefined;
+  /** The agent panes this machine serves, for its `snapshot` answer (M76 spec 04). See {@link CrewRouterDeps.panes}. */
+  readonly panes?: () => number | null;
 }
 
 /**
@@ -509,6 +520,14 @@ export interface CrewRouterDeps {
    * is omitted, which the lead reads as **not reported**, never as an idle machine.
    */
   readonly machineStats?: () => MachineSample | null;
+  /**
+   * **How many agent panes this machine serves**, published beside the snapshot body (M76 spec 04).
+   *
+   * `null` ⇒ the machine cannot count right now (its bridge has not read the multiplexer yet), and
+   * the field is omitted. It is never sent as `0`: a lead reads absence as "not reported", and zero
+   * as "reported, and nothing is running".
+   */
+  readonly panes?: () => number | null;
   /**
    * §20's two REQUEST headers reaching through: the lead's own settled release, and the turn.
    *
@@ -1158,12 +1177,19 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
       // one, which the lead reads as "not reported", never as an idle machine (§7.1).
       const load = deps.machineStats?.() ?? null;
       const withLoad = load === null ? withVersion : { ...withVersion, [CREW_MACHINE_FIELD]: load };
+      // M76 spec 04: the multiplexer's registry name and the agent pane count, in that same seat. The
+      // name is the one `hello`'s block already carries (`deps.mux`), so the two cannot disagree; the
+      // count is omitted while the machine cannot count, which the lead reads as "not reported".
+      const muxName = deps.mux?.()?.name ?? "";
+      const paneCount = deps.panes?.() ?? null;
+      const withMux = muxName === "" ? withLoad : { ...withLoad, [CREW_STATUS_MUX_FIELD]: muxName };
+      const withPanes = paneCount === null ? withMux : { ...withMux, [CREW_PANES_FIELD]: paneCount };
       // §21: the receipts this member wrote for messages from elsewhere that its lead has not acked,
       // in that same seat, with the cursor of the newest. The lead's ack (a REQUEST header, lower-case
       // lookup) is applied first, so what it already read is gone. Omitted when nothing is held, which
       // the lead reads as "nothing to report" (§7.1). A report on the exchange, never a stored state.
       const walkyReport = deps.walky?.report?.(headerValue(req, WALKY_ACK_HEADER.toLowerCase())) ?? null;
-      const withWalky = walkyReport === null ? withLoad : { ...withLoad, [WALKY_REPORT_FIELD]: walkyReport };
+      const withWalky = walkyReport === null ? withPanes : { ...withPanes, [WALKY_REPORT_FIELD]: walkyReport };
       // §20's two REQUEST headers, read LAST and answered with nothing. They are additive-optional
       // and absent-means-closed: a build with no `onFollow` ignores both, which is a correct peer,
       // and a peer that reads them still decides for itself. Handed over synchronously and never

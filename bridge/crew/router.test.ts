@@ -695,6 +695,37 @@ describe("GET /crew/v1/snapshot — the one merged route, §9.2", () => {
     expect(Object.hasOwn(answered as object, "machineStats")).toBe(false);
   });
 
+  // ── M76 spec 04: THE MEMBER'S MUX NAME AND PANE COUNT, IN THAT SAME SEAT ────
+  test("mux and panes ride beside the body, and a member that cannot count sends no panes, never 0", async () => {
+    const h = harness(peerStore());
+    const body = ownSnapshot();
+    let counted: number | null = 3;
+    const handler = createCrewRouter({
+      store: h.store,
+      audit: h.audit,
+      transportPinned: true,
+      snapshot: () => body,
+      mux: () => ({ name: "herdr", capabilities: muxCaps({}), unsupportedKeys: [], notes: {} }),
+      panes: () => counted,
+    });
+    const res = (await call(handler, CREW_SNAPSHOT_PATH, { headers: authed }))!;
+    expect(await res.json()).toEqual({ ...body, mux: "herdr", panes: 3 });
+    // The browser's own snapshot is untouched.
+    expect(body).toEqual(ownSnapshot());
+
+    // A bridge still starting has no count: the key is absent, and zero is a different statement.
+    counted = null;
+    const starting: unknown = await (await call(handler, CREW_SNAPSHOT_PATH, { headers: authed }))!.json();
+    expect(starting).toEqual({ ...body, mux: "herdr" });
+    // SAFETY: `toEqual` above has already established that this is an object.
+    expect(Object.hasOwn(starting as object, "panes")).toBe(false);
+
+    // A real zero is reported as zero.
+    counted = 0;
+    const idle: unknown = await (await call(handler, CREW_SNAPSHOT_PATH, { headers: authed }))!.json();
+    expect(idle).toEqual({ ...body, mux: "herdr", panes: 0 });
+  });
+
   test("an UNADMITTED caller never reaches the follow headers either", async () => {
     const h = harness(peerStore());
     let seen = 0;

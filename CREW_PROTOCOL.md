@@ -354,6 +354,13 @@ answering build:
   disks? }` (`disks` added later the same day: `[{ mount, used, total }]`, at most four, §19). It rides **`/crew/v1/snapshot`'s response only**, beside the body for the warrant pair's reason, and
   never `hello`. **Absent or malformed means "this member reported no load"**, never "idle" (§7.1).
 
+- `mux` and `panes` are **OPTIONAL**, added in 1.25.0 (M76 spec 04, §19 "The member's multiplexer and
+  its panes"): the registry name of the multiplexer the answering machine drives, and the count of
+  agent panes it serves. They ride **`/crew/v1/snapshot`'s response**, beside the body for the warrant
+  pair's reason. `mux` is the same name `hello`'s `mux` block carries. **An absent `mux` or `panes`
+  means "this member did not say"**, never "no multiplexer" and never zero (§7.1). A member whose
+  bridge has not read its multiplexer yet sends **no `panes`**, not `0`.
+
 - `pairingDigest` is **OPTIONAL**, added 2026-08-20 (§18.14): a digest of the synced paired-device
   registry this member holds, and `null`/absent on every member that holds none — which is every peer
   that is not the deputy. **An absent field means "nothing synced here", never "up to date"** (§7.1),
@@ -672,6 +679,17 @@ updated machines, so build skew is the steady state (§7), and this section is t
   `total` that is not positive, a `used` outside `0..total`) drops the whole sample, like any other
   field out of range. Past four entries the lead keeps the first four rather than refuse a later build
   that sends more. Unknown keys inside an entry are ignored.
+
+- **A member's snapshot answer gained an optional `mux` and `panes`** (added in 1.25.0, M76 spec 04).
+  `mux` is the registry name of the multiplexer that member drives (a short string such as `herdr`,
+  `tmux` or `zellij`), and `panes` is how many agent panes it serves, a non-negative whole number.
+  Additive-optional with the closed reading this section requires: **absent, blank or malformed means
+  the member did not say**, which `collie crew status` and `collie status` print as `-` and never as
+  zero. A lead on the new build shows `-` for an older member, and an older lead passes both fields
+  over untouched, so neither side refuses the other over them. A member whose bridge is still starting
+  cannot count its panes and sends no `panes`. Nothing in `bridge/crew/merge.ts` reads either field, so
+  neither reaches a browser's snapshot. `CREW_PROTOCOL_VERSION` stays `2`, no new route, no new verb
+  and no new header.
 
 - **A pane gained an optional `gitHead`** (added 2026-10-08). It names what the checkout holding
   the pane's folder is on: `{ kind: "branch", name }` or `{ kind: "detached", sha }`, the full object
@@ -3097,6 +3115,31 @@ same protocol integer: `X-Crew-Protocol` stays `2`.
 - **What the lead keeps is the lead's.** The day of minutes (`machine-history.json`) and the alert
   rules (`machine-alerts.json`) live on the lead only. A peer writes neither, and none of the three
   `/api/machines*` routes is forwarded with `?host=` (§9.1): a peer answers them `404 crew.not_lead`.
+- No new route, no new dial, no new budget. The field rides an answer §10.1 already collects.
+
+### The member's multiplexer and its panes, in the same seat *(added in 1.25.0, M76 spec 04)*
+
+`GET /crew/v1/snapshot`'s response also carries an optional **`mux`** and an optional **`panes`**:
+which multiplexer the answering machine drives, and how many agent panes it serves. Same seat as
+`version` and `machineStats`, same reason, same protocol integer: `X-Crew-Protocol` stays `2`.
+
+```json
+{ "mux": "herdr", "panes": 4 }
+```
+
+- `mux` is the multiplexer's registry name, the string `hello`'s `mux` block carries as its `name`.
+  The member reads it from the same place, so the two cannot name one machine two different things.
+  A lead that has no snapshot answer to read it from (the lead's own roster entry, which a peer never
+  asks for a snapshot) falls back to the `hello` block's name.
+- `panes` is the count of agent panes across the sessions the member runs, as its own state engines
+  hold them. A member whose bridge has not read its multiplexer yet (it is starting, or the
+  multiplexer is down) cannot count and **sends no `panes`**. A lead never reads a missing count as
+  `0`: zero panes is a statement a running member makes, and silence is not one.
+- The lead banks both in memory beside that member's `version` (`PeerState.mux`, `PeerState.panes`),
+  replaced by every answer, so a count that was true a sweep ago is never shown as the current one.
+  `GET /api/crew` copies them into the member's row, and `collie crew status` and `collie status`
+  print them (`-` where a field is absent). Neither is persisted, and `TRUST_STORE_VERSION` stays `1`.
+- It is a **report**, like the rest of this section: no route, verb or decision branches on it.
 - No new route, no new dial, no new budget. The field rides an answer §10.1 already collects.
 
 ### The header

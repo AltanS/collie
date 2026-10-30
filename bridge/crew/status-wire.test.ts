@@ -297,3 +297,21 @@ describe("crewStatusBody — §10.2's presentation split, copied and never deriv
     expect("linkState" in body.members[1]!).toBe(false);
   });
 });
+
+describe("crewStatusBody, a member's mux and pane count (M76 spec 04)", () => {
+  test("they are copied from the registry's bank, and the lead's own row carries only its mux", () => {
+    const body = crewStatusBody(
+      sources({ mux: "herdr", peers: [contribution({ memberId: "laptop", mux: "tmux", panes: 0 })] }),
+    )!;
+    expect(body.members[0]).toMatchObject({ isLead: true, mux: "herdr" });
+    expect(Object.hasOwn(body.members[0]!, "panes")).toBe(false);
+    expect(body.members[1]).toMatchObject({ id: "laptop", mux: "tmux", panes: 0 });
+  });
+
+  test("a member that reported neither has neither key, so an old member parses and renders as before", () => {
+    const body = crewStatusBody(sources())!;
+    expect(Object.hasOwn(body.members[0]!, "mux")).toBe(false);
+    expect(Object.hasOwn(body.members[1]!, "mux")).toBe(false);
+    expect(Object.hasOwn(body.members[1]!, "panes")).toBe(false);
+  });
+});

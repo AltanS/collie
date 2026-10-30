@@ -496,7 +496,7 @@ function crewTree(): readonly Subcommand[] {
       cmdCrewUpdate,
       true,
     ),
-    crewSubcommand("status", "mode, members, reachability, secret pickup and why a link is refused", cmdCrewStatus, true),
+    crewSubcommand("status", "mode, members, reachability, each member's version, mux and panes, secret pickup and why a link is refused (--json)", cmdCrewStatus, true),
     crewSubcommand("rotate", "reissue the crew secret and hand it to every reachable peer", (deps) =>
       cmdCrewRotate(deps),
     ),

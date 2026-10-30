@@ -40,7 +40,9 @@ import {
   crewHelloBudget,
   crewTimeoutBudget,
   crewTimeoutClampWarning,
+  parsePeerStatus,
   PeerClient,
+  type PeerStatusReport,
   sweepPeers,
   type HelloResult,
   type CrewFetch,
@@ -1318,8 +1320,9 @@ function retireCrewBind(deps: CrewDeps): string[] {
  * member a generation behind — and what only the far side knows stays as its verbatim reason string.
  */
 export async function cmdCrewStatus(deps: CrewDeps, args: readonly string[]): Promise<number> {
-  const { bare } = parseCrewArgs(args, ["force", "no-probe"]);
+  const { bare } = parseCrewArgs(args, ["force", "no-probe", "json"]);
   const data = await deps.store.load();
+  if (bare.has("json")) return await crewStatusJson(deps, data, bare.has("no-probe"));
   if (data === null || data.crew === null) {
     deps.io.out("mode: solo — this collie is not in a crew (no trust store, or an empty one).");
     deps.io.out(soloCrewHint(deps.host));
@@ -1450,6 +1453,7 @@ export async function cmdCrewStatus(deps: CrewDeps, args: readonly string[]): Pr
       // fed from it, on the strict per-poll budget that every real read runs under.
       for (const line of dataLines(reach)) emit(line.text, line.tone);
       for (const line of versionLines(outcome.value.version, ours, m.memberId)) emit(line, "dim");
+      emit(muxLine(memberStatusOf(reach)), "dim");
       // The Surface reader it sent on `hello` (M56): none means an older build, to which this lead refuses text.
       emit(`    surface ${outcome.value.surfaceVersion === undefined ? "none (older build)" : `reader ${String(outcome.value.surfaceVersion)}`}`, "dim");
       // The two phases of RFC §5, for this member: what it says it holds, and whether its listener
@@ -1549,6 +1553,70 @@ export function reportDrift(deps: DriftDeps, data: TrustStoreData): void {
   }
   deps.io.out("  Run `collie restart` HERE to activate it. Nothing is lost meanwhile: the store is correct,");
   deps.io.out("  it is the process that is behind, and every membership verb restarts on its own machine.");
+}
+
+/**
+ * What a member says about its multiplexer and its panes (M76 spec 04, CREW_PROTOCOL.md §19).
+ *
+ * The name comes off the member's `snapshot` answer, and off the `mux` block of its `hello` when
+ * the answer carries none (the lead's own roster entry is never asked for a snapshot, and a member
+ * older than 1.25.0 sends the block only). The count comes from the `snapshot` answer alone. Each is
+ * `null` when the member did not say: that prints as `-`, and is never read as `0` panes.
+ */
+export function memberStatusOf(reach: MemberReach | undefined): PeerStatusReport {
+  if (reach === undefined) return { mux: null, panes: null };
+  const answered: PeerStatusReport = reach.data !== null && reach.data.ok ? parsePeerStatus(reach.data.value) : { mux: null, panes: null };
+  const helloMux = reach.hello.ok ? (reach.hello.value.mux?.name ?? null) : null;
+  return { mux: answered.mux ?? helloMux, panes: answered.panes };
+}
+
+/** The `mux` line of one reachable member: `mux     herdr · 4 panes`, with `-` for what it did not say. */
+function muxLine(status: PeerStatusReport): string {
+  const panes = status.panes === null ? "-" : `${String(status.panes)} ${status.panes === 1 ? "pane" : "panes"}`;
+  return `    mux     ${status.mux ?? "-"} · ${panes}`;
+}
+
+type JsonLink = "reachable" | "unreachable" | "incompatible" | "unenrolled" | "not-probed";
+
+/**
+ * `crew status --json`: one document, nothing else on stdout. The same probe as the plain view, and
+ * none of its writes: no first-contact stamp and no anchor convergence, because a program reading
+ * this must not change the roster by looking at it.
+ */
+async function crewStatusJson(deps: CrewDeps, data: TrustStoreData | null, noProbe: boolean): Promise<number> {
+  if (data === null || data.crew === null) {
+    deps.io.out(JSON.stringify({ mode: "solo", members: [] }));
+    return EXIT.OK;
+  }
+  const { mode } = deriveMode({
+    peers: data.peers.filter((p) => p.status === "enrolled"),
+    lead: data.lead !== null && data.lead.status === "enrolled" ? data.lead : null,
+  });
+  const roster = data.lead === null ? data.peers : [data.lead, ...data.peers];
+  const reaches = noProbe || roster.length === 0 ? new Map<string, MemberReach>() : await probeMemberReach(deps, data, roster);
+  const members = roster.map((m) => {
+    const reach = reaches.get(m.memberId);
+    const link: JsonLink = jsonLinkOf(m, reach, noProbe);
+    const status = memberStatusOf(reach);
+    return {
+      id: m.memberId,
+      role: m.role,
+      address: m.address,
+      link,
+      version: reach?.hello.ok === true ? reach.hello.value.version : null,
+      mux: status.mux,
+      panes: status.panes,
+    };
+  });
+  deps.io.out(JSON.stringify({ crew: { id: data.crew.crewId, name: data.crew.name }, mode, self: data.self.memberId, members }));
+  return EXIT.OK;
+}
+
+function jsonLinkOf(m: TrustedMember, reach: MemberReach | undefined, noProbe: boolean): JsonLink {
+  if (m.status !== "enrolled") return "unenrolled";
+  if (noProbe || reach === undefined) return "not-probed";
+  if (reach.hello.ok) return "reachable";
+  return reach.hello.state === "incompatible" ? "incompatible" : "unreachable";
 }
 
 /**

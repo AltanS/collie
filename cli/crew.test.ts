@@ -1942,6 +1942,52 @@ describe("collie crew status", () => {
     }
   });
 
+  test("the mux line shows the registry name and the pane count from the snapshot answer (M76 spec 04)", async () => {
+    const h = withVersion(
+      harness(leadStore({ peers: [member({ memberId: "nas" })] }), [
+        jsonReply({ protocol: 2, member: "nas", version: "1.0.0-alpha.12" }, 200, "nas"),
+        jsonReply({ bridge: "connected", agents: [], mux: "herdr", panes: 4 }, 200, "nas"),
+      ]),
+      "1.0.0-alpha.12",
+    );
+    await cmdCrewStatus(h.deps, []);
+    expect(text(h.io)).toContain("    mux     herdr · 4 panes");
+  });
+
+  test("an older member prints dashes, and a member still starting prints a name with no count, never 0", async () => {
+    const older = harness(leadStore({ peers: [member({ memberId: "nas" })] }), [
+      jsonReply({ protocol: 2, member: "nas" }, 200, "nas"),
+      jsonReply({ bridge: "connected", agents: [] }, 200, "nas"),
+    ]);
+    await cmdCrewStatus(older.deps, []);
+    expect(text(older.io)).toContain("    mux     - · -");
+
+    const starting = harness(leadStore({ peers: [member({ memberId: "nas" })] }), [
+      jsonReply({ protocol: 2, member: "nas" }, 200, "nas"),
+      jsonReply({ bridge: "disconnected", agents: [], mux: "tmux" }, 200, "nas"),
+    ]);
+    await cmdCrewStatus(starting.deps, []);
+    expect(text(starting.io)).toContain("    mux     tmux · -");
+    expect(text(starting.io)).not.toContain("0 panes");
+  });
+
+  test("--json is one document with mux and panes per member, and it writes nothing", async () => {
+    const h = harness(leadStore({ peers: [member({ memberId: "nas" }), member({ memberId: "attic" })] }), [
+      // The replies are consumed in call order: both hellos go out first, then each member's snapshot.
+      jsonReply({ protocol: 2, member: "nas", version: "1.25.0" }, 200, "nas"),
+      jsonReply({ protocol: 2, member: "attic", version: "1.24.2" }, 200, "attic"),
+      jsonReply({ bridge: "connected", agents: [], mux: "zellij", panes: 2 }, 200, "nas"),
+      jsonReply({ bridge: "connected", agents: [] }, 200, "attic"),
+    ]);
+    expect(await cmdCrewStatus(h.deps, ["--json"])).toBe(0);
+    expect(h.io.stdout).toHaveLength(1);
+    const doc = JSON.parse(h.io.stdout[0]!);
+    const byId = Object.fromEntries(doc.members.map((m: { id: string }) => [m.id, m]));
+    expect(byId.nas).toMatchObject({ link: "reachable", version: "1.25.0", mux: "zellij", panes: 2 });
+    expect(byId.attic).toMatchObject({ link: "reachable", mux: null, panes: null });
+    expect(doc.mode).toBe("lead");
+  });
+
   test("a protocol mismatch is still INCOMPATIBLE, and no version line dresses it up (§7)", async () => {
     const h = withVersion(
       harness(leadStore({ peers: [member({ memberId: "nas" })] }), [

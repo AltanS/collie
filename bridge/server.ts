@@ -2333,6 +2333,17 @@ export function startServer(opts: {
       const active = registry.get();
       return active === undefined ? null : muxConfigBody(active.herdr);
     },
+    // M76 spec 04: the agent panes this machine serves, for its `snapshot` answer. `null` until the
+    // primary session's engine has read its multiplexer once (`bridge` is `disconnected` before the
+    // first good poll and while the multiplexer is down): a count it cannot make is not zero.
+    panes: () => {
+      const runtimes = registry.ordered();
+      if (runtimes.find((rt) => rt.isPrimary)?.engine.current().bridge !== "connected") return null;
+      return runtimes
+        .map((rt) => rt.engine.current())
+        .filter((snap) => snap.bridge === "connected")
+        .reduce((sum, snap) => sum + snap.agents.length, 0);
+    },
     // M55: every session's card, so the lead can answer `/api/config?host=&session=` for a program
     // session on this machine. Null on a machine that runs no program, so its `hello` is unchanged.
     sessions: () => registry.cards(),

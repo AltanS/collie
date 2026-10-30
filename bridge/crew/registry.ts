@@ -209,6 +209,17 @@ export interface PeerState {
    */
   readonly preflight: PeerPreflight | null;
   /**
+   * The multiplexer that member last reported on its `snapshot` answer (M76 spec 04, CREW_PROTOCOL.md
+   * §19), by registry name. **Omitted** until it reports one, and again once an answer carries none:
+   * a build older than the field never says, and the lead shows `-` for it. In memory only.
+   */
+  readonly mux?: string;
+  /**
+   * The agent panes that member last reported serving. **Omitted** when its last answer carried no
+   * count (a member older than the field, or one whose bridge was still starting): never `0`.
+   */
+  readonly panes?: number;
+  /**
    * The presentation split for a member that is not answering (§10.2, M22/05), or **absent when
    * there is nothing to say** — a reachable member, or a state this registry has not folded a
    * failure into yet.
@@ -503,6 +514,21 @@ export class CrewRegistry {
    */
   recordPreflight(memberId: string, preflight: PeerPreflight | null): PeerState {
     const next: PeerState = { ...this.state(memberId), preflight };
+    this.peers.set(memberId, next);
+    return next;
+  }
+
+  /**
+   * Bank one member's multiplexer name and pane count, as the sweep read them off its `snapshot`
+   * answer (M76 spec 04). The answer is authoritative for both: a field it did not carry is cleared,
+   * because a pane count that was true a sweep ago is a wrong count now, and a member that came back
+   * without a field has told us it has none to give. Only from a successful answer (the caller's rule).
+   */
+  recordStatus(memberId: string, report: { readonly mux: string | null; readonly panes: number | null }): PeerState {
+    const { mux: _mux, panes: _panes, ...rest } = this.state(memberId);
+    let next: PeerState = rest;
+    if (report.mux !== null) next = { ...next, mux: report.mux };
+    if (report.panes !== null) next = { ...next, panes: report.panes };
     this.peers.set(memberId, next);
     return next;
   }

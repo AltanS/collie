@@ -952,6 +952,16 @@ export interface CrewMemberStatus {
    * does not make the distinction" and the page renders today's single word (§7.1).
    */
   linkState?: "reconnecting" | "attention";
+  /**
+   * The multiplexer this member drives, by registry name (M76 spec 04, 1.25.0). **Omitted** when the
+   * member has not reported one: an older build, or no answer yet. Never an empty string.
+   */
+  mux?: string;
+  /**
+   * The agent panes this member serves, as its own `snapshot` answer counted them (1.25.0). **Omitted**
+   * when it sent no count: an older build, or a bridge still starting. Never `0` for "unknown".
+   */
+  panes?: number;
 }
 
 // ── Machines: every machine's load, kept by the lead (ADR 0084) ──────────────────

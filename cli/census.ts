@@ -4,7 +4,7 @@ import { parseTrustStore, trustStorePath, type TrustedMember } from "../bridge/c
 import { escapeLabelForTerminal } from "../bridge/pairing.ts";
 import type { AgentStatus } from "../bridge/types.ts";
 import type { CliContext } from "./context.ts";
-import { probeMembers } from "./crew.ts";
+import { memberStatusOf, probeMemberReach } from "./crew.ts";
 import { pairedRegistryOf } from "./pairing.ts";
 import { readOwnSnapshot } from "./snapshot-read.ts";
 import type { Files } from "./sys.ts";
@@ -13,8 +13,8 @@ import type { Files } from "./sys.ts";
 // phones are paired, and which agent sessions exist and in what state. Three blocks, each a value first
 // and a few lines of words second, so `status --json` and the plain text read the same facts.
 //
-// Every read here is a READ. The members come from the same `hello` dial `collie crew status` makes
-// (`probeMembers`), and not from its printing: that verb also stamps first contact and converges the
+// Every read here is a READ. The members come from the same `hello` and `snapshot` dials `collie crew
+// status` makes (`probeMemberReach`), and not from its printing: that verb also stamps first contact and converges the
 // anchor record, and a status line must write nothing. The sessions come from this bridge's own
 // `/api/snapshot` on the local read credential (`cli/snapshot-read.ts`), never a Tailscale header.
 
@@ -33,9 +33,9 @@ export interface CensusMember {
   readonly link: MemberLink;
   /** The version it reported on `hello`, or `null` when it did not answer or reports none. */
   readonly version: string | null;
-  /** The multiplexer it drives. `null` until the status wire carries it (M76 spec 04): shown as `-`. */
+  /** The multiplexer it drives, as it reported it. `null` when it did not answer or says none (an older build): shown as `-`. */
   readonly mux: string | null;
-  /** The panes it holds. `null` until the status wire carries it (M76 spec 04): shown as `-`. */
+  /** The agent panes it serves. `null` when it sent no count (an older build, or a bridge still starting): shown as `-`, never `0`. */
   readonly panes: number | null;
 }
 
@@ -103,19 +103,20 @@ async function gatherMembers(deps: CensusDeps): Promise<CensusMember[]> {
   const data = raw === null ? null : parseTrustStore(raw);
   if (data === null || data.crew === null) return [];
   const roster: readonly TrustedMember[] = data.lead === null ? data.peers : [data.lead, ...data.peers];
-  const hellos = await probeMembers(deps, data, roster);
+  const reaches = await probeMemberReach(deps, data, roster);
   return roster.map((m): CensusMember => {
-    if (m.status !== "enrolled") return memberRow(m, "unenrolled", null);
-    const outcome = hellos.get(m.memberId);
-    if (outcome === undefined) return memberRow(m, "unreachable", null);
-    if (outcome.ok) return memberRow(m, "reachable", outcome.value.version);
-    return memberRow(m, outcome.state === "incompatible" ? "incompatible" : "unreachable", null);
+    if (m.status !== "enrolled") return memberRow(m, "unenrolled", null, undefined);
+    const reach = reaches.get(m.memberId);
+    if (reach === undefined) return memberRow(m, "unreachable", null, undefined);
+    if (reach.hello.ok) return memberRow(m, "reachable", reach.hello.value.version, reach);
+    return memberRow(m, reach.hello.state === "incompatible" ? "incompatible" : "unreachable", null, undefined);
   });
 }
 
-/** One row. Mux and pane count are `null` until the status wire carries them (M76 spec 04). */
-function memberRow(m: TrustedMember, link: MemberLink, version: string | null): CensusMember {
-  return { name: m.memberId, role: m.role === "lead" ? "lead" : "peer", link, version, mux: null, panes: null };
+/** One row. Mux and pane count are what the member said (`memberStatusOf`), `null` where it said nothing. */
+function memberRow(m: TrustedMember, link: MemberLink, version: string | null, reach: Parameters<typeof memberStatusOf>[0]): CensusMember {
+  const { mux, panes } = memberStatusOf(reach);
+  return { name: m.memberId, role: m.role === "lead" ? "lead" : "peer", link, version, mux, panes };
 }
 
 /** The wire this block reads: every field optional, so a body that disagrees degrades to "unreadable". */

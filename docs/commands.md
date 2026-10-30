@@ -49,8 +49,10 @@ build.
 
 - `members` has one line per machine in the crew: its name, the link (`reachable`, `unreachable`,
   `incompatible` or `unenrolled`), the version it reports, its mux and its pane count. A member that
-  does not answer shows `unreachable` and the other lines still print. Mux and pane count show `-`
-  until the crew reports them. A machine with no crew prints `no crew` and no members block.
+  does not answer shows `unreachable` and the other lines still print. Mux and pane count are what
+  the member itself reports. They show `-` for a member on a build older than 1.25.0, and a member
+  whose bridge is still starting shows its mux and `-` for panes, never `0`. A machine with no crew
+  prints `no crew` and no members block.
 - `devices` has the count of paired phones, and their names when there are five or fewer.
 - `sessions` counts this bridge's agent sessions by state (`working`, `blocked`, `idle`, `done`,
   `unknown`) and says how many report a session id. On a lead the count covers the whole crew. With
@@ -58,7 +60,8 @@ build.
 
 The sessions block reads the bridge's own snapshot with the local read credential in the state
 folder, the same way `collie doctor` does. It never sends a Tailscale header. The member lines use
-the same dial as `collie crew status`, and the dials run at the same time.
+the same dials as `collie crew status` (a `hello` and a `snapshot` per member), and the dials run at
+the same time.
 
 `collie status --json` keeps every key it had and adds `census`, an object with three parts:
 `members` (a list of `{ name, role, link, version, mux, panes }`, empty without a crew), `devices`
@@ -115,6 +118,23 @@ Receipts with no agent program, which come from a plain shell pane, make a separ
 agent to confirm that a send was submitted, so its outcomes say nothing about whether sends reach an
 agent program.
 
+
+## See what this Collie knows
+
+Four read-only verbs answer "what is here?" from a terminal. They write nothing and restart nothing,
+and each one has a `--json` form for a program.
+
+| Question | Command | What it tells you |
+| --- | --- | --- |
+| Is it running, and with whom? | `collie status` | The banner and URLs, then the crew's members, the paired devices and the agent sessions by state |
+| Which multiplexers are here? | `collie mux list` | Every multiplexer this build can drive, which this machine has, and which instance drives each |
+| Which agent sessions exist? | `collie sessions` | One row per agent session of the whole crew: member, mux, seat, harness and state |
+| Which machines are in the crew? | `collie crew status` | Each member's link, version, mux and pane count, with the reason when a link is refused |
+
+Start with `collie status`. It gives the counts. Go to `collie sessions` for the rows behind the
+session count, to `collie mux list` for the multiplexer behind a mux name, and to `collie crew status`
+for one member's link in detail. A member older than 1.25.0 shows `-` for its mux and pane count in
+`status` and `crew status`.
 
 ## Put `collie` on your PATH
 

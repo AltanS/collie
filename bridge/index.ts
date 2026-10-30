@@ -2490,6 +2490,7 @@ const crewStatus =
           // The same string `hello` answers with (§7.1) — resolved once at boot, like the crew
           // router's, so the two surfaces cannot name this build two different versions.
           version: crewVersion,
+          mux: cfg.mux,
           peers: crewLead.contributions(),
           now: Date.now(),
         });

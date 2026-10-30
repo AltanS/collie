@@ -15,7 +15,7 @@ import {
   type PeerSnapshotBody,
   type SnapshotPlan,
 } from "./merge.ts";
-import { parsePeerVersion, sweepPeers, type CrewLink, type PeerOutcome } from "./peer-client.ts";
+import { parsePeerStatus, parsePeerVersion, sweepPeers, type CrewLink, type PeerOutcome } from "./peer-client.ts";
 import type { HostResolution, HostSelector, CrewRegistry, PeerHealth, PeerState } from "./registry.ts";
 import { PAIRING_LABEL_COLLISION } from "./router.ts";
 import {
@@ -629,6 +629,10 @@ export class CrewLead {
           // the same cast and the same reason as `foldPeerMemory`'s. `parsePeerPreflight` re-checks
           // every field, and anything half-formed reads as `null`, which is unknown and blocks.
           this.deps.registry.recordPreflight(memberId, parsePeerPreflight(outcome.value as JsonValue));
+          // M76 spec 04: its multiplexer name and pane count, off the same answer and for the same reason.
+          // SAFETY: the same cast and the same reason as the line above; `parsePeerStatus` re-checks
+          // both fields and answers `null` for anything it cannot trust.
+          this.deps.registry.recordStatus(memberId, parsePeerStatus(outcome.value as JsonValue));
           // ADR 0084: that member's own load, off the same answer, stamped on THIS lead's clock.
           // SAFETY: the same cast and the same reason as the line above; `parsePeerMachineStats`
           // re-checks every field and answers `null` for anything it cannot trust.

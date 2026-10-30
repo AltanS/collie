@@ -9,7 +9,7 @@ other machine is a member, and the deputy is the one member allowed to take over
 | `collie crew invite` | Mint a single-use, 10-minute enrollment token (**on the lead**) |
 | `collie crew add <ssh-host>` | Install and enroll a peer over **your own SSH** (on the lead) |
 | `collie crew update <member>… \| --all` | Preflight every machine, then the lead, then each peer one at a time over **your own SSH**; the first failure stops the run ([details](upgrading.md#updating-the-rest-of-the-crew)) |
-| `collie crew status` | Mode, members, reachability, secret pickup, and why a link is refused |
+| `collie crew status` | Mode, members, reachability, each member's version, mux and pane count, secret pickup, and why a link is refused (`--json` for a program) |
 | `collie crew rotate` | Reissue the crew secret and hand it to every reachable peer |
 | `collie crew rename <name>` | Give the crew a new name (**on the lead**) |
 | `collie crew remove <member>` | Unpin and forget a member (on the lead) |

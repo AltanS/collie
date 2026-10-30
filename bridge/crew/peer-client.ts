@@ -10,7 +10,9 @@ import {
 import {
   LEAD_CONFLICT,
   CREW_MUX_FIELD,
+  CREW_PANES_FIELD,
   CREW_SESSIONS_FIELD,
+  CREW_STATUS_MUX_FIELD,
   CREW_SURFACE_FIELD,
   CREW_PREFIX,
   PAIRING_LABEL_COLLISION,
@@ -1483,6 +1485,31 @@ export function parsePeerVersion(value: JsonValue): string | null {
   if (typeof raw !== "string") return null;
   const trimmed = raw.trim();
   return trimmed === "" ? null : trimmed;
+}
+
+/** What a member's `snapshot` answer says about its multiplexer and its panes (M76 spec 04). */
+export interface PeerStatusReport {
+  /** The multiplexer's registry name, or `null` when the answer carried none. */
+  readonly mux: string | null;
+  /** The agent pane count, or `null` when the answer carried none (a member that could not count). */
+  readonly panes: number | null;
+}
+
+/**
+ * Read a member's `mux` and `panes` off the answer its `snapshot` rode on.
+ *
+ * Each is `null` on every shape this build cannot trust (absent, blank, wrong type, a negative or
+ * fractional count). `null` means **"this answer said nothing"**, not "no multiplexer" and never
+ * "zero panes": an older member omits both, and a member still starting omits `panes`.
+ */
+export function parsePeerStatus(value: JsonValue): PeerStatusReport {
+  const rec = asRecord(value);
+  const mux = rec?.[CREW_STATUS_MUX_FIELD];
+  const panes = rec?.[CREW_PANES_FIELD];
+  return {
+    mux: typeof mux === "string" && mux.trim() !== "" && mux.length <= MUX_NAME_MAX ? mux.trim() : null,
+    panes: typeof panes === "number" && Number.isSafeInteger(panes) && panes >= 0 ? panes : null,
+  };
 }
 
 /**
