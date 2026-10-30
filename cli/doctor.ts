@@ -44,6 +44,7 @@ import {
 import { sidName } from "../bridge/sddl.ts";
 import { DEVICES_FILENAME, isExpired, parseRegistryText } from "../bridge/pairing.ts";
 import { pairedRegistryOf } from "./pairing.ts";
+import { sameBuild } from "../bridge/version.ts";
 import { collieVersionBare, type CliContext } from "./context.ts";
 import { aboutCrew, bad, ok, skipped, warn, type DoctorStatus, type Finding } from "./finding.ts";
 import { parseAccountWindowsSetting } from "../bridge/account-windows-setting.ts";
@@ -2169,7 +2170,7 @@ function memberVersions(
     );
   }
   const behind = answered.filter(
-    (e) => e.outcome.value.version !== null && e.outcome.value.version !== ours,
+    (e) => e.outcome.value.version !== null && !sameBuild(e.outcome.value.version, ours),
   );
   const skewed = behind.map((e) => `${e.id} runs ${e.outcome.value.version}`);
   if (skewed.length === 0) return ok("member-versions", `every member that reported one runs ${ours}${note}`);

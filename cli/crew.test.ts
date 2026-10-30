@@ -1890,6 +1890,33 @@ describe("collie crew status", () => {
     expect(rendered).not.toContain("collie update` here");
   });
 
+  test("one commit stamped at two abbreviation lengths is not skew", async () => {
+    const h = withVersion(
+      harness(leadStore({ peers: [member({ memberId: "nas" })] }), [
+        jsonReply({ protocol: 1, member: "nas", version: "1.25.0-dev+51c0a488" }, 200, "nas"),
+      ]),
+      "1.25.0-dev+51c0a4886",
+    );
+    await cmdCrewStatus(h.deps, []);
+    const rendered = text(h.io);
+    expect(rendered).toContain("version 1.25.0-dev+51c0a488");
+    expect(rendered).not.toContain("warn: this machine runs");
+    expect(rendered).not.toContain("Neither build is the older one.");
+  });
+
+  test("different commits on one semver keep the skew warning", async () => {
+    const h = withVersion(
+      harness(leadStore({ peers: [member({ memberId: "nas" })] }), [
+        jsonReply({ protocol: 1, member: "nas", version: "1.25.0-dev+51c0a488" }, 200, "nas"),
+      ]),
+      "1.25.0-dev+7be1c0d92e",
+    );
+    await cmdCrewStatus(h.deps, []);
+    const rendered = text(h.io);
+    expect(rendered).toContain("version 1.25.0-dev+51c0a488 — warn: this machine runs 1.25.0-dev+7be1c0d92e");
+    expect(rendered).toContain("Neither build is the older one.");
+  });
+
   test("a member answering without the field renders as pre-amendment, never as `unknown`", async () => {
     const h = withVersion(
       harness(leadStore({ peers: [member({ memberId: "nas" })] }), [

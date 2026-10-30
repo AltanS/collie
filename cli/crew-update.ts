@@ -1279,9 +1279,9 @@ async function peerRun(planned: Planned): Promise<UpdateRun | null> {
 
 /** The full string this lead expects back: the commit's version, stamped with the commit's own sha. */
 function expectedAnswer(deps: Wired, version: string, commit: string): string {
-  // `--short` rather than a fixed slice: git's abbreviation length is what the build stamp records,
-  // so this is the string this lead itself answers with once it has built the same commit.
-  const short = gitOut(deps, ["rev-parse", "--short", commit]) || commit.slice(0, 7);
+  // `--short=10`, the length `web/vite.config.ts` stamps, so this is the string this lead itself
+  // answers with once it has built the same commit.
+  const short = gitOut(deps, ["rev-parse", "--short=10", commit]) || commit.slice(0, 7);
   return `${version}+${short}`;
 }
 

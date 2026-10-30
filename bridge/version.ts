@@ -139,6 +139,33 @@ export function answersThisBuild(reported: string, version: string, commit: stri
 }
 
 /**
+ * Do two reported versions name the same build? Equal strings do. So do two stamps with the same
+ * semver whose `+<sha>` parts are hex, at least {@link MIN_SHA} long, and one is a prefix of the
+ * other: git picks the abbreviation length per repository, so a clone with fewer objects stamps
+ * `1.25.0-dev+51c0a488` for the commit a bigger one stamps `1.25.0-dev+51c0a4886`. That is one
+ * build, not skew. Different digits, a `-dirty` tail or a different semver stay different.
+ *
+ * The one rule behind `collie crew status` and the doctor `member-versions` row.
+ */
+export function sameBuild(a: string, b: string): boolean {
+  if (a === b) return true;
+  const [aBase, aSha] = splitStamp(a);
+  const [bBase, bSha] = splitStamp(b);
+  if (aBase !== bBase || aSha === null || bSha === null) return false;
+  if (!SHA_RE.test(aSha) || !SHA_RE.test(bSha)) return false;
+  return aSha.startsWith(bSha) || bSha.startsWith(aSha);
+}
+
+const MIN_SHA = 7;
+const SHA_RE = new RegExp(`^[0-9a-f]{${MIN_SHA},}$`);
+
+function splitStamp(reported: string): [string, string | null] {
+  const plus = reported.indexOf("+");
+  if (plus < 0) return [reported, null];
+  return [reported.slice(0, plus), reported.slice(plus + 1).toLowerCase()];
+}
+
+/**
  * The version a DEVELOPMENT build is built on, or null when `reported` is not one.
  *
  * `web/vite.config.ts` stamps a build off any commit that is not its version's tag as

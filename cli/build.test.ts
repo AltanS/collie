@@ -855,7 +855,7 @@ describe("build: real Git identity", () => {
         expect(readdirSync(root).filter((name) => name.endsWith(".bun-build"))).toEqual([]);
         const info = JSON.parse(readFileSync(join(root, "web", "dist", "build-info.json"), "utf8"));
         expect(info).toMatchObject({ channel: "release", version: vitePackageVersion(root) });
-        expect(info.sha).toBe(git(fixture, ["rev-parse", "--short", "HEAD"]));
+        expect(info.sha).toBe(git(fixture, ["rev-parse", "--short=10", "HEAD"]));
         expect(info.id).toStartWith(`${info.version}+${info.sha}.`);
         expect(info.sha).not.toContain("-dirty");
         expect(info.id).not.toContain("-dirty");

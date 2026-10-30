@@ -62,6 +62,7 @@ import { TrustStore, type TrustedMember, type TrustStoreData } from "../bridge/c
 import { deriveConfigRoot, discoverSessionSockets } from "../bridge/mux/herdr/sessions.ts";
 import { herdTagFor } from "../bridge/sessions.ts";
 import { compareSemver } from "../bridge/update.ts";
+import { sameBuild } from "../bridge/version.ts";
 import { collieVersionBare, DEFAULT_SERVE_PORT, type CliContext } from "./context.ts";
 import { EXIT, type Io } from "./io.ts";
 import { dropEnvAssignments } from "./push-keys.ts";
@@ -1571,7 +1572,7 @@ export const VERSION_REPORTED_SINCE = "1.0.0-alpha.12";
  */
 function versionLines(reported: string | null, ours: string, memberId: string): string[] {
   if (reported === null) return [`    version pre-${VERSION_REPORTED_SINCE} (not reported)`];
-  if (reported === ours) return [`    version ${reported}`];
+  if (sameBuild(reported, ours)) return [`    version ${reported}`];
   // `unknown` is this checkout answering "no build stamp and no manifest" — it is not a version, so
   // there is no older machine to name. Report theirs and stay quiet rather than warn about a skew
   // whose other half we cannot state.

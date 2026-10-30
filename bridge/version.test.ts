@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { collieVersion, collieVersionBare } from "./version.ts";
+import { collieVersion, collieVersionBare, sameBuild } from "./version.ts";
 
 // ── THE VERSION UNDER A PACKAGE SWAP (M17/02) ───────────────────────────────────────────────────
 //
@@ -46,5 +46,21 @@ describe("the wire version stays the one it is running", () => {
     // The live read exists too, and it is a THUNK the monitor throttles — never an inline call that
     // some handler could end up making on the request path.
     expect(source).toContain("liveVersion: () => collieVersion(rootDir)");
+  });
+});
+
+describe("sameBuild", () => {
+  test("one commit at two abbreviation lengths is one build", () => {
+    expect(sameBuild("1.25.0-dev+51c0a488", "1.25.0-dev+51c0a4886")).toBe(true);
+    expect(sameBuild("1.25.0-dev+51c0a4886", "1.25.0-dev+51c0a488")).toBe(true);
+    expect(sameBuild("1.25.0-dev+51c0a4886", "1.25.0-dev+51c0a4886")).toBe(true);
+  });
+
+  test("other digits, another semver, a short hash or a dirty tail stay different", () => {
+    expect(sameBuild("1.25.0-dev+51c0a488", "1.25.0-dev+7be1c0d92e")).toBe(false);
+    expect(sameBuild("1.25.0-dev+51c0a488", "1.25.1-dev+51c0a4886")).toBe(false);
+    expect(sameBuild("1.25.0-dev+51c0a4", "1.25.0-dev+51c0a4886")).toBe(false);
+    expect(sameBuild("1.25.0-dev+51c0a488-dirty", "1.25.0-dev+51c0a4886")).toBe(false);
+    expect(sameBuild("1.25.0", "1.25.0-dev+51c0a4886")).toBe(false);
   });
 });
