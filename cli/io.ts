@@ -25,6 +25,14 @@ export interface Io {
    * fake io in the tests stays a two-method object and a scripted run is the default.
    */
   readonly errIsTty?: boolean;
+  /**
+   * This run's stdout is machine-readable, so a CHILD process must not write to it either. A line
+   * written through `out` is already on the right stream (the caller swapped `out` for `err`), but
+   * a child that inherits our stdio (`tailscale serve`, a lazy build) writes to file descriptor 1
+   * behind the `Io`'s back. A verb that sets this passes it on to {@link Exec.inherit} and
+   * {@link Exec.runIn}, which then point the child's stdout at stderr. Absent means "no".
+   */
+  readonly childOutToErr?: boolean;
 }
 
 export const realIo: Io = {

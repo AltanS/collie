@@ -592,9 +592,11 @@ export async function ensureStore(deps: CrewDeps, label: string | undefined): Pr
 /**
  * An `Io` whose `out` writes to stderr. A verb whose stdout is machine-readable hands this to the
  * nested lifecycle verbs, so their "bridge stopped" and "bridge started" lines cannot reach stdout.
+ * `childOutToErr` covers the children those verbs spawn with inherited stdio (`tailscale serve`
+ * prints its mapping lines itself, and a lazy build prints its progress): their stdout goes to stderr.
  */
 function allToStderr(io: Io): Io {
-  return { out: io.err, err: io.err, errIsTty: io.errIsTty };
+  return { out: io.err, err: io.err, errIsTty: io.errIsTty, childOutToErr: true };
 }
 
 /**

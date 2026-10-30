@@ -463,6 +463,26 @@ describe("a per-call override wins over the Exec's own environment (#283)", () =
     }
   });
 
+  // The child writes to the file descriptor, not to an `Io`, so only a real child shows the redirect.
+  // A subprocess runs the call so its own stdout and stderr can be read apart.
+  test.skipIf(process.platform === "win32")("inherit and runIn can point the child's stdout at stderr", () => {
+    const d = dir();
+    try {
+      const script = `
+        import { realExec } from ${JSON.stringify(join(REPO, "cli/sys.ts"))};
+        const exec = realExec({ PATH: process.env.PATH ?? "" }, ${JSON.stringify(d)});
+        exec.inherit("sh", ["-c", "echo inherit-plain"]);
+        exec.inherit("sh", ["-c", "echo inherit-redirected"], "stderr");
+        exec.runIn("sh", ["-c", "echo runin-redirected"], ${JSON.stringify(d)}, undefined, undefined, "stderr");
+      `;
+      const r = Bun.spawnSync([process.execPath, "-e", script], { stdout: "pipe", stderr: "pipe" });
+      expect(r.stdout.toString()).toBe("inherit-plain\n");
+      expect(r.stderr.toString()).toBe("inherit-redirected\nrunin-redirected\n");
+    } finally {
+      rmSync(d, { recursive: true, force: true });
+    }
+  });
+
   test("runIn takes the same override, and the same filter", () => {
     const d = dir();
     try {

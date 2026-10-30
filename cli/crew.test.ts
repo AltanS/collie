@@ -575,6 +575,26 @@ describe("collie crew invite", () => {
     expect(h.io.stderr.join("\n")).toContain("collie crew join");
   });
 
+  test("the restart's serve step writes through a child; its stdout is pointed at stderr, so stdout is the token alone", async () => {
+    // The real restart publishes the front door with `tailscale serve`, run with INHERITED stdio:
+    // the mapping lines it prints are the child's own, written to file descriptor 1, and no `Io`
+    // sees them. The fake restart does what `cmdServe` does: it asks the exec for the child, and
+    // names the stream from the `Io` it was given. A restart handed a plain `Io` would leave the
+    // child on stdout, ahead of the token.
+    const h = harness(leadStore(), [], {
+      restart: (into) => {
+        const io = into ?? h.deps.io;
+        h.exec.inherit("tailscale", ["serve", "--bg", "--set-path=/", "8787"], io.childOutToErr === true ? "stderr" : undefined);
+        io.out("tailscale serve (https) → tailnet :443 -> 127.0.0.1:8787");
+        return Promise.resolve(EXIT.OK);
+      },
+    });
+    expect(await cmdCrewInvite(h.deps, [])).toBe(EXIT.OK);
+    expect(h.io.stdout).toEqual([`r1.${fp("desk")}`]);
+    expect(h.exec.stdoutToStderr).toEqual(["tailscale serve --bg --set-path=/ 8787"]);
+    expect(h.io.stderr).toContain("tailscale serve (https) → tailnet :443 -> 127.0.0.1:8787");
+  });
+
   test("https mode: the banner prints the front door, the full name, and it is a whole command", async () => {
     const h = harness(leadStore());
     await cmdCrewInvite(h.deps, []);

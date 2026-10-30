@@ -301,7 +301,7 @@ function step(
   cwd: string,
   envOverride?: EnvOverride,
 ): boolean {
-  const r = deps.exec.runIn(tool, args, cwd, undefined, envOverride);
+  const r = deps.exec.runIn(tool, args, cwd, undefined, envOverride, deps.io.childOutToErr === true ? "stderr" : undefined);
   if (!r.found) {
     deps.io.err(`error: ${tool} not found — cannot ${label}`);
     return false;

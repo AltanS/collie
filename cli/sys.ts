@@ -117,8 +117,13 @@ export interface Exec {
     envAdd?: Readonly<Record<string, string>>,
     envOverride?: EnvOverride,
   ): ExecResult;
-  /** Run `tool` with our own stdio — for `journalctl`, whose output IS the result. */
-  inherit(tool: string, args: readonly string[]): ExecResult;
+  /**
+   * Run `tool` with our own stdio — for `journalctl`, whose output IS the result.
+   *
+   * `stdout: "stderr"` points the child's stdout at OUR stderr instead, for a run whose own stdout is
+   * machine-readable (`crew invite`, whose stdout is the token alone).
+   */
+  inherit(tool: string, args: readonly string[], stdout?: "stderr"): ExecResult;
   /**
    * Run `tool` in `cwd` with our own stdio — the build steps, whose output IS the operator's
    * progress report and whose working directory is load-bearing (the shell's `( cd … && bun … )`:
@@ -132,8 +137,17 @@ export interface Exec {
    *
    * `envOverride` wins over this `Exec`'s own environment exactly as it does for
    * {@link Exec.capture}, and the git relocators stay filtered after it.
+   *
+   * `stdout: "stderr"` is {@link Exec.inherit}'s: the child's stdout goes to our stderr.
    */
-  runIn(tool: string, args: readonly string[], cwd: string, pathPrefix?: string, envOverride?: EnvOverride): ExecResult;
+  runIn(
+    tool: string,
+    args: readonly string[],
+    cwd: string,
+    pathPrefix?: string,
+    envOverride?: EnvOverride,
+    stdout?: "stderr",
+  ): ExecResult;
   /**
    * Run `command` in `cwd` synchronously with a bound, appending both streams to `logPath`.
    *
@@ -689,23 +703,23 @@ export function realExec(rawEnv: Environment, home: string): Exec {
       if (!timedOut && r.exitCode === null && r.signalCode) result.signal = r.signalCode;
       return result;
     },
-    inherit(tool, args) {
+    inherit(tool, args, stdout) {
       const bin = resolve(tool);
       if (bin === null) return NOT_FOUND;
       const r = Bun.spawnSync([bin, ...args], {
         env,
-        stdout: "inherit",
+        stdout: stdout === "stderr" ? 2 : "inherit",
         stderr: "inherit",
       });
       return { code: r.exitCode, stdout: "", stderr: "", found: true };
     },
-    runIn(tool, args, cwd, pathPrefix, envOverride) {
+    runIn(tool, args, cwd, pathPrefix, envOverride, stdout) {
       const bin = resolve(tool);
       if (bin === null) return NOT_FOUND;
       const r = Bun.spawnSync([bin, ...args], {
         cwd,
         env: withoutGitRelocators(withEnvOverride(withPathPrefix(env, pathPrefix), envOverride)),
-        stdout: "inherit",
+        stdout: stdout === "stderr" ? 2 : "inherit",
         stderr: "inherit",
       });
       return { code: r.exitCode, stdout: "", stderr: "", found: true };

@@ -275,6 +275,16 @@ describe("serve — publishing", () => {
     });
   });
 
+  test("the child's stdout goes to stderr only when the Io says its own stdout is data", () => {
+    const plain = harness({ serveMode: "http" });
+    expect(cmdServe(plain.deps)).toBe(EXIT.OK);
+    expect(plain.exec.stdoutToStderr).toEqual([]);
+
+    const data = harness({ serveMode: "http" });
+    expect(cmdServe({ ...data.deps, io: { ...data.deps.io, childOutToErr: true } })).toBe(EXIT.OK);
+    expect(data.exec.stdoutToStderr).toEqual(["tailscale serve --bg --http=8787 --set-path=/ 8787"]);
+  });
+
   test("https publishes on :443 while the proxy target stays the bridge port", () => {
     const h = harness();
     expect(cmdServe(h.deps)).toBe(EXIT.OK);

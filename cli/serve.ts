@@ -304,7 +304,7 @@ export function cmdServe(deps: ServeDeps): number {
   // has returned. Anything it prints WHILE it waits then reaches nobody, and the operator watches a
   // command that looks hung. Nothing parses this output, so letting it through costs nothing and
   // buys back every question tailscale decides to ask.
-  const r = deps.exec.inherit("tailscale", args);
+  const r = deps.exec.inherit("tailscale", args, deps.io.childOutToErr === true ? "stderr" : undefined);
   if (r.found && r.code === 0) {
     const at = path === "/" ? "" : ` ${path}`;
     deps.io.out(
