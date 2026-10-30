@@ -1,0 +1,1150 @@
+{
+  "claude--done.txt": {
+    "why": "Claude Code draws its prompt suggestion (an arbitrary next prompt) faint in the empty box. A plain read shows the suggestion as a typed draft, and a walky talky delivery or a send holds on a draft that is not there. The 1.25.1 pattern covers only the 'Try \"...\"' hints.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/surface/frame.ts:323 holeIsFaint (profile claude.json idle.placeholders.sgr 2); text fallback web/src/lib/surface/frame.ts:338 isPlaceholderText covers only idle.placeholders.patterns",
+    "propose": "Upstream: the cursor column (a suggestion sits after the cursor, a draft ends at it), or a dim flag per row. Claude side: a hook that reports the suggestion. Text only: none, the suggestion is free prose.",
+    "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
+  },
+  "claude--ghost-suggestion.txt": {
+    "why": "Claude Code draws its prompt suggestion (an arbitrary next prompt) faint in the empty box. A plain read shows the suggestion as a typed draft, and a walky talky delivery or a send holds on a draft that is not there. The 1.25.1 pattern covers only the 'Try \"...\"' hints.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/surface/frame.ts:323 holeIsFaint (profile claude.json idle.placeholders.sgr 2); text fallback web/src/lib/surface/frame.ts:338 isPlaceholderText covers only idle.placeholders.patterns",
+    "propose": "Upstream: the cursor column (a suggestion sits after the cursor, a draft ends at it), or a dim flag per row. Claude side: a hook that reports the suggestion. Text only: none, the suggestion is free prose.",
+    "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
+  },
+  "claude--v2301-hold-subagent.txt": {
+    "why": "Claude Code draws its prompt suggestion (an arbitrary next prompt) faint in the empty box. A plain read shows the suggestion as a typed draft, and a walky talky delivery or a send holds on a draft that is not there. The 1.25.1 pattern covers only the 'Try \"...\"' hints.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/surface/frame.ts:323 holeIsFaint (profile claude.json idle.placeholders.sgr 2); text fallback web/src/lib/surface/frame.ts:338 isPlaceholderText covers only idle.placeholders.patterns",
+    "propose": "Upstream: the cursor column (a suggestion sits after the cursor, a draft ends at it), or a dim flag per row. Claude side: a hook that reports the suggestion. Text only: none, the suggestion is free prose.",
+    "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
+  },
+  "claude--v2301-lab-agents-panel-empty.txt": {
+    "why": "Claude Code draws its prompt suggestion (an arbitrary next prompt) faint in the empty box. A plain read shows the suggestion as a typed draft, and a walky talky delivery or a send holds on a draft that is not there. The 1.25.1 pattern covers only the 'Try \"...\"' hints.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/surface/frame.ts:323 holeIsFaint (profile claude.json idle.placeholders.sgr 2); text fallback web/src/lib/surface/frame.ts:338 isPlaceholderText covers only idle.placeholders.patterns",
+    "propose": "Upstream: the cursor column (a suggestion sits after the cursor, a draft ends at it), or a dim flag per row. Claude side: a hook that reports the suggestion. Text only: none, the suggestion is free prose.",
+    "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
+  },
+  "claude--v2304-heads-up-dismissed-after-explain--w65.txt": {
+    "why": "Claude Code draws its prompt suggestion (an arbitrary next prompt) faint in the empty box. A plain read shows the suggestion as a typed draft, and a walky talky delivery or a send holds on a draft that is not there. The 1.25.1 pattern covers only the 'Try \"...\"' hints.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/surface/frame.ts:323 holeIsFaint (profile claude.json idle.placeholders.sgr 2); text fallback web/src/lib/surface/frame.ts:338 isPlaceholderText covers only idle.placeholders.patterns",
+    "propose": "Upstream: the cursor column (a suggestion sits after the cursor, a draft ends at it), or a dim flag per row. Claude side: a hook that reports the suggestion. Text only: none, the suggestion is free prose.",
+    "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
+  },
+  "claude--v2304-heads-up-explained--w65.txt": {
+    "why": "Claude Code draws its prompt suggestion (an arbitrary next prompt) faint in the empty box. A plain read shows the suggestion as a typed draft, and a walky talky delivery or a send holds on a draft that is not there. The 1.25.1 pattern covers only the 'Try \"...\"' hints.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/surface/frame.ts:323 holeIsFaint (profile claude.json idle.placeholders.sgr 2); text fallback web/src/lib/surface/frame.ts:338 isPlaceholderText covers only idle.placeholders.patterns",
+    "propose": "Upstream: the cursor column (a suggestion sits after the cursor, a draft ends at it), or a dim flag per row. Claude side: a hook that reports the suggestion. Text only: none, the suggestion is free prose.",
+    "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
+  },
+  "claude-lab--idle-after-turn--w82.txt": {
+    "why": "Claude Code draws its prompt suggestion (an arbitrary next prompt) faint in the empty box. A plain read shows the suggestion as a typed draft, and a walky talky delivery or a send holds on a draft that is not there. The 1.25.1 pattern covers only the 'Try \"...\"' hints.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/surface/frame.ts:323 holeIsFaint (profile claude.json idle.placeholders.sgr 2); text fallback web/src/lib/surface/frame.ts:338 isPlaceholderText covers only idle.placeholders.patterns",
+    "propose": "Upstream: the cursor column (a suggestion sits after the cursor, a draft ends at it), or a dim flag per row. Claude side: a hook that reports the suggestion. Text only: none, the suggestion is free prose.",
+    "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
+  },
+  "claude-lab--statusline-10row--w82.txt": {
+    "why": "Claude Code draws its prompt suggestion (an arbitrary next prompt) faint in the empty box. A plain read shows the suggestion as a typed draft, and a walky talky delivery or a send holds on a draft that is not there. The 1.25.1 pattern covers only the 'Try \"...\"' hints.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/surface/frame.ts:323 holeIsFaint (profile claude.json idle.placeholders.sgr 2); text fallback web/src/lib/surface/frame.ts:338 isPlaceholderText covers only idle.placeholders.patterns",
+    "propose": "Upstream: the cursor column (a suggestion sits after the cursor, a draft ends at it), or a dim flag per row. Claude side: a hook that reports the suggestion. Text only: none, the suggestion is free prose.",
+    "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
+  },
+  "claude-lab--statusline-3row--w82.txt": {
+    "why": "Claude Code draws its prompt suggestion (an arbitrary next prompt) faint in the empty box. A plain read shows the suggestion as a typed draft, and a walky talky delivery or a send holds on a draft that is not there. The 1.25.1 pattern covers only the 'Try \"...\"' hints.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/surface/frame.ts:323 holeIsFaint (profile claude.json idle.placeholders.sgr 2); text fallback web/src/lib/surface/frame.ts:338 isPlaceholderText covers only idle.placeholders.patterns",
+    "propose": "Upstream: the cursor column (a suggestion sits after the cursor, a draft ends at it), or a dim flag per row. Claude side: a hook that reports the suggestion. Text only: none, the suggestion is free prose.",
+    "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
+  },
+  "claude-lab--statusline-none--w82.txt": {
+    "why": "Claude Code draws its prompt suggestion (an arbitrary next prompt) faint in the empty box. A plain read shows the suggestion as a typed draft, and a walky talky delivery or a send holds on a draft that is not there. The 1.25.1 pattern covers only the 'Try \"...\"' hints.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/surface/frame.ts:323 holeIsFaint (profile claude.json idle.placeholders.sgr 2); text fallback web/src/lib/surface/frame.ts:338 isPlaceholderText covers only idle.placeholders.patterns",
+    "propose": "Upstream: the cursor column (a suggestion sits after the cursor, a draft ends at it), or a dim flag per row. Claude side: a hook that reports the suggestion. Text only: none, the suggestion is free prose.",
+    "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
+  },
+  "claude-lab--statusline-numbered-rows--w82.txt": {
+    "why": "Claude Code draws its prompt suggestion (an arbitrary next prompt) faint in the empty box. A plain read shows the suggestion as a typed draft, and a walky talky delivery or a send holds on a draft that is not there. The 1.25.1 pattern covers only the 'Try \"...\"' hints.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/surface/frame.ts:323 holeIsFaint (profile claude.json idle.placeholders.sgr 2); text fallback web/src/lib/surface/frame.ts:338 isPlaceholderText covers only idle.placeholders.patterns",
+    "propose": "Upstream: the cursor column (a suggestion sits after the cursor, a draft ends at it), or a dim flag per row. Claude side: a hook that reports the suggestion. Text only: none, the suggestion is free prose.",
+    "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
+  },
+  "claude-lab--statusline-prompt-row--w82.txt": {
+    "why": "Claude Code draws its prompt suggestion (an arbitrary next prompt) faint in the empty box. A plain read shows the suggestion as a typed draft, and a walky talky delivery or a send holds on a draft that is not there. The 1.25.1 pattern covers only the 'Try \"...\"' hints.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/surface/frame.ts:323 holeIsFaint (profile claude.json idle.placeholders.sgr 2); text fallback web/src/lib/surface/frame.ts:338 isPlaceholderText covers only idle.placeholders.patterns",
+    "propose": "Upstream: the cursor column (a suggestion sits after the cursor, a draft ends at it), or a dim flag per row. Claude side: a hook that reports the suggestion. Text only: none, the suggestion is free prose.",
+    "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
+  },
+  "claude-lab--statusline-rule-row--w82.txt": {
+    "why": "Claude Code draws its prompt suggestion (an arbitrary next prompt) faint in the empty box. A plain read shows the suggestion as a typed draft, and a walky talky delivery or a send holds on a draft that is not there. The 1.25.1 pattern covers only the 'Try \"...\"' hints.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/surface/frame.ts:323 holeIsFaint (profile claude.json idle.placeholders.sgr 2); text fallback web/src/lib/surface/frame.ts:338 isPlaceholderText covers only idle.placeholders.patterns",
+    "propose": "Upstream: the cursor column (a suggestion sits after the cursor, a draft ends at it), or a dim flag per row. Claude side: a hook that reports the suggestion. Text only: none, the suggestion is free prose.",
+    "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
+  },
+  "claude-lab--survey-rating-above-box--w82.txt": {
+    "why": "Claude Code draws its prompt suggestion (an arbitrary next prompt) faint in the empty box. A plain read shows the suggestion as a typed draft, and a walky talky delivery or a send holds on a draft that is not there. The 1.25.1 pattern covers only the 'Try \"...\"' hints.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/surface/frame.ts:323 holeIsFaint (profile claude.json idle.placeholders.sgr 2); text fallback web/src/lib/surface/frame.ts:338 isPlaceholderText covers only idle.placeholders.patterns",
+    "propose": "Upstream: the cursor column (a suggestion sits after the cursor, a draft ends at it), or a dim flag per row. Claude side: a hook that reports the suggestion. Text only: none, the suggestion is free prose.",
+    "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
+  },
+  "claude-lab--transcript-dialog-lookalike--w82.txt": {
+    "why": "Claude Code draws its prompt suggestion (an arbitrary next prompt) faint in the empty box. A plain read shows the suggestion as a typed draft, and a walky talky delivery or a send holds on a draft that is not there. The 1.25.1 pattern covers only the 'Try \"...\"' hints.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/surface/frame.ts:323 holeIsFaint (profile claude.json idle.placeholders.sgr 2); text fallback web/src/lib/surface/frame.ts:338 isPlaceholderText covers only idle.placeholders.patterns",
+    "propose": "Upstream: the cursor column (a suggestion sits after the cursor, a draft ends at it), or a dim flag per row. Claude side: a hook that reports the suggestion. Text only: none, the suggestion is free prose.",
+    "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
+  },
+  "codex--fresh-idle.txt": {
+    "why": "Codex draws its placeholder 'Ask Codex to do anything' faint (SGR 2). A plain read shows it as a typed draft, so an empty composer reads as a draft.",
+    "class": "text-rule-possible",
+    "rule": "web/src/lib/surface/frame.ts:323 holeIsFaint (profile codex.json idle.placeholders.sgr 2; idle.placeholders.texts is empty)",
+    "propose": "idle.placeholders.texts: \"Ask Codex to do anything\".",
+    "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
+  },
+  "codex--reporter-294-busy-agents-hint.txt": {
+    "why": "Codex draws its placeholder 'Ask Codex to do anything' faint (SGR 2). A plain read shows it as a typed draft, so an empty composer reads as a draft.",
+    "class": "text-rule-possible",
+    "rule": "web/src/lib/surface/frame.ts:323 holeIsFaint (profile codex.json idle.placeholders.sgr 2; idle.placeholders.texts is empty)",
+    "propose": "idle.placeholders.texts: \"Ask Codex to do anything\".",
+    "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
+  },
+  "codex--submitted-fill-labelled-rule.txt": {
+    "why": "Codex draws its placeholder 'Ask Codex to do anything' faint (SGR 2). A plain read shows it as a typed draft, so an empty composer reads as a draft.",
+    "class": "text-rule-possible",
+    "rule": "web/src/lib/surface/frame.ts:323 holeIsFaint (profile codex.json idle.placeholders.sgr 2; idle.placeholders.texts is empty)",
+    "propose": "idle.placeholders.texts: \"Ask Codex to do anything\".",
+    "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
+  },
+  "codex--v0150-idle.txt": {
+    "why": "Codex draws its placeholder 'Ask Codex to do anything' faint (SGR 2). A plain read shows it as a typed draft, so an empty composer reads as a draft.",
+    "class": "text-rule-possible",
+    "rule": "web/src/lib/surface/frame.ts:323 holeIsFaint (profile codex.json idle.placeholders.sgr 2; idle.placeholders.texts is empty)",
+    "propose": "idle.placeholders.texts: \"Ask Codex to do anything\".",
+    "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
+  },
+  "codex--v0150-nogit-idle.txt": {
+    "why": "Codex draws its placeholder 'Ask Codex to do anything' faint (SGR 2). A plain read shows it as a typed draft, so an empty composer reads as a draft.",
+    "class": "text-rule-possible",
+    "rule": "web/src/lib/surface/frame.ts:323 holeIsFaint (profile codex.json idle.placeholders.sgr 2; idle.placeholders.texts is empty)",
+    "propose": "idle.placeholders.texts: \"Ask Codex to do anything\".",
+    "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
+  },
+  "codex--v0156-busy-streaming.txt": {
+    "why": "Codex draws its placeholder 'Ask Codex to do anything' faint (SGR 2). A plain read shows it as a typed draft, so an empty composer reads as a draft.",
+    "class": "text-rule-possible",
+    "rule": "web/src/lib/surface/frame.ts:323 holeIsFaint (profile codex.json idle.placeholders.sgr 2; idle.placeholders.texts is empty)",
+    "propose": "idle.placeholders.texts: \"Ask Codex to do anything\".",
+    "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
+  },
+  "codex--v0156-headless-idle.txt": {
+    "why": "Codex draws its placeholder 'Ask Codex to do anything' faint (SGR 2). A plain read shows it as a typed draft, so an empty composer reads as a draft.",
+    "class": "text-rule-possible",
+    "rule": "web/src/lib/surface/frame.ts:323 holeIsFaint (profile codex.json idle.placeholders.sgr 2; idle.placeholders.texts is empty)",
+    "propose": "idle.placeholders.texts: \"Ask Codex to do anything\".",
+    "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
+  },
+  "codex--v0156-idle-50.txt": {
+    "why": "Codex draws its placeholder 'Ask Codex to do anything' faint (SGR 2). A plain read shows it as a typed draft, so an empty composer reads as a draft.",
+    "class": "text-rule-possible",
+    "rule": "web/src/lib/surface/frame.ts:323 holeIsFaint (profile codex.json idle.placeholders.sgr 2; idle.placeholders.texts is empty)",
+    "propose": "idle.placeholders.texts: \"Ask Codex to do anything\".",
+    "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
+  },
+  "codex--v0156-idle.txt": {
+    "why": "Codex draws its placeholder 'Ask Codex to do anything' faint (SGR 2). A plain read shows it as a typed draft, so an empty composer reads as a draft.",
+    "class": "text-rule-possible",
+    "rule": "web/src/lib/surface/frame.ts:323 holeIsFaint (profile codex.json idle.placeholders.sgr 2; idle.placeholders.texts is empty)",
+    "propose": "idle.placeholders.texts: \"Ask Codex to do anything\".",
+    "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
+  },
+  "codex--v0157-busy-streaming.txt": {
+    "why": "Codex draws its placeholder 'Ask Codex to do anything' faint (SGR 2). A plain read shows it as a typed draft, so an empty composer reads as a draft.",
+    "class": "text-rule-possible",
+    "rule": "web/src/lib/surface/frame.ts:323 holeIsFaint (profile codex.json idle.placeholders.sgr 2; idle.placeholders.texts is empty)",
+    "propose": "idle.placeholders.texts: \"Ask Codex to do anything\".",
+    "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
+  },
+  "codex--v0157-idle-50.txt": {
+    "why": "Codex draws its placeholder 'Ask Codex to do anything' faint (SGR 2). A plain read shows it as a typed draft, so an empty composer reads as a draft.",
+    "class": "text-rule-possible",
+    "rule": "web/src/lib/surface/frame.ts:323 holeIsFaint (profile codex.json idle.placeholders.sgr 2; idle.placeholders.texts is empty)",
+    "propose": "idle.placeholders.texts: \"Ask Codex to do anything\".",
+    "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
+  },
+  "codex--v0157-idle.txt": {
+    "why": "Codex draws its placeholder 'Ask Codex to do anything' faint (SGR 2). A plain read shows it as a typed draft, so an empty composer reads as a draft.",
+    "class": "text-rule-possible",
+    "rule": "web/src/lib/surface/frame.ts:323 holeIsFaint (profile codex.json idle.placeholders.sgr 2; idle.placeholders.texts is empty)",
+    "propose": "idle.placeholders.texts: \"Ask Codex to do anything\".",
+    "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
+  },
+  "codex--v0158-goal-notice.txt": {
+    "why": "Codex draws its placeholder 'Ask Codex to do anything' faint (SGR 2). A plain read shows it as a typed draft, so an empty composer reads as a draft.",
+    "class": "text-rule-possible",
+    "rule": "web/src/lib/surface/frame.ts:323 holeIsFaint (profile codex.json idle.placeholders.sgr 2; idle.placeholders.texts is empty)",
+    "propose": "idle.placeholders.texts: \"Ask Codex to do anything\".",
+    "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
+  },
+  "codex--v0159-task-title.txt": {
+    "why": "Codex draws its placeholder 'Ask Codex to do anything' faint (SGR 2). A plain read shows it as a typed draft, so an empty composer reads as a draft.",
+    "class": "text-rule-possible",
+    "rule": "web/src/lib/surface/frame.ts:323 holeIsFaint (profile codex.json idle.placeholders.sgr 2; idle.placeholders.texts is empty)",
+    "propose": "idle.placeholders.texts: \"Ask Codex to do anything\".",
+    "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
+  },
+  "codex--v0162-idle.txt": {
+    "why": "Codex draws its placeholder 'Ask Codex to do anything' faint (SGR 2). A plain read shows it as a typed draft, so an empty composer reads as a draft.",
+    "class": "text-rule-possible",
+    "rule": "web/src/lib/surface/frame.ts:323 holeIsFaint (profile codex.json idle.placeholders.sgr 2; idle.placeholders.texts is empty)",
+    "propose": "idle.placeholders.texts: \"Ask Codex to do anything\".",
+    "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
+  },
+  "codex--v0163-agents-hint-warnings.txt": {
+    "why": "Codex draws its placeholder 'Ask Codex to do anything' faint (SGR 2). A plain read shows it as a typed draft, so an empty composer reads as a draft.",
+    "class": "text-rule-possible",
+    "rule": "web/src/lib/surface/frame.ts:323 holeIsFaint (profile codex.json idle.placeholders.sgr 2; idle.placeholders.texts is empty)",
+    "propose": "idle.placeholders.texts: \"Ask Codex to do anything\".",
+    "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
+  },
+  "codex--v0163-working-steered--w120.txt": {
+    "why": "Codex draws its placeholder 'Ask Codex to do anything' faint (SGR 2). A plain read shows it as a typed draft, so an empty composer reads as a draft.",
+    "class": "text-rule-possible",
+    "rule": "web/src/lib/surface/frame.ts:323 holeIsFaint (profile codex.json idle.placeholders.sgr 2; idle.placeholders.texts is empty)",
+    "propose": "idle.placeholders.texts: \"Ask Codex to do anything\".",
+    "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
+  },
+  "codex--v0164-queue-after--w120.txt": {
+    "why": "Codex draws its placeholder 'Ask Codex to do anything' faint (SGR 2). A plain read shows it as a typed draft, so an empty composer reads as a draft.",
+    "class": "text-rule-possible",
+    "rule": "web/src/lib/surface/frame.ts:323 holeIsFaint (profile codex.json idle.placeholders.sgr 2; idle.placeholders.texts is empty)",
+    "propose": "idle.placeholders.texts: \"Ask Codex to do anything\".",
+    "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
+  },
+  "codex--v0164-queue-after-now--w120.txt": {
+    "why": "Codex draws its placeholder 'Ask Codex to do anything' faint (SGR 2). A plain read shows it as a typed draft, so an empty composer reads as a draft.",
+    "class": "text-rule-possible",
+    "rule": "web/src/lib/surface/frame.ts:323 holeIsFaint (profile codex.json idle.placeholders.sgr 2; idle.placeholders.texts is empty)",
+    "propose": "idle.placeholders.texts: \"Ask Codex to do anything\".",
+    "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
+  },
+  "codex--v0164-queue-done--w120.txt": {
+    "why": "Codex draws its placeholder 'Ask Codex to do anything' faint (SGR 2). A plain read shows it as a typed draft, so an empty composer reads as a draft.",
+    "class": "text-rule-possible",
+    "rule": "web/src/lib/surface/frame.ts:323 holeIsFaint (profile codex.json idle.placeholders.sgr 2; idle.placeholders.texts is empty)",
+    "propose": "idle.placeholders.texts: \"Ask Codex to do anything\".",
+    "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
+  },
+  "codex--v0164-steer-after--w120.txt": {
+    "why": "Codex draws its placeholder 'Ask Codex to do anything' faint (SGR 2). A plain read shows it as a typed draft, so an empty composer reads as a draft.",
+    "class": "text-rule-possible",
+    "rule": "web/src/lib/surface/frame.ts:323 holeIsFaint (profile codex.json idle.placeholders.sgr 2; idle.placeholders.texts is empty)",
+    "propose": "idle.placeholders.texts: \"Ask Codex to do anything\".",
+    "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
+  },
+  "codex--v0164-steer-after-now--w120.txt": {
+    "why": "Codex draws its placeholder 'Ask Codex to do anything' faint (SGR 2). A plain read shows it as a typed draft, so an empty composer reads as a draft.",
+    "class": "text-rule-possible",
+    "rule": "web/src/lib/surface/frame.ts:323 holeIsFaint (profile codex.json idle.placeholders.sgr 2; idle.placeholders.texts is empty)",
+    "propose": "idle.placeholders.texts: \"Ask Codex to do anything\".",
+    "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
+  },
+  "codex--v0164-steer-done--w120.txt": {
+    "why": "Codex draws its placeholder 'Ask Codex to do anything' faint (SGR 2). A plain read shows it as a typed draft, so an empty composer reads as a draft.",
+    "class": "text-rule-possible",
+    "rule": "web/src/lib/surface/frame.ts:323 holeIsFaint (profile codex.json idle.placeholders.sgr 2; idle.placeholders.texts is empty)",
+    "propose": "idle.placeholders.texts: \"Ask Codex to do anything\".",
+    "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
+  },
+  "codex--v0165-ultra-empty--w120.txt": {
+    "why": "Codex draws its placeholder 'Ask Codex to do anything' faint (SGR 2). A plain read shows it as a typed draft, so an empty composer reads as a draft.",
+    "class": "text-rule-possible",
+    "rule": "web/src/lib/surface/frame.ts:323 holeIsFaint (profile codex.json idle.placeholders.sgr 2; idle.placeholders.texts is empty)",
+    "propose": "idle.placeholders.texts: \"Ask Codex to do anything\".",
+    "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
+  },
+  "codex--v0165-ultra-empty--w170.txt": {
+    "why": "Codex draws its placeholder 'Ask Codex to do anything' faint (SGR 2). A plain read shows it as a typed draft, so an empty composer reads as a draft.",
+    "class": "text-rule-possible",
+    "rule": "web/src/lib/surface/frame.ts:323 holeIsFaint (profile codex.json idle.placeholders.sgr 2; idle.placeholders.texts is empty)",
+    "propose": "idle.placeholders.texts: \"Ask Codex to do anything\".",
+    "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
+  },
+  "codex--v0166-art-backspace--w120.txt": {
+    "why": "Codex draws its placeholder 'Ask Codex to do anything' faint (SGR 2). A plain read shows it as a typed draft, so an empty composer reads as a draft.",
+    "class": "text-rule-possible",
+    "rule": "web/src/lib/surface/frame.ts:323 holeIsFaint (profile codex.json idle.placeholders.sgr 2; idle.placeholders.texts is empty)",
+    "propose": "idle.placeholders.texts: \"Ask Codex to do anything\".",
+    "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
+  },
+  "codex--v0166-art-empty--w120.txt": {
+    "why": "Codex draws its placeholder 'Ask Codex to do anything' faint (SGR 2). A plain read shows it as a typed draft, so an empty composer reads as a draft.",
+    "class": "text-rule-possible",
+    "rule": "web/src/lib/surface/frame.ts:323 holeIsFaint (profile codex.json idle.placeholders.sgr 2; idle.placeholders.texts is empty)",
+    "propose": "idle.placeholders.texts: \"Ask Codex to do anything\".",
+    "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
+  },
+  "codex--v0166-warning-art-empty--w120.txt": {
+    "why": "Codex draws its placeholder 'Ask Codex to do anything' faint (SGR 2). A plain read shows it as a typed draft, so an empty composer reads as a draft.",
+    "class": "text-rule-possible",
+    "rule": "web/src/lib/surface/frame.ts:323 holeIsFaint (profile codex.json idle.placeholders.sgr 2; idle.placeholders.texts is empty)",
+    "propose": "idle.placeholders.texts: \"Ask Codex to do anything\".",
+    "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
+  },
+  "codex--working.txt": {
+    "why": "Codex draws its placeholder 'Ask Codex to do anything' faint (SGR 2). A plain read shows it as a typed draft, so an empty composer reads as a draft.",
+    "class": "text-rule-possible",
+    "rule": "web/src/lib/surface/frame.ts:323 holeIsFaint (profile codex.json idle.placeholders.sgr 2; idle.placeholders.texts is empty)",
+    "propose": "idle.placeholders.texts: \"Ask Codex to do anything\".",
+    "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
+  },
+  "hermes--done.txt": {
+    "why": "hermes draws its fixed hint placeholder in italic (SGR 3). A plain read shows the hint as a typed draft.",
+    "class": "text-rule-possible",
+    "rule": "web/src/lib/surface/frame.ts:323 holeIsFaint (profile hermes.json idle.placeholders.sgr 3)",
+    "propose": "idle.placeholders.texts: the idle hint and the busy hint.",
+    "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
+  },
+  "hermes--idle-w60.txt": {
+    "why": "hermes draws a rotating example question in italic as its placeholder. The text is free prose, so there is no fixed string to match; a plain read shows it as a draft.",
+    "class": "text-rule-possible",
+    "rule": "web/src/lib/surface/frame.ts:323 holeIsFaint (profile hermes.json idle.placeholders.sgr 3)",
+    "propose": "Take the placeholder list from hermes's source and add each as idle.placeholders.texts, or a pattern if the list has a shape. Not added: the corpus holds one sample and the list is not known.",
+    "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
+  },
+  "hermes--idle.txt": {
+    "why": "hermes draws its fixed hint placeholder in italic (SGR 3). A plain read shows the hint as a typed draft.",
+    "class": "text-rule-possible",
+    "rule": "web/src/lib/surface/frame.ts:323 holeIsFaint (profile hermes.json idle.placeholders.sgr 3)",
+    "propose": "idle.placeholders.texts: the idle hint and the busy hint.",
+    "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
+  },
+  "hermes--model-picker.txt": {
+    "why": "hermes draws its fixed hint placeholder in italic (SGR 3). A plain read shows the hint as a typed draft.",
+    "class": "text-rule-possible",
+    "rule": "web/src/lib/surface/frame.ts:323 holeIsFaint (profile hermes.json idle.placeholders.sgr 3)",
+    "propose": "idle.placeholders.texts: the idle hint and the busy hint.",
+    "effect": "none: the state is unchanged (a picker is open); only the draft text differs"
+  },
+  "hermes--palette.txt": {
+    "why": "hermes draws its fixed hint placeholder in italic (SGR 3). A plain read shows the hint as a typed draft.",
+    "class": "text-rule-possible",
+    "rule": "web/src/lib/surface/frame.ts:323 holeIsFaint (profile hermes.json idle.placeholders.sgr 3)",
+    "propose": "idle.placeholders.texts: the idle hint and the busy hint.",
+    "effect": "none: the state is unchanged (a picker is open); only the draft text differs"
+  },
+  "hermes--running.txt": {
+    "why": "hermes draws its fixed hint placeholder in italic (SGR 3). A plain read shows the hint as a typed draft.",
+    "class": "text-rule-possible",
+    "rule": "web/src/lib/surface/frame.ts:323 holeIsFaint (profile hermes.json idle.placeholders.sgr 3)",
+    "propose": "idle.placeholders.texts: the idle hint and the busy hint.",
+    "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
+  },
+  "muse--palette-hint-skills.txt": {
+    "why": "muse's command list marks the pointed command in bold (pointerBold). A plain read finds no pointer, the list does not walk, and the frame is lost: composer unknown, modal unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/surface/command-list.ts:86 paintsBold (profile muse.json idle.volatile.below.commandList.pointerBold)",
+    "propose": "Upstream: a bold or reverse flag per cell run. Text only: none, the list has no pointer glyph.",
+    "effect": "HOTFIX: an idle box reads composer unknown, so a send is held or refused(not_free) and a probe can end probe_failed"
+  },
+  "muse--palette-hint.txt": {
+    "why": "muse prints an argument hint ('[<model-id>]') after a typed command in the colour of the box's rule. A plain read shows it as typed text.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/surface/frame.ts:444 argumentHintStart (profile muse.json idle.volatile.below.commandList.argumentHint)",
+    "propose": "Upstream: cursor column. Text only: a bracketed run after a known command from the command list is the shape, but a typed bracketed argument is identical, which the colour rule exists to tell apart.",
+    "effect": "HOTFIX: the draft shows more text than was typed, so a send that verifies the box can end typed_not_submitted"
+  },
+  "muse--prompt-hint-1410.txt": {
+    "why": "muse draws its tip 'Press ? on an empty composer to see keyboard shortcuts' in the placeholder grey. A plain read shows it as a typed draft.",
+    "class": "text-rule-possible",
+    "rule": "web/src/lib/surface/frame.ts:329 holeIsGhostColoured (profile muse.json idle.placeholders.fg)",
+    "propose": "idle.placeholders.texts: the tip.",
+    "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
+  },
+  "muse--prompt-hint.txt": {
+    "why": "muse shows a suggested prompt as its placeholder in the placeholder grey. 'Run the test suite and fix any failures' is a sentence a person could type, so a text rule alone would hide a real draft with that text.",
+    "class": "text-rule-possible",
+    "rule": "web/src/lib/surface/frame.ts:329 holeIsGhostColoured (profile muse.json idle.placeholders.fg)",
+    "propose": "Add the text to idle.placeholders.texts only with muse's list of suggestions in hand; judgement call, left to the architect.",
+    "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
+  },
+  "oc--narrow--permission-always-bash.txt": {
+    "why": "opencode marks the pointed option as the one chip on a different background (permission dialogs) or the active tab by bold or by ink (questions). A plain read shows no pointer, so the reader fails closed and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/opencode/dialog.ts:243 parseOptionChips (backgroundOf :216); opencode/question.ts:425 foregroundOf; opencode/question-tabs.ts:573 isBold",
+    "propose": "Upstream: the cursor position of the terminal, or a reverse or bg flag per cell run. Text only: none found, the chips show no pointer glyph in the captures.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "oc--narrow--permission-bash.txt": {
+    "why": "opencode marks the pointed option as the one chip on a different background (permission dialogs) or the active tab by bold or by ink (questions). A plain read shows no pointer, so the reader fails closed and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/opencode/dialog.ts:243 parseOptionChips (backgroundOf :216); opencode/question.ts:425 foregroundOf; opencode/question-tabs.ts:573 isBold",
+    "propose": "Upstream: the cursor position of the terminal, or a reverse or bg flag per cell run. Text only: none found, the chips show no pointer glyph in the captures.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "oc--permission-always-bash--cancel.txt": {
+    "why": "opencode marks the pointed option as the one chip on a different background (permission dialogs) or the active tab by bold or by ink (questions). A plain read shows no pointer, so the reader fails closed and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/opencode/dialog.ts:243 parseOptionChips (backgroundOf :216); opencode/question.ts:425 foregroundOf; opencode/question-tabs.ts:573 isBold",
+    "propose": "Upstream: the cursor position of the terminal, or a reverse or bg flag per cell run. Text only: none found, the chips show no pointer glyph in the captures.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "oc--permission-always-bash.txt": {
+    "why": "opencode marks the pointed option as the one chip on a different background (permission dialogs) or the active tab by bold or by ink (questions). A plain read shows no pointer, so the reader fails closed and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/opencode/dialog.ts:243 parseOptionChips (backgroundOf :216); opencode/question.ts:425 foregroundOf; opencode/question-tabs.ts:573 isBold",
+    "propose": "Upstream: the cursor position of the terminal, or a reverse or bg flag per cell run. Text only: none found, the chips show no pointer glyph in the captures.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "oc--permission-always-edit.txt": {
+    "why": "opencode marks the pointed option as the one chip on a different background (permission dialogs) or the active tab by bold or by ink (questions). A plain read shows no pointer, so the reader fails closed and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/opencode/dialog.ts:243 parseOptionChips (backgroundOf :216); opencode/question.ts:425 foregroundOf; opencode/question-tabs.ts:573 isBold",
+    "propose": "Upstream: the cursor position of the terminal, or a reverse or bg flag per cell run. Text only: none found, the chips show no pointer glyph in the captures.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "oc--permission-bash--moved.txt": {
+    "why": "opencode marks the pointed option as the one chip on a different background (permission dialogs) or the active tab by bold or by ink (questions). A plain read shows no pointer, so the reader fails closed and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/opencode/dialog.ts:243 parseOptionChips (backgroundOf :216); opencode/question.ts:425 foregroundOf; opencode/question-tabs.ts:573 isBold",
+    "propose": "Upstream: the cursor position of the terminal, or a reverse or bg flag per cell run. Text only: none found, the chips show no pointer glyph in the captures.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "oc--permission-bash--reject.txt": {
+    "why": "opencode marks the pointed option as the one chip on a different background (permission dialogs) or the active tab by bold or by ink (questions). A plain read shows no pointer, so the reader fails closed and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/opencode/dialog.ts:243 parseOptionChips (backgroundOf :216); opencode/question.ts:425 foregroundOf; opencode/question-tabs.ts:573 isBold",
+    "propose": "Upstream: the cursor position of the terminal, or a reverse or bg flag per cell run. Text only: none found, the chips show no pointer glyph in the captures.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "oc--permission-bash--wrap.txt": {
+    "why": "opencode marks the pointed option as the one chip on a different background (permission dialogs) or the active tab by bold or by ink (questions). A plain read shows no pointer, so the reader fails closed and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/opencode/dialog.ts:243 parseOptionChips (backgroundOf :216); opencode/question.ts:425 foregroundOf; opencode/question-tabs.ts:573 isBold",
+    "propose": "Upstream: the cursor position of the terminal, or a reverse or bg flag per cell run. Text only: none found, the chips show no pointer glyph in the captures.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "oc--permission-bash.txt": {
+    "why": "opencode marks the pointed option as the one chip on a different background (permission dialogs) or the active tab by bold or by ink (questions). A plain read shows no pointer, so the reader fails closed and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/opencode/dialog.ts:243 parseOptionChips (backgroundOf :216); opencode/question.ts:425 foregroundOf; opencode/question-tabs.ts:573 isBold",
+    "propose": "Upstream: the cursor position of the terminal, or a reverse or bg flag per cell run. Text only: none found, the chips show no pointer glyph in the captures.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "oc--permission-edit--moved.txt": {
+    "why": "opencode marks the pointed option as the one chip on a different background (permission dialogs) or the active tab by bold or by ink (questions). A plain read shows no pointer, so the reader fails closed and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/opencode/dialog.ts:243 parseOptionChips (backgroundOf :216); opencode/question.ts:425 foregroundOf; opencode/question-tabs.ts:573 isBold",
+    "propose": "Upstream: the cursor position of the terminal, or a reverse or bg flag per cell run. Text only: none found, the chips show no pointer glyph in the captures.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "oc--permission-edit.txt": {
+    "why": "opencode marks the pointed option as the one chip on a different background (permission dialogs) or the active tab by bold or by ink (questions). A plain read shows no pointer, so the reader fails closed and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/opencode/dialog.ts:243 parseOptionChips (backgroundOf :216); opencode/question.ts:425 foregroundOf; opencode/question-tabs.ts:573 isBold",
+    "propose": "Upstream: the cursor position of the terminal, or a reverse or bg flag per cell run. Text only: none found, the chips show no pointer glyph in the captures.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "oc--permission-webfetch.txt": {
+    "why": "opencode marks the pointed option as the one chip on a different background (permission dialogs) or the active tab by bold or by ink (questions). A plain read shows no pointer, so the reader fails closed and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/opencode/dialog.ts:243 parseOptionChips (backgroundOf :216); opencode/question.ts:425 foregroundOf; opencode/question-tabs.ts:573 isBold",
+    "propose": "Upstream: the cursor position of the terminal, or a reverse or bg flag per cell run. Text only: none found, the chips show no pointer glyph in the captures.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "oc--question--free-text--typed.txt": {
+    "why": "opencode marks the pointed option as the one chip on a different background (permission dialogs) or the active tab by bold or by ink (questions). A plain read shows no pointer, so the reader fails closed and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/opencode/dialog.ts:243 parseOptionChips (backgroundOf :216); opencode/question.ts:425 foregroundOf; opencode/question-tabs.ts:573 isBold",
+    "propose": "Upstream: the cursor position of the terminal, or a reverse or bg flag per cell run. Text only: none found, the chips show no pointer glyph in the captures.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "oc--question--free-text.txt": {
+    "why": "opencode marks the pointed option as the one chip on a different background (permission dialogs) or the active tab by bold or by ink (questions). A plain read shows no pointer, so the reader fails closed and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/opencode/dialog.ts:243 parseOptionChips (backgroundOf :216); opencode/question.ts:425 foregroundOf; opencode/question-tabs.ts:573 isBold",
+    "propose": "Upstream: the cursor position of the terminal, or a reverse or bg flag per cell run. Text only: none found, the chips show no pointer glyph in the captures.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "oc--question--multi--confirm--empty.txt": {
+    "why": "opencode marks the pointed option as the one chip on a different background (permission dialogs) or the active tab by bold or by ink (questions). A plain read shows no pointer, so the reader fails closed and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/opencode/dialog.ts:243 parseOptionChips (backgroundOf :216); opencode/question.ts:425 foregroundOf; opencode/question-tabs.ts:573 isBold",
+    "propose": "Upstream: the cursor position of the terminal, or a reverse or bg flag per cell run. Text only: none found, the chips show no pointer glyph in the captures.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "oc--question--multi--confirm.txt": {
+    "why": "opencode marks the pointed option as the one chip on a different background (permission dialogs) or the active tab by bold or by ink (questions). A plain read shows no pointer, so the reader fails closed and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/opencode/dialog.ts:243 parseOptionChips (backgroundOf :216); opencode/question.ts:425 foregroundOf; opencode/question-tabs.ts:573 isBold",
+    "propose": "Upstream: the cursor position of the terminal, or a reverse or bg flag per cell run. Text only: none found, the chips show no pointer glyph in the captures.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "oc--question--multi--free-text--committed.txt": {
+    "why": "opencode marks the pointed option as the one chip on a different background (permission dialogs) or the active tab by bold or by ink (questions). A plain read shows no pointer, so the reader fails closed and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/opencode/dialog.ts:243 parseOptionChips (backgroundOf :216); opencode/question.ts:425 foregroundOf; opencode/question-tabs.ts:573 isBold",
+    "propose": "Upstream: the cursor position of the terminal, or a reverse or bg flag per cell run. Text only: none found, the chips show no pointer glyph in the captures.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "oc--question--multi--narrow.txt": {
+    "why": "opencode marks the pointed option as the one chip on a different background (permission dialogs) or the active tab by bold or by ink (questions). A plain read shows no pointer, so the reader fails closed and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/opencode/dialog.ts:243 parseOptionChips (backgroundOf :216); opencode/question.ts:425 foregroundOf; opencode/question-tabs.ts:573 isBold",
+    "propose": "Upstream: the cursor position of the terminal, or a reverse or bg flag per cell run. Text only: none found, the chips show no pointer glyph in the captures.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "oc--question--multi--toggled.txt": {
+    "why": "opencode marks the pointed option as the one chip on a different background (permission dialogs) or the active tab by bold or by ink (questions). A plain read shows no pointer, so the reader fails closed and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/opencode/dialog.ts:243 parseOptionChips (backgroundOf :216); opencode/question.ts:425 foregroundOf; opencode/question-tabs.ts:573 isBold",
+    "propose": "Upstream: the cursor position of the terminal, or a reverse or bg flag per cell run. Text only: none found, the chips show no pointer glyph in the captures.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "oc--question--multi.txt": {
+    "why": "opencode marks the pointed option as the one chip on a different background (permission dialogs) or the active tab by bold or by ink (questions). A plain read shows no pointer, so the reader fails closed and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/opencode/dialog.ts:243 parseOptionChips (backgroundOf :216); opencode/question.ts:425 foregroundOf; opencode/question-tabs.ts:573 isBold",
+    "propose": "Upstream: the cursor position of the terminal, or a reverse or bg flag per cell run. Text only: none found, the chips show no pointer glyph in the captures.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "oc--question--single--moved.txt": {
+    "why": "opencode marks the pointed option as the one chip on a different background (permission dialogs) or the active tab by bold or by ink (questions). A plain read shows no pointer, so the reader fails closed and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/opencode/dialog.ts:243 parseOptionChips (backgroundOf :216); opencode/question.ts:425 foregroundOf; opencode/question-tabs.ts:573 isBold",
+    "propose": "Upstream: the cursor position of the terminal, or a reverse or bg flag per cell run. Text only: none found, the chips show no pointer glyph in the captures.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "oc--question--single--narrow.txt": {
+    "why": "opencode marks the pointed option as the one chip on a different background (permission dialogs) or the active tab by bold or by ink (questions). A plain read shows no pointer, so the reader fails closed and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/opencode/dialog.ts:243 parseOptionChips (backgroundOf :216); opencode/question.ts:425 foregroundOf; opencode/question-tabs.ts:573 isBold",
+    "propose": "Upstream: the cursor position of the terminal, or a reverse or bg flag per cell run. Text only: none found, the chips show no pointer glyph in the captures.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "oc--question--single--overlay.txt": {
+    "why": "opencode marks the pointed option as the one chip on a different background (permission dialogs) or the active tab by bold or by ink (questions). A plain read shows no pointer, so the reader fails closed and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/opencode/dialog.ts:243 parseOptionChips (backgroundOf :216); opencode/question.ts:425 foregroundOf; opencode/question-tabs.ts:573 isBold",
+    "propose": "Upstream: the cursor position of the terminal, or a reverse or bg flag per cell run. Text only: none found, the chips show no pointer glyph in the captures.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "oc--question--single.txt": {
+    "why": "opencode marks the pointed option as the one chip on a different background (permission dialogs) or the active tab by bold or by ink (questions). A plain read shows no pointer, so the reader fails closed and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/opencode/dialog.ts:243 parseOptionChips (backgroundOf :216); opencode/question.ts:425 foregroundOf; opencode/question-tabs.ts:573 isBold",
+    "propose": "Upstream: the cursor position of the terminal, or a reverse or bg flag per cell run. Text only: none found, the chips show no pointer glyph in the captures.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "oc--question--tall8.txt": {
+    "why": "opencode marks the pointed option as the one chip on a different background (permission dialogs) or the active tab by bold or by ink (questions). A plain read shows no pointer, so the reader fails closed and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/opencode/dialog.ts:243 parseOptionChips (backgroundOf :216); opencode/question.ts:425 foregroundOf; opencode/question-tabs.ts:573 isBold",
+    "propose": "Upstream: the cursor position of the terminal, or a reverse or bg flag per cell run. Text only: none found, the chips show no pointer glyph in the captures.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "oc--question--tall9.txt": {
+    "why": "opencode marks the pointed option as the one chip on a different background (permission dialogs) or the active tab by bold or by ink (questions). A plain read shows no pointer, so the reader fails closed and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/opencode/dialog.ts:243 parseOptionChips (backgroundOf :216); opencode/question.ts:425 foregroundOf; opencode/question-tabs.ts:573 isBold",
+    "propose": "Upstream: the cursor position of the terminal, or a reverse or bg flag per cell run. Text only: none found, the chips show no pointer glyph in the captures.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "oc--question--three--q2-multi--toggled.txt": {
+    "why": "opencode marks the pointed option as the one chip on a different background (permission dialogs) or the active tab by bold or by ink (questions). A plain read shows no pointer, so the reader fails closed and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/opencode/dialog.ts:243 parseOptionChips (backgroundOf :216); opencode/question.ts:425 foregroundOf; opencode/question-tabs.ts:573 isBold",
+    "propose": "Upstream: the cursor position of the terminal, or a reverse or bg flag per cell run. Text only: none found, the chips show no pointer glyph in the captures.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "oc--question--three--q2-multi.txt": {
+    "why": "opencode marks the pointed option as the one chip on a different background (permission dialogs) or the active tab by bold or by ink (questions). A plain read shows no pointer, so the reader fails closed and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/opencode/dialog.ts:243 parseOptionChips (backgroundOf :216); opencode/question.ts:425 foregroundOf; opencode/question-tabs.ts:573 isBold",
+    "propose": "Upstream: the cursor position of the terminal, or a reverse or bg flag per cell run. Text only: none found, the chips show no pointer glyph in the captures.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "oc--question--three--review--incomplete.txt": {
+    "why": "opencode marks the pointed option as the one chip on a different background (permission dialogs) or the active tab by bold or by ink (questions). A plain read shows no pointer, so the reader fails closed and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/opencode/dialog.ts:243 parseOptionChips (backgroundOf :216); opencode/question.ts:425 foregroundOf; opencode/question-tabs.ts:573 isBold",
+    "propose": "Upstream: the cursor position of the terminal, or a reverse or bg flag per cell run. Text only: none found, the chips show no pointer glyph in the captures.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "oc--question--three--review.txt": {
+    "why": "opencode marks the pointed option as the one chip on a different background (permission dialogs) or the active tab by bold or by ink (questions). A plain read shows no pointer, so the reader fails closed and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/opencode/dialog.ts:243 parseOptionChips (backgroundOf :216); opencode/question.ts:425 foregroundOf; opencode/question-tabs.ts:573 isBold",
+    "propose": "Upstream: the cursor position of the terminal, or a reverse or bg flag per cell run. Text only: none found, the chips show no pointer glyph in the captures.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "oc--question--two--q1-answered.txt": {
+    "why": "opencode marks the pointed option as the one chip on a different background (permission dialogs) or the active tab by bold or by ink (questions). A plain read shows no pointer, so the reader fails closed and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/opencode/dialog.ts:243 parseOptionChips (backgroundOf :216); opencode/question.ts:425 foregroundOf; opencode/question-tabs.ts:573 isBold",
+    "propose": "Upstream: the cursor position of the terminal, or a reverse or bg flag per cell run. Text only: none found, the chips show no pointer glyph in the captures.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "oc--question--two--q1.txt": {
+    "why": "opencode marks the pointed option as the one chip on a different background (permission dialogs) or the active tab by bold or by ink (questions). A plain read shows no pointer, so the reader fails closed and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/opencode/dialog.ts:243 parseOptionChips (backgroundOf :216); opencode/question.ts:425 foregroundOf; opencode/question-tabs.ts:573 isBold",
+    "propose": "Upstream: the cursor position of the terminal, or a reverse or bg flag per cell run. Text only: none found, the chips show no pointer glyph in the captures.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "oc--question--two--q2.txt": {
+    "why": "opencode marks the pointed option as the one chip on a different background (permission dialogs) or the active tab by bold or by ink (questions). A plain read shows no pointer, so the reader fails closed and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/opencode/dialog.ts:243 parseOptionChips (backgroundOf :216); opencode/question.ts:425 foregroundOf; opencode/question-tabs.ts:573 isBold",
+    "propose": "Upstream: the cursor position of the terminal, or a reverse or bg flag per cell run. Text only: none found, the chips show no pointer glyph in the captures.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "oc--question--two--review.txt": {
+    "why": "opencode marks the pointed option as the one chip on a different background (permission dialogs) or the active tab by bold or by ink (questions). A plain read shows no pointer, so the reader fails closed and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/opencode/dialog.ts:243 parseOptionChips (backgroundOf :216); opencode/question.ts:425 foregroundOf; opencode/question-tabs.ts:573 isBold",
+    "propose": "Upstream: the cursor position of the terminal, or a reverse or bg flag per cell run. Text only: none found, the chips show no pointer glyph in the captures.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "oc--v211-question--multi--review.txt": {
+    "why": "opencode marks the pointed option as the one chip on a different background (permission dialogs) or the active tab by bold or by ink (questions). A plain read shows no pointer, so the reader fails closed and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/opencode/dialog.ts:243 parseOptionChips (backgroundOf :216); opencode/question.ts:425 foregroundOf; opencode/question-tabs.ts:573 isBold",
+    "propose": "Upstream: the cursor position of the terminal, or a reverse or bg flag per cell run. Text only: none found, the chips show no pointer glyph in the captures.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "oc--v211-question--multi--toggled.txt": {
+    "why": "opencode marks the pointed option as the one chip on a different background (permission dialogs) or the active tab by bold or by ink (questions). A plain read shows no pointer, so the reader fails closed and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/opencode/dialog.ts:243 parseOptionChips (backgroundOf :216); opencode/question.ts:425 foregroundOf; opencode/question-tabs.ts:573 isBold",
+    "propose": "Upstream: the cursor position of the terminal, or a reverse or bg flag per cell run. Text only: none found, the chips show no pointer glyph in the captures.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "oc--v211-question--multi.txt": {
+    "why": "opencode marks the pointed option as the one chip on a different background (permission dialogs) or the active tab by bold or by ink (questions). A plain read shows no pointer, so the reader fails closed and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/opencode/dialog.ts:243 parseOptionChips (backgroundOf :216); opencode/question.ts:425 foregroundOf; opencode/question-tabs.ts:573 isBold",
+    "propose": "Upstream: the cursor position of the terminal, or a reverse or bg flag per cell run. Text only: none found, the chips show no pointer glyph in the captures.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "oc--v211-question--single--moved.txt": {
+    "why": "opencode marks the pointed option as the one chip on a different background (permission dialogs) or the active tab by bold or by ink (questions). A plain read shows no pointer, so the reader fails closed and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/opencode/dialog.ts:243 parseOptionChips (backgroundOf :216); opencode/question.ts:425 foregroundOf; opencode/question-tabs.ts:573 isBold",
+    "propose": "Upstream: the cursor position of the terminal, or a reverse or bg flag per cell run. Text only: none found, the chips show no pointer glyph in the captures.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "oc--v211-question--single.txt": {
+    "why": "opencode marks the pointed option as the one chip on a different background (permission dialogs) or the active tab by bold or by ink (questions). A plain read shows no pointer, so the reader fails closed and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/opencode/dialog.ts:243 parseOptionChips (backgroundOf :216); opencode/question.ts:425 foregroundOf; opencode/question-tabs.ts:573 isBold",
+    "propose": "Upstream: the cursor position of the terminal, or a reverse or bg flag per cell run. Text only: none found, the chips show no pointer glyph in the captures.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "oc--v211-question--two--answered.txt": {
+    "why": "opencode marks the pointed option as the one chip on a different background (permission dialogs) or the active tab by bold or by ink (questions). A plain read shows no pointer, so the reader fails closed and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/opencode/dialog.ts:243 parseOptionChips (backgroundOf :216); opencode/question.ts:425 foregroundOf; opencode/question-tabs.ts:573 isBold",
+    "propose": "Upstream: the cursor position of the terminal, or a reverse or bg flag per cell run. Text only: none found, the chips show no pointer glyph in the captures.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "oc--v211-question--two--review.txt": {
+    "why": "opencode marks the pointed option as the one chip on a different background (permission dialogs) or the active tab by bold or by ink (questions). A plain read shows no pointer, so the reader fails closed and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/opencode/dialog.ts:243 parseOptionChips (backgroundOf :216); opencode/question.ts:425 foregroundOf; opencode/question-tabs.ts:573 isBold",
+    "propose": "Upstream: the cursor position of the terminal, or a reverse or bg flag per cell run. Text only: none found, the chips show no pointer glyph in the captures.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "oc--v211-question--two.txt": {
+    "why": "opencode marks the pointed option as the one chip on a different background (permission dialogs) or the active tab by bold or by ink (questions). A plain read shows no pointer, so the reader fails closed and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/opencode/dialog.ts:243 parseOptionChips (backgroundOf :216); opencode/question.ts:425 foregroundOf; opencode/question-tabs.ts:573 isBold",
+    "propose": "Upstream: the cursor position of the terminal, or a reverse or bg flag per cell run. Text only: none found, the chips show no pointer glyph in the captures.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "omp--v18-10-ask-batch-moved.txt": {
+    "why": "omp marks the current tab of its ask stepper by a background on a bold label. A plain read has no current tab, so the ask reader returns null and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/omp/ask.ts:370 readTabs (segment.bg and segment.bold)",
+    "propose": "Upstream: a bg or reverse flag per cell run. Text only: none found for the stepper chip.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "omp--v18-10-ask-batch-review.txt": {
+    "why": "omp marks the current tab of its ask stepper by a background on a bold label. A plain read has no current tab, so the ask reader returns null and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/omp/ask.ts:370 readTabs (segment.bg and segment.bold)",
+    "propose": "Upstream: a bg or reverse flag per cell run. Text only: none found for the stepper chip.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "omp--v18-10-ask-batch-second.txt": {
+    "why": "omp marks the current tab of its ask stepper by a background on a bold label. A plain read has no current tab, so the ask reader returns null and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/omp/ask.ts:370 readTabs (segment.bg and segment.bold)",
+    "propose": "Upstream: a bg or reverse flag per cell run. Text only: none found for the stepper chip.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "omp--v18-10-ask-batch-third.txt": {
+    "why": "omp marks the current tab of its ask stepper by a background on a bold label. A plain read has no current tab, so the ask reader returns null and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/omp/ask.ts:370 readTabs (segment.bg and segment.bold)",
+    "propose": "Upstream: a bg or reverse flag per cell run. Text only: none found for the stepper chip.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "omp--v18-10-ask-batch.txt": {
+    "why": "omp marks the current tab of its ask stepper by a background on a bold label. A plain read has no current tab, so the ask reader returns null and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/omp/ask.ts:370 readTabs (segment.bg and segment.bold)",
+    "propose": "Upstream: a bg or reverse flag per cell run. Text only: none found for the stepper chip.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "omp--v18-10-ask-long-expanded.txt": {
+    "why": "omp marks the current tab of its ask stepper by a background on a bold label. A plain read has no current tab, so the ask reader returns null and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/omp/ask.ts:370 readTabs (segment.bg and segment.bold)",
+    "propose": "Upstream: a bg or reverse flag per cell run. Text only: none found for the stepper chip.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "omp--v18-10-ask-long.txt": {
+    "why": "omp marks the current tab of its ask stepper by a background on a bold label. A plain read has no current tab, so the ask reader returns null and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/omp/ask.ts:370 readTabs (segment.bg and segment.bold)",
+    "propose": "Upstream: a bg or reverse flag per cell run. Text only: none found for the stepper chip.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "omp--v18-10-ask-revisited.txt": {
+    "why": "omp marks the current tab of its ask stepper by a background on a bold label. A plain read has no current tab, so the ask reader returns null and the ask is lost. The modal reads unreadable.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/omp/ask.ts:370 readTabs (segment.bg and segment.bold)",
+    "propose": "Upstream: a bg or reverse flag per cell run. Text only: none found for the stepper chip.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "omp--v18-11-ghost-word--w130.txt": {
+    "why": "omp draws its word completion after the cursor in a grey ink. A plain read cannot tell the ghost letters from typed ones, so the draft shows the completion as typed text. The error is toward 'more text than was sent', which holds a send.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/surface/frame.ts:413 hintStart; web/src/lib/surface/profiles/omp.json idle.inlineHint.fg",
+    "propose": "Upstream: the cursor column in terminal.read (ghost text sits after it). Text only: none.",
+    "effect": "HOTFIX: the draft shows more text than was typed, so a send that verifies the box can end typed_not_submitted"
+  },
+  "omp--v18-11-nerd-ghost-word--w130.txt": {
+    "why": "omp draws its word completion after the cursor in a grey ink. A plain read cannot tell the ghost letters from typed ones, so the draft shows the completion as typed text. The error is toward 'more text than was sent', which holds a send.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/surface/frame.ts:413 hintStart; web/src/lib/surface/profiles/omp.json idle.inlineHint.fg",
+    "propose": "Upstream: the cursor column in terminal.read (ghost text sits after it). Text only: none.",
+    "effect": "HOTFIX: the draft shows more text than was typed, so a send that verifies the box can end typed_not_submitted"
+  },
+  "omp--v18-11-nerd-ghost-word--w80.txt": {
+    "why": "omp draws its word completion after the cursor in a grey ink. A plain read cannot tell the ghost letters from typed ones, so the draft shows the completion as typed text. The error is toward 'more text than was sent', which holds a send.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/surface/frame.ts:413 hintStart; web/src/lib/surface/profiles/omp.json idle.inlineHint.fg",
+    "propose": "Upstream: the cursor column in terminal.read (ghost text sits after it). Text only: none.",
+    "effect": "HOTFIX: the draft shows more text than was typed, so a send that verifies the box can end typed_not_submitted"
+  },
+  "omp--v18-12-nerd-band-two-lines--w130.txt": {
+    "why": "omp draws its word completion after the cursor in a grey ink. A plain read cannot tell the ghost letters from typed ones, so the draft shows the completion as typed text. The error is toward 'more text than was sent', which holds a send.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/surface/frame.ts:413 hintStart; web/src/lib/surface/profiles/omp.json idle.inlineHint.fg",
+    "propose": "Upstream: the cursor column in terminal.read (ghost text sits after it). Text only: none.",
+    "effect": "HOTFIX: the draft shows more text than was typed, so a send that verifies the box can end typed_not_submitted"
+  },
+  "omp--v18-12-nerd-band-two-lines--w80.txt": {
+    "why": "omp draws its word completion after the cursor in a grey ink. A plain read cannot tell the ghost letters from typed ones, so the draft shows the completion as typed text. The error is toward 'more text than was sent', which holds a send.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/surface/frame.ts:413 hintStart; web/src/lib/surface/profiles/omp.json idle.inlineHint.fg",
+    "propose": "Upstream: the cursor column in terminal.read (ghost text sits after it). Text only: none.",
+    "effect": "HOTFIX: the draft shows more text than was typed, so a send that verifies the box can end typed_not_submitted"
+  },
+  "omp--v18.11.1-powerline-draft--w120.txt": {
+    "why": "omp draws its word completion after the cursor in a grey ink. A plain read cannot tell the ghost letters from typed ones, so the draft shows the completion as typed text. The error is toward 'more text than was sent', which holds a send.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/surface/frame.ts:413 hintStart; web/src/lib/surface/profiles/omp.json idle.inlineHint.fg",
+    "propose": "Upstream: the cursor column in terminal.read (ghost text sits after it). Text only: none.",
+    "effect": "HOTFIX: the draft shows more text than was typed, so a send that verifies the box can end typed_not_submitted"
+  },
+  "omp--v18.11.1-powerline-transparent-draft--w120.txt": {
+    "why": "omp draws its word completion after the cursor in a grey ink. A plain read cannot tell the ghost letters from typed ones, so the draft shows the completion as typed text. The error is toward 'more text than was sent', which holds a send.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/surface/frame.ts:413 hintStart; web/src/lib/surface/profiles/omp.json idle.inlineHint.fg",
+    "propose": "Upstream: the cursor column in terminal.read (ghost text sits after it). Text only: none.",
+    "effect": "HOTFIX: the draft shows more text than was typed, so a send that verifies the box can end typed_not_submitted"
+  },
+  "pi--omo-v5130-nocolor-question.txt": {
+    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--omo-v5130-panel-question-cut.txt": {
+    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--omo-v5130-panel-question.txt": {
+    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--omo-v5130-plain-question.txt": {
+    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--omo-v5130-single-described-moved.txt": {
+    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--omo-v5130-single-described.txt": {
+    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--v0871-nocolor-question.txt": {
+    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--v0871-permission-gate-moved.txt": {
+    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--v0871-permission-gate-narrow-moved.txt": {
+    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--v0871-permission-gate-narrow.txt": {
+    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--v0871-permission-gate.txt": {
+    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--v0871-question-narrow-moved.txt": {
+    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--v0871-question-narrow.txt": {
+    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--v0871-question-plain-moved.txt": {
+    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--v0871-question-plain.txt": {
+    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--v0871-question-single-moved.txt": {
+    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--v0871-question-single.txt": {
+    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--v0871-questionnaire-single-moved.txt": {
+    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--v0871-questionnaire-single.txt": {
+    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--v0871-questionnaire-submit-ready.txt": {
+    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--v0871-questionnaire-tabs-answered.txt": {
+    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--v0871-questionnaire-tabs-moved.txt": {
+    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--v0871-questionnaire-tabs-second-moved.txt": {
+    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--v0871-questionnaire-tabs-second.txt": {
+    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--v0871-questionnaire-tabs.txt": {
+    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--v110-question-narrow-moved.txt": {
+    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--v110-question-narrow.txt": {
+    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--v110-question-plain-moved.txt": {
+    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--v110-question-plain.txt": {
+    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--v110-question-single-moved.txt": {
+    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--v110-question-single.txt": {
+    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--v110-questionnaire-single-moved.txt": {
+    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--v110-questionnaire-single.txt": {
+    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--v110-questionnaire-submit-ready.txt": {
+    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--v110-questionnaire-tabs-answered.txt": {
+    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--v110-questionnaire-tabs-moved.txt": {
+    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--v110-questionnaire-tabs-second-moved.txt": {
+    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--v110-questionnaire-tabs-second.txt": {
+    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--v110-questionnaire-tabs.txt": {
+    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--v110-review-complete.txt": {
+    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--v110-single-desc.txt": {
+    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--v110-single-moved.txt": {
+    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--v110-single-narrow.txt": {
+    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--v110-single.txt": {
+    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--v110-tabs-compact.txt": {
+    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--v110-tabs-single-recorded.txt": {
+    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--v110-tabs-single.txt": {
+    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--v130-custom-footer-draft.txt": {
+    "why": "pi's own status rows must be painted (paintedStatus), except the last. The custom-footer fixtures draw plain status rows under the box, so the plain read finds no composer frame: composer unknown, the pane is never free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/composer.ts:100 paintedStatus (via locateComposer)",
+    "propose": "Upstream: per-row dim or fg flag. Text only: none, a plain row under a rule is also what a shell prompt after pi exited looks like.",
+    "effect": "HOTFIX: an idle box reads composer unknown, so a send is held or refused(not_free) and a probe can end probe_failed"
+  },
+  "pi--v130-custom-footer-idle.txt": {
+    "why": "pi's own status rows must be painted (paintedStatus), except the last. The custom-footer fixtures draw plain status rows under the box, so the plain read finds no composer frame: composer unknown, the pane is never free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/composer.ts:100 paintedStatus (via locateComposer)",
+    "propose": "Upstream: per-row dim or fg flag. Text only: none, a plain row under a rule is also what a shell prompt after pi exited looks like.",
+    "effect": "HOTFIX: an idle box reads composer unknown, so a send is held or refused(not_free) and a probe can end probe_failed"
+  },
+  "pi--v130-gentle-choice-moved.txt": {
+    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--v130-gentle-choice.txt": {
+    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--v130-gentle-review-consent-moved.txt": {
+    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  },
+  "pi--v130-gentle-review-consent.txt": {
+    "why": "pi accepts a dialog footer and status rows only when they are painted (dim or coloured), so a key hint quoted in a draft or in agent prose is not read as a dialog. A plain read has no painted row, the frame walk fails, and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
+    "class": "colour-needed",
+    "rule": "web/src/lib/harness/pi/ask.ts:112 styledRow (footerAt :148, statusTailBottom :133), ask.ts:357 paintedRow, pi/composer.ts:100 paintedStatus",
+    "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: a footer made of two or more key/action pairs under a full rule would pass, but it cannot tell a quoted dialog from a live one (pi/ask.test.ts 'a quoted dialog is not a dialog'), so no text rule is proposed.",
+    "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
+  }
+}
