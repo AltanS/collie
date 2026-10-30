@@ -23,7 +23,8 @@
 // ── WHAT IS DECLARED, AND WHAT IS NOT ────────────────────────────────────────────────────────────
 //
 // Declared, each from a probe: the grid (plain text, a derived revision), scrollback, agent
-// detection (the program's own OSC 7501 report, else the foreground process name), typing (a framed attach, see client.ts), keys,
+// detection (the program's own OSC 7501 report; where a program sends none, an exact, known foreground
+// program name from the same table is a provisional identity with status `unknown`, never a status word), typing (a framed attach, see client.ts), keys,
 // closing a pane, a new tab (a shell carrying herdr-app's labels), and both push channels.
 // Declined: focus, every rename, closing a tab, a new space, worktrees, sessions, and an agent
 // session ref. The core has no verb for any of them, and the layout belongs to herdr-app, which

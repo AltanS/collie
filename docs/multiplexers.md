@@ -419,6 +419,8 @@ requires installing Collie's [beacon](#agent-beacons-optional-linux) hooks into 
 configuration. On Herdr, the same hooks give [hook edges](#hook-edges) only. The file is
 `$CLAUDE_CONFIG_DIR/settings.json` when that variable is set to an absolute path, and
 `~/.claude/settings.json` otherwise, which is where Claude Code reads it.
+The bridge reads the variable from its own environment, so a service unit needs an
+`Environment=CLAUDE_CONFIG_DIR=...` line (or `COLLIE_TRANSCRIPT_ROOT`) when your login shell sets it.
 
 The output references the `bin/collie` path from this repository. Package installs use the installed
 binary path (`~/.local/bin/collie` or `~/.local/share/collie/current/bin/collie`) rather than
