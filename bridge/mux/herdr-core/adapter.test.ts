@@ -122,6 +122,47 @@ describe("HerdrCoreMux over a fake core", () => {
     expect(moved.value.revision).toBe(first.value.revision + 1);
   });
 
+  test("one screen change gives every view the same revision: two line counts, a viewport read and a history read", async () => {
+    const { fake, adapter } = build();
+    const reads = async () => {
+      const outcomes = await Promise.all([
+        adapter.readGrid("t1", { scope: "recent", lines: 40, styling: "preserve" }),
+        adapter.readGrid("t1", { scope: "recent", lines: 80, styling: "preserve" }),
+        adapter.readGrid("t1", { scope: "viewport", lines: 40, styling: "preserve" }),
+        adapter.readGrid("t1", { scope: "recent", lines: 600, styling: "preserve" }),
+      ]);
+      return outcomes.map((outcome) => {
+        if (!outcome.ok) throw new Error("a read failed");
+        return outcome.value.revision;
+      });
+    };
+    const first = await reads();
+    const base = first[0] ?? 0;
+    expect(first).toEqual([base, base, base, base]);
+    expect(await reads()).toEqual([base, base, base, base]);
+    fake.setScreen("t1", ["[✔] Apple", "[ ] Cherry"]);
+    const after = await reads();
+    expect(after).toEqual([base + 1, base + 1, base + 1, base + 1]);
+  });
+
+  test("each further screen change bumps the revision exactly once, whichever view reads first", async () => {
+    const { fake, adapter } = build();
+    const read = async (scope: "recent" | "viewport", lines: number) => {
+      const outcome = await adapter.readGrid("t1", { scope, lines, styling: "preserve" });
+      if (!outcome.ok) throw new Error("a read failed");
+      return outcome.value.revision;
+    };
+    const start = await read("recent", 40);
+    fake.setScreen("t1", ["one"]);
+    expect(await read("recent", 80)).toBe(start + 1);
+    expect(await read("recent", 40)).toBe(start + 1);
+    fake.setScreen("t1", ["two"]);
+    expect(await read("viewport", 40)).toBe(start + 2);
+    expect(await read("recent", 80)).toBe(start + 2);
+    expect(await read("recent", 40)).toBe(start + 2);
+    expect(await read("viewport", 40)).toBe(start + 2);
+  });
+
   test("`missed` re-reads everything, and a status on a watched pane is a pane change", async () => {
     const { fake, adapter } = build();
     let topology = 0;

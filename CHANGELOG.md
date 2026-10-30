@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **A tap on a card right after the screen changed is no longer refused as "changed" on the Herdr core.** The core has no revision, so the adapter counted one per reader view, and one screen change moved it several times; the phone's guard saw a new number for the same text and sent no key. The revision now follows the pane's screen alone, the same for every reader.
+
 ## [1.25.2] - 2026-10-30
 
 A bugfix release, not urgent, that fixes failing inputs on the Herdr core (sends refused, cards that could not be answered, keys that lost their case) and takes two contributor fixes. You need it if you run Collie on the Herdr core (the new herdr-app) or send to omp or pi there.
