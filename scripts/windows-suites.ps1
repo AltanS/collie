@@ -14,7 +14,7 @@
 #              cannot hide behind a removed one in another. A test must not be skipped just to get
 #              green, so a higher count is a failure. Raise a number only with a reason.
 #              Bridge went from 2 to 0 when M43 spec 04 checked the access list instead of the mode.
-#              Today, 174 in all, each one named, with its reason:
+#              Today, 175 in all, each one named, with its reason:
 #              bridge 98. 5 are the POSIX-only and engine cases below, 1 the /etc link scan, 5 are the hold socket tests, 6 the walky ones, 30 are the
 #                durable example apps, 10 are the durable-harness adapter test, 36 are the durable socket tests (see "Durable, bridge" below),
 #                and 5 are the pane's program reads (see "The pane's program, bridge" below).
@@ -81,11 +81,13 @@
 #                - "procProbe sees a live process's executable and folder" (pane-binary.test.ts, off Linux: it reads /proc)
 #                - "two copies of one harness" (pane-binary.test.ts, win32: its fake omp copies are POSIX sh scripts), its one test and
 #                  the hook Bun counts with it. The Windows path of paneBinaryOf runs on Windows with a fake host ("no /proc" tests).
-#              cli 49. 12 are every test of the "doctor durable" describe in cli/doctor.test.ts: each reads a
+#              cli 52 in all: 18 in the next paragraph, then 3 of the statusLine wrapper and 31 of walky talky. Of the 18, 12 are every test of the "doctor durable" describe in cli/doctor.test.ts: each reads a
 #                real Unix socket. Its Windows rows are tested in cli/durable-findings.test.ts with a fake
-#                platform. The other 5:
-#                "a per-call override wins over the Exec's own environment (#283) > a child
-#                killed by a signal says which one" (Windows has no POSIX signals),
+#                platform. The other 6:
+#                "a per-call override wins over the Exec's own environment (#283) > a child killed by a signal says which one"
+#                (Windows has no POSIX signals),
+#                "a per-call override wins over the Exec's own environment (#283) > inherit and runIn can point the child's stdout at stderr"
+#                (cli/sys.test.ts, added in 1.25.0: its children are POSIX `sh -c` commands),
 #                "collie _whistle-transcribe - the real engine, end to end > a child of this checkout's CLI turns 10.4 s of speech into text"
 #                (the same missing model as the bridge case), and the 3 tests of
 #                "installScript from a shallow lead, run for real" in cli/remote.test.ts: they run the
@@ -109,7 +111,7 @@
 param(
   [Parameter(Mandatory = $true)][string]$Out,
   [int]$MaxSkipsBridge = 98,
-  [int]$MaxSkipsCli = 51,
+  [int]$MaxSkipsCli = 52,
   [int]$MaxSkipsScripts = 25
 )
 $skipBudget = @{ bridge = $MaxSkipsBridge; cli = $MaxSkipsCli; scripts = $MaxSkipsScripts }

@@ -635,7 +635,8 @@ describe("the hook target registry (M56 spec 11)", () => {
       const d = withTargets([A, B]);
       const mkdirp = d.files.mkdirp.bind(d.files);
       d.files.mkdirp = (path, mode) => {
-        if (path.startsWith(`${A.dir}/beacons`)) throw new Error("EACCES");
+        // The code under test joins with the host separator, so Windows hands this a backslash path.
+        if (path.replaceAll("\\", "/").startsWith(`${A.dir}/beacons`)) throw new Error("EACCES");
         mkdirp(path, mode);
       };
       expect(await cmdBeaconEmit(d)).toBe(EXIT.OK);
