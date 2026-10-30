@@ -165,6 +165,7 @@ function rig(screen: string): Rig {
   const book = new AskBook(now, "test-salt");
   book.attachHolds(holds);
   const answerer = new AskAnswerer({
+    log: () => undefined,
     mux: pane,
     gate,
     store,
