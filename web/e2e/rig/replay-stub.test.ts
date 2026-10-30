@@ -291,6 +291,25 @@ describe("matchTurn", () => {
     expect("mismatch" in miss).toBe(true);
   });
 
+  it("matches a turn with or without omp's session reminder, so a case's place in the run does not move its turns into the next case", () => {
+    const reminder = "<system-reminder>\nToday: 2026-10-30T11:47:00Z; current working directory: '/tmp/lab'. Do not repeat this information in your reply.\n</system-reminder>\n";
+    const first = entry("turn", 0, piBody(`${reminder}List fruits`), sse(delta("one")));
+    const again = entry("turn", 1, piBody("List fruits"), sse(delta("two")));
+    const later = entry("turn", 0, piBody("List fruits"), sse(delta("three")));
+    const byCase = new Map([
+      ["omp.queued", [first, again]],
+      ["omp.busy", [later]],
+    ]);
+    const used = new Map<string, Set<number>>();
+    const usedIn = (id: string): Set<number> => used.get(id) ?? used.set(id, new Set()).get(id) ?? new Set();
+    for (const want of [0, 1]) {
+      const hit = matchTurnAcross(byCase, "omp.queued", "lead", summarize("/api/v1/messages", piBody("List fruits")), usedIn);
+      expect("entry" in hit && `${hit.caseId}:${String(hit.index)}`).toBe(`omp.queued:${String(want)}`);
+      if ("entry" in hit) usedIn(hit.caseId).add(hit.index);
+    }
+    expect("entry" in matchTurn([first], "lead", summarize("/api/v1/messages", piBody("List fruits")), new Set(), "omp.queued")).toBe(true);
+  });
+
   it("matches a side request by digest alone, from the pool", () => {
     const side = entry("side", 0, JSON.stringify({ model: "m", messages: [{ role: "user", content: "Title: hello" }] }), sse(delta("Hello")));
     expect(matchSide([side], summarize("/api/v1/messages", JSON.stringify({ model: "m", messages: [{ role: "user", content: "Title: hello" }] })))).toBe(side);

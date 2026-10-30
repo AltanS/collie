@@ -16,6 +16,7 @@
 // two requests still matches, and anything else is a cassette mismatch. A request with no tools is a
 // SIDE request (a title, a summary, a description compressor): it is matched by digest alone, from a
 // pool of every side entry the leg recorded for that harness, in any order and as often as asked.
+// The comparison leaves out omp's session reminder (matchKeyOf): omp sends it only on some turns.
 //
 // WHAT THE DIGEST IGNORES. The values that differ on every run: walky talky ids, pane addresses with
 // their instance tokens, uuids, dates and times, the rig's ports, and the rig's own folders (VOLATILE
@@ -395,6 +396,23 @@ export function digestOf(summary: RequestSummary): string {
     .slice(0, 16);
 }
 
+/**
+ * omp's session reminder: a `<system-reminder>` with the date and the working folder that omp puts in
+ * front of a prompt only on some turns (the first prompt of a session, at least). Whether it is there
+ * depends on where the case falls in the run, not on the case: case 29 recorded alone had it on its
+ * first long list, and the same request in a full run did not. The match key leaves it out.
+ */
+const SESSION_REMINDER = /^<system-reminder>\nToday: [^\n]*\n<\/system-reminder>\n/u;
+
+/**
+ * What a request is matched on: its digest with omp's session reminder left out of the prompt. Computed
+ * from a stored entry's summary and from a live request alike, so the cassettes keep their digests.
+ */
+export function matchKeyOf(summary: RequestSummary): string {
+  const prompt = summary.prompt.replace(SESSION_REMINDER, "");
+  return prompt === summary.prompt ? digestOf(summary) : digestOf({ ...summary, prompt });
+}
+
 // ── server-sent events ───────────────────────────────────────────────────────────────────────────
 
 /** Split a growing SSE text into its complete blocks and the incomplete rest. */
@@ -585,9 +603,9 @@ export type Match = { readonly entry: Entry; readonly index: number } | { readon
  */
 export function matchTurn(entries: readonly Entry[] | undefined, machine: string, summary: RequestSummary, used: ReadonlySet<number>, caseId: string): Match {
   if (entries === undefined) return { mismatch: `cassette mismatch: no cassette for case ${caseId}; ${RERECORD}` };
-  const digest = digestOf(summary);
+  const key = matchKeyOf(summary);
   const mine = entries.map((entry, index) => ({ entry, index })).filter(({ entry, index }) => entry.kind === "turn" && entry.machine === machine && !used.has(index));
-  const hit = mine.find(({ entry }) => entry.request.digest === digest);
+  const hit = mine.find(({ entry }) => matchKeyOf(entry.request) === key);
   if (hit !== undefined) return hit;
   const next = mine[0]?.entry;
   if (next === undefined) return { mismatch: `cassette mismatch: case ${caseId} has no turn left for this request (prompt "${clip(summary.prompt)}"); ${RERECORD}` };
@@ -608,11 +626,11 @@ export type CaseMatch = { readonly caseId: string; readonly entry: Entry; readon
 export function matchTurnAcross(byCase: ReadonlyMap<string, readonly Entry[]> | undefined, caseId: string, machine: string, summary: RequestSummary, usedIn: (caseId: string) => ReadonlySet<number>): CaseMatch {
   const own = matchTurn(byCase?.get(caseId), machine, summary, usedIn(caseId), caseId);
   if (!("mismatch" in own)) return { caseId, ...own };
-  const digest = digestOf(summary);
+  const key = matchKeyOf(summary);
   for (const [other, entries] of byCase ?? []) {
     if (other === caseId) continue;
     const used = usedIn(other);
-    const index = entries.findIndex((entry, i) => entry.kind === "turn" && entry.machine === machine && !used.has(i) && entry.request.digest === digest);
+    const index = entries.findIndex((entry, i) => entry.kind === "turn" && entry.machine === machine && !used.has(i) && matchKeyOf(entry.request) === key);
     const entry = entries[index];
     if (entry !== undefined) return { caseId: other, entry, index };
   }
@@ -621,8 +639,8 @@ export function matchTurnAcross(byCase: ReadonlyMap<string, readonly Entry[]> | 
 
 /** A side request against the pool of every side entry the leg recorded for this harness. */
 export function matchSide(pool: readonly Entry[], summary: RequestSummary): Entry | null {
-  const digest = digestOf(summary);
-  return pool.find((entry) => entry.request.digest === digest) ?? null;
+  const key = matchKeyOf(summary);
+  return pool.find((entry) => matchKeyOf(entry.request) === key) ?? null;
 }
 
 const clip = (text: string): string => (text.length > 120 ? `${text.slice(0, 117)}...` : text).replaceAll("\n", " ");
