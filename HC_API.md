@@ -130,6 +130,10 @@ There is no focus field and no content revision on a terminal.
   `history` (lab: `lines: 500` after `seq 1 150` gave 183 lines), or `stitched` (a full-screen app,
   read by scrolling it; `default` t1 answered `stitched` for `lines: 50`). `complete: false` means
   part may be missing, with `why: "working"` when a full-screen app is not scrolled while it works.
+- Collie hands a `complete: false` read to the mirror with its rows, marked `partial` (`MuxGrid.partial`),
+  and the Send Protocol takes such a read as no read: it types nothing and presses nothing on a screen
+  that may lack rows. Only a stitched read (`lines` above 0) was seen incomplete; the viewport read the
+  protocol uses (`lines: 0`) was always complete.
 - No history depth is reported anywhere, so how far a read can reach is unknown in advance.
 
 ## Typing: `send`, `put`, `keys` and raw input
@@ -174,6 +178,16 @@ connection; DATA frames on its channel are input bytes, written as they are:
 The line sat on the prompt with nothing submitted (`❯ echo "typed $HOME ä raw"`), the size stayed
 200 x 120, and `terminal.keys {"keys":["enter"]}` then ran it (50 ms round trip, no quiet wait):
 `typed /var/home/<user> ä raw`. `abc` followed by `keys ["backspace","backspace"]` left `a`.
+
+**The key hold.** A `terminal.keys` call that follows a raw write is answered late. Measured on
+2026-10-30 in a private `collie-lab` session on bluefin (hc 0.1.14, a raw-mode sink): a raw write
+took 0.9 ms, a read 0.3 ms, a key press alone 33 ms, but a key press after a raw write was answered
+about 3,030 ms after that write, whatever the gap between the two (gap 0: 3,033 ms; gap 2,500 ms:
+531 ms; gap 3,500 ms: 32 ms). So the first key after typed text waits out the rest of about 3 s.
+`terminal.send` quotes the same figure ("once nobody has typed for about 3 s", table above). Whether
+the key reaches the program when the call starts or when it is answered was not probed. The 50 ms
+round trip quoted above was a key pressed well after the write. This is the core's own behaviour and
+an upstream ask; Collie's Send Protocol keeps the two writes of its probe outside its read bound.
 
 The size rule is why the attach names the terminal's OWN size: "the last active viewer sets the
 size (active: it typed, resized, gained focus or sent FACTS)". Typing makes the attach active, so

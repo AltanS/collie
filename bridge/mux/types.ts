@@ -405,6 +405,12 @@ export interface MuxGrid {
   /** The multiplexer truncated the read to fit its own limits. */
   readonly truncated: boolean;
   /**
+   * The multiplexer says rows may be missing from this read: show it, decide nothing on it. Distinct
+   * from {@link truncated}, which means the scrollback was cut. The Send Protocol takes a partial read
+   * as no read and waits for a whole one. Absent on a whole read, and on every adapter that cannot tell.
+   */
+  readonly partial?: true;
+  /**
    * A number that CHANGES when this pane's content changes and never decreases while the pane lives.
    *
    * The race guard leans on it: a tap is refused when the screen it was derived from has moved on.

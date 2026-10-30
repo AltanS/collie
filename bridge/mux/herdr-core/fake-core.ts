@@ -15,6 +15,32 @@
 //    (`box/t1`), which the adapter must drop;
 //  • `terminal.read` is plain text with no escape, and `lines` adds history above the screen;
 //  • an address is never reused, and a core restart keeps every address and rebuilds every record.
+//
+// THE UNKIND PARTS BEHIND A SWITCH (M78 spec 02). Each is OFF until a test turns it on, so the
+// conformance fixture and the older tests keep the kinder core they were written against:
+//
+//  • `holdKeysAfterRawWrite` (HC_API.md § Typing, "The key hold"): a `terminal.keys` call that follows
+//    a raw write is answered about 3,030 ms after that write. The wait runs on an injected clock, never
+//    on a real timer. `answer: "early"` is the other reading the doc leaves open (the call answers at
+//    once, the key reaches the program later);
+//  • `fullScreenApp` (HC_API.md § terminal.read, `how` and `complete`): a read with `lines` above 0 of
+//    a full-screen app is `how: "stitched"`, and `complete: false` with `why: "working"` while the app
+//    works. A read with no history is `how: "screen"` and complete; a plain terminal's history read is
+//    `how: "history"`;
+//  • `resize` (HC_API.md § The terminal record, `cols` and `rows`: "the last ACTIVE attached viewer
+//    sets it"): the terminal's size changes between two reads, and a read has exactly `rows` lines,
+//    none wider than `cols`, trailing blank rows kept (HC_API.md § terminal.read);
+//  • `reportState` (HC_API.md § Status, `state`: idle, working, done, blocked, error): the program's
+//    own report, `done` and `error` included;
+//  • `loseProgram` (HC_API.md § The terminal record, `keep`: "Replace a lost program with a shell in
+//    place"): a terminal with `keep` gets a shell at the SAME address; one without it is a `finished`
+//    record (HC_API.md § terminal.run, terminal.kill);
+//  • `stopCore` and `startCore` (HC_API.md § The terminal record, `keep` and `state`; § Transport,
+//    error kinds `finished` and `unavailable`): while the core is stopped every call fails as a dead
+//    socket does; on the next start a kept terminal comes back as a shell at the same address (waiting,
+//    and answering `unavailable` to keys and typing, until `shellsReady`), and a terminal without
+//    `keep` is `finished`. What a core stop does to a program is not in HC_API.md; the rule is the
+//    M78 spec 02 reading of `keep` and was not probed.
 
 import type { MuxWrite } from "../conformance.ts";
 import {
@@ -47,6 +73,30 @@ export function coreKnowsKey(name: string): boolean {
   return NAMED.has(key.toLowerCase()) || NAMEABLE_CHAR.test(key);
 }
 
+/** The time a fake core waits on. Tests share one with the code under test, so a 3 s hold costs no real second. */
+export interface FakeClock {
+  now(): number;
+  wait(ms: number): Promise<void>;
+}
+
+/** A clock that only moves when somebody waits on it: `wait` advances it and resolves at once. */
+export class ManualClock implements FakeClock {
+  ms = 0;
+  now(): number {
+    return this.ms;
+  }
+  wait(ms: number): Promise<void> {
+    this.ms += Math.max(0, ms);
+    return Promise.resolve();
+  }
+}
+
+/** The measured gap between a raw write and the answer to the next key press (HC_API.md § Typing, "The key hold"). */
+export const KEY_HOLD_MS = 3030;
+
+/** What the program in a terminal receives, for a test that draws a screen from its input. */
+export type FakeInput = { readonly kind: "text"; readonly text: string } | { readonly kind: "keys"; readonly keys: readonly string[] };
+
 interface FakeTerminal {
   address: string;
   name: string;
@@ -58,6 +108,15 @@ interface FakeTerminal {
   foreground: { name: string; cwd: string } | null;
   screen: string[];
   history: string[];
+  cols: number;
+  rows: number;
+  /** HC_API.md § The terminal record: a lost program is replaced by a shell in place. */
+  keep: boolean;
+  /** A full-screen app is read by scrolling it; `working` is true while it works. Null: a plain terminal. */
+  fullScreen: { working: boolean } | null;
+  /** A kept terminal that has not got its new shell yet answers `unavailable`. */
+  waiting: boolean;
+  onInput: ((input: FakeInput) => void) | null;
 }
 
 interface Subscriber {
@@ -75,8 +134,8 @@ function record(terminal: FakeTerminal): WireTerminal {
     labels: { ...terminal.labels },
     state: terminal.state,
     cwd: terminal.cwd,
-    cols: COLS,
-    rows: ROWS,
+    cols: terminal.cols,
+    rows: terminal.rows,
     title: terminal.title,
     status: terminal.status === null ? null : { ...terminal.status },
     foreground: terminal.foreground === null ? null : { ...terminal.foreground },
@@ -97,6 +156,12 @@ export class FakeHcCore implements HcRpc {
   private minted = 0;
   private seq = 0;
   private connected = true;
+  /** False between `stopCore` and `startCore`: no socket answers. */
+  private running = true;
+  /** The key hold, when switched on: the clock it waits on, how long, and the last raw write. */
+  private hold: { readonly clock: FakeClock; readonly ms: number; readonly answer: "late" | "early"; lastWriteAt: number | null } | null = null;
+  /** Key effects an `early` hold has answered and not yet delivered, in order. */
+  private readonly pendingKeys: { readonly dueAt: number; readonly address: string; readonly keys: readonly string[] }[] = [];
   /** A generation the fake claims, for the compatibility test. */
   generation = 1;
 
@@ -124,6 +189,12 @@ export class FakeHcCore implements HcRpc {
       foreground: partial.foreground ?? { name: "bash", cwd: partial.cwd ?? "/home/dev" },
       screen: partial.screen ?? [`${address}$ `],
       history: partial.history ?? [],
+      cols: partial.cols ?? COLS,
+      rows: partial.rows ?? ROWS,
+      keep: partial.keep ?? false,
+      fullScreen: partial.fullScreen ?? null,
+      waiting: false,
+      onInput: null,
     };
     this.terminals.push(terminal);
     this.emit("created", address);
@@ -140,6 +211,100 @@ export class FakeHcCore implements HcRpc {
     const terminal = this.find(address);
     if (terminal !== undefined) terminal.status = status;
     this.emit("status", address);
+  }
+
+  /** What the program in a terminal reports (OSC 7501): idle, working, done, blocked or error. */
+  reportState(address: string, state: "idle" | "working" | "done" | "blocked" | "error", app = "claude-code"): void {
+    this.setStatus(address, { state, app, kind: "" });
+  }
+
+  /**
+   * Switch the key hold on: a `terminal.keys` call after a raw write waits out the rest of `ms` since
+   * that write, on `clock`. `answer: "late"` (the measured shape) delivers the keys when it answers;
+   * `"early"` answers at once and delivers them `ms` after the write.
+   */
+  holdKeysAfterRawWrite(clock: FakeClock, options: { ms?: number; answer?: "late" | "early" } = {}): void {
+    this.hold = { clock, ms: options.ms ?? KEY_HOLD_MS, answer: options.answer ?? "late", lastWriteAt: null };
+  }
+
+  /** Make the terminal a full-screen app: a read with history is stitched, and incomplete while it works. */
+  fullScreenApp(address: string, working: boolean): void {
+    const terminal = this.find(address);
+    if (terminal !== undefined) terminal.fullScreen = { working };
+  }
+
+  /** A viewer that is active sets the terminal's size (HC_API.md § The terminal record, `cols`). */
+  resize(address: string, cols: number, rows: number): void {
+    const terminal = this.find(address);
+    if (terminal === undefined) return;
+    terminal.cols = cols;
+    terminal.rows = rows;
+    this.emit("size", address);
+  }
+
+  /** The terminal as the fake holds it, for a test that derives a generation from it. */
+  peek(address: string): { readonly foreground: { name: string; cwd: string } | null; readonly status: WireStatus | null; readonly state: string } | undefined {
+    return this.find(address);
+  }
+
+  /** Replace the rows of the screen, as the program in the terminal drawing would. */
+  setScreen(address: string, screen: readonly string[]): void {
+    const terminal = this.find(address);
+    if (terminal !== undefined) terminal.screen = [...screen];
+  }
+
+  /** Hand every text write and key press to `onInput`, after the core let it through. */
+  program(address: string, onInput: ((input: FakeInput) => void) | null): void {
+    const terminal = this.find(address);
+    if (terminal !== undefined) terminal.onInput = onInput;
+  }
+
+  /**
+   * The program in the terminal is lost. With `keep` the core starts a shell in place, at the same
+   * address, and says `lost` and then `restarted`; without it the terminal is a `finished` record.
+   */
+  loseProgram(address: string): void {
+    const terminal = this.find(address);
+    if (terminal === undefined || terminal.state !== "live") return;
+    this.emit("lost", address);
+    if (!terminal.keep) {
+      terminal.state = "finished";
+      this.emit("finished", address);
+      return;
+    }
+    this.shellIn(terminal);
+    this.emit("restarted", address);
+  }
+
+  /** The core stops: no call is answered, every stream ends. */
+  stopCore(): void {
+    this.running = false;
+    for (const subscriber of this.subscribers) this.fireDown(subscriber, "connection closed");
+    this.subscribers.clear();
+  }
+
+  /**
+   * The core starts again, with a new `seq`. A kept terminal gets a shell at its address (and answers
+   * `unavailable` until `shellsReady` when `shellsReady` is false); a live terminal without `keep` is
+   * `finished`; a finished one stays finished.
+   */
+  startCore(options: { shellsReady?: boolean } = {}): void {
+    this.running = true;
+    this.seq = 0;
+    for (const terminal of this.terminals) {
+      if (terminal.state !== "live") continue;
+      if (!terminal.keep) {
+        terminal.state = "finished";
+        continue;
+      }
+      this.shellIn(terminal);
+      terminal.waiting = options.shellsReady === false;
+    }
+  }
+
+  /** The new shells of the kept terminals are up: keys and typing are taken again. */
+  shellsReady(): void {
+    for (const terminal of this.terminals) terminal.waiting = false;
   }
 
   async reconnect(): Promise<void> {
@@ -251,27 +416,48 @@ export class FakeHcCore implements HcRpc {
 
   async readTerminal(address: string, lines: number): Promise<WireRead> {
     this.assertConnected("terminal.read");
+    this.deliverDueKeys();
     const terminal = this.known(address);
     const history = lines > 0 ? terminal.history.slice(-lines) : [];
-    return { text: [...history, ...terminal.screen].join("\n"), complete: true };
+    const shown = terminal.screen.slice(-terminal.rows);
+    while (shown.length < terminal.rows) shown.push("");
+    const rows = [...history, ...shown.map((row) => [...row].slice(0, terminal.cols).join(""))];
+    const text = `${rows.join("\n")}\n`;
+    if (lines === 0) return { text, complete: true, how: "screen" };
+    if (terminal.fullScreen === null) return { text, complete: true, how: "history" };
+    if (terminal.fullScreen.working) return { text, complete: false, how: "stitched", why: "working" };
+    return { text, complete: true, how: "stitched" };
   }
 
   async pressKeys(address: string, keys: readonly string[]): Promise<void> {
     this.assertConnected("terminal.keys");
+    this.deliverDueKeys();
     const terminal = this.known(address);
-    if (terminal.state !== "live") throw new HcError("finished", `herdr-core terminal.keys: finished: ${address} has finished`);
+    this.assertTakesInput(terminal, "terminal.keys");
     const unknown = keys.find((key) => !coreKnowsKey(key));
     if (unknown !== undefined) {
       throw new HcError("invalid_params", `herdr-core terminal.keys: invalid_params: unknown key "${unknown}" (try enter, esc, up, ctrl+c, alt+x, f5, a)`);
     }
-    this.recorded.push({ paneId: address, kind: "keys", payload: [...keys] });
+    const hold = this.hold;
+    if (hold === null || hold.lastWriteAt === null) return this.deliverKeys(terminal, keys);
+    const remaining = hold.lastWriteAt + hold.ms - hold.clock.now();
+    if (remaining <= 0) return this.deliverKeys(terminal, keys);
+    if (hold.answer === "early") {
+      this.pendingKeys.push({ dueAt: hold.lastWriteAt + hold.ms, address, keys: [...keys] });
+      return;
+    }
+    await hold.clock.wait(remaining);
+    this.deliverKeys(terminal, keys);
   }
 
   async typeRaw(address: string, text: string): Promise<void> {
     this.assertConnected("terminal.attach");
+    this.deliverDueKeys();
     const terminal = this.known(address);
-    if (terminal.state !== "live") throw new HcError("finished", `herdr-core terminal.attach: finished: ${address} has finished`);
+    this.assertTakesInput(terminal, "terminal.attach");
+    if (this.hold !== null) this.hold.lastWriteAt = this.hold.clock.now();
     this.recorded.push({ paneId: address, kind: "text", payload: [text] });
+    terminal.onInput?.({ kind: "text", text });
   }
 
   async killTerminal(address: string): Promise<void> {
@@ -326,6 +512,40 @@ export class FakeHcCore implements HcRpc {
 
   private assertConnected(method: string): void {
     if (!this.connected) throw new Error(`herdr-core ${method}: connection closed before the answer`);
+    if (!this.running) throw new Error(`herdr-core ${method}: connect ENOENT: the core is not running`);
+  }
+
+  /** Keys and typing: a finished terminal says `finished`, a kept terminal without its shell says `unavailable`. */
+  private assertTakesInput(terminal: FakeTerminal, method: string): void {
+    if (terminal.state !== "live") throw new HcError("finished", `herdr-core ${method}: finished: ${terminal.address} has finished`);
+    if (terminal.waiting) throw new HcError("unavailable", `herdr-core ${method}: unavailable: ${terminal.address} is waiting for its new shell`);
+  }
+
+  private deliverKeys(terminal: FakeTerminal, keys: readonly string[]): void {
+    this.recorded.push({ paneId: terminal.address, kind: "keys", payload: [...keys] });
+    terminal.onInput?.({ kind: "keys", keys });
+  }
+
+  /** The keys an `early` hold answered are due: they reach the program now, in order. */
+  private deliverDueKeys(): void {
+    const hold = this.hold;
+    if (hold === null) return;
+    const now = hold.clock.now();
+    while (this.pendingKeys.length > 0 && (this.pendingKeys[0]?.dueAt ?? Infinity) <= now) {
+      const due = this.pendingKeys.shift();
+      const terminal = due === undefined ? undefined : this.find(due.address);
+      if (due !== undefined && terminal !== undefined && terminal.state === "live") this.deliverKeys(terminal, due.keys);
+    }
+  }
+
+  /** A shell in place of the program: same address, no report, a fresh screen. */
+  private shellIn(terminal: FakeTerminal): void {
+    terminal.status = null;
+    terminal.fullScreen = null;
+    terminal.foreground = { name: "bash", cwd: terminal.cwd };
+    terminal.screen = [`${terminal.address}$ `];
+    terminal.history = [];
+    terminal.onInput = null;
   }
 
   private emit(type: string, terminal: string): void {
@@ -363,6 +583,7 @@ export class FakeHcCore implements HcRpc {
     const inAgents = { "herdr.space": "spcollie", "herdr.tab": "tbagents", where: "collie / agents" };
     this.add({
       labels: inAgents,
+      keep: true,
       cwd: "/home/dev",
       title: "✳ Writing the conformance suite",
       status: { state: "blocked", app: "claude-code", kind: "permission" },
@@ -370,8 +591,8 @@ export class FakeHcCore implements HcRpc {
       screen: ["Claude Code", "", "Allow edit to src/x.ts?", "❯ 1. Yes", "  2. No", ""],
       history: Array.from({ length: 30 }, (_, i) => `earlier line ${String(i + 1)}`),
     });
-    this.add({ labels: inAgents, cwd: "/home/dev/collie", foreground: { name: "bash", cwd: "/home/dev/collie" } });
-    this.add({ labels: { "herdr.space": "spscratch", "herdr.tab": "tbscratch", where: "scratch / 1" }, cwd: "/home/dev/scratch", foreground: { name: "bash", cwd: "/home/dev/scratch" } });
+    this.add({ labels: inAgents, keep: true, cwd: "/home/dev/collie", foreground: { name: "bash", cwd: "/home/dev/collie" } });
+    this.add({ labels: { "herdr.space": "spscratch", "herdr.tab": "tbscratch", where: "scratch / 1" }, keep: true, cwd: "/home/dev/scratch", foreground: { name: "bash", cwd: "/home/dev/scratch" } });
     this.add({ name: "review", cwd: "/tmp", foreground: { name: "bash", cwd: "/tmp" } });
     this.add({ address: "box/t1", labels: inAgents, cwd: "/srv", status: { state: "working", app: "codex", kind: "" } });
   }

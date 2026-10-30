@@ -28,6 +28,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **Muse's tip `Press ? on an empty composer to see keyboard shortcuts` no longer counts as a draft on herdr-core.** On a plain-text screen the grey tip read as typed text and held a send to an empty Muse box. The profile now knows the tip's text.
 - **Hermes's idle and busy hints no longer count as a draft on herdr-core.** On a plain-text screen `Type / to browse commands, or Ctrl+P for the palette` and `msg=interrupt · /queue · /bg · /steer · Ctrl+C cancel` read as typed text, so an empty Hermes box refused a send as "draft present". The profile now knows both texts.
 - **Codex's grey hint `Ask Codex to do anything` no longer counts as a draft on herdr-core.** The core hands out the screen as plain text, so the faint hint read as typed text and a send or a walky talky delivery to an empty Codex box was refused or held as "draft present". The profile now knows the hint's text.
+- **A screen herdr-core calls incomplete decides no send.** A read the core marks `complete: false` now reaches the mirror with its rows and a `partial` flag, and the Send Protocol takes it as no read: it types and presses nothing until a whole screen reads, and ends `refused(probe_failed)` with nothing typed if none does.
 
 ## [1.25.1] - 2026-10-30
 

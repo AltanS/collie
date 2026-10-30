@@ -68,6 +68,8 @@ import { HERDR_CORE_LOGO_SVG } from "./logo.ts";
 import { HC_UNSENDABLE_KEYS, toHcKey, type HcKey } from "./keys.ts";
 import { IMPLICIT_SPACE_ID, isLocalAddress, SPACE_LABEL, TAB_LABEL, toSnapshot } from "./layout.ts";
 
+type MutableGrid = { -readonly [K in keyof MuxGrid]: MuxGrid[K] };
+
 /** The registry name this adapter answers to, and the value of {@link HerdrCoreMux.mux}. */
 export const HERDR_CORE_MUX = "herdr-core";
 
@@ -198,6 +200,10 @@ export class HerdrCoreMux implements MuxAdapter {
    * One pane's rendered screen, as plain text: the core gives no colour, so `preserve` and `strip`
    * read the same text, which carries no escape at all. A `recent` read asks for `lines` lines of
    * history and keeps the last `lines` lines of what comes back.
+   *
+   * A read the core calls incomplete (`complete: false`, HC_API.md § terminal.read: part of it may be
+   * missing while a full-screen app works) is handed over with `partial` set, on any read: the mirror
+   * shows it, and the Send Protocol takes it as no read and decides nothing on it.
    */
   async readGrid(paneId: string, request: MuxGridRequest): Promise<MuxOutcome<MuxGrid>> {
     const remote = remoteRefusal(paneId);
@@ -207,12 +213,14 @@ export class HerdrCoreMux implements MuxAdapter {
       const read = await this.rpc.readTerminal(paneId, request.scope === "viewport" ? 0 : lines);
       const rows = read.text.replace(/\n$/u, "").split("\n");
       const text = (request.scope === "viewport" ? rows : rows.slice(-lines)).join("\n");
-      return muxOk({
+      const grid: MutableGrid = {
         paneId,
         text,
-        truncated: !read.complete,
+        truncated: false,
         revision: this.revisionFor(paneId, `${request.scope}:${String(request.scope === "viewport" ? 0 : lines)}`, text),
-      });
+      };
+      if (!read.complete) grid.partial = true;
+      return muxOk(grid);
     } catch (err) {
       return refusalFor(err);
     }

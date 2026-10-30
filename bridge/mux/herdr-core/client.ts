@@ -98,7 +98,13 @@ export interface WireRead {
   readonly text: string;
   /** `false` when part of what was asked for may be missing. */
   readonly complete: boolean;
+  /** How the core read it: `screen`, `history` or `stitched` (HC_API.md § terminal.read). Absent when the core said none. */
+  readonly how?: string;
+  /** Why a read is incomplete, for example `working`. Absent when the core said none. */
+  readonly why?: string;
 }
+
+type MutableRead = { -readonly [K in keyof WireRead]: WireRead[K] };
 
 /** One tab of herdr-app's layout document. `name` is empty when herdr-app derives one. */
 export interface WireLayoutTab {
@@ -432,7 +438,12 @@ export class HcClient {
   /** The screen, plus up to `lines` lines of history above it, as plain text. */
   async readTerminal(address: string, lines: number): Promise<WireRead> {
     const result = asObject(await this.call("terminal.read", { terminal: address, lines: Math.max(0, Math.floor(lines)) }));
-    return { text: str(result, "text"), complete: result.complete !== false };
+    const read: MutableRead = { text: str(result, "text"), complete: result.complete !== false };
+    const how = str(result, "how");
+    const why = str(result, "why");
+    if (how !== "") read.how = how;
+    if (why !== "") read.why = why;
+    return read;
   }
 
   /** Named keys, in order, encoded by the core for the program's keyboard mode. */

@@ -666,6 +666,10 @@ const gridReadAnswersTheContract: MuxReadCheck = {
     }
     const preserved = await adapter.readGrid(pane.paneId, { scope: "viewport", lines: 40, styling: "preserve" });
     if (!preserved.ok) problems.push(`a \`preserve\` read answered ${describeRefusal(preserved)}`);
+    // A partial grid may lack rows, but it is still shown: one with no rows at all is a refusal in disguise.
+    for (const read of [stripped, preserved]) {
+      if (read.ok && read.value.partial === true && read.value.text.trim() === "") problems.push("a read marked `partial` carried no rows");
+    }
     return problems;
   },
 };

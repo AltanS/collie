@@ -274,6 +274,9 @@ export { STALE_SCREEN };
 /** The wait before a stale box's second S0 read: one S0 gap. */
 const REREAD_GAP_MS = 120;
 
+/** The detail of a send that never got a whole screen to decide on. */
+const PARTIAL_READ = "The terminal says rows may be missing from the screen it reads, so Collie cannot prove the box is free. Nothing was typed.";
+
 /** The detail after a failed probe whose one Backspace took the character out again. */
 const PROBE_REMOVED = "One Backspace removed the probe character, so the box is clean again.";
 /**
@@ -2248,6 +2251,8 @@ interface RunState {
   probeAt?: number;
   /** The time the probe's writes took so far, outside its read bound ({@link SendProtocol.probeWrite}). */
   probeWriteMs?: number;
+  /** The newest read came back marked partial (`MuxGrid.partial`) and was taken as no read. */
+  partialRead?: boolean;
   /** The screen at S0 took the manual Send (no frame found, an unreadable overlay, a weak cue): the probe and S1 compare less. */
   manual: boolean;
   /** The pane has no profile: the text went in blind, with no read ({@link SendProtocol.blindSend}). */
@@ -3855,7 +3860,7 @@ export class SendProtocol {
       if (err instanceof StepLate) throw new Ended("refused", "bound", { detail: `The screen did not read inside ${String(BOUNDS.s0.ms)} ms.` });
       throw err;
     }
-    if (snap === null) throw new Ended("refused", "pane_gone", { detail: "The pane could not be read." });
+    if (snap === null) throw this.noRead(state);
     state.marks.s0 = snap;
     this.checkGeneration(state, "refused");
     if (noEchoPromptIn(snap.texts) !== null) {
@@ -4288,6 +4293,16 @@ export class SendProtocol {
     throw new Ended(outcome, outcome === "refused" ? "pane_gone" : "changed", { detail: "The pane holds another program now." });
   }
 
+  /**
+   * The end of a step that got no read to decide on. A partial read says the multiplexer may have left
+   * rows out, and ends `probe_failed` with nothing typed; any other missing read is a pane that could
+   * not be read.
+   */
+  private noRead(state: RunState): Ended {
+    if (state.partialRead === true) return new Ended("refused", "probe_failed", { detail: PARTIAL_READ });
+    return new Ended("refused", "pane_gone", { detail: "The pane could not be read." });
+  }
+
   private begin(state: RunState): void {
     state.stepStart = this.now();
   }
@@ -4385,7 +4400,13 @@ export class SendProtocol {
     const { paneId, harness } = state.target;
     const grid = await this.within(state, this.deps.mux.readGrid(paneId, { scope: "viewport", lines: SEND_READ_LINES, styling: "preserve" }), until);
     const gateRevision = this.deps.gate.noteRead(paneId);
+    state.partialRead = false;
     if (!grid.ok) return null;
+    // The multiplexer says rows may be missing: no step decides on a screen that may lack rows.
+    if (grid.value.partial === true) {
+      state.partialRead = true;
+      return null;
+    }
     const rows = splitLines(parseAnsi(grid.value.text));
     const idle = state.match?.profile.idle ?? null;
     const frame = idle === null ? null : findInputFrame(rows, idle);
@@ -4487,7 +4508,7 @@ export class SendProtocol {
     if (this.now() + S0_GAP_MS > until) throw late();
     await this.sleep(S0_GAP_MS);
     const second = await readInBound();
-    if (first === null || second === null) throw new Ended("refused", "pane_gone", { detail: "The pane could not be read." });
+    if (first === null || second === null) throw this.noRead(state);
     if (belowMovedAlone(first, second)) state.belowMoved = true;
     // With a frame only the box is compared: the volatile rows around it (a spinner, a timer, a token
     // count, a statusline) move on their own while a turn runs. A box that holds no draft compares
