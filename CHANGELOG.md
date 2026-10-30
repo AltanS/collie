@@ -26,6 +26,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Fixed
 
 - **On the Herdr core the mirror reads the screen, and older lines come only when you tap Load older.** The core holds a terminal's keys while it reads older lines, and under a dialog one such read takes 25 s. 1.25.2 kept one such read per pane with a backoff, but that one read could still hold a send or a key for up to 25 s right after a dialog appeared, so sends were refused `probe_failed`. The phone's refresh and the bridge's own checks now read the screen alone and start no read of older lines; Load older starts one, at most one per pane, shows the lines above the screen, and says why when it brings none: the agent waits on you, or the core is still reading. The backoff is gone. Other multiplexers are unchanged.
+- **pi and omp panes on the Herdr core have a Chat, so walky talky and queued cards show.** The core names no session for a pi or omp pane, and Collie found none without one. Collie now finds the newest session pi or omp filed for the pane's folder, and takes it only when that session names the same folder. Two pi or omp panes in one folder still get no Chat, so neither shows the other's conversation. The core's folders now reach Collie as full paths, not `~/…`. This also gives pi and omp panes on tmux and zellij a Chat.
 
 ## [1.25.2] - 2026-10-30
 

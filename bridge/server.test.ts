@@ -35,6 +35,7 @@ import {
   discoverProcesses,
   discoveryHints,
   journalRefOf,
+  noSessionDetail,
   paneScreen,
   isHostAllowed,
   isLoopbackPeer,
@@ -5310,6 +5311,28 @@ describe("journalRefOf — which session the history and chat routes read", () =
     });
     await journalRefOf(a, pane({}), []);
     expect(seen).toEqual([undefined]);
+  });
+
+  test("two omp panes in one folder share it under pi's adapter, so the folder walk answers no session (#508)", async () => {
+    // omp is pi's alias: the adapter is named `pi`, the panes `omp`. A walk would hand both one log.
+    const seen: unknown[] = [];
+    const a = adapter({
+      agent: "pi",
+      sharedFolderBlind: true,
+      discover: async (_cwd, hint) => {
+        seen.push(hint);
+        return hint?.shared === true ? null : resumed;
+      },
+    });
+    const mine = pane({ agent: "omp" });
+    const other = pane({ paneId: "w1:p2", agent: "omp" });
+    expect(await journalRefOf(a, mine, [mine, other])).toBeNull();
+    expect(seen).toEqual([{ shared: true }]);
+    expect(noSessionDetail(a, mine, [mine, other])).toBe("shared-folder");
+    // A pi pane beside an omp pane is the same: either one's log could be the newest.
+    expect(await journalRefOf(a, pane({ agent: "pi" }), [pane({ agent: "pi" }), other])).toBeNull();
+    // Alone in the folder, the walk answers.
+    expect(await journalRefOf(a, mine, [mine, pane({ paneId: "w1:p3", agent: "omp", cwd: "/elsewhere" })])).toEqual(resumed);
   });
 
   describe("another pane in the folder", () => {

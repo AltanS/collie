@@ -157,12 +157,14 @@ export const DRAWS_IMAGES_OFF_GRID: readonly string[] = ["omp", "pi"];
  * 0.9.5), so its adapter matches the pane's foreground TUI to the lock it holds. dsh-tui reports
  * through a custom source as well, so its adapter asks the kernel which session lock the pane's
  * foreground process holds. Antigravity CLI (agy) names none either: its adapter asks `lsof` which
- * `presence/<uuid>.lock` the pane's foreground process holds (not on Windows). The
+ * `presence/<uuid>.lock` the pane's foreground process holds (not on Windows). pi (and Oh My Pi
+ * under its alias) reports through Herdr's pi integration, but a multiplexer without one (herdr-core,
+ * tmux, zellij) names no session, so its adapter finds the newest log filed for the pane's folder. The
  * name list exists for the one consumer that works from names alone: `collie doctor`, whose
  * history section must not advise `herdr integration install` for an agent no hook could ever
  * report. Pinned against the adapters themselves in registry.test.ts, so the two cannot drift.
  */
-export const DISCOVERS_OWN_SESSIONS: readonly string[] = ["agy", "muse", "openclaw", "kiro", "dsh-tui"];
+export const DISCOVERS_OWN_SESSIONS: readonly string[] = ["agy", "muse", "openclaw", "kiro", "dsh-tui", "pi"];
 
 /**
  * The same pairs as a Map, which is how {@link adapterFor} asks.
@@ -172,6 +174,11 @@ export const DISCOVERS_OWN_SESSIONS: readonly string[] = ["agy", "muse", "opencl
  * guard against and no assertion to write.
  */
 const ALIAS_LOOKUP: ReadonlyMap<string, string> = new Map(Object.entries(AGENT_ALIASES));
+
+/** The adapter name an agent answers to: its alias target, or the name itself. */
+export function journalAgentName(agent: string): string {
+  return ALIAS_LOOKUP.get(agent) ?? agent;
+}
 
 /**
  * The adapter for `agent`, or undefined when the agent has no journal.

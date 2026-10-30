@@ -2783,7 +2783,8 @@ describe("plain output parity (M43 spec 04, wrapped at 80 by M71 spec 03)", () =
   // the eleven `sends-*` rows of M71 spec 01, one per profile with no receipts, and the one `holds` row of
   // spec 02 (no screen row: a harness with no receipt has none) (the healthy solo fixture, then a config.toml
   // secret the mode rule could not tighten). M71 spec 03 moved it once more: rows wrap at 80 columns, so a
-  // long detail continues under the value column. The
+  // long detail continues under the value column. M79 spec 02 turned integration-omp ok: pi's adapter
+  // finds its own session now, so an omp pane needs no Herdr hook. The
   // `secrets-private` line is Windows-only: on a POSIX host it does not exist at all.
   test("the plain doctor output on a POSIX host matches the golden, wrapped at 80 columns", async () => {
     const out = `${await render()}---\n${await render(blocked())}`;

@@ -214,7 +214,7 @@ export function toSnapshot(terminals: readonly WireTerminal[], layout: WireLayou
       const place = String(index + 1);
       const tabLabel = tab.docName || whereParts(tab.terminals[0]).tab || place;
       outTabs.push({ tabId: tab.id, spaceId: space.id, number: index + 1, label: tabLabel, focused: false, paneCount: tab.terminals.length });
-      for (const terminal of tab.terminals) panes.push(toPane(terminal, { space, label, spaceNumber, tab, tabLabel }));
+      for (const terminal of tab.terminals) panes.push(toPane(terminal, { space, label, spaceNumber, tab, tabLabel, home }));
     });
   }
   return { panes, spaces: outSpaces, tabs: outTabs };
@@ -226,6 +226,24 @@ interface PanePlace {
   readonly spaceNumber: number;
   readonly tab: TabDraft;
   readonly tabLabel: string;
+  /** The bridge's home, which the core's `~` stands for: the bridge runs on its core's machine. */
+  readonly home: string;
+}
+
+/**
+ * A path the core reported, made absolute: the core shortens the home folder to `~` (HC_API.md,
+ * the `terminal.list` sample), and every reader of {@link MuxPane.cwd} wants a real folder (a journal
+ * keyed on the folder, the launch route's neighbour cwd). `~` and `~/x` take the bridge's home; an
+ * absolute path stays; anything else (empty, relative, `~user`, or `~` with no home known) is
+ * unknown, which MuxPane spells `""`.
+ */
+export function absoluteCwd(path: string, home: string): string {
+  if (path.startsWith("/") || /^[A-Za-z]:[\\/]/u.test(path)) return path;
+  const base = home.replace(/[\\/]+$/u, "");
+  if (base === "") return "";
+  if (path === "~") return base;
+  if (path.startsWith("~/")) return `${base}${path.slice(1)}`;
+  return "";
 }
 
 function toPane(terminal: WireTerminal, place: PanePlace): MuxPane {
@@ -237,8 +255,9 @@ function toPane(terminal: WireTerminal, place: PanePlace): MuxPane {
     spaceNumber: place.spaceNumber,
     tabId: place.tab.id,
     // Where the program is now, which is what herdr-app names a space after; the start folder when
-    // nothing runs in the foreground.
-    cwd: terminal.foreground?.cwd || terminal.cwd,
+    // nothing runs in the foreground. One rule for every program, made absolute: a journal that
+    // finds its session by folder (pi, omp) reads this.
+    cwd: absoluteCwd(terminal.foreground?.cwd || terminal.cwd, place.home),
     focused: false,
     alive: true,
     agent,

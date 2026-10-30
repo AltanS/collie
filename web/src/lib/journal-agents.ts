@@ -8,7 +8,7 @@
 // has nothing to explain: there is no transcript to read, ever, and a sentence about it would be
 // noise. An agent that HAS one and still reported no session is the case an operator can fix
 // (issue #137: a missing or outdated `herdr integration install <agent>` hook), and silence there
-// reads as a bug in Collie. A discovering adapter (Muse, OpenClaw, Kiro, dsh-tui) never lands here: its panes
+// reads as a bug in Collie. A discovering adapter (Muse, OpenClaw, Kiro, dsh-tui, pi and omp) never lands here: its panes
 // always offer the affordance, since no hook could fix what discovery already finds.
 //
 // So the frontend needs the name list, and it is a NAME LIST, never a detector: nothing may key a

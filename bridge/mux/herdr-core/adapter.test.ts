@@ -38,6 +38,25 @@ describe("HerdrCoreMux over a fake core", () => {
     expect(agentOf(reported)).toBe("claude");
   });
 
+  test("a pane's cwd is absolute: the foreground's cwd when reported, else the terminal's, ~ as the bridge's home", async () => {
+    // The core shortens the home folder to `~` (HC_API.md); a journal keyed on the folder needs it whole.
+    const { fake, adapter } = build();
+    const inForeground = fake.add({ status: null, cwd: "~", foreground: { name: "pi", cwd: "~/x" } });
+    const startFolder = fake.add({ status: null, cwd: "~/start", foreground: { name: "bash", cwd: "" } });
+    const home = fake.add({ status: null, cwd: "/srv", foreground: { name: "omp", cwd: "~" } });
+    const absolute = fake.add({ status: null, cwd: "~", foreground: { name: "bash", cwd: "/tmp/lab" } });
+    const unknown = fake.add({ status: null, cwd: "", foreground: { name: "bash", cwd: "" } });
+    const relative = fake.add({ status: null, cwd: "", foreground: { name: "bash", cwd: "~other/x" } });
+    const snapshot = await adapter.snapshot();
+    const cwdOf = (id: string) => snapshot.panes.find((p) => p.paneId === id)?.cwd;
+    expect(cwdOf(inForeground)).toBe("/home/dev/x");
+    expect(cwdOf(startFolder)).toBe("/home/dev/start");
+    expect(cwdOf(home)).toBe("/home/dev");
+    expect(cwdOf(absolute)).toBe("/tmp/lab");
+    expect(cwdOf(unknown)).toBe("");
+    expect(cwdOf(relative)).toBe("");
+  });
+
   test("a core at another generation is unreachable, and the snapshot says what to update", async () => {
     const { fake, adapter } = build();
     fake.generation = 2;

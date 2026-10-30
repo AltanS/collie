@@ -151,7 +151,7 @@ import {
 import { type ReleaseLine, type UpdateLineRecord, withLine } from "./update-line.ts";
 import { REPORT_SCREEN_ROWS, reportDoctorRows, reportScreen, type DoctorRowSource, type ReportContext, type ReportDoctorRow } from "./report.ts";
 import type { StateEngine } from "./state-engine.ts";
-import { adapterFor, buildJournalRegistry } from "./journal/registry.ts";
+import { adapterFor, buildJournalRegistry, journalAgentName } from "./journal/registry.ts";
 import { readClaudeSubagent } from "./journal/claude.ts";
 import { chatParams, LiveWindows } from "./journal/live.ts";
 import { JournalSubagents } from "./subagents-journal.ts";
@@ -4309,10 +4309,14 @@ export async function discoveryHints(
   return { screen: paneScreen(mux, paneId), processes: await discoverProcesses(mux, paneId) };
 }
 
-/** Another pane running `adapter`'s harness sits in `pane`'s folder. */
+/**
+ * Another pane running `adapter`'s harness sits in `pane`'s folder. A harness counts under any name
+ * its adapter answers to (`AGENT_ALIASES`): an `omp` pane and a `pi` pane write the same log format,
+ * and one adapter's folder walk would find either's session.
+ */
 function sharesFolder(adapter: JournalAdapter, pane: AgentView, panes: readonly AgentView[]): boolean {
   return panes.some(
-    (other) => other.paneId !== pane.paneId && other.agent === adapter.agent && other.cwd === pane.cwd,
+    (other) => other.paneId !== pane.paneId && journalAgentName(other.agent) === adapter.agent && other.cwd === pane.cwd,
   );
 }
 
