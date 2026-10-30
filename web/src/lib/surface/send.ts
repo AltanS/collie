@@ -179,8 +179,10 @@ export interface ReadMark {
  * `commandSettle`: a command on a harness with a command list, from the S1 read that first passed to the
  * read at least the settle interval later that agreed with it on the rows under the box (2026-10-26); S1's
  * gap ends at the first of the two.
+ * `probeWrite`: the multiplexer's time for the probe character's write and its Backspace (2026-10-30); the
+ * probe's gap leaves it out, as the probe's read bound does.
  */
-export type SendStep = "profile" | "settle" | "s0" | "proof" | "clear" | "probe" | "write" | "s1" | "commandSettle" | "commit" | "s2";
+export type SendStep = "profile" | "settle" | "s0" | "proof" | "clear" | "probe" | "probeWrite" | "write" | "s1" | "commandSettle" | "commit" | "s2";
 
 /**
  * The receipt, a closed list of fields. It is written to disk, so it holds no screen text and no

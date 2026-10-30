@@ -9,7 +9,9 @@
 //           Surface must be free, or unknown(no-match) with the hash of the rows the person saw
 //   probe   (3, 900) on the probed path: write the probe character, require exactly that one new run
 //           and no other change, Backspace through the gate, require the S0 box again. A probe that
-//           fails with its character standing once in the box gets one Backspace and one more read
+//           fails with its character standing once in the box gets one Backspace and one more read.
+//           The bound counts only the reads: the two writes are outside it (`probeWrite` in gapsMs,
+//           and the request's bound grows by them), and the Backspace half always gets time for one read
 //   write   the whole text in one write per line (a bracketed paste where the multiplexer and the
 //           profile allow it); a line break is the profile's newline key, through the gate. Where
 //           the multiplexer frames a paste itself (`pasteBlock`), a long or multi-line message is ONE
@@ -322,6 +324,12 @@ export const SEND_READ_LINES = 120;
 export const CLUSTER_ROWS = 24;
 /** The gap before the first poll of a step; each later gap doubles. */
 const FIRST_GAP_MS = 80;
+/**
+ * The least time the probe's Backspace half gets: its first gap and one read's share of the probe's
+ * bound, so it always reads once. At {@link FIRST_GAP_MS} alone the poll slept its gap and found no
+ * time left to read, and the probe ended "could not confirm" (minibuch, herdr-core, 2026-10-30).
+ */
+const PROBE_BACK_FLOOR_MS = FIRST_GAP_MS + BOUNDS.probe.ms / BOUNDS.probe.reads;
 /** The gap between the two S0 reads. */
 const S0_GAP_MS = 120;
 /**
@@ -2238,6 +2246,8 @@ interface RunState {
   probed: boolean;
   /** When the run last typed its probe character: a pending one's life runs from there ({@link SendDeps.deaf}). */
   probeAt?: number;
+  /** The time the probe's writes took so far, outside its read bound ({@link SendProtocol.probeWrite}). */
+  probeWriteMs?: number;
   /** The screen at S0 took the manual Send (no frame found, an unreadable overlay, a weak cue): the probe and S1 compare less. */
   manual: boolean;
   /** The pane has no profile: the text went in blind, with no read ({@link SendProtocol.blindSend}). */
@@ -3771,8 +3781,12 @@ export class SendProtocol {
       (!isFree(s0.surface) && request.mode !== "append" && request.mode !== "replace") ||
       ([...text].length >= 1 && [...text].length <= SHORT_TEXT));
     let landing: Landing | null = null;
-    if (state.probed) landing = await this.probe(state, s0, prefix);
-    this.lap(state, "probe");
+    try {
+      if (state.probed) landing = await this.probe(state, s0, prefix);
+    } finally {
+      // Lapped on a failed probe too, so its receipt says where the time went.
+      this.lapProbe(state);
+    }
     // The probe showed in the box and went again: the starting harness reads keys, its window ends.
     if (state.starting && state.probed) this.noteFramed(state);
 
@@ -4285,6 +4299,35 @@ export class SendProtocol {
   }
 
   /**
+   * The probe's gap, which leaves out its writes: those are `probeWrite`, the multiplexer's cost of the
+   * probe character and its Backspace ({@link SendProtocol.probeWrite}).
+   */
+  private lapProbe(state: RunState): void {
+    const now = this.now();
+    const writes = state.probeWriteMs ?? 0;
+    state.gaps.probe = now - state.stepStart - writes;
+    if (writes > 0) state.gaps.probeWrite = writes;
+    state.stepStart = now;
+  }
+
+  /**
+   * One of the probe's two writes, timed apart from its reads. The multiplexer's write cost is no part
+   * of the probe's read bound: on herdr-core 0.1.14 a key press right after a raw write is answered
+   * about three seconds after that write (measured on a private hc session, 2026-10-30), and the minibuch
+   * receipt of that day ended "could not confirm" for it. It is `gapsMs.probeWrite`, and the request's
+   * bound grows by a write that went in, so S1 and S2 keep theirs.
+   */
+  private async probeWrite(state: RunState, write: () => Promise<void>): Promise<void> {
+    const from = this.now();
+    try {
+      await write();
+    } finally {
+      state.probeWriteMs = (state.probeWriteMs ?? 0) + (this.now() - from);
+    }
+    this.stretch(state, this.now() - from);
+  }
+
+  /**
    * S1's gap, and a command's `commandSettle` beside it: S1 ends at the first of its two agreeing reads,
    * and the wait for the second is the settle's (the cost of the rule, apart from the reads S1 needed).
    */
@@ -4564,18 +4607,19 @@ export class SendProtocol {
   private async probe(state: RunState, s0: Snap, prefix: string): Promise<Landing | null> {
     const probe = probeCharOf(state.match);
     const failed = (detail: string, snap: Snap | null): Ended => new Ended("refused", "probe_failed", sawNote(snap, { detail, framed: s0.frame !== null }));
-    // Reads are shared across the two halves: the character may take two, Backspace gets the rest.
+    // Reads are shared across the two halves: the character may take two, Backspace gets the rest. The
+    // bound counts the time in the two polls only; the writes are timed apart ({@link probeWrite}).
     const budget = { reads: BOUNDS.probe.reads, ms: BOUNDS.probe.ms };
-    const started = this.now();
 
     state.probeAt = this.now();
-    await this.writeText(state, probe, false);
+    await this.probeWrite(state, () => this.writeText(state, probe, false));
     state.keys.push("probe");
     let landing: Landing | null = null;
     let frameless = 0;
     // A message probe on a harness that takes a message during a turn: only the box and the rows under
     // it decide, as at S1 (2026-10-17). Commands and manual sends keep the full compare below.
     const boxOnly = s0.frame !== null && !state.command && !state.manual && queuesInTurn(state.match);
+    const typedFrom = this.now();
     const typed = await this.poll(state, "probe", { reads: budget.reads - 1, ms: budget.ms }, (snap) => {
       if (s0.frame !== null) {
         // Queued: the Surface's claim of a modal over a found box fails, and so do two reads in a row
@@ -4603,6 +4647,7 @@ export class SendProtocol {
       landing = probeLanding(s0.plain, snap.plain, probe, { freeBelow: state.manual });
       return landing !== null && !cueAppeared(s0, snap) ? "pass" : "fail";
     });
+    const spent = this.now() - typedFrom;
     // A box on screen that showed no probe at all, on a pane where its harness is starting: the box is
     // drawn but reads no keys yet. The character waits in the terminal and shows later, where the next
     // send takes it out (residueOf). No Backspace now: it would wait too, and land in what comes next.
@@ -4618,14 +4663,15 @@ export class SendProtocol {
     }
 
     try {
-      await this.keysThroughGate(state, ["Backspace"], "refused");
+      await this.probeWrite(state, () => this.keysThroughGate(state, ["Backspace"], "refused"));
     } catch (err) {
       // The probe character is in the box and its Backspace was refused: no other key follows.
       if (err instanceof Ended && err.outcome === "refused") throw failed(`Backspace after the probe was refused: ${err.extra.detail ?? err.message}`, typed.snap);
       throw err;
     }
     const readsLeft = Math.max(1, budget.reads - typed.reads);
-    const back = await this.poll(state, "probe", { reads: readsLeft, ms: Math.max(FIRST_GAP_MS, budget.ms - (this.now() - started)) }, (snap) => {
+    // Never less than one read's time: a half cut to its first gap slept and never read.
+    const back = await this.poll(state, "probe", { reads: readsLeft, ms: Math.max(PROBE_BACK_FLOOR_MS, budget.ms - spent) }, (snap) => {
       if (s0.frame !== null) {
         if (snap.frame === null) return "wait";
         return boxText(snap.frame) === boxText(s0.frame) ? "pass" : "wait";

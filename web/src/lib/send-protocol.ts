@@ -133,7 +133,7 @@ export function readSendReply(body: JsonValue | undefined): SendReply | null {
 /** A row of the list being built, field by field. */
 type RowDraft = { -readonly [K in keyof SendReceiptRow]: SendReceiptRow[K] };
 
-const STEPS: readonly SendStep[] = ["profile", "settle", "s0", "proof", "clear", "probe", "write", "s1", "commandSettle", "commit", "s2"];
+const STEPS: readonly SendStep[] = ["profile", "settle", "s0", "proof", "clear", "probe", "probeWrite", "write", "s1", "commandSettle", "commit", "s2"];
 
 /**
  * The session page's list of recent sends, row by row. A row that is not whole is left out. The wire

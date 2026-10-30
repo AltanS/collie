@@ -112,7 +112,7 @@ const PHASES = ["accepted", "submit-sent", "settled", "held"] as const;
 const PROFILE_STATUSES = ["verified", "provisional", "revoked"] as const;
 /** The longest `binary` path a stored receipt keeps; a longer one is dropped. */
 const RECEIPT_BINARY_MAX = 4_096;
-const STEPS = ["profile", "settle", "s0", "proof", "clear", "probe", "write", "s1", "commandSettle", "commit", "s2"] as const;
+const STEPS = ["profile", "settle", "s0", "proof", "clear", "probe", "probeWrite", "write", "s1", "commandSettle", "commit", "s2"] as const;
 
 function pick<const T extends string>(value: JsonValue | undefined, allowed: readonly T[]): T | undefined {
   return allowed.find((word) => word === value);

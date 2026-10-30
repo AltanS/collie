@@ -2970,6 +2970,87 @@ describe("the probe", () => {
     await send("hello there");
     expect(probeReads).toBeLessThanOrEqual(3);
   });
+
+  // A herdr-core crew member on minibuch (2026-10-30): keys ["probe", "Backspace"], `probe_failed`,
+  // "Collie could not confirm the box was clean". One write there opens a socket, attaches and paints
+  // the screen, so the two writes ate the probe's read bound and the Backspace half never read.
+  describe("on a multiplexer whose writes are slow (herdr-core, 2026-10-30)", () => {
+    /** Every text write and key press costs `ms` on the rig's clock; reads cost nothing. */
+    const slowWrites = (r: Rig, ms: number): void => {
+      r.pane.beforeWrite = () => {
+        r.clock.now += ms;
+      };
+    };
+    /** The probe character shows in the box on the second read after its write, not the first. */
+    const lateEcho = (pane: FakePane): void => {
+      let held = false;
+      let reads = 0;
+      pane.afterInput = (p, what) => {
+        if (what !== `type:${PROBE}`) return;
+        p.box = p.box.slice(0, -PROBE.length);
+        held = true;
+        reads = 0;
+      };
+      pane.beforeRead = (p) => {
+        if (!held || ++reads < 2) return;
+        p.box += PROBE;
+        held = false;
+      };
+    };
+
+    test("writes of 300 ms each stay outside the probe's read bound: the Backspace read passes and the send goes on", async () => {
+      const r = rig({ version: "2.1.999" });
+      slowWrites(r, 300);
+      lateEcho(r.pane);
+      const answer = await r.send("hello there");
+      expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"] });
+      expect(answer.receipt?.detail).toBeUndefined();
+      // The two writes are their own lap; the probe's own gap is its reads (80 + 160, then 80).
+      expect(answer.receipt?.gapsMs.probeWrite).toBe(600);
+      expect(answer.receipt?.gapsMs.probe).toBe(320);
+    });
+
+    test("a Backspace held three seconds behind the raw probe write (herdr-core 0.1.14, measured 2026-10-30) still reads", async () => {
+      // On a private hc session `terminal.keys` answered about 3030 ms after a `typeRaw`, whatever the gap
+      // between them; a raw write took 1 ms. Before the fix this was the minibuch receipt word for word.
+      const r = rig({ version: "2.1.999" });
+      r.pane.beforeWrite = (_p, what) => {
+        if (what.startsWith("keys:")) r.clock.now += 3000;
+      };
+      const answer = await r.send("hello there");
+      expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"] });
+      expect(answer.receipt?.gapsMs.probeWrite).toBe(3000);
+      expect(answer.receipt?.gapsMs.probe).toBeLessThanOrEqual(BOUNDS.probe.ms);
+    });
+
+    test("a Backspace half that starts with almost no time left still reads once", async () => {
+      const r = rig({ version: "2.1.999" });
+      // The read that shows the probe takes 800 ms: the typed half spends 880 of its 900, 20 are left.
+      let slow = true;
+      let backReads = 0;
+      r.pane.beforeRead = (p) => {
+        if (p.box.endsWith(PROBE) && slow) {
+          slow = false;
+          r.clock.now += 800;
+        }
+        if (p.keysSeen.length === 1 && p.keysSeen[0] === "Backspace") backReads++;
+      };
+      const answer = await r.send("hello there");
+      expect(answer.receipt).toMatchObject({ outcome: "sent", keys: ["probe", "Backspace", "Enter"] });
+      expect(backReads).toBeGreaterThanOrEqual(1);
+    });
+
+    test("a failed probe's receipt says where the time went: its reads and its writes", async () => {
+      const r = rig({ version: "2.1.999" });
+      slowWrites(r, 300);
+      r.pane.backspaceRestores = false;
+      const answer = await r.send("hello there");
+      expect(answer.receipt).toMatchObject({ outcome: "refused", reason: "probe_failed", keys: ["probe", "Backspace"] });
+      expect(answer.receipt?.gapsMs.probeWrite).toBe(600);
+      expect(answer.receipt?.gapsMs.probe).toBeGreaterThan(0);
+      expect(answer.receipt?.gapsMs.probe).toBeLessThanOrEqual(BOUNDS.probe.ms);
+    });
+  });
 });
 
 describe("the write and S1", () => {
