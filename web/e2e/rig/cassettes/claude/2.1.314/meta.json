@@ -1,12 +1,12 @@
 {
   "v": 1,
   "harness": "claude",
-  "version": "2.1.312",
+  "version": "2.1.314",
   "legs": {
     "solo": {
       "model": "haiku",
-      "skill": "48a9501916764efa",
-      "recordedAt": "2026-10-29T14:06:25.662Z",
+      "skill": "76601c7f4900fdf8",
+      "recordedAt": "2026-10-30T11:35:11.950Z",
       "cases": [
         "claude.load-older",
         "claude.permission",
@@ -26,10 +26,9 @@
     },
     "crew": {
       "model": "haiku",
-      "skill": "48a9501916764efa",
-      "recordedAt": "2026-10-29T14:09:28.717Z",
+      "skill": "76601c7f4900fdf8",
+      "recordedAt": "2026-10-30T12:21:23.582Z",
       "cases": [
-        "claude.walky-crew-agents",
         "claude.walky-crew-broadcast",
         "claude.walky-crew-member-to-lead",
         "claude.walky-crew-off",
