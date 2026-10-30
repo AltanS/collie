@@ -8,6 +8,7 @@ import type { BeaconMarker } from "../beacon/types.ts";
 import { asJsonBoolean, asJsonNumber, asJsonObject, asJsonString } from "../../web/src/lib/json.ts";
 import { MEMBER_ID_RE } from "../crew/identity.ts";
 import { parseAddress } from "./address.ts";
+import { BAD_ACK_IDS, BAD_MESSAGE_ID, BAD_REQUEST_LINE, bodyOverRaw, NO_ADDRESS, unknownOp, unreadAddress } from "./refusals.ts";
 import {
   isPrintableAscii,
   RECEIPT_REASON_MAX,
@@ -114,48 +115,75 @@ export type WalkyRequest =
   | { readonly op: "ack"; readonly markers: readonly BeaconMarker[]; readonly ids: readonly string[] | null }
   | { readonly op: "cancel"; readonly markers: readonly BeaconMarker[]; readonly id: string };
 
-/** One request line, or null. `v` must be 1; an unknown op, a bad id or a bad address fails. */
-export function parseWalkyRequest(line: string): WalkyRequest | null {
-  if (line.length > WALKY_LINE_MAX) return null;
+/**
+ * One request line read, or why it is not one (added 2026-10-30). An unread request keeps the markers
+ * it carried when they parse: a bridge whose panes they do not name answers `not here`, so the CLI asks
+ * the next bridge instead of stopping at one that cannot read a newer request. The reason opens with
+ * `bad request:` and names what failed (refusals.ts).
+ */
+export type WalkyRequestRead =
+  | { readonly ok: true; readonly request: WalkyRequest }
+  | { readonly ok: false; readonly markers: readonly BeaconMarker[]; readonly reason: string };
+
+function unread(reason: string, markers: readonly BeaconMarker[] = []): WalkyRequestRead {
+  return { ok: false, markers, reason };
+}
+
+function done(request: WalkyRequest): WalkyRequestRead {
+  return { ok: true, request };
+}
+
+/** One request line: `v` must be 1; an unknown op, a bad id or a bad address fails with its reason. */
+export function readWalkyRequest(line: string): WalkyRequestRead {
+  if (line.length > WALKY_LINE_MAX) return unread(BAD_REQUEST_LINE);
   let parsed: JsonValue;
   try {
     // SAFETY: `JSON.parse` output IS a JsonValue by construction.
     parsed = JSON.parse(line) as JsonValue;
   } catch {
-    return null;
+    return unread(BAD_REQUEST_LINE);
   }
   const row = asJsonObject(parsed);
-  if (row === undefined || row.v !== 1) return null;
+  if (row === undefined) return unread(BAD_REQUEST_LINE);
   const markers = readMarkers(row.markers);
+  if (row.v !== 1) return unread(BAD_REQUEST_LINE, markers);
   const op = text(row, "op");
-  if (op === "who") return { op, markers };
+  if (op === "who") return done({ op, markers });
   if (op === "status" || op === "cancel") {
     const id = text(row, "id");
-    return isWalkyId(id) ? { op, markers, id } : null;
+    return isWalkyId(id) ? done({ op, markers, id }) : unread(BAD_MESSAGE_ID, markers);
   }
   if (op === "inbox") {
     const id = textOrNull(row, "id") ?? null;
-    if (id !== null && !isWalkyId(id)) return null;
-    return { op, markers, all: asJsonBoolean(row.all) === true, ack: asJsonBoolean(row.ack) === true, id };
+    if (id !== null && !isWalkyId(id)) return unread(BAD_MESSAGE_ID, markers);
+    return done({ op, markers, all: asJsonBoolean(row.all) === true, ack: asJsonBoolean(row.ack) === true, id });
   }
   if (op === "ack") {
-    if (row.ids === null || row.ids === undefined) return { op, markers, ids: null };
-    if (!Array.isArray(row.ids) || row.ids.length > 200) return null;
+    if (row.ids === null || row.ids === undefined) return done({ op, markers, ids: null });
+    if (!Array.isArray(row.ids) || row.ids.length > 200) return unread(BAD_ACK_IDS, markers);
     const ids = row.ids.map((entry) => asJsonString(entry) ?? null);
-    return ids.every((id) => isWalkyId(id)) ? { op, markers, ids: ids.filter((id): id is string => id !== null) } : null;
+    return ids.every((id) => isWalkyId(id)) ? done({ op, markers, ids: ids.filter((id): id is string => id !== null) }) : unread(BAD_MESSAGE_ID, markers);
   }
-  if (op !== "send") return null;
+  if (op !== "send") return unread(op === null ? BAD_REQUEST_LINE : unknownOp(op), markers);
   const id = text(row, "id");
   // The address as the bridge spells it: `parseAddress` reads past blanks, and the signed `to` must not
   // carry them, or a crew leg is logged under one spelling and answered under another.
   const to = text(row, "to")?.trim() ?? null;
   const body = text(row, "body");
   const replyTo = textOrNull(row, "replyTo") ?? null;
-  if (replyTo !== null && !isWalkyId(replyTo)) return null;
+  if (!isWalkyId(id) || (replyTo !== null && !isWalkyId(replyTo))) return unread(BAD_MESSAGE_ID, markers);
   // A reply may leave the address out: the bridge sends it to the sender of what it answers.
-  if (to === null ? replyTo === null : parseAddress(to) === null) return null;
-  if (!isWalkyId(id) || body === null || body.length > RAW_BODY_MAX) return null;
-  return { op, markers, id, to, body, replyTo };
+  if (to === null && replyTo === null) return unread(NO_ADDRESS, markers);
+  if (to !== null && parseAddress(to) === null) return unread(unreadAddress(to), markers);
+  if (body === null) return unread(BAD_REQUEST_LINE, markers);
+  if (body.length > RAW_BODY_MAX) return unread(bodyOverRaw(RAW_BODY_MAX), markers);
+  return done({ op, markers, id, to, body, replyTo });
+}
+
+/** One request line, or null. `v` must be 1; an unknown op, a bad id or a bad address fails. */
+export function parseWalkyRequest(line: string): WalkyRequest | null {
+  const read = readWalkyRequest(line);
+  return read.ok ? read.request : null;
 }
 
 /** What a phone's `POST /api/walky` carries. */

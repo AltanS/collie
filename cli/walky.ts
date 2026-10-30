@@ -8,6 +8,7 @@ import type { JsonObject, JsonValue } from "../bridge/json.ts";
 import { asJsonNumber, asJsonObject, asJsonString, parseJsonObject } from "../web/src/lib/json.ts";
 import { inScope, labelScope, LOCAL_MEMBER, parseAddress, type WalkyScope } from "../bridge/walky/address.ts";
 import { readMessage, readReceipt } from "../bridge/walky/parse.ts";
+import { BARE_BAD_REQUEST, UNREAD_BY_OLDER_BRIDGE } from "../bridge/walky/refusals.ts";
 import type { WalkyTotals } from "../bridge/walky/service.ts";
 import { walkySocketPath } from "../bridge/walky/socket.ts";
 import { formatRead, mintWalkyId, OUTCOME_ON_LEAD, WALKY_ID, type WalkyMessage, type WalkyReceipt } from "../bridge/walky/types.ts";
@@ -60,12 +61,17 @@ type Answer = { readonly ok: true; readonly body: JsonObject; readonly path: str
 
 /**
  * Ask the bridges in turn. A bridge that answers `not here` does not drive this pane: the next one is
- * asked. With `path` set only that bridge is asked (the one that took a send).
+ * asked. So is one that answers the bare `bad request` (added 2026-10-30): a bridge before that day
+ * says it to any request it cannot read, before it looks at the markers, so an older release lane
+ * asked first (this install's own socket) stopped a `here` send the pane's newer bridge would take.
+ * It is reported, in words, only when no other bridge took the request. With `path` set only that
+ * bridge is asked (the one that took a send).
  */
 async function request(deps: WalkyDeps, body: JsonObject, path?: string): Promise<Answer> {
   const line = `${JSON.stringify({ v: 1, markers: readEnvMarkers(deps.ctx.env), ...body })}\n`;
   const paths = path === undefined ? socketPaths(deps) : [path];
   let notHere = false;
+  let unread = false;
   for (const candidate of paths) {
     const raw = await deps.ask(candidate, line).catch(() => null);
     if (raw === null) continue;
@@ -77,8 +83,13 @@ async function request(deps: WalkyDeps, body: JsonObject, path?: string): Promis
       notHere = true;
       continue;
     }
+    if (error === BARE_BAD_REQUEST) {
+      unread = true;
+      continue;
+    }
     return { ok: false, error };
   }
+  if (unread) return { ok: false, error: UNREAD_BY_OLDER_BRIDGE };
   if (notHere) return { ok: false, error: "no Collie bridge on this machine knows this pane" };
   return { ok: false, error: "no running Collie bridge answers on this machine" };
 }
@@ -103,7 +114,7 @@ export function shown(value: string): string {
 function failure(deps: WalkyDeps, answer: { readonly error: string }): number {
   deps.io.err(`walky talky: ${shown(answer.error)}`);
   if (answer.error.startsWith("no running")) return EXIT.UNREACHABLE;
-  if (answer.error === "empty body" || answer.error === "bad request") return EXIT.USAGE;
+  if (answer.error === "empty body" || answer.error.startsWith(BARE_BAD_REQUEST)) return EXIT.USAGE;
   return EXIT.STATE;
 }
 

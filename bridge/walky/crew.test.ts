@@ -34,7 +34,9 @@ import {
 } from "./crew.ts";
 import type { SendResult, WalkyHost, WalkyPane } from "./deliver.ts";
 import { WalkyLog } from "./log.ts";
-import { readWalkyReport } from "./parse.ts";
+import { readWalkyReport, readWalkyRequest } from "./parse.ts";
+import { answerRequest, type PlaceTarget } from "./socket.ts";
+import type { BeaconMatcher } from "../beacon/decorate.ts";
 import { RateLimiter } from "./rate.ts";
 import { OUT_OF_SCOPE, scopeEmpty, scopeIsMember } from "./refusals.ts";
 import { WalkyService, type WalkyServiceDeps } from "./service.ts";
@@ -1361,6 +1363,50 @@ describe("a workspace scope across a crew of two members (M75 spec 02)", () => {
     expect(answer.ok && answer.receipts.map((r) => r.target)).toEqual(["desk/w1:p1", "laptop/w1:p9", "other/w2:p1"]);
     await settledAll(lead, laptop, other);
     expect(laptop.host.sends).toEqual(["w1:p9"]);
+  });
+
+  test("`here` from a herdr-core member's flat pane, through that member's socket and the crew hop, reaches the lead's pane in the same folder (2026-10-30)", async () => {
+    // The live shape: member `bluefin-hc` (a hyphen), its pane the flat `t1`, placed by HC_TERMINAL_* markers.
+    const hcPanes = [pane("t1", { label: "collie-workspace#main" })];
+    const deskPanes = [pane("w1:p1", { label: "collie-workspace#main" }), pane("w1:p2", { label: "elsewhere#main" })];
+    const lead = service("desk", deskPanes, undefined, { remoteTargets: () => listed("bluefin-hc", hcPanes), knownMembers: () => ["desk", "bluefin-hc"] });
+    const leadCrew = new WalkyCrew({ service: lead.service, trust: () => leadStore(), now: () => AT });
+    const hops: string[] = [];
+    const hc = service("bluefin-hc", hcPanes, undefined, {
+      outcomesOnLead: true,
+      knownMembers: () => ["bluefin-hc", "desk"],
+      routeRemote: memberRouteRemote({
+        self: "bluefin-hc",
+        post: async (payload) => {
+          // SAFETY: the member posts the JSON it built itself.
+          const body = JSON.parse(payload) as JsonValue;
+          hops.push(JSON.stringify(body));
+          const answer = await leadCrew.fromMember(body, member({ memberId: "bluefin-hc" }));
+          return { kind: "answer", status: answer.status, body: wire(answer.body) };
+        },
+        now: () => AT,
+      }),
+    });
+    const hcMatcher: BeaconMatcher = {
+      namespace: "hc",
+      scope: async () => "/run/user/1000/herdr-core/default.sock",
+      matches: (at, marker, scope) => marker.scope === scope && at.paneId === marker.pane,
+      notesWithoutHooks: { agentDetection: "", agentSessionRef: "" },
+    };
+    const place: PlaceTarget = { session: "main", matcher: hcMatcher, paneIds: () => ["t1"] };
+    const line = JSON.stringify({ v: 1, op: "send", markers: [{ namespace: "hc", scope: "/run/user/1000/herdr-core/default.sock", pane: "t1" }], id: "wt_aaaaaaaaaah1", to: "here", body: "scope proof", replyTo: null });
+    const read = readWalkyRequest(line);
+    if (!read.ok) throw new Error(read.reason);
+    const answer = await answerRequest(hc.service, read.request, [place]);
+    expect(answer).toMatchObject({ ok: true, receipts: [{ target: "desk/w1:p1", state: "accepted", by: "desk" }] });
+    // The member handed `here` over whole, signed by `bluefin-hc`, with the label the lead resolves it from.
+    expect(hops).toHaveLength(1);
+    expect(JSON.parse(hops[0]!)).toMatchObject({ to: "here", from: { memberId: "bluefin-hc", address: "bluefin-hc/t1#aaaa", label: "collie-workspace#main" }, signer: "bluefin-hc" });
+    await lead.service.deliverer.settled();
+    await hc.service.deliverer.settled();
+    expect(lead.host.sends).toEqual(["w1:p1"]);
+    expect(hc.host.sends).toEqual([]);
+    expect(lead.log.get("wt_aaaaaaaaaah1", "desk/w1:p1")?.receipt.state).toBe("delivered");
   });
 
   test("a member refuses a routed scope for a pane whose label is not in it, and a scope routed to `all`", async () => {

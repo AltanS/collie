@@ -12,7 +12,7 @@ import { signMessage } from "./canonical.ts";
 import { BODY_TOO_LONG, cleanBody } from "./clean.ts";
 import { CANCELLED_BY_SENDER, DROPPED_BY_OWNER, isFanOut, sendIdOf, withoutAnsweredLegs, WalkyDeliverer, type DelivererDeps, type SenderPane, type TakeBack, type WalkyPane } from "./deliver.ts";
 import { sameInstance, type LogRecord, type WalkyLog } from "./log.ts";
-import { MEMBER_UNREACHABLE, type RefusalCounts } from "./refusals.ts";
+import { MEMBER_UNREACHABLE, NO_ADDRESS, type RefusalCounts } from "./refusals.ts";
 import { headerField, WALKY_LABEL_MAX, type WalkyEntry, type WalkyMessage, type WalkyReceipt, type WalkyReceiptState, type WalkySkipped, type WalkyTarget, type WalkyVerified } from "./types.ts";
 
 /** Who is sending: an agent's pane, or an operator by label. */
@@ -204,7 +204,7 @@ export class WalkyService {
       if (parent !== null) to = parent.message.from.address;
       else if (!this.elsewhereReply(input.to, sender)) return { ok: true, receipts: [this.deliverer.refusal(input.id, input.to ?? "-", "unknown reply")] };
     }
-    if (to === null) return { ok: false, error: "bad request" };
+    if (to === null) return { ok: false, error: NO_ADDRESS };
     // Past the cap the send is refused, never cut: the receipt says why, and the count keeps it.
     if (cleanBody(input.body).cut) return { ok: true, receipts: [this.deliverer.refusal(input.id, to, BODY_TOO_LONG)] };
     const message = this.compose({ ...input, to }, sender);

@@ -1,12 +1,14 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import type { BeaconMatcher } from "../bridge/beacon/decorate.ts";
 import { HOST } from "../bridge/host.ts";
 import type { SendResult, WalkyHost, WalkyPane } from "../bridge/walky/deliver.ts";
 import { WalkyLog } from "../bridge/walky/log.ts";
+import { UNREAD_BY_OLDER_BRIDGE } from "../bridge/walky/refusals.ts";
 import { WalkyService } from "../bridge/walky/service.ts";
 import { walkySocketPath, WalkyServer, type PlaceTarget } from "../bridge/walky/socket.ts";
 import { capture, context } from "./fakes.ts";
@@ -91,6 +93,31 @@ async function bridge(over: Partial<ConstructorParameters<typeof WalkyService>[0
   expect(await server.start()).toBe(true);
   cleanups.push(() => server.stop());
   return state;
+}
+
+/**
+ * A bridge before 2026-10-30, as far as a request it cannot read goes: it answers the bare
+ * `bad request` to every line, before it looks at the markers. A real socket in a private dir, so the
+ * CLI's socket checks pass. POSIX only.
+ */
+async function olderBridge(): Promise<{ readonly path: string; readonly lines: string[] }> {
+  const stateDir = mkdtempSync(join(tmpdir(), "walky-older-"));
+  const path = walkySocketPath(stateDir);
+  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+  const lines: string[] = [];
+  const server = createServer((socket) => {
+    socket.setEncoding("utf8");
+    socket.once("data", (chunk: string) => {
+      lines.push(chunk);
+      socket.end(`${JSON.stringify({ ok: false, error: "bad request" })}\n`);
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(path, resolve));
+  cleanups.push(() => {
+    server.close();
+    rmSync(stateDir, { recursive: true, force: true });
+  });
+  return { path, lines };
 }
 
 type Captured = ReturnType<typeof capture>;
@@ -347,6 +374,27 @@ describe("reply, inbox, status, who", () => {
     expect(await cmdWalkyStatus(none, ["wt_zzzzzzzzzzzz"])).toBe(EXIT.STATE);
     expect(none.io.stdout).toEqual(["no record of wt_zzzzzzzzzzzz on this machine"]);
     expect(await cmdWalkyStatus(deps(b), ["../x"])).toBe(EXIT.USAGE);
+  });
+
+  socketTest("an older bridge asked first that cannot read `here` does not stop the send: the next bridge, the pane's own, takes it (2026-10-30)", async () => {
+    // The live shape: the CLI asks its own install's socket first, the release lane's, whose bridge
+    // predates M75 and answers the bare `bad request` before it looks at the markers.
+    const older = await olderBridge();
+    const b = await bridge();
+    const d = deps(b, inPane("%1"), { sockets: () => [older.path, walkySocketPath(b.stateDir)] });
+    expect(await cmdWalkySend(d, ["here", "hi"])).toBe(EXIT.OK);
+    expect(older.lines).toHaveLength(1);
+    expect(d.io.stderr).toEqual([]);
+    expect(d.io.stdout).toEqual(["wt_aaaaaaaaaaa1", "to here", "typed into the pane"]);
+    expect(b.service?.status("wt_aaaaaaaaaaa1").message?.to).toBe("here");
+  });
+
+  socketTest("when only an older bridge answers the bare `bad request`, the CLI says why in words and exits USAGE", async () => {
+    const older = await olderBridge();
+    const b = scratch();
+    const d = deps(b, inPane("%1"), { sockets: () => [older.path] });
+    expect(await cmdWalkySend(d, ["here", "hi"])).toBe(EXIT.USAGE);
+    expect(d.io.stderr).toEqual([`walky talky: ${UNREAD_BY_OLDER_BRIDGE}`]);
   });
 
   socketTest("a scope send (M75) passes the bare word through; status lists each delivery and the parent's totals, and --json carries them", async () => {

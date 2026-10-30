@@ -11,8 +11,9 @@
 //   ack     { ids | null }              → { ok, acked }
 //   cancel  { id }                      → { ok, results }   (M62 spec 03: the sender takes a held message back)
 // A refusal is `{ ok: false, error }`. `not here` means the markers name no pane of this bridge, so
-// the CLI asks the next bridge on the machine. A send with no markers at all is refused: the operator
-// sends from a paired device, never from this socket.
+// the CLI asks the next bridge on the machine; a request this bridge cannot read answers the same when
+// its markers name no pane here, else `bad request: <reason>` (refusals.ts). A send with no markers
+// at all is refused: the operator sends from a paired device, never from this socket.
 
 import { chmodSync, existsSync, lstatSync, mkdirSync, unlinkSync } from "node:fs";
 import { once } from "node:events";
@@ -22,7 +23,7 @@ import { dirname, join } from "node:path";
 import type { BeaconMatcher } from "../beacon/decorate.ts";
 import type { BeaconMarker } from "../beacon/types.ts";
 import { HOST, type Host } from "../host.ts";
-import { parseWalkyRequest, WALKY_LINE_MAX, type WalkyRequest } from "./parse.ts";
+import { readWalkyRequest, WALKY_LINE_MAX, type WalkyRequest, type WalkyRequestRead } from "./parse.ts";
 import type { WalkyDelivery, WalkyService } from "./service.ts";
 import type { TakeBack } from "./deliver.ts";
 import type { WalkyEntry, WalkyMessage, WalkyReceipt, WalkyTarget } from "./types.ts";
@@ -157,6 +158,19 @@ export async function answerRequest(service: WalkyService, request: WalkyRequest
   }
 }
 
+/**
+ * Answer a request this bridge cannot read (added 2026-10-30). Markers that name no pane here answer
+ * `not here`, as a readable request's do: the CLI then asks the next bridge, which may be newer and the
+ * pane's own. Several bridges of different releases share a machine (the release lane beside a dev
+ * lane), and the CLI asks its own install's first. Anything else answers the reason, never the bare word.
+ */
+export async function answerUnread(service: WalkyService, read: Extract<WalkyRequestRead, { ok: false }>, targets: readonly PlaceTarget[]): Promise<WalkyAnswer> {
+  if (read.markers.length === 0) return { ok: false, error: read.reason };
+  const placed = await placeMarkers(read.markers, targets);
+  if (placed === null || service.paneAt(placed.session, placed.paneId) === null) return { ok: false, error: "not here" };
+  return { ok: false, error: read.reason };
+}
+
 export class WalkyServer {
   private server: Server | null = null;
   private readonly log: (line: string) => void;
@@ -252,9 +266,9 @@ export class WalkyServer {
 
   private async route(socket: Socket, line: string): Promise<void> {
     try {
-      const request = parseWalkyRequest(line);
-      if (request === null) return this.reply(socket, { ok: false, error: "bad request" });
-      this.reply(socket, await answerRequest(this.deps.service, request, this.deps.targets()));
+      const read = readWalkyRequest(line);
+      if (!read.ok) return this.reply(socket, await answerUnread(this.deps.service, read, this.deps.targets()));
+      this.reply(socket, await answerRequest(this.deps.service, read.request, this.deps.targets()));
     } catch (err) {
       this.log(`[walky] request failed: ${err instanceof Error ? err.message : String(err)}`);
       this.reply(socket, { ok: false, error: "failed" });
