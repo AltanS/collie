@@ -12,6 +12,7 @@ import {
   forwardPaneId,
   forwardParams,
   forwardToPeer,
+  MemberPaneReads,
   REPLY_OLD_MEMBER_TEXT,
   SEND_OLD_MEMBER_DETAIL,
   crewRouteFor,
@@ -498,6 +499,52 @@ describe("a proxied read is the peer's response, unmodified (§9.1)", () => {
 });
 
 // ── §9.1 Compression is hop-local: the LEAD gzips the phone hop (.adr/0023) ──
+
+// M78 spec 03, crew case 21: a member pane read through the lead answered 503 and the lead's log
+// had no line for it.
+describe("a member pane read that fails leaves one line on the lead", () => {
+  function logged() {
+    const lines: string[] = [];
+    return { lines, paneReads: new MemberPaneReads((line) => lines.push(line)) };
+  }
+
+  test("an unreachable member: the phone gets 503, the log names the member, the pane and the status", async () => {
+    const { lines, paneReads } = logged();
+    const { transport } = transportOf(() => ({ ok: false, state: "unreachable", reason: "timed out after 1200ms", receivedAt: 2 }));
+    const [req, url] = get("/api/pane/t4?host=laptop&lines=60");
+    const res = await forward(req, url, { transport, paneReads });
+    expect(res.status).toBe(503);
+    expect(lines).toEqual(["[crew] laptop: a read of pane t4 through the lead failed, status 503 (unreachable: timed out after 1200ms)"]);
+  });
+
+  test("the member's own error answer is logged too; a poll that keeps failing adds no line; an answered read clears it", async () => {
+    const { lines, paneReads } = logged();
+    let status = 503;
+    const { transport } = transportOf(() => ok(new Response("{}", { status })));
+    const read = async (): Promise<number> => {
+      const [req, url] = get("/api/pane/w1%3Ap1?host=laptop");
+      return (await forward(req, url, { transport, paneReads })).status;
+    };
+    expect(await read()).toBe(503);
+    expect(await read()).toBe(503);
+    expect(lines).toEqual(["[crew] laptop: a read of pane w1:p1 through the lead failed, status 503 (the member answered it)"]);
+    status = 200;
+    expect(await read()).toBe(200);
+    status = 503;
+    expect(await read()).toBe(503);
+    expect(lines).toHaveLength(2);
+  });
+
+  test("a write that fails and a read of no pane leave no such line", async () => {
+    const { lines, paneReads } = logged();
+    const { transport } = transportOf(() => ({ ok: false, state: "unreachable", reason: "connection refused", receivedAt: 2 }));
+    const [req, url] = post("/api/pane/t4/keys?host=laptop", JSON.stringify({ keys: ["Enter"] }));
+    await forward(req, url, { transport, paneReads });
+    const [list, listUrl] = get("/api/launchers?host=laptop");
+    await forward(list, listUrl, { transport, paneReads });
+    expect(lines).toEqual([]);
+  });
+});
 
 describe("the lead compresses the phone hop itself (.adr/0023)", () => {
   // The whole decision rests on this primitive existing in the runtime the bridge ships on. Asserted

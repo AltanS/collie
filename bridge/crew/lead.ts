@@ -5,7 +5,7 @@ import { WALKY_REPORT_FIELD } from "../walky/crew.ts";
 import { readWalkyReport } from "../walky/parse.ts";
 import type { WalkyReceipt } from "../walky/types.ts";
 import type { MachineSample, MuxConfig, SessionCard, SnapshotResponse } from "../types.ts";
-import { forwardToPeer, type ForwardDeps, type ForwardTransport } from "./forward.ts";
+import { forwardToPeer, MemberPaneReads, type ForwardDeps, type ForwardTransport } from "./forward.ts";
 import {
   mergeSnapshot,
   narrowPeerBody,
@@ -450,6 +450,7 @@ export class CrewLead {
    */
   private readonly loggedState = new Map<string, string>();
   private readonly log: (line: string) => void;
+  private readonly paneReads: MemberPaneReads;
   private readonly now: () => number;
   private sweeping = false;
   /** Members with a verdict probe in flight. At most one per member, ever — see {@link probe}. */
@@ -483,6 +484,7 @@ export class CrewLead {
   constructor(private readonly deps: CrewLeadDeps) {
     this.now = deps.now ?? Date.now;
     this.log = deps.log ?? ((line) => console.log(line));
+    this.paneReads = new MemberPaneReads((line) => this.log(line));
   }
 
   /**
@@ -1122,6 +1124,8 @@ export class CrewLead {
       // the phone's cadence rather than the sweep's idle one. The registry owns the rules (successes
       // only, reachable members only, monotone) — this class just supplies the member id.
       onExchange: (receivedAt) => void this.deps.registry.recordExchange(resolved.link.memberId, receivedAt),
+      // A member pane the lead could not read for the phone leaves a line, once while it keeps failing.
+      paneReads: this.paneReads,
       ...opts,
     });
   }
