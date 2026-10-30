@@ -191,6 +191,27 @@ export const WRITE_BUDGET_MS = 5000;
  */
 export const PANE_READ_BUDGET_MS = 5000;
 
+/**
+ * How long a **forwarded write to a pane** (`POST /api/pane/:id/reply`, `keys`, `abort`, `clear`, ...) may
+ * take before the lead gives up on it and tells the phone `write_outcome_unknown`. {@link WRITE_BUDGET_MS}
+ * still covers every write that is not addressed to a pane (a launch, a tab, a folder star).
+ *
+ * ── WHY (measured, 2026-10-30, M79 spec 04, crew case 19) ─────────────────────
+ * A send on a member that runs herdr-core costs about 6.4 s: hc 0.1.14 answers a key press about 3 s after
+ * a raw write to the same terminal, and a `reply` to a pi pane writes the text and then presses Enter, so it
+ * waits for the core twice. The member delivered the reply and answered, but past the lead's 5 s, so the
+ * phone read 504 `write_outcome_unknown` over a reply that had gone in.
+ *
+ * 15000 ms is two sends' worth on the core. The lead never dials a write twice (a second dial would be a
+ * second key), so a short budget cannot be retried away; it has to be long enough the first time. It stays
+ * inside the phone's own 20 s mutation budget (`web/src/lib/api.ts` `MUTATION_TIMEOUT_MS`), so the lead's
+ * deadline still fires first and the phone still gets §10.3's legible refusal. A member that is truly gone
+ * is not slower to report: the connect and handshake fail on their own, long before this deadline.
+ *
+ * Lead-local, never on the wire, so moving it needs no protocol bump.
+ */
+export const PANE_WRITE_BUDGET_MS = 15000;
+
 /** How long a `hello` PROBE may take before the lead calls a member gone (§10.4), by default. */
 export const DEFAULT_CREW_HELLO_TIMEOUT_MS = 5000;
 /** Operator override for the probe budget. A crew key, so it lives here and not on `Config`. */

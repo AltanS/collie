@@ -3,7 +3,7 @@ import type { JsonObject, JsonValue } from "../json.ts";
 import { MASK_VERSION } from "../redact.ts";
 import { MAX_UPLOAD_OVERHEAD, uploadTooLarge } from "../uploads.ts";
 import { DEVICE_HEADER, encodeDeviceHeader } from "./admission.ts";
-import { type CrewLink, type PeerFailure, type PeerOutcome, PANE_READ_BUDGET_MS, WRITE_BUDGET_MS } from "./peer-client.ts";
+import { type CrewLink, type PeerFailure, type PeerOutcome, PANE_READ_BUDGET_MS, PANE_WRITE_BUDGET_MS, WRITE_BUDGET_MS } from "./peer-client.ts";
 import { HOST_PARAM, type PeerState } from "./registry.ts";
 
 // The LEAD side of a per-pane request: `?host=laptop` came in, the pane lives on the laptop, so the
@@ -251,11 +251,12 @@ export function forwardKind(route: string, method?: string): ForwardKind {
 const PANE_SCREEN_ROUTE = /^pane\/[^/]+$/;
 
 /**
- * The explicit budget a forwarded request dials on: {@link WRITE_BUDGET_MS} for a write, {@link PANE_READ_BUDGET_MS}
+ * The explicit budget a forwarded request dials on: {@link PANE_WRITE_BUDGET_MS} for a write to a pane (a send on a
+ * herdr-core member costs about 6.4 s), {@link WRITE_BUDGET_MS} for every other write, {@link PANE_READ_BUDGET_MS}
  * for a pane's screen read, none for every other read (the transport's own poll budget and bootstrap credit).
  */
 export function budgetOf(kind: ForwardKind, route: string): number | undefined {
-  if (kind === "write") return WRITE_BUDGET_MS;
+  if (kind === "write") return route.startsWith("pane/") ? PANE_WRITE_BUDGET_MS : WRITE_BUDGET_MS;
   return PANE_SCREEN_ROUTE.test(route) ? PANE_READ_BUDGET_MS : undefined;
 }
 
@@ -593,7 +594,7 @@ export class MemberPaneReads {
  * The transport, narrowed to what forwarding needs — {@link CrewLead.forward} in production.
  *
  * `budgetMs` is the deadline for THIS dial, and it is present for two shapes of request: a
- * forwarded write, on {@link WRITE_BUDGET_MS} (§10.1), and a pane's screen read, on
+ * forwarded write, on {@link WRITE_BUDGET_MS} or {@link PANE_WRITE_BUDGET_MS} (§10.1), and a pane's screen read, on
  * {@link PANE_READ_BUDGET_MS}. Absent means "the transport's own default",
  * which for `PeerClient.proxy` is the poll budget plus a cold link's bootstrap credit — i.e. every
  * forwarded read keeps the budget it has always had.

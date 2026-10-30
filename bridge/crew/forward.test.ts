@@ -24,7 +24,7 @@ import {
 } from "./forward.ts";
 import { crewDeviceOf } from "./peer-gate.ts";
 import { HISTORY_READ_BUDGET_MS } from "../mux/herdr-core/adapter.ts";
-import { crewTimeoutBudget, PANE_READ_BUDGET_MS, WRITE_BUDGET_MS, type CrewLink, type PeerOutcome } from "./peer-client.ts";
+import { crewTimeoutBudget, PANE_READ_BUDGET_MS, PANE_WRITE_BUDGET_MS, WRITE_BUDGET_MS, type CrewLink, type PeerOutcome } from "./peer-client.ts";
 import { member } from "./fixtures.ts";
 import { CrewRegistry, type PeerState } from "./registry.ts";
 import { readSend, readSendReply } from "../../web/src/lib/send-protocol.ts";
@@ -962,7 +962,7 @@ describe("an attempted write whose outcome is unknown (§10.3, .adr/0010 over a 
 // WRITE_BUDGET_MS of a forwarded write, and when the member does not answer inside it the lead says
 // `write_outcome_unknown` and never dials again: a second dial would be a second key.
 describe("a Stop and a steer over a crew link", () => {
-  test("the Stop (`abort`) and the steer (a `reply` with `when: steer`) dial once, on WRITE_BUDGET_MS, and a timeout is unknown", async () => {
+  test("the Stop (`abort`) and the steer (a `reply` with `when: steer`) dial once, on PANE_WRITE_BUDGET_MS, and a timeout is unknown", async () => {
     for (const [path, body] of [
       ["/api/pane/w1:p1/abort?host=laptop", `{"requestId":"stop-req-0001"}`],
       // A Clear (ADR 0116) is the same kind of write: the key may have gone in, so it never dials twice.
@@ -975,7 +975,7 @@ describe("a Stop and a steer over a crew link", () => {
       expect(res.status).toBe(504);
       expect((await failureBody(res)).code).toBe("write_outcome_unknown");
       expect(calls).toHaveLength(1);
-      expect(calls[0]!.budgetMs).toBe(WRITE_BUDGET_MS);
+      expect(calls[0]!.budgetMs).toBe(PANE_WRITE_BUDGET_MS);
     }
   });
 });
@@ -983,7 +983,7 @@ describe("a Stop and a steer over a crew link", () => {
 // ── A forwarded write is not a poll (§10.1, amended 2026-09-08) ──────────────
 
 describe("a forwarded write carries its own budget (§10.1)", () => {
-  test("every write route dials on WRITE_BUDGET_MS", async () => {
+  test("every write route dials on its budget: a pane's on PANE_WRITE_BUDGET_MS, the rest on WRITE_BUDGET_MS", async () => {
     // §5's write routes, one of each shape `forwardKind` decides on.
     const writes = [
       "/api/pane/w1:p1/reply",
@@ -1004,8 +1004,18 @@ describe("a forwarded write carries its own budget (§10.1)", () => {
       const [req, url] = post(`${path}?host=laptop`, "{}");
       await forward(req, url, { transport });
       expect(calls).toHaveLength(1);
-      expect(calls[0]!.budgetMs).toBe(WRITE_BUDGET_MS);
+      expect(calls[0]!.budgetMs).toBe(path.startsWith("/api/pane/") ? PANE_WRITE_BUDGET_MS : WRITE_BUDGET_MS);
     }
+  });
+
+  test("a reply that the member answers after 7 s (a send on a herdr-core member) is delivered, not a 504", async () => {
+    // M79 spec 04, crew case 19: a send on the core costs about 6.4 s, past the old 5 s write budget.
+    const dial = budgeted(7000);
+    const [req, url] = post("/api/pane/t2/reply?host=laptop", `{"text":"hello","submit":true,"id":"reply-req-0001"}`);
+    const res = await forward(req, url, { transport: dial.transport });
+    expect(res.status).toBe(200);
+    expect(dial.calls).toEqual([PANE_WRITE_BUDGET_MS]);
+    expect(PANE_WRITE_BUDGET_MS).toBeGreaterThan(7000);
   });
 
   test("a pane's screen read dials on PANE_READ_BUDGET_MS, longer than the member's 2 s history budget", async () => {
@@ -1042,6 +1052,7 @@ describe("a forwarded write carries its own budget (§10.1)", () => {
   test("the write budget outlasts the poll budget it replaced", () => {
     // The arithmetic the fix rests on. 1200 ms under a 1500 ms poll is §10.1's default pair.
     expect(WRITE_BUDGET_MS).toBeGreaterThan(crewTimeoutBudget(1500, {}));
+    expect(PANE_WRITE_BUDGET_MS).toBeGreaterThan(WRITE_BUDGET_MS);
   });
 
   /**
