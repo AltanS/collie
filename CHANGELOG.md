@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **`walky inbox`, `status` and `reply` no longer stop at an older bridge that knows the pane but not the message.** On a machine that runs two Collies on one multiplexer the first bridge asked could answer "no message for this pane" for a message the other bridge held; such a bridge now answers not here and the CLI asks the next one.
+
 ## [1.25.0] - 2026-10-30
 
 A feature release, not urgent. Its headline is the new Herdr: Collie now drives the Herdr core, `herdr-core` (`hc`), through a new multiplexer adapter, picks it on its own on a machine with the core and no Herdr TUI, and ships a Collie panel mod for herdr-app. It also brings a photo editor before upload, the send rows in `collie doctor`, labels and folders for spaces, Antigravity 1.4.8, browser leg replay for Claude (M67), and fixes for sends into Claude Code 2.1.312 and Codex 0.166.0.

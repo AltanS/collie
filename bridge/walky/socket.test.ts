@@ -142,10 +142,22 @@ describe("the requests", () => {
     // The pane closed, and a new session took %2: same id, another instance.
     list[1] = { ...list[1]!, instance: "cccc" };
     expect(await read()).toEqual({ ok: true, pane: "local/%2#cccc", messages: [] });
-    expect(await read("wt_aaaaaaaaaaa1")).toEqual({ ok: false, error: "no message wt_aaaaaaaaaaa1 for this pane" });
+    expect(await read("wt_aaaaaaaaaaa1")).toEqual({ ok: false, error: "not here", missing: "no message wt_aaaaaaaaaaa1 for this pane" });
     // A send to the old instance is refused, and one to the bare id reaches the new session.
     const stale = parseWalkyRequest(JSON.stringify({ v: 1, op: "send", markers: marker("%1"), id: "wt_aaaaaaaaaaa2", to: "local/%2#bbbb", body: "late" }));
     expect(await answerRequest(walky, stale!, [target])).toMatchObject({ ok: true, receipts: [{ state: "refused", reason: "pane replaced", target: "local/%2" }] });
+  });
+
+  test("a pane this bridge knows asks for a message it does not hold: `not here`, so the CLI asks the next bridge, with the sentence in `missing` (2026-10-30)", async () => {
+    const walky = service();
+    const ask = (op: string, markers: ReturnType<typeof marker>, id: string) => answerRequest(walky, parseWalkyRequest(JSON.stringify({ v: 1, op, markers, id, ack: false, all: false }))!, [target]);
+    const sentence = "no message wt_zzzzzzzzzzzz for this pane";
+    expect(await ask("inbox", marker("%2"), "wt_zzzzzzzzzzzz")).toEqual({ ok: false, error: "not here", missing: sentence });
+    // Cancel is the same shape: the sender's bridge may be the other one.
+    expect(await ask("cancel", marker("%2"), "wt_zzzzzzzzzzzz")).toEqual({ ok: false, error: "not here", missing: "no message wt_zzzzzzzzzzzz on this machine" });
+    // A pane this bridge does not know is `not here` without a sentence; no pane at all keeps the machine wording.
+    expect(await ask("inbox", marker("%9"), "wt_zzzzzzzzzzzz")).toEqual({ ok: false, error: "not here" });
+    expect(await ask("inbox", [], "wt_zzzzzzzzzzzz")).toEqual({ ok: false, error: "no message wt_zzzzzzzzzzzz on this machine" });
   });
 
   test("a bad line is no request: wrong version, unknown op, bad id, bad address", () => {

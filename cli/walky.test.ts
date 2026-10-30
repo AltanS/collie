@@ -11,6 +11,7 @@ import { WalkyLog } from "../bridge/walky/log.ts";
 import { UNREAD_BY_OLDER_BRIDGE } from "../bridge/walky/refusals.ts";
 import { WalkyService } from "../bridge/walky/service.ts";
 import { walkySocketPath, WalkyServer, type PlaceTarget } from "../bridge/walky/socket.ts";
+import { parseJsonObject } from "../web/src/lib/json.ts";
 import { capture, context } from "./fakes.ts";
 import { EXIT } from "./io.ts";
 import { realFiles } from "./sys.ts";
@@ -110,6 +111,33 @@ async function olderBridge(): Promise<{ readonly path: string; readonly lines: s
     socket.once("data", (chunk: string) => {
       lines.push(chunk);
       socket.end(`${JSON.stringify({ ok: false, error: "bad request" })}\n`);
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(path, resolve));
+  cleanups.push(() => {
+    server.close();
+    rmSync(stateDir, { recursive: true, force: true });
+  });
+  return { path, lines };
+}
+
+/**
+ * A bridge that knows the pane and holds no message with the id, as far as the CLI sees it (2026-10-30):
+ * a build before that day answers inbox with the error `no message <id> for this pane`, and status with
+ * an ok answer that holds no message and no receipt. A real socket in a private dir. POSIX only.
+ */
+async function emptyBridge(): Promise<{ readonly path: string; readonly lines: string[] }> {
+  const stateDir = mkdtempSync(join(tmpdir(), "walky-empty-"));
+  const path = walkySocketPath(stateDir);
+  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+  const lines: string[] = [];
+  const server = createServer((socket) => {
+    socket.setEncoding("utf8");
+    socket.once("data", (chunk: string) => {
+      lines.push(chunk);
+      const request = parseJsonObject(chunk) ?? {};
+      const answer = request.op === "inbox" ? { ok: false, error: `no message ${String(request.id)} for this pane` } : { ok: true, receipts: [], message: null, elsewhere: [] };
+      socket.end(`${JSON.stringify(answer)}\n`);
     });
   });
   await new Promise<void>((resolve) => server.listen(path, resolve));
@@ -395,6 +423,69 @@ describe("reply, inbox, status, who", () => {
     const d = deps(b, inPane("%1"), { sockets: () => [older.path] });
     expect(await cmdWalkySend(d, ["here", "hi"])).toBe(EXIT.USAGE);
     expect(d.io.stderr).toEqual([`walky talky: ${UNREAD_BY_OLDER_BRIDGE}`]);
+  });
+
+  socketTest("an older bridge asked first that knows the pane but holds no such message does not stop `inbox <id>`: the next bridge's message is read (2026-10-30)", async () => {
+    const older = await emptyBridge();
+    const b = await bridge();
+    await cmdWalkySend(deps(b, inPane("%1")), ["local/%2", "Tests are green."]);
+    const d = deps(b, inPane("%2"), { sockets: () => [older.path, walkySocketPath(b.stateDir)] });
+    expect(await cmdWalkyInbox(d, ["wt_aaaaaaaaaaa1"])).toBe(EXIT.OK);
+    expect(older.lines).toHaveLength(1);
+    expect(d.io.stderr).toEqual([]);
+    expect(d.io.stdout).toEqual(["[walky-talky wt_aaaaaaaaaaa1] from agent local/%1#aaaa (agent-x, repo#one)", "Tests are green."]);
+  });
+
+  socketTest("when every bridge knows the pane and none holds the message, `inbox <id>` prints the sentence and exits STATE, as before (2026-10-30)", async () => {
+    const older = await emptyBridge();
+    const b = await bridge();
+    const d = deps(b, inPane("%2"), { sockets: () => [older.path, walkySocketPath(b.stateDir)] });
+    expect(await cmdWalkyInbox(d, ["wt_zzzzzzzzzzzz"])).toBe(EXIT.STATE);
+    expect(d.io.stderr).toEqual(["walky talky: no message wt_zzzzzzzzzzzz for this pane"]);
+    // The newer bridge asked first, the older last: the same sentence.
+    const swapped = deps(b, inPane("%2"), { sockets: () => [walkySocketPath(b.stateDir), older.path] });
+    expect(await cmdWalkyInbox(swapped, ["wt_zzzzzzzzzzzz"])).toBe(EXIT.STATE);
+    expect(swapped.io.stderr).toEqual(["walky talky: no message wt_zzzzzzzzzzzz for this pane"]);
+    // A pane no bridge knows is still that, not a missing message.
+    const stranger = deps(b, inPane("%9"), { sockets: () => [walkySocketPath(b.stateDir)] });
+    expect(await cmdWalkyInbox(stranger, ["wt_zzzzzzzzzzzz"])).toBe(EXIT.STATE);
+    expect(stranger.io.stderr).toEqual(["walky talky: no Collie bridge on this machine knows this pane"]);
+  });
+
+  socketTest("a newer bridge asked first that does not hold the message answers not here, and the older one's message is read (2026-10-30)", async () => {
+    const holder = await bridge();
+    await cmdWalkySend(deps(holder, inPane("%1")), ["local/%2", "held by the second"]);
+    const first = await bridge();
+    const d = deps(first, inPane("%2"), { sockets: () => [walkySocketPath(first.stateDir), walkySocketPath(holder.stateDir)] });
+    expect(await cmdWalkyInbox(d, ["wt_aaaaaaaaaaa1"])).toBe(EXIT.OK);
+    expect(d.io.stdout).toEqual(["[walky-talky wt_aaaaaaaaaaa1] from agent local/%1#aaaa (agent-x, repo#one)", "held by the second"]);
+  });
+
+  socketTest("`status <id>` asks past a bridge that holds no receipt, and prints the sentence only when none does (2026-10-30)", async () => {
+    const older = await emptyBridge();
+    const b = await bridge();
+    await cmdWalkySend(deps(b, inPane("%1")), ["local/%2", "hi"]);
+    const d = deps(b, inPane("%1"), { sockets: () => [older.path, walkySocketPath(b.stateDir)] });
+    expect(await cmdWalkyStatus(d, ["wt_aaaaaaaaaaa1"])).toBe(EXIT.OK);
+    expect(older.lines).toHaveLength(1);
+    expect(d.io.stdout).toEqual(["wt_aaaaaaaaaaa1", "local/%2: typed into the pane (this machine)"]);
+    const none = deps(b, inPane("%1"), { sockets: () => [older.path, walkySocketPath(b.stateDir)] });
+    expect(await cmdWalkyStatus(none, ["wt_zzzzzzzzzzzz"])).toBe(EXIT.STATE);
+    expect(none.io.stdout).toEqual(["no record of wt_zzzzzzzzzzzz on this machine"]);
+  });
+
+  socketTest("`reply <id>` finds the message on the next bridge and sends the reply there, not through the older one asked first (2026-10-30)", async () => {
+    const older = await emptyBridge();
+    const b = await bridge();
+    await cmdWalkySend(deps(b, inPane("%1"), { mintId: () => "wt_aaaaaaaaaaa1" }), ["local/%2", "question?"]);
+    const d = deps(b, inPane("%2"), { mintId: () => "wt_bbbbbbbbbbb2", sockets: () => [older.path, walkySocketPath(b.stateDir)] });
+    expect(await cmdWalkyReply(d, ["wt_aaaaaaaaaaa1", "answer."])).toBe(EXIT.OK);
+    expect(older.lines).toHaveLength(1);
+    expect(b.sent[1]).toContain("reply to wt_aaaaaaaaaaa1");
+    // When every bridge lacks it, the words are as before.
+    const none = deps(b, inPane("%2"), { sockets: () => [older.path, walkySocketPath(b.stateDir)] });
+    expect(await cmdWalkyReply(none, ["wt_zzzzzzzzzzzz", "ok"])).toBe(EXIT.STATE);
+    expect(none.io.stderr).toEqual(["walky talky: no message wt_zzzzzzzzzzzz on this machine"]);
   });
 
   socketTest("a scope send (M75) passes the bare word through; status lists each delivery and the parent's totals, and --json carries them", async () => {

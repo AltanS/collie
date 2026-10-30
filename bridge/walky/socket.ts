@@ -83,7 +83,7 @@ export interface WalkyServerDeps {
 
 /** What one request is answered with. */
 export type WalkyAnswer =
-  | { readonly ok: false; readonly error: string }
+  | { readonly ok: false; readonly error: string; readonly missing?: string }
   | { readonly ok: true; readonly receipts: readonly WalkyReceipt[]; readonly target?: WalkyTarget }
   | {
       readonly ok: true;
@@ -98,6 +98,15 @@ export type WalkyAnswer =
   | { readonly ok: true; readonly pane: string | null; readonly messages: readonly WalkyEntry[] }
   | { readonly ok: true; readonly acked: number }
   | { readonly ok: true; readonly results: readonly TakeBack[] };
+
+/**
+ * A bridge that knows the pane but holds no message with the id (added 2026-10-30). It answers `not here`,
+ * so the CLI asks the next bridge, a machine can run two Collies on one multiplexer and either may hold
+ * the message, and carries the sentence the CLI prints when no bridge held it in `missing`.
+ */
+export function noMessageHere(sentence: string): WalkyAnswer {
+  return { ok: false, error: "not here", missing: sentence };
+}
 
 /** Answer one parsed request. Exported for its test: the server only frames it. */
 export async function answerRequest(service: WalkyService, request: WalkyRequest, targets: readonly PlaceTarget[]): Promise<WalkyAnswer> {
@@ -131,7 +140,7 @@ export async function answerRequest(service: WalkyService, request: WalkyRequest
       if (request.id !== null) {
         // One message by id: the way an agent reads the body its nudge line named.
         const entry = service.one(request.id, pane);
-        if (entry === null) return { ok: false, error: pane === null ? `no message ${request.id} on this machine` : `no message ${request.id} for this pane` };
+        if (entry === null) return pane === null ? { ok: false, error: `no message ${request.id} on this machine` } : noMessageHere(`no message ${request.id} for this pane`);
         if (pane !== null && request.ack) service.ack(pane.session, pane.paneId, pane.instance, [entry.id]);
         return { ok: true, pane: pane === null ? null : service.addressOf(pane.paneId, pane.instance), messages: [entry] };
       }
@@ -153,7 +162,8 @@ export async function answerRequest(service: WalkyService, request: WalkyRequest
         service.noteRefusal("no pane");
         return { ok: false, error: CANCEL_NEEDS_A_PANE };
       }
-      return service.cancel(request.id, { kind: "agent", pane });
+      const taken = service.cancel(request.id, { kind: "agent", pane });
+      return !taken.ok && taken.error.startsWith("no message ") ? noMessageHere(taken.error) : taken;
     }
   }
 }
