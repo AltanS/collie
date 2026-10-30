@@ -1038,6 +1038,25 @@ describe("the hold socket", () => {
     server.stop();
   });
 
+  test.skipIf(POSIX_ONLY)("a request from another multiplexer's pane is dropped without a log line, a same-namespace miss is logged", async () => {
+    const path = join(dir, "state", "hold", "sock");
+    const logs: string[] = [];
+    const target: HoldTarget = {
+      session: "main",
+      matcher: { namespace: "herdr-core", notesWithoutHooks: { agentDetection: "", agentSessionRef: "" }, scope: () => Promise.resolve("/run/core.sock"), matches: () => false },
+      paneIds: () => [PANE],
+      deliver: () => undefined,
+    };
+    const server = new HoldServer({ socketPath: path, liveness: { startTimeOf: () => Promise.resolve(1234) }, targets: () => [target], log: (l) => logs.push(l) });
+    await server.start();
+    expect(await roundTrip(path, `${JSON.stringify(holdRequest())}\n`)).toBe("");
+    expect(logs).toEqual([]);
+    const own = holdRequest({ markers: [{ namespace: "herdr-core", scope: "/run/core.sock", pane: "w9:p9" }] });
+    expect(await roundTrip(path, `${JSON.stringify(own)}\n`)).toBe("");
+    expect(logs).toEqual([`[surface] surface.hold.dropped reason=no-pane pid=4242`]);
+    server.stop();
+  });
+
   test.skipIf(POSIX_ONLY)("an unparsed line is dropped", async () => {
     const path = join(dir, "state", "hold", "sock");
     const logs: string[] = [];

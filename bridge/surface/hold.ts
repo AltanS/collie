@@ -679,6 +679,8 @@ export class HoldServer {
 
   private drop(socket: Socket, reason: string, pid: number | null): void {
     socket.destroy();
+    // A pane of another multiplexer on this machine belongs to that bridge's hold socket, as in EdgeRouter.drop.
+    if (reason === "foreign-mux") return;
     const key = `${reason}:${String(pid ?? "-")}`;
     const now = Date.now();
     const last = this.logged.get(key);
