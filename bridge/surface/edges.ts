@@ -50,7 +50,7 @@ const DROP_LOG_REPEAT_MS = 60_000;
 /** The journal tag of a placed edge. `journalctl ... | grep surface.edge` reads them. */
 export const EDGE_TAG = "surface.edge";
 
-export type DropReason = "unparsed" | "old" | "no-pane" | "ambiguous" | "dead-pid" | "not-foreground";
+export type DropReason = "unparsed" | "old" | "foreign-mux" | "no-pane" | "ambiguous" | "dead-pid" | "not-foreground";
 
 /** One terminal session, as the router sees it. */
 export interface EdgeTarget {
@@ -120,18 +120,23 @@ export function kindOfEdge(record: EdgeRecord): EdgeKind {
 /**
  * Place one edge on one pane, or say why not. Exactly one pane across every target must match one of
  * the edge's markers; the pid must still be the writer; a reported foreground must hold the pid.
+ * An edge whose markers all name other multiplexers than every target's is `foreign-mux`: its pane
+ * lives under another bridge on this machine.
  */
 export async function placeEdge(record: EdgeRecord, targets: readonly EdgeTarget[], liveness: BeaconLiveness): Promise<Placement> {
   const hits: { target: EdgeTarget; paneId: string }[] = [];
+  let sharesNamespace = false;
   for (const target of targets) {
     const markers = record.markers.filter((marker) => marker.namespace === target.matcher.namespace);
     if (markers.length === 0) continue;
+    sharesNamespace = true;
     const scope = await target.matcher.scope().catch(() => null);
     if (scope === null) continue;
     for (const paneId of target.paneIds()) {
       if (markers.some((marker) => target.matcher.matches({ paneId }, marker, scope))) hits.push({ target, paneId });
     }
   }
+  if (hits.length === 0 && record.markers.length > 0 && targets.length > 0 && !sharesNamespace) return { kind: "dropped", reason: "foreign-mux" };
   if (hits.length === 0) return { kind: "dropped", reason: "no-pane" };
   if (hits.length > 1) return { kind: "dropped", reason: "ambiguous" };
   const hit = hits[0]!;
@@ -371,7 +376,7 @@ export class EdgeRouter {
     } catch {
       // A counter is not a verdict.
     }
-    if (reason === "old" || reason === "unparsed") return;
+    if (reason === "old" || reason === "unparsed" || reason === "foreign-mux") return;
     const key = `${reason}:${String(record?.pid ?? 0)}`;
     const now = this.now();
     const last = this.dropLogged.get(key);

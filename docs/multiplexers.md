@@ -510,7 +510,9 @@ Collie places each edge on one pane. The edge names the agent's process and its 
 (`HERDR_PANE_ID`, `TMUX_PANE` or `ZELLIJ_PANE_ID`). Collie drops an edge that names no pane, two
 panes, or a process that is gone. The bridge log then shows a `surface.edge.dropped` line. It shows at
 most one line per reason and process each minute. An edge older than 30 seconds, or a file that is
-not an edge, is counted but never logged.
+not an edge, is counted but never logged. An edge from a pane of another multiplexer on the same
+machine, for example a Herdr TUI pane seen by a bridge that drives the Herdr core, is counted as
+`foreign-mux` and not logged.
 
 #### Which bridges get the edges
 

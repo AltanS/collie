@@ -80,6 +80,18 @@ describe("placing an edge", () => {
     expect(await placeEdge(record(), [target({ matcher: matcher(null) })], alive)).toEqual({ kind: "dropped", reason: "no-pane" });
   });
 
+  test("drops an edge from another multiplexer as foreign-mux, and keeps no-pane for its own namespace", async () => {
+    const core = target({ matcher: matcher(SOCKET, "herdr-core") });
+    expect(await placeEdge(record({ markers: [marker("w1:p1", SOCKET, "herdr")] }), [core], alive)).toEqual({ kind: "dropped", reason: "foreign-mux" });
+    expect(await placeEdge(record({ markers: [marker("w9:p9", SOCKET, "herdr-core")] }), [core], alive)).toEqual({ kind: "dropped", reason: "no-pane" });
+    // A record with a TUI marker and a core marker (a core terminal started inside the TUI) is placed by the core marker.
+    const both = record({ markers: [marker("w1:p1", SOCKET, "herdr"), marker("w1:p1", SOCKET, "herdr-core")] });
+    const placed = await placeEdge(both, [core], alive);
+    expect(placed.kind === "placed" && placed.paneId).toBe("w1:p1");
+    // No markers at all stays no-pane.
+    expect(await placeEdge(record({ markers: [] }), [core], alive)).toEqual({ kind: "dropped", reason: "no-pane" });
+  });
+
   test("drops an edge two sessions both claim: ambiguity is absence", async () => {
     const placed = await placeEdge(record(), [target({ session: "a" }), target({ session: "b" })], alive);
     expect(placed).toEqual({ kind: "dropped", reason: "ambiguous" });
@@ -150,6 +162,14 @@ describe("the edge router", () => {
     expect(got).toEqual([]);
     expect(drops).toEqual(["unparsed", "old", "dead-pid"]);
     expect(lines.filter((line) => line.includes(`${EDGE_TAG}.dropped`))).toEqual([`[surface] ${EDGE_TAG}.dropped reason=dead-pid event=Stop pid=99`]);
+  });
+
+  test("counts a foreign-mux edge and never logs it, while a no-pane edge of the same namespace is logged", async () => {
+    const { r, spool, lines, drops } = router([target({ matcher: matcher(SOCKET, "herdr-core") })]);
+    spool.files.push(JSON.stringify(record({ markers: [marker("w1:p1", SOCKET, "herdr")] })), JSON.stringify(record({ pid: 5, markers: [marker("w9:p9", SOCKET, "herdr-core")] })));
+    await r.tick();
+    expect(drops).toEqual(["foreign-mux", "no-pane"]);
+    expect(lines.filter((line) => line.includes(`${EDGE_TAG}.dropped`))).toEqual([`[surface] ${EDGE_TAG}.dropped reason=no-pane event=Stop pid=5`]);
   });
 
   test("an end edge closes the source; a gone pid closes it too and hands the pane one end edge", async () => {
