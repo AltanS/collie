@@ -11,6 +11,7 @@ import {
   narrowPeerBody,
   parsePeerSnapshot,
   SWEEP_VIEW,
+  type MergeContext,
   type PeerContribution,
   type PeerSnapshotBody,
   type SnapshotPlan,
@@ -231,6 +232,8 @@ export interface CrewLeadDeps {
    * can change under a running bridge). The same source `hello` states; `null` or absent when none.
    */
   readonly selfMux?: () => string | null;
+  /** This lead's own host name for its `servers` row (M77 spec 01); `null` or absent when the OS gives none. */
+  readonly selfHost?: () => string | null;
   /**
    * Called with a body **that just parsed on this sweep** — never with a retained last-good one.
    * That distinction is the whole contract: `PeerNotifier` derives transitions by diffing successive
@@ -1244,10 +1247,12 @@ export class CrewLead {
     );
   }
 
-  /** This lead's id and label, plus the multiplexer it drives when it names one. */
-  private selfWithMux(): { readonly id: string; readonly name: string; readonly mux?: string } {
+  /** This lead's id and label, plus the multiplexer it drives and its host name when it names them. */
+  private selfWithMux(): MergeContext["self"] {
     const mux = this.deps.selfMux?.() ?? null;
-    return mux === null || mux === "" ? this.deps.self : { ...this.deps.self, mux };
+    const host = this.deps.selfHost?.() ?? null;
+    const withMux = mux === null || mux === "" ? this.deps.self : { ...this.deps.self, mux };
+    return host === null || host === "" ? withMux : { ...withMux, host };
   }
 
   /**

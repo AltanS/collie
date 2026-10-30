@@ -2069,8 +2069,8 @@ describe("the status banner", () => {
 /** A crew of two (one answering, one not), two devices and five agent sessions. */
 const FAKE_CENSUS: Census = {
   members: [
-    { name: "minibuch", role: "peer", link: "reachable", version: "1.25.0", mux: null, panes: null },
-    { name: "minibuch-hc", role: "peer", link: "unreachable", version: null, mux: null, panes: null },
+    { name: "minibuch", role: "peer", link: "reachable", version: "1.25.0", mux: null, panes: null, host: null },
+    { name: "minibuch-hc", role: "peer", link: "unreachable", version: null, mux: null, panes: null, host: null },
   ],
   devices: { count: 2, names: ["Pixel", "iPad"] },
   sessions: {

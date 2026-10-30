@@ -872,6 +872,12 @@ export interface ServerSummary {
    */
   mux?: string;
   /**
+   * The machine's own host name (`os.hostname()`), as the member reported it on its status answer; the
+   * lead states its own. Additive and optional (§7.1): absent when the member never said, which means
+   * "its own machine" to any grouping and never "the same machine as another member".
+   */
+  host?: string;
+  /**
    * Epoch ms, **stamped by the lead on receipt — never the peer's clock** (§10.2). The client
    * derives "stale since …" from it (stale once older than 3 × pollMs or 15 s, whichever is first);
    * `0` means this member has never answered.
@@ -968,6 +974,10 @@ export interface CrewMemberStatus {
    * when it sent no count: an older build, or a bridge still starting. Never `0` for "unknown".
    */
   panes?: number;
+  /**
+   * The host name this member's machine reported (M77 spec 01). **Omitted** when it did not say.
+   */
+  host?: string;
 }
 
 // ── Machines: every machine's load, kept by the lead (ADR 0084) ──────────────────

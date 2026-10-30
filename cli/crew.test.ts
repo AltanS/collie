@@ -2032,15 +2032,16 @@ describe("collie crew status", () => {
       // The replies are consumed in call order: both hellos go out first, then each member's snapshot.
       jsonReply({ protocol: 2, member: "nas", version: "1.25.0" }, 200, "nas"),
       jsonReply({ protocol: 2, member: "attic", version: "1.24.2" }, 200, "attic"),
-      jsonReply({ bridge: "connected", agents: [], mux: "zellij", panes: 2 }, 200, "nas"),
+      jsonReply({ bridge: "connected", agents: [], mux: "zellij", panes: 2, host: "nas-box" }, 200, "nas"),
       jsonReply({ bridge: "connected", agents: [] }, 200, "attic"),
     ]);
     expect(await cmdCrewStatus(h.deps, ["--json"])).toBe(0);
     expect(h.io.stdout).toHaveLength(1);
     const doc = JSON.parse(h.io.stdout[0]!);
     const byId = Object.fromEntries(doc.members.map((m: { id: string }) => [m.id, m]));
-    expect(byId.nas).toMatchObject({ link: "reachable", version: "1.25.0", mux: "zellij", panes: 2 });
-    expect(byId.attic).toMatchObject({ link: "reachable", mux: null, panes: null });
+    expect(byId.nas).toMatchObject({ link: "reachable", version: "1.25.0", mux: "zellij", panes: 2, host: "nas-box" });
+    // A member that did not say its host is `null`, so a reader never groups it with another.
+    expect(byId.attic).toMatchObject({ link: "reachable", mux: null, panes: null, host: null });
     expect(doc.mode).toBe("lead");
   });
 

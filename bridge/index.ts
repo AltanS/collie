@@ -112,6 +112,7 @@ import { commitCrewChange, CREW_PROTOCOL_VERSION } from "./crew/enrollment.ts";
 import { CrewLead } from "./crew/lead.ts";
 import { leadLabel } from "./crew/merge.ts";
 import { crewStatusBody } from "./crew/status-wire.ts";
+import { machineHost } from "./crew/machine-host.ts";
 import { herdPushGate, PeerNotifier } from "./crew/notify.ts";
 import {
   crewHelloBudget,
@@ -2236,6 +2237,12 @@ if (warnsOnWildcardBind(crew.mode, cfg.host)) {
  * which is not a roster member and would collide visually with every peer's per-machine label — see
  * `leadLabel`'s doc for the hostname/fallback rule.
  */
+/** The lead's own host name as `crewStatusBody` takes it: the key is absent where the OS gives none. */
+function hostSource(): { readonly host?: string } {
+  const host = machineHost();
+  return host === null ? {} : { host };
+}
+
 function crewSelfOf(data: TrustStoreData) {
   return { id: data.self.memberId, name: leadLabel(hostname(), data.self.memberId) };
 }
@@ -2291,6 +2298,8 @@ const crewLead = (() => {
     // The multiplexer this lead drives, for its `servers` row: the primary session's adapter, the
     // same one `hello` publishes.
     selfMux: () => registry.get()?.herdr.mux ?? null,
+    // This machine's own host name, for the same row (M77 spec 01).
+    selfHost: machineHost,
     // Notifications for a peer's panes, derived on the lead from the body this sweep just parsed and
     // pushed through the same coordinator machinery a local session uses (M4/06).
     onPeerSnapshot: (memberId, body) => {
@@ -2494,6 +2503,7 @@ const crewStatus =
           // router's, so the two surfaces cannot name this build two different versions.
           version: crewVersion,
           mux: cfg.mux,
+          ...hostSource(),
           peers: crewLead.contributions(),
           now: Date.now(),
         });

@@ -114,7 +114,7 @@ describe("members", () => {
       { [TRUST]: lead("minibuch", "minibuch-hc") },
       {
         // The snapshot answer is listed before the hello, since a fragment matches the first key that fits.
-        "minibuch.example:8787/crew/v1/snapshot": crewSnapshot("minibuch", { bridge: "connected", agents: [], mux: "herdr", panes: 4 }),
+        "minibuch.example:8787/crew/v1/snapshot": crewSnapshot("minibuch", { bridge: "connected", agents: [], mux: "herdr", panes: 4, host: "minibuch-box" }),
         "minibuch.example": hello("minibuch", "1.25.0"),
         "minibuch-hc.example": new Error("timed out"),
         "/api/snapshot": snapshot(),
@@ -122,8 +122,8 @@ describe("members", () => {
     );
     const census = await gatherCensus(r.deps, RUNNING_LEAD);
     expect(census.members).toEqual([
-      { name: "minibuch", role: "peer", link: "reachable", version: "1.25.0", mux: "herdr", panes: 4 },
-      { name: "minibuch-hc", role: "peer", link: "unreachable", version: null, mux: null, panes: null },
+      { name: "minibuch", role: "peer", link: "reachable", version: "1.25.0", mux: "herdr", panes: 4, host: "minibuch-box" },
+      { name: "minibuch-hc", role: "peer", link: "unreachable", version: null, mux: null, panes: null, host: null },
     ]);
     // Both questions of `crew status` for a member that answered, and only `hello` for one that did not.
     expect(r.seen.filter((s) => s.url.includes("/crew/v1/")).map((s) => s.url)).toEqual([

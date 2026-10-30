@@ -220,6 +220,12 @@ export interface PeerState {
    */
   readonly panes?: number;
   /**
+   * The host name that member last reported for its machine (M77 spec 01, CREW_PROTOCOL.md §19).
+   * **Omitted** until it reports one, and again once an answer carries none: an older build never
+   * says, and a member that did not say is its own machine in every grouping. In memory only.
+   */
+  readonly host?: string;
+  /**
    * The presentation split for a member that is not answering (§10.2, M22/05), or **absent when
    * there is nothing to say** — a reachable member, or a state this registry has not folded a
    * failure into yet.
@@ -519,16 +525,20 @@ export class CrewRegistry {
   }
 
   /**
-   * Bank one member's multiplexer name and pane count, as the sweep read them off its `snapshot`
+   * Bank one member's multiplexer name, pane count and host name, as the sweep read them off its `snapshot`
    * answer (M76 spec 04). The answer is authoritative for both: a field it did not carry is cleared,
    * because a pane count that was true a sweep ago is a wrong count now, and a member that came back
    * without a field has told us it has none to give. Only from a successful answer (the caller's rule).
    */
-  recordStatus(memberId: string, report: { readonly mux: string | null; readonly panes: number | null }): PeerState {
-    const { mux: _mux, panes: _panes, ...rest } = this.state(memberId);
+  recordStatus(
+    memberId: string,
+    report: { readonly mux: string | null; readonly panes: number | null; readonly host?: string | null },
+  ): PeerState {
+    const { mux: _mux, panes: _panes, host: _host, ...rest } = this.state(memberId);
     let next: PeerState = rest;
     if (report.mux !== null) next = { ...next, mux: report.mux };
     if (report.panes !== null) next = { ...next, panes: report.panes };
+    if (report.host !== undefined && report.host !== null) next = { ...next, host: report.host };
     this.peers.set(memberId, next);
     return next;
   }

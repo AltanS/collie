@@ -90,6 +90,7 @@ function lead(
     turns?: UpdateTurns;
     proxy?: ForwardTransport;
     selfMux?: () => string | null;
+    selfHost?: () => string | null;
   } = {},
 ) {
   const roster = [...members];
@@ -112,6 +113,7 @@ function lead(
     hello: opts.hello,
     self: { id: "desk", name: "the herd" },
     selfMux: opts.selfMux,
+    selfHost: opts.selfHost,
     maxUploadBytes: DEFAULT_MAX_UPLOAD_BYTES,
     now: () => clock,
     follow:
@@ -233,6 +235,23 @@ describe("CrewLead — a peer's sessions never vanish (§10.2)", () => {
     expect(h.lead.merge(localBody(), NARROW_PLAN).servers).toEqual([
       { id: "desk", name: "the herd", isLead: true, reachable: true, protocol: "ok", lastSeenAt: NOW },
     ]);
+  });
+});
+
+describe("CrewLead, the host name on the merged servers rows (M77 spec 01)", () => {
+  test("the lead's row states its own host, read on every merge; a member's row states the one it reported", async () => {
+    let own: string | null = "bluefin";
+    const h = lead([member({ memberId: "laptop" })], () => ok(body), { selfHost: () => own });
+    await h.lead.sweep();
+    h.registry.recordStatus("laptop", { mux: "herdr-core", panes: 2, host: "minibuch" });
+    const rows = h.lead.merge(localBody(), NARROW_PLAN).servers!;
+    expect(rows.find((r) => r.id === "desk")!.host).toBe("bluefin");
+    expect(rows.find((r) => r.id === "laptop")!.host).toBe("minibuch");
+    own = null;
+    expect("host" in h.lead.merge(localBody(), NARROW_PLAN).servers![0]!).toBe(false);
+    // An answer that carries no host clears the banked one: a name true a sweep ago is not kept.
+    h.registry.recordStatus("laptop", { mux: "herdr-core", panes: 2, host: null });
+    expect("host" in h.lead.merge(localBody(), NARROW_PLAN).servers!.find((r) => r.id === "laptop")!).toBe(false);
   });
 });
 

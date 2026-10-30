@@ -1501,17 +1501,34 @@ describe("PeerClient — every dial is attested (§8.6)", () => {
 
 describe("parsePeerStatus, the sweep's mux and panes siblings (M76 spec 04)", () => {
   test("a carried name and count are read, and a zero is a zero", () => {
-    expect(parsePeerStatus({ bridge: {}, mux: "herdr", panes: 4 })).toEqual({ mux: "herdr", panes: 4 });
-    expect(parsePeerStatus({ mux: "  tmux ", panes: 0 })).toEqual({ mux: "tmux", panes: 0 });
+    expect(parsePeerStatus({ bridge: {}, mux: "herdr", panes: 4 })).toEqual({ mux: "herdr", panes: 4, host: null });
+    expect(parsePeerStatus({ mux: "  tmux ", panes: 0 })).toEqual({ mux: "tmux", panes: 0, host: null });
   });
 
   test("absent, blank or malformed means the answer SAID NOTHING, so each reads as null", () => {
-    expect(parsePeerStatus({ bridge: {}, agents: [] })).toEqual({ mux: null, panes: null });
-    expect(parsePeerStatus({ mux: "", panes: -1 })).toEqual({ mux: null, panes: null });
-    expect(parsePeerStatus({ mux: 7, panes: "3" })).toEqual({ mux: null, panes: null });
-    expect(parsePeerStatus({ panes: 1.5 })).toEqual({ mux: null, panes: null });
-    expect(parsePeerStatus(["herdr"])).toEqual({ mux: null, panes: null });
-    expect(parsePeerStatus(null)).toEqual({ mux: null, panes: null });
+    expect(parsePeerStatus({ bridge: {}, agents: [] })).toEqual({ mux: null, panes: null, host: null });
+    expect(parsePeerStatus({ mux: "", panes: -1 })).toEqual({ mux: null, panes: null, host: null });
+    expect(parsePeerStatus({ mux: 7, panes: "3" })).toEqual({ mux: null, panes: null, host: null });
+    expect(parsePeerStatus({ panes: 1.5 })).toEqual({ mux: null, panes: null, host: null });
+    expect(parsePeerStatus(["herdr"])).toEqual({ mux: null, panes: null, host: null });
+    expect(parsePeerStatus(null)).toEqual({ mux: null, panes: null, host: null });
+  });
+});
+
+describe("parsePeerStatus, the host sibling (M77 spec 01)", () => {
+  test("a carried host name is read trimmed, beside mux and panes", () => {
+    expect(parsePeerStatus({ mux: "herdr", panes: 4, host: " minibuch " })).toEqual({ mux: "herdr", panes: 4, host: "minibuch" });
+  });
+
+  test("absent, blank or malformed means the answer SAID NOTHING about the host", () => {
+    expect(parsePeerStatus({ mux: "herdr" }).host).toBeNull();
+    expect(parsePeerStatus({ host: "" }).host).toBeNull();
+    expect(parsePeerStatus({ host: "   " }).host).toBeNull();
+    expect(parsePeerStatus({ host: 7 }).host).toBeNull();
+    expect(parsePeerStatus({ host: ["a"] }).host).toBeNull();
+    expect(parsePeerStatus({ host: "a".repeat(254) }).host).toBeNull();
+    expect(parsePeerStatus({ host: "box\nname" }).host).toBeNull();
+    expect(parsePeerStatus(null).host).toBeNull();
   });
 });
 

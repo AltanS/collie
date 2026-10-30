@@ -202,6 +202,7 @@ import type { CrewLead } from "./crew/lead.ts";
 import { crewDeviceOf, crewGate, type GateLevel } from "./crew/peer-gate.ts";
 import { snapshotPlan } from "./crew/merge.ts";
 import { selectHostFrom, type HostSelector } from "./crew/registry.ts";
+import { machineHost } from "./crew/machine-host.ts";
 import type { CrewHandler, CrewSurface } from "./crew/router.ts";
 import type { CrewTlsOptions } from "./crew/transport.ts";
 import { createSttAdmission, MAX_STT_AUDIO_BYTES, sttCapability, transcribeRequest } from "./stt/http.ts";
@@ -2344,6 +2345,9 @@ export function startServer(opts: {
         .filter((snap) => snap.bridge === "connected")
         .reduce((sum, snap) => sum + snap.agents.length, 0);
     },
+    // M77 spec 01: this machine's own host name, for its `snapshot` answer, so a lead can tell which
+    // members share a machine.
+    host: machineHost,
     // M55: every session's card, so the lead can answer `/api/config?host=&session=` for a program
     // session on this machine. Null on a machine that runs no program, so its `hello` is unchanged.
     sessions: () => registry.cards(),

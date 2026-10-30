@@ -298,6 +298,22 @@ describe("crewStatusBody — §10.2's presentation split, copied and never deriv
   });
 });
 
+describe("crewStatusBody, a member's host name (M77 spec 01)", () => {
+  test("it is copied from the registry's bank, and the lead's own row carries the lead's host", () => {
+    const body = crewStatusBody(
+      sources({ host: "bluefin", peers: [contribution({ memberId: "laptop", host: "minibuch" })] }),
+    )!;
+    expect(body.members[0]).toMatchObject({ isLead: true, host: "bluefin" });
+    expect(body.members[1]).toMatchObject({ id: "laptop", host: "minibuch" });
+  });
+
+  test("a member that did not say has no host key, never null or an empty string", () => {
+    const body = crewStatusBody(sources())!;
+    expect(Object.hasOwn(body.members[0]!, "host")).toBe(false);
+    expect(Object.hasOwn(body.members[1]!, "host")).toBe(false);
+  });
+});
+
 describe("crewStatusBody, a member's mux and pane count (M76 spec 04)", () => {
   test("they are copied from the registry's bank, and the lead's own row carries only its mux", () => {
     const body = crewStatusBody(

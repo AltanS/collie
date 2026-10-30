@@ -361,6 +361,12 @@ answering build:
   means "this member did not say"**, never "no multiplexer" and never zero (§7.1). A member whose
   bridge has not read its multiplexer yet sends **no `panes`**, not `0`.
 
+- `host` is **OPTIONAL**, added in 1.25.0 (M77 spec 01, §19 "The member's host name"): the machine's own
+  host name, as the member reads it with `os.hostname()`, so the lead can tell which members run on one
+  machine. It rides **`/crew/v1/snapshot`'s response** beside `mux` and `panes`. **An absent, blank or
+  malformed `host` means "this member did not say"** (§7.1), never an empty name, and a member that did
+  not say is its own machine in every grouping.
+
 - `pairingDigest` is **OPTIONAL**, added 2026-08-20 (§18.14): a digest of the synced paired-device
   registry this member holds, and `null`/absent on every member that holds none — which is every peer
   that is not the deputy. **An absent field means "nothing synced here", never "up to date"** (§7.1),
@@ -690,6 +696,15 @@ updated machines, so build skew is the steady state (§7), and this section is t
   cannot count its panes and sends no `panes`. Nothing in `bridge/crew/merge.ts` reads either field, so
   neither reaches a browser's snapshot. `CREW_PROTOCOL_VERSION` stays `2`, no new route, no new verb
   and no new header.
+
+- **A member's snapshot answer gained an optional `host`** (added in 1.25.0, M77 spec 01). It is the
+  machine's own host name, a short string such as `minibuch`. Additive-optional with the same closed
+  reading as `mux` and `panes`: **absent, blank or malformed means the member did not say**, which
+  `collie crew status --json` and `collie status --json` print as `null`. An older lead passes the field
+  over untouched, and a lead on the new build treats an older member as its own machine, so neither
+  side refuses the other over it. The lead's own `servers` row carries the lead's own host name. Nothing
+  in the lead groups on the field yet. `CREW_PROTOCOL_VERSION` stays `2`, no new route, no new verb and
+  no new header.
 
 - **A pane gained an optional `gitHead`** (added 2026-10-08). It names what the checkout holding
   the pane's folder is on: `{ kind: "branch", name }` or `{ kind: "detached", sha }`, the full object
@@ -3160,6 +3175,29 @@ which multiplexer the answering machine drives, and how many agent panes it serv
   the primary session's adapter, a member's from this bank), so `collie sessions` can fill its MUX
   column. The key is absent where the lead does not know the name.
 - It is a **report**, like the rest of this section: no route, verb or decision branches on it.
+- No new route, no new dial, no new budget. The field rides an answer §10.1 already collects.
+
+### The member's host name, in the same seat *(added in 1.25.0, M77 spec 01)*
+
+`GET /crew/v1/snapshot`'s response also carries an optional **`host`**: the host name of the machine
+that answers. Same seat as `mux` and `panes`, same reason, same protocol integer: `X-Crew-Protocol`
+stays `2`.
+
+```json
+{ "mux": "herdr", "panes": 4, "host": "minibuch" }
+```
+
+- `host` is what `os.hostname()` returns on the member, trimmed. A machine whose OS gives none, or
+  gives a name longer than 253 characters or one holding a control character, **sends no `host`**.
+- The lead reads it with the tolerance it reads `mux` with: absent, blank, not a string or malformed
+  means the member did not say. It banks it in memory beside that member's `mux` (`PeerState.host`),
+  replaced by every answer, so a name that was true a sweep ago is not kept once an answer drops it.
+  Nothing is persisted, and `TRUST_STORE_VERSION` stays `1`.
+- `GET /api/crew` copies it into the member's row, and the merged snapshot's `servers` rows carry it
+  too, as an optional `host` (the lead's own from `os.hostname()`, a member's from this bank). The key
+  is absent where the lead does not know the name.
+- It is a **report**, like the rest of this section: no route, verb or decision branches on it, and a
+  member with no `host` is its own machine, never the same machine as another member with none.
 - No new route, no new dial, no new budget. The field rides an answer §10.1 already collects.
 
 ### The header

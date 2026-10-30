@@ -1586,10 +1586,10 @@ export function reportDrift(deps: DriftDeps, data: TrustStoreData): void {
  * `null` when the member did not say: that prints as `-`, and is never read as `0` panes.
  */
 export function memberStatusOf(reach: MemberReach | undefined): PeerStatusReport {
-  if (reach === undefined) return { mux: null, panes: null };
-  const answered: PeerStatusReport = reach.data !== null && reach.data.ok ? parsePeerStatus(reach.data.value) : { mux: null, panes: null };
+  if (reach === undefined) return { mux: null, panes: null, host: null };
+  const answered: PeerStatusReport = reach.data !== null && reach.data.ok ? parsePeerStatus(reach.data.value) : { mux: null, panes: null, host: null };
   const helloMux = reach.hello.ok ? (reach.hello.value.mux?.name ?? null) : null;
-  return { mux: answered.mux ?? helloMux, panes: answered.panes };
+  return { mux: answered.mux ?? helloMux, panes: answered.panes, host: answered.host };
 }
 
 /** The `mux` line of one reachable member: `mux     herdr · 4 panes`, with `-` for what it did not say. */
@@ -1628,6 +1628,7 @@ async function crewStatusJson(deps: CrewDeps, data: TrustStoreData | null, noPro
       version: reach?.hello.ok === true ? reach.hello.value.version : null,
       mux: status.mux,
       panes: status.panes,
+      host: status.host,
     };
   });
   deps.io.out(JSON.stringify({ crew: { id: data.crew.crewId, name: data.crew.name }, mode, self: data.self.memberId, members }));

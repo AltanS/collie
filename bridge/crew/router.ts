@@ -67,6 +67,7 @@ import {
 import type { TrustedMember, TrustStore, TrustStoreData, Warrant } from "./trust-store.ts";
 import { checkWarrantPush, currentWarrant, parseWarrant, storeWarrant, warrantReportOf, type WarrantRefusal } from "./warrant.ts";
 import { deposedStateFrom, isDepositionProof, selfHeal, type DeposedState } from "./deposed.ts";
+import { cleanHost } from "./machine-host.ts";
 import { selectView, type SnapshotView } from "../sessions.ts";
 import type { MuxConfig, SessionCard, SnapshotResponse } from "../types.ts";
 import { WALKY_ACK_HEADER, WALKY_REPORT_FIELD, type CrewAnswer } from "../walky/crew.ts";
@@ -114,13 +115,15 @@ export const CREW_MUX_FIELD = "mux";
 export const CREW_SESSIONS_FIELD = "sessions";
 
 /**
- * The two OPTIONAL fields a `snapshot` answer carries beside the body (M76 spec 04, 1.25.0): `mux`,
- * the registry name of the multiplexer this member drives, and `panes`, how many agent panes it
- * serves. **Absent means "this answer said nothing"**, never an empty multiplexer and never zero
- * panes: a member whose bridge has not read its multiplexer yet sends no `panes` at all.
+ * The three OPTIONAL fields a `snapshot` answer carries beside the body (M76 spec 04, M77 spec 01,
+ * 1.25.0): `mux`, the registry name of the multiplexer this member drives, `panes`, how many agent
+ * panes it serves, and `host`, the machine's own host name. **Absent means "this answer said
+ * nothing"**, never an empty multiplexer, never zero panes and never a machine with no name: a member
+ * whose bridge has not read its multiplexer yet sends no `panes` at all.
  */
 export const CREW_STATUS_MUX_FIELD = "mux";
 export const CREW_PANES_FIELD = "panes";
+export const CREW_STATUS_HOST_FIELD = "host";
 
 /**
  * The OPTIONAL field a `hello` answer carries its Surface reader version on (M56 spec 09): one small
@@ -340,6 +343,8 @@ export interface CrewSurface {
   readonly surfaceVersion?: number | undefined;
   /** The agent panes this machine serves, for its `snapshot` answer (M76 spec 04). See {@link CrewRouterDeps.panes}. */
   readonly panes?: () => number | null;
+  /** This machine's own host name, for its `snapshot` answer (M77 spec 01). See {@link CrewRouterDeps.host}. */
+  readonly host?: () => string | null;
 }
 
 /**
@@ -534,6 +539,12 @@ export interface CrewRouterDeps {
    * as "reported, and nothing is running".
    */
   readonly panes?: () => number | null;
+  /**
+   * **This machine's own host name**, published beside the snapshot body (M77 spec 01), so the lead
+   * can tell which members run on one machine. `null` or absent ⇒ the field is omitted, which the
+   * lead reads as "this member did not say" and groups nothing on.
+   */
+  readonly host?: () => string | null;
   /**
    * §20's two REQUEST headers reaching through: the lead's own settled release, and the turn.
    *
@@ -1204,12 +1215,16 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
       const paneCount = deps.panes?.() ?? null;
       const withMux = muxName === "" ? withLoad : { ...withLoad, [CREW_STATUS_MUX_FIELD]: muxName };
       const withPanes = paneCount === null ? withMux : { ...withMux, [CREW_PANES_FIELD]: paneCount };
+      // M77 spec 01: the machine's own name, in that same seat. Cleaned by the one reading the lead
+      // applies on receipt, so what leaves here is what the lead would bank.
+      const hostName = cleanHost(deps.host?.() ?? null);
+      const withHost = hostName === null ? withPanes : { ...withPanes, [CREW_STATUS_HOST_FIELD]: hostName };
       // §21: the receipts this member wrote for messages from elsewhere that its lead has not acked,
       // in that same seat, with the cursor of the newest. The lead's ack (a REQUEST header, lower-case
       // lookup) is applied first, so what it already read is gone. Omitted when nothing is held, which
       // the lead reads as "nothing to report" (§7.1). A report on the exchange, never a stored state.
       const walkyReport = deps.walky?.report?.(headerValue(req, WALKY_ACK_HEADER.toLowerCase())) ?? null;
-      const withWalky = walkyReport === null ? withPanes : { ...withPanes, [WALKY_REPORT_FIELD]: walkyReport };
+      const withWalky = walkyReport === null ? withHost : { ...withHost, [WALKY_REPORT_FIELD]: walkyReport };
       // §20's two REQUEST headers, read LAST and answered with nothing. They are additive-optional
       // and absent-means-closed: a build with no `onFollow` ignores both, which is a correct peer,
       // and a peer that reads them still decides for itself. Handed over synchronously and never

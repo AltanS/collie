@@ -252,8 +252,9 @@ export interface MergeContext {
   /**
    * This collie: its member id and label. Always the first entry in `servers` (§9.2). `mux` is the
    * registry name of the multiplexer it drives (the one `hello` states), absent while it names none.
+   * `host` is its own host name (M77 spec 01), absent where the OS gives none.
    */
-  readonly self: { readonly id: string; readonly name: string; readonly mux?: string };
+  readonly self: { readonly id: string; readonly name: string; readonly mux?: string; readonly host?: string };
   readonly peers: readonly PeerContribution[];
   /** The lead's clock, for its own `lastSeenAt`. Peers' timestamps come from their `PeerState`. */
   readonly now: number;
@@ -292,6 +293,9 @@ export function serverSummaryFor(c: PeerContribution): ServerSummary {
   // M76: the multiplexer name the member's last status answer carried, banked by the registry.
   // Absent when the member never said (an older build), never an empty string.
   if (c.state.mux !== undefined) summary.mux = c.state.mux;
+  // M77 spec 01: the host name the member's last status answer carried, banked the same way. Absent
+  // when the member never said, which is how a reader knows to treat it as its own machine.
+  if (c.state.host !== undefined) summary.host = c.state.host;
   return summary;
 }
 
@@ -328,6 +332,7 @@ export function mergeSnapshot(local: SnapshotResponse, ctx: MergeContext): Snaps
   };
   // Assigned, never conditionally spread: a lead that names no multiplexer carries no `mux` key.
   if (ctx.self.mux !== undefined && ctx.self.mux !== "") leadEntry.mux = ctx.self.mux;
+  if (ctx.self.host !== undefined && ctx.self.host !== "") leadEntry.host = ctx.self.host;
   const servers: ServerSummary[] = [leadEntry, ...peers.map(serverSummaryFor)];
 
   const sessions: SessionSummary[] = [

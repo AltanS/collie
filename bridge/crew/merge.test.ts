@@ -224,6 +224,22 @@ describe("mergeSnapshot — reachable / unreachable / incompatible, never confla
     expect("mux" in mergeSnapshot(localBody(), { self: SELF, peers: [], now: NOW }).servers![0]!).toBe(false);
   });
 
+  test("each row carries the host name: the lead's own, and a member's banked one (M77 spec 01)", () => {
+    const merged = mergeSnapshot(localBody(), {
+      self: { ...SELF, host: "bluefin" },
+      peers: [
+        contribution({ state: state({ memberId: "laptop", host: "minibuch" }) }),
+        contribution({ state: state({ memberId: "old-box" }) }),
+      ],
+      now: NOW,
+    });
+    expect(merged.servers!.find((s) => s.id === "desk")!.host).toBe("bluefin");
+    expect(merged.servers!.find((s) => s.id === "laptop")!.host).toBe("minibuch");
+    // A member that never said, and a lead whose OS gives no name, carry no `host` key at all.
+    expect("host" in merged.servers!.find((s) => s.id === "old-box")!).toBe(false);
+    expect("host" in mergeSnapshot(localBody(), { self: SELF, peers: [], now: NOW }).servers![0]!).toBe(false);
+  });
+
   test("the lead's own entry is present, first, and always current", () => {
     const merged = mergeSnapshot(localBody(), { self: SELF, peers: [], now: NOW });
     expect(merged.servers![0]).toEqual({

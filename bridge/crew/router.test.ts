@@ -726,6 +726,27 @@ describe("GET /crew/v1/snapshot — the one merged route, §9.2", () => {
     expect(idle).toEqual({ ...body, mux: "herdr", panes: 0 });
   });
 
+  test("host rides beside the body when the machine has a name, and is absent otherwise (M77 spec 01)", async () => {
+    const h = harness(peerStore());
+    const body = ownSnapshot();
+    let named: string | null = " minibuch ";
+    const handler = createCrewRouter({
+      store: h.store,
+      audit: h.audit,
+      transportPinned: true,
+      snapshot: () => body,
+      host: () => named,
+    });
+    expect(await (await call(handler, CREW_SNAPSHOT_PATH, { headers: authed }))!.json()).toEqual({ ...body, host: "minibuch" });
+    for (const unusable of [null, "", "   "]) {
+      named = unusable;
+      const answer: unknown = await (await call(handler, CREW_SNAPSHOT_PATH, { headers: authed }))!.json();
+      expect(answer).toEqual(body);
+      // SAFETY: `toEqual` above has already established that this is an object.
+      expect(Object.hasOwn(answer as object, "host")).toBe(false);
+    }
+  });
+
   test("an UNADMITTED caller never reaches the follow headers either", async () => {
     const h = harness(peerStore());
     let seen = 0;

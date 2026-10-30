@@ -37,6 +37,8 @@ export interface CensusMember {
   readonly mux: string | null;
   /** The agent panes it serves. `null` when it sent no count (an older build, or a bridge still starting): shown as `-`, never `0`. */
   readonly panes: number | null;
+  /** The host name it reported for its machine (M77 spec 01). `null` when it did not say: that member is its own machine. */
+  readonly host: string | null;
 }
 
 export interface CensusDevices {
@@ -115,8 +117,8 @@ async function gatherMembers(deps: CensusDeps): Promise<CensusMember[]> {
 
 /** One row. Mux and pane count are what the member said (`memberStatusOf`), `null` where it said nothing. */
 function memberRow(m: TrustedMember, link: MemberLink, version: string | null, reach: Parameters<typeof memberStatusOf>[0]): CensusMember {
-  const { mux, panes } = memberStatusOf(reach);
-  return { name: m.memberId, role: m.role === "lead" ? "lead" : "peer", link, version, mux, panes };
+  const { mux, panes, host } = memberStatusOf(reach);
+  return { name: m.memberId, role: m.role === "lead" ? "lead" : "peer", link, version, mux, panes, host };
 }
 
 /** The wire this block reads: every field optional, so a body that disagrees degrades to "unreadable". */

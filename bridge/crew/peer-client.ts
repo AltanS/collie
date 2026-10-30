@@ -12,6 +12,7 @@ import {
   CREW_MUX_FIELD,
   CREW_PANES_FIELD,
   CREW_SESSIONS_FIELD,
+  CREW_STATUS_HOST_FIELD,
   CREW_STATUS_MUX_FIELD,
   CREW_SURFACE_FIELD,
   CREW_PREFIX,
@@ -19,6 +20,7 @@ import {
   PREFLIGHT_FRESH,
   PREFLIGHT_HEADER,
 } from "./router.ts";
+import { cleanHost } from "./machine-host.ts";
 import { LEAD_LINE_HEADER, LEAD_RELEASE_HEADER, UPDATE_TURN_HEADER } from "./follow.ts";
 import { DIAL_HEADER, SIGNATURE_HEADER, TIMESTAMP_HEADER, type DialParts } from "./signing.ts";
 import type { CrewRequestInit, CrewTlsOptions } from "./transport.ts";
@@ -1487,16 +1489,18 @@ export function parsePeerVersion(value: JsonValue): string | null {
   return trimmed === "" ? null : trimmed;
 }
 
-/** What a member's `snapshot` answer says about its multiplexer and its panes (M76 spec 04). */
+/** What a member's `snapshot` answer says about its multiplexer, its panes and its host (M76 spec 04, M77 spec 01). */
 export interface PeerStatusReport {
   /** The multiplexer's registry name, or `null` when the answer carried none. */
   readonly mux: string | null;
   /** The agent pane count, or `null` when the answer carried none (a member that could not count). */
   readonly panes: number | null;
+  /** The machine's own host name (M77 spec 01), or `null` when the answer carried none. */
+  readonly host: string | null;
 }
 
 /**
- * Read a member's `mux` and `panes` off the answer its `snapshot` rode on.
+ * Read a member's `mux`, `panes` and `host` off the answer its `snapshot` rode on.
  *
  * Each is `null` on every shape this build cannot trust (absent, blank, wrong type, a negative or
  * fractional count). `null` means **"this answer said nothing"**, not "no multiplexer" and never
@@ -1507,6 +1511,7 @@ export function parsePeerStatus(value: JsonValue): PeerStatusReport {
   const mux = rec?.[CREW_STATUS_MUX_FIELD];
   const panes = rec?.[CREW_PANES_FIELD];
   return {
+    host: cleanHost(rec?.[CREW_STATUS_HOST_FIELD]),
     mux: typeof mux === "string" && mux.trim() !== "" && mux.length <= MUX_NAME_MAX ? mux.trim() : null,
     panes: typeof panes === "number" && Number.isSafeInteger(panes) && panes >= 0 ? panes : null,
   };

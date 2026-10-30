@@ -656,6 +656,7 @@ export interface ServerSummary {
    * `ServerSummary.mux` in bridge/types.ts. Absent when the member never said. The web does not show it.
    */
   mux?: string;
+  readonly host?: string;
   /** Epoch ms, stamped by the LEAD on receipt — never the peer's clock (§10.2). `0` = never answered. */
   lastSeenAt: number;
 }

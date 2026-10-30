@@ -48,6 +48,8 @@ export interface CrewStatusSources {
   readonly peers: readonly PeerContribution[];
   /** The multiplexer this lead drives, by registry name, for its own row (M76 spec 04). Absent ⇒ omitted. */
   readonly mux?: string;
+  /** The lead's own host name, for its own row (M77 spec 01). Absent ⇒ omitted. */
+  readonly host?: string;
   /** The lead's clock, for its own `lastSeenAt` and the body's `ts` (§10.2). */
   readonly now: number;
 }
@@ -120,6 +122,7 @@ function leadRow(src: CrewStatusSources): CrewMemberStatus {
   };
   // The lead counts its own panes on `/api/snapshot`; this row carries only the name it already knows.
   if (src.mux !== undefined && src.mux !== "") row.mux = src.mux;
+  if (src.host !== undefined && src.host !== "") row.host = src.host;
   return row;
 }
 
@@ -179,6 +182,7 @@ function peerRow(
   // M76 spec 04: copied from the registry's bank, which holds what the member's last answer said.
   if (state.mux !== undefined) row.mux = state.mux;
   if (state.panes !== undefined) row.panes = state.panes;
+  if (state.host !== undefined) row.host = state.host;
   // Only in the state it describes, and only from the registry's own record of it — the answering
   // peer named a member and a generation and is not a directory, so there is nothing else to carry.
   if (state.health === "conflicted" && state.conflict !== null) {
