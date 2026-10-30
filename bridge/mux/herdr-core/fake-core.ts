@@ -40,7 +40,11 @@
 //    socket does; on the next start a kept terminal comes back as a shell at the same address (waiting,
 //    and answering `unavailable` to keys and typing, until `shellsReady`), and a terminal without
 //    `keep` is `finished`. What a core stop does to a program is not in HC_API.md; the rule is the
-//    M78 spec 02 reading of `keep` and was not probed.
+//    M78 spec 02 reading of `keep` and was not probed;
+//  • `hangHistoryReads` (HC_API.md § terminal.read, `lines: N` and `how: stitched`; M78 spec 03
+//    report, pi cases 2 and 3): a read with `lines` above 0 gives no answer while the switch is on
+//    (the real core gave none in 30 s while a pi dialog stood), and the plain screen read (`lines: 0`)
+//    still answers at once. `answerHungReads` lets the held reads answer, late.
 
 import type { MuxWrite } from "../conformance.ts";
 import {
@@ -182,6 +186,9 @@ export class FakeHcCore implements HcRpc {
   private hold: { readonly clock: FakeClock; readonly ms: number; readonly answer: "late" | "early"; lastWriteAt: number | null } | null = null;
   /** Key effects an `early` hold has answered and not yet delivered, in order. */
   private readonly pendingKeys: { readonly dueAt: number; readonly address: string; readonly keys: readonly string[] }[] = [];
+  /** Terminals whose history reads hang, and the held reads waiting to answer. */
+  private readonly hungHistory = new Set<string>();
+  private heldReads: (() => void)[] = [];
   /** A generation the fake claims, for the compatibility test. */
   generation = 1;
 
@@ -257,6 +264,19 @@ export class FakeHcCore implements HcRpc {
   fullScreenApp(address: string, working: boolean): void {
     const terminal = this.find(address);
     if (terminal !== undefined) terminal.fullScreen = { working };
+  }
+
+  /** A read with history of this terminal gives no answer until `answerHungReads`; `on: false` ends that for new reads. */
+  hangHistoryReads(address: string, on = true): void {
+    if (on) this.hungHistory.add(address);
+    else this.hungHistory.delete(address);
+  }
+
+  /** Every history read held so far answers now, as a late answer would. */
+  answerHungReads(): void {
+    const held = this.heldReads;
+    this.heldReads = [];
+    for (const release of held) release();
   }
 
   /** A viewer that is active sets the terminal's size (HC_API.md § The terminal record, `cols`). */
@@ -442,6 +462,7 @@ export class FakeHcCore implements HcRpc {
 
   async readTerminal(address: string, lines: number): Promise<WireRead> {
     this.assertConnected("terminal.read");
+    if (lines > 0 && this.hungHistory.has(address)) await new Promise<void>((resolve) => this.heldReads.push(resolve));
     this.deliverDueKeys();
     const terminal = this.known(address);
     const history = lines > 0 ? terminal.history.slice(-lines) : [];
