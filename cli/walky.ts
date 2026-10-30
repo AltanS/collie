@@ -6,7 +6,7 @@ import { holdSocketSafe } from "./hold.ts";
 import { EXIT, type Io } from "./io.ts";
 import type { JsonObject, JsonValue } from "../bridge/json.ts";
 import { asJsonNumber, asJsonObject, asJsonString, parseJsonObject } from "../web/src/lib/json.ts";
-import { LOCAL_MEMBER, parseAddress } from "../bridge/walky/address.ts";
+import { inScope, labelScope, LOCAL_MEMBER, parseAddress, type WalkyScope } from "../bridge/walky/address.ts";
 import { readMessage, readReceipt } from "../bridge/walky/parse.ts";
 import type { WalkyTotals } from "../bridge/walky/service.ts";
 import { walkySocketPath } from "../bridge/walky/socket.ts";
@@ -194,31 +194,82 @@ function windows(deps: WalkyDeps): boolean {
   return true;
 }
 
-/** `walky who [--json]`: every reachable target. */
+/** What `who` was asked to list: everything, a named workspace, or the asking pane's own. */
+type WhoFilter = { readonly kind: "all" } | { readonly kind: "workspace"; readonly scope: WalkyScope } | { readonly kind: "here" };
+
+/** The scope in words, as the person typed it: `<repo>` or `<repo>#<branch>`. */
+function scopeWords(scope: WalkyScope): string {
+  return scope.branch === null ? scope.repo : `${scope.repo}#${scope.branch}`;
+}
+
+/** `who`'s flags: `--json`, and at most one of `--workspace <repo>[#<branch>]` and `--here`. An error is the one-line reason. */
+function parseWhoArgs(args: readonly string[]): { readonly json: boolean; readonly filter: WhoFilter } | { readonly error: string } {
+  let json = false;
+  let here = false;
+  let named: WalkyScope | null = null;
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]!;
+    if (arg === "--json") {
+      json = true;
+      continue;
+    }
+    if (arg === "--here") {
+      here = true;
+      continue;
+    }
+    if (arg !== "--workspace") return { error: `unknown argument \`${arg}\`` };
+    const value = args[i + 1];
+    if (value === undefined || value.startsWith("--")) return { error: "`--workspace` needs a folder name: <repo> or <repo>#<branch>" };
+    const address = parseAddress(value);
+    if (address === null || address.kind !== "workspace") return { error: `\`${value}\` is not a workspace: give a folder name, <repo> or <repo>#<branch>` };
+    named = { repo: address.repo, branch: address.branch };
+    i += 1;
+  }
+  if (here && named !== null) return { error: "`--workspace` and `--here` both pick the panes: use one of them" };
+  if (named !== null) return { json, filter: { kind: "workspace", scope: named } };
+  return { json, filter: here ? { kind: "here" } : { kind: "all" } };
+}
+
+/** The panes a filter keeps. The same rule as the bridge's scope (`inScope`), read over the label column. */
+function inFilter(rows: readonly JsonObject[], scope: WalkyScope): JsonObject[] {
+  return rows.filter((row) => {
+    const address = parseAddress(asJsonString(row.address) ?? "");
+    if (address === null || address.kind !== "pane") return false;
+    return inScope(asJsonString(row.label) ?? "", address.paneId, scope);
+  });
+}
+
+/** `walky who [--workspace <repo>[#<branch>] | --here] [--json]`: every reachable target, or the ones a scope would reach. */
 export async function cmdWalkyWho(deps: WalkyDeps, args: readonly string[]): Promise<number> {
   if (windows(deps)) return EXIT.STATE;
-  const json = args.includes("--json");
-  const unknown = args.find((arg) => arg !== "--json");
-  if (unknown !== undefined) return usage(deps, "who", `unknown argument \`${unknown}\``);
+  const parsed = parseWhoArgs(args);
+  if ("error" in parsed) return usage(deps, "who", parsed.error);
+  const { json, filter } = parsed;
   const answer = await request(deps, { op: "who" });
   if (!answer.ok) return failure(deps, answer);
-  const targets = Array.isArray(answer.body.targets) ? answer.body.targets.flatMap((entry) => {
+  const everyone = Array.isArray(answer.body.targets) ? answer.body.targets.flatMap((entry) => {
     const row = asJsonObject(entry);
     return row === undefined ? [] : [row];
   }) : [];
   const note = asJsonString(answer.body.note);
+  const scope = filter.kind === "workspace" ? filter.scope : filter.kind === "here" ? ownScope(everyone, asJsonString(answer.body.self)) : null;
+  if (filter.kind === "here" && scope === null) {
+    deps.io.err(`walky talky: ${asJsonString(answer.body.self) === undefined ? "`--here` needs a pane: run it inside an agent's pane, or name the folder with `--workspace <repo>`" : "this pane has no workspace folder to match: name one with `--workspace <repo>`"}`);
+    return EXIT.STATE;
+  }
+  const targets = scope === null ? everyone : inFilter(everyone, scope);
   if (json) {
     deps.io.out(JSON.stringify(note === undefined ? { self: answer.body.self ?? null, targets } : { self: answer.body.self ?? null, targets, note }));
     return EXIT.OK;
   }
   const self = asJsonString(answer.body.self);
   if (targets.length === 0) {
-    deps.io.out("no agent panes to message");
+    deps.io.out(scope === null ? "no agent panes to message" : `no agent panes in ${shown(scopeWords(scope))}`);
     if (note !== undefined) deps.io.out(note);
     return EXIT.OK;
   }
   // A solo install with this one agent pane: nobody to message yet, and the reason in one line.
-  if (note === undefined && self !== undefined && self.startsWith(`${LOCAL_MEMBER}/`) && targets.length === 1 && asJsonString(targets[0]!.address) === self) {
+  if (scope === null && note === undefined && self !== undefined && self.startsWith(`${LOCAL_MEMBER}/`) && targets.length === 1 && asJsonString(targets[0]!.address) === self) {
     deps.io.out(`You are ${shown(self)}. No other agent pane yet. A message needs two.`);
     return EXIT.OK;
   }
@@ -230,6 +281,15 @@ export async function cmdWalkyWho(deps: WalkyDeps, args: readonly string[]): Pro
   for (const row of rows) deps.io.out(`${line(row)}${row[0] === self ? "  (you)" : ""}`);
   if (note !== undefined) deps.io.out(note);
   return EXIT.OK;
+}
+
+/** The folder of the asking pane's own label, any branch (`here`), or null off a pane or for a pane whose label names no folder. */
+function ownScope(rows: readonly JsonObject[], self: string | undefined): WalkyScope | null {
+  const address = parseAddress(self ?? "");
+  if (address === null || address.kind !== "pane") return null;
+  const own = rows.find((row) => asJsonString(row.address) === self);
+  const folder = labelScope(asJsonString(own?.label) ?? "", address.paneId);
+  return folder === null ? null : { repo: folder.repo, branch: null };
 }
 
 interface SendArgs {
@@ -281,7 +341,7 @@ function usage(deps: WalkyDeps, verb: (typeof WALKY_SUBCOMMANDS)[number], why: s
 }
 
 const USAGE = {
-  who: "usage: collie walky who [--json]",
+  who: "usage: collie walky who [--workspace <repo>[#<branch>] | --here] [--json]",
   send: "usage: collie walky send <address> [text...]   (no text: the body is read from stdin)",
   reply: "usage: collie walky reply <id> [text...]   (no text: the body is read from stdin)",
   inbox: "usage: collie walky inbox [<id>] [--all] [--keep] [--json]",

@@ -75,7 +75,7 @@ describe("the rendered skill", () => {
     expect(flat).toContain('If it says "may have arrived", do not send it again either');
     expect(flat).not.toContain("claims to");
     expect(flat).not.toMatch(/`wt` /u);
-    expect(WALKY_TALKY_SKILL_TEMPLATE.split("\n").length).toBeLessThan(160);
+    expect(WALKY_TALKY_SKILL_TEMPLATE.split("\n").length).toBeLessThan(185);
     expect(WALKY_TALKY_SKILL_TEMPLATE).not.toContain("—");
     for (const verb of ["who", "send", "reply", "inbox"]) expect(WALKY_TALKY_SKILL_TEMPLATE).toContain(`walky ${verb}`);
   });

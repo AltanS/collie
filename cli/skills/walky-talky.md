@@ -109,6 +109,22 @@ your next prompt, with `reply to <your id>` in its header. If your pane is busy,
 until your turn ends. `{{COLLIE_BIN}} walky inbox` shows it too. `status` says only that your message was
 typed. It does not say the other agent read or answered it.
 
+Pick the address by who should get the message. For one agent, use its pane address and copy it from `who`.
+
+Use `here` when every agent on your project should get it, on every machine of the crew: your
+siblings in your own folder. Collie never sends it to your own pane. Use `<repo>` when you mean
+another folder by name. Use `here` or `<repo>` only when the message is for all of them. If one
+agent has what you need, ask that agent. Each pane it reaches gets its own copy and can answer.
+
+```bash
+{{COLLIE_BIN}} walky who --here
+{{COLLIE_BIN}} walky send here "I changed the Send Protocol. Rebase before you push."
+```
+
+`who --here` lists the panes `here` would reach. Look before you send. `send` prints one line per
+pane, then `status` adds a totals line such as `2 deliveries: delivered 2`. A machine out of reach
+prints `unreachable` and Collie does not retry it. Do not send it again.
+
 Answer a message by its id. The reply goes back to the sender.
 
 ```bash

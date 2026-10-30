@@ -390,6 +390,116 @@ describe("reply, inbox, status, who", () => {
     ]);
   });
 
+  /** Three agent panes in two folders, one a checkout on a branch: what a workspace filter has to tell apart. */
+  const folders = (): WalkyHost => ({
+    panes: () => [
+      { session: "main", paneId: "%1", agent: true, harness: "agent-x", label: "collie-workspace#main", state: "idle", instance: "aaaa", terminal: true },
+      { session: "main", paneId: "%2", agent: true, harness: "agent-x", label: "other", state: "idle", instance: "bbbb", terminal: true },
+      { session: "main", paneId: "%3", agent: true, harness: "agent-y", label: "collie-workspace#feat/x", state: "working", instance: "cccc", terminal: true },
+    ],
+    send: async () => ({ outcome: "sent" }),
+    sendState: () => ({ outcome: "sent" }),
+    cancelHeld: () => undefined,
+  });
+
+  socketTest("who --workspace <repo> lists only the panes whose label repo matches, any branch", async () => {
+    const b = await bridge({ host: folders() });
+    const d = deps(b, inPane("%2"));
+    expect(await cmdWalkyWho(d, ["--workspace", "collie-workspace"])).toBe(EXIT.OK);
+    expect(d.io.stdout).toEqual([
+      "ADDRESS        MACHINE  HARNESS  LABEL                    STATE",
+      "local/%1#aaaa  desk     agent-x  collie-workspace#main    idle",
+      "local/%3#cccc  desk     agent-y  collie-workspace#feat/x  working",
+    ]);
+  });
+
+  socketTest("who --workspace <repo>#<branch> narrows to the branch, and --json carries the filtered rows", async () => {
+    const b = await bridge({ host: folders() });
+    const d = deps(b, inPane("%1"));
+    expect(await cmdWalkyWho(d, ["--workspace", "collie-workspace#feat/x"])).toBe(EXIT.OK);
+    expect(d.io.stdout).toEqual(["ADDRESS        MACHINE  HARNESS  LABEL                    STATE", "local/%3#cccc  desk     agent-y  collie-workspace#feat/x  working"]);
+    const json = deps(b, inPane("%1"));
+    expect(await cmdWalkyWho(json, ["--workspace", "collie-workspace#main", "--json"])).toBe(EXIT.OK);
+    const body = JSON.parse(json.io.stdout[0]!);
+    expect(body.self).toBe("local/%1#aaaa");
+    expect(body.targets.map((row: { address: string }) => row.address)).toEqual(["local/%1#aaaa"]);
+  });
+
+  socketTest("who --workspace names a folder with no agent pane: one line, exit OK", async () => {
+    const b = await bridge({ host: folders() });
+    const d = deps(b, inPane("%1"));
+    expect(await cmdWalkyWho(d, ["--workspace", "nowhere"])).toBe(EXIT.OK);
+    expect(d.io.stdout).toEqual(["no agent panes in nowhere"]);
+  });
+
+  socketTest("who --here lists the asking pane's own folder, marks the asking pane, and works from any pane", async () => {
+    const b = await bridge({ host: folders() });
+    const d = deps(b, inPane("%1"));
+    expect(await cmdWalkyWho(d, ["--here"])).toBe(EXIT.OK);
+    expect(d.io.stdout).toEqual([
+      "ADDRESS        MACHINE  HARNESS  LABEL                    STATE",
+      "local/%1#aaaa  desk     agent-x  collie-workspace#main    idle  (you)",
+      "local/%3#cccc  desk     agent-y  collie-workspace#feat/x  working",
+    ]);
+    const lone = deps(b, inPane("%2"));
+    expect(await cmdWalkyWho(lone, ["--here"])).toBe(EXIT.OK);
+    expect(lone.io.stdout).toEqual(["ADDRESS        MACHINE  HARNESS  LABEL  STATE", "local/%2#bbbb  desk     agent-x  other  idle  (you)"]);
+  });
+
+  socketTest("who --here off a pane is refused in one line that names --workspace", async () => {
+    const b = await bridge({ host: folders() });
+    const d = deps(b);
+    expect(await cmdWalkyWho(d, ["--here"])).toBe(EXIT.STATE);
+    expect(d.io.stdout).toEqual([]);
+    expect(d.io.stderr).toEqual(["walky talky: `--here` needs a pane: run it inside an agent's pane, or name the folder with `--workspace <repo>`"]);
+  });
+
+  socketTest("--workspace and --here together are refused before any bridge is asked", async () => {
+    const b = await bridge({ host: folders() });
+    const d = deps(b, inPane("%1"));
+    expect(await cmdWalkyWho(d, ["--workspace", "collie-workspace", "--here"])).toBe(EXIT.USAGE);
+    expect(d.io.stderr[0]).toBe("error: `--workspace` and `--here` both pick the panes: use one of them");
+    expect(d.io.stderr[1]).toStartWith("usage: collie walky who");
+    expect(d.io.stdout).toEqual([]);
+  });
+
+  test("--workspace needs a folder name that is one", async () => {
+    const b = scratch();
+    const missing = deps(b);
+    expect(await cmdWalkyWho(missing, ["--workspace"])).toBe(EXIT.USAGE);
+    expect(missing.io.stderr[0]).toBe("error: `--workspace` needs a folder name: <repo> or <repo>#<branch>");
+    for (const bad of ["all", "here", "desk/%1"]) {
+      const d = deps(b);
+      expect(await cmdWalkyWho(d, ["--workspace", bad])).toBe(EXIT.USAGE);
+      expect(d.io.stderr[0]).toBe(`error: \`${bad}\` is not a workspace: give a folder name, <repo> or <repo>#<branch>`);
+    }
+  });
+
+  socketTest("status of a scope parent prints one line per delivery and the totals; --json carries both", async () => {
+    const b = await bridge({ host: folders() });
+    const sent = deps(b, inPane("%2"));
+    expect(await cmdWalkySend(sent, ["collie-workspace", "hi"])).toBe(EXIT.OK);
+    expect(sent.io.stdout.slice(0, 2)).toEqual(["wt_aaaaaaaaaaa1", "to collie-workspace"]);
+    expect(sent.io.stdout).toContain("local/%1: typed into the pane");
+    expect(sent.io.stdout).toContain("local/%3: typed into the pane");
+    const d = deps(b);
+    expect(await cmdWalkyStatus(d, ["wt_aaaaaaaaaaa1"])).toBe(EXIT.OK);
+    expect(d.io.stdout).toEqual([
+      "wt_aaaaaaaaaaa1",
+      "to collie-workspace",
+      "local/%1: typed into the pane (this machine)",
+      "local/%3: typed into the pane (this machine)",
+      "2 deliveries: delivered 2",
+    ]);
+    const json = deps(b);
+    expect(await cmdWalkyStatus(json, ["wt_aaaaaaaaaaa1", "--json"])).toBe(EXIT.OK);
+    expect(JSON.parse(json.io.stdout[0]!)).toMatchObject({
+      id: "wt_aaaaaaaaaaa1",
+      deliveries: [{ address: "local/%1", member: "local", outcome: "delivered" }, { address: "local/%3", member: "local", outcome: "delivered" }],
+      totals: { delivered: 2 },
+    });
+  });
+
   test("a bare `walky` prints the sub-verbs and exits USAGE", () => {
     const io = capture();
     expect(cmdWalky({ io }, [])).toBe(EXIT.USAGE);
