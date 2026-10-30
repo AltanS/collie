@@ -4,6 +4,9 @@
 //   `<memberId>/<paneId>`  whatever pane holds that id now; on a solo install the member id is `local`
 //   `<memberId>/all`       every agent pane on one machine
 //   `all`                  every agent pane in the crew
+//   `<repo>`               every agent pane in a folder of that name, on every machine of the crew
+//   `<repo>#<branch>`      the same, on one branch
+//   `here`                 the sender's own folder on every machine, without the sender's own pane
 // Every address is checked here before it is used, and none ever becomes a path: the log names its
 // files by a hash (log.ts). A shell pane is never a target.
 
@@ -29,6 +32,10 @@ export function isPaneId(value: string): boolean {
 export type WalkyAddress =
   | { readonly kind: "all" }
   | { readonly kind: "member-all"; readonly memberId: string }
+  /** A folder name (the `<repo>` of a pane's label), on one branch or on any (`branch: null`). */
+  | { readonly kind: "workspace"; readonly repo: string; readonly branch: string | null }
+  /** The sender's own folder, on every machine, without the sender's own pane. */
+  | { readonly kind: "here" }
   | {
       readonly kind: "pane";
       readonly memberId: string;
@@ -41,12 +48,36 @@ function isMember(value: string): boolean {
   return value === LOCAL_MEMBER || MEMBER_ID_RE.test(value);
 }
 
+/**
+ * A workspace part (a repo or a branch) as an address may carry it: non-empty, and left whole by the
+ * label rules (`headerField`): printable ASCII, no `[ ] ( )`, no run of blanks, at most `WALKY_LABEL_MAX`.
+ */
+function isWorkspacePart(part: string): boolean {
+  return part !== "" && part !== "-" && headerField(part, WALKY_LABEL_MAX) === part;
+}
+
+/** A word with no `/` before its first `#`: `<repo>`, `<repo>#<branch>`, or `here`. The member ids are not known here, so a clash with one is for the caller. */
+function parseWorkspace(value: string): WalkyAddress | null {
+  if (value === "here") return { kind: "here" };
+  const hash = value.indexOf("#");
+  const repo = hash < 0 ? value : value.slice(0, hash);
+  const branch = hash < 0 ? null : value.slice(hash + 1);
+  // `all` and `here` are words of their own, never a folder, even with a branch behind them.
+  if (repo === "all" || repo === "here") return null;
+  if (!isWorkspacePart(repo) || (branch !== null && !isWorkspacePart(branch))) return null;
+  return { kind: "workspace", repo, branch };
+}
+
 /** Read one address, or null when it is not one. */
 export function parseAddress(raw: string): WalkyAddress | null {
   const value = raw.trim();
   if (value === "all") return { kind: "all" };
   const slash = value.indexOf("/");
-  if (slash <= 0) return null;
+  const firstHash = value.indexOf("#");
+  // A pane address has its `/` before any `#` (`<member>/<pane>#<token>`). A `#` first is a
+  // workspace with a branch, and the branch may hold a `/` (`repo#feat/x`).
+  if (slash < 0 || (firstHash >= 0 && firstHash < slash)) return parseWorkspace(value);
+  if (slash === 0) return null;
   const memberId = value.slice(0, slash);
   const rest = value.slice(slash + 1);
   if (!isMember(memberId)) return null;

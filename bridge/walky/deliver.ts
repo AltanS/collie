@@ -317,7 +317,7 @@ export class WalkyDeliverer {
   /** An address as this bridge spells it: `local/…` on a crew member is its own member id. The token stays. */
   private normal(raw: string): string {
     const address = parseAddress(raw);
-    if (address === null || address.kind === "all") return raw;
+    if (address === null || address.kind === "all" || address.kind === "workspace" || address.kind === "here") return raw;
     const member = isSelf(address.memberId, this.deps.memberId) ? (this.deps.memberId ?? LOCAL_MEMBER) : address.memberId;
     return address.kind === "pane" ? paneAddress(member, address.paneId, address.instance) : `${member}/all`;
   }
@@ -373,6 +373,7 @@ export class WalkyDeliverer {
     const refuse = (reason: string): WalkyReceipt[] => [this.refusal(message.id, message.to, reason, verified)];
     const address = parseAddress(message.to);
     if (address === null) return refuse("no such pane");
+    if (address.kind === "workspace" || address.kind === "here") return refuse("workspace addresses are not supported on this path yet");
     // The same id again: the receipts of the targets it already has. One pane, or another machine,
     // ends here; a fan-out goes on and finishes the targets it lacks (a crashed fan-out resumes).
     const done = this.prior(message, verified);

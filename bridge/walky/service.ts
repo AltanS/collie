@@ -296,7 +296,7 @@ export class WalkyService {
             .filter((receipt) => receipt.state === "accepted")
             .filter((receipt) => {
               const address = parseAddress(receipt.target);
-              return address !== null && address.kind !== "all" && address.memberId !== self && address.memberId !== LOCAL_MEMBER;
+              return address !== null && (address.kind === "pane" || address.kind === "member-all") && address.memberId !== self && address.memberId !== LOCAL_MEMBER;
             })
             .map((receipt) => receipt.target)
         : [];

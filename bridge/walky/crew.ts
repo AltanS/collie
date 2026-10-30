@@ -34,7 +34,7 @@ import { fingerprintOfCert } from "../crew/identity.ts";
 import type { PeerSnapshotBody } from "../crew/merge.ts";
 import { signCanonical, verifyCanonical } from "../crew/signing.ts";
 import type { TrustedMember, TrustStoreData } from "../crew/trust-store.ts";
-import { bareAddress, INSTANCE_TOKEN, labelOf, LOCAL_MEMBER, paneAddress, parseAddress } from "./address.ts";
+import { bareAddress, INSTANCE_TOKEN, labelOf, LOCAL_MEMBER, paneAddress, parseAddress, type WalkyAddress } from "./address.ts";
 import { attestationString, verifyMessage, voucherString } from "./canonical.ts";
 import { cleanBody } from "./clean.ts";
 import type { RouteRemote } from "./deliver.ts";
@@ -87,7 +87,16 @@ function cleanEnough(body: string): boolean {
 /** An address a crew hop may carry: `all`, or one that names its member (`local` is a solo word). */
 function crewAddressable(to: string): boolean {
   const address = parseAddress(to);
-  return address !== null && (address.kind === "all" || address.memberId !== LOCAL_MEMBER);
+  if (address === null || address.kind === "workspace" || address.kind === "here") return false;
+  return address.kind === "all" || address.memberId !== LOCAL_MEMBER;
+}
+
+/** Whether a route segment names an address on this member. A workspace or here address is expanded by the lead and never rides a hop whole. */
+function routeFits(to: WalkyAddress, self: string, segment: string): boolean {
+  if (to.kind === "all") return segment === WALKY_ALL_SEGMENT;
+  if (to.kind === "workspace" || to.kind === "here") return false;
+  if (to.memberId !== self) return false;
+  return to.kind === "member-all" ? segment === WALKY_ALL_SEGMENT : segment === to.paneId;
 }
 
 /** Printable ASCII with no bracket or parenthesis: the characters a header field may carry. */
@@ -210,11 +219,7 @@ export function checkFromLead(
   if (sender !== undefined && !senderHolds(sender, message, lead, crewId)) return { ok: false, answer: UNAUTHORIZED };
   // The route names the pane the message is for: its own pane id, or `all` for a whole machine.
   const to = parseAddress(message.to);
-  const fits =
-    to !== null &&
-    (to.kind === "all"
-      ? segment === WALKY_ALL_SEGMENT
-      : to.memberId === self && (to.kind === "member-all" ? segment === WALKY_ALL_SEGMENT : segment === to.paneId));
+  const fits = to !== null && routeFits(to, self, segment);
   if (!fits) return { ok: false, answer: badRequest("the route does not name this message's address on this member") };
   // A sender block that held: the sender's own signature verified, against a certificate the lead vouched for.
   if (sender !== undefined) return { ok: true, message, verified: "origin" };
@@ -324,7 +329,7 @@ export function writeOutcomes(log: WalkyLog, self: string, receipts: readonly Wa
   for (const receipt of receipts) {
     if (!canonicalTarget(receipt.target)) continue;
     const address = parseAddress(receipt.target);
-    if (address === null || (address.kind !== "all" && address.memberId === self)) continue;
+    if (address === null || address.kind === "workspace" || address.kind === "here" || (address.kind !== "all" && address.memberId === self)) continue;
     const held = log.get(receipt.id, receipt.target);
     if (held === null) {
       // A pane of a leg this member sent as a whole and never heard pane by pane (a slow leg): the
@@ -812,7 +817,7 @@ export class WalkyLeadSide {
     if (memberId === null || memberId === this.deps.self || !reportable(record.receipt)) return;
     const address = parseAddress(record.target);
     // Only for a target on another machine: the sender's own panes are the sender's word.
-    if (address === null || (address.kind !== "all" && address.memberId === memberId)) return;
+    if (address === null || address.kind === "workspace" || address.kind === "here" || (address.kind !== "all" && address.memberId === memberId)) return;
     const box = this.boxes.get(memberId) ?? new Map<string, HeldReceipt>();
     const key = outboxKey(record.receipt);
     box.delete(key);

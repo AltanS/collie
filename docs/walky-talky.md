@@ -70,7 +70,7 @@ receiver read it or answered it.
 
 ## Addresses
 
-An address names one pane, one machine's panes, or every pane.
+An address names one pane, one machine's panes, every pane, or the panes of one folder.
 
 | Address | Who receives it |
 | --- | --- |
@@ -78,6 +78,9 @@ An address names one pane, one machine's panes, or every pane.
 | `<member>/<pane>` | Whatever pane holds that id now. On a machine with no crew the member is `local` |
 | `<member>/all` | Every agent pane on that machine. From the phone only |
 | `all` | Every agent pane you can reach. From the phone only |
+| `<repo>` | Every agent pane in a folder of that name, on every machine of the crew, on any branch. `<repo>` is the last part of the folder path, as `who` shows it before the `#` in the LABEL column, for example `collie-workspace` |
+| `<repo>#<branch>` | The same, on one branch, for example `collie-workspace#main` |
+| `here` | The sender's own folder, on every machine of the crew, without the sender's own pane |
 
 A terminal may give a closed pane's id to the next pane. Herdr's `w6:p3`, tmux's `%7` and zellij's
 `terminal_3` only count up, but Collie does not rely on that. So Collie gives every pane a token,

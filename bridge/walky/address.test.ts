@@ -57,3 +57,38 @@ describe("a pane's label", () => {
     expect(labelOf({ ...pane, cwd: "", branch: null }, true)).toBe("w1:p2");
   });
 });
+
+describe("a workspace address", () => {
+  test("`<repo>` names a folder on any branch", () => {
+    expect(parseAddress("collie-workspace")).toEqual({ kind: "workspace", repo: "collie-workspace", branch: null });
+    expect(parseAddress("  collie-workspace ")).toEqual({ kind: "workspace", repo: "collie-workspace", branch: null });
+  });
+
+  test("`<repo>#<branch>` names a folder on one branch, split on the first `#`", () => {
+    expect(parseAddress("collie-workspace#main")).toEqual({ kind: "workspace", repo: "collie-workspace", branch: "main" });
+    expect(parseAddress("collie#feat/x#2")).toEqual({ kind: "workspace", repo: "collie", branch: "feat/x#2" });
+    expect(parseAddress("My Project#main")).toEqual({ kind: "workspace", repo: "My Project", branch: "main" });
+  });
+
+  test("`here` is the sender's own folder", () => {
+    expect(parseAddress("here")).toEqual({ kind: "here" });
+  });
+
+  test("refuses an empty repo, an empty branch, and characters a label cannot carry", () => {
+    const bad = ["#main", "repo#", "#", "re[po]", "repo#br(anch)", "all#k3f9", "here#main", "a".repeat(49), `repo#${"b".repeat(49)}`, "repo\u0000", "r\u00e9po"];
+    for (const value of bad) expect(parseAddress(value)).toBeNull();
+  });
+
+  test("`all` and every pane form read as before", () => {
+    expect(parseAddress("all")).toEqual({ kind: "all" });
+    expect(parseAddress("desk/all")).toEqual({ kind: "member-all", memberId: "desk" });
+    expect(parseAddress("desk/w1:p2#k3f9")).toEqual({ kind: "pane", memberId: "desk", paneId: "w1:p2", instance: "k3f9" });
+    expect(parseAddress("desk/w1:p2")).toEqual({ kind: "pane", memberId: "desk", paneId: "w1:p2", instance: null });
+    expect(parseAddress("/w1")).toBeNull();
+    expect(parseAddress("all#k3f9")).toBeNull();
+  });
+
+  test("a bare word is only marked as a workspace: member ids are not checked here", () => {
+    expect(parseAddress("local")).toEqual({ kind: "workspace", repo: "local", branch: null });
+  });
+});

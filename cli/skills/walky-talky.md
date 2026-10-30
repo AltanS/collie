@@ -79,6 +79,10 @@ minibuch/w11:p4#8h9h        minibuch  claude   walky-live             idle
   not the machine. Pick the row by MACHINE and LABEL.
 - Labels can repeat: `walky-live` is on two machines above. MACHINE tells them apart. If two rows
   still match, ask your operator.
+- A word with no `/` reaches a whole folder. `<repo>` is every agent pane in a folder of that name
+  on every machine of the crew, on any branch. `<repo>#<branch>` is the same on one branch. `here`
+  is your own folder on every machine, without your own pane. `<repo>` is the first part of LABEL,
+  such as `collie-workspace` in `collie-workspace#main`.
 - `(you)` marks your own pane. A message to it is refused.
 - STATE is `idle`, `working`, `blocked`, `done` or `unknown`, or `unreachable` for a crew member out
   of reach. A message to a `working` or `blocked` pane is not lost: Collie queues or holds it.

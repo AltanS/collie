@@ -349,7 +349,7 @@ export async function cmdWalkySend(deps: WalkyDeps, args: readonly string[]): Pr
   const parsed = parseSendArgs(args);
   if ("error" in parsed) return usage(deps, "send", parsed.error);
   if (parsed.to === null) return usage(deps, "send", "name an address (see `collie walky who`)");
-  if (parseAddress(parsed.to) === null) return usage(deps, "send", `\`${parsed.to}\` is not an address: <member>/<pane>, <member>/<pane>#<token> as \`who\` prints it, <member>/all or all`);
+  if (parseAddress(parsed.to) === null) return usage(deps, "send", `\`${parsed.to}\` is not an address: <member>/<pane>, <member>/<pane>#<token> as \`who\` prints it, <member>/all, all, <repo>, <repo>#<branch> or here`);
   const body = await bodyOf(deps, parsed.text);
   if (body === null) return usage(deps, "send", "no text: give it after the address, or on stdin");
   return sendAndWait(deps, parsed.to, parsed.replyTo, body, parsed.json);
