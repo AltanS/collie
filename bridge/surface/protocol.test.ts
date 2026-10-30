@@ -7804,6 +7804,26 @@ describe("omp 18.11's box composer (issue 497)", () => {
     return { answer, pane };
   };
 
+  // M78 spec 06, pinned and not fixed: on a read with no styling (herdr-core) omp's ghost word `ed` has
+  // no grey to mark it, so S1 reads `please pushed` after `please push` was typed. The box holds more than
+  // was typed and the send stops before its submit key, the text left in the box for the person.
+  test("the ghost word on a read with no styling: typed_not_submitted, no submit key (M78 spec 06, pinned)", async () => {
+    const name = "omp--v18-11-ghost-word--w130.txt";
+    const pane = new FakePane("generic");
+    const { send } = rig({ pane, harness: "omp", version: VERSION });
+    scene(pane, name, "please push");
+    const styled = pane.beforeRead!;
+    pane.beforeRead = async (p, n) => {
+      await styled(p, n);
+      if (p.fixed !== null) p.fixed = p.fixed.split("\n").map(plain).join("\n");
+    };
+    const answer = await send("please push");
+    expect(answer.receipt).toMatchObject({ outcome: "typed_not_submitted", reason: "mismatch", keys: ["probe", "Backspace"] });
+    expect(pane.keysSeen).not.toContain("ctrl+q");
+    expect(pane.keysSeen).not.toContain("Enter");
+    expect(pane.box).toBe("please push");
+  });
+
   test("a wrapped 202-character line, at 130 and at 80 columns: sent with ctrl+q", async () => {
     for (const w of [130, 80]) {
       const { answer, pane } = await sendOn(`omp--v18-11-nerd-box-wrapped--w${String(w)}.txt`, WRAP, "send");
