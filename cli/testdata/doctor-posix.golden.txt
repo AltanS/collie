@@ -61,11 +61,8 @@ local:
   ✓        integration-dsh-tui      no hook — the adapter finds the session log
                                     itself
   ✓        integration-grok         installed and current
-  skipped: integration-hermes       this Herdr build does not list hermes —
-                                    Collie can read its journal, Herdr has no
-                                    hook for it → upgrade Herdr (`herdr
-                                    --version` names this build), or read that
-                                    pane's history from the agent's own log
+  ✓        integration-hermes       no hook — the adapter finds the session log
+                                    itself
   ✓        integration-kiro         no hook — the adapter finds the session log
                                     itself
   ✓        integration-muse         no hook — the adapter finds the session log
@@ -185,11 +182,8 @@ local:
   ✓        integration-dsh-tui      no hook — the adapter finds the session log
                                     itself
   ✓        integration-grok         installed and current
-  skipped: integration-hermes       this Herdr build does not list hermes —
-                                    Collie can read its journal, Herdr has no
-                                    hook for it → upgrade Herdr (`herdr
-                                    --version` names this build), or read that
-                                    pane's history from the agent's own log
+  ✓        integration-hermes       no hook — the adapter finds the session log
+                                    itself
   ✓        integration-kiro         no hook — the adapter finds the session log
                                     itself
   ✓        integration-muse         no hook — the adapter finds the session log

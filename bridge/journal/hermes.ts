@@ -9,7 +9,7 @@
 // and every database path is confined to the configured root, after symlinks, before it is opened.
 // Each database is opened read-only.
 
-import { Database } from "bun:sqlite";
+import type { Database } from "bun:sqlite";
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -37,10 +37,13 @@ import {
   MAX_TRANSCRIPT_BYTES,
   rootList,
 } from "./files.ts";
+import { readSqlite } from "./sqlite-read.ts";
 import { clamp, MAX_TEXT_CHARS, stripAnsi, summarizeToolInput } from "./text.ts";
 import { classifyToolCall } from "./tool-call.ts";
 import type {
   AgentSessionRef,
+  DiscoverHints,
+  ForegroundProcess,
   JournalAdapter,
   TranscriptEntry,
   TranscriptPart,
@@ -68,20 +71,46 @@ export function splitHermesKey(key: string): { dbPath: string; sessionId: string
   return isHermesSessionId(sessionId) ? { dbPath, sessionId } : null;
 }
 
-function withDb<T>(dbPath: string, fn: (db: Database) => T): T | null {
-  let db: Database;
-  try {
-    db = new Database(dbPath, { readonly: true });
-  } catch {
-    return null;
+/**
+ * Extract the CLI arguments passed to Hermes from a foreground process's argv, or null when the
+ * process is not Hermes. Handles both a direct `hermes` argv[0] and the Python `-c` launcher
+ * (`python3 -I -c "...from hermes_cli.main import main..." "$@"`) Hermes's wrapper script execs into.
+ */
+function hermesArgs(argv: readonly string[]): readonly string[] | null {
+  if (argv.length === 0) return null;
+  const base = (argv[0]!.split(/[/\\]/).pop() ?? "").replace(/\.exe$/i, "").toLowerCase();
+  if (base === "hermes") return argv.slice(1);
+  if (/^python(?:\d+(?:\.\d+)*)?$/.test(base)) {
+    const cAt = argv.indexOf("-c");
+    if (cAt >= 1 && (argv[cAt + 1] ?? "").includes("from hermes_cli.main import main")) {
+      return argv.slice(cAt + 2);
+    }
   }
-  try {
-    return fn(db);
-  } catch {
-    return null;
-  } finally {
-    db.close();
+  return null;
+}
+
+/**
+ * The session a pane's foreground argv names, or null when none does. Only an explicit
+ * `--resume <id>` / `-r <id>` counts (`hermes chat --help`): a fresh `hermes chat` with no resume
+ * falls through to the cwd walk below, where the just-started row is the newest and still wins.
+ */
+function sessionFromArgv(processes: readonly ForegroundProcess[] | undefined): string | null {
+  if (processes === undefined) return null;
+  for (const proc of processes) {
+    const args = hermesArgs(proc.argv);
+    if (args === null) continue;
+    for (let i = 0; i < args.length; i += 1) {
+      const arg = args[i]!;
+      if ((arg === "--resume" || arg === "-r") && i + 1 < args.length && isHermesSessionId(args[i + 1]!)) {
+        return args[i + 1]!;
+      }
+      if (arg.startsWith("--resume=")) {
+        const value = arg.slice("--resume=".length);
+        if (isHermesSessionId(value)) return value;
+      }
+    }
   }
+  return null;
 }
 
 interface MessageRow {
@@ -403,7 +432,7 @@ export class HermesTranscriptSource implements TranscriptSource {
       for (const candidate of await sessionDbs(root)) {
         const path = await containedRealpath(candidate, root);
         if (path === null) continue;
-        const found = withDb(path, (db) =>
+        const found = readSqlite(path, (db) =>
           db.query<{ id: string }, [string]>("select id from sessions where id = ?").get(ref.value),
         );
         if (found !== null && found !== undefined) return hermesKey(path, ref.value);
@@ -412,17 +441,49 @@ export class HermesTranscriptSource implements TranscriptSource {
     return null;
   }
 
+  /**
+   * Find the session running in `cwd` without a reported ref.
+   *
+   * First checks the pane's foreground argv for an explicit `--resume <id>` / `-r <id>`; when
+   * another Hermes pane shares the folder (`hints.shared`), returns null rather than guessing a
+   * neighbour's session (#508); otherwise picks the newest `sessions` row across every `state.db`
+   * this root holds (including profiles) whose `cwd` column equals the pane's folder.
+   */
+  async discoverSession(cwd: string, hints?: DiscoverHints): Promise<AgentSessionRef | null> {
+    const named = sessionFromArgv(hints?.processes);
+    if (named !== null) return { kind: "id", value: named };
+    if (hints?.shared === true) return null;
+    if (cwd.trim() === "") return null;
+    let best: { id: string; startedAt: number } | null = null;
+    for (const root of this.roots) {
+      for (const candidate of await sessionDbs(root)) {
+        const path = await containedRealpath(candidate, root);
+        if (path === null) continue;
+        const hit = readSqlite(path, (db) =>
+          db
+            .query<{ id: string; started_at: number }, [string]>(
+              "select id, started_at from sessions where cwd = ? order by started_at desc limit 1",
+            )
+            .get(cwd),
+        );
+        if (hit === null || hit === undefined || !isHermesSessionId(hit.id)) continue;
+        if (best === null || hit.started_at > best.startedAt) best = { id: hit.id, startedAt: hit.started_at };
+      }
+    }
+    return best === null ? null : { kind: "id", value: best.id };
+  }
+
   async stat(key: string): Promise<{ size: number; mtimeMs: number } | null> {
     const parts = splitHermesKey(key);
     if (parts === null) return null;
-    return withDb(parts.dbPath, (db) => sessionMeta(db, parts.sessionId));
+    return readSqlite(parts.dbPath, (db) => sessionMeta(db, parts.sessionId));
   }
 
   async load(key: string): Promise<{ text: string; complete: boolean; size: number; mtimeMs: number }> {
     const empty = { text: "", complete: true, size: 0, mtimeMs: 0 };
     const parts = splitHermesKey(key);
     if (parts === null) return empty;
-    return withDb(parts.dbPath, (db) => {
+    return readSqlite(parts.dbPath, (db) => {
       const meta = sessionMeta(db, parts.sessionId);
       const clipped = clipLines(composeLines(db, parts.sessionId));
       return { ...clipped, ...meta };
@@ -443,7 +504,7 @@ export class HermesTranscriptSource implements TranscriptSource {
     if (parts === null) return { lines: [], cursor: NO_CURSOR, reset: false, fromStart: false };
     const at = decodeCursor(cursor, "rowid", key);
     return (
-      withDb(parts.dbPath, (db) => {
+      readSqlite(parts.dbPath, (db) => {
         const rows =
           at === null
             ? db
@@ -479,10 +540,13 @@ export class HermesTranscriptSource implements TranscriptSource {
 }
 
 export function hermesJournal(roots: string | readonly string[]): JournalAdapter {
+  const source = new HermesTranscriptSource(roots);
   return {
     agent: "hermes",
-    source: new HermesTranscriptSource(roots),
+    source,
     parse: parseHermesTranscript,
     reducer: createHermesReducer,
+    discover: (cwd: string, hints?: DiscoverHints) => source.discoverSession(cwd, hints),
+    sharedFolderBlind: true,
   };
 }
