@@ -32,6 +32,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A crew member's pane read waits long enough for a herdr-core member's scrollback read.** The first read with scrollback of a pi terminal after its screen changed takes hc 0.1.14 about 2.4 s, the member answers with the screen alone after 2 s, and the lead gave up at 1.2 s and called the read unreachable (503) over a pane the member had just answered. The lead now gives a forwarded read of a pane's screen 5 s. Every other forwarded read keeps the poll budget.
 - **A reply sent through the crew lead to a pane on a herdr-core member no longer shows as 504 when it was delivered.** A send on the core costs about 6.4 s, because the core answers a key about 3 s after a raw write, and the lead gave up on a forwarded write at 5 s. The phone read `write_outcome_unknown` over a reply that had gone in. The lead now gives a forwarded write to a pane 15 s, inside the phone's 20 s limit. Other forwarded writes keep 5 s, and no byte on the wire changes.
 
+### Docs
+
+- **The multiplexers page says pi and Oh My Pi panes have History and Chat on the core without a hook.** Collie finds their session log from the pane's folder; a fresh pane shows an empty Chat until the first reply.
+
 ## [1.25.2] - 2026-10-30
 
 A bugfix release, not urgent, that fixes failing inputs on the Herdr core (sends refused, cards that could not be answered, keys that lost their case) and takes two contributor fixes. It also fixes two failing inputs which the browser leg found on the core: a tap on a card refused as "changed" right after the screen moved, and keys that waited behind the core's slow history reads while a dialog showed. The history reads now run one at a time with a backoff that follows time alone, none runs on a pane the bridge reads as blocked, and a key the core did not confirm is reported as not confirmed and never sent twice. You need it if you run Collie on the Herdr core (the new herdr-app) or send to omp or pi there.
