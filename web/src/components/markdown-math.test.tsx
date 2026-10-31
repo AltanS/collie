@@ -1,4 +1,4 @@
-import { fireEvent, render, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, waitFor, within } from "@testing-library/react";
 import { vi } from "vitest";
 
 import { copyText } from "@/lib/clipboard";
@@ -7,8 +7,8 @@ import { MAX_MATH_CHARS } from "@/lib/markdown-math";
 import { loadMathEngine } from "@/lib/math/engine";
 import { fixtureMathMarkdown } from "@/test/math-fixtures";
 
-import { MarkdownText } from "./markdown-text";
-import { MathText } from "./ui/math-text";
+import { MarkdownText, StretchTextContext } from "./markdown-text";
+import { MathText } from "./math-text";
 
 vi.mock("@/lib/clipboard", () => ({ canCopyText: () => true, copyText: vi.fn().mockResolvedValue(undefined) }));
 vi.mock("@/lib/status", () => ({ setStatus: vi.fn() }));
@@ -19,7 +19,12 @@ function useEngine(engine: MathEngine) {
     setDesignMath(engine);
     await loadMathEngine(engine);
   });
-  afterEach(() => setDesignMath("off"));
+  // Unmount first: switching the store back with formulas still mounted would re-render them outside
+  // act(), after Testing Library's own cleanup no longer covers them.
+  afterEach(() => {
+    cleanup();
+    setDesignMath("off");
+  });
 }
 
 describe("Markdown equations with math off (the default)", () => {
@@ -106,6 +111,20 @@ describe("Markdown equations with KaTeX", () => {
     }
   });
 
+  it("draws $$...$$ in a list item as display math", () => {
+    const { container } = render(<MarkdownText text="- $$E = mc^2$$" />);
+    expect(container.querySelector("li .math-display .katex-display")).not.toBeNull();
+  });
+
+  it("keeps a formula's braces as TeX when stretchtext is on", () => {
+    const { container } = render(
+      <StretchTextContext.Provider value>
+        <MarkdownText text={String.raw`Let $x^{{2n}}$ grow.`} stretches />
+      </StretchTextContext.Provider>,
+    );
+    expect(within(container).getByRole("math", { hidden: true }).textContent).toContain("x^{{2n}}");
+  });
+
   it("keeps raw HTML and fenced equations literal", () => {
     const { container } = render(<MarkdownText text={'<img src=x onerror="alert(1)">\n\n```latex\n$$x^2$$\n```\n\n`$x$`'} />);
     expect(container.querySelector("img, math")).toBeNull();
@@ -171,6 +190,19 @@ describe("Markdown equations with MathJax", () => {
     for (const element of container.querySelectorAll("[style]")) {
       expect(element.getAttribute("style")).not.toContain("url(");
     }
+  });
+
+  // mathtools declares macros on the TeX input it runs in. Each formula gets its own, so a
+  // declaration never reaches a later formula, and the same declaration in two formulas works twice.
+  it("does not share a mathtools declaration between equations", () => {
+    const declare = String.raw`\DeclarePairedDelimiter{\norm}{\lVert}{\rVert}`;
+    const text = String.raw`$${declare}\norm{a}$ then $\norm{b}$ and $${declare}\norm{c}$`;
+    const { container } = render(<MarkdownText text={text} />);
+    expect(within(container).getAllByRole("math").map((node) => node.getAttribute("aria-label"))).toEqual([
+      String.raw`${declare}\norm{a}`,
+      String.raw`${declare}\norm{c}`,
+    ]);
+    expect(container.textContent).toContain(String.raw`$\norm{b}$`);
   });
 
   it("keeps a wide equation within its own scroller", () => {

@@ -221,6 +221,12 @@ const IMAGE_PARTS = new RegExp(String.raw`^!\[([^\[\]\n]{0,500})\]\(\s{0,20}(${U
 /** `[Foo  Bar]` and `[foo bar]` name the same definition. */
 const refKey = (label: string) => label.trim().replace(/\s+/g, " ").toLowerCase();
 
+/** How much of a math marker the formula's opener is: `\(`, a lone `$`, or `$$` (inline display math). */
+function openerLength(marker: string): number {
+  if (marker.endsWith("(")) return 2;
+  return marker === "$$" ? 2 : 1;
+}
+
 /**
  * Recognize complete equations before matching surrounding emphasis. Only their asterisks are
  * hidden in this comparison string, at the same offsets; every emitted value comes from `text`.
@@ -244,7 +250,7 @@ function protectMathInEmphasis(text: string, depth: number, inLink: boolean, def
     let replacement: string | undefined;
     const marker = m.groups?.math;
     if (marker !== undefined) {
-      start = end - (marker.endsWith("(") ? 2 : 1);
+      start = end - openerLength(marker);
       const math = readInlineMath(text, start);
       if (math === null) continue;
       end = re.lastIndex = math.end;
@@ -336,7 +342,7 @@ export function parseInline(
         push({ kind: "text", text: marker.slice(0, -2) + "$" });
         continue;
       }
-      const offset = marker.length - (marker.endsWith("(") ? 2 : 1);
+      const offset = marker.length - openerLength(marker);
       const formula = readInlineMath(text, m.index + offset);
       if (formula === null) push({ kind: "text", text: marker });
       else {

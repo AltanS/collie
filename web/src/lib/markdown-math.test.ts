@@ -82,7 +82,7 @@ describe("inline equations", () => {
     expect(parseInline("https://example.com/$x$")).toMatchObject([{ kind: "link", href: "https://example.com/$x$" }]);
   });
 
-  it.each(["$5 and $10", "$5.00–$10.00", "$HOME/$USER", "$ x$", "$x $", "$x$10", "$x", String.raw`\(x`, "before $$x$$ after"])(
+  it.each(["$5 and $10", "$5.00–$10.00", "$HOME/$USER", "$ x$", "$x $", "$x$10", "$x", String.raw`\(x`])(
     "keeps %s as ordinary text", (source) => {
       expect(parseInline(source)).toEqual([text(source)]);
     },
@@ -100,9 +100,35 @@ describe("inline equations", () => {
     expect(parseInline(String.raw`\\$x$`)).toEqual([text(String.raw`\\`), math("x", "$x$")]);
   });
 
+  it("opens a formula right after an escaped dollar", () => {
+    expect(parseInline(String.raw`Cost is \$$x$`)).toEqual([text("Cost is $"), math("x", "$x$")]);
+  });
+
   it("keeps TeX in heading text and stable anchors", () => {
     expect(spansText(parseInline("About $x^2$"))).toBe("About x^2");
     expect(headingAnchors(parseMarkdown("# About $x^2$"))).toEqual(["about-x2"]);
+  });
+});
+
+describe("display equations inside a line", () => {
+  const display = (body: string, source: string) => ({ ...math(body, source), display: true });
+
+  it("reads $$...$$ in a list item, a quote and mid-paragraph as display math", () => {
+    expect(parseMarkdown("- $$E = mc^2$$\n\n> $$ a^2 + b^2 $$")).toEqual([
+      { kind: "list", ordered: false, items: [[display("E = mc^2", "$$E = mc^2$$")]] },
+      { kind: "quote", spans: [display("a^2 + b^2", "$$ a^2 + b^2 $$")] },
+    ]);
+    expect(parseInline("so $$x^2$$ holds")).toEqual([text("so "), display("x^2", "$$x^2$$"), text(" holds")]);
+  });
+
+  it("keeps three dollars, an empty pair and an unclosed pair literal", () => {
+    expect(parseInline("$$$x$$$")).toEqual([text("$$$x$$$")]);
+    expect(parseInline("a $$ $$ b")).toEqual([text("a $$ $$ b")]);
+    expect(parseInline("costs $$5")).toEqual([text("costs $$5")]);
+  });
+
+  it("leaves \\[ inside a line as Markdown's escaped bracket", () => {
+    expect(parseInline(String.raw`see \[1\]`).some((span) => span.kind === "math")).toBe(false);
   });
 });
 
@@ -139,6 +165,13 @@ y &= \begin{pmatrix}1 & 2 \\ 3 & 4\end{pmatrix}
       expect(readDisplayMath(source.split("\n"), 0)).toBeNull();
     },
   );
+
+  it("stops an unclosed $$ at a blank line, so it cannot pair with a later block", () => {
+    const source = "$$\nx^2\n\nSome prose.\n\n## Heading\n\n$$\ny^2\n$$";
+    const blocks = parseMarkdown(source);
+    expect(blocks).toContainEqual({ kind: "paragraph", spans: [text("Some prose.")] });
+    expect(blocks).toContainEqual(math("y^2", "$$\ny^2\n$$"));
+  });
 
   it("does not claim a fenced math example, even after an unmatched opener", () => {
     const source = "```math\n$$\nx^2\n$$\n```";

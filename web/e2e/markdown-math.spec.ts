@@ -52,7 +52,7 @@ for (const engine of ["katex", "mathjax"]) test.describe(`equations with ${engin
   });
 
   for (const theme of ["light", "dark"]) {
-    test(`equations fit the phone and load only same-origin files in ${theme}`, async ({ page }, testInfo) => {
+    test(`equations fit the phone and load only same-origin files in ${theme}`, async ({ page }) => {
       await page.addInitScript((value) => localStorage.setItem("collie:theme:v1", value), theme);
       const failed: string[] = [];
       page.on("requestfailed", (request) => failed.push(request.url()));
@@ -96,7 +96,6 @@ for (const engine of ["katex", "mathjax"]) test.describe(`equations with ${engin
         expect(panned).toBeGreaterThan(0);
       }
       expect(await page.evaluate(() => document.scrollingElement!.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(1);
-      await page.screenshot({ path: testInfo.outputPath(`equations-${engine}.png`), fullPage: true });
     });
   }
 
@@ -130,5 +129,42 @@ for (const engine of ["katex", "mathjax"]) test.describe(`equations with ${engin
   test("the same equations render in History", async ({ page }) => {
     await page.goto(`/pane/${PANE}/history`);
     await expect(page.getByRole("math")).toHaveCount(5);
+  });
+});
+
+// THE SERVICE WORKER KEEPS AN ENGINE ONCE IT IS USED. The engines are not in the precache
+// (vite.config.ts, `math/**`), so src/sw.ts caches each file the first time a page under its control
+// asks for it, and answers from that cache after. Only a real worker can show it, so this case lets
+// one run. One viewport: a worker has none.
+test.describe("a math engine under the service worker", () => {
+  test.beforeEach(async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== "app-phone", "a service worker has no viewport");
+    await chooseEngine(page, "katex");
+    await installMathStub(page);
+  });
+
+  test("is cached on first use and served from the cache after", async ({ page }) => {
+    await page.goto(FILE);
+    // The first load registers the worker; the engine it fetched went past it. Once the worker
+    // controls the page, a reload fetches the engine through it.
+    await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
+    await page.reload();
+    await expect(page.getByRole("math")).toHaveCount(5);
+    const cached = await page.evaluate(async () => {
+      const cache = await caches.open("collie-math");
+      return (await cache.keys()).map((request) => new URL(request.url).pathname);
+    });
+    expect(cached.some((path) => /^\/math\/katex\/katex-[^/]+\.js$/.test(path))).toBe(true);
+    expect(cached.some((path) => /^\/math\/katex\/katex-[^/]+\.css$/.test(path))).toBe(true);
+    expect(cached.some((path) => /^\/math\/katex\/KaTeX_Main-Regular-[^/]+\.woff2$/.test(path))).toBe(true);
+
+    const fromWorker: boolean[] = [];
+    page.on("response", (response) => {
+      if (new URL(response.url()).pathname.startsWith("/math/katex/")) fromWorker.push(response.fromServiceWorker());
+    });
+    await page.reload();
+    await expect(page.getByRole("math")).toHaveCount(5);
+    expect(fromWorker.length).toBeGreaterThan(0);
+    expect(fromWorker.every(Boolean)).toBe(true);
   });
 });

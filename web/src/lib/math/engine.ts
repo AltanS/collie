@@ -1,4 +1,4 @@
-import { useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useSyncExternalStore, type ReactNode } from "react";
 
 import type { MathEngine } from "@/lib/design";
 
@@ -33,15 +33,21 @@ const loaders = {
 
 const ready = new Map<Loaded, MathRenderer>();
 const pending = new Map<Loaded, Promise<MathRenderer | null>>();
+// An engine whose import failed stays failed for the life of the page: formulas show their source.
+// A retry could not be trusted to bring the engine back whole, because Vite's preload helper marks a
+// dependency as seen BEFORE it loads, so a second import after a failed stylesheet would get KaTeX's
+// code without its CSS. The next page load starts clean.
+const failed = new Set<Loaded>();
 const listeners = new Set<() => void>();
 
 /**
- * Start loading `engine` if it is not loaded or loading. Called at startup for the stored choice
- * (main.tsx) and when the choice changes, so a message's first paint finds the engine already there.
- * A failed load (offline with nothing cached) resolves to `null` and is retried by the next call.
+ * Start loading `engine` if it is not loaded, loading or failed. Called at startup for the stored
+ * choice (main.tsx), when the choice changes and when a formula first asks, so a message's first
+ * paint usually finds the engine already there. A failed load (offline with nothing cached, or a page
+ * older than the build on the server) resolves to `null`, and the formulas keep their source.
  */
 export function loadMathEngine(engine: MathEngine): Promise<MathRenderer | null> {
-  if (engine === "off") return Promise.resolve(null);
+  if (engine === "off" || failed.has(engine)) return Promise.resolve(null);
   const have = ready.get(engine);
   if (have !== undefined) return Promise.resolve(have);
   const inFlight = pending.get(engine);
@@ -52,10 +58,25 @@ export function loadMathEngine(engine: MathEngine): Promise<MathRenderer | null>
       for (const fn of listeners) fn();
       return renderer;
     })
-    .catch(() => null)
+    .catch(() => {
+      failed.add(engine);
+      return null;
+    })
     .finally(() => pending.delete(engine));
   pending.set(engine, load);
   return load;
+}
+
+/**
+ * Whether a `vite:preloadError` came from a math engine. main.tsx skips its reload for one: a reload
+ * cannot bring an engine that is not cached to an offline phone, and an engine is optional, so its
+ * failure costs typesetting and nothing else. Vite names the file for a stylesheet, and Chromium and
+ * Firefox name it for a module. Safari names no file, so an error that names none, raised while an
+ * engine is loading, is counted as the engine's.
+ */
+export function isMathLoadError(error: Error): boolean {
+  if (error.message.includes("/math/")) return true;
+  return pending.size > 0 && !/https?:\/\//.test(error.message);
 }
 
 function subscribe(fn: () => void): () => void {
@@ -64,13 +85,15 @@ function subscribe(fn: () => void): () => void {
 }
 
 /**
- * The renderer for `engine`, or `null` while it loads (and for Off). Asking starts the load, so a
- * component never has to remember to.
+ * The renderer for `engine`, or `null` while it loads, after it failed, and for Off. Asking starts
+ * the load, after the render rather than during it.
  */
 export function useMathRenderer(engine: MathEngine): MathRenderer | null {
   const get = () => (engine === "off" ? null : (ready.get(engine) ?? null));
   const renderer = useSyncExternalStore(subscribe, get, () => null);
-  if (renderer === null && engine !== "off") void loadMathEngine(engine);
+  useEffect(() => {
+    if (renderer === null) void loadMathEngine(engine);
+  }, [renderer, engine]);
   return renderer;
 }
 
@@ -78,4 +101,5 @@ export function useMathRenderer(engine: MathEngine): MathRenderer | null {
 export function __resetMathEngines(): void {
   ready.clear();
   pending.clear();
+  failed.clear();
 }

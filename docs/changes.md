@@ -211,8 +211,9 @@ $$
 $$
 ```
 
-`\[` and `\]` also delimit a display equation. Fractions, matrices and `aligned` environments
-work in both engines. A wide equation scrolls sideways within the page, and a display
+`\[` and `\]` also delimit a display equation. Inside a line, such as a list item or a quote,
+`$$E = mc^2$$` is a display equation too; `\[` there stays an escaped bracket. A blank line ends
+an unclosed `$$`. Fractions, matrices and `aligned` environments work in both engines. A wide equation scrolls sideways within the page, and a display
 equation's Copy button copies its original source, including the delimiters.
 
 Code spans and fenced code blocks stay literal. Write `\$` for a literal dollar sign; prices

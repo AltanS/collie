@@ -2,7 +2,7 @@ import { createContext, useContext, useMemo, useState, type ReactNode } from "re
 
 import { useFileLinks, type FileLinkTarget } from "@/components/file-links";
 import { CopyableBlock } from "@/components/ui/copyable-block";
-import { MathText } from "@/components/ui/math-text";
+import { MathText } from "@/components/math-text";
 import { WalkyIdChip, WalkyIds } from "@/components/walky-id-chip";
 import { useWalkyChips } from "@/components/walky-log";
 import { useLocale } from "@/hooks/use-locale";
@@ -26,6 +26,10 @@ import type { MdMath } from "@/lib/markdown-math";
 // highlighting is a cross-cutting display concern, and the AST walk is already recursive.
 const QueryContext = createContext("");
 
+// A find hit, as text or as a whole formula. One literal for both, the one DESIGN.md §10 gap 6 lists
+// for a search highlight token.
+const FIND_MARK = "rounded-sm bg-amber-300/70 text-inherit dark:bg-amber-500/40";
+
 /** Find searches the original TeX; paint the equation as a whole without breaking its layout. */
 function MathRun({ math, display = false }: { math: MdMath; display?: boolean }) {
   const query = useContext(QueryContext).trim().toLowerCase();
@@ -33,8 +37,8 @@ function MathRun({ math, display = false }: { math: MdMath; display?: boolean })
     <MathText
       text={math.text}
       source={math.source}
-      display={display}
-      highlighted={query !== "" && math.source.toLowerCase().includes(query)}
+      display={display || math.display === true}
+      mark={query !== "" && math.source.toLowerCase().includes(query) ? FIND_MARK : undefined}
     />
   );
 }
@@ -191,7 +195,7 @@ function Hit({ text }: { text: string }) {
     <>
       {pieces.map((piece, i) =>
         piece.hit ? (
-          <mark key={i} className="rounded-sm bg-amber-300/70 text-inherit dark:bg-amber-500/40">
+          <mark key={i} className={FIND_MARK}>
             {piece.text}
           </mark>
         ) : (
@@ -519,7 +523,7 @@ interface OpenStretches {
  * null and the blocks are the plain parse, exactly as the text was drawn before stretches existed.
  */
 function useStretchBlocks(text: string, withImages: boolean, drawn: boolean, query: string, math: boolean) {
-  const segments = useMemo(() => (drawn ? parseStretches(text) : null), [drawn, text]);
+  const segments = useMemo(() => (drawn ? parseStretches(text, math) : null), [drawn, text, math]);
   const [open, setOpen] = useState<OpenStretches>(() => ({ keys: new Map(), opened: 0 }));
   // A FIND ALWAYS WINS (transcript-view.tsx): while a query is on screen every stretch is drawn open,
   // so a hit inside a long form is painted rather than hidden behind its short form. Sequence 0 makes

@@ -6,7 +6,7 @@ import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { onPreloadError } from "./lib/chunk-reload";
 import { designPrefs, initDesign, mathEngineOf } from "./lib/design";
-import { loadMathEngine } from "./lib/math/engine";
+import { isMathLoadError, loadMathEngine } from "./lib/math/engine";
 import { initTheme } from "./lib/theme/store";
 import { initOperatorFonts } from "./lib/operator-config";
 import "./index.css";
@@ -40,7 +40,12 @@ startPushTitleSync();
 
 // An old page asking for a chunk the new build dropped (the worker deletes the old precache at once):
 // reload once onto the new build rather than leave a blank app. lib/chunk-reload.ts has the guards.
-window.addEventListener("vite:preloadError", onPreloadError);
+// A math engine is the exception: it is optional, so its formulas fall back to their source, and a
+// reload would not bring an uncached engine to an offline phone (lib/math/engine.ts).
+window.addEventListener("vite:preloadError", (event) => {
+  if (isMathLoadError(event.payload)) return;
+  onPreloadError(event);
+});
 
 const root = document.getElementById("root");
 if (!root) throw new Error("missing #root");

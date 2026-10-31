@@ -205,11 +205,14 @@ const channelManifest = manifestFor(channel);
 // The speech worker's entry, the one worker built under `stt/` (the `worker` block below).
 const STT_WORKER_ENTRY = resolve(import.meta.dirname, "src/stt/worker.ts");
 
-// A module of a math engine (lib/math/), or of a package only an engine imports. vite.config's
-// output naming sends the chunks and assets that hold one under `math/`, in a folder per engine:
-// `math/katex/` and `math/mathjax/`. What both engines share (lib/math/math-markup.ts and the hast
-// packages behind it) stays at `math/` itself.
-const MATH_MODULE = /[\\/](?:src[\\/]lib[\\/]math|node_modules[\\/](?:katex|@mathjax))[\\/]/;
+// A module of a math engine, or of a package only an engine imports. vite.config's output naming
+// sends the chunks and assets that hold one under `math/`, in a folder per engine: `math/katex/` and
+// `math/mathjax/`. What both engines share (lib/math/math-markup.ts and the hast packages behind it)
+// stays at `math/` itself. The lib/math files are NAMED, not matched by folder: lib/math/engine.ts
+// is app-shell code that main.tsx imports eagerly, and a chunk holding it under `math/` would be
+// left out of the precache and cleared on every update, so the app could not start offline.
+const MATH_MODULE =
+  /[\\/](?:src[\\/]lib[\\/]math[\\/](?:katex|mathjax|math-markup)\.|node_modules[\\/](?:katex|@mathjax)[\\/])/;
 const KATEX_MODULE = /[\\/](?:node_modules[\\/]katex[\\/]|src[\\/]lib[\\/]math[\\/]katex\.)/;
 const MATHJAX_MODULE = /[\\/](?:node_modules[\\/]@mathjax[\\/]|src[\\/]lib[\\/]math[\\/]mathjax\.)/;
 const KATEX_NAME = /^katex(?![a-z])/i;
@@ -222,6 +225,20 @@ function mathFolder(ids: readonly string[], names: readonly string[] = []): stri
   if (katex !== mathjax) return katex ? "math/katex" : "math/mathjax";
   return katex || ids.some((id) => MATH_MODULE.test(id)) ? "math" : null;
 }
+
+// KaTeX's stylesheet offers each face as .woff2, then .woff and .ttf. Every browser Collie runs on
+// takes the .woff2, so the other two are files no device ever fetches: about 0.8 MB in the release.
+// Dropping them from the `src` lists here, before Vite resolves the URLs, means they are never
+// emitted at all. The bridge would also serve them as octet-stream, which the CSS loader refuses.
+const KATEX_STYLESHEET = /[\\/]node_modules[\\/]katex[\\/]dist[\\/]katex(?:\.min)?\.css$/;
+const katexWoff2OnlyPlugin: Plugin = {
+  name: "collie-katex-woff2-only",
+  enforce: "pre",
+  transform(code, id) {
+    if (!KATEX_STYLESHEET.test(id)) return null;
+    return code.replace(/,\s*url\([^)]*\.(?:woff|ttf)\)\s*format\("(?:woff|truetype)"\)/g, "");
+  },
+};
 
 // ADR 0052: ONE BUILD SERVES ANY MOUNT. The shell (index.html) is built ROOT-ABSOLUTE, every
 // reference `/…`, and the bridge resolves it to the mount it was started with when it serves the
@@ -270,6 +287,7 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
+    katexWoff2OnlyPlugin,
     buildInfoPlugin,
     channelIconsPlugin,
     VitePWA({
@@ -396,7 +414,7 @@ export default defineConfig({
     outDir: "dist",
     emptyOutDir: true,
     // Fonts stay same-origin files, including the small KaTeX faces: the CSP does not allow data fonts.
-    assetsInlineLimit: (filePath) => (/[\\/]KaTeX_[^\\/]+\.(?:woff2?|ttf)$/.test(filePath) ? false : undefined),
+    assetsInlineLimit: (filePath) => (/[\\/]KaTeX_[^\\/]+\.woff2$/.test(filePath) ? false : undefined),
     // A couple of small chunks beat one big one on a phone over the tailnet.
     chunkSizeWarningLimit: 900,
     rolldownOptions: {

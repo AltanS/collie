@@ -53,22 +53,28 @@ async function loadRange(name: string): Promise<void> {
   throw new Error(`no MathJax font range ${file}`);
 }
 
-export function mathjaxRenderer(): MathRenderer {
-  mathjax.asyncLoad = loadRange;
-  const adaptor = liteAdaptor();
-  RegisterHTMLHandler(adaptor);
-  const tex = new TeX({
+// A FRESH TeX INPUT FOR EVERY FORMULA, so nothing one formula defines reaches another. mathtools
+// keeps state on the input: `\DeclarePairedDelimiter` adds a macro (and the same declaration a
+// second time then fails as already defined), `\newtagform` adds a tag format and `\mathtoolsset`
+// changes its options. A new input costs about 0.1 ms; the SVG output and its font data are shared,
+// which is where the cost of a document lies.
+const texInput = (): TeX<LiteElement, LiteText, LiteDocument> =>
+  new TeX({
     packages: ["base", "ams", "boldsymbol", "braket", "cancel", "color", "mathtools"],
     // Throw instead of drawing a red error box: the caller's fallback is the source, as text.
     formatError: (_jax: TeX<LiteElement, LiteText, LiteDocument>, err: TexError) => {
       throw err;
     },
   });
+
+export function mathjaxRenderer(): MathRenderer {
+  mathjax.asyncLoad = loadRange;
+  const adaptor = liteAdaptor();
+  RegisterHTMLHandler(adaptor);
   // No automatic line breaking: MathJax 4 would break a long inline formula into a column of
   // pieces. A wide formula pans inside its own scroller instead (`.math-inline`, `.math-display` in
   // index.css), the same as KaTeX's.
   const svg = new SVG({ fontCache: "none", fontData: MathJaxNewcmFont, linebreaks: { inline: false } });
-  const doc = mathjax.document("", { InputJax: tex, OutputJax: svg });
 
   // The SVG is decorative to a screen reader; the wrapper reads as math, labelled with its TeX.
   const toReact = (text: string, node: LiteElement): Typeset =>
@@ -78,7 +84,8 @@ export function mathjaxRenderer(): MathRenderer {
       markupToReact(adaptor.outerHTML(node).replace("<svg ", '<svg aria-hidden="true" ')),
     );
   // `convert` is typed `any` upstream; with this document's adaptor it is a LiteElement.
-  const convert = (text: string, display: boolean): LiteElement => doc.convert(text, { display });
+  const convert = (text: string, display: boolean): LiteElement =>
+    mathjax.document("", { InputJax: texInput(), OutputJax: svg }).convert(text, { display });
 
   return {
     render(text, display) {
