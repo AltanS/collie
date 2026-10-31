@@ -191,6 +191,38 @@ and the source shows instead.
 In **Changes**, a changed file whose type has a preview, and that is not deleted, shows a
 **Preview** button in the header of its diff. It opens the same file screen on Preview.
 
+### Equations
+
+Turn math on under **Settings → Appearance → Math**. It is a per-device setting, and it is off
+by default.
+
+| Engine | What it draws |
+| --- | --- |
+| Off | Nothing. `$` is a dollar sign, and no engine is downloaded. |
+| KaTeX | Fast and compact HTML, with its own web fonts. |
+| MathJax | Broader TeX support, drawn as SVG. A larger download, fetched in pieces. |
+
+With an engine chosen, Chat, History, Full reply and Markdown previews render LaTeX. Write
+inline math as `$E = mc^2$` or `\(E = mc^2\)`. A display equation sits on its own lines:
+
+```text
+$$
+\sum_{i=1}^{n} i = \frac{n(n+1)}{2}
+$$
+```
+
+`\[` and `\]` also delimit a display equation. Fractions, matrices and `aligned` environments
+work in both engines. A wide equation scrolls sideways within the page, and a display
+equation's Copy button copies its original source, including the delimiters.
+
+Code spans and fenced code blocks stay literal. Write `\$` for a literal dollar sign; prices
+such as `$5 and $10` stay text. Incomplete delimiters, unsupported TeX and oversized
+expressions stay readable as source. A macro defined in one equation never applies to another.
+
+> **Note.** The engine downloads the first time you choose it, and the phone keeps it for
+> offline use. After an update it downloads again on first use; until then, offline, equations
+> show as their TeX source.
+
 ### Paths the agent prints
 
 A file path the agent prints in Chat or in the terminal mirror is a link to that file in Files.

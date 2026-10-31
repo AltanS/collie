@@ -521,6 +521,8 @@ function stripSpan(span: MdSpan): MdSpan {
     case "text":
     case "code":
       return { ...span, text: stripRuns(span.text) };
+    case "math":
+      return { ...span, text: stripRuns(span.text), source: stripRuns(span.source) };
     case "image":
       return { ...span, alt: stripRuns(span.alt) };
     case "stretch-close":
@@ -539,7 +541,7 @@ function spanTokens(span: MdSpan, marks: StretchMarks): Token[] {
     case "italic":
       return [{ kind: span.kind, spans: liftSpans(span.spans, marks) }];
     default:
-      // No press may sit inside an anchor, and code is verbatim: both keep their text, unmarked.
+      // No press may sit inside an anchor, and code and math are verbatim: both keep their text, unmarked.
       return [stripSpan(span)];
   }
 }
@@ -631,6 +633,8 @@ function liftBlock(block: MdBlock, marks: StretchMarks): MdBlock {
       };
     case "code":
       return { ...block, text: stripRuns(block.text) };
+    case "math":
+      return { ...block, text: stripRuns(block.text), source: stripRuns(block.source) };
     case "rule":
       return block;
   }

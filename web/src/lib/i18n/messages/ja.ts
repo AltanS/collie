@@ -271,6 +271,13 @@ export const ja: Dictionary = {
   "settings.typeface.note.geist": "無駄のない幾何学的デザイン。本物の太字を備えています。",
   "settings.typeface.note.atkinson": "ロービジョン向けに作られた、明瞭な文字と本物の太字。",
   "settings.typeface.note.operator": "ホストの管理者が設定したフォントです。",
+  "settings.math.title": "数式",
+  "settings.math.description": "この端末で、チャットと Markdown ファイルの LaTeX を表示します。",
+  "settings.math.engine": "エンジン",
+  "settings.math.off": "オフ",
+  "settings.math.note.off": "ドル記号はそのまま文字として表示。何もダウンロードしません。",
+  "settings.math.note.katex": "高速でコンパクト。初回使用時にフォントを読み込みます。",
+  "settings.math.note.mathjax": "より広い TeX に対応し、SVG で描画。ダウンロードは大きめです。",
 
   // --- settings.fonts ---
   "settings.fonts.title": "ターミナルフォント",

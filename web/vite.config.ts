@@ -205,6 +205,24 @@ const channelManifest = manifestFor(channel);
 // The speech worker's entry, the one worker built under `stt/` (the `worker` block below).
 const STT_WORKER_ENTRY = resolve(import.meta.dirname, "src/stt/worker.ts");
 
+// A module of a math engine (lib/math/), or of a package only an engine imports. vite.config's
+// output naming sends the chunks and assets that hold one under `math/`, in a folder per engine:
+// `math/katex/` and `math/mathjax/`. What both engines share (lib/math/math-markup.ts and the hast
+// packages behind it) stays at `math/` itself.
+const MATH_MODULE = /[\\/](?:src[\\/]lib[\\/]math|node_modules[\\/](?:katex|@mathjax))[\\/]/;
+const KATEX_MODULE = /[\\/](?:node_modules[\\/]katex[\\/]|src[\\/]lib[\\/]math[\\/]katex\.)/;
+const MATHJAX_MODULE = /[\\/](?:node_modules[\\/]@mathjax[\\/]|src[\\/]lib[\\/]math[\\/]mathjax\.)/;
+const KATEX_NAME = /^katex(?![a-z])/i;
+const MATHJAX_NAME = /^mathjax(?![a-z])/i;
+
+/** The folder an output file of the math engines goes in, or `null` for the app's own `assets/`. */
+function mathFolder(ids: readonly string[], names: readonly string[] = []): string | null {
+  const katex = ids.some((id) => KATEX_MODULE.test(id)) || names.some((name) => KATEX_NAME.test(name));
+  const mathjax = ids.some((id) => MATHJAX_MODULE.test(id)) || names.some((name) => MATHJAX_NAME.test(name));
+  if (katex !== mathjax) return katex ? "math/katex" : "math/mathjax";
+  return katex || ids.some((id) => MATH_MODULE.test(id)) ? "math" : null;
+}
+
 // ADR 0052: ONE BUILD SERVES ANY MOUNT. The shell (index.html) is built ROOT-ABSOLUTE, every
 // reference `/…`, and the bridge resolves it to the mount it was started with when it serves the
 // file (bridge/server.ts, `mountIndexHtml`); at the root it is served as it lies on disk. Inside the
@@ -345,7 +363,9 @@ export default defineConfig({
         // The vendored speech engine (public/stt/, ADR 0096) stays out of the precache for the
         // reason the Nerd Font faces do: its glue is a .js file the glob would otherwise take, and
         // nobody who never taps Whistle should pay for it on install. It loads on first use.
-        globIgnores: [...precacheIgnoresFor(channel), "stt/**"],
+        // The math engines (`math/`, set by build.rolldownOptions below) stay out for the same
+        // reason: they are a device's opt-in, and Off is the default.
+        globIgnores: [...precacheIgnoresFor(channel), "stt/**", "math/**"],
       },
       // Over plain HTTP (insecure context) the SW can't register; in dev we don't want it anyway.
       devOptions: { enabled: false },
@@ -375,6 +395,8 @@ export default defineConfig({
   build: {
     outDir: "dist",
     emptyOutDir: true,
+    // Fonts stay same-origin files, including the small KaTeX faces: the CSP does not allow data fonts.
+    assetsInlineLimit: (filePath) => (/[\\/]KaTeX_[^\\/]+\.(?:woff2?|ttf)$/.test(filePath) ? false : undefined),
     // A couple of small chunks beat one big one on a phone over the tailnet.
     chunkSizeWarningLimit: 900,
     rolldownOptions: {
@@ -382,6 +404,13 @@ export default defineConfig({
         codeSplitting: {
           groups: [{ name: "router", test: /node_modules\/(?:react-router|@remix-run)\// }],
         },
+        // THE MATH ENGINES ARE UNDER `math/` (lib/math/engine.ts). Each is a dynamic import, so it
+        // is already its own chunk; the folder is what keeps it out of the precache (`math/**` in
+        // globIgnores) and lets src/sw.ts cache it on first use instead. A device on Off — the
+        // default — never downloads or stores a byte of either engine.
+        chunkFileNames: (chunk) => `${mathFolder(chunk.moduleIds) ?? "assets"}/[name]-[hash].js`,
+        assetFileNames: (asset) =>
+          `${mathFolder(asset.originalFileNames, asset.names) ?? "assets"}/[name]-[hash][extname]`,
       },
     },
   },

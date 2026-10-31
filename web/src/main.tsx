@@ -5,7 +5,8 @@ import { createRoot } from "react-dom/client";
 
 import { App } from "./App";
 import { onPreloadError } from "./lib/chunk-reload";
-import { initDesign } from "./lib/design";
+import { designPrefs, initDesign, mathEngineOf } from "./lib/design";
+import { loadMathEngine } from "./lib/math/engine";
 import { initTheme } from "./lib/theme/store";
 import { initOperatorFonts } from "./lib/operator-config";
 import "./index.css";
@@ -23,6 +24,9 @@ import { startPushTitleSync } from "./lib/push-titles";
 // family name until /api/config answers) and Safari private mode, where the pre-paint read threw.
 // Before createRoot, so the class is settled by the time anything measures a line box.
 initDesign();
+// A device that chose a math engine starts loading it now, so the first message with an equation
+// finds it ready instead of drawing the source and then the formula. Off loads nothing.
+void loadMathEngine(mathEngineOf(designPrefs()));
 // The colour theme, the same way: public/theme-init.js painted it from storage, and this settles what
 // that script leaves out (the theme-color metas, a token an imported theme sets in one half only).
 // For the default theme it removes nothing and adds nothing.
