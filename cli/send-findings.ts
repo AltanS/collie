@@ -69,6 +69,8 @@ export interface SendsFinding extends Finding {
   readonly window: { readonly count: number; readonly days: number };
   /** Receipts in the window by outcome. An outcome with none is left out. */
   readonly counts: Partial<Record<SendOutcome, number>>;
+  /** The same counts per Collie version that wrote the receipts. A receipt with no version is `older`. One key when one version. */
+  readonly byCollie: Readonly<Record<string, Partial<Record<SendOutcome, number>>>>;
 }
 
 /** What this section reaches: the state dir, one directory listing and file reads, and the clock. */
@@ -107,6 +109,25 @@ function lost(record: Receipted): boolean {
   return LOST.has(outcome) && troubleStep({ outcome, reason: reason ?? null, cap: cap !== undefined }) === "count";
 }
 
+/** The key for a receipt written by a Collie that did not record its version. */
+const OLDER = "older";
+
+/** The numeric parts of a version before any `-` or `+`, for example `1.25.2-edge.1` is [1, 25, 2]. */
+function numericParts(version: string): number[] {
+  return version.split(/[-+]/, 1)[0]!.split(".").map((part) => Number.parseInt(part, 10) || 0);
+}
+
+/** Newest first; `older` last; versions equal in their numeric parts fall back to a reverse string compare so the order is stable. */
+function newestFirst(a: string, b: string): number {
+  if (a === OLDER || b === OLDER) return a === b ? 0 : a === OLDER ? 1 : -1;
+  const [pa, pb] = [numericParts(a), numericParts(b)];
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const [x, y] = [pa[i] ?? 0, pb[i] ?? 0];
+    if (x !== y) return y - x;
+  }
+  return b < a ? -1 : b > a ? 1 : 0;
+}
+
 /** A row's outcome counts, and the words the detail prints for them. */
 interface Counted {
   readonly counts: Partial<Record<SendOutcome, number>>;
@@ -133,15 +154,39 @@ function countWords(records: readonly Receipted[]): Counted {
   return { counts: Object.fromEntries(order.map((outcome) => [outcome, counts[outcome]!])), words };
 }
 
+/** The receipts split by the Collie version that wrote them, newest version first, each with its counts and words. */
+function byCollieOf(records: readonly Receipted[]): [string, Counted][] {
+  const groups = new Map<string, Receipted[]>();
+  for (const record of records) {
+    const key = record.collie ?? OLDER;
+    const group = groups.get(key);
+    if (group === undefined) groups.set(key, [record]);
+    else group.push(record);
+  }
+  return [...groups].toSorted(([a], [b]) => newestFirst(a, b)).map(([version, group]) => [version, countWords(group)]);
+}
+
+/** ` · by Collie: 1.25.2 sent 3 refused 1 · 1.25.1 refused 26`, or "" when the window holds one version. */
+function collieClause(split: readonly [string, Counted][]): string {
+  if (split.length < 2) return "";
+  const parts = split.map(([version, { counts }]) => {
+    const words = SEND_OUTCOMES.filter((outcome) => (counts[outcome] ?? 0) > 0).toSorted((a, b) => counts[b]! - counts[a]!);
+    return `${version} ${words.map((outcome) => `${outcome} ${String(counts[outcome])}`).join(" ")}`;
+  });
+  return ` · by Collie: ${parts.join(" · ")}`;
+}
+
 /** One harness's row from the receipts in its window, newest first. */
 function row(harness: string, records: readonly Receipted[], capped: boolean): SendsFinding {
   const check = `sends-${harness}`;
   const days = SENDS_WINDOW_MS / DAY_MS;
   const window = { count: records.length, days };
-  if (records.length === 0) return { ...ok(check, `no sends in the last ${String(days)} days`), harness, window, counts: {} };
+  if (records.length === 0) return { ...ok(check, `no sends in the last ${String(days)} days`), harness, window, counts: {}, byCollie: {} };
   const { counts, words } = countWords(records);
-  const detail = [...words, capped ? `last ${String(SENDS_WINDOW_COUNT)}` : `last ${String(days)} days`].join(" · ");
-  const base = { harness, window, counts };
+  const split = byCollieOf(records);
+  const detail = [...words, capped ? `last ${String(SENDS_WINDOW_COUNT)}` : `last ${String(days)} days`].join(" · ") + collieClause(split);
+  const byCollie = Object.fromEntries(split.map(([version, counted]) => [version, counted.counts]));
+  const base = { harness, window, counts, byCollie };
   if (informational(harness)) return { ...ok(check, detail), ...base };
   const got = records.filter(received);
   const n = got.length;

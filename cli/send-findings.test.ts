@@ -40,6 +40,8 @@ interface Send {
   readonly phase?: RequestPhase;
   /** The receipt's detail line. */
   readonly detail?: string;
+  /** The Collie version the record carries; absent for a record an older Collie wrote. */
+  readonly collie?: string;
 }
 
 function receiptOf(id: string, send: Send): SendReceipt {
@@ -70,7 +72,8 @@ function recordFile(id: string, send: Send): string {
   const phase = send.phase ?? (send.outcome === "held" ? "held" : "settled");
   const acceptedAt = NOW - (send.ago ?? 1) * MINUTE;
   const base = { id, session: "main", paneId: "%1", paneGeneration: "g1", surfaceRevision: 1, mode: "send", textHash: "0".repeat(64), textLength: 5, acceptedAt, phase };
-  return JSON.stringify(phase === "accepted" || phase === "submit-sent" ? base : { ...base, receipt: receiptOf(id, send) });
+  const versioned = send.collie === undefined ? base : { ...base, collie: send.collie };
+  return JSON.stringify(phase === "accepted" || phase === "submit-sent" ? versioned : { ...versioned, receipt: receiptOf(id, send) });
 }
 
 /**
@@ -114,6 +117,36 @@ describe("sends rows (M71 spec 01)", () => {
     expect(codex.counts).toEqual({ unknown: 18 });
     expect(codex.window).toEqual({ count: 18, days: 7 });
     expect(codex.scope).toBeUndefined();
+  });
+
+  test("a window that spans an update lists its counts per Collie version, newest first, and a record with none is older", () => {
+    const sends = [
+      ...times(3, { outcome: "sent" as const, collie: "1.25.2" }),
+      { outcome: "refused" as const, reason: "probe_failed" as const, collie: "1.25.2" },
+      ...times(6, { outcome: "refused" as const, reason: "probe_failed" as const }),
+      ...times(26, { outcome: "refused" as const, reason: "probe_failed" as const, collie: "1.25.1" }),
+    ];
+    const codex = rows(filesOf(sends)).get("codex")!;
+    expect(codex.detail).toBe(
+      "33 refused (probe_failed 33) · 3 sent · last 7 days · by Collie: 1.25.2 sent 3 refused 1 · 1.25.1 refused 26 · older refused 6",
+    );
+    expect(codex.counts).toEqual({ refused: 33, sent: 3 });
+    expect(codex.byCollie).toEqual({ "1.25.2": { sent: 3, refused: 1 }, "1.25.1": { refused: 26 }, older: { refused: 6 } });
+    expect(Object.keys(codex.byCollie)).toEqual(["1.25.2", "1.25.1", "older"]);
+  });
+
+  test("numeric parts decide the order of versions, so 1.25.10 is newer than 1.25.9", () => {
+    const codex = rows(filesOf([{ outcome: "sent", collie: "1.25.9" }, { outcome: "sent", collie: "1.25.10-edge.1" }])).get("codex")!;
+    expect(Object.keys(codex.byCollie)).toEqual(["1.25.10-edge.1", "1.25.9"]);
+  });
+
+  test("one Collie version leaves the detail unchanged and gives one byCollie key", () => {
+    const codex = rows(filesOf(times(18, { outcome: "unknown", reason: "no_evidence", collie: "1.25.2" }))).get("codex")!;
+    expect(codex.detail).toBe("18 unknown (no_evidence 18) · last 7 days");
+    expect(codex.byCollie).toEqual({ "1.25.2": { unknown: 18 } });
+    const older = rows(filesOf(times(18, { outcome: "unknown", reason: "no_evidence" }))).get("codex")!;
+    expect(older.detail).toBe("18 unknown (no_evidence 18) · last 7 days");
+    expect(older.byCollie).toEqual({ older: { unknown: 18 } });
   });
 
   test("3 received, all refused with probe_failed, warns by rule (a)", () => {
@@ -184,7 +217,7 @@ describe("sends rows (M71 spec 01)", () => {
     const all = sendFindings({ ctx: { stateDir: STATE }, files: fakeFiles(filesOf([{ outcome: "sent", harness: "zed" }, { outcome: "sent", harness: "" }])), now: () => NOW });
     expect(all.map((f) => f.harness)).toEqual([...loadProfiles().keys(), "-", "zed"]);
     const claude = all.find((f) => f.harness === "claude")!;
-    expect(claude).toEqual({ check: "sends-claude", status: "ok", detail: "no sends in the last 7 days", remedy: null, harness: "claude", window: { count: 0, days: 7 }, counts: {} });
+    expect(claude).toEqual({ check: "sends-claude", status: "ok", detail: "no sends in the last 7 days", remedy: null, harness: "claude", window: { count: 0, days: 7 }, counts: {}, byCollie: {} });
     expect(all.find((f) => f.harness === "-")!.check).toBe("sends--");
   });
 

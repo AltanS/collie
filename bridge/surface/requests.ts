@@ -52,6 +52,12 @@ export interface SendRecord {
   /** The text as the line Sent would keep (see the header), or absent when that rule refused it. */
   readonly line?: string;
   readonly acceptedAt: number;
+  /**
+   * The version of the Collie that accepted the request (the bridge's own bare version string), so
+   * `collie doctor` can tell receipts written before an update from those after it. Absent on records
+   * an older Collie wrote, and on a store built without one.
+   */
+  readonly collie?: string;
   readonly phase: RequestPhase;
   readonly submitSentAt?: number;
   /** When a held request's release started (M56 spec 15): its run is bounded from here, not from accept. */
@@ -235,6 +241,8 @@ export function parseSendRecord(raw: JsonValue | undefined): SendRecord | null {
   // Lenient like `detail`: a line that is not what it should be is dropped, and the record stays.
   const line = asJsonString(node.line);
   if (line !== undefined && line !== "" && line.length <= SENT_MAX_LINE) record = { ...record, line };
+  const collie = asJsonString(node.collie);
+  if (collie !== undefined && collie !== "") record = { ...record, collie };
   const submitSentAt = asJsonNumber(node.submitSentAt);
   if (submitSentAt !== undefined) record = { ...record, submitSentAt };
   const runAt = asJsonNumber(node.runAt);
@@ -321,6 +329,8 @@ export class RequestStore {
   constructor(
     private readonly dir: string,
     private readonly now: () => number = () => Date.now(),
+    /** The bridge's own version string, written into every record this store accepts. */
+    private readonly collie?: string,
   ) {
     mkdirSync(dir, { recursive: true, mode: 0o700 });
     const saltPath = join(dir, ".salt");
@@ -384,6 +394,7 @@ export class RequestStore {
     };
     const line = sentLineOf(input.text);
     if (line !== null) record = { ...record, line };
+    if (this.collie !== undefined) record = { ...record, collie: this.collie };
     this.write(record);
     return { kind: "new", record };
   }
