@@ -10,6 +10,7 @@
 import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { promisify } from "node:util";
+import { HOST, type Host } from "../host.ts";
 
 const exec = promisify(execFile);
 
@@ -70,13 +71,13 @@ export function parseEtime(etime: string): number | null {
   return Number.isSafeInteger(total) ? total * 1000 : null;
 }
 
-async function readStart(pid: number, now: number): Promise<number | null> {
+async function readStart(pid: number, now: number, host: Host = HOST): Promise<number | null> {
   try {
-    if (process.platform === "linux") {
+    if (host.platform === "linux") {
       const [stat, procStat] = await Promise.all([readFile(`/proc/${pid}/stat`, "utf8"), readFile("/proc/stat", "utf8")]);
       return linuxStartMs(stat, procStat);
     }
-    if (process.platform === "darwin") {
+    if (host.platform === "darwin") {
       const { stdout } = await exec("ps", ["-o", "etime=", "-p", String(pid)], { timeout: 2000 });
       const elapsed = parseEtime(stdout);
       return elapsed === null ? null : now - elapsed;
