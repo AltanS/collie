@@ -1429,7 +1429,7 @@ function programAdapter(source: DurableSource): BuiltAdapter {
 // The Send Protocol's request store (M56 spec 05), one for the bridge, under the state directory.
 // Created only with the flag on, so an instance without it touches no new file. On start every request
 // a previous run left unsettled ends `unknown` (a crash), and settled ones past a week are dropped.
-const sendStore = cfg.sendProtocol ? new RequestStore(join(cfg.stateDir, "sends")) : null;
+const sendStore = cfg.sendProtocol ? new RequestStore(join(cfg.stateDir, "sends"), undefined, crewVersion) : null;
 if (sendStore !== null) {
   const recovered = sendStore.recover(SendProtocol.crashReceipt);
   if (recovered.length > 0) console.log(`[send] ${String(recovered.length)} send request(s) left unsettled by the last run read as unknown`);

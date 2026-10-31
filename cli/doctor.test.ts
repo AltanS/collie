@@ -530,11 +530,11 @@ describe("collie doctor — the contract", () => {
       // Four keys on every finding, plus `scope` on a crew one and ONLY on a crew one (ADR 0050).
       // Absent is the local answer, so a script written before the field keeps reading correctly.
       // The `collie` finding adds `instance` and `stateDir`, and a harness row `harness`, `binary`,
-      // `version` and `profileStatus` (1.24.1), a sends row `harness`, `window` and `counts` (M71
+      // `version` and `profileStatus` (1.24.1), a sends row `harness`, `window` and `counts` and `byCollie` (M71
       // spec 01), a holds row `harness` and `holds` (the one that says none is open carries `holds`
       // alone) and a screen row `harness` (spec 02); no other finding carries a fifth key.
       const keys = Object.keys(f).toSorted();
-      const extra = f.check === "collie" ? ["instance", "stateDir"] : f.check.startsWith("sends-") ? ["counts", "harness", "window"] : f.check.startsWith("holds") ? ["harness", "holds"] : f.check.startsWith("screen-") ? ["harness"] : [];
+      const extra = f.check === "collie" ? ["instance", "stateDir"] : f.check.startsWith("sends-") ? ["byCollie", "counts", "harness", "window"] : f.check.startsWith("holds") ? ["harness", "holds"] : f.check.startsWith("screen-") ? ["harness"] : [];
       expect(keys.filter((k) => k !== "scope" && !extra.includes(k))).toEqual(["check", "detail", "remedy", "status"]);
       if (keys.includes("scope")) expect(f.scope).toBe("crew");
       expect(["ok", "warn", "error", "skipped"]).toContain(f.status);

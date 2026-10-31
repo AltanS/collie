@@ -42,6 +42,19 @@ describe("accept", () => {
     expect(result.record.line).toBeUndefined();
   });
 
+  test("a written record carries the Collie version the store was built with, and one built without it carries none", () => {
+    const store = new RequestStore(join(dir, "sends"), () => 5000, "1.25.2");
+    store.accept(input());
+    expect(JSON.parse(readFileSync(join(dir, "sends", `${ID}.json`), "utf8")).collie).toBe("1.25.2");
+    expect(store.get(ID)?.collie).toBe("1.25.2");
+    // The field survives a later write of the same record.
+    store.markSubmitSent(ID);
+    expect(store.get(ID)?.collie).toBe("1.25.2");
+    const bare = new RequestStore(join(dir, "other"), () => 5000);
+    bare.accept(input());
+    expect(JSON.parse(readFileSync(join(dir, "other", `${ID}.json`), "utf8")).collie).toBeUndefined();
+  });
+
   test("keeps the text as the line Sent would keep, and nothing of a text that rule refuses (2026-10-21)", () => {
     const store = new RequestStore(join(dir, "sends"), () => 5000);
     const kept = store.accept(input({ text: "ok check please it's past 2pm  " }));
