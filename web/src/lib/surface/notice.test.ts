@@ -123,12 +123,18 @@ describe("readAboveNotice", () => {
     }
   });
 
+  // The update row's wordings: 2.1.303, 2.1.306, and 2.1.314 where it offers the `/restart` command
+  // (2026-10-31: under the survey, every send went manual again until the gap took it).
+  const UPDATE_WORDINGS = ["Restart to update", "Restart to apply", "/restart to apply"];
+
   it("reads the survey over the update row, and the same with a blank row between them", () => {
     const survey = ["● How is Claude doing this session? (optional)", "  1: Bad    2: Fine   3: Good   0: Dismiss"];
-    const update = `${" ".repeat(20)}✔ Update installed · Restart to update`;
-    for (const between of [[update], ["", update], [update, ""]]) {
-      const notice = noticeOf(screen([...survey, ...between]));
-      expect(notice?.keys.map((k) => k.key), JSON.stringify(between)).toEqual(["1", "2", "3", "0"]);
+    for (const wording of UPDATE_WORDINGS) {
+      const update = `${" ".repeat(20)}✔ Update installed · ${wording}`;
+      for (const between of [[update], ["", update], [update, ""]]) {
+        const notice = noticeOf(screen([...survey, ...between]));
+        expect(notice?.keys.map((k) => k.key), JSON.stringify(between)).toEqual(["1", "2", "3", "0"]);
+      }
     }
   });
 
@@ -152,10 +158,10 @@ describe("readAboveNotice", () => {
     ]);
   });
 
-  it("reads the transcript question over the update row of either wording", () => {
-    for (const word of ["update", "apply"]) {
-      const update = `${" ".repeat(20)}✔ Update installed · Restart to ${word}`;
-      expect(noticeOf(screen([...TRANSCRIPT, LETTER_KEYS, update]))?.keys.map((k) => k.key), word).toEqual(["y", "n", "d"]);
+  it("reads the transcript question over the update row of each wording", () => {
+    for (const wording of UPDATE_WORDINGS) {
+      const update = `${" ".repeat(20)}✔ Update installed · ${wording}`;
+      expect(noticeOf(screen([...TRANSCRIPT, LETTER_KEYS, update]))?.keys.map((k) => k.key), wording).toEqual(["y", "n", "d"]);
     }
   });
 
