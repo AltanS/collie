@@ -1,2 +1,0 @@
-{"v":1,"harness":"claude","version":"2.1.314","case":"rig.before-first-case","leg":"crew","recordedAt":"2026-10-30T12:17:54.858Z"}
-{"kind":"side","machine":"lead","ordinal":0,"request":{"api":"anthropic","model":"claude-haiku-5-5","stream":false,"tools":[],"prompt":"quota","tail":[],"context":"97294f05c3603881","path":"/v1/messages","digest":"fff8440c788898b4"},"response":{"status":429,"contentType":"application/json","body":"{\"type\":\"error\",\"error\":{\"type\":\"rate_limit_error\",\"message\":\"Error\"},\"request_id\":\"req_011CgYQcMiYmofA67f3fRtKC\"}"}}
