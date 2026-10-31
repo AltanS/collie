@@ -36,6 +36,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **collie doctor tells sends before a Collie update from sends after it.** Each send receipt now records the Collie version that wrote it, and a sends row whose seven-day window spans an update lists its counts per Collie version, newest first, so a refusal count from the old version is not read as a fault of the new one.
 - **The harness lab pre-approves its folder for pi, reruns a failed row for a named version, and labels the version from the binary it starts.** A fresh pi no longer blocks the lab or the canary on its trust card, a run that names a version is no longer skipped by an older interrupted row, and the canary reports the version of the binary it starts, not the first pi on PATH.
 
+### Docs
+
+- **The multiplexers page says pi and Oh My Pi panes have History and Chat on the core without a hook.** Collie finds their session log from the pane's folder; a fresh pane shows an empty Chat until the first reply.
+
 ## [1.25.2] - 2026-10-30
 
 A bugfix release, not urgent, that fixes failing inputs on the Herdr core (sends refused, cards that could not be answered, keys that lost their case) and takes two contributor fixes. It also fixes two failing inputs which the browser leg found on the core: a tap on a card refused as "changed" right after the screen moved, and keys that waited behind the core's slow history reads while a dialog showed. The history reads now run one at a time with a backoff that follows time alone, none runs on a pane the bridge reads as blocked, and a key the core did not confirm is reported as not confirmed and never sent twice. You need it if you run Collie on the Herdr core (the new herdr-app) or send to omp or pi there.

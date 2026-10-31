@@ -196,10 +196,11 @@ run `collie hooks install claude`, then restart the Claude in that pane.
    started from a shell that another agent opened. Oh My Pi's hook stays silent when `OMPCODE=1` is
    inherited from the parent agent. Start it from a fresh terminal.
 
-On tmux, zellij and tern only Claude Code reports a session, through Collie's beacon hooks. Run
+On tmux, zellij and tern Claude Code reports a session through Collie's beacon hooks. Run
 `collie hooks install claude` ([Collie writes hooks into Claude's own
-settings](multiplexers.md#collie-writes-hooks-into-claudes-own-settings)). The other agents have no
-Chat or History there.
+settings](multiplexers.md#collie-writes-hooks-into-claudes-own-settings)). On tmux, zellij and the
+Herdr core, pi and Oh My Pi need no hook: Collie finds their log from the pane's folder, and a fresh
+pane shows an empty Chat until the agent's first reply. The other agents have no Chat or History there.
 
 **A new Codex pane says it has no history yet.** Expected until its first turn. Codex reports its
 session to Herdr only when the first prompt is sent, not when it starts, so a fresh pane has no

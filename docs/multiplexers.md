@@ -250,15 +250,19 @@ What works:
 - History and Chat for a Claude pane, once `collie hooks install claude` is done. The core does not
   know the agent's conversation, so the hook supplies it from the terminal's `HC_TERMINAL_ID`. The
   hook never changes the agent name or the status the core reported.
+- History and Chat for a pi or Oh My Pi pane, with no hook. Collie finds the pane's session log from
+  the pane's folder: pi keeps one log folder per working directory, and the newest log whose header
+  names that folder is the pane's.
 
 What looks different on the core:
 
 - **The mirror has no colour.** The core hands out the screen as plain text. The phone shows the
   words and the layout of the screen, and none of the agent's colours.
-- **History needs a hook.** The core does not know the agent's conversation. A Claude pane has History
-  and Chat once `collie hooks install claude` is done. pi and Oh My Pi have no such hook, so their
-  panes have no History and no Chat card on the core. Their screen, their sends and their cards still
-  work.
+- **Claude's History needs a hook.** The core does not know the agent's conversation. A Claude pane has
+  History and Chat once `collie hooks install claude` is done. pi and Oh My Pi need no hook, because
+  Collie finds their log from the pane's folder. A fresh pi or Oh My Pi pane shows an empty Chat until
+  the agent's first reply, because pi writes its log only then. An older log in the same folder is not
+  shown for a pane whose program started after it, and `pi --resume` keeps its Chat.
 - **A send takes a few seconds longer.** The core holds a key for about three seconds after Collie
   types text. Collie waits for it, and a send to an agent takes about six seconds.
 - **The last viewer sets the width.** The terminal has the width of the last window that looked at it.
@@ -279,7 +283,7 @@ What the core cannot do:
 - Rename a terminal, a tab or a space, and create a space. The names belong to herdr-app.
 - Focus a terminal, so "Show in terminal" is missing. herdr-app keeps focus on its own screen.
 - Show colour. The core hands out the screen as text only.
-- Show History for an agent other than Claude yet, or for any pane before its hooks are installed.
+- Show History for a Claude pane before its hook is installed, or for an agent other than Claude, pi and Oh My Pi.
 - Show a terminal on another machine. Terminals of machines added to the core (`box/t7`) are not
   shown. Add that machine to your [crew](crew.md) and its own Collie shows them.
 - Open a worktree, or list sessions.
