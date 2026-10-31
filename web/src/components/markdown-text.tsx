@@ -2,14 +2,17 @@ import { createContext, useContext, useMemo, useState, type ReactNode } from "re
 
 import { useFileLinks, type FileLinkTarget } from "@/components/file-links";
 import { CopyableBlock } from "@/components/ui/copyable-block";
+import { MathText } from "@/components/math-text";
 import { WalkyIdChip, WalkyIds } from "@/components/walky-id-chip";
 import { useWalkyChips } from "@/components/walky-log";
 import { useLocale } from "@/hooks/use-locale";
+import { mathEngineOf, useDesignPrefs } from "@/lib/design";
 import { codeSpanPath, findFilePaths } from "@/lib/file-paths";
 import { t } from "@/lib/i18n";
 import { findBareUrls, headingAnchors, parseMarkdown, spansText, type MdBlock, type MdSpan } from "@/lib/markdown";
 import { closeStretch, composeStretches, liftStretches, parseStretches, stretches as allStretches } from "@/lib/stretch";
 import { splitHighlight } from "@/lib/transcript-search";
+import type { MdMath } from "@/lib/markdown-math";
 
 // Renders the Markdown AST as React elements. Every string from the log reaches the DOM as a TEXT
 // NODE — there is no `dangerouslySetInnerHTML` here and there must never be one. That is the repo's
@@ -22,6 +25,23 @@ import { splitHighlight } from "@/lib/transcript-search";
 // The active find query, threaded via context rather than a prop drilled through every nested span —
 // highlighting is a cross-cutting display concern, and the AST walk is already recursive.
 const QueryContext = createContext("");
+
+// A find hit, as text or as a whole formula. One literal for both, the one DESIGN.md §10 gap 6 lists
+// for a search highlight token.
+const FIND_MARK = "rounded-sm bg-amber-300/70 text-inherit dark:bg-amber-500/40";
+
+/** Find searches the original TeX; paint the equation as a whole without breaking its layout. */
+function MathRun({ math, display = false }: { math: MdMath; display?: boolean }) {
+  const query = useContext(QueryContext).trim().toLowerCase();
+  return (
+    <MathText
+      text={math.text}
+      source={math.source}
+      display={display || math.display === true}
+      mark={query !== "" && math.source.toLowerCase().includes(query) ? FIND_MARK : undefined}
+    />
+  );
+}
 
 /**
  * Where a link that is NOT a web address leads, as the screen showing the text decides it.
@@ -175,7 +195,7 @@ function Hit({ text }: { text: string }) {
     <>
       {pieces.map((piece, i) =>
         piece.hit ? (
-          <mark key={i} className="rounded-sm bg-amber-300/70 text-inherit dark:bg-amber-500/40">
+          <mark key={i} className={FIND_MARK}>
             {piece.text}
           </mark>
         ) : (
@@ -406,9 +426,11 @@ function LinkSpan({ span }: { span: Extract<MdSpan, { kind: "link" }> }) {
 }
 
 // Emphasis and links hold child spans (agents nest them — ``**`sha`**`` is routine), so this recurses
-// through <Spans>. `code` is the leaf.
+// through <Spans>. Code and math stay opaque to this walk.
 function Span({ span }: { span: MdSpan }) {
   switch (span.kind) {
+    case "math":
+      return <MathRun math={span} />;
     case "bold":
       return (
         <strong className="font-semibold">
@@ -500,19 +522,19 @@ interface OpenStretches {
  * The blocks to draw and the control over this text's stretches. With `drawn` false the control is
  * null and the blocks are the plain parse, exactly as the text was drawn before stretches existed.
  */
-function useStretchBlocks(text: string, withImages: boolean, drawn: boolean, query: string) {
-  const segments = useMemo(() => (drawn ? parseStretches(text) : null), [drawn, text]);
+function useStretchBlocks(text: string, withImages: boolean, drawn: boolean, query: string, math: boolean) {
+  const segments = useMemo(() => (drawn ? parseStretches(text, math) : null), [drawn, text, math]);
   const [open, setOpen] = useState<OpenStretches>(() => ({ keys: new Map(), opened: 0 }));
   // A FIND ALWAYS WINS (transcript-view.tsx): while a query is on screen every stretch is drawn open,
   // so a hit inside a long form is painted rather than hidden behind its short form. Sequence 0 makes
   // none of them the newest, so every one is drawn faded.
   const finding = drawn && query.trim() !== "";
   const blocks = useMemo(() => {
-    if (segments === null) return parseMarkdown(text, { images: withImages });
+    if (segments === null) return parseMarkdown(text, { images: withImages, math });
     const shown = finding ? new Map(allStretches(segments).map((s) => [s.key, 0])) : open.keys;
     const composed = composeStretches(segments, shown);
-    return liftStretches(parseMarkdown(composed.source, { images: withImages }), composed);
-  }, [segments, text, withImages, finding, open]);
+    return liftStretches(parseMarkdown(composed.source, { images: withImages, math }), composed);
+  }, [segments, text, withImages, finding, open, math]);
   const control = useMemo<StretchControl>(
     () => ({
       open: (key) => setOpen((was) => ({ keys: new Map(was.keys).set(key, was.opened + 1), opened: was.opened + 1 })),
@@ -528,6 +550,12 @@ export type MarkdownVariant = "chat" | "document";
 
 function Block({ block, anchor, variant }: { block: MdBlock; anchor: string | null; variant: MarkdownVariant }) {
   switch (block.kind) {
+    case "math":
+      return (
+        <CopyableBlock text={block.source}>
+          <MathRun math={block} display />
+        </CopyableBlock>
+      );
     case "heading": {
       // Levels 4-6 are rare in agent prose and don't earn another size step on a phone.
       if (variant === "document") {
@@ -671,7 +699,16 @@ export function MarkdownText({
 }) {
   const withImages = resolveImage !== undefined;
   const drawsStretches = useContext(StretchTextContext);
-  const { blocks, control } = useStretchBlocks(text, withImages, stretches && drawsStretches && text.includes("{{"), query);
+  // Math is the device's choice (Settings → Appearance). Off, `$` is a dollar and the parse is the
+  // one before math existed.
+  const math = mathEngineOf(useDesignPrefs()) !== "off";
+  const { blocks, control } = useStretchBlocks(
+    text,
+    withImages,
+    stretches && drawsStretches && text.includes("{{"),
+    query,
+    math,
+  );
   const anchors = useMemo(() => (headingIds ? headingAnchors(blocks) : null), [blocks, headingIds]);
   return (
     <QueryContext.Provider value={query}>

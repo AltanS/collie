@@ -274,6 +274,13 @@ export const es: Dictionary = {
   "settings.typeface.note.geist": "Simple y geométrica, con negrita real.",
   "settings.typeface.note.atkinson": "Creada para baja visión, con letras claras y negrita real.",
   "settings.typeface.note.operator": "Añadida por el operador de este collie.",
+  "settings.math.title": "Matemáticas",
+  "settings.math.description": "LaTeX en el chat y en archivos Markdown, en este dispositivo.",
+  "settings.math.engine": "Motor",
+  "settings.math.off": "Desactivado",
+  "settings.math.note.off": "Los signos de dólar quedan como texto. No descarga nada.",
+  "settings.math.note.katex": "Rápido y compacto. Carga sus fuentes al primer uso.",
+  "settings.math.note.mathjax": "Más soporte de TeX, dibujado en SVG. Una descarga mayor.",
 
   // --- settings.fonts ---
   "settings.fonts.title": "Fuente del terminal",

@@ -186,6 +186,42 @@ self.addEventListener("activate", (event: ExtendableEvent) => {
   );
 });
 
+// ── The math engines (lib/math/engine.ts) ───────────────────────────────────────────────────────
+//
+// `math/` holds KaTeX, MathJax and MathJax's font ranges, out of the precache (vite.config.ts,
+// `math/**` in globIgnores): a device on Off, the default, never fetches a byte of them. A device
+// that chose an engine fetches it on first use, and this route keeps what it fetched, cache-first,
+// so the engine also starts offline. What may be stored is the font cache's rule widened to the
+// three types the folder holds: an unredirected 200 that claims to be a script, a stylesheet or a
+// font, so a proxy's sign-in page is never cached as an engine.
+//
+// The names are content hashes that change with every build, and this worker does not know the
+// new build's list (it is not in the precache manifest). So an update empties the cache rather than
+// guessing which entries are stale: the engine is fetched again on its next use. The cost, stated
+// plainly: offline right after an update, a formula reads as its TeX source until the phone is
+// online once.
+const MATH_CACHE = MOUNT === "/" ? "collie-math" : `collie-math:${MOUNT}`;
+
+const mathStorable = (r: Response) =>
+  r.status === 200 && !r.redirected && /javascript|css|font/.test(r.headers.get("content-type") ?? "");
+
+registerRoute(
+  ({ url, sameOrigin }) => sameOrigin && url.pathname.startsWith(under("/math/")),
+  async ({ request }) => {
+    const cache = await caches.open(MATH_CACHE);
+    const hit = await cache.match(request);
+    if (hit) return hit;
+    const response = await fetch(request);
+    // Best-effort and off the response path, like the font cache's write.
+    if (mathStorable(response)) void cache.put(request, response.clone()).catch(() => null);
+    return response;
+  },
+);
+
+self.addEventListener("activate", (event: ExtendableEvent) => {
+  event.waitUntil(caches.delete(MATH_CACHE));
+});
+
 // `registerType: "autoUpdate"` means a fresh build should take over without a user gesture. With
 // injectManifest we own that lifecycle: skip the waiting phase on install, claim open clients on
 // activate. The message handler backs lib/pwa.ts's manual "tap to update" (postMessage SKIP_WAITING).
