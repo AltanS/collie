@@ -389,7 +389,23 @@ export default defineConfig({
     port: 5173,
     allowedHosts,
     proxy: {
-      "/api": { target: BRIDGE, changeOrigin: true },
+      "/api": {
+        target: BRIDGE,
+        changeOrigin: true,
+        // The bridge trusts only its own origin (bridge/server.ts § checkAccess), and `changeOrigin`
+        // rewrites Host to the bridge while the browser's Origin stays the dev server's. A request the
+        // browser made from THIS dev server's own page is same-origin here, so it is forwarded as
+        // the bridge's own origin. Any other Origin (a page from some other localhost port) goes
+        // through as it came and is refused.
+        configure: (proxy) => {
+          proxy.on("proxyReq", (proxyReq, req) => {
+            const origin = req.headers.origin;
+            if (origin !== undefined && req.headers.host !== undefined && origin === `http://${req.headers.host}`) {
+              proxyReq.setHeader("origin", new URL(BRIDGE).origin);
+            }
+          });
+        },
+      },
     },
   },
 });
