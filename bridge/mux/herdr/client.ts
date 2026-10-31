@@ -136,6 +136,11 @@ export interface WirePane {
     value?: string;
   } | null;
   /**
+   * Custom metadata tokens reported onto the pane (`pane.report_metadata`, herdr ≥ 0.7.4). Read for
+   * one key only, {@link MIRROR_SESSION_TOKEN}; optional because older servers omit it.
+   */
+  tokens?: Record<string, string> | null;
+  /**
    * Scroll geometry (herdr ≥ 0.7.2); optional so older servers that omit it still typecheck.
    *
    * `max_offset_from_bottom` is how far the pane can scroll UP — the depth of its scrollback ring —
@@ -223,6 +228,35 @@ export function paneAgentSession(raw: WirePane["agent_session"]): PaneAgentSessi
   if (typeof raw.value !== "string" || raw.value === "") return null;
   const agent = typeof raw.agent === "string" && raw.agent !== "" ? raw.agent : undefined;
   return { kind: raw.kind, value: raw.value, agent };
+}
+
+/**
+ * The pane metadata token herdr-mirror publishes on a mirror pane: the absolute path of its local
+ * tail copy of the remote agent's pi/omp session journal (header row + the last N MB).
+ *
+ * It travels as a token because Herdr cannot carry it as `agent_session`: herdr 0.9.x accepts a pi
+ * or omp session only for a pane in which it detects that agent's process, and a mirror pane runs
+ * herdr-mirror. (A kept one would also make a cold restore type `omp --resume` into the pane.)
+ */
+export const MIRROR_SESSION_TOKEN = "mirror_session_path";
+
+/**
+ * A mirror pane's session ref, read off {@link MIRROR_SESSION_TOKEN}, or null.
+ *
+ * Only when Herdr reported no `agent_session` at all, so a pane's own report always wins (even one
+ * the caller then drops as stale), and only for pi/omp. The value is as untrusted as any `path`
+ * ref: the journal adapter's confinement under its sessions roots, and its own file checks, still
+ * decide whether anything is read.
+ */
+export function mirrorSessionRef(
+  raw: Pick<WirePane, "agent" | "agent_session" | "tokens">,
+): PaneAgentSession | null {
+  if (raw.agent_session !== null && raw.agent_session !== undefined) return null;
+  // pi's JSONL journal, which omp shares: the only journals herdr-mirror copies
+  if (raw.agent !== "pi" && raw.agent !== "omp") return null;
+  const value = raw.tokens?.[MIRROR_SESSION_TOKEN];
+  if (typeof value !== "string" || value === "") return null;
+  return { kind: "path", value };
 }
 
 /** Wire params of `tab.create`. `focus` is always false — never yank the desktop TUI's focus. */
