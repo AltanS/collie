@@ -16,6 +16,11 @@
 //   five scenarios and dropping it for `journal` would have tested two different pis, and a reader
 //   fault that only appears with sessions on would then hide in the five.
 //
+// `--approve` (`-a`, "Trust project-local files for this run") is on the line since 2026-10-31. Since pi 1.2.0 a
+// fresh folder draws "Trust project folder?" before the box, and the canary's folder is always fresh. The flag
+// is one-time: it saves no decision into the operator's `~/.pi/agent/trust.json`, and pi 1.1.0 to 1.4.0 all
+// know it. The harness lab starts pi with the same flag (lab/harnesses.ts).
+//
 // The residue is one pi session per run, in the same place the other three already leave theirs. If
 // that ever matters, the fix is isolating EVERY agent's store, not exempting one agent again.
 
@@ -24,7 +29,7 @@ import { backspaceSweep, launchLine, type AgentProfile } from "./profile";
 export const pi: AgentProfile = {
   agent: "pi",
   versionCommand: ["pi", "--version"],
-  launch: (cols, bin = "pi") => launchLine(cols, `${bin} --thinking off`),
+  launch: (cols, bin = "pi") => launchLine(cols, `${bin} --approve --thinking off`),
   startupAnswer: () => null,
   clearKeys: backspaceSweep,
   clearFallback: null,

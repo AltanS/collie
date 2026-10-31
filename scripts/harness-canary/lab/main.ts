@@ -13,7 +13,7 @@ import { dirname, join } from "node:path";
 import { exitCodeOf, fileNotify, parseCli, repoProblem, runCandidates, stateDirOf, summaryLine, sweepAtStart, USAGE, pending, type Candidate } from "./cli";
 import { FEEDS, readFeed } from "./feeds";
 import { realPorts } from "./ports";
-import { findRow, loadLedger } from "./lab-ledger";
+import { findRow, loadLedger, shouldRun } from "./lab-ledger";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 
@@ -41,7 +41,7 @@ async function main(): Promise<number> {
     }
   }
 
-  const candidates: Candidate[] = cli.pairs.map((pair) => ({ ...pair, source: "named on the command line" }));
+  const candidates: Candidate[] = cli.pairs.map((pair) => ({ ...pair, source: "named on the command line", named: true }));
   let feedErrors = 0;
   if (cli.pairs.length === 0) {
     for (const harness of cli.harnesses) {
@@ -60,7 +60,8 @@ async function main(): Promise<number> {
     const ledger = loadLedger(cli.ledger, Date.now());
     for (const candidate of candidates) {
       const row = findRow(ledger, candidate.harness, candidate.version);
-      console.log(`${candidate.harness} ${candidate.version}: ${row === undefined ? "would run" : `skip, ledger says ${row.result} on ${row.date}`}  (${candidate.source})`);
+      const runs = shouldRun(ledger, candidate.harness, candidate.version, candidate.named === true);
+      console.log(`${candidate.harness} ${candidate.version}: ${row === undefined ? "would run" : runs ? `would run again, ledger says ${row.result} on ${row.date}` : `skip, ledger says ${row.result} on ${row.date}`}  (${candidate.source})`);
     }
     const next = pending(candidates, cli.ledger, Date.now(), cli.maxRuns);
     console.log(`plan: ${String(next.length)} pairs would run in a throwaway tmux and an isolated config dir; nothing was run`);

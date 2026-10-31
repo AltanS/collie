@@ -2,9 +2,10 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CODEX_SETTINGS, codexConfig, codexTrust, HARNESSES, harnessSpec, npmInstallCommand, OPENCODE_ASK_FILE, runDirs, TURN_CAP } from "./harnesses";
+import { binaryPath, CODEX_SETTINGS, codexConfig, codexTrust, HARNESSES, harnessSpec, npmInstallCommand, OPENCODE_ASK_FILE, runDirs, TURN_CAP } from "./harnesses";
 import { REPLY_ROW } from "./legs";
 import { prepareRun } from "./seed";
+import { paneCommand } from "./tmux";
 
 let roots: string[] = [];
 afterEach(() => {
@@ -144,5 +145,20 @@ describe("the reply row", () => {
 
   test("it does not match the message that was typed, the composer or a longer word", () => {
     for (const row of ["› Reply with only the word OK.", "  ┃  Reply with only the word OK.", "> Ask Codex to do anything", "● OKAY", "Worked for 1s"]) expect(REPLY_ROW.test(row)).toBe(false);
+  });
+});
+
+describe("pi in the lab", () => {
+  const dirs = runDirs("/lab/pi-1.4.0");
+  test("pi starts with --approve, so the fresh project folder draws no trust card", () => {
+    expect(harnessSpec("pi").startArgs(dirs)).toEqual(["--approve", "--thinking", "off"]);
+  });
+
+  test("the pane runs the binary of the lab's own install prefix by path, never `pi` from PATH", () => {
+    const spec = harnessSpec("pi");
+    const line = paneCommand({ PATH: "/home/u/node_modules/.bin:/usr/bin" }, binaryPath(dirs, spec), spec.startArgs(dirs));
+    expect(binaryPath(dirs, spec)).toBe("/lab/pi-1.4.0/bin/node_modules/.bin/pi");
+    expect(line).toContain(" '/lab/pi-1.4.0/bin/node_modules/.bin/pi' '--approve' '--thinking' 'off'");
+    expect(line).not.toMatch(/ '?pi'? '--/u);
   });
 });

@@ -2,6 +2,8 @@
 // startup screens it paints in a fresh project, how to clear a draft without risk, and how to leave.
 // Nothing here judges a screen; Collie's readers do that (readers.ts).
 
+import { accessSync, constants } from "node:fs";
+import { delimiter, join } from "node:path";
 import type { CanaryAgent } from "../args";
 
 export interface AgentProfile {
@@ -41,6 +43,37 @@ export function launchLine(cols: number | null, command: string): string {
 /** A path as one shell word: as it is when it needs no quoting, else in single quotes. */
 export function shellWord(word: string): string {
   return /^[\w./~+-]+$/.test(word) ? word : `'${word.replaceAll("'", "'\\''")}'`;
+}
+
+/** A PATH entry that a package runner put there (`bunx` and `npx` add every ancestor's `node_modules/.bin`). */
+function isLocalBin(dir: string): boolean {
+  return /(^|[\\/])node_modules[\\/]\.bin[\\/]*$/u.test(dir);
+}
+
+/**
+ * The binary the canary measures, as an absolute path: the first executable `name` on `pathVar`,
+ * skipping `node_modules/.bin` entries, or null. One rule for every agent. `bunx` puts a stray
+ * `~/node_modules/.bin` in front of PATH, and a pi 1.1.0 there won over the pi the operator runs
+ * (2026-10-31). The version is read from this path and the launch line calls this path, so the label
+ * and the process cannot name two binaries. Same rule as the browser leg's `onPath` (web/e2e/rig/bins.ts).
+ */
+export function resolveBinary(name: string, pathVar: string = process.env.PATH ?? ""): string | null {
+  for (const dir of pathVar.split(delimiter)) {
+    if (dir === "" || isLocalBin(dir)) continue;
+    const path = join(dir, name);
+    try {
+      accessSync(path, constants.X_OK);
+      return path;
+    } catch {
+      // not here: the next directory
+    }
+  }
+  return null;
+}
+
+/** The profile's version command, run through `bin` in place of its command word. */
+export function versionCommandThrough(profile: AgentProfile, bin: string): readonly string[] {
+  return [bin, ...profile.versionCommand.slice(1)];
 }
 
 /** The same agent, started through `bin` instead of its own command word (`--via`). */
