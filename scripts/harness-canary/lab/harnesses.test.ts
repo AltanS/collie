@@ -157,8 +157,9 @@ describe("pi in the lab", () => {
   test("the pane runs the binary of the lab's own install prefix by path, never `pi` from PATH", () => {
     const spec = harnessSpec("pi");
     const line = paneCommand({ PATH: "/home/u/node_modules/.bin:/usr/bin" }, binaryPath(dirs, spec), spec.startArgs(dirs));
-    expect(binaryPath(dirs, spec)).toBe("/lab/pi-1.4.0/bin/node_modules/.bin/pi");
-    expect(line).toContain(" '/lab/pi-1.4.0/bin/node_modules/.bin/pi' '--approve' '--thinking' 'off'");
+    const expected = join(dirs.bin, "node_modules", ".bin", "pi");
+    expect(binaryPath(dirs, spec)).toBe(expected);
+    expect(line).toContain(` '${expected}' '--approve' '--thinking' 'off'`);
     expect(line).not.toMatch(/ '?pi'? '--/u);
   });
 });
