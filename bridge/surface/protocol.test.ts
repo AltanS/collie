@@ -4070,9 +4070,12 @@ describe("real screens from the fixture corpus", () => {
   // notice path. The field record: ~/.local/state/collie-next/surface/examples/01792385882274-*.json.
   const SURVEY_ROWS = ["● How is Claude doing this session? (optional)", "  1: Bad    2: Fine   3: Good   0: Dismiss"];
   const UPDATE_ROW = `${" ".repeat(40)}✔ Update installed · Restart to update`;
+  // 2026-10-31, Claude Code 2.1.314: where it offers the `/restart` command, the row names it, and a
+  // send under the survey was refused `unconfirmed` (single-key cue, modal unreadable) again.
+  const RESTART_COMMAND_ROW = `${" ".repeat(40)}✔ Update installed · /restart to apply`;
 
   test("on the rating survey over the update row: a sentence goes on one tap, with or without a blank row between", async () => {
-    for (const between of [[UPDATE_ROW], ["", UPDATE_ROW]]) {
+    for (const between of [[UPDATE_ROW], ["", UPDATE_ROW], [RESTART_COMMAND_ROW]]) {
       const { pane, send } = rig();
       pane.over = [...SURVEY_ROWS, ...between];
       const answer = await send("ok merge the five, running the crew update now");
@@ -4083,11 +4086,11 @@ describe("real screens from the fixture corpus", () => {
   });
 
   test("on the rating survey over the update row: a digit takes the notice path and answers the survey without Enter", async () => {
-    for (const digit of ["0", "1", "2", "3"]) {
+    for (const [digit, update] of ["0", "1", "2", "3"].flatMap((d) => [UPDATE_ROW, RESTART_COMMAND_ROW].map((row) => [d, row] as const))) {
       const { pane, send } = rig();
-      pane.over = [...SURVEY_ROWS, UPDATE_ROW];
+      pane.over = [...SURVEY_ROWS, update];
       const first = await send(digit);
-      expect(first.receipt, digit).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
+      expect(first.receipt, `${digit} ${update.trim()}`).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
       expect(first.cause).toBe("notice_key");
       expect(first.offers).toEqual(["commit", "keys"]);
       pane.afterInput = answersDigit;
