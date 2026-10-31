@@ -403,15 +403,28 @@ describe("Pane history — agentSessionRef", () => {
     expect(await screen.findByRole("button", { name: "Conversation history" })).toBeInTheDocument();
   });
 
-  it("is withdrawn when it cannot — and SAYS SO, in the adapter's words", async () => {
+  it("is withdrawn when it cannot and the pane has no session — and SAYS SO, in the adapter's words", async () => {
     declares(
       { agentSessionRef: false },
       { agentSessionRef: "This multiplexer keeps no agent session log for Collie to read." },
     );
-    chat();
+    chat({ hasSession: false });
     expect(await screen.findByText(/keeps no agent session log/i)).toBeInTheDocument();
     await openPaneMenu();
     expect(screen.queryByRole("button", { name: "Conversation history" })).toBeNull();
+  });
+
+  // M79 crew 12: pi on a herdr-core member without Collie hooks. The core names no session, pi's
+  // adapter finds it by folder, and the bridge says so with `hasSession`.
+  it("stays reachable, with no note, for a pane whose harness found its own session", async () => {
+    declares(
+      { agentSessionRef: false },
+      { agentSessionRef: "This multiplexer keeps no agent session log for Collie to read." },
+    );
+    chat({ hasSession: true });
+    await openPaneMenu();
+    expect(await screen.findByRole("button", { name: "Conversation history" })).toBeInTheDocument();
+    expect(screen.queryByText(/keeps no agent session log/i)).toBeNull();
   });
 
   it("says nothing when the capability is there — no Herdr operator gains an explanation", async () => {

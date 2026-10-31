@@ -129,7 +129,7 @@ import { paneName, panePlaceParts } from "@/lib/pane-name";
 import { paneHeaderLine, paneProgress, paneSubtitle } from "@/lib/pane-marks";
 import { panesOfTab } from "@/lib/pane-ordinal";
 import { ExperimentalBadge } from "@/components/experimental-badge";
-import { useMuxCapability } from "@/lib/mux-capability";
+import { paneSessionLog, useMuxCapability } from "@/lib/mux-capability";
 import { paneInRepo } from "@/lib/branch-off";
 import { useOptionalRootData } from "@/lib/route-data";
 import { hasJournalAdapter, reportsSessionOnFirstPrompt } from "@/lib/journal-agents";
@@ -1027,7 +1027,9 @@ export function AgentChat({
   // session", which is a per-pane answer an operator can act on by starting an agent; this one says
   // "nothing here will ever name one", which is a property of the multiplexer and needs saying out
   // loud. Hiding it is what leaves someone wondering whether Collie is broken.
-  const sessionLog = useMuxCapability("agentSessionRef", scope);
+  // A pane that already has a session (a harness that finds its own by folder) reads its log whatever
+  // the multiplexer names (lib/mux-capability.ts paneSessionLog).
+  const sessionLog = paneSessionLog(useMuxCapability("agentSessionRef", scope), agent?.hasSession);
   const historyAvailable = Boolean(agent?.hasSession) && sessionLog.capable;
   // A FOURTH state, and the per-pane sibling of the third (#137). `hasSession` folds two facts into
   // one flag bridge-side — "this pane named a session" AND "this agent has a journal adapter" — so

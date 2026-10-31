@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { keysSendable, muxCapability, muxTopologyLatency, scopedMuxConfig, sessionMuxConfig } from "./mux-capability";
+import { keysSendable, muxCapability, muxTopologyLatency, paneSessionLog, scopedMuxConfig, sessionMuxConfig } from "./mux-capability";
 import type { MuxConfig } from "./types";
 
 // The two rules every gated control in the app leans on, asserted where they live rather than
@@ -217,5 +217,27 @@ describe("sessionMuxConfig: capabilities per session card (M55)", () => {
     const fetched = cfg({ name: "fetched", capabilities: { paneGrid: false } });
     expect(sessionMuxConfig(machine, card, fetched)).toBe(fetched);
     expect(sessionMuxConfig(machine, card, null)).toBe(machine);
+  });
+});
+
+describe("paneSessionLog — a pane that has a session reads its log whatever the multiplexer names (M79 crew 12)", () => {
+  const absent = muxCapability(
+    cfg({ capabilities: { agentSessionRef: false }, notes: { agentSessionRef: "keeps no conversation id" } }),
+    "agentSessionRef",
+  );
+
+  it("a pi pane on a multiplexer that names no session found its session by folder: capable, no note", () => {
+    expect(paneSessionLog(absent, true)).toEqual({ capable: true, note: "", mux: "reference" });
+  });
+
+  it("a pane with no session keeps the multiplexer's answer and its words", () => {
+    expect(paneSessionLog(absent, false)).toBe(absent);
+    expect(paneSessionLog(absent, undefined)).toBe(absent);
+  });
+
+  it("a multiplexer that names sessions is untouched either way", () => {
+    const herdr = muxCapability(cfg({ capabilities: { agentSessionRef: true } }), "agentSessionRef");
+    expect(paneSessionLog(herdr, true)).toBe(herdr);
+    expect(paneSessionLog(herdr, false)).toBe(herdr);
   });
 });

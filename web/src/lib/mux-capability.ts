@@ -92,6 +92,21 @@ export function muxCapability(cfg: MuxConfig | null, capability: MuxCapability):
 }
 
 /**
+ * Whether THIS pane has a session log to read: the multiplexer's `agentSessionRef`, unless the pane
+ * already has a session.
+ *
+ * The capability says whether the multiplexer names an agent's session. A harness whose journal
+ * adapter finds its own session by the pane's folder (pi and omp, Muse, OpenClaw, Kiro, dsh-tui:
+ * `DISCOVERS_OWN_SESSIONS` bridge-side) has one on a multiplexer that names none, for example
+ * herdr-core with no Collie hooks installed (M79 crew 12). The bridge folds that into the pane's
+ * `hasSession`, so a pane that has one reads as capable and its Chat, History and strip read the
+ * log. The capability and its note still speak for every pane that has no session.
+ */
+export function paneSessionLog(capability: MuxCapabilityState, hasSession: boolean | undefined): MuxCapabilityState {
+  return hasSession === true && !capability.capable ? { ...capability, capable: true, note: "" } : capability;
+}
+
+/**
  * Whether a bridge SAID a capability is present. The opposite default to {@link muxCapability}'s, and
  * only for the program's own controls (`steerTurn`, `abortTurn`, `starters`).
  *

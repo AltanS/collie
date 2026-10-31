@@ -23,7 +23,7 @@ import type { BeltIntent } from "@/lib/belt-intent";
 import { splitLines } from "@/lib/blocks";
 import { stopFor } from "@/lib/harness-bar";
 import { t } from "@/lib/i18n";
-import { useMuxCapability } from "@/lib/mux-capability";
+import { paneSessionLog, useMuxCapability } from "@/lib/mux-capability";
 import { useOperatorCommands } from "@/lib/operator-config";
 import { paneGitHead } from "@/lib/git-head";
 import { paneName } from "@/lib/pane-name";
@@ -170,7 +170,7 @@ export function PaneColumnBody({
   const dash = useDashPrefs();
   const { prefs } = useDisplayPrefs();
   const operatorCommands = useOperatorCommands();
-  const sessionLog = useMuxCapability("agentSessionRef", scope);
+  const sessionLog = paneSessionLog(useMuxCapability("agentSessionRef", scope), pane.hasSession);
   const gridless = !useMuxCapability("paneGrid", scope).capable;
   const isShell = pane.kind === "shell";
   // The body the device would draw for this pane, by the pane view's own first test: Chat where the

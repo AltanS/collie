@@ -9,7 +9,7 @@ import { StretchTextContext } from "@/components/markdown-text";
 import { TranscriptView } from "@/components/transcript-view";
 import { fetchHistory } from "@/lib/api";
 import { HISTORY_PAGE_SIZE, type HistoryData } from "@/lib/loaders";
-import { useMuxCapability } from "@/lib/mux-capability";
+import { paneSessionLog, useMuxCapability } from "@/lib/mux-capability";
 import { panePath } from "@/lib/nav";
 import { setStatus } from "@/lib/status";
 import { matchingIndexed, searchIndex, step, userTurnIndices } from "@/lib/transcript-search";
@@ -62,9 +62,6 @@ export function HistoryRoute() {
   const { paneId = "" } = useParams();
   const nav = useNav();
   const scope = data.scope;
-  // Whether an agent session log can exist here at all — a property of the multiplexer THIS PANE's
-  // machine runs (M22/03), not of the pane. See the empty-state branch below for what it changes.
-  const sessionLog = useMuxCapability("agentSessionRef", scope);
   // The chosen terminal font (Settings → Terminal font) — same source and same idiom as the live
   // pane mirror (components/agent-chat.tsx). This route renders the same agent transcript, just
   // scrolled back further, so it must not fall back to the app's own face while the live view
@@ -75,6 +72,10 @@ export function HistoryRoute() {
   const agent =
     root.agents.find((a) => a.paneId === paneId) ??
     root.shellPanes.find((p) => p.paneId === paneId);
+  // Whether an agent session log can exist here at all — a property of the multiplexer THIS PANE's
+  // machine runs (M22/03), unless the pane already has a session its harness found by folder (M79).
+  // See the empty-state branch below for what it changes.
+  const sessionLog = paneSessionLog(useMuxCapability("agentSessionRef", scope), agent?.hasSession);
 
   // Pages walked back beyond the first request (only reachable on a log longer than HISTORY_PAGE_SIZE).
   const [older, setOlder] = useState<TranscriptEntry[]>([]);
