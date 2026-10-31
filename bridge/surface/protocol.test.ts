@@ -1177,6 +1177,31 @@ class HerdrCodexPane extends FakePane {
   }
 }
 
+describe("a pane too short to draw its input box (2026-10-30)", () => {
+  test("a read of fewer rows than the box takes is refused unconfirmed with the short_pane cause and the rows named; a read of enough rows keeps the plain line", async () => {
+    const pane = new FakePane("claude");
+    // A Claude Code pane squeezed to two rows by the splits beside it draws only its status rows.
+    pane.fixed = ["  [Fable 5.1 (1000K) effort:high thinking] ▓░░░░░░░░░ 18% | $0,00 | 5h:2% 7d:39%", "  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← 4 agents"].join("\n");
+    const { send } = rig({ pane });
+    const short = await send("do it");
+    expect(short.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
+    expect(short.cause).toBe("short_pane");
+    expect(short.offers).toEqual(["commit", "keys"]);
+    expect(short.rowsHash).toBeDefined();
+    expect(short.detail).toBe(
+      "The read holds 2 rows, and the claude input box takes at least 3. The pane may be too short to draw it: zoom or resize it on the desktop, or close the panes beside it in its tab, then send again.",
+    );
+    expect(pane.calls).toEqual([]);
+    // Three rows with no box: enough for the box, so the screen is one Collie cannot read, not a short pane.
+    pane.fixed = ["⏺ Done.", "  [Fable 5.1 (1000K) effort:high thinking] ▓░░░░░░░░░ 18% | $0,00 | 5h:2% 7d:39%", "  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← 4 agents"].join("\n");
+    const tall = await send("do it");
+    expect(tall.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed" });
+    expect(tall.cause).toBeUndefined();
+    expect(tall.detail).toBe("Collie cannot read this screen. Check the pane, then tap Type here.");
+    expect(pane.calls).toEqual([]);
+  });
+});
+
 describe("a manual send compares less (M56 send drill, 2026-10-16)", () => {
   test("Codex hides its hint row once the box holds a character: the manual Send passes the probe and is sent", async () => {
     const pane = new CodexPane();

@@ -478,7 +478,8 @@ export function readSend(reply: SendReply): SendReading {
  * the reasons whose bridge line repeats the phone's sentence: `unconfirmed`, `stale_surface`, `busy`,
  * `pane_gone`, `draft_present`, and `not_free` when the line is the plain one. Every other reason,
  * and every outcome that is no refusal, keeps the line: it says what the phone's sentence does not
- * (a `not_free` that names what is open, a dialog that Enter may have answered).
+ * (a `not_free` that names what is open, a dialog that Enter may have answered). An `unconfirmed`
+ * with the `short_pane` cause keeps it too: the line names the rows read and what to resize.
  */
 const REPEATS_THE_NOTE: ReadonlySet<SendReason> = new Set(["unconfirmed", "stale_surface", "busy", "pane_gone", "draft_present"]);
 const PLAIN_NOT_FREE = "The input box is not free.";
@@ -486,6 +487,7 @@ const PLAIN_NOT_FREE = "The input box is not free.";
 function ownSentence(reply: SendReply): boolean {
   if (reply.outcome !== "refused" || reply.reason === null) return false;
   if (reply.cause === "stale_screen") return true;
+  if (reply.cause === "short_pane") return false;
   if (REPEATS_THE_NOTE.has(reply.reason)) return true;
   return reply.reason === "not_free" && reply.detail === PLAIN_NOT_FREE;
 }

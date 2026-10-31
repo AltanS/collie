@@ -1516,6 +1516,34 @@ const STEER_MESSAGE_ONLY = "Only a message can steer a turn, not a command.";
 const STEER_NOT_TAKEN = "The steer key went out, but the text is still in the box.";
 /** The detail of a steer with no sign either way (M69). */
 const STEER_NO_EVIDENCE = "The steer key went out, but the screen did not show whether the agent took it.";
+/** The `unconfirmed` detail of a screen Collie cannot read: the same words as the phone's catalog line, which hides it. */
+const MANUAL_DETAIL = "Collie cannot read this screen. Check the pane, then tap Type here.";
+const SHORT_PANE: SendCause = "short_pane";
+
+/**
+ * The rows a profile's input box takes on the screen: its prompt row and each edge the harness draws
+ * (a blank or open edge takes none). Claude Code's rule, prompt and rule take three.
+ */
+function boxRows(profile: Profile): number {
+  const { top, bottom } = profile.idle.frame;
+  return (top.blank === true ? 0 : 1) + 1 + (bottom.blank === true || bottom.open === true ? 0 : 1);
+}
+
+/**
+ * The `unconfirmed` detail of a read that holds fewer rows than the box takes (cause `short_pane`), or
+ * null. A multiplexer never reads more rows than the viewport holds, so a read that short on a screen
+ * with no box says the pane cannot draw one: a tab that fills with splits squeezes its panes (seven
+ * review shells left a Claude Code pane two rows tall, 2026-10-30), and the person fixes the layout, not
+ * the screen. The manual Send stays offered: the harness takes keys it cannot draw.
+ */
+function shortPaneDetail(harness: string, snap: Snap, profile: Profile | null): string | null {
+  if (profile === null) return null;
+  const needs = boxRows(profile);
+  const rows = snap.rows.length;
+  if (rows >= needs) return null;
+  return `The read holds ${rows === 1 ? "one row" : `${String(rows)} rows`}, and the ${harness} input box takes at least ${String(needs)}. The pane may be too short to draw it: zoom or resize it on the desktop, or close the panes beside it in its tab, then send again.`;
+}
+
 /** The `unconfirmed` detail of a send whose whole text, or first line, is one of the keys a notice above the box printed. */
 const NOTICE_KEY_DETAIL = "That message would answer the notice above the box. Check the pane, then tap Type here.";
 /** The detail of a notice digit refused where no commit can go ahead (a running turn, a Replace). */
@@ -4280,7 +4308,9 @@ export class SendProtocol {
       throw draftRefusal(state, s0);
     }
     if (takesManualSend(surface)) {
-      this.gateManual(state, s0, "Collie cannot read this screen. Check the pane, then tap Type here.");
+      const short = shortPaneDetail(state.target.harness, s0, state.match?.profile ?? null);
+      if (short === null) this.gateManual(state, s0, MANUAL_DETAIL);
+      else this.gateManual(state, s0, short, SHORT_PANE);
       return;
     }
     throw new Ended("refused", "not_free", { surface, detail: "The input box is not free." });
