@@ -19,13 +19,14 @@
 // treated as hostile input and confined to pi's own sessions root like everything else — see
 // journal/files.ts. The id fallback is supported too, since the hook uses it when no file is open yet.
 
-import { lstat, readdir } from "node:fs/promises";
+import { lstat, readdir, stat } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 
 import type { CacheProbe } from "../cache/engine.ts";
 import type { JsonObject, JsonValue } from "../json.ts";
 import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import { asRecord, asText, FileSum, probeTail, tokenCount, walkBack } from "./cache-probe.ts";
+import { processStartMs } from "./process-start.ts";
 import { type MeasuredContext, piAgentDirLookups, WindowCatalog } from "./model-window.ts";
 import {
   containedRealpath,
@@ -1035,14 +1036,22 @@ export class PiTranscriptSource implements TranscriptSource {
 
   private readonly places: PiPlaces;
 
+  private readonly processStart: (pid: number) => Promise<number | null>;
+
   /**
    * One sessions directory or several (a second `PI_CODING_AGENT_DIR`), searched in order. `places`
    * is the home and temp folder the harness names its folders from; the bridge's own by default,
-   * since the harness runs on the bridge's machine. Tests hand in their own.
+   * since the harness runs on the bridge's machine. Tests hand in their own. `options.processStartMs`
+   * answers when a process started (default: the real one); tests inject a fake so nothing forks.
    */
-  constructor(roots: string | readonly string[], places: PiPlaces = { home: homedir(), tmp: tmpdir() }) {
+  constructor(
+    roots: string | readonly string[],
+    places: PiPlaces = { home: homedir(), tmp: tmpdir() },
+    options: PiSourceOptions = {},
+  ) {
     this.roots = rootList(roots);
     this.places = places;
+    this.processStart = options.processStartMs ?? processStartMs;
   }
 
   /**
@@ -1055,6 +1064,12 @@ export class PiTranscriptSource implements TranscriptSource {
    * newest such log (by mtime, so a resumed session that is being written wins) is the pane's.
    * Bounded: a few folders read, {@link MAX_DISCOVER_CANDIDATES} files stat'd, and at most
    * {@link MAX_DISCOVER_READS} heads read, newest first.
+   *
+   * A log that started before the pane's harness process is never the pane's session (M79 spec 06):
+   * pi writes no log before its first reply, so a fresh pane in a folder with an older log would
+   * show that older conversation. When `hints.processes` names a pid whose start time is known, the
+   * logs that started more than {@link START_SLACK_MS} before it are skipped; with no pid or no
+   * readable start the folder walk stands as it was.
    *
    * With a pi or omp neighbour in the same folder (`hints.shared`) the answer is no session, because
    * the newest log could be the neighbour's (#508). The answer is an `id` ref, so it goes through the
@@ -1087,7 +1102,14 @@ export class PiTranscriptSource implements TranscriptSource {
       }
     }
     candidates.sort((a, b) => b.mtimeMs - a.mtimeMs);
-    for (const candidate of candidates.slice(0, MAX_DISCOVER_READS)) {
+    const harnessStartMs = candidates.length === 0 ? null : await this.harnessStart(hints);
+    const eligible: typeof candidates = [];
+    for (const candidate of candidates) {
+      if (eligible.length >= MAX_DISCOVER_READS) break;
+      if (harnessStartMs !== null && (await predatesHarness(candidate, harnessStartMs))) continue;
+      eligible.push(candidate);
+    }
+    for (const candidate of eligible) {
       const contained = await containedRealpath(candidate.path, candidate.root);
       if (contained === null) continue;
       if ((await sessionCwdOf(contained)) !== cwd) continue;
@@ -1095,6 +1117,13 @@ export class PiTranscriptSource implements TranscriptSource {
       return { kind: "id", value: candidate.id };
     }
     return null;
+  }
+
+  /** When the pane's harness process started: the first foreground process with a pid, or null. */
+  private async harnessStart(hints: DiscoverHints | undefined): Promise<number | null> {
+    const pid = hints?.processes?.find((p) => p.pid !== undefined)?.pid;
+    if (pid === undefined) return null;
+    return this.processStart(pid);
   }
 
   async resolve(ref: AgentSessionRef): Promise<string | null> {
@@ -1208,6 +1237,48 @@ export function piJournal(roots: string | readonly string[]): JournalAdapter {
 export interface PiPlaces {
   readonly home: string;
   readonly tmp: string;
+}
+
+/** What a {@link PiTranscriptSource} takes besides its roots; tests inject a fake start function. */
+export interface PiSourceOptions {
+  readonly processStartMs?: (pid: number) => Promise<number | null>;
+}
+
+/**
+ * How much earlier than the harness process a log may start and still count as its own. The
+ * process start has about one second of precision (clock ticks, `ps` elapsed seconds) and the
+ * harness names its log a moment after it starts, so a log written right at the start must not be
+ * lost to rounding. A log older than this is a previous run's.
+ */
+const START_SLACK_MS = 5000;
+
+/**
+ * When a session log started: the ISO time in its file name (`2026-10-30T10-00-00-000Z_<id>.jsonl`,
+ * colons written as dashes), else the file's birth time (ctime where the file system keeps none).
+ * Infinity when neither is readable, so an unreadable log is never skipped by the start rule.
+ */
+async function logStartMs(path: string): Promise<number> {
+  const stamp = /(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})(?:[-.](\d{1,3}))?Z_/u.exec(basename(path));
+  if (stamp !== null) {
+    const parsed = Date.parse(`${stamp[1]}T${stamp[2]}:${stamp[3]}:${stamp[4]}.${(stamp[5] ?? "0").padEnd(3, "0")}Z`);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  try {
+    const st = await stat(path);
+    return st.birthtimeMs > 0 ? st.birthtimeMs : st.ctimeMs;
+  } catch {
+    return Number.POSITIVE_INFINITY;
+  }
+}
+
+/**
+ * True when `log` belongs to an earlier run than the harness process that started at `harnessStartMs`:
+ * it started before that (minus the slack) AND nothing wrote to it since the process started. A
+ * resumed session keeps its old file name but is being written, so its mtime clears it.
+ */
+async function predatesHarness(log: { path: string; mtimeMs: number }, harnessStartMs: number): Promise<boolean> {
+  if (log.mtimeMs >= harnessStartMs) return false;
+  return (await logStartMs(log.path)) < harnessStartMs - START_SLACK_MS;
 }
 
 /** Most session logs a discovery stats before it stops looking. */

@@ -1863,3 +1863,98 @@ describe("the pi probe — the session cost", () => {
     });
   });
 });
+
+describe("PiTranscriptSource: a log older than the harness process is not the pane's (M79 spec 06)", () => {
+  const OLD = "019f4665-7df0-7540-a64f-7068335f2111";
+  const NEW = "019f4665-7df0-7540-a64f-7068335f2112";
+  const cwd = "/srv/stale";
+  /** The old log started at 10:00:00 and was last written at 10:30:00. */
+  const OLD_START = Date.parse("2026-10-30T10:00:00.000Z");
+  const OLD_WRITTEN = Date.parse("2026-10-30T10:30:00.000Z");
+
+  const sessionRow = (id: string) =>
+    JSON.stringify({ type: "session", version: 3, id, timestamp: "2026-10-30T10:00:00.000Z", cwd });
+
+  async function fixture() {
+    const created = `${tmpdir()}/collie-pi-stale-${Math.floor(performance.now() * 1000)}`;
+    await mkdir(created, { recursive: true });
+    const base = await realpath(created);
+    const places = { home: join(base, "home"), tmp: join(base, "tmp") };
+    const root = join(base, "pi-sessions");
+    /** One log named from its start time, last written at `writtenMs`. */
+    const log = async (id: string, startMs: number, writtenMs: number) => {
+      const stamp = new Date(startMs).toISOString().replaceAll(":", "-").replace(".", "-");
+      const path = join(root, "--srv-stale--", `${stamp}_${id}.jsonl`);
+      await mkdir(join(root, "--srv-stale--"), { recursive: true });
+      await Bun.write(path, `${sessionRow(id)}\n`);
+      await utimes(path, new Date(writtenMs), new Date(writtenMs));
+    };
+    /** A source whose pid 4242 started at `startMs`; any other pid is unreadable. */
+    const source = (startMs: number | null) =>
+      new PiTranscriptSource(root, places, { processStartMs: async (pid) => (pid === 4242 ? startMs : null) });
+    return { base, log, source };
+  }
+
+  const withPid = { processes: [{ argv: ["pi"], pid: 4242 }] };
+
+  test("an older log and a pid that started after it: no session", async () => {
+    const f = await fixture();
+    await f.log(OLD, OLD_START, OLD_WRITTEN);
+    expect(await f.source(Date.parse("2026-10-30T12:00:00.000Z")).discoverSession(cwd, withPid)).toBeNull();
+    await rm(f.base, { recursive: true, force: true });
+  });
+
+  test("the same log and a pid that started before it: the log", async () => {
+    const f = await fixture();
+    await f.log(OLD, OLD_START, OLD_WRITTEN);
+    expect(await f.source(OLD_START - 60_000).discoverSession(cwd, withPid)).toEqual({ kind: "id", value: OLD });
+    await rm(f.base, { recursive: true, force: true });
+  });
+
+  test("no pid, or a start that cannot be read: the newest log as before", async () => {
+    const f = await fixture();
+    await f.log(OLD, OLD_START, OLD_WRITTEN);
+    const late = f.source(Date.parse("2026-10-30T12:00:00.000Z"));
+    expect(await late.discoverSession(cwd)).toEqual({ kind: "id", value: OLD });
+    expect(await late.discoverSession(cwd, { processes: [{ argv: ["pi"] }] })).toEqual({ kind: "id", value: OLD });
+    expect(await f.source(null).discoverSession(cwd, withPid)).toEqual({ kind: "id", value: OLD });
+    await rm(f.base, { recursive: true, force: true });
+  });
+
+  test("the slack admits a log that started one second after the process", async () => {
+    const f = await fixture();
+    const processStart = Date.parse("2026-10-30T12:00:00.000Z");
+    await f.log(NEW, processStart + 1000, processStart + 1000);
+    expect(await f.source(processStart).discoverSession(cwd, withPid)).toEqual({ kind: "id", value: NEW });
+    await rm(f.base, { recursive: true, force: true });
+  });
+
+  test("the slack admits a log that started 4 s before the process and refuses one 6 s before", async () => {
+    const f = await fixture();
+    const processStart = Date.parse("2026-10-30T12:00:00.000Z");
+    await f.log(NEW, processStart - 4000, processStart - 4000);
+    expect(await f.source(processStart).discoverSession(cwd, withPid)).toEqual({ kind: "id", value: NEW });
+    await rm(f.base, { recursive: true, force: true });
+    const g = await fixture();
+    await g.log(NEW, processStart - 6000, processStart - 6000);
+    expect(await g.source(processStart).discoverSession(cwd, withPid)).toBeNull();
+    await rm(g.base, { recursive: true, force: true });
+  });
+
+  test("an older log the harness is writing now (a resumed session) is still the pane's", async () => {
+    const f = await fixture();
+    const processStart = Date.parse("2026-10-30T12:00:00.000Z");
+    await f.log(OLD, OLD_START, processStart + 20_000);
+    expect(await f.source(processStart).discoverSession(cwd, withPid)).toEqual({ kind: "id", value: OLD });
+    await rm(f.base, { recursive: true, force: true });
+  });
+
+  test("of an older and a newer log, the newer one is taken once the process has started between them", async () => {
+    const f = await fixture();
+    const processStart = Date.parse("2026-10-30T12:00:00.000Z");
+    await f.log(OLD, OLD_START, OLD_WRITTEN);
+    await f.log(NEW, processStart + 2000, processStart + 9000);
+    expect(await f.source(processStart).discoverSession(cwd, withPid)).toEqual({ kind: "id", value: NEW });
+    await rm(f.base, { recursive: true, force: true });
+  });
+});
