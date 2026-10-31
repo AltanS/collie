@@ -281,13 +281,39 @@ describe("checkAccess — same-origin / CSRF gate", () => {
     expect(r).toEqual({ ok: false, reason: "cross-origin rejected" });
   });
 
-  test("always allows a localhost / 127.0.0.1 origin (loopback by design)", () => {
+  // A loopback Origin is not trusted by its name. On a phone, any app can serve a page from its own
+  // localhost; that page's requests to a collie carry `Origin: http://localhost…`, and trusting the
+  // name let it drive every collie the phone could reach (2026-10-07).
+  test("refuses a localhost / 127.0.0.1 / [::1] origin that is not the collie's own", () => {
+    for (const origin of ["http://localhost", "http://localhost:8787", "http://127.0.0.1:3000", "http://[::1]:8080"]) {
+      for (const level of ["read", "write"] as const) {
+        expect(checkAccess(req({ origin, host: "collie.example.ts.net" }), cfg(), level), `${origin} ${level}`).toEqual({
+          ok: false,
+          reason: "cross-origin rejected",
+        });
+      }
+    }
+  });
+
+  test("refuses a loopback origin on another port even when the Host is loopback too", () => {
+    // A reverse proxy that rewrites Host to the upstream (nginx's default) makes every request look
+    // loopback-to-loopback, so "both loopback" cannot stand in for "same origin".
     expect(
-      checkAccess(req({ origin: "http://localhost:8787", host: "collie.example.ts.net" }), cfg()),
-    ).toEqual({ ok: true });
-    expect(checkAccess(req({ origin: "http://127.0.0.1:8787", host: "anything" }), cfg())).toEqual({
+      checkAccess(req({ origin: "http://localhost:5173", host: "127.0.0.1:8787" }), cfg(), "write"),
+    ).toEqual({ ok: false, reason: "cross-origin rejected" });
+  });
+
+  test("allows the collie's own loopback origin, and a listed one", () => {
+    expect(checkAccess(req({ origin: "http://127.0.0.1:8787", host: "127.0.0.1:8787" }), cfg(), "write")).toEqual({
       ok: true,
     });
+    expect(
+      checkAccess(
+        req({ origin: "http://localhost:5173", host: "127.0.0.1:8787" }),
+        cfg({ allowedOrigins: ["http://localhost:5173"] }),
+        "write",
+      ),
+    ).toEqual({ ok: true });
   });
 
   test("allows an explicitly-configured extra origin (COLLIE_ALLOWED_ORIGINS)", () => {

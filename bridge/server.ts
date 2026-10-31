@@ -7435,7 +7435,10 @@ async function uploadPane(
  *    rebinding (Host==Origin==evil.example). COLLIE_ALLOW_ANY_HOST=1 is the explicit opt-out.
  *  - Same-origin only (Origin host must equal Host) — defeats cross-site requests/CSRF. Browsers
  *    omit Origin on same-origin GETs (so the snapshot poll passes); they send it on POSTs.
- *    localhost and explicitly-configured origins are also allowed.
+ *    Explicitly-configured origins (COLLIE_ALLOWED_ORIGINS) are the only other ones allowed. A
+ *    loopback Origin is NOT trusted by itself: on a phone, any app can serve a page from its own
+ *    localhost, and that page's requests to this collie carry `Origin: http://localhost…`. Trusting
+ *    the name let such a page drive every collie the phone could reach (2026-10-07).
  *  - Origin required for writes: a state-changing (`level === "write"`) request with no Origin is
  *    trusted only from loopback (curl on the host). Browsers always send Origin on fetch/SW POSTs,
  *    so a missing Origin on a remote write is a non-browser or Origin-stripped request — reject it.
@@ -7465,10 +7468,8 @@ export function checkAccess(
     } catch {
       return { ok: false, reason: "bad origin" };
     }
-    const allowed =
-      originHost === host ||
-      LOOPBACK_HOST.test(originHost) ||
-      cfg.allowedOrigins.includes(origin);
+    // The collie's own origin, or one the operator listed. Nothing else, a loopback name included.
+    const allowed = originHost === host || cfg.allowedOrigins.includes(origin);
     if (!allowed) return { ok: false, reason: "cross-origin rejected" };
   } else if (level === "write" && !LOOPBACK_HOST.test(host)) {
     // A write with no Origin header from a non-loopback Host isn't a real browser request — refuse.
