@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { basename, join, resolve } from "node:path";
-import { parseBridgeUrl, parseCli, PHONE_ONLY_SUFFIX, phoneOnlyRoot, readTokenFile, type CliOptions } from "./cli";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { claim, settle } from "./lab-ledger";
+import { parseBridgeUrl, parseCli, pending, PHONE_ONLY_SUFFIX, phoneOnlyRoot, readTokenFile, type CliOptions } from "./cli";
 
 // The phone leg's flags: --leg, --bridge and --token-file. Paths are built with the host's own join and
 // resolve, as in watch.test.ts, so the same claims hold on Windows (`D:\home\u\...`).
@@ -63,5 +66,25 @@ describe("--bridge and --token-file", () => {
     expect(() => readTokenFile("/t", () => {
       throw new Error("ENOENT");
     })).toThrow(/cannot be read/);
+  });
+});
+
+describe("pending, the pairs a run takes", () => {
+  test("a failed row stays skipped unless the pair was named with --version", () => {
+    const dir = mkdtempSync(join(tmpdir(), "lab-cli-"));
+    try {
+      const ledger = join(dir, "ledger.json");
+      claim(ledger, "pi", "1.4.0", "2026-10-23", "/l", Date.now(), 1);
+      settle(ledger, "pi", "1.4.0", { result: "failed", note: "ETARGET" });
+      claim(ledger, "pi", "1.3.0", "2026-10-17", "/l", Date.now(), 1);
+      settle(ledger, "pi", "1.3.0", { result: "fail", note: "drift" });
+      const pair = (version: string, named: boolean) => ({ harness: "pi", version, source: "test", named });
+      expect(pending([pair("1.4.0", false)], ledger, Date.now(), 4)).toEqual([]);
+      expect(pending([pair("1.4.0", true)], ledger, Date.now(), 4)).toHaveLength(1);
+      expect(pending([pair("1.3.0", true)], ledger, Date.now(), 4)).toEqual([]);
+      expect(pending([pair("1.5.0", false)], ledger, Date.now(), 4)).toHaveLength(1);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

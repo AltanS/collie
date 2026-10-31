@@ -162,7 +162,9 @@ export const HARNESSES: Readonly<HarnessTable> = {
     id: "pi",
     npm: "@earendil-works/pi-coding-agent",
     binName: "pi",
-    startArgs: () => ["--thinking", "off"],
+    // `--approve`: since pi 1.2.0 the fresh project folder draws "Trust project folder?" before the box, and the
+    // walk then reads a card, not a composer. The flag trusts the folder for this run only and saves nothing.
+    startArgs: () => ["--approve", "--thinking", "off"],
     env: (dirs) => ({ ...homeEnv(dirs), PI_CODING_AGENT_DIR: join(dirs.home, ".pi") }),
     login: "none",
     folders: () => [],

@@ -9,12 +9,14 @@ import { realLiveness, sweepLab, type Liveness } from "./sweep";
 import { checkSource, defaultLabRoot, LAB_DIR_ENV } from "./clone";
 import { FEEDS } from "./feeds";
 import { HARNESSES } from "./harnesses";
-import { ledgerPath, loadLedger, markNotified, findRow } from "./lab-ledger";
+import { ledgerPath, loadLedger, markNotified, findRow, shouldRun } from "./lab-ledger";
 import type { LabOptions, LabOutcome, LabPorts } from "./run";
 import { runLab } from "./run";
 import { LAB_LEGS, type LabLegs } from "./verdict";
 
 export interface Candidate {
+  /** True when a person named the pair with `--version`: a `failed` ledger row does not skip it. */
+  readonly named?: boolean | undefined;
   readonly harness: string;
   readonly version: string;
   readonly source: string;
@@ -75,7 +77,8 @@ export const USAGE = `Usage: bun scripts/harness-canary/lab/main.ts [options]
 Reads each harness's release feed. For each (harness, version) that is not in the lab ledger, runs the
 lab once: an isolated config, the installed binary at that version, the slash walk, the Surface on every
 screen, one probed send and one ask answer. A pass makes a commit on a branch in a scratch worktree. A
-fail writes an issue as files. It never pushes. A pair in the ledger is never run again.
+fail writes an issue as files. It never pushes. A pair in the ledger is never run again, except that
+a pair you name with --version runs again when its row says "failed" (no verdict).
 
   --harness a,b       harnesses to read (default: ${Object.keys(FEEDS).join(",")})
   --version h=x.y.z   run this pair and skip the feeds (comma list allowed)
@@ -214,14 +217,14 @@ export function parseCli(argv: readonly string[], repoRoot: string, env: Readonl
   return { harnesses, pairs, repo, labRoot, ledger, openIssue: open, issueRepo, publish, plan, maxRuns, fakeVersions, legs, bridge };
 }
 
-/** The pairs the ledger has no row for, in the order given, at most `max`. A pair named twice counts once. */
+/** The pairs the ledger has no row for, in the order given, at most `max`. A pair named twice counts once. A named pair with a `failed` row counts as pending too. */
 export function pending(candidates: readonly Candidate[], ledgerFile: string, now: number, max: number): Candidate[] {
   const ledger = loadLedger(ledgerFile, now);
   const seen = new Set<string>();
   const out: Candidate[] = [];
   for (const candidate of candidates) {
     const key = `${candidate.harness}@${candidate.version}`;
-    if (seen.has(key) || findRow(ledger, candidate.harness, candidate.version) !== undefined) continue;
+    if (seen.has(key) || !shouldRun(ledger, candidate.harness, candidate.version, candidate.named === true)) continue;
     seen.add(key);
     if (out.length < max) out.push(candidate);
   }
@@ -293,6 +296,7 @@ export async function runCandidates(candidates: readonly Candidate[], cli: CliOp
       publish: cli.publish,
       now,
       legs: cli.legs,
+      named: candidate.named,
       bridge,
     };
     const outcome = await runLab(options, ports);

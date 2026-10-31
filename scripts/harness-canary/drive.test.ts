@@ -1,9 +1,9 @@
 // The pure parts of driving an agent: options, startup answers, draft clearing, colour answers.
 
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { delimiter, join, resolve } from "node:path";
 import { herdrMuxFactory } from "../../bridge/mux/herdr/adapter";
 import { muxAck, muxOk, type MuxAdapter, type MuxGrid, type MuxOutcome } from "../../bridge/mux/types";
 import { claude } from "./agents/claude";
@@ -11,7 +11,8 @@ import { CODEX_ARGS, codex } from "./agents/codex";
 import { kiro } from "./agents/kiro";
 import { muse } from "./agents/muse";
 import { opencode } from "./agents/opencode";
-import { backspaceSweep, launchedThrough, launchLine } from "./agents/profile";
+import { pi } from "./agents/pi";
+import { backspaceSweep, launchedThrough, launchLine, resolveBinary, versionCommandThrough } from "./agents/profile";
 import { DEFAULT_AGENTS, parseArgs } from "./args";
 import { buildRecipe } from "../../bridge/launcher-recipes";
 import { colorAnswers, unfinishedTail } from "./client";
@@ -138,6 +139,11 @@ describe("startup answers", () => {
     if (!built.ok) throw new Error(built.reason);
     expect(kiro.launch(null)).toBe(`clear; ${built.command} chat --v3`);
     expect(launchedThrough(kiro, "/opt/launchers/kiro").launch(null)).toBe("clear; /opt/launchers/kiro chat --v3");
+  });
+
+  test("pi starts with --approve, so the canary's fresh project draws no trust card", () => {
+    expect(pi.launch(null)).toBe("clear; pi --approve --thinking off");
+    expect(launchedThrough(pi, "/opt/pi/bin/pi").launch(80)).toBe("clear; stty cols 80; /opt/pi/bin/pi --approve --thinking off");
   });
 
   test("Codex is never cleared with Ctrl+C", () => {
@@ -372,3 +378,36 @@ describe("loadReaders on this checkout", () => {
   });
 });
 
+
+describe("the binary the canary measures", () => {
+  const tree = (): string => mkdtempSync(join(tmpdir(), "canary-bin-"));
+  const exe = (dir: string, name: string): string => {
+    mkdirSync(dir, { recursive: true });
+    const path = join(dir, name);
+    writeFileSync(path, "#!/bin/sh\n");
+    chmodSync(path, 0o755);
+    return path;
+  };
+
+  test("a stray node_modules/.bin in front of PATH never wins; every agent follows the same rule", () => {
+    const root = tree();
+    try {
+      for (const name of ["pi", "omp", "claude"]) {
+        exe(join(root, "home", "node_modules", ".bin"), name);
+        const real = exe(join(root, "nvm", "bin"), name);
+        const pathVar = [join(root, "home", "node_modules", ".bin"), join(root, "nvm", "bin")].join(delimiter);
+        expect(resolveBinary(name, pathVar)).toBe(real);
+      }
+      expect(resolveBinary("pi", join(root, "home", "node_modules", ".bin"))).toBeNull();
+      expect(resolveBinary("nope", join(root, "nvm", "bin"))).toBeNull();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("the version command and the launch line name the same path", () => {
+    expect(versionCommandThrough(pi, "/real/bin/pi")).toEqual(["/real/bin/pi", "--version"]);
+    expect(launchedThrough(pi, "/real/bin/pi").launch(null)).toContain("/real/bin/pi ");
+    expect(versionCommandThrough(kiro, "/real/bin/kiro-cli")).toEqual(["/real/bin/kiro-cli", "--version"]);
+  });
+});

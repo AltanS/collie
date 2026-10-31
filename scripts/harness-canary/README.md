@@ -39,8 +39,14 @@ COLLIE_GROK_ROOT=/path/to/grok-home/sessions \
 `--via DIR` starts an agent through `DIR/<agent>` when that file is executable, in place of the
 agent's own command word; the rest of the line stays the canary's. An agent with no launcher there
 starts as usual, and the log line says which. The version is read with the profile's own version
-command on PATH, not through the launcher: a launcher should change the provider and run the same
+command on the agent's own binary (see below), not through the launcher: a launcher should change the provider and run the same
 installed agent, and the canary does not check that it does.
+
+**Which binary the canary measures.** The canary resolves each agent's command word once, to an absolute path: the
+first executable on PATH, skipping every `node_modules/.bin` entry (`bunx` puts a stray `~/node_modules/.bin` in front of PATH).
+It reads the version from that path and starts the agent by that path, so the version in the table and the process in the
+pane are one binary. pi starts with `--approve`, so a fresh project draws no "Trust project folder?" card. The lab (below)
+holds the same rule from the other side: it installs into its own prefix and starts `<prefix>/node_modules/.bin/<agent>` by path.
 
 A launcher is yours to write, outside this repo: it points the agent at another provider and ends
 in `exec <agent> "$@"`, so Herdr sees the agent itself. It covers the six default scenarios and
@@ -145,7 +151,7 @@ text. What the phone makes of that screen is judged with Collie's readers only.
 `--record` writes an agent into `web/src/lib/harness/verified-versions.json` (spec M37/01) with
 `how: "canary"`, only after a run with no fail in which that agent reached every scenario. It
 refuses when `--readers` points at another checkout, and it never creates the ledger. An agent started
-through a `--via` launcher is not recorded: its version was read from PATH, not from the launcher.
+through a `--via` launcher is not recorded: its version was read from the agent's own binary, not from the launcher.
 
 A passing `journal` scenario also writes the JOURNAL reader's own line, in that entry's `journal`
 block beside the screen reader's (spec M41/05). The two are recorded apart because they drift apart:
@@ -246,8 +252,8 @@ The ritual never opens the issue. The issue is public, so a person shows the dra
 `gh issue create` runs only with `--open-issue` on a hand run. It checks first that the label exists in the target repo.
 It says so, and stops, when the label is missing.
 
-**To run a failed version again.** Delete its row from the ledger file by hand, then run the lab.
-The lab has no `--retry` flag on purpose, because a flag could repeat a paid action without a person looking.
+**To run a failed version again.** Name it: `--version pi=1.4.0` runs a pair whose row says `failed` (the lab could not finish, so there is no verdict) and takes that row over. A `pass`, a `fail` and a `walk-only` row stay final even for a named version: delete such a row from the ledger file by hand. A run without `--version`, the nightly run, never reruns any row.
+The lab has no `--retry` flag on purpose, because a flag could repeat a paid action without a person looking: only a person who types the version reruns one.
 Read the log first. A `failed` row names the reason in its note.
 
 ### The phone leg

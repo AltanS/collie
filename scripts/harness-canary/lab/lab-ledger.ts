@@ -4,7 +4,9 @@
 // minutes of the machine. A row says "this pair was run". A pair with a row is never run again,
 // whatever the result: pass, fail, failed or walk-only. The row is written BEFORE the first paid
 // step as `running`, and finished after. A run that dies in between leaves `running`, and the next
-// read turns it into `failed` (interrupted). Nothing in this file ever removes a row.
+// read turns it into `failed` (interrupted). Nothing in this file ever removes a row, with one exception:
+// a run that NAMES its version by hand (`--version`) may take a `failed` row over (see `shouldRun`).
+// `failed` is "the lab could not finish, no verdict", so the pair was never judged. `pass` and `fail` stay final.
 //
 // The file is `~/.local/state/collie-harness-lab/ledger.json`. The environment variable
 // `COLLIE_HARNESS_LAB_LEDGER` names another path. The ledger is not the verified-versions ledger in
@@ -119,9 +121,15 @@ export function findRow(ledger: LabLedger, harness: string, version: string): La
   return ledger.rows.find((row) => row.harness === harness && row.version === version);
 }
 
-/** The stop rule: a pair with any row, in any result, is skipped. */
-export function shouldRun(ledger: LabLedger, harness: string, version: string): boolean {
-  return findRow(ledger, harness, version) === undefined;
+/**
+ * The stop rule: a pair with any row, in any result, is skipped. The one exception: a run that names the
+ * version by hand (`named`) runs a pair whose row is `failed` again, because `failed` is no verdict. A
+ * `running` row, a `pass`, a `fail` and a `walk-only` stay final. An unnamed run never reruns anything.
+ */
+export function shouldRun(ledger: LabLedger, harness: string, version: string, named = false): boolean {
+  const row = findRow(ledger, harness, version);
+  if (row === undefined) return true;
+  return named && row.result === "failed";
 }
 
 export interface Expired {
@@ -173,9 +181,9 @@ function takeLock(lock: string, now: number): boolean {
 
 /**
  * Take a pair: write its `running` row. False when the pair already has a row (another run took it,
- * or an earlier run finished it), and nothing is written. Call it before the first paid step.
+ * or an earlier run finished it), and nothing is written. `named` lets a `failed` row be taken again (`shouldRun`). Call it before the first paid step.
  */
-export function claim(path: string, harness: string, version: string, today: string, log: string, now: number, pid: number = process.pid): boolean {
+export function claim(path: string, harness: string, version: string, today: string, log: string, now: number, pid: number = process.pid, named = false): boolean {
   if (!VERSION.test(version)) throw new LedgerError(path, `"${version}" is not x.y.z`);
   // A lock directory makes read-then-write one step: two runs on the same pair cannot both claim it.
   // A run that finds the lock held takes it as "someone else has this pair" and does nothing.
@@ -184,8 +192,10 @@ export function claim(path: string, harness: string, version: string, today: str
   if (!takeLock(lock, now)) return false;
   try {
     const ledger = loadLedger(path, now);
-    if (!shouldRun(ledger, harness, version)) return false;
-    writeLedger(path, { rows: [...ledger.rows, { harness, version, date: today, result: "running", log, startedAt: now, pid }] });
+    if (!shouldRun(ledger, harness, version, named)) return false;
+    // A named rerun takes the `failed` row over: one row per pair, now `running` again.
+    const others = ledger.rows.filter((row) => row.harness !== harness || row.version !== version);
+    writeLedger(path, { rows: [...others, { harness, version, date: today, result: "running", log, startedAt: now, pid }] });
     return true;
   } finally {
     rmdirSync(lock);

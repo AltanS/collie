@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { claim, findRow, readLedger, settle } from "./lab-ledger";
+import { claim, findRow, readLedger, settle, shouldRun } from "./lab-ledger";
 import type { PassInput } from "./publish";
 import { failCase, passCase } from "../verdict";
 import { phoneResult } from "./phone-verdict";
@@ -177,6 +177,45 @@ describe("runLab, the order of a run", () => {
     const done = await runLab(options, second.ports);
     expect(done.status).toBe("skipped");
     expect(second.calls).toEqual([]);
+  });
+
+  test("a run that names its version reruns a failed row; an unnamed run still skips it", async () => {
+    const { options } = setup();
+    claim(options.ledgerPath, "claude", "2.1.301", "2026-10-10", "/l", NOW, 1);
+    settle(options.ledgerPath, "claude", "2.1.301", { result: "failed", note: "npm install exited 1: ETARGET" });
+
+    const unnamed = fakes();
+    expect((await runLab(options, unnamed.ports)).status).toBe("skipped");
+    expect(unnamed.calls).toEqual([]);
+
+    const named = fakes();
+    const done = await runLab({ ...options, named: true }, named.ports);
+    expect(done.status).toBe("pass");
+    expect(named.calls).toContain("install");
+    // One row per pair: the failed row was taken over, not kept beside the new one.
+    const rows = readLedger(options.ledgerPath).rows.filter((row) => row.harness === "claude" && row.version === "2.1.301");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.result).toBe("pass");
+    expect(rows[0]?.date).toBe("2026-10-16");
+  });
+
+  test("a named run still skips a pass, a fail, a walk-only and a running row: only failed has no verdict", async () => {
+    for (const result of ["pass", "fail", "walk-only"] as const) {
+      const { options } = setup();
+      claim(options.ledgerPath, "claude", "2.1.301", "2026-10-10", "/l", NOW, 1);
+      settle(options.ledgerPath, "claude", "2.1.301", { result });
+      const spy = fakes();
+      const done = await runLab({ ...options, named: true }, spy.ports);
+      expect(done.status).toBe("skipped");
+      expect(spy.calls).toEqual([]);
+    }
+    const { options } = setup();
+    claim(options.ledgerPath, "claude", "2.1.301", "2026-10-16", "/l", NOW, 4242);
+    const alive: Liveness = { isAlive: (pid) => pid === 4242, servers: () => [], killServer: async () => {} };
+    const spy = fakes({ liveness: alive });
+    const done = await runLab({ ...options, named: true }, spy.ports);
+    expect(done.status).toBe("skipped");
+    expect(spy.calls).toEqual([]);
   });
 
   test("a fail writes the issue as files, never opens it by default, and the row says fail", async () => {
@@ -508,5 +547,20 @@ describe("runLab, the sweep at the start", () => {
     expect(done.status).toBe("skipped");
     expect(existsSync(old)).toBe(false);
     expect(killed).toEqual(["harness-lab-9999"]);
+  });
+});
+
+describe("the stop rule, shouldRun", () => {
+  const row = (result: "running" | "pass" | "fail" | "failed" | "walk-only") => ({ rows: [{ harness: "pi", version: "1.4.0", date: "2026-10-23", result, log: "/l" }] });
+  test("no row runs, named or not", () => {
+    expect(shouldRun({ rows: [] }, "pi", "1.4.0")).toBe(true);
+    expect(shouldRun({ rows: [] }, "pi", "1.4.0", true)).toBe(true);
+  });
+  test("a failed row runs again only for a named version", () => {
+    expect(shouldRun(row("failed"), "pi", "1.4.0")).toBe(false);
+    expect(shouldRun(row("failed"), "pi", "1.4.0", true)).toBe(true);
+  });
+  test("every other result stays final", () => {
+    for (const result of ["running", "pass", "fail", "walk-only"] as const) expect(shouldRun(row(result), "pi", "1.4.0", true)).toBe(false);
   });
 });

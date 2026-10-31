@@ -1,7 +1,8 @@
 // One lab run, start to end (M56 spec 10): the order of the steps and what each end writes down.
 // The hands (npm, tmux, the protocol, git) are ports, so a test runs the whole order with fakes.
 //
-//   1. skip      a pair with a ledger row is skipped, in every result. This is the stop rule.
+//   1. skip      a pair with a ledger row is skipped, in every result. This is the stop rule. A run that
+//                names its version by hand reruns a `failed` row (no verdict), and only that.
 //   2. preflight a tool or a login that is not ready defers the run. Nothing was spent, no row is written.
 //   3. claim     the `running` row, written before the first paid step.
 //   4. install   the binary at that version, into the run directory. One retry: it costs no model turn.
@@ -84,6 +85,8 @@ export interface LabOptions {
   readonly redaction?: RedactContext | undefined;
   /** Absent means `all`. A phone-only run never makes a pass commit. */
   readonly legs?: LabLegs | undefined;
+  /** The version was named by hand (`--version`): a `failed` row for the pair does not stop the run (lab-ledger.ts, `shouldRun`). */
+  readonly named?: boolean | undefined;
   /** A bridge that already runs, for a phone-only run (`--bridge` and `--token-file`). */
   readonly bridge?: { readonly url: string; readonly token: string } | undefined;
 }
@@ -181,7 +184,7 @@ export async function runLab(options: LabOptions, ports: LabPorts): Promise<LabO
 
   // 1. The stop rule.
   const existing = loadLedger(options.ledgerPath, now());
-  if (!shouldRun(existing, harness, version)) {
+  if (!shouldRun(existing, harness, version, options.named === true)) {
     const row = existing.rows.find((candidate) => candidate.harness === harness && candidate.version === version);
     return outcome("skipped", `already in the ledger as ${row?.result ?? "?"} on ${row?.date ?? "?"}`);
   }
@@ -228,7 +231,7 @@ export async function runLab(options: LabOptions, ports: LabPorts): Promise<LabO
     }
 
     // 3. The claim. After this line the pair has a row for good.
-    if (!claim(options.ledgerPath, harness, version, today(now()), logPath, now())) {
+    if (!claim(options.ledgerPath, harness, version, today(now()), logPath, now(), undefined, options.named === true)) {
       cleanup();
       return outcome("skipped", "another run holds this pair");
     }
