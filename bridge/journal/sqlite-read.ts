@@ -14,8 +14,8 @@
 // a file of at most 64 MiB, since the copy is held in memory whole. Only for the open errors above,
 // and only for a header that says WAL; anything else answers null like any other failed read.
 //
-// One module for the adapter (bridge/journal/agy.ts) and the probe (scripts/journal-probe.ts), which
-// each kept a copy in PR 619. bridge/journal/hermes.ts keeps its own plain read for now.
+// One module for the adapters (bridge/journal/agy.ts, bridge/journal/hermes.ts) and the probe
+// (scripts/journal-probe.ts), which each kept a copy in PR 619.
 
 import { Database } from "bun:sqlite";
 import { existsSync, readFileSync, statSync } from "node:fs";

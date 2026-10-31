@@ -162,7 +162,7 @@ export const DRAWS_IMAGES_OFF_GRID: readonly string[] = ["omp", "pi"];
  * history section must not advise `herdr integration install` for an agent no hook could ever
  * report. Pinned against the adapters themselves in registry.test.ts, so the two cannot drift.
  */
-export const DISCOVERS_OWN_SESSIONS: readonly string[] = ["agy", "muse", "openclaw", "kiro", "dsh-tui"];
+export const DISCOVERS_OWN_SESSIONS: readonly string[] = ["agy", "hermes", "muse", "openclaw", "kiro", "dsh-tui"];
 
 /**
  * The same pairs as a Map, which is how {@link adapterFor} asks.
