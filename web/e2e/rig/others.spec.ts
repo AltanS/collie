@@ -45,13 +45,31 @@ import {
   type TapRecorder,
   type Trail,
 } from "./leg";
-import { sleep } from "./rig-lib";
+import { muxOf, sleep } from "./rig-lib";
 
 const PHONE = devices[PHONE_DEVICE];
 const REPLY_MS = 120_000;
 
 /** Prompts the Load older case seeds: the live page holds the last six, so the seventh is the older page. */
 const HISTORY_PROMPTS = 7;
+
+/**
+ * Lines for a check that looks for a reply anywhere on the screen. On the Herdr core a read without
+ * `purpose=older` is the screen alone, cut to its last `lines` rows, and the rig's core terminal is
+ * 120 rows tall (hc's size when no viewer is attached). pi keeps its editor at the foot of that screen
+ * and draws the conversation from the top, so the last 60 rows held only blank rows and the editor
+ * (M79 report 06). More lines than the screen has reads all of it on the core; on Herdr it reads more
+ * history, which a check split at the last prompt does not mind.
+ */
+const WHOLE_SCREEN = 200;
+
+/**
+ * The Load older case's budget on the Herdr core. It seeds 52 sends (7 prompts and 45 shell lines), and
+ * a Collie send costs about 6.4 s on the core against well under a second on Herdr: the core answers a
+ * key about 3 s after a raw write (hc 0.1.14), and the Send Protocol's box probe and its submit are a
+ * write and a key each. The 52 sends alone are over 5.5 minutes, past the leg's 6 (M79 report 06).
+ */
+const CORE_LOAD_OLDER_MS = 12 * 60_000;
 
 interface Plan {
   /** A row the selector prints only while it is open, at any of its levels. */
@@ -195,7 +213,7 @@ for (const harness of ["pi", "omp"] as const) {
           const t = await tap(recorder, option, plan.question.option);
           trail.log.push(t);
           await waitIdle(rig, pane, REPLY_MS);
-          const answered = new RegExp(plan.question.option).test((await rig.screen(pane, 60)).split("Which fruit do you like?").at(-1) ?? "");
+          const answered = new RegExp(plan.question.option).test((await rig.screen(pane, WHOLE_SCREEN)).split("Which fruit do you like?").at(-1) ?? "");
           trail.captures.push(await capture(page, `${harness}-3-question`), await captureScreen(rig, pane, `${harness}-3-question`));
           trail.notes.push("pick-one (pick-many is not lifted for this harness)", answered ? `${harness} got ${plan.question.option}` : "the answer did not show", ...trail.log.map(tapWords));
           return { verdict: answered && trail.log.every((l) => l.worked) ? "pass" : "fail", taps: trail.log.length, minTaps: 2, note: trail.notes.join("; "), taps_log: trail.log, captures: trail.captures };
@@ -230,6 +248,7 @@ for (const harness of ["pi", "omp"] as const) {
     });
 
     test(`5 Load older with an empty phone cache (${harness})`, async ({ browser, rig }) => {
+      if (muxOf("lead") === "herdr-core") test.setTimeout(CORE_LOAD_OLDER_MS);
       await runScenario(harness, "load-older", session, async (pane, trail) => {
         if (!SETUPS[harness].turns) throw new NotReached(SETUPS[harness].noTurnsReason);
         // Since 1.23.0 a page is the last six prompts with all that follows each (at least 40 rows), so
@@ -243,7 +262,7 @@ for (const harness of ["pi", "omp"] as const) {
             for (let n = 1; n <= HISTORY_PROMPTS; n++) {
               spendTurn(harness, `load-older: history prompt ${String(n)} of ${String(HISTORY_PROMPTS)}`);
               trail.log.push(await sendFromComposer(seed.page, seed.recorder, `Reply with exactly DONE-${String(n)} and nothing else.`, `send history prompt ${String(n)}`));
-              await rig.screenUntil(pane, new RegExp(`^\\s*DONE-${String(n)}\\s*$`, "m"), REPLY_MS, 60);
+              await rig.screenUntil(pane, new RegExp(`^\\s*DONE-${String(n)}\\s*$`, "m"), REPLY_MS, WHOLE_SCREEN);
               await waitIdle(rig, pane, REPLY_MS);
               if (n === 1) {
                 const lines = await seedShellLines(rig, pane, 45);

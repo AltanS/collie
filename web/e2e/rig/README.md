@@ -251,12 +251,22 @@ does not bound the harnesses on the core.
 - **A plain mirror.** The core hands out text with no colour and no SGR attribute, so a reader that
   keys on a dim or inverse cell sees none.
 - **The key hold.** The core answers a key about 3 s after a raw write. The Send Protocol's probe and S1
-  wait it out, so a send takes longer.
+  wait it out, so a send takes longer: about 6.4 s on pi, two holds (the probe's write and Backspace,
+  then the text and Enter), against well under a second on Herdr (measured 2026-10-31). The Load older
+  case seeds 52 sends, so on the core it gets 12 minutes instead of the leg's 6 (`CORE_LOAD_OLDER_MS`
+  in `others.spec.ts`).
+- **A tall screen.** A core terminal with no viewer attached is 200 by 120. A read without
+  `purpose=older` is the screen alone, cut to its last `lines` rows, and pi keeps its editor at the foot
+  of the screen and draws the conversation from the top, with blank rows between. So a check that reads
+  60 lines sees only blank rows and the editor (pi 3 failed on that, M79 report 06). A check that looks
+  for a reply anywhere on the screen reads `WHOLE_SCREEN` (200) lines.
 - **No History without hooks.** The core keeps no conversation id. On the core the rig writes the
   beacon hooks `collie hooks install claude` would write into Claude's scratch settings, with the rig's
   own `collie`, so a Claude pane has History and Chat as it does for an operator who installed them. pi
-  has no such hook, so a pi pane on the core has no History: its Load older case and the Chat card of
-  its walky talky case fail there.
+  and omp have no such hook. Since M79 specs 02 and 07 the bridge finds their log by folder and the
+  phone draws Chat for a pane that has a session, so their Load older case passes on the core. The rig
+  does not clear the harness session logs between runs, so a new pi pane takes the newest log of an
+  earlier run in the same folder until pi writes its own (pi writes after the first reply).
 - **An agent names itself.** The core names a terminal's agent only from the program's own OSC 7501
   report. Claude Code 2.1.314 and pi 1.3.0 send one; omp 18.6.1 does not, so its pane reads as a shell
   and every omp case is not reached.
