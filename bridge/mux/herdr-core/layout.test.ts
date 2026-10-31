@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { sep } from "node:path";
 import type { AgentStatus } from "../../types.ts";
 import type { WireLayout, WireTerminal } from "./client.ts";
-import { agentForApp, agentStatus, IMPLICIT_SPACE_ID, IMPLICIT_TAB_ID, isLocalAddress, toSnapshot } from "./layout.ts";
+import { absoluteCwd, agentForApp, agentStatus, IMPLICIT_SPACE_ID, IMPLICIT_TAB_ID, isLocalAddress, toSnapshot } from "./layout.ts";
 
 function terminal(over: Partial<WireTerminal> & { address: string }): WireTerminal {
   return {
@@ -174,5 +175,26 @@ describe("status and app words", () => {
     ["", null],
   ])("app %s is harness %s", (app, harness) => {
     expect(agentForApp(app)).toBe(harness);
+  });
+});
+
+describe("absoluteCwd", () => {
+  const home = "/home/altan";
+  test("an absolute path stays", () => {
+    expect(absoluteCwd("/abs/dir", home)).toBe("/abs/dir");
+  });
+  test.if(sep === "\\")("a Windows drive path stays on Windows", () => {
+    expect(absoluteCwd("C:\\x", "C:\\Users\\altan")).toBe("C:\\x");
+    expect(absoluteCwd("C:/x", "C:\\Users\\altan")).toBe("C:/x");
+  });
+  test("~ and ~/x take the home folder", () => {
+    expect(absoluteCwd("~", home)).toBe(home);
+    expect(absoluteCwd("~/x", `${home}/`)).toBe("/home/altan/x");
+  });
+  test("relative, ~user, empty and an unknown home are unknown", () => {
+    expect(absoluteCwd("rel/dir", home)).toBe("");
+    expect(absoluteCwd("~bob/x", home)).toBe("");
+    expect(absoluteCwd("", home)).toBe("");
+    expect(absoluteCwd("~/x", "")).toBe("");
   });
 });

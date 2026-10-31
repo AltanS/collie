@@ -1,3 +1,4 @@
+import { isAbsolute } from "node:path";
 import { meaningfulTabLabel, meaningfulTerminalTitle } from "../../activity.ts";
 import type { AgentStatus } from "../../types.ts";
 import { MUX_AGENT_NAMES, MUX_SHELL_AGENT } from "../agents.ts";
@@ -238,7 +239,7 @@ interface PanePlace {
  * unknown, which MuxPane spells `""`.
  */
 export function absoluteCwd(path: string, home: string): string {
-  if (path.startsWith("/") || /^[A-Za-z]:[\\/]/u.test(path)) return path;
+  if (isAbsolute(path)) return path;
   const base = home.replace(/[\\/]+$/u, "");
   if (base === "") return "";
   if (path === "~") return base;
