@@ -16,11 +16,12 @@ The leg is a gate. It runs in these places:
 - **Before every release tag**, on the release head. All forty-one cases pass on the first tap:
   thirty-four on the solo leg (three harnesses with five cases each, fourteen walky talky cases, case 22, case 25, case 26, case 28, and case 29) and
   seven on the crew leg (below). A case that fails, or is not reached, holds the tag.
-- **Before every minor or major release tag**, also on herdr-core (M78, "On herdr-core" below): the solo
-  leg with `make browser-leg DIR=... MUX=herdr-core` (replay, about 30 minutes), and the crew leg with
-  the member on the core, `MUX=herdr,herdr-core`. A core case passes, or its red has a named cause in
-  `HC_API.md` ("What does not fit Collie's mux port") or below. A patch tag runs the Herdr legs only.
-  One red Claude case on the core makes every later Claude case fail on a recording mismatch ("A red Claude case stops the rest" below), so read only the first one.
+- **Before every release tag**, patch tags included, also on herdr-core (M79, "On herdr-core" below):
+  the solo leg with `make browser-leg DIR=... MUX=herdr-core` (replay, about 30 minutes), and the crew
+  leg with the member on the core, `make browser-leg-crew DIR=... MUX=herdr,herdr-core` (about 4
+  minutes). Every core case passes on the first tap, like the Herdr cases. One red Claude case on the
+  core makes every later Claude case fail on a recording mismatch ("A Claude case that is red stops the
+  rest" below), so read only the first one.
 - **Before merging a change** to a harness reader, the Surface, the Send Protocol or the ask code. Run
   it on the branch, solo on Herdr and solo on herdr-core. A unit test cannot show that a tap works on a
   real screen.
@@ -246,10 +247,12 @@ socket file is there. And the core places its server and holder in systemd user 
 (`hc-serve-<hex>.service`, `hc-hold-<hex>.service`), outside the rig's scope, so the scope's `TasksMax`
 does not bound the harnesses on the core.
 
-**What differs from Herdr** (`HC_API.md` has the probes):
+**What differs from Herdr** (`HC_API.md` has the probes). These are operational facts, and each one is
+handled; none of them holds a case red:
 
 - **A plain mirror.** The core hands out text with no colour and no SGR attribute, so a reader that
-  keys on a dim or inverse cell sees none.
+  keys on a dim or inverse cell sees none. Collie reads the text shapes instead (`HC_API.md`, "What
+  Collie handles now").
 - **The key hold.** The core answers a key about 3 s after a raw write. The Send Protocol's probe and S1
   wait it out, so a send takes longer: about 6.4 s on pi, two holds (the probe's write and Backspace,
   then the text and Enter), against well under a second on Herdr (measured 2026-10-31). The Load older
@@ -258,51 +261,57 @@ does not bound the harnesses on the core.
 - **A tall screen.** A core terminal with no viewer attached is 200 by 120. A read without
   `purpose=older` is the screen alone, cut to its last `lines` rows, and pi keeps its editor at the foot
   of the screen and draws the conversation from the top, with blank rows between. So a check that reads
-  60 lines sees only blank rows and the editor (pi 3 failed on that, M79 report 06). A check that looks
-  for a reply anywhere on the screen reads `WHOLE_SCREEN` (200) lines.
-- **No History without hooks.** The core keeps no conversation id. On the core the rig writes the
-  beacon hooks `collie hooks install claude` would write into Claude's scratch settings, with the rig's
-  own `collie`, so a Claude pane has History and Chat as it does for an operator who installed them. pi
-  and omp have no such hook. Since M79 specs 02 and 07 the bridge finds their log by folder and the
-  phone draws Chat for a pane that has a session, so their Load older case passes on the core. The rig
-  does not clear the harness session logs between runs, so a new pi pane takes the newest log of an
-  earlier run in the same folder until pi writes its own (pi writes after the first reply).
-- **An agent names itself.** The core names a terminal's agent only from the program's own OSC 7501
-  report. Claude Code 2.1.314 and pi 1.3.0 send one; omp 18.6.1 does not, so its pane reads as a shell
-  and every omp case is not reached.
-- **A history read can hang.** On 2026-10-30 a `terminal.read` with history (`hc read --lines 60`) on a
-  pi that showed a dialog did not answer in 30 s, while the plain screen read answered at once. The
-  bridge gives up after 5 s and reads the pane as unreadable, so pi's permission and question cards
-  never reach the phone.
-- **The first scrollback read of a pi terminal is slow.** After any change of its screen, the first
-  `hc read --lines N` of a pi terminal takes hc 0.1.14 about 2.4 s whatever N is (the same read again,
-  a plain screen read and a shell terminal take 0 s; measured 2026-10-30). The bridge gives a history
-  read 2 s and then answers with the screen alone, marked `truncated`, so the first read of a changed
-  pi pane answers after about 2 s. Through a lead that was a 503 (`pane/t2: timed out after 1200ms`):
-  the lead's poll budget ran out first. Since M79 spec 04 the lead gives a forwarded pane read 5 s
-  (`PANE_READ_BUDGET_MS`), and the crew cases that read the member's pi pane (13 and 21) get an answer.
+  60 lines sees only blank rows and the editor. A check that looks for a reply anywhere on the screen
+  reads `WHOLE_SCREEN` (200) lines.
+- **History comes from hooks or from the folder.** The core keeps no conversation id. On the core the
+  rig writes the beacon hooks `collie hooks install claude` would write into Claude's scratch settings,
+  with the rig's own `collie`, so a Claude pane has History and Chat as it does for an operator who
+  installed them. pi and omp have no such hook. The bridge finds their log by folder, and the phone
+  draws Chat for a pane that has a session even when the multiplexer names none (M79 specs 02 and 07).
+  The rig does not clear the harness session logs between runs, so a new pi pane takes the newest log of
+  an earlier run in the same folder until pi writes its own (pi writes after the first reply).
+- **Load older is the only history read.** The phone's poll reads the screen. A history read
+  (`purpose=older`) runs only on Load older, one per pane, with a 2 s budget (M79 spec 01).
+- **The lead's budgets.** The first scrollback read of a pi terminal after a change of its screen takes
+  hc 0.1.14 about 2.4 s. The lead gives a forwarded pane read 5 s (`PANE_READ_BUDGET_MS`) and a
+  forwarded pane write 15 s (`WRITE_BUDGET_MS`), so a crew case that reads or replies to the member's pi
+  on the core gets its answer (M79 spec 04).
 - **pi answers before Claude's last turn ends.** In crew case 13 a send from Claude to a pi on the core
   costs Claude's `collie walky send` the core's key hold and slow reads, so pi's whole reply (three
   replayed turns) lands first and its nudge reaches Claude during its turn. Claude Code then carries it as a
   queued prompt on the request that follows its tool results, which no recording holds (the recordings have
-  the nudge after the turn). That is the designed behaviour (case 16), not a fault, and it happened in every
-  core run (2026-10-30, twice). The replay stub now reads such a request as the turn it continues, with
-  the queued message left out (`beneathQueued`, `matchTurn`), after the exact match found nothing.
-- **Crew 19 and 20 stay red with the member on the core.** Two causes, neither is a Collie fault in what
-  the case checks (2026-10-30). The nudge from pi names its sender as `(pi, leg-pi-<stamp>)`, the core
-  terminal's name, where the recording has `(pi, project)`, the folder name Herdr gives, so Claude's first
-  request misses its recording. And a `reply` forwarded to a pi on the core takes the core's key hold and
-  slow reads, longer than the lead's 5 s write budget (`WRITE_BUDGET_MS`): the phone gets
-  `write_outcome_unknown` (504) over a reply that was delivered. Case 20 fails behind case 19's
-  unconsumed nudge. 12 is the missing Chat card (above).
-- **A red Claude case stops the rest.** Claude's recordings replay one session in order. A card left
-  up and then cleared with Escape puts "Request interrupted" into Claude's next prompt, and a case left
-  out moves the session's first prompt. Either way every later Claude request misses its recording. So
-  on the core, as on Herdr, a Claude case after a red one says nothing until the red one is fixed.
-- **No attached client, but a shell terminal.** The core keeps each terminal's screen itself, with no
-  client attached. A terminal started over the API is 200 x 120. The rig still opens one plain shell
-  terminal per machine, named `rig-view-<stamp>` like the Herdr rig's view pane, so the walky talky
-  broadcast case (10) has a shell pane to skip. `pane ls` and the pane cap leave it out, as on Herdr.
+  the nudge after the turn). That is the designed behaviour (case 16), not a fault. The replay stub reads
+  such a request as the turn it continues, with the queued message left out (`beneathQueued`,
+  `matchTurn`), after the exact match found nothing.
+- **The label is an hc label.** The rig keeps a pane's label in the hc label `collie-rig.label`, never
+  in the terminal's name. The bridge reads a core terminal's name as the pane's label, and a walky talky
+  header names its sender by it. A named terminal made pi's header differ from the Claude recording, and
+  every later Claude case then missed its recording (M79 spec 03).
+- **A Claude case that is red stops the rest.** Claude's recordings replay one session in order. A card
+  left up and then cleared with Escape puts "Request interrupted" into Claude's next prompt, and a case
+  left out moves the session's first prompt. Either way every later Claude request misses its recording.
+  So on the core, as on Herdr, a Claude case after a red one says nothing until the red one is fixed.
+- **A shell terminal for the walky talky broadcast.** The core keeps each terminal's screen itself, with
+  no client attached. The rig opens one plain shell terminal per machine, labelled `rig-view` like the
+  Herdr rig's view pane, so the walky talky broadcast case (10) has a shell pane to skip. `pane ls` and
+  the pane cap leave it out, as on Herdr.
+
+**What stays open.** These limits remain on hc 0.1.14. Each has its upstream ask in `HC_API.md`, "What
+stays an upstream ask", under the name given here. Collie works around each one.
+
+- **Colour.** The core has no styled read, so a dialog of pi, opencode or omp whose pointer is colour
+  only cannot be answered from the phone.
+- **A history read that answers, and keys that do not wait for it.** The core runs one terminal's
+  history reads and key presses one at a time, and a history read under a dialog can take 25 s. Collie
+  reads history only on Load older (above).
+- **`blocked` for pi's question.** The core's status stays `working` while pi waits on its question.
+  Collie marks the pane "needs you" from the screen.
+- **A size that stays.** A terminal with no viewer is 200 by 120 (the tall screen above).
+- **A program that reports.** omp 18.6.1 sends no OSC 7501 report, so an omp pane has no status. The
+  adapter names its agent from the foreground name, and the omp cases run on that.
+
+Since M79 (2026-10-31) the core legs are part of the tag gate: every case passes on the first tap, as
+on Herdr ("When it runs" above).
 
 ## Prerequisites
 

@@ -363,7 +363,7 @@ it. This section has two parts: what Collie now handles itself, and what stays a
 - **No session id.** The core keeps the program's status, not the agent's conversation id. Collie
   gets it from the agent's own hook through `HC_TERMINAL_ID` (see above), so a Claude pane has
   History once `collie hooks install claude` is done, and not before. pi and omp have no such hook,
-  so their panes have no History and no Chat card on the core.
+  so Collie finds their session log by the pane's folder (M79), and the phone draws their Chat from it.
 - **No focus, no rename, no tab or space verbs.** Focus lives in herdr-app per screen; structure
   changes go through herdr-app commands. Spec 05 of M74 plans a mod for both.
 

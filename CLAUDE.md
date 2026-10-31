@@ -128,16 +128,16 @@ release. 1.14.2 was cut this way on 2026-09-28.
    a lead and a member, about 4 minutes. All forty-one cases (thirty-four solo, seven on the crew leg)
    must pass on the first tap. A failed case holds the tag, and so does a case that was not reached.
 
-   **A minor or major tag also runs the legs on herdr-core** (M78, replay, no model turn on recorded
-   versions): the solo leg on the core, `make browser-leg DIR=<release worktree> MUX=herdr-core`
-   (about 30 minutes; that target also runs the crew leg after it, with both machines on the core),
-   and the crew leg with its member on the core, `make browser-leg DIR=<release worktree>
-   MUX=herdr,herdr-core` (solo on Herdr, then the crew leg with the lead on Herdr and the member on
-   the core) or `make browser-leg-crew` alone. A core case passes, or its red has a named cause in
-   `HC_API.md` ("What does not fit Collie's mux port") or in the rig README ("On herdr-core"). A patch
-   tag runs the Herdr legs only. **On the core a red Claude case cascades:** Claude's recordings
-   replay as one ordered session, so after the first red Claude case every later Claude case fails on
-   a recording mismatch, and only the first one says anything about the core.
+   **Every tag, a patch tag too, also runs the legs on herdr-core** (M79, replay, no model turn on
+   recorded versions): the solo leg on the core, `make browser-leg DIR=<release worktree>
+   MUX=herdr-core` (about 30 minutes; that target also runs the crew leg after it, with both machines
+   on the core), and the crew leg with its member on the core, `make browser-leg-crew DIR=<release
+   worktree> MUX=herdr,herdr-core` (the lead on Herdr, the member on the core, about 4 minutes). The
+   same rule holds: every core case passes on the first tap, and a case that failed or was not reached
+   holds the tag. **On the core a red Claude case cascades:** Claude's recordings replay as one ordered
+   session, so after the first red Claude case every later Claude case fails on a recording mismatch,
+   and only the first one says anything about the core. The limits that remain are in `HC_API.md`
+   ("What stays an upstream ask") and in the rig README ("On herdr-core").
 
 **A PR from a fork is the exception: leave all four files alone.** Bump nothing, add no CHANGELOG
 line — send the functional commits only. The version is the maintainer's to pick, because it depends
@@ -421,10 +421,10 @@ component, not a spec. On 2026-10-17 the specs that did not pass that test moved
   talky cases that need a crew. It is **the gate before
   every release tag**, and **the proof for a change to a harness reader, the Surface, the Send
   Protocol or the ask code**: run it on the branch, and all forty-one cases (thirty-four solo, seven
-  on the crew leg) pass on the first tap. A minor or major tag also runs the solo leg on herdr-core
+  on the crew leg) pass on the first tap. Every tag also runs the solo leg on herdr-core
   (`make browser-leg DIR=... MUX=herdr-core`) and the crew leg with its member on the core
-  (`MUX=herdr,herdr-core`), and a change to a harness reader, the Surface, the Send Protocol or the ask
-  code runs both solo legs, Herdr and herdr-core. A
+  (`make browser-leg-crew DIR=... MUX=herdr,herdr-core`), and a change to a harness reader, the Surface,
+  the Send Protocol or the ask code runs both solo legs, Herdr and herdr-core. A
   unit test cannot show that a tap works on a real screen. `web/e2e/rig/nightly.ts` also runs it every
   night on `origin/main`, once for each main commit and set of agent versions. The README beside it
   (*When it runs*) has the rules and the cost.
