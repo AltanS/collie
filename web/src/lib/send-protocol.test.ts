@@ -109,6 +109,12 @@ describe("readSend", () => {
     expect(readSend(readSendReply(plain)!)).toMatchObject({ clear: false, note: "staleScreen", detail: null });
     const probe: JsonObject = { ...plain, detail: `${STALE_SCREEN} A probe character (⌁) may remain in the box. Check the pane before you type.` };
     expect(readSend(readSendReply(probe)!)).toMatchObject({ clear: false, note: "staleScreenProbe", detail: null });
+  });
+
+  it("an unconfirmed refusal with the short-pane cause keeps the bridge's line: it names the rows and what to resize", () => {
+    const detail = "The read holds 2 rows, and the claude input box takes at least 3. The pane may be too short to draw it: zoom or resize it on the desktop, or close the panes beside it in its tab, then send again.";
+    const body: JsonObject = { receipt: { outcome: "refused", reason: "unconfirmed" }, offers: ["commit", "keys"], rowsHash: "0f00ba", cause: "short_pane", detail };
+    expect(readSend(readSendReply(body)!)).toMatchObject({ clear: false, note: "unconfirmed", offers: ["commit"], detail });
     // Without the cause a probe_failed keeps its old sentence.
     expect(readSend(reply("refused", "probe_failed", ["keys"])).note).toBe("probeFailed");
   });

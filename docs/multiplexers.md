@@ -646,7 +646,7 @@ away with Enter. It never holds them, and they do not wait behind other held sen
 later message on that pane waits behind the held ones. A held text lasts 30 minutes, a held command
 10 minutes. After that the row says the message was not sent, and offers Resend. A walky talky
 message is also held over a draft, never typed into it, and its hold lasts 60 minutes
-([Walky talky](walky-talky.md)). Your own send over a draft is still refused, with Append and Replace. Before Collie refuses, adds to or clears a draft, it types one probe character and removes it, to prove that the box takes keys; when the box on the screen does not take keys, the send is refused and nothing is deleted. Focus that pane on the desktop or resize it, so the agent draws its screen again, then send again. Some commands never
+([Walky talky](walky-talky.md)). Your own send over a draft is still refused, with Append and Replace. Before Collie refuses, adds to or clears a draft, it types one probe character and removes it, to prove that the box takes keys; when the box on the screen does not take keys, the send is refused and nothing is deleted. Focus that pane on the desktop or resize it, so the agent draws its screen again, then send again. A pane Collie reads at fewer rows than the box takes (a tab full of splits squeezes each pane) is refused with the rows read and the rows the box needs: zoom or resize it, or close the panes beside it. Some commands never
 wait, and Collie refuses them during a turn. On Claude Code these are `/clear`, `/exit`, `/quit`,
 `/logout`, `/resume`, `/branch` and every `!` line. On Codex these are `/quit`, `/exit`, `/new`,
 `/resume`, `/logout` and every `!` line. On Hermes these are `/exit`, `/quit`, `/clear`, `/new`,
