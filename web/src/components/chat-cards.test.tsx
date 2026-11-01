@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { ChevronRight } from "lucide-react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -8,6 +8,7 @@ import {
   CardWaitingCtx,
   Disclosure,
   ItemView,
+  SubagentSheetCtx,
   ToolCard,
   ToolGroup,
   groupRuns,
@@ -15,6 +16,8 @@ import {
   shortPath,
   stepLine,
   type CardWaiting,
+  type SubagentSheetHandle,
+  type SubagentTarget,
 } from "./chat-cards";
 import type { ChatItem, ChatToolCall } from "@/lib/chat-items";
 import { testFileOpener } from "@/test/file-links";
@@ -274,6 +277,175 @@ describe("an agent card", () => {
     render(<ToolCard tool={{ kind: "task", summary: "Look" }} status="done" />);
     expect(screen.getByText("Agent")).toBeInTheDocument();
     expect(screen.queryByText(/Agent · /)).toBeNull();
+  });
+
+  it("keys two task cards that share an agent and summary by their call ids so the sheets stay apart", async () => {
+    const user = userEvent.setup();
+    const opened: string[] = [];
+    function SheetHost({ children }: { children: ReactNode }) {
+      const handle = useMemo<SubagentSheetHandle>(
+        () => ({
+          activeCardKey: null,
+          open: (target: SubagentTarget) => {
+            opened.push(target.cardKey);
+          },
+          sync: () => {},
+        }),
+        [],
+      );
+      return <SubagentSheetCtx.Provider value={handle}>{children}</SubagentSheetCtx.Provider>;
+    }
+    const task = (id: string, agentId: string, output: string): ChatItem => ({
+      id,
+      kind: "tool",
+      status: "done",
+      tool: {
+        kind: "task",
+        agent: "Explore",
+        summary: "Inspect the routes",
+        agentId,
+        output,
+      },
+    });
+    render(
+      <SheetHost>
+        <ItemView item={task("call-A", "agent-A", "A-output")} />
+        <ItemView item={task("call-B", "agent-B", "B-output")} />
+      </SheetHost>,
+    );
+    const cards = screen.getAllByRole("button", { name: /Agent · Explore/i });
+    expect(cards).toHaveLength(2);
+    await user.click(cards[0]);
+    await user.click(cards[1]);
+    expect(opened).toEqual(["call-A", "call-B"]);
+  });
+
+  it("falls back to the agent and summary key when ToolCard has no callId", async () => {
+    const user = userEvent.setup();
+    const opened: string[] = [];
+    function SheetHost({ children }: { children: ReactNode }) {
+      const handle = useMemo<SubagentSheetHandle>(
+        () => ({
+          activeCardKey: null,
+          open: (target: SubagentTarget) => {
+            opened.push(target.cardKey);
+          },
+          sync: () => {},
+        }),
+        [],
+      );
+      return <SubagentSheetCtx.Provider value={handle}>{children}</SubagentSheetCtx.Provider>;
+    }
+    const taskTool: Extract<ChatToolCall, { kind: "task" }> = {
+      kind: "task",
+      agent: "Explore",
+      summary: "Inspect the routes",
+      agentId: "agent-A",
+      output: "A-output",
+    };
+    render(
+      <SheetHost>
+        <ToolCard tool={taskTool} status="done" />
+        <ToolCard tool={{ ...taskTool, agentId: "agent-B", output: "B-output" }} status="done" />
+      </SheetHost>,
+    );
+    const cards = screen.getAllByRole("button", { name: /Agent · Explore/i });
+    expect(cards).toHaveLength(2);
+    await user.click(cards[0]);
+    await user.click(cards[1]);
+    expect(opened).toEqual(["Explore:Inspect the routes", "Explore:Inspect the routes"]);
+  });
+
+  it("keeps the same callId key while status and output stream in, so the open sheet does not remount", async () => {
+    const user = userEvent.setup();
+    const opened: string[] = [];
+    const synced: string[] = [];
+    let panelMounts = 0;
+    function SheetPanel({ cardKey }: { cardKey: string }) {
+      useEffect(() => {
+        panelMounts += 1;
+      }, []);
+      return <div data-testid="subagent-sheet-panel" data-card-key={cardKey} />;
+    }
+    function SheetHost({ children }: { children: ReactNode }) {
+      const [active, setActive] = useState<string | null>(null);
+      const [target, setTarget] = useState<SubagentTarget | null>(null);
+      const handle = useMemo<SubagentSheetHandle>(
+        () => ({
+          activeCardKey: active,
+          open: (next: SubagentTarget) => {
+            opened.push(next.cardKey);
+            setActive(next.cardKey);
+            setTarget(next);
+          },
+          sync: (next: SubagentTarget) => {
+            synced.push(next.cardKey);
+            setTarget(next);
+          },
+        }),
+        [active],
+      );
+      return (
+        <SubagentSheetCtx.Provider value={handle}>
+          {children}
+          {target !== null ? <SheetPanel key={target.cardKey} cardKey={target.cardKey} /> : null}
+        </SubagentSheetCtx.Provider>
+      );
+    }
+    const { rerender } = render(
+      <SheetHost>
+        <ToolCard
+          callId="call-A"
+          tool={{ kind: "task", agent: "Explore", summary: "Inspect the routes", agentId: "agent-A" }}
+          status="running"
+        />
+      </SheetHost>,
+    );
+    await user.click(screen.getByRole("button", { name: /Agent · Explore/i }));
+    expect(opened).toEqual(["call-A"]);
+    expect(screen.getByTestId("subagent-sheet-panel")).toHaveAttribute("data-card-key", "call-A");
+    expect(panelMounts).toBe(1);
+
+    rerender(
+      <SheetHost>
+        <ToolCard
+          callId="call-A"
+          tool={{
+            kind: "task",
+            agent: "Explore",
+            summary: "Inspect the routes",
+            agentId: "agent-A",
+            output: "partial…",
+          }}
+          status="running"
+        />
+      </SheetHost>,
+    );
+    expect(screen.getByTestId("subagent-sheet-panel")).toHaveAttribute("data-card-key", "call-A");
+    expect(panelMounts).toBe(1);
+    expect(synced.length).toBeGreaterThan(0);
+    expect(synced.every((key) => key === "call-A")).toBe(true);
+
+    rerender(
+      <SheetHost>
+        <ToolCard
+          callId="call-A"
+          tool={{
+            kind: "task",
+            agent: "Explore",
+            summary: "Inspect the routes",
+            agentId: "agent-A",
+            output: "done routes",
+          }}
+          status="done"
+        />
+      </SheetHost>,
+    );
+    await user.click(screen.getByRole("button", { name: /Agent · Explore/i }));
+    expect(opened).toEqual(["call-A", "call-A"]);
+    expect(screen.getByTestId("subagent-sheet-panel")).toHaveAttribute("data-card-key", "call-A");
+    expect(panelMounts).toBe(1);
+    expect(synced.every((key) => key === "call-A")).toBe(true);
   });
 });
 
