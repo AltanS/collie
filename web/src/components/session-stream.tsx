@@ -471,6 +471,7 @@ export function SessionStream({
   durable = false,
   questionPending = false,
   agent,
+  clearBottom,
 }: {
   /** The held window plus its one control, from `useChatWindow`. */
   feed: ChatFeed;
@@ -495,6 +496,8 @@ export function SessionStream({
   fontSize: number;
   /** The pane view's one list handle: a send snaps the body it is looking at back to the tail. */
   listRef: RefObject<ChatMessageListHandle | null>;
+  /** What floats over the stream's bottom edge, in px (ChatMessageList `clearBottom`). */
+  clearBottom?: number;
   /**
    * The saved-copy sentence while this window is the phone's saved copy, else `null`. It takes the
    * top slot in place of "Load older" and "Start of the conversation" (see {@link SavedCopyRow}).
@@ -808,6 +811,7 @@ export function SessionStream({
       // scrolling back through a conversation would stop a permission dialog appearing. Reading
       // older turns is an ordinary act in this body and a rare one in that one.
       className="px-3 pt-0 pb-3"
+      clearBottom={clearBottom}
       style={textTokens(fontSize)}
       overlay={pin !== null ? <PromptPin pin={pin} busy={seeking !== null || (pin.kind === "earlier" && loadingOlder)} onTap={onPinTap} /> : null}
     >

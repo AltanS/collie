@@ -43,6 +43,7 @@ import { setFollowing as publishFollowing } from "@/lib/poll-intent";
 import { useHarnessStatusLineShown } from "@/lib/harness-prefs";
 import { stopFor } from "@/lib/harness-bar";
 import { useAutoZenEnabled, useZenEnabled } from "@/lib/zen";
+import { useFloatingClear } from "@/hooks/use-floating-clear";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { setStripsCollapsed, useStripsCollapsed } from "@/lib/strips-collapsed";
 import { ChatMessageList, type ChatMessageListHandle } from "@/components/ui/chat/chat-message-list";
@@ -599,6 +600,7 @@ export function AgentChat({
   // The box the composer's terminal-draft notice floats in (ADR 0061), at the mirror's bottom edge.
   // State rather than a ref: the composer portals into it, so it must re-render once it exists.
   const [draftNoticeSlot, setDraftNoticeSlot] = useState<HTMLDivElement | null>(null);
+  const floatingClear = useFloatingClear(draftNoticeSlot);
 
   // "GONE" IS A FACT ONLY A LIVE ANSWER CAN STATE (M46 spec 10). With the bridge away the herd on
   // screen is what the phone kept, and a pane missing from it is a pane this phone cannot place, not
@@ -2735,6 +2737,7 @@ export function AgentChat({
               <CardWaitingCtx.Provider value={questionNotes}>
                 <SessionStream
                   feed={chatFeed}
+                  clearBottom={floatingClear}
                   address={paneScopeKey(scope, paneId)}
                   // The pane record's own status, the one live fact both bodies share. The mirror gets
                   // this for free — the agent's spinner is in the output it draws — so only this body
@@ -2794,6 +2797,7 @@ export function AgentChat({
             <ChatMessageList
               ref={listRef}
               clearBand={0}
+              clearBottom={floatingClear}
               dep={display}
               onAtBottomChange={setFollowing}
               hasNew={hasNew}

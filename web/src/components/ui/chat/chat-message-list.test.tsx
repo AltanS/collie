@@ -23,3 +23,26 @@ describe("ChatMessageList — scroll containment", () => {
     expect(scrollport!.className).toMatch(/(?:^|\s)overscroll-contain(?=\s|$)/);
   });
 });
+
+describe("ChatMessageList clearBottom", () => {
+  beforeAll(() => {
+    if (!Element.prototype.scrollTo) Element.prototype.scrollTo = () => {};
+  });
+
+  it("ends the list below what floats over its bottom edge, and only then", () => {
+    const { container, rerender } = render(
+      <ChatMessageList clearBottom={72}>
+        <div>line one</div>
+      </ChatMessageList>,
+    );
+    const scrollport = container.querySelector('[class*="overflow-y-auto"]')!;
+    expect(scrollport.lastElementChild?.getAttribute("data-slot")).toBe("clear-bottom");
+    expect((scrollport.lastElementChild as HTMLElement).style.height).toBe("72px");
+    rerender(
+      <ChatMessageList>
+        <div>line one</div>
+      </ChatMessageList>,
+    );
+    expect((scrollport.lastElementChild as HTMLElement).style.height).toBe("0px");
+  });
+});
