@@ -247,7 +247,7 @@ restart dials the same session. `HERDR_SOCKET_PATH` is the TUI's and the core ig
 
 What works:
 
-- Panes, with their screens, from the core. The screen is plain text, so the mirror shows no colour.
+- Panes, with their screens and proved colours, from the core. Unsupported paint falls back to plain text.
 - Typing, and the keys in the Keys tray. A Super or Command chord, Ctrl+Enter, and a modified key the
   core has no name for are refused.
 - Which agent runs in a pane and what it does. The core takes this from the program's own status
@@ -272,8 +272,9 @@ What works:
 
 What looks different on the core:
 
-- **The mirror has no colour.** The core hands out the screen as plain text. The phone shows the
-  words and the layout of the screen, and none of the agent's colours.
+- **A styled poll does an extra read.** On every core pane, Collie briefly opens a read-only observer
+  and checks its rendered rows against the plain screen. It never types, changes focus or resizes.
+  If the paint is incomplete or unsupported, the mirror stays plain. Older lines remain plain too.
 - **Claude's History needs a hook.** The core does not know the agent's conversation. A Claude pane has
   History and Chat once `collie hooks install claude` is done. pi and Oh My Pi need no hook, because
   Collie finds their log from the pane's folder. A fresh pi or Oh My Pi pane shows an empty Chat until
@@ -284,11 +285,10 @@ What looks different on the core:
 - **The last viewer sets the width.** The terminal has the width of the last window that looked at it.
   herdr-app on a phone makes Claude narrow, and the phone then shows it narrow too. When no window
   looks at the terminal, it goes back to 200 columns.
-- **Some dialogs cannot be answered from the phone yet.** A dialog of pi, opencode or Oh My Pi that
-  marks the chosen row by colour alone shows no tappable options on the core, because the core sends
-  no colour. The card offers Escape, and you answer on the screen. This waits for a colour option in
-  the core, asked for in [herdr-core issue 68](https://github.com/herdrdev/herdr-core/issues/68). Claude and Codex dialogs are read from their words and work.
-  So does pi's question, when the core answers the read.
+- **Unproved colours cannot make a dialog tappable.** When a styled read falls back to plain text,
+  a dialog whose chosen row is marked only by colour may have no tappable options. Answer it on the
+  terminal instead. A direct styled read from the core would avoid the extra observer, as requested
+  in [herdr-core issue 68](https://github.com/herdrdev/herdr-core/issues/68).
 - **The mirror shows the screen; older lines come when you ask.** The core holds a terminal's keys
   while it reads older lines, and under a dialog one such read takes about 25 seconds. So the phone's
   mirror reads the screen alone, and Load older at the top of the mirror reads the lines above it,
@@ -299,7 +299,7 @@ What the core cannot do:
 - Rename a terminal, a tab or a space. The names belong to herdr-app. A new space is named after
   its folder.
 - Focus a terminal, so "Show in terminal" is missing. herdr-app keeps focus on its own screen.
-- Show colour. The core hands out the screen as text only.
+- Supply styled history, or prove colours from an unsupported observer paint.
 - Show History for a Claude pane before its hook is installed, or for an agent other than Claude, pi and Oh My Pi.
 - Show a terminal on another machine. Terminals of machines added to the core (`box/t7`) are not
   shown. Add that machine to your [crew](crew.md) and its own Collie shows them.
