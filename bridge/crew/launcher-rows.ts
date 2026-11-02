@@ -2,7 +2,7 @@ import { statSync } from "node:fs";
 import { isAbsolute, relative, sep } from "node:path";
 import type { JsonObject, JsonValue } from "../json.ts";
 import { addingBody, launcherItems, type MergedLaunchers } from "../launcher-adds.ts";
-import type { LauncherItem, LaunchersResponse } from "../types.ts";
+import type { Launcher, LauncherItem, LaunchersResponse } from "../types.ts";
 import { expandHome } from "../worktree-folder.ts";
 import { forwardError, type LeadMerge } from "./forward.ts";
 
@@ -233,4 +233,35 @@ export function leadRowsRead(lead: () => Promise<LeadRows>, respond: (body: Laun
       return respond(withLeadRows(member, await rows()));
     },
   };
+}
+
+// ── A launch of a lead row on a member carries the row (ADR 0127 point 3) ───────────────────────────
+//
+// The phone names a row by its `command` and never sends a line. A member's allowlist is its own
+// list, so a lead row it does not hold would be `launch.not_allowlisted` there. The lead therefore
+// writes the row itself onto a forwarded `POST /api/launch` or `POST /api/worktree` body, under
+// `row`, and the member runs it only when the call came over the crew link. Any `row` a phone sent is
+// dropped on the way, so a phone can never name a line through the lead either.
+
+/** The body field a lead row rides under. */
+export const ROW_FIELD = "row";
+
+/**
+ * A carried `row` as this member runs it, or `null` when it is not one: it must name the body's own
+ * `command`, a label, and a `noPrompts`; a `cwd` must be absolute once `~` is read as `home`.
+ */
+export function rowFromLead(value: JsonValue | undefined, command: string, home: string): Launcher | null {
+  if (!isObject(value)) return null;
+  if (value.command !== command || command === "") return null;
+  if (typeof value.label !== "string" || value.label === "") return null;
+  if (typeof value.noPrompts !== "boolean") return null;
+  if (value.harness !== undefined && typeof value.harness !== "string") return null;
+  if (value.cwd !== undefined && typeof value.cwd !== "string") return null;
+  const row: Launcher = { command, label: value.label, kind: value.harness === undefined ? "command" : "agent", noPrompts: value.noPrompts };
+  if (value.harness !== undefined) row.harness = value.harness;
+  if (value.cwd === undefined) return row;
+  const cwd = expandHome(value.cwd, home);
+  if (!isAbsolute(cwd)) return null;
+  row.cwd = cwd;
+  return row;
 }

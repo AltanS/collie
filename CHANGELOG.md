@@ -26,6 +26,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Added
 
 - **The lead's launcher rows show on every machine of the crew.** The New page now offers the rows of the lead's `launchers.toml`, and the rows a phone added there, whichever machine is picked. Each row is checked on the machine it would run on: a pinned folder that machine does not have marks the row unavailable, and a folder under the lead's home is read under that machine's home. A machine's own rows stay as its additions, and its own row wins over a lead row with the same command. A member that runs an older Collie still lists the lead's rows, without the folder check (ADR 0127).
+- **A lead row runs on the machine you pick.** A tap on one of the lead's rows with a member picked starts that row on the member, in a new space or as a new worktree's agent, with its pinned folder read under that member's home. The lead sends the row to the member over the crew link, and only the lead can: a member refuses a row that a phone sends to it directly. A member that runs an older Collie answers that the command is not one of its launchers, and nothing runs (ADR 0127).
 
 ### Changed
 

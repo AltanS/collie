@@ -185,7 +185,7 @@ import {
 } from "./answer-mask.ts";
 import { maskForwardedAnswer } from "./crew/mask.ts";
 import type { LeadMerge } from "./crew/forward.ts";
-import { CWD_PARAM, folderAnswers, leadRowsRead } from "./crew/launcher-rows.ts";
+import { CWD_PARAM, folderAnswers, leadRowsRead, ROW_FIELD, rowFromLead } from "./crew/launcher-rows.ts";
 import { redactAnsi } from "./redact.ts";
 import { TranscriptStore } from "./journal/store.ts";
 import type { AgentSessionRef, DiscoverHints, ForegroundProcess, JournalAdapter, PaneScreen } from "./journal/types.ts";
@@ -1882,6 +1882,7 @@ export function startServer(opts: {
       const rt = await caller.resolve();
       if (rt instanceof Response) return rt;
       return launch(rt.herdr, rt.engine, req, caller.audit, caller.device(), rt.name, allowedLaunchers, {}, {
+        fromLead: caller.via === "crew",
         harnesses,
         receipts: launchReceipts,
         launchWindow: opts.launchWindow,
@@ -2126,6 +2127,7 @@ export function startServer(opts: {
       const rt = await caller.resolve();
       if (rt instanceof Response) return rt;
       return createWorktreeAt(rt.herdr, rt.engine, req, caller.audit, caller.device(), rt.name, allowedLaunchers, {
+        fromLead: caller.via === "crew",
         receipts: worktreeReceipts,
         bases: worktreeBases,
         choices: worktreeChoices,
@@ -6182,7 +6184,8 @@ async function runWorktreeCreate(
   repoRoot: string,
   branch: string,
   base: string | undefined,
-  row: Launcher | undefined,
+  // The row to start once the space is open, and `lead` when it is a lead row this member was sent.
+  launcher: Pick<PickedLaunch, "row" | "source">,
   requestId: string | undefined,
   audit: AuditLog,
   device: string | null,
@@ -6222,6 +6225,7 @@ async function runWorktreeCreate(
   if (afterCreate !== undefined) await afterCreate();
   let launcherStarted = false;
   let launcherError: string | undefined;
+  const row = launcher.row;
   if (row !== undefined) {
     const sent = await typeIntoFreshShell(herdr, created.paneId, row.command, wait, "worktree");
     launcherStarted = sent.ok;
@@ -6242,6 +6246,7 @@ async function runWorktreeCreate(
       launcher: row?.command,
       launcherStarted: row === undefined ? undefined : String(launcherStarted),
       path,
+      source: launcher.source,
     },
   });
   if (requestId !== undefined) {
@@ -6438,6 +6443,8 @@ export async function createWorktreeAt(
   session: string,
   getLaunchers: () => Promise<Launcher[]>,
   deps: FolderWorktreeDeps & {
+    /** True when the call came over the crew link from this machine's lead: a carried `row` is taken. */
+    fromLead?: boolean;
     receipts: WorktreeReceiptSurface;
     bases?: WorktreeBaseSurface;
     choices?: WorktreeChoiceSurface;
@@ -6481,7 +6488,9 @@ export async function createWorktreeAt(
   if (folder === null) return refuse("worktree.folder_invalid");
   // `run` counts as named so a one-off line on a branch is refused (ADR 0095), never read as a shell.
   const named = ["command", "harness", "shell", "run"].some((k) => fields[k] !== undefined && fields[k] !== null && fields[k] !== false);
-  const picked = named ? await pickLaunch(fields, getLaunchers, deps.harnesses, null) : ({ kind: "shell", row: undefined } as const);
+  const picked = named
+    ? await pickLaunch(fields, getLaunchers, deps.harnesses, null, { fromLead: deps.fromLead === true, home })
+    : ({ kind: "shell", row: undefined } as const);
   if (picked instanceof Response) return picked;
   const cwd = askedFolder(fields.cwd, home);
   if (cwd === undefined || cwd === false) return refuse("worktree.folder_invalid");
@@ -6525,7 +6534,7 @@ export async function createWorktreeAt(
     repo.repoRoot,
     branch,
     resolved.ref,
-    picked.row,
+    picked,
     requestId,
     audit,
     device,
@@ -7097,10 +7106,13 @@ export async function launch(
   const replay = requestId === undefined ? null : earlierLaunch(receipts, requestId);
   if (replay !== null) return json(await replay, ae);
 
-  const picked = await pickLaunch(fields, getLaunchers, deps.harnesses, {
-    device,
-    switches: deps.switches ?? (() => Promise.resolve({ ...DEFAULT_SWITCHES })),
-  });
+  const picked = await pickLaunch(
+    fields,
+    getLaunchers,
+    deps.harnesses,
+    { device, switches: deps.switches ?? (() => Promise.resolve({ ...DEFAULT_SWITCHES })) },
+    { fromLead: deps.fromLead === true, home: deps.home ?? homedir() },
+  );
   if (picked instanceof Response) return picked;
 
   // The client never sends a command line, except as a one-off `run`, which met its gates above. It
@@ -7153,6 +7165,7 @@ export async function launch(
     wait,
     harness: picked.harness,
     launchWindow: deps.launchWindow,
+    source: picked.source,
   });
   if (requestId !== undefined) receipts.track(requestId, work);
   const answer = await work;
@@ -7186,6 +7199,12 @@ export async function launch(
 
 /** What `launch` needs beyond the route's own arguments. Every field defaults for a test. */
 export interface LaunchDeps {
+  /**
+   * True when the call came over the crew link from this machine's lead (`caller.via === "crew"`):
+   * a carried `row` is then run when this machine's own list has no match (ADR 0127 point 3).
+   * Absent or false: a body with `row` and no own match is `launch.row_not_from_lead`.
+   */
+  fromLead?: boolean;
   /** The agents this host starts by id. Absent: no `harness` body is accepted. */
   harnesses?: Pick<HarnessProbe, "launch">;
   /** Absent: an in-memory store. */
@@ -7230,7 +7249,15 @@ type PickedLaunch = {
   noPrompts?: boolean;
   /** The harness id a `harness` launch named: the launch window's mark ({@link LaunchWindow}). */
   harness?: string;
+  /** `lead` when the row is one the lead carried over the crew link (ADR 0127 point 3). */
+  source?: "lead";
 };
+
+/** Whether a carried lead row is taken, and the home its `~` is read under (ADR 0127 point 3). */
+interface LeadRowGate {
+  fromLead: boolean;
+  home: string;
+}
 
 /** What a one-off `run` is checked against: who asks, and the operator's switch (ADR 0095). */
 interface RunGate {
@@ -7244,12 +7271,17 @@ interface RunGate {
  * runs. `run` is checked in its own order, every step before anything runs: a paired device, the
  * operator's switch, then the character rule. `runGate` is `null` where a run is never taken (a new
  * branch), and a body naming one there is refused rather than read as a plain shell.
+ *
+ * A `command` this host does not hold may come with the lead's `row` (ADR 0127 point 3). It is run
+ * only when `leadGate.fromLead`; from anyone else it is `launch.row_not_from_lead`. This host's own
+ * row on the same `command` wins, and `row` is then not read.
  */
 async function pickLaunch(
   fields: JsonObject,
   getLaunchers: () => Promise<Launcher[]>,
   harnesses: Pick<HarnessProbe, "launch"> | undefined,
   runGate: RunGate | null,
+  leadGate: LeadRowGate,
 ): Promise<PickedLaunch | Response> {
   const command = typeof fields.command === "string" ? fields.command.trim() : "";
   const harness = typeof fields.harness === "string" ? fields.harness.trim() : "";
@@ -7271,8 +7303,15 @@ async function pickLaunch(
   // `launchers.toml` is live on the bridge without a restart (an already-open tab needs a reload to
   // re-fetch its rows, the same property `commands.toml` has).
   const row = (await getLaunchers()).find((r) => r.command === command);
-  if (!row) return json({ ok: false, ...apiError("launch.not_allowlisted") } satisfies CreateResponse, null, 400);
-  return { kind: "row", row };
+  if (row) return { kind: "row", row };
+  const carried = fields[ROW_FIELD];
+  if (carried === undefined || carried === null) {
+    return json({ ok: false, ...apiError("launch.not_allowlisted") } satisfies CreateResponse, null, 400);
+  }
+  if (!leadGate.fromLead) return json({ ok: false, ...apiError("launch.row_not_from_lead") } satisfies CreateResponse, null, 400);
+  const lead = rowFromLead(carried, command, leadGate.home);
+  if (lead === null) return text("bad body", 400);
+  return { kind: "row", row: lead, source: "lead" };
 }
 
 /** A one-off run's gates, in order, and the line it types (ADR 0095). */
@@ -7339,6 +7378,8 @@ async function runLaunch(
     /** The harness id of a `harness` launch, and where its pane is marked once the line is typed. */
     harness: string | undefined;
     launchWindow: Pick<LaunchWindow, "mark"> | undefined;
+    /** `lead` for a row the lead carried (ADR 0127 point 3): the audit line says so. */
+    source?: "lead" | undefined;
   },
 ): Promise<CreateResponse> {
   const { row, besidePane, cwd } = job;
@@ -7397,7 +7438,7 @@ async function runLaunch(
   let detail: AuditDetail;
   if (row === undefined) detail = { cwd, requestId: job.requestId };
   else if (job.kind === "run") detail = { program: row.label, length: [...row.command].length, cwd, requestId: job.requestId };
-  else detail = { command: row.command, label: row.label, cwd, requestId: job.requestId, harness: job.kind === "harness" ? row.command : undefined };
+  else detail = { command: row.command, label: row.label, cwd, requestId: job.requestId, harness: job.kind === "harness" ? row.command : undefined, source: job.source };
   if (besidePane) detail.besidePaneId = besidePane.paneId;
   job.audit.record({
     action: row === undefined ? `${where}.create` : job.kind === "run" ? `${where}.run` : `${where}.launch`,

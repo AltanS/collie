@@ -1570,6 +1570,7 @@ export const it: Dictionary = {
   "apiError.tab.workspace_required": "Nessuno spazio specificato per la nuova scheda.",
   "apiError.launch.not_allowlisted": "Questo comando non è tra i tuoi avviatori",
   "apiError.launch.unknown_harness": "Questa macchina non avvia {harness}.",
+  "apiError.launch.row_not_from_lead": "Un avviatore può arrivare solo dal lead di questa macchina.",
   "apiError.launch.bad_folder": "Questa cartella non può essere usata. Il percorso non può contenere .. né caratteri di controllo.",
   "apiError.launch.folder_missing": "Su questa macchina non esiste la cartella {folder}.",
   "apiError.launch.pane_unknown": "Quel riquadro non esiste più, non è stato avviato nulla",

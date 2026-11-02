@@ -1638,6 +1638,7 @@ export const ru: Dictionary = {
   "apiError.tab.workspace_required": "Для новой вкладки не указано пространство.",
   "apiError.launch.not_allowlisted": "Эта команда отсутствует среди ваших средств запуска",
   "apiError.launch.unknown_harness": "Эта машина не запускает {harness}.",
+  "apiError.launch.row_not_from_lead": "Средство запуска может прийти только от ведущего узла этой машины.",
   "apiError.launch.bad_folder": "Эту папку нельзя использовать. В пути не должно быть .. и управляющих символов.",
   "apiError.launch.folder_missing": "На этой машине нет папки {folder}.",
   "apiError.launch.pane_unknown": "Эта панель исчезла, ничего не запущено",

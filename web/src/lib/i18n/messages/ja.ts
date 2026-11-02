@@ -1703,6 +1703,7 @@ export const ja: Dictionary = {
   "apiError.tab.workspace_required": "新規タブのスペースが指定されていません。",
   "apiError.launch.not_allowlisted": "そのコマンドはランチャーに登録されていません",
   "apiError.launch.unknown_harness": "このマシンは {harness} を起動しません。",
+  "apiError.launch.row_not_from_lead": "ランチャーはこのマシンのleadからしか受け付けません。",
   "apiError.launch.bad_folder": "このフォルダーは使えません。パスに .. や制御文字を含めることはできません。",
   "apiError.launch.folder_missing": "このマシンにはフォルダー {folder} がありません。",
   "apiError.launch.pane_unknown": "そのペインは見つかりません。何も起動されませんでした",

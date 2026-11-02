@@ -200,6 +200,8 @@ interface CreateBody {
   requestId?: string;
   launcher?: string | null;
   base?: JsonValue;
+  /** The lead's row for `launcher`, as a lead's forward carries it (ADR 0127 point 3). */
+  row?: JsonValue;
 }
 
 /** The folder route's body for a create body: the repo as `cwd`, and the launcher as `command`. */
@@ -209,6 +211,7 @@ function post(body: CreateBody): Request {
   if (body.requestId !== undefined) sent.requestId = body.requestId;
   if (body.launcher !== undefined) sent.command = body.launcher;
   if (body.base !== undefined) sent.base = body.base;
+  if (body.row !== undefined) sent.row = body.row;
   return new Request("http://localhost/api/worktree", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -223,6 +226,8 @@ interface RunOpts {
   rows?: Launcher[];
   bases?: WorktreeBaseSurface;
   ask?: GitAsk;
+  /** The call came over the crew link from this machine's lead. */
+  fromLead?: boolean;
 }
 
 /** The folder route's raw answer, for a case that must read a non-JSON refusal. */
@@ -242,6 +247,7 @@ function send(mux: FakeWorktreeMux, body: CreateBody, opts: RunOpts = {}): Promi
       receipts: opts.receipts ?? memoryWorktreeReceipts(),
       bases: opts.bases,
       wait: fakeClock(),
+      fromLead: opts.fromLead,
     },
   );
 }
@@ -464,6 +470,42 @@ describe("POST /api/worktree — the launcher allowlist", () => {
     // The receipt records the truth, so a replay says the launcher did not start either.
     expect(receipts.get(REQUEST_ID)?.launcherStarted).toBe(false);
     expect(await linkedCount()).toBe(1);
+  });
+});
+
+describe("POST /api/worktree — a lead row carried over the crew link (ADR 0127 point 3)", () => {
+  const ROW = { command: "codex --full-auto", label: "Codex", harness: "codex", noPrompts: true };
+
+  test("the lead's row starts as the launcher on the member, audited `source: lead`", async () => {
+    const mux = new FakeWorktreeMux();
+    const { audit, entries } = auditTrail();
+    const { status, answer } = await run(
+      mux,
+      { branch: "worktree/x", requestId: REQUEST_ID, launcher: "codex --full-auto", row: ROW },
+      { audit, fromLead: true },
+    );
+    expect(status).toBe(200);
+    expect(answer).toMatchObject({ ok: true, launcherStarted: true });
+    expect(mux.texts).toEqual([["w7:p1", "codex --full-auto"]]);
+    expect(entries[0]?.detail).toMatchObject({ launcher: "codex --full-auto", launcherStarted: "true", source: "lead" });
+  });
+
+  test("a phone-direct body with `row` is refused before git or the multiplexer is touched", async () => {
+    const mux = new FakeWorktreeMux();
+    const { status, answer } = await run(mux, { branch: "worktree/x", requestId: REQUEST_ID, launcher: "codex --full-auto", row: ROW });
+    expect(status).toBe(400);
+    expect(answer).toMatchObject({ ok: false, code: "launch.row_not_from_lead" });
+    expect(mux.spaces).toEqual([]);
+    expect(await linkedCount()).toBe(0);
+  });
+
+  test("this machine's own row wins over a carried one with the same command", async () => {
+    const mux = new FakeWorktreeMux();
+    const { audit, entries } = auditTrail();
+    const carried = { command: "claude", label: "Lead Claude", noPrompts: false };
+    const { answer } = await run(mux, { branch: "worktree/x", requestId: REQUEST_ID, launcher: "claude", row: carried }, { audit, fromLead: true });
+    expect(answer).toMatchObject({ ok: true, launcherStarted: true });
+    expect(entries[0]?.detail).not.toHaveProperty("source");
   });
 });
 

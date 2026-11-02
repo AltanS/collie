@@ -1697,6 +1697,7 @@ export const ko: Dictionary = {
   "apiError.tab.workspace_required": "새 탭을 생성할 작업 공간이 지정되지 않았습니다.",
   "apiError.launch.not_allowlisted": "해당 명령은 등록된 실행 항목이 아닙니다",
   "apiError.launch.unknown_harness": "이 머신은 {harness}을(를) 시작하지 않습니다.",
+  "apiError.launch.row_not_from_lead": "실행 항목은 이 머신의 lead에서만 올 수 있습니다.",
   "apiError.launch.bad_folder": "이 폴더는 사용할 수 없습니다. 경로에 .. 또는 제어 문자를 넣을 수 없습니다.",
   "apiError.launch.folder_missing": "이 머신에는 {folder} 폴더가 없습니다.",
   "apiError.launch.pane_unknown": "해당 창을 찾을 수 없어 실행하지 못했습니다",

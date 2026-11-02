@@ -1814,6 +1814,7 @@ export const en = {
   "apiError.tab.workspace_required": "No space was named for the new tab.",
   "apiError.launch.not_allowlisted": "That command isn't one of your launchers",
   "apiError.launch.unknown_harness": "This machine does not start {harness}.",
+  "apiError.launch.row_not_from_lead": "A launcher can only come from this machine's lead.",
   "apiError.launch.bad_folder": "That folder cannot be used. A folder path may not contain .. or control characters.",
   "apiError.launch.folder_missing": "There is no folder {folder} on this machine.",
   "apiError.launch.pane_unknown": "That pane is gone, nothing was launched",
