@@ -145,6 +145,9 @@ zellij 0.44.2).
 
 > **Note.** Collie manages active sessions, but it does not create or restart them.
 
+Zellij has no **New worktree**. A worktree opens as a new space, and Collie cannot open one on
+zellij.
+
 Zellij 0.44 and later reports each pane's folder, so zellij panes get the Files button and show
 their branch. An older zellij reports no folder, and its panes have neither.
 
@@ -204,7 +207,7 @@ Some things work differently on tuios:
 - Show in terminal moves every terminal that shows the pane's tuios session, a tuios-web tab included.
   tuios cannot move a terminal to another tuios session. If no terminal shows the pane's tuios session,
   Collie refuses and names the tuios session the terminal shows.
-- The **New worktree** switch on the New page stays, off, and says it needs Herdr.
+- A **New worktree** opens as a new tuios session.
 
 ### herdr-core notes
 
@@ -280,13 +283,14 @@ What looks different on the core:
 
 What the core cannot do:
 
-- Rename a terminal, a tab or a space, and create a space. The names belong to herdr-app.
+- Rename a terminal, a tab or a space. The names belong to herdr-app. A new space is named after
+  its folder.
 - Focus a terminal, so "Show in terminal" is missing. herdr-app keeps focus on its own screen.
 - Show colour. The core hands out the screen as text only.
 - Show History for a Claude pane before its hook is installed, or for an agent other than Claude, pi and Oh My Pi.
 - Show a terminal on another machine. Terminals of machines added to the core (`box/t7`) are not
   shown. Add that machine to your [crew](crew.md) and its own Collie shows them.
-- Open a worktree, or list sessions.
+- List sessions.
 
 `collie doctor` has two rows for it. `hc-socket` dials the socket and shows the core's version and how
 many terminals it keeps. `hc-version` shows `hc --version`. [Troubleshooting](troubleshooting.md)
@@ -522,6 +526,7 @@ exact specification.
 | ["Show in terminal"](../MUX_CONTRACT.md#capabilities) | yes | yes | **no**, zellij accepts the request and moves nothing |
 | [open / rename / close a tab](../MUX_CONTRACT.md#capabilities) | yes | yes (opening is refused on the tmux crash case above) | yes |
 | [open a space](../MUX_CONTRACT.md#capabilities) | yes | yes | **no**, a session it made would be invisible to it |
+| [a **New worktree**](../MUX_CONTRACT.md#contract-owned-rules) | yes, with git | yes, with git | **no**, it cannot open a space |
 | [pane history](../MUX_CONTRACT.md#capabilities) | from Herdr's own pane record | from the beacon's session key | from the beacon's session key |
 
 Without active beacons, tmux, zellij and tern present panes as raw shells, and pane history is marked

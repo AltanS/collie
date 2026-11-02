@@ -302,8 +302,9 @@ login shell on that machine, run `bash -lc 'command -v claude'` (or the agent's 
 install the agent there, or fix the line in your shell's login file that adds it to the `PATH`, and
 reopen the page. On a crew, check the machine you picked: each member looks on its own disk.
 "this machine runs an older Collie" means update that member
-([Starting something on a machine](crew.md#starting-something-on-a-machine)). "needs Herdr" and
-"only on" a machine's name belong to the **New worktree** switch, not to an agent.
+([Starting something on a machine](crew.md#starting-something-on-a-machine)). A reason under the
+**New worktree** switch belongs to the switch, not to an agent: that machine has no git, or its
+multiplexer cannot open a space.
 
 **Start says "There is no folder … on this machine", or "could not confirm the start".** The first
 means the folder is not on the machine that runs the start, so nothing started. A name with no leading `/` or

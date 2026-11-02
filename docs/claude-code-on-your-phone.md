@@ -66,7 +66,7 @@ On Herdr, give each agent its own workspace while Herdr runs:
 herdr workspace create --label review --cwd ~/src/app-review
 ```
 
-On Herdr you can also do both steps from the phone. Open a pane's **⋯** menu and tap **New agent
+You can also do both steps from the phone. Open a pane's **⋯** menu and tap **New agent
 in a worktree**. The New page opens with **New worktree** already on, for that pane's repo. Pick
 the agent, then tap Start. Collie makes a worktree on a new branch, opens it as its own workspace,
 and starts the agent in it. The branch is named `worktree/<word>-<word>-<hex>`, and you can change
@@ -79,8 +79,9 @@ a branch other than the default, and it opens on **This branch**. Changes you ha
 stay behind, because the new worktree starts from the last commit. Collie never fetches, so the
 default is the copy of the branch you already have.
 
-**Branch folder** says where the worktree goes. **Herdr's default** leaves it to Herdr, which uses
-`~/.herdr/worktrees/<repo>/<branch>` unless its `config.toml` names another `[worktrees] directory`.
+**Branch folder** says where the worktree goes. **Herdr's default** puts it where Herdr puts its
+own worktrees: `~/.herdr/worktrees/<repo>/<branch>`, unless Herdr's `config.toml` names another
+`[worktrees] directory`. Collie uses this folder on every multiplexer.
 **Other folder** puts it in a folder you name, which must already exist under your home folder, and
 must not be hidden, a link, or inside the repo. The page shows the full path of the new folder
 before you tap Start, and Collie checks the rule again at the moment it creates it. Collie remembers
@@ -90,9 +91,10 @@ The page is described in
 [Start an agent or a shell from the phone](#start-an-agent-or-a-shell-from-the-phone). A create can
 take up to a minute on a large repo. If the phone loses the reply, the page says so and does not send
 it again. Look at the dashboard first. **Try again** sends the same request, so Collie answers with
-the worktree it already made and does not make a second one. The switch works only on Herdr, and only
-for the lead machine; elsewhere it stays on the page, off, and says why ("needs Herdr", or "only on"
-the lead's name).
+the worktree it already made and does not make a second one. Collie makes the worktree with git,
+on the machine you pick, and opens it as a new space. So the switch needs git on that machine and a
+multiplexer that opens a space: Herdr, the Herdr core, tmux, tuios or tern. On zellij, or on a
+machine with no git, it stays on the page, off, and says why.
 
 Running multiple sessions creates multiple waiting prompts. Collie groups panes by workspace and
 marks the ones that need input: a red wash on the row, a dot on the workspace heading, and a count

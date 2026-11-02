@@ -519,8 +519,9 @@ command and the folder you pick all belong to the machine you picked, and that m
   there, are not shared across the crew
   ([Your own launchers](configure.md#your-own-launchers)). Its folders list, the Recent and Favourite
   rows, is its own too, and the page checks the folder on that machine's disk.
-- **A New worktree is made on the lead only.** On a member the switch stays, off, and says "only on"
-  the lead's name.
+- **A New worktree is made on the machine you pick.** That machine needs git and a multiplexer
+  that opens a space. Herdr, the Herdr core, tmux, tuios and tern open one; zellij does not. When
+  the machine cannot, the switch stays, off, and says why.
 - **A member from before 1.19.0 starts nothing by name.** The page lists its choices, disabled, with
   the reason "this machine runs an older Collie". Update the member to start agents on it
   ([Update, from the phone or the terminal](upgrading.md#update-from-the-phone-or-the-terminal)).
