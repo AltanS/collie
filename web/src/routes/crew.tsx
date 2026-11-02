@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { useId, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Activity, ArrowLeft, Crown, Network, Shield } from "lucide-react";
 import { useLoaderData } from "react-router";
@@ -73,7 +73,7 @@ export function CrewRoute() {
   // TIER-2 health, derived once at the data root against the lead's clock — the same map the
   // ServerSwitcher's rows read, so the two surfaces cannot disagree about a member. See
   // `memberHealth` in crew-formation.tsx for a mount without a provider.
-  const { health, servers } = useCrew();
+  const { health, servers, lead } = useCrew();
   // SAFETY: `crewLoader` returns `CrewData` for this route; `undefined` is what React Router hands
   // back for a harness that mounts the route without its loader, which the `??` below covers. A
   // data-mode `useLoaderData()` is typed `unknown` and cannot be narrowed any other way.
@@ -82,6 +82,9 @@ export function CrewRoute() {
   // re-widens at every closure boundary.
   const status = data.status;
   const counts = hostCounts(root?.agents ?? NO_AGENTS);
+  // The live panes, so the broadcast sheet's receipts name a session by its pane name (M80 spec 12).
+  const rootAgents = root?.agents;
+  const live = useMemo(() => ({ panes: rootAgents ?? NO_AGENTS, lead }), [rootAgents, lead]);
   // The open sheet holds the member ID, not the member: the loader revalidates underneath an open
   // sheet on every poll, and a held object would go on rendering the census as it was when tapped.
   const [openId, setOpenId] = useState<string | null>(null);
@@ -187,7 +190,7 @@ export function CrewRoute() {
           this route's scrolling `<main>` is a containing block that would otherwise clip it. */}
       {status !== null &&
         createPortal(
-          <WalkyBroadcastSheet open={messaging} onClose={() => setMessaging(false)} members={status.members} />,
+          <WalkyBroadcastSheet open={messaging} onClose={() => setMessaging(false)} members={status.members} live={live} />,
           document.body,
         )}
       {status !== null &&

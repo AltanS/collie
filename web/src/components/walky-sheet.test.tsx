@@ -1,7 +1,9 @@
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { WalkyLogProvider } from "@/components/walky-log";
+import { WalkyLogProvider, WalkyPanesProvider } from "@/components/walky-log";
+import { clockTime } from "@/lib/format";
+import type { AgentView } from "@/lib/types";
 import { fixtureWalkyAgent, fixtureWalkyOperator, fixtureWalkySelf, fixtureWalkySent } from "@/test/handlers";
 import type { WalkyRow } from "@/lib/walky";
 
@@ -162,8 +164,11 @@ describe("WalkySheet focus (a tapped card or id chip)", () => {
     sheet([fixtureWalkyAgent, fixtureWalkyOperator], { focusId: fixtureWalkyOperator.id });
     expect(focused()[0]).toHaveAttribute("data-kind", "operator");
     const note = document.querySelector('[data-slot="walky-reply-to"]');
-    expect(note).toHaveTextContent(`In reply to ${fixtureWalkyAgent.id}`);
-    await user.click(within(el(note)).getByRole("button", { name: `Open message ${fixtureWalkyAgent.id}` }));
+    // The log holds the answered message, so the chip tells it by sender and time; the id stays off the screen.
+    const told = `collie-workspace#fix-465, ${clockTime(fixtureWalkyAgent.at)}`;
+    expect(note).toHaveTextContent(`In reply to ${told}`);
+    expect(note?.textContent).not.toContain(fixtureWalkyAgent.id);
+    await user.click(within(el(note)).getByRole("button", { name: `Open the message from ${told}` }));
     expect(focused()).toHaveLength(1);
     expect(focused()[0]).toHaveAttribute("data-kind", "agent");
   });
@@ -188,7 +193,7 @@ describe("WalkySheet focus (a tapped card or id chip)", () => {
         <WalkySheet open onClose={vi.fn()} onReply={vi.fn()} canReply focusId={fixtureWalkyOperator.id} />
       </WalkyLogProvider>,
     );
-    await user.click(screen.getByRole("button", { name: `Open message ${fixtureWalkyAgent.id}` }));
+    await user.click(screen.getByRole("button", { name: /^Open the message from collie-workspace#fix-465/ }));
     expect(focused()[0]).toHaveAttribute("data-kind", "agent");
     const again = (open: boolean) => (
       <WalkyLogProvider rows={rows}>
@@ -220,7 +225,8 @@ describe("WalkySheet with rows in both directions", () => {
     const row = rowsOf()[0];
     if (row === undefined) throw new Error("no rows");
     const inside = within(row);
-    expect(inside.getByText("To bluefin/w6:p3")).toBeInTheDocument();
+    // No live pane is known here, so the target shows as the address, as it always did.
+    expect(inside.getByText("Sent to bluefin/w6:p3")).toBeInTheDocument();
     expect(inside.getByText("typed into the pane")).toBeInTheDocument();
     expect(inside.getByText("Merged. Thanks.")).toBeInTheDocument();
     expect(inside.queryByText("agent")).toBeNull();
@@ -248,14 +254,14 @@ describe("WalkySheet with rows in both directions", () => {
 
   it("names a broadcast's receipt target in words", () => {
     sheet([{ ...fixtureWalkySent, receipt: { ...fixtureWalkySent.receipt, target: "all" } }], { self: fixtureWalkySelf });
-    expect(screen.getByText("To every machine")).toBeInTheDocument();
+    expect(screen.getByText("Sent to every machine")).toBeInTheDocument();
   });
 
   it("can focus a sent row, and a chip can point at it", async () => {
     const user = userEvent.setup();
     const reply = { ...fixtureWalkyOperator, replyTo: fixtureWalkySent.id };
     sheet([fixtureWalkySent, reply], { self: fixtureWalkySelf, focusId: reply.id });
-    await user.click(screen.getByRole("button", { name: `Open message ${fixtureWalkySent.id}` }));
+    await user.click(screen.getByRole("button", { name: /^Open the message from collie-workspace#this-pane/ }));
     const marked = document.querySelector('[data-focused="true"]');
     expect(marked).toHaveAttribute("data-direction", "sent");
   });
@@ -280,7 +286,7 @@ describe("a held message's two ways out (M62 spec 03)", () => {
     expect(screen.getByRole("button", { name: "Cancel the message to bluefin/w1:p1" })).toHaveTextContent("Cancel");
     expect(screen.getByRole("button", { name: "Drop the message from collie-workspace#fix-465" })).toHaveTextContent("Drop");
     expect(screen.getAllByRole("button", { name: /^(Cancel|Drop) the message/ })).toHaveLength(2);
-    expect(screen.getAllByText("held: draft present")).toHaveLength(3);
+    expect(screen.getAllByText("held: that session has unsent text")).toHaveLength(3);
   });
 
   it("hands the row to onCancel or onDrop, and shows the line the caller answers with", async () => {
@@ -302,5 +308,72 @@ describe("a held message's two ways out (M62 spec 03)", () => {
     cleanup();
     sheet([operatorHeld, agentHeld], { self: fixtureWalkySelf });
     expect(screen.queryAllByRole("button", { name: /^(Cancel|Drop) the message/ })).toHaveLength(0);
+  });
+});
+
+// ── SESSIONS BY NAME (M80 spec 12) ────────────────────────────────────────────
+
+function livePane(over: Partial<AgentView> = {}): AgentView {
+  return {
+    paneId: "w6:p3",
+    workspaceId: "w6",
+    workspaceLabel: "collie-workspace",
+    workspaceNumber: 6,
+    tabId: "w6:t1",
+    agent: "claude",
+    status: "idle",
+    cwd: "/home/altan/collie",
+    focused: false,
+    kind: "agent",
+    host: "bluefin",
+    ...over,
+  };
+}
+
+function namedSheet(panes: AgentView[], rows: readonly WalkyRow[]) {
+  const open = vi.fn();
+  render(
+    <WalkyLogProvider rows={rows}>
+      <WalkyPanesProvider value={{ live: { panes, lead: "bluefin" }, open }}>
+        <WalkySheet open onClose={vi.fn()} onReply={vi.fn()} canReply self={fixtureWalkySelf} />
+      </WalkyPanesProvider>
+    </WalkyLogProvider>,
+  );
+  return open;
+}
+
+describe("WalkySheet names sessions", () => {
+  it("names the sender of a received row by its live pane, and keeps the log's label without one", () => {
+    namedSheet([livePane({ paneLabel: "plumbing" })], [fixtureWalkyAgent]);
+    expect(screen.getByText("plumbing")).toBeInTheDocument();
+    expect(screen.queryByText("collie-workspace#fix-465")).toBeNull();
+    expect(screen.getByRole("button", { name: "Reply to plumbing" })).toBeInTheDocument();
+  });
+
+  it("titles a sent row \"Sent to <name>\", and \"Sent to <name> on <machine>\" for another machine", () => {
+    const far = livePane({ host: "workshop", paneId: "w2:p1", paneLabel: "docs" });
+    const farRow: WalkyRow = { ...fixtureWalkySent, id: "wt_s3ntaaaa0002", at: fixtureWalkySent.at + 1000, receipt: { ...fixtureWalkySent.receipt, id: "wt_s3ntaaaa0002", target: "workshop/w2:p1" } };
+    namedSheet([livePane({ paneLabel: "plumbing" }), far], [fixtureWalkySent, farRow]);
+    expect(screen.getByText("Sent to plumbing")).toBeInTheDocument();
+    expect(screen.getByText("Sent to docs on workshop")).toBeInTheDocument();
+  });
+
+  it("draws a live session in the body as a chip that opens its pane, and leaves a claim as text", async () => {
+    const user = userEvent.setup();
+    const row: WalkyRow = { ...fixtureWalkyAgent, body: "Look at bluefin/w6:p3, not at ghost/w1:p1." };
+    const panes = [livePane({ paneLabel: "plumbing" })];
+    const open = namedSheet(panes, [row]);
+    const body = document.querySelector<HTMLElement>('[data-slot="walky-sheet-body"]');
+    if (body === null) throw new Error("no sheet body");
+    expect(body).toHaveTextContent("Look at plumbing, not at ghost/w1:p1.");
+    const chip = within(body).getByRole("button", { name: "Open plumbing" });
+    expect(chip).toHaveAttribute("data-slot", "walky-name-chip");
+    await user.click(chip);
+    expect(open).toHaveBeenCalledExactlyOnceWith(panes[0]);
+  });
+
+  it("words a held reason for a person", () => {
+    namedSheet([], [{ ...fixtureWalkyAgent, receipt: { ...fixtureWalkyAgent.receipt, state: "accepted", reason: "turn running" } }]);
+    expect(screen.getByText("held: that session is busy")).toBeInTheDocument();
   });
 });

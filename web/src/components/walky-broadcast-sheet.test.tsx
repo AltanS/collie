@@ -77,9 +77,37 @@ describe("WalkyBroadcastSheet", () => {
     await user.click(within(dialog).getByRole("button", { name: "Send message" }));
     await user.click(await within(dialog).findByRole("button", { name: "Send" }));
     const rows = await within(dialog).findAllByRole("listitem");
-    expect(rows[0]).toHaveTextContent("a#b (bluefin/w1:p1)");
-    expect(rows[1]).toHaveTextContent("c#d (workshop/w1:p1)");
+    // No live pane is known, so the `who` label names the session, with its machine; the address stays on the wire.
+    expect(rows[0]).toHaveTextContent("a#b on bluefin");
+    expect(rows[1]).toHaveTextContent("c#d on workshop");
+    expect(rows[1]).not.toHaveTextContent("workshop/w1:p1");
     expect(rows[1]).toHaveTextContent("not sent: pane replaced");
+  });
+
+  it("names a receipt's target by its live pane when the phone knows the pane (M80 spec 12)", async () => {
+    server.use(
+      http.post("/api/walky", () =>
+        HttpResponse.json({
+          receipts: [{ id: "wt_aaaaaaaaaaaa", state: "refused", reason: "turn running", verified: "local", at: 1, by: "workshop", target: "workshop/w1:p1" }],
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    const live = {
+      panes: [{ paneId: "w1:p1", host: "workshop", workspaceId: "w1", workspaceLabel: "c", workspaceNumber: 1, tabId: "w1:t1", agent: "codex", status: "idle" as const, cwd: "/", focused: false, paneLabel: "release notes" }],
+      lead: "bluefin",
+    };
+    render(<WalkyBroadcastSheet open onClose={vi.fn()} members={MEMBERS} live={live} />);
+    const dialog = await screen.findByRole("dialog");
+    await within(dialog).findByText("Agents reached: 2");
+    await user.type(within(dialog).getByRole("textbox", { name: "Message" }), "Pause");
+    await user.click(within(dialog).getByRole("button", { name: "Send message" }));
+    await user.click(await within(dialog).findByRole("button", { name: "Send" }));
+    const [row] = await within(dialog).findAllByRole("listitem");
+    expect(row).toHaveTextContent("release notes on workshop");
+    expect(row).not.toHaveTextContent("c#d");
+    expect(row).not.toHaveTextContent("workshop/w1:p1");
+    expect(row).toHaveTextContent("not sent: that session is busy");
   });
 
   it("drops a chosen machine that left the crew: the picker, the count and the question go back to every machine", async () => {

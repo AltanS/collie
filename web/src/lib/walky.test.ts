@@ -4,6 +4,7 @@ import { fixtureWalkyAgent, fixtureWalkyOperator, fixtureWalkySelf, fixtureWalky
 
 import {
   bareAddress,
+  reasonWord,
   directionOf,
   findWalkyIds,
   parseWalkyCommand,
@@ -217,9 +218,19 @@ describe("the words", () => {
   });
 
   it("reads a held message as held, with what holds it (M62 spec 02)", () => {
-    expect(stateWord({ ...receipt, state: "accepted", reason: "draft present" })).toBe("held: draft present");
-    expect(stateWord({ ...receipt, state: "accepted", reason: "turn running" })).toBe("held: turn running");
+    expect(stateWord({ ...receipt, state: "accepted", reason: "draft present" })).toBe("held: that session has unsent text");
+    expect(stateWord({ ...receipt, state: "accepted", reason: "turn running" })).toBe("held: that session is busy");
     expect(stateWord({ ...receipt, state: "accepted", reason: "" })).toBe("queued");
+  });
+
+  it("words the bridge's known reasons for a person and leaves an unknown reason as the bridge wrote it (M80 spec 12)", () => {
+    expect(reasonWord("draft present")).toBe("that session has unsent text");
+    expect(reasonWord("turn running")).toBe("that session is busy");
+    expect(reasonWord("held past 60 minutes")).toBe("held past 60 minutes");
+    expect(stateWord({ ...receipt, state: "accepted", reason: "something new" })).toBe("held: something new");
+    expect(stateWord({ ...receipt, state: "inbox-only", reason: "turn running" })).toBe("waiting in the inbox, not typed: that session is busy");
+    // The lead has the outcome: no hold, a plain sentence.
+    expect(stateWord({ ...receipt, state: "accepted", reason: "outcome known on the lead" })).toBe("on its way, the lead reports the result");
   });
 
   it("gives a refusal its reason", () => {

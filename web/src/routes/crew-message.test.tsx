@@ -74,7 +74,7 @@ describe("Message all agents", () => {
     await within(dialog).findByText("Agents reached: 1");
     await user.type(within(dialog).getByRole("textbox"), "hi");
     await sendAndConfirm(user, dialog);
-    expect(await within(dialog).findByText("collie#main (bluefin/w1:p1)")).toBeInTheDocument();
+    expect(await within(dialog).findByText("collie#main on bluefin")).toBeInTheDocument();
     expect(within(dialog).getByText("minibuch/w2:p1")).toBeInTheDocument();
   });
 

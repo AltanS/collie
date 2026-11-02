@@ -5,13 +5,15 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { BottomSheet } from "@/components/ui/sheet";
 import { WalkyIdChip } from "@/components/walky-id-chip";
-import { useWalkyLog } from "@/components/walky-log";
+import { useWalkyLive, useWalkyLog } from "@/components/walky-log";
+import { WalkyBodyText, nameOnMachine } from "@/components/walky-name-chip";
 import { WalkyIcon } from "@/components/walky-icon";
 import { useLocale } from "@/hooks/use-locale";
-import { timeAgoShort } from "@/lib/format";
+import { clockTime, timeAgoShort } from "@/lib/format";
 import { t } from "@/lib/i18n";
 import { directionOf, isHeld, signerOf, stateWord, targetWord, verifiedWord, type WalkyRow } from "@/lib/walky";
 import { cn } from "@/lib/utils";
+import { senderNameOf, sessionNameOf, type WalkyLivePanes } from "@/lib/walky-names";
 
 // The pane's Messages sheet (M62 spec 05): every walky talky message the bridge kept for this pane,
 // newest first, with where each one stands. It reads the same list the Chat card and the mirror row
@@ -25,7 +27,7 @@ import { cn } from "@/lib/utils";
 // ── BOTH DIRECTIONS ───────────────────────────────────────────────────────────
 // The pane's list holds the messages that reached the pane AND the ones it sent, each with its receipt,
 // newest first across both. A received row is drawn as it always was. A SENT row (`directionOf`, read from
-// the addresses against `self`) is titled "To <target as the log names it>" and carries the receipt's state
+// the addresses against `self`) is titled "Sent to <name>" (the live pane's name, "on <machine>" when it is another machine's, else the address) and carries the receipt's state
 // words: no kind badge (the sender is this pane), and no Reply, because there is nobody to answer in it.
 //
 // ── A HELD MESSAGE HAS TWO WAYS OUT (M62 spec 03) ─────────────────────────────
@@ -112,7 +114,7 @@ export function WalkySheet({ open, onClose, onReply, canReply, focusId = null, s
                 onReply={() => onReply(row)}
                 self={self}
                 focused={row.id === wanted}
-                holds={(id) => log?.byId.has(id) === true}
+                byId={(id) => log?.byId.get(id)}
                 onFocusId={(id) => setMoved({ from: focusId, id })}
                 onCancel={onCancel}
                 onDrop={onDrop}
@@ -131,7 +133,7 @@ function WalkyListRow({
   onReply,
   self,
   focused,
-  holds,
+  byId,
   onFocusId,
   onCancel,
   onDrop,
@@ -141,12 +143,17 @@ function WalkyListRow({
   canReply: boolean;
   onReply: () => void;
   focused: boolean;
-  holds: (id: string) => boolean;
+  byId: (id: string) => WalkyRow | undefined;
   onFocusId: (id: string) => void;
   onCancel: ((row: WalkyRow) => Promise<string | null>) | undefined;
   onDrop: ((row: WalkyRow) => Promise<string | null>) | undefined;
 }) {
   const refused = row.receipt.state === "refused" || row.receipt.state === "expired";
+  // The person reads names; the address and the id stay on the wire (lib/walky-names.ts).
+  const live = useWalkyLive();
+  const sender = senderNameOf(row, live, self).name;
+  const target = targetNameOf(row.receipt.target, live, self);
+  const replied = row.replyTo === null ? undefined : byId(row.replyTo);
   const sent = directionOf(row, self) === "sent";
   // Only a message that came in from an agent has an address to answer.
   const replyable = !sent && canReply && row.kind === "agent" && row.from.address !== null;
@@ -180,24 +187,30 @@ function WalkyListRow({
         {sent ? <Send className="size-3.5 shrink-0" aria-hidden="true" /> : <WalkyIcon className="size-3.5 shrink-0" aria-hidden="true" />}
         {sent ? (
           <span data-slot="walky-sent-to" className="min-w-0 flex-1 truncate font-medium text-foreground">
-            {t("walky.sheet.sentTo", { target: targetWord(row.receipt.target) })}
+            {t("walky.sheet.sentTo", { target })}
           </span>
         ) : (
           <>
             <Badge variant="outline" className="px-1.5 py-0 text-[10px] font-medium">
               {t(row.kind === "agent" ? "walky.kind.agent" : "walky.kind.operator")}
             </Badge>
-            <span className="min-w-0 flex-1 truncate font-medium text-foreground">{row.from.label}</span>
+            <span className="min-w-0 flex-1 truncate font-medium text-foreground">{sender}</span>
           </>
         )}
         <span className="shrink-0 tabular-nums">{timeAgoShort(row.at)}</span>
       </div>
       {/* The sheet is where a long message is read in full: the chat card clamps its body to three lines (walky-card.tsx) and a tap on it opens this row, so the body here takes no clamp. */}
-      <p data-slot="walky-sheet-body" className="font-content whitespace-pre-wrap break-words text-sm">{row.body}</p>
+      <p data-slot="walky-sheet-body" className="font-content whitespace-pre-wrap break-words text-sm">
+        <WalkyBodyText text={row.body} self={self} />
+      </p>
       {row.replyTo !== null && (
         <p data-slot="walky-reply-to" className="mt-1 text-[11px] text-muted-foreground">
           {`${t("walky.sheet.inReplyTo")} `}
-          {holds(row.replyTo) ? <WalkyIdChip id={row.replyTo} onOpen={onFocusId} /> : <span className="font-mono">{row.replyTo}</span>}
+          {replied === undefined ? (
+            <span className="font-mono">{row.replyTo}</span>
+          ) : (
+            <RepliedChip id={row.replyTo} replied={replied} onOpen={onFocusId} />
+          )}
         </p>
       )}
       <div className="mt-1 flex items-center gap-2">
@@ -214,7 +227,7 @@ function WalkyListRow({
             size="sm"
             className="h-11 shrink-0"
             onClick={onReply}
-            aria-label={t("walky.sheet.replyAria", { label: row.from.label })}
+            aria-label={t("walky.sheet.replyAria", { label: sender })}
           >
             {t("walky.sheet.reply")}
           </Button>
@@ -227,7 +240,7 @@ function WalkyListRow({
             disabled={busy}
             onClick={() => void onTakeBack()}
             data-slot={cancels ? "walky-cancel" : "walky-drop"}
-            aria-label={cancels ? t("walky.sheet.cancelAria", { target: targetWord(row.receipt.target) }) : t("walky.sheet.dropAria", { label: row.from.label })}
+            aria-label={cancels ? t("walky.sheet.cancelAria", { target }) : t("walky.sheet.dropAria", { label: sender })}
           >
             {t(cancels ? "walky.sheet.cancel" : "walky.sheet.drop")}
           </Button>
@@ -240,4 +253,23 @@ function WalkyListRow({
       )}
     </div>
   );
+}
+
+/**
+ * A target the way a person says it: the live pane's name, with "on <machine>" when it is on another
+ * machine, or the bare `all` as every machine. A target no live pane holds is shown as its address, as it
+ * always was: the log keeps no label for a target, and a machine beside a bare address says nothing more.
+ */
+function targetNameOf(address: string, live: WalkyLivePanes, self: string | undefined): string {
+  if (address === "all") return targetWord(address);
+  const named = sessionNameOf(address, live, self, null);
+  return named.pane === null ? named.name : nameOnMachine(named.name, named.machine);
+}
+
+/** The "in reply to" chip: the message it answers, told by its sender and time, a tap moves the focus to it. */
+function RepliedChip({ id, replied, onOpen }: { id: string; replied: WalkyRow; onOpen: (id: string) => void }) {
+  const live = useWalkyLive();
+  const name = senderNameOf(replied, live, undefined).name;
+  const words = t("walky.sheet.repliedTo", { name, time: clockTime(replied.at) });
+  return <WalkyIdChip id={id} onOpen={onOpen} label={words} aria={t("walky.chip.ariaNamed", { words })} />;
 }
