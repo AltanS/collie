@@ -51,7 +51,7 @@ const POINTER = "❯";
 // `/permissions` › Recently denied marks denials with Enter and applies the marks on Esc: once one is
 // marked, a dim `Esc will approve 1 denied call` (or `Esc will retry …`) appears under the list, and
 // the footer still reads `Esc to close` (Claude Code 2.1.310 bundle, read 2026-11-02). The Esc button
-// takes the row's words and is no longer the de-emphasised cancel, because pressing it commits. Only
+// takes the row's words, led by "Leave and", and is no longer the de-emphasised cancel, because pressing it commits. Only
 // that wording counts: other menus list text a person or the model wrote (/resume titles, /rewind
 // prompts), and a row there that starts "Esc will" says nothing about the key.
 const ESC_WILL_ROW = /^\s*Esc will ((?:approve|retry) \d+ denied calls?)\s*$/u;
@@ -140,7 +140,8 @@ export function detectMenuRegion(lines: StyledLine[]): MenuRegion | null {
     escWill ??= ESC_WILL_ROW.exec(t)?.[1] ?? null;
   }
   if (escWill !== null) {
-    const label = capitaliseMenuLabel(escWill);
+    // "Leave and ..." keeps the renamed Esc button apart from the Enter button, which reads "Approve".
+    const label = `Leave and ${escWill}`;
     actions = actions.map((action) => (action.cancel === true ? { label, keys: action.keys } : action));
   }
 

@@ -401,8 +401,8 @@ describe("detectMenuRegion — a row that says what Esc will do", () => {
   ];
 
   it.each([
-    ["   Esc will approve 1 denied call", "Approve 1 denied call"],
-    ["   Esc will retry 2 denied calls", "Retry 2 denied calls"],
+    ["   Esc will approve 1 denied call", "Leave and approve 1 denied call"],
+    ["   Esc will retry 2 denied calls", "Leave and retry 2 denied calls"],
   ])("names the Esc button from %j and drops its cancel styling", (row, label) => {
     expect(detectMenu(lines(denied(row).join("\n")))!.actions).toEqual([
       { label: "Approve", keys: ["Enter"] },
