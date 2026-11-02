@@ -186,6 +186,7 @@ import {
 import { maskForwardedAnswer } from "./crew/mask.ts";
 import type { LeadMerge } from "./crew/forward.ts";
 import { CWD_PARAM, folderAnswers, leadRowCarry, leadRowsRead, ROW_FIELD, rowFromLead, type LeadWrite } from "./crew/launcher-rows.ts";
+import { withCopyRows, type LauncherCopySeam } from "./crew/standby-launchers.ts";
 import { redactAnsi } from "./redact.ts";
 import { TranscriptStore } from "./journal/store.ts";
 import type { AgentSessionRef, DiscoverHints, ForegroundProcess, JournalAdapter, PaneScreen } from "./journal/types.ts";
@@ -1237,6 +1238,13 @@ export function startServer(opts: {
    */
   pairing?: PairingStore;
   /**
+   * The crew's launcher rows as this machine keeps a copy of them (ADR 0127 point 5,
+   * `bridge/crew/standby-launchers.ts`). Supplied by index.ts when a trust store exists. While this
+   * machine leads in place of the lead it was deputy to, the copy joins its own rows, which win on the
+   * same command. Absent, or serving nothing, the rows are this machine's own, exactly as before.
+   */
+  launcherCopy?: LauncherCopySeam;
+  /**
    * The host's own read credential (bridge/local-secret.ts): the hash of the secret this process
    * wrote to `<stateDir>/local-secret` at start. Absent means no local credential is accepted, which
    * is every test and a bridge that could not write the file; the CLI then gets today's 403.
@@ -1503,20 +1511,30 @@ export function startServer(opts: {
    * on the same line). The read-time sweep runs first, so a row whose device was revoked behind this
    * process's back is gone before it can be offered or started.
    */
+  /**
+   * THE ONE SEAM for "this machine's rows" (ADR 0127 point 5): its own merged rows, then, while it leads
+   * in place of the lead it was deputy to, the copy it holds of that lead's rows, its own winning on the
+   * same command. The launch allowlist, the New screen's list, and the lead rows spec 02 and 03 offer
+   * and carry to members all read through here. The copy is never written into either own list.
+   */
+  const crewMerged = async (): Promise<MergedLaunchers> =>
+    withCopyRows(await readMerged(launcherSources), opts.launcherCopy?.served() ?? null, homedir());
   const allowedLaunchers = async (): Promise<Launcher[]> => {
     // A label gone from the registry since the last look takes its rows with it, here and on every
     // member (ADR 0094); then the sweep catches anything this process never saw go.
     await noticeRevokes();
     await sweepRevokedRows(addedLaunchers, pairedLabels(), audit);
-    return (await readMerged(launcherSources)).rows;
+    return (await crewMerged()).rows;
   };
+  // The deputy's copy is the list a launch here matches (ADR 0127 point 5).
+  opts.launcherCopy?.source(allowedLaunchers);
   // The one-off lines run here (ADR 0095): recorded by a run that worked, listed beside the rows.
   const recentRuns = opts.recentRuns ?? memoryRecentRuns();
   // Sent (ADR 0107): kept by a shell pane's blind send (wired in index.ts) and by a one-off run.
   const sent = opts.sent ?? memorySent({ off: cfg.sent === "off", home: homedir() });
   const sentSelf = opts.sentSelf ?? ((): SentSelf => ({ id: "local", name: hostname() }));
   const launchersAdding = {
-    merged: () => readMerged(launcherSources),
+    merged: crewMerged,
     file: cfg.launchersFile,
     recent: () => recentRuns.list(),
   };

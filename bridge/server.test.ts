@@ -4524,6 +4524,27 @@ describe("POST /api/launch and /api/worktree?host= — the lead's row rides the 
   });
 });
 
+// ── ADR 0127 point 5: a leading deputy's rows include the copy it holds ──────────────────────────
+// What the copy is, whose it is and how it merges is pinned in crew/standby-launchers.test.ts. What is
+// pinned HERE is the one seam: every read of "this machine's rows" goes through `crewMerged`, so the
+// launch allowlist, the New screen's list, the lead rows offered to a member (spec 02) and the row
+// carried to one (spec 03) all see the copy while it is served, and none of them see it otherwise.
+describe("the crew's rows on a leading deputy — one seam (ADR 0127 point 5)", () => {
+  const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
+
+  test("the allowlist and the merged view both read through the copy seam", () => {
+    expect(src).toContain("withCopyRows(await readMerged(launcherSources), opts.launcherCopy?.served() ?? null, homedir());");
+    expect(src).toContain("return (await crewMerged()).rows;");
+    expect(src).toContain("merged: crewMerged,");
+    // No other read of the merged rows survives beside the seam.
+    expect([...src.matchAll(/readMerged\(launcherSources\)/g)]).toHaveLength(1);
+  });
+
+  test("the deputy's copy is sent from the very list a launch here matches", () => {
+    expect(src).toContain("opts.launcherCopy?.source(allowedLaunchers);");
+  });
+});
+
 // ── The new-space folder list (#289, M40/02) ─────────────────────────────────────────────────
 // The store itself is pinned in folders.test.ts. What is pinned HERE is the two places the HTTP
 // layer touches it: the space create that records a folder, and the two routes that read and star.

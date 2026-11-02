@@ -1439,6 +1439,31 @@ describe("PeerClient — pairing_label_collision, the other 409 (§18.14)", () =
   });
 });
 
+describe("PeerClient — the launcher copy to the deputy (ADR 0127 point 5)", () => {
+  const rows = [{ command: "make test", label: "Tests", kind: "command" as const, noPrompts: false }];
+
+  test("a 2xx is applied, and the body is `{ rows }` on the launchers-copy route", async () => {
+    const { fetch, calls } = replying({ rows: 1, applied: true });
+    expect(await client(fetch).launchersCopy(laptop, rows)).toBe("applied");
+    expect(calls[0]?.url).toContain("/crew/v1/launchers-copy");
+    expect(calls[0]?.init.method).toBe("POST");
+    expect(JSON.parse(String(calls[0]?.init.body))).toEqual({ rows });
+  });
+
+  test("a 404 is a deputy before the route: its router answers an unknown path so", async () => {
+    expect(await client(replying({ error: "not found" }, { status: 404, protocol: OURS }).fetch).launchersCopy(laptop, rows)).toBe("no_route");
+  });
+
+  test("any other answer, or none, is a failure the next sweep decides again", async () => {
+    expect(await client(replying({ error: "x" }, { status: 400, protocol: OURS }).fetch).launchersCopy(laptop, rows)).toBe("failed");
+    expect(await client(replying("", { status: 401, protocol: OURS }).fetch).launchersCopy(laptop, rows)).toBe("failed");
+    const dead: CrewFetch = async () => {
+      throw new Error("ECONNREFUSED");
+    };
+    expect(await client(dead).launchersCopy(laptop, rows)).toBe("failed");
+  });
+});
+
 describe("PeerClient — every dial is attested (§8.6)", () => {
   const key = material("desk").keyPem;
   const withDial = (over: { sign?: PeerClientDeps["sign"] } = {}) => ({

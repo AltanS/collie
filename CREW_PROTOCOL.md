@@ -387,6 +387,12 @@ answering build:
   refusal**: the sync it describes has already been applied, because a receiver that refused it would
   be holding a revoked credential live at its own standby door.
 
+- `launchersDigest` is **OPTIONAL**, added 2026-11-03 (§18.14, ADR 0127 point 5): a digest of the copy
+  of the lead's launcher rows this member holds, absent on every member that holds none, which is every
+  peer that is not the deputy. It is read exactly as `pairingDigest` is: **absent means "nothing held
+  here", never "up to date"**, it rides `/crew/v1/snapshot`'s response too, beside the body, and its
+  value is opaque to its reader, which only compares it with its own.
+
 - `mux` is **OPTIONAL**, added 2026-09-08 (M22/03): the block this member's own `/api/config`
   publishes about the multiplexer underneath it — its registry name, its capability answers, its
   refused key spellings, its adapter notes, its space capacity and its declared topology latency.
@@ -466,6 +472,7 @@ than to anything it fronts. They exist because three operator verbs are otherwis
 | `POST` | `/crew/v1/walky` | any member | Added 2026-10-17 (§21). The caller hands its lead one walky talky message, signed by the caller's key, to deliver to the lead's panes and route on to the members it names. Answered only by a collie that leads (a peer answers 404), and only to a §8.6-signed caller: the message must name that member as its sender and its signer. Changes no roster. |
 | `POST` | `/crew/v1/walky/outcomes` | the lead | Added 2026-10-18 (§21). The lead hands a member the receipts it learned for messages that member sent to another machine, so the sender sees how they ended. Answered only by a collie that has a lead, and only to its own lead: any other caller is the uniform 401. The member writes a receipt only for a message its own log holds and that it sent itself. Changes no roster. |
 | `POST` | `/crew/v1/pairing` | the lead | Syncs the lead's paired-device registry — **hashes only** — to the **deputy and to nobody else** (§18.14). Refused unless the caller is *this collie's own lead* AND this collie holds a verified warrant naming **itself**. A label that collides with one of this machine's own paired devices refuses the sync with `code: "pairing_label_collision"`, naming the labels; it is never silently renamed. |
+| `POST` | `/crew/v1/launchers-copy` | the lead | Added 2026-11-03 (§18.14, ADR 0127 point 5). Sends the lead's merged launcher rows to the **deputy and to nobody else**, as a read-only copy the deputy serves only once it leads. The same two role checks as `pairing`: the caller is *this collie's own lead*, and this collie holds a verified warrant naming **itself**. A deputy that `404`s it is a build before the route; the lead stops sending to it until the next connect. Changes no roster. |
 | `POST` | `/crew/v1/takeover` | the deputy | The witness question, then the re-pin (§18.16). **Two-phase**, with `phase` additive-optional and **absent meaning `probe`** — the reading that changes nothing. It is the one route a caller admitted **as the deputy** may use, and like `warrant` it has two kinds of recipient: arriving at a collie that still believes it leads, a `probe` answers `lead_is_alive` (it *is* the lead, and it *is* answering) and a `commit` is a deposition (§18.12). |
 | `POST` | `/crew/v1/warrant` | the lead | Delivers or refreshes the warrant naming the crew's deputy, with the deputy's certificate beside it (§18). Refused unless the caller is *this collie's own lead* — the same role check `secret` carries, for the same reason. A member that `404`s this route is a **pre-amendment build: not warrant-capable, and therefore not takeover-capable.** That is a closed reading and a named `crew status` finding, never an error. **It is also the one route with two kinds of recipient** — arriving at a collie that still believes it leads, a warrant it signed itself is a *deposition* rather than a push to store (§18.12), exactly as `/crew/v1/lead` is one fact arriving at two kinds of recipient. |
 
@@ -2815,6 +2822,31 @@ token the *lead* minted, so the lead pushes its registry.
   would blame the protocol for a duplicate device label and would leave the lead — the one machine
   whose operator can rename it — unable to say which label. The labels are the deputy's own device
   names, so they are surfaced by `collie crew status` **there as received**, never re-derived.
+
+#### The second payload: the crew's launcher rows *(added 2026-11-03, ADR 0127 point 5)*
+
+The lead's launcher rows are the crew's rows (ADR 0127), so a deputy that takes over must still offer
+them, or the New screen would lose every row the operator declared on the old lead. The lead
+therefore sends them beside the registry, on the same sweep and by the same rule.
+
+| | |
+|---|---|
+| **Route** | `POST /crew/v1/launchers-copy`, lead → **deputy only** |
+| **Gate** | the same as `pairing`: the crew's two factors (§8.1), the caller is *this collie's own lead*, and this collie holds a verified warrant naming itself. |
+| **Body** | `{ rows: [{ command, label, kind, noPrompts, cwd?, harness? }] }`: the rows a launch on the lead matches, its `launchers.toml` first, then the rows phones added there, at most 200. `kind` is `agent` or `command`. A `cwd` under the lead's home is written `~/rel`, as the launch carry writes it (ADR 0127 point 3), so the deputy reads it under its own home. One bad row, or two rows with one `command`, refuses the whole body with a `400`. Every field but `cwd` and `harness` is required: the route is new (§7.1). |
+| **Sent** | when the deputy's `launchersDigest` (§5) differs from the digest of what the lead would send: absent, or another. |
+| **Absent (404)** | a deputy before the route. The lead stops sending to it until the next connect (a failed sweep answer, or a new version on one), and a takeover by that deputy shows only its own rows. |
+
+- **A copy, never a merge.** It lands in `standby-launchers.json` — its own file and version, 0600
+  in a 0700 directory, temp-then-rename — as `{ version: 1, crewId, from, at, rows }`. It is never
+  written into the deputy's `launchers.toml` or `launchers-added.json`.
+- **Served only while the deputy leads.** A cold deputy holds the copy and answers its own
+  `GET /api/launchers` and `POST /api/launch` from its own rows alone. Once it leads the crew the copy
+  is from, after a takeover (§18.16) or a handover (§14), the copy joins its own rows, which win on the
+  same `command`: plain rows on itself, the lead's rows on every member (ADR 0127 points 1 to 3). A
+  leading deputy's own sync to its next deputy sends that same list.
+- **Cleared on demotion.** A warrant naming another deputy or none, a different lead, or another crew
+  removes the file, at boot and whenever the trust store changes under the running process.
 
 > **The boundary this amends, stated rather than quietly outlived.** `bridge/server.ts` records that
 > pairing is "**NOT** threaded into the crew surface … a lead does not hold one of this collie's

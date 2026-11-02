@@ -993,6 +993,105 @@ describe("CrewLead — a pairing collision is REPORTED every sweep, never swallo
   });
 });
 
+// ── The launcher copy to the deputy (ADR 0127 point 5, §18.14) ───────────────
+
+describe("CrewLead — the crew's launcher rows reach the deputy as a copy", () => {
+  const ROWS = [{ command: "make test", label: "Tests", kind: "command" as const, noPrompts: false }];
+
+  /** A lead whose deputy answers its snapshot with `launchersDigest`, or without one. */
+  function copying(opts: { reported?: string; deputy?: string | null; answer?: () => "applied" | "no_route" | "failed"; digest?: () => string }) {
+    const pushes: unknown[] = [];
+    const members = [member({ memberId: "laptop" }), member({ memberId: "nas" })];
+    const deputyState = { reachable: true, digest: opts.reported };
+    const l = new CrewLead({
+      log: () => {},
+      registry: new CrewRegistry({ sessions: { get: () => undefined }, self: "desk", members: () => members }),
+      snapshot: async () => {
+        if (!deputyState.reachable) return down;
+        return ok(deputyState.digest === undefined ? body : { ...body, launchersDigest: deputyState.digest });
+      },
+      proxy: neverProxy,
+      self: { id: "desk", name: "the herd" },
+      maxUploadBytes: DEFAULT_MAX_UPLOAD_BYTES,
+      now: () => NOW,
+      launchersCopy: {
+        deputy: () => (opts.deputy === undefined ? "laptop" : opts.deputy),
+        current: async () => ({ rows: ROWS, digest: opts.digest?.() ?? "d1" }),
+        push: async (link, rows) => {
+          pushes.push([link.memberId, rows]);
+          return opts.answer?.() ?? "applied";
+        },
+      },
+    });
+    const sweep = async () => {
+      await l.sweep();
+      await Bun.sleep(5);
+    };
+    return {
+      sweep,
+      pushes,
+      drop: () => void (deputyState.reachable = false),
+      restore: () => void (deputyState.reachable = true),
+      report: (digest: string) => void (deputyState.digest = digest),
+    };
+  }
+
+  test("a deputy holding no copy is sent the rows, and only the deputy", async () => {
+    const h = copying({});
+    await h.sweep();
+    expect(h.pushes).toEqual([["laptop", ROWS]]);
+  });
+
+  test("a deputy reporting the same digest costs no send, on this sweep or any other", async () => {
+    const h = copying({ reported: "d1" });
+    await h.sweep();
+    await h.sweep();
+    expect(h.pushes).toEqual([]);
+  });
+
+  test("a change on the lead is sent again: the deputy's report no longer matches", async () => {
+    let digest = "d1";
+    const h = copying({ reported: "d1", digest: () => digest });
+    await h.sweep();
+    expect(h.pushes).toEqual([]);
+    digest = "d2";
+    await h.sweep();
+    expect(h.pushes).toHaveLength(1);
+    h.report("d2");
+    await h.sweep();
+    expect(h.pushes).toHaveLength(1);
+  });
+
+  test("a crew with no deputy sends to nobody", async () => {
+    const h = copying({ deputy: null });
+    await h.sweep();
+    expect(h.pushes).toEqual([]);
+  });
+
+  test("an OLD deputy's 404 stops the sends until it reconnects", async () => {
+    const h = copying({ answer: () => "no_route" });
+    await h.sweep();
+    await h.sweep();
+    await h.sweep();
+    // One send, then silence: the old build reports nothing, and asking every sweep would be a dial a
+    // sweep for a route it does not have.
+    expect(h.pushes).toHaveLength(1);
+    h.drop();
+    await h.sweep();
+    h.restore();
+    await h.sweep();
+    // The next connect asks once more, in case the deputy came back on a build that has the route.
+    expect(h.pushes).toHaveLength(2);
+  });
+
+  test("a send that fails for any other reason is offered again on the next sweep", async () => {
+    const h = copying({ answer: () => "failed" });
+    await h.sweep();
+    await h.sweep();
+    expect(h.pushes).toHaveLength(2);
+  });
+});
+
 // ── §19 — the member's own update preflight, banked by the sweep ─────────────
 
 describe("CrewLead — each member's update preflight (§19)", () => {
