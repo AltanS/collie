@@ -76,6 +76,7 @@ import { pushTitle } from "./push-titles.ts";
 import { NotifyPrefsStore } from "./notify-prefs.ts";
 import { FolderStore } from "./folders.ts";
 import { WorktreeBaseStore } from "./worktree-bases.ts";
+import { spaceFolders } from "./space-view.ts";
 import { WorktreeReceiptStore } from "./worktree-receipts.ts";
 import { LaunchReceiptStore } from "./launch-receipts.ts";
 import { LaunchWindow, foregroundHarnessOf } from "./launch-window.ts";
@@ -1550,7 +1551,10 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   // The branch of every pane's folder rides the same poll, fired and not awaited, for the cache
   // probe's reason below: a poll never waits on a disk read. The reader keeps its own clocks, so a
   // poll every 1.5 s is not a read every 1.5 s, and it never throws.
-  engine.onUpdate((s) => void gitHeads.refresh([...s.agents, ...s.shellPanes].map((p) => p.cwd)));
+  // The space folders join it, so a space's own branch rides its view the same way (space-view.ts).
+  engine.onUpdate(
+    (s) => void gitHeads.refresh([...[...s.agents, ...s.shellPanes].map((p) => p.cwd), ...spaceFolders(s.workspaces)]),
+  );
 
   // The prompt-cache probe rides the same poll, and for the reason the tracker's header gives:
   // `localSnapshot` is synchronous, so the disk read cannot happen at serialise time. It is fired and
