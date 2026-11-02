@@ -1,6 +1,9 @@
 # 0094: Launchers added from a phone live on the machine, under the operator's switches
 
 - **Status:** Accepted
+- **Amended by:** [ADR 0127](./0127-the-leads-launcher-rows-are-the-crews-rows.md) (2026-11-03):
+  points 7 and 11 are superseded (the lead's rows are the crew's rows; adds go to the lead). The
+  rest stands.
 - **Date:** 2026-10-09
 - **Shipped in:** pending (1.19.0)
 - **Relates to:** [ADR 0091](./0091-launch-by-id-with-a-request-id.md) (launch by id, the request id

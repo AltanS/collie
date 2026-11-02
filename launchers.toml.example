@@ -21,9 +21,13 @@
 # pane closed, and a tab whose last pane closed — while something like `htop` sits there until
 # you close it.
 #
-# On a crew (several machines, one phone-facing lead — CREW_PROTOCOL.md), each machine reads
-# its OWN copy of this file. A row you declared only on your laptop only launches on your
-# laptop, whichever machine's dashboard or pane you tapped it from.
+# On a crew (several machines, one phone-facing lead — CREW_PROTOCOL.md), the LEAD's rows are the
+# crew's rows. A row you declare in the lead's copy of this file shows for every machine of the
+# crew, and a tap runs it on the machine you picked. A row you declare in a member's own copy is
+# that member's addition: it shows and runs on that member only, and on the same `command` the
+# member's own row wins. A lead row can be unavailable on a member, because its harness is not
+# installed there or its pinned `cwd` is not a folder there; the page says which. A member that
+# predates this rule does not run a lead row. Rows you add from the phone land on the lead.
 #
 # Edits are picked up live — no restart. Reload the page to see them.
 #
