@@ -25,6 +25,11 @@ import {
 //      branch it made, unless the remove failed (spec 08).
 //   7. The new branch tracks nothing, whatever the repo's `branch.autoSetupMerge` (spec 07).
 
+// The tests that hand `addWorktree` a fake git (a logging wrapper, or a git that sleeps past the
+// timeout) are POSIX `#!/bin/sh` scripts, which Windows cannot spawn (EFTYPE), so they are
+// `test.skipIf` on win32 and named in scripts/windows-suites.ps1. Every test that runs the real git
+// runs on Windows too.
+
 let root: string;
 let home: string;
 let repo: string;
@@ -69,7 +74,9 @@ describe("addWorktree", () => {
     expect(outcome).toEqual({ ok: true, path, existed: false });
     expect(await git(path, "symbolic-ref", "--short", "HEAD")).toBe("Fix/Tabs");
     expect(await git(path, "rev-parse", "HEAD")).toBe(await git(repo, "rev-parse", "main"));
-    expect(worktreePaths(await git(repo, "worktree", "list", "--porcelain"))).toContain(path);
+    // Compared by real path: Git for Windows lists `C:/Users/...`, `join` spells `C:\Users\...`.
+    const listed = worktreePaths(await git(repo, "worktree", "list", "--porcelain"));
+    expect(await Promise.all(listed.map((entry) => realpath(entry)))).toContain(path);
   });
 
   test("Herdr's configured directory is honoured", async () => {
@@ -132,7 +139,7 @@ describe("addWorktree", () => {
     expect(merge.exitCode).toBe(1);
   });
 
-  test("two creates for one folder at once spawn one git worktree add, and both open the checkout", async () => {
+  test.skipIf(process.platform === "win32")("two creates for one folder at once spawn one git worktree add, and both open the checkout", async () => {
     const log = join(root, "git.log");
     const wrapper = join(root, "git-wrapper.sh");
     await writeFile(wrapper, `#!/bin/sh\nprintf '%s\\n' "$*" >> '${log}'\nexec '${Bun.which("git") ?? "git"}' "$@"\n`);
@@ -151,7 +158,7 @@ describe("addWorktree", () => {
     ]);
   });
 
-  test("a create waiting on a failed one for its folder reports the failure, and runs no add of its own", async () => {
+  test.skipIf(process.platform === "win32")("a create waiting on a failed one for its folder reports the failure, and runs no add of its own", async () => {
     await git(repo, "branch", "taken");
     const log = join(root, "git.log");
     const wrapper = join(root, "git-wrapper.sh");
@@ -247,7 +254,7 @@ describe("a timed-out add", () => {
     return { git: script, removes };
   }
 
-  test("removes the half-made checkout and the branch it made, and says so", async () => {
+  test.skipIf(process.platform === "win32")("removes the half-made checkout and the branch it made, and says so", async () => {
     const fake = await sleepyGit();
     const path = join(home, "trees", "slow");
     const outcome = await addWorktree({ ...deps(), git: fake.git, timeoutMs: 200 }, { repoRoot: repo, branch: "slow", path });
@@ -262,7 +269,7 @@ describe("a timed-out add", () => {
     expect(calls[1]).toEndWith("branch -D -- slow");
   });
 
-  test("says the branch stayed behind when its delete fails", async () => {
+  test.skipIf(process.platform === "win32")("says the branch stayed behind when its delete fails", async () => {
     const fake = await sleepyGit("branch");
     const outcome = await addWorktree({ ...deps(), git: fake.git, timeoutMs: 200 }, { repoRoot: repo, branch: "slow", path: join(home, "trees", "slow") });
     expect(outcome).toEqual({
@@ -273,7 +280,7 @@ describe("a timed-out add", () => {
     expect(await fake.removes()).toHaveLength(2);
   });
 
-  test("keeps the branch when the checkout could not be removed", async () => {
+  test.skipIf(process.platform === "win32")("keeps the branch when the checkout could not be removed", async () => {
     const fake = await sleepyGit("remove");
     const path = join(home, "trees", "slow");
     const outcome = await addWorktree({ ...deps(), git: fake.git, timeoutMs: 200 }, { repoRoot: repo, branch: "slow", path });
@@ -287,7 +294,7 @@ describe("a timed-out add", () => {
     expect(calls[0]).toContain("worktree remove");
   });
 
-  test("never removes a folder that was there before the call", async () => {
+  test.skipIf(process.platform === "win32")("never removes a folder that was there before the call", async () => {
     const fake = await sleepyGit();
     const path = join(home, "trees", "mine");
     await mkdir(path, { recursive: true });
