@@ -48,6 +48,9 @@ const METADATA_KEYS: ReadonlySet<string> = new Set([
   "saved",
   "sent",
   "size",
+  // Where a launched row came from: `lead` for a row the lead carried over the crew link (ADR 0127
+  // point 3). An enum the bridge writes, never a person's text; no other detail uses the name.
+  "source",
   "styled",
   "submit",
   "submitted",
