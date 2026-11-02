@@ -55,6 +55,7 @@ import {
 } from "./signing.ts";
 import type { PinnedDeputy } from "./admission.ts";
 import { parsePairingSync, type SyncedDevice, type PairingSync } from "./standby-devices.ts";
+import { LAUNCHERS_DIGEST_FIELD, parseLaunchersCopy, type CopiedRow } from "./standby-launchers.ts";
 import {
   checkTakeoverClaim,
   commitTakeover,
@@ -186,6 +187,13 @@ export const CREW_TAKEOVER_PATH = "/crew/v1/takeover";
  * front door for its own operator (RFC §16, decision 5; pairing is always on, ADR 0086).
  */
 export const CREW_PAIRING_PATH = "/crew/v1/pairing";
+/**
+ * `POST` — the lead sends the crew's launcher rows to the DEPUTY ONLY (ADR 0127 point 5, §18.14).
+ *
+ * They land in `standby-launchers.json`, a read-only copy, **never** merged into this collie's own
+ * `launchers.toml` or `launchers-added.json`. The deputy serves them only while it leads.
+ */
+export const CREW_LAUNCHERS_COPY_PATH = "/crew/v1/launchers-copy";
 /**
  * `POST` — a member hands its lead one walky talky message to deliver and route (§21). Signed per
  * §8.6, because it travels peer → lead, and answered only by a collie that leads.
@@ -377,6 +385,14 @@ export interface StandbySurface {
    * it is true and stops seeing it the moment they fix it.
    */
   readonly syncedCollision: () => readonly string[];
+  /**
+   * The digest of the launcher-row copy this collie holds, or `null` when it holds none (ADR 0127
+   * point 5). Reported on `hello` and `snapshot` beside `pairingDigest`, for the same reason. Optional:
+   * absent, this collie keeps no copy and `POST /crew/v1/launchers-copy` refuses.
+   */
+  readonly copyDigest?: () => string | null;
+  /** Replace `standby-launchers.json` wholesale with what `from`, this collie's lead, sent. */
+  readonly applyCopy?: (copy: { from: string; crewId: string; rows: readonly CopiedRow[] }) => Promise<void>;
 }
 
 export interface CrewRouterDeps {
@@ -662,6 +678,8 @@ type HelloBody = {
   warrantActiveGeneration?: number;
   pairingDigest?: string;
   pairingCollision?: string[];
+  /** The digest of the launcher-row copy this peer holds (ADR 0127 point 5). See {@link LAUNCHERS_DIGEST_FIELD}. */
+  [LAUNCHERS_DIGEST_FIELD]?: string;
   /** This peer's own capability declaration (§7.1's amendment of 2026-09-08). See {@link CREW_MUX_FIELD}. */
   mux?: MuxConfig;
   /** This peer's session cards (M55, 2026-10-13). See {@link CREW_SESSIONS_FIELD}. */
@@ -1048,6 +1066,9 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
       // nothing else — no hash, no token, no device count.
       const clash = deps.standby?.syncedCollision() ?? [];
       if (clash.length > 0) hello.pairingCollision = [...clash];
+      // ADR 0127 point 5: the launcher copy's digest, read the same absent-means-nothing-held way.
+      const copy = deps.standby?.copyDigest?.() ?? null;
+      if (copy !== null) hello[LAUNCHERS_DIGEST_FIELD] = copy;
       // M22/03: what THIS machine's multiplexer can do, so the lead can answer `/api/config?host=`
       // for this member without forwarding a config read (ADR 0011 keeps the crew link the only
       // cross-machine transport, and `forward.ts` keeps `config` off the forwarded list).
@@ -1086,6 +1107,9 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
     }
     if (pathname === CREW_PAIRING_PATH && req.method === "POST") {
       return pairingSync(req, signedBody, verdict.member, verdict.self, data);
+    }
+    if (pathname === CREW_LAUNCHERS_COPY_PATH && req.method === "POST") {
+      return launchersCopy(req, signedBody, verdict.member, verdict.self, data);
     }
     if (pathname === CREW_TAKEOVER_PATH && req.method === "POST") {
       // A takeover arriving at a collie that still believes it LEADS is a deposition, not a witness
@@ -1181,7 +1205,10 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
       // finding" — the closed reading. It rides the sweep's own answer rather than the sync's, so the
       // lead sees it while it is true instead of for the one sweep a push happened to land on.
       const clash = deps.standby?.syncedCollision() ?? [];
-      const withReport = clash.length === 0 ? withDigest : { ...withDigest, pairingCollision: [...clash] };
+      const withClash = clash.length === 0 ? withDigest : { ...withDigest, pairingCollision: [...clash] };
+      // ADR 0127 point 5: the launcher copy's digest, in the same seat and for the same reason.
+      const copy = deps.standby?.copyDigest?.() ?? null;
+      const withReport = copy === null ? withClash : { ...withClash, [LAUNCHERS_DIGEST_FIELD]: copy };
       // §19: this machine's own update preflight, in the same seat, for the same reason. The lead's
       // `X-Crew-Preflight: fresh` is passed on as a REQUEST — a peer that honours it answers with a
       // freshly-run report, and one that does not answers with an older one and an `asOf` saying so.
@@ -1555,6 +1582,38 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
     // collision is still there. Reported on the exchange it appears when true and clears when fixed.
     await standby.applySync(sync);
     return new Response(JSON.stringify({ devices: sync.devices.length, applied: true }), {
+      status: 200,
+      headers: crewResponseHeaders(self),
+    });
+  }
+
+  /**
+   * `POST /crew/v1/launchers-copy` — the lead sends the crew's launcher rows to the DEPUTY (ADR 0127
+   * point 5, §18.14).
+   *
+   * The pairing sync's two role questions, both of which must answer yes: the caller is this collie's
+   * own lead, and this collie holds a verified warrant naming itself. What lands is
+   * `standby-launchers.json`, a copy this collie serves only while it leads, never merged into its own
+   * lists. A collie that keeps no copy (no `applyCopy`) refuses it like any other non-deputy.
+   */
+  async function launchersCopy(
+    req: Request,
+    cached: string | null,
+    from: TrustedMember,
+    self: string,
+    data: TrustStoreData | null,
+  ): Promise<Response> {
+    const standby = deps.standby;
+    if (data === null || data.crew === null || data.lead === null || data.lead.memberId !== from.memberId) {
+      return refuse(CREW_LAUNCHERS_COPY_PATH, "not-a-crew-member");
+    }
+    if (standby?.applyCopy === undefined || !standby.warrantsSelf()) {
+      return refuse(CREW_LAUNCHERS_COPY_PATH, "not-a-crew-member");
+    }
+    const rows = parseLaunchersCopy(await readJson(req, cached));
+    if (rows === null) return badRequest(self, "a launcher copy needs `rows`, each a clean launcher row");
+    await standby.applyCopy({ from: from.memberId, crewId: data.crew.crewId, rows });
+    return new Response(JSON.stringify({ rows: rows.length, applied: true }), {
       status: 200,
       headers: crewResponseHeaders(self),
     });

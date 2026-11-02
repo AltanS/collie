@@ -41,7 +41,7 @@ import {
   privateRoot,
   type PrivateRoot,
 } from "./owner-only.ts";
-import type { AgentView, CrewMode, CrewStatusResponse } from "./types.ts";
+import type { AgentView, CrewMode, CrewStatusResponse, Launcher } from "./types.ts";
 import { EventPoker } from "./event-poker.ts";
 import { durableLogDir, moveFlatLogs, sourceLogDir } from "./durable/log.ts";
 import { GitHeads, nodeGitHeadDisk } from "./git-head.ts";
@@ -173,6 +173,16 @@ import {
   syncedDevicesOf,
   type SyncedDevice,
 } from "./crew/standby-devices.ts";
+import {
+  copiedRowsOf,
+  copyDigest,
+  copyReportOf,
+  copyServed,
+  StandbyLauncherStore,
+  STANDBY_LAUNCHERS_VERSION,
+  type CopyRole,
+  type LauncherCopySeam,
+} from "./crew/standby-launchers.ts";
 import {
   adoptLeadership,
   clearRePin,
@@ -2129,6 +2139,65 @@ if (standbyStore !== null) await standbyStore.load();
 const syncedDevices = (): readonly SyncedDevice[] => standbyStore?.current()?.devices ?? [];
 
 /**
+ * The lead's launcher rows, kept as a read-only copy (ADR 0127 point 5, `crew/standby-launchers.ts`).
+ * Constructed for any machine with a trust store: a deputy receives the copy as a peer, and serves it
+ * after a takeover, when this process comes back up as the lead. Constructing it writes nothing; solo
+ * never reaches this line (§11).
+ */
+const launcherCopyStore = bootTrust !== null ? new StandbyLauncherStore(cfg.stateDir) : null;
+
+/** What this machine is in its crew now, for whose copy it may keep. Read through the store per call. */
+function copyRole(): CopyRole {
+  const held = trustStore.current();
+  return {
+    crewId: held?.crew?.crewId ?? null,
+    leads: held !== null && held.crew !== null && held.lead === null,
+    leadMemberId: held?.lead?.memberId ?? null,
+    deputy: holdsOwnWarrant(),
+  };
+}
+
+/**
+ * Remove the copy once it is not this machine's to hold: a demotion, a different lead, another crew.
+ * Run at boot and whenever the trust store changes under this process. Never throws: a copy that could
+ * not be removed is still never served while this machine is cold, and the next change tries again.
+ */
+async function reconcileLauncherCopy(): Promise<void> {
+  if (launcherCopyStore === null) return;
+  try {
+    if (await launcherCopyStore.reconcile(copyRole())) {
+      console.log("[crew] this machine is no longer its lead's deputy: removed its copy of the lead's launcher rows");
+    }
+  } catch (err) {
+    console.warn(`[crew] could not remove the copy of the lead's launcher rows: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+await reconcileLauncherCopy();
+
+/**
+ * The read of the rows a launch here matches, handed over by the server once it is built
+ * (`LauncherCopySeam.source`). The lead's sync to its deputy sends exactly that list; `null` before.
+ */
+let crewLauncherRows: (() => Promise<Launcher[]>) | null = null;
+
+/** What the server reads of the copy. The copy is served only while this machine leads its crew. */
+const launcherCopySeam: LauncherCopySeam | undefined =
+  launcherCopyStore === null
+    ? undefined
+    : {
+        served: () => {
+          const held = trustStore.current();
+          return copyServed(launcherCopyStore.current(), {
+            crewId: held?.crew?.crewId ?? null,
+            leads: held !== null && held.crew !== null && held.lead === null,
+          });
+        },
+        source: (read) => {
+          crewLauncherRows = read;
+        },
+      };
+
+/**
  * What the two standby-shaped crew routes need from this process (`router.ts` → `StandbySurface`).
  *
  * `undefined` on a lead and on solo — a lead has no lead to be silent, no warrant naming itself and
@@ -2155,6 +2224,22 @@ const standbySurface: CrewRouterDeps["standby"] =
           const own = readableRegistry();
           return own === null ? [] : collisionReportOf(own, standbyStore.current());
         },
+        // ADR 0127 point 5: the launcher copy's report and its write, beside the device registry's.
+        copyDigest: () => copyReportOf(launcherCopyStore?.current() ?? null),
+        applyCopy:
+          launcherCopyStore === null
+            ? undefined
+            : async (copy) => {
+                // Wholesale, never a merge, and into its own file: never `launchers.toml` or
+                // `launchers-added.json`, which stay this machine's own.
+                await launcherCopyStore.replace({
+                  version: STANDBY_LAUNCHERS_VERSION,
+                  crewId: copy.crewId,
+                  from: copy.from,
+                  at: Date.now(),
+                  rows: copy.rows,
+                });
+              },
         applySync: async (sync) => {
           // Wholesale, never a merge: the lead's registry is the whole truth, so a revocation there
           // has to be able to REMOVE a device here.
@@ -2434,6 +2519,18 @@ const crewLead = (() => {
       collision: (labels) => {
         pairingCollision = labels === null || labels.length === 0 ? null : { at: Date.now(), labels };
       },
+    },
+    // ADR 0127 point 5: the crew's launcher rows to the DEPUTY, beside its device registry. The rows
+    // are the ones a launch on this lead matches, its own and any copy it serves after a takeover.
+    launchersCopy: {
+      deputy: () => trustStore.current()?.deputy ?? null,
+      current: async () => {
+        const held = trustStore.current();
+        if (crewLauncherRows === null || held === null || held.crew === null) return null;
+        const rows = copiedRowsOf(await crewLauncherRows(), homedir());
+        return { rows, digest: copyDigest(rows) };
+      },
+      push: (link, rows) => client.launchersCopy(link, rows),
     },
     // §18.10's fast path: a member told this lead, in as many words, that it follows somebody else.
     // Best-effort and time-boxed (it works only while this lead is still in that member's anchor
@@ -2997,6 +3094,7 @@ const server = startServer({
   machines: machineWatch,
   crew,
   pairing,
+  launcherCopy: launcherCopySeam,
   localCredential,
   stt,
   crewLead,
@@ -3052,7 +3150,11 @@ const server = startServer({
             // compiled that drives no durable program — passes `undefined` and ignores both, which is
             // a correct peer.
             onFollow,
-            onMembershipChange: crewStoreChanged,
+            onMembershipChange: () => {
+              crewStoreChanged();
+              // A warrant naming another deputy, or none, ends this machine's copy (ADR 0127 point 5).
+              void reconcileLauncherCopy();
+            },
             // Gap A (§18.9), and its rotation-shaped sibling. Two receipts, one holder, in memory.
             onLeadDialled: (at) => leadContact.record(at),
             // M20/02: a peer that speaks to us is due. It marks the member due now and dials nothing;

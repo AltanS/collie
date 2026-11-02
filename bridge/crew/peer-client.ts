@@ -27,6 +27,7 @@ import type { CrewRequestInit, CrewTlsOptions } from "./transport.ts";
 import type { Warrant } from "./trust-store.ts";
 import { NARROW_VIEW, SESSIONS_ALL, SESSIONS_PARAM, SESSION_PARAM, type SnapshotView } from "../sessions.ts";
 import type { MuxConfig, SessionCard, SessionState } from "../types.ts";
+import type { CopiedRow } from "./standby-launchers.ts";
 import { parseCollisionReport, parsePairingReport, type PairingSync } from "./standby-devices.ts";
 import type { TakeoverBody } from "./takeover.ts";
 import { parseWarrant, parseWarrantActiveReport, type WarrantPush } from "./warrant.ts";
@@ -489,6 +490,9 @@ export type PeerOutcome<T> =
     }
   | (PeerFailure & { readonly ok: false; readonly receivedAt: number });
 
+/** How a launcher copy ended (ADR 0127 point 5): landed, a deputy without the route, or anything else. */
+export type LaunchersCopyAnswer = "applied" | "no_route" | "failed";
+
 /** What a `hello` reports about the member that answered it (§5). */
 export interface HelloResult {
   readonly protocol: number;
@@ -782,6 +786,29 @@ export class PeerClient {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
     });
+  }
+
+  /**
+   * `POST /crew/v1/launchers-copy` — the crew's launcher rows to the DEPUTY (ADR 0127 point 5, §18.14).
+   *
+   * A passthrough dial, so the deputy's own status is kept: a 404 is a build before the route, and the
+   * lead stops sending to it until the next connect. Signed as the pairing sync is. Any other answer
+   * that is not a 2xx, or no answer, is `failed`, and the next sweep's report decides again.
+   */
+  async launchersCopy(link: CrewLink, rows: readonly CopiedRow[]): Promise<LaunchersCopyAnswer> {
+    const outcome = await this.proxy(
+      link,
+      "launchers-copy",
+      undefined,
+      { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ rows }) },
+      undefined,
+      true,
+    );
+    if (!outcome.ok) return "failed";
+    const status = outcome.value.status;
+    await outcome.value.body?.cancel().catch(() => {});
+    if (status === 404) return "no_route";
+    return status >= 200 && status < 300 ? "applied" : "failed";
   }
 
   /**

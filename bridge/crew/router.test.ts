@@ -11,6 +11,7 @@ import {
   createCrewRouter,
   CREW_ENROLL_PATH,
   CREW_HELLO_PATH,
+  CREW_LAUNCHERS_COPY_PATH,
   CREW_LEAD_PATH,
   CREW_LEAVE_PATH,
   CREW_PAIRING_PATH,
@@ -2598,6 +2599,84 @@ describe("POST /crew/v1/pairing — the lead syncs its registry to the DEPUTY on
     const h = harness(leadStore({ peers: [member({ memberId: "nas" })] }));
     const r = router(h);
     expect((await call(r.handler, CREW_PAIRING_PATH, post(body())))!.status).toBe(401);
+  });
+});
+
+describe("POST /crew/v1/launchers-copy — the crew's rows reach the DEPUTY only (ADR 0127 point 5)", () => {
+  const ROW = { command: "make test", label: "Tests", kind: "command", noPrompts: false, cwd: "~/src/app" };
+
+  /** A peer of `desk` holding the warrant that names IT — i.e. this crew's deputy. */
+  function deputy() {
+    const w = mintWarrant(leadStore({ peers: [member({ memberId: "laptop" })] }), "laptop", T0)!.result;
+    return peerStore({ warrant: { warrant: w, deputyCertPem: material("laptop").certPem } });
+  }
+
+  function router(h: ReturnType<typeof harness>, over: { warrantsSelf?: boolean; digest?: string | null; keepsNone?: boolean } = {}) {
+    const copies: unknown[] = [];
+    const handler = createCrewRouter({
+      store: h.store,
+      audit: h.audit,
+      transportPinned: true,
+      now: () => T0,
+      snapshot: () => ownSnapshot(),
+      standby: {
+        warrantsSelf: () => over.warrantsSelf ?? true,
+        silentForMs: () => 60_000,
+        armMs: 30_000,
+        collidingLabels: () => [],
+        applySync: async () => {},
+        syncedDigest: () => null,
+        syncedCollision: () => [],
+        copyDigest: () => over.digest ?? null,
+        applyCopy: over.keepsNone === true ? undefined : async (copy) => void copies.push(copy),
+      },
+    });
+    return { handler, copies };
+  }
+
+  test("the deputy's own lead sends, and the copy lands with whose rows they are", async () => {
+    const r = router(harness(deputy()));
+    const res = (await call(r.handler, CREW_LAUNCHERS_COPY_PATH, post({ rows: [ROW] })))!;
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ rows: 1, applied: true });
+    expect(r.copies).toEqual([{ from: "desk", crewId: CREW.crewId, rows: [ROW] }]);
+  });
+
+  test("a peer that is NOT the deputy refuses it, and keeps nothing", async () => {
+    const h = harness(peerStore());
+    const r = router(h, { warrantsSelf: false });
+    expect((await call(r.handler, CREW_LAUNCHERS_COPY_PATH, post({ rows: [ROW] })))!.status).toBe(401);
+    expect(r.copies).toEqual([]);
+    expect(h.lines.map((l) => l.action)).toContain("crew.refused");
+  });
+
+  test("a build that keeps no copy refuses it like any non-deputy", async () => {
+    const r = router(harness(deputy()), { keepsNone: true });
+    expect((await call(r.handler, CREW_LAUNCHERS_COPY_PATH, post({ rows: [ROW] })))!.status).toBe(401);
+  });
+
+  test("a LEAD never answers it: it has no lead of its own to have sent it", async () => {
+    const r = router(harness(leadStore({ peers: [member({ memberId: "nas" })] })));
+    expect((await call(r.handler, CREW_LAUNCHERS_COPY_PATH, post({ rows: [ROW] })))!.status).toBe(401);
+    expect(r.copies).toEqual([]);
+  });
+
+  test("a malformed body is a 400 and lands nothing", async () => {
+    for (const bent of [{}, { rows: [{ ...ROW, command: "" }] }, { rows: [ROW, ROW] }]) {
+      const r = router(harness(deputy()));
+      expect((await call(r.handler, CREW_LAUNCHERS_COPY_PATH, post(bent)))!.status).toBe(400);
+      expect(r.copies).toEqual([]);
+    }
+  });
+
+  test("the digest it holds is REPORTED on hello and snapshot, and absent when it holds none", async () => {
+    const h = harness(deputy());
+    const held = router(h, { digest: "d1" });
+    expect(await (await call(held.handler, CREW_HELLO_PATH, { headers: authed }))!.json()).toMatchObject({ launchersDigest: "d1" });
+    expect(await (await call(held.handler, CREW_SNAPSHOT_PATH, { headers: authed }))!.json()).toMatchObject({ launchersDigest: "d1" });
+    const none = router(h);
+    expect(await (await call(none.handler, CREW_HELLO_PATH, { headers: authed }))!.text()).not.toContain("launchersDigest");
+    expect(await (await call(none.handler, CREW_SNAPSHOT_PATH, { headers: authed }))!.text()).not.toContain("launchersDigest");
   });
 });
 

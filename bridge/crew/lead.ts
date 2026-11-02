@@ -16,7 +16,7 @@ import {
   type PeerSnapshotBody,
   type SnapshotPlan,
 } from "./merge.ts";
-import { parsePeerStatus, parsePeerVersion, sweepPeers, type CrewLink, type PeerOutcome } from "./peer-client.ts";
+import { parsePeerStatus, parsePeerVersion, sweepPeers, type CrewLink, type LaunchersCopyAnswer, type PeerOutcome } from "./peer-client.ts";
 import type { HostResolution, HostSelector, CrewRegistry, PeerHealth, PeerState } from "./registry.ts";
 import { PAIRING_LABEL_COLLISION } from "./router.ts";
 import {
@@ -25,6 +25,7 @@ import {
   parsePairingReport,
   type PairingSync,
 } from "./standby-devices.ts";
+import { copyPushNeeded, parseCopyReport, type CopiedRow } from "./standby-launchers.ts";
 import type { Warrant } from "./trust-store.ts";
 import { parseWarrantReport, warrantPushNeeded, type WarrantPush } from "./warrant.ts";
 import {
@@ -292,6 +293,11 @@ export interface CrewLeadDeps {
    * every lead that has never named a deputy and every test that is not about the standby door.
    */
   readonly pairing?: PairingDistribution;
+  /**
+   * The launcher-row copy to the DEPUTY (ADR 0127 point 5, §18.14). Absent ⇒ this lead sends none,
+   * which is every lead that has never named a deputy and every test that is not about the copy.
+   */
+  readonly launchersCopy?: LaunchersCopyDistribution;
   readonly now?: () => number;
   /**
    * Where a `[crew]` line goes. Defaults to `console.log`, which is the bridge's journal.
@@ -332,6 +338,26 @@ export interface PairingDistribution {
    * collision finding raised by silence would be a fact this lead never learned.
    */
   collision?(labels: readonly string[] | null): void;
+}
+
+/**
+ * The lead's half of ADR 0127 point 5: keep the DEPUTY's copy of the crew's launcher rows current.
+ *
+ * The pairing sync's discipline, on the same sweep: the deputy reports the digest of the copy it holds
+ * (`launchersDigest`), and the lead sends only when its own differs. One difference: a deputy that
+ * predates the route answers 404, and the lead then stops sending to it until the next connect.
+ */
+export interface LaunchersCopyDistribution {
+  /** The deputy this lead has designated, or `null`. Read through the store, never captured. */
+  deputy(): string | null;
+  /**
+   * The rows a launch on this lead matches, as they would be sent, with their digest. `null` ⇒ nothing
+   * to send (no crew, or rows this lead cannot read). An EMPTY list is still something to send: a row
+   * removed on the lead has to go from the deputy's copy too.
+   */
+  current(): Promise<{ readonly rows: readonly CopiedRow[]; readonly digest: string } | null>;
+  /** Deliver it. `no_route` is a deputy that predates the route (404). */
+  push(link: CrewLink, rows: readonly CopiedRow[]): Promise<LaunchersCopyAnswer>;
 }
 
 /** What the sweep needs to state a release and hand out a turn (§20, M16/04). */
@@ -459,6 +485,13 @@ export class CrewLead {
   private readonly pushingWarrant = new Set<string>();
   /** At most one pairing sync in flight. **Nothing about what landed is remembered** — §18.14. */
   private pushingPairing = false;
+  /** At most one launcher copy in flight. What landed is the deputy's own report, not a memory here. */
+  private pushingCopy = false;
+  /**
+   * Deputies that answered the launcher copy with a 404: a build before the route. Nothing is sent to
+   * them until the next connect, which is a failed sweep answer or a new version on one (ADR 0127).
+   */
+  private readonly copyRouteMissing = new Set<string>();
   /** Per member: when its backoff was last cleared by contact, and how many times running (M20/02). */
   private readonly contactResets = new Map<string, { at: number; count: number }>();
   /**
@@ -625,6 +658,8 @@ export class CrewLead {
         if (seen !== null) this.noteSweptVersion(memberId, seen);
         if (outcome.ok) this.learnCapabilities(link);
         else this.muxAsked.delete(memberId);
+        // A dropped link ends the connect a launcher copy's 404 was learned on: the next one asks again.
+        if (!outcome.ok) this.copyRouteMissing.delete(memberId);
         // §18.10: this member follows somebody else. Handed straight over — a lead that has been
         // deposed stops sweeping, so there is nothing here to back off or remember.
         if (!outcome.ok && outcome.state === "conflicted") {
@@ -689,6 +724,7 @@ export class CrewLead {
       // Neither is the other's precondition, so neither may be the other's single point of failure.
       await this.guarded("warrant distribution", () => this.distributeWarrant(folded, outcomes));
       await this.guarded("pairing sync", async () => this.distributePairing(folded, outcomes));
+      await this.guarded("launcher copy", async () => this.distributeLaunchersCopy(folded, outcomes));
     } catch (err) {
       // Defensive: nothing above is supposed to reject. If something does, the crew degrades to
       // "stale" rather than taking the lead's poll loop down with it.
@@ -924,6 +960,41 @@ export class CrewLead {
   }
 
   /**
+   * Keep the deputy's copy of the crew's launcher rows current (ADR 0127 point 5, §18.14).
+   *
+   * To the deputy and to nobody else, and only when the deputy's own report differs from what this lead
+   * would send. Off the tick and never awaited, as the pairing sync is: reading the rows may touch the
+   * disk, and a sweep still costs one strict budget (§10.1).
+   */
+  private distributeLaunchersCopy(due: readonly CrewLink[], outcomes: Map<string, PeerOutcome<unknown>>): void {
+    const distribution = this.deps.launchersCopy;
+    if (distribution === undefined || this.pushingCopy) return;
+    const deputy = distribution.deputy();
+    if (deputy === null || this.copyRouteMissing.has(deputy)) return;
+    const link = due.find((l) => l.memberId === deputy);
+    const outcome = outcomes.get(deputy);
+    if (link === undefined || outcome === undefined || !outcome.ok) return;
+    // SAFETY: `value` is that member's HTTP body after `res.json()`, a JsonValue by construction, the
+    // same cast and the same reason as `parsePairingReport`'s; `parseCopyReport` re-checks it.
+    const reported = parseCopyReport(outcome.value as JsonValue);
+    this.pushingCopy = true;
+    void (async () => {
+      try {
+        const payload = await distribution.current();
+        if (payload === null || !copyPushNeeded(payload.digest, reported)) return;
+        const answer = await distribution.push(link, payload.rows);
+        if (answer !== "no_route") return;
+        this.copyRouteMissing.add(deputy);
+        this.log(`[crew] ${deputy}: keeps no copy of the launcher rows (an older Collie), not sent again until it reconnects`);
+      } catch (err) {
+        console.warn(`[crew] launcher copy failed: ${err instanceof Error ? err.message : String(err)}`);
+      } finally {
+        this.pushingCopy = false;
+      }
+    })();
+  }
+
+  /**
    * Deliver one warrant, off the tick and never awaited — the same discipline {@link probe} follows,
    * for the same reason: a sweep must cost one strict budget no matter what else it decided to do.
    *
@@ -1032,6 +1103,8 @@ export class CrewLead {
     this.sweptVersions.set(memberId, version);
     if (before === undefined || before === version) return;
     this.muxAsked.delete(memberId);
+    // A new build may have the launcher-copy route a 404 said it lacked (ADR 0127 point 5).
+    this.copyRouteMissing.delete(memberId);
     this.log(`[crew] ${memberId}: now runs ${version} (was ${before}), asking its hello again`);
   }
 
