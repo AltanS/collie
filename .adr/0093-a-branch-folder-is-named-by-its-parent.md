@@ -1,6 +1,10 @@
 # 0093: A branch's folder is named by its parent, and checked on every use
 
 - **Status:** Accepted
+- **Amended in scope by:** [ADR 0126](./0126-collie-makes-a-worktree-with-git-and-opens-it-as-a-space.md):
+  the bridge makes the worktree with git and opens it with `createSpace`, so "Herdr's default" is
+  the folder Collie puts the checkout in, by Herdr's rule; and point 9 no longer holds, because the
+  worktree routes are forwarded to the addressed host. Everything else below stands.
 - **Date:** 2026-10-09
 - **Shipped in:** pending (1.19.0)
 - **Relates to:** [ADR 0089](./0089-a-second-agent-on-a-branch.md) (the worktree create, its

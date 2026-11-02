@@ -1286,7 +1286,9 @@ describe("journal, uploads and state stay host-local", () => {
     // And the contract names the gap, so the two cannot drift apart silently.
     const contract = readFileSync(join(import.meta.dir, "..", "..", "MUX_CONTRACT.md"), "utf8");
     expect(contract).toContain("## Conformance across a crew link");
-    expect(contract).toContain("listSessions` and the three worktree verbs have no forwardable route");
+    expect(contract).toContain(
+      "`listSessions` has no forwardable route. The worktree routes (`GET /api/worktree/plan`, `POST /api/worktree`) are forwarded to the addressed host",
+    );
   });
 });
 
