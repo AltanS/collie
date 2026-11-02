@@ -1919,9 +1919,7 @@ export const MUX_CAPABILITIES = [
   "renameTab",
   "closeTab",
   "createSpace",
-  "listWorktrees",
   "createWorktree",
-  "openWorktree",
   "pushTopologyEvents",
   "pushPaneEvents",
   // A durable program's own controls, declared from its `caps` (bridge/mux/capabilities.ts). Unlike
