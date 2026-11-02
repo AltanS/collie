@@ -20,8 +20,10 @@ let plain: string;
 let submodule: string;
 
 beforeAll(() => {
-  // realpath: /tmp may be a symlink, and git writes the resolved path into the `.git` file.
-  root = realpathSync(mkdtempSync(join(tmpdir(), "repo-facts-")));
+  // realpath: /tmp may be a symlink, and git writes the resolved path into the `.git` file. `.native`
+  // because on Windows the temp folder can come as an 8.3 short name (`RUNNER~1`), which only the
+  // native call spells out in full, the way git writes it.
+  root = realpathSync.native(mkdtempSync(join(tmpdir(), "repo-facts-")));
   main = join(root, "main");
   linked = join(root, "linked");
   plain = join(root, "plain");

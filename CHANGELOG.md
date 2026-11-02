@@ -39,6 +39,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **On a Herdr core host the New screen can start a shell or an agent in a new space again.** Start used to fail with "The space couldn't be created: spaces belong to herdr-app", and a core with no live terminal had no pane to start a tab beside, so nothing could be started at all. A new space is now a new shell carrying fresh `herdr.space` and `herdr.tab` labels, which herdr-app shows as a new space named after its folder. A space name still cannot be set from the phone.
 - **Renaming an agent from the phone now also renames its tab when the tab holds only that pane.** The terminal's tab bar shows the new name instead of the launcher row's label; a tab with more panes keeps its name.
 - **A poll with no answer is one strike at any time, not only after a wake.** On a lossy path one herd poll past its deadline no longer turns the screen red at once: a later read latches "lost" only when no live answer has come for 8 seconds, a live answer and every wake give the strike back, and a pane or Chat read with no answer draws the saved copy only after that latch. Thanks @eseninik (#652).
+- **On Windows a worktree's space nests under its repo.** Git for Windows names the main checkout with forward slashes in a worktree's `.git` file, so the worktree named its repo `C:/Users/...` while the repo's own space was `C:\Users\...`, and the two never matched. The bridge now spells that path the Windows way. Linux and macOS see no change.
 
 ## [1.25.5] - 2026-11-02
 

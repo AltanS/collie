@@ -24,7 +24,7 @@
 // home walks to the root as before.
 
 import { homedir } from "node:os";
-import { basename, dirname, isAbsolute, join } from "node:path";
+import { basename, dirname, isAbsolute, join, normalize, sep } from "node:path";
 
 import { nodeGitHeadDisk, parseGitFile, type GitHeadDisk } from "./git-head.ts";
 
@@ -76,5 +76,18 @@ function linkedWorktreeFacts(text: string | null, holder: string): RepoFacts | n
   if (basename(worktrees) !== "worktrees") return null;
   const mainGit = dirname(worktrees);
   if (basename(mainGit) !== ".git") return null;
-  return { repoRoot: dirname(mainGit), isWorktree: true };
+  return { repoRoot: nativePath(dirname(mainGit)), isWorktree: true };
+}
+
+/**
+ * A path from a `gitdir:` line in this platform's own separators.
+ *
+ * Git for Windows writes that line with forward slashes (`gitdir: C:/Users/me/app/.git/worktrees/x`),
+ * while the main checkout's `repoRoot` comes from the walk with backslashes (`C:\Users\me\app`). The
+ * web nests a worktree under the space whose `repoRoot` is the same string, so on Windows the two must
+ * be spelled alike, or the worktree is not nested under its repo. Off Windows the path is kept as git
+ * wrote it, so nothing changes there.
+ */
+function nativePath(path: string): string {
+  return sep === "\\" ? normalize(path) : path;
 }
