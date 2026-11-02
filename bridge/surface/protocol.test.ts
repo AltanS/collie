@@ -4099,9 +4099,14 @@ describe("real screens from the fixture corpus", () => {
   // 2026-10-31, Claude Code 2.1.314: where it offers the `/restart` command, the row names it, and a
   // send under the survey was refused `unconfirmed` (single-key cue, modal unreadable) again.
   const RESTART_COMMAND_ROW = `${" ".repeat(40)}✔ Update installed · /restart to apply`;
+  // 2026-11-02, Claude Code 2.1.316: once the context is past 100k tokens and the session has sat idle
+  // for 75 minutes, the idle /clear hint takes the same line, alone when no update is installed and ahead
+  // of the update item when one is, and stays there. The survey under it read as a dialog again.
+  const IDLE_HINT_ROW = `${" ".repeat(40)}new task? /clear to save 292.5k tokens · ✔ Update installed · /restart to apply`;
+  const IDLE_HINT_ALONE_ROW = `${" ".repeat(40)}new task? /clear to save 292.5k tokens`;
 
   test("on the rating survey over the update row: a sentence goes on one tap, with or without a blank row between", async () => {
-    for (const between of [[UPDATE_ROW], ["", UPDATE_ROW], [RESTART_COMMAND_ROW]]) {
+    for (const between of [[UPDATE_ROW], ["", UPDATE_ROW], [RESTART_COMMAND_ROW], [IDLE_HINT_ROW], [IDLE_HINT_ALONE_ROW]]) {
       const { pane, send } = rig();
       pane.over = [...SURVEY_ROWS, ...between];
       const answer = await send("ok merge the five, running the crew update now");
@@ -4112,7 +4117,7 @@ describe("real screens from the fixture corpus", () => {
   });
 
   test("on the rating survey over the update row: a digit takes the notice path and answers the survey without Enter", async () => {
-    for (const [digit, update] of ["0", "1", "2", "3"].flatMap((d) => [UPDATE_ROW, RESTART_COMMAND_ROW].map((row) => [d, row] as const))) {
+    for (const [digit, update] of ["0", "1", "2", "3"].flatMap((d) => [UPDATE_ROW, RESTART_COMMAND_ROW, IDLE_HINT_ROW, IDLE_HINT_ALONE_ROW].map((row) => [d, row] as const))) {
       const { pane, send } = rig();
       pane.over = [...SURVEY_ROWS, update];
       const first = await send(digit);

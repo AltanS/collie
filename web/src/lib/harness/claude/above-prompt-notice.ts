@@ -17,7 +17,8 @@
 //     1: Bad    2: Fine   3: Good   0: Dismiss
 //
 // often with the update row (`✔ Update installed · Restart to update`, or `/restart to apply` where
-// Claude Code offers the command) between its keys and the box.
+// Claude Code offers the command, led after an idle spell by `new task? /clear to save <n> tokens · `,
+// or that hint alone) between its keys and the box.
 
 import { lineText, type StyledLine } from "../../blocks";
 import { readCuesFor } from "../../surface/cues";

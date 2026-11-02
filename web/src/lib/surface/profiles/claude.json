@@ -66,7 +66,8 @@
     "promptEchoes": true,
     "noticeGaps": [
       "^ +You've used \\d{1,3}% of your [\\w -]+ limit(?: ·|$)",
-      "^ *✔ Update installed · (?:Restart to (?:update|apply)|/restart to apply)$"
+      "^ *new task\\? /clear to save \\d{1,3}(?:\\.\\d)?[km]? tokens$",
+      "^ *(?:new task\\? /clear to save \\d{1,3}(?:\\.\\d)?[km]? tokens · )?✔ Update installed · (?:Restart to (?:update|apply)|/restart to apply)$"
     ]
   },
   "keys": {

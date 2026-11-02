@@ -126,13 +126,13 @@ describe("readAboveNotice", () => {
   // The update row's wordings: 2.1.303, 2.1.306, and 2.1.314 where it offers the `/restart` command
   // (2026-10-31: under the survey, every send went manual again until the gap took it).
   const UPDATE_WORDINGS = ["Restart to update", "Restart to apply", "/restart to apply"];
+  const SURVEY = ["● How is Claude doing this session? (optional)", "  1: Bad    2: Fine   3: Good   0: Dismiss"];
 
   it("reads the survey over the update row, and the same with a blank row between them", () => {
-    const survey = ["● How is Claude doing this session? (optional)", "  1: Bad    2: Fine   3: Good   0: Dismiss"];
     for (const wording of UPDATE_WORDINGS) {
       const update = `${" ".repeat(20)}✔ Update installed · ${wording}`;
       for (const between of [[update], ["", update], [update, ""]]) {
-        const notice = noticeOf(screen([...survey, ...between]));
+        const notice = noticeOf(screen([...SURVEY, ...between]));
         expect(notice?.keys.map((k) => k.key), JSON.stringify(between)).toEqual(["1", "2", "3", "0"]);
       }
     }
@@ -162,6 +162,32 @@ describe("readAboveNotice", () => {
     for (const wording of UPDATE_WORDINGS) {
       const update = `${" ".repeat(20)}✔ Update installed · ${wording}`;
       expect(noticeOf(screen([...TRANSCRIPT, LETTER_KEYS, update]))?.keys.map((k) => k.key), wording).toEqual(["y", "n", "d"]);
+    }
+  });
+
+  // 2026-11-02, Claude Code 2.1.316: once the context is past 100k tokens and the session has sat idle
+  // for 75 minutes, it draws `new task? /clear to save <n> tokens` on the update row's line, alone when no
+  // update is installed and ahead of the update item when one is, and keeps it there. Under the survey every
+  // send went manual again, and the phone showed no card.
+  // Only `292.5k` was seen live; `950` and `1.2m` follow the bundle's formatter (Intl compact, lowercased).
+  const IDLE_HINT_ROWS = [
+    "new task? /clear to save 292.5k tokens",
+    "new task? /clear to save 292.5k tokens · ✔ Update installed · /restart to apply",
+    "new task? /clear to save 950 tokens · ✔ Update installed · Restart to update",
+    "new task? /clear to save 1.2m tokens · ✔ Update installed · Restart to apply",
+  ];
+
+  it("reads the survey and the transcript question under the idle /clear hint, alone or ahead of the update item", () => {
+    for (const hint of IDLE_HINT_ROWS) {
+      const row = `${" ".repeat(20)}${hint}`;
+      expect(noticeOf(screen([...SURVEY, row]))?.keys.map((k) => k.key), hint).toEqual(["1", "2", "3", "0"]);
+      expect(noticeOf(screen([...TRANSCRIPT, LETTER_KEYS, row]))?.keys.map((k) => k.key), hint).toEqual(["y", "n", "d"]);
+    }
+  });
+
+  it("does not skip a row that only looks like the idle /clear hint", () => {
+    for (const hint of ["new task? /clear to save tokens", "new task? /clear to save 12k tokens · run the build", "● new task? /clear to save 12k tokens"]) {
+      expect(noticeOf(screen([...SURVEY, `${" ".repeat(20)}${hint}`])), hint).toBeNull();
     }
   });
 
