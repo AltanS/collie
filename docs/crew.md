@@ -265,6 +265,9 @@ A deputy is one peer the lead named ahead of time. It binds a standby door with 
 that door is never published. The lead's silence arms it, and your own pairing credential spends it,
 so the phone can reach the deputy while the lead is gone.
 
+The deputy keeps the crew's rows too: a read-only copy of the lead's launcher rows, which the New
+screen offers once the deputy takes over.
+
 ## Durable agents in a crew
 
 A member's durable agents show on the lead's phone, in the one Durable agents section, and the member's own
