@@ -449,8 +449,8 @@ describe("a walky talky card names sessions", () => {
 
   it("names a live session in the body, as a button that opens that pane", async () => {
     const user = userEvent.setup();
-    const row: WalkyRow = { ...fixtureWalkyAgent, body: "Ask bluefin/w6:p3 and ghost/w1:p1 about it." };
-    const panes = [livePane({ paneLabel: "plumbing" })];
+    const row: WalkyRow = { ...fixtureWalkyAgent, body: "Ask bluefin/w6:p3#k3f9 and ghost/w1:p1 about it." };
+    const panes = [livePane({ paneLabel: "plumbing", instance: "k3f9" })];
     const openPane = withPanes(panes, [row], turn(`${HEADER_AGENT}\nx`, row.id));
     const chip = within(theCard()).getByRole("button", { name: "Open plumbing" });
     expect(theCard().textContent).toContain("Ask plumbing and ghost/w1:p1 about it.");
@@ -458,9 +458,25 @@ describe("a walky talky card names sessions", () => {
     expect(openPane).toHaveBeenCalledExactlyOnceWith(panes[0]);
   });
 
+  it("keeps an address written without its token as the agent wrote it, with the name after it and no button", () => {
+    const row: WalkyRow = { ...fixtureWalkyAgent, body: "Ask bluefin/w6:p3 and w6:p3 now." };
+    withPanes([livePane({ paneLabel: "plumbing", instance: "k3f9" })], [row], turn(`${HEADER_AGENT}\nx`, row.id));
+    expect(theCard().textContent).toContain("Ask bluefin/w6:p3 (plumbing) and w6:p3 (plumbing) now.");
+    expect(within(theCard()).queryByRole("button")).toBeNull();
+  });
+
+  it("draws no chip for a token whose session is gone: the pane id was reused by another instance", () => {
+    const row: WalkyRow = { ...fixtureWalkyAgent, body: "Ask bluefin/w6:p3#k3f9 now." };
+    withPanes([livePane({ paneLabel: "newcomer", instance: "n3w1" })], [row], turn(`${HEADER_AGENT}\nx`, row.id));
+    const body = theCard().querySelector('[data-slot="walky-body"]');
+    expect(body).toHaveTextContent("Ask bluefin/w6:p3#k3f9 now.");
+    expect(within(theCard()).queryByRole("button")).toBeNull();
+    expect(body?.textContent).not.toContain("newcomer");
+  });
+
   it("draws the name as quiet text, not a nested button, when the card is itself the button to the sheet", () => {
-    const row: WalkyRow = { ...fixtureWalkyAgent, body: "Ask bluefin/w6:p3 now." };
-    withPanes([livePane({ paneLabel: "plumbing" })], [row], turn(`${HEADER_AGENT}\nx`, row.id), vi.fn());
+    const row: WalkyRow = { ...fixtureWalkyAgent, body: "Ask bluefin/w6:p3#k3f9 now." };
+    withPanes([livePane({ paneLabel: "plumbing", instance: "k3f9" })], [row], turn(`${HEADER_AGENT}\nx`, row.id), vi.fn());
     const card = theCard();
     expect(card.tagName).toBe("BUTTON");
     expect(card.querySelector("button")).toBeNull();
@@ -468,8 +484,8 @@ describe("a walky talky card names sessions", () => {
   });
 
   it("draws a name as text, never as markup", () => {
-    const row: WalkyRow = { ...fixtureWalkyAgent, body: "See bluefin/w6:p3" };
-    withPanes([livePane({ paneLabel: "<b>bold</b>" })], [row], turn(`${HEADER_AGENT}\nx`, row.id));
+    const row: WalkyRow = { ...fixtureWalkyAgent, body: "See bluefin/w6:p3#k3f9" };
+    withPanes([livePane({ paneLabel: "<b>bold</b>", instance: "k3f9" })], [row], turn(`${HEADER_AGENT}\nx`, row.id));
     expect(theCard().querySelector("b")).toBeNull();
     expect(theCard().textContent).toContain("<b>bold</b>");
   });

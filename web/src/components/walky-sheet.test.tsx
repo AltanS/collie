@@ -352,16 +352,26 @@ describe("WalkySheet names sessions", () => {
 
   it("titles a sent row \"Sent to <name>\", and \"Sent to <name> on <machine>\" for another machine", () => {
     const far = livePane({ host: "workshop", paneId: "w2:p1", paneLabel: "docs" });
-    const farRow: WalkyRow = { ...fixtureWalkySent, id: "wt_s3ntaaaa0002", at: fixtureWalkySent.at + 1000, receipt: { ...fixtureWalkySent.receipt, id: "wt_s3ntaaaa0002", target: "workshop/w2:p1" } };
+    const farRow: WalkyRow = { ...fixtureWalkySent, id: "wt_s3ntaaaa0002", to: "workshop/w2:p1", at: fixtureWalkySent.at + 1000, receipt: { ...fixtureWalkySent.receipt, id: "wt_s3ntaaaa0002", target: "workshop/w2:p1" } };
     namedSheet([livePane({ paneLabel: "plumbing" }), far], [fixtureWalkySent, farRow]);
     expect(screen.getByText("Sent to plumbing")).toBeInTheDocument();
     expect(screen.getByText("Sent to docs on workshop")).toBeInTheDocument();
   });
 
+  it("resolves a sent row from the message's `to` with its token: a replaced pane is not named by its newcomer", () => {
+    // fixtureWalkySent.to is `bluefin/w6:p3#k3f9`, its receipt target the bare `bluefin/w6:p3`.
+    namedSheet([livePane({ paneLabel: "newcomer", instance: "n3w1" })], [fixtureWalkySent]);
+    expect(screen.queryByText("Sent to newcomer")).toBeNull();
+    expect(screen.getByText("Sent to bluefin/w6:p3")).toBeInTheDocument();
+    cleanup();
+    namedSheet([livePane({ paneLabel: "plumbing", instance: "k3f9" })], [fixtureWalkySent]);
+    expect(screen.getByText("Sent to plumbing")).toBeInTheDocument();
+  });
+
   it("draws a live session in the body as a chip that opens its pane, and leaves a claim as text", async () => {
     const user = userEvent.setup();
-    const row: WalkyRow = { ...fixtureWalkyAgent, body: "Look at bluefin/w6:p3, not at ghost/w1:p1." };
-    const panes = [livePane({ paneLabel: "plumbing" })];
+    const row: WalkyRow = { ...fixtureWalkyAgent, body: "Look at bluefin/w6:p3#k3f9, not at ghost/w1:p1." };
+    const panes = [livePane({ paneLabel: "plumbing", instance: "k3f9" })];
     const open = namedSheet(panes, [row]);
     const body = document.querySelector<HTMLElement>('[data-slot="walky-sheet-body"]');
     if (body === null) throw new Error("no sheet body");
@@ -370,6 +380,14 @@ describe("WalkySheet names sessions", () => {
     expect(chip).toHaveAttribute("data-slot", "walky-name-chip");
     await user.click(chip);
     expect(open).toHaveBeenCalledExactlyOnceWith(panes[0]);
+  });
+
+  it("keeps an address without its token as written, adds the name after it, and draws no button", () => {
+    const row: WalkyRow = { ...fixtureWalkyAgent, body: "Look at w6:p3 and bluefin/w6:p3." };
+    namedSheet([livePane({ paneLabel: "plumbing", instance: "k3f9" })], [row]);
+    const body = document.querySelector('[data-slot="walky-sheet-body"]');
+    expect(body).toHaveTextContent("Look at w6:p3 (plumbing) and bluefin/w6:p3 (plumbing).");
+    expect(body?.querySelector("button")).toBeNull();
   });
 
   it("words a held reason for a person", () => {
