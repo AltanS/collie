@@ -97,7 +97,7 @@ import { sendText } from "@/lib/reply-action";
 import type { IntentId } from "@/lib/durable-control";
 import { RETURNED_CARD_DROPPED } from "@/lib/surface/send";
 import { PaneSettingsSheet } from "@/components/pane-settings-sheet";
-import { WalkyOpenProvider } from "@/components/walky-log";
+import { WalkyOpenProvider, WalkyPanesProvider, type WalkyPanes } from "@/components/walky-log";
 import { paneAddress, takeBackNote } from "@/lib/walky";
 import { WalkySheet } from "@/components/walky-sheet";
 import { CompactStripLabels, TAB_ROW_SQUARE_TAP_TARGET } from "@/components/ui/labelled-strip";
@@ -467,6 +467,10 @@ export function AgentChat({
   const messagesSheet = agent !== undefined;
   const { lead: crewLead } = useCrew();
   const walkySelf = paneAddress(paneId, scope, crewLead, agent?.instance);
+  // The live panes a walky talky message names its sessions from, and the opener a name chip uses: the
+  // switcher's own (M80 spec 12). `switchToPane` is a hoisted function, and resolves the target's own host.
+  const walkyLive = useMemo(() => ({ panes: herd, lead: crewLead }), [herd, crewLead]);
+  const walkyPanes: WalkyPanes = { live: walkyLive, open: switchToPane };
   const openWalkyMessage = useCallback((id: string) => {
     setWalkyFocus(id);
     setDrawer("messages");
@@ -2731,6 +2735,7 @@ export function AgentChat({
                 replies, so whether this device draws their stretches is read once, here. */}
             <StretchTextContext.Provider value={prefs.stretchText}>
             {chatShown ? (
+              <WalkyPanesProvider value={walkyPanes}>
               <WalkyOpenProvider open={messagesSheet ? openWalkyMessage : null} self={walkySelf}>
               <CardWaitingCtx.Provider value={questionNotes}>
                 <SessionStream
@@ -2790,6 +2795,7 @@ export function AgentChat({
                 />
               </CardWaitingCtx.Provider>
               </WalkyOpenProvider>
+              </WalkyPanesProvider>
             ) : (
             <ChatMessageList
               ref={listRef}
@@ -3540,6 +3546,7 @@ export function AgentChat({
         {/* The pane's walky talky messages (M62). Reply hands the sender to the composer, which sends through
             the bridge's walky route with `replyTo`; the sheet itself sends nothing. A reply is a write, so a
             read-only device, a saved copy, a quiet machine and a pane that is gone get the list without the button. */}
+        <WalkyPanesProvider value={walkyPanes}>
         <WalkySheet
           open={drawer === "messages"}
           onClose={closeDrawer}
@@ -3572,6 +3579,7 @@ export function AgentChat({
             composerRef.current?.startMessage({ to: row.from.address, replyTo: row.id, label: row.from.label });
           }}
         />
+        </WalkyPanesProvider>
         {/* This pane's own settings — one switch today, the prompt-cache warning (ADR 0042). Scoped to
             the PANE's machine, because `?host=` there names where the pane lives; the preference itself
             lands on the collie this phone is talking to, which is the only one that can push. */}

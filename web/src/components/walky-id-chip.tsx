@@ -24,23 +24,41 @@ import { cn } from "@/lib/utils";
 // `onDark` is for the command block, which is drawn in the mirror's own colour space (DESIGN.md §8):
 // inside it every colour is a literal of that space, never a token.
 
-const CHIP_CLASS =
-  "relative inline-block select-none rounded-sm border px-1 py-px align-baseline font-mono text-[0.9em] leading-snug whitespace-nowrap [font-variant-ligatures:none] before:absolute before:-inset-x-1 before:-inset-y-3 before:content-[''] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring active:opacity-70";
-const CHIP_TONE = "border-border bg-muted/50 text-muted-foreground";
+// The box and its 44px hit reach, shared with the session-name chip (walky-name-chip.tsx).
+export const CHIP_BOX =
+  "relative inline-block select-none rounded-sm border px-1 py-px align-baseline text-[0.9em] leading-snug before:absolute before:-inset-x-1 before:-inset-y-3 before:content-[''] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring active:opacity-70";
+const CHIP_CLASS = `${CHIP_BOX} font-mono whitespace-nowrap [font-variant-ligatures:none]`;
+export const CHIP_TONE = "border-border bg-muted/50 text-muted-foreground";
 const CHIP_TONE_DARK = "border-white/20 bg-white/10 text-inherit";
 
-export function WalkyIdChip({ id, onOpen, onDark = false }: { id: string; onOpen: (id: string) => void; onDark?: boolean }) {
+/**
+ * `label` and `aria` are for a chip that stands for a message by its sender and time ("Claude, 10:05")
+ * instead of by its id: the id stays in `data-id` and in the click, and never on the screen.
+ */
+export function WalkyIdChip({
+  id,
+  onOpen,
+  onDark = false,
+  label,
+  aria,
+}: {
+  id: string;
+  onOpen: (id: string) => void;
+  onDark?: boolean;
+  label?: string;
+  aria?: string;
+}) {
   useLocale();
   return (
     <button
       type="button"
       data-slot="walky-id-chip"
       data-id={id}
-      aria-label={t("walky.chip.aria", { id })}
+      aria-label={aria ?? t("walky.chip.aria", { id })}
       onClick={() => onOpen(id)}
       className={cn(CHIP_CLASS, onDark ? CHIP_TONE_DARK : CHIP_TONE)}
     >
-      {id}
+      {label ?? id}
     </button>
   );
 }

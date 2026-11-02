@@ -1,6 +1,8 @@
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 
+import type { AgentView } from "@/lib/types";
 import { walkyLog, type WalkyLog, type WalkyRow } from "@/lib/walky";
+import { NO_LIVE_PANES, type WalkyLivePanes } from "@/lib/walky-names";
 
 // The pane's walky talky list (`PaneData.walky`), made available to the two places that draw an
 // envelope header: the Chat card (components/chat-cards.tsx) and the mirror row
@@ -120,4 +122,34 @@ export function useWalkyChips(): WalkyChips | null {
     if (log === null || open === null || log.byId.size === 0) return null;
     return { holds: (id) => log.byId.has(id), open };
   }, [log, open]);
+}
+
+// ── THE LIVE PANES, SO A SESSION HAS A NAME ───────────────────────────────────
+// A message on the phone names its sessions by name (lib/walky-names.ts). The name comes from the live
+// pane the address points to, so the card, the sheet and the chips need the phone's pane list and a way
+// to open one of its panes. The pane screen already holds both (`agents`, `shellPanes`, the sideways
+// switch); this context hands them down. A mount without a provider reads `null`: every name falls back
+// to the log's label and no chip opens a pane, which is how these screens looked before names.
+
+/** The phone's live panes, and how to open one of them the way the pane switcher does. */
+export interface WalkyPanes {
+  live: WalkyLivePanes;
+  open: (pane: AgentView) => void;
+}
+
+const WalkyPanesCtx = createContext<WalkyPanes | null>(null);
+
+/** Provides the live panes and the opener. Pass `null` for a mount that has neither. */
+export function WalkyPanesProvider({ value, children }: { value: WalkyPanes | null; children: ReactNode }) {
+  return <WalkyPanesCtx.Provider value={value}>{children}</WalkyPanesCtx.Provider>;
+}
+
+/** The live panes and the opener, or null where the mount gave none. */
+export function useWalkyPanes(): WalkyPanes | null {
+  return useContext(WalkyPanesCtx);
+}
+
+/** The live panes to resolve names against; none where the mount gave none. */
+export function useWalkyLive(): WalkyLivePanes {
+  return useContext(WalkyPanesCtx)?.live ?? NO_LIVE_PANES;
 }

@@ -4,10 +4,12 @@ import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { BottomSheet } from "@/components/ui/sheet";
+import { nameOnMachine } from "@/components/walky-name-chip";
 import { useLocale } from "@/hooks/use-locale";
 import { useWalkySend } from "@/hooks/use-walky-send";
 import { fetchWalkyWho } from "@/lib/api";
 import { t, tn } from "@/lib/i18n";
+import { NO_LIVE_PANES, sessionNameOf, type WalkyLivePanes } from "@/lib/walky-names";
 import { cn } from "@/lib/utils";
 import {
   bareAddress,
@@ -43,11 +45,20 @@ import {
 
 const ALL = "all";
 
-/** A receipt's target as a row names it: `repo#branch (address)` when `who` knows the pane, else its {@link targetWord}. */
-function labelOf(listed: readonly WalkyTarget[] | null, address: string): string {
+/**
+ * A receipt's target as a person reads it (M80 spec 12): the live pane's name, else the `repo#branch` label
+ * `who` gives the pane, else its {@link targetWord}; "on <machine>" follows when the crew has more than one
+ * machine. The address stays on the wire. A target neither `who` nor a live pane knows is shown as the
+ * address, as it always was.
+ */
+function labelOf(listed: readonly WalkyTarget[] | null, address: string, live: WalkyLivePanes, multi: boolean): string {
+  if (address === "all") return targetWord(address);
   // A receipt's target never carries a token, and a `who` address may, so the two meet on the bare form.
   const known = listed?.find((r) => bareAddress(r.address) === address);
-  return known === undefined ? targetWord(address) : `${known.label} (${address})`;
+  const named = sessionNameOf(address, live, undefined, known?.label ?? null);
+  if (named.pane === null && known === undefined) return named.name;
+  const machine = multi ? (known?.machine ?? address.slice(0, address.indexOf("/"))) : null;
+  return nameOnMachine(named.name, machine === "" ? null : machine);
 }
 
 /** `reason count` pairs joined by ", ": the reasons are the bridge's own words, in its order, never translated. */
@@ -108,11 +119,14 @@ export function WalkyBroadcastSheet({
   open,
   onClose,
   members,
+  live = NO_LIVE_PANES,
 }: {
   open: boolean;
   onClose: () => void;
   /** The crew's machines, lead first. */
   members: readonly BroadcastMember[];
+  /** The phone's live panes, so a receipt names a session by its pane name. Absent: the `who` label. */
+  live?: WalkyLivePanes;
 }) {
   useLocale();
   const { send, sending } = useWalkySend();
@@ -309,8 +323,8 @@ export function WalkyBroadcastSheet({
               <ul className="flex flex-col divide-y divide-border rounded-lg border border-border">
                 {receipts.map((r, i) => (
                   <li key={`${r.target}:${i}`} data-slot="walky-receipt" className="flex flex-col gap-0.5 px-3 py-2 text-sm">
-                    {/* The target's own label (repo#branch) when the who list knows it, then its address. */}
-                    <span className="min-w-0 truncate font-medium">{labelOf(listed, r.target)}</span>
+                    {/* The pane's name when the phone knows the pane, else the who list's label (repo#branch). */}
+                    <span className="min-w-0 truncate font-medium">{labelOf(listed, r.target, live, members.length > 1)}</span>
                     <span className={cn("text-xs first-letter:uppercase", wasTaken(r) ? "text-muted-foreground" : "text-status-blocked")}>
                       {`${stateWord(r)} · ${verifiedWord(r)}`}
                     </span>

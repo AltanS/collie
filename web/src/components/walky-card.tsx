@@ -1,12 +1,14 @@
 import { ChevronRight } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
-import { useWalkyOpen, useWalkySelf } from "@/components/walky-log";
+import { useWalkyLive, useWalkyLog, useWalkyOpen, useWalkySelf } from "@/components/walky-log";
+import { WalkyBodyText } from "@/components/walky-name-chip";
 import { WalkyIcon } from "@/components/walky-icon";
 import { useLocale } from "@/hooks/use-locale";
 import { clockTime } from "@/lib/format";
 import { t } from "@/lib/i18n";
 import { remoteMachineOf, signerOf, verifiedWord, type WalkyKind, type WalkyRow } from "@/lib/walky";
+import { senderNameOf } from "@/lib/walky-names";
 import { cn } from "@/lib/utils";
 
 // A walky talky message, drawn as Chat's "Message from <label>" card (M62 spec 05).
@@ -22,6 +24,14 @@ import { cn } from "@/lib/utils";
 // Two sessions can carry one label on two machines, and "Message from walky-live" then reads as a
 // message from itself. When an agent's address names another machine than this pane's (`remoteMachineOf`),
 // the head says "Message from <label> on <machine>". The footer keeps its "signed by" word.
+//
+// ── THE HEAD NAMES THE SESSION, NOT ITS ADDRESS (M80 spec 12) ─────────────────
+// The sender reads as the name of the live pane that holds its address (`senderNameOf`, which is
+// `paneName` underneath), so a renamed session shows its new name on an old message. With no live pane
+// the head keeps the log's label. An address in the body that names a live pane reads as that pane's
+// name too (walky-name-chip.tsx); here the card is often one button, so the name is quiet text and the
+// Messages sheet it opens holds the tappable one. The footer's "in reply to" names the sender and the
+// time when the log holds that message, else it prints the id as it did.
 //
 // ── TWO KINDS, TWO TONES ──────────────────────────────────────────────────────
 // `agent` is a peer's words and takes the cool info tone. `operator` is the reader's own side of the
@@ -56,24 +66,35 @@ const TONE = {
 export function WalkyCard({ row }: { row: WalkyRow }) {
   useLocale();
   const open = useWalkyOpen();
-  const machine = remoteMachineOf(row, useWalkySelf());
+  const self = useWalkySelf();
+  const machine = remoteMachineOf(row, self);
+  const live = useWalkyLive();
+  const sender = senderNameOf(row, live, self).name;
+  const log = useWalkyLog();
+  const replied = row.replyTo === null ? undefined : log?.byId.get(row.replyTo);
   const tone = TONE[row.kind];
   const body = (
     <>
       <span className={cn("mb-1 flex items-center gap-1.5 text-[11px] font-semibold", tone.head)}>
         <WalkyIcon className="size-3.5 shrink-0" aria-hidden="true" />
-        <span className="min-w-0 truncate">{machine === null ? t("walky.card.title", { label: row.from.label }) : t("walky.card.titleRemote", { label: row.from.label, machine })}</span>
+        <span className="min-w-0 truncate">{machine === null ? t("walky.card.title", { label: sender }) : t("walky.card.titleRemote", { label: sender, machine })}</span>
         <Badge variant="outline" className="ml-auto px-1.5 py-0 text-[10px] font-medium">
           {t(row.kind === "agent" ? "walky.kind.agent" : "walky.kind.operator")}
         </Badge>
         {open !== null && <ChevronRight className="size-3.5 shrink-0" aria-hidden="true" />}
       </span>
       <span className="font-content line-clamp-3 whitespace-pre-wrap break-words text-sm" data-slot="walky-body">
-        {row.body}
+        <WalkyBodyText text={row.body} interactive={open === null} />
       </span>
       <span className="mt-1 flex flex-wrap items-center gap-x-1.5 text-[11px] text-muted-foreground">
         <span className="tabular-nums">{clockTime(row.at)}</span>
-        {row.replyTo !== null && <span>{`· ${t("walky.card.replyTo", { id: row.replyTo })}`}</span>}
+        {row.replyTo !== null && (
+          <span>
+            {replied === undefined
+              ? `· ${t("walky.card.replyTo", { id: row.replyTo })}`
+              : `· ${t("walky.card.replyToNamed", { name: senderNameOf(replied, live, self).name, time: clockTime(replied.at) })}`}
+          </span>
+        )}
         <span data-slot="walky-verified">{`· ${verifiedWord(row.receipt, signerOf(row))}`}</span>
       </span>
       {open !== null && <span className="sr-only">{t("walky.card.open", { sheet: t("walky.sheet.title") })}</span>}

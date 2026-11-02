@@ -2869,6 +2869,7 @@ export const en = {
   "walky.card.title": "Message from {label}",
   "walky.card.titleRemote": "Message from {label} on {machine}",
   "walky.card.replyTo": "reply to {id}",
+  "walky.card.replyToNamed": "in reply to {name}, {time}",
   "walky.card.notInLog": "no log record on this machine",
   // Screen-reader words after the card's text: the card is one button that opens the Messages sheet on it.
   // `{sheet}` is the sheet's own title (`walky.sheet.title`), so the two can never name it differently.
@@ -2877,10 +2878,14 @@ export const en = {
   "walky.tool.badge": "walky talky",
   // A message id in text, when the log holds it: a chip that opens the sheet on that message.
   "walky.chip.aria": "Open message {id}",
+  "walky.chip.ariaNamed": "Open the message from {words}",
+  "walky.name.aria": "Open {name}",
+  "walky.name.onMachine": "{name} on {machine}",
   // In the Messages sheet, before the id a message answers.
   "walky.sheet.inReplyTo": "In reply to",
+  "walky.sheet.repliedTo": "{name}, {time}",
   // The title of a row for a message this pane sent. `{target}` is the address the log names (or "every machine").
-  "walky.sheet.sentTo": "To {target}",
+  "walky.sheet.sentTo": "Sent to {target}",
   "walky.kind.agent": "agent",
   "walky.kind.operator": "operator",
   // The receipt's `verified` as a small word. `{by}` is the machine that checked it.
@@ -2890,6 +2895,9 @@ export const en = {
   "walky.verified.none": "not verified",
   // Where a message stands.
   "walky.state.accepted": "queued",
+  "walky.state.onLead": "on its way, the lead reports the result",
+  "walky.reason.draftPresent": "that session has unsent text",
+  "walky.reason.turnRunning": "that session is busy",
   "walky.state.delivered": "typed into the pane",
   "walky.state.inboxOnly": "waiting in the inbox, not typed",
   "walky.state.inboxOnlyBecause": "waiting in the inbox, not typed: {reason}",

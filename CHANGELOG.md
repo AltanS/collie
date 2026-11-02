@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Changed
+
+- **A walky talky message on the phone names sessions by name.** The Chat card, the Messages sheet and the Crew page's receipts now call a session by its pane name, the same name every other screen shows, so a renamed session shows its new name on an old message. A sent row reads "Sent to plumbing" or "Sent to docs on workshop". An address in a message body that names a live pane reads as that pane's name, and in the sheet it is a button that opens the pane; a bare pane id counts only when one live pane carries it, and an address no live pane holds stays text. A reply names its sender and time instead of the message id, and the bridge's hold reasons read "that session has unsent text" and "that session is busy". The address and the message id stay on the wire, in the agent's terminal, in `who` and in the CLI.
+
 ### Fixed
 
 - **A page served from one loopback port can no longer call a bridge on another.** A browser request from a loopback origin must now name the bridge's own host and port, or an origin listed in COLLIE_ALLOWED_ORIGINS; the token stays the first gate, and the tailnet and the paired phone see no change. The playground's dev proxy rewrites its own origin, so local development keeps working. Thanks @GGGODLIN (#617).
