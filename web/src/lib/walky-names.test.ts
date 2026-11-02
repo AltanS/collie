@@ -4,6 +4,7 @@ import { paneName } from "./pane-name";
 import type { AgentView } from "./types";
 import {
   NO_LIVE_PANES,
+  sentTargetAddress,
   sessionNameOf,
   senderNameOf,
   splitWalkyAddresses,
@@ -40,7 +41,7 @@ const names = (parts: readonly WalkyAddressPart[]) => parts.map((p) => (p.kind =
 describe("sessionNameOf", () => {
   it("names the live pane that holds the address with paneName, whatever the log's label says", () => {
     const p = pane({ paneLabel: "plumbing" });
-    expect(sessionNameOf("bluefin/w6:p3", live([p]), SELF, "collie-workspace#fix-465")).toEqual({ name: "plumbing", machine: null, pane: p });
+    expect(sessionNameOf("bluefin/w6:p3", live([p]), SELF, "collie-workspace#fix-465")).toEqual({ name: "plumbing", machine: null, pane: p, pinned: false });
     expect(sessionNameOf("bluefin/w6:p3", live([p]), SELF, null).name).toBe(paneName(p));
   });
 
@@ -60,9 +61,36 @@ describe("sessionNameOf", () => {
   });
 
   it("falls back to the log's label when no live pane holds the address, else to the address without its token", () => {
-    expect(sessionNameOf("bluefin/w9:p9", live([pane()]), SELF, "repo#branch")).toEqual({ name: "repo#branch", machine: null, pane: null });
-    expect(sessionNameOf("workshop/w9:p9#k3f9", NO_LIVE_PANES, SELF, null)).toEqual({ name: "workshop/w9:p9", machine: "workshop", pane: null });
+    expect(sessionNameOf("bluefin/w9:p9", live([pane()]), SELF, "repo#branch")).toEqual({ name: "repo#branch", machine: null, pane: null, pinned: false });
+    expect(sessionNameOf("workshop/w9:p9#k3f9", NO_LIVE_PANES, SELF, null)).toEqual({ name: "workshop/w9:p9", machine: "workshop", pane: null, pinned: false });
     expect(sessionNameOf("workshop/w9:p9", NO_LIVE_PANES, SELF, "")).toMatchObject({ name: "workshop/w9:p9" });
+  });
+
+  it("respects the instance token: a reused pane id with another instance is no live pane", () => {
+    const reused = pane({ instance: "n3w1", paneLabel: "newcomer" });
+    // The address was written for the old session `k3f9`; the pane id belongs to `n3w1` now.
+    expect(sessionNameOf("bluefin/w6:p3#k3f9", live([reused]), SELF, "old-label")).toEqual({ name: "old-label", machine: null, pane: null, pinned: false });
+    expect(sessionNameOf("bluefin/w6:p3#k3f9", live([reused]), SELF, null).name).toBe("bluefin/w6:p3");
+    // The same instance is that session, pinned.
+    expect(sessionNameOf("bluefin/w6:p3#n3w1", live([reused]), SELF, "old-label")).toMatchObject({ name: "newcomer", pinned: true });
+    // No token: whatever holds the id now, not pinned.
+    expect(sessionNameOf("bluefin/w6:p3", live([reused]), SELF, "old-label")).toMatchObject({ name: "newcomer", pinned: false });
+    // A pane that reports no instance cannot confirm a token: it is named, not pinned.
+    expect(sessionNameOf("bluefin/w6:p3#k3f9", live([pane({ paneLabel: "plain" })]), SELF, null)).toMatchObject({ name: "plain", pinned: false });
+  });
+
+  it("tells two panes with the same name apart by their pane id in brackets", () => {
+    const a = pane({ paneId: "w6:p3", paneLabel: "tests" });
+    const b = pane({ paneId: "w7:p1", paneLabel: "tests" });
+    const c = pane({ paneId: "w8:p1", paneLabel: "docs" });
+    expect(sessionNameOf("bluefin/w6:p3", live([a, b, c]), SELF, null).name).toBe("tests [w6:p3]");
+    expect(sessionNameOf("bluefin/w7:p1", live([a, b, c]), SELF, null).name).toBe("tests [w7:p1]");
+    expect(sessionNameOf("bluefin/w8:p1", live([a, b, c]), SELF, null).name).toBe("docs");
+    // Two machines with the same pane id and name: the machine joins the id.
+    const far = pane({ host: "workshop", paneId: "w6:p3", paneLabel: "tests" });
+    expect(sessionNameOf("workshop/w6:p3", live([a, far]), SELF, null).name).toBe("tests [workshop/w6:p3]");
+    // The splitter uses the same names.
+    expect(names(splitWalkyAddresses("bluefin/w7:p1", live([a, b]), SELF))).toEqual(["[tests [w7:p1]]"]);
   });
 
   it("takes an untagged pane for the lead's, and for the solo member on a solo install", () => {
@@ -79,8 +107,27 @@ describe("sessionNameOf", () => {
   });
 
   it("does not answer for addresses that are not one pane", () => {
-    expect(sessionNameOf("all", live([pane()]), SELF, null)).toEqual({ name: "all", machine: null, pane: null });
+    expect(sessionNameOf("all", live([pane()]), SELF, null)).toEqual({ name: "all", machine: null, pane: null, pinned: false });
     expect(sessionNameOf("bluefin/all", live([pane()]), SELF, null).pane).toBeNull();
+  });
+});
+
+describe("sentTargetAddress", () => {
+  const receipt = { id: "wt_s3ntaaaa0001", state: "delivered", verified: "local", at: 1, by: "bluefin", target: "bluefin/w6:p3" } as const;
+
+  it("takes the message's `to` (with its token) when it names exactly one pane, else the bare receipt target", () => {
+    expect(sentTargetAddress({ to: "bluefin/w6:p3#k3f9", receipt })).toBe("bluefin/w6:p3#k3f9");
+    expect(sentTargetAddress({ to: "bluefin/w6:p3", receipt })).toBe("bluefin/w6:p3");
+    expect(sentTargetAddress({ to: "all", receipt })).toBe("bluefin/w6:p3");
+    expect(sentTargetAddress({ to: "bluefin/all", receipt })).toBe("bluefin/w6:p3");
+    expect(sentTargetAddress({ to: "repo#branch", receipt })).toBe("bluefin/w6:p3");
+  });
+
+  it("lets a replaced pane stay unnamed: `to` carries the old token, the receipt's bare target would name the newcomer", () => {
+    const reused = pane({ instance: "n3w1", paneLabel: "newcomer" });
+    const address = sentTargetAddress({ to: "bluefin/w6:p3#k3f9", receipt });
+    expect(sessionNameOf(address, live([reused]), SELF, null)).toMatchObject({ name: "bluefin/w6:p3", pane: null });
+    expect(sessionNameOf(receipt.target, live([reused]), SELF, null)).toMatchObject({ name: "newcomer" });
   });
 });
 
@@ -107,7 +154,18 @@ describe("splitWalkyAddresses", () => {
   it("turns a full address that a live pane holds into its name, token or not", () => {
     const parts = splitWalkyAddresses("See bluefin/w6:p3 and workshop/w2:p1#k3f9 now.", live(panes), SELF);
     expect(names(parts)).toEqual(["See ", "[plumbing]", " and ", "[docs @workshop]", " now."]);
-    expect(parts[3]).toMatchObject({ kind: "address", address: "workshop/w2:p1#k3f9" });
+    // Neither pane reports an instance, so neither match is pinned to a session.
+    expect(parts[3]).toMatchObject({ kind: "address", address: "workshop/w2:p1#k3f9", pinned: false });
+  });
+
+  it("pins only an address written with the token of the live instance", () => {
+    const tagged = [pane({ instance: "k3f9", paneLabel: "plumbing" }), pane({ paneId: "w54:p1J", instance: "q1q1", sessionName: "the tests" })];
+    const pinned = (text: string) => splitWalkyAddresses(text, live(tagged), SELF).flatMap((p) => (p.kind === "address" ? [p.pinned] : []));
+    expect(pinned("bluefin/w6:p3#k3f9")).toEqual([true]);
+    expect(pinned("bluefin/w6:p3")).toEqual([false]);
+    expect(pinned("w54:p1J")).toEqual([false]);
+    // A token of a session that is gone: no pane, so plain text.
+    expect(names(splitWalkyAddresses("bluefin/w6:p3#zzzz", live(tagged), SELF))).toEqual(["bluefin/w6:p3#zzzz"]);
   });
 
   it("joins back to the text when each address part joins as written", () => {

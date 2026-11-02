@@ -207,6 +207,7 @@ describe("the Chat card and the id chip open the Messages sheet on their message
     const sent: WalkyRow = {
       ...fixtureWalkySent,
       from: { ...fixtureWalkySent.from, address: `local/${agent.paneId}` },
+      to: "local/w6:p3",
       receipt: { ...fixtureWalkySent.receipt, target: "local/w6:p3" },
     };
     withJournal(turns.slice(1));

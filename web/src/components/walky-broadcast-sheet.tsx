@@ -55,7 +55,8 @@ function labelOf(listed: readonly WalkyTarget[] | null, address: string, live: W
   if (address === "all") return targetWord(address);
   // A receipt's target never carries a token, and a `who` address may, so the two meet on the bare form.
   const known = listed?.find((r) => bareAddress(r.address) === address);
-  const named = sessionNameOf(address, live, undefined, known?.label ?? null);
+  // `who` gives the address with its instance token, so a pane that was replaced since is not named by mistake.
+  const named = sessionNameOf(known?.address ?? address, live, undefined, known?.label ?? null);
   if (named.pane === null && known === undefined) return named.name;
   const machine = multi ? (known?.machine ?? address.slice(0, address.indexOf("/"))) : null;
   return nameOnMachine(named.name, machine === "" ? null : machine);

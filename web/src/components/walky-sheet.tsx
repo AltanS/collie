@@ -13,7 +13,7 @@ import { clockTime, timeAgoShort } from "@/lib/format";
 import { t } from "@/lib/i18n";
 import { directionOf, isHeld, signerOf, stateWord, targetWord, verifiedWord, type WalkyRow } from "@/lib/walky";
 import { cn } from "@/lib/utils";
-import { senderNameOf, sessionNameOf, type WalkyLivePanes } from "@/lib/walky-names";
+import { senderNameOf, sentTargetAddress, sessionNameOf, type WalkyLivePanes } from "@/lib/walky-names";
 
 // The pane's Messages sheet (M62 spec 05): every walky talky message the bridge kept for this pane,
 // newest first, with where each one stands. It reads the same list the Chat card and the mirror row
@@ -152,7 +152,7 @@ function WalkyListRow({
   // The person reads names; the address and the id stay on the wire (lib/walky-names.ts).
   const live = useWalkyLive();
   const sender = senderNameOf(row, live, self).name;
-  const target = targetNameOf(row.receipt.target, live, self);
+  const target = targetNameOf(row, live, self);
   const replied = row.replyTo === null ? undefined : byId(row.replyTo);
   const sent = directionOf(row, self) === "sent";
   // Only a message that came in from an agent has an address to answer.
@@ -260,9 +260,10 @@ function WalkyListRow({
  * machine, or the bare `all` as every machine. A target no live pane holds is shown as its address, as it
  * always was: the log keeps no label for a target, and a machine beside a bare address says nothing more.
  */
-function targetNameOf(address: string, live: WalkyLivePanes, self: string | undefined): string {
-  if (address === "all") return targetWord(address);
-  const named = sessionNameOf(address, live, self, null);
+function targetNameOf(row: WalkyRow, live: WalkyLivePanes, self: string | undefined): string {
+  if (row.receipt.target === "all") return targetWord(row.receipt.target);
+  // The message's own `to` carries the instance token when it names one pane, so a replaced pane is not named by mistake.
+  const named = sessionNameOf(sentTargetAddress(row), live, self, null);
   return named.pane === null ? named.name : nameOnMachine(named.name, named.machine);
 }
 

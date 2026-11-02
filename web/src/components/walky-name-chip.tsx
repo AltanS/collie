@@ -14,6 +14,10 @@ import { splitWalkyAddresses } from "@/lib/walky-names";
 // everything else stays the text it was. The name is a React text node, never markup: the same XSS
 // boundary every pane name keeps.
 //
+// Only an address that names ONE session for certain (written with its instance token, and that instance is
+// live) is a chip. A bare pane id, or an address written without its token, names whatever holds the id now,
+// so it keeps the agent's words and gets the name after them in brackets: `w54:p1J (tests on bluefin)`.
+//
 // The chip is a button that opens that pane, the way the pane switcher does. It is never a link: it
 // opens a pane over this one with the slide, it names no URL. It keeps the 44px hit reach of the id chip.
 // Inside a control (the Chat card is one button when it opens the Messages sheet) a nested button would
@@ -79,8 +83,11 @@ export function WalkyBodyText({ text, interactive = true, self: selfOverride }: 
         <Fragment key={i}>
           {part.kind === "text" ? (
             part.text
-          ) : (
+          ) : part.pinned ? (
             <WalkyNameChip pane={part.pane} name={part.name} machine={part.machine} onOpen={interactive ? panes.open : null} />
+          ) : (
+            // Not pinned to one session: the agent's text stays as written, the name follows as plain text, never a button.
+            `${part.address} (${nameOnMachine(part.name, part.machine)})`
           )}
         </Fragment>
       ))}
