@@ -1228,6 +1228,7 @@ export const zhTW: Dictionary = {
   "space.overview.needsYou.other": "{count} 個工作區待處理",
   "space.overview.paneCount.one": "{count} 個窗格",
   "space.overview.paneCount.other": "{count} 個窗格",
+  "space.worktree.fromBase": "基於 {base}",
   "space.strip.back": "返回",
   "space.strip.title": "工作區",
   "space.strip.all": "全部",

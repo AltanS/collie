@@ -1157,6 +1157,7 @@ export const pt: Dictionary = {
   "space.overview.needsYou.other": "{count} espaços precisam de você",
   "space.overview.paneCount.one": "{count} painel",
   "space.overview.paneCount.other": "{count} painéis",
+  "space.worktree.fromBase": "a partir de {base}",
   "space.strip.back": "Voltar",
   "space.strip.title": "Espaços",
   "space.strip.all": "Todos",

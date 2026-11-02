@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import { FolderPlus, LayoutGrid, Loader2, Search } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -6,7 +6,15 @@ import { useMuxCapability } from "@/lib/mux-capability";
 import { SectionHeader } from "@/components/section-header";
 import { LIST_ROW_CORNERS, ListGroup } from "@/components/ui/list-group";
 import { StatusDot } from "@/components/status-badge";
-import { filterSpaces, nestWorktrees, spaceLastSeenMap, spaceTriageMap } from "@/lib/spaces";
+import { BranchLabel } from "@/components/ui/branch-label";
+import {
+  filterSpaces,
+  nestWorktrees,
+  spaceLastSeenMap,
+  spaceTriageMap,
+  spaceWorktreeContext,
+  type WorktreeContext,
+} from "@/lib/spaces";
 import { spaceKey } from "@/lib/hosts";
 import { TRIAGE_STATUS } from "@/lib/triage";
 import { timeAgo } from "@/lib/format";
@@ -188,6 +196,7 @@ export function SpaceOverview({
               const status = bucket ? TRIAGE_STATUS[bucket] : null;
               const blocked = bucket === "needs";
               const seen = lastSeen.get(key) ?? 0;
+              const context = spaceWorktreeContext(w, depth === 1);
               return (
                 <button
                   key={w.workspaceId}
@@ -238,7 +247,16 @@ export function SpaceOverview({
                     ) : (
                       <span className="size-2.5 shrink-0 rounded-full border border-muted-foreground/40" />
                     )}
-                    <span className="min-w-0 flex-1 truncate font-medium">{w.label}</span>
+                    {context === null ? (
+                      <span className="min-w-0 flex-1 truncate font-medium">{w.label}</span>
+                    ) : (
+                      // A worktree's label is its folder, the branch slug. The second line says what
+                      // it is a checkout of; every other space keeps its one line, unchanged.
+                      <span className="flex min-w-0 flex-1 flex-col">
+                        <span className="truncate font-medium">{w.label}</span>
+                        <WorktreeLine context={context} />
+                      </span>
+                    )}
                     {/* One count plus a relative time is what a 390px row has room for — the tab
                         count went, the pane count is the useful one. Time before count, count last:
                         matches every other list in the app, and the count chip anchors the right
@@ -264,5 +282,42 @@ export function SpaceOverview({
         </ListGroup>
       )}
     </section>
+  );
+}
+
+/**
+ * A worktree space's second line: `repo · branch · from base`, or `branch · from base` under its repo's
+ * own row (lib/spaces.ts `spaceWorktreeContext` leaves the repo out there). A part that is not known
+ * is left out with its middot. The line is the dashboard row's line 2 as the agent row draws it: 12px
+ * muted in a 16px box, the branch through `BranchLabel` (mono, a detached head as `detached @abc1234`),
+ * and a middot between two facts.
+ */
+function WorktreeLine({ context }: { context: WorktreeContext }) {
+  const parts: { key: string; node: ReactNode }[] = [];
+  if (context.repo !== null) {
+    parts.push({ key: "repo", node: <span className="min-w-0 shrink truncate">{context.repo}</span> });
+  }
+  if (context.head !== null) {
+    parts.push({ key: "head", node: <BranchLabel head={context.head} className="shrink" /> });
+  }
+  if (context.base !== null) {
+    parts.push({
+      key: "base",
+      node: <span className="min-w-0 max-w-[40%] shrink-0 truncate">{t("space.worktree.fromBase", { base: context.base })}</span>,
+    });
+  }
+  return (
+    <span data-slot="space-row-worktree" className="flex h-4 min-w-0 items-center gap-1 text-xs text-muted-foreground">
+      {parts.map((part, i) => (
+        <Fragment key={part.key}>
+          {i > 0 && (
+            <span className="shrink-0 text-muted-foreground/60" aria-hidden>
+              ·
+            </span>
+          )}
+          {part.node}
+        </Fragment>
+      ))}
+    </span>
   );
 }

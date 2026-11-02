@@ -70,6 +70,7 @@ import {
 } from "./worktree-folder.ts";
 import { askGit, parseBase, resolveBase, resolveDefaultBranch, type GitAsk } from "./worktree-base.ts";
 import { memoryWorktreeBases, type WorktreeBaseSurface } from "./worktree-bases.ts";
+import { withSpacesContext } from "./space-view.ts";
 import { addWorktree, type WorktreeAddDeps, type WorktreeAddRequest } from "./worktree-add.ts";
 import {
   isRequestId,
@@ -1745,7 +1746,8 @@ export function startServer(opts: {
       bridge,
       agents: paneList((from) => from.engine.current().agents),
       shellPanes: paneList((from) => from.engine.current().shellPanes),
-      workspaces,
+      // A space's branch and, for a worktree, the base it was cut from: from memory, like a pane's head.
+      workspaces: withSpacesContext(workspaces, { gitHeads, bases: worktreeBases }),
       tabs,
       // A label is display-only: `name` stays the identity the phone sends back as `?session=`.
       sessions: withSessionLabels(registry.list(), sessionLabels.labelOf),

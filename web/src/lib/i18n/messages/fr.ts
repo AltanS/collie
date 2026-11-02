@@ -1158,6 +1158,7 @@ export const fr: Dictionary = {
   "space.overview.needsYou.other": "{count} espaces ont besoin de vous",
   "space.overview.paneCount.one": "{count} volet",
   "space.overview.paneCount.other": "{count} volets",
+  "space.worktree.fromBase": "depuis {base}",
   "space.strip.back": "Retour",
   "space.strip.title": "Espaces",
   "space.strip.all": "Tous",

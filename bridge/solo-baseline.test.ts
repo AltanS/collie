@@ -452,6 +452,10 @@ const WORKSPACE_KEYS = {
   // The space's own folder when the multiplexer keeps one (Changes view root, ADR 0065). Optional and
   // not a crew dimension: it is present on a solo instance whenever the mux reports it.
   folder: true,
+  // The branch of that folder and, for a worktree, the base it was cut from (M81 spec 06). Optional
+  // and absent when unknown; the baseline's spaces carry no folder, so the golden bodies carry neither.
+  gitHead: true,
+  base: true,
   // A crew dimension, and the SAME one a pane and a session carry: Herdr numbers spaces per machine,
   // so `(host, workspaceId)` is a space's identity in a crew and `workspaceId` alone collides. Like
   // `PaneWire.host` it is present exactly when `servers` is, which is never in this baseline — the
@@ -599,8 +603,10 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
     ]);
     expect(Object.keys(WORKSPACE_KEYS).toSorted()).toEqual([
       "activeTabId",
+      "base",
       "focused",
       "folder",
+      "gitHead",
       "host",
       "isWorktree",
       "label",

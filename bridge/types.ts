@@ -672,6 +672,26 @@ export interface WorkspaceView {
    */
   folder?: string;
   /**
+   * What the checkout holding this space's {@link folder} is on: a branch, or a detached head at a
+   * full object name. Read off disk by `bridge/git-head.ts`, the same reader and the same cache as
+   * {@link AgentView.gitHead}, and attached at serialise time the same way (bridge/space-view.ts).
+   *
+   * ABSENT, NEVER A PLACEHOLDER. A space with no folder, a folder in no checkout, one that is gone or
+   * unreadable, a reading not taken yet (the first snapshot after a space appears) and every older
+   * bridge carry no key at all, and the phone then draws exactly what it drew before the field existed.
+   */
+  gitHead?: GitHead;
+  /**
+   * The ref this worktree was cut from, as the bridge that made it wrote it down
+   * (`bridge/worktree-bases.ts`, keyed by the checkout folder), attached at serialise time on the
+   * machine that holds the space. Only on a space with `isWorktree: true`.
+   *
+   * ABSENT, NEVER A PLACEHOLDER. A worktree made outside Collie, one made with no starting point, one
+   * whose entry aged out of the store, a space that is not a worktree and every older bridge carry no
+   * key at all. A member's value reaches the phone through the lead unchanged (additive-optional).
+   */
+  base?: string;
+  /**
    * Which member of the crew this space lives on — the same tag panes and sessions carry.
    *
    * **Present exactly when {@link SnapshotResponse.servers} is**, and absent otherwise (§11), so a

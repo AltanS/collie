@@ -1327,6 +1327,7 @@ export const en = {
   "space.overview.needsYou.other": "{count} spaces need you",
   "space.overview.paneCount.one": "{count} pane",
   "space.overview.paneCount.other": "{count} panes",
+  "space.worktree.fromBase": "from {base}",
   "space.strip.back": "Back",
   "space.strip.title": "Spaces",
   "space.strip.all": "All",

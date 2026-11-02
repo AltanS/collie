@@ -1242,6 +1242,7 @@ export const ja: Dictionary = {
   "space.overview.needsYou.other": "{count}件のSpaceで入力待ち",
   "space.overview.paneCount.one": "{count}ペイン",
   "space.overview.paneCount.other": "{count}ペイン",
+  "space.worktree.fromBase": "{base} から",
   "space.strip.back": "戻る",
   "space.strip.title": "Space",
   "space.strip.all": "すべて",

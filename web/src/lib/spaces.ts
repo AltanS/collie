@@ -7,10 +7,11 @@
 // one triage dot for two projects, one last-seen time, one tab group. The fix is the key, not a
 // filter — see lib/hosts.ts `spaceKey`, which degrades to a pure prefix (`"\0w1"`) on a solo
 // snapshot where no pane is host-tagged at all.
+import { paneGitHead } from "./git-head";
 import { paneSpaceKey, spaceKey } from "./hosts";
 import { byPlaceInTab } from "./pane-groups";
 import { bucketOf, TRIAGE_ORDER, type TriageKey } from "./triage";
-import type { AgentView, TabView, WorkspaceView } from "./types";
+import type { AgentView, GitHead, TabView, WorkspaceView } from "./types";
 
 export interface TabGroup {
   tabId: string;
@@ -239,4 +240,32 @@ export function nestWorktrees(ordered: readonly WorkspaceView[]): SpaceRow[] {
     placed.add(space.workspaceId);
   }
   return rows;
+}
+
+/** The three parts of a worktree space's second line; `null` is a part left out. */
+export interface WorktreeContext {
+  readonly repo: string | null;
+  readonly head: GitHead | null;
+  readonly base: string | null;
+}
+
+/**
+ * What a worktree space's second line says: its repo, its branch and the base it was cut from
+ * (M81 spec 06). The space's own label is its folder, the branch slug, which on its own names none
+ * of the three.
+ *
+ * Each part is `null` when it is not known, and is then left out, never drawn as a placeholder.
+ * `repo` is `null` too for a NESTED row (`depth: 1`), because the row above already is the repo.
+ * Answers `null` for a space that is not a worktree, and for one with nothing at all to say, so such
+ * a row draws exactly what it drew before. Both fields may come from a crew member, so a head is read
+ * through `paneGitHead` (which drops a malformed one) and an empty base counts as none.
+ */
+export function spaceWorktreeContext(space: WorkspaceView, nested: boolean): WorktreeContext | null {
+  if (space.isWorktree !== true) return null;
+  const root = space.repoRoot;
+  const repo = nested || root === undefined ? null : (root.split(/[\\/]/).findLast((part) => part !== "") ?? null);
+  const head = paneGitHead(space);
+  const base = space.base === undefined || space.base === "" ? null : space.base;
+  if (repo === null && head === null && base === null) return null;
+  return { repo, head, base };
 }
