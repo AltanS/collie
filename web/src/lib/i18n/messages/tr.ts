@@ -1157,7 +1157,7 @@ export const tr: Dictionary = {
   "space.overview.needsYou.other": "{count} alan size ihtiyaç duyuyor",
   "space.overview.paneCount.one": "{count} bölme",
   "space.overview.paneCount.other": "{count} bölme",
-  "space.worktree.fromBase": "{base} tabanlı",
+  "space.worktree.fromBase": "{base} dalından",
   "space.strip.back": "Geri",
   "space.strip.title": "Alanlar",
   "space.strip.all": "Tümü",
