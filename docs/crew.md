@@ -316,6 +316,11 @@ On the phone, a pane on a member shows its messages as a lead's own pane does. T
 list from that member's log, so the cards and the Messages sheet look the same on every machine
 ([On the phone](walky-talky.md#on-the-phone)).
 
+On the phone, a message names the sessions and senders in it by name. In the terminal and in `collie walky who`,
+the same message carries addresses and ids. The walky talky skill asks an agent to write the full address of
+any session it names, as `who` prints it, never a bare pane id, a window id or a label alone, so both
+read well.
+
 > **Note.** A member needs Collie 1.23.0 to take a message and to show its messages on the phone. A
 > message to an older member is refused `not sent: older member`, and a member under an older lead
 > gets `not sent: older lead`. Run `collie crew update --all` to level the crew ([Update a crew](upgrading.md#updating-the-rest-of-the-crew)).

@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Changed
+
+- **The walky talky skill asks agents to write a session's full address in a message.** When a message names another session, the skill now says to write its address as `collie walky who` prints it, never a bare pane id, a window id or a label alone, so the phone can show the session's name in its place. An install that moves through `collie update` syncs the skill itself. A build installed another way sees `collie doctor` report the skill stale once; `collie skill sync` refreshes it.
+
 ### Fixed
 
 - **A page served from one loopback port can no longer call a bridge on another.** A browser request from a loopback origin must now name the bridge's own host and port, or an origin listed in COLLIE_ALLOWED_ORIGINS; the token stays the first gate, and the tailnet and the paired phone see no change. The playground's dev proxy rewrites its own origin, so local development keeps working. Thanks @GGGODLIN (#617).
