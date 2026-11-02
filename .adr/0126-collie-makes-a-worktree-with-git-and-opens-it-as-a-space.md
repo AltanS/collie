@@ -76,7 +76,9 @@ the multiplexer's `createSpace`. No adapter has a worktree verb.**
    the recovery ADR 0032 described. The entry must be the same checkout, finished: on the branch
    asked for, and not locked, prunable or bare. Any other entry at that folder is refused with a
    sentence that names its state. One bridge runs one create per folder at a time. An add killed at
-   the timeout removes the checkout it half made, unless the folder was there before.
+   the timeout removes the checkout it half made, unless the folder was there before, and then
+   deletes the branch it made (`git branch -D -- <branch>`, best effort, never after a failed remove),
+   so the same request again is not refused for a branch that already exists.
 5. **The default folder keeps Herdr's convention**: `<dir>/<repo folder name>/<branch slug>`, where
    `<dir>` is `[worktrees] directory` in `~/.config/herdr/config.toml`, else `~/.herdr/worktrees`.
    `herdrDefaultTarget` already predicts it for the plan. The "Other folder" kind of ADR 0093 is

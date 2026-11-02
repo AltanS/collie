@@ -154,7 +154,18 @@ async function createAt(
       timeoutMs: WORKTREE_REMOVE_TIMEOUT_MS,
     });
     if (removed.code === 0 && !removed.timedOut) {
-      return refused(`git worktree add took longer than ${seconds} s; the half-made checkout was removed`);
+      // `worktree add -b` refuses an existing branch before it writes anything, so a timeout means this
+      // call made the branch. Left behind, it would fail the retry with "a branch named x already
+      // exists". Best effort, and only after the checkout is gone: a branch checked out still cannot go.
+      const dropped = await runGit(git, repo, ["branch", "-D", "--", request.branch], [], WORKTREE_ADD_MAX_BYTES, {
+        timeoutMs: WORKTREE_REMOVE_TIMEOUT_MS,
+      });
+      if (dropped.code === 0 && !dropped.timedOut) {
+        return refused(`git worktree add took longer than ${seconds} s; the half-made checkout and its branch were removed`);
+      }
+      return refused(
+        `git worktree add took longer than ${seconds} s; the half-made checkout was removed; branch ${request.branch} stayed behind`,
+      );
     }
     return refused(`git worktree add took longer than ${seconds} s; the half-made checkout at ${path} could not be removed`);
   }

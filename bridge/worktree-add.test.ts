@@ -21,7 +21,8 @@ import {
 //      answers `existed` and runs no `add`. Another branch, or a locked entry, is `target_exists`.
 //   4. A refusal carries git's own sentence, and leaves nothing behind.
 //   5. Two creates for one folder spawn one `git worktree add` (spec 07).
-//   6. A timed-out add removes the checkout it half made, and only that one (spec 07).
+//   6. A timed-out add removes the checkout it half made, and only that one (spec 07), then the
+//      branch it made, unless the remove failed (spec 08).
 //   7. The new branch tracks nothing, whatever the repo's `branch.autoSetupMerge` (spec 07).
 
 let root: string;
@@ -212,8 +213,11 @@ describe("addWorktree", () => {
 });
 
 describe("a timed-out add", () => {
-  /** A fake git: an empty worktree list, an add that sleeps past any timeout, a remove it records. */
-  async function sleepyGit(): Promise<{ git: string; removes: () => Promise<string[]> }> {
+  /**
+   * A fake git: an empty worktree list, an add that sleeps past any timeout, a remove and a branch
+   * delete it records in order. `failing` names a verb that exits 1 instead.
+   */
+  async function sleepyGit(failing?: "remove" | "branch"): Promise<{ git: string; removes: () => Promise<string[]> }> {
     const log = join(root, "removes.log");
     const script = join(root, "sleepy-git.sh");
     await writeFile(
@@ -224,7 +228,8 @@ describe("a timed-out add", () => {
         '  case "$arg" in',
         "    list) exit 0 ;;",
         "    add) exec sleep 5 ;;",
-        `    remove) printf '%s\\n' "$*" >> '${log}'; exit 0 ;;`,
+        `    remove) printf '%s\\n' "$*" >> '${log}'; exit ${failing === "remove" ? 1 : 0} ;;`,
+        `    branch) printf '%s\\n' "$*" >> '${log}'; exit ${failing === "branch" ? 1 : 0} ;;`,
         "  esac",
         "done",
         "exit 0",
@@ -242,18 +247,44 @@ describe("a timed-out add", () => {
     return { git: script, removes };
   }
 
-  test("removes the half-made checkout of a folder that was not there, and says so", async () => {
+  test("removes the half-made checkout and the branch it made, and says so", async () => {
     const fake = await sleepyGit();
     const path = join(home, "trees", "slow");
     const outcome = await addWorktree({ ...deps(), git: fake.git, timeoutMs: 200 }, { repoRoot: repo, branch: "slow", path });
     expect(outcome).toEqual({
       ok: false,
       code: "worktree.create_failed",
-      detail: "git worktree add took longer than 0.2 s; the half-made checkout was removed",
+      detail: "git worktree add took longer than 0.2 s; the half-made checkout and its branch were removed",
     });
-    const removes = await fake.removes();
-    expect(removes).toHaveLength(1);
-    expect(removes[0]).toEndWith(`worktree remove --force --force -- ${path}`);
+    const calls = await fake.removes();
+    expect(calls).toHaveLength(2);
+    expect(calls[0]).toEndWith(`worktree remove --force --force -- ${path}`);
+    expect(calls[1]).toEndWith("branch -D -- slow");
+  });
+
+  test("says the branch stayed behind when its delete fails", async () => {
+    const fake = await sleepyGit("branch");
+    const outcome = await addWorktree({ ...deps(), git: fake.git, timeoutMs: 200 }, { repoRoot: repo, branch: "slow", path: join(home, "trees", "slow") });
+    expect(outcome).toEqual({
+      ok: false,
+      code: "worktree.create_failed",
+      detail: "git worktree add took longer than 0.2 s; the half-made checkout was removed; branch slow stayed behind",
+    });
+    expect(await fake.removes()).toHaveLength(2);
+  });
+
+  test("keeps the branch when the checkout could not be removed", async () => {
+    const fake = await sleepyGit("remove");
+    const path = join(home, "trees", "slow");
+    const outcome = await addWorktree({ ...deps(), git: fake.git, timeoutMs: 200 }, { repoRoot: repo, branch: "slow", path });
+    expect(outcome).toEqual({
+      ok: false,
+      code: "worktree.create_failed",
+      detail: `git worktree add took longer than 0.2 s; the half-made checkout at ${path} could not be removed`,
+    });
+    const calls = await fake.removes();
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toContain("worktree remove");
   });
 
   test("never removes a folder that was there before the call", async () => {
