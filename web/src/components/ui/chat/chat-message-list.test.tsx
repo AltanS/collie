@@ -36,13 +36,14 @@ describe("ChatMessageList clearBottom", () => {
       </ChatMessageList>,
     );
     const scrollport = container.querySelector('[class*="overflow-y-auto"]')!;
-    expect(scrollport.lastElementChild?.getAttribute("data-slot")).toBe("clear-bottom");
-    expect((scrollport.lastElementChild as HTMLElement).style.height).toBe("72px");
+    const spacer = scrollport.querySelector<HTMLElement>(':scope > [data-slot="clear-bottom"]');
+    expect(scrollport.lastElementChild).toBe(spacer);
+    expect(spacer?.style.height).toBe("72px");
     rerender(
       <ChatMessageList>
         <div>line one</div>
       </ChatMessageList>,
     );
-    expect((scrollport.lastElementChild as HTMLElement).style.height).toBe("0px");
+    expect(spacer?.style.height).toBe("0px");
   });
 });
