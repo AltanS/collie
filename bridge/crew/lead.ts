@@ -1182,6 +1182,7 @@ export class CrewLead {
       readonly audit?: ForwardDeps["audit"];
       readonly device?: string | null;
       readonly mask?: ForwardDeps["mask"];
+      readonly leadRow?: ForwardDeps["leadRow"];
     } = {},
   ): Promise<Response> {
     return forwardToPeer(req, url, {

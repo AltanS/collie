@@ -240,11 +240,33 @@ export function leadRowsRead(lead: () => Promise<LeadRows>, respond: (body: Laun
 // The phone names a row by its `command` and never sends a line. A member's allowlist is its own
 // list, so a lead row it does not hold would be `launch.not_allowlisted` there. The lead therefore
 // writes the row itself onto a forwarded `POST /api/launch` or `POST /api/worktree` body, under
-// `row`, and the member runs it only when the call came over the crew link. Any `row` a phone sent is
-// dropped on the way, so a phone can never name a line through the lead either.
+// `row`, and marks that forward with {@link LEAD_ROW_HEADER}. The member runs a `row` only when the
+// call came over the crew link AND carries the mark. Any `row` a phone sent is dropped on the way, so
+// a phone can never name a line through the lead either.
 
 /** The body field a lead row rides under. */
 export const ROW_FIELD = "row";
+
+/**
+ * The request header that says "the lead itself carried this `row`" (ADR 0127 point 3). The lead adds
+ * it on the forward, after `forwardHeaders` has built its allowlist and beside `X-Crew-Device`, and
+ * only when {@link leadRowCarry} set `row` on the body.
+ *
+ * A header and not a body field, because a lead on a build before 0127 forwards a launch body
+ * UNCHANGED: a `row` a phone wrote into its body would reach the member over the crew link exactly as
+ * a carried one does. A header never crosses that way. `forwardHeaders` copies three named request
+ * headers from the phone and no other, so a phone's own `X-Collie-Lead-Row` stops at the lead, and an
+ * old lead never adds it. A body `row` without it is `launch.row_not_from_lead`, whoever calls.
+ */
+export const LEAD_ROW_HEADER = "X-Collie-Lead-Row";
+
+/** The one value of {@link LEAD_ROW_HEADER}. Any other value is no mark. */
+export const LEAD_ROW_MARK = "1";
+
+/** Whether a request carries the lead's mark. Means something only on a call over the crew link. */
+export function leadRowMarked(headers: Headers): boolean {
+  return headers.get(LEAD_ROW_HEADER) === LEAD_ROW_MARK;
+}
 
 /** What a forwarded launch carries of a lead row. A type, not an interface, so it is a JSON object. */
 export type CarriedRow = {
@@ -278,36 +300,51 @@ export function withLeadRow(fields: JsonObject, rows: readonly Launcher[], leadH
   return out;
 }
 
+/** A forwarded write as the lead sends it: the request, and whether the lead carried its own row. */
+export interface LeadWritten {
+  request: Request;
+  /**
+   * True only when the lead set `row` on this body itself. The forward then adds
+   * {@link LEAD_ROW_HEADER}; nothing else ever does.
+   */
+  leadRow: boolean;
+}
+
 /**
  * How the lead changes one forwarded write before the member gets it. Two routes pass one,
  * `POST /api/launch` and `POST /api/worktree`, and it runs only on a forward: a call the lead
  * answers itself keeps its body as the phone sent it.
  */
 export interface LeadWrite {
-  request(req: Request): Promise<Request>;
+  request(req: Request): Promise<LeadWritten>;
 }
 
 /**
- * The lead's {@link LeadWrite} for a launch: the body with {@link withLeadRow} applied. `rows` is
- * read once per forward, the list a launch on the lead itself would match. A body that is not a JSON
- * object, or one with no `row` that names no lead row, goes on untouched.
+ * The lead's {@link LeadWrite} for a launch: the body with {@link withLeadRow} applied, and `leadRow`
+ * set when that put a row on it. `rows` is read once per forward, the list a launch on the lead itself
+ * would match. A body that is not a JSON object, or one with no `row` that names no lead row, goes on
+ * untouched and unmarked.
  */
 export function leadRowCarry(rows: () => Promise<Launcher[]>, leadHome: string): LeadWrite {
   return {
     request: async (req) => {
+      const untouched: LeadWritten = { request: req, leadRow: false };
       let body: JsonValue;
       try {
         // SAFETY: `Request.json()` output IS a JsonValue by construction; only `command` and `row` are read.
         body = (await req.clone().json()) as JsonValue;
       } catch {
-        return req;
+        return untouched;
       }
-      if (!isObject(body)) return req;
+      if (!isObject(body)) return untouched;
       const out = withLeadRow(body, await rows(), leadHome);
-      if (body[ROW_FIELD] === undefined && out[ROW_FIELD] === undefined) return req;
+      if (body[ROW_FIELD] === undefined && out[ROW_FIELD] === undefined) return untouched;
       const headers = new Headers(req.headers);
       headers.delete("content-length");
-      return new Request(req.url, { method: req.method, headers, body: JSON.stringify(out) });
+      return {
+        request: new Request(req.url, { method: req.method, headers, body: JSON.stringify(out) }),
+        leadRow: out[ROW_FIELD] !== undefined,
+      };
     },
   };
 }

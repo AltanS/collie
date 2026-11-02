@@ -3,6 +3,7 @@ import type { JsonObject, JsonValue } from "../json.ts";
 import { MASK_VERSION } from "../redact.ts";
 import { MAX_UPLOAD_OVERHEAD, uploadTooLarge } from "../uploads.ts";
 import { DEVICE_HEADER, encodeDeviceHeader } from "./admission.ts";
+import { LEAD_ROW_HEADER, LEAD_ROW_MARK } from "./launcher-rows.ts";
 import {
   type CrewLink,
   type CrewParams,
@@ -407,6 +408,10 @@ export type ForwardAuditEntry = {
  * request — the operator's device as the lead's own `deviceAuth()` resolved it (§12) — and the sweep
  * that polls a peer's snapshot has no phone behind it. Absent when the lead's device gate is off,
  * matching how the audit field is omitted rather than nulled today.
+ *
+ * `X-Collie-Lead-Row` is NOT on the list, and must never be: a member trusts a body `row` only with
+ * it, so it is the lead's own word. {@link forwardToPeer} adds it after this list is built, and only
+ * for a row the lead carried itself (`leadRowCarry`, ADR 0127 point 3).
  */
 export function forwardHeaders(req: Request, device?: string | null): Headers {
   const headers = new Headers();
@@ -672,6 +677,12 @@ export interface ForwardDeps {
   /** The operator's device, as the LEAD resolved it — forwarded as `X-Crew-Device` (§12). */
   readonly device?: string | null;
   /**
+   * True when the LEAD set `row` on this body itself (`leadRowCarry`, ADR 0127 point 3): the forward
+   * then adds `X-Collie-Lead-Row`, the one sign a member trusts that a `row` is its lead's. Absent or
+   * false, the header is never sent, whatever the phone's request carried.
+   */
+  readonly leadRow?: boolean;
+  /**
    * The LEAD's own upload cap in bytes (`cfg.maxUploadBytes`), for the §13 pre-check below. Passed
    * in rather than imported because it is no longer a constant — it is this host's setting, and a
    * peer with a different one enforces its own when the bytes arrive.
@@ -894,6 +905,9 @@ export async function forwardToPeer(req: Request, url: URL, deps: ForwardDeps): 
   // `duplex` is required by the Fetch spec for a stream body; the DOM lib's `RequestInit` predates
   // it, so the streaming half of this init is typed here rather than asserted at the assignment.
   const headers = forwardHeaders(req, deps.device);
+  // The lead's own mark on a row it carried (ADR 0127 point 3). ADDED after the allowlist, like
+  // `X-Crew-Device`, and never copied: `forwardHeaders` does not pass a phone's `X-Collie-Lead-Row`.
+  if (deps.leadRow === true) headers.set(LEAD_ROW_HEADER, LEAD_ROW_MARK);
   // Text the phone will show is masked here, whatever the member's version (§9.1). Every other answer
   // is not read at all. A masked answer's tag carries the mask's version, both ways ({@link saltTag}).
   const answer = deps.mask === undefined ? null : textAnswerOf(route);

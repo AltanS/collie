@@ -185,7 +185,7 @@ import {
 } from "./answer-mask.ts";
 import { maskForwardedAnswer } from "./crew/mask.ts";
 import type { LeadMerge } from "./crew/forward.ts";
-import { CWD_PARAM, folderAnswers, leadRowCarry, leadRowsRead, ROW_FIELD, rowFromLead, type LeadWrite } from "./crew/launcher-rows.ts";
+import { CWD_PARAM, folderAnswers, leadRowCarry, leadRowMarked, leadRowsRead, ROW_FIELD, rowFromLead, type LeadWrite } from "./crew/launcher-rows.ts";
 import { withCopyRows, type LauncherCopySeam } from "./crew/standby-launchers.ts";
 import { redactAnsi } from "./redact.ts";
 import { TranscriptStore } from "./journal/store.ts";
@@ -1899,11 +1899,12 @@ export function startServer(opts: {
       const denied = caller.gate("write");
       if (denied) return denied;
       // Forwarded to a member, a lead row rides along as `row` (ADR 0127 point 3); the member takes it
-      // only from this link (`fromLead`), and a phone that sends one itself is refused.
+      // only from this link (`viaCrew`) with the lead's `X-Collie-Lead-Row` mark, and a phone that
+      // sends one itself is refused.
       const rt = await caller.resolve(undefined, leadRowCarry(allowedLaunchers, homedir()));
       if (rt instanceof Response) return rt;
       return launch(rt.herdr, rt.engine, req, caller.audit, caller.device(), rt.name, allowedLaunchers, {}, {
-        fromLead: caller.via === "crew",
+        viaCrew: caller.via === "crew",
         harnesses,
         receipts: launchReceipts,
         launchWindow: opts.launchWindow,
@@ -2149,7 +2150,7 @@ export function startServer(opts: {
       const rt = await caller.resolve(undefined, leadRowCarry(allowedLaunchers, homedir()));
       if (rt instanceof Response) return rt;
       return createWorktreeAt(rt.herdr, rt.engine, req, caller.audit, caller.device(), rt.name, allowedLaunchers, {
-        fromLead: caller.via === "crew",
+        viaCrew: caller.via === "crew",
         receipts: worktreeReceipts,
         bases: worktreeBases,
         choices: worktreeChoices,
@@ -2736,15 +2737,17 @@ export function startServer(opts: {
             // A merged read (ADR 0127) asks with the route's own query and no phone headers, so the
             // member's answer comes back as plain bytes the lead can read.
             const askUrl = merge === undefined ? url : await merge.ask(url);
-            // A launch of a lead row carries the row (ADR 0127 point 3): only here, on a forward.
-            const carried = write === undefined ? req : await write.request(req);
-            const askReq = merge === undefined ? carried : new Request(askUrl, { method: req.method });
+            // A launch of a lead row carries the row (ADR 0127 point 3): only here, on a forward. The
+            // forward marks it `X-Collie-Lead-Row` only when the carry itself set the row.
+            const carried = write === undefined ? { request: req, leadRow: false } : await write.request(req);
+            const askReq = merge === undefined ? carried.request : new Request(askUrl, { method: req.method });
             // The lead's own record of the forward (§12): one line, the same `action` the peer will
             // write, plus the target host — two independent logs of one event, neither depending on
             // the other machine's disk.
             const forwarded = secure(
               await crewLead!.forward(askReq, askUrl, resolved, {
                 device: whois(req).device,
+                leadRow: carried.leadRow,
                 // A member's text is masked here too, by the lead's own switch, so a member one
                 // release behind cannot send a key to the phone in clear (CREW_PROTOCOL.md §9.1).
                 mask: cfg.redact ? maskForwardedAnswer : undefined,
@@ -6473,8 +6476,11 @@ export async function createWorktreeAt(
   session: string,
   getLaunchers: () => Promise<Launcher[]>,
   deps: FolderWorktreeDeps & {
-    /** True when the call came over the crew link from this machine's lead: a carried `row` is taken. */
-    fromLead?: boolean;
+    /**
+     * True when the call came over the crew link from this machine's lead. A carried `row` is taken
+     * only then AND with the lead's `X-Collie-Lead-Row` mark on the request (ADR 0127 point 3).
+     */
+    viaCrew?: boolean;
     receipts: WorktreeReceiptSurface;
     bases?: WorktreeBaseSurface;
     choices?: WorktreeChoiceSurface;
@@ -6519,7 +6525,7 @@ export async function createWorktreeAt(
   // `run` counts as named so a one-off line on a branch is refused (ADR 0095), never read as a shell.
   const named = ["command", "harness", "shell", "run"].some((k) => fields[k] !== undefined && fields[k] !== null && fields[k] !== false);
   const picked = named
-    ? await pickLaunch(fields, getLaunchers, deps.harnesses, null, { fromLead: deps.fromLead === true, home })
+    ? await pickLaunch(fields, getLaunchers, deps.harnesses, null, leadRowGate(req, deps.viaCrew, home))
     : ({ kind: "shell", row: undefined } as const);
   if (picked instanceof Response) return picked;
   const cwd = askedFolder(fields.cwd, home);
@@ -7149,7 +7155,7 @@ export async function launch(
     getLaunchers,
     deps.harnesses,
     { device, switches: deps.switches ?? (() => Promise.resolve({ ...DEFAULT_SWITCHES })) },
-    { fromLead: deps.fromLead === true, home: deps.home ?? homedir() },
+    leadRowGate(req, deps.viaCrew, deps.home ?? homedir()),
   );
   if (picked instanceof Response) return picked;
 
@@ -7238,11 +7244,12 @@ export async function launch(
 /** What `launch` needs beyond the route's own arguments. Every field defaults for a test. */
 export interface LaunchDeps {
   /**
-   * True when the call came over the crew link from this machine's lead (`caller.via === "crew"`):
-   * a carried `row` is then run when this machine's own list has no match (ADR 0127 point 3).
-   * Absent or false: a body with `row` and no own match is `launch.row_not_from_lead`.
+   * True when the call came over the crew link from this machine's lead (`caller.via === "crew"`).
+   * A carried `row` is then run when this machine's own list has no match AND the request carries the
+   * lead's `X-Collie-Lead-Row` mark (ADR 0127 point 3). Otherwise a body with `row` and no own match
+   * is `launch.row_not_from_lead`.
    */
-  fromLead?: boolean;
+  viaCrew?: boolean;
   /** The agents this host starts by id. Absent: no `harness` body is accepted. */
   harnesses?: Pick<HarnessProbe, "launch">;
   /** Absent: an in-memory store. */
@@ -7297,6 +7304,15 @@ interface LeadRowGate {
   home: string;
 }
 
+/**
+ * A body `row` is the lead's only when BOTH hold: the call came over the crew link (`viaCrew`, which on
+ * a member means its lead) AND the lead marked the request with `X-Collie-Lead-Row`. The mark is what
+ * an old lead never adds: it forwards a phone's body, `row` and all, unchanged.
+ */
+function leadRowGate(req: Request, viaCrew: boolean | undefined, home: string): LeadRowGate {
+  return { fromLead: viaCrew === true && leadRowMarked(req.headers), home };
+}
+
 /** What a one-off `run` is checked against: who asks, and the operator's switch (ADR 0095). */
 interface RunGate {
   device: string | null;
@@ -7311,8 +7327,9 @@ interface RunGate {
  * branch), and a body naming one there is refused rather than read as a plain shell.
  *
  * A `command` this host does not hold may come with the lead's `row` (ADR 0127 point 3). It is run
- * only when `leadGate.fromLead`; from anyone else it is `launch.row_not_from_lead`. This host's own
- * row on the same `command` wins, and `row` is then not read.
+ * only when `leadGate.fromLead` (the crew link and the lead's mark, {@link leadRowGate}); otherwise it
+ * is `launch.row_not_from_lead`. This host's own row on the same `command` wins, and `row` is then not
+ * read.
  */
 async function pickLaunch(
   fields: JsonObject,

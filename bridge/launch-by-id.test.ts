@@ -7,6 +7,7 @@ import { AuditLog } from "./audit.ts";
 import { harnessLaunch } from "./harness-launch.ts";
 import { LAUNCH_RECEIPTS_FILE, LaunchReceiptStore, coerceLaunchReceipt, memoryLaunchReceipts } from "./launch-receipts.ts";
 import type { JsonObject } from "./json.ts";
+import { LEAD_ROW_HEADER, LEAD_ROW_MARK } from "./crew/launcher-rows.ts";
 import { LaunchWindow } from "./launch-window.ts";
 import { launch, launchersRoute, type LaunchDeps } from "./server.ts";
 import type { StateEngine } from "./state-engine.ts";
@@ -107,8 +108,8 @@ function asMux(fake: Partial<MuxAdapter>): MuxAdapter {
   return fake as MuxAdapter;
 }
 
-const post = (body: JsonObject) =>
-  new Request("http://x/api/launch", { method: "POST", body: JSON.stringify(body), headers: { "content-type": "application/json" } });
+const post = (body: JsonObject, headers: Record<string, string> = {}) =>
+  new Request("http://x/api/launch", { method: "POST", body: JSON.stringify(body), headers: { "content-type": "application/json", ...headers } });
 
 /** A disk where every folder is a directory, or only `present` are (as absolute paths). */
 function dirs(present?: readonly string[]) {
@@ -327,12 +328,12 @@ describe("POST /api/launch — by id", () => {
 });
 
 /** A launch whose audit lines are kept, parsed. */
-async function audited(fake: FakeMux, body: JsonObject, deps: LaunchDeps = {}) {
+async function audited(fake: FakeMux, body: JsonObject, deps: LaunchDeps = {}, headers: Record<string, string> = {}) {
   const lines: string[] = [];
   const res = await launch(
     asMux(fake),
     engine(),
-    post(body),
+    post(body, headers),
     new AuditLog((line) => void lines.push(line)),
     null,
     "default",
@@ -349,10 +350,14 @@ async function audited(fake: FakeMux, body: JsonObject, deps: LaunchDeps = {}) {
 
 describe("POST /api/launch — a lead row carried over the crew link (ADR 0127 point 3)", () => {
   const ROW = { command: "claude --resume", label: "Claude resume", cwd: "~/src/app", harness: "claude", noPrompts: false };
+  /** The call came over the crew link, which on a member means its lead. */
+  const CREW: LaunchDeps = { viaCrew: true };
+  /** The lead's own mark, which it adds only on a forward where it set `row` itself. */
+  const MARK = { [LEAD_ROW_HEADER]: LEAD_ROW_MARK };
 
   test("a lead row forwarded to a member runs there, its `cwd` under the member's home, audited `source: lead`", async () => {
     const mux = new FakeMux();
-    const { status, body, entries } = await audited(mux, { command: "claude --resume", row: ROW }, { fromLead: true });
+    const { status, body, entries } = await audited(mux, { command: "claude --resume", row: ROW }, CREW, MARK);
     expect(status).toBe(200);
     expect(body?.ok).toBe(true);
     expect(mux.spaces).toEqual([{ cwd: "/home/member/src/app", label: "app" }]);
@@ -366,7 +371,7 @@ describe("POST /api/launch — a lead row carried over the crew link (ADR 0127 p
   test("a lead row with no pinned folder opens where an own row would: the folder the sheet named", async () => {
     const mux = new FakeMux();
     const { command, label, noPrompts } = ROW;
-    const { status } = await audited(mux, { command, cwd: "/home/member/elsewhere", row: { command, label, noPrompts } }, { fromLead: true });
+    const { status } = await audited(mux, { command, cwd: "/home/member/elsewhere", row: { command, label, noPrompts } }, CREW, MARK);
     expect(status).toBe(200);
     expect(mux.spaces).toEqual([{ cwd: "/home/member/elsewhere", label: "elsewhere" }]);
   });
@@ -380,10 +385,38 @@ describe("POST /api/launch — a lead row carried over the crew link (ADR 0127 p
     expect(entries).toEqual([]);
   });
 
+  test("an old lead's shape, a body `row` over the crew link with no mark, is refused, and nothing runs", async () => {
+    // A lead before 0127 forwards a phone's launch body unchanged, `row` and all, and never adds the mark.
+    const mux = new FakeMux();
+    const { status, body, entries } = await audited(mux, { command: "claude --resume", row: ROW }, CREW);
+    expect(status).toBe(400);
+    expect(body).toMatchObject({ ok: false, code: "launch.row_not_from_lead" });
+    expect(mux.spaces).toEqual([]);
+    expect(mux.texts).toEqual([]);
+    expect(entries).toEqual([]);
+  });
+
+  test("the mark on a call that did not come over the crew link is no mark: refused, and nothing runs", async () => {
+    const mux = new FakeMux();
+    const { status, body, entries } = await audited(mux, { command: "claude --resume", row: ROW }, {}, MARK);
+    expect(status).toBe(400);
+    expect(body).toMatchObject({ ok: false, code: "launch.row_not_from_lead" });
+    expect(mux.spaces).toEqual([]);
+    expect(entries).toEqual([]);
+  });
+
+  test("a mark with another value is no mark", async () => {
+    const mux = new FakeMux();
+    const { status, body } = await audited(mux, { command: "claude --resume", row: ROW }, CREW, { [LEAD_ROW_HEADER]: "true" });
+    expect(status).toBe(400);
+    expect(body).toMatchObject({ ok: false, code: "launch.row_not_from_lead" });
+    expect(mux.spaces).toEqual([]);
+  });
+
   test("this machine's own row wins over a carried row with the same command, and `row` is not read", async () => {
     const mux = new FakeMux();
     const carried = { command: "htop", label: "Lead htop", cwd: "/srv/elsewhere", noPrompts: false };
-    const { status, entries } = await audited(mux, { command: "htop", row: carried }, { fromLead: true });
+    const { status, entries } = await audited(mux, { command: "htop", row: carried }, CREW, MARK);
     expect(status).toBe(200);
     // HTOP's own pinned folder and label, not the carried row's.
     expect(mux.spaces).toEqual([{ cwd: "/home/op/pinned", label: "pinned" }]);
@@ -395,7 +428,7 @@ describe("POST /api/launch — a lead row carried over the crew link (ADR 0127 p
   });
 
   test("a command this host does not hold, with no `row`, is still `launch.not_allowlisted` (an old member's answer too)", async () => {
-    const { status, body } = await audited(new FakeMux(), { command: "claude --resume" }, { fromLead: true });
+    const { status, body } = await audited(new FakeMux(), { command: "claude --resume" }, CREW);
     expect(status).toBe(400);
     expect(body).toMatchObject({ ok: false, code: "launch.not_allowlisted" });
   });
@@ -411,7 +444,7 @@ describe("POST /api/launch — a lead row carried over the crew link (ADR 0127 p
       "claude --resume",
     ];
     for (const row of bad) {
-      const { status, body } = await audited(mux, { command: "claude --resume", row }, { fromLead: true });
+      const { status, body } = await audited(mux, { command: "claude --resume", row }, CREW, MARK);
       expect(status).toBe(400);
       expect(body).toBeNull();
     }

@@ -23,6 +23,7 @@ import { memoryWorktreeReceipts, type WorktreeReceiptSurface } from "./worktree-
 import { memoryWorktreeBases, type WorktreeBaseSurface } from "./worktree-bases.ts";
 import type { GitAsk } from "./worktree-base.ts";
 import type { JsonObject, JsonValue } from "./json.ts";
+import { LEAD_ROW_HEADER, LEAD_ROW_MARK } from "./crew/launcher-rows.ts";
 
 // `POST /api/worktree` with a request id and a launcher (ADR 0089, ADR 0093). These cases were
 // written for the space-scoped `POST /api/workspace/:id/worktree`, which nothing called after the
@@ -204,17 +205,22 @@ interface CreateBody {
   row?: JsonValue;
 }
 
-/** The folder route's body for a create body: the repo as `cwd`, and the launcher as `command`. */
-function post(body: CreateBody): Request {
+/**
+ * The folder route's body for a create body: the repo as `cwd`, and the launcher as `command`.
+ * `marked`: the request carries the lead's `X-Collie-Lead-Row` mark, as a lead's forward of its own row does.
+ */
+function post(body: CreateBody, marked = false): Request {
   const sent: JsonObject = { cwd: REPO };
   if (body.branch !== undefined) sent.branch = body.branch;
   if (body.requestId !== undefined) sent.requestId = body.requestId;
   if (body.launcher !== undefined) sent.command = body.launcher;
   if (body.base !== undefined) sent.base = body.base;
   if (body.row !== undefined) sent.row = body.row;
+  const headers = new Headers({ "content-type": "application/json" });
+  if (marked) headers.set(LEAD_ROW_HEADER, LEAD_ROW_MARK);
   return new Request("http://localhost/api/worktree", {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers,
     body: JSON.stringify(sent),
   });
 }
@@ -227,15 +233,20 @@ interface RunOpts {
   bases?: WorktreeBaseSurface;
   ask?: GitAsk;
   /** The call came over the crew link from this machine's lead. */
-  fromLead?: boolean;
+  viaCrew?: boolean;
+  /** The request carries the lead's `X-Collie-Lead-Row` mark. */
+  marked?: boolean;
 }
+
+/** A forward of the lead's own row: over the crew link, with the lead's mark (ADR 0127 point 3). */
+const FROM_LEAD = { viaCrew: true, marked: true } as const;
 
 /** The folder route's raw answer, for a case that must read a non-JSON refusal. */
 function send(mux: FakeWorktreeMux, body: CreateBody, opts: RunOpts = {}): Promise<Response> {
   return createWorktreeAt(
     asMux(mux),
     opts.engine ?? engineWith([repoSpace()]),
-    post(body),
+    post(body, opts.marked === true),
     opts.audit ?? auditTrail().audit,
     null,
     "default",
@@ -247,7 +258,7 @@ function send(mux: FakeWorktreeMux, body: CreateBody, opts: RunOpts = {}): Promi
       receipts: opts.receipts ?? memoryWorktreeReceipts(),
       bases: opts.bases,
       wait: fakeClock(),
-      fromLead: opts.fromLead,
+      viaCrew: opts.viaCrew,
     },
   );
 }
@@ -482,7 +493,7 @@ describe("POST /api/worktree — a lead row carried over the crew link (ADR 0127
     const { status, answer } = await run(
       mux,
       { branch: "worktree/x", requestId: REQUEST_ID, launcher: "codex --full-auto", row: ROW },
-      { audit, fromLead: true },
+      { audit, ...FROM_LEAD },
     );
     expect(status).toBe(200);
     expect(answer).toMatchObject({ ok: true, launcherStarted: true });
@@ -499,11 +510,31 @@ describe("POST /api/worktree — a lead row carried over the crew link (ADR 0127
     expect(await linkedCount()).toBe(0);
   });
 
+  test("an old lead's shape, a body `row` over the crew link with no mark, is refused before git is touched", async () => {
+    // A lead before 0127 forwards the phone's body unchanged, `row` included, and never adds the mark.
+    const mux = new FakeWorktreeMux();
+    const { status, answer } = await run(mux, { branch: "worktree/x", requestId: REQUEST_ID, launcher: "codex --full-auto", row: ROW }, { viaCrew: true });
+    expect(status).toBe(400);
+    expect(answer).toMatchObject({ ok: false, code: "launch.row_not_from_lead" });
+    expect(mux.spaces).toEqual([]);
+    expect(mux.texts).toEqual([]);
+    expect(await linkedCount()).toBe(0);
+  });
+
+  test("the mark alone, on a call that did not come over the crew link, is refused the same way", async () => {
+    const mux = new FakeWorktreeMux();
+    const { status, answer } = await run(mux, { branch: "worktree/x", requestId: REQUEST_ID, launcher: "codex --full-auto", row: ROW }, { marked: true });
+    expect(status).toBe(400);
+    expect(answer).toMatchObject({ ok: false, code: "launch.row_not_from_lead" });
+    expect(mux.spaces).toEqual([]);
+    expect(await linkedCount()).toBe(0);
+  });
+
   test("this machine's own row wins over a carried one with the same command", async () => {
     const mux = new FakeWorktreeMux();
     const { audit, entries } = auditTrail();
     const carried = { command: "claude", label: "Lead Claude", noPrompts: false };
-    const { answer } = await run(mux, { branch: "worktree/x", requestId: REQUEST_ID, launcher: "claude", row: carried }, { audit, fromLead: true });
+    const { answer } = await run(mux, { branch: "worktree/x", requestId: REQUEST_ID, launcher: "claude", row: carried }, { audit, ...FROM_LEAD });
     expect(answer).toMatchObject({ ok: true, launcherStarted: true });
     expect(entries[0]?.detail).not.toHaveProperty("source");
   });

@@ -24,7 +24,7 @@ import {
   type ForwardTransport,
 } from "./forward.ts";
 import type { JsonObject } from "../json.ts";
-import { leadRowCarry } from "./launcher-rows.ts";
+import { LEAD_ROW_HEADER, LEAD_ROW_MARK, leadRowCarry } from "./launcher-rows.ts";
 import { crewDeviceOf } from "./peer-gate.ts";
 import { HISTORY_READ_BUDGET_MS } from "../mux/herdr-core/adapter.ts";
 import {
@@ -1225,15 +1225,21 @@ describe("a launch of a lead row carries the row to the member (ADR 0127 point 3
   ];
   const carry = leadRowCarry(() => Promise.resolve(rows), LEAD_HOME);
 
-  /** What the member was sent, parsed. */
-  async function sentBody(path: string, body: JsonObject): Promise<JsonObject> {
+  /** The phone's request as the lead forwards it: the carry, then the forward with its mark, as `target()` does. */
+  async function forwarded(path: string, body: string, headers: Record<string, string> = {}): Promise<{ body: string; headers: Headers }> {
     const { transport, calls } = transportOf(() => ok(Response.json({ ok: true })));
-    const [req, url] = post(path, JSON.stringify(body), { "content-type": "application/json" });
-    const res = await forward(await carry.request(req), url, { transport });
+    const [req, url] = post(path, body, { "content-type": "application/json", ...headers });
+    const written = await carry.request(req);
+    const res = await forward(written.request, url, { transport, leadRow: written.leadRow });
     expect(res.status).toBe(200);
     expect(calls).toHaveLength(1);
+    return { body: await new Response(calls[0]!.init.body).text(), headers: new Headers(calls[0]!.init.headers) };
+  }
+
+  /** What the member was sent, parsed. */
+  async function sentBody(path: string, body: JsonObject): Promise<JsonObject> {
     // SAFETY: the test posted a JSON object, and the carry writes one back.
-    return JSON.parse(await new Response(calls[0]!.init.body).text()) as JsonObject;
+    return JSON.parse((await forwarded(path, JSON.stringify(body))).body) as JsonObject;
   }
 
   test("a `?host=` launch of the lead's own row carries it, its folder under the member's home", async () => {
@@ -1250,10 +1256,39 @@ describe("a launch of a lead row carries the row to the member (ADR 0127 point 3
 
   test("a member-only command goes on without `row`, byte for byte", async () => {
     const body = JSON.stringify({ command: "htop", requestId: "r-2" });
-    const { transport, calls } = transportOf(() => ok(Response.json({ ok: true })));
-    const [req, url] = post("/api/launch?host=laptop", body, { "content-type": "application/json" });
-    await forward(await carry.request(req), url, { transport });
-    expect(await new Response(calls[0]!.init.body).text()).toBe(body);
+    expect((await forwarded("/api/launch?host=laptop", body)).body).toBe(body);
+  });
+
+  test("the lead marks a forward `X-Collie-Lead-Row: 1` when it carried a row, on both routes", async () => {
+    for (const path of ["/api/launch?host=laptop", "/api/worktree?host=laptop"]) {
+      const { headers } = await forwarded(path, JSON.stringify({ cwd: "~/src/api", branch: "b", command: "claude --resume" }));
+      expect(headers.get(LEAD_ROW_HEADER)).toBe(LEAD_ROW_MARK);
+    }
+  });
+
+  test("no row carried, no mark: a member-only command, or a phone's `row` the lead dropped", async () => {
+    expect((await forwarded("/api/launch?host=laptop", JSON.stringify({ command: "htop" }))).headers.has(LEAD_ROW_HEADER)).toBe(false);
+    const forged = JSON.stringify({ command: "htop", row: { command: "htop", label: "x", noPrompts: false } });
+    const dropped = await forwarded("/api/launch?host=laptop", forged);
+    expect(JSON.parse(dropped.body)).toEqual({ command: "htop" });
+    expect(dropped.headers.has(LEAD_ROW_HEADER)).toBe(false);
+  });
+
+  test("a phone-sent `X-Collie-Lead-Row` never reaches the member", async () => {
+    const phoneMark = { [LEAD_ROW_HEADER]: LEAD_ROW_MARK };
+    // On a launch the lead carries nothing for: the phone's own `row` and its own mark both stop here.
+    const forged = JSON.stringify({ command: "htop", row: { command: "htop", label: "x", noPrompts: false } });
+    const launch = await forwarded("/api/launch?host=laptop", forged, phoneMark);
+    expect(launch.headers.has(LEAD_ROW_HEADER)).toBe(false);
+    expect(JSON.parse(launch.body)).toEqual({ command: "htop" });
+    // On a body that is not JSON, which the carry passes on untouched.
+    expect((await forwarded("/api/launch?host=laptop", "not json", phoneMark)).headers.has(LEAD_ROW_HEADER)).toBe(false);
+    // On a forward with no carry at all: the allowlist in `forwardHeaders` does not pass it.
+    const { transport, calls } = transportOf(() => ok(new Response(`{"ok":true}`)));
+    const [req, url] = post("/api/pane/w1:p1/reply?host=laptop", `{"text":"hi"}`, phoneMark);
+    await forward(req, url, { transport });
+    expect(new Headers(calls[0]!.init.headers).has(LEAD_ROW_HEADER)).toBe(false);
+    expect(forwardHeaders(req).has(LEAD_ROW_HEADER)).toBe(false);
   });
 
   test("a `row` the phone sent never reaches the member: dropped, or replaced by the lead's own", async () => {
@@ -1269,9 +1304,11 @@ describe("a launch of a lead row carries the row to the member (ADR 0127 point 3
     expect(sent.row).toMatchObject({ command: "claude --resume", cwd: "~/src/app" });
   });
 
-  test("a body that is not a JSON object goes on untouched, for the member to refuse", async () => {
+  test("a body that is not a JSON object goes on untouched and unmarked, for the member to refuse", async () => {
     const [req] = post("/api/launch?host=laptop", "not json");
-    expect(await carry.request(req)).toBe(req);
+    const written = await carry.request(req);
+    expect(written.request).toBe(req);
+    expect(written.leadRow).toBe(false);
   });
 });
 

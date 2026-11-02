@@ -4510,8 +4510,11 @@ describe("POST /api/launch and /api/worktree?host= — the lead's row rides the 
     for (const start of ['if (pathname === "/api/launch" && req.method === "POST")', 'if (pathname === "/api/worktree" && req.method === "POST")']) {
       const block = blockOf(start);
       expect(block).toContain("await caller.resolve(undefined, leadRowCarry(allowedLaunchers, homedir()));");
-      expect(block).toContain('fromLead: caller.via === "crew",');
+      expect(block).toContain('viaCrew: caller.via === "crew",');
     }
+    // The member's gate on both: the crew link AND the lead's `X-Collie-Lead-Row` mark (spec 07).
+    expect([...src.matchAll(/leadRowGate\(req, deps\.viaCrew, /g)]).toHaveLength(2);
+    expect(src).toContain("fromLead: viaCrew === true && leadRowMarked(req.headers)");
   });
 
   test("the carry rewrites only the request a forward sends; a local runtime reads the phone's own body", () => {
@@ -4519,8 +4522,10 @@ describe("POST /api/launch and /api/worktree?host= — the lead's row rides the 
     const peer = gate.slice(0, gate.indexOf('if (resolved.kind === "peer")') + 1);
     // Nothing before the peer branch touches `write`; inside it, the rewritten request is what is sent.
     expect(peer).not.toContain("write.request");
-    expect(gate).toContain("const carried = write === undefined ? req : await write.request(req);");
-    expect(gate).toContain("const askReq = merge === undefined ? carried : new Request(askUrl, { method: req.method });");
+    expect(gate).toContain("const carried = write === undefined ? { request: req, leadRow: false } : await write.request(req);");
+    expect(gate).toContain("const askReq = merge === undefined ? carried.request : new Request(askUrl, { method: req.method });");
+    // The mark rides the forward as the carry's own flag, never as a header of the phone's.
+    expect(gate).toContain("leadRow: carried.leadRow,");
   });
 });
 
