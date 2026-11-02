@@ -164,6 +164,9 @@ What your adapter must satisfy (all pinned by `describeAdapterConformance`):
 1. Every action key comes from `menuKeyFor` — the screen's own footer, nothing inferred. The only
    additions are the arrows the screen **advertised** (a highlight row for Up/Down, an `←/→ to <verb>`
    row for Left/Right, whose leading text is the live value the arrows adjust).
+   A row inside the region may rename a footer key's button, never add a key: Claude's `/permissions`
+   prints `Esc will approve 1 denied call` under its list while the footer still says `Esc to close`,
+   so the Esc button takes the row's words and drops `cancel`, because pressing it commits.
 2. **Never a digit**, however tempting the numbered rows look —
    [ADR 0009](./.adr/0009-a-generic-menu-is-driven-by-the-keys-it-names.md) records why (in `/model`
    a digit confirms *and* rewrites the user's default).

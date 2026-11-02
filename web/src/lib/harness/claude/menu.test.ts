@@ -377,3 +377,52 @@ describe("detectMenuRegion — the `─` rule panels of Claude Code 2.1.291", ()
     expect(detectMenu(load("claude-lab--tasks-panel--w40.txt"))).toBeNull();
   });
 });
+
+// On `/permissions` › Recently denied, Enter only marks a denial (approve, or retry with `r`), and Esc
+// applies the marks: once one is marked, a dim row under the list says `Esc will approve 1 denied call`
+// (or `Esc will retry …`), while the footer still reads `Esc to close` (Claude Code 2.1.310 bundle,
+// read 2026-11-02). A `Close` button styled as the harmless cancel would approve the marked calls, so
+// the row the screen prints names the Esc button and makes it a peer action.
+describe("detectMenuRegion — a row that says what Esc will do", () => {
+  const W = 100;
+  const EDGE = "▔".repeat(W);
+  const TITLE = "   Permissions  Recently denied   Allow   Ask   Deny   Auto mode   Workspace";
+  const FOOTER = "   Enter to approve · r to retry · ↑/↓ to navigate · Esc to close";
+  const denied = (row: string | null) => [
+    EDGE,
+    TITLE,
+    "",
+    "   Commands recently denied by the auto mode classifier.",
+    "",
+    "   ❯ 1. ✔ Fetch the release notes  (approved)",
+    ...(row === null ? [] : [row]),
+    "",
+    FOOTER,
+  ];
+
+  it.each([
+    ["   Esc will approve 1 denied call", "Approve 1 denied call"],
+    ["   Esc will retry 2 denied calls", "Retry 2 denied calls"],
+  ])("names the Esc button from %j and drops its cancel styling", (row, label) => {
+    expect(detectMenu(lines(denied(row).join("\n")))!.actions).toEqual([
+      { label: "Approve", keys: ["Enter"] },
+      { label: "Retry", keys: ["r"] },
+      { label, keys: ["Escape"] },
+    ]);
+  });
+
+  it("keeps the footer's Close as the cancel with no such row", () => {
+    expect(detectMenu(lines(denied(null).join("\n")))!.actions.at(-1)).toEqual({ label: "Close", keys: ["Escape"], cancel: true });
+  });
+
+  it("leaves Esc alone under any other row that starts with \"Esc will\"", () => {
+    for (const row of ["   Esc will close the session", "   Esc will approve the plan"]) {
+      expect(detectMenu(lines(denied(row).join("\n")))!.actions.at(-1), row).toEqual({ label: "Close", keys: ["Escape"], cancel: true });
+    }
+  });
+
+  it("reads the row only inside the region, not from output above the edge", () => {
+    const screen = ["● Esc will approve every call, the docs say", ...denied(null)];
+    expect(detectMenu(lines(screen.join("\n")))!.actions.at(-1)).toEqual({ label: "Close", keys: ["Escape"], cancel: true });
+  });
+});

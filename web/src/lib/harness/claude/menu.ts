@@ -47,6 +47,15 @@ export interface MenuRegion {
 // meaningful (without a highlight there is nothing to move).
 const POINTER = "❯";
 
+// A row inside the region that says what Esc will do NOW, where the footer keeps its standing verb.
+// `/permissions` › Recently denied marks denials with Enter and applies the marks on Esc: once one is
+// marked, a dim `Esc will approve 1 denied call` (or `Esc will retry …`) appears under the list, and
+// the footer still reads `Esc to close` (Claude Code 2.1.310 bundle, read 2026-11-02). The Esc button
+// takes the row's words and is no longer the de-emphasised cancel, because pressing it commits. Only
+// that wording counts: other menus list text a person or the model wrote (/resume titles, /rewind
+// prompts), and a row there that starts "Esc will" says nothing about the key.
+const ESC_WILL_ROW = /^\s*Esc will ((?:approve|retry) \d+ denied calls?)\s*$/u;
+
 // A footer of ONE hint that names Esc: "Esc to cancel", "Esc to close". parseKeyHintFooter refuses a
 // single segment, because one "<key> to <verb>" phrase is too little to call a screen a menu. Claude
 // Code 2.1.283's info panels (`/status`, `/usage`) and its `/export` and `/login` pickers print
@@ -117,8 +126,10 @@ export function detectMenuRegion(lines: StyledLine[]): MenuRegion | null {
   if (title === "") return null;
 
   // Affordances advertised INSIDE the region (never assumed): a highlighted row means Up/Down do
-  // something; an "←/→ to adjust" row means Left/Right do, and names what.
+  // something; an "←/→ to adjust" row means Left/Right do, and names what; an "Esc will <verb>" row
+  // says what Esc does now, which the footer's "Esc to close" no longer tells.
   const nav: MenuNav = { upDown: false };
+  let escWill: string | null = null;
   for (let i = top + 1; i < fi; i++) {
     const t = texts[i]!;
     if (t.includes(POINTER)) nav.upDown = true;
@@ -126,6 +137,11 @@ export function detectMenuRegion(lines: StyledLine[]): MenuRegion | null {
       const arrow = MENU_ARROW_ROW.exec(t);
       if (arrow) nav.leftRight = { verb: arrow[2]!.trim(), label: arrow[1]!.trim() };
     }
+    escWill ??= ESC_WILL_ROW.exec(t)?.[1] ?? null;
+  }
+  if (escWill !== null) {
+    const label = capitaliseMenuLabel(escWill);
+    actions = actions.map((action) => (action.cancel === true ? { label, keys: action.keys } : action));
   }
 
   // The signature starts under a `▔` edge, not on it. Claude Code splices timed notices into the

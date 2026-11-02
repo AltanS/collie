@@ -12,11 +12,13 @@
 
 /** One footer-named action, up-levelled into a tappable button. */
 export interface MenuAction {
-  /** The footer's own verb phrase, sentence-capitalised ("set as default" → "Set as default"). */
+  /** The footer's own verb phrase, sentence-capitalised ("set as default" → "Set as default"), or the
+   *  words of a row inside the region that says what the key does now (Claude's "Esc will approve …"). */
   label: string;
   /** The keys to send — always exactly the key the footer named, never a digit an adapter inferred. */
   keys: string[];
-  /** The Esc segment: renders as the de-emphasised/ghost control rather than a peer action. */
+  /** The Esc segment: renders as the de-emphasised/ghost control rather than a peer action. Dropped
+   *  when a row inside the region says Esc commits something. */
   cancel?: boolean;
 }
 
