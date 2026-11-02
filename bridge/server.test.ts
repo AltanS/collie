@@ -111,6 +111,7 @@ import { withAgentBeacons } from "./beacon/decorate.ts";
 import { fakeBeaconReader } from "./beacon/fake.ts";
 import { withAgentHints } from "./beacon/hint.ts";
 import { HerdrMux, herdrMuxFactory } from "./mux/herdr/adapter.ts";
+import { withWorktreeCapability } from "./worktree-capability.ts";
 import { tmuxMuxFactory } from "./mux/tmux/adapter.ts";
 import type { HerdrClient, PaneRead } from "./mux/herdr/client.ts";
 import {
@@ -3144,12 +3145,18 @@ describe("muxConfigBody — the capability declaration, as the phone reads it", 
     expect(everything.unsupportedKeys).toEqual(["PageUp", "End"]);
   });
 
-  test("the real Herdr adapter publishes every capability — nothing changes for its operators", () => {
-    const wire = muxConfigBody(herdrMuxFactory.create({ endpoint: "/tmp/none.sock", timeoutMs: 100, options: {} }));
+  test("the real Herdr adapter, as the bridge wraps it, publishes every capability — nothing changes for its operators", () => {
+    const adapter = herdrMuxFactory.create({ endpoint: "/tmp/none.sock", timeoutMs: 100, options: {} });
+    const wire = muxConfigBody(withWorktreeCapability(adapter, { git: "/usr/bin/git" }));
     // The controls of a durable program (M51 spec 08, M53 spec 05) are the program's to declare, never Herdr's.
     const program = new Set(["steerTurn", "abortTurn", "starters", "renameSpace", "programActions", "programHistory", "reopenConversation"]);
-    for (const cap of MUX_CAPABILITIES) expect(wire.capabilities[cap]).toBe(!program.has(cap));
+    // Since M81 the bridge makes a worktree with git and Herdr opens it as a space: `createWorktree` is
+    // lifted from `createSpace`, and no phone control reads the list and open verbs.
+    const bridgeOwned = new Set(["listWorktrees", "openWorktree"]);
+    for (const cap of MUX_CAPABILITIES) expect({ cap, on: wire.capabilities[cap] }).toEqual({ cap, on: !program.has(cap) && !bridgeOwned.has(cap) });
     expect(wire.notes).toEqual({});
+    // The adapter itself declares no worktree verb any more.
+    expect(muxConfigBody(adapter).capabilities.createWorktree).toBe(false);
   });
 
   // The mark's URL is published like everything else here: as data the phone prints. An adapter
