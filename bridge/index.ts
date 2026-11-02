@@ -44,7 +44,7 @@ import {
 import type { AgentView, CrewMode, CrewStatusResponse } from "./types.ts";
 import { EventPoker } from "./event-poker.ts";
 import { durableLogDir, moveFlatLogs, sourceLogDir } from "./durable/log.ts";
-import { GitHeads } from "./git-head.ts";
+import { GitHeads, nodeGitHeadDisk } from "./git-head.ts";
 import { exePathOf, exeReplaced } from "./exe-replaced.ts";
 import {
   herdrActionCommand,
@@ -1526,7 +1526,7 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   // `repoRoot`, `isWorktree` and `folder` come from the space's folder on disk (M81/03), never a spawn.
   // The worktree capability sits just inside it, outside the beacon and hint wrappers: it reads their
   // declaration and lifts `createWorktree` from `createSpace` plus git (bridge/worktree-capability.ts).
-  const herdr = withRepoFacts(withWorktreeCapability(withBeaconsIfBlind(built.adapter, target), { git: worktreeGit }), { facts: (folder) => repoFactsOf(folder) });
+  const herdr = withRepoFacts(withWorktreeCapability(withBeaconsIfBlind(built.adapter, target), { git: worktreeGit }), { facts: (folder) => repoFactsOf(folder, nodeGitHeadDisk, homedir()) });
   const engine = new StateEngine(herdr, cfg.pollMs, { museSessionName: museNames });
 
   // Event-poked polling: a long-lived watch on the multiplexer pokes an immediate re-poll on any

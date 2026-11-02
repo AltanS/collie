@@ -16,7 +16,14 @@
 //     resolve): `null`. A submodule is its own repo but not a worktree of anything, and guessing a
 //     root for it would nest it under the wrong row.
 // No `.git` at all, or a folder that does not exist: `null`.
+//
+// ── THE WALK STOPS AT HOME ───────────────────────────────────────────────────────────────────────
+// A dotfiles repo at `~/.git` would make every folder under home that is in no repo of its own read
+// as a checkout of it, and nest every such space under the home folder. So a `.git` directly in the
+// home folder is `null`, and the walk from a folder under home never goes above it. A folder outside
+// home walks to the root as before.
 
+import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join } from "node:path";
 
 import { nodeGitHeadDisk, parseGitFile, type GitHeadDisk } from "./git-head.ts";
@@ -36,12 +43,18 @@ const MAX_DEPTH = 64;
  * The repo facts of `folder`, or `null` when it has none this module can state.
  *
  * Disk reads only, through the same narrow disk `git-head.ts` uses. Never throws: the disk answers
- * `null` for anything that is not a plain answer.
+ * `null` for anything that is not a plain answer. `home` is where the walk stops (see the header).
  */
-export async function repoFactsOf(folder: string, disk: GitHeadDisk = nodeGitHeadDisk): Promise<RepoFacts | null> {
+export async function repoFactsOf(
+  folder: string,
+  disk: GitHeadDisk = nodeGitHeadDisk,
+  home: string = homedir(),
+): Promise<RepoFacts | null> {
   if (!isAbsolute(folder) || (await disk.kind(folder)) !== "dir") return null;
   let dir = folder;
   for (let depth = 0; depth < MAX_DEPTH; depth++) {
+    // Home itself is never a repo root here, and nothing above it is reached from below it.
+    if (dir === home) return null;
     const dotGit = join(dir, ".git");
     const kind = await disk.kind(dotGit);
     if (kind === "dir") return { repoRoot: dir, isWorktree: false };
