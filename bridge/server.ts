@@ -1913,9 +1913,9 @@ export function startServer(opts: {
       // A durable program's starters ride the same list (ADR 0102); every other multiplexer has none.
       return launchersRoute(allowedLaunchers, acceptEncoding, harnesses, launchersAdding, rt.herdr.listStarters?.bind(rt.herdr), asked);
     }
-    // Add, remove or rename a row a phone added (ADR 0094). Writes, on the write gate, and
-    // session-scoped for `/api/launchers`' reason: `?host=` reaches THAT machine's own store through
-    // the ordinary forward, and nothing is ever copied to another machine.
+    // Add, remove or rename a row a phone added (ADR 0094). Writes, on the write gate. Since ADR 0127
+    // they are answered by THIS machine's store whatever `?host=` says (the browser caller's resolver
+    // does not forward them), so a lead's phone adds for the whole crew.
     const addedAnswer = await serveAddedLauncherRoute(req, pathname, caller, launcherSources);
     if (addedAnswer !== null) return addedAnswer;
     // Remove one line from this machine's one-off history, or clear it (ADR 0095). Writes, and
@@ -2981,7 +2981,13 @@ export function startServer(opts: {
         return askRoute(rt, askId, body, { audit, device: whois(req).device, redact: cfg.redact, acceptEncoding: req.headers.get("accept-encoding") });
       }
       const sessionRouted = await serveSessionRoute(req, url, {
-        resolve: target,
+        // The phone's added rows are the crew's (ADR 0127 point 4): the lead's own store answers them
+        // whichever machine `?host=` names, so they never forward. A member's `?session=` is no name
+        // this registry knows, so it is dropped with the host.
+        resolve: async (merge) =>
+          ADDED_LAUNCHER_PATHS.has(pathname)
+            ? localRuntime(host.kind === "local" ? sessionName : undefined, req.headers.get("accept-encoding"))
+            : target(merge),
         gate: browserGate,
         device: () => whois(req).device,
         audit,
@@ -6596,9 +6602,17 @@ export async function launchersRoute(
 // ── Rows a phone added (ADR 0094, bridge/launcher-adds.ts) ─────────────────────────────────────────
 //
 // Three writes, one per act: add, remove, rename. The ORDER is the folder routes' and is what makes
-// them safe: the caller's write gate first, then its resolver (which forwards a `?host=` call to the
-// member whose store it is and hands the member's answer back untouched), and only then THIS
-// machine's own store. A member that is not taking writes refuses before the attempt (§10.3).
+// them safe: the caller's write gate first, then its resolver, and only then THIS machine's own store.
+// Since ADR 0127 point 4 the lead answers all three from its own store whatever `?host=` says: the
+// browser's resolver for them never forwards (see `ADDED_LAUNCHER_PATHS`), so the row joins the
+// crew's rows instead of landing on one member. A member a phone reaches directly keeps its own store.
+
+/** The three phone writes the lead answers itself for any `?host=` (ADR 0127 point 4). */
+export const ADDED_LAUNCHER_PATHS: ReadonlySet<string> = new Set([
+  "/api/launchers/added",
+  "/api/launchers/added/remove",
+  "/api/launchers/added/rename",
+]);
 
 /** The crew-only forget: the lead tells a member to drop the rows a revoked device added through it. */
 export const FORGET_DEVICE_PATH = "/api/launchers/added/forget-device";

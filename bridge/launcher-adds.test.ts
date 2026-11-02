@@ -20,7 +20,7 @@ import { AddedLauncherStore, memoryAddedIo, type AddedLauncher } from "./launche
 import { declareCapabilities } from "./mux/capabilities.ts";
 import { muxAck, muxOk, type MuxAck, type MuxAdapter, type MuxCreatedPane, type MuxGrid, type MuxOutcome, type MuxSpaceRequest } from "./mux/types.ts";
 import { DEFAULT_SWITCHES, type LauncherSwitches } from "./operator-launchers.ts";
-import { FORGET_DEVICE_PATH, launch, launchersRoute, serveAddedLauncherRoute, type AddedRouteCaller } from "./server.ts";
+import { ADDED_LAUNCHER_PATHS, FORGET_DEVICE_PATH, launch, launchersRoute, serveAddedLauncherRoute, type AddedRouteCaller } from "./server.ts";
 import type { SessionRuntime } from "./sessions.ts";
 import type { StateEngine } from "./state-engine.ts";
 import type { CreateResponse, Launcher, LaunchersResponse } from "./types.ts";
@@ -475,5 +475,17 @@ describe("revoke cleanup", () => {
     // The crew dispatch serves it, for crew rows only.
     expect(src).toContain('forgetDeviceRows(addedLaunchers, forgotten.trim(), "crew"');
     expect(FORGET_DEVICE_PATH).toBe("/api/launchers/added/forget-device");
+  });
+
+  test("the browser resolves the three added writes on the lead, whatever `?host=` says (ADR 0127 point 4)", () => {
+    expect([...ADDED_LAUNCHER_PATHS].toSorted()).toEqual(["/api/launchers/added", "/api/launchers/added/remove", "/api/launchers/added/rename"]);
+    const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
+    const browser = src.indexOf("const sessionRouted = await serveSessionRoute(req, url, {");
+    const resolver = src.indexOf("ADDED_LAUNCHER_PATHS.has(pathname)", browser);
+    // The local runtime is picked ahead of `target`, the only resolver that forwards, and a member's
+    // session name is dropped with its host.
+    expect(resolver).toBeGreaterThan(browser);
+    expect(src.indexOf("localRuntime(host.kind === \"local\" ? sessionName : undefined", resolver)).toBeGreaterThan(resolver);
+    expect(src.indexOf(": target(merge)", resolver)).toBeGreaterThan(resolver);
   });
 });

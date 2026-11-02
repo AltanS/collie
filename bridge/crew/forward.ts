@@ -121,11 +121,12 @@ const FORWARDABLE: readonly RegExp[] = [
   // lead's. Both ride the crew link exactly like `workspace` does.
   /^launch$/,
   /^launchers$/,
-  // The rows a phone adds, removes and renames (ADR 0094). Each machine keeps its own store, so a
-  // `?host=` write lands in THAT member's `launchers-added.json` and nowhere else; no row is ever
-  // copied between machines. `forget-device` is the lead's own call when it revokes a device; the
-  // lead's browser path refuses it, so only an admitted lead's request reaches a member with it.
-  /^launchers\/added(?:\/(?:remove|rename|forget-device))?$/,
+  // The rows a phone adds, removes and renames (ADR 0094, amended by ADR 0127 point 4) are answered on
+  // the lead whatever `?host=` says, so the three are NOT listed: the row lands in the lead's own
+  // `launchers-added.json` and joins the crew's rows. Only `forget-device` crosses the link. It is the
+  // lead's own call when it revokes a device, and members may still hold rows added through the link
+  // before 0127. The lead's browser path refuses it, so only an admitted lead's request reaches a member.
+  /^launchers\/added\/forget-device$/,
   // The one-off command history (ADR 0095): one per machine, so a `?host=` remove or clear changes
   // THAT member's `commands-recent.json`, and nothing is copied. A run itself rides `launch` above.
   /^launch\/recent\/(?:remove|clear)$/,

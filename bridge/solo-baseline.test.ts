@@ -855,11 +855,12 @@ describe("solo zero-tax — routes", () => {
       // the peer that runs the rows, and a lead adds its own rows to that answer (ADR 0127). A solo
       // instance has no member to forward to, so its answer is its own rows alone.
       "/api/launchers",
-      // Rows a phone adds, removes and renames on THIS machine (ADR 0094) — three SOLO writes that
-      // legitimately extend this list, named here rather than exempted. Session-scoped and write-gated
-      // through the same closure `/api/launch` rides, so a `?host=` call lands in that member's own
-      // store. A fourth path, the crew's forget (`FORGET_DEVICE_PATH`), is refused on the browser path
-      // and served on the link only, so it registers no browser route here.
+      // Rows a phone adds, removes and renames (ADR 0094) — three SOLO writes that legitimately extend
+      // this list, named here rather than exempted. Write-gated through the same closure `/api/launch`
+      // rides, but since ADR 0127 point 4 they are NOT forwarded: the lead answers them from its own
+      // store whatever `?host=` says, so a phone adds for the whole crew. A fourth path, the crew's
+      // forget (`FORGET_DEVICE_PATH`), is refused on the browser path and served on the link only, so it
+      // registers no browser route here.
       "/api/launchers/added",
       "/api/launchers/added/remove",
       "/api/launchers/added/rename",

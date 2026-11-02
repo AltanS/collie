@@ -1407,13 +1407,17 @@ describe("journal, uploads and state stay host-local", () => {
   });
 });
 
-// ADR 0094: a phone's own launcher rows live on ONE machine; `?host=` writes reach that member's store.
-describe("the added-launcher routes cross the link as writes", () => {
-  test("add, remove, rename and the lead's forget are forwardable writes; nothing else under the path is", () => {
-    for (const route of ["launchers/added", "launchers/added/remove", "launchers/added/rename", "launchers/added/forget-device"]) {
-      expect(crewRouteFor(`/api/${route}`)).toBe(route);
-      expect(forwardKind(route)).toBe("write");
+// ADR 0094, amended by ADR 0127 point 4: the lead answers the phone's add, remove and rename itself, so
+// only the lead's own forget crosses the link to a member.
+describe("the added-launcher routes stay on the lead; only the forget crosses the link", () => {
+  test("add, remove and rename are not forwardable; the lead's forget is a forwardable write", () => {
+    for (const route of ["launchers/added", "launchers/added/remove", "launchers/added/rename"]) {
+      expect(crewRouteFor(`/api/${route}`)).toBeNull();
+      expect(apiPathFor(route)).toBeNull();
     }
+    expect(crewRouteFor("/api/launchers/added/forget-device")).toBe("launchers/added/forget-device");
+    expect(apiPathFor("launchers/added/forget-device")).toBe("/api/launchers/added/forget-device");
+    expect(forwardKind("launchers/added/forget-device")).toBe("write");
     expect(crewRouteFor("/api/launchers/added/list")).toBeNull();
     expect(crewRouteFor("/api/launchers/added/")).toBeNull();
   });
