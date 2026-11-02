@@ -119,6 +119,9 @@ allowlisted:
 COLLIE_ALLOWED_ORIGINS=https://collie.example.com
 ```
 
+A browser request from a loopback origin, such as `http://localhost:5173`, passes only when it names
+the bridge's own host and port, or when you list that origin here too.
+
 Without this setting, the UI will load as an empty page. See
 [Troubleshooting](troubleshooting.md#troubleshooting) for details.
 
