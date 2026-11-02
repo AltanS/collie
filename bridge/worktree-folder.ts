@@ -5,6 +5,9 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "nod
 import type { ErrorCode } from "./error-codes.ts";
 import type { JsonObject, JsonValue } from "./json.ts";
 import { isValidWorktreeBranch } from "./worktree-branch.ts";
+// A cycle by name only: worktree-add.ts reads Herdr's default folder from here, and each side calls
+// the other inside a function body, never while the module loads.
+import { isLinkedWorktreeOf } from "./worktree-add.ts";
 
 // ── Where a new branch's folder goes (ADR 0093) ──────────────────────────────────────────────────
 //
@@ -25,6 +28,8 @@ import { isValidWorktreeBranch } from "./worktree-branch.ts";
 //      one it was cut from;
 //   7. the child (Herdr's slug of the branch) must not exist, checked with `lstat` so a dangling link
 //      counts as existing.
+//      The one exception is a child that already is a linked worktree of this repo, reached through no
+//      link: a half-done create left it, and the create then only opens it (M81).
 //
 // Git and Herdr are only ever reached with argv (`bridge/mux/herdr/client.ts` sends JSON over the
 // socket), so the path is a value, never part of a shell line. The rule runs again inside the create,
@@ -167,10 +172,25 @@ export async function resolveParentTarget(req: ParentRequest): Promise<FolderOut
   // 6: not inside the repo it branches from.
   if (isWithin(real, req.repoRoot)) return { ok: false, code: "worktree.folder_in_repo" };
 
-  // 7: the child must not be there yet.
+  // 7: the child must not be there yet, unless it is a linked worktree of THIS repo that a half-done
+  // create left behind (the checkout was made, the space did not open). That one is no link, git's own
+  // list names it, and the create then only opens it (bridge/worktree-add.ts, `existed`).
   const target = join(real, slug);
-  if (await fs.exists(target)) return { ok: false, code: "worktree.target_exists", path: target };
+  if (await fs.exists(target)) {
+    if (await isOwnWorktree(target, req.repoRoot, fs)) return { ok: true, path: target };
+    return { ok: false, code: "worktree.target_exists", path: target };
+  }
   return { ok: true, path: target };
+}
+
+/** Whether an existing `target` is a linked worktree of `repoRoot`, reached through no link. */
+async function isOwnWorktree(target: string, repoRoot: string, fs: FolderFs): Promise<boolean> {
+  try {
+    if ((await fs.realpath(target)) !== target) return false;
+  } catch {
+    return false;
+  }
+  return (await isLinkedWorktreeOf(repoRoot, target)) === true;
 }
 
 /** Reads Herdr's `config.toml`, or `null` when there is none to read. Injected for the tests. */

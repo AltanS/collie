@@ -85,6 +85,17 @@ export async function addWorktree(deps: WorktreeAddDeps, request: WorktreeAddReq
   return { ok: true, path, existed: false };
 }
 
+/**
+ * Whether `path` is a linked worktree of the repo whose main checkout is `repoRoot`, by git's own
+ * list. `null` when git is missing or could not answer. The folder rule asks it before it refuses a
+ * target that exists, so a half-done create in a chosen folder is opened on retry.
+ */
+export async function isLinkedWorktreeOf(repoRoot: string, path: string, git?: string | null): Promise<boolean | null> {
+  const binary = git === undefined ? await gitBinary() : git;
+  if (binary === null) return null;
+  return isLinkedWorktree(binary, { workTree: repoRoot, gitDir: join(repoRoot, ".git") }, path);
+}
+
 function refused(detail: string): WorktreeAddOutcome {
   return { ok: false, code: "worktree.create_failed", detail };
 }

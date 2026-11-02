@@ -125,6 +125,36 @@ describe("resolveParentTarget — the parent the phone names", () => {
     expect(await ask(join(home, "trees"), "dangling")).toMatchObject({ ok: false, code: "worktree.target_exists" });
   });
 
+  test("a target that is a linked worktree of this repo is accepted: a half-done create opens on retry", async () => {
+    // A real repo, apart from the fake one above, with a checkout a half-done create left in ~/trees.
+    const real = join(home, "src", "real");
+    await mkdir(real, { recursive: true });
+    const git = async (...args: string[]) => {
+      const proc = Bun.spawn(["git", ...args], {
+        cwd: real,
+        stdout: "ignore",
+        stderr: "pipe",
+        env: { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1", HOME: home },
+      });
+      if ((await proc.exited) !== 0) throw new Error(`git ${args.join(" ")}: ${await new Response(proc.stderr).text()}`);
+    };
+    await git("init", "-q", "-b", "main");
+    await git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "one");
+    await git("worktree", "add", "-q", "-b", "fix-tabs", join(home, "trees", "fix-tabs"));
+    expect(await resolveParentTarget({ parent: join(home, "trees"), branch: "fix-tabs", repoRoot: real, home })).toEqual({
+      ok: true,
+      path: join(home, "trees", "fix-tabs"),
+    });
+    // The same folder is refused for any other repo, and a link to it is refused for this one.
+    expect(await ask(join(home, "trees"))).toMatchObject({ ok: false, code: "worktree.target_exists" });
+    await mkdir(join(home, "links"));
+    await symlink(join(home, "trees", "fix-tabs"), join(home, "links", "fix-tabs"));
+    expect(await resolveParentTarget({ parent: join(home, "links"), branch: "fix-tabs", repoRoot: real, home })).toMatchObject({
+      ok: false,
+      code: "worktree.target_exists",
+    });
+  });
+
   test("a branch that reads as a flag, or slugs to nothing, is refused", async () => {
     expect(await ask(join(home, "trees"), "-rf")).toMatchObject({ ok: false, code: "worktree.invalid_branch" });
     expect(await ask(join(home, "trees"), "ü")).toMatchObject({ ok: false, code: "worktree.invalid_branch" });

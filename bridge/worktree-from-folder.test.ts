@@ -12,6 +12,7 @@ import type { WorktreeCreateResponse, WorktreePlanResponse } from "./types.ts";
 import {
   muxAck,
   muxOk,
+  muxRefused,
   type MuxAck,
   type MuxAdapter,
   type MuxCreatedPane,
@@ -88,9 +89,11 @@ function engine(): StateEngine {
 class FakeMux {
   readonly spaces: MuxSpaceRequest[] = [];
   readonly texts: Array<[string, string]> = [];
+  failSpace: string | null = null;
   async createSpace(request: MuxSpaceRequest): Promise<MuxOutcome<MuxCreatedPane>> {
     this.spaces.push(request);
     await Promise.resolve();
+    if (this.failSpace !== null) return muxRefused(this.failSpace);
     return muxOk({ paneId: "w7:p1", spaceId: "w7", spaceLabel: "app-fix", tabId: "w7:t1", cwd: request.cwd });
   }
   readGrid(paneId: string): Promise<MuxOutcome<MuxGrid>> {
@@ -211,13 +214,15 @@ describe("POST /api/worktree", () => {
   test("the rule runs at use time: a parent that broke since the plan reaches no multiplexer", async () => {
     const mux = new FakeMux();
     await symlink(join(home, "trees"), join(home, "via"));
+    // A plain folder where the branch's child would go: it exists and is no worktree of this repo.
+    await mkdir(join(home, "plain", "side"), { recursive: true });
     const cases: Array<[JsonValue, string]> = [
       [{ kind: "parent", parent: join(home, "via") }, "worktree.folder_link"],
       [{ kind: "parent", parent: root }, "worktree.folder_outside_home"],
       [{ kind: "parent", parent: `${home}/trees/../trees` }, "worktree.folder_invalid"],
       [{ kind: "parent", parent: join(repo, ".git") }, "worktree.folder_hidden"],
       [{ kind: "parent", parent: join(repo, "sub") }, "worktree.folder_in_repo"],
-      [{ kind: "parent", parent: join(home, "trees") }, "worktree.target_exists"],
+      [{ kind: "parent", parent: join(home, "plain") }, "worktree.target_exists"],
       [{ kind: "elsewhere" }, "worktree.folder_invalid"],
     ];
     for (const [folder, code] of cases) {
@@ -249,10 +254,27 @@ describe("POST /api/worktree", () => {
 
   test("a create that worked is remembered for the repo; a refusal is not", async () => {
     const choices = memoryWorktreeChoices();
-    await create(new FakeMux(), { cwd: repo, branch: "side", folder: { kind: "parent", parent: "~/trees" } }, { choices });
+    await mkdir(join(home, "plain", "side"), { recursive: true });
+    await create(new FakeMux(), { cwd: repo, branch: "side", folder: { kind: "parent", parent: "~/plain" } }, { choices });
     expect(choices.get(repo)).toBeUndefined();
     await create(new FakeMux(), { cwd: repo, branch: "fix", base: { kind: "ref", ref: "side" }, folder: { kind: "parent", parent: "~/trees" } }, { choices });
     expect(choices.get(repo)).toMatchObject({ base: "current", folder: "parent", parent: join(home, "trees") });
+  });
+
+  test("a half-done create in a chosen folder: the retry finds the checkout and only opens it", async () => {
+    const mux = new FakeMux();
+    mux.failSpace = "the space did not open";
+    const body = { cwd: repo, branch: "feat/y", folder: { kind: "parent", parent: "~/trees" } };
+    expect((await create(mux, body)).body).toMatchObject({ ok: false, code: "worktree.created_not_opened" });
+    const folder = join(home, "trees", "feat-y");
+    expect(await git(folder, "symbolic-ref", "--short", "HEAD")).toBe("feat/y");
+    mux.failSpace = null;
+    // The folder exists now; the rule accepts it because it is this repo's worktree, and git adds nothing.
+    expect((await create(mux, body)).body).toMatchObject({ ok: true, pane: { cwd: folder } });
+    expect(mux.spaces).toEqual([
+      { cwd: folder, label: "feat-y" },
+      { cwd: folder, label: "feat-y" },
+    ]);
   });
 
   test("a known request id replays and the multiplexer is asked once", async () => {
