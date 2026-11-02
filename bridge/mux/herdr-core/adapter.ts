@@ -25,8 +25,8 @@
 // Declared, each from a probe: the grid (plain text, a derived revision), scrollback, agent
 // detection (the program's own OSC 7501 report; where a program sends none, an exact, known foreground
 // program name from the same table is a provisional identity with status `unknown`, never a status word), typing (a framed attach, see client.ts), keys,
-// closing a pane, a new tab (a shell carrying herdr-app's labels), and both push channels.
-// Declined: focus, every rename, closing a tab, a new space, worktrees, sessions, and an agent
+// closing a pane, a new tab and a new space (a shell carrying herdr-app's labels), and both push channels.
+// Declined: focus, every rename, closing a tab, worktrees, sessions, and an agent
 // session ref. The core has no verb for any of them, and the layout belongs to herdr-app, which
 // says to change it through its own commands. M74 spec 05 plans a herdr-app mod for those.
 
@@ -68,7 +68,7 @@ import { routeEvent } from "./events.ts";
 import { herdrCoreBeaconMatcher } from "./markers.ts";
 import { HERDR_CORE_LOGO_SVG } from "./logo.ts";
 import { HC_UNSENDABLE_KEYS, isRawKeyText, toHcKey, type HcKey } from "./keys.ts";
-import { IMPLICIT_SPACE_ID, isLocalAddress, SPACE_LABEL, TAB_LABEL, toSnapshot } from "./layout.ts";
+import { folderName, IMPLICIT_SPACE_ID, isLocalAddress, SPACE_LABEL, TAB_LABEL, toSnapshot } from "./layout.ts";
 
 type MutableGrid = { -readonly [K in keyof MuxGrid]: MuxGrid[K] };
 
@@ -84,6 +84,7 @@ const HERDR_CORE_CAPABILITIES = declareCapabilities({
     "sendKeys",
     "closePane",
     "createTab",
+    "createSpace",
     "pushTopologyEvents",
     "pushPaneEvents",
   ],
@@ -105,7 +106,8 @@ const HERDR_CORE_CAPABILITIES = declareCapabilities({
     renameTab: "Tab names belong to herdr-app, and Collie does not change its layout.",
     renameSpace: "Space names belong to herdr-app, and Collie does not change its layout.",
     closeTab: "Tabs belong to herdr-app, and Collie does not change its layout.",
-    createSpace: "Spaces belong to herdr-app, and Collie does not change its layout.",
+    createSpace:
+      "A new space is a new shell with fresh herdr.space and herdr.tab labels, which herdr-app shows as a new space and names after its folder. A space name cannot be set from the phone yet.",
     listWorktrees: "Worktrees are not part of the herdr-core adapter.",
     createWorktree: "Worktrees are not part of the herdr-core adapter.",
     openWorktree: "Worktrees are not part of the herdr-core adapter.",
@@ -480,6 +482,29 @@ export class HerdrCoreMux implements MuxAdapter {
     }
   }
 
+  /**
+   * A new space: a shell started with a fresh `herdr.space` and a fresh `herdr.tab` label, the way
+   * {@link createTab} starts one for a known space. herdr-app shows an id it does not know as a new
+   * space and tab, and its adoption turns core keep on ("an id Herdr doesn't know becomes a new
+   * space or tab", AGENTS.md). Collie writes no layout document and no `where` label (that one is
+   * herdr-app's). `request.label` is accepted but cannot be applied: the core has no name for a
+   * space and herdr-app names it itself, after the folder. So the label returned is the one the next
+   * snapshot shows for this space (see `toSnapshot`), which is that folder's name.
+   */
+  async createSpace(request: MuxSpaceRequest): Promise<MuxOutcome<MuxCreatedPane>> {
+    const spaceId = `sp${randomUUID().replaceAll("-", "")}`;
+    const tabId = `tb${randomUUID().replaceAll("-", "")}`;
+    const labels = { [SPACE_LABEL]: spaceId, [TAB_LABEL]: tabId };
+    const asked = requestedCwd(request.cwd);
+    try {
+      const created = await this.rpc.runShell(asked === undefined ? { labels } : { labels, cwd: asked });
+      const spaceLabel = folderName(created.foreground?.cwd || created.cwd, this.home) || spaceId;
+      return muxOk({ paneId: created.address, spaceId, spaceLabel, tabId, cwd: created.cwd });
+    } catch (err) {
+      return refusalFor(err);
+    }
+  }
+
   // ── Declined: the core has no verb, or the layout is herdr-app's ──────────────────────────────
 
   renamePane(_paneId: string, _label: string | null): Promise<MuxAck> {
@@ -496,10 +521,6 @@ export class HerdrCoreMux implements MuxAdapter {
 
   closeTab(_tabId: string): Promise<MuxAck> {
     return Promise.resolve(muxUnsupported("closeTab", "tabs belong to herdr-app"));
-  }
-
-  createSpace(_request: MuxSpaceRequest): Promise<MuxOutcome<MuxCreatedPane>> {
-    return Promise.resolve(muxUnsupported("createSpace", "spaces belong to herdr-app"));
   }
 
   listWorktrees(_scope: MuxWorktreeScope): Promise<MuxOutcome<readonly MuxWorktree[]>> {

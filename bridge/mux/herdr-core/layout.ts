@@ -101,7 +101,7 @@ function agentOf(status: WireStatus | null, foreground: WireForeground | null): 
 }
 
 /** The last part of a path, `~` for the home folder, or `""`. */
-function folderName(path: string, home: string): string {
+export function folderName(path: string, home: string): string {
   const trimmed = path.replace(/\/+$/u, "");
   if (trimmed === "") return "";
   if (home !== "" && trimmed === home.replace(/\/+$/u, "")) return "~";
