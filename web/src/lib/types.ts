@@ -2577,7 +2577,7 @@ export type WorktreePlanResponse =
       currentBranch: string | null;
       remembered?: { base: "default" | "current"; folder: "default" | "parent"; parent?: string };
       branchValid?: boolean;
-      defaultTarget?: { path: string; exists: boolean };
+      defaultTarget?: { path: string; exists: boolean; reason?: string };
       parentTarget?:
         | { ok: true; path: string }
         | { ok: false; error: string; code?: ApiErrorCode; detail?: ApiErrorDetail };

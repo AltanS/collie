@@ -71,7 +71,7 @@ import {
 import { askGit, parseBase, resolveBase, resolveDefaultBranch, type GitAsk } from "./worktree-base.ts";
 import { memoryWorktreeBases, type WorktreeBaseSurface } from "./worktree-bases.ts";
 import { withSpacesContext } from "./space-view.ts";
-import { addWorktree, type WorktreeAddDeps, type WorktreeAddRequest } from "./worktree-add.ts";
+import { addWorktree, targetExistsDetail, type WorktreeAddDeps, type WorktreeAddRequest, worktreeMatchOf } from "./worktree-add.ts";
 import {
   isRequestId,
   memoryWorktreeReceipts,
@@ -6361,7 +6361,7 @@ export async function planWorktree(
     answer.branchValid = await gitAcceptsBranch(repo.repoRoot, branch, ask);
     if (answer.branchValid) {
       const path = await herdrDefaultTarget(repo.repoRoot, branch, home, deps.readHerdrConfig);
-      answer.defaultTarget = { path, exists: await (deps.fs ?? diskFolderFs).exists(path) };
+      answer.defaultTarget = await defaultTargetOf(repo.repoRoot, path, branch, deps.fs ?? diskFolderFs);
       const parent = (url.searchParams.get("parent") ?? "").trim();
       if (parent !== "") {
         const outcome = await resolveParentTarget({ parent, branch, repoRoot: repo.repoRoot, home, fs: deps.fs });
@@ -6372,6 +6372,26 @@ export async function planWorktree(
     }
   }
   return json(answer, ae);
+}
+
+/**
+ * The plan's verdict on Herdr's default folder, asked of git the way the parent path is (spec 08).
+ * `exists` is true only when the create would refuse the folder: one git lists as the same finished
+ * worktree on this branch reads false, because the create then only opens it, so a retry after a
+ * half-done create is not blocked on the phone. Another state git lists comes with its `reason`; a
+ * plain folder that git does not list has none.
+ */
+async function defaultTargetOf(
+  repoRoot: string,
+  path: string,
+  branch: string,
+  fs: Pick<FolderFs, "exists">,
+): Promise<{ path: string; exists: boolean; reason?: string }> {
+  if (!(await fs.exists(path))) return { path, exists: false };
+  const match = await worktreeMatchOf(repoRoot, path, branch);
+  if (match === null || match.kind === "absent") return { path, exists: true };
+  if (match.kind === "same") return { path, exists: false };
+  return { path, exists: true, reason: targetExistsDetail(match) };
 }
 
 /** The detail of a folder refusal: the folder it names, and git's state of it when there is one. */

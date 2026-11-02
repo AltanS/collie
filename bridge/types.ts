@@ -1688,7 +1688,10 @@ export type WorktreeCreateResponse =
  * `null` when there is none to name. `remembered` is this repo's last choices on this machine.
  * `branchValid`, `defaultTarget` and `parentTarget` answer only when the query named a branch (and a
  * parent): `defaultTarget` is where Herdr will put the folder when no path is sent, a prediction from
- * Herdr's own rule; `parentTarget` is the folder rule's verdict on the parent the phone named.
+ * Herdr's own rule, with `exists` true only when a create would refuse the folder (a folder git lists
+ * as the same finished worktree on this branch reads false, the create then opens it) and `reason`
+ * the state git lists when it names one; `parentTarget` is the folder rule's verdict on the parent
+ * the phone named.
  */
 export type WorktreePlanResponse =
   | {
@@ -1698,7 +1701,7 @@ export type WorktreePlanResponse =
       currentBranch: string | null;
       remembered?: { base: "default" | "current"; folder: "default" | "parent"; parent?: string };
       branchValid?: boolean;
-      defaultTarget?: { path: string; exists: boolean };
+      defaultTarget?: { path: string; exists: boolean; reason?: string };
       parentTarget?:
         | { ok: true; path: string }
         | { ok: false; error: string; code?: ErrorCode; detail?: ApiErrorDetail };

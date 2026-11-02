@@ -178,6 +178,26 @@ describe("GET /api/worktree/plan", () => {
     expect(await plan({ cwd: repo, branch: "x", parent: repo })).toMatchObject({ parentTarget: { ok: false, code: "worktree.folder_in_repo" } });
   });
 
+  test("the default folder asks git: the same finished worktree reads exists false, any other folder true", async () => {
+    const trees = join(home, ".herdr", "worktrees", "app");
+    await mkdir(trees, { recursive: true });
+    // A half-done create: the checkout is made on the branch asked for, so a retry only opens it.
+    await git(repo, "worktree", "add", "-q", "-b", "mine", join(trees, "mine"));
+    expect(await plan({ cwd: repo, branch: "mine" })).toMatchObject({ defaultTarget: { path: join(trees, "mine"), exists: false } });
+
+    // The folder of `yy` holds branch `y`: git lists it, so the phone can say which branch.
+    await git(repo, "worktree", "add", "-q", "-b", "y", join(trees, "yy"));
+    const other = await plan({ cwd: repo, branch: "yy" });
+    expect(other).toMatchObject({ defaultTarget: { path: join(trees, "yy"), exists: true, reason: "that folder holds branch y" } });
+
+    // A plain folder git does not list: refused, with no reason to give.
+    await mkdir(join(trees, "plain"), { recursive: true });
+    const plain = await plan({ cwd: repo, branch: "plain" });
+    expect(plain).toMatchObject({ defaultTarget: { path: join(trees, "plain"), exists: true } });
+    if (!plain.ok) throw new Error("plan refused");
+    expect(plain.defaultTarget).not.toHaveProperty("reason");
+  });
+
   test("a branch git refuses is branchValid false, and no folder is worked out", async () => {
     const answer = await plan({ cwd: repo, branch: "a..b", parent: "~/trees" });
     expect(answer).toMatchObject({ ok: true, branchValid: false });
