@@ -34,6 +34,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **A page served from one loopback port can no longer call a bridge on another.** A browser request from a loopback origin must now name the bridge's own host and port, or an origin listed in COLLIE_ALLOWED_ORIGINS; the token stays the first gate, and the tailnet and the paired phone see no change. The playground's dev proxy rewrites its own origin, so local development keeps working. Thanks @GGGODLIN (#617).
 - **On a Herdr core host the New screen can start a shell or an agent in a new space again.** Start used to fail with "The space couldn't be created: spaces belong to herdr-app", and a core with no live terminal had no pane to start a tab beside, so nothing could be started at all. A new space is now a new shell carrying fresh `herdr.space` and `herdr.tab` labels, which herdr-app shows as a new space named after its folder. A space name still cannot be set from the phone.
+- **Renaming an agent from the phone now also renames its tab when the tab holds only that pane.** The terminal's tab bar shows the new name instead of the launcher row's label; a tab with more panes keeps its name.
 
 ## [1.25.5] - 2026-11-02
 

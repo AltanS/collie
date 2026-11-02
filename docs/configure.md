@@ -460,6 +460,7 @@ Where the row opens depends on where you start it, not on the row. From the **Ne
 then the row in the Command select), Start creates a new Space named after its folder, and the
 row's label names the tab. From a **pane** — the switcher sheet you reach by
 swiping up — a tap opens a new **tab in that pane's own Space**, beside it, named after the row.
+If you later rename that pane from the phone, a tab that holds only that pane takes the new name too. A tab with more panes keeps its name.
 
 Either way the bridge types the `command` into the fresh shell and sends Enter. The command owns
 its own lifetime: one that closes itself takes the Space or tab with it, and `htop` stays until you
