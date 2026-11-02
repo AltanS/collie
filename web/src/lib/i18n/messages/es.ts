@@ -1778,8 +1778,6 @@ export const es: Dictionary = {
   // --- worktrees (ADR 0032) ---
   "apiError.worktree.create_failed": "Error al crear el worktree: {reason}",
   "apiError.worktree.created_not_opened": "La rama fue creada, pero falló la apertura del espacio: {reason}",
-  "apiError.worktree.busy": "Hay otra operación de worktree en ejecución. Reintente en un momento.",
-  "apiError.worktree.ambiguous_branch": "El nombre de rama es ambiguo: {reason}",
   "apiError.worktree.branch_required": "Indique un nombre de rama.",
   "apiError.worktree.not_a_repo": "Este espacio no se encuentra dentro de un repositorio Git.",
   "apiError.worktree.invalid_branch": "Ese nombre de rama no está permitido. Use letras, dígitos, guiones y barras.",

@@ -1781,8 +1781,6 @@ export const de: Dictionary = {
   // --- worktrees (ADR 0032) ---
   "apiError.worktree.create_failed": "Worktree konnte nicht erstellt werden: {reason}",
   "apiError.worktree.created_not_opened": "Branch wurde erstellt, konnte jedoch nicht geöffnet werden: {reason}",
-  "apiError.worktree.busy": "Ein anderer Worktree-Vorgang läuft noch. Bitte kurz warten.",
-  "apiError.worktree.ambiguous_branch": "Branch-Name ist mehrdeutig: {reason}",
   "apiError.worktree.branch_required": "Bitte zuerst einen Branch-Namen angeben.",
   "apiError.worktree.not_a_repo": "Dieser Space liegt in keinem Git-Repository.",
   "apiError.worktree.invalid_branch": "Dieser Branch-Name ist nicht erlaubt. Bitte Buchstaben, Ziffern, Bindestriche und Schrägstriche verwenden.",

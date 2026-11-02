@@ -31,7 +31,7 @@ import {
 import { apiError, type ApiErrorBody, type ApiErrorDetail, type ErrorCode } from "./error-codes.ts";
 import { keysDeliverable, MUX_CAPABILITIES, supportsCapability, type MuxCapability, type MuxCapabilityDeclaration } from "./mux/capabilities.ts";
 import { muxUnsupported } from "./mux/types.ts";
-import type { MuxAdapter, MuxAck, MuxGrid, MuxGridRequest, MuxHistoryPage, MuxReadHint, MuxReadPurpose, MuxStarters, MuxWorktreeCreateRequest } from "./mux/types.ts";
+import type { MuxAdapter, MuxAck, MuxGrid, MuxGridRequest, MuxHistoryPage, MuxReadHint, MuxReadPurpose, MuxStarters } from "./mux/types.ts";
 import { allCacheRules } from "./cache/rules/index.ts";
 import type { CacheOverride } from "./cache/engine.ts";
 import type { GitHeadSurface } from "./git-head.ts";
@@ -59,6 +59,7 @@ import {
   type WorktreeChoiceSurface,
 } from "./worktree-choices.ts";
 import {
+  branchSlug,
   diskFolderFs,
   expandHome,
   herdrDefaultTarget,
@@ -69,6 +70,7 @@ import {
 } from "./worktree-folder.ts";
 import { askGit, parseBase, resolveBase, resolveDefaultBranch, type GitAsk } from "./worktree-base.ts";
 import { memoryWorktreeBases, type WorktreeBaseSurface } from "./worktree-bases.ts";
+import { addWorktree, type WorktreeAddDeps, type WorktreeAddRequest } from "./worktree-add.ts";
 import {
   isRequestId,
   memoryWorktreeReceipts,
@@ -6087,21 +6089,6 @@ export async function createWorkspace(
 // routes scoped to a SPACE (ADR 0032) had no caller left and were removed in 1.20.0.
 
 /**
- * Which catalogued code a worktree refusal is.
- *
- * Only two refusals change what the phone DOES — a busy multiplexer means try again, an ambiguous
- * branch means type a better one. Everything else is shown, so it shares one code per verb and
- * carries the multiplexer's own sentence in `{reason}` (bridge/error-codes.ts: "a template that is
- * only {reason} is not a mistake").
- */
-function worktreeCode(detail: string, fallback: ErrorCode): ErrorCode {
-  if (detail.includes("worktree_operation_in_progress")) return "worktree.busy";
-  if (detail.includes("ambiguous_worktree_branch")) return "worktree.ambiguous_branch";
-  if (detail.includes("not_git_worktree")) return "worktree.not_a_repo";
-  return fallback;
-}
-
-/**
  * What an earlier create with the same `requestId` answered, rebuilt from its receipt (ADR 0089).
  *
  * The label and tab come off the snapshot when the pane is still there; a pane that is gone keeps the
@@ -6132,7 +6119,12 @@ async function joined(running: Promise<WorktreeCreateResponse>): Promise<Worktre
   return answer.ok ? { ...answer, replayed: true } : answer;
 }
 
-/** The half of a create that touches the multiplexer, run at most once per `requestId`. */
+/**
+ * The half of a create that touches the disk and the multiplexer, run at most once per `requestId`.
+ *
+ * Git makes the checkout on this host (bridge/worktree-add.ts, M81), and the multiplexer is asked
+ * only to open the folder as a space, so the same create works on every multiplexer that opens one.
+ */
 async function runWorktreeCreate(
   herdr: MuxAdapter,
   engine: StateEngine,
@@ -6147,32 +6139,30 @@ async function runWorktreeCreate(
   receipts: WorktreeReceiptSurface,
   bases: WorktreeBaseSurface,
   wait: PaneReadyOptions,
-  // The folder the checkout is made in (ADR 0093), already checked; absent is the multiplexer's own.
-  path?: string,
-  // Run once the multiplexer said yes, before the answer: the New sheet's memory of this repo's choices.
+  // The folder the checkout is made in (ADR 0093), already checked; absent is Herdr's default folder.
+  path: string | undefined,
+  // Where Herdr's default folder is read from: the home folder and Herdr's own config.
+  folderDeps: WorktreeAddDeps,
+  // Run once the checkout is open, before the answer: the New sheet's memory of this repo's choices.
   afterCreate?: () => Promise<void>,
 ): Promise<WorktreeCreateResponse> {
-  // `base` and `path` join the request only when there is one, so a call without them is the call
-  // this route always made.
-  let request: MuxWorktreeCreateRequest = { repoRoot, branch };
+  // `base` and `path` join the request only when there is one.
+  let request: WorktreeAddRequest = { repoRoot, branch };
   if (base !== undefined) request = { ...request, base };
   if (path !== undefined) request = { ...request, path };
-  const outcome = await herdr.createWorktree(request);
-  if (!outcome.ok) {
-    // The half-done case gets its OWN code, because the recovery is the opposite one: the branch is
-    // on disk and only the opening failed, so the phone must offer "open it", never "create it
-    // again" (a second create refuses — the path is taken). Probed on herdr 0.8.2, 2026-08-28.
-    const halfDone = outcome.detail.includes("worktree_open_failed");
+  const added = await addWorktree(folderDeps, request);
+  if (!added.ok) return { ok: false, ...apiError(added.code, { reason: added.detail }) };
+  const opened = await herdr.createSpace({ cwd: added.path, label: branchSlug(branch) });
+  if (!opened.ok) {
+    // The half-done case gets its OWN code, because the recovery is the opposite one: the checkout is
+    // on disk and only the opening failed. It stays, and a retry finds it (`existed`) and only opens.
     return {
       ok: false,
-      ...apiError(
-        halfDone ? "worktree.created_not_opened" : worktreeCode(outcome.detail, "worktree.create_failed"),
-        { reason: outcome.detail },
-      ),
+      ...apiError("worktree.created_not_opened", { reason: `${opened.detail} (the checkout is at ${added.path})` }),
     };
   }
-  const created = outcome.value;
-  // Written only now, once the multiplexer said yes: a refusal leaves no checkout to describe.
+  const created = opened.value;
+  // Written only now, once the checkout is open: a half-done create records it on the retry that opens it.
   if (base !== undefined) await bases.record(created.cwd, { base, createdAt: Date.now() });
   if (afterCreate !== undefined) await afterCreate();
   let launcherStarted = false;
@@ -6352,10 +6342,11 @@ export async function planWorktree(
  * New sheet names, and optionally an agent or a row started in it.
  *
  * The body is `{ cwd, branch, base?, folder?, requestId?, harness? | command? | shell? }`. `base` is
- * `parseBase`'s shape (ADR 0089). `folder` is `{ kind: "default" }` (absent means the same: no `path`
- * is sent and Herdr decides) or `{ kind: "parent", parent }`, which runs the whole folder rule
- * (bridge/worktree-folder.ts) right here, every time. The launch kinds are `POST /api/launch`'s; none
- * at all is a plain shell. `requestId` replays through the worktree receipts (ADR 0089).
+ * `parseBase`'s shape (ADR 0089). `folder` is `{ kind: "default" }` (absent means the same: the
+ * checkout goes in Herdr's default folder, bridge/worktree-add.ts) or `{ kind: "parent", parent }`,
+ * which runs the whole folder rule (bridge/worktree-folder.ts) right here, every time. Git makes the
+ * checkout and the multiplexer opens it as a space (M81). The launch kinds are `POST /api/launch`'s;
+ * none at all is a plain shell. `requestId` replays through the worktree receipts (ADR 0089).
  */
 export async function createWorktreeAt(
   herdr: MuxAdapter,
@@ -6462,6 +6453,7 @@ export async function createWorktreeAt(
     deps.bases ?? memoryWorktreeBases(),
     deps.wait ?? {},
     path,
+    { home, readHerdrConfig: deps.readHerdrConfig },
     remember,
   );
   if (requestId !== undefined) receipts.track(requestId, work);

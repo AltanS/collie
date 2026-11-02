@@ -1697,8 +1697,6 @@ export const ru: Dictionary = {
   "apiError.crew.not_lead": "Этот collie не управляет crew, отображать нечего.",
   "apiError.worktree.create_failed": "Не удалось создать worktree: {reason}",
   "apiError.worktree.created_not_opened": "Ветка создана, но в ней ничего не удалось открыть: {reason}",
-  "apiError.worktree.busy": "Другая операция с worktree еще выполняется, повторите попытку позже.",
-  "apiError.worktree.ambiguous_branch": "Имя ветки соответствует нескольким объектам: {reason}",
   "apiError.worktree.branch_required": "Сначала введите имя ветки.",
   "apiError.worktree.not_a_repo": "Это пространство не входит в репозиторий Git.",
   "apiError.worktree.invalid_branch": "Такое имя ветки недопустимо. Используйте буквы, цифры, дефисы и косые черты.",

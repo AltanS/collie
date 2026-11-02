@@ -1627,8 +1627,6 @@ export const tr: Dictionary = {
   "apiError.crew.not_lead": "Bu collie bir crew yönetmiyor, bu nedenle gösterilecek crew yok.",
   "apiError.worktree.create_failed": "Çalışma ağacı oluşturulamadı: {reason}",
   "apiError.worktree.created_not_opened": "Dal oluşturuldu, ancak üzerinde hiçbir şey açılamadı: {reason}",
-  "apiError.worktree.busy": "Başka bir çalışma ağacı işlemi hâlâ sürüyor, birazdan tekrar deneyin.",
-  "apiError.worktree.ambiguous_branch": "Bu dal adı birden fazla öğeyle eşleşiyor: {reason}",
   "apiError.worktree.branch_required": "Önce bir dal adı yazın.",
   "apiError.worktree.not_a_repo": "Bu alan bir Git deposunda değil.",
   "apiError.worktree.invalid_branch": "Bu dal adına izin verilmiyor. Harf, rakam, tire ve eğik çizgi kullanın.",

@@ -1,5 +1,7 @@
-import { describe, expect, test } from "bun:test";
-import { join, resolve as resolvePath } from "node:path";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { AuditLog, type AuditEntry } from "./audit.ts";
 import { createWorktreeAt } from "./server.ts";
@@ -14,13 +16,12 @@ import {
   type MuxCreatedPane,
   type MuxGrid,
   type MuxOutcome,
-  type MuxWorktreeCreateRequest,
+  type MuxSpaceRequest,
 } from "./mux/types.ts";
 import { memoryWorktreeReceipts, type WorktreeReceiptSurface } from "./worktree-receipts.ts";
 import { memoryWorktreeBases, type WorktreeBaseSurface } from "./worktree-bases.ts";
 import type { GitAsk } from "./worktree-base.ts";
 import type { JsonObject, JsonValue } from "./json.ts";
-import type { FolderFs } from "./worktree-folder.ts";
 
 // `POST /api/worktree` with a request id and a launcher (ADR 0089, ADR 0093). These cases were
 // written for the space-scoped `POST /api/workspace/:id/worktree`, which nothing called after the
@@ -33,16 +34,67 @@ import type { FolderFs } from "./worktree-folder.ts";
 //   3. A branch that would read as a flag, or that Git refuses, is a 400 before it is touched too.
 //   4. A launcher that fails AFTER the create is a 200 with the worktree and `launcherStarted: false`:
 //      the worktree exists, so nothing is rolled back.
+//
+// Since M81 the bridge makes the checkout with git (bridge/worktree-add.ts) and the multiplexer only
+// opens it (`createSpace`), so the repo here is a real one in a temporary home, and the fake
+// multiplexer records the spaces it was asked to open. The two ends of a half-done create:
+//
+//   5. Git's own refusal is `worktree.create_failed` with git's sentence, and no space is asked for.
+//   6. A space that will not open is `worktree.created_not_opened`; the checkout stays, and a retry
+//      finds it and only opens it.
 
-// Built with the machine's own path rules: the route joins and splits these with `node:path`, so a
-// bare `/home/op/repo` string would meet `\home\op\repo` on Windows and no fake disk entry would match.
-const HOME = resolvePath("/home/op");
-const REPO = join(HOME, "repo");
+let HOME: string;
+let REPO: string;
+let root: string;
 const SPACE = "w1";
 const REQUEST_ID = "0b9e6a1c-3f2d-4c5e-8a7b-1d2e3f4a5b6c";
 const CLAUDE: Launcher = { command: "claude", label: "Claude" };
 
-const repoSpace: WorkspaceView = {
+/** Run git in `cwd` for the test's own setup and checks, with no operator config. Answers stdout. */
+async function git(cwd: string, ...args: string[]): Promise<string> {
+  const proc = Bun.spawn(["git", ...args], {
+    cwd,
+    stdout: "pipe",
+    stderr: "pipe",
+    env: { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1", HOME },
+  });
+  const out = await new Response(proc.stdout).text();
+  if ((await proc.exited) !== 0) throw new Error(`git ${args.join(" ")}: ${await new Response(proc.stderr).text()}`);
+  return out.trim();
+}
+
+const commit = (message: string) =>
+  git(REPO, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", message);
+
+// The repo: `main` with two commits, and `feature/x` one behind it, so a base shows in the new branch.
+beforeEach(async () => {
+  root = await realpath(await mkdtemp(join(tmpdir(), "collie-wt-route-")));
+  HOME = join(root, "home", "op");
+  REPO = join(HOME, "repo");
+  await mkdir(REPO, { recursive: true });
+  await git(REPO, "init", "-q", "-b", "main");
+  await commit("one");
+  await git(REPO, "branch", "feature/x");
+  await commit("two");
+});
+
+afterEach(async () => {
+  await rm(root, { recursive: true, force: true });
+});
+
+/** Herdr's default folder for a branch in this repo: where the checkout goes when no folder is named. */
+const target = (slug: string): string => join(HOME, ".herdr", "worktrees", "repo", slug);
+
+/** The commit a branch points at in the repo. */
+const commitOf = (ref: string): Promise<string> => git(REPO, "rev-parse", `${ref}^{commit}`);
+
+/** How many linked worktrees the repo has: every one beyond its main checkout. */
+async function linkedCount(): Promise<number> {
+  const listing = await git(REPO, "worktree", "list", "--porcelain");
+  return listing.split("\n").filter((line) => line.startsWith("worktree ")).length - 1;
+}
+
+const repoSpace = (): WorkspaceView => ({
   workspaceId: SPACE,
   number: 1,
   label: "repo",
@@ -52,7 +104,7 @@ const repoSpace: WorkspaceView = {
   paneCount: 1,
   repoRoot: REPO,
   isWorktree: false,
-};
+});
 
 /** An engine whose snapshot holds the repo's space, plus whatever was created since. */
 function engineWith(workspaces: WorkspaceView[], agents: AgentView[] = []): StateEngine {
@@ -64,13 +116,6 @@ function engineWith(workspaces: WorkspaceView[], agents: AgentView[] = []): Stat
   // `pokeNow()` (after the create). No other member of the engine is reachable from it.
   return stub as StateEngine;
 }
-
-/** A disk where only the repo exists: its folder resolves to itself and holds a `.git`. */
-const repoDisk: FolderFs = {
-  realpath: (path) => Promise.resolve(path),
-  isDirectory: (path) => Promise.resolve(path === REPO),
-  exists: (path) => Promise.resolve(path === join(REPO, ".git")),
-};
 
 /** A clock the test owns, so the launcher's wait for a settled screen passes in no real time. */
 function fakeClock() {
@@ -84,27 +129,27 @@ function fakeClock() {
   };
 }
 
-/** Only what the route reaches: create the worktree, read its grid, type, submit, refresh. */
+/** Only what the route reaches: open the checkout as a space, read its grid, type, submit, refresh. */
 class FakeWorktreeMux {
-  readonly creates: MuxWorktreeCreateRequest[] = [];
+  readonly spaces: MuxSpaceRequest[] = [];
   readonly texts: Array<[string, string]> = [];
   readonly keys: Array<[string, readonly string[]]> = [];
   readonly closes: string[] = [];
-  failCreate: string | null = null;
+  failSpace: string | null = null;
   failText = false;
-  /** Resolves the create when set; the create waits for it. */
+  /** Resolves the open when set; the open waits for it. */
   gate: Promise<void> | null = null;
 
-  async createWorktree(request: MuxWorktreeCreateRequest): Promise<MuxOutcome<MuxCreatedPane>> {
-    this.creates.push(request);
+  async createSpace(request: MuxSpaceRequest): Promise<MuxOutcome<MuxCreatedPane>> {
+    this.spaces.push(request);
     if (this.gate) await this.gate;
-    if (this.failCreate !== null) return muxRefused(this.failCreate);
+    if (this.failSpace !== null) return muxRefused(this.failSpace);
     return muxOk({
       paneId: "w7:p1",
       spaceId: "w7",
       spaceLabel: "repo-brisk-otter",
       tabId: "w7:t1",
-      cwd: join(REPO, ".worktrees", "brisk-otter"),
+      cwd: request.cwd,
     });
   }
   readGrid(paneId: string): Promise<MuxOutcome<MuxGrid>> {
@@ -129,7 +174,7 @@ class FakeWorktreeMux {
 
 function asMux(fake: Partial<MuxAdapter>): MuxAdapter {
   // SAFETY: the create route reaches exactly the six members FakeWorktreeMux implements:
-  // createWorktree, then (with a launcher) readGrid, typeText and sendKeys, and refresh after it.
+  // createSpace, then (with a launcher) readGrid, typeText and sendKeys, and refresh after it.
   // `closePane` is there to prove it is NEVER called.
   return fake as MuxAdapter;
 }
@@ -182,7 +227,7 @@ interface RunOpts {
 function send(mux: FakeWorktreeMux, body: CreateBody, opts: RunOpts = {}): Promise<Response> {
   return createWorktreeAt(
     asMux(mux),
-    opts.engine ?? engineWith([repoSpace]),
+    opts.engine ?? engineWith([repoSpace()]),
     post(body),
     opts.audit ?? auditTrail().audit,
     null,
@@ -190,7 +235,6 @@ function send(mux: FakeWorktreeMux, body: CreateBody, opts: RunOpts = {}): Promi
     () => Promise.resolve(opts.rows ?? [CLAUDE]),
     {
       home: HOME,
-      fs: repoDisk,
       ask: opts.ask ?? gitWith([]).ask,
       readHerdrConfig: () => Promise.resolve(null),
       receipts: opts.receipts ?? memoryWorktreeReceipts(),
@@ -211,13 +255,15 @@ async function run(
 }
 
 describe("POST /api/worktree — a branch alone", () => {
-  test("a branch alone creates the worktree, with no launcher and no receipt", async () => {
+  test("a branch alone creates the worktree with git and opens it, with no launcher and no receipt", async () => {
     const mux = new FakeWorktreeMux();
     const receipts = memoryWorktreeReceipts();
-    const { status, answer } = await run(mux, { branch: "feature/x" }, { receipts });
+    const { status, answer } = await run(mux, { branch: "feature/new" }, { receipts });
     expect(status).toBe(200);
     expect(answer).toMatchObject({ ok: true, alreadyOpen: false, launcherStarted: false });
-    expect(mux.creates).toEqual([{ repoRoot: REPO, branch: "feature/x" }]);
+    expect(mux.spaces).toEqual([{ cwd: target("feature-new"), label: "feature-new" }]);
+    expect(await git(target("feature-new"), "symbolic-ref", "--short", "HEAD")).toBe("feature/new");
+    expect(answer.ok && answer.pane.cwd).toBe(target("feature-new"));
     expect(mux.texts).toEqual([]);
   });
 });
@@ -233,8 +279,8 @@ describe("POST /api/worktree — request id and receipt", () => {
 
     // The created space is in the snapshot by now, so the replay reads its label off it.
     const engine = engineWith([
-      repoSpace,
-      { ...repoSpace, workspaceId: "w7", label: "repo-brisk-otter", isWorktree: true },
+      repoSpace(),
+      { ...repoSpace(), workspaceId: "w7", label: "repo-brisk-otter", isWorktree: true },
     ]);
     const second = await run(mux, { branch: "worktree/brisk-otter-3fa9", requestId: REQUEST_ID, launcher: "claude" }, { receipts, engine });
     expect(second.status).toBe(200);
@@ -248,11 +294,12 @@ describe("POST /api/worktree — request id and receipt", () => {
         workspaceId: "w7",
         workspaceLabel: "repo-brisk-otter",
         tabId: "",
-        cwd: join(REPO, ".worktrees", "brisk-otter"),
+        cwd: target("worktree-brisk-otter-3fa9"),
       },
     });
-    expect(mux.creates).toHaveLength(1);
+    expect(mux.spaces).toHaveLength(1);
     expect(mux.texts).toHaveLength(1);
+    expect(await linkedCount()).toBe(1);
   });
 
   test("a repeat while the first is still running joins it and creates nothing", async () => {
@@ -265,34 +312,65 @@ describe("POST /api/worktree — request id and receipt", () => {
     const body = { branch: "worktree/x", requestId: REQUEST_ID };
     const first = run(mux, body, { receipts });
     const second = run(mux, body, { receipts });
-    // Let both requests reach their wait before the create answers.
-    await new Promise((resolve) => setTimeout(resolve, 5));
+    // Let both requests reach their wait before the open answers.
+    for (let i = 0; i < 200 && mux.spaces.length === 0; i++) await new Promise((resolve) => setTimeout(resolve, 5));
     open();
     const [a, b] = await Promise.all([first, second]);
-    expect(mux.creates).toHaveLength(1);
+    expect(mux.spaces).toHaveLength(1);
     expect(a.answer).toMatchObject({ ok: true });
     expect(b.answer).toMatchObject({ ok: true, replayed: true });
     expect(b.answer.ok && b.answer.pane.paneId).toBe("w7:p1");
+    expect(await linkedCount()).toBe(1);
   });
 
-  test("a refused create stores no receipt, so the same id may simply be tried again", async () => {
+  test("a space that will not open is created_not_opened: the checkout stays, no receipt, and a retry only opens it", async () => {
     const mux = new FakeWorktreeMux();
-    mux.failCreate = "worktree_operation_in_progress: busy";
+    mux.failSpace = "workspace.create failed";
     const receipts = memoryWorktreeReceipts();
     const first = await run(mux, { branch: "worktree/x", requestId: REQUEST_ID }, { receipts });
-    expect(first.answer).toMatchObject({ ok: false, code: "worktree.busy" });
+    expect(first.answer).toMatchObject({ ok: false, code: "worktree.created_not_opened" });
+    expect(!first.answer.ok && first.answer.error).toContain(target("worktree-x"));
     expect(receipts.get(REQUEST_ID)).toBeUndefined();
-    mux.failCreate = null;
+    expect(await git(target("worktree-x"), "symbolic-ref", "--short", "HEAD")).toBe("worktree/x");
+    mux.failSpace = null;
+    // The branch exists now, so a second `git worktree add -b` would refuse: the retry must find it.
     const second = await run(mux, { branch: "worktree/x", requestId: REQUEST_ID }, { receipts });
-    expect(second.answer).toMatchObject({ ok: true });
-    expect(mux.creates).toHaveLength(2);
+    expect(second.answer).toMatchObject({ ok: true, pane: { cwd: target("worktree-x") } });
+    expect(mux.spaces).toEqual([
+      { cwd: target("worktree-x"), label: "worktree-x" },
+      { cwd: target("worktree-x"), label: "worktree-x" },
+    ]);
+    expect(receipts.get(REQUEST_ID)?.path).toBe(target("worktree-x"));
+    expect(await linkedCount()).toBe(1);
+  });
+
+  test("a fresh request id after a half-done create opens the same checkout too", async () => {
+    const mux = new FakeWorktreeMux();
+    mux.failSpace = "no";
+    await run(mux, { branch: "worktree/x" });
+    mux.failSpace = null;
+    const { answer } = await run(mux, { branch: "worktree/x", requestId: REQUEST_ID });
+    expect(answer).toMatchObject({ ok: true, pane: { cwd: target("worktree-x") } });
+    expect(await linkedCount()).toBe(1);
+  });
+
+  test("git's own refusal is create_failed with git's sentence, and no space is asked for", async () => {
+    const mux = new FakeWorktreeMux();
+    await git(REPO, "branch", "worktree/x");
+    const receipts = memoryWorktreeReceipts();
+    const { answer } = await run(mux, { branch: "worktree/x", requestId: REQUEST_ID }, { receipts });
+    expect(answer).toMatchObject({ ok: false, code: "worktree.create_failed", error: "a branch named 'worktree/x' already exists" });
+    expect(mux.spaces).toEqual([]);
+    expect(receipts.get(REQUEST_ID)).toBeUndefined();
+    expect(await linkedCount()).toBe(0);
   });
 
   test("a requestId that is not a UUID is a 400 and nothing runs", async () => {
     const mux = new FakeWorktreeMux();
     const res = await send(mux, { branch: "worktree/x", requestId: "../../etc/passwd" });
     expect(res.status).toBe(400);
-    expect(mux.creates).toEqual([]);
+    expect(mux.spaces).toEqual([]);
+    expect(await linkedCount()).toBe(0);
   });
 
   test("the audit line carries the launcher and the request id", async () => {
@@ -318,8 +396,9 @@ describe("POST /api/worktree — the launcher allowlist", () => {
     const { status, answer } = await run(mux, { branch: "worktree/x", requestId: REQUEST_ID, launcher: "rm -rf ~" }, { audit });
     expect(status).toBe(400);
     expect(answer).toMatchObject({ ok: false, code: "launch.not_allowlisted" });
-    expect(mux.creates).toEqual([]);
+    expect(mux.spaces).toEqual([]);
     expect(entries).toEqual([]);
+    expect(await linkedCount()).toBe(0);
   });
 
   test("a row is matched exactly, then typed into the new root pane with Enter", async () => {
@@ -352,6 +431,7 @@ describe("POST /api/worktree — the launcher allowlist", () => {
     expect(mux.closes).toEqual([]);
     // The receipt records the truth, so a replay says the launcher did not start either.
     expect(receipts.get(REQUEST_ID)?.launcherStarted).toBe(false);
+    expect(await linkedCount()).toBe(1);
   });
 });
 
@@ -362,7 +442,8 @@ describe("POST /api/worktree — branch validation", () => {
       const { status, answer } = await run(mux, { branch, requestId: REQUEST_ID });
       expect(status).toBe(400);
       expect(answer).toMatchObject({ ok: false, code: "worktree.invalid_branch", error: "invalid branch" });
-      expect(mux.creates).toEqual([]);
+      expect(mux.spaces).toEqual([]);
+      expect(await linkedCount()).toBe(0);
     });
   }
 
@@ -376,13 +457,16 @@ describe("POST /api/worktree — branch validation", () => {
 
 // ── Where the branch starts (ADR 0089, amended) ───────────────────────────────────────────────────
 //
-//   1. A body with no `base` is the old create: no `base` reaches the multiplexer, git is never
+//   1. A body with no `base` is the old create: the branch starts at the repo's HEAD, git is never
 //      asked for a starting point, and nothing is stored.
-//   2. `default` and `ref` resolve on the bridge, and the resolved ref is what the multiplexer gets.
+//   2. `default` and `ref` resolve on the bridge, and the new branch starts at the resolved ref.
 //   3. A bad base is a 400 before the multiplexer is touched.
 //   4. The base is stored by folder after a success, and only then.
 
-const WORKTREE_FOLDER = join(REPO, ".worktrees", "brisk-otter");
+const WORKTREE_FOLDER = (): string => target("worktree-x");
+
+/** The commit the new branch `worktree/x` starts at. */
+const newBranchCommit = (): Promise<string> => git(WORKTREE_FOLDER(), "rev-parse", "HEAD");
 
 /** A git double and the argv arrays it was asked. */
 interface GitDouble {
@@ -406,54 +490,56 @@ function gitWith(branches: string[]): GitDouble {
 }
 
 describe("POST /api/worktree — the starting point", () => {
-  test("no base: the multiplexer gets no base, git is not asked for one, nothing is stored", async () => {
+  test("no base: the branch starts at HEAD, git is not asked for a base, nothing is stored", async () => {
     const mux = new FakeWorktreeMux();
     const bases = memoryWorktreeBases();
     const { ask, asked } = gitWith(["main"]);
     const { status } = await run(mux, { branch: "worktree/x", requestId: REQUEST_ID }, { bases, ask });
     expect(status).toBe(200);
-    expect(mux.creates).toEqual([{ repoRoot: REPO, branch: "worktree/x" }]);
-    expect(Object.keys(mux.creates[0] ?? {})).not.toContain("base");
+    expect(await newBranchCommit()).toBe(await commitOf("HEAD"));
     // Only the repo lookup and the branch check: no ref was resolved.
     expect(asked.filter((args) => args.some((a) => a.endsWith("^{commit}")))).toEqual([]);
-    expect(bases.get(WORKTREE_FOLDER)).toBeUndefined();
+    expect(bases.get(WORKTREE_FOLDER())).toBeUndefined();
   });
 
   test("a null base is the same as none", async () => {
     const mux = new FakeWorktreeMux();
-    await run(mux, { branch: "worktree/x", base: null }, { ask: gitWith(["main"]).ask });
-    expect(mux.creates).toEqual([{ repoRoot: REPO, branch: "worktree/x" }]);
+    const bases = memoryWorktreeBases();
+    await run(mux, { branch: "worktree/x", base: null }, { bases, ask: gitWith(["main"]).ask });
+    expect(await newBranchCommit()).toBe(await commitOf("HEAD"));
+    expect(bases.get(WORKTREE_FOLDER())).toBeUndefined();
   });
 
-  test("default is resolved on the bridge and passed on, then stored under the checkout folder", async () => {
+  test("default is resolved on the bridge and used, then stored under the checkout folder", async () => {
     const mux = new FakeWorktreeMux();
     const bases = memoryWorktreeBases();
     const { ask } = gitWith(["main"]);
     const before = Date.now();
     const { status } = await run(mux, { branch: "worktree/x", base: { kind: "default" } }, { bases, ask });
     expect(status).toBe(200);
-    expect(mux.creates).toEqual([{ repoRoot: REPO, branch: "worktree/x", base: "main" }]);
-    const stored = bases.get(WORKTREE_FOLDER);
+    expect(await newBranchCommit()).toBe(await commitOf("main"));
+    const stored = bases.get(WORKTREE_FOLDER());
     expect(stored?.base).toBe("main");
     expect(stored?.createdAt).toBeGreaterThanOrEqual(before);
   });
 
-  test("a default that resolves to nothing sends no base and stores nothing, and the create still happens", async () => {
+  test("a default that resolves to nothing uses no base and stores nothing, and the create still happens", async () => {
     const mux = new FakeWorktreeMux();
     const bases = memoryWorktreeBases();
     const { status } = await run(mux, { branch: "worktree/x", base: { kind: "default" } }, { bases, ask: gitWith([]).ask });
     expect(status).toBe(200);
-    expect(mux.creates).toEqual([{ repoRoot: REPO, branch: "worktree/x" }]);
-    expect(bases.get(WORKTREE_FOLDER)).toBeUndefined();
+    expect(await newBranchCommit()).toBe(await commitOf("HEAD"));
+    expect(bases.get(WORKTREE_FOLDER())).toBeUndefined();
   });
 
-  test("a ref that names a commit is passed on as given", async () => {
+  test("a ref that names a commit is the starting point, as given", async () => {
     const mux = new FakeWorktreeMux();
     const bases = memoryWorktreeBases();
     const { status } = await run(mux, { branch: "worktree/x", base: { kind: "ref", ref: "feature/x" } }, { bases, ask: gitWith(["feature/x"]).ask });
     expect(status).toBe(200);
-    expect(mux.creates).toEqual([{ repoRoot: REPO, branch: "worktree/x", base: "feature/x" }]);
-    expect(bases.get(WORKTREE_FOLDER)?.base).toBe("feature/x");
+    expect(await newBranchCommit()).toBe(await commitOf("feature/x"));
+    expect(await commitOf("feature/x")).not.toBe(await commitOf("main"));
+    expect(bases.get(WORKTREE_FOLDER())?.base).toBe("feature/x");
   });
 
   test("the audit line names the base", async () => {
@@ -478,19 +564,32 @@ describe("POST /api/worktree — the starting point", () => {
       const { status, answer } = await run(mux, { branch: "worktree/x", requestId: REQUEST_ID, base }, { bases, ask: gitWith(["main"]).ask });
       expect(status).toBe(400);
       expect(answer).toMatchObject({ ok: false, code: "worktree.invalid_base", error: "invalid base" });
-      expect(mux.creates).toEqual([]);
-      expect(bases.get(WORKTREE_FOLDER)).toBeUndefined();
+      expect(mux.spaces).toEqual([]);
+      expect(await linkedCount()).toBe(0);
+      expect(bases.get(WORKTREE_FOLDER())).toBeUndefined();
     });
   }
 
   test("a refused create stores no base", async () => {
     const mux = new FakeWorktreeMux();
-    mux.failCreate = "worktree_create_failed: path taken";
+    await git(REPO, "branch", "worktree/x");
     const bases = memoryWorktreeBases();
     const { answer } = await run(mux, { branch: "worktree/x", base: { kind: "default" } }, { bases, ask: gitWith(["main"]).ask });
     expect(answer).toMatchObject({ ok: false, code: "worktree.create_failed" });
-    expect(mux.creates).toEqual([{ repoRoot: REPO, branch: "worktree/x", base: "main" }]);
-    expect(bases.get(WORKTREE_FOLDER)).toBeUndefined();
+    expect(mux.spaces).toEqual([]);
+    expect(bases.get(WORKTREE_FOLDER())).toBeUndefined();
+  });
+
+  test("a space that will not open stores no base; the retry that opens it does", async () => {
+    const mux = new FakeWorktreeMux();
+    mux.failSpace = "no";
+    const bases = memoryWorktreeBases();
+    const body = { branch: "worktree/x", base: { kind: "default" } } as const;
+    expect((await run(mux, body, { bases, ask: gitWith(["main"]).ask })).answer).toMatchObject({ ok: false, code: "worktree.created_not_opened" });
+    expect(bases.get(WORKTREE_FOLDER())).toBeUndefined();
+    mux.failSpace = null;
+    expect((await run(mux, body, { bases, ask: gitWith(["main"]).ask })).answer).toMatchObject({ ok: true });
+    expect(bases.get(WORKTREE_FOLDER())?.base).toBe("main");
   });
 
   test("a replay of the same id asks neither git nor the multiplexer again", async () => {
@@ -501,7 +600,7 @@ describe("POST /api/worktree — the starting point", () => {
     const { ask, asked } = gitWith(["main"]);
     const second = await run(mux, body, { receipts, ask });
     expect(second.answer).toMatchObject({ ok: true, replayed: true });
-    expect(mux.creates).toHaveLength(1);
+    expect(mux.spaces).toHaveLength(1);
     expect(asked).toEqual([]);
   });
 });

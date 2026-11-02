@@ -17,7 +17,7 @@ import {
   type MuxCreatedPane,
   type MuxGrid,
   type MuxOutcome,
-  type MuxWorktreeCreateRequest,
+  type MuxSpaceRequest,
 } from "./mux/types.ts";
 import { CHOICES_FILE, WorktreeChoiceStore, coerceChoice, memoryWorktreeChoices } from "./worktree-choices.ts";
 import { memoryWorktreeReceipts } from "./worktree-receipts.ts";
@@ -26,7 +26,9 @@ import { memoryWorktreeReceipts } from "./worktree-receipts.ts";
 //
 //   1. The plan finds the repo from any folder in it, a linked worktree included, and answers the
 //      default and current branch, Herdr's default folder and the folder rule's verdict on a parent.
-//   2. The create runs the folder rule again at use time and sends `path` only for "Other folder".
+//   2. The create runs the folder rule again at use time; git makes the checkout in Herdr's default
+//      folder, or in the checked child of the parent for "Other folder", and the multiplexer opens
+//      that folder as a space (M81).
 //   3. A refusal reaches no multiplexer; a create that worked is remembered per repo, never before.
 //   4. A known request id replays; a harness id types the bridge's own binary.
 
@@ -36,14 +38,16 @@ let root: string;
 let home: string;
 let repo: string;
 
-async function git(cwd: string, ...args: string[]): Promise<void> {
+async function git(cwd: string, ...args: string[]): Promise<string> {
   const proc = Bun.spawn(["git", ...args], {
     cwd,
-    stdout: "ignore",
+    stdout: "pipe",
     stderr: "pipe",
     env: { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1", HOME: home },
   });
+  const out = await new Response(proc.stdout).text();
   if ((await proc.exited) !== 0) throw new Error(`git ${args.join(" ")}: ${await new Response(proc.stderr).text()}`);
+  return out.trim();
 }
 
 beforeEach(async () => {
@@ -82,12 +86,12 @@ function engine(): StateEngine {
 }
 
 class FakeMux {
-  readonly creates: MuxWorktreeCreateRequest[] = [];
+  readonly spaces: MuxSpaceRequest[] = [];
   readonly texts: Array<[string, string]> = [];
-  async createWorktree(request: MuxWorktreeCreateRequest): Promise<MuxOutcome<MuxCreatedPane>> {
-    this.creates.push(request);
+  async createSpace(request: MuxSpaceRequest): Promise<MuxOutcome<MuxCreatedPane>> {
+    this.spaces.push(request);
     await Promise.resolve();
-    return muxOk({ paneId: "w7:p1", spaceId: "w7", spaceLabel: "app-fix", tabId: "w7:t1", cwd: request.path ?? "/x" });
+    return muxOk({ paneId: "w7:p1", spaceId: "w7", spaceLabel: "app-fix", tabId: "w7:t1", cwd: request.cwd });
   }
   readGrid(paneId: string): Promise<MuxOutcome<MuxGrid>> {
     return Promise.resolve(muxOk({ paneId, text: "$ ", truncated: false, revision: 1 }));
@@ -108,7 +112,7 @@ class FakeMux {
 }
 
 function asMux(fake: Partial<MuxAdapter>): MuxAdapter {
-  // SAFETY: a create from a folder reaches createWorktree, then readGrid, typeText and sendKeys for
+  // SAFETY: a create from a folder reaches createSpace, then readGrid, typeText and sendKeys for
   // a launcher, and refresh: the members FakeMux implements.
   return fake as MuxAdapter;
 }
@@ -187,20 +191,24 @@ describe("GET /api/worktree/plan", () => {
 });
 
 describe("POST /api/worktree", () => {
-  test("Herdr's default sends no path, and the repo root, branch and base reach Herdr", async () => {
+  test("Herdr's default: git makes the checkout in Herdr's folder, from the base, and it opens as a space", async () => {
     const mux = new FakeMux();
     const { body } = await create(mux, { cwd: join(repo, "sub"), branch: "fix-tabs", base: { kind: "default" } });
     expect(body.ok).toBe(true);
-    expect(mux.creates).toEqual([{ repoRoot: repo, branch: "fix-tabs", base: "main" }]);
+    const folder = join(home, ".herdr", "worktrees", "app", "fix-tabs");
+    expect(mux.spaces).toEqual([{ cwd: folder, label: "fix-tabs" }]);
+    expect(await git(folder, "symbolic-ref", "--short", "HEAD")).toBe("fix-tabs");
+    expect(await git(folder, "rev-parse", "HEAD")).toBe(await git(repo, "rev-parse", "main"));
   });
 
-  test("Other folder sends the checked child of the parent", async () => {
+  test("Other folder makes the checkout in the checked child of the parent", async () => {
     const mux = new FakeMux();
     await create(mux, { cwd: repo, branch: "feat/x", folder: { kind: "parent", parent: "~/trees" } });
-    expect(mux.creates[0]?.path).toBe(join(home, "trees", "feat-x"));
+    expect(mux.spaces[0]?.cwd).toBe(join(home, "trees", "feat-x"));
+    expect(await git(join(home, "trees", "feat-x"), "symbolic-ref", "--short", "HEAD")).toBe("feat/x");
   });
 
-  test("the rule runs at use time: a parent that broke since the plan reaches no Herdr", async () => {
+  test("the rule runs at use time: a parent that broke since the plan reaches no multiplexer", async () => {
     const mux = new FakeMux();
     await symlink(join(home, "trees"), join(home, "via"));
     const cases: Array<[JsonValue, string]> = [
@@ -216,17 +224,17 @@ describe("POST /api/worktree", () => {
       const { body } = await create(mux, { cwd: repo, branch: "side", folder });
       expect({ folder, body }).toMatchObject({ folder, body: { ok: false, code } });
     }
-    expect(mux.creates).toEqual([]);
+    expect(mux.spaces).toEqual([]);
   });
 
-  test("a branch that reads as a flag, or one git refuses, reaches no Herdr", async () => {
+  test("a branch that reads as a flag, or one git refuses, reaches no multiplexer", async () => {
     const mux = new FakeMux();
     expect((await create(mux, { cwd: repo, branch: "-D" })).body).toMatchObject({ code: "worktree.invalid_branch" });
     expect((await create(mux, { cwd: repo, branch: "a..b" })).body).toMatchObject({ code: "worktree.invalid_branch" });
     expect((await create(mux, { cwd: repo, branch: "ok", base: { kind: "ref", ref: "--orphan" } })).body).toMatchObject({
       code: "worktree.invalid_base",
     });
-    expect(mux.creates).toEqual([]);
+    expect(mux.spaces).toEqual([]);
   });
 
   test("a harness id types the bridge's own binary in the new folder", async () => {
@@ -247,13 +255,13 @@ describe("POST /api/worktree", () => {
     expect(choices.get(repo)).toMatchObject({ base: "current", folder: "parent", parent: join(home, "trees") });
   });
 
-  test("a known request id replays and Herdr is asked once", async () => {
+  test("a known request id replays and the multiplexer is asked once", async () => {
     const mux = new FakeMux();
     const receipts = memoryWorktreeReceipts();
     await create(mux, { cwd: repo, branch: "fix-tabs", requestId: ID }, { receipts });
     const again = await create(mux, { cwd: repo, branch: "fix-tabs", requestId: ID }, { receipts });
     expect(again.body).toMatchObject({ ok: true, replayed: true });
-    expect(mux.creates).toHaveLength(1);
+    expect(mux.spaces).toHaveLength(1);
   });
 });
 
