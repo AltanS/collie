@@ -101,6 +101,12 @@ export const ERROR_CODES = {
    * the list `GET /api/launchers` answered, so nothing a phone was shown is refused (ADR 0091).
    */
   "launch.unknown_harness": "unknown agent: {harness}",
+  /**
+   * A launch named a `command` this host does not hold and carried a `row` for it, and the call did
+   * not come over the crew link from this machine's lead. Only the lead may carry a row (ADR 0127
+   * point 3), so a phone still names rows and never sends a line. Nothing ran.
+   */
+  "launch.row_not_from_lead": "a row can only come from this machine's lead",
   /** A launch's `cwd` carries a control character, a `..` segment, or `~name`. A path with no leading `/` or `~` is a folder under home. */
   "launch.bad_folder": "the folder cannot be used: no .. and no control characters",
   /** A launch's folder is not a directory on the machine that runs it. Nothing was created. */

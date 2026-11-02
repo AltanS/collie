@@ -1717,6 +1717,7 @@ export const de: Dictionary = {
   "apiError.tab.workspace_required": "Für den neuen Tab wurde kein Space angegeben.",
   "apiError.launch.not_allowlisted": "Dieser Befehl ist kein definierter Launcher",
   "apiError.launch.unknown_harness": "Dieser Rechner startet {harness} nicht.",
+  "apiError.launch.row_not_from_lead": "Ein Launcher kann nur vom Lead dieses Rechners kommen.",
   "apiError.launch.bad_folder": "Dieser Ordner kann nicht verwendet werden. Ein Ordnerpfad darf weder .. noch Steuerzeichen enthalten.",
   "apiError.launch.folder_missing": "Auf diesem Rechner gibt es keinen Ordner {folder}.",
   "apiError.launch.pane_unknown": "Dieses Pane ist nicht mehr da, nichts wurde gestartet",

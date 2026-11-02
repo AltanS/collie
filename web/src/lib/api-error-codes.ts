@@ -60,6 +60,7 @@ export const API_ERROR_CODES = [
   "launch.not_allowlisted",
   "launch.pane_unknown",
   "launch.unknown_harness",
+  "launch.row_not_from_lead",
   "launch.bad_folder",
   "launch.folder_missing",
   "launch.no_device",

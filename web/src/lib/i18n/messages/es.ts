@@ -1715,6 +1715,7 @@ export const es: Dictionary = {
   "apiError.tab.workspace_required": "No se especificó un espacio para la nueva pestaña.",
   "apiError.launch.not_allowlisted": "Ese comando no está en tus lanzadores",
   "apiError.launch.unknown_harness": "Esta máquina no inicia {harness}.",
+  "apiError.launch.row_not_from_lead": "Un lanzador solo puede venir del lead de esta máquina.",
   "apiError.launch.bad_folder": "Esa carpeta no se puede usar. La ruta no puede contener .. ni caracteres de control.",
   "apiError.launch.folder_missing": "No hay ninguna carpeta {folder} en esta máquina.",
   "apiError.launch.pane_unknown": "Ese panel ya no existe, no se inició nada",

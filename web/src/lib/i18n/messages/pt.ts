@@ -1568,6 +1568,7 @@ export const pt: Dictionary = {
   "apiError.tab.workspace_required": "Nenhum espaço foi indicado para a nova aba.",
   "apiError.launch.not_allowlisted": "Esse comando não é um dos seus inicializadores",
   "apiError.launch.unknown_harness": "Esta máquina não inicia {harness}.",
+  "apiError.launch.row_not_from_lead": "Um inicializador só pode vir do lead desta máquina.",
   "apiError.launch.bad_folder": "Essa pasta não pode ser usada. O caminho não pode conter .. nem caracteres de controle.",
   "apiError.launch.folder_missing": "Não há nenhuma pasta {folder} nesta máquina.",
   "apiError.launch.pane_unknown": "Esse painel não existe mais, nada foi iniciado",

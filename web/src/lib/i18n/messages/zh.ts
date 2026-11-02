@@ -1687,6 +1687,7 @@ export const zh: Dictionary = {
   "apiError.tab.workspace_required": "未指定新标签页的工作区。",
   "apiError.launch.not_allowlisted": "该命令不在你的启动器列表中",
   "apiError.launch.unknown_harness": "这台机器不启动 {harness}。",
+  "apiError.launch.row_not_from_lead": "启动器只能来自这台机器的主节点。",
   "apiError.launch.bad_folder": "无法使用这个文件夹。路径不能包含 .. 或控制字符。",
   "apiError.launch.folder_missing": "这台机器上没有文件夹 {folder}。",
   "apiError.launch.pane_unknown": "找不到该窗格，未启动任何内容",

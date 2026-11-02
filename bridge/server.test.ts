@@ -3620,9 +3620,12 @@ describe("the host gate — `?host=` selects among enrolled members and nothing 
     // conversation list and the items or reopen of one (M53 spec 11), and Sent's read and its two
     // writes, served by one function with one resolve for the read and one for the writes (ADR 0107),
     // and the New page's folder browser (#467)) reach their runtime through the caller's resolver and
-    // nothing else. One of them, the launcher rows, hands the resolver the lead's merge (ADR 0127).
-    expect([...src.matchAll(/await caller\.resolve\((?:leadRows)?\);/g)]).toHaveLength(27);
+    // nothing else. One of them, the launcher rows, hands the resolver the lead's merge (ADR 0127), and
+    // two, the launch and the branch create, hand it the lead's row carry (ADR 0127 point 3).
+    const carry = String.raw`undefined, leadRowCarry\(allowedLaunchers, homedir\(\)\)`;
+    expect([...src.matchAll(new RegExp(String.raw`await caller\.resolve\((?:leadRows|${carry})?\);`, "g"))]).toHaveLength(27);
     expect([...src.matchAll(/await caller\.resolve\(leadRows\);/g)]).toHaveLength(1);
+    expect([...src.matchAll(new RegExp(String.raw`await caller\.resolve\(${carry}\);`, "g"))]).toHaveLength(2);
     // Exactly eight `registry.get(` calls remain, and each is a sanctioned one, named here rather
     // than exempted: assembling THIS collie's own snapshot body; `localRuntime`, the single
     // "(session) → runtime, or 404" helper both callers share; `/api/config`, which reports THIS
@@ -4488,6 +4491,36 @@ describe("GET /api/launchers?host= — the lead's rows on a member's answer (ADR
     // The forward is still the gate's one branch; a merge only changes what is asked and what comes back.
     expect(src).toContain("const askUrl = merge === undefined ? url : await merge.ask(url);");
     expect(src).toContain("if (merge !== undefined) return merge.answer(forwarded);");
+  });
+});
+
+// ── ADR 0127 point 3: a launch of a lead row on a member carries the row ─────────────────────────
+// The member's half (take `row` from the lead only, own row wins) is pinned in launch-by-id.test.ts
+// and worktree-route.test.ts; the lead's half (`leadRowCarry`) in crew/forward.test.ts. What is
+// pinned HERE is the glue: both routes hand the resolver the carry, the member learns the crew call
+// from `caller.via`, and the carry runs only on the forward, never on a call the lead answers itself.
+describe("POST /api/launch and /api/worktree?host= — the lead's row rides the forward (ADR 0127)", () => {
+  const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
+  const blockOf = (start: string): string => {
+    const route = src.slice(src.indexOf(start));
+    return route.slice(0, route.indexOf("\n    }\n"));
+  };
+
+  test("both routes carry the lead's row on a forward and take one from the crew caller only", () => {
+    for (const start of ['if (pathname === "/api/launch" && req.method === "POST")', 'if (pathname === "/api/worktree" && req.method === "POST")']) {
+      const block = blockOf(start);
+      expect(block).toContain("await caller.resolve(undefined, leadRowCarry(allowedLaunchers, homedir()));");
+      expect(block).toContain('fromLead: caller.via === "crew",');
+    }
+  });
+
+  test("the carry rewrites only the request a forward sends; a local runtime reads the phone's own body", () => {
+    const gate = src.slice(src.indexOf("const target = async (merge?: LeadMerge, write?: LeadWrite)"));
+    const peer = gate.slice(0, gate.indexOf('if (resolved.kind === "peer")') + 1);
+    // Nothing before the peer branch touches `write`; inside it, the rewritten request is what is sent.
+    expect(peer).not.toContain("write.request");
+    expect(gate).toContain("const carried = write === undefined ? req : await write.request(req);");
+    expect(gate).toContain("const askReq = merge === undefined ? carried : new Request(askUrl, { method: req.method });");
   });
 });
 

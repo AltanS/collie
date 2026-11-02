@@ -1569,6 +1569,7 @@ export const fr: Dictionary = {
   "apiError.tab.workspace_required": "Aucun espace n'a été nommé pour le nouvel onglet.",
   "apiError.launch.not_allowlisted": "Cette commande ne fait pas partie de vos lanceurs",
   "apiError.launch.unknown_harness": "Cette machine ne lance pas {harness}.",
+  "apiError.launch.row_not_from_lead": "Un lanceur ne peut venir que du lead de cette machine.",
   "apiError.launch.bad_folder": "Ce dossier ne peut pas être utilisé. Le chemin ne peut contenir ni .. ni caractère de contrôle.",
   "apiError.launch.folder_missing": "Il n'y a pas de dossier {folder} sur cette machine.",
   "apiError.launch.pane_unknown": "Ce volet a disparu, rien n'a été lancé",

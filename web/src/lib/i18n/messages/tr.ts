@@ -1568,6 +1568,7 @@ export const tr: Dictionary = {
   "apiError.tab.workspace_required": "Yeni sekme için alan adı belirtilmedi.",
   "apiError.launch.not_allowlisted": "Bu komut başlatıcılarınızdan biri değil",
   "apiError.launch.unknown_harness": "Bu makine {harness} başlatmıyor.",
+  "apiError.launch.row_not_from_lead": "Bir başlatıcı yalnızca bu makinenin liderinden gelebilir.",
   "apiError.launch.bad_folder": "Bu klasör kullanılamaz. Yol .. veya denetim karakterleri içeremez.",
   "apiError.launch.folder_missing": "Bu makinede {folder} klasörü yok.",
   "apiError.launch.pane_unknown": "Bu bölme artık yok, hiçbir şey başlatılmadı",

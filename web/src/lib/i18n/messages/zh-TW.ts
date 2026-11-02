@@ -1683,6 +1683,7 @@ export const zhTW: Dictionary = {
   "apiError.tab.workspace_required": "未指定新分頁的工作區。",
   "apiError.launch.not_allowlisted": "此指令不在你的啟動器清單中",
   "apiError.launch.unknown_harness": "這台機器不啟動 {harness}。",
+  "apiError.launch.row_not_from_lead": "啟動器只能來自這台機器的主節點。",
   "apiError.launch.bad_folder": "無法使用這個資料夾。路徑不能包含 .. 或控制字元。",
   "apiError.launch.folder_missing": "這台機器上沒有資料夾 {folder}。",
   "apiError.launch.pane_unknown": "找不到此窗格，未啟動任何內容",
