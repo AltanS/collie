@@ -27,6 +27,8 @@ import { AuditLog, fileAuditAppender } from "./audit.ts";
 import { beaconReader, fileEdgeSpool, fileSourceStore, hooksInstalledProbe, procBeaconLiveness, registerHookTarget, type HookTargetRegistration } from "./beacon-io.ts";
 import { withAgentBeacons } from "./beacon/decorate.ts";
 import { withAgentHints } from "./beacon/hint.ts";
+import { repoFactsOf } from "./repo-facts.ts";
+import { withRepoFacts } from "./repo-facts-mux.ts";
 import { holdPrivateFile, loadConfig, loadConfigLayer, nonLoopbackBindRefusal, resolveConfigDir, type Config } from "./config.ts";
 import { applyConfigLayer } from "./config-source.ts";
 import {
@@ -1514,7 +1516,9 @@ const sendProfile = createPaneProfile({ versions: sendVersions, binaries: harnes
 const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   const built = endpoint.kind === "program" ? programAdapter(endpoint.source) : terminalAdapter(endpoint.socketPath);
   const target = built.target;
-  const herdr = withBeaconsIfBlind(built.adapter, target);
+  // The repo facts wrapper sits OUTSIDE the beacon and hint wrappers and is applied once, for every mux:
+  // `repoRoot`, `isWorktree` and `folder` come from the space's folder on disk (M81/03), never a spawn.
+  const herdr = withRepoFacts(withBeaconsIfBlind(built.adapter, target), { facts: (folder) => repoFactsOf(folder) });
   const engine = new StateEngine(herdr, cfg.pollMs, { museSessionName: museNames });
 
   // Event-poked polling: a long-lived watch on the multiplexer pokes an immediate re-poll on any
