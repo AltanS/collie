@@ -1094,6 +1094,9 @@ describe("dispatched routes — the peer runs its own routes for an admitted lea
       // The new-space folder list (#289): the peer's own `folders.json`, read and starred there.
       ["folders", "GET"],
       ["folders/star", "POST"],
+      // A worktree's plan and create (ADR 0126 point 6): git runs on the member, in its own handlers.
+      ["worktree/plan", "GET"],
+      ["worktree", "POST"],
     ];
     for (const [route, method] of routes) {
       // A GET with a `body` key at all is a TypeError from `new Request`, so the key is added only

@@ -671,14 +671,14 @@ export function isPaneInput(pathname: string, method: string): boolean {
 }
 
 /**
- * Does this request change what a machine HAS: a launch, a new space or tab, or a pane or tab closed
+ * Does this request change what a machine HAS: a launch, a new space, worktree or tab, or a pane or tab closed
  * or renamed? On the owning host each of those settles itself (`settleTopology`). Forwarded to a
  * member, the member settles and the lead does not: the lead sees the member only through its sweep,
  * which rides the primary engine's tick, so a pane launched on a member stayed a shell, or missing,
  * on the phone for up to one idle interval (12 s; minibuch, 2026-10-14). The forward branch gives
  * these the same hot spell an input buys.
  */
-const TOPOLOGY_CREATES: ReadonlySet<string> = new Set(["/api/launch", "/api/workspace", "/api/tab"]);
+const TOPOLOGY_CREATES: ReadonlySet<string> = new Set(["/api/launch", "/api/workspace", "/api/tab", "/api/worktree"]);
 export function isTopologyWrite(pathname: string, method: string): boolean {
   if (method !== "POST") return false;
   if (TOPOLOGY_CREATES.has(pathname)) return true;
@@ -2093,8 +2093,8 @@ export function startServer(opts: {
 
     // ── Worktrees: a branch from a folder (ADR 0093) ──
     // A branch made from a FOLDER (M48, ADR 0093): the New sheet's Where field names the repo by its
-    // folder. Lead-local: neither route is in the crew's FORWARDABLE list, so a `?host=` call answers
-    // 501 before it reaches this.
+    // folder. Both go to the addressed host (ADR 0126 point 6): a `?host=` call is forwarded by
+    // `caller.resolve()` and the member runs these same two handlers with its own receipts.
     if (pathname === "/api/worktree/plan" && req.method === "GET") {
       const denied = caller.gate("read");
       if (denied) return denied;
@@ -2105,9 +2105,11 @@ export function startServer(opts: {
     if (pathname === "/api/worktree" && req.method === "POST") {
       const denied = caller.gate("write");
       if (denied) return denied;
+      // Before `resolve`: on a lead that forwards the create to a member, the forward itself is the
+      // long wait (WORKTREE_WRITE_BUDGET_MS, bridge/crew/peer-client.ts), and it happens inside it.
+      server.timeout(req, WORKTREE_ROUTE_BUDGET_S);
       const rt = await caller.resolve();
       if (rt instanceof Response) return rt;
-      server.timeout(req, WORKTREE_ROUTE_BUDGET_S);
       return createWorktreeAt(rt.herdr, rt.engine, req, caller.audit, caller.device(), rt.name, allowedLaunchers, {
         receipts: worktreeReceipts,
         bases: worktreeBases,
@@ -6222,8 +6224,8 @@ async function runWorktreeCreate(
 // The New sheet names a FOLDER (typed, or from Recent and Favourites), which may be open in no space
 // at all, so these two find the repo from the folder: the nearest `.git` at or above it, then git's
 // own `--git-common-dir` to reach the MAIN checkout of a linked worktree, the folder Herdr calls the
-// repo root. Git runs hardened and argv only (`askGit`, bridge/worktree-base.ts). Lead-local, like
-// every worktree route.
+// repo root. Git runs hardened and argv only (`askGit`, bridge/worktree-base.ts). On the host the
+// request addresses, like every worktree route (ADR 0126 point 6).
 
 /** The repo a folder belongs to, as real paths. */
 interface FolderRepo {

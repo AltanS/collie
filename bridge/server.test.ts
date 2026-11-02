@@ -5109,12 +5109,13 @@ describe("an input written to a pane makes its engine hot", () => {
   // A pane launched on minibuch stayed a shell on the phone for up to 12 s (2026-10-14): the lead's
   // sweep of the member rode a cold engine, and only inputs warmed it.
   test("isTopologyWrite names the launch, create, close and rename routes, as POSTs, and nothing else", () => {
-    for (const path of ["/api/launch", "/api/workspace", "/api/tab", "/api/tab/w1%3At1/close", "/api/tab/w1%3At1/rename"]) {
+    for (const path of ["/api/launch", "/api/workspace", "/api/worktree", "/api/tab", "/api/tab/w1%3At1/close", "/api/tab/w1%3At1/rename"]) {
       expect(isTopologyWrite(path, "POST")).toBe(true);
     }
     expect(isTopologyWrite("/api/pane/w1%3Ap1/close", "POST")).toBe(true);
     expect(isTopologyWrite("/api/pane/w1%3Ap1/rename", "POST")).toBe(true);
     expect(isTopologyWrite("/api/launch", "GET")).toBe(false);
+    expect(isTopologyWrite("/api/worktree/plan", "GET")).toBe(false);
     for (const path of ["/api/launch/recent/clear", "/api/launch/check", "/api/launchers", "/api/folders/star", "/api/pane/w1%3Ap1/reply", "/api/pane/w1%3Ap1/focus", "/api/pane/w1%3Ap1/upload"]) {
       expect(isTopologyWrite(path, "POST")).toBe(false);
     }
