@@ -357,15 +357,17 @@ describe("POST /api/launch — a lead row carried over the crew link (ADR 0127 p
 
   test("a lead row forwarded to a member runs there, its `cwd` under the member's home, audited `source: lead`", async () => {
     const mux = new FakeMux();
+    // `~/src/app` expands with `join`, this machine's own separators: `\home\member\src\app` on Windows.
+    const cwd = join("/home/member", "src", "app");
     const { status, body, entries } = await audited(mux, { command: "claude --resume", row: ROW }, CREW, MARK);
     expect(status).toBe(200);
     expect(body?.ok).toBe(true);
-    expect(mux.spaces).toEqual([{ cwd: "/home/member/src/app", label: "app" }]);
+    expect(mux.spaces).toEqual([{ cwd, label: "app" }]);
     expect(mux.tabRenames).toEqual([["w1:t1", "Claude resume"]]);
     expect(mux.texts).toEqual([["w1:p1", "claude --resume"]]);
     expect(entries).toHaveLength(1);
     expect(entries[0]!.action).toBe("workspace.launch");
-    expect(entries[0]!.detail).toMatchObject({ command: "claude --resume", cwd: "/home/member/src/app", source: "lead" });
+    expect(entries[0]!.detail).toMatchObject({ command: "claude --resume", cwd, source: "lead" });
   });
 
   test("a lead row with no pinned folder opens where an own row would: the folder the sheet named", async () => {

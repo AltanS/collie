@@ -98,9 +98,11 @@ describe("a pinned folder is asked under the member's home", () => {
 describe("the member answers the folder questions", () => {
   test("`~` is this machine's home; a path that is not absolute is no folder; at most fifty", () => {
     const seen: string[] = [];
+    // `~/x` is expanded with `join`, this machine's own separators: `\home\op\x` on Windows.
+    const gone = join(MEMBER_HOME, "gone");
     const isFolder = (path: string): boolean => {
       seen.push(path);
-      return path !== "/home/op/gone";
+      return path !== gone;
     };
     expect(folderAnswers(["~/src", "~/gone", "/srv", "rel"], MEMBER_HOME, isFolder)).toEqual({
       "~/src": true,
@@ -108,7 +110,7 @@ describe("the member answers the folder questions", () => {
       "/srv": true,
       rel: false,
     });
-    expect(seen).toEqual(["/home/op/src", "/home/op/gone", "/srv"]);
+    expect(seen).toEqual([join(MEMBER_HOME, "src"), gone, "/srv"]);
     const many = Array.from({ length: 60 }, (_, i) => `/srv/${String(i)}`);
     expect(Object.keys(folderAnswers(many, MEMBER_HOME, () => true))).toHaveLength(MAX_FOLDER_QUESTIONS);
   });

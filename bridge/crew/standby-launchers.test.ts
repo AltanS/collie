@@ -3,8 +3,10 @@ import { mkdtempSync, readFileSync, rmSync, statSync, existsSync } from "node:fs
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { HOST } from "../host.ts";
 import { mergeLaunchers } from "../launcher-adds.ts";
 import { DEFAULT_SWITCHES } from "../operator-launchers.ts";
+import { ensureOwnerOnlyDir, isOwnerOnly, privateRoot } from "../owner-only.ts";
 import { launchersRoute } from "../server.ts";
 import type { Launcher, LaunchersResponse } from "../types.ts";
 import { withLeadRows } from "./launcher-rows.ts";
@@ -178,7 +180,8 @@ describe("a leading deputy serves the copy, its own rows winning", () => {
     const merged = withCopyRows(mergeLaunchers(own, [], DEFAULT_SWITCHES), sent, DEPUTY_HOME);
     expect(merged.rows.map((r) => [r.command, r.label, r.cwd ?? null, r.source])).toEqual([
       ["make test", "Deputy tests", "/home/deputy/work", "operator"],
-      ["claude --resume", "Claude", "/home/deputy/src/app", "operator"],
+      // `~/rel` expands with `join`, this machine's own separators: `\home\deputy\src\app` on Windows.
+      ["claude --resume", "Claude", join(DEPUTY_HOME, "src", "app"), "operator"],
       ["htop", "htop", null, "operator"],
     ]);
     // Nothing of the copy can be renamed or removed from a phone here.
@@ -246,11 +249,15 @@ describe("the file on the deputy", () => {
 
   test("a copy lands 0600, whole, and is read back by a new process", async () => {
     const stateDir = fresh();
+    // Windows: the bridge gives the state dir an owner-only access list at start (M43 spec 04).
+    if (process.platform === "win32") ensureOwnerOnlyDir(stateDir, HOST, { root: privateRoot("state"), repair: true });
     const store = new StandbyLauncherStore(stateDir);
     expect(await store.load()).toBeNull();
     await store.replace(copy());
     const path = join(stateDir, STANDBY_LAUNCHERS_FILENAME);
-    expect(statSync(path).mode & 0o777).toBe(0o600);
+    // NTFS has no 0600 mode bits (stat reports 0666), so Windows reads the access list instead.
+    if (process.platform !== "win32") expect(statSync(path).mode & 0o777).toBe(0o600);
+    else expect(isOwnerOnly(path, HOST)).toEqual({ state: "private" });
     expect(existsSync(`${path}.tmp`)).toBe(false);
     expect(await new StandbyLauncherStore(stateDir).load()).toEqual(copy());
     // Its own file: nothing else was written beside it.
