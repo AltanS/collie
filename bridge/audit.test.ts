@@ -363,4 +363,16 @@ describe("crew attribution", () => {
     expect(JSON.parse(lines[0]!).detail.promptBinding.styled).toBe("checked");
     expect(lines[0]).not.toContain("Permission required");
   });
+
+  test("`none` keeps a launch's `source` (where the row came from, ADR 0127) and drops its `command`", () => {
+    const lines: string[] = [];
+    const log = new AuditLog((l) => void lines.push(l), { now: () => 0, content: "none" });
+    log.record({
+      action: "workspace.launch",
+      paneId: "w1:p1",
+      detail: { command: "claude --resume", label: "Claude resume", cwd: "/home/op/src/app", source: "lead" },
+    });
+    expect(JSON.parse(lines[0]!).detail.source).toBe("lead");
+    expect(lines[0]).not.toContain("claude --resume");
+  });
 });
