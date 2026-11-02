@@ -193,6 +193,29 @@ describe("the lead's rows in a member's answer", () => {
     expect(out.recentRuns).toEqual(answer.recentRuns);
   });
 
+  test("a lead agent row whose harness the member lacks reads `not_found`", () => {
+    // HARNESSES lists `codex` as not found on the member.
+    const agent: Launcher = { command: "codex --full-auto", label: "Codex auto", harness: "codex", kind: "agent" };
+    const out = withLeadRows(member(), lead([agent]));
+    expect(out.items!.find((i) => i.command === "codex --full-auto")).toMatchObject({ from: "lead", available: false, reason: "not_found" });
+    const none = withLeadRows(member({ harnesses: [{ id: "claude", label: "Claude Code", found: true }] }), lead([agent]));
+    expect(none.items!.find((i) => i.command === "codex --full-auto")).toMatchObject({ available: false, reason: "not_found" });
+  });
+
+  test("the same agent row on a member that has its harness stays available", () => {
+    const agent: Launcher = { command: "codex --full-auto", label: "Codex auto", harness: "codex", kind: "agent" };
+    const has = member({ harnesses: [{ id: "codex", label: "Codex", found: true }] });
+    const item = withLeadRows(has, lead([agent])).items!.find((i) => i.command === "codex --full-auto")!;
+    expect(item.available).toBe(true);
+    expect(item.reason).toBeUndefined();
+  });
+
+  test("a row missing both its harness and its folder reads `no_folder`, the more concrete reason", () => {
+    const agent: Launcher = { command: "codex --full-auto", label: "Codex auto", harness: "codex", kind: "agent", cwd: "/var/home/op/src/app" };
+    const out = withLeadRows(member({ folders: { "~/src/app": false } }), lead([agent]));
+    expect(out.items!.find((i) => i.command === "codex --full-auto")).toMatchObject({ available: false, reason: "no_folder" });
+  });
+
   test("a member with no `items` (older than 1.19.0) is answered as forwarded", () => {
     const old: LaunchersResponse = { launchers: [], home: MEMBER_HOME };
     expect(withLeadRows(old, lead(rows))).toEqual(old);

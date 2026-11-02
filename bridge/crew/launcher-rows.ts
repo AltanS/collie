@@ -106,9 +106,26 @@ export function folderAnswers(
   return Object.fromEntries(answers);
 }
 
-/** One of the lead's items as the member's answer carries it. */
+/**
+ * Whether the member lacks the harness an agent row names (ADR 0127 point 2): its list has no entry
+ * with that id that it found. A member with no list at all is not judged here.
+ */
+function harnessMissing(item: LauncherItem, member: LaunchersResponse): boolean {
+  if (item.harness === undefined || member.harnesses === undefined) return false;
+  return !member.harnesses.some((h) => h.id === item.harness && h.found);
+}
+
+/**
+ * One of the lead's items as the member's answer carries it, judged on the member: `not_found` when
+ * its harness is missing there, `no_folder` when its pinned folder is. The folder wins when both
+ * apply, because it is the more concrete reason.
+ */
 function leadItem(item: LauncherItem, lead: LeadRows, member: LaunchersResponse): LauncherItem {
   const out: LauncherItem = { ...item, from: "lead" };
+  if (harnessMissing(item, member)) {
+    out.available = false;
+    out.reason = "not_found";
+  }
   if (item.cwd === undefined) return out;
   const question = folderQuestion(item.cwd, lead.home);
   out.cwd = folderOnMember(question, member.home);
