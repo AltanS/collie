@@ -41,14 +41,17 @@ import { hasDocument } from "./env";
 // the network is gone: `navigator.onLine` stays true, and the 15s clock made the app look live for far
 // too long.
 //
-// EXCEPT RIGHT AFTER A WAKE (2026-10-08): there the first read with no answer is one strike, and the
-// second in a row latches. A phone that reaches the bridge through a Tailscale relay needs a moment
-// after it returns from the background, and its first poll often gets no answer: those requests never
-// reached the proxy. Latching on it turned the screen red on almost every wake, over a bridge that was
-// fine. The strike covers a read that started while the page was hidden, one that was in flight across
-// the wake, and one that started within WAKE_STRIKE_MS after it (`noteReadStart` stamps the start). The
-// poll retries such a read 0.5s later (hooks/use-polling.ts RETRY_MS), so a real outage is still red
-// within about a second of the wake's first failure.
+// ONE STRIKE FIRST (2026-10-08 after a wake, 2026-10-29 always): the first read with no answer is one
+// strike, and the second in a row latches. A phone that reaches the bridge through a Tailscale relay
+// needs a moment after it returns from the background, and the same holds on a long, lossy path at any
+// time: a phone on a mobile network half the world away loses a few seconds now and then (4-7 % of
+// pings in bursts of 3-5 s, 280 ms round trip, measured 2026-10-29), and one poll that ran out of time
+// turned the screen red and refused sends over a bridge that was fine. The poll retries 0.5s later
+// (hooks/use-polling.ts RETRY_MS), and a read that fails at once (the phone moving between Wi-Fi and
+// the mobile network) fails its retry too, so the second failure latches only once no live answer has
+// come for NETWORK_LATCH_MS: longer than those bursts and a handover, shorter than the 15s clock. A
+// real outage is red at its first failure past that, a few seconds later than before. A live answer,
+// and every wake, give the strike back.
 
 // How long the app must stay continuously not-live before we escalate from the quiet header pill
 // ("reconnecting…") to a prominent prompt. Long enough that a normal poll blip, a pane-open hiccup,
@@ -62,12 +65,9 @@ export const CONNECTION_LOST_MS = 15_000;
 // useConnectionTrouble), just far shorter and, crucially, NON-latching: only the 15s escalation latches.
 export const TROUBLE_MS = 4_000;
 
-// How long after a wake a herd read that gets no answer is one strike rather than proof of the outage
-// (see `noteNetworkFailure`). TROUBLE_MS, because that is the stretch in which the app already shows
-// nothing at all for a link that is not live: the strike only spares a read the operator could not have
-// seen fail anyway. The wake's own read starts inside it (use-polling fires one at once on `visible`),
-// and an ordinary poll after it mostly does not, so a later failure latches as before.
-export const WAKE_STRIKE_MS = TROUBLE_MS;
+// How long no live answer must last before a read with no answer, after the strike, latches the
+// outage (see the header, 2026-10-29). Measured from the same anchor as the two above.
+export const NETWORK_LATCH_MS = 8_000;
 
 // Both initialise to module-load time (app open), so a dead cold start escalates ~CONNECTION_LOST_MS
 // after open (the BootSplash case) — the first successful poll then advances `lastLiveAt` for real.
@@ -81,17 +81,9 @@ let lostLatched = false;
 // How many HERD reads in a row came back as a server error (a 5xx, most often a proxy whose bridge is
 // down). See `noteServerFailure`: one such answer is a blip, two in a row are an outage.
 let serverFailures = 0;
-// The last real wake (markWake). Apart from `lastWakeAt`, which also starts at module load: opening the
-// app is not a wake for the strike, because a cold open draws the saved copy until its first live answer
-// anyway (lib/loaders.ts `drawnFromSave`). -Infinity until the first one.
-let wokeAt = Number.NEGATIVE_INFINITY;
-// When the newest herd read started, and whether the page was hidden then (`noteReadStart`). Null once
-// its failure has been counted, and before any read.
-let readStartedAt: number | null = null;
-let readStartedHidden = false;
-// The wake's one strike is spent: the next read with no answer latches. Cleared by a live answer and by
-// the next wake.
-let wakeStrike = false;
+// The one strike is spent: the next read with no answer latches, once NETWORK_LATCH_MS has passed with
+// no live answer. Cleared by a live answer and by a wake.
+let strikeSpent = false;
 // How many long uploads the operator started are in flight right now. A counter, not a boolean: two
 // panes can each be transcribing a clip, and the second one finishing must not un-suspend the first.
 let longUploads = 0;
@@ -112,7 +104,7 @@ export function markLive(): void {
   lastLiveAt = Date.now();
   lostLatched = false;
   serverFailures = 0;
-  wakeStrike = false;
+  strikeSpent = false;
   emit();
 }
 
@@ -128,67 +120,38 @@ export function markLive(): void {
  */
 export type ReadFailureKind = "network" | "server" | "other";
 
-/** How many server errors in a row latch the outage. A network failure latches on the first. */
+/** How many server errors in a row latch the outage. Network failures latch on the second too (one strike), past NETWORK_LATCH_MS. */
 export const SERVER_FAILURES_TO_LATCH = 2;
 
 /**
- * Stamp the start of a HERD read (lib/api.ts `fetchSnapshot`), so the failure that may follow can be
- * judged by when it started: before or near a wake, or while the page was hidden (see
- * `noteNetworkFailure`).
- *
- * A stamp in the store, read by a nullary note, rather than a start time passed to the note: this store
- * has no parameters by design (host-health.test.ts pins every export's arity). One stamp is enough,
- * because only one herd read is in flight at a time: the poll supersedes the old one before it starts
- * another, and a superseded read counts nothing.
- */
-export function noteReadStart(): void {
-  readStartedAt = Date.now();
-  readStartedHidden = pageHidden();
-}
-
-/**
  * Count one failed HERD read that got NO answer (lib/api.ts `fetchSnapshot`, the read every poll
- * makes): it latches the outage at once. M46 pass 3, decided 2026-10-07: the 15s wait made the phone
- * slow to admit it had lost the bridge. A live answer clears the latch (markLive). The latch is what
- * turns the screen into the saved copy (the loaders' `stale`, the Chat window's saved-copy mark, the
- * red strip and the muted dog), so all of them flip on the same failure.
- *
- * Right after a wake the first such read is one strike instead (see the header, 2026-10-08): it
- * latches nothing, the poll retries it 0.5s later, and the next read with no answer latches at once.
+ * makes). The first is one strike (see the header, 2026-10-29): it latches nothing, and the poll
+ * retries it 0.5s later. A later read with no answer latches at once, without the 15s clock (M46 pass
+ * 3, 2026-10-07), when no live answer has come for NETWORK_LATCH_MS. A live answer clears the latch
+ * (markLive). The latch is what turns the screen into the
+ * saved copy (the loaders' `stale`, the Chat window's saved-copy mark, the red strip and the muted
+ * dog), so all of them flip on the same failure.
  *
  * Two nullary functions rather than one that takes the kind: this store has no parameters by design
  * (host-health.test.ts pins every export's arity), and the caller already knows which one it is.
  */
 export function noteNetworkFailure(): void {
-  const strike = !wakeStrike && readNearWake();
-  readStartedAt = null;
-  if (strike) {
-    wakeStrike = true;
+  if (!strikeSpent) {
+    strikeSpent = true;
     return;
   }
+  if (Date.now() - lastHealthyAt() < NETWORK_LATCH_MS) return;
   latchLost();
 }
 
 /**
- * Whether a read that got no answer right now is still inside the wake's one strike, and so proves
- * nothing yet. The pane and Chat reads ask this before they draw their saved copy at once: they fail in
- * the same poll as the herd read, and they must not say "outage" over the strike the herd read took.
- * False once the outage is latched.
+ * Whether a read that got no answer right now proves nothing yet: the herd read has not latched the
+ * outage. The pane and Chat reads ask this before they draw their saved copy: they fail in the same
+ * poll as the herd read, in either order, and they must not say "outage" over the strike the herd read
+ * takes or took. The herd read decides; its latch marks them.
  */
-export function wakeStrikeHolds(): boolean {
-  if (lostLatched) return false;
-  return wakeStrike || readNearWake();
-}
-
-/** Whether the newest herd read began near a wake: hidden, in flight across it, or soon after it. */
-function readNearWake(): boolean {
-  if (readStartedAt === null) return false;
-  if (readStartedHidden || pageHidden()) return true;
-  return readStartedAt < wokeAt + WAKE_STRIKE_MS;
-}
-
-function pageHidden(): boolean {
-  return hasDocument() && document.visibilityState === "hidden";
+export function strikeHolds(): boolean {
+  return !lostLatched;
 }
 
 /** Count one failed herd read that came back as a 5xx: the second in a row latches the outage. */
@@ -201,14 +164,13 @@ export function noteServerFailure(): void {
  * Stamp a wake: the tab returned to the foreground, granting a fresh grace window before escalation
  * (a phone resuming from sleep shouldn't flash red while its first poll is still in flight). Does NOT
  * touch the latch: while escalated, effectiveAnchor() ignores this stamp, so a mid-outage app switch
- * can't reset the countdown or downgrade red back to amber. It does open the wake's one strike (see
- * `noteNetworkFailure`): the first herd read near it that gets no answer latches nothing.
+ * can't reset the countdown or downgrade red back to amber. It gives the one strike back (see
+ * `noteNetworkFailure`): the first herd read after it that gets no answer latches nothing.
  */
 export function markWake(): void {
   lastWakeAt = Date.now();
-  wokeAt = lastWakeAt;
   // Every wake grants its own strike: an old one spent before the phone slept says nothing now.
-  wakeStrike = false;
+  strikeSpent = false;
   emit();
 }
 
@@ -322,7 +284,7 @@ if (hasDocument()) {
 
 /**
  * Test helper — reset both anchors (defaults to now) AND clear the sticky latch between cases. It
- * clears the strike too, and leaves no wake behind: a reset phone has not just woken.
+ * gives the strike back too.
  * Notifies subscribers, same as every other mutation in this module (markLive/markWake/latchLost),
  * so a reset mid-test (e.g. the playground driving a control) repaints deterministically instead of
  * waiting for a consumer's own once-per-mount self-correction timer.
@@ -332,10 +294,7 @@ export function __resetConnectionHealth(now = Date.now()): void {
   lastWakeAt = now;
   lostLatched = false;
   serverFailures = 0;
-  wokeAt = Number.NEGATIVE_INFINITY;
-  readStartedAt = null;
-  readStartedHidden = false;
-  wakeStrike = false;
+  strikeSpent = false;
   longUploads = 0;
   emit();
 }

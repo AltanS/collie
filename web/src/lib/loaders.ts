@@ -29,7 +29,7 @@ import { parseAnsi } from "@/lib/ansi";
 import { noteUpdateRun } from "./self-update";
 import { splitLines } from "@/lib/blocks";
 import { type CacheHold, holdCacheReadings } from "@/lib/cache-hold";
-import { isLostLatched, type ReadFailureKind, wakeStrikeHolds } from "@/lib/connection-health";
+import { isLostLatched, type ReadFailureKind, strikeHolds } from "@/lib/connection-health";
 import { markLive as markPaneLive, markSavedCopy } from "@/lib/liveness";
 import { paneGridOf, settleSessionCapabilities } from "@/lib/mux-capability";
 import { ambientSpaces, findPane } from "@/lib/hosts";
@@ -878,9 +878,9 @@ export async function paneLoader({
     if (isAbortError(e)) throw e; // superseded revalidation — let React Router drop it
     rememberAuthError(scope, isAuthError(e));
     // Genuine network / server failure: show stale text flagged as degraded. A read that got no
-    // answer at all is the saved copy at once (see drawnFromSave), unless the wake's one strike
+    // answer at all is the saved copy at once (see drawnFromSave), unless the herd read's one strike
     // covers it: the herd read of the same poll did not latch either, and the retry decides.
-    const outage = readFailureKind(e) === "network" && !wakeStrikeHolds();
+    const outage = readFailureKind(e) === "network" && !strikeHolds();
     return stalePane(paneId, scope, lines, outage);
   }
 }

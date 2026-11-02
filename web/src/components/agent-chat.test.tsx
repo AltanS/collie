@@ -6,7 +6,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider, useParams, useRevalidator } from "react-router";
 
-import { __resetConnectionHealth } from "@/lib/connection-health";
+import { __resetConnectionHealth, NETWORK_LATCH_MS, noteNetworkFailure } from "@/lib/connection-health";
 import type { JsonValue } from "@/lib/json";
 
 // Mock the race guard at AgentChat's seam so the frozen-revision tests can observe exactly what
@@ -4433,8 +4433,8 @@ describe("AgentChat: a new agent pane draws Chat from the first frame", () => {
 // Altan, airplane mode with Tailscale up, a pane open in Chat: the body went blank under a strip that
 // said "showing what was saved". The rule now: what the Chat body holds stays on screen through any
 // failed poll, and it is marked as the saved copy (the dated line above the body) on the read that
-// proves the outage: at once for a read that got no answer, on the second 5xx in a row. The line stays
-// until a live answer.
+// proves the outage: once the herd read latches a read that got no answer (its strike, then its retry,
+// 2026-10-29), on the second 5xx in a row. The line stays until a live answer.
 describe("AgentChat — a failed poll keeps the Chat on screen", () => {
   const journalAgent = () => ({ ...fixtureAgents[0]!, hasSession: true });
   type ChatMode = "live" | "drop" | "502";
@@ -4486,6 +4486,15 @@ describe("AgentChat — a failed poll keeps the Chat on screen", () => {
   }
 
   const savedLine = () => screen.queryByText(/^Saved copy from .+\. Older text is on the bridge\.$/);
+  // The herd read of the same poll gets no answer either, and so does a later one past
+  // NETWORK_LATCH_MS with no live answer: that latches.
+  const herdGetsNoAnswer = () =>
+    act(() => {
+      noteNetworkFailure();
+      vi.setSystemTime(Date.now() + NETWORK_LATCH_MS);
+      noteNetworkFailure();
+    });
+  afterEach(() => vi.useRealTimers());
 
   it("online, content shown, then a poll that gets no answer: the blocks stay and the saved line appears", async () => {
     const view = renderPolled();
@@ -4495,6 +4504,7 @@ describe("AgentChat — a failed poll keeps the Chat on screen", () => {
     expect(savedLine()).toBeNull();
 
     mode = "drop";
+    herdGetsNoAnswer();
     await view.poll();
     await waitFor(() => expect(savedLine()).toBeInTheDocument());
     expect(view.blocks()).toBe(shown);
@@ -4535,6 +4545,7 @@ describe("AgentChat — a failed poll keeps the Chat on screen", () => {
     expect(document.querySelector('[data-slot="saved-copy"]')).toBeNull();
 
     mode = "drop";
+    herdGetsNoAnswer();
     await view.poll();
     await waitFor(() => expect(savedLine()).toBeInTheDocument());
     const stream = document.querySelector('[data-slot="session-stream"]')!;

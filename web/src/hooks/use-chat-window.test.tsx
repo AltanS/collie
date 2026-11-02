@@ -2,7 +2,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 
 import { useChatWindow } from "./use-chat-window";
-import { latchLost, markWake, noteNetworkFailure, noteReadStart } from "@/lib/connection-health";
+import { latchLost, markWake, NETWORK_LATCH_MS, noteNetworkFailure } from "@/lib/connection-health";
 import { loadChatTail, saveChatTail } from "@/lib/chat-tail";
 import { paneScopeKey } from "@/lib/scope";
 import { __resetStore, getRecord } from "@/lib/store";
@@ -226,6 +226,9 @@ describe("useChatWindow", () => {
 // on the store's memory map, which the test setup resets before every case.
 describe("useChatWindow — the saved Chat tail", () => {
   const DISPLAY_PREFS = "collie:display-prefs:v4";
+  afterEach(() => vi.useRealTimers());
+  // The herd's later read with no answer latches once no live answer has come for NETWORK_LATCH_MS (2026-10-29).
+  const pastLatchWindow = () => vi.setSystemTime(Date.now() + NETWORK_LATCH_MS);
   const failChat = () => server.use(http.get(/\/api\/pane\/[^/]+\/chat/, () => HttpResponse.error()));
 
   /** One poll: the revalidator goes loading, then idle again. */
@@ -267,7 +270,7 @@ describe("useChatWindow — the saved Chat tail", () => {
 
   // M46 pass 3: a failed poll never drops what the window holds. A read that got NO answer (a network
   // failure, the poll deadline) marks it at once; a 5xx needs a second one in a row.
-  it("keeps the turns it holds and marks them at once when a read gets no answer", async () => {
+  it("keeps the turns it holds and marks them once the herd read latches a read with no answer", async () => {
     let fail = false;
     server.use(
       http.get(/\/api\/pane\/[^/]+\/chat/, () => (fail ? HttpResponse.error() : HttpResponse.json(firstPage))),
@@ -277,7 +280,14 @@ describe("useChatWindow — the saved Chat tail", () => {
     const answeredAt = Date.now();
 
     fail = true;
+    // The herd read of the same poll gets no answer either: its strike, then its retry latches.
+    act(() => noteNetworkFailure());
     poll(rerender);
+    await waitFor(() => expect(result.current.asked).toBe(2));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(result.current.window.savedAt).toBeNull();
+    pastLatchWindow();
+    act(() => noteNetworkFailure());
     await waitFor(() => expect(result.current.window.savedAt).toBeTypeOf("number"));
     // Dated by the last live answer, and every turn still held: memory, not the store.
     expect(result.current.window.savedAt!).toBeLessThanOrEqual(answeredAt);
@@ -344,10 +354,7 @@ describe("useChatWindow — the saved Chat tail", () => {
     await waitFor(() => expect(result.current.window.entries).toHaveLength(1));
 
     act(() => markWake());
-    act(() => {
-      noteReadStart();
-      noteNetworkFailure();
-    });
+    act(() => noteNetworkFailure());
     fail = true;
     poll(rerender);
     await waitFor(() => expect(result.current.asked).toBe(2));
@@ -357,10 +364,8 @@ describe("useChatWindow — the saved Chat tail", () => {
     expect(result.current.window.entries).toHaveLength(1);
 
     // The retry's herd read gets no answer either: that latches, and the latch marks the window.
-    act(() => {
-      noteReadStart();
-      noteNetworkFailure();
-    });
+    pastLatchWindow();
+    act(() => noteNetworkFailure());
     await waitFor(() => expect(result.current.window.savedAt).toBeTypeOf("number"));
   });
 

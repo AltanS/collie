@@ -2,7 +2,7 @@ import { http, HttpResponse } from "msw";
 
 import { server } from "@/test/setup";
 import { fixtureCrewSnapshot, fixtureSnapshot } from "@/test/handlers";
-import { __resetConnectionHealth, isLostLatched, lastHealthyAt, markWake } from "./connection-health";
+import { __resetConnectionHealth, isLostLatched, lastHealthyAt, markWake, NETWORK_LATCH_MS } from "./connection-health";
 import { isConnecting } from "./connection";
 import { DEAD_DEBOUNCE_MS, isLive, resetLiveness } from "./liveness";
 import { resetBasePathForTests } from "./base-path";
@@ -359,7 +359,12 @@ describe("api client — request timeouts", () => {
 // ── WHAT A FAILED READ SAYS ABOUT THE CONNECTION (M46 pass 3) ───────────────
 describe("api client — failed reads and the outage latch", () => {
   beforeEach(() => __resetConnectionHealth());
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+  // The second read with no answer latches once no live answer has come for NETWORK_LATCH_MS (2026-10-29).
+  const pastLatchWindow = () => vi.setSystemTime(Date.now() + NETWORK_LATCH_MS);
 
   // jsdom's DOMException is not an Error subclass, a browser's is; the stand-ins below are what a
   // browser hands the catch.
@@ -382,14 +387,24 @@ describe("api client — failed reads and the outage latch", () => {
     expect(readFailureKind(refused)).toBe("other");
   });
 
-  it("a herd read that gets no answer latches the outage on the first failure", async () => {
+  // 2026-10-29: the first herd read with no answer is one strike, the second in a row latches, once no
+  // live answer has come for NETWORK_LATCH_MS.
+  it("a herd read that gets no answer is one strike, and the second in a row latches the outage", async () => {
     server.use(http.get("/api/snapshot", () => HttpResponse.error()));
+    await expect(fetchSnapshot()).rejects.toBeInstanceOf(TypeError);
+    expect(isLostLatched()).toBe(false);
+    await expect(fetchSnapshot()).rejects.toBeInstanceOf(TypeError);
+    expect(isLostLatched()).toBe(false);
+    pastLatchWindow();
     await expect(fetchSnapshot()).rejects.toBeInstanceOf(TypeError);
     expect(isLostLatched()).toBe(true);
   });
 
-  it("a herd read that runs out of time latches the outage too", async () => {
+  it("a herd read that runs out of time counts the same way", async () => {
     vi.spyOn(AbortSignal, "timeout").mockImplementation(() => AbortSignal.abort(named("TimeoutError")));
+    await expect(fetchSnapshot()).rejects.toMatchObject({ name: "TimeoutError" });
+    expect(isLostLatched()).toBe(false);
+    pastLatchWindow();
     await expect(fetchSnapshot()).rejects.toMatchObject({ name: "TimeoutError" });
     expect(isLostLatched()).toBe(true);
   });
@@ -409,6 +424,8 @@ describe("api client — failed reads and the outage latch", () => {
   it("a deadline WebKit reports as an AbortError is still a TimeoutError, and latches the outage", async () => {
     webkitFetch();
     vi.spyOn(AbortSignal, "timeout").mockImplementation(() => AbortSignal.abort(named("TimeoutError")));
+    await expect(fetchSnapshot()).rejects.toMatchObject({ name: "TimeoutError" });
+    pastLatchWindow();
     await expect(fetchSnapshot()).rejects.toMatchObject({ name: "TimeoutError" });
     expect(isLostLatched()).toBe(true);
   });
@@ -454,24 +471,14 @@ describe("api client — failed reads and the outage latch", () => {
     expect(isLostLatched()).toBe(false);
   });
 
-  // 2026-10-08: the herd read stamps its own start, so the store can tell the wake's first read from
-  // an ordinary one (lib/connection-health.ts `noteReadStart`).
   it("right after a wake, the first herd read with no answer is one strike, the second latches", async () => {
     server.use(http.get("/api/snapshot", () => HttpResponse.error()));
     markWake();
     await expect(fetchSnapshot()).rejects.toBeInstanceOf(TypeError);
     expect(isLostLatched()).toBe(false);
+    pastLatchWindow();
     await expect(fetchSnapshot()).rejects.toBeInstanceOf(TypeError);
     expect(isLostLatched()).toBe(true);
-  });
-
-  it("a herd read started while the page was hidden is one strike when it fails after the return", async () => {
-    server.use(http.get("/api/snapshot", () => HttpResponse.error()));
-    const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
-    const read = fetchSnapshot();
-    visibility.mockReturnValue("visible");
-    await expect(read).rejects.toBeInstanceOf(TypeError);
-    expect(isLostLatched()).toBe(false);
   });
 
   it("a refusal latches nothing: the bridge answered", async () => {
