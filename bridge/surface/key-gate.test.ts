@@ -191,11 +191,11 @@ describe("the key gate is the only key sender", () => {
     expect(grep("sendKeys\\(").filter((line) => line.startsWith("bridge/"))).toEqual([]);
   });
 
-  test("outside the adapters, only the key gate and the two pass-through decorators call writeKeys", () => {
+  test("outside the adapters, only the key gate and the three pass-through decorators call writeKeys", () => {
     const callers = grep("\\.writeKeys\\(")
       .map((line) => line.slice(0, line.indexOf(":")))
       // The adapters themselves, their fixtures and their conformance suite drive the raw call.
       .filter((file) => !file.startsWith("bridge/mux/") && file !== "scripts/mux-e2e.ts");
-    expect([...new Set(callers)].toSorted()).toEqual(["bridge/beacon/decorate.ts", "bridge/beacon/hint.ts", "bridge/surface/key-gate.ts"]);
+    expect([...new Set(callers)].toSorted()).toEqual(["bridge/beacon/decorate.ts", "bridge/beacon/hint.ts", "bridge/repo-facts-mux.ts", "bridge/surface/key-gate.ts"]);
   });
 });
