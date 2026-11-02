@@ -173,7 +173,8 @@ export interface PromptModel {
    * dialog's own top edge to the footer, joined. That is the header, the subject inside the frame,
    * the question, the option labels and the key hints. Nothing above the edge: {@link signature}
    * reaches into the transcript, where a tool row's blinking bullet changes it every second, so an
-   * ask bound to it changed under every tap.
+   * ask bound to it changed under every tap. A grammar holds still what the dialog redraws on its
+   * own, a countdown to answering itself (claude/prompt-select.ts), for the same reason.
    *
    * Set by a grammar whose `signature` reads above the dialog. `null` means that grammar found no
    * edge: the bridge then refuses a tap, and never binds to the lookback instead. Absent means the

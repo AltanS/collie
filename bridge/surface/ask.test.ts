@@ -17,7 +17,7 @@ import { liftDialog, readerBlocks } from "../../web/src/lib/surface/lift.ts";
 import { loadProfiles, profileFor, resetProfileLog } from "../../web/src/lib/surface/profile.ts";
 import { askOf, type Ask } from "../../web/src/lib/surface/surface.ts";
 import type { AgentView } from "../types.ts";
-import { ASK_LIFETIME_MS, AskAnswerer, AskBook, askBinding, NO_EDGE_DETAIL, planFor, planKeysFor, UNCONFIRMED_COMMIT_DETAIL, UNCONFIRMED_WALK_DETAIL } from "./ask.ts";
+import { ASK_LIFETIME_MS, AskAnswerer, AskBook, askBinding, NO_EDGE_DETAIL, planFor, planKeysFor, sameDialog, UNCONFIRMED_COMMIT_DETAIL, UNCONFIRMED_WALK_DETAIL } from "./ask.ts";
 import { KeyGate, type TokenOrigin, type KeyToken } from "./key-gate.ts";
 import { RowRing, SessionLocks } from "./protocol.ts";
 import { RequestStore } from "./requests.ts";
@@ -220,6 +220,95 @@ function blink(screen: string): string {
 function liftOf(screen: string) {
   return liftDialog(readerBlocks(splitLines(parseAnsi(screen)), HARNESS))!;
 }
+
+// A permission that answers itself on a timer (Claude Code 2.1.306, a built-in safety check on an
+// unattended session) prints the time left inside the dialog and redraws it every second: "1:20"
+// (minutes:seconds), or "about 2 minutes" / "about 45 seconds" in its other rendering (both read from
+// the 2.1.306 binary). Written into the real rm capture under its explanation row, as the owner's
+// phone showed it on 2026-10-29. `breakAfter` wraps the sentence after that many words, as a narrow
+// box does; `sentence` replaces the harness wording.
+const DENY_SENTENCE = (clock: string) => `⚠ Claude Code will automatically deny this request in ${clock}, to avoid blocking progress on an unattended session`;
+function countdown(screen: string, clock: string, breakAfter?: number, sentence = DENY_SENTENCE): string {
+  const rows = screen.split("\n");
+  const at = rows.findIndex((row) => row.includes("Dangerous rm operation"));
+  if (at < 0) throw new Error("no explanation row");
+  const lead = " \u001b[0m\u001b[2m│\u001b[0m \u001b[38;2;255;193;7m";
+  const words = sentence(clock).split(" ");
+  const lines = breakAfter === undefined ? [words.join(" ")] : [words.slice(0, breakAfter).join(" "), words.slice(breakAfter).join(" ")];
+  rows.splice(at + 1, 0, ...lines.map((line) => `${lead}${line}\u001b[0m\r`));
+  return rows.join("\n");
+}
+
+describe("a dialog's self-answer countdown is not part of the ask", () => {
+  test("the clock ticking leaves the binding and the hash unchanged, in both renderings, however the sentence wraps", () => {
+    // Words of the sentence: "⚠ Claude Code will automatically deny this request in" is 9, so 9 breaks
+    // before the clock, 10 inside "about 45 seconds" or after "1:20,", 3 inside the harness words,
+    // 14 in the tail. A clock of another width rewraps the sentence, so every break meets every clock.
+    const reference = liftOf(countdown(BG_RM, "1:20"));
+    // The grammar read the clock (the race guard's signature is literal); the binding reads it still.
+    expect(reference.signature).toContain("automatically deny this request in 1:20");
+    expect(reference.region).toContain("automatically deny this request in 0:00, to avoid blocking progress");
+    for (const breakAfter of [undefined, 3, 9, 10, 14]) {
+      for (const clock of ["1:20", "1:19", "0:59", "0:05", "about 2 minutes", "about 1 minute", "about 45 seconds", "about 1 second"]) {
+        const after = liftOf(countdown(BG_RM, clock, breakAfter));
+        expect(after.signature).toContain(clock.split(" ").at(-1)!);
+        expect(after.hash).toBe(reference.hash);
+        expect(askBinding(GEN, after)).toBe(askBinding(GEN, reference));
+      }
+    }
+  });
+
+  // The identity those reads compare is the question and the options (the command is the binding's
+  // job, at the tap's entry); this pins that the clock row never enters it.
+  test("the clock ticking is the same dialog to the check and read-back reads", () => {
+    const reference = liftOf(countdown(BG_RM, "1:20"));
+    for (const [clock, breakAfter] of [["1:19", undefined], ["0:05", 9], ["about 45 seconds", 10]] as const) {
+      expect(sameDialog(reference, liftOf(countdown(BG_RM, clock, breakAfter)))).toBe(true);
+    }
+  });
+
+  test("a clock in a sentence that is not the harness countdown still changes the ask", () => {
+    const sentences = [
+      (clock: string) => `⚠ Claude Code will automatically allow this request in ${clock}, to avoid blocking progress on an unattended session`,
+      (clock: string) => `Agent will automatically deny this request in ${clock}, to avoid blocking progress on an unattended session`,
+      (clock: string) => `⚠ Claude Code will automatically deny this request in ${clock} unless you stop it`,
+    ];
+    for (const sentence of sentences) {
+      const at = (clock: string) => liftOf(countdown(BG_RM, clock, undefined, sentence));
+      expect(at("1:19").hash).not.toBe(at("1:20").hash);
+      expect(askBinding(GEN, at("1:19"))).not.toBe(askBinding(GEN, at("1:20")));
+    }
+  });
+
+  test("another command under the same countdown is another ask", () => {
+    const before = liftOf(countdown(BG_RM, "1:20"));
+    const other = liftOf(countdown(BG_RM.replace("rm -f $D/*.wav", "rm -f $X/*.wav"), "1:20"));
+    expect(askBinding(GEN, other)).not.toBe(askBinding(GEN, before));
+  });
+
+  test("a time elsewhere in the dialog still changes the ask", () => {
+    const at = (time: string) => liftOf(countdown(BG_RM.replace("rm -f $D/*.wav", `rm -f $D/${time}/*.wav`), "1:20"));
+    expect(askBinding(GEN, at("12:31"))).not.toBe(askBinding(GEN, at("12:30")));
+    expect(at("12:31").hash).not.toBe(at("12:30").hash);
+  });
+
+  test("the ask keeps its id while the clock runs, and a tap read on a later second is sent", async () => {
+    const { pane, poll, answer } = rig(countdown(BG_RM, "1:20"));
+    const ask = poll()!;
+    pane.screen = countdown(BG_RM, "1:19");
+    expect(poll()!.id).toBe(ask.id);
+    let second = 18;
+    pane.beforeRead = (p) => {
+      p.screen = countdown(BG_RM, `1:${second--}`);
+    };
+    pane.onKeys = (_keys, p) => {
+      p.beforeRead = null;
+      p.screen = IDLE;
+    };
+    const reply = await answer(ask, idOf(ask, "Yes"));
+    expect(reply.receipt).toMatchObject({ outcome: "sent", keys: ["1"] });
+  });
+});
 
 describe("the ask binding covers the dialog block only", () => {
   test("a blink of the tool row's bullet above the dialog leaves the binding and the hash unchanged", () => {
