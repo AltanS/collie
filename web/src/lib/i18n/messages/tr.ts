@@ -1638,6 +1638,7 @@ export const tr: Dictionary = {
   "apiError.worktree.folder_hidden": "Bu klasör gizli ya da gizli bir klasörün içinde. Adı nokta ile başlamayan bir klasör seçin.",
   "apiError.worktree.folder_in_repo": "Bu klasör deponun içinde. Deponun dışında bir klasör seçin.",
   "apiError.worktree.target_exists": "{path} zaten var. Başka bir dal adı ya da klasör seçin.",
+  "apiError.worktree.target_exists.withReason": "{path} zaten var: {reason}. Başka bir dal adı ya da klasör seçin.",
   "worktree.branchPlaceholder": "feature/my-change",
   "branchOff.launcherFailed": "Çalışma ağacı hazır, ancak ajan başlamadı. Onu yeni kabukta başlatın.",
   "branchOff.startFrom.label": "Başlangıç noktası",

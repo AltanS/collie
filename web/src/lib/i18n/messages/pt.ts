@@ -1638,6 +1638,7 @@ export const pt: Dictionary = {
   "apiError.worktree.folder_hidden": "Essa pasta está oculta ou dentro de uma oculta. Escolha uma pasta cujo nome não comece com ponto.",
   "apiError.worktree.folder_in_repo": "Essa pasta está dentro do repositório. Escolha uma pasta fora dele.",
   "apiError.worktree.target_exists": "{path} já existe. Escolha outro nome de branch ou outra pasta.",
+  "apiError.worktree.target_exists.withReason": "{path} já existe: {reason}. Escolha outro nome de branch ou outra pasta.",
   "worktree.branchPlaceholder": "feature/my-change",
   "branchOff.launcherFailed": "A worktree está pronta, mas o agente não iniciou. Inicie-o no novo shell.",
   "branchOff.startFrom.label": "Começar de",

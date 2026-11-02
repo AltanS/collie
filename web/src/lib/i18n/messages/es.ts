@@ -1789,6 +1789,7 @@ export const es: Dictionary = {
   "apiError.worktree.folder_hidden": "Esa carpeta está oculta o dentro de una oculta. Elija una carpeta cuyo nombre no empiece por punto.",
   "apiError.worktree.folder_in_repo": "Esa carpeta está dentro del repositorio. Elija una carpeta fuera de él.",
   "apiError.worktree.target_exists": "{path} ya existe. Elija otro nombre de rama u otra carpeta.",
+  "apiError.worktree.target_exists.withReason": "{path} ya existe: {reason}. Elija otro nombre de rama u otra carpeta.",
   "worktree.branchPlaceholder": "feature/mi-cambio",
   "branchOff.launcherFailed": "El worktree está listo, pero el agente no se inició. Inícielo en la nueva shell.",
   "branchOff.startFrom.label": "Empezar desde",

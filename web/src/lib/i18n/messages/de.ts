@@ -1792,6 +1792,7 @@ export const de: Dictionary = {
   "apiError.worktree.folder_hidden": "Dieser Ordner ist versteckt oder liegt in einem versteckten Ordner. Bitte einen Ordner ohne Punkt am Anfang wählen.",
   "apiError.worktree.folder_in_repo": "Dieser Ordner liegt im Repository. Bitte einen Ordner außerhalb wählen.",
   "apiError.worktree.target_exists": "{path} gibt es schon. Bitte einen anderen Branch-Namen oder Ordner wählen.",
+  "apiError.worktree.target_exists.withReason": "{path} gibt es schon: {reason}. Bitte einen anderen Branch-Namen oder Ordner wählen.",
   "worktree.branchPlaceholder": "feature/meine-aenderung",
   "branchOff.launcherFailed": "Der Worktree ist bereit, aber der Agent wurde nicht gestartet. Bitte in der neuen Shell starten.",
   "branchOff.startFrom.label": "Ausgangspunkt",

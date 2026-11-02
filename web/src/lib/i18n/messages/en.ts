@@ -1888,6 +1888,7 @@ export const en = {
   "apiError.worktree.folder_hidden": "That folder is hidden, or inside one. Pick a folder whose name does not start with a dot.",
   "apiError.worktree.folder_in_repo": "That folder is inside the repo. Pick a folder outside it.",
   "apiError.worktree.target_exists": "{path} already exists. Pick another branch name or folder.",
+  "apiError.worktree.target_exists.withReason": "{path} already exists: {reason}. Pick another branch name or folder.",
   "worktree.branchPlaceholder": "feature/my-change",
   "branchOff.launcherFailed": "The worktree is ready, but the agent did not start. Start it in the new shell.",
   "branchOff.startFrom.label": "Start from",

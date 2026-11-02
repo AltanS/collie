@@ -287,7 +287,14 @@ function NewPage({ search }: { search: string }) {
     } else if (folderKind === "default" && current.defaultTarget !== undefined) {
       targetPath = current.defaultTarget.path;
       if (current.defaultTarget.exists) {
-        branchProblem = t("apiError.worktree.target_exists", { path: shortenHome(current.defaultTarget.path, home) });
+        // The same words as the parent folder's refusal, with git's state of the folder when it has one.
+        const { reason } = current.defaultTarget;
+        const path = shortenHome(current.defaultTarget.path, home);
+        branchProblem = describeApiError({
+          error: "",
+          code: "worktree.target_exists",
+          detail: reason === undefined ? { path } : { path, reason },
+        });
       }
     }
   }

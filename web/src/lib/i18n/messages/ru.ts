@@ -1708,6 +1708,7 @@ export const ru: Dictionary = {
   "apiError.worktree.folder_hidden": "Эта папка скрыта или лежит в скрытой. Выберите папку, имя которой не начинается с точки.",
   "apiError.worktree.folder_in_repo": "Эта папка находится внутри репозитория. Выберите папку вне его.",
   "apiError.worktree.target_exists": "{path} уже существует. Выберите другое имя ветки или другую папку.",
+  "apiError.worktree.target_exists.withReason": "{path} уже существует: {reason}. Выберите другое имя ветки или другую папку.",
   "worktree.branchPlaceholder": "feature/my-change",
   "branchOff.launcherFailed": "Рабочее дерево готово, но агент не запустился. Запустите его в новом shell.",
   "branchOff.startFrom.label": "Начать с",

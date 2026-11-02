@@ -1754,6 +1754,7 @@ export const zhTW: Dictionary = {
   "apiError.worktree.folder_hidden": "這個資料夾是隱藏的，或位於隱藏資料夾中。請選擇名稱不以點開頭的資料夾。",
   "apiError.worktree.folder_in_repo": "這個資料夾在儲存庫內。請選擇儲存庫外的資料夾。",
   "apiError.worktree.target_exists": "{path} 已存在。請選擇其他分支名稱或資料夾。",
+  "apiError.worktree.target_exists.withReason": "{path} 已存在：{reason}。請選擇其他分支名稱或資料夾。",
   "worktree.branchPlaceholder": "feature/my-change",
   "branchOff.launcherFailed": "Worktree 已就緒，但代理沒有啟動。請在新的 Shell 中啟動它。",
   "branchOff.startFrom.label": "起點",

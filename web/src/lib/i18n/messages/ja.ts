@@ -1776,6 +1776,7 @@ export const ja: Dictionary = {
   "apiError.worktree.folder_hidden": "このフォルダーは隠しフォルダーか、その中にあります。名前がドットで始まらないフォルダーを選んでください。",
   "apiError.worktree.folder_in_repo": "このフォルダーはリポジトリの中にあります。リポジトリの外のフォルダーを選んでください。",
   "apiError.worktree.target_exists": "{path} はすでにあります。別のブランチ名かフォルダーを選んでください。",
+  "apiError.worktree.target_exists.withReason": "{path} はすでにあります：{reason}。別のブランチ名かフォルダーを選んでください。",
   "worktree.branchPlaceholder": "feature/my-change",
   "branchOff.launcherFailed": "Worktree は準備できましたが、エージェントは起動しませんでした。新しいシェルで起動してください。",
   "branchOff.startFrom.label": "開始元",

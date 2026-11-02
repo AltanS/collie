@@ -33,6 +33,21 @@ describe("describeApiError", () => {
     ).toBe("The pane couldn't be closed: no such pane");
   });
 
+  it("renders the withReason variant when detail carries a reason and the catalogue has one", () => {
+    const fields = { error: "x", code: "worktree.target_exists", detail: { path: "~/w/x", reason: "that folder holds branch y" } };
+    expect(describeApiError(fields)).toBe("~/w/x already exists: that folder holds branch y. Pick another branch name or folder.");
+  });
+
+  it("renders the plain sentence with no reason, or for a code that has no withReason key", () => {
+    expect(describeApiError({ error: "x", code: "worktree.target_exists", detail: { path: "~/w/x" } })).toBe(
+      "~/w/x already exists. Pick another branch name or folder.",
+    );
+    // `pane.close_failed` takes a `{reason}` in its one sentence and has no variant: it renders as before.
+    expect(describeApiError({ error: "no such pane", code: "pane.close_failed", detail: { reason: "no such pane" } })).toBe(
+      "The pane couldn't be closed: no such pane",
+    );
+  });
+
   it("falls back to the bridge's own sentence for a code this build has never met", () => {
     // A NEWER bridge. Not an error, not a bug — and never a raw `apiError.…` key on screen.
     const said = describeApiError({ error: "the kennel is full", code: "kennel.full" });

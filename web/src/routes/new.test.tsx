@@ -158,6 +158,9 @@ function servePlan(seen: URLSearchParams[] = []): void {
         branchValid: branch !== "a..b",
         defaultTarget: { path: `/home/op/.herdr/worktrees/app/${slug}`, exists: false },
       };
+      // A default folder the create would refuse: with git's state of it, or a plain folder without.
+      if (branch === "taken") plan.defaultTarget = { path: `/home/op/.herdr/worktrees/app/${slug}`, exists: true, reason: "that folder holds branch y" };
+      if (branch === "plain") plan.defaultTarget = { path: `/home/op/.herdr/worktrees/app/${slug}`, exists: true };
       if (parent === "~/.config") plan.parentTarget = { ok: false, error: "hidden", code: "worktree.folder_hidden" };
       else if (parent !== null) plan.parentTarget = { ok: true, path: `/home/op/trees/${slug}` };
       return HttpResponse.json(plan);
@@ -702,6 +705,35 @@ describe("the New page: New worktree", () => {
     await userEvent.type(screen.getByRole("textbox", { name: "Put the branch folder in" }), "~/.config");
     await waitFor(() => expect(screen.getByTestId("new-page-target")).toHaveTextContent("hidden"));
     expect(screen.getByRole("button", { name: "Start" })).toBeDisabled();
+  });
+
+  it("a default folder git lists in another state says which, and Start waits", async () => {
+    serveLaunchers();
+    servePlan();
+    mount({ entries: [`/new?pane=${encodeURIComponent("w1:p1")}`], agents: [PANE] });
+    const name = await screen.findByRole("textbox", { name: "Branch name" });
+    await userEvent.clear(name);
+    await userEvent.type(name, "taken");
+    await waitFor(() =>
+      expect(screen.getByTestId("new-page-target")).toHaveTextContent(
+        "~/.herdr/worktrees/app/taken already exists: that folder holds branch y. Pick another branch name or folder.",
+      ),
+    );
+    expect(screen.getByRole("button", { name: "Start" })).toBeDisabled();
+  });
+
+  it("a plain default folder keeps the short sentence", async () => {
+    serveLaunchers();
+    servePlan();
+    mount({ entries: [`/new?pane=${encodeURIComponent("w1:p1")}`], agents: [PANE] });
+    const name = await screen.findByRole("textbox", { name: "Branch name" });
+    await userEvent.clear(name);
+    await userEvent.type(name, "plain");
+    await waitFor(() =>
+      expect(screen.getByTestId("new-page-target")).toHaveTextContent(
+        "~/.herdr/worktrees/app/plain already exists. Pick another branch name or folder.",
+      ),
+    );
   });
 
   it("a name git refuses says so, and Start waits", async () => {

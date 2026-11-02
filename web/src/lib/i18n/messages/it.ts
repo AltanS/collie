@@ -1640,6 +1640,7 @@ export const it: Dictionary = {
   "apiError.worktree.folder_hidden": "Questa cartella è nascosta, o si trova in una nascosta. Scegli una cartella il cui nome non inizia con un punto.",
   "apiError.worktree.folder_in_repo": "Questa cartella è dentro il repository. Scegline una fuori.",
   "apiError.worktree.target_exists": "{path} esiste già. Scegli un altro nome di ramo o un'altra cartella.",
+  "apiError.worktree.target_exists.withReason": "{path} esiste già: {reason}. Scegli un altro nome di ramo o un'altra cartella.",
   "worktree.branchPlaceholder": "feature/my-change",
   "branchOff.launcherFailed": "Il worktree è pronto, ma l'agente non è partito. Avvialo nella nuova shell.",
   "branchOff.startFrom.label": "Parti da",

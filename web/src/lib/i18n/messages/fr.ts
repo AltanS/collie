@@ -1639,6 +1639,7 @@ export const fr: Dictionary = {
   "apiError.worktree.folder_hidden": "Ce dossier est caché, ou dans un dossier caché. Choisissez un dossier dont le nom ne commence pas par un point.",
   "apiError.worktree.folder_in_repo": "Ce dossier est dans le dépôt. Choisissez un dossier en dehors.",
   "apiError.worktree.target_exists": "{path} existe déjà. Choisissez un autre nom de branche ou un autre dossier.",
+  "apiError.worktree.target_exists.withReason": "{path} existe déjà : {reason}. Choisissez un autre nom de branche ou un autre dossier.",
   "worktree.branchPlaceholder": "feature/mon-changement",
   "branchOff.launcherFailed": "Le worktree est prêt, mais l'agent n'a pas démarré. Lancez-le dans le nouveau shell.",
   "branchOff.startFrom.label": "Partir de",

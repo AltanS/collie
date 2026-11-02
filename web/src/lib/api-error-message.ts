@@ -6,6 +6,9 @@
 //
 // THE FALLBACK LADDER, in order, and it never ends in a raw key or an empty string:
 //   1. A code this build knows          → `t("apiError.<code>", detail)` — the translated sentence.
+//      With a string `detail.reason` and an `apiError.<code>.withReason` key in the catalogue, that
+//      key renders instead: a frame that says WHY (`worktree.target_exists`), the reason itself in
+//      the bridge's own words, like `pane.close_failed`'s `{reason}`.
 //   2. Any other code, or no code       → the body's own `error` string, which is true English prose.
 //   3. A throw that is not an ApiError  → its `message` (a transport failure, an aborted fetch).
 //   4. Nothing usable at all            → `t("apiError.unknown")`.
@@ -19,7 +22,14 @@
 
 import { isApiErrorCode, type ApiErrorFields } from "./api-error-codes";
 import { apiErrorFields } from "./api";
-import { t } from "./i18n";
+import { t, type MessageKey } from "./i18n";
+import { asJsonString } from "./json";
+import { en } from "./i18n/messages/en";
+
+/** Whether the catalogue has `key`: English carries every key, so asking it settles it for all. */
+function isMessageKey(key: string): key is MessageKey {
+  return Object.hasOwn(en, key);
+}
 
 /**
  * The sentence for a refusal the bridge answered with — an `{ ok: false }` body, or the fields parsed
@@ -32,7 +42,11 @@ export function describeApiError(fields: ApiErrorFields, fallback?: string): str
   const { code, detail } = fields;
   // The template-literal key is what makes the catalogue complete by construction: if `en.ts` were
   // missing `apiError.<code>` for any member of the union, this line would not compile.
-  if (isApiErrorCode(code)) return t(`apiError.${code}`, detail);
+  if (isApiErrorCode(code)) {
+    const withReason = `apiError.${code}.withReason`;
+    if (asJsonString(detail?.reason) !== undefined && isMessageKey(withReason)) return t(withReason, detail);
+    return t(`apiError.${code}`, detail);
+  }
   const sentence = fields.error?.trim() ?? "";
   if (sentence !== "") return sentence;
   // `fallback` is the CALLER'S surface-specific line ("Rename failed") for a body that carried no

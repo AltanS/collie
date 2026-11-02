@@ -1768,6 +1768,7 @@ export const ko: Dictionary = {
   "apiError.worktree.folder_hidden": "이 폴더는 숨김 폴더이거나 숨김 폴더 안에 있습니다. 이름이 점으로 시작하지 않는 폴더를 선택하세요.",
   "apiError.worktree.folder_in_repo": "이 폴더는 저장소 안에 있습니다. 저장소 밖의 폴더를 선택하세요.",
   "apiError.worktree.target_exists": "{path}이(가) 이미 있습니다. 다른 브랜치 이름이나 폴더를 선택하세요.",
+  "apiError.worktree.target_exists.withReason": "{path}이(가) 이미 있습니다: {reason}. 다른 브랜치 이름이나 폴더를 선택하세요.",
   "worktree.branchPlaceholder": "feature/my-change",
   "branchOff.launcherFailed": "Worktree는 준비되었지만 에이전트가 시작되지 않았습니다. 새 셸에서 시작하세요.",
   "branchOff.startFrom.label": "시작 지점",

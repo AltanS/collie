@@ -1758,6 +1758,7 @@ export const zh: Dictionary = {
   "apiError.worktree.folder_hidden": "这个文件夹是隐藏的，或位于隐藏文件夹中。请选择名称不以点开头的文件夹。",
   "apiError.worktree.folder_in_repo": "这个文件夹在仓库内。请选择仓库外的文件夹。",
   "apiError.worktree.target_exists": "{path} 已存在。请选择其他分支名或文件夹。",
+  "apiError.worktree.target_exists.withReason": "{path} 已存在：{reason}。请选择其他分支名或文件夹。",
   "worktree.branchPlaceholder": "feature/my-change",
   "branchOff.launcherFailed": "Worktree 已就绪，但代理没有启动。请在新的 Shell 中启动它。",
   "branchOff.startFrom.label": "起点",
