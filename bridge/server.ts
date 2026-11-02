@@ -185,7 +185,7 @@ import {
 } from "./answer-mask.ts";
 import { maskForwardedAnswer } from "./crew/mask.ts";
 import type { LeadMerge } from "./crew/forward.ts";
-import { CWD_PARAM, folderAnswers, leadRowsRead, ROW_FIELD, rowFromLead } from "./crew/launcher-rows.ts";
+import { CWD_PARAM, folderAnswers, leadRowCarry, leadRowsRead, ROW_FIELD, rowFromLead, type LeadWrite } from "./crew/launcher-rows.ts";
 import { redactAnsi } from "./redact.ts";
 import { TranscriptStore } from "./journal/store.ts";
 import type { AgentSessionRef, DiscoverHints, ForegroundProcess, JournalAdapter, PaneScreen } from "./journal/types.ts";
@@ -730,10 +730,11 @@ interface RouteCaller {
    * response comes back here (§9.1). For a crew caller it is always local.
    *
    * `merge` is the one way a route changes a forwarded answer on the lead, and one route passes it:
-   * `GET /api/launchers`, which adds the lead's rows to a member's answer (ADR 0127). A local runtime
-   * and the crew caller ignore it.
+   * `GET /api/launchers`, which adds the lead's rows to a member's answer (ADR 0127). `write` is the
+   * one way a route changes a forwarded body: `POST /api/launch` and `POST /api/worktree`, which carry
+   * a lead row to the member (ADR 0127 point 3). A local runtime and the crew caller ignore both.
    */
-  resolve(merge?: LeadMerge): Promise<SessionRuntime | Response>;
+  resolve(merge?: LeadMerge, write?: LeadWrite): Promise<SessionRuntime | Response>;
   /**
    * The caller's own authorisation at this level, or `null` to proceed. `device-read` is a read that
    * needs the write level's device factors (ADR 0083) without the write level's `Origin` rule.
@@ -1879,7 +1880,9 @@ export function startServer(opts: {
     if (pathname === "/api/launch" && req.method === "POST") {
       const denied = caller.gate("write");
       if (denied) return denied;
-      const rt = await caller.resolve();
+      // Forwarded to a member, a lead row rides along as `row` (ADR 0127 point 3); the member takes it
+      // only from this link (`fromLead`), and a phone that sends one itself is refused.
+      const rt = await caller.resolve(undefined, leadRowCarry(allowedLaunchers, homedir()));
       if (rt instanceof Response) return rt;
       return launch(rt.herdr, rt.engine, req, caller.audit, caller.device(), rt.name, allowedLaunchers, {}, {
         fromLead: caller.via === "crew",
@@ -2124,7 +2127,8 @@ export function startServer(opts: {
       // Before `resolve`: on a lead that forwards the create to a member, the forward itself is the
       // long wait (WORKTREE_WRITE_BUDGET_MS, bridge/crew/peer-client.ts), and it happens inside it.
       server.timeout(req, WORKTREE_ROUTE_BUDGET_S);
-      const rt = await caller.resolve();
+      // A lead row rides along as `launch`'s does (ADR 0127 point 3).
+      const rt = await caller.resolve(undefined, leadRowCarry(allowedLaunchers, homedir()));
       if (rt instanceof Response) return rt;
       return createWorktreeAt(rt.herdr, rt.engine, req, caller.audit, caller.device(), rt.name, allowedLaunchers, {
         fromLead: caller.via === "crew",
@@ -2695,7 +2699,7 @@ export function startServer(opts: {
        * The forward is the only asynchrony this adds, and it is why `target()` is async: a local
        * request does not await a thing it did not do — `registry.get` is still one Map lookup.
        */
-      const target = async (merge?: LeadMerge): Promise<SessionRuntime | Response> => {
+      const target = async (merge?: LeadMerge, write?: LeadWrite): Promise<SessionRuntime | Response> => {
         if (host.kind !== "local") {
           const resolved = crewLead?.resolve(host, sessionName);
           if (resolved === undefined) {
@@ -2714,7 +2718,9 @@ export function startServer(opts: {
             // A merged read (ADR 0127) asks with the route's own query and no phone headers, so the
             // member's answer comes back as plain bytes the lead can read.
             const askUrl = merge === undefined ? url : await merge.ask(url);
-            const askReq = merge === undefined ? req : new Request(askUrl, { method: req.method });
+            // A launch of a lead row carries the row (ADR 0127 point 3): only here, on a forward.
+            const carried = write === undefined ? req : await write.request(req);
+            const askReq = merge === undefined ? carried : new Request(askUrl, { method: req.method });
             // The lead's own record of the forward (§12): one line, the same `action` the peer will
             // write, plus the target host — two independent logs of one event, neither depending on
             // the other machine's disk.

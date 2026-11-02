@@ -23,6 +23,8 @@ import {
   type ForwardErrorCode,
   type ForwardTransport,
 } from "./forward.ts";
+import type { JsonObject } from "../json.ts";
+import { leadRowCarry } from "./launcher-rows.ts";
 import { crewDeviceOf } from "./peer-gate.ts";
 import { HISTORY_READ_BUDGET_MS } from "../mux/herdr-core/adapter.ts";
 import {
@@ -1212,6 +1214,64 @@ describe("the worktree plan and create cross the link to the addressed host", ()
     const res = await forward(req, url, { transport, state: DEAD });
     expect(calls).toHaveLength(0);
     expect(res.ok).toBe(false);
+  });
+});
+
+describe("a launch of a lead row carries the row to the member (ADR 0127 point 3)", () => {
+  const LEAD_HOME = "/var/home/op";
+  const rows = [
+    { command: "claude --resume", label: "Claude resume", cwd: "/var/home/op/src/app", harness: "claude", noPrompts: false },
+    { command: "make serve", label: "Serve", cwd: "/srv/site", noPrompts: true },
+  ];
+  const carry = leadRowCarry(() => Promise.resolve(rows), LEAD_HOME);
+
+  /** What the member was sent, parsed. */
+  async function sentBody(path: string, body: JsonObject): Promise<JsonObject> {
+    const { transport, calls } = transportOf(() => ok(Response.json({ ok: true })));
+    const [req, url] = post(path, JSON.stringify(body), { "content-type": "application/json" });
+    const res = await forward(await carry.request(req), url, { transport });
+    expect(res.status).toBe(200);
+    expect(calls).toHaveLength(1);
+    // SAFETY: the test posted a JSON object, and the carry writes one back.
+    return JSON.parse(await new Response(calls[0]!.init.body).text()) as JsonObject;
+  }
+
+  test("a `?host=` launch of the lead's own row carries it, its folder under the member's home", async () => {
+    const sent = await sentBody("/api/launch?host=laptop", { command: "claude --resume", requestId: "r-1" });
+    expect(sent).toEqual({
+      command: "claude --resume",
+      requestId: "r-1",
+      row: { command: "claude --resume", label: "Claude resume", cwd: "~/src/app", harness: "claude", noPrompts: false },
+    });
+    // A folder outside the lead's home is sent as it is.
+    const serve = await sentBody("/api/launch?host=laptop", { command: "make serve" });
+    expect(serve.row).toEqual({ command: "make serve", label: "Serve", cwd: "/srv/site", noPrompts: true });
+  });
+
+  test("a member-only command goes on without `row`, byte for byte", async () => {
+    const body = JSON.stringify({ command: "htop", requestId: "r-2" });
+    const { transport, calls } = transportOf(() => ok(Response.json({ ok: true })));
+    const [req, url] = post("/api/launch?host=laptop", body, { "content-type": "application/json" });
+    await forward(await carry.request(req), url, { transport });
+    expect(await new Response(calls[0]!.init.body).text()).toBe(body);
+  });
+
+  test("a `row` the phone sent never reaches the member: dropped, or replaced by the lead's own", async () => {
+    const forged = { command: "rm -rf ~", label: "x", noPrompts: false };
+    const memberOnly = await sentBody("/api/launch?host=laptop", { command: "htop", row: forged });
+    expect(memberOnly).toEqual({ command: "htop" });
+    const leadRow = await sentBody("/api/launch?host=laptop", { command: "make serve", row: forged });
+    expect(leadRow.row).toEqual({ command: "make serve", label: "Serve", cwd: "/srv/site", noPrompts: true });
+  });
+
+  test("a branch create names its launcher by `command` and carries the row the same way", async () => {
+    const sent = await sentBody("/api/worktree?host=laptop", { cwd: "~/src/api", branch: "b", command: "claude --resume" });
+    expect(sent.row).toMatchObject({ command: "claude --resume", cwd: "~/src/app" });
+  });
+
+  test("a body that is not a JSON object goes on untouched, for the member to refuse", async () => {
+    const [req] = post("/api/launch?host=laptop", "not json");
+    expect(await carry.request(req)).toBe(req);
   });
 });
 

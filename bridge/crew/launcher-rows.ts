@@ -246,6 +246,72 @@ export function leadRowsRead(lead: () => Promise<LeadRows>, respond: (body: Laun
 /** The body field a lead row rides under. */
 export const ROW_FIELD = "row";
 
+/** What a forwarded launch carries of a lead row. A type, not an interface, so it is a JSON object. */
+export type CarriedRow = {
+  command: string;
+  label: string;
+  /** The row's pinned folder as {@link folderQuestion} writes it: `~/rel` under the lead's home. */
+  cwd?: string;
+  harness?: string;
+  noPrompts: boolean;
+};
+
+/** One of the lead's rows as the member is sent it: its folder written for the member's home. */
+export function carriedRow(row: Launcher, leadHome: string): CarriedRow {
+  const out: CarriedRow = { command: row.command, label: row.label, noPrompts: row.noPrompts === true };
+  if (row.cwd !== undefined) out.cwd = folderQuestion(row.cwd, leadHome);
+  if (row.harness !== undefined) out.harness = row.harness;
+  return out;
+}
+
+/**
+ * A launch body as the lead forwards it to a member: any `row` the phone sent is gone, and when the
+ * body's `command` is one of `rows`, that row is set. The member's own row still wins there.
+ */
+export function withLeadRow(fields: JsonObject, rows: readonly Launcher[], leadHome: string): JsonObject {
+  const out: JsonObject = { ...fields };
+  delete out[ROW_FIELD];
+  const command = typeof fields.command === "string" ? fields.command.trim() : "";
+  const row = command === "" ? undefined : rows.find((r) => r.command === command);
+  if (row === undefined) return out;
+  out[ROW_FIELD] = carriedRow(row, leadHome);
+  return out;
+}
+
+/**
+ * How the lead changes one forwarded write before the member gets it. Two routes pass one,
+ * `POST /api/launch` and `POST /api/worktree`, and it runs only on a forward: a call the lead
+ * answers itself keeps its body as the phone sent it.
+ */
+export interface LeadWrite {
+  request(req: Request): Promise<Request>;
+}
+
+/**
+ * The lead's {@link LeadWrite} for a launch: the body with {@link withLeadRow} applied. `rows` is
+ * read once per forward, the list a launch on the lead itself would match. A body that is not a JSON
+ * object, or one with no `row` that names no lead row, goes on untouched.
+ */
+export function leadRowCarry(rows: () => Promise<Launcher[]>, leadHome: string): LeadWrite {
+  return {
+    request: async (req) => {
+      let body: JsonValue;
+      try {
+        // SAFETY: `Request.json()` output IS a JsonValue by construction; only `command` and `row` are read.
+        body = (await req.clone().json()) as JsonValue;
+      } catch {
+        return req;
+      }
+      if (!isObject(body)) return req;
+      const out = withLeadRow(body, await rows(), leadHome);
+      if (body[ROW_FIELD] === undefined && out[ROW_FIELD] === undefined) return req;
+      const headers = new Headers(req.headers);
+      headers.delete("content-length");
+      return new Request(req.url, { method: req.method, headers, body: JSON.stringify(out) });
+    },
+  };
+}
+
 /**
  * A carried `row` as this member runs it, or `null` when it is not one: it must name the body's own
  * `command`, a label, and a `noPrompts`; a `cwd` must be absolute once `~` is read as `home`.
