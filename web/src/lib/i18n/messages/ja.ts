@@ -1765,8 +1765,6 @@ export const ja: Dictionary = {
   // --- worktrees (ADR 0032) ---
   "apiError.worktree.create_failed": "worktree の作成に失敗しました: {reason}",
   "apiError.worktree.created_not_opened": "ブランチは作成されましたが、起動に失敗しました: {reason}",
-  "apiError.worktree.busy": "別の worktree 処理が実行中です。時間をおいて再試行してください。",
-  "apiError.worktree.ambiguous_branch": "ブランチ名が複数の候補に一致します: {reason}",
   "apiError.worktree.branch_required": "ブランチ名を指定してください。",
   "apiError.worktree.not_a_repo": "このスペースは Git リポジトリではありません。",
   "apiError.worktree.invalid_branch": "このブランチ名は使えません。英数字、ハイフン、スラッシュを使ってください。",

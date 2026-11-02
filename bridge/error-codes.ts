@@ -152,18 +152,14 @@ export const ERROR_CODES = {
   "folders.favourites_full": "favourites are full ({max}); remove one first",
 
   // ── Worktrees: /api/worktree and its plan (ADR 0032, ADR 0093) ─────────────────────
-  /** Creation refused. `{reason}` is the multiplexer's own words, Git's sentence included. */
+  /** Creation refused. `{reason}` is Git's own sentence (`git worktree add`, bridge/worktree-add.ts). */
   "worktree.create_failed": "{reason}",
   /**
    * The checkout was made and could not be shown — the branch EXISTS and nothing displays it.
-   * Distinct from `create_failed` because the recovery is opposite: open it, never create it again
-   * (a second create answers `create_failed`, the path being taken). Probed on herdr 0.8.2.
+   * Distinct from `create_failed` because the recovery is opposite: the checkout stays, and the same
+   * create again finds it and only opens it (M81).
    */
   "worktree.created_not_opened": "the worktree was created but could not be opened: {reason}",
-  /** Another worktree operation is still running — herdr serialises them. Try again in a moment. */
-  "worktree.busy": "{reason}",
-  /** The branch name matched more than one thing, so the multiplexer would not guess. */
-  "worktree.ambiguous_branch": "{reason}",
   /** The request named no branch, or named one that is only whitespace. */
   "worktree.branch_required": "branch required",
   /** This space is not in a Git work tree, so it has no worktrees to show. */

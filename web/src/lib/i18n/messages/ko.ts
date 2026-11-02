@@ -1757,8 +1757,6 @@ export const ko: Dictionary = {
   // --- worktrees (ADR 0032) ---
   "apiError.worktree.create_failed": "worktree를 생성하지 못했습니다: {reason}",
   "apiError.worktree.created_not_opened": "브랜치는 생성되었으나 대상 항목을 열지 못했습니다: {reason}",
-  "apiError.worktree.busy": "다른 worktree 작업이 진행 중입니다. 잠시 후 다시 시도하세요.",
-  "apiError.worktree.ambiguous_branch": "브랜치 이름이 여러 대상과 일치합니다: {reason}",
   "apiError.worktree.branch_required": "브랜치 이름을 먼저 입력하세요.",
   "apiError.worktree.not_a_repo": "해당 공간은 Git 저장소가 아닙니다.",
   "apiError.worktree.invalid_branch": "이 브랜치 이름은 사용할 수 없습니다. 문자, 숫자, 하이픈, 슬래시를 사용하세요.",

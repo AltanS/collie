@@ -1743,8 +1743,6 @@ export const zhTW: Dictionary = {
   // --- worktrees (ADR 0032) ---
   "apiError.worktree.create_failed": "建立 worktree 失敗：{reason}",
   "apiError.worktree.created_not_opened": "分支建立成功，但無法在其上開啟工作區：{reason}",
-  "apiError.worktree.busy": "另一個 worktree 操作正在執行，請稍後再試。",
-  "apiError.worktree.ambiguous_branch": "分支名稱有多個符合項目：{reason}",
   "apiError.worktree.branch_required": "請指定分支名稱。",
   "apiError.worktree.not_a_repo": "目前工作區不在 Git 儲存庫中。",
   "apiError.worktree.invalid_branch": "不允許使用這個分支名稱。請使用字母、數字、連字號和斜線。",

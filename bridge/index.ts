@@ -29,6 +29,8 @@ import { withAgentBeacons } from "./beacon/decorate.ts";
 import { withAgentHints } from "./beacon/hint.ts";
 import { repoFactsOf } from "./repo-facts.ts";
 import { withRepoFacts } from "./repo-facts-mux.ts";
+import { gitBinary } from "./changes.ts";
+import { withWorktreeCapability } from "./worktree-capability.ts";
 import { holdPrivateFile, loadConfig, loadConfigLayer, nonLoopbackBindRefusal, resolveConfigDir, type Config } from "./config.ts";
 import { applyConfigLayer } from "./config-source.ts";
 import {
@@ -1356,6 +1358,9 @@ for (const source of programs.others) {
 // not of one herd. It is what decides whether a blind adapter's beacon capabilities are lifted —
 // never whether a beacon happens to be on disk, which would make the declaration flicker.
 const hooksInstalled = hooksInstalledProbe({ home: homedir(), env: process.env });
+// The git binary, found once at start: whether this host can make a worktree (bridge/worktree-add.ts)
+// is a fact about git and the multiplexer's `createSpace`, never about a multiplexer verb (M81).
+const worktreeGit = await gitBinary();
 
 /**
  * The adapter, with agent beacons around it when the multiplexer cannot see agents, or cannot see
@@ -1518,7 +1523,9 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   const target = built.target;
   // The repo facts wrapper sits OUTSIDE the beacon and hint wrappers and is applied once, for every mux:
   // `repoRoot`, `isWorktree` and `folder` come from the space's folder on disk (M81/03), never a spawn.
-  const herdr = withRepoFacts(withBeaconsIfBlind(built.adapter, target), { facts: (folder) => repoFactsOf(folder) });
+  // The worktree capability sits just inside it, outside the beacon and hint wrappers: it reads their
+  // declaration and lifts `createWorktree` from `createSpace` plus git (bridge/worktree-capability.ts).
+  const herdr = withRepoFacts(withWorktreeCapability(withBeaconsIfBlind(built.adapter, target), { git: worktreeGit }), { facts: (folder) => repoFactsOf(folder) });
   const engine = new StateEngine(herdr, cfg.pollMs, { museSessionName: museNames });
 
   // Event-poked polling: a long-lived watch on the multiplexer pokes an immediate re-poll on any

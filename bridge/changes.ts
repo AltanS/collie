@@ -223,6 +223,11 @@ export interface GitRun {
   /** Output hit the cap and the process was killed. */
   capped: boolean;
   timedOut: boolean;
+  /**
+   * What git wrote to stderr, up to `maxBytes`, when the run asked for it (`captureStderr`). Absent
+   * otherwise: a read keeps stderr closed, and only a write needs git's own sentence for a refusal.
+   */
+  stderr?: string;
 }
 
 /**
@@ -235,7 +240,7 @@ export async function runGit(
   args: readonly string[],
   extraConfig: readonly string[],
   maxBytes: number,
-  opts: { input?: Uint8Array; timeoutMs?: number; literalPathspecs?: boolean } = {},
+  opts: { input?: Uint8Array; timeoutMs?: number; literalPathspecs?: boolean; captureStderr?: boolean } = {},
 ): Promise<GitRun> {
   const argv = [
     git,
@@ -256,8 +261,11 @@ export async function runGit(
     // `input` is how the Files view hands git file NAMES: on stdin, never in argv.
     stdin: opts.input ?? "ignore",
     stdout: "pipe",
-    stderr: "ignore",
+    // Piped only for a caller that answers with git's own failure sentence (`worktree add`).
+    stderr: opts.captureStderr === true ? "pipe" : "ignore",
   });
+  // Drained alongside stdout, never after it: a child blocked on a full stderr pipe never exits.
+  const stderr = proc.stderr instanceof ReadableStream ? drainCapped(proc.stderr, maxBytes) : undefined;
   let timedOut = false;
   const timer = setTimeout(() => {
     timedOut = true;
@@ -279,10 +287,25 @@ export async function runGit(
       size += chunk.byteLength;
     }
     const code = await proc.exited;
-    return { code, stdout: Buffer.concat(chunks), capped, timedOut };
+    const run: GitRun = { code, stdout: Buffer.concat(chunks), capped, timedOut };
+    if (stderr !== undefined) run.stderr = (await stderr).toString("utf8");
+    return run;
   } finally {
     clearTimeout(timer);
   }
+}
+
+/** Every chunk of `stream` read to its end, keeping the first `maxBytes`. The rest is read and dropped. */
+async function drainCapped(stream: ReadableStream<Uint8Array>, maxBytes: number): Promise<Buffer> {
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for await (const chunk of stream) {
+    if (size >= maxBytes) continue;
+    const part = chunk.byteLength > maxBytes - size ? chunk.subarray(0, maxBytes - size) : chunk;
+    chunks.push(part);
+    size += part.byteLength;
+  }
+  return Buffer.concat(chunks);
 }
 
 /**

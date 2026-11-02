@@ -1877,8 +1877,6 @@ export const en = {
   // --- worktrees (ADR 0032) ---
   "apiError.worktree.create_failed": "The worktree couldn't be created: {reason}",
   "apiError.worktree.created_not_opened": "The branch was created, but nothing could be opened on it: {reason}",
-  "apiError.worktree.busy": "Another worktree operation is still running. Try again in a moment.",
-  "apiError.worktree.ambiguous_branch": "That branch name matches more than one thing: {reason}",
   "apiError.worktree.branch_required": "Type a branch name first.",
   "apiError.worktree.not_a_repo": "This space isn't in a Git repository.",
   "apiError.worktree.invalid_branch": "That branch name is not allowed. Use letters, digits, dashes and slashes.",

@@ -1628,8 +1628,6 @@ export const fr: Dictionary = {
   "apiError.crew.not_lead": "Ce collie ne dirige pas de crew, il n'y a donc aucune crew à afficher.",
   "apiError.worktree.create_failed": "Impossible de créer le worktree : {reason}",
   "apiError.worktree.created_not_opened": "La branche a été créée, mais rien n'a pu y être ouvert : {reason}",
-  "apiError.worktree.busy": "Une autre opération de worktree est en cours, réessayez dans un instant.",
-  "apiError.worktree.ambiguous_branch": "Ce nom de branche correspond à plusieurs éléments : {reason}",
   "apiError.worktree.branch_required": "Entrez d'abord un nom de branche.",
   "apiError.worktree.not_a_repo": "Cet espace n'est pas dans un dépôt Git.",
   "apiError.worktree.invalid_branch": "Ce nom de branche n'est pas autorisé. Utilisez des lettres, des chiffres, des tirets et des barres obliques.",

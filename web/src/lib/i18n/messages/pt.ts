@@ -1627,8 +1627,6 @@ export const pt: Dictionary = {
   "apiError.crew.not_lead": "Este collie não lidera uma crew, portanto não há crew para mostrar.",
   "apiError.worktree.create_failed": "Não foi possível criar a worktree: {reason}",
   "apiError.worktree.created_not_opened": "A branch foi criada, mas nada pôde ser aberto nela: {reason}",
-  "apiError.worktree.busy": "Outra operação de worktree ainda está em execução. Tente de novo em instantes.",
-  "apiError.worktree.ambiguous_branch": "Esse nome de branch corresponde a mais de um item: {reason}",
   "apiError.worktree.branch_required": "Digite um nome de branch primeiro.",
   "apiError.worktree.not_a_repo": "Este espaço não está em um repositório Git.",
   "apiError.worktree.invalid_branch": "Esse nome de branch não é permitido. Use letras, dígitos, hífens e barras.",

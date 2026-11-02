@@ -1747,8 +1747,6 @@ export const zh: Dictionary = {
   // --- worktrees (ADR 0032) ---
   "apiError.worktree.create_failed": "创建 worktree 失败：{reason}",
   "apiError.worktree.created_not_opened": "分支创建成功，但无法在其上打开工作区：{reason}",
-  "apiError.worktree.busy": "另一个 worktree 操作正在执行，请稍后重试。",
-  "apiError.worktree.ambiguous_branch": "分支名称存在多处匹配：{reason}",
   "apiError.worktree.branch_required": "请指定分支名称。",
   "apiError.worktree.not_a_repo": "当前工作区不在 Git 仓库中。",
   "apiError.worktree.invalid_branch": "不允许使用这个分支名称。请使用字母、数字、连字符和斜杠。",
