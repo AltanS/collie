@@ -6,7 +6,9 @@ import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
 import type { AgentView } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { splitWalkyAddresses } from "@/lib/walky-names";
+import { sentTargetAddress, sessionNameOf, splitWalkyAddresses, type WalkyLivePanes } from "@/lib/walky-names";
+import type { WalkyRow } from "@/lib/walky";
+import { targetWord } from "@/lib/walky";
 
 // A session named in running text (M80 spec 12). An agent's message often says where to look
 // ("see bluefin/w54:p1J"); the address is the wire's, the person reads the session's name. The address
@@ -26,6 +28,19 @@ import { splitWalkyAddresses } from "@/lib/walky-names";
 /** The words a chip or a head says for a session: "name", or "name on machine" when it is another machine's. */
 export function nameOnMachine(name: string, machine: string | null): string {
   return machine === null ? name : t("walky.name.onMachine", { name, machine });
+}
+
+/**
+ * A sent message's target the way a person says it: the live pane's name, with "on <machine>" when it is on
+ * another machine, or the bare `all` as every machine. A target no live pane holds is shown as its address
+ * without the token, as it always was: a machine beside a bare address says nothing more. The address comes
+ * from the message's own `to` when it names one pane (`sentTargetAddress`), so a replaced pane is not named by
+ * the session that holds its id now.
+ */
+export function sentTargetWords(row: Pick<WalkyRow, "to" | "receipt">, live: WalkyLivePanes, self: string | undefined): string {
+  if (row.receipt.target === "all") return targetWord(row.receipt.target);
+  const named = sessionNameOf(sentTargetAddress(row), live, self, null);
+  return named.pane === null ? named.name : nameOnMachine(named.name, named.machine);
 }
 
 /** One session's name as a chip that opens its pane, or as plain marked text when `onOpen` is null. */

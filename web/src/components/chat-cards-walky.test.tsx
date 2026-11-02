@@ -2,7 +2,8 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { ToolCard } from "@/components/chat-cards";
-import { WalkyLogProvider, WalkyOpenProvider } from "@/components/walky-log";
+import { WalkyLogProvider, WalkyOpenProvider, WalkyPanesProvider } from "@/components/walky-log";
+import type { AgentView } from "@/lib/types";
 import type { ChatToolCall } from "@/lib/chat-items";
 import { fixtureWalkyAgent, fixtureWalkyOperator, fixtureWalkySelf, fixtureWalkySent } from "@/test/handlers";
 import { WALKY_LIST_LIMIT, type WalkyRow } from "@/lib/walky";
@@ -209,5 +210,75 @@ describe("message ids in a tool's output", () => {
     await user.click(screen.getByRole("button", { name: /^Output/ }));
     expect(screen.queryByRole("button", { name: /^Open message / })).toBeNull();
     expect(screen.getByText(`see ${ID}`)).toBeInTheDocument();
+  });
+});
+
+// ── THE SEND CARD NAMES THE SESSION (M80 spec 12) ─────────────────────────────
+
+describe("the agent's own send card", () => {
+  const SEND = 'collie walky send bluefin/w6:p3#k3f9 "Merged."';
+  const livePane = (over: Partial<AgentView> = {}): AgentView => ({
+    paneId: "w6:p3",
+    workspaceId: "w6",
+    workspaceLabel: "collie-workspace",
+    workspaceNumber: 6,
+    tabId: "w6:t1",
+    agent: "claude",
+    status: "idle",
+    cwd: "/home/altan/collie",
+    focused: false,
+    kind: "agent",
+    host: "bluefin",
+    instance: "k3f9",
+    ...over,
+  });
+
+  function drawWith(panes: AgentView[]) {
+    cleanup();
+    render(
+      <WalkyLogProvider rows={[fixtureWalkySent]}>
+        <WalkyPanesProvider value={{ live: { panes, lead: "bluefin" }, open: vi.fn() }}>
+          <WalkyOpenProvider open={null} self={fixtureWalkySelf}>
+            <ToolCard callId="call-1" tool={exec(SEND, SEND_OUTPUT)} status="done" />
+          </WalkyOpenProvider>
+        </WalkyPanesProvider>
+      </WalkyLogProvider>,
+    );
+  }
+
+  it("says \"Message to <name>\" for the live pane the message went to, never its address", () => {
+    drawWith([livePane({ paneLabel: "plumbing" })]);
+    expect(receipt()).toHaveTextContent("Message to plumbing: typed into the pane");
+    expect(receipt()?.textContent).not.toContain("w6:p3");
+  });
+
+  it("names a pane with only a terminal title by its folder, and by folder#branch when the view has the branch", () => {
+    drawWith([livePane({ terminalTitle: "Walky-talky message from collie-04rj6a" })]);
+    expect(receipt()).toHaveTextContent("Message to collie: typed into the pane");
+    drawWith([livePane({ terminalTitle: "Walky-talky message from collie-04rj6a", gitHead: { kind: "branch", name: "fix-465" } })]);
+    expect(receipt()).toHaveTextContent("Message to collie#fix-465: typed into the pane");
+  });
+
+  it("adds the machine for a pane on another machine", () => {
+    const far: WalkyRow = { ...fixtureWalkySent, to: "workshop/w2:p1", receipt: { ...fixtureWalkySent.receipt, target: "workshop/w2:p1" } };
+    cleanup();
+    render(
+      <WalkyLogProvider rows={[far]}>
+        <WalkyPanesProvider value={{ live: { panes: [livePane({ host: "workshop", paneId: "w2:p1", paneLabel: "docs", instance: undefined })], lead: "bluefin" }, open: vi.fn() }}>
+          <WalkyOpenProvider open={null} self={fixtureWalkySelf}>
+            <ToolCard callId="call-1" tool={exec('collie walky send workshop/w2:p1 "x"', SEND_OUTPUT)} status="done" />
+          </WalkyOpenProvider>
+        </WalkyPanesProvider>
+      </WalkyLogProvider>,
+    );
+    expect(receipt()).toHaveTextContent("Message to docs on workshop: typed into the pane");
+  });
+
+  it("falls back to the address without its token when no live pane holds it, or the session was replaced", () => {
+    drawWith([]);
+    expect(receipt()).toHaveTextContent("Message to bluefin/w6:p3: typed into the pane");
+    drawWith([livePane({ paneLabel: "newcomer", instance: "n3w1" })]);
+    expect(receipt()).toHaveTextContent("Message to bluefin/w6:p3: typed into the pane");
+    expect(receipt()?.textContent).not.toContain("newcomer");
   });
 });

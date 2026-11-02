@@ -4,9 +4,10 @@
 // id: agents need them. A person reading a message on the phone needs the session's NAME, so this module
 // turns an address into the name of the live pane that holds it, and finds addresses inside a body.
 //
-// ── ONE NAME RULE ─────────────────────────────────────────────────────────────
-// The name is `paneName(pane)` (lib/pane-name.ts), the one rule every other screen uses. A second rule
-// here would let one pane carry two names, and a renamed pane would keep its old one in old messages.
+// ── THE NAME RULE: `paneName` WITHOUT THE TERMINAL TITLE ──────────────────────
+// `walkyPaneName` follows `paneName` (lib/pane-name.ts) tier for tier and skips the terminal title, because a
+// Claude pane's title comes from its first prompt, which for a walky receiver is the walky header itself
+// ("Message from Walky-talky message from collie-04rj6a"). The title keeps naming the work on every other screen.
 //
 // ── A NAME IS A CLAIM UNTIL A LIVE PANE HOLDS IT ──────────────────────────────
 // A body is text an agent wrote, so an address in it is a claim. It becomes a name only where a live pane
@@ -23,7 +24,8 @@
 // resolve either, since a name for the wrong terminal is worse than the address.
 //
 // Pure and React-free: the card, the sheets and the tests all call these functions.
-import { paneName } from "./pane-name";
+import { paneGitHead } from "./git-head";
+import { soleTabName } from "./pane-name";
 import type { AgentView } from "./types";
 import { SOLO_MEMBER, type WalkyRow } from "./walky";
 
@@ -31,6 +33,25 @@ import { SOLO_MEMBER, type WalkyRow } from "./walky";
 export interface WalkyLivePanes {
   readonly panes: readonly AgentView[];
   readonly lead: string | undefined;
+}
+
+/**
+ * The name a walky surface gives a live pane, in the order of `paneName` minus the terminal title:
+ * the operator's pane label, Claude's own session name, the name of a one-pane tab the operator named,
+ * `<folder>#<branch>` when the pane's folder is on a branch, the folder's name, and last the agent word
+ * ("shell" for a shell). The folder is the last part of the pane's cwd; a detached head names no branch.
+ */
+export function walkyPaneName(pane: AgentView): string {
+  if (pane.paneLabel) return pane.paneLabel;
+  if (pane.sessionName) return pane.sessionName;
+  const tab = soleTabName(pane);
+  if (tab !== null) return tab;
+  const folder = pane.cwd.split(/[\\/]/u).findLast((part) => part.length > 0) ?? "";
+  if (folder !== "") {
+    const head = paneGitHead(pane);
+    return head?.kind === "branch" ? `${folder}#${head.name}` : folder;
+  }
+  return pane.kind === "shell" ? "shell" : pane.agent;
 }
 
 /** No live pane known: every name falls back to the log's label. */
@@ -67,7 +88,7 @@ function remoteMember(member: string | null, self: string | undefined): string |
 // ── THE LIVE PANES, INDEXED ONCE ──────────────────────────────────────────────
 // A body can hold many words and a card many bodies, so the panes are indexed by pane id ONCE per list
 // (a WeakMap keyed by the list, which the pane screen and the Crew page memoise) and every lookup after
-// that is a map read. The index also settles the display names: two live panes that share one `paneName`
+// that is a map read. The index also settles the display names: two live panes that share one name
 // would read as one session, so each gets its short pane id in square brackets after the name.
 interface LiveIndex {
   readonly byId: ReadonlyMap<string, readonly AgentView[]>;
@@ -84,7 +105,7 @@ function indexOfLive(live: WalkyLivePanes): LiveIndex {
   const byName = new Map<string, AgentView[]>();
   for (const pane of live.panes) {
     byId.set(pane.paneId, [...(byId.get(pane.paneId) ?? []), pane]);
-    const name = paneName(pane);
+    const name = walkyPaneName(pane);
     byName.set(name, [...(byName.get(name) ?? []), pane]);
   }
   const display = new Map<AgentView, string>();
@@ -165,7 +186,7 @@ export interface SessionName {
 /**
  * The name of the session at `address`, and the machine to add beside it.
  *
- * With a live pane the name is `paneName(pane)` (with its pane id in brackets when another live pane has
+ * With a live pane the name is `walkyPaneName(pane)` (with its pane id in brackets when another live pane has
  * the same name). Without one it is `fallbackLabel` (the log's label, when the caller has one), else the
  * address without its token. An address whose token no live pane carries (the pane was replaced) names no
  * live pane. The machine is decided by the address alone, as `remoteMachineOf` decides it today.
@@ -179,7 +200,7 @@ export function sessionNameOf(
   const machine = remoteMember(memberOfAddress(address), self);
   const index = indexOfLive(live);
   const match = matchAddress(address, index);
-  if (match !== null) return { name: index.display.get(match.pane) ?? paneName(match.pane), machine, pane: match.pane, pinned: match.pinned };
+  if (match !== null) return { name: index.display.get(match.pane) ?? walkyPaneName(match.pane), machine, pane: match.pane, pinned: match.pinned };
   const label = fallbackLabel === null || fallbackLabel === "" ? withoutToken(address) : fallbackLabel;
   return { name: label, machine, pane: null, pinned: false };
 }
@@ -257,11 +278,11 @@ function resolveWord(word: string, token: string | null, index: LiveIndex, self:
   if (segments.length === 2 && segments[0] !== "" && segments[1] !== "") {
     const found = matchOn(index, segments[0]!, segments[1]!, token);
     if (found === null) return null;
-    return { name: index.display.get(found.pane) ?? paneName(found.pane), machine: remoteMember(segments[0]!, self), pane: found.pane, pinned: found.pinned };
+    return { name: index.display.get(found.pane) ?? walkyPaneName(found.pane), machine: remoteMember(segments[0]!, self), pane: found.pane, pinned: found.pinned };
   }
   if (segments.length !== 1 || !BARE_PANE_ID_HINT.test(word)) return null;
   const found = matchOn(index, null, word, null);
   if (found === null) return null;
   const machine = remoteMember(paneMemberOf(found.pane, index.lead), self);
-  return { name: index.display.get(found.pane) ?? paneName(found.pane), machine, pane: found.pane, pinned: false };
+  return { name: index.display.get(found.pane) ?? walkyPaneName(found.pane), machine, pane: found.pane, pinned: false };
 }

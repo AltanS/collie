@@ -6,14 +6,14 @@ import { Button } from "@/components/ui/button";
 import { BottomSheet } from "@/components/ui/sheet";
 import { WalkyIdChip } from "@/components/walky-id-chip";
 import { useWalkyLive, useWalkyLog } from "@/components/walky-log";
-import { WalkyBodyText, nameOnMachine } from "@/components/walky-name-chip";
+import { WalkyBodyText, sentTargetWords } from "@/components/walky-name-chip";
 import { WalkyIcon } from "@/components/walky-icon";
 import { useLocale } from "@/hooks/use-locale";
 import { clockTime, timeAgoShort } from "@/lib/format";
 import { t } from "@/lib/i18n";
-import { directionOf, isHeld, signerOf, stateWord, targetWord, verifiedWord, type WalkyRow } from "@/lib/walky";
+import { directionOf, isHeld, signerOf, stateWord, verifiedWord, type WalkyRow } from "@/lib/walky";
 import { cn } from "@/lib/utils";
-import { senderNameOf, sentTargetAddress, sessionNameOf, type WalkyLivePanes } from "@/lib/walky-names";
+import { senderNameOf } from "@/lib/walky-names";
 
 // The pane's Messages sheet (M62 spec 05): every walky talky message the bridge kept for this pane,
 // newest first, with where each one stands. It reads the same list the Chat card and the mirror row
@@ -152,7 +152,7 @@ function WalkyListRow({
   // The person reads names; the address and the id stay on the wire (lib/walky-names.ts).
   const live = useWalkyLive();
   const sender = senderNameOf(row, live, self).name;
-  const target = targetNameOf(row, live, self);
+  const target = sentTargetWords(row, live, self);
   const replied = row.replyTo === null ? undefined : byId(row.replyTo);
   const sent = directionOf(row, self) === "sent";
   // Only a message that came in from an agent has an address to answer.
@@ -253,18 +253,6 @@ function WalkyListRow({
       )}
     </div>
   );
-}
-
-/**
- * A target the way a person says it: the live pane's name, with "on <machine>" when it is on another
- * machine, or the bare `all` as every machine. A target no live pane holds is shown as its address, as it
- * always was: the log keeps no label for a target, and a machine beside a bare address says nothing more.
- */
-function targetNameOf(row: WalkyRow, live: WalkyLivePanes, self: string | undefined): string {
-  if (row.receipt.target === "all") return targetWord(row.receipt.target);
-  // The message's own `to` carries the instance token when it names one pane, so a replaced pane is not named by mistake.
-  const named = sessionNameOf(sentTargetAddress(row), live, self, null);
-  return named.pane === null ? named.name : nameOnMachine(named.name, named.machine);
 }
 
 /** The "in reply to" chip: the message it answers, told by its sender and time, a tap moves the focus to it. */
