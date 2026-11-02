@@ -852,7 +852,8 @@ describe("solo zero-tax — routes", () => {
       // This host's own launcher rows, read live off its `launchers.toml` — a SOLO route that
       // legitimately extends this list, named here rather than exempted. Session-scoped and
       // read-gated through the same closure `/api/launch` rides, so a `?host=` call forwards to
-      // the peer that runs the rows rather than reading the lead's own file.
+      // the peer that runs the rows, and a lead adds its own rows to that answer (ADR 0127). A solo
+      // instance has no member to forward to, so its answer is its own rows alone.
       "/api/launchers",
       // Rows a phone adds, removes and renames on THIS machine (ADR 0094) — three SOLO writes that
       // legitimately extend this list, named here rather than exempted. Session-scoped and write-gated

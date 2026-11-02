@@ -5,6 +5,7 @@ import { MAX_UPLOAD_OVERHEAD, uploadTooLarge } from "../uploads.ts";
 import { DEVICE_HEADER, encodeDeviceHeader } from "./admission.ts";
 import {
   type CrewLink,
+  type CrewParams,
   type PeerFailure,
   type PeerOutcome,
   PANE_READ_BUDGET_MS,
@@ -204,6 +205,20 @@ export function apiPathFor(route: string): string | null {
   return FORWARDABLE.some((re) => re.test(route)) ? `/api/${route}` : null;
 }
 
+/**
+ * How the lead merges its own data into one forwarded read before the phone gets it. One route passes one: `GET
+ * /api/launchers`, whose answer for a member carries the lead's rows as well (ADR 0127,
+ * `launcher-rows.ts`). Every other forward stays a proxy.
+ *
+ * `ask` builds the URL the member is asked from the phone's. `answer` takes the member's answer as
+ * plain bytes (the lead asks for them, `accept-encoding` is the lead's, not the phone's) and makes
+ * the answer the phone gets, compressed for the phone's hop by the route's own JSON writer.
+ */
+export interface LeadMerge {
+  ask(url: URL): Promise<URL>;
+  answer(member: Response): Promise<Response>;
+}
+
 /** A forwarded read (proxied byte-for-byte, §9.1) or a forwarded write (§10.3, §12). */
 export type ForwardKind = "read" | "write";
 
@@ -342,10 +357,12 @@ export function forwardAuditAction(route: string, method?: string): string | nul
  * the first step of a hop chain this protocol does not have.
  */
 export function forwardParams(url: URL) {
-  const params: Record<string, string> = {};
-  for (const [k, v] of url.searchParams) {
+  const params: Record<string, string | string[]> = {};
+  for (const k of new Set(url.searchParams.keys())) {
     if (k === HOST_PARAM) continue;
-    params[k] = v;
+    // A key asked once stays a string; a repeated one (ADR 0127's `?cwd=`) keeps every value, in order.
+    const values = url.searchParams.getAll(k);
+    params[k] = values.length === 1 ? values[0]! : values;
   }
   return params;
 }
@@ -625,7 +642,7 @@ export class MemberPaneReads {
 export type ForwardTransport = (
   link: CrewLink,
   route: string,
-  params: Record<string, string>,
+  params: CrewParams,
   init: RequestInit,
   budgetMs?: number,
 ) => Promise<PeerOutcome<Response>>;

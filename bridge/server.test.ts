@@ -137,6 +137,8 @@ import {
 } from "./mux/types.ts";
 import { muxCaps, neverProxy } from "./crew/fixtures.ts";
 import { crewRouteFor, forwardHeaders } from "./crew/forward.ts";
+import { CWD_PARAM, leadRowsRead } from "./crew/launcher-rows.ts";
+import { mergeLaunchers } from "./launcher-adds.ts";
 import { crewDeviceOf, crewGate } from "./crew/peer-gate.ts";
 import { CrewLead } from "./crew/lead.ts";
 import { NARROW_PLAN, snapshotPlan } from "./crew/merge.ts";
@@ -3618,8 +3620,9 @@ describe("the host gate — `?host=` selects among enrolled members and nothing 
     // conversation list and the items or reopen of one (M53 spec 11), and Sent's read and its two
     // writes, served by one function with one resolve for the read and one for the writes (ADR 0107),
     // and the New page's folder browser (#467)) reach their runtime through the caller's resolver and
-    // nothing else.
-    expect([...src.matchAll(/await caller\.resolve\(\);/g)]).toHaveLength(27);
+    // nothing else. One of them, the launcher rows, hands the resolver the lead's merge (ADR 0127).
+    expect([...src.matchAll(/await caller\.resolve\((?:leadRows)?\);/g)]).toHaveLength(27);
+    expect([...src.matchAll(/await caller\.resolve\(leadRows\);/g)]).toHaveLength(1);
     // Exactly eight `registry.get(` calls remain, and each is a sanctioned one, named here rather
     // than exempted: assembling THIS collie's own snapshot body; `localRuntime`, the single
     // "(session) → runtime, or 404" helper both callers share; `/api/config`, which reports THIS
@@ -4381,6 +4384,110 @@ describe("GET /api/launchers — this host's own rows, home included", () => {
     const res = await launchersRoute(() => Promise.resolve([]), null);
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ launchers: [], home: homedir() });
+  });
+});
+
+// ── ADR 0127: the lead's rows for any host ─────────────────────────────────────────────────────
+//
+// The route itself lives inside `Bun.serve`, so the halves are held here: the member's answer is
+// the real `launchersRoute` (with the lead's folder questions), the lead's merge is the real
+// `leadRowsRead`, and the source read pins the glue between them.
+describe("GET /api/launchers?host= — the lead's rows on a member's answer (ADR 0127)", () => {
+  const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
+  const NOW = 1_700_000_000_000;
+  const LEAD_FILE = "/lead/launchers.toml";
+  const switches = { adds: true, freeText: true, run: true };
+  const probe = { list: () => Promise.resolve([{ id: "claude", label: "Claude Code", found: true }]) };
+  const leadRows: Launcher[] = [
+    { command: "make test", label: "Tests (lead)", cwd: join(homedir(), "m82-no-such-folder") },
+    { command: "htop", label: "Top (lead)" },
+    { command: "du -sh", label: "Disk", cwd: homedir() },
+  ];
+  const memberRows: Launcher[] = [{ command: "htop", label: "Top (member)" }];
+
+  /** The member's own answer, as its route builds it, to the folder questions the lead asked. */
+  async function memberAnswer(asked: readonly string[] | undefined): Promise<Response> {
+    const adding = {
+      merged: () => Promise.resolve(mergeLaunchers(memberRows, [], switches)),
+      file: "/member/launchers.toml",
+      recent: () => Promise.resolve([{ line: "ls", cwd: null, at: NOW, noPrompts: false }]),
+    };
+    return launchersRoute(() => Promise.resolve(memberRows), null, probe, adding, undefined, asked);
+  }
+
+  function leadMerge() {
+    return leadRowsRead(
+      () => Promise.resolve({ merged: mergeLaunchers(leadRows, [], switches), file: LEAD_FILE, home: homedir() }),
+      (body) => Response.json(body),
+    );
+  }
+
+  async function bodyOf(res: Response): Promise<LaunchersResponse> {
+    // SAFETY: both writers here (`launchersRoute` and the merge's `Response.json`) answer a `LaunchersResponse`.
+    return (await res.json()) as LaunchersResponse;
+  }
+
+  test("the lead's rows ride the member's answer, marked `from: \"lead\"`, after the member's own", async () => {
+    const merge = leadMerge();
+    const asked = await merge.ask(new URL("https://lead/api/launchers?host=laptop"));
+    const body = await bodyOf(await merge.answer(await memberAnswer(asked.searchParams.getAll(CWD_PARAM))));
+    const rows = body.items!.filter((i) => i.command !== undefined);
+    expect(rows.map((i) => [i.command, i.from])).toEqual([
+      ["htop", undefined],
+      ["make test", "lead"],
+      ["du -sh", "lead"],
+    ]);
+    // `adding` is the lead's: a phone's row lands in the lead's store (ADR 0127 point 4).
+    expect(body.adding?.file).toBe(LEAD_FILE);
+    // The member's own history and rows stay its own; the folder answers were the lead's alone.
+    expect(body.recentRuns?.map((r) => r.line)).toEqual(["ls"]);
+    expect(body.launchers.map((r) => r.command)).toEqual(["htop"]);
+    expect(body.folders).toBeUndefined();
+  });
+
+  test("the member's own row wins on the same command", async () => {
+    const merge = leadMerge();
+    const asked = await merge.ask(new URL("https://lead/api/launchers?host=laptop"));
+    const body = await bodyOf(await merge.answer(await memberAnswer(asked.searchParams.getAll(CWD_PARAM))));
+    const htop = body.items!.filter((i) => i.command === "htop");
+    expect(htop).toHaveLength(1);
+    expect(htop[0]!.label).toBe("Top (member)");
+    expect(htop[0]!.from).toBeUndefined();
+  });
+
+  test("a pinned folder the member says is absent is `no_folder`; one it has stays available", async () => {
+    const merge = leadMerge();
+    const asked = await merge.ask(new URL("https://lead/api/launchers?host=laptop"));
+    expect(asked.searchParams.getAll(CWD_PARAM)).toEqual(["~/m82-no-such-folder", "~"]);
+    const answer = await memberAnswer(asked.searchParams.getAll(CWD_PARAM));
+    const body = await bodyOf(await merge.answer(answer));
+    expect(body.items!.find((i) => i.command === "make test")).toMatchObject({ available: false, reason: "no_folder" });
+    expect(body.items!.find((i) => i.command === "du -sh")).toMatchObject({ available: true });
+  });
+
+  test("an old member (no `folders`) leaves availability to the harness check", async () => {
+    const body = await bodyOf(await leadMerge().answer(await memberAnswer(undefined)));
+    const fromLead = body.items!.filter((i) => i.from === "lead");
+    expect(fromLead).toHaveLength(2);
+    expect(fromLead.every((i) => i.available && i.reason === undefined)).toBe(true);
+  });
+
+  test("solo and the lead's own host answer unchanged: no `from`, no `folders`", async () => {
+    const body = await bodyOf(await memberAnswer(undefined));
+    expect(body.folders).toBeUndefined();
+    expect(body.items!.some((i) => i.from !== undefined)).toBe(false);
+    expect(body.adding?.file).toBe("/member/launchers.toml");
+  });
+
+  test("the glue: the route hands the resolver the merge, and answers folders to a crew caller only", () => {
+    const route = src.slice(src.indexOf('if (pathname === "/api/launchers" && req.method === "GET")'));
+    const block = route.slice(0, route.indexOf("\n    }\n"));
+    expect(block).toContain("const leadRows = leadRowsRead(");
+    expect(block).toContain("await caller.resolve(leadRows);");
+    expect(block).toContain('caller.via === "crew" ? url.searchParams.getAll(CWD_PARAM) : undefined');
+    // The forward is still the gate's one branch; a merge only changes what is asked and what comes back.
+    expect(src).toContain("const askUrl = merge === undefined ? url : await merge.ask(url);");
+    expect(src).toContain("if (merge !== undefined) return merge.answer(forwarded);");
   });
 });
 

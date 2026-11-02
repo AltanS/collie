@@ -224,6 +224,12 @@ describe("crewUrl — an address is a machine, never a URL with extras", () => {
     );
   });
 
+  test("a list param rides the query once per value (ADR 0127's folder questions)", () => {
+    expect(crewUrl("laptop.example", "launchers", { cwd: ["~/a", "/srv/b"], session: "work" })).toBe(
+      "https://laptop.example/crew/v1/launchers?cwd=%7E%2Fa&cwd=%2Fsrv%2Fb&session=work",
+    );
+  });
+
   test("an address carrying a path, query, fragment or credentials is refused", () => {
     for (const bad of [
       "laptop.example:8787/evil",

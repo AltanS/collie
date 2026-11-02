@@ -624,7 +624,13 @@ export interface PeerClientDeps {
  * Returns `null` when either check fails — the caller reports it as unreachable, because a member the
  * lead cannot form a URL for is, from the phone's point of view, exactly a member that is not there.
  */
-export function crewUrl(address: string, route: string, params?: Record<string, string>): string | null {
+/**
+ * A crew call's query. A key the phone (or the lead, ADR 0127's `?cwd=`) repeats is a list, sent as
+ * the same key once per value, so a member's `searchParams.getAll` reads every one of them.
+ */
+export type CrewParams = Readonly<Record<string, string | readonly string[]>>;
+
+export function crewUrl(address: string, route: string, params?: CrewParams): string | null {
   const withScheme = /^https?:\/\//i.test(address) ? address : `https://${address}`;
   let base: URL;
   try {
@@ -644,7 +650,13 @@ export function crewUrl(address: string, route: string, params?: Record<string, 
   // Defence in depth against a route assembled from anything but a literal upstream: `..` segments
   // are normalised by `new URL`, so this catches an escape after normalisation rather than before it.
   if (!url.pathname.startsWith(CREW_PREFIX)) return null;
-  for (const [k, v] of Object.entries(params ?? {})) url.searchParams.set(k, v);
+  for (const [k, v] of Object.entries(params ?? {})) {
+    if (typeof v === "string") {
+      url.searchParams.set(k, v);
+      continue;
+    }
+    for (const each of v) url.searchParams.append(k, each);
+  }
   return url.toString();
 }
 
@@ -929,7 +941,7 @@ export class PeerClient {
   async proxy(
     link: CrewLink,
     route: string,
-    params?: Record<string, string>,
+    params?: CrewParams,
     init: CrewRequestInit = {},
     budgetMs?: number,
     sign = false,
@@ -969,7 +981,7 @@ export class PeerClient {
   private async dial(
     link: CrewLink,
     route: string,
-    params: Record<string, string> | undefined,
+    params: CrewParams | undefined,
     init: CrewRequestInit,
     mode: "consumed" | "passthrough",
     // The one knob a caller may widen, and three callers do: the verdict probe's patient budget

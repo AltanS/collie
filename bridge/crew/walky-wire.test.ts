@@ -6,7 +6,7 @@ import type { WalkyReceipt } from "../walky/types.ts";
 import { member, neverProxy } from "./fixtures.ts";
 import { apiPathFor, crewRouteFor, forwardAuditAction, forwardKind, forwardPaneId, forwardToPeer, type ForwardAuditEntry, type ForwardTransport } from "./forward.ts";
 import { CrewLead } from "./lead.ts";
-import type { PeerOutcome } from "./peer-client.ts";
+import type { CrewParams, PeerOutcome } from "./peer-client.ts";
 import { CrewRegistry, type PeerState } from "./registry.ts";
 
 // Walky talky's half of the crew wire (CREW_PROTOCOL.md §21): the lead's message to a member is a
@@ -46,7 +46,7 @@ describe("a phone's read of a member pane's walky list is a forwarded READ on th
   const STALE: PeerState = { memberId: "laptop", health: "unreachable", lastSeenAt: NOW - 60_000, reason: "connection refused", version: null, conflict: null, preflight: null };
 
   function dial(answer: PeerOutcome<Response>) {
-    const calls: { route: string; params: Record<string, string>; method: string | undefined; budgetMs: number | undefined }[] = [];
+    const calls: { route: string; params: CrewParams; method: string | undefined; budgetMs: number | undefined }[] = [];
     const transport: ForwardTransport = async (_link, route, params, init, budgetMs) => {
       calls.push({ route, params, method: init.method, budgetMs });
       return answer;

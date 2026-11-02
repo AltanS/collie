@@ -2012,6 +2012,13 @@ export interface LaunchersResponse {
    * while `[phone] run` is off too, each then unavailable with `run_off`. Absent from an older bridge.
    */
   recentRuns?: RecentRunWire[];
+  /**
+   * Whether each pinned `cwd` the lead asked about is a folder on THIS machine, keyed by the path as
+   * asked, `~` expanded here (ADR 0127). Answered only to the lead over the crew link, for the
+   * `?cwd=` it adds to a forwarded read; the lead uses it for `no_folder` and drops it from the
+   * phone's answer. Absent from a member that predates 0127.
+   */
+  folders?: Record<string, boolean>;
 }
 
 /** One line in this machine's one-off command history (ADR 0095, `bridge/recent-runs.ts`). */
@@ -2129,8 +2136,14 @@ export interface LauncherItem {
   /**
    * Why not, when `available` is false. `not_found`: the binary is not on this machine's login PATH.
    * `adds_off`: the operator turned phone rows off. `free_text_off`: free lines are off.
+   * `no_folder`: a lead row's pinned `cwd` is not a folder on this machine (ADR 0127).
    */
-  reason?: "not_found" | "adds_off" | "free_text_off";
+  reason?: "not_found" | "adds_off" | "free_text_off" | "no_folder";
+  /**
+   * `lead`: the item is one of the lead's rows, offered for this machine (ADR 0127). Set only in a
+   * lead's answer for another host of its crew; absent on a machine's own items and in solo.
+   */
+  from?: "lead";
   /** Added rows: the id (for rename and remove), who added it, when, and how. */
   id?: string;
   addedBy?: string;

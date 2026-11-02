@@ -184,6 +184,8 @@ import {
   maskTodoList,
 } from "./answer-mask.ts";
 import { maskForwardedAnswer } from "./crew/mask.ts";
+import type { LeadMerge } from "./crew/forward.ts";
+import { CWD_PARAM, folderAnswers, leadRowsRead } from "./crew/launcher-rows.ts";
 import { redactAnsi } from "./redact.ts";
 import { TranscriptStore } from "./journal/store.ts";
 import type { AgentSessionRef, DiscoverHints, ForegroundProcess, JournalAdapter, PaneScreen } from "./journal/types.ts";
@@ -726,8 +728,12 @@ interface RouteCaller {
    * `(host, session)` → the runtime to act on, or the Response refusing/answering it. For a browser
    * this may resolve to *another machine*, in which case the request is forwarded and the peer's own
    * response comes back here (§9.1). For a crew caller it is always local.
+   *
+   * `merge` is the one way a route changes a forwarded answer on the lead, and one route passes it:
+   * `GET /api/launchers`, which adds the lead's rows to a member's answer (ADR 0127). A local runtime
+   * and the crew caller ignore it.
    */
-  resolve(): Promise<SessionRuntime | Response>;
+  resolve(merge?: LeadMerge): Promise<SessionRuntime | Response>;
   /**
    * The caller's own authorisation at this level, or `null` to proceed. `device-read` is a read that
    * needs the write level's device factors (ADR 0083) without the write level's `Origin` rule.
@@ -1887,18 +1893,25 @@ export function startServer(opts: {
         sessionFolder: await sessionFolderOf(rt.name),
       });
     }
-    // Rows must come from the host that runs them: today's `/api/config` (a lead-only body) sent
-    // the LEAD's rows down even for a launch addressed at a peer via `?host=`. Session-scoped like
-    // `/api/launch` beside it, so the same `?host=` forward (§5) reaches the peer's own
-    // `launchers.toml` rather than the lead's. `home` rides along so the client can shorten a
-    // pinned `cwd` with a leading `~` without knowing which machine answered.
+    // Session-scoped like `/api/launch` beside it, so a `?host=` read is forwarded (§5) and the
+    // member answers with its own agents, home, rows and history. `home` rides along so the client
+    // can shorten a pinned `cwd` with a leading `~` without knowing which machine answered. Since ADR
+    // 0127 the lead's rows are the crew's: the lead asks the member whether each pinned folder is
+    // there and adds its own rows to the member's answer (`crew/launcher-rows.ts`).
     if (pathname === "/api/launchers" && req.method === "GET") {
       const denied = caller.gate("read");
       if (denied) return denied;
-      const rt = await caller.resolve();
+      const acceptEncoding = req.headers.get("accept-encoding");
+      const leadRows = leadRowsRead(
+        async () => ({ merged: await launchersAdding.merged(), file: launchersAdding.file, home: homedir() }),
+        (body) => json(body, acceptEncoding),
+      );
+      const rt = await caller.resolve(leadRows);
       if (rt instanceof Response) return rt;
+      // The lead's folder questions are answered to the lead alone: a phone's `?cwd=` asks nothing.
+      const asked = caller.via === "crew" ? url.searchParams.getAll(CWD_PARAM) : undefined;
       // A durable program's starters ride the same list (ADR 0102); every other multiplexer has none.
-      return launchersRoute(allowedLaunchers, req.headers.get("accept-encoding"), harnesses, launchersAdding, rt.herdr.listStarters?.bind(rt.herdr));
+      return launchersRoute(allowedLaunchers, acceptEncoding, harnesses, launchersAdding, rt.herdr.listStarters?.bind(rt.herdr), asked);
     }
     // Add, remove or rename a row a phone added (ADR 0094). Writes, on the write gate, and
     // session-scoped for `/api/launchers`' reason: `?host=` reaches THAT machine's own store through
@@ -2680,7 +2693,7 @@ export function startServer(opts: {
        * The forward is the only asynchrony this adds, and it is why `target()` is async: a local
        * request does not await a thing it did not do — `registry.get` is still one Map lookup.
        */
-      const target = async (): Promise<SessionRuntime | Response> => {
+      const target = async (merge?: LeadMerge): Promise<SessionRuntime | Response> => {
         if (host.kind !== "local") {
           const resolved = crewLead?.resolve(host, sessionName);
           if (resolved === undefined) {
@@ -2696,11 +2709,15 @@ export function startServer(opts: {
             // engine's tick (CREW_PROTOCOL.md §10.1), so a cold lead would show the member's answer
             // up to one idle interval late. A topology write is the same case (§ isTopologyWrite).
             const input = isPaneInput(pathname, req.method) || isTopologyWrite(pathname, req.method);
+            // A merged read (ADR 0127) asks with the route's own query and no phone headers, so the
+            // member's answer comes back as plain bytes the lead can read.
+            const askUrl = merge === undefined ? url : await merge.ask(url);
+            const askReq = merge === undefined ? req : new Request(askUrl, { method: req.method });
             // The lead's own record of the forward (§12): one line, the same `action` the peer will
             // write, plus the target host — two independent logs of one event, neither depending on
             // the other machine's disk.
             const forwarded = secure(
-              await crewLead!.forward(req, url, resolved, {
+              await crewLead!.forward(askReq, askUrl, resolved, {
                 device: whois(req).device,
                 // A member's text is masked here too, by the lead's own switch, so a member one
                 // release behind cannot send a key to the phone in clear (CREW_PROTOCOL.md §9.1).
@@ -2720,6 +2737,7 @@ export function startServer(opts: {
                 },
               }),
             );
+            if (merge !== undefined) return merge.answer(forwarded);
             // The PRIMARY engine, because that is the one whose tick the sweep rides (index.ts).
             const own = registry.get()?.engine;
             return input && own !== undefined ? afterPaneInput(own, forwarded) : forwarded;
@@ -6545,15 +6563,20 @@ function parseFolderChoice(
 // `harnesses` rides along when the route is built with a probe (ADR 0091): the agents this host can
 // start by id and whether each binary is on its login PATH. A bridge that predates the New sheet
 // sends no such field, and that absence is how the phone recognises an older crew member.
+//
+// `folders` is the lead's folder questions (ADR 0127), passed only for a call over the crew link: each
+// is answered with whether that path is a folder here, `~` read as this machine's home.
 export async function launchersRoute(
   getLaunchers: () => Promise<Launcher[]>,
   acceptEncoding: string | null,
   harnesses?: Pick<HarnessProbe, "list">,
   adding?: { merged: () => Promise<MergedLaunchers>; file: string; recent?: () => Promise<RecentRun[]> },
   starters?: () => Promise<MuxStarters>,
+  folders?: readonly string[],
 ): Promise<Response> {
   const rows = await getLaunchers();
   const body: LaunchersResponse = { launchers: rows, home: homedir() };
+  if (folders !== undefined && folders.length > 0) body.folders = folderAnswers(folders, body.home);
   if (harnesses !== undefined) body.harnesses = await harnesses.list();
   // ADR 0094: the switches, this machine's `launchers.toml` path, the recipes, the rows held back, and
   // the one list the New page draws, each item with its availability here and its reason code.

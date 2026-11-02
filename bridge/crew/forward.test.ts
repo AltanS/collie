@@ -32,6 +32,7 @@ import {
   WORKTREE_WRITE_BUDGET_MS,
   WRITE_BUDGET_MS,
   type CrewLink,
+  type CrewParams,
   type PeerOutcome,
 } from "./peer-client.ts";
 import { member } from "./fixtures.ts";
@@ -78,7 +79,7 @@ const SKEWED: PeerState = {
 function transportOf(answer: (init: RequestInit) => PeerOutcome<Response>) {
   const calls: {
     route: string;
-    params: Record<string, string>;
+    params: CrewParams;
     init: RequestInit;
     budgetMs: number | undefined;
   }[] = [];
@@ -179,6 +180,18 @@ describe("which routes cross a link", () => {
     // launch or tab.launch, decided by the body) is the accurate record.
     expect(forwardAuditAction("launch")).toBe("launch");
     expect(forwardAuditAction("launchers")).toBeNull();
+  });
+
+  test("the rows read still crosses the link with the lead's rows merged in after (ADR 0127)", async () => {
+    // The member is still asked: only it knows its agents, home, own rows and history. The lead's
+    // folder questions ride the query as a list, and `host=` still never does.
+    const { transport, calls } = transportOf(() => ok(Response.json({ launchers: [], home: "/home/op" })));
+    const [req, url] = get("/api/launchers?host=laptop&cwd=~/src&cwd=/srv/data");
+    const res = await forward(req, url, { transport });
+    expect(res.status).toBe(200);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.route).toBe("launchers");
+    expect(calls[0]!.params).toEqual({ cwd: ["~/src", "/srv/data"] });
   });
 
   test("the folder list and a star on it cross the link — folders live on the member that has them", () => {
@@ -674,6 +687,11 @@ describe("request shaping", () => {
   test("`host=` is dropped and every other parameter — `session=` above all — rides through", () => {
     const url = new URL("https://lead.example/api/pane/w1:p1?host=laptop&session=work&lines=80");
     expect(forwardParams(url)).toEqual({ session: "work", lines: "80" });
+  });
+
+  test("a repeated key keeps every value, in order: the lead's folder questions (ADR 0127)", () => {
+    const url = new URL("https://lead.example/api/launchers?host=laptop&cwd=~/a&session=work&cwd=/srv/b");
+    expect(forwardParams(url)).toEqual({ cwd: ["~/a", "/srv/b"], session: "work" });
   });
 
   test("headers are an allowlist: seen + conditional + content-type, and nothing of the browser's", () => {
