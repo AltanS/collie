@@ -6,12 +6,10 @@ import { join } from "node:path";
 
 import { toPipeName } from "../../dial.ts";
 import type { JsonObject } from "../../json.ts";
-import { HerdrClient, WORKTREE_TIMEOUT_MS } from "./client.ts";
+import { HerdrClient } from "./client.ts";
 
-// The per-call budget (ADR 0089). Every Herdr call gets the client's own budget, 5 s in production,
-// except the two worktree calls, which run `git worktree add` before they answer and get
-// WORKTREE_TIMEOUT_MS. Proved against a real Unix socket (a named pipe on Windows) that answers late: a call on the client's
-// budget gives up, a worktree call on the same client waits and gets the reply.
+// The client's per-call budget. Proved against a real Unix socket (a named pipe on Windows) that
+// answers late: a call gives up at the budget the client was built with.
 
 const REPLY_DELAY_MS = 150;
 const CLIENT_BUDGET_MS = 40;
@@ -72,51 +70,12 @@ async function lateHerdr(result: JsonObject): Promise<string> {
   return path;
 }
 
-const PANE = { pane_id: "w9:p1", workspace_id: "w9", tab_id: "w9:t1", cwd: "/repo/.worktrees/x" };
-
 describe("HerdrClient per-call timeout", () => {
-  test("a worktree call gets a budget far above the default", () => {
-    expect(WORKTREE_TIMEOUT_MS).toBe(60_000);
-  });
-
-  test("an ordinary call gives up at the client's own budget", async () => {
-    const client = new HerdrClient(await lateHerdr({ worktrees: [] }), CLIENT_BUDGET_MS);
-    await expect(client.listWorktrees("/repo")).rejects.toThrow(
-      `herdr worktree.list: timed out after ${CLIENT_BUDGET_MS}ms`,
+  test("a call gives up at the client's own budget", async () => {
+    const client = new HerdrClient(await lateHerdr({ workspaces: [] }), CLIENT_BUDGET_MS);
+    await expect(client.listWorkspaces()).rejects.toThrow(
+      `herdr workspace.list: timed out after ${CLIENT_BUDGET_MS}ms`,
     );
-  });
-
-  test("worktree.create on the same client waits past that budget and gets the reply", async () => {
-    const client = new HerdrClient(
-      await lateHerdr({ workspace: { label: "x" }, root_pane: PANE }),
-      CLIENT_BUDGET_MS,
-    );
-    const created = await client.createWorktree({ cwd: "/repo", branch: "worktree/x" });
-    expect(created.paneId).toBe("w9:p1");
-    expect(created.cwd).toBe("/repo/.worktrees/x");
-  });
-
-  test("worktree.open on the same client waits past that budget too", async () => {
-    const client = new HerdrClient(
-      await lateHerdr({ workspace: { label: "x" }, root_pane: PANE, already_open: true }),
-      CLIENT_BUDGET_MS,
-    );
-    const opened = await client.openWorktree({ cwd: "/repo", path: "/repo/.worktrees/x" });
-    expect(opened.alreadyOpen).toBe(true);
-  });
-
-  test("worktree.create sends `base` when given, between branch and focus", async () => {
-    const client = new HerdrClient(await lateHerdr({ workspace: { label: "x" }, root_pane: PANE }), 1_000);
-    await client.createWorktree({ cwd: "/repo", branch: "worktree/x", base: "main" });
-    expect(lastRequest?.method).toBe("worktree.create");
-    expect(lastRequest?.params).toEqual({ cwd: "/repo", branch: "worktree/x", base: "main", focus: false });
-  });
-
-  test("worktree.create without a base is the call it always was: no `base` key at all", async () => {
-    const client = new HerdrClient(await lateHerdr({ workspace: { label: "x" }, root_pane: PANE }), 1_000);
-    await client.createWorktree({ cwd: "/repo", branch: "worktree/x" });
-    expect(lastRequest?.params).toEqual({ cwd: "/repo", branch: "worktree/x", focus: false });
-    expect(Object.keys(lastRequest?.params ?? {})).not.toContain("base");
   });
 });
 
