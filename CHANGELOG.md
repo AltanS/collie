@@ -31,6 +31,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Fixed
 
 - **A page served from one loopback port can no longer call a bridge on another.** A browser request from a loopback origin must now name the bridge's own host and port, or an origin listed in COLLIE_ALLOWED_ORIGINS; the token stays the first gate, and the tailnet and the paired phone see no change. The playground's dev proxy rewrites its own origin, so local development keeps working. Thanks @GGGODLIN (#617).
+- **A poll with no answer is one strike at any time, not only after a wake.** On a lossy path one herd poll past its deadline no longer turns the screen red at once: a later read latches "lost" only when no live answer has come for 8 seconds, a live answer and every wake give the strike back, and a pane or Chat read with no answer draws the saved copy only after that latch. Thanks @eseninik (#652).
 
 ## [1.25.5] - 2026-11-02
 
