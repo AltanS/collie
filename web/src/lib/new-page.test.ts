@@ -137,12 +137,10 @@ describe("offerFor", () => {
     expect(offer.branchBlocked).toBeNull();
   });
 
-  it("no worktrees: the worktree switch says it needs Herdr; a member: only on the lead", () => {
-    expect(offerFor({ ...base, canWorktree: false }).branchBlocked).toEqual({ kind: "needsHerdr" });
-    expect(offerFor({ ...base, memberChosen: { lead: "bluefin" } }).branchBlocked).toEqual({
-      kind: "onlyOnLead",
-      lead: "bluefin",
-    });
+  it("a machine that makes no worktree: the switch says it cannot open a space or has no git", () => {
+    expect(offerFor({ ...base, canWorktree: false }).branchBlocked).toEqual({ kind: "needsSpaceAndGit" });
+    // The capability is the chosen machine's (ADR 0126), so a member that declares it is no block.
+    expect(offerFor({ ...base, canWorktree: true }).branchBlocked).toBeNull();
   });
 
   it("a machine that takes no writes offers nothing, and its sentence blocks the worktree", () => {
@@ -399,8 +397,7 @@ describe("the Command select's list in each switch state", () => {
 describe("unavailableText", () => {
   it("says each reason in words short enough for brackets", () => {
     expect(unavailableText({ kind: "notFound" })).toBe("not installed");
-    expect(unavailableText({ kind: "needsHerdr" })).toBe("needs Herdr");
-    expect(unavailableText({ kind: "onlyOnLead", lead: "bluefin" })).toBe("only on bluefin");
+    expect(unavailableText({ kind: "needsSpaceAndGit" })).toBe("This machine cannot open a space, or has no git.");
     expect(unavailableText({ kind: "olderCollie" })).toMatch(/older Collie/);
     expect(unavailableText({ kind: "addsOff" })).toBe("turned off on this machine");
     expect(unavailableText({ kind: "freeTextOff" })).toBe("typed lines are turned off on this machine");

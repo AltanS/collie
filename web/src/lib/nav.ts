@@ -199,8 +199,8 @@ export function settingsPath(scope?: Scope): string {
  * Where the New page was opened from, which it reads back off its own address so a reload keeps it.
  * `machine` is the crew member it opens on (absent is the machine the view shows, else the lead);
  * `pane` is the pane whose folder and branch a worktree starts from, a pane's ⋯ "New agent in a
- * worktree"; `session` is that pane's named Herdr session. A pane is the lead's, so `machine` rides
- * beside it only to name the lead's own id.
+ * worktree"; `session` is that pane's named Herdr session. `machine` rides beside it as the pane's
+ * own machine, where the worktree is made (ADR 0126).
  *
  * `beside` is a pane whose SPACE the new agent starts in, as a new tab there (a large screen's "New
  * agent in this space", ADR 0120): the bridge's launch route takes it as `paneId`. It is not `pane`:

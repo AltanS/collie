@@ -138,9 +138,9 @@ interface PaneActionsSheetProps {
    * on this pane's repo.
    *
    * Absence is the first gate, as it is for the read rows: the caller passes it only for a pane whose
-   * space sits in a Git repo. The sheet adds the other two itself, because they are the same on
-   * every door: the multiplexer declares `createWorktree`, and the scope is the lead (no `?h=`), since
-   * the route is lead-local and a crew does not forward it. A write, so read-only hides it too.
+   * space sits in a Git repo. The sheet adds the other itself, because it is the same on every door:
+   * the pane's own machine declares `createWorktree` (ADR 0126: the worktree is made where the pane's
+   * folder is, and a crew forwards the route there). A write, so read-only hides it too.
    */
   onBranchOff?: () => void;
   /**
@@ -224,11 +224,11 @@ export function PaneActionsSheet({
   const canRename = useMuxCapability("renamePane", paneHost);
   const canClose = useMuxCapability("closePane", paneHost);
   const canFocus = useMuxCapability("setFocus", paneHost);
-  // Asked of the LEAD, with no host: the branch-off route never leaves the lead, so the lead's own
-  // multiplexer is the one that must be able to do it. In the session the sheet acts in (M55): a
-  // program session on the lead makes no worktree, whatever its terminal neighbour can do.
-  const canWorktree = useMuxCapability("createWorktree", { session: scope?.session });
-  const showBranchOff = onBranchOff !== undefined && branchOffOffered(canWorktree.capable, scope);
+  // Asked of the PANE's own machine, like the rows above: the worktree is made where the pane's folder
+  // is (ADR 0126), and a crew forwards the create there. In the session the sheet acts in (M55): a
+  // program session makes no worktree, whatever its terminal neighbour can do.
+  const canWorktree = useMuxCapability("createWorktree", paneHost);
+  const showBranchOff = onBranchOff !== undefined && branchOffOffered(canWorktree.capable);
   const [focusing, setFocusing] = useState(false);
   // The mux name for the "Focus in <mux>" row and its toast — see `focusMux` below for why this
   // is gated to panes on the LOCAL machine before it's trusted.

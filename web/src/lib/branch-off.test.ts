@@ -4,12 +4,9 @@ import type { WorkspaceView } from "./types";
 // "New agent in a worktree" (ADR 0089, M48): the menu's gates, and the "Start from" choice.
 
 describe("branchOffOffered", () => {
-  it("needs the capability and the lead scope", () => {
-    expect(branchOffOffered(true, undefined)).toBe(true);
-    expect(branchOffOffered(true, { session: "work" })).toBe(true);
-    expect(branchOffOffered(true, { host: "  " })).toBe(true);
-    expect(branchOffOffered(false, undefined)).toBe(false);
-    expect(branchOffOffered(true, { host: "laptop" })).toBe(false);
+  it("needs the capability of the pane's machine, whichever machine that is (ADR 0126)", () => {
+    expect(branchOffOffered(true)).toBe(true);
+    expect(branchOffOffered(false)).toBe(false);
   });
 });
 

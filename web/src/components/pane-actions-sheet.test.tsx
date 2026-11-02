@@ -585,8 +585,8 @@ describe("PaneActionsSheet — which body the pane draws", () => {
   });
 });
 
-// "New agent in a worktree" (ADR 0089). Three gates: the caller passes `onBranchOff` (only for a pane
-// in a Git repo), the multiplexer declares `createWorktree`, and the scope is the lead.
+// "New agent in a worktree" (ADR 0089). Two gates: the caller passes `onBranchOff` (only for a pane
+// in a Git repo), and the pane's own machine declares `createWorktree` (ADR 0126).
 describe("PaneActionsSheet — New agent in a worktree", () => {
   afterEach(() => __resetOperatorCommands());
 
@@ -611,11 +611,28 @@ describe("PaneActionsSheet — New agent in a worktree", () => {
     expect(screen.getByRole("button", { name: "Rename" })).toBeInTheDocument();
   });
 
-  it("is withdrawn on a crew member's pane: the route is lead-local", async () => {
-    worktreeCapable(true);
-    renderSheet({ onBranchOff: vi.fn(), scope: { host: "laptop" } });
+  /** Serve an `/api/config` whose `createWorktree` answer depends on the `?host=` asked (`lead` for none). */
+  function worktreeCapableByHost(capable: Record<string, boolean>) {
+    server.use(
+      http.get("/api/config", ({ request }) => {
+        const host = new URL(request.url).searchParams.get("host") ?? "lead";
+        const mux: MuxConfig = { name: "reference", capabilities: { createWorktree: capable[host] }, unsupportedKeys: [], notes: {} };
+        return HttpResponse.json({ push: false, vapidPublicKey: "", mux });
+      }),
+    );
+  }
+
+  it("is offered on a crew member's pane when that member can create a worktree, whatever the lead says", async () => {
+    worktreeCapableByHost({ lead: false, laptop: true });
+    renderSheet({ onBranchOff: vi.fn(), pane: { ...agent, host: "laptop" }, scope: { host: "laptop" } });
+    expect(await screen.findByRole("button", { name: "New agent in a worktree" })).toBeInTheDocument();
+  });
+
+  it("is withdrawn on a crew member's pane when that member cannot, whatever the lead says", async () => {
+    worktreeCapableByHost({ lead: true, laptop: false });
+    renderSheet({ onBranchOff: vi.fn(), pane: { ...agent, host: "laptop" }, scope: { host: "laptop" } });
     await screen.findByRole("button", { name: "Rename" });
-    expect(row()).toBeNull();
+    await waitFor(() => expect(row()).toBeNull());
   });
 
   it("is withdrawn when the caller passes nothing (a pane outside a repo)", async () => {

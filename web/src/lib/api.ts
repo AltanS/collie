@@ -2138,8 +2138,8 @@ function hostOnly(scope?: Scope): Scope | undefined {
 }
 
 /**
- * GET /api/worktree/plan — what a branch from `cwd` would be (ADR 0093). A read, lead-local: the
- * sheet asks it only of the lead. `branch` and `parent` add the folder answers.
+ * GET /api/worktree/plan — what a branch from `cwd` would be (ADR 0093). A read, answered by the
+ * machine the scope names (a crew forwards it, ADR 0126). `branch` and `parent` add the folder answers.
  */
 export function planWorktree(query: { cwd: string; branch?: string; parent?: string }, scope?: Scope): Promise<WorktreePlanResponse> {
   const params = new URLSearchParams({ cwd: query.cwd });
@@ -2163,7 +2163,7 @@ interface WorktreeAtBody {
 
 /**
  * POST /api/worktree — a new branch in its own folder from the folder `cwd` names, opened as a
- * space, with an agent or a shell in it (ADR 0093). Lead-local, like every worktree call.
+ * space, with an agent or a shell in it (ADR 0093). Made on the machine the scope names (ADR 0126).
  */
 export function createWorktreeAt(
   ask: {

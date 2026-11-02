@@ -130,6 +130,17 @@ function declares(capabilities: Partial<Record<MuxCapability, boolean>>): void {
   server.use(http.get("/api/config", () => HttpResponse.json({ push: false, vapidPublicKey: "", mux })));
 }
 
+/** Serve an `/api/config` whose `createWorktree` answer depends on the `?host=` asked (`lead` for none). */
+function declaresByHost(createWorktree: Record<string, boolean>): void {
+  server.use(
+    http.get("/api/config", ({ request }) => {
+      const host = new URL(request.url).searchParams.get("host") ?? "lead";
+      const mux: MuxConfig = { name: "reference", capabilities: { createWorktree: createWorktree[host] }, unsupportedKeys: [], notes: {} };
+      return HttpResponse.json({ push: false, vapidPublicKey: "", mux });
+    }),
+  );
+}
+
 /** A plan for `~/src/app`, on main, the pane on fix-old; the folder answers follow the query. */
 function servePlan(seen: URLSearchParams[] = []): void {
   server.use(
@@ -717,15 +728,47 @@ describe("the New page: New worktree", () => {
     mount();
     const toggle = await screen.findByRole("switch", { name: /New worktree/ });
     await waitFor(() => expect(toggle).toBeDisabled());
-    expect(await screen.findByText("needs Herdr")).toBeInTheDocument();
+    expect(await screen.findByText("This machine cannot open a space, or has no git.")).toBeInTheDocument();
   });
 
-  it("on a member the block stays, disabled, and says it is only on the lead", async () => {
+  // ADR 0126: a worktree is made on the machine the page addresses, so a member's own declaration decides.
+  it("on a member that can make one, the switch is on offer, and the plan and the create go to that member", async () => {
     serveLaunchers();
+    declaresByHost({ lead: false, mini: true });
+    const plans: URLSearchParams[] = [];
+    servePlan(plans);
+    const creates: URL[] = [];
+    server.use(
+      http.post("/api/worktree", ({ request }) => {
+        creates.push(new URL(request.url));
+        return HttpResponse.json({
+          ok: true,
+          alreadyOpen: false,
+          launcherStarted: true,
+          pane: { paneId: "w7:p1", workspaceId: "w7", workspaceLabel: "app", tabId: "w7:t1", cwd: "/home/op/trees/x" },
+        });
+      }),
+    );
+    mount({ entries: ["/new?machine=mini"], servers: roster });
+    const toggle = await screen.findByRole("switch", { name: /New worktree/ });
+    await waitFor(() => expect(toggle).toBeEnabled());
+    expect(screen.queryByText(/only on/)).toBeNull();
+    await userEvent.click(toggle);
+    await waitFor(() => expect(plans.length).toBeGreaterThan(0));
+    expect(plans.at(-1)!.get("host")).toBe("mini");
+    await waitFor(() => expect(screen.getByTestId("new-page-target")).toHaveTextContent("New folder"));
+    await userEvent.click(screen.getByRole("button", { name: "Start" }));
+    await waitFor(() => expect(creates).toHaveLength(1));
+    expect(creates[0]!.searchParams.get("host")).toBe("mini");
+  });
+
+  it("on a member that cannot make one, the switch is off and disabled, and it says why", async () => {
+    serveLaunchers();
+    declaresByHost({ lead: true, mini: false });
     mount({ entries: ["/new?machine=mini"], servers: roster });
     const toggle = await screen.findByRole("switch", { name: /New worktree/ });
     await waitFor(() => expect(toggle).toBeDisabled());
-    expect(await screen.findByText("only on bluefin")).toBeInTheDocument();
+    expect(await screen.findByText("This machine cannot open a space, or has no git.")).toBeInTheDocument();
     expect(toggle).toHaveAttribute("aria-checked", "false");
   });
 });
