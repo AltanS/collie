@@ -2159,8 +2159,12 @@ function copyRole(): CopyRole {
 
 /**
  * Remove the copy once it is not this machine's to hold: a demotion, a different lead, another crew.
- * Run at boot and whenever the trust store changes under this process. Never throws: a copy that could
- * not be removed is still never served while this machine is cold, and the next change tries again.
+ * Run at boot and whenever the trust store changes under this process, with ONE rule both times
+ * (`copyKept`): the copy is loaded from disk and kept while this machine is still its lead's named
+ * deputy, or now leads the crew the copy is from, and cleared otherwise. Never an unconditional clear:
+ * a deputy that reboots while its lead is down is exactly the one about to need the copy. Never
+ * throws: a copy that could not be removed is still never served while this machine is cold, and the
+ * next change tries again.
  */
 async function reconcileLauncherCopy(): Promise<void> {
   if (launcherCopyStore === null) return;

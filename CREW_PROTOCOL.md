@@ -2846,8 +2846,11 @@ therefore sends them beside the registry, on the same sweep and by the same rule
   is from, after a takeover (§18.16) or a handover (§14), the copy joins its own rows, which win on the
   same `command`: plain rows on itself, the lead's rows on every member (ADR 0127 points 1 to 3). A
   leading deputy's own sync to its next deputy sends that same list.
-- **Cleared on demotion.** A warrant naming another deputy or none, a different lead, or another crew
-  removes the file, at boot and whenever the trust store changes under the running process.
+- **Kept across a restart, cleared on demotion.** At boot the deputy loads the file and keeps it while
+  its trust store still names it its lead's deputy (same crew, same lead), or names it the crew's lead;
+  a deputy that restarts while its lead is down therefore still has the copy for a takeover. A warrant
+  naming another deputy or none, a different lead, or another crew removes the file, by that same rule,
+  at boot and whenever the trust store changes under the running process.
 
 > **The boundary this amends, stated rather than quietly outlived.** `bridge/server.ts` records that
 > pairing is "**NOT** threaded into the crew surface … a lead does not hold one of this collie's

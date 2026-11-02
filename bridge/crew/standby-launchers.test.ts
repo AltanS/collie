@@ -277,4 +277,44 @@ describe("the file on the deputy", () => {
     // Nothing held is nothing to clear.
     expect(await store.reconcile({ ...cold, deputy: false })).toBe(false);
   });
+
+  // A reboot is a new process: a new store over the same state dir, reconciled once at boot (index.ts).
+  test("a reboot as the still-named deputy keeps the copy, and it is served once this machine leads", async () => {
+    const stateDir = fresh();
+    await new StandbyLauncherStore(stateDir).replace(copy());
+    const rebooted = new StandbyLauncherStore(stateDir);
+    expect(await rebooted.reconcile(cold)).toBe(false);
+    expect(rebooted.current()).toEqual(copy());
+    expect(existsSync(join(stateDir, STANDBY_LAUNCHERS_FILENAME))).toBe(true);
+    // The lead stayed down and this machine took over: the copy it kept is the crew's rows.
+    expect(copyServed(rebooted.current(), leading)).toEqual(copy().rows);
+  });
+
+  test("a reboot after the lead changed clears the copy", async () => {
+    const stateDir = fresh();
+    await new StandbyLauncherStore(stateDir).replace(copy());
+    const rebooted = new StandbyLauncherStore(stateDir);
+    expect(await rebooted.reconcile({ ...cold, leadMemberId: "laptop" })).toBe(true);
+    expect(rebooted.current()).toBeNull();
+    expect(existsSync(join(stateDir, STANDBY_LAUNCHERS_FILENAME))).toBe(false);
+  });
+
+  test("a reboot into another crew, or after the warrant went to another deputy, clears it too", async () => {
+    for (const role of [{ ...cold, crewId: "crew-2" }, { ...cold, deputy: false }]) {
+      const stateDir = fresh();
+      await new StandbyLauncherStore(stateDir).replace(copy());
+      expect(await new StandbyLauncherStore(stateDir).reconcile(role)).toBe(true);
+      expect(existsSync(join(stateDir, STANDBY_LAUNCHERS_FILENAME))).toBe(false);
+      rmSync(dir!, { recursive: true, force: true });
+    }
+  });
+
+  test("boot and every trust-store change run the one rule, `reconcile`, and nothing clears the copy outright", () => {
+    const index = readFileSync(join(import.meta.dir, "..", "index.ts"), "utf8");
+    expect(index).toContain("if (await launcherCopyStore.reconcile(copyRole())) {");
+    // Once at boot, and once per membership change.
+    expect(index).toContain("\nawait reconcileLauncherCopy();\n");
+    expect(index).toContain("void reconcileLauncherCopy();");
+    expect(index).not.toContain("launcherCopyStore.clear(");
+  });
 });
