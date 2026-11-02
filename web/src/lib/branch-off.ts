@@ -1,4 +1,3 @@
-import { normalizeHost, type Scope } from "@/lib/scope";
 import { paneGitHead } from "@/lib/git-head";
 import type { AgentView, WorkspaceView } from "@/lib/types";
 
@@ -9,17 +8,16 @@ import type { AgentView, WorkspaceView } from "@/lib/types";
 /**
  * Whether a pane's menu may offer "New agent in a worktree", as far as the menu can tell.
  *
- * Two conditions, both required:
- *  - the multiplexer can create a worktree (`createWorktree`, asked of the lead; tmux and zellij
- *    declare it absent);
- *  - the scope is the lead: no `?h=`. The route is lead-local and a crew does not forward it, so a
- *    member's pane must not offer a create the lead would run in the wrong place.
+ * One condition: the pane's own machine can create a worktree (`createWorktree`, asked of the PANE's
+ * host, ADR 0126; a machine whose multiplexer cannot open a space, or that has no git, declares it
+ * absent). The host is no gate: a crew forwards the plan and the create to the machine they address,
+ * so a member's pane makes its worktree on that member.
  *
- * The third, that the pane's space sits in a Git repo, is the caller's: it alone holds the snapshot,
+ * The other, that the pane's space sits in a Git repo, is the caller's: it alone holds the snapshot,
  * and it passes no `onBranchOff` for a pane outside one.
  */
-export function branchOffOffered(capable: boolean, scope: Scope | undefined): boolean {
-  return capable && normalizeHost(scope?.host) === undefined;
+export function branchOffOffered(capable: boolean): boolean {
+  return capable;
 }
 
 /** Whether the pane's space sits in a Git repo: the third gate on "New agent in a worktree". */

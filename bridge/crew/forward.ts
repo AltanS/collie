@@ -3,7 +3,15 @@ import type { JsonObject, JsonValue } from "../json.ts";
 import { MASK_VERSION } from "../redact.ts";
 import { MAX_UPLOAD_OVERHEAD, uploadTooLarge } from "../uploads.ts";
 import { DEVICE_HEADER, encodeDeviceHeader } from "./admission.ts";
-import { type CrewLink, type PeerFailure, type PeerOutcome, PANE_READ_BUDGET_MS, PANE_WRITE_BUDGET_MS, WRITE_BUDGET_MS } from "./peer-client.ts";
+import {
+  type CrewLink,
+  type PeerFailure,
+  type PeerOutcome,
+  PANE_READ_BUDGET_MS,
+  PANE_WRITE_BUDGET_MS,
+  WORKTREE_WRITE_BUDGET_MS,
+  WRITE_BUDGET_MS,
+} from "./peer-client.ts";
 import { HOST_PARAM, type PeerState } from "./registry.ts";
 
 // The LEAD side of a per-pane request: `?host=laptop` came in, the pane lives on the laptop, so the
@@ -92,6 +100,14 @@ const FORWARDABLE: readonly RegExp[] = [
   // bridge/server.ts. Additive-optional (§7.1): a member that predates it answers 404.
   /^space\/[^/]+\/rename$/,
   /^workspace$/,
+  // A worktree (ADR 0126 point 6): git runs where the checkout lives, so the plan and the create go to
+  // the addressed member like `workspace`, which runs its own `planWorktree` and `createWorktreeAt`. The
+  // plan is a read; the create is a write whose body, `requestId` included, rides through unchanged, so
+  // a retry lands on the member's own receipt and is still one create. Additive-optional (§7.1): a
+  // member that predates them answers 404, and a member whose multiplexer cannot open a space answers
+  // `unsupported` through its own route, as a launch does.
+  /^worktree$/,
+  /^worktree\/plan$/,
   // The Changes view asked by workspace (ADR 0065): read-only git over the folder of a space that
   // lives on ONE member, so a `?host=` call is proxied like `pane/:id/changes`. Mirrors
   // `WORKSPACE_CHANGES_ROUTE` in bridge/server.ts one-for-one.
@@ -228,6 +244,8 @@ export function forwardKind(route: string, method?: string): ForwardKind {
   if (route === "folders/star") return "write";
   // The folder browser reads names off the member's disk and changes nothing: a read, like Files.
   if (route === "folders/browse") return "read";
+  // The worktree plan reads git on the member and creates nothing (ADR 0126): a read, like the browser.
+  if (route === "worktree/plan") return "read";
   // A blob read serves a file off the owning member's disk and changes nothing there — the same
   // shape as `pane/:id/history`, and attempted against a stale member for the same reason (§10.3).
   if (route.startsWith("blobs/")) return "read";
@@ -252,10 +270,12 @@ const PANE_SCREEN_ROUTE = /^pane\/[^/]+$/;
 
 /**
  * The explicit budget a forwarded request dials on: {@link PANE_WRITE_BUDGET_MS} for a write to a pane (a send on a
- * herdr-core member costs about 6.4 s), {@link WRITE_BUDGET_MS} for every other write, {@link PANE_READ_BUDGET_MS}
+ * herdr-core member costs about 6.4 s), {@link WORKTREE_WRITE_BUDGET_MS} for a worktree create (git and a new
+ * space), {@link WRITE_BUDGET_MS} for every other write, {@link PANE_READ_BUDGET_MS}
  * for a pane's screen read, none for every other read (the transport's own poll budget and bootstrap credit).
  */
 export function budgetOf(kind: ForwardKind, route: string): number | undefined {
+  if (kind === "write" && route === "worktree") return WORKTREE_WRITE_BUDGET_MS;
   if (kind === "write") return route.startsWith("pane/") ? PANE_WRITE_BUDGET_MS : WRITE_BUDGET_MS;
   return PANE_SCREEN_ROUTE.test(route) ? PANE_READ_BUDGET_MS : undefined;
 }
@@ -283,6 +303,9 @@ export function forwardAuditAction(route: string, method?: string): string | nul
   if (isWalkyList(route, method)) return null;
   if (route === "tab") return "tab.create";
   if (route === "workspace") return "workspace.create";
+  // The member's own create writes `worktree.create`; its plan is a read.
+  if (route === "worktree") return "worktree.create";
+  if (route === "worktree/plan") return null;
   // `launch` writes either `workspace.launch` or `tab.launch`, decided by the body a route string
   // alone can't see — this generic name is the LEAD's own line about the forward (§12's "plus the
   // target host"), and the peer's own audit line is the accurate record of which one ran.

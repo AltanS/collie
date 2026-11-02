@@ -6,6 +6,7 @@ import { computeEtag } from "../http-cache.ts";
 import { DEFAULT_MAX_UPLOAD_BYTES } from "../uploads.ts";
 import {
   apiPathFor,
+  budgetOf,
   forwardAuditAction,
   forwardHeaders,
   forwardKind,
@@ -24,7 +25,15 @@ import {
 } from "./forward.ts";
 import { crewDeviceOf } from "./peer-gate.ts";
 import { HISTORY_READ_BUDGET_MS } from "../mux/herdr-core/adapter.ts";
-import { crewTimeoutBudget, PANE_READ_BUDGET_MS, PANE_WRITE_BUDGET_MS, WRITE_BUDGET_MS, type CrewLink, type PeerOutcome } from "./peer-client.ts";
+import {
+  crewTimeoutBudget,
+  PANE_READ_BUDGET_MS,
+  PANE_WRITE_BUDGET_MS,
+  WORKTREE_WRITE_BUDGET_MS,
+  WRITE_BUDGET_MS,
+  type CrewLink,
+  type PeerOutcome,
+} from "./peer-client.ts";
 import { member } from "./fixtures.ts";
 import { CrewRegistry, type PeerState } from "./registry.ts";
 import { readSend, readSendReply } from "../../web/src/lib/send-protocol.ts";
@@ -982,6 +991,29 @@ describe("a Stop and a steer over a crew link", () => {
 
 // ── A forwarded write is not a poll (§10.1, amended 2026-09-08) ──────────────
 
+/**
+ * A transport that models the ONE thing the budget decides: whether the peer's work fits inside
+ * it. `workMs` is how long the member takes; over budget is the abort `dial` produces, which
+ * §10.3 then has to call ambiguous. Modelled rather than slept, because the decision under test is
+ * "which number is the deadline", and the real clock is pinned in `peer-client.test.ts`.
+ */
+function budgeted(workMs: number) {
+  const calls: number[] = [];
+  const transport: ForwardTransport = async (_link, route, _params, _init, budgetMs) => {
+    const deadline = budgetMs ?? crewTimeoutBudget(1500, {});
+    calls.push(deadline);
+    if (workMs <= deadline) return ok(new Response("{}"));
+    return {
+      ok: false,
+      state: "unreachable",
+      reason: `${route}: timed out after ${deadline}ms`,
+      timedOut: true,
+      receivedAt: 2,
+    };
+  };
+  return { transport, calls };
+}
+
 describe("a forwarded write carries its own budget (§10.1)", () => {
   test("every write route dials on its budget: a pane's on PANE_WRITE_BUDGET_MS, the rest on WRITE_BUDGET_MS", async () => {
     // §5's write routes, one of each shape `forwardKind` decides on.
@@ -1055,29 +1087,6 @@ describe("a forwarded write carries its own budget (§10.1)", () => {
     expect(PANE_WRITE_BUDGET_MS).toBeGreaterThan(WRITE_BUDGET_MS);
   });
 
-  /**
-   * A transport that models the ONE thing the budget decides: whether the peer's work fits inside
-   * it. `workMs` is how long the member takes; over budget is the abort `dial` produces, which
-   * §10.3 then has to call ambiguous. Modelled rather than slept, because the decision under test is
-   * "which number is the deadline", and the real clock is pinned in `peer-client.test.ts`.
-   */
-  function budgeted(workMs: number) {
-    const calls: number[] = [];
-    const transport: ForwardTransport = async (_link, route, _params, _init, budgetMs) => {
-      const deadline = budgetMs ?? crewTimeoutBudget(1500, {});
-      calls.push(deadline);
-      if (workMs <= deadline) return ok(new Response("{}"));
-      return {
-        ok: false,
-        state: "unreachable",
-        reason: `${route}: timed out after ${deadline}ms`,
-        timedOut: true,
-        receivedAt: 2,
-      };
-    };
-    return { transport, calls };
-  }
-
   test("a launch onto a member that takes 2 s answers `ok`, not `write_outcome_unknown`", async () => {
     // The measured case: a zellij member spawns a process and builds a tab. ~2 s, every time.
     const dial = budgeted(2000);
@@ -1101,6 +1110,90 @@ describe("a forwarded write carries its own budget (§10.1)", () => {
     });
     expect(res.status).toBe(504);
     expect((await failureBody(res)).code).toBe("write_outcome_unknown");
+  });
+});
+
+// ── A worktree goes to the host it addresses (ADR 0126 point 6) ──────────────
+
+describe("the worktree plan and create cross the link to the addressed host", () => {
+  test("the plan is a read audited on neither side; the create is a write the member audits as `worktree.create`", () => {
+    expect(forwardKind("worktree/plan", "GET")).toBe("read");
+    expect(forwardAuditAction("worktree/plan", "GET")).toBeNull();
+    expect(forwardKind("worktree", "POST")).toBe("write");
+    expect(forwardAuditAction("worktree", "POST")).toBe("worktree.create");
+    expect(budgetOf("write", "worktree")).toBe(WORKTREE_WRITE_BUDGET_MS);
+    // The plan rides the read budget like the folder browser beside it.
+    expect(budgetOf("read", "worktree/plan")).toBeUndefined();
+  });
+
+  test("the create carries its body, request id included, byte for byte, and the member's answer comes back", async () => {
+    const body = JSON.stringify({
+      cwd: "~/src/api",
+      branch: "fix-login",
+      base: { kind: "default" },
+      folder: { kind: "default" },
+      requestId: "wt-req-0001",
+      harness: "claude",
+    });
+    const answer = { ok: true, alreadyOpen: false, launcherStarted: true, pane: { paneId: "t3", workspaceId: "s2" } };
+    const { transport, calls } = transportOf(() =>
+      ok(new Response(JSON.stringify(answer), { status: 200, headers: { "content-type": "application/json" } })),
+    );
+    const [req, url] = post("/api/worktree?host=laptop&session=work", body, { "content-type": "application/json" });
+    const res = await forward(req, url, { transport });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.route).toBe("worktree");
+    // `host=` is the lead's; `session=` is the member's to resolve (§5).
+    expect(calls[0]!.params).toEqual({ session: "work" });
+    expect(calls[0]!.init.method).toBe("POST");
+    expect(await new Response(calls[0]!.init.body).text()).toBe(body);
+    expect(calls[0]!.budgetMs).toBe(WORKTREE_WRITE_BUDGET_MS);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual(answer);
+  });
+
+  test("a create the member answers after 30 s (git and a new space) is delivered, not a 504", async () => {
+    const dial = budgeted(30_000);
+    const [req, url] = post("/api/worktree?host=laptop", `{"cwd":"~/src/api","branch":"b","requestId":"wt-req-0002"}`);
+    const res = await forward(req, url, { transport: dial.transport });
+    expect(res.status).toBe(200);
+    expect(dial.calls).toEqual([WORKTREE_WRITE_BUDGET_MS]);
+  });
+
+  test("a create past the budget is `write_outcome_unknown`, dialled once: the retry with the same id is the phone's", async () => {
+    const dial = budgeted(WORKTREE_WRITE_BUDGET_MS + 1);
+    const [req, url] = post("/api/worktree?host=laptop", `{"cwd":"~/src/api","branch":"b","requestId":"wt-req-0003"}`);
+    const res = await forward(req, url, { transport: dial.transport });
+    expect(res.status).toBe(504);
+    expect((await failureBody(res)).code).toBe("write_outcome_unknown");
+    expect(dial.calls).toHaveLength(1);
+  });
+
+  test("a member's own refusal passes through unchanged, as a launch's does", async () => {
+    const refusal = { ok: false, code: "worktree.created_not_opened", error: "the multiplexer cannot open a space" };
+    const { transport } = transportOf(() => ok(new Response(JSON.stringify(refusal), { status: 200 })));
+    const [req, url] = post("/api/worktree?host=laptop", `{"cwd":"~/src/api","branch":"b","requestId":"wt-req-0004"}`);
+    const res = await forward(req, url, { transport });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual(refusal);
+  });
+
+  test("the plan is asked of the member with its query, and tried against a member not taking writes", async () => {
+    const { transport, calls } = transportOf(() => ok(new Response(`{"ok":true,"repoRoot":"/src/api"}`)));
+    const [req, url] = get("/api/worktree/plan?cwd=%7E%2Fsrc%2Fapi&branch=fix-login&host=laptop");
+    const res = await forward(req, url, { transport, state: DEAD });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.route).toBe("worktree/plan");
+    expect(calls[0]!.params).toEqual({ cwd: "~/src/api", branch: "fix-login" });
+    expect(res.status).toBe(200);
+  });
+
+  test("a create to a member not taking writes is refused before it is attempted", async () => {
+    const { transport, calls } = transportOf(() => ok(new Response("{}")));
+    const [req, url] = post("/api/worktree?host=laptop", `{"cwd":"~","branch":"b"}`);
+    const res = await forward(req, url, { transport, state: DEAD });
+    expect(calls).toHaveLength(0);
+    expect(res.ok).toBe(false);
   });
 });
 
@@ -1267,14 +1360,12 @@ describe("journal, uploads and state stay host-local", () => {
   // This test pins that as a FACT rather than leaving it a surprise. It is not an assertion that the
   // gap is right. If a route is added, this test goes red, and the table in MUX_CONTRACT.md
   // § "Conformance across a crew link" is what has to be corrected in the same change.
-  test("four mux-port verbs have no forwardable crew route, and the contract says which", () => {
-    // The shapes a route for each would take, in this surface's own grammar. The worktree create is
-    // lead-local at `POST /api/worktree` (and its plan); list and open have had no route at all since
-    // the space-scoped ones were removed in 1.20.0, so the old shapes must not forward either.
+  test("listSessions and the old worktree shapes have no forwardable crew route; the worktree routes do, and the contract says so", () => {
+    // The shapes a route for each would take, in this surface's own grammar. List and open have had no
+    // route at all since the space-scoped ones were removed in 1.20.0, so the old shapes must not
+    // forward either.
     const unreachable = [
       "sessions",
-      "worktree",
-      "worktree/plan",
       "workspace/w1/worktrees",
       "workspace/w1/worktree",
       "workspace/w1/worktree/open",
@@ -1283,6 +1374,12 @@ describe("journal, uploads and state stay host-local", () => {
       expect(crewRouteFor(`/api/${route}`)).toBeNull();
       expect(apiPathFor(route)).toBeNull();
     }
+    // The worktree plan and create go to the addressed host (ADR 0126 point 6), where git runs.
+    for (const route of ["worktree", "worktree/plan"]) {
+      expect(crewRouteFor(`/api/${route}`)).toBe(route);
+      expect(apiPathFor(route)).toBe(`/api/${route}`);
+    }
+    expect(crewRouteFor("/api/worktree/plan/x")).toBeNull();
     // And the contract names the gap, so the two cannot drift apart silently.
     const contract = readFileSync(join(import.meta.dir, "..", "..", "MUX_CONTRACT.md"), "utf8");
     expect(contract).toContain("## Conformance across a crew link");

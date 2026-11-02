@@ -133,8 +133,8 @@ function NewPage({ search }: { search: string }) {
   const { servers, health } = useCrew();
   const multiHost = isMultiHost(servers);
   const lead = leadHost(servers);
-  // A page opened from a pane stays on that pane's machine: a worktree is the lead's (ADR 0089), and a
-  // space is on one machine, so a tab in it cannot start on another.
+  // A page opened from a pane stays on that pane's machine: a worktree is made where the pane's folder
+  // is (ADR 0126), and a space is on one machine, so a tab in it cannot start on another.
   const [host, setHost] = useState<string | undefined>(() =>
     from !== undefined || besidePane !== undefined ? (asked.host ?? lead) : defaultHost(servers, health, asked.host),
   );
@@ -143,16 +143,15 @@ function NewPage({ search }: { search: string }) {
   const refusal = chosenServer ? writeRefusal(memberHealth(health, chosenServer)) : undefined;
   const target: Scope = multiHost ? { ...asked, host: chosen === lead ? undefined : chosen } : asked;
   const machineName = multiHost ? chosenServer?.name || chosen : undefined;
-  const leadName = servers.find((s) => s.id === lead)?.name || lead || "";
   // Again's key: the machine's id on a crew, "" on a solo install.
   const machineKey = chosen ?? "";
 
   // ── What this machine offers ──────────────────────────────────────────────────────────────────
   const launchers = useLaunchers(target);
   const loaded = launchers.loadedFor === launchersKey(target);
-  // Worktrees are the lead's alone, so the lead's multiplexer is the one asked, in the session the page
-  // opens into (M55).
-  const canWorktree = useMuxCapability("createWorktree", { session: target.session }).capable;
+  // A worktree is made on the chosen machine (ADR 0126), so that machine's declaration is the one asked,
+  // in the session the page opens into (M55).
+  const canWorktree = useMuxCapability("createWorktree", target).capable;
   // Whether the CHOSEN machine has a screen (ADR 0102): one with none starts only its program's starters.
   const chosenGrid = useMuxCapability("paneGrid", target);
   const offer: Offer = offerFor({
@@ -165,7 +164,6 @@ function NewPage({ search }: { search: string }) {
     recentRuns: loaded ? (launchers.recentRuns ?? null) : null,
     refusal,
     canWorktree,
-    memberChosen: multiHost && chosen !== lead ? { lead: leadName } : undefined,
     screenless: !chosenGrid.capable,
   });
   const home = loaded ? launchers.home : "";

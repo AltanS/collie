@@ -212,6 +212,21 @@ export const PANE_READ_BUDGET_MS = 5000;
  */
 export const PANE_WRITE_BUDGET_MS = 15000;
 
+/**
+ * How long a **forwarded worktree create** (`POST /api/worktree`, ADR 0126) may take before the lead gives up on
+ * it and tells the phone `write_outcome_unknown`.
+ *
+ * A create runs `git worktree add` on the member, opens the checkout as a space and may type a launcher into
+ * it: the member's own route holds its connection 90 s for that (`WORKTREE_ROUTE_BUDGET_S`, bridge/server.ts),
+ * and the phone waits 75 s (`WORKTREE_TIMEOUT_MS`, web/src/lib/api.ts). 5 s would read most creates on a real
+ * repo as unknown. 85 s stays inside the lead's own 90 s hold on the phone's connection, so the lead still
+ * answers. A phone that gave up first retries with the SAME request id, and the member answers from its receipt
+ * or joins the create in flight, so a long budget never makes two worktrees. The lead still dials it once.
+ *
+ * Lead-local, never on the wire, so moving it needs no protocol bump.
+ */
+export const WORKTREE_WRITE_BUDGET_MS = 85_000;
+
 /** How long a `hello` PROBE may take before the lead calls a member gone (§10.4), by default. */
 export const DEFAULT_CREW_HELLO_TIMEOUT_MS = 5000;
 /** Operator override for the probe budget. A crew key, so it lives here and not on `Config`. */

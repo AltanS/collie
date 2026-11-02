@@ -114,7 +114,7 @@ describe("capability sites: each asks the session it acts in", () => {
     expect(await screen.findByText(/cannot tell an agent from a shell/)).toBeInTheDocument();
   });
 
-  it("the pane sheet's worktree row asks the lead in the sheet's session", async () => {
+  it("the pane sheet's worktree row asks the pane's machine in the sheet's session", async () => {
     const pane: AgentView = fixtureAgents[0]!;
     const sheet = (scope?: { session: string }) =>
       render(<PaneActionsSheet open onClose={() => {}} pane={pane} scope={scope} onBranchOff={vi.fn()} onRenamed={() => {}} onClosed={() => {}} />);

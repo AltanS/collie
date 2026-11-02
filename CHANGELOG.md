@@ -30,6 +30,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **Every multiplexer now nests a worktree's space under its repo.** The bridge reads each space's folder from disk, with no git process, and names the repo it belongs to and whether it is a linked worktree. Before, only Herdr did this, from its daemon's records; tmux and zellij spaces now nest the same way.
 - **Collie makes a new worktree itself, with git, and opens it as a space.** "New worktree" on the New screen now works on every multiplexer that can open a space, the Herdr core included, instead of only on the old Herdr daemon. The folder is the same as before: Herdr's worktree directory, or the folder you pick. When the checkout is made but the space does not open, the checkout stays, and the same request again only opens it, in Herdr's directory and in a folder you picked alike.
 - **The multiplexer contract has no worktree verb any more.** A multiplexer adapter no longer lists, creates or opens a worktree, and Herdr no longer reads a space's repo from its daemon; the bridge makes the worktree with git and reads the repo from the folder on disk, the same for every multiplexer.
+- **"New worktree" now works on the machine you pick in a crew, not only on the lead.** The New screen and a pane's "New agent in a worktree" ask that machine whether it can make one, and the lead passes the plan and the create on to it, where git runs. When that machine cannot, the switch says why: "This machine cannot open a space, or has no git."
 
 ### Fixed
 
