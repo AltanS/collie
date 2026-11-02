@@ -125,7 +125,7 @@ describe("resolveParentTarget — the parent the phone names", () => {
     expect(await ask(join(home, "trees"), "dangling")).toMatchObject({ ok: false, code: "worktree.target_exists" });
   });
 
-  test("a target that is a linked worktree of this repo is accepted: a half-done create opens on retry", async () => {
+  test("a target that is the same finished worktree of this repo is accepted: a half-done create opens on retry", async () => {
     // A real repo, apart from the fake one above, with a checkout a half-done create left in ~/trees.
     const real = join(home, "src", "real");
     await mkdir(real, { recursive: true });
@@ -145,6 +145,13 @@ describe("resolveParentTarget — the parent the phone names", () => {
       ok: true,
       path: join(home, "trees", "fix-tabs"),
     });
+    // The same folder asked for on a branch whose slug collides is refused, naming what it holds.
+    expect(await resolveParentTarget({ parent: join(home, "trees"), branch: "Fix/Tabs", repoRoot: real, home })).toEqual({
+      ok: false,
+      code: "worktree.target_exists",
+      path: join(home, "trees", "fix-tabs"),
+      detail: "that folder holds branch fix-tabs",
+    });
     // The same folder is refused for any other repo, and a link to it is refused for this one.
     expect(await ask(join(home, "trees"))).toMatchObject({ ok: false, code: "worktree.target_exists" });
     await mkdir(join(home, "links"));
@@ -152,6 +159,14 @@ describe("resolveParentTarget — the parent the phone names", () => {
     expect(await resolveParentTarget({ parent: join(home, "links"), branch: "fix-tabs", repoRoot: real, home })).toMatchObject({
       ok: false,
       code: "worktree.target_exists",
+    });
+    // A locked entry is a create still running, or one killed half way: refused, never opened.
+    await git("worktree", "lock", "--reason", "initializing", join(home, "trees", "fix-tabs"));
+    expect(await resolveParentTarget({ parent: join(home, "trees"), branch: "fix-tabs", repoRoot: real, home })).toEqual({
+      ok: false,
+      code: "worktree.target_exists",
+      path: join(home, "trees", "fix-tabs"),
+      detail: "a create is still running in that folder",
     });
   });
 
