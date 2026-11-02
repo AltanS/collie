@@ -1101,6 +1101,7 @@ export const zh: Dictionary = {
   "newPage.branch.badName": "Git 不接受这个分支名。",
   "newPage.branch.head": "当前提交",
   "newPage.reason.notFound": "未安装",
+  "newPage.reason.noFolder": "这台机器上没有该文件夹",
   "newPage.reason.olderCollie": "这台机器运行的是旧版 Collie，无法按名称启动智能体，也无法创建 worktree",
   "newPage.reason.needsSpaceAndGit": "这台机器无法打开工作区，或者没有 git。",
   "newPage.summary.plain": "在 {folder} 中运行 {what}",

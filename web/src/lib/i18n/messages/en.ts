@@ -1196,6 +1196,7 @@ export const en = {
   "newPage.branch.badName": "Git does not accept this branch name.",
   "newPage.branch.head": "the current commit",
   "newPage.reason.notFound": "not installed",
+  "newPage.reason.noFolder": "the folder is not on this machine",
   "newPage.reason.olderCollie": "this machine runs an older Collie, which cannot start agents by name or make worktrees",
   "newPage.reason.needsSpaceAndGit": "This machine cannot open a space, or has no git.",
   "newPage.summary.plain": "{what} in {folder}",

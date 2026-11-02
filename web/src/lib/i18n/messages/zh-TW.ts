@@ -1097,6 +1097,7 @@ export const zhTW: Dictionary = {
   "newPage.branch.badName": "Git 不接受這個分支名稱。",
   "newPage.branch.head": "目前的提交",
   "newPage.reason.notFound": "未安裝",
+  "newPage.reason.noFolder": "這台機器上沒有該資料夾",
   "newPage.reason.olderCollie": "這台機器執行的是舊版 Collie，無法依名稱啟動代理，也無法建立 worktree",
   "newPage.reason.needsSpaceAndGit": "這台機器無法開啟工作區，或沒有 git。",
   "newPage.summary.plain": "在 {folder} 中執行 {what}",

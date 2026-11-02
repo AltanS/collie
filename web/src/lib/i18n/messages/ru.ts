@@ -1076,6 +1076,7 @@ export const ru: Dictionary = {
   "newPage.branch.badName": "Git не принимает это имя ветки.",
   "newPage.branch.head": "текущий коммит",
   "newPage.reason.notFound": "не установлен",
+  "newPage.reason.noFolder": "на этой машине нет такой папки",
   "newPage.reason.olderCollie": "на этой машине старая версия Collie, она не запускает агентов по имени и не создает worktree",
   "newPage.reason.needsSpaceAndGit": "Эта машина не может открыть пространство, или на ней нет git.",
   "newPage.summary.plain": "{what} в {folder}",

@@ -1111,6 +1111,7 @@ export const ja: Dictionary = {
   "newPage.branch.badName": "Git はこのブランチ名を受け付けません。",
   "newPage.branch.head": "現在のコミット",
   "newPage.reason.notFound": "未インストール",
+  "newPage.reason.noFolder": "このマシンにフォルダーがありません",
   "newPage.reason.olderCollie": "このマシンの Collie は古く、名前でエージェントを起動することも worktree を作ることもできません",
   "newPage.reason.needsSpaceAndGit": "このマシンは Space を開けないか、git がありません。",
   "newPage.summary.plain": "{folder} で {what}",

@@ -1119,6 +1119,7 @@ export const de: Dictionary = {
   "newPage.branch.badName": "Git akzeptiert diesen Branch-Namen nicht.",
   "newPage.branch.head": "dem aktuellen Commit",
   "newPage.reason.notFound": "nicht installiert",
+  "newPage.reason.noFolder": "der Ordner fehlt auf diesem Rechner",
   "newPage.reason.olderCollie": "dieser Rechner hat ein älteres Collie, das Agenten nicht nach Namen starten und keine Worktrees anlegen kann",
   "newPage.reason.needsSpaceAndGit": "Dieser Rechner kann keinen Space öffnen oder hat kein git.",
   "newPage.summary.plain": "{what} in {folder}",

@@ -64,6 +64,8 @@ export function kindOfKey(offer: Offer, key: string | undefined): Kind | null {
 export type Unavailable =
   /** An agent the machine knows but whose binary its login PATH does not have. */
   | { kind: "notFound" }
+  /** A lead row whose pinned folder is not on that machine (ADR 0127). */
+  | { kind: "noFolder" }
   /** The operator turned phone-added rows off on that machine (`[phone] adds = false`). */
   | { kind: "addsOff" }
   /** The operator has not turned typed lines on (`[phone] free_text`). */
@@ -84,6 +86,8 @@ export function unavailableText(reason: Unavailable): string {
   switch (reason.kind) {
     case "notFound":
       return t("newPage.reason.notFound");
+    case "noFolder":
+      return t("newPage.reason.noFolder");
     case "addsOff":
       return t("newPage.reason.addsOff");
     case "freeTextOff":
@@ -194,6 +198,8 @@ function reasonOf(reason: NonNullable<LauncherItem["reason"]>): Unavailable {
   switch (reason) {
     case "not_found":
       return { kind: "notFound" };
+    case "no_folder":
+      return { kind: "noFolder" };
     case "adds_off":
       return { kind: "addsOff" };
     case "free_text_off":

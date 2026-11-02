@@ -2113,7 +2113,7 @@ export interface LaunchersAdding {
 }
 
 /** Why an item does not start on that machine now. Mirrors `LauncherItem.reason` in bridge/types.ts. */
-export type LauncherItemReason = "not_found" | "adds_off" | "free_text_off";
+export type LauncherItemReason = "not_found" | "adds_off" | "free_text_off" | "no_folder";
 
 /**
  * One thing the New page may start on ONE machine, with its availability there (ADR 0094). Mirrors
@@ -2139,6 +2139,11 @@ export interface LauncherItem {
   branch: boolean;
   available: boolean;
   reason?: LauncherItemReason;
+  /**
+   * `lead`: one of the lead's rows, offered for this machine (ADR 0127). Mirrors `LauncherItem.from`
+   * in bridge/types.ts: set only in a lead's answer for another host, absent on a machine's own items.
+   */
+  from?: "lead";
   id?: string;
   addedBy?: string;
   addedAt?: number;

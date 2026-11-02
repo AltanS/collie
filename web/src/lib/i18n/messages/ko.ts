@@ -1109,6 +1109,7 @@ export const ko: Dictionary = {
   "newPage.branch.badName": "Git이 이 브랜치 이름을 허용하지 않습니다.",
   "newPage.branch.head": "현재 커밋",
   "newPage.reason.notFound": "설치되지 않음",
+  "newPage.reason.noFolder": "이 머신에 폴더가 없음",
   "newPage.reason.olderCollie": "이 컴퓨터는 이전 Collie를 실행하므로 이름으로 에이전트를 시작하거나 worktree를 만들 수 없음",
   "newPage.reason.needsSpaceAndGit": "이 컴퓨터는 스페이스를 열 수 없거나 git이 없습니다.",
   "newPage.summary.plain": "{folder}에서 {what}",

@@ -1030,6 +1030,7 @@ export const tr: Dictionary = {
   "newPage.branch.badName": "Git bu dal adını kabul etmiyor.",
   "newPage.branch.head": "geçerli commit",
   "newPage.reason.notFound": "yüklü değil",
+  "newPage.reason.noFolder": "klasör bu makinede yok",
   "newPage.reason.olderCollie": "bu makinede eski bir Collie çalışıyor, ajanları adıyla başlatamaz ve çalışma ağacı oluşturamaz",
   "newPage.reason.needsSpaceAndGit": "Bu makine alan açamıyor ya da git yok.",
   "newPage.summary.plain": "{folder} içinde {what}",
