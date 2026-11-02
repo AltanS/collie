@@ -57,9 +57,14 @@ member's own rows stay as its additions.**
    exists there (`no_folder`, new). A `~` in a `cwd` is the member's home.
 3. **A launch of a lead row on a member carries the row.** `POST /api/launch` and
    `POST /api/worktree`, forwarded with `?host=`, gain a `row` field (`command`, `label`, `cwd?`,
-   `harness?`, `noPrompts`). The lead sets it when the command is one of its rows. A member accepts
-   `row` only when the call came over the crew link from its lead (`caller.via === "crew"`). A
-   phone-direct body with `row` is refused, `launch.row_not_from_lead` (400). When the member's own
+   `harness?`, `noPrompts`). The lead sets it when the command is one of its rows, and then marks the
+   forward with the request header `X-Collie-Lead-Row: 1`. It adds that header itself, after the
+   forwarded-header allowlist and beside `X-Crew-Device`, and never copies it from the phone. A
+   member accepts `row` only when BOTH hold: the call came over the crew link from its lead
+   (`caller.via === "crew"`), AND it carries the header. A body with `row` and no header is refused,
+   `launch.row_not_from_lead` (400), whoever calls. The header is the mark and not the body, because
+   a lead before 0127 forwards a phone's body unchanged, `row` included, and never adds the header
+   (amended 2026-11-03, M82 spec 07, after counsel). When the member's own
    list matches the `command`, its own row wins and `row` is ignored. So the allowlist on the phone
    door is unchanged: a phone names a row, it never sends a line.
 4. **Adds go to the lead.** `POST /api/launchers/added`, `/remove` and `/rename` are answered on the
@@ -76,10 +81,19 @@ member's own rows stay as its additions.**
 
 ## Consequences
 
-- **A member runs a line its lead sent over the pinned link.** A paired phone can already type into
-  a member's pane, so the phone gains no power. The lead is already the phone-facing trust root: it
-  masks the members' text and holds the pairing. The member's `row` check is what keeps a phone from
-  using the same door by hand.
+- **The lead is already a code-execution root for its members.** Through the lead, a paired phone
+  opens a shell on a member and types any line. 0127 makes that power explicit, as a line the lead
+  sends over the pinned link, and adds none to the phone. The lead is also the phone-facing trust
+  root: it masks the members' text and holds the pairing. The member's `row` gate, the crew link AND
+  the `X-Collie-Lead-Row` header, is what keeps a phone, or a lead on an older build that passes the
+  phone's body through, from using that door by hand.
+- **A secret in a launch line travels with the row.** A launch line can carry a secret inline, for
+  example a token in an environment assignment. Such a line now reaches the deputy's copy file and
+  the audit log of every machine that runs it, as it already reaches the lead's own `launchers.toml`
+  and the lead's audit. Keep secrets out of launch lines, in the environment of the machine instead.
+- **A mixed crew is a window of minutes.** Members follow the lead's update on their own, so a crew
+  runs mixed builds only for minutes. In that window a lead row on a member that predates 0127 is
+  refused `launch.not_allowlisted`, and nothing runs.
 - **An old member says no, plainly.** A member that predates 0127 ignores `row` and answers
   `launch.not_allowlisted`. The lead passes that answer on, and the phone says the machine needs an
   update. Nothing runs by accident.
@@ -90,7 +104,18 @@ member's own rows stay as its additions.**
   shows on every machine at once. A row a member had before stays on that member and still runs.
 - **The deputy needs the copy to lead.** Without it a takeover would show an empty list. The copy is
   a file the deputy reads and never writes into its own stores, so a demotion leaves nothing behind
-  to merge.
-- **The wire grows by one optional field and one error code.** `row` is additive-optional
-  (CREW_PROTOCOL §7.1). The add routes stay in the route table, answered on the lead; only
+  to merge. It survives a restart of the deputy while the deputy is still named, so a deputy that
+  reboots while its lead is down still has it.
+- **The deputy's copy is as fresh as the last sweep.** While the deputy is connected that is about
+  1.5 s. A deputy that was offline when the lead removed a row holds the last list it got until it
+  reconnects and the next sweep sends the new one. If it takes over before that, it serves that
+  older list.
+- **A member's own old rows stay its own.** A row a member held before 0127 is listed as that
+  member's own, and only a phone paired to that member itself can remove it. The lead's page offers
+  no Rename or Remove for it.
+- **Not built, listed as later.** A per-row `hosts` filter, so a row is offered only on some machines.
+  A member switch to decline the lead's rows. An "adopt to the lead" action that moves a member's old
+  row into the lead's list.
+- **The wire grows by one optional field, one optional header and one error code.** `row` and
+  `X-Collie-Lead-Row` are additive-optional (CREW_PROTOCOL §6, §7.1). The add routes stay in the route table, answered on the lead; only
   `forget-device` still crosses the link, unchanged.
