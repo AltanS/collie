@@ -1,17 +1,21 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { intervalFor, type PollIntent, RETRY_MS } from "@/hooks/use-polling";
+
+import { POLL_TIMEOUT_MS } from "./api";
 import {
   __resetConnectionHealth,
+  CONNECTION_LOST_MS,
   effectiveAnchor,
   isLostLatched,
   lastHealthyAt,
   latchLost,
   markLive,
   markWake,
+  NETWORK_LATCH_MS,
   noteNetworkFailure,
-  noteReadStart,
+  strikeHolds,
   subscribeHealth,
-  wakeStrikeHolds,
 } from "./connection-health";
 
 // Fake timers drive Date.now in Vitest, so the wall-clock anchors advance deterministically. Re-pin
@@ -151,50 +155,145 @@ describe("connection-health store", () => {
   });
 
   // The pane and Chat reads fail in the same poll as the herd read, in either order. Whichever lands
-  // first, neither may draw the saved copy over the strike the herd read took (2026-10-08).
-  describe("wakeStrikeHolds", () => {
-    it("holds nothing with no wake: a read with no answer is the outage", () => {
-      noteReadStart();
-      expect(wakeStrikeHolds()).toBe(false);
-    });
-
-    it("holds while the wake's read is in flight, before the herd read has failed", () => {
-      markWake();
-      noteReadStart();
-      expect(wakeStrikeHolds()).toBe(true);
-    });
-
-    it("holds after the herd read took the strike, and stops once the retry latches", () => {
-      markWake();
-      noteReadStart();
+  // first, neither may draw the saved copy over the strike the herd read takes (2026-10-08, always
+  // since 2026-10-29): the herd read decides.
+  describe("strikeHolds", () => {
+    it("holds before the herd read has failed and after it took the strike", () => {
+      expect(strikeHolds()).toBe(true);
       noteNetworkFailure();
       expect(isLostLatched()).toBe(false);
-      expect(wakeStrikeHolds()).toBe(true);
-      noteReadStart();
+      expect(strikeHolds()).toBe(true);
+    });
+
+    it("stops once a later read with no answer latches", () => {
+      noteNetworkFailure();
+      vi.advanceTimersByTime(NETWORK_LATCH_MS);
       noteNetworkFailure();
       expect(isLostLatched()).toBe(true);
-      expect(wakeStrikeHolds()).toBe(false);
+      expect(strikeHolds()).toBe(false);
     });
 
-    it("a live answer ends it", () => {
-      markWake();
-      noteReadStart();
-      noteNetworkFailure();
+    // A read that fails at once (the phone moving between Wi-Fi and the mobile network) fails its retry
+    // 0.5s later too: failures that close together prove nothing until no live answer has come for
+    // NETWORK_LATCH_MS (2026-10-29).
+    it("failures close to the last live answer latch nothing; the first past NETWORK_LATCH_MS does", () => {
+      vi.advanceTimersByTime(30_000);
       markLive();
-      vi.advanceTimersByTime(60_000);
-      noteReadStart();
-      expect(wakeStrikeHolds()).toBe(false);
+      for (let t = 0; t < NETWORK_LATCH_MS - 500; t += 500) {
+        noteNetworkFailure();
+        vi.advanceTimersByTime(500);
+      }
+      noteNetworkFailure();
+      expect(isLostLatched()).toBe(false);
+      expect(strikeHolds()).toBe(true);
+      vi.advanceTimersByTime(500);
+      noteNetworkFailure();
+      expect(isLostLatched()).toBe(true);
     });
 
-    it("__resetConnectionHealth leaves no wake and no strike behind", () => {
+    it("the window runs from a wake too", () => {
+      vi.advanceTimersByTime(60_000);
       markWake();
-      noteReadStart();
+      noteNetworkFailure();
+      vi.advanceTimersByTime(NETWORK_LATCH_MS - 1);
+      noteNetworkFailure();
+      expect(isLostLatched()).toBe(false);
+      vi.advanceTimersByTime(1);
+      noteNetworkFailure();
+      expect(isLostLatched()).toBe(true);
+    });
+
+    it("a live answer gives the strike back", () => {
+      noteNetworkFailure();
+      vi.advanceTimersByTime(NETWORK_LATCH_MS);
+      markLive();
+      vi.advanceTimersByTime(NETWORK_LATCH_MS);
+      noteNetworkFailure();
+      expect(isLostLatched()).toBe(false);
+      expect(strikeHolds()).toBe(true);
+    });
+
+    it("a wake gives the strike back", () => {
+      noteNetworkFailure();
+      vi.advanceTimersByTime(NETWORK_LATCH_MS);
+      markWake();
+      vi.advanceTimersByTime(NETWORK_LATCH_MS);
+      noteNetworkFailure();
+      expect(isLostLatched()).toBe(false);
+    });
+
+    it("__resetConnectionHealth gives the strike back", () => {
       noteNetworkFailure();
       __resetConnectionHealth();
-      noteReadStart();
-      expect(wakeStrikeHolds()).toBe(false);
+      vi.advanceTimersByTime(NETWORK_LATCH_MS);
+      noteNetworkFailure();
+      expect(isLostLatched()).toBe(false);
       noteNetworkFailure();
       expect(isLostLatched()).toBe(true);
+    });
+  });
+
+  // NETWORK_LATCH_MS against the real poll: the herd read's deadline (lib/api.ts POLL_TIMEOUT_MS) and
+  // the retry backoff after a read with no answer (hooks/use-polling.ts RETRY_MS, via intervalFor).
+  // Each herd read fails `readMs` after it starts: POLL_TIMEOUT_MS for a tunnel that swallows the
+  // request (a VPN up with the radio off), 0 for a read that fails at once (no route, a handover).
+  describe("the latch window on the real poll schedule", () => {
+    const idle: PollIntent = { bursting: false, following: true, changed: false };
+    // The fastest cadence (a create or close catching up) and the slowest (nobody watching).
+    const fast: PollIntent = { ...idle, topologyBursting: true };
+
+    // Herd reads fail from `firstReadAt` on (ms after the anchor) until `liveAt`, if given. Returns the
+    // ms after the anchor at which the outage latched, or null if it never did.
+    function latchAt(
+      readMs: number,
+      intent: PollIntent,
+      firstReadAt: number,
+      liveAt = Number.POSITIVE_INFINITY,
+    ): number | null {
+      const start = Date.now();
+      let readAt = firstReadAt;
+      for (let failures = 1; readAt < CONNECTION_LOST_MS; failures++) {
+        if (readAt >= liveAt) {
+          vi.setSystemTime(start + readAt);
+          markLive();
+          return null;
+        }
+        vi.setSystemTime(start + readAt + readMs);
+        noteNetworkFailure();
+        if (isLostLatched()) return readAt + readMs;
+        readAt += readMs + intervalFor(undefined, "p1", { ...intent, failures });
+      }
+      return null;
+    }
+
+    it("pins the poll the latch counts on: a 6 s deadline and a 0.5 s first retry", () => {
+      expect(POLL_TIMEOUT_MS).toBe(6_000);
+      expect(RETRY_MS).toBe(500);
+      expect(intervalFor(undefined, "p1", { ...idle, failures: 1 })).toBe(RETRY_MS);
+    });
+
+    it("a read that fails at once and fails its retry 0.5 s later, then answers, latches nothing", () => {
+      markWake();
+      expect(latchAt(0, idle, 0, RETRY_MS + 1)).toBeNull();
+      expect(isLostLatched()).toBe(false);
+    });
+
+    it("a dead tunnel after a wake latches on the retry, at its deadline, as the wake rule did", () => {
+      markWake();
+      // The first read ends inside the window (a strike), the retry's end is past it.
+      expect(POLL_TIMEOUT_MS).toBeLessThan(NETWORK_LATCH_MS);
+      expect(2 * POLL_TIMEOUT_MS + RETRY_MS).toBeGreaterThanOrEqual(NETWORK_LATCH_MS);
+      expect(latchAt(POLL_TIMEOUT_MS, idle, 0)).toBe(2 * POLL_TIMEOUT_MS + RETRY_MS);
+    });
+
+    it("a read that fails at once after a wake latches on the first retry past the window, before the 15 s clock", () => {
+      for (const intent of [fast, idle]) {
+        __resetConnectionHealth();
+        const at = latchAt(0, intent, 0);
+        expect(at).not.toBeNull();
+        expect(at!).toBeGreaterThanOrEqual(NETWORK_LATCH_MS);
+        expect(at!).toBeLessThan(CONNECTION_LOST_MS);
+      }
     });
   });
 });
