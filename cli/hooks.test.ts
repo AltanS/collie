@@ -31,7 +31,8 @@ import { asJsonObject } from "../web/src/lib/json.ts";
 import { HOLD_CONNECT_MS, HOLD_GRACE_MS } from "../web/src/lib/surface/hold.ts";
 import { loadProfiles } from "../web/src/lib/surface/profile.ts";
 import { hookTargetFileName } from "../bridge/beacon/hook-targets.ts";
-import { cmdBeaconHold, holdSocketPath, holdSocketPaths, type HoldDeps, type HoldSocket } from "./hold.ts";
+import { cmdBeaconHold, holdRequestOf, holdSocketPath, holdSocketPaths, type HoldDeps, type HoldSocket } from "./hold.ts";
+import { parseLstart, type StartTimeCommand } from "../bridge/beacon/liveness.ts";
 import { HOLD_MARKER_PREFIX, holdCommandIn, settingsHold } from "./hold-entry.ts";
 
 // `collie hooks install|uninstall|status`. Every decision is a pure function of the document on disk,
@@ -894,6 +895,8 @@ function holdDeps(over: {
     files: fakeFiles(over.proc === null ? {} : { [`/proc/${HOLD_PID}/stat`]: over.proc ?? HOLD_STAT }),
     readStdin: () => (over.stdinFails === true ? Promise.reject(new Error("EPIPE")) : Promise.resolve(stdin)),
     agentPid: HOLD_PID,
+    // Linux's probe, so no run of this file forks `ps`, on a Mac either.
+    pidProbe: { platform: "linux" },
     connect: (path, ms) => {
       connects.push({ path, ms });
       const socket = sockets[path];
@@ -929,6 +932,25 @@ function holdDeps(over: {
   // The registry walk runs when no fixed list is given, as in production.
   return over.registry === true ? built : { ...built, sockets: () => Object.keys(sockets) };
 }
+
+describe("hold: the agent's start time on macOS (M80 spec 11, #647)", () => {
+  const LSTART = "Mon Nov  2 10:15:33 2026\n";
+  const payload: JsonObject = asJsonObject(JSON.parse(permissionPayload())) ?? {};
+
+  test("with no stat file, the injected ps run builds the request; on Windows there is none", () => {
+    const runs: number[] = [];
+    const run = (_command: StartTimeCommand, pid: number): string => {
+      runs.push(pid);
+      return LSTART;
+    };
+    const mac = { ...holdDeps({ proc: null }), pidProbe: { platform: "darwin" as const, run } };
+    expect(holdRequestOf(mac, payload, HOLD_PROFILE)?.pidStartTime).toBe(parseLstart(LSTART)!);
+    expect(runs).toEqual([HOLD_PID]);
+    const windows = { ...holdDeps({ proc: null }), pidProbe: { platform: "win32" as const, run } };
+    expect(holdRequestOf(windows, payload, HOLD_PROFILE)).toBeNull();
+    expect(runs).toEqual([HOLD_PID]);
+  });
+});
 
 describe("hold: the install", () => {
   test("--hold-permissions adds the hold on PermissionRequest with the profile's timeout, and the tool edge", () => {

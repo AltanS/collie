@@ -15,6 +15,7 @@ import { skillReport } from "./skill-install.ts";
 import { HOST, type Host } from "../bridge/host.ts";
 import { beaconReader } from "../bridge/beacon-io.ts";
 import { readBeacons, type BeaconSweepDeps } from "../bridge/beacon/reader.ts";
+import { hasStartTimeProbe } from "../bridge/beacon/liveness.ts";
 import { DEFAULT_PORT, envBool, isLoopbackBindHost, nonLoopbackBindRefusal, resolveBridgeHost } from "../bridge/config.ts";
 import { configFilePaths } from "../bridge/config-source.ts";
 import type { MuxCapabilityDeclaration } from "../bridge/mux/capabilities.ts";
@@ -1947,11 +1948,22 @@ export function accountWindowsFinding(deps: Pick<DoctorDeps, "ctx" | "host" | "f
  * actually been written since the emitter was installed.
  *
  * Nothing here removes a file. The sweep is a READ, on this path as on the bridge's.
+ *
+ * A platform with no start-time probe (`bridge/beacon/liveness.ts`: not Linux, not macOS) never gets
+ * a beacon, so with the emitter installed and none on disk the row says that rather than "not yet"
+ * (M80 spec 11).
  */
 async function beacons(deps: DoctorDeps, installed: boolean): Promise<Finding> {
   const readings = await readBeacons(deps.beacons);
   const live = readings.filter((reading) => reading.liveness === "live").length;
   const expired = readings.length - live;
+  if (readings.length === 0 && installed && !hasStartTimeProbe(deps.host.platform)) {
+    return skipped(
+      "beacons",
+      "no agent writes one on this platform, because Collie cannot read a process's start time here",
+      "nothing to do here: only Linux and macOS have that probe",
+    );
+  }
   if (readings.length === 0) {
     return skipped(
       "beacons",

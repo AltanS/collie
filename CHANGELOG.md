@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **A Claude pane on macOS with herdr-core now gets its session, so Chat and History open.** On macOS the pane had no session, Chat and History stayed unavailable, and `collie doctor` said no agent had written a beacon. Collie's hook read the agent's start time from `/proc`, which macOS does not have, so it wrote nothing, and the bridge could not have confirmed a beacon either. Both now read the start time with `ps -o lstart=` on macOS. Linux still reads `/proc`, with the same value as before, so its beacons stay live across the update. The permission hold on macOS now reaches the phone too, because it reads the start time the same way. Thanks @vtinella (#647).
+
 ## [1.25.5] - 2026-11-02
 
 ### Fixed
