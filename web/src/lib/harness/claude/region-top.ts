@@ -18,6 +18,7 @@
 // MODAL_EDGE_WINDOW. A U+2500 box border beyond the rule window ends the search: it belongs to
 // something drawn before the modal (a box, a transcript separator), so a `▔` above it is not this
 // modal's edge.
+// A row of `╌` alone, a dashed frame drawn inside the modal, is neither: the scan steps over it.
 //
 // Pure functions over row texts.
 
@@ -39,6 +40,12 @@ const MODAL_EDGE = /^▔+(?:\s+\S.*?\s+▔+)?$/u;
 // The shortest edge worth the name, in display cells. The same floor as a bare input-box border
 // (BARE_BORDER_MIN in markers.ts). Every real edge in the corpus spans the pane, 40 cells or more.
 const MODAL_EDGE_MIN_WIDTH = 8;
+
+// The top or bottom of a DASHED FRAME: a row of `╌` alone, Ink's `dashed` border. Claude Code draws it
+// INSIDE a modal (2.1.307+ frames the focused denial's shell command on `/permissions` › Recently
+// denied with it), so it never opens one. Taken as the region top, its bottom row two rows over the
+// footer left no title, and the dialog stayed raw. The scan steps over it to the rule or edge above.
+const DASHED_FRAME_ROW = /^\s*╌+\s*$/u;
 
 /**
  * Whether row `i` is a MODAL EDGE for a footer at `footerLine`: the `▔` row shape above, at least
@@ -67,12 +74,13 @@ export type RegionTopKind = "edge" | "rule" | "stop";
  *  - `edge`: a modal edge (isModalEdge), anywhere inside MODAL_EDGE_WINDOW;
  *  - `rule`: a rule or box border inside REGION_SCAN_WINDOW (the rule the scan always took);
  *  - `stop`: a U+2500 box border past REGION_SCAN_WINDOW, which ends the search with no top;
- *  - null: keep scanning.
+ *  - null: keep scanning, a dashed frame row (DASHED_FRAME_ROW) included.
  * The caller bounds its loop by MODAL_EDGE_WINDOW. Callers with rows of their own to step over (the
  * Effort slider's marker and track rows) test those first, then ask this.
  */
 export function regionTopAt(texts: string[], i: number, seen: number, footerLine: number): RegionTopKind | null {
   const t = texts[i]!;
+  if (DASHED_FRAME_ROW.test(t)) return null;
   if (isModalEdge(texts, i, footerLine)) return "edge";
   if (seen < REGION_SCAN_WINDOW) return isBoxBorder(t) || isHorizontalRule(t) ? "rule" : null;
   return isBoxBorder(t) ? "stop" : null;
