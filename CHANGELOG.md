@@ -26,6 +26,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Fixed
 
 - **A Claude pane on macOS with herdr-core now gets its session, so Chat and History open.** On macOS the pane had no session, Chat and History stayed unavailable, and `collie doctor` said no agent had written a beacon. Collie's hook read the agent's start time from `/proc`, which macOS does not have, so it wrote nothing, and the bridge could not have confirmed a beacon either. Both now read the start time with `ps -o lstart=` on macOS. Linux still reads `/proc`, with the same value as before, so its beacons stay live across the update. The permission hold on macOS now reaches the phone too, because it reads the start time the same way. Thanks @vtinella (#647).
+- **Claude Code's rating survey no longer blocks sends under the idle /clear hint.** The "new task? /clear to save … tokens" hint on the update row's line, alone or ahead of the update item, made Collie read the survey as a dialog on Claude Code 2.1.316, so every send took the two-tap Send; the phone shows the survey card again. Thanks @OowhitecatoO (#648).
+- **The /permissions dialog's Recently denied tab shows its card again.** Claude Code 2.1.307 frames the denied command with a dashed box, and Collie took the box's edge for the top of the dialog, so the phone showed raw text with no buttons. Thanks @OowhitecatoO (#649).
+- **On /permissions, the button for Esc says what it will do.** After you mark a denied call, Esc approves or retries the marked calls, and the card showed that key as a plain Close. Thanks @OowhitecatoO (#650).
+- **A permission with a self-answer countdown now takes your tap.** Claude Code redraws the time left inside the dialog every second, and that clock was part of the ask's id, so every tap was refused as changed; the Claude grammar now holds that one sentence still, and any other time in the dialog still changes the ask. Thanks @eseninik (#651).
 
 ## [1.25.5] - 2026-11-02
 
