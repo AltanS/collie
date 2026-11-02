@@ -4,13 +4,13 @@ import { describe, expect, it } from "vitest";
 import { server } from "@/test/setup";
 import { addLauncher, apiErrorFields, removeAddedLauncher, renameAddedLauncher } from "./api";
 
-// The client half of a phone's own launcher rows (ADR 0094): what each call sends, to which machine,
-// and that a refusal arrives with its catalogued code.
+// The client half of a phone's own launcher rows (ADR 0094, ADR 0127 point 4): what each call sends,
+// that it goes to the lead whatever machine a page names, and that a refusal arrives with its code.
 
 const ID = "11111111-1111-4111-8111-111111111111";
 
 describe("added launchers, client", () => {
-  it("an add sends the recipe and the request id, to the machine the scope names", async () => {
+  it("an add sends the recipe and the request id, to the lead with no host on the wire", async () => {
     let seen: { url: string; body: unknown } | null = null;
     server.use(
       http.post(/\/api\/launchers\/added$/, async ({ request }) => {
@@ -18,10 +18,10 @@ describe("added launchers, client", () => {
         return HttpResponse.json({ ok: true, row: { command: "claude --continue", label: "Claude Code, Continue last", source: "added", id: ID } });
       }),
     );
-    const out = await addLauncher({ recipe: { harness: "claude", options: ["continue"] } }, ID, { host: "minibuch" });
+    const out = await addLauncher({ recipe: { harness: "claude", options: ["continue"] } }, ID);
     expect(out).toMatchObject({ ok: true, row: { id: ID } });
     expect(seen).not.toBeNull();
-    expect(new URL(seen!.url).searchParams.get("host")).toBe("minibuch");
+    expect(new URL(seen!.url).search).toBe("");
     expect(seen!.body).toEqual({ recipe: { harness: "claude", options: ["continue"] }, requestId: ID });
   });
 
@@ -62,5 +62,22 @@ describe("added launchers, client", () => {
     expect(await removeAddedLauncher(ID)).toEqual({ ok: true, removed: 1 });
     expect(await renameAddedLauncher(ID, "Top")).toMatchObject({ ok: true, row: { label: "Top" } });
     expect(bodies).toEqual([{ id: ID }, { id: ID, label: "Top" }]);
+  });
+
+  it("remove and rename carry no host or session either", async () => {
+    const urls: string[] = [];
+    server.use(
+      http.post(/\/api\/launchers\/added\/remove$/, ({ request }) => {
+        urls.push(request.url);
+        return HttpResponse.json({ ok: true, removed: 1 });
+      }),
+      http.post(/\/api\/launchers\/added\/rename$/, ({ request }) => {
+        urls.push(request.url);
+        return HttpResponse.json({ ok: true, row: { command: "htop", label: "Top" } });
+      }),
+    );
+    await removeAddedLauncher(ID);
+    await renameAddedLauncher(ID, "Top");
+    expect(urls.map((u) => new URL(u).search)).toEqual(["", ""]);
   });
 });

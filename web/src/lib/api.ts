@@ -2206,10 +2206,12 @@ export function fetchLaunchers(scope?: Scope): Promise<LaunchersResponse> {
   return req<LaunchersResponse>(withScope("/api/launchers", scope));
 }
 
-// ── Rows a phone adds on one machine (ADR 0094) ─────────────────────────────────────────────────
+// ── Rows a phone adds for the crew (ADR 0094, amended by ADR 0127 point 4) ───────────────────────
 //
-// Each machine keeps its own list: a `scope` with `host` writes THAT member's store through the
-// lead's ordinary forward, and nothing is copied anywhere else. All three are writes on the write gate.
+// A row a phone adds is the LEAD's, so it serves every machine of the crew. None of the three takes a
+// scope: they carry no `host` and no `session`, and the lead answers them from its own store. A page
+// that names a member still shows the member as where the first run lands, but the write never goes
+// there. All three are writes on the write gate.
 
 /** What "Add your own" sends: a recipe the bridge builds, or a line typed by hand. */
 export type AddLauncherAsk =
@@ -2228,24 +2230,24 @@ export type AddLauncherAsk =
  * POST /api/launchers/added. `requestId` is a UUID minted per add (`mintRequestId`); a retry with the
  * same id answers the stored row with `replayed: true` and adds nothing.
  */
-export function addLauncher(ask: AddLauncherAsk, requestId: string, scope?: Scope): Promise<AddedLauncherResponse> {
-  return req<AddedLauncherResponse>(withScope("/api/launchers/added", scope), {
+export function addLauncher(ask: AddLauncherAsk, requestId: string): Promise<AddedLauncherResponse> {
+  return req<AddedLauncherResponse>("/api/launchers/added", {
     method: "POST",
     body: JSON.stringify({ ...ask, requestId }),
   });
 }
 
-/** POST /api/launchers/added/remove — remove one row a phone added on that machine. */
-export function removeAddedLauncher(id: string, scope?: Scope): Promise<{ ok: true; removed: number }> {
-  return req<{ ok: true; removed: number }>(withScope("/api/launchers/added/remove", scope), {
+/** POST /api/launchers/added/remove — remove one row a phone added, from the lead's list. */
+export function removeAddedLauncher(id: string): Promise<{ ok: true; removed: number }> {
+  return req<{ ok: true; removed: number }>("/api/launchers/added/remove", {
     method: "POST",
     body: JSON.stringify({ id }),
   });
 }
 
 /** POST /api/launchers/added/rename — a new label for one row a phone added. */
-export function renameAddedLauncher(id: string, label: string, scope?: Scope): Promise<AddedLauncherResponse> {
-  return req<AddedLauncherResponse>(withScope("/api/launchers/added/rename", scope), {
+export function renameAddedLauncher(id: string, label: string): Promise<AddedLauncherResponse> {
+  return req<AddedLauncherResponse>("/api/launchers/added/rename", {
     method: "POST",
     body: JSON.stringify({ id, label }),
   });

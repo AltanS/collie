@@ -305,7 +305,9 @@ describe("Add your own: a recipe", () => {
       label: "Opus please",
       requestId: expect.stringMatching(/^[0-9a-f-]{36}$/),
     });
-    expect(new URL(posts[0]!.url).searchParams.get("host")).toBe("mini");
+    // The row is the crew's: the add goes to the lead, with no host on the wire, while the page the
+    // person returns to still names the machine they picked (ADR 0127 point 4).
+    expect(new URL(posts[0]!.url).search).toBe("");
     const query = new URLSearchParams(router.state.location.search);
     expect(query.get("pick")).toBe("row:claude --model opus");
     expect(query.get("machine")).toBe("mini");
@@ -524,10 +526,10 @@ describe("Add your own: typed lines turned off", () => {
     expect(addButton()).toBeDisabled();
   });
 
-  it("names the machine on a crew", async () => {
+  it("names the lead on a crew, whose switches these are, even with a member picked", async () => {
     serve({ ...ADDING, freeText: false });
     mount("/new/add?kind=command&machine=mini", roster);
-    expect(await screen.findByTestId("launcher-add-off")).toHaveTextContent("Turned off on minibuch");
+    expect(await screen.findByTestId("launcher-add-off")).toHaveTextContent("Turned off on bluefin");
   });
 
   it("the recipe way still adds", async () => {
@@ -626,6 +628,61 @@ describe("Add your own: the rows already added", () => {
   });
 });
 
+describe("Add your own: a member is picked (ADR 0127 point 4)", () => {
+  const LEAD_ROW: LauncherItem = { ...ROWS[0]!, from: "lead" };
+  const OWN_ROW: LauncherItem = { ...ROWS[1]!, key: "row:codex --own", command: "codex --own", label: "Codex, own", id: "own-1" };
+
+  it("says the row is added for every machine of the crew", async () => {
+    serve();
+    mount("/new/add?kind=agent&machine=mini", roster);
+    expect(await screen.findByTestId("launcher-add-summary")).toHaveTextContent("The row is added for every machine of the crew.");
+    expect(screen.getByTestId("launcher-add-summary")).not.toHaveTextContent("minibuch");
+  });
+
+  it("Rename and Remove on a lead row call the lead, with no host", async () => {
+    serve(ADDING, [LEAD_ROW]);
+    const urls: string[] = [];
+    server.use(
+      http.post("/api/launchers/added/rename", ({ request }) => {
+        urls.push(request.url);
+        return HttpResponse.json({ ok: true, row: { command: LEAD_ROW.command, label: "Opus", source: "added", id: "row-1" } });
+      }),
+      http.post("/api/launchers/added/remove", ({ request }) => {
+        urls.push(request.url);
+        return HttpResponse.json({ ok: true, removed: 1 });
+      }),
+    );
+    mount("/new/add?kind=agent&machine=mini&s=work", roster);
+    const row = await screen.findByTestId("launcher-added-row");
+    await userEvent.click(within(row).getByRole("button", { name: "Rename" }));
+    await userEvent.clear(within(row).getByRole("textbox"));
+    await userEvent.type(within(row).getByRole("textbox"), "Opus");
+    await userEvent.click(within(row).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(urls).toHaveLength(1));
+    await userEvent.click(within(row).getByRole("button", { name: "Remove" }));
+    await userEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Remove" }));
+    await waitFor(() => expect(urls).toHaveLength(2));
+    expect(urls.map((u) => new URL(u).search)).toEqual(["", ""]);
+  });
+
+  it("a row only the member holds has no Rename or Remove, because the lead does not answer for it", async () => {
+    serve(ADDING, [LEAD_ROW, OWN_ROW]);
+    mount("/new/add?kind=agent&machine=mini", roster);
+    const rows = await screen.findAllByTestId("launcher-added-row");
+    expect(rows).toHaveLength(2);
+    expect(within(rows[0]!).getByRole("button", { name: "Rename" })).toBeInTheDocument();
+    expect(rows[1]).toHaveTextContent("Codex, own");
+    expect(within(rows[1]!).queryByRole("button")).toBeNull();
+  });
+
+  it("on the lead's own page every added row keeps its actions", async () => {
+    serve(ADDING, [OWN_ROW]);
+    mount("/new/add?kind=agent&machine=lead", roster);
+    const row = await screen.findByTestId("launcher-added-row");
+    expect(within(row).getByRole("button", { name: "Remove" })).toBeInTheDocument();
+  });
+});
+
 describe("Add your own: how adding works", () => {
   it("opens a sheet with the recipe, Write a command and its switch, this machine's file, one example and the docs link", async () => {
     serve();
@@ -638,7 +695,7 @@ describe("Add your own: how adding works", () => {
     expect(within(sheet).getByRole("textbox", { name: "Example row for launchers.toml" })).toHaveValue(
       '[[launchers]]\ncommand = "claude --model opus"\nlabel = "Claude, opus"\nharness = "claude"',
     );
-    expect(within(sheet).getByText(/lives on this machine only/)).toBeInTheDocument();
+    expect(within(sheet).getByText(/is the crew's, not one machine's/)).toBeInTheDocument();
     expect(within(sheet).getByText(/Removing a device also removes the rows it added/)).toBeInTheDocument();
     expect(within(sheet).getByRole("link", { name: "How to add an agent" })).toHaveAttribute("href", expect.stringContaining("configure"));
   });
