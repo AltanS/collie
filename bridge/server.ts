@@ -5798,12 +5798,12 @@ async function focusPane(
 // injection the bridge already allows, so it stays within the existing remote-shell threat model.
 // The body's `label` must be a string or null; a blank string clears (so a user can wipe a label by
 // saving an empty field), which we send to Herdr as `label: null`.
-async function renamePane(
-  herdr: MuxAdapter,
-  engine: StateEngine,
+export async function renamePane(
+  herdr: Pick<MuxAdapter, "renamePane" | "renameTab" | "refresh" | "capabilities">,
+  engine: Pick<StateEngine, "current" | "pokeNow">,
   paneId: string,
   req: Request,
-  audit: AuditLog,
+  audit: Pick<AuditLog, "record">,
   device: string | null,
   session: string,
 ): Promise<Response> {
@@ -5828,9 +5828,38 @@ async function renamePane(
       ae,
     );
   }
-  audit.record({ action: "pane.rename", paneId, session, device, detail: { label } });
+  const tabRenamed = label !== null && (await renameSoleTab(herdr, engine, paneId, label));
+  audit.record({ action: "pane.rename", paneId, session, device, detail: { label, tabRenamed } });
   await settleTopology(herdr, engine);
   return json({ ok: true } satisfies ActionResponse, ae);
+}
+
+/**
+ * A pane renamed from the phone also renames its tab when the pane is alone in it. A launcher row names the
+ * tab it starts after the row's label ("cc danger"), and the terminal's tab bar shows the tab name, so a
+ * pane renamed on the phone would keep showing the row's label there. With one pane the tab and the pane are
+ * one thing to the person; a tab with two or more panes keeps its name. Returns whether the tab was renamed.
+ */
+async function renameSoleTab(
+  herdr: Pick<MuxAdapter, "renameTab" | "capabilities">,
+  engine: Pick<StateEngine, "current">,
+  paneId: string,
+  label: string,
+): Promise<boolean> {
+  if (!supportsCapability(herdr.capabilities, "renameTab")) return false;
+  const snapshot = engine.current();
+  const pane = [...snapshot.agents, ...snapshot.shellPanes].find((p) => p.paneId === paneId);
+  if (pane === undefined) return false;
+  const tab = snapshot.tabs.find((t) => t.tabId === pane.tabId);
+  if (tab === undefined || tab.paneCount !== 1) return false;
+  // Best effort: a tab left with its old name costs a label, never the pane rename that already landed.
+  try {
+    const renamed = await herdr.renameTab(tab.tabId, label);
+    return renamed.ok;
+  } catch {
+    // Swallowed: the pane is renamed; the tab name is cosmetic.
+    return false;
+  }
 }
 
 /**
