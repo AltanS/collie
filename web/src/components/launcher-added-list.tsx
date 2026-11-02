@@ -37,7 +37,7 @@ export function canChange(row: LauncherItem, memberView: boolean): boolean {
 }
 
 /**
- * "Added on this machine" (ADR 0094): every row a phone added there, each with Rename and Remove, and
+ * "Added for the crew" (ADR 0094, 0127): every row a phone added on the lead, each with Rename and Remove, and
  * below them the operator's own rows from `launchers.toml`, with a lock and no actions (a phone
  * never edits that file). Rename swaps the label for a field in the SAME box (a `OneOf`), so the row
  * does not change height; Remove asks first, in a sheet. Both are the silent kind of write
@@ -46,14 +46,11 @@ export function canChange(row: LauncherItem, memberView: boolean): boolean {
 export function LauncherAddedList({
   items,
   memberView,
-  machine,
   onChanged,
 }: {
   items: readonly LauncherItem[] | null;
   /** The page names a member: its own pre-0127 rows get no actions, the lead's rows keep theirs. */
   memberView: boolean;
-  /** ALREADY TRANSLATED. The machine's name, or "this machine". */
-  machine: string;
   /** Read the list again: a row was renamed or removed. */
   onChanged: () => void;
 }) {
@@ -88,7 +85,7 @@ export function LauncherAddedList({
   return (
     <section aria-labelledby="launcher-added-title" className="flex flex-col gap-2">
       <SectionLabel placement="above" id="launcher-added-title">
-        {t("launcherAdd.manage.title", { machine })}
+        {t("launcherAdd.manage.title")}
       </SectionLabel>
       {added.length === 0 && operator.length === 0 ? (
         <p className="text-xs text-muted-foreground">{t("launcherAdd.manage.empty")}</p>

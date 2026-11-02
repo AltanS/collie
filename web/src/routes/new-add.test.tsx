@@ -562,7 +562,7 @@ describe("Add your own: the rows already added", () => {
     expect(rows[1]).toHaveTextContent("Claude, no prompts");
     expect(rows[1]?.querySelector('[data-slot="no-prompts-badge"]')).not.toBeNull();
     expect(rows[0]?.querySelector('[data-slot="no-prompts-badge"]')).toBeNull();
-    expect(screen.getByText("Added on this machine")).toBeInTheDocument();
+    expect(screen.getByText("Added for the crew")).toBeInTheDocument();
   });
 
   it("an operator row sits in the same list with a lock and 'From launchers.toml', and no actions", async () => {

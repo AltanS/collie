@@ -75,7 +75,6 @@ function NewAddPage({ search }: { search: string }) {
     const named = servers.find((s) => s.id === id);
     return servers.length > 1 && named !== undefined ? named.name || named.id : t("launcherAdd.thisMachine");
   };
-  const machine = nameOf(machineId);
   // The switches, recipes and caps on this page are the lead's `adding` block (ADR 0127), so "turned
   // off on ..." names the lead, not the machine the first run lands on.
   const leadName = nameOf(leadId);
@@ -314,7 +313,7 @@ function NewAddPage({ search }: { search: string }) {
           {t("launcherAdd.how.link")}
         </button>
 
-        <LauncherAddedList items={loaded ? launchers.items : null} memberView={memberView} machine={machine} onChanged={launchers.reload} />
+        <LauncherAddedList items={loaded ? launchers.items : null} memberView={memberView} onChanged={launchers.reload} />
       </BandMain>
 
       <BottomBar className="flex flex-col gap-2 px-4">
