@@ -11,17 +11,19 @@ import type { JsonObject, JsonValue } from "./json.ts";
 // the moment it is known: after the multiplexer reported the create succeeded, and not before.
 //
 // ── WHAT IS STORED, AND WHAT IS NOT ─────────────────────────────────────────────
-// Per checkout folder: the ref that was passed to the multiplexer and when. Nothing else, no branch
-// name, no request id, no launcher. A create that sent no ref (no `base` in the body, or a repo with
+// Per checkout folder: the ref the checkout was cut from, the branch it was made on, and when.
+// Nothing else, no request id, no launcher. The branch is there because the key is the folder alone:
+// a worktree removed and made again at the same folder from another base would otherwise show the old
+// base (M81 spec 07). An entry written before the branch was kept has none, and still reads. A create that sent no ref (no `base` in the body, or a repo with
 // no default branch to name) stores nothing, because there is no base to remember.
 //
 // ── THE FILE ────────────────────────────────────────────────────────────────────
-// `<stateDir>/worktree-bases.json`, 0600, `{ "version": 1, "bases": { "<folder>": { base, createdAt } } }`.
+// `<stateDir>/worktree-bases.json`, 0600, `{ "version": 1, "bases": { "<folder>": { base, branch?, createdAt } } }`.
 // Written atomically (a fresh temp file renamed over the target), queued so two creates finishing
 // together cannot interleave, and only by a create: loading writes nothing, so a bridge nobody asks
 // for a worktree writes no file at all (solo-baseline.test.ts counts the written entries). Read
 // tolerantly: a missing, broken or foreign-version file is an empty map, and an entry that is not
-// `{ base: string, createdAt: number }` is dropped. Nothing reads it yet.
+// `{ base: string, createdAt: number }` is dropped; a `branch` that is not a string is left off.
 //
 // ── BOUNDED ─────────────────────────────────────────────────────────────────────
 // At most {@link MAX_BASES}; the oldest `createdAt` goes first. A removed worktree leaves its entry
@@ -38,8 +40,10 @@ export const BASES_VERSION = 1;
 
 /** What one create left behind. */
 export interface WorktreeBase {
-  /** The ref handed to the multiplexer as the new branch's starting point. */
+  /** The ref the new branch was cut from. */
   base: string;
+  /** The branch the checkout was made on. Absent in an entry written before it was kept. */
+  branch?: string;
   /** Epoch ms of the create. */
   createdAt: number;
 }
@@ -65,10 +69,11 @@ function asJsonRecord(value: JsonValue | undefined): JsonObject | null {
 function coerceBase(raw: JsonValue | undefined): WorktreeBase | null {
   const r = asJsonRecord(raw);
   if (r === null) return null;
-  const { base, createdAt } = r;
+  const { base, branch, createdAt } = r;
   if (typeof base !== "string" || base === "") return null;
   if (typeof createdAt !== "number" || !Number.isFinite(createdAt)) return null;
-  return { base, createdAt };
+  if (typeof branch !== "string" || branch === "") return { base, createdAt };
+  return { base, branch, createdAt };
 }
 
 /** The entries a file holds. Anything that is not an entry is dropped; a foreign version is empty. */

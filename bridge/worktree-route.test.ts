@@ -552,6 +552,7 @@ describe("POST /api/worktree — the starting point", () => {
     expect(await newBranchCommit()).toBe(await commitOf("main"));
     const stored = bases.get(WORKTREE_FOLDER());
     expect(stored?.base).toBe("main");
+    expect(stored?.branch).toBe("worktree/x");
     expect(stored?.createdAt).toBeGreaterThanOrEqual(before);
   });
 

@@ -103,6 +103,31 @@ describe("coerceBases", () => {
     ).toEqual({ "/ok": { base: "main", createdAt: 5 } });
   });
 
+  test("an entry keeps its branch, an old entry without one still reads, and a branch that is no string is left off", () => {
+    expect(
+      coerceBases({
+        version: BASES_VERSION,
+        bases: {
+          "/new": { base: "main", branch: "feat/x", createdAt: 5 },
+          "/old": { base: "main", createdAt: 6 },
+          "/odd": { base: "main", branch: 7, createdAt: 8 },
+        },
+      }),
+    ).toEqual({
+      "/new": { base: "main", branch: "feat/x", createdAt: 5 },
+      "/old": { base: "main", createdAt: 6 },
+      "/odd": { base: "main", createdAt: 8 },
+    });
+  });
+
+  test("a second store reads back the branch the first wrote", async () => {
+    const first = new WorktreeBaseStore(stateDir, silent);
+    await first.record("/r/w", { base: "main", branch: "feat/x", createdAt: 1 });
+    const second = new WorktreeBaseStore(stateDir, silent);
+    await second.load();
+    expect(second.get("/r/w")).toEqual({ base: "main", branch: "feat/x", createdAt: 1 });
+  });
+
   test("a foreign or missing version, or a wrong shape, is empty", () => {
     expect(coerceBases({ version: 2, bases: { "/ok": { base: "main", createdAt: 5 } } })).toEqual({});
     expect(coerceBases({ bases: { "/ok": { base: "main", createdAt: 5 } } })).toEqual({});

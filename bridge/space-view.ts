@@ -9,12 +9,14 @@
 // - `gitHead`: the branch of the space's own folder, from the one `GitHeads` reader the panes use.
 //   bridge/index.ts feeds the space folders into its refresh set beside the panes' folders.
 // - `base`: the ref a worktree was cut from, from `worktree-bases.json` on THIS machine, and only for
-//   a space that is a linked worktree. A member serves its own views to the lead, which forwards them
+//   a space that is a linked worktree, and only while the folder is still on the branch the entry was
+//   made on (an entry from before the branch was kept has none and always shows): a folder made again
+//   on another branch must not show the old one's base (spec 07). A member serves its own views to the lead, which forwards them
 //   as they come (crew/merge.ts), so a member's base reaches the phone with no protocol change.
 
-import type { GitHeadSurface } from "./git-head.ts";
+import type { GitHead, GitHeadSurface } from "./git-head.ts";
 import type { WorkspaceView } from "./types.ts";
-import type { WorktreeBaseSurface } from "./worktree-bases.ts";
+import type { WorktreeBase, WorktreeBaseSurface } from "./worktree-bases.ts";
 
 /** The two readers a space view takes its facts from. Both answer from memory. */
 export interface SpaceContextSources {
@@ -33,12 +35,19 @@ export function withSpaceContext(view: WorkspaceView, from: SpaceContextSources)
   const folder = view.folder;
   if (folder === undefined) return view;
   const gitHead = from.gitHeads?.get(folder);
-  const base = view.isWorktree === true ? from.bases.get(folder)?.base : undefined;
+  const base = view.isWorktree === true ? baseFor(from.bases.get(folder), gitHead) : undefined;
   if (gitHead === undefined && base === undefined) return view;
   const out: WorkspaceView = { ...view };
   if (gitHead !== undefined) out.gitHead = gitHead;
   if (base !== undefined) out.base = base;
   return out;
+}
+
+/** The stored base, when the entry has no branch or its branch is the one the folder is on now. */
+function baseFor(entry: WorktreeBase | undefined, gitHead: GitHead | undefined): string | undefined {
+  if (entry === undefined) return undefined;
+  if (entry.branch === undefined) return entry.base;
+  return gitHead?.kind === "branch" && gitHead.name === entry.branch ? entry.base : undefined;
 }
 
 /** {@link withSpaceContext} over a whole list; the list itself comes back when no view changed. */
