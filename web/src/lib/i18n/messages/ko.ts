@@ -1240,6 +1240,7 @@ export const ko: Dictionary = {
   "space.overview.needsYou.other": "스페이스 {count}개 확인 필요",
   "space.overview.paneCount.one": "창 {count}개",
   "space.overview.paneCount.other": "창 {count}개",
+  "space.worktree.fromBase": "{base}에서",
   "space.strip.back": "뒤로",
   "space.strip.title": "스페이스",
   "space.strip.all": "전체",

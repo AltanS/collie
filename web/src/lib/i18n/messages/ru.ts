@@ -1213,6 +1213,7 @@ export const ru: Dictionary = {
   "space.overview.needsYou.many": "{count} пространств требуют внимания",
   "space.overview.paneCount.one": "{count} панель",
   "space.overview.paneCount.other": "Панелей: {count}",
+  "space.worktree.fromBase": "от {base}",
   "space.overview.paneCount.few": "{count} панели",
   "space.overview.paneCount.many": "{count} панелей",
   "space.strip.back": "Назад",

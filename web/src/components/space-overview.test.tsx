@@ -193,3 +193,57 @@ describe("SpaceOverview — order and last-seen times", () => {
     expect(time.compareDocumentPosition(count) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });
+
+// M81 spec 06: a worktree space says its repo, its branch and its base on a second line.
+describe("SpaceOverview — a worktree space's second line", () => {
+  const REPO = "/home/op/code/openplate-workspace";
+  const repoSpace = (): WorkspaceView => ({ ...ws("w1", "openplate-workspace", 1, 1), repoRoot: REPO, isWorktree: false, folder: REPO });
+  const worktree = (over: Partial<WorkspaceView> = {}): WorkspaceView => ({
+    ...ws("w2", "worktree-eager-summit-7987", 1, 1),
+    number: 2,
+    repoRoot: REPO,
+    isWorktree: true,
+    folder: "/home/op/.herdr/worktrees/openplate-workspace/worktree-eager-summit-7987",
+    gitHead: { kind: "branch", name: "worktree/eager-summit-7987" },
+    base: "main",
+    ...over,
+  });
+  const lineOf = (label: string): HTMLElement | null =>
+    screen.getByRole("button", { name: new RegExp(label) }).querySelector('[data-slot="space-row-worktree"]');
+
+  it("standalone: repo · branch · from base", () => {
+    render(view({ workspaces: [worktree()] }));
+    const line = lineOf("worktree-eager-summit-7987");
+    expect(line).not.toBeNull();
+    expect(line).toHaveTextContent("openplate-workspace·worktree/eager-summit-7987Branch worktree/eager-summit-7987·from main");
+    expect(line?.querySelector('[data-slot="branch-label"]')).toHaveAttribute("title", "worktree/eager-summit-7987");
+  });
+
+  it("nested under its repo's own space: branch · from base, no repo", () => {
+    render(view({ workspaces: [repoSpace(), worktree()] }));
+    const line = lineOf("worktree-eager-summit-7987");
+    expect(line).not.toBeNull();
+    expect(line).toHaveTextContent("worktree/eager-summit-7987Branch worktree/eager-summit-7987·from main");
+    expect(line).not.toHaveTextContent("openplate-workspace·");
+  });
+
+  it("a detached head shows its short sha the way the agent card does", () => {
+    const sha = "abc1234def5678abc1234def5678abc1234def56";
+    render(view({ workspaces: [worktree({ gitHead: { kind: "detached", sha } })] }));
+    expect(lineOf("worktree-eager-summit-7987")).toHaveTextContent("detached @abc1234");
+  });
+
+  it("leaves out a part that is absent, with its middot", () => {
+    const { base: _base, ...noBase } = worktree();
+    render(view({ workspaces: [noBase] }));
+    const line = lineOf("worktree-eager-summit-7987");
+    expect(line).not.toHaveTextContent("from");
+    expect(line?.textContent?.endsWith("·")).toBe(false);
+  });
+
+  it("draws no second line for a space that is not a worktree", () => {
+    render(view({ workspaces: [{ ...repoSpace(), gitHead: { kind: "branch", name: "main" } }, ws("w3", "tgl", 1, 1)] }));
+    expect(document.querySelector('[data-slot="space-row-worktree"]')).toBeNull();
+    expect(screen.getByText("openplate-workspace")).toHaveClass("min-w-0", "flex-1", "truncate", "font-medium");
+  });
+});

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isolateSpaces, nestWorktrees } from "./spaces";
+import { isolateSpaces, nestWorktrees, spaceWorktreeContext } from "./spaces";
 import type { WorkspaceView } from "./types";
 
 // The grouping rules the spaces list leans on. Written against the shape a real herd produces:
@@ -111,5 +111,61 @@ describe("isolateSpaces (issue #338)", () => {
   it("ignores a stale key beside a live one, and filters nothing when every key is stale", () => {
     expect(isolateSpaces(all, [key("gone"), key("w3")]).map((w) => w.workspaceId)).toEqual(["w3"]);
     expect(isolateSpaces(all, [key("gone"), key("lost")])).toEqual(all);
+  });
+});
+
+// M81 spec 06: what a worktree space's second line says, standalone and nested.
+describe("spaceWorktreeContext", () => {
+  const SHA = "abc1234def5678abc1234def5678abc1234def56";
+  const wt = space("w2", {
+    label: "worktree-eager-summit-7987",
+    repoRoot: "/home/op/code/openplate-workspace",
+    isWorktree: true,
+    folder: "/home/op/.herdr/worktrees/openplate-workspace/worktree-eager-summit-7987",
+    gitHead: { kind: "branch", name: "worktree/eager-summit-7987" },
+    base: "main",
+  });
+
+  it("names the repo, the branch and the base for a standalone worktree", () => {
+    expect(spaceWorktreeContext(wt, false)).toEqual({
+      repo: "openplate-workspace",
+      head: { kind: "branch", name: "worktree/eager-summit-7987" },
+      base: "main",
+    });
+  });
+
+  it("leaves the repo out under its repo's own row", () => {
+    expect(spaceWorktreeContext(wt, true)).toEqual({
+      repo: null,
+      head: { kind: "branch", name: "worktree/eager-summit-7987" },
+      base: "main",
+    });
+  });
+
+  it("reads the repo's name off a Windows path and past a trailing separator", () => {
+    expect(spaceWorktreeContext({ ...wt, repoRoot: "C:\\code\\openplate-workspace\\" }, false)?.repo).toBe("openplate-workspace");
+  });
+
+  it("keeps a detached head as it came", () => {
+    expect(spaceWorktreeContext({ ...wt, gitHead: { kind: "detached", sha: SHA } }, true)?.head).toEqual({
+      kind: "detached",
+      sha: SHA,
+    });
+  });
+
+  it("leaves out each part that is absent, never a placeholder", () => {
+    const { gitHead: _head, base: _base, ...bare } = wt;
+    expect(spaceWorktreeContext(bare, false)).toEqual({ repo: "openplate-workspace", head: null, base: null });
+    expect(spaceWorktreeContext({ ...bare, base: "main" }, true)).toEqual({ repo: null, head: null, base: "main" });
+    expect(spaceWorktreeContext(bare, true)).toBeNull();
+  });
+
+  it("drops an empty branch name or an empty base from a peer", () => {
+    expect(spaceWorktreeContext({ ...wt, gitHead: { kind: "branch", name: "" }, base: "" }, true)).toBeNull();
+  });
+
+  it("says nothing for a space that is not a worktree, even with a head on it", () => {
+    expect(spaceWorktreeContext({ ...parent, gitHead: { kind: "branch", name: "main" } }, false)).toBeNull();
+    expect(spaceWorktreeContext(unrelated, false)).toBeNull();
   });
 });

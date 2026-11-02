@@ -463,6 +463,18 @@ export interface WorkspaceView {
   /** The space's own folder, when the multiplexer keeps one (herdr worktree, tmux session_path). */
   folder?: string;
   /**
+   * What the checkout holding {@link folder} is on. Mirrors `WorkspaceView.gitHead` in bridge/types.ts.
+   *
+   * **Absent, never a placeholder**, by the same rule as {@link AgentView.gitHead}, and read through
+   * `spaceWorktreeContext` (lib/spaces.ts), which drops a malformed one from a peer.
+   */
+  gitHead?: GitHead;
+  /**
+   * The ref a worktree space was cut from, as the machine holding it wrote it down. Mirrors
+   * `WorkspaceView.base` in bridge/types.ts: only on a worktree, absent when unknown.
+   */
+  base?: string;
+  /**
    * Which member of the crew this space lives on — the same tag a pane and a session carry.
    *
    * Present exactly when `servers` is, absent otherwise, so a solo body is unchanged. Herdr numbers
