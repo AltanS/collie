@@ -1,9 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
 
-import { documentCarriesOurHooks, hooksInstalledProbe, HOOKS_PROBE_TTL_MS } from "./beacon-io.ts";
+import { COMMAND_PROBE_CACHE_MS, documentCarriesOurHooks, hooksInstalledProbe, HOOKS_PROBE_TTL_MS, procBeaconLiveness, readStartTimeSync } from "./beacon-io.ts";
 import { HOOK_MARKER } from "../cli/hooks.ts";
 import { parseHookTarget } from "./beacon/hook-targets.ts";
+import { parseLstart, type StartTimeCommand } from "./beacon/liveness.ts";
+import { beaconFileName, beaconKey } from "./beacon/paths.ts";
+import { readBeacons } from "./beacon/reader.ts";
+import { BEACON_SCHEMA_VERSION } from "./beacon/types.ts";
 
 // The one question the bridge asks about the agent's settings: are OUR hooks in it? The filesystem
 // half of this module needs a real disk and is exercised by the CLI's own suite; what is pinned here
@@ -91,5 +95,89 @@ describe("parseHookTarget, the optional identity fields (M76 spec 02)", () => {
 
   test("the required fields still decide: a record with no state dir is not a record", () => {
     expect(parseHookTarget(JSON.stringify({ ...base, stateDir: "", mux: "herdr" }))).toBeNull();
+  });
+});
+
+// The real pid probe's two platform paths (M80 spec 11, issue 647), with the file read and the `ps`
+// run injected: no test here reads a real `/proc` or forks a process.
+describe("procBeaconLiveness", () => {
+  const PID = 4242;
+  const LSTART = "Mon Nov  2 10:15:33 2026\n";
+  const STORED = parseLstart(LSTART)!;
+  const MARKER = { namespace: "herdr-core", scope: "/Users/pat/.local/state/herdr-core/default.sock", pane: "t3" };
+  const NOW = Date.parse("2026-11-02T12:00:00.000Z");
+
+  /** A `ps` that answers `answer` for every pid and counts its runs. */
+  function fakePs(answer: () => string | null) {
+    const runs: string[][] = [];
+    const run = (command: StartTimeCommand, pid: number): Promise<string | null> => {
+      runs.push([command.file, ...command.args(pid)]);
+      return Promise.resolve(answer());
+    };
+    return { runs, run };
+  }
+
+  /** One sweep over one beacon that stored {@link STORED}, with the given probe. */
+  async function sweepOne(liveness: ReturnType<typeof procBeaconLiveness>): Promise<string | undefined> {
+    const document = {
+      schemaVersion: BEACON_SCHEMA_VERSION,
+      harness: "claude",
+      session: { kind: "id", value: "0f9d1c2e-1111-4222-8333-444455556666" },
+      status: "working",
+      pid: PID,
+      pidStartTime: STORED,
+      markers: [MARKER],
+      heartbeatMs: NOW - 60_000,
+    };
+    const name = beaconFileName(beaconKey(document.markers));
+    const directory = { list: () => Promise.resolve([name]), read: () => Promise.resolve(JSON.stringify(document)) };
+    const [reading] = await readBeacons({ directory, liveness, now: () => NOW });
+    return reading?.liveness;
+  }
+
+  test("on macOS a beacon is live while ps returns the stored lstart", async () => {
+    const ps = fakePs(() => LSTART);
+    expect(await sweepOne(procBeaconLiveness({ platform: "darwin", readText: () => null, run: ps.run }))).toBe("live");
+    expect(ps.runs).toEqual([["/bin/ps", "-o", "lstart=", "-p", String(PID)]]);
+  });
+
+  test("on macOS a beacon is expired once the start differs (a reused pid) or ps answers nothing", async () => {
+    for (const answer of ["Mon Nov  2 10:15:34 2026\n", "", null]) {
+      expect(await sweepOne(procBeaconLiveness({ platform: "darwin", readText: () => null, run: fakePs(() => answer).run }))).toBe("expired");
+    }
+  });
+
+  test("on macOS one pid runs ps once per cache window, so a herd poll does not fork per beacon per pass", async () => {
+    let clock = 1000;
+    const ps = fakePs(() => LSTART);
+    const liveness = procBeaconLiveness({ platform: "darwin", readText: () => null, run: ps.run, now: () => clock });
+    expect(await liveness.startTimeOf(PID)).toBe(STORED);
+    clock += COMMAND_PROBE_CACHE_MS - 1;
+    expect(await liveness.startTimeOf(PID)).toBe(STORED);
+    expect(ps.runs).toHaveLength(1);
+    clock += 1;
+    expect(await liveness.startTimeOf(PID)).toBe(STORED);
+    expect(ps.runs).toHaveLength(2);
+  });
+
+  test("Linux reads the stat file and never runs ps; no stat file is null", async () => {
+    const stat = `${String(PID)} (claude) S ${Array.from({ length: 18 }, (_v, i) => i).join(" ")} 987654 0 0`;
+    const ps = fakePs(() => LSTART);
+    const linux = procBeaconLiveness({ platform: "linux", readText: (path) => (path === `/proc/${String(PID)}/stat` ? stat : null), run: ps.run });
+    expect(await linux.startTimeOf(PID)).toBe(987_654);
+    expect(await linux.startTimeOf(PID + 1)).toBeNull();
+    expect(ps.runs).toEqual([]);
+  });
+
+  test("Windows has no probe: null, and nothing runs", async () => {
+    const ps = fakePs(() => LSTART);
+    expect(await procBeaconLiveness({ platform: "win32", readText: () => null, run: ps.run }).startTimeOf(PID)).toBeNull();
+    expect(ps.runs).toEqual([]);
+  });
+
+  test("the hook target registration reads its own start with the same probe", () => {
+    expect(readStartTimeSync(PID, { platform: "darwin", readText: () => null, run: () => LSTART })).toBe(STORED);
+    expect(readStartTimeSync(PID, { platform: "darwin", readText: () => null, run: () => null })).toBeNull();
+    expect(readStartTimeSync(PID, { platform: "win32", readText: () => null, run: () => LSTART })).toBeNull();
   });
 });

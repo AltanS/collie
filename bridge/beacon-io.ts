@@ -12,14 +12,17 @@
 // file at boot and removes it on a clean stop. Nothing here can cause a send, a key, a rename or a close: a
 // beacon and an edge are hints, never a control channel (.adr/0024).
 
+import { execFile, execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { readdir, readFile, lstat, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { promisify } from "node:util";
 
 import { HOOK_TARGET_SCHEMA_VERSION, hookTargetFileName, hookTargetsDir, identityFields, parseHookTarget, type HookTargetEnv, type HookTargetIdentity } from "./beacon/hook-targets.ts";
 
-import { parseProcStartTime, procStatPath } from "./beacon/liveness.ts";
+import { startTimeProbe, type StartTimeCommand } from "./beacon/liveness.ts";
+import { HOST } from "./host.ts";
 import { parseEdge } from "./beacon/parse.ts";
 import type { SavedSource, SourceStore } from "./surface/edges.ts";
 import { asJsonNumber, asJsonObject, asJsonString, parseJson } from "../web/src/lib/json.ts";
@@ -66,25 +69,119 @@ export function fileBeaconDirectory(stateDir: string): BeaconDirectory {
   };
 }
 
+/** How long one pid's `ps` answer is reused on macOS, so a herd poll does not run `ps` per beacon per pass. */
+export const COMMAND_PROBE_CACHE_MS = 5_000;
+
+/** Most pids kept; a long-lived bridge never grows the table past this. */
+const COMMAND_PROBE_CACHE_MAX = 256;
+
+const execFileAsync = promisify(execFile);
+
+/** The seams of the real pid probe. Production leaves all of them; a test pins the platform and the reads. */
+export interface ProcLivenessDeps {
+  /** Whose probe runs (`bridge/beacon/liveness.ts`). Defaults to `HOST.platform`. */
+  readonly platform?: NodeJS.Platform;
+  /** One file's text, or null. Defaults to a real read. */
+  readonly readText?: (path: string) => string | null;
+  /** One probe command's stdout, or null when it failed. Defaults to a real `execFile`. */
+  readonly run?: (command: StartTimeCommand, pid: number) => Promise<string | null>;
+  readonly now?: () => number;
+}
+
+function readTextOrNull(path: string): string | null {
+  try {
+    return readFileSync(path, "utf8");
+  } catch {
+    return null;
+  }
+}
+
+async function runCommand(command: StartTimeCommand, pid: number): Promise<string | null> {
+  try {
+    const { stdout } = await execFileAsync(command.file, [...command.args(pid)], {
+      encoding: "utf8",
+      env: { ...command.env },
+      timeout: command.timeoutMs,
+      windowsHide: true,
+    });
+    return stdout;
+  } catch {
+    return null;
+  }
+}
+
 /**
- * The pid probe, on Linux.
+ * The pid probe: `/proc/<pid>/stat` on Linux, `ps -o lstart=` on macOS (no `/proc` there), nothing
+ * elsewhere.
  *
- * The unit is `bridge/beacon/liveness.ts`'s and must stay that module's, because the EMITTER stores
- * what the same parser returned: two implementations that agree today are not that guarantee, and a
- * mismatch would make every live beacon read expired in silence.
+ * The probe is `bridge/beacon/liveness.ts`'s {@link startTimeProbe} and must stay that module's,
+ * because the EMITTER stores what the same probe returned: two implementations that agree today are
+ * not that guarantee, and a mismatch would make every live beacon read expired in silence.
+ *
+ * Every failure (no such process, no `/proc`, a `ps` that failed or timed out, a platform with no
+ * probe) answers null, which means the same thing to the reader: it cannot confirm the writer is
+ * alive, so the beacon is expired rather than live. On macOS an answer is kept for
+ * {@link COMMAND_PROBE_CACHE_MS}, so an agent that ended reads live that much longer at most.
  */
-export function procBeaconLiveness(): BeaconLiveness {
+export function procBeaconLiveness(deps: ProcLivenessDeps = {}): BeaconLiveness {
+  const probe = startTimeProbe(deps.platform ?? HOST.platform);
+  const readText = deps.readText ?? readTextOrNull;
+  const run = deps.run ?? runCommand;
+  const now = deps.now ?? Date.now;
+  const cache = new Map<number, { at: number; start: Promise<number | null> }>();
   return {
     startTimeOf(pid: number): Promise<number | null> {
-      try {
-        return Promise.resolve(parseProcStartTime(readFileSync(procStatPath(pid), "utf8")));
-      } catch {
-        // No such process, or a platform with no `/proc`. Both mean the same thing to the reader: it
-        // cannot confirm the writer is alive, so the beacon is expired rather than live.
-        return Promise.resolve(null);
+      const stat = readText(probe.stat.path(pid));
+      if (stat !== null) return Promise.resolve(probe.stat.parse(stat));
+      const command = probe.command;
+      if (command === null) return Promise.resolve(null);
+      const at = now();
+      const hit = cache.get(pid);
+      if (hit !== undefined && at - hit.at < COMMAND_PROBE_CACHE_MS) return hit.start;
+      const start = run(command, pid)
+        .then((text) => (text === null ? null : command.parse(text)))
+        .catch(() => null);
+      if (cache.size >= COMMAND_PROBE_CACHE_MAX) {
+        for (const [key, value] of cache) {
+          if (at - value.at >= COMMAND_PROBE_CACHE_MS) cache.delete(key);
+        }
+        if (cache.size >= COMMAND_PROBE_CACHE_MAX) cache.clear();
       }
+      cache.set(pid, { at, start });
+      return start;
     },
   };
+}
+
+/** The seams of {@link readStartTimeSync}: the same as the reader's, with a synchronous run. */
+export interface SyncProbeDeps {
+  readonly platform?: NodeJS.Platform;
+  readonly readText?: (path: string) => string | null;
+  readonly run?: (command: StartTimeCommand, pid: number) => string | null;
+}
+
+function runCommandSync(command: StartTimeCommand, pid: number): string | null {
+  try {
+    return execFileSync(command.file, [...command.args(pid)], {
+      encoding: "utf8",
+      env: { ...command.env },
+      timeout: command.timeoutMs,
+      stdio: ["ignore", "pipe", "ignore"],
+      windowsHide: true,
+    });
+  } catch {
+    return null;
+  }
+}
+
+/** A pid's start time with the same probe, synchronously, or null: for this bridge's own hook target file. */
+export function readStartTimeSync(pid: number, deps: SyncProbeDeps = {}): number | null {
+  const probe = startTimeProbe(deps.platform ?? HOST.platform);
+  const stat = (deps.readText ?? readTextOrNull)(probe.stat.path(pid));
+  if (stat !== null) return probe.stat.parse(stat);
+  if (probe.command === null) return null;
+  const text = (deps.run ?? runCommandSync)(probe.command, pid);
+  return text === null ? null : probe.command.parse(text);
 }
 
 /** Everything a real sweep needs. The clock and the TTL stay the reader's defaults. */
@@ -246,12 +343,9 @@ export function registerHookTarget(
 ): HookTargetRegistration {
   const dir = hookTargetsDir(env, home);
   const path = join(dir, hookTargetFileName(stateDir));
-  let pidStartTime: number | null = null;
-  try {
-    pidStartTime = parseProcStartTime(readFileSync(procStatPath(process.pid), "utf8"));
-  } catch {
-    // No /proc: the emitter checks the pid alone.
-  }
+  // The emitter compares it with its own probe of the same pid (`liveHookTargets`). Null where the
+  // platform has no probe: the emitter then checks the pid alone.
+  const pidStartTime = readStartTimeSync(process.pid);
   // The wire form, not a HookTargetRecord: the identity fields are written only when the caller knows them.
   const record = { schemaVersion: HOOK_TARGET_SCHEMA_VERSION, stateDir, pid: process.pid, pidStartTime, bootedAt: Date.now(), ...identityFields(identity) };
   const temp = join(dir, `.${String(process.pid)}.tmp`);

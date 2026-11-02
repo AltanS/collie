@@ -2,7 +2,6 @@ import { once } from "node:events";
 import { createConnection } from "node:net";
 import { dirname } from "node:path";
 import { holdSocketPath } from "../bridge/beacon/paths.ts";
-import { parseProcStartTime, procStatPath } from "../bridge/beacon/liveness.ts";
 import type { JsonObject } from "../bridge/json.ts";
 import { asJsonString, parseJsonObject } from "../web/src/lib/json.ts";
 import {
@@ -18,7 +17,7 @@ import {
   type HoldRequest,
 } from "../web/src/lib/surface/hold.ts";
 import { loadProfiles } from "../web/src/lib/surface/profile.ts";
-import { BEACON_HARNESS, edgeStateDirs, privateDir, readEnvMarkers, type EdgeTargetDeps } from "./beacon.ts";
+import { BEACON_HARNESS, edgeStateDirs, privateDir, readEnvMarkers, readPidStartTime, type EdgeTargetDeps, type PidProbeDeps } from "./beacon.ts";
 import type { CliContext } from "./context.ts";
 import { EXIT } from "./io.ts";
 import type { Files } from "./sys.ts";
@@ -83,6 +82,8 @@ export interface HoldDeps {
   readonly agentPid: number;
   /** The owner uid the registry folder must have; undefined skips the check (Windows, tests). */
   readonly uid?: number;
+  /** How the agent's start time is read: the beacon's own probe (cli/beacon.ts, M80 spec 11). Production leaves it. */
+  readonly pidProbe?: PidProbeDeps | undefined;
   /** The socket paths of every live bridge. Defaults to {@link holdSocketPaths}. */
   sockets?(): readonly string[];
   /** Connect within `ms`, or null. Never throws. */
@@ -101,8 +102,9 @@ export function holdRequestOf(deps: HoldDeps, payload: JsonObject, hold: HoldPro
   if (tool === undefined || !/^[\x20-\x7e]{1,128}$/u.test(tool)) return null;
   const markers = readEnvMarkers(deps.ctx.env);
   if (markers.length === 0) return null;
-  const stat = deps.files.read(procStatPath(deps.agentPid));
-  const pidStartTime = stat === null ? null : parseProcStartTime(stat);
+  // The emitter's probe, so the bridge checks the hold with the value its edges carry: `/proc` on
+  // Linux, `ps -o lstart=` on macOS (#647), none elsewhere.
+  const pidStartTime = readPidStartTime(deps, deps.agentPid);
   if (pidStartTime === null) return null;
   const agentRaw = asJsonString(payload.agent_id);
   const agent = agentRaw !== undefined && /^[\x20-\x7e]{1,128}$/u.test(agentRaw) ? agentRaw : null;

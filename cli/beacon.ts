@@ -1,10 +1,11 @@
+import { execFileSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { isAbsolute, join } from "node:path";
 
 import { BEACON_DIR_MODE, beaconFileName, beaconKey, beaconsDir, EDGE_FILE, EDGE_MAX_AGE_MS, EDGE_SPOOL_MAX, edgesDir } from "../bridge/beacon/paths.ts";
 import { HOOK_TARGET_FILE, HOOK_TARGETS_MAX, hookTargetsDir, parseHookTarget, type HookTargetRecord } from "../bridge/beacon/hook-targets.ts";
 import { edgeModelOf } from "../bridge/beacon/parse.ts";
-import { parseProcStartTime, procStatPath } from "../bridge/beacon/liveness.ts";
+import { startTimeProbe, type StartTimeCommand } from "../bridge/beacon/liveness.ts";
 import { HOST } from "../bridge/host.ts";
 import {
   BEACON_SCHEMA_VERSION,
@@ -44,8 +45,9 @@ export { privateDir };
 // honestly; an emitter that can wedge the operator's agent is worse than no emitter at all.
 //
 // `SessionEnd` runs on a 1.5 s default budget, which sets the shape of the work: one environment
-// read, one parse, one `/proc` read for the pid's start time, one atomic write. No network, no
-// subprocess, and nothing that can block on another process.
+// read, one parse, one probe for the pid's start time, one atomic write. No network, and nothing that
+// can block on another process. The probe is a `/proc` read on Linux; on macOS, which has no `/proc`,
+// it is one `ps` run (about 20 ms) with a 1 s timeout (`bridge/beacon/liveness.ts`, M80 spec 11).
 //
 // ── THE PAYLOAD, AS CAPTURED (2026-08-20, `claude -p` under a throwaway CLAUDE_CONFIG_DIR) ─────────
 //
@@ -294,20 +296,55 @@ export interface BeaconEmitDeps {
   readonly now?: () => number;
   /** This process's uid: a spool or registry folder another user owns is not written into. Absent off POSIX. */
   readonly uid?: number | undefined;
+  /** How a pid's start time is read. Production leaves it; a test pins the platform and the `ps` run. */
+  readonly pidProbe?: PidProbeDeps | undefined;
+}
+
+/** The two seams of the start-time probe (M80 spec 11). */
+export interface PidProbeDeps {
+  /** Whose probe runs (`bridge/beacon/liveness.ts` {@link startTimeProbe}). Defaults to `HOST.platform`. */
+  readonly platform?: NodeJS.Platform;
+  /** Runs a probe command: its stdout, or null when it failed. Defaults to {@link runStartTimeCommand}. */
+  readonly run?: (command: StartTimeCommand, pid: number) => string | null;
 }
 
 /**
- * The pid's start time, from the ONE extra file read this verb allows itself.
+ * One probe command, synchronously: the hook has no event loop to spare. Its stderr is dropped, so a
+ * `ps` complaint can never reach the conversation, and every failure (no such pid, a timeout, no
+ * `ps`) is null.
+ */
+export function runStartTimeCommand(command: StartTimeCommand, pid: number): string | null {
+  try {
+    return execFileSync(command.file, [...command.args(pid)], {
+      encoding: "utf8",
+      env: { ...command.env },
+      timeout: command.timeoutMs,
+      stdio: ["ignore", "pipe", "ignore"],
+      windowsHide: true,
+    });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The pid's start time, from the platform's probe (`bridge/beacon/liveness.ts`): the stat file on
+ * Linux, one `ps -o lstart=` run on macOS (`darwin`), where there is no stat file (M80 spec 11,
+ * issue 647).
  *
  * It is not optional in the record (`BeaconRecord.pidStartTime`) and it must not be faked: a beacon
  * carrying a start time no probe will ever return reads as EXPIRED for its whole life, which would
  * present a working agent as a dead one. So an unreadable start time means NO BEACON — the reader's
- * honest answer to an absent file is already the right one. In practice that is every non-Linux host,
- * because the alternatives there are all subprocesses and `SessionEnd` has 1.5 s.
+ * honest answer to an absent file is already the right one. That is every host other than Linux and
+ * macOS (Windows among them), and any probe that failed.
  */
-export function readPidStartTime(files: Files, pid: number): number | null {
-  const text = files.read(procStatPath(pid));
-  return text === null ? null : parseProcStartTime(text);
+export function readPidStartTime(deps: Pick<BeaconEmitDeps, "files" | "pidProbe">, pid: number): number | null {
+  const probe = startTimeProbe(deps.pidProbe?.platform ?? HOST.platform);
+  const stat = deps.files.read(probe.stat.path(pid));
+  if (stat !== null) return probe.stat.parse(stat);
+  if (probe.command === null) return null;
+  const text = (deps.pidProbe?.run ?? runStartTimeCommand)(probe.command, pid);
+  return text === null ? null : probe.command.parse(text);
 }
 
 /**
@@ -362,7 +399,7 @@ function cwdOf(payload: JsonObject): string | null {
 const NOTIFICATION_TYPE = /^[a-z_]{1,64}$/u;
 
 /** What the registry walk needs: the emitter and the permission hold (`collie beacon hold`) share it. */
-export type EdgeTargetDeps = Pick<BeaconEmitDeps, "ctx" | "files" | "uid">;
+export type EdgeTargetDeps = Pick<BeaconEmitDeps, "ctx" | "files" | "uid" | "pidProbe">;
 
 /**
  * Write one edge file into a state dir's spool (M56 spec 11): a temp name, then a rename, so the
@@ -443,7 +480,7 @@ export function liveHookTargets(deps: EdgeTargetDeps): HookTargetRecord[] {
     const path = join(registry, name);
     const target = parseHookTarget(deps.files.read(path) ?? "");
     if (target === null) continue;
-    const start = readPidStartTime(deps.files, target.pid);
+    const start = readPidStartTime(deps, target.pid);
     if (start === null || (target.pidStartTime !== null && start !== target.pidStartTime)) {
       deps.files.remove(path);
       continue;
@@ -502,7 +539,7 @@ export async function cmdBeaconEmit(deps: BeaconEmitDeps): Promise<number> {
     if (hold !== undefined && payload.hook_event_name === hold.toolEvent) {
       // The context use, before the edge: it needs no pid. A subagent's tool call is not the session's turn.
       if (payload.agent_id === undefined || payload.agent_id === null) takeReading(deps, payload, stateDirs);
-      const pidStartTime = readPidStartTime(deps.files, deps.agentPid);
+      const pidStartTime = readPidStartTime(deps, deps.agentPid);
       if (pidStartTime === null) return EXIT.OK;
       const tool = readField(payload, "tool_name", TOOL_FIELD);
       const agent = readField(payload, "agent_id", TOOL_FIELD);
@@ -548,7 +585,7 @@ export async function cmdBeaconEmit(deps: BeaconEmitDeps): Promise<number> {
     if (registration.event === "Stop") takeReading(deps, payload, stateDirs);
     if (registration.event === "SessionStart") takeStart(deps, payload, stateDirs);
 
-    const pidStartTime = readPidStartTime(deps.files, deps.agentPid);
+    const pidStartTime = readPidStartTime(deps, deps.agentPid);
     if (pidStartTime === null) return EXIT.OK;
     const now = (deps.now ?? Date.now)();
 

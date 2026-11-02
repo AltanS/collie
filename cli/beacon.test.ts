@@ -12,8 +12,9 @@ import { readTail, TAIL_BYTES, windowFromModel } from "./context-reading.ts";
 import { beaconFileName, beaconKey, EDGE_FILE, EDGE_MAX_AGE_MS, EDGE_SPOOL_MAX } from "../bridge/beacon/paths.ts";
 import { hookTargetFileName } from "../bridge/beacon/hook-targets.ts";
 import { BEACON_SCHEMA_VERSION, type EdgeRecord } from "../bridge/beacon/types.ts";
+import { parseLstart, PS_LSTART, type StartTimeCommand } from "../bridge/beacon/liveness.ts";
 import { HERDR_CORE_MUX } from "../bridge/mux/herdr-core/adapter.ts";
-import { BEACON_HARNESS, BEACON_HOOKS, HERDR_CORE_NAMESPACE, type BeaconEmitDeps, cmdBeaconEmit, liveHookTargets, readEnvMarkers, runBeaconEmit, unwrapPrompt } from "./beacon.ts";
+import { BEACON_HARNESS, BEACON_HOOKS, HERDR_CORE_NAMESPACE, type BeaconEmitDeps, cmdBeaconEmit, liveHookTargets, type PidProbeDeps, readEnvMarkers, runBeaconEmit, unwrapPrompt } from "./beacon.ts";
 import { context, fakeFiles, HOME, STATE } from "./fakes.ts";
 import { EXIT } from "./io.ts";
 import type { Environment } from "./context.ts";
@@ -47,7 +48,7 @@ function payload(over: JsonObject = {}): string {
 }
 
 function deps(
-  over: { env?: Environment; stdin?: string; proc?: string | null; pid?: number } = {},
+  over: { env?: Environment; stdin?: string; proc?: string | null; pid?: number; pidProbe?: PidProbeDeps } = {},
 ): BeaconEmitDeps & { files: ReturnType<typeof fakeFiles> } {
   const files = fakeFiles(over.proc === null ? {} : { [PROC]: over.proc ?? STAT });
   return {
@@ -57,6 +58,8 @@ function deps(
     agentPid: over.pid ?? AGENT_PID,
     now: () => 1_700_000_000_000,
     uid: 1000,
+    // Linux's probe unless a test names another, so no run of this file forks `ps`, on a Mac either.
+    pidProbe: over.pidProbe ?? { platform: "linux" },
   };
 }
 
@@ -129,6 +132,78 @@ describe("a herdr-core terminal", () => {
     const record = parseBeacon(text ?? "");
     expect(record?.markers).toEqual([{ namespace: "herdr-core", scope: "/run/user/1000/herdr-core/default.sock", pane: "t3" }]);
     expect(record?.session).toEqual({ kind: "id", value: SESSION });
+  });
+});
+
+// macOS has no `/proc` (M80 spec 11, issue 647): the start time comes from one `ps -o lstart=` run,
+// injected here, so no test forks a process.
+describe("on macOS, the probe is ps lstart", () => {
+  const CORE: Environment = { HC_TERMINAL_ID: "t3", HC_TERMINAL_SOCKET: "/Users/pat/.local/state/herdr-core/default.sock" };
+  const LSTART = "Mon Nov  2 10:15:33 2026\n";
+
+  /** A `ps` that knows the agent alone; every call is recorded as its argv and its environment. */
+  function fakePs(answers: Record<number, string | null> = { [AGENT_PID]: LSTART }) {
+    const calls: { argv: string[]; env: Readonly<Record<string, string>> }[] = [];
+    const run = (command: StartTimeCommand, pid: number): string | null => {
+      calls.push({ argv: [command.file, ...command.args(pid)], env: command.env });
+      return answers[pid] ?? null;
+    };
+    return { calls, run };
+  }
+
+  test("a herdr-core pane gets its edge and its beacon, carrying the lstart time", async () => {
+    const ps = fakePs();
+    const d = deps({ env: CORE, proc: null, pidProbe: { platform: "darwin", run: ps.run } });
+    expect(await cmdBeaconEmit(d)).toBe(EXIT.OK);
+    const [text, ...more] = [...beacons(d.files).values()];
+    expect(more).toEqual([]);
+    const record = parseBeacon(text ?? "");
+    expect(record?.session).toEqual({ kind: "id", value: SESSION });
+    expect(record?.pid).toBe(AGENT_PID);
+    expect(record?.pidStartTime).toBe(parseLstart(LSTART)!);
+    const edges = [...d.files.entries].filter(([path]) => path.startsWith(`${STATE}/edges/`) && EDGE_FILE.test(path.slice(`${STATE}/edges/`.length)));
+    expect(edges.map(([, entry]) => parseEdge(entry.text)?.pidStartTime)).toEqual([parseLstart(LSTART)!]);
+    expect(ps.calls).toEqual([{ argv: ["/bin/ps", "-o", "lstart=", "-p", String(AGENT_PID)], env: PS_LSTART.env }]);
+    expect(ps.calls[0]?.env.LC_ALL).toBe("C");
+  });
+
+  test("a ps that answers nothing (the agent is gone, or ps failed) writes nothing, and exits 0", async () => {
+    for (const answer of [null, "", "not a date"]) {
+      const d = deps({ env: CORE, proc: null, pidProbe: { platform: "darwin", run: fakePs({ [AGENT_PID]: answer }).run } });
+      expect(await cmdBeaconEmit(d)).toBe(EXIT.OK);
+      expect(d.files.entries.size).toBe(0);
+    }
+  });
+
+  test("a registered bridge is a live target while ps returns its stored start, and dead once it differs", () => {
+    const REGISTRY = `${HOME}/.local/state/collie/hook-targets`;
+    const BRIDGE = 5001;
+    const d = deps({ env: CORE, proc: null, pidProbe: { platform: "darwin", run: fakePs({ [BRIDGE]: LSTART }).run } });
+    const file = `${REGISTRY}/${hookTargetFileName("/srv/a")}`;
+    const register = (start: number) =>
+      d.files.write(file, JSON.stringify({ schemaVersion: 1, stateDir: "/srv/a", pid: BRIDGE, pidStartTime: start, bootedAt: 1 }), 0o600);
+    d.files.mkdirp(REGISTRY, 0o700);
+    register(parseLstart(LSTART)!);
+    expect(liveHookTargets(d).map((t) => t.stateDir)).toEqual(["/srv/a"]);
+    register(parseLstart(LSTART)! - 1);
+    expect(liveHookTargets(d)).toEqual([]);
+    expect(d.files.read(file)).toBeNull();
+  });
+
+  test("Windows has no probe: nothing is written and nothing is run", async () => {
+    const ps = fakePs();
+    const d = deps({ env: CORE, proc: null, pidProbe: { platform: "win32", run: ps.run } });
+    expect(await cmdBeaconEmit(d)).toBe(EXIT.OK);
+    expect(d.files.entries.size).toBe(0);
+    expect(ps.calls).toEqual([]);
+  });
+
+  test("Linux never runs ps: a pid with no stat file has no start time", async () => {
+    const ps = fakePs();
+    const d = deps({ env: CORE, proc: null, pidProbe: { platform: "linux", run: ps.run } });
+    expect(await cmdBeaconEmit(d)).toBe(EXIT.OK);
+    expect(beacons(d.files).size).toBe(0);
+    expect(ps.calls).toEqual([]);
   });
 });
 

@@ -2192,11 +2192,25 @@ describe("beacons", () => {
     expect(finding.remedy).toContain("collie hooks install claude");
   });
 
-  test("an empty directory WITH an install points at the agent, not at the installer", async () => {
-    const finding = (await findings(harness(null))).byCheck.get("beacons")!;
+  test("an empty directory WITH an install points at the agent, not at the installer, on Linux and macOS", async () => {
+    for (const platform of ["linux", "darwin"] as const) {
+      const h = harness(null);
+      h.deps = { ...h.deps, host: hostFor(platform) };
+      const finding = (await findings(h)).byCheck.get("beacons")!;
+      expect(finding.status).toBe("skipped");
+      expect(finding.remedy).not.toContain("hooks install");
+      expect(finding.detail).toContain("no agent has written one yet");
+    }
+  });
+
+  test("an empty directory on a platform with no start-time probe says no agent writes one here (M80 spec 11)", async () => {
+    const h = harness(null);
+    h.deps = { ...h.deps, host: hostFor("win32") };
+    const finding = (await findings(h)).byCheck.get("beacons")!;
     expect(finding.status).toBe("skipped");
-    expect(finding.remedy).not.toContain("hooks install");
-    expect(finding.detail).toContain("installed");
+    expect(finding.detail).toContain("on this platform");
+    expect(finding.detail).not.toContain("not yet");
+    expect(finding.detail).not.toContain("written one yet");
   });
 
   test("an agent that has ended leaves an expired beacon, and that is still `ok`", async () => {
