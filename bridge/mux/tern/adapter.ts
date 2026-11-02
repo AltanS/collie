@@ -26,11 +26,6 @@ import {
   type MuxSubscription,
   type MuxTab,
   type MuxTabRequest,
-  type MuxWorktree,
-  type MuxWorktreeCreateRequest,
-  type MuxWorktreeOpenRequest,
-  type MuxWorktreeOpened,
-  type MuxWorktreeScope,
   type MuxWatchOptions,
 } from "../types.ts";
 import {
@@ -302,18 +297,6 @@ export class TernMux implements MuxAdapter {
       });
     }
     return muxRefused("space was created but fresh pane was not found");
-  }
-
-  async listWorktrees(_scope: MuxWorktreeScope): Promise<MuxOutcome<readonly MuxWorktree[]>> {
-    return muxUnsupported("listWorktrees", "Tern does not track git worktrees");
-  }
-
-  async createWorktree(_request: MuxWorktreeCreateRequest): Promise<MuxOutcome<MuxCreatedPane>> {
-    return muxUnsupported("createWorktree", "Tern does not manage git worktrees");
-  }
-
-  async openWorktree(_request: MuxWorktreeOpenRequest): Promise<MuxOutcome<MuxWorktreeOpened>> {
-    return muxUnsupported("openWorktree", "Tern does not manage git worktrees");
   }
 
   async listSessions(): Promise<MuxOutcome<readonly MuxSession[]>> {

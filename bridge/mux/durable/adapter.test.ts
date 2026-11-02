@@ -63,9 +63,7 @@ describe("capabilities", () => {
       "sendKeys",
       "createTab",
       "createSpace",
-      "listWorktrees",
       "createWorktree",
-      "openWorktree",
       "pushTopologyEvents",
       "pushPaneEvents",
     ] as const) {
@@ -116,9 +114,6 @@ describe("capabilities", () => {
       ["renameTab", await adapter.renameTab("ws-notes:main", "x")],
       ["closeTab", await adapter.closeTab("ws-notes:main")],
       ["createSpace", await adapter.createSpace({ cwd: "/tmp" })],
-      ["listWorktrees", await adapter.listWorktrees({ repoRoot: "/tmp" })],
-      ["createWorktree", await adapter.createWorktree({ repoRoot: "/tmp", branch: "b" })],
-      ["openWorktree", await adapter.openWorktree({ repoRoot: "/tmp", path: "/tmp/x" })],
       ["listSessions", await adapter.listSessions()],
     ] as const;
     for (const [capability, answer] of answers) {

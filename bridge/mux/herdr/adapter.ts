@@ -37,7 +37,6 @@ import {
   muxGone,
   muxOk,
   muxRefused,
-  muxUnsupported,
   muxUnreachable,
   requestedCwd,
   type MuxAck,
@@ -56,11 +55,6 @@ import {
   type MuxTab,
   type MuxTabRequest,
   type MuxWatchOptions,
-  type MuxWorktree,
-  type MuxWorktreeCreateRequest,
-  type MuxWorktreeOpenRequest,
-  type MuxWorktreeOpened,
-  type MuxWorktreeScope,
 } from "../types.ts";
 import {
   DEFAULT_TIMEOUT_MS,
@@ -72,7 +66,6 @@ import {
   type WirePane,
   type WireTab,
   type WireWorkspace,
-  type WireWorktreeListing,
 } from "./client.ts";
 import { buildSubscriptions, changedPaneId } from "./events.ts";
 import { HERDR_UNSENDABLE_KEYS, toHerdrKey } from "./keys.ts";
@@ -109,9 +102,6 @@ function pasteKeeps(ch: string): boolean {
   return ch === "\n" || (code >= 0x20 && (code < 0x7f || code > 0x9f));
 }
 
-/** Why the Herdr adapter refuses a worktree verb: the bridge makes worktrees with git (M81). */
-const WORKTREES_IN_THE_BRIDGE = "Collie makes a worktree with git and opens it as a space; the adapter has no worktree verb.";
-
 const HERDR_CAPABILITIES = declareCapabilities({
   supports: [
     "paneGrid",
@@ -127,8 +117,6 @@ const HERDR_CAPABILITIES = declareCapabilities({
     "renameTab",
     "closeTab",
     "createSpace",
-    // No worktree verb is declared: the bridge makes a worktree with git and opens it with
-    // `createSpace` (bridge/worktree-add.ts, M81). The methods below stay until spec 04 removes them.
     "pushTopologyEvents",
     "pushPaneEvents",
     "listSessions",
@@ -180,49 +168,6 @@ function transportRefusal<T>(err: T): MuxRefusalOutcome {
   return GONE_CODES.some((code) => detail.includes(code)) ? muxGone(detail) : muxUnreachable(detail);
 }
 
-/**
- * The repo one workspace sits in, as {@link HerdrMux} settled it. `null` in a {@link RepoEntry} is
- * "no repo", which is the fail-closed answer: no repo, no worktree rows (MuxSpace.repoRoot).
- */
-interface WorkspaceRepo {
-  readonly repoRoot: string;
-  readonly isWorktree: boolean;
-  /** The checkout the workspace sits in, when Herdr names it; see {@link workspaceRepoOf}. */
-  readonly folder?: string;
-}
-
-/** One cached repo lookup. `retryAt` is Infinity for an answer, a time for a lookup that failed. */
-interface RepoEntry {
-  readonly repo: WorkspaceRepo | null;
-  readonly retryAt: number;
-}
-
-/**
- * How long a FAILED repo lookup stands before the next snapshot asks again.
- *
- * Only a failure — a timeout, a closed socket, a server without the method — is retried, and not
- * on every poll: the lookup runs `git worktree list` on the host, and a repo that timed out once
- * would time out on every poll at the cost of the whole snapshot's latency.
- */
-export const REPO_LOOKUP_RETRY_MS = 60_000;
-
-/**
- * Herdr's `worktree.list` answer for one workspace, in the port's words.
- *
- * `repoRoot` is the answer's `source.repo_root`. Which checkout the workspace is, is the entry that
- * names the workspace as its `open_workspace_id` — NOT `source.source_checkout_path`, which names
- * the repo's main checkout even when asked from inside a linked worktree (probed 2026-10-07, herdr
- * 0.9.3). No such entry reads as the repo's own checkout with no folder: the conservative side,
- * since a worktree row only ever nests under `isWorktree: false`.
- */
-export function workspaceRepoOf(workspaceId: string, listing: WireWorktreeListing): WorkspaceRepo | null {
-  const repoRoot = listing.source.repo_root;
-  if (repoRoot.length === 0) return null;
-  const own = listing.worktrees.find((worktree) => worktree.open_workspace_id === workspaceId);
-  if (own === undefined) return { repoRoot, isWorktree: false };
-  return { repoRoot, isWorktree: own.is_linked_worktree, folder: own.path };
-}
-
 export class HerdrMux implements MuxAdapter {
   readonly mux = HERDR_MUX;
   readonly capabilities = HERDR_CAPABILITIES;
@@ -233,19 +178,6 @@ export class HerdrMux implements MuxAdapter {
   // rather than engine state: which methods a server has is a fact about this multiplexer.
   private supportsSessionSnapshot = true;
 
-  /**
-   * Which repo each workspace sits in, by workspace id (herdr 0.9.3 dropped it from the record).
-   *
-   * THE CACHING RULE. A workspace is looked up when it first appears in a snapshot, and its answer
-   * stands for as long as it stays: a repo, or `not_git_worktree` ("no repo"), is never asked again
-   * on a poll. An entry goes when its workspace leaves the snapshot, and the whole map goes when the
-   * event stream comes (back) up, since anything may have changed while Collie was not listening. A
-   * lookup that FAILED is asked again after {@link REPO_LOOKUP_RETRY_MS}. A workspace whose record
-   * still carries `worktree` (herdr 0.8.2) is never looked up at all.
-   */
-  private readonly repoByWorkspace = new Map<string, RepoEntry>();
-  /** Lookups in flight, so two overlapping snapshots ask Herdr once. */
-  private readonly repoLookups = new Map<string, Promise<void>>();
   /** Per pane, the last `pane.get` scroll answer (in flight or settled) and when it stops standing. */
   private readonly scrollByPane = new Map<string, { until: number; scroll: Promise<NonNullable<WirePane["scroll"]> | null> }>();
 
@@ -277,66 +209,20 @@ export class HerdrMux implements MuxAdapter {
    */
   async snapshot(): Promise<MuxSnapshot> {
     const wire = await this.fetchWire();
-    await this.settleRepos(wire.workspaces);
     const spaceById = new Map(wire.workspaces.map((w) => [w.workspace_id, w]));
     const tabById = new Map(wire.tabs.map((t) => [t.tab_id, t]));
     return {
       panes: wire.panes.map((p) => toMuxPane(p, spaceById, tabById)),
-      spaces: wire.workspaces.map((w) => toMuxSpace(w, this.repoByWorkspace.get(w.workspace_id)?.repo ?? null)),
+      spaces: wire.workspaces.map((w) => toMuxSpace(w)),
       tabs: wire.tabs.map(toMuxTab),
     };
-  }
-
-  /**
-   * Make {@link repoByWorkspace} answer for every workspace in this snapshot, by the caching rule
-   * written there. Never throws: the repo is a fact ON a space, and a lookup that fails leaves the
-   * space without one rather than failing the snapshot it rides on.
-   */
-  private async settleRepos(workspaces: readonly WireWorkspace[]): Promise<void> {
-    const live = new Set(workspaces.map((w) => w.workspace_id));
-    for (const id of this.repoByWorkspace.keys()) if (!live.has(id)) this.repoByWorkspace.delete(id);
-    const now = Date.now();
-    const pending: Promise<void>[] = [];
-    for (const workspace of workspaces) {
-      // herdr 0.8.2 carries the repo on the record; no call needed (toMuxSpace reads it).
-      if (workspace.worktree?.repo_root !== undefined) continue;
-      const id = workspace.workspace_id;
-      const cached = this.repoByWorkspace.get(id);
-      if (cached !== undefined && now < cached.retryAt) continue;
-      pending.push(this.lookupRepo(id));
-    }
-    await Promise.all(pending);
-  }
-
-  /** One workspace's `worktree.list`, deduplicated while in flight, into the cache. */
-  private lookupRepo(id: string): Promise<void> {
-    const inFlight = this.repoLookups.get(id);
-    if (inFlight !== undefined) return inFlight;
-    const lookup = this.readRepo(id).finally(() => this.repoLookups.delete(id));
-    this.repoLookups.set(id, lookup);
-    return lookup;
-  }
-
-  /** The lookup itself. Every outcome lands in the cache or leaves it; nothing is thrown. */
-  private async readRepo(id: string): Promise<void> {
-    try {
-      const listing = await this.client.workspaceWorktrees(id);
-      this.repoByWorkspace.set(id, { repo: workspaceRepoOf(id, listing), retryAt: Infinity });
-    } catch (err) {
-      const detail = reason(err);
-      // Closed between the list and the lookup: the next snapshot no longer has it either.
-      if (detail.includes("workspace_not_found")) this.repoByWorkspace.delete(id);
-      // A folder outside Git — an answer, and the fail-closed one.
-      else if (detail.includes("not_git_worktree")) this.repoByWorkspace.set(id, { repo: null, retryAt: Infinity });
-      else this.repoByWorkspace.set(id, { repo: null, retryAt: Date.now() + REPO_LOOKUP_RETRY_MS });
-    }
   }
 
   /**
    * A no-op that resolves, and it is the honest implementation rather than a stub.
    *
    * {@link snapshot} is one fresh RPC every time — the topology is never cached on this side; only
-   * each workspace's repo is (see {@link repoByWorkspace}) — so "the very next snapshot reflects the
+   * nothing is cached — so "the very next snapshot reflects the
    * current topology" is already true before this is called. And the
    * watch is a real event stream, not a census, so there is no interval to pull back to a floor.
    * Spending a round trip here would buy nothing and would put load on the socket that types into
@@ -564,21 +450,6 @@ export class HerdrMux implements MuxAdapter {
     }
   }
 
-  // The three worktree verbs are declared absent since M81: the bridge makes a worktree with git and
-  // opens it with `createSpace` (bridge/worktree-add.ts). An undeclared verb must answer `unsupported`
-  // (MUX_CONTRACT.md), so these refuse; spec 04 removes them from the port.
-  listWorktrees(_scope: MuxWorktreeScope): Promise<MuxOutcome<readonly MuxWorktree[]>> {
-    return Promise.resolve(muxUnsupported("listWorktrees", WORKTREES_IN_THE_BRIDGE));
-  }
-
-  createWorktree(_request: MuxWorktreeCreateRequest): Promise<MuxOutcome<MuxCreatedPane>> {
-    return Promise.resolve(muxUnsupported("createWorktree", WORKTREES_IN_THE_BRIDGE));
-  }
-
-  openWorktree(_request: MuxWorktreeOpenRequest): Promise<MuxOutcome<MuxWorktreeOpened>> {
-    return Promise.resolve(muxUnsupported("openWorktree", WORKTREES_IN_THE_BRIDGE));
-  }
-
   /**
    * The contract's watch over Herdr's one `events.subscribe` stream.
    *
@@ -602,11 +473,7 @@ export class HerdrMux implements MuxAdapter {
   watch(options: MuxWatchOptions): MuxSubscription {
     return this.client.subscribeEvents({
       subscriptions: buildSubscriptions(options.panes),
-      onUp: () => {
-        // Whatever moved while the stream was down, a repo binding included, is re-read.
-        this.repoByWorkspace.clear();
-        options.onUp();
-      },
+      onUp: () => options.onUp(),
       onEvent: (event, data) => {
         const paneId = changedPaneId(event, data);
         if (paneId === null) options.onTopologyChange();
@@ -715,10 +582,10 @@ function toMuxPane(
 /**
  * One Herdr workspace as a {@link MuxSpace}. `agent_status` is carried on the wire and unused.
  *
- * `looked` is the repo {@link HerdrMux} read off `worktree.list` (herdr 0.9.3), used only when the
- * record itself carries none (herdr 0.8.2 did).
+ * `repoRoot` and `isWorktree` are not set here: the bridge reads them from the folder on disk for
+ * every multiplexer (bridge/repo-facts-mux.ts). `folder` is set only when the record names one.
  */
-function toMuxSpace(raw: WireWorkspace, looked: WorkspaceRepo | null): MuxSpace {
+function toMuxSpace(raw: WireWorkspace): MuxSpace {
   const space: MutableMuxSpace = {
     spaceId: raw.workspace_id,
     number: raw.number,
@@ -728,25 +595,11 @@ function toMuxSpace(raw: WireWorkspace, looked: WorkspaceRepo | null): MuxSpace 
     tabCount: raw.tab_count,
     paneCount: raw.pane_count,
   };
-  // herdr 0.8.2 carries the repo on the workspace itself (`worktree.repo_root`), so no extra call
-  // and no filesystem walk — see MuxSpace.repoRoot. OMITTED, never set to undefined, when there is
-  // none.
-  if (raw.worktree?.repo_root !== undefined) {
-    space.repoRoot = raw.worktree.repo_root;
-    // Herdr's own word for it. `is_linked_worktree` is false for the repo's checkout and true for
-    // every worktree of it — probed 2026-08-28, and the pair is what lets a list nest one under the
-    // other without a second call.
-    space.isWorktree = raw.worktree.is_linked_worktree === true;
-    // The workspace's own folder: the checkout it sits in. Herdr's workspace record carries no cwd
-    // of its own (probed 2026-09-23 on herdr 0.9.0), so this is the only folder it names.
-    const folder = raw.worktree.checkout_path ?? raw.worktree.repo_root;
-    if (folder) space.folder = folder;
-  } else if (looked !== null) {
-    // herdr 0.9.3: the same three facts, read off `worktree.list` (see workspaceRepoOf).
-    space.repoRoot = looked.repoRoot;
-    space.isWorktree = looked.isWorktree;
-    if (looked.folder) space.folder = looked.folder;
-  }
+  // herdr 0.8.2 carries the checkout on the workspace itself (`worktree.checkout_path`), the only
+  // folder its record names (probed 2026-09-23 on herdr 0.9.0, which carries none). OMITTED, never
+  // set to undefined, when there is none.
+  const folder = raw.worktree?.checkout_path ?? raw.worktree?.repo_root;
+  if (folder) space.folder = folder;
   return space;
 }
 

@@ -15,10 +15,6 @@ import {
   type MuxSubscription,
   type MuxTabRequest,
   type MuxWatchOptions,
-  type MuxWorktree,
-  type MuxWorktreeCreateRequest,
-  type MuxWorktreeOpenRequest,
-  type MuxWorktreeScope,
 } from "../mux/types.ts";
 
 // THE HINT'S OWN TESTS — the three suppression rules, and the promise that a hint changes nothing
@@ -192,21 +188,6 @@ class StubAdapter implements MuxAdapter {
   listSessions() {
     this.calls.push("listSessions");
     return Promise.resolve(muxOk<readonly MuxSession[]>([]));
-  }
-
-  listWorktrees(_scope: MuxWorktreeScope) {
-    this.calls.push("listWorktrees");
-    return Promise.resolve(muxOk<readonly MuxWorktree[]>([]));
-  }
-
-  createWorktree(_request: MuxWorktreeCreateRequest) {
-    this.calls.push("createWorktree");
-    return Promise.resolve(muxOk({ paneId: "%9", spaceId: "space", spaceLabel: "space", tabId: "tab", cwd: "/tmp" }));
-  }
-
-  openWorktree(_request: MuxWorktreeOpenRequest) {
-    this.calls.push("openWorktree");
-    return Promise.resolve(muxOk({ pane: { paneId: "%9", spaceId: "space", spaceLabel: "space", tabId: "tab", cwd: "/tmp" }, alreadyOpen: false }));
   }
 
 

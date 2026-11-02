@@ -57,11 +57,6 @@ import {
   type MuxSubscription,
   type MuxTabRequest,
   type MuxWatchOptions,
-  type MuxWorktree,
-  type MuxWorktreeCreateRequest,
-  type MuxWorktreeOpenRequest,
-  type MuxWorktreeOpened,
-  type MuxWorktreeScope,
 } from "../types.ts";
 import type { JsonObject } from "../../json.ts";
 import type { AgentStatus, AnswerRequest, Ask, ControlRequest, PaneAction } from "../../types.ts";
@@ -1385,18 +1380,6 @@ export class DurableMux implements MuxAdapter {
 
   async createSpace(_request: MuxSpaceRequest): Promise<MuxOutcome<MuxCreatedPane>> {
     return muxUnsupported("createSpace", NO_STRUCTURE);
-  }
-
-  async listWorktrees(_scope: MuxWorktreeScope): Promise<MuxOutcome<readonly MuxWorktree[]>> {
-    return muxUnsupported("listWorktrees", "A durable agent keeps no git worktrees.");
-  }
-
-  async createWorktree(_request: MuxWorktreeCreateRequest): Promise<MuxOutcome<MuxCreatedPane>> {
-    return muxUnsupported("createWorktree", "A durable agent keeps no git worktrees.");
-  }
-
-  async openWorktree(_request: MuxWorktreeOpenRequest): Promise<MuxOutcome<MuxWorktreeOpened>> {
-    return muxUnsupported("openWorktree", "A durable agent keeps no git worktrees.");
   }
 
   async listSessions(): Promise<MuxOutcome<readonly MuxSession[]>> {

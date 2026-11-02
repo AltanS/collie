@@ -372,9 +372,6 @@ export function withAgentBeacons(
     renameTab: (tabId, label) => adapter.renameTab(tabId, label),
     closeTab: (tabId) => adapter.closeTab(tabId),
     createSpace: (request) => adapter.createSpace(request),
-    listWorktrees: (scope) => adapter.listWorktrees(scope),
-    createWorktree: (request) => adapter.createWorktree(request),
-    openWorktree: (request) => adapter.openWorktree(request),
     // A beacon says which agent is in a pane. It says nothing about which SESSIONS this machine has,
     // so the wrapped adapter's answer passes through untouched.
     listSessions: () => adapter.listSessions(),

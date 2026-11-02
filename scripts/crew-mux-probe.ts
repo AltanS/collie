@@ -30,8 +30,8 @@
 // not the mux port. It is NARROWER than the port in four ways this script REPORTS rather than
 // papers over:
 //
-//   • four port verbs have no forwardable route at all (`listSessions`, and the three worktree
-//     verbs), so a refusal cannot be observed across a link;
+//   • one port verb has no forwardable route at all (`listSessions`), so a refusal cannot be
+//     observed across a link;
 //   • the pane read route fixes `MuxGridRequest` at `{scope:"recent", styling:"preserve"}`, so a
 //     `viewport` or `strip` read is not askable across a link;
 //   • `refresh` has no forwardable route, so its check is vacuous here;
@@ -78,8 +78,6 @@ import {
   type MuxSpace,
   type MuxSubscription,
   type MuxTab,
-  type MuxWorktree,
-  type MuxWorktreeOpened,
 } from "../bridge/mux/types.ts";
 import type {
   BridgeConfig,
@@ -351,15 +349,6 @@ class CrewFacade implements MuxAdapter {
   }
   createSpace(): Promise<MuxOutcome<MuxCreatedPane>> {
     return Promise.resolve(this.writeVerb("createSpace"));
-  }
-  listWorktrees(): Promise<MuxOutcome<readonly MuxWorktree[]>> {
-    return Promise.resolve(this.noRoute("listWorktrees"));
-  }
-  createWorktree(): Promise<MuxOutcome<MuxCreatedPane>> {
-    return Promise.resolve(this.noRoute("createWorktree"));
-  }
-  openWorktree(): Promise<MuxOutcome<MuxWorktreeOpened>> {
-    return Promise.resolve(this.noRoute("openWorktree"));
   }
   listSessions(): Promise<MuxOutcome<readonly MuxSession[]>> {
     return Promise.resolve(this.noRoute("listSessions"));

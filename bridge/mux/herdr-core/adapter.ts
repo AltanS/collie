@@ -26,7 +26,7 @@
 // detection (the program's own OSC 7501 report; where a program sends none, an exact, known foreground
 // program name from the same table is a provisional identity with status `unknown`, never a status word), typing (a framed attach, see client.ts), keys,
 // closing a pane, a new tab and a new space (a shell carrying herdr-app's labels), and both push channels.
-// Declined: focus, every rename, closing a tab, worktrees, sessions, and an agent
+// Declined: focus, every rename, closing a tab, sessions, and an agent
 // session ref. The core has no verb for any of them, and the layout belongs to herdr-app, which
 // says to change it through its own commands. M74 spec 05 plans a herdr-app mod for those.
 
@@ -57,11 +57,6 @@ import {
   type MuxSubscription,
   type MuxTabRequest,
   type MuxWatchOptions,
-  type MuxWorktree,
-  type MuxWorktreeCreateRequest,
-  type MuxWorktreeOpenRequest,
-  type MuxWorktreeOpened,
-  type MuxWorktreeScope,
 } from "../types.ts";
 import { DEFAULT_HC_TIMEOUT_MS, defaultHcSocket, HC_GENERATION, HcClient, HcError, HcTimeout, type HcRpc, type WireLayout, type WireRead, type WireTerminal } from "./client.ts";
 import { routeEvent } from "./events.ts";
@@ -108,9 +103,6 @@ const HERDR_CORE_CAPABILITIES = declareCapabilities({
     closeTab: "Tabs belong to herdr-app, and Collie does not change its layout.",
     createSpace:
       "A new space is a new shell with fresh herdr.space and herdr.tab labels, which herdr-app shows as a new space and names after its folder. A space name cannot be set from the phone yet.",
-    listWorktrees: "Worktrees are not part of the herdr-core adapter.",
-    createWorktree: "Worktrees are not part of the herdr-core adapter.",
-    openWorktree: "Worktrees are not part of the herdr-core adapter.",
     listSessions:
       "Each herdr-core session has its own socket. One collie drives one session; point a second collie at another with HC_SESSION.",
   },
@@ -521,18 +513,6 @@ export class HerdrCoreMux implements MuxAdapter {
 
   closeTab(_tabId: string): Promise<MuxAck> {
     return Promise.resolve(muxUnsupported("closeTab", "tabs belong to herdr-app"));
-  }
-
-  listWorktrees(_scope: MuxWorktreeScope): Promise<MuxOutcome<readonly MuxWorktree[]>> {
-    return Promise.resolve(muxUnsupported("listWorktrees", "worktrees are not part of the herdr-core adapter"));
-  }
-
-  createWorktree(_request: MuxWorktreeCreateRequest): Promise<MuxOutcome<MuxCreatedPane>> {
-    return Promise.resolve(muxUnsupported("createWorktree", "worktrees are not part of the herdr-core adapter"));
-  }
-
-  openWorktree(_request: MuxWorktreeOpenRequest): Promise<MuxOutcome<MuxWorktreeOpened>> {
-    return Promise.resolve(muxUnsupported("openWorktree", "worktrees are not part of the herdr-core adapter"));
   }
 
   listSessions(): Promise<MuxOutcome<readonly MuxSession[]>> {

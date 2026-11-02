@@ -37,11 +37,6 @@ import type {
   MuxSession,
   MuxSnapshot,
   MuxSpaceRequest,
-  MuxWorktree,
-  MuxWorktreeCreateRequest,
-  MuxWorktreeOpenRequest,
-  MuxWorktreeOpened,
-  MuxWorktreeScope,
   MuxSubscription,
   MuxTabRequest,
   MuxWatchOptions,
@@ -175,12 +170,6 @@ export function withAgentHints(adapter: MuxAdapter, deps: AgentHintDeps): MuxAda
     renameTab: (tabId: string, label: string): Promise<MuxAck> => adapter.renameTab(tabId, label),
     closeTab: (tabId: string): Promise<MuxAck> => adapter.closeTab(tabId),
     createSpace: (request: MuxSpaceRequest): Promise<MuxOutcome<MuxCreatedPane>> => adapter.createSpace(request),
-    listWorktrees: (scope: MuxWorktreeScope): Promise<MuxOutcome<readonly MuxWorktree[]>> =>
-      adapter.listWorktrees(scope),
-    createWorktree: (request: MuxWorktreeCreateRequest): Promise<MuxOutcome<MuxCreatedPane>> =>
-      adapter.createWorktree(request),
-    openWorktree: (request: MuxWorktreeOpenRequest): Promise<MuxOutcome<MuxWorktreeOpened>> =>
-      adapter.openWorktree(request),
     listSessions: (): Promise<MuxOutcome<readonly MuxSession[]>> => adapter.listSessions(),
     watch: (options: MuxWatchOptions): MuxSubscription => adapter.watch(options),
   };
