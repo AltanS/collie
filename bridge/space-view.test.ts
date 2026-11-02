@@ -38,6 +38,38 @@ async function sources(map: Record<string, GitHead>, bases: Record<string, strin
   return { gitHeads: heads(map), bases: store };
 }
 
+describe("withSpaceContext — the base remembers its branch", () => {
+  async function storedFor(entry: { base: string; branch?: string }): Promise<SpaceContextSources["bases"]> {
+    const store = memoryWorktreeBases();
+    await store.record(WT, { ...entry, createdAt: 1 });
+    return store;
+  }
+
+  test("an entry made on the branch the folder is on shows its base", async () => {
+    const from = { gitHeads: heads({ [WT]: BRANCH }), bases: await storedFor({ base: "main", branch: BRANCH.name }) };
+    expect(withSpaceContext(worktreeSpace(), from).base).toBe("main");
+  });
+
+  test("a folder made again on another branch shows no stale base", async () => {
+    const from = { gitHeads: heads({ [WT]: BRANCH }), bases: await storedFor({ base: "develop", branch: "worktree/older-run" }) };
+    const out = withSpaceContext(worktreeSpace(), from);
+    expect(out.gitHead).toEqual(BRANCH);
+    expect("base" in out).toBe(false);
+  });
+
+  test("an entry with a branch shows no base while the head is detached or not read yet", async () => {
+    const bases = await storedFor({ base: "main", branch: BRANCH.name });
+    const detached: GitHead = { kind: "detached", sha: "abc1234def5678abc1234def5678abc1234def56" };
+    expect("base" in withSpaceContext(worktreeSpace(), { gitHeads: heads({ [WT]: detached }), bases })).toBe(false);
+    expect("base" in withSpaceContext(worktreeSpace(), { gitHeads: heads({}), bases })).toBe(false);
+  });
+
+  test("an old entry with no branch still shows its base", async () => {
+    const from = { gitHeads: heads({ [WT]: BRANCH }), bases: await storedFor({ base: "main" }) };
+    expect(withSpaceContext(worktreeSpace(), from).base).toBe("main");
+  });
+});
+
 describe("withSpaceContext — present", () => {
   test("a worktree space carries its branch and the base it was cut from", async () => {
     const from = await sources({ [WT]: BRANCH }, { [WT]: "main" });

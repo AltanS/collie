@@ -80,6 +80,20 @@ describe("repoFactsOf", () => {
     expect(await repoFactsOf(rel)).toEqual({ repoRoot: main, isWorktree: true });
   });
 
+  test("the walk stops at home: a dotfiles repo at ~/.git is no repo for a plain folder under it", async () => {
+    const home = join(root, "home");
+    mkdirSync(join(home, "projects", "plain"), { recursive: true });
+    git(home, "init", "-q");
+    expect(await repoFactsOf(join(home, "projects", "plain"), undefined, home)).toBeNull();
+    expect(await repoFactsOf(home, undefined, home)).toBeNull();
+    // A repo of its own under home still reads, and a folder outside home walks as before.
+    const own = join(home, "projects", "own");
+    mkdirSync(own);
+    git(own, "init", "-q");
+    expect(await repoFactsOf(join(home, "projects", "own"), undefined, home)).toEqual({ repoRoot: own, isWorktree: false });
+    expect(await repoFactsOf(join(main, "src", "deep"), undefined, home)).toEqual({ repoRoot: main, isWorktree: false });
+  });
+
   test("a folder that does not exist, and a relative path, have no facts", async () => {
     expect(await repoFactsOf(join(root, "missing"))).toBeNull();
     expect(await repoFactsOf("relative/path")).toBeNull();

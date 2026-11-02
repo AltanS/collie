@@ -57,8 +57,9 @@ a record Herdr made at creation time.
 the multiplexer's `createSpace`. No adapter has a worktree verb.**
 
 1. **Git in the bridge.** The repo comes from the folder, as ADR 0093 point 7 says. The bridge runs
-   `git -C <repo> worktree add -b <branch> <path> [<base>]` with an argv array, through the hardened
-   git runner, never a shell. Then it calls `createSpace({ cwd: <path>, label })`. `createSpace`
+   `git -C <repo> worktree add --no-track -b <branch> <path> [<base>]` with an argv array, through
+   the hardened git runner, never a shell. `--no-track` keeps a branch cut from `origin/main` from
+   tracking it. Then it calls `createSpace({ cwd: <path>, label })`. `createSpace`
    never moves the operator's own screen, so the old rule "`focus` is never sent" holds.
 2. **The verbs leave the port.** `listWorktrees`, `createWorktree` and `openWorktree` leave the
    `MuxAdapter` port, and their request and result types go with them. `listWorktrees` and
@@ -72,7 +73,10 @@ the multiplexer's `createSpace`. No adapter has a worktree verb.**
 4. **A half-done create is opened, never made twice.** When git made the checkout and `createSpace`
    refused, the answer says so and the checkout stays. A retry finds the path in
    `git worktree list --porcelain` of the repo and only opens it. This replaces `openWorktree` as
-   the recovery ADR 0032 described.
+   the recovery ADR 0032 described. The entry must be the same checkout, finished: on the branch
+   asked for, and not locked, prunable or bare. Any other entry at that folder is refused with a
+   sentence that names its state. One bridge runs one create per folder at a time. An add killed at
+   the timeout removes the checkout it half made, unless the folder was there before.
 5. **The default folder keeps Herdr's convention**: `<dir>/<repo folder name>/<branch slug>`, where
    `<dir>` is `[worktrees] directory` in `~/.config/herdr/config.toml`, else `~/.herdr/worktrees`.
    `herdrDefaultTarget` already predicts it for the plan. The "Other folder" kind of ADR 0093 is
@@ -113,6 +117,18 @@ the multiplexer's `createSpace`. No adapter has a worktree verb.**
   Herdr chose the folder at create time and only the shown prediction could be wrong. Now Collie
   makes the checkout there, so the two can drift. Old checkouts still list, because the record is
   git's.
+- **The Herdr daemon does not know these worktrees.** A checkout the bridge makes is not in the
+  daemon's own worktree record, and Herdr's `worktree.remove` cannot remove it. Git lists it with
+  the others, and `git worktree remove <path>` removes it.
+- **Hooks do not run during the checkout.** The hardened runner sets `core.hooksPath=/dev/null`, so
+  a repo's `post-checkout` hook does not run. A repo that sets itself up in that hook is not set up.
+  The person runs that step in the new space.
+- **A lead can make a member run git.** The worktree routes cross the crew link (point 6). Over the
+  pinned link, a lead can now make a member run `git worktree add` in the member's own repos. The
+  member's folder rule still decides where.
+- **A repo's own config runs with the person's rights.** Filters and LFS run during the checkout,
+  as they do when the person runs `git worktree add` in a shell. A paired phone can already type
+  into a shell on that host, so the bridge adds no privilege.
 - **What would justify revisiting this.** A multiplexer whose space cannot be opened at a folder,
   or a harness that owns its worktrees in a way Collie can read. Removal is its own argument, as it
   was in 0032.

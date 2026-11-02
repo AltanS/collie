@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { AuditLog, type AuditEntry } from "./audit.ts";
+import { gitRuns } from "./changes.ts";
 import { createWorktreeAt } from "./server.ts";
 import type { StateEngine } from "./state-engine.ts";
 import type { AgentView, Launcher, WorkspaceView, WorktreeCreateResponse } from "./types.ts";
@@ -48,6 +49,7 @@ let REPO: string;
 let root: string;
 const SPACE = "w1";
 const REQUEST_ID = "0b9e6a1c-3f2d-4c5e-8a7b-1d2e3f4a5b6c";
+const OTHER_ID = "7c1d2e3f-4a5b-4c6d-9e8f-0a1b2c3d4e5f";
 const CLAUDE: Launcher = { command: "claude", label: "Claude" };
 
 /** Run git in `cwd` for the test's own setup and checks, with no operator config. Answers stdout. */
@@ -356,6 +358,34 @@ describe("POST /api/worktree — request id and receipt", () => {
     expect(await linkedCount()).toBe(1);
   });
 
+  test("two requests with two ids for one folder at once: one git worktree add, one checkout", async () => {
+    const mux = new FakeWorktreeMux();
+    const receipts = memoryWorktreeReceipts();
+    const before = gitRuns.spawned;
+    const [a, b] = await Promise.all([
+      run(mux, { branch: "worktree/x", requestId: REQUEST_ID }, { receipts }),
+      run(mux, { branch: "worktree/x", requestId: OTHER_ID }, { receipts }),
+    ]);
+    expect(a.answer).toMatchObject({ ok: true, pane: { cwd: target("worktree-x") } });
+    expect(b.answer).toMatchObject({ ok: true, pane: { cwd: target("worktree-x") } });
+    // `ask` is a fake here, so every git process is the create's own: one list each, and one add.
+    expect(gitRuns.spawned - before).toBe(3);
+    expect(await linkedCount()).toBe(1);
+  });
+
+  test("the folder holding another branch is target_exists, with the folder and the branch it holds", async () => {
+    const mux = new FakeWorktreeMux();
+    expect((await run(mux, { branch: "worktree/x" })).answer).toMatchObject({ ok: true });
+    // `worktree-x` is the slug of both names, so the second lands on the first one's folder.
+    const { answer } = await run(mux, { branch: "worktree-x" });
+    expect(answer).toMatchObject({
+      ok: false,
+      code: "worktree.target_exists",
+      detail: { path: target("worktree-x"), reason: "that folder holds branch worktree/x" },
+    });
+    expect(mux.spaces).toHaveLength(1);
+  });
+
   test("git's own refusal is create_failed with git's sentence, and no space is asked for", async () => {
     const mux = new FakeWorktreeMux();
     await git(REPO, "branch", "worktree/x");
@@ -522,6 +552,7 @@ describe("POST /api/worktree — the starting point", () => {
     expect(await newBranchCommit()).toBe(await commitOf("main"));
     const stored = bases.get(WORKTREE_FOLDER());
     expect(stored?.base).toBe("main");
+    expect(stored?.branch).toBe("worktree/x");
     expect(stored?.createdAt).toBeGreaterThanOrEqual(before);
   });
 

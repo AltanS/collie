@@ -6184,6 +6184,9 @@ async function runWorktreeCreate(
   if (base !== undefined) request = { ...request, base };
   if (path !== undefined) request = { ...request, path };
   const added = await addWorktree(folderDeps, request);
+  if (!added.ok && added.code === "worktree.target_exists") {
+    return { ok: false, ...apiError(added.code, { path: added.path, reason: added.detail }) };
+  }
   if (!added.ok) return { ok: false, ...apiError(added.code, { reason: added.detail }) };
   const opened = await herdr.createSpace({ cwd: added.path, label: branchSlug(branch) });
   if (!opened.ok) {
@@ -6196,7 +6199,8 @@ async function runWorktreeCreate(
   }
   const created = opened.value;
   // Written only now, once the checkout is open: a half-done create records it on the retry that opens it.
-  if (base !== undefined) await bases.record(created.cwd, { base, createdAt: Date.now() });
+  // The branch rides with it, so a folder made again later on another branch shows no stale base.
+  if (base !== undefined) await bases.record(created.cwd, { base, branch, createdAt: Date.now() });
   if (afterCreate !== undefined) await afterCreate();
   let launcherStarted = false;
   let launcherError: string | undefined;
@@ -6363,11 +6367,17 @@ export async function planWorktree(
         const outcome = await resolveParentTarget({ parent, branch, repoRoot: repo.repoRoot, home, fs: deps.fs });
         answer.parentTarget = outcome.ok
           ? { ok: true, path: outcome.path }
-          : { ok: false, ...apiError(outcome.code, { path: outcome.path ?? parent }) };
+          : { ok: false, ...apiError(outcome.code, folderRefusalDetail(outcome, parent)) };
       }
     }
   }
   return json(answer, ae);
+}
+
+/** The detail of a folder refusal: the folder it names, and git's state of it when there is one. */
+function folderRefusalDetail(outcome: { path?: string; detail?: string }, parent: string): ApiErrorDetail {
+  const path = outcome.path ?? parent;
+  return outcome.detail === undefined ? { path } : { path, reason: outcome.detail };
 }
 
 /**
@@ -6449,7 +6459,7 @@ export async function createWorktreeAt(
   let path: string | undefined;
   if (folder.kind === "parent") {
     const outcome = await resolveParentTarget({ parent: folder.parent, branch, repoRoot: repo.repoRoot, home, fs: deps.fs });
-    if (!outcome.ok) return refuse(outcome.code, { path: outcome.path ?? folder.parent });
+    if (!outcome.ok) return refuse(outcome.code, folderRefusalDetail(outcome, folder.parent));
     path = outcome.path;
   }
 
