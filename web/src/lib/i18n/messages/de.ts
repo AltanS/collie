@@ -276,6 +276,13 @@ export const de: Dictionary = {
   "settings.typeface.note.geist": "Schlicht und geometrisch, mit echtem Fettdruck.",
   "settings.typeface.note.atkinson": "Für Sehbehinderungen entwickelt, mit deutlichen Buchstaben und echtem Fettdruck.",
   "settings.typeface.note.operator": "Vom Betreiber dieser Collie-Instanz hinterlegt.",
+  "settings.math.title": "Mathematik",
+  "settings.math.description": "LaTeX im Chat und in Markdown-Dateien, auf diesem Gerät.",
+  "settings.math.engine": "Engine",
+  "settings.math.off": "Aus",
+  "settings.math.note.off": "Dollarzeichen bleiben Text. Lädt nichts herunter.",
+  "settings.math.note.katex": "Schnell und kompakt. Lädt seine Schriften beim ersten Gebrauch.",
+  "settings.math.note.mathjax": "Breitere TeX-Unterstützung, als SVG gezeichnet. Größerer Download.",
 
   // --- settings.fonts ---
   "settings.fonts.title": "Terminal-Schrift",

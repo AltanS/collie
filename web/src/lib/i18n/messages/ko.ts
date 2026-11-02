@@ -273,6 +273,13 @@ export const ko: Dictionary = {
   "settings.typeface.note.geist": "간결하고 기하학적이며, 실제 굵은 글꼴을 제공합니다.",
   "settings.typeface.note.atkinson": "저시력자를 위해 제작되었으며, 명확한 글자와 실제 굵은 글꼴을 제공합니다.",
   "settings.typeface.note.operator": "서버 관리자가 직접 추가한 글꼴입니다.",
+  "settings.math.title": "수식",
+  "settings.math.description": "이 기기에서 채팅과 Markdown 파일의 LaTeX를 표시합니다.",
+  "settings.math.engine": "엔진",
+  "settings.math.off": "끄기",
+  "settings.math.note.off": "달러 기호는 텍스트로 남습니다. 아무것도 내려받지 않습니다.",
+  "settings.math.note.katex": "빠르고 가볍습니다. 처음 사용할 때 글꼴을 불러옵니다.",
+  "settings.math.note.mathjax": "더 넓은 TeX 지원, SVG로 그립니다. 내려받을 용량이 더 큽니다.",
 
   // --- settings.fonts ---
   "settings.fonts.title": "터미널 글꼴",

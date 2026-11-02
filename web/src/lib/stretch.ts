@@ -1,6 +1,7 @@
 // Stretchtext in a reply: `{{short|long}}` marks a stretch, which the reader sees as `short` and can
 // open to put `long` in its place. `long` may hold further stretches. Code spans and fences are copied
-// as written, so braces in code never open a stretch. Replies written with the cc-stretch Claude Code
+// as written, so braces in code never open a stretch, and so are formulas when the device renders
+// math: TeX nests braces (`x^{{2n}}`), and those must reach the engine as written. Replies written with the cc-stretch Claude Code
 // plugin carry this markup, and Collie's journal shows it as Markdown.
 //
 // `parse` and its helpers are ported from cc-stretch 0.3.4 `hooks/parse.ts`, and `grown`, `anchorsOf`,
@@ -24,6 +25,7 @@
 // does and keeps emphasis that spans those words inside the run.
 
 import type { MdBlock, MdSpan } from "@/lib/markdown";
+import { MAX_MATH_CHARS, readDisplayMath, readInlineMath } from "@/lib/markdown-math";
 
 /** A segment of a reply: prose as written, or a stretch. */
 export type Segment = Prose | Stretch;
@@ -116,7 +118,22 @@ function codeSpanEnd(text: string, i: number): number {
   return end === -1 ? text.length : end + run.length;
 }
 
-function parse(text: string): Segment[] {
+/**
+ * Where a formula starting at `i` ends, by the Markdown parser's own rules (markdown-math.ts), or
+ * undefined when none starts there. A display block is looked for only at a line's start, inside a
+ * window twice the formula limit: a line that reaches the window's edge is past the limit, so
+ * `readDisplayMath` refuses it before it could read a cut-off closer.
+ */
+function mathEnd(text: string, i: number): number | undefined {
+  if (text[i] !== "$" && text[i] !== "\\") return undefined;
+  if (i === 0 || text[i - 1] === "\n") {
+    const display = readDisplayMath(text.slice(i, i + MAX_MATH_CHARS * 2).split("\n"), 0);
+    if (display !== null) return i + display.math.source.length;
+  }
+  return readInlineMath(text, i)?.end;
+}
+
+function parse(text: string, math: boolean): Segment[] {
   const root: Segment[] = [];
   const stack: Frame[] = [];
   const rootSiblings = new Map<string, number>();
@@ -142,6 +159,13 @@ function parse(text: string): Segment[] {
     if (fenceStop !== undefined) {
       write(text.slice(i, fenceStop));
       i = fenceStop;
+      continue;
+    }
+
+    const mathStop = math ? mathEnd(text, i) : undefined;
+    if (mathStop !== undefined) {
+      write(text.slice(i, mathStop));
+      i = mathStop;
       continue;
     }
 
@@ -228,9 +252,12 @@ export function closeStretch(open: ReadonlyMap<string, number>, key: string): Ma
   return new Map([...open].filter(([k]) => k !== key && !k.startsWith(nested)));
 }
 
-/** A reply's stretches, read from `text` once every marker character is stripped from it. */
-export function parseStretches(text: string): Segment[] {
-  return parse(stripMarkers(text));
+/**
+ * A reply's stretches, read from `text` once every marker character is stripped from it. `math` is
+ * the device's math setting: on, a formula's braces are TeX and never open a stretch.
+ */
+export function parseStretches(text: string, math = false): Segment[] {
+  return parse(stripMarkers(text), math);
 }
 
 /** What {@link liftStretches} needs to name and colour each marked stretch, by its index in the markers. */
@@ -521,6 +548,8 @@ function stripSpan(span: MdSpan): MdSpan {
     case "text":
     case "code":
       return { ...span, text: stripRuns(span.text) };
+    case "math":
+      return { ...span, text: stripRuns(span.text), source: stripRuns(span.source) };
     case "image":
       return { ...span, alt: stripRuns(span.alt) };
     case "stretch-close":
@@ -539,7 +568,7 @@ function spanTokens(span: MdSpan, marks: StretchMarks): Token[] {
     case "italic":
       return [{ kind: span.kind, spans: liftSpans(span.spans, marks) }];
     default:
-      // No press may sit inside an anchor, and code is verbatim: both keep their text, unmarked.
+      // No press may sit inside an anchor, and code and math are verbatim: both keep their text, unmarked.
       return [stripSpan(span)];
   }
 }
@@ -631,6 +660,8 @@ function liftBlock(block: MdBlock, marks: StretchMarks): MdBlock {
       };
     case "code":
       return { ...block, text: stripRuns(block.text) };
+    case "math":
+      return { ...block, text: stripRuns(block.text), source: stripRuns(block.source) };
     case "rule":
       return block;
   }

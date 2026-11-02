@@ -2498,6 +2498,17 @@ describe("cacheControlFor", () => {
     expect(cacheControlFor("assets/index-abc.css")).toBe("public, max-age=31536000, immutable");
   });
 
+  test("the hashed math engines under math/ are immutable too", () => {
+    for (const rel of [
+      "math/math-markup-DWsmPqrZ.js",
+      "math/katex/katex-CmI2jWGS.js",
+      "math/katex/KaTeX_Main-Regular-B22Nviop.woff2",
+      "math/mathjax/greek-DhDqSTV9.js",
+    ]) {
+      expect(cacheControlFor(rel)).toBe("public, max-age=31536000, immutable");
+    }
+  });
+
   test("sw.js and every other mutable dist-root file are no-cache", () => {
     for (const rel of [
       "sw.js",

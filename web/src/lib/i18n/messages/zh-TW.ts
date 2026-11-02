@@ -262,6 +262,13 @@ export const zhTW: Dictionary = {
   "settings.typeface.note.geist": "樸素且具幾何風格，具備真正的粗體。",
   "settings.typeface.note.atkinson": "專為弱視設計，具備清晰的字母與真正的粗體。",
   "settings.typeface.note.operator": "由目前執行個體的管理員設定加入。",
+  "settings.math.title": "數學公式",
+  "settings.math.description": "在此裝置上呈現聊天與 Markdown 檔案中的 LaTeX。",
+  "settings.math.engine": "引擎",
+  "settings.math.off": "關閉",
+  "settings.math.note.off": "美元符號維持為文字。不下載任何內容。",
+  "settings.math.note.katex": "快速且輕巧。首次使用時載入字型。",
+  "settings.math.note.mathjax": "支援更多 TeX，以 SVG 繪製。下載容量較大。",
 
   // --- settings.fonts ---
   "settings.fonts.title": "終端機字型",

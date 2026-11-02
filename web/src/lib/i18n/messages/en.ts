@@ -304,6 +304,14 @@ export const en = {
   // Atkinson Hyperlegible Next has a real 400-700 axis, so unlike Aldrich its bold is drawn.
   "settings.typeface.note.atkinson": "Made for low vision, with clear letters and a real bold.",
   "settings.typeface.note.operator": "Added by this collie's operator.",
+  // --- settings.math (which engine typesets LaTeX in Markdown — a per-device preference) ---
+  "settings.math.title": "Math",
+  "settings.math.description": "LaTeX in chat and Markdown files, on this device.",
+  "settings.math.engine": "Engine",
+  "settings.math.off": "Off",
+  "settings.math.note.off": "Dollar signs stay text. Downloads nothing.",
+  "settings.math.note.katex": "Fast and compact. Loads its fonts on first use.",
+  "settings.math.note.mathjax": "Broader TeX support, drawn as SVG. A larger download.",
 
   // --- settings.fonts (the terminal face: the mirror's size and the draft field's; NOT the app's own typeface) ---
   "settings.fonts.title": "Terminal font",

@@ -1,6 +1,15 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { DESIGN_STORAGE_KEY, __resetDesign, designPrefs, parseDesignPrefs, setDesignFont, setDesignTheme } from "./design";
+import {
+  DESIGN_STORAGE_KEY,
+  __resetDesign,
+  designPrefs,
+  mathEngineOf,
+  parseDesignPrefs,
+  setDesignFont,
+  setDesignMath,
+  setDesignTheme,
+} from "./design";
 
 // The device look is an object so it can grow siblings. These cases hold the newest sibling, the
 // colour theme (M57), to the rule that a field this build knows is never dropped by a write to
@@ -54,6 +63,54 @@ describe("the theme field", () => {
       font: "op:depart.woff2",
       operatorFont: { family: "Depart", basename: "depart.woff2" },
       theme: "other",
+    });
+  });
+});
+
+describe("the math field", () => {
+  it("reads an engine and treats off, or anything else, as absence", () => {
+    expect(parseDesignPrefs('{"font":"aldrich","math":"katex"}')).toEqual({ font: "aldrich", math: "katex" });
+    expect(parseDesignPrefs('{"font":"aldrich","math":"mathjax"}').math).toBe("mathjax");
+    for (const bad of ['"off"', '"KaTeX"', '"tex"', "1", "null", "true"]) {
+      expect(parseDesignPrefs(`{"font":"aldrich","math":${bad}}`)).toEqual({ font: "aldrich" });
+    }
+  });
+
+  it("defaults to off on a device that never chose", () => {
+    expect(mathEngineOf(designPrefs())).toBe("off");
+  });
+
+  it("round-trips through storage, and off stores what a device that never chose stores", () => {
+    setDesignMath("mathjax");
+    expect(stored()).toEqual({ font: "aldrich", math: "mathjax" });
+    __resetDesign();
+    expect(mathEngineOf(designPrefs())).toBe("mathjax");
+    setDesignMath("off");
+    expect(stored()).toEqual({ font: "aldrich" });
+  });
+
+  it("ignores a value that is not an engine", () => {
+    setDesignMath("katex");
+    setDesignMath("latex");
+    expect(designPrefs().math).toBe("katex");
+  });
+
+  it("survives a change of face and of theme, and keeps both when it changes", () => {
+    setDesignMath("katex");
+    setDesignFont("op:depart.woff2", { family: "Depart", basename: "depart.woff2" });
+    setDesignTheme("midnight");
+    expect(stored()).toEqual({
+      font: "op:depart.woff2",
+      operatorFont: { family: "Depart", basename: "depart.woff2" },
+      theme: "midnight",
+      math: "katex",
+    });
+    setDesignMath("mathjax");
+    expect(stored()).toEqual({
+      font: "op:depart.woff2",
+      operatorFont: { family: "Depart", basename: "depart.woff2" },
+      theme: "midnight",
+      math: "mathjax",
     });
   });
 });
