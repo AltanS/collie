@@ -317,9 +317,11 @@ describe("POST /api/worktree — request id and receipt", () => {
     open();
     const [a, b] = await Promise.all([first, second]);
     expect(mux.spaces).toHaveLength(1);
-    expect(a.answer).toMatchObject({ ok: true });
-    expect(b.answer).toMatchObject({ ok: true, replayed: true });
-    expect(b.answer.ok && b.answer.pane.paneId).toBe("w7:p1");
+    // The repo lookup reads the real disk, so either request may be the one that runs the create:
+    // exactly one answer is the create's, and the other joins it.
+    const answers = [a.answer, b.answer];
+    expect(answers.every((answer) => answer.ok && answer.pane.paneId === "w7:p1")).toBe(true);
+    expect(answers.filter((answer) => answer.ok && answer.replayed === true)).toHaveLength(1);
     expect(await linkedCount()).toBe(1);
   });
 
