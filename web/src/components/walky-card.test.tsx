@@ -442,6 +442,12 @@ describe("a walky talky card names sessions", () => {
     expect(screen.queryByText("Message from collie-workspace#fix-465")).toBeNull();
   });
 
+  it("never takes the terminal title for a name: a title that is the walky header names nothing, the folder does", () => {
+    withPanes([livePane({ terminalTitle: "Walky-talky message from collie-04rj6a" })], [fixtureWalkyAgent], agentTurn);
+    expect(within(theCard()).getByText("Message from collie")).toBeInTheDocument();
+    expect(theCard().textContent).not.toContain("04rj6a");
+  });
+
   it("keeps the log's label when no live pane holds the sender's address", () => {
     withPanes([livePane({ paneId: "w9:p9" })], [fixtureWalkyAgent], agentTurn);
     expect(within(theCard()).getByText("Message from collie-workspace#fix-465")).toBeInTheDocument();

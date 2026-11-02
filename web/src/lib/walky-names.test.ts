@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 
-import { paneName } from "./pane-name";
 import type { AgentView } from "./types";
 import {
   NO_LIVE_PANES,
@@ -8,6 +7,7 @@ import {
   sessionNameOf,
   senderNameOf,
   splitWalkyAddresses,
+  walkyPaneName,
   type WalkyAddressPart,
   type WalkyLivePanes,
 } from "./walky-names";
@@ -38,11 +38,36 @@ const live = (panes: AgentView[], lead: string | null = "bluefin"): WalkyLivePan
 
 const names = (parts: readonly WalkyAddressPart[]) => parts.map((p) => (p.kind === "text" ? p.text : `[${p.name}${p.machine === null ? "" : ` @${p.machine}`}]`));
 
+describe("walkyPaneName", () => {
+  it("never reads the terminal title: a pane with only a title is named by its folder", () => {
+    expect(walkyPaneName(pane({ terminalTitle: "Walky-talky message from collie-04rj6a" }))).toBe("collie");
+    expect(walkyPaneName(pane({ terminalTitle: "Walky-talky message from collie-04rj6a", terminalTitleStale: false, cwd: "/srv/apps/site/" }))).toBe("site");
+  });
+
+  it("names a pane folder#branch when the view carries a branch, and the folder alone for a detached head or none", () => {
+    expect(walkyPaneName(pane({ gitHead: { kind: "branch", name: "fix-465" } }))).toBe("collie#fix-465");
+    expect(walkyPaneName(pane({ gitHead: { kind: "detached", sha: "0123abc" } }))).toBe("collie");
+    expect(walkyPaneName(pane())).toBe("collie");
+  });
+
+  it("keeps the operator's tiers above the folder: pane label, session name, a named sole tab", () => {
+    const branch = { gitHead: { kind: "branch", name: "main" } } as const;
+    expect(walkyPaneName(pane({ ...branch, paneLabel: "plumbing", sessionName: "s", soleTabName: "t" }))).toBe("plumbing");
+    expect(walkyPaneName(pane({ ...branch, sessionName: "s", soleTabName: "t" }))).toBe("s");
+    expect(walkyPaneName(pane({ ...branch, soleTabName: "t" }))).toBe("t");
+  });
+
+  it("ends on the agent word, or \"shell\", when the pane has no folder", () => {
+    expect(walkyPaneName(pane({ cwd: "" }))).toBe("claude");
+    expect(walkyPaneName(pane({ cwd: "", kind: "shell" }))).toBe("shell");
+  });
+});
+
 describe("sessionNameOf", () => {
   it("names the live pane that holds the address with paneName, whatever the log's label says", () => {
     const p = pane({ paneLabel: "plumbing" });
     expect(sessionNameOf("bluefin/w6:p3", live([p]), SELF, "collie-workspace#fix-465")).toEqual({ name: "plumbing", machine: null, pane: p, pinned: false });
-    expect(sessionNameOf("bluefin/w6:p3", live([p]), SELF, null).name).toBe(paneName(p));
+    expect(sessionNameOf("bluefin/w6:p3", live([p]), SELF, null).name).toBe(walkyPaneName(p));
   });
 
   it("ignores the instance token, and follows a rename", () => {

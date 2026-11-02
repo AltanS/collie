@@ -65,7 +65,8 @@ import { MIRROR_INVERT, MIRROR_SPACE } from "@/components/mirror-space";
 import { StatusDot } from "@/components/status-badge";
 import { WalkyCard } from "@/components/walky-card";
 import { WalkyIds } from "@/components/walky-id-chip";
-import { useWalkyLog, useWalkyReads, useWalkySelf } from "@/components/walky-log";
+import { useWalkyLive, useWalkyLog, useWalkyReads, useWalkySelf } from "@/components/walky-log";
+import { sentTargetWords } from "@/components/walky-name-chip";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Collapse } from "@/components/ui/collapse";
@@ -86,7 +87,6 @@ import {
   shellLineOf,
   stateWord,
   standingOf,
-  targetWord,
   type EnvelopeHeader,
   type WalkyCommand,
   type WalkyRow,
@@ -879,6 +879,7 @@ function WalkyToolCard({ command, ...props }: ToolCardProps & { command: WalkyCo
   useLocale();
   const log = useWalkyLog();
   const self = useWalkySelf();
+  const live = useWalkyLive();
   const output = "output" in props.tool ? props.tool.output : undefined;
   let receipt: string | null = null;
   let inbox: WalkyRow | null = null;
@@ -888,7 +889,7 @@ function WalkyToolCard({ command, ...props }: ToolCardProps & { command: WalkyCo
     // A line "Message to <target>" is about a message this pane sent: a row that reached this pane is not one.
     if (standing?.standing === "held" && directionOf(standing.row, self) === "sent") {
       receipt = t("walky.composer.outcome", {
-        label: targetWord(standing.row.receipt.target),
+        label: sentTargetWords(standing.row, live, self),
         state: stateWord(standing.row.receipt),
       });
     }
