@@ -715,6 +715,16 @@ herdr plugin install AltanS/collie --yes
 herdr plugin action invoke restart --plugin herdr.collie
 ```
 
+## Launcher rows in a crew
+
+The lead's launcher rows are now the crew's rows, and a row you add from the phone goes to the lead
+([Your own launchers](configure.md#your-own-launchers), [ADR 0127](../.adr/0127-the-leads-launcher-rows-are-the-crews-rows.md)).
+Nothing needs doing on upgrade day. Update the lead first, and the members follow. A member that
+still runs the older Collie lists the lead's rows, but it refuses to start one. The phone says that
+the command is not one of its launchers, and nothing runs. Its own rows still work. Update that
+machine, and the lead's rows start there. A deputy that runs the older Collie keeps no copy of the
+rows, so its New page shows only its own until it updates.
+
 ## Upgrading to 1.24.0
 
 Version 1.24.0 adds usage dots, a Stop button and a large-screen layout. If you come from 1.23.4,

@@ -201,11 +201,15 @@ Key security boundaries and risks:
   `~/.codex`, `~/.config/gh` or `~/.ssh` shows what is there. So does the `.env` of a second Collie
   whose config folder sits under the workspace. A hard link inside the folder to a file outside it is
   not caught either.
-- **A paired device can add launchers.** With the default `[phone] adds = true`, a phone may add a
-  row built from a recipe: an agent plus option chips whose flags the bridge picks from its own
+- **A paired device can add launchers.** With the default `[phone] adds = true` on the lead, a phone
+  may add a row built from a recipe: an agent plus option chips whose flags the bridge picks from its own
   table. A line typed by hand needs `free_text = true`, which is off by default. A recipe can still
   skip permission prompts. Such a row carries a "No prompts" badge, and each device confirms it once.
-  Revoking a device removes the rows it added. Set `adds = false` to turn off every phone-added row
+  Revoking a device removes the rows it added. Set `adds = false` to turn off every phone-added row.
+  The allowlist stays on the phone door: a phone names a row and never sends a line. A member
+  accepts a row definition only from its lead, over the pinned crew link, and refuses one that a phone
+  sends to it directly. The lead already holds the pairing, so this adds no power over what a paired
+  phone can do in a shell
   ([Your own launchers](configure.md#launchers-added-from-a-phone),
   [ADR 0094](../.adr/0094-launchers-added-from-a-phone.md)).
 - **A paired device can run a one-off command.** With the default `[phone] run = true`, a phone may

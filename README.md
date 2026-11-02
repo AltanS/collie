@@ -64,7 +64,7 @@ Prefer to have your agent do it? Ask it to run `collie skill` and follow the bri
 - **Push notifications** when an agent blocks on user input
 - **Quick actions and slash commands** configured per agent
 - **Keys board you arrange**: `Esc`, `Ctrl+C`, arrows and modifier combinations, plus wider keys, your own chords and sequences, sticky `Ctrl`/`Alt`/`Shift`, presets (Claude Code, Prefix, Vim) and a layout code to share
-- **Start from the phone**: a **+ New** button opens one page where you pick the machine, an agent or a command, the folder and an optional new worktree; each machine shows which agents it has, a lost reply never opens a second pane, and you can add your own launchers from the phone
+- **Start from the phone**: a **+ New** button opens one page where you pick the machine, an agent or a command, the folder and an optional new worktree; each machine shows which agents it has, a lost reply never opens a second pane, and your own launchers, the lead's and the ones you add from the phone, show on every machine of a crew
 - **Output search** and full conversation history beyond standard terminal scrollback
 - **Files screen**: the files of an agent's workspace folder with the changes marked, and a Changes segment with what it changed in its git repos, as diffs with syntax colour, and its last commit, read-only
 - **File attachments**: images from the camera roll, and markdown, text and code files

@@ -592,6 +592,10 @@ lint guard, the crew-wire guard or the `flake.lock` guard.
   maps to ONE binary word in `bridge/harness-launch.ts` and reports per machine on `/api/launchers`;
   a launch with a `requestId` replays from `launch-receipts.json` instead of opening a second pane
   ([ADR 0091](./.adr/0091-launch-by-id-with-a-request-id.md)).
+  In a crew the lead's merged rows are the crew's: a launch of a lead row on a member carries the row
+  over the crew link, accepted only when `caller.via === "crew"`, never from a phone-direct body, and
+  a member's own row wins the same `command`; adds are answered on the lead and the deputy keeps a
+  read-only copy ([ADR 0127](./.adr/0127-the-leads-launcher-rows-are-the-crews-rows.md)).
   Rows a phone adds live in `<stateDir>/launchers-added.json` under the operator's `[phone]` switches,
   never in `launchers.toml`; they are merged into the allowlist at read time, the operator's row wins
   a duplicate line, a recipe row is rebuilt from `bridge/launcher-recipes.ts` and a free line is

@@ -230,9 +230,11 @@ installed through nvm, or in your home folder, counts. An agent that is not foun
 It is disabled, and the reason follows its name in brackets, for example "not installed". Nothing
 disappears from the list without a word.
 
-**Command** lists a plain **Shell** and your [launchers](configure.md#your-own-launchers). You can
-also add a launcher from the phone, with a few option chips such as "Skip permission prompts"
-([Launchers added from a phone](configure.md#launchers-added-from-a-phone)). A launcher that skips
+**Command** lists a plain **Shell** and your [launchers](configure.md#your-own-launchers). On a crew,
+the lead's launchers are the crew's, so they show on every machine you pick, and each reads unavailable
+on a machine that lacks its agent or its folder. You can also add a launcher from the phone, with a
+few option chips such as "Skip permission prompts". It joins the lead's rows and shows on every
+machine ([Launchers added from a phone](configure.md#launchers-added-from-a-phone)). A launcher that skips
 permission prompts carries a **No prompts** badge, and the phone asks you once before it first starts
 it.
 

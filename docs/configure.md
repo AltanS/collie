@@ -475,8 +475,9 @@ landing at the top of one.
 
 This file and the rows added from a phone (below) are the allowlist. `POST /api/launch` accepts
 only a `command` that matches one of those rows exactly, an agent id from the machine's own list (the
-machine types that agent's command itself), or a plain shell. Changes apply immediately without a
-restart, but an already-open tab re-reads the rows only on its next load.
+machine types that agent's command itself), or a plain shell. A phone names a row and never sends a
+line. Changes apply immediately without a restart, but an already-open tab re-reads the rows only on
+its next load.
 
 Two optional keys tell the phone more about a row:
 
@@ -504,8 +505,17 @@ A row with a fixed folder shows it, shortened under home; a cwd-less row says "h
 (the dashboard already implies home, so it says nothing there). Declare no rows and neither section
 appears.
 
-On a crew (several machines, one phone-facing lead), each machine reads its own copy of this file —
-a row launches on whichever machine's dashboard or pane you tapped it from, not on the lead.
+On a crew (several machines, one phone-facing lead), the lead's rows are the crew's rows. The New
+page offers them on every machine you pick, and a tap starts the row on the machine you picked. The
+lead sends the row to that machine over the crew link, and only the lead can: a machine refuses a row
+that a phone sends to it directly. A machine's own `launchers.toml` still works. Its rows are that
+machine's additions, and on the same `command` its own row wins, with its own `cwd`.
+
+Each row is checked where it would run. A row whose agent is not installed there reads unavailable,
+"not installed". A row with a fixed `cwd` that does not exist there reads unavailable, "no folder".
+A `~` in a `cwd` is the home folder of the machine that runs the row. A machine that runs a Collie
+from before this rule lists the lead's rows without the folder check, and refuses to start one until
+it updates ([Upgrading](upgrading.md#launcher-rows-in-a-crew)).
 
 The **Agent** select on the New page is Collie's own list: Claude Code, Codex, opencode, pi, omp,
 Grok, Hermes, Kiro, Muse, Antigravity and dsh-TUI. Kiro starts with its tool permissions left as you set
@@ -518,17 +528,21 @@ To verify, reload the dashboard and look under the herd. If a row fails to load,
 
 ### Launchers added from a phone
 
-A phone can add its own rows on a machine. They are kept in that machine's state folder, in
-`launchers-added.json`, never in `launchers.toml`, and never copied to another machine.
+A phone can add its own rows. They are kept in the lead's state folder, in `launchers-added.json`,
+never in `launchers.toml`. On a crew a row you add is the crew's row, not one machine's: it shows on
+every machine, whichever machine the New page had picked. Add, Rename and Remove are always answered
+by the lead. The deputy keeps a read-only copy of the lead's rows and serves them if it takes over
+([The deputy](crew.md#how-a-crew-is-wired)). A solo install is its own lead.
 
 On the New page, tap **Add your own** under the **Agent** select or under the **Command** select.
-It opens the page `/new/add` for the machine chosen there. Pick **Agent** or **Command** at the top.
+It opens the page `/new/add`. The machine chosen on the New page stays where the first run lands. Pick **Agent** or **Command** at the top.
 An agent has two ways: a **recipe** (a harness, option chips, and the exact line Collie will type)
 and **Write a command**. A command row is always written by hand. **Add** returns to the New page
-with the new row chosen. Below the form, **Added on this machine** lists every row a phone added
-there, with **Rename** and **Remove**, and the rows from `launchers.toml` with a lock and no
-actions. **How adding works** opens a short explainer with this machine's `launchers.toml` path and
-an example row you can copy.
+with the new row chosen. Below the form, **Added for the crew** lists every row a phone added on
+the lead, with **Rename** and **Remove**, and the rows from `launchers.toml` with a lock and no
+actions. A row that a member held from before this rule stays on that member and shows without
+**Rename** or **Remove**. **How adding works** opens a short explainer with the lead's `launchers.toml`
+path and an example row you can copy.
 
 ```toml
 [phone]
@@ -565,14 +579,14 @@ machine, and **Add** stays off. With it, **Check the line** shows the line with 
 character written as its code (for example `⟨U+200B⟩`) before **Add** turns on. It is at most 200 characters, and the bridge refuses a control character, a line
 or paragraph separator and a bidi control in it, both when it is added and each time it is read.
 
-A machine keeps at most 20 added rows. If a row has the same line as a row in `launchers.toml`, the
+The lead keeps at most 20 added rows. If a row has the same line as a row in `launchers.toml`, the
 row in `launchers.toml` wins. Each added row records the paired device that added it. Revoking that
 device removes its rows, from the phone or with `collie devices revoke`, and the audit log records
 every add, rename and removal.
 
 > **Caution.** A row that skips permission prompts carries a "No prompts" badge. Each device asks
 > once before it first starts that row, and shows the command, the folder and the machine. Set
-> `adds = false` to turn off every phone-added row on a machine.
+> `adds = false` on the lead to turn off every phone-added row.
 
 ### Reaching a durable agent (experimental)
 

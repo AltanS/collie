@@ -518,10 +518,13 @@ command and the folder you pick all belong to the machine you picked, and that m
   agent installed through nvm or in a home folder counts. An agent a machine lacks stays in the
   select, disabled, marked "not installed". The same agent can be ready on one machine and greyed out
   on the next.
-- **Each machine reads its own launchers.** The rows in `launchers.toml`, and the rows a phone added
-  there, are not shared across the crew
-  ([Your own launchers](configure.md#your-own-launchers)). Its folders list, the Recent and Favourite
-  rows, is its own too, and the page checks the folder on that machine's disk.
+- **The lead's launcher rows are the crew's rows.** The rows in the lead's `launchers.toml`, and the
+  rows a phone added there, show on every machine you pick, and a tap starts the row on that machine.
+  A machine's own rows are its additions, and its own row wins on the same command. The page checks
+  each row where it would run: a missing agent or a missing folder reads unavailable
+  ([Your own launchers](configure.md#your-own-launchers)). A row you add from the phone goes to the
+  lead. The folders list, the Recent and Favourite rows, stays each machine's own, and the page
+  checks the folder on that machine's disk.
 - **A New worktree is made on the machine you pick.** That machine needs git and a multiplexer
   that opens a space. Herdr, the Herdr core, tmux, tuios and tern open one; zellij does not. When
   the machine cannot, the switch stays, off, and says why.

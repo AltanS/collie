@@ -357,8 +357,12 @@ graph TD
   (`web/src/lib/operator-scope.ts`). Their **launcher rows**, from `launchers.toml`
   (`bridge/operator-launchers.ts`), share the reader but NOT `/api/config`: a launcher row creates
   its own pane rather than addressing an existing one, so it carries no scope, and its rows ride
-  their own session-scoped `GET /api/launchers` instead — rows must come from the host that runs
-  them, which a lead-only `/api/config` field cannot say in a crew (CREW_PROTOCOL.md §5).
+  their own session-scoped `GET /api/launchers` instead. The lead's merged rows are the crew's
+  ([ADR 0127](./.adr/0127-the-leads-launcher-rows-are-the-crews-rows.md)): the lead offers them for
+  every host and each row is checked on the host that runs it (`not_found`, `no_folder`). A launch
+  of a lead row on a member carries the row over the crew link (`row`), which a member accepts only
+  from its lead; adds are answered on the lead; the deputy keeps a read-only copy
+  (CREW_PROTOCOL.md §5, §18.14).
 
 - **UI strings are translated by a typed dictionary, not a library** (`web/src/lib/i18n/`, six
   locales, English the compile-time source of truth) — `t()`/`tn()` plus the `useLocale()` hook
