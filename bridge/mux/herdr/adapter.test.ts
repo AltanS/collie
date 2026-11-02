@@ -77,6 +77,51 @@ const plainWorkspace = (id: string, label: string): WireWorkspace => ({
   agent_status: "idle",
 });
 
+describe("a pane reports where its foreground agent is working", () => {
+  test.each(["/private/tmp", "/tmp/work outside the workspace"])(
+    "prefers foreground cwd %s to the pane's launch folder",
+    async (foreground) => {
+      class ForegroundHerdr extends FakeHerdr {
+        override async sessionSnapshot(): Promise<WireSnapshot> {
+          const snapshot = await super.sessionSnapshot();
+          return {
+            ...snapshot,
+            panes: snapshot.panes.map((pane) =>
+              Object.assign({}, pane, {
+                cwd: "/home/operator",
+                foreground_cwd: foreground,
+              }),
+            ),
+          };
+        }
+      }
+      const { panes } = await new HerdrMux(new ForegroundHerdr(), () => []).snapshot();
+      expect(panes.length).toBeGreaterThan(0);
+      for (const pane of panes) expect(pane.cwd).toBe(foreground);
+    },
+  );
+
+  test("falls back to cwd when foreground_cwd is empty or absent", async () => {
+    class EmptyForegroundHerdr extends FakeHerdr {
+      override async sessionSnapshot(): Promise<WireSnapshot> {
+        const snapshot = await super.sessionSnapshot();
+        return {
+          ...snapshot,
+          panes: snapshot.panes.map((pane) =>
+            Object.assign({}, pane, {
+              cwd: "/home/operator",
+              foreground_cwd: "",
+            }),
+          ),
+        };
+      }
+    }
+    const { panes } = await new HerdrMux(new EmptyForegroundHerdr(), () => []).snapshot();
+    expect(panes.length).toBeGreaterThan(0);
+    for (const pane of panes) expect(pane.cwd).toBe("/home/operator");
+  });
+});
+
 describe("herdr 0.9.3: the repo comes from worktree.list", () => {
   test("the captured records carry no worktree field, which is the regression", () => {
     expect(CAPTURE.version).toBe("0.9.3");

@@ -737,7 +737,7 @@ function toMuxPane(
     spaceLabel,
     spaceNumber: space?.number ?? 0,
     tabId: raw.tab_id,
-    cwd: raw.cwd,
+    cwd: raw.foreground_cwd !== undefined && raw.foreground_cwd.length > 0 ? raw.foreground_cwd : raw.cwd,
     focused: raw.focused,
     // Herdr drops a pane from `pane.list` when it goes away — a listed pane is a live one, and an
     // id that has left the snapshot answers `pane_not_found` on the next write.
