@@ -45,9 +45,6 @@ class FakeAdapter implements MuxAdapter {
   closeTab() { this.calls.push("closeTab"); return Promise.resolve(muxAck()); }
   createSpace() { this.calls.push("createSpace"); return Promise.resolve(muxOk({ paneId: "%9", spaceId: "s", spaceLabel: "s", tabId: "t", cwd: "/tmp" })); }
   listSessions() { this.calls.push("listSessions"); return Promise.resolve(muxOk([])); }
-  listWorktrees() { this.calls.push("listWorktrees"); return Promise.resolve(muxOk([])); }
-  createWorktree() { this.calls.push("createWorktree"); return Promise.resolve(muxOk({ paneId: "%9", spaceId: "s", spaceLabel: "s", tabId: "t", cwd: "/tmp" })); }
-  openWorktree() { this.calls.push("openWorktree"); return Promise.resolve(muxOk({ pane: { paneId: "%9", spaceId: "s", spaceLabel: "s", tabId: "t", cwd: "/tmp" }, alreadyOpen: false })); }
   watch() { this.calls.push("watch"); return this.subscription; }
 }
 
@@ -176,14 +173,10 @@ describe("withRepoFacts", () => {
     await w.closeTab("t");
     await w.createSpace({ cwd: "/tmp" });
     await w.listSessions();
-    await w.listWorktrees({ repoRoot: "/r" });
-    await w.createWorktree({ repoRoot: "/r", branch: "b" });
-    await w.openWorktree({ repoRoot: "/r", path: "/r/wt" });
     expect(w.watch({ panes: [], onTopologyChange: () => undefined, onPaneChange: () => undefined, onUp: () => undefined, onDown: () => undefined })).toBe(fake.subscription);
     expect(fake.calls).toEqual([
       "reachable", "refresh", "readGrid", "typeText", "writeKeys", "renamePane", "closePane", "setFocus",
-      "createTab", "renameTab", "closeTab", "createSpace", "listSessions", "listWorktrees", "createWorktree",
-      "openWorktree", "watch",
+      "createTab", "renameTab", "closeTab", "createSpace", "listSessions", "watch",
     ]);
   });
 });

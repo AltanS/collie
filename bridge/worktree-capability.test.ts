@@ -51,9 +51,6 @@ function recordingAdapter(initial: MuxCapabilityDeclaration) {
     renameTab: (tabId, label) => (note("renameTab", tabId, label), Promise.resolve(muxAck())),
     closeTab: (tabId) => (note("closeTab", tabId), Promise.resolve(muxAck())),
     createSpace: (request) => (note("createSpace", request), Promise.resolve(muxOk(PANE))),
-    listWorktrees: (scope) => (note("listWorktrees", scope), Promise.resolve(refusal)),
-    createWorktree: (request) => (note("createWorktree", request), Promise.resolve(refusal)),
-    openWorktree: (request) => (note("openWorktree", request), Promise.resolve(refusal)),
     listSessions: () => (note("listSessions"), Promise.resolve(muxOk([]))),
     watch: (options) => (note("watch", options), { close: () => {} }),
   };
@@ -89,12 +86,6 @@ describe("worktreeDeclaration", () => {
       expect(out.supports.createWorktree).toBe(false);
       expect(out.notes.createWorktree).toBe("one session only");
     }
-  });
-
-  test("the list and open verbs are never lifted", () => {
-    const out = worktreeDeclaration(declaration(["createSpace"]), GIT);
-    expect(out.supports.listWorktrees).toBe(false);
-    expect(out.supports.openWorktree).toBe(false);
   });
 
   test("everything else is carried through, and the input is not mutated", () => {
@@ -147,9 +138,6 @@ describe("withWorktreeCapability", () => {
     await wrapped.renameTab("t1", "t");
     await wrapped.closeTab("t1");
     expect(await wrapped.createSpace({ cwd: "/w", label: "w" })).toEqual(muxOk(PANE));
-    await wrapped.listWorktrees({ repoRoot: "/r" });
-    await wrapped.createWorktree({ repoRoot: "/r", branch: "b" });
-    await wrapped.openWorktree({ repoRoot: "/r", path: "/w" });
     await wrapped.listSessions();
     wrapped.watch({ panes: [], onTopologyChange: () => {}, onPaneChange: () => {}, onUp: () => {}, onDown: () => {} });
     expect(calls.map(([name]) => name)).toEqual([
@@ -166,9 +154,6 @@ describe("withWorktreeCapability", () => {
       "renameTab",
       "closeTab",
       "createSpace",
-      "listWorktrees",
-      "createWorktree",
-      "openWorktree",
       "listSessions",
       "watch",
     ]);
@@ -186,15 +171,10 @@ describe("withWorktreeCapability", () => {
 describe("every registered adapter, wrapped", () => {
   for (const fixture of MUX_CONFORMANCE_FIXTURES) {
     const name = fixture.variant === undefined ? fixture.mux : `${fixture.mux} (${fixture.variant})`;
-    test(`${name}: declares no worktree verb itself, and gains createWorktree exactly when it opens a space`, async () => {
+    test(`${name}: declares no createWorktree itself, and gains createWorktree exactly when it opens a space`, async () => {
       const world = await fixture.create();
       const own = world.adapter.capabilities.supports;
-      expect({ name, createWorktree: own.createWorktree, listWorktrees: own.listWorktrees, openWorktree: own.openWorktree }).toEqual({
-        name,
-        createWorktree: false,
-        listWorktrees: false,
-        openWorktree: false,
-      });
+      expect({ name, createWorktree: own.createWorktree }).toEqual({ name, createWorktree: false });
       const wrapped = withWorktreeCapability(world.adapter, { git: GIT });
       expect({ name, lifted: wrapped.capabilities.supports.createWorktree }).toEqual({ name, lifted: own.createSpace });
     });

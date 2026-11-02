@@ -22,10 +22,6 @@ import {
   type MuxSubscription,
   type MuxTabRequest,
   type MuxWatchOptions,
-  type MuxWorktree,
-  type MuxWorktreeCreateRequest,
-  type MuxWorktreeOpenRequest,
-  type MuxWorktreeScope,
 } from "../mux/types.ts";
 import type { ForegroundProcess } from "../journal/types.ts";
 
@@ -170,21 +166,6 @@ class StubAdapter implements MuxAdapter {
   listSessions() {
     this.note("listSessions");
     return Promise.resolve(muxOk<readonly MuxSession[]>([{ name: "default", endpoint: "/tmp/stub.sock" }]));
-  }
-
-  listWorktrees(scope: MuxWorktreeScope) {
-    this.note("listWorktrees", scope);
-    return Promise.resolve(muxOk<readonly MuxWorktree[]>([]));
-  }
-
-  createWorktree(request: MuxWorktreeCreateRequest) {
-    this.note("createWorktree", request);
-    return Promise.resolve(muxOk({ paneId: "%9", spaceId: "space", spaceLabel: "space", tabId: "tab", cwd: "/tmp" }));
-  }
-
-  openWorktree(request: MuxWorktreeOpenRequest) {
-    this.note("openWorktree", request);
-    return Promise.resolve(muxOk({ pane: { paneId: "%9", spaceId: "space", spaceLabel: "space", tabId: "tab", cwd: "/tmp" }, alreadyOpen: false }));
   }
 
 
@@ -371,9 +352,6 @@ describe("a decorator preserves the adapter's whole surface", () => {
     renameTab: true,
     closeTab: true,
     createSpace: true,
-    listWorktrees: true,
-    createWorktree: true,
-    openWorktree: true,
     listSessions: true,
     watch: true,
   } satisfies Record<keyof Required<MuxAdapter>, true>;

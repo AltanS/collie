@@ -518,65 +518,6 @@ export function requestedCwd(cwd: string | undefined): string | undefined {
   return cwd === undefined || cwd.trim().length === 0 ? undefined : cwd;
 }
 
-// ── Worktrees ─────────────────────────────────────────────────────────────────
-//
-// A worktree is Git's, not the multiplexer's — so why is it here? Because the ACT is the
-// multiplexer's: every verb below ends in a space appearing, moving or going away, which is the one
-// thing a mux adapter owns. What a multiplexer may not have is the BOOKKEEPING that ties a checkout
-// to the space showing it; that is what these capabilities declare. See ADR 0032.
-
-/** A Git worktree of the repo a space sits in. */
-export interface MuxWorktree {
-  /** Absolute checkout path. The identity: a branch may be absent, and labels repeat. */
-  readonly path: string;
-  /** The branch checked out there, or `null` for a detached head. */
-  readonly branch: string | null;
-  /** The space showing it, or `null` when it exists on disk and nothing shows it. */
-  readonly openSpaceId: string | null;
-  /** `false` for the repo's own checkout — listed for context, never removable. */
-  readonly linked: boolean;
-  /** The checkout is gone and the administrative files could be pruned. */
-  readonly prunable: boolean;
-}
-
-/** Where a worktree question is asked from — the repo the asking space sits in. */
-export interface MuxWorktreeScope {
-  readonly repoRoot: string;
-}
-
-/** What a new worktree asks for. */
-export interface MuxWorktreeCreateRequest extends MuxWorktreeScope {
-  readonly branch: string;
-  /**
-   * The ref the new branch is cut from. Absent means the multiplexer's own choice, which for Herdr
-   * is the HEAD of `repoRoot`. Already checked by the bridge (bridge/worktree-base.ts); an adapter
-   * that cannot honour it ignores it, as tmux, zellij, tuios and tern do with the whole call.
-   */
-  readonly base?: string;
-  /**
-   * The absolute folder the checkout is made in. Absent means the multiplexer's own place, which for
-   * Herdr is `<worktrees directory>/<repo>/<slug>`. Already checked by the bridge on every use
-   * (bridge/worktree-folder.ts, ADR 0093); an adapter that cannot honour it ignores the whole call.
-   */
-  readonly path?: string;
-}
-
-/** Which existing worktree to show. */
-export interface MuxWorktreeOpenRequest extends MuxWorktreeScope {
-  readonly path: string;
-}
-
-/**
- * Opening one either made a space or found the space already showing it.
- *
- * `alreadyOpen` is not an error and must not be rendered as one: asking for a worktree that is
- * already up is the operator saying "take me there", and the pane below is where to go.
- */
-export interface MuxWorktreeOpened {
-  readonly pane: MuxCreatedPane;
-  readonly alreadyOpen: boolean;
-}
-
 // ── Learning that something changed ───────────────────────────────────────────
 
 /**
@@ -935,15 +876,6 @@ export interface MuxAdapter {
 
   /** New space, opening a fresh shell. Needs `createSpace`. */
   createSpace(request: MuxSpaceRequest): Promise<MuxOutcome<MuxCreatedPane>>;
-
-  /** The worktrees of the repo a space sits in. Needs `listWorktrees`. */
-  listWorktrees(scope: MuxWorktreeScope): Promise<MuxOutcome<readonly MuxWorktree[]>>;
-
-  /** New worktree on a new branch, opened as a space. Needs `createWorktree`. */
-  createWorktree(request: MuxWorktreeCreateRequest): Promise<MuxOutcome<MuxCreatedPane>>;
-
-  /** Show an existing worktree as a space. Needs `openWorktree`. */
-  openWorktree(request: MuxWorktreeOpenRequest): Promise<MuxOutcome<MuxWorktreeOpened>>;
 
   /**
    * The OTHER instances of this multiplexer on this machine, each with the endpoint to dial it.

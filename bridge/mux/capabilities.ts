@@ -40,9 +40,7 @@ export const MUX_CAPABILITIES = [
   "renameSpace",
   "closeTab",
   "createSpace",
-  "listWorktrees",
   "createWorktree",
-  "openWorktree",
   "pushTopologyEvents",
   "pushPaneEvents",
   "listSessions",
@@ -106,12 +104,8 @@ export const MUX_CAPABILITY_ROUTES = {
     "POST /api/space/:id/rename: set a space's name. Only a durable agent declares it today, from its own `caps.rename` (WIRE.md section 7.8); the phone draws the Rename row of the space sheet when it is declared. Absent ⇒ no Rename row, and the space chip opens no sheet.",
   closeTab: "POST /api/tab/:id/close — a bulk pane-close.",
   createSpace: "POST /api/workspace — a new space, opening a fresh shell.",
-  listWorktrees:
-    "No route asks it since 1.20.0: the space-scoped list (GET /api/workspace/:id/worktrees) lost its last caller when the New sheet moved to GET /api/worktree/plan (ADR 0093), and was removed. Kept on the port for the conformance set.",
   createWorktree:
-    "POST /api/worktree — a new branch in a new worktree, from the folder the New sheet names, opened as its own space (ADR 0093). Absent ⇒ no branch row on the New page or in the pane sheet.",
-  openWorktree:
-    "No route asks it since 1.20.0 (POST /api/workspace/:id/worktree/open had no caller and was removed). Kept on the port: show a worktree that already exists on disk, idempotently, as the conformance set checks.",
+    "POST /api/worktree — a new branch in a new worktree, from the folder the New sheet names, opened as its own space (ADR 0093). No adapter declares it: the bridge lifts it when the adapter can open a space and this host has git (bridge/worktree-capability.ts, ADR 0126). Absent ⇒ no branch row on the New page or in the pane sheet.",
   pushTopologyEvents:
     "bridge/event-poker.ts — panes/tabs/spaces appearing, closing or being renamed arrive as a push, so the snapshot poll can idle. Absent ⇒ the adapter polls to keep the same promise, and the poker learns nothing.",
   pushPaneEvents:
@@ -231,9 +225,7 @@ export function declareCapabilities(input: MuxCapabilityInput): MuxCapabilityDec
     renameSpace: claimed.has("renameSpace"),
     closeTab: claimed.has("closeTab"),
     createSpace: claimed.has("createSpace"),
-    listWorktrees: claimed.has("listWorktrees"),
     createWorktree: claimed.has("createWorktree"),
-    openWorktree: claimed.has("openWorktree"),
     pushTopologyEvents: claimed.has("pushTopologyEvents"),
     pushPaneEvents: claimed.has("pushPaneEvents"),
     listSessions: claimed.has("listSessions"),

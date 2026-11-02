@@ -3255,9 +3255,8 @@ describe("muxConfigBody — the capability declaration, as the phone reads it", 
     // The controls of a durable program (M51 spec 08, M53 spec 05) are the program's to declare, never Herdr's.
     const program = new Set(["steerTurn", "abortTurn", "starters", "renameSpace", "programActions", "programHistory", "reopenConversation"]);
     // Since M81 the bridge makes a worktree with git and Herdr opens it as a space: `createWorktree` is
-    // lifted from `createSpace`, and no phone control reads the list and open verbs.
-    const bridgeOwned = new Set(["listWorktrees", "openWorktree"]);
-    for (const cap of MUX_CAPABILITIES) expect({ cap, on: wire.capabilities[cap] }).toEqual({ cap, on: !program.has(cap) && !bridgeOwned.has(cap) });
+    // lifted from `createSpace` by the wrapper above.
+    for (const cap of MUX_CAPABILITIES) expect({ cap, on: wire.capabilities[cap] }).toEqual({ cap, on: !program.has(cap) });
     expect(wire.notes).toEqual({});
     // The adapter itself declares no worktree verb any more.
     expect(muxConfigBody(adapter).capabilities.createWorktree).toBe(false);

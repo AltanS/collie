@@ -42,11 +42,6 @@ import {
   type MuxSubscription,
   type MuxTabRequest,
   type MuxWatchOptions,
-  type MuxWorktree,
-  type MuxWorktreeCreateRequest,
-  type MuxWorktreeOpenRequest,
-  type MuxWorktreeOpened,
-  type MuxWorktreeScope,
 } from "./mux/types.ts";
 
 /** How long a folder's facts stand before the next snapshot reads the disk again. */
@@ -136,12 +131,6 @@ export function withRepoFacts(adapter: MuxAdapter, deps: RepoFactsDeps): MuxAdap
     renameTab: (tabId: string, label: string): Promise<MuxAck> => adapter.renameTab(tabId, label),
     closeTab: (tabId: string): Promise<MuxAck> => adapter.closeTab(tabId),
     createSpace: (request: MuxSpaceRequest): Promise<MuxOutcome<MuxCreatedPane>> => adapter.createSpace(request),
-    listWorktrees: (scope: MuxWorktreeScope): Promise<MuxOutcome<readonly MuxWorktree[]>> =>
-      adapter.listWorktrees(scope),
-    createWorktree: (request: MuxWorktreeCreateRequest): Promise<MuxOutcome<MuxCreatedPane>> =>
-      adapter.createWorktree(request),
-    openWorktree: (request: MuxWorktreeOpenRequest): Promise<MuxOutcome<MuxWorktreeOpened>> =>
-      adapter.openWorktree(request),
     listSessions: (): Promise<MuxOutcome<readonly MuxSession[]>> => adapter.listSessions(),
     watch: (options: MuxWatchOptions): MuxSubscription => adapter.watch(options),
   };

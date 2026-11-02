@@ -78,11 +78,6 @@ import {
   type MuxTab,
   type MuxTabRequest,
   type MuxWatchOptions,
-  type MuxWorktree,
-  type MuxWorktreeCreateRequest,
-  type MuxWorktreeOpenRequest,
-  type MuxWorktreeOpened,
-  type MuxWorktreeScope,
 } from "../types.ts";
 import {
   defaultTuiosSocket,
@@ -110,7 +105,7 @@ export const TUIOS_MUX = "tuios";
 /**
  * What tuios can do, read off the methods in this file and off the probe that proved each one.
  *
- * Declined, each for a reason in the notes: the three worktree verbs, and `listSessions`.
+ * Declined, for a reason in the notes: `listSessions`.
  */
 const TUIOS_CAPABILITIES = declareCapabilities({
   supports: [
@@ -145,9 +140,6 @@ const TUIOS_CAPABILITIES = declareCapabilities({
     createTab:
       "A new tab is a new window on the lowest empty workspace. A session has nine workspaces by default, so a tenth tab is refused.",
     closeTab: "Closing a tab closes every pane on that workspace.",
-    listWorktrees: "Worktrees are not part of the first tuios adapter.",
-    createWorktree: "Worktrees are not part of the first tuios adapter.",
-    openWorktree: "Worktrees are not part of the first tuios adapter.",
     listSessions:
       "Every session of this tuios daemon is already a space here. Another daemon has its own runtime directory, and tuios has no command that lists daemons, so a second daemon is reached by pointing a second collie at it.",
   },
@@ -509,22 +501,7 @@ export class TuiosMux implements MuxAdapter {
     }
   }
 
-  // ── Worktrees and sessions: declined ──────────────────────────────────────────────────────────
-  //
-  // Worktrees are left out of the first version. tuios has worktree verbs, and they wait for their
-  // own probe and their own change.
-
-  listWorktrees(_scope: MuxWorktreeScope): Promise<MuxOutcome<readonly MuxWorktree[]>> {
-    return Promise.resolve(muxUnsupported("listWorktrees", "worktrees are not part of the first tuios adapter"));
-  }
-
-  createWorktree(_request: MuxWorktreeCreateRequest): Promise<MuxOutcome<MuxCreatedPane>> {
-    return Promise.resolve(muxUnsupported("createWorktree", "worktrees are not part of the first tuios adapter"));
-  }
-
-  openWorktree(_request: MuxWorktreeOpenRequest): Promise<MuxOutcome<MuxWorktreeOpened>> {
-    return Promise.resolve(muxUnsupported("openWorktree", "worktrees are not part of the first tuios adapter"));
-  }
+  // ── Sessions: declined ────────────────────────────────────────────────────────────────────────
 
   /**
    * Declined: every session of this daemon is already a space in one snapshot. The only other
