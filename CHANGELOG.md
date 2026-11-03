@@ -27,6 +27,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **`collie crew add` offers the machines the Herdr core knows.** With no target, the picker now reads `hc machine ls --json` beside the ssh config and the Herdr TUI's list, and tags those rows `herdr-core`. A sandbox is hidden. A machine the core reaches without ssh is shown with the reason and cannot be picked, unless the ssh config also names it. A core that is not running costs nothing and prints nothing.
 
+### Changed
+
+- **`collie crew add` takes several hosts from its list in one run.** Answer the picker with numbers or names separated by spaces or commas, or with `all`. Each host gets its own run and its own confirm, a host that fails or is declined does not stop the next, and a summary at the end gives one line per host, with the first error that host printed. A machine the list names joins under that name, so the phone shows the same names as `hc machine ls`. `--label` still wins, and it is refused when you pick more than one host. The ops record keeps which list suggested each host.
+
 ## [1.26.0] - 2026-11-03
 
 ### Added

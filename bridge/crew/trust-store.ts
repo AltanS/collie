@@ -679,6 +679,20 @@ export class TrustStore {
     return this.cached;
   }
 
+  /**
+   * Forget the cached read, so the next {@link load} or {@link update} starts from the disk.
+   *
+   * For a CLI run that outlives a change another process made. `crew add` with several hosts is one:
+   * each join is written by the RUNNING BRIDGE, so this process's cache is stale the moment the first
+   * host enrols, and an `update` over it would write the roster back WITHOUT that member. Waits for
+   * writes already in flight, so it never drops one.
+   */
+  async refresh(): Promise<void> {
+    await this.writeChain;
+    this.loaded = false;
+    this.cached = null;
+  }
+
   /** The last loaded value without touching the disk. `null` before {@link load} has been called. */
   current(): TrustStoreData | null {
     return this.cached;

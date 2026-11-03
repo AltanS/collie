@@ -246,32 +246,66 @@ export function renderCandidateList(rows: readonly CandidateRow[]): readonly str
 }
 
 /** The question. One line, so the plain path's `prompt` fits on a terminal row. */
-export const CANDIDATE_QUESTION = "Which host? (a number, a name, or blank to stop) ";
+export const CANDIDATE_QUESTION = "Which hosts? (numbers or names, `all`, or blank to stop) ";
 
-/**
- * Read the operator's answer as a target, or `null` when it names nothing on the list.
- *
- * A number picks an offered row. Anything else is matched against every name on every row — the
- * enrolled ones included, because typing a name is the operator's own decision and the existing
- * refusals are what answer it. A blocked row's name is refused: no source can reach it. An answer that matches nothing is refused rather than guessed at.
- */
-export function pickCandidate(rows: readonly CandidateRow[], answer: string): string | null {
-  const trimmed = answer.trim();
-  if (trimmed === "") return null;
-  if (/^\d+$/u.test(trimmed)) {
-    const offered = offeredCandidates(rows);
-    return offered[Number(trimmed) - 1]?.target ?? null;
-  }
-  const named = rows.find((row) => row.names.includes(trimmed));
-  if (named === undefined || named.blocked !== null) return null;
-  return named.target;
+/** The tokens of an answer: split on spaces and commas, empty pieces dropped. */
+function answerTokens(answer: string): readonly string[] {
+  return answer.split(/[\s,]+/u).filter((token) => token !== "");
 }
 
 /**
- * The reason a typed name is refused, or `null` when the name is not a blocked row's. The caller
- * prints it instead of the generic "not one of the candidates" line, so a greyed row's name does not
- * read as a typo.
+ * The row one token names, or `null` when it names none.
+ *
+ * A number picks an offered row. Anything else is matched against every name on every row — the
+ * enrolled ones included, because typing a name is the operator's own decision and the existing
+ * refusals are what answer it. A blocked row's name names nothing: no source can reach it.
  */
+function rowOfToken(rows: readonly CandidateRow[], token: string): CandidateRow | null {
+  if (/^\d+$/u.test(token)) return offeredCandidates(rows)[Number(token) - 1] ?? null;
+  const named = rows.find((row) => row.names.includes(token));
+  return named === undefined || named.blocked !== null ? null : named;
+}
+
+/**
+ * Read the operator's answer as a list of rows, or `null` when any part of it names nothing.
+ *
+ * Tokens split on spaces and commas. A token is an offered row's number or any name on any row, and
+ * `all` is every offered row. A row named twice is picked once, in the order it was first named.
+ * **One unknown token refuses the WHOLE answer**: a partial pick would add machines the operator did
+ * not read back, and the one that failed would be easy to miss in a long line. A blank answer names
+ * nothing and is `null` too; the caller handles blank before it asks.
+ */
+export function pickCandidates(rows: readonly CandidateRow[], answer: string): readonly CandidateRow[] | null {
+  const tokens = answerTokens(answer);
+  if (tokens.length === 0) return null;
+  const picked = new Map<string, CandidateRow>();
+  for (const token of tokens) {
+    const chosen = token === "all" ? offeredCandidates(rows) : [rowOfToken(rows, token)];
+    for (const row of chosen) {
+      if (row === null) return null;
+      if (!picked.has(row.key)) picked.set(row.key, row);
+    }
+  }
+  return picked.size === 0 ? null : [...picked.values()];
+}
+
+/**
+ * The first token of a refused answer, and the reason when it is a blocked row's name. `null` when
+ * the answer is not refused. The caller prints it instead of the generic "not one of the candidates"
+ * line, so a greyed row's name does not read as a typo and a long answer says WHICH token failed.
+ */
+export function refusedToken(
+  rows: readonly CandidateRow[],
+  answer: string,
+): { readonly token: string; readonly blocked: string | null } | null {
+  for (const token of answerTokens(answer)) {
+    if (token === "all" || rowOfToken(rows, token) !== null) continue;
+    return { token, blocked: blockedReason(rows, token) };
+  }
+  return null;
+}
+
+/** The reason a typed name is refused, or `null` when the name is not a blocked row's. */
 export function blockedReason(rows: readonly CandidateRow[], answer: string): string | null {
   const trimmed = answer.trim();
   return rows.find((row) => row.blocked !== null && row.names.includes(trimmed))?.blocked ?? null;

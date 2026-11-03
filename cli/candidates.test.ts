@@ -7,7 +7,8 @@ import {
   mergeCandidates,
   offeredCandidates,
   parseResolvedSshTarget,
-  pickCandidate,
+  pickCandidates,
+  refusedToken,
   renderCandidateList,
   resolvedSshTarget,
   splitSshTarget,
@@ -204,32 +205,58 @@ describe("renderCandidateList", () => {
   });
 });
 
-describe("pickCandidate", () => {
+describe("pickCandidates", () => {
   const rows = markCandidates(
     mergeCandidates(
       [
-        { source: SSH_CONFIG_SOURCE, candidates: [named("attic"), named("nas")] },
+        { source: SSH_CONFIG_SOURCE, candidates: [named("attic"), named("nas"), named("vps")] },
         { source: "herdr", candidates: [named("op@attic.lan:22")] },
       ],
       (target) => (target === "attic" || target === "op@attic.lan:22" ? "op@attic.lan:22" : null),
     ),
     [{ memberId: "nas-1", sshHost: "nas", key: "nas" }],
   );
+  const targets = (answer: string) => pickCandidates(rows, answer)?.map((row) => row.target) ?? null;
 
   test("a number picks an offered row, counting only the offered ones", () => {
-    expect(pickCandidate(rows, "1")).toBe("attic");
-    expect(pickCandidate(rows, " 1 ")).toBe("attic");
-    expect(pickCandidate(rows, "2")).toBeNull();
+    expect(targets("1")).toEqual(["attic"]);
+    expect(targets(" 1 ")).toEqual(["attic"]);
+    expect(targets("2")).toEqual(["vps"]);
+    expect(targets("3")).toBeNull();
   });
 
   test("a name matches any spelling on any row, the enrolled ones included", () => {
-    expect(pickCandidate(rows, "op@attic.lan:22")).toBe("attic");
-    expect(pickCandidate(rows, "nas")).toBe("nas");
+    expect(targets("op@attic.lan:22")).toEqual(["attic"]);
+    expect(targets("nas")).toEqual(["nas"]);
+  });
+
+  test("tokens split on spaces and commas, and numbers and names mix", () => {
+    expect(targets("2 attic")).toEqual(["vps", "attic"]);
+    expect(targets("2,1")).toEqual(["vps", "attic"]);
+    expect(targets(" vps ,  1 ")).toEqual(["vps", "attic"]);
+  });
+
+  test("`all` is every offered row and leaves out the enrolled one", () => {
+    expect(targets("all")).toEqual(["attic", "vps"]);
+    expect(targets("vps all")).toEqual(["vps", "attic"]);
+  });
+
+  test("a row named twice, by number and by another of its names, is picked once", () => {
+    expect(targets("1 attic op@attic.lan:22 1")).toEqual(["attic"]);
   });
 
   test("blank and an unknown name are refused rather than guessed at", () => {
-    expect(pickCandidate(rows, "")).toBeNull();
-    expect(pickCandidate(rows, "somewhere-else")).toBeNull();
+    expect(targets("")).toBeNull();
+    expect(targets("  , ")).toBeNull();
+    expect(targets("somewhere-else")).toBeNull();
+  });
+
+  test("one unknown token refuses the whole answer, and refusedToken names it", () => {
+    expect(targets("1 somewhere-else 2")).toBeNull();
+    expect(targets("1 9")).toBeNull();
+    expect(refusedToken(rows, "1 somewhere-else 2")).toEqual({ token: "somewhere-else", blocked: null });
+    expect(refusedToken(rows, "1 9")).toEqual({ token: "9", blocked: null });
+    expect(refusedToken(rows, "1 2 all")).toBeNull();
   });
 });
 
@@ -295,8 +322,11 @@ describe("blocked rows", () => {
   });
 
   test("pick refuses a blocked row's name, and blockedReason says why", () => {
-    expect(pickCandidate(rows, "vps")).toBeNull();
-    expect(pickCandidate(rows, "2")).toBe("nas");
+    expect(pickCandidates(rows, "vps")).toBeNull();
+    expect(pickCandidates(rows, "attic vps")).toBeNull();
+    expect(refusedToken(rows, "attic vps")).toEqual({ token: "vps", blocked: REASON });
+    expect(pickCandidates(rows, "2")?.map((r) => r.target)).toEqual(["nas"]);
+    expect(pickCandidates(rows, "all")?.map((r) => r.target)).toEqual(["attic", "nas"]);
     expect(blockedReason(rows, "vps")).toBe(REASON);
     expect(blockedReason(rows, "nas")).toBeNull();
     expect(blockedReason(rows, "nowhere")).toBeNull();

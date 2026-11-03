@@ -260,6 +260,22 @@ describe("TrustStore — the write discipline", () => {
     expect(io.writes).toBe(0);
   });
 
+  test("refresh makes the next read see what another process wrote, and an update build on it", async () => {
+    const io = memoryIo(serializeTrustStore(leadStore()));
+    const store = new TrustStore("/unused", io);
+    expect((await store.load())?.peers).toEqual([]);
+    // Another process (the running bridge) enrols a member behind this one's cache.
+    io.contents = serializeTrustStore(leadStore({ peers: [member({ memberId: "nas" })] }));
+    expect((await store.load())?.peers).toEqual([]);
+    await store.refresh();
+    let seen: string[] = [];
+    await store.update((current) => {
+      seen = current?.peers.map((p) => p.memberId) ?? [];
+      return null;
+    });
+    expect(seen).toEqual(["nas"]);
+  });
+
   test("the path is composed in exactly one place", () => {
     expect(trustStorePath("/state")).toBe(join("/state", TRUST_STORE_FILENAME));
     expect(TRUST_STORE_FILENAME).toBe("crew-trust.json");
