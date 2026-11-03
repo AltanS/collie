@@ -16,8 +16,19 @@ const MAX_DRAFT_LINES = 100;
 const PROMPT_REGEX = /^[❯›>]\s*/;
 const ESC_TO_CANCEL = /\besc(?:ape)?\s+to\s+cancel\b/i;
 const OWN_ESC_STATUS = /^esc to cancel(?:\s|$)/i;
+// The rail: rows agy paints between the box's bottom rule and a closing rule of the same width, under
+// the box and over the status rows. 1.4.5 lists its background tasks there (`  ● [00:10:50] sleep 25…
+// running`, agy--v145-background-task--w80.txt); 1.4.12 lists a running sub-agent the same way
+// (`  ● Agent(research: …)  <its latest line> · 1h15m35s`, #655, agy--v1412-subagent-band-idle.txt).
+// Any other row there stays unknown, so the box stays refused.
 const BACKGROUND_TASK_ROW = /^ {2}● \[\d{2}:\d{2}:\d{2}\] .+ running$/;
+const SUBAGENT_ROW = /^ {2}● Agent\(\S.*$/;
 const MAX_TASK_FOOTER_ROWS = 15;
+
+function isRailRow(text: string): boolean {
+  const t = text.trimEnd();
+  return BACKGROUND_TASK_ROW.test(t) || SUBAGENT_ROW.test(t);
+}
 const AGY_IDLE = requireProfile("agy").idle;
 
 // The slash-command completion popup (agy 1.3.5, live 2026-10-15) paints UNDER the box's bottom rule:
@@ -97,10 +108,10 @@ export function normalizeAgyScreenRows(lines: StyledLine[]): StyledLine[] {
   }
   if (bottomBorder <= 1) return lines;
 
-  // Step across a background-task rail if `bottomBorder` is its closing rule.
+  // Step across the rail (background tasks, sub-agents) if `bottomBorder` is its closing rule.
   let taskScan = bottomBorder;
   while (taskScan > 0 && bottomBorder - taskScan < MAX_TASK_FOOTER_ROWS) {
-    if (!BACKGROUND_TASK_ROW.test(texts[taskScan - 1]!.trimEnd())) break;
+    if (!isRailRow(texts[taskScan - 1]!)) break;
     taskScan--;
   }
   if (
@@ -240,7 +251,7 @@ function locateBackgroundTaskBox(texts: string[], bot: number, end: number): Loc
     if (!isBoxBorder(texts[closingRule]!) || /^\s/.test(texts[closingRule]!)) continue;
     let firstTask = closingRule;
     while (firstTask > 0 && closingRule - firstTask < MAX_TASK_FOOTER_ROWS) {
-      if (!BACKGROUND_TASK_ROW.test(texts[firstTask - 1]!.trimEnd())) break;
+      if (!isRailRow(texts[firstTask - 1]!)) break;
       firstTask--;
     }
     if (firstTask === closingRule || firstTask <= 2) return null;

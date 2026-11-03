@@ -13,7 +13,7 @@
   },
   "versions": [
     {
-      "range": "1.1.0 - 1.4.8",
+      "range": "1.1.0 - 1.4.12",
       "status": "provisional",
       "verifiedThrough": null,
       "verifiedOn": null
@@ -39,6 +39,34 @@
       "maxDraftRows": 60,
       "maxTailRows": 8
     },
+    "frameAlternates": [
+      {
+        "walk": "interior",
+        "top": {
+          "pattern": "^─+$",
+          "minCells": 8,
+          "column": 0
+        },
+        "prompt": {
+          "pattern": "^>(?: (?<draft>.*))?$",
+          "column": 0
+        },
+        "bottom": {
+          "pattern": "^─+$",
+          "minCells": 8,
+          "column": 0
+        },
+        "trailer": {
+          "row": "^─+$",
+          "pad": "^ {2}● (?:\\[\\d{2}:\\d{2}:\\d{2}\\] .+ running|Agent\\(\\S.*)$",
+          "maxPad": 15
+        },
+        "continuationIndent": 2,
+        "maxDraftRows": 60,
+        "maxTailRows": 8,
+        "note": "The rail under the box (agy 1.4.5 background tasks, 1.4.12 sub-agents, #655): the box's bottom rule, rows of `  ● …`, then a closing rule of the same width over the status rows. The main shape takes the closing rule for the bottom edge and finds no prompt over it; here the closing rule is the edge and the box's own rule and the rail are its trailer. Fixture agy--v1412-subagent-band-idle."
+      }
+    ],
     "placeholders": {
       "texts": [
         "Ask anything or type / for commands",
@@ -113,7 +141,7 @@
   "probe": {
     "char": "⌁",
     "status": "provisional",
-    "note": "No live probed send has passed in Collie's own lab: agy is not installed on bluefin, LAB.md has no row for it, and the M56 spec 01 lab did not run it. A contributor's local macOS verification on 1.4.4 to 1.4.8 (PR 619) covers boxed composers, gray Auto hints, normal sends and native panels (/model, /effort, /resume, /artifact, /usage, /context); the saved screens are in web/src/fixtures/panes (agy--*.txt, 1.1.17 to 1.3.5) and web/src/lib/harness/agy/fixtures (1.4.4 to 1.4.8). Provisional until a live probed send passes; fallback ¤"
+    "note": "No live probed send has passed in Collie's own lab: agy is not installed on bluefin, LAB.md has no row for it, and the M56 spec 01 lab did not run it. A contributor's local macOS verification on 1.4.4 to 1.4.8 (PR 619) covers boxed composers, gray Auto hints, normal sends and native panels (/model, /effort, /resume, /artifact, /usage, /context); the saved screens are in web/src/fixtures/panes (agy--*.txt, 1.1.17 to 1.3.5) and web/src/lib/harness/agy/fixtures (1.4.4 to 1.4.8), plus one 1.4.12 screen from issue 655 (agy--v1412-subagent-band-idle.txt). Provisional until a live probed send passes; fallback ¤"
   },
   "paste": {
     "bracketed": true

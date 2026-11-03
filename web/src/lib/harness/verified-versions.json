@@ -58,7 +58,7 @@
       "verified": "2026-10-29",
       "how": "capture",
       "adapter": true,
-      "evidence": "web/src/lib/harness/agy/fixtures/: 1.4.4–1.4.8 captures for /usage, /context, /effort, /model, /resume, /artifact, and Keyboard: modals, plus web/src/fixtures/panes/agy--ask-multi.txt",
+      "evidence": "web/src/lib/harness/agy/fixtures/: 1.4.4–1.4.8 captures for /usage, /context, /effort, /model, /resume, /artifact, and Keyboard: modals, plus web/src/fixtures/panes/agy--ask-multi.txt; one 1.4.12 screen from issue 655 (web/src/fixtures/panes/agy--v1412-subagent-band-idle.txt, an idle box over a sub-agent rail, text only)",
       "journal": {
         "version": "1.4.8",
         "verified": "2026-10-29",
@@ -71,7 +71,7 @@
       "verified": "2026-10-29",
       "how": "capture",
       "adapter": true,
-      "evidence": "Same binary as agy, filed under Herdr's other name for it (agent-commands.ts CATALOG comment) — web/src/lib/harness/agy/fixtures/",
+      "evidence": "Same binary as agy, filed under Herdr's other name for it (agent-commands.ts CATALOG comment) — web/src/lib/harness/agy/fixtures/, plus the 1.4.12 screen of issue 655",
       "journal": {
         "version": "1.4.8",
         "verified": "2026-10-29",
