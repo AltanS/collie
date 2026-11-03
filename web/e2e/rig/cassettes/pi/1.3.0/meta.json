@@ -18,9 +18,6 @@
         "pi.walky-agents",
         "pi.walky-busy",
         "pi.walky-operator"
-      ],
-      "failed": [
-        "pi.walky-agents"
       ]
     },
     "crew": {

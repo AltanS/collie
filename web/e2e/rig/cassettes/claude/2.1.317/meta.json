@@ -22,9 +22,6 @@
         "claude.walky-replaced",
         "pi.walky-agents",
         "rig.before-first-case"
-      ],
-      "failed": [
-        "pi.walky-agents"
       ]
     },
     "crew": {
