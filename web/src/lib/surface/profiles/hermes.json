@@ -34,7 +34,7 @@
         "column": 0
       },
       "bottom": {
-        "pattern": "^─+(?:\\s+(?<label>.*[^\\s─-╿▁-▔‒-―])\\s+─{1,3})?$",
+        "pattern": "^─+$",
         "minCells": 8,
         "column": 0
       },
@@ -97,7 +97,7 @@
           "column": 0,
           "open": true
         },
-        "rows": "^(?![╭╰│]|─{64,}$).*$",
+        "rows": "^(?![╭╰│]|─{64,}$|─{2,}\\s.*\\s─+$).*$",
         "continuationIndent": 0,
         "maxDraftRows": 8,
         "maxTailRows": 16
