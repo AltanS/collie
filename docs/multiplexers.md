@@ -827,7 +827,7 @@ on the last rows stops it: Collie types nothing there, and the phone offers Type
 | Agent | Enter during a turn | Send key | Probe | Checked against |
 | ----- | ------------------- | -------- | ----------------- | --------------- |
 | OpenCode | Queues the message | Enter | Yes | 1.18.33 |
-| pi | Steers the turn; Alt+Enter queues | Alt+Enter, Ctrl+Q on Windows and in WSL | Short texts and sends into a turn | 1.1.0 |
+| pi | Steers the turn; Alt+Enter queues | Alt+Enter, Ctrl+Q on Windows and in WSL | Short texts and sends into a turn | 1.1.0; screens of 1.4.0 |
 | OMP | Steers the turn; Ctrl+Q queues | Ctrl+Q | Yes | 18.4.10 |
 | Grok | Not measured | Enter | Yes | 1.0.41 |
 | Antigravity (`agy`) | Not measured | Enter | Yes | Screens of 1.4.8 |
@@ -853,6 +853,9 @@ Collie checks that the character lands in the box, then removes it.
   So Collie sends with Alt+Enter, and with Ctrl+Q on Windows and in WSL.
   pi shows a queued message as a `Follow-up:` row above the box.
   A box taller than 30 rows does not read as a box. The screen reads as unknown, and a send needs your tap.
+  Gentle Shell 4.5.1, which bundles pi 1.4.0, draws a float editor instead: a left rail of `▎` rows
+  under a `✿ waiting for input` line. Collie reads that box too. In its NORMAL or SELECT mode it does
+  not read as a box, and a send needs your tap.
 
 - **OMP** lets you choose the border style of its box, so Collie knows five of them.
   One is the open box with a status row on top. Others are a rule pair, a rule with no bottom rule,
