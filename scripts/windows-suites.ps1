@@ -92,9 +92,9 @@
 #                - "says the branch stayed behind when its delete fails" (the same)
 #                - "keeps the branch when the checkout could not be removed" (the same)
 #                - "never removes a folder that was there before the call" (the same)
-#              cli 57 in all: 18 in the next paragraph, then 3 of the statusLine wrapper and 36 of walky talky. Of the 18, 12 are every test of the "doctor durable" describe in cli/doctor.test.ts: each reads a
+#              cli 58 in all: 19 in the next paragraph, then 3 of the statusLine wrapper and 36 of walky talky. Of the 19, 12 are every test of the "doctor durable" describe in cli/doctor.test.ts: each reads a
 #                real Unix socket. Its Windows rows are tested in cli/durable-findings.test.ts with a fake
-#                platform. The other 6:
+#                platform. The other 7:
 #                "a per-call override wins over the Exec's own environment (#283) > a child killed by a signal says which one"
 #                (Windows has no POSIX signals),
 #                "a per-call override wins over the Exec's own environment (#283) > inherit and runIn can point the child's stdout at stderr"
@@ -103,7 +103,9 @@
 #                (the same missing model as the bridge case), and the 3 tests of
 #                "installScript from a shallow lead, run for real" in cli/remote.test.ts: they run the
 #                install leg, POSIX sh that a crew member runs over ssh, and a Windows machine cannot be a
-#                crew member (WINDOWS_CREW_SENTENCE in cli/crew.ts).
+#                crew member (WINDOWS_CREW_SENTENCE in cli/crew.ts), and
+#                "the real probe on an hc-only home reports the core and Collie's own config dir" in cli/remote.test.ts
+#                (M84: the stand-in `hc` and the probe are POSIX `sh`).
 #              The statusLine wrapper, cli (3). The "runShell stops the whole command" block in cli/statusline.test.ts is
 #                `describe.skipIf` off Linux: it signals a POSIX process group, and the wrapper is not on Windows by design
 #                (the usage row, .adr/0115). Its 3 tests are "a SIGTERM to the wrapper stops a compound command's grandchild"
@@ -122,7 +124,7 @@
 param(
   [Parameter(Mandatory = $true)][string]$Out,
   [int]$MaxSkipsBridge = 106,
-  [int]$MaxSkipsCli = 57,
+  [int]$MaxSkipsCli = 58,
   [int]$MaxSkipsScripts = 25
 )
 $skipBudget = @{ bridge = $MaxSkipsBridge; cli = $MaxSkipsCli; scripts = $MaxSkipsScripts }

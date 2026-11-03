@@ -1281,6 +1281,12 @@ describe("collie doctor — the local checks", () => {
 // asked through the real providers over the fake `Exec`; the other checks' answers stay HEALTHY.
 describe("collie doctor — crew-candidates", () => {
   const CORE_LIST = "hc machine ls --json";
+  // crew-delta returns the empty delta on win32 by design, so pin the host the way the front-door tests do.
+  const linuxHarness = (...args: Parameters<typeof harness>): ReturnType<typeof harness> => {
+    const h = harness(...args);
+    h.deps = { ...h.deps, host: hostFor("linux") };
+    return h;
+  };
   const core = (...targets: readonly string[]): Scripted["answers"] => [
     ...(HEALTHY_ANSWERS ?? []),
     [CORE_LIST, { stdout: JSON.stringify({ machines: targets.map((target) => ({ target })) }) }],
@@ -1293,7 +1299,7 @@ describe("collie doctor — crew-candidates", () => {
   });
 
   test("is one ok finding whose detail joins the lines with `; `", async () => {
-    const h = harness(LEAD, [], { answers: core("vps"), ops: laptop("herdr-core") });
+    const h = linuxHarness(LEAD, [], { answers: core("vps"), ops: laptop("herdr-core") });
     const { byCheck, code } = await findings(h);
     const finding = byCheck.get("crew-candidates");
     expect(finding?.status).toBe("ok");
@@ -1303,7 +1309,7 @@ describe("collie doctor — crew-candidates", () => {
   });
 
   test("--json carries the delta as data", async () => {
-    const h = harness(LEAD, [], { answers: core("vps"), ops: laptop("herdr-core") });
+    const h = linuxHarness(LEAD, [], { answers: core("vps"), ops: laptop("herdr-core") });
     const { byCheck } = await findings(h);
     expect(byCheck.get("crew-candidates")?.data).toEqual({
       missing: [{ source: "herdr-core", targets: ["vps"] }],
@@ -1312,45 +1318,45 @@ describe("collie doctor — crew-candidates", () => {
   });
 
   test("the plain rendering prints the line", async () => {
-    const h = harness(LEAD, [], { answers: core("vps"), ops: laptop("herdr-core") });
+    const h = linuxHarness(LEAD, [], { answers: core("vps"), ops: laptop("herdr-core") });
     expect(await cmdDoctor(h.deps, [])).toBe(EXIT.OK);
     expect(h.io.stdout.join("\n")).toContain("crew-candidates");
   });
 
   test("is omitted, not skipped, when nothing differs", async () => {
-    const h = harness(LEAD, [], { answers: core("laptop"), ops: laptop("herdr-core") });
+    const h = linuxHarness(LEAD, [], { answers: core("laptop"), ops: laptop("herdr-core") });
     const { raw } = await findings(h);
     expect(raw.some((f) => f.check === "crew-candidates")).toBe(false);
   });
 
   test("is omitted when there is no machine list at all", async () => {
-    const h = harness(LEAD, [], { ops: laptop(null), absent: ["hc", "herdr", "ssh"] });
+    const h = linuxHarness(LEAD, [], { ops: laptop(null), absent: ["hc", "herdr", "ssh"] });
     const { raw } = await findings(h);
     expect(raw.some((f) => f.check === "crew-candidates")).toBe(false);
   });
 
   test("a member with no source is not forgotten", async () => {
-    const h = harness(LEAD, [], { answers: core("vps"), ops: laptop(null) });
+    const h = linuxHarness(LEAD, [], { answers: core("vps"), ops: laptop(null) });
     const { byCheck } = await findings(h);
     expect(byCheck.get("crew-candidates")?.detail).toBe(LINE);
   });
 
   test("a peer gets no finding and no machine-list call", async () => {
-    const h = harness(peerStore(), [], { answers: core("vps"), ops: {} });
+    const h = linuxHarness(peerStore(), [], { answers: core("vps"), ops: {} });
     const { raw } = await findings(h);
     expect(raw.some((f) => f.check === "crew-candidates")).toBe(false);
     expect(h.calls).not.toContain(CORE_LIST);
   });
 
   test("a Windows host gets no finding and no machine-list call", async () => {
-    const h = harness(LEAD, [], { answers: core("vps"), ops: {} });
+    const h = linuxHarness(LEAD, [], { answers: core("vps"), ops: {} });
     h.deps = { ...h.deps, host: hostFor("win32") };
     await cmdDoctor(h.deps, ["--json"]);
     expect(h.calls).not.toContain(CORE_LIST);
   });
 
   test("an install without the ops seam reads exactly as before", async () => {
-    const h = harness(LEAD, [], { answers: core("vps") });
+    const h = linuxHarness(LEAD, [], { answers: core("vps") });
     const { raw } = await findings(h);
     expect(raw.some((f) => f.check === "crew-candidates")).toBe(false);
     expect(h.calls).not.toContain(CORE_LIST);
