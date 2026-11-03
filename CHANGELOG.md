@@ -27,6 +27,11 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **The Tasks mark on the belt shows a pi plan.** A pi session's plan, the `todo` tool of Gentle Shell, now fills the same Tasks mark and drawer that Claude's and Codex's task lists fill, with its `done/total` count, instead of being hunted for between tool calls. Blocked tasks read as pending and dropped tasks leave the list. The plan shows while the pane's Chat is open on a phone, because it is read from the Chat's live window; the dashboard does not show it. Any other harness whose log holds plan calls and has no task source of its own gets the same. Thanks @viniciosrab (#669).
 
+### Changed
+
+- **A worktree pane names its repository in the Switch pane sheet and the pane header.** The sheet folds a worktree under its repository's space when that space is open, as the dashboard does, and heads one that is not open `repository › name`. The pane header shows the repository's name before the branch, instead of Herdr's random worktree word. A pane in a root checkout draws as before. Thanks @viniciosrab (#666).
+
+
 ## [1.26.0] - 2026-11-03
 
 ### Added

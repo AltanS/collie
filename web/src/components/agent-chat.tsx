@@ -131,6 +131,7 @@ import { panesOfTab } from "@/lib/pane-ordinal";
 import { ExperimentalBadge } from "@/components/experimental-badge";
 import { paneSessionLog, useMuxCapability } from "@/lib/mux-capability";
 import { paneInRepo } from "@/lib/branch-off";
+import { paneSpace, repoNameOf } from "@/lib/spaces";
 import { useOptionalRootData } from "@/lib/route-data";
 import { hasJournalAdapter, reportsSessionOnFirstPrompt } from "@/lib/journal-agents";
 import { journalReadingOf, paneBody, type JournalReading } from "@/lib/chat-gate";
@@ -347,7 +348,8 @@ export function AgentChat({
   // "New agent in a worktree" (ADR 0089, M48): offered for a pane whose space sits in a Git repo, read
   // off the root snapshot's spaces. The other two gates (the capability, the lead scope) are the
   // actions sheet's own. It goes to the New page on this pane's folder with the worktree switch on.
-  const rootSpaces = useOptionalRootData()?.workspaces;
+  const rootData = useOptionalRootData();
+  const rootSpaces = rootData?.workspaces;
   const branchOffOffered = agent !== undefined && rootSpaces !== undefined && paneInRepo(rootSpaces, agent.workspaceId);
   // Single display-prefs instance: the View controls (in <Composer>) write it, the mirror reads it.
   const {
@@ -385,7 +387,12 @@ export function AgentChat({
   // "collie-workspace › UI work" here: one pane, two names, and the reader had to work out they
   // were the same pane. The address did not vanish, it moved down one line, where an address belongs.
   const name = agent === undefined ? "" : paneName(agent);
-  const workspace = agent === undefined ? "" : panePlaceParts(agent, tabs).space;
+  // A pane in a linked worktree names its REPOSITORY here: Herdr's worktree slug is a random word that
+  // tells nobody which project it is (issue #666). A root checkout, or an older bridge that sends no
+  // repo facts, keeps the workspace's own name.
+  const paneSpaceRow = agent === undefined ? undefined : paneSpace(agent, rootSpaces);
+  const worktreeRepo = paneSpaceRow?.isWorktree === true ? repoNameOf(paneSpaceRow) : null;
+  const workspace = agent === undefined ? "" : (worktreeRepo ?? panePlaceParts(agent, tabs).space);
   // A durable program's own line under the title (WIRE.md 7.11). The header's second line is 12px and its
   // geometry is a stated sum (20 + 4 + 12), so the subtitle takes the line the workspace holds; the
   // workspace is still named by the line's tap target (`chat.header.openOverviewAria`).
@@ -3359,6 +3366,11 @@ export function AgentChat({
             onSelect={switchToPane}
             tabs={tabs}
             servers={servers}
+            // The snapshot's spaces fold a worktree under its open root and head an unfolded one
+            // `repo › slug`, as on the dashboard (issue #666).
+            workspaces={rootSpaces}
+            scope={scope}
+            sessions={rootData?.sessions}
             // This device's pins lead the sheet in a Pinned section (ADR 0070). The sheet itself
             // stays switch-only: pinning is the pane menu's row, never a hold here.
             pins={pins}

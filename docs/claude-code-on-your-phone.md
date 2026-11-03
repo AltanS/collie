@@ -96,6 +96,11 @@ on the machine you pick, and opens it as a new space. So the switch needs git on
 multiplexer that opens a space: Herdr, the Herdr core, tmux, tuios or tern. On zellij, or on a
 machine with no git, it stays on the page, off, and says why.
 
+A pane in a worktree shows its repository where you look for it. Herdr names a worktree space
+with a random word, so the pane's header shows the repository's name before the branch, and the
+Switch pane sheet lists the worktree under its repository's space when that space is open. When it
+is not open, the sheet heads the group `repository › name`.
+
 Running multiple sessions creates multiple waiting prompts. Collie groups panes by workspace and
 marks the ones that need input: a red wash on the row, a dot on the workspace heading, and a count
 on the line at the top, which jumps to the first of them. Hold a row to pin that pane to the top. The

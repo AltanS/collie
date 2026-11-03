@@ -670,7 +670,7 @@ export function AgentList({
       {!renderBody && !ranked && drawn.map(({ group: g, rows }) => (
         <section key={g.key} id={groupDomId(g.key)} className="flex scroll-mt-4 flex-col gap-2">
           <SectionHeader
-            label={g.label}
+            label={g.heading ?? g.label}
             tone="strong"
             mark={urgentMark(g)}
             className="min-h-7"

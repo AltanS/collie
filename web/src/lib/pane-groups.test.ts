@@ -213,6 +213,26 @@ describe("groupPanesByWorkspace — linked worktrees (issue #587)", () => {
     expect(groups[0]!.key).toBe("\u0000\u0000w2");
   });
 
+  // Issue #666: the slug alone names no project, so a group that did not fold says `repo › slug`.
+  it("heads an unfolded worktree group `repo › slug`, and leaves its label and key alone", () => {
+    const groups = groupPanesByWorkspace(
+      [pane("wt-pane", { workspaceId: "w2", workspaceLabel: "lucky-meadow-d1ec", workspaceNumber: 2, tabId: "w2:t1" })],
+      [],
+      { order: "fixed", workspaces: [wt, other] },
+    );
+    expect(groups[0]!.heading).toBe("membero › lucky-meadow-d1ec");
+    expect(groups[0]!.label).toBe("lucky-meadow-d1ec");
+    expect(groups[0]!.key).toBe("\u0000\u0000w2");
+  });
+
+  it("gives no heading to a folded group, a root checkout, or a list given no workspaces", () => {
+    const wtPane = pane("wt-pane", { workspaceId: "w2", workspaceLabel: "lucky-meadow-d1ec", workspaceNumber: 2, tabId: "w2:t1" });
+    const rootPane = pane("root-pane", { workspaceId: "w1", workspaceLabel: "membero", workspaceNumber: 1, tabId: "w1:t1" });
+    expect(groupPanesByWorkspace([wtPane], [], { order: "fixed", workspaces: [root, wt] })[0]!.heading).toBeUndefined();
+    expect(groupPanesByWorkspace([rootPane], [], { order: "fixed", workspaces: [root, wt] })[0]!.heading).toBeUndefined();
+    expect(groupPanesByWorkspace([wtPane], [], { order: "fixed" })[0]!.heading).toBeUndefined();
+  });
+
   it("never folds a worktree into another machine's root checkout", () => {
     const groups = groupPanesByWorkspace(
       [
