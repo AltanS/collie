@@ -3095,6 +3095,7 @@ this corpus. Recipes: [`hermes/CLARIFY_NOTES.md`](../../lib/harness/hermes/CLARI
 | `hermes--model-picker` | `/model`, the model list; status slot blank, input still idle | picker, Ctrl+C card |
 | `hermes--palette` | Ctrl+P palette; status slot blank, input still idle | picker, Ctrl+C card |
 | `hermes--exited` | The shell after `/exit` | no input, no card |
+| `hermes--v0225-title-idle` | Hermes 0.22.5, issue 657: the session title sits in the top rule, `── Session Title ─`, over the `❯` row and a 120-cell bottom rule. Three rows only, from the reporter's report; the styling, the placeholder row and the bottom rule's width (Hermes draws it across the pane) come from `hermes--idle`, and the rows start in column 0 (the report's one-space indent is Markdown, and a leading space fails the column-0 anchors). Not a `herdr pane read` of ours | composer, no draft, free |
 | `hermes--clarify-choices` | One question, three choices and Other, `❯` on 1, countdown `(3547s)` | digits 1 to 4 |
 | `hermes--clarify-choices-moved` | The same after Down, `❯` on 2 | digits 1 to 4 |
 | `hermes--clarify-choices-w60` | The same at 60 columns, prompt `?` | digits 1 to 4 |
