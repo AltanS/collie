@@ -1617,3 +1617,21 @@ describe("a workspace scope (M75 spec 02)", () => {
     expect(r.host.sends.map((sent) => sent.pane)).toEqual(["w1:p8"]);
   });
 });
+
+describe("the pair limit is a setting", () => {
+  const agentOf = (from: WalkyPane) => ({ kind: "agent" as const, pane: from });
+
+  test("a configured limit of 2 refuses the third message between two panes as `pair limit` and lets a third pane through", async () => {
+    const panes = [pane("w1:p1"), pane("w1:p2"), pane("w1:p3")];
+    const r = rig(panes, { pairLimit: 2 });
+    const states = async (id: string, to: string, from: WalkyPane) => {
+      const answer = await r.service.send(send(id, to), agentOf(from));
+      return answer.ok ? answer.receipts.map((receipt) => `${receipt.state}${receipt.reason === undefined ? "" : ` ${receipt.reason}`}`) : [answer.error];
+    };
+    expect(await states("wt_aaaaaaaaaaa1", "local/w1:p2", panes[0]!)).toEqual(["accepted"]);
+    // Either direction counts against the same pair.
+    expect(await states("wt_aaaaaaaaaaa2", "local/w1:p1", panes[1]!)).toEqual(["accepted"]);
+    expect(await states("wt_aaaaaaaaaaa3", "local/w1:p2", panes[0]!)).toEqual(["refused pair limit"]);
+    expect(await states("wt_aaaaaaaaaaa4", "local/w1:p3", panes[0]!)).toEqual(["accepted"]);
+  });
+});

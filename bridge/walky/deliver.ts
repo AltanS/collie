@@ -222,6 +222,8 @@ export interface DelivererDeps {
   readonly rate?: RateLimiter;
   /** The pair cap, 6 per two addresses per 10 minutes. */
   readonly pairs?: RateLimiter;
+  /** The messages per 10 minutes a pair may exchange (`COLLIE_WALKY_PAIR_LIMIT`). Ignored when `pairs` is given. Default 6. */
+  readonly pairLimit?: number;
   /** The lead's outer cap, 60 per member per 10 minutes. */
   readonly members?: RateLimiter;
   readonly routeRemote?: RouteRemote;
@@ -292,7 +294,7 @@ export class WalkyDeliverer {
     this.now = deps.now ?? Date.now;
     this.sleep = deps.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
     this.rate = deps.rate ?? new RateLimiter();
-    this.pairs = deps.pairs ?? new RateLimiter(PAIR_LIMIT);
+    this.pairs = deps.pairs ?? new RateLimiter(deps.pairLimit ?? PAIR_LIMIT);
     this.members = deps.members ?? new RateLimiter(MEMBER_LIMIT);
     this.seen = deps.seen ?? new WalkySeen(null, this.now);
     this.refusals = deps.refusals ?? new RefusalCounter(null, this.now);

@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **The walky talky pair limit is a setting.** The default stays six messages in ten minutes between the same two panes, and `COLLIE_WALKY_PAIR_LIMIT` (or `walky_pair_limit` in the `[bridge]` section of the config file) raises or lowers it on that machine, from 1 to 100.
+
 ### Fixed
 
 - **A Herdr core Claude pane that stays quiet for half a day keeps its Chat and History.** The session beacon goes stale after twelve hours of silence, and the pane fell back to the terminal view until the next hook fired. Collie now keeps the session while the Claude process still runs, and drops it when the process is gone. Thanks @SergioGhisler (#663).

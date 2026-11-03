@@ -258,6 +258,7 @@ function cfg(overrides: Partial<Config> = {}): Config {
     surfaceShadow: false,
     sendProtocol: false,
     walky: true,
+    walkyPairLimit: 6,
     skipServe: false,
     basePath: "/",
     maxUploadBytes: DEFAULT_MAX_UPLOAD_BYTES,

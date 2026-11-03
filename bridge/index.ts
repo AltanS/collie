@@ -1999,6 +1999,7 @@ const walky = new WalkyService({
   host: walkyHost,
   memberId: walkyMemberId,
   enabled: () => cfg.walky,
+  pairLimit: cfg.walkyPairLimit,
   machine: hostname(),
   keyPem: () => (walkyMemberId === null ? null : (trustStore.current()?.self.keyPem ?? null)),
   warn: (line) => console.warn(line),

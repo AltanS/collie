@@ -21,6 +21,7 @@
 import { ACCOUNT_WINDOW_HARNESSES } from "./account-windows-setting.ts";
 import { DEFAULT_MUX } from "./mux/registry.ts";
 import { DEFAULT_MAX_UPLOAD_MB } from "./uploads.ts";
+import { PAIR_LIMIT } from "./walky/rate.ts";
 
 /**
  * A `[section]` in the config file. Derived from what `bridge/config.ts`, `bridge/crew/`,
@@ -242,6 +243,17 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     default: true,
     doc: "Take walky talky messages for this machine's agent panes. Off refuses each one; the CLI here still sends.",
     configField: "walky",
+  },
+  {
+    key: "walky_pair_limit",
+    env: "COLLIE_WALKY_PAIR_LIMIT",
+    section: "bridge",
+    kind: "int",
+    default: PAIR_LIMIT,
+    min: 1,
+    max: 100,
+    doc: "Messages allowed in ten minutes between the same two panes, either direction, on this machine. Refused as pair limit above it.",
+    configField: "walkyPairLimit",
   },
   {
     key: "account_windows",

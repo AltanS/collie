@@ -1028,6 +1028,7 @@ const CONFIG_KEYS = {
   surfaceShadow: true,
   sendProtocol: true,
   walky: true,
+  walkyPairLimit: true,
   accountWindows: true,
   skipServe: true,
   basePath: true,
@@ -1096,6 +1097,8 @@ describe("solo zero-tax — config", () => {
       "vapidSubject",
       // Walky talky (M62): whether this machine takes messages for its panes. A solo switch, on by default.
       "walky",
+      // The walky talky pair cap, messages per ten minutes between two panes on this machine. Default 6.
+      "walkyPairLimit",
       "zellijBin",
     ]);
     expect(keys.filter((k) => /crew|peer|lead|federat/i.test(k))).toEqual([]);
@@ -1184,6 +1187,7 @@ describe("solo zero-tax — config", () => {
       "COLLIE_VAPID_PUBLIC",
       "COLLIE_VAPID_SUBJECT",
       "COLLIE_WALKY",
+      "COLLIE_WALKY_PAIR_LIMIT",
       "COLLIE_ZELLIJ_BIN",
     ]);
   });
