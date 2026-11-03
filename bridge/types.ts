@@ -13,6 +13,7 @@ import type { ChatBody } from "./journal/live.ts";
 import type { AgentSessionRef, TranscriptEntry } from "./journal/types.ts";
 import type { MuxCapability, MuxSpaceCapacity, MuxTopologyLatency } from "./mux/capabilities.ts";
 import type { SttWireIdentity } from "./stt/config.ts";
+import type { PaneJob } from "./jobs-journal.ts";
 import type { PaneSubagent } from "./subagents.ts";
 import type { PaneTodo } from "./todos.ts";
 import type { UpdateRun } from "./update-run.ts";
@@ -27,6 +28,7 @@ export type { Confidence } from "./cache/claims.ts";
 export type { GitHead } from "./git-head.ts";
 export type { PaneTodo, PaneTodoStatus } from "./todos.ts";
 export type { PaneSubagent } from "./subagents.ts";
+export type { PaneJob } from "./jobs-journal.ts";
 
 export type AgentStatus = "idle" | "working" | "blocked" | "done" | "unknown";
 
@@ -198,6 +200,13 @@ export interface AgentView {
    * time and ABSENT, NEVER A PLACEHOLDER: a pane with none running carries no key at all, never `[]`.
    */
   subagents?: PaneSubagent[];
+  /**
+   * The background jobs of this pane's session: the commands still running after the call that
+   * started them answered, and those that ended in the last ten minutes. Read from the session's live
+   * Chat window, from memory (bridge/jobs-journal.ts, ADR 0128). Attached at serialise time and
+   * ABSENT, NEVER A PLACEHOLDER: a pane with none carries no key at all, never `[]`.
+   */
+  jobs?: PaneJob[];
   /**
    * The model this pane's agent is on, as its harness names it: a `/model` chosen since the last turn
    * first (Claude), else the model that turn ran on (`claude-opus-5-5`, `provider:model` for opencode

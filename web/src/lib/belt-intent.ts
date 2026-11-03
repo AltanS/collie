@@ -21,7 +21,9 @@ export type BeltIntent =
   /** The pinned Files pill: the pane's Changes view, opened from the pane so Back returns to it. */
   | { readonly kind: "changes" }
   /** The pinned Agents mark: the pane's running subagents. */
-  | { readonly kind: "agents" };
+  | { readonly kind: "agents" }
+  /** The pinned Jobs mark: the pane's background jobs. */
+  | { readonly kind: "jobs" };
 
 /** How long an intent waits for its composer. */
 export const INTENT_TTL_MS = 5000;

@@ -3609,6 +3609,23 @@ describe("the pane's todos: the journal plan is the third source, and takes the 
   });
 });
 
+// Pinned where it is read, for the reason the Tasks block above gives. Behaviour, including the
+// absent field and the mask itself, is in bridge/jobs-journal.test.ts (`JournalJobs`, `maskJobList`).
+describe("the pane's jobs: read from the live windows, attached beside the subagents, and masked", () => {
+  const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
+
+  test("the reader is built over the live windows and its list takes the mask before it is attached", () => {
+    expect(src).toContain("const journalJobs = live === null || journals === null ? null : new JournalJobs(journals, live, () => Date.now());");
+    expect(src).toContain("const readJobs = journalJobs?.get(p);");
+    expect(src).toContain("const jobs = readJobs !== undefined && cfg.redact ? maskJobList(readJobs) : readJobs;");
+  });
+
+  test("a pane with no jobs gets no key: the field is spread only when the list is there", () => {
+    expect(src).toContain("const withJobs = jobs === undefined ? withSubagents : { ...withSubagents, jobs };");
+    expect(src).toContain("const withUsage = readUsage === undefined ? withJobs : { ...withJobs, usage: readUsage };");
+  });
+});
+
 describe("the host gate — `?host=` selects among enrolled members and nothing else", () => {
   const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
 

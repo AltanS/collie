@@ -129,6 +129,9 @@ const AGENT_VIEW_KEYS = {
   // Not a crew dimension: the pane's running subagents (bridge/subagents.ts), absent when none is
   // running or on an older bridge.
   subagents: true,
+  // Not a crew dimension: the pane's background jobs (bridge/jobs-journal.ts), absent when there are
+  // none or on an older bridge.
+  jobs: true,
   // Not a crew dimension: the model the pane's agent is on, from the same probe as `cache`, and
   // absent until that agent has taken one turn. An older bridge or peer omits it.
   model: true,
@@ -287,6 +290,7 @@ describe("solo zero-tax — the client's mirror types carry no crew dimension", 
       "hooks",
       "host",
       "instance",
+      "jobs",
       "kind",
       "lastActiveAt",
       "lastSeenAt",

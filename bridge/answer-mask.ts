@@ -88,22 +88,33 @@ export function maskSubagentList<T extends { description: string; agentId?: stri
   });
 }
 
+/**
+ * A pane's background jobs with their words masked. The command is a line the agent ran, and a key
+ * passed on a command line is the commonest leak there is; the label is text the agent wrote, and the
+ * job id may be a name it chose. Exit codes and times are numbers.
+ */
+export function maskJobList<T extends { id: string; label: string; command: string }>(jobs: readonly T[]): T[] {
+  return jobs.map((job) => ({ ...job, id: redactText(job.id), label: redactText(job.label), command: redactText(job.command) }));
+}
+
 /** The pane fields an agent or a program wrote, which the mask reaches. */
 interface PaneWords {
   terminalTitle?: string;
   todos?: readonly { text: string; activeForm?: string }[];
   subagents?: readonly { description: string }[];
+  jobs?: readonly { id: string; label: string; command: string }[];
 }
 
-/** A pane with its program-set title, its todo list and its subagents masked, whichever it carries. */
+/** A pane with its program-set title, its todo list, its subagents and its jobs masked, whichever it carries. */
 function maskPaneWords<P extends PaneWords>(pane: P): P {
   const titled = maskTerminalTitle(pane);
   const listed = titled.todos === undefined ? titled : { ...titled, todos: maskTodoList(titled.todos) };
-  return listed.subagents === undefined ? listed : { ...listed, subagents: maskSubagentList(listed.subagents) };
+  const agents = listed.subagents === undefined ? listed : { ...listed, subagents: maskSubagentList(listed.subagents) };
+  return agents.jobs === undefined ? agents : { ...agents, jobs: maskJobList(agents.jobs) };
 }
 
 /**
- * A snapshot with every pane's program-set title, todo list and subagents masked. The lead's merged
+ * A snapshot with every pane's program-set title, todo list, subagents and jobs masked. The lead's merged
  * snapshot carries its members' panes as the members sent them, so a member that does not mask sent
  * them in clear.
  */

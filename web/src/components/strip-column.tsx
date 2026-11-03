@@ -184,6 +184,8 @@ export function PaneColumnBody({
   const commands = commandsFor(pane.agent, operatorCommands);
   const todos = pane.todos ?? [];
   const subagents = pane.subagents ?? [];
+  const jobs = pane.jobs ?? [];
+  const runningJobs = jobs.filter((job) => job.endedAt === undefined).length;
 
   const pill = (id: string): (() => void) => () => onIntent({ kind: "action", id });
   const general: GeneralAction[] = [
@@ -266,6 +268,16 @@ export function PaneColumnBody({
                   label: t("composer.controls.agents", { count: subagents.length }),
                   expanded: false,
                   onClick: () => onIntent({ kind: "agents" }),
+                }
+              : undefined
+          }
+          jobs={
+            jobs.length > 0
+              ? {
+                  count: runningJobs,
+                  label: t("belt.jobs.label", { count: runningJobs }),
+                  expanded: false,
+                  onClick: () => onIntent({ kind: "jobs" }),
                 }
               : undefined
           }

@@ -1396,6 +1396,11 @@ export const en = {
   "harnessBar.resume": "Resume",
   "harnessBar.tree": "Tree",
   "harnessBar.confirmAria": "Tap again to confirm {command}",
+  // The Jobs mark and its sheet (components/jobs-sheet.tsx, ADR 0128). `{count}` is the RUNNING jobs.
+  "belt.jobs.label": "Jobs {count}",
+  "belt.jobs.running": "Running",
+  "belt.jobs.ended": "Ended recently",
+  "belt.jobs.exit": "Exit code {code}",
   "belt.stop": "Stop",
   "belt.stopArmed": "Stop?",
   "belt.stopAria": "Stop the turn",

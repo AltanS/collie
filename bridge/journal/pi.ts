@@ -656,7 +656,12 @@ export function createPiReducer(): RowReducer {
    * found by its id; an id no card holds falls back to its label only when exactly one ongoing card
    * carries that label. Only a final status ends the card, the same set Gentle Shell's notices use.
    */
-  function settleOmpJobs(rows: readonly JsonObject[], statusOf: (row: JsonObject, id: string) => string | undefined, changed: Set<string>): void {
+  function settleOmpJobs(
+    rows: readonly JsonObject[],
+    statusOf: (row: JsonObject, id: string) => string | undefined,
+    ts: string,
+    changed: Set<string>,
+  ): void {
     for (const row of rows) {
       const id = field(row, "jobId") ?? field(row, "id");
       const label = field(row, "label");
@@ -665,12 +670,16 @@ export function createPiReducer(): RowReducer {
       const card = held ?? (label === undefined ? undefined : onlyOngoingByLabel(label));
       if (card === undefined || key === undefined) continue;
       const status = statusOf(row, key);
-      if (status !== undefined) settle(card, { status }, changed);
+      if (status !== undefined) settle(card, { status }, ts, changed);
     }
   }
 
-  /** Mark a card ongoing and remember it by id, when its start result says the work is still running. */
-  function startWork(target: PendingTool, raw: JsonValue | undefined): void {
+  /**
+   * Mark a card ongoing and remember it by id, when its start result says the work is still running.
+   * A Gentle Shell job also keeps its job id and `ts`, the start result's time, as when it started
+   * (bridge/jobs-journal.ts reads both).
+   */
+  function startWork(target: PendingTool, raw: JsonValue | undefined, ts: string): void {
     const call = target.part.call;
     if (call?.kind !== "task" && call?.kind !== "execute") return;
     if (detailsOf(raw, "gentleAgents") === undefined && startOmpJob(target, raw)) return;
@@ -684,36 +693,44 @@ export function createPiReducer(): RowReducer {
     if (target.part.name.toLowerCase() === "subagent_result") return;
     const id = field(info, agents ? "taskId" : "jobId");
     if (id !== undefined) rememberPending(workCards, id, target);
+    if (call.kind === "execute") {
+      if (id !== undefined) call.jobId = id;
+      const started = Date.parse(ts);
+      if (Number.isFinite(started)) call.startedAt = started;
+    }
     const status = field(info, "status");
     if (status === "queued" || status === "running") call.ongoing = true;
   }
 
   /** A `gentle-agents.result` / `gentle-jobs.notice` row: the work it names has ended. */
-  function endNotice(row: PiRow, changed: Set<string>): void {
+  function endNotice(row: PiRow, ts: string, changed: Set<string>): void {
     const type = row.customType;
     if (type === "async-result") {
       const content = customText(row.content);
-      settleOmpJobs(detailRows(row.details, "jobs"), (job, id) => field(job, "status") ?? asyncResultStatus(content, id), changed);
+      settleOmpJobs(detailRows(row.details, "jobs"), (job, id) => field(job, "status") ?? asyncResultStatus(content, id), ts, changed);
       return;
     }
     if (type !== "gentle-agents.result" && type !== "gentle-jobs.notice") return;
     const agents = type === "gentle-agents.result";
     const info = detailsOf(row.details, agents ? "gentleAgents" : "gentleJobs");
-    if (info !== undefined) settle(workCards.get(field(info, agents ? "taskId" : "jobId") ?? ""), info, changed);
+    if (info !== undefined) settle(workCards.get(field(info, agents ? "taskId" : "jobId") ?? ""), info, ts, changed);
   }
 
   /**
    * End a held card when `info` (a `gentleAgents` / `gentleJobs` record) reports a final status.
    * The end notice is the usual source; a cancelled subagent has none, and only the status a later
    * `subagent_status` or `subagent_cancel` result reports says it is over (a real session,
-   * 2026-10-15). A status still running or queued leaves the card as it is.
+   * 2026-10-15). A status still running or queued leaves the card as it is. An ended command keeps
+   * `ts`, the time of the row that ended it, as `endedAt`.
    */
-  function settle(card: PendingTool | undefined, info: JsonObject, changed: Set<string>): void {
+  function settle(card: PendingTool | undefined, info: JsonObject, ts: string, changed: Set<string>): void {
     const status = field(info, "status");
     if (status === undefined || !FINAL_WORK_STATUS.has(status)) return;
     const call = card?.part.call;
     if (card === undefined || (call?.kind !== "task" && call?.kind !== "execute")) return;
     delete call.ongoing;
+    const ended = Date.parse(ts);
+    if (call.kind === "execute" && Number.isFinite(ended)) call.endedAt = ended;
     const exitCode = info.exitCode;
     let failed = status === "failed";
     if (call.kind === "execute" && typeof exitCode === "number" && Number.isFinite(exitCode)) {
@@ -808,7 +825,7 @@ export function createPiReducer(): RowReducer {
     if (type === "custom_message") {
       if (row.display !== true) return;
       // The notice is still drawn below; it also ends the card that started the work.
-      endNotice(row, changed);
+      endNotice(row, ts, changed);
       const text = customText(row.content);
       if (text.trim() !== "")
         entries.push({ uuid, ts, role: "note", parts: [{ kind: "text", ...clamp(text, MAX_TEXT_CHARS) }] });
@@ -830,7 +847,7 @@ export function createPiReducer(): RowReducer {
     if (m.role === "toolResult") {
       // Oh My Pi's `wait` (and any result that lists jobs with a status) settles the jobs it names,
       // whether or not its own call is still held.
-      settleOmpJobs(detailRows(m.details, "jobs"), (job) => field(job, "status"), changed);
+      settleOmpJobs(detailRows(m.details, "jobs"), (job) => field(job, "status"), ts, changed);
       const id = typeof m.toolCallId === "string" ? m.toolCallId : "";
       const target = pendingTools.get(id);
       const resultText = stripAnsi(textBlocks(m.content));
@@ -848,7 +865,7 @@ export function createPiReducer(): RowReducer {
           // when the status it reports says so: one asked for too early answers "running".
           card.part.result = toolResult(resultText, isError, image);
           const info = detailsOf(m.details, "gentleAgents");
-          if (info !== undefined) settle(card, info, changed);
+          if (info !== undefined) settle(card, info, ts, changed);
         }
         changed.add(card.uuid);
       } else if (target) {
@@ -859,13 +876,13 @@ export function createPiReducer(): RowReducer {
         // `details` rides on the RESULT ROW, not on a content block — it is pi's own record of what
         // the call did, and the only place a patch or an answer ever appears.
         if (target.part.call) enrichCall(target.part.call, m.details, resultText, isError, target.questionIds);
-        if (!isError) startWork(target, m.details);
+        if (!isError) startWork(target, m.details, ts);
         // Both mutations above landed in a turn that went out rows ago. Name it.
         changed.add(target.uuid);
         // A status call about ANOTHER card's task (`subagent_status`, `subagent_cancel`).
         const info = detailsOf(m.details, "gentleAgents");
         const other = workCards.get(field(info, "taskId") ?? "");
-        if (info !== undefined && other !== undefined && other !== target) settle(other, info, changed);
+        if (info !== undefined && other !== undefined && other !== target) settle(other, info, ts, changed);
       } else if (resultText.trim() !== "" || image.url !== undefined || image.notes.length > 0) {
         // Orphan result (its call fell outside a tail-read window) — kept unattached so the window
         // never silently drops output.
