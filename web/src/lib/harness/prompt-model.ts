@@ -15,6 +15,11 @@
 import type { AnsiSegment } from "../ansi";
 import type { ColumnRange } from "../column-range";
 
+/** Existing phone-sized text bound, shared by the surfaces and lazy action recipes. */
+export const FEEDBACK_MAX_LENGTH = 240;
+/** AskUserQuestion's independent editor cap; pane geometry is checked before typing. */
+export const ANSWER_MAX_LENGTH = 4000;
+
 /**
  * One row of a dialog's SUBJECT ({@link PromptModel.subject}), styles kept. Structurally a
  * `StyledLine` (lib/blocks.ts), which is assignable to it and from it, spelled here so this module

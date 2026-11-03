@@ -32,6 +32,7 @@
 
 import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
+import { stripSgr } from "../../../web/src/lib/surface/plain.ts";
 import { declareCapabilities } from "../capabilities.ts";
 import { EXTENDED_ONLY_CHORDS } from "../keys.ts";
 import type { MuxAdapterFactory, MuxTarget } from "../registry.ts";
@@ -135,6 +136,7 @@ function remoteRefusal(paneId: string): MuxRefusalOutcome | null {
 interface PaneRevision {
   revision: number;
   lastScreen: string;
+  lastStyled: string | undefined;
 }
 
 /**
@@ -286,11 +288,11 @@ export class HerdrCoreMux implements MuxAdapter {
     const lines = Math.max(1, request.lines);
     try {
       if (request.scope === "viewport") {
-        const screen = await this.rpc.readTerminal(paneId, 0);
+        const screen = await this.rpc.readTerminal(paneId, 0, request.styling);
         return muxOk(this.gridOf(paneId, screen, screen, { keep: null, truncated: false }));
       }
       if (request.purpose !== "older") {
-        const screen = await this.rpc.readTerminal(paneId, 0);
+        const screen = await this.rpc.readTerminal(paneId, 0, request.styling);
         return muxOk(this.gridOf(paneId, screen, screen, { keep: lines, truncated: true }));
       }
       const answered = await this.olderRows(paneId, lines, request.hint?.blocked === true);
@@ -352,7 +354,7 @@ export class HerdrCoreMux implements MuxAdapter {
   private gridOf(paneId: string, read: WireRead, screen: WireRead, cut: { keep: number | null; truncated: boolean; note?: string | undefined }): MuxGrid {
     const rows = read.text.replace(/\n$/u, "").split("\n");
     const text = (cut.keep === null ? rows : rows.slice(-cut.keep)).join("\n");
-    const grid: MutableGrid = { paneId, text, truncated: cut.truncated, revision: this.revisionFor(paneId, screen.text.replace(/\n$/u, "")) };
+    const grid: MutableGrid = { paneId, text, truncated: cut.truncated, revision: this.revisionFor(paneId, screen) };
     if (!read.complete) grid.partial = true;
     if (cut.note !== undefined) grid.olderNote = cut.note;
     return grid;
@@ -600,15 +602,21 @@ export class HerdrCoreMux implements MuxAdapter {
    * screen. A counter per view bumped once per view for one change and made the guard refuse a tap
    * right after the screen changed as "changed". History and stitched rows never feed it.
    */
-  private revisionFor(paneId: string, screenText: string): number {
+  private revisionFor(paneId: string, screen: WireRead): number {
+    const raw = screen.text.replace(/\n$/u, "");
+    // The formatter paints trailing blank cells that plain terminal.read trims. They are the same
+    // text grid. Trusted styles are remembered separately, never replaced by a strip/history read.
+    const plain = stripSgr(raw).split("\n").map((row) => row.trimEnd()).join("\n");
+    const styled = screen.styled === true ? raw : undefined;
     const entry = this.revisions.get(paneId);
     if (entry === undefined) {
-      this.revisions.set(paneId, { revision: 1, lastScreen: screenText });
+      this.revisions.set(paneId, { revision: 1, lastScreen: plain, lastStyled: styled });
       return 1;
     }
-    if (entry.lastScreen === screenText) return entry.revision;
-    entry.revision += 1;
-    entry.lastScreen = screenText;
+    const textChanged = entry.lastScreen !== plain;
+    if (textChanged || (styled !== undefined && entry.lastStyled !== undefined && entry.lastStyled !== styled)) entry.revision += 1;
+    entry.lastScreen = plain;
+    if (textChanged || styled !== undefined) entry.lastStyled = styled;
     return entry.revision;
   }
 

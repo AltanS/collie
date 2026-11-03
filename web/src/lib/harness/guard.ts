@@ -295,7 +295,8 @@ export async function settleAfterSend(args: {
  * dialog), BEL (\x07 — "edit in nano"), ETX (\x03), etc., which the reply path would deliver
  * straight into the focused input BEFORE the readback check — so they must never reach it.
  */
-export function sanitizeTypedText(text: string, maxLen: number): string {
+export function sanitizeTypedText(text: string, maxLen: number, multiline = false): string {
+  if (multiline) return text.replace(/\r\n?/g, "\n").replace(/\p{Cc}/gu, (char) => char === "\n" ? char : "").slice(0, maxLen);
   return text
     .replace(/\s+/g, " ")
     .replace(/\p{Cc}/gu, "")

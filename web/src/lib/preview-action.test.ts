@@ -1,4 +1,6 @@
 import { describe, expect, it, beforeEach, vi } from "vitest";
+import { fixtureText } from "@/test/surface-traces";
+import { piAdapter } from "./harness/pi";
 
 // The preview-dialog choreography engine: entry guard + the multi-step recipes (digit→verify→Enter
 // for options, n→verify→clear→type→Escape for notes; grammar/NOTES_NOTES.md). The api layer is
@@ -130,6 +132,53 @@ describe("previewsEqual", () => {
     ).toBe(false);
     // A changed option label (the left-column subject) is caught too.
     expect(previewsEqual(model({}), model({ labels: ["Boxy", "Rounded", "Compact"] }))).toBe(false);
+  });
+});
+
+describe("walked preview choices", () => {
+  const raw = (name: string) => fixtureText(`pi--rpiv-v2150-${name}.txt`);
+  const card = () => {
+    const block = piAdapter.buildBlocks(splitLines(parseAnsi(raw("preview")))).find((b) => b.kind === "preview-select");
+    if (!block) throw new Error("no preview card");
+    return block.preview;
+  };
+
+  it("refuses the legacy note recipe when complete native seen context is required", async () => {
+    const preview = card();
+    mockFetchPane.mockResolvedValue(paneWith(raw("preview")));
+    const result = await submitPreviewNote({ ...base, agent: "pi", preview, text: "Must not use the legacy editor" });
+    expect(result.status).toBe("changed");
+    expect(mockSendKeys).not.toHaveBeenCalled();
+    expect(mockSendReply).not.toHaveBeenCalled();
+  });
+
+  it("does not send tab navigation into a focused native single-choice input", async () => {
+    const capture = raw("single-field-filled");
+    const block = piAdapter.buildBlocks(splitLines(parseAnsi(capture))).find((candidate) => candidate.kind === "preview-select");
+    if (block === undefined) throw new Error("missing native field card");
+    mockFetchPane.mockResolvedValue(paneWith(capture));
+    const result = await submitPreviewKeys({ ...base, agent: "pi", preview: block.preview, keys: ["Tab"] });
+    expect(result.status).toBe("changed");
+    expect(mockSendKeys).not.toHaveBeenCalled();
+  });
+
+  it("never sends an RPIV digit: walks, verifies and binds Enter to the pointed screen", async () => {
+    const preview = card();
+    mockFetchPane.mockResolvedValueOnce(paneWith(raw("preview"))).mockResolvedValue(paneWith(raw("preview-moved")));
+    const result = await submitPreviewOption({ ...base, agent: "pi", preview, option: preview.options[1]! });
+    expect(result).toEqual({ status: "sent" });
+    expect(mockSendKeys.mock.calls.map((call) => call[1])).toEqual([["Down"], ["Enter"]]);
+    expect(mockSendKeys.mock.calls[1]?.[3]).toContain("Plan B");
+    expect(mockSendKeys.mock.calls[1]?.[4]).toBeDefined();
+  });
+
+  it("sends no Enter when the question changes after the walk", async () => {
+    const preview = card();
+    const changed = raw("preview-moved").replace("Which implementation", "Which other implementation");
+    mockFetchPane.mockResolvedValueOnce(paneWith(raw("preview"))).mockResolvedValue(paneWith(changed));
+    const result = await submitPreviewOption({ ...base, agent: "pi", preview, option: preview.options[1]! });
+    expect(result.status).toBe("changed");
+    expect(mockSendKeys.mock.calls.map((call) => call[1])).toEqual([["Down"]]);
   });
 });
 

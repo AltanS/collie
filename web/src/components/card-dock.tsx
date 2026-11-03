@@ -1,4 +1,4 @@
-import type { CSSProperties, MouseEvent, ReactNode, Ref } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode, type Ref } from "react";
 
 import { cn } from "@/lib/utils";
 import type {
@@ -11,7 +11,21 @@ import type {
   WizardModel,
 } from "@/lib/blocks";
 import type { MultiSelectIntent } from "@/lib/multi-select-action";
-import type { Scope } from "@/lib/scope";
+import { paneScopeKey, type Scope } from "@/lib/scope";
+import type { EditorDialog, SeenValue } from "@/lib/editor-action";
+import type { DialogEditorObservation } from "@/lib/harness/editor-model";
+import { NOTE_MAX_LENGTH } from "@/lib/harness/preview-model";
+import { QuestionNoteEditor } from "@/components/ui/question-note";
+import { InlineEditor } from "@/components/ui/inline-editor";
+import { Button } from "@/components/ui/button";
+import { Collapse } from "@/components/ui/collapse";
+import { Notice } from "@/components/ui/notice";
+import { FEEDBACK_MAX_LENGTH } from "@/lib/harness/prompt-model";
+import { answerFieldCopy } from "@/components/answer-field-surface";
+import { QuestionHeading } from "@/components/option-button";
+import { t } from "@/lib/i18n";
+import { useLocale } from "@/hooks/use-locale";
+import { useLive } from "@/lib/liveness";
 import { PromptSelectBlock, type PromptBlockAction } from "@/components/prompt-select-block";
 import { WizardBlock } from "@/components/wizard-block";
 import { PreviewSelectBlock, type PreviewBlockAction } from "@/components/preview-select-block";
@@ -82,6 +96,10 @@ export interface CardDockProps {
   /** Injected handler for an answer typed into a multi-select question's field
    *  (lib/multi-select-action.ts `type`); resolves whether it was sent, so the card keeps a refused draft. */
   onMultiSelectAnswer?: (text: string, multi: MultiSelectModel) => Promise<boolean>;
+  /** Optional native editing; the dock retains its temporary context through raw/editor views. */
+  onReadEditor?: (purpose: DialogEditorObservation["purpose"], dialog: EditorDialog, remove?: boolean) => Promise<SeenValue | null>;
+  onSaveEditor?: (text: string, seen: SeenValue) => Promise<boolean>;
+  onCancelEditor?: (seen: SeenValue) => Promise<boolean>;
   /** Injected handler for a generic-menu tap (lib/menu-action.ts). */
   onMenuAction?: (action: MenuBlockAction, menu: MenuModel) => void | Promise<void>;
   /** Injected handler for the unread-dialog card's one declared key (.adr/0053). */
@@ -112,14 +130,7 @@ export interface CardDockProps {
   wrap?: boolean;
 }
 
-/** The block kinds that dock a dialog card: each answers a dialog on the pane. The completion popup
- *  docks a card too, but it answers nothing. */
-const DIALOG_CARD_KINDS: ReadonlySet<Block["kind"]> = new Set<Block["kind"]>(["prompt-select", "wizard", "preview-select", "multi-select", "menu", "unread-dialog"]);
-
-/** Whether the dock shows a dialog card for these blocks: the place "Answer the dialog" goes to. */
-export function hasDialogCard(blocks: CardDockProps["blocks"]): boolean {
-  return blocks.some((block) => DIALOG_CARD_KINDS.has(block.kind));
-}
+export { hasDialogCard } from "@/components/card-dock-model";
 
 /** The one card on screen, as a React element, or null when every block is raw. */
 function liftedCard({
@@ -130,6 +141,7 @@ function liftedCard({
   onPreviewAction,
   onMultiSelectAction,
   onMultiSelectAnswer,
+  onReadEditor,
   onMenuAction,
   onUnreadDialogAction,
   onUnreadDialogReport,
@@ -176,6 +188,7 @@ function liftedCard({
         lines={previewBlock.lines}
         disabled={promptDisabled || !onPreviewAction}
         onAction={(action) => onPreviewAction?.(action, previewBlock.preview)}
+        onReadEditor={onReadEditor ? (purpose, remove) => onReadEditor(purpose, { kind: "preview-select", model: previewBlock.preview }, remove) : undefined}
       />
     );
   }
@@ -191,6 +204,7 @@ function liftedCard({
         stale={stale}
         onAction={(action) => onMultiSelectAction?.(action, multiBlock.multi)}
         onAnswer={onMultiSelectAnswer ? (text) => onMultiSelectAnswer(text, multiBlock.multi) : undefined}
+        onReadEditor={onReadEditor ? (purpose, remove) => onReadEditor(purpose, { kind: "multi-select", model: multiBlock.multi }, remove) : undefined}
       />
     );
   }
@@ -245,8 +259,100 @@ function liftedCard({
  * a second card around the card. `px-3` is the mirror list's own gutter, so the card's edges line up
  * with the terminal text above it.
  */
+interface OwnedEdit {
+  token: number;
+  asked: string;
+  ownerSignature: string;
+  purpose: DialogEditorObservation["purpose"];
+  remove: boolean;
+  draft: string;
+  seen: SeenValue | null;
+  busy: "read" | "save" | "return" | null;
+}
+
 export function CardDock(props: CardDockProps) {
-  const card = liftedCard(props);
+  useLocale();
+  const live = useLive(props.paneId ?? "", props.scope);
+  const locked = Boolean(props.promptDisabled || props.stale || (props.paneId !== undefined && !live));
+  const [owned, setOwned] = useState<OwnedEdit | null>(null);
+  const generation = useRef(0);
+  const busy = useRef(false);
+  const paneKey = paneScopeKey(props.scope, props.paneId ?? "");
+  const invalidate = useCallback(() => { generation.current++; busy.current = false; }, []);
+  useEffect(() => {
+    invalidate();
+    setOwned(null);
+    return invalidate;
+  }, [paneKey, invalidate]);
+  const current = props.blocks.find((block) => block.kind === "multi-select" || block.kind === "preview-select");
+  const currentOwner = current?.kind === "multi-select" ? current.multi.editors?.ownerSignature : current?.preview.editors?.ownerSignature;
+  useEffect(() => {
+    if (owned !== null && currentOwner !== undefined && currentOwner !== owned.ownerSignature) {
+      generation.current++;
+      busy.current = false;
+      setOwned(null);
+    }
+  }, [currentOwner, owned]);
+
+  async function begin(purpose: DialogEditorObservation["purpose"], dialog: EditorDialog, remove = false): Promise<SeenValue | null> {
+    const model = dialog.model;
+    if (locked || busy.current || !props.onReadEditor || !props.onSaveEditor || !model.editors) return null;
+    const token = ++generation.current;
+    busy.current = true;
+    setOwned({ token, asked: "phase" in model && model.phase === "review" ? t("dialog.editor.globalNote") : model.question,
+      ownerSignature: model.editors.ownerSignature, purpose, remove, draft: "", seen: null, busy: "read" });
+    let seen: SeenValue | null = null;
+    try {
+      seen = await props.onReadEditor(purpose, dialog);
+      return generation.current === token ? seen : null;
+    } finally {
+      if (generation.current === token) {
+        busy.current = false;
+        setOwned((edit) => edit?.token === token ? { ...edit, seen, draft: seen?.text ?? "", busy: null } : edit);
+      }
+    }
+  }
+  async function finish(action: "save" | "return") {
+    if (locked || busy.current || owned?.seen === null || owned === null) return;
+    const edit = owned;
+    const seen = owned.seen;
+    const token = owned.token;
+    busy.current = true;
+    setOwned({ ...edit, busy: action });
+    try {
+      const acknowledged = action === "save" ? await props.onSaveEditor?.(edit.remove ? "" : edit.draft, seen) : await props.onCancelEditor?.(seen);
+      if (generation.current === token && acknowledged === true) setOwned(null);
+    } finally {
+      if (generation.current === token) {
+        busy.current = false;
+        setOwned((previous) => previous?.token === token ? { ...previous, busy: null } : previous);
+      }
+    }
+  }
+  const answerCopy = answerFieldCopy(t("prompt.feedback.answer.helpMulti"));
+  const card = owned === null ? liftedCard({ ...props,
+    onReadEditor: props.onReadEditor ? (purpose, dialog, remove) => begin(purpose, dialog, remove) : undefined,
+  }) : (
+    <div className="space-y-2 py-1">
+      <QuestionHeading>{owned.asked}</QuestionHeading>
+      {owned.busy === "read" ? <p role="status" className="text-xs text-muted-foreground">{t("dialog.editor.reading")}</p> : owned.seen === null ?
+        <Collapse open appear><Notice tone="caution" variant="box" announce="alert" action={<Button type="button" variant="outline" className="min-h-11 min-w-11" onClick={() => setOwned(null)}>{t("common.closeAria")}</Button>}>{t("dialog.editor.readFailed")}</Notice></Collapse> :
+        owned.purpose === "answer" ? <InlineEditor id="ask-answer-text" label={answerCopy.editorLabel} value={owned.draft}
+          onChange={(draft) => setOwned((edit) => edit === null ? null : { ...edit, draft })} maxLength={FEEDBACK_MAX_LENGTH}
+          placeholder={answerCopy.placeholder} help={answerCopy.help} textAriaLabel={answerCopy.textAria}
+          sendLabel={owned.remove ? t("keys.clear.label") : answerCopy.send} cancelLabel={t("dialog.backToOptions")}
+          onSend={() => void finish("save")} onCancel={() => void finish("return")}
+          sendDisabled={locked || owned.busy !== null || (!owned.remove && owned.draft.trim() === "")}
+          cancelDisabled={owned.busy !== null} busy={owned.busy === "save"} busyAriaLabel={t("dialog.sendingAria")}
+          inputDisabled={locked || owned.busy !== null} readOnly={owned.remove} /> :
+        <Suspense fallback={<span role="status">{t("conversations.loading")}</span>}><QuestionNoteEditor draft={owned.draft} onChange={(draft) => setOwned((edit) => edit === null ? null : { ...edit, draft })}
+          disabled={locked || owned.busy !== null} inputDisabled={locked || owned.busy !== null} saving={owned.busy === "save"} returning={owned.busy === "return"}
+          maxLength={NOTE_MAX_LENGTH} allowEmpty readOnly={owned.remove} onSave={() => void finish("save")} onCancel={() => void finish("return")}
+          saveLabel={owned.remove ? t("dialog.preview.removeNoteAria") : undefined} cancelLabel={t("dialog.backToOptions")}
+          label={owned.purpose === "global-note" ? t("dialog.editor.globalNote") : undefined} /></Suspense>}
+      {owned.seen !== null ? <p className="text-[11px] text-muted-foreground">{t("dialog.editor.returnHelp")}</p> : null}
+    </div>
+  );
   if (card === null) return null;
   return (
     // `role="presentation"`, the mirror wrapper's own reading: a layout box whose click adds nothing

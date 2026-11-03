@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { MessageSquarePlus } from "lucide-react";
 
 import { InlineEditor, InlineEditorOffer } from "@/components/ui/inline-editor";
-import { ANSWER_MAX_LENGTH } from "@/lib/answer-field";
+import { ANSWER_MAX_LENGTH } from "@/lib/harness/prompt-model";
 import type { WizardStepChip } from "@/lib/harness/wizard-model";
 import { t } from "@/lib/i18n";
 
@@ -92,7 +92,7 @@ export interface AnswerEditor {
   open: (prefill: string, fieldText: string, asked: AskedQuestion) => void;
   cancel: () => void;
   /**
-   * Send the trimmed draft through `onAnswer`, unless the field no longer holds what the person last
+   * Send the draft (trimmed unless multiline) through `onAnswer`, unless the field no longer holds what the person last
    * saw, or the dialog no longer shows the question they wrote it for. The open editor replaces the
    * field's own card on screen, so text typed at the desk meanwhile was never seen here, and the
    * recipe would clear it (ADR 0113 rule 3: clear only what was seen); a step the desk moved on to
@@ -100,7 +100,7 @@ export interface AnswerEditor {
    * was seen, so the next Send goes to it. The editor closes only on a send `onAnswer` reports as landed.
    */
   send: (
-    field: { text: string },
+    field: { text: string; multiline?: true },
     asked: AskedQuestion,
     onAnswer: (text: string) => boolean | Promise<boolean>,
     locked: boolean,
@@ -132,13 +132,13 @@ export function useAnswerEditor(): AnswerEditor {
   }
 
   async function send(
-    field: { text: string },
+    field: { text: string; multiline?: true },
     asked: AskedQuestion,
     onAnswer: (text: string) => boolean | Promise<boolean>,
     locked: boolean,
   ) {
-    const text = draft.trim();
-    if (text.length === 0 || locked) return;
+    const text = field.multiline ? draft : draft.trim();
+    if (text.trim().length === 0 || locked) return;
     const questionChanged = !sameQuestion(asked, seenAsked);
     const fieldChanged = field.text !== seenText;
     if (questionChanged || fieldChanged) {
@@ -185,7 +185,9 @@ export function EditorMovedNotice({ editor }: { editor: Pick<AnswerEditor, "move
 
 export interface AnswerFieldSurfaceProps {
   /** The terminal's field as the card's model reads it. */
-  field: { focused: boolean; text: string };
+  field: { focused: boolean; text: string; multiline?: true; textComplete?: false };
+  /** Delegate a native edit to the dock; an incomplete display must never prefill a local editor. */
+  onOpenEditor?: () => void;
   /** The question the field answers right now; the editor keeps it at open. */
   asked: AskedQuestion;
   copy: FeedbackCopy;
@@ -215,7 +217,8 @@ export interface AnswerFieldSurfaceProps {
  * single-question card, the wizard step and the multi-select question.
  */
 export function AnswerFieldSurface(props: AnswerFieldSurfaceProps) {
-  const { field, copy, locked, editor } = props;
+  const { field, copy, editor } = props;
+  const locked = props.locked || (field.textComplete === false && !props.onOpenEditor);
   const focusedBanner = field.focused && props.showFocused ? (
     <div className="rounded-lg border border-dashed border-status-working/50 px-3 py-2 text-xs text-status-working">
       {copy.focused}
@@ -259,7 +262,7 @@ export function AnswerFieldSurface(props: AnswerFieldSurfaceProps) {
         <InlineEditorOffer
           label={copy.change ?? ""}
           disabled={locked}
-          onClick={() => editor.open(field.text, field.text, props.asked)}
+          onClick={() => props.onOpenEditor ? props.onOpenEditor() : editor.open(field.text, field.text, props.asked)}
         />
       </>
     );
@@ -267,7 +270,7 @@ export function AnswerFieldSurface(props: AnswerFieldSurfaceProps) {
   return (
     <>
       {focusedBanner}
-      <InlineEditorOffer label={copy.offer ?? ""} disabled={locked} onClick={() => editor.open("", "", props.asked)} />
+      <InlineEditorOffer label={copy.offer ?? ""} disabled={locked} onClick={() => props.onOpenEditor ? props.onOpenEditor() : editor.open("", "", props.asked)} />
     </>
   );
 }

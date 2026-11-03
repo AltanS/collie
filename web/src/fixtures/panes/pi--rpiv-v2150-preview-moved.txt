@@ -1,0 +1,22 @@
+[0m[38;2;228;101;225m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+ ← [0m[48;2;27;47;93m □ Plan [0m [0m[38;2;160;160;160m □ Checks [0m [0m[38;2;160;160;160m □ Delivery [0m [0m[38;2;160;160;160m □ Optional [0m [0m[38;2;130;130;130m ✓ Submit [0m →
+
+
+ [0m[1mWhich implementation should the Collie probe use?[0m                                                                      
+
+  1. Sequential                                                             [0m[38;2;228;101;225m┌──────────────────────────────────────────┐[0m
+     [0m[38;2;160;160;160mKeep the steps ordered.[0m                                                [0m[38;2;228;101;225m│[0m Plan B                                   [0m[38;2;228;101;225m│[0m
+[0m[1m[38;2;228;101;225m❯ 2. Parallel[0m                                                               [0m[38;2;228;101;225m│[0m Read + Check                             [0m[38;2;228;101;225m│[0m
+     [0m[38;2;160;160;160mRun independent work together.[0m                                         [0m[38;2;228;101;225m│[0m Then write                               [0m[38;2;228;101;225m│[0m
+  3. Type something.                                                        [0m[38;2;228;101;225m└──────────────────────────────────────────┘[0m
+                                                              
+                                                                            [0m[38;2;160;160;160mNotes: press n to add notes[0m
+
+[0m[38;2;228;101;225m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+
+ [0m[38;2;130;130;130mEnter to select · ↑/↓ to navigate · n to add notes · Tab to switch questions · Esc to cancel · Ctrl+] to collapse[0m
+
+
+
+[0m[38;2;130;130;130m/tmp/collie-rpiv-lab.xALl6A/.cache/collie-lab/rpiv/rig/work[0m
+[0m[38;2;130;130;130m↑1.8k ↓295 $0.003 1.1%/200k (auto)                                (openrouter) anthropic/claude-haiku-4.5 • thinking off[0m

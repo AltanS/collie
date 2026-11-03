@@ -85,7 +85,12 @@ export default defineConfig({
       // 127.0.0.1 listeners (the stub and a fake OpenRouter) and MSW would answer their fetches.
       {
         extends: true,
-        test: { globals: true, css: false, name: "rig", environment: "node", include: ["e2e/rig/**/*.test.ts"] },
+        test: {
+          globals: true, css: false, name: "rig", environment: "node",
+          include: ["e2e/rig/**/*.test.ts"],
+          // Real native-editor panes are opt-in through e2e/rig/editor-readback.config.ts.
+          exclude: ["e2e/rig/editor-*.test.ts"],
+        },
       },
       {
         extends: true,

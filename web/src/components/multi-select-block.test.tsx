@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -15,6 +15,7 @@ import { fetchPane, sendKeys } from "@/lib/api";
 import { parseAnsi } from "@/lib/ansi";
 import { splitLines, type MultiSelectModel } from "@/lib/blocks";
 import { detectMultiSelect } from "@/lib/harness/claude/multi-select";
+import { piAdapter } from "@/lib/harness/pi";
 import { submitMultiSelectIntent, type MultiSelectIntent } from "@/lib/multi-select-action";
 import { MultiSelectBlock } from "./multi-select-block";
 
@@ -39,7 +40,57 @@ function pointerOnBasil(text: string): string {
   return lines.join("\n");
 }
 
+describe("RPIV custom-answer surface", () => {
+  function model() {
+    const block = piAdapter.buildBlocks(splitLines(parseAnsi(fixtureText("pi--rpiv-v2150-multi-field-parked.txt")))).find((b) => b.kind === "multi-select");
+    if (!block) throw new Error("no RPIV checkbox card");
+    return block.multi;
+  }
+
+  it("shows an automatic tick as read-only and offers deliberate clearing instead", async () => {
+    const onAction = vi.fn();
+    const onReadEditor = vi.fn(async () => null);
+    const user = userEvent.setup();
+    const { container } = render(<MultiSelectBlock multi={model()} onAction={onAction} onReadEditor={onReadEditor} />);
+    const view = within(container);
+    expect(view.getByRole("checkbox", { name: /First line/ })).toBeDisabled();
+    await user.click(view.getByRole("button", { name: /Remove First line/ }));
+    expect(onReadEditor).toHaveBeenCalledWith("answer", true);
+    expect(onAction).not.toHaveBeenCalled();
+  });
+
+  it("requires complete readback rather than opening an editor over displayed rows", async () => {
+    const onAnswer = vi.fn(() => true);
+    const onReadEditor = vi.fn(async () => null);
+    const user = userEvent.setup();
+    const { container } = render(<MultiSelectBlock multi={model()} onAction={vi.fn()} onAnswer={onAnswer} onReadEditor={onReadEditor} />);
+    const view = within(container);
+    await user.click(view.getByRole("button", { name: "Change this answer" }));
+    expect(onReadEditor).toHaveBeenCalledWith("answer");
+    expect(view.queryByRole("textbox", { name: "Answer text" })).not.toBeInTheDocument();
+    expect(onAnswer).not.toHaveBeenCalled();
+  });
+});
+
 describe("MultiSelectBlock — checkbox screen", () => {
+  it("keeps Cancel acknowledged at its control while the native action is pending", async () => {
+    const user = userEvent.setup();
+    const block = piAdapter.buildBlocks(splitLines(parseAnsi(fixtureText("pi--rpiv-v2150-multi.txt")))).find((b) => b.kind === "multi-select");
+    if (!block) throw new Error("missing RPIV checkbox question");
+    let finish!: () => void;
+    const pending = new Promise<void>((resolve) => { finish = resolve; });
+    const onAction = vi.fn(() => pending);
+    const { container } = render(<MultiSelectBlock multi={block.multi} onAction={onAction} />);
+    const view = within(container);
+    const cancel = view.getByRole("button", { name: "Cancel" });
+    await user.click(cancel);
+    expect(onAction).toHaveBeenCalledWith({ kind: "cancel" });
+    expect(cancel).toBeDisabled();
+    expect(within(cancel).getByLabelText("Sending")).toBeInTheDocument();
+    await act(async () => finish());
+    expect(cancel).not.toBeDisabled();
+  });
+
   it("renders the question, each option as a checkbox with its key badge, and the checked state", () => {
     const model = fixtureModel("claude--select-multiselect-checked.txt");
     render(<MultiSelectBlock multi={model} onAction={vi.fn()} />);

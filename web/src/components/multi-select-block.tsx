@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { AlertTriangle, Check, Loader2 } from "lucide-react";
+import { AlertTriangle, Check, Loader2, Trash2 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import type { MultiSelectModel, StyledLine } from "@/lib/blocks";
@@ -13,6 +13,13 @@ import { t } from "@/lib/i18n";
 import { useLive } from "@/lib/liveness";
 import type { Scope } from "@/lib/scope";
 import { useLocale } from "@/hooks/use-locale";
+import { QuestionNote } from "@/components/ui/question-note";
+import { Button } from "@/components/ui/button";
+import { Collapse } from "@/components/ui/collapse";
+import { Notice } from "@/components/ui/notice";
+import type { SeenValue } from "@/lib/editor-action";
+import type { DialogEditorObservation } from "@/lib/harness/editor-model";
+import { NOTE_MAX_LENGTH } from "@/lib/harness/preview-model";
 
 type CheckboxModel = Extract<MultiSelectModel, { phase: "checkbox" }>;
 
@@ -37,6 +44,8 @@ export interface MultiSelectBlockProps {
    * stays in the editor. Absent: the card offers no editor.
    */
   onAnswer?: (text: string) => boolean | Promise<boolean>;
+  /** The dock owns the native edit through raw/editor-only views. */
+  onReadEditor?: (purpose: DialogEditorObservation["purpose"], remove?: boolean) => Promise<SeenValue | null>;
   /** Read-only device or a gone pane: everything renders (for context) but can't be pressed. */
   disabled?: boolean;
   /** The pane this card answers for. With it, the answer editor's Send enables only while the bridge
@@ -60,7 +69,7 @@ export interface MultiSelectBlockProps {
 // the escape and a step arrow first move the pointer off it (lib/multi-select-action.ts `offField`),
 // and the advance macro and the answer recipe walk on their own. Only the field's own row locks then:
 // its action refuses that digit on a focused field.
-export function MultiSelectBlock({ multi, lines, onAction, onAnswer, disabled, paneId, scope, stale }: MultiSelectBlockProps) {
+export function MultiSelectBlock({ multi, lines, onAction, onAnswer, onReadEditor, disabled, paneId, scope, stale }: MultiSelectBlockProps) {
   useLocale();
   // M46 spec 11, as WizardBlock: `useLive` is called unconditionally; no `paneId`, no offline.
   const live = useLive(paneId ?? "", scope);
@@ -100,13 +109,14 @@ export function MultiSelectBlock({ multi, lines, onAction, onAnswer, disabled, p
         locked={locked}
         sending={sending}
         onPress={press}
+        onReadEditor={onReadEditor}
       />
     );
   }
   const field = multi.field;
   const asked = { question: multi.question, step: stepOf(multi.steps) };
   const answerField =
-    field && onAnswer ? (
+    field && (onAnswer || onReadEditor) ? (
       <AnswerFieldSurface
         field={field}
         asked={asked}
@@ -115,7 +125,8 @@ export function MultiSelectBlock({ multi, lines, onAction, onAnswer, disabled, p
         anySending={sending !== null}
         editor={editor}
         onSend={() => void editor.send(field, asked, runAnswer, answerLocked)}
-        locked={answerLocked}
+        locked={answerLocked || Boolean(multi.editors?.answer && !onReadEditor)}
+        onOpenEditor={multi.editors?.answer && onReadEditor ? () => void onReadEditor("answer") : undefined}
         busyIcon={<SpinnerSm />}
         showTyped={false}
         showFocused={false}
@@ -128,7 +139,13 @@ export function MultiSelectBlock({ multi, lines, onAction, onAnswer, disabled, p
       locked={locked}
       sending={sending}
       onPress={press}
-      answerField={answerField}
+      onClearField={multi.editors?.answer && onReadEditor ? () => void onReadEditor("answer", true) : undefined}
+      answerField={<>
+        {answerField}
+        {multi.note ? <QuestionNote note={multi.note} disabled={answerLocked || !onReadEditor || Boolean(field?.focused)}
+          saving={false} maxLength={NOTE_MAX_LENGTH} onRead={onReadEditor ? (remove) => onReadEditor("question-note", remove) : undefined}
+          onSave={() => false} /> : null}
+      </>}
     />
   );
 }
@@ -199,6 +216,7 @@ function CheckboxPhase({
   locked,
   sending,
   onPress,
+  onClearField,
   answerField,
 }: {
   multi: CheckboxModel;
@@ -207,6 +225,7 @@ function CheckboxPhase({
   sending: string | null;
   onPress: (id: string, action: MultiSelectIntent) => void;
   answerField: ReactNode;
+  onClearField?: () => void;
 }) {
   const field = multi.field;
   return (
@@ -218,8 +237,8 @@ function CheckboxPhase({
           busyBack={sending === "nav-back"}
           busyNext={sending === "nav-next"}
           busyIcon={<SpinnerSm />}
-          onBack={() => onPress("nav-back", { kind: "nav", keys: WIZARD_BACK_KEYS })}
-          onNext={() => onPress("nav-next", { kind: "nav", keys: WIZARD_NEXT_KEYS })}
+          onBack={() => onPress("nav-back", { kind: "nav", keys: multi.navigation?.back ?? WIZARD_BACK_KEYS })}
+          onNext={() => onPress("nav-next", { kind: "nav", keys: multi.navigation?.next ?? WIZARD_NEXT_KEYS })}
         />
       )}
       <QuestionHeading>{multi.question}</QuestionHeading>
@@ -243,10 +262,17 @@ function CheckboxPhase({
             label={field.text}
             checked={field.checked}
             busy={sending === `opt-${field.n}`}
-            disabled={locked || field.focused}
+            disabled={locked || field.focused || Boolean(field.autoChecked)}
             typed
             onToggle={() => onPress(`opt-${field.n}`, { kind: "toggle", n: field.n })}
           />
+        ) : null}
+        {field?.autoChecked && field.text !== "" ? (
+          <button type="button" disabled={locked || Boolean(multi.editors?.answer && !onClearField)} onClick={() => onClearField ? onClearField() : onPress("clear-field", { kind: "type", text: "" })}
+            aria-label={t("keys.queue.removeAria", { label: field.text })}
+            className="flex min-h-11 items-center justify-center gap-2 rounded-md border border-border px-3 text-xs text-muted-foreground disabled:opacity-40">
+            {sending === "clear-field" ? <SpinnerSm /> : <Trash2 className="size-3.5" />}{t("keys.clear.label")}
+          </button>
         ) : null}
       </div>
       {answerField}
@@ -268,6 +294,12 @@ function CheckboxPhase({
       </button>
 
       {/* "Chat about this" ABORTS the tool — de-emphasised, apart from the answers (like the wizard). */}
+      {multi.cancelKeys && (
+        <Button type="button" variant="outline" disabled={locked} onClick={() => onPress("cancel", { kind: "cancel" })} className="min-h-11 w-full text-xs text-muted-foreground">
+          <span className="flex size-3.5 shrink-0 items-center justify-center">{sending === "cancel" ? <SpinnerSm /> : null}</span>
+          {t("dialog.cancel")}
+        </Button>
+      )}
       {multi.escape ? (
         <button
           type="button"
@@ -292,18 +324,31 @@ function ReviewPhase({
   locked,
   sending,
   onPress,
+  onReadEditor,
 }: {
   multi: Extract<MultiSelectModel, { phase: "review" }>;
   lines?: StyledLine[];
   locked: boolean;
   sending: string | null;
   onPress: (id: string, action: MultiSelectIntent) => void;
+  onReadEditor?: MultiSelectBlockProps["onReadEditor"];
 }) {
   useLocale();
   return (
     <PromptPanel ariaLabel={t("dialog.readySubmit")} raw={lines}>
       <QuestionHeading>{t("dialog.readySubmit")}</QuestionHeading>
       {multi.answers ? <AnswerList answers={multi.answers} /> : null}
+      <Collapse open={Boolean(multi.summaryClipped)}>
+        {multi.summaryClipped ? <Notice tone="caution" variant="box" announce="status">{t("dialog.reviewClipped")}</Notice> : null}
+      </Collapse>
+      {multi.note || multi.editors?.note ? <section aria-label={t("dialog.editor.globalNote")} className="flex flex-col gap-1">
+        <span className="text-xs text-muted-foreground">{t("dialog.editor.globalNote")}</span>
+        {multi.note ? <QuestionNote note={multi.note} maxLength={NOTE_MAX_LENGTH}
+          disabled={locked || !onReadEditor} saving={false} onSave={() => undefined}
+          onRead={onReadEditor ? (remove) => onReadEditor("global-note", remove) : undefined} /> :
+          <button type="button" className={optionSurface("default")} disabled={locked || !onReadEditor}
+            onClick={() => void onReadEditor?.("global-note")}>{t("dialog.editor.globalNote")}</button>}
+      </section> : null}
       {multi.incomplete ? (
         // role="alert" so a screen reader announces the incomplete-answers warning when the review
         // screen mounts — otherwise a user could confirm a partial set without ever hearing it.

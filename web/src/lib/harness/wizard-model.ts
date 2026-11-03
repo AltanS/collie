@@ -12,6 +12,12 @@
 
 import { sameOptionalKeys, type AnswerFieldPointer } from "./prompt-model";
 
+/** A screen's declared step-navigation plans; absent models keep the existing Left/Right defaults. */
+export interface WizardNavigation {
+  back: string[];
+  next: string[];
+}
+
 /** One question chip in the stepper header (the Submit chip is implicit — see `WizardModel`). */
 export interface WizardStepChip {
   /** The chip's visible label, e.g. "Focus area" (a React text node downstream). */

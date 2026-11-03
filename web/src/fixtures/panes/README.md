@@ -16,6 +16,44 @@ scripts/capture-fixture.sh <paneId> <name> [lines]   # paneIds: /api/snapshot
 (`less -R <file>`) for private content before `git add` — prefer generating states in a sandbox
 pane over capturing real work sessions.
 
+## RPIV 2.15.0 corpus (captured 2026-10-25, pi 1.4.0)
+
+`pi--rpiv-v2150-single.txt` and `-single-moved.txt` are a real RPIV question in a disposable
+120-column Linux Herdr pane, read through a scratch bridge's authenticated pane API. The second
+capture follows one Down. Both retain the frame, outside footer, pi status, ANSI styling and row
+padding; only the transcript above the frame is cut and CRLF normalized to LF. The scratch HOME,
+state, config and Herdr server are separate from the operator's. Questions and descriptions are
+synthetic; the retained temporary path and provider usage contain no credentials or private work.
+
+The caption is Color; Red, Green and Blue are authored choices, and Type something. is RPIV's
+appended field. The first capture points at Red, the second at Green. A real Chromium Pixel 7 tap
+on Blue then answered Blue through the existing guarded action path without focusing the composer.
+See [`pi/ASK_NOTES.md`](../../lib/harness/pi/ASK_NOTES.md) for the measured recognition and recipe.
+
+The same isolated session supplied these further synthetic states:
+
+| Suffix after `pi--rpiv-v2150-` | Evidence |
+| --- | --- |
+| `preview`, `preview-moved` | Side-by-side option preview and pointer movement |
+| `multi`, `multi-ticked`, `multi-moved` | Checkbox, Space toggle and arrow movement |
+| `multi-standalone` | Real single-question checkbox (2026-10-26), no tab bar and literal Submit sentinel; its whole macro retains text/style bindings |
+| `multi-field-empty`, `multi-field-filled`, `multi-field-up` | Focused custom answer, then two logical lines, then Up within the editor |
+| `multi-field-parked`, `multi-next`, `multi-field-cleared` | Pointer above/below the filled field, and explicit clearing |
+| `multi-field-wrap-soft`, `multi-field-wrap-hard` | Different logical values with identical canonical text and styled bindings |
+| `single-step`, `single-field-empty`, `single-field-filled`, `single-field-blank-tail` | Single-choice field, multiline text and real blank logical tails |
+| `note-editor`, `note-editor-long`, `global-note-editor`, `note-saved` | Native question/global editors and an incomplete resting summary |
+| `preview-note-saved`, `preview-field-parked` | Saved note and custom value beside an intact preview; neither becomes an authored option |
+| `submit-partial`, `submit-global-note`, `submit-global-note-cancel`, `submit-complete` | Explicit partial/all-answered review, multiline global note and picker movement; missing questions remain missing |
+| `preview-stacked--w59`, `preview-resize-torn--w59` | Settled stacked preview and the real intermediate resize paint; only the settled exact clipped template grants measured bindings |
+| `submit-clipped--w59` | Bottom-clipped review: visible echoes remain visible, hidden answers/notes are unknown rather than invented |
+
+The two wrap captures retain only the outer frame through the outside footer. One value is a
+single logical line; the other replaces the wrapping boundary's space with a newline. Their complete
+choices remain tappable, but the displayed field is read-only and cannot seed a replacement draft.
+The optional pure editor observation and guarded cursor-only readback distinguish the values before
+editing; a clipped or unproved observation refuses rather than guessing. See the opt-in real-pane
+regressions in `web/e2e/rig/editor-*.test.ts`.
+
 ## OmO 5.1.30 corpus (captured 2026-10-12, Herdr 0.9.3)
 
 `pi--omo-v5130-*.txt` comes from a disposable 113-column Herdr pane running OmO

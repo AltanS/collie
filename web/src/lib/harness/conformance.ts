@@ -481,17 +481,19 @@ export function emittableKeys(block: Block): string[] | null {
     case "preview-select": {
       // preview-action.ts's recipe: a digit moves the pointer, Enter selects, `n` opens the note
       // input, ctrl+k/Backspace clear it, Escape blurs; a wizard step navigates with Left/Right.
-      const digits = block.preview.options.map((o) => String(o.n));
+      const choices = block.preview.options.flatMap((o) => o.keys ?? [String(o.n)]);
+      const nav = block.preview.navigation;
+      const navigation = nav ? [...nav.back, ...nav.next] : [...WIZARD_BACK_KEYS, ...WIZARD_NEXT_KEYS];
       const controls = [
         "Enter",
         "n",
         "Escape",
         "ctrl+k",
         "Backspace",
-        ...WIZARD_BACK_KEYS,
-        ...WIZARD_NEXT_KEYS,
+        ...navigation,
+        ...(block.preview.cancelKeys ?? []),
       ];
-      return [...digits, ...controls];
+      return [...choices, ...controls];
     }
     case "multi-select":
       // checkbox: a digit toggles each option (and the "Chat about this" escape) in digit mode, or
@@ -501,7 +503,10 @@ export function emittableKeys(block: Block): string[] | null {
       // keys mode, plus the declared way back.
       if (block.multi.phase === "checkbox") {
         return [
-          ...block.multi.options.map((o) => String(o.n)),
+          ...(block.multi.toggle === "walk" ? ["Space"] : block.multi.options.map((o) => String(o.n))),
+          ...(block.multi.cancelKeys ?? []),
+          ...(block.multi.navigation?.back ?? []),
+          ...(block.multi.navigation?.next ?? []),
           ...(block.multi.escape ? [String(block.multi.escape.n)] : []),
           "Up",
           "Down",
@@ -555,8 +560,21 @@ function reviewActionKeys(multi: Extract<MultiSelectModel, { phase: "review" }>)
  */
 export function declaredKeyPlans(block: Block): { field: string; keys: string[] }[] {
   const plans: { field: string; keys: string[] | undefined }[] = [];
+  if (block.kind === "preview-select") {
+    block.preview.options.forEach((option, i) => plans.push({ field: `options[${i}].keys`, keys: option.keys }));
+    plans.push(
+      { field: "navigation.back", keys: block.preview.navigation?.back },
+      { field: "navigation.next", keys: block.preview.navigation?.next },
+      { field: "cancelKeys", keys: block.preview.cancelKeys },
+    );
+  }
   if (block.kind === "multi-select" && block.multi.phase === "checkbox") {
-    plans.push({ field: "advanceKeys", keys: block.multi.advanceKeys });
+    plans.push(
+      { field: "advanceKeys", keys: block.multi.advanceKeys },
+      { field: "cancelKeys", keys: block.multi.cancelKeys },
+      { field: "navigation.back", keys: block.multi.navigation?.back },
+      { field: "navigation.next", keys: block.multi.navigation?.next },
+    );
   }
   if (block.kind === "multi-select" && block.multi.phase === "review") {
     plans.push(

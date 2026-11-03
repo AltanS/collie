@@ -255,8 +255,14 @@ done
 # its place: a real verb that cannot do its job reports an OPERATIONAL failure (1), never a usage
 # error (2). `build` on a tree with no version gate is the cheapest such case — and it proves the
 # gate is still `scripts/check-version.sh` read from the checkout, not a second copy compiled in.
+# Supply this probe's prerequisites only: real Bash and a Bun sentinel that must never run.
+GATE_BIN="${TMP_ROOT}/version-gate-bin"
+mkdir -p "$GATE_BIN"
+ln -s "$(command -v bash)" "${GATE_BIN}/bash"
+printf '#!/bin/sh\nexit 99\n' > "${GATE_BIN}/bun"
+chmod +x "${GATE_BIN}/bun"
 set +e
-env -i PATH="$BIN_DIR" COLLIE_PLUGIN_ROOT="$EMPTY_ROOT" "$BIN" build >/dev/null 2>"${TMP_ROOT}/err"
+env -i PATH="${GATE_BIN}:${BIN_DIR}" COLLIE_PLUGIN_ROOT="$EMPTY_ROOT" "$BIN" build >/dev/null 2>"${TMP_ROOT}/err"
 rc=$?
 set -e
 assert_eq "$rc" "1"

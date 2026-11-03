@@ -145,6 +145,7 @@ async function dispatchIntent(
     if (args.multi.phase !== "checkbox" || !isToggleable(args.multi, intent.n)) {
       return { status: "changed" };
     }
+    if (args.multi.toggle === "walk") return runToggleMacro(args, intent.n);
     const aimed = await offField(args);
     if (!aimed.ok) return aimed.result;
     // The recipe of the tapped model: identity compares `toggle`, so the aimed one has the same.
@@ -177,8 +178,11 @@ async function dispatchIntent(
     if (args.multi.submit === "keys") return guardedKey(args, args.multi.submitKeys);
     return guardedKey(args, ["1"]);
   }
+  // A checkbox card can name Escape without inventing a numbered escape row.
+  if (args.multi.phase === "checkbox") {
+    return args.multi.cancelKeys ? guardedKey(args, args.multi.cancelKeys) : { status: "changed" };
+  }
   // cancel
-  if (args.multi.phase !== "review") return { status: "changed" };
   if (args.multi.submit === "pointer") return runReviewMacro(args, "cancel");
   if (args.multi.submit === "keys") return guardedKey(args, args.multi.cancelKeys);
   return guardedKey(args, ["2"]);
@@ -191,14 +195,14 @@ async function dispatchIntent(
 function isToggleable(multi: Extract<MultiSelectModel, { phase: "checkbox" }>, n: number): boolean {
   if (multi.options.some((o) => o.n === n)) return true;
   const field = multi.field;
-  return field !== undefined && field.n === n && field.text !== "" && !field.focused;
+  return field !== undefined && !field.autoChecked && field.n === n && field.text !== "" && !field.focused;
 }
 
 /** Entry guard, then send exactly `keys` (one keystroke against the dialog). */
 async function guardedKey(args: GuardArgs, keys: string[]): Promise<ActionResult> {
   const guarded = await guardDialog(target(args));
   if (!guarded.ok) return guarded.result;
-  return sendBoundKeys(args, keys, guarded.region);
+  return sendBoundKeys(args, keys, guarded.region, guarded.styled);
 }
 
 // The pointer settles fast after a nav key — a pointer move is a cheap redraw, unlike the note-focus
@@ -217,12 +221,13 @@ const NAV_SETTLE_MS = 250;
 function bindFirstWriter(
   args: GuardArgs,
   region: string | undefined,
-): (keys: string[]) => Promise<ActionResult | null> {
+): (keys: string[], proof?: MultiSelectModel) => Promise<ActionResult | null> {
   let expectedPrompt: string | undefined = region;
-  return async (keys: string[]) => {
-    const expected = expectedPrompt;
+  return async (keys: string[], proof?: MultiSelectModel) => {
+    // A style-bound step also binds each fresh proof, so a style-only tab change cannot race it.
+    const expected = proof?.styledSignature === undefined ? expectedPrompt : proof.regionSignature;
     expectedPrompt = undefined;
-    const res = await sendBoundKeys(args, keys, expected);
+    const res = await sendBoundKeys(args, keys, expected, proof?.styledSignature);
     return res.status === "sent" ? null : res;
   };
 }
@@ -274,18 +279,18 @@ async function runAdvanceMacro(args: GuardArgs): Promise<ActionResult> {
   for (let step = 0; step < maxSteps; step++) {
     const m = await readMacroDialog(args, sleep);
     if (!m) continue;
-    // Drift guard: a successor dialog, or the checkbox screen already gone — abort before any key.
-    if (!multiSelectIdentity(m, args.multi) || m.phase !== "checkbox") return { status: "changed" };
+    // The advance does not edit the answer field: its seen value must stay unchanged too.
+    if (!multiSelectIdentity(m, args.multi, "compare") || m.phase !== "checkbox") return { status: "changed" };
     if (m.pointer === "advance") {
       // Verified on the advance row: activate it. What appears next — the following question of a
       // wizard, or the review screen — is re-detected by whichever grammar owns it on the next poll.
       // This macro deliberately does not predict another screen's shape.
-      return (await sendMacroStep(["Enter"])) ?? { status: "sent" };
+      return (await sendMacroStep(["Enter"], m)) ?? { status: "sent" };
     }
     // Nudge toward the advance row: Down for every row above it (options, the answer field — `field`,
     // focused or not — and none), and Up on the off chance the pointer starts on the bottom "Chat about
     // this" row (advance is above it). Down from a focused single-line field lands on the advance row.
-    const sent = await sendMacroStep([m.pointer === "chat" ? "Up" : "Down"]);
+    const sent = await sendMacroStep([m.pointer === "chat" ? "Up" : "Down"], m);
     if (sent) return sent;
     await sleep(NAV_SETTLE_MS);
   }
@@ -312,7 +317,17 @@ async function offField(
   if (args.multi.phase !== "checkbox" || args.multi.pointer !== "field") return { ok: true, args };
   const guarded = await guardDialog(target(args));
   if (!guarded.ok) return guarded;
-  const sent = await sendBoundKeys(args, ["Up"], guarded.region);
+  if (args.multi.field?.multiline) {
+    const sleep = args.sleep ?? defaultSleep;
+    const parked = await parkAboveField(args, args.multi, args.multi.field.text, sleep);
+    if (parked.status !== "sent") return { ok: false, result: parked };
+    const model = await readMacroDialog(args, sleep);
+    if (model === null || model.phase !== "checkbox" || model.pointer !== "option" || !multiSelectIdentity(model, args.multi, "compare")) {
+      return { ok: false, result: { status: "changed" } };
+    }
+    return { ok: true, args: { ...args, multi: model } };
+  }
+  const sent = await sendBoundKeys(args, ["Up"], guarded.region, guarded.styled);
   if (sent.status !== "sent") return { ok: false, result: sent };
 
   const sleep = args.sleep ?? defaultSleep;
@@ -343,10 +358,11 @@ function multiFieldAccess(tapped: Checkbox): FieldAccess<"multi-select"> {
       const field = fieldOn(m);
       if (field === undefined) return null;
       const { n, focused, text, pointer } = field;
-      return { key: String(n), focused, text, pointer };
+      return { key: String(n), focused, text, pointer, multiline: field.multiline };
     },
     sameDialog: (m) => multiSelectIdentity(m, tapped),
     digitFocuses: false,
+    allowEmpty: tapped.field?.autoChecked === true,
   };
 }
 
@@ -358,12 +374,13 @@ function multiFieldAccess(tapped: Checkbox): FieldAccess<"multi-select"> {
  */
 async function runTypeAnswer(args: GuardArgs, text: string): Promise<ActionResult> {
   if (args.multi.phase !== "checkbox" || !args.multi.field) return { status: "changed" };
+  if (args.multi.editors?.answer || args.multi.field.textComplete === false) return { status: "changed", why: "complete native seen context required" };
   const sleep = args.sleep ?? defaultSleep;
   const filled = await fillAnswerField({ ...target(args), sleep }, multiFieldAccess(args.multi), text);
   if (!filled.ok) return filled.result;
   // The recipe proved the field holds exactly the sanitised text, so the proof's text is ours.
   const ours = fieldOn(filled.proof)?.text ?? "";
-  const ticked = await tickField(args, filled.proof, ours, sleep);
+  const ticked: Proved = ours === "" ? { ok: true, proof: filled.proof } : await tickField(args, filled.proof, ours, sleep);
   if (!ticked.ok) return ticked.result;
   return parkAboveField(args, ticked.proof, ours, sleep);
 }
@@ -376,7 +393,9 @@ async function runTypeAnswer(args: GuardArgs, text: string): Promise<ActionResul
  */
 async function tickField(args: GuardArgs, proof: MultiSelectModel, ours: string, sleep: Sleep): Promise<Proved> {
   if (fieldOn(proof)?.checked) return { ok: true, proof };
-  const sent = await sendBoundKeys(args, ["Enter"], proof.regionSignature);
+  // On an automatic field Enter commits the question; it is never a tick repair key.
+  if (fieldOn(proof)?.autoChecked) return { ok: false, result: { status: "changed", why: "tick: automatic field" } };
+  const sent = await sendBoundKeys(args, ["Enter"], proof.regionSignature, proof.styledSignature);
   if (sent.status !== "sent") return { ok: false, result: sent };
   const polled = await pollDialog({ ...target(args), sleep }, (m) => {
     const field = fieldOn(m);
@@ -402,20 +421,22 @@ async function tickField(args: GuardArgs, proof: MultiSelectModel, ours: string,
  */
 async function parkAboveField(args: GuardArgs, proof: MultiSelectModel, ours: string, sleep: Sleep): Promise<ActionResult> {
   const bound = (fieldOn(proof)?.lines ?? 1) + 3;
+  const checked = fieldOn(proof)?.checked ?? false;
   let current = proof;
   for (let step = 0; step < bound; step++) {
     if (current.phase === "checkbox" && current.pointer === "option" && current.field?.pointer === "above") {
       return { status: "sent" };
     }
-    const sent = await sendBoundKeys(args, ["Up"], current.regionSignature);
+    const sent = await sendBoundKeys(args, ["Up"], current.regionSignature, current.styledSignature);
     if (sent.status !== "sent") return sent;
     const before = current.regionSignature;
-    const moved = await pollDialog({ ...target(args), sleep }, (m) => m.regionSignature !== before);
+    const style = current.styledSignature;
+    const moved = await pollDialog({ ...target(args), sleep }, (m) => m.regionSignature !== before || m.styledSignature !== style);
     if (moved.status === "drifted") return { status: "changed", why: "park: drift" };
     // A caret move inside a wrapped value repaints nothing: the next Up goes from the same read.
     if (moved.status === "timeout") continue;
     const field = fieldOn(moved.model);
-    if (field === undefined || field.text !== ours || !field.checked) return { status: "changed", why: "park: drift" };
+    if (field === undefined || field.text !== ours || field.checked !== checked) return { status: "changed", why: "park: drift" };
     current = moved.model;
   }
   return { status: "sent" };
@@ -444,18 +465,24 @@ async function runToggleMacro(args: GuardArgs, n: number): Promise<ActionResult>
   const sleep = args.sleep ?? defaultSleep;
   const sendMacroStep = bindFirstWriter(args, guarded.region);
 
-  for (let step = 0; step < TOGGLE_MACRO_MAX_STEPS; step++) {
+  const maxSteps = args.multi.toggle === "walk" ? args.multi.options.length + 6 + (args.multi.field?.lines ?? 0) : TOGGLE_MACRO_MAX_STEPS;
+  for (let step = 0; step < maxSteps; step++) {
     const m = await readMacroDialog(args, sleep);
     if (!m) continue;
-    // Drift guard: identity (mode included) + still the checkbox phase — abort before any key.
-    if (!multiSelectIdentity(m, args.multi) || m.phase !== "checkbox") return { status: "changed" };
+    // A toggle moves the pointer, not the field's contents.
+    if (!multiSelectIdentity(m, args.multi, "compare") || m.phase !== "checkbox") return { status: "changed" };
     if (m.pointerRow === n) {
       // Verified on the tapped row: toggle it. A digit already sitting on its row no-ops above,
       // so reaching here on the first iteration just means no jump was needed.
-      return (await sendMacroStep(["Enter"])) ?? { status: "sent" };
+      return (await sendMacroStep([m.toggle === "walk" ? "Space" : "Enter"], m)) ?? { status: "sent" };
     }
-    // Jump the pointer onto row n (a no-op when already there — verified, never assumed).
-    const sent = await sendMacroStep([String(n)]);
+    let keys: string[];
+    if (m.toggle === "walk") {
+      if (m.pointerRow !== null) keys = [m.pointerRow < n ? "Down" : "Up"];
+      else if (m.pointer === "advance" || m.pointer === "field") keys = ["Up"];
+      else return { status: "changed" };
+    } else keys = [String(n)];
+    const sent = await sendMacroStep(keys, m);
     if (sent) return sent;
     await sleep(NAV_SETTLE_MS);
   }
@@ -488,12 +515,12 @@ async function runReviewMacro(args: GuardArgs, targetRow: "submit" | "cancel"): 
     if (m.pointer === targetRow) {
       // Verified on the target row: submit it with the FRESH region this read just derived, so a
       // terminal pointer move between the verify and the send 409s rather than misfiring.
-      return sendBoundKeys(args, ["Enter"], m.regionSignature);
+      return sendBoundKeys(args, ["Enter"], m.regionSignature, m.styledSignature);
     }
     // Nudge toward the target: the action rows read submit-above-cancel, so Down heads for cancel
     // from anywhere unknown-or-above, and Up heads for submit from cancel.
     const key = m.pointer === "cancel" && targetRow === "submit" ? "Up" : "Down";
-    const sent = await sendMacroStep([key]);
+    const sent = await sendMacroStep([key], m);
     if (sent) return sent;
     await sleep(NAV_SETTLE_MS);
   }

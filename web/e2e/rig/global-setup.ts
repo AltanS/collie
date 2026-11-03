@@ -32,7 +32,7 @@ export async function startRun(crew: boolean): Promise<void> {
     const plan = tiers[h];
     return plan === undefined ? [] : [tierLine(plan)];
   });
-  console.log(`model tiers: ${lines.join("; ")}`);
+  console.log(`model tiers: ${lines.join("; ")}; claude auth (${tiers.claude?.tier === "replay" ? "replay dummy" : process.env.COLLIE_RIG_CLAUDE_PROVIDER === "openrouter" ? "OpenRouter gateway" : "its own login"})`);
   if (reuse) return;
   execFileSync("bun", [join(WEB, "e2e", "rig", "rig.ts"), "up", ...(crew ? ["--crew"] : [])], { cwd: WEB, stdio: "inherit", timeout: crew ? 300_000 : 120_000 });
 }

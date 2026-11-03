@@ -1,12 +1,7 @@
-import { useEffect, useRef, useState } from "react";
-import {
-  Check,
-  ChevronRight,
-  Loader2,
-  Pencil,
-  StickyNote,
-  Trash2,
-} from "lucide-react";
+import { useState } from "react";
+import { Check, ChevronRight, Loader2 } from "lucide-react";
+import { QuestionNote } from "@/components/ui/question-note";
+import { Button } from "@/components/ui/button";
 
 import { WizardStepper } from "@/components/wizard-stepper";
 import { cn } from "@/lib/utils";
@@ -18,10 +13,13 @@ import {
   PromptPanel,
   QuestionHeading,
 } from "@/components/option-button";
-import { NOTE_MAX_LENGTH } from "@/lib/preview-action";
+import { NOTE_MAX_LENGTH } from "@/lib/harness/preview-model";
 import { WIZARD_BACK_KEYS, WIZARD_NEXT_KEYS } from "@/lib/harness/wizard-model";
 import { t } from "@/lib/i18n";
 import { useLocale } from "@/hooks/use-locale";
+import { AnswerFieldSurface, answerFieldCopy, stepOf, useAnswerEditor } from "@/components/answer-field-surface";
+import type { SeenValue } from "@/lib/editor-action";
+import type { DialogEditorObservation } from "@/lib/harness/editor-model";
 
 /** One tap's intent, resolved to keystrokes by the injected handler (preview-action.ts). */
 export type PreviewBlockAction =
@@ -43,6 +41,7 @@ export interface PreviewSelectBlockProps {
   onAction: (action: PreviewBlockAction) => void | Promise<void>;
   /** Read-only device or a gone pane: everything renders (for context) but can't be pressed. */
   disabled?: boolean;
+  onReadEditor?: (purpose: DialogEditorObservation["purpose"], remove?: boolean) => Promise<SeenValue | null>;
 }
 
 // Native, tappable rendering of Claude's preview-variant AskUserQuestion (options + a preview pane
@@ -54,20 +53,11 @@ export interface PreviewSelectBlockProps {
 // While the TUI's own note input is focused (note.state === "editing" — someone is typing in the
 // terminal) EVERY control locks: any keystroke we sent would be typed into their note instead of
 // driving the dialog. A banner says so; polling clears it when the input blurs.
-export function PreviewSelectBlock({ preview, lines, onAction, disabled }: PreviewSelectBlockProps) {
+export function PreviewSelectBlock({ preview, lines, onAction, onReadEditor, disabled }: PreviewSelectBlockProps) {
   useLocale();
   const [sending, setSending] = useState<string | null>(null);
-  const [editorOpen, setEditorOpen] = useState(false);
-  // Focused from an effect rather than with `autoFocus`: the attribute only acts on the very first
-  // mount of the element, so re-opening the editor after a cancel would leave the field unfocused —
-  // and it gives assistive tech no chance to announce the surrounding panel first.
-  const editorRef = useRef<HTMLTextAreaElement>(null);
-  useEffect(() => {
-    if (editorOpen) editorRef.current?.focus();
-  }, [editorOpen]);
-
-  const [draft, setDraft] = useState("");
-  const terminalEditing = preview.note.state === "editing";
+  const editor = useAnswerEditor();
+  const terminalEditing = preview.note.state === "editing" || Boolean(preview.field?.focused);
   const locked = disabled || sending !== null || terminalEditing;
 
   async function press(id: string, action: PreviewBlockAction) {
@@ -78,13 +68,6 @@ export function PreviewSelectBlock({ preview, lines, onAction, disabled }: Previ
     } finally {
       setSending(null);
     }
-  }
-
-  async function saveNote() {
-    const text = draft.trim();
-    if (text.length === 0) return;
-    await press("note-save", { kind: "note", text });
-    setEditorOpen(false);
   }
 
   const wizard = preview.steps !== null;
@@ -105,12 +88,12 @@ export function PreviewSelectBlock({ preview, lines, onAction, disabled }: Previ
           busyBack={sending === "nav-back"}
           busyNext={sending === "nav-next"}
           busyIcon={busyIcon}
-          onBack={() => press("nav-back", { kind: "nav", keys: WIZARD_BACK_KEYS })}
-          onNext={() => press("nav-next", { kind: "nav", keys: WIZARD_NEXT_KEYS })}
+          onBack={() => press("nav-back", { kind: "nav", keys: preview.navigation?.back ?? WIZARD_BACK_KEYS })}
+          onNext={() => press("nav-next", { kind: "nav", keys: preview.navigation?.next ?? WIZARD_NEXT_KEYS })}
         />
       )}
-      {wizard && <QuestionHeading>{preview.question}</QuestionHeading>}
-      {!wizard && <OptionGroupCaption>{t("dialog.chooseOption")}</OptionGroupCaption>}
+      {(wizard || preview.editors) && <QuestionHeading>{preview.question}</QuestionHeading>}
+      {!wizard && <OptionGroupCaption>{preview.caption ?? t("dialog.chooseOption")}</OptionGroupCaption>}
 
       {/* Options. Tapping one selects it outright (the handler drives digit → verify → Enter). Each
           row leads with the pointer chevron (whose preview shows below) then its terminal-menu digit
@@ -136,8 +119,9 @@ export function PreviewSelectBlock({ preview, lines, onAction, disabled }: Previ
                 aria-label={option.pointed ? t("dialog.preview.previewedBelowAria") : undefined}
               />
               <KeyBadge tone={tone}>{option.n}</KeyBadge>
-              <span className="min-w-0 flex-1 text-sm font-medium text-foreground">
+              <span className="font-content min-w-0 flex-1 text-sm font-medium text-foreground">
                 {option.label}
+                {option.description && <span className="block text-xs font-normal leading-snug text-muted-foreground">{option.description}</span>}
               </span>
               {busy ? (
                 <Loader2
@@ -166,94 +150,23 @@ export function PreviewSelectBlock({ preview, lines, onAction, disabled }: Previ
         </div>
       )}
 
-      {/* The question's note. Three surfaces: the terminal-editing banner (everything locked), the
-          attached-note card with edit/remove, or the add-note affordance — plus our own editor. */}
-      {terminalEditing ? (
-        <div className="rounded-lg border border-dashed border-status-working/50 px-3 py-2 text-xs text-status-working">
-          {t("dialog.preview.editingBanner")}
-          {preview.note.text ? (
-            <span className="font-content text-muted-foreground"> ({preview.note.text})</span>
-          ) : null}
-        </div>
-      ) : editorOpen ? (
-        <div className="flex flex-col gap-1.5 rounded-lg border border-border bg-muted/30 px-3 py-2">
-          <label
-            htmlFor="preview-note-text"
-            className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground"
-          >
-            <StickyNote className="size-3.5 shrink-0" />
-            {t("dialog.preview.noteForQuestion")}
-          </label>
-          <textarea
-            id="preview-note-text"
-            ref={editorRef}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            maxLength={NOTE_MAX_LENGTH}
-            rows={2}
-            aria-label={t("dialog.preview.noteTextAria")}
-            placeholder={t("dialog.preview.notePlaceholder")}
-            className="w-full resize-none rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground focus:border-primary/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-          />
-          <div className="flex items-center justify-end gap-1.5">
-            <button
-              type="button"
-              disabled={sending !== null}
-              onClick={() => setEditorOpen(false)}
-              className="rounded-md px-2.5 py-1.5 text-xs text-muted-foreground transition-colors active:bg-muted disabled:opacity-60"
-            >
-              {t("dialog.cancel")}
-            </button>
-            <button
-              type="button"
-              disabled={locked || draft.trim().length === 0}
-              onClick={() => void saveNote()}
-              className="flex items-center gap-1.5 rounded-md border border-primary/60 bg-primary/15 px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors active:bg-primary/25 disabled:opacity-60"
-            >
-              {sending === "note-save" ? busyIcon : null}
-              {t("dialog.preview.saveNote")}
-            </button>
-          </div>
-        </div>
-      ) : preview.note.state === "attached" ? (
-        <div className="flex items-start gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2">
-          <StickyNote className="mt-0.5 size-3.5 shrink-0 text-primary" aria-label={t("dialog.preview.noteAria")} />
-          <span className="font-content min-w-0 flex-1 text-xs text-foreground/90">{preview.note.text}</span>
-          <button
-            type="button"
-            aria-label={t("dialog.preview.editNoteAria")}
-            disabled={locked}
-            onClick={() => {
-              setDraft(preview.note.text);
-              setEditorOpen(true);
-            }}
-            className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors active:bg-muted disabled:opacity-50"
-          >
-            <Pencil className="size-3.5" />
-          </button>
-          <button
-            type="button"
-            aria-label={t("dialog.preview.removeNoteAria")}
-            disabled={locked}
-            onClick={() => void press("note-remove", { kind: "note", text: "" })}
-            className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors active:bg-muted disabled:opacity-50"
-          >
-            {sending === "note-remove" ? busyIcon : <Trash2 className="size-3.5" />}
-          </button>
-        </div>
-      ) : (
-        <button
-          type="button"
-          disabled={locked}
-          onClick={() => {
-            setDraft("");
-            setEditorOpen(true);
-          }}
-          className="flex w-full items-center gap-2 rounded-lg border border-dashed border-border px-3 py-1.5 text-left text-xs text-muted-foreground transition-colors active:bg-muted disabled:opacity-60"
-        >
-          <StickyNote className="size-3.5 shrink-0" />
-          {t("dialog.preview.addNote")}
-        </button>
+      {preview.field ? <AnswerFieldSurface field={preview.field} asked={{ question: preview.question, step: stepOf(preview.steps) }}
+        copy={answerFieldCopy(t("prompt.feedback.answer.help"))} ours={false} anySending={sending !== null} editor={editor} onSend={() => undefined}
+        locked={Boolean(disabled || sending !== null || preview.note.state === "editing" || !onReadEditor)}
+        onOpenEditor={onReadEditor ? () => void onReadEditor("answer") : undefined} busyIcon={busyIcon} showTyped showFocused /> : null}
+      <QuestionNote
+        note={preview.note}
+        disabled={locked || Boolean(preview.editors?.note && !onReadEditor)}
+        saving={sending === "note-save" || sending === "note-remove"}
+        maxLength={NOTE_MAX_LENGTH}
+        onRead={preview.editors?.note && onReadEditor ? (remove) => onReadEditor("question-note", remove) : undefined}
+        onSave={(text) => press(text === "" ? "note-remove" : "note-save", { kind: "note", text })}
+      />
+      {preview.cancelKeys && (
+        <Button type="button" variant="outline" disabled={locked} onClick={() => press("cancel", { kind: "nav", keys: preview.cancelKeys! })} className="min-h-11 w-full text-xs text-muted-foreground">
+          <span className="flex size-3.5 shrink-0 items-center justify-center">{sending === "cancel" ? busyIcon : null}</span>
+          {t("dialog.cancel")}
+        </Button>
       )}
     </PromptPanel>
   );

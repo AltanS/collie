@@ -17,6 +17,7 @@
 // name "the reply path" or its pre-flight describe that removed guard. They go with a later cleanup.
 
 import type { Block, StyledLine } from "../blocks";
+import type { DialogEditorObservation } from "./editor-model";
 
 /**
  * One dialog detector an adapter runs in its `buildBlocks`, named so the unread-dialog card's report
@@ -54,6 +55,9 @@ export interface HarnessAdapter {
   /** The adapter's OWN full block pipeline over the pane's styled lines — for Claude that is the
    *  raw-or-dialog result (dialog lift + chrome strip, else a single raw block). */
   buildBlocks(lines: StyledLine[]): Block[];
+  /** Complete native questionnaire editor bounds/caret, or null for a clipped or unknown view.
+   * Detection only: the shared guarded action owns all reads and keystrokes. */
+  observeDialogEditor?(lines: StyledLine[]): DialogEditorObservation | null;
   /** Re-surface the statusline RUN this agent's chrome-stripping peeled off the mirror tail, one
    *  entry per row, top to bottom. A statusline is an arbitrary user command's output and is
    *  routinely several rows tall (model/cwd/branch on one, permission mode on another), so the

@@ -18,6 +18,8 @@ import { join } from "node:path";
 
 import { devices, type Page } from "@playwright/test";
 
+import { optionalBox } from "../fixtures/layout";
+
 import { asJsonObject, asJsonString } from "../../src/lib/json";
 import { SETUPS, harnessDirs, type HarnessId } from "./harnesses";
 import {
@@ -287,7 +289,7 @@ for (const harness of ["pi", "omp"] as const) {
           await loadOlder.scrollIntoViewIfNeeded();
           const pin = page.getByRole("button", { name: new RegExp(`^${message("chat.pin.label")}:`) });
           const row = await loadOlder.boundingBox();
-          const pinBox = (await pin.isVisible().catch(() => false)) ? await pin.boundingBox() : null;
+          const pinBox = await optionalBox(pin);
           const covered = row !== null && pinBox !== null && pinBox.y < row.y + row.height && row.y < pinBox.y + pinBox.height;
           // Nothing covers the row's centre: the tap lands on the Load older button itself.
           const hit =
@@ -314,7 +316,7 @@ for (const harness of ["pi", "omp"] as const) {
           const rowAgain = (await loadOlder.count()) > 0;
           if (rowAgain) await loadOlder.scrollIntoViewIfNeeded().catch(() => undefined);
           const rowBox = rowAgain ? await loadOlder.boundingBox() : null;
-          const pinNow = (await pin.isVisible().catch(() => false)) ? await pin.boundingBox() : null;
+          const pinNow = await optionalBox(pin);
           const coveredAfter = rowBox !== null && pinNow !== null && pinNow.y < rowBox.y + rowBox.height && rowBox.y < pinNow.y + pinNow.height;
           trail.notes.push(`after the tap: pin ${pinNow === null ? "not shown" : "shown"}, Load older row ${rowAgain ? (coveredAfter ? "covered by the pin" : "clear of the pin") : "gone (no older turns left)"}`);
           return { verdict: !covered && !coveredAfter && hit.includes(message("chat.scrollback.loadOlder")) && grew ? "pass" : "fail", taps: 1, minTaps: 1, note: trail.notes.join("; "), captures: trail.captures };

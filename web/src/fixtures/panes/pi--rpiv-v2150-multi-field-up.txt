@@ -1,0 +1,22 @@
+[0m[38;2;228;101;225m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+ ← [0m[38;2;0;194;0m ■ Plan [0m [0m[48;2;27;47;93m ■ Checks [0m [0m[38;2;160;160;160m □ Delivery [0m [0m[38;2;160;160;160m □ Optional [0m [0m[38;2;130;130;130m ✓ Submit [0m →
+
+
+ [0m[1mWhich checks should the Collie probe run?[0m                                                                              
+
+  1. [0m[38;2;160;160;160m[ ][0m Unit tests
+  [0m[38;2;160;160;160mVerify local behavior.[0m
+  2. [0m[38;2;228;101;225m[✔][0m Integration tests
+  [0m[38;2;160;160;160mVerify the real interaction.[0m
+[0m[1m[38;2;228;101;225m❯ [0m[1m3. [0m[1m[38;2;228;101;225m[✔][0m[1m First line[0m[1m[7m [0m
+[0m[1m[38;2;228;101;225m         Second line[0m
+  Next
+
+[0m[38;2;228;101;225m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+
+ [0m[38;2;130;130;130mEnter to select · ↑/↓ to navigate · Space to toggle · Tab to switch questions · Esc to cancel · Ctrl+] to collapse · S[0m…
+
+
+
+[0m[38;2;130;130;130m/tmp/collie-rpiv-lab.xALl6A/.cache/collie-lab/rpiv/rig/work[0m
+[0m[38;2;130;130;130m↑1.8k ↓295 $0.003 1.1%/200k (auto)                                (openrouter) anthropic/claude-haiku-4.5 • thinking off[0m

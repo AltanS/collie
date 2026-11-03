@@ -325,7 +325,8 @@ on Herdr ("When it runs" above).
   The rig's bridge gets a `bin/` folder under its scratch HOME with a link per binary, first on its PATH, so its
   version read runs the very binary the pane runs (a `claude` shim on the operator's PATH fails under the scratch
   HOME, and a newer `omp` in `~/.local/bin` would be read instead of `~/.bun/bin/omp`).
-- A Claude login in `~/.claude/.credentials.json` with at least 25 minutes left on its access token.
+- By default, a Claude login in `~/.claude/.credentials.json` with at least 25 minutes left on its
+  access token. The explicit OpenRouter mode below needs no Claude login.
 - 8 GB of free memory. The leg stops before a browser or a harness starts when less is free.
 
 ## Run it
@@ -428,7 +429,8 @@ COLLIE_RIG_KEY_FILE=/path/to/.env bunx playwright test -c e2e/rig/playwright.con
 ```
 
 `harnesses.ts` (`SETUPS`) is the one place for this. Claude runs on Haiku (`COLLIE_RIG_CLAUDE_MODEL`)
-with its own login when it runs live, and on a dummy login when it replays. pi and
+with its own login by default when it runs live, or the explicit OpenRouter mode below, and on a dummy
+login when it replays. pi and
 omp run on `openrouter/anthropic/claude-haiku-4.5` and read `OPENROUTER_API_KEY`. Their model calls
 never go to OpenRouter directly: they go to the rig's model stub, which replays them or passes them on
 ("Replay" below).
@@ -443,6 +445,36 @@ scenarios that need a turn. With a recording it replays, and needs no key. Other
 
 The teardown scrubs the key from every text file of the run, the rig's logs and Playwright's test
 results, and drops a screenshot whose capture held it. It prints a count, never the key.
+
+### Claude Code without a Claude login
+
+Use the real Claude Code client with OpenRouter's Anthropic-compatible gateway, live without recording:
+
+```sh
+export COLLIE_RIG_MODEL=live COLLIE_RIG_RECORD=0
+COLLIE_RIG_CLAUDE_PROVIDER=openrouter COLLIE_RIG_KEY_FILE=/path/to/.env \
+  bunx playwright test -c e2e/rig/playwright.config.ts
+COLLIE_RIG_CLAUDE_PROVIDER=openrouter COLLIE_RIG_KEY_FILE=/path/to/.env \
+  bunx playwright test -c e2e/rig/crew.config.ts
+```
+
+The key file must contain `OPENROUTER_API_KEY`. Keep it outside the checkout, protected at mode
+0600. Use disposable agent folders and the binary overrides above for temporary CLI installations.
+The mode sets `ANTHROPIC_BASE_URL=https://openrouter.ai/api`, exports the key as
+`ANTHROPIC_AUTH_TOKEN`, blanks `ANTHROPIC_API_KEY`, and maps the existing Haiku alias to
+`anthropic/claude-haiku-4.5`. No key goes in a generated script or process argument. Claude's scratch
+state is initialized with the existing trust/onboarding helper; no OAuth credentials are copied or
+modified. Missing or unknown provider values do not silently select another authentication mode:
+absent means OAuth, and only `oauth` or `openrouter` are accepted.
+
+This is authentication, not a replay or a substitute agent. All original first-tap assertions,
+turn caps, zero retries and required cases remain. Gateway calls consume OpenRouter credits.
+Record the provider with the commit, binary versions and results. A failed or unreached case still
+blocks readiness; do not adjust the native-screen expectations just to make a gateway run pass.
+Claude recording is refused in gateway mode: that stub forwards to Anthropic, not OpenRouter.
+An explicitly selected replay still uses the upstream dummy login without loading the provider key.
+The ordinary OAuth path, including refresh-token stripping and expiry checks, is unchanged.
+The nightly runner keeps its OAuth preflight; use the explicit Playwright commands for this mode.
 
 ## Replay: recorded model streams for pi, omp and Claude Code
 
@@ -460,7 +492,7 @@ copied, the 25-minute token rule does not apply, and Claude's own calls to Anthr
 records, it runs on the real login (no refresh token) and the stub passes each call to
 `https://api.anthropic.com` with Claude's own headers; the token is in memory for that one request and is
 never logged or stored. A forced live Claude that does not record (`COLLIE_RIG_LIVE=claude`) gets no base
-URL at all: it is the live run of before M67. Claude's summary keeps each `<system-reminder>` of the
+URL at all by default: it is the live run of before M67. Claude's summary keeps each `<system-reminder>` of the
 prompt to its first line, plus any memory file the rig wrote, because the reminders carry the operator's
 own `~/.claude/CLAUDE.md` (Claude finds it on its walk up from the project) and the account's email. It
 leaves Claude's `role: system` items out (the OS version, the session's scratchpad), and adds a digest of

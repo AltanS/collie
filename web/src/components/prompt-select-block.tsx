@@ -9,7 +9,7 @@ import type {
   PromptSubjectLine,
   StyledLine,
 } from "@/lib/blocks";
-import { FEEDBACK_MAX_LENGTH } from "@/lib/prompt-action";
+import { FEEDBACK_MAX_LENGTH } from "@/lib/harness/prompt-model";
 import {
   AnswerFieldSurface,
   TypedFieldCard,

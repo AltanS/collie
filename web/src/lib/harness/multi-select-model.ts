@@ -13,7 +13,9 @@
 // are part of the same contract (harness/dialog-contract.ts wires kind → comparator).
 
 import { sameKeys, sameOptionalKeys, type AnswerFieldPointer } from "./prompt-model";
-import type { WizardAnswer, WizardStepChip } from "./wizard-model";
+import type { WizardAnswer, WizardNavigation, WizardStepChip } from "./wizard-model";
+import type { PreviewNote } from "./preview-model";
+import { sameDialogEditors, type DialogEditors } from "./editor-model";
 
 /**
  * A checkbox question's own answer field (Claude's `Type something` row, ADR 0113): a text input whose
@@ -21,6 +23,12 @@ import type { WizardAnswer, WizardStepChip } from "./wizard-model";
  * every digit is typed into it and `Left` moves its caret, so no toggle, escape or step arrow may fire.
  */
 export interface MultiSelectAnswerField {
+  /** Its presence in the answer follows nonempty text, not an independent checkbox toggle. */
+  autoChecked?: true;
+  /** The native input accepts logical newlines: preserve them rather than flattening an answer. */
+  multiline?: true;
+  /** Display rows only; never a replacement base or editable prefill without complete readback. */
+  textComplete?: false;
   /** The row's digit: it toggles the field's tick. */
   n: number;
   /** `❯` sits on the row: the terminal types every key into it. */
@@ -112,7 +120,7 @@ export type MultiSelectReviewSubmit =
  * `revision` is a stub, so this content signature is the load-bearing freshness check — it MUST be
  * non-empty and MUST change when the region's text changes.
  */
-export type MultiSelectModel =
+export type MultiSelectModel = (
   | {
       phase: "checkbox";
       question: string;
@@ -133,6 +141,9 @@ export type MultiSelectModel =
        * Left/Right navigation) as `PreviewSelectModel.steps`.
        */
       steps: WizardStepChip[] | null;
+      navigation?: WizardNavigation;
+      /** A named cancel key rather than a numbered escape row. */
+      cancelKeys?: string[];
       /**
        * The advance row's literal label — `Submit` on the last question, `Next` on every earlier one.
        * Captured rather than assumed so the button says what the terminal says. The ONE exception: a
@@ -153,7 +164,7 @@ export type MultiSelectModel =
       /**
        * The toggle recipe (see {@link MultiSelectChoreography}). Compared by both comparators.
        */
-      toggle: MultiSelectChoreography;
+      toggle: MultiSelectChoreography | "walk";
       /**
        * The question's answer field, when the harness models one (Claude). Absent ⇒ the question has
        * none, and both comparators compare the model exactly as they would without this member.
@@ -191,6 +202,8 @@ export type MultiSelectModel =
        * and a changed answer is a different screen.
        */
       answers?: WizardAnswer[];
+      /** Only the visible review summary is available; never claim hidden answers/notes are empty. */
+      summaryClipped?: true;
       /**
        * A way back to the checkbox screen as ONE guarded write (opencode: `Left` from `Confirm`).
        * Absent ⇒ the card offers no way back. Compared exactly by both comparators, like every key
@@ -212,7 +225,14 @@ export type MultiSelectModel =
        * independent identity used by client comparisons.
        */
       regionSignature: string;
-    } & MultiSelectReviewSubmit);
+    } & MultiSelectReviewSubmit)
+) & {
+  /** Active step visible only as style: bind it at the bridge too. */
+  styledSignature?: string;
+  /** Optional native read/edit plans; absent leaves existing answer/note recipes unchanged. */
+  editors?: DialogEditors;
+  note?: PreviewNote;
+};
 
 /** The review phase on its own, for the comparator legs and the renderer. */
 type MultiSelectReview = Extract<MultiSelectModel, { phase: "review" }>;
@@ -256,6 +276,9 @@ function sameCheckboxCore(a: MultiSelectCheckbox, b: MultiSelectCheckbox): boole
     sameOptionalKeys(a.advanceKeys, b.advanceKeys) &&
     a.question === b.question &&
     a.toggle === b.toggle &&
+    sameOptionalKeys(a.cancelKeys, b.cancelKeys) &&
+    sameOptionalKeys(a.navigation?.back, b.navigation?.back) &&
+    sameOptionalKeys(a.navigation?.next, b.navigation?.next) &&
     a.options.length === b.options.length &&
     a.options.every((o, i) => o.label === b.options[i]!.label && o.checked === b.options[i]!.checked)
   );
@@ -265,7 +288,8 @@ function sameCheckboxCore(a: MultiSelectCheckbox, b: MultiSelectCheckbox): boole
  *  which the recipe and the advance walk move on purpose). Two models without a field agree. */
 function sameFieldState(a: MultiSelectAnswerField | undefined, b: MultiSelectAnswerField | undefined): boolean {
   if (a === undefined || b === undefined) return a === b;
-  return a.n === b.n && a.text === b.text && a.checked === b.checked;
+  return a.n === b.n && a.text === b.text && a.checked === b.checked &&
+    a.autoChecked === b.autoChecked && a.multiline === b.multiline && a.textComplete === b.textComplete;
 }
 
 /** The review screen's recipe and what it shows: the submit mode, every declared key plan exactly
@@ -278,7 +302,7 @@ function sameReview(a: MultiSelectReview, b: MultiSelectReview): boolean {
   } else if (a.submit !== b.submit) {
     return false;
   }
-  return sameOptionalKeys(a.backKeys, b.backKeys) && sameAnswers(a.answers, b.answers);
+  return a.summaryClipped === b.summaryClipped && sameOptionalKeys(a.backKeys, b.backKeys) && sameAnswers(a.answers, b.answers);
 }
 
 function sameAnswers(a: WizardAnswer[] | undefined, b: WizardAnswer[] | undefined): boolean {
@@ -306,7 +330,8 @@ function sameAnswers(a: WizardAnswer[] | undefined, b: WizardAnswer[] | undefine
  */
 export function multiSelectEquals(a: MultiSelectModel, b: MultiSelectModel): boolean {
   if (a.phase !== b.phase) return false;
-  if (a.signature !== b.signature) return false;
+  if (a.signature !== b.signature || a.styledSignature !== b.styledSignature || !sameDialogEditors(a.editors, b.editors)) return false;
+  if (a.note?.state !== b.note?.state || a.note?.text !== b.note?.text || a.note?.textComplete !== b.note?.textComplete) return false;
   if (a.phase === "checkbox" && b.phase === "checkbox") {
     // The answer field's text and tick are visible state: a toggle or a Submit tapped against a field
     // someone changed at the desk since the render must refuse. So is whether the pointer is on it.
@@ -333,17 +358,19 @@ export function multiSelectEquals(a: MultiSelectModel, b: MultiSelectModel): boo
  * on to Submit and shipping a set the user never saw. Only genuine drift (or the dialog vanishing)
  * resolves to "drifted".
  */
-export function multiSelectIdentity(a: MultiSelectModel, b: MultiSelectModel): boolean {
+export function multiSelectIdentity(a: MultiSelectModel, b: MultiSelectModel, fieldState: "ignore" | "compare" = "ignore"): boolean {
   if (a.phase !== b.phase) return false;
-  if (a.signature !== b.signature) return false;
+  if (a.signature !== b.signature || !sameDialogEditors(a.editors, b.editors, false)) return false;
+  if (a.note?.state !== b.note?.state || a.note?.text !== b.note?.text || a.note?.textComplete !== b.note?.textComplete) return false;
   if (a.phase === "checkbox" && b.phase === "checkbox") {
     // The answer field only by presence and digit: the answer recipe types, clears and ticks it, so
     // its text and tick would read its own keystrokes as drift.
     return (
       sameSteps(a, b, ownMarkOf(a, b)) &&
       sameCheckboxCore(a, b) &&
-      a.field?.n === b.field?.n &&
-      (a.field === undefined) === (b.field === undefined)
+      a.field?.n === b.field?.n && a.field?.autoChecked === b.field?.autoChecked && a.field?.multiline === b.field?.multiline &&
+      (a.field === undefined) === (b.field === undefined) &&
+      (fieldState === "ignore" || sameFieldState(a.field, b.field))
     );
   }
   if (a.phase === "review" && b.phase === "review") return sameReview(a, b);
