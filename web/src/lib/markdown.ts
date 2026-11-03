@@ -68,7 +68,12 @@ export type MdBlock =
   | { kind: "paragraph"; spans: MdSpan[] }
   /** Fenced code. `text` is verbatim — never inline-parsed. */
   | { kind: "code"; lang: string; text: string }
-  | { kind: "list"; ordered: boolean; items: MdSpan[][] }
+  /**
+   * `start` is the first item's number, on an ordered list only. Blocks don't nest, so an indented
+   * bullet under `1.` ends the list and `2.` opens a new one; without its own number that one
+   * rendered as `1.` again, and every option in a "pick one" list read as option 1.
+   */
+  | { kind: "list"; ordered: boolean; start?: number; items: MdSpan[][] }
   | { kind: "quote"; spans: MdSpan[] }
   /**
    * GFM table. `align` is one entry per column (null = unaligned), and every row is padded or
@@ -360,6 +365,7 @@ const FENCE = /^\s*(?:```|~~~)\s*(\S*)/;
 const RULE = /^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/;
 const UL_ITEM = /^\s*[-*+]\s+(.*)$/;
 const OL_ITEM = /^\s*\d+[.)]\s+(.*)$/;
+const OL_NUMBER = /^\s*(\d+)[.)]/;
 const QUOTE = /^\s*>\s?(.*)$/;
 
 // A table is recognised by its DELIMITER row, never by the header alone: a line of prose containing
@@ -514,7 +520,9 @@ export function parseMarkdown(source: string, opts: { images?: boolean } = {}): 
         items.push(parseBounded(item[1] ?? "", [lines[i]!], doc));
         i++;
       }
-      blocks.push({ kind: "list", ordered, items });
+      blocks.push(
+        ordered ? { kind: "list", ordered, start: Number(OL_NUMBER.exec(line)![1]), items } : { kind: "list", ordered, items },
+      );
       continue;
     }
 
