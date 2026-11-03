@@ -42,9 +42,14 @@
       ],
       "patterns": [
         "^Type / to browse commands, or Ctrl\\+P for the palette$",
-        "^msg=interrupt · /queue · /bg · /steer · Ctrl\\+C cancel$"
+        "^msg=interrupt · /queue · /bg · /steer · Ctrl\\+C cancel$",
+        "^試試「.*」$"
       ],
-      "sgr": 3
+      "sgr": 3,
+      "fg": [
+        "rgb(255,255,255)",
+        "rgb(184,134,11)"
+      ]
     },
     "volatile": {
       "above": {
@@ -91,6 +96,28 @@
         "continuationIndent": 0,
         "maxDraftRows": 8,
         "maxTailRows": 16
+      },
+      {
+        "walk": "interior",
+        "top": {
+          "pattern": "^ ─ .*$",
+          "minCells": 8,
+          "column": 1
+        },
+        "prompt": {
+          "pattern": "^ ❯(?: (?<draft>.*))?$",
+          "column": 1
+        },
+        "bottom": {
+          "pattern": "^",
+          "column": 0,
+          "maxColumn": 3,
+          "open": true
+        },
+        "rows": "^(?:\\s.*|\\s*)$",
+        "continuationIndent": 0,
+        "maxDraftRows": 20,
+        "maxTailRows": 5
       }
     ]
   },
