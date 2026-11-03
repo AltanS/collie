@@ -298,8 +298,8 @@ const CARD_FIXTURES = {
   // question, which no recipe here ticks. Every other AGY dialog fixture is one its grammars read.
   // `agy--working.txt` keeps its composer live (`OWN_ESC_STATUS` in `agy/chrome.ts`), so no card shows
   // on a busy pane.
-  agy: { modals: ["agy--ask-multi.txt", "agy--resume-picker-nomatch.txt"], notModals: [] },
-  antigravity: { modals: ["agy--ask-multi.txt", "agy--resume-picker-nomatch.txt"], notModals: [] },
+  agy: { modals: ["agy--ask-multi.txt", "agy--resume-picker-nomatch.txt", "agy--v1412-subagent-band-permission.txt"], notModals: [] },
+  antigravity: { modals: ["agy--ask-multi.txt", "agy--resume-picker-nomatch.txt", "agy--v1412-subagent-band-permission.txt"], notModals: [] },
   // Every opencode picker: composerReady refuses it (the picker shape) and no grammar reads it, so
   // Escape, which closes a picker (probed on 1.18.32), is its way out. The permission steps and every
   // question dialog the grammars lift (single select, multi select, a many-question call, the Confirm
