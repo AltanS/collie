@@ -6,7 +6,7 @@ import { rowText } from "./frame";
 import { isFree } from "./surface";
 
 const idle = idleFor("pi")!;
-const capture = (state: string) => fixtureRows(`pi--gentle-v451-float-${state}--w100.txt`);
+const capture = (state: string) => fixtureRows(`pi--v140-gentle-float-${state}--w100.txt`);
 
 describe("Gentle Shell 4.5.1 float editor on herdr-core (Pi 1.4.0)", () => {
   it("recognizes the empty input and hides its placeholder from the draft", () => {

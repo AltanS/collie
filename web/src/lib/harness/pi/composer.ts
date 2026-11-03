@@ -39,7 +39,7 @@
 import { MIRROR_BG, MIRROR_FG } from "../../ansi";
 import { lineText, type StyledLine } from "../../blocks";
 import { findInputFrame, type Frame } from "../../surface/frame";
-import { loadProfiles } from "../../surface/profile";
+import { requireProfile } from "../../surface/profile";
 
 const RULE = /^─{8,}$/;
 /** A rule carrying a label: a turn label (`── ⠴ Working ───`) or a scroll mark (`─── ↑ 2 more ───`). */
@@ -254,12 +254,12 @@ function insetComposer(lines: StyledLine[], tail: PiTail): PiComposer | null {
   return { layout: "inset", top, bottom, statusStart: tail.statusStart, end: tail.end };
 }
 
+const PI_IDLE = requireProfile("pi").idle;
+
 /** Gentle Shell replaces Pi's editor with an open left rail. Share the profile's complete-frame
  * checks with the send guard, so the phone reads the same draft the bridge verifies. */
 function gentleFrame(lines: StyledLine[]): Frame | null {
-  const idle = loadProfiles().get("pi")?.idle;
-  if (!idle) return null;
-  const frame = findInputFrame(lines, idle);
+  const frame = findInputFrame(lines, PI_IDLE);
   return frame && text(lines[frame.top]!).startsWith(" ▎ ") ? frame : null;
 }
 

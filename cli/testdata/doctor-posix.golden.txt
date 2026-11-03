@@ -81,7 +81,7 @@ local:
   ✓        hook-python3             /fake/python3
   skipped: agent-sessions           the bridge reports no agent panes → start an
                                     agent in a pane, then re-run `collie doctor`
-  ✓        journal-roots            1 of 12 roots present — claude:
+  ✓        journal-roots            1 of 13 roots present — claude:
                                     /home/pat/.claude/projects (resolved from
                                     /home/pat; the BRIDGE resolves them from ITS
                                     OWN user's home)
@@ -202,7 +202,7 @@ local:
   ✓        hook-python3             /fake/python3
   skipped: agent-sessions           the bridge reports no agent panes → start an
                                     agent in a pane, then re-run `collie doctor`
-  ✓        journal-roots            1 of 12 roots present — claude:
+  ✓        journal-roots            1 of 13 roots present — claude:
                                     /home/pat/.claude/projects (resolved from
                                     /home/pat; the BRIDGE resolves them from ITS
                                     OWN user's home)

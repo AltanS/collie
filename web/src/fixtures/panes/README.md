@@ -3652,7 +3652,7 @@ the core adapter names an agent only from that report, so the omp profile above 
 
 ### Local Gentle Shell 4.5.1 float editor (2026-11-02)
 
-`pi--gentle-v451-float-*--w100.txt` were captured without editing from an isolated
+`pi--v140-gentle-float-*--w100.txt` were captured without editing from an isolated
 Gentle Shell 4.5.1 / Pi 1.4.0 pane on herdr-core 0.1.16, attached at 100 columns
 and 30 rows. An input extension consumed messages before any model call. The
 captures cover an empty editor, a draft, a multiline draft and a test selector

@@ -628,7 +628,11 @@ export function resolveJournalRoots(
       "COLLIE_PI_ROOT",
       env.PI_CODING_AGENT_DIR
         ? join(env.PI_CODING_AGENT_DIR, "sessions")
-        : [join(home, ".omp", "agent", "sessions"), join(home, ".pi", "agent", "sessions"), join(home, ".gentle-shell", "agent", "sessions")],
+        : [
+            join(home, ".omp", "agent", "sessions"),
+            join(home, ".pi", "agent", "sessions"),
+            join(home, ".gentle-shell", "agent", "sessions"),
+          ],
       env,
     ),
     // OpenCode keeps one SQLite database at the top of its XDG data dir, not per-session files.

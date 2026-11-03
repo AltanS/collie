@@ -47,7 +47,6 @@ export function walkGroupKey(agent: string, model: PromptModel): string {
 }
 
 export const WALK_PAIRS: readonly WalkPair[] = [
-  ["pi", "pi--gentle-v451-float-dialog--w100.txt", "pi--gentle-v451-float-dialog-moved--w100.txt"],
   ["grok", "grok--model-picker.txt", "grok--model-picker-moved.txt"],
   ["grok", "grok--model-window.txt", "grok--model-window-moved.txt"],
   ["grok", "grok--model-effort.txt", "grok--model-effort-moved.txt"],
@@ -132,6 +131,8 @@ export const WALK_PAIRS: readonly WalkPair[] = [
   ["pi", "pi--v0871-permission-gate-narrow.txt", "pi--v0871-permission-gate-narrow-moved.txt"],
   // gentle-pi 4.2.0's review-consent screen (pi 1.3.0): no rule frame, footer last; the Effect paragraph follows the pointer.
   ["pi", "pi--v130-gentle-review-consent.txt", "pi--v130-gentle-review-consent-moved.txt"],
+  // A test selector under Gentle Shell 4.5.1 (pi 1.4.0) on herdr-core, its pointer on each of two choices (issue 660).
+  ["pi", "pi--v140-gentle-float-dialog--w100.txt", "pi--v140-gentle-float-dialog-moved--w100.txt"],
   // Kiro V3 2.33.0: the startup workspace trust dialog, before and after one Down at each width.
   ["kiro", "kiro--v3-workspace-trust-continue-w120.txt", "kiro--v3-workspace-trust-exit-w120.txt"],
   ["kiro", "kiro--v3-workspace-trust-continue-w60.txt", "kiro--v3-workspace-trust-exit-w60.txt"],

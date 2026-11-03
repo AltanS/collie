@@ -58,8 +58,6 @@ const LIFTS = new Map<string, Expect>([
   ["questionnaire-submit-ready", "review"],
 ]);
 const LIFTS_397 = new Map<string, Expect>([
-  ["pi--gentle-v451-float-dialog--w100.txt", "walk"],
-  ["pi--gentle-v451-float-dialog-moved--w100.txt", "walk"],
   ["pi--v110-single.txt", "walk"],
   ["pi--v110-single-desc.txt", "walk"],
   ["pi--v110-single-moved.txt", "walk"],
@@ -101,6 +99,10 @@ const LIFTS_397 = new Map<string, Expect>([
   // pi 1.3.0's stock question through a herdr-core bridge: a read with no styling at all (M78 spec 07).
   ["pi--v130-core-question--w120.txt", "walk"],
   ["pi--v130-core-question-moved--w120.txt", "walk"],
+  // A test selector under Gentle Shell 4.5.1 (pi 1.4.0) through herdr-core, in place of its float
+  // editor, its pointer on each of two choices (issue 660).
+  ["pi--v140-gentle-float-dialog--w100.txt", "walk"],
+  ["pi--v140-gentle-float-dialog-moved--w100.txt", "walk"],
 ]);
 /** Screens with a pi modal up that stay raw: the Escape card's evidence. */
 const RAW_MODALS = new Set([
