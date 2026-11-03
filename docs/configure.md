@@ -1032,6 +1032,7 @@ Collie reads your Claude login file on this machine and asks Anthropic's usage e
 call Claude Code's /usage makes; nothing of the login is stored or sent elsewhere. Collie asks only
 while a pane of that harness is open, and it skips a login file that others may read (anything
 looser than `0600`) and a login that has expired. Codex sends no token: it reads its own files.
+Collie asks a vendor at most once in five minutes per agent, and after an HTTP 429 it backs off for 15 to 60 minutes, honouring the `Retry-After` header.
 
 | form | what it turns on |
 | --- | --- |
