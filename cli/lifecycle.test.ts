@@ -10,6 +10,7 @@ import {
   type FakeFiles,
   fakeFiles,
   fakeLinkFs,
+  fakeOps,
   HANDLER_FILE,
   HOME,
   ROOT,
@@ -17,6 +18,7 @@ import {
   type Scripted,
 } from "./fakes.ts";
 import { leadStore, member, peerStore } from "../bridge/crew/fixtures.ts";
+import { TrustStore, type TrustStoreData } from "../bridge/crew/trust-store.ts";
 import { hostFor, type Host } from "../bridge/host.ts";
 import { serializeTrustStore } from "../bridge/crew/trust-store.ts";
 import { EXIT, type Io } from "./io.ts";
@@ -364,6 +366,71 @@ describe("the pidfile guard", () => {
       expect(h.exec.killed).toEqual([]);
       expect(h.files.exists(`${CONFIG}/collie.pid`)).toBe(false);
     }
+  });
+});
+
+// Where a multiplexer's machine list and the crew differ, after the banner (M84/04). The machine
+// lists are asked through the real providers over the fake `Exec`; only the answers are scripted.
+describe("start, and the crew delta", () => {
+  const CORE_LIST = "hc machine ls --json";
+  const ONE_MACHINE = JSON.stringify({ machines: [{ target: "vps", name: "vps" }] });
+  const LINE = "herdr-core knows 1 machine that is not in this crew: vps. Add it with `collie crew add`.";
+
+  const listAnswer = (stdout: string): NonNullable<Scripted["answers"]> => [[CORE_LIST, { stdout }]];
+
+  /** A start whose crew seams read `store`, with `hc` answering `list` (absent: no `hc` at all). */
+  function crewHarness(store: TrustStoreData | null, list: string | null, over: HarnessOptions = {}): Harness {
+    const h = harness({
+      ...over,
+      absent: ["herdr", "ssh", ...(list === null ? ["hc"] : [])],
+      answers: [...(list === null ? [] : listAnswer(list)), ...(over.answers ?? [])],
+    });
+    let contents = store === null ? null : serializeTrustStore(store);
+    h.deps.crew = {
+      store: new TrustStore("/state", { read: async () => contents, write: async (_p, d) => void (contents = d) }),
+      ops: fakeOps(),
+    };
+    return h;
+  }
+
+  test("prints the line on stderr after the banner on a lead", async () => {
+    const h = crewHarness(leadStore(), ONE_MACHINE);
+    expect(await cmdStart(h.deps)).toBe(EXIT.OK);
+    expect(h.io.stderr).toContain(LINE);
+    expect(h.io.stdout).not.toContain(LINE);
+    expect(h.io.stdout.some((l) => l.startsWith("bridge started"))).toBe(true);
+  });
+
+  test("prints it on a solo collie too", async () => {
+    const h = crewHarness(null, ONE_MACHINE);
+    expect(await cmdStart(h.deps)).toBe(EXIT.OK);
+    expect(h.io.stderr).toContain(LINE);
+  });
+
+  test("prints nothing on a peer, and asks nothing", async () => {
+    const h = crewHarness(peerStore(), ONE_MACHINE);
+    expect(await cmdStart(h.deps)).toBe(EXIT.OK);
+    expect(h.io.stderr).not.toContain(LINE);
+    expect(h.exec.calls).not.toContain(CORE_LIST);
+  });
+
+  test("prints nothing on Windows, and asks nothing", async () => {
+    const h = crewHarness(leadStore(), ONE_MACHINE, { host: hostFor("win32") });
+    await cmdStart(h.deps);
+    expect(h.io.stderr).not.toContain(LINE);
+    expect(h.exec.calls).not.toContain(CORE_LIST);
+  });
+
+  test("prints nothing when no multiplexer has a machine list", async () => {
+    const h = crewHarness(leadStore({ peers: [member({ memberId: "nas" })] }), null);
+    expect(await cmdStart(h.deps)).toBe(EXIT.OK);
+    expect(h.io.stderr.filter((l) => l.includes("machine"))).toEqual([]);
+  });
+
+  test("a start that failed prints no delta", async () => {
+    const h = crewHarness(leadStore(), ONE_MACHINE, { answers: [["systemctl --user enable --now collie", { code: 1 }]] });
+    expect(await cmdStart(h.deps)).not.toBe(EXIT.OK);
+    expect(h.io.stderr).not.toContain(LINE);
   });
 });
 

@@ -39,10 +39,12 @@ import {
   fakeExec,
   fakeFiles,
   fakeLinkFs,
+  fakeOps,
   HOME,
   ROOT,
   type Scripted,
   type SeededFiles,
+  type SeededOps,
   STATE,
 } from "./fakes.ts";
 import { EXIT } from "./io.ts";
@@ -288,6 +290,8 @@ function harness(
     root?: string;
     /** The two `config.toml` files this run read. No file at all is the default. */
     configLayer?: ConfigFileLayer;
+    /** Wires the ops store, seeded with these records — which is what turns `crew-candidates` on. */
+    ops?: SeededOps;
   } = {},
 ): Harness {
   const contents = initial === null ? null : serializeTrustStore(initial);
@@ -314,6 +318,7 @@ function harness(
       files,
       link: fakeLinkFs(over.link),
       store: new TrustStore(STATE, io),
+      ops: over.ops === undefined ? undefined : fakeOps(over.ops),
       fetch: async (url, init) => {
         requests.push(url);
         sent.push({ url, headers: Object.fromEntries(new Headers(init?.headers)) });
@@ -1271,6 +1276,86 @@ describe("collie doctor — the local checks", () => {
 });
 
 // ── The clock ────────────────────────────────────────────────────────────────
+
+// `crew-candidates` (M84/04): where a multiplexer's machine list and the crew differ. The lists are
+// asked through the real providers over the fake `Exec`; the other checks' answers stay HEALTHY.
+describe("collie doctor — crew-candidates", () => {
+  const CORE_LIST = "hc machine ls --json";
+  const core = (...targets: readonly string[]): Scripted["answers"] => [
+    ...(HEALTHY_ANSWERS ?? []),
+    [CORE_LIST, { stdout: JSON.stringify({ machines: targets.map((target) => ({ target })) }) }],
+  ];
+  const LINE = "herdr-core knows 1 machine that is not in this crew: vps. Add it with `collie crew add`.";
+  const FORGOTTEN =
+    "laptop is in this crew, but herdr-core no longer lists it. Keep it, or drop it with `collie crew remove laptop`.";
+  const laptop = (source: string | null): SeededOps => ({
+    laptop: { sshHost: "laptop", path: "/opt/collie", port: 8787, recordedAt: T0, source },
+  });
+
+  test("is one ok finding whose detail joins the lines with `; `", async () => {
+    const h = harness(LEAD, [], { answers: core("vps"), ops: laptop("herdr-core") });
+    const { byCheck, code } = await findings(h);
+    const finding = byCheck.get("crew-candidates");
+    expect(finding?.status).toBe("ok");
+    expect(finding?.remedy).toBeNull();
+    expect(finding?.detail).toBe(`${LINE}; ${FORGOTTEN}`);
+    expect(code).toBe(EXIT.OK);
+  });
+
+  test("--json carries the delta as data", async () => {
+    const h = harness(LEAD, [], { answers: core("vps"), ops: laptop("herdr-core") });
+    const { byCheck } = await findings(h);
+    expect(byCheck.get("crew-candidates")?.data).toEqual({
+      missing: [{ source: "herdr-core", targets: ["vps"] }],
+      forgotten: [{ memberId: "laptop", source: "herdr-core" }],
+    });
+  });
+
+  test("the plain rendering prints the line", async () => {
+    const h = harness(LEAD, [], { answers: core("vps"), ops: laptop("herdr-core") });
+    expect(await cmdDoctor(h.deps, [])).toBe(EXIT.OK);
+    expect(h.io.stdout.join("\n")).toContain("crew-candidates");
+  });
+
+  test("is omitted, not skipped, when nothing differs", async () => {
+    const h = harness(LEAD, [], { answers: core("laptop"), ops: laptop("herdr-core") });
+    const { raw } = await findings(h);
+    expect(raw.some((f) => f.check === "crew-candidates")).toBe(false);
+  });
+
+  test("is omitted when there is no machine list at all", async () => {
+    const h = harness(LEAD, [], { ops: laptop(null), absent: ["hc", "herdr", "ssh"] });
+    const { raw } = await findings(h);
+    expect(raw.some((f) => f.check === "crew-candidates")).toBe(false);
+  });
+
+  test("a member with no source is not forgotten", async () => {
+    const h = harness(LEAD, [], { answers: core("vps"), ops: laptop(null) });
+    const { byCheck } = await findings(h);
+    expect(byCheck.get("crew-candidates")?.detail).toBe(LINE);
+  });
+
+  test("a peer gets no finding and no machine-list call", async () => {
+    const h = harness(peerStore(), [], { answers: core("vps"), ops: {} });
+    const { raw } = await findings(h);
+    expect(raw.some((f) => f.check === "crew-candidates")).toBe(false);
+    expect(h.calls).not.toContain(CORE_LIST);
+  });
+
+  test("a Windows host gets no finding and no machine-list call", async () => {
+    const h = harness(LEAD, [], { answers: core("vps"), ops: {} });
+    h.deps = { ...h.deps, host: hostFor("win32") };
+    await cmdDoctor(h.deps, ["--json"]);
+    expect(h.calls).not.toContain(CORE_LIST);
+  });
+
+  test("an install without the ops seam reads exactly as before", async () => {
+    const h = harness(LEAD, [], { answers: core("vps") });
+    const { raw } = await findings(h);
+    expect(raw.some((f) => f.check === "crew-candidates")).toBe(false);
+    expect(h.calls).not.toContain(CORE_LIST);
+  });
+});
 
 describe("collie doctor — the clock (§8.6's ±5m window)", () => {
   const withDate = (delta: number) =>

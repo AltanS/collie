@@ -4,6 +4,8 @@
 // prints it — `cli/history.ts` is the first — and so the two can never disagree about what a
 // finding is. Nothing here reaches the world: these are four object literals and a type.
 
+import type { JsonValue } from "../bridge/json.ts";
+
 export type DoctorStatus = "ok" | "warn" | "error" | "skipped";
 
 /** Which machine a finding is ABOUT. See {@link Finding.scope}. */
@@ -33,6 +35,11 @@ export interface Finding {
    * never by the array it sits in.
    */
   readonly scope?: FindingScope;
+  /**
+   * Machine-readable detail for `--json`, beside the prose in `detail`. Absent for every check that
+   * has none, which is nearly all of them; the renderers never read it.
+   */
+  readonly data?: JsonValue;
 }
 
 /** Stamp a finding as being about the crew rather than about this machine (ADR 0050). */

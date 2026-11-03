@@ -52,6 +52,8 @@ export interface RosterEntry {
   readonly sshHost: string;
   /** That destination resolved, or the destination itself when resolution was unavailable. */
   readonly key: string;
+  /** Which multiplexer's list suggested it when `crew add` enrolled it (`OpsRecord.source`); `null` or absent when none. */
+  readonly source?: string | null;
 }
 
 /** One machine, after the merge. */

@@ -8,6 +8,8 @@ import { realLinkFs } from "./link.ts";
 import { realExec, realFiles, realNet, waitReady } from "./sys.ts";
 import type { UpdateDeps } from "./update.ts";
 import { githubCredential } from "../bridge/update.ts";
+import { CrewOpsStore } from "../bridge/crew/ops-store.ts";
+import { TrustStore } from "../bridge/crew/trust-store.ts";
 
 // The dependency sets a verb is handed, built from the real seams. They live HERE, and not in the
 // dispatcher, because `cli/main.ts` — the bootstrap that must run on a checkout whose `node_modules`
@@ -45,6 +47,8 @@ export function lifecycleDeps(io: Io, ui: Ui | null = null, opts: { readonly rep
     // `io` (see `LifecycleDeps.serve`) — unused on this plain path, where `start` always passes back
     // the same `io` this object already closes over.
     serve: (into) => Promise.resolve(cmdServe(into === undefined ? deps : { ...deps, io: into })),
+    // Read by `start` to say where a multiplexer's machine list and the crew differ (M84/04).
+    crew: { store: new TrustStore(ctx.stateDir), ops: new CrewOpsStore(ctx.stateDir) },
   };
   return deps;
 }

@@ -67,6 +67,7 @@ import { herdTagFor } from "../bridge/sessions.ts";
 import { compareSemver } from "../bridge/update.ts";
 import { sameBuild } from "../bridge/version.ts";
 import { collieVersionBare, DEFAULT_SERVE_PORT, type CliContext } from "./context.ts";
+import { crewDelta, deltaLines } from "./crew-delta.ts";
 import { groupMembersByHost } from "./host-groups.ts";
 import { EXIT, type Io } from "./io.ts";
 import { dropEnvAssignments } from "./push-keys.ts";
@@ -1349,6 +1350,7 @@ export async function cmdCrewStatus(deps: CrewDeps, args: readonly string[]): Pr
   if (data === null || data.crew === null) {
     deps.io.out("mode: solo — this collie is not in a crew (no trust store, or an empty one).");
     deps.io.out(soloCrewHint(deps.host));
+    for (const line of await crewDeltaLines(deps)) deps.io.out(line);
     return EXIT.OK;
   }
 
@@ -1398,6 +1400,7 @@ export async function cmdCrewStatus(deps: CrewDeps, args: readonly string[]): Pr
   const members = data.lead === null ? data.peers : [data.lead, ...data.peers];
   if (members.length === 0) {
     deps.io.out("members: none yet — mint an invite and run `collie join` on the other machine.");
+    for (const line of await crewDeltaLines(deps)) deps.io.out(line);
     return EXIT.OK;
   }
 
@@ -1543,8 +1546,15 @@ export async function cmdCrewStatus(deps: CrewDeps, args: readonly string[]): Pr
     for (const l of schemedAddressLines(m.memberId, m.address, m.role)) row(l.text, l.tone);
     for (const l of unreachableLeadLines(m)) row(l.text, l.tone);
   }
+  // Under `--no-probe` too: nothing in the delta dials anyone (`cli/crew-delta.ts`).
+  for (const line of await crewDeltaLines(deps)) emit(line, "dim");
   if (deps.ui != null) await deps.ui.crewMembers(banked);
   return EXIT.OK;
+}
+
+/** Where a multiplexer's machine list and this crew differ, as `collie start` and `doctor` print it (M84/04). */
+async function crewDeltaLines(deps: CrewDeps): Promise<readonly string[]> {
+  return deltaLines(await crewDelta(deps));
 }
 
 /**
