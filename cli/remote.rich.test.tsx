@@ -276,8 +276,10 @@ describe("crew add, drawn", () => {
       // `serve` off the wrong `Io`), so their absence here — condensed into the `↻` rows above,
       // rather than printed as their own lines — is the regression check.
       for (const line of serveChatter(8788)) expect(frame).not.toContain(line);
-      // The verdict is the last thing on screen.
-      expect(frame.trimEnd().endsWith('"nas" is a member of "the herd" and answered at 100.64.0.9:8787')).toBe(true);
+      // The verdict is the last thing on screen, and it names the multiplexer leg 3 decided (M84/03).
+      expect(
+        frame.trimEnd().endsWith('"nas" is a member of "the herd" and answered at 100.64.0.9:8787, and runs on herdr'),
+      ).toBe(true);
       // A spinner never survives the run.
       expect(frame).not.toMatch(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/);
       expect(h.closes).toBe(1);
