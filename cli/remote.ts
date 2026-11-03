@@ -1155,6 +1155,20 @@ async function chooseCandidateHost(deps: Wired): Promise<Chosen> {
   };
 }
 
+/** The refusal of one `--peer-address` for several picks. */
+export const PEER_ADDRESS_SEVERAL_PICKS =
+  "error: --peer-address names one machine; drop the flag, and each picked host is asked for its own address.";
+
+/**
+ * A summary line's reason: the `error:` line's text before its first ` — `, or the whole line when
+ * it has none. The long reasons are wrapped over several lines, so their first line ends mid-sentence;
+ * the clause before the dash is the one that names what went wrong.
+ */
+export function summaryReason(line: string): string {
+  const dash = line.indexOf(" — ");
+  return dash === -1 ? line : line.slice(0, dash);
+}
+
 /** Lines a pick's run said, kept for the summary a multi-host run ends with. */
 interface RunWatch {
   readonly deps: Wired;
@@ -1162,6 +1176,8 @@ interface RunWatch {
   firstError(): string | null;
   /** The member id the run's verdict named; `null` when it reached none. */
   joinedAs(): string | null;
+  /** The multiplexer leg 3 decided, as the verdict carried it; `null` when none was named. */
+  runsOn(): string | null;
   /** A confirm that nobody was there to answer: the run cannot continue and neither can the loop. */
   aborted(): boolean;
 }
@@ -1170,6 +1186,7 @@ interface RunWatch {
 function watchRun(deps: Wired): RunWatch {
   let first: string | null = null;
   let joined: string | null = null;
+  let runsOn: string | null = null;
   let aborted = false;
   return {
     deps: {
@@ -1183,7 +1200,10 @@ function watchRun(deps: Wired): RunWatch {
         },
       },
       emit: (event) => {
-        if (event.kind === "verdict" && event.ok) joined = /^"([^"]+)"/u.exec(event.text)?.[1] ?? joined;
+        if (event.kind === "verdict" && event.ok) {
+          joined = /^"([^"]+)"/u.exec(event.text)?.[1] ?? joined;
+          runsOn = event.runsOn ?? runsOn;
+        }
         deps.emit(event);
       },
       confirm: async (question) => {
@@ -1192,8 +1212,9 @@ function watchRun(deps: Wired): RunWatch {
         return answer;
       },
     },
-    firstError: () => first,
+    firstError: () => (first === null ? null : summaryReason(first)),
     joinedAs: () => joined,
+    runsOn: () => runsOn,
     aborted: () => aborted,
   };
 }
@@ -1214,6 +1235,13 @@ async function crewAddRun(deps: Wired, args: readonly string[]): Promise<number>
     deps.io.err("error: --label names one machine; pick one host or drop the flag.");
     return EXIT.USAGE;
   }
+  // The same for the address the lead dials: handed to every pick, it would enroll each host at the
+  // FIRST one's address, and a fresh host with no bind of its own would not even ask (VM lab, BUG 2).
+  // `--path` and `--instance` may well be the same on every host, so they stand.
+  if (picks.length > 1 && flags["peer-address"] !== undefined) {
+    deps.io.err(PEER_ADDRESS_SEVERAL_PICKS);
+    return EXIT.USAGE;
+  }
   const [only] = picks;
   // One host reads exactly as it always did: no wrapper, no summary.
   if (picks.length === 1 && only !== undefined) return await crewAddHost(deps, flags, only);
@@ -1232,11 +1260,13 @@ async function crewAddRun(deps: Wired, args: readonly string[]): Promise<number>
     const code = await crewAddHost(watch.deps, flags, pick);
     worst = Math.max(worst, code);
     const joined = watch.joinedAs();
+    const runsOn = watch.runsOn();
     results.push({
       host: pick.host,
       line:
         code === EXIT.OK && joined !== null
-          ? `✓ joined as "${joined}"`
+          ? // The rich view keeps only the last host's verdict, so each line carries its own mux.
+            `✓ joined as "${joined}"${runsOn === null ? "" : `, runs on ${runsOn}`}`
           : `✗ ${watch.firstError() ?? `crew add did not finish (exit ${code})`}`,
     });
     if (watch.aborted()) break;
@@ -2424,6 +2454,8 @@ async function verdict(
         // The multiplexer leg 3 decided, so the last line says what the member drives as well as that
         // it joined. None is named when none runs there: that caveat already printed in leg 3.
         (runsOn === null ? "" : `, and runs on ${runsOn}`),
+      // The same decision as data, for the summary line a several-host run ends with.
+      runsOn,
     });
     return EXIT.OK;
   }

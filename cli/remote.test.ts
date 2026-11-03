@@ -936,8 +936,13 @@ describe("collie crew add", () => {
       ...legs.map((leg) => `build-box:${leg}`),
     ]);
     expect(h.closed).toBe(2);
-    // The summary is the last thing printed, one line per host, in the order they were named.
-    expect(h.io.stdout.slice(-3)).toEqual(["", 'attic      ✓ joined as "nas"', 'build-box  ✓ joined as "build-box"']);
+    // The summary is the last thing printed, one line per host, in the order they were named, and each
+    // line names the multiplexer that host runs on: the rich view shows only the last verdict.
+    expect(h.io.stdout.slice(-3)).toEqual([
+      "",
+      'attic      ✓ joined as "nas", runs on herdr',
+      'build-box  ✓ joined as "build-box", runs on herdr',
+    ]);
   });
 
   test("the summary names a failed host's first error line, and the exit code is the worst one", async () => {
@@ -952,9 +957,10 @@ describe("collie crew add", () => {
     expect(h.calls.filter((c) => c.host === "build-box" && c.leg === "enroll")).toHaveLength(1);
     expect(h.io.stdout.slice(-4)).toEqual([
       "",
-      'attic      ✓ joined as "nas"',
-      "vps        ✗ ssh could not reach vps — ssh: connect to host vps port 22: Connection refused",
-      'build-box  ✓ joined as "build-box"',
+      'attic      ✓ joined as "nas", runs on herdr',
+      // The reason is the text before the first " — ": the clause that names what went wrong.
+      "vps        ✗ ssh could not reach vps",
+      'build-box  ✓ joined as "build-box", runs on herdr',
     ]);
   });
 
@@ -985,8 +991,8 @@ describe("collie crew add", () => {
     });
     h.deps.confirm = () => asked++ > 0;
     expect(await run(h, [])).toBe(EXIT.STATE);
-    expect(h.io.stdout.at(-2)).toBe("attic      ✗ left alone — nothing was installed, configured or enrolled.");
-    expect(h.io.stdout.at(-1)).toBe('build-box  ✓ joined as "build-box"');
+    expect(h.io.stdout.at(-2)).toBe("attic      ✗ left alone");
+    expect(h.io.stdout.at(-1)).toBe('build-box  ✓ joined as "build-box", runs on herdr');
   });
 
   test("a confirm nobody can answer stops the loop after the first host", async () => {
@@ -1006,6 +1012,55 @@ describe("collie crew add", () => {
     expect(await run(one, ["--label", "desk"])).toBe(EXIT.OK);
     expect(one.calls.find((c) => c.leg === "enroll")!.script).toContain("'--label' 'desk'");
     expect(one.io.stdout.some((l) => l.includes("(from"))).toBe(false);
+  });
+
+  test("--peer-address with two picks is refused before any ssh; each host gives its own address", async () => {
+    const h = harness({ sshConfig: "Host attic\nHost build-box", prompt: "1 2" });
+    expect(await run(h, ["--peer-address", "192.168.77.2"])).toBe(EXIT.USAGE);
+    expect(h.io.stderr).toEqual([
+      "error: --peer-address names one machine; drop the flag, and each picked host is asked for its own address.",
+    ]);
+    expect(h.calls).toHaveLength(0);
+
+    const one = harness({ sshConfig: "Host attic\nHost build-box", prompt: "2" });
+    expect(await run(one, ["--peer-address", "192.168.77.2"])).toBe(EXIT.OK);
+    expect(text(one.io)).toContain("192.168.77.2:8787 (what this lead will dial)");
+  });
+
+  test("a host with no multiplexer decided keeps the line as it was: no mux is named", async () => {
+    // attic has no mux set and none running; build-box keeps the herdr its `.env` already names.
+    const h = harness({
+      sshConfig: "Host attic\nHost build-box",
+      prompt: "1 2",
+      probes: { attic: { envmux: "" } },
+      answers: { "mux-probe": { stdout: muxProbeOut([]) } },
+      afterEach: [leadStore({ peers: [NAS] }), leadStore({ peers: [BUILD_BOX] })],
+    });
+    expect(await run(h, [])).toBe(EXIT.OK);
+    expect(h.io.stdout.slice(-2)).toEqual([
+      'attic      ✓ joined as "nas"',
+      'build-box  ✓ joined as "build-box", runs on herdr',
+    ]);
+  });
+
+  test("a wrapped reason ends at its dash, not in the middle of the sentence", async () => {
+    const h = harness({
+      sshConfig: "Host attic\nHost build-box",
+      prompt: "1 2",
+      answers: {
+        enroll: {
+          code: 1,
+          stderr:
+            "error: refusing to enroll over http:// — the invite token and the crew secret would cross the\n" +
+            "       network in the clear.\n",
+        },
+      },
+    });
+    expect(await run(h, [])).not.toBe(EXIT.OK);
+    expect(h.io.stdout.slice(-2)).toEqual([
+      "attic      ✗ refusing to enroll over http://",
+      "build-box  ✗ refusing to enroll over http://",
+    ]);
   });
 
   test("one unknown token in a list adds nothing, and the error names the token", async () => {

@@ -30,7 +30,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Changed
 
-- **`collie crew add` takes several hosts from its list in one run.** Answer the picker with numbers or names separated by spaces or commas, or with `all`. Each host gets its own run and its own confirm, a host that fails or is declined does not stop the next, and a summary at the end gives one line per host, with the first error that host printed. A machine the list names joins under that name, so the phone shows the same names as `hc machine ls`. `--label` still wins, and it is refused when you pick more than one host. The ops record keeps which list suggested each host.
+- **`collie crew add` takes several hosts from its list in one run.** Answer the picker with numbers or names separated by spaces or commas, or with `all`. Each host gets its own run and its own confirm, a host that fails or is declined does not stop the next, and a summary at the end gives one line per host: the member id and the multiplexer it runs on, or the reason of the first error that host printed. A machine the list names joins under that name, so the phone shows the same names as `hc machine ls`. `--label` still wins, and it is refused when you pick more than one host. `--peer-address` is refused then too, because each host is asked for its own address. The ops record keeps which list suggested each host.
 
 ### Fixed
 

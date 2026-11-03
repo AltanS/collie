@@ -170,8 +170,12 @@ export type AddEvent =
    */
   | { readonly kind: "restart-begin"; readonly label: string }
   | { readonly kind: "restart-end"; readonly ok: boolean }
-  /** The last word. A failing verdict has no plain form — the `error:` lines above it are the verdict. */
-  | { readonly kind: "verdict"; readonly ok: boolean; readonly text: string };
+  /**
+   * The last word. A failing verdict has no plain form — the `error:` lines above it are the verdict.
+   * `runsOn` is the multiplexer leg 3 decided, when a join names one; `text` already says it, and the
+   * field is what a several-host run's summary reads.
+   */
+  | { readonly kind: "verdict"; readonly ok: boolean; readonly text: string; readonly runsOn?: string | null };
 
 /**
  * The value column of `crew add`'s `✓` rows.

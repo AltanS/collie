@@ -62,9 +62,9 @@ collie crew add <ssh-host> # one named host, no list
 
 A picked machine joins under the name Herdr gives it, so the phone shows the same names as
 `herdr machine list` and `hc machine ls`. `--label <name>` sets another name, for one machine only.
-With several picks, `--label` is refused. A machine the core reaches without ssh shows in the list
-with `cannot be added:` and the reason `reached without ssh (added with --via)`, and you cannot
-pick it. A sandbox is not listed at all.
+With several picks, `--label` and `--peer-address` are refused, and each machine is asked for its
+own address. A machine the core reaches without ssh shows in the list with `cannot be added:` and
+the reason `reached without ssh (added with --via)`, and you cannot pick it. A sandbox is not listed at all.
 
 `collie crew add <ssh-host>` installs Collie on the remote host over your own ssh and enrolls it. It
 generates the token locally, provisions Collie on the remote machine, and runs `collie crew join`
@@ -75,8 +75,9 @@ one more step by hand, because `crew add` does not support `--insecure`: run `co
 both.
 
 When the run ends, `crew add` says which multiplexer the member runs on, for example "and runs on
-herdr-core". With several picks it ends with one line per machine, joined or not. A machine that
-fails does not stop the next one.
+herdr-core". With several picks it ends with one line per machine: the member id and the
+multiplexer it runs on, or the reason it did not join. A machine that fails does not stop the next
+one.
 
 `crew add` takes the route its own install kind names. A lead that runs from a git checkout, as the
 Herdr plugin install does, pushes its own commit to the member and builds it there, so that member
@@ -256,7 +257,8 @@ twice. It reads `Host` entries in your `~/.ssh/config`, runs `herdr machine list
 follows an `Include` in that config one level deep, and only for paths under `~/.ssh/`. It does not
 offer an alias in a file included from an included file. Each row shows where the name came from:
 `ssh config`, `herdr`, `herdr-core`, or several. A row for a machine already in this crew carries
-that member's id instead of a number.
+that member's id instead of a number. That holds for a member you joined by hand too: the row
+matches on the address the lead dials it at, or on its member id.
 
 Two kinds of machine from the core are special. A sandbox is hidden. A machine the core reaches
 without ssh is shown with `cannot be added` and the reason, because Collie installs over ssh and has
