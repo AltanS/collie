@@ -250,8 +250,25 @@ export interface Probe {
   readonly git: string;
   readonly bun: string;
   readonly herdr: string;
-  /** `herdr plugin config-dir herdr.collie`, asked on the remote. `""` when it did not answer. */
+  /** The Herdr core's CLI, `hc`. `""` when the member does not have one. */
+  readonly hc: string;
+  /** `hc --version`'s first line, as the member printed it. `""` when there is no `hc`. */
+  readonly hcversion: string;
+  /**
+   * `live` when the core's socket file is where `hc` would dial, `down` when it is not, `""` when
+   * there is no `hc`. Read from the file, never from `hc server status`, which starts a stopped core
+   * on Linux. A stopped core is a fact to print, never a reason to stop: the member's own
+   * `_mux-probe` in leg 3 is what decides which multiplexer it runs.
+   */
+  readonly hccore: string;
+  /**
+   * `herdr plugin config-dir herdr.collie`, asked on the remote, or — on a host with no `herdr` and
+   * an `hc` — the binary install's own rule (`resolveConfigDir` in `cli/context.ts`). `""` when it
+   * did not answer.
+   */
   readonly configdir: string;
+  /** Which rule answered {@link configdir}: `herdr`, `default` (no `herdr` there), or `""`. */
+  readonly configsource: string;
   readonly envhost: string;
   readonly envport: string;
   /**
@@ -315,7 +332,11 @@ export function parseProbe(stdout: string): Probe | null {
     git: said("git"),
     bun: said("bun"),
     herdr: said("herdr"),
+    hc: said("hc"),
+    hcversion: said("hcversion"),
+    hccore: said("hccore"),
     configdir: said("configdir"),
+    configsource: said("configsource"),
     envhost: said("envhost"),
     envport: said("envport"),
     envmux: said("envmux"),
@@ -376,6 +397,7 @@ export function probeScript(opts: { readonly path: string | null; readonly port:
     'GIT=$(collie_tool git) || GIT=""',
     'BUN=$(collie_tool bun) || BUN=""',
     'HERDR=$(collie_tool herdr) || HERDR=""',
+    'HC=$(collie_tool hc) || HC=""',
     'TS=$(collie_tool tailscale) || TS=""',
     // The release route's three tools, resolved the same way. A member installed from a release
     // needs `curl`, `tar` and a sha256 tool and needs neither `git` nor `bun` — so both sets are
@@ -390,11 +412,41 @@ export function probeScript(opts: { readonly path: string | null; readonly port:
     'say curl "$CURL"',
     'say tar "$TAR"',
     'say sha256 "$SHA"',
-    // The config root, asked for rather than assumed. An empty answer is reported as empty and the
-    // verb stops legibly — it never falls back to a conventional path this side made up.
-    'CFG=""',
-    `if [ -n "$HERDR" ]; then CFG=$("$HERDR" plugin config-dir ${shq(PLUGIN_ID)} 2>/dev/null | head -n 1 | tr -d '\\r') || CFG=""; fi`,
+    // The Herdr core, read as three facts. Whether a core runs is read from its SOCKET FILE, where
+    // `hc` would dial (`defaultHcSocket`, `bridge/mux/herdr-core/client.ts`), and never asked of
+    // `hc server status`: on Linux that verb STARTS a stopped core (hc 0.1.17, seen 2026-11-03 in the
+    // VM lab, a stale socket included), and leg 1 starts nothing. The socket file is also the
+    // evidence the member's own `_mux-probe` reads in leg 3, so the two cannot disagree.
+    'HCVERSION=""; HCCORE=""',
+    'if [ -n "$HC" ]; then',
+    `  HCVERSION=$("$HC" --version 2>/dev/null | head -n 1 | tr -d '\\r') || HCVERSION=""`,
+    '  _hs=${HC_SESSION:-default}',
+    '  if [ -n "${HC_SOCKET:-}" ]; then HCSOCK=$HC_SOCKET',
+    '  elif [ -n "${XDG_RUNTIME_DIR:-}" ]; then HCSOCK="$XDG_RUNTIME_DIR/herdr-core/$_hs.sock"',
+    '  elif [ -d "/run/user/$(id -u 2>/dev/null)" ]; then HCSOCK="/run/user/$(id -u)/herdr-core/$_hs.sock"',
+    '  else HCSOCK="${XDG_STATE_HOME:-$HOME/.local/state}/herdr-core/$_hs/$_hs.sock"; fi',
+    '  if [ -e "$HCSOCK" ]; then HCCORE=live; else HCCORE=down; fi',
+    "fi",
+    'say hc "$HC"',
+    'say hcversion "$HCVERSION"',
+    'say hccore "$HCCORE"',
+    // The config root, asked for rather than assumed. An empty answer from Herdr is reported as
+    // empty and the verb stops legibly. A host with no `herdr` and an `hc` has no Herdr to ask, so
+    // it takes the rule a binary install takes there (`resolveConfigDir`, `cli/context.ts`, with no
+    // Herdr answer): the injected dir, else Herdr's conventional dir when it holds a `.env`, else
+    // Collie's own `~/.config/collie` — the dir the bridge on that machine will read.
+    'CFG=""; CFGSOURCE=""',
+    'if [ -n "$HERDR" ]; then',
+    `  CFG=$("$HERDR" plugin config-dir ${shq(PLUGIN_ID)} 2>/dev/null | head -n 1 | tr -d '\\r') || CFG=""`,
+    "  CFGSOURCE=herdr",
+    'elif [ -n "$HC" ]; then',
+    "  CFGSOURCE=default",
+    '  if [ -n "${HERDR_PLUGIN_CONFIG_DIR:-}" ]; then CFG=$HERDR_PLUGIN_CONFIG_DIR',
+    `  elif [ -f "$HOME/.config/herdr/plugins/config/${PLUGIN_ID}/.env" ]; then CFG="$HOME/.config/herdr/plugins/config/${PLUGIN_ID}"`,
+    '  else CFG="$HOME/.config/collie"; fi',
+    "fi",
     'say configdir "$CFG"',
+    'say configsource "$CFGSOURCE"',
     // `COLLIE_MUX` is read exactly as the bind is, and from the same file: it is the value a
     // SUPERVISED bridge there reads (`EnvironmentFile=`), so a member that already names one is one
     // this verb has nothing to decide about.
@@ -1405,6 +1457,18 @@ export function releaseOf(version: string): string {
   return version.trim().split(/\s+/)[0]?.split("+")[0] ?? "";
 }
 
+/**
+ * The `hc` fact: where the core's CLI is, which version it said, and whether a core answered.
+ *
+ * A stopped core is printed, not refused. Leg 3 asks the member which multiplexer runs there, and
+ * its "none is running" caveat is the one that tells the operator what to start.
+ */
+export function hcFact(probe: Pick<Probe, "hc" | "hcversion" | "hccore">): string {
+  const version = probe.hcversion.replace(/^hc\s+/, "") || "version not reported";
+  const core = probe.hccore === "live" ? "core running" : "core not running";
+  return `${probe.hc} (${version}, ${core})`;
+}
+
 async function addOverSsh(deps: Wired, runner: RemoteRunner, opts: AddOptions): Promise<number> {
   const { host, port, flags } = opts;
 
@@ -1426,7 +1490,8 @@ async function addOverSsh(deps: Wired, runner: RemoteRunner, opts: AddOptions): 
 
   // WHAT THE MEMBER NEEDS DEPENDS ON THE ROUTE, and on nothing else. A bundle member builds from
   // source, so it needs git and Bun; a release member downloads a payload and verifies it, so it
-  // needs curl, tar and a sha256 tool and needs neither of the other two. Herdr is required on both.
+  // needs curl, tar and a sha256 tool and needs neither of the other two. Herdr, the TUI or its core,
+  // is required on both.
   const required =
     opts.route === "bundle"
       ? ([
@@ -1445,15 +1510,15 @@ async function addOverSsh(deps: Wired, runner: RemoteRunner, opts: AddOptions): 
     }
     deps.emit({ kind: "fact", name: tool, value: path });
   }
-  if (probe.herdr === "") {
-    // Not a bug and not an unimplemented feature: Collie is a Herdr plugin, and a Collie with no
-    // herd has nothing to show. The standalone future is discussion #67 — named as `not yet`.
-    deps.io.err(`error: no \`herdr\` on ${host} — Collie is a Herdr plugin, and a Collie with no herd`);
-    deps.io.err("       has nothing to show. Install Herdr there first.");
+  if (probe.herdr === "" && probe.hc === "") {
+    // Not a bug and not an unimplemented feature: Collie reads a Herdr, the TUI or its core, and a
+    // Collie with neither has nothing to show. The standalone future is discussion #67 — `not yet`.
+    deps.io.err(`error: no herdr and no hc on ${host} — Collie reads a Herdr. Install Herdr or the Herdr core there first.`);
     deps.io.err("       (A standalone Collie is discussion #67 — not yet, and not a bug.)");
     return EXIT.FAIL;
   }
-  deps.emit({ kind: "fact", name: "herdr", value: probe.herdr });
+  if (probe.herdr !== "") deps.emit({ kind: "fact", name: "herdr", value: probe.herdr });
+  if (probe.hc !== "") deps.emit({ kind: "fact", name: "hc", value: hcFact(probe) });
 
   const configDir = probe.configdir;
   if (configDir === "") {
@@ -1463,7 +1528,13 @@ async function addOverSsh(deps: Wired, runner: RemoteRunner, opts: AddOptions): 
     deps.io.err("       Run that by hand there. `crew add` never invents a path it did not observe.");
     return EXIT.FAIL;
   }
-  deps.emit({ kind: "fact", name: "config", value: configDir });
+  deps.emit({
+    kind: "fact",
+    name: "config",
+    // Said when the dir came from the binary install's rule rather than from Herdr, because on that
+    // host nothing answered the question and the operator should see which rule did.
+    value: probe.configsource === "default" ? `${configDir} (Collie's own, no herdr there)` : configDir,
+  });
 
   // The address the lead will dial. Read off the remote; asked only when it cannot answer.
   const peerHost = await resolvePeerHost(deps, probe, flags["peer-address"]);
@@ -1549,7 +1620,7 @@ async function addOverSsh(deps: Wired, runner: RemoteRunner, opts: AddOptions): 
     mux: opts.mux,
     probe,
   });
-  if (configured !== null) return configured;
+  if ("code" in configured) return configured.code;
 
   // ── Leg 4 — enroll ─────────────────────────────────────────────────────────
   deps.emit({ kind: "leg-start", leg: "enroll", text: "" });
@@ -1561,6 +1632,7 @@ async function addOverSsh(deps: Wired, runner: RemoteRunner, opts: AddOptions): 
     flags,
     source: opts.source,
     changed: replaced || rebound,
+    runsOn: configured.runsOn,
   });
 }
 
@@ -1710,7 +1782,8 @@ async function releaseLeg(
     return { code: EXIT.FAIL };
   }
   deps.emit({ kind: "leg-done", leg: "install", ok: true, detail: `${built} at ${o.collieDir}/current` });
-  if (probe.checkout === "") {
+  // Only where there IS a Herdr TUI to register with: an hc-only member has no `herdr plugin`.
+  if (probe.checkout === "" && probe.herdr !== "") {
     for (const text of [
       `  This checkout is not registered with Herdr there. To get its plugin actions:`,
       `    herdr plugin link "${o.collieDir}/current"   # on ${o.host}`,
@@ -1809,7 +1882,8 @@ async function installLeg(
     return EXIT.FAIL;
   }
   deps.emit({ kind: "leg-done", leg: "install", ok: true, detail: `${built} at ${o.root}` });
-  if (probe.checkout === "") {
+  // Only where there IS a Herdr TUI to register with: an hc-only member has no `herdr plugin`.
+  if (probe.checkout === "" && probe.herdr !== "") {
     for (const text of [
       `  This checkout is not registered with Herdr there. To get its plugin actions:`,
       `    herdr plugin link "${o.root}"   # on ${o.host}`,
@@ -1940,6 +2014,16 @@ export function bindOverwriteConfirmation(probe: Probe, peerHost: string, port: 
 }
 
 /**
+ * What the mux half of leg 3 decided: the name to write into the member's `.env` (null writes none),
+ * and the multiplexer the member runs on as far as this run knows (null when none runs there). The
+ * two differ on purpose: an `auto` or `kept` member runs on a mux this run does not write.
+ */
+interface MuxDecided {
+  readonly write: string | null;
+  readonly runsOn: string | null;
+}
+
+/**
  * The mux half of leg 3: decide, say so, and hand back the name to write (null writes none).
  *
  * It runs BEFORE the bind confirmation because it is the half that can stop the run, and a run that
@@ -1949,7 +2033,7 @@ async function decideMux(
   deps: Wired,
   runner: RemoteRunner,
   o: { host: string; root: string; mux: string | null; probe: Probe },
-): Promise<{ readonly code: number } | { readonly write: string | null }> {
+): Promise<{ readonly code: number } | MuxDecided> {
   const leadMux = explicitMux(deps.ctx.env);
   const asked = { flag: o.mux, envmux: o.probe.envmux, leadMux };
   const known = muxChoice({ ...asked, answer: null });
@@ -1978,15 +2062,15 @@ async function decideMux(
   switch (decision.kind) {
     case "flag":
       say(decision.mux, flagHow(decision.mux, o.probe.envmux));
-      return { write: decision.mux };
+      return { write: decision.mux, runsOn: decision.mux };
     case "kept":
       say(decision.mux, "already set there");
-      return { write: null };
+      return { write: null, runsOn: decision.mux };
     case "auto":
       // Nothing is written: `start` on the member records the one it found itself, endpoint and all
       // (`muxVars`), which is a stronger write than a bare name from here.
       say(decision.mux, "the only one running there");
-      return { write: null };
+      return { write: null, runsOn: decision.mux };
     case "none":
       deps.emit({
         kind: "line",
@@ -1998,7 +2082,7 @@ async function decideMux(
           `warn: no multiplexer is running on ${o.host}. The restart that ends this run will refuse` +
           " there until one runs, or until `--mux <name>` names one; the member is enrolled either way.",
       });
-      return { write: null };
+      return { write: null, runsOn: null };
     case "ask":
       return await pickMux(deps, o.host, decision.found, decision.leadDrives, say);
     default:
@@ -2015,7 +2099,7 @@ async function pickMux(
   found: readonly MuxProbeSighting[],
   leadDrives: string | null,
   say: (mux: string, how: string) => void,
-): Promise<{ readonly code: number } | { readonly write: string | null }> {
+): Promise<{ readonly code: number } | MuxDecided> {
   const names = found.map((sighting) => sighting.mux).join(", ");
   deps.io.out(`${host} runs ${String(found.length)} multiplexers:`);
   deps.io.out("");
@@ -2042,7 +2126,7 @@ async function pickMux(
     const chosen = matchMuxAnswer(found, answer.trim());
     if (chosen !== undefined) {
       say(chosen.mux, "you picked it");
-      return { write: chosen.mux };
+      return { write: chosen.mux, runsOn: chosen.mux };
     }
     if (attempt < MUX_PICKER_ATTEMPTS) deps.io.err(`"${answer.trim()}" is not one of them.`);
   }
@@ -2065,27 +2149,27 @@ async function configureLeg(
     mux: string | null;
     probe: Probe;
   },
-): Promise<number | null> {
+): Promise<{ readonly code: number } | { readonly runsOn: string | null }> {
   const { probe } = o;
   // The mux decision FIRST: it is the half that can stop the run.
   const decided = await decideMux(deps, runner, { host: o.host, root: o.root, mux: o.mux, probe });
-  if ("code" in decided) return decided.code;
+  if ("code" in decided) return decided;
   const writeMux = decided.write;
   const bindCurrent = bindIsCurrent(probe, o.peerHost, o.port);
   // The leg writes when EITHER half has something to write. A bind that is already right used to
   // skip the whole leg, which would now skip a `COLLIE_MUX` the operator has just chosen.
   if (bindCurrent && writeMux === null) {
     deps.emit({ kind: "leg-done", leg: "configure", ok: true, detail: `already ${o.peerHost}:${o.port}` });
-    return null;
+    return { runsOn: decided.runsOn };
   }
   const current = bindOverwriteConfirmation(probe, o.peerHost, o.port);
   if (current !== null) {
     const answer = await ask(deps, `${o.host} is configured to bind ${current}; change it to ${o.peerHost}:${o.port}?`);
-    if (answer === "aborted") return EXIT.FAIL;
+    if (answer === "aborted") return { code: EXIT.FAIL };
     if (!answer) {
       deps.io.err("error: left alone — the bind was not changed, and nothing was enrolled.");
       deps.io.err("       A peer the lead cannot dial stays provisional forever (`collie doctor` there).");
-      return EXIT.STATE;
+      return { code: EXIT.STATE };
     }
   } else if (probe.envhost === "") {
     // Said out loud, because a step that stopped asking is otherwise a step that silently changed.
@@ -2108,10 +2192,10 @@ async function configureLeg(
     }),
   );
   const transport = transportFailure(deps.io, o.host, written);
-  if (transport !== null) return transport;
+  if (transport !== null) return { code: transport };
   if (written.code !== 0) {
     deps.io.err(`error: could not write the peer's .env — ${firstLine(written.stderr)}`);
-    return EXIT.FAIL;
+    return { code: EXIT.FAIL };
   }
   // What was WRITTEN, named: the leg now has two halves, and a re-run that only moved the
   // multiplexer must not report a bind it left alone.
@@ -2132,7 +2216,7 @@ async function configureLeg(
     tone: "info",
     text: "  No front door was published there — a peer publishes none (ADR 0013).",
   });
-  return null;
+  return { runsOn: decided.runsOn };
 }
 
 /** Leg 4, as its own step: the membership pre-check, the invite, the join, and the final verdict. */
@@ -2149,6 +2233,8 @@ async function enrollLeg(
     source: string | null;
     /** Did this run replace the far machine's build or rewrite its bind? */
     changed: boolean;
+    /** The multiplexer leg 3 says the member runs on; null when none runs there. */
+    runsOn: string | null;
   },
 ): Promise<number> {
   // How this run reached the far machine, banked for `crew update` the moment the run proves it
@@ -2292,7 +2378,7 @@ async function enrollLeg(
     text: "  restarting the bridge so the new member takes effect…",
   });
   await restartBridge(deps);
-  return verdict(deps, before, o.host, remember);
+  return verdict(deps, before, o.host, remember, o.runsOn);
 }
 
 /**
@@ -2355,6 +2441,7 @@ async function verdict(
   before: ReadonlySet<string>,
   host: string,
   remember: (memberId: string) => Promise<void>,
+  runsOn: string | null,
 ): Promise<number> {
   const fresh = await deps.reload();
   const added: TrustedMember | undefined = fresh?.peers.find((p) => !before.has(p.memberId));
@@ -2370,7 +2457,11 @@ async function verdict(
     deps.emit({
       kind: "verdict",
       ok: true,
-      text: `"${added.memberId}" is a member of "${fresh.crew.name}" and answered at ${added.address}`,
+      text:
+        `"${added.memberId}" is a member of "${fresh.crew.name}" and answered at ${added.address}` +
+        // The multiplexer leg 3 decided, so the last line says what the member drives as well as that
+        // it joined. None is named when none runs there: that caveat already printed in leg 3.
+        (runsOn === null ? "" : `, and runs on ${runsOn}`),
     });
     return EXIT.OK;
   }

@@ -17,6 +17,7 @@ say() { printf 'collie-probe:%s=%s\n' "$1" "$2"; }
 GIT=$(collie_tool git) || GIT=""
 BUN=$(collie_tool bun) || BUN=""
 HERDR=$(collie_tool herdr) || HERDR=""
+HC=$(collie_tool hc) || HC=""
 TS=$(collie_tool tailscale) || TS=""
 CURL=$(collie_tool curl) || CURL=""
 TAR=$(collie_tool tar) || TAR=""
@@ -28,9 +29,31 @@ say herdr "$HERDR"
 say curl "$CURL"
 say tar "$TAR"
 say sha256 "$SHA"
-CFG=""
-if [ -n "$HERDR" ]; then CFG=$("$HERDR" plugin config-dir 'herdr.collie' 2>/dev/null | head -n 1 | tr -d '\r') || CFG=""; fi
+HCVERSION=""; HCCORE=""
+if [ -n "$HC" ]; then
+  HCVERSION=$("$HC" --version 2>/dev/null | head -n 1 | tr -d '\r') || HCVERSION=""
+  _hs=${HC_SESSION:-default}
+  if [ -n "${HC_SOCKET:-}" ]; then HCSOCK=$HC_SOCKET
+  elif [ -n "${XDG_RUNTIME_DIR:-}" ]; then HCSOCK="$XDG_RUNTIME_DIR/herdr-core/$_hs.sock"
+  elif [ -d "/run/user/$(id -u 2>/dev/null)" ]; then HCSOCK="/run/user/$(id -u)/herdr-core/$_hs.sock"
+  else HCSOCK="${XDG_STATE_HOME:-$HOME/.local/state}/herdr-core/$_hs/$_hs.sock"; fi
+  if [ -e "$HCSOCK" ]; then HCCORE=live; else HCCORE=down; fi
+fi
+say hc "$HC"
+say hcversion "$HCVERSION"
+say hccore "$HCCORE"
+CFG=""; CFGSOURCE=""
+if [ -n "$HERDR" ]; then
+  CFG=$("$HERDR" plugin config-dir 'herdr.collie' 2>/dev/null | head -n 1 | tr -d '\r') || CFG=""
+  CFGSOURCE=herdr
+elif [ -n "$HC" ]; then
+  CFGSOURCE=default
+  if [ -n "${HERDR_PLUGIN_CONFIG_DIR:-}" ]; then CFG=$HERDR_PLUGIN_CONFIG_DIR
+  elif [ -f "$HOME/.config/herdr/plugins/config/herdr.collie/.env" ]; then CFG="$HOME/.config/herdr/plugins/config/herdr.collie"
+  else CFG="$HOME/.config/collie"; fi
+fi
 say configdir "$CFG"
+say configsource "$CFGSOURCE"
 ENVHOST=""; ENVPORT=""; ENVMUX=""
 if [ -n "$CFG" ] && [ -f "$CFG/.env" ]; then
   ENVHOST=$(sed -n "s/^[[:space:]]*\(export[[:space:]][[:space:]]*\)\{0,1\}COLLIE_HOST=//p" "$CFG/.env" | tail -n 1 | tr -d "\"'\r")

@@ -31,6 +31,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **`collie crew add` takes several hosts from its list in one run.** Answer the picker with numbers or names separated by spaces or commas, or with `all`. Each host gets its own run and its own confirm, a host that fails or is declined does not stop the next, and a summary at the end gives one line per host, with the first error that host printed. A machine the list names joins under that name, so the phone shows the same names as `hc machine ls`. `--label` still wins, and it is refused when you pick more than one host. The ops record keeps which list suggested each host.
 
+### Fixed
+
+- **`collie crew add` accepts a member that runs the Herdr core without the Herdr TUI.** The probe now reads `hc` there as well as `herdr`, finds the member's config folder the way a binary install does (`~/.config/collie` when there is no `herdr`), and the member starts on `herdr-core`. A stopped core is printed as a fact, the run goes on, and the last line names the multiplexer the member runs on. A host with neither is refused with one line that names both.
+
 ## [1.26.0] - 2026-11-03
 
 ### Added
