@@ -1,5 +1,6 @@
 import { TerminalSquare } from "lucide-react";
 
+import { shownStatus } from "@/lib/triage";
 import { cn } from "@/lib/utils";
 import { LIST_ROW_CORNERS } from "@/components/ui/list-group";
 import { UnseenMark } from "@/components/ui/unseen-mark";
@@ -301,7 +302,7 @@ export function AgentCard({
           <div data-slot="agent-row-title" className="flex min-w-0 items-center gap-2">
             {cornerDot && (
               <StatusDot
-                status={agent.status}
+                status={shownStatus(agent)}
                 // A hollow resting ring must be filled with the colour it actually sits on — a card
                 // is `--card`, a flat row is the page.
                 surface={flat ? "bg-background" : "bg-card"}
@@ -433,9 +434,9 @@ export function AgentCard({
           <ShellBadge />
         ) : cornerDot ? (
           /* The mark lives on line 1 and is aria-hidden; give SR users the word. */
-          <span className="sr-only">{stale ? statusLabelPast(agent.status) : statusLabel(agent.status)}</span>
+          <span className="sr-only">{stale ? statusLabelPast(shownStatus(agent)) : statusLabel(shownStatus(agent))}</span>
         ) : (
-          <StatusBadge status={agent.status} past={stale} />
+          <StatusBadge status={shownStatus(agent)} past={stale} />
         )}
         {progress !== null && (
           <Progress

@@ -48,6 +48,15 @@ export function isUnseen(a: AgentView): boolean {
     (a.lastActiveAt ?? 0) > (a.lastSeenAt ?? 0);
 }
 
+/**
+ * The status a pane's dot draws. The multiplexer's `done` means "finished its turn", and the green
+ * disc means "finished and nobody opened it yet" (issue 665). Once the shared seen mark has caught up
+ * (ADR 0003) a finished pane rests as `idle`, a ring. Shell panes and every other status pass through.
+ */
+export function shownStatus(a: AgentView): AgentStatus {
+  return a.kind !== "shell" && a.status === "done" && !isUnseen(a) ? "idle" : a.status;
+}
+
 /** Which section an agent belongs to. The single classifier — {@link triage} and
  *  {@link worstTriage} both route through it, so a list and a chip can't disagree. */
 export function bucketOf(a: AgentView): TriageKey {

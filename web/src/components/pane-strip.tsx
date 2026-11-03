@@ -8,6 +8,7 @@ import { PaneActionsSheet } from "@/components/pane-actions-sheet";
 import { useLongPress } from "@/hooks/use-long-press";
 import { paneName } from "@/lib/pane-name";
 import { paneOrdinals } from "@/lib/pane-ordinal";
+import { shownStatus } from "@/lib/triage";
 import type { AgentView } from "@/lib/types";
 import type { Scope } from "@/lib/scope";
 import { t } from "@/lib/i18n";
@@ -232,7 +233,7 @@ function PanePill({
       {isShell ? (
         <TerminalSquare className="size-3.5 shrink-0" />
       ) : (
-        <StatusDot status={pane.status} live className="size-2.5" />
+        <StatusDot status={shownStatus(pane)} live className="size-2.5" />
       )}
       <span>{name}</span>
       {/* The number is part of the pill's own text, not a decoration beside it: a screen reader

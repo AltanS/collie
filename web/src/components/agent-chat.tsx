@@ -15,6 +15,7 @@ import { useKeyboardOpen } from "@/hooks/use-keyboard";
 import { useSheetPull } from "@/hooks/use-sheet-pull";
 import { usePaneNavigation } from "@/components/pane-nav";
 import { tabCreateKey, useSpaceActions } from "@/hooks/use-spaces";
+import { shownStatus } from "@/lib/triage";
 import { useNav } from "@/hooks/use-nav";
 import { useDashPrefs, openForCount } from "@/hooks/use-dash-prefs";
 import { useAgentStart } from "@/hooks/use-agent-start";
@@ -2257,7 +2258,7 @@ export function AgentChat({
                   aria-label={t("chat.header.openOverviewAria", {
                     workspace: agent.workspaceLabel,
                     status: t("chat.header.statusAria", {
-                      label: isShell ? t("status.shellBadge") : statusLabel(agent.status),
+                      label: isShell ? t("status.shellBadge") : statusLabel(shownStatus(agent)),
                     }),
                   })}
                   // The block's geometry is a rule that spans two files — this one states the line
@@ -2352,8 +2353,8 @@ export function AgentChat({
                         loses its suffix. */}
                     {!isShell && (
                       <StatusDot
-                        status={agent.status}
-                        label={statusLabel(agent.status)}
+                        status={shownStatus(agent)}
+                        label={statusLabel(shownStatus(agent))}
                         stale={connecting}
                         surface="bg-background"
                         backed

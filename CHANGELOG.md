@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Changed
+
+- **A finished pane you opened rests.** The green dot and the green count now mean a pane that finished and that nobody has looked at yet. Once you open the pane in Collie, or drive it, its dot becomes a ring and it leaves the green count, on every screen that draws the pane. The unseen square is unchanged, and the mark still follows the one shared seen mark of the bridge, not each device (ADR 0003). Thanks @viniciosrab (#665).
+
 ## [1.26.0] - 2026-11-03
 
 ### Added

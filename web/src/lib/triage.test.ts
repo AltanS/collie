@@ -6,6 +6,7 @@ import {
   flipDir,
   hasReady,
   isUnseen,
+  shownStatus,
   triage,
   TRIAGE_STATUS,
   worstTriage,
@@ -41,6 +42,26 @@ function sectionOf(sections: ReturnType<typeof triage>, paneId: string): TriageK
 
 const ids = (sections: ReturnType<typeof triage>, key: TriageKey) =>
   sections.find((s) => s.key === key)!.agents.map((a) => a.paneId);
+
+describe("shownStatus", () => {
+  it("keeps the done disc for a finished pane nobody opened yet", () => {
+    expect(shownStatus(agent("p", "done", { active: 200, seen: 100 }))).toBe("done");
+  });
+
+  it("rests a done pane as idle once you have seen it", () => {
+    expect(shownStatus(agent("p", "done", { active: 100, seen: 200 }))).toBe("idle");
+  });
+
+  it("passes idle, working and blocked through, seen or not", () => {
+    expect(shownStatus(agent("p", "idle", { active: 100, seen: 200 }))).toBe("idle");
+    expect(shownStatus(agent("p", "working", { active: 100, seen: 200 }))).toBe("working");
+    expect(shownStatus(agent("p", "blocked", { active: 200, seen: 100 }))).toBe("blocked");
+  });
+
+  it("leaves a shell pane as it is", () => {
+    expect(shownStatus({ ...agent("p", "done", { active: 100, seen: 200 }), kind: "shell" })).toBe("done");
+  });
+});
 
 describe("isUnseen", () => {
   it("is true for a done agent that finished after you last looked", () => {
