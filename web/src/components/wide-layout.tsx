@@ -793,6 +793,9 @@ function SidebarList({ agent, paneId, scope, onSelect }: { agent: AgentView | un
         onSelect={onSelect}
         tabs={root.tabs}
         servers={root.servers}
+        workspaces={root.workspaces}
+        scope={scope}
+        sessions={root.sessions}
         pins={pins}
         shellsOpen={openForCount(dash.prefs.shellsOpen, root.shellPanes.length)}
         onShellsOpenChange={dash.setShellsOpen}

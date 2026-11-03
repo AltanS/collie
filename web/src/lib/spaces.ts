@@ -242,6 +242,29 @@ export function nestWorktrees(ordered: readonly WorkspaceView[]): SpaceRow[] {
   return rows;
 }
 
+/**
+ * The repository's name: the last segment of the space's `repoRoot`, on a posix or a Windows path,
+ * or `null` when the space has no repo root. Display only; the bridge sends no separate name.
+ */
+export function repoNameOf(space: Pick<WorkspaceView, "repoRoot">): string | null {
+  const root = space.repoRoot;
+  if (root === undefined) return null;
+  return root.split(/[\\/]/).findLast((part) => part !== "") ?? null;
+}
+
+/**
+ * The space a pane sits in, joined on `(host, workspaceId)` as `paneInRepo` joins it (a space id is
+ * unique only within one machine), or `undefined` when the snapshot lists no such space.
+ */
+export function paneSpace(
+  pane: Pick<AgentView, "host" | "workspaceId">,
+  workspaces: readonly WorkspaceView[] | undefined,
+): WorkspaceView | undefined {
+  if (workspaces === undefined) return undefined;
+  const key = paneSpaceKey(pane);
+  return workspaces.find((w) => spaceKey(w.host, w.workspaceId) === key);
+}
+
 /** The three parts of a worktree space's second line; `null` is a part left out. */
 export interface WorktreeContext {
   readonly repo: string | null;
@@ -262,8 +285,7 @@ export interface WorktreeContext {
  */
 export function spaceWorktreeContext(space: WorkspaceView, nested: boolean): WorktreeContext | null {
   if (space.isWorktree !== true) return null;
-  const root = space.repoRoot;
-  const repo = nested || root === undefined ? null : (root.split(/[\\/]/).findLast((part) => part !== "") ?? null);
+  const repo = nested ? null : repoNameOf(space);
   const head = paneGitHead(space);
   const base = space.base === undefined || space.base === "" ? null : space.base;
   if (repo === null && head === null && base === null) return null;

@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Changed
+
+- **A worktree pane names its repository in the Switch pane sheet and the pane header.** The sheet folds a worktree under its repository's space when that space is open, as the dashboard does, and heads one that is not open `repository › name`. The pane header shows the repository's name before the branch, instead of Herdr's random worktree word. A pane in a root checkout draws as before. Thanks @viniciosrab (#666).
+
 ## [1.26.0] - 2026-11-03
 
 ### Added

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isolateSpaces, nestWorktrees, spaceWorktreeContext } from "./spaces";
+import { isolateSpaces, nestWorktrees, paneSpace, repoNameOf, spaceWorktreeContext } from "./spaces";
 import type { WorkspaceView } from "./types";
 
 // The grouping rules the spaces list leans on. Written against the shape a real herd produces:
@@ -167,5 +167,40 @@ describe("spaceWorktreeContext", () => {
   it("says nothing for a space that is not a worktree, even with a head on it", () => {
     expect(spaceWorktreeContext({ ...parent, gitHead: { kind: "branch", name: "main" } }, false)).toBeNull();
     expect(spaceWorktreeContext(unrelated, false)).toBeNull();
+  });
+});
+
+// Issue #666: the repository's name, once, for every surface that names a worktree's repo.
+describe("repoNameOf", () => {
+  it("is the last segment of a posix root, past a trailing slash", () => {
+    expect(repoNameOf({ repoRoot: "/home/op/code/membero" })).toBe("membero");
+    expect(repoNameOf({ repoRoot: "/home/op/code/membero/" })).toBe("membero");
+  });
+
+  it("reads a Windows root, with or without a trailing backslash", () => {
+    expect(repoNameOf({ repoRoot: "C:\\Users\\x\\repo" })).toBe("repo");
+    expect(repoNameOf({ repoRoot: "C:\\Users\\x\\repo\\" })).toBe("repo");
+  });
+
+  it("is null without a repo root, or with a root that has no segment", () => {
+    expect(repoNameOf({})).toBeNull();
+    expect(repoNameOf({ repoRoot: "/" })).toBeNull();
+  });
+});
+
+describe("paneSpace", () => {
+  const w1 = space("w1", { host: "lodge", repoRoot: "/a/one", isWorktree: true });
+  const w1Other = space("w1", { host: "attic", repoRoot: "/b/two", isWorktree: false });
+
+  it("joins on the machine and the space id, so two machines' w1 stay apart", () => {
+    expect(paneSpace({ host: "attic", workspaceId: "w1" }, [w1, w1Other])).toBe(w1Other);
+    expect(paneSpace({ host: "lodge", workspaceId: "w1" }, [w1, w1Other])).toBe(w1);
+  });
+
+  it("reads an untagged pane as the untagged space, and answers nothing for no match or no list", () => {
+    const solo = space("w1", { repoRoot: "/a/one" });
+    expect(paneSpace({ workspaceId: "w1" }, [solo])).toBe(solo);
+    expect(paneSpace({ host: "lodge", workspaceId: "w9" }, [w1])).toBeUndefined();
+    expect(paneSpace({ workspaceId: "w1" }, undefined)).toBeUndefined();
   });
 });

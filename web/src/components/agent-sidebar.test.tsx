@@ -6,7 +6,7 @@ import { CrewProvider } from "./crew-provider";
 import { paneRowKey } from "@/lib/hosts";
 import { currentPins, setPinned } from "@/lib/pins";
 import { fixtureAgents, fixtureCrewAgents, fixtureServers, fixtureShellPanes } from "@/test/handlers";
-import type { AgentView, Launcher } from "@/lib/types";
+import type { AgentView, Launcher, WorkspaceView } from "@/lib/types";
 
 const idleAgent: AgentView = {
   paneId: "w3:p1",
@@ -39,6 +39,45 @@ describe("ThreadSidebar", () => {
     ]);
     expect(screen.queryByText("Working")).toBeNull();
     expect(screen.queryByText("Recent")).toBeNull();
+  });
+
+  // Issue #666: a worktree pane names its repository in the switcher, as the dashboard does.
+  describe("linked worktrees", () => {
+    const REPO = "/home/k/projects/membero";
+    const spaceOf = (workspaceId: string, number: number, label: string, over: Partial<WorkspaceView>): WorkspaceView => ({
+      workspaceId,
+      number,
+      label,
+      focused: false,
+      activeTabId: `${workspaceId}:t1`,
+      tabCount: 1,
+      paneCount: 1,
+      ...over,
+    });
+    const rootSpace = spaceOf("w1", 1, "membero", { repoRoot: REPO, isWorktree: false });
+    const wtSpace = spaceOf("w2", 2, "lucky-meadow-d1ec", { repoRoot: REPO, isWorktree: true });
+    const rootPane: AgentView = { ...idleAgent, paneId: "w1:p1", workspaceId: "w1", workspaceLabel: "membero", workspaceNumber: 1, tabId: "w1:t1" };
+    const wtPane: AgentView = { ...idleAgent, paneId: "w2:p1", workspaceId: "w2", workspaceLabel: "lucky-meadow-d1ec", workspaceNumber: 2, tabId: "w2:t1" };
+    const headings = () => screen.getAllByRole("heading").map((h) => h.textContent);
+
+    it("folds a worktree under its open root workspace", () => {
+      render(
+        <ThreadSidebar agents={[rootPane, wtPane]} workspaces={[rootSpace, wtSpace]} currentPaneKey="" onSelect={vi.fn()} />,
+      );
+      expect(headings()).toEqual([expect.stringContaining("membero")]);
+      expect(headings()).not.toEqual([expect.stringContaining("lucky-meadow-d1ec")]);
+      expect(screen.getAllByRole("button", { name: /claude/i })).toHaveLength(2);
+    });
+
+    it("heads a worktree whose root is not open `repo › slug`", () => {
+      render(<ThreadSidebar agents={[wtPane]} workspaces={[wtSpace]} currentPaneKey="" onSelect={vi.fn()} />);
+      expect(headings()).toEqual([expect.stringContaining("membero › lucky-meadow-d1ec")]);
+    });
+
+    it("lists every workspace as before when given no workspaces", () => {
+      render(<ThreadSidebar agents={[rootPane, wtPane]} currentPaneKey="" onSelect={vi.fn()} />);
+      expect(headings()).toEqual([expect.stringContaining("membero"), expect.stringContaining("lucky-meadow-d1ec")]);
+    });
   });
 
   it("moves no row and no heading when a pane changes state (ADR 0063)", () => {
