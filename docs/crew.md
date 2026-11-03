@@ -63,7 +63,8 @@ collie crew add <ssh-host> # one named host, no list
 A picked machine joins under the name Herdr gives it, so the phone shows the same names as
 `herdr machine list` and `hc machine ls`. `--label <name>` sets another name, for one machine only.
 With several picks, `--label` is refused. A machine the core reaches without ssh shows in the list
-with the reason `cannot be added`, and you cannot pick it. A sandbox is not listed at all.
+with `cannot be added:` and the reason `reached without ssh (added with --via)`, and you cannot
+pick it. A sandbox is not listed at all.
 
 `collie crew add <ssh-host>` installs Collie on the remote host over your own ssh and enrolls it. It
 generates the token locally, provisions Collie on the remote machine, and runs `collie crew join`
