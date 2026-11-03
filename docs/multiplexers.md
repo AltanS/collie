@@ -830,7 +830,7 @@ on the last rows stops it: Collie types nothing there, and the phone offers Type
 | pi | Steers the turn; Alt+Enter queues | Alt+Enter, Ctrl+Q on Windows and in WSL | Short texts and sends into a turn | 1.1.0; screens of 1.4.0 |
 | OMP | Steers the turn; Ctrl+Q queues | Ctrl+Q | Yes | 18.4.10 |
 | Grok | Not measured | Enter | Yes | 1.0.41 |
-| Antigravity (`agy`) | Not measured | Enter | Yes | Screens of 1.4.8 |
+| Antigravity (`agy`) | Not measured | Enter | Yes | Screens of 1.4.8, one of 1.4.12 |
 | Muse | Not measured | Enter | Yes | 1.4.7 |
 | Hermes (classic CLI) | Interrupts the turn by default; Hermes's `/busy` can make it queue or steer | Enter | Yes | 0.22.2 |
 | Cursor CLI (`cursor-agent`) | Queues the message | Enter | Yes | 2026.10.16 |

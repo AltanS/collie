@@ -206,6 +206,11 @@
    "version": "unversioned",
    "state": "running"
   },
+  "agy--v1412-subagent-band-idle.txt": {
+   "harness": "agy",
+   "version": "1.4.12",
+   "state": "idle"
+  },
   "claude--autocomplete-slash-clipped.txt": {
    "harness": "claude",
    "version": "unversioned",
