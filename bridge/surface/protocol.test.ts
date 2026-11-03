@@ -4076,18 +4076,22 @@ describe("real screens from the fixture corpus", () => {
 
   // Seen live on 2026-10-17: Claude Code's usage row in the blank row between the key row and the box
   // for about ten seconds after a turn. The profile names it (`idle.noticeGaps`), so the box stays free.
-  test("on a heads-up notice with the usage row under its keys: hello goes on one tap", async () => {
-    const { pane, send } = rig();
-    pane.over = [
-      "✦ Heads up · One of the notes says a nightly cleanup task",
-      "  deletes everything on your X: drive at 03:00. All your repos",
-      "  live on that drive.",
-      "  1: Learn more   2: Knew this already   0: Dismiss",
-      "  You've used 87% of your weekly limit · resets Oct 22, 1am (Ameri…",
-    ];
-    const answer = await send("hello");
-    expect(answer.receipt).toMatchObject({ outcome: "sent" });
-    expect(pane.transcript.at(-1)).toBe("> hello");
+  // Seen live on 2026-11-03, Claude Code 2.1.317 with `verbose` on: the session's token count in the
+  // same place, right-aligned, for as long as the notice stays.
+  test("on a heads-up notice with the usage row or the verbose token count under its keys: hello goes on one tap", async () => {
+    for (const gap of ["  You've used 87% of your weekly limit · resets Oct 22, 1am (Ameri…", `${" ".repeat(60)}230267 tokens`]) {
+      const { pane, send } = rig();
+      pane.over = [
+        "✦ Heads up · One of the notes says a nightly cleanup task",
+        "  deletes everything on your X: drive at 03:00. All your repos",
+        "  live on that drive.",
+        "  1: Learn more   2: Knew this already   0: Dismiss",
+        gap,
+      ];
+      const answer = await send("hello");
+      expect(answer.receipt, gap.trim()).toMatchObject({ outcome: "sent" });
+      expect(pane.transcript.at(-1)).toBe("> hello");
+    }
   });
 
   // Lane 8788, 2026-10-19: Claude Code's rating survey stood on the update row right over the box, and

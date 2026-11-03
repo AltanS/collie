@@ -306,7 +306,10 @@ describe("a row the profile names between the notice and the box (idle.noticeGap
   });
 
   const gapMatches = (line: string): boolean => GAPS.some((gap) => new RegExp(gap, "u").test(line));
-  for (const line of [USAGE, "  You've used 100% of your weekly limit", "  You've used 5% of your 5-hour limit · resets 3pm"]) {
+  // Claude Code with `verbose` on right-aligns the session's token count, unformatted, above the box
+  // (2.1.317 at 154 columns, 2026-11-03).
+  const VERBOSE_TOKENS = `${" ".repeat(139)}230267 tokens`;
+  for (const line of [USAGE, "  You've used 100% of your weekly limit", "  You've used 5% of your 5-hour limit · resets 3pm", VERBOSE_TOKENS, "  950 tokens"]) {
     it(`the claude profile's gap matches ${JSON.stringify(line)}`, () => {
       expect(gapMatches(line)).toBe(true);
     });
@@ -316,6 +319,11 @@ describe("a row the profile names between the notice and the box (idle.noticeGap
     "  ❯ You've used 87% of your weekly limit",
     "  1: Learn more   2: Knew this already   0: Dismiss",
     "  You've used most of your weekly limit",
+    "230267 tokens",
+    "  ● 230267 tokens",
+    "  230.3k tokens",
+    "  ↓ 1.7k tokens",
+    "  230267 tokens · run the build",
   ]) {
     it(`the claude profile's gap does not match ${JSON.stringify(line)}`, () => {
       expect(gapMatches(line)).toBe(false);
