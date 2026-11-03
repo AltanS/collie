@@ -32,6 +32,8 @@ export interface FrameRun {
   readonly italic?: boolean;
   readonly underline?: boolean;
   readonly strike?: boolean;
+  /** Reverse video: a terminal cursor drawn as a cell, not text. */
+  readonly inverse?: boolean;
 }
 
 /** One screen row as styled runs. A parsed `StyledLine` is one. */
@@ -318,9 +320,18 @@ function sgrFlag(sgr: number): keyof Omit<FrameRun, "text"> | null {
  * Whether every visible character in the draft hole passes `test` on its run. The prompt row is read
  * from the hole's offset, so the marker in front of it never counts; the rows under it are read
  * whole. False when the hole holds nothing visible.
+ *
+ * One exception, the cursor on a ghost suggestion: a terminal cursor is a reverse-video cell, and on
+ * a suggestion it sits on the suggestion's first glyph (`ESC[7m` + one letter, then the dim rest). That
+ * one leading cell is not typed text, so it is skipped, but only when dim or ghost-coloured cells
+ * follow it: a one-letter draft under the cursor has nothing after it and stays a draft, and typed
+ * text is not reverse video, so a typed word before a dim completion stays a draft (issue 659). A
+ * profile turns the skip off with `idle.placeholders.caretOnGhost: false`, for a box whose hint under
+ * a caret must stay a draft (a shell prompt: a send into it would run as a command).
  */
-function holeEvery(rows: readonly FrameRow[], prompt: number, holeStart: number, last: number, test: (run: FrameRun) => boolean): boolean {
+function holeEvery(rows: readonly FrameRow[], prompt: number, holeStart: number, last: number, skipCaret: boolean, test: (run: FrameRun) => boolean): boolean {
   let sawContent = false;
+  let sawCaretCell = false;
   for (let j = prompt; j <= last; j++) {
     let offset = 0;
     for (const run of rows[j]!.segments) {
@@ -328,6 +339,10 @@ function holeEvery(rows: readonly FrameRow[], prompt: number, holeStart: number,
       offset += run.text.length;
       const visible = run.text.slice(from);
       if (visible.trim().length === 0) continue;
+      if (skipCaret && !sawContent && !sawCaretCell && run.inverse === true && visible.length === 1) {
+        sawCaretCell = true;
+        continue;
+      }
       if (!test(run)) return false;
       sawContent = true;
     }
@@ -336,14 +351,14 @@ function holeEvery(rows: readonly FrameRow[], prompt: number, holeStart: number,
 }
 
 /** Whether every visible character in the draft hole is drawn in the placeholder attribute. */
-function holeIsFaint(rows: readonly FrameRow[], prompt: number, holeStart: number, last: number, sgr: number): boolean {
+function holeIsFaint(rows: readonly FrameRow[], prompt: number, holeStart: number, last: number, sgr: number, skipCaret: boolean): boolean {
   const flag = sgrFlag(sgr);
-  return flag !== null && holeEvery(rows, prompt, holeStart, last, (run) => run[flag] === true);
+  return flag !== null && holeEvery(rows, prompt, holeStart, last, skipCaret, (run) => run[flag] === true);
 }
 
 /** Whether every visible character in the draft hole is drawn in one of the placeholder's colours. */
-function holeIsGhostColoured(rows: readonly FrameRow[], prompt: number, holeStart: number, last: number, colours: ReadonlySet<string> | null): boolean {
-  return colours !== null && holeEvery(rows, prompt, holeStart, last, (run) => run.fg !== undefined && colours.has(run.fg));
+function holeIsGhostColoured(rows: readonly FrameRow[], prompt: number, holeStart: number, last: number, colours: ReadonlySet<string> | null, skipCaret: boolean): boolean {
+  return colours !== null && holeEvery(rows, prompt, holeStart, last, skipCaret, (run) => run.fg !== undefined && colours.has(run.fg));
 }
 
 /**
@@ -388,8 +403,9 @@ function readPlaceholder(
   anchorsHit: FrameAnchorHit[],
 ): boolean {
   const byText = isPlaceholderText(text, idle, patterns.length > 0 && readIsUnstyled(rows) ? patterns : []);
-  const bySgr = holeIsFaint(rows, prompt, holeStart, last, idle.placeholders.sgr);
-  const byFg = holeIsGhostColoured(rows, prompt, holeStart, last, colours);
+  const skipCaret = idle.placeholders.caretOnGhost !== false;
+  const bySgr = holeIsFaint(rows, prompt, holeStart, last, idle.placeholders.sgr, skipCaret);
+  const byFg = holeIsGhostColoured(rows, prompt, holeStart, last, colours, skipCaret);
   if (byText) anchorsHit.push("placeholder-text");
   if (bySgr) anchorsHit.push("placeholder-sgr");
   if (byFg) anchorsHit.push("placeholder-fg");

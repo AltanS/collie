@@ -135,6 +135,10 @@ const NEUTRAL = new Set([
   "claude--v2312-draft-upload-path--w100.txt",
   // Claude Code 2.1.312: a fresh empty box with the usage row under its footer (live check 2026-10-30). No dialog.
   "claude--v2312-weekly-limit-row--w120.txt",
+  // Claude Code 2.1.317 with the next-steps plugin (discussion 659, 2026-11-03): `next:` rows over a box holding a ghost suggestion or a draft. No dialog.
+  "claude--v2317-next-steps-suggestions-dismissed--w100.txt",
+  "claude--v2317-next-steps-suggestions-empty-box--w100.txt",
+  "claude--v2317-next-steps-suggestions-one-line-draft--w100.txt",
   // Claude Code 2.1.309 after Escape and after a refused permission (live rerun 2026-10-23):
   // `Interrupted · What should Claude do instead?` over an empty box. An ordinary box, no dialog.
   "claude--v2-1-309-interrupted--w120.txt",

@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **A ghost suggestion under the cursor no longer reads as a draft.** Claude Code with the next-steps plugin puts a dim suggestion in the empty box with the cursor on its first letter, and Collie read that cell as typed text and held every send. The box reads empty again. Thanks @cryptiklemur (#659).
+
 ## [1.26.0] - 2026-11-03
 
 ### Added
