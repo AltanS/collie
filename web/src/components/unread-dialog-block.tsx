@@ -141,7 +141,15 @@ export function UnreadDialogBlock({ cancel, lines, onAction, disabled, wrap, onR
         </button>
       )}
 
-      <RawMirror lines={lines} wrap={wrap} />
+      {/* The mirror is its own scroller, capped, and opens at its bottom: the dialog is the LAST rows of
+          the pane, and the old rows above it are what a top-anchored box showed (#667). Capped here so
+          the key button above it stays on the screen instead of scrolling away with the dock. */}
+      <RawMirror
+        lines={lines}
+        wrap={wrap}
+        anchor="bottom"
+        className="max-h-[30dvh] overflow-y-auto overscroll-contain"
+      />
     </PromptPanel>
   );
 }

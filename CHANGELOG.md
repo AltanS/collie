@@ -36,6 +36,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Fixed
 
 - **A ghost suggestion under the cursor no longer reads as a draft.** Claude Code with the next-steps plugin puts a dim suggestion in the empty box with the cursor on its first letter, and Collie read that cell as typed text and held every send. The box reads empty again. Thanks @cryptiklemur (#659).
+- **On a phone, a dialog card in the dock no longer hides the chat and its question cards.** The chat now keeps at least a third of the screen, and the dock shrinks and scrolls inside itself to make room. The dialog mirror in the unread-dialog card now opens at its bottom, where the dialog is, and not at the old output above it. Thanks @viniciosrab (#667).
 
 ## [1.26.0] - 2026-11-03
 

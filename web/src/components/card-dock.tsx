@@ -239,7 +239,8 @@ function liftedCard({
  * HEIGHT. Capped at 55dvh, 40dvh with the soft keyboard up, and scrolled inside, so a tall card (the
  * /model mirror, a long /resume list, an unread-dialog card carrying the whole pane) never pushes the
  * composer off the screen. `dvh` already tracks the keyboard (hooks/use-keyboard.ts), so the cap is
- * a share of what is really visible.
+ * a share of what is really visible. It also SHRINKS (`min-h-0 shrink`): the reading box above it
+ * holds a floor (agent-chat.tsx, #667), so on a short phone the dock gives up room before the chat does.
  *
  * LOOK. The page background and one uniform 1px top rule: a docked sheet standing on the column, not
  * a second card around the card. `px-3` is the mirror list's own gutter, so the card's edges line up
@@ -256,7 +257,7 @@ export function CardDock(props: CardDockProps) {
       role="presentation"
       data-slot="card-dock"
       className={cn(
-        "shrink-0 overflow-y-auto overscroll-contain border-t border-border bg-background px-3 pt-2 pb-2",
+        "min-h-0 shrink overflow-y-auto overscroll-contain border-t border-border bg-background px-3 pt-2 pb-2",
         props.composing ? "max-h-[40dvh]" : "max-h-[55dvh]",
         props.faceClassName,
       )}

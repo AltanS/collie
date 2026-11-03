@@ -1,7 +1,7 @@
-import { useMemo, type ReactNode, type Ref } from "react";
+import { useEffect, useImperativeHandle, useMemo, useRef, type ReactNode, type Ref } from "react";
 
 import type { AnsiSegment } from "@/lib/ansi";
-import type { StyledLine } from "@/lib/blocks";
+import { lineText, type StyledLine } from "@/lib/blocks";
 import { isPlainClick, useFileLinks, type FileLinkOpener, type FileLinkTarget } from "@/components/file-links";
 import { MIRROR_INVERT, MIRROR_SPACE, styleFor } from "@/components/mirror-space";
 import { renderCells, renderWideCells } from "@/components/painted-cells";
@@ -95,22 +95,40 @@ function MirrorRow({ line, open, wrap }: { line: StyledLine; open: FileLinkOpene
  * subject (a command, a diff, a warning) must be readable at phone width without a sideways pan.
  * `className` adds to the box, e.g. a height cap with its own vertical scroll; `ref` reaches the
  * <pre>, the element that scrolls, for a caller that measures it.
+ *
+ * `anchor="bottom"` (opt-in) scrolls the box to its last row when it mounts and whenever its text
+ * changes, for a mirror whose point is at the tail (the unread-dialog card: the dialog is the last
+ * rows of the pane, #667). It only does something when the caller gave the box a height cap and
+ * `overflow-y-auto` through `className`; every other mirror keeps opening at its top.
  */
 export function RawMirror({
   lines,
   wrap = false,
   className,
+  anchor,
   ref,
 }: {
   lines: StyledLine[];
   wrap?: boolean;
   className?: string;
+  anchor?: "bottom";
   ref?: Ref<HTMLPreElement>;
 }) {
   const open = useFileLinks();
+  const box = useRef<HTMLPreElement>(null);
+  // The caller's ref still reaches the <pre>; ours reads it for the scroll.
+  useImperativeHandle(ref, () => box.current!, []);
+  // Keyed on the text, not the array: a poll that hands over equal rows must not yank a person who
+  // scrolled up to read.
+  const text = useMemo(() => (anchor === "bottom" ? lines.map(lineText).join("\n") : ""), [anchor, lines]);
+  useEffect(() => {
+    const el = box.current;
+    if (anchor !== "bottom" || el === null) return;
+    el.scrollTop = el.scrollHeight;
+  }, [anchor, text]);
   return (
     <pre
-      ref={ref}
+      ref={box}
       className={cn(
         "m-0 rounded-lg px-2 py-1.5 font-mono text-[11px] leading-[1.25]",
         wrap ? "whitespace-pre-wrap wrap-anywhere" : "overflow-x-auto whitespace-pre",
