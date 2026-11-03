@@ -41,6 +41,7 @@ import { useRootData } from "@/lib/route-data";
 import { paneScopeKey, type Scope } from "@/lib/scope";
 import { shortenHome } from "@/lib/shorten-home";
 import { COLUMN_SNAP_CLASSES, STRIP_SNAP_CLASSES, leftmostWholeColumn, shouldFollowFocus } from "@/lib/strip-snap";
+import { shownStatus } from "@/lib/triage";
 import { isReadOnly, statusLabel, type AgentView } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import {
@@ -655,7 +656,7 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
         <div className="flex flex-col py-1">
           {offView.map((p) => (
             <div key={paneRowKey(p)} data-slot="add-row" className="flex min-h-11 items-center gap-3 px-3 py-1">
-              <StatusDot status={p.status} surface="bg-card" />
+              <StatusDot status={shownStatus(p)} surface="bg-card" />
               <PaneGlyph pane={p} className="size-5" />
               <span className="min-w-0 flex-1 truncate text-sm font-medium">{paneName(p)}</span>
               <Button
@@ -849,7 +850,7 @@ function Rail({ spaces, hereKey, onSelect }: { spaces: readonly WorkspaceGroup[]
                 key={key}
                 type="button"
                 data-pane-key={key}
-                aria-label={`${paneName(p)}, ${statusLabel(p.status)}`}
+                aria-label={`${paneName(p)}, ${statusLabel(shownStatus(p))}`}
                 aria-current={here ? "true" : undefined}
                 onClick={() => onSelect(p)}
                 className={cn(
@@ -859,7 +860,7 @@ function Rail({ spaces, hereKey, onSelect }: { spaces: readonly WorkspaceGroup[]
               >
                 <span className="relative inline-flex">
                   <PaneGlyph pane={p} />
-                  <StatusDot status={p.status} backed surface="bg-card" className="absolute -bottom-1 -right-1" />
+                  <StatusDot status={shownStatus(p)} backed surface="bg-card" className="absolute -bottom-1 -right-1" />
                 </span>
               </button>
             );

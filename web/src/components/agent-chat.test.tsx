@@ -321,7 +321,8 @@ describe("AgentChat — the pane header's identity block", () => {
     // proved its keys are exactly the members of AgentStatus — Object.entries widens them to string
     // because it cannot see that proof.
     for (const [status, word] of Object.entries(words) as [AgentStatus, string][]) {
-      const agent = { ...fixtureAgents[0]!, status };
+      // Unseen, so a finished pane still draws `done`: a seen one rests as `idle` (issue 665).
+      const agent = { ...fixtureAgents[0]!, status, lastActiveAt: 200, lastSeenAt: 100 };
       const { container } = renderChat({ agent, agents: [agent] });
       // The dot names it, badged onto the agent's own tile inside the identity block. (The AgentIcon
       // beside it is also a role="img", hence the list rather than a first-match query.)

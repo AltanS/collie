@@ -25,7 +25,6 @@ describe("countStates", () => {
       blocked: 1,
       unseen: 0,
       working: 0,
-      done: 0,
       idle: 0,
     });
   });
@@ -37,20 +36,18 @@ describe("countStates", () => {
       blocked: 0,
       unseen: 2,
       working: 0,
-      done: 0,
       idle: 0,
     });
   });
 
-  it("counts a settled pane under its own done/idle status once you've seen it", () => {
+  it("counts a settled pane as idle once you've seen it, a seen done pane included", () => {
     const doneSeen = pane("done", { lastActiveAt: 100, lastSeenAt: 200 });
     const idleSeen = pane("idle", { lastActiveAt: 100, lastSeenAt: 200 });
     expect(countStates([doneSeen, idleSeen])).toEqual({
       blocked: 0,
       unseen: 0,
       working: 0,
-      done: 1,
-      idle: 1,
+      idle: 2,
     });
   });
 
@@ -65,7 +62,6 @@ describe("countStates", () => {
       blocked: 0,
       unseen: 0,
       working: 0,
-      done: 0,
       idle: 0,
     });
   });
@@ -108,7 +104,7 @@ describe("StatusCounts — numbers only (the default, for a workspace heading)",
     expect(screen.queryByRole("img", { name: "unseen" })).not.toBeInTheDocument();
   });
 
-  it("keeps done and idle apart once both are seen", () => {
+  it("counts a seen done pane with the idle ones, and an unseen one under unseen", () => {
     render(
       <StatusCounts
         panes={[
@@ -117,8 +113,8 @@ describe("StatusCounts — numbers only (the default, for a workspace heading)",
         ]}
       />,
     );
-    expect(screen.getByLabelText("1 done")).toBeInTheDocument();
-    expect(screen.getByLabelText("1 idle")).toBeInTheDocument();
+    expect(screen.queryByLabelText(/done/)).not.toBeInTheDocument();
+    expect(screen.getByLabelText("2 idle")).toBeInTheDocument();
   });
 });
 
@@ -257,18 +253,17 @@ describe("StatusCounts — the summary stays one line (the degrade rule)", () =>
     for (const piece of Array.from(row.children)) expect(piece).toHaveClass("shrink-0", "whitespace-nowrap");
   });
 
-  it("measures two-digit counts in every state like any other width: five counts, one line", () => {
+  it("measures two-digit counts in every state like any other width: four counts, one line", () => {
     const crowded = [
       ...Array.from({ length: 12 }, () => pane("blocked")),
       ...Array.from({ length: 11 }, () => pane("done", { lastActiveAt: 200, lastSeenAt: 100 })),
       ...Array.from({ length: 14 }, () => pane("working")),
-      ...Array.from({ length: 10 }, () => pane("done", { lastActiveAt: 1, lastSeenAt: 200 })),
       ...Array.from({ length: 15 }, () => pane("idle", { lastActiveAt: 1, lastSeenAt: 200 })),
     ];
     slot = 284;
     render(<StatusCounts panes={crowded} labelled />);
-    // Five counts do not fit with words; bare they do, and every one stays on the row.
-    expect(visible()).toEqual(["12 needs you", "11", "14", "10", "15"]);
+    // Four counts do not fit with every word; the lowest ones go bare, and every count stays on the row.
+    expect(visible()).toEqual(["12 needs you", "11 unseen", "14", "15"]);
   });
 
   it("leaves the summary button reading every count in words", () => {

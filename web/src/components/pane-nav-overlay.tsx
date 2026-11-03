@@ -9,7 +9,7 @@ import { hostName, isMultiHost } from "@/lib/hosts";
 import { t } from "@/lib/i18n";
 import { paneName } from "@/lib/pane-name";
 import { fitCenter, isArmed, type Direction, type GestureState, type Point } from "@/lib/pane-nav-gesture";
-import { isUnseen, TRIAGE_STATUS, worstTriage } from "@/lib/triage";
+import { isUnseen, shownStatus, TRIAGE_STATUS, worstTriage } from "@/lib/triage";
 import type { AgentView, ServerSummary } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -40,8 +40,8 @@ function PaneMark({ pane, surface = "bg-card", big = false }: { pane: AgentView 
   if (pane === undefined) return <span aria-hidden className={cn(box, "shrink-0")} />;
   const unseen = isUnseen(pane);
   return (
-    <span aria-hidden data-slot="pane-nav-mark" data-status={unseen ? "unseen" : pane.status} className={cn(box, "flex shrink-0 items-center justify-center")}>
-      {unseen ? <UnseenMark className={big ? "size-4" : undefined} /> : <StatusDot status={pane.status} surface={surface} className={big ? "size-4" : undefined} />}
+    <span aria-hidden data-slot="pane-nav-mark" data-status={unseen ? "unseen" : shownStatus(pane)} className={cn(box, "flex shrink-0 items-center justify-center")}>
+      {unseen ? <UnseenMark className={big ? "size-4" : undefined} /> : <StatusDot status={shownStatus(pane)} surface={surface} className={big ? "size-4" : undefined} />}
     </span>
   );
 }

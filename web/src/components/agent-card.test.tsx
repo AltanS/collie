@@ -146,6 +146,23 @@ describe("AgentCard in a workspace group", () => {
   });
 });
 
+describe("AgentCard's finished mark (issue 665)", () => {
+  const word = (over: Partial<AgentView>) => {
+    const { container } = render(
+      <AgentCard agent={agent({ status: "done", ...over })} onClick={() => {}} statusStyle="dot" />,
+    );
+    return container.querySelector(".sr-only")?.textContent;
+  };
+
+  it("draws a finished pane nobody opened as done", () => {
+    expect(word({ lastActiveAt: 200, lastSeenAt: 100 })).toBe("done");
+  });
+
+  it("draws the same pane as idle, a ring, once it was opened", () => {
+    expect(word({ lastActiveAt: 100, lastSeenAt: 200 })).toBe("idle");
+  });
+});
+
 describe("AgentCard's unseen marker", () => {
   it("renders a labelled dot right after the name when unseen, and nothing when it isn't", () => {
     const { container, rerender } = render(<AgentCard agent={agent()} onClick={() => {}} unseen />);

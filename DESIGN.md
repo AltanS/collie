@@ -308,7 +308,7 @@ holds the measurement), and the summary line drops its words on a phone, leaving
 | --- | --- |
 | blocked ("needs you") | filled triangle, point up, with a 1.8px round-joined stroke in its own colour so it weighs about the same as the disc (97% of its area) |
 | working | circle with its left half filled, no inner marks |
-| done | filled disc |
+| done | filled disc, for a finished pane nobody has opened yet; once opened in Collie it rests as a ring (`shownStatus`, `lib/triage.ts`) |
 | idle | hollow ring |
 | unknown | hollow dashed ring, so it stays apart from idle |
 | unseen reply (`ui/unseen-mark.tsx`) | 9px full-ink filled square, 1.5px corners; not a status colour, because it is a different kind of fact |
