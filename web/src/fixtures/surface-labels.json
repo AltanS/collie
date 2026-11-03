@@ -2811,6 +2811,11 @@
    "version": "0.22.2",
    "state": "popup"
   },
+  "hermes--v0225-title-idle.txt": {
+   "harness": "hermes",
+   "version": "0.22.5",
+   "state": "idle"
+  },
   "kiro--v2-idle-w119.txt": {
    "harness": "kiro",
    "version": "2.32.0",

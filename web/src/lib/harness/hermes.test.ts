@@ -54,6 +54,7 @@ const PINNED = [
   "hermes--palette.txt",
   "hermes--running.txt",
   "hermes--slash-popup.txt",
+  "hermes--v0225-title-idle.txt",
 ];
 
 // The screens that lift a dialog. Everything else in the corpus is the raw cohort.

@@ -18,8 +18,8 @@
     {
       "range": "0.22.3 - 0.22.5",
       "status": "provisional",
-      "verifiedThrough": "0.22.5",
-      "verifiedOn": "2026-11-02"
+      "verifiedThrough": null,
+      "verifiedOn": null
     }
   ],
   "idle": {
