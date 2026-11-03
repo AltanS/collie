@@ -14,7 +14,7 @@
 #              cannot hide behind a removed one in another. A test must not be skipped just to get
 #              green, so a higher count is a failure. Raise a number only with a reason.
 #              Bridge went from 2 to 0 when M43 spec 04 checked the access list instead of the mode.
-#              Today, 188 in all, each one named, with its reason:
+#              Today, 189 in all, each one named, with its reason:
 #              bridge 106. 5 are the POSIX-only and engine cases below, 1 the /etc link scan, 5 are the hold socket tests, 6 the walky ones, 30 are the
 #                durable example apps, 10 are the durable-harness adapter test, 36 are the durable socket tests (see "Durable, bridge" below),
 #                5 are the pane's program reads (see "The pane's program, bridge" below), and 6 are the fake git of a new
