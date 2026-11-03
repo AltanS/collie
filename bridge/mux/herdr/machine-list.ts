@@ -116,7 +116,7 @@ export function parseHerdrMachines(raw: string): readonly HostCandidate[] | null
     const target = textOf(row.target);
     if (target === null) return null;
     if (!optionalString(row.label) || !optionalString(row.id)) return null;
-    out.push({ target, label: textOf(row.label), id: textOf(row.id) });
+    out.push({ target, label: textOf(row.label), id: textOf(row.id), blocked: null });
   }
   return out;
 }

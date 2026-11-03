@@ -11,6 +11,7 @@ import { TrustStore, type TrustedMember, type TrustStoreData } from "../bridge/c
 import { parseUpdateRun, type UpdateRun } from "../bridge/update-run.ts";
 import { parsePrereleaseTag } from "../bridge/update.ts";
 import {
+  blockedReason,
   CANDIDATE_QUESTION,
   markCandidates,
   mergeCandidates,
@@ -1084,7 +1085,11 @@ async function chooseCandidateHost(deps: Wired): Promise<Chosen> {
   }
   for (const line of renderCandidateList(rows)) deps.io.out(line);
   if (offeredCandidates(rows).length === 0) {
-    deps.io.err("error: every candidate above is already a member of this crew.");
+    deps.io.err(
+      rows.some((row) => row.blocked !== null)
+        ? "error: no candidate above can be added: each is already a member of this crew or cannot be added."
+        : "error: every candidate above is already a member of this crew.",
+    );
     for (const line of USAGE) deps.io.err(line);
     return { code: EXIT.USAGE };
   }
@@ -1099,6 +1104,12 @@ async function chooseCandidateHost(deps: Wired): Promise<Chosen> {
     return { code: EXIT.STATE };
   }
   const picked = pickCandidate(rows, answer);
+  const refusal = picked === null ? blockedReason(rows, answer) : null;
+  if (refusal !== null) {
+    deps.io.err(`error: "${answer.trim()}" cannot be added: ${refusal}.`);
+    deps.io.err("       Pick another number, or run `collie crew add <ssh-host>` with a name ssh can reach.");
+    return { code: EXIT.USAGE };
+  }
   if (picked === null) {
     deps.io.err(`error: "${answer.trim()}" is not one of the candidates above.`);
     deps.io.err("       Pick a number, or run `collie crew add <ssh-host>` with the name.");

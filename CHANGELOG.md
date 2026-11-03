@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **`collie crew add` offers the machines the Herdr core knows.** With no target, the picker now reads `hc machine ls --json` beside the ssh config and the Herdr TUI's list, and tags those rows `herdr-core`. A sandbox is hidden. A machine the core reaches without ssh is shown with the reason and cannot be picked, unless the ssh config also names it. A core that is not running costs nothing and prints nothing.
+
 ## [1.26.0] - 2026-11-03
 
 ### Added

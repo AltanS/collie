@@ -60,6 +60,7 @@ import {
 } from "../types.ts";
 import { DEFAULT_HC_TIMEOUT_MS, defaultHcSocket, HC_GENERATION, HcClient, HcError, HcTimeout, type HcRpc, type WireLayout, type WireRead, type WireTerminal } from "./client.ts";
 import { routeEvent } from "./events.ts";
+import { herdrCoreMachineCandidates } from "./machine-list.ts";
 import { herdrCoreBeaconMatcher } from "./markers.ts";
 import { HERDR_CORE_LOGO_SVG } from "./logo.ts";
 import { HC_UNSENDABLE_KEYS, isRawKeyText, toHcKey, type HcKey } from "./keys.ts";
@@ -644,6 +645,7 @@ export const herdrCoreMuxFactory: MuxAdapterFactory = {
   describeTarget(endpoint: string) {
     return `socket ${herdrCoreSocketFor(endpoint)}`;
   },
+  hostCandidates: herdrCoreMachineCandidates,
 };
 
 /** The socket an endpoint names: itself, or the core's own default when it is blank. */

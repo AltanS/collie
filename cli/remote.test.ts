@@ -179,6 +179,10 @@ interface HarnessOptions {
   extraFiles?: Readonly<Record<string, string>>;
   /** `herdr machine list --json`'s stdout. Absent ⇒ there is no `herdr` binary to ask. */
   machines?: string;
+  /** `hc machine ls --json`'s stdout. Absent ⇒ there is no `hc` binary to ask. */
+  coreMachines?: string;
+  /** A core that is not running: `hc` answers `unavailable` as JSON on stdout and exits 5. */
+  coreStopped?: true;
   /** `ssh -G <target>` output per target. Absent ⇒ there is no `ssh` to resolve with. */
   resolve?: Readonly<Record<string, string>>;
   /** This lead's install kind. Absent ⇒ a linked clone, the kind every earlier test assumed. */
@@ -217,11 +221,20 @@ function harness(opts: HarnessOptions = {}): Harness {
     ["tailscale status --json", { stdout: TAILSCALE_JSON }],
   ];
   if (opts.machines !== undefined) answers.push(["herdr machine list --json", { stdout: opts.machines }]);
+  if (opts.coreMachines !== undefined) answers.push(["hc machine ls --json", { stdout: opts.coreMachines }]);
+  if (opts.coreStopped === true) {
+    const stopped = { error: { kind: "unavailable", message: "the core listens at /run/user/1000/herdr-core/default.sock" } };
+    answers.push(["hc machine ls --json", { code: 5, stdout: JSON.stringify(stopped) }]);
+  }
   for (const [target, stdout] of Object.entries(opts.resolve ?? {})) {
     answers.push([`ssh ${sshResolveArgs(target).join(" ")}`, { stdout }]);
   }
   const exec = fakeExec({
-    absent: [...(opts.machines === undefined ? ["herdr"] : []), ...(opts.resolve === undefined ? ["ssh"] : [])],
+    absent: [
+      ...(opts.machines === undefined ? ["herdr"] : []),
+      ...(opts.coreMachines === undefined && opts.coreStopped !== true ? ["hc"] : []),
+      ...(opts.resolve === undefined ? ["ssh"] : []),
+    ],
     answers,
   });
 
@@ -689,7 +702,7 @@ describe("collie crew add", () => {
   test("a target skips the picker entirely — nothing local is asked", async () => {
     const h = harness({ sshConfig: "Host attic", machines: '[{"target":"nas"}]', resolve: {} });
     expect(await run(h)).toBe(EXIT.OK);
-    expect(h.exec.calls.filter((c) => c.startsWith("ssh ") || c.startsWith("herdr "))).toEqual([]);
+    expect(h.exec.calls.filter((c) => c.startsWith("ssh ") || c.startsWith("herdr ") || c.startsWith("hc "))).toEqual([]);
   });
 
   test("no host lists the ssh config candidates and adds the one the operator picks", async () => {
@@ -779,6 +792,7 @@ describe("collie crew add", () => {
     // ran, no connection was made, and no leg script reached the transport.
     expect(h.exec.calls).toEqual([
       "herdr machine list --json",
+      "hc machine ls --json",
       "ssh -G bastion",
       "ssh -G attic",
       "ssh -G office",
@@ -793,6 +807,58 @@ describe("collie crew add", () => {
     expect(await run(h, [])).toBe(EXIT.OK);
     expect(h.io.stderr.filter((l) => l.startsWith("warn: `herdr machine list --json`"))).toHaveLength(1);
     expect(text(h.io)).toContain("probing attic…");
+  });
+
+  test("a core source: sandboxes are hidden, a via machine is greyed, and the pick takes the rest", async () => {
+    const h = harness({
+      coreMachines: JSON.stringify({
+        machines: [
+          { target: "altan@minibuch", name: "minibuch", via: false, temporary: false },
+          { target: "sbx-1", name: "sandbox", temporary: true },
+          { target: "altan@vps", name: "vps", via: true, temporary: false },
+        ],
+      }),
+      prompt: "1",
+    });
+    expect(await run(h, [])).toBe(EXIT.OK);
+    expect(h.io.stdout.slice(0, 5)).toEqual([
+      "Candidate hosts on this machine:",
+      "",
+      "   1  altan@minibuch  herdr-core",
+      "      altan@vps       herdr-core  cannot be added: reached without ssh (added with --via)",
+      "",
+    ]);
+    expect(text(h.io)).toContain("probing altan@minibuch…");
+    expect(text(h.io)).not.toContain("warn:");
+  });
+
+  test("typing a blocked machine's name is refused with its reason, and nothing runs", async () => {
+    const h = harness({
+      coreMachines: '{"machines":[{"target":"altan@minibuch"},{"target":"vps","via":true}]}',
+      prompt: "vps",
+    });
+    expect(await run(h, [])).toBe(EXIT.USAGE);
+    expect(text(h.io)).toContain('error: "vps" cannot be added: reached without ssh (added with --via).');
+    expect(h.calls).toHaveLength(0);
+  });
+
+  test("a core whose only machines are blocked offers nothing and says so", async () => {
+    const h = harness({ coreMachines: '{"machines":[{"target":"vps","via":true}]}' });
+    expect(await run(h, [])).toBe(EXIT.USAGE);
+    expect(text(h.io)).toContain("no candidate above can be added");
+    expect(h.calls).toHaveLength(0);
+  });
+
+  test("a stopped core is silent: no warning and no candidates", async () => {
+    const h = harness({
+      coreStopped: true,
+      sshConfig: "Host attic",
+      prompt: "",
+    });
+    expect(await run(h, [])).toBe(EXIT.STATE);
+    expect(h.exec.calls).toContain("hc machine ls --json");
+    expect(text(h.io)).not.toContain("warn:");
+    expect(h.io.stdout.some((l) => l.includes("attic"))).toBe(true);
   });
 
   test("a non-interactive run with candidates refuses rather than picking one", async () => {

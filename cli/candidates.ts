@@ -68,6 +68,12 @@ export interface CandidateRow {
   readonly label: string | null;
   /** This lead's own member id for the machine, or `null`. A hint; see this module's header. */
   readonly memberId: string | null;
+  /**
+   * Why this machine cannot be added, or `null`. Set only when EVERY source that named it blocked
+   * it: a source that proves a way in (an ssh config `Host`) clears the block. A blocked row is shown
+   * with its reason, has no number, and is never picked.
+   */
+  readonly blocked: string | null;
 }
 
 /**
@@ -164,16 +170,22 @@ export function mergeCandidates(
           key,
           label: candidate.label,
           memberId: null,
+          blocked: candidate.blocked,
         });
         continue;
       }
+      // A block holds only while every source agrees on it. When a later source clears it, the row
+      // adopts that source's spelling too: the blocked spelling is the one that cannot be dialled.
+      const cleared = existing.blocked !== null && candidate.blocked === null;
       // The FIRST source's spelling stays the target — `ssh config` is listed first, so the name the
       // operator maintains by hand is the one `crew add` is handed and the one the row leads with.
       rows.set(key, {
         ...existing,
+        target: cleared ? target : existing.target,
         names: existing.names.includes(target) ? existing.names : [...existing.names, target],
         sources: existing.sources.includes(source) ? existing.sources : [...existing.sources, source],
         label: existing.label ?? candidate.label,
+        blocked: existing.blocked === null || candidate.blocked === null ? null : existing.blocked,
       });
     }
   }
@@ -197,16 +209,16 @@ export function markCandidates(
   });
 }
 
-/** A row the operator may pick: one this lead does not already lead. */
+/** A row the operator may pick: one this lead does not already lead and no source blocked. */
 export function offeredCandidates(rows: readonly CandidateRow[]): readonly CandidateRow[] {
-  return rows.filter((row) => row.memberId === null);
+  return rows.filter((row) => row.memberId === null && row.blocked === null);
 }
 
 /**
  * The list, as lines.
  *
- * A numbered row is one that can be picked. An already-enrolled row keeps its place and loses its
- * number: it is shown so the operator can see the machine is accounted for, and not offered because
+ * A numbered row is one that can be picked. A blocked row keeps its place, loses its number and ends
+ * with the reason. An already-enrolled row keeps its place and loses its number: it is shown so the operator can see the machine is accounted for, and not offered because
  * picking it would only earn the far machine's own refusal.
  *
  * The source tag and the member-id mark are SEPARATE columns, deliberately. "Where this name came
@@ -225,6 +237,7 @@ export function renderCandidateList(rows: readonly CandidateRow[]): readonly str
     const others = row.names.filter((name) => name !== row.target);
     if (others.length > 0) columns.push(`also ${others.join(", ")}`);
     if (row.memberId !== null) columns.push(`already enrolled as "${row.memberId}"`);
+    if (row.blocked !== null) columns.push(`cannot be added: ${row.blocked}`);
     const gutter = number === undefined ? "   " : `${number.padStart(2, " ")} `;
     lines.push(`  ${gutter} ${row.target.padEnd(width)}  ${columns.join("  ")}`.trimEnd());
   }
@@ -240,7 +253,7 @@ export const CANDIDATE_QUESTION = "Which host? (a number, a name, or blank to st
  *
  * A number picks an offered row. Anything else is matched against every name on every row — the
  * enrolled ones included, because typing a name is the operator's own decision and the existing
- * refusals are what answer it. An answer that matches nothing is refused rather than guessed at.
+ * refusals are what answer it. A blocked row's name is refused: no source can reach it. An answer that matches nothing is refused rather than guessed at.
  */
 export function pickCandidate(rows: readonly CandidateRow[], answer: string): string | null {
   const trimmed = answer.trim();
@@ -250,5 +263,16 @@ export function pickCandidate(rows: readonly CandidateRow[], answer: string): st
     return offered[Number(trimmed) - 1]?.target ?? null;
   }
   const named = rows.find((row) => row.names.includes(trimmed));
-  return named === undefined ? null : named.target;
+  if (named === undefined || named.blocked !== null) return null;
+  return named.target;
+}
+
+/**
+ * The reason a typed name is refused, or `null` when the name is not a blocked row's. The caller
+ * prints it instead of the generic "not one of the candidates" line, so a greyed row's name does not
+ * read as a typo.
+ */
+export function blockedReason(rows: readonly CandidateRow[], answer: string): string | null {
+  const trimmed = answer.trim();
+  return rows.find((row) => row.blocked !== null && row.names.includes(trimmed))?.blocked ?? null;
 }

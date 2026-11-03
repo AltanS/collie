@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { CANDIDATE_TIMEOUT_MS, type HostCandidate, type HostProbe } from "../bridge/mux/host-candidates.ts";
 import {
+  blockedReason,
   markCandidates,
   mergeCandidates,
   offeredCandidates,
@@ -18,7 +19,8 @@ import {
 // The merge, the mark and the rendering, over a probe that records rather than spawns. **NOTHING
 // here runs `ssh`.**
 
-const named = (target: string): HostCandidate => ({ target, label: null, id: null });
+const named = (target: string): HostCandidate => ({ target, label: null, id: null, blocked: null });
+const blockedNamed = (target: string, reason: string): HostCandidate => ({ target, label: null, id: null, blocked: reason });
 
 /** `ssh -G`'s output, as ssh prints it: one lowercase keyword per line. */
 function resolved(user: string, hostname: string, port: string): string {
@@ -137,7 +139,7 @@ describe("mergeCandidates", () => {
     const rows = mergeCandidates(
       [
         { source: SSH_CONFIG_SOURCE, candidates: [named("attic")] },
-        { source: "herdr", candidates: [{ target: "op@attic.lan:22", label: "The attic", id: "m-1" }] },
+        { source: "herdr", candidates: [{ target: "op@attic.lan:22", label: "The attic", id: "m-1", blocked: null }] },
       ],
       () => "one",
     );
@@ -228,5 +230,75 @@ describe("pickCandidate", () => {
   test("blank and an unknown name are refused rather than guessed at", () => {
     expect(pickCandidate(rows, "")).toBeNull();
     expect(pickCandidate(rows, "somewhere-else")).toBeNull();
+  });
+});
+
+describe("blocked rows", () => {
+  const REASON = "reached without ssh (added with --via)";
+
+  test("a row blocked by every source that named it stays blocked", () => {
+    const rows = mergeCandidates(
+      [
+        { source: "one", candidates: [blockedNamed("vps", REASON)] },
+        { source: "two", candidates: [blockedNamed("vps", "no route")] },
+      ],
+      () => null,
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.blocked).toBe(REASON);
+  });
+
+  test("an ssh config Host for the same machine clears the block", () => {
+    const rows = mergeCandidates(
+      [
+        { source: SSH_CONFIG_SOURCE, candidates: [named("vps")] },
+        { source: "core", candidates: [blockedNamed("op@vps.example:22", REASON)] },
+      ],
+      () => "op@vps.example:22",
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.blocked).toBeNull();
+    expect(rows[0]!.target).toBe("vps");
+  });
+
+  test("a later unblocked source clears the block and its spelling becomes the target", () => {
+    const rows = mergeCandidates(
+      [
+        { source: "core", candidates: [blockedNamed("vps-via", REASON)] },
+        { source: "tui", candidates: [named("op@vps.example")] },
+      ],
+      () => "one",
+    );
+    expect(rows[0]!.blocked).toBeNull();
+    expect(rows[0]!.target).toBe("op@vps.example");
+    expect(rows[0]!.names).toEqual(["vps-via", "op@vps.example"]);
+  });
+
+  const rows = mergeCandidates(
+    [
+      { source: SSH_CONFIG_SOURCE, candidates: [named("attic")] },
+      { source: "core", candidates: [blockedNamed("vps", REASON), named("nas")] },
+    ],
+    () => null,
+  );
+
+  test("a blocked row has no number and shows the reason as its last column", () => {
+    expect(renderCandidateList(rows)).toEqual([
+      "Candidate hosts on this machine:",
+      "",
+      "   1  attic  ssh config",
+      "      vps    core  cannot be added: reached without ssh (added with --via)",
+      "   2  nas    core",
+      "",
+    ]);
+    expect(offeredCandidates(rows).map((r) => r.target)).toEqual(["attic", "nas"]);
+  });
+
+  test("pick refuses a blocked row's name, and blockedReason says why", () => {
+    expect(pickCandidate(rows, "vps")).toBeNull();
+    expect(pickCandidate(rows, "2")).toBe("nas");
+    expect(blockedReason(rows, "vps")).toBe(REASON);
+    expect(blockedReason(rows, "nas")).toBeNull();
+    expect(blockedReason(rows, "nowhere")).toBeNull();
   });
 });

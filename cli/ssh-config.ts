@@ -47,7 +47,7 @@ export function sshConfigCandidates(files: SshConfigFiles, home: string): readon
     seen.add(alias);
     // No label and no id: an ssh config alias IS the name, and inventing a second one from a
     // `HostName` line would be this module resolving, which is not its job.
-    out.push({ target: alias, label: null, id: null });
+    out.push({ target: alias, label: null, id: null, blocked: null });
   }
   return out;
 }
