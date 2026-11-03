@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **A Herdr core Claude pane that stays quiet for half a day keeps its Chat and History.** The session beacon goes stale after twelve hours of silence, and the pane fell back to the terminal view until the next hook fired. Collie now keeps the session while the Claude process still runs, and drops it when the process is gone. Thanks @SergioGhisler (#663).
+
 ## [1.26.0] - 2026-11-03
 
 ### Added
