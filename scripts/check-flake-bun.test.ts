@@ -181,7 +181,11 @@ describe("the Windows check runs the flake's Bun", () => {
     const sysSkips = [...readFileSync(join(ROOT, "cli", "sys.test.ts"), "utf8").matchAll(/test\.skipIf\(process\.platform === "win32"\)\("([^"]+)"/g)].map((m) => m[1]!);
     expect(sysSkips).toHaveLength(2);
     for (const name of sysSkips) expect(script).toContain(name);
-    expect(budget("Cli")).toBe(sysSkips.length + 1 + 12 + 3 + walkySocketTests.length + 3);
+    // M84: the hc-only home probe in cli/remote.test.ts runs a POSIX `sh` against a stand-in `hc`.
+    const hcProbe = "the real probe on an hc-only home reports the core and Collie's own config dir";
+    expect(readFileSync(join(ROOT, "cli", "remote.test.ts"), "utf8")).toContain(hcProbe);
+    expect(script).toContain(hcProbe);
+    expect(budget("Cli")).toBe(sysSkips.length + 1 + 12 + 3 + walkySocketTests.length + 3 + 1);
     for (const name of posixOnly) expect(script).toContain(name);
     expect(script).toContain("a 13 s WAV becomes text through a real child of this Collie");
     expect(script).toContain("a child of this checkout's CLI turns 10.4 s of speech into text");
