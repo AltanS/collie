@@ -3001,11 +3001,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             onPaste={onPasteFile}
             placeholder={placeholderWords}
             // A shell line is a command, not prose, so a shell pane (and direct typing, which sends
-            // keys to any pane) turns the keyboard's correction and spell check off. Android keyboards
+            // keys to any pane) turns the keyboard's correction off. Android keyboards
             // (Gboard, SwiftKey, Samsung) otherwise capitalize the first letter despite the field's
             // `autoCapitalize="none"` (issue 465). An agent pane keeps the keyboard's defaults.
+            // The browser spellchecker is off on every pane: on Android Chrome a tap on a marked
+            // word opens the browser's suggestion menu, which takes the focus and hides the keyboard.
             autoCorrect={direct.active || isShell ? "off" : undefined}
-            spellCheck={direct.active || isShell ? false : undefined}
+            spellCheck={false}
             className={cn(
               // `flex-1 min-w-0`: the field takes whatever width the two buttons beside it leave,
               // and `min-w-0` is what lets it go NARROWER than its content asks. A flex item's

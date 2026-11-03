@@ -309,12 +309,13 @@ describe("Composer: keyboard hints on the field (issue 465)", () => {
     expect(box).toHaveAttribute("spellcheck", "false");
   });
 
-  it("leaves correction and spell check at the keyboard default on an agent pane", () => {
+  it("leaves correction at the keyboard default on an agent pane and turns the browser spell check off", () => {
     renderComposer();
     const box = screen.getByRole("textbox");
     expect(box).toHaveAttribute("autocapitalize", "none");
     expect(box).not.toHaveAttribute("autocorrect");
-    expect(box).not.toHaveAttribute("spellcheck");
+    // A tap on a marked word opens Chrome's suggestion menu on Android, which hides the keyboard.
+    expect(box).toHaveAttribute("spellcheck", "false");
   });
 });
 

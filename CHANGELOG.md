@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **On Android the keyboard no longer hides when you tap a word the spellchecker marked.** The composer turns the browser's spellchecker off, as the shell composer already did, so Chrome's suggestion menu no longer takes the focus away from the keyboard. Gboard's own corrections are unchanged.
+
 ## [1.25.5] - 2026-11-02
 
 ### Fixed
