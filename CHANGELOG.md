@@ -32,6 +32,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A worktree pane names its repository in the Switch pane sheet and the pane header.** The sheet folds a worktree under its repository's space when that space is open, as the dashboard does, and heads one that is not open `repository › name`. The pane header shows the repository's name before the branch, instead of Herdr's random worktree word. A pane in a root checkout draws as before. Thanks @viniciosrab (#666).
 - **A finished pane you opened rests.** The green dot and the green count now mean a pane that finished and that nobody has looked at yet. Once you open the pane in Collie, or drive it, its dot becomes a ring and it leaves the green count, on every screen that draws the pane. The unseen square is unchanged, and the mark still follows the one shared seen mark of the bridge, not each device (ADR 0003). Thanks @viniciosrab (#665).
 
+### Fixed
+
+- **A ghost suggestion under the cursor no longer reads as a draft.** Claude Code with the next-steps plugin puts a dim suggestion in the empty box with the cursor on its first letter, and Collie read that cell as typed text and held every send. The box reads empty again. Thanks @cryptiklemur (#659).
+
 ## [1.26.0] - 2026-11-03
 
 ### Added

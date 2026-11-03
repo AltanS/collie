@@ -42,7 +42,9 @@
         "Tell the agent what to do instead (Enter to send, empty to skip, Esc to cancel)"
       ],
       "textsNote": "Issue 640, Cursor 2026.10.22: Escape on the shell approval leaves a free composer whose placeholder is the third text (typing replaces it, Enter sends), with no statusline under it. Fixture cursor--after-skip.",
-      "sgr": 2
+      "sgr": 2,
+      "caretOnGhost": false,
+      "caretOnGhostNote": "M83 spec 05, 2026-11-03: the shell prompt (`!`) draws its grey hint `Run a command \u2014 e.g., git status` with a caret on the first letter. That box is a shell prompt, so it reads as a draft and a message never goes into it (fixture cursor--shell-mode-empty); the generic caret-on-ghost rule is off here."
     },
     "volatile": {
       "above": { "maxRows": 8 },

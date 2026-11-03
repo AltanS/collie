@@ -18,6 +18,8 @@ export interface AnsiSegment {
   italic?: boolean;
   underline?: boolean;
   strike?: boolean;
+  /** Reverse video (SGR 7). `fg` and `bg` already hold the swapped colours; this keeps the fact that they were swapped. */
+  inverse?: boolean;
   // Pre-computed presentation — consumed by AnsiOutput to avoid per-render allocation.
   style: CSSProperties;
   /** True when this text is decorative terminal rule glyphs; the renderer mutes it. The parser
@@ -200,6 +202,7 @@ export function parseAnsi(input: string): AnsiSegment[] {
       italic: state.italic,
       underline: state.underline,
       strike: state.strike,
+      inverse: state.inverse,
       style: buildStyle(state, paintFg, paintBg),
       muted: checkMuted(buf),
     });

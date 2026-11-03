@@ -502,6 +502,13 @@ export interface Profile {
        * the box is empty. Optional; a styled read never takes that path.
        */
       readonly anyText?: true;
+      /**
+       * False when a reverse-video cell on the first glyph of the hole is typed text, not a caret on a
+       * ghost suggestion. Absent means the caret is skipped (a hole is still a placeholder when one
+       * leading reverse-video cell is followed by faint or ghost-coloured cells). For a box whose hint
+       * under a caret must read as a draft, such as a shell prompt a send would run as a command.
+       */
+      readonly caretOnGhost?: false;
     };
     readonly volatile: {
       readonly above: {
@@ -1310,8 +1317,10 @@ function parsePlaceholders(node: JsonObject): Profile["idle"]["placeholders"] {
       : { ...withPrefixes, patterns: textList(node.patterns, "idle.placeholders.patterns", 1).map((item, i) => pattern(item, `idle.placeholders.patterns[${String(i)}]`).source) };
   if (node.anyText !== undefined && node.anyText !== true && node.anyText !== false) fail("idle.placeholders.anyText", "must be true or false");
   const withAnyText = node.anyText === true ? { ...withPatterns, anyText: true as const } : withPatterns;
-  if (node.fg === undefined) return withAnyText;
-  return { ...withAnyText, fg: colourList(node.fg, "idle.placeholders.fg") };
+  if (node.caretOnGhost !== undefined && node.caretOnGhost !== true && node.caretOnGhost !== false) fail("idle.placeholders.caretOnGhost", "must be true or false");
+  const withCaret = node.caretOnGhost === false ? { ...withAnyText, caretOnGhost: false as const } : withAnyText;
+  if (node.fg === undefined) return withCaret;
+  return { ...withCaret, fg: colourList(node.fg, "idle.placeholders.fg") };
 }
 
 /** `idle.frame.trailer`: the last row inside the box, and the padding rows under it. */

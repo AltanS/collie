@@ -1271,6 +1271,21 @@
    "version": "2.1.317",
    "state": "idle"
   },
+  "claude--v2317-next-steps-suggestions-empty-box--w100.txt": {
+   "harness": "claude",
+   "version": "2.1.317",
+   "state": "idle"
+  },
+  "claude--v2317-next-steps-suggestions-one-line-draft--w100.txt": {
+   "harness": "claude",
+   "version": "2.1.317",
+   "state": "draft"
+  },
+  "claude--v2317-next-steps-suggestions-dismissed--w100.txt": {
+   "harness": "claude",
+   "version": "2.1.317",
+   "state": "idle"
+  },
   "claude--v2304-select-preview-cjk-moved.txt": {
    "harness": "claude",
    "version": "2.1.304",
