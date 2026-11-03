@@ -6085,6 +6085,16 @@
    "harness": "pi",
    "version": "1.4.0",
    "state": "dialog"
+  },
+  "pi--v110-stock-idle-quote-rail.txt": {
+   "harness": "pi",
+   "version": "1.1.0",
+   "state": "idle"
+  },
+  "pi--v130-core-question-quote-rail--w120.txt": {
+   "harness": "pi",
+   "version": "1.3.0",
+   "state": "dialog"
   }
  },
  "knownMismatches": {

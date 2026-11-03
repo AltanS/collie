@@ -3658,3 +3658,12 @@ Gentle Shell 4.5.1 / Pi 1.4.0 pane on herdr-core 0.1.16, attached at 100 columns
 and 30 rows. An input extension consumed messages before any model call. The
 captures cover an empty editor, a draft, a multiline draft and a test selector
 with its pointer on both choices. No operator conversation is included.
+
+The two `quote-rail` captures are derived, not captured: three ` ▎ ` rows, the left rail of
+a quoted block, replace three transcript rows of a stock capture. They prove that the float
+editor's frame never claims a rail in the transcript (issue 660 review, 2026-11-03).
+
+| Fixture | Derived from | Reads as |
+| --- | --- | --- |
+| `pi--v110-stock-idle-quote-rail.txt` | `pi--v110-stock-idle.txt`, rows 4 to 6 | composer, empty, free: the stock box, the quote is transcript |
+| `pi--v130-core-question-quote-rail--w120.txt` | `pi--v130-core-question--w120.txt`, rows 19 to 21 (blank before) | question ask, not free: no float editor |
