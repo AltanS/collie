@@ -1,0 +1,10 @@
+✻ Brewed for 26s · done 9:37 AM
+                                                                                                                                                      [-]
+✦ Heads up · Your rule for the pipe operator does not hold for one bundle, which still supports PHP 8.4.
+  1: Learn more   2: Knew this already   0: Dismiss
+                                                                                                                                           230267 tokens
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ 
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  neutral words neutral words neutral words neutral words neutral words neutral words neutral words neutral word
+  ⏵⏵ auto mode on (shift+tab to cycle)

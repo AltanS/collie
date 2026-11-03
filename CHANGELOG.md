@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **Claude Code with verbose on no longer shows every send as a two-tap Send under a notice.** The token-count row that Claude Code 2.1.317 draws under a Heads up notice, such as 230267 tokens, is now a known gap of the notice. The box reads idle, and a send goes through. Thanks @marforon (#668).
+
 ## [1.26.0] - 2026-11-03
 
 ### Added
