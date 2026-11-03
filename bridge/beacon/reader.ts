@@ -86,13 +86,14 @@ async function readOne(
   // a machine that never got to run a `SessionEnd` hook at all (a `kill -9`, a laptop lid), which is
   // why its TTL is measured in hours rather than minutes: see BEACON_TTL_MS.
   const fresh = now - record.heartbeatMs <= ttlMs;
-  const live = fresh && (await pidIsStillOurs(record, deps.liveness));
+  const running = await pidIsStillOurs(record, deps.liveness);
+  const live = fresh && running;
 
   // The status is DROPPED here, not carried and ignored downstream. An expired beacon keeps its
   // session ref because a finished conversation is still readable (M11/04); it keeps no claim about
   // what the agent is doing, because it has not been able to make one since it died.
   if (!live) {
-    return { liveness: "expired", key, harness: record.harness, session: record.session, markers: record.markers };
+    return { liveness: "expired", key, harness: record.harness, session: record.session, markers: record.markers, running };
   }
   return {
     liveness: "live",

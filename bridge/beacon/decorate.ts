@@ -28,8 +28,10 @@
 //  - a LIVE beacon adds its session ref only to a pane whose adapter-reported agent is the beacon's
 //    own harness. A beacon for `claude` on a pane the adapter reads as `codex` or as a shell adds
 //    nothing, so a stale or misplaced beacon can never rename a pane or hand it another agent's log;
-//  - an EXPIRED beacon adds the journal key (`agentSession` and `sessionAgent`) only to a pane the
-//    adapter reads as a shell, exactly the pane an ended agent leaves behind.
+//  - an EXPIRED beacon adds the journal key (`agentSession` and `sessionAgent`) to a pane the
+//    adapter reads as a shell, exactly the pane an ended agent leaves behind. One that expired on the
+//    heartbeat alone, its process still running, still adds the session ref to a pane of its own
+//    harness: an agent idle past the TTL is the same conversation.
 //
 // The session ref is the journal's lookup key (ADR 0024), and the adapter's identity is the only one.
 //
@@ -298,7 +300,8 @@ function withSessionOnly(pane: MuxPane, reading: BeaconReading, identity: Beacon
   if (reading.liveness === "live") {
     return pane.agent === identity.agent ? { ...pane, agentSession: identity.session } : pane;
   }
-  return pane.agent === "shell" ? { ...pane, agentSession: identity.session, sessionAgent: identity.agent } : pane;
+  if (pane.agent === "shell") return { ...pane, agentSession: identity.session, sessionAgent: identity.agent };
+  return reading.running && pane.agent === identity.agent ? { ...pane, agentSession: identity.session } : pane;
 }
 
 /**
