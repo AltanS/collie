@@ -17,7 +17,7 @@
 // pi and omp need a provider key (COLLIE_RIG_KEY_FILE); without one both cases report "not reached".
 import { NotReached, capture, captureScreen, message, openSession, phoneOn, resetBox, runScenario, sendFromComposer, spendTurn, tapWords, test, waitIdle, type Session } from "./leg";
 import { PHONE, REPLY_MS, addressOf, addressPattern, busyMessage, firstRow, operatorMessage, settledWalky, whoAddress, withoutInstance, wrapped } from "./walky-lib";
-import { asJsonObject, asJsonString } from "../../src/lib/json";
+import { asJsonObject } from "../../src/lib/json";
 
 const claudeSession: Session = { paneId: null, startNote: "not started" };
 
@@ -120,17 +120,18 @@ test.describe("walky talky between agents", () => {
         notes.push(piRead ? "pi read the reply with `inbox`: pong" : "pi did not show the reply's body from `inbox`");
 
         // The phone, on Claude's pane: the message is a card, with its body (it was read with `inbox`) and the agent badge.
+        // The card is pinned by its message id, not by its head: since M80 spec 12 the head names the sender by
+        // its live pane's name (walky-names.ts, `senderNameOf`), not by the log's label.
         const claudePhone = await phoneOn(browser, rig, claudePane, PHONE);
         try {
-          const label = asJsonString(asJsonObject(sent.from)?.label) ?? "";
-          const title = claudePhone.page.getByText(message("walky.card.title", { label }), { exact: true }).last();
-          const card = await title
+          const cardBox = claudePhone.page.locator(`[data-slot="walky-card"][data-id="${id}"]`).last();
+          const card = await cardBox
             .waitFor({ state: "visible", timeout: 20_000 })
             .then(() => true)
             .catch(() => false);
-          if (card) await title.scrollIntoViewIfNeeded();
-          const bodyShown = card ? await claudePhone.page.getByText(body, { exact: true }).last().isVisible().catch(() => false) : false;
-          const badge = await claudePhone.page.getByText(message("walky.kind.agent"), { exact: true }).last().isVisible().catch(() => false);
+          if (card) await cardBox.scrollIntoViewIfNeeded();
+          const bodyShown = card && (await cardBox.locator('[data-slot="walky-body"]').textContent().catch(() => null)) === body;
+          const badge = card && (await cardBox.getByText(message("walky.kind.agent"), { exact: true }).isVisible().catch(() => false));
           notes.push(`Claude's Chat: card ${card ? "shown" : "NOT shown"}, body ${bodyShown ? "shown" : "NOT shown"}, agent badge ${badge ? "shown" : "NOT shown"}`);
           trail.captures.push(await capture(claudePhone.page, "walky-8-claude-chat"), await captureScreen(rig, claudePane, "walky-8-claude"), await captureScreen(rig, piPane, "walky-8-pi"));
           const ok = first === "delivered" && nudged !== null && bodyOnlyAfterInbox && replyState === "delivered" && replyOnScreen !== null && piRead && card && bodyShown && badge && log.every((l) => l.worked);
