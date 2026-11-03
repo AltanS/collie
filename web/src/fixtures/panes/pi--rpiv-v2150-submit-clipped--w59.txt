@@ -1,0 +1,38 @@
+[0m[48;2;27;47;93m </file>                                                   [0m
+[0m[48;2;27;47;93m Call ask_user_question exactly once using these exact     [0m
+[0m[48;2;27;47;93m parameters. Await the user answers. Do not select any     [0m
+[0m[48;2;27;47;93m answers yourself.                                         [0m
+[0m[48;2;27;47;93m                                                           [0m
+
+[0m[48;2;50;50;50m                                                           [0m
+[0m[48;2;50;50;50m [0m[1m[48;2;50;50;50mAsk[0m[48;2;50;50;50m [0m[38;2;228;101;225m[48;2;50;50;50mPlan · Checks · Delivery · Optional[0m[48;2;50;50;50m                   [0m
+[0m[48;2;50;50;50m                                                           [0m
+
+[0m[38;2;228;101;225m───────────────────────────────────────────────────────────[0m
+ ← [0m[38;2;0;194;0m ■ Plan [0m [0m[38;2;0;194;0m ■ Checks [0m [0m[38;2;0;194;0m ■ Delivery [0m [0m[38;2;160;160;160m □ Optional [0m [0m[48;2;27;47;93m ✓ Submit [0m
+
+
+ [0m[1m[38;2;228;101;225mReview your answers[0m                                       
+
+ [0m[38;2;160;160;160m ● Plan[0m                                                   
+    [0m[38;2;160;160;160m→[0m Own preview plan                                     
+ Next line                                                 
+ [0m[38;2;130;130;130m     Note for this answer: Preview first note             [0m
+ [0m[38;2;130;130;130mPreview second note[0m                                       
+ [0m[38;2;160;160;160m ● Checks[0m                                                 
+    [0m[38;2;160;160;160m→[0m Known answer.                                        
+ [0m[38;2;130;130;130m     Note for this answer:                                [0m
+ [0m[38;2;130;130;130mxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx [0m
+ [0m[38;2;130;130;130mxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx [0m
+ [0m[38;2;130;130;130mxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx [0m
+ [0m[38;2;130;130;130mxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx [0m
+ [0m[38;2;130;130;130mxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx [0m
+[0m[38;2;130;130;130m↓[0m
+[0m[38;2;228;101;225m───────────────────────────────────────────────────────────[0m
+
+ [0m[38;2;167;167;0m⚠ Answer remaining questions before submitting: Optional[0m
+❯ 1. [0m[1m[38;2;228;101;225mSubmit answers[0m
+  2. Cancel
+ [0m[38;2;130;130;130mEnter to select · ↑/↓ to navigate · n to add a note · Esc[0m…
+[0m[38;2;130;130;130m/tmp/collie-rpiv-lab.xALl6A/.cache/collie-lab/rpiv/rig/work[0m
+[0m[38;2;130;130;130m↑1.8k ↓295 $0.003 1.1%/200k (auto)  anthropic/claude-haiku-[0m

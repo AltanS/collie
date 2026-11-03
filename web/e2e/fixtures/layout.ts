@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 
 // THE PHONE LAYOUT AT EVERY WIDTH (ADR 0120). From 600px wide and 480px tall the pane screen is a
 // sidebar beside a strip: no Switch pill on the belt, no tab row, no pane row, no fold bar, and the
@@ -12,4 +12,15 @@ const MODE_KEY = "collie:wide-layout-mode:v1";
 
 export async function keepPhoneLayout(page: Page): Promise<void> {
   await page.addInitScript((key) => localStorage.setItem(key, "off"), MODE_KEY);
+}
+
+/** Read an optional element in one DOM turn: its accessible name can change after a visibility check. */
+export async function optionalBox(locator: Locator) {
+  return locator.evaluateAll((elements) => {
+    if (elements.length > 1) throw new Error("Expected at most one optional element");
+    const element = elements[0];
+    if (element === undefined || getComputedStyle(element).visibility !== "visible") return null;
+    const { x, y, width, height } = element.getBoundingClientRect();
+    return width > 0 && height > 0 ? { x, y, width, height } : null;
+  });
 }

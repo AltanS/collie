@@ -13,7 +13,12 @@
 // without a cycle. The identity comparators at the bottom are part of the same contract: the race
 // guard compares any adapter's dialog through them (harness/dialog-contract.ts wires kind → comparator).
 
-import type { WizardStepChip } from "./wizard-model";
+import type { WizardNavigation, WizardStepChip } from "./wizard-model";
+import { sameKeysModuloWalk, sameOptionalKeys } from "./prompt-model";
+import { sameDialogEditors, type DialogEditors } from "./editor-model";
+
+/** The existing phone-sized note bound, shared by the surface and its lazy action recipe. */
+export const NOTE_MAX_LENGTH = 300;
 
 /** The per-question note, parsed off the `Notes:` line + the footer's focus marker. */
 export interface PreviewNote {
@@ -27,6 +32,8 @@ export interface PreviewNote {
   /** The visible note text ("" for none / the empty placeholder). The TUI windows the display at
    *  ~60 columns, so a long note may be a truncated readback. */
   text: string;
+  /** A clipped/first-line summary, never an editable replacement base. */
+  textComplete?: false;
 }
 
 /** One selectable option of the preview dialog. */
@@ -36,6 +43,10 @@ export interface PreviewOption {
   /** The option's digit. In this variant the digit only MOVES the pointer; selection is a separate
    *  Enter once the pointer is verified (see preview-action.ts — never send both in one call). */
   n: number;
+  /** Description shown under this choice, when the screen supplies one. */
+  description?: string;
+  /** An explicitly declared walk/verify/Enter plan. Absent keeps the digit-jump recipe. */
+  keys?: string[];
   /** This row carries the `❯` pointer — the row Enter would select, and the preview pane's owner. */
   pointed: boolean;
   /** Trailing ` ✔` on a revisited, already-answered wizard question's chosen row. */
@@ -45,6 +56,10 @@ export interface PreviewOption {
 /** A detected preview-variant AskUserQuestion (single-question or one wizard step). */
 export interface PreviewSelectModel {
   question: string;
+  caption?: string;
+  /** Optional appended custom input, distinct from authored choices. */
+  field?: { n: number; text: string; focused: boolean; lines: number; multiline?: true; textComplete?: false };
+  editors?: DialogEditors;
   options: PreviewOption[];
   /** The right-hand preview pane of the POINTED option, as plain text lines (borders included). */
   preview: string[];
@@ -52,6 +67,10 @@ export interface PreviewSelectModel {
   /** The wizard stepper chips when this question is a step of a multi-question dialog; null for a
    *  single-question dialog. Navigation uses the same Left/Right keys as the standard wizard. */
   steps: WizardStepChip[] | null;
+  navigation?: WizardNavigation;
+  cancelKeys?: string[];
+  /** Required when the active step is identified by style alone. */
+  styledSignature?: string;
   /**
    * The literal, contiguous dialog region from the bounded lookback through the footer. The bridge
    * must find this text in its fresh pane.read before writing. Unlike `coreSignature`, this includes
@@ -88,7 +107,9 @@ export interface PreviewSelectModel {
 export function previewsEqual(a: PreviewSelectModel, b: PreviewSelectModel): boolean {
   return (
     previewStructureEqual(a, b) && // core signature + question/chips/labels + note state
-    a.options.every((o, i) => o.pointed === b.options[i]!.pointed) &&
+    a.options.every((o, i) => o.pointed === b.options[i]!.pointed && sameOptionalKeys(o.keys, b.options[i]!.keys)) &&
+    a.styledSignature === b.styledSignature && sameDialogEditors(a.editors, b.editors) &&
+    a.field?.text === b.field?.text && a.field?.focused === b.field?.focused && a.field?.textComplete === b.field?.textComplete &&
     a.preview.length === b.preview.length &&
     a.preview.every((l, i) => l === b.preview[i])
   );
@@ -103,7 +124,11 @@ export function previewsEqual(a: PreviewSelectModel, b: PreviewSelectModel): boo
  *  different signature, so it can never pass as the dialog the user tapped. */
 export function previewCoreEqual(a: PreviewSelectModel, b: PreviewSelectModel): boolean {
   if (a.coreSignature !== b.coreSignature) return false;
-  if (a.question !== b.question) return false;
+  if (a.question !== b.question || a.caption !== b.caption || !sameDialogEditors(a.editors, b.editors, false)) return false;
+  if ((a.field === undefined) !== (b.field === undefined) || a.field?.n !== b.field?.n || a.field?.multiline !== b.field?.multiline) return false;
+  if (!sameOptionalKeys(a.cancelKeys, b.cancelKeys) ||
+      !sameOptionalKeys(a.navigation?.back, b.navigation?.back) ||
+      !sameOptionalKeys(a.navigation?.next, b.navigation?.next)) return false;
   if ((a.steps === null) !== (b.steps === null)) return false;
   if (
     a.steps !== null &&
@@ -120,11 +145,17 @@ export function previewCoreEqual(a: PreviewSelectModel, b: PreviewSelectModel): 
   }
   return (
     a.options.length === b.options.length &&
-    a.options.every((o, i) => o.label === b.options[i]!.label && o.chosen === b.options[i]!.chosen)
+    a.options.every((o, i) => {
+      const other = b.options[i]!;
+      return o.label === other.label && o.description === other.description && o.chosen === other.chosen &&
+        (o.keys === undefined || other.keys === undefined
+          ? o.keys === other.keys
+          : sameKeysModuloWalk(o.keys, other.keys));
+    })
   );
 }
 
 /** Core identity plus the note's visible state — everything except the pointer/preview. */
 export function previewStructureEqual(a: PreviewSelectModel, b: PreviewSelectModel): boolean {
-  return previewCoreEqual(a, b) && a.note.state === b.note.state && a.note.text === b.note.text;
+  return previewCoreEqual(a, b) && a.note.state === b.note.state && a.note.text === b.note.text && a.note.textComplete === b.note.textComplete;
 }

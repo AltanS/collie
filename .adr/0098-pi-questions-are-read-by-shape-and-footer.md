@@ -1,6 +1,7 @@
 # 0098: pi questions are read by shape and footer
 
 - **Status:** Accepted
+- **Amended in scope by:** [0128](./0128-native-dialog-edits-read-the-complete-seen-value.md)
 - **Date:** 2026-10-12
 - **Shipped in:** pending (1.20.1)
 - **Trail:** [PR 397](https://github.com/AltanS/collie/pull/397) (a `pi` adapter with recipes for one

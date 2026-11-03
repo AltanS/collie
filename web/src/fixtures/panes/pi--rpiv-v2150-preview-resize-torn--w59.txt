@@ -1,0 +1,38 @@
+[0m[48;2;27;47;93m run?","header":"Checks","multiSelect":true,"options":[{"la[0m
+[0m[48;2;27;47;93m behavior."},{"label":"Integration tests","description":"Ve[0m
+[0m[48;2;27;47;93m Collie probe describe delivery?","header":"Delivery","opti[0m
+[0m[48;2;27;47;93m answer."},{"label":"Custom","description":"Use a custom an[0m
+[0m[48;2;27;47;93m should the Collie probe name?","header":"Optional","option[0m
+[0m[48;2;27;47;93m host."},{"label":"Mac","description":"Test the Mac host."}[0m
+[0m[48;2;27;47;93m                                                           [0m
+[0m[48;2;27;47;93m </file>                                                   [0m
+[0m[48;2;27;47;93m Call ask_user_question exactly once using these exact para[0m
+[0m[48;2;27;47;93m yourself.                                                 [0m
+[0m[48;2;27;47;93m                                                           [0m
+
+[0m[48;2;50;50;50m                                                           [0m
+[0m[48;2;50;50;50m [0m[1m[48;2;50;50;50mAsk[0m[48;2;50;50;50m [0m[38;2;228;101;225m[48;2;50;50;50mPlan · Checks · Delivery · Optional[0m[48;2;50;50;50m                   [0m
+[0m[48;2;50;50;50m                                                           [0m
+
+[0m[38;2;228;101;225m───────────────────────────────────────────────────────────[0m
+ ← [0m[48;2;27;47;93m □ Plan [0m [0m[38;2;160;160;160m □ Checks [0m [0m[38;2;160;160;160m □ Delivery [0m [0m[38;2;160;160;160m □ Optional [0m [0m[38;2;130;130;130m ✓ Submit [0m
+
+
+ [0m[1mWhich implementation should the Collie probe use?[0m         
+
+[0m[1m[38;2;228;101;225m❯ 1. Sequential[0m                                            
+     [0m[38;2;160;160;160mKeep the steps ordered.[0m                               
+  2. Parallel                                              
+     [0m[38;2;160;160;160mRun independent work together.[0m                        
+  3. Type something.                                       
+                                                           
+                                                           
+
+[0m[38;2;228;101;225m───────────────────────────────────────────────────────────[0m
+
+ [0m[38;2;130;130;130mEnter to select · ↑/↓ to navigate · n to add notes · Tab t[0m
+
+
+
+[0m[38;2;130;130;130m/tmp/collie-rpiv-lab.xALl6A/.cache/collie-lab/rpiv/rig/work[0m
+[0m[38;2;130;130;130m↑1.8k ↓295 $0.003 1.1%/200k (auto)                         [0m

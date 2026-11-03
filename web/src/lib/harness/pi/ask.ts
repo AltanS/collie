@@ -26,8 +26,9 @@
 //   /tmp/project                               one to four styled status rows, no rule among them,
 //                                              or none at all (Gentle Shell, issue 455)
 //
-// Two pointer columns are read: column 0 (`> 1.`, stock pi and the PR 397 extension) and column 1
-// (` → 1.`, OmO). The pointer glyph is `>` or `→`, the two the captures show; Claude's `❯` is not one.
+// Two pointer columns are read: column 0 (`> 1.`, stock pi and the PR 397 extension; `❯ 1.`, RPIV)
+// and column 1 (` → 1.`, OmO). RPIV's footer sits BELOW its bottom rule, after one blank row,
+// and its question opens with a padded, background-painted caption chip (pi--rpiv-v2150-single).
 //
 // Unnumbered rows are read at column 1 only: ` → Label` and `   Label`, a description row one column
 // further in (`    Primeira opção`), and gentle-pi's `Other…` as the free-text row. That is pi's own
@@ -74,6 +75,10 @@ import { MAX_REGION_CHARS } from "../bound-region";
 import { pointerWalk } from "../menu-hints";
 import type { PromptFeedback, PromptModel, PromptOption } from "../prompt-model";
 import type { WizardAnswer, WizardModel, WizardStepChip } from "../wizard-model";
+import type { PreviewNote, PreviewSelectModel } from "../preview-model";
+import type { MultiSelectModel, MultiSelectOption } from "../multi-select-model";
+import { cellsByColumn, displayWidth } from "../../text-width";
+import { canonicalStyledLines, encodeStyledRegion } from "../../styled-region";
 import { locateComposer, MAX_PICKER_HEADER_ROWS, paintedStatus, ruleAbove, tailRule } from "./composer";
 import { keyHintPairs, listDialogHint, parsePiFooter, type PiFooter } from "./footer";
 
@@ -87,7 +92,7 @@ const MAX_FOOTER_ROWS = 3;
 const MAX_BODY_ROWS = 200;
 /** OmO's status line under its options (`Submit (0/1 answered) — Enter advances`). */
 const MAX_TRAILER_ROWS = 2;
-const POINTERS = new Set([">", "→"]);
+const POINTERS = new Set([">", "→", "❯"]);
 /** The free-text row's label: `Type something.` (stock, PR 397), `Type your own answer...` (OmO). The
  *  `✎` follows it while its inline editor is open. */
 const FREE_TEXT = /^Type\b.*(?:\.|…)(?: ✎)?$/;
@@ -118,8 +123,10 @@ const MAX_PLAIN_STATUS_ROWS = 3;
 /** The frame every pi question screen shares: the two rules and the footer between them. */
 export interface PiFrame {
   top: number;
-  /** The bottom rule, or, on an open frame, the screen's last row (the region ends there). */
+  /** Last row of the bound region: the bottom rule, an outside footer, or an open frame's last row. */
   bottom: number;
+  /** First row after the body when the footer sits below the bottom rule. */
+  bodyEnd?: number;
   /** The bottom rule is off the screen: a dialog taller than the pane (see `openFrameTop`). */
   open: boolean;
   /** No rules: a dialog drawn under the transcript with its footer as the screen's last row (see
@@ -129,6 +136,9 @@ export interface PiFrame {
   footerStart: number;
   footerEnd: number;
   footer: PiFooter;
+  /** Declared RPIV 2.15/default-binding roles for an exact clipped English template. `footer` and
+   * `texts` stay literal observations; no generic Pi footer borrows these unpainted bindings. */
+  rpivHints?: PiFooter;
   texts: string[];
 }
 
@@ -185,6 +195,30 @@ function textStatus(rows: string[]): boolean {
   return !SHELL_PROMPT_END.test(filled.at(-1)!);
 }
 
+/** Native OneLineClippedText loses its tail, not a logical wrap. Match one measured default template
+ * after BOTH complete navigation hints; unknown copy refuses. Used only by outside frames. */
+function clippedRpivHints(text: string): PiFooter | null {
+  const base = ["Enter to select", "↑/↓ to navigate"];
+  const lead = `${base.join(" · ")} · `;
+  if (!text.endsWith("…") || !text.startsWith(lead)) return null;
+  const prefix = text.slice(0, -1).trimEnd();
+  if (prefix.length <= lead.length) return null;
+  const templates: string[] = [];
+  for (const toggle of [false, true]) for (const notes of [false, true]) for (const tabs of [false, true]) {
+    templates.push([...base, ...(toggle ? ["Space to toggle"] : []), ...(notes ? ["n to add notes"] : []),
+      ...(tabs ? ["Tab to switch questions"] : []), "Esc to cancel"].join(" · "));
+  }
+  templates.push([...base, "n to add a note", "Esc to cancel"].join(" · "));
+  const matches = templates.filter((template) => template.startsWith(prefix));
+  if (matches.length === 0) return null;
+  // Some tails hide whether the optional note/Tab hint is present. Only roles common to EVERY
+  // matching measured template are declared; the normal body supplies note/tab ownership separately.
+  const common = matches[0]!.split(" · ").filter((hint) => matches.every((template) => template.split(" · ").includes(hint)));
+  return parsePiFooter(common.join(" · "));
+}
+
+type FooterHit = { start: number; footer: PiFooter; rpivHints?: PiFooter };
+
 /** The footer ending at row `footerEnd`: one to three painted rows, one space in (`indent`: or none at
  *  all, on a frameless dialog), that parse. */
 function footerAt(
@@ -193,8 +227,9 @@ function footerAt(
   footerEnd: number,
   plain: boolean,
   indent: RegExp = HEADER_ROW,
-): { start: number; footer: PiFooter } | null {
-  let best: { start: number; footer: PiFooter } | null = null;
+  allowClippedRpiv = false,
+): FooterHit | null {
+  let best: FooterHit | null = null;
   for (let k = 1; k <= MAX_FOOTER_ROWS; k++) {
     const start = footerEnd - k + 1;
     // A footer row is painted (dim or coloured) in every capture. A plain row is text someone typed,
@@ -202,8 +237,14 @@ function footerAt(
     // paint anywhere, so the parse alone counts there (see the header).
     if (start <= 0 || !indent.test(texts[start]!) || (!plain && !styledRow(lines[start]!))) break;
     const rows = texts.slice(start, footerEnd + 1).map((t) => t.trim());
-    const footer = wrappedFooter(rows);
-    if (footer !== null) best = { start, footer };
+    const text = rows.join(" ");
+    const rpivHints = allowClippedRpiv ? clippedRpivHints(text) : null;
+    const footer = wrappedFooter(rows) ?? (rpivHints === null ? null : parsePiFooter(text.split(" · ").slice(0, -1).join(" · ")));
+    if (footer !== null) {
+      const hit: FooterHit = { start, footer: rpivHints === null ? footer : { ...footer, text } };
+      if (rpivHints !== null) hit.rpivHints = rpivHints;
+      best = hit;
+    }
   }
   return best;
 }
@@ -228,6 +269,46 @@ function hintCount(text: string): number {
   return text.split(/\s+[•·]\s+|\s{2,}/).filter((s) => s.trim() !== "" && s.trim() !== "•").length;
 }
 
+/** A footer below the bottom rule, with at most one blank row between them (pi--rpiv-v2150-single).
+ * The region includes the footer but excludes pi's status rows, just as an inside footer does. */
+function outsideFooter(lines: StyledLine[], texts: string[], end: number): PiFrame | null {
+  let statusRows = 0;
+  for (let footerEnd = end; footerEnd >= Math.max(0, end - MAX_BODY_ROWS); footerEnd--) {
+    if (texts[footerEnd] === "") continue; // the questionnaire equalizes its tabs with blank padding
+    const best = footerAt(lines, texts, footerEnd, false, HEADER_ROW, true);
+    if (best !== null) {
+      let border = best.start - 1;
+      // The Submit tab places its two commands (and optional painted warning) below the rule.
+      // Admit that trailer only under a positively current Submit chip, never as arbitrary output.
+      const reviewTrailer = /^[❯ ] 2\. Cancel$/.test(texts[border]!) && /^[❯ ] 1\. Submit answers$/.test(texts[border - 1]!);
+      if (reviewTrailer) {
+        border -= 2;
+        const warning: string[] = [];
+        for (let count = 0; border >= 0 && !RULE.test(texts[border]!) && count <= MAX_FOOTER_ROWS; count++, border--) {
+          if (texts[border] !== "") {
+            if (!styledRow(lines[border]!)) break;
+            warning.unshift(texts[border]!.trim());
+          }
+        }
+        if (warning.length > 0 && !warning.join(" ").startsWith("⚠ Answer remaining questions before submitting:") && warning.join(" ") !== "Ready to submit your answers?") continue;
+      } else if (texts[border] === "") border--;
+      if (border >= 0 && RULE.test(texts[border]!)) {
+        for (let top = border - 1; top >= Math.max(0, border - MAX_BODY_ROWS); top--) {
+          if (texts[top] !== texts[border] || ruleColor(lines[top]!) !== ruleColor(lines[border]!)) continue;
+          if (reviewTrailer) {
+            const strip = readStrip(lines, [top + 1], false);
+            if (strip === null || strip === "invalid" || !strip.chips.at(-1)!.current) continue;
+          }
+          return { top, bottom: footerEnd, bodyEnd: border, open: false, footerStart: best.start, footerEnd, footer: best.footer, rpivHints: best.rpivHints, texts };
+        }
+      }
+    }
+    // A plain row is output after this shape, not an unproven extension-status exception.
+    if (!styledRow(lines[footerEnd]!) || /^\s*─{3,}/.test(texts[footerEnd]!) || ++statusRows > MAX_STATUS_ROWS) break;
+  }
+  return null;
+}
+
 /** Read the frame at the tail of `lines`, or null. Says nothing yet about what is inside it. A frame
  *  whose bottom rule is off the screen is read too, as an open frame (`openFrameTop`), when its
  *  footer is still on the screen. */
@@ -238,6 +319,8 @@ export function readPiFrame(lines: StyledLine[]): PiFrame | null {
   if (end < 0) return null;
 
   const plain = readIsUnstyled(lines);
+  const outside = plain ? null : outsideFooter(lines, texts, end);
+  if (outside !== null) return outside;
   const bottom = statusTailBottom(lines, texts, end, plain);
   if (bottom === null) {
     // A frameless dialog is told from prose by its paint alone: none on a plain read.
@@ -360,11 +443,14 @@ function openPicker(lines: StyledLine[], texts: string[], top: number, end: numb
 
 /**
  * Positive evidence that a pi modal is up (the unread-dialog card's fifth condition, ADR 0053): a
- * rule-bounded frame at the tail whose footer names an Escape key, or a picker's key-hint row. A
- * composer prints neither, so a live editor never answers true.
+ * rule-bounded frame at the tail whose footer names an Escape key, or a picker's key-hint row. An
+ * outside frame with both painted selection/navigation hints also holds the keyboard when its
+ * tail is torn or clipped; it need not offer any action. A composer prints none of these.
  */
 export function piModalOnScreen(lines: StyledLine[]): boolean {
-  if (readPiFrame(lines)?.footer.escapeVerb != null) return true;
+  const frame = readPiFrame(lines);
+  if (frame?.footer.escapeVerb != null || frame?.rpivHints !== undefined ||
+      frame?.bodyEnd !== undefined && frame.footer.arrowsMove && frame.footer.enter !== null) return true;
   if (pickerOnScreen(lines)) return true;
   const texts = lines.map((l) => lineText(l).trimEnd());
   let end = texts.length - 1;
@@ -471,7 +557,9 @@ interface Strip {
 
 export type PiQuestion =
   | { kind: "prompt-select"; model: PromptModel; startLine: number }
-  | { kind: "wizard"; model: WizardModel; startLine: number };
+  | { kind: "wizard"; model: WizardModel; startLine: number }
+  | { kind: "preview-select"; model: PreviewSelectModel; startLine: number }
+  | { kind: "multi-select"; model: MultiSelectModel; startLine: number };
 
 /**
  * Detect a pi-family question screen at the tail of `lines` and the block it lifts as, or null.
@@ -480,6 +568,16 @@ export function detectPiQuestion(lines: StyledLine[]): PiQuestion | null {
   const frame = readPiFrame(lines);
   if (frame === null) return null;
   const { texts, top, bottom, footer } = frame;
+  if (footer.escapeVerb === null && frame.rpivHints === undefined) return null;
+  if (frame.bodyEnd !== undefined) {
+    const review = outsideReview(lines, frame);
+    if (review !== null) return review;
+    const multi = outsideMulti(lines, frame);
+    if (multi !== null) return multi;
+    const preview = outsidePreview(lines, frame);
+    if (preview !== null) return preview;
+    return outsideSingle(lines, frame);
+  }
   if (footer.escapeVerb === null) return null;
   const plain = readIsUnstyled(lines);
 
@@ -488,7 +586,7 @@ export function detectPiQuestion(lines: StyledLine[]): PiQuestion | null {
   const frameless = frame.frameless === true;
   const headerRow = frameless ? NO_INDENT : HEADER_ROW;
   let at = frameless ? top : top + 1;
-  const bodyEnd = frame.footerStart; // exclusive
+  const bodyEnd = frame.footerStart; // exclusive; outside-footer frames returned above
   let header: number[] = [];
   let pointerCol: 0 | 1 | null = null;
   while (at < bodyEnd) {
@@ -820,8 +918,10 @@ function readStrip(lines: StyledLine[], header: number[], plain: boolean): Strip
 
 /** The chips of a `← … →` strip, or null. */
 function boxedChips(text: string): Chip[] | null {
-  if (!text.endsWith("→")) return null;
-  const tokens = text.slice(1, -1).trim().split(/\s{2,}/);
+  const arrow = text.endsWith("→");
+  // A clipped RPIV bar may lose its final arrow, but must retain the complete final Submit chip.
+  if (!arrow && !text.endsWith("✓ Submit")) return null;
+  const tokens = text.slice(1, arrow ? -1 : undefined).trim().split(/\s{2,}/);
   const chips: Chip[] = [];
   for (let i = 0; i < tokens.length; i++) {
     const tok = tokens[i]!;
@@ -937,6 +1037,361 @@ function coreSignatureOf(
     out.push(t);
   }
   return out.join("\n");
+}
+
+/** A pane's display columns, never UTF-16 offsets (option labels may contain wide graphemes). */
+function textColumns(text: string, start: number, end = Infinity): string {
+  return [...cellsByColumn(text)]
+    .filter(([column, cluster]) => column >= start && (end === Infinity || column + displayWidth(cluster) <= end))
+    .map(([, cluster]) => cluster).join("");
+}
+
+/** A questionnaire owner survives entering its editor and moving its caret. Answered glyphs/colours
+ * may change with an answer, but the question, step and active chip's background must not. */
+export function piEditorOwner(lines: StyledLine[], frame: PiFrame): string | null {
+  if (frame.bodyEnd === undefined) return null;
+  const heading: number[] = [];
+  for (let row = frame.top + 1; row < frame.bodyEnd; row++) {
+    const text = frame.texts[row]!;
+    if (HEADER_ROW.test(text) && !text.trimStart().startsWith("←") &&
+        lines[row]!.segments.some((segment) => segment.bold && segment.text.trim() !== "")) heading.push(row);
+    else if (heading.length > 0 && text !== "") break;
+  }
+  if (heading.length === 0) return null;
+  const header = Array.from({ length: heading[0]! - frame.top - 1 }, (_, i) => frame.top + 1 + i);
+  const strip = readStrip(lines, header, false);
+  if (strip === "invalid") return null;
+  const badge = strip === null ? header.find((row) => /^ {2}\S/.test(frame.texts[row]!) &&
+    lines[row]!.segments.some((segment) => segment.bg !== undefined && segment.text.trim() !== "")) : undefined;
+  const chipRow = strip?.row ?? badge;
+  const backgrounds = chipRow === undefined ? [] : lines[chipRow]!.segments
+    .filter((segment) => segment.bg !== undefined && segment.text.trim() !== "").map((segment) => segment.bg);
+  return JSON.stringify([heading.map((row) => frame.texts[row]!.trim()).join(" "),
+    strip?.chips.map((chip) => chip.label) ?? (badge === undefined ? [] : [frame.texts[badge]!.trim()]),
+    strip?.chips.findIndex((chip) => chip.current) ?? 0, backgrounds]);
+}
+
+/** The shared question/header contract of outside-footer cards. */
+function outsideHead(lines: StyledLine[], frame: PiFrame, first: number): { question: string; strip: Strip | null; header: number[]; caption?: string } | null {
+  const header = Array.from({ length: first - frame.top - 1 }, (_, i) => frame.top + 1 + i);
+  const strip = readStrip(lines, header, false);
+  if (strip === "invalid" || strip?.chips.at(-1)?.current) return null;
+  if (strip !== null && frame.rpivHints === undefined && !/\bTab to switch questions\b/i.test(frame.footer.text)) return null;
+  const badge = strip === null ? header.find((row) => /^ {2}\S/.test(frame.texts[row]!) &&
+    lines[row]!.segments.some((segment) => segment.bg !== undefined && segment.text.trim() !== "")) : undefined;
+  const question = header.filter((row) => row !== badge && (strip === null || row > strip.row))
+    .map((row) => frame.texts[row]!.trim()).filter(Boolean).join(" ");
+  return question === "" ? null : { question, strip, header, caption: badge === undefined ? undefined : frame.texts[badge]!.trim() };
+}
+
+function outsideSavedNote(texts: string[], from: number, end: number): PreviewNote | null {
+  const tail = texts.slice(from, end).filter((text) => text !== "");
+  if (tail.length === 0) return { state: "none", text: "" };
+  const saved = tail.length === 1 ? /^ Note for this answer: (.+)$/.exec(tail[0]!) : null;
+  return saved === null ? null : { state: "attached", text: saved[1]!, textComplete: false };
+}
+
+/** The same select contract with or without a preview: entering the appended input removes the
+ * preview pane, but must not change the question's identity or invent an authored choice. */
+function outsideSelect(lines: StyledLine[], frame: PiFrame, first: number, rows: OptionRow[],
+  field: NonNullable<PreviewSelectModel["field"]>, preview: string[], note: PreviewNote): PiQuestion | null {
+  const { texts, top, bottom } = frame;
+  const choices = rows.slice(0, -1);
+  if (choices.length < 2) return null;
+  const head = outsideHead(lines, frame, first);
+  const ownerSignature = piEditorOwner(lines, frame);
+  if (head === null || ownerSignature === null) return null;
+  const { question, strip, caption } = head;
+  const pointed = rows.findIndex((row) => row.pointed);
+  const regionSignature = texts.slice(top, bottom + 1).join("\n");
+  if (regionSignature.length > MAX_REGION_CHARS) return null;
+  const model: PreviewSelectModel = {
+    question, caption, field, preview, note,
+    options: choices.map((row, index) => ({ n: index + 1, label: row.label, description: row.description,
+      pointed: row.pointed, chosen: false, keys: pointerWalk(pointed, index) })),
+    steps: strip === null ? null : strip.chips.filter((chip) => !chip.submit)
+      .map((chip) => ({ label: chip.label, answered: chip.answered, current: chip.current })),
+    cancelKeys: ["Escape"], regionSignature,
+    coreSignature: JSON.stringify([texts.slice(top, first), choices.map((row) => [row.n, row.label, row.description])]),
+    styledSignature: encodeStyledRegion(canonicalStyledLines(lines.slice(top, bottom + 1))),
+    editors: { ownerSignature,
+      answer: { focusKeys: pointerWalk(pointed, choices.length).slice(0, -1), clearKeys: ["ctrl+u"], commitKeys: ["Enter"] },
+      note: { openKeys: ["n"], clearLineKeys: ["ctrl+a", "ctrl+k", "Backspace"], closeKeys: ["Escape"] } },
+  };
+  if (strip !== null) model.navigation = { back: Array.from({ length: strip.chips.length - 1 }, () => "Tab"), next: ["Tab"] };
+  return { kind: "preview-select", model, startLine: top };
+}
+
+function outsideSelectMenu(lines: StyledLine[], frame: PiFrame, view: string[], first: number, end: number, preview: string[], note: PreviewNote): PiQuestion | null {
+  const numbered: { row: number; n: number; pointed: boolean }[] = [];
+  for (let row = first; row < end; row++) {
+    const match = /^([❯ ]) ([1-9])\.(?: (.*))?$/.exec(view[row]!);
+    if (match !== null) numbered.push({ row, n: Number(match[2]), pointed: match[1] === "❯" });
+  }
+  const input = numbered.at(-1);
+  if (input === undefined || numbered.length < 3 || input.n !== numbered.length || (input.pointed && preview.length > 0)) return null;
+  let fieldEnd = end;
+  while (fieldEnd > input.row + 1 && view[fieldEnd - 1] === "" &&
+    (!input.pointed || !lines[fieldEnd - 1]!.segments.some((segment) => segment.bold))) fieldEnd--;
+  const fieldRows = Array.from({ length: fieldEnd - input.row }, (_, index) => input.row + index);
+  if (fieldRows.slice(1).some((row) => view[row] !== "" && !/^ {5}/.test(view[row]!))) return null;
+  // Normalise ONLY the known appended input; every authored row and its numbering stays exact.
+  const menu = view.slice();
+  menu[input.row] = `${input.pointed ? "❯" : " "} ${input.n}. Type something.`;
+  const options = readOptions(menu, first, input.row + 1, 0);
+  if (options === null || options.rows.length !== numbered.length || options.rows.some((row) => row.checkbox)) return null;
+  const complete = input.pointed ? inlineValue(lines, fieldRows, 5, frame.texts[frame.top]!.length, true) : null;
+  let text = complete ?? fieldRows.map((row) => view[row]!.slice(5).trimEnd()).join("\n");
+  if (!input.pointed && FREE_TEXT.test(text.trim())) text = "";
+  const field: NonNullable<PreviewSelectModel["field"]> = { n: input.n, text, focused: input.pointed, lines: fieldRows.length, multiline: true };
+  if (complete === null && (input.pointed || text !== "")) field.textComplete = false;
+  return outsideSelect(lines, frame, first, options.rows, field, preview, note);
+}
+
+function outsideSingle(lines: StyledLine[], frame: PiFrame): PiQuestion | null {
+  const { texts, top } = frame;
+  const footer = frame.rpivHints ?? frame.footer;
+  const end = frame.bodyEnd;
+  if (end === undefined || !footer.arrowsMove || footer.enter !== "select" || footer.spaceToggles) return null;
+  let first = top + 1;
+  while (first < end && optionStart(texts[first]!) === null) first++;
+  if (first >= end || /┌─{3,}┐$/.test(texts[first]!)) return null;
+  const mid = texts.findIndex((text, row) => row > first && row < end && text.startsWith(" Note for this answer: "));
+  const menuEnd = mid < 0 ? end : mid;
+  const note = outsideSavedNote(texts, menuEnd, end);
+  return note === null ? null : outsideSelectMenu(lines, frame, texts, first, menuEnd, [], note);
+}
+
+/** A complete side-by-side preview in an outside-footer question. Its choices use the same row
+ * reader and tab strip as the other pi questions; only the preview column is removed first. */
+function outsidePreview(lines: StyledLine[], frame: PiFrame): PiQuestion | null {
+  const { texts, top } = frame;
+  const footer = frame.rpivHints ?? frame.footer;
+  const bodyEnd = frame.bodyEnd;
+  if (bodyEnd === undefined || !footer.arrowsMove || footer.enter !== "select" || footer.spaceToggles) return null;
+  let first = top + 1;
+  while (first < bodyEnd && optionStart(texts[first]!) === null) first++;
+  if (first >= bodyEnd) return null;
+  const mid = texts.findIndex((text, row) => row > first && row < bodyEnd && text.startsWith(" Note for this answer: "));
+  const end = mid < 0 ? bodyEnd : mid;
+  const note = outsideSavedNote(texts, end, bodyEnd);
+  if (note === null) return null;
+  const border = /(┌─{3,}┐)$/.exec(texts[first]!);
+  const sideBySide = border !== null;
+  const column = border === null ? 0 : displayWidth(texts[first]!.slice(0, border.index));
+  if (sideBySide && column < 8) return null;
+  const boxFirst = sideBySide ? first : texts.findIndex((text, row) => row > first && row < end && /^┌─{3,}┐$/.test(text));
+  if (boxFirst < 0) return null;
+  const box = (row: number) => textColumns(texts[row]!, column).trimEnd();
+  const width = displayWidth(box(boxFirst));
+  const preview: string[] = [];
+  let at = boxFirst;
+  for (; at < end; at++) {
+    const right = box(at);
+    if (displayWidth(right) !== width) return null;
+    preview.push(right);
+    if (/^└─{3,}┘$/.test(right)) break;
+    if (at > boxFirst && !/^│.*│$/.test(right)) return null;
+  }
+  if (at >= end) return null;
+  // No text to the right of the list except the complete box and its printed note affordance.
+  let hasNote = false;
+  for (let row = at + 1; row < end; row++) {
+    const right = textColumns(texts[row]!, column).trim();
+    if (right === "") continue;
+    if (right !== (note.state === "attached" ? "Note saved: press n to edit" : "Notes: press n to add notes") || hasNote) return null;
+    hasNote = true;
+  }
+  if (!hasNote) return null;
+  const left = sideBySide ? texts.map((text, row) => row >= first && row < end ? textColumns(text, 0, column).trimEnd() : text) : texts;
+  return outsideSelectMenu(lines, frame, left, first, sideBySide ? end : boxFirst, preview, note);
+}
+
+/** The visible value of an inline editor. A reverse-video cell proves input focus. A possible
+ * soft-wrap is ambiguous with a logical newline, so it declines rather than inventing the value. */
+function inlineValue(lines: StyledLine[], rows: number[], indent: number, width: number, focused: boolean): string | null {
+  if (focused && !rows.some((row) => lines[row]!.segments.some((segment) => segment.bg !== undefined))) return null;
+  const values = rows.map((row) => {
+    const line = lines[row]!;
+    let text = lineText(line);
+    if (focused) {
+      let offset = 0;
+      let end = 0;
+      let cursorEnd = -1;
+      for (const segment of line.segments) {
+        offset += segment.text.length;
+        if (segment.bold || segment.bg !== undefined) end = offset;
+        if (segment.bg !== undefined && segment.text === "\u00a0") cursorEnd = offset;
+      }
+      text = text.slice(0, end);
+      if (cursorEnd === end) text = text.slice(0, -1);
+      else if (cursorEnd > 0) text = `${text.slice(0, cursorEnd - 1)} ${text.slice(cursorEnd)}`;
+    } else text = text.trimEnd();
+    return text.slice(indent);
+  });
+  for (let i = 0; i < values.length - 1; i++) {
+    const nextWord = values[i + 1]!.trimStart().split(/\s/)[0]!;
+    if (displayWidth(values[i]!) + 1 + displayWidth(nextWord) > width - indent) return null;
+  }
+  return values.join("\n");
+}
+
+/** The checkbox form whose footer names Space, with an unnumbered Next command after the field. */
+function outsideMulti(lines: StyledLine[], frame: PiFrame): PiQuestion | null {
+  const { texts, top, bottom } = frame;
+  const footer = frame.rpivHints ?? frame.footer;
+  const end = frame.bodyEnd;
+  if (end === undefined || !footer.arrowsMove || !footer.spaceToggles || footer.enter !== "select") return null;
+  const rowPattern = /^([❯ ]) ([1-9])\. \[([ ✔✓x])\](?: (.*))?$/;
+  let first = top + 1;
+  while (first < end && !rowPattern.test(texts[first]!)) first++;
+  if (first >= end) return null;
+  const head = outsideHead(lines, frame, first);
+  if (head === null) return null;
+  const options: (MultiSelectOption & { pointed: boolean; rows: number[] })[] = [];
+  let advance: { label: string; pointed: boolean } | null = null;
+  let at = first;
+  for (; at < end; at++) {
+    const text = texts[at]!;
+    const row = rowPattern.exec(text);
+    if (row !== null) {
+      if (Number(row[2]) !== options.length + 1) return null;
+      options.push({ n: Number(row[2]), label: row[4] ?? "", checked: row[3] !== " ", pointed: row[1] === "❯", rows: [at] });
+      continue;
+    }
+    const next = /^([❯ ]) (Next|Submit)$/.exec(text);
+    if (next !== null) { advance = { label: next[2]!, pointed: next[1] === "❯" }; at++; break; }
+    const description = /^ {2}(\S.*)$/.exec(text);
+    const owner = options.at(-1);
+    if (owner !== undefined && (text === "" || /^ {9}/.test(text))) { owner.rows.push(at); continue; }
+    if (description !== null && owner !== undefined) {
+      owner.description = owner.description === undefined ? description[1]! : `${owner.description} ${description[1]}`;
+      continue;
+    }
+    return null;
+  }
+  if (advance === null) return null;
+  const note = outsideSavedNote(texts, at, end);
+  if (note === null) return null;
+  const field = options.at(-1);
+  if (options.length < 3 || options.length > 9 || field === undefined) return null;
+  const choices = options.slice(0, -1);
+  if (choices.some((row) => row.label === "" || row.rows.length !== 1)) return null;
+  if (options.filter((row) => row.pointed).length + Number(advance.pointed) !== 1) return null;
+  const completeValue = inlineValue(lines, field.rows, 9, texts[top]!.length, field.pointed);
+  let value = completeValue ?? field.rows.map((row) => lineText(lines[row]!).slice(9).trimEnd()).join("\n");
+  if (!field.pointed && !field.checked && value === "Type something.") value = "";
+  if (field.checked !== (value.trim() !== "")) return null;
+  const { question, strip, header } = head;
+  const headerText = header.map((row) => row === strip?.row ? texts[row]!.replace(/[■▣]/g, "□") : texts[row]!);
+  const model: MultiSelectModel = {
+    phase: "checkbox", question,
+    options: choices.map(({ n, label, checked, description }) => ({ n, label, checked, description })),
+    escape: null, toggle: "walk",
+    pointer: advance.pointed ? "advance" : field.pointed ? "field" : "option",
+    pointerRow: choices.find((row) => row.pointed)?.n ?? null,
+    field: { n: field.n, text: value, focused: field.pointed, checked: field.checked,
+      pointer: advance.pointed ? "below" : field.pointed ? "on" : "above", lines: field.rows.length,
+      autoChecked: true, multiline: true },
+    steps: strip === null ? null : strip.chips.filter((chip) => !chip.submit)
+      .map((chip) => ({ label: chip.label, answered: chip.answered, current: chip.current })),
+    advanceLabel: advance.label, cancelKeys: ["Escape"],
+    signature: JSON.stringify([headerText, choices.map((row) => [row.n, row.label, row.description]), advance.label]),
+    regionSignature: texts.slice(top, bottom + 1).join("\n"),
+    styledSignature: encodeStyledRegion(canonicalStyledLines(lines.slice(top, bottom + 1))),
+  };
+  if (model.regionSignature.length > MAX_REGION_CHARS) return null;
+  if (completeValue === null && model.field !== undefined) model.field.textComplete = false;
+  const ownerSignature = piEditorOwner(lines, frame);
+  if (ownerSignature !== null) {
+    const position = advance.pointed ? options.length : options.findIndex((row) => row.pointed);
+    model.editors = {
+      ownerSignature,
+      answer: { focusKeys: pointerWalk(position, options.length - 1).slice(0, -1), clearKeys: ["ctrl+u"] },
+      note: { openKeys: ["n"], clearLineKeys: ["ctrl+a", "ctrl+k", "Backspace"], closeKeys: ["Escape"] },
+    };
+    model.note = note;
+  }
+  if (strip !== null) {
+    model.navigation = { back: Array.from({ length: strip.chips.length - 1 }, () => "Tab"), next: ["Tab"] };
+  }
+  return { kind: "multi-select", model, startLine: top };
+}
+
+/** Native Submit has its picker below the rule and echoes only answered questions. Missing answers
+ * remain missing: the shared review's warning + explicit Submit tap are already partial submission. */
+function outsideReview(lines: StyledLine[], frame: PiFrame): PiQuestion | null {
+  const { texts, top, bottom, bodyEnd, footerStart } = frame;
+  const footer = frame.rpivHints ?? frame.footer;
+  if (bodyEnd === undefined || footer.enter !== "select" || !footer.arrowsMove || footer.spaceToggles || footer.escapeVerb?.toLowerCase() !== "cancel" ||
+      !/(?:^|·) n to add a note(?: ·|$)/.test(footer.text)) return null;
+  const strip = readStrip(lines, [top + 1], false);
+  if (strip === null || strip === "invalid" || !strip.chips.at(-1)!.current) return null;
+  const submitRow = footerStart - 2, cancelRow = footerStart - 1;
+  if (!/^[❯ ] 1\. Submit answers$/.test(texts[submitRow]!) || !/^[❯ ] 2\. Cancel$/.test(texts[cancelRow]!) ||
+      Number(texts[submitRow]!.startsWith("❯")) + Number(texts[cancelRow]!.startsWith("❯")) !== 1) return null;
+  let title = strip.row + 1;
+  while (title < bodyEnd && texts[title] === "") title++;
+  if (texts[title] !== " Review your answers" || !styledRow(lines[title]!)) return null;
+  const questions = strip.chips.slice(0, -1);
+  const incomplete = questions.some((chip) => !chip.answered);
+  const warning = texts.slice(bodyEnd + 1, submitRow).filter((text) => text !== "").map((text) => text.trim());
+  if (warning.length !== 1 || (incomplete ? !warning[0]!.startsWith("⚠ Answer remaining questions before submitting:") : warning[0] !== "Ready to submit your answers?")) return null;
+  let contentEnd = bodyEnd;
+  while (contentEnd > title + 1 && texts[contentEnd - 1] === "") contentEnd--;
+  // Submit's non-interactive summary is top-anchored. Only its painted bottom-overflow marker
+  // authorises a partial projection; missing rows without that evidence remain a refusal.
+  const summaryClipped = texts[contentEnd - 1] === "↓" && styledRow(lines[contentEnd - 1]!);
+  if (summaryClipped) contentEnd--;
+  let at = title + 1;
+  while (at < contentEnd && texts[at] === "") at++;
+  // Native summary headers are muted; user answer continuations are text-coloured. Bind the role,
+  // not a guessed English label inside authored multiline text.
+  const role = (row: number) => encodeStyledRegion(canonicalStyledLines([{ segments: lines[row]!.segments
+    .filter((segment) => segment.text.trim() !== "").map((segment) => Object.assign({}, segment, { text: "x" })) }]));
+  const headerRole = at < contentEnd ? role(at) : "";
+  const isHeader = (row: number) => texts[row]!.startsWith("  ● ") && role(row) === headerRole;
+  const record = (label: string): string | null => {
+    if (at >= contentEnd || texts[at] !== `  ● ${label}` || !isHeader(at)) return null;
+    at++;
+    const arrow = /^ {4}→(?: (.*))?$/.exec(texts[at] ?? "");
+    if (arrow === null) return null;
+    const value = [arrow[1] ?? ""];
+    for (at++; at < contentEnd && !isHeader(at); at++) {
+      if (texts[at]!.trim() !== "" && !texts[at]!.startsWith(" ")) return null;
+      value.push(texts[at]!.slice(1));
+    }
+    while (value.at(-1) === "") value.pop();
+    return value.join("\n");
+  };
+  const answers: WizardAnswer[] = [];
+  for (const chip of questions.filter((candidate) => candidate.answered)) {
+    if (summaryClipped && at >= contentEnd) break;
+    if (summaryClipped && at + 1 === contentEnd && texts[at] === `  ● ${chip.label}` && isHeader(at)) { at++; break; }
+    const answer = record(chip.label);
+    if (answer === null) return null;
+    answers.push({ question: chip.label, answer });
+  }
+  let note: PreviewNote | undefined = summaryClipped ? undefined : { state: "none", text: "" };
+  if (at < contentEnd) {
+    const text = record("Note");
+    if (text === null || text.trim() === "") return null;
+    note = { state: "attached", text, textComplete: false };
+  }
+  if (at !== contentEnd) return null;
+  const ownerSignature = piEditorOwner(lines, frame);
+  if (ownerSignature === null) return null;
+  const model: MultiSelectModel = {
+    phase: "review", submit: "pointer", pointer: texts[submitRow]!.startsWith("❯") ? "submit" : "cancel",
+    incomplete, answers, note, summaryClipped: summaryClipped ? true : undefined, backKeys: Array.from({ length: strip.chips.length - 1 }, () => "Tab"),
+    // Own global-note changes are verified separately by the note editor; answer echoes stay bound.
+    signature: JSON.stringify([texts.slice(top, title + 1), answers, incomplete, warning, footer.text]),
+    regionSignature: texts.slice(top, bottom + 1).join("\n"),
+    styledSignature: encodeStyledRegion(canonicalStyledLines(lines.slice(top, bottom + 1))),
+    editors: { ownerSignature, note: { openKeys: ["n"], clearLineKeys: ["ctrl+a", "ctrl+k", "Backspace"], closeKeys: ["Escape"] } },
+  };
+  if (model.regionSignature.length > MAX_REGION_CHARS) return null;
+  return { kind: "multi-select", model, startLine: top };
 }
 
 function capitalise(word: string): string {

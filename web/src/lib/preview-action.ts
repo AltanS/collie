@@ -21,9 +21,10 @@
 import { sendKeys, sendReply } from "./api";
 import { describeApiError, describeThrownError } from "./api-error-message";
 import { type PreviewOption, type PreviewSelectModel } from "./blocks";
-import { guardDialog, pollDialog, type DialogTarget } from "./dialog-guard";
+import { guardDialog, pollDialog, sendBoundKeys, type DialogTarget } from "./dialog-guard";
+import { splitWalk } from "./harness/prompt-model";
 import { t } from "./i18n";
-import { previewCoreEqual, previewStructureEqual } from "./harness/preview-model";
+import { NOTE_MAX_LENGTH, previewCoreEqual, previewStructureEqual } from "./harness/preview-model";
 import { sanitizeTypedText, type ActionResult, type Sleep } from "./harness/guard";
 import type { Scope } from "./scope";
 
@@ -34,7 +35,7 @@ function target(args: GuardArgs): DialogTarget<"preview-select"> & { sleep?: Sle
 
 /** Longest note Collie will type (the editor enforces it). The TUI itself windows the display at
  *  ~60 columns, so long notes can't be read back faithfully anyway — keep them phone-sized. */
-export const NOTE_MAX_LENGTH = 300;
+export { NOTE_MAX_LENGTH } from "./harness/preview-model";
 // The deterministic clear for an existing note: ctrl+k kills cursor→end, the Backspace sweep kills
 // the head (surplus presses at position 0 are no-ops). Sized past NOTE_MAX_LENGTH so any note
 // Collie itself attached is always fully cleared; ctrl+u/ctrl+a are NOT supported by the input.
@@ -66,6 +67,8 @@ interface GuardArgs {
 export async function submitPreviewOption(
   args: GuardArgs & { option: PreviewOption },
 ): Promise<ActionResult> {
+  if (args.preview.note.state === "editing") return { status: "changed" };
+  if (args.option.keys !== undefined) return submitWalkedPreview(args);
   const guarded = await guardDialog(target(args));
   if (!guarded.ok) return guarded.result;
 
@@ -100,6 +103,27 @@ export async function submitPreviewOption(
   }
 }
 
+/** A declared walk uses the prompt-select invariant, not a digit that may already answer. */
+async function submitWalkedPreview(args: GuardArgs & { option: PreviewOption }): Promise<ActionResult> {
+  const plan = splitWalk(args.option.keys ?? []);
+  const index = args.preview.options.findIndex((option) => option.n === args.option.n && option.label === args.option.label);
+  if (plan === null || index < 0) return { status: "changed" };
+  try {
+    const guarded = await guardDialog(target(args));
+    if (!guarded.ok) return guarded.result;
+    if (plan.walk.length === 0) return sendBoundKeys(args, plan.commit, guarded.region, guarded.styled);
+    const moved = await sendBoundKeys(args, plan.walk, guarded.region, guarded.styled);
+    if (moved.status !== "sent") return moved;
+    const pointed = await pollDialog(target(args), (model) =>
+      previewStructureEqual(model, args.preview) && model.options[index]?.pointed === true,
+    );
+    if (pointed.status !== "ok") return { status: "changed" };
+    return sendBoundKeys(args, plan.commit, pointed.model.regionSignature, pointed.model.styledSignature);
+  } catch (error) {
+    return { status: "error", error: describeThrownError(error) };
+  }
+}
+
 /**
  * Attach, replace, or remove (empty `text`) the question's note: entry guard → `n` → poll until
  * the note input is verifiably focused → clear (when replacing) → type via the reply path (one
@@ -115,7 +139,7 @@ export async function submitPreviewOption(
 export async function submitPreviewNote(
   args: GuardArgs & { text: string },
 ): Promise<ActionResult> {
-  if (args.preview.note.state === "editing") return { status: "changed" };
+  if (args.preview.note.state === "editing" || args.preview.editors?.note || args.preview.note.textComplete === false) return { status: "changed" };
   const guarded = await guardDialog(target(args));
   if (!guarded.ok) return guarded.result;
 
@@ -197,15 +221,8 @@ export async function submitPreviewNote(
 export async function submitPreviewKeys(
   args: GuardArgs & { keys: string[] },
 ): Promise<ActionResult> {
+  if (args.preview.note.state === "editing" || args.preview.field?.focused) return { status: "changed" };
   const guarded = await guardDialog(target(args));
   if (!guarded.ok) return guarded.result;
-  try {
-    // Bind only this first write. It changes the dialog, so later steps must not reuse this region.
-    const res = await sendKeys(args.paneId, args.keys, args.scope, guarded.region);
-    if (!res.ok && res.code === "prompt_changed") return { status: "changed" };
-    if (!res.ok) return { status: "error", error: describeApiError(res) };
-    return { status: "sent" };
-  } catch (e) {
-    return { status: "error", error: describeThrownError(e) };
-  }
+  return sendBoundKeys(args, args.keys, guarded.region, guarded.styled);
 }

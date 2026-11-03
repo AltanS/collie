@@ -38,7 +38,7 @@ const PI_FIXTURES = readdirSync(PANES).filter((name) => name.startsWith("pi--") 
 // What every pi screen in the corpus reads as. `walk` is plan (a), arrows then Enter; `digit` is plan
 // (b), the digit OmO's footer names; `review` is a Submit page lifted as a wizard review. Everything
 // else is `raw`, and `modal` says whether the unread-dialog card may offer Escape.
-type Expect = "walk" | "digit" | "review" | "raw";
+type Expect = "walk" | "digit" | "review" | "preview" | "multi" | "raw";
 const LIFTS = new Map<string, Expect>([
   // pi's stock `question` example, pi 0.87.1 and 1.1.0 (live captures 2026-10-12).
   ["question-single", "walk"],
@@ -58,6 +58,35 @@ const LIFTS = new Map<string, Expect>([
   ["questionnaire-submit-ready", "review"],
 ]);
 const LIFTS_397 = new Map<string, Expect>([
+  ["pi--rpiv-v2150-multi.txt", "multi"],
+  ["pi--rpiv-v2150-multi-standalone.txt", "multi"],
+  ["pi--rpiv-v2150-multi-field-cleared.txt", "multi"],
+  ["pi--rpiv-v2150-multi-field-empty.txt", "multi"],
+  ["pi--rpiv-v2150-multi-field-filled.txt", "multi"],
+  ["pi--rpiv-v2150-multi-field-parked.txt", "multi"],
+  ["pi--rpiv-v2150-multi-field-up.txt", "multi"],
+  ["pi--rpiv-v2150-multi-field-wrap-hard.txt", "multi"],
+  ["pi--rpiv-v2150-multi-field-wrap-soft.txt", "multi"],
+  ["pi--rpiv-v2150-note-saved.txt", "multi"],
+  ["pi--rpiv-v2150-multi-next.txt", "multi"],
+  ["pi--rpiv-v2150-multi-ticked.txt", "multi"],
+  ["pi--rpiv-v2150-multi-moved.txt", "multi"],
+  ["pi--rpiv-v2150-preview.txt", "preview"],
+  ["pi--rpiv-v2150-preview-moved.txt", "preview"],
+  ["pi--rpiv-v2150-preview-note-saved.txt", "preview"],
+  ["pi--rpiv-v2150-preview-stacked--w59.txt", "preview"],
+  ["pi--rpiv-v2150-preview-field-parked.txt", "preview"],
+  ["pi--rpiv-v2150-single.txt", "preview"],
+  ["pi--rpiv-v2150-single-moved.txt", "preview"],
+  ["pi--rpiv-v2150-single-step.txt", "preview"],
+  ["pi--rpiv-v2150-single-field-empty.txt", "preview"],
+  ["pi--rpiv-v2150-single-field-filled.txt", "preview"],
+  ["pi--rpiv-v2150-single-field-blank-tail.txt", "preview"],
+  ["pi--rpiv-v2150-submit-complete.txt", "multi"],
+  ["pi--rpiv-v2150-submit-partial.txt", "multi"],
+  ["pi--rpiv-v2150-submit-clipped--w59.txt", "multi"],
+  ["pi--rpiv-v2150-submit-global-note.txt", "multi"],
+  ["pi--rpiv-v2150-submit-global-note-cancel.txt", "multi"],
   ["pi--v110-single.txt", "walk"],
   ["pi--v110-single-desc.txt", "walk"],
   ["pi--v110-single-moved.txt", "walk"],
@@ -108,6 +137,10 @@ const LIFTS_397 = new Map<string, Expect>([
 ]);
 /** Screens with a pi modal up that stay raw: the Escape card's evidence. */
 const RAW_MODALS = new Set([
+  "pi--rpiv-v2150-preview-resize-torn--w59.txt",
+  "pi--rpiv-v2150-global-note-editor.txt",
+  "pi--rpiv-v2150-note-editor.txt",
+  "pi--rpiv-v2150-note-editor-long.txt",
   "pi--omo-v5130-answer-editor.txt",
   "pi--omo-v5130-multi.txt",
   "pi--omo-v5130-single-other-focused.txt",
@@ -161,6 +194,8 @@ function actual(lines: StyledLine[]): Expect {
   const block = piAdapter.buildBlocks(lines).find((b) => b.kind !== "raw");
   if (block === undefined) return "raw";
   if (block.kind === "wizard") return "review";
+  if (block.kind === "preview-select") return "preview";
+  if (block.kind === "multi-select") return "multi";
   if (block.kind !== "prompt-select") throw new Error(`unexpected ${block.kind}`);
   return block.prompt.options[0]!.keys.every((k) => /^[1-9]$/.test(k)) ? "digit" : "walk";
 }
@@ -674,7 +709,9 @@ describe("signatures", () => {
     const lines = load("pi--omo-v5130-single-described.txt");
     const question = detectPiQuestion(lines);
     expect(question?.startLine).toBe(0);
-    expect(question?.model.signature).toBe(lines.slice(0, 16).map((line) => lineText(line).trimEnd()).join("\n"));
+    expect(question?.kind).toBe("prompt-select");
+    if (question?.kind !== "prompt-select") throw new Error("no prompt-select");
+    expect(question.model.signature).toBe(lines.slice(0, 16).map((line) => lineText(line).trimEnd()).join("\n"));
     expect(readPiFrame(lines)).toMatchObject({ top: 0, bottom: 15 });
   });
 

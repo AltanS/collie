@@ -1,6 +1,7 @@
 # 0113: an AskUserQuestion answer is typed into its field
 
 - **Status:** Accepted
+- **Amended in scope by:** [0128](./0128-native-dialog-edits-read-the-complete-seen-value.md)
 - **Date:** 2026-10-14
 - **Shipped in:** 1.24.0
 - **Trail:** the 2026-09-26 rule that AskUserQuestion's `Type something.` row is "read, shown, and

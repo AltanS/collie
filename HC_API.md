@@ -1,6 +1,9 @@
-# herdr-core socket API: empirically verified (hc 0.1.14, protocol generation 1)
+# herdr-core socket API: empirically verified (hc 0.1.14 and 0.1.15, protocol generation 1)
 
-Probed on 2026-10-29 for the `herdr-core` mux adapter (`bridge/mux/herdr-core/`, milestone M74).
+The original probes ran on 2026-10-29 with 0.1.14 for the `herdr-core` mux adapter
+(`bridge/mux/herdr-core/`, milestone M74). The styled-screen follow-up ran on 2026-10-31 with
+0.1.15, in a separate private HOME, XDG directories and socket. All follow-up writes used owned,
+synthetic test terminals. The original measurements below keep their original version.
 This file is to that adapter what [`HERDR_API.md`](./HERDR_API.md) is to the `herdr` adapter: the
 facts the code leans on, each with a real request and a trimmed real answer.
 
@@ -10,7 +13,7 @@ panes, tabs or spaces. herdr-app (the window, 0.1.x) draws spaces and tabs on to
 them in a core document. The two Herdr products run side by side on one host and never share a
 socket.
 
-Two sessions were used, and only one of them was written to:
+The original 0.1.14 probes used two sessions, and wrote to only one:
 
 - **`default`**, the live core: one terminal `t1`, Altan's Claude Code session inside herdr-app.
   READ ONLY: `hello`, `server.status`, `terminal.list`, `terminal.get`, `terminal.read`,
@@ -125,8 +128,9 @@ There is no focus field and no content revision on a terminal.
 
 - `text` is the rendered screen, one line per row, `rows` lines (30 here, 120 for a lab terminal
   started over the API), no wider than `cols`. Trailing blank rows are kept.
-- **No colour.** No escape byte at all, also after `printf "\033[31mRED\033[0m"` in the lab. The
-  core renders with an emulator (it vendors ghostty's) but the API hands out text only.
+- **No colour in this method.** No escape byte at all, also after `printf "\033[31mRED\033[0m"`
+  in the lab. The core renders with an emulator (it vendors ghostty's), but `terminal.read` hands
+  out text only. The observer stream below is different.
 - `lines: N` adds up to N history lines above the screen. `how` is `screen` (no history asked),
   `history` (lab: `lines: 500` after `seq 1 150` gave 183 lines), or `stitched` (a full-screen app,
   read by scrolling it; `default` t1 answered `stitched` for `lines: 50`). `complete: false` means
@@ -137,6 +141,54 @@ There is no focus field and no content revision on a terminal.
   protocol uses (`lines: 0`) was always complete.
 - No history depth is reported anywhere, so how far a read can reach is unknown in advance. The phone
   therefore offers Load older on the core while the text it shows is cut (`truncated`), not by a depth.
+
+## Styled screen reads (0.1.15 follow-up)
+
+The core supplies styling through a framed observer, even though `terminal.read` is plain:
+
+```
+→ hello {"generation":1,"framed":true}
+→ [ch 0][DATA] terminal.get {"terminal":"<owned terminal>"}
+→ [ch 0][DATA] terminal.attach {"terminal":"<owned terminal>","cols":200,"rows":120,
+                               "observe":true,"history":0}
+← attach reply and first-paint DATA (either order; the paint can span frames)
+→ [observer channel][CLOSE] as soon as the attach reply arrives
+← queued DATA, consumed with read CREDIT frames, then [observer channel][CLOSE]
+```
+
+An observer cannot type or resize. Collie uses the terminal's own dimensions and sends no input,
+RESIZE, FOCUS or FACTS. It requests CLOSE immediately after the attach reply, then drains queued
+output through the CLOSE acknowledgement. CREDIT consumes output only. The plain read and observer
+share one deadline; both frame size and total queued bytes are bounded. History reads remain plain.
+
+**The paint is not a `MuxGrid`.** It contains cursor and mode commands. One real pending-wrap
+restoration printed the final status `f` twice; passing it straight to `parseAnsi` produced
+`thinking offf`. Nor is a DATA frame a paint boundary: the core's outbox joins queued bytes and
+cuts them into 16 KiB frames. Real cursor updates and a bell followed complete first paints inside
+the same DATA payload. `snapshot.ts` uses the known suffix (win32-input mode and the root/named
+status-report count from the terminal record) to find the complete first paint. Later live bytes
+are not interpreted. The boundary is found before UTF-8 decoding, so a split or invalid live suffix
+cannot spoil a valid first paint. Changed report counts or dimensions do not grant styled facts.
+
+The converter extracts only the known, already-rendered rows. It checks the
+complete independent plain read, row count, display widths, dimensions, cursor restoration and
+any repeated final cell's text and style. It returns SGR-only text. Unknown modes, movement in
+the body, partial paint or drift produce the original plain read, not guessed style facts.
+Transport failures still fail the read. The two reads are not atomic, and matching text does not
+prove that hidden state stayed unchanged. There is no emulator, live mirror or stored answer state.
+
+The [byte-faithful captures](bridge/mux/herdr-core/fixtures/README.md) retain the duplicate-cell
+case and a multiline answer with its software caret. Pi 1.4.0 and
+`@juicesharp/rpiv-ask-user-question` 2.15.0 ran with English/default bindings. All 50 native API
+cases passed at both 120×40 and 59×40 (38 readback cases plus 12 workflow cases, run separately).
+A Pixel 7 completed the full questionnaire with 97 text/style-bound writes. Separate phone checks
+proved explicit partial submission and Cancel. Exact native tool results verified the answers,
+previews, notes, unchanged global note and unanswered questions, not the model's paraphrase.
+These focused checks do not establish passed mandatory browser gates or PR readiness.
+
+A short terminal can still hide the editor itself. At 59×18 and 59×25, the native global-note
+editor hid its header or border; the phone refused to read or replace its value. At 59×40, the
+complete read and unchanged Return succeeded, and the native partial result kept the original note.
 
 ## Typing: `send`, `put`, `keys` and raw input
 
@@ -194,6 +246,24 @@ advice: type Enter as data on the attach channel), Collie types an unmodified En
 bytes (`\r`, `\x7f`, `\t`), so the Send Protocol's probe Backspace and its submitting Enter pay no hold.
 The hold stays for the keys that still go by name: a key with a modifier and every other named key.
 For those, the Send Protocol keeps the writes of its probe outside its read bound.
+
+**Long key batches (0.1.15).** The core waits 30 ms after each named key, in one per-terminal
+input queue ([source](https://github.com/herdrdev/herdr-core/blob/v0.1.15/crates/herdr-core/src/input.rs)).
+On a fresh owned shell, one Right key was acknowledged in 35 ms. A 223-key batch exceeded the
+old flat 5 s RPC deadline without any styled or history reads. With the paced allowance below,
+a fresh 223-key batch was acknowledged in 6.94 s, still without styled or history reads.
+
+The client keeps the base wait for the first key and adds 30 ms for each additional key. At the
+default 5 s base, a bound cursor-key request allows 5 s for its guard read and at most 14 s for
+its key call, leaving 1 s of the phone's unchanged 20 s mutation deadline for HTTP. Only the added
+pacing allowance is capped: an existing longer base override is not shortened, and gets no extension
+when it already exhausts the shared allowance. Other RPC deadlines are unchanged. This bounds
+one guarded key batch at the default timeout, not an arbitrary action that mixes several key
+batches and raw writes.
+
+A timed-out call is still unconfirmed: the core can continue its queue after the RPC closes.
+Do not retry an unconfirmed batch. Wrapped editor reads advance over each proved visible span
+instead of replaying every earlier prefix; their value, boundary and ownership checks stay intact.
 
 The size rule is why the attach names the terminal's OWN size: "the last active viewer sets the
 size (active: it typed, resized, gained focus or sent FACTS)". Typing makes the attach active, so
@@ -343,12 +413,15 @@ HC_SCOPE=149630853-9e24dfaafae6250d2164f4f959c07c58         opaque; changes with
 ## What does not fit Collie's mux port
 
 Collie's mux port was built for a multiplexer that hands out a coloured screen and a revision. The
-core does not, and M78 (2026-10-30, hc 0.1.14) ran the readers, the sends and the browser leg against
-it. This section has two parts: what Collie now handles itself, and what stays an upstream ask.
+core's plain read does not, and M78 (2026-10-30, hc 0.1.14) ran the readers, the sends and the
+browser leg against it. The later 0.1.15 probe found styled observer input, as described above.
+This section has two parts: what Collie now handles itself, and what stays an upstream ask.
 
 ### What Collie handles now
 
-- **No colour.** `paneGrid` is plain text. The Surface falls back to text shapes where a reader keyed
+- **Styled screen or plain fallback.** `styling: "preserve"` uses a validated observer snapshot for
+  screen reads. Plain reads and unsupported snapshot forms still need text-only rules. The Surface
+  falls back to text shapes where a reader keyed
   on SGR: the placeholder of an empty box (Claude, Codex, Hermes, Muse), and Claude's prompt
   suggestion, which a probe tells from a typed draft (the probe lands at the start of the box for a
   suggestion, after the text for a draft). pi's question is found by the footer's words and the
@@ -376,11 +449,12 @@ it. This section has two parts: what Collie now handles itself, and what stays a
 
 Each line is a thing the core could do that would close a gap Collie cannot close alone.
 
-- **Colour.** A `format: "ansi"` (or another styled) option on `terminal.read`. Plain text hides every
-  fact that a harness paints and does not write: about 100 dialog readings on pi, opencode and omp
-  (the pointer row, the stepper chip, the selected tab) are colour only, so a dialog of those three
-  whose pointer is colour only cannot be answered from the phone. Claude, Codex and the placeholders
-  have a text twin and are done. Filed as [herdrdev/herdr-core#68](https://github.com/herdrdev/herdr-core/issues/68).
+- **A direct styled read.** A `format: "ansi"` (or another SGR-only) option on `terminal.read`
+  would remove the temporary observer and its known-formatter boundary. The observer supplies
+  styling today when its paint can be validated; the core does not lack colour data. Plain input
+  alone still loses colour-only facts, such as a selected tab or reverse-video caret. Those facts
+  must not be guessed when the styled read is unavailable. Filed as
+  [herdrdev/herdr-core#68](https://github.com/herdrdev/herdr-core/issues/68).
 - **A history read that answers, and keys that do not wait for it.** `terminal.read` with `lines`
   above 0 did not answer in 30 s on a pi that showed a permission or question dialog, while the
   viewport read (`lines: 0`) answered in 0.1 s. Waited out, one such read took 25.03 s and answered
@@ -410,8 +484,9 @@ Each line is a thing the core could do that would close a gap Collie cannot clos
   from the screen. The ask: pi reports it, or the core says so.
 - **A raw-text method.** Typing without Enter needs a framed attach and its size rule. A plain
   `terminal.type {terminal, text}` would remove the attach.
-- **A revision.** The adapter derives one from the text it reads. A revision on the terminal record
-  would make that exact and cheap.
+- **A revision.** The adapter derives one from screen text and trusted styling. Plain/history reads
+  do not overwrite remembered style facts. A revision on the terminal record would make this exact
+  and cheap.
 - **A size that stays.** When the last viewer detaches, the core sets a terminal back to 200 x 120.
   Collie then reads an unviewed terminal at 200 columns, and herdr-app on a phone makes a narrow
   Claude. The ask: keep the size the last viewer set, or take it as a setting of the terminal.

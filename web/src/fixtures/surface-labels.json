@@ -5276,6 +5276,171 @@
    "version": "unversioned",
    "state": "other"
   },
+  "pi--rpiv-v2150-global-note-editor.txt": {
+   "harness": "pi",
+   "version": "1.4.0",
+   "state": "dialog"
+  },
+  "pi--rpiv-v2150-multi-field-cleared.txt": {
+   "harness": "pi",
+   "version": "1.4.0",
+   "state": "dialog"
+  },
+  "pi--rpiv-v2150-multi-field-empty.txt": {
+   "harness": "pi",
+   "version": "1.4.0",
+   "state": "dialog"
+  },
+  "pi--rpiv-v2150-multi-field-filled.txt": {
+   "harness": "pi",
+   "version": "1.4.0",
+   "state": "dialog"
+  },
+  "pi--rpiv-v2150-multi-field-parked.txt": {
+   "harness": "pi",
+   "version": "1.4.0",
+   "state": "dialog"
+  },
+  "pi--rpiv-v2150-multi-field-up.txt": {
+   "harness": "pi",
+   "version": "1.4.0",
+   "state": "dialog"
+  },
+  "pi--rpiv-v2150-multi-field-wrap-hard.txt": {
+   "harness": "pi",
+   "version": "1.4.0",
+   "state": "dialog"
+  },
+  "pi--rpiv-v2150-multi-field-wrap-soft.txt": {
+   "harness": "pi",
+   "version": "1.4.0",
+   "state": "dialog"
+  },
+  "pi--rpiv-v2150-multi-moved.txt": {
+   "harness": "pi",
+   "version": "1.4.0",
+   "state": "dialog"
+  },
+  "pi--rpiv-v2150-multi-next.txt": {
+   "harness": "pi",
+   "version": "1.4.0",
+   "state": "dialog"
+  },
+  "pi--rpiv-v2150-multi-standalone.txt": {
+   "harness": "pi",
+   "version": "1.4.0",
+   "state": "dialog"
+  },
+  "pi--rpiv-v2150-multi-ticked.txt": {
+   "harness": "pi",
+   "version": "1.4.0",
+   "state": "dialog"
+  },
+  "pi--rpiv-v2150-multi.txt": {
+   "harness": "pi",
+   "version": "1.4.0",
+   "state": "dialog"
+  },
+  "pi--rpiv-v2150-note-editor-long.txt": {
+   "harness": "pi",
+   "version": "1.4.0",
+   "state": "dialog"
+  },
+  "pi--rpiv-v2150-note-editor.txt": {
+   "harness": "pi",
+   "version": "1.4.0",
+   "state": "dialog"
+  },
+  "pi--rpiv-v2150-note-saved.txt": {
+   "harness": "pi",
+   "version": "1.4.0",
+   "state": "dialog"
+  },
+  "pi--rpiv-v2150-preview-field-parked.txt": {
+   "harness": "pi",
+   "version": "1.4.0",
+   "state": "dialog"
+  },
+  "pi--rpiv-v2150-preview-resize-torn--w59.txt": {
+   "harness": "pi",
+   "version": "1.4.0",
+   "state": "dialog"
+  },
+  "pi--rpiv-v2150-preview-stacked--w59.txt": {
+   "harness": "pi",
+   "version": "1.4.0",
+   "state": "dialog"
+  },
+  "pi--rpiv-v2150-preview-note-saved.txt": {
+   "harness": "pi",
+   "version": "1.4.0",
+   "state": "dialog"
+  },
+  "pi--rpiv-v2150-preview-moved.txt": {
+   "harness": "pi",
+   "version": "1.4.0",
+   "state": "dialog"
+  },
+  "pi--rpiv-v2150-preview.txt": {
+   "harness": "pi",
+   "version": "1.4.0",
+   "state": "dialog"
+  },
+  "pi--rpiv-v2150-single-field-blank-tail.txt": {
+   "harness": "pi",
+   "version": "1.4.0",
+   "state": "dialog"
+  },
+  "pi--rpiv-v2150-single-field-empty.txt": {
+   "harness": "pi",
+   "version": "1.4.0",
+   "state": "dialog"
+  },
+  "pi--rpiv-v2150-single-field-filled.txt": {
+   "harness": "pi",
+   "version": "1.4.0",
+   "state": "dialog"
+  },
+  "pi--rpiv-v2150-single-step.txt": {
+   "harness": "pi",
+   "version": "1.4.0",
+   "state": "dialog"
+  },
+  "pi--rpiv-v2150-single-moved.txt": {
+   "harness": "pi",
+   "version": "1.4.0",
+   "state": "dialog"
+  },
+  "pi--rpiv-v2150-single.txt": {
+   "harness": "pi",
+   "version": "1.4.0",
+   "state": "dialog"
+  },
+  "pi--rpiv-v2150-submit-complete.txt": {
+   "harness": "pi",
+   "version": "1.4.0",
+   "state": "dialog"
+  },
+  "pi--rpiv-v2150-submit-clipped--w59.txt": {
+   "harness": "pi",
+   "version": "1.4.0",
+   "state": "dialog"
+  },
+  "pi--rpiv-v2150-submit-global-note-cancel.txt": {
+   "harness": "pi",
+   "version": "1.4.0",
+   "state": "dialog"
+  },
+  "pi--rpiv-v2150-submit-global-note.txt": {
+   "harness": "pi",
+   "version": "1.4.0",
+   "state": "dialog"
+  },
+  "pi--rpiv-v2150-submit-partial.txt": {
+   "harness": "pi",
+   "version": "1.4.0",
+   "state": "dialog"
+  },
   "pi--trust-prompt-moved.txt": {
    "harness": "pi",
    "version": "1.2.0",

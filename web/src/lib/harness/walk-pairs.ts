@@ -120,6 +120,8 @@ export const WALK_PAIRS: readonly WalkPair[] = [
   ["pi", "pi--v110-questionnaire-tabs.txt", "pi--v110-questionnaire-tabs-moved.txt"],
   ["pi", "pi--v0871-questionnaire-tabs-second.txt", "pi--v0871-questionnaire-tabs-second-moved.txt"],
   ["pi", "pi--v110-questionnaire-tabs-second.txt", "pi--v110-questionnaire-tabs-second-moved.txt"],
+  // RPIV's native input requires the preview-select contract even without a preview. Its moved
+  // select/review captures are checked through their own comparators in pi/rpiv.test.ts.
   // The PR 397 question extension (pi 1.1.0): its one captured pair.
   ["pi", "pi--v110-single-desc.txt", "pi--v110-single-moved.txt"],
   // pi 1.2.0's folder trust prompt (pi/trust.ts), before and after one Down.

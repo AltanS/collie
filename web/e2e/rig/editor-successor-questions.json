@@ -1,0 +1,12 @@
+{
+  "first": { "questions": [{
+    "question": "Which race value should be used?",
+    "header": "Race",
+    "options": [{ "label": "Old A", "description": "Original first choice." }, { "label": "Old B", "description": "Original second choice." }]
+  }] },
+  "second": { "questions": [{
+    "question": "Which race value should be used?",
+    "header": "Race",
+    "options": [{ "label": "New A", "description": "Replacement first choice." }, { "label": "New B", "description": "Replacement second choice." }]
+  }] }
+}

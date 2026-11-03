@@ -44,6 +44,9 @@ export interface InlineEditorProps {
   /** Something the caller must say before the person sends again, drawn between the label and the
    *  field. The caller owns its words and its semantics (a `role="status"` element, say). */
   notice?: ReactNode;
+  /** Optional native edit/confirmation lifetime; legacy callers keep an editable field. */
+  inputDisabled?: boolean;
+  readOnly?: boolean;
 }
 
 export function InlineEditor({
@@ -64,6 +67,8 @@ export function InlineEditor({
   busy,
   busyAriaLabel,
   notice,
+  inputDisabled,
+  readOnly,
 }: InlineEditorProps) {
   // Focused from an effect rather than with `autoFocus`: the attribute only acts on the very first
   // mount of the element, and it gives assistive tech no chance to announce the surrounding panel
@@ -93,6 +98,8 @@ export function InlineEditor({
         rows={3}
         aria-label={textAriaLabel}
         placeholder={placeholder}
+        disabled={inputDisabled}
+        readOnly={readOnly}
         className="w-full resize-none rounded-md border border-border/60 bg-background px-2 py-1.5 text-sm text-foreground focus:border-primary/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
       />
       <p className="text-[11px] leading-snug text-muted-foreground">{help}</p>

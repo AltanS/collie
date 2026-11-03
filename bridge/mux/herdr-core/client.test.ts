@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createServer, type Server, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { asJsonObject, asJsonString, parseJsonObject } from "../../../web/src/lib/json.ts";
+import { stripSgr } from "../../../web/src/lib/surface/plain.ts";
 import type { JsonObject, JsonValue } from "../../json.ts";
 import { defaultHcSocket, HcClient, HcError, HcTimeout, readHcCore, type WireEvent } from "./client.ts";
 
@@ -37,7 +38,7 @@ function reply(socket: Socket, id: JsonValue | undefined, result: JsonValue): vo
   socket.write(`${JSON.stringify({ jsonrpc: "2.0", id, result })}\n`);
 }
 
-function stand(onPlain: Handler, size = { cols: 70, rows: 30 }): Stand {
+function stand(onPlain: Handler, size = { cols: 70, rows: 30 }, paint: { data?: string | Buffer; chunkSize?: number; beforeReply?: boolean; live?: string; acknowledgeClose?: boolean; attachedCols?: number; declaredSize?: number } = {}): Stand {
   const dir = mkdtempSync(join(tmpdir(), "hc-client-"));
   const path = join(dir, "core.sock");
   const framesIn: { channel: number; kind: number; payload: Buffer }[] = [];
@@ -73,12 +74,19 @@ function stand(onPlain: Handler, size = { cols: 70, rows: 30 }): Stand {
         if (got.channel === 0) {
           const message = parseJsonObject(got.payload.toString("utf8")) ?? {};
           if (message.method === "terminal.get") {
-            socket.write(frame(0, 0, Buffer.from(JSON.stringify({ jsonrpc: "2.0", id: message.id, result: { address: "t1", state: "live", ...size } }))));
+            socket.write(frame(0, 0, Buffer.from(JSON.stringify({ jsonrpc: "2.0", id: message.id, result: { address: "t1", state: "live", status: { state: "working", app: "pi" }, records: {}, ...size } }))));
           } else if (message.method === "terminal.attach") {
-            socket.write(frame(0, 0, Buffer.from(JSON.stringify({ jsonrpc: "2.0", id: message.id, result: { channel: 1, terminal: {} } }))));
-            socket.write(frame(1, 0, Buffer.from("\u001b[2Jfirst paint")));
+            const answer = frame(0, 0, Buffer.from(JSON.stringify({ jsonrpc: "2.0", id: message.id, result: { channel: 1, terminal: { address: "t1", state: "live", status: { state: "working", app: "pi" }, records: {}, ...size, cols: paint.attachedCols ?? size.cols } } })));
+            const bytes = Buffer.isBuffer(paint.data) ? paint.data : Buffer.from(paint.data ?? "\u001b[2Jfirst paint");
+            const chunks: Buffer[] = [];
+            const step = paint.chunkSize ?? Math.max(1, bytes.length);
+            for (let i = 0; i < bytes.length; i += step) chunks.push(frame(1, 0, bytes.subarray(i, i + step)));
+            const first = chunks.length ? Buffer.concat(chunks) : frame(1, 0, Buffer.alloc(0));
+            if (paint.declaredSize !== undefined) first.writeUInt32LE(paint.declaredSize, 5);
+            socket.write(Buffer.concat(paint.beforeReply ? [first, answer] : [answer, first]));
+            if (paint.live !== undefined) socket.write(frame(1, 0, Buffer.from(paint.live)));
           }
-        } else if (got.kind === 2) {
+        } else if (got.kind === 2 && paint.acknowledgeClose !== false) {
           socket.write(frame(got.channel, 2, Buffer.alloc(0)));
         }
       }
@@ -113,6 +121,99 @@ describe("HcClient over a unix socket", () => {
       if (err instanceof HcError) kind = err.kind;
     }
     expect(kind).toBe("not_found");
+  });
+
+  test("a styled screen read preserves RPIV styling and rendered text, sending only read credits and CLOSE", async () => {
+    const screen = readFileSync(join(import.meta.dirname, "fixtures/rpiv-preview-v015.screen.txt"), "utf8");
+    const paint = readFileSync(join(import.meta.dirname, "fixtures/rpiv-preview-v015.paint.ansi"), "utf8");
+    const core = stand((socket, message) => reply(socket, message.id, { text: screen, complete: true, how: "screen" }), { cols: 200, rows: 120 }, { data: paint });
+    const read = await new HcClient(core.path, 2000).readTerminal("t1", 0, "preserve");
+    expect(read.complete).toBe(true);
+    expect(read.text).toContain("\u001b[48;2;45;59;71m");
+    expect(stripSgr(read.text).split("\n").map((row) => row.trimEnd())).toEqual(screen.split("\n").map((row) => row.trimEnd()));
+    expect(stripSgr(read.text)).not.toContain("\u001b");
+    const rpc = core.framesIn.filter((f) => f.channel === 0).map((f) => parseJsonObject(f.payload.toString("utf8")) ?? {});
+    expect(rpc.find((m) => m.method === "terminal.attach")?.params).toEqual({ terminal: "t1", cols: 200, rows: 120, observe: true, history: 0 });
+    expect(core.framesIn.filter(f => f.channel !== 0 && f.kind === 2)).toHaveLength(1);
+    expect(core.framesIn.filter(f => f.channel !== 0).every(f => f.kind === 1 || f.kind === 2)).toBe(true);
+  });
+
+  test("the real first-paint-before-reply order is accepted, but later live DATA is not part of the snapshot", async () => {
+    const screen = readFileSync(join(import.meta.dirname, "fixtures/rpiv-answer-v015.screen.txt"), "utf8");
+    const paint = readFileSync(join(import.meta.dirname, "fixtures/rpiv-answer-v015.paint.ansi"), "utf8");
+    const core = stand((socket, message) => reply(socket, message.id, { text: screen, complete: true }), { cols: 200, rows: 120 }, { data: paint, beforeReply: true, live: "LIVE OUTPUT IS NOT THE SNAPSHOT" });
+    const read = await new HcClient(core.path, 2000).readTerminal("t1", 0, "preserve");
+    expect(read.text).toContain("\u001b[");
+    expect(read.text).not.toContain("LIVE OUTPUT");
+    expect(core.framesIn.filter(f => f.channel !== 0 && f.kind === 2)).toHaveLength(1);
+    expect(core.framesIn.filter(f => f.channel !== 0).every(f => f.kind === 1 || f.kind === 2)).toBe(true);
+  });
+
+  test("coalesced live output in the first DATA frame is not part of the first paint", async () => {
+    const screen = readFileSync(join(import.meta.dirname, "fixtures/rpiv-preview-v015.screen.txt"), "utf8");
+    const paint = readFileSync(join(import.meta.dirname, "fixtures/rpiv-preview-v015.paint.ansi"), "utf8");
+    // hc's outbox merges queued paint and live bytes before dividing them into DATA frames.
+    const core = stand((socket, message) => reply(socket, message.id, { text: screen, complete: true }),
+      { cols: 200, rows: 120 }, { data: paint + "\x1b[?2026h\x1b[23;1H\x1b[2Klive redraw\x1b[?2026l" });
+    const read = await new HcClient(core.path, 2000).readTerminal("t1", 0, "preserve");
+    expect(read.styled).toBe(true);
+    expect(read.text).not.toContain("live redraw");
+    expect(stripSgr(read.text).split("\n").map(row => row.trimEnd())).toEqual(screen.split("\n").map(row => row.trimEnd()));
+    expect(core.framesIn.filter(f => f.channel !== 0 && f.kind === 2)).toHaveLength(1);
+    expect(core.framesIn.filter(f => f.channel !== 0).every(f => f.kind === 1 || f.kind === 2)).toBe(true);
+  });
+
+  test("a multi-frame paint reassembles UTF-8 and ignores an incomplete live UTF-8 suffix", async () => {
+    const screen = readFileSync(join(import.meta.dirname, "fixtures/rpiv-answer-v015.screen.txt"), "utf8");
+    const paint = readFileSync(join(import.meta.dirname, "fixtures/rpiv-answer-v015.paint.ansi"));
+    const core = stand((socket, message) => reply(socket, message.id, { text: screen, complete: true }),
+      { cols: 200, rows: 120 }, { data: Buffer.concat([paint, Buffer.from([0xf0, 0x9f])]), chunkSize: 3, beforeReply: true });
+    const read = await new HcClient(core.path, 2000).readTerminal("t1", 0, "preserve");
+    expect(read.styled).toBe(true);
+    expect(stripSgr(read.text).split("\n").map(row => row.trimEnd())).toEqual(screen.split("\n").map(row => row.trimEnd()));
+    const stream = core.framesIn.filter(f => f.channel !== 0);
+    expect(stream.some(f => f.kind === 1)).toBe(true);
+    expect(stream.filter(f => f.kind === 2)).toHaveLength(1);
+    expect(stream.every(f => f.kind === 1 || f.kind === 2)).toBe(true);
+  });
+
+  test("queued bytes have a total snapshot bound even when every DATA frame is small", async () => {
+    const core = stand((socket, message) => reply(socket, message.id, { text: "plain", complete: true }),
+      { cols: 70, rows: 30 }, { data: Buffer.alloc(1024 * 1024 + 1, 0x61), chunkSize: 16 * 1024 });
+    await expect(new HcClient(core.path, 2000).readTerminal("t1", 0, "preserve"))
+      .rejects.toThrow("queued snapshot exceeds its limit");
+  });
+
+  test("unknown paint or changed dimensions retains the plain reading, never unproved styling", async () => {
+    const screen = readFileSync(join(import.meta.dirname, "fixtures/rpiv-preview-v015.screen.txt"), "utf8");
+    const paint = readFileSync(join(import.meta.dirname, "fixtures/rpiv-preview-v015.paint.ansi"), "utf8");
+    for (const options of [{ data: "unsupported repaint" }, { data: paint, attachedCols: 201 }]) {
+      const core = stand((socket, message) => reply(socket, message.id, { text: screen, complete: true, how: "screen" }), { cols: 200, rows: 120 }, options);
+      expect(await new HcClient(core.path, 2000).readTerminal("t1", 0, "preserve")).toEqual({ text: screen, complete: true, how: "screen" });
+    }
+  });
+
+  test("plain, history and incomplete reads never open an observer", async () => {
+    const core = stand((socket, message) => reply(socket, message.id, { text: "plain", complete: asJsonObject(message.params)?.lines !== 3 }));
+    const client = new HcClient(core.path, 2000);
+    expect((await client.readTerminal("t1", 0)).text).toBe("plain");
+    expect((await client.readTerminal("t1", 0, "strip")).text).toBe("plain");
+    expect((await client.readTerminal("t1", 10, "preserve")).text).toBe("plain");
+    expect((await client.readTerminal("t1", 3, "preserve")).complete).toBe(false);
+    expect(core.framesIn).toEqual([]);
+    const partial = stand((socket, message) => reply(socket, message.id, { text: "part", complete: false }));
+    expect((await new HcClient(partial.path, 2000).readTerminal("t1", 0, "preserve")).complete).toBe(false);
+    expect(partial.framesIn).toEqual([]);
+  });
+
+  test("an oversized paint is a transport failure, not a successful plain fallback", async () => {
+    const core = stand((socket, message) => reply(socket, message.id, { text: "plain", complete: true }), { cols: 70, rows: 30 }, { data: "", declaredSize: 1024 * 1024 + 1 });
+    await expect(new HcClient(core.path, 2000).readTerminal("t1", 0, "preserve")).rejects.toThrow("frame exceeds the snapshot limit");
+  });
+
+  test("a missing observer CLOSE acknowledgement expires within the read budget and is not hidden by a plain fallback", async () => {
+    const core = stand((socket, message) => reply(socket, message.id, { text: "plain", complete: true }), { cols: 70, rows: 30 }, { acknowledgeClose: false });
+    await expect(new HcClient(core.path, 100).readTerminal("t1", 0, "preserve")).rejects.toBeInstanceOf(HcTimeout);
   });
 
   test("typing attaches at the terminal's own size, sends the text as one DATA frame, and waits for the core's CLOSE", async () => {
@@ -200,6 +301,27 @@ describe("the doctor dial (M74 spec 04)", () => {
     }
     expect(said).toContain("timed out");
   });
+
+  test("a paced key batch can finish after the base RPC allowance without splitting or resending it", async () => {
+    const received: JsonObject[] = [];
+    const core = stand((socket, message) => {
+      received.push(message);
+      // Eight keys need 240 ms of native pacing on hc 0.1.15, before transport overhead.
+      setTimeout(() => { if (!socket.destroyed) reply(socket, message.id, { status: null, turn: 0 }); }, 240);
+    });
+    const keys = Array.from({ length: 8 }, () => "right");
+    await new HcClient(core.path, 100).pressKeys("t1", keys);
+    expect(received.map(({ method, params }) => ({ method, params }))).toEqual([
+      { method: "terminal.keys", params: { terminal: "t1", keys } },
+    ]);
+  });
+
+  test("a large key batch still expires with room for the guard read and the phone response", async () => {
+    const core = stand(() => undefined);
+    // Default 5 s binding read + capped 14 s key wait leaves 1 s of the phone's existing 20 s.
+    await expect(new HcClient(core.path).pressKeys("t1", Array.from({ length: 1000 }, () => "right")))
+      .rejects.toThrow("herdr-core terminal.keys: timed out after 14000ms");
+  }, 16_000);
 
   test("a key call the core never answers is an HcTimeout, which the adapter reads as not confirmed", async () => {
     const core = stand(() => undefined);

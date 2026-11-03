@@ -545,6 +545,151 @@
     "propose": "Upstream: per-row attributes (a dim or fg flag per row) in terminal.read. Text only: the session-cost rule of ask.ts textStatus could stand for paintedStatus in tailRule too, but tailRule also decides the editor and the send, which is out of scope for M78 spec 07.",
     "effect": "ask card lost: no tap answer from the phone; the pane is not free, so a send is refused, which is correct"
   },
+  "pi--rpiv-v2150-multi-field-cleared.txt": {
+    "why": "The current Checks question is identified by its tab background, not by the answered-box glyph. The pointer is outside the empty custom editor. A style-only mutation of this capture changes the active step, editor owner and styled binding while keeping every row's text identical.",
+    "class": "colour-needed",
+    "rule": "Require the observed current chip and preserve styled binding. Never infer the current step from answered marks, question wording or tab position; never seed editable text from rendered rows."
+  },
+  "pi--rpiv-v2150-multi-field-empty.txt": {
+    "why": "The current Checks question is identified by its tab background, not by the answered-box glyph. The custom editor is focused (1 visible row); its caret and continuation bounds are style facts too. A style-only mutation of this capture changes the active step, editor owner and styled binding while keeping every row's text identical.",
+    "class": "colour-needed",
+    "rule": "Require the observed current chip and preserve styled binding. Never infer the current step from answered marks, question wording or tab position; never seed editable text from rendered rows."
+  },
+  "pi--rpiv-v2150-multi-field-filled.txt": {
+    "why": "The current Checks question is identified by its tab background, not by the answered-box glyph. The custom editor is focused (2 visible rows); its caret and continuation bounds are style facts too. A style-only mutation of this capture changes the active step, editor owner and styled binding while keeping every row's text identical.",
+    "class": "colour-needed",
+    "rule": "Require the observed current chip and preserve styled binding. Never infer the current step from answered marks, question wording or tab position; never seed editable text from rendered rows."
+  },
+  "pi--rpiv-v2150-multi-field-parked.txt": {
+    "why": "The current Checks question is identified by its tab background, not by the answered-box glyph. The custom answer is parked (2 visible rows). A style-only mutation of this capture changes the active step, editor owner and styled binding while keeping every row's text identical.",
+    "class": "colour-needed",
+    "rule": "Require the observed current chip and preserve styled binding. Never infer the current step from answered marks, question wording or tab position; never seed editable text from rendered rows."
+  },
+  "pi--rpiv-v2150-multi-field-up.txt": {
+    "why": "The current Checks question is identified by its tab background, not by the answered-box glyph. The custom editor is focused (2 visible rows); its caret and continuation bounds are style facts too. A style-only mutation of this capture changes the active step, editor owner and styled binding while keeping every row's text identical.",
+    "class": "colour-needed",
+    "rule": "Require the observed current chip and preserve styled binding. Never infer the current step from answered marks, question wording or tab position; never seed editable text from rendered rows."
+  },
+  "pi--rpiv-v2150-multi-field-wrap-hard.txt": {
+    "why": "The current Checks question is identified by its tab background, not by the answered-box glyph. The custom editor is focused (2 visible rows); its caret and continuation bounds are style facts too. A style-only mutation of this capture changes the active step, editor owner and styled binding while keeping every row's text identical.",
+    "class": "colour-needed",
+    "rule": "Require the observed current chip and preserve styled binding. Never infer the current step from answered marks, question wording or tab position; never seed editable text from rendered rows."
+  },
+  "pi--rpiv-v2150-multi-field-wrap-soft.txt": {
+    "why": "The current Checks question is identified by its tab background, not by the answered-box glyph. The custom editor is focused (2 visible rows); its caret and continuation bounds are style facts too. A style-only mutation of this capture changes the active step, editor owner and styled binding while keeping every row's text identical.",
+    "class": "colour-needed",
+    "rule": "Require the observed current chip and preserve styled binding. Never infer the current step from answered marks, question wording or tab position; never seed editable text from rendered rows."
+  },
+  "pi--rpiv-v2150-multi-moved.txt": {
+    "why": "The current Checks question is identified by its tab background, not by the answered-box glyph. The pointer is outside the empty custom editor. A style-only mutation of this capture changes the active step, editor owner and styled binding while keeping every row's text identical.",
+    "class": "colour-needed",
+    "rule": "Require the observed current chip and preserve styled binding. Never infer the current step from answered marks, question wording or tab position; never seed editable text from rendered rows."
+  },
+  "pi--rpiv-v2150-multi-next.txt": {
+    "why": "The current Checks question is identified by its tab background, not by the answered-box glyph. The custom answer is parked (2 visible rows). A style-only mutation of this capture changes the active step, editor owner and styled binding while keeping every row's text identical.",
+    "class": "colour-needed",
+    "rule": "Require the observed current chip and preserve styled binding. Never infer the current step from answered marks, question wording or tab position; never seed editable text from rendered rows."
+  },
+  "pi--rpiv-v2150-multi-standalone.txt": {
+    "why": "The standalone checkbox pointer, tick glyphs and footer roles survive as text, but its caption/header ownership still requires paint. Restoring only chrome produces a card with an incorrect merged question and no editor owner. No safe text-only replacement preserving the unpainted-quotation guard is proved.",
+    "class": "text-rule-possible",
+    "rule": "Investigate standalone header and ownership proof separately. Preserve the unpainted-quotation refusal and complete-editor requirements; a possible text rule is not implemented support."
+  },
+  "pi--rpiv-v2150-multi-ticked.txt": {
+    "why": "The current Checks question is identified by its tab background, not by the answered-box glyph. The pointer is outside the empty custom editor. A style-only mutation of this capture changes the active step, editor owner and styled binding while keeping every row's text identical.",
+    "class": "colour-needed",
+    "rule": "Require the observed current chip and preserve styled binding. Never infer the current step from answered marks, question wording or tab position; never seed editable text from rendered rows."
+  },
+  "pi--rpiv-v2150-multi.txt": {
+    "why": "The current Checks question is identified by its tab background, not by the answered-box glyph. The pointer is outside the empty custom editor. A style-only mutation of this capture changes the active step, editor owner and styled binding while keeping every row's text identical.",
+    "class": "colour-needed",
+    "rule": "Require the observed current chip and preserve styled binding. Never infer the current step from answered marks, question wording or tab position; never seed editable text from rendered rows."
+  },
+  "pi--rpiv-v2150-note-saved.txt": {
+    "why": "The current Checks question is identified by its tab background, not by the answered-box glyph. The custom editor is focused (1 visible row); its caret and continuation bounds are style facts too. A style-only mutation of this capture changes the active step, editor owner and styled binding while keeping every row's text identical.",
+    "class": "colour-needed",
+    "rule": "Require the observed current chip and preserve styled binding. Never infer the current step from answered marks, question wording or tab position; never seed editable text from rendered rows."
+  },
+  "pi--rpiv-v2150-preview-field-parked.txt": {
+    "why": "The current Plan question is identified by its tab background, not by the answered-box glyph. The custom answer is parked (2 visible rows). A style-only mutation of this capture changes the active step, editor owner and styled binding while keeping every row's text identical.",
+    "class": "colour-needed",
+    "rule": "Require the observed current chip and preserve styled binding. Never infer the current step from answered marks, question wording or tab position; never seed editable text from rendered rows."
+  },
+  "pi--rpiv-v2150-preview-moved.txt": {
+    "why": "The current Plan question is identified by its tab background, not by the answered-box glyph. The pointer is outside the empty custom editor. A style-only mutation of this capture changes the active step, editor owner and styled binding while keeping every row's text identical.",
+    "class": "colour-needed",
+    "rule": "Require the observed current chip and preserve styled binding. Never infer the current step from answered marks, question wording or tab position; never seed editable text from rendered rows."
+  },
+  "pi--rpiv-v2150-preview-note-saved.txt": {
+    "why": "The current Plan question is identified by its tab background, not by the answered-box glyph. The pointer is outside the empty custom editor. A style-only mutation of this capture changes the active step, editor owner and styled binding while keeping every row's text identical.",
+    "class": "colour-needed",
+    "rule": "Require the observed current chip and preserve styled binding. Never infer the current step from answered marks, question wording or tab position; never seed editable text from rendered rows."
+  },
+  "pi--rpiv-v2150-preview-stacked--w59.txt": {
+    "why": "The current Plan question is identified by its tab background, not by the answered-box glyph. The pointer is outside the empty custom editor. A style-only mutation of this capture changes the active step, editor owner and styled binding while keeping every row's text identical.",
+    "class": "colour-needed",
+    "rule": "Require the observed current chip and preserve styled binding. Never infer the current step from answered marks, question wording or tab position; never seed editable text from rendered rows."
+  },
+  "pi--rpiv-v2150-preview.txt": {
+    "why": "The current Plan question is identified by its tab background, not by the answered-box glyph. The pointer is outside the empty custom editor. A style-only mutation of this capture changes the active step, editor owner and styled binding while keeping every row's text identical.",
+    "class": "colour-needed",
+    "rule": "Require the observed current chip and preserve styled binding. Never infer the current step from answered marks, question wording or tab position; never seed editable text from rendered rows."
+  },
+  "pi--rpiv-v2150-single-field-blank-tail.txt": {
+    "why": "The current Delivery question is identified by its tab background, not by the answered-box glyph. The custom editor is focused (4 visible rows); its caret and continuation bounds are style facts too. A style-only mutation of this capture changes the active step, editor owner and styled binding while keeping every row's text identical.",
+    "class": "colour-needed",
+    "rule": "Require the observed current chip and preserve styled binding. Never infer the current step from answered marks, question wording or tab position; never seed editable text from rendered rows."
+  },
+  "pi--rpiv-v2150-single-field-empty.txt": {
+    "why": "The current Delivery question is identified by its tab background, not by the answered-box glyph. The custom editor is focused (1 visible row); its caret and continuation bounds are style facts too. A style-only mutation of this capture changes the active step, editor owner and styled binding while keeping every row's text identical.",
+    "class": "colour-needed",
+    "rule": "Require the observed current chip and preserve styled binding. Never infer the current step from answered marks, question wording or tab position; never seed editable text from rendered rows."
+  },
+  "pi--rpiv-v2150-single-field-filled.txt": {
+    "why": "The current Delivery question is identified by its tab background, not by the answered-box glyph. The custom editor is focused (2 visible rows); its caret and continuation bounds are style facts too. A style-only mutation of this capture changes the active step, editor owner and styled binding while keeping every row's text identical.",
+    "class": "colour-needed",
+    "rule": "Require the observed current chip and preserve styled binding. Never infer the current step from answered marks, question wording or tab position; never seed editable text from rendered rows."
+  },
+  "pi--rpiv-v2150-single-moved.txt": {
+    "why": "The standalone Color choices and literal pointer survive as text, but caption/question ownership still requires paint. This exact plain observation is also the complete unpainted copy rejected by the existing quotation regression. No safe text-only replacement preserving that guard is proved.",
+    "class": "text-rule-possible",
+    "rule": "Investigate standalone header and ownership proof separately. Preserve the unpainted-quotation refusal and complete-editor requirements; a possible text rule is not implemented support."
+  },
+  "pi--rpiv-v2150-single-step.txt": {
+    "why": "The current Delivery question is identified by its tab background, not by the answered-box glyph. The pointer is outside the empty custom editor. A style-only mutation of this capture changes the active step, editor owner and styled binding while keeping every row's text identical.",
+    "class": "colour-needed",
+    "rule": "Require the observed current chip and preserve styled binding. Never infer the current step from answered marks, question wording or tab position; never seed editable text from rendered rows."
+  },
+  "pi--rpiv-v2150-single.txt": {
+    "why": "The standalone Color choices and literal pointer survive as text, but caption/question ownership still requires paint. This exact plain observation is also the complete unpainted copy rejected by the existing quotation regression. No safe text-only replacement preserving that guard is proved.",
+    "class": "text-rule-possible",
+    "rule": "Investigate standalone header and ownership proof separately. Preserve the unpainted-quotation refusal and complete-editor requirements; a possible text rule is not implemented support."
+  },
+  "pi--rpiv-v2150-submit-clipped--w59.txt": {
+    "why": "The current Submit chip is background-only and summary headers use a different paint role from authored answer continuations. Its bottom-overflow marker is also paint-qualified. A note-shaped continuation cannot be promoted to a record merely from its words.",
+    "class": "colour-needed",
+    "rule": "Keep the styled current-Submit and summary-role checks. Require the painted overflow marker before claiming a clipped summary; leave hidden values unknown."
+  },
+  "pi--rpiv-v2150-submit-complete.txt": {
+    "why": "The current Submit chip is background-only and summary headers use a different paint role from authored answer continuations. It carries an attached global note. A note-shaped continuation cannot be promoted to a record merely from its words.",
+    "class": "colour-needed",
+    "rule": "Keep the styled current-Submit and summary-role checks. Require the painted overflow marker before claiming a clipped summary; leave hidden values unknown."
+  },
+  "pi--rpiv-v2150-submit-global-note-cancel.txt": {
+    "why": "The current Submit chip is background-only and summary headers use a different paint role from authored answer continuations. It carries an attached global note. A note-shaped continuation cannot be promoted to a record merely from its words.",
+    "class": "colour-needed",
+    "rule": "Keep the styled current-Submit and summary-role checks. Require the painted overflow marker before claiming a clipped summary; leave hidden values unknown."
+  },
+  "pi--rpiv-v2150-submit-global-note.txt": {
+    "why": "The current Submit chip is background-only and summary headers use a different paint role from authored answer continuations. It carries an attached global note. A note-shaped continuation cannot be promoted to a record merely from its words.",
+    "class": "colour-needed",
+    "rule": "Keep the styled current-Submit and summary-role checks. Require the painted overflow marker before claiming a clipped summary; leave hidden values unknown."
+  },
+  "pi--rpiv-v2150-submit-partial.txt": {
+    "why": "The current Submit chip is background-only and summary headers use a different paint role from authored answer continuations. Its current summary has no global note. A note-shaped continuation cannot be promoted to a record merely from its words.",
+    "class": "colour-needed",
+    "rule": "Keep the styled current-Submit and summary-role checks. Require the painted overflow marker before claiming a clipped summary; leave hidden values unknown."
+  },
   "pi--v110-review-complete.txt": {
     "why": "On a read with no styling pi's status rows are told by text: the first row opens with the working directory and one of the first two carries pi's session cost (ask.ts textStatus). The PR 397 extension replaces pi's footer with its own row (`⎇ main`), which prints no cost, so the plain read finds no frame and the ask is lost. The modal reads unreadable: no card, and the pane is still not free.",
     "class": "colour-needed",

@@ -15,7 +15,7 @@ export function AnswerList({ answers }: { answers: WizardAnswer[] }) {
       {answers.map((qa, i) => (
         <div key={i}>
           <dt className="font-content text-xs text-muted-foreground">{qa.question}</dt>
-          <dd className="font-content text-sm font-medium text-foreground">{qa.answer}</dd>
+          <dd className="whitespace-pre-wrap break-words font-content text-sm font-medium text-foreground">{qa.answer}</dd>
         </div>
       ))}
     </dl>

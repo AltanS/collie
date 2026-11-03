@@ -1,0 +1,40 @@
+[0m[48;2;27;47;93m                                                                                                                        [0m
+[0m[48;2;27;47;93m </file>                                                                                                                [0m
+[0m[48;2;27;47;93m Call ask_user_question exactly once using these exact parameters. Await the user answers. Do not select any answers    [0m
+[0m[48;2;27;47;93m yourself.                                                                                                              [0m
+[0m[48;2;27;47;93m                                                                                                                        [0m
+
+ I'll call the ask_user_question function with the exact parameters from the questions.json file.                       
+
+[0m[48;2;50;50;50m                                                                                                                        [0m
+[0m[48;2;50;50;50m [0m[1m[48;2;50;50;50mAsk[0m[48;2;50;50;50m [0m[38;2;228;101;225m[48;2;50;50;50mPlan · Checks · Delivery · Optional[0m[48;2;50;50;50m                                                                                [0m
+[0m[48;2;50;50;50m                                                                                                                        [0m
+
+[0m[38;2;228;101;225m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+ ← [0m[38;2;160;160;160m □ Plan [0m [0m[48;2;27;47;93m □ Checks [0m [0m[38;2;160;160;160m □ Delivery [0m [0m[38;2;160;160;160m □ Optional [0m [0m[38;2;130;130;130m ✓ Submit [0m →
+
+
+ [0m[1mWhich checks should the Collie probe run?[0m                                                                              
+
+  1. [0m[38;2;160;160;160m[ ][0m Unit tests
+  [0m[38;2;160;160;160mVerify local behavior.[0m
+  2. [0m[38;2;160;160;160m[ ][0m Integration tests
+  [0m[38;2;160;160;160mVerify the real interaction.[0m
+  3. [0m[38;2;160;160;160m[ ][0m Type something.
+  Next
+
+ [0m[38;2;160;160;160mNotes:[0m                                                                                                                 
+[0m[38;2;123;123;123m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+First note line                                                                                                         
+Second note line[0m[7m [0m                                                                                                       
+[0m[38;2;123;123;123m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+
+[0m[38;2;228;101;225m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+
+ [0m[38;2;130;130;130mEnter to select · ↑/↓ to navigate · Space to toggle · Tab to switch questions · Esc to cancel · Ctrl+] to collapse · S[0m…
+
+
+
+
+[0m[38;2;130;130;130m/tmp/collie-rpiv-lab.xALl6A/.cache/collie-lab/rpiv/rig/work[0m
+[0m[38;2;130;130;130m↑1.8k ↓316 $0.003 1.1%/200k (auto)                                (openrouter) anthropic/claude-haiku-4.5 • thinking off[0m

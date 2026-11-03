@@ -1,0 +1,40 @@
+ [0m[38;2;228;138;122m[48;2;79;142;179m▀[0m[38;2;228;138;122m▀█[0m  [0m[38;2;130;130;130mv1.4.0[0m                                                                                                            
+ [0m[38;2;79;142;179m█▀[0m [0m[38;2;234;182;93m█[0m [0m[38;2;130;130;130mescape[0m[38;2;160;160;160m interrupt · [0m[38;2;130;130;130mctrl+c/ctrl+d[0m[38;2;160;160;160m clear/exit · [0m[38;2;130;130;130m/[0m[38;2;160;160;160m commands · [0m[38;2;130;130;130m![0m[38;2;160;160;160m bash · [0m[38;2;130;130;130mctrl+o[0m[38;2;160;160;160m more[0m                                   
+ [0m[38;2;130;130;130mPress ctrl+o to show full startup help and loaded resources.[0m                                                           
+                                                                                                                        
+ [0m[38;2;130;130;130mPi can explain its own features and look up its docs. Ask it how to use or extend Pi.[0m                                  
+
+[0m[38;2;167;167;0m[Extensions][0m                                                                                                            
+[0m[38;2;130;130;130m  rpiv-ask-user-question[0m                                                                                                
+
+[0m[48;2;27;47;93m                                                                                                                        [0m
+[0m[48;2;27;47;93m <file name="/tmp/collie-rpiv-lab.xALl6A/standalone-checks.json">                                                       [0m
+[0m[48;2;27;47;93m {"questions":[{"question":"Which standalone checks should                                                              [0m
+[0m[48;2;27;47;93m run?","header":"Checks","multiSelect":true,"options":[{"label":"Unit tests","description":"Verify local                [0m
+[0m[48;2;27;47;93m behavior."},{"label":"Integration tests","description":"Verify the real interaction."}]}]}                             [0m
+[0m[48;2;27;47;93m </file>                                                                                                                [0m
+[0m[48;2;27;47;93m Call ask_user_question once with these exact parameters.                                                               [0m
+[0m[48;2;27;47;93m                                                                                                                        [0m
+
+[0m[48;2;50;50;50m                                                                                                                        [0m
+[0m[48;2;50;50;50m [0m[1m[48;2;50;50;50mAsk[0m[48;2;50;50;50m [0m[38;2;228;101;225m[48;2;50;50;50mChecks[0m[48;2;50;50;50m                                                                                                             [0m
+[0m[48;2;50;50;50m                                                                                                                        [0m
+
+[0m[38;2;228;101;225m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+
+ [0m[48;2;27;47;93m Checks [0m                                                                                                               
+
+ [0m[1mWhich standalone checks should run?[0m                                                                                    
+
+[0m[38;2;228;101;225m❯ [0m1. [0m[38;2;160;160;160m[ ][0m [0m[1m[38;2;228;101;225mUnit tests[0m
+  [0m[38;2;160;160;160mVerify local behavior.[0m
+  2. [0m[38;2;160;160;160m[ ][0m Integration tests
+  [0m[38;2;160;160;160mVerify the real interaction.[0m
+  3. [0m[38;2;160;160;160m[ ][0m Type something.
+  Submit
+
+[0m[38;2;228;101;225m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+
+ [0m[38;2;130;130;130mEnter to select · ↑/↓ to navigate · Space to toggle · n to add notes · Esc to cancel · Ctrl+] to collapse[0m
+[0m[38;2;130;130;130m~/.cache/collie-lab/rpiv/rig/work[0m
+[0m[38;2;130;130;130m↑1.6k ↓110 $0.002 0.9%/200k (auto)                                (openrouter) anthropic/claude-haiku-4.5 • thinking off[0m

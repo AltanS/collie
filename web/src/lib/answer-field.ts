@@ -26,7 +26,7 @@ import {
 import { MAX_ANSWER_WRAP, OPTION_SCAN_WINDOW } from "./harness/claude/prompt-select";
 import { DIALOG_CONTRACT, type DialogKind, type DialogModels } from "./harness/dialog-contract";
 import { sanitizeTypedText, type ActionResult, type GuardOutcome, type Sleep } from "./harness/guard";
-import type { AnswerFieldPointer } from "./harness/prompt-model";
+import { ANSWER_MAX_LENGTH, type AnswerFieldPointer } from "./harness/prompt-model";
 import { t } from "./i18n";
 import { displayWidth } from "./text-width";
 
@@ -40,7 +40,7 @@ import { displayWidth } from "./text-width";
  * ~60 usable columns). Longer text isn't dangerous — the read-back check simply refuses and nothing is
  * submitted — but the dialog would drop off the phone, so we don't let it happen.
  */
-export const FEEDBACK_MAX_LENGTH = 240;
+export { FEEDBACK_MAX_LENGTH } from "./harness/prompt-model";
 
 /**
  * Longest text Collie types into AskUserQuestion's answer field: the editor's cap, before the pane's
@@ -48,7 +48,7 @@ export const FEEDBACK_MAX_LENGTH = 240;
  * bounds it is {@link MAX_ANSWER_WRAP}, checked against the pane's width before anything is typed
  * ({@link answerFits}). 4000 characters is about 25 rows of a 160-column pane.
  */
-export const ANSWER_MAX_LENGTH = 4000;
+export { ANSWER_MAX_LENGTH } from "./harness/prompt-model";
 
 /** Columns before the field's text: `❯ 4. ` on a single question and a wizard step, `❯ 4. [✔] ` on a
  *  multi-select question. The wider one counts for all three, so the estimate never runs short. */
@@ -105,6 +105,7 @@ function wrappedRows(text: string, room: number): number {
 
 /** The field's state as one kind's model reports it. */
 export interface AnswerFieldState {
+  multiline?: true;
   /** The digit that focuses (or, on a filled single/wizard field, submits) the field. */
   key: string;
   focused: boolean;
@@ -122,6 +123,8 @@ export interface FieldAccess<K extends DialogKind> {
   /** Whether the field's digit focuses an empty field: true on a single question and a wizard step,
    *  false on a multi-select question, where it toggles the field's checkbox. */
   digitFocuses: boolean;
+  /** A deliberately cleared, automatically-selected custom answer; not a blank answer submission. */
+  allowEmpty?: boolean;
 }
 
 /** The recipe's outcome: the read that proved our text is in the field, or why it stopped. */
@@ -160,8 +163,8 @@ export async function fillAnswerField<K extends DialogKind>(
 ): Promise<FillOutcome<K>> {
   const seen = access.fieldOf(target.model);
   if (seen === null) return refuse("entry");
-  const clean = sanitizeTypedText(text, ANSWER_MAX_LENGTH);
-  if (clean.length === 0) return fail(t("promptAction.feedback.empty"));
+  const clean = sanitizeTypedText(text, ANSWER_MAX_LENGTH, seen.multiline);
+  if (clean.trim().length === 0 && !access.allowEmpty) return fail(t("promptAction.feedback.empty"));
   try {
     const guarded = await guardDialog(target);
     if (!guarded.ok) return notSent(guarded.result, "entry");
@@ -170,7 +173,8 @@ export async function fillAnswerField<K extends DialogKind>(
     if (!reached.ok) return reached;
     const cleared = await clearField(target, access, reached.proof);
     if (!cleared.ok) return cleared;
-    return await typeAnswer(target, access, clean);
+    if (clean.trim().length === 0) return cleared;
+    return await typeAnswer(target, access, clean, cleared.proof);
   } catch (e) {
     return fail(describeThrownError(e));
   }
@@ -221,7 +225,9 @@ async function walkToField<K extends DialogKind>(
     const sent = await sendBoundTo(target, [field.pointer === "below" ? "Up" : "Down"], current);
     if (sent.status !== "sent") return notSent(sent, "bridge");
     const before = regionOf(current);
-    const moved = await pollDialog(target, (m) => regionOf(m) !== before);
+    const styleOf = DIALOG_CONTRACT[target.kind].styled;
+    const styled = styleOf?.(current);
+    const moved = await pollDialog(target, (m) => regionOf(m) !== before || styleOf?.(m) !== styled);
     if (moved.status === "drifted") return refuse("walk: drift");
     if (moved.status === "timeout") return fail(t("promptAction.answer.fieldNotReached"));
     current = moved.model;
@@ -257,8 +263,14 @@ async function typeAnswer<K extends DialogKind>(
   target: Target<K>,
   access: FieldAccess<K>,
   clean: string,
+  proof: DialogModels[K],
 ): Promise<Step<K>> {
-  const typed = await sendReply(target.paneId, clean, false, target.scope);
+  const contract = DIALOG_CONTRACT[target.kind];
+  const bound = access.fieldOf(proof)?.multiline === true;
+  const typed = bound
+    ? await sendReply(target.paneId, clean, false, target.scope, contract.region(proof), contract.styled?.(proof))
+    : await sendReply(target.paneId, clean, false, target.scope);
+  if (!typed.ok && typed.code === "prompt_changed") return refuse("type: bridge");
   if (!typed.ok) return fail(describeApiError(typed));
   const landed = await pollDialog(target, (m) => {
     const field = access.fieldOf(m);

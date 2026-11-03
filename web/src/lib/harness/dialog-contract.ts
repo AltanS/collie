@@ -201,6 +201,7 @@ export const DIALOG_CONTRACT: DialogContract = {
     identity: previewCoreEqual,
     signature: (m) => m.coreSignature,
     region: (m) => m.regionSignature,
+    styled: (m) => m.styledSignature,
   },
   "multi-select": {
     // The Submit walk moves the pointer deliberately; `multiSelectIdentity` ignores the pointer but
@@ -209,6 +210,7 @@ export const DIALOG_CONTRACT: DialogContract = {
     identity: multiSelectIdentity,
     signature: (m) => m.signature,
     region: (m) => m.regionSignature,
+    styled: (m) => m.styledSignature,
   },
   menu: {
     // A footer-named key COMMITS (in the `/model` picker, Enter writes the user's default), so it

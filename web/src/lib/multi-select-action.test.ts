@@ -1,4 +1,7 @@
 import { describe, expect, it, beforeEach, vi } from "vitest";
+import { fixtureText } from "@/test/surface-traces";
+import { piAdapter } from "./harness/pi";
+import { POLL_ATTEMPTS } from "./harness/guard";
 
 // The multi-select choreography engine: the entry guard + the Submit macro (walk the pointer DOWN
 // onto "Submit", re-reading each step, then Enter) and the one-keystroke intents (toggle / escape /
@@ -362,6 +365,64 @@ describe("multiSelectEquals / multiSelectIdentity", () => {
     expect(multiSelectIdentity(a, model(checkboxBuffer({ pointer: "submit", checked: [3] })))).toBe(false);
     // A different question / different labels is a different dialog (the identity re-derivation guard).
     expect(multiSelectIdentity(a, model(checkboxBuffer({ question: "Another question?" })))).toBe(false);
+  });
+});
+
+describe("footer-declared arrow/Space toggles", () => {
+  const raw = (name: string) => fixtureText(`pi--rpiv-v2150-${name}.txt`);
+  it("walks to an RPIV checkbox, then sends Space bound to the verified row, never a digit", async () => {
+    const block = piAdapter.buildBlocks(splitLines(parseAnsi(raw("multi-ticked")))).find((b) => b.kind === "multi-select");
+    if (!block) throw new Error("no RPIV checkbox card");
+    script(raw("multi-ticked"), raw("multi-ticked"), raw("multi-moved"));
+    const result = await submitMultiSelectIntent({ ...base, agent: "pi", multi: block.multi, intent: { kind: "toggle", n: 2 } });
+    expect(result).toEqual({ status: "sent" });
+    expect(keysSent()).toEqual([["Down"], ["Space"]]);
+    expect(mockSendKeys.mock.calls[1]?.[3]).toContain("❯ 2. [ ] Integration tests");
+    expect(mockSendKeys.mock.calls[1]?.[4]).toBeDefined();
+  });
+
+  // Complete native replacement is exercised through the real pane API in editor-readback.test.ts.
+  it("refuses the old RPIV typing intent when it carries no complete seen context", async () => {
+    const block = piAdapter.buildBlocks(splitLines(parseAnsi(raw("multi-field-empty")))).find((b) => b.kind === "multi-select");
+    if (!block) throw new Error("no RPIV checkbox card");
+    // End-of-line caret cells trim out of canonical text/style. The screen stays on the field
+    // until the next Up; a polling read cannot move it to the option above by itself.
+    script(raw("multi-field-empty"), raw("multi-field-empty"), raw("multi-field-filled"),
+      ...Array.from({ length: POLL_ATTEMPTS }, () => raw("multi-field-up")), raw("multi-field-parked"));
+    const result = await submitMultiSelectIntent({ ...base, agent: "pi", multi: block.multi, intent: { kind: "type", text: "First line\nSecond line" } });
+    expect(result.status).toBe("changed");
+    expect(mockSendReply).not.toHaveBeenCalled();
+    expect(keysSent()).toEqual([]);
+  });
+
+  it("refuses old-intent clearing of an automatic answer without complete seen context", async () => {
+    const block = piAdapter.buildBlocks(splitLines(parseAnsi(raw("multi-field-parked")))).find((b) => b.kind === "multi-select");
+    if (!block) throw new Error("no RPIV checkbox card");
+    script(raw("multi-field-parked"), raw("multi-field-parked"), raw("multi-field-filled"),
+      raw("multi-field-filled"), raw("multi-field-empty"), raw("multi-field-cleared"));
+    const result = await submitMultiSelectIntent({ ...base, agent: "pi", multi: block.multi, intent: { kind: "type", text: "" } });
+    expect(result.status).toBe("changed");
+    expect(keysSent()).toEqual([]);
+    expect(mockSendReply).not.toHaveBeenCalled();
+  });
+
+  it("does not clear a custom answer that changed since the phone showed it", async () => {
+    const block = piAdapter.buildBlocks(splitLines(parseAnsi(raw("multi-field-parked")))).find((b) => b.kind === "multi-select");
+    if (!block) throw new Error("no RPIV checkbox card");
+    script(raw("multi-field-cleared"));
+    const result = await submitMultiSelectIntent({ ...base, agent: "pi", multi: block.multi, intent: { kind: "type", text: "" } });
+    expect(result.status).toBe("changed");
+    expect(keysSent()).toEqual([]);
+    expect(mockSendReply).not.toHaveBeenCalled();
+  });
+
+  it("refuses an independent toggle of an automatically checked custom answer", async () => {
+    const block = piAdapter.buildBlocks(splitLines(parseAnsi(raw("multi-field-parked")))).find((b) => b.kind === "multi-select");
+    if (!block) throw new Error("no RPIV checkbox card");
+    script(raw("multi-field-parked"));
+    const result = await submitMultiSelectIntent({ ...base, agent: "pi", multi: block.multi, intent: { kind: "toggle", n: 3 } });
+    expect(result.status).toBe("changed");
+    expect(keysSent()).toEqual([]);
   });
 });
 

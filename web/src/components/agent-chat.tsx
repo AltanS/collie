@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { useRevalidator } from "react-router";
@@ -56,7 +56,7 @@ import { HeaderStatus } from "@/components/header-status";
 import { AgentStart } from "@/components/agent-start";
 import { AnsiOutput } from "@/components/ansi-output";
 import { OutputZoom } from "@/components/output-zoom";
-import { CardDock, hasDialogCard } from "@/components/card-dock";
+import { hasDialogCard } from "@/components/card-dock-model";
 import { HookHoldCard } from "@/components/hook-hold-card";
 import { MIRROR_SPACE, MIRROR_INVERT, MUSE_MIRROR, segmentStyle } from "@/components/mirror-space";
 import { AgentsFooter } from "@/components/agents-footer";
@@ -114,10 +114,8 @@ import { writeRefusal } from "@/lib/host-health";
 import { StatusArea } from "@/components/status-area";
 import { ToastViewport } from "@/components/ui/toast-viewport";
 import { StatusDot } from "@/components/status-badge";
-import { submitPromptFeedback, submitPromptOption } from "@/lib/prompt-action";
-import { submitWizardAnswer, submitWizardKeys } from "@/lib/wizard-action";
-import { submitPreviewKeys, submitPreviewNote, submitPreviewOption } from "@/lib/preview-action";
-import { submitMultiSelectIntent, type MultiSelectIntent } from "@/lib/multi-select-action";
+import type { MultiSelectIntent } from "@/lib/multi-select-action";
+import type { EditorDialog, SeenValue } from "@/lib/editor-action";
 import { submitMenuKeys } from "@/lib/menu-action";
 import { sendBoundKeys, sendGuardedKeys } from "@/lib/dialog-guard";
 import type { PromptBlockAction } from "@/components/prompt-select-block";
@@ -237,6 +235,9 @@ interface AgentChatProps {
 }
 
 /** How many rows at the raw screen's tail count as its footer when the model label asks if it is named. */
+// The dock keeps its edit lifetime once mounted; polling does not create another lazy boundary.
+// Splitting the existing control surface keeps the boot bundle within the SW's unchanged limit.
+const CardDock = lazy(() => import("@/components/card-dock").then((module) => ({ default: module.CardDock })));
 const RAW_FOOTER_ROWS = 8;
 const NO_ROWS: readonly string[] = [];
 
@@ -1505,10 +1506,9 @@ export function AgentChat({
       // Two recipes behind one block: a single guarded keystroke for an option, and the plan
       // dialog's multi-step feedback sequence (digit → verify focus → type → Enter, which denies the
       // plan and hands the agent the text — see lib/prompt-action.ts).
-      const result =
-        action.kind === "option"
-          ? await submitPromptOption({ ...base, option: action.option })
-          : await submitPromptFeedback({ ...base, text: action.text });
+      const result = await import("@/lib/prompt-action").then((recipe) =>
+        action.kind === "option" ? recipe.submitPromptOption({ ...base, option: action.option }) : recipe.submitPromptFeedback({ ...base, text: action.text }),
+      ).catch((failure) => ({ status: "error" as const, error: describeThrownError(failure) }));
       if (result.status === "sent") {
         const sentStatus =
           action.kind === "option"
@@ -1547,7 +1547,7 @@ export function AgentChat({
         setStatus(refusal, "error");
         return;
       }
-      const result = await submitWizardKeys({
+      const result = await import("@/lib/wizard-action").then(({ submitWizardKeys }) => submitWizardKeys({
         paneId,
         scope,
         requestedLines,
@@ -1555,7 +1555,7 @@ export function AgentChat({
         agent: agent?.agent,
         wizard,
         keys,
-      });
+      })).catch((failure) => ({ status: "error" as const, error: describeThrownError(failure) }));
       if (result.status === "sent") {
         setStatus(t("chat.status.sent"), "success");
         await showAfterSend();
@@ -1579,7 +1579,7 @@ export function AgentChat({
         setStatus(refusal, "error");
         return false;
       }
-      const result = await submitWizardAnswer({
+      const result = await import("@/lib/wizard-action").then(({ submitWizardAnswer }) => submitWizardAnswer({
         paneId,
         scope,
         requestedLines,
@@ -1587,7 +1587,7 @@ export function AgentChat({
         agent: agent?.agent,
         wizard,
         text: answer,
-      });
+      })).catch((failure) => ({ status: "error" as const, error: describeThrownError(failure) }));
       if (result.status === "sent") {
         setStatus(t("chat.status.answerSent"), "success");
         await showAfterSend();
@@ -1625,12 +1625,15 @@ export function AgentChat({
         agent: agent?.agent,
         preview,
       };
-      const result =
+      // These recipes are needed only on a dialog tap. Keeping them off the boot chunk also
+      // keeps the shell within the service worker's existing precache size bound.
+      const result = await import("@/lib/preview-action").then(({ submitPreviewOption, submitPreviewNote, submitPreviewKeys }) =>
         action.kind === "option"
-          ? await submitPreviewOption({ ...base, option: action.option })
+          ? submitPreviewOption({ ...base, option: action.option })
           : action.kind === "note"
-            ? await submitPreviewNote({ ...base, text: action.text })
-            : await submitPreviewKeys({ ...base, keys: action.keys });
+            ? submitPreviewNote({ ...base, text: action.text })
+            : submitPreviewKeys({ ...base, keys: action.keys }),
+      ).catch((failure) => ({ status: "error" as const, error: describeThrownError(failure) }));
       if (result.status === "sent") {
         setStatus(
           action.kind === "note"
@@ -1664,7 +1667,7 @@ export function AgentChat({
         setStatus(refusal, "error");
         return;
       }
-      const result = await submitMultiSelectIntent({
+      const result = await import("@/lib/multi-select-action").then(({ submitMultiSelectIntent }) => submitMultiSelectIntent({
         paneId,
         scope,
         requestedLines,
@@ -1672,7 +1675,7 @@ export function AgentChat({
         agent: agent?.agent,
         multi,
         intent: action,
-      });
+      })).catch((failure) => ({ status: "error" as const, error: describeThrownError(failure) }));
       if (result.status === "sent") {
         setStatus(t("chat.status.sent"), "success");
         await showAfterSend();
@@ -1696,7 +1699,7 @@ export function AgentChat({
         setStatus(refusal, "error");
         return false;
       }
-      const result = await submitMultiSelectIntent({
+      const result = await import("@/lib/multi-select-action").then(({ submitMultiSelectIntent }) => submitMultiSelectIntent({
         paneId,
         scope,
         requestedLines,
@@ -1704,7 +1707,7 @@ export function AgentChat({
         agent: agent?.agent,
         multi,
         intent: { kind: "type", text: answer },
-      });
+      })).catch((failure) => ({ status: "error" as const, error: describeThrownError(failure) }));
       if (result.status === "sent") {
         setStatus(t("chat.status.answerSent"), "success");
         await showAfterSend();
@@ -1720,6 +1723,36 @@ export function AgentChat({
     },
     [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator, showAfterSend],
   );
+
+  const handleReadEditor = useCallback(async (purpose: SeenValue["purpose"], dialog: EditorDialog): Promise<SeenValue | null> => {
+    const refusal = refuseWrite();
+    if (refusal) { setStatus(refusal, "error"); return null; }
+    const result = await import("@/lib/editor-action").then(({ prepareDialogEditor }) => prepareDialogEditor({
+      paneId, scope, requestedLines, detectedRevision: shown.revision, agent: agent?.agent, ...dialog,
+    }, purpose)).catch((failure) => ({ status: "error" as const, error: describeThrownError(failure) }));
+    revalidator.revalidate();
+    if (result.status === "ready") return result.seen;
+    setStatus(result.status === "error" ? result.error : t("dialog.editor.readFailed"), result.status === "error" ? "error" : "warn");
+    return null;
+  }, [refuseWrite, paneId, scope, requestedLines, shown.revision, agent?.agent, revalidator]);
+
+  const handleFinishEditor = useCallback(async (replacement: string | null, seen: SeenValue): Promise<boolean> => {
+    const refusal = refuseWrite();
+    if (refusal) { setStatus(refusal, "error"); return false; }
+    if (paneScopeKey(scope, paneId) !== paneScopeKey(seen.origin.scope, seen.origin.paneId) || agent?.agent !== seen.origin.agent) return false;
+    const result = await import("@/lib/editor-action").then(({ saveDialogEditor, cancelDialogEditor }) =>
+      replacement === null ? cancelDialogEditor(seen) : saveDialogEditor(seen, replacement),
+    ).catch((failure) => ({ status: "error" as const, error: describeThrownError(failure) }));
+    if (result.status === "sent") {
+      setStatus(replacement === null ? t("chat.status.sent") : seen.purpose === "answer" ? t("chat.status.answerSent") :
+        replacement.trim() ? t("chat.status.noteSaved") : t("chat.status.noteRemoved"), "success");
+      await showAfterSend();
+      return true;
+    }
+    setStatus(result.status === "error" ? result.error : t("chat.status.dialogChanged"), result.status === "error" ? "error" : "warn");
+    revalidator.revalidate();
+    return false;
+  }, [refuseWrite, paneId, scope, agent?.agent, revalidator, showAfterSend]);
 
   // Tap a generic-menu control (a footer-named key like Enter/s/Esc, or an arrow). Same guard-first
   // shape as the handlers above; the arrow taps pass `nav`, which swaps the guard's signature check
@@ -3008,6 +3041,7 @@ export function AgentChat({
             />
           )}
           {display && (
+            <Suspense fallback={hasDialogCard(blocks) ? <div role="status" className="shrink-0 px-4 py-2 text-xs text-muted-foreground">{t("conversations.loading")}</div> : null}>
             <CardDock
               ref={cardDockRef}
               blocks={blocks}
@@ -3017,6 +3051,9 @@ export function AgentChat({
               onPreviewAction={handlePreviewAction}
               onMultiSelectAction={handleMultiSelectAction}
               onMultiSelectAnswer={handleMultiSelectAnswer}
+              onReadEditor={handleReadEditor}
+              onSaveEditor={(replacement, seen) => handleFinishEditor(replacement, seen)}
+              onCancelEditor={(seen) => handleFinishEditor(null, seen)}
               onMenuAction={handleMenuAction}
               onUnreadDialogAction={handleUnreadDialogAction}
               // Report a problem from the card (ADR 0123, amendment 2026-10-28): this machine's panes only,
@@ -3032,6 +3069,7 @@ export function AgentChat({
               faceStyle={mirrorFace.style}
               onClick={focusFromMirror}
             />
+            </Suspense>
           )}
 
           {/* Bottom region, in the order it paints: the agent's own statusline (the mirror's last row),

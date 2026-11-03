@@ -91,10 +91,10 @@ describe("api client", () => {
     ]);
   });
 
-  it("adds expected_styled to a keys body only when supplied, beside expected_prompt", async () => {
+  it("adds expected_styled to a write only when supplied, beside expected_prompt", async () => {
     const bodies: unknown[] = [];
     server.use(
-      http.post(/\/api\/pane\/[^/]+\/keys$/, async ({ request }) => {
+      http.post(/\/api\/pane\/[^/]+\/(keys|reply)$/, async ({ request }) => {
         bodies.push(await request.json());
         return HttpResponse.json({ ok: true });
       }),
@@ -102,10 +102,14 @@ describe("api client", () => {
 
     await sendKeys("w1:p1", ["Enter"], undefined, "Approve?", "styled lines");
     await sendKeys("w1:p1", ["Enter"], undefined, "Approve?");
+    await sendReply("w1:p1", "One\nTwo", false, undefined, "Answer?", "styled field");
+    await sendReply("w1:p1", "One\nTwo", false, undefined, "Answer?");
 
     expect(bodies).toEqual([
       { keys: ["Enter"], expected_prompt: "Approve?", expected_styled: "styled lines" },
       { keys: ["Enter"], expected_prompt: "Approve?" },
+      { text: "One\nTwo", submit: false, expected_prompt: "Answer?", expected_styled: "styled field" },
+      { text: "One\nTwo", submit: false, expected_prompt: "Answer?" },
     ]);
   });
 

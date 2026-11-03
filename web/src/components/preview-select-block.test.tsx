@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -8,6 +8,7 @@ import { parseAnsi } from "@/lib/ansi";
 import { splitLines, type PreviewSelectModel } from "@/lib/blocks";
 import { detectPreviewSelect } from "@/lib/harness/claude/preview-select";
 import { PreviewSelectBlock } from "./preview-select-block";
+import { piAdapter } from "@/lib/harness/pi";
 
 // Presentational contract only — the choreography engine has its own tests (preview-action.test.ts)
 // and the component never touches the network: taps resolve to intents on the injected handler.
@@ -77,6 +78,24 @@ describe("PreviewSelectBlock — presentation", () => {
 });
 
 describe("PreviewSelectBlock — intents", () => {
+  it("keeps Cancel acknowledged at its control while the native action is pending", async () => {
+    const user = userEvent.setup();
+    const block = piAdapter.buildBlocks(splitLines(parseAnsi(readFileSync(join(PANES_DIR, "pi--rpiv-v2150-single.txt"), "utf8")))).find((b) => b.kind === "preview-select");
+    if (!block) throw new Error("missing RPIV single-choice question");
+    let finish!: () => void;
+    const pending = new Promise<void>((resolve) => { finish = resolve; });
+    const onAction = vi.fn(() => pending);
+    const { container } = render(<PreviewSelectBlock preview={block.preview} onAction={onAction} />);
+    const view = within(container);
+    const cancel = view.getByRole("button", { name: "Cancel" });
+    await user.click(cancel);
+    expect(onAction).toHaveBeenCalledWith({ kind: "nav", keys: ["Escape"] });
+    expect(cancel).toBeDisabled();
+    expect(within(cancel).getByLabelText("Sending")).toBeInTheDocument();
+    await act(async () => finish());
+    expect(cancel).not.toBeDisabled();
+  });
+
   it("tapping an option raises an option intent (the handler owns digit→verify→Enter)", async () => {
     const onAction = vi.fn();
     const user = userEvent.setup();
@@ -94,7 +113,7 @@ describe("PreviewSelectBlock — intents", () => {
     render(<PreviewSelectBlock preview={model} onAction={onAction} />);
 
     await user.click(screen.getByRole("button", { name: /Add a note/ }));
-    const input = screen.getByRole("textbox", { name: "Note text" });
+    const input = await screen.findByRole("textbox", { name: "Note text" });
     // Empty notes can't be saved (removal is the attached card's explicit control).
     expect(screen.getByRole("button", { name: /Save note/ })).toBeDisabled();
     await user.type(input, "prefer bolder borders");

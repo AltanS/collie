@@ -1272,6 +1272,7 @@ export function sendReply(
   submit = true,
   scope?: Scope,
   expectedPrompt?: string,
+  expectedStyled?: string,
 ): Promise<ActionResponse> {
   stampSend(paneId);
   return withSendBurst(
@@ -1282,7 +1283,7 @@ export function sendReply(
         method: "POST",
         // `JSON.stringify` omits an `undefined` property entirely, so an absent binding puts no
         // `expected_prompt` on the wire — byte-identical to not naming the field at all.
-        body: JSON.stringify({ text, submit, expected_prompt: expectedPrompt }),
+        body: JSON.stringify({ text, submit, expected_prompt: expectedPrompt, expected_styled: expectedStyled }),
       },
       recoverPromptChanged,
     ),
