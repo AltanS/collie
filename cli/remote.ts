@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { DEFAULT_PORT } from "../bridge/config.ts";
 import type { HostProbe } from "../bridge/mux/host-candidates.ts";
-import { buildMuxRegistry, muxHostCandidates, muxNames } from "../bridge/mux/registry.ts";
+import { buildMuxRegistry, muxNames } from "../bridge/mux/registry.ts";
 import { commitCrewChange, mintInvite } from "../bridge/crew/enrollment.ts";
 import { slugifyMemberId } from "../bridge/crew/identity.ts";
 import type { OpsRecord } from "../bridge/crew/ops-store.ts";
@@ -21,7 +21,6 @@ import {
   renderCandidateList,
   resolvedSshTarget,
   SSH_CONFIG_SOURCE,
-  type RosterEntry,
   type SourcedCandidates,
 } from "./candidates.ts";
 import { collieVersion, collieVersionBare, INSTANCE_PATTERN, PLUGIN_ID } from "./context.ts";
@@ -30,6 +29,7 @@ import { INSTALLER_SH } from "./installer-embed.ts";
 import { EXIT, type Io } from "./io.ts";
 import { realLinkFs } from "./link.ts";
 import { ensureStore, parseCrewArgs, probeMembers, refuseCrewOnWindows, resolveSelfAddress, type CrewDeps } from "./crew.ts";
+import { candidateProbe, leadRoster, muxCandidateSources } from "./crew-delta.ts";
 import { explicitMux } from "./mux.ts";
 import { parseMuxProbe, type MuxProbeReport, type MuxProbeSighting } from "./mux-probe.ts";
 import { plainAdd, type AddEvent } from "./render.ts";
@@ -1089,56 +1089,18 @@ interface HostPick {
 /** The picker's answer: the hosts to add, in the order they were named, or the exit code this run ends with. */
 type Chosen = { readonly picks: readonly HostPick[] } | { readonly code: number };
 
-/**
- * The candidate providers' world, over seams this suite already fakes.
- *
- * `Exec` and not {@link RemoteRunner}: every call the picker makes runs on THIS machine — `ssh -G`
- * resolves a local config file without connecting, and a multiplexer's machine list is local
- * client-side state. `RemoteRunner` is the far side, and there is no far side yet.
- */
-function candidateProbe(deps: Wired): HostProbe {
-  return {
-    run: (tool, args, timeoutMs) => deps.exec.capture(tool, args, timeoutMs),
-    warn: (line) => deps.io.err(line),
-  };
-}
-
-/**
- * This lead's own roster, as a join the candidate list can mark against.
- *
- * The enrolled peers come from the trust store and how each was reached comes from the ops store
- * (`bridge/crew/ops-store.ts`, ADR 0016) — `crew add` has WRITTEN `sshHost` since M7/01 and this is
- * the first read of it here. Empty on a peer and on a solo collie: neither has members to mark.
- */
-async function leadRoster(deps: Wired, probe: HostProbe): Promise<readonly RosterEntry[]> {
-  const trust = await deps.store.load();
-  if (trust === null || trust.lead !== null) return [];
-  const { data } = await deps.ops.load();
-  if (data === null) return [];
-  const roster: RosterEntry[] = [];
-  for (const peer of trust.peers) {
-    const record = data.members[peer.memberId];
-    if (record === undefined) continue;
-    const sshHost = record.sshHost;
-    roster.push({ memberId: peer.memberId, sshHost, key: resolvedSshTarget(sshHost, probe) ?? sshHost });
-  }
-  return roster;
-}
-
 /** Every provider's candidates, `ssh config` first and the multiplexers after it, in registry order. */
 function candidateSources(deps: Wired, probe: HostProbe): readonly SourcedCandidates[] {
   const sources: SourcedCandidates[] = [
     { source: SSH_CONFIG_SOURCE, candidates: sshConfigCandidates(deps.files, deps.ctx.home) },
+    ...muxCandidateSources(probe),
   ];
-  for (const answer of muxHostCandidates(probe)) {
-    sources.push({ source: answer.mux, candidates: answer.candidates });
-  }
   return sources.filter((source) => source.candidates.length > 0);
 }
 
 /** List the candidates and take the operator's pick. */
 async function chooseCandidateHost(deps: Wired): Promise<Chosen> {
-  const probe = candidateProbe(deps);
+  const probe = candidateProbe(deps, (line) => deps.io.err(line));
   const rows = markCandidates(
     mergeCandidates(candidateSources(deps, probe), (target) => resolvedSshTarget(target, probe)),
     await leadRoster(deps, probe),
