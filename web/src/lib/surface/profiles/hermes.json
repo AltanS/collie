@@ -14,12 +14,18 @@
       "status": "verified",
       "verifiedThrough": "0.22.2",
       "verifiedOn": "2026-10-16"
+    },
+    {
+      "range": "0.22.3 - 0.22.5",
+      "status": "provisional",
+      "verifiedThrough": "0.22.5",
+      "verifiedOn": "2026-11-02"
     }
   ],
   "idle": {
     "frame": {
       "top": {
-        "pattern": "^─+$",
+        "pattern": "^─+(?:\\s+(?<label>.*[^\\s─-╿▁-▔‒-―])\\s+─{1,3})?$",
         "minCells": 8,
         "column": 0
       },
@@ -28,7 +34,7 @@
         "column": 0
       },
       "bottom": {
-        "pattern": "^─+$",
+        "pattern": "^─+(?:\\s+(?<label>.*[^\\s─-╿▁-▔‒-―])\\s+─{1,3})?$",
         "minCells": 8,
         "column": 0
       },
@@ -42,7 +48,11 @@
       ],
       "patterns": [
         "^Type / to browse commands, or Ctrl\\+P for the palette$",
-        "^msg=interrupt · /queue · /bg · /steer · Ctrl\\+C cancel$"
+        "^msg=interrupt · /queue · /bg · /steer · Ctrl\\+C cancel$",
+        "^隨便問點什麼，或輸入 / 查看指令…$",
+        "^輸入以改變本輪方向 · Tab 排到之後$",
+        "^輸入以引導本輪 · Tab 排到之後$",
+        "^輸入以排隊一則本輪結束後的訊息$"
       ],
       "sgr": 3
     },
@@ -74,7 +84,7 @@
       {
         "walk": "interior",
         "top": {
-          "pattern": "^─+$",
+          "pattern": "^─+(?:\\s+(?<label>.*[^\\s─-╿▁-▔‒-―])\\s+─{1,3})?$",
           "minCells": 8,
           "column": 0
         },
