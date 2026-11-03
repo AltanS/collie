@@ -1350,7 +1350,6 @@ export async function cmdCrewStatus(deps: CrewDeps, args: readonly string[]): Pr
   if (data === null || data.crew === null) {
     deps.io.out("mode: solo — this collie is not in a crew (no trust store, or an empty one).");
     deps.io.out(soloCrewHint(deps.host));
-    for (const line of await crewDeltaLines(deps)) deps.io.out(line);
     return EXIT.OK;
   }
 
@@ -1552,7 +1551,12 @@ export async function cmdCrewStatus(deps: CrewDeps, args: readonly string[]): Pr
   return EXIT.OK;
 }
 
-/** Where a multiplexer's machine list and this crew differ, as `collie start` and `doctor` print it (M84/04). */
+/**
+ * Where a multiplexer's machine list and this crew differ, as `collie start` and `doctor` print it
+ * (M84/04). Only a lead gets it: a machine in no crew prints its "in no crew" block and spawns
+ * nothing (the solo branch above returns before this), and a peer has no crew to compare, which
+ * {@link crewDelta} answers without a spawn.
+ */
 async function crewDeltaLines(deps: CrewDeps): Promise<readonly string[]> {
   return deltaLines(await crewDelta(deps));
 }

@@ -29,7 +29,9 @@
 // with no recorded source (typed by hand, or enrolled before the field existed) is never reported.
 //
 // A peer and a Windows host print nothing and run nothing: a peer has no crew to compare, and
-// crews are refused on Windows.
+// crews are refused on Windows. `collie crew status` asks only when a trust store exists and this
+// machine leads it; on a machine in no crew it prints its own block and never calls in here. `start`
+// and `doctor` do ask on a solo collie, where the list is the reason to start a crew.
 
 import type { HostProbe } from "../bridge/mux/host-candidates.ts";
 import { muxHostCandidates } from "../bridge/mux/registry.ts";

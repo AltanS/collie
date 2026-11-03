@@ -2850,10 +2850,12 @@ describe("collie crew status — the machine list delta", () => {
     expect(h.io.stdout).toContain(LINE);
   });
 
-  test("a solo collie is told too", async () => {
+  test("a machine in no crew prints its block as before: no line, and nothing spawned", async () => {
     const h = harness(null, [], { exec: list("vps") });
-    await cmdCrewStatus(h.deps, []);
-    expect(h.io.stdout).toContain(LINE);
+    expect(await cmdCrewStatus(h.deps, [])).toBe(EXIT.OK);
+    expect(h.io.stdout.some((l) => l.startsWith("mode: solo"))).toBe(true);
+    expect(h.io.stdout).not.toContain(LINE);
+    expect(h.exec.calls).toEqual([]);
   });
 
   test("a peer prints no line and asks nothing", async () => {
