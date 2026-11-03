@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **`collie crew add` accepts a member that runs the Herdr core without the Herdr TUI.** The probe now reads `hc` there as well as `herdr`, finds the member's config folder the way a binary install does (`~/.config/collie` when there is no `herdr`), and the member starts on `herdr-core`. A stopped core is printed as a fact, the run goes on, and the last line names the multiplexer the member runs on. A host with neither is refused with one line that names both.
+
 ## [1.26.0] - 2026-11-03
 
 ### Added

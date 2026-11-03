@@ -28,6 +28,7 @@ import {
   bindOverwriteConfirmation,
   cmdCrewAdd,
   composeStdin,
+  hcFact,
   configureScript,
   enrollScript,
   installReleaseScript,
@@ -1978,4 +1979,189 @@ describe.skipIf(process.platform === "win32")("installScript from a shallow lead
       lead.cleanup();
     }
   });
+});
+
+// ── A member with the Herdr core and no Herdr TUI (M84/03) ───────────────────
+// `hc` and no `herdr`: the shape `hc machine add --install` leaves. The precondition takes either,
+// the config dir comes from the binary install's own rule, and the member's `_mux-probe` names the
+// core. A host WITH `herdr` reads exactly as it did — the defaults above carry no `hc`.
+
+describe("a member with the Herdr core and no Herdr TUI", () => {
+  const HC = `${REMOTE_HOME}/.local/bin/hc`;
+  const OWN_CONFIG = `${REMOTE_HOME}/.config/collie`;
+  const coreOnly = (over: Partial<Record<ProbeField, string>> = {}): string =>
+    probeOut({
+      herdr: "",
+      hc: HC,
+      hcversion: "hc 0.1.14",
+      hccore: "live",
+      configdir: OWN_CONFIG,
+      configsource: "default",
+      // A member never started: nothing named a multiplexer there yet, so leg 3 asks the member.
+      envmux: "",
+      ...over,
+    });
+
+  test("the probe reads hc, and falls back to Collie's own config dir only where herdr is absent", () => {
+    const probe = probeScript({ path: null, port: 8787 });
+    expect(probe).toContain('HC=$(collie_tool hc) || HC=""');
+    expect(probe).toContain('say hc "$HC"');
+    expect(probe).toContain('say hcversion "$HCVERSION"');
+    expect(probe).toContain('say hccore "$HCCORE"');
+    // The socket file decides, as `defaultHcSocket` places it. `hc server status` STARTS a stopped
+    // core on Linux, so the probe never runs it.
+    expect(probe).toContain('if [ -e "$HCSOCK" ]; then HCCORE=live; else HCCORE=down; fi');
+    expect(probe).toContain('elif [ -n "${XDG_RUNTIME_DIR:-}" ]; then HCSOCK="$XDG_RUNTIME_DIR/herdr-core/$_hs.sock"');
+    expect(probe).not.toContain("server status");
+    expect(probe).toContain('say configsource "$CFGSOURCE"');
+    // Herdr is asked first; the binary install's rule answers only on a host with no `herdr`.
+    const asked = probe.indexOf('if [ -n "$HERDR" ]; then\n  CFG=$("$HERDR" plugin config-dir');
+    const fallback = probe.indexOf('elif [ -n "$HC" ]; then\n  CFGSOURCE=default');
+    expect(asked).toBeGreaterThan(-1);
+    expect(fallback).toBeGreaterThan(asked);
+    // `resolveConfigDir`'s chain with no Herdr answer: the injected dir, Herdr's conventional dir
+    // when it holds a `.env`, then `~/.config/collie`.
+    expect(probe).toContain('if [ -n "${HERDR_PLUGIN_CONFIG_DIR:-}" ]; then CFG=$HERDR_PLUGIN_CONFIG_DIR');
+    expect(probe).toContain('elif [ -f "$HOME/.config/herdr/plugins/config/herdr.collie/.env" ]');
+    expect(probe).toContain('else CFG="$HOME/.config/collie"; fi');
+  });
+
+  test("parseProbe reads the three hc facts and the config source", () => {
+    const probe = parseProbe(coreOnly())!;
+    expect([probe.hc, probe.hcversion, probe.hccore, probe.configsource]).toEqual([HC, "hc 0.1.14", "live", "default"]);
+    const bare = parseProbe("collie-probe:probe=ok")!;
+    expect([bare.hc, bare.hcversion, bare.hccore, bare.configsource]).toEqual(["", "", "", ""]);
+  });
+
+  test("the hc fact names the version and whether a core answered", () => {
+    expect(hcFact({ hc: HC, hcversion: "hc 0.1.14", hccore: "live" })).toBe(`${HC} (0.1.14, core running)`);
+    expect(hcFact({ hc: HC, hcversion: "hc 0.1.14", hccore: "down" })).toBe(`${HC} (0.1.14, core not running)`);
+    expect(hcFact({ hc: HC, hcversion: "", hccore: "down" })).toBe(`${HC} (version not reported, core not running)`);
+  });
+
+  test("an hc-only host passes, takes Collie's own config dir, and joins on herdr-core", async () => {
+    const h = harness({
+      answers: { probe: { stdout: coreOnly() }, "mux-probe": { stdout: muxProbeOut(["herdr-core"]) } },
+    });
+    expect(await run(h)).toBe(EXIT.OK);
+    const said = text(h.io);
+    expect(said).not.toContain("no herdr and no hc");
+    // No `herdr plugin link` hint: there is no Herdr TUI there to register with.
+    expect(said).not.toContain("herdr plugin link");
+    expect(said).toMatch(new RegExp(`hc +${HC} \\(0\\.1\\.14, core running\\)`));
+    expect(said).toMatch(new RegExp(`config +${OWN_CONFIG} \\(Collie's own, no herdr there\\)`));
+    expect(said).toContain("mux        herdr-core (the only one running there)");
+    // The bind goes into the dir the member's bridge reads, and no mux name is written for it.
+    const configure = h.calls.find((c) => c.leg === "configure")!.script;
+    expect(configure).toContain(`CFG='${OWN_CONFIG}'`);
+    expect(configure).not.toContain("COLLIE_MUX");
+    expect(said).toContain('"nas" is a member of "the herd" and answered at 100.64.0.9:8787, and runs on herdr-core');
+    expect(h.calls.map((c) => c.leg)).toEqual(["probe", "install", "mux-probe", "configure", "membership", "enroll"]);
+  });
+
+  test("the same host from a binary lead takes the release route and joins on herdr-core", async () => {
+    const h = releaseHarness({
+      answers: { probe: { stdout: coreOnly() }, "mux-probe": { stdout: muxProbeOut(["herdr-core"]) } },
+    });
+    expect(await run(h)).toBe(EXIT.OK);
+    expect(h.bundles).toBe(0);
+    expect(text(h.io)).toContain("and runs on herdr-core");
+  });
+
+  test("a stopped core is a fact, not a stop: leg 3's caveat says the member starts once one runs", async () => {
+    const h = harness({
+      answers: { probe: { stdout: coreOnly({ hccore: "down" }) }, "mux-probe": { stdout: muxProbeOut([]) } },
+    });
+    expect(await run(h)).toBe(EXIT.OK);
+    const said = text(h.io);
+    expect(said).toMatch(new RegExp(`hc +${HC} \\(0\\.1\\.14, core not running\\)`));
+    expect(said).toContain("warn: no multiplexer is running on nas.example.");
+    // No multiplexer runs there, so the last line names none.
+    expect(said).toContain('"nas" is a member of "the herd" and answered at 100.64.0.9:8787');
+    expect(said).not.toContain("runs on");
+  });
+
+  test("a host with no herdr and no hc is refused with one line naming both", async () => {
+    const h = harness({ answers: { probe: { stdout: probeOut({ herdr: "", configdir: "", configsource: "" }) } } });
+    expect(await run(h)).toBe(EXIT.FAIL);
+    expect(h.io.stderr).toContain(
+      "error: no herdr and no hc on nas.example — Collie reads a Herdr. Install Herdr or the Herdr core there first.",
+    );
+    expect(text(h.io)).toContain("discussion #67");
+    expect(h.calls).toHaveLength(1);
+  });
+
+  test("a herdr host prints no hc fact and no config source, as before", async () => {
+    const h = harness();
+    expect(await run(h)).toBe(EXIT.OK);
+    const said = text(h.io);
+    expect(said).not.toMatch(/^\s*\S*\s*hc\s/m);
+    expect(said).not.toContain("Collie's own");
+    expect(said).toMatch(/config +\/home\/pat\/\.config\/herdr\/plugins\/config\/herdr\.collie$/m);
+  });
+
+  test("a host with both prints both facts and asks Herdr for the config dir", async () => {
+    const h = harness({ answers: { probe: { stdout: probeOut({ hc: HC, hcversion: "hc 0.1.14", hccore: "live" }) } } });
+    expect(await run(h)).toBe(EXIT.OK);
+    const said = text(h.io);
+    expect(said).toMatch(/herdr +\/usr\/local\/bin\/herdr/);
+    expect(said).toMatch(new RegExp(`hc +${HC} \\(0\\.1\\.14, core running\\)`));
+    expect(said).not.toContain("Collie's own");
+  });
+
+  // The script itself, run by `sh` against a scratch `$HOME` with a stand-in `hc`. Read-only like
+  // every probe, and it reaches no network: the stand-in answers `--version` and fails on anything
+  // else, so a probe that asked it to start or report a core would show up as a missing fact.
+  const herdrOnThisBox = ["/usr/local/bin/herdr", "/opt/homebrew/bin/herdr", "/usr/bin/herdr", "/bin/herdr"].some((p) =>
+    existsSync(p),
+  );
+  test.skipIf(process.platform === "win32" || herdrOnThisBox)(
+    "the real probe on an hc-only home reports the core and Collie's own config dir",
+    () => {
+      const home = mkdtempSync(join(tmpdir(), "collie-hc-probe-"));
+      try {
+        mkdirSync(join(home, ".local", "bin"), { recursive: true });
+        const stub = join(home, ".local", "bin", "hc");
+        writeFileSync(
+          stub,
+          [
+            "#!/bin/sh",
+            'case "$1" in',
+            '  --version) echo "hc 0.1.14" ;;',
+            '  *) echo "unexpected: hc $*" >&2; exit 2 ;;',
+            "esac",
+            "",
+          ].join("\n"),
+        );
+        chmodSync(stub, 0o755);
+        const probe = (): ReturnType<typeof parseProbe> =>
+          parseProbe(
+            execFileSync("/bin/sh", ["-s"], {
+              input: probeScript({ path: null, port: 8787 }),
+              env: {
+                HOME: home,
+                PATH: `${join(home, ".local", "bin")}:/usr/bin:/bin`,
+                XDG_RUNTIME_DIR: join(home, "run"),
+              },
+              encoding: "utf8",
+            }),
+          );
+        const down = probe()!;
+        expect([down.herdr, down.hc, down.hcversion, down.hccore]).toEqual(["", stub, "hc 0.1.14", "down"]);
+        expect([down.configdir, down.configsource]).toEqual([join(home, ".config", "collie"), "default"]);
+        // The core's socket where `hc` dials: `$XDG_RUNTIME_DIR/herdr-core/default.sock`.
+        mkdirSync(join(home, "run", "herdr-core"), { recursive: true });
+        writeFileSync(join(home, "run", "herdr-core", "default.sock"), "");
+        // A `.env` in Herdr's conventional dir wins over Collie's own, as `resolveConfigDir` has it.
+        const conventional = join(home, ".config", "herdr", "plugins", "config", "herdr.collie");
+        mkdirSync(conventional, { recursive: true });
+        writeFileSync(join(conventional, ".env"), "COLLIE_MUX=herdr-core\n");
+        const live = probe()!;
+        expect(live.hccore).toBe("live");
+        expect([live.configdir, live.envmux]).toEqual([conventional, "herdr-core"]);
+      } finally {
+        rmSync(home, { recursive: true, force: true });
+      }
+    },
+  );
 });
