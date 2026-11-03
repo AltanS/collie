@@ -38,6 +38,8 @@
 // is on screen (index.ts asks ask.ts for that too); a status tail alone never permits typing.
 import { MIRROR_BG, MIRROR_FG } from "../../ansi";
 import { lineText, type StyledLine } from "../../blocks";
+import { findInputFrame, type Frame } from "../../surface/frame";
+import { loadProfiles } from "../../surface/profile";
 
 const RULE = /^─{8,}$/;
 /** A rule carrying a label: a turn label (`── ⠴ Working ───`) or a scroll mark (`─── ↑ 2 more ───`). */
@@ -197,7 +199,7 @@ function columnZeroTail(lines: StyledLine[], end: number): PiTail | null {
 }
 
 export interface PiComposer {
-  readonly layout: "omo" | "stock" | "inset";
+  readonly layout: "omo" | "stock" | "inset" | "gentle";
   readonly top: number;
   readonly bottom: number;
   readonly statusStart: number;
@@ -252,9 +254,24 @@ function insetComposer(lines: StyledLine[], tail: PiTail): PiComposer | null {
   return { layout: "inset", top, bottom, statusStart: tail.statusStart, end: tail.end };
 }
 
+/** Gentle Shell replaces Pi's editor with an open left rail. Share the profile's complete-frame
+ * checks with the send guard, so the phone reads the same draft the bridge verifies. */
+function gentleFrame(lines: StyledLine[]): Frame | null {
+  const idle = loadProfiles().get("pi")?.idle;
+  if (!idle) return null;
+  const frame = findInputFrame(lines, idle);
+  return frame && text(lines[frame.top]!).startsWith(" ▎ ") ? frame : null;
+}
+
 export function locateComposer(lines: StyledLine[]): PiComposer | null {
   const tail = tailRule(lines);
-  if (tail === null) return null;
+  if (tail === null) {
+    const frame = gentleFrame(lines);
+    return frame === null ? null : {
+      layout: "gentle", top: frame.top, bottom: frame.bottom,
+      statusStart: frame.bottom + 1, end: frame.bottom + 1,
+    };
+  }
   if (tail.inset) return insetComposer(lines, tail);
   const { bottom } = tail;
   const bottomLine = lines[bottom]!;
@@ -311,6 +328,10 @@ export function locateComposer(lines: StyledLine[]): PiComposer | null {
 }
 
 function draftOf(lines: StyledLine[], composer: PiComposer): string | null {
+  if (composer.layout === "gentle") {
+    const frame = gentleFrame(lines);
+    return frame === null || frame.placeholder ? null : frame.interior.text || null;
+  }
   const draft = lines.slice(composer.top + 1, composer.bottom)
     .map((line, index) => {
       const value = text(line);

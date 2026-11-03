@@ -47,6 +47,7 @@ export function walkGroupKey(agent: string, model: PromptModel): string {
 }
 
 export const WALK_PAIRS: readonly WalkPair[] = [
+  ["pi", "pi--gentle-v451-float-dialog--w100.txt", "pi--gentle-v451-float-dialog-moved--w100.txt"],
   ["grok", "grok--model-picker.txt", "grok--model-picker-moved.txt"],
   ["grok", "grok--model-window.txt", "grok--model-window-moved.txt"],
   ["grok", "grok--model-effort.txt", "grok--model-effort-moved.txt"],

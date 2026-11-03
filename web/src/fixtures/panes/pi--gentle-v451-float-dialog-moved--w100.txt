@@ -1,0 +1,29 @@
+
+  ✿ Gentle Shell ⟡ claude-opus-5-5                    ctx ▱▱▱▱▱▱▱▱ 0% ⟡ $0.000 sub ⟡ usage · alt+u
+
+▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
+  @pi-unipi/notify, ask-user-choice.ts, ask-user-question.ts, child-context.ts, child-safety.ts,
+codegraph-tools.ts, extension.ts, gentle-agents.ts, gentle-ai.ts, gentle-design.ts,
+gentle-engram-0.5.0, gentle-herdr-activity.ts, gentle-music.ts, gentle-notifications.ts,
+gentle-shell.ts, gentle-stats.ts, gentle-todo.ts, gentle-voice.ts, herdr-agent-state.ts, history,
+nan-provider.ts, pi-btw:btw.ts, pi-claude-max, pi-pretty.ts, pi-web-access:dist, quiet-tools.ts,
+resume-hint.ts, runtime-metrics.ts, session-scratch.ts, skill-registry.ts, startup-banner.ts
+
+
+ el Gentleman applied saved model config to 4 agent(s). Global delegation/review assets ready: 10
+ new agent(s), 1 new chain(s), 2 new support file(s).
+
+ Warning: Anthropic subscription auth is active. Third-party harness usage draws from extra usage
+ and is billed per token, not your Claude plan limits. Manage extra usage at
+ https://claude.ai/settings/usage. Disable this warning in /settings.
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+ Collie test: choose a colour
+
+   Blue
+ → Green
+
+ ↑↓ navigate  enter select  escape/ctrl+c cancel
+
+────────────────────────────────────────────────────────────────────────────────────────────────────

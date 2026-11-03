@@ -64,10 +64,34 @@
         "under": "^(?:[~/…⎇]|[A-Za-z]:\\\\|\\d[\\d.]*%| ↳ \\S)",
         "underPainted": true,
         "ownPrompt": true
+      },
+      {
+        "walk": "interior",
+        "top": {
+          "pattern": "^ ▎ (?<label>[✿❀❁✾] (?:waiting for input|queued|(?:working|authorizing|exploring|researching|deciding|planning|implementing|checking|closing)…)(?: · (?:INSERT|esc again to (?:clear|cancel)))*)$",
+          "column": 1
+        },
+        "prompt": {
+          "pattern": "^ ▎(?: (?<draft>(?![✿❀❁✾] ).*))?$",
+          "column": 1
+        },
+        "bottom": {
+          "pattern": "^ ▎$",
+          "column": 1
+        },
+        "continuationIndent": 3,
+        "maxDraftRows": 30,
+        "maxTailRows": 0,
+        "rows": "^ ▎(?: .*)?$",
+        "continuation": "^ ▎(?: (?<text>.*))?$",
+        "under": "^$",
+        "ownPrompt": true
       }
     ],
     "placeholders": {
-      "texts": [],
+      "texts": [
+        "type, or / for commands"
+      ],
       "sgr": 2
     },
     "volatile": {
@@ -98,7 +122,8 @@
     "runningRows": [
       "^\\s*[⠀-⣿•] Working\\b",
       "\\bWorking\\s*\\(.*esc to interrupt\\)",
-      "^ ?─+\\s+[⠀-⣿]\\s+Working\\b"
+      "^ ?─+\\s+[⠀-⣿]\\s+Working\\b",
+      "^ ▎ [✿❀❁✾] (?:queued|(?:working|authorizing|exploring|researching|deciding|planning|implementing|checking|closing)…)(?: · |$)"
     ],
     "dialogsInBox": true
   },

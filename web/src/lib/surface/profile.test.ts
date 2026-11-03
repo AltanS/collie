@@ -857,7 +857,7 @@ describe("the frame schema of the interior walk (M56 spec 14)", () => {
     expect(failure(change(own, ["idle", "frame", "rows"], undefined)).path).toBe("idle.frame.ownPrompt");
     const pi = parseProfile(parseJsonObject(readFileSync(join(PROFILES_DIR, "pi.json"), "utf8"))!);
     expect(pi.idle.frame.ownPrompt).toBeUndefined();
-    expect(pi.idle.frameAlternates?.map((frame) => frame.ownPrompt)).toEqual([true]);
+    expect(pi.idle.frameAlternates?.map((frame) => frame.ownPrompt)).toEqual([true, true]);
   });
 
   it("names a newline draft as the box's own lines (`draftLines`) on Muse alone, never on pi (#552)", () => {

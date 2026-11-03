@@ -622,14 +622,13 @@ export function resolveJournalRoots(
       join(env.CODEX_HOME ?? join(home, ".codex"), "sessions"),
       env,
     ),
-    // TWO defaults, one adapter: Oh My Pi ships as `omp` and writes pi's own format into
-    // `~/.omp/agent/sessions`, so a host that runs it has a second home for the same log format.
-    // `PI_CODING_AGENT_DIR`, when the operator set it, is the one answer and neither is added.
+    // Pi, Oh My Pi and bundled Gentle Shell keep the same journal format in separate homes.
+    // An explicit Pi home still replaces the defaults; COLLIE_PI_ROOT can name several homes.
     pi: envRoots(
       "COLLIE_PI_ROOT",
       env.PI_CODING_AGENT_DIR
         ? join(env.PI_CODING_AGENT_DIR, "sessions")
-        : [join(home, ".omp", "agent", "sessions"), join(home, ".pi", "agent", "sessions")],
+        : [join(home, ".omp", "agent", "sessions"), join(home, ".pi", "agent", "sessions"), join(home, ".gentle-shell", "agent", "sessions")],
       env,
     ),
     // OpenCode keeps one SQLite database at the top of its XDG data dir, not per-session files.

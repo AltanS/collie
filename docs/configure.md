@@ -111,6 +111,12 @@ The durable agents one Collie runs beside its multiplexer are not in `config.tom
 To read history from multiple agent home directories, provide a comma-separated list in
 `COLLIE_TRANSCRIPT_ROOT`.
 
+Pi-format journals default to `~/.omp/agent/sessions`, `~/.pi/agent/sessions` and
+`~/.gentle-shell/agent/sessions`. An explicit `PI_CODING_AGENT_DIR` replaces those
+homes; `COLLIE_PI_ROOT` can name a comma-separated list of session directories.
+This lets Gentle Shell use Chat, including wrapped Markdown and natural scrolling,
+without changing its terminal layout.
+
 [`docs/deployment.md`](deployment.md) covers custom domains and reverse proxies. Collie enforces a
 same-origin policy, so any custom hostname or external TLS terminator must be explicitly
 allowlisted:

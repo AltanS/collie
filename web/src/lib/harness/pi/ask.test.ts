@@ -58,6 +58,8 @@ const LIFTS = new Map<string, Expect>([
   ["questionnaire-submit-ready", "review"],
 ]);
 const LIFTS_397 = new Map<string, Expect>([
+  ["pi--gentle-v451-float-dialog--w100.txt", "walk"],
+  ["pi--gentle-v451-float-dialog-moved--w100.txt", "walk"],
   ["pi--v110-single.txt", "walk"],
   ["pi--v110-single-desc.txt", "walk"],
   ["pi--v110-single-moved.txt", "walk"],
