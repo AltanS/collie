@@ -56,6 +56,7 @@
           "minCells": 8,
           "column": 0
         },
+        "rows": "^(?:─+|>(?: .*)?| {2}.*|)$",
         "trailer": {
           "row": "^─+$",
           "pad": "^ {2}● (?:\\[\\d{2}:\\d{2}:\\d{2}\\] .+ running|Agent\\(\\S.*)$",
@@ -64,7 +65,7 @@
         "continuationIndent": 2,
         "maxDraftRows": 60,
         "maxTailRows": 8,
-        "note": "The rail under the box (agy 1.4.5 background tasks, 1.4.12 sub-agents, #655): the box's bottom rule, rows of `  ● …`, then a closing rule of the same width over the status rows. The main shape takes the closing rule for the bottom edge and finds no prompt over it; here the closing rule is the edge and the box's own rule and the rail are its trailer. Fixture agy--v1412-subagent-band-idle."
+        "note": "The rail under the box (agy 1.4.5 background tasks, 1.4.12 sub-agents, #655): the box's bottom rule, rows of `  ● …`, then a closing rule of the same width over the status rows. The main shape takes the closing rule for the bottom edge and finds no prompt over it; here the closing rule is the edge and the box's own rule and the rail are its trailer. `rows` holds the box to its rules, the `>` row and two-space draft rows, so a dialog over the rail (its question at column 0) is no box. Fixtures agy--v1412-subagent-band-idle and agy--v1412-subagent-band-permission."
       }
     ],
     "placeholders": {
