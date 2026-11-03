@@ -41,6 +41,7 @@ import {
   schemedAddressLines,
   selfAddress,
   WINDOWS_CREW_SENTENCE,
+  refuseCrewOnWindows,
 } from "./crew.ts";
 import {
   type AliasRow,
@@ -494,6 +495,16 @@ describe("on a Windows host, the verbs that form a crew refuse and change nothin
     expect(WINDOWS_CREW_SENTENCE).toBe(
       "On Windows, Collie runs on one machine only: a Windows machine cannot join, lead or change a crew in this release, and nothing was changed. See docs/windows.md.",
     );
+  });
+
+  test("COLLIE_CREWS_ON_WINDOWS=1 consents past the refusal; without it the refusal stands", () => {
+    const h = harness(null, [], WIN);
+    const consented = { ...h.deps, ctx: { ...h.deps.ctx, env: { COLLIE_CREWS_ON_WINDOWS: "1" } } };
+    expect(refuseCrewOnWindows(consented)).toBe(false);
+    expect(text(h.io)).not.toContain(WINDOWS_CREW_SENTENCE);
+    // The flag is the whole consent: no flag, no change, and the sentence is still the one printed.
+    expect(refuseCrewOnWindows(h.deps)).toBe(true);
+    expect(text(h.io)).toContain(WINDOWS_CREW_SENTENCE);
   });
 
   test("the verbs that read or leave a crew are not refused", async () => {

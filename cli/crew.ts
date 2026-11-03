@@ -660,19 +660,33 @@ export const WINDOWS_CREW_SENTENCE =
  * print. Elsewhere it names the two ways in; on Windows both verbs refuse ({@link refuseCrewOnWindows}),
  * so it says that instead of suggesting a command that fails.
  */
-export function soloCrewHint(host: Host): string {
-  return host.platform === "win32"
+export function soloCrewHint(host: Host, env: Record<string, string | undefined> = {}): string {
+  return host.platform === "win32" && !crewsOnWindows(env)
     ? "  A Windows machine cannot join or lead a crew in this release."
     : "  `collie crew invite` here makes it a lead; `collie join …` makes it a peer.";
 }
 
 /**
+ * The opt-in that opens the crew-forming verbs on Windows: `COLLIE_CREWS_ON_WINDOWS=1`.
+ *
+ * Windows crews are untested upstream (docs/windows.md keeps them "not covered"), so the refusal
+ * stays the default and one environment variable consents to the experiment. The crew wire itself is
+ * platform-neutral — pinned mTLS between bridges, certificates minted in-process — and this build
+ * also fixes what a Windows lead actually tripped on: `crew add`'s ssh legs run without connection
+ * multiplexing, which Windows OpenSSH cannot do ({@link sshOptions}).
+ */
+export function crewsOnWindows(env: Record<string, string | undefined>): boolean {
+  return env.COLLIE_CREWS_ON_WINDOWS === "1";
+}
+
+/**
  * Refuse a crew-forming verb on a Windows host, before any argument, store, network or terminal is
  * touched. True when it refused; the caller returns `EXIT.FAIL`, as `collie update` does for its
- * own Windows refusal.
+ * own Windows refusal. {@link crewsOnWindows} consents past it.
  */
-export function refuseCrewOnWindows(deps: Pick<CrewDeps, "host" | "io">): boolean {
+export function refuseCrewOnWindows(deps: Pick<CrewDeps, "ctx" | "host" | "io">): boolean {
   if (deps.host.platform !== "win32") return false;
+  if (crewsOnWindows(deps.ctx.env)) return false;
   deps.io.err(`error: ${WINDOWS_CREW_SENTENCE}`);
   return true;
 }
@@ -1348,7 +1362,7 @@ export async function cmdCrewStatus(deps: CrewDeps, args: readonly string[]): Pr
   if (bare.has("json")) return await crewStatusJson(deps, data, bare.has("no-probe"));
   if (data === null || data.crew === null) {
     deps.io.out("mode: solo — this collie is not in a crew (no trust store, or an empty one).");
-    deps.io.out(soloCrewHint(deps.host));
+    deps.io.out(soloCrewHint(deps.host, deps.ctx.env));
     return EXIT.OK;
   }
 
