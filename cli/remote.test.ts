@@ -982,17 +982,110 @@ describe("collie crew add", () => {
   });
 
   test("a declined confirm on one host moves on to the next, and its line says so", async () => {
-    let asked = 0;
+    // attic: the pick's own confirm (yes), then the replace confirm (no). build-box: its pick (yes).
+    const answers = [true, false, true];
     const h = harness({
       sshConfig: "Host attic\nHost build-box",
       prompt: "1 2",
       probes: { attic: REPLACEABLE },
       afterEach: [leadStore({ peers: [BUILD_BOX] })],
     });
-    h.deps.confirm = () => asked++ > 0;
+    h.deps.confirm = () => answers.shift() ?? false;
     expect(await run(h, [])).toBe(EXIT.STATE);
     expect(h.io.stdout.at(-2)).toBe("attic      ✗ left alone");
     expect(h.io.stdout.at(-1)).toBe('build-box  ✓ joined as "build-box", runs on herdr');
+  });
+
+  // ── A picked host gets one confirm after its probe, before anything is written ──────────────
+
+  const PICK_QUESTION = (host: string, id: string): string =>
+    `Add ${host} to this crew as "${id}"? It installs Collie on ${host} over ssh and joins it.`;
+
+  /** Record each question with what had been said and which legs had run when it was asked. */
+  function recordQuestions(h: Harness, answer: (n: number) => boolean | null): { question: string; said: string[]; legs: string[] }[] {
+    const asked: { question: string; said: string[]; legs: string[] }[] = [];
+    h.deps.confirm = (question) => {
+      asked.push({ question, said: [...h.io.stdout], legs: h.calls.map((c) => `${c.host}:${c.leg}`) });
+      return answer(asked.length - 1);
+    };
+    return asked;
+  }
+
+  test("a picked host asks its question after the facts and before the install leg", async () => {
+    const h = harness({ sshConfig: "Host attic", prompt: "1" });
+    const asked = recordQuestions(h, () => true);
+    expect(await run(h, [])).toBe(EXIT.OK);
+    expect(asked.map((a) => a.question)).toEqual([PICK_QUESTION("attic", "attic")]);
+    const [first] = asked;
+    // The probe ran, nothing else did, and the facts are on screen.
+    expect(first!.legs).toEqual(["attic:probe"]);
+    expect(first!.said.some((l) => l.includes("(what this lead will dial)"))).toBe(true);
+    expect(first!.said.some((l) => l.includes("config"))).toBe(true);
+    expect(h.calls.map((c) => c.leg)).toEqual(["probe", "install", "configure", "membership", "enroll"]);
+  });
+
+  test("the question names the row's label as the member id, and --label for a single pick", async () => {
+    const row = harness({
+      machines: '[{"target":"op@attic.lan:22","label":"Attic Box"}]',
+      resolve: { "op@attic.lan:22": "user op\nhostname attic.lan\nport 22" },
+      prompt: "1",
+    });
+    const rowAsked = recordQuestions(row, () => true);
+    expect(await run(row, [])).toBe(EXIT.OK);
+    expect(rowAsked.map((a) => a.question)).toEqual([PICK_QUESTION("op@attic.lan:22", "attic-box")]);
+
+    const flagged = harness({ sshConfig: "Host attic", prompt: "1" });
+    const flagAsked = recordQuestions(flagged, () => true);
+    expect(await run(flagged, ["--label", "desk"])).toBe(EXIT.OK);
+    expect(flagAsked.map((a) => a.question)).toEqual([PICK_QUESTION("attic", "desk")]);
+  });
+
+  test("a declined pick writes nothing, says so, and the next pick still runs", async () => {
+    const h = harness({
+      sshConfig: "Host attic\nHost build-box",
+      prompt: "1 2",
+      afterEach: [leadStore({ peers: [BUILD_BOX] })],
+    });
+    const asked = recordQuestions(h, (n) => n > 0);
+    expect(await run(h, [])).toBe(EXIT.STATE);
+    expect(asked.map((a) => a.question)).toEqual([
+      PICK_QUESTION("attic", "attic"),
+      PICK_QUESTION("build-box", "build-box"),
+    ]);
+    // attic got its probe and nothing else: no install, no bind write, no invite, no enroll.
+    expect(h.calls.filter((c) => c.host === "attic").map((c) => c.leg)).toEqual(["probe"]);
+    expect(h.bundles).toBe(1);
+    // build-box alone joined: a join restarts the lead twice, and attic caused none of it.
+    expect(h.restarts).toBe(2);
+    expect(h.io.stdout).toContain("left alone — nothing was installed or enrolled on attic.");
+    expect(h.io.stderr.some((l) => l.startsWith("error:"))).toBe(false);
+    expect(h.calls.filter((c) => c.host === "build-box" && c.leg === "enroll")).toHaveLength(1);
+    expect(h.closed).toBe(2);
+    expect(h.io.stdout.slice(-2)).toEqual(["attic      ✗ declined", 'build-box  ✓ joined as "build-box", runs on herdr']);
+  });
+
+  test("a single declined pick ends with the state exit code and no write", async () => {
+    const h = harness({ sshConfig: "Host attic", prompt: "1", confirm: false });
+    expect(await run(h, [])).toBe(EXIT.STATE);
+    expect(h.calls.map((c) => c.leg)).toEqual(["probe"]);
+    expect(h.bundles).toBe(0);
+    expect(h.io.stdout).toContain("left alone — nothing was installed or enrolled on attic.");
+  });
+
+  test("a pick nobody can answer for aborts the loop after the first host", async () => {
+    const h = harness({ sshConfig: "Host attic\nHost build-box", prompt: "1 2", confirm: null });
+    expect(await run(h, [])).toBe(EXIT.FAIL);
+    expect(h.calls.map((c) => `${c.host}:${c.leg}`)).toEqual(["attic:probe"]);
+    expect(text(h.io)).toContain(`this run is not interactive, and it would have asked: ${PICK_QUESTION("attic", "attic")}`);
+    expect(h.io.stdout.at(-1)).toMatch(/^attic\s+✗ /u);
+    expect(h.io.stdout.some((l) => l.startsWith("build-box"))).toBe(false);
+  });
+
+  test("a typed host asks nothing", async () => {
+    const h = harness();
+    const asked = recordQuestions(h, () => true);
+    expect(await run(h)).toBe(EXIT.OK);
+    expect(asked).toEqual([]);
   });
 
   test("a confirm nobody can answer stops the loop after the first host", async () => {

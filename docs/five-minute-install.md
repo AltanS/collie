@@ -237,9 +237,10 @@ collie crew add
 ```
 
 The command lists the machines your ssh config, Herdr and the Herdr core know. Type the numbers of the
-machines you want. Each machine gets one confirm, and it joins under the name Herdr gives it. If you
-use the core, run `hc machine add --install <host>` first, and `collie crew add` then finds that
-host. [Two machines, one crew](crew.md#two-machines-one-crew) has the details.
+machines you want. Each machine gets one confirm, after Collie has probed it and before anything
+is written there, and it joins under the name Herdr gives it. If you use the core, run
+`hc machine add --install <host>` first, and `collie crew add` then finds that host.
+[Two machines, one crew](crew.md#two-machines-one-crew) has the details.
 
 ## Next steps
 

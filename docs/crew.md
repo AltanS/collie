@@ -53,7 +53,8 @@ one adds the machine to the crew. `collie crew add` runs on the lead. `<ssh-targ
 `collie crew add` with no host lists the machines your ssh config, Herdr and the Herdr core know. It
 merges them on the host each name resolves to ([below](#herdr-machines-and-the-crew)). Type the
 numbers or the names of the machines you want, separated by spaces or commas, or type `all`. Each
-machine then gets its own confirm. Press Enter on a blank line to stop.
+machine then gets its own confirm, after Collie has probed it and before anything is written there.
+Press Enter on a blank line to stop.
 
 ```bash
 collie crew add            # no host: the list

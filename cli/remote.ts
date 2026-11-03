@@ -1084,6 +1084,11 @@ interface HostPick {
   readonly host: string;
   readonly label: string | null;
   readonly source: string | null;
+  /**
+   * Chosen from the candidate list. A listed host gets one confirm after its probe; a typed one does
+   * not, because the name typed on the command line is the consent.
+   */
+  readonly listed: boolean;
 }
 
 /** The picker's answer: the hosts to add, in the order they were named, or the exit code this run ends with. */
@@ -1151,6 +1156,7 @@ async function chooseCandidateHost(deps: Wired): Promise<Chosen> {
       label: row.label,
       // The first MULTIPLEXER that listed it: the ssh config is a file, not a source of names.
       source: row.sources.find((source) => source !== SSH_CONFIG_SOURCE) ?? null,
+      listed: true,
     })),
   };
 }
@@ -1180,6 +1186,10 @@ interface RunWatch {
   runsOn(): string | null;
   /** A confirm that nobody was there to answer: the run cannot continue and neither can the loop. */
   aborted(): boolean;
+  /** The operator said no to the pick's own confirm: nothing was written on that host. */
+  declined(): boolean;
+  /** Handed to the run, which calls it when the pick's own confirm is answered no. */
+  readonly onDeclined: () => void;
 }
 
 /** Watch one pick's run without changing a byte of what it prints or asks. */
@@ -1188,6 +1198,7 @@ function watchRun(deps: Wired): RunWatch {
   let joined: string | null = null;
   let runsOn: string | null = null;
   let aborted = false;
+  let declined = false;
   return {
     deps: {
       ...deps,
@@ -1216,6 +1227,10 @@ function watchRun(deps: Wired): RunWatch {
     joinedAs: () => joined,
     runsOn: () => runsOn,
     aborted: () => aborted,
+    declined: () => declined,
+    onDeclined: () => {
+      declined = true;
+    },
   };
 }
 
@@ -1226,7 +1241,7 @@ async function crewAddRun(deps: Wired, args: readonly string[]): Promise<number>
   const chosen: Chosen =
     named === undefined || named === ""
       ? await chooseCandidateHost(deps)
-      : { picks: [{ host: named, label: null, source: null }] };
+      : { picks: [{ host: named, label: null, source: null, listed: false }] };
   if ("code" in chosen) return chosen.code;
   const { picks } = chosen;
   // A cheap refusal, so it sits above the first ssh byte with the others: one name cannot name two
@@ -1257,14 +1272,16 @@ async function crewAddRun(deps: Wired, args: readonly string[]): Promise<number>
     // store is stale and an invite minted over it would write the roster back without that member.
     if (index > 0) await deps.store.refresh();
     const watch = watchRun(deps);
-    const code = await crewAddHost(watch.deps, flags, pick);
+    const code = await crewAddHost(watch.deps, flags, pick, watch.onDeclined);
     worst = Math.max(worst, code);
     const joined = watch.joinedAs();
     const runsOn = watch.runsOn();
     results.push({
       host: pick.host,
       line:
-        code === EXIT.OK && joined !== null
+        watch.declined()
+          ? "✗ declined"
+          : code === EXIT.OK && joined !== null
           ? // The rich view keeps only the last host's verdict, so each line carries its own mux.
             `✓ joined as "${joined}"${runsOn === null ? "" : `, runs on ${runsOn}`}`
           : `✗ ${watch.firstError() ?? `crew add did not finish (exit ${code})`}`,
@@ -1285,7 +1302,12 @@ async function crewAddRun(deps: Wired, args: readonly string[]): Promise<number>
 }
 
 /** One host's whole run: the cheap refusals, then the four legs. Everything `crew add <host>` has always done. */
-async function crewAddHost(deps: Wired, flags: Readonly<Record<string, string>>, pick: HostPick): Promise<number> {
+async function crewAddHost(
+  deps: Wired,
+  flags: Readonly<Record<string, string>>,
+  pick: HostPick,
+  onDeclined: () => void = () => undefined,
+): Promise<number> {
   const host = pick.host;
   deps.emit({ kind: "title", host });
   const port = parsePort(flags.port);
@@ -1361,6 +1383,9 @@ async function crewAddHost(deps: Wired, flags: Readonly<Record<string, string>>,
   const fromRow = flags.label === undefined ? pick.label : null;
   const usable = fromRow !== null && slugifyMemberId(fromRow) !== null;
   const memberFlags = usable ? { ...flags, label: fromRow } : flags;
+  // The id this run will ask for: the row's name or `--label`, as the join slugs it, else the host.
+  const asLabel = memberFlags.label;
+  const memberId = asLabel === undefined ? host : (slugifyMemberId(asLabel) ?? asLabel);
 
   const runner = deps.remote(host);
   // `crew add` prints its progress as plain lines and nothing else — it streams for the length of a
@@ -1381,6 +1406,7 @@ async function crewAddHost(deps: Wired, flags: Readonly<Record<string, string>>,
       route,
       leadVersion,
       repo: updateRepoOf(deps.ctx.env),
+      pickConfirm: pick.listed ? { memberId, onDeclined } : null,
     });
   } finally {
     // Every exit path, including a throw: the control socket is a live authenticated channel.
@@ -1420,6 +1446,8 @@ interface AddOptions {
   readonly leadVersion: string;
   /** The `owner/repo` the member is told to install from — this lead's own (`updateRepoOf`). */
   readonly repo: string;
+  /** Set for a host chosen from the list: the id it will join as, and what to call when the pick is declined. */
+  readonly pickConfirm: { readonly memberId: string; readonly onDeclined: () => void } | null;
 }
 
 /**
@@ -1581,6 +1609,29 @@ async function addOverSsh(deps: Wired, runner: RemoteRunner, opts: AddOptions): 
     });
   }
   deps.emit({ kind: "leg-done", leg: "probe", ok: true, detail: `${host} is ready` });
+
+  // ── The pick's own confirm ─────────────────────────────────────────────────
+  // A host chosen from the list has not been named by the operator, only picked. The probe has now
+  // printed what is there (the address this lead will dial, the label, the multiplexer), and nothing
+  // has been written on the host yet: this is the one place both are true. A typed host skips it.
+  if (opts.pickConfirm !== null) {
+    const { memberId, onDeclined } = opts.pickConfirm;
+    const answer = await ask(
+      deps,
+      `Add ${host} to this crew as "${memberId}"? It installs Collie on ${host} over ssh and joins it.`,
+    );
+    if (answer === "aborted") return EXIT.FAIL;
+    if (!answer) {
+      onDeclined();
+      deps.emit({
+        kind: "line",
+        stream: "out",
+        tone: "info",
+        text: `left alone — nothing was installed or enrolled on ${host}.`,
+      });
+      return EXIT.STATE;
+    }
+  }
 
   // ── Leg 2 — install ────────────────────────────────────────────────────────
   // `replaced` is what leg 4 reads: an already-enrolled peer is restarted only when there is

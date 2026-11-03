@@ -5,7 +5,7 @@ import { AuditLog, type AuditEntry } from "../bridge/audit.ts";
 import { CREW_PROTOCOL_VERSION } from "../bridge/crew/enrollment.ts";
 import { leadStore, material, member, T0 } from "../bridge/crew/fixtures.ts";
 import { serializeTrustStore, TrustStore, type TrustStoreIo } from "../bridge/crew/trust-store.ts";
-import { capture, context, fakeExec, fakeFiles, fakeOps, ROOT } from "./fakes.ts";
+import { capture, context, fakeExec, fakeFiles, fakeOps, HOME, ROOT } from "./fakes.ts";
 import { EXIT, type Io } from "./io.ts";
 import type { AddSurface, Ui } from "./render.ts";
 import { cmdCrewAdd, type CrewAddDeps, type RemoteResult } from "./remote.ts";
@@ -105,6 +105,8 @@ function harness(opts: {
   io?: Io;
   /** Which of the two `crew add` restarts (both inside the `enroll` leg) fails, if any. */
   restartFails?: "first" | "second";
+  /** `~/.ssh/config`'s contents, so the candidate picker has a host to offer. */
+  sshConfig?: string;
 }): RichHarness {
   const store = createAddStore();
   const surface: AddSurface = {
@@ -140,6 +142,7 @@ function harness(opts: {
     io: opts.io ?? forbiddenIo(),
     ui,
     exec: fakeExec({
+      absent: ["herdr", "hc", "ssh"],
       answers: [
         [`git -C ${ROOT} rev-parse HEAD`, { stdout: `${COMMIT}\n` }],
         [`git -C ${ROOT} status --porcelain`, { stdout: "" }],
@@ -147,7 +150,7 @@ function harness(opts: {
         ["tailscale status --json", { stdout: JSON.stringify({ Self: { DNSName: "desk.tail.ts.net." } }) }],
       ],
     }),
-    files: fakeFiles(),
+    files: fakeFiles(opts.sshConfig === undefined ? {} : { [`${HOME}/.ssh/config`]: opts.sshConfig }),
     store: new TrustStore("/state", storeIo),
     ops: fakeOps(),
     // SAFETY: `AuditLog` hands its sink the line it just serialised from an `AuditEntry` — the
@@ -355,6 +358,33 @@ describe("crew add, drawn", () => {
       expect(await run).toBe(EXIT.STATE);
       const frame = plainText(app.lastFrame());
       expect(frame).toContain("error: left alone — nothing was installed, configured or enrolled.");
+    } finally {
+      app.unmount();
+    }
+  });
+
+  test("a picked host is asked inside the app after its probe; No leaves it alone", async () => {
+    const h = harness({ sshConfig: "Host attic" });
+    const app = render(<CrewAdd store={h.store} />);
+    try {
+      const run = cmdCrewAdd(h.deps, []);
+      await waitFor(() => h.store.state().question !== null, "the pick question");
+      app.stdin.write("1");
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      app.stdin.write("\r");
+      await waitFor(() => h.store.state().question?.mode === "confirm", "the pick's own confirm");
+      const asked = h.store.state().question;
+      expect(asked?.text).toBe(
+        'Add attic to this crew as "attic"? It installs Collie on attic over ssh and joins it.',
+      );
+      // The facts are already on screen when the question shows.
+      expect(plainText(app.lastFrame())).toContain("what this lead will dial");
+      app.stdin.write("n");
+      expect(await run).toBe(EXIT.STATE);
+      const frame = plainText(app.lastFrame());
+      expect(frame).toContain("left alone — nothing was installed or enrolled on attic.");
+      expect(frame).not.toContain("written to");
+      expect(h.restarts).toBe(0);
     } finally {
       app.unmount();
     }
