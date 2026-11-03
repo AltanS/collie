@@ -26,6 +26,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Fixed
 
 - **A Herdr core Claude pane that stays quiet for half a day keeps its Chat and History.** The session beacon goes stale after twelve hours of silence, and the pane fell back to the terminal view until the next hook fired. Collie now keeps the session while the Claude process still runs, and drops it when the process is gone. Thanks @SergioGhisler (#663).
+- **Claude Code with verbose on no longer shows every send as a two-tap Send under a notice.** The token-count row that Claude Code 2.1.317 draws under a Heads up notice, such as 230267 tokens, is now a known gap of the notice. The box reads idle, and a send goes through. Thanks @marforon (#668).
 
 ## [1.26.0] - 2026-11-03
 
