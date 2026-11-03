@@ -297,6 +297,10 @@ core session, export `HC_SESSION` or `HC_SOCKET` before `collie start`; the unit
 the Claude hooks with `collie hooks install claude` for History. What the core can and cannot do is
 in [herdr-core notes](multiplexers.md#herdr-core-notes).
 
+Machines you add with `hc machine add` show up in `collie crew add` on this machine. A member with
+only the core installed joins the crew like any other. Run `hc machine add --install <host>`, then
+`collie crew add`. [Two machines, one crew](crew.md#two-machines-one-crew) has the steps.
+
 A Collie that already drives the Herdr TUI keeps it, because its `.env` names `herdr` and wins over
 the shell. To mirror the core on that machine too, run a second instance beside it:
 [Two Collies on one machine](multiplexers.md#two-collies-on-one-machine). herdr-app can also show a

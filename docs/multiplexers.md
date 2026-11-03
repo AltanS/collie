@@ -69,6 +69,7 @@ Herdr has no endpoint variable here: its socket is `HERDR_SOCKET_PATH`, not a
 That socket is the local one and no other. A machine saved in Herdr is not a crew member, and only
 a Collie crew brings another machine's panes to the phone. What each list is, and why one is not
 the other, is in [Herdr machines and the crew](crew.md#herdr-machines-and-the-crew).
+`collie crew add` offers the machines in Herdr's list, and in the core's list, as candidates.
 
 Then restart, install the beacon hooks, and start an agent where the phone can see it:
 
@@ -230,6 +231,10 @@ the Herdr TUI keeps `herdr`, even while the TUI is not running yet. Name `herdr-
 otherwise. A socket file left by a core that stopped is still picked on a machine without the TUI,
 and then reads as unreachable in the log and in `collie doctor`. `collie status` shows the
 multiplexer and, when nobody named it, why.
+
+The core's machine list (`hc machine ls`) is a source of candidates for `collie crew add`, and a
+crew member may run the core with no Herdr TUI. See
+[Herdr machines and the crew](crew.md#herdr-machines-and-the-crew).
 
 The core can run several named sessions. Collie drives one of them. It dials the socket that `hc`
 would: `HC_SOCKET`, else `$XDG_RUNTIME_DIR/herdr-core/<session>.sock`, else
