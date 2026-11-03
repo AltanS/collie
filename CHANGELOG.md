@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **A fifth theme, Collie New.** It keeps the black and white of the default look and makes it easier to read: the Atkinson Hyperlegible face for text, bold labels, stronger text and lines, a grey band behind the bars, flat square edges, and a terminal palette that reads in both halves. Pick it in Settings, Appearance, Theme; the default theme does not change.
+
 ## [1.26.1] - 2026-11-04
 
 ### Changed

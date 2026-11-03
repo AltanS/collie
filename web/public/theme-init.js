@@ -51,7 +51,7 @@
 // sets the same declarations as the store for every word.
 (function () {
   var root = document.documentElement;
-  var SHIPPED = ["nightwatch", "daylight", "harbour"];
+  var SHIPPED = ["nightwatch", "daylight", "harbour", "collie-new"];
   var TOKENS = [
     "background", "foreground", "card", "card-foreground", "chrome", "primary", "primary-foreground",
     "control-on", "control-on-foreground", "secondary", "secondary-foreground", "muted",
