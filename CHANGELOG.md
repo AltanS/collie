@@ -23,15 +23,6 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
-### Added
-
-- **The walky talky pair limit is a setting.** The default stays six messages in ten minutes between the same two panes, and `COLLIE_WALKY_PAIR_LIMIT` (or `walky_pair_limit` in the `[bridge]` section of the config file) raises or lowers it on that machine, from 1 to 100.
-
-### Fixed
-
-- **A Herdr core Claude pane that stays quiet for half a day keeps its Chat and History.** The session beacon goes stale after twelve hours of silence, and the pane fell back to the terminal view until the next hook fired. Collie now keeps the session while the Claude process still runs, and drops it when the process is gone. Thanks @SergioGhisler (#663).
-- **Claude Code with verbose on no longer shows every send as a two-tap Send under a notice.** The token-count row that Claude Code 2.1.317 draws under a Heads up notice, such as 230267 tokens, is now a known gap of the notice. The box reads idle, and a send goes through. Thanks @marforon (#668).
-
 ## [1.26.0] - 2026-11-03
 
 ### Added
@@ -39,6 +30,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The lead's launcher rows are the crew's rows.** The New page now offers the rows of the lead's `launchers.toml`, and the rows a phone added there, whichever machine is picked. Each row is checked on the machine it would run on: an agent that machine lacks, or a pinned folder it does not have, marks the row unavailable, and a folder under the lead's home is read under that machine's home. A machine's own rows stay as its additions, and its own row wins over a lead row with the same command. A member that runs an older Collie still lists the lead's rows, without the folder check (ADR 0127). ([e9f7f98](https://github.com/AltanS/collie/commit/e9f7f98))
 - **A lead row runs on the machine you pick.** A tap on one of the lead's rows with a member picked starts that row on the member, in a new space or as a new worktree's agent. The lead sends the row to the member over the crew link, and only the lead can: a member refuses a row that a phone sends to it directly, and takes one only when the lead marked the request as its own. A member that runs an older Collie answers that the command is not one of its launchers, and nothing runs (ADR 0127). ([5f4690e](https://github.com/AltanS/collie/commit/5f4690e))
 - **A row you add from the phone is the crew's, and a deputy that takes over keeps it.** Add, Rename and Remove on the Add your own page go to the lead whichever machine is picked, so the row shows on every machine of the crew. The page now reads "The row is added for every machine of the crew." and "Added for the crew", and the picked machine stays where the first run lands. A row a member already holds from before stays on that member and has no Rename or Remove on the lead's page. The lead sends its rows to its deputy, beside its paired devices, each time they change. The deputy keeps them as a read-only copy in a file of its own, and offers them with its own rows once it takes over. A deputy that is no longer named drops the copy, and one that runs an older Collie keeps none (ADR 0127). ([cfbe813](https://github.com/AltanS/collie/commit/cfbe813)) ([9cff370](https://github.com/AltanS/collie/commit/9cff370))
+- **The walky talky pair limit is a setting.** The default stays six messages in ten minutes between the same two panes, and `COLLIE_WALKY_PAIR_LIMIT` (or `walky_pair_limit` in the `[bridge]` section of the config file) raises or lowers it on that machine, from 1 to 100. ([58cdc0a](https://github.com/AltanS/collie/commit/58cdc0a))
 
 ### Changed
 
@@ -62,6 +54,8 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **Antigravity no longer shows "Collie cannot read this dialog" while a sub-agent runs.** Antigravity 1.4.12 lists a running sub-agent in a band between two rules under its input box. Collie took the band's lower rule for the bottom of the box, found no box, and showed the card over an idle pane. Collie now steps over that band, as it already did over the band of background tasks, so the pane reads as idle and takes a send. A row in that band that Collie does not know still blocks the send. While a sub-agent still runs, a send with a draft already in the box can still be refused, and an empty box sends. Thanks @KyongSik-Yoon (#655). ([d535b82](https://github.com/AltanS/collie/commit/d535b82))
 - **A Hermes session with a title no longer has every send refused.** Hermes 0.22.5 draws the session title inside the top rule of its input box (`── Session Title ─`), and the Hermes profile only knew a bare rule, so the first send went through and every send after the title appeared was refused with "no-match". The profile now reads a rule that carries a title, and the Traditional Chinese placeholder lines Hermes shows in an empty box. Hermes 0.22.3 to 0.22.5 is listed as provisional until a live probed send passes there. Thanks @NCheuk (#658). ([174bb39](https://github.com/AltanS/collie/commit/174bb39))
 - **A Hermes session with a title keeps its status line, its draft preview and its dialog cards in Chat.** Before, the Chat view of a titled Hermes 0.22.5 session showed the input box and the status bar again inside the mirror, dropped the status line and the stranded-draft preview, and did not lift a clarify question, a dangerous-command approval or the model picker into their cards. The view now finds the box under a titled rule as well (#657). ([1790b1e](https://github.com/AltanS/collie/commit/1790b1e))
+- **A Herdr core Claude pane that stays quiet for half a day keeps its Chat and History.** The session beacon goes stale after twelve hours of silence, and the pane fell back to the terminal view until the next hook fired. Collie now keeps the session while the Claude process still runs, and drops it when the process is gone. Thanks @SergioGhisler (#663). ([fda328f](https://github.com/AltanS/collie/commit/fda328f))
+- **Claude Code with verbose on no longer shows every send as a two-tap Send under a notice.** The token-count row that Claude Code 2.1.317 draws under a Heads up notice, such as 230267 tokens, is now a known gap of the notice. The box reads idle, and a send goes through. Thanks @marforon (#668). ([826d868](https://github.com/AltanS/collie/commit/826d868))
 
 ## [1.25.5] - 2026-11-02
 
