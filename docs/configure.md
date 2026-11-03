@@ -235,6 +235,10 @@ The agents mark left of the Files button counts the pane's running subagents. Fo
 Shell it counts their background jobs only while the pane's Chat is open on a phone; the Screen view
 does not count them.
 
+The Tasks mark shows the pane's task list with a done and total count. Claude Code, Codex, Grok and
+opencode fill it from their own logs. For pi, Oh My Pi and Gentle Shell it shows the plan of the
+newest `todo` call, only while the pane's Chat is open on a phone; the Screen view does not show it.
+
 While the text box holds text or an attachment, an X sits at the belt's right end too, left of the
 Switch button. One tap empties the box and its saved draft, and sends nothing to the pane. The X then
 becomes Undo, which puts the text and the attachments back. Undo stays until your next act: a
