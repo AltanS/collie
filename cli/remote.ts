@@ -100,15 +100,14 @@ const PAYLOAD_EOF = "__COLLIE_PAYLOAD__";
  * host that would prompt fails legibly instead of hanging behind a captured stdin; `ServerAlive*` so
  * a build that outlives a NAT idle timer is not silently truncated. Nothing here overrides a
  * host-key policy — that decision stays entirely the operator's `~/.ssh` (ADR 0015).
+ *
+ * `multiplex` drops the three `Control*` options: Windows OpenSSH cannot multiplex (its control
+ * socket is AF_UNIX, and `ControlMaster` there fails the whole connection with "getsockname failed:
+ * Not a socket"), so on Windows every leg opens its own connection and authenticates again. The
+ * operator's key auth carries that; the legs are what matter, not the reuse.
  */
-export function sshOptions(controlPath: string): readonly string[] {
-  return [
-    "-o",
-    "ControlMaster=auto",
-    "-o",
-    `ControlPath=${controlPath}`,
-    "-o",
-    "ControlPersist=60",
+export function sshOptions(controlPath: string, multiplex = true): readonly string[] {
+  const base = [
     "-o",
     "BatchMode=yes",
     "-o",
@@ -116,6 +115,9 @@ export function sshOptions(controlPath: string): readonly string[] {
     "-o",
     "ServerAliveCountMax=4",
   ];
+  return multiplex
+    ? ["-o", "ControlMaster=auto", "-o", `ControlPath=${controlPath}`, "-o", "ControlPersist=60", ...base]
+    : base;
 }
 
 /** Splice a payload into a leg script. Exported for the golden tests; used by every runner. */
@@ -148,6 +150,8 @@ export function sshRunner(
   // 0700 from creation (`mkdtemp` is 0700) — the control socket is a live authenticated channel to
   // another machine, so anything that can open it can run commands there as the operator.
   const controlPath = join(dir, "s");
+  // Windows OpenSSH cannot multiplex; see `sshOptions`. There the legs share nothing but the host.
+  const multiplex = process.platform !== "win32";
   const bin = findTool("ssh", env, home);
   let closed = false;
   return {
@@ -155,7 +159,7 @@ export function sshRunner(
       if (bin === null) {
         return { code: 127, stdout: "", stderr: "no `ssh` on this machine", spawned: false };
       }
-      const proc = Bun.spawn([bin, ...sshOptions(controlPath), host, "/bin/sh", "-s"], {
+      const proc = Bun.spawn([bin, ...sshOptions(controlPath, multiplex), host, "/bin/sh", "-s"], {
         stdin: new TextEncoder().encode(composeStdin(script, stdin)),
         stdout: "pipe",
         stderr: "pipe",
@@ -171,7 +175,7 @@ export function sshRunner(
     close() {
       if (closed) return;
       closed = true;
-      if (bin !== null) {
+      if (bin !== null && multiplex) {
         try {
           Bun.spawnSync([bin, "-o", `ControlPath=${controlPath}`, "-O", "exit", host], {
             stdout: "ignore",
