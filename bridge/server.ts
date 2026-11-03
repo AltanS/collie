@@ -158,6 +158,7 @@ import { adapterFor, buildJournalRegistry, journalAgentName } from "./journal/re
 import { readClaudeSubagent } from "./journal/claude.ts";
 import { chatParams, LiveWindows } from "./journal/live.ts";
 import { JournalSubagents } from "./subagents-journal.ts";
+import { JournalTodos } from "./todos.ts";
 import { parseDurableLog } from "./journal/durable.ts";
 import { redactText } from "./redact.ts";
 import { maskSurface, surfaceRouteBody, type SurfaceShadow } from "./surface/shadow.ts";
@@ -1600,6 +1601,9 @@ export function startServer(opts: {
   // The agents pill's second source: Oh My Pi's and Gentle Shell's ongoing task cards, read from the
   // live windows above. Only for a pane whose journal has no subagent files (bridge/subagents-journal.ts).
   const journalSubagents = live === null || journals === null ? null : new JournalSubagents(journals, live, () => Date.now());
+  // The Tasks mark's third source: a plan call in the same live windows, for a harness that has neither
+  // a tailed nor a loaded todo source (bridge/todos.ts, `JournalTodos`). Any journal that yields plan calls.
+  const journalTodos = live === null || journals === null ? null : new JournalTodos(journals, live, () => Date.now());
   /** Does this agent have a journal at all — the snapshot's History-affordance gate. */
   const hasJournal = (agent: string) => adapterFor(journals ?? {}, agent) !== undefined;
   const discoversSessions = (agent: string) =>
@@ -1675,7 +1679,7 @@ export function startServer(opts: {
       const effort = key === undefined || !journalModelShown(journalModel, hookModel) ? undefined : cache?.effort?.(key);
       const withCache = effort === undefined ? withModel : { ...withModel, effort };
       // The tasks are words the agent wrote, so they take the mirror's mask like the title above.
-      const readTodos = opts.todos?.get(p);
+      const readTodos = opts.todos?.get(p) ?? journalTodos?.get(p);
       const todos = readTodos !== undefined && cfg.redact ? maskTodoList(readTodos) : readTodos;
       const withTodos = todos === undefined ? withCache : { ...withCache, todos };
       // The running subagents' descriptions are words the agent wrote too, so they take the same mask.

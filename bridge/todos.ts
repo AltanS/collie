@@ -6,8 +6,11 @@ import type { JsonObject, JsonValue } from "./json.ts";
 import { asRecord, asText, probeTail, type ProbeTail, tokenCount } from "./journal/cache-probe.ts";
 import { isSessionId } from "./journal/claude.ts";
 import { containedRealpath, statFile } from "./journal/files.ts";
+import type { LiveWindows } from "./journal/live.ts";
 import { adapterFor } from "./journal/registry.ts";
-import type { AgentSessionRef, JournalAdapter, TranscriptSource } from "./journal/types.ts";
+import type { PlanStatus } from "./journal/tool-call.ts";
+import type { AgentSessionRef, JournalAdapter, TranscriptEntry, TranscriptSource } from "./journal/types.ts";
+import { HELD_FRESH_MS } from "./subagents-journal.ts";
 import { journalAgentOf, type AgentView } from "./types.ts";
 
 export type PaneTodoStatus = "pending" | "in_progress" | "completed";
@@ -680,4 +683,90 @@ function departed(named: Map<string, string | undefined>, key: string, paneId: s
   if (!named.has(paneId)) return true;
   const now = named.get(paneId);
   return now !== undefined && now !== key;
+}
+
+const PLAN_TO_TODO = {
+  pending: "pending",
+  in_progress: "in_progress",
+  done: "completed",
+  // A task the agent cannot start yet is still to do. The wire has no fourth word for it.
+  blocked: "pending",
+  // A task the agent gave up is no longer on the list, as a `deleted` Claude task is not.
+  dropped: undefined,
+} as const satisfies Record<PlanStatus, PaneTodoStatus | undefined>;
+
+/**
+ * The plan of the newest `plan` tool call among a session's turns, as the Tasks mark's list.
+ * Pure. The newest call wins whole: a call that holds no task reads as an ended list, so an older
+ * call's list never shows behind it. Undefined when no turn holds a plan call.
+ */
+export function latestPlanTodos(entries: readonly TranscriptEntry[]): PaneTodo[] | undefined {
+  for (let e = entries.length - 1; e >= 0; e--) {
+    const entry = entries[e]!;
+    if (entry.abandoned === true) continue;
+    for (let p = entry.parts.length - 1; p >= 0; p--) {
+      const part = entry.parts[p]!;
+      if (part.kind !== "tool" || part.call?.kind !== "plan") continue;
+      const todos: PaneTodo[] = [];
+      part.call.tasks.forEach((task, index) => {
+        const status = PLAN_TO_TODO[task.status];
+        if (status === undefined || todos.length >= MAX_TODOS) return;
+        const todo = buildTodo(String(index + 1), task.title, status);
+        if (todo !== undefined) todos.push(todo);
+      });
+      return todos.length > 0 ? todos : undefined;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * The Tasks mark's third source, for a harness with neither a tailed nor a loaded one (pi, Oh My Pi,
+ * Gentle Shell): the plan its journal reduces to `plan` tool calls. Consulted after
+ * {@link TodoTracker}, which answers for every harness in {@link TAILED_TODO_AGENTS} and
+ * {@link LOADED_TODO_AGENTS}; a pane of those never reaches this list. Not specific to any harness:
+ * a journal whose calls classify as `plan` gets it.
+ *
+ * MEMORY ONLY, like {@link JournalSubagents}: the plan is read from the live window a Chat poll keeps
+ * for the session, never from disk. So the mark fills while a reader polls the session's Chat (the
+ * default view of an agent pane), and empties {@link HELD_FRESH_MS} after the last poll. The
+ * dashboard needs nothing from it. A window holds the newest turns only, so a plan whose last call
+ * left the window's front leaves the mark too. Synchronous.
+ */
+export class JournalTodos {
+  /** Per session, what was derived at a window stamp, so a quiet session costs a map lookup. */
+  private readonly memo = new Map<string, { stamp: string; list: PaneTodo[] | undefined }>();
+
+  constructor(
+    private readonly registry: Record<string, JournalAdapter>,
+    private readonly live: Pick<LiveWindows, "held">,
+    private readonly now: () => number,
+  ) {}
+
+  /** The pane's plan from its live window, or undefined when there is none. Never a `[]`. */
+  get(pane: AgentView): PaneTodo[] | undefined {
+    const ref = pane.agentSession;
+    if (ref === undefined) return undefined;
+    const harness = journalAgentOf(pane);
+    if (TAILED_TODO_AGENTS.has(harness) || LOADED_TODO_AGENTS.has(harness)) return undefined;
+    if (adapterFor(this.registry, harness) === undefined) return undefined;
+    const held = this.live.held(ref.value);
+    if (held === null) {
+      this.memo.delete(ref.value);
+      return undefined;
+    }
+    if (this.now() - held.askedAt > HELD_FRESH_MS) return undefined;
+    let found = this.memo.get(ref.value);
+    if (found?.stamp !== held.stamp) {
+      found = { stamp: held.stamp, list: latestPlanTodos(held.entries()) };
+      this.memo.set(ref.value, found);
+      // Bounded like the windows it mirrors: a stale key is the oldest, and goes first.
+      while (this.memo.size > 32) {
+        const oldest = this.memo.keys().next().value;
+        if (oldest === undefined) break;
+        this.memo.delete(oldest);
+      }
+    }
+    return found.list;
+  }
 }
