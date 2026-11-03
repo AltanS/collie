@@ -118,6 +118,88 @@ describe("crewDelta: the machines a multiplexer knows that this crew does not ha
   });
 });
 
+describe("crewDelta: a member with no crew add record is still in the crew", () => {
+  // The lab case (M84 test 2, BUG 1): `member` joined by hand, so the trust store pins it and the ops
+  // store has no record. The core lists it as `member`, at `op@192.168.77.2`.
+  const handJoined = (memberId: string, address: string): TrustStoreData =>
+    leadStore({ peers: [member({ memberId, address })] });
+
+  test("is matched on the host of its trust-store address, resolved through ssh -G", async () => {
+    const { deps } = setup({
+      core: machines({ target: "op@lab-two", name: "two" }, { target: "vps" }),
+      store: handJoined("box", "192.168.77.2:8787"),
+      ops: { other: record("elsewhere", null) },
+      resolve: {
+        "op@lab-two": "user op\nhostname 192.168.77.2\nport 22\n",
+        vps: "user op\nhostname vps.example\nport 22\n",
+      },
+    });
+    expect((await crewDelta(deps)).missing).toEqual([{ source: "herdr-core", targets: ["vps"] }]);
+  });
+
+  test("is matched on the host part of the row's own target when nothing resolves", async () => {
+    const { deps } = setup({
+      core: machines({ target: "op@192.168.77.2", name: "two" }),
+      store: handJoined("box", "192.168.77.2:8787"),
+    });
+    expect(await crewDelta(deps)).toEqual({ missing: [], forgotten: [] });
+  });
+
+  test("an IPv6 address keeps its brackets out of the match", async () => {
+    const { deps } = setup({
+      core: machines({ target: "op@[fd00::2]:22" }),
+      store: handJoined("box", "[fd00::2]:8787"),
+    });
+    expect((await crewDelta(deps)).missing).toEqual([]);
+  });
+
+  test("is matched on its member id, case-insensitively, against the row's name and target host", async () => {
+    const { deps } = setup({
+      core: machines({ target: "op@192.168.77.9", name: "Member" }, { target: "op@Attic" }),
+      store: leadStore({
+        peers: [
+          member({ memberId: "member", address: "10.9.9.1:8787" }),
+          member({ memberId: "attic", address: "10.9.9.2:8787" }),
+        ],
+      }),
+    });
+    expect((await crewDelta(deps)).missing).toEqual([]);
+  });
+
+  test("with no crew-ops.json at all, the trust store alone still covers the machine", async () => {
+    const { deps, ops } = setup({
+      core: machines({ target: "op@192.168.77.2", name: "member" }),
+      store: handJoined("member", "192.168.77.2:8787"),
+    });
+    expect(ops.contents()).toBeNull();
+    expect(deltaLines(await crewDelta(deps))).toEqual([]);
+  });
+
+  test("a peer that matches nothing leaves the row missing", async () => {
+    const { deps } = setup({
+      core: machines({ target: "op@192.168.77.3", name: "omarchy" }),
+      store: handJoined("member", "192.168.77.2:8787"),
+      resolve: { "op@192.168.77.3": "user op\nhostname 192.168.77.3\nport 22\n" },
+    });
+    expect((await crewDelta(deps)).missing).toEqual([{ source: "herdr-core", targets: ["omarchy"] }]);
+  });
+
+  test("is never reported as forgotten: it has no recorded source", async () => {
+    const { deps } = setup({ core: machines({ target: "vps" }), store: handJoined("member", "192.168.77.2:8787") });
+    expect((await crewDelta(deps)).forgotten).toEqual([]);
+  });
+
+  test("its address costs no ssh -G: only the listed targets are resolved", async () => {
+    const { deps, exec } = setup({
+      core: machines({ target: "vps" }),
+      store: handJoined("member", "192.168.77.2:8787"),
+      resolve: { vps: "user u\nhostname vps\nport 22\n" },
+    });
+    await crewDelta(deps);
+    expect(exec.calls.filter((c) => c.startsWith("ssh "))).toEqual(["ssh -G vps"]);
+  });
+});
+
 describe("crewDelta: a member its source no longer lists", () => {
   test("is reported when the source answered with machines and none is the member", async () => {
     const { deps } = setup({

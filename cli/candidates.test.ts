@@ -169,6 +169,61 @@ describe("markCandidates", () => {
     expect(markCandidates(rows, []).every((row) => row.memberId === null)).toBe(true);
   });
 
+  test("a member with no recorded route is joined on the host of its trust-store address", () => {
+    const resolvedRows = mergeCandidates(
+      [{ source: "herdr-core", candidates: [named("op@lab-two"), named("op@192.168.77.3")] }],
+      (target) => (target === "op@lab-two" ? "op@192.168.77.2:22" : null),
+    );
+    const marked = markCandidates(resolvedRows, [
+      { memberId: "box", sshHost: null, key: null, addressHost: "192.168.77.2" },
+      { memberId: "omarchy", sshHost: null, key: null, addressHost: "192.168.77.3" },
+    ]);
+    // The first through ssh -G's hostname, the second through the host part of the target as typed.
+    expect(marked.map((row) => row.memberId)).toEqual(["box", "omarchy"]);
+  });
+
+  test("an IPv6 address host meets a bracketed target and a resolved hostname alike", () => {
+    const v6 = mergeCandidates(
+      [{ source: "herdr-core", candidates: [named("op@[fd00::2]:22"), named("v6-alias")] }],
+      (target) => (target === "v6-alias" ? "op@fd00::3:22" : null),
+    );
+    const marked = markCandidates(v6, [
+      { memberId: "two", sshHost: null, key: null, addressHost: "fd00::2" },
+      { memberId: "three", sshHost: null, key: null, addressHost: "fd00::3" },
+    ]);
+    expect(marked.map((row) => row.memberId)).toEqual(["two", "three"]);
+  });
+
+  test("and on its member id, case-insensitively, against the label and the target's host", () => {
+    const labelled = mergeCandidates(
+      [
+        {
+          source: "herdr-core",
+          candidates: [
+            { target: "op@192.168.77.9", label: "Member", id: null, blocked: null },
+            named("op@Attic"),
+            named("op@vps"),
+          ],
+        },
+      ],
+      () => null,
+    );
+    const marked = markCandidates(labelled, [
+      { memberId: "member", sshHost: null, key: null, addressHost: "10.0.0.1" },
+      { memberId: "attic", sshHost: null, key: null, addressHost: null },
+    ]);
+    expect(marked.map((row) => row.memberId)).toEqual(["member", "attic", null]);
+  });
+
+  test("a recorded route wins over another member's address or id", () => {
+    const one = mergeCandidates([{ source: SSH_CONFIG_SOURCE, candidates: [named("nas")] }], () => "op@nas.lan:22");
+    const marked = markCandidates(one, [
+      { memberId: "nas", sshHost: null, key: null, addressHost: "nas.lan" },
+      { memberId: "nas-2", sshHost: "nas-alias", key: "op@nas.lan:22" },
+    ]);
+    expect(marked[0]!.memberId).toBe("nas-2");
+  });
+
   test("a marked row is not offered", () => {
     const marked = markCandidates(rows, [{ memberId: "nas", sshHost: "nas", key: "nas" }]);
     expect(offeredCandidates(marked).map((r) => r.target)).toEqual(["attic"]);

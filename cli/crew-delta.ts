@@ -44,6 +44,7 @@ import {
   offeredCandidates,
   resolvedSshTarget,
   type RosterEntry,
+  splitSshTarget,
   type SourcedCandidates,
 } from "./candidates.ts";
 import type { Exec } from "./sys.ts";
@@ -65,10 +66,17 @@ export function candidateProbe(deps: { readonly exec: Exec }, warn: (line: strin
 /**
  * This lead's own roster, as a join the candidate list can mark against.
  *
- * The enrolled peers come from the trust store and how each was reached comes from the ops store
- * (`bridge/crew/ops-store.ts`, ADR 0016) — `crew add` has WRITTEN `sshHost` since M7/01 and this is
- * the first read of it here, with the `source` M84/02 records beside it. Empty on a peer and on a
- * solo collie: neither has members to mark.
+ * EVERY trust-store peer is on it. How a peer was reached comes from the ops store
+ * (`bridge/crew/ops-store.ts`, ADR 0016) when there is a record — `crew add` has WRITTEN `sshHost`
+ * since M7/01, with the `source` M84/02 records beside it — but a record is written only by a
+ * `crew add` run that finished. A member joined by hand, one whose run was finished by hand, and one
+ * whose ops file was lost have none, and they are members all the same: without them on the roster
+ * the delta called them missing and the picker offered them again. Such a peer is matched on the
+ * host of its trust-store address and on its member id instead ({@link markCandidates}), and it has
+ * no `source`, so it is never reported as forgotten.
+ *
+ * The address is read, not resolved: only a recorded ssh route costs an `ssh -G`. Empty on a peer
+ * and on a solo collie: neither has members to mark.
  */
 export async function leadRoster(
   deps: { readonly store: Pick<TrustStore, "load">; readonly ops: Pick<CrewOpsStore, "load"> },
@@ -77,20 +85,20 @@ export async function leadRoster(
   const trust = await deps.store.load();
   if (trust === null || trust.lead !== null) return [];
   const { data } = await deps.ops.load();
-  if (data === null) return [];
-  const roster: RosterEntry[] = [];
-  for (const peer of trust.peers) {
-    const record = data.members[peer.memberId];
-    if (record === undefined) continue;
+  return trust.peers.map((peer): RosterEntry => {
+    const record = data?.members[peer.memberId];
+    const host = splitSshTarget(peer.address).host;
+    const addressHost = host === "" ? null : host;
+    if (record === undefined) return { memberId: peer.memberId, addressHost, sshHost: null, key: null, source: null };
     const sshHost = record.sshHost;
-    roster.push({
+    return {
       memberId: peer.memberId,
+      addressHost,
       sshHost,
       key: resolvedSshTarget(sshHost, probe) ?? sshHost,
       source: record.source ?? null,
-    });
-  }
-  return roster;
+    };
+  });
 }
 
 /**
@@ -156,12 +164,14 @@ export async function crewDelta(deps: CrewDeltaDeps): Promise<CrewDelta> {
   for (const source of sources) {
     // One source at a time: a machine two lists name is reported under each, and a member is judged
     // by the list that suggested it.
-    const rows = mergeCandidates([source], resolve);
-    const targets = offeredCandidates(markCandidates(rows, roster)).map((row) => row.label ?? row.target);
+    const rows = markCandidates(mergeCandidates([source], resolve), roster);
+    const targets = offeredCandidates(rows).map((row) => row.label ?? row.target);
     if (targets.length > 0) missing.push({ source: source.source, targets });
     for (const entry of roster) {
+      // Only a member with a recorded source is judged, and only by that source. It is listed when a
+      // row of that list was marked as it, on any key, so a member is never both covered and gone.
       if (entry.source !== source.source) continue;
-      const listed = rows.some((row) => row.key === entry.key || row.names.includes(entry.sshHost));
+      const listed = rows.some((row) => row.memberId === entry.memberId);
       if (!listed) forgotten.push({ memberId: entry.memberId, source: source.source });
     }
   }

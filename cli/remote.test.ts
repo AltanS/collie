@@ -778,6 +778,31 @@ describe("collie crew add", () => {
     expect(text(h.io)).toContain("probing attic…");
   });
 
+  test("a member joined by hand, with no crew add record, is marked on its address and its id", async () => {
+    // M84 test 2, BUG 1: no crew-ops.json at all. `member` is matched on the host of its trust-store
+    // address, `attic` on its member id; only `vps` is offered.
+    const h = harness({
+      store: leadStore({
+        peers: [
+          member({ memberId: "member", address: "192.168.77.2:8787" }),
+          member({ memberId: "attic", address: "100.64.0.20:8787" }),
+        ],
+      }),
+      coreMachines: '{"machines":[{"target":"op@192.168.77.2","name":"box"},{"target":"op@attic"},{"target":"op@vps"}]}',
+      prompt: "",
+    });
+    expect(await run(h, [])).toBe(EXIT.STATE);
+    expect(h.io.stdout.slice(0, 6)).toEqual([
+      "Candidate hosts on this machine:",
+      "",
+      '      op@192.168.77.2  herdr-core  already enrolled as "member"',
+      '      op@attic         herdr-core  already enrolled as "attic"',
+      "   1  op@vps           herdr-core",
+      "",
+    ]);
+    expect(h.calls).toHaveLength(0);
+  });
+
   test("every candidate already enrolled is a refusal, and it says which", async () => {
     const h = harness({
       store: leadStore({ peers: [member({ memberId: "nas", address: "100.64.0.9:8787" })] }),

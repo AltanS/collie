@@ -45,13 +45,24 @@ export interface SourcedCandidates {
   readonly candidates: readonly HostCandidate[];
 }
 
-/** One member of this lead's own crew, as the roster join sees it (`bridge/crew/ops-store.ts`). */
+/**
+ * One member of this lead's own crew, as the roster join sees it.
+ *
+ * Every trust-store peer is one, whether or not `crew add` left an ops record for it
+ * (`bridge/crew/ops-store.ts`): a member joined by hand, or one whose run was finished by hand, has
+ * none, and it is still in the crew.
+ */
 export interface RosterEntry {
   readonly memberId: string;
-  /** The ssh destination the lead recorded for it, as the operator typed it. */
-  readonly sshHost: string;
-  /** That destination resolved, or the destination itself when resolution was unavailable. */
-  readonly key: string;
+  /** The ssh destination the lead recorded for it, as the operator typed it; `null` without an ops record. */
+  readonly sshHost: string | null;
+  /** That destination resolved, or the destination itself when resolution was unavailable; `null` without one. */
+  readonly key: string | null;
+  /**
+   * The host part of the address the trust store dials it at (`host:port`, port dropped, IPv6
+   * brackets dropped); `null` or absent when there is none. Read from the store, never resolved.
+   */
+  readonly addressHost?: string | null;
   /** Which multiplexer's list suggested it when `crew add` enrolled it (`OpsRecord.source`); `null` or absent when none. */
   readonly source?: string | null;
 }
@@ -195,18 +206,63 @@ export function mergeCandidates(
 }
 
 /**
+ * The hostname inside a merge key, lowercased, or `null` when the key is not a resolved one.
+ *
+ * A resolved key is `user@hostname:port` ({@link parseResolvedSshTarget}); the port is the last
+ * colon's digits, so an IPv6 hostname keeps its own colons.
+ */
+function keyHostname(key: string): string | null {
+  const match = /^[^@]*@(.+):\d*$/u.exec(key);
+  return match === null ? null : match[1]!.toLowerCase();
+}
+
+/** Every host a row can be reached at: the resolved hostname, and the host part of each spelling. */
+function rowHosts(row: CandidateRow): ReadonlySet<string> {
+  const hosts = new Set(row.names.map((name) => splitSshTarget(name).host.toLowerCase()));
+  const resolved = keyHostname(row.key);
+  if (resolved !== null) hosts.add(resolved);
+  return hosts;
+}
+
+/** The recorded ssh route: the merge key, or the recorded destination verbatim. */
+function matchesRoute(entry: RosterEntry, row: CandidateRow): boolean {
+  if (entry.key !== null && entry.key === row.key) return true;
+  return entry.sshHost !== null && row.names.includes(entry.sshHost);
+}
+
+/** The host of the address the trust store dials, against every host the row can be reached at. */
+function matchesAddress(entry: RosterEntry, hosts: ReadonlySet<string>): boolean {
+  const host = entry.addressHost?.toLowerCase() ?? "";
+  return host !== "" && hosts.has(host);
+}
+
+/** The member id, case-insensitively, against the row's label and the host part of its spellings. */
+function matchesMemberId(entry: RosterEntry, row: CandidateRow, hosts: ReadonlySet<string>): boolean {
+  const id = entry.memberId.toLowerCase();
+  return row.label?.toLowerCase() === id || hosts.has(id);
+}
+
+/**
  * Stamp each row this lead already leads with its member id.
  *
- * The join is on the merge key first — both sides went through the same resolution, so an alias in
- * the config and the destination the lead recorded meet there — and on the recorded destination
- * verbatim second, which is what answers when nothing could be resolved.
+ * Three keys, strongest first, and a row takes the first member any of them names:
+ *   1. the recorded ssh route: the merge key (both sides went through the same resolution, so an
+ *      alias in the config and the destination the lead recorded meet there), or the recorded
+ *      destination verbatim, which is what answers when nothing could be resolved;
+ *   2. the host of the address the trust store dials, against the row's resolved hostname and the
+ *      host part of each of its spellings — what a member with no ops record still has;
+ *   3. the member id, case-insensitively, against the row's label and those same host parts.
  */
 export function markCandidates(
   rows: readonly CandidateRow[],
   roster: readonly RosterEntry[],
 ): readonly CandidateRow[] {
   return rows.map((row) => {
-    const member = roster.find((entry) => entry.key === row.key || row.names.includes(entry.sshHost));
+    const hosts = rowHosts(row);
+    const member =
+      roster.find((entry) => matchesRoute(entry, row)) ??
+      roster.find((entry) => matchesAddress(entry, hosts)) ??
+      roster.find((entry) => matchesMemberId(entry, row, hosts));
     return member === undefined ? row : { ...row, memberId: member.memberId };
   });
 }
