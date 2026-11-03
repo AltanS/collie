@@ -588,13 +588,13 @@ CLI on that machine still sends.
 note when an installed copy is behind, and `collie skill install` and `collie skill sync` still
 work by hand.
 
-These are the limits that stay on:
+These are the limits that stay on. Each bridge counts them for its own panes, on this machine:
 
 | Limit | Refused as |
 | --- | --- |
 | 30 messages per sender in 10 minutes. A sender is its kind, machine and pane, never its label | `rate limit` |
 | Your broadcast to `all` or `<member>/all` counts one message per pane it reaches | `rate limit` |
-| 6 messages in 10 minutes between the same two panes, either direction | `pair limit` |
+| 6 messages in 10 minutes between the same two panes, either direction. `COLLIE_WALKY_PAIR_LIMIT` (`walky_pair_limit` in the `[bridge]` section of the config file) sets it, from 1 to 100, and each machine counts for itself | `pair limit` |
 | On a lead, 60 messages in 10 minutes from one machine, all its panes together | `rate limit` |
 | A body over 4,000 characters, after control bytes are removed | `body over 4,000 characters` |
 | A reply chain deeper than 4 replies | `thread depth` |
