@@ -263,6 +263,14 @@ describe("loadConfig", () => {
     expect(cfg.journalRoots.grok).toEqual([join("/srv/grok", "sessions")]);
   });
 
+  test("discovers bundled Gentle Shell beside stock Pi and Oh My Pi by default", () => {
+    expect(loadConfig().journalRoots.pi).toEqual([
+      join(homedir(), ".omp", "agent", "sessions"),
+      join(homedir(), ".pi", "agent", "sessions"),
+      join(homedir(), ".gentle-shell", "agent", "sessions"),
+    ]);
+  });
+
   test("an explicit COLLIE_* root beats the harness's home var", () => {
     process.env.CODEX_HOME = "/srv/codex";
     process.env.COLLIE_CODEX_ROOT = "/elsewhere/rollouts";

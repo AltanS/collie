@@ -6050,6 +6050,31 @@
    "harness": "omp",
    "version": "18.6.1",
    "state": "running"
+  },
+  "pi--v140-gentle-float-idle--w100.txt": {
+   "harness": "pi",
+   "version": "1.4.0",
+   "state": "idle"
+  },
+  "pi--v140-gentle-float-draft--w100.txt": {
+   "harness": "pi",
+   "version": "1.4.0",
+   "state": "draft"
+  },
+  "pi--v140-gentle-float-multiline--w100.txt": {
+   "harness": "pi",
+   "version": "1.4.0",
+   "state": "draft"
+  },
+  "pi--v140-gentle-float-dialog--w100.txt": {
+   "harness": "pi",
+   "version": "1.4.0",
+   "state": "dialog"
+  },
+  "pi--v140-gentle-float-dialog-moved--w100.txt": {
+   "harness": "pi",
+   "version": "1.4.0",
+   "state": "dialog"
   }
  },
  "knownMismatches": {

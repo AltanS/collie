@@ -3649,3 +3649,11 @@ matching `…e/.cache`; no other private text was on screen. The lab is
 
 On the bridge itself omp 18.6.1 reads as a **shell** on herdr-core: it sends no OSC 7501 status, and
 the core adapter names an agent only from that report, so the omp profile above is not applied live.
+
+### Local Gentle Shell 4.5.1 float editor (2026-11-02)
+
+`pi--v140-gentle-float-*--w100.txt` were captured without editing from an isolated
+Gentle Shell 4.5.1 / Pi 1.4.0 pane on herdr-core 0.1.16, attached at 100 columns
+and 30 rows. An input extension consumed messages before any model call. The
+captures cover an empty editor, a draft, a multiline draft and a test selector
+with its pointer on both choices. No operator conversation is included.
