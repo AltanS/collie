@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Fixed
+
+- **On a phone, a dialog card in the dock no longer hides the chat and its question cards.** The chat now keeps at least a third of the screen, and the dock shrinks and scrolls inside itself to make room. The dialog mirror in the unread-dialog card now opens at its bottom, where the dialog is, and not at the old output above it. Thanks @viniciosrab (#667).
+
 ## [1.26.0] - 2026-11-03
 
 ### Added

@@ -2228,7 +2228,10 @@ describe("the pane fits its viewport", () => {
     // The two are flex siblings in the same column: one gives, one does not.
     expect(mirror.getAttribute("role")).toBe("presentation");
     expect(mirror.parentElement).toBe(bottomRow.parentElement);
-    expect(mirror.className).toMatch(/(?:^|\s)min-h-0(?=\s|$)/);
+    // It still gives (`flex-1`), but no longer to zero: it holds a floor of the viewport (#667), so a
+    // tall docked card shrinks first. The floor replaced `min-h-0`.
+    expect(mirror.className).toMatch(/(?:^|\s)min-h-\[30dvh\](?=\s|$)/);
+    expect(mirror.className).not.toMatch(/(?:^|\s)min-h-0(?=\s|$)/);
     expect(mirror.className).toMatch(/(?:^|\s)flex-1(?=\s|$)/);
 
     // STATED, not inherited. `shrink-0` is what makes the bound below the whole story.
@@ -2329,6 +2332,20 @@ describe("the pane fits its viewport", () => {
       const dock = container.querySelector('[data-slot="composer-actions"]')!.parentElement!;
       expect(dock.className).toMatch(/(?:^|\s)pb-2(?=\s|$)/);
       expect(dock.className).not.toMatch(/safe-area-inset-bottom/);
+    } finally {
+      kb.restore();
+    }
+  });
+  it("keeps the reading box at a lower floor while the keyboard is up (#667)", async () => {
+    const kb = withSoftKeyboard();
+    try {
+      const { container } = renderChat({ text: STATUS_TEXT });
+      const reading = () => container.querySelector<HTMLElement>('[data-slot="pane-reading"]')!;
+      expect(reading().className).toMatch(/(?:^|\s)min-h-\[30dvh\](?=\s|$)/);
+      act(() => document.querySelector<HTMLTextAreaElement>('[data-slot="chat-input"]')!.focus());
+      kb.open(460);
+      await waitFor(() => expect(reading().className).toMatch(/(?:^|\s)min-h-\[20dvh\](?=\s|$)/));
+      expect(reading().className).not.toMatch(/min-h-\[30dvh\]/);
     } finally {
       kb.restore();
     }

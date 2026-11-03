@@ -2722,7 +2722,13 @@ export function AgentChat({
             className={cn(
               mirrorGap,
               // `relative` anchors the floating terminal-draft notice's slot, the last child below.
-              "relative min-h-0 min-w-0 flex-1 border-t border-rule",
+              "relative min-w-0 flex-1 border-t border-rule",
+              // THE READING FLOOR (#667). The docked card below shrinks before this box does, so a tall
+              // card (an unread-dialog card carrying the whole pane) can never squeeze the chat to three
+              // lines under the floating tags. The floor is a share of the viewport, and `dvh` already
+              // follows the keyboard, so it is lower while the keyboard is up. On a tall screen the
+              // box is far above it and the floor changes nothing.
+              composing ? "min-h-[20dvh]" : "min-h-[30dvh]",
               mirrorFace.className,
             )}
             style={mirrorFace.style}

@@ -85,3 +85,20 @@ describe("CardDock: the Authentication box", () => {
     expect(within(card).queryAllByRole("link")).toEqual([]);
   });
 });
+
+// #667: a tall card gives up room before the chat does. The dock shrinks (and scrolls inside itself);
+// the reading box above it holds the floor (pinned in agent-chat.test.tsx).
+describe("CardDock: the dock shrinks before the chat does", () => {
+  const blocks = claudeBuildBlocks(fixtureRows("claude--menu-model-picker.txt"));
+
+  it("shrinks and keeps its height caps, with and without the keyboard", () => {
+    const { container, rerender } = render(<CardDock blocks={blocks} />);
+    const dock = () => container.querySelector<HTMLElement>('[data-slot="card-dock"]')!;
+    expect(dock().className).toMatch(/(?:^|\s)min-h-0(?=\s|$)/);
+    expect(dock().className).toMatch(/(?:^|\s)shrink(?=\s|$)/);
+    expect(dock().className).not.toMatch(/shrink-0/);
+    expect(dock().className).toMatch(/max-h-\[55dvh\]/);
+    rerender(<CardDock blocks={blocks} composing />);
+    expect(dock().className).toMatch(/max-h-\[40dvh\]/);
+  });
+});
