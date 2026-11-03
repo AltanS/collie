@@ -11108,3 +11108,48 @@ describe("the late-probe window: a probe drawn late on an idle pane (M80 spec 09
     expect(answer.receipt?.gapsMs.probe).toBeGreaterThanOrEqual(LATE_PROBE.ms);
   });
 });
+
+// #655: agy 1.4.12 lists a running sub-agent in a rail between the box's bottom rule and a closing
+// rule, and that rail row ends in the sub-agent's elapsed time. The profile's rail shape (agy.json,
+// frameAlternates) puts the rail inside the frame, so a draft's two-read compare would see the time
+// tick. An EMPTY box compares by its two edges alone: its top rule and the rail's closing rule. The
+// screen is the report's own (agy--v1412-subagent-band-idle.txt), its elapsed time set per read.
+describe("agy 1.4.12, the empty box over a sub-agent rail, replayed from the report's screen (#655)", () => {
+  const screen = readFileSync(join(import.meta.dir, "../../web/src/fixtures/panes/agy--v1412-subagent-band-idle.txt"), "utf8");
+  const ELAPSED = "· 1h15m35s";
+  const draw = (elapsed: string, box: string): string => screen.replace(ELAPSED, `· ${elapsed}`).replace(/^>$/mu, box === "" ? ">" : `> ${box}`);
+
+  test("the screen holds one Agent row with its elapsed time and one empty `>` row", () => {
+    expect(screen.split("\n").filter((row) => row.startsWith("  ● Agent(") && row.endsWith(ELAPSED))).toHaveLength(1);
+    expect(screen.split("\n").filter((row) => row === ">")).toHaveLength(1);
+    expect(draw("12s", "")).not.toBe(draw("13s", ""));
+  });
+
+  test("12s at the first read, 13s at the second, a second more at every read after: S0 reads the same box and the send goes out", async () => {
+    const pane = new FakePane("claude");
+    const elapsed: string[] = [];
+    pane.beforeRead = (p, n) => {
+      const time = `${String(11 + n)}s`;
+      elapsed.push(time);
+      p.fixed = draw(time, p.box);
+    };
+    const answer = await rig({ pane, harness: "agy", version: "1.4.12" }).send("hello agy");
+    expect(elapsed.slice(0, 2)).toEqual(["12s", "13s"]);
+    expect(answer.detail ?? "").not.toMatch(/moved between two reads/u);
+    expect(answer.receipt?.s0).toMatchObject({ hash: expect.any(String) });
+    expect(pane.calls).toEqual([`type:${PROBE}`, "paste:hello agy"]);
+    expect(answer.receipt).toMatchObject({ outcome: "sent" });
+    expect(pane.keysSeen.at(-1)).toBe("Enter");
+  });
+
+  test("the control: the box's top rule changes between the two reads, and S0 refuses not_free", async () => {
+    const pane = new FakePane("claude");
+    pane.beforeRead = (p, n) => {
+      const drawn = draw(`${String(11 + n)}s`, p.box);
+      p.fixed = n === 2 ? drawn.replace(/^(─+)\n>$/mu, (_all, rule: string) => `${rule.slice(0, -10)}\n>`) : drawn;
+    };
+    const answer = await rig({ pane, harness: "agy", version: "1.4.12" }).send("hello agy");
+    expect(answer.receipt).toMatchObject({ outcome: "refused" });
+    expect(pane.calls).toEqual([]);
+  });
+});
