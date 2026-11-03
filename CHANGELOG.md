@@ -46,6 +46,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **Renaming an agent from the phone now also renames its tab when the tab holds only that pane.** The terminal's tab bar shows the new name instead of the launcher row's label; a tab with more panes keeps its name.
 - **A poll with no answer is one strike at any time, not only after a wake.** On a lossy path one herd poll past its deadline no longer turns the screen red at once: a later read latches "lost" only when no live answer has come for 8 seconds, a live answer and every wake give the strike back, and a pane or Chat read with no answer draws the saved copy only after that latch. Thanks @eseninik (#652).
 - **On Android the keyboard no longer hides when you tap a word the spellchecker marked.** The composer turns the browser's spellchecker off, as the shell composer already did, so Chrome's suggestion menu no longer takes the focus away from the keyboard. Gboard's own corrections are unchanged.
+- **A Herdr pane now reports the folder of the program in front, not the folder the pane was launched in.** When an agent or a shell runs in another folder than the pane started in, the pane's folder follows it, so the folder-scoped journals and the repo nesting find the right folder. The Herdr core already worked this way. Thanks @GGGODLIN (#656).
 
 ## [1.25.5] - 2026-11-02
 
