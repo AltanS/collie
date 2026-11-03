@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { withAgentBeacons, type AgentBeaconDeps, type BeaconMatcher } from "./decorate.ts";
 import { withAgentHints } from "./hint.ts";
 import { fakeBeaconReader, FAKE_BEACON_NOW, type FakeBeacon } from "./fake.ts";
-import { BEACON_SCHEMA_VERSION, type BeaconMarker, type BeaconStatus } from "./types.ts";
+import { BEACON_SCHEMA_VERSION, BEACON_TTL_MS, type BeaconMarker, type BeaconStatus } from "./types.ts";
 import { declareCapabilities, type MuxCapability } from "../mux/capabilities.ts";
 import {
   muxAck,
@@ -292,6 +292,20 @@ describe("session-only mode, for an adapter that names agents but not sessions",
     expect(shell.agent).toBe("shell");
     expect(shell.agentSession).toEqual({ kind: "id", value: "session-5" });
     expect(shell.sessionAgent).toBe("claude");
+  });
+
+  test("an agent quiet past the TTL keeps its session while its process runs, and loses it once the process is gone", async () => {
+    const quiet = (pid: number, alive: boolean): FakeBeacon => {
+      const fresh = beacon([marker("%1")], "idle", pid, alive);
+      return { ...fresh, record: { ...fresh.record, heartbeatMs: FAKE_BEACON_NOW - BEACON_TTL_MS - 60 * 60 * 1000 } };
+    };
+    const running = await paneOf(decorate(seeing(), [quiet(7, true)]), "%1");
+    expect(running.agentSession).toEqual({ kind: "id", value: "session-7" });
+    expect(running.agent).toBe("claude");
+    expect(running.status).toBe("idle");
+    expect(running.sessionAgent).toBeUndefined();
+    const gone = await paneOf(decorate(seeing(), [quiet(8, false)]), "%1");
+    expect(gone.agentSession).toBeUndefined();
   });
 
   test("without the hooks the panes are the adapter's own", async () => {

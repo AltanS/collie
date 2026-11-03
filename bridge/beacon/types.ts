@@ -158,6 +158,8 @@ export type BeaconReading =
       readonly harness: string;
       readonly session: AgentSessionRef;
       readonly markers: readonly BeaconMarker[];
+      /** The process that wrote it is still running: it expired on the heartbeat alone. */
+      readonly running: boolean;
     };
 
 // ── HOOK EDGES (M56 spec 11) ──────────────────────────────────────────────────────────────────────
