@@ -211,6 +211,11 @@
    "version": "1.4.12",
    "state": "idle"
   },
+  "agy--v1412-subagent-band-permission.txt": {
+   "harness": "agy",
+   "version": "1.4.12",
+   "state": "dialog"
+  },
   "claude--autocomplete-slash-clipped.txt": {
    "harness": "claude",
    "version": "unversioned",
