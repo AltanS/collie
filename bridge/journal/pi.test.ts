@@ -1245,8 +1245,10 @@ describe("parsePiTranscript — Gentle Shell's tools", () => {
         const message = { role: "toolResult", toolCallId: callId, toolName: name, content: [{ type: "text", text }], details };
         add(id, { type: "message", message: isError ? { ...message, isError: true } : message });
       },
-      notice(id: string, customType: string, content: string, details: JsonValue) {
-        add(id, { type: "custom_message", customType, content, display: true, details });
+      /** `at` stamps the row with its own time, over the session's one. */
+      notice(id: string, customType: string, content: string, details: JsonValue, at?: string) {
+        const body = { type: "custom_message", customType, content, display: true, details };
+        add(id, at === undefined ? body : { ...body, timestamp: at });
       },
       rows,
     };
@@ -1420,14 +1422,34 @@ describe("parsePiTranscript — Gentle Shell's tools", () => {
     return { gentleJobs: event === null ? gentleJobs : { ...gentleJobs, event } };
   };
 
+  const STARTED = Date.parse("2026-09-30T12:00:00.000Z");
+  const ENDED_AT = "2026-09-30T12:00:03.000Z";
+
   test("a background command is ongoing with no exit code until its notice gives one", () => {
     const s = session();
     s.call("a1", "c1", "bash_background", { command: "bun test", label: "suite" });
     s.result("r1", "c1", "bash_background", "Started background job job-1 (\"suite\").", job("job-1", "command", "running", null));
-    expect(tools(s.rows)[0]?.part.call).toEqual({ kind: "execute", command: "bun test", description: "suite", background: true, ongoing: true });
-    s.notice("n1", "gentle-jobs.notice", "Background job job-1 (\"suite\") exited with code 137 after 3s.", job("job-1", "command", "exited", 137));
+    expect(tools(s.rows)[0]?.part.call).toEqual({
+      kind: "execute",
+      command: "bun test",
+      description: "suite",
+      background: true,
+      ongoing: true,
+      jobId: "job-1",
+      startedAt: STARTED,
+    });
+    s.notice("n1", "gentle-jobs.notice", "Background job job-1 (\"suite\") exited with code 137 after 3s.", job("job-1", "command", "exited", 137), ENDED_AT);
     const part = tools(s.rows)[0]?.part;
-    expect(part?.call).toEqual({ kind: "execute", command: "bun test", description: "suite", background: true, exitCode: 137 });
+    expect(part?.call).toEqual({
+      kind: "execute",
+      command: "bun test",
+      description: "suite",
+      background: true,
+      exitCode: 137,
+      jobId: "job-1",
+      startedAt: STARTED,
+      endedAt: Date.parse(ENDED_AT),
+    });
     expect(part?.result?.isError).toBe(true);
   });
 
@@ -1437,9 +1459,17 @@ describe("parsePiTranscript — Gentle Shell's tools", () => {
     s.result("r1", "c1", "monitor", "Started monitor job-1.", job("job-1", "monitor", "running", null));
     s.notice("n1", "gentle-jobs.notice", "Monitor job-1 reported 2 new lines", job("job-1", "monitor", "running", null, "events"));
     expect(tools(s.rows)[0]?.part.call).toMatchObject({ ongoing: true });
-    s.notice("n2", "gentle-jobs.notice", "Monitor job-1 reported 1 new line", job("job-1", "monitor", "stopped", null, "events"));
+    s.notice("n2", "gentle-jobs.notice", "Monitor job-1 reported 1 new line", job("job-1", "monitor", "stopped", null, "events"), ENDED_AT);
     const call = tools(s.rows)[0]?.part.call;
-    expect(call).toEqual({ kind: "execute", command: "tail -f x", description: "watch", background: true });
+    expect(call).toEqual({
+      kind: "execute",
+      command: "tail -f x",
+      description: "watch",
+      background: true,
+      jobId: "job-1",
+      startedAt: STARTED,
+      endedAt: Date.parse(ENDED_AT),
+    });
     expect(tools(s.rows)[0]?.part.result?.isError).toBeUndefined();
   });
 });

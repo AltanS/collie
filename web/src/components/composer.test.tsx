@@ -17,7 +17,7 @@ import { CrewProvider } from "./crew-provider";
 import { Composer } from "./composer";
 import { addRow, chordKey, DEFAULT_BOARD, setCell } from "@/lib/key-board";
 import { resetKeyBoard, setKeyBoard } from "@/lib/key-board-store";
-import { type PaneSubagent, type ServerSummary, type TranscriptEntry } from "@/lib/types";
+import { type PaneJob, type PaneSubagent, type ServerSummary, type TranscriptEntry } from "@/lib/types";
 import { SubagentSheetCtx, type SubagentSheetHandle, type SubagentTarget } from "./chat-cards";
 import type { Surface } from "@/lib/surface/surface";
 import { asJsonObject } from "@/lib/json";
@@ -5522,6 +5522,51 @@ describe("Composer agents mark and sheet", () => {
     act(() => setList([RUNNING[1]!]));
     await waitFor(() => expect(sync).toHaveBeenCalledTimes(1));
     expect(sync.mock.calls[0]![0]).toMatchObject({ agentId: "acc7972eef92651f4", status: "done" });
+  });
+});
+
+describe("Composer jobs mark and sheet (issue 670)", () => {
+  const NOW = Date.parse("2026-11-03T12:00:00.000Z");
+  const iso = (ms: number) => new Date(ms).toISOString();
+  const JOBS: PaneJob[] = [
+    { id: "job-1", label: "suite", command: "bun test", startedAt: iso(NOW - 4 * 60_000) },
+    { id: "job-2", label: "lint", command: "bun run lint", startedAt: iso(NOW - 6 * 60_000), exitCode: 1, endedAt: iso(NOW - 60_000) },
+  ];
+
+  it("has no jobs mark when the pane carries no jobs", () => {
+    renderComposer();
+    expect(document.querySelector('[data-slot="belt-jobs"]')).toBeNull();
+    cleanup();
+    renderComposer({ jobs: [] });
+    expect(document.querySelector('[data-slot="belt-jobs"]')).toBeNull();
+  });
+
+  it("names the mark by the running count, stands it in the fixed block, and opens the sheet with both groups", async () => {
+    vi.useFakeTimers({ now: NOW, shouldAdvanceTime: true });
+    try {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      renderComposer({ jobs: JOBS, changesPill: { onClick: vi.fn(), label: "Files" } });
+      const mark = screen.getByRole("button", { name: "Jobs 1" });
+      expect(mark).toHaveAttribute("data-slot", "belt-jobs");
+      const scroller = document.querySelector<HTMLElement>('[data-slot="composer-controls"]')!;
+      expect(scroller.contains(mark)).toBe(false);
+      expect(mark.querySelector('[data-slot="belt-jobs-count"]')!.textContent).toBe("1");
+
+      await user.click(mark);
+      expect(mark).toHaveAttribute("aria-expanded", "true");
+      const sheet = screen.getByRole("dialog", { name: "Jobs 1" });
+      expect(within(sheet).getByText("bun test")).toBeInTheDocument();
+      expect(within(sheet).getByText("4m")).toBeInTheDocument();
+      expect(within(sheet).getByText("Exit code 1")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stays, with no badge, while only ended jobs are listed", () => {
+    renderComposer({ jobs: [JOBS[1]!] });
+    const mark = screen.getByRole("button", { name: "Jobs 0" });
+    expect(mark.querySelector('[data-slot="belt-jobs-count"]')).toBeNull();
   });
 });
 

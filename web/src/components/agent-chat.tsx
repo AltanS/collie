@@ -3282,6 +3282,7 @@ export function AgentChat({
                   aboveBelt={paneNav.handle}
                   todos={agent?.todos}
                   subagents={agent?.subagents}
+                  jobs={agent?.jobs}
                   // The belt's ⚙: the button is the composer's, the sheet it opens is mounted below
                   // beside the switcher's, for the stacking-context reason the pane-menu note gives.
                   display={{

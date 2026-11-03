@@ -159,6 +159,7 @@ import { readClaudeSubagent } from "./journal/claude.ts";
 import { chatParams, LiveWindows } from "./journal/live.ts";
 import { JournalSubagents } from "./subagents-journal.ts";
 import { JournalTodos } from "./todos.ts";
+import { JournalJobs } from "./jobs-journal.ts";
 import { parseDurableLog } from "./journal/durable.ts";
 import { redactText } from "./redact.ts";
 import { maskSurface, surfaceRouteBody, type SurfaceShadow } from "./surface/shadow.ts";
@@ -178,6 +179,7 @@ import {
   maskDiff,
   maskFileBody,
   maskHistoryPage,
+  maskJobList,
   maskPaneRead,
   maskSnapshotTitles,
   maskTerminalTitle,
@@ -1604,6 +1606,9 @@ export function startServer(opts: {
   // The Tasks mark's third source: a plan call in the same live windows, for a harness that has neither
   // a tailed nor a loaded todo source (bridge/todos.ts, `JournalTodos`). Any journal that yields plan calls.
   const journalTodos = live === null || journals === null ? null : new JournalTodos(journals, live, () => Date.now());
+  // The Jobs mark's one source: the background commands in the same live windows, running or ended in
+  // the last ten minutes (bridge/jobs-journal.ts, ADR 0128). Any journal whose calls carry the facts.
+  const journalJobs = live === null || journals === null ? null : new JournalJobs(journals, live, () => Date.now());
   /** Does this agent have a journal at all — the snapshot's History-affordance gate. */
   const hasJournal = (agent: string) => adapterFor(journals ?? {}, agent) !== undefined;
   const discoversSessions = (agent: string) =>
@@ -1686,9 +1691,13 @@ export function startServer(opts: {
       const readSubagents = opts.subagents?.get(p) ?? journalSubagents?.get(p);
       const subagents = readSubagents !== undefined && cfg.redact ? maskSubagentList(readSubagents) : readSubagents;
       const withSubagents = subagents === undefined ? withTodos : { ...withTodos, subagents };
+      // The background jobs' commands are lines the agent ran, the likeliest place for a key, so the same mask.
+      const readJobs = journalJobs?.get(p);
+      const jobs = readJobs !== undefined && cfg.redact ? maskJobList(readJobs) : readJobs;
+      const withJobs = jobs === undefined ? withSubagents : { ...withSubagents, jobs };
       // The usage dots: numbers only, the session's context and the account's windows (ADR 0118).
       const readUsage = opts.usage?.get(p);
-      const withUsage = readUsage === undefined ? withSubagents : { ...withSubagents, usage: readUsage };
+      const withUsage = readUsage === undefined ? withJobs : { ...withJobs, usage: readUsage };
       // The branch rides the same way: from memory, never a wait, and no key when there is none.
       const gitHead = gitHeads?.get(p.cwd);
       return gitHead === undefined ? withUsage : { ...withUsage, gitHead };

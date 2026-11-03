@@ -239,6 +239,14 @@ The Tasks mark shows the pane's task list with a done and total count. Claude Co
 opencode fill it from their own logs. For pi, Oh My Pi and Gentle Shell it shows the plan of the
 newest `todo` call, only while the pane's Chat is open on a phone; the Screen view does not show it.
 
+The jobs mark, a timer, sits right of the agents mark while a command the agent started in the
+background still runs, or ended in the last ten minutes. Its badge counts the running jobs. A tap
+opens a sheet with each job's label, command and run time, and the exit code once it ended.
+
+Gentle Shell's `bash_background` and `monitor` fill the jobs mark, only while the pane's Chat is open
+on a phone; the Screen view and the dashboard do not show it. The pane's working light stays as the
+multiplexer reports it.
+
 While the text box holds text or an attachment, an X sits at the belt's right end too, left of the
 Switch button. One tap empties the box and its saved draft, and sends nothing to the pane. The X then
 becomes Undo, which puts the text and the attachments back. Undo stays until your next act: a

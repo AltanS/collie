@@ -26,6 +26,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Added
 
 - **The Tasks mark on the belt shows a pi plan.** A pi session's plan, the `todo` tool of Gentle Shell, now fills the same Tasks mark and drawer that Claude's and Codex's task lists fill, with its `done/total` count, instead of being hunted for between tool calls. Blocked tasks read as pending and dropped tasks leave the list. The plan shows while the pane's Chat is open on a phone, because it is read from the Chat's live window; the dashboard does not show it. Any other harness whose log holds plan calls and has no task source of its own gets the same. Thanks @viniciosrab (#669).
+- **The belt shows background jobs that outlive the agent's turn.** When an agent ends its turn while a command it started in the background still runs, a jobs mark (a timer) stands right of the agents mark, with the number of running jobs. A tap opens a sheet with each job's label, command and run time, and, for a job that ended in the last ten minutes, its exit code. Gentle Shell's `bash_background` and `monitor` fill it today, read from the Chat's live window, so it shows while the pane's Chat is open on a phone; the dashboard does not count jobs yet, and the pane's working light is unchanged. With the mask on, a job's command is masked like the pane's other text. Thanks @viniciosrab (#670).
 
 ### Changed
 

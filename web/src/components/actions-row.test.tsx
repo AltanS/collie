@@ -398,6 +398,63 @@ describe("ActionsRow — the agents mark's glyph and count", () => {
   });
 });
 
+// THE JOBS MARK (issue 670, ADR 0128): the agents mark's twin for background jobs, right of it and
+// left of Files, with the running count as the same corner badge, and no badge at zero.
+describe("ActionsRow, the jobs mark", () => {
+  function renderJobs(count: number, onClick = vi.fn()) {
+    render(
+      <ActionsRow
+        general={[general()]}
+        agent="pi"
+        onRun={took}
+        agents={{ count: 1, onClick: vi.fn(), label: "Agents 1", expanded: false }}
+        jobs={{ count, onClick, label: `Jobs ${count}`, expanded: false }}
+        changes={{ onClick: vi.fn(), label: "Files" }}
+        handle={{ ref: vi.fn(), onClick: vi.fn(), label: "Switch pane" }}
+      />,
+    );
+    return screen.getByRole("button", { name: `Jobs ${count}` });
+  }
+
+  it("stands right of the agents mark and left of Files, and a tap calls its handler", async () => {
+    const onClick = vi.fn();
+    const jobs = renderJobs(2, onClick);
+    expect(jobs).toHaveAttribute("data-slot", "belt-jobs");
+    expect(jobs).toHaveAttribute("aria-expanded", "false");
+    const order = names();
+    expect(order.indexOf("Jobs 2")).toBe(order.indexOf("Agents 1") + 1);
+    expect(order.indexOf("Files")).toBe(order.indexOf("Jobs 2") + 1);
+    await userEvent.click(jobs);
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it("draws the Timer glyph as its neighbours draw theirs, with the running count in the shared corner badge", () => {
+    const jobs = renderJobs(2);
+    expect(jobs.querySelector("svg.lucide-timer")).not.toBeNull();
+    const glyph = (el: HTMLElement) => el.querySelector("svg.lucide")!.getAttribute("class")!.split(" ").filter((c) => !c.startsWith("lucide"));
+    expect(glyph(jobs)).toEqual(glyph(screen.getByRole("button", { name: "Files" })));
+    const count = jobs.querySelector<HTMLElement>('[data-slot="belt-jobs-count"]')!;
+    expect(count.textContent).toBe("2");
+    expect(count).toHaveClass("pointer-events-none", "absolute", "top-0.5", "right-0.5", "rounded-full", "bg-chrome", "ring-2", "ring-chrome", "tabular-nums");
+  });
+
+  it("wears no badge when only ended jobs are listed", () => {
+    const jobs = renderJobs(0);
+    expect(jobs.querySelector('[data-slot="belt-jobs-count"]')).toBeNull();
+  });
+
+  it("is not drawn without the prop", () => {
+    render(<ActionsRow general={[general()]} agent="pi" onRun={took} handle={{ ref: vi.fn(), onClick: vi.fn(), label: "Switch pane" }} />);
+    expect(document.querySelector('[data-slot="belt-jobs"]')).toBeNull();
+  });
+
+  it("a sixth pinned pill has its own first-frame inset", () => {
+    // 269 + 32 + 6 = 307 at scale 1; 85 + 6 × 37 + 5 × 6 = 337 at the default scale. Past six it holds.
+    expect([5, 6, 7].map((n) => switchPillInset(1, n))).toEqual([269, 307, 307]);
+    expect(switchPillInset(1.15, 6)).toBe(337);
+  });
+});
+
 // THE COMPOSER'S CLEAR SLOT (M40 spec 04, issue #291; Altan, 2026-09-26/27): an icon-only X on the
 // pinned block, directly left of the Changes pill, left of the Switch mark without one, alone when
 // neither shows. The composer decides WHEN (a draft in the box, or the Undo window after a tap);

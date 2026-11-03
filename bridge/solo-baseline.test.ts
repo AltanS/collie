@@ -328,6 +328,9 @@ const PANE_WIRE_KEYS = {
   // The pane's running subagents (bridge/subagents.ts). Not a crew dimension, and absent here: the
   // baseline builds no subagent tracker, so no golden byte moved.
   subagents: true,
+  // The pane's background jobs (bridge/jobs-journal.ts). Not a crew dimension, and absent here: the
+  // baseline polls no Chat window, so no golden byte moved.
+  jobs: true,
   // Not a crew dimension: the model the pane's agent is on, from the same probe as `cache` and absent
   // here for the same reason, so no golden byte moved.
   model: true,
@@ -532,6 +535,7 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
       "hooks",
       "host",
       "instance",
+      "jobs",
       "kind",
       "lastActiveAt",
       "lastSeenAt",
