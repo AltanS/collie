@@ -79,10 +79,14 @@ describeAdapterConformance(hermesAdapter, {
   foreignFixtures: fixtures.filter((name) => !name.startsWith("hermes--")),
 });
 
-function liftedModel(name: string): PromptModel {
-  const block = hermesAdapter.buildBlocks(load(name)).find((b) => b.kind === "prompt-select");
-  if (block?.kind !== "prompt-select") throw new Error(`${name} lifts no prompt-select`);
+function liftedModelOf(lines: StyledLine[]): PromptModel {
+  const block = hermesAdapter.buildBlocks(lines).find((b) => b.kind === "prompt-select");
+  if (block?.kind !== "prompt-select") throw new Error("the screen lifts no prompt-select");
   return block.prompt;
+}
+
+function liftedModel(name: string): PromptModel {
+  return liftedModelOf(load(name));
 }
 
 const rowsOf = (lines: StyledLine[]) => lines.map(lineText);
@@ -413,5 +417,54 @@ describe("the input frame", () => {
     // Under a picker they hold still: the status bar renders empty while one is open.
     const picker = load("hermes--model-picker.txt");
     expect(unreadDialogSignature(rowsOf(picker))).not.toMatch(/⏱|\(\d+s\)/);
+  });
+});
+
+describe("a session title in the top rule (Hermes 0.22.5, issue 657)", () => {
+  // The rule over the input carries the title, `── Session Title ─`; the rule under it stays bare.
+  const TITLED = "── Session Title ─";
+  const titled = (name: string): StyledLine[] => {
+    const rows = raw(name).split("\r\n");
+    const top = locateInput(splitLines(parseAnsi(raw(name))))!.topRule;
+    rows[top] = `\u001b[0m\u001b[38;2;205;127;50m${TITLED}\u001b[0m`;
+    return splitLines(parseAnsi(rows.join("\r\n")));
+  };
+
+  it("reads the captured titled screen as a ready, empty input", () => {
+    const lines = load("hermes--v0225-title-idle.txt");
+    expect(lineText(lines[0]!)).toBe(TITLED);
+    expect(locateInput(lines)).toMatchObject({ topRule: 0, promptRow: 1, bottomRule: 2, state: "idle" });
+    expect(hermesAdapter.composerReady!(lines)).toBe(true);
+    expect(hermesAdapter.extractInputDraft(lines)).toBeNull();
+  });
+
+  it("reads every state of a titled screen as it reads the bare one", () => {
+    for (const name of ["hermes--idle.txt", "hermes--running.txt", "hermes--slash-popup.txt", "hermes--clarify-other-draft.txt"]) {
+      const bare = load(name);
+      const withTitle = titled(name);
+      expect(hermesAdapter.composerReady!(withTitle), name).toBe(hermesAdapter.composerReady!(bare));
+      expect(hermesAdapter.extractInputDraft(withTitle), name).toBe(hermesAdapter.extractInputDraft(bare));
+      expect(hermesAdapter.extractStatusLines(withTitle).map(lineText), name).toEqual(hermesAdapter.extractStatusLines(bare).map(lineText));
+      expect(stripChrome(withTitle).map(lineText), name).toEqual(stripChrome(bare).map(lineText));
+    }
+    expect(hermesAdapter.extractInputDraft(titled("hermes--draft.txt"))).toBe("CLARIFY-OPEN");
+    expect(hermesAdapter.extractInputDraft(titled("hermes--draft-wrapped.txt"))).toBe(hermesAdapter.extractInputDraft(load("hermes--draft-wrapped.txt")));
+  });
+
+  it("still lifts the clarify and the approval panels, and still tells a picker", () => {
+    for (const name of ["hermes--clarify-choices.txt", "hermes--approval.txt"]) {
+      expect(options(liftedModelOf(titled(name))), name).toEqual(options(liftedModel(name)));
+    }
+    for (const name of ["hermes--model-picker.txt", "hermes--palette.txt"]) {
+      expect(pickerOpen(titled(name)), name).toBe(true);
+      expect(hermesAdapter.modalOnScreen!(titled(name)), name).toBe(true);
+    }
+  });
+
+  it("takes the title only from the rule over the input, never from the one under it", () => {
+    const lines = load("hermes--v0225-title-idle.txt");
+    const bottomTitled = [lines[0]!, lines[1]!, ...splitLines(parseAnsi(`${TITLED}`))];
+    expect(locateInput(bottomTitled)).toBeNull();
+    expect(locateInput(splitLines(parseAnsi(`${"─".repeat(120)}\n❯ hi\n${TITLED}`)))).toBeNull();
   });
 });

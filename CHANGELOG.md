@@ -27,6 +27,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **On Android the keyboard no longer hides when you tap a word the spellchecker marked.** The composer turns the browser's spellchecker off, as the shell composer already did, so Chrome's suggestion menu no longer takes the focus away from the keyboard. Gboard's own corrections are unchanged.
 - **A Hermes session with a title no longer has every send refused.** Hermes 0.22.5 draws the session title inside the top rule of its input box (`── Session Title ─`), and the Hermes profile only knew a bare rule, so the first send went through and every send after the title appeared was refused with "no-match". The profile now reads a rule that carries a title, and the Traditional Chinese placeholder lines Hermes shows in an empty box. Hermes 0.22.3 to 0.22.5 is listed as provisional until a live probed send passes there. Thanks @NCheuk (#658).
+- **A Hermes session with a title keeps its status line, its draft preview and its dialog cards in Chat.** Before, the Chat view of a titled Hermes 0.22.5 session showed the input box and the status bar again inside the mirror, dropped the status line and the stranded-draft preview, and did not lift a clarify question, a dangerous-command approval or the model picker into their cards. The view now finds the box under a titled rule as well (#657).
 
 ## [1.25.5] - 2026-11-02
 

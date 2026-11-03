@@ -35,6 +35,7 @@ import {
   isBlank,
   isPanelRow,
   isRule,
+  isTopRule,
   lastNonBlankIndex,
   lineText,
   PANEL_BOTTOM,
@@ -118,6 +119,20 @@ function isMenuRow(line: StyledLine): boolean {
   );
 }
 
+/**
+ * Whether `top` is the rule over an input that `bottom` closes. A bare rule is as long as the bottom
+ * one and the same row. A rule that carries the session title (0.22.5, issue 657) holds words, so it is
+ * the same row only by chance: it must not run past the bottom rule, which is the pane's width.
+ */
+function spansInput(top: string, bottom: string): boolean {
+  return isRule(top) ? top === bottom : displayWidth(top) <= displayWidth(bottom);
+}
+
+/** The pane's width as the frame shows it: the rule under the input, else the one above. */
+function ruleWidthOf(texts: string[], frame: InputFrame): number {
+  return displayWidth(texts[frame.bottomRule ?? frame.topRule]!);
+}
+
 /** Locate the input frame at the tail, or null. Bottom-up; every step can only reject. */
 export function locateInput(lines: StyledLine[]): InputFrame | null {
   const texts = rowTexts(lines);
@@ -137,15 +152,15 @@ export function locateInput(lines: StyledLine[]): InputFrame | null {
   if (isRule(texts[end]!) && displayWidth(texts[end]!) >= WIDE_COLUMNS) {
     bottomRule = end;
     for (let i = end - 1; i >= Math.max(0, end - 1 - MAX_INPUT_ROWS); i--) {
-      if (isRule(texts[i]!)) {
+      if (isTopRule(texts[i]!)) {
         topRule = i;
         break;
       }
     }
-    if (topRule < 0 || texts[topRule] !== texts[bottomRule] || topRule === end - 1) return null;
+    if (topRule < 0 || !spansInput(texts[topRule]!, texts[bottomRule]!) || topRule === end - 1) return null;
   } else {
     for (let i = end; i >= Math.max(0, end - MAX_INPUT_ROWS); i--) {
-      if (isRule(texts[i]!)) {
+      if (isTopRule(texts[i]!)) {
         topRule = i;
         break;
       }
@@ -196,7 +211,7 @@ const PICKER_REACH = 8;
 export function pickerOpen(lines: StyledLine[], frame: InputFrame | null = locateInput(lines)): boolean {
   if (frame === null || frame.statusRow !== null) return false;
   const texts = rowTexts(lines);
-  const ruleWidth = displayWidth(texts[frame.topRule]!);
+  const ruleWidth = ruleWidthOf(texts, frame);
   const floor = Math.max(0, frame.topRule - 1 - PICKER_REACH);
   for (let i = frame.topRule - 1; i >= floor; i--) {
     const t = texts[i]!;
@@ -258,7 +273,7 @@ export function extractInputDraft(lines: StyledLine[]): string | null {
   const frame = locateInput(lines);
   if (frame === null) return null;
   if (!takesText(frame.state)) return null;
-  const width = displayWidth(rowTexts(lines)[frame.topRule]!);
+  const width = ruleWidthOf(rowTexts(lines), frame);
   const rows: { text: string; fg: string | undefined }[][] = [];
   for (let i = frame.promptRow; i <= frame.lastInputRow; i++) {
     rows.push(draftRuns(lines[i]!, i === frame.promptRow ? frame.prefixLength : 0));
