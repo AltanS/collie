@@ -195,7 +195,7 @@ import { redactAnsi } from "./redact.ts";
 import { TranscriptStore } from "./journal/store.ts";
 import type { AgentSessionRef, DiscoverHints, ForegroundProcess, JournalAdapter, PaneScreen } from "./journal/types.ts";
 import { isBlobHash, resolveBlobPath } from "./journal/pi.ts";
-import { statFile } from "./journal/files.ts";
+import { realpathOf, statFile } from "./journal/files.ts";
 import {
   bearerToken,
   normalizeLabel,
@@ -219,7 +219,7 @@ import { createSttAdmission, MAX_STT_AUDIO_BYTES, sttCapability, transcribeReque
 import type { SttProvider } from "./stt/provider.ts";
 import { createWhistleModelStore, type WhistleModelStore } from "./stt/whistle-model.ts";
 import type { CodexDetector } from "./stt/codex-detect.ts";
-import { HOST } from "./host.ts";
+import { HOST, isInside } from "./host.ts";
 import { createHostCodexDetector, sttHostGet, sttHostPut, type SttHostRouteDeps } from "./stt/host-http.ts";
 import {
   modelResponse,
@@ -4443,10 +4443,15 @@ export async function discoveryHints(
  * its adapter answers to (`AGENT_ALIASES`): an `omp` pane and a `pi` pane write the same log format,
  * and one adapter's folder walk would find either's session.
  */
-function sharesFolder(adapter: JournalAdapter, pane: AgentView, panes: readonly AgentView[]): boolean {
-  return panes.some(
-    (other) => other.paneId !== pane.paneId && journalAgentName(other.agent) === adapter.agent && other.cwd === pane.cwd,
-  );
+async function sharesFolder(adapter: JournalAdapter, pane: AgentView, panes: readonly AgentView[]): Promise<boolean> {
+  for (const other of panes) {
+    if (other.paneId === pane.paneId || journalAgentName(other.agent) !== adapter.agent) continue;
+    if (other.cwd === pane.cwd) return true;
+    if (adapter.sharedFolderBlind !== true || !isAbsolute(pane.cwd) || !isAbsolute(other.cwd)) continue;
+    const [panePath, otherPath] = await Promise.all([realpathOf(pane.cwd).catch(() => null), realpathOf(other.cwd).catch(() => null)]);
+    if (panePath !== null && otherPath !== null && isInside(HOST, panePath, otherPath) && isInside(HOST, otherPath, panePath)) return true;
+  }
+  return false;
 }
 
 /**
@@ -4455,13 +4460,13 @@ function sharesFolder(adapter: JournalAdapter, pane: AgentView, panes: readonly 
  * (#508). Read only after {@link journalRefOf} answered null; a pane that reports a session never
  * reaches discovery, so it never earns this.
  */
-export function noSessionDetail(
+export async function noSessionDetail(
   adapter: JournalAdapter,
   pane: AgentView,
   panes: readonly AgentView[],
-): "shared-folder" | undefined {
+): Promise<"shared-folder" | undefined> {
   if (pane.agentSession !== undefined || adapter.sharedFolderBlind !== true) return undefined;
-  return sharesFolder(adapter, pane, panes) ? "shared-folder" : undefined;
+  return (await sharesFolder(adapter, pane, panes)) ? "shared-folder" : undefined;
 }
 
 /**
@@ -4483,7 +4488,7 @@ export async function journalRefOf(
   const reported = pane.agentSession;
   // Another pane running the same harness in the same folder: whatever a folder walk finds there
   // could be that pane's session.
-  const neighbour = sharesFolder(adapter, pane, panes);
+  const neighbour = await sharesFolder(adapter, pane, panes);
   if (reported === undefined) {
     // Discovery hears about the neighbour, so a folder-keyed adapter answers no session rather than
     // the neighbour's (#508). The flag rides only when true; otherwise the hints pass untouched.
@@ -4756,7 +4761,7 @@ export async function paneChat(
   // runs per poll here, a bounded newest-first walk that costs milliseconds in the common case;
   // the resolved path below is what the live window holds.
   const ref = await journalRefOf(adapter, pane, panes, await discoveryHints(adapter, pane, mux, paneId));
-  if (ref === null) return unavailable("no-session", noSessionDetail(adapter, pane, panes));
+  if (ref === null) return unavailable("no-session", await noSessionDetail(adapter, pane, panes));
 
   const params = chatParams(url);
   try {
