@@ -1,12 +1,27 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { ProbeTail } from "./journal/cache-probe.ts";
+import { claudeJournal } from "./journal/claude.ts";
+import { LiveWindows, TICK_FLOOR_MS } from "./journal/live.ts";
+import { piJournal } from "./journal/pi.ts";
 import type { RowReducer } from "./journal/reduce.ts";
+import { TranscriptStore } from "./journal/store.ts";
+import type { PlanTask } from "./journal/tool-call.ts";
 import type { JournalAdapter, TranscriptEntry, TranscriptSource } from "./journal/types.ts";
-import { parseJournalTodos, readClaudeTasks, TodoTracker } from "./todos.ts";
+import type { JsonValue } from "./json.ts";
+import { HELD_FRESH_MS } from "./subagents-journal.ts";
+import {
+  JournalTodos,
+  latestPlanTodos,
+  LOADED_TODO_AGENTS,
+  parseJournalTodos,
+  readClaudeTasks,
+  TAILED_TODO_AGENTS,
+  TodoTracker,
+} from "./todos.ts";
 import type { AgentView } from "./types.ts";
 
 const NOW = 1_800_000_000_000;
@@ -721,5 +736,194 @@ describe("TodoTracker", () => {
     shouldThrow = true;
     c.advance(6000);
     await expect(tracker.refresh([pane("claude", statId)])).resolves.toBeUndefined();
+  });
+});
+
+// Gentle Shell (gentle-pi 4.2.0) on pi 1.3.0: the row shapes are the ones bridge/journal/pi.test.ts reads
+// for `todo` calls and `gentleTodo` results (issue #461, ADR 0119); the words are the lab's.
+describe("latestPlanTodos", () => {
+  const TS = "2026-11-03T09:00:00.000Z";
+  const card = (uuid: string, tasks: readonly PlanTask[], over: Partial<TranscriptEntry> = {}): TranscriptEntry => ({
+    uuid,
+    ts: TS,
+    role: "assistant",
+    parts: [{ kind: "tool", name: "todo", summary: "", call: { kind: "plan", name: "todo", tasks } }],
+    ...over,
+  });
+
+  test("maps the five plan statuses onto the wire's three and drops a dropped task", () => {
+    expect(
+      latestPlanTodos([
+        card("a", [
+          { title: "Queued", status: "pending" },
+          { title: "Doing", status: "in_progress" },
+          { title: "Finished", status: "done" },
+          { title: "Stuck", status: "blocked" },
+          { title: "Given up", status: "dropped" },
+          { title: "  Spaced \n out  ", status: "pending", note: "a note" },
+        ]),
+      ]),
+    ).toEqual([
+      { id: "1", text: "Queued", status: "pending" },
+      { id: "2", text: "Doing", status: "in_progress" },
+      { id: "3", text: "Finished", status: "completed" },
+      { id: "4", text: "Stuck", status: "pending" },
+      { id: "6", text: "Spaced out", status: "pending" },
+    ]);
+  });
+
+  test("the newest plan call wins whole; an abandoned turn and a call of another kind are skipped", () => {
+    const other: TranscriptEntry = { uuid: "x", ts: TS, role: "assistant", parts: [{ kind: "tool", name: "bash", summary: "ls", call: { kind: "execute", command: "ls" } }] };
+    const entries = [
+      card("a", [{ title: "Old", status: "done" }]),
+      card("b", [{ title: "New", status: "in_progress" }]),
+      card("c", [{ title: "Rewound", status: "pending" }], { abandoned: true }),
+      other,
+    ];
+    expect(latestPlanTodos(entries)).toEqual([{ id: "1", text: "New", status: "in_progress" }]);
+  });
+
+  test("is undefined with no plan call, and with a newest call that holds no task", () => {
+    expect(latestPlanTodos([])).toBeUndefined();
+    expect(latestPlanTodos([card("a", [{ title: "Old", status: "done" }]), card("b", [])])).toBeUndefined();
+    expect(latestPlanTodos([card("a", [{ title: "Gone", status: "dropped" }])])).toBeUndefined();
+  });
+});
+
+describe("JournalTodos: the Tasks mark from a live pi window", () => {
+  const PI_SID = "01a17262-0000-7000-8000-00000000c012";
+  const TS = "2026-11-03T09:00:00.000Z";
+  const dirs: string[] = [];
+  afterAll(() => {
+    for (const d of dirs) rmSync(d, { recursive: true, force: true });
+  });
+
+  type Row = Record<string, JsonValue>;
+  const plain = (id: string, parentId: string | null, body: Row) => JSON.stringify({ id, parentId, timestamp: TS, ...body });
+  const gentle = (tasks: { id: number; title: string; status: string }[]) => ({ gentleTodo: { tasks, nextId: tasks.length + 1, updatedTurn: 1 } });
+
+  /** A linear pi session, as bridge/journal/pi.test.ts builds one for the `todo` tool. */
+  function piLog() {
+    const rows: string[] = [JSON.stringify({ type: "session", version: 3, id: PI_SID, timestamp: TS, cwd: "/lab" })];
+    let parent: string | null = null;
+    const add = (id: string, body: Row) => {
+      rows.push(plain(id, parent, body));
+      parent = id;
+    };
+    return {
+      call(id: string, callId: string, args: Row) {
+        add(id, { type: "message", message: { role: "assistant", content: [{ type: "toolCall", id: callId, name: "todo", arguments: args }] } });
+      },
+      result(id: string, callId: string, text: string, details: JsonValue) {
+        add(id, { type: "message", message: { role: "toolResult", toolCallId: callId, toolName: "todo", content: [{ type: "text", text }], details } });
+      },
+      text: () => `${rows.join("\n")}\n`,
+    };
+  }
+
+  function rig() {
+    const base = realpathSync(mkdtempSync(join(tmpdir(), "collie-pi-plan-")));
+    dirs.push(base);
+    const root = join(base, "sessions");
+    mkdirSync(join(root, "-lab"), { recursive: true });
+    const log = join(root, "-lab", `2026-11-03T09-00-00-000Z_${PI_SID}.jsonl`);
+    let now = Date.now();
+    const tick = () => now;
+    const live = new LiveWindows(new TranscriptStore(), tick);
+    const adapter = piJournal(root);
+    const registry = { pi: adapter, claude: claudeJournal(root) } satisfies Record<string, JournalAdapter>;
+    const mark = new JournalTodos(registry, live, tick);
+    const poll = async () => {
+      now += TICK_FLOOR_MS;
+      await live.window(adapter, { kind: "path", value: log }, { limit: 40 });
+    };
+    return { log, mark, poll, advance: (ms: number) => (now += ms) };
+  }
+
+  const paneOf = (log: string, over: Partial<AgentView> = {}): AgentView => ({
+    paneId: "w1:p1",
+    workspaceId: "w1",
+    workspaceLabel: "lab",
+    workspaceNumber: 1,
+    tabId: "t1",
+    agent: "pi",
+    agentSession: { kind: "path", value: log },
+    status: "working",
+    cwd: "/lab",
+    focused: false,
+    kind: "agent",
+    ...over,
+  });
+
+  test("two `todo` calls show the latest list, and a list that starts over replaces it", async () => {
+    const r = rig();
+    const log = piLog();
+    log.call("a1", "c1", { action: "write", tasks: [{ title: "Parse", status: "in_progress" }, { title: "Ship" }] });
+    log.result("r1", "c1", "Todo list written: 2 tasks", gentle([{ id: 1, title: "Parse", status: "in_progress" }, { id: 2, title: "Ship", status: "pending" }]));
+    await Bun.write(r.log, log.text());
+    await r.poll();
+    expect(r.mark.get(paneOf(r.log))).toEqual([
+      { id: "1", text: "Parse", status: "in_progress" },
+      { id: "2", text: "Ship", status: "pending" },
+    ]);
+
+    log.call("a2", "c2", { action: "update", id: 1, status: "done" });
+    log.result("r2", "c2", "#1 Parse → done", gentle([{ id: 1, title: "Parse", status: "done" }, { id: 2, title: "Ship", status: "pending" }]));
+    await Bun.write(r.log, log.text());
+    await r.poll();
+    expect(r.mark.get(paneOf(r.log))).toEqual([
+      { id: "1", text: "Parse", status: "completed" },
+      { id: "2", text: "Ship", status: "pending" },
+    ]);
+
+    // A `clear` folds into the held card and its empty result leaves the card's list (ADR 0119); the
+    // next `add` draws a card of its own, and that card is the newest plan call.
+    log.call("a3", "c3", { action: "clear" });
+    log.result("r3", "c3", "cleared", gentle([]));
+    log.call("a4", "c4", { action: "add", title: "Next" });
+    log.result("r4", "c4", "added", gentle([{ id: 1, title: "Next", status: "pending" }]));
+    await Bun.write(r.log, log.text());
+    await r.poll();
+    expect(r.mark.get(paneOf(r.log))).toEqual([{ id: "1", text: "Next", status: "pending" }]);
+  });
+
+  test("a pane whose window holds no plan call has no list; an omp pane reads the same journal", async () => {
+    const r = rig();
+    await Bun.write(r.log, `${JSON.stringify({ type: "session", version: 3, id: PI_SID, timestamp: TS, cwd: "/lab" })}\n`);
+    await r.poll();
+    expect(r.mark.get(paneOf(r.log))).toBeUndefined();
+    const log = piLog();
+    log.call("a1", "c1", { action: "write", tasks: [{ title: "Only" }] });
+    log.result("r1", "c1", "written", gentle([{ id: 1, title: "Only", status: "pending" }]));
+    await Bun.write(r.log, log.text());
+    await r.poll();
+    expect(r.mark.get(paneOf(r.log, { agent: "omp" }))).toEqual([{ id: "1", text: "Only", status: "pending" }]);
+  });
+
+  test("answers from memory only: no poll, no list; a poll gone quiet past the bound, no list", async () => {
+    const r = rig();
+    const log = piLog();
+    log.call("a1", "c1", { action: "write", tasks: [{ title: "Only" }] });
+    log.result("r1", "c1", "written", gentle([{ id: 1, title: "Only", status: "pending" }]));
+    await Bun.write(r.log, log.text());
+    expect(r.mark.get(paneOf(r.log))).toBeUndefined();
+    await r.poll();
+    expect(r.mark.get(paneOf(r.log))).toHaveLength(1);
+    r.advance(HELD_FRESH_MS + 1);
+    expect(r.mark.get(paneOf(r.log))).toBeUndefined();
+  });
+
+  test("a pane with no session, and a harness with a tailed or loaded source, keep their own source", async () => {
+    const r = rig();
+    const log = piLog();
+    log.call("a1", "c1", { action: "write", tasks: [{ title: "Only" }] });
+    log.result("r1", "c1", "written", gentle([{ id: 1, title: "Only", status: "pending" }]));
+    await Bun.write(r.log, log.text());
+    await r.poll();
+    expect(r.mark.get(paneOf(r.log))).toHaveLength(1);
+    expect(r.mark.get(paneOf(r.log, { agentSession: undefined }))).toBeUndefined();
+    for (const agent of [...TAILED_TODO_AGENTS, ...LOADED_TODO_AGENTS]) {
+      expect(r.mark.get(paneOf(r.log, { agent }))).toBeUndefined();
+    }
   });
 });

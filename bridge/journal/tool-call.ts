@@ -63,8 +63,22 @@ export interface PlanTask {
 export type ToolCall =
   /** A file changed. `added`/`removed` count diff lines, not characters. `created`: the file is new. */
   | { kind: "edit"; path: string; added: number; removed: number; diff?: Hunk[]; created?: boolean }
-  /** A command ran. `exitCode` is absent where the harness does not record one. */
-  | { kind: "execute"; command: string; description?: string; exitCode?: number; background?: true; ongoing?: true }
+  /**
+   * A command ran. `exitCode` is absent where the harness does not record one. A `background` command
+   * answered before it ended: `ongoing` while no end has arrived, `jobId` the harness's name for the
+   * job, `startedAt` and `endedAt` epoch ms off the rows that started and ended it (ADR 0128).
+   */
+  | {
+      kind: "execute";
+      command: string;
+      description?: string;
+      exitCode?: number;
+      background?: true;
+      ongoing?: true;
+      jobId?: string;
+      startedAt?: number;
+      endedAt?: number;
+    }
   /** A file was read. `range` is [firstLine, lastLine], absent for a whole-file read. */
   | { kind: "read"; path: string; range?: [number, number] }
   /** A search over files or the web. `where` is the path, the glob, or "web". */

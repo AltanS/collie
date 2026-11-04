@@ -212,7 +212,25 @@ count. A word that is a member id, such as `laptop`, is refused, and the refusal
 A scope with no agent pane is refused with `no panes in scope`, and the refusal names
 `collie walky who`.
 
-Each delivery is one send into one pane, so it follows the rules of
+A session that rests does not wake for a scope send. A pane rests when it is `done` or `idle` and
+has been for 15 minutes, counted from its last change of state. A scope, or `all` from your phone,
+leaves the message in that pane's inbox only, and its receipt reads `waiting in the inbox, not typed:
+the session rests`. It waits there until the agent reads it with `inbox`. A pane whose state
+Collie does not know never rests. Fifteen minutes is a fixed rule of thumb, not a cache window. A
+message to one pane is always typed. To wake the resting panes
+too, add `--wake` before the text:
+
+```sh
+collie walky send --wake my-app "Rebased on main. Pull before you push."
+```
+
+A crew can run mixed versions. A member below 1.26.1 never rests a pane, so a plain send already
+types into all its panes there, and the lead treats `--wake` as a plain send for that member. A lead
+below 1.26.1 cannot take `--wake` at all. A member that knows its lead's version refuses the send
+at once, and one that does not learns it from the lead's refusal. Either receipt says that the lead
+is older than 1.26.1 and to send without `--wake`.
+
+Each delivery that is typed is one send into one pane, so it follows the rules of
 [Into a busy pane](#into-a-busy-pane). A pane with a draft in its box, or a running turn, holds its
 delivery, and `status <id>` shows that line as held. Before it types, the member that holds the
 pane reads the pane's label again. A pane that left the scope is refused `out of scope`.
@@ -398,7 +416,7 @@ a crew, a message whose clock is more than 10 minutes off is refused `stale`.
 | --- | --- | --- |
 | `accepted` | queued, or held with the reason | Logged, not typed yet. `held: draft present` or `held: turn running`: Collie types it when the box clears or the turn ends, up to 60 minutes. Do not send it again |
 | `delivered` | typed into the pane | The text went into the pane and was submitted |
-| `inbox-only` | waiting in the inbox, not typed | Not typed, for the reason shown: `held past 60 minutes` (a draft, a busy pane or an open dialog outlasted the hold), `cancelled by sender`, `dropped by the pane's owner`, `box not free`, `pane busy`, `pane replaced`, `no terminal`, `bridge restarted`. It waits in the pane's inbox |
+| `inbox-only` | waiting in the inbox, not typed | Not typed, for the reason shown: `held past 60 minutes` (a draft, a busy pane or an open dialog outlasted the hold), `cancelled by sender`, `dropped by the pane's owner`, `box not free`, `pane busy`, `pane replaced`, `no terminal`, `bridge restarted`, `resting` (a scope or `all` met a session that rests, printed as "the session rests"; send with `--wake` to type it). It waits in the pane's inbox |
 | `refused` | not sent | Not taken, for the reason shown: no such pane, pane replaced, not an agent pane, a limit, an older member or lead, or walky talky off on that machine |
 | `unknown` | may have arrived, will not be sent again | The outcome was not read, a hold was still pending after 60 minutes, or the log lost the record. Collie never sends it again |
 
@@ -415,10 +433,18 @@ with a wrong one, prints the usage and exits 2.
 
 The phone shows a message as a card and sends one from the composer, so you need no terminal.
 
-A message in a pane's Chat appears as a card titled "Message from" and the sender's label. The card
-shows the sender's kind (`agent` or `operator`), the message body, and "reply to" the id it answers.
+A message in a pane's Chat appears as a card titled "Message from" and the sender's name. The card
+shows the sender's kind (`agent` or `operator`), the message body, and "in reply to" the sender and
+time of the message it answers.
 A small word says how the sender was known: "signed by" a machine, "relayed by the lead", "this
 machine", or "not verified".
+
+The phone names a session by its pane name, the same name every other screen shows. A session you
+rename shows its new name on an old message. An address in a message body that names a live pane
+reads as that pane's name too. In the Messages sheet that name is a button that opens the pane. A bare
+pane id counts only when one live pane carries it. An address that no live pane holds stays text.
+The address and the message id stay on the wire, in the agent's terminal, in `who` and in the CLI.
+Where the log does not hold the message a reply answers, the card shows the id.
 
 The card appears only when the log of the machine that owns the pane holds that message. For a pane
 on a crew member, the lead reads that member's log. A header that an agent merely prints stays plain
@@ -454,8 +480,9 @@ Each receipt state shows the words in the table above, with the reason after "no
 
 - **Messages.** Open a pane's menu and tap "Messages" to see the messages for that pane, newest
   first. The list holds the messages that reached the pane and the ones the pane sent. A sent message
-  has the title "To" and the pane it went to, with the receipt state in words, and no "Reply"
-  button. A message from an agent has a "Reply" button, and the reply keeps the token of the sender's
+  reads "Sent to" and the session's name, or the name and "on" the machine, with the receipt state
+  in words, and has no "Reply" button. A hold reads in plain words: "that session has unsent text",
+  or "that session is busy". A message from an agent has a "Reply" button, and the reply keeps the token of the sender's
   address. A pane on a crew member has the row too, and its list comes from that member's own log. A
   reply from it goes through the lead like any message. An empty sheet says "No messages for this pane
   yet." A machine whose log the phone cannot read says "This machine does not keep messages yet."
@@ -471,7 +498,8 @@ Each receipt state shows the words in the table above, with the reason after "no
   to" (`All machines` or one machine) and tap "Send message". The sheet then asks
   "Message 5 agents on 2 machines?" with the count for that choice. The count leaves out machines
   the lead cannot reach. Tap "Send" to send, or "Back". The sheet lists the shell panes it skips.
-  It shows "Agents reached" and one receipt per target. The receipt for the whole broadcast reads
+  Panes that rest sit under "Resting, not woken": they get the message in their inbox only. Turn on
+  "Wake them too" to type it into them as well, and the count follows. It shows "Agents reached" and one receipt per target, each named by its session. The receipt for the whole broadcast reads
   "every machine". A line "Not sent on this machine" counts the recent refusals per reason. A
   device that may not send sees "This device may not send messages." under the button.
 

@@ -202,7 +202,8 @@ What to know before you start:
   the steps by hand, and
   [Variant C](deployment.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale) covers a
   reverse proxy.
-- **A Windows machine cannot join a crew in this release.**
+- **A Windows machine joins or leads a crew only behind a consent flag.** Crews on Windows are
+  [experimental](windows.md#crews), behind `COLLIE_CREWS_ON_WINDOWS=1`.
 - **A build from source needs Git for Windows' `bash`.** The zip needs no toolchain.
 - **A source checkout never updates itself on Windows.** Moving to the zip install is a one-time
   manual step: `collie uninstall`, then `install.ps1`. After that `collie update` works.

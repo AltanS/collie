@@ -83,7 +83,7 @@ export const CODEX_FILES_MAX = 3;
 export const CLAUDE_KEYCHAIN_SERVICE = "Claude Code-credentials";
 
 /** At most one ask per harness this often, however many turns end. */
-export const POKE_EVERY_MS = 60_000;
+export const POKE_EVERY_MS = 5 * 60_000;
 /** The steady ask while a pane of the harness exists. */
 export const ASK_EVERY_MS = 5 * 60_000;
 /** A reading older than this is not drawn: stale windows are worse than none. */
@@ -99,6 +99,8 @@ export const BACKOFF = {
   denied: 15 * 60_000,
   /** 429: the vendor asks us to slow down. The reading is kept. */
   limited: 15 * 60_000,
+  /** The longest wait after 429s in a row, whatever `Retry-After` says. */
+  limitedMax: 60 * 60_000,
   /** No answer, a timeout, or a 5xx. The reading is kept. */
   network: 2 * 60_000,
   /** A body this build cannot read. The reading is kept. */
@@ -727,11 +729,11 @@ export function defaultAccountSources(seams: CredentialSeams, harnesses: readonl
     .map(([, build]) => build(seams));
 }
 
-/** The transport. Only `status` and `text()` of the answer are read. */
+/** The transport. Only `status`, the `Retry-After` header and `text()` of the answer are read. */
 export type AccountFetch = (
   url: string,
   init: { method: "GET"; headers: Record<string, string>; signal: AbortSignal; redirect: "error" },
-) => Promise<{ status: number; text(): Promise<string> }>;
+) => Promise<{ status: number; headers?: { get(name: string): string | null }; text(): Promise<string> }>;
 
 export interface AccountWindowsOptions {
   /** False with `COLLIE_ACCOUNT_WINDOWS=0` (no harness on): nothing is read and nothing is asked. */
@@ -749,9 +751,28 @@ interface HarnessState {
   reading: (AccountReading & { at: number }) | undefined;
   lastAttempt: number;
   backoffUntil: number;
+  /** HTTP 429 answers in a row; a 200 resets it. Each one doubles the wait, up to three times. */
+  limitedInARow: number;
   inFlight: Promise<void> | null;
   /** The last state logged, so a repeated refusal is one line, not one a minute. */
   lastNote: string | null;
+}
+
+/**
+ * How long to wait after an HTTP 429. `retryAfter` is the header's value: seconds or an HTTP-date,
+ * and absent or unreadable counts as 0. The wait is the longer of that and {@link BACKOFF}`.limited`,
+ * doubled for each 429 already in a row (15, 30, 60 minutes), and never above `BACKOFF.limitedMax`.
+ */
+export function limitedWait(retryAfter: string | null, inARow: number, now: number): number {
+  const asked = Math.max(retryAfterMs(retryAfter, now), BACKOFF.limited);
+  return Math.min(asked * 2 ** Math.min(Math.max(inARow, 0), 2), BACKOFF.limitedMax);
+}
+
+function retryAfterMs(value: string | null, now: number): number {
+  const text = value?.trim() ?? "";
+  if (/^\d+$/.test(text)) return Number(text) * 1000;
+  const date = Date.parse(text);
+  return Number.isNaN(date) ? 0 : Math.max(date - now, 0);
 }
 
 /** A pane's turn ended: it was working (or held at a prompt) and now waits for the person. */
@@ -772,7 +793,7 @@ export class AccountWindows {
   constructor(private readonly opts: AccountWindowsOptions) {
     for (const source of opts.sources) {
       this.sources.set(source.harness, source);
-      this.states.set(source.harness, { reading: undefined, lastAttempt: -Infinity, backoffUntil: 0, inFlight: null, lastNote: null });
+      this.states.set(source.harness, { reading: undefined, lastAttempt: -Infinity, backoffUntil: 0, limitedInARow: 0, inFlight: null, lastNote: null });
     }
   }
 
@@ -896,6 +917,7 @@ export class AccountWindows {
     }
     let status: number;
     let body: string;
+    let retryAfter: string | null = null;
     try {
       const answer = await this.opts.fetch(source.url, {
         method: "GET",
@@ -904,6 +926,7 @@ export class AccountWindows {
         redirect: "error",
       });
       status = answer.status;
+      retryAfter = status === 429 ? (answer.headers?.get("retry-after") ?? null) : null;
       body = status === 200 ? await answer.text() : "";
     } catch {
       // The error is not logged: a transport's message is not ours to vouch for.
@@ -918,8 +941,10 @@ export class AccountWindows {
       return;
     }
     if (status === 429) {
-      this.note(state, harness, "HTTP 429, asking again in 15 min");
-      this.back(state, BACKOFF.limited);
+      const wait = limitedWait(retryAfter, state.limitedInARow, this.opts.now());
+      this.note(state, harness, `HTTP 429, asking again in ${String(Math.ceil(wait / 60_000))} min`);
+      this.back(state, wait);
+      state.limitedInARow += 1;
       return;
     }
     if (status !== 200) {
@@ -927,6 +952,7 @@ export class AccountWindows {
       this.back(state, BACKOFF.network);
       return;
     }
+    state.limitedInARow = 0;
     const reading = source.parse(body);
     if (reading === null) {
       this.note(state, harness, "an answer this build cannot read, asking again in 5 min");

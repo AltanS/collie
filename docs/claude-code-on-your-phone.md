@@ -94,7 +94,22 @@ it again. Look at the dashboard first. **Try again** sends the same request, so 
 the worktree it already made and does not make a second one. Collie makes the worktree with git,
 on the machine you pick, and opens it as a new space. So the switch needs git on that machine and a
 multiplexer that opens a space: Herdr, the Herdr core, tmux, tuios or tern. On zellij, or on a
-machine with no git, it stays on the page, off, and says why.
+machine with no git, it stays on the page, off, and says why. When the checkout is made but the space
+does not open, the checkout stays, and the same request again only opens it. This holds in Herdr's
+folder and in a folder you picked. A retry opens a finished checkout only: a folder that holds
+another branch is refused, and the page says which branch it holds.
+
+A pane in a worktree shows its repository where you look for it. Herdr names a worktree space
+with a random word, so the pane's header shows the repository's name before the branch, and the
+Switch pane sheet lists the worktree under its repository's space when that space is open. When it
+is not open, the sheet heads the group `repository › name`. This holds on every multiplexer: Collie
+reads each space's folder from disk, so tmux and zellij spaces nest under their repository too.
+
+On the dashboard, a worktree's space name is only its folder, such as `worktree-eager-summit-7987`.
+So its row carries a second line with the repository, the branch and the base it was cut from, for
+example `openplate-workspace · worktree/eager-summit-7987 · from main`. Under its repository's own
+space the line shows only the branch and the base. A detached head shows its short hash. A part that
+the machine does not know is left out. Every other space draws as before.
 
 Running multiple sessions creates multiple waiting prompts. Collie groups panes by workspace and
 marks the ones that need input: a red wash on the row, a dot on the workspace heading, and a count
@@ -102,6 +117,12 @@ on the line at the top, which jumps to the first of them. Hold a row to pin that
 clock and hourglass beside the count order the list by recent activity or by the cache that goes
 cold first. On tmux, zellij and tern, these marks require the beacon hooks from
 [step 3](#3-run-claude-code-in-a-pane).
+
+A green dot, and the green count at the top, mean a pane that finished and that nobody has looked at
+yet. Open the pane in Collie, or send to it, and its dot becomes a ring and it leaves the green
+count. Work in the pane at your desk does not count as looking: only what you do in Collie stamps the
+mark. The mark is one for all your devices, so a pane you opened on the phone rests on the tablet too
+([ADR 0003](../.adr/0003-one-shared-seen.md)).
 
 ## Drive it from your phone with Collie
 
@@ -180,7 +201,12 @@ the same tailnet.
 
 - Panes that need input carry a red mark. Tap the count at the top of the dashboard to jump to the first one, then tap a row to open it.
 - Each dashboard row and the pane header show the git branch the pane's folder is on, or
-  `detached @abc1234` on a detached head. A pane outside a git repo shows none.
+  `detached @abc1234` on a detached head. A pane outside a git repo shows none. The folder is the
+  one of the program in front, not the one the pane started in. When an agent or a shell runs in
+  another folder, the pane's folder follows it, on Herdr as on the Herdr core.
+- A dialog card sits in a dock above the box. The chat keeps at least a third of the screen, and the
+  dock shrinks and scrolls inside itself to make room. The dialog mirror in the unread-dialog card
+  opens at its bottom, where the dialog is.
 - The composer uses a standard text field, so phone dictation works in it.
 - Tap **Keys** on the actions row above the keyboard. The tray includes Esc, arrow keys, Enter, Tab,
   Space, modifiers, digits, and F1 to F12. Esc and Ctrl chords do not depend on the phone keyboard.

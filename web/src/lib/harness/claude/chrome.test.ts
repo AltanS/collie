@@ -1128,6 +1128,10 @@ describe("real corpus — pinned so any change to the walk shows up as a diff", 
     { fixture: "v2312-weekly-limit-row--w120", statusRows: 2, draft: null, stripped: 6 },
     // Claude Code 2.1.317 with verbose on: the token-count row under a Heads up notice (PR 668, 2026-11-03).
     { fixture: "v2317-verbose-tokens-notice-idle--w154", statusRows: 2, draft: null, stripped: 6 },
+    // Claude Code 2.1.317 with the next-steps plugin: a dim ghost suggestion in the box under the `next:` rows, the cursor on its first letter (discussion 659, 2026-11-03).
+    { fixture: "v2317-next-steps-suggestions-empty-box--w100", statusRows: 1, draft: null, stripped: 5 },
+    { fixture: "v2317-next-steps-suggestions-one-line-draft--w100", statusRows: 1, draft: "also add a docstring", stripped: 5 },
+    { fixture: "v2317-next-steps-suggestions-dismissed--w100", statusRows: 1, draft: null, stripped: 5 },
     { fixture: "v2304-select-preview-cjk", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "v2304-select-preview-cjk-moved", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "wizard-multiselect-checked", statusRows: 0, draft: null, stripped: 0 },

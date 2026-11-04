@@ -182,6 +182,12 @@ export interface AgentView {
    */
   subagents?: PaneSubagent[];
   /**
+   * The background jobs of this pane's session, running or ended in the last ten minutes. Mirrors
+   * `PaneJob` in bridge/jobs-journal.ts. **Absent, never a placeholder**, when there are none or on
+   * an older bridge. Text only, never markup.
+   */
+  jobs?: PaneJob[];
+  /**
    * The model this pane's agent is on, in the harness's own words. Mirrors `PaneWire.model` in
    * bridge/types.ts. **Absent, never a placeholder**, and text only: read it through `modelLabel`
    * (lib/model-label.ts), which shortens it and drops anything that is not a name.
@@ -371,6 +377,21 @@ export interface PaneSubagent {
    * serves it, so the row is not a tap. Absent on a Claude Code subagent, whose transcript opens.
    */
   transcript?: false;
+}
+
+/** One background job of a pane's session. Mirrors `PaneJob` in bridge/jobs-journal.ts. */
+export interface PaneJob {
+  id: string;
+  /** The call's label, one line. Empty when the call named none. */
+  label: string;
+  /** The command it runs, one line, clipped. */
+  command: string;
+  /** ISO 8601. */
+  startedAt: string;
+  /** Absent while it runs, and on an end that named no code. */
+  exitCode?: number;
+  /** ISO 8601. Absent while it runs: a row with it has ended. */
+  endedAt?: string;
 }
 
 /**
@@ -1365,7 +1386,19 @@ export interface PlanTask {
 export type ToolCall =
   | { kind: "edit"; path: string; added: number; removed: number; diff?: Hunk[]; created?: boolean }
   /** `background`: started and returned at once (`bash_background`, `monitor`). `ongoing`: it has not ended yet, though its start result is in. */
-  | { kind: "execute"; command: string; description?: string; exitCode?: number; background?: true; ongoing?: true }
+  | {
+      kind: "execute";
+      command: string;
+      description?: string;
+      exitCode?: number;
+      background?: true;
+      ongoing?: true;
+      jobId?: string;
+      /** Epoch ms. */
+      startedAt?: number;
+      /** Epoch ms. */
+      endedAt?: number;
+    }
   | { kind: "read"; path: string; range?: [number, number] }
   | { kind: "search"; query: string; where?: string; hits?: number }
   | { kind: "fetch"; url: string }

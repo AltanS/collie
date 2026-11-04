@@ -9,3 +9,9 @@
 # three in sync.
 [install]
 minimumReleaseAge = 604800 # 7 days, in seconds
+
+# Every `bun test` process gets its own temp folder, removed when it exits, so a test that forgets
+# to delete its scratch folder no longer leaves it in /tmp. COLLIE_TEST_KEEP_TMP=1 keeps it and
+# prints its path. See scripts/test-preload.ts.
+[test]
+preload = ["./scripts/test-preload.ts"]

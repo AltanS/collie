@@ -810,6 +810,7 @@ describe("the frame schema of the interior walk (M56 spec 14)", () => {
     ["an empty placeholder pattern list", ["idle", "placeholders", "patterns"], [], "idle.placeholders.patterns"],
     ["a placeholder pattern that is no expression", ["idle", "placeholders", "patterns"], ["[unclosed"], "idle.placeholders.patterns[0]"],
     ["a placeholder anyText flag that is no boolean", ["idle", "placeholders", "anyText"], "yes", "idle.placeholders.anyText"],
+    ["a placeholder caretOnGhost flag that is no boolean", ["idle", "placeholders", "caretOnGhost"], "yes", "idle.placeholders.caretOnGhost"],
     ["an answer prompt that is no expression", ["idle", "answerPrompt"], "[unclosed", "idle.answerPrompt"],
   ];
   for (const [name, path, value, field] of cases) {
@@ -829,6 +830,13 @@ describe("the frame schema of the interior walk (M56 spec 14)", () => {
     expect(parseProfile(rawClaude()).idle.placeholders.anyText).toBe(true);
     expect(parseProfile(rawOpencode()).idle.placeholders.anyText).toBeUndefined();
     expect(parseProfile(change(rawClaude(), ["idle", "placeholders", "anyText"], false)).idle.placeholders.anyText).toBeUndefined();
+  });
+
+  it("reads the caret-on-ghost switch (`caretOnGhost`, M83 spec 05): absent means on, a shell prompt's profile turns it off", () => {
+    expect(parseProfile(rawClaude()).idle.placeholders.caretOnGhost).toBeUndefined();
+    expect(parseProfile(change(rawClaude(), ["idle", "placeholders", "caretOnGhost"], true)).idle.placeholders.caretOnGhost).toBeUndefined();
+    expect(parseProfile(change(rawClaude(), ["idle", "placeholders", "caretOnGhost"], false)).idle.placeholders.caretOnGhost).toBe(false);
+    expect(parseProfile(parseJsonObject(readFileSync(join(PROFILES_DIR, "cursor.json"), "utf8"))!).idle.placeholders.caretOnGhost).toBe(false);
   });
 
   it("reads a scrolling box (`scroll`, omp gang 2026-10-25) and refuses a bad one", () => {

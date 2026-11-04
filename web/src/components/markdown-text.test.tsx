@@ -294,3 +294,15 @@ describe("stretches", () => {
     }
   });
 });
+
+describe("MarkdownText numbered lists", () => {
+  // An indented bullet splits a numbered list in two (blocks don't nest); the second list starts at
+  // its own number, so "2." does not draw as a second "1.".
+  it("a list split by a bullet keeps counting from its own first number", () => {
+    const { container } = render(<MarkdownText text={"1. push\n   - why\n2. fix first"} />);
+    const lists = container.querySelectorAll("ol");
+    expect(lists).toHaveLength(2);
+    expect(lists[0]!.start).toBe(1);
+    expect(lists[1]!.start).toBe(2);
+  });
+});

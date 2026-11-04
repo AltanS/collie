@@ -3,7 +3,7 @@ import { ChevronDown } from "lucide-react";
 import { StatusDot } from "@/components/status-badge";
 import { cn } from "@/lib/utils";
 import { hostKey } from "@/lib/hosts";
-import { TRIAGE_STATUS, worstTriage } from "@/lib/triage";
+import { shownStatus, TRIAGE_STATUS, worstTriage } from "@/lib/triage";
 import type { AgentStatus, AgentView, TabView } from "@/lib/types";
 import { t, tn, type TemplateVars } from "@/lib/i18n";
 import { useLocale } from "@/hooks/use-locale";
@@ -136,7 +136,7 @@ export function StripsSummary({
               <Bead
                 key={pane.paneId}
                 active={pane.paneId === currentPaneId}
-                status={pane.status}
+                status={shownStatus(pane)}
               />
             ))}
           </span>

@@ -107,6 +107,33 @@ describe("UnreadDialogBlock", () => {
     expect(container.querySelector("pre")!.className).not.toContain("whitespace-pre-wrap");
   });
 
+  // #667: the dialog is the LAST rows of the pane, so the mirror opens at its bottom, not at the old
+  // tool output on top. jsdom has no layout, so the two properties are stubbed on the prototype.
+  it("scrolls its mirror to the bottom on mount and when the rows change", () => {
+    const sets: number[] = [];
+    vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(1234);
+    Object.defineProperty(HTMLElement.prototype, "scrollTop", {
+      configurable: true,
+      get: () => 0,
+      set: (v: number) => void sets.push(v),
+    });
+    try {
+      const block = cardBlock();
+      const props = { cancel: block.cancel, onAction: vi.fn() };
+      const { container, rerender } = render(<UnreadDialogBlock {...props} lines={block.lines} />);
+      expect(container.querySelector("pre")!.className).toContain("overflow-y-auto");
+      expect(sets).toEqual([1234]);
+      // Equal rows in a new array do not yank the person who scrolled up to read.
+      rerender(<UnreadDialogBlock {...props} lines={[...block.lines]} />);
+      expect(sets).toEqual([1234]);
+      rerender(<UnreadDialogBlock {...props} lines={block.lines.slice(1)} />);
+      expect(sets).toEqual([1234, 1234]);
+    } finally {
+      vi.restoreAllMocks();
+      Reflect.deleteProperty(HTMLElement.prototype, "scrollTop");
+    }
+  });
+
   // #339: the first tap arms, the second sends. An Escape over a screen nobody read can end a
   // question turn, so one stray tap must never do it.
   it("arms on the first tap and sends nothing", async () => {

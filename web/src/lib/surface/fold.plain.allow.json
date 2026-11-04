@@ -41,6 +41,20 @@
     "propose": "Upstream: the cursor column (a suggestion sits after the cursor, a draft ends at it), or a dim flag per row. Claude side: a hook that reports the suggestion. Text only: none, the suggestion is free prose.",
     "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
   },
+  "claude--v2317-next-steps-suggestions-dismissed--w100.txt": {
+    "why": "Claude Code with the next-steps plugin draws its prompt suggestion dim in the empty box, the cursor a reverse-video cell on the first letter. A styled read skips that cell and reads the box empty; a plain read shows the suggestion as a typed draft, and a walky talky delivery or a send holds on a draft that is not there. Same cause as claude--ghost-suggestion (M83 spec 05, discussion 659).",
+    "class": "colour-needed",
+    "rule": "web/src/lib/surface/frame.ts:354 holeIsFaint (profile claude.json idle.placeholders.sgr 2); text fallback web/src/lib/surface/frame.ts:369 isPlaceholderText covers only idle.placeholders.patterns",
+    "propose": "Upstream: the cursor column (a suggestion sits after the cursor, a draft ends at it), or a dim flag per row. Claude side: a hook that reports the suggestion. Text only: none, the suggestion is free prose.",
+    "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
+  },
+  "claude--v2317-next-steps-suggestions-empty-box--w100.txt": {
+    "why": "Claude Code with the next-steps plugin draws its prompt suggestion dim in the empty box, the cursor a reverse-video cell on the first letter. A styled read skips that cell and reads the box empty; a plain read shows the suggestion as a typed draft, and a walky talky delivery or a send holds on a draft that is not there. Same cause as claude--ghost-suggestion (M83 spec 05, discussion 659).",
+    "class": "colour-needed",
+    "rule": "web/src/lib/surface/frame.ts:354 holeIsFaint (profile claude.json idle.placeholders.sgr 2); text fallback web/src/lib/surface/frame.ts:369 isPlaceholderText covers only idle.placeholders.patterns",
+    "propose": "Upstream: the cursor column (a suggestion sits after the cursor, a draft ends at it), or a dim flag per row. Claude side: a hook that reports the suggestion. Text only: none, the suggestion is free prose.",
+    "effect": "HOTFIX: empty box reads as a draft, so a send is refused(draft_present) and a walky delivery stays held"
+  },
   "claude-lab--idle-after-turn--w82.txt": {
     "why": "Claude Code draws its prompt suggestion (an arbitrary next prompt) faint in the empty box. A plain read shows the suggestion as a typed draft, and a walky talky delivery or a send holds on a draft that is not there. The 1.25.1 pattern covers only the 'Try \"...\"' hints.",
     "class": "colour-needed",

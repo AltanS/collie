@@ -1124,6 +1124,96 @@ describe("PiTranscriptSource — a pane that names no session finds it by its fo
     await rm(f.base, { recursive: true, force: true });
   });
 
+  describe("the pane's own command line names the session (#675)", () => {
+    const cwd = "/srv/proj";
+    const folder = "--srv-proj--";
+    const omp = (...args: string[]) => ({ processes: [{ pid: 4242, argv: ["/home/dev/.bun/bin/omp", ...args] }] });
+    const shared = (processes: ReturnType<typeof omp>) => ({ ...processes, shared: true as const });
+
+    /** Two logs for one folder, the neighbour's the newest: what a folder walk would wrongly answer. */
+    async function twoLogs() {
+      const f = await fixture();
+      const mine = await f.log(f.ompRoot, folder, OLD, sessionRow(OLD, cwd), 86_400);
+      await f.log(f.ompRoot, folder, ONE, sessionRow(ONE, cwd), 5);
+      return { f, mine, src: new PiTranscriptSource([f.ompRoot, f.piRoot], f.places) };
+    }
+
+    test("a path in a shared folder names that session, whatever its age", async () => {
+      const { f, mine, src } = await twoLogs();
+      const ref = await src.discoverSession(cwd, shared(omp("--resume", mine)));
+      expect(ref).toEqual({ kind: "id", value: OLD });
+      expect(await src.resolve(ref!)).toBe(mine);
+      // `-r`, `--resume=<path>` and a wrapper that runs the script all say the same.
+      expect(await src.discoverSession(cwd, shared(omp("-r", mine)))).toEqual({ kind: "id", value: OLD });
+      expect(await src.discoverSession(cwd, shared(omp(`--resume=${mine}`)))).toEqual({ kind: "id", value: OLD });
+      const wrapped = { processes: [{ argv: ["bun", "/x/node_modules/.bin/omp", "--resume", mine] }], shared: true as const };
+      expect(await src.discoverSession(cwd, wrapped)).toEqual({ kind: "id", value: OLD });
+      // The same through the adapter, which is what the route calls.
+      expect(await piJournal([f.ompRoot, f.piRoot]).discover?.(cwd, shared(omp("--resume", mine)))).toEqual({ kind: "id", value: OLD });
+      await rm(f.base, { recursive: true, force: true });
+    });
+
+    test("pi names its session with --session, and --resume there is only its picker", async () => {
+      const { f, mine, src } = await twoLogs();
+      const pi = (...args: string[]) => ({ processes: [{ argv: ["pi", ...args] }], shared: true as const });
+      expect(await src.discoverSession(cwd, pi("--session", mine))).toEqual({ kind: "id", value: OLD });
+      expect(await src.discoverSession(cwd, pi(`--session=${OLD}`))).toEqual({ kind: "id", value: OLD });
+      expect(await src.discoverSession(cwd, pi("--resume", mine))).toBeNull();
+      await rm(f.base, { recursive: true, force: true });
+    });
+
+    test("a path outside the sessions roots, or in another folder's place, is refused", async () => {
+      const { f, mine, src } = await twoLogs();
+      const outside = join(f.base, "elsewhere", `2026-10-30T10-00-00-000Z_${TWO}.jsonl`);
+      await mkdir(join(f.base, "elsewhere"), { recursive: true });
+      await Bun.write(outside, `${sessionRow(TWO, cwd)}\n`);
+      expect(await src.discoverSession(cwd, shared(omp("--resume", outside)))).toBeNull();
+      expect(await src.discoverSession(cwd, shared(omp("--resume", `${mine}/../../../../etc/hosts`)))).toBeNull();
+      // Inside a root, but filed for another folder.
+      const other = await f.log(f.ompRoot, "--srv-other--", TWO, sessionRow(TWO, "/srv/other"), 5);
+      expect(await src.discoverSession(cwd, shared(omp("--resume", other)))).toBeNull();
+      // A symlink in the right folder that points out of the root.
+      const link = join(f.ompRoot, folder, `2026-10-30T11-00-00-000Z_${TWO}.jsonl`);
+      await symlink(outside, link);
+      expect(await src.discoverSession(cwd, shared(omp("--resume", link)))).toBeNull();
+      expect(await src.discoverSession(cwd, shared(omp("--resume", "/etc/hosts")))).toBeNull();
+      await rm(f.base, { recursive: true, force: true });
+    });
+
+    test("an id names the session only when a log filed for the folder has exactly that id", async () => {
+      const { f, mine, src } = await twoLogs();
+      const ref = await src.discoverSession(cwd, shared(omp("--resume", OLD)));
+      expect(ref).toEqual({ kind: "id", value: OLD });
+      expect(await src.resolve(ref!)).toBe(mine);
+      expect(await src.discoverSession(cwd, shared(omp("--resume", TWO)))).toBeNull();
+      expect(await src.discoverSession(cwd, shared(omp("--resume", OLD.slice(0, 13))))).toBeNull();
+      expect(await src.discoverSession(cwd, shared(omp("--resume", "../../etc")))).toBeNull();
+      // A log of another folder is not found by its id from this one.
+      await f.log(f.ompRoot, "--srv-other--", TWO, sessionRow(TWO, "/srv/other"), 5);
+      expect(await src.discoverSession(cwd, shared(omp("--resume", TWO)))).toBeNull();
+      await rm(f.base, { recursive: true, force: true });
+    });
+
+    test("the flag with no value, or no command line, names nothing: a shared folder gives no session", async () => {
+      const { f, src } = await twoLogs();
+      expect(await src.discoverSession(cwd, shared(omp("--resume")))).toBeNull();
+      expect(await src.discoverSession(cwd, shared(omp("--resume=")))).toBeNull();
+      expect(await src.discoverSession(cwd, shared(omp("--resume", "--model", "x")))).toBeNull();
+      expect(await src.discoverSession(cwd, shared(omp()))).toBeNull();
+      expect(await src.discoverSession(cwd, { shared: true })).toBeNull();
+      // Not a pi or omp process: the flag means nothing.
+      expect(await src.discoverSession(cwd, { shared: true, processes: [{ argv: ["less", "--resume", OLD] }] })).toBeNull();
+      await rm(f.base, { recursive: true, force: true });
+    });
+
+    test("with no neighbour a bad value changes nothing: the folder walk answers as before", async () => {
+      const { f, src } = await twoLogs();
+      expect(await src.discoverSession(cwd, omp("--resume", "/etc/hosts"))).toEqual({ kind: "id", value: ONE });
+      expect(await src.discoverSession(cwd, omp("--resume"))).toEqual({ kind: "id", value: ONE });
+      await rm(f.base, { recursive: true, force: true });
+    });
+  });
+
   test("the folder names pi and Oh My Pi file a cwd under", () => {
     const places = { home: "/home/dev", tmp: "/tmp" };
     expect(piSessionFolderNames("/srv/a", places)).toEqual(["--srv-a--"]);
@@ -1245,8 +1335,10 @@ describe("parsePiTranscript — Gentle Shell's tools", () => {
         const message = { role: "toolResult", toolCallId: callId, toolName: name, content: [{ type: "text", text }], details };
         add(id, { type: "message", message: isError ? { ...message, isError: true } : message });
       },
-      notice(id: string, customType: string, content: string, details: JsonValue) {
-        add(id, { type: "custom_message", customType, content, display: true, details });
+      /** `at` stamps the row with its own time, over the session's one. */
+      notice(id: string, customType: string, content: string, details: JsonValue, at?: string) {
+        const body = { type: "custom_message", customType, content, display: true, details };
+        add(id, at === undefined ? body : { ...body, timestamp: at });
       },
       rows,
     };
@@ -1420,14 +1512,34 @@ describe("parsePiTranscript — Gentle Shell's tools", () => {
     return { gentleJobs: event === null ? gentleJobs : { ...gentleJobs, event } };
   };
 
+  const STARTED = Date.parse("2026-09-30T12:00:00.000Z");
+  const ENDED_AT = "2026-09-30T12:00:03.000Z";
+
   test("a background command is ongoing with no exit code until its notice gives one", () => {
     const s = session();
     s.call("a1", "c1", "bash_background", { command: "bun test", label: "suite" });
     s.result("r1", "c1", "bash_background", "Started background job job-1 (\"suite\").", job("job-1", "command", "running", null));
-    expect(tools(s.rows)[0]?.part.call).toEqual({ kind: "execute", command: "bun test", description: "suite", background: true, ongoing: true });
-    s.notice("n1", "gentle-jobs.notice", "Background job job-1 (\"suite\") exited with code 137 after 3s.", job("job-1", "command", "exited", 137));
+    expect(tools(s.rows)[0]?.part.call).toEqual({
+      kind: "execute",
+      command: "bun test",
+      description: "suite",
+      background: true,
+      ongoing: true,
+      jobId: "job-1",
+      startedAt: STARTED,
+    });
+    s.notice("n1", "gentle-jobs.notice", "Background job job-1 (\"suite\") exited with code 137 after 3s.", job("job-1", "command", "exited", 137), ENDED_AT);
     const part = tools(s.rows)[0]?.part;
-    expect(part?.call).toEqual({ kind: "execute", command: "bun test", description: "suite", background: true, exitCode: 137 });
+    expect(part?.call).toEqual({
+      kind: "execute",
+      command: "bun test",
+      description: "suite",
+      background: true,
+      exitCode: 137,
+      jobId: "job-1",
+      startedAt: STARTED,
+      endedAt: Date.parse(ENDED_AT),
+    });
     expect(part?.result?.isError).toBe(true);
   });
 
@@ -1437,9 +1549,17 @@ describe("parsePiTranscript — Gentle Shell's tools", () => {
     s.result("r1", "c1", "monitor", "Started monitor job-1.", job("job-1", "monitor", "running", null));
     s.notice("n1", "gentle-jobs.notice", "Monitor job-1 reported 2 new lines", job("job-1", "monitor", "running", null, "events"));
     expect(tools(s.rows)[0]?.part.call).toMatchObject({ ongoing: true });
-    s.notice("n2", "gentle-jobs.notice", "Monitor job-1 reported 1 new line", job("job-1", "monitor", "stopped", null, "events"));
+    s.notice("n2", "gentle-jobs.notice", "Monitor job-1 reported 1 new line", job("job-1", "monitor", "stopped", null, "events"), ENDED_AT);
     const call = tools(s.rows)[0]?.part.call;
-    expect(call).toEqual({ kind: "execute", command: "tail -f x", description: "watch", background: true });
+    expect(call).toEqual({
+      kind: "execute",
+      command: "tail -f x",
+      description: "watch",
+      background: true,
+      jobId: "job-1",
+      startedAt: STARTED,
+      endedAt: Date.parse(ENDED_AT),
+    });
     expect(tools(s.rows)[0]?.part.result?.isError).toBeUndefined();
   });
 });

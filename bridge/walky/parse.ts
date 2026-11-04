@@ -72,7 +72,8 @@ export function readMessage(value: JsonValue | undefined): WalkyMessage | null {
   if (!isWalkyId(id) || kind === null || from === null || to === null || parseAddress(to) === null) return null;
   if (replyTo === undefined || (replyTo !== null && !isWalkyId(replyTo))) return null;
   if (at === undefined || !Number.isSafeInteger(at) || body === null || signer === undefined || signature === undefined) return null;
-  return { v: 1, id, kind, from, to, replyTo, at, body, signer, signature };
+  const message: WalkyMessage = { v: 1, id, kind, from, to, replyTo, at, body, signer, signature };
+  return asJsonBoolean(row.wake) === true ? { ...message, wake: true } : message;
 }
 
 const VERIFIED: readonly WalkyVerified[] = ["origin", "lead", "local", "none"];
@@ -108,7 +109,7 @@ export function readReceipt(value: JsonValue | undefined): WalkyReceipt | null {
 export type WalkyOp = "send" | "inbox" | "who" | "status" | "ack" | "cancel";
 
 export type WalkyRequest =
-  | { readonly op: "send"; readonly markers: readonly BeaconMarker[]; readonly id: string; readonly to: string | null; readonly body: string; readonly replyTo: string | null }
+  | { readonly op: "send"; readonly markers: readonly BeaconMarker[]; readonly id: string; readonly to: string | null; readonly body: string; readonly replyTo: string | null; readonly wake: boolean }
   | { readonly op: "inbox"; readonly markers: readonly BeaconMarker[]; readonly all: boolean; readonly ack: boolean; readonly id: string | null }
   | { readonly op: "who"; readonly markers: readonly BeaconMarker[] }
   | { readonly op: "status"; readonly markers: readonly BeaconMarker[]; readonly id: string }
@@ -177,7 +178,7 @@ export function readWalkyRequest(line: string): WalkyRequestRead {
   if (to !== null && parseAddress(to) === null) return unread(unreadAddress(to), markers);
   if (body === null) return unread(BAD_REQUEST_LINE, markers);
   if (body.length > RAW_BODY_MAX) return unread(bodyOverRaw(RAW_BODY_MAX), markers);
-  return done({ op, markers, id, to, body, replyTo });
+  return done({ op, markers, id, to, body, replyTo, wake: asJsonBoolean(row.wake) === true });
 }
 
 /** One request line, or null. `v` must be 1; an unknown op, a bad id or a bad address fails. */
@@ -192,6 +193,8 @@ export interface PhoneSend {
   readonly to: string;
   readonly body: string;
   readonly replyTo: string | null;
+  /** M85: a fan-out also types into resting panes. */
+  readonly wake: boolean;
 }
 
 /** The phone's body, or a word for the 400. */
@@ -206,7 +209,7 @@ export function parsePhoneSend(value: JsonValue | undefined): PhoneSend | { read
   if (to === null || parseAddress(to) === null) return { error: "bad to" };
   if (body === null || body.length > RAW_BODY_MAX) return { error: "bad body" };
   if (replyTo !== null && !isWalkyId(replyTo)) return { error: "bad replyTo" };
-  return { id, to, body, replyTo };
+  return { id, to, body, replyTo, wake: asJsonBoolean(row.wake) === true };
 }
 
 // ── The crew hops (CREW_PROTOCOL §21) ────────────────────────────────────────────────────────────

@@ -158,6 +158,8 @@ import { adapterFor, buildJournalRegistry, journalAgentName } from "./journal/re
 import { readClaudeSubagent } from "./journal/claude.ts";
 import { chatParams, LiveWindows } from "./journal/live.ts";
 import { JournalSubagents } from "./subagents-journal.ts";
+import { JournalTodos } from "./todos.ts";
+import { JournalJobs } from "./jobs-journal.ts";
 import { parseDurableLog } from "./journal/durable.ts";
 import { redactText } from "./redact.ts";
 import { maskSurface, surfaceRouteBody, type SurfaceShadow } from "./surface/shadow.ts";
@@ -177,6 +179,7 @@ import {
   maskDiff,
   maskFileBody,
   maskHistoryPage,
+  maskJobList,
   maskPaneRead,
   maskSnapshotTitles,
   maskTerminalTitle,
@@ -1600,6 +1603,12 @@ export function startServer(opts: {
   // The agents pill's second source: Oh My Pi's and Gentle Shell's ongoing task cards, read from the
   // live windows above. Only for a pane whose journal has no subagent files (bridge/subagents-journal.ts).
   const journalSubagents = live === null || journals === null ? null : new JournalSubagents(journals, live, () => Date.now());
+  // The Tasks mark's third source: a plan call in the same live windows, for a harness that has neither
+  // a tailed nor a loaded todo source (bridge/todos.ts, `JournalTodos`). Any journal that yields plan calls.
+  const journalTodos = live === null || journals === null ? null : new JournalTodos(journals, live, () => Date.now());
+  // The Jobs mark's one source: the background commands in the same live windows, running or ended in
+  // the last ten minutes (bridge/jobs-journal.ts, ADR 0128). Any journal whose calls carry the facts.
+  const journalJobs = live === null || journals === null ? null : new JournalJobs(journals, live, () => Date.now());
   /** Does this agent have a journal at all — the snapshot's History-affordance gate. */
   const hasJournal = (agent: string) => adapterFor(journals ?? {}, agent) !== undefined;
   const discoversSessions = (agent: string) =>
@@ -1675,16 +1684,20 @@ export function startServer(opts: {
       const effort = key === undefined || !journalModelShown(journalModel, hookModel) ? undefined : cache?.effort?.(key);
       const withCache = effort === undefined ? withModel : { ...withModel, effort };
       // The tasks are words the agent wrote, so they take the mirror's mask like the title above.
-      const readTodos = opts.todos?.get(p);
+      const readTodos = opts.todos?.get(p) ?? journalTodos?.get(p);
       const todos = readTodos !== undefined && cfg.redact ? maskTodoList(readTodos) : readTodos;
       const withTodos = todos === undefined ? withCache : { ...withCache, todos };
       // The running subagents' descriptions are words the agent wrote too, so they take the same mask.
       const readSubagents = opts.subagents?.get(p) ?? journalSubagents?.get(p);
       const subagents = readSubagents !== undefined && cfg.redact ? maskSubagentList(readSubagents) : readSubagents;
       const withSubagents = subagents === undefined ? withTodos : { ...withTodos, subagents };
+      // The background jobs' commands are lines the agent ran, the likeliest place for a key, so the same mask.
+      const readJobs = journalJobs?.get(p);
+      const jobs = readJobs !== undefined && cfg.redact ? maskJobList(readJobs) : readJobs;
+      const withJobs = jobs === undefined ? withSubagents : { ...withSubagents, jobs };
       // The usage dots: numbers only, the session's context and the account's windows (ADR 0118).
       const readUsage = opts.usage?.get(p);
-      const withUsage = readUsage === undefined ? withSubagents : { ...withSubagents, usage: readUsage };
+      const withUsage = readUsage === undefined ? withJobs : { ...withJobs, usage: readUsage };
       // The branch rides the same way: from memory, never a wait, and no key when there is none.
       const gitHead = gitHeads?.get(p.cwd);
       return gitHead === undefined ? withUsage : { ...withUsage, gitHead };

@@ -482,11 +482,12 @@ describe("AgentList — an older bridge with no timestamps", () => {
     // never earns the unread mark; it is still just a pane in this group.
     expect(headings()).toEqual(["collie-workspace"]);
     expect(screen.queryByRole("img", { name: /unseen/i })).not.toBeInTheDocument();
-    // The heading still lights up for the blocked pane, and counts the other two states too.
+    // The heading still lights up for the blocked pane, and counts the other two states too. A
+    // finished pane with no seen mark has nothing to be unseen against, so it rests as idle (665).
     const section = groupSection("collie-workspace");
     expect(within(section).getByLabelText("1 needs you")).toBeInTheDocument();
     expect(within(section).getByLabelText("1 working")).toBeInTheDocument();
-    expect(within(section).getByLabelText("1 done")).toBeInTheDocument();
+    expect(within(section).getByLabelText("1 idle")).toBeInTheDocument();
   });
 });
 

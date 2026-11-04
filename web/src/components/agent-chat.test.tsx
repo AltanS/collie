@@ -45,7 +45,8 @@ import { parseAnsi } from "@/lib/ansi";
 import { splitLines } from "@/lib/blocks";
 import { liftDialog, readerBlocks } from "@/lib/surface/lift";
 import { CrewProvider } from "./crew-provider";
-import type { AgentStatus, AgentView, ChatWindowBody, ServerSummary, TabView } from "@/lib/types";
+import type { AgentStatus, AgentView, ChatWindowBody, ServerSummary, TabView, WorkspaceView } from "@/lib/types";
+import { ROOT_ROUTE_ID } from "@/lib/loaders";
 import { withHeaderHost } from "@/test/header-host";
 import { COLLAPSE_MS } from "./ui/collapse";
 import { AgentChat } from "./agent-chat";
@@ -87,7 +88,10 @@ beforeEach(() => {
   __resetOperatorCommands();
 });
 
-function renderChat(overrides: Partial<ComponentProps<typeof AgentChat>> = {}) {
+function renderChat(
+  overrides: Partial<ComponentProps<typeof AgentChat>> = {},
+  rootSpaces?: readonly WorkspaceView[],
+) {
   const agent = fixtureAgents[0]!; // a blocked claude agent
   const props: ComponentProps<typeof AgentChat> = {
     paneId: agent.paneId,
@@ -104,7 +108,14 @@ function renderChat(overrides: Partial<ComponentProps<typeof AgentChat>> = {}) {
     onSelect: vi.fn(),
     ...overrides,
   };
-  const router = createMemoryRouter([{ path: "/", element: withHeaderHost(<AgentChat {...props} />) }]);
+  const element = withHeaderHost(<AgentChat {...props} />);
+  // The snapshot's spaces ride the root route's data; the header reads them to name a worktree's repo.
+  const router =
+    rootSpaces === undefined
+      ? createMemoryRouter([{ path: "/", element }])
+      : createMemoryRouter([{ id: ROOT_ROUTE_ID, path: "/", loader: () => null, element }], {
+          hydrationData: { loaderData: { [ROOT_ROUTE_ID]: { workspaces: rootSpaces } } },
+        });
   const { container } = render(<RouterProvider router={router} />);
   return { props, container };
 }
@@ -310,7 +321,8 @@ describe("AgentChat — the pane header's identity block", () => {
     // proved its keys are exactly the members of AgentStatus — Object.entries widens them to string
     // because it cannot see that proof.
     for (const [status, word] of Object.entries(words) as [AgentStatus, string][]) {
-      const agent = { ...fixtureAgents[0]!, status };
+      // Unseen, so a finished pane still draws `done`: a seen one rests as `idle` (issue 665).
+      const agent = { ...fixtureAgents[0]!, status, lastActiveAt: 200, lastSeenAt: 100 };
       const { container } = renderChat({ agent, agents: [agent] });
       // The dot names it, badged onto the agent's own tile inside the identity block. (The AgentIcon
       // beside it is also a role="img", hence the list rather than a first-match query.)
@@ -2228,7 +2240,10 @@ describe("the pane fits its viewport", () => {
     // The two are flex siblings in the same column: one gives, one does not.
     expect(mirror.getAttribute("role")).toBe("presentation");
     expect(mirror.parentElement).toBe(bottomRow.parentElement);
-    expect(mirror.className).toMatch(/(?:^|\s)min-h-0(?=\s|$)/);
+    // It still gives (`flex-1`), but no longer to zero: it holds a floor of the viewport (#667), so a
+    // tall docked card shrinks first. The floor replaced `min-h-0`.
+    expect(mirror.className).toMatch(/(?:^|\s)min-h-\[30dvh\](?=\s|$)/);
+    expect(mirror.className).not.toMatch(/(?:^|\s)min-h-0(?=\s|$)/);
     expect(mirror.className).toMatch(/(?:^|\s)flex-1(?=\s|$)/);
 
     // STATED, not inherited. `shrink-0` is what makes the bound below the whole story.
@@ -2329,6 +2344,20 @@ describe("the pane fits its viewport", () => {
       const dock = container.querySelector('[data-slot="composer-actions"]')!.parentElement!;
       expect(dock.className).toMatch(/(?:^|\s)pb-2(?=\s|$)/);
       expect(dock.className).not.toMatch(/safe-area-inset-bottom/);
+    } finally {
+      kb.restore();
+    }
+  });
+  it("keeps the reading box at a lower floor while the keyboard is up (#667)", async () => {
+    const kb = withSoftKeyboard();
+    try {
+      const { container } = renderChat({ text: STATUS_TEXT });
+      const reading = () => container.querySelector<HTMLElement>('[data-slot="pane-reading"]')!;
+      expect(reading().className).toMatch(/(?:^|\s)min-h-\[30dvh\](?=\s|$)/);
+      act(() => document.querySelector<HTMLTextAreaElement>('[data-slot="chat-input"]')!.focus());
+      kb.open(460);
+      await waitFor(() => expect(reading().className).toMatch(/(?:^|\s)min-h-\[20dvh\](?=\s|$)/));
+      expect(reading().className).not.toMatch(/min-h-\[30dvh\]/);
     } finally {
       kb.restore();
     }
@@ -4568,6 +4597,16 @@ describe("AgentChat — a failed poll keeps the Chat on screen", () => {
 
 // The branch the pane's folder is on rides line 2, after the workspace, in the line's own 12px box.
 describe("AgentChat header — the branch on the path line", () => {
+  const space = (over: Partial<WorkspaceView>): WorkspaceView => ({
+    workspaceId: "w1",
+    number: 1,
+    label: "lucky-meadow-d1ec",
+    focused: false,
+    activeTabId: "w1:t1",
+    tabCount: 1,
+    paneCount: 1,
+    ...over,
+  });
   const pathLine = (c: HTMLElement) => c.querySelector<HTMLElement>('[data-slot="pane-place"]')!.parentElement!;
 
   it("follows the workspace with the branch, before the meta, without changing the line's height", () => {
@@ -4584,6 +4623,35 @@ describe("AgentChat header — the branch on the path line", () => {
   it("draws no branch when the pane has none", () => {
     const { container } = renderChat();
     expect(pathLine(container).querySelector('[data-slot="branch-label"]')).toBeNull();
+  });
+
+  // Issue #666: Herdr names a worktree space by a random slug, which names no project.
+  it("names the repository, then the branch, for a pane in a linked worktree", () => {
+    const base = fixtureAgents[0]!;
+    const agent: AgentView = { ...base, workspaceId: "w1", workspaceLabel: "lucky-meadow-d1ec", gitHead: { kind: "branch", name: "fix-login" } };
+    const spaces = [space({ workspaceId: "w1", label: "lucky-meadow-d1ec", repoRoot: "/home/k/projects/membero", isWorktree: true })];
+    const { container } = renderChat({ agent, agents: [agent, ...fixtureAgents.slice(1)] }, spaces);
+    const place = container.querySelector<HTMLElement>('[data-slot="pane-place"]')!;
+    expect(place).toHaveTextContent("membero");
+    expect(place).not.toHaveTextContent("lucky-meadow-d1ec");
+    const label = within(pathLine(container)).getByText("Branch fix-login").closest('[data-slot="branch-label"]')!;
+    expect(label.previousElementSibling).toBe(place);
+  });
+
+  it("keeps the workspace's own name for a pane in a root checkout", () => {
+    const base = fixtureAgents[0]!;
+    const agent: AgentView = { ...base, workspaceId: "w1", workspaceLabel: "membero", gitHead: { kind: "branch", name: "main" } };
+    const spaces = [space({ workspaceId: "w1", label: "membero", repoRoot: "/home/k/projects/membero", isWorktree: false })];
+    const { container } = renderChat({ agent, agents: [agent, ...fixtureAgents.slice(1)] }, spaces);
+    expect(container.querySelector('[data-slot="pane-place"]')).toHaveTextContent("membero");
+  });
+
+  it("matches the pane's space by machine too: another machine's w1 does not rename it", () => {
+    const base = fixtureAgents[0]!;
+    const agent: AgentView = { ...base, workspaceId: "w1", workspaceLabel: "sandbox", host: "lodge" };
+    const spaces = [space({ workspaceId: "w1", host: "attic", repoRoot: "/srv/other", isWorktree: true })];
+    const { container } = renderChat({ agent, agents: [agent, ...fixtureAgents.slice(1)] }, spaces);
+    expect(container.querySelector('[data-slot="pane-place"]')).toHaveTextContent("sandbox");
   });
 });
 

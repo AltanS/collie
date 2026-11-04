@@ -22,6 +22,25 @@ describe("useWalkySend", () => {
     expect(posted).toMatchObject({ to: "bluefin/w1:p1", body: "hello", replyTo: "wt_aaaaaaaaaaaa" });
   });
 
+  it("posts wake: true only when asked, and the same text with another wake is a new attempt (M85)", async () => {
+    const { result } = renderHook(() => useWalkySend());
+    const ids: string[] = [];
+    server.use(
+      http.post("/api/walky", async ({ request }) => {
+        ids.push(asJsonString(parseJsonObject(await request.text())?.id) ?? "");
+        return HttpResponse.error();
+      }),
+    );
+    await act(async () => void (await result.current.send("all", "hi")));
+    await act(async () => void (await result.current.send("all", "hi", undefined, true)));
+    expect(ids[0]).not.toBe(ids[1]);
+    server.resetHandlers();
+    await act(async () => void (await result.current.send("all", "hi", undefined, true)));
+    expect(recordedWalkyPosts().at(-1)).toMatchObject({ to: "all", wake: true });
+    await act(async () => void (await result.current.send("all", "hi")));
+    expect(recordedWalkyPosts().at(-1)).not.toHaveProperty("wake");
+  });
+
   it("reuses the id when the same attempt is retried after a lost answer", async () => {
     const { result } = renderHook(() => useWalkySend());
     const ids: string[] = [];

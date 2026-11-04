@@ -28,6 +28,7 @@ import {
   parseSendArgs,
   receiptLine,
   shown,
+  stateWords,
   verifiedWords,
   type WalkyDeps,
 } from "./walky.ts";
@@ -66,8 +67,8 @@ interface Bridge {
 function scratch(over: Partial<ConstructorParameters<typeof WalkyService>[0]> = {}): Bridge {
   const stateDir = mkdtempSync(join(tmpdir(), "walky-cli-"));
   const panes: WalkyPane[] = [
-    { session: "main", paneId: "%1", agent: true, harness: "agent-x", label: "repo#one", state: "idle", instance: "aaaa", terminal: true },
-    { session: "main", paneId: "%2", agent: true, harness: "agent-y", label: "repo#two", state: "working", instance: "bbbb", terminal: true },
+    { session: "main", paneId: "%1", agent: true, harness: "agent-x", label: "repo#one", state: "idle", activeAt: null, instance: "aaaa", terminal: true },
+    { session: "main", paneId: "%2", agent: true, harness: "agent-y", label: "repo#two", state: "working", activeAt: null, instance: "bbbb", terminal: true },
   ];
   const state: Bridge = { stateDir, sent: [], answer: { outcome: "sent" } };
   const host: WalkyHost = {
@@ -252,8 +253,8 @@ describe("send", () => {
     const states = new Map<string, SendResult>();
     const heldHost: WalkyHost = {
       panes: () => [
-        { session: "main", paneId: "%1", agent: true, harness: "agent-x", label: "repo#one", state: "idle", instance: "aaaa", terminal: true },
-        { session: "main", paneId: "%2", agent: true, harness: "agent-y", label: "repo#two", state: "working", instance: "bbbb", terminal: true },
+        { session: "main", paneId: "%1", agent: true, harness: "agent-x", label: "repo#one", state: "idle", activeAt: null, instance: "aaaa", terminal: true },
+        { session: "main", paneId: "%2", agent: true, harness: "agent-y", label: "repo#two", state: "working", activeAt: null, instance: "bbbb", terminal: true },
       ],
       send: async (_pane, sendId): Promise<SendResult> => {
         states.set(sendId, { outcome: "held", reason: "draft_present" });
@@ -502,11 +503,56 @@ describe("reply, inbox, status, who", () => {
     expect(JSON.parse(json.io.stdout[0]!)).toMatchObject({ id: "wt_aaaaaaaaaaa1", deliveries: [{ address: "local/%2", member: "local", outcome: "delivered" }], totals: { delivered: 1 } });
   });
 
+  /** Two agent panes in one folder: `%1` asks, `%2` finished 20 minutes ago. */
+  const resting = (typed: string[] = []): WalkyHost => ({
+    panes: () => [
+      { session: "main", paneId: "%1", agent: true, harness: "agent-x", label: "repo#main", state: "working", activeAt: Date.now(), instance: "aaaa", terminal: true },
+      { session: "main", paneId: "%2", agent: true, harness: "agent-y", label: "repo#feat", state: "done", activeAt: Date.now() - 20 * 60_000, instance: "bbbb", terminal: true },
+    ],
+    send: async (pane) => {
+      typed.push(pane.paneId);
+      return { outcome: "sent" };
+    },
+    sendState: () => ({ outcome: "sent" }),
+    cancelHeld: () => undefined,
+  });
+
+  socketTest("a scope send leaves a resting session in its inbox and says so; --wake types it", async () => {
+    const typed: string[] = [];
+    const b = await bridge({ host: resting(typed) });
+    const rested = deps(b, inPane("%1"));
+    expect(await cmdWalkySend(rested, ["here", "hi"])).toBe(EXIT.OK);
+    expect(rested.io.stdout[2]).toBe("waiting in the inbox, not typed: the session rests");
+    expect(typed).toEqual([]);
+    const woken = deps(b, inPane("%1"), { mintId: () => "wt_aaaaaaaaaaa2" });
+    expect(await cmdWalkySend(woken, ["here", "--wake", "hi again"])).toBe(EXIT.OK);
+    expect(woken.io.stdout[2]).toBe("typed into the pane");
+    expect(typed).toEqual(["%2"]);
+    expect(b.service?.status("wt_aaaaaaaaaaa1").message).not.toHaveProperty("wake");
+    expect(b.service?.status("wt_aaaaaaaaaaa2").message).toMatchObject({ wake: true });
+  });
+
+  socketTest("a direct send to the resting pane is typed with no flag, and a reply refuses --wake", async () => {
+    const b = await bridge({ host: resting() });
+    const d = deps(b, inPane("%1"));
+    expect(await cmdWalkySend(d, ["local/%2", "hi"])).toBe(EXIT.OK);
+    expect(d.io.stdout[2]).toBe("typed into the pane");
+    const r = deps(b, inPane("%1"));
+    expect(await cmdWalkyReply(r, ["wt_aaaaaaaaaaa1", "--wake", "ok"])).toBe(EXIT.USAGE);
+    expect(r.io.stderr[0]).toBe("error: a reply goes to one pane: `--wake` is for a scope or `all`");
+  });
+
+  test("the receipt wording for inbox-only: resting", () => {
+    const receipt = { id: "wt_aaaaaaaaaaa1", target: "local/%2", state: "inbox-only", reason: "resting", verified: "local", at: 1, by: "solo" } as const;
+    expect(stateWords(receipt)).toBe("waiting in the inbox, not typed: the session rests");
+    expect(stateWords({ ...receipt, reason: "no terminal" })).toBe("waiting in the inbox, not typed: no terminal");
+  });
+
   socketTest("who on a solo install with only the asking agent pane says a message needs two", async () => {
     const lone: WalkyHost = {
       panes: () => [
-        { session: "main", paneId: "%1", agent: true, harness: "agent-x", label: "repo#one", state: "idle", instance: "aaaa", terminal: true },
-        { session: "main", paneId: "%2", agent: false, harness: null, label: "repo#two", state: "idle", instance: "aaaa", terminal: true },
+        { session: "main", paneId: "%1", agent: true, harness: "agent-x", label: "repo#one", state: "idle", activeAt: null, instance: "aaaa", terminal: true },
+        { session: "main", paneId: "%2", agent: false, harness: null, label: "repo#two", state: "idle", activeAt: null, instance: "aaaa", terminal: true },
       ],
       send: async () => ({ outcome: "sent" }),
       sendState: () => null,
@@ -532,9 +578,9 @@ describe("reply, inbox, status, who", () => {
   /** Three agent panes in two folders, one a checkout on a branch: what a workspace filter has to tell apart. */
   const folders = (): WalkyHost => ({
     panes: () => [
-      { session: "main", paneId: "%1", agent: true, harness: "agent-x", label: "collie-workspace#main", state: "idle", instance: "aaaa", terminal: true },
-      { session: "main", paneId: "%2", agent: true, harness: "agent-x", label: "other", state: "idle", instance: "bbbb", terminal: true },
-      { session: "main", paneId: "%3", agent: true, harness: "agent-y", label: "collie-workspace#feat/x", state: "working", instance: "cccc", terminal: true },
+      { session: "main", paneId: "%1", agent: true, harness: "agent-x", label: "collie-workspace#main", state: "idle", activeAt: null, instance: "aaaa", terminal: true },
+      { session: "main", paneId: "%2", agent: true, harness: "agent-x", label: "other", state: "idle", activeAt: null, instance: "bbbb", terminal: true },
+      { session: "main", paneId: "%3", agent: true, harness: "agent-y", label: "collie-workspace#feat/x", state: "working", activeAt: null, instance: "cccc", terminal: true },
     ],
     send: async () => ({ outcome: "sent" }),
     sendState: () => ({ outcome: "sent" }),
@@ -648,8 +694,11 @@ describe("reply, inbox, status, who", () => {
 
 describe("the send arguments", () => {
   test("flags before the text, the text after the address", () => {
-    expect(parseSendArgs(["local/%2", "a", "--b"])).toEqual({ to: "local/%2", replyTo: null, text: "a --b", json: false });
-    expect(parseSendArgs(["--json", "--to", "all", "x"])).toEqual({ to: "all", replyTo: null, text: "x", json: true });
+    expect(parseSendArgs(["local/%2", "a", "--b"])).toEqual({ to: "local/%2", replyTo: null, text: "a --b", json: false, wake: false });
+    expect(parseSendArgs(["--json", "--to", "all", "x"])).toEqual({ to: "all", replyTo: null, text: "x", json: true, wake: false });
+    expect(parseSendArgs(["here", "--wake", "x"])).toEqual({ to: "here", replyTo: null, text: "x", json: false, wake: true });
+    // After the text starts, a flag is part of the text.
+    expect(parseSendArgs(["here", "x", "--wake"])).toEqual({ to: "here", replyTo: null, text: "x --wake", json: false, wake: false });
     expect(parseSendArgs(["--reply-to", "bad"])).toEqual({ error: "`bad` is not a message id" });
     expect(parseSendArgs(["--nope"])).toEqual({ error: "unknown flag `--nope`" });
   });

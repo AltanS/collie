@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import { DEFAULT_PORT } from "../bridge/config.ts";
 import type { HostProbe } from "../bridge/mux/host-candidates.ts";
+import { HOST, type Host } from "../bridge/host.ts";
 import { buildMuxRegistry, muxNames } from "../bridge/mux/registry.ts";
 import { commitCrewChange, mintInvite } from "../bridge/crew/enrollment.ts";
 import { slugifyMemberId } from "../bridge/crew/identity.ts";
@@ -102,15 +103,14 @@ const PAYLOAD_EOF = "__COLLIE_PAYLOAD__";
  * host that would prompt fails legibly instead of hanging behind a captured stdin; `ServerAlive*` so
  * a build that outlives a NAT idle timer is not silently truncated. Nothing here overrides a
  * host-key policy — that decision stays entirely the operator's `~/.ssh` (ADR 0015).
+ *
+ * `multiplex` drops the three `Control*` options: Windows OpenSSH cannot multiplex (its control
+ * socket is AF_UNIX, and `ControlMaster` there fails the whole connection with "getsockname failed:
+ * Not a socket"), so on Windows every leg opens its own connection and authenticates again. The
+ * operator's key auth carries that; the legs are what matter, not the reuse.
  */
-export function sshOptions(controlPath: string): readonly string[] {
-  return [
-    "-o",
-    "ControlMaster=auto",
-    "-o",
-    `ControlPath=${controlPath}`,
-    "-o",
-    "ControlPersist=60",
+export function sshOptions(controlPath: string, multiplex = true): readonly string[] {
+  const base = [
     "-o",
     "BatchMode=yes",
     "-o",
@@ -118,6 +118,9 @@ export function sshOptions(controlPath: string): readonly string[] {
     "-o",
     "ServerAliveCountMax=4",
   ];
+  return multiplex
+    ? ["-o", "ControlMaster=auto", "-o", `ControlPath=${controlPath}`, "-o", "ControlPersist=60", ...base]
+    : base;
 }
 
 /** Splice a payload into a leg script. Exported for the golden tests; used by every runner. */
@@ -142,14 +145,19 @@ export function composeStdin(script: string, stdin: string | undefined): string 
 
 /** The real transport: one `ssh` per leg, all sharing one control socket under a 0700 directory. */
 export function sshRunner(
-  host: string,
+  target: string,
   env: Record<string, string | undefined>,
   home: string,
+  host: Host = HOST,
 ): RemoteRunner {
   const dir = mkdtempSync(join(tmpdir(), "collie-add-"), { encoding: "utf8" });
   // 0700 from creation (`mkdtemp` is 0700) — the control socket is a live authenticated channel to
   // another machine, so anything that can open it can run commands there as the operator.
   const controlPath = join(dir, "s");
+  // Windows OpenSSH cannot multiplex; see `sshOptions`. There the legs share nothing but the host.
+  // The platform is read from the `Host` seam (bridge/host.ts), never `process.platform`, so a test
+  // can pin win32 on any machine.
+  const multiplex = host.platform !== "win32";
   const bin = findTool("ssh", env, home);
   let closed = false;
   return {
@@ -157,7 +165,7 @@ export function sshRunner(
       if (bin === null) {
         return { code: 127, stdout: "", stderr: "no `ssh` on this machine", spawned: false };
       }
-      const proc = Bun.spawn([bin, ...sshOptions(controlPath), host, "/bin/sh", "-s"], {
+      const proc = Bun.spawn([bin, ...sshOptions(controlPath, multiplex), target, "/bin/sh", "-s"], {
         stdin: new TextEncoder().encode(composeStdin(script, stdin)),
         stdout: "pipe",
         stderr: "pipe",
@@ -173,9 +181,9 @@ export function sshRunner(
     close() {
       if (closed) return;
       closed = true;
-      if (bin !== null) {
+      if (bin !== null && multiplex) {
         try {
-          Bun.spawnSync([bin, "-o", `ControlPath=${controlPath}`, "-O", "exit", host], {
+          Bun.spawnSync([bin, "-o", `ControlPath=${controlPath}`, "-O", "exit", target], {
             stdout: "ignore",
             stderr: "ignore",
             env,
@@ -2745,7 +2753,7 @@ export function manifestVersionAt(deps: Pick<CrewDeps, "ctx" | "exec">, commit: 
 export function crewAddDeps(base: CrewDeps): CrewAddDeps {
   return {
     ...base,
-    remote: (host) => sshRunner(host, base.ctx.env, base.ctx.home),
+    remote: (target) => sshRunner(target, base.ctx.env, base.ctx.home, base.host),
     // Bun's built-ins, guarded by a tty check: a prompt nobody can answer must abort legibly rather
     // than read EOF as "yes".
     confirm: (question) => (process.stdin.isTTY === true ? confirm(question) : null),

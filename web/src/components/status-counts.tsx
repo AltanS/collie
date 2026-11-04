@@ -17,31 +17,30 @@ const ORDER: readonly Counted[] = [
   { kind: "status", status: "blocked" },
   { kind: "unseen" },
   { kind: "status", status: "working" },
-  { kind: "status", status: "done" },
   { kind: "status", status: "idle" },
 ];
 
-/** The per-state tallies; `unseen` panes are counted there and not under their done/idle status. */
+/** The per-state tallies; `unseen` panes are counted there and not under their done/idle status. A seen finished pane counts as idle. */
 export interface StateCounts {
   blocked: number;
   unseen: number;
   working: number;
-  done: number;
   idle: number;
 }
 
 const keyOf = (c: Counted): keyof StateCounts =>
-  c.kind === "unseen" ? "unseen" : c.status === "blocked" || c.status === "working" || c.status === "done" ? c.status : "idle";
+  c.kind === "unseen" ? "unseen" : c.status === "blocked" || c.status === "working" ? c.status : "idle";
 
 export function countStates(panes: readonly AgentView[]): StateCounts {
-  const n: StateCounts = { blocked: 0, unseen: 0, working: 0, done: 0, idle: 0 };
+  const n: StateCounts = { blocked: 0, unseen: 0, working: 0, idle: 0 };
   for (const p of panes) {
     if (p.kind === "shell") continue;
     if (p.status === "blocked") n.blocked++;
     else if (isUnseen(p)) n.unseen++;
     else if (p.status === "working") n.working++;
-    else if (p.status === "done") n.done++;
-    else if (p.status === "idle") n.idle++;
+    // A finished pane you opened rests: a seen `done` counts with the idle ones (issue 665). The
+    // unseen ones were split off above, so no pane is counted as `done` any more.
+    else if (p.status === "idle" || p.status === "done") n.idle++;
   }
   return n;
 }
@@ -141,7 +140,7 @@ interface SummaryFit {
  *   1. A state with a zero count is not drawn.
  *   2. Every count spells its word ("3 needs you", "2 unseen", "7 working", "2 idle").
  *   3. Too wide, and the LOWEST-priority count drops its word and keeps its dot and number, then the
- *      next one up, in the order idle, done, working, unseen. The worst count keeps its word longest.
+ *      next one up, in the order idle, working, unseen. The worst count keeps its word longest.
  *   4. Last, the worst count drops its word too, and the row is dots and numbers.
  *   5. Wider still (huge numbers, a very narrow phone), whole counts leave the row from the right,
  *      lowest priority first. Nothing is ever cut mid-word or mid-number and no ellipsis is drawn.

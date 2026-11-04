@@ -27,11 +27,14 @@ function field(value: string | null): string {
 }
 
 /** The fields a signature covers. */
-export type SignedFields = Pick<WalkyMessage, "id" | "kind" | "from" | "to" | "replyTo" | "at" | "body">;
+export type SignedFields = Pick<WalkyMessage, "id" | "kind" | "from" | "to" | "replyTo" | "at" | "body" | "wake">;
 
-/** The canonical string of a message. */
+/**
+ * The canonical string of a message. `wake` (M85) adds one line, only when it is true, so every message
+ * without it keeps the string it always had and an older bridge still verifies it.
+ */
 export function canonicalMessage(message: SignedFields): string {
-  return [
+  const fields = [
     WALKY_DOMAIN,
     message.id,
     message.kind,
@@ -42,7 +45,8 @@ export function canonicalMessage(message: SignedFields): string {
     field(message.replyTo),
     String(message.at),
     sha256Hex(message.body),
-  ].join("\n");
+  ];
+  return (message.wake === true ? [...fields, "wake"] : fields).join("\n");
 }
 
 /** The message, signed by `signer` with the PKCS#8 key behind its pinned certificate. */

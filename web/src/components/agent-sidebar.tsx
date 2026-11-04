@@ -17,7 +17,8 @@ import { paneSubtitle } from "@/lib/pane-marks";
 import { PaneBadge } from "@/components/pane-badge";
 import { shortenHome } from "@/lib/shorten-home";
 import { bucketOf, isAttention, worstTriage, type TriageKey } from "@/lib/triage";
-import type { AgentStatus, AgentView, Launcher, ServerSummary, TabView } from "@/lib/types";
+import type { AgentStatus, AgentView, Launcher, ServerSummary, SessionSummary, TabView, WorkspaceView } from "@/lib/types";
+import type { Scope } from "@/lib/scope";
 import { t } from "@/lib/i18n";
 import { useFrozenRanks } from "@/hooks/use-frozen-ranks";
 import { useLocale } from "@/hooks/use-locale";
@@ -43,6 +44,16 @@ interface ThreadSidebarProps {
   tabs?: readonly TabView[];
   /** The snapshot's machine list, for the order machines run in: the lead first. */
   servers?: readonly ServerSummary[] | undefined;
+  /**
+   * The snapshot's spaces (`root.workspaces`). With them a linked git worktree folds under its open
+   * root workspace, as on the dashboard, and one whose root is not open is headed `repo › slug`
+   * (issue #666). Omit and every workspace stays its own group.
+   */
+  workspaces?: readonly WorkspaceView[] | undefined;
+  /** The view's address (`?h=` and `?s=`), so `workspaces` is matched to the session it describes. */
+  scope?: Scope | undefined;
+  /** The snapshot's session registry, to find each machine's primary session when matching `workspaces`. */
+  sessions?: readonly SessionSummary[] | undefined;
   /** Whether the Shells section is expanded, and how to fold it. Omit to leave it always open. */
   shellsOpen?: boolean;
   onShellsOpenChange?: (open: boolean) => void;
@@ -137,6 +148,9 @@ export function ThreadSidebar({
   onSelect,
   tabs,
   servers,
+  workspaces,
+  scope,
+  sessions,
   shellsOpen = true,
   onShellsOpenChange,
   pins = NO_PINS,
@@ -170,7 +184,8 @@ export function ThreadSidebar({
   }
 
   // The dashboard's grouping, so the switcher and the dashboard list the same panes in the same place.
-  const groups = groupPanesByWorkspace(agents, [], { order: "fixed", tabs, servers });
+  const groupOptions = { order: "fixed" as const, tabs, servers, workspaces, scope, sessions };
+  const groups = groupPanesByWorkspace(agents, [], groupOptions);
   // PINNED LEADS (ADR 0070): the dashboard's place order over agents AND shells (a shell sits after
   // its tab's agents, as on the dashboard), so the two surfaces agree by construction. Each pinned
   // pane then leaves its workspace section or Shells: listed once. A workspace section left with no
@@ -179,7 +194,7 @@ export function ThreadSidebar({
   const pinned =
     pins.length === 0
       ? NO_PANES
-      : pinnedRows(groupPanesByWorkspace(agents, shellPanes, { order: "fixed", tabs, servers }), isPinned);
+      : pinnedRows(groupPanesByWorkspace(agents, shellPanes, groupOptions), isPinned);
   const sections = shownGroups(groups, false, isPinned);
   const shellRows = pins.length === 0 ? shellPanes : shellPanes.filter((p) => !isPinned(p));
 
@@ -316,7 +331,7 @@ export function ThreadSidebar({
               roomy={roomy}
               key={g.key}
               id={`switch-ws-${g.key.replace(/[^A-Za-z0-9_-]/gu, "_")}`}
-              label={g.label}
+              label={g.heading ?? g.label}
               tone={roomy ? "quiet" : "strong"}
               mark={worstTriage(g.panes) === "needs" ? "blocked" : undefined}
               trailing={<StatusCounts panes={g.panes} className="shrink-0 text-[11px] text-muted-foreground" />}

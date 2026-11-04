@@ -21,6 +21,7 @@ import {
   grokTokenFrom,
   hasOpencodeGoEntry,
   isTurnEnd,
+  limitedWait,
   opencodeAccountSource,
   opencodeGoKeyFrom,
   parseAccountUsage,
@@ -251,7 +252,7 @@ interface Call {
 /** A fake vendor: answers from a queue, records each call, and can hold an answer open. */
 function vendor() {
   const calls: Call[] = [];
-  const answers: Array<{ status: number; body?: string } | "throw" | "hold"> = [];
+  const answers: Array<{ status: number; body?: string; retryAfter?: string } | "throw" | "hold"> = [];
   let release: (() => void) | null = null;
   const fetch: AccountFetch = async (url, init) => {
     calls.push({ url, headers: init.headers });
@@ -263,7 +264,8 @@ function vendor() {
       });
       return { status: 200, text: async () => limitsBody() };
     }
-    return { status: next.status, text: async () => next.body ?? "" };
+    const headers = { get: (name: string) => (name.toLowerCase() === "retry-after" ? (next.retryAfter ?? null) : null) };
+    return { status: next.status, headers, text: async () => next.body ?? "" };
   };
   return { calls, answers, fetch, release: () => release?.() };
 }
@@ -330,14 +332,18 @@ describe("AccountWindows", () => {
     expect(fake.calls.length).toBe(2);
   });
 
-  it("a turn's end asks at most once a minute", async () => {
+  it("a turn's end asks at most once in five minutes", async () => {
     const { windows, fake, clock } = service();
     windows.observe([pane("claude")], "main");
     await windows.settled();
     windows.poke("claude");
     await windows.settled();
     expect(fake.calls.length).toBe(1);
-    clock.now += POKE_EVERY_MS;
+    clock.now += 4 * 60_000;
+    windows.poke("claude");
+    await windows.settled();
+    expect(fake.calls.length).toBe(1);
+    clock.now += 60_000;
     windows.poke("claude");
     windows.poke("claude");
     await windows.settled();
@@ -433,7 +439,73 @@ describe("AccountWindows", () => {
     expect(fake.calls.length).toBe(3);
   });
 
-  it("keeps the reading on a network error and backs off 2 minutes", async () => {
+  it("waits as long as Retry-After says on the first 429", async () => {
+    const { windows, fake, clock, lines } = service();
+    windows.observe([pane("claude")], "main");
+    await windows.settled();
+    clock.now += ASK_EVERY_MS;
+    fake.answers.push({ status: 429, retryAfter: "1800" });
+    windows.observe([pane("claude")], "main");
+    await windows.settled();
+    expect(lines).toEqual(["[usage] account windows, claude: HTTP 429, asking again in 30 min"]);
+    clock.now += 30 * 60_000 - 1;
+    windows.observe([pane("claude")], "main");
+    windows.poke("claude");
+    await windows.settled();
+    expect(fake.calls.length).toBe(2);
+    clock.now += 1;
+    windows.observe([pane("claude")], "main");
+    await windows.settled();
+    expect(fake.calls.length).toBe(3);
+  });
+
+  it("waits 15, 30, 60 and 60 minutes on 429s in a row without a header, and a 200 resets the streak", async () => {
+    const { windows, fake, clock, lines } = service();
+    const MIN = 60_000;
+    windows.observe([pane("claude")], "main");
+    await windows.settled();
+    clock.now += ASK_EVERY_MS;
+    fake.answers.push({ status: 429 });
+    windows.observe([pane("claude")], "main");
+    await windows.settled();
+    const waits = [15, 30, 60, 60];
+    for (const [i, minutes] of waits.entries()) {
+      const asked = fake.calls.length;
+      clock.now += minutes * MIN - 1;
+      windows.observe([pane("claude")], "main");
+      windows.poke("claude");
+      await windows.settled();
+      expect(fake.calls.length).toBe(asked);
+      clock.now += 1;
+      // The ask at the end of each wait is the next 429, except the last, which is a 200.
+      if (i < waits.length - 1) fake.answers.push({ status: 429 });
+      windows.observe([pane("claude")], "main");
+      await windows.settled();
+      expect(fake.calls.length).toBe(asked + 1);
+    }
+    // The 200 ended the streak, so the next 429 waits 15 minutes again.
+    clock.now += ASK_EVERY_MS;
+    fake.answers.push({ status: 429 });
+    windows.observe([pane("claude")], "main");
+    await windows.settled();
+    const asked = fake.calls.length;
+    clock.now += 15 * MIN - 1;
+    windows.observe([pane("claude")], "main");
+    await windows.settled();
+    expect(fake.calls.length).toBe(asked);
+    clock.now += 1;
+    windows.observe([pane("claude")], "main");
+    await windows.settled();
+    expect(fake.calls.length).toBe(asked + 1);
+    expect(lines).toEqual([
+      "[usage] account windows, claude: HTTP 429, asking again in 15 min",
+      "[usage] account windows, claude: HTTP 429, asking again in 30 min",
+      "[usage] account windows, claude: HTTP 429, asking again in 60 min",
+      "[usage] account windows, claude: HTTP 429, asking again in 15 min",
+    ]);
+  });
+
+  it("keeps the reading on a network error and asks again at the next five-minute mark", async () => {
     const { windows, fake, clock, lines } = service();
     windows.observe([pane("claude")], "main");
     await windows.settled();
@@ -442,7 +514,12 @@ describe("AccountWindows", () => {
     windows.observe([pane("claude")], "main");
     await windows.settled();
     expect(windows.limits("claude")?.length).toBe(2);
-    clock.now += BACKOFF.network - 1;
+    // The 2 minute back-off ends before the five-minute ask cadence does, so the cadence decides.
+    clock.now += BACKOFF.network;
+    windows.poke("claude");
+    await windows.settled();
+    expect(fake.calls.length).toBe(2);
+    clock.now += ASK_EVERY_MS - BACKOFF.network - 1;
     windows.poke("claude");
     await windows.settled();
     expect(fake.calls.length).toBe(2);
@@ -859,7 +936,7 @@ describe("the Codex source", () => {
     await windows.settled();
     expect(m.tails.length).toBe(1);
     clock.now += BACKOFF.none;
-    windows.poke("codex");
+    windows.observe([pane("codex")], "main");
     await windows.settled();
     expect(m.tails.length).toBe(2);
     expect(windows.limits("codex")).toBeUndefined();
@@ -1363,5 +1440,32 @@ describe("no failure path of the service leaks a login", () => {
   it("logs at most one line per harness and per change, in plain words", async () => {
     const { log } = await outputs(scenarios[0]!, "all");
     for (const line of log) expect(line).toMatch(/^\[usage\] account windows, (claude|codex|opencode|grok): [a-zA-Z0-9 ,()-]+$/);
+  });
+});
+
+describe("limitedWait", () => {
+  const MIN = 60_000;
+
+  it("is 15, 30, 60 minutes and then stays at 60 without a header", () => {
+    expect([0, 1, 2, 3, 9].map((n) => limitedWait(null, n, NOW) / MIN)).toEqual([15, 30, 60, 60, 60]);
+  });
+
+  it("takes the longer of Retry-After and 15 minutes, in seconds", () => {
+    expect(limitedWait("1800", 0, NOW)).toBe(30 * MIN);
+    expect(limitedWait("60", 0, NOW)).toBe(15 * MIN);
+    expect(limitedWait("1800", 1, NOW)).toBe(60 * MIN);
+  });
+
+  it("reads an HTTP-date relative to now", () => {
+    expect(limitedWait(new Date(NOW + 40 * MIN).toUTCString(), 0, NOW)).toBe(40 * MIN);
+    expect(limitedWait(new Date(NOW - 40 * MIN).toUTCString(), 0, NOW)).toBe(15 * MIN);
+  });
+
+  it("caps at an hour whatever the header says", () => {
+    expect(limitedWait("86400", 0, NOW)).toBe(BACKOFF.limitedMax);
+  });
+
+  it("treats a header it cannot read as absent", () => {
+    for (const junk of ["", "soon", "-5", "1.5e3"]) expect(limitedWait(junk, 0, NOW)).toBe(15 * MIN);
   });
 });

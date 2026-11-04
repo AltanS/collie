@@ -28,7 +28,7 @@ import { useOperatorCommands } from "@/lib/operator-config";
 import { paneGitHead } from "@/lib/git-head";
 import { paneName } from "@/lib/pane-name";
 import { paneScopeKey, type Scope } from "@/lib/scope";
-import { isUnseen } from "@/lib/triage";
+import { isUnseen, shownStatus } from "@/lib/triage";
 import type { AgentView } from "@/lib/types";
 import { statusLabel } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -126,7 +126,7 @@ export function ColumnHeader({ pane, controls, onFocus }: { pane: AgentView; con
         ) : (
           <AgentIcon agent={pane.agent} className="size-8" />
         )}
-        <StatusDot status={pane.status} backed surface="bg-band-ground" label={statusLabel(pane.status)} className="absolute -bottom-1 -right-1" />
+        <StatusDot status={shownStatus(pane)} backed surface="bg-band-ground" label={statusLabel(shownStatus(pane))} className="absolute -bottom-1 -right-1" />
       </span>
       {/* The name is the column's way in for a keyboard: Enter on it gives the column the focus. */}
       <button type="button" onClick={own(onFocus)} className="min-h-11 min-w-0 flex-1 pl-2 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
@@ -138,7 +138,7 @@ export function ColumnHeader({ pane, controls, onFocus }: { pane: AgentView; con
             column's own stays: its branch, its machine, its state. */}
         <div data-slot="column-header-line" className="flex min-w-0 items-baseline gap-2 text-[11px] leading-4 text-muted-foreground">
           {head !== null && <BranchLabel head={head} className="min-w-0 shrink truncate" />}
-          <span className="shrink-0">{statusLabel(pane.status)}</span>
+          <span className="shrink-0">{statusLabel(shownStatus(pane))}</span>
           <HostChip host={pane.host} variant="glyph" className="ml-auto self-center" />
         </div>
       </button>
@@ -184,6 +184,8 @@ export function PaneColumnBody({
   const commands = commandsFor(pane.agent, operatorCommands);
   const todos = pane.todos ?? [];
   const subagents = pane.subagents ?? [];
+  const jobs = pane.jobs ?? [];
+  const runningJobs = jobs.filter((job) => job.endedAt === undefined).length;
 
   const pill = (id: string): (() => void) => () => onIntent({ kind: "action", id });
   const general: GeneralAction[] = [
@@ -266,6 +268,16 @@ export function PaneColumnBody({
                   label: t("composer.controls.agents", { count: subagents.length }),
                   expanded: false,
                   onClick: () => onIntent({ kind: "agents" }),
+                }
+              : undefined
+          }
+          jobs={
+            jobs.length > 0
+              ? {
+                  count: runningJobs,
+                  label: t("belt.jobs.label", { count: runningJobs }),
+                  expanded: false,
+                  onClick: () => onIntent({ kind: "jobs" }),
                 }
               : undefined
           }

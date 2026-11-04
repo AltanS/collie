@@ -1396,6 +1396,11 @@ export const en = {
   "harnessBar.resume": "Resume",
   "harnessBar.tree": "Tree",
   "harnessBar.confirmAria": "Tap again to confirm {command}",
+  // The Jobs mark and its sheet (components/jobs-sheet.tsx, ADR 0128). `{count}` is the RUNNING jobs.
+  "belt.jobs.label": "Jobs {count}",
+  "belt.jobs.running": "Running",
+  "belt.jobs.ended": "Ended recently",
+  "belt.jobs.exit": "Exit code {code}",
   "belt.stop": "Stop",
   "belt.stopArmed": "Stop?",
   "belt.stopAria": "Stop the turn",
@@ -2899,6 +2904,7 @@ export const en = {
   "walky.state.onLead": "on its way, the lead reports the result",
   "walky.reason.draftPresent": "that session has unsent text",
   "walky.reason.turnRunning": "that session is busy",
+  "walky.reason.resting": "that session rests",
   "walky.state.delivered": "typed into the pane",
   "walky.state.inboxOnly": "waiting in the inbox, not typed",
   "walky.state.inboxOnlyBecause": "waiting in the inbox, not typed: {reason}",
@@ -2963,6 +2969,10 @@ export const en = {
   "walky.crew.confirmBack": "Back",
   "walky.crew.skippedTitle": "Shell panes, skipped",
   "walky.crew.skippedRow": "{label} ({address}): skipped",
+  "walky.crew.resting": "Resting, not woken",
+  "walky.crew.restingWoken": "Resting, woken too",
+  "walky.crew.restingRow": "{label} ({address}): resting",
+  "walky.crew.wake": "Wake them too",
   "walky.crew.refusals": "Not sent on this machine: {list}",
 
   // --- Sent (M61): the record of shell lines sent through Collie ---

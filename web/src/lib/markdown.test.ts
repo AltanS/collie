@@ -257,6 +257,19 @@ describe("parseMarkdown", () => {
     expect(blocks[1]).toMatchObject({ ordered: true });
   });
 
+  // An indented bullet under a numbered option ends the list (blocks don't nest), so the next
+  // option opens a new one. It keeps its own number, or every option draws as "1.".
+  it("an ordered list keeps the number its first item was written with", () => {
+    const blocks = parseMarkdown("1. **push** ← recommended\n   - why\n2. fix first\n3) or wait");
+    expect(blocks.map((b) => b.kind)).toEqual(["list", "list", "list"]);
+    expect(blocks[0]).toMatchObject({ ordered: true, start: 1 });
+    expect(blocks[1]).toMatchObject({ ordered: false });
+    expect(blocks[1]).not.toHaveProperty("start");
+    expect(blocks[2]).toMatchObject({ ordered: true, start: 2 });
+    // SAFETY: the line above pinned `blocks[2]` as an ordered list block, which carries `items`.
+    expect((blocks[2] as { items: unknown[] }).items).toHaveLength(2);
+  });
+
   it("reads a rule as a rule, not a bullet", () => {
     expect(parseMarkdown("---")).toEqual([{ kind: "rule" }]);
   });
