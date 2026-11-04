@@ -118,6 +118,9 @@ export interface HookCommand {
  */
 const HOOK_VERB = " beacon emit ";
 
+/** An optional prefix of an installed command: the shell replaces itself with the binary. */
+const HOOK_EXEC = "exec ";
+
 /**
  * The absolute name an installed entry runs, or null when the command is not shaped like ours.
  *
@@ -127,7 +130,12 @@ const HOOK_VERB = " beacon emit ";
  */
 export function hookBinaryOf(command: string): string | null {
   const at = command.indexOf(HOOK_VERB);
-  return at <= 0 ? null : command.slice(0, at);
+  if (at <= 0) return null;
+  const binary = command.slice(0, at);
+  // A hand-added `exec ` (issue 689: dash forks the command unless it execs) is not part of the name.
+  if (!binary.startsWith(HOOK_EXEC)) return binary;
+  const bare = binary.slice(HOOK_EXEC.length);
+  return bare === "" ? null : bare;
 }
 
 /** How many links a chain may follow before {@link realpathVia} gives up. `ELOOP`, without the errno. */

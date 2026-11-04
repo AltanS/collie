@@ -1,11 +1,12 @@
 import { execFileSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { isAbsolute, join } from "node:path";
+import { readFileSync } from "node:fs";
+import { isAbsolute, join, posix } from "node:path";
 
 import { BEACON_DIR_MODE, beaconFileName, beaconKey, beaconsDir, EDGE_FILE, EDGE_MAX_AGE_MS, EDGE_SPOOL_MAX, edgesDir } from "../bridge/beacon/paths.ts";
 import { HOOK_TARGET_FILE, HOOK_TARGETS_MAX, hookTargetsDir, parseHookTarget, type HookTargetRecord } from "../bridge/beacon/hook-targets.ts";
 import { edgeModelOf } from "../bridge/beacon/parse.ts";
-import { startTimeProbe, type StartTimeCommand } from "../bridge/beacon/liveness.ts";
+import { procStatPath, startTimeProbe, type StartTimeCommand } from "../bridge/beacon/liveness.ts";
 import { HOST } from "../bridge/host.ts";
 import {
   BEACON_SCHEMA_VERSION,
@@ -73,6 +74,11 @@ export { privateDir };
 // process — no surviving shell in between, with or without a trailing comment in the command string —
 // so `process.ppid` is the agent, and the agent is what the reader's liveness check needs. The hook's
 // own pid is dead microseconds later and would make every beacon read expired.
+//
+// That probe ran on macOS, where `sh` replaces itself with the last command. Where `/bin/sh` is dash
+// (Ubuntu, Debian) the shell forks the command and waits, so `process.ppid` is the shell, which is
+// gone as soon as `collie` exits (issue 689). {@link agentPidOf} climbs past such a shell to the first
+// ancestor that is not one, and falls back to `process.ppid` whenever it cannot read a process.
 
 // ── THE CONTEXT READING (.adr/0115, amended 2026-10-24) ───────────────────────────────────────────
 //
@@ -290,7 +296,7 @@ export interface BeaconEmitDeps {
   readonly files: Files;
   /** The hook payload. A seam so the tests need no real stdin. */
   readStdin(): Promise<string>;
-  /** The agent's pid — `process.ppid` in production (see the header's probe note). */
+  /** The agent's pid — `agentPidOf(process.ppid, …)` in production (see the header's probe note). */
   readonly agentPid: number;
   /** Injected so a test can pin the heartbeat; production leaves it. */
   readonly now?: () => number;
@@ -322,6 +328,78 @@ export function runStartTimeCommand(command: StartTimeCommand, pid: number): str
       stdio: ["ignore", "pipe", "ignore"],
       windowsHide: true,
     });
+  } catch {
+    return null;
+  }
+}
+
+/** The process facts the climb needs: its name (`comm`) and its parent. */
+export interface ProcessInfo {
+  readonly comm: string;
+  readonly ppid: number;
+}
+
+/** Names of the shells a hook command may run through (`comm`, so no path). */
+const SHELL_COMMS: ReadonlySet<string> = new Set(["sh", "dash", "bash", "zsh", "ksh", "ash", "busybox"]);
+
+/** How many shells {@link agentPidOf} climbs past. `sh -c` under a wrapper is two at most; the third is slack. */
+const SHELL_HOPS_MAX = 3;
+
+/**
+ * The agent's pid for a hook that started as `start` (`process.ppid`).
+ *
+ * bash and the macOS `sh` exec the hook's last command, so `start` is the agent. dash forks it and
+ * waits, so `start` is a shell that dies with the hook, and every beacon recorded against it reads
+ * expired (issue 689). While the process at the current pid is a shell this climbs to its parent, at
+ * most {@link SHELL_HOPS_MAX} times and never to pid 1 or below: a process whose parent is 0 or 1
+ * stays where it is. The first non-shell pid is the answer. A process that cannot be read keeps the
+ * pid already reached, so every failure ends at today's behaviour.
+ */
+export function agentPidOf(start: number, read: (pid: number) => ProcessInfo | null): number {
+  let pid = start;
+  for (let hop = 0; hop < SHELL_HOPS_MAX; hop += 1) {
+    const info = read(pid);
+    if (info === null || !SHELL_COMMS.has(info.comm)) return pid;
+    if (info.ppid <= 1) return pid;
+    pid = info.ppid;
+  }
+  return pid;
+}
+
+/**
+ * `/proc/<pid>/stat` as a {@link ProcessInfo}, or null when the text is not a stat line. Field 2 is
+ * the name in parentheses and may hold spaces and parentheses itself (`(my (odd) sh)`), so the line
+ * is split on the LAST `)`; field 4, the parent, is the second word after it (state comes first).
+ */
+export function parseProcStatProcess(text: string): ProcessInfo | null {
+  const open = text.indexOf("(");
+  const close = text.lastIndexOf(")");
+  if (open < 0 || close < open) return null;
+  const ppid = text.slice(close + 1).trim().split(/\s+/u)[1];
+  if (ppid === undefined || !/^\d+$/u.test(ppid)) return null;
+  return { comm: text.slice(open + 1, close), ppid: Number(ppid) };
+}
+
+/** One `ps -o ppid=,comm=` line (` 123 /bin/sh`) as a {@link ProcessInfo}; `comm` is the path's last part. */
+export function parsePsProcess(text: string): ProcessInfo | null {
+  const match = /^\s*(\d+)\s+(.+?)\s*$/u.exec(text);
+  if (match === null) return null;
+  const comm = posix.basename(match[2]!);
+  return comm === "" ? null : { comm, ppid: Number(match[1]) };
+}
+
+/** Linux and macOS' process reader; any other platform, and any failure, is null (no climb). */
+export function readProcessInfo(pid: number): ProcessInfo | null {
+  try {
+    if (HOST.platform === "linux") return parseProcStatProcess(readFileSync(procStatPath(pid), "utf8"));
+    if (HOST.platform !== "darwin") return null;
+    const text = execFileSync("/bin/ps", ["-o", "ppid=,comm=", "-p", String(pid)], {
+      encoding: "utf8",
+      env: { LC_ALL: "C" },
+      timeout: 1000,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    return parsePsProcess(text);
   } catch {
     return null;
   }

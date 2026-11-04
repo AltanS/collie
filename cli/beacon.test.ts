@@ -14,7 +14,7 @@ import { hookTargetFileName } from "../bridge/beacon/hook-targets.ts";
 import { BEACON_SCHEMA_VERSION, type EdgeRecord } from "../bridge/beacon/types.ts";
 import { parseLstart, PS_LSTART, type StartTimeCommand } from "../bridge/beacon/liveness.ts";
 import { HERDR_CORE_MUX } from "../bridge/mux/herdr-core/adapter.ts";
-import { BEACON_HARNESS, BEACON_HOOKS, HERDR_CORE_NAMESPACE, type BeaconEmitDeps, cmdBeaconEmit, liveHookTargets, type PidProbeDeps, readEnvMarkers, runBeaconEmit, unwrapPrompt } from "./beacon.ts";
+import { agentPidOf, BEACON_HARNESS, BEACON_HOOKS, HERDR_CORE_NAMESPACE, type BeaconEmitDeps, cmdBeaconEmit, liveHookTargets, type PidProbeDeps, parsePsProcess, parseProcStatProcess, type ProcessInfo, readEnvMarkers, runBeaconEmit, unwrapPrompt } from "./beacon.ts";
 import { context, fakeFiles, HOME, STATE } from "./fakes.ts";
 import { EXIT } from "./io.ts";
 import type { Environment } from "./context.ts";
@@ -999,5 +999,77 @@ describe("the context reading (.adr/0115, amended 2026-10-24)", () => {
       expect(await cmdBeaconEmit(d)).toBe(EXIT.OK);
       expect(record(d)?.context).toBeUndefined();
     });
+  });
+});
+
+describe("agentPidOf: the first non-shell ancestor (#689)", () => {
+  /** A fake process table, pid to {comm, ppid}; a pid not in it reads as null. */
+  function table(rows: Record<number, ProcessInfo>): (pid: number) => ProcessInfo | null {
+    return (pid) => rows[pid] ?? null;
+  }
+
+  test("dash as the parent: the grandparent claude is the agent", () => {
+    const read = table({ 100: { comm: "dash", ppid: 50 }, 50: { comm: "claude", ppid: 10 } });
+    expect(agentPidOf(100, read)).toBe(50);
+  });
+
+  test("a parent that already is claude stays as it is (bash, macOS sh)", () => {
+    const read = table({ 50: { comm: "claude", ppid: 10 } });
+    expect(agentPidOf(50, read)).toBe(50);
+  });
+
+  test("sh under sh under claude climbs two hops", () => {
+    const read = table({ 100: { comm: "sh", ppid: 90 }, 90: { comm: "sh", ppid: 50 }, 50: { comm: "claude", ppid: 10 } });
+    expect(agentPidOf(100, read)).toBe(50);
+  });
+
+  test("four shells deep stops after three hops", () => {
+    const read = table({
+      100: { comm: "sh", ppid: 90 },
+      90: { comm: "bash", ppid: 80 },
+      80: { comm: "zsh", ppid: 70 },
+      70: { comm: "sh", ppid: 60 },
+      60: { comm: "claude", ppid: 10 },
+    });
+    expect(agentPidOf(100, read)).toBe(70);
+  });
+
+  test("a shell whose parent is pid 1 or 0 keeps its own pid", () => {
+    expect(agentPidOf(100, table({ 100: { comm: "sh", ppid: 1 } }))).toBe(100);
+    expect(agentPidOf(100, table({ 100: { comm: "sh", ppid: 0 } }))).toBe(100);
+  });
+
+  test("a read that fails keeps the pid reached so far", () => {
+    expect(agentPidOf(100, () => null)).toBe(100);
+    expect(agentPidOf(100, table({ 100: { comm: "dash", ppid: 50 } }))).toBe(50);
+  });
+
+  test("every shell name in the set is climbed, and a name that merely contains one is not", () => {
+    for (const comm of ["sh", "dash", "bash", "zsh", "ksh", "ash", "busybox"]) {
+      expect(agentPidOf(100, table({ 100: { comm, ppid: 50 }, 50: { comm: "claude", ppid: 10 } }))).toBe(50);
+    }
+    expect(agentPidOf(100, table({ 100: { comm: "bash-wrapper", ppid: 50 } }))).toBe(100);
+  });
+});
+
+describe("the process readers behind agentPidOf (#689)", () => {
+  test("a /proc stat line whose comm has spaces and parentheses is split on the last bracket", () => {
+    expect(parseProcStatProcess("12 (my (odd) sh) S 7 12 12 0 -1 4194560")).toEqual({ comm: "my (odd) sh", ppid: 7 });
+    expect(parseProcStatProcess("2688865 (dash) S 2679878 2688865 0 0")).toEqual({ comm: "dash", ppid: 2_679_878 });
+  });
+
+  test("text that is not a stat line is null", () => {
+    expect(parseProcStatProcess("")).toBeNull();
+    expect(parseProcStatProcess("12 dash S 7")).toBeNull();
+    expect(parseProcStatProcess("12 (dash) S x")).toBeNull();
+    expect(parseProcStatProcess("12 (dash)")).toBeNull();
+  });
+
+  test("a ps line gives the parent and the basename of the command", () => {
+    expect(parsePsProcess("  4321 /bin/sh\n")).toEqual({ comm: "sh", ppid: 4321 });
+    expect(parsePsProcess("1 /Applications/Claude Code/claude")).toEqual({ comm: "claude", ppid: 1 });
+    expect(parsePsProcess("77 -zsh")).toEqual({ comm: "-zsh", ppid: 77 });
+    expect(parsePsProcess("")).toBeNull();
+    expect(parsePsProcess("garbage")).toBeNull();
   });
 });
