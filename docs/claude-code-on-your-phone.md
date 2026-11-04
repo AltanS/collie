@@ -195,7 +195,9 @@ the same tailnet.
 1. **Pair the phone.** Run `collie pair` on the host and scan the QR code. Collie answers no device
    until it is paired ([Pair a device](security.md#pair-a-device--the-write-credential)).
 2. **Put it on your home screen.** On Android, tap **Install** at the top of Settings. On an iPhone,
-   tap Safari's share sheet.
+   in Safari tap **⋯** next to the address bar, tap **Share**, tap **Add to Home Screen**, and tap **Add**.
+
+   ![Put Collie on the home screen: iPhone and Android steps.](images/install/pwa-install.svg)
 
 ## 5. Answer Claude Code
 

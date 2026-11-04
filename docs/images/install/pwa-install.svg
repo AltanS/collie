@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img"
+     aria-label="Put Collie on the home screen: iPhone (Safari) and Android (Chrome) steps.">
+  <title>Put Collie on the home screen: iPhone (Safari) and Android (Chrome) steps.</title>
+  <style>
+    text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; fill: #18181b; }
+    .head { font-size: 16px; font-weight: 600; }
+    .step { font-size: 14px; }
+    .num { font-size: 12px; font-weight: 700; fill: #ffffff; text-anchor: middle; }
+    .phone { fill: none; stroke: #3f3f46; stroke-width: 1.5; }
+    .bar { fill: #f4f4f5; stroke: #3f3f46; stroke-width: 1; }
+    .dot { fill: #18181b; }
+  </style>
+  <rect width="640" height="360" rx="10" fill="#ffffff"/>
+  <path d="M320 24V336" stroke="#d4d4d8" stroke-width="1"/>
+
+  <!-- iPhone -->
+  <text class="head" x="160" y="38" text-anchor="middle">iPhone (Safari)</text>
+  <rect class="phone" x="28" y="58" width="76" height="270" rx="14"/>
+  <rect class="bar" x="38" y="68" width="56" height="12" rx="6"/>
+  <circle class="dot" cx="82" cy="74" r="1.8"/>
+  <circle class="dot" cx="87" cy="74" r="1.8"/>
+  <circle class="dot" cx="77" cy="74" r="1.8"/>
+  <rect x="48" y="150" width="36" height="36" rx="8" fill="none" stroke="#3f3f46" stroke-width="1.5" stroke-dasharray="3 3"/>
+  <g>
+    <circle cx="124" cy="92" r="10" fill="#18181b"/><text class="num" x="124" y="96">1</text>
+    <text class="step" x="144" y="97">Tap ⋯ next to</text>
+    <text class="step" x="144" y="115">the address</text>
+    <circle cx="124" cy="146" r="10" fill="#18181b"/><text class="num" x="124" y="150">2</text>
+    <text class="step" x="144" y="151">Tap Share</text>
+    <circle cx="124" cy="200" r="10" fill="#18181b"/><text class="num" x="124" y="204">3</text>
+    <text class="step" x="144" y="205">Tap Add to Home Screen</text>
+    <circle cx="124" cy="254" r="10" fill="#18181b"/><text class="num" x="124" y="258">4</text>
+    <text class="step" x="144" y="259">Leave Open as Web</text>
+    <text class="step" x="144" y="277">App on, tap Add</text>
+  </g>
+
+  <!-- Android -->
+  <text class="head" x="480" y="38" text-anchor="middle">Android (Chrome)</text>
+  <rect class="phone" x="348" y="58" width="76" height="270" rx="14"/>
+  <rect class="bar" x="358" y="68" width="48" height="12" rx="6"/>
+  <circle class="dot" cx="414" cy="71" r="1.5"/>
+  <circle class="dot" cx="414" cy="74" r="1.5"/>
+  <circle class="dot" cx="414" cy="77" r="1.5"/>
+  <rect x="368" y="150" width="36" height="36" rx="8" fill="none" stroke="#3f3f46" stroke-width="1.5" stroke-dasharray="3 3"/>
+  <g>
+    <circle cx="444" cy="92" r="10" fill="#18181b"/><text class="num" x="444" y="96">1</text>
+    <text class="step" x="464" y="97">Tap ⋮</text>
+    <circle cx="444" cy="146" r="10" fill="#18181b"/><text class="num" x="444" y="150">2</text>
+    <text class="step" x="464" y="151">Tap Add to home screen</text>
+    <text class="step" x="464" y="169">(or Install app)</text>
+    <circle cx="444" cy="214" r="10" fill="#18181b"/><text class="num" x="444" y="218">3</text>
+    <text class="step" x="464" y="219">Tap Install</text>
+  </g>
+</svg>
