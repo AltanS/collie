@@ -25,6 +25,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **pi and Oh My Pi transcripts are found when the home directory is reached through a symlink.** On hosts such as Bazzite or Kinoite (`/home` links to `/var/home`), Collie now matches the pane's folder by its real path as well, so Chat and History open. Two sessions in one folder are still refused. Thanks @wipash (#683).
 - **Claude beacons stay live on Linux where /bin/sh is dash.** dash runs the hook command as a child and waits, so the beacon recorded the shell's pid and expired at once; every Claude pane on herdr-core then read as a shell (Ubuntu, Debian). `collie beacon emit` now records the first non-shell ancestor, and doctor accepts a hook command that starts with `exec` (#689).
 - **The iOS install hint says where Share sits.** In the default iOS 26 layout, Safari keeps Share under ⋯ next to the address, so the Install card in Settings now says so, in every language.
 - **The Zoom pill shows only in the Screen view.** In Chat it was a magnifier with a plus that pointed at nothing, because it zooms the terminal screen. Settings, under Appearance, has a new "Zoom pill" choice, "Screen view" (the default) or "Off", stored on the device. A theme file can set the surface word `zoom` to `screen` or `none`, and a choice made in Settings wins over the theme.

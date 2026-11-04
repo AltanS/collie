@@ -93,7 +93,7 @@ import {
   PAIR_WINDOW_MS,
 } from "./pair-limit.ts";
 import { readFileSync } from "node:fs";
-import { mkdir, mkdtemp, realpath, rm, truncate, utimes, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, symlink, truncate, utimes, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -151,6 +151,7 @@ import { grokJournal } from "./journal/grok.ts";
 import { museJournal } from "./journal/muse.ts";
 import { TranscriptStore } from "./journal/store.ts";
 import { LiveWindows } from "./journal/live.ts";
+import { piJournal, piSessionFolderNames } from "./journal/pi.ts";
 import type { JournalAdapter } from "./journal/types.ts";
 import {
   MUX_LOGO_PATH,
@@ -5689,7 +5690,7 @@ describe("journalRefOf — which session the history and chat routes read", () =
     const other = pane({ paneId: "w1:p2", agent: "omp" });
     expect(await journalRefOf(a, mine, [mine, other])).toBeNull();
     expect(seen).toEqual([{ shared: true }]);
-    expect(noSessionDetail(a, mine, [mine, other])).toBe("shared-folder");
+    expect(await noSessionDetail(a, mine, [mine, other])).toBe("shared-folder");
     // A pi pane beside an omp pane is the same: either one's log could be the newest.
     expect(await journalRefOf(a, pane({ agent: "pi" }), [pane({ agent: "pi" }), other])).toBeNull();
     // Alone in the folder, the walk answers.
@@ -5797,6 +5798,43 @@ describe("journalRefOf — which session the history and chat routes read", () =
       await writeFile(join(base, "active_sessions.json"), JSON.stringify([row]));
       const real = grokJournal([join(base, "sessions")]);
       expect(await journalRefOf(real, pane({ agentSession: reported }), [])).toEqual(resumed);
+    } finally {
+      await rm(base, { recursive: true, force: true });
+    }
+  });
+  test("pi panes through cwd aliases refuse shared guessing but accept each contained named resume", async () => {
+    const base = await realpath(await mkdtemp(join(tmpdir(), "collie-pi-alias-wire-")));
+    try {
+      const cwd = join(base, "project");
+      const alias = join(base, "project-alias");
+      await mkdir(cwd, { recursive: true });
+      await symlink(cwd, alias);
+      const root = join(base, "sessions");
+      const folder = piSessionFolderNames(cwd, { home: homedir(), tmp: tmpdir() })[0]!;
+      const folderPath = join(root, folder);
+      await mkdir(folderPath, { recursive: true });
+      const older = "019f4665-7df0-7540-a64f-7068335f2201";
+      const newer = "019f4665-7df0-7540-a64f-7068335f2202";
+      const log = (id: string) => join(folderPath, `2026-10-30T10-00-00-000Z_${id}.jsonl`);
+      const header = (id: string) => JSON.stringify({ type: "session", version: 3, id, timestamp: "2026-10-30T10:00:00.000Z", cwd });
+      await writeFile(log(older), `${header(older)}\n`);
+      await writeFile(log(newer), `${header(newer)}\n`);
+
+      const aliasedPiJournal = piJournal(root);
+      const aliased = pane({ agent: "omp", cwd: alias });
+      const canonical = pane({ paneId: "w1:p2", agent: "pi", cwd });
+      const panes = [aliased, canonical];
+      expect(await journalRefOf(aliasedPiJournal, aliased, panes)).toBeNull();
+      expect(await journalRefOf(aliasedPiJournal, canonical, panes)).toBeNull();
+      expect(await noSessionDetail(aliasedPiJournal, aliased, panes)).toBe("shared-folder");
+      expect(await noSessionDetail(aliasedPiJournal, canonical, panes)).toBe("shared-folder");
+
+      const olderRef = await journalRefOf(aliasedPiJournal, aliased, panes, { processes: [{ argv: ["omp", "--resume", log(older)] }] });
+      const newerRef = await journalRefOf(aliasedPiJournal, canonical, panes, { processes: [{ argv: ["pi", "--session", log(newer)] }] });
+      expect(olderRef).toEqual({ kind: "id", value: older });
+      expect(newerRef).toEqual({ kind: "id", value: newer });
+      expect(await aliasedPiJournal.source.resolve(olderRef!)).toBe(log(older));
+      expect(await aliasedPiJournal.source.resolve(newerRef!)).toBe(log(newer));
     } finally {
       await rm(base, { recursive: true, force: true });
     }

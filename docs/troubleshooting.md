@@ -380,8 +380,11 @@ The core sends no colour, so the suggestion read as typed text. Fix: update Coll
 Collie then tells a suggestion from a draft with a one-key probe, and the send goes on.
 
 **A pane has no History and no Chat card.** For Claude, run `collie hooks install claude`, then restart
-the Claude in that pane. For pi and Oh My Pi nothing fixes it yet: the core keeps no conversation, and
-those two agents have no hook that names it. The pane keeps its screen, sends and cards.
+the Claude in that pane. For pi and Oh My Pi, check the session directories in the bridge's environment:
+the bridge does not inherit a pane's project-local profile. Set `COLLIE_PI_ROOT` to include those
+`sessions` directories and the defaults used by other panes, then restart that Collie instance
+([Journal roots](configure.md#what-each-section-holds)). Two unnamed pi or Oh My Pi sessions in the
+same working directory are ambiguous; start each with its explicit session path or ID to resume it.
 
 **A dialog of a pi pane does not show on the phone.** On the core, a read of older lines can stall
 while pi shows a dialog, and Collie then reads the pane as unreadable after five seconds. This is
