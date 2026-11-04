@@ -82,7 +82,7 @@ export const it: Dictionary = {
   "settings.install.title": "Installa l'app",
   "settings.install.description": "Aggiungi Collie alla schermata Home: a schermo intero, con la sua icona.",
   "settings.install.button": "Installa",
-  "settings.install.iosHint": "Su iPhone o iPad, installa dal menu di condivisione del browser: tocca Condividi, poi \"Aggiungi alla schermata Home\".",
+  "settings.install.iosHint": "Su un iPhone o iPad, tocca Condividi nel browser, quindi \"Aggiungi alla schermata Home\". In Safari su iOS 26, Condividi si trova sotto ⋯ accanto all'indirizzo.",
   "settings.harnessBar.title": "Scorciatoie harness",
   "settings.harnessBar.description": "Una riga con i comandi dell'agente attivo sopra i tasti.",
   "settings.harnesses.statusLine.label": "Mostra la riga di stato",

@@ -114,7 +114,7 @@ export const en = {
   "settings.install.title": "Install the app",
   "settings.install.description": "Add Collie to your home screen. It opens full screen with its own icon.",
   "settings.install.button": "Install",
-  "settings.install.iosHint": "On an iPhone or iPad, install from the browser's share sheet: tap Share, then \"Add to Home Screen\".",
+  "settings.install.iosHint": "On an iPhone or iPad, tap Share in the browser, then \"Add to Home Screen\". In Safari on iOS 26, Share sits under ⋯ next to the address.",
   "settings.harnessBar.title": "Harness shortcuts",
   "settings.harnessBar.description": "A row of the running agent's own commands above the keys.",
   "settings.harnesses.statusLine.label": "Show the status line",

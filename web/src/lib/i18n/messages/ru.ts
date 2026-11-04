@@ -84,7 +84,7 @@ export const ru: Dictionary = {
   "settings.install.title": "Установить приложение",
   "settings.install.description": "Добавьте Collie на главный экран: полноэкранный режим, отдельный значок.",
   "settings.install.button": "Установить",
-  "settings.install.iosHint": "На iPhone или iPad установка выполняется через меню «Поделиться»: нажмите «Поделиться», затем «На экран «Домой»».",
+  "settings.install.iosHint": "На iPhone или iPad нажмите в браузере «Поделиться», затем «На экран \"Домой\"». В Safari на iOS 26 кнопка «Поделиться» находится под ⋯ рядом с адресом.",
   "settings.harnessBar.title": "Горячие клавиши harness",
   "settings.harnessBar.description": "Строка команд запущенного агента над клавиатурой.",
   "settings.harnesses.statusLine.label": "Показывать строку состояния",

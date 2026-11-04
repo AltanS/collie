@@ -92,7 +92,7 @@ export const ja: Dictionary = {
   "settings.install.title": "アプリのインストール",
   "settings.install.description": "ホーム画面に Collie を追加して、全画面と専用アイコンで起動します。",
   "settings.install.button": "インストール",
-  "settings.install.iosHint": "iOS または iPadOS では、ブラウザの共有メニューから「ホーム画面に追加」を選択します。",
+  "settings.install.iosHint": "iPhoneまたはiPadでは、ブラウザで「共有」をタップし、次に「ホーム画面に追加」をタップします。iOS 26のSafariでは、「共有」はアドレス横の⋯の下にあります。",
   "settings.harnessBar.title": "Harnessショートカット",
   "settings.harnessBar.description": "キーの上に、実行中のエージェント固有のコマンドが並びます。",
   "settings.harnesses.statusLine.label": "ステータスラインを表示",

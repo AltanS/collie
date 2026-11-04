@@ -51,7 +51,7 @@ describe("InstallControl", () => {
 
   it("renders the share-sheet hint on iOS — prose, no button, since no offer can ever arrive there", () => {
     render(<InstallControl shareSheet />);
-    expect(screen.getByText(/tap Share, then/)).toBeInTheDocument();
+    expect(screen.getByText(/tap Share in the browser, then/)).toBeInTheDocument();
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 
@@ -59,7 +59,7 @@ describe("InstallControl", () => {
     render(<InstallControl shareSheet />);
     window.dispatchEvent(offerEvent());
     await screen.findByRole("button", { name: "Install" });
-    expect(screen.queryByText(/tap Share, then/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/tap Share in the browser, then/)).not.toBeInTheDocument();
   });
 });
 
