@@ -212,7 +212,18 @@ count. A word that is a member id, such as `laptop`, is refused, and the refusal
 A scope with no agent pane is refused with `no panes in scope`, and the refusal names
 `collie walky who`.
 
-Each delivery is one send into one pane, so it follows the rules of
+A session that rests does not wake for a scope send. A pane rests when it is `done` or `idle` and
+has been for 15 minutes, counted from its last change of state. A scope, or `all` from your phone,
+leaves the message in that pane's inbox only, and its receipt reads `waiting in the inbox, not typed:
+the session rests`. It waits there until the agent reads it with `inbox`. A pane whose state
+Collie does not know never rests. A message to one pane is always typed. To wake the resting panes
+too, add `--wake` before the text:
+
+```sh
+collie walky send --wake my-app "Rebased on main. Pull before you push."
+```
+
+Each delivery that is typed is one send into one pane, so it follows the rules of
 [Into a busy pane](#into-a-busy-pane). A pane with a draft in its box, or a running turn, holds its
 delivery, and `status <id>` shows that line as held. Before it types, the member that holds the
 pane reads the pane's label again. A pane that left the scope is refused `out of scope`.
@@ -398,7 +409,7 @@ a crew, a message whose clock is more than 10 minutes off is refused `stale`.
 | --- | --- | --- |
 | `accepted` | queued, or held with the reason | Logged, not typed yet. `held: draft present` or `held: turn running`: Collie types it when the box clears or the turn ends, up to 60 minutes. Do not send it again |
 | `delivered` | typed into the pane | The text went into the pane and was submitted |
-| `inbox-only` | waiting in the inbox, not typed | Not typed, for the reason shown: `held past 60 minutes` (a draft, a busy pane or an open dialog outlasted the hold), `cancelled by sender`, `dropped by the pane's owner`, `box not free`, `pane busy`, `pane replaced`, `no terminal`, `bridge restarted`. It waits in the pane's inbox |
+| `inbox-only` | waiting in the inbox, not typed | Not typed, for the reason shown: `held past 60 minutes` (a draft, a busy pane or an open dialog outlasted the hold), `cancelled by sender`, `dropped by the pane's owner`, `box not free`, `pane busy`, `pane replaced`, `no terminal`, `bridge restarted`, `resting` (a scope or `all` met a session that rests, printed as "the session rests"; send with `--wake` to type it). It waits in the pane's inbox |
 | `refused` | not sent | Not taken, for the reason shown: no such pane, pane replaced, not an agent pane, a limit, an older member or lead, or walky talky off on that machine |
 | `unknown` | may have arrived, will not be sent again | The outcome was not read, a hold was still pending after 60 minutes, or the log lost the record. Collie never sends it again |
 
@@ -480,7 +491,8 @@ Each receipt state shows the words in the table above, with the reason after "no
   to" (`All machines` or one machine) and tap "Send message". The sheet then asks
   "Message 5 agents on 2 machines?" with the count for that choice. The count leaves out machines
   the lead cannot reach. Tap "Send" to send, or "Back". The sheet lists the shell panes it skips.
-  It shows "Agents reached" and one receipt per target, each named by its session. The receipt for the whole broadcast reads
+  Panes that rest sit under "Resting, not woken": they get the message in their inbox only. Turn on
+  "Wake them too" to type it into them as well, and the count follows. It shows "Agents reached" and one receipt per target, each named by its session. The receipt for the whole broadcast reads
   "every machine". A line "Not sent on this machine" counts the recent refusals per reason. A
   device that may not send sees "This device may not send messages." under the button.
 

@@ -34,7 +34,7 @@ import type { LogRecord, Placement, WalkyLog } from "./log.ts";
 import { MEMBER_LIMIT, PAIR_LIMIT, pairKey, RateLimiter, senderKey } from "./rate.ts";
 import { HERE_FROM_PHONE, hereWithoutFolder, MEMBER_UNREACHABLE, OUT_OF_SCOPE, RefusalCounter, scopeEmpty, scopeIsMember, scopeTooWide, type RefusalCounts } from "./refusals.ts";
 import { seenHash, WalkySeen } from "./seen.ts";
-import { formatEnvelope, receiptReason, SEND_ID, type WalkyMessage, type WalkyReceipt, type WalkyReceiptState, type WalkyTarget, type WalkyVerified } from "./types.ts";
+import { formatEnvelope, receiptReason, SEND_ID, RESTING, type WalkyMessage, type WalkyReceipt, type WalkyReceiptState, type WalkyTarget, type WalkyVerified } from "./types.ts";
 
 /**
  * How long a held send may wait before the message is left in the inbox only: one clock per message,
@@ -54,6 +54,24 @@ export const HELD_POLL_MS = 2000;
 export const LANE_WAIT_MS = 2 * 60 * 1000;
 /** The reason of a message that waited out {@link LANE_WAIT_MS}. */
 export const PANE_BUSY = "pane busy";
+/**
+ * How long an agent pane must have been done or idle before a fan-out leaves it alone (M85): a session
+ * that rested this long gets the message in its inbox only, because typing wakes it for a cold turn.
+ * A constant, not a setting: one rule for every mux and harness.
+ */
+export const REST_MS = 15 * 60_000;
+
+/**
+ * Whether a pane rests: it is `done` or `idle`, and has been for {@link REST_MS} or more by the pane's
+ * `activeAt`, the last status change the bridge saw (ADR 0003). Any other state, and a pane with no
+ * `activeAt`, never rests: a wrong "not resting" types a message, a wrong "resting" holds one back.
+ */
+export function isResting(pane: Pick<WalkyPane, "state" | "activeAt">, now: number): boolean {
+  if (pane.state !== "done" && pane.state !== "idle") return false;
+  if (pane.activeAt === null) return false;
+  return now - pane.activeAt >= REST_MS;
+}
+
 /** The reason of a held message its sender took back (M62 spec 03). */
 export const CANCELLED_BY_SENDER = "cancelled by sender";
 /** The reason of a held message the target pane's owner dropped (M62 spec 03). */
@@ -89,6 +107,11 @@ export interface WalkyPane {
   readonly label: string;
   /** The pane's status word, as the snapshot gives it. */
   readonly state: string;
+  /**
+   * Epoch ms of the pane's last status change, from the activity ledger (bridge/activity.ts), or null
+   * when the bridge has none for it. A resting pane is read from it (see {@link isResting}).
+   */
+  readonly activeAt: number | null;
   /** False when the session has no Send Protocol (no screen, or COLLIE_SEND_PROTOCOL=0). */
   readonly terminal: boolean;
 }
@@ -466,7 +489,7 @@ export class WalkyDeliverer {
         receipts.push(held);
         continue;
       }
-      receipts.push(this.place(message, target, pane, sender, verified));
+      receipts.push(this.place(message, target, pane, sender, verified, address.kind !== "pane"));
     }
     // The crew leg: routed now, or (on a repeat) the receipts its first run wrote.
     if (routesOn) receipts.push(...(await this.remote(message, "all", sender)));
@@ -477,12 +500,22 @@ export class WalkyDeliverer {
   /**
    * Log one message for one pane of this bridge and start typing it: seen first, then logged, then
    * typed, so a crash between any two never types twice. Answers the `accepted` receipt.
+   *
+   * THE RESTING RULE (M85) sits here. `fan`: the message reached this pane through a scope, `all` or
+   * `<member>/all`, not by its own address. A fan-out pane that rests ({@link isResting}) keeps the log
+   * line and the inbox entry, and the receipt ends `inbox-only: resting` at once, with no Send Protocol
+   * call, unless the sender asked to wake (`message.wake`). A message to one address is always typed.
    */
-  private place(message: WalkyMessage, target: string, pane: WalkyPane, sender: SenderPane | null, verified: WalkyVerified): WalkyReceipt {
+  private place(message: WalkyMessage, target: string, pane: WalkyPane, sender: SenderPane | null, verified: WalkyVerified, fan = false): WalkyReceipt {
     const accepted = this.receipt(message.id, target, "accepted", { verified });
     this.seen.add(message, target);
     const record = this.deps.log.record(message, target, { session: pane.session, paneId: pane.paneId, instance: pane.instance }, accepted, sender);
     this.deps.log.inboxAdd(pane.session, pane.paneId, pane.instance, message);
+    if (fan && message.wake !== true && isResting(pane, this.now())) {
+      const rests = this.next(record, "inbox-only", RESTING);
+      this.deps.log.update(rests);
+      return rests;
+    }
     this.track(this.inLane(record, pane));
     return accepted;
   }
@@ -579,7 +612,7 @@ export class WalkyDeliverer {
     for (const target of caps.full) receipts.push(this.refusal(message.id, target, "pair limit", verified));
     for (const pane of local) {
       const target = `${self}/${pane.paneId}`;
-      if (!caps.full.has(target)) receipts.push(this.place(message, target, pane, sender, verified));
+      if (!caps.full.has(target)) receipts.push(this.place(message, target, pane, sender, verified, true));
     }
     for (const memberId of unreachable) receipts.push(this.unreachableLine(message, memberId, sender, verified));
     const legs = await Promise.all([...remote].map(([memberId, ids]) => this.remoteScope(message, memberId, ids.filter((paneId) => !caps.full.has(`${memberId}/${paneId}`)), sender)));
@@ -619,7 +652,7 @@ export class WalkyDeliverer {
     const caps = this.scopeCaps(message, [target], options, false);
     if ("refused" in caps) return refuse(caps.refused);
     if (caps.full.has(target)) return refuse("pair limit");
-    return [this.place(message, target, pane, null, verified)];
+    return [this.place(message, target, pane, null, verified, true)];
   }
 
   /**

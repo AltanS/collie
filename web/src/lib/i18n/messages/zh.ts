@@ -2678,6 +2678,7 @@ export const zh: Dictionary = {
   "walky.state.onLead": "on its way, the lead reports the result",
   "walky.reason.draftPresent": "that session has unsent text",
   "walky.reason.turnRunning": "that session is busy",
+  "walky.reason.resting": "该会话处于休息状态",
   "walky.state.delivered": "已键入窗格",
   "walky.state.inboxOnly": "正在收件箱中等待，未键入",
   "walky.state.inboxOnlyBecause": "正在收件箱中等待，未键入：{reason}",
@@ -2741,6 +2742,10 @@ export const zh: Dictionary = {
   "walky.crew.confirmBack": "返回",
   "walky.crew.skippedTitle": "Shell 窗格，已跳过",
   "walky.crew.skippedRow": "{label} ({address})：已跳过",
+  "walky.crew.resting": "休息中，未唤醒",
+  "walky.crew.restingWoken": "休息中，一并唤醒",
+  "walky.crew.restingRow": "{label} ({address})：休息中",
+  "walky.crew.wake": "一并唤醒",
   "walky.crew.refusals": "未在此机器上发送：{list}",
 
   "sent.button": "Sent",

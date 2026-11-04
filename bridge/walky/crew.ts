@@ -606,20 +606,28 @@ export function crewTargets(members: readonly CrewMemberView[], titles: boolean)
 }
 
 /**
- * The shell panes on every member, which never receive a message: the Crew page lists them as
- * skipped beside a broadcast's count. From the same bodies, with no dial.
+ * The panes on every member a broadcast does not type into by default: the shell panes, which never
+ * receive a message, and (M85) the agent panes that rest, which a broadcast leaves in the inbox unless
+ * the sender wakes them. The Crew page lists both as skipped beside a broadcast's count. From the same
+ * bodies, with no dial; `rests` is the bridge's resting rule (deliver.ts `isResting`, given its clock). A member that is unreachable has no resting panes here: its panes are not
+ * reachable at all, and `crewTargets` already says so.
  */
-export function crewSkipped(members: readonly CrewMemberView[], titles: boolean): WalkySkipped[] {
+export function crewSkipped(
+  members: readonly CrewMemberView[],
+  titles: boolean,
+  rests: (pane: { readonly state: string; readonly activeAt: number | null }) => boolean = () => false,
+): WalkySkipped[] {
   const out: WalkySkipped[] = [];
   for (const member of members) {
     const seen = new Set<string>();
     const shells = [...(member.body?.agents ?? []).filter((pane) => pane.kind === "shell"), ...(member.body?.shellPanes ?? [])];
-    for (const pane of shells) {
+    const resting = member.reachable ? (member.body?.agents ?? []).filter((pane) => pane.kind !== "shell" && rests({ state: pane.status, activeAt: pane.lastActiveAt ?? null })) : [];
+    for (const [pane, reason] of [...shells.map((shell) => [shell, "shell"] as const), ...resting.map((quiet) => [quiet, "resting"] as const)]) {
       if (seen.has(pane.paneId)) continue;
       seen.add(pane.paneId);
       const branch = pane.gitHead?.kind === "branch" ? pane.gitHead.name : null;
       const facts = { paneId: pane.paneId, cwd: pane.cwd, branch, paneLabel: pane.paneLabel, terminalTitle: pane.terminalTitle };
-      out.push({ address: `${member.memberId}/${pane.paneId}`, memberId: member.memberId, machine: member.name, label: labelOf(facts, titles) });
+      out.push({ address: `${member.memberId}/${pane.paneId}`, memberId: member.memberId, machine: member.name, label: labelOf(facts, titles), reason });
     }
   }
   return out;

@@ -283,7 +283,7 @@ import {
   WalkyReport,
   type CrewDialAnswer,
 } from "./walky/crew.ts";
-import type { RouteRemote, SendResult, WalkyHost, WalkyPane } from "./walky/deliver.ts";
+import { isResting, type RouteRemote, type SendResult, type WalkyHost, type WalkyPane } from "./walky/deliver.ts";
 import { INSTANCE_TICK_MS, WalkyInstances } from "./walky/instances.ts";
 import { WalkyLog } from "./walky/log.ts";
 import { RefusalCounter } from "./walky/refusals.ts";
@@ -1929,7 +1929,9 @@ const walkyRawPanes = (): Omit<WalkyPane, "instance">[] =>
     const of = (view: AgentView, agent: boolean): Omit<WalkyPane, "instance"> => {
       const head = gitHeads.get(view.cwd);
       const facts = { paneId: view.paneId, cwd: view.cwd, branch: head?.kind === "branch" ? head.name : null, paneLabel: view.paneLabel, terminalTitle: view.terminalTitle };
-      return { session: rt.name, paneId: view.paneId, agent, harness: agent ? view.agent : null, label: labelOf(facts, !cfg.redact), state: view.status, terminal: rt.send !== undefined };
+      // The last status change comes from the activity ledger: the engine's views carry no time (it rides the wire at serialise time).
+      const activeAt = activity.get(rt.name, view.paneId)?.activeAt ?? null;
+      return { session: rt.name, paneId: view.paneId, agent, harness: agent ? view.agent : null, label: labelOf(facts, !cfg.redact), state: view.status, activeAt, terminal: rt.send !== undefined };
     };
     const out = agents.map((view) => of(view, true));
     for (const view of shellPanes) out.push(of(view, false));
@@ -2597,6 +2599,7 @@ if (crewLead !== undefined && walkyMemberId !== null) {
       crewSkipped(
         lead.contributions().map((c) => ({ memberId: c.state.memberId, name: c.name, reachable: c.state.health === "reachable", body: c.body })),
         !cfg.redact,
+        (pane) => isResting(pane, Date.now()),
       ),
   };
 }

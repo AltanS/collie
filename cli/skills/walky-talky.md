@@ -88,7 +88,8 @@ minibuch/w11:p4#8h9h        minibuch  claude   walky-live             idle
   such as `collie-workspace` in `collie-workspace#main`.
 - `(you)` marks your own pane. A message to it is refused.
 - STATE is `idle`, `working`, `blocked`, `done` or `unknown`, or `unreachable` for a crew member out
-  of reach. A message to a `working` or `blocked` pane is not lost: Collie queues or holds it.
+  of reach. A message to a `working` or `blocked` pane is not lost: Collie queues or holds it. A
+  session that rested 15 minutes gets a folder message in its inbox only; `send --wake` types it.
 
 Send a message to one address. Only your operator may send to `all`.
 

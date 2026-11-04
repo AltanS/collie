@@ -24,6 +24,13 @@ beforeEach(() => {
   server.use(http.get("/api/walky/who", () => HttpResponse.json({ targets: TARGETS })));
 });
 
+/** The element of a dialog with this `data-slot`; a missing one fails the test with its name. */
+function slotOf(dialog: HTMLElement, name: string): HTMLElement {
+  const found = dialog.querySelector<HTMLElement>(`[data-slot="${name}"]`);
+  if (found === null) throw new Error(`no ${name} in the dialog`);
+  return found;
+}
+
 describe("WalkyBroadcastSheet", () => {
   it("turns Send off for a text past the limit and says why, in the message limit's words", async () => {
     render(<WalkyBroadcastSheet open onClose={vi.fn()} members={MEMBERS} />);
@@ -157,5 +164,97 @@ describe("WalkyBroadcastSheet", () => {
     await user.click(await within(dialog).findByRole("button", { name: "Send" }));
     await waitFor(() => expect(recordedWalkyPosts()).toHaveLength(1));
     expect(recordedWalkyPosts()[0]).toMatchObject({ to: "all" });
+  });
+
+  describe("resting panes (M85)", () => {
+    const SKIPPED = [
+      { address: "bluefin/w1:p3", memberId: "bluefin", machine: "bluefin", label: "sh#main", reason: "shell" },
+      { address: "workshop/w1:p1", memberId: "workshop", machine: "workshop", label: "c#d", reason: "resting" },
+    ];
+    beforeEach(() => {
+      // The who list gives the resting pane's address with its instance token; the skipped row carries the bare one.
+      server.use(
+        http.get("/api/walky/who", () =>
+          HttpResponse.json({ targets: [TARGETS[0]!, { ...TARGETS[1]!, address: "workshop/w1:p1#k3f9" }], skipped: SKIPPED, refusals: null }),
+        ),
+      );
+    });
+
+    it("lists them under their own title with the switch off, and counts only the panes that will be typed into", async () => {
+      render(<WalkyBroadcastSheet open onClose={vi.fn()} members={MEMBERS} />);
+      const dialog = await screen.findByRole("dialog");
+      expect(await within(dialog).findByText("Agents reached: 1")).toBeInTheDocument();
+      const resting = slotOf(dialog, "walky-resting");
+      expect(within(resting).getByText("Resting, not woken")).toBeInTheDocument();
+      expect(within(resting).getByText("c#d (workshop/w1:p1): resting")).toBeInTheDocument();
+      expect(within(resting).getByRole("switch", { name: "Wake them too" })).toHaveAttribute("aria-checked", "false");
+      // The shell keeps its own group, and the resting pane is not in it.
+      const shells = slotOf(dialog, "walky-skipped");
+      expect(within(shells).getByText("Shell panes, skipped")).toBeInTheDocument();
+      expect(within(shells).getByText("sh#main (bluefin/w1:p3): skipped")).toBeInTheDocument();
+      expect(within(shells).queryByText(/c#d/)).toBeNull();
+    });
+
+    it("posts no wake with the switch off", async () => {
+      const user = userEvent.setup();
+      render(<WalkyBroadcastSheet open onClose={vi.fn()} members={MEMBERS} />);
+      const dialog = await screen.findByRole("dialog");
+      await within(dialog).findByText("Agents reached: 1");
+      await user.type(within(dialog).getByRole("textbox", { name: "Message" }), "Pause");
+      await user.click(within(dialog).getByRole("button", { name: "Send message" }));
+      expect(await within(dialog).findByText("Message 1 agent on 1 machine?")).toBeInTheDocument();
+      await user.click(within(dialog).getByRole("button", { name: "Send" }));
+      await waitFor(() => expect(recordedWalkyPosts()).toHaveLength(1));
+      expect(recordedWalkyPosts()[0]).toEqual(expect.objectContaining({ to: "all" }));
+      expect(recordedWalkyPosts()[0]).not.toHaveProperty("wake");
+    });
+
+    it("\"Wake them too\" counts the woken set, retitles the group and posts wake: true", async () => {
+      const user = userEvent.setup();
+      render(<WalkyBroadcastSheet open onClose={vi.fn()} members={MEMBERS} />);
+      const dialog = await screen.findByRole("dialog");
+      await within(dialog).findByText("Agents reached: 1");
+      await user.click(within(dialog).getByRole("switch", { name: "Wake them too" }));
+      expect(within(dialog).getByText("Agents reached: 2")).toBeInTheDocument();
+      expect(within(dialog).getByText("Resting, woken too")).toBeInTheDocument();
+      await user.type(within(dialog).getByRole("textbox", { name: "Message" }), "Pause");
+      await user.click(within(dialog).getByRole("button", { name: "Send message" }));
+      expect(await within(dialog).findByText("Message 2 agents on 2 machines?")).toBeInTheDocument();
+      await user.click(within(dialog).getByRole("button", { name: "Send" }));
+      await waitFor(() => expect(recordedWalkyPosts()).toHaveLength(1));
+      expect(recordedWalkyPosts()[0]).toMatchObject({ to: "all", wake: true });
+    });
+
+    it("a machine with no resting pane shows no group, and never sends wake", async () => {
+      const user = userEvent.setup();
+      render(<WalkyBroadcastSheet open onClose={vi.fn()} members={MEMBERS} />);
+      const dialog = await screen.findByRole("dialog");
+      await within(dialog).findByText("Agents reached: 1");
+      await user.click(within(dialog).getByRole("switch", { name: "Wake them too" }));
+      await user.selectOptions(within(dialog).getByRole("combobox"), "bluefin");
+      expect(dialog.querySelector('[data-slot="walky-resting"]')).toBeNull();
+      await user.type(within(dialog).getByRole("textbox", { name: "Message" }), "Pause");
+      await user.click(within(dialog).getByRole("button", { name: "Send message" }));
+      await user.click(await within(dialog).findByRole("button", { name: "Send" }));
+      await waitFor(() => expect(recordedWalkyPosts()).toHaveLength(1));
+      expect(recordedWalkyPosts()[0]).not.toHaveProperty("wake");
+    });
+
+    it("words a resting receipt in plain words", async () => {
+      server.use(
+        http.post("/api/walky", () =>
+          HttpResponse.json({ receipts: [{ id: "wt_aaaaaaaaaaaa", state: "inbox-only", reason: "resting", verified: "local", at: 1, by: "workshop", target: "workshop/w1:p1" }] }),
+        ),
+      );
+      const user = userEvent.setup();
+      render(<WalkyBroadcastSheet open onClose={vi.fn()} members={MEMBERS} />);
+      const dialog = await screen.findByRole("dialog");
+      await within(dialog).findByText("Agents reached: 1");
+      await user.type(within(dialog).getByRole("textbox", { name: "Message" }), "Pause");
+      await user.click(within(dialog).getByRole("button", { name: "Send message" }));
+      await user.click(await within(dialog).findByRole("button", { name: "Send" }));
+      const receipts = slotOf(dialog, "walky-receipts");
+      expect(await within(receipts).findByText(/waiting in the inbox, not typed: that session rests/u)).toBeInTheDocument();
+    });
   });
 });

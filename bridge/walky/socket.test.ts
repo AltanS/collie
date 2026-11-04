@@ -33,8 +33,8 @@ const target: PlaceTarget = { session: "main", matcher, paneIds: () => ["%1", "%
 const marker = (pane: string) => [{ namespace: "tmux", scope: "/tmp/tmux-1/default", pane }];
 
 const panes: WalkyPane[] = [
-  { session: "main", paneId: "%1", agent: true, harness: "agent-x", label: "repo#a", state: "idle", instance: "aaaa", terminal: true },
-  { session: "main", paneId: "%2", agent: true, harness: "agent-y", label: "repo#b", state: "working", instance: "bbbb", terminal: true },
+  { session: "main", paneId: "%1", agent: true, harness: "agent-x", label: "repo#a", state: "idle", activeAt: null, instance: "aaaa", terminal: true },
+  { session: "main", paneId: "%2", agent: true, harness: "agent-y", label: "repo#b", state: "working", activeAt: null, instance: "bbbb", terminal: true },
 ];
 
 const host: WalkyHost = {

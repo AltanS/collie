@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Changed
+
+- **A message to a folder or to `all` no longer wakes a session that finished.** A pane that has been `done` or `idle` for 15 minutes keeps the message in its inbox only, and the receipt reads "waiting in the inbox, not typed: the session rests". A message to one pane is typed as before. `collie walky send <folder> --wake` types into the resting panes too, and the broadcast sheet on the phone lists them under "Resting, not woken" with a "Wake them too" switch.
+
 ## [1.26.0] - 2026-11-04
 
 ### Added

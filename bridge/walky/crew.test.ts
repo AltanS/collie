@@ -89,7 +89,7 @@ function OPERATOR(memberId: string): Partial<WalkyMessage> {
 }
 
 function pane(paneId: string, over: Partial<WalkyPane> = {}): WalkyPane {
-  return { session: "main", paneId, agent: true, harness: "agent-x", label: `repo#${paneId}`, state: "idle", instance: "aaaa", terminal: true, ...over };
+  return { session: "main", paneId, agent: true, harness: "agent-x", label: `repo#${paneId}`, state: "idle", activeAt: null, instance: "aaaa", terminal: true, ...over };
 }
 
 class FakeHost implements WalkyHost {
@@ -866,9 +866,30 @@ describe("the skipped list on a lead", () => {
       true,
     );
     expect(skipped).toEqual([
-      { address: "laptop/w1:p3", memberId: "laptop", machine: "laptop", label: "collie#main" },
-      { address: "laptop/w1:p4", memberId: "laptop", machine: "laptop", label: "collie#main" },
+      { address: "laptop/w1:p3", memberId: "laptop", machine: "laptop", label: "collie#main", reason: "shell" },
+      { address: "laptop/w1:p4", memberId: "laptop", machine: "laptop", label: "collie#main", reason: "shell" },
     ]);
+  });
+
+  test("lists a reachable member's resting agent panes too, by the bridge's rule, and none of an unreachable member", () => {
+    const paneOf = (paneId: string, over: Partial<PaneWire> = {}): PaneWire =>
+      // SAFETY: a test fixture carrying the fields `crewSkipped` reads; the rest of the wire shape is irrelevant here.
+      ({ paneId, agent: "agent-x", kind: "agent", status: "done", cwd: "/home/a/collie", gitHead: { kind: "branch", name: "main" }, ...over }) as PaneWire;
+    const body = { sessions: [], agents: [paneOf("w1:p1", { lastActiveAt: 100 }), paneOf("w1:p2", { lastActiveAt: 900 }), paneOf("w1:p3")], shellPanes: [], workspaces: [], tabs: [] };
+    const seen: unknown[] = [];
+    const skipped = crewSkipped(
+      [
+        { memberId: "laptop", name: "laptop", reachable: true, body },
+        { memberId: "gone", name: "gone", reachable: false, body },
+      ],
+      true,
+      (quiet) => {
+        seen.push(quiet);
+        return quiet.activeAt !== null && quiet.activeAt < 500;
+      },
+    );
+    expect(skipped).toEqual([{ address: "laptop/w1:p1", memberId: "laptop", machine: "laptop", label: "collie#main", reason: "resting" }]);
+    expect(seen).toContainEqual({ state: "done", activeAt: null });
   });
 });
 

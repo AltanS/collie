@@ -2672,6 +2672,7 @@ export const zhTW: Dictionary = {
   "walky.state.onLead": "on its way, the lead reports the result",
   "walky.reason.draftPresent": "that session has unsent text",
   "walky.reason.turnRunning": "that session is busy",
+  "walky.reason.resting": "該工作階段處於休息狀態",
   "walky.state.delivered": "已鍵入至窗格中",
   "walky.state.inboxOnly": "正在收件匣中等待，尚未鍵入",
   "walky.state.inboxOnlyBecause": "正在收件匣中等待，尚未鍵入: {reason}",
@@ -2735,6 +2736,10 @@ export const zhTW: Dictionary = {
   "walky.crew.confirmBack": "返回",
   "walky.crew.skippedTitle": "Shell 窗格，已略過",
   "walky.crew.skippedRow": "{label} ({address})：已略過",
+  "walky.crew.resting": "休息中，未喚醒",
+  "walky.crew.restingWoken": "休息中，一併喚醒",
+  "walky.crew.restingRow": "{label} ({address})：休息中",
+  "walky.crew.wake": "一併喚醒",
   "walky.crew.refusals": "未在此機器上傳送：{list}",
 
   "sent.button": "Sent",
