@@ -191,6 +191,24 @@ export function telemetryDoctorLine(a: { readonly state: TelemetryState; readonl
   return `${word} (${reasons[decidedBy]})`;
 }
 
+/** Each switch as a noun, for "decided by ...": the boot line and `collie doctor` print these. */
+export const TELEMETRY_DECIDERS = {
+  do_not_track: "DO_NOT_TRACK",
+  env: "COLLIE_TELEMETRY",
+  config: "config.toml",
+  settings: "the phone's switch",
+  ci: "CI",
+  mirror: UPDATE_MIRROR_ENV,
+  dev_build: "the development build",
+  url: TELEMETRY_URL_ENV,
+  default: "default",
+} as const satisfies Record<TelemetryDecider, string>;
+
+/** A decider off the wire, or undefined when the word is not in the closed set. */
+export function parseTelemetryDecider(value: string | undefined): TelemetryDecider | undefined {
+  return Object.keys(TELEMETRY_DECIDERS).find((known): known is TelemetryDecider => known === value);
+}
+
 /** The docs address the boot line points at, relative to the repository's `docs/` folder. */
 export const TELEMETRY_DOCS_REF = "docs/security.md#what-leaves-your-machine";
 
@@ -209,17 +227,6 @@ export function telemetryBootLine(a: {
   readonly env: Environment;
 }): string {
   if (!a.state.on) return `install count: ${telemetryDoctorLine({ state: a.state, env: a.env })}`;
-  const deciders = {
-    do_not_track: "DO_NOT_TRACK",
-    env: "COLLIE_TELEMETRY",
-    config: "config.toml",
-    settings: "the phone's switch",
-    ci: "CI",
-    mirror: UPDATE_MIRROR_ENV,
-    dev_build: "the build",
-    url: TELEMETRY_URL_ENV,
-    default: "default",
-  } satisfies Record<TelemetryDecider, string>;
   const firstAt = a.record.firstSeenAt === null ? null : a.record.firstSeenAt + FIRST_PING_DELAY_MS;
   const when =
     firstAt !== null && firstAt > a.now
@@ -227,7 +234,7 @@ export function telemetryBootLine(a: {
       : a.record.lastSentDay !== null
         ? `last send attempt ${a.record.lastSentDay}`
         : "first ping is due";
-  return `install count: on, decided by ${deciders[a.state.decidedBy]}; ${when}; off with COLLIE_TELEMETRY=0 in the service .env, ${TELEMETRY_DOCS_REF}`;
+  return `install count: on, decided by ${TELEMETRY_DECIDERS[a.state.decidedBy]}; ${when}; off with COLLIE_TELEMETRY=0 in the service .env, ${TELEMETRY_DOCS_REF}`;
 }
 
 /** Where `COLLIE_TELEMETRY` came from, given the effective environment and the config layer under it. */

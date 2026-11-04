@@ -47,11 +47,15 @@ import { pairedRegistryOf } from "./pairing.ts";
 import { sameBuild } from "../bridge/version.ts";
 import {
   parseTelemetryRecord,
-  telemetryDoctorLine,
+  parseTelemetryDecider,
+  TELEMETRY_DECIDERS,
+  telemetrySwitchWarning,
+  type TelemetryDecider,
   telemetryOrigin,
   telemetryPath,
   telemetryState,
 } from "../bridge/telemetry.ts";
+import { asJsonBoolean, asJsonObject, asJsonString, parseJson } from "../web/src/lib/json.ts";
 import { readOwnSnapshot } from "./snapshot-read.ts";
 import { collieVersionBare, type CliContext } from "./context.ts";
 import { aboutCrew, bad, ok, skipped, warn, type DoctorStatus, type Finding } from "./finding.ts";
@@ -296,7 +300,7 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
     ...walkyRefusals(deps),
     accountWindowsFinding(deps),
     // Whether the anonymous install ping is on and which switch decided (M86 spec 01). Info only.
-    telemetryFinding(deps),
+    ...(await telemetryFindings(deps)),
     // The Whistle model (ADR 0096): one finding when the model, or the host engine that needs it, is
     // on this host, and none otherwise. A host that never heard of Whistle reads exactly as before.
     ...(await whistleModelFindings(deps)),
@@ -1250,7 +1254,7 @@ async function ownSnapshot(deps: DoctorDeps): Promise<SnapshotRead> {
  * With no login configured the header is omitted rather than invented: the bridge is then either open
  * to the tailnet (it warns about that itself at boot) or it refuses, and a refusal reads as a refusal.
  */
-function identityHeader(deps: DoctorDeps): Record<string, string> | undefined {
+function identityHeader(deps: Pick<DoctorDeps, "ctx">): Record<string, string> | undefined {
   const login = deps.ctx.env.COLLIE_TRUSTED_USER ?? "";
   return login === "" ? undefined : { "Tailscale-User-Login": login };
 }
@@ -1930,10 +1934,26 @@ function walkyRefusals(deps: DoctorDeps): Finding[] {
 
 /**
  * `telemetry` — whether this install sends its anonymous daily ping, and which switch decided it
- * (M86 spec 01). One info line, never a warning: off is a choice. A pure read: it makes no ID and
- * writes no file.
+ * (M86 spec 01). Info only: off is a choice. A pure read: it makes no ID and writes no file.
+ *
+ * THE RUNNING BRIDGE DECIDES, NOT THIS SHELL. A service reads its own `.env`, so `COLLIE_TELEMETRY` in
+ * the shell that runs `collie doctor` says nothing about the bridge that would send. The bridge is asked
+ * first, over the route the Settings card uses (`GET /api/telemetry`, the local read credential), and
+ * the line says it is the bridge's answer. With no bridge answering, this verb evaluates the switches
+ * from its own environment and config file and says that it did, and that the service reads its own
+ * `.env`. A value of `COLLIE_TELEMETRY` that nobody knows is a warning of its own: it reads as off.
  */
-export function telemetryFinding(deps: Pick<DoctorDeps, "ctx" | "files">): Finding {
+export async function telemetryFindings(deps: Pick<DoctorDeps, "ctx" | "files" | "fetch">): Promise<Finding[]> {
+  const asked = await readOwnSnapshot(deps, { path: "/api/telemetry", extraHeaders: identityHeader(deps) });
+  const bridge = asked.kind === "body" ? bridgeTelemetryAnswer(asked.text) : null;
+  const unknown = telemetrySwitchWarning(deps.ctx.env);
+  const switchWarning =
+    unknown === null
+      ? []
+      : [warn("telemetry-switch", unknown, "set COLLIE_TELEMETRY to 0 or 1, in the service .env for a service, then run `collie restart`")];
+  if (bridge !== null) {
+    return [ok("telemetry", `${bridge.on ? "on" : "off"}, decided by ${TELEMETRY_DECIDERS[bridge.decidedBy]} (as the running bridge sees it)`), ...switchWarning];
+  }
   const { env, configLayer, root, stateDir } = deps.ctx;
   const setting = parseTelemetryRecord(deps.files.read(telemetryPath(stateDir))).setting;
   const state = telemetryState({
@@ -1942,7 +1962,18 @@ export function telemetryFinding(deps: Pick<DoctorDeps, "ctx" | "files">): Findi
     setting,
     version: collieVersionBare(root, (p) => deps.files.read(p)),
   });
-  return ok("telemetry", telemetryDoctorLine({ state, env }));
+  const own = `${state.on ? "on" : "off"}, decided by ${TELEMETRY_DECIDERS[state.decidedBy]}`;
+  return [ok("telemetry", `${own} (as this shell sees it; the service reads its own .env)`), ...switchWarning];
+}
+
+/** The bridge's `GET /api/telemetry` body, or null when it is not that: an older bridge, or another answer. */
+function bridgeTelemetryAnswer(text: string): { on: boolean; decidedBy: TelemetryDecider } | null {
+  const doc = asJsonObject(parseJson(text));
+  if (doc === undefined) return null;
+  const on = asJsonBoolean(doc.on);
+  const decidedBy = parseTelemetryDecider(asJsonString(doc.decidedBy));
+  if (on === undefined || decidedBy === undefined) return null;
+  return { on, decidedBy };
 }
 
 /**
