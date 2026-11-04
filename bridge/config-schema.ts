@@ -732,6 +732,14 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
 
   // ── crew ───────────────────────────────────────────────────────────────────
   {
+    key: "crews_on_windows",
+    env: "COLLIE_CREWS_ON_WINDOWS",
+    section: "crew",
+    kind: "bool",
+    default: false,
+    doc: "Consent to the crew-forming verbs on Windows, where crews stay experimental.",
+  },
+  {
     key: "crew_timeout_ms",
     env: "COLLIE_CREW_TIMEOUT_MS",
     section: "crew",
