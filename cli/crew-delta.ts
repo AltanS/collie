@@ -67,14 +67,15 @@ export function candidateProbe(deps: { readonly exec: Exec }, warn: (line: strin
 /**
  * This lead's own roster, as a join the candidate list can mark against.
  *
- * EVERY trust-store peer is on it. How a peer was reached comes from the ops store
+ * EVERY ENROLLED trust-store peer is on it (a tombstone is not a member). How a peer was reached comes from the ops store
  * (`bridge/crew/ops-store.ts`, ADR 0016) when there is a record — `crew add` has WRITTEN `sshHost`
  * since M7/01, with the `source` M84/02 records beside it — but a record is written only by a
  * `crew add` run that finished. A member joined by hand, one whose run was finished by hand, and one
  * whose ops file was lost have none, and they are members all the same: without them on the roster
  * the delta called them missing and the picker offered them again. Such a peer is matched on the
  * host of its trust-store address and on its member id instead ({@link markCandidates}), and it has
- * no `source`, so it is never reported as forgotten.
+ * no `source`, so it is never reported as forgotten. These two keys are weak: the picker lists such a
+ * match as "may be enrolled" and never hides the row for it, while the delta counts it as covered.
  *
  * The address is read, not resolved: only a recorded ssh route costs an `ssh -G`. Empty on a peer
  * and on a solo collie: neither has members to mark.
