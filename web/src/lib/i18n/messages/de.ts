@@ -93,7 +93,7 @@ export const de: Dictionary = {
   "settings.install.title": "App installieren",
   "settings.install.description": "Collie zum Startbildschirm hinzufügen: Vollbild und eigenes App-Icon.",
   "settings.install.button": "Installieren",
-  "settings.install.iosHint": "Unter iOS und iPadOS über das Teilen-Menü des Browsers installieren: Teilen antippen, dann „Zum Home-Bildschirm“.",
+  "settings.install.iosHint": "Tippe auf einem iPhone oder iPad im Browser auf „Teilen“, dann auf „Zum Home-Bildschirm“. In Safari unter iOS 26 befindet sich „Teilen“ unter ⋯ neben der Adresse.",
   "settings.harnessBar.title": "Harness-Tastenkürzel",
   "settings.harnessBar.description": "Eine Leiste mit den eigenen Befehlen des laufenden Agenten über den Tasten.",
   "settings.harnesses.statusLine.label": "Statuszeile anzeigen",

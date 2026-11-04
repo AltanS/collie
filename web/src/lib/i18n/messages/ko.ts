@@ -95,7 +95,7 @@ export const ko: Dictionary = {
   "settings.install.title": "앱 설치",
   "settings.install.description": "Collie를 홈 화면에 추가하여 전용 아이콘과 전체 화면으로 실행합니다.",
   "settings.install.button": "설치",
-  "settings.install.iosHint": "iPhone 및 iPad에서는 브라우저 공유 메뉴에서 \"홈 화면에 추가\"를 선택하여 설치합니다.",
+  "settings.install.iosHint": "iPhone 또는 iPad의 브라우저에서 공유를 탭한 다음 \"홈 화면에 추가\"를 탭합니다. iOS 26의 Safari에서 공유는 주소 옆의 ⋯ 아래에 있습니다.",
   "settings.harnessBar.title": "Harness 바로가기",
   "settings.harnessBar.description": "키 위에 표시되는 실행 중인 에이전트의 자체 명령 행입니다.",
   "settings.harnesses.statusLine.label": "상태 표시줄 표시",

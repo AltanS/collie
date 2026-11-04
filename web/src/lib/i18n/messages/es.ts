@@ -92,7 +92,7 @@ export const es: Dictionary = {
   "settings.install.title": "Instalar aplicación",
   "settings.install.description": "Añade Collie a la pantalla de inicio con ventana dedicada e icono propio.",
   "settings.install.button": "Instalar",
-  "settings.install.iosHint": "En iOS o iPadOS, selecciona Compartir y luego «Añadir a pantalla de inicio».",
+  "settings.install.iosHint": "En un iPhone o iPad, toca Compartir en el navegador y luego \"Añadir a pantalla de inicio\". En Safari en iOS 26, Compartir se encuentra debajo de ⋯ junto a la dirección.",
   "settings.harnessBar.title": "Accesos directos del harness",
   "settings.harnessBar.description": "Una fila con los comandos propios del agente en ejecución sobre las teclas.",
   "settings.harnesses.statusLine.label": "Mostrar la línea de estado",

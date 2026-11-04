@@ -82,7 +82,7 @@ export const tr: Dictionary = {
   "settings.install.title": "Uygulamayı yükle",
   "settings.install.description": "Collie uygulamasını ana ekranınıza ekleyin: tam ekran, kendi simgesiyle.",
   "settings.install.button": "Yükle",
-  "settings.install.iosHint": "iPhone veya iPad'de tarayıcının paylaşım menüsünden yükleyin: Paylaş'a, ardından \"Ana Ekrana Ekle\"ye dokunun.",
+  "settings.install.iosHint": "iPhone veya iPad'de, tarayıcıda Paylaş'a, ardından \"Ana Ekrana Ekle\"ye dokunun. iOS 26 sürümündeki Safari'de Paylaş, adresin yanındaki ⋯ simgesinin altında yer alır.",
   "settings.harnessBar.title": "Harness kısayolları",
   "settings.harnessBar.description": "Tuşların üzerinde çalışan aracının kendi komutlarından oluşan bir satır.",
   "settings.harnesses.statusLine.label": "Durum satırını göster",

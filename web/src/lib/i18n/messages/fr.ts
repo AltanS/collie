@@ -82,7 +82,7 @@ export const fr: Dictionary = {
   "settings.install.title": "Installer l'application",
   "settings.install.description": "Ajoutez Collie à votre écran d'accueil : plein écran, avec sa propre icône.",
   "settings.install.button": "Installer",
-  "settings.install.iosHint": "Sur iPhone ou iPad, installez depuis le menu de partage du navigateur : appuyez sur Partager, puis sur « Sur l'écran d'accueil ».",
+  "settings.install.iosHint": "Sur un iPhone ou un iPad, appuyez sur Partager dans le navigateur, puis sur « Sur l’écran d’accueil ». Dans Safari sur iOS 26, Partager se trouve sous ⋯ à côté de l’adresse.",
   "settings.harnessBar.title": "Raccourcis du harness",
   "settings.harnessBar.description": "Une rangée de commandes propres à l'agent en cours au-dessus des touches.",
   "settings.harnesses.statusLine.label": "Afficher la ligne d'état",

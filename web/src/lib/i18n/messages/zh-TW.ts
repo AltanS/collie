@@ -92,7 +92,7 @@ export const zhTW: Dictionary = {
   "settings.install.title": "安裝應用程式",
   "settings.install.description": "將 Collie 加入主畫面，支援全螢幕執行並顯示獨立圖示。",
   "settings.install.button": "安裝",
-  "settings.install.iosHint": "在 iPhone 或 iPad 上，點選瀏覽器分享按鈕，選擇「加入主畫面」。",
+  "settings.install.iosHint": "在 iPhone 或 iPad 上，於瀏覽器中點一下「分享」，然後點一下「加入主畫面」。在 iOS 26 的 Safari 中，「分享」位於網址旁的 ⋯ 內。",
   "settings.harnessBar.title": "Harness 捷徑",
   "settings.harnessBar.description": "按鍵上方一列執行中 agent 本身的指令。",
   "settings.harnesses.statusLine.label": "顯示狀態列",

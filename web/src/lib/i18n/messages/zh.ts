@@ -93,7 +93,7 @@ export const zh: Dictionary = {
   "settings.install.title": "安装应用",
   "settings.install.description": "将 Collie 添加至主屏幕，支持全屏运行并显示独立图标。",
   "settings.install.button": "安装",
-  "settings.install.iosHint": "在 iPhone 或 iPad 上，点击浏览器分享按钮，选择“添加到主屏幕”。",
+  "settings.install.iosHint": "在 iPhone 或 iPad 上，轻点浏览器中的“共享”，然后轻点“添加到主屏幕”。在 iOS 26 的 Safari 中，“共享”位于地址旁边的 ⋯ 下。",
   "settings.harnessBar.title": "Harness 快捷键",
   "settings.harnessBar.description": "按键上方显示一排运行中 agent 自己的命令。",
   "settings.harnesses.statusLine.label": "显示状态行",
