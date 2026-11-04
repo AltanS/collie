@@ -16,7 +16,7 @@
 
 pkgname=collie-bin
 _pkgname=collie
-pkgver=1.26.0
+pkgver=1.26.1
 pkgrel=1
 pkgdesc="Phone web UI for the AI agents running in your terminal, served over Tailscale (official binary release)"
 arch=('x86_64' 'aarch64')
@@ -69,8 +69,8 @@ source_aarch64=("$pkgname-$pkgver-aarch64.tar.gz::$_baseurl/collie-$pkgver-linux
 # three lines — `pkgver` above and the two arrays below — are the only ones
 # `scripts/refresh-packages.ts` rewrites, and it copies them from that manifest. Nothing here
 # hashes a file itself.
-sha256sums_x86_64=('75565595d3b596cfcbb2fd08f35b25377f0eeec4797387e6b7354fc4fd059b30')
-sha256sums_aarch64=('374a38e1d01e1db97a8c57948276cdf448f647d229a65dcbf45b0101d0b3247e')
+sha256sums_x86_64=('24d5c19074b5882023ef16baed37dfba61509ddf989e3d2d266fd9b45b65bc0c')
+sha256sums_aarch64=('52a593fea834357b034b02d4d1dfe1416c70599451c38ffbc06ccf899f788726')
 
 # The tarball's own directory name, which carries the upstream platform spelling rather than $CARCH.
 _distdir() {
