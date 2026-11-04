@@ -296,6 +296,22 @@ describe("what is kept", () => {
 		}
 	});
 
+	test("the answers identify nothing: an empty 204, or one fixed word, and only a no-store header", async () => {
+		const { env } = setup();
+		const ok = await handleRequest(post(JSON.stringify(GOOD), { "cf-connecting-ip": "203.0.113.77" }), env, NOW);
+		expect(ok.status).toBe(204);
+		expect(await ok.text()).toBe("");
+		expect([...ok.headers.keys()]).toEqual(["cache-control"]);
+
+		const refused = await handleRequest(post(JSON.stringify({ ...GOOD, host: "bluefin-secret" })), env, NOW);
+		expect(refused.status).toBe(400);
+		const word = await refused.text();
+		expect(word).toBe("bad_keys");
+		expect(word).not.toContain("bluefin-secret");
+		expect(word).not.toContain(ID);
+		expect([...refused.headers.keys()]).toEqual(["cache-control"]);
+	});
+
 	test("a row holds exactly the seven documented columns", async () => {
 		const { db, env } = setup();
 		await handleRequest(post(JSON.stringify(GOOD)), env, NOW);
