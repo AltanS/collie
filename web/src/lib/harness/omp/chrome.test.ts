@@ -522,6 +522,15 @@ describe("empty-editor hints on a plain-text core read", () => {
     expect(extractInputDraft(buffer)).toBeNull();
   });
 
+  it.each([
+    ["Nerd Font key glyphs", "omp--fresh-effort-hint.txt"],
+    ["Shift+Tab", "omp--v18-12-6-status-ascii-idle--w130.txt"],
+  ])("does not offer the %s effort hint of a plain read as a draft", (_spelling, fixture) => {
+    const buffer = lines(fixtureLines(fixture).map(lineText).join("\n"));
+    expect(hasComposer(buffer)).toBe(true);
+    expect(extractInputDraft(buffer)).toBeNull();
+  });
+
   it("keeps the same words when typed at the start of the input", () => {
     expect(extractInputDraft(composer("← ← to see 1 running agent", 1)))
       .toBe("← ← to see 1 running agent");

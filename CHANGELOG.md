@@ -25,6 +25,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **An empty Oh My Pi editor on herdr-core no longer shows its key hint as a draft.** The core hands the screen out as plain text, so the right-aligned hint ("← to see 2 running agents", "⇧⇥ to change thinking effort") read as "Draft in terminal". Collie now knows the hint in its unstyled form too, in all three key spellings. Thanks @wipash (#682).
 - **The Zoom pill shows only in the Screen view.** In Chat it was a magnifier with a plus that pointed at nothing, because it zooms the terminal screen. Settings, under Appearance, has a new "Zoom pill" choice, "Screen view" (the default) or "Off", stored on the device. A theme file can set the surface word `zoom` to `screen` or `none`, and a choice made in Settings wins over the theme.
 
 ## [1.27.0] - 2026-11-04

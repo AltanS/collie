@@ -195,7 +195,11 @@ export function draftGhost(line: StyledLine, start: number, end: number): string
 // claim needs both at once. The callers also only ask on a SINGLE-row draft, because omp paints no
 // hint once the buffer holds anything.
 const PLACEHOLDER_MIN_PAD = 2;
-const PLAIN_KEY_HINT = /^ {2,}(?:←(?: ←)? to see [1-9]\d* running agents?|⇧⇥ to change thinking effort)$/u;
+// The hint text lives here, not in the omp profile: the profile's placeholder patterns cannot test the
+// right-edge alignment that tells a hint from typed text. The effort hint has three key spellings:
+// `⇧⇥`, `Shift+Tab` (ascii status) and the Nerd Font glyph pair U+F0636 U+F0312.
+const PLAIN_KEY_HINT =
+  /^ {2,}(?:←(?: ←)? to see [1-9]\d* running agents?|(?:⇧⇥|Shift\+Tab|\u{F0636} \u{F0312}) to change thinking effort)$/u;
 
 /** Whether the draft span holds omp's empty-editor key hint rather than typed text. */
 export function draftPlaceholder(line: StyledLine, start: number, end: number, unstyled: boolean): boolean {
