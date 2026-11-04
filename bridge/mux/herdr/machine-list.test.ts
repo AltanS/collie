@@ -43,13 +43,13 @@ describe("parseHerdrMachines", () => {
     const parsed = parseHerdrMachines(
       JSON.stringify([{ target: "attic", label: "The attic", id: "m-1", colour: "blue", panes: 4 }]),
     );
-    expect(parsed).toEqual([{ target: "attic", label: "The attic", id: "m-1" }]);
+    expect(parsed).toEqual([{ target: "attic", label: "The attic", id: "m-1", blocked: null }]);
   });
 
   test("label and id are optional, and an empty one reads as absent", () => {
     expect(parseHerdrMachines(JSON.stringify([{ target: "attic" }, { target: "nas", label: "  " }]))).toEqual([
-      { target: "attic", label: null, id: null },
-      { target: "nas", label: null, id: null },
+      { target: "attic", label: null, id: null, blocked: null },
+      { target: "nas", label: null, id: null, blocked: null },
     ]);
   });
 
@@ -78,8 +78,8 @@ describe("herdrMachineCandidates", () => {
   test("healthy: exit 0 and valid JSON are the candidates", () => {
     const { probe, calls, warnings } = probeFor({ stdout: TWO_MACHINES });
     expect(herdrMachineCandidates(probe)).toEqual([
-      { target: "op@attic.lan:22", label: "attic", id: null },
-      { target: "build-box", label: null, id: "m-2" },
+      { target: "op@attic.lan:22", label: "attic", id: null, blocked: null },
+      { target: "build-box", label: null, id: "m-2", blocked: null },
     ]);
     expect(warnings).toEqual([]);
     expect(calls).toEqual([{ tool: "herdr", args: HERDR_MACHINE_LIST_ARGS, timeoutMs: CANDIDATE_TIMEOUT_MS }]);

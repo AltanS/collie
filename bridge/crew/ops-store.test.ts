@@ -102,6 +102,27 @@ describe("CrewOpsStore", () => {
     expect(parseCrewOps(io.contents!)).toEqual({ version: 1, members: { nas: RECORD } });
   });
 
+  test("the optional `source` round-trips, and a record written without it still loads as it was", async () => {
+    const io = fakeIo();
+    const store = new CrewOpsStore("/state", io);
+    await store.record("minibuch", { ...RECORD, source: "herdr-core" });
+    await store.record("typed", { ...RECORD, source: null });
+    await store.record("old", RECORD);
+    const reread = parseCrewOps(io.contents!)!;
+    expect(reread.members.minibuch?.source).toBe("herdr-core");
+    expect(reread.members.typed?.source).toBeNull();
+    expect("source" in reread.members.old!).toBe(false);
+
+    const legacy = JSON.stringify({
+      version: 1,
+      members: { nas: { sshHost: "nas", path: null, port: 8787, recordedAt: T0 } },
+    });
+    expect(parseCrewOps(legacy)?.members.nas?.source).toBeUndefined();
+    // A present value must be a string or null, like every other optional field here.
+    const bad = legacy.replace('"recordedAt"', '"source":7,"recordedAt"');
+    expect(parseCrewOps(bad)).toBeNull();
+  });
+
   test("a second record for the same member REPLACES it — that is what an override refresh is", async () => {
     const store = new CrewOpsStore("/state", fakeIo());
     await store.record("nas", RECORD);

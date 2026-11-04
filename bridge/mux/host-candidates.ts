@@ -28,6 +28,12 @@ export interface HostCandidate {
   readonly label: string | null;
   /** The source's own id for the machine, or `null`. Opaque — nothing above compares it to a member id. */
   readonly id: string | null;
+  /**
+   * Why `collie crew add` cannot take this target, in the source's own words, or `null` when it can.
+   * A blocked candidate is still shown, greyed with this reason, because hiding a machine the
+   * operator knows about would read as a bug. It is never offered a number and never picked.
+   */
+  readonly blocked: string | null;
 }
 
 /** What one bounded shell-out answered. Structurally the CLI's `ExecResult` (`cli/sys.ts`). */

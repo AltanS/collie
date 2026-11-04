@@ -69,6 +69,13 @@ export interface OpsRecord {
   readonly anchoredGeneration?: number | null;
   /** When that restart landed, epoch ms. `null`/absent together with the generation above. */
   readonly anchoredAt?: number | null;
+  /**
+   * Which multiplexer's machine list suggested the host (`herdr-core`), `null` for a host the
+   * operator typed or one only the ssh config named. Written by `crew add` from the picked row and
+   * read to say that a member's source no longer lists it. Local, additive, never a wire field;
+   * `null`/absent ⇒ no source is known, which is every record written before this field existed.
+   */
+  readonly source?: string | null;
 }
 
 /** The whole file: member id → how to reach it. */
@@ -97,7 +104,8 @@ function isRecord(value: JsonValue | undefined): value is JsonValue & OpsRecord 
     // but a value that IS present must be a number or an explicit `null`. A file half-understood is
     // refused whole (see {@link parseCrewOps}), and that rule does not soften for a new field.
     optionalNumber(r.anchoredGeneration) &&
-    optionalNumber(r.anchoredAt)
+    optionalNumber(r.anchoredAt) &&
+    (r.source === undefined || r.source === null || typeof r.source === "string")
   );
 }
 
@@ -133,7 +141,7 @@ export function parseCrewOps(raw: string): CrewOpsData | null {
     if (!isRecord(record)) return null;
     // An explicit whitelist, exactly as the trust store builds its result — a field named in the
     // validator and forgotten here is silently dropped on every read (§14.1's recorded trap).
-    members[memberId] = {
+    const parsed: OpsRecord = {
       sshHost: record.sshHost,
       path: record.path,
       port: record.port,
@@ -141,6 +149,8 @@ export function parseCrewOps(raw: string): CrewOpsData | null {
       anchoredGeneration: record.anchoredGeneration ?? null,
       anchoredAt: record.anchoredAt ?? null,
     };
+    // Absent stays absent: a record from before this field existed reads back exactly as written.
+    members[memberId] = record.source === undefined ? parsed : { ...parsed, source: record.source };
   }
   return { version: CREW_OPS_VERSION, members };
 }

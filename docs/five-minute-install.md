@@ -228,6 +228,20 @@ view output and reply.
 If the phone shows nothing or cannot connect, run `collie doctor` on the host: it names what is
 missing.
 
+## Your other machines
+
+Run `collie crew add` on the host to put your other machines on the same phone.
+
+```bash
+collie crew add
+```
+
+The command lists the machines your ssh config, Herdr and the Herdr core know. Type the numbers of the
+machines you want. Each machine gets one confirm, after Collie has probed it and before anything
+is written there, and it joins under the name Herdr gives it. If you use the core, run
+`hc machine add --install <host>` first, and `collie crew add` then finds that host.
+[Two machines, one crew](crew.md#two-machines-one-crew) has the details.
+
 ## Next steps
 
 - [Claude Code in tmux or Herdr, on your phone](claude-code-on-your-phone.md) walks through a full
@@ -235,6 +249,8 @@ missing.
 - [Web Push](voice-and-push.md#web-push-optional) adds notifications when an agent needs input.
 - [Configure](configure.md#configure) documents how to restrict Collie to your tailnet user with
   `COLLIE_TRUSTED_USER`.
+- [Two machines, one crew](crew.md#two-machines-one-crew) adds your other machines to the same
+  phone.
 - [Troubleshooting](troubleshooting.md#troubleshooting) covers common errors.
 
 ---

@@ -5,22 +5,25 @@ import { join } from "node:path";
 import { DEFAULT_PORT } from "../bridge/config.ts";
 import type { HostProbe } from "../bridge/mux/host-candidates.ts";
 import { HOST, type Host } from "../bridge/host.ts";
-import { buildMuxRegistry, muxHostCandidates, muxNames } from "../bridge/mux/registry.ts";
+import { buildMuxRegistry, muxNames } from "../bridge/mux/registry.ts";
 import { commitCrewChange, mintInvite } from "../bridge/crew/enrollment.ts";
+import { slugifyMemberId } from "../bridge/crew/identity.ts";
 import type { OpsRecord } from "../bridge/crew/ops-store.ts";
 import { TrustStore, type TrustedMember, type TrustStoreData } from "../bridge/crew/trust-store.ts";
 import { parseUpdateRun, type UpdateRun } from "../bridge/update-run.ts";
 import { parsePrereleaseTag } from "../bridge/update.ts";
 import {
   CANDIDATE_QUESTION,
+  dialedTarget,
   markCandidates,
   mergeCandidates,
   offeredCandidates,
-  pickCandidate,
+  pickCandidates,
+  refusedToken,
   renderCandidateList,
   resolvedSshTarget,
+  screenCandidates,
   SSH_CONFIG_SOURCE,
-  type RosterEntry,
   type SourcedCandidates,
 } from "./candidates.ts";
 import { collieVersion, collieVersionBare, INSTANCE_PATTERN, PLUGIN_ID } from "./context.ts";
@@ -29,6 +32,7 @@ import { INSTALLER_SH } from "./installer-embed.ts";
 import { EXIT, type Io } from "./io.ts";
 import { realLinkFs } from "./link.ts";
 import { ensureStore, parseCrewArgs, probeMembers, refuseCrewOnWindows, resolveSelfAddress, type CrewDeps } from "./crew.ts";
+import { candidateProbe, leadRoster, muxCandidateSources } from "./crew-delta.ts";
 import { explicitMux } from "./mux.ts";
 import { parseMuxProbe, type MuxProbeReport, type MuxProbeSighting } from "./mux-probe.ts";
 import { plainAdd, type AddEvent } from "./render.ts";
@@ -163,7 +167,8 @@ export function sshRunner(
       if (bin === null) {
         return { code: 127, stdout: "", stderr: "no `ssh` on this machine", spawned: false };
       }
-      const proc = Bun.spawn([bin, ...sshOptions(controlPath, multiplex), target, "/bin/sh", "-s"], {
+      // `--` ends ssh's options: a destination that begins with `-` is a host name to ssh, never a flag.
+      const proc = Bun.spawn([bin, ...sshOptions(controlPath, multiplex), "--", target, "/bin/sh", "-s"], {
         stdin: new TextEncoder().encode(composeStdin(script, stdin)),
         stdout: "pipe",
         stderr: "pipe",
@@ -181,7 +186,7 @@ export function sshRunner(
       closed = true;
       if (bin !== null && multiplex) {
         try {
-          Bun.spawnSync([bin, "-o", `ControlPath=${controlPath}`, "-O", "exit", target], {
+          Bun.spawnSync([bin, "-o", `ControlPath=${controlPath}`, "-O", "exit", "--", target], {
             stdout: "ignore",
             stderr: "ignore",
             env,
@@ -256,8 +261,25 @@ export interface Probe {
   readonly git: string;
   readonly bun: string;
   readonly herdr: string;
-  /** `herdr plugin config-dir herdr.collie`, asked on the remote. `""` when it did not answer. */
+  /** The Herdr core's CLI, `hc`. `""` when the member does not have one. */
+  readonly hc: string;
+  /** `hc --version`'s first line, as the member printed it. `""` when there is no `hc`. */
+  readonly hcversion: string;
+  /**
+   * `live` when the core's socket file is where `hc` would dial, `down` when it is not, `""` when
+   * there is no `hc`. Read from the file, never from `hc server status`, which starts a stopped core
+   * on Linux. A stopped core is a fact to print, never a reason to stop: the member's own
+   * `_mux-probe` in leg 3 is what decides which multiplexer it runs.
+   */
+  readonly hccore: string;
+  /**
+   * `herdr plugin config-dir herdr.collie`, asked on the remote, or — on a host with no `herdr` and
+   * an `hc` — the binary install's own rule (`resolveConfigDir` in `cli/context.ts`). `""` when it
+   * did not answer.
+   */
   readonly configdir: string;
+  /** Which rule answered {@link configdir}: `herdr`, `default` (no `herdr` there), or `""`. */
+  readonly configsource: string;
   readonly envhost: string;
   readonly envport: string;
   /**
@@ -321,7 +343,11 @@ export function parseProbe(stdout: string): Probe | null {
     git: said("git"),
     bun: said("bun"),
     herdr: said("herdr"),
+    hc: said("hc"),
+    hcversion: said("hcversion"),
+    hccore: said("hccore"),
     configdir: said("configdir"),
+    configsource: said("configsource"),
     envhost: said("envhost"),
     envport: said("envport"),
     envmux: said("envmux"),
@@ -382,6 +408,7 @@ export function probeScript(opts: { readonly path: string | null; readonly port:
     'GIT=$(collie_tool git) || GIT=""',
     'BUN=$(collie_tool bun) || BUN=""',
     'HERDR=$(collie_tool herdr) || HERDR=""',
+    'HC=$(collie_tool hc) || HC=""',
     'TS=$(collie_tool tailscale) || TS=""',
     // The release route's three tools, resolved the same way. A member installed from a release
     // needs `curl`, `tar` and a sha256 tool and needs neither `git` nor `bun` — so both sets are
@@ -396,11 +423,41 @@ export function probeScript(opts: { readonly path: string | null; readonly port:
     'say curl "$CURL"',
     'say tar "$TAR"',
     'say sha256 "$SHA"',
-    // The config root, asked for rather than assumed. An empty answer is reported as empty and the
-    // verb stops legibly — it never falls back to a conventional path this side made up.
-    'CFG=""',
-    `if [ -n "$HERDR" ]; then CFG=$("$HERDR" plugin config-dir ${shq(PLUGIN_ID)} 2>/dev/null | head -n 1 | tr -d '\\r') || CFG=""; fi`,
+    // The Herdr core, read as three facts. Whether a core runs is read from its SOCKET FILE, where
+    // `hc` would dial (`defaultHcSocket`, `bridge/mux/herdr-core/client.ts`), and never asked of
+    // `hc server status`: on Linux that verb STARTS a stopped core (hc 0.1.17, seen 2026-11-03 in the
+    // VM lab, a stale socket included), and leg 1 starts nothing. The socket file is also the
+    // evidence the member's own `_mux-probe` reads in leg 3, so the two cannot disagree.
+    'HCVERSION=""; HCCORE=""',
+    'if [ -n "$HC" ]; then',
+    `  HCVERSION=$("$HC" --version 2>/dev/null | head -n 1 | tr -d '\\r') || HCVERSION=""`,
+    '  _hs=${HC_SESSION:-default}',
+    '  if [ -n "${HC_SOCKET:-}" ]; then HCSOCK=$HC_SOCKET',
+    '  elif [ -n "${XDG_RUNTIME_DIR:-}" ]; then HCSOCK="$XDG_RUNTIME_DIR/herdr-core/$_hs.sock"',
+    '  elif [ -d "/run/user/$(id -u 2>/dev/null)" ]; then HCSOCK="/run/user/$(id -u)/herdr-core/$_hs.sock"',
+    '  else HCSOCK="${XDG_STATE_HOME:-$HOME/.local/state}/herdr-core/$_hs/$_hs.sock"; fi',
+    '  if [ -e "$HCSOCK" ]; then HCCORE=live; else HCCORE=down; fi',
+    "fi",
+    'say hc "$HC"',
+    'say hcversion "$HCVERSION"',
+    'say hccore "$HCCORE"',
+    // The config root, asked for rather than assumed. An empty answer from Herdr is reported as
+    // empty and the verb stops legibly. A host with no `herdr` and an `hc` has no Herdr to ask, so
+    // it takes the rule a binary install takes there (`resolveConfigDir`, `cli/context.ts`, with no
+    // Herdr answer): the injected dir, else Herdr's conventional dir when it holds a `.env`, else
+    // Collie's own `~/.config/collie` — the dir the bridge on that machine will read.
+    'CFG=""; CFGSOURCE=""',
+    'if [ -n "$HERDR" ]; then',
+    `  CFG=$("$HERDR" plugin config-dir ${shq(PLUGIN_ID)} 2>/dev/null | head -n 1 | tr -d '\\r') || CFG=""`,
+    "  CFGSOURCE=herdr",
+    'elif [ -n "$HC" ]; then',
+    "  CFGSOURCE=default",
+    '  if [ -n "${HERDR_PLUGIN_CONFIG_DIR:-}" ]; then CFG=$HERDR_PLUGIN_CONFIG_DIR',
+    `  elif [ -f "$HOME/.config/herdr/plugins/config/${PLUGIN_ID}/.env" ]; then CFG="$HOME/.config/herdr/plugins/config/${PLUGIN_ID}"`,
+    '  else CFG="$HOME/.config/collie"; fi',
+    "fi",
     'say configdir "$CFG"',
+    'say configsource "$CFGSOURCE"',
     // `COLLIE_MUX` is read exactly as the bind is, and from the same file: it is the value a
     // SUPERVISED bridge there reads (`EnvironmentFile=`), so a member that already names one is one
     // this verb has nothing to decide about.
@@ -929,6 +986,12 @@ export interface CrewAddDeps extends CrewDeps {
   /** The free-text ask, behind the same seam and for the same reason. */
   prompt(question: string): string | null | Promise<string | null>;
   /**
+   * Is stdin a terminal someone can answer on? Absent reads as yes, which is every test's world.
+   * Read for one purpose: a host PICKED from the list is never added on a confirm nobody can see,
+   * so with no terminal every such confirm reads as No before a byte goes over ssh.
+   */
+  terminal?(): boolean;
+  /**
    * `git bundle create - <commit>`, base64-encoded. `null` when git refused.
    *
    * It is handed the `Io` to complain through rather than closing over one: on the rich path the
@@ -1027,59 +1090,44 @@ export async function cmdCrewAdd(deps: CrewAddDeps, args: readonly string[]): Pr
 // The merge, the mark and the rendering live in `./candidates.ts`; the two sources in
 // `./ssh-config.ts` and behind `MuxAdapterFactory.hostCandidates` (ADR 0036 (c)).
 
-/** The picker's answer: the host to add, or the exit code this run ends with. */
-type Chosen = { readonly host: string } | { readonly code: number };
-
 /**
- * The candidate providers' world, over seams this suite already fakes.
+ * One host the operator picked, and what its row knew about it.
  *
- * `Exec` and not {@link RemoteRunner}: every call the picker makes runs on THIS machine — `ssh -G`
- * resolves a local config file without connecting, and a multiplexer's machine list is local
- * client-side state. `RemoteRunner` is the far side, and there is no far side yet.
+ * `label` is the human name the row's source gave the machine (the core's `name`), which becomes the
+ * member's name unless `--label` says otherwise. `source` is the first multiplexer that listed it,
+ * `null` when only the ssh config did or when the host was typed. Both are `null` for a typed host.
  */
-function candidateProbe(deps: Wired): HostProbe {
-  return {
-    run: (tool, args, timeoutMs) => deps.exec.capture(tool, args, timeoutMs),
-    warn: (line) => deps.io.err(line),
-  };
+interface HostPick {
+  readonly host: string;
+  readonly label: string | null;
+  readonly source: string | null;
+  /**
+   * Chosen from the candidate list. A listed host gets one confirm after its probe; a typed one does
+   * not, because the name typed on the command line is the consent.
+   */
+  readonly listed: boolean;
+  /** What ssh will dial for a listed host (`user@address`), shown at the confirm; `null` for a typed one. */
+  readonly dial: string | null;
 }
 
-/**
- * This lead's own roster, as a join the candidate list can mark against.
- *
- * The enrolled peers come from the trust store and how each was reached comes from the ops store
- * (`bridge/crew/ops-store.ts`, ADR 0016) — `crew add` has WRITTEN `sshHost` since M7/01 and this is
- * the first read of it here. Empty on a peer and on a solo collie: neither has members to mark.
- */
-async function leadRoster(deps: Wired, probe: HostProbe): Promise<readonly RosterEntry[]> {
-  const trust = await deps.store.load();
-  if (trust === null || trust.lead !== null) return [];
-  const { data } = await deps.ops.load();
-  if (data === null) return [];
-  const roster: RosterEntry[] = [];
-  for (const peer of trust.peers) {
-    const record = data.members[peer.memberId];
-    if (record === undefined) continue;
-    const sshHost = record.sshHost;
-    roster.push({ memberId: peer.memberId, sshHost, key: resolvedSshTarget(sshHost, probe) ?? sshHost });
-  }
-  return roster;
-}
+/** The picker's answer: the hosts to add, in the order they were named, or the exit code this run ends with. */
+type Chosen = { readonly picks: readonly HostPick[] } | { readonly code: number };
 
 /** Every provider's candidates, `ssh config` first and the multiplexers after it, in registry order. */
 function candidateSources(deps: Wired, probe: HostProbe): readonly SourcedCandidates[] {
   const sources: SourcedCandidates[] = [
-    { source: SSH_CONFIG_SOURCE, candidates: sshConfigCandidates(deps.files, deps.ctx.home) },
+    {
+      source: SSH_CONFIG_SOURCE,
+      candidates: screenCandidates("ssh config host", sshConfigCandidates(deps.files, deps.ctx.home), probe.warn),
+    },
+    ...muxCandidateSources(probe),
   ];
-  for (const answer of muxHostCandidates(probe)) {
-    sources.push({ source: answer.mux, candidates: answer.candidates });
-  }
   return sources.filter((source) => source.candidates.length > 0);
 }
 
 /** List the candidates and take the operator's pick. */
 async function chooseCandidateHost(deps: Wired): Promise<Chosen> {
-  const probe = candidateProbe(deps);
+  const probe = candidateProbe(deps, (line) => deps.io.err(line));
   const rows = markCandidates(
     mergeCandidates(candidateSources(deps, probe), (target) => resolvedSshTarget(target, probe)),
     await leadRoster(deps, probe),
@@ -1092,11 +1140,15 @@ async function chooseCandidateHost(deps: Wired): Promise<Chosen> {
   }
   for (const line of renderCandidateList(rows)) deps.io.out(line);
   if (offeredCandidates(rows).length === 0) {
-    deps.io.err("error: every candidate above is already a member of this crew.");
+    deps.io.err(
+      rows.some((row) => row.blocked !== null)
+        ? "error: no candidate above can be added: each is already a member of this crew or cannot be added."
+        : "error: every candidate above is already a member of this crew.",
+    );
     for (const line of USAGE) deps.io.err(line);
     return { code: EXIT.USAGE };
   }
-  const answer = await deps.prompt(CANDIDATE_QUESTION);
+  const answer = deps.terminal?.() === false ? null : await deps.prompt(CANDIDATE_QUESTION);
   if (answer === null) {
     deps.io.err("error: this run is not interactive, and it would have asked which host to add.");
     deps.io.err("       Name one instead: `collie crew add <ssh-host>`.");
@@ -1106,22 +1158,237 @@ async function chooseCandidateHost(deps: Wired): Promise<Chosen> {
     deps.io.out("Nothing was added.");
     return { code: EXIT.STATE };
   }
-  const picked = pickCandidate(rows, answer);
+  const picked = pickCandidates(rows, answer);
   if (picked === null) {
-    deps.io.err(`error: "${answer.trim()}" is not one of the candidates above.`);
+    if (answer.trim() === "all") {
+      deps.io.err("error: `all` has nothing to take: every candidate above may already be a member of this crew.");
+      deps.io.err("       Pick a number or a name to add one anyway.");
+      return { code: EXIT.USAGE };
+    }
+    // One refused token refuses the whole answer, and the line names that token. `refusedToken` is
+    // null only for a blank answer, which was handled above, so the fallback is a guard.
+    const refused = refusedToken(rows, answer) ?? { token: answer.trim(), blocked: null };
+    if (refused.blocked !== null) {
+      deps.io.err(`error: "${refused.token}" cannot be added: ${refused.blocked}.`);
+      deps.io.err("       Pick another number, or run `collie crew add <ssh-host>` with a name ssh can reach.");
+      return { code: EXIT.USAGE };
+    }
+    deps.io.err(`error: "${refused.token}" is not one of the candidates above.`);
     deps.io.err("       Pick a number, or run `collie crew add <ssh-host>` with the name.");
     return { code: EXIT.USAGE };
   }
-  return { host: picked };
+  return {
+    picks: picked.map((row) => ({
+      host: row.target,
+      label: row.label,
+      // The first MULTIPLEXER that listed it: the ssh config is a file, not a source of names.
+      source: row.sources.find((source) => source !== SSH_CONFIG_SOURCE) ?? null,
+      listed: true,
+      dial: dialedTarget(row),
+    })),
+  };
+}
+
+/** The refusal of one `--peer-address` for several picks. */
+export const PEER_ADDRESS_SEVERAL_PICKS =
+  "error: --peer-address names one machine; drop the flag, and each picked host is asked for its own address.";
+
+/**
+ * A summary line's reason: the `error:` line's text before its first ` — `, or the whole line when
+ * it has none. The long reasons are wrapped over several lines, so their first line ends mid-sentence;
+ * the clause before the dash is the one that names what went wrong.
+ */
+export function summaryReason(line: string): string {
+  const dash = line.indexOf(" — ");
+  return dash === -1 ? line : line.slice(0, dash);
+}
+
+/** Lines a pick's run said, kept for the summary a multi-host run ends with. */
+interface RunWatch {
+  readonly deps: Wired;
+  /** The first `error:` line the run wrote to stderr, without its prefix; `null` when it wrote none. */
+  firstError(): string | null;
+  /** The member id the run's verdict named; `null` when it reached none. */
+  joinedAs(): string | null;
+  /** The multiplexer leg 3 decided, as the verdict carried it; `null` when none was named. */
+  runsOn(): string | null;
+  /** A confirm that nobody was there to answer: the run cannot continue and neither can the loop. */
+  aborted(): boolean;
+  /** The operator said no to the pick's own confirm: nothing was written on that host. */
+  declined(): boolean;
+  /** Handed to the run, which calls it when the pick's own confirm is answered no. */
+  readonly onDeclined: () => void;
+}
+
+/** Watch one pick's run without changing a byte of what it prints or asks. */
+function watchRun(deps: Wired): RunWatch {
+  let first: string | null = null;
+  let joined: string | null = null;
+  let runsOn: string | null = null;
+  let aborted = false;
+  let declined = false;
+  return {
+    deps: {
+      ...deps,
+      io: {
+        ...deps.io,
+        err: (line) => {
+          // Only an `error:` line is a reason. A `warn:` before it is a caveat on a run that went on.
+          if (first === null && line.startsWith("error:")) first = line.replace(/^error:\s*/u, "");
+          deps.io.err(line);
+        },
+      },
+      emit: (event) => {
+        if (event.kind === "verdict" && event.ok) {
+          joined = /^"([^"]+)"/u.exec(event.text)?.[1] ?? joined;
+          runsOn = event.runsOn ?? runsOn;
+        }
+        // A red line that carries its own `✗` (the stale-peer refusal) is the run's reason too.
+        if (first === null && event.kind === "line" && event.stream === "err" && event.text.startsWith("✗ ")) {
+          first = event.text.replace(/^✗\s*/u, "");
+        }
+        deps.emit(event);
+      },
+      confirm: async (question) => {
+        const answer = await deps.confirm(question);
+        if (answer === null) aborted = true;
+        return answer;
+      },
+    },
+    firstError: () => (first === null ? null : summaryReason(first)),
+    joinedAs: () => joined,
+    runsOn: () => runsOn,
+    aborted: () => aborted,
+    declined: () => declined,
+    onDeclined: () => {
+      declined = true;
+    },
+  };
 }
 
 async function crewAddRun(deps: Wired, args: readonly string[]): Promise<number> {
   const { positional, flags } = parseCrewArgs(args);
   const named = positional[0];
   // No target is no longer a refusal — it is the candidate list ({@link chooseCandidateHost}).
-  const chosen: Chosen = named === undefined || named === "" ? await chooseCandidateHost(deps) : { host: named };
+  const chosen: Chosen =
+    named === undefined || named === ""
+      ? await chooseCandidateHost(deps)
+      : { picks: [{ host: named, label: null, source: null, listed: false, dial: null }] };
   if ("code" in chosen) return chosen.code;
-  const host = chosen.host;
+  const { picks } = chosen;
+  // A cheap refusal, so it sits above the first ssh byte with the others: one name cannot name two
+  // machines, and the lead refuses a taken name besides.
+  if (picks.length > 1 && flags.label !== undefined) {
+    deps.io.err("error: --label names one machine; pick one host or drop the flag.");
+    return EXIT.USAGE;
+  }
+  // The same for the address the lead dials: handed to every pick, it would enroll each host at the
+  // FIRST one's address, and a fresh host with no bind of its own would not even ask (VM lab, BUG 2).
+  // `--path` and `--instance` may well be the same on every host, so they stand.
+  if (picks.length > 1 && flags["peer-address"] !== undefined) {
+    deps.io.err(PEER_ADDRESS_SEVERAL_PICKS);
+    return EXIT.USAGE;
+  }
+  // A host picked from the list is never added on a confirm nobody can answer. Before the first ssh
+  // byte, every such confirm reads as No.
+  if (deps.terminal?.() === false && picks.some((pick) => pick.listed)) return declineWithoutTerminal(deps, picks);
+  const [only] = picks;
+  // One host reads exactly as it always did: no wrapper, no summary.
+  if (picks.length === 1 && only !== undefined) return await crewAddHost(deps, flags, only);
+
+  // ── SEVERAL HOSTS: THE FULL RUN FOR EACH, ONE AFTER THE OTHER ──────────────
+  // Nothing is shared between picks but the flags. Each one probes, confirms, installs, joins and
+  // checks on its own ssh connection, and a pick that fails or is declined does not stop the next.
+  // Only a confirm nobody could answer stops the loop: it would be asked again for every host.
+  const results: { readonly host: string; readonly line: string; readonly outcome: PickOutcome }[] = [];
+  let worst: number = EXIT.OK;
+  for (const [index, pick] of picks.entries()) {
+    // The previous join was written by the running bridge, not by this process, so the cached trust
+    // store is stale and an invite minted over it would write the roster back without that member.
+    if (index > 0) await deps.store.refresh();
+    const watch = watchRun(deps);
+    const code = await crewAddHost(watch.deps, flags, pick, watch.onDeclined);
+    // An operator's own No is not a failure: it leaves the exit code alone. Anything else counts.
+    if (!watch.declined()) worst = Math.max(worst, code);
+    const joined = watch.joinedAs();
+    const runsOn = watch.runsOn();
+    const ok = code === EXIT.OK && joined !== null;
+    results.push({
+      host: pick.host,
+      outcome: watch.declined() ? "declined" : ok ? "joined" : "failed",
+      line:
+        watch.declined()
+          ? "✗ declined"
+          : ok
+          ? // The rich view keeps only the last host's verdict, so each line carries its own mux.
+            `✓ joined as "${joined}"${runsOn === null ? "" : `, runs on ${runsOn}`}`
+          : `✗ ${watch.firstError() ?? `crew add did not finish (exit ${code})`}`,
+    });
+    if (watch.aborted()) {
+      // Nobody can answer, so the picks that were never asked are no more answerable. They are listed
+      // as the same refusal rather than dropped from the summary.
+      for (const rest of picks.slice(index + 1)) {
+        results.push({ host: rest.host, outcome: "failed", line: NO_TERMINAL_LINE });
+      }
+      worst = Math.max(worst, EXIT.FAIL);
+      break;
+    }
+  }
+  summarise(deps, results);
+  // One rule for one pick and for many: any failure keeps its own code; no failure and something
+  // joined is OK even with declines; no failure and nothing joined is STATE, "Nothing was added".
+  const joinedAny = results.some((result) => result.outcome === "joined");
+  return worst === EXIT.OK && !joinedAny ? EXIT.STATE : worst;
+}
+
+/** What became of one pick in a multi-host run. */
+type PickOutcome = "joined" | "declined" | "failed";
+
+/** The per-host lines, then the count: `joined 2, declined 1, failed 0`. */
+function summarise(
+  deps: Wired,
+  results: readonly { readonly host: string; readonly line: string; readonly outcome: PickOutcome }[],
+): void {
+  deps.emit({ kind: "line", stream: "out", tone: "info", text: "" });
+  const width = Math.max(...results.map((result) => result.host.length));
+  for (const result of results) {
+    deps.emit({
+      kind: "line",
+      stream: "out",
+      tone: result.line.startsWith("✓") ? "info" : "error",
+      text: `${result.host.padEnd(width)}  ${result.line}`,
+    });
+  }
+  const count = (outcome: PickOutcome): number => results.filter((result) => result.outcome === outcome).length;
+  deps.emit({
+    kind: "line",
+    stream: "out",
+    tone: count("failed") > 0 ? "error" : "info",
+    text: `joined ${count("joined")}, declined ${count("declined")}, failed ${count("failed")}`,
+  });
+}
+
+/** Every listed pick reads as No when there is no terminal: one line, or one per host with the count. */
+function declineWithoutTerminal(deps: Wired, picks: readonly HostPick[]): number {
+  if (picks.length === 1) {
+    deps.emit({ kind: "line", stream: "err", tone: "error", text: NO_TERMINAL_LINE });
+    return EXIT.FAIL;
+  }
+  summarise(
+    deps,
+    picks.map((pick) => ({ host: pick.host, outcome: "failed", line: NO_TERMINAL_LINE })),
+  );
+  return EXIT.FAIL;
+}
+
+/** One host's whole run: the cheap refusals, then the four legs. Everything `crew add <host>` has always done. */
+async function crewAddHost(
+  deps: Wired,
+  flags: Readonly<Record<string, string>>,
+  pick: HostPick,
+  onDeclined: () => void = () => undefined,
+): Promise<number> {
+  const host = pick.host;
   deps.emit({ kind: "title", host });
   const port = parsePort(flags.port);
   if (port === null) {
@@ -1187,6 +1454,19 @@ async function crewAddRun(deps: Wired, args: readonly string[]): Promise<number>
     return EXIT.FAIL;
   }
 
+  // ── THE NAME THE MEMBER JOINS UNDER ─────────────────────────────────────────
+  // `--label` wins. Without it, the name the row's source gave the machine is passed to the join, so
+  // the phone shows the names `hc machine ls` shows. A source name the join could not turn into a
+  // member id at all (nothing of it survives `slugifyMemberId`) is dropped, and the hostname default
+  // applies, as it does for a typed host. Decided here, from the row alone, and never from the far
+  // machine: it costs nothing and is told to the operator in the probe leg.
+  const fromRow = flags.label === undefined ? pick.label : null;
+  const usable = fromRow !== null && slugifyMemberId(fromRow) !== null;
+  const memberFlags = usable ? { ...flags, label: fromRow } : flags;
+  // The id this run will ask for: the row's name or `--label`, as the join slugs it, else the host.
+  const asLabel = memberFlags.label;
+  const memberId = asLabel === undefined ? host : (slugifyMemberId(asLabel) ?? asLabel);
+
   const runner = deps.remote(host);
   // `crew add` prints its progress as plain lines and nothing else — it streams for the length of a
   // four-leg SSH pipeline and asks two questions on stdin in the middle of it, which is the shape
@@ -1197,10 +1477,18 @@ async function crewAddRun(deps: Wired, args: readonly string[]): Promise<number>
       port,
       instance,
       mux,
-      flags,
+      flags: memberFlags,
+      source: pick.source,
+      labelNote:
+        fromRow === null
+          ? null
+          : { label: fromRow, source: pick.source ?? "its host list", dropped: !usable },
       route,
       leadVersion,
       repo: updateRepoOf(deps.ctx.env),
+      pickConfirm: pick.listed
+        ? { memberId, name: pick.label ?? host, dial: pick.dial ?? host, onDeclined }
+        : null,
     });
   } finally {
     // Every exit path, including a throw: the control socket is a live authenticated channel.
@@ -1231,11 +1519,24 @@ interface AddOptions {
   /** `--mux <name>`, already checked against this build's registry. Null when it was not given. */
   readonly mux: string | null;
   readonly flags: Readonly<Record<string, string>>;
+  /** The first multiplexer that listed this host, kept on its ops record. `null` for a typed host. */
+  readonly source: string | null;
+  /** A name the row's source gave the machine, for the probe leg to say. `null` when it gave none. */
+  readonly labelNote: { readonly label: string; readonly source: string; readonly dropped: boolean } | null;
   readonly route: Route;
   /** The release this lead runs, bare (`1.11.1`). Read by the release route; `v`-prefixed it is the tag. */
   readonly leadVersion: string;
   /** The `owner/repo` the member is told to install from — this lead's own (`updateRepoOf`). */
   readonly repo: string;
+  /** Set for a host chosen from the list: the id it will join as, and what to call when the pick is declined. */
+  readonly pickConfirm: {
+    readonly memberId: string;
+    /** The machine's name in the list it came from (or the host when the list gave none). */
+    readonly name: string;
+    /** The `user@address` ssh dials, so a name that maps to another address is visible. */
+    readonly dial: string;
+    readonly onDeclined: () => void;
+  } | null;
 }
 
 /**
@@ -1265,6 +1566,18 @@ export function releaseOf(version: string): string {
   return version.trim().split(/\s+/)[0]?.split("+")[0] ?? "";
 }
 
+/**
+ * The `hc` fact: where the core's CLI is, which version it said, and whether a core answered.
+ *
+ * A stopped core is printed, not refused. Leg 3 asks the member which multiplexer runs there, and
+ * its "none is running" caveat is the one that tells the operator what to start.
+ */
+export function hcFact(probe: Pick<Probe, "hc" | "hcversion" | "hccore">): string {
+  const version = probe.hcversion.replace(/^hc\s+/, "") || "version not reported";
+  const core = probe.hccore === "live" ? "core running" : "core not running";
+  return `${probe.hc} (${version}, ${core})`;
+}
+
 async function addOverSsh(deps: Wired, runner: RemoteRunner, opts: AddOptions): Promise<number> {
   const { host, port, flags } = opts;
 
@@ -1286,7 +1599,8 @@ async function addOverSsh(deps: Wired, runner: RemoteRunner, opts: AddOptions): 
 
   // WHAT THE MEMBER NEEDS DEPENDS ON THE ROUTE, and on nothing else. A bundle member builds from
   // source, so it needs git and Bun; a release member downloads a payload and verifies it, so it
-  // needs curl, tar and a sha256 tool and needs neither of the other two. Herdr is required on both.
+  // needs curl, tar and a sha256 tool and needs neither of the other two. Herdr, the TUI or its core,
+  // is required on both.
   const required =
     opts.route === "bundle"
       ? ([
@@ -1305,15 +1619,15 @@ async function addOverSsh(deps: Wired, runner: RemoteRunner, opts: AddOptions): 
     }
     deps.emit({ kind: "fact", name: tool, value: path });
   }
-  if (probe.herdr === "") {
-    // Not a bug and not an unimplemented feature: Collie is a Herdr plugin, and a Collie with no
-    // herd has nothing to show. The standalone future is discussion #67 — named as `not yet`.
-    deps.io.err(`error: no \`herdr\` on ${host} — Collie is a Herdr plugin, and a Collie with no herd`);
-    deps.io.err("       has nothing to show. Install Herdr there first.");
+  if (probe.herdr === "" && probe.hc === "") {
+    // Not a bug and not an unimplemented feature: Collie reads a Herdr, the TUI or its core, and a
+    // Collie with neither has nothing to show. The standalone future is discussion #67 — `not yet`.
+    deps.io.err(`error: no herdr and no hc on ${host} — Collie reads a Herdr. Install Herdr or the Herdr core there first.`);
     deps.io.err("       (A standalone Collie is discussion #67 — not yet, and not a bug.)");
     return EXIT.FAIL;
   }
-  deps.emit({ kind: "fact", name: "herdr", value: probe.herdr });
+  if (probe.herdr !== "") deps.emit({ kind: "fact", name: "herdr", value: probe.herdr });
+  if (probe.hc !== "") deps.emit({ kind: "fact", name: "hc", value: hcFact(probe) });
 
   const configDir = probe.configdir;
   if (configDir === "") {
@@ -1323,13 +1637,32 @@ async function addOverSsh(deps: Wired, runner: RemoteRunner, opts: AddOptions): 
     deps.io.err("       Run that by hand there. `crew add` never invents a path it did not observe.");
     return EXIT.FAIL;
   }
-  deps.emit({ kind: "fact", name: "config", value: configDir });
+  deps.emit({
+    kind: "fact",
+    name: "config",
+    // Said when the dir came from the binary install's rule rather than from Herdr, because on that
+    // host nothing answered the question and the operator should see which rule did.
+    value: probe.configsource === "default" ? `${configDir} (Collie's own, no herdr there)` : configDir,
+  });
 
   // The address the lead will dial. Read off the remote; asked only when it cannot answer.
   const peerHost = await resolvePeerHost(deps, probe, flags["peer-address"]);
   if (peerHost === null) return EXIT.FAIL;
   const peerAddress = `${peerHost}:${port}`;
   deps.emit({ kind: "fact", name: "address", value: `${peerAddress} (what this lead will dial)` });
+  if (opts.labelNote !== null) {
+    const { label, source, dropped } = opts.labelNote;
+    if (dropped) {
+      deps.emit({
+        kind: "line",
+        stream: "out",
+        tone: "warn",
+        text: `warn: ${source} names this machine "${label}", which cannot be a member name — it joins under its hostname.`,
+      });
+    } else {
+      deps.emit({ kind: "fact", name: "label", value: `${label} (from ${source})` });
+    }
+  }
 
   // The install target: the Collie leg 1 FOUND, else the path this route would create one at — the
   // bundle route clones into `.collie`, and the release route lets install.sh use its own default.
@@ -1366,6 +1699,35 @@ async function addOverSsh(deps: Wired, runner: RemoteRunner, opts: AddOptions): 
   }
   deps.emit({ kind: "leg-done", leg: "probe", ok: true, detail: `${host} is ready` });
 
+  // ── The pick's own confirm ─────────────────────────────────────────────────
+  // A host chosen from the list has not been named by the operator, only picked. The probe has now
+  // printed what is there (the address this lead will dial, the label, the multiplexer), and nothing
+  // has been written on the host yet: this is the one place both are true. A typed host skips it.
+  if (opts.pickConfirm !== null) {
+    const { memberId, name, dial, onDeclined } = opts.pickConfirm;
+    // The name Herdr gave it, and the address ssh really dials: a name that maps to a different
+    // address than the operator expects is visible here, before anything is written.
+    const who = name === dial ? name : `${name} (${dial})`;
+    const answer = await deps.confirm(
+      `Add ${who} to this crew as "${memberId}"? It installs Collie on ${host} over ssh and joins it.`,
+    );
+    // Nobody to ask reads as No, and as a failure: nothing was installed, and the exit says so.
+    if (answer === null) {
+      deps.emit({ kind: "line", stream: "err", tone: "error", text: NO_TERMINAL_LINE });
+      return EXIT.FAIL;
+    }
+    if (!answer) {
+      onDeclined();
+      deps.emit({
+        kind: "line",
+        stream: "out",
+        tone: "info",
+        text: `left alone — nothing was installed or enrolled on ${host}.`,
+      });
+      return EXIT.STATE;
+    }
+  }
+
   // ── Leg 2 — install ────────────────────────────────────────────────────────
   // `replaced` is what leg 4 reads: an already-enrolled peer is restarted only when there is
   // something new for it to run. Both routes answer it, in their own terms.
@@ -1396,11 +1758,20 @@ async function addOverSsh(deps: Wired, runner: RemoteRunner, opts: AddOptions): 
     mux: opts.mux,
     probe,
   });
-  if (configured !== null) return configured;
+  if ("code" in configured) return configured.code;
 
   // ── Leg 4 — enroll ─────────────────────────────────────────────────────────
   deps.emit({ kind: "leg-start", leg: "enroll", text: "" });
-  return await enrollLeg(deps, runner, { host, root, port, peerAddress, flags, changed: replaced || rebound });
+  return await enrollLeg(deps, runner, {
+    host,
+    root,
+    port,
+    peerAddress,
+    flags,
+    source: opts.source,
+    changed: replaced || rebound,
+    runsOn: configured.runsOn,
+  });
 }
 
 /**
@@ -1549,7 +1920,8 @@ async function releaseLeg(
     return { code: EXIT.FAIL };
   }
   deps.emit({ kind: "leg-done", leg: "install", ok: true, detail: `${built} at ${o.collieDir}/current` });
-  if (probe.checkout === "") {
+  // Only where there IS a Herdr TUI to register with: an hc-only member has no `herdr plugin`.
+  if (probe.checkout === "" && probe.herdr !== "") {
     for (const text of [
       `  This checkout is not registered with Herdr there. To get its plugin actions:`,
       `    herdr plugin link "${o.collieDir}/current"   # on ${o.host}`,
@@ -1648,7 +2020,8 @@ async function installLeg(
     return EXIT.FAIL;
   }
   deps.emit({ kind: "leg-done", leg: "install", ok: true, detail: `${built} at ${o.root}` });
-  if (probe.checkout === "") {
+  // Only where there IS a Herdr TUI to register with: an hc-only member has no `herdr plugin`.
+  if (probe.checkout === "" && probe.herdr !== "") {
     for (const text of [
       `  This checkout is not registered with Herdr there. To get its plugin actions:`,
       `    herdr plugin link "${o.root}"   # on ${o.host}`,
@@ -1779,6 +2152,16 @@ export function bindOverwriteConfirmation(probe: Probe, peerHost: string, port: 
 }
 
 /**
+ * What the mux half of leg 3 decided: the name to write into the member's `.env` (null writes none),
+ * and the multiplexer the member runs on as far as this run knows (null when none runs there). The
+ * two differ on purpose: an `auto` or `kept` member runs on a mux this run does not write.
+ */
+interface MuxDecided {
+  readonly write: string | null;
+  readonly runsOn: string | null;
+}
+
+/**
  * The mux half of leg 3: decide, say so, and hand back the name to write (null writes none).
  *
  * It runs BEFORE the bind confirmation because it is the half that can stop the run, and a run that
@@ -1788,7 +2171,7 @@ async function decideMux(
   deps: Wired,
   runner: RemoteRunner,
   o: { host: string; root: string; mux: string | null; probe: Probe },
-): Promise<{ readonly code: number } | { readonly write: string | null }> {
+): Promise<{ readonly code: number } | MuxDecided> {
   const leadMux = explicitMux(deps.ctx.env);
   const asked = { flag: o.mux, envmux: o.probe.envmux, leadMux };
   const known = muxChoice({ ...asked, answer: null });
@@ -1817,15 +2200,15 @@ async function decideMux(
   switch (decision.kind) {
     case "flag":
       say(decision.mux, flagHow(decision.mux, o.probe.envmux));
-      return { write: decision.mux };
+      return { write: decision.mux, runsOn: decision.mux };
     case "kept":
       say(decision.mux, "already set there");
-      return { write: null };
+      return { write: null, runsOn: decision.mux };
     case "auto":
       // Nothing is written: `start` on the member records the one it found itself, endpoint and all
       // (`muxVars`), which is a stronger write than a bare name from here.
       say(decision.mux, "the only one running there");
-      return { write: null };
+      return { write: null, runsOn: decision.mux };
     case "none":
       deps.emit({
         kind: "line",
@@ -1837,7 +2220,7 @@ async function decideMux(
           `warn: no multiplexer is running on ${o.host}. The restart that ends this run will refuse` +
           " there until one runs, or until `--mux <name>` names one; the member is enrolled either way.",
       });
-      return { write: null };
+      return { write: null, runsOn: null };
     case "ask":
       return await pickMux(deps, o.host, decision.found, decision.leadDrives, say);
     default:
@@ -1854,7 +2237,7 @@ async function pickMux(
   found: readonly MuxProbeSighting[],
   leadDrives: string | null,
   say: (mux: string, how: string) => void,
-): Promise<{ readonly code: number } | { readonly write: string | null }> {
+): Promise<{ readonly code: number } | MuxDecided> {
   const names = found.map((sighting) => sighting.mux).join(", ");
   deps.io.out(`${host} runs ${String(found.length)} multiplexers:`);
   deps.io.out("");
@@ -1881,7 +2264,7 @@ async function pickMux(
     const chosen = matchMuxAnswer(found, answer.trim());
     if (chosen !== undefined) {
       say(chosen.mux, "you picked it");
-      return { write: chosen.mux };
+      return { write: chosen.mux, runsOn: chosen.mux };
     }
     if (attempt < MUX_PICKER_ATTEMPTS) deps.io.err(`"${answer.trim()}" is not one of them.`);
   }
@@ -1904,27 +2287,27 @@ async function configureLeg(
     mux: string | null;
     probe: Probe;
   },
-): Promise<number | null> {
+): Promise<{ readonly code: number } | { readonly runsOn: string | null }> {
   const { probe } = o;
   // The mux decision FIRST: it is the half that can stop the run.
   const decided = await decideMux(deps, runner, { host: o.host, root: o.root, mux: o.mux, probe });
-  if ("code" in decided) return decided.code;
+  if ("code" in decided) return decided;
   const writeMux = decided.write;
   const bindCurrent = bindIsCurrent(probe, o.peerHost, o.port);
   // The leg writes when EITHER half has something to write. A bind that is already right used to
   // skip the whole leg, which would now skip a `COLLIE_MUX` the operator has just chosen.
   if (bindCurrent && writeMux === null) {
     deps.emit({ kind: "leg-done", leg: "configure", ok: true, detail: `already ${o.peerHost}:${o.port}` });
-    return null;
+    return { runsOn: decided.runsOn };
   }
   const current = bindOverwriteConfirmation(probe, o.peerHost, o.port);
   if (current !== null) {
     const answer = await ask(deps, `${o.host} is configured to bind ${current}; change it to ${o.peerHost}:${o.port}?`);
-    if (answer === "aborted") return EXIT.FAIL;
+    if (answer === "aborted") return { code: EXIT.FAIL };
     if (!answer) {
       deps.io.err("error: left alone — the bind was not changed, and nothing was enrolled.");
       deps.io.err("       A peer the lead cannot dial stays provisional forever (`collie doctor` there).");
-      return EXIT.STATE;
+      return { code: EXIT.STATE };
     }
   } else if (probe.envhost === "") {
     // Said out loud, because a step that stopped asking is otherwise a step that silently changed.
@@ -1947,10 +2330,10 @@ async function configureLeg(
     }),
   );
   const transport = transportFailure(deps.io, o.host, written);
-  if (transport !== null) return transport;
+  if (transport !== null) return { code: transport };
   if (written.code !== 0) {
     deps.io.err(`error: could not write the peer's .env — ${firstLine(written.stderr)}`);
-    return EXIT.FAIL;
+    return { code: EXIT.FAIL };
   }
   // What was WRITTEN, named: the leg now has two halves, and a re-run that only moved the
   // multiplexer must not report a bind it left alone.
@@ -1971,7 +2354,18 @@ async function configureLeg(
     tone: "info",
     text: "  No front door was published there — a peer publishes none (ADR 0013).",
   });
-  return null;
+  return { runsOn: decided.runsOn };
+}
+
+/** What a picked host's confirm says when nobody can answer it. */
+export const NO_TERMINAL_LINE = "✗ declined (no terminal to confirm)";
+
+/** What a red `crew add` line that has no `error:` prefix starts with. */
+export const NOT_JOINED_MARK = "✗ not joined:";
+
+/** Does this lead hold an enrolled pin for the member id the far machine reports? A tombstone is not one. */
+function pinnedHere(data: TrustStoreData, memberId: string | null): boolean {
+  return memberId !== null && data.peers.some((peer) => peer.memberId === memberId && peer.status === "enrolled");
 }
 
 /** Leg 4, as its own step: the membership pre-check, the invite, the join, and the final verdict. */
@@ -1984,8 +2378,12 @@ async function enrollLeg(
     port: number;
     peerAddress: string;
     flags: Readonly<Record<string, string>>;
+    /** The multiplexer that listed this host, for the ops record. `null` for a typed host. */
+    source: string | null;
     /** Did this run replace the far machine's build or rewrite its bind? */
     changed: boolean;
+    /** The multiplexer leg 3 says the member runs on; null when none runs there. */
+    runsOn: string | null;
   },
 ): Promise<number> {
   // How this run reached the far machine, banked for `crew update` the moment the run proves it
@@ -1997,6 +2395,7 @@ async function enrollLeg(
       path: o.root,
       port: o.port,
       recordedAt: deps.now(),
+      source: o.source,
     };
     if (!(await deps.ops.record(memberId, record))) {
       deps.io.err(`warn: could not record how ${o.host} was reached — the ops file is not one this build`);
@@ -2020,6 +2419,22 @@ async function enrollLeg(
   if (data === null) return EXIT.FAIL;
   if (membership.packId !== null) {
     if (data.crew !== null && membership.packId === data.crew.crewId) {
+      // ── A STALE PEER IS NOT A MEMBER ─────────────────────────────────────────
+      // `crew remove` is local: it drops this lead's pin and sends nothing, so the far machine keeps
+      // answering with this crew's id. Its answer is a claim about the far side only. A member is
+      // one THIS lead pins, so the green line waits for the pin; without it the run ends red and
+      // says what to do on the far machine. Nothing is remembered, restarted or minted.
+      if (!pinnedHere(data, membership.memberId)) {
+        deps.emit({
+          kind: "line",
+          stream: "err",
+          tone: "error",
+          text:
+            `${NOT_JOINED_MARK} ${o.host} still answers as a member of this crew, but this lead holds no record of it. ` +
+            `Run \`collie leave\` on ${o.host}, then add it again.`,
+        });
+        return EXIT.STATE;
+      }
       if (membership.memberId !== null) await remember(membership.memberId);
       // ── THE ALREADY-A-MEMBER PATH RESTARTS THE FAR MACHINE ──────────────────
       // No `collie join` runs here, and a join is the ONLY thing that restarts a peer from this verb
@@ -2128,7 +2543,7 @@ async function enrollLeg(
     text: "  restarting the bridge so the new member takes effect…",
   });
   await restartBridge(deps);
-  return verdict(deps, before, o.host, remember);
+  return verdict(deps, before, o.host, remember, o.runsOn);
 }
 
 /**
@@ -2191,6 +2606,7 @@ async function verdict(
   before: ReadonlySet<string>,
   host: string,
   remember: (memberId: string) => Promise<void>,
+  runsOn: string | null,
 ): Promise<number> {
   const fresh = await deps.reload();
   const added: TrustedMember | undefined = fresh?.peers.find((p) => !before.has(p.memberId));
@@ -2206,7 +2622,13 @@ async function verdict(
     deps.emit({
       kind: "verdict",
       ok: true,
-      text: `"${added.memberId}" is a member of "${fresh.crew.name}" and answered at ${added.address}`,
+      text:
+        `"${added.memberId}" is a member of "${fresh.crew.name}" and answered at ${added.address}` +
+        // The multiplexer leg 3 decided, so the last line says what the member drives as well as that
+        // it joined. None is named when none runs there: that caveat already printed in leg 3.
+        (runsOn === null ? "" : `, and runs on ${runsOn}`),
+      // The same decision as data, for the summary line a several-host run ends with.
+      runsOn,
     });
     return EXIT.OK;
   }
@@ -2231,6 +2653,10 @@ export function transportFailure(io: Io, host: string, r: RemoteResult): number 
   }
   if (r.code !== 255) return null;
   io.err(`error: ssh could not reach ${host} — ${firstLine(r.stderr)}`);
+  // BatchMode never prompts, so a host this machine has not met fails here instead of asking.
+  if (/Host key verification failed/.test(r.stderr)) {
+    io.err(`       connect once by hand (ssh ${host}) to accept its host key, then add it again`);
+  }
   if (/Permission denied \(publickey/.test(r.stderr)) {
     io.err("       That is a key problem, not a Collie one: `ssh-add` your key (or name it in");
     io.err(`       ~/.ssh/config for ${host}) and re-run. Collie never touches your ssh configuration.`);
@@ -2450,6 +2876,7 @@ export function crewAddDeps(base: CrewDeps): CrewAddDeps {
     // than read EOF as "yes".
     confirm: (question) => (process.stdin.isTTY === true ? confirm(question) : null),
     prompt: (question) => (process.stdin.isTTY === true ? prompt(question) : null),
+    terminal: () => process.stdin.isTTY === true,
     gitBundle: async (commit, io) => {
       const git = base.exec.which("git");
       if (git === null) return null;

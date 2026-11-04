@@ -10,6 +10,7 @@ import {
   type FakeFiles,
   fakeFiles,
   fakeLinkFs,
+  fakeOps,
   HANDLER_FILE,
   HOME,
   ROOT,
@@ -17,6 +18,7 @@ import {
   type Scripted,
 } from "./fakes.ts";
 import { leadStore, member, peerStore } from "../bridge/crew/fixtures.ts";
+import { TrustStore, type TrustStoreData } from "../bridge/crew/trust-store.ts";
 import { hostFor, type Host } from "../bridge/host.ts";
 import { serializeTrustStore } from "../bridge/crew/trust-store.ts";
 import { EXIT, type Io } from "./io.ts";
@@ -364,6 +366,111 @@ describe("the pidfile guard", () => {
       expect(h.exec.killed).toEqual([]);
       expect(h.files.exists(`${CONFIG}/collie.pid`)).toBe(false);
     }
+  });
+});
+
+// Where a multiplexer's machine list and the crew differ, after the banner (M84/04). The machine
+// lists are asked through the real providers over the fake `Exec`; only the answers are scripted.
+describe("start, and the crew delta", () => {
+  const CORE_LIST = "hc machine ls --json";
+  const ONE_MACHINE = JSON.stringify({ machines: [{ target: "vps", name: "vps" }] });
+  const LINE = "herdr-core knows 1 machine that is not in this crew: vps. Add it with `collie crew add`.";
+
+  const listAnswer = (stdout: string): NonNullable<Scripted["answers"]> => [[CORE_LIST, { stdout }]];
+
+  /** A start whose crew seams read `store`, with `hc` answering `list` (absent: no `hc` at all). */
+  function crewHarness(store: TrustStoreData | null, list: string | null, over: HarnessOptions = {}): Harness {
+    const h = harness({
+      ...over,
+      absent: ["herdr", "ssh", ...(list === null ? ["hc"] : [])],
+      answers: [...(list === null ? [] : listAnswer(list)), ...(over.answers ?? [])],
+    });
+    let contents = store === null ? null : serializeTrustStore(store);
+    h.deps.crew = {
+      store: new TrustStore("/state", { read: async () => contents, write: async (_p, d) => void (contents = d) }),
+      ops: fakeOps(),
+    };
+    return h;
+  }
+
+  test("prints the line on stderr after the banner on a lead", async () => {
+    const h = crewHarness(leadStore(), ONE_MACHINE);
+    expect(await cmdStart(h.deps)).toBe(EXIT.OK);
+    expect(h.io.stderr).toContain(LINE);
+    expect(h.io.stdout).not.toContain(LINE);
+    expect(h.io.stdout.some((l) => l.startsWith("bridge started"))).toBe(true);
+  });
+
+  test("prints it on a solo collie too", async () => {
+    const h = crewHarness(null, ONE_MACHINE);
+    expect(await cmdStart(h.deps)).toBe(EXIT.OK);
+    expect(h.io.stderr).toContain(LINE);
+  });
+
+  test("prints nothing on a peer, and asks nothing", async () => {
+    const h = crewHarness(peerStore(), ONE_MACHINE);
+    expect(await cmdStart(h.deps)).toBe(EXIT.OK);
+    expect(h.io.stderr).not.toContain(LINE);
+    expect(h.exec.calls).not.toContain(CORE_LIST);
+  });
+
+  test("prints nothing on Windows, and asks nothing", async () => {
+    const h = crewHarness(leadStore(), ONE_MACHINE, { host: hostFor("win32") });
+    await cmdStart(h.deps);
+    expect(h.io.stderr).not.toContain(LINE);
+    expect(h.exec.calls).not.toContain(CORE_LIST);
+  });
+
+  test("prints nothing when no multiplexer has a machine list", async () => {
+    const h = crewHarness(leadStore({ peers: [member({ memberId: "nas" })] }), null);
+    expect(await cmdStart(h.deps)).toBe(EXIT.OK);
+    expect(h.io.stderr.filter((l) => l.includes("machine"))).toEqual([]);
+  });
+
+  // ── THE HINT IS QUIET (M84 hardening) ────────────────────────────────────────
+  // It prints only for a machine the list knows that the crew lacks AND that `crew add` could pick.
+  const quietFor = async (list: string, store: TrustStoreData | null = leadStore()): Promise<string[]> => {
+    const h = crewHarness(store, list);
+    expect(await cmdStart(h.deps)).toBe(EXIT.OK);
+    return h.io.stderr.filter((l) => l.includes("not in this crew"));
+  };
+
+  test("a sandbox alone prints nothing", async () => {
+    expect(await quietFor(JSON.stringify({ machines: [{ target: "scratch", temporary: true }] }))).toEqual([]);
+  });
+
+  test("a machine the core reaches with its own command alone prints nothing", async () => {
+    expect(await quietFor(JSON.stringify({ machines: [{ target: "ssh -p 2222 op@10.0.0.7", via: true }] }))).toEqual([]);
+  });
+
+  test("a machine the crew already has, strongly or by a weak match, prints nothing", async () => {
+    const crew = leadStore({ peers: [member({ memberId: "nas", address: "100.64.0.9:8787" })] });
+    expect(await quietFor(JSON.stringify({ machines: [{ target: "op@100.64.0.9" }] }), crew)).toEqual([]);
+    expect(await quietFor(JSON.stringify({ machines: [{ target: "op@nas" }] }), crew)).toEqual([]);
+  });
+
+  test("an empty list, and a core that is not running, print nothing", async () => {
+    expect(await quietFor(JSON.stringify({ machines: [] }))).toEqual([]);
+    const stopped = harness({
+      absent: ["herdr", "ssh"],
+      answers: [[CORE_LIST, { code: 5, stdout: JSON.stringify({ error: { kind: "unavailable", message: "no core" } }) }]],
+    });
+    stopped.deps.crew = { store: new TrustStore("/state", { read: async () => null, write: async () => {} }), ops: fakeOps() };
+    expect(await cmdStart(stopped.deps)).toBe(EXIT.OK);
+    expect(stopped.io.stderr.filter((l) => l.includes("not in this crew"))).toEqual([]);
+  });
+
+  test("it names only the pickable machines when the list mixes kinds", async () => {
+    const list = JSON.stringify({
+      machines: [{ target: "vps" }, { target: "scratch", temporary: true }, { target: "fly ssh console", via: true }],
+    });
+    expect(await quietFor(list)).toEqual([LINE]);
+  });
+
+  test("a start that failed prints no delta", async () => {
+    const h = crewHarness(leadStore(), ONE_MACHINE, { answers: [["systemctl --user enable --now collie", { code: 1 }]] });
+    expect(await cmdStart(h.deps)).not.toBe(EXIT.OK);
+    expect(h.io.stderr).not.toContain(LINE);
   });
 });
 

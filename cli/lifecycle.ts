@@ -11,6 +11,7 @@ import { ensureMuxChosen, pickHostOf } from "./mux.ts";
 import { resolveMux } from "../bridge/mux/herdr-core/pick.ts";
 import type { StatusView, Ui } from "./render.ts";
 import { censusLines, type CensusReader } from "./census.ts";
+import { crewDelta, deltaLines, type CrewDeltaDeps } from "./crew-delta.ts";
 import { cmdServeStatus, cmdUnserve, crewModeOnDisk, type ServeDeps } from "./serve.ts";
 import { phoneBlocked, SETUP_CLOSING, setupFindings, setupLines } from "./setup-findings.ts";
 import { pairedRegistryOf } from "./pairing.ts";
@@ -111,6 +112,12 @@ export interface LifecycleDeps extends ServeDeps {
   interactive?: boolean;
   /** The free-text ask the first-run picker uses. `null` means nobody answered. */
   prompt?(question: string): string | null | Promise<string | null>;
+  /**
+   * The trust store and the ops store, read to say where a multiplexer's machine list and the crew
+   * differ (`cli/crew-delta.ts`). Both are reads. Absent reads as "no crew to compare", so `start`
+   * prints no such line, which is what every test that is not about it sees.
+   */
+  crew?: Pick<CrewDeltaDeps, "store" | "ops">;
 }
 
 export type Tier = "systemd" | "launchd" | "taskscheduler" | "unsupervised";
@@ -1082,8 +1089,19 @@ export async function cmdStart(deps: LifecycleDeps): Promise<number> {
   if (chosen !== EXIT.OK) return chosen;
   const open = reportSetup(deps);
   const code = await launchBridge(deps);
+  if (code === EXIT.OK) await reportCrewDelta(deps);
   if (code === EXIT.OK && open) deps.io.err(SETUP_CLOSING);
   return code;
+}
+
+/**
+ * After the banner, where a multiplexer's machine list and the crew differ, one line each (M84/04).
+ * Stderr, like the setup rows. Silent when nothing differs, on a peer and on Windows
+ * ({@link crewDelta} runs nothing there), and when no crew seam is wired.
+ */
+async function reportCrewDelta(deps: LifecycleDeps): Promise<void> {
+  if (deps.crew === undefined) return;
+  for (const line of deltaLines(await crewDelta({ exec: deps.exec, host: deps.host, ...deps.crew }))) deps.io.err(line);
 }
 
 /** The start path of `restart`: settle the multiplexer, then launch. No setup check. */

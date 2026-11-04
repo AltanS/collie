@@ -28,6 +28,7 @@ import {
   bindOverwriteConfirmation,
   cmdCrewAdd,
   composeStdin,
+  hcFact,
   configureScript,
   enrollScript,
   installReleaseScript,
@@ -45,6 +46,7 @@ import {
   shq,
   shqPath,
   sshOptions,
+  sshRunner,
   STDIN_MARKER,
   type CrewAddDeps,
   type RemoteResult,
@@ -78,6 +80,8 @@ function legOf(script: string): Leg {
 }
 
 interface Recorded {
+  /** The ssh target this run's runner was made for. */
+  host: string;
   leg: Leg;
   script: string;
   stdin: string | undefined;
@@ -156,6 +160,8 @@ interface Harness {
   bundles: number;
   /** Every LOCAL spawn, in order — what the candidate picker asked this machine. */
   exec: { calls: string[] };
+  /** The ops store the run wrote to, for the record it left. */
+  ops: ReturnType<typeof fakeOps>;
 }
 
 interface HarnessOptions {
@@ -166,6 +172,14 @@ interface HarnessOptions {
   prompt?: string | null;
   /** What the lead's store looks like when it is re-read after the join. */
   after?: TrustStoreData | null;
+  /** The same, per join in order: the first re-read gets the first, and the last one repeats. */
+  afterEach?: TrustStoreData[];
+  /** The lead's checkout has uncommitted changes, which the bundle leg warns about. */
+  dirty?: true;
+  /** Probe fields per host: a host that already runs a Collie to replace, say. */
+  probes?: Readonly<Record<string, Partial<Record<ProbeField, string>>>>;
+  /** A result for EVERY leg of one host, bypassing the defaults — a host that cannot be reached. */
+  broken?: Readonly<Record<string, Partial<RemoteResult>>>;
   /** Answers `hello` in the final verdict. `false` = the member does not answer. */
   reachable?: boolean;
   flags?: string[];
@@ -179,6 +193,10 @@ interface HarnessOptions {
   extraFiles?: Readonly<Record<string, string>>;
   /** `herdr machine list --json`'s stdout. Absent ⇒ there is no `herdr` binary to ask. */
   machines?: string;
+  /** `hc machine ls --json`'s stdout. Absent ⇒ there is no `hc` binary to ask. */
+  coreMachines?: string;
+  /** A core that is not running: `hc` answers `unavailable` as JSON on stdout and exits 5. */
+  coreStopped?: true;
   /** `ssh -G <target>` output per target. Absent ⇒ there is no `ssh` to resolve with. */
   resolve?: Readonly<Record<string, string>>;
   /** This lead's install kind. Absent ⇒ a linked clone, the kind every earlier test assumed. */
@@ -204,6 +222,7 @@ function harness(opts: HarnessOptions = {}): Harness {
   let restarts = 0;
   let closed = 0;
   let bundles = 0;
+  let reloads = 0;
 
   // The candidate picker's two sources, and the resolver. All three are ABSENT by default, so every
   // test written before the picker existed sees the machine it always saw: no ssh config, no `herdr`
@@ -212,16 +231,25 @@ function harness(opts: HarnessOptions = {}): Harness {
   if (opts.sshConfig !== undefined) seeded[`${HOME}/.ssh/config`] = opts.sshConfig;
   const answers: [string, Partial<ReturnType<typeof realExec>["capture"]> | { stdout: string }][] = [
     [`git -C ${ROOT} rev-parse HEAD`, { stdout: `${COMMIT}\n` }],
-    [`git -C ${ROOT} status --porcelain`, { stdout: "" }],
+    [`git -C ${ROOT} status --porcelain`, { stdout: opts.dirty === true ? " M cli/remote.ts\n" : "" }],
     [`git -C ${ROOT} show ${COMMIT}:herdr-plugin.toml`, { stdout: `version = "${VERSION}"\n` }],
     ["tailscale status --json", { stdout: TAILSCALE_JSON }],
   ];
   if (opts.machines !== undefined) answers.push(["herdr machine list --json", { stdout: opts.machines }]);
+  if (opts.coreMachines !== undefined) answers.push(["hc machine ls --json", { stdout: opts.coreMachines }]);
+  if (opts.coreStopped === true) {
+    const stopped = { error: { kind: "unavailable", message: "the core listens at /run/user/1000/herdr-core/default.sock" } };
+    answers.push(["hc machine ls --json", { code: 5, stdout: JSON.stringify(stopped) }]);
+  }
   for (const [target, stdout] of Object.entries(opts.resolve ?? {})) {
     answers.push([`ssh ${sshResolveArgs(target).join(" ")}`, { stdout }]);
   }
   const exec = fakeExec({
-    absent: [...(opts.machines === undefined ? ["herdr"] : []), ...(opts.resolve === undefined ? ["ssh"] : [])],
+    absent: [
+      ...(opts.machines === undefined ? ["herdr"] : []),
+      ...(opts.coreMachines === undefined && opts.coreStopped !== true ? ["hc"] : []),
+      ...(opts.resolve === undefined ? ["ssh"] : []),
+    ],
     answers,
   });
 
@@ -266,14 +294,14 @@ function harness(opts: HarnessOptions = {}): Harness {
     serve: () => Promise.resolve(EXIT.OK),
     unserve: () => EXIT.OK,
     clearNotifications: () => Promise.resolve(),
-    remote: () => ({
+    remote: (host) => ({
       run: async (script, stdin) => {
         const leg = legOf(script);
-        calls.push({ leg, script, stdin });
-        const canned = opts.answers?.[leg] ?? {};
+        calls.push({ host, leg, script, stdin });
+        const canned = opts.broken?.[host] ?? opts.answers?.[leg] ?? {};
         const stdout =
           leg === "probe"
-            ? probeOut()
+            ? probeOut(opts.probes?.[host])
             : leg === "mux-probe"
               ? muxProbeOut(["herdr"])
               : leg === "membership"
@@ -295,12 +323,15 @@ function harness(opts: HarnessOptions = {}): Harness {
       return Promise.resolve("QkFTRTY0LWJ1bmRsZQ==");
     },
     installKind: () => opts.installKind ?? { kind: "linked-clone", alsoLayout: false },
-    reload: () =>
-      Promise.resolve(
+    reload: () => {
+      const each = opts.afterEach;
+      if (each !== undefined) return Promise.resolve(each[Math.min(reloads++, each.length - 1)] ?? null);
+      return Promise.resolve(
         opts.after === undefined
           ? leadStore({ peers: [member({ memberId: "nas", address: "100.64.0.9:8787" })] })
           : opts.after,
-      ),
+      );
+    },
   };
 
   return {
@@ -311,6 +342,7 @@ function harness(opts: HarnessOptions = {}): Harness {
       return closed;
     },
     data: () => store.current(),
+    ops,
     get restarts() {
       return restarts;
     },
@@ -702,7 +734,7 @@ describe("collie crew add", () => {
   test("a target skips the picker entirely — nothing local is asked", async () => {
     const h = harness({ sshConfig: "Host attic", machines: '[{"target":"nas"}]', resolve: {} });
     expect(await run(h)).toBe(EXIT.OK);
-    expect(h.exec.calls.filter((c) => c.startsWith("ssh ") || c.startsWith("herdr "))).toEqual([]);
+    expect(h.exec.calls.filter((c) => c.startsWith("ssh ") || c.startsWith("herdr ") || c.startsWith("hc "))).toEqual([]);
   });
 
   test("no host lists the ssh config candidates and adds the one the operator picks", async () => {
@@ -760,6 +792,44 @@ describe("collie crew add", () => {
     expect(text(h.io)).toContain("probing attic…");
   });
 
+  test("a member joined by hand, with no crew add record, is named as a maybe and never hidden", async () => {
+    // M84 test 2, BUG 1: no crew-ops.json at all. `member` is matched on the host of its trust-store
+    // address, `attic` on its member id. Neither is proof, so all three rows are offered; the delta
+    // (`collie start`) still counts the two as accounted for.
+    const h = harness({
+      store: leadStore({
+        peers: [
+          member({ memberId: "member", address: "192.168.77.2:8787" }),
+          member({ memberId: "attic", address: "100.64.0.20:8787" }),
+        ],
+      }),
+      coreMachines: '{"machines":[{"target":"op@192.168.77.2","name":"box"},{"target":"op@attic"},{"target":"op@vps"}]}',
+      prompt: "",
+    });
+    expect(await run(h, [])).toBe(EXIT.STATE);
+    // Neither match is a route, so neither row is hidden: both keep a number and say who they may be.
+    expect(h.io.stdout.slice(0, 6)).toEqual([
+      "Candidate hosts on this machine:",
+      "",
+      '   1  op@192.168.77.2  herdr-core  may be enrolled as "member"',
+      '   2  op@attic         herdr-core  may be enrolled as "attic"',
+      "   3  op@vps           herdr-core",
+      "",
+    ]);
+    expect(h.calls).toHaveLength(0);
+  });
+
+  test("`all` with only maybe-enrolled rows says so instead of calling the word unknown", async () => {
+    const h = harness({
+      store: leadStore({ peers: [member({ memberId: "member", address: "192.168.77.2:8787" })] }),
+      coreMachines: '{"machines":[{"target":"op@192.168.77.2"}]}',
+      prompt: "all",
+    });
+    expect(await run(h, [])).toBe(EXIT.USAGE);
+    expect(h.io.stderr).toContain("error: `all` has nothing to take: every candidate above may already be a member of this crew.");
+    expect(h.calls).toHaveLength(0);
+  });
+
   test("every candidate already enrolled is a refusal, and it says which", async () => {
     const h = harness({
       store: leadStore({ peers: [member({ memberId: "nas", address: "100.64.0.9:8787" })] }),
@@ -792,9 +862,10 @@ describe("collie crew add", () => {
     // ran, no connection was made, and no leg script reached the transport.
     expect(h.exec.calls).toEqual([
       "herdr machine list --json",
-      "ssh -G bastion",
-      "ssh -G attic",
-      "ssh -G office",
+      "hc machine ls --json",
+      "ssh -G -- bastion",
+      "ssh -G -- attic",
+      "ssh -G -- office",
     ]);
     expect(h.exec.calls.every((c) => !c.startsWith("ssh") || c.startsWith("ssh -G "))).toBe(true);
     expect(h.exec.calls.some((c) => c.includes("corkscrew"))).toBe(false);
@@ -806,6 +877,133 @@ describe("collie crew add", () => {
     expect(await run(h, [])).toBe(EXIT.OK);
     expect(h.io.stderr.filter((l) => l.startsWith("warn: `herdr machine list --json`"))).toHaveLength(1);
     expect(text(h.io)).toContain("probing attic…");
+  });
+
+  test("a core source: sandboxes are hidden, a via machine is greyed, and the pick takes the rest", async () => {
+    const h = harness({
+      coreMachines: JSON.stringify({
+        machines: [
+          { target: "altan@minibuch", name: "minibuch", via: false, temporary: false },
+          { target: "sbx-1", name: "sandbox", temporary: true },
+          { target: "altan@vps", name: "vps", via: true, temporary: false },
+        ],
+      }),
+      prompt: "1",
+    });
+    expect(await run(h, [])).toBe(EXIT.OK);
+    expect(h.io.stdout.slice(0, 5)).toEqual([
+      "Candidate hosts on this machine:",
+      "",
+      "   1  altan@minibuch  herdr-core",
+      "      altan@vps       herdr-core  cannot be added: reached through a command of its own, not plain ssh; type an address ssh can reach, or add it to ~/.ssh/config",
+      "",
+    ]);
+    expect(text(h.io)).toContain("probing altan@minibuch…");
+    expect(text(h.io)).not.toContain("warn:");
+  });
+
+  test("a greyed via row reached through an ssh hop says to add the hop first, or type its address", async () => {
+    const h = harness({
+      coreMachines: JSON.stringify({
+        machines: [{ target: "altan@minibuch" }, { target: "ssh -p 2222 altan@10.0.0.7", name: "box", via: true }],
+      }),
+      prompt: "1",
+    });
+    expect(await run(h, [])).toBe(EXIT.OK);
+    expect(h.io.stdout[3]).toBe(
+      "      ssh -p 2222 altan@10.0.0.7  herdr-core  cannot be added: reached through altan@10.0.0.7; add altan@10.0.0.7 first, or type its address",
+    );
+  });
+
+  test("typing a blocked machine's name is refused with its reason, and nothing runs", async () => {
+    const h = harness({
+      coreMachines: '{"machines":[{"target":"altan@minibuch"},{"target":"vps","via":true}]}',
+      prompt: "vps",
+    });
+    expect(await run(h, [])).toBe(EXIT.USAGE);
+    expect(text(h.io)).toContain('error: "vps" cannot be added: reached through a command of its own, not plain ssh; type an address ssh can reach, or add it to ~/.ssh/config.');
+    expect(h.calls).toHaveLength(0);
+  });
+
+  test("a core whose only machines are blocked offers nothing and says so", async () => {
+    const h = harness({ coreMachines: '{"machines":[{"target":"vps","via":true}]}' });
+    expect(await run(h, [])).toBe(EXIT.USAGE);
+    expect(text(h.io)).toContain("no candidate above can be added");
+    expect(h.calls).toHaveLength(0);
+  });
+
+  test("a stopped core is silent: no warning and no candidates", async () => {
+    const h = harness({
+      coreStopped: true,
+      sshConfig: "Host attic",
+      prompt: "",
+    });
+    expect(await run(h, [])).toBe(EXIT.STATE);
+    expect(h.exec.calls).toContain("hc machine ls --json");
+    expect(text(h.io)).not.toContain("warn:");
+    expect(h.io.stdout.some((l) => l.includes("attic"))).toBe(true);
+  });
+
+  // ── NO SSH ARGUMENT INJECTION FROM THE LIST (M84 hardening) ──────────────────
+  // The core's list is another program's JSON. A name that ssh could read as an option, that holds
+  // whitespace, shell syntax or a control character is never a row: one refusal line, the rest of
+  // the list stays, and no `ssh` of any kind is spawned for it.
+  const refusedNames: [what: string, target: string, shown: string][] = [
+    ["a leading dash", "-oProxyCommand=touch", "-oProxyCommand=touch"],
+    ["whitespace", "attic lan", "attic lan"],
+    ["a shell metacharacter", "attic;reboot", "attic;reboot"],
+    ["a command substitution", "$(reboot)", "$(reboot)"],
+    ["a control character", "attic\u001b[2J", "attic\\x1b[2J"],
+  ];
+  for (const [what, target, shown] of refusedNames) {
+    test(`a Herdr machine name with ${what} is refused, named once, and never reaches ssh`, async () => {
+      const h = harness({
+        coreMachines: JSON.stringify({ machines: [{ target }, { target: "op@vps" }] }),
+        resolve: { "op@vps": "user op\nhostname vps\nport 22" },
+        prompt: "1",
+      });
+      expect(await run(h, [])).toBe(EXIT.OK);
+      expect(h.io.stderr).toContain(`refused: Herdr machine name "${shown}" is not a valid host`);
+      // The refused name is not on the list, and the good row is number 1.
+      expect(h.io.stdout.some((l) => l.includes(target))).toBe(false);
+      expect(h.io.stdout.some((l) => l.startsWith("   1  op@vps"))).toBe(true);
+      // Nothing was resolved or dialled for it: the only `ssh` spawn is `-G` for the good row.
+      expect(h.exec.calls.filter((c) => c.startsWith("ssh "))).toEqual(["ssh -G -- op@vps"]);
+      expect(h.calls.every((c) => c.host === "op@vps")).toBe(true);
+    });
+  }
+
+  test("a Herdr machine name that is refused is silent in the delta that start and doctor print", async () => {
+    const h = harness({ coreMachines: JSON.stringify({ machines: [{ target: "-oProxyCommand=touch" }] }), prompt: "" });
+    expect(await run(h, [])).toBe(EXIT.USAGE);
+    // The whole list was refused, so the verb falls back to its usage line, with the refusal above it.
+    expect(h.io.stderr).toContain('refused: Herdr machine name "-oProxyCommand=touch" is not a valid host');
+    expect(h.calls).toHaveLength(0);
+  });
+
+  test("every ssh the runner starts puts `--` before the destination", async () => {
+    if (process.platform === "win32") return;
+    const dir = mkdtempSync(join(tmpdir(), "collie-fake-ssh-"));
+    try {
+      const log = join(dir, "argv");
+      const bin = join(dir, "bin");
+      mkdirSync(bin);
+      // A stub, not ssh: it records one argument per line and drains stdin.
+      writeFileSync(join(bin, "ssh"), `#!/bin/sh\nfor a in "$@"; do printf '%s\\n' "$a" >> '${log}'; done\nprintf -- '--end--\\n' >> '${log}'\ncat >/dev/null\n`);
+      chmodSync(join(bin, "ssh"), 0o755);
+      const runner = sshRunner("-oProxyCommand=touch", { PATH: bin }, dir);
+      await runner.run("echo hi\n");
+      runner.close();
+      const calls = readFileSync(log, "utf8").split("--end--\n").filter((c) => c !== "");
+      // The leg itself, then the control socket's `-O exit` when the runner closes.
+      expect(calls).toHaveLength(2);
+      const [leg, exit] = calls.map((c) => c.split("\n").filter((a) => a !== ""));
+      // Every option sits before it, the destination right after it, the remote command last.
+      expect(leg!.slice(leg!.indexOf("--"))).toEqual(["--", "-oProxyCommand=touch", "/bin/sh", "-s"]);
+      expect(exit!.slice(exit!.indexOf("-O"))).toEqual(["-O", "exit", "--", "-oProxyCommand=touch"]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   test("a non-interactive run with candidates refuses rather than picking one", async () => {
@@ -820,6 +1018,492 @@ describe("collie crew add", () => {
     expect(await run(h, [])).toBe(EXIT.USAGE);
     expect(text(h.io)).toContain('error: "somewhere-else" is not one of the candidates above.');
     expect(h.calls).toHaveLength(0);
+  });
+
+  // ── Several hosts in one answer (M84/02) ────────────────────────────────────
+
+  const NAS = member({ memberId: "nas", address: "100.64.0.9:8787" });
+  const BUILD_BOX = member({ memberId: "build-box", address: "100.64.0.10:8787" });
+
+  test("two picks run two four-leg runs, one confirm each, and end with a summary", async () => {
+    const h = harness({
+      sshConfig: "Host attic\nHost build-box",
+      prompt: "1 2",
+      afterEach: [leadStore({ peers: [NAS] }), leadStore({ peers: [BUILD_BOX] })],
+    });
+    expect(await run(h, [])).toBe(EXIT.OK);
+    const legs = ["probe", "install", "configure", "membership", "enroll"];
+    expect(h.calls.map((c) => `${c.host}:${c.leg}`)).toEqual([
+      ...legs.map((leg) => `attic:${leg}`),
+      ...legs.map((leg) => `build-box:${leg}`),
+    ]);
+    expect(h.closed).toBe(2);
+    // The summary is the last thing printed, one line per host, in the order they were named, and each
+    // line names the multiplexer that host runs on: the rich view shows only the last verdict.
+    expect(h.io.stdout.slice(-4)).toEqual([
+      "",
+      'attic      ✓ joined as "nas", runs on herdr',
+      'build-box  ✓ joined as "build-box", runs on herdr',
+      "joined 2, declined 0, failed 0",
+    ]);
+  });
+
+  test("the summary names a failed host's first error line, and the exit code is the worst one", async () => {
+    const h = harness({
+      sshConfig: "Host attic\nHost vps\nHost build-box",
+      prompt: "all",
+      broken: { vps: { code: 255, stderr: "ssh: connect to host vps port 22: Connection refused", spawned: true } },
+      afterEach: [leadStore({ peers: [NAS] }), leadStore({ peers: [BUILD_BOX] })],
+    });
+    expect(await run(h, [])).toBe(EXIT.UNREACHABLE);
+    // The failed host did not stop the loop: build-box still ran its legs.
+    expect(h.calls.filter((c) => c.host === "build-box" && c.leg === "enroll")).toHaveLength(1);
+    expect(h.io.stdout.slice(-5)).toEqual([
+      "",
+      'attic      ✓ joined as "nas", runs on herdr',
+      // The reason is the text before the first " — ": the clause that names what went wrong.
+      "vps        ✗ ssh could not reach vps",
+      'build-box  ✓ joined as "build-box", runs on herdr',
+      "joined 2, declined 0, failed 1",
+    ]);
+  });
+
+  const REPLACEABLE = { checkout: REMOTE_CHECKOUT, checkoutgit: "yes", commit: "0".repeat(40) } as const;
+
+  test("a warn before the error does not become the summary line", async () => {
+    const h = harness({
+      sshConfig: "Host attic\nHost build-box",
+      prompt: "1 2",
+      dirty: true,
+      answers: { install: { code: 1, stderr: "disk full" } },
+    });
+    expect(await run(h, [])).toBe(EXIT.FAIL);
+    // The dirty-checkout warn is the first stderr line of each run, and the install error follows it.
+    expect(h.io.stderr[0]).toMatch(/^warn: this checkout has uncommitted changes/u);
+    const lines = h.io.stdout.slice(-3, -1);
+    expect(h.io.stdout.at(-1)).toBe("joined 0, declined 0, failed 2");
+    expect(lines.every((l) => l.includes("✗ ") && !l.includes("warn:"))).toBe(true);
+    expect(lines[0]).toMatch(/^attic {6}✗ /u);
+  });
+
+  test("a declined confirm on one host moves on to the next, and its line says so", async () => {
+    // attic: the pick's own confirm (yes), then the replace confirm (no). build-box: its pick (yes).
+    const answers = [true, false, true];
+    const h = harness({
+      sshConfig: "Host attic\nHost build-box",
+      prompt: "1 2",
+      probes: { attic: REPLACEABLE },
+      afterEach: [leadStore({ peers: [BUILD_BOX] })],
+    });
+    h.deps.confirm = () => answers.shift() ?? false;
+    expect(await run(h, [])).toBe(EXIT.STATE);
+    expect(h.io.stdout.at(-3)).toBe("attic      ✗ left alone");
+    expect(h.io.stdout.at(-2)).toBe('build-box  ✓ joined as "build-box", runs on herdr');
+    // The replace confirm was answered No by the operator, but it is not the pick's own confirm: failed.
+    expect(h.io.stdout.at(-1)).toBe("joined 1, declined 0, failed 1");
+  });
+
+  // ── A picked host gets one confirm after its probe, before anything is written ──────────────
+
+  const PICK_QUESTION = (host: string, id: string, who: string = host): string =>
+    `Add ${who} to this crew as "${id}"? It installs Collie on ${host} over ssh and joins it.`;
+
+  /** Record each question with what had been said and which legs had run when it was asked. */
+  function recordQuestions(h: Harness, answer: (n: number) => boolean | null): { question: string; said: string[]; legs: string[] }[] {
+    const asked: { question: string; said: string[]; legs: string[] }[] = [];
+    h.deps.confirm = (question) => {
+      asked.push({ question, said: [...h.io.stdout], legs: h.calls.map((c) => `${c.host}:${c.leg}`) });
+      return answer(asked.length - 1);
+    };
+    return asked;
+  }
+
+  test("a picked host asks its question after the facts and before the install leg", async () => {
+    const h = harness({ sshConfig: "Host attic", prompt: "1" });
+    const asked = recordQuestions(h, () => true);
+    expect(await run(h, [])).toBe(EXIT.OK);
+    expect(asked.map((a) => a.question)).toEqual([PICK_QUESTION("attic", "attic")]);
+    const [first] = asked;
+    // The probe ran, nothing else did, and the facts are on screen.
+    expect(first!.legs).toEqual(["attic:probe"]);
+    expect(first!.said.some((l) => l.includes("(what this lead will dial)"))).toBe(true);
+    expect(first!.said.some((l) => l.includes("config"))).toBe(true);
+    expect(h.calls.map((c) => c.leg)).toEqual(["probe", "install", "configure", "membership", "enroll"]);
+  });
+
+  test("the question names the row's label as the member id, and --label for a single pick", async () => {
+    const row = harness({
+      machines: '[{"target":"op@attic.lan:22","label":"Attic Box"}]',
+      resolve: { "op@attic.lan:22": "user op\nhostname attic.lan\nport 22" },
+      prompt: "1",
+    });
+    const rowAsked = recordQuestions(row, () => true);
+    expect(await run(row, [])).toBe(EXIT.OK);
+    expect(rowAsked.map((a) => a.question)).toEqual([
+      PICK_QUESTION("op@attic.lan:22", "attic-box", "Attic Box (op@attic.lan)"),
+    ]);
+
+    const flagged = harness({ sshConfig: "Host attic", prompt: "1" });
+    const flagAsked = recordQuestions(flagged, () => true);
+    expect(await run(flagged, ["--label", "desk"])).toBe(EXIT.OK);
+    expect(flagAsked.map((a) => a.question)).toEqual([PICK_QUESTION("attic", "desk")]);
+  });
+
+  test("a declined pick writes nothing, says so, and the next pick still runs", async () => {
+    const h = harness({
+      sshConfig: "Host attic\nHost build-box",
+      prompt: "1 2",
+      afterEach: [leadStore({ peers: [BUILD_BOX] })],
+    });
+    const asked = recordQuestions(h, (n) => n > 0);
+    // A decline alone is not a failure: attic was declined and build-box joined, so the run is clean.
+    expect(await run(h, [])).toBe(EXIT.OK);
+    expect(asked.map((a) => a.question)).toEqual([
+      PICK_QUESTION("attic", "attic"),
+      PICK_QUESTION("build-box", "build-box"),
+    ]);
+    // attic got its probe and nothing else: no install, no bind write, no invite, no enroll.
+    expect(h.calls.filter((c) => c.host === "attic").map((c) => c.leg)).toEqual(["probe"]);
+    expect(h.bundles).toBe(1);
+    // build-box alone joined: a join restarts the lead twice, and attic caused none of it.
+    expect(h.restarts).toBe(2);
+    expect(h.io.stdout).toContain("left alone — nothing was installed or enrolled on attic.");
+    expect(h.io.stderr.some((l) => l.startsWith("error:"))).toBe(false);
+    expect(h.calls.filter((c) => c.host === "build-box" && c.leg === "enroll")).toHaveLength(1);
+    expect(h.closed).toBe(2);
+    expect(h.io.stdout.slice(-3)).toEqual([
+      "attic      ✗ declined",
+      'build-box  ✓ joined as "build-box", runs on herdr',
+      "joined 1, declined 1, failed 0",
+    ]);
+  });
+
+  test("a single declined pick ends with the state exit code and no write", async () => {
+    const h = harness({ sshConfig: "Host attic", prompt: "1", confirm: false });
+    expect(await run(h, [])).toBe(EXIT.STATE);
+    expect(h.calls.map((c) => c.leg)).toEqual(["probe"]);
+    expect(h.bundles).toBe(0);
+    expect(h.io.stdout).toContain("left alone — nothing was installed or enrolled on attic.");
+  });
+
+  test("a pick nobody can answer for aborts the loop after the first host", async () => {
+    const h = harness({ sshConfig: "Host attic\nHost build-box", prompt: "1 2", confirm: null });
+    expect(await run(h, [])).toBe(EXIT.FAIL);
+    expect(h.calls.map((c) => `${c.host}:${c.leg}`)).toEqual(["attic:probe"]);
+    expect(h.io.stderr).toContain("✗ declined (no terminal to confirm)");
+    // The host that was never asked is listed with the same refusal, and the count says all failed.
+    expect(h.io.stdout.slice(-3)).toEqual([
+      "attic      ✗ declined (no terminal to confirm)",
+      "build-box  ✗ declined (no terminal to confirm)",
+      "joined 0, declined 0, failed 2",
+    ]);
+  });
+
+  test("the question names the address ssh really dials, so a name that maps elsewhere is visible", async () => {
+    // Herdr calls the machine `minibuch`; the address behind that name is not minibuch's.
+    const mapped = harness({ coreMachines: '{"machines":[{"target":"op@198.51.100.7","name":"minibuch"}]}', prompt: "1" });
+    const mappedAsked = recordQuestions(mapped, () => true);
+    expect(await run(mapped, [])).toBe(EXIT.OK);
+    expect(mappedAsked.map((a) => a.question)).toEqual([
+      'Add minibuch (op@198.51.100.7) to this crew as "minibuch"? It installs Collie on op@198.51.100.7 over ssh and joins it.',
+    ]);
+
+    // An ssh config alias shows the user, host and port ssh resolves it to (22 is left unsaid).
+    const alias = harness({
+      sshConfig: "Host attic",
+      resolve: { attic: "user op\nhostname attic.lan\nport 2222" },
+      prompt: "1",
+    });
+    const aliasAsked = recordQuestions(alias, () => true);
+    expect(await run(alias, [])).toBe(EXIT.OK);
+    expect(aliasAsked.map((a) => a.question)).toEqual([PICK_QUESTION("attic", "attic", "attic (op@attic.lan:2222)")]);
+  });
+
+  // ── NO TERMINAL: A PICKED HOST READS AS NO (M84 hardening) ───────────────────
+
+  test("with no terminal the list's own question is refused, and nothing is dialled", async () => {
+    const h = harness({ sshConfig: "Host attic", prompt: "1" });
+    h.deps.terminal = () => false;
+    const asked = recordQuestions(h, () => true);
+    expect(await run(h, [])).toBe(EXIT.USAGE);
+    // The list's own question is refused first: nobody can answer it either.
+    expect(h.calls).toHaveLength(0);
+    expect(asked).toEqual([]);
+  });
+
+  test("a pick that reaches its confirm with no terminal prints the refusal and fails", async () => {
+    const h = harness({ sshConfig: "Host attic", prompt: "1", confirm: null });
+    expect(await run(h, [])).toBe(EXIT.FAIL);
+    expect(h.io.stderr).toContain("✗ declined (no terminal to confirm)");
+    expect(h.calls.map((c) => c.leg)).toEqual(["probe"]);
+    expect(h.io.stdout.some((l) => l.includes("joined"))).toBe(false);
+  });
+
+  test("a host named on the command line is added with no terminal and no confirm, as before", async () => {
+    const h = harness();
+    h.deps.terminal = () => false;
+    expect(await run(h)).toBe(EXIT.OK);
+    expect(h.calls.map((c) => c.leg)).toContain("enroll");
+    expect(h.io.stderr).not.toContain("✗ declined (no terminal to confirm)");
+  });
+
+  test("with no terminal, picks that reach the run anyway are declined without one ssh byte", async () => {
+    // The terminal goes away between the list's question and the picks (the first read says yes).
+    const h = harness({ sshConfig: "Host attic\nHost build-box", prompt: "1 2" });
+    let calls = 0;
+    h.deps.terminal = () => calls++ === 0;
+    const asked = recordQuestions(h, () => true);
+    expect(await run(h, [])).toBe(EXIT.FAIL);
+    expect(h.calls).toHaveLength(0);
+    expect(asked).toEqual([]);
+    expect(h.io.stdout.slice(-3)).toEqual([
+      "attic      ✗ declined (no terminal to confirm)",
+      "build-box  ✗ declined (no terminal to confirm)",
+      "joined 0, declined 0, failed 2",
+    ]);
+  });
+
+  test("with no terminal a single listed pick prints the one refusal line", async () => {
+    const h = harness({ sshConfig: "Host attic", prompt: "1" });
+    let calls = 0;
+    h.deps.terminal = () => calls++ === 0;
+    expect(await run(h, [])).toBe(EXIT.FAIL);
+    expect(h.calls).toHaveLength(0);
+    expect(h.io.stderr).toEqual(["✗ declined (no terminal to confirm)"]);
+  });
+
+  // ── MULTI-PICK SUMMARY (M84 hardening) ───────────────────────────────────────
+
+  // One exit rule for one pick and for many: a failure keeps its code, a join with no failure is OK
+  // (declines or not), and nothing joined with no failure is STATE, the "Nothing was added" code.
+  test("every pick declined ends with STATE, like a single decline and like Enter on the list", async () => {
+    const all = harness({ sshConfig: "Host attic\nHost build-box", prompt: "1 2", confirm: false });
+    expect(await run(all, [])).toBe(EXIT.STATE);
+    expect(all.io.stdout.slice(-3)).toEqual([
+      "attic      ✗ declined",
+      "build-box  ✗ declined",
+      "joined 0, declined 2, failed 0",
+    ]);
+    expect(all.calls.map((c) => c.leg)).not.toContain("enroll");
+
+    const single = harness({ sshConfig: "Host attic", prompt: "1", confirm: false });
+    expect(await run(single, [])).toBe(EXIT.STATE);
+
+    const blank = harness({ sshConfig: "Host attic", prompt: "" });
+    expect(await run(blank, [])).toBe(EXIT.STATE);
+  });
+
+  test("a join with declines and no failure is OK, and a failure beside a join keeps its own code", async () => {
+    const declined = harness({
+      sshConfig: "Host attic\nHost build-box",
+      prompt: "1 2",
+      afterEach: [leadStore({ peers: [BUILD_BOX] })],
+    });
+    recordQuestions(declined, (n) => n > 0);
+    expect(await run(declined, [])).toBe(EXIT.OK);
+
+    const failed = harness({
+      sshConfig: "Host attic\nHost build-box",
+      prompt: "1 2",
+      broken: { attic: { code: 255, stderr: "ssh: connect to host attic port 22: Connection refused", spawned: true } },
+      afterEach: [leadStore({ peers: [BUILD_BOX] })],
+    });
+    expect(await run(failed, [])).toBe(EXIT.UNREACHABLE);
+  });
+
+  test("a decline plus a failure ends non-zero, and the count says which was which", async () => {
+    const h = harness({
+      sshConfig: "Host attic\nHost vps\nHost build-box",
+      prompt: "all",
+      broken: { vps: { code: 255, stderr: "ssh: connect to host vps port 22: Connection refused", spawned: true } },
+      afterEach: [leadStore({ peers: [BUILD_BOX] })],
+    });
+    const asked = recordQuestions(h, (n) => n !== 0);
+    expect(await run(h, [])).toBe(EXIT.UNREACHABLE);
+    // pick two failing did not stop pick three
+    expect(h.calls.filter((c) => c.host === "build-box" && c.leg === "enroll")).toHaveLength(1);
+    expect(asked).toHaveLength(2);
+    expect(h.io.stdout.slice(-5)).toEqual([
+      "",
+      "attic      ✗ declined",
+      "vps        ✗ ssh could not reach vps",
+      'build-box  ✓ joined as "build-box", runs on herdr',
+      "joined 1, declined 1, failed 1",
+    ]);
+  });
+
+  test("a stale peer in a multi pick is a failure with its reason in the summary", async () => {
+    const h = harness({
+      sshConfig: "Host attic\nHost build-box",
+      prompt: "1 2",
+      probes: { attic: { checkout: REMOTE_CHECKOUT, commit: COMMIT } },
+      afterEach: [leadStore({ peers: [BUILD_BOX] })],
+    });
+    const base = h.deps.remote;
+    h.deps.remote = (host) => {
+      const runner = base(host);
+      return {
+        ...runner,
+        run: async (script, stdin) =>
+          host === "attic" && script.includes("crew status --no-probe")
+            ? { code: 0, stdout: "crew   the herd  (crew-1)\nmode   peer\nself   attic  abcd…", stderr: "", spawned: true }
+            : runner.run(script, stdin),
+      };
+    };
+    expect(await run(h, [])).toBe(EXIT.STATE);
+    expect(h.io.stdout.slice(-3)).toEqual([
+      expect.stringMatching(/^attic {6}✗ not joined: attic still answers as a member of this crew, but this lead holds no record of it\./u),
+      'build-box  ✓ joined as "build-box", runs on herdr',
+      "joined 1, declined 0, failed 1",
+    ]);
+  });
+
+  test("a typed host asks nothing", async () => {
+    const h = harness();
+    const asked = recordQuestions(h, () => true);
+    expect(await run(h)).toBe(EXIT.OK);
+    expect(asked).toEqual([]);
+  });
+
+  test("a confirm nobody can answer stops the loop after the first host", async () => {
+    const h = harness({ sshConfig: "Host attic\nHost build-box", prompt: "1 2", confirm: null, probes: { attic: REPLACEABLE } });
+    expect(await run(h, [])).toBe(EXIT.FAIL);
+    expect(new Set(h.calls.map((c) => c.host))).toEqual(new Set(["attic"]));
+    expect(text(h.io)).toContain("✗ declined (no terminal to confirm)");
+  });
+
+  test("--label with two picks is refused before any ssh, and the single pick keeps it", async () => {
+    const h = harness({ sshConfig: "Host attic\nHost build-box", prompt: "1 2" });
+    expect(await run(h, ["--label", "desk"])).toBe(EXIT.USAGE);
+    expect(h.io.stderr).toContain("error: --label names one machine; pick one host or drop the flag.");
+    expect(h.calls).toHaveLength(0);
+
+    const one = harness({ sshConfig: "Host attic\nHost build-box", prompt: "2" });
+    expect(await run(one, ["--label", "desk"])).toBe(EXIT.OK);
+    expect(one.calls.find((c) => c.leg === "enroll")!.script).toContain("'--label' 'desk'");
+    expect(one.io.stdout.some((l) => l.includes("(from"))).toBe(false);
+  });
+
+  test("--peer-address with two picks is refused before any ssh; each host gives its own address", async () => {
+    const h = harness({ sshConfig: "Host attic\nHost build-box", prompt: "1 2" });
+    expect(await run(h, ["--peer-address", "192.168.77.2"])).toBe(EXIT.USAGE);
+    expect(h.io.stderr).toEqual([
+      "error: --peer-address names one machine; drop the flag, and each picked host is asked for its own address.",
+    ]);
+    expect(h.calls).toHaveLength(0);
+
+    const one = harness({ sshConfig: "Host attic\nHost build-box", prompt: "2" });
+    expect(await run(one, ["--peer-address", "192.168.77.2"])).toBe(EXIT.OK);
+    expect(text(one.io)).toContain("192.168.77.2:8787 (what this lead will dial)");
+  });
+
+  test("a host with no multiplexer decided keeps the line as it was: no mux is named", async () => {
+    // attic has no mux set and none running; build-box keeps the herdr its `.env` already names.
+    const h = harness({
+      sshConfig: "Host attic\nHost build-box",
+      prompt: "1 2",
+      probes: { attic: { envmux: "" } },
+      answers: { "mux-probe": { stdout: muxProbeOut([]) } },
+      afterEach: [leadStore({ peers: [NAS] }), leadStore({ peers: [BUILD_BOX] })],
+    });
+    expect(await run(h, [])).toBe(EXIT.OK);
+    expect(h.io.stdout.slice(-3)).toEqual([
+      'attic      ✓ joined as "nas"',
+      'build-box  ✓ joined as "build-box", runs on herdr',
+      "joined 2, declined 0, failed 0",
+    ]);
+  });
+
+  test("a wrapped reason ends at its dash, not in the middle of the sentence", async () => {
+    const h = harness({
+      sshConfig: "Host attic\nHost build-box",
+      prompt: "1 2",
+      answers: {
+        enroll: {
+          code: 1,
+          stderr:
+            "error: refusing to enroll over http:// — the invite token and the crew secret would cross the\n" +
+            "       network in the clear.\n",
+        },
+      },
+    });
+    expect(await run(h, [])).not.toBe(EXIT.OK);
+    expect(h.io.stdout.slice(-3)).toEqual([
+      "attic      ✗ refusing to enroll over http://",
+      "build-box  ✗ refusing to enroll over http://",
+      "joined 0, declined 0, failed 2",
+    ]);
+  });
+
+  test("one unknown token in a list adds nothing, and the error names the token", async () => {
+    const h = harness({ sshConfig: "Host attic\nHost build-box", prompt: "1 nowhere" });
+    expect(await run(h, [])).toBe(EXIT.USAGE);
+    expect(text(h.io)).toContain('error: "nowhere" is not one of the candidates above.');
+    expect(h.calls).toHaveLength(0);
+  });
+
+  test("a blocked name inside a list is refused with its reason, and nothing runs", async () => {
+    const h = harness({
+      coreMachines: '{"machines":[{"target":"altan@minibuch"},{"target":"vps","via":true}]}',
+      prompt: "1 vps",
+    });
+    expect(await run(h, [])).toBe(EXIT.USAGE);
+    expect(text(h.io)).toContain('error: "vps" cannot be added: reached through a command of its own, not plain ssh; type an address ssh can reach, or add it to ~/.ssh/config.');
+    expect(h.calls).toHaveLength(0);
+  });
+
+  test("a row's name reaches the join as --label, is printed as a fact, and the ops record keeps its source", async () => {
+    const h = harness({
+      coreMachines: '{"machines":[{"target":"altan@minibuch","name":"minibuch"}]}',
+      prompt: "1",
+    });
+    expect(await run(h, [])).toBe(EXIT.OK);
+    expect(h.calls.find((c) => c.leg === "enroll")!.script).toContain("'--label' 'minibuch'");
+    expect(h.io.stdout.some((l) => /^✓ label {6}minibuch \(from herdr-core\)$/u.test(l))).toBe(true);
+    expect(JSON.parse(h.ops.contents()!).members.nas.source).toBe("herdr-core");
+  });
+
+  test("--label beats a row's name, and says nothing about it", async () => {
+    const h = harness({
+      coreMachines: '{"machines":[{"target":"altan@minibuch","name":"minibuch"}]}',
+      prompt: "1",
+    });
+    expect(await run(h, ["--label", "desk"])).toBe(EXIT.OK);
+    const script = h.calls.find((c) => c.leg === "enroll")!.script;
+    expect(script).toContain("'--label' 'desk'");
+    expect(script).not.toContain("minibuch'");
+    expect(h.io.stdout.some((l) => l.includes("(from"))).toBe(false);
+  });
+
+  test("a row name the join cannot use is dropped with one line, and the hostname default applies", async () => {
+    const h = harness({
+      coreMachines: '{"machines":[{"target":"altan@minibuch","name":"🖥️ !!"}]}',
+      prompt: "1",
+    });
+    expect(await run(h, [])).toBe(EXIT.OK);
+    expect(h.calls.find((c) => c.leg === "enroll")!.script).not.toContain("--label");
+    expect(h.io.stdout.filter((l) => l.startsWith("warn: herdr-core names this machine"))).toHaveLength(1);
+    expect(h.io.stdout.some((l) => l.startsWith("✓ label "))).toBe(false);
+  });
+
+  test("a row with no name, a typed host and an ssh config host pass no --label and record no source", async () => {
+    const h = harness({ sshConfig: "Host attic", prompt: "1" });
+    expect(await run(h, [])).toBe(EXIT.OK);
+    expect(h.calls.find((c) => c.leg === "enroll")!.script).not.toContain("--label");
+    const typed = harness();
+    expect(await run(typed)).toBe(EXIT.OK);
+    expect(typed.calls.find((c) => c.leg === "enroll")!.script).not.toContain("--label");
+    expect(JSON.parse(typed.ops.contents()!).members.nas.source).toBeNull();
+  });
+
+  test("one pick reads exactly as a single run: no summary, no extra blank line", async () => {
+    const one = harness({ sshConfig: "Host attic", prompt: "1" });
+    const typed = harness();
+    expect(await run(one, [])).toBe(EXIT.OK);
+    expect(await run(typed, ["attic"])).toBe(EXIT.OK);
+    const runLines = one.io.stdout.slice(one.io.stdout.indexOf("probing attic…"));
+    expect(runLines).toEqual(typed.io.stdout.slice(typed.io.stdout.indexOf("probing attic…")));
+    expect(runLines.at(-1)).toMatch(/^✓ "nas" is a member/u);
   });
 
   test("a peer refuses: peers are added from the lead", async () => {
@@ -1428,6 +2112,7 @@ describe("re-running against the same host", () => {
 
   test("already a member of THIS crew is a ✓ and exit OK — nothing is minted", async () => {
     const h = harness({
+      store: leadStore({ peers: [member({ memberId: "nas", address: "100.64.0.9:8787" })] }),
       answers: {
         probe: { stdout: probeOut({ checkout: REMOTE_CHECKOUT, commit: COMMIT }) },
         membership: { stdout: ["crew   the herd  (crew-1)", "mode   peer", "self   nas  abcd…"].join("\n") },
@@ -1473,8 +2158,57 @@ describe("re-running against the same host", () => {
     expect(h.restarts).toBe(0);
   });
 
+  // ── NO FALSE GREEN (M84 hardening) ────────────────────────────────────────
+  // `crew remove` is local, so the far machine keeps answering with the crew id. Green needs THIS
+  // lead's pin.
+  const STALE_ANSWERS = {
+    probe: { stdout: probeOut({ checkout: REMOTE_CHECKOUT, commit: COMMIT, envhost: "100.64.0.9" }) },
+    membership: { stdout: ["crew   the herd  (crew-1)", "mode   peer", "self   nas  abcd…"].join("\n") },
+  } satisfies LegAnswers;
+
+  test("a peer that answers as a member but has no pin on this lead is NOT green, and the run fails", async () => {
+    const h = harness({ answers: STALE_ANSWERS });
+    expect(await run(h)).toBe(EXIT.STATE);
+    const rendered = text(h.io);
+    expect(rendered).toContain(
+      "✗ not joined: nas.example still answers as a member of this crew, but this lead holds no record of it. " +
+        "Run `collie leave` on nas.example, then add it again.",
+    );
+    expect(rendered).not.toContain("✓ already a member");
+    // Nothing was minted, restarted or remembered for a machine this lead does not pin.
+    expect(h.calls.map((c) => c.leg)).not.toContain("enroll");
+    expect(h.calls.map((c) => c.leg)).not.toContain("restart");
+    expect(await h.ops.get("nas")).toBeNull();
+  });
+
+  test("a tombstoned pin is no pin: status unenrolled is not green either", async () => {
+    const h = harness({
+      store: leadStore({ peers: [member({ memberId: "nas", status: "unenrolled" })] }),
+      answers: STALE_ANSWERS,
+    });
+    expect(await run(h)).toBe(EXIT.STATE);
+    expect(text(h.io)).toContain("✗ not joined: nas.example");
+  });
+
+  test("a pin for ANOTHER member id does not turn a stale peer green", async () => {
+    const h = harness({ store: leadStore({ peers: [member({ memberId: "attic" })] }), answers: STALE_ANSWERS });
+    expect(await run(h)).toBe(EXIT.STATE);
+    expect(text(h.io)).toContain("✗ not joined: nas.example");
+  });
+
+  test("with a pin the green line stays exactly as it was", async () => {
+    const h = harness({
+      store: leadStore({ peers: [member({ memberId: "nas", address: "100.64.0.9:8787" })] }),
+      answers: STALE_ANSWERS,
+    });
+    expect(await run(h)).toBe(EXIT.OK);
+    expect(text(h.io)).toContain('✓ already a member of "the herd" as "nas"');
+    expect(text(h.io)).not.toContain("not joined");
+  });
+
   test("a restart that fails there is a FAILURE, and says which machine still runs the old build", async () => {
     const h = harness({
+      store: leadStore({ peers: [member({ memberId: "nas", address: "100.64.0.9:8787" })] }),
       answers: {
         probe: {
           stdout: probeOut({
@@ -1492,8 +2226,20 @@ describe("re-running against the same host", () => {
     expect(text(h.io)).toContain("The new build is on disk there and the old one is still running");
   });
 
+  test("a host key this machine has not met fails with a hint to connect once by hand", async () => {
+    const h = harness({
+      broken: { "nas.example": { code: 255, stderr: "Host key verification failed.\n", spawned: true } },
+    });
+    expect(await run(h)).toBe(EXIT.UNREACHABLE);
+    expect(h.io.stderr).toContain("error: ssh could not reach nas.example — Host key verification failed.");
+    expect(h.io.stderr).toContain("       connect once by hand (ssh nas.example) to accept its host key, then add it again");
+    // Only the one probe went out: no prompt, no retry, no install.
+    expect(h.calls.map((c) => c.leg)).toEqual(["probe"]);
+  });
+
   test("an unchanged re-run restarts nothing — a no-op stays a no-op", async () => {
     const h = harness({
+      store: leadStore({ peers: [member({ memberId: "nas", address: "100.64.0.9:8787" })] }),
       answers: {
         probe: { stdout: probeOut({ checkout: REMOTE_CHECKOUT, commit: COMMIT, envhost: "100.64.0.9" }) },
         membership: { stdout: ["crew   the herd  (crew-1)", "mode   peer", "self   nas  abcd…"].join("\n") },
@@ -1991,4 +2737,189 @@ describe.skipIf(process.platform === "win32")("installScript from a shallow lead
       lead.cleanup();
     }
   });
+});
+
+// ── A member with the Herdr core and no Herdr TUI (M84/03) ───────────────────
+// `hc` and no `herdr`: the shape `hc machine add --install` leaves. The precondition takes either,
+// the config dir comes from the binary install's own rule, and the member's `_mux-probe` names the
+// core. A host WITH `herdr` reads exactly as it did — the defaults above carry no `hc`.
+
+describe("a member with the Herdr core and no Herdr TUI", () => {
+  const HC = `${REMOTE_HOME}/.local/bin/hc`;
+  const OWN_CONFIG = `${REMOTE_HOME}/.config/collie`;
+  const coreOnly = (over: Partial<Record<ProbeField, string>> = {}): string =>
+    probeOut({
+      herdr: "",
+      hc: HC,
+      hcversion: "hc 0.1.14",
+      hccore: "live",
+      configdir: OWN_CONFIG,
+      configsource: "default",
+      // A member never started: nothing named a multiplexer there yet, so leg 3 asks the member.
+      envmux: "",
+      ...over,
+    });
+
+  test("the probe reads hc, and falls back to Collie's own config dir only where herdr is absent", () => {
+    const probe = probeScript({ path: null, port: 8787 });
+    expect(probe).toContain('HC=$(collie_tool hc) || HC=""');
+    expect(probe).toContain('say hc "$HC"');
+    expect(probe).toContain('say hcversion "$HCVERSION"');
+    expect(probe).toContain('say hccore "$HCCORE"');
+    // The socket file decides, as `defaultHcSocket` places it. `hc server status` STARTS a stopped
+    // core on Linux, so the probe never runs it.
+    expect(probe).toContain('if [ -e "$HCSOCK" ]; then HCCORE=live; else HCCORE=down; fi');
+    expect(probe).toContain('elif [ -n "${XDG_RUNTIME_DIR:-}" ]; then HCSOCK="$XDG_RUNTIME_DIR/herdr-core/$_hs.sock"');
+    expect(probe).not.toContain("server status");
+    expect(probe).toContain('say configsource "$CFGSOURCE"');
+    // Herdr is asked first; the binary install's rule answers only on a host with no `herdr`.
+    const asked = probe.indexOf('if [ -n "$HERDR" ]; then\n  CFG=$("$HERDR" plugin config-dir');
+    const fallback = probe.indexOf('elif [ -n "$HC" ]; then\n  CFGSOURCE=default');
+    expect(asked).toBeGreaterThan(-1);
+    expect(fallback).toBeGreaterThan(asked);
+    // `resolveConfigDir`'s chain with no Herdr answer: the injected dir, Herdr's conventional dir
+    // when it holds a `.env`, then `~/.config/collie`.
+    expect(probe).toContain('if [ -n "${HERDR_PLUGIN_CONFIG_DIR:-}" ]; then CFG=$HERDR_PLUGIN_CONFIG_DIR');
+    expect(probe).toContain('elif [ -f "$HOME/.config/herdr/plugins/config/herdr.collie/.env" ]');
+    expect(probe).toContain('else CFG="$HOME/.config/collie"; fi');
+  });
+
+  test("parseProbe reads the three hc facts and the config source", () => {
+    const probe = parseProbe(coreOnly())!;
+    expect([probe.hc, probe.hcversion, probe.hccore, probe.configsource]).toEqual([HC, "hc 0.1.14", "live", "default"]);
+    const bare = parseProbe("collie-probe:probe=ok")!;
+    expect([bare.hc, bare.hcversion, bare.hccore, bare.configsource]).toEqual(["", "", "", ""]);
+  });
+
+  test("the hc fact names the version and whether a core answered", () => {
+    expect(hcFact({ hc: HC, hcversion: "hc 0.1.14", hccore: "live" })).toBe(`${HC} (0.1.14, core running)`);
+    expect(hcFact({ hc: HC, hcversion: "hc 0.1.14", hccore: "down" })).toBe(`${HC} (0.1.14, core not running)`);
+    expect(hcFact({ hc: HC, hcversion: "", hccore: "down" })).toBe(`${HC} (version not reported, core not running)`);
+  });
+
+  test("an hc-only host passes, takes Collie's own config dir, and joins on herdr-core", async () => {
+    const h = harness({
+      answers: { probe: { stdout: coreOnly() }, "mux-probe": { stdout: muxProbeOut(["herdr-core"]) } },
+    });
+    expect(await run(h)).toBe(EXIT.OK);
+    const said = text(h.io);
+    expect(said).not.toContain("no herdr and no hc");
+    // No `herdr plugin link` hint: there is no Herdr TUI there to register with.
+    expect(said).not.toContain("herdr plugin link");
+    expect(said).toMatch(new RegExp(`hc +${HC} \\(0\\.1\\.14, core running\\)`));
+    expect(said).toMatch(new RegExp(`config +${OWN_CONFIG} \\(Collie's own, no herdr there\\)`));
+    expect(said).toContain("mux        herdr-core (the only one running there)");
+    // The bind goes into the dir the member's bridge reads, and no mux name is written for it.
+    const configure = h.calls.find((c) => c.leg === "configure")!.script;
+    expect(configure).toContain(`CFG='${OWN_CONFIG}'`);
+    expect(configure).not.toContain("COLLIE_MUX");
+    expect(said).toContain('"nas" is a member of "the herd" and answered at 100.64.0.9:8787, and runs on herdr-core');
+    expect(h.calls.map((c) => c.leg)).toEqual(["probe", "install", "mux-probe", "configure", "membership", "enroll"]);
+  });
+
+  test("the same host from a binary lead takes the release route and joins on herdr-core", async () => {
+    const h = releaseHarness({
+      answers: { probe: { stdout: coreOnly() }, "mux-probe": { stdout: muxProbeOut(["herdr-core"]) } },
+    });
+    expect(await run(h)).toBe(EXIT.OK);
+    expect(h.bundles).toBe(0);
+    expect(text(h.io)).toContain("and runs on herdr-core");
+  });
+
+  test("a stopped core is a fact, not a stop: leg 3's caveat says the member starts once one runs", async () => {
+    const h = harness({
+      answers: { probe: { stdout: coreOnly({ hccore: "down" }) }, "mux-probe": { stdout: muxProbeOut([]) } },
+    });
+    expect(await run(h)).toBe(EXIT.OK);
+    const said = text(h.io);
+    expect(said).toMatch(new RegExp(`hc +${HC} \\(0\\.1\\.14, core not running\\)`));
+    expect(said).toContain("warn: no multiplexer is running on nas.example.");
+    // No multiplexer runs there, so the last line names none.
+    expect(said).toContain('"nas" is a member of "the herd" and answered at 100.64.0.9:8787');
+    expect(said).not.toContain("runs on");
+  });
+
+  test("a host with no herdr and no hc is refused with one line naming both", async () => {
+    const h = harness({ answers: { probe: { stdout: probeOut({ herdr: "", configdir: "", configsource: "" }) } } });
+    expect(await run(h)).toBe(EXIT.FAIL);
+    expect(h.io.stderr).toContain(
+      "error: no herdr and no hc on nas.example — Collie reads a Herdr. Install Herdr or the Herdr core there first.",
+    );
+    expect(text(h.io)).toContain("discussion #67");
+    expect(h.calls).toHaveLength(1);
+  });
+
+  test("a herdr host prints no hc fact and no config source, as before", async () => {
+    const h = harness();
+    expect(await run(h)).toBe(EXIT.OK);
+    const said = text(h.io);
+    expect(said).not.toMatch(/^\s*\S*\s*hc\s/m);
+    expect(said).not.toContain("Collie's own");
+    expect(said).toMatch(/config +\/home\/pat\/\.config\/herdr\/plugins\/config\/herdr\.collie$/m);
+  });
+
+  test("a host with both prints both facts and asks Herdr for the config dir", async () => {
+    const h = harness({ answers: { probe: { stdout: probeOut({ hc: HC, hcversion: "hc 0.1.14", hccore: "live" }) } } });
+    expect(await run(h)).toBe(EXIT.OK);
+    const said = text(h.io);
+    expect(said).toMatch(/herdr +\/usr\/local\/bin\/herdr/);
+    expect(said).toMatch(new RegExp(`hc +${HC} \\(0\\.1\\.14, core running\\)`));
+    expect(said).not.toContain("Collie's own");
+  });
+
+  // The script itself, run by `sh` against a scratch `$HOME` with a stand-in `hc`. Read-only like
+  // every probe, and it reaches no network: the stand-in answers `--version` and fails on anything
+  // else, so a probe that asked it to start or report a core would show up as a missing fact.
+  const herdrOnThisBox = ["/usr/local/bin/herdr", "/opt/homebrew/bin/herdr", "/usr/bin/herdr", "/bin/herdr"].some((p) =>
+    existsSync(p),
+  );
+  test.skipIf(process.platform === "win32" || herdrOnThisBox)(
+    "the real probe on an hc-only home reports the core and Collie's own config dir",
+    () => {
+      const home = mkdtempSync(join(tmpdir(), "collie-hc-probe-"));
+      try {
+        mkdirSync(join(home, ".local", "bin"), { recursive: true });
+        const stub = join(home, ".local", "bin", "hc");
+        writeFileSync(
+          stub,
+          [
+            "#!/bin/sh",
+            'case "$1" in',
+            '  --version) echo "hc 0.1.14" ;;',
+            '  *) echo "unexpected: hc $*" >&2; exit 2 ;;',
+            "esac",
+            "",
+          ].join("\n"),
+        );
+        chmodSync(stub, 0o755);
+        const probe = (): ReturnType<typeof parseProbe> =>
+          parseProbe(
+            execFileSync("/bin/sh", ["-s"], {
+              input: probeScript({ path: null, port: 8787 }),
+              env: {
+                HOME: home,
+                PATH: `${join(home, ".local", "bin")}:/usr/bin:/bin`,
+                XDG_RUNTIME_DIR: join(home, "run"),
+              },
+              encoding: "utf8",
+            }),
+          );
+        const down = probe()!;
+        expect([down.herdr, down.hc, down.hcversion, down.hccore]).toEqual(["", stub, "hc 0.1.14", "down"]);
+        expect([down.configdir, down.configsource]).toEqual([join(home, ".config", "collie"), "default"]);
+        // The core's socket where `hc` dials: `$XDG_RUNTIME_DIR/herdr-core/default.sock`.
+        mkdirSync(join(home, "run", "herdr-core"), { recursive: true });
+        writeFileSync(join(home, "run", "herdr-core", "default.sock"), "");
+        // A `.env` in Herdr's conventional dir wins over Collie's own, as `resolveConfigDir` has it.
+        const conventional = join(home, ".config", "herdr", "plugins", "config", "herdr.collie");
+        mkdirSync(conventional, { recursive: true });
+        writeFileSync(join(conventional, ".env"), "COLLIE_MUX=herdr-core\n");
+        const live = probe()!;
+        expect(live.hccore).toBe("live");
+        expect([live.configdir, live.envmux]).toEqual([conventional, "herdr-core"]);
+      } finally {
+        rmSync(home, { recursive: true, force: true });
+      }
+    },
+  );
 });

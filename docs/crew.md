@@ -40,24 +40,59 @@ Two commands add a machine, one for Herdr and one for Collie, and a manual path 
 `crew add` cannot ssh into and for a lead that serves plain HTTP.
 
 ```bash
-herdr machine add --label <name> <ssh-target>   # prepare the remote host
-collie crew add <ssh-host>                      # install Collie there and enroll it
+herdr machine add --label <name> <ssh-target>   # prepare a host with the Herdr TUI
+hc machine add --install <ssh-target>           # or prepare it with the Herdr core
+collie crew add                                 # pick machines, one confirm each
 ```
 
-`herdr machine add` runs on the machine you sit at. It puts Herdr on the remote host and saves it in
-Herdr's own list, and it does not add the machine to the crew. `collie crew add` runs on the lead.
-`<ssh-target>` and `<ssh-host>` are the same host, written as `user@host` or as a `Host` alias from
-your `~/.ssh/config`, and `<name>` only labels Herdr's list.
+Run one of the first two lines, not both. `herdr machine add` and `hc machine add` run on the machine
+you sit at. Each one puts its Herdr on the remote host and saves the machine in its own list. Neither
+one adds the machine to the crew. `collie crew add` runs on the lead. `<ssh-target>` is written as
+`user@host` or as a `Host` alias from your `~/.ssh/config`.
+
+`collie crew add` with no host lists the machines your ssh config, Herdr and the Herdr core know. It
+merges them on the host each name resolves to ([below](#herdr-machines-and-the-crew)). Type the
+numbers or the names of the machines you want, separated by spaces or commas, or type `all`. Each
+machine then gets its own confirm, after Collie has probed it and before anything is written there.
+The confirm names the machine, the `user@address` ssh will dial, and the member id, for example
+`Add minibuch (altan@minibuch) to this crew as "minibuch"?`, so a Herdr name that leads to another
+address shows before you say yes. With no terminal to answer, every picked machine reads as No:
+`crew add` prints `✗ declined (no terminal to confirm)` and exits non-zero. A host you type on the
+command line is never asked. Press Enter on a blank line to stop.
+
+```bash
+collie crew add            # no host: the list
+collie crew add <ssh-host> # one named host, no list
+```
+
+A picked machine joins under the name Herdr gives it, so the phone shows the same names as
+`herdr machine list` and `hc machine ls`. `--label <name>` sets another name, for one machine only.
+With several picks, `--label` and `--peer-address` are refused, and each machine is asked for its
+own address. A machine the core reaches with a command of its own (`hc machine add --via`) shows in
+the list with `cannot be added:` and a reason that says what to do, for example `reached through
+altan@10.0.0.7; add altan@10.0.0.7 first, or type its address`, and you cannot pick it. A sandbox is
+not listed at all. A name in a list that ssh could read as an option, or that holds a space, shell
+syntax or a control character, is refused with `refused: Herdr machine name "..." is not a valid
+host` and left off the list. Typing a host on the command line always works.
 
 `collie crew add <ssh-host>` installs Collie on the remote host over your own ssh and enrolls it. It
 generates the token locally, provisions Collie on the remote machine, and runs `collie crew join`
-there. It requires **Herdr preinstalled on the remote host**, which `herdr machine add` puts there,
-so the two commands go together. A lead that serves plain HTTP needs one more step by hand, because
-`crew add` does not support `--insecure`: run `collie crew join --insecure` on the joining machine.
-Use either `crew add` or the manual path for a given host, never both. `collie crew add` with no
-target lists the hosts your ssh config and Herdr already know, merged on the host each name resolves
-to, so pick from that list rather than typing the host a second way
-([below](#herdr-machines-and-the-crew)).
+there. The remote host needs **Herdr or the Herdr core**, and one of the two is enough. A member with
+only the core joins like any other, and it runs on `herdr-core`. A lead that serves plain HTTP needs
+one more step by hand, because `crew add` does not support `--insecure`: run `collie crew join
+--insecure` on the joining machine. Use either `crew add` or the manual path for a given host, never
+both.
+
+When the run ends, `crew add` says which multiplexer the member runs on, for example "and runs on
+herdr-core". With several picks it ends with one line per machine: the member id and the
+multiplexer it runs on, or the reason it did not join. A machine that fails does not stop the next
+one. The last line counts them: `joined 2, declined 1, failed 0`. Any failure makes the exit code
+non-zero. With no failure it is 0 when something joined, and 3 when nothing did, for example when
+you declined every machine.
+
+`collie crew remove` is local, so a machine you removed still answers as a member until you run
+`collie leave` there. `crew add` does not call that machine a member. It prints `✗ not joined`, says
+to run `collie leave` on it and add it again, and exits non-zero.
 
 `crew add` takes the route its own install kind names. A lead that runs from a git checkout, as the
 Herdr plugin install does, pushes its own commit to the member and builds it there, so that member
@@ -191,7 +226,8 @@ running gets a warning and nothing written, because its first start refuses unti
 
 ## Herdr machines and the crew
 
-Herdr's saved machines and a Collie crew are two separate lists, and neither feeds the other.
+Herdr's saved machines and a Collie crew are two separate lists. Herdr's list only suggests machines
+to the crew, and the crew stays yours.
 
 To add a machine, see [Two machines, one crew](#two-machines-one-crew) above.
 
@@ -230,12 +266,43 @@ its list for its own window, and Collie keeps the crew for your phone. Adding a 
 does not add it to the crew. Removing it from Herdr does not remove it from the crew. A crew member
 running tmux or zellij never appears in Herdr's list.
 
-`collie crew add` with no target offers candidates from both lists, so you never type a host twice.
-It reads `Host` entries in your `~/.ssh/config` and runs `herdr machine list --json`. It merges the
-two lists on the ssh target each name resolves to. The command follows an `Include` in that config
-one level deep, and only for paths under `~/.ssh/`. It does not offer an alias in a file included
-from an included file. Each row shows where the name came from: `ssh config`, `herdr`, or both. A
-row for a machine already in this crew carries that member's id instead of a number.
+`collie crew add` with no target offers candidates from three sources, so you never type a host
+twice. It reads `Host` entries in your `~/.ssh/config`, runs `herdr machine list --json`, and runs
+`hc machine ls --json`. It merges the lists on the ssh target each name resolves to. The command
+follows an `Include` in that config one level deep, and only for paths under `~/.ssh/`. It does not
+offer an alias in a file included from an included file. Each row shows where the name came from:
+`ssh config`, `herdr`, `herdr-core`, or several. A row for a machine already in this crew carries
+that member's id instead of a number. Only the route `crew add` recorded for the member counts for
+that. A member you joined by hand has no such route, so its row matches on the address the lead
+dials it at, or on its member id, and says `may be enrolled as "id"` instead. That row keeps its
+number, you can still pick it, and `all` skips it. A match on an address or a name cannot tell two
+machines apart, so it never hides a row.
+
+Two kinds of machine from the core are special. A sandbox is hidden. A machine the core reaches
+with a command of its own is shown with `cannot be added` and the reason, because Collie installs
+over ssh and has no way in. When that command is an `ssh` one, the reason names its destination. A tool that is not installed or not running adds no rows and prints nothing.
+
+The crew stays your list. Herdr's list only suggests machines. Collie never adds a machine to the
+crew without your pick and your confirm. Collie never removes a member on Herdr's say-so either.
+
+Collie does tell you when the two lists differ. It prints one line for each case.
+
+```text
+herdr-core knows 1 machine that is not in this crew: vps.
+Add it with `collie crew add`.
+vps is in this crew, but herdr-core no longer lists it.
+Keep it, or drop it with `collie crew remove vps`.
+```
+
+Each message is one line in the terminal. They are wrapped here.
+
+The first line names the machines a list has and the crew lacks. The second line names a member that
+a list suggested once and no longer names. `collie start` prints these lines after its banner,
+`collie doctor` prints them as the `crew-candidates` check, and `collie crew status` prints them
+under the members. They print nothing when the lists agree and nothing when a list is not running. A sandbox, a machine
+the core reaches with its own command, and a machine that may be a member already do not count as
+missing.
+The lines read the lists on this machine and do not dial any other machine.
 
 ## How a crew is wired
 

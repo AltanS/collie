@@ -67,6 +67,7 @@ import { herdTagFor } from "../bridge/sessions.ts";
 import { compareSemver } from "../bridge/update.ts";
 import { sameBuild } from "../bridge/version.ts";
 import { collieVersionBare, DEFAULT_SERVE_PORT, type CliContext } from "./context.ts";
+import { crewDelta, deltaLines } from "./crew-delta.ts";
 import { groupMembersByHost } from "./host-groups.ts";
 import { EXIT, type Io } from "./io.ts";
 import { dropEnvAssignments } from "./push-keys.ts";
@@ -1412,6 +1413,7 @@ export async function cmdCrewStatus(deps: CrewDeps, args: readonly string[]): Pr
   const members = data.lead === null ? data.peers : [data.lead, ...data.peers];
   if (members.length === 0) {
     deps.io.out("members: none yet — mint an invite and run `collie join` on the other machine.");
+    for (const line of await crewDeltaLines(deps)) deps.io.out(line);
     return EXIT.OK;
   }
 
@@ -1557,8 +1559,20 @@ export async function cmdCrewStatus(deps: CrewDeps, args: readonly string[]): Pr
     for (const l of schemedAddressLines(m.memberId, m.address, m.role)) row(l.text, l.tone);
     for (const l of unreachableLeadLines(m)) row(l.text, l.tone);
   }
+  // Under `--no-probe` too: nothing in the delta dials anyone (`cli/crew-delta.ts`).
+  for (const line of await crewDeltaLines(deps)) emit(line, "dim");
   if (deps.ui != null) await deps.ui.crewMembers(banked);
   return EXIT.OK;
+}
+
+/**
+ * Where a multiplexer's machine list and this crew differ, as `collie start` and `doctor` print it
+ * (M84/04). Only a lead gets it: a machine in no crew prints its "in no crew" block and spawns
+ * nothing (the solo branch above returns before this), and a peer has no crew to compare, which
+ * {@link crewDelta} answers without a spawn.
+ */
+async function crewDeltaLines(deps: CrewDeps): Promise<readonly string[]> {
+  return deltaLines(await crewDelta(deps));
 }
 
 /**
@@ -2053,6 +2067,9 @@ export async function cmdCrewRemove(deps: CrewDeps, args: readonly string[]): Pr
   deps.io.out("  own copy of the crew until its operator runs `collie leave` there. Either side alone ends");
   deps.io.out("  the link (§8.4) — this side is now ended.");
   for (const line of leaveTheOtherSideLines(deps, record)) deps.io.out(line);
+  // The one line `crew add` will need later: a removed machine still answers as a member, and the
+  // add refuses it (`✗ not joined`) until `collie leave` has run there.
+  deps.io.out(`  ${record?.sshHost ?? memberId} still runs Collie as a member; run \`collie leave\` there before you add it again.`);
   await applyLocally(deps, "the shortened roster");
   return EXIT.OK;
 }

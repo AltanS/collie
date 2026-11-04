@@ -58,6 +58,8 @@ import {
 import { asJsonBoolean, asJsonObject, asJsonString, parseJson } from "../web/src/lib/json.ts";
 import { readOwnSnapshot } from "./snapshot-read.ts";
 import { collieVersionBare, type CliContext } from "./context.ts";
+import { CrewOpsStore } from "../bridge/crew/ops-store.ts";
+import { crewDelta, deltaLines } from "./crew-delta.ts";
 import { aboutCrew, bad, ok, skipped, warn, type DoctorStatus, type Finding } from "./finding.ts";
 import { parseAccountWindowsSetting } from "../bridge/account-windows-setting.ts";
 import { accountWindowsDoctorLine, grokAuthPath, hasOpencodeGoEntry, opencodeAuthPath } from "../bridge/account-windows.ts";
@@ -154,6 +156,11 @@ export interface DoctorDeps {
   readonly link: LinkReader;
   /** Read-only use: `load()` and nothing else. */
   readonly store: TrustStore;
+  /**
+   * The ops store, for `crew-candidates` (`cli/crew-delta.ts`): `load()` and nothing else. Absent
+   * reads as "no crew to compare", so the finding is omitted.
+   */
+  readonly ops?: Pick<CrewOpsStore, "load">;
   /**
    * The injected transport — the `hello` probe and one `snapshot` READ per member, plus one GET of
    * THIS bridge's own `/api/snapshot` (the history section, issue #137). Every one of them is a
@@ -279,6 +286,7 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
     frontDoor(deps, mode),
     pairedDevices(deps, mode),
     muxFinding(deps),
+    ...(await crewCandidates(deps)),
     // A durable program has no binary or listing to ask. Six rows say which transport is configured,
     // whether its socket or its URL and token may be used, and whether the program answers, and a
     // seventh whether the lead is new enough to show its panes: only when `durable` is the
@@ -425,6 +433,28 @@ const HERDR_ONLY_PREFIX = "integration-";
 // Windows install without Python, and through `collie update --check` turned the phone's Update
 // button off (M43 spec 08). Dropped on Windows, the same way the multiplexer scoping above drops it.
 const NOT_ON_WINDOWS = new Set(["hook-python3"]);
+
+/**
+ * `crew-candidates` (M84/04): where a multiplexer's machine list and this crew differ, the same
+ * lines `collie start` and `crew status` print. Always `ok`: it tells and never fails the doctor.
+ * Omitted (not `skipped`) when nothing differs, so an install with no such list reads as before.
+ * `--json` carries the delta itself as `data`.
+ */
+async function crewCandidates(deps: DoctorDeps): Promise<readonly Finding[]> {
+  if (deps.ops === undefined) return [];
+  const delta = await crewDelta({ exec: deps.exec, store: deps.store, ops: deps.ops, host: deps.host });
+  const lines = deltaLines(delta);
+  if (lines.length === 0) return [];
+  return [
+    {
+      ...ok("crew-candidates", lines.join("; ")),
+      data: {
+        missing: delta.missing.map((m) => ({ source: m.source, targets: [...m.targets] })),
+        forgotten: delta.forgotten.map((f) => ({ memberId: f.memberId, source: f.source })),
+      },
+    },
+  ];
+}
 
 /** Whether a check has anything to say on this host. */
 function appliesToHost(check: string, host: Host): boolean {
@@ -2266,6 +2296,7 @@ export function doctorDeps(base: {
     ...base,
     link: realLinkFs,
     store: new TrustStore(base.ctx.stateDir),
+    ops: new CrewOpsStore(base.ctx.stateDir),
     fetch: (url, init) => fetch(url, init),
     // The bridge's own reader, seams and all (`bridge/beacon-io.ts`), so `doctor` counts what the
     // running bridge counts. Both of its seams are reads; neither can create the directory.

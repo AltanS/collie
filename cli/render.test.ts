@@ -175,6 +175,25 @@ describe("projectAdd", () => {
     expect(view.legs[1]!.notes).toEqual([{ text: "  pushing abc123…", tone: "info" }]);
   });
 
+  test("a second title starts the next host's four legs afresh", () => {
+    const view = projectAdd([
+      ...START,
+      { kind: "leg-done", leg: "probe", ok: true, detail: "nas is ready" },
+      { kind: "verdict", ok: true, text: '"nas" is a member' },
+      { kind: "title", host: "vps" },
+      { kind: "leg-start", leg: "probe", text: "probing vps…" },
+    ]);
+    expect(view.host).toBe("vps");
+    expect(view.facts).toEqual([]);
+    expect(view.verdict).toBeNull();
+    expect(view.legs.map((l) => [l.leg, l.status])).toEqual([
+      ["probe", "active"],
+      ["install", "pending"],
+      ["configure", "pending"],
+      ["enroll", "pending"],
+    ]);
+  });
+
   test("a restart that worked is one row; the block it printed is not shown at all", () => {
     const view = projectAdd([
       ...START,

@@ -170,8 +170,12 @@ export type AddEvent =
    */
   | { readonly kind: "restart-begin"; readonly label: string }
   | { readonly kind: "restart-end"; readonly ok: boolean }
-  /** The last word. A failing verdict has no plain form — the `error:` lines above it are the verdict. */
-  | { readonly kind: "verdict"; readonly ok: boolean; readonly text: string };
+  /**
+   * The last word. A failing verdict has no plain form — the `error:` lines above it are the verdict.
+   * `runsOn` is the multiplexer leg 3 decided, when a join names one; `text` already says it, and the
+   * field is what a several-host run's summary reads.
+   */
+  | { readonly kind: "verdict"; readonly ok: boolean; readonly text: string; readonly runsOn?: string | null };
 
 /**
  * The value column of `crew add`'s `✓` rows.
@@ -275,9 +279,9 @@ export function projectAdd(events: readonly AddEvent[]): AddView {
   const facts: { name: string; value: string }[] = [];
   const preamble: AddNote[] = [];
   let verdict: { ok: boolean; text: string } | null = null;
-  const legs = new Map<AddLeg, AddLegSlot>(
-    ADD_LEGS.map((leg) => [leg, { status: "pending", detail: "", notes: [] }]),
-  );
+  const freshLegs = (): Map<AddLeg, AddLegSlot> =>
+    new Map(ADD_LEGS.map((leg) => [leg, { status: "pending", detail: "", notes: [] }]));
+  let legs = freshLegs();
   let current: AddLeg | null = null;
   // The restart window: lines land here instead of on the leg, and are dropped when it worked.
   let restart: { label: string; held: AddNote[] } | null = null;
@@ -291,6 +295,16 @@ export function projectAdd(events: readonly AddEvent[]): AddView {
   for (const event of events) {
     switch (event.kind) {
       case "title":
+        // A second title is the next host of a several-host run: the screen shows that host's four
+        // legs afresh. The summary a several-host run ends with is what keeps every host's result.
+        if (host !== null) {
+          facts.length = 0;
+          preamble.length = 0;
+          verdict = null;
+          legs = freshLegs();
+          current = null;
+          restart = null;
+        }
         host = event.host;
         break;
       case "leg-start":
