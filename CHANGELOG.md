@@ -23,6 +23,12 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+## [1.26.3] - 2026-11-05
+
+### Fixed
+
+- **Claude beacons stay live on Linux where /bin/sh is dash.** dash runs the hook command as a child and waits, so the beacon recorded the shell's pid and expired at once; every Claude pane on herdr-core then read as a shell (Ubuntu, Debian). `collie beacon emit` now records the first non-shell ancestor, and doctor accepts a hook command that starts with `exec`. Thanks @paran-kero for the diagnosis (#689). ([5f0e6d1c9](https://github.com/AltanS/collie/commit/5f0e6d1c9))
+
 ## [1.26.2] - 2026-11-04
 
 ### Fixed
