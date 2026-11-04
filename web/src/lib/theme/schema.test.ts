@@ -53,7 +53,7 @@ describe("the token list", () => {
     expect(THEME_TOKENS).not.toContain("popover");
     expect(THEME_TOKENS).not.toContain("radius");
     expect(THEME_VERSION).toBe(3);
-    expect(SHIPPED_THEME_IDS).toEqual(["collie", "nightwatch", "daylight", "harbour"]);
+    expect(SHIPPED_THEME_IDS).toEqual(["collie", "nightwatch", "daylight", "harbour", "collie-new"]);
   });
 });
 

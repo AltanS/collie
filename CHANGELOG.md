@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **A fifth theme, Collie New.** It keeps the black and white of the default look and makes it easier to read: the Atkinson Hyperlegible face for text, bold labels, stronger text and lines, a grey band behind the bars, flat square edges, and a terminal palette that reads in both halves. Pick it in Settings, Appearance, Theme; the default theme does not change.
+
 ### Changed
 
 - **Collie now sends one anonymous install ping a day, on by default.** Up to 1.26.x Collie sent nothing about your install, and this reverses that promise (ADR 0129, which replaces ADR 0034). The ping holds a random ID made on your machine, the UTC day, the Collie version, the OS, the CPU, the install kind and the release line, and nothing else: no host name, path, pane or content. The first ping waits 24 hours after the first start. Four switches turn it off, and each one changes only the machine it is set on: Settings (System, Anonymous install count), `COLLIE_TELEMETRY=0`, `telemetry = false` in the `[bridge]` section of `config.toml`, or `DO_NOT_TRACK=1`; for a service (systemd, the Herdr plugin) put `COLLIE_TELEMETRY=0` in that instance's `.env`, not in your shell profile, and run `collie restart`. Turning it off sends nothing and deletes the ID, and a `COLLIE_TELEMETRY` value Collie does not know reads as off. It is also off when `CI` is set, with an update mirror and in a development build. Settings shows the exact next message, `collie doctor` has a `telemetry` line, and `docs/security.md` lists every field.
