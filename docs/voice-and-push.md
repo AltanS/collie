@@ -543,6 +543,8 @@ and newer allow Web Push only for a web app that you added to the home screen an
 icon. In a Safari tab, **Settings → Alerts** shows that line. See
 [Put it on your phone](install.md#iphone-and-ipad) for the steps to add Collie.
 
+![Put Collie on the home screen: iPhone and Android steps.](images/install/pwa-install.svg)
+
 **I added the icon. Do I set up again?** Yes. The home screen app keeps its own storage, separate
 from Safari. Pair it again in the app (`collie pair` on the host, then **Settings → System → Paired
 devices**, see [Pair a device](security.md#pair-a-device--the-write-credential)). Then turn on push in

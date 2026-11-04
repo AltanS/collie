@@ -50,6 +50,8 @@ COLLIE_MUX=herdr collie start          # or: herdr-core, tmux, zellij
 **3. Pair your phone.** Run `collie qr` and scan it. Add Collie to your home screen and open it from
 the icon. Then run `collie pair` and type the code under **Settings → System → Paired devices**.
 
+![Put Collie on the home screen: iPhone and Android steps.](docs/images/install/pwa-install.svg)
+
 That's it: agents waiting on you show up first. Tap one to reply.
 
 > Collie is remote shell access to your machine. Keep it on your tailnet (`tailscale serve`, never
