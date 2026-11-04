@@ -534,6 +534,19 @@ describe("the ssh options", () => {
     expect(opts).toContain("ServerAliveCountMax=4");
   });
 
+  test("no multiplexing where the platform cannot: the Control* options drop, the rest stay", () => {
+    // Windows OpenSSH has no AF_UNIX control socket — `ControlMaster=auto` there fails the whole
+    // connection ("getsockname failed: Not a socket"), so on win32 the legs run unshared and each
+    // authenticates on its own, which BatchMode turns into a legible failure when a key is missing.
+    const opts = sshOptions("/tmp/x/s", false).join(" ");
+    expect(opts).not.toContain("ControlMaster");
+    expect(opts).not.toContain("ControlPath");
+    expect(opts).not.toContain("ControlPersist");
+    expect(opts).toContain("BatchMode=yes");
+    expect(opts).toContain("ServerAliveInterval=15");
+    expect(opts).toContain("ServerAliveCountMax=4");
+  });
+
   test("the host-key policy is never touched, in either direction", () => {
     // The operator's `known_hosts` is ridden, never reimplemented (ADR 0015). A host whose key
     // changed must fail the way `ssh` fails.

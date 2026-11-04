@@ -436,7 +436,7 @@ async function render(
   const heading = `collie doctor — ${collieVersionBare(deps.ctx.root, (p) => deps.files.read(p))} · mode ${mode}`;
   // The first line, before the heading, so a person with two lanes sees which one this run read.
   const instance = instanceLine(deps.ctx);
-  const crewNote = ["crew: none — this collie is not in a crew.", soloCrewHint(deps.host)];
+  const crewNote = ["crew: none — this collie is not in a crew.", soloCrewHint(deps.host, deps.ctx.env)];
   // One findings list, two renderings. The terminal gets the columns laid out and the statuses
   // coloured; everything else gets exactly the lines below, which are what `--json`'s human twin has
   // always printed and what scripts/collie-cli.test.sh greps.
