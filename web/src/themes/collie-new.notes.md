@@ -44,7 +44,7 @@ the light-mode inversion. The report passes all 58 checks in both halves.
 - `rule` is stronger than `border` in both halves: light 2.18 on the page against 1.53, dark 3.49
   against 2.27. It is the line that matters (a divider, a dashed ring); `collie`'s is 1.33 and 2.06.
 - Lines are 1px, as in `collie`; the edge comes from the 1.74 grey, not from width. Cards read as
-  cards without a shadow, and the default shadow only adds depth.
+  cards without a shadow, so the theme draws none.
 - `ring` is oklch(0.5 0 0) light (5.28 on the page) and oklch(0.76 0 0) dark (8.93).
 - `pane-active` is not set, so the frame of the active pane column keeps the `:root` pair, as in
   Harbour. The file is version 2.
@@ -106,7 +106,7 @@ which is why it leaves the rows and the meta text.
 | token   | word     | why                                                                         |
 | ------- | -------- | --------------------------------------------------------------------------- |
 | radius  | sharp    | Collie's square corners; a marked row keeps its left bar.                      |
-| shadow  | default  | Collie's shadow; the border carries the edge.                                |
+| shadow  | flat     | No shadow. The 1px line carries the edge, so nothing looks soft.            |
 | density | default  | Collie's 0.25rem step; roomy put too much space at the edges.                |
 | weight  | bold     | Medium is 600 and semibold 700, which Atkinson draws for real.                |
 | border  | default  | A 1px edge in a 1.74 grey; 2px read as too thick.                            |

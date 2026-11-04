@@ -48,7 +48,7 @@ and [Terminal palette](#terminal-palette).
 | Typeface | Aldrich | IBM Plex Sans | Geist | Atkinson Hyperlegible Next | Atkinson Hyperlegible Next |
 | Display face | the typeface | IBM Plex Sans | Atkinson Hyperlegible Next | Space Grotesk | Aldrich |
 | Radius | `sharp` | `sharp` | `round` | `soft` | `sharp` |
-| Shadow | `default` | `flat` | `lifted` | `lifted` | `default` |
+| Shadow | `default` | `flat` | `lifted` | `lifted` | `flat` |
 | Density | `default` | `default` | `roomy` | `default` | `default` |
 | Weight | `default` | `bold` | `default` | `default` | `bold` |
 | Border | `default` | `strong` | `default` | `default` | `default` |

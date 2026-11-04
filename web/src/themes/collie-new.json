@@ -99,7 +99,7 @@
   },
   "surface": {
     "radius": "sharp",
-    "shadow": "default",
+    "shadow": "flat",
     "density": "default",
     "weight": "bold",
     "border": "default",
