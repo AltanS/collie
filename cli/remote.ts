@@ -1160,6 +1160,11 @@ async function chooseCandidateHost(deps: Wired): Promise<Chosen> {
   }
   const picked = pickCandidates(rows, answer);
   if (picked === null) {
+    if (answer.trim() === "all") {
+      deps.io.err("error: `all` has nothing to take: every candidate above may already be a member of this crew.");
+      deps.io.err("       Pick a number or a name to add one anyway.");
+      return { code: EXIT.USAGE };
+    }
     // One refused token refuses the whole answer, and the line names that token. `refusedToken` is
     // null only for a blank answer, which was handled above, so the fallback is a guard.
     const refused = refusedToken(rows, answer) ?? { token: answer.trim(), blocked: null };

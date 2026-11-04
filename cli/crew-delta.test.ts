@@ -193,6 +193,24 @@ describe("crewDelta: a member with no crew add record is still in the crew", () 
     expect((await crewDelta(deps)).missing).toEqual([{ source: "herdr-core", targets: ["omarchy"] }]);
   });
 
+  test("a tombstoned peer (unenrolled) covers nothing: its machine is still missing", async () => {
+    const { deps } = setup({
+      core: machines({ target: "op@192.168.77.2", name: "member" }),
+      store: leadStore({ peers: [member({ memberId: "member", address: "192.168.77.2:8787", status: "unenrolled" })] }),
+    });
+    expect((await crewDelta(deps)).missing).toEqual([{ source: "herdr-core", targets: ["member"] }]);
+  });
+
+  test("two peers on one address host cover a row on it, without saying which one it is", async () => {
+    const { deps } = setup({
+      core: machines({ target: "op@gateway" }),
+      store: leadStore({
+        peers: [member({ memberId: "lab-a", address: "gateway:8787" }), member({ memberId: "lab-b", address: "gateway:8788" })],
+      }),
+    });
+    expect((await crewDelta(deps)).missing).toEqual([]);
+  });
+
   test("is never reported as forgotten: it has no recorded source", async () => {
     const { deps } = setup({ core: machines({ target: "vps" }), store: handJoined("member", "192.168.77.2:8787") });
     expect((await crewDelta(deps)).forgotten).toEqual([]);

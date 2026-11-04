@@ -41,7 +41,7 @@ import type { Host } from "../bridge/host.ts";
 import {
   markCandidates,
   mergeCandidates,
-  offeredCandidates,
+  unclaimedCandidates,
   resolvedSshTarget,
   type RosterEntry,
   screenCandidates,
@@ -86,7 +86,9 @@ export async function leadRoster(
   const trust = await deps.store.load();
   if (trust === null || trust.lead !== null) return [];
   const { data } = await deps.ops.load();
-  return trust.peers.map((peer): RosterEntry => {
+  // A tombstone (`unenrolled`) is known and refused, not a member: it must neither hide a machine
+  // from the picker nor keep a name off the delta.
+  return trust.peers.filter((peer) => peer.status === "enrolled").map((peer): RosterEntry => {
     const record = data?.members[peer.memberId];
     const host = splitSshTarget(peer.address).host;
     const addressHost = host === "" ? null : host;
@@ -171,13 +173,13 @@ export async function crewDelta(deps: CrewDeltaDeps): Promise<CrewDelta> {
     // One source at a time: a machine two lists name is reported under each, and a member is judged
     // by the list that suggested it.
     const rows = markCandidates(mergeCandidates([source], resolve), roster);
-    const targets = offeredCandidates(rows).map((row) => row.label ?? row.target);
+    const targets = unclaimedCandidates(rows).map((row) => row.label ?? row.target);
     if (targets.length > 0) missing.push({ source: source.source, targets });
     for (const entry of roster) {
       // Only a member with a recorded source is judged, and only by that source. It is listed when a
       // row of that list was marked as it, on any key, so a member is never both covered and gone.
       if (entry.source !== source.source) continue;
-      const listed = rows.some((row) => row.memberId === entry.memberId);
+      const listed = rows.some((row) => row.memberId === entry.memberId || row.maybeMemberIds.includes(entry.memberId));
       if (!listed) forgotten.push({ memberId: entry.memberId, source: source.source });
     }
   }

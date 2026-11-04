@@ -82,6 +82,14 @@ export interface CandidateRow {
   /** This lead's own member id for the machine, or `null`. A hint; see this module's header. */
   readonly memberId: string | null;
   /**
+   * Member ids that MAY be this machine: they matched only on the host of their trust-store address
+   * or on the member id read as a name, never on the route `crew add` recorded. Empty when none did,
+   * and always empty when {@link CandidateRow.memberId} is set. A weak match never hides a row: it
+   * stays numbered and pickable, because the row carries no certificate to prove the match, and a
+   * wrong "already in this crew" would keep a real machine off the phone.
+   */
+  readonly maybeMemberIds: readonly string[];
+  /**
    * Why this machine cannot be added, or `null`. Set only when EVERY source that named it blocked
    * it: a source that proves a way in (an ssh config `Host`) clears the block. A blocked row is shown
    * with its reason, has no number, and is never picked.
@@ -184,6 +192,7 @@ export function mergeCandidates(
           key,
           label: candidate.label,
           memberId: null,
+          maybeMemberIds: [],
           blocked: candidate.blocked,
         });
         continue;
@@ -259,33 +268,53 @@ function matchesMemberId(entry: RosterEntry, row: CandidateRow, hosts: ReadonlyS
 }
 
 /**
- * Stamp each row this lead already leads with its member id.
+ * Stamp each row with the member this lead already has for it.
  *
- * Three keys, strongest first, and a row takes the first member any of them names:
- *   1. the recorded ssh route: the merge key (both sides went through the same resolution, so an
- *      alias in the config and the destination the lead recorded meet there), or the recorded
- *      destination verbatim, which is what answers when nothing could be resolved;
- *   2. the host of the address the trust store dials, against the row's resolved hostname and the
- *      host part of each of its spellings — what a member with no ops record still has;
- *   3. the member id, case-insensitively, against the row's label and those same host parts.
+ * ONE key is strong enough to say "this machine is in the crew": the recorded ssh route, which is
+ * the merge key (both sides went through the same resolution, so an alias in the config and the
+ * destination the lead recorded meet there), or the recorded destination verbatim, which is what
+ * answers when nothing could be resolved. `crew add` wrote it after it reached the machine.
+ *
+ * Two keys are WEAK and never mark a row: the host of the address the trust store dials, against the
+ * row's resolved hostname and the host part of each spelling (what a member joined by hand still
+ * has), and the member id, case-insensitively, against the row's label and those same host parts.
+ * Neither proves the row is the pinned machine: two peers can share an address host on different
+ * ports, and a member id is a name a person chose and can be reused for another box. The row has no
+ * certificate to compare with the pin, and this module dials nothing, so a weak match is listed on
+ * {@link CandidateRow.maybeMemberIds} and nothing more.
  */
 export function markCandidates(
   rows: readonly CandidateRow[],
   roster: readonly RosterEntry[],
 ): readonly CandidateRow[] {
   return rows.map((row) => {
+    const route = roster.find((entry) => matchesRoute(entry, row));
+    if (route !== undefined) return { ...row, memberId: route.memberId, maybeMemberIds: [] };
     const hosts = rowHosts(row);
-    const member =
-      roster.find((entry) => matchesRoute(entry, row)) ??
-      roster.find((entry) => matchesAddress(entry, hosts)) ??
-      roster.find((entry) => matchesMemberId(entry, row, hosts));
-    return member === undefined ? row : { ...row, memberId: member.memberId };
+    const maybe = roster
+      .filter((entry) => matchesAddress(entry, hosts) || matchesMemberId(entry, row, hosts))
+      .map((entry) => entry.memberId);
+    return maybe.length === 0 ? row : { ...row, maybeMemberIds: maybe };
   });
+}
+
+/** Is the row accounted for by a member, strongly or by a weak match? What the delta lines read. */
+export function coveredByMember(row: CandidateRow): boolean {
+  return row.memberId !== null || row.maybeMemberIds.length > 0;
 }
 
 /** A row the operator may pick: one this lead does not already lead and no source blocked. */
 export function offeredCandidates(rows: readonly CandidateRow[]): readonly CandidateRow[] {
   return rows.filter((row) => row.memberId === null && row.blocked === null);
+}
+
+/**
+ * The offered rows no member may account for: what `all` takes and what the delta names. A row with
+ * a weak match is still offered by number and by name, but it is not swept in by `all`, because
+ * re-adding a hand-joined member to every run would ask one confirm for each of them.
+ */
+export function unclaimedCandidates(rows: readonly CandidateRow[]): readonly CandidateRow[] {
+  return offeredCandidates(rows).filter((row) => row.maybeMemberIds.length === 0);
 }
 
 /**
@@ -311,6 +340,7 @@ export function renderCandidateList(rows: readonly CandidateRow[]): readonly str
     const others = row.names.filter((name) => name !== row.target);
     if (others.length > 0) columns.push(`also ${others.join(", ")}`);
     if (row.memberId !== null) columns.push(`already enrolled as "${row.memberId}"`);
+    if (row.maybeMemberIds.length > 0) columns.push(`may be enrolled as ${row.maybeMemberIds.map((id) => `"${id}"`).join(", ")}`);
     if (row.blocked !== null) columns.push(`cannot be added: ${row.blocked}`);
     const gutter = number === undefined ? "   " : `${number.padStart(2, " ")} `;
     lines.push(`  ${gutter} ${row.target.padEnd(width)}  ${columns.join("  ")}`.trimEnd());
@@ -420,7 +450,7 @@ export function pickCandidates(rows: readonly CandidateRow[], answer: string): r
   if (tokens.length === 0) return null;
   const picked = new Map<string, CandidateRow>();
   for (const token of tokens) {
-    const chosen = token === "all" ? offeredCandidates(rows) : [rowOfToken(rows, token)];
+    const chosen = token === "all" ? unclaimedCandidates(rows) : [rowOfToken(rows, token)];
     for (const row of chosen) {
       if (row === null) return null;
       if (!picked.has(row.key)) picked.set(row.key, row);

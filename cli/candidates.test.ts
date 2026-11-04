@@ -171,7 +171,7 @@ describe("markCandidates", () => {
     expect(markCandidates(rows, []).every((row) => row.memberId === null)).toBe(true);
   });
 
-  test("a member with no recorded route is joined on the host of its trust-store address", () => {
+  test("a member with no recorded route MAY be the row on the host of its trust-store address", () => {
     const resolvedRows = mergeCandidates(
       [{ source: "herdr-core", candidates: [named("op@lab-two"), named("op@192.168.77.3")] }],
       (target) => (target === "op@lab-two" ? "op@192.168.77.2:22" : null),
@@ -181,7 +181,10 @@ describe("markCandidates", () => {
       { memberId: "omarchy", sshHost: null, key: null, addressHost: "192.168.77.3" },
     ]);
     // The first through ssh -G's hostname, the second through the host part of the target as typed.
-    expect(marked.map((row) => row.memberId)).toEqual(["box", "omarchy"]);
+    // Neither is a route, so neither row is "in this crew": each is only annotated.
+    expect(marked.map((row) => row.memberId)).toEqual([null, null]);
+    expect(marked.map((row) => row.maybeMemberIds)).toEqual([["box"], ["omarchy"]]);
+    expect(offeredCandidates(marked)).toHaveLength(2);
   });
 
   test("an IPv6 address host meets a bracketed target and a resolved hostname alike", () => {
@@ -193,10 +196,10 @@ describe("markCandidates", () => {
       { memberId: "two", sshHost: null, key: null, addressHost: "fd00::2" },
       { memberId: "three", sshHost: null, key: null, addressHost: "fd00::3" },
     ]);
-    expect(marked.map((row) => row.memberId)).toEqual(["two", "three"]);
+    expect(marked.map((row) => row.maybeMemberIds)).toEqual([["two"], ["three"]]);
   });
 
-  test("and on its member id, case-insensitively, against the label and the target's host", () => {
+  test("and on its member id, case-insensitively, against the label and the target's host, never as a certainty", () => {
     const labelled = mergeCandidates(
       [
         {
@@ -214,7 +217,49 @@ describe("markCandidates", () => {
       { memberId: "member", sshHost: null, key: null, addressHost: "10.0.0.1" },
       { memberId: "attic", sshHost: null, key: null, addressHost: null },
     ]);
-    expect(marked.map((row) => row.memberId)).toEqual(["member", "attic", null]);
+    expect(marked.map((row) => row.memberId)).toEqual([null, null, null]);
+    expect(marked.map((row) => row.maybeMemberIds)).toEqual([["member"], ["attic"], []]);
+  });
+
+  // ── A WEAK MATCH NEVER HIDES A PICK (M84 hardening) ───────────────────────────
+  // The row carries no certificate and this module dials nothing, so an address host or a member id
+  // cannot be told apart from another machine's. Only the recorded route marks a row.
+
+  test("two peers that share an address host on different ports mark neither row as in the crew", () => {
+    const shared = mergeCandidates([{ source: "herdr-core", candidates: [named("op@gateway")] }], () => null);
+    const marked = markCandidates(shared, [
+      { memberId: "lab-a", sshHost: null, key: null, addressHost: "gateway" },
+      { memberId: "lab-b", sshHost: null, key: null, addressHost: "gateway" },
+    ]);
+    expect(marked[0]!.memberId).toBeNull();
+    // Both are named, so the operator sees the ambiguity instead of one of them being picked for them.
+    expect(marked[0]!.maybeMemberIds).toEqual(["lab-a", "lab-b"]);
+    expect(offeredCandidates(marked)).toHaveLength(1);
+    expect(renderCandidateList(marked).join("\n")).toContain('may be enrolled as "lab-a", "lab-b"');
+    expect(renderCandidateList(marked).join("\n")).not.toContain("already enrolled");
+  });
+
+  test("a name that equals an old member id does not mark a machine at another address", () => {
+    const renamed = mergeCandidates(
+      [{ source: "herdr-core", candidates: [{ target: "op@198.51.100.7", label: "minibuch", id: null, blocked: null }] }],
+      () => null,
+    );
+    const marked = markCandidates(renamed, [
+      { memberId: "minibuch", sshHost: null, key: null, addressHost: "100.64.0.8" },
+    ]);
+    expect(marked[0]!.memberId).toBeNull();
+    expect(offeredCandidates(marked).map((row) => row.target)).toEqual(["op@198.51.100.7"]);
+  });
+
+  test("a weakly matched row is numbered and nameable, but `all` leaves it out", () => {
+    const two = mergeCandidates(
+      [{ source: "herdr-core", candidates: [named("op@gateway"), named("op@vps")] }],
+      () => null,
+    );
+    const marked = markCandidates(two, [{ memberId: "lab-a", sshHost: null, key: null, addressHost: "gateway" }]);
+    expect(pickCandidates(marked, "all")!.map((row) => row.target)).toEqual(["op@vps"]);
+    expect(pickCandidates(marked, "1")!.map((row) => row.target)).toEqual(["op@gateway"]);
+    expect(pickCandidates(marked, "op@gateway")!.map((row) => row.target)).toEqual(["op@gateway"]);
   });
 
   test("a recorded route wins over another member's address or id", () => {

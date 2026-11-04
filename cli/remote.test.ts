@@ -792,9 +792,10 @@ describe("collie crew add", () => {
     expect(text(h.io)).toContain("probing attic…");
   });
 
-  test("a member joined by hand, with no crew add record, is marked on its address and its id", async () => {
+  test("a member joined by hand, with no crew add record, is named as a maybe and never hidden", async () => {
     // M84 test 2, BUG 1: no crew-ops.json at all. `member` is matched on the host of its trust-store
-    // address, `attic` on its member id; only `vps` is offered.
+    // address, `attic` on its member id. Neither is proof, so all three rows are offered; the delta
+    // (`collie start`) still counts the two as accounted for.
     const h = harness({
       store: leadStore({
         peers: [
@@ -806,14 +807,26 @@ describe("collie crew add", () => {
       prompt: "",
     });
     expect(await run(h, [])).toBe(EXIT.STATE);
+    // Neither match is a route, so neither row is hidden: both keep a number and say who they may be.
     expect(h.io.stdout.slice(0, 6)).toEqual([
       "Candidate hosts on this machine:",
       "",
-      '      op@192.168.77.2  herdr-core  already enrolled as "member"',
-      '      op@attic         herdr-core  already enrolled as "attic"',
-      "   1  op@vps           herdr-core",
+      '   1  op@192.168.77.2  herdr-core  may be enrolled as "member"',
+      '   2  op@attic         herdr-core  may be enrolled as "attic"',
+      "   3  op@vps           herdr-core",
       "",
     ]);
+    expect(h.calls).toHaveLength(0);
+  });
+
+  test("`all` with only maybe-enrolled rows says so instead of calling the word unknown", async () => {
+    const h = harness({
+      store: leadStore({ peers: [member({ memberId: "member", address: "192.168.77.2:8787" })] }),
+      coreMachines: '{"machines":[{"target":"op@192.168.77.2"}]}',
+      prompt: "all",
+    });
+    expect(await run(h, [])).toBe(EXIT.USAGE);
+    expect(h.io.stderr).toContain("error: `all` has nothing to take: every candidate above may already be a member of this crew.");
     expect(h.calls).toHaveLength(0);
   });
 
