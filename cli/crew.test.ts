@@ -2399,6 +2399,20 @@ describe("collie crew remove", () => {
     expect(text(h.io)).not.toContain("    ssh ");
   });
 
+  test("it ends with one line telling the operator the machine still runs Collie as a member", async () => {
+    const hint = (host: string): string =>
+      `  ${host} still runs Collie as a member; run \`collie leave\` there before you add it again.`;
+    const reached = harness(leadStore({ peers: [member({ memberId: "nas" })] }), [], {
+      ops: fakeOps({ nas: { sshHost: "op@192.168.77.2", path: null, port: 8787, recordedAt: T0 } }),
+    });
+    expect(await cmdCrewRemove(reached.deps, ["nas"])).toBe(EXIT.OK);
+    expect(reached.io.stdout).toContain(hint("op@192.168.77.2"));
+    // Without an ssh record the member id is the only name this lead has for it.
+    const unknown = harness(leadStore({ peers: [member({ memberId: "nas" })] }));
+    expect(await cmdCrewRemove(unknown.deps, ["nas"])).toBe(EXIT.OK);
+    expect(unknown.io.stdout).toContain(hint("nas"));
+  });
+
   test("an unknown member is a state error naming the verb that lists them", async () => {
     const h = harness(leadStore());
     expect(await cmdCrewRemove(h.deps, ["ghost"])).toBe(EXIT.STATE);

@@ -1223,6 +1223,10 @@ function watchRun(deps: Wired): RunWatch {
           joined = /^"([^"]+)"/u.exec(event.text)?.[1] ?? joined;
           runsOn = event.runsOn ?? runsOn;
         }
+        // A red line that carries its own `✗` (the stale-peer refusal) is the run's reason too.
+        if (first === null && event.kind === "line" && event.stream === "err" && event.text.startsWith("✗ ")) {
+          first = event.text.replace(/^✗\s*/u, "");
+        }
         deps.emit(event);
       },
       confirm: async (question) => {
@@ -2270,6 +2274,14 @@ async function configureLeg(
   return { runsOn: decided.runsOn };
 }
 
+/** What a red `crew add` line that has no `error:` prefix starts with. */
+export const NOT_JOINED_MARK = "✗ not joined:";
+
+/** Does this lead hold an enrolled pin for the member id the far machine reports? A tombstone is not one. */
+function pinnedHere(data: TrustStoreData, memberId: string | null): boolean {
+  return memberId !== null && data.peers.some((peer) => peer.memberId === memberId && peer.status === "enrolled");
+}
+
 /** Leg 4, as its own step: the membership pre-check, the invite, the join, and the final verdict. */
 async function enrollLeg(
   deps: Wired,
@@ -2321,6 +2333,22 @@ async function enrollLeg(
   if (data === null) return EXIT.FAIL;
   if (membership.packId !== null) {
     if (data.crew !== null && membership.packId === data.crew.crewId) {
+      // ── A STALE PEER IS NOT A MEMBER ─────────────────────────────────────────
+      // `crew remove` is local: it drops this lead's pin and sends nothing, so the far machine keeps
+      // answering with this crew's id. Its answer is a claim about the far side only. A member is
+      // one THIS lead pins, so the green line waits for the pin; without it the run ends red and
+      // says what to do on the far machine. Nothing is remembered, restarted or minted.
+      if (!pinnedHere(data, membership.memberId)) {
+        deps.emit({
+          kind: "line",
+          stream: "err",
+          tone: "error",
+          text:
+            `${NOT_JOINED_MARK} ${o.host} still answers as a member of this crew, but this lead holds no record of it. ` +
+            `Run \`collie leave\` on ${o.host}, then add it again.`,
+        });
+        return EXIT.STATE;
+      }
       if (membership.memberId !== null) await remember(membership.memberId);
       // ── THE ALREADY-A-MEMBER PATH RESTARTS THE FAR MACHINE ──────────────────
       // No `collie join` runs here, and a join is the ONLY thing that restarts a peer from this verb

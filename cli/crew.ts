@@ -2067,6 +2067,9 @@ export async function cmdCrewRemove(deps: CrewDeps, args: readonly string[]): Pr
   deps.io.out("  own copy of the crew until its operator runs `collie leave` there. Either side alone ends");
   deps.io.out("  the link (§8.4) — this side is now ended.");
   for (const line of leaveTheOtherSideLines(deps, record)) deps.io.out(line);
+  // The one line `crew add` will need later: a removed machine still answers as a member, and the
+  // add refuses it (`✗ not joined`) until `collie leave` has run there.
+  deps.io.out(`  ${record?.sshHost ?? memberId} still runs Collie as a member; run \`collie leave\` there before you add it again.`);
   await applyLocally(deps, "the shortened roster");
   return EXIT.OK;
 }

@@ -1846,6 +1846,7 @@ describe("re-running against the same host", () => {
 
   test("already a member of THIS crew is a ✓ and exit OK — nothing is minted", async () => {
     const h = harness({
+      store: leadStore({ peers: [member({ memberId: "nas", address: "100.64.0.9:8787" })] }),
       answers: {
         probe: { stdout: probeOut({ checkout: REMOTE_CHECKOUT, commit: COMMIT }) },
         membership: { stdout: ["crew   the herd  (crew-1)", "mode   peer", "self   nas  abcd…"].join("\n") },
@@ -1891,8 +1892,57 @@ describe("re-running against the same host", () => {
     expect(h.restarts).toBe(0);
   });
 
+  // ── NO FALSE GREEN (M84 hardening) ────────────────────────────────────────
+  // `crew remove` is local, so the far machine keeps answering with the crew id. Green needs THIS
+  // lead's pin.
+  const STALE_ANSWERS = {
+    probe: { stdout: probeOut({ checkout: REMOTE_CHECKOUT, commit: COMMIT, envhost: "100.64.0.9" }) },
+    membership: { stdout: ["crew   the herd  (crew-1)", "mode   peer", "self   nas  abcd…"].join("\n") },
+  } satisfies LegAnswers;
+
+  test("a peer that answers as a member but has no pin on this lead is NOT green, and the run fails", async () => {
+    const h = harness({ answers: STALE_ANSWERS });
+    expect(await run(h)).toBe(EXIT.STATE);
+    const rendered = text(h.io);
+    expect(rendered).toContain(
+      "✗ not joined: nas.example still answers as a member of this crew, but this lead holds no record of it. " +
+        "Run `collie leave` on nas.example, then add it again.",
+    );
+    expect(rendered).not.toContain("✓ already a member");
+    // Nothing was minted, restarted or remembered for a machine this lead does not pin.
+    expect(h.calls.map((c) => c.leg)).not.toContain("enroll");
+    expect(h.calls.map((c) => c.leg)).not.toContain("restart");
+    expect(await h.ops.get("nas")).toBeNull();
+  });
+
+  test("a tombstoned pin is no pin: status unenrolled is not green either", async () => {
+    const h = harness({
+      store: leadStore({ peers: [member({ memberId: "nas", status: "unenrolled" })] }),
+      answers: STALE_ANSWERS,
+    });
+    expect(await run(h)).toBe(EXIT.STATE);
+    expect(text(h.io)).toContain("✗ not joined: nas.example");
+  });
+
+  test("a pin for ANOTHER member id does not turn a stale peer green", async () => {
+    const h = harness({ store: leadStore({ peers: [member({ memberId: "attic" })] }), answers: STALE_ANSWERS });
+    expect(await run(h)).toBe(EXIT.STATE);
+    expect(text(h.io)).toContain("✗ not joined: nas.example");
+  });
+
+  test("with a pin the green line stays exactly as it was", async () => {
+    const h = harness({
+      store: leadStore({ peers: [member({ memberId: "nas", address: "100.64.0.9:8787" })] }),
+      answers: STALE_ANSWERS,
+    });
+    expect(await run(h)).toBe(EXIT.OK);
+    expect(text(h.io)).toContain('✓ already a member of "the herd" as "nas"');
+    expect(text(h.io)).not.toContain("not joined");
+  });
+
   test("a restart that fails there is a FAILURE, and says which machine still runs the old build", async () => {
     const h = harness({
+      store: leadStore({ peers: [member({ memberId: "nas", address: "100.64.0.9:8787" })] }),
       answers: {
         probe: {
           stdout: probeOut({
@@ -1912,6 +1962,7 @@ describe("re-running against the same host", () => {
 
   test("an unchanged re-run restarts nothing — a no-op stays a no-op", async () => {
     const h = harness({
+      store: leadStore({ peers: [member({ memberId: "nas", address: "100.64.0.9:8787" })] }),
       answers: {
         probe: { stdout: probeOut({ checkout: REMOTE_CHECKOUT, commit: COMMIT, envhost: "100.64.0.9" }) },
         membership: { stdout: ["crew   the herd  (crew-1)", "mode   peer", "self   nas  abcd…"].join("\n") },
