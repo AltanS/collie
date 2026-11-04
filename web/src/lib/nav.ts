@@ -322,6 +322,14 @@ export function updatesPath(scope?: Scope): string {
  */
 export const PAIRED_DEVICES_HASH = "paired-devices";
 
+/** The fragment naming the Anonymous install count card inside Settings → System (M86 spec 02). */
+export const TELEMETRY_SETTINGS_HASH = "install-count";
+
+/** Settings → System, scrolled to the Anonymous install count card: the dashboard notice's button. */
+export function telemetrySettingsPath(scope?: Scope): string {
+  return `${settingsSectionPath("system", scope)}#${TELEMETRY_SETTINGS_HASH}`;
+}
+
 /** The fragment naming the Changes card inside Settings, which `changes-control.tsx` answers to. */
 export const CHANGES_SETTINGS_HASH = "changes";
 

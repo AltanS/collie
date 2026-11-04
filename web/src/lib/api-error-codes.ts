@@ -169,6 +169,10 @@ export const API_ERROR_CODES = [
 
   // Reopening a durable program's closed conversation, POST /api/durable/conversation/:id/reopen
   "durable.reopen_failed",
+
+  // The anonymous install count, POST /api/telemetry
+  "telemetry.setting_invalid",
+  "telemetry.request_id_required",
 ] as const;
 
 /** Every code the bridge can send. Derived from the list, so there is exactly one place to edit. */

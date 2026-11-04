@@ -1203,6 +1203,11 @@ export const handlers = [
   http.post("/api/pair", () =>
     HttpResponse.json({ error: "no-pending" }, { status: 400 }),
   ),
+  // The anonymous install count (M86 spec 02). The default world is a CI run: off, so no notice
+  // stands on the dashboard and no test meets a card it did not ask for.
+  http.get("/api/telemetry", () =>
+    HttpResponse.json({ on: false, decidedBy: "ci", setting: null, next: null }),
+  ),
   http.post("/api/update/check", () =>
     HttpResponse.json({
       current: "0.11.0",

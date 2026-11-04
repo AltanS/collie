@@ -76,7 +76,7 @@ Prefer to have your agent do it? Ask it to run `collie skill` and follow the bri
 - **Twelve UI languages** and a per-device typeface setting
 - **Herdr session switching** managed from the web interface
 - **PWA support** running locally on loopback with no external accounts or cloud dependencies
-- **No telemetry**: the app sends no analytics, usage statistics or crash reports. Its one unprompted call is the update check to GitHub ([details](./docs/security.md#what-leaves-your-machine))
+- **Anonymous install count**: new in 1.27.0 and on by default; before that Collie sent nothing. Once a day each bridge (one instance with its own state folder) sends a random ID, the version, the OS, the CPU, the install kind and the release line. No usage, no content. Turn it off on each machine in Settings, with `COLLIE_TELEMETRY=0` (in the instance's `.env` for a service), `telemetry = false` or `DO_NOT_TRACK=1` ([details](./docs/security.md#what-leaves-your-machine))
 
 ## Demo
 

@@ -2,6 +2,10 @@
 
 Status: **Accepted** (2026-09-01)
 
+Superseded by 0129 ([ADR 0129](./0129-an-anonymous-install-count-on-by-default.md), 2026-11-04): from
+1.27.0 Collie sends one anonymous install ping a day, on by default, with four ways to turn it off.
+The update-check paragraph below still stands.
+
 Related: [ADR 0020](./0020-a-major-upgrade-is-consented-by-flag.md) — the update check named here as the
 one carve-out, and the anonymous tags read it already depends on.
 

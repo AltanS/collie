@@ -343,6 +343,15 @@ export const ERROR_CODES = {
   // ── A durable program's history: POST /api/durable/conversation/:id/reopen (M53 spec 11) ───
   /** The program would not show the conversation again (unknown, refused, or it takes no reopen). */
   "durable.reopen_failed": "{reason}",
+
+  // ── The anonymous install count: POST /api/telemetry (M86 spec 02) ───
+  /** A telemetry switch whose body named no setting, or a word other than on or off. */
+  "telemetry.setting_invalid": "the install count setting must be on or off; nothing was changed",
+  /**
+   * A telemetry switch without a request id. The id is the receipt a retry is answered with, so a
+   * body without one could not be told from a second, different tap.
+   */
+  "telemetry.request_id_required": "this action needs a request id; nothing was changed",
 } as const;
 
 /** Every code the bridge can send. The client mirror restates this union verbatim. */

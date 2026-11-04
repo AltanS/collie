@@ -167,6 +167,21 @@ describe("the file's shape", () => {
     expect(layer.env.COLLIE_MULTI_SESSION).toBe("1");
   });
 
+  test("telemetry takes a boolean or the environment's words, and an unknown word passes through to fail closed", async () => {
+    const env = async (value: string) => (await read({ [HOME_FILE]: `[bridge]\ntelemetry = ${value}\n` })).env.COLLIE_TELEMETRY;
+    expect(await env("false")).toBe("0");
+    expect(await env("true")).toBe("1");
+    for (const word of ["off", "no", "false", "on", "yes", "true"]) expect(await env(`"${word}"`)).toBe(word);
+    expect(await env('" Off "')).toBe("Off");
+    // Not dropped as a problem: a dropped key would leave the default, and the default is on.
+    expect(await env('"maybe"')).toBe("maybe");
+    expect((await read({ [HOME_FILE]: '[bridge]\ntelemetry = "maybe"\n' })).problems).toEqual([]);
+    // Another bool still refuses a string.
+    const other = await read({ [HOME_FILE]: '[bridge]\ntranscript = "off"\n' });
+    expect(other.env.COLLIE_TRANSCRIPT).toBeUndefined();
+    expect(other.problems.length).toBe(1);
+  });
+
   test("socket_path is the one key whose env name is not a COLLIE_ one", async () => {
     const layer = await read({ [HOME_FILE]: '[mux]\nsocket_path = "/run/herdr.sock"\n' });
     expect(layer.env.HERDR_SOCKET_PATH).toBe("/run/herdr.sock");

@@ -41,20 +41,26 @@ export function localReadHeaders(deps: Pick<SnapshotReadDeps, "ctx" | "files">):
  * 127.0.0.1, and dialling loopback there would report "the bridge is down" against a bridge that is
  * up. A wildcard bind answers everywhere, so loopback is the right dial for it.
  *
- * A READ, and the only route these verbs ask their own bridge for. `extraHeaders` is for the callers
+ * A READ, and the only kind of route these verbs ask their own bridge for. `extraHeaders` is for the callers
  * (`doctor`, issue #238, and `sessions`) that also send their configured login. `query` is the
  * query string without its `?` (`collie sessions` asks `sessions=all`).
  */
 export async function readOwnSnapshot(
   deps: SnapshotReadDeps,
-  options: { readonly budgetMs?: number; readonly extraHeaders?: Record<string, string>; readonly query?: string } = {},
+  options: {
+    readonly budgetMs?: number;
+    readonly extraHeaders?: Record<string, string>;
+    readonly query?: string;
+    /** Another read route of the same bridge, with the same local credential. Default `/api/snapshot`. */
+    readonly path?: string;
+  } = {},
 ): Promise<SnapshotRead> {
   const host = resolveBridgeHost(deps.ctx.env);
   const dialled = bindIsWildcard(host) ? "127.0.0.1" : host;
   const bracketed = dialled.includes(":") && !dialled.startsWith("[") ? `[${dialled}]` : dialled;
   const query = options.query === undefined || options.query === "" ? "" : `?${options.query}`;
   try {
-    const answer = await deps.fetch(`http://${bracketed}:${String(deps.ctx.port)}/api/snapshot${query}`, {
+    const answer = await deps.fetch(`http://${bracketed}:${String(deps.ctx.port)}${options.path ?? "/api/snapshot"}${query}`, {
       signal: AbortSignal.timeout(options.budgetMs ?? SNAPSHOT_BUDGET_MS),
       headers: { ...options.extraHeaders, ...localReadHeaders(deps) },
     });

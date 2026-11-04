@@ -92,7 +92,7 @@ The config file groups every setting under a `[section]`. The environment name o
 
 | section | what it holds |
 | --- | --- |
-| `bridge` | poll cadence, how many lines are read, where state lives |
+| `bridge` | poll cadence, how many lines are read, where state lives, the anonymous install count |
 | `network` | the port, the bind address, allowed hosts and origins |
 | `mux` | which multiplexer this collie mirrors, and where it lives |
 | `access` | the Tailscale identity gate, the device header, the audit trail, the secret mask |
@@ -107,6 +107,16 @@ The config file groups every setting under a `[section]`. The environment name o
 The durable agents one Collie runs beside its multiplexer are not in `config.toml`. Each is one entry in
 `sources.json`, in the same folder as `.env` ([Durable agents](durable-agents.md#attach-a-durable-agent)).
 | `stt` | speech-to-text, absent until `collie stt setup` runs |
+
+### The anonymous install count
+
+Two keys in `[bridge]` set the daily install ping that
+[What leaves your machine](security.md#what-leaves-your-machine) describes.
+
+| key | environment | default | what it does |
+| --- | --- | --- | --- |
+| `telemetry` | `COLLIE_TELEMETRY` | on | `false` or `0` turns the ping off and deletes the install ID. The file also takes the words `off`, `no`, `on` and `yes` as strings, and a word Collie does not know reads as off. `DO_NOT_TRACK=1` and the switch in Settings turn it off too, and any off setting wins over an on setting. Each switch changes one machine. For a service, set `COLLIE_TELEMETRY=0` in that instance's `.env`, not in your shell profile. |
+| `telemetry_url` | `COLLIE_TELEMETRY_URL` | Collie's own address | Where the ping goes, for a test server. An address that is not `https` (or `http` on `127.0.0.1` or `localhost`) turns the ping off. |
 
 To read history from multiple agent home directories, provide a comma-separated list in
 `COLLIE_TRANSCRIPT_ROOT`.

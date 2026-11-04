@@ -3828,6 +3828,34 @@ describe("the update write gate — POST api/update rides the pane path's own ga
     expect(handler).not.toContain("updateAction");
   });
 
+  test("api/telemetry: a read-gated GET, a write-gated POST with a request id and a replay, and the route sends no ping (M86 spec 01)", () => {
+    const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
+    const at = src.indexOf('if (pathname === "/api/telemetry" && (req.method === "GET" || req.method === "POST"))');
+    expect(at).toBeGreaterThan(0);
+    const handler = src.slice(at, src.indexOf("\n      }\n", at));
+    // Both methods answer 503 without the seam, like the release line.
+    expect(handler).toContain('text("telemetry unavailable", 503)');
+    expect(handler).toContain('guard(req, cfg, "read", pairingGate)');
+    expect(handler).toContain('const denied = browserGate("write");');
+    expect(handler).toContain("parseTelemetryRequest(body)");
+    // A body with no setting is 400; a body with a setting and no request id is 400 too.
+    expect(handler).toContain("parsed.setting === null");
+    expect(handler).toContain("parsed.requestId === null");
+    expect(handler).toContain("jsonError(");
+    expect(handler).toContain("400,");
+    // Both refusals carry an api error code the phone translates, never a bare `{ error }` (M86 spec 02).
+    expect(handler).toContain('apiError("telemetry.setting_invalid")');
+    expect(handler).toContain('apiError("telemetry.request_id_required")');
+    expect(handler).not.toContain("jsonError({ error:");
+    // The replay answers the same body again and records nothing.
+    expect(handler).toContain("ping.choose({ setting: parsed.setting, requestId: parsed.requestId })");
+    expect(handler).toContain("if (!result.replay) {");
+    expect(handler).toContain("receipt.replay = true;");
+    // Only the timer sends: the route never reaches the network.
+    expect(handler).not.toContain("fetch(");
+    expect(handler).not.toContain("tick(");
+  });
+
   test("update check GET: an unknown latest triggers a bounded on-demand poll before answering", () => {
     const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
     const checkAt = src.indexOf('if (pathname === "/api/update/check" && req.method === "GET")');
