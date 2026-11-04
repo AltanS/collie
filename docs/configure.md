@@ -127,6 +127,13 @@ homes; `COLLIE_PI_ROOT` can name a comma-separated list of session directories.
 Gentle Shell keeps the sessions of the pi it bundles in the last of these, so they open in
 Chat with no setting.
 
+For an Oh My Pi profile that stores sessions inside a project, add that profile's `sessions`
+directory to `COLLIE_PI_ROOT` in the bridge's `.env`, then restart that Collie instance. The bridge
+does not inherit a terminal's project-local profile configuration. This setting replaces the
+default list, so include the default session directories as well if other panes use them.
+Discovery recognises symlink spellings of the same home or working directory, but still refuses
+to guess between two unnamed pi or Oh My Pi sessions in the same folder.
+
 [`docs/deployment.md`](deployment.md) covers custom domains and reverse proxies. Collie enforces a
 same-origin policy, so any custom hostname or external TLS terminator must be explicitly
 allowlisted:

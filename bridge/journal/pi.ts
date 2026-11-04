@@ -19,7 +19,7 @@
 // treated as hostile input and confined to pi's own sessions root like everything else — see
 // journal/files.ts. The id fallback is supported too, since the hook uses it when no file is open yet.
 
-import { lstat, readdir, realpath, stat } from "node:fs/promises";
+import { lstat, readdir, stat } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 
 import type { CacheProbe } from "../cache/engine.ts";
@@ -29,6 +29,7 @@ import { asRecord, asText, FileSum, probeTail, tokenCount, walkBack } from "./ca
 import { harnessProcessOf } from "../launch-window.ts";
 import { processStartMs } from "./process-start.ts";
 import { type MeasuredContext, piAgentDirLookups, WindowCatalog } from "./model-window.ts";
+import { HOST, isInside } from "../host.ts";
 import {
   containedRealpath,
   containedRealpathIn,
@@ -36,6 +37,7 @@ import {
   head as fileHead,
   loadTail,
   readSinceFile,
+  realpathOf,
   rootList,
   statFile,
 } from "./files.ts";
@@ -1118,8 +1120,10 @@ export class PiTranscriptSource implements TranscriptSource {
    *
    * pi and Oh My Pi file a session under a folder named from the cwd, and write the cwd into the
    * session row near the top of the log. The folder name is lossy (`/` and `-` both become `-`), so
-   * it only narrows the search: a log counts only when its session row names exactly this cwd. The
-   * newest such log (by mtime, so a resumed session that is being written wins) is the pane's.
+   * it only narrows the search: the session row must match the cwd lexically, or resolve to this pane's
+   * cwd. An exact lexical match still works when that path no longer exists; a lossy folder name alone
+   * never identifies a session. The newest matching log (by mtime, so a resumed session being written
+   * wins) is the pane's.
    * Bounded: a few folders read, {@link MAX_DISCOVER_CANDIDATES} files stat'd, and at most
    * {@link MAX_DISCOVER_READS} heads read, newest first.
    *
@@ -1142,18 +1146,19 @@ export class PiTranscriptSource implements TranscriptSource {
    */
   async discoverSession(cwd: string, hints?: DiscoverHints): Promise<AgentSessionRef | null> {
     if (!isAbsolute(cwd)) return null;
-    const labelled = await this.labelledSession(cwd, hints);
+    const discovery = await piDiscoveryContext(cwd, this.roots, this.places);
+    const labelled = await this.labelledSession(discovery, hints);
     if (labelled !== null) return labelled;
-    const named = await this.namedSession(cwd, hints?.processes);
+    const named = await this.namedSession(discovery, hints?.processes);
     if (named !== null) return named;
     if (hints?.shared === true) return null;
-    const folders = piSessionFolderNames(cwd, this.places);
     const candidates: { id: string; path: string; root: string; mtimeMs: number }[] = [];
-    for (const root of this.roots) {
-      for (const folder of folders) {
+    for (const root of discovery.roots) {
+      if (root.realPath === null) continue;
+      for (const folder of discovery.folders) {
         let names: string[];
         try {
-          names = await readdir(join(root, folder));
+          names = await readdir(join(root.path, folder));
         } catch {
           continue;
         }
@@ -1163,10 +1168,10 @@ export class PiTranscriptSource implements TranscriptSource {
           if (candidates.length >= MAX_DISCOVER_CANDIDATES) break;
           const id = /_([^_/]+)\.jsonl$/u.exec(name)?.[1];
           if (id === undefined || !isPiSessionId(id)) continue;
-          const path = join(root, folder, name);
+          const path = join(root.path, folder, name);
           const meta = await statFile(path);
           if (meta === null) continue;
-          candidates.push({ id: id.toLowerCase(), path, root, mtimeMs: meta.mtimeMs });
+          candidates.push({ id: id.toLowerCase(), path, root: root.realPath!, mtimeMs: meta.mtimeMs });
         }
       }
     }
@@ -1179,9 +1184,9 @@ export class PiTranscriptSource implements TranscriptSource {
       eligible.push(candidate);
     }
     for (const candidate of eligible) {
-      const contained = await containedRealpath(candidate.path, candidate.root);
-      if (contained === null) continue;
-      if ((await sessionCwdOf(contained)) !== cwd) continue;
+      const contained = await discovery.realpath(candidate.path);
+      if (contained === null || !isInside(HOST, contained, candidate.root)) continue;
+      if (!(await sessionCwdMatches(await sessionCwdOf(contained), discovery))) continue;
       this.pathCache.set(candidate.id, contained);
       return { kind: "id", value: candidate.id };
     }
@@ -1196,14 +1201,14 @@ export class PiTranscriptSource implements TranscriptSource {
    * is filed under, a session id for a name. A relative path, or any failure, is null and falls to the
    * next step. Never throws.
    */
-  private async labelledSession(cwd: string, hints: DiscoverHints | undefined): Promise<AgentSessionRef | null> {
+  private async labelledSession(discovery: PiDiscoveryContext, hints: DiscoverHints | undefined): Promise<AgentSessionRef | null> {
     if (hints?.labels === undefined || hints.processes === undefined) return null;
     const harness = harnessProcessOf(hints.processes, PI_BINARIES)?.harness;
     if (harness === undefined) return null;
     const value = hints.labels[`${harness}.session_file`];
     if (value === undefined || !isAbsolute(value)) return null;
     try {
-      return await this.namedByPath(value, piSessionFolderNames(cwd, this.places));
+      return await this.namedByPath(value, discovery);
     } catch {
       return null;
     }
@@ -1218,32 +1223,32 @@ export class PiTranscriptSource implements TranscriptSource {
    * Anything else is null, which reads as "the command line names nothing" and falls to the folder walk
    * (or the shared-folder refusal). Never throws.
    */
-  private async namedSession(cwd: string, processes: readonly ForegroundProcess[] | undefined): Promise<AgentSessionRef | null> {
+  private async namedSession(discovery: PiDiscoveryContext, processes: readonly ForegroundProcess[] | undefined): Promise<AgentSessionRef | null> {
     const value = resumeValueOf(processes);
     if (value === null) return null;
-    const folders = piSessionFolderNames(cwd, this.places);
     try {
-      if (isPiSessionId(value)) return await this.namedById(value.toLowerCase(), folders);
-      return await this.namedByPath(isAbsolute(value) ? value : join(cwd, value), folders);
+      if (isPiSessionId(value)) return await this.namedById(value.toLowerCase(), discovery);
+      return await this.namedByPath(isAbsolute(value) ? value : join(discovery.cwd, value), discovery);
     } catch {
       return null;
     }
   }
 
-  private async namedById(id: string, folders: readonly string[]): Promise<AgentSessionRef | null> {
+  private async namedById(id: string, discovery: PiDiscoveryContext): Promise<AgentSessionRef | null> {
     const suffix = `_${id}.jsonl`;
-    for (const root of this.roots) {
-      for (const folder of folders) {
+    for (const root of discovery.roots) {
+      if (root.realPath === null) continue;
+      for (const folder of discovery.folders) {
         let names: string[];
         try {
-          names = await readdir(join(root, folder));
+          names = await readdir(join(root.path, folder));
         } catch {
           continue;
         }
         const hit = names.find((name) => name.toLowerCase().endsWith(suffix));
         if (hit === undefined) continue;
-        const contained = await containedRealpath(join(root, folder, hit), root);
-        if (contained === null) continue;
+        const contained = await discovery.realpath(join(root.path, folder, hit));
+        if (contained === null || !isInside(HOST, contained, root.realPath)) continue;
         this.pathCache.set(id, contained);
         return { kind: "id", value: id };
       }
@@ -1251,16 +1256,22 @@ export class PiTranscriptSource implements TranscriptSource {
     return null;
   }
 
-  private async namedByPath(path: string, folders: readonly string[]): Promise<AgentSessionRef | null> {
+  private async namedByPath(path: string, discovery: PiDiscoveryContext): Promise<AgentSessionRef | null> {
     const id = /_([^_/\\]+)\.jsonl$/u.exec(basename(path))?.[1];
     if (id === undefined || !isPiSessionId(id)) return null;
-    for (const root of this.roots) {
-      const contained = await containedRealpath(path, root);
-      if (contained === null) continue;
-      const realRoot = await realpath(root).catch(() => null);
-      if (realRoot === null) continue;
+    const contained = await discovery.realpath(path);
+    if (contained === null) return null;
+    for (const root of discovery.roots) {
+      if (root.realPath === null || !isInside(HOST, contained, root.realPath)) continue;
       // Directly under a folder this cwd is filed under, not merely somewhere in the root.
-      if (!folders.some((folder) => dirname(contained) === join(realRoot, folder))) continue;
+      let matchesFolder = false;
+      for (const folder of discovery.folders) {
+        if (await discovery.samePath(dirname(contained), join(root.realPath, folder))) {
+          matchesFolder = true;
+          break;
+        }
+      }
+      if (!matchesFolder) continue;
       this.pathCache.set(id.toLowerCase(), contained);
       return { kind: "id", value: id.toLowerCase() };
     }
@@ -1465,6 +1476,58 @@ export function piSessionFolderNames(cwd: string, places: PiPlaces): string[] {
   const underHome = inside(places.home, cwd);
   if (underHome !== null) names.push(`-${encodePath(underHome)}`);
   return [...new Set(names)];
+}
+
+interface PiDiscoveryRoot {
+  readonly path: string;
+  readonly realPath: string | null;
+}
+
+interface PiDiscoveryContext {
+  readonly cwd: string;
+  readonly realCwd: string | null;
+  readonly folders: readonly string[];
+  readonly roots: readonly PiDiscoveryRoot[];
+  realpath(path: string): Promise<string | null>;
+  samePath(left: string, right: string): Promise<boolean>;
+}
+
+/** Canonical filesystem identities and folder aliases valid for one bounded discovery. */
+async function piDiscoveryContext(cwd: string, roots: readonly string[], places: PiPlaces): Promise<PiDiscoveryContext> {
+  const paths = new Map<string, Promise<string | null>>();
+  const realpath = (path: string): Promise<string | null> => {
+    let found = paths.get(path);
+    if (found === undefined) {
+      found = realpathOf(path).catch(() => null);
+      paths.set(path, found);
+    }
+    return found;
+  };
+  const samePath = async (left: string, right: string): Promise<boolean> => {
+    if (left === right) return true;
+    const [realLeft, realRight] = await Promise.all([realpath(left), realpath(right)]);
+    return realLeft !== null && realRight !== null && isInside(HOST, realLeft, realRight) && isInside(HOST, realRight, realLeft);
+  };
+  const [realCwd, realHome, realTmp, rootPaths] = await Promise.all([
+    realpath(cwd),
+    isAbsolute(places.home) ? realpath(places.home) : null,
+    isAbsolute(places.tmp) ? realpath(places.tmp) : null,
+    Promise.all(roots.map(async (path) => ({ path, realPath: await realpath(path) }))),
+  ]);
+  const folders = new Set(piSessionFolderNames(cwd, places));
+  if (realCwd !== null) {
+    for (const name of piSessionFolderNames(realCwd, { home: realHome ?? "", tmp: realTmp ?? "" })) folders.add(name);
+  }
+  return { cwd, realCwd, folders: [...folders], roots: rootPaths, realpath, samePath };
+}
+
+/** A session row must name this cwd lexically, or resolve to its known filesystem identity. */
+async function sessionCwdMatches(sessionCwd: string | null, discovery: PiDiscoveryContext): Promise<boolean> {
+  if (sessionCwd === null) return false;
+  if (sessionCwd === discovery.cwd || sessionCwd === discovery.realCwd) return true;
+  if (!isAbsolute(sessionCwd) || discovery.realCwd === null) return false;
+  const realSessionCwd = await discovery.realpath(sessionCwd);
+  return realSessionCwd !== null && isInside(HOST, realSessionCwd, discovery.realCwd) && isInside(HOST, discovery.realCwd, realSessionCwd);
 }
 
 /** The cwd a log's session row names, or null when its head has none. */
