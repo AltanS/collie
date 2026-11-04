@@ -15,8 +15,8 @@ afterEach(() => {
 });
 
 const panes: WalkyPane[] = [
-  { session: "main", paneId: "w1:p1", agent: true, harness: "agent-x", label: "repo#a", state: "idle", instance: "aaaa", terminal: true },
-  { session: "main", paneId: "w1:p2", agent: true, harness: "agent-y", label: "repo#b", state: "idle", instance: "aaaa", terminal: true },
+  { session: "main", paneId: "w1:p1", agent: true, harness: "agent-x", label: "repo#a", state: "idle", activeAt: null, instance: "aaaa", terminal: true },
+  { session: "main", paneId: "w1:p2", agent: true, harness: "agent-y", label: "repo#b", state: "idle", activeAt: null, instance: "aaaa", terminal: true },
 ];
 const host: WalkyHost = { panes: () => panes, send: async () => ({ outcome: "sent" }), sendState: () => null, cancelHeld: () => undefined };
 
@@ -88,7 +88,7 @@ describe("`who` for the Crew page", () => {
   test("adds the shell panes a broadcast skips, and the refusal counts with no body", async () => {
     const root = mkdtempSync(join(tmpdir(), "walky-routes-"));
     roots.push(root);
-    const withShell: WalkyHost = { ...host, panes: () => [...panes, { session: "main", paneId: "w1:p3", agent: false, harness: null, label: "repo#c", state: "idle", instance: "aaaa", terminal: true }] };
+    const withShell: WalkyHost = { ...host, panes: () => [...panes, { session: "main", paneId: "w1:p3", agent: false, harness: null, label: "repo#c", state: "idle", activeAt: null, instance: "aaaa", terminal: true }] };
     const walky = new WalkyService({ log: new WalkyLog(join(root, "walky")), host: withShell, memberId: null, enabled: () => true, machine: "desk", keyPem: () => null, now: () => 7 });
     await walky.send({ id: "wt_aaaaaaaaaaa1", to: "local/w9:p9", body: "secret words", replyTo: null }, { kind: "operator", label: "cli" });
     const body = await walkyWhoRoute(walky, null).json();

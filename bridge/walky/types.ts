@@ -46,6 +46,12 @@ export interface WalkyMessage {
   readonly at: number;
   /** Cleaned, at most {@link WALKY_BODY_MAX} characters. */
   readonly body: string;
+  /**
+   * True when the sender asked a fan-out (a scope, `all`, `<member>/all`) to type into resting panes too
+   * (M85). Absent otherwise: a message without it is the message every older bridge knows. Signed when
+   * present (canonical.ts), so a crew hop cannot add or drop it.
+   */
+  readonly wake?: true;
   /** The member id whose key made `signature`; null when unsigned (solo). */
   readonly signer: string | null;
   /** Base64 ECDSA P-256 SHA-256 over the canonical string (canonical.ts). */
@@ -82,6 +88,9 @@ export function movesForward(held: WalkyReceipt, next: WalkyReceipt): boolean {
   if (next.state !== held.state || next.at > held.at) return true;
   return next.at === held.at && held.reason === undefined && next.reason !== undefined;
 }
+
+/** The reason of a fan-out message left in the inbox of a pane that rests (M85). */
+export const RESTING = "resting";
 
 /** The longest receipt `reason` read or written (CREW_PROTOCOL §21, added 2026-10-18). */
 export const RECEIPT_REASON_MAX = 120;
@@ -161,6 +170,12 @@ export interface WalkySkipped {
   readonly memberId: string;
   readonly machine: string;
   readonly label: string;
+  /**
+   * Why a broadcast leaves the pane out: `shell`, a bare shell that never receives a message, or
+   * `resting` (M85), an agent that finished and has been quiet for 15 minutes (`REST_MS`, deliver.ts); a broadcast keeps its
+   * message in the inbox only unless the sender asks to wake it. Absent from an older bridge: a shell.
+   */
+  readonly reason?: "shell" | "resting";
 }
 
 /**

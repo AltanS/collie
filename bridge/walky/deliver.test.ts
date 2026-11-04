@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { mintIdentity } from "../crew/identity.ts";
-import { verifyMessage } from "./canonical.ts";
+import { canonicalMessage, verifyMessage } from "./canonical.ts";
 import { loadProfiles, profileFor, type VersionRange } from "../../web/src/lib/surface/profile.ts";
 import type { Surface } from "../../web/src/lib/surface/surface.ts";
 import { muxAck, muxOk, type MuxAck, type MuxGrid, type MuxOutcome } from "../mux/types.ts";
@@ -14,12 +14,12 @@ import { RowRing, SendProtocol, SessionLocks } from "../surface/protocol.ts";
 import { SurfaceShadow } from "../surface/shadow.ts";
 import type { AgentView } from "../types.ts";
 import { RequestStore } from "../surface/requests.ts";
-import { CANCELLED_BY_SENDER, DROPPED_BY_OWNER, HELD_LIMIT_MS, HELD_POLL_MS, reasonOf, sendIdOf, type SendResult, type WalkyHold, type WalkyHost, type WalkyPane } from "./deliver.ts";
+import { CANCELLED_BY_SENDER, DROPPED_BY_OWNER, HELD_LIMIT_MS, HELD_POLL_MS, isResting, REST_MS, reasonOf, sendIdOf, type SendResult, type WalkyHold, type WalkyHost, type WalkyPane } from "./deliver.ts";
 import { WalkyLog } from "./log.ts";
 import { RateLimiter } from "./rate.ts";
 import { OUT_OF_SCOPE } from "./refusals.ts";
 import { NOT_THE_SENDER, WalkyService, type WalkyServiceDeps } from "./service.ts";
-import type { WalkyTarget } from "./types.ts";
+import { RESTING, type WalkyTarget } from "./types.ts";
 
 const roots: string[] = [];
 afterEach(() => {
@@ -27,7 +27,7 @@ afterEach(() => {
 });
 
 function pane(paneId: string, over: Partial<WalkyPane> = {}): WalkyPane {
-  return { session: "main", paneId, agent: true, harness: "agent-x", label: `repo#${paneId}`, state: "idle", instance: "aaaa", terminal: true, ...over };
+  return { session: "main", paneId, agent: true, harness: "agent-x", label: `repo#${paneId}`, state: "idle", activeAt: null, instance: "aaaa", terminal: true, ...over };
 }
 
 class FakeHost implements WalkyHost {
@@ -1633,5 +1633,118 @@ describe("the pair limit is a setting", () => {
     expect(await states("wt_aaaaaaaaaaa2", "local/w1:p1", panes[1]!)).toEqual(["accepted"]);
     expect(await states("wt_aaaaaaaaaaa3", "local/w1:p2", panes[0]!)).toEqual(["refused pair limit"]);
     expect(await states("wt_aaaaaaaaaaa4", "local/w1:p3", panes[0]!)).toEqual(["accepted"]);
+  });
+});
+
+describe("resting panes (M85 spec 01)", () => {
+  const NOW = 1_786_000_000_000;
+  const MIN = 60_000;
+  /** A pane whose status last changed `quiet` minutes before the rig's clock. */
+  const quiet = (paneId: string, minutes: number, over: Partial<WalkyPane> = {}) => pane(paneId, { label: "repo#main", state: "done", activeAt: NOW - minutes * MIN, ...over });
+  const agentOf = (from: WalkyPane) => ({ kind: "agent" as const, pane: from });
+
+  test("isResting: done or idle, quiet for 15 minutes or more; any other state or a missing time never rests", () => {
+    expect(isResting({ state: "done", activeAt: NOW - REST_MS }, NOW)).toBe(true);
+    expect(isResting({ state: "idle", activeAt: NOW - REST_MS - 1 }, NOW)).toBe(true);
+    expect(isResting({ state: "done", activeAt: NOW - REST_MS + 1 }, NOW)).toBe(false);
+    for (const state of ["working", "blocked", "unknown", "", "weird"]) expect(isResting({ state, activeAt: NOW - 600 * MIN }, NOW)).toBe(false);
+    expect(isResting({ state: "done", activeAt: null }, NOW)).toBe(false);
+    // A clock that ran backwards, or a time in the future, is not rest.
+    expect(isResting({ state: "done", activeAt: NOW + MIN }, NOW)).toBe(false);
+    expect(isResting({ state: "done", activeAt: Number.NaN }, NOW)).toBe(false);
+    expect(REST_MS).toBe(15 * MIN);
+  });
+
+  test("a done pane 20 minutes quiet in `here` ends inbox-only: resting, keeps the inbox entry, and gets no Send Protocol call", async () => {
+    const panes = [quiet("w1:p1", 0, { state: "working" }), quiet("w1:p2", 20)];
+    const r = rig(panes);
+    const answer = await r.service.send(send("wt_aaaaaaaaaaa1", "here"), agentOf(panes[0]!));
+    expect(answer).toMatchObject({ ok: true, receipts: [{ target: "local/w1:p2", state: "inbox-only", reason: RESTING }] });
+    await r.service.deliverer.settled();
+    expect(r.host.sends).toEqual([]);
+    expect(r.service.status("wt_aaaaaaaaaaa1").receipts[0]).toMatchObject({ state: "inbox-only", reason: "resting" });
+    expect(r.service.inbox("main", "w1:p2", "aaaa", false).map((entry) => entry.id)).toEqual(["wt_aaaaaaaaaaa1"]);
+    expect(r.service.status("wt_aaaaaaaaaaa1").totals).toEqual({ "inbox-only": 1 });
+  });
+
+  test("the same pane 10 minutes quiet is typed", async () => {
+    const panes = [quiet("w1:p1", 0, { state: "working" }), quiet("w1:p2", 10)];
+    const r = rig(panes);
+    await r.service.send(send("wt_aaaaaaaaaaa1", "here"), agentOf(panes[0]!));
+    await r.service.deliverer.settled();
+    expect(r.host.sends.map((sent) => sent.pane)).toEqual(["w1:p2"]);
+    expect(r.service.status("wt_aaaaaaaaaaa1").receipts[0]?.state).toBe("delivered");
+  });
+
+  test("an unknown pane 20 minutes quiet, and a pane with no activity time, are typed", async () => {
+    const panes = [quiet("w1:p1", 0, { state: "working" }), quiet("w1:p2", 20, { state: "unknown" }), quiet("w1:p3", 0, { activeAt: null })];
+    const r = rig(panes);
+    await r.service.send(send("wt_aaaaaaaaaaa1", "here"), agentOf(panes[0]!));
+    await r.service.deliverer.settled();
+    expect(r.host.sends.map((sent) => sent.pane)).toEqual(["w1:p2", "w1:p3"]);
+  });
+
+  test("`wake: true` types the 20 minute pane, and the message carries the flag", async () => {
+    const panes = [quiet("w1:p1", 0, { state: "working" }), quiet("w1:p2", 20)];
+    const r = rig(panes);
+    await r.service.send({ ...send("wt_aaaaaaaaaaa1", "here"), wake: true }, agentOf(panes[0]!));
+    await r.service.deliverer.settled();
+    expect(r.host.sends.map((sent) => sent.pane)).toEqual(["w1:p2"]);
+    expect(r.service.status("wt_aaaaaaaaaaa1").message?.wake).toBe(true);
+    // Without the flag the message has no `wake` key at all.
+    await r.service.send(send("wt_aaaaaaaaaaa2", "here"), agentOf(panes[0]!));
+    expect(r.service.status("wt_aaaaaaaaaaa2").message).not.toHaveProperty("wake");
+  });
+
+  test("a direct send to the resting pane's own address is typed", async () => {
+    const r = rig([quiet("w1:p2", 20)]);
+    await r.service.send(send("wt_aaaaaaaaaaa1", "local/w1:p2"), operator);
+    await r.service.deliverer.settled();
+    expect(r.host.sends.map((sent) => sent.pane)).toEqual(["w1:p2"]);
+    expect(r.service.status("wt_aaaaaaaaaaa1").receipts[0]?.state).toBe("delivered");
+  });
+
+  test("the operator's `all` follows the same rule, and `wake` turns it off", async () => {
+    const panes = [quiet("w1:p1", 20), quiet("w1:p2", 20, { state: "idle" }), quiet("w1:p3", 2), quiet("w1:p4", 0, { state: "working" })];
+    const r = rig(panes);
+    const answer = await r.service.send(send("wt_aaaaaaaaaaa1", "all"), operator);
+    expect(answer.ok && answer.receipts.map((receipt) => `${receipt.target} ${receipt.state}${receipt.reason === undefined ? "" : `: ${receipt.reason}`}`)).toEqual([
+      "local/w1:p1 inbox-only: resting",
+      "local/w1:p2 inbox-only: resting",
+      "local/w1:p3 accepted",
+      "local/w1:p4 accepted",
+    ]);
+    await r.service.deliverer.settled();
+    expect(r.host.sends.map((sent) => sent.pane)).toEqual(["w1:p3", "w1:p4"]);
+    r.host.sends.length = 0;
+    await r.service.send({ ...send("wt_aaaaaaaaaaa2", "all"), wake: true }, operator);
+    await r.service.deliverer.settled();
+    expect(r.host.sends.map((sent) => sent.pane)).toEqual(["w1:p1", "w1:p2", "w1:p3", "w1:p4"]);
+  });
+
+  test("the same id again answers the stored receipts and types nothing", async () => {
+    const panes = [quiet("w1:p1", 0, { state: "working" }), quiet("w1:p2", 20)];
+    const r = rig(panes);
+    await r.service.send(send("wt_aaaaaaaaaaa1", "here"), agentOf(panes[0]!));
+    const again = await r.service.send(send("wt_aaaaaaaaaaa1", "here"), agentOf(panes[0]!));
+    expect(again).toMatchObject({ ok: true, receipts: [{ target: "local/w1:p2", state: "inbox-only", reason: "resting" }] });
+    expect(r.host.sends).toEqual([]);
+  });
+
+  test("the broadcast's skipped list names shells and resting panes by reason", () => {
+    const r = rig([quiet("w1:p1", 20), quiet("w1:p2", 2), quiet("w1:p3", 0, { agent: false, harness: null, state: "idle" }), quiet("w1:p4", 20, { state: "working" })]);
+    expect(r.service.skipped().map((skipped) => `${skipped.address} ${skipped.reason}`)).toEqual(["local/w1:p1 resting", "local/w1:p3 shell"]);
+  });
+
+  test("a signed message with `wake` verifies, and without it the string is the one every older bridge computes", () => {
+    const identity = mintIdentity({ commonName: "collie-desk" });
+    const r = rig([quiet("w1:p1", 0)], { memberId: "desk", keyPem: () => identity.keyPem });
+    const plain = r.service.compose({ ...send("wt_aaaaaaaaaaa1", "all"), to: "all" }, operator);
+    const woken = r.service.compose({ ...send("wt_aaaaaaaaaaa1", "all"), to: "all", wake: true }, operator);
+    expect(plain !== null && verifyMessage(plain, identity.certPem)).toBe(true);
+    expect(woken !== null && verifyMessage(woken, identity.certPem)).toBe(true);
+    expect(canonicalMessage(woken!)).toBe(`${canonicalMessage({ ...woken!, wake: undefined } as never)}\nwake`);
+    // Dropping the flag in transit breaks the signature: a hop cannot unset it.
+    expect(verifyMessage({ ...woken!, wake: undefined } as never, identity.certPem)).toBe(false);
   });
 });

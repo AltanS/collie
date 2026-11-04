@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import type { JsonValue } from "../json.ts";
-import { parseWalkyRequest, readCrewDelivery, readOutcomesPush, readReceipt, readWalkyCursor, SENDER_CERT_MAX, SIGNATURE_MAX } from "./parse.ts";
+import { parsePhoneSend, parseWalkyRequest, readMessage, readCrewDelivery, readOutcomesPush, readReceipt, readWalkyCursor, SENDER_CERT_MAX, SIGNATURE_MAX } from "./parse.ts";
 import type { WalkyMessage, WalkyReceipt } from "./types.ts";
 
 // The crew readers added on 2026-10-18 (CREW_PROTOCOL §21): the report's ack cursor, the delivery's
@@ -113,3 +113,21 @@ describe("a walky send line cannot ask to steer", () => {
   });
 });
 
+
+describe("wake on the wire (M85)", () => {
+  const base = { v: 1, op: "send", markers: [], id: "wt_aaaaaaaaaaa1", to: "here", body: "hi", replyTo: null };
+  test("a send line and the phone's body carry `wake: true` through, and anything else reads as false", () => {
+    expect(parseWalkyRequest(JSON.stringify({ ...base, wake: true }))).toMatchObject({ op: "send", wake: true });
+    for (const wake of [false, "true", 1, null]) expect(parseWalkyRequest(JSON.stringify({ ...base, wake }))).toMatchObject({ wake: false });
+    expect(parseWalkyRequest(JSON.stringify(base))).toMatchObject({ wake: false });
+    expect(parsePhoneSend({ id: "wt_aaaaaaaaaaa1", to: "all", body: "hi", wake: true })).toMatchObject({ wake: true });
+    expect(parsePhoneSend({ id: "wt_aaaaaaaaaaa1", to: "all", body: "hi" })).toMatchObject({ wake: false });
+  });
+
+  test("a message read back from the log or a crew hop keeps `wake: true` and no other value", () => {
+    const message = { v: 1, id: "wt_aaaaaaaaaaa1", kind: "operator", from: { memberId: null, address: null, harness: null, label: "phone" }, to: "all", replyTo: null, at: 1, body: "hi", signer: null, signature: null };
+    expect(readMessage({ ...message, wake: true })).toMatchObject({ wake: true });
+    expect(readMessage(message)).not.toHaveProperty("wake");
+    expect(readMessage({ ...message, wake: "yes" })).not.toHaveProperty("wake");
+  });
+});
