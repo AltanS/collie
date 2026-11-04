@@ -86,6 +86,9 @@ import type {
   GoBackStartResponse,
   ReleaseLine,
   ReleaseLineReceipt,
+  TelemetryReceipt,
+  TelemetrySetting,
+  TelemetryView,
   UploadResponse,
   WorktreeBaseChoice,
   WorktreeCreateResponse,
@@ -2476,6 +2479,26 @@ export function setReleaseLine(a: { line: ReleaseLine; requestId: string }): Pro
   return req<ReleaseLineReceipt>("/api/update/line", {
     method: "POST",
     body: JSON.stringify({ line: a.line, requestId: a.requestId }),
+  });
+}
+
+/**
+ * The anonymous install count's state (M86 spec 02): on or off, which switch decided, and the exact
+ * message the next ping would send. A read-gated GET that sends nothing.
+ */
+export function fetchTelemetry(signal?: AbortSignal): Promise<TelemetryView> {
+  return req<TelemetryView>("/api/telemetry", { signal });
+}
+
+/**
+ * Set this machine's install-count switch from the phone (M86 spec 02). The answer is the state the
+ * machine now holds, which the card shows as it is. One request id per tap, reused on a retry of the
+ * same tap, so a repeated request answers with the same receipt.
+ */
+export function setTelemetry(a: { setting: TelemetrySetting; requestId: string }): Promise<TelemetryReceipt> {
+  return req<TelemetryReceipt>("/api/telemetry", {
+    method: "POST",
+    body: JSON.stringify({ setting: a.setting, requestId: a.requestId }),
   });
 }
 

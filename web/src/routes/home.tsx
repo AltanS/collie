@@ -18,6 +18,7 @@ import { BuildStamp } from "@/components/build-stamp";
 import { CrewFooterLink } from "@/components/crew-footer-link";
 import { useCrew } from "@/components/crew-provider";
 import { CrewTab } from "@/components/crew-tab";
+import { TelemetryNotice } from "@/components/telemetry-notice";
 import { UpdateBanner } from "@/components/update-banner";
 import { Fab } from "@/components/ui/fab";
 import { useAnySheetOpen } from "@/components/ui/sheet";
@@ -317,6 +318,8 @@ export function HomeRoute() {
             page gutter, not a full-bleed strip. Full-bleed it ran its left edge 16px outside the
             list it sat on top of — two left edges stacked, the loudest misalignment on the page. */}
         <ReadOnlyBanner device={data.device} />
+        {/* Once per device: the install count is on by default (M86 spec 02). Self-hides. */}
+        <TelemetryNotice />
 
         <main className="flex-1">
           {/* One list: every pane under the workspace it lives in, or one ranked list in Activity and

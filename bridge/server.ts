@@ -3781,14 +3781,14 @@ export function startServer(opts: {
           // re-checks every field of it before any of it is believed.
           body = (await req.json()) as JsonValue;
         } catch {
-          return jsonError({ error: "the telemetry setting must be on or off; nothing was changed" }, 400, req.headers.get("accept-encoding"));
+          return jsonError(apiError("telemetry.setting_invalid"), 400, req.headers.get("accept-encoding"));
         }
         const parsed = parseTelemetryRequest(body);
         if (parsed === null || parsed.setting === null) {
-          return jsonError({ error: "the telemetry setting must be on or off; nothing was changed" }, 400, req.headers.get("accept-encoding"));
+          return jsonError(apiError("telemetry.setting_invalid"), 400, req.headers.get("accept-encoding"));
         }
         if (parsed.requestId === null) {
-          return jsonError({ error: "this action needs a request id; nothing was changed" }, 400, req.headers.get("accept-encoding"));
+          return jsonError(apiError("telemetry.request_id_required"), 400, req.headers.get("accept-encoding"));
         }
         const result = ping.choose({ setting: parsed.setting, requestId: parsed.requestId });
         if (!result.replay) {

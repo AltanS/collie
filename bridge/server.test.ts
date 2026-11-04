@@ -3843,6 +3843,10 @@ describe("the update write gate — POST api/update rides the pane path's own ga
     expect(handler).toContain("parsed.requestId === null");
     expect(handler).toContain("jsonError(");
     expect(handler).toContain("400,");
+    // Both refusals carry an api error code the phone translates, never a bare `{ error }` (M86 spec 02).
+    expect(handler).toContain('apiError("telemetry.setting_invalid")');
+    expect(handler).toContain('apiError("telemetry.request_id_required")');
+    expect(handler).not.toContain("jsonError({ error:");
     // The replay answers the same body again and records nothing.
     expect(handler).toContain("ping.choose({ setting: parsed.setting, requestId: parsed.requestId })");
     expect(handler).toContain("if (!result.replay) {");

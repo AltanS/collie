@@ -248,6 +248,10 @@ export const ACK_MANIFEST = {
     channel: "inline",
     why: "The answer is the rollback run itself, followed in update mode through the same steps as an update (M60 spec 01), or a refusal (no previous build, a run already going) the operator reads on the confirm screen that asked. Neither survives a floating toast.",
   },
+  setTelemetry: {
+    channel: "inline",
+    why: "The answer is the state the machine holds now and the switch that decided it, a standing fact the Anonymous install count card states beside the switch, and a refusal the operator reads there too (components/telemetry-settings-card.tsx).",
+  },
   setReleaseLine: {
     channel: "inline",
     why: "The answer is the line this machine is on now, and what that means for it (an Edge build ahead of Stable, a Stable offer above): a standing fact the Release line card states beside the two buttons, and a refusal the operator reads there too (components/release-line-card.tsx).",
