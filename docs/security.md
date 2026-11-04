@@ -599,8 +599,8 @@ card.
 running bridge first and says so, because the bridge reads its own `.env` and your shell may differ.
 With no bridge running, it reads your shell and config file and says that.
 
-The ping is also off, with no setting from you, when `CI` is set, when `COLLIE_UPDATE_MIRROR` is
-set, in a development build, and when `COLLIE_TELEMETRY_URL` names an address that is not `https`
+The ping is also off, with no setting from you, when `CI` is set, when an update mirror (a
+test seam for release rehearsals) is set, in a development build, and when `COLLIE_TELEMETRY_URL` names an address that is not `https`
 (an `http` address on `127.0.0.1` or `localhost` is allowed, for tests).
 
 **Opt-outs are not counted.** When the ping is off, Collie sends no message about it and deletes the
