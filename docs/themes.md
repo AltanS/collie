@@ -37,7 +37,7 @@ light on the left and dark on the right.
 
   ![The Harbour theme on the Dashboard, light and dark.](images/themes/harbour-home.png)
 
-- **Collie New** is the Collie look made bolder and easier to read. It keeps the black and white of the dog mark, with the Atkinson Hyperlegible face for the text and Aldrich for the titles, stronger text and lines, roomy bold cards and a clear step between the page, the cards and the bars. The terminal draws a high-contrast Collie palette.
+- **Collie New** is the Collie look made bolder and easier to read. It keeps the black and white of the dog mark, with the Atkinson Hyperlegible face for the text and Aldrich for the titles, stronger text and lines, square bold cards and a clear step between the page, the cards and the bars. The terminal draws a high-contrast Collie palette.
 
 The table lists every word each theme uses. The first word of each list is today's look: `sharp`, `default`,
 `flat`, `page`, `rules` and `caps`. The words are explained under [Shape](#shape), [Look](#look)
@@ -47,11 +47,11 @@ and [Terminal palette](#terminal-palette).
 | --- | --- | --- | --- | --- | --- |
 | Typeface | Aldrich | IBM Plex Sans | Geist | Atkinson Hyperlegible Next | Atkinson Hyperlegible Next |
 | Display face | the typeface | IBM Plex Sans | Atkinson Hyperlegible Next | Space Grotesk | Aldrich |
-| Radius | `sharp` | `sharp` | `round` | `soft` | `soft` |
-| Shadow | `default` | `flat` | `lifted` | `lifted` | `lifted` |
-| Density | `default` | `default` | `roomy` | `default` | `roomy` |
+| Radius | `sharp` | `sharp` | `round` | `soft` | `sharp` |
+| Shadow | `default` | `flat` | `lifted` | `lifted` | `default` |
+| Density | `default` | `default` | `roomy` | `default` | `default` |
 | Weight | `default` | `bold` | `default` | `default` | `bold` |
-| Border | `default` | `strong` | `default` | `default` | `strong` |
+| Border | `default` | `strong` | `default` | `default` | `default` |
 | Ground | `flat` | `flat` | `gradient` | `grain` | `flat` |
 | Chrome | `page` | `band` | `page` | `page` | `band` |
 | Rows | `rules` | `rules` | `cards` | `rules` | `cards` |

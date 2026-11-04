@@ -98,11 +98,11 @@
     "display": "aldrich"
   },
   "surface": {
-    "radius": "soft",
-    "shadow": "lifted",
-    "density": "roomy",
+    "radius": "sharp",
+    "shadow": "default",
+    "density": "default",
     "weight": "bold",
-    "border": "strong",
+    "border": "default",
     "ground": "flat",
     "chrome": "band",
     "rows": "cards",

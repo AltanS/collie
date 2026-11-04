@@ -3,8 +3,8 @@
 The reasoning behind `collie-new.json` (JSON has no comments). Collie New is Collie, bolder and
 easier to read. It is still black and white like the dog mark, with neutral greys, but every
 pair that carries text or an edge is held well above what `collie` measures, the face is Atkinson
-Hyperlegible Next, and the shape is the one people found easy in Harbour: soft corners, roomy
-steps, cards for rows. The review that started it is `experiments/theme-readability-2026-11-03/FINDINGS.md`
+Hyperlegible Next, and rows are cards. The shape stays Collie's: square corners, 1px lines and the
+default spacing (Altan, 2026-11-04: soft corners, 2px lines and roomy steps were too much). The review that started it is `experiments/theme-readability-2026-11-03/FINDINGS.md`
 (findings 4 and 6 to 10 are the ones a theme can fix). `collie` itself is untouched, byte for byte.
 
 Measured with `contrastReport` from `lib/theme/schema.ts` (plain sRGB alpha, the pessimistic side of
@@ -43,8 +43,8 @@ the light-mode inversion. The report passes all 58 checks in both halves.
   1.26 and 1.58.
 - `rule` is stronger than `border` in both halves: light 2.18 on the page against 1.53, dark 3.49
   against 2.27. It is the line that matters (a divider, a dashed ring); `collie`'s is 1.33 and 2.06.
-- `border: strong` draws every bare `border` and `divide-*` at 2px, so the 1.74 edge is also twice as
-  wide. Cards read as cards without a shadow, and the `lifted` shadow only adds depth.
+- Lines are 1px, as in `collie`; the edge comes from the 1.74 grey, not from width. Cards read as
+  cards without a shadow, and the default shadow only adds depth.
 - `ring` is oklch(0.5 0 0) light (5.28 on the page) and oklch(0.76 0 0) dark (8.93).
 - `pane-active` is not set, so the frame of the active pane column keeps the `:root` pair, as in
   Harbour. The file is version 2.
@@ -105,11 +105,11 @@ which is why it leaves the rows and the meta text.
 
 | token   | word     | why                                                                         |
 | ------- | -------- | --------------------------------------------------------------------------- |
-| radius  | soft     | Takes the edge off without turning a control into a pill; a marked row wears a ring. |
-| shadow  | lifted   | Cards stand off the page without a hard line; the border carries the edge.   |
-| density | roomy    | The step is 0.28rem, 12 percent more air; icons and the dog stay pinned.     |
+| radius  | sharp    | Collie's square corners; a marked row keeps its left bar.                      |
+| shadow  | default  | Collie's shadow; the border carries the edge.                                |
+| density | default  | Collie's 0.25rem step; roomy put too much space at the edges.                |
 | weight  | bold     | Medium is 600 and semibold 700, which Atkinson draws for real.                |
-| border  | strong   | A 2px edge in a 1.74 grey; the strongest word the table has.                 |
+| border  | default  | A 1px edge in a 1.74 grey; 2px read as too thick.                            |
 | ground  | flat     | The page stays one plain colour; no texture under the text.                   |
 | chrome  | band     | Header and bars on `secondary`, with a `border` edge: a step from the page.   |
 | rows    | cards    | Every row its own card and edge, with a gap; no frame of lines.               |
