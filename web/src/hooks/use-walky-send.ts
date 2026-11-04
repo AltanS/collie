@@ -12,7 +12,7 @@ export type WalkySendResult = { ok: true; receipts: WalkyReceipt[] } | { ok: fal
  *
  * The id is minted once, when an attempt starts, and a retry of the same attempt reuses it, so a
  * lost answer never types the message twice: the bridge returns the receipt it already wrote for an
- * id it has seen and types nothing. An attempt is the triple (`to`, `body`, `replyTo`). It ENDS the
+ * id it has seen and types nothing. An attempt is (`to`, `body`, `replyTo`, `wake`). It ENDS the
  * moment any answer arrives, whatever the receipt says, because a refusal is an answer too and the
  * person's next tap is a new intent with a new id. A thrown request (no answer) leaves the attempt
  * open, which is exactly the retry case. This is the same rule the Send Protocol's intent follows
@@ -26,15 +26,17 @@ export function useWalkySend() {
   const inFlight = useRef(false);
   const [sending, setSending] = useState(false);
 
-  const send = useCallback(async (to: string, body: string, replyTo?: string): Promise<WalkySendResult | null> => {
+  const send = useCallback(async (to: string, body: string, replyTo?: string, wake = false): Promise<WalkySendResult | null> => {
     if (inFlight.current) return null;
-    const key = JSON.stringify([to, body, replyTo ?? null]);
+    // `wake` (M85) is part of the attempt: the same text with another choice is a new intent and a new id.
+    const key = JSON.stringify([to, body, replyTo ?? null, wake]);
     if (attempt.current?.key !== key) attempt.current = { key, id: mintWalkyId() };
     const id = attempt.current.id;
     inFlight.current = true;
     setSending(true);
     try {
-      const receipts = await postWalky(replyTo === undefined ? { id, to, body } : { id, to, body, replyTo });
+      const base = replyTo === undefined ? { id, to, body } : { id, to, body, replyTo };
+      const receipts = await postWalky(wake ? { ...base, wake: true } : base);
       attempt.current = null;
       return { ok: true, receipts };
     } catch (thrown) {

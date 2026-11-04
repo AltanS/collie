@@ -2528,6 +2528,7 @@ export const pt: Dictionary = {
   "walky.state.onLead": "on its way, the lead reports the result",
   "walky.reason.draftPresent": "that session has unsent text",
   "walky.reason.turnRunning": "that session is busy",
+  "walky.reason.resting": "essa sessão está em repouso",
   "walky.state.delivered": "digitado no painel",
   "walky.state.inboxOnly": "aguardando na caixa de entrada, não digitado",
   "walky.state.inboxOnlyBecause": "aguardando na caixa de entrada, não digitado: {reason}",
@@ -2591,6 +2592,10 @@ export const pt: Dictionary = {
   "walky.crew.confirmBack": "Voltar",
   "walky.crew.skippedTitle": "Painéis de shell, ignorados",
   "walky.crew.skippedRow": "{label} ({address}): ignorado",
+  "walky.crew.resting": "Em repouso, não acordadas",
+  "walky.crew.restingWoken": "Em repouso, acordadas também",
+  "walky.crew.restingRow": "{label} ({address}): em repouso",
+  "walky.crew.wake": "Acordá-las também",
   "walky.crew.refusals": "Não enviado nesta máquina: {list}",
 
   "sent.button": "Sent",

@@ -1031,6 +1031,7 @@ export const handlers = [
     };
     const replyTo = asJsonString(body?.replyTo);
     if (replyTo !== undefined) posted.replyTo = replyTo;
+    if (body?.wake === true) posted.wake = true;
     walkyPosts.push(posted);
     if (posted.to === "all") {
       return HttpResponse.json({ receipts: ["bluefin/w1:p1", "minibuch/w2:p1"].map((to) => walkyReceipt(posted.id, to)) });
