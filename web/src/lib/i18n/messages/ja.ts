@@ -2858,4 +2858,5 @@ export const ja: Dictionary = {
   "telemetry.notice.dismiss": "お知らせを閉じる",
   "apiError.telemetry.setting_invalid": "インストール数の設定はオンまたはオフにしてください。何も変更されませんでした。",
   "apiError.telemetry.request_id_required": "この操作にはリクエストIDが必要です。何も変更されませんでした。",
+  "telemetry.card.cause.url": "オフ: このマシンの COLLIE_TELEMETRY_URL は https のアドレスではありません。",
 };

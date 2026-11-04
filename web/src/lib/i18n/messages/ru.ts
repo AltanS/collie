@@ -2818,4 +2818,5 @@ export const ru: Dictionary = {
   "telemetry.notice.dismiss": "Закрыть уведомление",
   "apiError.telemetry.setting_invalid": "Настройка подсчёта установок должна быть «включено» или «выключено». Ничего не изменено.",
   "apiError.telemetry.request_id_required": "Для этого действия требуется идентификатор запроса. Ничего не изменено.",
+  "telemetry.card.cause.url": "Выключено: COLLIE_TELEMETRY_URL на этой машине не является адресом https.",
 };

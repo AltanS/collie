@@ -2689,4 +2689,5 @@ export const tr: Dictionary = {
   "telemetry.notice.dismiss": "Bildirimi kapat",
   "apiError.telemetry.setting_invalid": "Kurulum sayımı ayarı Açık veya Kapalı olmalıdır. Hiçbir şey değiştirilmedi.",
   "apiError.telemetry.request_id_required": "Bu eylem için bir istek kimliği gerekir. Hiçbir şey değiştirilmedi.",
+  "telemetry.card.cause.url": "Kapalı: bu makinedeki COLLIE_TELEMETRY_URL bir https adresi değil.",
 };

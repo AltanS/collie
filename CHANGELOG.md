@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Changed
+
+- **Collie now sends one anonymous install ping a day, on by default.** Up to 1.26.x Collie sent nothing about your install, and this reverses that promise (ADR 0129, which replaces ADR 0034). The ping holds a random ID made on your machine, the UTC day, the Collie version, the OS, the CPU, the install kind and the release line, and nothing else: no host name, path, pane or content. The first ping waits 24 hours after the first start. Turn it off in Settings (System, Anonymous install count), with `COLLIE_TELEMETRY=0`, with `telemetry = false` in the `[bridge]` section of `config.toml`, or with `DO_NOT_TRACK=1`; turning it off sends nothing and deletes the ID. It is also off when `CI` is set, with an update mirror and in a development build. Settings shows the exact next message, `collie doctor` has a `telemetry` line, and `docs/security.md` lists every field.
+
 ## [1.26.0] - 2026-11-04
 
 ### Added

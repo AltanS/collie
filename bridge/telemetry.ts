@@ -74,6 +74,7 @@ export type TelemetryDecider =
   | "ci"
   | "mirror"
   | "dev_build"
+  | "url"
   | "default";
 
 /** The phone's two words. */
@@ -132,7 +133,7 @@ export function telemetryState(input: TelemetryStateInput): TelemetryState {
   const { env } = input;
   const doNotTrack = env.DO_NOT_TRACK;
   if (isSet(doNotTrack) && doNotTrack?.trim() !== "0") return { on: false, decidedBy: "do_not_track" };
-  if (!resolveTelemetryUrl(env).ok) return { on: false, decidedBy: "env" };
+  if (!resolveTelemetryUrl(env).ok) return { on: false, decidedBy: "url" };
   const word = env.COLLIE_TELEMETRY?.trim().toLowerCase() ?? "";
   if (OFF_WORDS.has(word)) return { on: false, decidedBy: input.origin };
   if (isSet(env.CI)) return { on: false, decidedBy: "ci" };
@@ -148,7 +149,6 @@ export function telemetryState(input: TelemetryStateInput): TelemetryState {
 export function telemetryDoctorLine(a: { readonly state: TelemetryState; readonly env: Environment }): string {
   const { on, decidedBy } = a.state;
   const word = on ? "on" : "off";
-  if (decidedBy === "env" && !resolveTelemetryUrl(a.env).ok) return `off (${TELEMETRY_URL_ENV} is not an https URL)`;
   const reasons = {
     do_not_track: "DO_NOT_TRACK",
     env: "COLLIE_TELEMETRY",
@@ -157,6 +157,7 @@ export function telemetryDoctorLine(a: { readonly state: TelemetryState; readonl
     ci: "CI is set",
     mirror: `${UPDATE_MIRROR_ENV} is set`,
     dev_build: "development build",
+    url: `${TELEMETRY_URL_ENV} is not an https URL`,
     default: "default",
   } satisfies Record<TelemetryDecider, string>;
   return `${word} (${reasons[decidedBy]})`;

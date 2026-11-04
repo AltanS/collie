@@ -130,11 +130,11 @@ describe("telemetryState: the decision order", () => {
     expect(state({ version: "1.26.0" })).toEqual({ on: true, decidedBy: "default" });
   });
 
-  test("a URL override that is not allowed turns it off, decided by env, below DO_NOT_TRACK only", () => {
-    expect(state({ env: { COLLIE_TELEMETRY_URL: "http://example.com/ping" } })).toEqual({ on: false, decidedBy: "env" });
+  test("a URL override that is not allowed turns it off, decided by url, below DO_NOT_TRACK only", () => {
+    expect(state({ env: { COLLIE_TELEMETRY_URL: "http://example.com/ping" } })).toEqual({ on: false, decidedBy: "url" });
     expect(state({ env: { COLLIE_TELEMETRY_URL: "http://example.com/ping", COLLIE_TELEMETRY: "1" }, setting: "on" })).toEqual({
       on: false,
-      decidedBy: "env",
+      decidedBy: "url",
     });
     expect(state({ env: { COLLIE_TELEMETRY_URL: "http://example.com/ping", DO_NOT_TRACK: "1" } }).decidedBy).toBe("do_not_track");
   });
@@ -348,7 +348,7 @@ describe("createTelemetry", () => {
     r.clock.now += 3 * FIRST_PING_DELAY_MS;
     await r.telemetry.tick();
     expect(r.sent).toHaveLength(0);
-    expect(r.telemetry.view()).toMatchObject({ on: false, decidedBy: "env", next: null });
+    expect(r.telemetry.view()).toMatchObject({ on: false, decidedBy: "url", next: null });
   });
 
   test("a failed fetch writes lastSentDay first, does not throw, and does not retry the same day", async () => {
@@ -506,6 +506,6 @@ describe("telemetryDoctorLine", () => {
     expect(line("ci", false)).toBe("off (CI is set)");
     expect(line("mirror", false)).toBe("off (COLLIE_UPDATE_MIRROR is set)");
     expect(line("dev_build", false)).toBe("off (development build)");
-    expect(line("env", false, { COLLIE_TELEMETRY_URL: "http://example.com" })).toBe("off (COLLIE_TELEMETRY_URL is not an https URL)");
+    expect(line("url", false, { COLLIE_TELEMETRY_URL: "http://example.com" })).toBe("off (COLLIE_TELEMETRY_URL is not an https URL)");
   });
 });

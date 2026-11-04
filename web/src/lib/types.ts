@@ -1058,6 +1058,7 @@ export type TelemetryDecider =
   | "ci"
   | "mirror"
   | "dev_build"
+  | "url"
   | "default";
 
 /** The phone's own switch: two words. */

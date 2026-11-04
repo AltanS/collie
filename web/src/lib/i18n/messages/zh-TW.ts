@@ -2833,4 +2833,5 @@ export const zhTW: Dictionary = {
   "telemetry.notice.dismiss": "關閉通知",
   "apiError.telemetry.setting_invalid": "安裝數統計設定必須是開啟或關閉。未變更任何項目。",
   "apiError.telemetry.request_id_required": "此操作需要請求 ID。未變更任何項目。",
+  "telemetry.card.cause.url": "關閉：此機器上的 COLLIE_TELEMETRY_URL 不是 https 位址。",
 };

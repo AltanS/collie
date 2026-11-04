@@ -75,6 +75,7 @@ describe("Anonymous install count card (M86 spec 02)", () => {
       { decidedBy: "ci", on: false, line: "Off: CI is set on this machine.", usable: false },
       { decidedBy: "mirror", on: false, line: "Off: this machine uses an update mirror.", usable: false },
       { decidedBy: "dev_build", on: false, line: "Off: this is a development build.", usable: false },
+      { decidedBy: "url", on: false, line: "Off: COLLIE_TELEMETRY_URL on this machine is not an https address.", usable: false },
     ];
 
     it.each(cases)("$decidedBy, on=$on", async ({ decidedBy, on, line, usable }) => {

@@ -3068,6 +3068,7 @@ export const en = {
   "telemetry.notice.dismiss": "Dismiss notice",
   "apiError.telemetry.setting_invalid": "The install count setting must be On or Off. Nothing was changed.",
   "apiError.telemetry.request_id_required": "This action needs a request ID. Nothing was changed.",
+  "telemetry.card.cause.url": "Off: COLLIE_TELEMETRY_URL on this machine is not an https address.",
 } as const;
 
 /** Every key that exists, as a union of string literals. The completeness contract. */

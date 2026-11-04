@@ -2839,4 +2839,5 @@ export const zh: Dictionary = {
   "telemetry.notice.dismiss": "关闭通知",
   "apiError.telemetry.setting_invalid": "安装数统计设置必须是开启或关闭。未更改任何内容。",
   "apiError.telemetry.request_id_required": "此操作需要请求 ID。未更改任何内容。",
+  "telemetry.card.cause.url": "关闭：此机器上的 COLLIE_TELEMETRY_URL 不是 https 地址。",
 };

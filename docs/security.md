@@ -518,14 +518,79 @@ error, with the fix. A folder that Collie cannot check is a warning: `cannot con
 
 ## What leaves your machine
 
-Nothing, by default and by policy. Collie sends no install events, no usage statistics, no crash
-reports and no analytics. There is no flag that enables them.
+**This changed in 1.27.0.** Up to 1.26.x Collie sent nothing about your install. From 1.27.0 each
+bridge sends one anonymous ping a day to Collie's own server, so the project can count installs.
+GitHub's download numbers cannot tell an install from a fetch. The ping is on by default, and you
+can turn it off in four ways. This reverses the earlier promise that Collie collects nothing
+([ADR 0129](../.adr/0129-an-anonymous-install-count-on-by-default.md), which replaces
+[ADR 0034](../.adr/0034-collie-collects-nothing-and-opt-in-is-the-ceiling.md)).
 
-The one unprompted outbound call is the update check: an anonymous HTTPS `GET` to GitHub's public
+### What the ping holds
+
+The ping is one small JSON message. It holds these eight fields and nothing else:
+
+| Field | What it holds |
+| --- | --- |
+| `v` | The version of the message format, `1`. |
+| `id` | A random number that Collie makes on your machine the first time. It is not made from your machine, your name or your network. |
+| `day` | The date in UTC, such as `2026-11-27`. |
+| `version` | The Collie version, such as `1.27.0`. |
+| `os` | The operating system: `linux`, `darwin` or `win32`. |
+| `arch` | The CPU type, such as `x64` or `arm64`. |
+| `install` | How Collie was installed: `binary`, `linked-clone`, `detached-checkout`, `packaged` or `unknown`. |
+| `line` | The release line you follow: `stable` or `edge`. |
+
+An example, exactly as it is sent:
+
+```json
+{"v":1,"id":"3f9c2a71d04b58e6a1c7b09e42d8f356","day":"2026-11-27","version":"1.27.0","os":"linux","arch":"x64","install":"binary","line":"stable"}
+```
+
+The ping holds no host name, no user name, no folder or path, no pane, no agent or multiplexer name,
+no count of anything, and nothing you type or read. The ID is kept in `telemetry.json` in the state
+folder. Every machine is its own install, so each member of a crew sends its own ping.
+
+### When it is sent, and where
+
+- The first ping waits 24 hours after the first start of a build that has the feature. That gives
+  you a day to read this page and turn it off.
+- After that, Collie sends at most one ping for each UTC day.
+- A ping that fails is dropped. Collie does not queue it and does not try again.
+- The ping goes to `https://ping.colliepwa.dev/v1/ping`, a Cloudflare Worker with one database
+  table. The source of the receiver is public, in the `telemetry/` folder of the repository. Any
+  server that answers a request can see the address it came from. The receiver does not store that
+  address.
+
+### Four ways to turn it off
+
+Any one of these is enough. An off setting always wins over an on setting.
+
+1. **In Settings on the phone.** Open Settings, System, **Anonymous install count**, and use the
+   switch. The card shows which setting decided, and the exact next message as JSON. The dashboard
+   shows a one-time notice on each phone, and its button opens this card.
+2. **`COLLIE_TELEMETRY=0`** in your `.env` or your environment.
+3. **`telemetry = false`** in the `[bridge]` section of `config.toml`
+   ([Configure](configure.md#the-anonymous-install-count)).
+4. **`DO_NOT_TRACK=1`**. Any value except `0` counts as a request not to track.
+
+The phone's switch changes the machine the phone talks to. For a crew member, use its own
+environment or config file. Run `collie restart` after you change `.env` or `config.toml`.
+`collie doctor` prints one `telemetry` line with the state and the setting that decided.
+
+The ping is also off, with no setting from you, when `CI` is set, when `COLLIE_UPDATE_MIRROR` is
+set, in a development build, and when `COLLIE_TELEMETRY_URL` names an address that is not `https`
+(an `http` address on `127.0.0.1` or `localhost` is allowed, for tests).
+
+**Opt-outs are not counted.** When the ping is off, Collie sends no message about it and deletes the
+ID from `telemetry.json`. If you turn it on again later, Collie makes a new random ID.
+
+### What did not change
+
+Besides the daily ping, the one unprompted outbound call is the update check: an anonymous HTTPS `GET` to GitHub's public
 tags API (`bridge/update.ts`) that compares your version to the newest tag. It carries no data about
 you or your machine, only the static user-agent `collie-update-check`.
 
-The Whistle model download is the other outbound call. It happens only when a person taps **Download
+The Whistle model download is another outbound call. It happens only when a person taps **Download
 to host** or runs `collie stt whistle`, and it sends no data about you ([The speech engine
 (Whistle)](#the-speech-engine-whistle)).
 
@@ -544,9 +609,9 @@ If you attach a durable agent by URL, Collie calls that URL on every poll with t
 the `Authorization` header. That call is yours to turn on too, and nothing is sent until you attach
 one ([Security of a durable agent](durable-agents-security.md#the-token-transport)).
 
-If collection is ever added, explicit opt-in is the ceiling — off by default, asked as a visible
-question, never carried by a flag or a default. Removing that promise would be a breaking change
-([ADR 0034](../.adr/0034-collie-collects-nothing-and-opt-in-is-the-ceiling.md)).
+Nothing else about your install leaves your machine. There are still no usage statistics, no crash
+reports and no analytics. A new field in the ping, or a second kind of message, needs its own
+decision record ([ADR 0129](../.adr/0129-an-anonymous-install-count-on-by-default.md)).
 
 ---
 

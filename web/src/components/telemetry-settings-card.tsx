@@ -23,7 +23,7 @@ import { mintRequestId } from "@/lib/worktree-name";
 //
 // ── THE SWITCH, AND WHEN IT CANNOT MOVE ──────────────────────────────────────
 // Off is final when the machine itself said so: `DO_NOT_TRACK`, `COLLIE_TELEMETRY=0`, `telemetry =
-// false` in the config file, CI, a rehearsal mirror or a development build. The phone cannot undo
+// false` in the config file, CI, a rehearsal mirror, a development build or a bad COLLIE_TELEMETRY_URL. The phone cannot undo
 // those, so the switch is off and disabled and the line under it names the cause. On is never final:
 // a phone "off" beats every on word, so a count that is on by `COLLIE_TELEMETRY` or the config file
 // still has a usable switch, and the line says where the "on" came from.
@@ -40,6 +40,7 @@ const LOCKED_OFF: ReadonlySet<TelemetryDecider> = new Set([
   "ci",
   "mirror",
   "dev_build",
+  "url",
 ]);
 
 /** Where the security page explains what is sent. */
@@ -65,6 +66,8 @@ export function telemetryCauseKey(view: Pick<TelemetryView, "on" | "decidedBy">)
       return "telemetry.card.cause.mirror";
     case "dev_build":
       return "telemetry.card.cause.devBuild";
+    case "url":
+      return "telemetry.card.cause.url";
     case "settings":
       return view.on ? "telemetry.card.cause.settings.on" : "telemetry.card.cause.settings.off";
     case "default":

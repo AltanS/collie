@@ -2851,4 +2851,5 @@ export const ko: Dictionary = {
   "telemetry.notice.dismiss": "알림 닫기",
   "apiError.telemetry.setting_invalid": "설치 수 집계 설정은 켬 또는 끔이어야 합니다. 아무것도 변경되지 않았습니다.",
   "apiError.telemetry.request_id_required": "이 작업에는 요청 ID가 필요합니다. 아무것도 변경되지 않았습니다.",
+  "telemetry.card.cause.url": "꺼짐: 이 컴퓨터의 COLLIE_TELEMETRY_URL이 https 주소가 아닙니다.",
 };

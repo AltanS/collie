@@ -2877,4 +2877,5 @@ export const de: Dictionary = {
   "telemetry.notice.dismiss": "Hinweis verwerfen",
   "apiError.telemetry.setting_invalid": "Die Einstellung der Installationszählung muss An oder Aus sein. Es wurde nichts geändert.",
   "apiError.telemetry.request_id_required": "Diese Aktion erfordert eine Anforderungs-ID. Es wurde nichts geändert.",
+  "telemetry.card.cause.url": "Aus: COLLIE_TELEMETRY_URL auf diesem Rechner ist keine https-Adresse.",
 };
