@@ -86,8 +86,9 @@ both.
 When the run ends, `crew add` says which multiplexer the member runs on, for example "and runs on
 herdr-core". With several picks it ends with one line per machine: the member id and the
 multiplexer it runs on, or the reason it did not join. A machine that fails does not stop the next
-one. The last line counts them: `joined 2, declined 1, failed 0`. Your own No leaves the exit code
-alone. Any failure makes it non-zero.
+one. The last line counts them: `joined 2, declined 1, failed 0`. Any failure makes the exit code
+non-zero. With no failure it is 0 when something joined, and 3 when nothing did, for example when
+you declined every machine.
 
 `collie crew remove` is local, so a machine you removed still answers as a member until you run
 `collie leave` there. `crew add` does not call that machine a member. It prints `✗ not joined`, says

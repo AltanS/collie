@@ -1335,7 +1335,10 @@ async function crewAddRun(deps: Wired, args: readonly string[]): Promise<number>
     }
   }
   summarise(deps, results);
-  return worst;
+  // One rule for one pick and for many: any failure keeps its own code; no failure and something
+  // joined is OK even with declines; no failure and nothing joined is STATE, "Nothing was added".
+  const joinedAny = results.some((result) => result.outcome === "joined");
+  return worst === EXIT.OK && !joinedAny ? EXIT.STATE : worst;
 }
 
 /** What became of one pick in a multi-host run. */

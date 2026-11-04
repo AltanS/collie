@@ -1274,6 +1274,43 @@ describe("collie crew add", () => {
 
   // ── MULTI-PICK SUMMARY (M84 hardening) ───────────────────────────────────────
 
+  // One exit rule for one pick and for many: a failure keeps its code, a join with no failure is OK
+  // (declines or not), and nothing joined with no failure is STATE, the "Nothing was added" code.
+  test("every pick declined ends with STATE, like a single decline and like Enter on the list", async () => {
+    const all = harness({ sshConfig: "Host attic\nHost build-box", prompt: "1 2", confirm: false });
+    expect(await run(all, [])).toBe(EXIT.STATE);
+    expect(all.io.stdout.slice(-3)).toEqual([
+      "attic      ✗ declined",
+      "build-box  ✗ declined",
+      "joined 0, declined 2, failed 0",
+    ]);
+    expect(all.calls.map((c) => c.leg)).not.toContain("enroll");
+
+    const single = harness({ sshConfig: "Host attic", prompt: "1", confirm: false });
+    expect(await run(single, [])).toBe(EXIT.STATE);
+
+    const blank = harness({ sshConfig: "Host attic", prompt: "" });
+    expect(await run(blank, [])).toBe(EXIT.STATE);
+  });
+
+  test("a join with declines and no failure is OK, and a failure beside a join keeps its own code", async () => {
+    const declined = harness({
+      sshConfig: "Host attic\nHost build-box",
+      prompt: "1 2",
+      afterEach: [leadStore({ peers: [BUILD_BOX] })],
+    });
+    recordQuestions(declined, (n) => n > 0);
+    expect(await run(declined, [])).toBe(EXIT.OK);
+
+    const failed = harness({
+      sshConfig: "Host attic\nHost build-box",
+      prompt: "1 2",
+      broken: { attic: { code: 255, stderr: "ssh: connect to host attic port 22: Connection refused", spawned: true } },
+      afterEach: [leadStore({ peers: [BUILD_BOX] })],
+    });
+    expect(await run(failed, [])).toBe(EXIT.UNREACHABLE);
+  });
+
   test("a decline plus a failure ends non-zero, and the count says which was which", async () => {
     const h = harness({
       sshConfig: "Host attic\nHost vps\nHost build-box",
