@@ -883,9 +883,9 @@ describe("the skipped list on a lead", () => {
         { memberId: "gone", name: "gone", reachable: false, body },
       ],
       true,
-      (pane) => {
-        seen.push(pane);
-        return pane.activeAt !== null && pane.activeAt < 500;
+      (quiet) => {
+        seen.push(quiet);
+        return quiet.activeAt !== null && quiet.activeAt < 500;
       },
     );
     expect(skipped).toEqual([{ address: "laptop/w1:p1", memberId: "laptop", machine: "laptop", label: "collie#main", reason: "resting" }]);

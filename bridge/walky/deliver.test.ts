@@ -1743,8 +1743,8 @@ describe("resting panes (M85 spec 01)", () => {
     const woken = r.service.compose({ ...send("wt_aaaaaaaaaaa1", "all"), to: "all", wake: true }, operator);
     expect(plain !== null && verifyMessage(plain, identity.certPem)).toBe(true);
     expect(woken !== null && verifyMessage(woken, identity.certPem)).toBe(true);
-    expect(canonicalMessage(woken!)).toBe(`${canonicalMessage({ ...woken!, wake: undefined } as never)}\nwake`);
+    expect(canonicalMessage(woken!)).toBe(`${canonicalMessage(plain!)}\nwake`);
     // Dropping the flag in transit breaks the signature: a hop cannot unset it.
-    expect(verifyMessage({ ...woken!, wake: undefined } as never, identity.certPem)).toBe(false);
+    expect(verifyMessage({ ...plain!, signature: woken!.signature }, identity.certPem)).toBe(false);
   });
 });

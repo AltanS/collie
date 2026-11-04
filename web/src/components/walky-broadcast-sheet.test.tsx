@@ -24,6 +24,13 @@ beforeEach(() => {
   server.use(http.get("/api/walky/who", () => HttpResponse.json({ targets: TARGETS })));
 });
 
+/** The element of a dialog with this `data-slot`; a missing one fails the test with its name. */
+function slotOf(dialog: HTMLElement, name: string): HTMLElement {
+  const found = dialog.querySelector<HTMLElement>(`[data-slot="${name}"]`);
+  if (found === null) throw new Error(`no ${name} in the dialog`);
+  return found;
+}
+
 describe("WalkyBroadcastSheet", () => {
   it("turns Send off for a text past the limit and says why, in the message limit's words", async () => {
     render(<WalkyBroadcastSheet open onClose={vi.fn()} members={MEMBERS} />);
@@ -177,12 +184,12 @@ describe("WalkyBroadcastSheet", () => {
       render(<WalkyBroadcastSheet open onClose={vi.fn()} members={MEMBERS} />);
       const dialog = await screen.findByRole("dialog");
       expect(await within(dialog).findByText("Agents reached: 1")).toBeInTheDocument();
-      const resting = dialog.querySelector('[data-slot="walky-resting"]') as HTMLElement;
+      const resting = slotOf(dialog, "walky-resting");
       expect(within(resting).getByText("Resting, not woken")).toBeInTheDocument();
       expect(within(resting).getByText("c#d (workshop/w1:p1): resting")).toBeInTheDocument();
       expect(within(resting).getByRole("switch", { name: "Wake them too" })).toHaveAttribute("aria-checked", "false");
       // The shell keeps its own group, and the resting pane is not in it.
-      const shells = dialog.querySelector('[data-slot="walky-skipped"]') as HTMLElement;
+      const shells = slotOf(dialog, "walky-skipped");
       expect(within(shells).getByText("Shell panes, skipped")).toBeInTheDocument();
       expect(within(shells).getByText("sh#main (bluefin/w1:p3): skipped")).toBeInTheDocument();
       expect(within(shells).queryByText(/c#d/)).toBeNull();
@@ -246,7 +253,7 @@ describe("WalkyBroadcastSheet", () => {
       await user.type(within(dialog).getByRole("textbox", { name: "Message" }), "Pause");
       await user.click(within(dialog).getByRole("button", { name: "Send message" }));
       await user.click(await within(dialog).findByRole("button", { name: "Send" }));
-      const receipts = dialog.querySelector('[data-slot="walky-receipts"]') as HTMLElement;
+      const receipts = slotOf(dialog, "walky-receipts");
       expect(await within(receipts).findByText(/waiting in the inbox, not typed: that session rests/u)).toBeInTheDocument();
     });
   });

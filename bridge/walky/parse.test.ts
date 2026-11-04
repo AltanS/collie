@@ -125,9 +125,9 @@ describe("wake on the wire (M85)", () => {
   });
 
   test("a message read back from the log or a crew hop keeps `wake: true` and no other value", () => {
-    const message = { v: 1, id: "wt_aaaaaaaaaaa1", kind: "operator", from: { memberId: null, address: null, harness: null, label: "phone" }, to: "all", replyTo: null, at: 1, body: "hi", signer: null, signature: null };
-    expect(readMessage({ ...message, wake: true })).toMatchObject({ wake: true });
-    expect(readMessage(message)).not.toHaveProperty("wake");
-    expect(readMessage({ ...message, wake: "yes" })).not.toHaveProperty("wake");
+    const plain = { v: 1, id: "wt_aaaaaaaaaaa1", kind: "operator", from: { memberId: null, address: null, harness: null, label: "phone" }, to: "all", replyTo: null, at: 1, body: "hi", signer: null, signature: null };
+    expect(readMessage({ ...plain, wake: true })).toMatchObject({ wake: true });
+    expect(readMessage(plain)).not.toHaveProperty("wake");
+    expect(readMessage({ ...plain, wake: "yes" })).not.toHaveProperty("wake");
   });
 });
