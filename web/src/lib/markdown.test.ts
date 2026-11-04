@@ -276,8 +276,54 @@ describe("parseMarkdown", () => {
 
   it("joins a multi-line blockquote", () => {
     expect(parseMarkdown("> one\n> two")).toEqual([
-      { kind: "quote", spans: [{ kind: "text", text: "one two" }] },
+      { kind: "quote", blocks: [{ kind: "paragraph", spans: [{ kind: "text", text: "one two" }] }] },
     ]);
+  });
+
+  it("keeps a list and its paragraphs apart inside a blockquote", () => {
+    // The shape Claude quotes a PR body in: a lead line, a bold label, then bullets.
+    const src = [
+      "> Renames the settings page.",
+      ">",
+      "> **Changes**",
+      "> - `settings-page` added",
+      "> - old route removed",
+    ].join("\n");
+    expect(parseMarkdown(src)).toEqual([
+      {
+        kind: "quote",
+        blocks: [
+          { kind: "paragraph", spans: [{ kind: "text", text: "Renames the settings page." }] },
+          { kind: "paragraph", spans: [{ kind: "bold", spans: [{ kind: "text", text: "Changes" }] }] },
+          {
+            kind: "list",
+            ordered: false,
+            items: [
+              [{ kind: "code", text: "settings-page" }, { kind: "text", text: " added" }],
+              [{ kind: "text", text: "old route removed" }],
+            ],
+          },
+        ],
+      },
+    ]);
+  });
+
+  it("reads a table and a nested quote inside a blockquote", () => {
+    const [quote] = parseMarkdown("> | a | b |\n> |---|---|\n> | 1 | 2 |\n>\n> > inner");
+    expect(quote).toMatchObject({ kind: "quote", blocks: [{ kind: "table" }, { kind: "quote" }] });
+  });
+
+  it("stops nesting quotes at a bound and reads the rest as text", () => {
+    const deep = `${"> ".repeat(100)}bottom`;
+    let block = parseMarkdown(deep)[0];
+    let depth = 0;
+    while (block?.kind === "quote") {
+      depth++;
+      block = block.blocks[0];
+    }
+    expect(depth).toBe(4);
+    expect(block).toMatchObject({ kind: "paragraph" });
+    expect(spansText(block?.kind === "paragraph" ? block.spans : [])).toContain("bottom");
   });
 
   it("handles a realistic agent message end to end", () => {
