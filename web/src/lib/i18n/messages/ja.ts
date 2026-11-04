@@ -2697,6 +2697,7 @@ export const ja: Dictionary = {
   "walky.state.onLead": "on its way, the lead reports the result",
   "walky.reason.draftPresent": "that session has unsent text",
   "walky.reason.turnRunning": "that session is busy",
+  "walky.reason.resting": "そのセッションは休止中です",
   "walky.state.delivered": "ペインに入力済み",
   "walky.state.inboxOnly": "受信トレイで待機中、未入力",
   "walky.state.inboxOnlyBecause": "受信トレイで待機中、未入力: {reason}",
@@ -2760,6 +2761,10 @@ export const ja: Dictionary = {
   "walky.crew.confirmBack": "戻る",
   "walky.crew.skippedTitle": "シェルのペイン、スキップされました",
   "walky.crew.skippedRow": "{label} ({address}): スキップされました",
+  "walky.crew.resting": "休止中、起こしません",
+  "walky.crew.restingWoken": "休止中、あわせて起こします",
+  "walky.crew.restingRow": "{label} ({address}): 休止中",
+  "walky.crew.wake": "休止中のものも起こす",
   "walky.crew.refusals": "このマシンでは送信されませんでした: {list}",
 
   "sent.button": "Sent",

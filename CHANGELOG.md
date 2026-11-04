@@ -27,6 +27,17 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 - **Collie now sends one anonymous install ping a day, on by default.** Up to 1.26.x Collie sent nothing about your install, and this reverses that promise (ADR 0129, which replaces ADR 0034). The ping holds a random ID made on your machine, the UTC day, the Collie version, the OS, the CPU, the install kind and the release line, and nothing else: no host name, path, pane or content. The first ping waits 24 hours after the first start. Turn it off in Settings (System, Anonymous install count), with `COLLIE_TELEMETRY=0`, with `telemetry = false` in the `[bridge]` section of `config.toml`, or with `DO_NOT_TRACK=1`; turning it off sends nothing and deletes the ID. It is also off when `CI` is set, with an update mirror and in a development build. Settings shows the exact next message, `collie doctor` has a `telemetry` line, and `docs/security.md` lists every field.
 
+## [1.26.1] - 2026-11-04
+
+### Changed
+
+- **A message to a folder or to `all` no longer wakes a session that finished.** A pane that has been `done` or `idle` for 15 minutes keeps the message in its inbox only, and the receipt reads "waiting in the inbox, not typed: the session rests". A message to one pane is typed as before. `collie walky send <folder> --wake` types into the resting panes too, and the broadcast sheet on the phone lists them under "Resting, not woken" with a "Wake them too" switch. ([2027410](https://github.com/AltanS/collie/commit/2027410))
+
+### Fixed
+
+- **The walky talky skill tells an agent to use `--wake` only when its operator asked.** A `resting` receipt is final: the agent does not send the message again. ([78daa2c](https://github.com/AltanS/collie/commit/78daa2c))
+- **`--wake` works in a crew that mixes versions.** A member below 1.26.1 never rests a pane, so the lead sends it a `--wake` message as a plain send, which types into all its panes. A lead below 1.26.1 cannot take `--wake`: the member's receipt reads "lead older than 1.26.1: send without --wake" instead of a signature failure. ([7f3ad90](https://github.com/AltanS/collie/commit/7f3ad90))
+
 ## [1.26.0] - 2026-11-04
 
 ### Added

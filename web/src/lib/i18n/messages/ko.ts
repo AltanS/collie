@@ -2690,6 +2690,7 @@ export const ko: Dictionary = {
   "walky.state.onLead": "on its way, the lead reports the result",
   "walky.reason.draftPresent": "that session has unsent text",
   "walky.reason.turnRunning": "that session is busy",
+  "walky.reason.resting": "그 세션은 쉬고 있습니다",
   "walky.state.delivered": "창에 입력됨",
   "walky.state.inboxOnly": "수신함에서 대기 중이며 입력되지 않았습니다",
   "walky.state.inboxOnlyBecause": "수신함에서 대기 중이며 입력되지 않았습니다: {reason}",
@@ -2753,6 +2754,10 @@ export const ko: Dictionary = {
   "walky.crew.confirmBack": "뒤로",
   "walky.crew.skippedTitle": "셸 창, 건너뜀",
   "walky.crew.skippedRow": "{label} ({address}): 건너뜀",
+  "walky.crew.resting": "쉬는 중, 깨우지 않음",
+  "walky.crew.restingWoken": "쉬는 중, 함께 깨움",
+  "walky.crew.restingRow": "{label} ({address}): 쉬는 중",
+  "walky.crew.wake": "함께 깨우기",
   "walky.crew.refusals": "이 머신에서 보내지 않음: {list}",
 
   "sent.button": "Sent",

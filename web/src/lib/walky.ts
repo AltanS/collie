@@ -107,6 +107,12 @@ export interface WalkySkipped {
   memberId: string;
   machine: string;
   label: string;
+  /**
+   * Why a broadcast leaves the pane out (M85): `shell`, a pane that never receives a message, or
+   * `resting`, an agent that finished 15 minutes ago, which gets the message in its inbox only unless the
+   * sender wakes it. Absent from an older bridge: a shell.
+   */
+  reason?: "shell" | "resting";
 }
 
 /**
@@ -131,6 +137,8 @@ export interface WalkySendBody {
   to: string;
   body: string;
   replyTo?: string;
+  /** M85: a broadcast also types into resting panes. Sent only when true. */
+  wake?: true;
 }
 
 /** The most the bridge keeps for a message body (README → "Switches"/decision 6). */
@@ -523,6 +531,8 @@ export function reasonWord(reason: string): string {
       return t("walky.reason.draftPresent");
     case "turn running":
       return t("walky.reason.turnRunning");
+    case "resting":
+      return t("walky.reason.resting");
     default:
       return reason;
   }

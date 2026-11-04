@@ -10,7 +10,7 @@
 import { isScopeAddress, isSelf, paneAddress, parseAddress, LOCAL_MEMBER } from "./address.ts";
 import { signMessage } from "./canonical.ts";
 import { BODY_TOO_LONG, cleanBody } from "./clean.ts";
-import { CANCELLED_BY_SENDER, DROPPED_BY_OWNER, isFanOut, sendIdOf, withoutAnsweredLegs, WalkyDeliverer, type DelivererDeps, type SenderPane, type TakeBack, type WalkyPane } from "./deliver.ts";
+import { CANCELLED_BY_SENDER, DROPPED_BY_OWNER, isFanOut, isResting, sendIdOf, withoutAnsweredLegs, WalkyDeliverer, type DelivererDeps, type SenderPane, type TakeBack, type WalkyPane } from "./deliver.ts";
 import { sameInstance, type LogRecord, type WalkyLog } from "./log.ts";
 import { MEMBER_UNREACHABLE, NO_ADDRESS, type RefusalCounts } from "./refusals.ts";
 import { headerField, WALKY_LABEL_MAX, type WalkyEntry, type WalkyMessage, type WalkyReceipt, type WalkyReceiptState, type WalkySkipped, type WalkyTarget, type WalkyVerified } from "./types.ts";
@@ -24,6 +24,8 @@ export interface SendInput {
   readonly to: string | null;
   readonly body: string;
   readonly replyTo: string | null;
+  /** M85: a scope or `all` also types into panes that rest. Absent: they get the inbox only. */
+  readonly wake?: boolean;
 }
 
 export type SendAnswer =
@@ -191,7 +193,8 @@ export class WalkyService {
       sender.kind === "agent"
         ? { memberId, address: paneAddress(memberId, sender.pane.paneId, sender.pane.instance), harness: sender.pane.harness, label: sender.pane.label }
         : { memberId, address: null, harness: null, label: headerField(sender.label, WALKY_LABEL_MAX) };
-    const message: WalkyMessage = { v: 1, id: input.id, kind: sender.kind, from, to: input.to, replyTo: input.replyTo, at: this.now(), body: clean.body, signer: null, signature: null };
+    const base: WalkyMessage = { v: 1, id: input.id, kind: sender.kind, from, to: input.to, replyTo: input.replyTo, at: this.now(), body: clean.body, signer: null, signature: null };
+    const message: WalkyMessage = input.wake === true ? { ...base, wake: true } : base;
     const key = this.deps.keyPem();
     return key === null || memberId === null ? message : signMessage(message, key, memberId);
   }
@@ -246,13 +249,18 @@ export class WalkyService {
     return this.deps.outcomesOnLead === true ? whoElsewhereNote(this.deps.leadName?.() ?? null) : null;
   }
 
-  /** The shell panes a broadcast skips: this machine's, then what a lead knows of its members. */
+  /**
+   * The panes a broadcast does not type into by default: this machine's shell panes and, since M85, its
+   * agent panes that rest ({@link isResting}); then what a lead knows of its members. `reason` says which.
+   */
   skipped(): WalkySkipped[] {
     const memberId = this.deps.memberId ?? LOCAL_MEMBER;
-    const local = this.deps.host
-      .panes()
-      .filter((pane) => !pane.agent)
-      .map((pane) => ({ address: this.addressOf(pane.paneId), memberId, machine: this.deps.machine, label: pane.label }));
+    const now = this.now();
+    const local = this.deps.host.panes().flatMap((pane): WalkySkipped[] => {
+      const reason = !pane.agent ? "shell" : isResting(pane, now) ? "resting" : null;
+      if (reason === null) return [];
+      return [{ address: this.addressOf(pane.paneId), memberId, machine: this.deps.machine, label: pane.label, reason }];
+    });
     return [...local, ...(this.deps.remoteSkipped?.() ?? [])];
   }
 

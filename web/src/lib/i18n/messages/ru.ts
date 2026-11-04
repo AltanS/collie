@@ -2643,6 +2643,7 @@ export const ru: Dictionary = {
   "walky.state.onLead": "on its way, the lead reports the result",
   "walky.reason.draftPresent": "that session has unsent text",
   "walky.reason.turnRunning": "that session is busy",
+  "walky.reason.resting": "эта сессия в покое",
   "walky.state.delivered": "введено в панель",
   "walky.state.inboxOnly": "ожидает во входящих, не напечатано",
   "walky.state.inboxOnlyBecause": "ожидает во входящих, не напечатано: {reason}",
@@ -2712,6 +2713,10 @@ export const ru: Dictionary = {
   "walky.crew.confirmBack": "Назад",
   "walky.crew.skippedTitle": "Панели оболочки, пропущено",
   "walky.crew.skippedRow": "{label} ({address}): пропущено",
+  "walky.crew.resting": "В покое, не разбужены",
+  "walky.crew.restingWoken": "В покое, тоже разбужены",
+  "walky.crew.restingRow": "{label} ({address}): в покое",
+  "walky.crew.wake": "Разбудить и их",
   "walky.crew.refusals": "Не отправлено на этой машине: {list}",
 
   "sent.button": "Sent",

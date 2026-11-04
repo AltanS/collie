@@ -4,6 +4,7 @@ import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { BottomSheet } from "@/components/ui/sheet";
+import { Switch } from "@/components/ui/switch";
 import { nameOnMachine } from "@/components/walky-name-chip";
 import { useLocale } from "@/hooks/use-locale";
 import { useWalkySend } from "@/hooks/use-walky-send";
@@ -30,6 +31,12 @@ import {
 // button posts `to: "all"` or `<memberId>/all` through `POST /api/walky`, and the bridge answers one
 // receipt per target, which are listed below the field so the person sees where it landed and where
 // it did not.
+//
+// ── RESTING PANES (M85) ────────────────────────────────────────────────────────
+// A pane that finished 15 minutes ago gets a broadcast in its inbox only, so the bridge's `who` lists
+// it under `skipped` with `reason: "resting"`. The sheet draws those panes under their own title, with a
+// "Wake them too" switch below the Send button (it never moves the button). With the switch on, the post
+// carries `wake: true`, and "Agents reached" and the question count the panes that will be typed into.
 //
 // ── THE CONFIRM STEP ──────────────────────────────────────────────────────────
 // One text to every agent is the widest write the phone makes, so "Send message" does not post. It
@@ -139,6 +146,7 @@ export function WalkyBroadcastSheet({
   const [skipped, setSkipped] = useState<WalkySkipped[]>([]);
   const [refusals, setRefusals] = useState<WalkyRefusals | null>(null);
   const [confirming, setConfirming] = useState(false);
+  const [wake, setWake] = useState(false);
   const backRef = useRef<HTMLButtonElement>(null);
   // Where focus goes once the question is gone. Its two buttons leave the DOM with it, and a focused
   // node that leaves drops focus to the page behind the sheet, so the keyboard path would fall out:
@@ -157,6 +165,7 @@ export function WalkyBroadcastSheet({
     setSkipped([]);
     setRefusals(null);
     setConfirming(false);
+    setWake(false);
     const abort = new AbortController();
     fetchWalkyWho(abort.signal).then(
       (who) => {
@@ -196,21 +205,28 @@ export function WalkyBroadcastSheet({
   const covers = (memberId: string) => target === ALL || memberId === target;
   // The count and the question name only the panes a message can reach now: a lead keeps an
   // unreachable member's last panes in `who`, and those do not take a message until it is back.
-  const covered = listed === null ? null : listed.filter((r) => covers(r.memberId) && isReachable(r));
-  const reach = covered === null ? null : covered.length;
   const coveredSkipped = skipped.filter((s) => covers(s.memberId));
+  // A skipped row with no reason is a shell, as an older bridge sends it.
+  const coveredShells = coveredSkipped.filter((s) => s.reason !== "resting");
+  const coveredResting = coveredSkipped.filter((s) => s.reason === "resting");
+  // The panes the message is typed into: without "Wake them too", the resting ones keep it in their inbox only.
+  const resting = new Set(coveredResting.map((s) => bareAddress(s.address)));
+  const covered =
+    listed === null ? null : listed.filter((r) => covers(r.memberId) && isReachable(r) && (wake || !resting.has(bareAddress(r.address))));
+  const reach = covered === null ? null : covered.length;
   const refused = refusalList(refusals);
 
   const body = text.trim();
   const tooLong = body.length > WALKY_BODY_MAX;
   const to = target === ALL ? ALL : `${target}/${ALL}`;
   const tooLongId = useId();
+  const wakeId = useId();
 
   async function submit() {
     if (body === "" || tooLong || sending) return;
     setConfirming(false);
     setError(null);
-    const result = await send(to, body);
+    const result = await send(to, body, undefined, wake && coveredResting.length > 0);
     if (result === null) return;
     setFocusNext("outcome");
     if (!result.ok) {
@@ -283,16 +299,41 @@ export function WalkyBroadcastSheet({
             {sending ? t("walky.crew.sending") : t("walky.crew.send")}
           </Button>
         )}
-        {coveredSkipped.length > 0 && (
+        {coveredShells.length > 0 && (
           <div data-slot="walky-skipped" className="flex flex-col gap-1">
             <span className="text-xs font-medium text-muted-foreground">{t("walky.crew.skippedTitle")}</span>
             <ul className="flex flex-col gap-0.5 text-xs text-muted-foreground">
-              {coveredSkipped.map((s) => (
+              {coveredShells.map((s) => (
                 <li key={s.address} className="min-w-0 truncate">
                   {t("walky.crew.skippedRow", { label: s.label, address: s.address })}
                 </li>
               ))}
             </ul>
+          </div>
+        )}
+        {coveredResting.length > 0 && (
+          <div data-slot="walky-resting" className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-muted-foreground">{wake ? t("walky.crew.restingWoken") : t("walky.crew.resting")}</span>
+            <ul className="flex flex-col gap-0.5 text-xs text-muted-foreground">
+              {coveredResting.map((s) => (
+                <li key={s.address} className="min-w-0 truncate">
+                  {t("walky.crew.restingRow", { label: s.label, address: s.address })}
+                </li>
+              ))}
+            </ul>
+            <div className="flex min-h-11 items-center justify-between gap-3">
+              <span id={wakeId} className="text-sm">
+                {t("walky.crew.wake")}
+              </span>
+              <Switch
+                checked={wake}
+                onCheckedChange={(next) => {
+                  setWake(next);
+                  setConfirming(false);
+                }}
+                aria-labelledby={wakeId}
+              />
+            </div>
           </div>
         )}
         {refused !== "" && (

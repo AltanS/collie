@@ -8,7 +8,7 @@ import { CREW, leadStore, material, member, peerStore, T0 } from "../crew/fixtur
 import type { TrustStoreData } from "../crew/trust-store.ts";
 import type { PaneWire } from "../types.ts";
 import { compareSemver } from "../update.ts";
-import { signMessage, attestationString } from "./canonical.ts";
+import { signMessage, attestationString, verifyMessage } from "./canonical.ts";
 import { verifyCanonical } from "../crew/signing.ts";
 import {
   attestFor,
@@ -18,8 +18,11 @@ import {
   crewSkipped,
   crewTargets,
   leadRouteRemote,
+  LEAD_OLDER_THAN_WAKE,
+  LEAD_REFUSED_WAKE,
   memberRouteRemote,
   mergeReport,
+  olderThanWake,
   olderThanWalky,
   receiptsOfAnswer,
   senderBlockFor,
@@ -89,7 +92,7 @@ function OPERATOR(memberId: string): Partial<WalkyMessage> {
 }
 
 function pane(paneId: string, over: Partial<WalkyPane> = {}): WalkyPane {
-  return { session: "main", paneId, agent: true, harness: "agent-x", label: `repo#${paneId}`, state: "idle", instance: "aaaa", terminal: true, ...over };
+  return { session: "main", paneId, agent: true, harness: "agent-x", label: `repo#${paneId}`, state: "idle", activeAt: null, instance: "aaaa", terminal: true, ...over };
 }
 
 class FakeHost implements WalkyHost {
@@ -593,6 +596,109 @@ describe("what an answer from the other side stands for", () => {
   });
 });
 
+describe("wake across versions (M85)", () => {
+  const lead = member({ memberId: "desk", role: "lead" });
+
+  /** A lead routing to two members; `old` is the one below 1.26.1. Each leg's body is kept per member. */
+  function rig() {
+    const bodies = new Map<string, { message: WalkyMessage; attest: string; sender?: unknown }>();
+    const checked = new Map<string, string>();
+    const route = leadRouteRemote({
+      self: "desk",
+      members: () => ["old", "new"],
+      signing: () => ({ keyPem: material("desk").keyPem, crewId: CREW.crewId }),
+      senderCert: (memberId) => material(memberId).certPem,
+      olderThanWake: (memberId) => memberId === "old",
+      post: async (memberId, segment, payload) => {
+        // SAFETY: the route posts the JSON it built itself.
+        const body = JSON.parse(payload) as { message: WalkyMessage; attest: string; sender?: unknown };
+        bodies.set(memberId, body);
+        const check = checkFromLead(wire(body), segment, lead, CREW.crewId, memberId);
+        checked.set(memberId, check.ok ? check.verified : "refused");
+        return { kind: "answer", status: 200, body: { receipts: [] } };
+      },
+      now: () => AT,
+    });
+    return { route, bodies, checked };
+  }
+
+  test("an older member's leg is a plain send: no wake, an attestation over the copy, no sender block, read as the lead's word", async () => {
+    const { route, bodies, checked } = rig();
+    await route(signed("wt_aaaaaaaaaaa1", "sender", "all", { wake: true }), "all");
+    const old = bodies.get("old")!;
+    expect(old.message).not.toHaveProperty("wake");
+    expect(old).not.toHaveProperty("sender");
+    // The sender's signer stays (the member's shape check needs it); its signature no longer verifies and is never asked.
+    expect(old.message.signer).toBe("sender");
+    expect(verifyMessage(old.message, material("sender").certPem)).toBe(false);
+    // The attestation covers the copy: checkFromLead verifies it, and `verified` is the lead's word.
+    expect(checked.get("old")).toBe("lead");
+    const fresh = bodies.get("new")!;
+    expect(fresh.message.wake).toBe(true);
+    expect(fresh.message.signer).toBe("sender");
+    expect(fresh.sender).toMatchObject({ certPem: material("sender").certPem });
+    expect(checked.get("new")).toBe("origin");
+  });
+
+  test("a message without wake is the same for both legs as before", async () => {
+    const { route, bodies } = rig();
+    const message = signed("wt_aaaaaaaaaaa2", "sender", "all");
+    await route(message, "all");
+    for (const memberId of ["old", "new"]) {
+      expect(bodies.get(memberId)!.message).toEqual(message);
+      expect(bodies.get(memberId)).toMatchObject({ sender: { certPem: material("sender").certPem } });
+    }
+  });
+
+  test("a wake message the lead wrote itself is re-signed for the older member, which still reads it as origin", async () => {
+    const { route, bodies, checked } = rig();
+    await route(signed("wt_aaaaaaaaaaa3", "desk", "all", { wake: true }), "all");
+    expect(bodies.get("old")!.message).not.toHaveProperty("wake");
+    expect(verifyMessage(bodies.get("old")!.message, material("desk").certPem)).toBe(true);
+    expect(checked.get("old")).toBe("origin");
+    expect(bodies.get("new")!.message.wake).toBe(true);
+  });
+
+  test("olderThanWake: below 1.26.1, the build's own version when it predates it, no release is never older", () => {
+    expect(olderThanWake("1.26.0", "1.26.1", compareSemver)).toBe(true);
+    expect(olderThanWake("1.26.1", "1.26.1", compareSemver)).toBe(false);
+    expect(olderThanWake("1.27.0", "1.26.1", compareSemver)).toBe(false);
+    // A development lead at 1.26.0 carries the feature: members at its version are not older.
+    expect(olderThanWake("1.26.0", "1.26.0", compareSemver)).toBe(false);
+    expect(olderThanWake("1.25.9", "1.26.0", compareSemver)).toBe(true);
+    expect(olderThanWake(null, "1.26.1", compareSemver)).toBe(false);
+    expect(olderThanWake("unknown", "1.26.1", compareSemver)).toBe(false);
+  });
+
+  test("a member that knows its lead is below 1.26.1 refuses wake before any dial", async () => {
+    const payloads: string[] = [];
+    const route = memberRouteRemote({
+      self: "laptop",
+      post: async (payload) => {
+        payloads.push(payload);
+        return { kind: "answer", status: 200, body: { receipts: [] } };
+      },
+      leadRelease: () => "1.26.0",
+      own: "1.26.1",
+      compare: compareSemver,
+      now: () => AT,
+    });
+    expect(await route(signed("wt_aaaaaaaaaaa4", "laptop", "all", { wake: true }), "all")).toMatchObject([{ state: "refused", reason: LEAD_OLDER_THAN_WAKE, target: "all" }]);
+    expect(payloads).toEqual([]);
+    // A plain send to the same lead still goes.
+    await route(signed("wt_aaaaaaaaaaa5", "laptop", "all"), "all");
+    expect(payloads.length).toBe(1);
+  });
+
+  test("a member that does not know its lead's release dials, and reads a 401 to wake as the lead being too old", async () => {
+    const answers: CrewDialAnswer[] = [{ kind: "answer", status: 401, body: { error: "unauthorized" } }, { kind: "answer", status: 401, body: { error: "unauthorized" } }];
+    const route = memberRouteRemote({ self: "laptop", post: async () => answers.shift()!, leadRelease: () => null, own: "1.26.1", compare: compareSemver, now: () => AT });
+    expect(await route(signed("wt_aaaaaaaaaaa6", "laptop", "all", { wake: true }), "all")).toMatchObject([{ state: "refused", reason: LEAD_REFUSED_WAKE }]);
+    // Without wake, the 401 keeps its own word.
+    expect(await route(signed("wt_aaaaaaaaaaa7", "laptop", "all"), "all")).toMatchObject([{ state: "refused", reason: "signature" }]);
+  });
+});
+
 describe("the outcome report", () => {
   /** A delivered receipt for a message from `desk` to this member's pane, as the log hands it to the report. */
   function record(id: string, state: WalkyReceipt["state"] = "delivered", at = AT, reason?: string) {
@@ -866,9 +972,30 @@ describe("the skipped list on a lead", () => {
       true,
     );
     expect(skipped).toEqual([
-      { address: "laptop/w1:p3", memberId: "laptop", machine: "laptop", label: "collie#main" },
-      { address: "laptop/w1:p4", memberId: "laptop", machine: "laptop", label: "collie#main" },
+      { address: "laptop/w1:p3", memberId: "laptop", machine: "laptop", label: "collie#main", reason: "shell" },
+      { address: "laptop/w1:p4", memberId: "laptop", machine: "laptop", label: "collie#main", reason: "shell" },
     ]);
+  });
+
+  test("lists a reachable member's resting agent panes too, by the bridge's rule, and none of an unreachable member", () => {
+    const paneOf = (paneId: string, over: Partial<PaneWire> = {}): PaneWire =>
+      // SAFETY: a test fixture carrying the fields `crewSkipped` reads; the rest of the wire shape is irrelevant here.
+      ({ paneId, agent: "agent-x", kind: "agent", status: "done", cwd: "/home/a/collie", gitHead: { kind: "branch", name: "main" }, ...over }) as PaneWire;
+    const body = { sessions: [], agents: [paneOf("w1:p1", { lastActiveAt: 100 }), paneOf("w1:p2", { lastActiveAt: 900 }), paneOf("w1:p3")], shellPanes: [], workspaces: [], tabs: [] };
+    const seen: unknown[] = [];
+    const skipped = crewSkipped(
+      [
+        { memberId: "laptop", name: "laptop", reachable: true, body },
+        { memberId: "gone", name: "gone", reachable: false, body },
+      ],
+      true,
+      (quiet) => {
+        seen.push(quiet);
+        return quiet.activeAt !== null && quiet.activeAt < 500;
+      },
+    );
+    expect(skipped).toEqual([{ address: "laptop/w1:p1", memberId: "laptop", machine: "laptop", label: "collie#main", reason: "resting" }]);
+    expect(seen).toContainEqual({ state: "done", activeAt: null });
   });
 });
 
