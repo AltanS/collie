@@ -1129,7 +1129,9 @@ export class PiTranscriptSource implements TranscriptSource {
    * logs that started more than {@link START_SLACK_MS} before it are skipped; with no pid or no
    * readable start the folder walk stands as it was.
    *
-   * The pane's own command line comes first (#675), as it does for Muse: `omp --resume <log or id>`
+   * The pane's terminal label comes first (#675): `<harness>.session_file=<absolute path>`, set from
+   * inside the terminal by the harness itself, names the live log, which `/new` or `/resume` can move
+   * past the command line ({@link PiTranscriptSource.labelledSession}). Then the command line, as it does for Muse: `omp --resume <log or id>`
    * and `pi --session <log or id>` name the session exactly, so two panes in one folder each read
    * their own ({@link PiTranscriptSource.namedSession}). A log named that way is the pane's whatever its
    * age, so the start-time floor below does not apply to it.
@@ -1140,6 +1142,8 @@ export class PiTranscriptSource implements TranscriptSource {
    */
   async discoverSession(cwd: string, hints?: DiscoverHints): Promise<AgentSessionRef | null> {
     if (!isAbsolute(cwd)) return null;
+    const labelled = await this.labelledSession(cwd, hints);
+    if (labelled !== null) return labelled;
     const named = await this.namedSession(cwd, hints?.processes);
     if (named !== null) return named;
     if (hints?.shared === true) return null;
@@ -1182,6 +1186,27 @@ export class PiTranscriptSource implements TranscriptSource {
       return { kind: "id", value: candidate.id };
     }
     return null;
+  }
+
+  /**
+   * The session the pane's terminal label names (#675), or null. The key is `<harness>.session_file`,
+   * built from the harness the pane's foreground process runs, so an omp pane never reads the pi label
+   * and the reverse. The value is a hint under ADR 0024 and passes {@link namedByPath}, the check the
+   * command line's path passes: inside a root after symlink resolution, directly in a folder this cwd
+   * is filed under, a session id for a name. A relative path, or any failure, is null and falls to the
+   * next step. Never throws.
+   */
+  private async labelledSession(cwd: string, hints: DiscoverHints | undefined): Promise<AgentSessionRef | null> {
+    if (hints?.labels === undefined || hints.processes === undefined) return null;
+    const harness = harnessProcessOf(hints.processes, PI_BINARIES)?.harness;
+    if (harness === undefined) return null;
+    const value = hints.labels[`${harness}.session_file`];
+    if (value === undefined || !isAbsolute(value)) return null;
+    try {
+      return await this.namedByPath(value, piSessionFolderNames(cwd, this.places));
+    } catch {
+      return null;
+    }
   }
 
   /**

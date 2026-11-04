@@ -4426,12 +4426,16 @@ export async function discoverProcesses(
 export async function discoveryHints(
   adapter: JournalAdapter,
   pane: AgentView,
-  mux: Pick<MuxAdapter, "readGrid" | "foregroundProcesses">,
+  mux: Pick<MuxAdapter, "readGrid" | "foregroundProcesses" | "paneLabels">,
   paneId: string,
 ): Promise<DiscoverHints | undefined> {
   // A reported session is never discovered, so the foreground argv would buy nothing.
   if (adapter.discover === undefined || pane.agentSession !== undefined) return undefined;
-  return { screen: paneScreen(mux, paneId), processes: await discoverProcesses(mux, paneId) };
+  const hints: DiscoverHints = { screen: paneScreen(mux, paneId), processes: await discoverProcesses(mux, paneId) };
+  // The labels come from the last snapshot and cost no call. Which key a journal reads is its own.
+  const labels = mux.paneLabels?.(paneId);
+  if (labels === undefined) return hints;
+  return { ...hints, labels };
 }
 
 /**
@@ -4506,7 +4510,7 @@ export async function paneHistory(
   journals: Record<string, JournalAdapter> | null,
   transcripts: TranscriptStore | null,
   engine: StateEngine,
-  mux: Pick<MuxAdapter, "readGrid" | "foregroundProcesses">,
+  mux: Pick<MuxAdapter, "readGrid" | "foregroundProcesses" | "paneLabels">,
   paneId: string,
   url: URL,
   req: Request,
@@ -4657,7 +4661,7 @@ async function paneSubagent(
   cfg: Config,
   journals: Record<string, JournalAdapter> | null,
   engine: StateEngine,
-  mux: Pick<MuxAdapter, "readGrid" | "foregroundProcesses">,
+  mux: Pick<MuxAdapter, "readGrid" | "foregroundProcesses" | "paneLabels">,
   paneId: string,
   agentId: string,
   req: Request,
@@ -4724,7 +4728,7 @@ export async function paneChat(
   journals: Record<string, JournalAdapter> | null,
   live: LiveWindows | null,
   engine: StateEngine,
-  mux: Pick<MuxAdapter, "capabilities" | "readGrid" | "foregroundProcesses">,
+  mux: Pick<MuxAdapter, "capabilities" | "readGrid" | "foregroundProcesses" | "paneLabels">,
   paneId: string,
   url: URL,
   req: Request,

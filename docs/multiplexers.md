@@ -263,6 +263,11 @@ What works:
 - History and Chat for a pi or Oh My Pi pane, with no hook. Collie finds the pane's session log from
   the pane's folder: pi keeps one log folder per working directory, and the newest log whose header
   names that folder is the pane's.
+- Two Oh My Pi panes in one folder, each with its own Chat. Collie cannot tell their logs apart from
+  the folder alone, so it shows no Chat for either. The Oh My Pi extension in `omp-extension/` labels
+  its terminal with the path of its session file (`omp.session_file`), and Collie opens that file for
+  that pane. A label that names a file outside Oh My Pi's session folder for the pane's own folder is
+  ignored, and the pane behaves as it did before.
 
 What looks different on the core:
 

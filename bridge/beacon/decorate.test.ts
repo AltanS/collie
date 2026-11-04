@@ -83,6 +83,7 @@ class StubAdapter implements MuxAdapter {
   /** The foreground argv, when a case gives it one. Absent by default, like a multiplexer
    *  without the call — the decorators must carry it without inventing it. */
   foregroundProcesses?: (paneId: string) => Promise<MuxOutcome<readonly ForegroundProcess[]>>;
+  paneLabels?: (paneId: string) => Record<string, string> | undefined;
   pasteText?: (paneId: string, text: string) => Promise<MuxAck>;
   pasteBlock?: (paneId: string, text: string) => Promise<MuxAck>;
   capabilities = declareCapabilities({
@@ -351,6 +352,7 @@ describe("a decorator preserves the adapter's whole surface", () => {
     paneActions: true,
     controlTurn: true,
     foregroundProcesses: true,
+    paneLabels: true,
     pasteText: true,
     pasteBlock: true,
     renameSpace: true,
@@ -397,6 +399,7 @@ describe("a decorator preserves the adapter's whole surface", () => {
     stub.paneActions = () => undefined;
     stub.controlTurn = () => Promise.resolve({ kind: "ok", replayed: false });
     stub.foregroundProcesses = () => Promise.resolve(muxOk([]));
+    stub.paneLabels = () => undefined;
     stub.pasteText = () => Promise.resolve(muxAck());
     stub.pasteBlock = () => Promise.resolve(muxAck());
     stub.renameSpace = () => Promise.resolve(muxAck());

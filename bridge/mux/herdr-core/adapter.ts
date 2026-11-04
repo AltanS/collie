@@ -93,7 +93,8 @@ const HERDR_CORE_CAPABILITIES = declareCapabilities({
     paneGrid: "herdr-core hands out the screen as plain text, so the mirror shows no colour.",
     agentDetection:
       "herdr-core names the agent in a terminal from the agent's own status report. A program that sends no report is named from the process in the foreground, through the same table (omp sends none), and then has no status. A shell, or a process Collie has no harness for, reads as a shell.",
-    agentSessionRef: "herdr-core keeps an agent's status but not its conversation id. The agent's own hook supplies it: install the hooks with `collie hooks install claude`.",
+    agentSessionRef:
+      "herdr-core keeps an agent's status but not its conversation id. The agent's own hook supplies it: install the hooks with `collie hooks install claude`. A `<harness>.session_file` terminal label is read as a discovery hint (ADR 0024), not reported as a ref.",
     sendKeys:
       "herdr-core presses keys by name. A Super or Command chord, Ctrl+Enter, and a modified key it has no name for (such as Ctrl+$) are refused.",
     renamePane: "herdr-core has no command that renames a terminal.",
@@ -209,6 +210,12 @@ export class HerdrCoreMux implements MuxAdapter {
    */
   private foregrounds = new Map<string, WireForeground | null>();
 
+  /**
+   * Per terminal, the labels of the last snapshot, replaced whole on each one. `paneLabels` answers
+   * from it, so a label a program sets with `hc label` costs no call of its own.
+   */
+  private labels = new Map<string, Record<string, string>>();
+
   /** Whether the core on the socket was last seen speaking our generation. `null`: not asked yet. */
   private compatible: boolean | null = null;
 
@@ -260,6 +267,7 @@ export class HerdrCoreMux implements MuxAdapter {
     }
     const snapshot = toSnapshot(read[0], read[1], this.home);
     this.foregrounds = new Map(read[0].map((terminal) => [terminal.address, terminal.foreground]));
+    this.labels = new Map(read[0].map((terminal) => [terminal.address, terminal.labels]));
     this.forgetGonePanes(snapshot);
     this.noteHistoryState(snapshot);
     return snapshot;
@@ -286,6 +294,14 @@ export class HerdrCoreMux implements MuxAdapter {
     } catch (err) {
       return refusalFor(err);
     }
+  }
+
+  /**
+   * The terminal's labels as of the last snapshot, for a journal that reads a hint there (#675,
+   * `DiscoverHints.labels`). A terminal the snapshot did not list has none to give.
+   */
+  paneLabels(paneId: string): Record<string, string> | undefined {
+    return this.labels.get(paneId);
   }
 
   /** A no-op that resolves, as Herdr's is: every snapshot is a fresh read, and the watch pushes. */
