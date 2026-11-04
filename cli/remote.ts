@@ -2653,6 +2653,10 @@ export function transportFailure(io: Io, host: string, r: RemoteResult): number 
   }
   if (r.code !== 255) return null;
   io.err(`error: ssh could not reach ${host} — ${firstLine(r.stderr)}`);
+  // BatchMode never prompts, so a host this machine has not met fails here instead of asking.
+  if (/Host key verification failed/.test(r.stderr)) {
+    io.err(`       connect once by hand (ssh ${host}) to accept its host key, then add it again`);
+  }
   if (/Permission denied \(publickey/.test(r.stderr)) {
     io.err("       That is a key problem, not a Collie one: `ssh-add` your key (or name it in");
     io.err(`       ~/.ssh/config for ${host}) and re-run. Collie never touches your ssh configuration.`);

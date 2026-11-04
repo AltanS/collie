@@ -2226,6 +2226,17 @@ describe("re-running against the same host", () => {
     expect(text(h.io)).toContain("The new build is on disk there and the old one is still running");
   });
 
+  test("a host key this machine has not met fails with a hint to connect once by hand", async () => {
+    const h = harness({
+      broken: { "nas.example": { code: 255, stderr: "Host key verification failed.\n", spawned: true } },
+    });
+    expect(await run(h)).toBe(EXIT.UNREACHABLE);
+    expect(h.io.stderr).toContain("error: ssh could not reach nas.example — Host key verification failed.");
+    expect(h.io.stderr).toContain("       connect once by hand (ssh nas.example) to accept its host key, then add it again");
+    // Only the one probe went out: no prompt, no retry, no install.
+    expect(h.calls.map((c) => c.leg)).toEqual(["probe"]);
+  });
+
   test("an unchanged re-run restarts nothing — a no-op stays a no-op", async () => {
     const h = harness({
       store: leadStore({ peers: [member({ memberId: "nas", address: "100.64.0.9:8787" })] }),
