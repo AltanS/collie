@@ -76,6 +76,10 @@ export interface WireStatus {
 export interface WireForeground {
   readonly name: string;
   readonly cwd: string;
+  /** The leader's process id. Optional: an older core may omit it. */
+  readonly pid?: number;
+  /** The leader's command line. Optional: an older core may omit it. */
+  readonly argv?: readonly string[];
 }
 
 /** One terminal record, read for the fields the adapter maps and no others. */
@@ -254,7 +258,11 @@ function parseStatus(value: JsonValue | undefined): WireStatus | null {
 function parseForeground(value: JsonValue | undefined): WireForeground | null {
   if (value === null || value === undefined) return null;
   const record = asObject(value);
-  return { name: str(record, "name"), cwd: str(record, "cwd") };
+  const pid = record.pid;
+  const argv = record.argv;
+  const goodPid = typeof pid === "number" && Number.isInteger(pid) && pid > 0 ? { pid } : {};
+  const goodArgv = Array.isArray(argv) && argv.every((word): word is string => typeof word === "string") ? { argv } : {};
+  return { name: str(record, "name"), cwd: str(record, "cwd"), ...goodPid, ...goodArgv };
 }
 
 /** One terminal record. Exported for the fake core, which builds its answers from the same shape. */

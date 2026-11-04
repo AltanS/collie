@@ -63,6 +63,7 @@ import {
   type SubscribeOptions,
   type WireHello,
   type WireLayout,
+  type WireForeground,
   type WireLayoutSpace,
   type WireRead,
   type WireStatus,
@@ -142,7 +143,7 @@ interface FakeTerminal {
   cwd: string;
   title: string;
   status: WireStatus | null;
-  foreground: { name: string; cwd: string } | null;
+  foreground: WireForeground | null;
   screen: string[];
   history: string[];
   cols: number;
@@ -241,7 +242,7 @@ export class FakeHcCore implements HcRpc {
       cwd: partial.cwd ?? "/home/dev",
       title: partial.title ?? "",
       status: partial.status ?? null,
-      foreground: partial.foreground ?? { name: "bash", cwd: partial.cwd ?? "/home/dev" },
+      foreground: partial.foreground === undefined ? { name: "bash", cwd: partial.cwd ?? "/home/dev" } : partial.foreground,
       screen: partial.screen ?? [`${address}$ `],
       history: partial.history ?? [],
       cols: partial.cols ?? COLS,
@@ -339,7 +340,7 @@ export class FakeHcCore implements HcRpc {
   }
 
   /** The terminal as the fake holds it, for a test that derives a generation from it. */
-  peek(address: string): { readonly foreground: { name: string; cwd: string } | null; readonly status: WireStatus | null; readonly state: string } | undefined {
+  peek(address: string): { readonly foreground: WireForeground | null; readonly status: WireStatus | null; readonly state: string } | undefined {
     return this.find(address);
   }
 

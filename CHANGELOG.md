@@ -39,6 +39,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **On a phone, a dialog card in the dock no longer hides the chat and its question cards.** The chat now keeps at least a third of the screen, and the dock shrinks and scrolls inside itself to make room. The dialog mirror in the unread-dialog card now opens at its bottom, where the dialog is, and not at the old output above it. Thanks @viniciosrab (#667).
 - **The usage windows ask less and honour Retry-After.** Collie now asks a vendor's usage endpoint at most once in five minutes per agent, a turn end included, where it asked once a minute before. After an HTTP 429 it waits as long as the `Retry-After` header says, at least 15 minutes, and doubles the wait on each 429 in a row up to an hour, then says the real wait in the log. Thanks @s0up4200 (#672).
 - **A numbered list that an indented bullet splits keeps counting from its own number.** The second part used to draw as "1." again, so every option in an agent's pick-one list read as option 1. Thanks @KyongSik-Yoon (#674).
+- **A pi or Oh My Pi pane started with its resume command finds its session in a shared folder.** Collie reads the resume argument from the pane's own command line first, as it does for Muse, and refuses only when the command line names nothing. On the Herdr core, Collie reads the pane's command line from the core's foreground record. Thanks @minigold92 (#675).
 
 ## [1.26.0] - 2026-11-03
 

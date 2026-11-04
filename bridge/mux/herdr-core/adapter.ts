@@ -33,6 +33,7 @@
 import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import { declareCapabilities } from "../capabilities.ts";
+import type { ForegroundProcess } from "../../journal/types.ts";
 import { EXTENDED_ONLY_CHORDS } from "../keys.ts";
 import type { MuxAdapterFactory, MuxTarget } from "../registry.ts";
 import {
@@ -58,7 +59,7 @@ import {
   type MuxTabRequest,
   type MuxWatchOptions,
 } from "../types.ts";
-import { DEFAULT_HC_TIMEOUT_MS, defaultHcSocket, HC_GENERATION, HcClient, HcError, HcTimeout, type HcRpc, type WireLayout, type WireRead, type WireTerminal } from "./client.ts";
+import { DEFAULT_HC_TIMEOUT_MS, defaultHcSocket, HC_GENERATION, HcClient, HcError, HcTimeout, type HcRpc, type WireForeground, type WireLayout, type WireRead, type WireTerminal } from "./client.ts";
 import { routeEvent } from "./events.ts";
 import { herdrCoreBeaconMatcher } from "./markers.ts";
 import { HERDR_CORE_LOGO_SVG } from "./logo.ts";
@@ -199,6 +200,14 @@ export class HerdrCoreMux implements MuxAdapter {
 
   private readonly revisions = new Map<string, PaneRevision>();
 
+  /**
+   * Per terminal, the foreground record of the last read of it: the snapshot's list, replaced whole on
+   * each snapshot, and a terminal this adapter started. `foregroundProcesses` answers from it, so the
+   * argv costs no call of its own. The core reads the foreground about twice a second (HC_API.md), and
+   * the snapshot is as fresh as the last poll.
+   */
+  private foregrounds = new Map<string, WireForeground | null>();
+
   /** Whether the core on the socket was last seen speaking our generation. `null`: not asked yet. */
   private compatible: boolean | null = null;
 
@@ -249,9 +258,33 @@ export class HerdrCoreMux implements MuxAdapter {
       throw err;
     }
     const snapshot = toSnapshot(read[0], read[1], this.home);
+    this.foregrounds = new Map(read[0].map((terminal) => [terminal.address, terminal.foreground]));
     this.forgetGonePanes(snapshot);
     this.noteHistoryState(snapshot);
     return snapshot;
+  }
+
+  /**
+   * The pane's foreground process as argv, for a journal that names its session there (#675). One entry
+   * (the core reports the foreground group's leader): `pid` only when the core sent a positive integer,
+   * `argv` as sent or `[]`, as the Herdr adapter does. No foreground is an empty list. A terminal the
+   * last snapshot did not list is asked for once, so an unknown one is the core's own refusal.
+   */
+  async foregroundProcesses(paneId: string): Promise<MuxOutcome<readonly ForegroundProcess[]>> {
+    const remote = remoteRefusal(paneId);
+    if (remote !== null) return remote;
+    try {
+      let foreground = this.foregrounds.get(paneId);
+      if (foreground === undefined) {
+        foreground = (await this.rpc.getTerminal(paneId)).foreground;
+        this.foregrounds.set(paneId, foreground);
+      }
+      if (foreground === null) return muxOk([]);
+      const argv = foreground.argv ?? [];
+      return muxOk([foreground.pid === undefined ? { argv } : { argv, pid: foreground.pid }]);
+    } catch (err) {
+      return refusalFor(err);
+    }
   }
 
   /** A no-op that resolves, as Herdr's is: every snapshot is a fresh read, and the watch pushes. */
@@ -468,6 +501,7 @@ export class HerdrCoreMux implements MuxAdapter {
     const asked = requestedCwd(request.cwd) ?? space.folder;
     try {
       const created = await this.rpc.runShell(asked === undefined ? { labels } : { labels, cwd: asked });
+      this.foregrounds.set(created.address, created.foreground);
       return muxOk({ paneId: created.address, spaceId: space.spaceId, spaceLabel: space.label, tabId, cwd: created.cwd });
     } catch (err) {
       return refusalFor(err);
@@ -490,6 +524,7 @@ export class HerdrCoreMux implements MuxAdapter {
     const asked = requestedCwd(request.cwd);
     try {
       const created = await this.rpc.runShell(asked === undefined ? { labels } : { labels, cwd: asked });
+      this.foregrounds.set(created.address, created.foreground);
       const spaceLabel = folderName(created.foreground?.cwd || created.cwd, this.home) || spaceId;
       return muxOk({ paneId: created.address, spaceId, spaceLabel, tabId, cwd: created.cwd });
     } catch (err) {
