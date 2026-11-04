@@ -14,8 +14,8 @@
 #              cannot hide behind a removed one in another. A test must not be skipped just to get
 #              green, so a higher count is a failure. Raise a number only with a reason.
 #              Bridge went from 2 to 0 when M43 spec 04 checked the access list instead of the mode.
-#              Today, 191 in all, each one named, with its reason:
-#              bridge 106. 5 are the POSIX-only and engine cases below, 1 the /etc link scan, 5 are the hold socket tests, 6 the walky ones, 30 are the
+#              Today, 192 in all, each one named, with its reason:
+#              bridge 107. 5 are the POSIX-only and engine cases below, 1 the /etc link scan, 1 the telemetry file mode, 5 are the hold socket tests, 6 the walky ones, 30 are the
 #                durable example apps, 10 are the durable-harness adapter test, 36 are the durable socket tests (see "Durable, bridge" below),
 #                5 are the pane's program reads (see "The pane's program, bridge" below), and 6 are the fake git of a new
 #                worktree (see "The fake git of a new worktree, bridge" below).
@@ -37,6 +37,8 @@
 #              The /etc link scan, bridge (1). In bridge/claude-commands.test.ts, "discoverClaudeCommands: the bounds
 #                a reader of the operator's disk keeps". Windows has no /etc, and a file symlink needs a privilege there:
 #                - "real disk: a symlink to /etc, in a project or in the personal folders, yields no row" (POSIX links to /etc)
+#              The telemetry file mode, bridge (1). A file mode is POSIX, and the rest of bridge/telemetry.test.ts runs on Windows:
+#                - "the file is owner-only" (telemetry.test.ts, "createTelemetry": the 0600 mode of telemetry.json)
 #              The hold socket, bridge (5). Windows builds no hold socket yet, so every permission there stays a
 #                screen ask (CHANGELOG, M56 spec 12). The five tests of the "the hold socket" block in
 #                bridge/surface/hook-ask.test.ts are `test.skipIf` on win32:
@@ -123,7 +125,7 @@
 #                  (it needs a tmux binary, and Windows has none)
 param(
   [Parameter(Mandatory = $true)][string]$Out,
-  [int]$MaxSkipsBridge = 106,
+  [int]$MaxSkipsBridge = 107,
   [int]$MaxSkipsCli = 60,
   [int]$MaxSkipsScripts = 25
 )

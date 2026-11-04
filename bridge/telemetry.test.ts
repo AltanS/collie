@@ -435,7 +435,7 @@ describe("createTelemetry", () => {
     rmSync(r.stateDir, { force: true });
   });
 
-  test("the file is owner-only", () => {
+  test.skipIf(process.platform === "win32")("the file is owner-only", () => {
     const r = rig();
     r.telemetry.observe();
     expect(statSync(telemetryPath(r.stateDir)).mode & 0o777).toBe(0o600);
