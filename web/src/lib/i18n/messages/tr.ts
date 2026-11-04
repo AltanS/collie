@@ -2667,4 +2667,8 @@ export const tr: Dictionary = {
   "settings.report.title": "Gönderim başarısız olunca rapor öner",
   "settings.report.description": "Bir bölmede art arda 3 başarısız gönderimden sonra bir kart GitHub kaydı açmayı önerir. Siz dokunmadan bu telefondan hiçbir şey çıkmaz.",
   "settings.report.open": "Sorun bildir",
+  "settings.zoomPill.title": "Yakınlaştırma düğmesi",
+  "settings.zoomPill.description": "Eylem çubuğundaki, ekranı tam boyutta açan büyüteç düğmesi. Sohbette hiç görünmez.",
+  "settings.zoomPill.option.screen": "Ekran görünümü",
+  "settings.zoomPill.option.off": "Kapalı",
 };

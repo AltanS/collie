@@ -2669,4 +2669,8 @@ export const it: Dictionary = {
   "settings.report.title": "Proponi una segnalazione quando l'invio fallisce",
   "settings.report.description": "Dopo 3 invii falliti di fila in un riquadro, una scheda propone di aprire una issue su GitHub. Nulla lascia questo telefono senza un tuo tocco.",
   "settings.report.open": "Segnala un problema",
+  "settings.zoomPill.title": "Pulsante zoom",
+  "settings.zoomPill.description": "Il pulsante a forma di lente nella barra azioni che apre lo schermo a dimensione piena. Non compare mai nella chat.",
+  "settings.zoomPill.option.screen": "Vista schermo",
+  "settings.zoomPill.option.off": "Disattivato",
 };

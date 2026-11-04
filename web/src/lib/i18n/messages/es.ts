@@ -2852,4 +2852,8 @@ export const es: Dictionary = {
   "settings.report.title": "Ofrecer un informe cuando falla el envío",
   "settings.report.description": "Tras 3 envíos fallidos seguidos en un pane, una tarjeta ofrece abrir una incidencia en GitHub. Nada sale de este teléfono si usted no toca.",
   "settings.report.open": "Informar de un problema",
+  "settings.zoomPill.title": "Botón de zoom",
+  "settings.zoomPill.description": "El botón de lupa de la barra de acciones que abre la pantalla a tamaño completo. Nunca aparece en el chat.",
+  "settings.zoomPill.option.screen": "Vista de pantalla",
+  "settings.zoomPill.option.off": "Desactivado",
 };

@@ -2836,4 +2836,8 @@ export const ja: Dictionary = {
   "settings.report.title": "送信に失敗したら報告を提案する",
   "settings.report.description": "ペインで3回続けて送信に失敗すると、GitHub の Issue を開くカードが出ます。タップしない限り、この電話から何も送られません。",
   "settings.report.open": "問題を報告",
+  "settings.zoomPill.title": "ズームボタン",
+  "settings.zoomPill.description": "アクション行にある虫眼鏡のボタンで、画面を全画面で開きます。チャットでは表示されません。",
+  "settings.zoomPill.option.screen": "画面ビュー",
+  "settings.zoomPill.option.off": "オフ",
 };

@@ -2796,4 +2796,8 @@ export const ru: Dictionary = {
   "settings.report.title": "Предлагать отчёт, когда отправка не удаётся",
   "settings.report.description": "После 3 неудачных отправок подряд на панели карточка предложит открыть задачу на GitHub. Без вашего нажатия ничего не покидает телефон.",
   "settings.report.open": "Сообщить о проблеме",
+  "settings.zoomPill.title": "Кнопка увеличения",
+  "settings.zoomPill.description": "Кнопка с лупой на панели действий, которая открывает экран на весь размер. В чате она не показывается.",
+  "settings.zoomPill.option.screen": "Вид экрана",
+  "settings.zoomPill.option.off": "Выкл.",
 };

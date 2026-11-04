@@ -2829,4 +2829,8 @@ export const ko: Dictionary = {
   "settings.report.title": "전송이 실패하면 신고 제안",
   "settings.report.description": "한 창에서 전송이 3번 연속 실패하면 GitHub 이슈를 여는 카드가 나타납니다. 직접 누르지 않으면 이 휴대폰에서 아무것도 나가지 않습니다.",
   "settings.report.open": "문제 신고",
+  "settings.zoomPill.title": "확대 버튼",
+  "settings.zoomPill.description": "작업 벨트에 있는 돋보기 버튼으로, 화면을 전체 크기로 엽니다. 채팅에서는 표시되지 않습니다.",
+  "settings.zoomPill.option.screen": "화면 보기",
+  "settings.zoomPill.option.off": "끄기",
 };

@@ -2855,4 +2855,8 @@ export const de: Dictionary = {
   "settings.report.title": "Bericht anbieten, wenn Senden fehlschlägt",
   "settings.report.description": "Nach 3 fehlgeschlagenen Sendungen in Folge auf einer Pane bietet eine Karte an, ein GitHub-Issue zu öffnen. Ohne deinen Tipp verlässt nichts dieses Telefon.",
   "settings.report.open": "Problem melden",
+  "settings.zoomPill.title": "Zoom-Schaltfläche",
+  "settings.zoomPill.description": "Die Lupen-Schaltfläche in der Aktionsleiste, die den Bildschirm in voller Größe öffnet. Im Chat erscheint sie nie.",
+  "settings.zoomPill.option.screen": "Bildschirmansicht",
+  "settings.zoomPill.option.off": "Aus",
 };

@@ -125,7 +125,8 @@ describe("the shipped themes", () => {
   it.each(ids)("%s is version 2 or 3 and names a word for every shape token, so an export shows the whole shape", (id) => {
     const theme = shipped(id);
     expect(theme.version).toBeGreaterThanOrEqual(2);
-    expect(Object.keys(theme.surface ?? {}).toSorted()).toEqual([...SURFACE_TOKENS].toSorted());
+    // `zoom` is the one optional word that sets no style (lib/zoom-pill.ts): a shipped theme leaves it out.
+    expect(Object.keys(theme.surface ?? {}).toSorted()).toEqual(SURFACE_TOKENS.filter((token) => token !== "zoom").toSorted());
   });
 
   // M57 spec 18: each shipped theme uses the whole version 2 sheet, so it reads as another app and

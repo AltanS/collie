@@ -2811,4 +2811,8 @@ export const zhTW: Dictionary = {
   "settings.report.title": "傳送失敗時提議回報",
   "settings.report.description": "某個窗格連續 3 次傳送失敗後，會出現一張卡片，提議開啟 GitHub Issue。除非你點按，否則不會有任何內容離開此手機。",
   "settings.report.open": "回報問題",
+  "settings.zoomPill.title": "放大按鈕",
+  "settings.zoomPill.description": "動作列上的放大鏡按鈕，可全尺寸開啟螢幕。在聊天中不會顯示。",
+  "settings.zoomPill.option.screen": "螢幕檢視",
+  "settings.zoomPill.option.off": "關閉",
 };

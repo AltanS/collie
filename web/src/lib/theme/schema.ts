@@ -424,6 +424,9 @@ function setSurfaceWord(surface: Surface, token: SurfaceToken, value: string | u
     case "labels":
       surface.labels = surfaceWordOf("labels", value);
       return surface.labels !== undefined;
+    case "zoom":
+      surface.zoom = surfaceWordOf("zoom", value);
+      return surface.zoom !== undefined;
   }
 }
 

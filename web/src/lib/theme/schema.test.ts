@@ -513,6 +513,15 @@ describe("the surface block", () => {
     expect(result.ok && Object.keys(result.theme)).toEqual(["version", "id", "name", "light", "surface"]);
   });
 
+  it("accepts the zoom word, screen or none, and refuses any other", () => {
+    for (const word of ["screen", "none"]) {
+      const result = parseTheme(v2({ surface: { zoom: word } }), CAP);
+      expect(result.ok && result.theme.surface).toEqual({ zoom: word });
+    }
+    expect(codes(parseTheme(v2({ surface: { zoom: "off" } }), CAP))).toEqual(["surface surface.zoom"]);
+    expect(codes(parseTheme(v2({ surface: { zoom: "default" } }), CAP))).toEqual(["surface surface.zoom"]);
+  });
+
   it("drops an empty block, so an export carries no empty key", () => {
     const result = parseTheme(v2({ surface: {} }), CAP);
     expect(result.ok && "surface" in result.theme).toBe(false);

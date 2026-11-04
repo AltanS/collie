@@ -2668,4 +2668,8 @@ export const fr: Dictionary = {
   "settings.report.title": "Proposer un rapport quand l'envoi échoue",
   "settings.report.description": "Après 3 envois échoués d'affilée sur un volet, une carte propose d'ouvrir un ticket GitHub. Rien ne quitte ce téléphone sans votre appui.",
   "settings.report.open": "Signaler un problème",
+  "settings.zoomPill.title": "Bouton de zoom",
+  "settings.zoomPill.description": "Le bouton en forme de loupe dans la barre d'actions, qui ouvre l'écran en plein format. Il n'apparaît jamais dans le chat.",
+  "settings.zoomPill.option.screen": "Vue écran",
+  "settings.zoomPill.option.off": "Désactivé",
 };

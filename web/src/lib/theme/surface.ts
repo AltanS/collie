@@ -1,4 +1,4 @@
-// The shape of a theme, schema version 2 (M57 specs 14 and 17): ten tokens, each a CLOSED list of
+// The shape of a theme, schema version 2 (M57 specs 14 and 17): eleven tokens, each a CLOSED list of
 // words, and the one table that turns a word into CSS declarations. Beside it, two more closed doors
 // of version 2 that are not words of the `surface` block: the display face (`fonts.display`, one of
 // the shipped faces) and the terminal palette (`ansi`, eighteen gate-checked colours).
@@ -15,7 +15,7 @@
 // `src/theme-init.test.ts` fails when the line in the file is not the line this module writes.
 //
 // HOW EACH TOKEN REACHES THE PAGE. Tailwind compiles some theme values into each utility and reads
-// others through var(); the ten tokens are the ones that end in a property a utility reads at run time.
+// others through var(); the first ten tokens are the ones that end in a property a utility reads at run time; the eleventh, zoom, ends in none.
 //   * radius: `--radius-sm/md/lg/xl`. index.css declares them in `@theme` (not `@theme inline`), so
 //     `rounded-md` compiles to `border-radius: var(--radius-md)`. Bare `rounded` and `rounded-full`
 //     are not steps and never move. The radius word also sets `--edge-accent`, the offsets of the
@@ -47,6 +47,10 @@
 //   * icons (spec 17): `--icon-stroke`, the stroke width of every lucide icon (`svg.lucide`).
 //   * labels (spec 17): `--label-transform` and `--label-tracking`, read by the `label-caps` utility
 //     every small section label wears.
+//   * zoom (1.26.2): the one word that sets no property. It says whether the belt's Zoom pill shows
+//     in the Screen view (`screen`, today's behaviour) or never (`none`). Its words hold no
+//     declarations, so nothing reaches the page; the app reads the word itself (lib/zoom-pill.ts),
+//     and a device choice in Settings wins over it.
 //
 // EVERY DEFAULT IS TODAY'S VALUE. `src/themes/themes.test.ts` reads index.css and Tailwind's own
 // theme.css and holds each default word equal to what the app drew before version 2.
@@ -56,7 +60,7 @@
 
 import { SHIPPED_FONTS, isShippedFont, type ShippedFont } from "../shipped-fonts";
 
-/** The ten shape tokens, in the order a file's words are applied. */
+/** The eleven shape tokens, in the order a file's words are applied. */
 export const SURFACE_TOKENS = [
   "radius",
   "shadow",
@@ -68,6 +72,7 @@ export const SURFACE_TOKENS = [
   "rows",
   "icons",
   "labels",
+  "zoom",
 ] as const;
 
 export type SurfaceToken = (typeof SURFACE_TOKENS)[number];
@@ -223,6 +228,10 @@ export const SURFACE = {
       ["--label-tracking", "normal"],
     ],
   },
+  zoom: {
+    screen: [],
+    none: [],
+  },
 } as const satisfies { [T in SurfaceToken]: Record<string, readonly Declaration[]> };
 
 export type SurfaceWord<T extends SurfaceToken> = keyof (typeof SURFACE)[T] & string;
@@ -239,6 +248,7 @@ export interface Surface {
   rows?: SurfaceWord<"rows">;
   icons?: SurfaceWord<"icons">;
   labels?: SurfaceWord<"labels">;
+  zoom?: SurfaceWord<"zoom">;
 }
 
 /** The word each token has when a file does not name one: today's look. */
@@ -253,6 +263,7 @@ export const SURFACE_DEFAULTS = {
   rows: "rules",
   icons: "default",
   labels: "caps",
+  zoom: "screen",
 } as const satisfies Required<Surface>;
 
 export function isSurfaceToken(value: string): value is SurfaceToken {
@@ -283,6 +294,7 @@ export function resolveSurface(surface: Surface | undefined): Required<Surface> 
     rows: surface?.rows ?? SURFACE_DEFAULTS.rows,
     icons: surface?.icons ?? SURFACE_DEFAULTS.icons,
     labels: surface?.labels ?? SURFACE_DEFAULTS.labels,
+    zoom: surface?.zoom ?? SURFACE_DEFAULTS.zoom,
   };
 }
 
@@ -306,6 +318,7 @@ export function surfaceDeclarations(surface: Surface | undefined): Declaration[]
   if (surface.rows !== undefined) out.push(...wordDeclarations("rows", surface.rows));
   if (surface.icons !== undefined) out.push(...wordDeclarations("icons", surface.icons));
   if (surface.labels !== undefined) out.push(...wordDeclarations("labels", surface.labels));
+  if (surface.zoom !== undefined) out.push(...wordDeclarations("zoom", surface.zoom));
   return out;
 }
 

@@ -2667,4 +2667,8 @@ export const pt: Dictionary = {
   "settings.report.title": "Oferecer um relato quando o envio falha",
   "settings.report.description": "Após 3 envios com falha seguidos em um painel, um cartão oferece abrir uma issue no GitHub. Nada sai deste celular sem um toque seu.",
   "settings.report.open": "Relatar um problema",
+  "settings.zoomPill.title": "Botão de zoom",
+  "settings.zoomPill.description": "O botão de lupa da barra de ações que abre a tela em tamanho total. Ele nunca aparece no chat.",
+  "settings.zoomPill.option.screen": "Vista de tela",
+  "settings.zoomPill.option.off": "Desativado",
 };

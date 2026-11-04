@@ -3046,6 +3046,10 @@ export const en = {
   "settings.report.title": "Offer a report when sending fails",
   "settings.report.description": "After 3 failed sends in a row on a pane, a card offers to open a GitHub issue. Nothing leaves this phone unless you tap.",
   "settings.report.open": "Report a problem",
+  "settings.zoomPill.title": "Zoom pill",
+  "settings.zoomPill.description": "The magnifier button on the belt that opens the screen full size. It never shows in Chat.",
+  "settings.zoomPill.option.screen": "Screen view",
+  "settings.zoomPill.option.off": "Off",
 } as const;
 
 /** Every key that exists, as a union of string literals. The completeness contract. */

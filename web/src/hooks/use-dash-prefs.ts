@@ -5,6 +5,7 @@ import type { ChangesLayout } from "@/lib/changes-tree";
 import { coerceDashView, isLegacyDashView, wasFocusView, type DashView } from "@/lib/dash-view";
 import { coercePaneOrder, type PaneOrder } from "@/lib/pane-order";
 import { coercePaneView, type PaneView } from "@/lib/pane-view";
+import { coerceZoomPill, type ZoomPill } from "@/lib/zoom-pill";
 import type { RecentDir } from "@/lib/triage";
 
 // Dashboard layout preferences, persisted in localStorage. Deliberately separate from
@@ -118,6 +119,12 @@ export interface DashPrefs {
    * See lib/pane-view.ts for why it is one per-device value and not a per-pane override.
    */
   paneView: PaneView;
+  /**
+   * Whether the belt's Zoom pill is drawn in the Screen view (`screen`) or never (`off`). `null` is
+   * "never chosen": the active theme's `zoom` word decides, and without one the pill shows in the
+   * Screen view. A choice made here always wins over the theme (lib/zoom-pill.ts).
+   */
+  zoomPill: ZoomPill | null;
 }
 
 const STORAGE_KEY = "collie:dash-prefs:v1";
@@ -151,6 +158,7 @@ const DEFAULTS: DashPrefs = {
   showCompactions: false,
   paneOrder: "place",
   paneView: "chat",
+  zoomPill: null,
 };
 
 function coerceDepth(raw: JsonValue | undefined): number {
@@ -229,6 +237,7 @@ export function coerceDashPrefs(raw: JsonValue | undefined): DashPrefs {
     showCompactions: asJsonBoolean(p.showCompactions) ?? DEFAULTS.showCompactions,
     paneOrder: coercePaneOrder(p.paneOrder),
     paneView: coercePaneView(p.paneView),
+    zoomPill: coerceZoomPill(p.zoomPill),
   };
 }
 
@@ -278,6 +287,7 @@ export interface UseDashPrefsReturn {
   setShowCompactions: (show: boolean) => void;
   setPaneOrder: (order: PaneOrder) => void;
   setPaneView: (view: PaneView) => void;
+  setZoomPill: (choice: ZoomPill) => void;
 }
 
 export function useDashPrefs(): UseDashPrefsReturn {
@@ -309,6 +319,7 @@ export function useDashPrefs(): UseDashPrefsReturn {
   const setShowCompactions = useCallback((showCompactions: boolean) => update({ showCompactions }), [update]);
   const setPaneOrder = useCallback((paneOrder: PaneOrder) => update({ paneOrder }), [update]);
   const setPaneView = useCallback((paneView: PaneView) => update({ paneView }), [update]);
+  const setZoomPill = useCallback((zoomPill: ZoomPill) => update({ zoomPill }), [update]);
 
   const setBeltScale = useCallback(
     (scale: number) => update({ beltScale: coerceBeltScale(scale) }),
@@ -353,5 +364,6 @@ export function useDashPrefs(): UseDashPrefsReturn {
     setShowCompactions,
     setPaneOrder,
     setPaneView,
+    setZoomPill,
   };
 }

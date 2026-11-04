@@ -2817,4 +2817,8 @@ export const zh: Dictionary = {
   "settings.report.title": "发送失败时提议报告",
   "settings.report.description": "某个窗格连续 3 次发送失败后，会出现一张卡片，提议打开 GitHub Issue。除非你点按，否则不会有任何内容离开此手机。",
   "settings.report.open": "报告问题",
+  "settings.zoomPill.title": "放大按钮",
+  "settings.zoomPill.description": "操作栏上的放大镜按钮，可全尺寸打开屏幕。在聊天中不会显示。",
+  "settings.zoomPill.option.screen": "屏幕视图",
+  "settings.zoomPill.option.off": "关闭",
 };

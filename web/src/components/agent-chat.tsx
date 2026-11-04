@@ -136,6 +136,8 @@ import { paneSpace, repoNameOf } from "@/lib/spaces";
 import { useOptionalRootData } from "@/lib/route-data";
 import { hasJournalAdapter, reportsSessionOnFirstPrompt } from "@/lib/journal-agents";
 import { journalReadingOf, paneBody, type JournalReading } from "@/lib/chat-gate";
+import { useActiveTheme } from "@/lib/theme/store";
+import { zoomPillShown } from "@/lib/zoom-pill";
 import { paneRowKey, paneScope } from "@/lib/hosts";
 import { isLead, paneScopeKey } from "@/lib/scope";
 import { openReport, unreadDialogReport } from "@/lib/report/store";
@@ -800,6 +802,8 @@ export function AgentChat({
   // Fold state for the "Switch pane" sheet's two long tails, shared with the dashboard so one
   // "hide the long tail" preference means the same thing in both places.
   const dash = useDashPrefs();
+  // The theme on screen: its `zoom` word is the fallback for the Zoom pill (lib/zoom-pill.ts).
+  const activeTheme = useActiveTheme();
   // Where the belt's Files button goes. The root of Files is the workspace's folder (ADR 0083), and a
   // pane that has `cd`-ed into a subfolder would land above where it works, so the tree opens ON the
   // pane's folder when that lies below the root. The root screen stays as it was when the pane sits
@@ -3323,8 +3327,11 @@ export function AgentChat({
                   // field gives up focus first, so the soft keyboard is not left standing over a view
                   // with no input in it (the reason `enterZen` blurs). Any other focus stays, so the
                   // view hands it back to the pill when it closes.
+                  // Drawn in the Screen view only, and not at all when the device or the theme says so
+                  // (lib/zoom-pill.ts). The body that decides is the one on screen: a Chat device whose
+                  // pane fell back to the terminal shows the pill, a Screen pill tap does too.
                   zoomPill={
-                    zoom
+                    zoom && zoomPillShown({ body, device: dash.prefs.zoomPill, themeWord: activeTheme.theme.surface?.zoom })
                       ? {
                           onClick: () => {
                             const active = document.activeElement;
