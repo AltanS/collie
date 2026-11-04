@@ -221,7 +221,6 @@ describe("six-line OMP and Claude sends through raw controls", () => {
   });
 });
 
-
 describe("a screen the core marks partial decides nothing", () => {
   class PartialScreen extends FakeHcCore {
     partial = false;

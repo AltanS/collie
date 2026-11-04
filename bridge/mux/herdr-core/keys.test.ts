@@ -63,7 +63,6 @@ describe("the contract's keys in herdr-core's spelling", () => {
     expect(toHcKey(spelling)).toEqual({ ok: false, reason });
   });
 
-
   test.each([
     ["Enter", "\r"],
     ["Backspace", "\x7f"],

@@ -126,4 +126,79 @@ describe("the Windows check runs the flake's Bun", () => {
     expect(String(setup[0]?.with?.["bun-version"])).toBe(flakeBunVersion());
   });
 
+  test("windows-suites.ps1 gives each suite its own skip budget, 191 in all, each skip named", () => {
+    const script = readFileSync(join(ROOT, "scripts", "windows-suites.ps1"), "utf8");
+    const budget = (suite: string): number => Number(new RegExp(`\\[int\\]\\$MaxSkips${suite} = (\\d+)`).exec(script)?.[1] ?? Number.NaN);
+    expect([budget("Bridge"), budget("Cli"), budget("Scripts")]).toEqual([106, 60, 25]);
+    // The bridge allowance is the local-cli tests that stay POSIX-only, the one real-engine Whistle
+    // case that needs the uncommitted model, the one scan of real links to /etc, the one telemetry file mode, the 5 hold socket tests, the 6
+    // walky mode and socket tests, the 30 durable example tests, the 10 durable-harness adapter skips and the 36 durable socket tests; the comment
+    // names them all.
+    const localCli = readFileSync(join(ROOT, "bridge", "stt", "local-cli.test.ts"), "utf8");
+    const posixOnly = [...localCli.matchAll(/test\.if\(posix\)\("([^"]+)"/g)].map((m) => m[1]!);
+    expect(posixOnly).toHaveLength(4);
+    const holdSocket = [...readFileSync(join(ROOT, "bridge", "surface", "hook-ask.test.ts"), "utf8").matchAll(/test\.skipIf\(POSIX_ONLY\)\("([^"]+)"/g)].map((m) => m[1]!);
+    expect(holdSocket).toHaveLength(5);
+    for (const name of holdSocket) expect(script).toContain(name);
+    // The walky tests: a file mode or a Unix socket, each one a skipped test beside a part that runs on Windows.
+    const walkySkips = ["instances", "log", "refusals", "seen", "socket"].flatMap((file) =>
+      [...readFileSync(join(ROOT, "bridge", "walky", `${file}.test.ts`), "utf8").matchAll(/test\.skipIf\(POSIX_ONLY\)\("([^"]+)"/g)].map((m) => m[1]!),
+    );
+    expect(walkySkips).toHaveLength(6);
+    for (const name of walkySkips) expect(script).toContain(name);
+    expect(script).toContain("bridge/mux/durable/example-durable-harness.test.ts");
+    // The /etc link scan: the one skip in bridge/claude-commands.test.ts.
+    const etcLinks = [...readFileSync(join(ROOT, "bridge", "claude-commands.test.ts"), "utf8").matchAll(/test\.skipIf\([^)]*\)\("([^"]+)"/g)].map((m) => m[1]!);
+    expect(etcLinks).toHaveLength(1);
+    for (const name of etcLinks) expect(script).toContain(name);
+    // The telemetry file mode: a POSIX mode, its own skipped test beside the telemetry tests that run on Windows.
+    const telemetrySkips = [...readFileSync(join(ROOT, "bridge", "telemetry.test.ts"), "utf8").matchAll(/test\.skipIf\(process\.platform === "win32"\)\("([^"]+)"/g)].map((m) => m[1]!);
+    expect(telemetrySkips).toHaveLength(1);
+    for (const name of telemetrySkips) expect(script).toContain(name);
+    // The pane's program reads (.adr/0124): two boundedRun tests start a POSIX sh, the live /proc probe is
+    // Linux only, and the "two copies" describe's one test and its hook use POSIX sh fakes.
+    const boundedRunSkips = [...readFileSync(join(ROOT, "bridge", "surface", "binary-version.test.ts"), "utf8").matchAll(/test\.skipIf\(process\.platform === "win32"\)\("([^"]+)"/g)].map((m) => m[1]!);
+    expect(boundedRunSkips).toHaveLength(2);
+    for (const name of boundedRunSkips) expect(script).toContain(name);
+    const paneBinary = readFileSync(join(ROOT, "bridge", "pane-binary.test.ts"), "utf8");
+    expect(paneBinary).toContain('test.skipIf(process.platform !== "linux")("procProbe sees a live process\'s executable and folder"');
+    expect(paneBinary).toContain('describe.skipIf(process.platform === "win32")("two copies of one harness');
+    expect(script).toContain("procProbe sees a live process's executable and folder");
+    expect(script).toContain("two copies of one harness");
+    // The new worktree's fake git (M81): POSIX sh scripts Windows cannot spawn, each `test.skipIf` on win32.
+    const fakeGitSkips = [...readFileSync(join(ROOT, "bridge", "worktree-add.test.ts"), "utf8").matchAll(/test\.skipIf\(process\.platform === "win32"\)\("([^"]+)"/g)].map((m) => m[1]!);
+    expect(fakeGitSkips).toHaveLength(6);
+    for (const name of fakeGitSkips) expect(script).toContain(name);
+    // The no-named-key one-line send test sits in a loop over claude, omp and pi and runs for claude and omp (pi's Alt+Enter stays a named key), so it skips once on every platform.
+    const rawEnterSkips = readFileSync(join(ROOT, "bridge", "surface", "protocol.unstyled.test.ts"), "utf8").includes('test.if(harness.id === "claude" || harness.id === "omp")(') ? 1 : 0;
+    expect(rawEnterSkips).toBe(1);
+    expect(script).toContain("protocol.unstyled.test.ts");
+    expect(budget("Bridge")).toBe(posixOnly.length + 1 + etcLinks.length + holdSocket.length + walkySkips.length + telemetrySkips.length + 30 + 10 + 36 + boundedRunSkips.length + 1 + 2 + rawEnterSkips + fakeGitSkips.length);
+    // The cli allowance adds the three real runs of the POSIX install leg a crew member runs, and the
+    // 38 tests of cli/walky.test.ts that talk to a real walky socket (`socketTest`).
+    const walkySocketTests = readFileSync(join(ROOT, "cli", "walky.test.ts"), "utf8").match(/^ {2}socketTest\(/gm) ?? [];
+    expect(walkySocketTests).toHaveLength(38);
+    // The statusLine wrapper's "runShell stops the whole command" block (3 tests) is skipped off Linux.
+    expect(readFileSync(join(ROOT, "cli", "statusline.test.ts"), "utf8")).toContain('describe.skipIf(process.platform !== "linux")("runShell stops the whole command"');
+    expect(script).toContain("runShell stops the whole command");
+    // cli/sys.test.ts: two tests start POSIX children (`sh -c`, a signal), both `test.skipIf` on win32.
+    const sysSkips = [...readFileSync(join(ROOT, "cli", "sys.test.ts"), "utf8").matchAll(/test\.skipIf\(process\.platform === "win32"\)\("([^"]+)"/g)].map((m) => m[1]!);
+    expect(sysSkips).toHaveLength(2);
+    for (const name of sysSkips) expect(script).toContain(name);
+    // M84: the hc-only home probe in cli/remote.test.ts runs a POSIX `sh` against a stand-in `hc`.
+    const hcProbe = "the real probe on an hc-only home reports the core and Collie's own config dir";
+    expect(readFileSync(join(ROOT, "cli", "remote.test.ts"), "utf8")).toContain(hcProbe);
+    expect(script).toContain(hcProbe);
+    expect(budget("Cli")).toBe(sysSkips.length + 1 + 12 + 3 + walkySocketTests.length + 3 + 1);
+    for (const name of posixOnly) expect(script).toContain(name);
+    expect(script).toContain("a 13 s WAV becomes text through a real child of this Collie");
+    expect(script).toContain("a child of this checkout's CLI turns 10.4 s of speech into text");
+    expect(script).toContain("installScript from a shallow lead, run for real");
+    // The scripts allowance is the 23 install.sh tests plus the two harness lab skips the script names.
+    expect(budget("Scripts")).toBe(23 + 2);
+    expect(script).toContain("POSIX only: the login copy has mode 600");
+    expect(script).toContain("a real throwaway server starts, shows its pane, stops, and leaves no socket");
+    expect(script).not.toContain("[int]$MaxSkips = ");
+    expect(script).toContain("if ($skip -gt $skipBudget[$name])");
+  });
 });

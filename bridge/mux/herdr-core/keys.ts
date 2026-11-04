@@ -68,6 +68,7 @@ const RAW_KEY_TEXTS = {
 export function isRawKeyText(text: string): boolean {
   return Object.hasOwn(RAW_KEY_TEXTS, text);
 }
+
 /**
  * The single characters hc names as keys (probed): letters, digits and the unshifted punctuation of
  * a US keyboard. Any other character has no hc name.
@@ -135,6 +136,7 @@ export function toHcKey(spelling: string): HcKeyResult {
   if (parsed.modifiers.length === 0) return { ok: true, key: { kind: "text", text: parsed.key } };
   return { ok: false, reason: "unnamed" };
 }
+
 /**
  * hc sends every named key of the contract's alphabet, so the only key listed as unsendable is the
  * extended-only chord. A `meta` chord and a modified character hc cannot name are refused at send

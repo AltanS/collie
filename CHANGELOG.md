@@ -25,6 +25,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **Multiline sends on herdr-core no longer wait three seconds per line.** The core holds a named key press for about three seconds after a raw write, so a six-line message to Oh My Pi or Claude ran into the send bound. Ctrl+J (the newline) and Ctrl+Q (Oh My Pi's submit) now go as the raw bytes the core would send anyway, with the same short gap other raw keys get. Thanks @wipash (#681).
 - **The Zoom pill shows only in the Screen view.** In Chat it was a magnifier with a plus that pointed at nothing, because it zooms the terminal screen. Settings, under Appearance, has a new "Zoom pill" choice, "Screen view" (the default) or "Off", stored on the device. A theme file can set the surface word `zoom` to `screen` or `none`, and a choice made in Settings wins over the theme.
 
 ## [1.27.0] - 2026-11-04
