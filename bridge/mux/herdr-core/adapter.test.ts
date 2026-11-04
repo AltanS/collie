@@ -122,6 +122,19 @@ describe("HerdrCoreMux over a fake core", () => {
     expect(adapter.paneLabels("t999")).toBeUndefined();
   });
 
+  test("a label the program removes is gone from the next snapshot (#675)", async () => {
+    const { fake, adapter } = build();
+    const id = fake.add({ status: null, labels: { [sessionFile("omp")]: "/x/y.jsonl" }, foreground: { name: "omp", cwd: "/home/dev" } });
+    await adapter.snapshot();
+    expect(adapter.paneLabels(id)).toEqual({ [sessionFile("omp")]: "/x/y.jsonl" });
+    fake.removeLabel(id, sessionFile("omp"));
+    // Until the next snapshot the answer is the old one: labels are read from snapshots only.
+    expect(adapter.paneLabels(id)?.[sessionFile("omp")]).toBe("/x/y.jsonl");
+    await adapter.snapshot();
+    expect(adapter.paneLabels(id)?.[sessionFile("omp")]).toBeUndefined();
+    expect(adapter.paneLabels(id) ?? {}).toEqual({});
+  });
+
   test("each pane's own session_file label names its session in a shared folder (end to end with the pi adapter)", async () => {
     const base = await realpath(await mkdtemp(join(tmpdir(), "collie-hc-label-")));
     const idOne = "019f4665-7df0-7540-a64f-7068335f2101";

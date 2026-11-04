@@ -429,6 +429,23 @@ export class FakeHcCore implements HcRpc {
     await Promise.resolve();
   }
 
+  /** A program in a terminal sets a label, as `hc label <terminal> key=value` does. */
+  setLabel(address: string, key: string, value: string): void {
+    const terminal = this.find(address);
+    if (terminal === undefined) return;
+    terminal.labels = { ...terminal.labels, [key]: value };
+    this.emit("labels", address);
+  }
+
+  /** A program in a terminal removes a label, as `hc label <terminal> key=` does. */
+  removeLabel(address: string, key: string): void {
+    const terminal = this.find(address);
+    if (terminal === undefined) return;
+    const { [key]: _gone, ...rest } = terminal.labels;
+    terminal.labels = rest;
+    this.emit("labels", address);
+  }
+
   async setProgramTitle(paneId: string, title: string): Promise<void> {
     const terminal = this.find(paneId);
     if (terminal !== undefined) {

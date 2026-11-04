@@ -1297,6 +1297,13 @@ describe("PiTranscriptSource — a pane that names no session finds it by its fo
       await rm(f.base, { recursive: true, force: true });
     });
 
+    test("a label that names a file that does not exist falls through to the command line's path", async () => {
+      const { f, theirs, src } = await twoLogs();
+      const gone = join(f.ompRoot, folder, `2026-10-30T12-00-00-000Z_${TWO}.jsonl`);
+      expect(await src.discoverSession(cwd, withLabels({ "omp.session_file": gone }, "--resume", theirs))).toEqual({ kind: "id", value: ONE });
+      await rm(f.base, { recursive: true, force: true });
+    });
+
     test("with no neighbour a bad label changes nothing: the folder walk answers as before", async () => {
       const { f, src } = await twoLogs();
       const alone = { processes: [{ argv: ["omp"] }], labels: { "omp.session_file": "/etc/hosts" } };
