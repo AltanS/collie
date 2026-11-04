@@ -55,10 +55,12 @@ else
   #     was never quite true: these files are as test-only as the files that import them, and asking
   #     for a release line about a mock is asking for a line no operator can read. Added 2026-10-01,
   #     when splitting the vitest run into two projects moved the MSW server into a file of its own.
+  #     `scripts/test-preload.ts` is the same thing for `bun test`: the preload that gives each run
+  #     its own temp folder. Added 2026-11-04.
   # None is visible to an operator, so there is nothing for them to read a line about. A commit that
   # touches one of these AND the code under it still records: the source file survives this filter,
   # and the line is about the source.
-  functional="$(echo "$staged" | grep -vE '(\.test\.(ts|tsx|sh)$|^scripts/git-hooks/|^web/src/test/|^cli/fakes\.ts$)' || true)"
+  functional="$(echo "$staged" | grep -vE '(\.test\.(ts|tsx|sh)$|^scripts/git-hooks/|^web/src/test/|^cli/fakes\.ts$|^scripts/test-preload\.ts$)' || true)"
 
   # Bullets under `## [Unreleased]` in the CHANGELOG on stdin. The section runs from that heading
   # to the next `## ` heading. A `### Added` line starts with `#`, never `- `, so a group heading
