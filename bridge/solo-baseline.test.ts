@@ -926,6 +926,9 @@ describe("solo zero-tax — routes", () => {
       // unless the operator set COLLIE_SURFACE_SHADOW=1. It registers no crew route.
       "/api/surface",
       "/api/tab",
+      // The anonymous install ping's state and the phone's switch (M86 spec 01) — solo, no crew
+      // sibling: each machine is one install, and a member is switched by its own env or config.
+      "/api/telemetry",
       // Starting an update from the phone (M15/05) — a SOLO route that legitimately extends this
       // list, named here rather than exempted. Write-gated through the same closure a send rides,
       // and it registers no crew sibling: a peer is levelled from the lead's terminal
@@ -1293,6 +1296,10 @@ const STATE_DIR_ENTRIES = [
   // in this folder. Created by a bridge that computes a Surface (the Send Protocol, on by default, or
   // COLLIE_SURFACE_SHADOW=1) the first time it reads an agent pane or settles a send.
   "surface",
+  // The anonymous install ping's record (M86 spec 01): the random install ID, the first start, the
+  // last day sent and the phone's switch. A NEW file; the ID is deleted the moment the ping is off,
+  // and an older build ignores the file.
+  "telemetry.json",
   // The detached updater's own stdout and stderr (#283), with the run before it kept beside it as
   // `update-runner.log.1`. Absent until the first update started from the phone: the bridge opens it
   // only to hand the descriptor to the runner it spawns.

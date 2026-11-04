@@ -24,6 +24,7 @@ import {
   type Finding,
   LONG_PATHS_KEY,
   secretsPrivate,
+  telemetryFinding,
   windowsLongPaths,
   windowsTask,
 } from "./doctor.ts";
@@ -428,6 +429,7 @@ describe("collie doctor — the contract", () => {
       "beacons",
       "skill-walky-talky",
       "account-windows",
+    "telemetry",
       "herdr-version",
       "integration-agy",
       "integration-claude",
@@ -1866,6 +1868,7 @@ describe("the finding set is scoped by the chosen multiplexer", () => {
       "beacons",
       "skill-walky-talky",
       "account-windows",
+    "telemetry",
       "agent-sessions",
       "journal-roots",
       "cache-claims",
@@ -3259,5 +3262,28 @@ describe("doctor: the harnesses table (1.24.1)", () => {
     await cmdDoctor({ ...h.deps, harnesses: reader({ binary: CLAUDE, version: "2.1.200", outcome: outcome(0) }) }, []);
     expect(h.io.stdout.join("\n")).toMatch(/✓\s+harness-claude\s+\/home\/pat\/\.local\/bin\/claude · 2\.1\.200 · verified/u);
     expect((await findings(harness(null))).raw.filter((f) => f.check.startsWith("harness-"))).toEqual([]);
+  });
+});
+
+describe("the telemetry row (M86 spec 01)", () => {
+  test("one info line: on by default, and never a warning", () => {
+    const finding = telemetryFinding({ ctx: context({}, {}), files: fakeFiles({}) });
+    expect(finding).toEqual({ check: "telemetry", status: "ok", detail: "on (default)", remedy: null });
+  });
+
+  test("it names the switch that turned it off", () => {
+    const off = (env: Record<string, string>): string => telemetryFinding({ ctx: context(env, {}), files: fakeFiles({}) }).detail;
+    expect(off({ DO_NOT_TRACK: "1" })).toBe("off (DO_NOT_TRACK)");
+    expect(off({ COLLIE_TELEMETRY: "0" })).toBe("off (COLLIE_TELEMETRY)");
+    expect(off({ CI: "true" })).toBe("off (CI is set)");
+  });
+
+  test("it reads the phone's switch from telemetry.json and writes nothing", () => {
+    const ctx = context({}, {});
+    const written: string[] = [];
+    const base = fakeFiles({ [`${ctx.stateDir}/telemetry.json`]: JSON.stringify({ setting: "off" }) });
+    const files = { ...base, write: (path: string) => void written.push(path) };
+    expect(telemetryFinding({ ctx, files }).detail).toBe("off (set on the phone)");
+    expect(written).toEqual([]);
   });
 });

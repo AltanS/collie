@@ -45,6 +45,13 @@ import { sidName } from "../bridge/sddl.ts";
 import { DEVICES_FILENAME, isExpired, parseRegistryText } from "../bridge/pairing.ts";
 import { pairedRegistryOf } from "./pairing.ts";
 import { sameBuild } from "../bridge/version.ts";
+import {
+  parseTelemetryRecord,
+  telemetryDoctorLine,
+  telemetryOrigin,
+  telemetryPath,
+  telemetryState,
+} from "../bridge/telemetry.ts";
 import { readOwnSnapshot } from "./snapshot-read.ts";
 import { collieVersionBare, type CliContext } from "./context.ts";
 import { aboutCrew, bad, ok, skipped, warn, type DoctorStatus, type Finding } from "./finding.ts";
@@ -288,6 +295,8 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
     skillWalkyTalky(deps),
     ...walkyRefusals(deps),
     accountWindowsFinding(deps),
+    // Whether the anonymous install ping is on and which switch decided (M86 spec 01). Info only.
+    telemetryFinding(deps),
     // The Whistle model (ADR 0096): one finding when the model, or the host engine that needs it, is
     // on this host, and none otherwise. A host that never heard of Whistle reads exactly as before.
     ...(await whistleModelFindings(deps)),
@@ -1917,6 +1926,23 @@ function walkyRefusals(deps: DoctorDeps): Finding[] {
   if (total === 0) return [ok("walky-refusals", "none counted")];
   const since = held.since === null ? "" : ` since ${new Date(held.since).toISOString().slice(0, 10)}`;
   return [ok("walky-refusals", `${String(total)} refused${since}: ${refusalLine(held.counts)}`)];
+}
+
+/**
+ * `telemetry` — whether this install sends its anonymous daily ping, and which switch decided it
+ * (M86 spec 01). One info line, never a warning: off is a choice. A pure read: it makes no ID and
+ * writes no file.
+ */
+export function telemetryFinding(deps: Pick<DoctorDeps, "ctx" | "files">): Finding {
+  const { env, configLayer, root, stateDir } = deps.ctx;
+  const setting = parseTelemetryRecord(deps.files.read(telemetryPath(stateDir))).setting;
+  const state = telemetryState({
+    env,
+    origin: telemetryOrigin(env, configLayer),
+    setting,
+    version: collieVersionBare(root, (p) => deps.files.read(p)),
+  });
+  return ok("telemetry", telemetryDoctorLine({ state, env }));
 }
 
 /**

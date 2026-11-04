@@ -53,6 +53,7 @@ local:
                                     (COLLIE_ACCOUNT_WINDOWS=all); grok: off by
                                     default, unverified
                                     (COLLIE_ACCOUNT_WINDOWS=all)
+  ✓        telemetry                on (default)
   ✓        herdr-version            herdr 0.9.3
   ✓        integration-agy          no hook — the adapter finds the session log
                                     itself
@@ -174,6 +175,7 @@ local:
                                     (COLLIE_ACCOUNT_WINDOWS=all); grok: off by
                                     default, unverified
                                     (COLLIE_ACCOUNT_WINDOWS=all)
+  ✓        telemetry                on (default)
   ✓        herdr-version            herdr 0.9.3
   ✓        integration-agy          no hook — the adapter finds the session log
                                     itself

@@ -394,7 +394,7 @@ async function runCli(senderPane: string, args: readonly string[], machine: Mach
   const socket = machine === "lead" ? run?.socket : run?.member?.socket;
   if (socket === undefined || socket === "") throw new Error(`the rig has no ${machine} socket`);
   const dirs = machineDirs(machine);
-  const env = { PATH: process.env.PATH ?? "", HOME: dirs.bridgeHome, COLLIE_STATE_DIR: dirs.state, ...paneMarkers(senderPane, socket, machine) };
+  const env = { PATH: process.env.PATH ?? "", HOME: dirs.bridgeHome, COLLIE_STATE_DIR: dirs.state, COLLIE_TELEMETRY: "0", ...paneMarkers(senderPane, socket, machine) };
   return new Promise<{ code: number; out: string }>((done) => {
     const child = spawn("bun", [join(WORKTREE, "cli", "main.ts"), "walky", ...args], { env, timeout: 60_000, stdio: ["ignore", "pipe", "ignore"] });
     let out = "";

@@ -320,6 +320,8 @@ export function prepareHarness(id: HarnessId, machine: Machine = "lead"): Prepar
   // own HOME (P.bridgeHome), so without this the CLI never reaches it, and it would ask the
   // operator's live bridges instead. Its machine's state dir is the one bridge a rig agent may talk to.
   env.push(`COLLIE_STATE_DIR=${sq(stateDir)}`);
+  // The anonymous install ping (M86): nothing a rig starts pings.
+  env.push("COLLIE_TELEMETRY=0");
   // The worktree's own `collie` first on PATH, so an agent's `collie walky` runs the build under test.
   const unset = UNSET.map((name) => `-u ${name}`).join(" ");
   const path = `export PATH=${sq(bin)}:"$PATH"\n`;

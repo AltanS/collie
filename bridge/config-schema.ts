@@ -957,6 +957,22 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     default: "",
     doc: "The command the local-cli provider runs, an absolute path or a name on PATH.",
   },
+  {
+    key: "telemetry",
+    env: "COLLIE_TELEMETRY",
+    section: "bridge",
+    kind: "bool",
+    default: true,
+    doc: "Send one anonymous install ping a day. See docs/security.md.",
+  },
+  {
+    key: "telemetry_url",
+    env: "COLLIE_TELEMETRY_URL",
+    section: "bridge",
+    kind: "string",
+    default: "",
+    doc: "Test seam: where the ping goes.",
+  },
 ];
 
 /** Every environment name the table answers to, aliases included. Built once. */
