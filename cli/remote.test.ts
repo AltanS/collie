@@ -895,11 +895,24 @@ describe("collie crew add", () => {
       "Candidate hosts on this machine:",
       "",
       "   1  altan@minibuch  herdr-core",
-      "      altan@vps       herdr-core  cannot be added: reached without ssh (added with --via)",
+      "      altan@vps       herdr-core  cannot be added: reached through a command of its own, not plain ssh; type an address ssh can reach, or add it to ~/.ssh/config",
       "",
     ]);
     expect(text(h.io)).toContain("probing altan@minibuch…");
     expect(text(h.io)).not.toContain("warn:");
+  });
+
+  test("a greyed via row reached through an ssh hop says to add the hop first, or type its address", async () => {
+    const h = harness({
+      coreMachines: JSON.stringify({
+        machines: [{ target: "altan@minibuch" }, { target: "ssh -p 2222 altan@10.0.0.7", name: "box", via: true }],
+      }),
+      prompt: "1",
+    });
+    expect(await run(h, [])).toBe(EXIT.OK);
+    expect(h.io.stdout[3]).toBe(
+      "      ssh -p 2222 altan@10.0.0.7  herdr-core  cannot be added: reached through altan@10.0.0.7; add altan@10.0.0.7 first, or type its address",
+    );
   });
 
   test("typing a blocked machine's name is refused with its reason, and nothing runs", async () => {
@@ -908,7 +921,7 @@ describe("collie crew add", () => {
       prompt: "vps",
     });
     expect(await run(h, [])).toBe(EXIT.USAGE);
-    expect(text(h.io)).toContain('error: "vps" cannot be added: reached without ssh (added with --via).');
+    expect(text(h.io)).toContain('error: "vps" cannot be added: reached through a command of its own, not plain ssh; type an address ssh can reach, or add it to ~/.ssh/config.');
     expect(h.calls).toHaveLength(0);
   });
 
@@ -1398,7 +1411,7 @@ describe("collie crew add", () => {
       prompt: "1 vps",
     });
     expect(await run(h, [])).toBe(EXIT.USAGE);
-    expect(text(h.io)).toContain('error: "vps" cannot be added: reached without ssh (added with --via).');
+    expect(text(h.io)).toContain('error: "vps" cannot be added: reached through a command of its own, not plain ssh; type an address ssh can reach, or add it to ~/.ssh/config.');
     expect(h.calls).toHaveLength(0);
   });
 

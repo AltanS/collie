@@ -5,7 +5,7 @@ import {
   HC_MACHINE_LIST_ARGS,
   herdrCoreMachineCandidates,
   parseHcMachines,
-  VIA_BLOCKED_REASON,
+  viaBlockedReason,
 } from "./machine-list.ts";
 
 // `hc machine ls --json` behind a recording probe. **NOTHING here spawns `hc`**: the probe is a
@@ -102,9 +102,25 @@ describe("parseHcMachines", () => {
 
   test("a via row is kept and blocked with the reason", () => {
     expect(parseHcMachines(listOf([{ target: "altan@vps", name: "vps", via: true }]))).toEqual([
-      { target: "altan@vps", label: "vps", id: null, blocked: "reached without ssh (added with --via)" },
+      { target: "altan@vps", label: "vps", id: null, blocked: viaBlockedReason("altan@vps") },
     ]);
-    expect(VIA_BLOCKED_REASON).toBe("reached without ssh (added with --via)");
+  });
+
+  test("the via reason names the ssh hop and says what to do", () => {
+    expect(viaBlockedReason("ssh -p 2222 -i ~/.ssh/key altan@10.0.0.7")).toBe(
+      "reached through altan@10.0.0.7; add altan@10.0.0.7 first, or type its address",
+    );
+    expect(viaBlockedReason("ssh bastion")).toBe("reached through bastion; add bastion first, or type its address");
+    expect(viaBlockedReason("/usr/bin/ssh -J jump -o StrictHostKeyChecking=no box")).toBe(
+      "reached through box; add box first, or type its address",
+    );
+  });
+
+  test("a via command that is not ssh names no hop, and says to type an address ssh can reach", () => {
+    expect(viaBlockedReason("fly ssh console -a app --pty=false -C")).toBe(
+      "reached through a command of its own, not plain ssh; type an address ssh can reach, or add it to ~/.ssh/config",
+    );
+    expect(viaBlockedReason("ssh -p 2222")).toBe(viaBlockedReason("fly"));
   });
 
   test("anything that is not an object with a machines array of targeted objects is null", () => {
@@ -214,7 +230,7 @@ describe("herdrCoreMachineCandidates", () => {
     });
     expect(herdrCoreMachineCandidates(probe)).toEqual([
       { target: "altan@minibuch", label: "minibuch", id: null, blocked: null },
-      { target: "altan@vps", label: "vps", id: null, blocked: VIA_BLOCKED_REASON },
+      { target: "altan@vps", label: "vps", id: null, blocked: viaBlockedReason("altan@vps") },
     ]);
     expect(warnings).toEqual([]);
   });

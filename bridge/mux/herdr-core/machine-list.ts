@@ -37,8 +37,37 @@ export const HC_MACHINE_LIST_ARGS: readonly string[] = ["machine", "ls", "--json
 /** How the command reads in a message. `hc machine ls --json`. */
 const SPOKEN = `\`${HC} ${HC_MACHINE_LIST_ARGS.join(" ")}\``;
 
-/** Why a machine the core reaches without ssh cannot be picked. Shown on the greyed row. */
-export const VIA_BLOCKED_REASON = "reached without ssh (added with --via)";
+/**
+ * Why a machine the core reaches with a command of its own (`hc machine add --via <command>`) cannot
+ * be picked. Shown on the greyed row, so it says what to do.
+ *
+ * For such a machine the core's `target` IS the command (`ssh -p 2222 user@ip`, `fly ssh console -a
+ * app -C`), not a host. When the command is an `ssh` one, its destination is the hop the machine is
+ * reached through, and adding that hop first (or typing its address) is something the operator can
+ * do. Any other command names no hop Collie could dial, and the text says so.
+ */
+export function viaBlockedReason(command: string): string {
+  const hop = sshHopOf(command);
+  if (hop === null) {
+    return "reached through a command of its own, not plain ssh; type an address ssh can reach, or add it to ~/.ssh/config";
+  }
+  return `reached through ${hop}; add ${hop} first, or type its address`;
+}
+
+/** The `ssh` options that take the next word as their value, so that word is not mistaken for the host. */
+const SSH_OPTIONS_WITH_VALUE = new Set(["-B", "-b", "-c", "-D", "-E", "-e", "-F", "-I", "-i", "-J", "-L", "-l", "-m", "-O", "-o", "-p", "-Q", "-R", "-S", "-W", "-w"]);
+
+/** The destination of an `ssh ...` command, or `null` when the command is not ssh or names none. */
+function sshHopOf(command: string): string | null {
+  const words = command.trim().split(/\s+/u);
+  if (words[0] !== "ssh" && !words[0]?.endsWith("/ssh")) return null;
+  for (let i = 1; i < words.length; i++) {
+    const word = words[i]!;
+    if (!word.startsWith("-")) return word;
+    if (SSH_OPTIONS_WITH_VALUE.has(word)) i += 1;
+  }
+  return null;
+}
 
 /** The coreutils `timeout` convention {@link HostProbe.run} reports an expiry with (`cli/sys.ts`). */
 const TIMED_OUT = 124;
@@ -149,7 +178,7 @@ export function parseHcMachines(raw: string): readonly HostCandidate[] | null {
       target,
       label: textOf(row.name),
       id: textOf(row.id),
-      blocked: row.via === true ? VIA_BLOCKED_REASON : null,
+      blocked: row.via === true ? viaBlockedReason(target) : null,
     });
   }
   return out;
