@@ -207,6 +207,21 @@ export function mergeCandidates(
 }
 
 /**
+ * The `user@host` (and `:port` when it is not 22) that `ssh` will dial for this row, for the confirm.
+ *
+ * Read off the merge key, which is `ssh -G`'s answer, so an alias in the operator's config shows the
+ * machine it really leads to, and a name that maps to an address the operator did not expect is
+ * visible before anything is written there. When ssh could not resolve it, the target as given.
+ */
+export function dialedTarget(row: CandidateRow): string {
+  const match = /^([^@]*)@(.+):(\d*)$/u.exec(row.key);
+  if (match === null || match[2] === "") return row.target;
+  const user = match[1] === "" ? "" : `${match[1]}@`;
+  const port = match[3] === "" || match[3] === "22" ? "" : `:${match[3]}`;
+  return `${user}${match[2]}${port}`;
+}
+
+/**
  * The hostname inside a merge key, lowercased, or `null` when the key is not a resolved one.
  *
  * A resolved key is `user@hostname:port` ({@link parseResolvedSshTarget}); the port is the last

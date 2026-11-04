@@ -14,6 +14,7 @@ import { parseUpdateRun, type UpdateRun } from "../bridge/update-run.ts";
 import { parsePrereleaseTag } from "../bridge/update.ts";
 import {
   CANDIDATE_QUESTION,
+  dialedTarget,
   markCandidates,
   mergeCandidates,
   offeredCandidates,
@@ -985,6 +986,12 @@ export interface CrewAddDeps extends CrewDeps {
   /** The free-text ask, behind the same seam and for the same reason. */
   prompt(question: string): string | null | Promise<string | null>;
   /**
+   * Is stdin a terminal someone can answer on? Absent reads as yes, which is every test's world.
+   * Read for one purpose: a host PICKED from the list is never added on a confirm nobody can see,
+   * so with no terminal every such confirm reads as No before a byte goes over ssh.
+   */
+  terminal?(): boolean;
+  /**
    * `git bundle create - <commit>`, base64-encoded. `null` when git refused.
    *
    * It is handed the `Io` to complain through rather than closing over one: on the rich path the
@@ -1099,6 +1106,8 @@ interface HostPick {
    * not, because the name typed on the command line is the consent.
    */
   readonly listed: boolean;
+  /** What ssh will dial for a listed host (`user@address`), shown at the confirm; `null` for a typed one. */
+  readonly dial: string | null;
 }
 
 /** The picker's answer: the hosts to add, in the order they were named, or the exit code this run ends with. */
@@ -1139,7 +1148,7 @@ async function chooseCandidateHost(deps: Wired): Promise<Chosen> {
     for (const line of USAGE) deps.io.err(line);
     return { code: EXIT.USAGE };
   }
-  const answer = await deps.prompt(CANDIDATE_QUESTION);
+  const answer = deps.terminal?.() === false ? null : await deps.prompt(CANDIDATE_QUESTION);
   if (answer === null) {
     deps.io.err("error: this run is not interactive, and it would have asked which host to add.");
     deps.io.err("       Name one instead: `collie crew add <ssh-host>`.");
@@ -1170,6 +1179,7 @@ async function chooseCandidateHost(deps: Wired): Promise<Chosen> {
       // The first MULTIPLEXER that listed it: the ssh config is a file, not a source of names.
       source: row.sources.find((source) => source !== SSH_CONFIG_SOURCE) ?? null,
       listed: true,
+      dial: dialedTarget(row),
     })),
   };
 }
@@ -1258,7 +1268,7 @@ async function crewAddRun(deps: Wired, args: readonly string[]): Promise<number>
   const chosen: Chosen =
     named === undefined || named === ""
       ? await chooseCandidateHost(deps)
-      : { picks: [{ host: named, label: null, source: null, listed: false }] };
+      : { picks: [{ host: named, label: null, source: null, listed: false, dial: null }] };
   if ("code" in chosen) return chosen.code;
   const { picks } = chosen;
   // A cheap refusal, so it sits above the first ssh byte with the others: one name cannot name two
@@ -1274,6 +1284,9 @@ async function crewAddRun(deps: Wired, args: readonly string[]): Promise<number>
     deps.io.err(PEER_ADDRESS_SEVERAL_PICKS);
     return EXIT.USAGE;
   }
+  // A host picked from the list is never added on a confirm nobody can answer. Before the first ssh
+  // byte, every such confirm reads as No.
+  if (deps.terminal?.() === false && picks.some((pick) => pick.listed)) return declineWithoutTerminal(deps, picks);
   const [only] = picks;
   // One host reads exactly as it always did: no wrapper, no summary.
   if (picks.length === 1 && only !== undefined) return await crewAddHost(deps, flags, only);
@@ -1282,7 +1295,7 @@ async function crewAddRun(deps: Wired, args: readonly string[]): Promise<number>
   // Nothing is shared between picks but the flags. Each one probes, confirms, installs, joins and
   // checks on its own ssh connection, and a pick that fails or is declined does not stop the next.
   // Only a confirm nobody could answer stops the loop: it would be asked again for every host.
-  const results: { readonly host: string; readonly line: string }[] = [];
+  const results: { readonly host: string; readonly line: string; readonly outcome: PickOutcome }[] = [];
   let worst: number = EXIT.OK;
   for (const [index, pick] of picks.entries()) {
     // The previous join was written by the running bridge, not by this process, so the cached trust
@@ -1290,21 +1303,44 @@ async function crewAddRun(deps: Wired, args: readonly string[]): Promise<number>
     if (index > 0) await deps.store.refresh();
     const watch = watchRun(deps);
     const code = await crewAddHost(watch.deps, flags, pick, watch.onDeclined);
-    worst = Math.max(worst, code);
+    // An operator's own No is not a failure: it leaves the exit code alone. Anything else counts.
+    if (!watch.declined()) worst = Math.max(worst, code);
     const joined = watch.joinedAs();
     const runsOn = watch.runsOn();
+    const ok = code === EXIT.OK && joined !== null;
     results.push({
       host: pick.host,
+      outcome: watch.declined() ? "declined" : ok ? "joined" : "failed",
       line:
         watch.declined()
           ? "✗ declined"
-          : code === EXIT.OK && joined !== null
+          : ok
           ? // The rich view keeps only the last host's verdict, so each line carries its own mux.
             `✓ joined as "${joined}"${runsOn === null ? "" : `, runs on ${runsOn}`}`
           : `✗ ${watch.firstError() ?? `crew add did not finish (exit ${code})`}`,
     });
-    if (watch.aborted()) break;
+    if (watch.aborted()) {
+      // Nobody can answer, so the picks that were never asked are no more answerable. They are listed
+      // as the same refusal rather than dropped from the summary.
+      for (const rest of picks.slice(index + 1)) {
+        results.push({ host: rest.host, outcome: "failed", line: NO_TERMINAL_LINE });
+      }
+      worst = Math.max(worst, EXIT.FAIL);
+      break;
+    }
   }
+  summarise(deps, results);
+  return worst;
+}
+
+/** What became of one pick in a multi-host run. */
+type PickOutcome = "joined" | "declined" | "failed";
+
+/** The per-host lines, then the count: `joined 2, declined 1, failed 0`. */
+function summarise(
+  deps: Wired,
+  results: readonly { readonly host: string; readonly line: string; readonly outcome: PickOutcome }[],
+): void {
   deps.emit({ kind: "line", stream: "out", tone: "info", text: "" });
   const width = Math.max(...results.map((result) => result.host.length));
   for (const result of results) {
@@ -1315,7 +1351,26 @@ async function crewAddRun(deps: Wired, args: readonly string[]): Promise<number>
       text: `${result.host.padEnd(width)}  ${result.line}`,
     });
   }
-  return worst;
+  const count = (outcome: PickOutcome): number => results.filter((result) => result.outcome === outcome).length;
+  deps.emit({
+    kind: "line",
+    stream: "out",
+    tone: count("failed") > 0 ? "error" : "info",
+    text: `joined ${count("joined")}, declined ${count("declined")}, failed ${count("failed")}`,
+  });
+}
+
+/** Every listed pick reads as No when there is no terminal: one line, or one per host with the count. */
+function declineWithoutTerminal(deps: Wired, picks: readonly HostPick[]): number {
+  if (picks.length === 1) {
+    deps.emit({ kind: "line", stream: "err", tone: "error", text: NO_TERMINAL_LINE });
+    return EXIT.FAIL;
+  }
+  summarise(
+    deps,
+    picks.map((pick) => ({ host: pick.host, outcome: "failed", line: NO_TERMINAL_LINE })),
+  );
+  return EXIT.FAIL;
 }
 
 /** One host's whole run: the cheap refusals, then the four legs. Everything `crew add <host>` has always done. */
@@ -1423,7 +1478,9 @@ async function crewAddHost(
       route,
       leadVersion,
       repo: updateRepoOf(deps.ctx.env),
-      pickConfirm: pick.listed ? { memberId, onDeclined } : null,
+      pickConfirm: pick.listed
+        ? { memberId, name: pick.label ?? host, dial: pick.dial ?? host, onDeclined }
+        : null,
     });
   } finally {
     // Every exit path, including a throw: the control socket is a live authenticated channel.
@@ -1464,7 +1521,14 @@ interface AddOptions {
   /** The `owner/repo` the member is told to install from — this lead's own (`updateRepoOf`). */
   readonly repo: string;
   /** Set for a host chosen from the list: the id it will join as, and what to call when the pick is declined. */
-  readonly pickConfirm: { readonly memberId: string; readonly onDeclined: () => void } | null;
+  readonly pickConfirm: {
+    readonly memberId: string;
+    /** The machine's name in the list it came from (or the host when the list gave none). */
+    readonly name: string;
+    /** The `user@address` ssh dials, so a name that maps to another address is visible. */
+    readonly dial: string;
+    readonly onDeclined: () => void;
+  } | null;
 }
 
 /**
@@ -1632,12 +1696,18 @@ async function addOverSsh(deps: Wired, runner: RemoteRunner, opts: AddOptions): 
   // printed what is there (the address this lead will dial, the label, the multiplexer), and nothing
   // has been written on the host yet: this is the one place both are true. A typed host skips it.
   if (opts.pickConfirm !== null) {
-    const { memberId, onDeclined } = opts.pickConfirm;
-    const answer = await ask(
-      deps,
-      `Add ${host} to this crew as "${memberId}"? It installs Collie on ${host} over ssh and joins it.`,
+    const { memberId, name, dial, onDeclined } = opts.pickConfirm;
+    // The name Herdr gave it, and the address ssh really dials: a name that maps to a different
+    // address than the operator expects is visible here, before anything is written.
+    const who = name === dial ? name : `${name} (${dial})`;
+    const answer = await deps.confirm(
+      `Add ${who} to this crew as "${memberId}"? It installs Collie on ${host} over ssh and joins it.`,
     );
-    if (answer === "aborted") return EXIT.FAIL;
+    // Nobody to ask reads as No, and as a failure: nothing was installed, and the exit says so.
+    if (answer === null) {
+      deps.emit({ kind: "line", stream: "err", tone: "error", text: NO_TERMINAL_LINE });
+      return EXIT.FAIL;
+    }
     if (!answer) {
       onDeclined();
       deps.emit({
@@ -2279,6 +2349,9 @@ async function configureLeg(
   return { runsOn: decided.runsOn };
 }
 
+/** What a picked host's confirm says when nobody can answer it. */
+export const NO_TERMINAL_LINE = "✗ declined (no terminal to confirm)";
+
 /** What a red `crew add` line that has no `error:` prefix starts with. */
 export const NOT_JOINED_MARK = "✗ not joined:";
 
@@ -2791,6 +2864,7 @@ export function crewAddDeps(base: CrewDeps): CrewAddDeps {
     // than read EOF as "yes".
     confirm: (question) => (process.stdin.isTTY === true ? confirm(question) : null),
     prompt: (question) => (process.stdin.isTTY === true ? prompt(question) : null),
+    terminal: () => process.stdin.isTTY === true,
     gitBundle: async (commit, io) => {
       const git = base.exec.which("git");
       if (git === null) return null;

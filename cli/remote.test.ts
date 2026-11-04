@@ -1014,10 +1014,11 @@ describe("collie crew add", () => {
     expect(h.closed).toBe(2);
     // The summary is the last thing printed, one line per host, in the order they were named, and each
     // line names the multiplexer that host runs on: the rich view shows only the last verdict.
-    expect(h.io.stdout.slice(-3)).toEqual([
+    expect(h.io.stdout.slice(-4)).toEqual([
       "",
       'attic      ✓ joined as "nas", runs on herdr',
       'build-box  ✓ joined as "build-box", runs on herdr',
+      "joined 2, declined 0, failed 0",
     ]);
   });
 
@@ -1031,12 +1032,13 @@ describe("collie crew add", () => {
     expect(await run(h, [])).toBe(EXIT.UNREACHABLE);
     // The failed host did not stop the loop: build-box still ran its legs.
     expect(h.calls.filter((c) => c.host === "build-box" && c.leg === "enroll")).toHaveLength(1);
-    expect(h.io.stdout.slice(-4)).toEqual([
+    expect(h.io.stdout.slice(-5)).toEqual([
       "",
       'attic      ✓ joined as "nas", runs on herdr',
       // The reason is the text before the first " — ": the clause that names what went wrong.
       "vps        ✗ ssh could not reach vps",
       'build-box  ✓ joined as "build-box", runs on herdr',
+      "joined 2, declined 0, failed 1",
     ]);
   });
 
@@ -1052,7 +1054,8 @@ describe("collie crew add", () => {
     expect(await run(h, [])).toBe(EXIT.FAIL);
     // The dirty-checkout warn is the first stderr line of each run, and the install error follows it.
     expect(h.io.stderr[0]).toMatch(/^warn: this checkout has uncommitted changes/u);
-    const lines = h.io.stdout.slice(-2);
+    const lines = h.io.stdout.slice(-3, -1);
+    expect(h.io.stdout.at(-1)).toBe("joined 0, declined 0, failed 2");
     expect(lines.every((l) => l.includes("✗ ") && !l.includes("warn:"))).toBe(true);
     expect(lines[0]).toMatch(/^attic {6}✗ /u);
   });
@@ -1068,14 +1071,16 @@ describe("collie crew add", () => {
     });
     h.deps.confirm = () => answers.shift() ?? false;
     expect(await run(h, [])).toBe(EXIT.STATE);
-    expect(h.io.stdout.at(-2)).toBe("attic      ✗ left alone");
-    expect(h.io.stdout.at(-1)).toBe('build-box  ✓ joined as "build-box", runs on herdr');
+    expect(h.io.stdout.at(-3)).toBe("attic      ✗ left alone");
+    expect(h.io.stdout.at(-2)).toBe('build-box  ✓ joined as "build-box", runs on herdr');
+    // The replace confirm was answered No by the operator, but it is not the pick's own confirm: failed.
+    expect(h.io.stdout.at(-1)).toBe("joined 1, declined 0, failed 1");
   });
 
   // ── A picked host gets one confirm after its probe, before anything is written ──────────────
 
-  const PICK_QUESTION = (host: string, id: string): string =>
-    `Add ${host} to this crew as "${id}"? It installs Collie on ${host} over ssh and joins it.`;
+  const PICK_QUESTION = (host: string, id: string, who: string = host): string =>
+    `Add ${who} to this crew as "${id}"? It installs Collie on ${host} over ssh and joins it.`;
 
   /** Record each question with what had been said and which legs had run when it was asked. */
   function recordQuestions(h: Harness, answer: (n: number) => boolean | null): { question: string; said: string[]; legs: string[] }[] {
@@ -1108,7 +1113,9 @@ describe("collie crew add", () => {
     });
     const rowAsked = recordQuestions(row, () => true);
     expect(await run(row, [])).toBe(EXIT.OK);
-    expect(rowAsked.map((a) => a.question)).toEqual([PICK_QUESTION("op@attic.lan:22", "attic-box")]);
+    expect(rowAsked.map((a) => a.question)).toEqual([
+      PICK_QUESTION("op@attic.lan:22", "attic-box", "Attic Box (op@attic.lan)"),
+    ]);
 
     const flagged = harness({ sshConfig: "Host attic", prompt: "1" });
     const flagAsked = recordQuestions(flagged, () => true);
@@ -1123,7 +1130,8 @@ describe("collie crew add", () => {
       afterEach: [leadStore({ peers: [BUILD_BOX] })],
     });
     const asked = recordQuestions(h, (n) => n > 0);
-    expect(await run(h, [])).toBe(EXIT.STATE);
+    // A decline alone is not a failure: attic was declined and build-box joined, so the run is clean.
+    expect(await run(h, [])).toBe(EXIT.OK);
     expect(asked.map((a) => a.question)).toEqual([
       PICK_QUESTION("attic", "attic"),
       PICK_QUESTION("build-box", "build-box"),
@@ -1137,7 +1145,11 @@ describe("collie crew add", () => {
     expect(h.io.stderr.some((l) => l.startsWith("error:"))).toBe(false);
     expect(h.calls.filter((c) => c.host === "build-box" && c.leg === "enroll")).toHaveLength(1);
     expect(h.closed).toBe(2);
-    expect(h.io.stdout.slice(-2)).toEqual(["attic      ✗ declined", 'build-box  ✓ joined as "build-box", runs on herdr']);
+    expect(h.io.stdout.slice(-3)).toEqual([
+      "attic      ✗ declined",
+      'build-box  ✓ joined as "build-box", runs on herdr',
+      "joined 1, declined 1, failed 0",
+    ]);
   });
 
   test("a single declined pick ends with the state exit code and no write", async () => {
@@ -1152,9 +1164,135 @@ describe("collie crew add", () => {
     const h = harness({ sshConfig: "Host attic\nHost build-box", prompt: "1 2", confirm: null });
     expect(await run(h, [])).toBe(EXIT.FAIL);
     expect(h.calls.map((c) => `${c.host}:${c.leg}`)).toEqual(["attic:probe"]);
-    expect(text(h.io)).toContain(`this run is not interactive, and it would have asked: ${PICK_QUESTION("attic", "attic")}`);
-    expect(h.io.stdout.at(-1)).toMatch(/^attic\s+✗ /u);
-    expect(h.io.stdout.some((l) => l.startsWith("build-box"))).toBe(false);
+    expect(h.io.stderr).toContain("✗ declined (no terminal to confirm)");
+    // The host that was never asked is listed with the same refusal, and the count says all failed.
+    expect(h.io.stdout.slice(-3)).toEqual([
+      "attic      ✗ declined (no terminal to confirm)",
+      "build-box  ✗ declined (no terminal to confirm)",
+      "joined 0, declined 0, failed 2",
+    ]);
+  });
+
+  test("the question names the address ssh really dials, so a name that maps elsewhere is visible", async () => {
+    // Herdr calls the machine `minibuch`; the address behind that name is not minibuch's.
+    const mapped = harness({ coreMachines: '{"machines":[{"target":"op@198.51.100.7","name":"minibuch"}]}', prompt: "1" });
+    const mappedAsked = recordQuestions(mapped, () => true);
+    expect(await run(mapped, [])).toBe(EXIT.OK);
+    expect(mappedAsked.map((a) => a.question)).toEqual([
+      'Add minibuch (op@198.51.100.7) to this crew as "minibuch"? It installs Collie on op@198.51.100.7 over ssh and joins it.',
+    ]);
+
+    // An ssh config alias shows the user, host and port ssh resolves it to (22 is left unsaid).
+    const alias = harness({
+      sshConfig: "Host attic",
+      resolve: { attic: "user op\nhostname attic.lan\nport 2222" },
+      prompt: "1",
+    });
+    const aliasAsked = recordQuestions(alias, () => true);
+    expect(await run(alias, [])).toBe(EXIT.OK);
+    expect(aliasAsked.map((a) => a.question)).toEqual([PICK_QUESTION("attic", "attic", "attic (op@attic.lan:2222)")]);
+  });
+
+  // ── NO TERMINAL: A PICKED HOST READS AS NO (M84 hardening) ───────────────────
+
+  test("with no terminal the list's own question is refused, and nothing is dialled", async () => {
+    const h = harness({ sshConfig: "Host attic", prompt: "1" });
+    h.deps.terminal = () => false;
+    const asked = recordQuestions(h, () => true);
+    expect(await run(h, [])).toBe(EXIT.USAGE);
+    // The list's own question is refused first: nobody can answer it either.
+    expect(h.calls).toHaveLength(0);
+    expect(asked).toEqual([]);
+  });
+
+  test("a pick that reaches its confirm with no terminal prints the refusal and fails", async () => {
+    const h = harness({ sshConfig: "Host attic", prompt: "1", confirm: null });
+    expect(await run(h, [])).toBe(EXIT.FAIL);
+    expect(h.io.stderr).toContain("✗ declined (no terminal to confirm)");
+    expect(h.calls.map((c) => c.leg)).toEqual(["probe"]);
+    expect(h.io.stdout.some((l) => l.includes("joined"))).toBe(false);
+  });
+
+  test("a host named on the command line is added with no terminal and no confirm, as before", async () => {
+    const h = harness();
+    h.deps.terminal = () => false;
+    expect(await run(h)).toBe(EXIT.OK);
+    expect(h.calls.map((c) => c.leg)).toContain("enroll");
+    expect(h.io.stderr).not.toContain("✗ declined (no terminal to confirm)");
+  });
+
+  test("with no terminal, picks that reach the run anyway are declined without one ssh byte", async () => {
+    // The terminal goes away between the list's question and the picks (the first read says yes).
+    const h = harness({ sshConfig: "Host attic\nHost build-box", prompt: "1 2" });
+    let calls = 0;
+    h.deps.terminal = () => calls++ === 0;
+    const asked = recordQuestions(h, () => true);
+    expect(await run(h, [])).toBe(EXIT.FAIL);
+    expect(h.calls).toHaveLength(0);
+    expect(asked).toEqual([]);
+    expect(h.io.stdout.slice(-3)).toEqual([
+      "attic      ✗ declined (no terminal to confirm)",
+      "build-box  ✗ declined (no terminal to confirm)",
+      "joined 0, declined 0, failed 2",
+    ]);
+  });
+
+  test("with no terminal a single listed pick prints the one refusal line", async () => {
+    const h = harness({ sshConfig: "Host attic", prompt: "1" });
+    let calls = 0;
+    h.deps.terminal = () => calls++ === 0;
+    expect(await run(h, [])).toBe(EXIT.FAIL);
+    expect(h.calls).toHaveLength(0);
+    expect(h.io.stderr).toEqual(["✗ declined (no terminal to confirm)"]);
+  });
+
+  // ── MULTI-PICK SUMMARY (M84 hardening) ───────────────────────────────────────
+
+  test("a decline plus a failure ends non-zero, and the count says which was which", async () => {
+    const h = harness({
+      sshConfig: "Host attic\nHost vps\nHost build-box",
+      prompt: "all",
+      broken: { vps: { code: 255, stderr: "ssh: connect to host vps port 22: Connection refused", spawned: true } },
+      afterEach: [leadStore({ peers: [BUILD_BOX] })],
+    });
+    const asked = recordQuestions(h, (n) => n !== 0);
+    expect(await run(h, [])).toBe(EXIT.UNREACHABLE);
+    // pick two failing did not stop pick three
+    expect(h.calls.filter((c) => c.host === "build-box" && c.leg === "enroll")).toHaveLength(1);
+    expect(asked).toHaveLength(2);
+    expect(h.io.stdout.slice(-5)).toEqual([
+      "",
+      "attic      ✗ declined",
+      "vps        ✗ ssh could not reach vps",
+      'build-box  ✓ joined as "build-box", runs on herdr',
+      "joined 1, declined 1, failed 1",
+    ]);
+  });
+
+  test("a stale peer in a multi pick is a failure with its reason in the summary", async () => {
+    const h = harness({
+      sshConfig: "Host attic\nHost build-box",
+      prompt: "1 2",
+      probes: { attic: { checkout: REMOTE_CHECKOUT, commit: COMMIT } },
+      afterEach: [leadStore({ peers: [BUILD_BOX] })],
+    });
+    const base = h.deps.remote;
+    h.deps.remote = (host) => {
+      const runner = base(host);
+      return {
+        ...runner,
+        run: async (script, stdin) =>
+          host === "attic" && script.includes("crew status --no-probe")
+            ? { code: 0, stdout: "crew   the herd  (crew-1)\nmode   peer\nself   attic  abcd…", stderr: "", spawned: true }
+            : runner.run(script, stdin),
+      };
+    };
+    expect(await run(h, [])).toBe(EXIT.STATE);
+    expect(h.io.stdout.slice(-3)).toEqual([
+      expect.stringMatching(/^attic {6}✗ not joined: attic still answers as a member of this crew, but this lead holds no record of it\./u),
+      'build-box  ✓ joined as "build-box", runs on herdr',
+      "joined 1, declined 0, failed 1",
+    ]);
   });
 
   test("a typed host asks nothing", async () => {
@@ -1168,7 +1306,7 @@ describe("collie crew add", () => {
     const h = harness({ sshConfig: "Host attic\nHost build-box", prompt: "1 2", confirm: null, probes: { attic: REPLACEABLE } });
     expect(await run(h, [])).toBe(EXIT.FAIL);
     expect(new Set(h.calls.map((c) => c.host))).toEqual(new Set(["attic"]));
-    expect(text(h.io)).toContain("this run is not interactive");
+    expect(text(h.io)).toContain("✗ declined (no terminal to confirm)");
   });
 
   test("--label with two picks is refused before any ssh, and the single pick keeps it", async () => {
@@ -1206,9 +1344,10 @@ describe("collie crew add", () => {
       afterEach: [leadStore({ peers: [NAS] }), leadStore({ peers: [BUILD_BOX] })],
     });
     expect(await run(h, [])).toBe(EXIT.OK);
-    expect(h.io.stdout.slice(-2)).toEqual([
+    expect(h.io.stdout.slice(-3)).toEqual([
       'attic      ✓ joined as "nas"',
       'build-box  ✓ joined as "build-box", runs on herdr',
+      "joined 2, declined 0, failed 0",
     ]);
   });
 
@@ -1226,9 +1365,10 @@ describe("collie crew add", () => {
       },
     });
     expect(await run(h, [])).not.toBe(EXIT.OK);
-    expect(h.io.stdout.slice(-2)).toEqual([
+    expect(h.io.stdout.slice(-3)).toEqual([
       "attic      ✗ refusing to enroll over http://",
       "build-box  ✗ refusing to enroll over http://",
+      "joined 0, declined 0, failed 2",
     ]);
   });
 
