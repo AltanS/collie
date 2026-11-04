@@ -277,6 +277,7 @@ import {
   CREW_WALKY_ROUTE,
   leadRouteRemote,
   memberRouteRemote,
+  olderThanWake,
   olderThanWalky,
   WalkyCrew,
   WalkyLeadSide,
@@ -1321,6 +1322,9 @@ function followLeadLine(a: { readonly line?: ReleaseLine; readonly step?: LeadSt
   }
 }
 
+/** The release the lead last stated on a sweep, or null when it stated none yet (walky talky's `--wake` check). */
+let heardLeadRelease: string | null = null;
+
 /**
  * A durable peer names a lead too old to show its panes properly (M50 spec 14, bridge/durable/old-lead.ts).
  * Any peer that runs a durable program counts, as the primary or as a source beside its terminal mux
@@ -1330,9 +1334,11 @@ const oldLead = crew.mode === "peer" && runsPrograms ? new OldLeadNotice() : und
 
 /** The lead's two follow headers, handed to whichever of the follower and the old-lead notice exist. */
 const onFollow =
-  crewFollower === undefined && oldLead === undefined
+  crew.mode !== "peer" && crewFollower === undefined && oldLead === undefined
     ? undefined
     : (a: { readonly leadRelease: string | null; readonly turn: string | null; readonly leadLine?: string | null }): void => {
+        // Walky talky reads it too (`memberRouteRemote`): a lead below 1.26.1 cannot take `--wake`.
+        if (a.leadRelease !== null) heardLeadRelease = a.leadRelease;
         oldLead?.observe(a.leadRelease);
         crewFollower?.observe(a);
       };
@@ -1993,7 +1999,7 @@ const walkyRoute: RouteRemote | undefined =
     ? undefined
     : crew.mode === "lead"
       ? (message, members, panes) => (walkyLeadHalf === null ? Promise.reject(new Error("the crew is not wired yet")) : walkyLeadHalf.route(message, members, panes))
-      : memberRouteRemote({ self: walkyMemberId, post: (payload) => walkyToLead(payload) });
+      : memberRouteRemote({ self: walkyMemberId, post: (payload) => walkyToLead(payload), leadRelease: () => heardLeadRelease, own: crewVersion, compare: compareSemver });
 const walky = new WalkyService({
   log: walkyLog,
   seen: walkySeen,
@@ -2560,6 +2566,8 @@ if (crewLead !== undefined && walkyMemberId !== null) {
       self: walkyMemberId,
       // A member whose reported version predates walky talky is refused `older member` without a dial.
       older: (memberId) => olderThanWalky(lead.contributions().find((c) => c.state.memberId === memberId)?.state.version ?? null, crewVersion, compareSemver),
+      // A member below 1.26.1 never rests a pane: a `wake` message goes to it as a plain send.
+      olderThanWake: (memberId) => olderThanWake(lead.contributions().find((c) => c.state.memberId === memberId)?.state.version ?? null, crewVersion, compareSemver),
       members: () => (trustStore.current()?.peers ?? []).filter((member) => member.status === "enrolled").map((member) => member.memberId),
       // A message from another member travels with that member's pinned certificate and this lead's
       // voucher, so the receiving member checks the origin itself (§21, added 2026-10-18).

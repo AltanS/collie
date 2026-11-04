@@ -90,6 +90,8 @@ minibuch/w11:p4#8h9h        minibuch  claude   walky-live             idle
 - STATE is `idle`, `working`, `blocked`, `done` or `unknown`, or `unreachable` for a crew member out
   of reach. A message to a `working` or `blocked` pane is not lost: Collie queues or holds it. A
   session that rested 15 minutes gets a folder message in its inbox only; `send --wake` types it.
+  Use `--wake` only when your operator asked for it. A `resting` receipt is final: do not send the
+  message again and do not add `--wake` on your own.
 
 Send a message to one address. Only your operator may send to `all`.
 

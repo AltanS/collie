@@ -216,12 +216,19 @@ A session that rests does not wake for a scope send. A pane rests when it is `do
 has been for 15 minutes, counted from its last change of state. A scope, or `all` from your phone,
 leaves the message in that pane's inbox only, and its receipt reads `waiting in the inbox, not typed:
 the session rests`. It waits there until the agent reads it with `inbox`. A pane whose state
-Collie does not know never rests. A message to one pane is always typed. To wake the resting panes
+Collie does not know never rests. Fifteen minutes is a fixed rule of thumb, not a cache window. A
+message to one pane is always typed. To wake the resting panes
 too, add `--wake` before the text:
 
 ```sh
 collie walky send --wake my-app "Rebased on main. Pull before you push."
 ```
+
+A crew can run mixed versions. A member below 1.26.1 never rests a pane, so a plain send already
+types into all its panes there, and the lead treats `--wake` as a plain send for that member. A lead
+below 1.26.1 cannot take `--wake` at all. A member that knows its lead's version refuses the send
+at once, and one that does not learns it from the lead's refusal. Either receipt says that the lead
+is older than 1.26.1 and to send without `--wake`.
 
 Each delivery that is typed is one send into one pane, so it follows the rules of
 [Into a busy pane](#into-a-busy-pane). A pane with a draft in its box, or a running turn, holds its
