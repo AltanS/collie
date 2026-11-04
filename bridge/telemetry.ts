@@ -27,7 +27,7 @@ import { isRequestId } from "./worktree-receipts.ts";
 // THE SWITCHES, in the order that decides. Any off switch wins; an on word never beats an off:
 //   1. DO_NOT_TRACK                      off
 //   2. a URL override that is not vetted off
-//   3. COLLIE_TELEMETRY / config off     off  (env or config)
+//   3. COLLIE_TELEMETRY / config off     off  (env or config; a value nobody knows reads as off)
 //   4. CI set                            off
 //   5. a rehearsal mirror                off
 //   6. a development build               off  (even with state copied from an install that had it on)
@@ -37,6 +37,9 @@ import { isRequestId } from "./worktree-receipts.ts";
 //  10. default                           on
 // Env or config off cannot be undone from the phone, and neither can CI, a mirror or a dev build.
 // An explicit COLLIE_TELEMETRY=1 does not beat DO_NOT_TRACK or the phone's "off".
+// THE SWITCH FAILS CLOSED. `0 false off no` are off, `1 true on yes` are on, an empty value is no vote,
+// and ANY OTHER value (a typo such as `COLLIE_TELEMETRY=ofF1`) is off, with a warning from the boot log
+// and `collie doctor`. DO_NOT_TRACK is the one exception, by its own convention: anything but `0` is off.
 // A COLLIE_TELEMETRY_URL that is not https (or http to loopback) is its own
 // refusal: it turns the ping off, because a ping to an address nobody vetted is not a ping.
 
@@ -102,6 +105,30 @@ export interface TelemetryStateInput {
 const OFF_WORDS: ReadonlySet<string> = new Set(["0", "false", "no", "off"]);
 const ON_WORDS: ReadonlySet<string> = new Set(["1", "true", "yes", "on"]);
 
+/** What `COLLIE_TELEMETRY` says: a vote on, a vote off, no vote, or a value nobody knows. */
+export type TelemetrySwitch =
+  | { readonly kind: "unset" }
+  | { readonly kind: "on" }
+  | { readonly kind: "off" }
+  | { readonly kind: "unknown"; readonly value: string };
+
+/** Read `COLLIE_TELEMETRY` (after the config file's layer): the words, any case, trimmed. Empty is no vote. */
+export function readTelemetrySwitch(raw: string | undefined): TelemetrySwitch {
+  const value = raw?.trim() ?? "";
+  if (value === "") return { kind: "unset" };
+  const word = value.toLowerCase();
+  if (OFF_WORDS.has(word)) return { kind: "off" };
+  if (ON_WORDS.has(word)) return { kind: "on" };
+  return { kind: "unknown", value };
+}
+
+/** The sentence for a value nobody knows, or null when the switch is fine. For the boot log and `collie doctor`. */
+export function telemetrySwitchWarning(env: Environment): string | null {
+  const read = readTelemetrySwitch(env.COLLIE_TELEMETRY);
+  if (read.kind !== "unknown") return null;
+  return `COLLIE_TELEMETRY=${read.value} is not a known value, read as off`;
+}
+
 /** A variable that is set to something other than nothing. */
 function isSet(value: string | undefined): boolean {
   return value !== undefined && value.trim() !== "";
@@ -134,13 +161,14 @@ export function telemetryState(input: TelemetryStateInput): TelemetryState {
   const doNotTrack = env.DO_NOT_TRACK;
   if (isSet(doNotTrack) && doNotTrack?.trim() !== "0") return { on: false, decidedBy: "do_not_track" };
   if (!resolveTelemetryUrl(env).ok) return { on: false, decidedBy: "url" };
-  const word = env.COLLIE_TELEMETRY?.trim().toLowerCase() ?? "";
-  if (OFF_WORDS.has(word)) return { on: false, decidedBy: input.origin };
+  const vote = readTelemetrySwitch(env.COLLIE_TELEMETRY).kind;
+  // An unknown value is off, and decided by the same origin as an off word: the card says the same line.
+  if (vote === "off" || vote === "unknown") return { on: false, decidedBy: input.origin };
   if (isSet(env.CI)) return { on: false, decidedBy: "ci" };
   if (isSet(env[UPDATE_MIRROR_ENV])) return { on: false, decidedBy: "mirror" };
   if (developmentBase(input.version) !== null) return { on: false, decidedBy: "dev_build" };
   if (input.setting === "off") return { on: false, decidedBy: "settings" };
-  if (ON_WORDS.has(word)) return { on: true, decidedBy: input.origin };
+  if (vote === "on") return { on: true, decidedBy: input.origin };
   if (input.setting === "on") return { on: true, decidedBy: "settings" };
   return { on: true, decidedBy: "default" };
 }

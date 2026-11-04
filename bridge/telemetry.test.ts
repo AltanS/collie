@@ -18,10 +18,12 @@ import {
   pingVersion,
   PING_USER_AGENT,
   readTelemetryRecord,
+  readTelemetrySwitch,
   resolveTelemetryUrl,
   shouldSend,
   telemetryDoctorLine,
   telemetryPath,
+  telemetrySwitchWarning,
   telemetryState,
   TELEMETRY_URL,
   utcDay,
@@ -88,9 +90,40 @@ describe("telemetryState: the decision order", () => {
     expect(state({ env: { COLLIE_TELEMETRY: "true" }, origin: "config" })).toEqual({ on: true, decidedBy: "config" });
   });
 
-  test("a value that is neither word is ignored, and the next switch decides", () => {
-    expect(state({ env: { COLLIE_TELEMETRY: "maybe" } })).toEqual({ on: true, decidedBy: "default" });
+  test("a value that is no known word fails closed: off, decided by the origin", () => {
+    for (const word of ["maybe", "ofF1", "2", "disabled", "enable", "y", "n", "tru"]) {
+      expect(state({ env: { COLLIE_TELEMETRY: word } })).toEqual({ on: false, decidedBy: "env" });
+      expect(state({ env: { COLLIE_TELEMETRY: word }, origin: "config" })).toEqual({ on: false, decidedBy: "config" });
+    }
+    // The phone cannot turn an unknown value back on.
+    expect(state({ env: { COLLIE_TELEMETRY: "maybe" }, setting: "on" })).toEqual({ on: false, decidedBy: "env" });
+  });
+
+  test("the words are read in any case and trimmed", () => {
+    for (const word of [" OFF ", "No", "FALSE", "\t0\n"]) {
+      expect(state({ env: { COLLIE_TELEMETRY: word } })).toEqual({ on: false, decidedBy: "env" });
+    }
+    for (const word of [" ON ", "Yes", "TRUE", " 1 "]) {
+      expect(state({ env: { COLLIE_TELEMETRY: word } })).toEqual({ on: true, decidedBy: "env" });
+    }
+  });
+
+  test("an empty or blank value is no vote: the phone and the default decide", () => {
+    expect(state({ env: { COLLIE_TELEMETRY: "" } })).toEqual({ on: true, decidedBy: "default" });
+    expect(state({ env: { COLLIE_TELEMETRY: "   " } })).toEqual({ on: true, decidedBy: "default" });
     expect(state({ env: { COLLIE_TELEMETRY: "" }, setting: "off" })).toEqual({ on: false, decidedBy: "settings" });
+  });
+
+  test("readTelemetrySwitch and telemetrySwitchWarning: only an unknown value warns, with the value as written", () => {
+    expect(readTelemetrySwitch(undefined)).toEqual({ kind: "unset" });
+    expect(readTelemetrySwitch("")).toEqual({ kind: "unset" });
+    expect(readTelemetrySwitch("Yes")).toEqual({ kind: "on" });
+    expect(readTelemetrySwitch("OFF")).toEqual({ kind: "off" });
+    expect(readTelemetrySwitch(" maybe ")).toEqual({ kind: "unknown", value: "maybe" });
+    expect(telemetrySwitchWarning({})).toBeNull();
+    expect(telemetrySwitchWarning({ COLLIE_TELEMETRY: "off" })).toBeNull();
+    expect(telemetrySwitchWarning({ COLLIE_TELEMETRY: "" })).toBeNull();
+    expect(telemetrySwitchWarning({ COLLIE_TELEMETRY: "maybe" })).toBe("COLLIE_TELEMETRY=maybe is not a known value, read as off");
   });
 
   test("the phone's switch decides when env and config say nothing, in both directions", () => {

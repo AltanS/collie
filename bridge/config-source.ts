@@ -557,6 +557,9 @@ function convert(setting: ConfigSetting, raw: TomlValue, home: string): string |
       return String(raw);
     }
     case "bool": {
+      // A switch that fails closed takes its words as written (`telemetry = "off"`). A refusal here would
+      // drop the key and leave the default, which is the wrong way round for an off word.
+      if (setting.words === true && typeof raw === "string") return raw.trim();
       if (typeof raw !== "boolean") return { why: `must be true or false, not ${typeName(raw)}` };
       // `1`/`0` rather than `true`/`false` only because both are what `envBool` already reads; the
       // shape on the wire between these two modules is not the operator's business.
