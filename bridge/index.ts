@@ -1271,6 +1271,7 @@ const telemetry = createTelemetry({
   os: HOST.platform,
   arch: process.arch,
   warn: (line) => console.warn(`[telemetry] ${line}`),
+  log: (line) => console.log(`[telemetry] ${line}`),
 });
 telemetry.observe();
 const telemetryFirstTick = setTimeout(() => void telemetry.tick(), TELEMETRY_FIRST_DELAY_MS);

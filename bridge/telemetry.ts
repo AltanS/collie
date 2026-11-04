@@ -191,6 +191,45 @@ export function telemetryDoctorLine(a: { readonly state: TelemetryState; readonl
   return `${word} (${reasons[decidedBy]})`;
 }
 
+/** The docs address the boot line points at, relative to the repository's `docs/` folder. */
+export const TELEMETRY_DOCS_REF = "docs/security.md#what-leaves-your-machine";
+
+/** `2026-11-05 14:10 UTC`: an instant to the minute, in the zone the ping itself counts days in. */
+export const utcMinute = (at: number): string => `${new Date(at).toISOString().slice(0, 16).replace("T", " ")} UTC`;
+
+/**
+ * The one line a bridge logs at every start (M86 spec 01). A headless machine has no phone, so this
+ * line is its notice: what the count is doing, which switch decided, when the first ping may go, and
+ * how to say no. Off keeps it short, because there is nothing to announce. Pure.
+ */
+export function telemetryBootLine(a: {
+  readonly state: TelemetryState;
+  readonly record: Pick<TelemetryRecord, "firstSeenAt" | "lastSentDay">;
+  readonly now: number;
+  readonly env: Environment;
+}): string {
+  if (!a.state.on) return `install count: ${telemetryDoctorLine({ state: a.state, env: a.env })}`;
+  const deciders = {
+    do_not_track: "DO_NOT_TRACK",
+    env: "COLLIE_TELEMETRY",
+    config: "config.toml",
+    settings: "the phone's switch",
+    ci: "CI",
+    mirror: UPDATE_MIRROR_ENV,
+    dev_build: "the build",
+    url: TELEMETRY_URL_ENV,
+    default: "default",
+  } satisfies Record<TelemetryDecider, string>;
+  const firstAt = a.record.firstSeenAt === null ? null : a.record.firstSeenAt + FIRST_PING_DELAY_MS;
+  const when =
+    firstAt !== null && firstAt > a.now
+      ? `first ping after ${utcMinute(firstAt)}`
+      : a.record.lastSentDay !== null
+        ? `last send attempt ${a.record.lastSentDay}`
+        : "first ping is due";
+  return `install count: on, decided by ${deciders[a.state.decidedBy]}; ${when}; off with COLLIE_TELEMETRY=0 in the service .env, ${TELEMETRY_DOCS_REF}`;
+}
+
 /** Where `COLLIE_TELEMETRY` came from, given the effective environment and the config layer under it. */
 export function telemetryOrigin(env: Environment, layer: ConfigFileLayer): TelemetryOrigin {
   const row = settingByEnv("COLLIE_TELEMETRY");
@@ -370,6 +409,8 @@ export interface TelemetryDeps {
   readonly newId?: () => string;
   readonly files?: UpdateLineWriter;
   readonly warn?: (line: string) => void;
+  /** The bridge's normal log, for the one line {@link telemetryBootLine} makes at every start. */
+  readonly log?: (line: string) => void;
 }
 
 export interface Telemetry {
@@ -377,7 +418,10 @@ export interface Telemetry {
   view(): TelemetryView;
   /** Apply the phone's switch. A repeat of the last request id answers unchanged. */
   choose(a: { readonly setting: TelemetrySetting; readonly requestId: string }): { readonly replay: boolean; readonly view: TelemetryView };
-  /** Boot: settle the state file and say why a refused URL turned the ping off. */
+  /**
+   * Boot: settle the state file, log the one `install count:` line (every start), and say why a refused
+   * URL or an unknown `COLLIE_TELEMETRY` value turned the ping off.
+   */
   observe(): void;
   /** One timer tick. Sends at most once a UTC day and never throws. */
   tick(): Promise<void>;
@@ -393,6 +437,7 @@ export function createTelemetry(deps: TelemetryDeps): Telemetry {
   const files = deps.files ?? diskWriter;
   const newId = deps.newId ?? newInstallId;
   const warn = deps.warn ?? (() => {});
+  const log = deps.log ?? (() => {});
 
   const stateOf = (record: TelemetryRecord): TelemetryState =>
     telemetryState({ env: deps.env, origin: deps.origin, setting: record.setting, version: deps.version });
@@ -442,9 +487,12 @@ export function createTelemetry(deps: TelemetryDeps): Telemetry {
       return { replay, view: view() };
     },
     observe() {
-      settle();
+      const { record, state } = settle();
+      log(telemetryBootLine({ state, record, now: deps.now(), env: deps.env }));
       const url = resolveTelemetryUrl(deps.env);
       if (!url.ok) warn(telemetryUrlRefusal(url.value));
+      const unknown = telemetrySwitchWarning(deps.env);
+      if (unknown !== null) warn(unknown);
     },
     async tick() {
       try {

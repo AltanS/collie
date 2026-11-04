@@ -16,11 +16,13 @@ import {
   parseTelemetryRecord,
   parseTelemetryRequest,
   pingVersion,
+  PING_TIMEOUT_MS,
   PING_USER_AGENT,
   readTelemetryRecord,
   readTelemetrySwitch,
   resolveTelemetryUrl,
   shouldSend,
+  telemetryBootLine,
   telemetryDoctorLine,
   telemetryPath,
   telemetrySwitchWarning,
@@ -296,6 +298,7 @@ function rig(over: { env?: Environment; origin?: TelemetryOrigin; version?: stri
   const sent: Sent[] = [];
   const ids = ["1".repeat(32), "2".repeat(32), "3".repeat(32)];
   const warnings: string[] = [];
+  const logs: string[] = [];
   const fakeFetch: PingFetch = async (url, init) => {
     sent.push({ url, init });
     if (over.fail === true) throw new Error("offline");
@@ -314,8 +317,9 @@ function rig(over: { env?: Environment; origin?: TelemetryOrigin; version?: stri
     arch: "x64",
     newId: () => ids.shift() ?? "f".repeat(32),
     warn: (line) => warnings.push(line),
+    log: (line) => logs.push(line),
   });
-  return { stateDir, clock, sent, telemetry, warnings };
+  return { stateDir, clock, sent, telemetry, warnings, logs };
 }
 
 describe("createTelemetry", () => {
@@ -525,6 +529,152 @@ describe("createTelemetry", () => {
   test("the same machine without a state file at all sends no file contents it did not make", () => {
     const r = rig({ env: { DO_NOT_TRACK: "1" } });
     expect(existsSync(telemetryPath(r.stateDir))).toBe(false);
+  });
+});
+
+describe("the boot line (M86 spec 01)", () => {
+  const ON = "install count: on, decided by default; first ping after 2026-11-04 12:00 UTC; off with COLLIE_TELEMETRY=0 in the service .env, docs/security.md#what-leaves-your-machine";
+
+  test("a fresh install logs one line with the exact time of the first ping", () => {
+    const r = rig();
+    r.telemetry.observe();
+    expect(r.logs).toEqual([ON]);
+  });
+
+  test("every start logs it again, and the time stays where the first start put it", () => {
+    const r = rig();
+    r.telemetry.observe();
+    r.clock.now += 3 * 60 * 60 * 1000;
+    r.telemetry.observe();
+    expect(r.logs).toEqual([ON, ON]);
+  });
+
+  test("after the first ping's time the line says so, and after a send it names the day", async () => {
+    const r = rig();
+    r.telemetry.observe();
+    r.clock.now += FIRST_PING_DELAY_MS;
+    r.telemetry.observe();
+    expect(r.logs[1]).toBe("install count: on, decided by default; first ping is due; off with COLLIE_TELEMETRY=0 in the service .env, docs/security.md#what-leaves-your-machine");
+    await r.telemetry.tick();
+    r.telemetry.observe();
+    expect(r.logs[2]).toBe("install count: on, decided by default; last send attempt 2026-11-04; off with COLLIE_TELEMETRY=0 in the service .env, docs/security.md#what-leaves-your-machine");
+  });
+
+  test("off says which switch, in the doctor's words, and nothing more", () => {
+    const logs = (a: Parameters<typeof rig>[0]): string[] => {
+      const r = rig(a);
+      r.telemetry.observe();
+      return r.logs;
+    };
+    expect(logs({ env: { DO_NOT_TRACK: "1" } })).toEqual(["install count: off (DO_NOT_TRACK)"]);
+    expect(logs({ env: { COLLIE_TELEMETRY: "0" } })).toEqual(["install count: off (COLLIE_TELEMETRY)"]);
+    expect(logs({ env: { CI: "true" } })).toEqual(["install count: off (CI is set)"]);
+    expect(logs({ version: DEV })).toEqual(["install count: off (development build)"]);
+  });
+
+  test("the on line names the switch that voted on", () => {
+    const r = rig({ env: { COLLIE_TELEMETRY: "yes" } });
+    r.telemetry.observe();
+    expect(r.logs[0]).toContain("on, decided by COLLIE_TELEMETRY;");
+    const c = rig({ env: { COLLIE_TELEMETRY: "true" }, origin: "config" });
+    c.telemetry.observe();
+    expect(c.logs[0]).toContain("on, decided by config.toml;");
+  });
+
+  test("an unknown COLLIE_TELEMETRY value logs off and warns once with the value", () => {
+    const r = rig({ env: { COLLIE_TELEMETRY: "maybe" } });
+    r.telemetry.observe();
+    expect(r.logs).toEqual(["install count: off (COLLIE_TELEMETRY)"]);
+    expect(r.warnings).toEqual(["COLLIE_TELEMETRY=maybe is not a known value, read as off"]);
+  });
+
+  test("telemetryBootLine is pure: the same input is the same line", () => {
+    const input = {
+      state: { on: true, decidedBy: "default" },
+      record: { firstSeenAt: Date.UTC(2026, 10, 3, 12, 0, 0), lastSentDay: null },
+      now: Date.UTC(2026, 10, 3, 12, 0, 0),
+      env: {},
+    } as const;
+    expect(telemetryBootLine(input)).toBe(telemetryBootLine(input));
+    expect(telemetryBootLine(input)).toBe(ON);
+  });
+});
+
+describe("the send is hardened (M86 spec 01)", () => {
+  test("it follows no redirect: a 302 is a failed send, and the second address is never asked", async () => {
+    let landed = 0;
+    const target = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: () => { landed += 1; return new Response("landed"); } });
+    const first = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: () => Response.redirect(`http://127.0.0.1:${target.port}/x`, 302) });
+    try {
+      const stateDir = mkdtempSync(join(tmpdir(), "collie-telemetry-"));
+      dirs.push(stateDir);
+      const now = Date.UTC(2026, 10, 3, 12, 0, 0);
+      const t = createTelemetry({
+        stateDir,
+        env: { COLLIE_TELEMETRY_URL: `http://127.0.0.1:${first.port}/v1/ping` },
+        origin: "env",
+        version: RELEASE,
+        installKind: "binary",
+        line: () => "stable",
+        now: () => now,
+        fetch: (url, init) => fetch(url, init),
+        os: "linux",
+        arch: "x64",
+      });
+      t.observe();
+      await expect(t.tick()).resolves.toBeUndefined();
+      const later = createTelemetry({
+        stateDir,
+        env: { COLLIE_TELEMETRY_URL: `http://127.0.0.1:${first.port}/v1/ping` },
+        origin: "env",
+        version: RELEASE,
+        installKind: "binary",
+        line: () => "stable",
+        now: () => now + FIRST_PING_DELAY_MS,
+        fetch: (url, init) => fetch(url, init),
+        os: "linux",
+        arch: "x64",
+      });
+      await expect(later.tick()).resolves.toBeUndefined();
+      expect(landed).toBe(0);
+      expect(readTelemetryRecord(stateDir).lastSentDay).toBe(utcDay(now + FIRST_PING_DELAY_MS));
+    } finally {
+      void first.stop(true);
+      void target.stop(true);
+    }
+  });
+
+  test("the request refuses redirects and carries a timeout of at most five seconds", async () => {
+    const r = rig();
+    r.telemetry.observe();
+    r.clock.now += FIRST_PING_DELAY_MS;
+    await r.telemetry.tick();
+    expect(r.sent[0]?.init.redirect).toBe("error");
+    expect(r.sent[0]?.init.signal).toBeInstanceOf(AbortSignal);
+    expect(PING_TIMEOUT_MS).toBeLessThanOrEqual(5000);
+  });
+
+  test("the answer's body is never read, and a hostile answer changes nothing", async () => {
+    const stateDir = mkdtempSync(join(tmpdir(), "collie-telemetry-"));
+    dirs.push(stateDir);
+    let touched = false;
+    const body = new ReadableStream({ pull() { touched = true; throw new Error("read"); } }, { highWaterMark: 0 });
+    const hostile = new Response(body, { status: 200, headers: { "set-cookie": "a=b", location: "http://evil.example/" } });
+    let now = Date.UTC(2026, 10, 3, 12, 0, 0);
+    const t = createTelemetry({
+      stateDir, env: {}, origin: "env", version: RELEASE, installKind: "binary", line: () => "stable",
+      now: () => now, fetch: async () => hostile, os: "linux", arch: "x64",
+    });
+    t.observe();
+    now += FIRST_PING_DELAY_MS;
+    await t.tick();
+    expect(touched).toBe(false);
+  });
+
+  test("boot never calls the network: observe is synchronous and sends nothing", () => {
+    const r = rig();
+    r.telemetry.observe();
+    expect(r.sent).toHaveLength(0);
   });
 });
 
