@@ -427,6 +427,46 @@ describe("start, and the crew delta", () => {
     expect(h.io.stderr.filter((l) => l.includes("machine"))).toEqual([]);
   });
 
+  // ── THE HINT IS QUIET (M84 hardening) ────────────────────────────────────────
+  // It prints only for a machine the list knows that the crew lacks AND that `crew add` could pick.
+  const quietFor = async (list: string, store: TrustStoreData | null = leadStore()): Promise<string[]> => {
+    const h = crewHarness(store, list);
+    expect(await cmdStart(h.deps)).toBe(EXIT.OK);
+    return h.io.stderr.filter((l) => l.includes("not in this crew"));
+  };
+
+  test("a sandbox alone prints nothing", async () => {
+    expect(await quietFor(JSON.stringify({ machines: [{ target: "scratch", temporary: true }] }))).toEqual([]);
+  });
+
+  test("a machine the core reaches with its own command alone prints nothing", async () => {
+    expect(await quietFor(JSON.stringify({ machines: [{ target: "ssh -p 2222 op@10.0.0.7", via: true }] }))).toEqual([]);
+  });
+
+  test("a machine the crew already has, strongly or by a weak match, prints nothing", async () => {
+    const crew = leadStore({ peers: [member({ memberId: "nas", address: "100.64.0.9:8787" })] });
+    expect(await quietFor(JSON.stringify({ machines: [{ target: "op@100.64.0.9" }] }), crew)).toEqual([]);
+    expect(await quietFor(JSON.stringify({ machines: [{ target: "op@nas" }] }), crew)).toEqual([]);
+  });
+
+  test("an empty list, and a core that is not running, print nothing", async () => {
+    expect(await quietFor(JSON.stringify({ machines: [] }))).toEqual([]);
+    const stopped = harness({
+      absent: ["herdr", "ssh"],
+      answers: [[CORE_LIST, { code: 5, stdout: JSON.stringify({ error: { kind: "unavailable", message: "no core" } }) }]],
+    });
+    stopped.deps.crew = { store: new TrustStore("/state", { read: async () => null, write: async () => {} }), ops: fakeOps() };
+    expect(await cmdStart(stopped.deps)).toBe(EXIT.OK);
+    expect(stopped.io.stderr.filter((l) => l.includes("not in this crew"))).toEqual([]);
+  });
+
+  test("it names only the pickable machines when the list mixes kinds", async () => {
+    const list = JSON.stringify({
+      machines: [{ target: "vps" }, { target: "scratch", temporary: true }, { target: "fly ssh console", via: true }],
+    });
+    expect(await quietFor(list)).toEqual([LINE]);
+  });
+
   test("a start that failed prints no delta", async () => {
     const h = crewHarness(leadStore(), ONE_MACHINE, { answers: [["systemctl --user enable --now collie", { code: 1 }]] });
     expect(await cmdStart(h.deps)).not.toBe(EXIT.OK);
