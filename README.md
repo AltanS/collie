@@ -274,7 +274,7 @@ has the install, the update, and what is not tested. In short:
 - **Run by Task Scheduler.** `collie start`, `stop`, `restart`, `status` and `uninstall` work as they
   do elsewhere. The task is named `herdr.collie` and starts at your logon.
 - **Not covered.** tmux and zellij (neither has a Windows build), Windows 10, Windows on ARM,
-  a Windows machine joining a crew, and a managed front door: Collie does not run `tailscale serve`
+  a Windows machine in a crew without the [experimental](./docs/windows.md#crews) consent flag, and a managed front door: Collie does not run `tailscale serve`
   on Windows, so bring your own,
   [Variant C](./docs/deployment.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale).
   Herdr's action buttons need `bash`, so the manifest lists only `linux` and `macos`.
