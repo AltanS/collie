@@ -1124,6 +1124,96 @@ describe("PiTranscriptSource — a pane that names no session finds it by its fo
     await rm(f.base, { recursive: true, force: true });
   });
 
+  describe("the pane's own command line names the session (#675)", () => {
+    const cwd = "/srv/proj";
+    const folder = "--srv-proj--";
+    const omp = (...args: string[]) => ({ processes: [{ pid: 4242, argv: ["/home/dev/.bun/bin/omp", ...args] }] });
+    const shared = (processes: ReturnType<typeof omp>) => ({ ...processes, shared: true as const });
+
+    /** Two logs for one folder, the neighbour's the newest: what a folder walk would wrongly answer. */
+    async function twoLogs() {
+      const f = await fixture();
+      const mine = await f.log(f.ompRoot, folder, OLD, sessionRow(OLD, cwd), 86_400);
+      await f.log(f.ompRoot, folder, ONE, sessionRow(ONE, cwd), 5);
+      return { f, mine, src: new PiTranscriptSource([f.ompRoot, f.piRoot], f.places) };
+    }
+
+    test("a path in a shared folder names that session, whatever its age", async () => {
+      const { f, mine, src } = await twoLogs();
+      const ref = await src.discoverSession(cwd, shared(omp("--resume", mine)));
+      expect(ref).toEqual({ kind: "id", value: OLD });
+      expect(await src.resolve(ref!)).toBe(mine);
+      // `-r`, `--resume=<path>` and a wrapper that runs the script all say the same.
+      expect(await src.discoverSession(cwd, shared(omp("-r", mine)))).toEqual({ kind: "id", value: OLD });
+      expect(await src.discoverSession(cwd, shared(omp(`--resume=${mine}`)))).toEqual({ kind: "id", value: OLD });
+      const wrapped = { processes: [{ argv: ["bun", "/x/node_modules/.bin/omp", "--resume", mine] }], shared: true as const };
+      expect(await src.discoverSession(cwd, wrapped)).toEqual({ kind: "id", value: OLD });
+      // The same through the adapter, which is what the route calls.
+      expect(await piJournal([f.ompRoot, f.piRoot]).discover?.(cwd, shared(omp("--resume", mine)))).toEqual({ kind: "id", value: OLD });
+      await rm(f.base, { recursive: true, force: true });
+    });
+
+    test("pi names its session with --session, and --resume there is only its picker", async () => {
+      const { f, mine, src } = await twoLogs();
+      const pi = (...args: string[]) => ({ processes: [{ argv: ["pi", ...args] }], shared: true as const });
+      expect(await src.discoverSession(cwd, pi("--session", mine))).toEqual({ kind: "id", value: OLD });
+      expect(await src.discoverSession(cwd, pi(`--session=${OLD}`))).toEqual({ kind: "id", value: OLD });
+      expect(await src.discoverSession(cwd, pi("--resume", mine))).toBeNull();
+      await rm(f.base, { recursive: true, force: true });
+    });
+
+    test("a path outside the sessions roots, or in another folder's place, is refused", async () => {
+      const { f, mine, src } = await twoLogs();
+      const outside = join(f.base, "elsewhere", `2026-10-30T10-00-00-000Z_${TWO}.jsonl`);
+      await mkdir(join(f.base, "elsewhere"), { recursive: true });
+      await Bun.write(outside, `${sessionRow(TWO, cwd)}\n`);
+      expect(await src.discoverSession(cwd, shared(omp("--resume", outside)))).toBeNull();
+      expect(await src.discoverSession(cwd, shared(omp("--resume", `${mine}/../../../../etc/hosts`)))).toBeNull();
+      // Inside a root, but filed for another folder.
+      const other = await f.log(f.ompRoot, "--srv-other--", TWO, sessionRow(TWO, "/srv/other"), 5);
+      expect(await src.discoverSession(cwd, shared(omp("--resume", other)))).toBeNull();
+      // A symlink in the right folder that points out of the root.
+      const link = join(f.ompRoot, folder, `2026-10-30T11-00-00-000Z_${TWO}.jsonl`);
+      await symlink(outside, link);
+      expect(await src.discoverSession(cwd, shared(omp("--resume", link)))).toBeNull();
+      expect(await src.discoverSession(cwd, shared(omp("--resume", "/etc/hosts")))).toBeNull();
+      await rm(f.base, { recursive: true, force: true });
+    });
+
+    test("an id names the session only when a log filed for the folder has exactly that id", async () => {
+      const { f, mine, src } = await twoLogs();
+      const ref = await src.discoverSession(cwd, shared(omp("--resume", OLD)));
+      expect(ref).toEqual({ kind: "id", value: OLD });
+      expect(await src.resolve(ref!)).toBe(mine);
+      expect(await src.discoverSession(cwd, shared(omp("--resume", TWO)))).toBeNull();
+      expect(await src.discoverSession(cwd, shared(omp("--resume", OLD.slice(0, 13))))).toBeNull();
+      expect(await src.discoverSession(cwd, shared(omp("--resume", "../../etc")))).toBeNull();
+      // A log of another folder is not found by its id from this one.
+      await f.log(f.ompRoot, "--srv-other--", TWO, sessionRow(TWO, "/srv/other"), 5);
+      expect(await src.discoverSession(cwd, shared(omp("--resume", TWO)))).toBeNull();
+      await rm(f.base, { recursive: true, force: true });
+    });
+
+    test("the flag with no value, or no command line, names nothing: a shared folder gives no session", async () => {
+      const { f, src } = await twoLogs();
+      expect(await src.discoverSession(cwd, shared(omp("--resume")))).toBeNull();
+      expect(await src.discoverSession(cwd, shared(omp("--resume=")))).toBeNull();
+      expect(await src.discoverSession(cwd, shared(omp("--resume", "--model", "x")))).toBeNull();
+      expect(await src.discoverSession(cwd, shared(omp()))).toBeNull();
+      expect(await src.discoverSession(cwd, { shared: true })).toBeNull();
+      // Not a pi or omp process: the flag means nothing.
+      expect(await src.discoverSession(cwd, { shared: true, processes: [{ argv: ["less", "--resume", OLD] }] })).toBeNull();
+      await rm(f.base, { recursive: true, force: true });
+    });
+
+    test("with no neighbour a bad value changes nothing: the folder walk answers as before", async () => {
+      const { f, src } = await twoLogs();
+      expect(await src.discoverSession(cwd, omp("--resume", "/etc/hosts"))).toEqual({ kind: "id", value: ONE });
+      expect(await src.discoverSession(cwd, omp("--resume"))).toEqual({ kind: "id", value: ONE });
+      await rm(f.base, { recursive: true, force: true });
+    });
+  });
+
   test("the folder names pi and Oh My Pi file a cwd under", () => {
     const places = { home: "/home/dev", tmp: "/tmp" };
     expect(piSessionFolderNames("/srv/a", places)).toEqual(["--srv-a--"]);

@@ -107,7 +107,7 @@ What each field means for Collie:
 | `status` | The program's own OSC 7501 report, or null. See *Status*. |
 | `turn` | Goes up each time the status leaves `working`. |
 | `title` | The OSC title the program set. |
-| `foreground` | The foreground process group's leader: `{pid, name, argv, cwd}`, read about twice a second. A process name, not an agent identity. The adapter takes an agent from it only when the program sends no report (omp 18.6.1 sends none), through the same table as a report, with no status. |
+| `foreground` | The foreground process group's leader: `{pid, name, argv, cwd}`, read about twice a second. A process name, not an agent identity. The adapter takes an agent from it only when the program sends no report (omp 18.6.1 sends none), through the same table as a report, with no status. The adapter also reads `pid` and `argv` from it, for session discovery by the pane's command line (pi and omp), and for nothing else. |
 | `cols`, `rows` | The terminal size. The last ACTIVE attached viewer sets it. |
 | `keep` | Replace a lost program with a shell in place. herdr-app sets it on the terminals it shows. |
 | `parent`, `notify` | The terminal that started it, and whether that parent gets notes typed into it. |

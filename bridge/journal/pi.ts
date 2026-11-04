@@ -19,13 +19,14 @@
 // treated as hostile input and confined to pi's own sessions root like everything else — see
 // journal/files.ts. The id fallback is supported too, since the hook uses it when no file is open yet.
 
-import { lstat, readdir, stat } from "node:fs/promises";
+import { lstat, readdir, realpath, stat } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 
 import type { CacheProbe } from "../cache/engine.ts";
 import type { JsonObject, JsonValue } from "../json.ts";
 import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import { asRecord, asText, FileSum, probeTail, tokenCount, walkBack } from "./cache-probe.ts";
+import { harnessProcessOf } from "../launch-window.ts";
 import { processStartMs } from "./process-start.ts";
 import { type MeasuredContext, piAgentDirLookups, WindowCatalog } from "./model-window.ts";
 import {
@@ -62,6 +63,7 @@ import type {
   TranscriptPart,
   TranscriptSource,
   DiscoverHints,
+  ForegroundProcess,
 } from "./types.ts";
 
 /** pi's session ids are uuids (v4 and v7 both observed) — validated before any path work. */
@@ -1036,6 +1038,45 @@ export function createPiReducer(): RowReducer {
   return { push, unknowns: unknown.tally, queued: noQueue };
 }
 
+/** The resume flags of each harness, by the harness's binary (`omp --help`, `pi --help`). */
+const RESUME_FLAGS: ReadonlyMap<string, readonly string[]> = new Map([
+  // Oh My Pi: `-r, --resume=<value>`, "by ID prefix, path, or picker if omitted".
+  ["omp", ["--resume", "-r"]],
+  // pi: `--resume` only opens a picker and takes no value; `--session <path|id>` names the session.
+  ["pi", ["--session"]],
+]);
+
+const PI_BINARIES: ReadonlyMap<string, string> = new Map([["pi", "pi"], ["omp", "omp"]]);
+
+/**
+ * The value of the pane's resume flag (`omp --resume <v>`, `omp -r <v>`, `--resume=<v>`, `pi --session
+ * <v>`), or null: no pi or omp process, no such flag, or the flag with no value (the picker; a next
+ * word that is itself a flag is no value). The first process that runs the harness answers.
+ */
+export function resumeValueOf(processes: readonly ForegroundProcess[] | undefined): string | null {
+  if (processes === undefined) return null;
+  const found = harnessProcessOf(processes, PI_BINARIES);
+  if (found === null) return null;
+  const flags = RESUME_FLAGS.get(found.harness) ?? [];
+  const argv = found.process.argv;
+  const from = found.script === undefined ? 1 : argv.indexOf(found.script) + 1;
+  for (let i = from; i < argv.length; i++) {
+    const word = argv[i]!;
+    if (word === "--") return null;
+    for (const flag of flags) {
+      if (word === flag) {
+        const next = argv[i + 1];
+        return next === undefined || next === "" || next.startsWith("-") ? null : next;
+      }
+      if (word.startsWith(`${flag}=`)) {
+        const inline = word.slice(flag.length + 1);
+        return inline === "" ? null : inline;
+      }
+    }
+  }
+  return null;
+}
+
 /**
  * Real filesystem source rooted at pi's `sessions` directory.
  *
@@ -1088,13 +1129,20 @@ export class PiTranscriptSource implements TranscriptSource {
    * logs that started more than {@link START_SLACK_MS} before it are skipped; with no pid or no
    * readable start the folder walk stands as it was.
    *
-   * With a pi or omp neighbour in the same folder (`hints.shared`) the answer is no session, because
-   * the newest log could be the neighbour's (#508). The answer is an `id` ref, so it goes through the
-   * same `resolve` and containment as a reported one.
+   * The pane's own command line comes first (#675), as it does for Muse: `omp --resume <log or id>`
+   * and `pi --session <log or id>` name the session exactly, so two panes in one folder each read
+   * their own ({@link PiTranscriptSource.namedSession}). A log named that way is the pane's whatever its
+   * age, so the start-time floor below does not apply to it.
+   *
+   * With a pi or omp neighbour in the same folder (`hints.shared`) and a command line that names no
+   * session, the answer is no session, because the newest log could be the neighbour's (#508). The
+   * answer is an `id` ref, so it goes through the same `resolve` and containment as a reported one.
    */
   async discoverSession(cwd: string, hints?: DiscoverHints): Promise<AgentSessionRef | null> {
-    if (hints?.shared === true) return null;
     if (!isAbsolute(cwd)) return null;
+    const named = await this.namedSession(cwd, hints?.processes);
+    if (named !== null) return named;
+    if (hints?.shared === true) return null;
     const folders = piSessionFolderNames(cwd, this.places);
     const candidates: { id: string; path: string; root: string; mtimeMs: number }[] = [];
     for (const root of this.roots) {
@@ -1132,6 +1180,64 @@ export class PiTranscriptSource implements TranscriptSource {
       if ((await sessionCwdOf(contained)) !== cwd) continue;
       this.pathCache.set(candidate.id, contained);
       return { kind: "id", value: candidate.id };
+    }
+    return null;
+  }
+
+  /**
+   * The session the pane's foreground command line names (#675), or null when it names none that this
+   * pane may read. The value is attacker-shaped, so it is only ever a lookup key:
+   *  - a path must be a `<ISO-ts>_<uuid>.jsonl` file that really lies (symlinks resolved) inside one of
+   *    the sessions roots, in a folder this cwd is filed under ({@link piSessionFolderNames});
+   *  - an id must be a uuid that is the exact suffix of a log in one of those folders.
+   * Anything else is null, which reads as "the command line names nothing" and falls to the folder walk
+   * (or the shared-folder refusal). Never throws.
+   */
+  private async namedSession(cwd: string, processes: readonly ForegroundProcess[] | undefined): Promise<AgentSessionRef | null> {
+    const value = resumeValueOf(processes);
+    if (value === null) return null;
+    const folders = piSessionFolderNames(cwd, this.places);
+    try {
+      if (isPiSessionId(value)) return await this.namedById(value.toLowerCase(), folders);
+      return await this.namedByPath(isAbsolute(value) ? value : join(cwd, value), folders);
+    } catch {
+      return null;
+    }
+  }
+
+  private async namedById(id: string, folders: readonly string[]): Promise<AgentSessionRef | null> {
+    const suffix = `_${id}.jsonl`;
+    for (const root of this.roots) {
+      for (const folder of folders) {
+        let names: string[];
+        try {
+          names = await readdir(join(root, folder));
+        } catch {
+          continue;
+        }
+        const hit = names.find((name) => name.toLowerCase().endsWith(suffix));
+        if (hit === undefined) continue;
+        const contained = await containedRealpath(join(root, folder, hit), root);
+        if (contained === null) continue;
+        this.pathCache.set(id, contained);
+        return { kind: "id", value: id };
+      }
+    }
+    return null;
+  }
+
+  private async namedByPath(path: string, folders: readonly string[]): Promise<AgentSessionRef | null> {
+    const id = /_([^_/\\]+)\.jsonl$/u.exec(basename(path))?.[1];
+    if (id === undefined || !isPiSessionId(id)) return null;
+    for (const root of this.roots) {
+      const contained = await containedRealpath(path, root);
+      if (contained === null) continue;
+      const realRoot = await realpath(root).catch(() => null);
+      if (realRoot === null) continue;
+      // Directly under a folder this cwd is filed under, not merely somewhere in the root.
+      if (!folders.some((folder) => dirname(contained) === join(realRoot, folder))) continue;
+      this.pathCache.set(id.toLowerCase(), contained);
+      return { kind: "id", value: id.toLowerCase() };
     }
     return null;
   }

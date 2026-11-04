@@ -1,4 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { PiTranscriptSource } from "../../journal/pi.ts";
 import { HerdrCoreMux, RAW_KEY_GAP_MS } from "./adapter.ts";
 import { HcError, type RunShellRequest } from "./client.ts";
 import { FakeHcCore, ManualClock } from "./fake-core.ts";
@@ -56,6 +60,53 @@ describe("HerdrCoreMux over a fake core", () => {
     expect(cwdOf(absolute)).toBe("/tmp/lab");
     expect(cwdOf(unknown)).toBe("");
     expect(cwdOf(relative)).toBe("");
+  });
+
+  test("foregroundProcesses answers the foreground leader's argv and pid, from the last snapshot (#675)", async () => {
+    const { fake, adapter } = build();
+    const argv = ["omp", "--resume", "/home/dev/.omp/sessions/--home-dev-collie--/2026-11-04T09-00-00_019f4665-7df0-7540-a64f-7068335f2101.jsonl"];
+    const omp = fake.add({ status: null, cwd: "/home/dev/collie", foreground: { name: "omp", pid: 4242, argv, cwd: "/home/dev/collie" } });
+    await adapter.snapshot();
+    expect(await adapter.foregroundProcesses(omp)).toEqual({ ok: true, value: [{ argv, pid: 4242 }] });
+  });
+
+  test("a foreground with no argv is one entry with an empty argv and no pid; no foreground is empty", async () => {
+    const { fake, adapter } = build();
+    const bare = fake.add({ status: null, foreground: { name: "omp", cwd: "/home/dev" } });
+    const none = fake.add({ status: null, foreground: null });
+    await adapter.snapshot();
+    expect(await adapter.foregroundProcesses(bare)).toEqual({ ok: true, value: [{ argv: [] }] });
+    expect(await adapter.foregroundProcesses(none)).toEqual({ ok: true, value: [] });
+  });
+
+  test("a terminal the snapshot did not list is read once; an unknown or another machine's terminal is a refusal", async () => {
+    const { fake, adapter } = build();
+    const fresh = fake.add({ status: null, foreground: { name: "pi", pid: 7, argv: ["pi", "--session", "x"], cwd: "/home/dev" } });
+    expect(await adapter.foregroundProcesses(fresh)).toEqual({ ok: true, value: [{ argv: ["pi", "--session", "x"], pid: 7 }] });
+    const unknown = await adapter.foregroundProcesses("t999");
+    expect(unknown.ok ? "ok" : unknown.reason).toBe("gone");
+    const remote = await adapter.foregroundProcesses("box/t1");
+    expect(remote.ok ? "ok" : remote.reason).toBe("gone");
+  });
+
+  test("the argv the adapter reports names the session in a shared folder (end to end with the pi adapter)", async () => {
+    const base = await realpath(await mkdtemp(join(tmpdir(), "collie-hc-argv-")));
+    const id = "019f4665-7df0-7540-a64f-7068335f2101";
+    const other = "019f4665-7df0-7540-a64f-7068335f2102";
+    const folder = join(base, "sessions", "--srv-proj--");
+    await mkdir(folder, { recursive: true });
+    const mine = join(folder, `2026-11-04T09-00-00-000Z_${id}.jsonl`);
+    const row = (sid: string) => `${JSON.stringify({ type: "session", version: 3, id: sid, timestamp: "2026-11-04T09:00:00.000Z", cwd: "/srv/proj" })}\n`;
+    await Bun.write(mine, row(id));
+    await Bun.write(join(folder, `2026-11-04T10-00-00-000Z_${other}.jsonl`), row(other));
+    const { fake, adapter } = build();
+    const pane = fake.add({ status: null, cwd: "/srv/proj", foreground: { name: "omp", pid: 4242, argv: ["omp", "--resume", mine], cwd: "/srv/proj" } });
+    await adapter.snapshot();
+    const processes = await adapter.foregroundProcesses(pane);
+    if (!processes.ok) throw new Error("no foreground");
+    const src = new PiTranscriptSource(join(base, "sessions"), { home: join(base, "home"), tmp: join(base, "tmp") });
+    expect(await src.discoverSession("/srv/proj", { shared: true, processes: processes.value })).toEqual({ kind: "id", value: id });
+    await rm(base, { recursive: true, force: true });
   });
 
   test("a core at another generation is unreachable, and the snapshot says what to update", async () => {
