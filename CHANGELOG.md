@@ -38,6 +38,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **A ghost suggestion under the cursor no longer reads as a draft.** Claude Code with the next-steps plugin puts a dim suggestion in the empty box with the cursor on its first letter, and Collie read that cell as typed text and held every send. The box reads empty again. Thanks @cryptiklemur (#659).
 - **On a phone, a dialog card in the dock no longer hides the chat and its question cards.** The chat now keeps at least a third of the screen, and the dock shrinks and scrolls inside itself to make room. The dialog mirror in the unread-dialog card now opens at its bottom, where the dialog is, and not at the old output above it. Thanks @viniciosrab (#667).
 - **The usage windows ask less and honour Retry-After.** Collie now asks a vendor's usage endpoint at most once in five minutes per agent, a turn end included, where it asked once a minute before. After an HTTP 429 it waits as long as the `Retry-After` header says, at least 15 minutes, and doubles the wait on each 429 in a row up to an hour, then says the real wait in the log. Thanks @s0up4200 (#672).
+- **A numbered list that an indented bullet splits keeps counting from its own number.** The second part used to draw as "1." again, so every option in an agent's pick-one list read as option 1. Thanks @KyongSik-Yoon (#674).
 
 ## [1.26.0] - 2026-11-03
 
