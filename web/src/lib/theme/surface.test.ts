@@ -138,6 +138,11 @@ const DESIGN = {
       ["--label-tracking", "normal"],
     ],
   },
+  // The one word that sets no property: the app reads it (lib/zoom-pill.ts).
+  zoom: {
+    screen: [],
+    none: [],
+  },
 };
 
 /** The reviewed declarations of one word, looked up by comparing names. */
@@ -147,8 +152,8 @@ function designOf(token: string, word: string): string[][] | undefined {
 }
 
 describe("the shape tokens", () => {
-  it("are ten, in the order a file's words are applied", () => {
-    expect(SURFACE_TOKENS).toEqual(["radius", "shadow", "density", "weight", "border", "ground", "chrome", "rows", "icons", "labels"]);
+  it("are eleven, in the order a file's words are applied", () => {
+    expect(SURFACE_TOKENS).toEqual(["radius", "shadow", "density", "weight", "border", "ground", "chrome", "rows", "icons", "labels", "zoom"]);
   });
 
   it.each(SURFACE_TOKENS)("%s: every word sets exactly the reviewed declarations", (token) => {
@@ -171,6 +176,7 @@ describe("the shape tokens", () => {
       rows: "rules",
       icons: "default",
       labels: "caps",
+      zoom: "screen",
     });
   });
 

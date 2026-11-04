@@ -2885,4 +2885,8 @@ export const de: Dictionary = {
   "telemetry.card.cause.url": "Aus: COLLIE_TELEMETRY_URL auf diesem Rechner ist keine https-Adresse.",
   "telemetry.card.thisMachine": "Dieser Schalter gilt nur für diesen Rechner.",
   "telemetry.card.members": "Von diesem Schalter nicht erfasst: {names}. Stelle es auf jedem Rechner einzeln ein.",
+  "settings.zoomPill.title": "Zoom-Schaltfläche",
+  "settings.zoomPill.description": "Die Lupen-Schaltfläche in der Aktionsleiste, die den Bildschirm in voller Größe öffnet. Im Chat erscheint sie nie.",
+  "settings.zoomPill.option.screen": "Bildschirmansicht",
+  "settings.zoomPill.option.off": "Aus",
 };

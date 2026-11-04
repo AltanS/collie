@@ -2859,4 +2859,8 @@ export const ko: Dictionary = {
   "telemetry.card.cause.url": "꺼짐: 이 컴퓨터의 COLLIE_TELEMETRY_URL이 https 주소가 아닙니다.",
   "telemetry.card.thisMachine": "이 스위치는 이 머신만 바꿉니다.",
   "telemetry.card.members": "이 스위치가 적용되지 않는 머신: {names}. 각 머신에서 따로 설정하세요.",
+  "settings.zoomPill.title": "확대 버튼",
+  "settings.zoomPill.description": "작업 벨트에 있는 돋보기 버튼으로, 화면을 전체 크기로 엽니다. 채팅에서는 표시되지 않습니다.",
+  "settings.zoomPill.option.screen": "화면 보기",
+  "settings.zoomPill.option.off": "끄기",
 };

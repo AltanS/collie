@@ -2698,4 +2698,8 @@ export const fr: Dictionary = {
   "telemetry.card.cause.url": "Désactivé : COLLIE_TELEMETRY_URL sur cette machine n'est pas une adresse https.",
   "telemetry.card.thisMachine": "Cet interrupteur ne change que cette machine.",
   "telemetry.card.members": "Non couvertes par cet interrupteur : {names}. Réglez-le sur chaque machine.",
+  "settings.zoomPill.title": "Bouton de zoom",
+  "settings.zoomPill.description": "Le bouton en forme de loupe dans la barre d'actions, qui ouvre l'écran en plein format. Il n'apparaît jamais dans le chat.",
+  "settings.zoomPill.option.screen": "Vue écran",
+  "settings.zoomPill.option.off": "Désactivé",
 };

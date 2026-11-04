@@ -2697,4 +2697,8 @@ export const tr: Dictionary = {
   "telemetry.card.cause.url": "Kapalı: bu makinedeki COLLIE_TELEMETRY_URL bir https adresi değil.",
   "telemetry.card.thisMachine": "Bu anahtar yalnızca bu makineyi değiştirir.",
   "telemetry.card.members": "Bu anahtarın kapsamı dışında: {names}. Her makinede ayrı ayarlayın.",
+  "settings.zoomPill.title": "Yakınlaştırma düğmesi",
+  "settings.zoomPill.description": "Eylem çubuğundaki, ekranı tam boyutta açan büyüteç düğmesi. Sohbette hiç görünmez.",
+  "settings.zoomPill.option.screen": "Ekran görünümü",
+  "settings.zoomPill.option.off": "Kapalı",
 };

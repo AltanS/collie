@@ -2866,4 +2866,8 @@ export const ja: Dictionary = {
   "telemetry.card.cause.url": "オフ: このマシンの COLLIE_TELEMETRY_URL は https のアドレスではありません。",
   "telemetry.card.thisMachine": "このスイッチが変えるのは、このマシンだけです。",
   "telemetry.card.members": "このスイッチの対象外: {names}。各マシンで設定してください。",
+  "settings.zoomPill.title": "ズームボタン",
+  "settings.zoomPill.description": "アクション行にある虫眼鏡のボタンで、画面を全画面で開きます。チャットでは表示されません。",
+  "settings.zoomPill.option.screen": "画面ビュー",
+  "settings.zoomPill.option.off": "オフ",
 };

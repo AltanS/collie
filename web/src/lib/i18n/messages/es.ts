@@ -2882,4 +2882,8 @@ export const es: Dictionary = {
   "telemetry.card.cause.url": "Desactivado: COLLIE_TELEMETRY_URL en esta máquina no es una dirección https.",
   "telemetry.card.thisMachine": "Este interruptor solo cambia esta máquina.",
   "telemetry.card.members": "No cubiertas por este interruptor: {names}. Configúrelo en cada máquina.",
+  "settings.zoomPill.title": "Botón de zoom",
+  "settings.zoomPill.description": "El botón de lupa de la barra de acciones que abre la pantalla a tamaño completo. Nunca aparece en el chat.",
+  "settings.zoomPill.option.screen": "Vista de pantalla",
+  "settings.zoomPill.option.off": "Desactivado",
 };

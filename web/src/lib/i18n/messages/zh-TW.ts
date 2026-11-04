@@ -2841,4 +2841,8 @@ export const zhTW: Dictionary = {
   "telemetry.card.cause.url": "關閉：此機器上的 COLLIE_TELEMETRY_URL 不是 https 位址。",
   "telemetry.card.thisMachine": "此開關只更改這台機器。",
   "telemetry.card.members": "此開關不涵蓋：{names}。請在每台機器上分別設定。",
+  "settings.zoomPill.title": "放大按鈕",
+  "settings.zoomPill.description": "動作列上的放大鏡按鈕，可全尺寸開啟螢幕。在聊天中不會顯示。",
+  "settings.zoomPill.option.screen": "螢幕檢視",
+  "settings.zoomPill.option.off": "關閉",
 };

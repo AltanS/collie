@@ -294,7 +294,7 @@ square control a stadium. The first word of each list is the look the app had be
 
 ## Look
 
-Five more keys of the `surface` block and one font key set the look of the page. They follow the same rule
+Six more keys of the `surface` block and one font key set the look of the page. They follow the same rule
 of closed words.
 
 | Key | Word | What it does |
@@ -311,6 +311,8 @@ of closed words.
 | | `heavy` | Icon lines of 2.5. |
 | `labels` | `caps` | Small section labels in capitals with a little spacing. The default. |
 | | `sentence` | The same labels as they are typed. |
+| `zoom` | `screen` | The Zoom pill on the belt shows in the Screen view, never in Chat. The default. |
+| | `none` | The Zoom pill never shows. |
 
 `fonts.display` names one of the six typefaces for page titles and the name in the header. A theme that
 names none draws its titles in the typeface, as before. Collie fetches a display face only when the theme
@@ -325,6 +327,8 @@ names it.
 - **The status bar follows a band.** Under `chrome: band` the browser's status bar takes the band colour, and
   under `page` it takes the page colour.
 - **`rows` reaches every list group.** That includes the list inside the Settings index.
+- **`zoom` sets no style.** It decides whether the belt carries the Zoom pill. The **Zoom pill** setting in
+  Settings, under Appearance, wins over it once you have chosen there.
 
 ## Terminal palette
 

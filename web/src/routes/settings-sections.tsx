@@ -6,6 +6,7 @@ import { Notice } from "@/components/ui/notice";
 import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
 import { BeltSizeControl } from "@/components/belt-size-control";
+import { ZoomPillControl } from "@/components/zoom-pill-control";
 import { ChangesControl } from "@/components/changes-control";
 import { ConnectionInfo } from "@/components/connection-info";
 import { CrewSettingsCard } from "@/components/crew-settings-card";
@@ -98,6 +99,9 @@ export function SettingsAppearanceRoute() {
           band, pills, icons and words (components/actions-row.tsx, `--belt-scale`). */}
       <HarnessBarControl />
       <BeltSizeControl />
+      {/* The belt's Zoom pill: in the Screen view or never (lib/zoom-pill.ts). Under the belt's size
+          because both decide what that one belt carries. */}
+      <ZoomPillControl />
       {/* Which thumb the belt and the reply box are laid out for. Under the belt's size because both
           decide how that one belt is drawn. */}
       <HandControl />

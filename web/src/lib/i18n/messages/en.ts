@@ -3076,6 +3076,10 @@ export const en = {
   "telemetry.card.cause.url": "Off: COLLIE_TELEMETRY_URL on this machine is not an https address.",
   "telemetry.card.thisMachine": "This switch changes this machine only.",
   "telemetry.card.members": "Not covered by this switch: {names}. Set it on each machine.",
+  "settings.zoomPill.title": "Zoom pill",
+  "settings.zoomPill.description": "The magnifier button on the belt that opens the screen full size. It never shows in Chat.",
+  "settings.zoomPill.option.screen": "Screen view",
+  "settings.zoomPill.option.off": "Off",
 } as const;
 
 /** Every key that exists, as a union of string literals. The completeness contract. */

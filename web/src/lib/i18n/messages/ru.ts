@@ -2826,4 +2826,8 @@ export const ru: Dictionary = {
   "telemetry.card.cause.url": "Выключено: COLLIE_TELEMETRY_URL на этой машине не является адресом https.",
   "telemetry.card.thisMachine": "Этот переключатель меняет только эту машину.",
   "telemetry.card.members": "Переключатель не охватывает: {names}. Настройте его на каждой машине.",
+  "settings.zoomPill.title": "Кнопка увеличения",
+  "settings.zoomPill.description": "Кнопка с лупой на панели действий, которая открывает экран на весь размер. В чате она не показывается.",
+  "settings.zoomPill.option.screen": "Вид экрана",
+  "settings.zoomPill.option.off": "Выкл.",
 };
