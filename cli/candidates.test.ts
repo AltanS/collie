@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { CANDIDATE_TIMEOUT_MS, type HostCandidate, type HostProbe } from "../bridge/mux/host-candidates.ts";
 import {
   blockedReason,
+  hostRefusal,
   markCandidates,
   mergeCandidates,
   offeredCandidates,
@@ -11,6 +12,7 @@ import {
   refusedToken,
   renderCandidateList,
   resolvedSshTarget,
+  screenCandidates,
   splitSshTarget,
   sshResolveArgs,
   SSH_CONFIG_SOURCE,
@@ -64,8 +66,8 @@ describe("splitSshTarget", () => {
 
 describe("sshResolveArgs", () => {
   test("a port leaves the destination and becomes -p, because ssh never took host:port", () => {
-    expect(sshResolveArgs("attic")).toEqual(["-G", "attic"]);
-    expect(sshResolveArgs("op@attic.lan:2222")).toEqual(["-G", "-p", "2222", "op@attic.lan"]);
+    expect(sshResolveArgs("attic")).toEqual(["-G", "--", "attic"]);
+    expect(sshResolveArgs("op@attic.lan:2222")).toEqual(["-G", "-p", "2222", "--", "op@attic.lan"]);
   });
 });
 
@@ -82,9 +84,9 @@ describe("parseResolvedSshTarget", () => {
 
 describe("resolvedSshTarget", () => {
   test("it runs `ssh -G` and nothing else, under the shared budget", () => {
-    const { probe, spawns } = probeFor({ "ssh -G attic": resolved("op", "attic.lan", "22") });
+    const { probe, spawns } = probeFor({ "ssh -G -- attic": resolved("op", "attic.lan", "22") });
     expect(resolvedSshTarget("attic", probe)).toBe("op@attic.lan:22");
-    expect(spawns).toEqual(["ssh -G attic"]);
+    expect(spawns).toEqual(["ssh -G -- attic"]);
   });
 
   test("no ssh, a refusal or unreadable output all mean the same thing: unresolved", () => {
@@ -385,5 +387,95 @@ describe("blocked rows", () => {
     expect(blockedReason(rows, "vps")).toBe(REASON);
     expect(blockedReason(rows, "nas")).toBeNull();
     expect(blockedReason(rows, "nowhere")).toBeNull();
+  });
+});
+
+// ── Names from another program's JSON never reach an ssh argv ────────────────
+
+describe("hostRefusal: one refusal per kind of name", () => {
+  const refused: [what: string, target: string][] = [
+    ["a leading dash (an ssh option)", "-oProxyCommand=evil"],
+    ["a leading dash after a user", "op@-oProxyCommand=evil"],
+    ["a dashed user", "-op@attic"],
+    ["a space", "attic lan"],
+    ["a tab", "attic\tlan"],
+    ["a newline", "attic\nlan"],
+    ["a no-break space", "attic\u00a0lan"],
+    ["a semicolon", "attic;reboot"],
+    ["an ampersand", "attic&reboot"],
+    ["a pipe", "attic|cat"],
+    ["a dollar", "$(reboot)"],
+    ["a backtick", "`reboot`"],
+    ["an angle bracket", "attic>file"],
+    ["a quote", "att'ic"],
+    ["a double quote", 'att"ic'],
+    ["a backslash", "att\\ic"],
+    ["a glob", "att*"],
+    ["a tilde", "~attic"],
+    ["an escape sequence", "attic\u001b[2J"],
+    ["a NUL", "attic\u0000"],
+    ["a DEL", "attic\u007f"],
+    ["a C1 control", "attic\u009b"],
+    ["an empty value", ""],
+    ["a user with no host", "op@"],
+  ];
+  for (const [what, target] of refused) {
+    test(`refuses ${what}`, () => {
+      expect(hostRefusal(target)).not.toBeNull();
+    });
+  }
+
+  test("takes every spelling a real list uses", () => {
+    for (const ok of ["attic", "op@attic.lan", "op@attic.lan:2222", "fd00::1", "op@[fd00::1]:2222", "a_b-c.d", "fe80::1%eth0"]) {
+      expect(hostRefusal(ok)).toBeNull();
+    }
+  });
+});
+
+describe("screenCandidates", () => {
+  test("a refused target is dropped, named once, and the rest of the list stays", () => {
+    const warned: string[] = [];
+    const kept = screenCandidates(
+      "Herdr machine name",
+      [named("-oProxyCommand=evil"), named("op@attic"), named("two words")],
+      (line) => warned.push(line),
+    );
+    expect(kept.map((c) => c.target)).toEqual(["op@attic"]);
+    expect(warned).toEqual([
+      'refused: Herdr machine name "-oProxyCommand=evil" is not a valid host',
+      'refused: Herdr machine name "two words" is not a valid host',
+    ]);
+  });
+
+  test("a control character is shown as an escape, never sent to the terminal as a byte", () => {
+    const warned: string[] = [];
+    screenCandidates("Herdr machine name", [named("attic\u001b[2J")], (line) => warned.push(line));
+    expect(warned).toEqual(['refused: Herdr machine name "attic\\x1b[2J" is not a valid host']);
+    expect(warned.join("")).not.toContain("\u001b");
+  });
+
+  test("a label with a control character refuses its row; an ordinary label with a space does not", () => {
+    const warned: string[] = [];
+    const kept = screenCandidates(
+      "Herdr machine name",
+      [
+        { target: "op@a", label: "my laptop", id: null, blocked: null },
+        { target: "op@b", label: "evil\u001b[2J", id: null, blocked: null },
+      ],
+      (line) => warned.push(line),
+    );
+    expect(kept.map((c) => c.target)).toEqual(["op@a"]);
+    expect(warned).toEqual(['refused: Herdr machine name "evil\\x1b[2J" is not a valid host']);
+  });
+
+  test("a blocked row's target is a command and may hold spaces, but never a control character", () => {
+    const warned: string[] = [];
+    const kept = screenCandidates(
+      "Herdr machine name",
+      [blockedNamed("fly ssh console -a x", "via"), blockedNamed("fly\u001b[2J", "via")],
+      (line) => warned.push(line),
+    );
+    expect(kept.map((c) => c.target)).toEqual(["fly ssh console -a x"]);
+    expect(warned).toHaveLength(1);
   });
 });

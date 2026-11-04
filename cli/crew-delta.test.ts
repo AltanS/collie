@@ -112,6 +112,15 @@ describe("crewDelta: the machines a multiplexer knows that this crew does not ha
     expect(deltaLines(delta)).toEqual([]);
   });
 
+  test("a name that could be an ssh option or repaint the terminal is neither counted nor printed", async () => {
+    const { deps } = setup({
+      core: machines({ target: "-oProxyCommand=touch" }, { target: "attic\u001b[2J" }, { target: "vps" }),
+    });
+    const delta = await crewDelta(deps);
+    expect(delta.missing).toEqual([{ source: "herdr-core", targets: ["vps"] }]);
+    expect(deltaLines(delta).join("\n")).not.toContain("\u001b");
+  });
+
   test("a solo collie is told too: it has no members to cover anything", async () => {
     const { deps } = setup({ core: machines({ target: "vps" }), store: null });
     expect((await crewDelta(deps)).missing).toEqual([{ source: "herdr-core", targets: ["vps"] }]);
@@ -196,7 +205,7 @@ describe("crewDelta: a member with no crew add record is still in the crew", () 
       resolve: { vps: "user u\nhostname vps\nport 22\n" },
     });
     await crewDelta(deps);
-    expect(exec.calls.filter((c) => c.startsWith("ssh "))).toEqual(["ssh -G vps"]);
+    expect(exec.calls.filter((c) => c.startsWith("ssh "))).toEqual(["ssh -G -- vps"]);
   });
 });
 
@@ -293,7 +302,7 @@ describe("crewDelta: read-only, and silent where it has nothing to compare", () 
       resolve: { vps: "user u\nhostname vps\nport 22\n", nas: "user u\nhostname nas\nport 22\n" },
     });
     await crewDelta(deps);
-    expect(exec.calls.filter((c) => c.startsWith("ssh ")).toSorted()).toEqual(["ssh -G nas", "ssh -G vps"]);
+    expect(exec.calls.filter((c) => c.startsWith("ssh ")).toSorted()).toEqual(["ssh -G -- nas", "ssh -G -- vps"]);
     expect(exec.calls.every((c) => c === CORE_LIST || c === TUI_LIST || c.startsWith("ssh -G "))).toBe(true);
     expect(exec.timeouts.every((t) => t.ms === 3000)).toBe(true);
   });

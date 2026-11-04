@@ -112,7 +112,8 @@ export function resolvedSshTarget(target: string, probe: HostProbe): string | nu
 export function sshResolveArgs(target: string): readonly string[] {
   const { user, host, port } = splitSshTarget(target);
   const destination = user === null ? host : `${user}@${host}`;
-  return port === null ? ["-G", destination] : ["-G", "-p", port, destination];
+  // `--` ends ssh's options, so a destination that begins with `-` is a host name to ssh and never a flag.
+  return port === null ? ["-G", "--", destination] : ["-G", "-p", port, "--", destination];
 }
 
 /** A target's three parts, none of them judged. */
@@ -301,6 +302,72 @@ export function renderCandidateList(rows: readonly CandidateRow[]): readonly str
   }
   lines.push("");
   return lines;
+}
+
+// ── NAMES FROM ANOTHER PROGRAM'S JSON ARE NOT TRUSTED ────────────────────────
+// A multiplexer's machine list is another program's output. Its `target` ends up in an `ssh` argv
+// and its name on the operator's terminal, so a value that could be read as an ssh option, split
+// into two words, run by a shell or repaint the terminal never becomes a row. It is refused with
+// one line and the rest of the list stays. Every `ssh` Collie starts also puts `--` before the
+// destination (`cli/remote.ts`, {@link sshResolveArgs}), so a name that slipped past this check is
+// still a host name and never a flag.
+
+/** A control character in any script: C0, DEL and C1. These repaint or escape a terminal. */
+const CONTROL = /\p{Cc}/u;
+/** Whitespace of any script: it would split one destination into two words. */
+const SPACE = /\s/u;
+/** What a shell reads as syntax. `[` and `]` stay: an IPv6 literal is written `[fd00::1]:22`. */
+const SHELL_SYNTAX = /[;&|$`<>(){}*?!#"'\\~]/u;
+
+/**
+ * Why this value cannot be an ssh destination, or `null` when it can. Judges the three parts of
+ * `[user@]host[:port]` and refuses a part that begins with `-`.
+ */
+export function hostRefusal(target: string): string | null {
+  if (target === "") return "it is empty";
+  if (CONTROL.test(target)) return "it holds a control character";
+  if (SPACE.test(target)) return "it holds whitespace";
+  if (SHELL_SYNTAX.test(target)) return "it holds a character a shell reads as syntax";
+  if (target.startsWith("-")) return "it begins with a dash, so ssh would read it as an option";
+  const { user, host } = splitSshTarget(target);
+  if (host === "") return "it names no host";
+  if (host.startsWith("-") || (user !== null && user.startsWith("-"))) {
+    return "a part of it begins with a dash, so ssh would read it as an option";
+  }
+  return null;
+}
+
+/** A value for a message: control characters shown as `\xNN`, never sent to the terminal as bytes. */
+function visible(value: string): string {
+  return value.replaceAll(/\p{Cc}/gu, (c) => `\\x${c.charCodeAt(0).toString(16).padStart(2, "0")}`);
+}
+
+/**
+ * The candidates one source gave, minus the ones that must never reach an ssh argv or a terminal.
+ *
+ * A blocked row is never dialled, and its target may be a COMMAND (the core's `--via`), so only the
+ * control-character rule applies to it. `noun` is the words the refusal line uses for a name from
+ * this source, `warn` receives each refusal.
+ */
+export function screenCandidates(
+  noun: string,
+  candidates: readonly HostCandidate[],
+  warn: (line: string) => void,
+): readonly HostCandidate[] {
+  const kept: HostCandidate[] = [];
+  for (const candidate of candidates) {
+    const unfit =
+      candidate.blocked !== null
+        ? CONTROL.test(candidate.target)
+        : hostRefusal(candidate.target) !== null;
+    const label = candidate.label !== null && CONTROL.test(candidate.label);
+    if (unfit || label) {
+      warn(`refused: ${noun} "${visible(label ? candidate.label! : candidate.target)}" is not a valid host`);
+      continue;
+    }
+    kept.push(candidate);
+  }
+  return kept;
 }
 
 /** The question. One line, so the plain path's `prompt` fits on a terminal row. */

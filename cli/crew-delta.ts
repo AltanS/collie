@@ -44,6 +44,7 @@ import {
   offeredCandidates,
   resolvedSshTarget,
   type RosterEntry,
+  screenCandidates,
   splitSshTarget,
   type SourcedCandidates,
 } from "./candidates.ts";
@@ -108,7 +109,12 @@ export async function leadRoster(
  * drops empty answers, which is what "healthy with at least one machine" means to the delta.
  */
 export function muxCandidateSources(probe: HostProbe): readonly SourcedCandidates[] {
-  return muxHostCandidates(probe).map((answer) => ({ source: answer.mux, candidates: answer.candidates }));
+  // Every name here is another program's JSON. A refused one is said once on the picker's stderr
+  // (`probe.warn`) and silently dropped by the delta, whose probe has a no-op warn.
+  return muxHostCandidates(probe).map((answer) => ({
+    source: answer.mux,
+    candidates: screenCandidates("Herdr machine name", answer.candidates, probe.warn),
+  }));
 }
 
 /** What differs between a multiplexer's list and this crew. Both arrays empty is the quiet case. */

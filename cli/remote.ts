@@ -21,6 +21,7 @@ import {
   refusedToken,
   renderCandidateList,
   resolvedSshTarget,
+  screenCandidates,
   SSH_CONFIG_SOURCE,
   type SourcedCandidates,
 } from "./candidates.ts";
@@ -165,7 +166,8 @@ export function sshRunner(
       if (bin === null) {
         return { code: 127, stdout: "", stderr: "no `ssh` on this machine", spawned: false };
       }
-      const proc = Bun.spawn([bin, ...sshOptions(controlPath, multiplex), target, "/bin/sh", "-s"], {
+      // `--` ends ssh's options: a destination that begins with `-` is a host name to ssh, never a flag.
+      const proc = Bun.spawn([bin, ...sshOptions(controlPath, multiplex), "--", target, "/bin/sh", "-s"], {
         stdin: new TextEncoder().encode(composeStdin(script, stdin)),
         stdout: "pipe",
         stderr: "pipe",
@@ -183,7 +185,7 @@ export function sshRunner(
       closed = true;
       if (bin !== null && multiplex) {
         try {
-          Bun.spawnSync([bin, "-o", `ControlPath=${controlPath}`, "-O", "exit", target], {
+          Bun.spawnSync([bin, "-o", `ControlPath=${controlPath}`, "-O", "exit", "--", target], {
             stdout: "ignore",
             stderr: "ignore",
             env,
@@ -1105,7 +1107,10 @@ type Chosen = { readonly picks: readonly HostPick[] } | { readonly code: number 
 /** Every provider's candidates, `ssh config` first and the multiplexers after it, in registry order. */
 function candidateSources(deps: Wired, probe: HostProbe): readonly SourcedCandidates[] {
   const sources: SourcedCandidates[] = [
-    { source: SSH_CONFIG_SOURCE, candidates: sshConfigCandidates(deps.files, deps.ctx.home) },
+    {
+      source: SSH_CONFIG_SOURCE,
+      candidates: screenCandidates("ssh config host", sshConfigCandidates(deps.files, deps.ctx.home), probe.warn),
+    },
     ...muxCandidateSources(probe),
   ];
   return sources.filter((source) => source.candidates.length > 0);

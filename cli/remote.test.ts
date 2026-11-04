@@ -46,6 +46,7 @@ import {
   shq,
   shqPath,
   sshOptions,
+  sshRunner,
   STDIN_MARKER,
   type CrewAddDeps,
   type RemoteResult,
@@ -849,9 +850,9 @@ describe("collie crew add", () => {
     expect(h.exec.calls).toEqual([
       "herdr machine list --json",
       "hc machine ls --json",
-      "ssh -G bastion",
-      "ssh -G attic",
-      "ssh -G office",
+      "ssh -G -- bastion",
+      "ssh -G -- attic",
+      "ssh -G -- office",
     ]);
     expect(h.exec.calls.every((c) => !c.startsWith("ssh") || c.startsWith("ssh -G "))).toBe(true);
     expect(h.exec.calls.some((c) => c.includes("corkscrew"))).toBe(false);
@@ -915,6 +916,68 @@ describe("collie crew add", () => {
     expect(h.exec.calls).toContain("hc machine ls --json");
     expect(text(h.io)).not.toContain("warn:");
     expect(h.io.stdout.some((l) => l.includes("attic"))).toBe(true);
+  });
+
+  // ── NO SSH ARGUMENT INJECTION FROM THE LIST (M84 hardening) ──────────────────
+  // The core's list is another program's JSON. A name that ssh could read as an option, that holds
+  // whitespace, shell syntax or a control character is never a row: one refusal line, the rest of
+  // the list stays, and no `ssh` of any kind is spawned for it.
+  const refusedNames: [what: string, target: string, shown: string][] = [
+    ["a leading dash", "-oProxyCommand=touch", "-oProxyCommand=touch"],
+    ["whitespace", "attic lan", "attic lan"],
+    ["a shell metacharacter", "attic;reboot", "attic;reboot"],
+    ["a command substitution", "$(reboot)", "$(reboot)"],
+    ["a control character", "attic\u001b[2J", "attic\\x1b[2J"],
+  ];
+  for (const [what, target, shown] of refusedNames) {
+    test(`a Herdr machine name with ${what} is refused, named once, and never reaches ssh`, async () => {
+      const h = harness({
+        coreMachines: JSON.stringify({ machines: [{ target }, { target: "op@vps" }] }),
+        resolve: { "op@vps": "user op\nhostname vps\nport 22" },
+        prompt: "1",
+      });
+      expect(await run(h, [])).toBe(EXIT.OK);
+      expect(h.io.stderr).toContain(`refused: Herdr machine name "${shown}" is not a valid host`);
+      // The refused name is not on the list, and the good row is number 1.
+      expect(h.io.stdout.some((l) => l.includes(target))).toBe(false);
+      expect(h.io.stdout.some((l) => l.startsWith("   1  op@vps"))).toBe(true);
+      // Nothing was resolved or dialled for it: the only `ssh` spawn is `-G` for the good row.
+      expect(h.exec.calls.filter((c) => c.startsWith("ssh "))).toEqual(["ssh -G -- op@vps"]);
+      expect(h.calls.every((c) => c.host === "op@vps")).toBe(true);
+    });
+  }
+
+  test("a Herdr machine name that is refused is silent in the delta that start and doctor print", async () => {
+    const h = harness({ coreMachines: JSON.stringify({ machines: [{ target: "-oProxyCommand=touch" }] }), prompt: "" });
+    expect(await run(h, [])).toBe(EXIT.USAGE);
+    // The whole list was refused, so the verb falls back to its usage line, with the refusal above it.
+    expect(h.io.stderr).toContain('refused: Herdr machine name "-oProxyCommand=touch" is not a valid host');
+    expect(h.calls).toHaveLength(0);
+  });
+
+  test("every ssh the runner starts puts `--` before the destination", async () => {
+    if (process.platform === "win32") return;
+    const dir = mkdtempSync(join(tmpdir(), "collie-fake-ssh-"));
+    try {
+      const log = join(dir, "argv");
+      const bin = join(dir, "bin");
+      mkdirSync(bin);
+      // A stub, not ssh: it records one argument per line and drains stdin.
+      writeFileSync(join(bin, "ssh"), `#!/bin/sh\nfor a in "$@"; do printf '%s\\n' "$a" >> '${log}'; done\nprintf -- '--end--\\n' >> '${log}'\ncat >/dev/null\n`);
+      chmodSync(join(bin, "ssh"), 0o755);
+      const runner = sshRunner("-oProxyCommand=touch", { PATH: bin }, dir);
+      await runner.run("echo hi\n");
+      runner.close();
+      const calls = readFileSync(log, "utf8").split("--end--\n").filter((c) => c !== "");
+      // The leg itself, then the control socket's `-O exit` when the runner closes.
+      expect(calls).toHaveLength(2);
+      const [leg, exit] = calls.map((c) => c.split("\n").filter((a) => a !== ""));
+      // Every option sits before it, the destination right after it, the remote command last.
+      expect(leg!.slice(leg!.indexOf("--"))).toEqual(["--", "-oProxyCommand=touch", "/bin/sh", "-s"]);
+      expect(exit!.slice(exit!.indexOf("-O"))).toEqual(["-O", "exit", "--", "-oProxyCommand=touch"]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   test("a non-interactive run with candidates refuses rather than picking one", async () => {
