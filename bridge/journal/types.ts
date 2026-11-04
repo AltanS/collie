@@ -227,6 +227,12 @@ export interface DiscoverHints {
   /** The pane's foreground argv ({@link ForegroundProcess}). */
   processes?: readonly ForegroundProcess[];
   /**
+   * The pane's terminal labels, as the multiplexer reported them in its latest snapshot. A hint under
+   * ADR 0024: the value is attacker-shaped, so an adapter confines whatever it reads from here the same
+   * way it confines a path from the pane's command line. Absent on a multiplexer with no labels.
+   */
+  labels?: Record<string, string>;
+  /**
    * True when another pane running the same harness sits in the same folder. Set only then, never
    * `false`. A folder walk cannot tell those panes' sessions apart, so an adapter that answers by
    * folder must answer null here rather than hand this pane a neighbour's session (#508).

@@ -2,7 +2,7 @@ import { Database } from "bun:sqlite";
 import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, realpath, rm, symlink, utimes } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
 import {
   createPiReducer,
@@ -1210,6 +1210,104 @@ describe("PiTranscriptSource — a pane that names no session finds it by its fo
       const { f, src } = await twoLogs();
       expect(await src.discoverSession(cwd, omp("--resume", "/etc/hosts"))).toEqual({ kind: "id", value: ONE });
       expect(await src.discoverSession(cwd, omp("--resume"))).toEqual({ kind: "id", value: ONE });
+      await rm(f.base, { recursive: true, force: true });
+    });
+  });
+
+  describe("the pane's terminal label names the session (#675)", () => {
+    const cwd = "/srv/proj";
+    const folder = "--srv-proj--";
+    const withLabels = (labels: Record<string, string>, ...args: string[]) => ({
+      processes: [{ pid: 4242, argv: ["/home/dev/.bun/bin/omp", ...args] }],
+      labels,
+      shared: true as const,
+    });
+
+    /** Two logs for one folder, the neighbour's the newest: what a folder walk would wrongly answer. */
+    async function twoLogs() {
+      const f = await fixture();
+      const mine = await f.log(f.ompRoot, folder, OLD, sessionRow(OLD, cwd), 86_400);
+      const theirs = await f.log(f.ompRoot, folder, ONE, sessionRow(ONE, cwd), 5);
+      return { f, mine, theirs, src: new PiTranscriptSource([f.ompRoot, f.piRoot], f.places) };
+    }
+
+    test("the omp label names its own session in a shared folder, and resolves to that file", async () => {
+      const { f, mine, theirs, src } = await twoLogs();
+      const ref = await src.discoverSession(cwd, withLabels({ "omp.session_file": mine }));
+      expect(ref).toEqual({ kind: "id", value: OLD });
+      expect(await src.resolve(ref!)).toBe(mine);
+      expect(await src.discoverSession(cwd, withLabels({ "omp.session_file": theirs }))).toEqual({ kind: "id", value: ONE });
+      // The same through the adapter, which is what the route calls.
+      expect(await piJournal([f.ompRoot, f.piRoot]).discover?.(cwd, withLabels({ "omp.session_file": mine }))).toEqual({ kind: "id", value: OLD });
+      await rm(f.base, { recursive: true, force: true });
+    });
+
+    test("the label wins over the command line's path", async () => {
+      const { f, mine, theirs, src } = await twoLogs();
+      expect(await src.discoverSession(cwd, withLabels({ "omp.session_file": mine }, "--resume", theirs))).toEqual({ kind: "id", value: OLD });
+      // A label that fails the checks falls through to the command line.
+      expect(await src.discoverSession(cwd, withLabels({ "omp.session_file": "/etc/hosts" }, "--resume", theirs))).toEqual({ kind: "id", value: ONE });
+      await rm(f.base, { recursive: true, force: true });
+    });
+
+    test("the other harness's key, an unrelated key and a non-harness process read nothing", async () => {
+      const { f, mine, src } = await twoLogs();
+      expect(await src.discoverSession(cwd, withLabels({ "pi.session_file": mine }))).toBeNull();
+      expect(await src.discoverSession(cwd, withLabels({ session_file: mine, "herdr.space": mine }))).toBeNull();
+      expect(await src.discoverSession(cwd, { shared: true, labels: { "omp.session_file": mine } })).toBeNull();
+      const less = { shared: true as const, processes: [{ argv: ["less", "x"] }], labels: { "omp.session_file": mine } };
+      expect(await src.discoverSession(cwd, less)).toBeNull();
+      await rm(f.base, { recursive: true, force: true });
+    });
+
+    test("a pi pane reads pi.session_file, and not omp.session_file", async () => {
+      const { f, mine, src } = await twoLogs();
+      const pi = (labels: Record<string, string>) => ({ processes: [{ argv: ["pi"] }], labels, shared: true as const });
+      expect(await src.discoverSession(cwd, pi({ "pi.session_file": mine }))).toEqual({ kind: "id", value: OLD });
+      expect(await src.discoverSession(cwd, pi({ "omp.session_file": mine }))).toBeNull();
+      await rm(f.base, { recursive: true, force: true });
+    });
+
+    test("a path outside the roots, in another folder, through a symlink, or not a session id is ignored", async () => {
+      const { f, mine, src } = await twoLogs();
+      const ask = (value: string) => src.discoverSession(cwd, withLabels({ "omp.session_file": value }));
+      const outside = join(f.base, "elsewhere", `2026-10-30T10-00-00-000Z_${TWO}.jsonl`);
+      await mkdir(join(f.base, "elsewhere"), { recursive: true });
+      await Bun.write(outside, `${sessionRow(TWO, cwd)}\n`);
+      expect(await ask(outside)).toBeNull();
+      expect(await ask(`${mine}/../../../../etc/hosts`)).toBeNull();
+      // Inside a root, but filed for another folder.
+      expect(await ask(await f.log(f.ompRoot, "--srv-other--", TWO, sessionRow(TWO, "/srv/other"), 5))).toBeNull();
+      // A symlink in the right folder that points out of the root.
+      const link = join(f.ompRoot, folder, `2026-10-30T11-00-00-000Z_${TWO}.jsonl`);
+      await symlink(outside, link);
+      expect(await ask(link)).toBeNull();
+      // Not a session id: a file name of any other shape, an id alone, a directory.
+      expect(await ask(join(f.ompRoot, folder, "notes.jsonl"))).toBeNull();
+      expect(await ask(OLD)).toBeNull();
+      expect(await ask(join(f.ompRoot, folder))).toBeNull();
+      expect(await ask("")).toBeNull();
+      await rm(f.base, { recursive: true, force: true });
+    });
+
+    test("a relative path is ignored, even one that would resolve against the cwd", async () => {
+      const { f, mine, src } = await twoLogs();
+      expect(await src.discoverSession(cwd, withLabels({ "omp.session_file": basename(mine) }))).toBeNull();
+      expect(await src.discoverSession(cwd, withLabels({ "omp.session_file": `./${basename(mine)}` }))).toBeNull();
+      await rm(f.base, { recursive: true, force: true });
+    });
+
+    test("a label that names a file that does not exist falls through to the command line's path", async () => {
+      const { f, theirs, src } = await twoLogs();
+      const gone = join(f.ompRoot, folder, `2026-10-30T12-00-00-000Z_${TWO}.jsonl`);
+      expect(await src.discoverSession(cwd, withLabels({ "omp.session_file": gone }, "--resume", theirs))).toEqual({ kind: "id", value: ONE });
+      await rm(f.base, { recursive: true, force: true });
+    });
+
+    test("with no neighbour a bad label changes nothing: the folder walk answers as before", async () => {
+      const { f, src } = await twoLogs();
+      const alone = { processes: [{ argv: ["omp"] }], labels: { "omp.session_file": "/etc/hosts" } };
+      expect(await src.discoverSession(cwd, alone)).toEqual({ kind: "id", value: ONE });
       await rm(f.base, { recursive: true, force: true });
     });
   });

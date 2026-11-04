@@ -122,3 +122,18 @@ capability is narrowed to neither the agent nor the status: an adapter that decl
 `agentSessionRef` is still refused at construction, and one that declares only `agentDetection` gets
 the session ref and nothing else. The blast radius shrinks: a hostile edge can make such a pane look
 up a wrong session, a lie on screen, and can no longer rename it or change its status.
+
+## Amended 2026-11-04: a terminal label is a path hint
+
+On herdr-core a program inside the terminal can set a label (`hc label`). Collie reads
+`<harness>.session_file` as a session hint (#675, PR #677), with exactly the standing of pi's `path`
+ref: confined per root after symlink resolution, inside the folder for the pane's cwd, a session id
+for a name, or not read at all. It comes before the command line's path, because the live file moves
+on `/new` and `/resume` and the command line cannot follow.
+
+Accepted residual risk. A stale label (the extension removed while the terminal lives; it relabels on
+every session start) or a label set by another process of the same user in the same terminal can name
+the pane's own earlier session in that folder. It cannot name a neighbour's folder, and it cannot name
+a file outside the roots. The bound is a Chat of one's own earlier session in the same folder. A pid
+or start-time token beside the label is the next step if that bound ever bites in the field. It is
+not built.

@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PiTranscriptSource } from "../../journal/pi.ts";
+import type { DiscoverHints } from "../../journal/types.ts";
 import { HerdrCoreMux, RAW_KEY_GAP_MS } from "./adapter.ts";
 import { HcError, type RunShellRequest } from "./client.ts";
 import { FakeHcCore, ManualClock } from "./fake-core.ts";
@@ -13,6 +14,9 @@ interface Built {
   readonly fake: FakeHcCore;
   readonly adapter: HerdrCoreMux;
 }
+
+/** The label a harness sets on its terminal to name its session file (#675). */
+const sessionFile = (harness: string) => `${harness}.session_file`;
 
 function build(): Built {
   const fake = new FakeHcCore();
@@ -106,6 +110,65 @@ describe("HerdrCoreMux over a fake core", () => {
     if (!processes.ok) throw new Error("no foreground");
     const src = new PiTranscriptSource(join(base, "sessions"), { home: join(base, "home"), tmp: join(base, "tmp") });
     expect(await src.discoverSession("/srv/proj", { shared: true, processes: processes.value })).toEqual({ kind: "id", value: id });
+    await rm(base, { recursive: true, force: true });
+  });
+
+  test("paneLabels answers the labels of the last snapshot; an unlisted terminal has none (#675)", async () => {
+    const { fake, adapter } = build();
+    const labelled = fake.add({ status: null, labels: { [sessionFile("omp")]: "/x/y.jsonl" }, foreground: { name: "omp", cwd: "/home/dev" } });
+    expect(adapter.paneLabels(labelled)).toBeUndefined();
+    await adapter.snapshot();
+    expect(adapter.paneLabels(labelled)).toEqual({ [sessionFile("omp")]: "/x/y.jsonl" });
+    expect(adapter.paneLabels("t999")).toBeUndefined();
+  });
+
+  test("a label the program removes is gone from the next snapshot (#675)", async () => {
+    const { fake, adapter } = build();
+    const id = fake.add({ status: null, labels: { [sessionFile("omp")]: "/x/y.jsonl" }, foreground: { name: "omp", cwd: "/home/dev" } });
+    await adapter.snapshot();
+    expect(adapter.paneLabels(id)).toEqual({ [sessionFile("omp")]: "/x/y.jsonl" });
+    fake.removeLabel(id, sessionFile("omp"));
+    // Until the next snapshot the answer is the old one: labels are read from snapshots only.
+    expect(adapter.paneLabels(id)?.[sessionFile("omp")]).toBe("/x/y.jsonl");
+    await adapter.snapshot();
+    expect(adapter.paneLabels(id)?.[sessionFile("omp")]).toBeUndefined();
+    expect(adapter.paneLabels(id) ?? {}).toEqual({});
+  });
+
+  test("each pane's own session_file label names its session in a shared folder (end to end with the pi adapter)", async () => {
+    const base = await realpath(await mkdtemp(join(tmpdir(), "collie-hc-label-")));
+    const idOne = "019f4665-7df0-7540-a64f-7068335f2101";
+    const idTwo = "019f4665-7df0-7540-a64f-7068335f2102";
+    const ids = [idOne, idTwo];
+    const folder = join(base, "sessions", "--srv-proj--");
+    await mkdir(folder, { recursive: true });
+    const row = (sid: string) => `${JSON.stringify({ type: "session", version: 3, id: sid, timestamp: "2026-11-04T09:00:00.000Z", cwd: "/srv/proj" })}\n`;
+    const logs: string[] = await Promise.all(
+      ids.map(async (sid, i) => {
+        const path = join(folder, `2026-11-04T09-00-0${i}-000Z_${sid}.jsonl`);
+        await Bun.write(path, row(sid));
+        return path;
+      }),
+    );
+    const { fake, adapter } = build();
+    const omp = (labels: Record<string, string>) =>
+      fake.add({ status: null, cwd: "/srv/proj", labels, foreground: { name: "omp", pid: 4242, argv: ["omp"], cwd: "/srv/proj" } });
+    const first = omp({ [sessionFile("omp")]: logs[0]! });
+    const second = omp({ [sessionFile("omp")]: logs[1]! });
+    const bare = omp({});
+    await adapter.snapshot();
+    const src = new PiTranscriptSource(join(base, "sessions"), { home: join(base, "home"), tmp: join(base, "tmp") });
+    const discover = async (pane: string) => {
+      const processes = await adapter.foregroundProcesses(pane);
+      if (!processes.ok) throw new Error("no foreground");
+      const hints: DiscoverHints = { shared: true, processes: processes.value };
+      const labels = adapter.paneLabels(pane);
+      if (labels !== undefined) hints.labels = labels;
+      return src.discoverSession("/srv/proj", hints);
+    };
+    expect(await discover(first)).toEqual({ kind: "id", value: idOne });
+    expect(await discover(second)).toEqual({ kind: "id", value: idTwo });
+    expect(await discover(bare)).toBeNull();
     await rm(base, { recursive: true, force: true });
   });
 

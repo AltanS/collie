@@ -801,6 +801,14 @@ export interface MuxAdapter {
    */
   foregroundProcesses?(paneId: string): Promise<MuxOutcome<readonly ForegroundProcess[]>>;
 
+  /**
+   * The pane's terminal labels from the multiplexer's latest snapshot, for journal discovery
+   * (`DiscoverHints.labels`). OPTIONAL: only herdr-core keeps labels the program can set from inside
+   * the terminal (`hc label`). Answers from the last snapshot with no call of its own, and
+   * `undefined` for a pane that snapshot did not list. A label is a hint (ADR 0024), never a ref.
+   */
+  paneLabels?(paneId: string): Record<string, string> | undefined;
+
   /** Type literal text into a pane, submitting nothing. Needs `typeText`. */
   typeText(paneId: string, text: string): Promise<MuxAck>;
 
@@ -937,6 +945,7 @@ export type MuxOptionalMethod =
   | "paneActions"
   | "controlTurn"
   | "foregroundProcesses"
+  | "paneLabels"
   | "pasteText"
   | "pasteBlock"
   | "renameSpace"
@@ -974,6 +983,8 @@ export function muxOptionalMethods(
   if (controlTurn !== undefined) methods.controlTurn = controlTurn;
   const foregroundProcesses = adapter.foregroundProcesses?.bind(adapter);
   if (foregroundProcesses !== undefined) methods.foregroundProcesses = foregroundProcesses;
+  const paneLabels = adapter.paneLabels?.bind(adapter);
+  if (paneLabels !== undefined) methods.paneLabels = paneLabels;
   const pasteText = adapter.pasteText?.bind(adapter);
   if (pasteText !== undefined) methods.pasteText = pasteText;
   const pasteBlock = adapter.pasteBlock?.bind(adapter);
