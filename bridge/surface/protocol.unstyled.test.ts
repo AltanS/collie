@@ -4,7 +4,7 @@
 // drawn by a fake core (bridge/mux/herdr-core/fake-core.ts) behind the real herdr-core adapter. The
 // protocol, the key gate and the adapter are the shipped ones; only the program in the terminal is
 // scripted. The fake core holds a key press for about 3 s after a raw write (HC_API.md, The key
-// hold), on a manual clock shared with the protocol, so no real second passes.
+// hold), on one manual clock shared with the protocol and adapter, so no real second passes.
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { HerdrCoreMux } from "../mux/herdr-core/adapter.ts";
 import type { WireRead } from "../mux/herdr-core/client.ts";
-import { FakeHcCore, ManualClock, type FakeInput } from "../mux/herdr-core/fake-core.ts";
+import { FakeHcCore, KEY_HOLD_MS, ManualClock, type FakeInput } from "../mux/herdr-core/fake-core.ts";
 import { parseAnsi } from "../../web/src/lib/ansi.ts";
 import { lineText, splitLines } from "../../web/src/lib/blocks.ts";
 import { loadProfiles, profileFor } from "../../web/src/lib/surface/profile.ts";
@@ -128,7 +128,7 @@ class BoxProgram {
     }
     for (const key of input.keys) {
       if (key === "backspace") this.box = [...this.box].slice(0, -1).join("");
-      else if (key === "ctrl+j" || key === "shift+enter") this.box += "\n";
+      else if (key === "ctrl+j") this.box += "\n";
       else if (this.harness.submit.includes(key) && this.box.length > 0) {
         this.submitted.push(this.box);
         const echo = ` > ${this.box.replace(/\n/gu, " ")}`;
@@ -152,14 +152,16 @@ let ids = 0;
 function rig(harness: Harness, hold?: { answer: "late" | "early"; ms?: number }, core: FakeHcCore = new FakeHcCore(false)) {
   const fake = core;
   const clock = new ManualClock();
+  const waits: number[] = [];
+  const sharedClock = { now: () => clock.now(), wait: (ms: number) => (waits.push(ms), clock.wait(ms)) };
   const address = fake.add({ keep: true, status: { state: "idle", app: harness.id === "claude" ? "claude-code" : harness.id, kind: "" } });
   const program = new BoxProgram(fake, address, harness);
   const generation = (): string | null => {
     const terminal = fake.peek(address);
     return terminal === undefined ? null : `${terminal.foreground?.name ?? "-"}:${terminal.status?.app ?? "-"}`;
   };
-  if (hold !== undefined) fake.holdKeysAfterRawWrite(clock, hold);
-  const adapter = new HerdrCoreMux(fake, "/home/dev");
+  if (hold !== undefined) fake.holdKeysAfterRawWrite(sharedClock, hold);
+  const adapter = new HerdrCoreMux(fake, "/home/dev", { clock: sharedClock });
   const now = (): number => 1_000_000 + clock.now();
   const protocol = new SendProtocol({
     mux: { readGrid: (id, request) => adapter.readGrid(id, request), typeText: (id, text) => adapter.typeText(id, text) },
@@ -174,7 +176,7 @@ function rig(harness: Harness, hold?: { answer: "late" | "early"; ms?: number },
   });
   const send = (text: string, over: Partial<SendRequest> = {}): Promise<SendAnswer> =>
     protocol.handle({ id: `req-unstyled-${String(++ids).padStart(6, "0")}`, text, mode: "send", ...over }, { session: "main", paneId: address, harness: harness.id });
-  return { fake, adapter, program, send, clock, address };
+  return { fake, adapter, program, send, clock, waits, address };
 }
 
 describe.each(HARNESSES)("$id: an unstyled idle frame on a plain-text core", (harness) => {
@@ -198,8 +200,8 @@ describe.each(HARNESSES)("$id: an unstyled idle frame on a plain-text core", (ha
     expect(answer.receipt?.gapsMs.probeWrite ?? 0).toBeLessThan(BOUNDS.probe.ms);
   });
 
-  // omp and pi submit with ctrl+q, a named key, which still waits out the hold.
-  test.if(harness.id === "claude")("a hold that would answer early and deliver keys 5 s later delays nothing: no key of a one-line send goes by name", async () => {
+  // Pi's Alt+Enter still travels as a named key.
+  test.if(harness.id === "claude" || harness.id === "omp")("a hold that would answer early and deliver keys 5 s later delays nothing: no key of a one-line send goes by name", async () => {
     const { send, program } = rig(harness, { answer: "early", ms: 5000 });
     const answer = await send("hello there");
     expect(answer.receipt).toMatchObject({ outcome: "sent", profileId: harness.id });
@@ -207,18 +209,18 @@ describe.each(HARNESSES)("$id: an unstyled idle frame on a plain-text core", (ha
   });
 });
 
-describe("two lines of text on a plain-text core (the newline key path)", () => {
-  const claude = HARNESSES[0]!;
+describe("six-line OMP and Claude sends through raw controls", () => {
+  const text = "first line\nsecond line\nthird line\nfourth line\nfifth line\nsixth line";
 
-  test.each([[false], [true]])("claude, key hold %p: the line break goes in as ctrl+j and the whole text is submitted", async (held) => {
-    const { send, program, fake } = rig(claude, held ? { answer: "late" } : undefined);
-    const text = "first line\nsecond line";
+  test.each([HARNESSES[0]!, HARNESSES[1]!])("$id delivers every line without repeating the core quiet hold", async (harness) => {
+    const { send, program, clock } = rig(harness, { answer: "late" });
     const answer = await send(text);
-    expect(answer.receipt).toMatchObject({ outcome: "sent", profileId: "claude" });
+    expect(answer.receipt?.outcome).toBe("sent");
     expect(program.submitted).toEqual([text]);
-    expect(fake.writes().filter((w) => w.kind === "keys" && w.payload.includes("ctrl+j"))).toHaveLength(1);
+    expect(clock.now()).toBeLessThan(KEY_HOLD_MS);
   });
 });
+
 
 describe("a screen the core marks partial decides nothing", () => {
   class PartialScreen extends FakeHcCore {

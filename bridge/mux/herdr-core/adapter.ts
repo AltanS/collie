@@ -159,20 +159,14 @@ export const OLDER_NOTE_BLOCKED = "On the Herdr core, Load older waits until the
 export const OLDER_NOTE_READING = "The Herdr core is still reading the older rows of this pane. Try Load older again in a moment.";
 
 /**
- * The least time between a text write to a pane and a raw Enter, Backspace or Tab right after it.
+ * The least time between a text write to a pane and a raw control key right after it. This keeps a
+ * Codex paste-burst from treating text followed by an unmodified Enter as a multiline paste. It also
+ * spaces raw Ctrl+J (LF) and Ctrl+Q (DC1) from preceding text on OMP and Claude.
  *
- * Since PR 637 these three keys go to the core as raw bytes (`\r`, `\x7f`, `\t`), so the core's key
- * hold no longer spaces them. Codex reads text and `\r` that arrive together as a paste and inserts a
- * newline instead of submitting; the same `\r` written 300 ms after the text submits (lab,
- * 2026-11-01). Collie's Send Protocol reads the screen between its writes, but a read can pass at once
- * when the app has not drained its input, and a stalled receiver drains the pty in one chunk. This
- * floor keeps the gap in the adapter, whatever the caller does. It applies to every raw key on the
- * core, for every harness, and to no other adapter.
- *
- * Only a key whose pane's last write was TEXT waits: the paste-burst is text and a key in one chunk
- * (text and `\r`, a probe character and `\x7f`). Two raw keys in a row need no gap. A clear of a
- * draft is a run of raw Backspaces after the probe's Backspace; paced one by one, 25 of them took
- * 3.75 s and ran past the clear's 3 s bound (browser leg on the core, case 22, 2026-11-01).
+ * Only a key whose pane's last write was TEXT waits: a key after text is paced once, while further raw
+ * keys in a batch, or after another key, go at once. A clear of a draft is a run of raw Backspaces after
+ * the probe's Backspace; paced one by one, 25 of them took 3.75 s and ran past the clear's 3 s bound
+ * (browser leg on the core, case 22, 2026-11-01).
  */
 export const RAW_KEY_GAP_MS = 150;
 
@@ -401,10 +395,10 @@ export class HerdrCoreMux implements MuxAdapter {
   }
 
   /**
-   * One raw write to a pane. A raw Enter, Backspace or Tab right after a text write to the same pane
-   * first waits until {@link RAW_KEY_GAP_MS} have passed since that write; a key after another key goes
-   * at once. Text is never paced and never shares a write with a key (every call here carries either
-   * the text or the one key).
+   * A raw Enter, Backspace, Tab, Ctrl+J or Ctrl+Q right after a text write to the same pane first waits
+   * until {@link RAW_KEY_GAP_MS} has passed since that write. A raw key after another key goes at once.
+   * Text is never paced and never shares a write with a key (every call here carries either the text
+   * or the one key).
    */
   private async writeRaw(paneId: string, text: string): Promise<void> {
     const key = isRawKeyText(text);

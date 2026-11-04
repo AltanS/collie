@@ -125,12 +125,14 @@ export class ManualClock implements FakeClock {
 /** The measured gap between a raw write and the answer to the next key press (HC_API.md § Typing, "The key hold"). */
 export const KEY_HOLD_MS = 3030;
 
-/** The raw bytes a program cannot tell from a named key, and that key's name. */
-const RAW_KEY_BYTES = new Map<string, string>([
-  ["\r", "enter"],
-  ["\x7f", "backspace"],
-  ["\t", "tab"],
-]);
+/** Raw bytes whose effects are indistinguishable from these named keys in the supported harnesses. */
+const RAW_KEY_BYTES = {
+  "\r": "enter",
+  "\x7f": "backspace",
+  "\t": "tab",
+  "\n": "ctrl+j",
+  "\x11": "ctrl+q",
+} satisfies Record<string, string>;
 
 /** What the program in a terminal receives, for a test that draws a screen from its input. */
 export type FakeInput = { readonly kind: "text"; readonly text: string } | { readonly kind: "keys"; readonly keys: readonly string[] };
@@ -559,11 +561,11 @@ export class FakeHcCore implements HcRpc {
     this.assertTakesInput(terminal, "terminal.attach");
     if (this.hold !== null) this.hold.lastWriteAt = this.hold.clock.now();
     this.recorded.push({ paneId: address, kind: "text", payload: [text] });
-    // A program receives bytes: a raw \r, \x7f or \t is the same input as the key the core encodes
-    // to those bytes (herdr-core keys.rs), so the program is handed that key.
+    // Raw LF and DC1 are the Ctrl+J/Ctrl+Q inputs whose real OMP and Claude encodings were verified.
     let plain = "";
     for (const char of text) {
-      const key = RAW_KEY_BYTES.get(char);
+      // SAFETY: hasOwn checks the received byte against the closed raw-key table.
+      const key = Object.hasOwn(RAW_KEY_BYTES, char) ? RAW_KEY_BYTES[char as keyof typeof RAW_KEY_BYTES] : undefined;
       if (key === undefined) {
         plain += char;
         continue;
