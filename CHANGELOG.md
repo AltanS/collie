@@ -25,6 +25,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **Claude beacons stay live on Linux where /bin/sh is dash.** dash runs the hook command as a child and waits, so the beacon recorded the shell's pid and expired at once; every Claude pane on herdr-core then read as a shell (Ubuntu, Debian). `collie beacon emit` now records the first non-shell ancestor, and doctor accepts a hook command that starts with `exec` (#689).
 - **The iOS install hint says where Share sits.** In the default iOS 26 layout, Safari keeps Share under ⋯ next to the address, so the Install card in Settings now says so, in every language.
 - **The Zoom pill shows only in the Screen view.** In Chat it was a magnifier with a plus that pointed at nothing, because it zooms the terminal screen. Settings, under Appearance, has a new "Zoom pill" choice, "Screen view" (the default) or "Off", stored on the device. A theme file can set the surface word `zoom` to `screen` or `none`, and a choice made in Settings wins over the theme.
 - **An Oh My Pi pane on herdr-core opens its own Chat when a neighbour shares its folder.** On herdr-core, an Oh My Pi pane whose terminal carries the `omp.session_file` label opens its own Chat and History even when another pane shares the folder (#675). The Oh My Pi extension in `omp-extension/` sets the label.
