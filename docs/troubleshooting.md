@@ -241,6 +241,30 @@ crew member's pane does not offer a report yet; use the steps above.
 
 **A send is refused, and `⌁` shows in the box a few seconds later.** The agent was busy and showed the keys Collie typed late. Before Collie types a message, it types one probe character (`⌁`) and looks for it in the box. When the agent is not in a turn and the character does not show at once, Collie looks twice more over about 3 seconds. Claude Code with a subagent running (the agents footer under the box, `● main` and `◯ general-purpose`) can take longer than that, so the send is refused with "the probe character did not show in the box", and the character shows later. A send after that finds only those characters in the box. If the agent is still slow, the refusal says that the agent showed the keys late and to wait. Wait until the agent shows what you type at the desk without delay, then send again: Collie takes its own characters out of the box first, and then types your message. Nothing you typed is lost, and no Enter was pressed.
 
+**Every send to Claude Code is held, and the empty box shows a dim suggestion.** Claude Code with the
+next-steps plugin draws a dim suggestion in the empty box, with the cursor on its first letter.
+Collie read that letter as typed text and held every send. Fix: update Collie to 1.26.0 or newer. The box
+then reads empty again.
+
+**With Claude Code's verbose mode on, every send needs two taps.** A token count row, such as
+`230267 tokens`, shows under a "Heads up" notice. Collie did not know that row and read the box as
+not idle. Fix: update Collie to 1.26.0 or newer. The row is now part of the notice, and a send goes through.
+
+**Every send to a Hermes session is refused with "no-match", after the session got a title.** Hermes
+draws the title inside the top rule of its box (`── Session Title ─`). Collie knew only a bare rule.
+Fix: update Collie to 1.26.0 or newer. Chat for the same session also showed the box and the status bar
+again inside the mirror. That is fixed too.
+
+**Antigravity shows "Collie cannot read this dialog" while a sub-agent runs.** Antigravity lists a
+running sub-agent in a band between two rules under its box. Collie took the lower rule for the bottom
+of the box. Fix: update Collie to 1.26.0 or newer. The pane then reads as idle and takes a send. A
+row in that band that Collie does not know still blocks the send, and a send with a draft already in
+the box can still be refused while the sub-agent runs.
+
+**On Android the keyboard hides when you tap a word the spellchecker marked.** Chrome's suggestion
+menu took the focus away from the keyboard. Fix: update Collie to 1.26.0 or newer. The composer now
+turns the browser's spellchecker off. Gboard's own corrections are unchanged.
+
 **An update started from the phone stays at staging.** On Collie up to 1.6.0, an update tapped on
 the phone could stage the new version and then stop: the runner that performs the swap was never
 started, the service kept serving the old version, and the run record sat at `staging` with the lock
