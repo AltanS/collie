@@ -10,6 +10,7 @@ import {
   cmdHooksStatus,
   cmdHooksUninstall,
   HOLD_FLAG,
+  hookBinaryOf,
   hooksAreBehind,
   HOOK_MARKER,
   HOOK_MARKER_PREFIX,
@@ -107,6 +108,22 @@ describe("the targets", () => {
     const targets = claudeSettingsTargets(context({ COLLIE_TRANSCRIPT_ROOT: join(CLAUDE_DIR, "projects") }));
     expect(targets).toEqual([{ dir: CLAUDE_DIR, path: SETTINGS }]);
     for (const target of targets) expect(target.path).not.toContain("settings.local.json");
+  });
+});
+
+describe("hookBinaryOf", () => {
+  test("reads the binary before the verb", () => {
+    expect(hookBinaryOf(`/opt/collie/bin/collie beacon emit ${HOOK_MARKER}`)).toBe("/opt/collie/bin/collie");
+  });
+
+  test("ignores a leading exec, the workaround for dash as /bin/sh (#689)", () => {
+    expect(hookBinaryOf(`exec /opt/collie/bin/collie beacon emit ${HOOK_MARKER}`)).toBe("/opt/collie/bin/collie");
+    expect(hookBinaryOf(`exec /opt/collie/bin/collie beacon emit --hold-permissions ${HOOK_MARKER}`)).toBe("/opt/collie/bin/collie");
+  });
+
+  test("a command with nothing after exec, or no verb, has no binary", () => {
+    expect(hookBinaryOf("exec  beacon emit # x")).toBeNull();
+    expect(hookBinaryOf("/opt/collie/bin/collie other # x")).toBeNull();
   });
 });
 
