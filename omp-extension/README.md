@@ -3,7 +3,7 @@
 An [Oh My Pi](https://omp.sh) extension that names the session file on its herdr-core terminal, so Collie
 can tell two omp panes in one folder apart (#675).
 
-**This extension is experimental.** Collie's herdr-core adapter reads the label once its reader lands (#675).
+**This extension is experimental.** A reader for the label on Collie's side is planned (#675); until it lands, the label is set but nothing in Collie uses it.
 Until then, the label is written and nothing reads it.
 
 What it does:
