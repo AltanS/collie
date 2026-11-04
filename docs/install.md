@@ -475,11 +475,11 @@ shows **Pair this device** until then ([Pair a device](security.md#pair-a-device
 ### iPhone and iPad
 
 1. Open the Collie URL in Safari.
-2. Tap **⋯** next to the address bar, then tap **Share**.
+2. Tap **Share**. In the default iOS 26 layout the Share button sits under **⋯** at the bottom right; with the Top or Bottom tab bar layout it is on the bar.
 3. Scroll down and tap **Add to Home Screen**.
 4. Leave **Open as Web App** on, and tap **Add**.
 
-On older iOS versions, **Share** sits in the toolbar. On iOS 16.4 and newer, Chrome, Edge and Firefox
+Before iOS 26, **Share** is on the toolbar. On iOS 16.4 and newer, Chrome, Edge and Firefox
 also offer **Add to Home Screen** in their share menus.
 
 ![The Install card on iOS or iPadOS: installing goes through the share sheet.](images/updates/settings-install-ios-hint.png)
