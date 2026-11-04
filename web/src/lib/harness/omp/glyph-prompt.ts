@@ -36,6 +36,7 @@
 // `draftGhost` rules the `rule` scanner does (markers.ts).
 
 import type { StyledLine } from "../../blocks";
+import { readIsUnstyled } from "../../surface/frame";
 import { draftGhost, draftPlaceholder, isBlank, lineText, opensBox, rstrip } from "./markers";
 import { ompModalOnScreen } from "./modal";
 
@@ -166,7 +167,7 @@ export function extractGlyphInputDraft(lines: StyledLine[], composer: GlyphCompo
   const last = parts.length - 1;
   const tail = parts[last]!;
   const lastLine = lines[composer.promptEnd]!;
-  if (last === 0 && draftPlaceholder(lastLine, 2, 2 + tail.length)) return null;
+  if (last === 0 && draftPlaceholder(lastLine, 2, 2 + tail.length, readIsUnstyled(lines))) return null;
   const ghost = draftGhost(lastLine, 2, 2 + tail.length);
   if (ghost.length > 0 && tail.endsWith(ghost)) parts[last] = tail.slice(0, -ghost.length);
 

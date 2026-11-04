@@ -405,6 +405,11 @@ case. Fix: update Collie to 1.25.2 or newer.
 Claude reads `$CLAUDE_CONFIG_DIR/settings.json` when that variable is set, and the install ignored it.
 Fix: update Collie to 1.25.2 or newer, then run `collie hooks install claude` again.
 
+**An empty Oh My Pi input shows "Draft in terminal" with a running-agent hint.** The core supplies
+plain text without the hint's colour or italic styling. Collie recognises the right-aligned
+agent-navigation and thinking-effort hints as empty-editor chrome; the same words typed at the
+start of the input remain a draft.
+
 **A send to an Oh My Pi pane ends "typed, not submitted", and the text stays in the box.** omp shows a
 grey completion after your last word, and the core sends it as plain text. Collie sees more text than
 it typed and does not press Enter. Clear the box with the Keys tray and send again, or press Enter

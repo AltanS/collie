@@ -495,11 +495,6 @@ describe("extractInputDraft", () => {
     { fixture: "omp--v18-6-1-stop-returned--w119.txt", draft: "second message" },
     // The stale frame's old text, not the live editor's: a reading the probe has to prove.
     { fixture: "omp--v18-6-1-stale-frame-below-live--w120.txt", draft: "and what about the design" },
-    // omp 18.6.1 on herdr-core (M78 spec 04): a plain-text read carries no colour, so neither the muted
-    // ghost completion nor the muted effort hint can be told from typed text. Both readings are WRONG and
-    // pinned as findings: the true draft is `collie core draft probe`, and the idle box is empty.
-    { fixture: "omp--v1861-core-draft--w120.txt", draft: "collie core draft probes" },
-    { fixture: "omp--v1861-core-idle--w120.txt", draft: "⇧⇥ to change thinking effort" },
     { fixture: "omp--v1861-core-working--w120.txt", draft: null },
   ];
 
@@ -510,6 +505,52 @@ describe("extractInputDraft", () => {
   it.each(NON_BOX_COMPOSER_FIXTURES)("%s: no box at the tail ⇒ no draft", (name) => {
     expect(extractInputDraft(fixtureLines(name))).toBeNull();
   });
+});
+
+describe("empty-editor hints on a plain-text core read", () => {
+  const top = lineText(fixtureLines("omp--fresh-agents-hint.txt")[1]!);
+  const composer = (text: string, padding = 12) =>
+    lines(`${top}\n╰─${" ".repeat(padding)}${text} ─╯`);
+
+  it.each([
+    "← ← to see 1 running agent",
+    "← to see 3 running agents",
+    "⇧⇥ to change thinking effort",
+  ])("does not offer the right-aligned %s hint as a draft", (hint) => {
+    const buffer = composer(hint);
+    expect(hasComposer(buffer)).toBe(true);
+    expect(extractInputDraft(buffer)).toBeNull();
+  });
+
+  it("keeps the same words when typed at the start of the input", () => {
+    expect(extractInputDraft(composer("← ← to see 1 running agent", 1)))
+      .toBe("← ← to see 1 running agent");
+  });
+
+  it("keeps a styled real draft and text beyond a hint", () => {
+    expect(extractInputDraft(composer("\x1b[37m← ← to see 1 running agent\x1b[0m")))
+      .toBe("← ← to see 1 running agent");
+    expect(extractInputDraft(composer("← ← to see 1 running agent please review")))
+      .toBe("← ← to see 1 running agent please review");
+  });
+
+  it("keeps a hint-like first line and the remaining open-ended draft", () => {
+    const buffer = lines(`${top}\n╰─   ← ← to see 1 running agent\n   please investigate`);
+    expect(extractInputDraft(buffer)).toBe("← ← to see 1 running agent please investigate");
+  });
+
+  it("keeps default-ink draft text when the surrounding chrome is styled", () => {
+    const buffer = lines(`\x1b[36m${top}\x1b[0m\n╰─   ← ← to see 1 running agent ─╯`);
+    expect(extractInputDraft(buffer)).toBe("← ← to see 1 running agent");
+  });
+
+  it.each([["boxed", " ─╯"], ["open-ended", ""]])(
+    "keeps a left-aligned hint-shaped draft with trailing padding in the %s editor",
+    (_editor, closer) => {
+      const buffer = lines(`${top}\n╰─   ← ← to see 1 running agent        ${closer}`);
+      expect(extractInputDraft(buffer)).toBe("← ← to see 1 running agent");
+    },
+  );
 });
 
 // The omp gang's rig reads a pane as plain text: these captures carry no SGR, so the band is one segment.
