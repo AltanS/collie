@@ -37,7 +37,7 @@ light on the left and dark on the right.
 
   ![The Harbour theme on the Dashboard, light and dark.](images/themes/harbour-home.png)
 
-- **Collie New** is the Collie look made bolder and easier to read. It keeps the black and white of the dog mark, with the Atkinson Hyperlegible face for the text and Aldrich for the titles, stronger text and lines, square bold cards and a clear step between the page, the cards and the bars. The terminal draws a high-contrast Collie palette.
+- **Collie New** is the Collie look made bolder and easier to read. It keeps the black and white of the dog mark, with the Atkinson Hyperlegible face for the text and Aldrich for the titles, stronger text and lines, bold headings and a clear step between the page, the cards and the bars. The terminal draws a high-contrast Collie palette.
 
 The table lists every word each theme uses. The first word of each list is today's look: `sharp`, `default`,
 `flat`, `page`, `rules` and `caps`. The words are explained under [Shape](#shape), [Look](#look)
@@ -54,7 +54,7 @@ and [Terminal palette](#terminal-palette).
 | Border | `default` | `strong` | `default` | `default` | `default` |
 | Ground | `flat` | `flat` | `gradient` | `grain` | `flat` |
 | Chrome | `page` | `band` | `page` | `page` | `band` |
-| Rows | `rules` | `rules` | `cards` | `rules` | `cards` |
+| Rows | `rules` | `rules` | `cards` | `rules` | `rules` |
 | Icons | `default` | `heavy` | `default` | `thin` | `default` |
 | Labels | `caps` | `caps` | `sentence` | `caps` | `sentence` |
 | Terminal palette | the app's own | amber, on `#000000` | vivid, on `#1a1612` | Solarized-based, on `#0a1216` | high contrast, on `#100f0d` |

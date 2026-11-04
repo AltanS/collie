@@ -3,7 +3,7 @@
 The reasoning behind `collie-new.json` (JSON has no comments). Collie New is Collie, bolder and
 easier to read. It is still black and white like the dog mark, with neutral greys, but every
 pair that carries text or an edge is held well above what `collie` measures, the face is Atkinson
-Hyperlegible Next, and rows are cards. The shape stays Collie's: square corners, 1px lines and the
+Hyperlegible Next. The shape stays Collie's: square corners, 1px lines, row rules and the
 default spacing (Altan, 2026-11-04: soft corners, 2px lines and roomy steps were too much). The review that started it is `experiments/theme-readability-2026-11-03/FINDINGS.md`
 (findings 4 and 6 to 10 are the ones a theme can fix). `collie` itself is untouched, byte for byte.
 
@@ -112,7 +112,7 @@ which is why it leaves the rows and the meta text.
 | border  | default  | A 1px edge in a 1.74 grey; 2px read as too thick.                            |
 | ground  | flat     | The page stays one plain colour; no texture under the text.                   |
 | chrome  | band     | Header and bars on `secondary`, with a `border` edge: a step from the page.   |
-| rows    | cards    | Every row its own card and edge, with a gap; no frame of lines.               |
+| rows    | rules    | Collie's lines between rows; cards drew a card inside each settings card.    |
 | icons   | default  | A stroke of 2 (the table has thin, default and heavy; heavy would be loud).   |
 | labels  | sentence | No small capitals and no tracking; section labels read as words.              |
 
