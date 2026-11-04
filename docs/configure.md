@@ -1032,7 +1032,7 @@ Collie reads your Claude login file on this machine and asks Anthropic's usage e
 call Claude Code's /usage makes; nothing of the login is stored or sent elsewhere. Collie asks only
 while a pane of that harness is open, and it skips a login file that others may read (anything
 looser than `0600`) and a login that has expired. Codex sends no token: it reads its own files.
-Collie asks a vendor at most once in five minutes per agent, and after an HTTP 429 it backs off for 15 to 60 minutes, honouring the `Retry-After` header.
+Collie asks a vendor at most once in five minutes per agent, and after an HTTP 429 it waits as long as the `Retry-After` header says, and at least 15 minutes. The wait doubles on each 429 in a row, up to an hour, and the log says the real wait.
 
 | form | what it turns on |
 | --- | --- |
@@ -1279,6 +1279,11 @@ The phone keeps two things for each pane: the last terminal text it saw, and the
 Chat drew them. It never keeps the raw terminal screen as Chat. When you open Collie and the bridge
 does not answer within about a second and a half, the phone draws this saved copy at once, and
 replaces it with live data when the bridge answers.
+
+On a weak connection, one read that is late does not turn the screen red at once. The phone treats
+the bridge as lost only when no live answer has come for 8 seconds. A live answer, and every wake of
+the phone, clears that count. A pane or Chat read with no answer draws the saved copy only after the
+phone treats the bridge as lost.
 
 A saved copy looks different from a live screen:
 

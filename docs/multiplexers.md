@@ -252,7 +252,9 @@ What works:
 - Live updates. The core pushes terminal and layout changes, so the phone does not wait for a poll.
 - History and Chat for a Claude pane, once `collie hooks install claude` is done. The core does not
   know the agent's conversation, so the hook supplies it from the terminal's `HC_TERMINAL_ID`. The
-  hook never changes the agent name or the status the core reported.
+  hook never changes the agent name or the status the core reported. A pane that stays quiet for
+  more than twelve hours keeps its Chat and History while the Claude process still runs. Collie drops
+  the session when the process is gone.
 - History and Chat for a pi or Oh My Pi pane, with no hook. Collie finds the pane's session log from
   the pane's folder: pi keeps one log folder per working directory, and the newest log whose header
   names that folder is the pane's.
@@ -878,6 +880,10 @@ Collie checks that the character lands in the box, then removes it.
 
 - **Antigravity** (`agy`) draws its box as a rule, a `>` row and a rule, with a `? for shortcuts` footer.
   The turn shows a spinner row with `...` above the box and `esc to cancel` under it.
+  A running sub-agent shows in a band between two rules under the box. Collie steps over that band,
+  as it does over the band of background tasks, so the pane reads as idle and takes a send. A row in
+  that band that Collie does not know still blocks the send.
+  While a sub-agent runs, a send with a draft already in the box can still be refused. An empty box sends.
   Herdr names this agent `agy` or `antigravity`. Collie files both under `agy`.
   The `/model`, `/effort`, `/usage`, `/context`, `/artifact` and `Keyboard:` panels of 1.4.x show as cards.
   Chat finds the conversation through the presence lock the agy process holds, which Collie asks `lsof` for.
@@ -891,6 +897,9 @@ Collie checks that the character lands in the box, then removes it.
 
 - **Hermes** (the classic CLI; `hermes --tui` is not read) draws its box as a rule, a `❯` row and a rule.
   Below 64 columns it draws no rule under the box. A named profile shows its name before the `❯`.
+  A session with a title carries it inside the top rule (`── Session Title ─`). Collie reads that rule,
+  in Chat too, where the status line, the draft preview and the dialog cards keep working. Collie also
+  reads the Traditional Chinese hint lines Hermes shows in an empty box.
   A newline goes in as Alt+Enter: Ctrl+J sends the message when `display.cli_multiline_shortcuts` is off.
   The box shows at most eight rows. A longer message cannot be read back, so the send stops before Enter.
   Submit sends it, and the phone then cannot confirm it went.
@@ -934,6 +943,7 @@ Where a harness draws no running sign, Collie cannot tell, and the agent decides
 OpenCode and OMP passed live sends on a version above the checked one.
 Collie probes every send on them until a send passes inside the checked range.
 Hermes (the classic CLI) passed live sends on 0.22.2, inside its range, on Herdr only.
+Hermes 0.22.3 to 0.22.5 is provisional until a live probed send passes there.
 The Ink TUI (`hermes --tui`, or a config that starts it) is not read yet; tap Type here to send.
 The probe has not been tried in each Hermes dialog, so Collie probes every send there too.
 

@@ -415,10 +415,18 @@ with a wrong one, prints the usage and exits 2.
 
 The phone shows a message as a card and sends one from the composer, so you need no terminal.
 
-A message in a pane's Chat appears as a card titled "Message from" and the sender's label. The card
-shows the sender's kind (`agent` or `operator`), the message body, and "reply to" the id it answers.
+A message in a pane's Chat appears as a card titled "Message from" and the sender's name. The card
+shows the sender's kind (`agent` or `operator`), the message body, and "in reply to" the sender and
+time of the message it answers.
 A small word says how the sender was known: "signed by" a machine, "relayed by the lead", "this
 machine", or "not verified".
+
+The phone names a session by its pane name, the same name every other screen shows. A session you
+rename shows its new name on an old message. An address in a message body that names a live pane
+reads as that pane's name too. In the Messages sheet that name is a button that opens the pane. A bare
+pane id counts only when one live pane carries it. An address that no live pane holds stays text.
+The address and the message id stay on the wire, in the agent's terminal, in `who` and in the CLI.
+Where the log does not hold the message a reply answers, the card shows the id.
 
 The card appears only when the log of the machine that owns the pane holds that message. For a pane
 on a crew member, the lead reads that member's log. A header that an agent merely prints stays plain
@@ -454,8 +462,9 @@ Each receipt state shows the words in the table above, with the reason after "no
 
 - **Messages.** Open a pane's menu and tap "Messages" to see the messages for that pane, newest
   first. The list holds the messages that reached the pane and the ones the pane sent. A sent message
-  has the title "To" and the pane it went to, with the receipt state in words, and no "Reply"
-  button. A message from an agent has a "Reply" button, and the reply keeps the token of the sender's
+  reads "Sent to" and the session's name, or the name and "on" the machine, with the receipt state
+  in words, and has no "Reply" button. A hold reads in plain words: "that session has unsent text",
+  or "that session is busy". A message from an agent has a "Reply" button, and the reply keeps the token of the sender's
   address. A pane on a crew member has the row too, and its list comes from that member's own log. A
   reply from it goes through the lead like any message. An empty sheet says "No messages for this pane
   yet." A machine whose log the phone cannot read says "This machine does not keep messages yet."
@@ -471,7 +480,7 @@ Each receipt state shows the words in the table above, with the reason after "no
   to" (`All machines` or one machine) and tap "Send message". The sheet then asks
   "Message 5 agents on 2 machines?" with the count for that choice. The count leaves out machines
   the lead cannot reach. Tap "Send" to send, or "Back". The sheet lists the shell panes it skips.
-  It shows "Agents reached" and one receipt per target. The receipt for the whole broadcast reads
+  It shows "Agents reached" and one receipt per target, each named by its session. The receipt for the whole broadcast reads
   "every machine". A line "Not sent on this machine" counts the recent refusals per reason. A
   device that may not send sees "This device may not send messages." under the button.
 
