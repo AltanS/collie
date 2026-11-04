@@ -31,6 +31,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Changed
 
+- **A message to a folder or to `all` no longer wakes a session that finished.** A pane that has been `done` or `idle` for 15 minutes keeps the message in its inbox only, and the receipt reads "waiting in the inbox, not typed: the session rests". A message to one pane is typed as before. `collie walky send <folder> --wake` types into the resting panes too, and the broadcast sheet on the phone lists them under "Resting, not woken" with a "Wake them too" switch.
 - **A worktree pane names its repository in the Switch pane sheet and the pane header.** The sheet folds a worktree under its repository's space when that space is open, as the dashboard does, and heads one that is not open `repository › name`. The pane header shows the repository's name before the branch, instead of Herdr's random worktree word. A pane in a root checkout draws as before. Thanks @viniciosrab (#666).
 - **A finished pane you opened rests.** The green dot and the green count now mean a pane that finished and that nobody has looked at yet. Once you open the pane in Collie, or drive it, its dot becomes a ring and it leaves the green count, on every screen that draws the pane. The unseen square is unchanged, and the mark still follows the one shared seen mark of the bridge, not each device (ADR 0003). Thanks @viniciosrab (#665).
 
