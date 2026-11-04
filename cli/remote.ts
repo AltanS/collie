@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import { DEFAULT_PORT } from "../bridge/config.ts";
 import type { HostProbe } from "../bridge/mux/host-candidates.ts";
+import { HOST, type Host } from "../bridge/host.ts";
 import { buildMuxRegistry, muxHostCandidates, muxNames } from "../bridge/mux/registry.ts";
 import { commitCrewChange, mintInvite } from "../bridge/crew/enrollment.ts";
 import type { OpsRecord } from "../bridge/crew/ops-store.ts";
@@ -142,16 +143,19 @@ export function composeStdin(script: string, stdin: string | undefined): string 
 
 /** The real transport: one `ssh` per leg, all sharing one control socket under a 0700 directory. */
 export function sshRunner(
-  host: string,
+  target: string,
   env: Record<string, string | undefined>,
   home: string,
+  host: Host = HOST,
 ): RemoteRunner {
   const dir = mkdtempSync(join(tmpdir(), "collie-add-"), { encoding: "utf8" });
   // 0700 from creation (`mkdtemp` is 0700) — the control socket is a live authenticated channel to
   // another machine, so anything that can open it can run commands there as the operator.
   const controlPath = join(dir, "s");
   // Windows OpenSSH cannot multiplex; see `sshOptions`. There the legs share nothing but the host.
-  const multiplex = process.platform !== "win32";
+  // The platform is read from the `Host` seam (bridge/host.ts), never `process.platform`, so a test
+  // can pin win32 on any machine.
+  const multiplex = host.platform !== "win32";
   const bin = findTool("ssh", env, home);
   let closed = false;
   return {
@@ -159,7 +163,7 @@ export function sshRunner(
       if (bin === null) {
         return { code: 127, stdout: "", stderr: "no `ssh` on this machine", spawned: false };
       }
-      const proc = Bun.spawn([bin, ...sshOptions(controlPath, multiplex), host, "/bin/sh", "-s"], {
+      const proc = Bun.spawn([bin, ...sshOptions(controlPath, multiplex), target, "/bin/sh", "-s"], {
         stdin: new TextEncoder().encode(composeStdin(script, stdin)),
         stdout: "pipe",
         stderr: "pipe",
@@ -177,7 +181,7 @@ export function sshRunner(
       closed = true;
       if (bin !== null && multiplex) {
         try {
-          Bun.spawnSync([bin, "-o", `ControlPath=${controlPath}`, "-O", "exit", host], {
+          Bun.spawnSync([bin, "-o", `ControlPath=${controlPath}`, "-O", "exit", target], {
             stdout: "ignore",
             stderr: "ignore",
             env,
@@ -2441,7 +2445,7 @@ export function manifestVersionAt(deps: Pick<CrewDeps, "ctx" | "exec">, commit: 
 export function crewAddDeps(base: CrewDeps): CrewAddDeps {
   return {
     ...base,
-    remote: (host) => sshRunner(host, base.ctx.env, base.ctx.home),
+    remote: (target) => sshRunner(target, base.ctx.env, base.ctx.home, base.host),
     // Bun's built-ins, guarded by a tty check: a prompt nobody can answer must abort legibly rather
     // than read EOF as "yes".
     confirm: (question) => (process.stdin.isTTY === true ? confirm(question) : null),
