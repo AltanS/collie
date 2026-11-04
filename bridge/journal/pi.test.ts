@@ -1312,6 +1312,56 @@ describe("PiTranscriptSource — a pane that names no session finds it by its fo
     });
   });
 
+  test("realpath aliases add canonical folders while collisions and escaped logs stay refused", async () => {
+    const f = await fixture();
+    try {
+      const physicalHome = join(f.base, "physical-home");
+      const project = join(physicalHome, "lab", "proj");
+      const collision = join(physicalHome, "lab-proj");
+      await mkdir(project, { recursive: true });
+      await mkdir(collision, { recursive: true });
+      const homeAlias = join(f.base, "home-alias");
+      await symlink(physicalHome, homeAlias);
+      const aliasCwd = join(homeAlias, "lab", "proj");
+      const folder = "-lab-proj";
+      const decoy = await f.log(f.ompRoot, folder, TWO, sessionRow(TWO, collision), 1);
+      const expected = await f.log(f.ompRoot, folder, ONE, sessionRow(ONE, project), 60);
+      const outside = join(f.base, "outside.jsonl");
+      const escapedId = "019f4665-7df0-7540-a64f-7068335f2104";
+      await Bun.write(outside, `${sessionRow(escapedId, project)}\n`);
+      const escaped = join(f.ompRoot, folder, `2026-10-30T10-00-00-000Z_${escapedId}.jsonl`);
+      await symlink(outside, escaped);
+
+      // The configured home spelling and the pane cwd spelling each differ from the on-disk path.
+      const byHomeAlias = new PiTranscriptSource(f.ompRoot, { home: homeAlias, tmp: f.places.tmp });
+      const homeRef = await byHomeAlias.discoverSession(project);
+      expect(homeRef).toEqual({ kind: "id", value: ONE });
+      expect(await byHomeAlias.resolve(homeRef!)).toBe(expected);
+      expect(await byHomeAlias.discoverSession(project, {
+        shared: true,
+        processes: [{ argv: ["omp"] }],
+        labels: { "omp.session_file": expected },
+      })).toEqual({ kind: "id", value: ONE });
+
+      const byCwdAlias = new PiTranscriptSource(f.ompRoot, { home: physicalHome, tmp: f.places.tmp });
+      const cwdRef = await byCwdAlias.discoverSession(aliasCwd);
+      expect(cwdRef).toEqual({ kind: "id", value: ONE });
+      expect(await byCwdAlias.resolve(cwdRef!)).toBe(expected);
+      expect(decoy).not.toBe(expected);
+    } finally {
+      await rm(f.base, { recursive: true, force: true });
+    }
+  });
+
+  test("an exact session cwd still matches when that cwd no longer exists", async () => {
+    const f = await fixture();
+    const cwd = join(f.base, "removed-project");
+    const folder = piSessionFolderNames(cwd, f.places)[0]!;
+    await f.log(f.piRoot, folder, ONE, sessionRow(ONE, cwd), 5);
+    expect(await new PiTranscriptSource(f.piRoot, f.places).discoverSession(cwd)).toEqual({ kind: "id", value: ONE });
+    await rm(f.base, { recursive: true, force: true });
+  });
+
   test("the folder names pi and Oh My Pi file a cwd under", () => {
     const places = { home: "/home/dev", tmp: "/tmp" };
     expect(piSessionFolderNames("/srv/a", places)).toEqual(["--srv-a--"]);
