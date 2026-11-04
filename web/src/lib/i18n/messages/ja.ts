@@ -2864,4 +2864,6 @@ export const ja: Dictionary = {
   "apiError.telemetry.setting_invalid": "インストール数の設定はオンまたはオフにしてください。何も変更されませんでした。",
   "apiError.telemetry.request_id_required": "この操作にはリクエストIDが必要です。何も変更されませんでした。",
   "telemetry.card.cause.url": "オフ: このマシンの COLLIE_TELEMETRY_URL は https のアドレスではありません。",
+  "telemetry.card.thisMachine": "このスイッチが変えるのは、このマシンだけです。",
+  "telemetry.card.members": "このスイッチの対象外: {names}。各マシンで設定してください。",
 };

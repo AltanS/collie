@@ -2883,4 +2883,6 @@ export const de: Dictionary = {
   "apiError.telemetry.setting_invalid": "Die Einstellung der Installationszählung muss An oder Aus sein. Es wurde nichts geändert.",
   "apiError.telemetry.request_id_required": "Diese Aktion erfordert eine Anforderungs-ID. Es wurde nichts geändert.",
   "telemetry.card.cause.url": "Aus: COLLIE_TELEMETRY_URL auf diesem Rechner ist keine https-Adresse.",
+  "telemetry.card.thisMachine": "Dieser Schalter gilt nur für diesen Rechner.",
+  "telemetry.card.members": "Von diesem Schalter nicht erfasst: {names}. Stelle es auf jedem Rechner einzeln ein.",
 };

@@ -3074,6 +3074,8 @@ export const en = {
   "apiError.telemetry.setting_invalid": "The install count setting must be On or Off. Nothing was changed.",
   "apiError.telemetry.request_id_required": "This action needs a request ID. Nothing was changed.",
   "telemetry.card.cause.url": "Off: COLLIE_TELEMETRY_URL on this machine is not an https address.",
+  "telemetry.card.thisMachine": "This switch changes this machine only.",
+  "telemetry.card.members": "Not covered by this switch: {names}. Set it on each machine.",
 } as const;
 
 /** Every key that exists, as a union of string literals. The completeness contract. */

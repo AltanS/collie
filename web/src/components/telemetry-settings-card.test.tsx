@@ -7,7 +7,8 @@ import { describe, expect, it } from "vitest";
 import { server } from "@/test/setup";
 import { asJsonString, parseJsonObject } from "@/lib/json";
 import type { JsonObject } from "@/lib/json";
-import type { TelemetryDecider, TelemetryPing, TelemetryView } from "@/lib/types";
+import type { ServerSummary, TelemetryDecider, TelemetryPing, TelemetryView } from "@/lib/types";
+import { CrewProvider } from "./crew-provider";
 import { TelemetrySettingsCard } from "./telemetry-settings-card";
 
 // The Anonymous install count card (M86 spec 02): the state, the switch that decided it, the exact
@@ -32,11 +33,13 @@ const view = (over: Partial<TelemetryView> = {}): TelemetryView => ({
   ...over,
 });
 
-function renderCard(initial: TelemetryView | "fail", hash = "") {
+function renderCard(initial: TelemetryView | "fail", hash = "", servers?: ServerSummary[]) {
   server.use(
     http.get("/api/telemetry", () => (initial === "fail" ? HttpResponse.json({ error: "x" }, { status: 500 }) : HttpResponse.json(initial))),
   );
-  const router = createMemoryRouter([{ path: "/", element: <TelemetrySettingsCard /> }], { initialEntries: [`/${hash}`] });
+  const card = <TelemetrySettingsCard />;
+  const element = servers === undefined ? card : <CrewProvider servers={servers}>{card}</CrewProvider>;
+  const router = createMemoryRouter([{ path: "/", element }], { initialEntries: [`/${hash}`] });
   return render(<RouterProvider router={router} />);
 }
 
@@ -191,6 +194,39 @@ describe("Anonymous install count card (M86 spec 02)", () => {
     expect(await screen.findByText("The setting could not be read from this machine.")).toBeInTheDocument();
     expect(screen.getByRole("switch", { name: "Anonymous install count" })).toBeDisabled();
     expect(screen.queryByRole("button", { name: "Show the next message" })).toBeNull();
+  });
+
+  describe("this machine only (M86 hardening)", () => {
+    const member = (id: string, name: string, isLead = false): ServerSummary => ({ id, name, isLead, reachable: true, protocol: "ok", lastSeenAt: 0 });
+    const crew = [member("bluefin", "bluefin", true), member("minibuch", "minibuch"), member("hc-box", "bluefin-hc")];
+
+    it("says the switch changes this machine only, with no crew", async () => {
+      renderCard(view());
+      expect(await screen.findByText("This switch changes this machine only.")).toBeInTheDocument();
+      expect(screen.queryByText(/Not covered by this switch/)).toBeNull();
+    });
+
+    it("says it in the same place before the reading arrives, so nothing moves", () => {
+      renderCard(view());
+      expect(screen.getByText("This switch changes this machine only.")).toBeInTheDocument();
+    });
+
+    it("a lead with members lists their names and says to set it on each machine", async () => {
+      renderCard(view(), "", crew);
+      expect(await screen.findByText("Not covered by this switch: minibuch, bluefin-hc. Set it on each machine.")).toBeInTheDocument();
+      expect(screen.getByText("This switch changes this machine only.")).toBeInTheDocument();
+    });
+
+    it("a crew of the lead alone lists nobody", async () => {
+      renderCard(view(), "", [crew[0]!]);
+      await screen.findByText("This switch changes this machine only.");
+      expect(screen.queryByText(/Not covered by this switch/)).toBeNull();
+    });
+
+    it("the member note does not depend on the reading: it is there when the read fails", async () => {
+      renderCard("fail", "", crew);
+      expect(await screen.findByText("Not covered by this switch: minibuch, bluefin-hc. Set it on each machine.")).toBeInTheDocument();
+    });
   });
 
   it("answers to its own fragment", async () => {

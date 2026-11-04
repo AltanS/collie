@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { BarChart3, ChevronDown, Loader2 } from "lucide-react";
 import { useLocation } from "react-router";
 
+import { useCrew } from "@/components/crew-provider";
 import { Card } from "@/components/ui/card";
 import { Collapse } from "@/components/ui/collapse";
 import { Switch } from "@/components/ui/switch";
@@ -27,6 +28,11 @@ import { mintRequestId } from "@/lib/worktree-name";
 // those, so the switch is off and disabled and the line under it names the cause. On is never final:
 // a phone "off" beats every on word, so a count that is on by `COLLIE_TELEMETRY` or the config file
 // still has a usable switch, and the line says where the "on" came from.
+//
+// ── THIS MACHINE ONLY ────────────────────────────────────────────────────────
+// The switch is per machine. A crew member sends its own count and keeps its own switch, so a lead
+// with members lists their names under it and says the switch does not cover them. The names come
+// from the roster the Crew page reads (`useCrew`); there is no extra request.
 //
 // ── ONE LINE, ALWAYS THERE ───────────────────────────────────────────────────
 // The cause line holds one sentence in every state (reading, failed, saving, each cause), so a state
@@ -79,6 +85,9 @@ type Load = { kind: "reading" } | { kind: "failed" } | { kind: "ready"; view: Te
 
 export function TelemetrySettingsCard() {
   useLocale();
+  // The roster the Crew page already has. The switch is this machine's: a member keeps its own.
+  const { servers } = useCrew();
+  const members = servers.filter((server) => !server.isLead).map((server) => server.name);
   const [load, setLoad] = useState<Load>({ kind: "reading" });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -169,6 +178,13 @@ export function TelemetrySettingsCard() {
           {saving ? t("telemetry.card.saving") : error !== null ? "" : cause}
         </p>
         {error !== null && <p className="text-sm text-status-blocked">{error}</p>}
+        {/* Fixed text, there from the first paint: nothing above it moves when the reading arrives. */}
+        <p className="text-sm text-muted-foreground">{t("telemetry.card.thisMachine")}</p>
+        {members.length > 0 && (
+          <p data-slot="telemetry-members" className="text-sm text-muted-foreground">
+            {t("telemetry.card.members", { names: members.join(", ") })}
+          </p>
+        )}
       </div>
 
       {view !== null && (

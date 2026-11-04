@@ -2697,4 +2697,6 @@ export const it: Dictionary = {
   "apiError.telemetry.setting_invalid": "L'impostazione del conteggio delle installazioni deve essere Attivo o Disattivato. Non è stato modificato nulla.",
   "apiError.telemetry.request_id_required": "Questa azione richiede un ID richiesta. Non è stato modificato nulla.",
   "telemetry.card.cause.url": "Disattivato: COLLIE_TELEMETRY_URL su questa macchina non è un indirizzo https.",
+  "telemetry.card.thisMachine": "Questo interruttore cambia solo questa macchina.",
+  "telemetry.card.members": "Non coperte da questo interruttore: {names}. Impostalo su ogni macchina.",
 };

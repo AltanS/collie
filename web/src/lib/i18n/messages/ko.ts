@@ -2857,4 +2857,6 @@ export const ko: Dictionary = {
   "apiError.telemetry.setting_invalid": "설치 수 집계 설정은 켬 또는 끔이어야 합니다. 아무것도 변경되지 않았습니다.",
   "apiError.telemetry.request_id_required": "이 작업에는 요청 ID가 필요합니다. 아무것도 변경되지 않았습니다.",
   "telemetry.card.cause.url": "꺼짐: 이 컴퓨터의 COLLIE_TELEMETRY_URL이 https 주소가 아닙니다.",
+  "telemetry.card.thisMachine": "이 스위치는 이 머신만 바꿉니다.",
+  "telemetry.card.members": "이 스위치가 적용되지 않는 머신: {names}. 각 머신에서 따로 설정하세요.",
 };

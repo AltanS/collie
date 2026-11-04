@@ -2824,4 +2824,6 @@ export const ru: Dictionary = {
   "apiError.telemetry.setting_invalid": "Настройка подсчёта установок должна быть «включено» или «выключено». Ничего не изменено.",
   "apiError.telemetry.request_id_required": "Для этого действия требуется идентификатор запроса. Ничего не изменено.",
   "telemetry.card.cause.url": "Выключено: COLLIE_TELEMETRY_URL на этой машине не является адресом https.",
+  "telemetry.card.thisMachine": "Этот переключатель меняет только эту машину.",
+  "telemetry.card.members": "Переключатель не охватывает: {names}. Настройте его на каждой машине.",
 };

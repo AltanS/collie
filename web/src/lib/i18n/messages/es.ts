@@ -2880,4 +2880,6 @@ export const es: Dictionary = {
   "apiError.telemetry.setting_invalid": "El ajuste del recuento de instalaciones debe ser Activado o Desactivado. No se cambió nada.",
   "apiError.telemetry.request_id_required": "Esta acción necesita un ID de solicitud. No se cambió nada.",
   "telemetry.card.cause.url": "Desactivado: COLLIE_TELEMETRY_URL en esta máquina no es una dirección https.",
+  "telemetry.card.thisMachine": "Este interruptor solo cambia esta máquina.",
+  "telemetry.card.members": "No cubiertas por este interruptor: {names}. Configúrelo en cada máquina.",
 };

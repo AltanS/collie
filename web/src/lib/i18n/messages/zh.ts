@@ -2845,4 +2845,6 @@ export const zh: Dictionary = {
   "apiError.telemetry.setting_invalid": "安装数统计设置必须是开启或关闭。未更改任何内容。",
   "apiError.telemetry.request_id_required": "此操作需要请求 ID。未更改任何内容。",
   "telemetry.card.cause.url": "关闭：此机器上的 COLLIE_TELEMETRY_URL 不是 https 地址。",
+  "telemetry.card.thisMachine": "此开关只更改这台机器。",
+  "telemetry.card.members": "此开关不涵盖：{names}。请在每台机器上分别设置。",
 };

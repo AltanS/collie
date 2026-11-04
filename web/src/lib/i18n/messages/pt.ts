@@ -2695,4 +2695,6 @@ export const pt: Dictionary = {
   "apiError.telemetry.setting_invalid": "A configuração da contagem de instalações deve ser Ativada ou Desativada. Nada foi alterado.",
   "apiError.telemetry.request_id_required": "Esta ação precisa de um ID de solicitação. Nada foi alterado.",
   "telemetry.card.cause.url": "Desativada: COLLIE_TELEMETRY_URL nesta máquina não é um endereço https.",
+  "telemetry.card.thisMachine": "Este interruptor muda apenas esta máquina.",
+  "telemetry.card.members": "Não cobertas por este interruptor: {names}. Defina em cada máquina.",
 };

@@ -2695,4 +2695,6 @@ export const tr: Dictionary = {
   "apiError.telemetry.setting_invalid": "Kurulum sayımı ayarı Açık veya Kapalı olmalıdır. Hiçbir şey değiştirilmedi.",
   "apiError.telemetry.request_id_required": "Bu eylem için bir istek kimliği gerekir. Hiçbir şey değiştirilmedi.",
   "telemetry.card.cause.url": "Kapalı: bu makinedeki COLLIE_TELEMETRY_URL bir https adresi değil.",
+  "telemetry.card.thisMachine": "Bu anahtar yalnızca bu makineyi değiştirir.",
+  "telemetry.card.members": "Bu anahtarın kapsamı dışında: {names}. Her makinede ayrı ayarlayın.",
 };
