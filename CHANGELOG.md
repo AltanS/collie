@@ -23,14 +23,16 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+## [1.26.1] - 2026-11-04
+
 ### Changed
 
-- **A message to a folder or to `all` no longer wakes a session that finished.** A pane that has been `done` or `idle` for 15 minutes keeps the message in its inbox only, and the receipt reads "waiting in the inbox, not typed: the session rests". A message to one pane is typed as before. `collie walky send <folder> --wake` types into the resting panes too, and the broadcast sheet on the phone lists them under "Resting, not woken" with a "Wake them too" switch.
+- **A message to a folder or to `all` no longer wakes a session that finished.** A pane that has been `done` or `idle` for 15 minutes keeps the message in its inbox only, and the receipt reads "waiting in the inbox, not typed: the session rests". A message to one pane is typed as before. `collie walky send <folder> --wake` types into the resting panes too, and the broadcast sheet on the phone lists them under "Resting, not woken" with a "Wake them too" switch. ([2027410](https://github.com/AltanS/collie/commit/2027410))
 
 ### Fixed
 
-- **The walky talky skill tells an agent to use `--wake` only when its operator asked.** A `resting` receipt is final: the agent does not send the message again.
-- **`--wake` works in a crew that mixes versions.** A member below 1.26.1 never rests a pane, so the lead sends it a `--wake` message as a plain send, which types into all its panes. A lead below 1.26.1 cannot take `--wake`: the member's receipt reads "lead older than 1.26.1: send without --wake" instead of a signature failure.
+- **The walky talky skill tells an agent to use `--wake` only when its operator asked.** A `resting` receipt is final: the agent does not send the message again. ([78daa2c](https://github.com/AltanS/collie/commit/78daa2c))
+- **`--wake` works in a crew that mixes versions.** A member below 1.26.1 never rests a pane, so the lead sends it a `--wake` message as a plain send, which types into all its panes. A lead below 1.26.1 cannot take `--wake`: the member's receipt reads "lead older than 1.26.1: send without --wake" instead of a signature failure. ([7f3ad90](https://github.com/AltanS/collie/commit/7f3ad90))
 
 ## [1.26.0] - 2026-11-04
 
