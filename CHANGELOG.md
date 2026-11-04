@@ -29,6 +29,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **The walky talky skill tells an agent to use `--wake` only when its operator asked.** A `resting` receipt is final: the agent does not send the message again.
 - **`--wake` works in a crew that mixes versions.** A member below 1.26.1 never rests a pane, so the lead sends it a `--wake` message as a plain send, which types into all its panes. A lead below 1.26.1 cannot take `--wake`: the member's receipt reads "lead older than 1.26.1: send without --wake" instead of a signature failure.
 
 ## [1.26.0] - 2026-11-04
