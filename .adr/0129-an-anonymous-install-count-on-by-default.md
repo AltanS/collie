@@ -11,7 +11,7 @@
   [ADR 0035](./0035-a-packaged-install-is-not-ours-to-update.md) (the ping names the install kind).
 - **Trail:** Altan's decision of 2026-11-04 (milestone M86, GitHub download counts cannot tell an
   install from a fetch) · `bridge/telemetry.ts` · `bridge/index.ts` · `bridge/config-schema.ts` ·
-  `cli/doctor.ts` (`telemetryFinding`) · `web/src/components/telemetry-settings-card.tsx` ·
+  `cli/doctor.ts` (`telemetryFindings`) · `web/src/components/telemetry-settings-card.tsx` ·
   `web/src/components/telemetry-notice.tsx` · `docs/security.md` → "What leaves your machine" ·
   `telemetry/` (the receiver)
 
@@ -21,9 +21,9 @@ ADR 0034 made a promise on 2026-09-01: Collie collects nothing, no flag turns co
 opt-in is the ceiling if it is ever needed. It accepted one cost, written down in its own words:
 nobody knows how many people run Collie. Reach is read from GitHub's release download totals.
 
-Those totals do not measure installs. A download counts the same whether it ran, was fetched by a
+Those totals do not measure active bridges, the running Collie instances. A download counts the same whether it ran, was fetched by a
 mirror, or was fetched again by a self-update. On 2026-11-04 the best reading of them was about 700
-active installs, anywhere between 500 and 1,000. That is too wide to plan a release, a platform
+active bridges, anywhere between 500 and 1,000. That is too wide to plan a release, a platform
 or a package around. Peers count in the plain way: herdr-app sends a daily ping with a random ID and
 lets the person turn it off, and so do Ovis, Wave and pi in their own forms. None of them uses a
 tracking pixel.
@@ -50,23 +50,31 @@ reverses ADR 0034 openly, and the notice says so in plain words in the CHANGELOG
    queued, never retried.
 3. **Four switches, and any one of them wins.** `DO_NOT_TRACK` set to anything but `0`;
    `COLLIE_TELEMETRY=0`; `telemetry = false` in the `[bridge]` section of the config file; the
-   switch in Settings on the phone. An off word beats every on word: `COLLIE_TELEMETRY=1` does not
-   beat `DO_NOT_TRACK` or the phone's off. The phone can turn an install off that is on by default,
-   or by `COLLIE_TELEMETRY=1`, but it cannot turn on an install that the machine itself turned off.
+   switch in Settings on the phone. The words `0 false off no` are off and `1 true on yes` are on, in
+   any case; an empty value is no vote; any other value is off, and the bridge log and `collie
+   doctor` warn about it. The switch fails closed. An off word beats every on word: `COLLIE_TELEMETRY=1` does not
+   beat `DO_NOT_TRACK` or the phone's off. The phone can turn a bridge off that is on by default,
+   or by `COLLIE_TELEMETRY=1`, but it cannot turn on a bridge that the machine itself turned off.
 4. **Four cases are off with no switch.** `CI` is set. The update mirror variable is set (a
    rehearsal). The build is a development build. `COLLIE_TELEMETRY_URL` is set to something that is
    not `https` (or `http` to `127.0.0.1` or `localhost`, for a test server). Labs and the browser
    leg therefore never ping.
 5. **Opt-outs are not counted.** Turning the count off sends no message and deletes the install ID
-   from `telemetry.json`. There is no "goodbye" event. The share of installs that opted out is
+   from `telemetry.json`. There is no "goodbye" event. The share of bridges that opted out is
    estimated offline: pings per release against GitHub binary updates.
-6. **Each machine is one install, crew members too.** The phone's switch writes the machine the
-   phone talks to, the lead. A member is switched by its own environment or config file. Forwarding
-   the phone's switch over the crew link is later, if someone asks.
-7. **The receiver is Collie's own.** A Cloudflare Worker with one D1 table, at
+6. **Each bridge is one count, crew members too.** A bridge is one Collie instance with its own
+   state folder. The phone's switch writes the machine the phone talks to, the lead, and says so;
+   when the lead has members, the card lists their names and says they are not covered. A member is
+   switched by its own environment or config file. Forwarding the phone's switch over the crew
+   link is later, if someone asks.
+7. **Every start says so in the log.** A bridge logs one `install count:` line at each start: on or
+   off, which switch decided, when the first ping may go and how to turn it off. A headless machine
+   has no phone, and this line is its notice. A service reads `COLLIE_TELEMETRY` from its own
+   `.env`, not from a shell profile.
+8. **The receiver is Collie's own.** A Cloudflare Worker with one D1 table, at
    `https://ping.colliepwa.dev/v1/ping`, with its source public in `telemetry/`. It is built to store no IP
    address. The ping has one fixed user agent, `collie-ping`.
-8. **The update check, Whistle, Walky talky and Report a problem are unchanged.** They send no
+9. **The update check, Whistle, Walky talky and Report a problem are unchanged.** They send no
    install data. ADR 0034's paragraph on the update check stands.
 
 ## What this reverses
@@ -86,10 +94,10 @@ says "No telemetry". ADR 0034 is marked superseded and its body is not edited.
 
 ## Consequences
 
-- **Reach is a count.** Installs per version, OS, architecture, install kind and release line, from
-  a SQL query against D1. No dashboard is built for it.
-- **The count is a floor.** An install behind a firewall, an install with a switch off, and an
-  install that runs less than a day send nothing. The opt-out share is an estimate, not a
+- **Reach is a count.** Active bridges per version, OS, architecture, install kind and release line,
+  from a SQL query against D1. No dashboard is built for it.
+- **The count is a floor.** A bridge behind a firewall, a bridge with a switch off, and a
+  bridge that runs less than a day send nothing. The opt-out share is an estimate, not a
   measurement.
 - **A person who trusted the old promise is told, not surprised.** The notice names the old promise,
   the date and the four switches. The first ping comes a day after the first start.
@@ -100,6 +108,8 @@ says "No telemetry". ADR 0034 is marked superseded and its body is not edited.
   log is the one place an address could appear, and the receiver is built to keep none.
 - **Usage analytics, crash reports and feature counts stay out.** This ADR opens one narrow count,
   not the road ADR 0034 closed. A ninth field, or a second kind of message, needs its own ADR.
+- **Any new field, or a second kind of message, needs a new ADR and the same visible notice again.
+  Review in six months (May 2027): publish what the count changed.**
 - **Revisiting.** If the receiver cannot be run without keeping addresses, or the count stops
   informing a decision, the answer is to remove the ping and say so in the CHANGELOG, not to widen
   it.

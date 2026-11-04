@@ -115,7 +115,7 @@ Two keys in `[bridge]` set the daily install ping that
 
 | key | environment | default | what it does |
 | --- | --- | --- | --- |
-| `telemetry` | `COLLIE_TELEMETRY` | on | `false` or `0` turns the ping off and deletes the install ID. `DO_NOT_TRACK=1` and the switch in Settings turn it off too, and any off setting wins over an on setting. |
+| `telemetry` | `COLLIE_TELEMETRY` | on | `false` or `0` turns the ping off and deletes the install ID. The file also takes the words `off`, `no`, `on` and `yes` as strings, and a word Collie does not know reads as off. `DO_NOT_TRACK=1` and the switch in Settings turn it off too, and any off setting wins over an on setting. Each switch changes one machine. For a service, set `COLLIE_TELEMETRY=0` in that instance's `.env`, not in your shell profile. |
 | `telemetry_url` | `COLLIE_TELEMETRY_URL` | Collie's own address | Where the ping goes, for a test server. An address that is not `https` (or `http` on `127.0.0.1` or `localhost`) turns the ping off. |
 
 To read history from multiple agent home directories, provide a comma-separated list in

@@ -519,9 +519,10 @@ error, with the fix. A folder that Collie cannot check is a warning: `cannot con
 ## What leaves your machine
 
 **This changed in 1.27.0.** Up to 1.26.x Collie sent nothing about your install. From 1.27.0 each
-bridge sends one anonymous ping a day to Collie's own server, so the project can count installs.
-GitHub's download numbers cannot tell an install from a fetch. The ping is on by default, and you
-can turn it off in four ways. This reverses the earlier promise that Collie collects nothing
+bridge sends one anonymous ping a day to Collie's own server, so the project can count active
+bridges. A bridge is one Collie instance with its own state folder. GitHub's download numbers
+cannot tell an install from a fetch. The ping is on by default, and you can turn it off in four
+ways. This reverses the earlier promise that Collie collects nothing
 ([ADR 0129](../.adr/0129-an-anonymous-install-count-on-by-default.md), which replaces
 [ADR 0034](../.adr/0034-collie-collects-nothing-and-opt-in-is-the-ceiling.md)).
 
@@ -548,7 +549,8 @@ An example, exactly as it is sent:
 
 The ping holds no host name, no user name, no folder or path, no pane, no agent or multiplexer name,
 no count of anything, and nothing you type or read. The ID is kept in `telemetry.json` in the state
-folder. Every machine is its own install, so each member of a crew sends its own ping.
+folder. Every bridge sends its own ping. A member of a crew is a bridge, so it sends its own, and a
+machine that runs two instances sends two.
 
 ### When it is sent, and where
 
@@ -556,10 +558,17 @@ folder. Every machine is its own install, so each member of a crew sends its own
   you a day to read this page and turn it off.
 - After that, Collie sends at most one ping for each UTC day.
 - A ping that fails is dropped. Collie does not queue it and does not try again.
-- The ping goes to `https://ping.colliepwa.dev/v1/ping`, a Cloudflare Worker with one database
-  table. The source of the receiver is public, in the `telemetry/` folder of the repository. Any
-  server that answers a request can see the address it came from. The receiver does not store that
-  address.
+- Every time a bridge starts, it writes one `install count:` line to its log. The line says
+  whether the count is on, which setting decided, when the first ping may go and how to turn it
+  off. A machine with no phone gets its notice there.
+- The ping goes to `https://ping.colliepwa.dev/v1/ping` (host `ping.colliepwa.dev`, port 443), a
+  Cloudflare Worker with one database table. Name this host in a firewall allow list, or block it.
+  Collie works the same either way, and a blocked ping is dropped like any failed one. The source of
+  the receiver is public, in the `telemetry/` folder of the repository.
+- Collie stores no IP address. Cloudflare, which runs the receiver, sees the address in transit as
+  every host does.
+- The receiver keeps one row for each ID and day and prunes rows older than 400 days. Rows deleted
+  or pruned can survive up to 30 days in the database's own point-in-time backups.
 
 ### Four ways to turn it off
 
@@ -573,9 +582,22 @@ Any one of these is enough. An off setting always wins over an on setting.
    ([Configure](configure.md#the-anonymous-install-count)).
 4. **`DO_NOT_TRACK=1`**. Any value except `0` counts as a request not to track.
 
-The phone's switch changes the machine the phone talks to. For a crew member, use its own
-environment or config file. Run `collie restart` after you change `.env` or `config.toml`.
-`collie doctor` prints one `telemetry` line with the state and the setting that decided.
+`COLLIE_TELEMETRY` and `telemetry` read `0`, `false`, `off` and `no` as off, and `1`, `true`, `on`
+and `yes` as on, in any case. An empty value is no setting. Any other value reads as off, and the
+bridge log and `collie doctor` warn about it, so a typo never turns the ping on.
+
+For a service (systemd, the Herdr plugin), put `COLLIE_TELEMETRY=0` in that instance's `.env`, not
+in your shell profile. A shell variable never reaches the service. Run `collie restart` after you
+change `.env` or `config.toml`.
+
+Every switch changes one machine only. The phone's switch changes the machine the phone talks to.
+When that machine leads a crew, the card in Settings lists the members and says they are not
+covered. Set the switch on each member, in its own `.env`, its own config file or on its own phone
+card.
+
+`collie doctor` prints one `telemetry` line with the state and the setting that decided. It asks the
+running bridge first and says so, because the bridge reads its own `.env` and your shell may differ.
+With no bridge running, it reads your shell and config file and says that.
 
 The ping is also off, with no setting from you, when `CI` is set, when `COLLIE_UPDATE_MIRROR` is
 set, in a development build, and when `COLLIE_TELEMETRY_URL` names an address that is not `https`

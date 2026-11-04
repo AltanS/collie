@@ -1,7 +1,7 @@
 # The install-count receiver
 
 A small Cloudflare Worker with one D1 table. It receives the daily ping a Collie bridge sends
-(M86), checks its shape, and keeps one row per install per day. It keeps no IP address.
+(M86), checks its shape, and keeps one row per bridge per day. It keeps no IP address.
 
 Collie ships no Cloudflare account details. Nothing here is deployed by the repo, and no file here
 holds an account id, a zone id or a token.
