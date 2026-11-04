@@ -62,6 +62,7 @@ Prefer to have your agent do it? Ask it to run `collie skill` and follow the bri
 - **React Router + Vite** with TypeScript, Tailwind, shadcn, and a Bun bridge
 - **Status dashboard** led by what needs your input; every other pane sits under its own workspace, tab on the row
 - **Push notifications** when an agent blocks on user input
+- **Voice input**: speak a reply instead of typing it. Whistle, Collie's own speech engine, turns it into text on the phone or on your computer, so a phone whose browser cannot run it can still use voice. With Whistle the audio stays on your own devices. Off until you set it up
 - **Quick actions and slash commands** configured per agent
 - **Keys board you arrange**: `Esc`, `Ctrl+C`, arrows and modifier combinations, plus wider keys, your own chords and sequences, sticky `Ctrl`/`Alt`/`Shift`, presets (Claude Code, Prefix, Vim) and a layout code to share
 - **Start from the phone**: a **+ New** button opens one page where you pick the machine, an agent or a command, the folder and an optional new worktree; each machine shows which agents it has, a lost reply never opens a second pane, and your own launchers, the lead's and the ones you add from the phone, show on every machine of a crew
@@ -203,7 +204,7 @@ and that is the only way to install it on a phone.
 | [**Deployment**](./docs/deployment.md) | Front doors other than the default: an identity-aware proxy, a reverse proxy with no Tailscale, an off-host ingress, several Collies on one host (one per user, or several instances for one user), and a crew's standby door |
 | [**Commands**](./docs/commands.md) | Every `collie` verb, the census verbs that show what a Collie knows (`status`, `mux list`, `sessions`, `crew status`), putting `collie` on your PATH, and the Herdr actions that mirror the verbs on a Herdr-managed install |
 | [**Crews**](./docs/crew.md) | Several machines' Collies behind one URL: invite, join, deputy, failover, and a machine that runs several Collies |
-| [**Voice input and Web Push**](./docs/voice-and-push.md) | The microphone in the composer, and notifications when an agent is waiting on you |
+| [**Voice input and Web Push**](./docs/voice-and-push.md) | The microphone in the composer, Whistle speech to text on your phone or your computer, and notifications when an agent is waiting on you |
 | [**Manage & update**](./docs/upgrading.md) | Update from the phone or the terminal, roll back, update a crew, cross a major, stop, uninstall, and upgrading a 0.x install to 1.0 |
 | [**Troubleshooting**](./docs/troubleshooting.md) | Symptoms in the words you would actually search for |
 | [**Terminology**](./docs/terminology.md) | Collie's words in plain words, beside the names other tools use: session, space, tab, pane, terminal, durable agent, harness, crew, lead, and more |
