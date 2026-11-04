@@ -566,7 +566,7 @@ A **crew** is several machines that each run a Collie, shown behind one URL ([Cr
 | Windows | Windows 11, x64 | Windows 10, Windows Server and Windows on ARM |
 | Multiplexer | Herdr 0.9.3 or newer for Windows | tmux, zellij and tuios: none has a native Windows build |
 | Service | Task Scheduler, one Collie per machine | A Windows service, winget and MSI |
-| Crew | Collie on one machine | A Windows machine joining a crew |
+| Crew | Collie on one machine | Joining or leading a crew, [experimental](#crews) behind `COLLIE_CREWS_ON_WINDOWS=1` |
 | Front door | `collie start` publishes it with `tailscale serve`; the by-hand path is the fallback | A reverse proxy or another tunnel |
 | Binary | `collie.exe`, unsigned, with a sha256 | A signed binary |
 
@@ -582,9 +582,22 @@ These limits also hold:
 
 ### Crews
 
-A Windows machine cannot join a crew in this release. `collie crew invite`, `crew join`,
-`crew add`, `crew deputy`, `crew approve-promote` and `collie promote` refuse on Windows, say so in
-one sentence and change nothing. Collie on one Windows machine works on its own.
+> **Experimental.** Crews work on Windows behind `COLLIE_CREWS_ON_WINDOWS=1`. They are not covered
+> by the Windows test pass. A Windows lead with a Linux member was verified by hand: `crew invite`,
+> `crew join`, the crew link, and the member's panes on the phone. Joining a crew *from* Windows is
+> untested.
+
+Set the variable in the environment of every crew verb you run, then run the verb as on any host:
+
+```powershell
+$env:COLLIE_CREWS_ON_WINDOWS = "1"
+collie crew invite
+```
+
+Without the variable the crew-forming verbs refuse exactly as before: `collie crew invite`,
+`crew join`, `crew add`, `crew deputy`, `crew approve-promote` and `collie promote` say so in one
+sentence and change nothing. One Windows detail is handled for you: `crew add`'s ssh legs run
+without connection multiplexing, which Windows OpenSSH cannot do.
 
 ## Moving from the community script
 
