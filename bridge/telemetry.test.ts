@@ -69,12 +69,18 @@ describe("telemetryState: the decision order", () => {
     }
   });
 
-  test("COLLIE_TELEMETRY on words turn it on, even in CI, a mirror or a dev build", () => {
+  test("COLLIE_TELEMETRY on words turn it on when nothing else says off", () => {
     for (const word of ["1", "true", "yes", "on"]) {
       expect(state({ env: { COLLIE_TELEMETRY: word } })).toEqual({ on: true, decidedBy: "env" });
     }
-    expect(state({ env: { COLLIE_TELEMETRY: "1", CI: "true" } })).toEqual({ on: true, decidedBy: "env" });
-    expect(state({ env: { COLLIE_TELEMETRY: "1" }, version: DEV })).toEqual({ on: true, decidedBy: "env" });
+  });
+
+  test("COLLIE_TELEMETRY on does not beat CI, a mirror, a dev build or the phone's off", () => {
+    expect(state({ env: { COLLIE_TELEMETRY: "1", CI: "true" } })).toEqual({ on: false, decidedBy: "ci" });
+    expect(state({ env: { COLLIE_TELEMETRY: "1", COLLIE_UPDATE_MIRROR: "http://127.0.0.1:9" } })).toEqual({ on: false, decidedBy: "mirror" });
+    expect(state({ env: { COLLIE_TELEMETRY: "1" }, version: DEV })).toEqual({ on: false, decidedBy: "dev_build" });
+    expect(state({ env: { COLLIE_TELEMETRY: "1" }, setting: "off" })).toEqual({ on: false, decidedBy: "settings" });
+    expect(state({ env: { COLLIE_TELEMETRY: "true" }, origin: "config", setting: "off" })).toEqual({ on: false, decidedBy: "settings" });
   });
 
   test("a COLLIE_TELEMETRY that came from config.toml is decided by config", () => {
@@ -92,10 +98,10 @@ describe("telemetryState: the decision order", () => {
     expect(state({ setting: "on" })).toEqual({ on: true, decidedBy: "settings" });
   });
 
-  test("the phone can turn it on over CI, a mirror and a dev build", () => {
-    expect(state({ setting: "on", env: { CI: "1" } })).toEqual({ on: true, decidedBy: "settings" });
-    expect(state({ setting: "on", env: { COLLIE_UPDATE_MIRROR: "http://127.0.0.1:9" } })).toEqual({ on: true, decidedBy: "settings" });
-    expect(state({ setting: "on", version: DEV })).toEqual({ on: true, decidedBy: "settings" });
+  test("the phone's on cannot turn on over CI, a mirror or a dev build", () => {
+    expect(state({ setting: "on", env: { CI: "1" } })).toEqual({ on: false, decidedBy: "ci" });
+    expect(state({ setting: "on", env: { COLLIE_UPDATE_MIRROR: "http://127.0.0.1:9" } })).toEqual({ on: false, decidedBy: "mirror" });
+    expect(state({ setting: "on", version: DEV })).toEqual({ on: false, decidedBy: "dev_build" });
   });
 
   test("env or config off cannot be undone from the phone", () => {
@@ -430,12 +436,13 @@ describe("createTelemetry", () => {
     expect(readTelemetryRecord(r.stateDir).id).toBeNull();
   });
 
-  test("a dev build with a phone ON switch sends", async () => {
+  test("a dev build never sends, even with an ON switch and an ID copied from an install that had it on", async () => {
     const r = rig({ version: DEV });
     r.telemetry.choose({ setting: "on", requestId: REQUEST_ID });
     r.clock.now += FIRST_PING_DELAY_MS;
     await r.telemetry.tick();
-    expect(r.sent).toHaveLength(1);
+    expect(r.sent).toHaveLength(0);
+    expect(readTelemetryRecord(r.stateDir).id).toBeNull();
   });
 
   test("the ID is deleted on off, lastSentDay is cleared, and on again makes a new ID", async () => {

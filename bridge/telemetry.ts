@@ -24,11 +24,20 @@ import { isRequestId } from "./worktree-receipts.ts";
 // the thin shell: it reads and writes the state file and makes the one request through an injected
 // `fetch`, so a test never reaches the real endpoint.
 //
-// THE OFF SWITCHES, in the order that decides (the first that has an opinion wins):
-//   DO_NOT_TRACK  >  COLLIE_TELEMETRY (env)  >  config `telemetry`  >  the phone's switch  >  CI
-//   >  a rehearsal mirror  >  a development build  >  default on.
-// Env or config off cannot be undone from the phone, and an explicit COLLIE_TELEMETRY=1 does not
-// beat DO_NOT_TRACK. A COLLIE_TELEMETRY_URL that is not https (or http to loopback) is its own
+// THE SWITCHES, in the order that decides. Any off switch wins; an on word never beats an off:
+//   1. DO_NOT_TRACK                      off
+//   2. a URL override that is not vetted off
+//   3. COLLIE_TELEMETRY / config off     off  (env or config)
+//   4. CI set                            off
+//   5. a rehearsal mirror                off
+//   6. a development build               off  (even with state copied from an install that had it on)
+//   7. the phone's switch "off"          off
+//   8. COLLIE_TELEMETRY / config on      on   (env or config)
+//   9. the phone's switch "on"           on
+//  10. default                           on
+// Env or config off cannot be undone from the phone, and neither can CI, a mirror or a dev build.
+// An explicit COLLIE_TELEMETRY=1 does not beat DO_NOT_TRACK or the phone's "off".
+// A COLLIE_TELEMETRY_URL that is not https (or http to loopback) is its own
 // refusal: it turns the ping off, because a ping to an address nobody vetted is not a ping.
 
 /** Where the ping goes unless {@link TELEMETRY_URL_ENV} says otherwise. */
@@ -126,11 +135,12 @@ export function telemetryState(input: TelemetryStateInput): TelemetryState {
   if (!resolveTelemetryUrl(env).ok) return { on: false, decidedBy: "env" };
   const word = env.COLLIE_TELEMETRY?.trim().toLowerCase() ?? "";
   if (OFF_WORDS.has(word)) return { on: false, decidedBy: input.origin };
-  if (ON_WORDS.has(word)) return { on: true, decidedBy: input.origin };
-  if (input.setting !== null) return { on: input.setting === "on", decidedBy: "settings" };
   if (isSet(env.CI)) return { on: false, decidedBy: "ci" };
   if (isSet(env[UPDATE_MIRROR_ENV])) return { on: false, decidedBy: "mirror" };
   if (developmentBase(input.version) !== null) return { on: false, decidedBy: "dev_build" };
+  if (input.setting === "off") return { on: false, decidedBy: "settings" };
+  if (ON_WORDS.has(word)) return { on: true, decidedBy: input.origin };
+  if (input.setting === "on") return { on: true, decidedBy: "settings" };
   return { on: true, decidedBy: "default" };
 }
 
