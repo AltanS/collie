@@ -23,8 +23,44 @@ describe("the contract's keys in herdr-core's spelling", () => {
     ["alt+G", "alt+shift+g"],
     ["ctrl+g", "ctrl+g"],
     ["ctrl+G", "ctrl+g"],
+    ["ctrl+alt+j", "ctrl+alt+j"],
+    ["ctrl+shift+Q", "ctrl+shift+q"],
   ])("%s is the key name %s", (spelling, name) => {
     expect(toHcKey(spelling)).toEqual({ ok: true, key: { kind: "key", name } });
+  });
+
+  test.each([
+    ["ctrl+j", "\n"],
+    ["ctrl+J", "\n"],
+    ["Ctrl+J", "\n"],
+    ["ctrl+q", "\x11"],
+    ["ctrl+Q", "\x11"],
+    ["Ctrl+Q", "\x11"],
+  ])("%s is typed as its raw control byte", (spelling, text) => {
+    expect(toHcKey(spelling)).toEqual({ ok: true, key: { kind: "text", text } });
+  });
+
+  test.each([
+    ["ctrl+alt+j", "ctrl+alt+j"],
+    ["alt+ctrl+j", "ctrl+alt+j"],
+    ["ctrl+shift+j", "ctrl+shift+j"],
+    ["ctrl+alt+shift+j", "ctrl+alt+shift+j"],
+    ["ctrl+alt+q", "ctrl+alt+q"],
+    ["ctrl+shift+q", "ctrl+shift+q"],
+    ["ctrl+alt+shift+q", "ctrl+alt+shift+q"],
+  ])("%s stays on the named-key path", (spelling, name) => {
+    expect(toHcKey(spelling)).toEqual({ ok: true, key: { kind: "key", name } });
+  });
+  test.each<[string, HcKeyRejection]>([
+    ["ctrl+Enter", "extended"],
+    ["ctrl+meta+j", "meta"],
+    ["ctrl+meta+q", "meta"],
+    ["ctrl+q++", "unparsed"],
+    ["ctrl++J", "unparsed"],
+    ["Hyper+J", "unparsed"],
+    ["ctrl+!", "unnamed"],
+  ])("%s remains refused (%s)", (spelling, reason) => {
+    expect(toHcKey(spelling)).toEqual({ ok: false, reason });
   });
 
   test.each([

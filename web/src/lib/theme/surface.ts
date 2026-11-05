@@ -1,4 +1,4 @@
-// The shape of a theme, schema version 2 (M57 specs 14 and 17): eleven tokens, each a CLOSED list of
+// The shape of a theme, schema version 2 (M57 specs 14 and 17): thirteen tokens, each a CLOSED list of
 // words, and the one table that turns a word into CSS declarations. Beside it, two more closed doors
 // of version 2 that are not words of the `surface` block: the display face (`fonts.display`, one of
 // the shipped faces) and the terminal palette (`ansi`, eighteen gate-checked colours).
@@ -15,7 +15,7 @@
 // `src/theme-init.test.ts` fails when the line in the file is not the line this module writes.
 //
 // HOW EACH TOKEN REACHES THE PAGE. Tailwind compiles some theme values into each utility and reads
-// others through var(); the first ten tokens are the ones that end in a property a utility reads at run time; the eleventh, zoom, ends in none.
+// others through var(); the first ten tokens are the ones that end in a property a utility reads at run time; the last three, zoom, tabs and composer, end in none.
 //   * radius: `--radius-sm/md/lg/xl`. index.css declares them in `@theme` (not `@theme inline`), so
 //     `rounded-md` compiles to `border-radius: var(--radius-md)`. Bare `rounded` and `rounded-full`
 //     are not steps and never move. The radius word also sets `--edge-accent`, the offsets of the
@@ -36,7 +36,7 @@
 //     colour) to {@link GROUND_GRADIENT_END} at the bottom; grain draws two sets of 1px diagonal lines
 //     in {@link GROUND_GRAIN_LINE}. schema.ts measures the page's text pairs on both of those colours.
 //   * chrome (spec 17): `--band-ground` and `--band-rule`, the fill and the edge of the header, the tab
-//     bar and the bottom bar. `page` is today's page colour and rule; `band` is `--secondary` with a
+//     bar and the bottom bar. `page` is the page colour and `--rule`; `band` is `--secondary` with a
 //     `--border` edge.
 //   * rows (spec 17): the rows of a list group (`[data-slot="list-group"]`, ui/list-group.tsx and the
 //     hand-rolled lists that carry the slot). `rules` is today's framed group with a line between
@@ -51,16 +51,24 @@
 //     in the Screen view (`screen`, today's behaviour) or never (`none`). Its words hold no
 //     declarations, so nothing reaches the page; the app reads the word itself (lib/zoom-pill.ts),
 //     and a device choice in Settings wins over it.
+//   * tabs: the second word that sets no property. It says how the open tab is drawn.
+//     `plain` is today's row, ink and weight and nothing else; `folder` draws the open tab as a
+//     folder tab that joins the page below it (components/tab-strip.tsx, pane-strip.tsx). The app
+//     reads the word itself (lib/tab-look.ts). Its colour is the optional token `tab-active`.
+//   * composer: the third. It says how the composer is laid out: `field` is today's
+//     (one text field with its row of controls), `box` a boxed composer (lib/composer-layout.ts).
 //
-// EVERY DEFAULT IS TODAY'S VALUE. `src/themes/themes.test.ts` reads index.css and Tailwind's own
-// theme.css and holds each default word equal to what the app drew before version 2.
+// EVERY DEFAULT IS THE STYLESHEET'S VALUE. `src/themes/themes.test.ts` reads index.css and holds each
+// default word equal to what `:root` declares. Since the theme Collie New became `collie`, that is the
+// flat, bold, banded look; the word named `default` of `shadow` and `weight` is Tailwind's own stock
+// value, kept as a word so a stored theme that names it still validates.
 //
 // It imports one leaf file, for the same reason `schema.ts` imports little: the build script loads it
 // with plain Bun.
 
 import { SHIPPED_FONTS, isShippedFont, type ShippedFont } from "../shipped-fonts";
 
-/** The eleven shape tokens, in the order a file's words are applied. */
+/** The thirteen shape tokens, in the order a file's words are applied. */
 export const SURFACE_TOKENS = [
   "radius",
   "shadow",
@@ -73,6 +81,8 @@ export const SURFACE_TOKENS = [
   "icons",
   "labels",
   "zoom",
+  "tabs",
+  "composer",
 ] as const;
 
 export type SurfaceToken = (typeof SURFACE_TOKENS)[number];
@@ -151,8 +161,8 @@ export const SURFACE = {
     round: radii(8, 12, 16, 24, EDGE_RING, EDGE_SOFT),
   },
   shadow: {
-    default: shadows(SHADOW.sm, SHADOW.xs, SHADOW.sm, SHADOW.md, SHADOW.lg, SHADOW.xl, SHADOW["2xl"]),
     flat: shadows(NONE, NONE, NONE, NONE, NONE, NONE, NONE),
+    default: shadows(SHADOW.sm, SHADOW.xs, SHADOW.sm, SHADOW.md, SHADOW.lg, SHADOW.xl, SHADOW["2xl"]),
     lifted: shadows(SHADOW.md, SHADOW.sm, SHADOW.md, SHADOW.lg, SHADOW.xl, SHADOW["2xl"], SHADOW_3XL),
   },
   density: {
@@ -160,13 +170,13 @@ export const SURFACE = {
     roomy: [["--spacing", "0.28rem"]],
   },
   weight: {
-    default: [
-      ["--font-weight-medium", "500"],
-      ["--font-weight-semibold", "600"],
-    ],
     bold: [
       ["--font-weight-medium", "600"],
       ["--font-weight-semibold", "700"],
+    ],
+    default: [
+      ["--font-weight-medium", "500"],
+      ["--font-weight-semibold", "600"],
     ],
   },
   border: {
@@ -184,13 +194,13 @@ export const SURFACE = {
     ],
   },
   chrome: {
-    page: [
-      ["--band-ground", "var(--background)"],
-      ["--band-rule", "var(--rule)"],
-    ],
     band: [
       ["--band-ground", "var(--secondary)"],
       ["--band-rule", "var(--border)"],
+    ],
+    page: [
+      ["--band-ground", "var(--background)"],
+      ["--band-rule", "var(--rule)"],
     ],
   },
   rows: {
@@ -219,18 +229,26 @@ export const SURFACE = {
     heavy: [["--icon-stroke", "2.5"]],
   },
   labels: {
-    caps: [
-      ["--label-transform", "uppercase"],
-      ["--label-tracking", "0.025em"],
-    ],
     sentence: [
       ["--label-transform", "none"],
       ["--label-tracking", "normal"],
+    ],
+    caps: [
+      ["--label-transform", "uppercase"],
+      ["--label-tracking", "0.025em"],
     ],
   },
   zoom: {
     screen: [],
     none: [],
+  },
+  tabs: {
+    plain: [],
+    folder: [],
+  },
+  composer: {
+    field: [],
+    box: [],
   },
 } as const satisfies { [T in SurfaceToken]: Record<string, readonly Declaration[]> };
 
@@ -249,21 +267,34 @@ export interface Surface {
   icons?: SurfaceWord<"icons">;
   labels?: SurfaceWord<"labels">;
   zoom?: SurfaceWord<"zoom">;
+  tabs?: SurfaceWord<"tabs">;
+  composer?: SurfaceWord<"composer">;
 }
 
-/** The word each token has when a file does not name one: today's look. */
+/**
+ * The word each token has when a file does not name one: the look of the stylesheet, which is the
+ * look of the theme `collie` (flat shadows, bold weight, a band for the chrome, sentence labels).
+ * The three words the app reads itself keep their plain words: a theme that names no `tabs` or
+ * `composer` word gets the plain tab and the field composer, and the theme `collie` names `folder`
+ * and `box` in its file. The `ground` is the same kind of exception: a theme that names none gets
+ * `flat`, and only `collie` names `grain`. index.css carries that grain on `:root` for the default
+ * theme, so every other theme that draws without a `data-theme` block (an imported one) must set
+ * `flat` itself: {@link omittedGroundDeclarations}.
+ */
 export const SURFACE_DEFAULTS = {
   radius: "sharp",
-  shadow: "default",
+  shadow: "flat",
   density: "default",
-  weight: "default",
+  weight: "bold",
   border: "default",
   ground: "flat",
-  chrome: "page",
+  chrome: "band",
   rows: "rules",
   icons: "default",
-  labels: "caps",
+  labels: "sentence",
   zoom: "screen",
+  tabs: "plain",
+  composer: "field",
 } as const satisfies Required<Surface>;
 
 export function isSurfaceToken(value: string): value is SurfaceToken {
@@ -295,6 +326,8 @@ export function resolveSurface(surface: Surface | undefined): Required<Surface> 
     icons: surface?.icons ?? SURFACE_DEFAULTS.icons,
     labels: surface?.labels ?? SURFACE_DEFAULTS.labels,
     zoom: surface?.zoom ?? SURFACE_DEFAULTS.zoom,
+    tabs: surface?.tabs ?? SURFACE_DEFAULTS.tabs,
+    composer: surface?.composer ?? SURFACE_DEFAULTS.composer,
   };
 }
 
@@ -319,6 +352,8 @@ export function surfaceDeclarations(surface: Surface | undefined): Declaration[]
   if (surface.icons !== undefined) out.push(...wordDeclarations("icons", surface.icons));
   if (surface.labels !== undefined) out.push(...wordDeclarations("labels", surface.labels));
   if (surface.zoom !== undefined) out.push(...wordDeclarations("zoom", surface.zoom));
+  if (surface.tabs !== undefined) out.push(...wordDeclarations("tabs", surface.tabs));
+  if (surface.composer !== undefined) out.push(...wordDeclarations("composer", surface.composer));
   return out;
 }
 
@@ -419,6 +454,15 @@ export function versionTwoDeclarations(theme: VersionTwoParts): Declaration[] {
     ...(display !== undefined && isShippedFont(display) ? displayDeclarations(display) : []),
     ...ansiDeclarations(theme.ansi),
   ];
+}
+
+/**
+ * The ground of a theme that names none. index.css paints Collie's grain on `:root`, so a theme that
+ * leaves `ground` out has to say `flat` itself, or it would inherit the grain. Empty when the theme
+ * names a ground word (those declarations come from {@link versionTwoDeclarations}).
+ */
+export function omittedGroundDeclarations(surface: Surface | undefined): readonly Declaration[] {
+  return surface?.ground === undefined ? wordDeclarations("ground", SURFACE_DEFAULTS.ground) : [];
 }
 
 /** Every property {@link versionTwoDeclarations} can set, each once. The store removes these when it takes a theme off. */

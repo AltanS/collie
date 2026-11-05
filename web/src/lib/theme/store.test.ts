@@ -7,8 +7,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { MetaColours } from "@/hooks/use-theme";
 import { parseJsonObject } from "@/lib/json";
 
-import { THEME_TOKENS, fillHalves, isOptionalThemeToken, parseTheme, toSrgbHex, type Theme } from "./schema";
-import { ANSI_PROPERTIES, VERSION_TWO_PROPERTIES, SURFACE_PROPERTIES } from "./surface";
+import { THEME_TOKENS, contrastReport, fillHalves, isOptionalThemeToken, parseTheme, toSrgbHex, type Theme } from "./schema";
+import { ANSI_PROPERTIES, VERSION_TWO_PROPERTIES, SURFACE_PROPERTIES, wordDeclarations } from "./surface";
 
 // The store keeps module-scope state (the design store, the library, the metas), so each case
 // imports a fresh graph over a storage it seeded itself.
@@ -21,9 +21,10 @@ const LIBRARY_KEY = "collie:themes:v1";
 function collie(): Theme {
   const parsed = parseTheme(COLLIE_RAW, { maxBytes: 64 * 1024, allowReservedId: true });
   if (!parsed.ok) throw new Error("collie.json no longer parses");
-  // The fixtures are version 1 copies of collie's 43 required tokens; the optional ones (version 3) are left out.
+  // The fixtures are version 1 copies of collie's 43 required tokens; the optional ones (version 3), the surface and the palette are left out.
   const strip = (half: Theme["light"]) => Object.fromEntries(Object.entries(half ?? {}).filter(([token]) => !isOptionalThemeToken(token)));
-  return { ...parsed.theme, version: 1, light: strip(parsed.theme.light), dark: strip(parsed.theme.dark) };
+  const { surface: _surface, ansi: _ansi, ...rest } = parsed.theme;
+  return { ...rest, version: 1, fonts: { ui: "aldrich" }, light: strip(parsed.theme.light), dark: strip(parsed.theme.dark) };
 }
 
 /** A complete imported theme: collie's tokens, another id, and a dark ground of #123456. */
@@ -40,7 +41,7 @@ function midnight(id = "midnight", extra: Partial<Theme> = {}): Theme {
   };
 }
 
-/** Collie's own index.css palette on its own ground: a palette that passes the gate. */
+/** The first Collie look's palette on its own ground: a palette that passes the gate. */
 const PALETTE = {
   "0": "#000000", "1": "#cd3131", "2": "#0dbc79", "3": "#e5e510", "4": "#2472c8", "5": "#bc3fbc",
   "6": "#11a8cd", "7": "#e5e5e5", "8": "#666666", "9": "#f14c4c", "10": "#23d18b", "11": "#f5f543",
@@ -60,8 +61,8 @@ async function boot(opts: { design?: string; library?: string } = {}) {
   document.documentElement.removeAttribute("data-theme");
   document.documentElement.className = "";
   document.head.innerHTML =
-    '<meta name="theme-color" content="#f5f5f5" media="(prefers-color-scheme: light)">' +
-    '<meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)">';
+    '<meta name="theme-color" content="#e4e3e0" media="(prefers-color-scheme: light)">' +
+    '<meta name="theme-color" content="#2a2927" media="(prefers-color-scheme: dark)">';
   vi.resetModules();
   const store = await import("./store");
   const design = await import("@/lib/design");
@@ -86,7 +87,7 @@ describe("the default theme", () => {
     expect(root().hasAttribute("data-theme")).toBe(false);
     expect(root().getAttribute("style")).toBeNull();
     expect(inline()).toEqual([]);
-    expect(metas()).toEqual(["#f5f5f5", "#0a0a0a"]);
+    expect(metas()).toEqual(["#e4e3e0", "#2a2927"]);
     expect(store.activeThemeId()).toBe("collie");
   });
 
@@ -98,7 +99,7 @@ describe("the default theme", () => {
     store.setActiveTheme("collie");
     expect(root().hasAttribute("data-theme")).toBe(false);
     expect(root().getAttribute("style") ?? "").toBe("");
-    expect(metas()).toEqual(["#f5f5f5", "#0a0a0a"]);
+    expect(metas()).toEqual(["#e4e3e0", "#2a2927"]);
   });
 
   it("stores no theme field for collie", async () => {
@@ -144,10 +145,11 @@ describe("an imported theme", () => {
     const { store, theme } = await boot();
     store.addImported(midnight());
     store.setActiveTheme("midnight");
-    expect(theme.metaColours()).toEqual({ light: toSrgbHex(collie().light?.background ?? ""), dark: "#123456" });
-    expect(metas()).toEqual([theme.metaColours().light, "#123456"]);
+    // midnight names no `chrome` word, so it has the stylesheet's band, and the metas follow `secondary`.
+    expect(theme.metaColours()).toEqual({ light: toSrgbHex(collie().light?.secondary ?? ""), dark: toSrgbHex(collie().dark?.secondary ?? "") });
+    expect(metas()).toEqual([theme.metaColours().light, theme.metaColours().dark]);
     store.setActiveTheme("collie");
-    expect(theme.metaColours()).toEqual({ light: "#f5f5f5", dark: "#0a0a0a" });
+    expect(theme.metaColours()).toEqual({ light: "#e4e3e0", dark: "#2a2927" });
   });
 
   it("writes its bundled face into design.font once, and keeps the font alone afterwards", async () => {
@@ -212,7 +214,7 @@ describe("removal", () => {
     expect(store.activeThemeId()).toBe("collie");
     expect(design.designPrefs().theme).toBeUndefined();
     expect(inline()).toEqual([]);
-    expect(metas()).toEqual(["#f5f5f5", "#0a0a0a"]);
+    expect(metas()).toEqual(["#e4e3e0", "#2a2927"]);
     expect(store.library()).toEqual([]);
     expect(localStorage.getItem(LIBRARY_KEY)).toBeNull();
   });
@@ -329,7 +331,7 @@ describe("applyTheme checks the theme again", () => {
     store.setActiveTheme("midnight");
     store.applyTheme({ ...midnight(), dark: { background: "#12345" } }, "imported");
     expect(inline()).toEqual([]);
-    expect(metas()).toEqual(["#f5f5f5", "#0a0a0a"]);
+    expect(metas()).toEqual(["#e4e3e0", "#2a2927"]);
   });
 
   it("refuses an imported theme that wears a shipped id", async () => {
@@ -346,9 +348,14 @@ describe("applyTheme checks the theme again", () => {
     store.addImported(theme);
     store.setActiveTheme("markup");
     expect(inline()).toHaveLength(43);
-    expect(root().style.length).toBe(43);
+    expect(root().style.length).toBe(44); // the 43 colour tokens and the flat ground
     for (let i = 0; i < root().style.length; i += 1) {
       const name = root().style.item(i);
+      // The flat ground the theme says for itself is the one non-colour property, from a closed table.
+      if (name === "--ground-image") {
+        expect(root().style.getPropertyValue(name)).toBe("none");
+        continue;
+      }
       expect(THEME_TOKENS.map((t) => `--${t}`)).toContain(name);
       expect(root().style.getPropertyValue(name)).toMatch(/^light-dark\([#a-z0-9 ./()%-]+, [#a-z0-9 ./()%-]+\)$/);
     }
@@ -395,19 +402,54 @@ describe("the shape words of an imported theme (schema version 2)", () => {
     const { store } = await boot();
     store.addImported(midnight("shaped", { version: 2, surface: { radius: "soft", density: "roomy" } }));
     store.setActiveTheme("shaped");
-    expect(surfaceSet()).toEqual(["--radius-sm", "--radius-md", "--radius-lg", "--radius-xl", "--edge-accent", "--edge-shadow", "--spacing"]);
+    expect(surfaceSet()).toEqual(["--radius-sm", "--radius-md", "--radius-lg", "--radius-xl", "--edge-accent", "--edge-shadow", "--spacing", "--ground-image"]);
     expect(root().style.getPropertyValue("--edge-accent")).toBe("inset 0 0 0 2px");
     expect(root().style.getPropertyValue("--edge-shadow")).toBe("0 1px 3px 0 rgb(0 0 0 / 0.1)");
     expect(root().style.getPropertyValue("--radius-md")).toBe("6px");
     expect(root().style.getPropertyValue("--spacing")).toBe("0.28rem");
   });
 
-  it("sets no shape property for a theme without a surface block", async () => {
+  it("sets no shape property but a flat ground for a theme without a surface block", async () => {
     const { store } = await boot();
     store.addImported(midnight());
     store.setActiveTheme("midnight");
     expect(inline()).toHaveLength(THEME_TOKENS.length);
-    expect(surfaceSet()).toEqual([]);
+    expect(surfaceSet()).toEqual(["--ground-image"]);
+    expect(root().style.getPropertyValue("--ground-image")).toBe("none");
+  });
+
+  // index.css paints Collie's grain on :root. `collie` sets nothing and so shows it; an imported theme
+  // that names no ground says `flat` itself; going back to `collie` takes that inline `none` off in the
+  // same tick, so the grain returns with no frame in between.
+  it("keeps an imported theme with no ground flat, and gives collie its grain back in the same tick", async () => {
+    const stylesheet = readFileSync(resolve(web, "src/index.css"), "utf8");
+    const { store } = await boot();
+    store.addImported(midnight("plain"));
+    store.addImported(midnight("shaped", { version: 2, surface: { radius: "soft" } }));
+    store.addImported(midnight("woven", { version: 2, surface: { ground: "grain" } }));
+    expect(stylesheet).toContain(`--ground-image: ${wordDeclarations("ground", "grain")[0]?.[1]};`);
+    const ground = () => root().style.getPropertyValue("--ground-image");
+
+    store.initTheme();
+    expect(ground()).toBe("");
+    for (const id of ["plain", "shaped"]) {
+      store.setActiveTheme(id);
+      expect(ground(), id).toBe("none");
+      store.setActiveTheme("collie");
+      expect(ground(), `back from ${id}`).toBe("");
+      expect(root().getAttribute("style") ?? "").toBe("");
+    }
+    store.setActiveTheme("woven");
+    expect(ground()).toBe(wordDeclarations("ground", "grain")[0]?.[1]);
+  });
+
+  it("measures no grain for an imported theme with no ground, and the grain for collie", async () => {
+    const collieFile = parseTheme(readFileSync(resolve(web, "src/themes/collie.json"), "utf8"), { maxBytes: 1_000_000, allowReservedId: true });
+    expect(collieFile.ok && collieFile.theme.surface?.ground).toBe("grain");
+    const plain = contrastReport(midnight("plain"), collie()).map((f) => f.check);
+    expect(plain.some((check) => check.includes("grain ground"))).toBe(false);
+    const own = collieFile.ok ? contrastReport(collieFile.theme, collie()).map((f) => f.check) : [];
+    expect(own).toContain("foreground on the grain ground");
   });
 
   it("takes every shape property off on the way back to collie or to another theme", async () => {
@@ -430,7 +472,7 @@ describe("the shape words of an imported theme (schema version 2)", () => {
     expect(surfaceSet()).toEqual([...SURFACE_PROPERTIES]);
     expect(versionTwoSet()).toEqual([...VERSION_TWO_PROPERTIES]);
     store.setActiveTheme("plain");
-    expect(versionTwoSet()).toEqual([]);
+    expect(versionTwoSet()).toEqual(["--ground-image"]);
     store.setActiveTheme("shaped");
     store.setActiveTheme("collie");
     expect(root().getAttribute("style") ?? "").toBe("");
@@ -497,7 +539,8 @@ describe("the seven more tokens on an imported theme", () => {
     expect(root().style.getPropertyValue("--ansi-4")).toBe("#2472c8");
     store.addImported(midnight());
     store.setActiveTheme("midnight");
-    expect(VERSION_TWO_PROPERTIES.filter((p) => root().style.getPropertyValue(p) !== "")).toEqual([]);
+    // Only the flat ground: a theme that names none must not inherit :root's grain.
+    expect(VERSION_TWO_PROPERTIES.filter((p) => root().style.getPropertyValue(p) !== "")).toEqual(["--ground-image"]);
   });
 
   it("applies nothing for a stored palette that fails the gate", async () => {

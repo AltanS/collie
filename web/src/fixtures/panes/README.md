@@ -3671,3 +3671,31 @@ editor's frame never claims a rail in the transcript (issue 660 review, 2026-11-
 | --- | --- | --- |
 | `pi--v110-stock-idle-quote-rail.txt` | `pi--v110-stock-idle.txt`, rows 4 to 6 | composer, empty, free: the stock box, the quote is transcript |
 | `pi--v130-core-question-quote-rail--w120.txt` | `pi--v130-core-question--w120.txt`, rows 19 to 21 (blank before) | question ask, not free: no float editor |
+
+## Claude Code 2.1.306 exit dialog with background work (captured 2026-11-05)
+
+`/exit` in a disposable 110-column pane with one `sleep 600` background shell, the marker walked down
+with one Down each. Privacy: the working directory, the model and plan row and the turn's status row
+were replaced with neutral text. The bytes from the dialog's rule to the end are as captured.
+
+| Fixture | State | Reads as |
+| --- | --- | --- |
+| `claude--background-work-exit-1.txt` | `❯` on `1. Exit and stop tasks` | menu, Confirm and Cancel |
+| `claude--background-work-exit-2.txt` | `❯` on `2. Move to background and exit` | menu, same identity, new signature |
+| `claude--background-work-exit-3.txt` | `❯` on `3. Stay` | menu, same identity, new signature |
+
+## Codex 0.166.0 on herdr-core (captured 2026-11-05, hc 0.1.14, the Codex report of 2026-11-05)
+
+A Codex user on Collie 1.26.1 saw the unread-dialog card after every send. These are the screens that
+showed it, read the way the bridge reads a core terminal (`terminal.read`, plain text, no escape byte):
+a scratch core with its own `HC_SOCKET`, Codex 0.166.0 in a scratch folder, a viewer of 120 by 40
+attached from a pty while each read ran. The legacy reader took no status row without its paint, so it
+found no box on any of them, and while a turn ran `esc to interrupt` stood in the last rows and the card
+came up. Privacy: the user name in the lab path became `alice` (same length); no other private text was
+on screen.
+
+| Fixture | State | What it shows |
+| --- | --- | --- |
+| `codex--v0166-core-working--w120.txt` | `running` | The turn before it (`Worked for 1s`), the new message, `• Working (7s • esc to interrupt) · 1 background terminal running`, the empty box, the status row and `← for agents · ? for shortcuts` |
+| `codex--v0166-core-idle--w120.txt` | `idle` | The same pane after the turn (`Worked for 11s`), the empty box, the status row and the hint row |
+| `codex--v0166-core-draft--w120.txt` | `draft` | `collie core draft probe` typed in the box, the status row last and no hint row |

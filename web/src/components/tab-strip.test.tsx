@@ -7,6 +7,28 @@ import { server } from "@/test/setup";
 import { TabStrip } from "./tab-strip";
 import type { AgentStatus, AgentView, MuxCapability, TabView } from "@/lib/types";
 
+// The theme on screen, with its `tabs` word set by the test (lib/tab-look.ts). Left undefined it is the
+// real active theme with no `tabs` word, which is the plain look (the default theme itself names `folder`).
+interface ThemeTabs {
+  word: "plain" | "folder" | undefined;
+}
+const themeTabs = vi.hoisted((): ThemeTabs => ({ word: undefined }));
+vi.mock("@/lib/theme/store", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/lib/theme/store")>();
+  return {
+    ...original,
+    useActiveTheme: () => {
+      const active = original.useActiveTheme();
+      // Left undefined, the theme names no `tabs` word: the plain look, as for a theme without the word.
+      if (themeTabs.word === undefined) return { ...active, theme: { ...active.theme, surface: { ...active.theme.surface, tabs: undefined } } };
+      return { ...active, theme: { ...active.theme, surface: { ...active.theme.surface, tabs: themeTabs.word } } };
+    },
+  };
+});
+afterEach(() => {
+  themeTabs.word = undefined;
+});
+
 // What the eye reads on a cell: its text without the `aria-hidden` semibold copy each label keeps
 // to reserve its width (`StableLabel` in tab-strip.tsx).
 function visibleText(el: Element): string {
@@ -725,5 +747,82 @@ describe("TabStrip new-tab on a program that offers starters", () => {
     await user.click(await screen.findByRole("button", { name: "New tab" }));
     expect(onNewTab).toHaveBeenCalledWith("w1");
     expect(onNewStarters).not.toHaveBeenCalled();
+  });
+});
+
+// THE FOLDER LOOK (theme word `tabs: folder`, lib/tab-look.ts). The plain look is pinned by every test
+// above; these pin what the word adds, that every tab keeps one box, and that plain stays plain.
+describe("TabStrip under the folder look", () => {
+  function renderStrip() {
+    return render(
+      <TabStrip
+        workspaceId="w1"
+        tabs={[
+          { ...tabs[0]!, label: "Alpha" },
+          { ...tabs[1]!, label: "Beta" },
+        ]}
+        agents={[]}
+        selected="w1:t1"
+        onSelect={vi.fn()}
+        onNewTab={vi.fn()}
+        allowAll={false}
+      />,
+    );
+  }
+  const open = () => screen.getByRole("button", { name: "Alpha" });
+  const other = () => screen.getByRole("button", { name: "Beta" });
+
+  it("fills the open tab with the page colour, a rule on each side and a tab-active top edge", () => {
+    themeTabs.word = "folder";
+    renderStrip();
+    const cls = open().className;
+    expect(cls).toMatch(/(?:^|\s)bg-background(?=\s|$)/);
+    expect(cls).toMatch(/(?:^|\s)border-x-\[1px\](?=\s|$)/);
+    expect(cls).toMatch(/(?:^|\s)border-x-rule(?=\s|$)/);
+    expect(cls).toMatch(/shadow-\[inset_0_2px_0_0_var\(--tab-active\)\]/);
+    expect(cls).toMatch(/(?:^|\s)rounded-t-sm(?=\s|$)/);
+    expect(cls).toMatch(/(?:^|\s)text-foreground(?=\s|$)/);
+    expect(cls).toMatch(/(?:^|\s)font-semibold(?=\s|$)/);
+    // No line below: the fill reaches the row's last pixel row and covers the row's rule.
+    expect(cls).not.toMatch(/border-b|border-y|(?:^|\s)border(?=\s|$)/);
+  });
+
+  it("draws one rule under the whole row, on the chrome ground", () => {
+    themeTabs.word = "folder";
+    renderStrip();
+    const nav = screen.getByRole("navigation", { name: "Tabs" });
+    expect(nav.className).toMatch(/shadow-\[inset_0_-1px_0_0_var\(--rule\)\]/);
+    expect(nav.className).toMatch(/(?:^|\s)bg-chrome(?=\s|$)/);
+  });
+
+  it("leaves the other tabs unboxed, with transparent side borders so a selection moves nothing", () => {
+    themeTabs.word = "folder";
+    renderStrip();
+    const cls = other().className;
+    expect(cls).toMatch(/(?:^|\s)border-x-\[1px\](?=\s|$)/);
+    expect(cls).toMatch(/(?:^|\s)border-x-transparent(?=\s|$)/);
+    expect(cls).toMatch(/(?:^|\s)text-muted-foreground(?=\s|$)/);
+    expect(cls).not.toMatch(/bg-background|shadow-|border-x-rule/);
+  });
+
+  it("keeps the 30px tab, its hit box and the stable label", () => {
+    themeTabs.word = "folder";
+    renderStrip();
+    for (const tab of [open(), other()]) {
+      expect(tab.className).toMatch(/(?:^|\s)h-7\.5(?=\s|$)/);
+      expect(tab.className).toMatch(/(?:^|\s)before:inset-y-0(?=\s|$)/);
+      expect(tab.querySelector('[aria-hidden="true"].invisible.font-semibold')).not.toBeNull();
+    }
+  });
+
+  it("draws exactly the plain look when the theme says plain or says nothing", () => {
+    for (const word of ["plain", undefined] as const) {
+      themeTabs.word = word;
+      const { unmount } = renderStrip();
+      expect(open().className).not.toMatch(/border-x|shadow-|bg-background|rounded-t/);
+      expect(other().className).not.toMatch(/border-x|shadow-/);
+      expect(screen.getByRole("navigation", { name: "Tabs" }).className).not.toMatch(/shadow-/);
+      unmount();
+    }
   });
 });

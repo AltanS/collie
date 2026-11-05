@@ -2115,6 +2115,8 @@ describe("parseNotifyPrefsPatch", () => {
     // `{ cache: true }` became an empty patch and the bridge answered with the old value.
     expect(parseNotifyPrefsPatch({ cache: true })).toEqual({ cache: true });
     expect(parseNotifyPrefsPatch({ machines: false })).toEqual({ machines: false });
+    expect(parseNotifyPrefsPatch({ individual: true })).toEqual({ individual: true });
+    expect(parseNotifyPrefsPatch({ individual: "yes" })).toBeNull();
     expect(parseNotifyPrefsPatch({ blocked: false, done: true, updates: false, cache: false })).toEqual({
       blocked: false,
       done: true,

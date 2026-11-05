@@ -6,9 +6,8 @@
 // exported mutators. Nothing here is a copy of a component, and no component was given a prop it
 // does not already have. Where that was not possible the card says so in its own words.
 //
-// THE OTHER RULE: every card carries a "reach it for real" line. A picture of a state is only useful
-// if you can also get to it, and writing that sentence is what keeps a card from drifting into a
-// state the app can no longer produce.
+// THE OTHER RULE: a card's label is a number and at most five words. Explanation goes in the report
+// to Altan, not on the page. `reach` and `note` are optional and hidden by default (the Notes switch).
 //
 // THE PAGE IS SPLIT INTO PAGES, and this file owns only the chrome and the registry. Each section is
 // its own page with its own address (`#changes`), and its code is loaded only when it is opened: the
@@ -31,8 +30,10 @@ import {
   prefStyle,
   setAccent,
   setFace,
+  setNotes,
   useAccent,
   useFace,
+  useNotes,
   type FaceId,
 } from "./prefs";
 
@@ -81,11 +82,15 @@ export const SECTIONS: readonly SectionEntry[] = [
   { def: { id: "pane-settings", title: "Pane settings" }, load: () => import("./sections/pane-settings").then((m) => ({ default: m.PaneSettingsSection })) },
   { def: { id: "walky", title: "Walky talky" }, load: () => import("./sections/walky").then((m) => ({ default: m.WalkySection })) },
   { def: { id: "changes", title: "Changes" }, load: () => import("./sections/changes").then((m) => ({ default: m.ChangesSection })) },
+  { def: { id: "markdown-quotes", title: "Blockquotes" }, load: () => import("./sections/markdown-quotes").then((m) => ({ default: m.MarkdownQuotesSection })) },
   { def: { id: "dashboard-nav", title: "Dashboard nav" }, load: () => import("./sections/dashboard-nav").then((m) => ({ default: m.DashboardNavSection })) },
   { def: { id: "attention-icon", title: "Attention icon" }, load: () => import("./sections/attention-icon").then((m) => ({ default: m.AttentionIconSection })) },
   { def: { id: "left-hand", title: "Left-hand layout" }, load: () => import("./sections/left-hand").then((m) => ({ default: m.LeftHandSection })) },
+  { def: { id: "composer-box", title: "Composer box" }, load: () => import("./sections/composer-box").then((m) => ({ default: m.ComposerBoxSection })) },
   { def: { id: "dashboard-top", title: "Dashboard top" }, load: () => import("./sections/dashboard-top").then((m) => ({ default: m.DashboardTopSection })) },
   { def: { id: "usage-row", title: "Usage row" }, load: () => import("./sections/usage-row").then((m) => ({ default: m.UsageRowSection })) },
+  { def: { id: "update-signal", title: "Update signal" }, load: () => import("./sections/update-signal").then((m) => ({ default: m.UpdateSignalSection })) },
+  { def: { id: "backdrop", title: "Backdrop" }, load: () => import("./sections/backdrop").then((m) => ({ default: m.BackdropSection })) },
   { def: { id: "report", title: "Report a problem" }, load: () => import("./sections/report").then((m) => ({ default: m.ReportSection })) },
 ];
 
@@ -237,18 +242,28 @@ function Sidebar({ sections, activeId, onSelect, clock, onClock, phoneWidth, onP
 /** Narrow: a sticky top header carrying the horizontal tab list, with the controls in a second row
  *  beneath it. Hidden at `lg` and up, where {@link Sidebar} takes over. */
 function TopBar({ sections, activeId, onSelect, clock, onClock, phoneWidth, onPhoneWidth }: ChromeProps) {
+  const header = useRef<HTMLElement>(null);
+  // A sticky bar of a section (the Round's control bar) sits under this header, whose height changes
+  // as its tab list wraps. `--pg-top` is that height.
+  useEffect(() => {
+    const el = header.current;
+    if (el === null || !("ResizeObserver" in window)) return;
+    const root = document.documentElement;
+    const watch = new ResizeObserver(() => root.style.setProperty("--pg-top", `${el.offsetHeight}px`));
+    watch.observe(el);
+    return () => {
+      watch.disconnect();
+      root.style.removeProperty("--pg-top");
+    };
+  }, []);
   return (
-    <header className="sticky top-0 z-30 -mx-4 -mt-4 border-b border-border bg-background/95 px-4 py-2 backdrop-blur lg:hidden">
-      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 pb-2">
-        <div>
-          <h1 className="text-sm font-semibold tracking-tight">Collie — states playground</h1>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">
-            Dev-only page. Not in the production bundle.
-          </p>
-        </div>
+    <header ref={header} className="sticky top-0 z-30 -mx-4 -mt-4 border-b border-border bg-background/95 px-4 py-2 backdrop-blur lg:hidden">
+      {/* One line each, scrolled sideways, so the sticky header stays short on a phone. */}
+      <h1 className="pb-1.5 text-sm font-semibold tracking-tight">Collie — states playground</h1>
+      <div className="pg-scroll-row pb-2">
         <TabBar orientation="horizontal" sections={sections} activeId={activeId} onSelect={onSelect} />
       </div>
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 pb-2">
+      <div className="pg-scroll-row items-center gap-x-4 pb-1">
         <Controls clock={clock} onClock={onClock} phoneWidth={phoneWidth} onPhoneWidth={onPhoneWidth} />
       </div>
     </header>
@@ -311,7 +326,7 @@ function TabBar({
       role="tablist"
       aria-label="Sections"
       aria-orientation={orientation}
-      className={cn("flex gap-1", orientation === "vertical" ? "flex-col" : "flex-wrap")}
+      className={cn("flex gap-1", orientation === "vertical" ? "flex-col" : "flex-nowrap")}
     >
       {sections.map((s, index) => (
         <button
@@ -328,7 +343,7 @@ function TabBar({
           onClick={() => onSelect(s.id)}
           onKeyDown={(event) => onKeyDown(event, index)}
           className={cn(
-            "rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors",
+            "shrink-0 whitespace-nowrap rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors",
             orientation === "vertical" && "text-left",
             s.id === activeId
               ? "bg-foreground text-background"
@@ -359,6 +374,7 @@ function Controls({
   const face = useFace();
   const accent = useAccent();
   const [reduced, setReduced] = useState(false);
+  const notes = useNotes();
 
   useEffect(() => {
     document.documentElement.classList.toggle("pg-reduce-motion", reduced);
@@ -377,6 +393,14 @@ function Controls({
           value={phoneWidth ? "on" : "off"}
           options={ON_OFF}
           onChange={(next) => onPhoneWidth(next === "on")}
+        />
+      </Field>
+      <Field label="Notes" stacked={stacked}>
+        <Segmented
+          name="Notes"
+          value={notes ? "on" : "off"}
+          options={ON_OFF}
+          onChange={(next) => setNotes(next === "on")}
         />
       </Field>
       <Field label="Reduce motion" stacked={stacked}>
@@ -447,8 +471,8 @@ function Field({
     );
   }
   return (
-    <div className="flex items-center gap-2">
-      <span className="text-[11px] text-muted-foreground">{label}</span>
+    <div className="flex shrink-0 items-center gap-2">
+      <span className="whitespace-nowrap text-[11px] text-muted-foreground">{label}</span>
       {children}
     </div>
   );

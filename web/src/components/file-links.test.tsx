@@ -1,7 +1,7 @@
-import { act, render, renderHook, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import type { ReactNode } from "react";
-import { MemoryRouter } from "react-router";
+import { MemoryRouter, useLocation } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { fetchSnapshot } from "@/lib/api";
@@ -11,7 +11,15 @@ import { parseJsonObject } from "@/lib/json";
 import { paneLinkHandlers, PaneFileLinks } from "@/test/file-links";
 import { server } from "@/test/setup";
 
-import { FILE_EXIST_ABSENT_TTL_MS, FILE_EXIST_DEBOUNCE_MS, usePaneFileLinks } from "./file-links";
+import {
+  FILE_EXIST_ABSENT_TTL_MS,
+  FILE_EXIST_DEBOUNCE_MS,
+  FileLinksProvider,
+  useFileLinks,
+  usePaneFileLinks,
+  type FileLinkOpener,
+  type FileLinkTarget,
+} from "./file-links";
 import { MarkdownText } from "./markdown-text";
 
 // The pane screen's opener (ADR 0088): the root from the snapshot, home from the launchers answer,
@@ -288,5 +296,131 @@ describe("chat prose with the existence check", () => {
     await settle();
     expect(calls).toBe(1);
     expect(container.querySelector("a")).toBeNull();
+  });
+
+  it("tapping a raster image path opens a bottom-sheet preview without leaving the route, while a non-image path navigates", async () => {
+    const asked: string[][] = [];
+    const imageUrls: string[] = [];
+    const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    server.use(
+      ...paneLinkHandlers(["shots/home.png", "src/cart.ts"], asked),
+      http.get(/\/api\/pane\/[^/]+\/files\/image$/, ({ request }) => {
+        const url = new URL(request.url);
+        imageUrls.push(`${url.pathname}${url.search}`);
+        return new HttpResponse(pngBytes, {
+          status: 200,
+          headers: { "content-type": "image/png" },
+        });
+      }),
+    );
+    let currentLocation = "";
+    function LocationProbe() {
+      const loc = useLocation();
+      currentLocation = `${loc.pathname}${loc.search}`;
+      return null;
+    }
+    const { container } = render(
+      <MemoryRouter>
+        <LocationProbe />
+        <PaneFileLinks>
+          <MarkdownText text="see `shots/home.png` and `src/cart.ts`" />
+        </PaneFileLinks>
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(container.querySelectorAll("a")).toHaveLength(2));
+    const [imageLink, codeLink] = [...container.querySelectorAll("a")];
+    fireEvent.click(imageLink!);
+    await waitFor(() => expect(screen.getByRole("img", { name: "home.png" })).toBeInTheDocument());
+    expect(document.querySelector("[data-slot='file-image']")).not.toBeNull();
+    expect(imageUrls).toEqual(["/api/pane/w1%3Ap1/files/image?path=shots%2Fhome.png"]);
+    expect(currentLocation).toBe("/");
+
+    fireEvent.click(codeLink!);
+    expect(currentLocation).toBe("/pane/w1%3Ap1/changes/files?path=src%2Fcart.ts");
+  });
+
+  it("omits a zero-byte binary label when a sheet image preview is refused", async () => {
+    server.use(
+      http.get("/api/launchers", () => HttpResponse.json({ launchers: [], home: "/home/you" })),
+      http.post("/api/pane/:id/files/exist", () => HttpResponse.json({ exists: ["shots/huge.png"] })),
+      http.get("/api/pane/:id/files/image", () => new HttpResponse(null, { status: 413 })),
+    );
+    const { container } = render(
+      <MemoryRouter>
+        <PaneFileLinks>
+          <MarkdownText text="see `shots/huge.png`" />
+        </PaneFileLinks>
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(container.querySelectorAll("a")).toHaveLength(1));
+    fireEvent.click(container.querySelector("a")!);
+    await waitFor(() => expect(screen.getByText(/too large to show/i)).toBeInTheDocument());
+    expect(screen.queryByText(/0 B/)).toBeNull();
+  });
+});
+
+// The sheet of a printed picture belongs to the provider: the opener it hands down reaches the sheet's
+// state through the context, and the sheet closes for good.
+describe("the image sheet of a file links provider", () => {
+  const imageOpener: FileLinkOpener = ({ path }) => ({
+    href: `/files?path=${path}`,
+    onOpen: () => {},
+    image: { paneId: "w1:p1", scope: {}, rel: path },
+  });
+  const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  const servePng = () =>
+    server.use(
+      http.get(/\/api\/pane\/[^/]+\/files\/image$/, () => new HttpResponse(pngBytes, { status: 200, headers: { "content-type": "image/png" } })),
+    );
+
+  /** Hands the opener the context gave this render to the test, so a later render can use it late. */
+  interface Grabbed {
+    current: FileLinkOpener | null;
+  }
+  function Grab({ into }: { into: Grabbed }) {
+    into.current = useFileLinks();
+    return null;
+  }
+
+  it("opens the sheet from a target taken in an earlier render, after the opener was replaced", async () => {
+    servePng();
+    const grabbed: Grabbed = { current: null };
+    const ui = (value: FileLinkOpener | null) => (
+      <FileLinksProvider value={value}>
+        <Grab into={grabbed} />
+      </FileLinksProvider>
+    );
+    const { rerender } = render(ui(imageOpener));
+    const stale: FileLinkTarget = grabbed.current!({ path: "shots/home.png" })!;
+    rerender(ui(({ path }) => imageOpener({ path })));
+    act(() => stale.onOpen());
+    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("img", { name: "home.png" })).toBeInTheDocument());
+  });
+
+  it("stays closed after a close, a re-render, and the opener going away and coming back", async () => {
+    servePng();
+    const grabbed: Grabbed = { current: null };
+    const ui = (value: FileLinkOpener | null) => (
+      <FileLinksProvider value={value}>
+        <Grab into={grabbed} />
+      </FileLinksProvider>
+    );
+    const { rerender } = render(ui(imageOpener));
+    act(() => grabbed.current!({ path: "shots/home.png" })!.onOpen());
+    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    rerender(ui(imageOpener));
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    // Open again, lose the opener while the sheet is up, and bring it back: the sheet does not return.
+    act(() => grabbed.current!({ path: "shots/home.png" })!.onOpen());
+    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());
+    rerender(ui(null));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    rerender(ui(imageOpener));
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 });

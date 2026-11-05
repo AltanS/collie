@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Loader2 } from "lucide-react";
 
@@ -37,6 +37,15 @@ export interface MenuBlockProps {
   disabled?: boolean;
 }
 
+/** How long a row press waits for the pane to draw the moved marker. */
+const ROW_SETTLE_MS = 2000;
+
+/** The arrow presses that walk the marker along the printed rows from `from` to `target`. */
+function rowKeys(target: number, from: number): string[] {
+  const key = target > from ? MENU_DOWN_KEYS[0]! : MENU_UP_KEYS[0]!;
+  return Array.from({ length: Math.abs(target - from) }, () => key);
+}
+
 // Native, tappable rendering of a generic modal menu — the `/model` picker and its kin.
 //
 // TWO CARDS SHARE THIS COMPONENT (ADR 0054, amended 2026-09-22; ADR 0056). A card that reads the
@@ -67,6 +76,16 @@ export function MenuBlock({ menu, lines, onAction, disabled }: MenuBlockProps) {
   // draft there, the digit would join the draft, so the card's keys wait for the box to empty.
   const draftBlocks = menu.liveBox?.draft === true;
   const locked = disabled || draftBlocks || sending !== null;
+  // A row's keys are counted from the drawn marker, and a send returns before the pane's new frame is
+  // drawn. Until the marker moves, a second tap would count from where it no longer is, and land on a
+  // row nobody chose. A pane that ignored the keys frees the rows when the time ends.
+  const [walkedFrom, setWalkedFrom] = useState<number | null>(null);
+  const settling = walkedFrom !== null && walkedFrom === menu.rows?.current;
+  useEffect(() => {
+    if (walkedFrom === null) return;
+    const timer = setTimeout(() => setWalkedFrom(null), ROW_SETTLE_MS);
+    return () => clearTimeout(timer);
+  }, [walkedFrom]);
 
   async function press(id: string, action: MenuBlockAction) {
     if (locked) return;
@@ -143,6 +162,40 @@ export function MenuBlock({ menu, lines, onAction, disabled }: MenuBlockProps) {
         <p aria-hidden={!draftBlocks} className={cn("font-content text-xs text-muted-foreground", !draftBlocks && "invisible")}>
           {t("dialog.menu.noticeDraft")}
         </p>
+      )}
+
+      {/* The options as buttons, in the order the screen printed them. A tap walks the marker with the
+          arrows and commits nothing, so the footer's action stays the one commit, and no digit is ever
+          sent (see above). As with the chips below, only paint marks the current row. */}
+      {menu.rows !== undefined && (
+        <div className="flex flex-col gap-1">
+          {menu.rows.labels.map((label, i) => {
+            const from = menu.rows!.current;
+            const isCurrent = i === from;
+            return (
+              <button
+                key={`${i}-${label}`}
+                type="button"
+                aria-current={isCurrent ? "true" : undefined}
+                disabled={locked || isCurrent || settling}
+                onClick={() => {
+                  setWalkedFrom(from);
+                  void press(`row-${i}`, { keys: rowKeys(i, from), nav: true });
+                }}
+                className={cn(
+                  "font-content flex min-h-11 w-full items-center gap-2 rounded-lg border border-transparent px-3 py-2 text-left text-sm transition-colors",
+                  isCurrent
+                    ? "border-primary/60 bg-primary/15 text-foreground"
+                    : "border-border bg-secondary text-muted-foreground active:bg-primary/5",
+                  locked && "opacity-60",
+                )}
+              >
+                {sending === `row-${i}` ? spinner : null}
+                {label}
+              </button>
+            );
+          })}
+        </div>
       )}
 
       {/* Arrow cluster — only the directions the screen itself advertised (a `❯` row for Up/Down, an

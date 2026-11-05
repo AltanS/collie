@@ -74,12 +74,14 @@ test("a tab alone answers its own row, all of it below the header", async ({ pag
 
   const { tabs, panes, tabsBottom } = await rowHeights(page);
   expect(panes).toBeNull();
-  expect(tabs).toBeCloseTo(30, 0);
+  // 30px of tab and 6px of air above it: the default theme draws the folder tab, which rises out of its row.
+  expect(tabs).toBeCloseTo(36, 0);
 
   for (const name of ["code", "shell", en["space.tabStrip.new.aria"]]) {
     const span = await hitSpan(tabNav(page), name);
     // The hit area is the row: it ends at the row's own bottom edge, and nothing below answers.
-    expect(span.height, name).toBeCloseTo(tabs, 0);
+    // (The 6px of air above a folder tab belongs to no tab, so the hit area is the tab's own 30px.)
+    expect(span.height, name).toBeCloseTo(30, 0);
     // Sideways a text tab answers its drawn box (`min-w-11`), less the few pixels at its trailing
     // edge that the "+" reach (-9px, past a 6px gap) takes; the "+" answers its full 44.
     expect(span.width, name).toBeGreaterThanOrEqual(name === en["space.tabStrip.new.aria"] ? 44 : 40);
@@ -97,7 +99,7 @@ test("under a pane row, the boundary is the rows' shared edge and a pill answers
   await expect(paneNav(page)).toBeVisible();
 
   const { tabs, panes, tabsBottom } = await rowHeights(page);
-  expect(tabs).toBeCloseTo(30, 0);
+  expect(tabs).toBeCloseTo(36, 0);
   expect(panes).toBeCloseTo(26, 0);
 
   // The tab keeps its own row and gives up the reach: the pane row owns every pixel of its box.

@@ -1,5 +1,5 @@
 import { chmodSync, existsSync, readdirSync, statSync } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, networkInterfaces } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 
 import {
@@ -556,6 +556,41 @@ export function nonLoopbackBindRefusal(
     `front of it. If you truly mean to bind wide and have another control in front, set ` +
     `COLLIE_ALLOW_NON_LOOPBACK_BIND=1.`
   );
+}
+
+/**
+ * The one `[bridge] FATAL:` line for a door that could not listen (issue 699). Both `Bun.serve`
+ * sites in `bridge/index.ts` print it and exit nonzero: a bridge that stays alive without its
+ * listener is invisible to launchd, systemd and the Windows task, which restart only an exit.
+ *
+ * The Bun message ("Failed to start server. Is port 8787 in use?") hides the real code, so the
+ * line carries the address, the port, `code` and `message`. When the host is a specific address
+ * (not loopback, not a wildcard) that no interface holds, it adds the likeliest cause: a crew
+ * member binds the tailnet address, and that address is absent until Tailscale is up after a boot.
+ *
+ * Pure: the interface addresses arrive as a plain string array, so a test needs no real network.
+ */
+export function listenFailureLine(opts: {
+  door: "front door" | "standby door";
+  host: string;
+  port: number;
+  code: string | undefined;
+  message: string;
+  interfaces: readonly string[];
+}): string {
+  const host = opts.host.trim().replace(/^\[|\]$/g, "");
+  const wildcard = host === "" || host === "0.0.0.0" || host === "::";
+  const absent =
+    !wildcard && !isLoopbackBindHost(host) && !opts.interfaces.some((address) => address.toLowerCase() === host.toLowerCase());
+  const shown = wildcard ? "every interface" : host;
+  const code = opts.code === undefined || opts.code === "" ? "no code" : opts.code;
+  const hint = absent ? "; address not on any interface yet (is Tailscale up?)" : "";
+  return `[bridge] FATAL: ${opts.door} cannot listen on ${shown}:${opts.port} (${code}: ${opts.message})${hint}`;
+}
+
+/** Every address of every network interface of this machine, as plain strings. */
+export function interfaceAddresses(): string[] {
+  return Object.values(networkInterfaces()).flatMap((list) => (list ?? []).map((entry) => entry.address));
 }
 
 /**

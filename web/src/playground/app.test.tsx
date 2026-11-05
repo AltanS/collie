@@ -26,8 +26,8 @@ const SLOW = { timeout: 12_000 } as const;
 //
 // This test is cheap on purpose: mount every SECTION once (via the `tab` prop, which forces the
 // selected tab and skips the hash/localStorage a real click would touch) and assert no route's error
-// boundary fired anywhere in it. It does not re-derive what each card should look like (that's the
-// "reach it for real" line on the card itself) — it only guards the property that broke, which is
+// boundary fired anywhere in it. It does not re-derive what each card should look like
+// — it only guards the property that broke, which is
 // "the playground shows the state it claims to, not a crash".
 //
 // `createMemoryRouter` initialises asynchronously even with synchronous loaders (it always resolves
@@ -149,6 +149,30 @@ describe("the held-send cards", () => {
       expect(held("held-mixed")?.getAttribute("data-mode")).toBe("collapsed");
       const stacked = card("held-with-draft-notice").querySelector('[data-slot="floating-cards"]')!;
       expect(Array.from(stacked.children).map((child) => child.getAttribute("data-slot"))).toEqual(["held-card", "terminal-draft-notice"]);
+    },
+    30_000,
+  );
+});
+
+// A card is its label alone. `reach`, `note` and a section's `intent` show only while the page-wide
+// Notes switch is on; the switch is remembered in localStorage.
+describe("the Notes switch", () => {
+  it(
+    "hides reach lines by default, shows them when on, and remembers the choice",
+    async () => {
+      localStorage.removeItem("collie.playground.notes");
+      const { container } = render(<PlaygroundApp tab="cache" />);
+      await waitFor(() => expect(container.querySelectorAll(".pg-grid > *").length).toBeGreaterThan(0), SLOW);
+      expect(screen.queryByText(/reach it for real:/)).not.toBeInTheDocument();
+
+      const switches = screen.getAllByRole("group", { name: "Notes" });
+      fireEvent.click(within(switches[0]!).getByRole("button", { name: "On" }));
+      expect(screen.getAllByText(/reach it for real:/).length).toBeGreaterThan(0);
+      expect(localStorage.getItem("collie.playground.notes")).toBe("on");
+
+      fireEvent.click(within(switches[0]!).getByRole("button", { name: "Off" }));
+      expect(screen.queryByText(/reach it for real:/)).not.toBeInTheDocument();
+      expect(localStorage.getItem("collie.playground.notes")).toBe("off");
     },
     30_000,
   );

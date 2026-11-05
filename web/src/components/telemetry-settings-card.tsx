@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { BarChart3, ChevronDown, Loader2 } from "lucide-react";
 import { useLocation } from "react-router";
 
@@ -10,7 +10,10 @@ import { useLocale } from "@/hooks/use-locale";
 import { fetchTelemetry, setTelemetry } from "@/lib/api";
 import { describeThrownError } from "@/lib/api-error-message";
 import { t, type MessageKey } from "@/lib/i18n";
-import { TELEMETRY_SETTINGS_HASH } from "@/lib/nav";
+import { installCountPath, TELEMETRY_SETTINGS_HASH } from "@/lib/nav";
+import { useScope } from "@/lib/session";
+import { useNav } from "@/hooks/use-nav";
+import { SettingsNavRow } from "@/components/settings-nav-row";
 import type { TelemetryDecider, TelemetrySetting, TelemetryView } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { mintRequestId } from "@/lib/worktree-name";
@@ -83,21 +86,9 @@ export function telemetryCauseKey(view: Pick<TelemetryView, "on" | "decidedBy">)
 
 type Load = { kind: "reading" } | { kind: "failed" } | { kind: "ready"; view: TelemetryView };
 
-export function TelemetrySettingsCard() {
-  useLocale();
-  // The roster the Crew page already has. The switch is this machine's: a member keeps its own.
-  const { servers } = useCrew();
-  const members = servers.filter((server) => !server.isLead).map((server) => server.name);
+/** The machine's state, read once on mount. The card keeps the setter: a receipt replaces the reading. */
+function useTelemetryLoad(): [Load, Dispatch<SetStateAction<Load>>] {
   const [load, setLoad] = useState<Load>({ kind: "reading" });
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [nextOpen, setNextOpen] = useState(false);
-  // The id of the tap in flight or last refused, until a receipt answers it. A retry of the SAME
-  // setting reuses it, so a dropped answer is replayed by the bridge and never applied twice.
-  const pending = useRef<{ setting: TelemetrySetting; requestId: string } | null>(null);
-  const nextId = useId();
-  const causeId = useId();
-
   useEffect(() => {
     const ac = new AbortController();
     void (async () => {
@@ -111,6 +102,46 @@ export function TelemetrySettingsCard() {
     })();
     return () => ac.abort();
   }, []);
+  return [load, setLoad];
+}
+
+/**
+ * The row Settings → System keeps for the install count: the state in two or three words and a
+ * chevron to the page that holds the switch and its explanation. It reads the same endpoint the card
+ * does and never writes; the switch is on the page below.
+ */
+export function TelemetrySettingsRow() {
+  useLocale();
+  const nav = useNav();
+  const scope = useScope();
+  const [load] = useTelemetryLoad();
+  const caption =
+    load.kind === "reading"
+      ? t("telemetry.row.reading")
+      : load.kind === "failed"
+        ? t("telemetry.row.failed")
+        : t(load.view.on ? "telemetry.row.on" : "telemetry.row.off");
+  return (
+    <Card className="gap-0 py-0" data-slot="telemetry-row">
+      <SettingsNavRow icon={BarChart3} title={t("telemetry.card.title")} caption={caption} onOpen={() => nav.down(installCountPath(scope))} />
+    </Card>
+  );
+}
+
+export function TelemetrySettingsCard() {
+  useLocale();
+  // The roster the Crew page already has. The switch is this machine's: a member keeps its own.
+  const { servers } = useCrew();
+  const members = servers.filter((server) => !server.isLead).map((server) => server.name);
+  const [load, setLoad] = useTelemetryLoad();
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [nextOpen, setNextOpen] = useState(false);
+  // The id of the tap in flight or last refused, until a receipt answers it. A retry of the SAME
+  // setting reuses it, so a dropped answer is replayed by the bridge and never applied twice.
+  const pending = useRef<{ setting: TelemetrySetting; requestId: string } | null>(null);
+  const nextId = useId();
+  const causeId = useId();
 
   // The card answers to its own fragment, like Paired devices: the dashboard notice's button lands here.
   const cardRef = useRef<HTMLDivElement>(null);

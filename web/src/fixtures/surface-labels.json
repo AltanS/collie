@@ -231,6 +231,21 @@
    "version": "unversioned",
    "state": "popup"
   },
+  "claude--background-work-exit-1.txt": {
+    "harness": "claude",
+    "version": "2.1.306",
+    "state": "dialog"
+  },
+  "claude--background-work-exit-2.txt": {
+    "harness": "claude",
+    "version": "2.1.306",
+    "state": "dialog"
+  },
+  "claude--background-work-exit-3.txt": {
+    "harness": "claude",
+    "version": "2.1.306",
+    "state": "dialog"
+  },
   "claude--box-table-vs16-emoji.txt": {
    "harness": "claude",
    "version": "unversioned",
@@ -2360,6 +2375,21 @@
    "harness": "codex",
    "version": "0.166.0",
    "state": "draft"
+  },
+  "codex--v0166-core-draft--w120.txt": {
+   "harness": "codex",
+   "version": "0.166.0",
+   "state": "draft"
+  },
+  "codex--v0166-core-idle--w120.txt": {
+   "harness": "codex",
+   "version": "0.166.0",
+   "state": "idle"
+  },
+  "codex--v0166-core-working--w120.txt": {
+   "harness": "codex",
+   "version": "0.166.0",
+   "state": "running"
   },
   "codex--v0166-warning-art-empty--w120.txt": {
    "harness": "codex",

@@ -4,6 +4,28 @@ import userEvent from "@testing-library/user-event";
 import { PaneStrip } from "./pane-strip";
 import type { AgentView } from "@/lib/types";
 
+// The theme on screen, with its `tabs` word set by the test (lib/tab-look.ts). Left undefined it is the
+// real active theme with no `tabs` word, which is the plain look (the default theme itself names `folder`).
+interface ThemeTabs {
+  word: "plain" | "folder" | undefined;
+}
+const themeTabs = vi.hoisted((): ThemeTabs => ({ word: undefined }));
+vi.mock("@/lib/theme/store", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/lib/theme/store")>();
+  return {
+    ...original,
+    useActiveTheme: () => {
+      const active = original.useActiveTheme();
+      // Left undefined, the theme names no `tabs` word: the plain look, as for a theme without the word.
+      if (themeTabs.word === undefined) return { ...active, theme: { ...active.theme, surface: { ...active.theme.surface, tabs: undefined } } };
+      return { ...active, theme: { ...active.theme, surface: { ...active.theme.surface, tabs: themeTabs.word } } };
+    },
+  };
+});
+afterEach(() => {
+  themeTabs.word = undefined;
+});
+
 function pane(
   paneId: string,
   agent: string,
@@ -294,5 +316,62 @@ describe("PaneStrip", () => {
       expect(cls).not.toMatch(/before:z-/);
     }
     expect(scroller.className).not.toMatch(/(?:^|\s)(?:pb-|-mb-)/);
+  });
+});
+
+// THE FOLDER LOOK (theme word `tabs: folder`, lib/tab-look.ts). The default look is pinned by every test
+// above; these pin what changes under the word, and that the plain classes are gone with it.
+describe("PaneStrip under the folder look", () => {
+  const panes = [pane("w1:p1", "claude"), pane("w1:p2", "codex")];
+  const open = () => screen.getByRole("button", { name: /claude/ });
+  const other = () => screen.getByRole("button", { name: /codex/ });
+
+  it("stands on the page colour instead of the chrome ground", () => {
+    themeTabs.word = "folder";
+    render(<PaneStrip panes={panes} currentPaneId="w1:p1" onSelect={vi.fn()} />);
+    const nav = screen.getByRole("navigation", { name: "Panes" });
+    expect(nav.className).toMatch(/(?:^|\s)bg-background(?=\s|$)/);
+    expect(nav.className).not.toMatch(/bg-chrome/);
+  });
+
+  it("draws the open pane as a tinted, ringed cell in full ink, and no inverted pill", () => {
+    themeTabs.word = "folder";
+    render(<PaneStrip panes={panes} currentPaneId="w1:p1" onSelect={vi.fn()} />);
+    const cls = open().className;
+    expect(cls).toMatch(/bg-\[color-mix\(in_oklab,var\(--tab-active\)_14%,var\(--background\)\)\]/);
+    expect(cls).toMatch(/(?:^|\s)ring-1(?=\s|$)/);
+    expect(cls).toMatch(/(?:^|\s)ring-inset(?=\s|$)/);
+    expect(cls).toMatch(/(?:^|\s)ring-tab-active(?=\s|$)/);
+    expect(cls).toMatch(/(?:^|\s)text-foreground(?=\s|$)/);
+    expect(cls).toMatch(/(?:^|\s)font-semibold(?=\s|$)/);
+    expect(cls).not.toMatch(/bg-primary|text-primary-foreground/);
+  });
+
+  it("draws the other panes on secondary in the muted ink", () => {
+    themeTabs.word = "folder";
+    render(<PaneStrip panes={panes} currentPaneId="w1:p1" onSelect={vi.fn()} />);
+    expect(other().className).toMatch(/(?:^|\s)bg-secondary(?=\s|$)/);
+    expect(other().className).toMatch(/(?:^|\s)text-muted-foreground(?=\s|$)/);
+    expect(other().className).not.toMatch(/bg-muted|ring-tab-active/);
+  });
+
+  it("keeps the pills' size and hit boxes, so the row does not move", () => {
+    themeTabs.word = "folder";
+    render(<PaneStrip panes={panes} currentPaneId="w1:p1" onSelect={vi.fn()} />);
+    for (const pill of [open(), other()]) {
+      expect(pill.className).toMatch(/(?:^|\s)h-6(?=\s|$)/);
+      expect(pill.className).toMatch(/(?:^|\s)before:-inset-y-\[2px\](?=\s|$)/);
+    }
+  });
+
+  it("draws the plain look when the theme says plain or says nothing", () => {
+    for (const word of ["plain", undefined] as const) {
+      themeTabs.word = word;
+      const { unmount } = render(<PaneStrip panes={panes} currentPaneId="w1:p1" onSelect={vi.fn()} />);
+      expect(screen.getByRole("navigation", { name: "Panes" }).className).toMatch(/bg-chrome/);
+      expect(open().className).toMatch(/(?:^|\s)bg-primary(?=\s|$)/);
+      expect(open().className).not.toMatch(/ring-tab-active/);
+      unmount();
+    }
   });
 });

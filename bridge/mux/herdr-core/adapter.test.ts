@@ -6,7 +6,7 @@ import { PiTranscriptSource } from "../../journal/pi.ts";
 import type { DiscoverHints } from "../../journal/types.ts";
 import { HerdrCoreMux, RAW_KEY_GAP_MS } from "./adapter.ts";
 import { HcError, type RunShellRequest } from "./client.ts";
-import { FakeHcCore, ManualClock } from "./fake-core.ts";
+import { FakeHcCore, KEY_HOLD_MS, ManualClock } from "./fake-core.ts";
 import { IMPLICIT_SPACE_ID } from "./layout.ts";
 
 /** One fake core and the adapter over it. */
@@ -210,7 +210,12 @@ describe("HerdrCoreMux over a fake core", () => {
     expect(sent.ok ? "ok" : sent.reason).toBe("refused");
     expect(fake.writes()).toHaveLength(0);
   });
-
+  test("an invalid chord rejects the whole batch before raw controls reach the core", async () => {
+    const { fake, adapter } = build();
+    const sent = await adapter.writeKeys("t2", ["ctrl+j", "ctrl+$"]);
+    expect(sent.ok ? "ok" : sent.reason).toBe("refused");
+    expect(fake.writes()).toHaveLength(0);
+  });
   test("closing a pane that already ended answers gone", async () => {
     const { adapter } = build();
     expect((await adapter.closePane("t2")).ok).toBe(true);
@@ -402,10 +407,9 @@ describe("the raw key gap (RAW_KEY_GAP_MS)", () => {
     const fake = new FakeHcCore();
     const clock = new ManualClock();
     const waits: number[] = [];
-    const adapter = new HerdrCoreMux(fake, "/home/dev", {
-      clock: { now: () => clock.now(), wait: (ms) => (waits.push(ms), clock.wait(ms)) },
-    });
-    return { fake, adapter, clock, waits };
+    const adapterClock = { now: () => clock.now(), wait: (ms: number) => (waits.push(ms), clock.wait(ms)) };
+    const adapter = new HerdrCoreMux(fake, "/home/dev", { clock: adapterClock });
+    return { fake, adapter, clock, waits, adapterClock };
   }
 
   test("a raw Enter right after a text write waits until the floor has passed", async () => {
@@ -486,5 +490,34 @@ describe("the raw key gap (RAW_KEY_GAP_MS)", () => {
       ["text", ["hello"]],
       ["keys", ["ctrl+c", "shift+tab"]],
     ]);
+  });
+  test("Ctrl+J and Ctrl+Q use the raw path with one 150 ms gap apiece", async () => {
+    const { fake, adapter, clock, waits, adapterClock } = paced();
+    fake.holdKeysAfterRawWrite(adapterClock);
+    await adapter.typeText("t2", "first");
+    expect((await adapter.writeKeys("t2", ["ctrl+J"])).ok).toBe(true);
+    await adapter.typeText("t2", "second");
+    expect((await adapter.writeKeys("t2", ["Ctrl+Q"])).ok).toBe(true);
+    expect(fake.writes().map((write) => [write.kind, write.payload])).toEqual([
+      ["text", ["first"]],
+      ["text", ["\n"]],
+      ["text", ["second"]],
+      ["text", ["\x11"]],
+    ]);
+    expect(waits).toEqual([RAW_KEY_GAP_MS, RAW_KEY_GAP_MS]);
+    expect(clock.now()).toBe(2 * RAW_KEY_GAP_MS);
+  });
+
+  test("a modified Ctrl+J stays named and still encounters the quiet hold", async () => {
+    const { fake, adapter, clock, waits, adapterClock } = paced();
+    fake.holdKeysAfterRawWrite(adapterClock);
+    await adapter.typeText("t2", "first");
+    expect((await adapter.writeKeys("t2", ["ctrl+shift+j"])).ok).toBe(true);
+    expect(fake.writes().map((write) => [write.kind, write.payload])).toEqual([
+      ["text", ["first"]],
+      ["keys", ["ctrl+shift+j"]],
+    ]);
+    expect(waits).toEqual([KEY_HOLD_MS]);
+    expect(clock.now()).toBe(KEY_HOLD_MS);
   });
 });

@@ -137,6 +137,8 @@ import { useOptionalRootData } from "@/lib/route-data";
 import { hasJournalAdapter, reportsSessionOnFirstPrompt } from "@/lib/journal-agents";
 import { journalReadingOf, paneBody, type JournalReading } from "@/lib/chat-gate";
 import { useActiveTheme } from "@/lib/theme/store";
+import { composerLayout } from "@/lib/composer-layout";
+import { useTabLook } from "@/lib/tab-look";
 import { zoomPillShown } from "@/lib/zoom-pill";
 import { paneRowKey, paneScope } from "@/lib/hosts";
 import { isLead, paneScopeKey } from "@/lib/scope";
@@ -799,6 +801,15 @@ export function AgentChat({
   // rather than a tab's floor. Zen's resting geometry is byte-identical either way, which is the
   // point of naming it here rather than folding it into `stripsExist`.
   const mirrorGap = stripsExist && !zen ? "mt-0" : "mt-1";
+  // THE FOLDER LOOK (a theme's `tabs: folder`, lib/tab-look.ts) draws the opposite of the paragraphs
+  // above on purpose: its open tab is meant to join what is under it. The tab row carries its own
+  // baseline rule, so the 4px page and the mirror's top rule would stack a second line 4px under it
+  // (Altan, 2026-11-05: "the double line looks weird"). Under folder the strips drop their `pb-1`,
+  // and when no pane row stands between the tab row and the mirror, the mirror's top rule goes
+  // transparent, so the open tab sits straight on the reading area. With a pane row, that row is
+  // the inside of the folder and the mirror's rule stays as its floor.
+  const tabLook = useTabLook();
+  const folderJoins = tabLook === "folder" && stripsExist && !zen && !folded;
   // Fold state for the "Switch pane" sheet's two long tails, shared with the dashboard so one
   // "hide the long tail" preference means the same thing in both places.
   const dash = useDashPrefs();
@@ -2592,7 +2603,7 @@ export function AgentChat({
               >
                 {/* `pb-1` — the 4px of page the open folder tab sits on, which lives HERE rather than
                     on the mirror so that it leaves with the tabs. See `mirrorGap` above. */}
-                <div className="pb-1">
+                <div className={tabLook === "folder" ? undefined : "pb-1"}>
                 {/* In-pane tab bar: the current space's tabs above the mirror — switch tab without
                     leaving the pane, or create one with +. No "All" here (you're always in a
                     specific tab). */}
@@ -2735,6 +2746,7 @@ export function AgentChat({
               mirrorGap,
               // `relative` anchors the floating terminal-draft notice's slot, the last child below.
               "relative min-w-0 flex-1 border-t border-rule",
+              folderJoins && tabPanes.length < 2 && "border-t-transparent",
               // THE READING FLOOR (#667). The docked card below shrinks before this box does, so a tall
               // card (an unread-dialog card carrying the whole pane) can never squeeze the chat to three
               // lines under the floating tags. The floor is a share of the viewport, and `dvh` already
@@ -3288,6 +3300,8 @@ export function AgentChat({
                   prefs={prefs}
                   // Settings → Hand: which thumb the belt and the reply box are laid out for.
                   hand={handOf(prefs)}
+                  // The reply box's shape: the active theme's `composer` word (`field`, today's box, or `box`, the chat-box shape).
+                  layout={composerLayout(activeTheme.theme.surface?.composer)}
                   // Settings → Pane navigation → Joystick: the handle band, just above the belt (ADR 0121).
                   aboveBelt={paneNav.handle}
                   todos={agent?.todos}

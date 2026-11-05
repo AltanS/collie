@@ -42,6 +42,7 @@ import { createSessionFolders, createSessionLabels, resolveSessionFolder, withSe
 import { computeEtag, gzipJsonResponse, notModified, wantsGzip } from "./http-cache.ts";
 import { pluginRoot } from "./root.ts";
 import { DEFAULT_NOTIFY_PREFS, type NotifyPrefs, type NotifyPrefsStore } from "./notify-prefs.ts";
+import { paneClears } from "./notifications.ts";
 import { browseFolders, type FolderBrowseContext } from "./folder-browse.ts";
 import { MAX_FAVOURITES, MAX_FOLDER_CHARS, type FolderSurface } from "./folders.ts";
 import { isValidWorktreeBranch } from "./worktree-branch.ts";
@@ -135,7 +136,7 @@ import {
 } from "./prompt-binding.ts";
 import { MAX_BIND_COLUMN, type ColumnRange } from "../web/src/lib/column-range.ts";
 import { MAX_TAIL_LINES } from "../web/src/lib/tail-lines.ts";
-import type { Push, PushSubscription } from "./push.ts";
+import type { Push, PushMessage, PushSubscription } from "./push.ts";
 import { RefreshCoalescer } from "./refresh.ts";
 import { herdTagFor, selectView, type SessionRegistry, type SessionRuntime, widenedPanes } from "./sessions.ts";
 import type { Snooze } from "./snooze.ts";
@@ -1227,7 +1228,7 @@ export function startServer(opts: {
    * (CREW_PROTOCOL.md §5), and the lead being the only sender is what makes that fan complete.
    * Structurally typed, not the class: this file needs "fan a pref change, list the live slots".
    */
-  peerNotifier?: { applyPrefs(): void; tags(): string[] };
+  peerNotifier?: { applyPrefs(): void; tags(): string[]; paneClears(): PushMessage[] };
   /**
    * Device pairing (bridge/pairing.ts). Always supplied by index.ts — it is not an opt-in feature
    * flag: the store reads its own registry off disk, and pairing is always on (ADR 0086), so an empty
@@ -3250,6 +3251,14 @@ export function startServer(opts: {
           // raised those alerts and owns the subscription, so an unreachable peer is irrelevant here
           // — there is no policy to deliver and nothing to queue for reconnect (§5).
           for (const tag of peerNotifier?.tags() ?? []) void push.send({ type: "clear", tag });
+          // …and, with "one notification per agent" on, each pane's own notification, which no slot
+          // tag above names.
+          if (notifyPrefs.current().individual) {
+            const own = registry
+              .all()
+              .flatMap((rt) => paneClears(herdTagFor(rt.isPrimary, rt.name), rt.notifications.outstandingPaneIds()));
+            for (const msg of [...own, ...(peerNotifier?.paneClears() ?? [])]) void push.send(msg);
+          }
         }
         return json({ snoozedUntil: snooze.until() }, req.headers.get("accept-encoding"));
       }
@@ -3267,7 +3276,7 @@ export function startServer(opts: {
           let body: JsonValue;
           try {
             // SAFETY: `Request.json()` output IS a JsonValue by construction;
-            // `parseNotifyPrefsPatch` rejects anything that is not three optional booleans.
+            // `parseNotifyPrefsPatch` rejects anything that is not an optional boolean per pref.
             body = (await req.json()) as JsonValue;
           } catch {
             return text("bad request", 400);

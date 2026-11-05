@@ -23,7 +23,7 @@ import {
   setsOptionalToken,
   type Theme,
 } from "./schema";
-import { versionTwoDeclarations } from "./surface";
+import { omittedGroundDeclarations, versionTwoDeclarations } from "./surface";
 
 /** One shipped theme file: its file name (`nightwatch.json`) and its text. */
 export interface ThemeFile {
@@ -78,6 +78,8 @@ export function buildThemesCss(files: readonly ThemeFile[]): ThemesCss {
         if (setsOptionalToken(theme, token)) lines.push(`  --${token}: ${lightDark(filled, token)};`);
       }
       for (const [property, value] of versionTwoDeclarations(theme)) lines.push(`  ${property}: ${value};`);
+      // :root carries Collie's grain, so a shipped theme that names no ground says `flat` itself.
+      for (const [property, value] of omittedGroundDeclarations(theme.surface)) lines.push(`  ${property}: ${value};`);
       return `\n:root[data-theme="${theme.id}"] {\n${lines.join("\n")}\n}\n`;
     });
   return { ok: true, css: THEMES_CSS_HEADER + blocks.join("") };

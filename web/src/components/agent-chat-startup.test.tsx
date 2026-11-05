@@ -62,15 +62,15 @@ describe("AgentChat: a launch's startup gate", () => {
     expect(box).not.toBeDisabled();
     await user.type(box, "draft survives startup");
     expect(screen.getByText("Starting…")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^Send$/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /^Send$/ })).toHaveAttribute("aria-disabled", "true");
     fireEvent.keyDown(box, { key: "Enter", metaKey: true });
     // The multiplexer names the agent before the bridge has read it: still starting.
     view.update({ agent: known });
-    expect(screen.getByRole("button", { name: /^Send$/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /^Send$/ })).toHaveAttribute("aria-disabled", "true");
     expect(sent).not.toHaveBeenCalled();
     expect(view.onReady).not.toHaveBeenCalled();
     view.update({ text: READY, agent: { ...known, surface: FREE } });
-    await waitFor(() => expect(screen.getByRole("button", { name: /^Send$/ })).not.toBeDisabled());
+    await waitFor(() => expect(screen.getByRole("button", { name: /^Send$/ })).not.toHaveAttribute("aria-disabled"));
     expect(view.onReady).toHaveBeenCalledOnce();
     expect(box).toHaveValue("draft survives startup");
     view.update({ agentLaunch: undefined });

@@ -23,15 +23,15 @@ export type ResolvedTheme = "light" | "dark";
 const STORAGE_KEY = "collie:theme:v1";
 const DEFAULT: Theme = "system";
 
-/** Browser chrome — Android's URL bar and task-switcher card. These are --background's two halves
- *  rasterized: oklch(0.97) is rgb(245,245,245) and oklch(0.145) is rgb(10,10,10). Not #ffffff for
- *  light — the page is a step off white on purpose (index.css), and a pure-white URL bar above it
- *  shows the seam. Re-measure these if --background moves.
+/** Browser chrome — Android's URL bar and task-switcher card. These are --secondary's two halves
+ *  rasterized, the colour of the band the header stands on under `chrome: band`: oklch(0.915 0.004 80)
+ *  is #e4e3e0 and oklch(0.28 0.003 80) is #2a2927. Not #ffffff for light — a pure-white URL bar above
+ *  the band shows the seam. Re-measure these if --secondary or the default chrome word moves.
  *
  *  These are the colours of the theme `collie`. Another theme brings its own: lib/theme/store.ts
  *  hands the two hexes of its `background` to {@link setMetaColours} each time a theme is applied,
  *  and hands `undefined` back for `collie`, so the default theme reads exactly these two literals. */
-const DEFAULT_META_COLOR: MetaColours = { light: "#f5f5f5", dark: "#0a0a0a" };
+const DEFAULT_META_COLOR: MetaColours = { light: "#e4e3e0", dark: "#2a2927" };
 
 /** The two browser-chrome colours: one `#rrggbb` per resolved appearance. */
 export interface MetaColours {

@@ -143,6 +143,15 @@ const DESIGN = {
     screen: [],
     none: [],
   },
+  // Two more words that set no property: the app reads them (lib/tab-look.ts, lib/composer-layout.ts).
+  tabs: {
+    plain: [],
+    folder: [],
+  },
+  composer: {
+    field: [],
+    box: [],
+  },
 };
 
 /** The reviewed declarations of one word, looked up by comparing names. */
@@ -152,8 +161,8 @@ function designOf(token: string, word: string): string[][] | undefined {
 }
 
 describe("the shape tokens", () => {
-  it("are eleven, in the order a file's words are applied", () => {
-    expect(SURFACE_TOKENS).toEqual(["radius", "shadow", "density", "weight", "border", "ground", "chrome", "rows", "icons", "labels", "zoom"]);
+  it("are thirteen, in the order a file's words are applied", () => {
+    expect(SURFACE_TOKENS).toEqual(["radius", "shadow", "density", "weight", "border", "ground", "chrome", "rows", "icons", "labels", "zoom", "tabs", "composer"]);
   });
 
   it.each(SURFACE_TOKENS)("%s: every word sets exactly the reviewed declarations", (token) => {
@@ -164,19 +173,21 @@ describe("the shape tokens", () => {
     expect(surfaceWords(token)[0]).toBe(SURFACE_DEFAULTS[token]);
   });
 
-  it("names today's look as the default of every token", () => {
+  it("names the stylesheet's look as the default of every token, and the plain words for the two the app reads", () => {
     expect(SURFACE_DEFAULTS).toEqual({
       radius: "sharp",
-      shadow: "default",
+      shadow: "flat",
       density: "default",
-      weight: "default",
+      weight: "bold",
       border: "default",
       ground: "flat",
-      chrome: "page",
+      chrome: "band",
       rows: "rules",
       icons: "default",
-      labels: "caps",
+      labels: "sentence",
       zoom: "screen",
+      tabs: "plain",
+      composer: "field",
     });
   });
 

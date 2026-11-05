@@ -42,6 +42,18 @@
   }
  },
  {
+  "fixture": "claude--background-work-exit-1.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--background-work-exit-2.txt",
+  "frame": null
+ },
+ {
+  "fixture": "claude--background-work-exit-3.txt",
+  "frame": null
+ },
+ {
   "fixture": "claude--box-table-vs16-emoji.txt",
   "frame": null
  },

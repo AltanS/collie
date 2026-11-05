@@ -53,7 +53,7 @@ describe("the token list", () => {
     expect(THEME_TOKENS).not.toContain("popover");
     expect(THEME_TOKENS).not.toContain("radius");
     expect(THEME_VERSION).toBe(3);
-    expect(SHIPPED_THEME_IDS).toEqual(["collie", "nightwatch", "daylight", "harbour", "collie-new"]);
+    expect(SHIPPED_THEME_IDS).toEqual(["collie", "nightwatch", "daylight", "harbour"]);
   });
 });
 
@@ -428,6 +428,10 @@ describe("contrastReport", () => {
       "destructive text on card",
       "status-blocked text on card",
       "rule on background",
+      // A theme that names no `chrome` word has the stylesheet's band, so the band is measured too.
+      "foreground on the band",
+      "muted-foreground on the band",
+      "status-blocked on the band",
       "status-blocked apart from status-done",
     ]);
     expect(findings.filter((f) => f.half === "dark")).toHaveLength(checks.length);
@@ -447,6 +451,7 @@ describe("contrastReport", () => {
         background: "#ffffff",
         card: "#ffffff",
         primary: "#ffffff",
+        secondary: "#eeeeee",
         destructive: "#b00000",
         "destructive-foreground": "#ffffff",
         rule: "#bbbbbb",
@@ -520,6 +525,24 @@ describe("the surface block", () => {
     }
     expect(codes(parseTheme(v2({ surface: { zoom: "off" } }), CAP))).toEqual(["surface surface.zoom"]);
     expect(codes(parseTheme(v2({ surface: { zoom: "default" } }), CAP))).toEqual(["surface surface.zoom"]);
+  });
+
+  it("accepts the tabs word, plain or folder, and refuses any other", () => {
+    for (const word of ["plain", "folder"]) {
+      const result = parseTheme(v2({ surface: { tabs: word } }), CAP);
+      expect(result.ok && result.theme.surface).toEqual({ tabs: word });
+    }
+    expect(codes(parseTheme(v2({ surface: { tabs: "tabs" } }), CAP))).toEqual(["surface surface.tabs"]);
+    expect(codes(parseTheme(v2({ surface: { tabs: "default" } }), CAP))).toEqual(["surface surface.tabs"]);
+  });
+
+  it("accepts the composer word, field or box, and refuses any other", () => {
+    for (const word of ["field", "box"]) {
+      const result = parseTheme(v2({ surface: { composer: word } }), CAP);
+      expect(result.ok && result.theme.surface).toEqual({ composer: word });
+    }
+    expect(codes(parseTheme(v2({ surface: { composer: "card" } }), CAP))).toEqual(["surface surface.composer"]);
+    expect(codes(parseTheme(v2({ surface: { composer: "default" } }), CAP))).toEqual(["surface surface.composer"]);
   });
 
   it("drops an empty block, so an export carries no empty key", () => {
@@ -698,9 +721,9 @@ describe("the ground and the band in the contrast report", () => {
     expect(mixOklab("oklch(0 0 0)", "oklch(1 0 0)", 50)).toBe(toSrgbHex("oklch(0.5 0 0)"));
   });
 
-  it("adds no check for a flat ground under page chrome, so the report is the one it was", () => {
-    const plain = contrastReport(collie, collie).map((f) => f.check);
-    const flat = contrastReport({ ...collie, version: 2, surface: { ground: "flat", chrome: "page" } }, collie).map((f) => f.check);
+  it("adds no check for a flat ground, so the report is Collie's without the grain's (the band is the default chrome)", () => {
+    const plain = contrastReport(collie, collie).map((f) => f.check).filter((check) => !check.endsWith("the grain ground"));
+    const flat = contrastReport({ ...collie, version: 2, surface: { ground: "flat", chrome: "band" } }, collie).map((f) => f.check);
     expect(flat).toEqual(plain);
   });
 
@@ -746,7 +769,7 @@ describe("the ground and the band in the contrast report", () => {
   });
 });
 
-// ── Schema version 3: the optional tokens (pane-active) ───────────────────────────
+// ── Schema version 3: the optional tokens (pane-active, tab-active) ───────────────────────────
 
 describe("the optional tokens", () => {
   const collie = parseTheme(read("src/themes/collie.json"), { ...CAP, allowReservedId: true });
@@ -754,9 +777,9 @@ describe("the optional tokens", () => {
   const base = collie.theme;
 
   it("are appended after the 43, so the order of every earlier file holds", () => {
-    expect(OPTIONAL_THEME_TOKENS).toEqual(["pane-active"]);
+    expect(OPTIONAL_THEME_TOKENS).toEqual(["pane-active", "tab-active"]);
     expect(ALL_THEME_TOKENS.slice(0, 43)).toEqual([...THEME_TOKENS]);
-    expect(ALL_THEME_TOKENS).toHaveLength(44);
+    expect(ALL_THEME_TOKENS).toHaveLength(45);
   });
 
   it("are read from a version 3 file, and the theme is handed back as version 3", () => {
@@ -813,6 +836,23 @@ describe("the optional tokens", () => {
     const filled = fillHalves(old.theme, base);
     for (const token of OPTIONAL_THEME_TOKENS) expect(filled.light[token]).toBe(base.light?.[token]);
     expect(contrastReport(old.theme, base).some((f) => f.check.startsWith("pane-active"))).toBe(false);
+  });
+
+  it("reads tab-active from a version 3 file and refuses it in version 2", () => {
+    const ok = parseTheme(file({ version: 3, dark: { "tab-active": "#8866cc" } }), CAP);
+    expect(ok.ok && ok.theme.dark?.["tab-active"]).toBe("#8866cc");
+    expect(ok.ok && versionOf(ok.theme)).toBe(3);
+    expect(codes(parseTheme(file({ version: 2, light: { "tab-active": "#8866cc" } }), CAP))).toEqual(["version light.tab-active"]);
+  });
+
+  it("holds tab-active to the non-text floor on background, only in a half that sets it", () => {
+    const theme: Theme = { version: 3, id: "a", name: "A", light: { "tab-active": "#fafafa" }, dark: { "tab-active": "#8866cc" } };
+    const checks = contrastReport(theme, base).filter((f) => f.check.startsWith("tab-active"));
+    expect(checks.map((f) => `${f.half} ${f.check} ${f.floor} ${f.pass}`).toSorted()).toEqual([
+      "dark tab-active on background 3 true",
+      "light tab-active on background 3 false",
+    ]);
+    expect(contrastReport(base, base).some((f) => f.check.startsWith("tab-active"))).toBe(true);
   });
 
   it("measures an optional token only in a half that sets it", () => {
