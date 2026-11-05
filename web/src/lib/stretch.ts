@@ -617,8 +617,9 @@ function liftBlock(block: MdBlock, marks: StretchMarks): MdBlock {
   switch (block.kind) {
     case "paragraph":
     case "heading":
-    case "quote":
       return { ...block, spans: liftSpans(block.spans, marks) };
+    case "quote":
+      return { ...block, blocks: block.blocks.map((inner) => liftBlock(inner, marks)) };
     case "list":
       return { ...block, items: block.items.map((item) => liftSpans(item, marks)) };
     case "table":

@@ -12,10 +12,12 @@
 // loaded here: it reads as its alt text (a badge is a link whose label is the alt text), unless the
 // caller asks for image spans, and then the SCREEN decides what to load (the Files preview, ADR 0090).
 //
-// FLAT BY DESIGN. Blocks don't nest: a table or a list inside a blockquote or a list item is read as
-// the outer block's text, so a quoted table still collapses into a run-on line. Closing that means a
-// recursive block parser, which is a different program from this one — and agents put tables at the
-// top level, where the collapse actually hurt (#72).
+// ONE NESTING, BOUNDED. A blockquote's body is parsed as blocks, so a list, a table or a second
+// quote inside it keeps its shape: agents quote a PR body or a plan with its bullets, and read flat
+// it was one run-on paragraph. That is the only nesting. A list item stays flat, so a table or a
+// sub-list inside an item is read as the item's text: opening items too means indentation-aware
+// item bodies, a different program from this one. Quotes nest at most `MAX_QUOTE_DEPTH` deep, and
+// a deeper body reads as text.
 //
 // TWO DELIBERATE OMISSIONS, both because this content is code-heavy:
 //  - `_underscore_` emphasis is NOT supported. It would mangle `snake_case_identifiers`, which
@@ -69,12 +71,13 @@ export type MdBlock =
   /** Fenced code. `text` is verbatim — never inline-parsed. */
   | { kind: "code"; lang: string; text: string }
   /**
-   * `start` is the first item's number, on an ordered list only. Blocks don't nest, so an indented
-   * bullet under `1.` ends the list and `2.` opens a new one; without its own number that one
-   * rendered as `1.` again, and every option in a "pick one" list read as option 1.
+   * `start` is the first item's number, on an ordered list only. List items don't nest, so an
+   * indented bullet under `1.` ends the list and `2.` opens a new one; without its own number that
+   * one rendered as `1.` again, and every option in a "pick one" list read as option 1.
    */
   | { kind: "list"; ordered: boolean; start?: number; items: MdSpan[][] }
-  | { kind: "quote"; spans: MdSpan[] }
+  /** A blockquote's body, parsed as blocks to a bounded depth (`MAX_QUOTE_DEPTH`). */
+  | { kind: "quote"; blocks: MdBlock[] }
   /**
    * GFM table. `align` is one entry per column (null = unaligned), and every row is padded or
    * truncated to that width so the renderer never has to reason about ragged input.
@@ -449,6 +452,16 @@ export function parseMarkdown(source: string, opts: { images?: boolean } = {}): 
   const lines = source.split("\n");
   const defs = collectRefDefs(lines);
   const doc: DocContext = opts.images === true ? { defs, images: { left: MAX_DOCUMENT_IMAGES } } : { defs };
+  return parseBlocks(lines, doc, 0);
+}
+
+// How many quotes may nest, the outermost counted as one. The body of the innermost one allowed
+// is read as one run of text. Real prose quotes a quote once, rarely twice; `> > > …` a hundred deep is a
+// hostile file, and the Files view hands this parser whole files.
+const MAX_QUOTE_DEPTH = 4;
+
+/** The block loop over `lines`. `depth` is how many quotes these lines sit inside. */
+function parseBlocks(lines: readonly string[], doc: DocContext, depth: number): MdBlock[] {
   const blocks: MdBlock[] = [];
   let i = 0;
 
@@ -504,7 +517,13 @@ export function parseMarkdown(source: string, opts: { images?: boolean } = {}): 
         body.push(q[1] ?? "");
         i++;
       }
-      blocks.push({ kind: "quote", spans: parseBounded(body.join(" ").trim(), body, doc) });
+      // The body is parsed as blocks of its own, so a quoted PR body keeps its bullets and its
+      // paragraph breaks. Past the depth bound it is one run of text.
+      const inner: MdBlock[] =
+        depth + 1 < MAX_QUOTE_DEPTH
+          ? parseBlocks(body, doc, depth + 1)
+          : [{ kind: "paragraph", spans: parseBounded(body.join(" ").trim(), body, doc) }];
+      blocks.push({ kind: "quote", blocks: inner });
       continue;
     }
 
