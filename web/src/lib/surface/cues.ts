@@ -552,10 +552,13 @@ export function noticeOver(texts: readonly string[], frame: Frame | null, idle: 
  * are no pointed list. The second also reads the box's
  * own prompt glyph ({@link withoutOwnPrompt}) as blank, and the prompt glyph over a soft-wrapped draft
  * ({@link draftWrap}); a draft-shaped box cut by an ellipsis reads as no cue at all, flagged `cutWrap`.
+ * Both read the box's own key hint row ({@link Frame.hint}) as blank.
  */
 export function readCuesFor(allRows: readonly FrameRow[], frame: Frame | null, idle: IdleProfile | null): CueRead {
   const texts = allRows.map(rowText);
-  const rows = withoutPromptEchoes(withoutPopup(withoutCommandList(allRows, frame === null ? null : ownCommandList(texts, frame, idle, allRows)), popupAt(texts, frame, idle)), frame, idle);
+  // The box's own key hint inside it (`frame.hint`, a layout's `trailer.hint`) is no dialog's footer.
+  const unhinted = withoutSpan(allRows, frame?.hint ?? null);
+  const rows = withoutPromptEchoes(withoutPopup(withoutCommandList(unhinted, frame === null ? null : ownCommandList(texts, frame, idle, allRows)), popupAt(texts, frame, idle)), frame, idle);
   const plain = readCues(rows, frame, noticeOver(texts, frame, idle));
   if (idle?.dialogsInBox !== true || frame === null) return plain;
   // From the top edge down: a dialog in the box's place lies there, and the transcript above is no part of it.

@@ -97,6 +97,17 @@ export interface Frame {
    * the tail. Absent on a box that shows its whole draft, and on every layout that does not scroll.
    */
   readonly scrolled?: true;
+  /**
+   * The box's own key hint inside it, the trailer row and its padding, when the layout's trailer says
+   * so (`idle.frame.trailer.hint`). No modal cue reads these rows (cues.ts `readCuesFor`). Absent otherwise.
+   */
+  readonly hint?: RowSpan;
+  /** The layout's `answers`: this box answers a question the agent asked (profile.ts {@link FrameLayout.answers}). */
+  readonly answers?: true;
+  /** The layout's own submit keys (`idle.frame.submit`), when it names them. */
+  readonly submit?: readonly string[];
+  /** The layout's `newlineSubmits`: a line break typed here submits the box. */
+  readonly newlineSubmits?: true;
 }
 
 /** A row under the bottom edge that a named footer row of the profile matches. */
@@ -832,13 +843,17 @@ function interiorFrameAt(rows: readonly FrameRow[], bottom: number, idle: IdlePr
 
   // The last row of the box's interior: the bottom edge itself on an open box.
   let last = open ? bottom : bottom - 1;
+  // The trailer's rows, when the layout says they are the box's own key hint (`trailer.hint`).
+  let hint: RowSpan | null = null;
   if (c.interior.trailerRow !== null) {
+    const padEnd = last;
     let pads = 0;
     while (last >= 0 && c.interior.trailerPad !== null && pads < c.interior.maxPad && c.interior.trailerPad.test(texts[last]!.trimEnd())) {
       pads++;
       last--;
     }
     if (last < 0 || !c.interior.trailerRow.test(texts[last]!.trimEnd())) return null;
+    if (idle.frame.trailer?.hint === true) hint = { first: last, last: padEnd };
     last--;
   }
 
@@ -912,8 +927,9 @@ function interiorFrameAt(rows: readonly FrameRow[], bottom: number, idle: IdlePr
     volatile: { above, status, footer, named },
     anchorsHit,
   };
+  const hinted = hint === null ? frame : { ...frame, hint };
   // The layout's own prompt glyph (`ownPrompt`): only on a box whose every row the profile's `rows` named.
-  return idle.frame.ownPrompt === true && c.interior.rows !== null ? { ...frame, ownPrompt: { row: prompt, end: holeStart } } : frame;
+  return idle.frame.ownPrompt === true && c.interior.rows !== null ? { ...hinted, ownPrompt: { row: prompt, end: holeStart } } : hinted;
 }
 
 const compiledOverlays = new WeakMap<IdleProfile, readonly RegExp[]>();
@@ -969,13 +985,27 @@ export function overlayInRows(rows: readonly FrameRow[], indices: readonly numbe
  */
 export function findInputFrame(rows: readonly FrameRow[], idle: IdleProfile): Frame | null {
   const found = findLayout(rows, idle);
-  if (found !== null) return atScroll(rows, found, idle);
+  if (found !== null) return answerBox(atScroll(rows, found, idle), idle);
   if (idle.frameAlternates === undefined) return null;
   for (const alternate of alternatesOf(idle)) {
     const hit = findLayout(rows, alternate);
-    if (hit !== null) return atScroll(rows, hit, alternate);
+    if (hit !== null) return answerBox(atScroll(rows, hit, alternate), alternate);
   }
   return null;
+}
+
+/** A {@link Frame} while {@link answerBox} adds its layout's answer fields. */
+type FrameDraft = { -readonly [K in keyof Frame]: Frame[K] };
+
+/** The frame with what its layout says a box that answers a question takes (`answers`, `submit`, `newlineSubmits`). */
+function answerBox(frame: Frame, idle: IdleProfile): Frame {
+  const { answers, submit, newlineSubmits } = idle.frame;
+  if (answers === undefined && submit === undefined && newlineSubmits === undefined) return frame;
+  const boxed: FrameDraft = { ...frame };
+  if (answers === true) boxed.answers = answers;
+  if (submit !== undefined) boxed.submit = submit;
+  if (newlineSubmits === true) boxed.newlineSubmits = newlineSubmits;
+  return boxed;
 }
 
 /**

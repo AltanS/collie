@@ -5390,7 +5390,7 @@ describe("the held send (M56 spec 15)", () => {
     });
   });
 
-  test("a held send never goes into a box that answers the agent's question (idle.answerPrompt); a person's send still may", async () => {
+  test("a held send never goes into a box that answers the agent's question (idle.answerPrompt); a person's send from the phone still may", async () => {
     const capture = (name: string): string => readFileSync(join(import.meta.dir, `../../web/src/fixtures/panes/${name}`), "utf8");
     const clock = { now: 1_000_000 };
     const holds = new HoldStore(join(dir, "held"), () => clock.now);
@@ -5404,10 +5404,14 @@ describe("the held send (M56 spec 15)", () => {
     expect(released?.receipt).toMatchObject({ requestId: "held-answer-01", outcome: "held" });
     expect(holds.get("held-answer-01")?.state).toBe("held");
     expect(r.pane.calls).toEqual([]);
-    // The person, looking at the question, may answer it from the phone: that send is typed.
+    // A send that is no person's own (a walky talky message, a hook, the CLI) waits too (#704).
     const direct = rig({ harness: "hermes", version: "0.22.2" });
     direct.pane.fixed = capture("hermes--clarify-other.txt");
-    const answer = await direct.send("CockroachDB");
+    const other = await direct.send("CockroachDB");
+    expect(other.receipt).toMatchObject({ outcome: "refused", reason: "not_free" });
+    expect(direct.pane.calls).toEqual([]);
+    // The person, looking at the question, may answer it from the phone: that send is typed.
+    const answer = await direct.send("CockroachDB", { fromPhone: true });
     expect(answer.receipt?.reason).not.toBe("not_free");
     expect(direct.pane.calls.length).toBeGreaterThan(0);
   });
