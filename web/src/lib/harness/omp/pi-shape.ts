@@ -1,4 +1,5 @@
 import type { StyledLine } from "../../blocks";
+import { readIsUnstyled } from "../../surface/frame";
 import {
   BRIDGE_PROMPT_TAIL_LINES,
   draftGhost,
@@ -134,7 +135,7 @@ function paletteRunStart(texts: string[], end: number): number {
 export function piDraft(lines: StyledLine[], box: PiComposer): string | null {
   if (box.bottom - box.firstDraftRow === 1) {
     const row = lines[box.firstDraftRow]!;
-    if (draftPlaceholder(row, 1, rstrip(lineText(row)).length)) return null;
+    if (draftPlaceholder(row, 1, rstrip(lineText(row)).length, readIsUnstyled(lines))) return null;
   }
   const draft = lines.slice(box.firstDraftRow, box.bottom)
     .map((line, i) => {
