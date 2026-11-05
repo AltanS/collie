@@ -266,10 +266,6 @@ export function SettingsSystemRoute() {
   const devices = (useLoaderData() as DevicesData | undefined) ?? EMPTY_DEVICES;
   return (
     <SettingsPage title="settings.section.system.title">
-      {/* The anonymous install count (M86 spec 02, ADR 0129): one row with its state, first on this page
-          because it is about what this machine says to Collie's host. The switch, the cause and the
-          next message are the page the row opens. */}
-      <TelemetrySettingsRow />
       {/* Access sits with the connection diagnostics — both answer "what is this device allowed to
           do, and why". Pairing is the gate you can change from here; ConnectionInfo below only
           reports the header-based one. */}
@@ -282,6 +278,10 @@ export function SettingsSystemRoute() {
         build={diagnostics.build}
         redact={diagnostics.redact}
       />
+      {/* The anonymous install count (M86 spec 02, ADR 0129): one row with its state, above the report
+          card because both are about what this machine says to Collie's host. The switch, the cause
+          and the next message are the page the row opens. */}
+      <TelemetrySettingsRow />
       {/* Report a problem (ADR 0123): the offer's switch and the sheet's third door, with the diagnostics
           because a report is the one way those leave this phone, and only by the person's taps. */}
       <ReportControl />

@@ -60,6 +60,16 @@ describe("System — the install count row", () => {
     await waitFor(() => expect(row.textContent).toContain("Could not be read"));
   });
 
+  it("sits at the bottom, between Connection and the report card", async () => {
+    renderAt("/settings/system");
+    const row = await screen.findByRole("button", { name: /Anonymous install count/ });
+    const connection = screen.getByText("Connection");
+    const report = screen.getByText("Offer a report when sending fails");
+    const before = Node.DOCUMENT_POSITION_FOLLOWING;
+    expect(connection.compareDocumentPosition(row) & before).toBeTruthy();
+    expect(row.compareDocumentPosition(report) & before).toBeTruthy();
+  });
+
   it("opens the page below as a push", async () => {
     const router = renderAt("/settings/system");
     await userEvent.click(await screen.findByRole("button", { name: /Anonymous install count/ }));
