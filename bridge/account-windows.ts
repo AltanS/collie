@@ -443,7 +443,7 @@ export async function readClaudeLogin(seams: CredentialSeams, configDir?: string
   const raw = (configDir ?? seams.env.CLAUDE_CONFIG_DIR ?? "").trim();
   const defaultDir = join(seams.home, ".claude");
   const normalized = raw === "" ? defaultDir : join(raw, ".");
-  const explicitDir = normalized === defaultDir ? undefined : normalized;
+  const explicitDir = normalized === defaultDir ? undefined : raw;
   const file = await readLoginFile(seams, join(normalized, ".credentials.json"));
   if (file.ok) return claudeTokenFrom(file.text, seams.now());
   if (file.reason !== "missing" || seams.platform !== "darwin") return file;
@@ -810,7 +810,8 @@ export function isTurnEnd(from: AgentStatus, to: AgentStatus): boolean {
 
 /**
  * The account windows of each harness with a source, in memory. `observe` runs on every poll,
- * `poke` when a turn ends; `limits` is synchronous and reads memory only.
+ * `poke` when a turn ends; `limits` is synchronous and reads memory (starting a background ask the
+ * first time a custom `configDir` is seen).
  */
 export class AccountWindows {
   private readonly states = new Map<string, HarnessState>();

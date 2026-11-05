@@ -43,12 +43,6 @@ describe("context-reading configDir tracking", () => {
 
     // A default SessionStart on a session that previously had a custom configDir clears it even without a model.
     takeSessionStart(
-      defaultDeps,
-      { session: SESSION, harness: "claude", source: "startup", model: undefined, contextTokens: undefined },
-      () => [STATE],
-      NOW + 1000,
-    );
-    takeSessionStart(
       { files: customFiles, uid: 1000, ctx: context({}) },
       { session: SESSION, harness: "claude", source: "startup", model: undefined, contextTokens: undefined },
       () => [STATE],

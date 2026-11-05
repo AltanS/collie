@@ -250,7 +250,7 @@ describe("the Claude login", () => {
       ok: true,
       token: "sk-ant-oat01-custom",
     });
-    expect(await readClaudeLogin(seams({ platform: "darwin", env: { CLAUDE_CONFIG_DIR: `${join(HOME, ".claude")}/` }, keychain }))).toEqual({
+    expect(await readClaudeLogin(seams({ platform: "darwin", keychain }), join(HOME, ".claude"))).toEqual({
       ok: true,
       token: "sk-ant-oat01-custom",
     });
