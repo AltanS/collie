@@ -721,7 +721,7 @@ export function SettingsSection() {
           <Stage height={420}>
             <div className="p-4">
               <NotifyPrefsCard
-                prefs={{ blocked: true, done: false, individual: false, updates: true, cache: false, machines: true }}
+                prefs={{ blocked: true, done: false, individual: true, updates: true, cache: false, machines: true }}
                 busy={false}
                 onToggle={() => {}}
                 entries={watchedPanes}

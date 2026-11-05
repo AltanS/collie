@@ -475,9 +475,9 @@ Five kinds, each with its own switch under **Settings → Alerts → Notify when
 
 Finished fires when an agent goes from working to idle, so an agent you interrupt also counts as finished.
 
-By default Collie keeps one notification per machine and rewrites it as more agents need you:
-"claude needs you", then "2 agents need you". Switch on **One notification per agent**, below Finished,
-and each agent gets its own notification instead, with its name and its place. Nothing is summarised.
+By default each agent that needs you gets its own notification, with its name and its place. Nothing is
+summarised. Switch off **One notification per agent**, below Finished, and Collie keeps one notification
+per machine instead and rewrites it as more agents need you: "claude needs you", then "2 agents need you".
 Answering an agent, or opening a finished one, closes only that notification. The wait before an
 alert is the same in both modes.
 

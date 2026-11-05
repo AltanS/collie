@@ -18,7 +18,7 @@ export interface NotifyPrefs {
   /** Push when an agent finishes its task. Default off. */
   done: boolean;
   /** Send each alert as its own notification, one per agent, instead of one summary per machine.
-   *  Default OFF: nothing changes for an operator who never switches it on. A delivery shape, not an
+   *  Default ON (from 1.27.0); a stored `false` stays `false`. A delivery shape, not an
    *  agent status, so it never flows through {@link isNotifiable}; the coordinator reads it live. */
   individual: boolean;
   /** Push when a newer Collie release is available. Default on — the off-switch for update alerts,
@@ -39,7 +39,7 @@ export interface NotifyPrefs {
 export const DEFAULT_NOTIFY_PREFS: NotifyPrefs = {
   blocked: true,
   done: false,
-  individual: false,
+  individual: true,
   updates: true,
   cache: false,
   machines: true,

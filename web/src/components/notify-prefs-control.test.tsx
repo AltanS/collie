@@ -31,7 +31,7 @@ let currentPrefs: Prefs;
 
 beforeEach(() => {
   lastPatch = undefined;
-  currentPrefs = { blocked: true, done: false, individual: false, updates: true, cache: false, machines: true };
+  currentPrefs = { blocked: true, done: false, individual: true, updates: true, cache: false, machines: true };
   server.use(
     http.get("/api/notifications/prefs", () => HttpResponse.json(currentPrefs)),
     http.post<never, Partial<Prefs>>("/api/notifications/prefs", async ({ request }) => {
@@ -75,7 +75,7 @@ describe("NotifyPrefsControl", () => {
     await waitFor(() => expect(finished).toBeChecked());
   });
 
-  test("the one-notification-per-agent row sits under Finished, off by default, and POSTs {individual: true}", async () => {
+  test("the one-notification-per-agent row sits under Finished, on by default, and POSTs {individual: false}", async () => {
     const user = userEvent.setup();
     render(<NotifyPrefsControl />);
     const individual = await screen.findByRole("switch", { name: /one notification per agent/i });
@@ -84,12 +84,12 @@ describe("NotifyPrefsControl", () => {
     expect(names.slice(at - 2, at)).toEqual(["Needs input", "Finished"]);
     expect(screen.getByText(/each agent that needs you gets its own notification/i)).toBeInTheDocument();
     await waitFor(() => expect(individual).not.toBeDisabled());
-    expect(individual).not.toBeChecked();
+    expect(individual).toBeChecked();
 
     await user.click(individual);
 
-    await waitFor(() => expect(lastPatch).toEqual({ individual: true }));
-    await waitFor(() => expect(individual).toBeChecked());
+    await waitFor(() => expect(lastPatch).toEqual({ individual: false }));
+    await waitFor(() => expect(individual).not.toBeChecked());
   });
 
   test("reverts the optimistic toggle when the POST fails", async () => {
