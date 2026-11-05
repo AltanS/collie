@@ -518,14 +518,27 @@ error, with the fix. A folder that Collie cannot check is a warning: `cannot con
 
 ## What leaves your machine
 
-Nothing, by default and by policy. Collie sends no install events, no usage statistics, no crash
-reports and no analytics. There is no flag that enables them.
+From 1.27.0 each Collie bridge sends one small anonymous ping a day to our own analytics. It carries
+the Collie version, the operating system, how Collie was installed, and whether the bridge runs
+alone or in a crew, under a random ID made on your machine. No IP address is stored, and nothing
+else is sent: no host name, no folder, no agent, nothing you type or read. We need these numbers to
+spot regressions and slow degradations after a release, and to steer what gets built next. Up to
+1.26.x Collie sent nothing
+([ADR 0129](https://github.com/AltanS/collie/blob/main/.adr/0129-an-anonymous-install-count-on-by-default.md)).
 
-The one unprompted outbound call is the update check: an anonymous HTTPS `GET` to GitHub's public
+Turning it off is one switch: Settings, System, **Anonymous install count**. `COLLIE_TELEMETRY=0`,
+`telemetry = false` in `config.toml` or `DO_NOT_TRACK=1` do the same, and so does blocking the one
+host it goes to, `ping.colliepwa.dev`, in your firewall. The first ping waits a day after the first
+start of a build that has it. The exact message is written down in the contract in the repository,
+[`telemetry/README.md`](https://github.com/AltanS/collie/blob/main/telemetry/README.md).
+
+### What did not change
+
+Besides the daily ping, the one unprompted outbound call is the update check: an anonymous HTTPS `GET` to GitHub's public
 tags API (`bridge/update.ts`) that compares your version to the newest tag. It carries no data about
 you or your machine, only the static user-agent `collie-update-check`.
 
-The Whistle model download is the other outbound call. It happens only when a person taps **Download
+The Whistle model download is another outbound call. It happens only when a person taps **Download
 to host** or runs `collie stt whistle`, and it sends no data about you ([The speech engine
 (Whistle)](#the-speech-engine-whistle)).
 
@@ -543,10 +556,6 @@ start and once an hour. That call is yours to turn on, and it sends nothing abou
 If you attach a durable agent by URL, Collie calls that URL on every poll with the durable agent's bearer token in
 the `Authorization` header. That call is yours to turn on too, and nothing is sent until you attach
 one ([Security of a durable agent](durable-agents-security.md#the-token-transport)).
-
-If collection is ever added, explicit opt-in is the ceiling — off by default, asked as a visible
-question, never carried by a flag or a default. Removing that promise would be a breaking change
-([ADR 0034](../.adr/0034-collie-collects-nothing-and-opt-in-is-the-ceiling.md)).
 
 ---
 
