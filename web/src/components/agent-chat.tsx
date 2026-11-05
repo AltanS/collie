@@ -137,6 +137,7 @@ import { useOptionalRootData } from "@/lib/route-data";
 import { hasJournalAdapter, reportsSessionOnFirstPrompt } from "@/lib/journal-agents";
 import { journalReadingOf, paneBody, type JournalReading } from "@/lib/chat-gate";
 import { useActiveTheme } from "@/lib/theme/store";
+import { composerLayout } from "@/lib/composer-layout";
 import { zoomPillShown } from "@/lib/zoom-pill";
 import { paneRowKey, paneScope } from "@/lib/hosts";
 import { isLead, paneScopeKey } from "@/lib/scope";
@@ -3288,6 +3289,8 @@ export function AgentChat({
                   prefs={prefs}
                   // Settings → Hand: which thumb the belt and the reply box are laid out for.
                   hand={handOf(prefs)}
+                  // The reply box's shape. The shipped one for now; a theme will choose (`box` is the chat-box shape).
+                  layout={composerLayout(activeTheme.theme.surface?.composer)}
                   // Settings → Pane navigation → Joystick: the handle band, just above the belt (ADR 0121).
                   aboveBelt={paneNav.handle}
                   todos={agent?.todos}

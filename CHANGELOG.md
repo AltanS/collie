@@ -26,6 +26,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Added
 
 - **Themes can draw the open tab as a folder tab.** A theme file may set the surface word `tabs` to `folder`: the open tab is filled with the page colour, has a line on each side and a 3px top edge, and joins the row of panes under it, whose open pane becomes a tinted cell with a ring. The edge takes the new optional colour `tab-active` (schema version 3, held to 3:1 on the page). The new word `composer` (`field` or `box`) is accepted too, for a boxed composer. Collie New uses all three, in the brand violet. Every other theme draws the tabs as before.
+- **The composer can open like a chat box.** A new layout for the reply box, `box`, rests as one slim row: Attach (a plus) at the left, the field's single line, and the microphone as the main button. Tap it, or type, attach a file or arm Type mode, and it grows upward: the field takes the full width on top and the buttons drop to a row of their own inside the box, so they never narrow the text. With something to send, Send is the main button and the microphone a small ghost beside it; an empty box closes again when it loses focus. The belt above does not move, every send, draft and speech behaviour is unchanged, and the shipped layout stays the default. Nothing chooses `box` yet; the Composer box page of the playground shows it.
 
 ### Fixed
 
