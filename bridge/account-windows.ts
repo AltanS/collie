@@ -42,7 +42,7 @@ import { execFile } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { lstat, open, readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join, posix } from "node:path";
+import { join } from "node:path";
 
 import { asJsonNumber, asJsonObject, asJsonString, parseJsonObject } from "../web/src/lib/json.ts";
 import {
@@ -87,14 +87,15 @@ export const MAX_CUSTOM_CONFIG_DIRS = 16;
 
 /**
  * The macOS Keychain service name Claude Code uses for `configDir`: `"Claude Code-credentials"` for the
- * default `~/.claude`, or suffixed with the first 8 hex chars of `sha256(posix.join(configDir.trim(), "."))`
- * when `CLAUDE_CONFIG_DIR` is set (2.1.318, read in its bundle; `security dump-keychain` shows
- * `"svce"<blob>="Claude Code-credentials-<8 hex chars>"`).
+ * default `~/.claude`, or suffixed with the first 8 hex chars of `sha256(CLAUDE_CONFIG_DIR.normalize("NFC"))`
+ * (2.1.318, read in its bundle; `security dump-keychain` shows `"svce"<blob>="Claude Code-credentials-<8 hex chars>"`).
+ * `configDir` is the RAW value of `CLAUDE_CONFIG_DIR`: Claude Code hashes the string as it stands, with no
+ * trim and no path clean-up, so `/profiles/work/` and `/profiles/work` are two different items. Only a
+ * blank value means the default.
  */
 export function claudeKeychainService(configDir?: string): string {
-  const trimmed = configDir?.trim() ?? "";
-  if (trimmed === "") return CLAUDE_KEYCHAIN_SERVICE;
-  const suffix = createHash("sha256").update(posix.join(trimmed, ".")).digest("hex").slice(0, 8);
+  if (configDir === undefined || configDir.trim() === "") return CLAUDE_KEYCHAIN_SERVICE;
+  const suffix = createHash("sha256").update(configDir.normalize("NFC")).digest("hex").slice(0, 8);
   return `${CLAUDE_KEYCHAIN_SERVICE}-${suffix}`;
 }
 
@@ -394,12 +395,6 @@ export interface CredentialSeams {
   now(): number;
 }
 
-/** `$CLAUDE_CONFIG_DIR/.credentials.json`, else `~/.claude/.credentials.json`. */
-export function claudeCredentialsPath(env: Readonly<Record<string, string | undefined>>, home: string): string {
-  const dir = (env.CLAUDE_CONFIG_DIR ?? "").trim();
-  return join(dir === "" ? join(home, ".claude") : dir, ".credentials.json");
-}
-
 /**
  * The access token in Claude Code's login text, or the reason there is none. Reads
  * `claudeAiOauth.accessToken` and `claudeAiOauth.expiresAt` and nothing else: the refresh token is
@@ -440,9 +435,11 @@ export async function readLoginFile(
  * the Keychain item Claude Code keeps there. A file others may read is refused ({@link readLoginFile}).
  */
 export async function readClaudeLogin(seams: CredentialSeams, configDir?: string): Promise<CredentialRead> {
-  const raw = (configDir ?? seams.env.CLAUDE_CONFIG_DIR ?? "").trim();
+  // `raw` is the value as the session's environment held it: it feeds the Keychain hash untouched, and
+  // only the file path is cleaned up.
+  const raw = configDir ?? seams.env.CLAUDE_CONFIG_DIR ?? "";
   const defaultDir = join(seams.home, ".claude");
-  const normalized = raw === "" ? defaultDir : join(raw, ".");
+  const normalized = raw.trim() === "" ? defaultDir : join(raw, ".");
   const explicitDir = normalized === defaultDir ? undefined : raw;
   const file = await readLoginFile(seams, join(normalized, ".credentials.json"));
   if (file.ok) return claudeTokenFrom(file.text, seams.now());
@@ -642,14 +639,17 @@ export interface LocalAccountSource {
 export type AccountSource = HttpAccountSource | LocalAccountSource;
 
 export function claudeAccountSource(seams: CredentialSeams, configDir?: string): AccountSource {
-  const raw = (configDir ?? "").trim();
-  const resolvedDir = raw === "" ? join(seams.home, ".claude") : join(raw, ".");
+  // `configDir` stays raw (see {@link claudeKeychainService}); `resolvedDir` is the cleaned path the
+  // slot is keyed on. A session on the default dir always reads `<home>/.claude`, whatever the bridge's env says.
+  const raw = configDir ?? "";
+  const resolvedDir = raw.trim() === "" ? join(seams.home, ".claude") : join(raw, ".");
+  const readDir = raw.trim() === "" ? resolvedDir : raw;
   return {
     kind: "http",
     harness: "claude",
     url: CLAUDE_USAGE_URL,
     configDir: resolvedDir,
-    login: () => readClaudeLogin(seams, resolvedDir),
+    login: () => readClaudeLogin(seams, readDir),
     headers: (token) => ({
       Authorization: `Bearer ${token}`,
       "anthropic-beta": CLAUDE_OAUTH_BETA,
@@ -911,11 +911,12 @@ export class AccountWindows {
     const normalized = join(configDir, ".");
     const base = this.sources.get(harness);
     if (base?.kind === "http" && base.configDir !== undefined && base.configDir === normalized) return harness;
-    return this.ensureCustomKey(harness, normalized, factory);
+    return this.ensureCustomKey(harness, normalized, configDir, factory);
   }
 
-  private ensureCustomKey(harness: string, configDir: string, factory: (dir: string) => AccountSource): string | undefined {
-    const key = `${harness}\u0000${configDir}`;
+  /** The slot is keyed on the cleaned path; its source is built from `rawDir`, the value the session's env held. */
+  private ensureCustomKey(harness: string, normalized: string, rawDir: string, factory: (dir: string) => AccountSource): string | undefined {
+    const key = `${harness}\u0000${normalized}`;
     if (this.customKeys.has(key)) {
       this.customKeys.delete(key);
       this.customKeys.add(key);
@@ -937,7 +938,7 @@ export class AccountWindows {
       this.sources.delete(evict);
     }
     this.customKeys.add(key);
-    this.sources.set(key, factory(configDir));
+    this.sources.set(key, factory(rawDir));
     this.states.set(key, { reading: undefined, lastAttempt: -Infinity, backoffUntil: 0, limitedInARow: 0, inFlight: null, lastNote: null });
     if (this.present(harness)) this.ask(key, now);
     return key;
@@ -1111,7 +1112,7 @@ export function accountWindowsDoctorLine(
   const named = (name: string, tilde: string, path: string): string => ((env[name] ?? "").trim() === "" ? tilde : path);
   const keychain = platform === "darwin" ? " or the Keychain" : "";
   const where = {
-    claude: `reads ${named("CLAUDE_CONFIG_DIR", "~/.claude/.credentials.json", claudeCredentialsPath(env, home))}${keychain}, asks ${CLAUDE_USAGE_HOST}`,
+    claude: `reads ~/.claude/.credentials.json${keychain}${(env.CLAUDE_CONFIG_DIR ?? "").trim() === "" ? "" : ", plus the login under CLAUDE_CONFIG_DIR for each session that sets it"}, asks ${CLAUDE_USAGE_HOST}`,
     codex: `reads ${named("CODEX_HOME", "~/.codex/sessions", codexSessionsDir(env, home))}`,
     opencode: facts.opencodeGoKey
       ? `reads ${named("XDG_DATA_HOME", "~/.local/share/opencode/auth.json", opencodeAuthPath(env, home))}, asks ${OPENCODE_USAGE_HOST}`

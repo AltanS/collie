@@ -87,13 +87,16 @@ describe("the configDir note", () => {
     expect(customClaudeConfigDir({ CLAUDE_CONFIG_DIR: "/profiles/work\u0000" }, home)).toBeUndefined();
     expect(customClaudeConfigDir({ CLAUDE_CONFIG_DIR: "/profiles/work\n" }, home)).toBeUndefined();
     expect(customClaudeConfigDir({ CLAUDE_CONFIG_DIR: `/${"a".repeat(4096)}` }, home)).toBeUndefined();
-    expect(customClaudeConfigDir({ CLAUDE_CONFIG_DIR: "  /profiles/work/  " }, home)).toBe(join("/profiles", "work"));
+    // The value comes back as set: Claude Code's Keychain item name hashes the raw string.
+    expect(customClaudeConfigDir({ CLAUDE_CONFIG_DIR: "/profiles/work/" }, home)).toBe("/profiles/work/");
+    expect(customClaudeConfigDir({ CLAUDE_CONFIG_DIR: "/profiles//work" }, home)).toBe("/profiles//work");
+    expect(customClaudeConfigDir({ CLAUDE_CONFIG_DIR: "  /profiles/work/  " }, home)).toBeUndefined();
   });
 
   it("round-trips through parseUsageRecord and never leaks into usageAt wire output", () => {
-    const dir = join("/profiles", "work");
+    const dir = "/profiles/work";
     const parsed = parseUsageRecord(record({ context: 12, configDir: "/profiles/work/" }));
-    expect(parsed).toEqual({ schemaVersion: 1, harness: "claude", at: NOW, context: 12, configDir: dir });
+    expect(parsed).toEqual({ schemaVersion: 1, harness: "claude", at: NOW, context: 12, configDir: "/profiles/work/" });
     expect(usageAt(parsed!, NOW)).toEqual({ context: 12 });
     expect(usageAt(parseUsageRecord(record({ configDir: dir }))!, NOW)).toBeUndefined();
     for (const bad of ["", "relative/path", "/bad\u0000dir", "/bad\x1fdir", "/bad\x7fdir", `/${"a".repeat(4096)}`, 42, null]) {

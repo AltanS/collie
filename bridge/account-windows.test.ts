@@ -11,7 +11,6 @@ import {
   ASK_EVERY_MS,
   BACKOFF,
   claudeAccountSource,
-  claudeCredentialsPath,
   claudeKeychainService,
   CLAUDE_KEYCHAIN_SERVICE,
   claudeTokenFrom,
@@ -177,7 +176,6 @@ describe("the Claude login", () => {
 
   it("follows CLAUDE_CONFIG_DIR", async () => {
     const profile = join("/profiles", "work", ".credentials.json");
-    expect(claudeCredentialsPath({ CLAUDE_CONFIG_DIR: "/profiles/work" }, HOME)).toBe(profile);
     const read = await readClaudeLogin(seams({ env: { CLAUDE_CONFIG_DIR: "/profiles/work" }, files: { [profile]: { mode: 0o600, text: login() } } }));
     expect(read.ok).toBe(true);
   });
@@ -234,8 +232,19 @@ describe("the Claude login", () => {
     const expectedHash = "2ea9e238";
     expect(claudeKeychainService()).toBe(CLAUDE_KEYCHAIN_SERVICE);
     expect(claudeKeychainService("   ")).toBe(CLAUDE_KEYCHAIN_SERVICE);
-    expect(claudeKeychainService(` ${customDir} `)).toBe(`${CLAUDE_KEYCHAIN_SERVICE}-${expectedHash}`);
-    expect(claudeKeychainService(`${customDir}/`)).toBe(`${CLAUDE_KEYCHAIN_SERVICE}-${expectedHash}`);
+    expect(claudeKeychainService(customDir)).toBe(`${CLAUDE_KEYCHAIN_SERVICE}-${expectedHash}`);
+    // Claude Code hashes the string as set, with no trim and no path clean-up: a trailing slash is another item
+    // (sha256("/profiles/work/").slice(0, 8) === "75564947", sha256("/profiles/café" as NFC UTF-8) === "4bee4e79").
+    const slashed = claudeKeychainService(`${customDir}/`);
+    expect(slashed).toBe(`${CLAUDE_KEYCHAIN_SERVICE}-75564947`);
+    expect(slashed).not.toBe(claudeKeychainService(customDir));
+    expect(claudeKeychainService(` ${customDir} `)).not.toBe(claudeKeychainService(customDir));
+    // NFC first: an NFD "é" (e + U+0301) names the same item as its NFC form.
+    const nfc = "/profiles/caf\u00e9";
+    const nfd = "/profiles/cafe\u0301";
+    expect(nfd).not.toBe(nfc);
+    expect(claudeKeychainService(nfd)).toBe(claudeKeychainService(nfc));
+    expect(claudeKeychainService(nfc)).toBe(`${CLAUDE_KEYCHAIN_SERVICE}-4bee4e79`);
 
     const services: Array<string | undefined> = [];
     const keychain = async (svc?: string): Promise<string | null> => {
@@ -246,7 +255,7 @@ describe("the Claude login", () => {
       ok: true,
       token: "sk-ant-oat01-custom",
     });
-    expect(await readClaudeLogin(seams({ platform: "darwin", env: { CLAUDE_CONFIG_DIR: `${customDir}/` }, keychain }))).toEqual({
+    expect(await readClaudeLogin(seams({ platform: "darwin", env: { CLAUDE_CONFIG_DIR: customDir }, keychain }))).toEqual({
       ok: true,
       token: "sk-ant-oat01-custom",
     });
@@ -259,6 +268,18 @@ describe("the Claude login", () => {
       `${CLAUDE_KEYCHAIN_SERVICE}-${expectedHash}`,
       CLAUDE_KEYCHAIN_SERVICE,
     ]);
+  });
+
+  it("hands a session's raw config dir to the Keychain name, whatever its spelling", async () => {
+    const services: Array<string | undefined> = [];
+    const keychain = async (svc?: string): Promise<string | null> => {
+      services.push(svc);
+      return null;
+    };
+    const source = claudeAccountSource(seams({ platform: "darwin", keychain }), "/profiles/work/");
+    if (source.kind !== "http") throw new Error("claude is an http source");
+    await source.login();
+    expect(services).toEqual([`${CLAUDE_KEYCHAIN_SERVICE}-75564947`]);
   });
 
   it("builds the one ask with the bearer header and the beta header", () => {
@@ -758,7 +779,7 @@ describe("the doctor line", () => {
 
   it("follows CLAUDE_CONFIG_DIR and CODEX_HOME, and names the Keychain on a Mac", () => {
     expect(line(undefined, { CLAUDE_CONFIG_DIR: "/profiles/work", CODEX_HOME: "/c" })).toBe(
-      `claude: on (reads ${join("/profiles/work", ".credentials.json")}, asks api.anthropic.com); codex: on (reads ${join("/c", "sessions")}); ${UNVERIFIED_OFF}`,
+      `claude: on (reads ~/.claude/.credentials.json, plus the login under CLAUDE_CONFIG_DIR for each session that sets it, asks api.anthropic.com); codex: on (reads ${join("/c", "sessions")}); ${UNVERIFIED_OFF}`,
     );
     expect(line(undefined, {}, "darwin")).toContain("claude: on (reads ~/.claude/.credentials.json or the Keychain, asks api.anthropic.com)");
   });

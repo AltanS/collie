@@ -132,8 +132,9 @@ function hasControlChar(text: string): boolean {
 }
 
 /**
- * The resolved `CLAUDE_CONFIG_DIR` when it names a valid non-default absolute directory, or undefined
- * when unset, relative, malformed, or pointing at the default `~/.claude`.
+ * `CLAUDE_CONFIG_DIR` exactly as set (not trimmed, not cleaned: Claude Code's Keychain item name hashes
+ * the raw string) when it names a valid non-default absolute directory, or undefined when unset, blank,
+ * relative, malformed, or pointing at the default `~/.claude`.
  */
 export function customClaudeConfigDir(
   env: Readonly<Record<string, string | undefined>>,
@@ -141,10 +142,8 @@ export function customClaudeConfigDir(
 ): string | undefined {
   const rawInput = env.CLAUDE_CONFIG_DIR ?? "";
   if (hasControlChar(rawInput)) return undefined;
-  const raw = rawInput.trim();
-  if (raw === "" || raw.length > 4096 || !isAbsolute(raw)) return undefined;
-  const normalized = join(raw, ".");
-  return normalized === join(home, ".claude") ? undefined : normalized;
+  if (rawInput.trim() === "" || rawInput.length > 4096 || !isAbsolute(rawInput)) return undefined;
+  return join(rawInput, ".") === join(home, ".claude") ? undefined : rawInput;
 }
 
 /** `${stateDir}/usage`. */
@@ -202,7 +201,7 @@ export function parseUsageRecord(text: string): UsageRecord | null {
   if (size !== undefined && Number.isInteger(size) && size > 0 && size <= WINDOW_MAX) record.window = size;
   const dir = asJsonString(root.configDir);
   if (dir !== undefined && dir.length <= 4096 && !hasControlChar(dir) && isAbsolute(dir)) {
-    record.configDir = join(dir, ".");
+    record.configDir = dir;
   }
   const rows = Array.isArray(root.limits) ? root.limits.map(asJsonObject) : [];
   const limits: UsageLimit[] = [];
