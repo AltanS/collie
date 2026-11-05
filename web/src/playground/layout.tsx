@@ -9,6 +9,7 @@ import { createPortal } from "react-dom";
 import { CONNECTION_LOST_MS, TROUBLE_MS } from "@/hooks/use-connection-lost";
 import { __resetConnectionHealth, markLive } from "@/lib/connection-health";
 import { cn } from "@/lib/utils";
+import { useNotes } from "./prefs";
 
 // ── The shared connection clock ──────────────────────────────────────────────
 //
@@ -61,8 +62,8 @@ export function useConnectionClock(mode: ClockMode): void {
 export interface SectionDef {
   readonly id: string;
   readonly title: string;
-  /** One line: what this section is for. Printed under the heading. */
-  readonly intent: string;
+  /** One line: what this section is for. Printed under the heading, only while Notes are on. */
+  readonly intent?: string;
 }
 
 /** A group's title as it sits in the URL: `#dashboard:the-herd`. */
@@ -91,6 +92,7 @@ export const SubPageContext = createContext<SubPageRoute | null>(null);
  */
 export function Section({ def, children }: { def: SectionDef; children: ReactNode }) {
   const route = useContext(SubPageContext);
+  const notes = useNotes();
   const items = Children.toArray(children);
   const groups = items.flatMap((el) =>
     isValidElement<{ title: string }>(el) && el.type === Group ? [el.props.title] : [],
@@ -104,7 +106,9 @@ export function Section({ def, children }: { def: SectionDef; children: ReactNod
   return (
     <section id={def.id} className="scroll-mt-4">
       <h2 className="text-base font-semibold tracking-tight">{def.title}</h2>
-      <p className="mt-1 max-w-3xl text-xs leading-relaxed text-muted-foreground">{def.intent}</p>
+      {notes && def.intent !== undefined && def.intent !== "" && (
+        <p className="mt-1 max-w-3xl text-xs leading-relaxed text-muted-foreground">{def.intent}</p>
+      )}
       {route !== null && groups.length >= 2 && (
         <nav aria-label={`${def.title} pages`} className="mt-3 flex flex-wrap gap-1">
           {[null, ...groups].map((g) => {
@@ -157,8 +161,9 @@ export function Group({ title, children }: { title: string; children: ReactNode 
 }
 
 /**
- * One labelled state. `reach` is the line that keeps this page honest — it says how an operator
- * arrives at this state on a real collie, so a card is never just a pretty picture of a component.
+ * One labelled state. The label is a number and at most five words. `reach` (how an operator arrives
+ * at this state on a real collie) and `note` (what is approximated) are optional and show only while
+ * the page's Notes switch is on.
  */
 export function Card({
   state,
@@ -177,15 +182,16 @@ export function Card({
    */
   state: string;
   label: string;
-  /** How you reach this state for real. Rendered after "reach it for real:". */
-  reach: string;
-  /** An honesty note — what is approximated here, or which control drives it. */
+  /** How you reach this state for real. Hidden unless Notes are on. */
+  reach?: string;
+  /** An honesty note — what is approximated here, or which control drives it. Hidden unless Notes are on. */
   note?: string;
   /** Two columns for anything route-sized. Collapses to one under the phone-width toggle. */
   span?: 1 | 2;
   children: ReactNode;
 }) {
   const [slot, setSlot] = useState<HTMLElement | null>(null);
+  const notes = useNotes();
   // Three rows of the group's grid, shared with every card beside it (`.pg-card` in playground.css):
   // the label block, the controls, then the component. Each row is as tall as the tallest card's in
   // that grid row, so a frame starts at the same height as its neighbours' whatever the length of the
@@ -195,12 +201,15 @@ export function Card({
     <div data-state={state} className={cn("pg-card min-w-0", span === 2 && "pg-span-2")}>
       <div style={{ gridRow: 1 }}>
         <p className="font-mono text-[11px] uppercase tracking-wide text-foreground">{label}</p>
-        <p className="mb-2 mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
-          <span className="text-status-idle">reach it for real:</span> {reach}
-        </p>
-        {note !== undefined && (
-          <p className="mb-2 text-[11px] leading-relaxed text-status-working">{note}</p>
+        {notes && reach !== undefined && (
+          <p className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
+            <span className="text-status-idle">reach it for real:</span> {reach}
+          </p>
         )}
+        {notes && note !== undefined && (
+          <p className="mt-0.5 text-[11px] leading-relaxed text-status-working">{note}</p>
+        )}
+        <div className="mb-2" />
       </div>
       <div ref={setSlot} className="flex min-w-0 flex-col gap-2 pb-2 empty:hidden" style={{ gridRow: 2 }} />
       <CardControlsSlot.Provider value={slot}>

@@ -1,6 +1,6 @@
 // Brand section of the states playground: the app's own voice — the UI typeface under a live
 // switcher, then the three marks it wears. Split out of app.tsx; see that file's header comment for
-// the whole page's rules (real components, real props, the "reach it for real" line on every card).
+// the whole page's rules (real components, real props, short card labels).
 
 import { AlphaBar } from "@/components/alpha-bar";
 import { AppHeaderHost, RouteHeader, SettingsGear } from "@/components/app-header";

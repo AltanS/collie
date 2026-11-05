@@ -6,9 +6,8 @@
 // exported mutators. Nothing here is a copy of a component, and no component was given a prop it
 // does not already have. Where that was not possible the card says so in its own words.
 //
-// THE OTHER RULE: every card carries a "reach it for real" line. A picture of a state is only useful
-// if you can also get to it, and writing that sentence is what keeps a card from drifting into a
-// state the app can no longer produce.
+// THE OTHER RULE: a card's label is a number and at most five words. Explanation goes in the report
+// to Altan, not on the page. `reach` and `note` are optional and hidden by default (the Notes switch).
 //
 // THE PAGE IS SPLIT INTO PAGES, and this file owns only the chrome and the registry. Each section is
 // its own page with its own address (`#changes`), and its code is loaded only when it is opened: the
@@ -31,8 +30,10 @@ import {
   prefStyle,
   setAccent,
   setFace,
+  setNotes,
   useAccent,
   useFace,
+  useNotes,
   type FaceId,
 } from "./prefs";
 
@@ -361,6 +362,7 @@ function Controls({
   const face = useFace();
   const accent = useAccent();
   const [reduced, setReduced] = useState(false);
+  const notes = useNotes();
 
   useEffect(() => {
     document.documentElement.classList.toggle("pg-reduce-motion", reduced);
@@ -379,6 +381,14 @@ function Controls({
           value={phoneWidth ? "on" : "off"}
           options={ON_OFF}
           onChange={(next) => onPhoneWidth(next === "on")}
+        />
+      </Field>
+      <Field label="Notes" stacked={stacked}>
+        <Segmented
+          name="Notes"
+          value={notes ? "on" : "off"}
+          options={ON_OFF}
+          onChange={(next) => setNotes(next === "on")}
         />
       </Field>
       <Field label="Reduce motion" stacked={stacked}>
