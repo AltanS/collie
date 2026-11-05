@@ -72,6 +72,12 @@ function runsOf(content: string): BoxTextRun[] {
 // meets the box. The row belongs to the turn, not to a dialog, so the card stays keyless.
 const TURN_SPINNER_ROW = /^[·*✢✶✻✽] [^\s…]+…(?: · tool use)?(?: ?\(.*)?$/;
 
+// When the credentials expire mid-session, the turn's API call fails first, and Claude Code (2.1.318)
+// draws its retry row in the spinner's place while the refresh runs. Its lead is "API error" on the
+// first attempts and the error's own text or "Usage limit reached" after, so the row is matched by
+// its countdown and attempt count.
+const API_RETRY_ROW = /^✻ .+ · Retrying in \d+[dhms](?: \d+[dhms])*(?: \(.*\))? · attempt \d+\/\d+$/;
+
 function skipBlankRows(texts: readonly string[], from: number): number {
   let row = from;
   while (row >= 0 && isBlank(texts[row]!)) row--;
@@ -80,12 +86,13 @@ function skipBlankRows(texts: readonly string[], from: number): number {
 
 /**
  * The matched rounded-corner box whose bottom edge is the last non-blank row above `before`, or null.
- * One turn-spinner row may stand between the box and `before`.
+ * One turn-spinner or API retry row may stand between the box and `before`.
  */
 function boxAbove(texts: readonly string[], before: number): { top: number; bottom: number; width: number } | null {
   let bottom = skipBlankRows(texts, before - 1);
   if (bottom < 0) return null;
-  if (TURN_SPINNER_ROW.test(texts[bottom]!.trimEnd())) bottom = skipBlankRows(texts, bottom - 1);
+  const gapRow = texts[bottom]!.trimEnd();
+  if (TURN_SPINNER_ROW.test(gapRow) || API_RETRY_ROW.test(gapRow)) bottom = skipBlankRows(texts, bottom - 1);
   if (bottom < 0) return null;
   const bottomEdge = texts[bottom]!.trimEnd();
   if (!bottomEdge.startsWith("╰") || !bottomEdge.endsWith("╯")) return null;
