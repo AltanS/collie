@@ -123,6 +123,39 @@ test("a device that stored the retired collie-new paints the default on the firs
   expect(seen.band).toContain(".003 80");
 });
 
+// THE DEFAULT FACE IS ATKINSON (2026-11-06), on the first frame, with the bundle blocked. Nothing stored
+// is a fresh phone; `{ theme: "collie" }` is the same device; a stored `aldrich` is a deliberate pick.
+async function firstFrameFace(page: import("@playwright/test").Page, stored: string | null) {
+  if (stored !== null) await page.addInitScript((blob) => localStorage.setItem("collie:design:v1", blob), stored);
+  await page.route("**/assets/*.js", (route) => route.abort());
+  await page.goto("/");
+  return page.evaluate(() => ({
+    classes: document.documentElement.className,
+    stack: getComputedStyle(document.documentElement).getPropertyValue("--font-sans").trim(),
+    body: getComputedStyle(document.body).fontFamily,
+  }));
+}
+
+test("a fresh phone paints Atkinson on the first frame", async ({ page }) => {
+  const seen = await firstFrameFace(page, null);
+  expect(seen.classes).not.toContain("font-");
+  expect(seen.stack).toMatch(/^"Atkinson Hyperlegible Next"/);
+  expect(seen.body).toMatch(/^"?Atkinson Hyperlegible Next/);
+});
+
+test("a device with only theme collie stored paints Atkinson on the first frame", async ({ page }) => {
+  const seen = await firstFrameFace(page, JSON.stringify({ theme: "collie" }));
+  expect(seen.classes).not.toContain("font-");
+  expect(seen.stack).toMatch(/^"Atkinson Hyperlegible Next"/);
+});
+
+test("a device that stored aldrich keeps Aldrich on the first frame", async ({ page }) => {
+  const seen = await firstFrameFace(page, JSON.stringify({ font: "aldrich" }));
+  expect(seen.classes).toContain("font-aldrich");
+  expect(seen.stack).toMatch(/^"Aldrich"/);
+  expect(seen.body).toMatch(/^"?Aldrich/);
+});
+
 test("a stored theme with a hostile value paints nothing from that token", async ({ page }) => {
   const hostile = { ...theme, dark: { ...theme.dark, background: "url(https://x.test/a.png)", foreground: "#abcdef" } };
   await page.addInitScript(

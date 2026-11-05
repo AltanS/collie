@@ -18,7 +18,7 @@
 // would silently stop firing with nothing failing a test.
 //
 // IT NOW DOES A SECOND, IDENTICAL THING: the UI typeface (ADR 0033). Same shape, same reason — a
-// reader who chose Aldrich must not watch the app paint in Space Grotesk and then change voice. The
+// reader who chose Aldrich must not watch the app paint in Atkinson and then change voice. The
 // two are kept in one file because they are one job (get the root classes right before paint) and
 // because a second blocking <script> in <head> costs a round trip on the phone this app is for.
 //
@@ -103,14 +103,15 @@
     if (!raw) return;
     var d = JSON.parse(raw);
     if (!d || typeof d !== "object") return;
-    // The closed list, and the whole of it. `aldrich` is the default and wears NO class — no class
-    // means the --font-sans already in index.css, which is the stack index.html preloads. Anything
-    // else, including an `op:` value, falls through and leaves the element bare.
+    // The closed list, and the whole of it. `atkinson` is the default (since 2026-11-06) and wears
+    // NO class — no class means the --font-sans already in index.css, which is the stack index.html
+    // preloads. A missing or unknown `font` and an `op:` value fall through and leave the element
+    // bare. `aldrich` is a choice now and wears `font-aldrich`.
     if (d.font === "system") root.classList.add("font-system");
     else if (d.font === "grotesk") root.classList.add("font-grotesk");
     else if (d.font === "plex") root.classList.add("font-plex");
     else if (d.font === "geist") root.classList.add("font-geist");
-    else if (d.font === "atkinson") root.classList.add("font-atkinson");
+    else if (d.font === "aldrich") root.classList.add("font-aldrich");
     applyColourTheme(d.theme);
   } catch {
     // A truncated write, a hand-edited blob, or private mode. The default face is the right answer

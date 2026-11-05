@@ -90,7 +90,8 @@ test("the Collie look fetches only its own face, and draws every default", async
   onlyPhone(testInfo);
   const context = await browser.newContext({ baseURL: testInfo.project.use.baseURL, serviceWorkers: "block" });
   const { page, fonts } = await openWith(context, undefined, "/");
-  expect(fonts.filter((f) => !f.startsWith("ui-aldrich") && !f.startsWith("nerd"))).toEqual([]);
+  // The UI face is Atkinson since 2026-11-06 and the display face (titles) is Aldrich: two files, no more.
+  expect(fonts.filter((f) => !f.startsWith("ui-atkinson") && !f.startsWith("ui-aldrich") && !f.startsWith("nerd"))).toEqual([]);
   const seen = await page.evaluate(() => {
     const view = window;
     const style = (el: Element | null | undefined) => (el === null || el === undefined ? undefined : view.getComputedStyle(el));
@@ -127,7 +128,8 @@ test("a theme naming all seven paints each one, and its display face costs exact
   const context = await browser.newContext({ baseURL: testInfo.project.use.baseURL, serviceWorkers: "block" });
   const { page, fonts } = await openWith(context, ALL, "/");
   expect(fonts.filter((f) => f.startsWith("ui-geist"))).toHaveLength(1);
-  expect(fonts.filter((f) => !f.startsWith("ui-aldrich") && !f.startsWith("nerd") && !f.startsWith("ui-geist"))).toEqual([]);
+  // ui-atkinson is index.html's preload of the default face, fetched whatever the device chose.
+  expect(fonts.filter((f) => !f.startsWith("ui-atkinson") && !f.startsWith("ui-aldrich") && !f.startsWith("nerd") && !f.startsWith("ui-geist"))).toEqual([]);
 
   const secondary = await resolved(page, "var(--secondary)");
   const seen = await page.evaluate(() => {

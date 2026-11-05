@@ -528,7 +528,7 @@ describe("every default word of spec 17 is the stylesheet's CSS", () => {
       expect(value).toBe(`var(--face-${face})`);
       const stack = root.get(`--face-${face}`);
       const own =
-        face === "aldrich"
+        face === "atkinson"
           ? inline.get("--font-sans")
           : flat(/--font-sans:\s*([^;]+);/.exec(bare.slice(bare.indexOf(`:root.font-${face} {`)))?.[1] ?? "");
       expect(stack, face).toBe(own);

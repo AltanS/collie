@@ -620,7 +620,7 @@ lint guard, the crew-wire guard or the `flake.lock` guard.
   from `virtual:pwa-register` in `main.tsx` (bundled = CSP-safe). Install/SW need a **secure
   context** — over plain HTTP they no-op silently (Chrome insecure-origin flag, or HTTPS, to test).
 - **The app's UI typeface is a per-device SETTING, not the maker's choice** — System / Space Grotesk /
-  Aldrich (default), plus whatever the operator declared, applied pre-paint as a root class by
+  Aldrich / Atkinson Hyperlegible Next (default since 2026-11-06), plus whatever the operator declared, applied pre-paint as a root class by
   `web/public/theme-init.js` and stored in `collie:design:v1` (`web/src/lib/design.ts`). CSS owns
   every stack; JavaScript only swaps a class name. What survives the reversal is the other half of
   the rule: **the chosen face never dresses agent-authored text** — `font-mono` and `font-content`

@@ -31,7 +31,7 @@ const STORAGE_KEY = "collie:design:v1";
 export { SHIPPED_FONTS, isShippedFont, type ShippedFont };
 
 /** The face a device gets before it says otherwise. */
-export const DEFAULT_FONT: ShippedFont = "aldrich";
+export const DEFAULT_FONT: ShippedFont = "atkinson";
 
 export interface DesignPrefs {
   /** A {@link ShippedFont}, or `op:<basename>`. Never validated by its type — always by a predicate. */
@@ -101,12 +101,12 @@ export function fontClass(font: string): string {
   if (font === "grotesk") return "font-grotesk";
   if (font === "plex") return "font-plex";
   if (font === "geist") return "font-geist";
-  if (font === "atkinson") return "font-atkinson";
+  if (font === "aldrich") return "font-aldrich";
   if (font.startsWith(OPERATOR_FONT_PREFIX)) return "font-operator";
   return "";
 }
 
-const FONT_CLASSES = ["font-system", "font-grotesk", "font-plex", "font-geist", "font-atkinson", "font-operator"] as const;
+const FONT_CLASSES = ["font-system", "font-grotesk", "font-plex", "font-geist", "font-aldrich", "font-operator"] as const;
 
 function load(): DesignPrefs {
   try {

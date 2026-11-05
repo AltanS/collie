@@ -14,7 +14,7 @@
  * concatenated into `classList.add()`, and a closed list is the answer that cannot be got wrong,
  * where a sanitiser is one someone has to keep right.
  *
- * `aldrich` is the DEFAULT and adds no class at all: no class means the `--font-sans` already in
+ * `atkinson` is the DEFAULT (Atkinson Hyperlegible Next, since 2026-11-06) and adds no class at all: no class means the `--font-sans` already in
  * index.css's @theme block, which is the stack index.html preloads. A device that never opens the
  * setting runs no JavaScript before its first paint.
  */
