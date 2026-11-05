@@ -71,8 +71,10 @@ function escOnlyFooter(footer: string): MenuAction | null {
   return { label: capitaliseMenuLabel(hint.verb), keys: ["Escape"], cancel: true };
 }
 
-/** A row of a numbered list: the optional marker, the number, the text. */
-const NUMBERED_ROW = new RegExp(`^\\s*(${POINTER}\\s*)?(\\d+)\\.\\s+(\\S.*)$`, "u");
+/** A row of a numbered list: the optional marker, the number, the text. A picker that scrolls prints
+ *  `↑` or `↓` where the marker would sit on the row at the edge of its window (`↓ 10. Opus 4.7`); that
+ *  row is an option, and the arrow is no marker and no part of its label. */
+const NUMBERED_ROW = new RegExp(`^\\s*(?:(${POINTER}\\s*)|[↑↓]\\s*)?(\\d+)\\.\\s+(\\S.*)$`, "u");
 
 /** Where a row's name ends and its description column begins. The mirror keeps the description. */
 const ROW_COLUMN = /\s{2,}|\s·\s/u;

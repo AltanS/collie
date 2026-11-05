@@ -194,11 +194,37 @@ describe("the guard's comparators with rows on the model", () => {
   });
 });
 
+describe("a scrolled picker's edge rows", () => {
+  it("@req:MENU-11 @oracle:requirement the `↓ 10.` row of the 2.1.291 picker is the tenth option, and the marker row stays current", () => {
+    const rows = detectMenu(load("claude-lab--menu-model-picker-v2291--w82.txt"))?.rows;
+    expect(rows?.labels).toHaveLength(10);
+    expect(rows?.labels[9]).toBe("Opus 4.7");
+    expect(rows?.labels[3]).toBe("Sonnet 5.5 ✔");
+    expect(rows?.current).toBe(3);
+  });
+
+  it("@req:MENU-11 @oracle:requirement the 2.1.301 picker at 119 columns ends on `↓ 10. Opus 4.8`", () => {
+    const rows = detectMenu(load("claude-lab--menu-model-picker-v2301--w119.txt"))?.rows;
+    expect(rows?.labels).toHaveLength(10);
+    expect(rows?.labels[9]).toBe("Opus 4.8");
+    expect(rows?.current).toBe(0);
+  });
+
+  it("@req:MENU-11 @oracle:requirement a `↑` row at the top of the window is the first option, no marker and no label text", () => {
+    const rows = dialog("↑ 1. Default", "  2. Opus", "❯ 3. Sonnet", "  4. Haiku", "↓ 5. Fable").rows;
+    expect(rows).toEqual({ labels: ["Default", "Opus", "Sonnet", "Haiku", "Fable"], current: 2 });
+  });
+
+  it("@req:MENU-11 @oracle:requirement an arrow row does not count as the marker: with none on a numbered row, no rows", () => {
+    expect(dialog("↑ 1. Default", "  2. Opus", "  3. Sonnet").rows).toBeUndefined();
+  });
+});
+
 describe("the cards this change must leave alone", () => {
   it.each([
     ["claude--menu-model-picker.txt", 5, 0],
     ["claude--menu-model-picker-moved.txt", 5, 2],
-    ["claude-lab--menu-model-picker-v2301--w119.txt", 9, 0],
+    ["claude-lab--menu-model-picker-v2301--w119.txt", 10, 0],
     ["claude--v21314-core-menu-model--w120.txt", 5, 4],
   ] as const)("@req:MENU-9 @oracle:requirement %s: reads %i rows, current %i", (name, count, current) => {
     const rows = detectMenu(load(name))?.rows;
