@@ -23,6 +23,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+### Added
+
+- **A printed image opens in a sheet on the pane.** When a tool prints the path of a picture in the workspace, a tap shows it in a sheet over the Chat instead of leaving the pane. Thanks @GGGODLIN (#692).
+
 ### Fixed
 
 - **pi and Oh My Pi transcripts are found when the home directory is reached through a symlink.** On hosts such as Bazzite or Kinoite (`/home` links to `/var/home`), Collie now matches the pane's folder by its real path as well, so Chat and History open. Two sessions in one folder are still refused. Thanks @wipash (#683).

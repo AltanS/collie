@@ -11,7 +11,15 @@ import { parseJsonObject } from "@/lib/json";
 import { paneLinkHandlers, PaneFileLinks } from "@/test/file-links";
 import { server } from "@/test/setup";
 
-import { FILE_EXIST_ABSENT_TTL_MS, FILE_EXIST_DEBOUNCE_MS, usePaneFileLinks } from "./file-links";
+import {
+  FILE_EXIST_ABSENT_TTL_MS,
+  FILE_EXIST_DEBOUNCE_MS,
+  FileLinksProvider,
+  useFileLinks,
+  usePaneFileLinks,
+  type FileLinkOpener,
+  type FileLinkTarget,
+} from "./file-links";
 import { MarkdownText } from "./markdown-text";
 
 // The pane screen's opener (ADR 0088): the root from the snapshot, home from the launchers answer,
@@ -348,5 +356,71 @@ describe("chat prose with the existence check", () => {
     fireEvent.click(container.querySelector("a")!);
     await waitFor(() => expect(screen.getByText(/too large to show/i)).toBeInTheDocument());
     expect(screen.queryByText(/0 B/)).toBeNull();
+  });
+});
+
+// The sheet of a printed picture belongs to the provider: the opener it hands down reaches the sheet's
+// state through the context, and the sheet closes for good.
+describe("the image sheet of a file links provider", () => {
+  const imageOpener: FileLinkOpener = ({ path }) => ({
+    href: `/files?path=${path}`,
+    onOpen: () => {},
+    image: { paneId: "w1:p1", scope: {}, rel: path },
+  });
+  const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  const servePng = () =>
+    server.use(
+      http.get(/\/api\/pane\/[^/]+\/files\/image$/, () => new HttpResponse(pngBytes, { status: 200, headers: { "content-type": "image/png" } })),
+    );
+
+  /** Hands the opener the context gave this render to the test, so a later render can use it late. */
+  interface Grabbed {
+    current: FileLinkOpener | null;
+  }
+  function Grab({ into }: { into: Grabbed }) {
+    into.current = useFileLinks();
+    return null;
+  }
+
+  it("opens the sheet from a target taken in an earlier render, after the opener was replaced", async () => {
+    servePng();
+    const grabbed: Grabbed = { current: null };
+    const ui = (value: FileLinkOpener | null) => (
+      <FileLinksProvider value={value}>
+        <Grab into={grabbed} />
+      </FileLinksProvider>
+    );
+    const { rerender } = render(ui(imageOpener));
+    const stale: FileLinkTarget = grabbed.current!({ path: "shots/home.png" })!;
+    rerender(ui(({ path }) => imageOpener({ path })));
+    act(() => stale.onOpen());
+    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("img", { name: "home.png" })).toBeInTheDocument());
+  });
+
+  it("stays closed after a close, a re-render, and the opener going away and coming back", async () => {
+    servePng();
+    const grabbed: Grabbed = { current: null };
+    const ui = (value: FileLinkOpener | null) => (
+      <FileLinksProvider value={value}>
+        <Grab into={grabbed} />
+      </FileLinksProvider>
+    );
+    const { rerender } = render(ui(imageOpener));
+    act(() => grabbed.current!({ path: "shots/home.png" })!.onOpen());
+    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    rerender(ui(imageOpener));
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    // Open again, lose the opener while the sheet is up, and bring it back: the sheet does not return.
+    act(() => grabbed.current!({ path: "shots/home.png" })!.onOpen());
+    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());
+    rerender(ui(null));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    rerender(ui(imageOpener));
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 });
