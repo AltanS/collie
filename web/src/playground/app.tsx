@@ -240,8 +240,22 @@ function Sidebar({ sections, activeId, onSelect, clock, onClock, phoneWidth, onP
 /** Narrow: a sticky top header carrying the horizontal tab list, with the controls in a second row
  *  beneath it. Hidden at `lg` and up, where {@link Sidebar} takes over. */
 function TopBar({ sections, activeId, onSelect, clock, onClock, phoneWidth, onPhoneWidth }: ChromeProps) {
+  const header = useRef<HTMLElement>(null);
+  // A sticky bar of a section (the Round's control bar) sits under this header, whose height changes
+  // as its tab list wraps. `--pg-top` is that height.
+  useEffect(() => {
+    const el = header.current;
+    if (el === null || !("ResizeObserver" in window)) return;
+    const root = document.documentElement;
+    const watch = new ResizeObserver(() => root.style.setProperty("--pg-top", `${el.offsetHeight}px`));
+    watch.observe(el);
+    return () => {
+      watch.disconnect();
+      root.style.removeProperty("--pg-top");
+    };
+  }, []);
   return (
-    <header className="sticky top-0 z-30 -mx-4 -mt-4 border-b border-border bg-background/95 px-4 py-2 backdrop-blur lg:hidden">
+    <header ref={header} className="sticky top-0 z-30 -mx-4 -mt-4 border-b border-border bg-background/95 px-4 py-2 backdrop-blur lg:hidden">
       <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 pb-2">
         <div>
           <h1 className="text-sm font-semibold tracking-tight">Collie — states playground</h1>

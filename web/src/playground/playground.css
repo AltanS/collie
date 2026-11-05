@@ -109,3 +109,42 @@
    shipped face, and this file, loaded after it, declares none. A second copy here would win over
    index.css's stand-ins, which carry a Latin-only `unicode-range` the old copies never had. A new
    audition gets its @font-face pair here again until it ships. */
+
+/* ── A design round (round.tsx) ──────────────────────────────────────────────────────────────────
+   The options sit side by side, all one size. Under 640px the row scrolls sideways and snaps, each
+   frame about 85% of the width, its number in view. In Flip the options are stacked in one cell and
+   only the chosen one is visible. Both rules sit on `.pg-grid` too (the test counts a round's
+   options as cards), so they name it again to win over its grid. */
+.pg-round-row.pg-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  align-items: flex-start;
+}
+.pg-round-row > * {
+  flex: none;
+  width: 390px;
+  max-width: 100%;
+}
+.pg-round-flip.pg-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 390px);
+}
+.pg-round-flip > * {
+  grid-area: 1 / 1;
+}
+@media (max-width: 639.98px) {
+  .pg-round-row.pg-grid {
+    flex-wrap: nowrap;
+    gap: 0.75rem;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    margin-inline: -1rem;
+    padding-inline: 1rem;
+    scroll-padding-inline: 1rem;
+  }
+  .pg-round-row > * {
+    width: 85%;
+    scroll-snap-align: start;
+  }
+}
