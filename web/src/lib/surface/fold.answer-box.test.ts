@@ -11,6 +11,9 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { parseAnsi } from "../ansi";
+import { splitLines } from "../blocks";
+import { detectAskSelect } from "../harness/omp/ask";
 import { agentOf, fixtureRows, idleFor, PANES_DIR, readScreen, rowsOf } from "../../test/surface-corpus";
 import { FIXTURES, labelOf } from "../../test/surface-fold";
 import { findInputFrame, readIsUnstyled } from "./frame";
@@ -23,6 +26,8 @@ const read = (text: string) => readScreen(rowsOf(text), agentOf("omp"), omp);
 
 const BOXES: readonly (readonly [name: string, text: string, plain: boolean])[] = [
   ["omp--v18-16-0-custom-answer-empty--w200.txt", "", true],
+  // The editor `Other` opened on the 18.16 glyph-keycap Ask (#703): glyph hint `⏎ or ⌃Q submit`, the box alone.
+  ["omp--v18-16-0-answer-editor-empty--w200.txt", "", true],
   ["omp--v18-16-0-note-editor-empty--w200.txt", "", true],
   ["omp--v18-16-0-custom-answer-typed--w200.txt", "a ripe mango", true],
   [
@@ -72,6 +77,31 @@ describe("omp's answer editor is a box that answers the agent's question (#704)"
     const others = FIXTURES.filter((name) => labelOf(name).harness === "omp" && !answered.has(name));
     expect(others.length).toBeGreaterThan(200);
     expect(others.filter((name) => findInputFrame(fixtureRows(name), omp)?.answers === true)).toEqual([]);
+  });
+});
+
+// #703 + #704 on one dialog: omp 18.16 prints `⌥H hide`, the Ask reads as a card (#703), and the
+// editor `Other` opens reads as a free box (#704). Both captures carry the same question.
+describe("an omp 18.16 Ask, then the editor behind Other", () => {
+  const ask = "omp--v18-16-0-ask-single-glyph-hide--w200.txt";
+  const editor = "omp--v18-16-0-answer-editor-empty--w200.txt";
+
+  it("the dialog reads as an ask with a card whose Other walks to the editor, and the editor reads free", () => {
+    const dialog = read(raw(ask)).surface;
+    expect(dialog.modal).toMatchObject({ ask: { channel: "keys" } });
+    expect(isFree(dialog)).toBe(false);
+
+    const model = detectAskSelect(splitLines(parseAnsi(raw(ask))));
+    expect(model?.question).toBe("과일을 고르세요");
+    const other = model?.options.find((option) => option.label === "Other (type your own)");
+    expect(other?.keys).toEqual(["Down", "Down", "Down", "Enter"]);
+
+    // Tapping Other presses that walk; the screen it reaches is the editor, titled with the same question.
+    const opened = read(raw(editor));
+    expect(raw(editor)).toContain(`Custom answer: ${model!.question}`);
+    expect(opened.surface).toEqual({ revision: 1, turn: "idle", modal: "none", composer: "empty" });
+    expect(isFree(opened.surface)).toBe(true);
+    expect(opened.frame).toMatchObject({ answers: true, submit: ["ctrl+q"], newlineSubmits: true });
   });
 });
 
