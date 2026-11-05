@@ -2,7 +2,7 @@
 //
 // `plain` is the look the owner chose for the tab row and the pane row: the open tab differs from
 // the rest by ink and weight and nothing else, and the open pane is an inverted pill. `folder` draws
-// the open tab as a folder tab (a 3px edge in the theme's `tab-active` colour, a line on each side,
+// the open tab as a folder tab (a 2px edge in the theme's `tab-active` colour, a line on each side,
 // no line below) that joins the pane row under it, and the open pane as a tinted cell with a ring.
 // The word sets no CSS property, as `zoom` does not: the two components read it here and choose
 // their classes (components/tab-strip.tsx, pane-strip.tsx, wide-layout.tsx).

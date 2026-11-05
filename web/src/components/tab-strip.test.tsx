@@ -778,7 +778,7 @@ describe("TabStrip under the folder look", () => {
     expect(cls).toMatch(/(?:^|\s)bg-background(?=\s|$)/);
     expect(cls).toMatch(/(?:^|\s)border-x-\[1px\](?=\s|$)/);
     expect(cls).toMatch(/(?:^|\s)border-x-rule(?=\s|$)/);
-    expect(cls).toMatch(/shadow-\[inset_0_3px_0_0_var\(--tab-active\)\]/);
+    expect(cls).toMatch(/shadow-\[inset_0_2px_0_0_var\(--tab-active\)\]/);
     expect(cls).toMatch(/(?:^|\s)rounded-t-sm(?=\s|$)/);
     expect(cls).toMatch(/(?:^|\s)text-foreground(?=\s|$)/);
     expect(cls).toMatch(/(?:^|\s)font-semibold(?=\s|$)/);

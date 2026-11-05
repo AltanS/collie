@@ -47,8 +47,8 @@
     "host-7": "oklch(0.45 0.2 325)",
     "host-8": "oklch(0.45 0.108 241)",
     "host-9": "oklch(0.45 0.2 280)",
-    "pane-active": "oklch(0.50 0.19 295)",
-    "tab-active": "oklch(0.50 0.19 295)"
+    "pane-active": "oklch(0.14 0 0)",
+    "tab-active": "oklch(0.14 0 0)"
   },
   "dark": {
     "background": "oklch(0.17 0.003 80)",
@@ -94,8 +94,8 @@
     "host-7": "oklch(0.74 0.238 325)",
     "host-8": "oklch(0.746 0.16 241)",
     "host-9": "oklch(0.7 0.18 280)",
-    "pane-active": "oklch(0.76 0.15 295)",
-    "tab-active": "oklch(0.76 0.15 295)"
+    "pane-active": "oklch(0.985 0 0)",
+    "tab-active": "oklch(0.985 0 0)"
   },
   "fonts": {
     "ui": "atkinson",

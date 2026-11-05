@@ -48,6 +48,7 @@ import { ActionRow } from "@/components/action-sheet-rows";
 import { AnchoredMenu } from "@/components/ui/anchored-menu";
 import { WalkyAimStrip, WalkyHeldStrip, WalkyNoteStrip } from "@/components/walky-composer-strip";
 import { WalkyIcon } from "@/components/walky-icon";
+import { useFlip } from "@/hooks/use-flip";
 import { useLongPress } from "@/hooks/use-long-press";
 import { useWalkyComposer, type WalkyAim } from "@/hooks/use-walky-composer";
 import * as api from "@/lib/api";
@@ -310,7 +311,7 @@ interface ComposerProps {
    * How the reply box is laid out. `"field"` (default) is the shipped box: one row, the field with
    * Attach and the primary action beside it, always. `"box"` is the chat-box shape with two states:
    * at rest ONE slim row (Attach, the field's single line, the microphone as the main button), and
-   * open (focused, or holding a draft, a chip or Type mode) the field takes the full width on top and
+   * open (holding a draft, a chip or Type mode; focus alone does not open it) the field takes the full width on top and
    * the buttons drop to a row of their own inside the box, so they never narrow the text. Layout
    * only: the same buttons, the same send logic, the same placeholder, the same field element.
    */
@@ -2388,13 +2389,16 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // a row of buttons that never shares a line with the text. The box grows upward because the
   // composer is anchored to the bottom edge.
   //
-  // OPEN is: the field has focus, or something sits in it (a draft, a chip, Type mode, which shows
-  // the line in the field). A recording or a transcribing clip does NOT open it: the voice takeover
+  // OPEN is: something sits in it (a draft, a chip, Type mode, which shows the line in the field).
+  // FOCUS ALONE DOES NOT OPEN IT: a focused empty box is a caret in one line, and three lines of
+  // empty space under a blinking caret is room taken from the mirror for nothing (Altan, 2026-11-05).
+  // It opens on the first character and closes when the draft is empty again, caret still in it. The
+  // change between the two shapes is played by `useFlip` below. A recording or a transcribing clip does NOT open it: the voice takeover
   // covers this block and relies on the block keeping exactly the height it had (the note at the
   // block's `invisible` below, and components/voice-takeover.tsx), so the shape is held for as long as
   // the takeover stands, even if `inert` takes the focus away from the field underneath.
   const box = layout === "box";
-  const boxOpenNow = boxFocused || input !== "" || attachments.length > 0 || direct.active;
+  const boxOpenNow = input !== "" || attachments.length > 0 || direct.active;
   const boxWasOpen = useRef(boxOpenNow);
   if (!takeoverOpen) boxWasOpen.current = boxOpenNow;
   const boxOpen = box && boxWasOpen.current;
@@ -2404,6 +2408,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // control, and the field is the control. The press is held back from the browser's focus move so a
   // field that already has focus keeps it (a blur here would close an empty box for one frame).
   const boxRef = useRef<HTMLDivElement>(null);
+  // The change of shape glides (hooks/use-flip.ts): the box's height, and each button from its old
+  // cell to its new one. Nothing is played in the field layout, which has one shape.
+  useFlip(boxRef, boxOpen, box);
   useEffect(() => {
     const el = boxRef.current;
     if (!box || el === null) return;
@@ -3176,6 +3183,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             className={cn(
               TOOLBAR_TAP_TARGET,
               "size-9 rounded-full text-muted-foreground",
+              // Box layout: a filled circle, so the icon stands on something (Altan, 2026-11-05).
+              box && "bg-secondary text-foreground",
               box && (boxOpen ? "row-start-3" : "row-start-1"),
               box && (mirrored ? (boxOpen ? "col-start-4" : "col-start-3") : "col-start-1"),
               // The press echo, in the tone this app already uses for "your press landed" —
@@ -3223,6 +3232,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               className={cn(
                 TOOLBAR_TAP_TARGET,
                 "size-9 rounded-full text-muted-foreground",
+                box && "bg-secondary text-foreground",
                 // Box layout: the small mic stands in the open shape's button row, beside Send.
                 box && (mirrored ? "col-start-2 row-start-3" : "col-start-3 row-start-3"),
               )}
