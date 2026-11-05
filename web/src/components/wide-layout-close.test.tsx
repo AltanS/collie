@@ -201,7 +201,8 @@ async function openMenu(container: HTMLElement, p: AgentView) {
 
 async function closeFromRow(container: HTMLElement, p: AgentView) {
   const sheet = await openMenu(container, p);
-  fireEvent.click(await sheet.findByRole("button", { name: CLOSE }));
+  await waitFor(() => expect(sheet.queryByRole("button", { name: CLOSE })).not.toBeNull());
+  fireEvent.click(sheet.getByRole("button", { name: CLOSE }));
   fireEvent.click(await sheet.findByRole("button", { name: ARMED }));
   await waitFor(() => expect(closePane).toHaveBeenCalled());
 }
