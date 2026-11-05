@@ -10,7 +10,7 @@ import { EXIT, type Io } from "./io.ts";
 import { crewModeOnDisk } from "./serve.ts";
 import type { Files } from "./sys.ts";
 import type { SnapshotRead } from "./history.ts";
-import { readOwnSnapshot } from "./snapshot-read.ts";
+import { identityHeader, readOwnSnapshot } from "./snapshot-read.ts";
 
 // `collie sessions`: every agent session this bridge sees, one row each. A READ of this bridge's own
 // `/api/snapshot` and nothing else; it writes no file and restarts nothing.
@@ -49,15 +49,6 @@ export const SESSIONS_USAGE = `usage: collie ${SESSIONS_VERB} [--state <state>] 
 
 /** What the footer says on a member, whose snapshot holds its own panes only. */
 export const MEMBER_FOOTER = "this member's panes only; run on the lead for the crew";
-
-/**
- * The login this verb shows its own bridge next to the local read credential, or nothing when none
- * is configured: the same header `collie doctor` sends (issue #238).
- */
-function identityHeader(deps: SessionsDeps): Record<string, string> | undefined {
-  const login = deps.ctx.env.COLLIE_TRUSTED_USER ?? "";
-  return login === "" ? undefined : { "Tailscale-User-Login": login };
-}
 
 /** One read of this bridge's own snapshot through the shared reader (`cli/snapshot-read.ts`). */
 function readSnapshot(deps: SessionsDeps, query: string): Promise<SnapshotRead> {
