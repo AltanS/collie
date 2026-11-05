@@ -2227,6 +2227,38 @@
   }
  },
  {
+  "fixture": "claude--v2317-survey-context-row--w160.txt",
+  "frame": {
+   "top": 7,
+   "prompt": 8,
+   "bottom": 9,
+   "label": "main",
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 10,
+    "last": 10
+   },
+   "footer": null
+  }
+ },
+ {
+  "fixture": "claude--v2317-survey-context-row-plain--w160.txt",
+  "frame": {
+   "top": 7,
+   "prompt": 8,
+   "bottom": 9,
+   "label": "main",
+   "text": "",
+   "placeholder": false,
+   "status": {
+    "first": 10,
+    "last": 10
+   },
+   "footer": null
+  }
+ },
+ {
   "fixture": "claude--v2317-verbose-tokens-notice-idle--w154.txt",
   "frame": {
    "top": 5,

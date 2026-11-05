@@ -18,7 +18,8 @@
 //
 // often with the update row (`✔ Update installed · Restart to update`, or `/restart to apply` where
 // Claude Code offers the command, led after an idle spell by `new task? /clear to save <n> tokens · `,
-// or that hint alone) between its keys and the box.
+// or that hint alone, or Claude's right-aligned context field `4% until auto-compact`, 2.1.317) between
+// its keys and the box.
 
 import { lineText, type StyledLine } from "../../blocks";
 import { readCuesFor } from "../../surface/cues";

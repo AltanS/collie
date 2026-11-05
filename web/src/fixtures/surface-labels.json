@@ -1281,6 +1281,16 @@
    "version": "2.1.312",
    "state": "idle"
   },
+  "claude--v2317-survey-context-row--w160.txt": {
+   "harness": "claude",
+   "version": "2.1.317",
+   "state": "idle"
+  },
+  "claude--v2317-survey-context-row-plain--w160.txt": {
+   "harness": "claude",
+   "version": "2.1.317",
+   "state": "idle"
+  },
   "claude--v2317-verbose-tokens-notice-idle--w154.txt": {
    "harness": "claude",
    "version": "2.1.317",
