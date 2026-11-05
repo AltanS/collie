@@ -21,7 +21,7 @@ function fakeStorage(): FakeStorage {
 
 /** Overwrites what is stored, through the Storage interface, without naming a key. */
 function overwriteEveryValue(storage: FakeStorage, next: (old: string) => string) {
-  for (const [key, old] of [...storage.values]) storage.setItem(key, next(old));
+  for (const [key, old] of storage.values) storage.setItem(key, next(old));
 }
 
 /** What a brand-new tab would be sent to for this slot. Marks only that new tab. */
@@ -131,7 +131,7 @@ describe("@oracle:requirement @req:SLOT-4 the owner's five tiles", () => {
     const session = (slot: string) => sessions.get(slot) ?? fakeStorage();
     for (const slot of SLOTS) expect(enterSlot(slot, session(slot), local)).toBe(HOME);
     for (const slot of SLOTS) showPage(opened(slot), session(slot), local);
-    for (const slot of [...SLOTS].reverse()) showPage(moved(slot), session(slot), local);
+    for (const slot of SLOTS.toReversed()) showPage(moved(slot), session(slot), local);
     return session;
   }
 
