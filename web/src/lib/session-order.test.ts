@@ -103,6 +103,15 @@ describe("@oracle:requirement @req:SES-2 a move puts the session where the opera
     expect(read(GIVEN, undefined, local)).toEqual(["e", "d", "a", "b", "c"]);
   });
 
+  // A session can pass through a listing without being there. Its place waits for it, as a pin does
+  // (pins.ts, "absence never prunes"): stored after the moved list, ahead of any session with no place.
+  it("a move while a session is absent keeps that session's place for its return", () => {
+    const local = fakeStorage();
+    moveSession(["a", "b", "c", "d"], 3, 0, undefined, local);
+    moveSession(read(["a", "c", "d"], undefined, local), 2, 0, undefined, local);
+    expect(read(["x", "a", "b", "c", "d"], undefined, local)).toEqual(["c", "d", "a", "b", "x"]);
+  });
+
   describe("the owner's case: 30 sessions, two of the working ones at the very bottom", () => {
     const THIRTY = Array.from({ length: 30 }, (_, i) => `project-${String(i + 1).padStart(2, "0")}`);
     const REST = THIRTY.slice(0, 28);
