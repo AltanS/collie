@@ -523,6 +523,8 @@ lint guard, the crew-wire guard or the `flake.lock` guard.
   README → "The states playground") before changing a banner, the mark, the boot splash, the idle
   lock, or the crew page — it renders every state at once. Never import playground code from app
   code.
+  A card's label is a number and at most five words. Explanation goes in the report to Altan, not
+  on the page. `reach` and `note` are optional and hidden by default (the page's Notes switch).
 - Data flows through **React Router** (`createBrowserRouter`, data mode): route **loaders**
   (`web/src/lib/loaders.ts`) fetch the snapshot + pane; **polling is `useRevalidator()` on an
   adaptive interval** (`web/src/hooks/use-polling.ts`); mutations are direct `lib/api.ts` calls

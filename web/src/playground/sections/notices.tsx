@@ -2,7 +2,7 @@
 // strip band above the header, the connection-recovery flash, the update ribbon's states, and the
 // status toast. See ../app.tsx's header for the page's own two rules (mount REAL components with
 // REAL props; drive a module store through its own mutators). This file follows both, and every card
-// still carries its own "reach it for real" line.
+// keeps its label short.
 //
 // DEV-ONLY, unreachable from the app entry: see ../app.tsx and web/playground.html.
 

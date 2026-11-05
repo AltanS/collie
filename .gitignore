@@ -5,6 +5,8 @@ node_modules
 
 # Build output
 dist/
+# The playground's static build (`bun run playground:build`), dev-only.
+dist-playground/
 build/
 out/
 target/

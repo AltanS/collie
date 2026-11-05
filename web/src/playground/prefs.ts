@@ -5,7 +5,9 @@
 // card (whose switcher is the same choice with commentary attached). Threading props through
 // BrandSection to reach the card is exactly the ceremony the harness's other global (the connection
 // clock) already declined; same pattern here. Nothing persists: a dev page should open in the app's
-// real dress every time, so the comparison always starts from truth.
+// real dress every time, so the comparison always starts from truth. The one exception is the
+// Notes switch (below): it persists in localStorage, because it is a reading preference and not a
+// look under test.
 //
 // WHAT "APPLIED THROUGHOUT" MEANS. The chosen face lands on the playground root twice — as an
 // inherited `font-family` for everything that just inherits (which is most text), and as a
@@ -112,6 +114,17 @@ const accentIds = Object.keys(ACCENTS) as AccentId[];
 
 export const ACCENT_IDS: readonly AccentId[] = accentIds;
 
+const NOTES_KEY = "collie.playground.notes";
+
+function readNotes(): boolean {
+  try {
+    return window.localStorage.getItem(NOTES_KEY) === "on";
+  } catch {
+    return false;
+  }
+}
+
+let notes = readNotes();
 let face: FaceId = "aldrich"; // the app's shipped default, so the page opens in its real dress
 let accent: AccentId = "default";
 const listeners = new Set<() => void>();
@@ -133,6 +146,22 @@ export function setFace(next: FaceId): void {
 export function setAccent(next: AccentId): void {
   accent = next;
   emit();
+}
+
+/** The page-wide Notes switch: whether a card's `reach` and `note` and a section's `intent` show.
+ *  Off by default; a card is its label alone. */
+export function setNotes(next: boolean): void {
+  notes = next;
+  try {
+    window.localStorage.setItem(NOTES_KEY, next ? "on" : "off");
+  } catch {
+    // storage refused: the switch still works for this page load
+  }
+  emit();
+}
+
+export function useNotes(): boolean {
+  return useSyncExternalStore(subscribe, () => notes);
 }
 
 export function useFace(): FaceId {

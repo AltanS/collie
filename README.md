@@ -377,6 +377,14 @@ Notices, Motion. Notices covers everything that ANNOUNCES (the notice primitive,
 the status toast); Motion covers everything that MOVES without announcing anything (collapse and
 swap primitives, loading bars, sheets, menus, pending and pulsing controls).
 
+A card shows its label and nothing else. Its `reach` and `note`, and a section's `intent`, appear
+only while the page's Notes switch is on (off by default, remembered in `localStorage`).
+`cd web && bun run playground:build` builds the page alone into `web/dist-playground/` (minified,
+one chunk per section, no service worker) for any static server; it never touches `dist/`.
+
+A design round that compares numbered options uses `Round` (`src/playground/round.tsx`): one Case
+switch drives every option, with Zoom, Replay and Flip.
+
 Within a tab, cards are grouped under a `Group` — a small heading over its own `.pg-grid` — ordered
 from the everyday state to the rare one, so a tab with a dozen cards can be skimmed by its group
 titles instead of scrolled blind.
