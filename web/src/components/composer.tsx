@@ -3450,6 +3450,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           elapsed={recorder.elapsedLabel}
           source={recorder.meter}
           hand={hand}
+          layout={layout}
           padClassName={blockPad}
           keyboardOpened={openedByKeyboard.current}
           sends={!starting && handsFree && !hasDraft && noEcho === null}
