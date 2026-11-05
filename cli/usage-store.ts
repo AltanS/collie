@@ -49,7 +49,7 @@ export interface BeaconChange {
   readonly context?: number | null | undefined;
   /** The session's window in tokens. Absent keeps the one on file. */
   readonly window?: number | undefined;
-  /** The non-default `CLAUDE_CONFIG_DIR` this session runs under. Absent keeps the one on file. */
+  /** The non-default `CLAUDE_CONFIG_DIR` this session runs under. Absent clears any custom dir on file. */
   readonly configDir?: string | undefined;
 }
 
@@ -61,7 +61,7 @@ export interface BeaconChange {
  * percent is not a change, so the hot path writes nothing.
  */
 export function mergeBeacon(existing: UsageRecord | null, harness: string, now: number, change: BeaconChange): UsageRecord | null {
-  const dirChanged = change.configDir !== undefined && existing?.configDir !== undefined && change.configDir !== existing.configDir;
+  const dirChanged = existing !== null && change.configDir !== existing.configDir;
   const limits = dirChanged ? [] : liveLimits(existing, now);
   const record: UsageRecord = {
     schemaVersion: USAGE_SCHEMA_VERSION,
@@ -72,8 +72,7 @@ export function mergeBeacon(existing: UsageRecord | null, harness: string, now: 
   if (context !== undefined) record.context = context;
   const window = change.window ?? existing?.window;
   if (window !== undefined) record.window = window;
-  const configDir = change.configDir ?? existing?.configDir;
-  if (configDir !== undefined) record.configDir = configDir;
+  if (change.configDir !== undefined) record.configDir = change.configDir;
   if (limits.length > 0) record.limits = limits;
   // The cost is the wrapper's alone: the beacon keeps what is on file.
   if (existing?.cost !== undefined) record.cost = existing.cost;
@@ -100,14 +99,13 @@ export function mergeStatusLine(existing: UsageRecord | null, reading: UsageReco
   if (context !== undefined) record.context = context;
   const window = reading.window ?? existing?.window;
   if (window !== undefined) record.window = window;
-  const configDir = reading.configDir ?? existing?.configDir;
-  if (configDir !== undefined) record.configDir = configDir;
+  if (reading.configDir !== undefined) record.configDir = reading.configDir;
   const cost = reading.cost ?? existing?.cost;
   if (cost !== undefined) record.cost = cost;
   if (reading.limits !== undefined) {
     record.limits = reading.limits;
   } else {
-    const dirChanged = reading.configDir !== undefined && existing?.configDir !== undefined && reading.configDir !== existing.configDir;
+    const dirChanged = existing !== null && reading.configDir !== existing.configDir;
     const kept = dirChanged ? [] : liveLimits(existing, now);
     if (kept.length > 0 && existing !== null) {
       record.limits = kept;

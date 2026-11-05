@@ -64,18 +64,25 @@ describe("the beacon side of the merge", () => {
     expect(mergeBeacon(null, "claude", NOW, { window: 200_000 })).toEqual({ schemaVersion: 1, harness: "claude", at: NOW, window: 200_000 });
   });
 
-  test("preserves configDir across beacon and statusLine merges and treats a new configDir as a change", () => {
+  test("tracks configDir across beacon and statusLine merges, clears it on a default reading, and drops limits when it changes", () => {
     const existing = record({ context: 15, window: 200_000 });
     const withDir = mergeBeacon(existing, "claude", NOW, { context: 15, configDir: "/profiles/work" });
     expect(withDir).toEqual({ ...existing, context: 15, configDir: "/profiles/work", at: NOW });
     // Unchanged once configDir matches.
     expect(mergeBeacon(withDir, "claude", NOW, { context: 15, configDir: "/profiles/work" })).toBeNull();
-    // Subsequent beacon or statusLine without configDir keeps the existing configDir.
-    expect(mergeBeacon(withDir, "claude", NOW, { context: 20 })?.configDir).toBe("/profiles/work");
-    expect(mergeStatusLine(withDir, record({ at: NOW, context: 30 }), NOW).configDir).toBe("/profiles/work");
-    expect(mergeStatusLine(existing, record({ at: NOW, context: 30, configDir: "/profiles/work" }), NOW).configDir).toBe("/profiles/work");
-    // Switching a session from one custom configDir to another drops the old account's running limits.
+    // A subsequent beacon or statusLine with the same custom configDir keeps it.
+    expect(mergeBeacon(withDir, "claude", NOW, { context: 20, configDir: "/profiles/work" })?.configDir).toBe("/profiles/work");
+    expect(mergeStatusLine(withDir, record({ at: NOW, context: 30, configDir: "/profiles/work" }), NOW).configDir).toBe("/profiles/work");
+    // A default beacon or statusLine (configDir undefined) clears a previously set configDir and drops old limits.
     const withLimits = record({ context: 15, window: 200_000, configDir: "/profiles/a", limits: [FIVE_HOUR] });
+    const clearedByBeacon = mergeBeacon(withLimits, "claude", NOW, { context: 15 });
+    expect(clearedByBeacon).not.toBeNull();
+    expect(clearedByBeacon?.configDir).toBeUndefined();
+    expect(clearedByBeacon?.limits).toBeUndefined();
+    const clearedByStatusLine = mergeStatusLine(withLimits, record({ at: NOW, context: 30 }), NOW);
+    expect(clearedByStatusLine.configDir).toBeUndefined();
+    expect(clearedByStatusLine.limits).toBeUndefined();
+    // Switching a session from one custom configDir to another also drops the old account's running limits.
     expect(mergeBeacon(withLimits, "claude", NOW, { context: 20, configDir: "/profiles/b" })?.limits).toBeUndefined();
     expect(mergeStatusLine(withLimits, record({ at: NOW, context: 20, configDir: "/profiles/b" }), NOW).limits).toBeUndefined();
   });

@@ -42,7 +42,7 @@ import { execFile } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { lstat, open, readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, posix } from "node:path";
 
 import { asJsonNumber, asJsonObject, asJsonString, parseJsonObject } from "../web/src/lib/json.ts";
 import {
@@ -87,13 +87,14 @@ export const MAX_CUSTOM_CONFIG_DIRS = 16;
 
 /**
  * The macOS Keychain service name Claude Code uses for `configDir`: `"Claude Code-credentials"` for the
- * default `~/.claude`, or suffixed with the first 8 hex chars of `sha256(join(configDir.trim(), "."))`
- * when `CLAUDE_CONFIG_DIR` is set.
+ * default `~/.claude`, or suffixed with the first 8 hex chars of `sha256(posix.join(configDir.trim(), "."))`
+ * when `CLAUDE_CONFIG_DIR` is set (2.1.318, read in its bundle; `security dump-keychain` shows
+ * `"svce"<blob>="Claude Code-credentials-<8 hex chars>"`).
  */
 export function claudeKeychainService(configDir?: string): string {
   const trimmed = configDir?.trim() ?? "";
   if (trimmed === "") return CLAUDE_KEYCHAIN_SERVICE;
-  const suffix = createHash("sha256").update(join(trimmed, ".")).digest("hex").slice(0, 8);
+  const suffix = createHash("sha256").update(posix.join(trimmed, ".")).digest("hex").slice(0, 8);
   return `${CLAUDE_KEYCHAIN_SERVICE}-${suffix}`;
 }
 
@@ -641,14 +642,14 @@ export interface LocalAccountSource {
 export type AccountSource = HttpAccountSource | LocalAccountSource;
 
 export function claudeAccountSource(seams: CredentialSeams, configDir?: string): AccountSource {
-  const raw = (configDir ?? seams.env.CLAUDE_CONFIG_DIR ?? "").trim();
+  const raw = (configDir ?? "").trim();
   const resolvedDir = raw === "" ? join(seams.home, ".claude") : join(raw, ".");
   return {
     kind: "http",
     harness: "claude",
     url: CLAUDE_USAGE_URL,
     configDir: resolvedDir,
-    login: () => readClaudeLogin(seams, configDir),
+    login: () => readClaudeLogin(seams, resolvedDir),
     headers: (token) => ({
       Authorization: `Bearer ${token}`,
       "anthropic-beta": CLAUDE_OAUTH_BETA,

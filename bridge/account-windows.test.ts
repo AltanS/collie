@@ -1,6 +1,5 @@
 import { describe, expect, it } from "bun:test";
 
-import { createHash } from "node:crypto";
 import { basename, join } from "node:path";
 
 import type { JsonObject, JsonValue } from "./json.ts";
@@ -231,7 +230,8 @@ describe("the Claude login", () => {
 
   it("derives the macOS Keychain service name from CLAUDE_CONFIG_DIR when non-default", async () => {
     const customDir = "/profiles/work";
-    const expectedHash = createHash("sha256").update(join(customDir, ".")).digest("hex").slice(0, 8);
+    // sha256("/profiles/work").slice(0, 8) === "2ea9e238"
+    const expectedHash = "2ea9e238";
     expect(claudeKeychainService()).toBe(CLAUDE_KEYCHAIN_SERVICE);
     expect(claudeKeychainService("   ")).toBe(CLAUDE_KEYCHAIN_SERVICE);
     expect(claudeKeychainService(` ${customDir} `)).toBe(`${CLAUDE_KEYCHAIN_SERVICE}-${expectedHash}`);
@@ -716,6 +716,19 @@ describe("AccountWindows", () => {
     ]);
     // dirA was evicted when the cap was exceeded, so asking for it again starts fresh (undefined before settled).
     expect(windows.limits("claude", dirA)).toBeUndefined();
+
+    // Even when the bridge process itself has CLAUDE_CONFIG_DIR set in env, a default-dir session (configDir undefined)
+    // reads ~/.claude rather than the bridge's own CLAUDE_CONFIG_DIR.
+    const bridgeWindows = new AccountWindows({
+      enabled: true,
+      sources: [claudeAccountSource({ ...fileSeams(files), env: { CLAUDE_CONFIG_DIR: dirA }, now: () => clock.now })],
+      fetch,
+      now: () => clock.now,
+      userAgent: "collie/1.24.0",
+    });
+    bridgeWindows.observe([pane("claude")], "main");
+    await bridgeWindows.settled();
+    expect(bridgeWindows.limits("claude")).toEqual([{ window: "5h", used: 10, resetsAt: Date.parse(RESET_5H) }]);
   });
 });
 

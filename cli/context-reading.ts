@@ -2,7 +2,7 @@ import { isAbsolute, relative, sep } from "node:path";
 
 import { asJsonNumber, asJsonObject, asJsonString } from "../web/src/lib/json.ts";
 import type { JsonObject } from "../bridge/json.ts";
-import { contextPercent, customClaudeConfigDir } from "../bridge/usage.ts";
+import { contextPercent, customClaudeConfigDir, type UsageRecord } from "../bridge/usage.ts";
 import type { CliContext } from "./context.ts";
 import { agentConfigRoot } from "./hold-entry.ts";
 import { mergeBeacon, readUsage, writeUsage, type BeaconChange, type UsageStoreDeps } from "./usage-store.ts";
@@ -131,11 +131,18 @@ export function transcriptFile(deps: ContextReadingDeps, path: string): string |
 }
 
 /** Merge a change into each state dir's record for the session. One dir failing costs only that dir. */
-function writeChange(deps: ContextReadingDeps, stateDirs: readonly string[], session: string, harness: string, now: number, change: (window: number | undefined) => BeaconChange | null): void {
+function writeChange(
+  deps: ContextReadingDeps,
+  stateDirs: readonly string[],
+  session: string,
+  harness: string,
+  now: number,
+  change: (existing: UsageRecord | null) => BeaconChange | null,
+): void {
   for (const stateDir of stateDirs) {
     try {
       const existing = readUsage(deps, stateDir, session);
-      const wanted = change(existing?.window);
+      const wanted = change(existing);
       if (wanted === null) continue;
       const record = mergeBeacon(existing, harness, now, wanted);
       if (record !== null) writeUsage(deps, stateDir, session, record);
@@ -170,15 +177,16 @@ export function takeContextReading(
     // window after the last answer: the context has grown by that much, so the old value is stale.
     // Remove it; the next answer measures it again.
     const configDir = customClaudeConfigDir(deps.ctx.env, deps.ctx.home);
-    if (reading === null && !cut && configDir === undefined) return;
-    writeChange(deps, stateDirs(), input.session, input.harness, now, (window) => {
-      if (reading === null && !cut) return configDir === undefined ? null : { configDir };
+    writeChange(deps, stateDirs(), input.session, input.harness, now, (existing) => {
+      const dirChanged = existing?.configDir !== configDir;
+      if (reading === null && !cut) return dirChanged ? { configDir } : null;
       if (reading === null || reading.kind === "compacted") return { context: null, configDir };
-      // No window, no context; a custom configDir is still recorded so the session is scoped at once.
+      const window = existing?.window;
+      // No window, no context; a configDir change is still recorded so the session is scoped or cleared at once.
       return window === undefined
-        ? configDir === undefined
-          ? null
-          : { configDir }
+        ? dirChanged
+          ? { configDir }
+          : null
         : { context: contextPercent(reading.tokens, window), configDir };
     });
   } catch {
@@ -207,14 +215,15 @@ export function takeSessionStart(
     const named = windowFromModel(model);
     const tokens = input.contextTokens !== undefined && Number.isFinite(input.contextTokens) && input.contextTokens >= 0 ? input.contextTokens : undefined;
     const configDir = customClaudeConfigDir(deps.ctx.env, deps.ctx.home);
-    writeChange(deps, stateDirs(), input.session, input.harness, now, (known) => {
-      const window = named ?? known;
+    writeChange(deps, stateDirs(), input.session, input.harness, now, (existing) => {
+      const window = named ?? existing?.window;
       // The context is unknown until the next assistant message measures it.
       const forgotten = source === "compact" || source === "clear";
       const resumed = (source === "resume" || source === "fork") && tokens !== undefined && window !== undefined;
       const context = forgotten ? null : resumed ? contextPercent(tokens, window) : undefined;
+      const dirChanged = existing?.configDir !== configDir;
       const change: BeaconChange = { context, window: named, configDir };
-      return named === undefined && context === undefined && configDir === undefined ? null : change;
+      return named === undefined && context === undefined && !dirChanged ? null : change;
     });
   } catch {
     // No reading.

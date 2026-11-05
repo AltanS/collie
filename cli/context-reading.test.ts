@@ -40,6 +40,21 @@ describe("context-reading configDir tracking", () => {
       at: NOW,
       window: 200_000,
     });
+
+    // A default SessionStart on a session that previously had a custom configDir clears it even without a model.
+    takeSessionStart(
+      defaultDeps,
+      { session: SESSION, harness: "claude", source: "startup", model: undefined, contextTokens: undefined },
+      () => [STATE],
+      NOW + 1000,
+    );
+    takeSessionStart(
+      { files: customFiles, uid: 1000, ctx: context({}) },
+      { session: SESSION, harness: "claude", source: "startup", model: undefined, contextTokens: undefined },
+      () => [STATE],
+      NOW + 1000,
+    );
+    expect(parseUsageRecord(customFiles.read(USAGE) ?? "")?.configDir).toBeUndefined();
   });
 
   test("takeContextReading attaches custom CLAUDE_CONFIG_DIR to the usage record", () => {
@@ -76,5 +91,16 @@ describe("context-reading configDir tracking", () => {
       at: NOW,
       configDir: join("/profiles", "work"),
     });
+
+    // A default beacon turn clears a previously set configDir even without a window.
+    const defaultTranscript = join(HOME, ".claude", "projects", "-x", "session.jsonl");
+    noWindowFiles.write(defaultTranscript, `${JSON.stringify({ type: "user", message: { content: "hi" } })}\n`);
+    takeContextReading(
+      { files: noWindowFiles, uid: 1000, ctx: context({}) },
+      { session: SESSION, transcriptPath: defaultTranscript, harness: "claude" },
+      () => [STATE],
+      NOW + 1000,
+    );
+    expect(parseUsageRecord(noWindowFiles.read(USAGE) ?? "")?.configDir).toBeUndefined();
   });
 });
