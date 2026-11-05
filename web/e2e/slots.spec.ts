@@ -64,10 +64,30 @@ const paneRow = (page: Page, agent: Agent) =>
 
 const paneSwitcher = (page: Page) => page.getByRole("button", { name: en["chat.switcher.aria"] });
 
+/** The wide layout has a pane rail instead of the switcher, and no phone header. */
+const isWide = (page: Page) => (page.viewportSize()?.width ?? 0) >= 1024;
+
+/** The control only a drawn pane carries, in either layout. */
+const paneControl = (page: Page, address: string) =>
+  isWide(page)
+    ? page.getByRole("button", { name: fill(en["chat.header.openPaneSettingsAria"], { name: address.startsWith(PANE_A) ? "claude" : "codex" }) })
+    : paneSwitcher(page);
+
 /** The pane is on screen: the layout has rendered this address, not only the URL bar. */
 async function paneShown(page: Page, address: string) {
   await landed(page, address);
-  await expect(paneSwitcher(page)).toBeVisible();
+  await expect(paneControl(page, address)).toBeVisible();
+}
+
+/** A move from one pane to another by the app's own control for this layout. */
+async function moveToPane(page: Page, agent: Agent) {
+  const row = { name: new RegExp(`^${agent} logo ${agent}`, "u") };
+  if (isWide(page)) {
+    await page.getByRole("complementary", { name: en["wide.sidebar.label"] }).getByRole("button", row).click();
+    return;
+  }
+  await paneSwitcher(page).click();
+  await page.getByRole("dialog", { name: en["chat.switcher.aria"] }).getByRole("button", row).click();
 }
 
 async function switchSession(page: Page, session: string) {
@@ -83,9 +103,8 @@ async function moveInsideApp(page: Page, tile: Tile) {
     await paneShown(page, tile.address);
     return;
   }
-  await expect(paneSwitcher(page)).toBeVisible();
-  await paneSwitcher(page).click();
-  await page.getByRole("dialog", { name: en["chat.switcher.aria"] }).getByRole("button", { name: new RegExp(`^${tile.movesTo} logo ${tile.movesTo}`, "u") }).click();
+  await expect(paneControl(page, tile.opens === "claude" ? PANE_A : PANE_B)).toBeVisible();
+  await moveToPane(page, tile.movesTo);
   await paneShown(page, tile.address);
 }
 
@@ -130,6 +149,8 @@ test("@oracle:requirement @req:SLOT-4 five tiles that move in the same moment ea
 });
 
 test("@oracle:requirement @req:SLOT-4 going back from a restored tile does not return to /slot/n", async ({ context }) => {
+  // Twenty page loads: 19 to 30 s measured on a loaded host, against a default budget of 30 s.
+  test.slow();
   await workInFiveTiles(context);
 
   for (const tile of TILES) {
@@ -165,4 +186,18 @@ test("@oracle:requirement @req:SLOT-4 a restored tile keeps storing: the next re
   await paneShown(reopened, PANE_B);
   const other = await openTab(context, "/slot/3");
   await paneShown(other, `${PANE_A}${SCOPED}`);
+});
+
+// The owner's laptop: the wide layout, where the tiles really live.
+test.describe("on the owner's laptop", () => {
+  test.use({ viewport: { width: 1280, height: 800 } });
+
+  test("@oracle:requirement @req:SLOT-4 after a browser restart each of five wide tiles returns to its own pane", async ({ context }) => {
+    await workInFiveTiles(context);
+
+    for (const tile of TILES) {
+      const page = await openTab(context, `/slot/${tile.slot}`);
+      await paneShown(page, tile.address);
+    }
+  });
 });
