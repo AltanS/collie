@@ -4,6 +4,7 @@ import type { JsonValue } from "../bridge/json.ts";
 import { HOST, type Host } from "../bridge/host.ts";
 import { jsonRecord, jsonStringField } from "../bridge/stt/json.ts";
 import { localAuthHeader, readLocalSecret } from "../bridge/local-secret.ts";
+import { identityHeader } from "./snapshot-read.ts";
 import { DURABLE_SOCKET_ENV, resolveSocketPath } from "../bridge/mux/durable/client.ts";
 import { PROGRAMS_OFF_NOTE, programsOff } from "../bridge/sources.ts";
 import {
@@ -297,8 +298,7 @@ async function stateOf(deps: DurableAttachDeps, name: string): Promise<string> {
   const host = dialableBridgeHost(deps.ctx.env);
   const bracketed = host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
   const secret = readLocalSecret(deps.ctx.stateDir, (p) => deps.files.read(p));
-  const login = deps.ctx.env.COLLIE_TRUSTED_USER ?? "";
-  const headers = login === "" ? localAuthHeader(secret) : { ...localAuthHeader(secret), "Tailscale-User-Login": login };
+  const headers = { ...identityHeader(deps), ...localAuthHeader(secret) };
   try {
     const res = await deps.fetch(
       `http://${bracketed}:${String(deps.ctx.port)}/api/config?session=${encodeURIComponent(name)}`,

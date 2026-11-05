@@ -34,6 +34,21 @@ export function localReadHeaders(deps: Pick<SnapshotReadDeps, "ctx" | "files">):
 }
 
 /**
+ * The login a verb shows its own bridge next to the local read credential, or nothing when
+ * `COLLIE_TRUSTED_USER` is unset (issue #238, #701). `checkAccess` (bridge/server.ts) runs the
+ * Tailscale identity check before the pairing gate, so a read with no login is refused 403 whenever
+ * a trusted user is configured without `COLLIE_TRUSTED_USER_OPTIONAL`. The login is an identity, not
+ * a secret: the bridge already accepts the header from any caller that reaches its port, so sending
+ * it grants nothing new. A loopback exemption is the thing that must NOT be done, because
+ * `tailscale serve` dials the bridge from loopback too. With no login configured the header is
+ * omitted rather than invented. Every verb that reads its own bridge sends it through this helper.
+ */
+export function identityHeader(deps: Pick<SnapshotReadDeps, "ctx">): Record<string, string> | undefined {
+  const login = deps.ctx.env.COLLIE_TRUSTED_USER ?? "";
+  return login === "" ? undefined : { "Tailscale-User-Login": login };
+}
+
+/**
  * This bridge's own `/api/snapshot`, as text: its body, its refusal, or silence.
  *
  * The address is the one the bridge BOUND (`resolveBridgeHost`, as `status` probes it), not a
@@ -41,8 +56,8 @@ export function localReadHeaders(deps: Pick<SnapshotReadDeps, "ctx" | "files">):
  * 127.0.0.1, and dialling loopback there would report "the bridge is down" against a bridge that is
  * up. A wildcard bind answers everywhere, so loopback is the right dial for it.
  *
- * A READ, and the only kind of route these verbs ask their own bridge for. `extraHeaders` is for the callers
- * (`doctor`, issue #238, and `sessions`) that also send their configured login. `query` is the
+ * A READ, and the only kind of route these verbs ask their own bridge for. `extraHeaders` is for a caller
+ * that sends more than {@link identityHeader}. `query` is the
  * query string without its `?` (`collie sessions` asks `sessions=all`).
  */
 export async function readOwnSnapshot(
