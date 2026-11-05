@@ -523,7 +523,7 @@ the Collie version, the operating system, how Collie was installed, and whether 
 alone or in a crew, under a random ID made on your machine. No IP address is stored with the ping.
 When Collie shows one of its two trouble cards, the next ping also carries how often, with the name
 and version of the agent program and the multiplexer it ran on, never what was said or shown.
-Nothing else is sent. We need these numbers to
+Nothing else is sent: no host name, no folder, nothing you type or read. We need these numbers to
 spot regressions and slow degradations after a release, and to steer what gets built next. Up to
 1.26.x Collie sent nothing ([ADR 0129](../.adr/0129-an-anonymous-install-count-on-by-default.md)).
 

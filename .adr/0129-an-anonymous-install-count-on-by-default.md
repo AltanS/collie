@@ -128,4 +128,7 @@ agent version and multiplexer before anyone files it, so one post like "Codex ca
 dialog after every send" is in the numbers the day it starts. It adds no request, no timing and no
 switch: the tally is cleared with the ID the moment the count is off for any reason, and cleared
 when the ping that carried it is sent. A row holds exactly kind, harness, version, mux and count;
-at most 20 rows, a count at most 999. `telemetry/README.md` is the contract.
+at most 20 rows, a count at most 999. `telemetry/README.md` is the contract. The tally ships in the
+same release as the ping itself (1.27.0 Stable has not shipped; only an Edge build has), so the
+one-time notice of that release covers both and no second notice is shown; a field added after
+1.27.0 needs its own ADR and its own notice, as the Consequences say.
