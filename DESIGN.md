@@ -932,6 +932,8 @@ come from `light-dark()`.
 
 `pane-active` (1.24.0) is the frame of the pane you are working in on a large screen, and nothing else. It is outside the 43 but a theme can set it: from schema version 3 it is an optional token in either half. A theme that leaves it out keeps the `:root` pair in index.css, so every file written before version 3 reads and exports unchanged; a file that sets it must say version 3. The contrast report holds it to 3:1 on `background` in a half that sets it. Nightwatch sets its own, a warm sky for its amber palette.
 
+`tab-active` is the second optional token, and it marks the open tab and the open pane for a theme whose surface word `tabs` is `folder` (`lib/tab-look.ts`): the 3px top edge of the open folder tab and the 1px ring of the open pane. It has the same rules as `pane-active` (version 3, a `:root` pair that is the foreground ink of each half, 3:1 on `background` in a half that sets it). Under the default word `plain` the tab row and the pane row are drawn exactly as they were, and `tab-active` is read by nothing. `composer` is the third word that sets no CSS (`field` or `box`); `lib/composer-layout.ts` reads it.
+
 The name "ColliePWA" in the large screen's sidebar draws "PWA" in the three status tokens, always: P `status-done`, W `status-working`, A `status-blocked` (`components/wordmark.tsx`). Unlike the website, the app does not rest in grey. It is not a token of its own, and no application state may ever drive those inks.
 
 **The twelve version 2 tokens.** Each is a closed list. A file names a word, and one table says what the word
