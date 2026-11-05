@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Loader2 } from "lucide-react";
 
@@ -37,6 +37,9 @@ export interface MenuBlockProps {
   disabled?: boolean;
 }
 
+/** How long a row press waits for the pane to draw the moved marker. */
+const ROW_SETTLE_MS = 2000;
+
 /** The arrow presses that walk the marker along the printed rows from `from` to `target`. */
 function rowKeys(target: number, from: number): string[] {
   const key = target > from ? MENU_DOWN_KEYS[0]! : MENU_UP_KEYS[0]!;
@@ -73,6 +76,16 @@ export function MenuBlock({ menu, lines, onAction, disabled }: MenuBlockProps) {
   // draft there, the digit would join the draft, so the card's keys wait for the box to empty.
   const draftBlocks = menu.liveBox?.draft === true;
   const locked = disabled || draftBlocks || sending !== null;
+  // A row's keys are counted from the drawn marker, and a send returns before the pane's new frame is
+  // drawn. Until the marker moves, a second tap would count from where it no longer is, and land on a
+  // row nobody chose. A pane that ignored the keys frees the rows when the time ends.
+  const [walkedFrom, setWalkedFrom] = useState<number | null>(null);
+  const settling = walkedFrom !== null && walkedFrom === menu.rows?.current;
+  useEffect(() => {
+    if (walkedFrom === null) return;
+    const timer = setTimeout(() => setWalkedFrom(null), ROW_SETTLE_MS);
+    return () => clearTimeout(timer);
+  }, [walkedFrom]);
 
   async function press(id: string, action: MenuBlockAction) {
     if (locked) return;
@@ -164,8 +177,11 @@ export function MenuBlock({ menu, lines, onAction, disabled }: MenuBlockProps) {
                 key={`${i}-${label}`}
                 type="button"
                 aria-current={isCurrent ? "true" : undefined}
-                disabled={locked || isCurrent}
-                onClick={() => press(`row-${i}`, { keys: rowKeys(i, from), nav: true })}
+                disabled={locked || isCurrent || settling}
+                onClick={() => {
+                  setWalkedFrom(from);
+                  void press(`row-${i}`, { keys: rowKeys(i, from), nav: true });
+                }}
                 className={cn(
                   "font-content flex min-h-11 w-full items-center gap-2 rounded-lg border border-transparent px-3 py-2 text-left text-sm transition-colors",
                   isCurrent
