@@ -11,7 +11,7 @@ import type { ServerSummary, TelemetryDecider, TelemetryPing, TelemetryView } fr
 import { CrewProvider } from "./crew-provider";
 import { TelemetrySettingsCard } from "./telemetry-settings-card";
 
-// The Anonymous install count card (M86 spec 02): the state, the switch that decided it, the exact
+// The Telemetry card (M86 spec 02): the state, the switch that decided it, the exact
 // next message and the write with a request id. Driven through a memory router and MSW.
 
 const PING: TelemetryPing = {
@@ -43,14 +43,14 @@ function renderCard(initial: TelemetryView | "fail", hash = "", servers?: Server
   return render(<RouterProvider router={router} />);
 }
 
-const theSwitch = () => screen.findByRole("switch", { name: "Anonymous install count" });
+const theSwitch = () => screen.findByRole("switch", { name: "Telemetry" });
 
-describe("Anonymous install count card (M86 spec 02)", () => {
+describe("Telemetry card (M86 spec 02)", () => {
   it("names the card and says in one line what is sent", async () => {
     renderCard(view());
-    expect(await screen.findByText("Anonymous install count")).toBeInTheDocument();
+    expect(await screen.findByText("Telemetry")).toBeInTheDocument();
     expect(
-      screen.getByText("Once a day this machine sends a random ID, the Collie version, the OS and the install kind. Nothing else."),
+      screen.getByText("Anonymous: one ping a day with the install count and the trouble signals, under a random ID. Nothing else."),
     ).toBeInTheDocument();
   });
 
@@ -109,7 +109,7 @@ describe("Anonymous install count card (M86 spec 02)", () => {
     const user = userEvent.setup();
     renderCard(view({ on: false, decidedBy: "settings", setting: "off", next: null }));
     await user.click(await screen.findByRole("button", { name: "Show the next message" }));
-    expect(await screen.findByText("Nothing is sent while the count is off.")).toBeInTheDocument();
+    expect(await screen.findByText("Nothing is sent while telemetry is off.")).toBeInTheDocument();
     expect(screen.queryByLabelText("The next message, as JSON")).toBeNull();
   });
 
@@ -136,7 +136,7 @@ describe("Anonymous install count card (M86 spec 02)", () => {
     expect(bodies).toHaveLength(1);
     expect(bodies[0]?.setting).toBe("off");
     expect(asJsonString(bodies[0]?.requestId)).toMatch(/^[0-9a-f-]{36}$/);
-    expect(screen.getByRole("switch", { name: "Anonymous install count" })).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByRole("switch", { name: "Telemetry" })).toHaveAttribute("aria-checked", "false");
   });
 
   it("shows what the machine answers, not what was asked", async () => {
@@ -158,7 +158,7 @@ describe("Anonymous install count card (M86 spec 02)", () => {
     renderCard(view({ on: false, decidedBy: "settings", setting: "off", next: null }));
     await user.click(await theSwitch());
     expect(await screen.findByText("Off: DO_NOT_TRACK is set on this machine.")).toBeInTheDocument();
-    expect(screen.getByRole("switch", { name: "Anonymous install count" })).toBeDisabled();
+    expect(screen.getByRole("switch", { name: "Telemetry" })).toBeDisabled();
   });
 
   it("a refusal keeps the old state, says why, and a retry of the same tap reuses the request id", async () => {
@@ -182,8 +182,8 @@ describe("Anonymous install count card (M86 spec 02)", () => {
     renderCard(view());
     await user.click(await theSwitch());
     expect(await screen.findByText("The setting was not changed. This action needs a request ID. Nothing was changed.")).toBeInTheDocument();
-    expect(screen.getByRole("switch", { name: "Anonymous install count" })).toHaveAttribute("aria-checked", "true");
-    await user.click(screen.getByRole("switch", { name: "Anonymous install count" }));
+    expect(screen.getByRole("switch", { name: "Telemetry" })).toHaveAttribute("aria-checked", "true");
+    await user.click(screen.getByRole("switch", { name: "Telemetry" }));
     await screen.findByText("Off. You turned it off here.");
     expect(ids).toHaveLength(2);
     expect(ids[1]).toBe(ids[0]);
@@ -192,7 +192,7 @@ describe("Anonymous install count card (M86 spec 02)", () => {
   it("a failed read says so and leaves the switch disabled", async () => {
     renderCard("fail");
     expect(await screen.findByText("The setting could not be read from this machine.")).toBeInTheDocument();
-    expect(screen.getByRole("switch", { name: "Anonymous install count" })).toBeDisabled();
+    expect(screen.getByRole("switch", { name: "Telemetry" })).toBeDisabled();
     expect(screen.queryByRole("button", { name: "Show the next message" })).toBeNull();
   });
 

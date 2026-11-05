@@ -289,7 +289,7 @@ export function SettingsSystemRoute() {
   );
 }
 
-/** Settings → System → Anonymous install count: the whole card, one level below System. */
+/** Settings → System → Telemetry: the whole card, one level below System. */
 export function SettingsInstallCountRoute() {
   const scope = useScope();
   return (

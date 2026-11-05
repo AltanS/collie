@@ -527,7 +527,7 @@ Nothing else is sent: no host name, no folder, nothing you type or read. We need
 spot regressions and slow degradations after a release, and to steer what gets built next. Up to
 1.26.x Collie sent nothing ([ADR 0129](../.adr/0129-an-anonymous-install-count-on-by-default.md)).
 
-Turning it off is one switch: Settings, System, **Anonymous install count**. `COLLIE_TELEMETRY=0`,
+Turning it off is one switch: Settings, System, **Telemetry**. `COLLIE_TELEMETRY=0`,
 `telemetry = false` in `config.toml` or `DO_NOT_TRACK=1` do the same, and so does blocking the one
 host it goes to, `ping.colliepwa.dev`, in your firewall. The first ping waits a day after the first
 start of a build that has it. The exact message is written down in the contract in the repository,

@@ -92,7 +92,7 @@ The config file groups every setting under a `[section]`. The environment name o
 
 | section | what it holds |
 | --- | --- |
-| `bridge` | poll cadence, how many lines are read, where state lives, the anonymous install count |
+| `bridge` | poll cadence, how many lines are read, where state lives, telemetry |
 | `network` | the port, the bind address, allowed hosts and origins |
 | `mux` | which multiplexer this collie mirrors, and where it lives |
 | `access` | the Tailscale identity gate, the device header, the audit trail, the secret mask |
@@ -108,7 +108,7 @@ The durable agents one Collie runs beside its multiplexer are not in `config.tom
 `sources.json`, in the same folder as `.env` ([Durable agents](durable-agents.md#attach-a-durable-agent)).
 | `stt` | speech-to-text, absent until `collie stt setup` runs |
 
-### The anonymous install count
+### Telemetry
 
 Two keys in `[bridge]` set the daily install ping that
 [What leaves your machine](security.md#what-leaves-your-machine) describes.

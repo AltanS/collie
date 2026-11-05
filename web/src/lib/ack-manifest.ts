@@ -250,7 +250,7 @@ export const ACK_MANIFEST = {
   },
   setTelemetry: {
     channel: "inline",
-    why: "The answer is the state the machine holds now and the switch that decided it, a standing fact the Anonymous install count card states beside the switch, and a refusal the operator reads there too (components/telemetry-settings-card.tsx).",
+    why: "The answer is the state the machine holds now and the switch that decided it, a standing fact the Telemetry card states beside the switch, and a refusal the operator reads there too (components/telemetry-settings-card.tsx).",
   },
   setReleaseLine: {
     channel: "inline",

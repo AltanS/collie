@@ -322,18 +322,18 @@ export function updatesPath(scope?: Scope): string {
  */
 export const PAIRED_DEVICES_HASH = "paired-devices";
 
-/** The fragment naming the Anonymous install count card on its page (M86 spec 02). */
+/** The fragment naming the Telemetry card on its page (M86 spec 02). */
 export const TELEMETRY_SETTINGS_HASH = "install-count";
 
 /**
- * Settings → System → Anonymous install count: the page below System that holds the switch and its
+ * Settings → System → Telemetry: the page below System that holds the switch and its
  * explanation (the dashboard notice's button lands here). A CHILD of System, carrying the scope.
  */
 export function installCountPath(scope?: Scope): string {
   return `/settings/system/install-count${scopeSearch(scope)}`;
 }
 
-/** Where the dashboard notice's button opens the Anonymous install count card. */
+/** Where the dashboard notice's button opens the Telemetry card. */
 export function telemetrySettingsPath(scope?: Scope): string {
   return installCountPath(scope);
 }

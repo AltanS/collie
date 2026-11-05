@@ -18,7 +18,7 @@ import type { TelemetryDecider, TelemetrySetting, TelemetryView } from "@/lib/ty
 import { cn } from "@/lib/utils";
 import { mintRequestId } from "@/lib/worktree-name";
 
-// ── ANONYMOUS INSTALL COUNT (M86 spec 02, ADR 0129) ──────────────────────────────────────────────
+// ── TELEMETRY (M86 spec 02, ADR 0129) ──────────────────────────────────────────────
 //
 // Once a day this machine sends a random ID, the Collie version, the OS and the install kind. This
 // card shows whether that is on, which switch decided it, and the exact message the next ping would

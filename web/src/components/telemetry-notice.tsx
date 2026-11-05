@@ -14,7 +14,7 @@ import { shouldShowTelemetryNotice, spendTelemetryNotice, useTelemetryNoticeSpen
 import type { TelemetryView } from "@/lib/types";
 
 // THE ONE-TIME INSTALL-COUNT NOTICE (M86 spec 02): on the dashboard, a device that has not yet read it
-// is told that Collie 1.27.0 counts installs, once a day and anonymously, and where to turn that off.
+// is told that Collie 1.27.0 sends anonymous telemetry once a day, and where to turn that off.
 //
 // A SCOPE NOTICE (DESIGN.md §11): `Collapse` around a box `Notice`, so it slides open and shut and the
 // list below never jumps. It stands only while the machine says the count is on BY DEFAULT

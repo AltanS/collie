@@ -10,7 +10,7 @@ import { withHeaderHost } from "@/test/header-host";
 import type { TelemetryView } from "@/lib/types";
 import { SettingsInstallCountRoute, SettingsSystemRoute } from "./settings-sections";
 
-// Settings → System → Anonymous install count. System keeps one row with the state; the switch and
+// Settings → System → Telemetry. System keeps one row with the state; the switch and
 // its explanation are one level down, as Voice's host page is below Voice. The card's own states are
 // pinned in components/telemetry-settings-card.test.tsx.
 
@@ -38,31 +38,31 @@ function renderAt(initial: string, view: TelemetryView | "fail" = VIEW) {
   return router;
 }
 
-describe("System — the install count row", () => {
+describe("System — the telemetry row", () => {
   it("shows one row with the state in short, and not the switch", async () => {
     renderAt("/settings/system");
-    const row = await screen.findByRole("button", { name: /Anonymous install count/ });
+    const row = await screen.findByRole("button", { name: /Telemetry/ });
     await waitFor(() => expect(row.textContent).toContain("On, once a day"));
     expect(row.querySelector("svg.lucide-chevron-right")).not.toBeNull();
-    expect(screen.queryByRole("switch", { name: "Anonymous install count" })).toBeNull();
+    expect(screen.queryByRole("switch", { name: "Telemetry" })).toBeNull();
     expect(screen.queryByRole("link", { name: "What is sent" })).toBeNull();
   });
 
   it("says Off when the count is off", async () => {
     renderAt("/settings/system", { ...VIEW, on: false, decidedBy: "settings", setting: "off" });
-    const row = await screen.findByRole("button", { name: /Anonymous install count/ });
+    const row = await screen.findByRole("button", { name: /Telemetry/ });
     await waitFor(() => expect(row.textContent).toContain("Off"));
   });
 
   it("says Could not be read when the machine does not answer", async () => {
     renderAt("/settings/system", "fail");
-    const row = await screen.findByRole("button", { name: /Anonymous install count/ });
+    const row = await screen.findByRole("button", { name: /Telemetry/ });
     await waitFor(() => expect(row.textContent).toContain("Could not be read"));
   });
 
   it("sits at the bottom, between Connection and the report card", async () => {
     renderAt("/settings/system");
-    const row = await screen.findByRole("button", { name: /Anonymous install count/ });
+    const row = await screen.findByRole("button", { name: /Telemetry/ });
     const connection = screen.getByText("Connection");
     const report = screen.getByText("Offer a report when sending fails");
     const before = Node.DOCUMENT_POSITION_FOLLOWING;
@@ -72,13 +72,13 @@ describe("System — the install count row", () => {
 
   it("opens the page below as a push", async () => {
     const router = renderAt("/settings/system");
-    await userEvent.click(await screen.findByRole("button", { name: /Anonymous install count/ }));
+    await userEvent.click(await screen.findByRole("button", { name: /Telemetry/ }));
     await waitFor(() => expect(router.state.location.pathname).toBe("/settings/system/install-count"));
     expect(router.state.location.state).toMatchObject({ from: "/settings/system" });
   });
 });
 
-describe("Settings → System → Anonymous install count", () => {
+describe("Settings → System → Telemetry", () => {
   it("is registered in the app's router, beside System", () => {
     const hit = matchRoutes(appRouter.routes, "/settings/system/install-count");
     expect(hit?.at(-1)?.route.path).toBe("settings/system/install-count");
@@ -86,8 +86,8 @@ describe("Settings → System → Anonymous install count", () => {
 
   it("holds the whole card: the switch, the machine-only line and the link", async () => {
     renderAt("/settings/system/install-count");
-    expect(await screen.findByRole("heading", { name: "Anonymous install count" })).toBeInTheDocument();
-    expect(await screen.findByRole("switch", { name: "Anonymous install count" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Telemetry" })).toBeInTheDocument();
+    expect(await screen.findByRole("switch", { name: "Telemetry" })).toBeInTheDocument();
     expect(screen.getByText("This switch changes this machine only.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "What is sent" })).toBeInTheDocument();
   });
