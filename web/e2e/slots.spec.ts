@@ -110,6 +110,25 @@ test("@oracle:requirement @req:SLOT-4 after a browser restart each of five tiles
   }
 });
 
+const agentOf = (slot: number): Agent => (slot % 2 === 1 ? "claude" : "codex");
+const addressOf = (slot: number) => (agentOf(slot) === "claude" ? PANE_A : PANE_B);
+
+// Two tabs of one browser see each other's localStorage writes with a delay, so tiles that move in
+// the same moment must not cost each other their address.
+test("@oracle:requirement @req:SLOT-4 five tiles that move in the same moment each keep their own pane", async ({ context }) => {
+  const pages = await Promise.all(TILES.map((tile) => openTab(context, `/slot/${tile.slot}`)));
+  await Promise.all(pages.map((page) => landed(page, "/")));
+
+  await Promise.all(TILES.map((tile, idx) => paneRow(pages[idx]!, agentOf(tile.slot)).click()));
+  await Promise.all(TILES.map((tile, idx) => paneShown(pages[idx]!, addressOf(tile.slot))));
+  await Promise.all(pages.map((page) => page.close()));
+
+  for (const tile of TILES) {
+    const page = await openTab(context, `/slot/${tile.slot}`);
+    await paneShown(page, addressOf(tile.slot));
+  }
+});
+
 test("@oracle:requirement @req:SLOT-4 going back from a restored tile does not return to /slot/n", async ({ context }) => {
   await workInFiveTiles(context);
 
