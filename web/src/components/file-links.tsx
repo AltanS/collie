@@ -1,9 +1,12 @@
-import { createContext, useCallback, useContext, useMemo, useSyncExternalStore, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 
+import { FileContent, type FileImages, type FileText } from "@/components/file-preview";
+import { BottomSheet } from "@/components/ui/sheet";
 import { useNav } from "@/hooks/use-nav";
-import { FILES_EXIST_MAX, fetchFilesExist, isApiErrorStatus, isRefusalStatus } from "@/lib/api";
+import { FILES_EXIST_MAX, fetchFileImage, fetchFilesExist, isApiErrorStatus, isRefusalStatus } from "@/lib/api";
 import { isLostLatched } from "@/lib/connection-health";
 import { paneFilesRoot, resolveFilePathLink, type PrintedPath, type RootPane, type RootWorkspace } from "@/lib/file-paths";
+import { baseName, isRasterImagePath } from "@/lib/files-view";
 import { useLaunchers } from "@/lib/launchers";
 import { filesPath } from "@/lib/nav";
 import type { Scope } from "@/lib/scope";
@@ -43,13 +46,63 @@ export type FileLinkOpener = (found: PrintedPath) => FileLinkTarget | null;
 
 const FileLinkContext = createContext<FileLinkOpener | null>(null);
 
+interface PaneImageTarget {
+  paneId: string;
+  scope: Scope;
+  rel: string;
+}
+
+const imageSheetOpeners = new WeakMap<FileLinkOpener, (target: PaneImageTarget) => void>();
+
 /** The opener of the screen the caller sits in, or null when that screen has none. */
 export function useFileLinks(): FileLinkOpener | null {
   return useContext(FileLinkContext);
 }
 
 export function FileLinksProvider({ value, children }: { value: FileLinkOpener | null; children: ReactNode }) {
-  return <FileLinkContext.Provider value={value}>{children}</FileLinkContext.Provider>;
+  const [target, setTarget] = useState<PaneImageTarget | null>(null);
+  if (value !== null) imageSheetOpeners.set(value, setTarget);
+  useEffect(() => {
+    if (value === null) return;
+    imageSheetOpeners.set(value, setTarget);
+    return () => {
+      imageSheetOpeners.delete(value);
+    };
+  }, [value]);
+  const activeTarget = value === null ? null : target;
+  return (
+    <FileLinkContext.Provider value={value}>
+      {children}
+      {activeTarget !== null && <PaneImageSheet target={activeTarget} onClose={() => setTarget(null)} />}
+    </FileLinkContext.Provider>
+  );
+}
+
+function PaneImageSheet({ target, onClose }: { target: PaneImageTarget; onClose: () => void }) {
+  const file = useMemo<FileText>(
+    () => ({
+      available: true,
+      root: "",
+      path: target.rel,
+      size: 0,
+      binary: true,
+      truncated: false,
+      text: "",
+    }),
+    [target],
+  );
+  const images = useMemo<FileImages>(
+    () => ({
+      bytes: (path, signal) => fetchFileImage({ kind: "pane", paneId: target.paneId }, path, target.scope, signal),
+      text: async () => null,
+    }),
+    [target],
+  );
+  return (
+    <BottomSheet open onClose={onClose} title={baseName(target.rel)}>
+      <FileContent file={file} view="preview" images={images} />
+    </BottomSheet>
+  );
 }
 
 /** A plain click is the screen's to handle; a modified one (new tab, copy) is the browser's. */
@@ -295,7 +348,7 @@ export function usePaneFileLinks({
     const at: Scope = {};
     if (host !== undefined) at.host = host;
     if (session !== undefined) at.session = session;
-    return ({ path, line }) => {
+    const opener: FileLinkOpener = ({ path, line }) => {
       const rel = resolveFilePathLink({ path, root, cwd, home });
       if (rel === null) return null;
       if (existence === null) return null;
@@ -304,7 +357,20 @@ export function usePaneFileLinks({
         return null;
       }
       const href = filesPath(paneId, at, line === undefined ? { path: rel } : { path: rel, line });
-      return { href, onOpen: () => nav.down(href, { viaLink: true }) };
+      return {
+        href,
+        onOpen: () => {
+          if (line === undefined && isRasterImagePath(rel)) {
+            const openSheet = imageSheetOpeners.get(opener);
+            if (openSheet !== undefined) {
+              openSheet({ paneId, scope: at, rel });
+              return;
+            }
+          }
+          nav.down(href, { viaLink: true });
+        },
+      };
     };
+    return opener;
   }, [root, cwd, home, paneId, host, session, nav, existence]);
 }
