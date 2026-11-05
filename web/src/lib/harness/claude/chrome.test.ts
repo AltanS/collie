@@ -1166,6 +1166,8 @@ describe("real corpus — pinned so any change to the walk shows up as a diff", 
     { fixture: "v21314-core-idle--w120", statusRows: 1, draft: null, stripped: 5 },
     { fixture: "v21314-core-idle--w60", statusRows: 1, draft: null, stripped: 5 },
     { fixture: "v21314-core-menu-model--w120", statusRows: 0, draft: null, stripped: 0 },
+    // Claude Code 2.1.318: the weekly-limit notice fills the /model picker's top edge, one trailing `▔` (2026-11-06).
+    { fixture: "v2318-model-picker-usage-notice-edge--w120", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "v21314-core-permission--w120", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "v21314-core-permission--w60", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "v21314-core-slash-list--w120", statusRows: 0, draft: "/", stripped: 24 },

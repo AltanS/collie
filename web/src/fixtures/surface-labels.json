@@ -6120,6 +6120,11 @@
    "version": "2.1.314",
    "state": "popup"
   },
+  "claude--v2318-model-picker-usage-notice-edge--w120.txt": {
+   "harness": "claude",
+   "version": "2.1.318",
+   "state": "dialog"
+  },
   "pi--v130-core-idle--w120.txt": {
    "harness": "pi",
    "version": "1.3.0",

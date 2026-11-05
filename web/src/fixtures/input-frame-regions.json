@@ -2275,6 +2275,10 @@
   }
  },
  {
+  "fixture": "claude--v2318-model-picker-usage-notice-edge--w120.txt",
+  "frame": null
+ },
+ {
   "fixture": "claude--wizard-multiselect-checked.txt",
   "frame": null
  },
