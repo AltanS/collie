@@ -33,7 +33,7 @@ import { hasInputBox } from "./chrome";
 import { classifyFooter, isBlank, lineText } from "./markers";
 import { regionSignature } from "./prompt-select";
 import { findRegionTop } from "./region-top";
-import type { MenuAction, MenuModel, MenuNav } from "../menu-model";
+import type { MenuAction, MenuModel, MenuNav, MenuRows } from "../menu-model";
 import { capitaliseMenuLabel, MENU_ARROW_ROW, parseKeyHintFooter, parseSingleHint, readKeyHintFooter } from "../menu-hints";
 
 /** The detection result buildBlocks needs: the model plus `startLine`, the index of the region's
@@ -69,6 +69,34 @@ function escOnlyFooter(footer: string): MenuAction | null {
   const hint = parseSingleHint(footer);
   if (hint === null || hint.key !== "Escape") return null;
   return { label: capitaliseMenuLabel(hint.verb), keys: ["Escape"], cancel: true };
+}
+
+/** A row of a numbered list: the optional marker, the number, the text. */
+const NUMBERED_ROW = new RegExp(`^\\s*(${POINTER}\\s*)?(\\d+)\\.\\s+(\\S.*)$`, "u");
+
+/** Where a row's name ends and its description column begins. The mirror keeps the description. */
+const ROW_COLUMN = /\s{2,}|\s·\s/u;
+
+/**
+ * The options of the block holding the marker, or undefined unless they read cleanly: one marker, on a
+ * numbered row, with numbers that climb by one and two rows at least. The block ends at a blank row; an
+ * unnumbered row inside it is a wrapped line or a description and names no option. Anything else keeps
+ * the arrows alone, since a wrong guess would put a button on a row that is not there.
+ */
+function readRows(texts: string[]): MenuRows | undefined {
+  const marked = texts.flatMap((text, i) => (text.includes(POINTER) ? [i] : []));
+  const at = marked[0];
+  if (at === undefined || marked.length !== 1 || NUMBERED_ROW.exec(texts[at]!)?.[1] === undefined) return undefined;
+  let first = at;
+  while (first > 0 && !isBlank(texts[first - 1]!)) first--;
+  let last = at;
+  while (last < texts.length - 1 && !isBlank(texts[last + 1]!)) last++;
+  const rows = texts.slice(first, last + 1).flatMap((text) => {
+    const row = NUMBERED_ROW.exec(text);
+    return row === null ? [] : [{ number: Number(row[2]), label: row[3]!.split(ROW_COLUMN)[0]!.trim(), marked: row[1] !== undefined }];
+  });
+  if (rows.length < 2 || rows.some((row, i) => row.number !== rows[0]!.number + i)) return undefined;
+  return { labels: rows.map((row) => row.label), current: rows.findIndex((row) => row.marked) };
 }
 
 /**
@@ -150,8 +178,9 @@ export function detectMenuRegion(lines: StyledLine[]): MenuRegion | null {
   // changed the signature of a dialog nobody touched: the bridge minted a new ask id and refused a
   // tap on the old one as gone (the /model picker, 2.1.302, 2026-10-17). The edge stays the
   // region's first row for the renderer.
+  const rows = readRows(texts.slice(top + 1, fi));
   return {
-    model: { title, actions, nav, signature: regionSignature(texts, region.edge ? top + 1 : top, fi) },
+    model: { title, actions, nav, ...(rows && { rows }), signature: regionSignature(texts, region.edge ? top + 1 : top, fi) },
     startLine: top,
   };
 }
