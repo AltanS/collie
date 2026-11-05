@@ -108,9 +108,11 @@ test("the Collie look fetches only its own face, and draws every default", async
       tracking: style(document.querySelector(".label-caps"))?.letterSpacing,
     };
   });
-  // The default look: a band behind the header (--secondary), labels as typed, no tracking.
+  // The default look: the faint crossed grain behind the page (two 45deg hatch gradients, d2279ff88), a band
+  // behind the header (--secondary), labels as typed, no tracking.
+  expect(seen.ground).toMatch(/^repeating-linear-gradient\(45deg,.*\), repeating-linear-gradient\(-45deg,/u);
   expect(seen).toEqual({
-    ground: "none",
+    ground: seen.ground,
     header: await resolved(page, "var(--secondary)"),
     page: seen.page,
     rowGap: "0px",
