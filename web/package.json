@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "vite",
     "playground": "COLLIE_PLAYGROUND=1 vite --host --port 5199 --strictPort",
+    "playground:build": "vite build --config vite.playground.config.ts",
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.worker.json",
