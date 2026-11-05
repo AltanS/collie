@@ -8,6 +8,7 @@ import { AgentIcon } from "@/components/agent-icon";
 import { ThreadSidebar } from "@/components/agent-sidebar";
 import { SettingsGear, useHeaderDock } from "@/components/app-header";
 import { useHostHealth } from "@/components/crew-provider";
+import { PaneActionsSheet } from "@/components/pane-actions-sheet";
 import { StatusDot } from "@/components/status-badge";
 import { TabStrip } from "@/components/tab-strip";
 import { ColumnControls, ColumnHeader, PaneColumnBody, columnFrame } from "@/components/strip-column";
@@ -275,6 +276,19 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
       const target = herd.find((p) => p.tabId === tab.tabId && p.workspaceId === agent.workspaceId && p.host === agent.host);
       if (target !== undefined) return goTo(target);
     }
+    nav.up(homePath({ host: scope.host, session: scope.session }));
+  };
+  // A pane closed from its sidebar row. Another pane only revalidates. The route's own pane must not
+  // leave the route on a pane that is gone: the focus moves to the next column, then to any pane of
+  // the space, and only a space with nothing left goes up to Home.
+  const closedRow = (closed: AgentView) => {
+    const key = columnKeyOf(closed, places);
+    if (key !== routeKey) return revalidate();
+    const next = removeColumn(strip, key);
+    if (spaceKey !== null && next !== strip) setSpaceStrip(spaceKey, next);
+    const column = next !== strip && next.focus !== null ? byColumn.get(next.focus) : undefined;
+    const target = column ?? space?.panes.find((p) => columnKeyOf(p, places) !== key);
+    if (target !== undefined) return goTo(target);
     nav.up(homePath({ host: scope.host, session: scope.session }));
   };
   const toTab = (tabId: string) => {
@@ -700,26 +714,40 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
         </div>
       </BottomSheet>
 
-      <BottomSheet open={menuPane !== undefined} onClose={() => setMenuRow(null)} title={menuPane ? paneName(menuPane) : undefined}>
-        <div className="flex flex-col py-1">
-          <ActionRow
-            icon={<Replace className="size-5" />}
-            label={t("wide.openHere")}
-            onClick={() => {
-              setMenuRow(null);
-              if (menuPane) write(menuPane, openHere);
-            }}
-          />
-          <ActionRow
-            icon={<Columns2 className="size-5" />}
-            label={t("wide.openBeside")}
-            onClick={() => {
-              setMenuRow(null);
-              if (menuPane) write(menuPane, openBeside);
-            }}
-          />
-        </div>
-      </BottomSheet>
+      {/* The sheet every other door to a pane opens, so Close keeps its two taps and its write gates. */}
+      <PaneActionsSheet
+        open={menuPane !== undefined}
+        onClose={() => setMenuRow(null)}
+        pane={menuPane ?? null}
+        scope={menuPane ? scopeOfPane(menuPane, places) : scope}
+        readOnly={readOnly}
+        savedCopy={root.error}
+        onRenamed={revalidate}
+        onClosed={() => {
+          if (menuPane) closedRow(menuPane);
+        }}
+        herd={herd}
+        leading={
+          <>
+            <ActionRow
+              icon={<Replace className="size-5" />}
+              label={t("wide.openHere")}
+              onClick={() => {
+                setMenuRow(null);
+                if (menuPane) write(menuPane, openHere);
+              }}
+            />
+            <ActionRow
+              icon={<Columns2 className="size-5" />}
+              label={t("wide.openBeside")}
+              onClick={() => {
+                setMenuRow(null);
+                if (menuPane) write(menuPane, openBeside);
+              }}
+            />
+          </>
+        }
+      />
     </div>
   );
 }
