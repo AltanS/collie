@@ -59,7 +59,7 @@ and [Terminal palette](#terminal-palette).
 | Labels | `caps` | `caps` | `sentence` | `caps` | `sentence` |
 | Tabs | `plain` | `plain` | `plain` | `plain` | `folder` |
 | Composer | `field` | `field` | `field` | `field` | `box` |
-| Tab colour | the text colour | the text colour | the text colour | the text colour | violet |
+| Tab colour | the text colour | the text colour | the text colour | the text colour | the text colour |
 | Terminal palette | the app's own | amber, on `#000000` | vivid, on `#1a1612` | Solarized-based, on `#0a1216` | high contrast, on `#100f0d` |
 
 ## Pick a theme
@@ -323,7 +323,7 @@ of closed words.
 | `zoom` | `screen` | The Zoom pill on the belt shows in the Screen view, never in Chat. The default. |
 | | `none` | The Zoom pill never shows. |
 | `tabs` | `plain` | The open tab differs from the others by its text colour and weight only. The default. |
-| | `folder` | The open tab is a folder tab. It is filled with the page colour, has a line on each side and a 3px top edge in `tab-active`, and joins the row of panes under it. The open pane is a tinted cell with a ring in `tab-active`. |
+| | `folder` | The open tab is a folder tab. It is filled with the page colour, has a line on each side and a 2px top edge in `tab-active`, and joins the row of panes under it. The open pane is a tinted cell with a ring in `tab-active`. |
 | `composer` | `field` | The composer is one text field with its row of controls. The default. |
 | | `box` | The composer is a box. |
 

@@ -3174,6 +3174,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             className={cn(
               TOOLBAR_TAP_TARGET,
               "size-9 rounded-full text-muted-foreground",
+              // Box layout: a filled circle, so the icon stands on something (Altan, 2026-11-05).
+              box && "bg-secondary text-foreground",
               box && (boxOpen ? "row-start-3" : "row-start-1"),
               box && (mirrored ? (boxOpen ? "col-start-4" : "col-start-3") : "col-start-1"),
               // The press echo, in the tone this app already uses for "your press landed" —
@@ -3221,6 +3223,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               className={cn(
                 TOOLBAR_TAP_TARGET,
                 "size-9 rounded-full text-muted-foreground",
+                box && "bg-secondary text-foreground",
                 // Box layout: the small mic stands in the open shape's button row, beside Send.
                 box && (mirrored ? "col-start-2 row-start-3" : "col-start-3 row-start-3"),
               )}

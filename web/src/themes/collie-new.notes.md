@@ -46,7 +46,7 @@ the light-mode inversion. The report passes all 62 checks in both halves.
 - Lines are 1px, as in `collie`; the edge comes from the 1.74 grey, not from width. Cards read as
   cards without a shadow, so the theme draws none.
 - `ring` is oklch(0.5 0 0) light (5.28 on the page) and oklch(0.76 0 0) dark (8.93).
-- `pane-active` is the brand violet (see below), no longer the `:root` sky blue. The file is version 3.
+- `pane-active` is the theme's ink (see below), no longer the `:root` sky blue. The file is version 3.
 
 ## The one accent
 
@@ -59,32 +59,28 @@ the light-mode inversion. The report passes all 62 checks in both halves.
   page colour (6.83), 5.94 on a card, 5.19 on the band. `collie`'s dark filled button is near white on
   light red (2.77, the one known failure of its own report); this one does not carry it.
 
-## The brand violet and the folder tab
+## The folder tab, in ink
 
-Two optional tokens (schema version 3) carry the one colour the theme adds beside `control-on`: the
-violet of the Collie brand mark, hue 295. `tab-active` is the 3px top edge of the open tab and the
-ring of the open pane under `tabs: folder`; `pane-active` is the frame of the active pane column on a
-large screen. Both hold the same value in each half, so the two places that mark "you are here" agree.
+Two optional tokens (schema version 3) mark "you are here". Both are the theme's own ink, the same
+value as `foreground` in each half: violet was tried first (2026-11-05) and Altan found it did not
+suit a black and white theme. `tab-active` is the 2px top edge of the open tab and the ring of the
+open pane under `tabs: folder`; `pane-active` is the frame of the active pane column on a large screen.
 
-| token                  | light                 | dark                  |
-| ---------------------- | --------------------- | --------------------- |
-| `tab-active`, `pane-active` | oklch(0.50 0.19 295) | oklch(0.76 0.15 295)  |
-| on `background` (floor 3) | 5.76               | 8.45                  |
-| on `chrome`, the tab row  | 5.11               | 6.41                  |
-| on the open pane's fill   | 4.71               | 7.06                  |
+| token                       | light           | dark             |
+| --------------------------- | --------------- | ---------------- |
+| `tab-active`, `pane-active` | oklch(0.14 0 0) | oklch(0.985 0 0) |
 
-- The open pane's fill is the page with 14 percent of the violet laid in (oklab), oklch(0.8913 0.0245
-  298.46) light and oklch(0.2526 0.0189 299.48) dark. `foreground` on it is 14.30 and 15.34, so the
-  pane name stays far over AAA; the ring on it is 4.71 and 7.06, over the 3 a shape needs.
-- The other panes are `secondary` cells in `muted-foreground`: 7.21 light, 7.76 dark, the same pair
-  the band already measures. The violet ring on `secondary` is 5.11 and 6.41.
-- `rule` (the line under the tab row and on each side of the open tab) is 2.18 and 3.49 on the page,
-  1.94 and 2.65 on the chrome ground the row stands on.
-- Light violet is deep and saturated (0.50, 0.19) so the 3px edge reads against the near-white page;
-  dark is lighter and softer (0.76, 0.15) so it stays a violet and not a glare on the dark page.
+- On `background` they measure what `foreground` measures there, far over the 3 a shape needs.
+- The open pane's fill is the page with 14 percent of the ink laid in (oklab), a grey step; the pane
+  name in `foreground` and the ink ring both stay over their floors.
+- The other panes are `secondary` cells in `muted-foreground`: 7.21 light, 7.76 dark.
+- `rule` (the line under the tab row and on each side of the open tab) is 2.18 and 3.49 on the page.
+- The tab row keeps 6px of its ground above the tabs, so the open tab rises out of the row and does
+  not touch the header's line. Tabs carry 12px of padding on each side under `folder`.
+
 - `tabs: folder` and `composer: box` are surface words that set no CSS (`zoom` is the other): the app
   reads them (`lib/tab-look.ts`, `lib/composer-layout.ts`). They reach no pair the report measures,
-  so the 58 checks that existed before are unchanged and the four new ones are the two violet pairs.
+  so the checks that existed before are unchanged; the new ones are the two ink pairs.
 
 ## Status
 
@@ -141,7 +137,7 @@ which is why it leaves the rows and the meta text.
 | rows    | rules    | Collie's lines between rows; cards drew a card inside each settings card.    |
 | icons   | default  | A stroke of 2 (the table has thin, default and heavy; heavy would be loud).   |
 | labels  | sentence | No small capitals and no tracking; section labels read as words.              |
-| tabs    | folder   | The open tab is a folder tab joined to the pane row; violet 3px edge.         |
+| tabs    | folder   | The open tab is a folder tab joined to the pane row; a 2px ink edge.          |
 | composer | box     | The composer is a box (the layout is built apart from this file).             |
 
 Every word exists in `surface.ts`. Nothing was approximated.

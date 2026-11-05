@@ -127,7 +127,9 @@ describe("Composer layout=box", () => {
     expect(primary()).toHaveAccessibleName("Send");
     const ghost = document.querySelector<HTMLElement>('[data-slot="composer-mic-draft"]')!;
     expect(ghost).toHaveAccessibleName(/record a voice message/i);
-    expect(ghost.className).toMatch(/text-muted-foreground/);
+    // A small filled circle, not the main button (Altan, 2026-11-05: bare icons looked loose).
+    expect(ghost.className).toMatch(/bg-secondary/);
+    expect(ghost.className).not.toMatch(/bg-primary/);
     // The ghost mic sits left of Send in the button row.
     expect(ghost.className).toMatch(/col-start-3/);
     expect(primary().className).toMatch(/col-start-4/);

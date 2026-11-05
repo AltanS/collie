@@ -88,7 +88,7 @@ interface TabStripProps {
 // the PLAIN look, which is what every theme gets that does not ask. The folder is the plain row plus:
 // one 1px `rule` line under the whole row (an inset shadow of the nav, so nothing hangs below it and
 // the scroller's clip never meets it); an open tab filled with the page colour (`bg-background`),
-// so it joins the pane row under it, with a 1px `rule` line on each side, a 3px top edge in the
+// so it joins the pane row under it, with a 1px `rule` line on each side, a 2px top edge in the
 // theme's `tab-active` colour (an inset shadow, so the hit box and the label do not move) and no
 // line below, so its fill covers the row's rule; the label stays semibold ink. Every other tab keeps
 // the plain look; it carries the same transparent side borders as the open one, so a selection moves
@@ -193,7 +193,9 @@ export function TabStrip({
         className={cn(
           "shrink-0 bg-chrome px-4",
           trailing ? "flex items-stretch" : "flow-root",
-          look === "folder" && "shadow-[inset_0_-1px_0_0_var(--rule)]",
+          // Under `folder` the row keeps 6px of its own ground above the tabs, so the open tab rises out of
+          // the row instead of touching the header's bottom line.
+          look === "folder" && "pt-1.5 shadow-[inset_0_-1px_0_0_var(--rule)]",
           className,
         )}
       >
@@ -232,7 +234,7 @@ export function TabStrip({
               child of the scroller so the "+" button, a sibling outside this group, keeps the
               scroller's own `gap-3` from the group: the "+" reaches 8px sideways, and 12px of gap
               keeps that reach off the last tab. */}
-          <div className="-mx-1.5 flex shrink-0 items-stretch">
+          <div className={cn("flex shrink-0 items-stretch", look === "folder" ? "-mx-3" : "-mx-1.5")}>
             {allowAll && (
               <Tab
                 look={look}
@@ -396,14 +398,14 @@ function Tab({
           : "font-medium text-muted-foreground hover:text-foreground",
         // THE FOLDER LOOK (`tabs: folder`). Both states carry the same 1px side borders, so the
         // box is one size and only the paint changes; the open tab paints them in `rule`, fills with
-        // the page colour and wears the 3px `tab-active` edge as an inset shadow (no top border, so
+        // the page colour and wears the 2px `tab-active` edge as an inset shadow (no top border, so
         // the 30px hit box and the label's centre stay where they are). `rounded-t-sm` is the
         // theme's own step. No bottom border: the fill reaches the row's last pixel row and covers
         // the nav's rule there.
         look === "folder" &&
           (active
-            ? "rounded-t-sm border-x-[1px] border-x-rule bg-background shadow-[inset_0_3px_0_0_var(--tab-active)]"
-            : "border-x-[1px] border-x-transparent"),
+            ? "rounded-t-sm border-x-[1px] border-x-rule bg-background px-3 shadow-[inset_0_2px_0_0_var(--tab-active)]"
+            : "border-x-[1px] border-x-transparent px-3"),
         // NO DESKTOP-FOCUS RING. `TabView.focused` (the tab the desktop TUI is looking at) used to
         // paint a dashed outline on its cell. On the phone that read as a second selection beside the
         // solid pill, and the phone's reader does not care where the desktop is looking. It is gone;
