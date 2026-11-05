@@ -3436,7 +3436,7 @@ the status row above it named the operator's accounts and was dropped.
 | --- | --- | --- |
 | `omp--v18-16-0-ask-single-glyph-hide--w200.txt` | `dialog` | `과일을 고르세요` with 사과, 배, 포도 and `Other`, pointer on the first row, the footer ending `⌥H hide` instead of `Alt+H hide`. Lifts (ask.ts) |
 | `omp--v18-16-0-ask-single-glyph-hide-moved--w200.txt` | `dialog` | The same dialog after one `Down` (`hc keys … down`), pointer on 배. Its walk pair |
-| `omp--v18-16-0-answer-editor-empty--w200.txt` | `dialog` | `Enter` on `Other` opened `Custom answer: 과일을 고르세요`, hint `⏎ or ⌃Q submit  ⎋ cancel  ⌃G external editor`. The adapter recognises the prompt-style input (answer-editor.ts); the Send Protocol does not yet treat it as an input target |
+| `omp--v18-16-0-answer-editor-empty--w200.txt` | `idle` | `Enter` on `Other` opened `Custom answer: 과일을 고르세요`, hint `⏎ or ⌃Q submit  ⎋ cancel  ⌃G external editor`: the same prompt-style box as the `custom-answer-*` rows above, in the glyph keycap dialect, with no Ask box above it. Reads as a free box since #704 |
 
 ## omp's rewind picker, Esc Esc (captured 2026-10-25, omp-gang tester 04 case 7)
 

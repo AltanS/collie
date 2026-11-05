@@ -4493,7 +4493,7 @@
   "omp--v18-16-0-answer-editor-empty--w200.txt": {
    "harness": "omp",
    "version": "18.16.0",
-   "state": "dialog"
+   "state": "idle"
   },
   "omp--v18-16-0-ask-single-glyph-hide--w200.txt": {
    "harness": "omp",
