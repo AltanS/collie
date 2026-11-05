@@ -62,11 +62,11 @@ type Answer = Response | Error;
  * `answers` maps a URL fragment to the reply: a member's `hello`, or this bridge's `/api/snapshot`.
  * A URL nobody scripted fails the way a closed port does.
  */
-function rig(files: Record<string, string>, answers: Record<string, Answer>): Rig {
+function rig(files: Record<string, string>, answers: Record<string, Answer>, env: Record<string, string> = {}): Rig {
   const seen: Seen[] = [];
   const deps: Rig["deps"] = {
     // A budget no test can outrun: the fake resolves at once, and a real timer must never misfire.
-    ctx: context({ COLLIE_CREW_TIMEOUT_MS: "60000" }, { stateDir: STATE, port: 8788 }),
+    ctx: context({ COLLIE_CREW_TIMEOUT_MS: "60000", ...env }, { stateDir: STATE, port: 8788 }),
     files: fakeFiles(files),
     now: () => 1_754_000_000_000,
     fetch: async (url, init) => {
@@ -227,13 +227,26 @@ describe("sessions", () => {
     });
   });
 
-  test("the read carries the local credential and never a Tailscale header", async () => {
+  test("the read carries the local credential and the configured login beside it", async () => {
     const r = rig({ [SECRET_FILE]: `${SECRET}\n` }, { "/api/snapshot": snapshot() });
     await gatherCensus(r.deps, { running: true, crew: "solo" });
     expect(r.seen).toHaveLength(1);
     expect(r.seen[0]!.url).toBe("http://127.0.0.1:8788/api/snapshot");
     expect(r.seen[0]!.headers.authorization).toBe(`Bearer ${SECRET}`);
+    // No login is configured in this rig, so the header is omitted rather than invented.
     expect(Object.keys(r.seen[0]!.headers).map((k) => k.toLowerCase())).not.toContain("tailscale-user-login");
+  });
+
+  test("a configured login rides beside the credential, or the bridge refuses the read (issue #238)", async () => {
+    const withLogin = rig(
+      { [SECRET_FILE]: `${SECRET}\n` },
+      { "/api/snapshot": snapshot() },
+      { COLLIE_TRUSTED_USER: "you@example.com" },
+    );
+    await gatherCensus(withLogin.deps, { running: true, crew: "solo" });
+    // `Headers` lowercases the names it carries, so the assertion is on the normalized key.
+    expect(withLogin.seen[0]!.headers["tailscale-user-login"]).toBe("you@example.com");
+    expect(withLogin.seen[0]!.headers.authorization).toBe(`Bearer ${SECRET}`);
   });
 
   test("with no bridge running nothing is dialled and the block says so", async () => {

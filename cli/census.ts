@@ -9,7 +9,6 @@ import { groupMembersByHost } from "./host-groups.ts";
 import { pairedRegistryOf } from "./pairing.ts";
 import { readOwnSnapshot } from "./snapshot-read.ts";
 import type { Files } from "./sys.ts";
-
 // The census `collie status` prints under its head (M76 spec 01): which machines are in the crew, which
 // phones are paired, and which agent sessions exist and in what state. Three blocks, each a value first
 // and a few lines of words second, so `status --json` and the plain text read the same facts.
@@ -129,10 +128,24 @@ interface SnapshotAgentsWire {
 
 const NOT_READ: Omit<CensusSessions, "read" | "refusedWith"> = { total: null, byState: null, withSessionId: null };
 
+/**
+ * The login this verb shows its own bridge beside the local read credential, or nothing when none is
+ * configured: the same header `collie doctor` and `collie sessions` send (issue #238).
+ *
+ * `checkAccess` (`bridge/server.ts`) fails closed on a request with no `Tailscale-User-Login` while
+ * `tailscale serve` is in front, and it runs that check BEFORE the pairing gate -- so a read that
+ * carries the local read credential alone is refused with `403 identity required`. Sending the
+ * configured login grants nothing that was not already there: the login is an identity, not a secret.
+ */
+function identityHeader(deps: CensusDeps): Record<string, string> | undefined {
+  const login = deps.ctx.env.COLLIE_TRUSTED_USER ?? "";
+  return login === "" ? undefined : { "Tailscale-User-Login": login };
+}
+
 async function gatherSessions(deps: CensusDeps, running: boolean): Promise<CensusSessions> {
   // No bridge, no read: the answer is known, and a dial at a closed port is a wasted budget.
   if (!running) return { read: "bridge-not-running", refusedWith: null, ...NOT_READ };
-  const read = await readOwnSnapshot(deps, { budgetMs: SESSIONS_BUDGET_MS });
+  const read = await readOwnSnapshot(deps, { budgetMs: SESSIONS_BUDGET_MS, extraHeaders: identityHeader(deps) });
   if (read.kind === "silent") return { read: "unreadable", refusedWith: null, ...NOT_READ };
   if (read.kind === "refused") return { read: "refused", refusedWith: read.status, ...NOT_READ };
   const counts = countSessions(read.text);
