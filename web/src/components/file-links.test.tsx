@@ -11,7 +11,7 @@ import { parseJsonObject } from "@/lib/json";
 import { paneLinkHandlers, PaneFileLinks } from "@/test/file-links";
 import { server } from "@/test/setup";
 
-import { FILE_EXIST_ABSENT_TTL_MS, FILE_EXIST_DEBOUNCE_MS, usePaneFileLinks } from "./file-links";
+import { FILE_EXIST_ABSENT_TTL_MS, FILE_EXIST_DEBOUNCE_MS, FileLinksProvider, useFileLinks, usePaneFileLinks, type FileLinkOpener, type FileLinkTarget } from "./file-links";
 import { MarkdownText } from "./markdown-text";
 
 // The pane screen's opener (ADR 0088): the root from the snapshot, home from the launchers answer,
@@ -348,5 +348,82 @@ describe("chat prose with the existence check", () => {
     fireEvent.click(container.querySelector("a")!);
     await waitFor(() => expect(screen.getByText(/too large to show/i)).toBeInTheDocument());
     expect(screen.queryByText(/0 B/)).toBeNull();
+  });
+
+  it("opens the sheet from a target built by an earlier opener, and clears the open sheet when the opener goes null", async () => {
+    const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    server.use(
+      http.get("/api/launchers", () => HttpResponse.json({ launchers: [], home: "/home/you" })),
+      http.post("/api/pane/:id/files/exist", async ({ request }) => {
+        const body = parseJsonObject(await request.text());
+        const paths = Array.isArray(body?.paths) ? body.paths : [];
+        return HttpResponse.json({ exists: paths });
+      }),
+      http.get("/api/pane/:id/files/image", () => new HttpResponse(pngBytes, { status: 200, headers: { "content-type": "image/png" } })),
+    );
+    let currentLocation = "";
+    function LocationProbe() {
+      const loc = useLocation();
+      currentLocation = `${loc.pathname}${loc.search}`;
+      return null;
+    }
+    let staleTarget: FileLinkTarget | null = null;
+    function StaleTargetProbe() {
+      const open = useFileLinks();
+      const target = open?.({ path: "shots/first.png" }) ?? null;
+      if (target !== null && staleTarget === null) staleTarget = target;
+      return null;
+    }
+    function Harness({ activePane, secondPath }: { activePane: typeof pane | undefined; secondPath: boolean }) {
+      const opener: FileLinkOpener | null = usePaneFileLinks({
+        paneId: "w1:p1",
+        pane: activePane,
+        panes: activePane ? [activePane] : [],
+        workspaces,
+      });
+      return (
+        <FileLinksProvider value={opener}>
+          <StaleTargetProbe />
+          <MarkdownText text={secondPath ? "see `shots/first.png` and `shots/second.png`" : "see `shots/first.png`"} />
+        </FileLinksProvider>
+      );
+    }
+    const { rerender } = render(
+      <MemoryRouter>
+        <LocationProbe />
+        <Harness activePane={pane} secondPath={false} />
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(staleTarget).not.toBeNull());
+    // Force a second existence batch so usePaneFileLinks produces a new opener instance.
+    rerender(
+      <MemoryRouter>
+        <LocationProbe />
+        <Harness activePane={pane} secondPath={true} />
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(screen.getByText("shots/second.png").closest("a")).not.toBeNull());
+
+    // Calling onOpen on the target captured from the earlier opener still opens the sheet instead of navigating.
+    act(() => staleTarget!.onOpen());
+    await waitFor(() => expect(screen.getByRole("img", { name: "first.png" })).toBeInTheDocument());
+    expect(currentLocation).toBe("/");
+
+    // When the opener goes null, the stored target is cleared and does not reappear when the pane comes back.
+    rerender(
+      <MemoryRouter>
+        <LocationProbe />
+        <Harness activePane={undefined} secondPath={true} />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByRole("img", { name: "first.png" })).toBeNull();
+    rerender(
+      <MemoryRouter>
+        <LocationProbe />
+        <Harness activePane={pane} secondPath={true} />
+      </MemoryRouter>,
+    );
+    await settle();
+    expect(screen.queryByRole("img", { name: "first.png" })).toBeNull();
   });
 });

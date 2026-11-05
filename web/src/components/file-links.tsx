@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 
 import { FileContent, type FileImages, type FileText } from "@/components/file-preview";
 import { BottomSheet } from "@/components/ui/sheet";
@@ -35,24 +35,24 @@ import { snapshotsTaken } from "@/lib/snapshot-clock";
 // a member the lead cannot forward to) asks again when the hold ends, since a snapshot says nothing
 // new about the route.
 
+export interface PaneImageTarget {
+  paneId: string;
+  scope: Scope;
+  rel: string;
+}
+
 /** One tap target: `href` for a middle-click or a long-press copy, `onOpen` for the tap. */
 export interface FileLinkTarget {
   href: string;
   onOpen: () => void;
+  /** When set, a tap inside a `FileLinksProvider` previews the raster image in a sheet instead of navigating. */
+  image?: PaneImageTarget;
 }
 
 /** Where a printed path leads, or null when it leads nowhere Files can open. */
 export type FileLinkOpener = (found: PrintedPath) => FileLinkTarget | null;
 
 const FileLinkContext = createContext<FileLinkOpener | null>(null);
-
-interface PaneImageTarget {
-  paneId: string;
-  scope: Scope;
-  rel: string;
-}
-
-const imageSheetOpeners = new WeakMap<FileLinkOpener, (target: PaneImageTarget) => void>();
 
 /** The opener of the screen the caller sits in, or null when that screen has none. */
 export function useFileLinks(): FileLinkOpener | null {
@@ -61,19 +61,20 @@ export function useFileLinks(): FileLinkOpener | null {
 
 export function FileLinksProvider({ value, children }: { value: FileLinkOpener | null; children: ReactNode }) {
   const [target, setTarget] = useState<PaneImageTarget | null>(null);
-  if (value !== null) imageSheetOpeners.set(value, setTarget);
-  useEffect(() => {
-    if (value === null) return;
-    imageSheetOpeners.set(value, setTarget);
-    return () => {
-      imageSheetOpeners.delete(value);
+  if (value === null && target !== null) setTarget(null);
+  const opener = useMemo<FileLinkOpener | null>(() => {
+    if (value === null) return null;
+    return (found) => {
+      const link = value(found);
+      if (link === null || link.image === undefined) return link;
+      const image = link.image;
+      return { ...link, onOpen: () => setTarget(image) };
     };
   }, [value]);
-  const activeTarget = value === null ? null : target;
   return (
-    <FileLinkContext.Provider value={value}>
+    <FileLinkContext.Provider value={opener}>
       {children}
-      {activeTarget !== null && <PaneImageSheet target={activeTarget} onClose={() => setTarget(null)} />}
+      {value !== null && target !== null && <PaneImageSheet target={target} onClose={() => setTarget(null)} />}
     </FileLinkContext.Provider>
   );
 }
@@ -357,19 +358,14 @@ export function usePaneFileLinks({
         return null;
       }
       const href = filesPath(paneId, at, line === undefined ? { path: rel } : { path: rel, line });
-      return {
+      const target: FileLinkTarget = {
         href,
-        onOpen: () => {
-          if (line === undefined && isRasterImagePath(rel)) {
-            const openSheet = imageSheetOpeners.get(opener);
-            if (openSheet !== undefined) {
-              openSheet({ paneId, scope: at, rel });
-              return;
-            }
-          }
-          nav.down(href, { viaLink: true });
-        },
+        onOpen: () => nav.down(href, { viaLink: true }),
       };
+      if (line === undefined && isRasterImagePath(rel)) {
+        target.image = { paneId, scope: at, rel };
+      }
+      return target;
     };
     return opener;
   }, [root, cwd, home, paneId, host, session, nav, existence]);
