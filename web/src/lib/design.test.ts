@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { DESIGN_STORAGE_KEY, __resetDesign, designPrefs, parseDesignPrefs, setDesignFont, setDesignTheme } from "./design";
+import { LIBRARY_STORAGE_KEY } from "@/lib/theme/store";
+
+import { DESIGN_STORAGE_KEY, RETIRED_THEME_ID, __resetDesign, designPrefs, parseDesignPrefs, setDesignFont, setDesignTheme } from "./design";
 
 // The device look is an object so it can grow siblings. These cases hold the newest sibling, the
 // colour theme (M57), to the rule that a field this build knows is never dropped by a write to
@@ -36,6 +38,32 @@ describe("the theme field", () => {
     setDesignTheme("midnight");
     setDesignTheme("collie");
     expect(stored()).toEqual({ font: "aldrich" });
+  });
+
+  it("moves a stored collie-new to collie on first read, and writes the blob back", () => {
+    localStorage.setItem(DESIGN_STORAGE_KEY, JSON.stringify({ font: "atkinson", theme: RETIRED_THEME_ID }));
+    __resetDesign();
+    expect(designPrefs()).toEqual({ font: "atkinson" });
+    expect(stored()).toEqual({ font: "atkinson" });
+  });
+
+  it("keeps the operator mirror when it moves collie-new, and leaves other ids alone", () => {
+    const operatorFont = { family: "Mine", basename: "mine.woff2" };
+    localStorage.setItem(DESIGN_STORAGE_KEY, JSON.stringify({ font: "op:mine.woff2", operatorFont, theme: RETIRED_THEME_ID }));
+    __resetDesign();
+    expect(stored()).toEqual({ font: "op:mine.woff2", operatorFont });
+    localStorage.setItem(DESIGN_STORAGE_KEY, JSON.stringify({ font: "aldrich", theme: "nightwatch" }));
+    __resetDesign();
+    expect(stored()).toEqual({ font: "aldrich", theme: "nightwatch" });
+  });
+
+  it("does not move a collie-new that an imported theme in the library owns", () => {
+    expect(LIBRARY_STORAGE_KEY).toBe("collie:themes:v1");
+    localStorage.setItem(LIBRARY_STORAGE_KEY, JSON.stringify({ version: 1, themes: [{ id: RETIRED_THEME_ID }] }));
+    localStorage.setItem(DESIGN_STORAGE_KEY, JSON.stringify({ font: "aldrich", theme: RETIRED_THEME_ID }));
+    __resetDesign();
+    expect(designPrefs().theme).toBe(RETIRED_THEME_ID);
+    expect(stored()).toEqual({ font: "aldrich", theme: RETIRED_THEME_ID });
   });
 
   it("ignores an id of the wrong shape", () => {

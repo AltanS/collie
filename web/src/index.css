@@ -223,14 +223,16 @@
      values are Tailwind 4.3.1's own (theme.css), so the default look is the one the app always had.
      The radius steps, the spacing step and the two weights need no such door: utilities read them
      through var() already. src/themes/themes.test.ts holds every default word equal to these. */
-  --surface-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
-  --surface-shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-  --surface-shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
-  --surface-shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-  --surface-shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
-  --surface-shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
-  --surface-shadow-2xl: 0 25px 50px -12px rgb(0 0 0 / 0.25);
+  --surface-shadow: 0 0 #0000;
+  --surface-shadow-xs: 0 0 #0000;
+  --surface-shadow-sm: 0 0 #0000;
+  --surface-shadow-md: 0 0 #0000;
+  --surface-shadow-lg: 0 0 #0000;
+  --surface-shadow-xl: 0 0 #0000;
+  --surface-shadow-2xl: 0 0 #0000;
   --surface-border-width: 1px;
+  --font-weight-medium: 600;
+  --font-weight-semibold: 700;
   /* The offsets of the inset shadow that marks a selected or blocked row, used as
      `shadow-[var(--edge-accent)_<colour>]`. The radius word sets it: under square corners the mark is
      a 2px bar on the left edge, under soft or round corners a 2px ring on all four sides, because a
@@ -256,8 +258,8 @@
      read `var(--mirror-ink, #fafafa)` and `var(--mirror-ground, #0a0a0a)`, so only a theme's `ansi`
      block sets them. src/themes/themes.test.ts holds every default word equal to these. */
   --ground-image: none;
-  --band-ground: var(--background);
-  --band-rule: var(--rule);
+  --band-ground: var(--secondary);
+  --band-rule: var(--border);
   --row-gap: 0px;
   --row-rule: var(--surface-border-width);
   --row-edge: 0px;
@@ -266,9 +268,9 @@
   --row-inset: 0px;
   --row-fill: transparent;
   --icon-stroke: 2;
-  --label-transform: uppercase;
-  --label-tracking: 0.025em;
-  --font-display: var(--font-sans);
+  --label-transform: none;
+  --label-tracking: normal;
+  --font-display: var(--face-aldrich);
   /* The six shipped faces as stacks a theme's display face can name (`--font-display:
      var(--face-<id>)`). The same stacks as the `:root.font-*` blocks and the @theme default below,
      held equal by src/fonts.test.ts. A stack names a family; the browser fetches its file only when a
@@ -296,10 +298,10 @@
      entire dashboard hierarchy rests on one 1.26:1 hairline), and --muted-foreground is darkened
      for headroom (see below). oklch(0.97) rasterizes to rgb(245,245,245), which is exactly the
      terminal mirror's inverted background — so the mirror stops showing a seam against the page. */
-  --background: light-dark(oklch(0.97 0 0), oklch(0.145 0 0));
-  --foreground: light-dark(oklch(0.145 0 0), oklch(0.985 0 0));
-  --card: light-dark(oklch(1 0 0), oklch(0.205 0 0));
-  --card-foreground: light-dark(oklch(0.145 0 0), oklch(0.985 0 0));
+  --background: light-dark(oklch(0.955 0.003 80), oklch(0.17 0.003 80));
+  --foreground: light-dark(oklch(0.14 0 0), oklch(0.985 0 0));
+  --card: light-dark(oklch(1 0 0), oklch(0.235 0.003 80));
+  --card-foreground: light-dark(oklch(0.14 0 0), oklch(0.985 0 0));
   /* THE GROUND UNDER THE THUMB — the composer's chrome block, and nothing else. Chrome is normally
      the page colour separated by a rule (see --muted below), and that rule holds everywhere the
      chrome sits on the PAGE. It cannot hold here: this block sits on the terminal mirror, and in
@@ -311,7 +313,7 @@
      already had in light, where --card is pure white and would land 1.04:1 against the inverted
      mirror. One name, because it answers one question: what does chrome stand on when it cannot
      stand on the page. */
-  --chrome: light-dark(oklch(0.94 0 0), oklch(0.205 0 0));
+  --chrome: light-dark(oklch(0.915 0.004 80), oklch(0.28 0.003 80));
   /* Pinned to --card, not a value of its own. `bg-popover` / `text-popover-foreground` appear ZERO
      times in src/ — Collie's floating layer is the BottomSheet (ui/sheet.tsx), which is
      `bg-background` over a `bg-black/50` scrim. The pair is kept rather than deleted only so a
@@ -319,8 +321,8 @@
      stock white; it is an alias, and there is no third paper behind it. */
   --popover: var(--card);
   --popover-foreground: var(--card-foreground);
-  --primary: light-dark(oklch(0.205 0 0), oklch(0.922 0 0));
-  --primary-foreground: light-dark(oklch(0.985 0 0), oklch(0.205 0 0));
+  --primary: light-dark(oklch(0.2 0 0), oklch(0.96 0 0));
+  --primary-foreground: light-dark(oklch(0.985 0 0), oklch(0.17 0.003 80));
   /* The "this control is ON" tint — a very light sky. Its own token pair rather than reusing
      --secondary because the two say different things: secondary is a quieter surface, this is a
      STATE, and the row needs the difference legible at a glance (an open dock, an armed mode). Kept
@@ -331,22 +333,19 @@
      makes it visible is that it is the one saturated thing in a neutral row. Don't "fix" that number
      by darkening it into a mid blue. Text on the tint is what has to clear a contrast bar, and does:
      7.3:1 light, 9.2:1 dark. */
-  --control-on: light-dark(oklch(0.9 0.06 235), oklch(0.32 0.05 240));
-  --control-on-foreground: light-dark(
-    oklch(0.38 0.12 245),
-    oklch(0.89 0.06 235)
-  );
+  --control-on: light-dark(oklch(0.88 0.06 235), oklch(0.34 0.06 240));
+  --control-on-foreground: light-dark(oklch(0.32 0.12 245), oklch(0.92 0.06 235));
   /* The frame of the pane you are working in on a large screen (ADR 0120): a sky-200 in the dark
      half; a stronger blue in the light half, where a pale frame would vanish on white. */
-  --pane-active: light-dark(oklch(0.6 0.14 240), oklch(0.9 0.058 231));
+  --pane-active: light-dark(oklch(0.14 0 0), oklch(0.985 0 0));
   /* The open folder tab's top edge and the open pane's ring (theme surface word `tabs: folder`,
      lib/tab-look.ts). Drawn only under that word. The default is the foreground ink of each half
      (the same two values as --foreground above), so a theme that sets the word and not the colour
      draws its folder edge in ink. A pair and not var(--foreground), like --pane-active: the theme
      file for `collie` holds every optional token, and a theme that sets one half is filled from it. */
-  --tab-active: light-dark(oklch(0.145 0 0), oklch(0.985 0 0));
-  --secondary: light-dark(oklch(0.94 0 0), oklch(0.269 0 0));
-  --secondary-foreground: light-dark(oklch(0.205 0 0), oklch(0.985 0 0));
+  --tab-active: light-dark(oklch(0.14 0 0), oklch(0.985 0 0));
+  --secondary: light-dark(oklch(0.915 0.004 80), oklch(0.28 0.003 80));
+  --secondary-foreground: light-dark(oklch(0.16 0 0), oklch(0.985 0 0));
   /* The INERT fill — a well, a disabled track, a quiet chip on a card. Value unchanged (rgb 235
      light / 38 dark), but its old job is gone: it used to be the chrome band behind the header,
      "a step BELOW --background so the band still reads as a distinct surface". The band existed
@@ -355,12 +354,12 @@
      properly, and chrome is now the page colour (app-header.tsx, settings.tsx, pack.tsx).
      Do NOT put --muted back behind chrome: on the pane screen it re-opens the seam --background's
      0.97 was chosen to close, and it is the worst ground a status chip has ever landed on. */
-  --muted: light-dark(oklch(0.94 0 0), oklch(0.269 0 0));
+  --muted: light-dark(oklch(0.915 0.004 80), oklch(0.28 0.003 80));
   /* Light was oklch(0.556) — 4.74:1 on white, i.e. zero headroom, so every /70, /80 and opacity-60
      derivative in the app fell under 3:1 while its dark counterpart passed. Darkened to buy that
      headroom back; the alpha modifiers on small text were dropped as well, since no token value
      rescues a /70. */
-  --muted-foreground: light-dark(oklch(0.48 0 0), oklch(0.708 0 0));
+  --muted-foreground: light-dark(oklch(0.40 0.004 80), oklch(0.80 0.004 80));
   /* Light --accent must be a real step off --background, not stock shadcn's 0.97. Stock is right
      only while background is pure white; 0.18.0 deliberately moved background to 0.97 (see above),
      which silently made accent === background — so every "this is the current one" highlight
@@ -368,15 +367,12 @@
      as nothing at all in light mode. It sits a step BELOW --muted (0.94), not between it and
      --background: the switcher needs three separable values — resting 0.97, hover (bg-muted/60)
      ~0.94, active 0.92 — and 0.94 would have collided the last two. */
-  --accent: light-dark(oklch(0.92 0 0), oklch(0.269 0 0));
-  --accent-foreground: light-dark(oklch(0.205 0 0), oklch(0.985 0 0));
-  --destructive: light-dark(
-    oklch(0.577 0.245 27.325),
-    oklch(0.704 0.191 22.216)
-  );
-  --destructive-foreground: light-dark(oklch(0.985 0 0), oklch(0.985 0 0));
-  --border: light-dark(oklch(0.922 0 0), oklch(1 0 0 / 12%));
-  --input: light-dark(oklch(0.922 0 0), oklch(1 0 0 / 15%));
+  --accent: light-dark(oklch(0.885 0.004 80), oklch(0.32 0.003 80));
+  --accent-foreground: light-dark(oklch(0.16 0 0), oklch(0.985 0 0));
+  --destructive: light-dark(oklch(0.5 0.21 27), oklch(0.72 0.19 22));
+  --destructive-foreground: light-dark(oklch(0.985 0 0), oklch(0.17 0.003 80));
+  --border: light-dark(oklch(0.82 0.004 80), oklch(0.42 0.003 80));
+  --input: light-dark(oklch(0.64 0.004 80), oklch(0.58 0.003 80));
   /* The STRUCTURAL line, and deliberately stronger than --border. --border draws one component's
      edge; --rule draws the cut between two regions of chrome — the header's bottom edge, a strip
      separator, the composer's top edge — where the whole job is to separate chrome from page
@@ -387,13 +383,13 @@
        --rule            1.34:1 light  ·  2.06:1 dark
      rgb(214) on rgb(245) light; white 24% over rgb(10) = rgb(69) dark. At 3x DPR on a phone that
      is a crisp 1px cut, which is the mark's own vocabulary — a cut, not a wash. */
-  --rule: light-dark(oklch(0.875 0 0), oklch(1 0 0 / 24%));
+  --rule: light-dark(oklch(0.72 0.004 80), oklch(0.52 0.003 80));
   /* Light is darkened off stock shadcn (0.708 → 0.62): at 0.708 the focus ring measures 2.58:1 on
      white, under the 3:1 WCAG 1.4.11 floor for a non-text indicator — and components draw it at
      `ring-ring/50`, which halves that again. On an app whose buttons type into a live shell, a focus
      ring you can't locate is a real problem. Still worth an on-device look: even at 0.62 the /50
      variant is marginal. */
-  --ring: light-dark(oklch(0.62 0 0), oklch(0.556 0 0));
+  --ring: light-dark(oklch(0.5 0 0), oklch(0.76 0 0));
 
   /* Agent lifecycle status palette — the app's primary at-a-glance signal, so both halves are
      tuned against their own ground rather than one set being reused. The dark values glow on
@@ -439,9 +435,9 @@
          in --primary (session-switcher.tsx, server-switcher.tsx), so the pills land on the sheet's
          --background at 5.23 / 5.28 light and 5.59 / 8.67 dark.
      A chip belongs on --background or --card and on nothing else. */
-  --status-blocked: light-dark(oklch(0.46 0.2 25), oklch(0.7 0.2 24));
-  --status-working: light-dark(oklch(0.46 0.12 72), oklch(0.82 0.15 82));
-  --status-done: light-dark(oklch(0.45 0.14 152), oklch(0.74 0.16 152));
+  --status-blocked: light-dark(oklch(0.43 0.2 25), oklch(0.8 0.15 24));
+  --status-working: light-dark(oklch(0.43 0.12 72), oklch(0.84 0.15 82));
+  --status-done: light-dark(oklch(0.41 0.14 152), oklch(0.77 0.16 152));
   /* The two quiet ends of the palette, and the only pair in it tuned as a PAIR. Light halves are
      untouched (chip on --background: idle 5.47, unknown 5.88).
 
@@ -464,8 +460,8 @@
 
      Dark chips, --background / --card:  idle 6.79 / 5.89   unknown 5.75 / 5.01. New rgb values are
      idle 154,170,186 and unknown 139,154,171. */
-  --status-idle: light-dark(oklch(0.45 0.02 250), oklch(0.73 0.03 250));
-  --status-unknown: light-dark(oklch(0.43 0.02 250), oklch(0.68 0.03 250));
+  --status-idle: light-dark(oklch(0.42 0.02 250), oklch(0.78 0.03 250));
+  --status-unknown: light-dark(oklch(0.38 0.02 250), oklch(0.75 0.03 250));
 
   /* Calm-info sky blue — same shape as the lifecycle palette above (dark brighter to glow on
      near-black). It is the palette's tightest light value: on the old rgb(235) header band its chip
@@ -476,7 +472,7 @@
      amber "needs attention" signal. Used by
      surfaces that are informational, not a status: currently just the prerelease strip
      (alpha-bar.tsx). */
-  --status-info: light-dark(oklch(0.46 0.14 230), oklch(0.8 0.15 230));
+  --status-info: light-dark(oklch(0.42 0.14 230), oklch(0.82 0.15 230));
 
   /* Syntax colour for the Changes view's diff (components/changes-view.tsx, lib/diff-highlight.ts,
      ADR 0065 rule 7). Six inks, all colour and nothing else: no weight, no italic, so a coloured
@@ -496,12 +492,12 @@
        entity    light 6.55 7.15 5.47 5.23   dark 8.84 8.00 7.49 7.82
        comment   light 5.99 6.54 5.00 4.78   dark 7.63 6.91 6.47 6.75
      Every cell clears 4.5. The tightest is light on the deleted row; darken there, never lighten. */
-  --syntax-keyword: light-dark(oklch(0.5 0.2 350), oklch(0.76 0.15 350));
-  --syntax-string: light-dark(oklch(0.45 0.13 250), oklch(0.8 0.1 240));
-  --syntax-constant: light-dark(oklch(0.48 0.13 55), oklch(0.8 0.12 60));
-  --syntax-property: light-dark(oklch(0.46 0.09 200), oklch(0.8 0.09 195));
-  --syntax-entity: light-dark(oklch(0.48 0.18 300), oklch(0.76 0.13 300));
-  --syntax-comment: light-dark(oklch(0.48 0 0), oklch(0.708 0 0));
+  --syntax-keyword: light-dark(oklch(0.46 0.2 350), oklch(0.78 0.15 350));
+  --syntax-string: light-dark(oklch(0.43 0.13 250), oklch(0.82 0.1 240));
+  --syntax-constant: light-dark(oklch(0.44 0.13 55), oklch(0.82 0.12 60));
+  --syntax-property: light-dark(oklch(0.43 0.09 200), oklch(0.82 0.09 195));
+  --syntax-entity: light-dark(oklch(0.45 0.18 300), oklch(0.79 0.13 300));
+  --syntax-comment: light-dark(oklch(0.46 0.004 80), oklch(0.74 0.004 80));
 
   /* ── Per-host identity palette (components/host-chip.tsx, lib/hosts.ts) ──────────────────────
      Ten hues, `--host-0` … `--host-9`, handed to machines by lib/hosts.ts `hostSlot`. They are an
@@ -546,16 +542,16 @@
        slot 9 indigo  5.58/6.08          5.34/4.67   ← the palette's tightest cell
      Every cell clears 4.5 on both permitted grounds. `--muted` and `--accent` are not permitted
      grounds here either, for the reason the status block states. */
-  --host-0: light-dark(oklch(0.46 0.085 221), oklch(0.789 0.154 221));
-  --host-1: light-dark(oklch(0.46 0.143 41), oklch(0.75 0.183 41));
-  --host-2: light-dark(oklch(0.46 0.2 302), oklch(0.714 0.203 302));
-  --host-3: light-dark(oklch(0.46 0.129 132), oklch(0.841 0.238 132));
-  --host-4: light-dark(oklch(0.46 0.192 352), oklch(0.718 0.202 352));
-  --host-5: light-dark(oklch(0.46 0.082 185), oklch(0.777 0.152 185));
-  --host-6: light-dark(oklch(0.46 0.2 262), oklch(0.707 0.165 262));
-  --host-7: light-dark(oklch(0.46 0.2 325), oklch(0.74 0.238 325));
-  --host-8: light-dark(oklch(0.46 0.108 241), oklch(0.746 0.16 241));
-  --host-9: light-dark(oklch(0.46 0.2 280), oklch(0.673 0.182 280));
+  --host-0: light-dark(oklch(0.45 0.085 221), oklch(0.789 0.154 221));
+  --host-1: light-dark(oklch(0.45 0.143 41), oklch(0.75 0.183 41));
+  --host-2: light-dark(oklch(0.45 0.2 302), oklch(0.74 0.2 302));
+  --host-3: light-dark(oklch(0.45 0.129 132), oklch(0.841 0.238 132));
+  --host-4: light-dark(oklch(0.45 0.192 352), oklch(0.718 0.202 352));
+  --host-5: light-dark(oklch(0.45 0.082 185), oklch(0.777 0.152 185));
+  --host-6: light-dark(oklch(0.45 0.2 262), oklch(0.707 0.165 262));
+  --host-7: light-dark(oklch(0.45 0.2 325), oklch(0.74 0.238 325));
+  --host-8: light-dark(oklch(0.45 0.108 241), oklch(0.746 0.16 241));
+  --host-9: light-dark(oklch(0.45 0.2 280), oklch(0.7 0.18 280));
 
   /* ── Terminal palette ─────────────────────────────────────────────────────────────────────────
      The 16 indexed ANSI slots, emitted by lib/ansi.ts as var(--ansi-N).
@@ -566,21 +562,23 @@
      inverted into nonsense. These sit next to the truecolor an agent emits, which no palette can
      re-theme, so they must share its assumptions: authored for a dark ground. */
   --ansi-0: #000000;
-  --ansi-1: #cd3131;
-  --ansi-2: #0dbc79;
+  --ansi-1: #ea8885;
+  --ansi-2: #4dbb75;
   --ansi-3: #e5e510;
-  --ansi-4: #2472c8;
-  --ansi-5: #bc3fbc;
-  --ansi-6: #11a8cd;
+  --ansi-4: #57a7c7;
+  --ansi-5: #be85c6;
+  --ansi-6: #4cbbbb;
   --ansi-7: #e5e5e5;
-  --ansi-8: #666666;
-  --ansi-9: #f14c4c;
-  --ansi-10: #23d18b;
+  --ansi-8: #9a9a9a;
+  --ansi-9: #ffa6a3;
+  --ansi-10: #45d07e;
   --ansi-11: #f5f543;
-  --ansi-12: #3b8eea;
-  --ansi-13: #d670d6;
-  --ansi-14: #29b8db;
+  --ansi-12: #709aeb;
+  --ansi-13: #cf83d6;
+  --ansi-14: #65d0dc;
   --ansi-15: #ffffff;
+  --mirror-ink: #f2f1ef;
+  --mirror-ground: #100f0d;
 }
 
 /* Every shipped theme other than the default, one `:root[data-theme="<id>"]` block each, generated

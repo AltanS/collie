@@ -118,13 +118,13 @@ describe("useTheme store", () => {
 
   it("gives both theme-color metas the pinned colour, so whichever matches is right", async () => {
     document.head.innerHTML =
-      '<meta name="theme-color" content="#f5f5f5" media="(prefers-color-scheme: light)">' +
-      '<meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)">';
+      '<meta name="theme-color" content="#e4e3e0" media="(prefers-color-scheme: light)">' +
+      '<meta name="theme-color" content="#2a2927" media="(prefers-color-scheme: dark)">';
     await bootstrap("light");
     const contents = [...document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')].map(
       (m) => m.content,
     );
-    expect(contents).toEqual(["#f5f5f5", "#f5f5f5"]);
+    expect(contents).toEqual(["#e4e3e0", "#e4e3e0"]);
   });
 
   it("hands the metas back their own values on system", async () => {
@@ -135,7 +135,7 @@ describe("useTheme store", () => {
     const contents = [...document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')].map(
       (m) => m.content,
     );
-    expect(contents).toEqual(["#f5f5f5", "#0a0a0a"]);
+    expect(contents).toEqual(["#e4e3e0", "#2a2927"]);
   });
 });
 
@@ -197,13 +197,13 @@ describe("meta colours (M57)", () => {
   it("meta colours for the default theme are the two literals", async () => {
     await bootstrap(null);
     const mod = await import("./use-theme");
-    expect(mod.metaColours()).toEqual({ light: "#f5f5f5", dark: "#0a0a0a" });
+    expect(mod.metaColours()).toEqual({ light: "#e4e3e0", dark: "#2a2927" });
   });
 
   it("meta colours follow the theme's backgrounds, and come back for collie", async () => {
     document.head.innerHTML =
-      '<meta name="theme-color" content="#f5f5f5" media="(prefers-color-scheme: light)">' +
-      '<meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)">';
+      '<meta name="theme-color" content="#e4e3e0" media="(prefers-color-scheme: light)">' +
+      '<meta name="theme-color" content="#2a2927" media="(prefers-color-scheme: dark)">';
     await bootstrap(null);
     const mod = await import("./use-theme");
     mod.setMetaColours({ light: "#eeeeee", dark: "#123456" });
@@ -212,15 +212,16 @@ describe("meta colours (M57)", () => {
       [...document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')].map((m) => m.content);
     expect(contents()).toEqual(["#eeeeee", "#123456"]);
     mod.setMetaColours(undefined);
-    expect(contents()).toEqual(["#f5f5f5", "#0a0a0a"]);
+    expect(contents()).toEqual(["#e4e3e0", "#2a2927"]);
   });
 
-  it("meta colours of the collie theme file are the same two literals", async () => {
+  it("meta colours of the collie theme file are the same two literals: its band, since it sets chrome band", async () => {
     const { toSrgbHex } = await import("@/lib/theme/schema");
     const { readFileSync } = await import("node:fs");
     const { resolve } = await import("node:path");
     const file = JSON.parse(readFileSync(resolve(import.meta.dirname, "../themes/collie.json"), "utf8"));
-    expect(toSrgbHex(file.light.background)).toBe("#f5f5f5");
-    expect(toSrgbHex(file.dark.background)).toBe("#0a0a0a");
+    expect(file.surface.chrome).toBe("band");
+    expect(toSrgbHex(file.light.secondary)).toBe("#e4e3e0");
+    expect(toSrgbHex(file.dark.secondary)).toBe("#2a2927");
   });
 });

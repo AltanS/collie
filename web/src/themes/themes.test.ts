@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { SHIPPED_FONTS } from "@/lib/design";
 import { ALL_THEME_TOKENS, OPTIONAL_THEME_TOKENS, SHIPPED_THEME_IDS, THEME_TOKENS, contrast, contrastReport, parseTheme, type Theme } from "@/lib/theme/schema";
 import { SHIPPED_FONTS as FACES } from "@/lib/shipped-fonts";
-import { SURFACE_DEFAULTS, SURFACE_TOKENS, displayDeclarations, wordDeclarations } from "@/lib/theme/surface";
+import { SURFACE_DEFAULTS, SURFACE_TOKENS, ansiDeclarations, displayDeclarations, fullSurfaceDeclarations, wordDeclarations } from "@/lib/theme/surface";
 import { buildThemesCss } from "@/lib/theme/themes-css";
 
 // The default theme is data now, and the stylesheet is still the thing that paints it. These tests
@@ -60,11 +60,11 @@ describe("the theme collie equals index.css", () => {
     const byName = new Map(tokens.map((t) => [t.token, t]));
     expect(byName.get("control-on-foreground")).toEqual({
       token: "control-on-foreground",
-      light: "oklch(0.38 0.12 245)",
-      dark: "oklch(0.89 0.06 235)",
+      light: "oklch(0.32 0.12 245)",
+      dark: "oklch(0.92 0.06 235)",
     });
-    expect(byName.get("destructive")?.dark).toBe("oklch(0.704 0.191 22.216)");
-    expect(byName.get("border")?.dark).toBe("oklch(1 0 0 / 12%)");
+    expect(byName.get("destructive")?.dark).toBe("oklch(0.72 0.19 22)");
+    expect(byName.get("border")?.dark).toBe("oklch(0.42 0.003 80)");
   });
 
   it("holds every token of both halves, string for string", () => {
@@ -78,22 +78,38 @@ describe("the theme collie equals index.css", () => {
     expect(Object.keys(collie.dark ?? {})).toHaveLength(ALL_THEME_TOKENS.length);
   });
 
-  it("carries the default face and the shipped author", () => {
-    expect(collie.fonts).toEqual({ ui: "aldrich" });
+  it("carries Atkinson for the text, Aldrich for the titles and the shipped author", () => {
+    expect(collie.fonts).toEqual({ ui: "atkinson", display: "aldrich" });
     expect(collie.author).toBe("Collie");
+    expect(SHIPPED_FONTS).toContain("atkinson");
     expect(SHIPPED_FONTS).toContain("aldrich");
   });
 
-  // The collie theme is the look index.css already measured, so every check passes but one, and the
-  // one is recorded here so nobody re-derives it: dark `destructive-foreground` (near white) on dark
-  // `destructive` (a light red) is 2.77:1. It is the shadcn stock pair, drawn only on a filled
-  // destructive button and an armed action-sheet row. Changing it changes the current look, which
-  // M57 does not do; a theme of its own may pick a better pair.
-  it("passes every check but the one recorded known failure", () => {
-    const fails = contrastReport(collie, collie).filter((f) => !f.pass);
-    expect(fails).toEqual([
-      { half: "dark", check: "destructive-foreground on destructive", ratio: 2.77, floor: 4.5, pass: false },
-    ]);
+  // The theme collie writes nothing on the page, so its shape, display face and palette must be what
+  // index.css declares. A word that sets no property (zoom, tabs, composer) has nothing to compare.
+  it("names the shape words, the display face and the palette that index.css declares", () => {
+    const root = rootDeclarations();
+    for (const token of SURFACE_TOKENS) {
+      if (APP_READ_WORDS.has(token)) continue;
+      expect(collie.surface?.[token], token).toBe(SURFACE_DEFAULTS[token]);
+    }
+    // Where the page reads a property from: :root, else the @theme block (radius), else Tailwind's own theme (spacing).
+    for (const [property, value] of fullSurfaceDeclarations(SURFACE_DEFAULTS)) {
+      expect(root.get(property) ?? themeBlock("@theme {").get(property) ?? tailwind(property), property).toBe(value);
+    }
+    expect(collie.surface?.tabs).toBe("folder");
+    expect(collie.surface?.composer).toBe("box");
+    expect(collie.fonts?.display).toBe("aldrich");
+    expect(root.get("--font-display")).toBe("var(--face-aldrich)");
+    for (const [property, value] of ansiDeclarations(collie.ansi)) expect(root.get(property), property).toBe(value);
+    expect(Object.keys(collie.ansi ?? {})).toHaveLength(18);
+  });
+
+  // The collie theme passes every check of the report. The old default's dark `destructive-foreground`
+  // (near white) on dark `destructive` (a light red) was 2.77:1, the one known failure; this look
+  // pairs a dark ink with the light red (6.83) and carries no failure.
+  it("passes every check of the contrast report in both halves", () => {
+    expect(contrastReport(collie, collie).filter((f) => !f.pass)).toEqual([]);
   });
 });
 
@@ -146,7 +162,7 @@ describe("the shipped themes", () => {
   });
 
   it("gives every shipped theme its own shape, display face and terminal ground", () => {
-    const themes = ids.map(shipped);
+    const themes = ["collie", ...ids].map(shipped);
     const wordSets = themes.map((t) => SURFACE_TOKENS.map((token) => t.surface?.[token]).join(" "));
     expect(new Set(wordSets).size).toBe(themes.length);
     expect(new Set(themes.map((t) => t.fonts?.display)).size).toBe(themes.length);
@@ -185,20 +201,26 @@ describe("daylight holds its own floors", () => {
     expect(find(half, "status-blocked apart from status-done")).toBeGreaterThanOrEqual(0.25);
   });
 
-  // A step stronger than collie on both lines, and rule still the stronger of the two.
-  it.each(["light", "dark"] as const)("%s: border and rule are stronger than collie's, and rule beats border", (half) => {
+  // A step stronger than the first Collie look on both lines, and rule still the stronger of the two.
+  // That look is pinned here as literals: the theme "Collie" took Collie New's lines in 2026-11, which
+  // are stronger than these, and daylight was measured against the look it was drawn beside.
+  const OLD_DEFAULT = {
+    light: { background: "oklch(0.97 0 0)", border: "oklch(0.922 0 0)", rule: "oklch(0.875 0 0)" },
+    dark: { background: "oklch(0.145 0 0)", border: "oklch(1 0 0 / 12%)", rule: "oklch(1 0 0 / 24%)" },
+  } as const;
+  it.each(["light", "dark"] as const)("%s: border and rule are stronger than the first Collie look's, and rule beats border", (half) => {
     const line = (t: Theme, token: "border" | "rule") => contrast(t[half]?.[token] ?? "", t[half]?.background ?? "");
-    const collie = shipped("collie");
-    expect(line(theme, "border")).toBeGreaterThan(line(collie, "border"));
-    expect(line(theme, "rule")).toBeGreaterThan(line(collie, "rule"));
+    const old = OLD_DEFAULT[half];
+    expect(line(theme, "border")).toBeGreaterThan(contrast(old.border, old.background));
+    expect(line(theme, "rule")).toBeGreaterThan(contrast(old.rule, old.background));
     expect(line(theme, "rule")).toBeGreaterThan(line(theme, "border"));
   });
 });
 
 // The counsel pairs (M57 spec 12, measured 2026-10-16). Destructive and blocked are drawn as text
 // as well as marks, and the Send slot's refusal is the `status-working chip` pair under another
-// name. Every shipped theme clears 4.5 on all of them, collie light `destructive` on `background`
-// (4.38 rounded, the look the app always had; floored to 4.37 for it) being the one value that sets its own floor instead.
+// name. Every shipped theme clears 4.5 on all of them, collie included (its light `destructive` on
+// `background` is 5.77; the first Collie look's 4.38 was the one value that set its own floor).
 describe("the counsel pairs", () => {
   const collie = shipped("collie");
   const pairs = ["destructive text on background", "destructive text on card", "status-blocked text on background", "status-blocked text on card"];
@@ -219,13 +241,12 @@ describe("the counsel pairs", () => {
     }
   });
 
-  it("gives collie its own measured floor for the one pair under 4.5, and 4.5 elsewhere", () => {
+  it("holds collie to 4.5 on every one of the four pairs, in both halves", () => {
     const report = contrastReport(collie, collie);
-    const floors = report.filter((r) => pairs.includes(r.check)).map((r) => [r.half, r.check, r.floor]);
-    expect(floors).toContainEqual(["light", "destructive text on background", 4.37]);
-    expect(floors).toContainEqual(["light", "destructive text on card", 4.5]);
-    expect(floors).toContainEqual(["dark", "destructive text on background", 4.5]);
-    expect(report.filter((r) => pairs.includes(r.check) && !r.pass)).toEqual([]);
+    const floors = report.filter((r) => pairs.includes(r.check));
+    expect(floors).toHaveLength(8);
+    for (const f of floors) expect(f.floor, `${f.half} ${f.check}`).toBe(4.5);
+    expect(floors.filter((r) => !r.pass)).toEqual([]);
   });
 
   it("measures the refusal notice, status-working text on its 15 percent wash, on page and card in every theme", () => {
@@ -278,8 +299,8 @@ describe("themes.css", () => {
     const result = buildThemesCss([...files, extra]);
     if (!result.ok) throw new Error(result.errors.join("\n"));
     const block = result.css.slice(result.css.indexOf(':root[data-theme="zz"] {'));
-    expect(block).toContain("  --background: light-dark(oklch(0.97 0 0), #000000);\n");
-    expect(block).toContain("  --border: light-dark(oklch(0.922 0 0), oklch(1 0 0 / 12%));\n");
+    expect(block).toContain("  --background: light-dark(oklch(0.955 0.003 80), #000000);\n");
+    expect(block).toContain("  --border: light-dark(oklch(0.82 0.004 80), oklch(0.42 0.003 80));\n");
     expect(block.match(/^ {2}--/gm)).toHaveLength(THEME_TOKENS.length);
   });
 
@@ -331,7 +352,7 @@ function tailwind(property: string): string | undefined {
   return declarations(tailwindTheme).get(property);
 }
 
-describe("every default shape word is today's CSS", () => {
+describe("every default shape word is the stylesheet's CSS", () => {
   const root = rootDeclarations();
   const theme = themeBlock("@theme {");
   const inline = themeBlock("@theme inline {");
@@ -358,12 +379,15 @@ describe("every default shape word is today's CSS", () => {
     expect(root.get("--edge-shadow")).toBe(second);
   });
 
-  it("shadow: default is Tailwind's own value for every step the app uses", () => {
+  it("shadow: flat is the default, declared on :root, and the word `default` is Tailwind's own value for every step", () => {
     for (const [property, value] of wordDeclarations("shadow", SURFACE_DEFAULTS.shadow)) {
       const step = property.replace("--surface-shadow", "--shadow");
+      expect(value).toBe("0 0 #0000");
       expect(root.get(property), property).toBe(value);
-      expect(tailwind(step), step).toBe(value);
       expect(inline.get(step), step).toBe(`var(${property})`);
+    }
+    for (const [property, value] of wordDeclarations("shadow", "default")) {
+      expect(tailwind(property.replace("--surface-shadow", "--shadow")), property).toBe(value);
     }
   });
 
@@ -375,11 +399,12 @@ describe("every default shape word is today's CSS", () => {
     expect(theme.has("--spacing") || inline.has("--spacing")).toBe(false);
   });
 
-  it("weight: default is Tailwind's medium and semibold", () => {
+  it("weight: bold is the default, declared on :root, and the word `default` is Tailwind's medium and semibold", () => {
     for (const [property, value] of wordDeclarations("weight", SURFACE_DEFAULTS.weight)) {
-      expect(tailwind(property), property).toBe(value);
-      expect(root.has(property) || theme.has(property) || inline.has(property), property).toBe(false);
+      expect(root.get(property), property).toBe(value);
+      expect(theme.has(property) || inline.has(property), property).toBe(false);
     }
+    for (const [property, value] of wordDeclarations("weight", "default")) expect(tailwind(property), property).toBe(value);
   });
 
   it("border: default is 1px, the width Tailwind falls back to when no theme sets one", () => {
@@ -422,7 +447,7 @@ describe("every default shape word is today's CSS", () => {
 // Same rule as above: every default is what the app drew before. The literals each one replaced are
 // read from the stylesheet, Tailwind's theme, or lucide's own defaults on disk.
 
-describe("every default word of spec 17 is today's CSS", () => {
+describe("every default word of spec 17 is the stylesheet's CSS", () => {
   const root = rootDeclarations();
   const inline = themeBlock("@theme inline {");
   const bare = css.replaceAll(/\/\*[\s\S]*?\*\//g, "");
@@ -453,8 +478,12 @@ describe("every default word of spec 17 is today's CSS", () => {
     expect(body).not.toContain("bg-background");
   });
 
-  it("chrome: page is the page colour and --rule, and the two band colours read them", () => {
+  it("chrome: band is --secondary with a --border edge, the word `page` is the page colour and --rule, and the two band colours read them", () => {
     expect(defaultOf("chrome")).toEqual([
+      ["--band-ground", "var(--secondary)"],
+      ["--band-rule", "var(--border)"],
+    ]);
+    expect(wordDeclarations("chrome", "page")).toEqual([
       ["--band-ground", "var(--background)"],
       ["--band-rule", "var(--rule)"],
     ]);
@@ -484,15 +513,16 @@ describe("every default word of spec 17 is today's CSS", () => {
     expect(bare).toMatch(/svg\.lucide \{\s*stroke-width: var\(--icon-stroke\);/);
   });
 
-  it("labels: caps is `uppercase` and Tailwind's `tracking-wide`", () => {
-    const words = new Map(defaultOf("labels"));
+  it("labels: sentence is the default, and the word `caps` is `uppercase` and Tailwind's `tracking-wide`", () => {
+    expect(new Map(defaultOf("labels"))).toEqual(new Map([["--label-transform", "none"], ["--label-tracking", "normal"]]));
+    const words = new Map(wordDeclarations("labels", "caps"));
     expect(words.get("--label-transform")).toBe("uppercase");
     expect(words.get("--label-tracking")).toBe(tailwind("--tracking-wide"));
     expect(bare).toMatch(/@utility label-caps \{\s*text-transform: var\(--label-transform, uppercase\);\s*letter-spacing: var\(--label-tracking, 0\.025em\);/);
   });
 
-  it("display: no display face is the UI face, and each face's stack is the one its Typeface class sets", () => {
-    expect(root.get("--font-display")).toBe("var(--font-sans)");
+  it("display: the default display face is Aldrich, and each face's stack is the one its Typeface class sets", () => {
+    expect(root.get("--font-display")).toBe("var(--face-aldrich)");
     for (const face of FACES) {
       const [[, value] = ["", ""]] = displayDeclarations(face);
       expect(value).toBe(`var(--face-${face})`);

@@ -58,6 +58,27 @@ export interface DesignPrefs {
   theme?: string;
 }
 
+/**
+ * The id of the shipped theme that was folded into `collie` (the theme "Collie New" became the
+ * default look under the name "Collie"). A device that stored it is moved to `collie` on first read.
+ */
+export const RETIRED_THEME_ID = "collie-new";
+
+/** The library's storage key (lib/theme/store.ts holds the same string; design.test.ts keeps them equal). */
+const LIBRARY_KEY = "collie:themes:v1";
+
+/** True when the imported library holds a theme with this id. Total: any failure reads as "no". */
+function libraryHas(id: string): boolean {
+  try {
+    const doc = parseJsonObject(localStorage.getItem(LIBRARY_KEY) ?? "");
+    const list = doc?.themes;
+    if (!Array.isArray(list)) return false;
+    return list.some((entry) => asJsonString(asJsonObject(entry)?.id) === id);
+  } catch {
+    return false;
+  }
+}
+
 const DEFAULT_PREFS: DesignPrefs = { font: DEFAULT_FONT };
 
 let prefs: DesignPrefs = load();
@@ -92,7 +113,13 @@ function load(): DesignPrefs {
     if (typeof localStorage === "undefined") return DEFAULT_PREFS;
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw === null) return DEFAULT_PREFS;
-    return parseDesignPrefs(raw);
+    const parsed = parseDesignPrefs(raw);
+    if (parsed.theme !== RETIRED_THEME_ID || libraryHas(RETIRED_THEME_ID)) return parsed;
+    // The retired shipped id: `collie` now wears that look. Drop the field and write it back, once.
+    const kept: DesignPrefs = { font: parsed.font };
+    if (parsed.operatorFont !== undefined) kept.operatorFont = parsed.operatorFont;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(kept));
+    return kept;
   } catch {
     return DEFAULT_PREFS; // private mode / SSR
   }

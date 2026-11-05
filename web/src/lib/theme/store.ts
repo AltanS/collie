@@ -5,7 +5,7 @@
 // THREE KINDS OF THEME, ONE RULE EACH.
 //   * `collie`, the app's own look, is the stylesheet as it stands. Applying it writes NOTHING: no
 //     attribute, no inline property. That is what keeps the pixels of the current look unchanged.
-//   * A shipped theme (nightwatch, daylight, harbour, collie-new) is a generated block in `themes.css`. Applying
+//   * A shipped theme (nightwatch, daylight, harbour) is a generated block in `themes.css`. Applying
 //     it sets `data-theme="<id>"` on <html> and nothing else.
 //   * An imported theme lives in the library (localStorage, validated) and is applied as inline
 //     custom properties on <html>, one per token, each a `light-dark()` pair, plus the declarations

@@ -50,7 +50,7 @@ afterwards. A copy-paste gives you six places to remember instead.
 | `ui/segmented.tsx` | Two or three labelled segments in one row, exactly one selected: Diff \| Source \| Preview, the Files screen's All files \| Changes, the 1 h / 24 h chart switch, the alert threshold and duration choices. Values are strings or numbers. Every segment reserves its 1px border and the selected one only recolours it, so a switch moves nothing (§2), and a tap on the selected segment does nothing. `semantics` picks a tab list (a switch between screens) or a radio group (one setting); `disabled` makes the row inert. A segment may carry a count (`badge`, with `badgeLabel` for the screen reader), floated on its top-right corner like the toggle button's, as the Files screen's Changes segment does. Theme and Belt size predate it and still carry their own copy. |
 | `ui/progress.tsx` | How far something is, as one bar: a width inside a box whose height is stated, so a moving value repaints and never re-lays-out. `thin` is a 4px bar on a `--muted` track (Chat's progress row); `hairline` is a 1px line with no track (the bottom edge of a pane card). The house 2px corner, `progressbar` role, clamped 0 to 100. Owns no words. |
 | `ui/search-field.tsx` | The search box: a 44px text field with a magnifier inside its left edge, 16px type so iOS does not zoom, every keyboard correction off, `inputMode="search"`. Forwards its ref to the `<input>` so a sheet can focus it on open. Owns the look and the field, not the list under it or the filtering. The command palette's and the Sent sheet's. |
-| `ui/section-label.tsx` | The small uppercase word that names a section. Type only — it renders a `<span>` and owns no structure. |
+| `ui/section-label.tsx` | The small word that names a section, as typed under the default `labels: sentence` and in capitals under `caps`. Type only, it renders a `<span>` and owns no structure. |
 | `ui/select.tsx` | A form select: a NATIVE `<select>` in a 44px box with our own chevron (`appearance-none`), a full `--border` edge and the house corner, so a phone draws its own picker and no sheet is needed. `lead` puts an inert glyph before the text; the caller's `className` sizes the box (`flex-1 min-w-0` for the flexible one, `shrink-0` for the compact one). The New page's machine, agent and command selects (`routes/new.tsx`), and the dashboard's order select (`dash-selects.tsx`). The dashboard's workspace filter there draws the same box as a button, because it chooses several workspaces in a sheet of checks (issue #527). The four Settings selects (language, typeface, terminal font, theme) carry the same construction by hand and have not been moved onto it. |
 | `ui/sheet.tsx` | `BottomSheet`. The app's only floating layer, with one exception: the dashboard's floating New button (`ui/fab.tsx`, below). The pane navigation overlay floats too, but takes no touch (below). There is no popover, no dialog, no tooltip. It also exports `useAnySheetOpen`, the count of open sheets that button hides itself on. |
 | `ui/strip-host.tsx` | The ribbon band, an overlay hung from the header bar's bottom edge. Renders ONE `StripSlot` at a time, the highest priority, and keeps the two permanent `sr-only` live regions. It reserves no space: a zero-height anchor sits right after the header, and the band floats from it at `z-30` over the top of the route, on the page colour with a `shadow-md`. Domain-blind: a bigger number wins, and it does not know what a connection is. `flow` paints it in flow instead, for a playground stage with no route under it; the app never sets it. |
@@ -339,6 +339,12 @@ holds the measurement), and the summary line drops its words on a phone, leaving
 ## 4. Surface and separation
 
 **Chrome is the PAGE colour, separated by a rule. Never a fill.**
+
+This is the rule of the `chrome: page` word. Since 2026-11-05 the default theme Collie sets `chrome: band`:
+the header and the bars stand on `--secondary` with a `--border` edge, which is a deliberate step off the page
+that a theme file chose and the contrast gate measures (`foreground`, `muted-foreground` and `status-blocked`
+on the band). Nightwatch does the same. Daylight and Harbour keep `page`. Read the rest of this section as
+the case for `page`, and do not put `--muted` behind chrome under either word.
 
 The header used to be a `bg-muted` band. It existed only because the line it competed with
 was not really a line: `border-border/60` measures **1.09:1** against the page in light and
@@ -933,25 +939,27 @@ come from `light-dark()`.
 
 `pane-active` (1.24.0) is the frame of the pane you are working in on a large screen, and nothing else. It is outside the 43 but a theme can set it: from schema version 3 it is an optional token in either half. A theme that leaves it out keeps the `:root` pair in index.css, so every file written before version 3 reads and exports unchanged; a file that sets it must say version 3. The contrast report holds it to 3:1 on `background` in a half that sets it. Nightwatch sets its own, a warm sky for its amber palette.
 
-`tab-active` is the second optional token, and it marks the open tab and the open pane for a theme whose surface word `tabs` is `folder` (`lib/tab-look.ts`): the 2px top edge of the open folder tab and the 1px ring of the open pane. It has the same rules as `pane-active` (version 3, a `:root` pair that is the foreground ink of each half, 3:1 on `background` in a half that sets it). Under the default word `plain` the tab row and the pane row are drawn exactly as they were, and `tab-active` is read by nothing. `composer` is the third word that sets no CSS (`field` or `box`); `lib/composer-layout.ts` reads it.
+`tab-active` is the second optional token, and it marks the open tab and the open pane for a theme whose surface word `tabs` is `folder` (`lib/tab-look.ts`): the 2px top edge of the open folder tab and the 1px ring of the open pane. It has the same rules as `pane-active` (version 3, a `:root` pair that is the foreground ink of each half, 3:1 on `background` in a half that sets it). Under the word `plain` (the word a theme gets when it names none; the Collie theme names `folder`) the tab row and the pane row are drawn exactly as they were, and `tab-active` is read by nothing. `composer` is the third word that sets no CSS (`field` or `box`); `lib/composer-layout.ts` reads it.
 
 The name "ColliePWA" in the large screen's sidebar draws "PWA" in the three status tokens, always: P `status-done`, W `status-working`, A `status-blocked` (`components/wordmark.tsx`). Unlike the website, the app does not rest in grey. It is not a token of its own, and no application state may ever drive those inks.
 
 **The twelve version 2 tokens.** Each is a closed list. A file names a word, and one table says what the word
-does (`web/src/lib/theme/surface.ts`). The default word of every token is today's look.
+does (`web/src/lib/theme/surface.ts`). The default word of every token is what the stylesheet draws, which is
+the look of the Collie theme: `flat`, `bold`, `band` and `sentence` among them. `tabs` and `composer` keep
+`plain` and `field` as the word of a theme that names none, and Collie names `folder` and `box`.
 
 | Token | Words |
 | --- | --- |
 | `radius` | `sharp` (default, 2px), `soft`, `round` |
-| `shadow` | `default`, `flat`, `lifted` |
+| `shadow` | `flat` (default), `default` (the stock soft shadows), `lifted` |
 | `density` | `default`, `roomy` (never below default) |
-| `weight` | `default`, `bold` |
+| `weight` | `bold` (default), `default` (500 and 600) |
 | `border` | `default` (1px), `strong` (2px) |
 | `ground` | `flat`, `gradient`, `grain` |
-| `chrome` | `page`, `band` |
+| `chrome` | `band` (default), `page` |
 | `rows` | `rules`, `cards` |
 | `icons` | `default`, `thin`, `heavy` |
-| `labels` | `caps`, `sentence` |
+| `labels` | `sentence` (default), `caps` |
 | `fonts.display` | one of the six shipped faces |
 | `ansi` | all 18 mirror colours (slots 0 to 15, ink, ground) or none, each held to its contrast floor |
 
@@ -973,8 +981,7 @@ half inverts them with the mirror.
 the left edge under `sharp` (the Collie theme), a 2px ring on all four sides under `soft` and
 `round`, because a left accent bar is never combined with rounded corners.
 
-**The rules a theme does not relax.** §4 still holds under every theme: chrome is the page
-colour with a rule, red marks harm, a raised panel is `card`. A shipped theme passes the contrast
+**The rules a theme does not relax.** §4 still holds under every theme: chrome is set off by a line (a rule on the page, the border on a band), red marks harm, a raised panel is `card`. A shipped theme passes the contrast
 gate: every status chip at `/15` over `background` and `card` at 4.5:1 or better, body text at
 4.5:1 or better, `rule` against `background` at 1.3:1 or better, in both halves. A `gradient` or `grain`
 ground and a `band` are measured too, at the far end of the ground and on `secondary`.

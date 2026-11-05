@@ -107,19 +107,18 @@ test("the Collie look fetches only its own face, and draws every default", async
       tracking: style(document.querySelector(".label-caps"))?.letterSpacing,
     };
   });
+  // The default look: a band behind the header (--secondary), labels as typed, no tracking.
   expect(seen).toEqual({
     ground: "none",
-    header: seen.page,
+    header: await resolved(page, "var(--secondary)"),
     page: seen.page,
     rowGap: "0px",
     rowEdge: "0px",
     rowShadow: "none",
     stroke: "2px",
-    label: "uppercase",
-    tracking: seen.tracking,
+    label: "none",
+    tracking: "normal",
   });
-  // tracking-wide at the label's own size: 0.025em of 11px.
-  expect(Number.parseFloat(seen.tracking ?? "0")).toBeCloseTo(0.275, 2);
   await context.close();
 });
 

@@ -12,7 +12,7 @@ import type { SurfaceWord } from "@/lib/theme/surface";
 
 export type TabLook = SurfaceWord<"tabs">;
 
-/** The look a theme word names; a theme that leaves it out gets today's `plain`. */
+/** The look a theme word names; a theme that leaves it out gets `plain` (the theme `collie` names `folder` in its file). */
 export function tabLook(word: SurfaceWord<"tabs"> | undefined): TabLook {
   return word === "folder" ? "folder" : "plain";
 }

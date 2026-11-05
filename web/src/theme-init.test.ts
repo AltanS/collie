@@ -165,6 +165,21 @@ describe("theme-init.js, run", () => {
     expect(seen.properties).toHaveLength(THEME_TOKENS.length);
   });
 
+  it("paints a stored collie-new as the default: no attribute and no property", () => {
+    const seen = runInit({ "collie:design:v1": JSON.stringify({ font: "atkinson", theme: "collie-new" }) });
+    expect(seen).toEqual({ classes: ["font-atkinson"], attributes: [], properties: [] });
+  });
+
+  it("still applies an imported theme whose id is collie-new", () => {
+    const entry = { ...midnight(1).themes[0], id: "collie-new" };
+    const seen = runInit({
+      "collie:design:v1": JSON.stringify({ theme: "collie-new" }),
+      "collie:themes:v1": JSON.stringify({ version: 1, themes: [entry] }),
+    });
+    expect(seen.attributes).toEqual([]);
+    expect(seen.properties).toHaveLength(THEME_TOKENS.length);
+  });
+
   it("applies nothing from a library that says version 2", () => {
     const seen = runInit({
       "collie:design:v1": JSON.stringify({ theme: "midnight" }),

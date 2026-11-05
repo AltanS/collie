@@ -16,12 +16,12 @@
          someone who has pinned the opposite of their OS. -->
     <meta
       name="theme-color"
-      content="#f5f5f5"
+      content="#e4e3e0"
       media="(prefers-color-scheme: light)"
     />
     <meta
       name="theme-color"
-      content="#0a0a0a"
+      content="#2a2927"
       media="(prefers-color-scheme: dark)"
     />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -215,10 +215,10 @@
         justify-content: center;
         gap: 0.75rem;
         /* --background / --muted-foreground rasterized, because index.css has not loaded yet:
-           oklch(0.97)/oklch(0.48) light, oklch(0.145)/oklch(0.708) dark. The light pair used to be
-           #ffffff/#8a8a8a, which is neither token — the page stepped from white to rgb(245) on
-           hand-off to React, and the caption sat at 3.45:1. Keep in step with index.css. */
-        background: light-dark(#f5f5f5, #0a0a0a);
+           oklch(0.955 0.003 80)/oklch(0.48) light, oklch(0.17 0.003 80)/oklch(0.708) dark. The light pair used
+           to be #ffffff/#8a8a8a, which is neither token — the page stepped from white to the page
+           colour on hand-off to React. Keep in step with index.css. */
+        background: light-dark(#f1f0ee, #100f0e);
         color: light-dark(#5d5d5d, #a1a1a1);
         font:
           500 0.875rem/1.4 var(--font-sans);

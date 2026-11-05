@@ -191,7 +191,7 @@ function BoxPhone({ def, speech }: { def: CaseDef; speech: boolean }) {
     <div ref={host}>
       <PhoneMock>
         <div className="h-16 bg-background px-3 pt-2 font-mono text-[11px] text-muted-foreground">
-          The review is done. Collie New is live on 8788.
+          The review is done. The build is live on 8788.
         </div>
         <RouterProvider router={router} />
       </PhoneMock>

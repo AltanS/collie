@@ -249,18 +249,18 @@ test("the voice takeover's ring stays centred on its button under every density"
 });
 
 // THE THEME SELECT LIES INSIDE ITS CARD. The Theme card picks a theme from one select field, a row
-// like Language's and Typeface's, so five shipped themes and the imported ones never wrap or spill.
+// like Language's and Typeface's, so four shipped themes and the imported ones never wrap or spill.
 // The density walk above covers its 44px floor; this checks that the select's box lies inside the
 // card's box at 360 and 390 wide under each shipped theme (Daylight is the roomy one), and that its
-// options start with the five shipped names in order.
+// options start with the four shipped names in order.
 for (const theme of [
-  { id: "collie", design: {} },
-  { id: "nightwatch", design: { theme: "nightwatch" } },
-  { id: "daylight", design: { font: "geist", theme: "daylight" } },
-  { id: "harbour", design: { theme: "harbour" } },
-  { id: "collie-new", design: { font: "atkinson", theme: "collie-new" } },
+  { id: "collie", label: "collie", design: {} },
+  { id: "nightwatch", label: "nightwatch", design: { theme: "nightwatch" } },
+  { id: "daylight", label: "daylight", design: { font: "geist", theme: "daylight" } },
+  { id: "harbour", label: "harbour", design: { theme: "harbour" } },
+  { id: "collie", label: "collie in Atkinson", design: { font: "atkinson" } },
 ] as const) {
-  test(`the Theme select lies inside the card under ${theme.id} at 360 and 390`, async ({ browser }, testInfo) => {
+  test(`the Theme select lies inside the card under ${theme.label} at 360 and 390`, async ({ browser }, testInfo) => {
     onlyOnePhone(testInfo);
     for (const width of [360, 390]) {
       const context = await browser.newContext(contextOptions(testInfo, { width, height: 844 }));
@@ -281,9 +281,9 @@ for (const theme of [
           options: el instanceof HTMLSelectElement ? [...el.options].map((option) => option.textContent ?? "") : [],
         };
       });
-      const at = `${theme.id} at ${width}px`;
+      const at = `${theme.label} at ${width}px`;
       expect(seen.card, `${at}: the card`).not.toBeNull();
-      expect(seen.options.slice(0, 5), `${at}: the five shipped names`).toEqual(["Collie", "Nightwatch", "Daylight", "Harbour", "Collie New"]);
+      expect(seen.options.slice(0, 4), `${at}: the four shipped names`).toEqual(["Collie", "Nightwatch", "Daylight", "Harbour"]);
       const card = seen.card ?? { left: 0, right: 0, top: 0, bottom: 0 };
       expect(seen.box.left, `${at}: select left of the card`).toBeGreaterThanOrEqual(card.left);
       expect(seen.box.right, `${at}: select right of the card`).toBeLessThanOrEqual(card.right);
