@@ -140,7 +140,10 @@ describe("Composer layout=box", () => {
     // A small filled circle, not the main button (Altan, 2026-11-05: bare icons looked loose).
     expect(ghost.className).toMatch(/bg-secondary/);
     expect(ghost.className).not.toMatch(/bg-primary/);
-    // The ghost mic sits left of Send in the button row.
+    // The bottom row reads Attach, the small mic, Send: all three at the right, the field's own
+    // space growing before them.
+    const attach = screen.getByRole("button", { name: /attach file/i });
+    expect(attach.className).toMatch(/col-start-2/);
     expect(ghost.className).toMatch(/col-start-3/);
     expect(primary().className).toMatch(/col-start-4/);
   });
@@ -191,14 +194,39 @@ describe("Composer layout=box", () => {
     expect(field()).toHaveFocus();
   });
 
-  it("mirrors for the left hand: Send on the outer left, Attach at the right", async () => {
+  it("rests as [field][Attach][main] and opens to a field of its own text, with no minimum height", async () => {
+    const user = userEvent.setup();
+    renderComposer({ layout: "box" });
+    await readyBox();
+    const attach = screen.getByRole("button", { name: /attach file/i });
+    // At rest Attach stands beside the main button, at the right, and the field takes the first cell.
+    expect(field().className).toMatch(/col-start-1/);
+    expect(attach.className).toMatch(/col-start-2/);
+    expect(primary().className).toMatch(/col-start-3/);
+    await user.type(field(), "a");
+    // Open, the field is as tall as its text: nothing reserves three lines.
+    expect(field().className).not.toMatch(/min-h-/);
+    expect(attach.className).toMatch(/col-start-2/);
+  });
+
+  it("gives the circles 6px of air from the border and from each other", async () => {
+    renderComposer({ layout: "box" });
+    const box = await readyBox();
+    expect(box.className).toMatch(/\bp-1\.5\b/);
+    expect(box.className).toMatch(/gap-x-1\.5/);
+  });
+
+  it("mirrors for the left hand: Send on the outer left, Attach beside it, the field after them", async () => {
     const user = userEvent.setup();
     renderComposer({ layout: "box", hand: "left" });
     await readyBox();
+    const attach = screen.getByRole("button", { name: /attach file/i });
     expect(primary().className).toMatch(/col-start-1/);
-    expect(screen.getByRole("button", { name: /attach file/i }).className).toMatch(/col-start-3/);
+    expect(attach.className).toMatch(/col-start-2/);
+    expect(field().className).toMatch(/col-start-3/);
     await user.type(field(), "a");
-    expect(screen.getByRole("button", { name: /attach file/i }).className).toMatch(/col-start-4/);
+    expect(primary().className).toMatch(/col-start-1/);
+    expect(attach.className).toMatch(/col-start-3/);
   });
 
   describe("the change of shape is played", () => {
