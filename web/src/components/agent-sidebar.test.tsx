@@ -586,7 +586,8 @@ describe("ThreadSidebar — pinned panes", () => {
       expect.stringContaining("shell"),
       expect.stringContaining("sandbox"),
     ]);
-    const summary = screen.getByRole("button", { name: /needs you/i });
+    // The count, not the words alone: a blocked row's own mark is named "needs you" too (#695).
+    const summary = screen.getByRole("button", { name: /\d needs you/i });
     expect(summary.compareDocumentPosition(region()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
@@ -834,5 +835,63 @@ describe("ThreadSidebar: which machine, as a glyph on the row (2026-10-21)", () 
   it("draws no machine on a one-machine install, so a solo row is unchanged", () => {
     render(<ThreadSidebar agents={fixtureAgents} currentPaneKey="" onSelect={vi.fn()} />);
     expect(screen.queryAllByLabelText(/^host: /i)).toHaveLength(0);
+  });
+});
+
+// Issue #695: the heading's counts say how many panes work or wait, not which ones. Each row now
+// carries its own status mark on the logo's corner, as the closed rail does, and the dashboard's
+// unseen square after the name.
+describe("ThreadSidebar: each row says its own status (#695)", () => {
+  const inSpace = (paneId: string, paneLabel: string, over: Partial<AgentView>): AgentView => ({
+    ...idleAgent,
+    paneId,
+    paneLabel,
+    ...over,
+  });
+  const working = inSpace("w3:p1", "builder", { status: "working" });
+  const resting = inSpace("w3:p2", "reader", { status: "idle" });
+  const blocked = inSpace("w3:p3", "asker", { status: "blocked" });
+  // Herdr 0.9 reports a settled agent as idle, not done (#345): unseen, it still rests as a ring.
+  const unseen = inSpace("w3:p4", "finisher", { status: "idle", lastActiveAt: 2, lastSeenAt: 1 });
+  // The row's name runs logo, status, the pane's name, then the unseen word, and jsdom joins them with
+  // no space (it applies no CSS, so every part is inline). The names below are unique substrings.
+  const row = (name: string) => screen.getByRole("button", { name: new RegExp(name, "i") });
+
+  it("marks every agent row with its own status, named for a screen reader", () => {
+    render(<ThreadSidebar agents={[working, resting, blocked]} currentPaneKey="" onSelect={vi.fn()} />);
+    expect(within(row("builder")).getByRole("img", { name: "working" })).toBeInTheDocument();
+    expect(within(row("reader")).getByRole("img", { name: "idle" })).toBeInTheDocument();
+    expect(within(row("asker")).getByRole("img", { name: "needs you" })).toBeInTheDocument();
+  });
+
+  it("draws the unseen square on a finished pane nobody opened, and keeps its slot on the others", () => {
+    render(<ThreadSidebar agents={[unseen, resting]} currentPaneKey="" onSelect={vi.fn()} />);
+    expect(within(row("finisher")).getByRole("img", { name: "unseen" })).toBeInTheDocument();
+    expect(within(row("reader")).queryByRole("img", { name: "unseen" })).toBeNull();
+    // Reserved, invisible and silent: the name truncates at one width in both states.
+    expect(row("reader").querySelector("svg.invisible[aria-hidden='true']")).not.toBeNull();
+  });
+
+  it("backs the mark with the surface under the row: the card, or the accent on the current row", () => {
+    render(<ThreadSidebar agents={[working, resting]} currentPaneKey={paneRowKey(working)} onSelect={vi.fn()} />);
+    const mark = (name: string) => within(row(name)).getByRole("img", { name: /working|idle/ });
+    expect(mark("builder").querySelector(".bg-accent")).not.toBeNull();
+    expect(mark("reader").querySelector(".bg-card")).not.toBeNull();
+  });
+
+  it("draws no status mark and no unseen slot on a shell row", () => {
+    render(<ThreadSidebar agents={[]} shellPanes={fixtureShellPanes} currentPaneKey="" onSelect={vi.fn()} />);
+    const shellRow = screen.getByRole("button", { name: /shell/i });
+    expect(within(shellRow).queryByRole("img")).toBeNull();
+    expect(shellRow.querySelector("[class*='text-status-']")).toBeNull();
+  });
+
+  it("keeps every row in its place when a pane starts working: the mark repaints, the row stays", () => {
+    const { rerender } = render(<ThreadSidebar agents={[resting, working]} currentPaneKey="" onSelect={vi.fn()} />);
+    const order = () => screen.getAllByRole("button").map((b) => b.getAttribute("data-pane-key"));
+    const before = order();
+    rerender(<ThreadSidebar agents={[{ ...resting, status: "working" }, working]} currentPaneKey="" onSelect={vi.fn()} />);
+    expect(order()).toEqual(before);
+    expect(within(row("reader")).getByRole("img", { name: "working" })).toBeInTheDocument();
   });
 });

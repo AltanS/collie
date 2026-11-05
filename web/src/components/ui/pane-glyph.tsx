@@ -10,9 +10,9 @@ import { useLocale } from "@/hooks/use-locale";
 /**
  * A PANE'S GLYPH: the agent's logo, or the terminal square for a bare shell, at one size.
  *
- * With `markOn`, the pane's status mark sits on the glyph's bottom-right corner, the badge the closed
- * rail and a strip column's header draw. `markOn` is the colour the
- * glyph sits on (a `bg-*` class). The mark is `backed` with it, so the logo never shows through the
+ * With `markOn`, the pane's status mark sits on the glyph's bottom-right corner, the badge that the
+ * closed rail, a strip column's header and the sidebar's rows draw. `markOn` is the colour the glyph
+ * sits on (a `bg-*` class). The mark is `backed` with it, so the logo never shows through the
  * empty half of the working mark or around the triangle (`StatusDot`'s `backed`). The mark is
  * absolute, so the glyph's box is the same with or without it.
  *
