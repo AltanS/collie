@@ -1045,6 +1045,7 @@ export const es: Dictionary = {
 
   // --- nav (app header, Collie mark, settings gear) ---
   "nav.settings.aria": "Configuración",
+  "nav.settings.updateAvailable.aria": "Settings, update available",
   "nav.home.aria.default": "Inicio de Collie",
   "nav.home.aria.lost": "Inicio de Collie (sin conexión)",
   "nav.home.aria.lostAt": "Inicio de Collie (sin conexión). Se muestra la copia guardada ({time}).",
@@ -1955,6 +1956,7 @@ export const es: Dictionary = {
   "updates.entry.status.peersBehind.other": "{count} pares desactualizados",
   "updates.entry.status.available": "{version} disponible",
   "updates.entry.status.upToDate": "Al día",
+  "updates.entry.status.upToDateVersion": "Up to date · {version}",
   "updates.entry.status.unknown": "Desconocido, no se puede contactar con Collie",
   "updateRibbon.starting": "Iniciando actualización…",
   "updateRibbon.fetching": "Actualizando a {version}. Descargando",

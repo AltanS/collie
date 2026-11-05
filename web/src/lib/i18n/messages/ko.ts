@@ -1035,6 +1035,7 @@ export const ko: Dictionary = {
 
   // --- nav (app header, Collie mark, settings gear) ---
   "nav.settings.aria": "설정",
+  "nav.settings.updateAvailable.aria": "Settings, update available",
   "nav.home.aria.default": "Collie 홈",
   "nav.home.aria.lost": "Collie 홈, 연결 끊김",
   "nav.home.aria.lostAt": "Collie 홈, 연결 끊김. {time}에 저장된 내용을 표시합니다.",
@@ -1934,6 +1935,7 @@ export const ko: Dictionary = {
   "updates.entry.status.peersBehind.other": "피어 {count}개 뒤처짐",
   "updates.entry.status.available": "{version} 사용 가능",
   "updates.entry.status.upToDate": "최신 상태",
+  "updates.entry.status.upToDateVersion": "Up to date · {version}",
   "updates.entry.status.unknown": "알 수 없음, Collie에 연결할 수 없음",
   "updateRibbon.starting": "업데이트 시작 중…",
   "updateRibbon.fetching": "{version}(으)로 업데이트 중. 가져오는 중",

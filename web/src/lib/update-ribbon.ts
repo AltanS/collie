@@ -434,6 +434,16 @@ export function crewFailureDismissed(
   return settledAt <= closedAt;
 }
 
+/**
+ * IS A RELEASE ON OFFER, and not yet put down? The one test behind the band's offer states and the
+ * dot on the Settings gear, so the two cannot disagree about whether there is something to tell.
+ * A different version than the dismissed one is a new offer, as in {@link RibbonInput}.
+ */
+export function releaseOffered(update: UpdateInfo | undefined, dismissedVersion: string | null | undefined): boolean {
+  const latest = update?.latest ?? null;
+  return update?.releaseAvailable === true && latest !== null && latest !== (dismissedVersion ?? null);
+}
+
 /** The whole band, decided once. See the precedence in this file's header. */
 export function ribbonView(input: RibbonInput): RibbonView {
   const run = input.update?.run;
@@ -476,13 +486,14 @@ export function ribbonView(input: RibbonInput): RibbonView {
   if (input.bundleStale) return { kind: "bundle" };
 
   // (a) — an offer, and only an offer. The tap navigates; nothing here starts anything.
-  const latest = input.update?.latest ?? null;
-  if (input.update?.releaseAvailable === true && latest !== null && latest !== input.dismissedVersion) {
+  const offered = input.update;
+  const latest = offered?.latest ?? null;
+  if (offered !== undefined && latest !== null && releaseOffered(offered, input.dismissedVersion)) {
     // A PACKAGED host cannot take the tap: `collie update` refuses there and the page shows a
     // command where the button would be (ADR 0035). So the band says what is true on that machine
     // and names the manager that owns it, rather than offering an update it cannot perform.
-    if (input.update.installKind === "packaged") {
-      return { kind: "available-packaged", version: latest, manager: managerOf(input.update.packageCommand) };
+    if (offered.installKind === "packaged") {
+      return { kind: "available-packaged", version: latest, manager: managerOf(offered.packageCommand) };
     }
     return { kind: "available", version: latest };
   }

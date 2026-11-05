@@ -1,8 +1,10 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 
 import { withHeaderHost } from "@/test/header-host";
+import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
+import type { UpdateInfo } from "@/lib/types";
 import { SettingsRoute } from "./settings";
 
 // Settings' HEADER, and only its header.
@@ -53,8 +55,8 @@ describe("SettingsRoute — the shared header shell", () => {
 // ── THE FOOTER, AFTER THE UPDATE CHIP LEFT IT (M16/01) ──────────────────────────────────────────
 //
 // Settings used to end with three update surfaces for one subject. Updating has a page of its own
-// now, so this page keeps one row that links to it — and the footer keeps the build stamp, which is
-// a diagnostic and was never an update surface.
+// now, and the index leads with one row that links to it — and the footer keeps the build stamp,
+// which is a diagnostic and was never an update surface.
 describe("SettingsRoute — the update surfaces", () => {
   it("keeps the build stamp and drops the footer update chip", async () => {
     renderSettings();
@@ -65,15 +67,117 @@ describe("SettingsRoute — the update surfaces", () => {
     expect(screen.queryByRole("button", { name: /^Copy command/ })).toBeNull();
   });
 
-  it("holds no update surface at all: they are one row on the System page now", async () => {
+  it("holds no update card or check control: the update subject is one row, and a page", async () => {
     renderSettings();
     await screen.findByRole("button", { name: /Appearance/ });
-    // The row, the card and the check control all sit behind System. The word "Updates" IS still
-    // on this page — it is the first word of the System row's blurb — so the assertion is about
-    // the update ROW's own title, not about the string.
-    expect(screen.queryByText("Updates", { selector: ".font-medium" })).toBeNull();
     expect(screen.queryByText("Update Collie")).toBeNull();
     expect(screen.queryByRole("button", { name: "Check for updates" })).toBeNull();
+  });
+});
+
+// ── THE UPDATES ROW (first on the index) ────────────────────────────────────────────────────────
+//
+// Updating is the one subject whose answer changes without a touch, so its row leads the index and
+// carries the live status. A release waiting leads the caption with a 6px dot.
+function updateInfo(over: Partial<UpdateInfo> = {}): UpdateInfo {
+  return {
+    current: "1.26.4",
+    latest: "1.26.4",
+    latestUrl: null,
+    releaseAvailable: false,
+    majorAvailable: null,
+    majorUrl: null,
+    bridgeStale: false,
+    checkedAt: 1_700_000_000_000,
+    ...over,
+  };
+}
+
+function renderWithUpdate(update: UpdateInfo | undefined) {
+  const data = {
+    bridge: "connected",
+    device: undefined,
+    agents: [],
+    shellPanes: [],
+    workspaces: [],
+    tabs: [],
+    sessions: [],
+    servers: [],
+    ts: 0,
+    scope: {},
+    viewAll: false,
+    snoozedUntil: null,
+    update,
+    error: false,
+    authError: false,
+  } satisfies HomeData;
+  const router = createMemoryRouter(
+    [
+      {
+        id: ROOT_ROUTE_ID,
+        path: "/",
+        loader: () => data,
+        children: [
+          { path: "settings", element: withHeaderHost(<SettingsRoute />) },
+          { path: "settings/updates", element: <div data-testid="updates" /> },
+          { path: "settings/:section", element: <div data-testid="section" /> },
+        ],
+      },
+    ],
+    { initialEntries: ["/settings"] },
+  );
+  render(<RouterProvider router={router} />);
+  return router;
+}
+
+describe("SettingsRoute — the Updates row", () => {
+  it("is the first row, in the same style, and says it is up to date with the version", async () => {
+    renderWithUpdate(updateInfo());
+    const row = await screen.findByRole("button", { name: /^Updates/ });
+    const rows = screen
+      .getAllByRole("button")
+      .map((b) => b.textContent ?? "")
+      .filter((text) => /Updates|Appearance|Machines/.test(text));
+    expect(rows[0]).toContain("Updates");
+    expect(rows[1]).toContain("Appearance");
+    expect(row.textContent).toContain("Up to date · 1.26.4");
+    expect(row.querySelector("svg.lucide-circle-arrow-up")).not.toBeNull();
+    expect(row.querySelector("svg.lucide-chevron-right")).not.toBeNull();
+    // Nothing is waiting, so no dot.
+    expect(row.querySelector('[data-slot="update-dot"]')).toBeNull();
+  });
+
+  it("names the waiting version behind a 6px primary dot", async () => {
+    renderWithUpdate(updateInfo({ releaseAvailable: true, latest: "1.27.0" }));
+    const row = await screen.findByRole("button", { name: /^Updates/ });
+    expect(row.textContent).toContain("1.27.0 available");
+    const dot = row.querySelector('[data-slot="update-dot"]');
+    expect(dot).not.toBeNull();
+    expect(dot?.className).toContain("bg-primary");
+    expect(dot?.className).toContain("size-1.5");
+    // The dot leads the caption: it is the caption's first child, before the words.
+    expect(within(row).getByText(/1\.27\.0 available/).firstElementChild).toBe(dot);
+  });
+
+  it("opens the Updates page as a push", async () => {
+    const router = renderWithUpdate(updateInfo());
+    await userEvent.click(await screen.findByRole("button", { name: /^Updates/ }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/settings/updates"));
+    expect(router.state.location.state).toMatchObject({ from: "/settings" });
+  });
+
+  it("says it cannot tell when the snapshot never arrived", async () => {
+    renderSettings();
+    const row = await screen.findByRole("button", { name: /^Updates/ });
+    expect(row.textContent).toContain("Unknown, can’t reach Collie");
+    expect(row.querySelector('[data-slot="update-dot"]')).toBeNull();
+  });
+
+  it("gives System the caption of what it holds now: devices, crew, connection", async () => {
+    renderSettings();
+    const system = await screen.findByRole("button", { name: /System/ });
+    expect(system.textContent).toContain("Devices, crew, connection");
+    expect(system.textContent).not.toContain("Updates");
   });
 });
 
@@ -107,7 +211,7 @@ describe("SettingsRoute — the index", () => {
 
   it("no longer mentions voice in the Device row's blurb", async () => {
     renderSettings();
-    const device = await screen.findByRole("button", { name: /Device/ });
+    const device = await screen.findByRole("button", { name: /^Device/ });
     expect(device.textContent).not.toMatch(/voice/i);
   });
 

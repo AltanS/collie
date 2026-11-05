@@ -1037,6 +1037,7 @@ export const ja: Dictionary = {
 
   // --- nav (app header, Collie mark, settings gear) ---
   "nav.settings.aria": "設定",
+  "nav.settings.updateAvailable.aria": "Settings, update available",
   "nav.home.aria.default": "Collie ホーム",
   "nav.home.aria.lost": "Collie ホーム (未接続)",
   "nav.home.aria.lostAt": "Collie ホーム (未接続)。{time} に保存された内容を表示しています。",
@@ -1942,6 +1943,7 @@ export const ja: Dictionary = {
   "updates.entry.status.peersBehind.other": "{count} 台のピアが未更新",
   "updates.entry.status.available": "{version} が利用可能",
   "updates.entry.status.upToDate": "最新です",
+  "updates.entry.status.upToDateVersion": "Up to date · {version}",
   "updates.entry.status.unknown": "不明、Collie に接続できません",
   "updateRibbon.starting": "更新を開始中…",
   "updateRibbon.fetching": "{version} に更新中。取得中",

@@ -47,7 +47,7 @@ export const en = {
   "settings.section.alerts.title": "Alerts",
   "settings.section.alerts.blurb": "Notifications, quiet hours",
   "settings.section.system.title": "System",
-  "settings.section.system.blurb": "Updates, devices, crew",
+  "settings.section.system.blurb": "Devices, crew, connection",
   // The fifth section, and the only one that can be absent: it renders while `lib/experiments.ts`
   // holds something and disappears when the last experiment graduates (that file says why).
   "settings.section.experiments.title": "Experiments",
@@ -1120,6 +1120,7 @@ export const en = {
 
   // --- nav (app header, Collie mark, settings gear) ---
   "nav.settings.aria": "Settings",
+  "nav.settings.updateAvailable.aria": "Settings, update available",
   "nav.home.aria.default": "Collie home",
   "nav.home.aria.lost": "Collie home, not connected",
   "nav.home.aria.lostAt": "Collie home, not connected. Showing what was saved at {time}.",
@@ -2075,6 +2076,7 @@ export const en = {
   "updates.entry.status.peersBehind.other": "{count} peers behind",
   "updates.entry.status.available": "{version} available",
   "updates.entry.status.upToDate": "Up to date",
+  "updates.entry.status.upToDateVersion": "Up to date · {version}",
   "updates.entry.status.unknown": "Unknown, can’t reach Collie",
 
   // --- updateRibbon (the ONE top-of-app update band), M16/02 ---

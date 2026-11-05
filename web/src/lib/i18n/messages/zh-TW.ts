@@ -1023,6 +1023,7 @@ export const zhTW: Dictionary = {
 
   // --- nav (app header, Collie mark, settings gear) ---
   "nav.settings.aria": "系統設定",
+  "nav.settings.updateAvailable.aria": "Settings, update available",
   "nav.home.aria.default": "Collie 首頁",
   "nav.home.aria.lost": "Collie 首頁（連線中斷）",
   "nav.home.aria.lostAt": "Collie 首頁（連線中斷）。正在顯示 {time} 儲存的內容。",
@@ -1918,6 +1919,7 @@ export const zhTW: Dictionary = {
   "updates.entry.status.peersBehind.other": "{count} 個 Peer 節點落後",
   "updates.entry.status.available": "有可用版本 {version}",
   "updates.entry.status.upToDate": "已是最新版本",
+  "updates.entry.status.upToDateVersion": "Up to date · {version}",
   "updates.entry.status.unknown": "未知，無法連線至 Collie",
   "updateRibbon.starting": "開始更新…",
   "updateRibbon.fetching": "正在更新至 {version}。取得中",

@@ -482,11 +482,11 @@ export function ancestorsOf(pathname: string): string[] {
   if (head === "new" && seg.length === 1) return ["/", ANY_SPACE, ANY_PANE];
   // "Add your own" is a level below the New page.
   if (head === "new" && seg.length === 2 && id === "add") return ["/new", "/", ANY_SPACE, ANY_PANE];
-  // Updates and the crew census are opened from the System section, so that is their nearest
-  // legitimate parent. `/settings` stays in the list behind it: both were reachable straight from
-  // the index before the split, and a stored `from` pointing there is still a step UP, not a push.
+  // Updates is the first row of the Settings index, so the index is its parent. `/settings/system`
+  // stays behind it: Updates sat in that section before, and a stored `from` pointing there is still
+  // a step UP, not a push. The crew census is opened from the System section.
   if (head === "settings" && seg.length === 2 && id === "updates") {
-    return ["/settings/system", "/settings", "/"];
+    return ["/settings", "/settings/system", "/"];
   }
   if (head === "settings" && seg.length === 2) return ["/settings", "/"];
   // Host speech and the Whistle model sit one level below Voice.
@@ -726,7 +726,7 @@ export function parentChain(pathname: string, search: string): string[] {
     return [...chain, newPath({ machine: at.machine, pane: at.pane, beside: at.beside, session: at.session })];
   }
   if (head === "settings" && seg.length === 2 && id === "updates") {
-    return [home, `/settings${q}`, `/settings/system${q}`];
+    return [home, `/settings${q}`];
   }
   if (head === "settings" && seg.length === 2) return [home, `/settings${q}`];
   if (head === "settings" && seg.length === 3 && id === "voice" && (leaf === "host" || leaf === "model")) {

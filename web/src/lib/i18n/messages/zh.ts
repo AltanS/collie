@@ -1027,6 +1027,7 @@ export const zh: Dictionary = {
 
   // --- nav (app header, Collie mark, settings gear) ---
   "nav.settings.aria": "系统设置",
+  "nav.settings.updateAvailable.aria": "Settings, update available",
   "nav.home.aria.default": "Collie 首页",
   "nav.home.aria.lost": "Collie 首页（连接中断）",
   "nav.home.aria.lostAt": "Collie 首页（连接中断）。正在显示 {time} 保存的内容。",
@@ -1924,6 +1925,7 @@ export const zh: Dictionary = {
   "updates.entry.status.peersBehind.other": "{count} 个 Peer 节点落后",
   "updates.entry.status.available": "有可用版本 {version}",
   "updates.entry.status.upToDate": "已是最新版本",
+  "updates.entry.status.upToDateVersion": "Up to date · {version}",
   "updates.entry.status.unknown": "未知，无法连接 Collie",
   "updateRibbon.starting": "开始更新…",
   "updateRibbon.fetching": "正在更新至 {version}。获取中",

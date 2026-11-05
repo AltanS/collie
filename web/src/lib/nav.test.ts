@@ -400,9 +400,8 @@ describe("parentChain: what a cold deep link gets behind it", () => {
     ],
     ["/space/w1/changes/files", "?path=README.md", ["/", "/space/w1", "/space/w1/changes"]],
     ["/settings", "", ["/"]],
-    // Both are opened from the System section now, so a cold deep link gets the index AND that
-    // section behind it — two taps back to home, matching the two pushes that would have got here.
-    ["/settings/updates", "", ["/", "/settings", "/settings/system"]],
+    // Updates is the first row of the index, so a cold deep link gets the index behind it.
+    ["/settings/updates", "", ["/", "/settings"]],
     ["/settings/device", "", ["/", "/settings"]],
     ["/settings/voice", "", ["/", "/settings"]],
     // The two pages below the Voice hub: the hub and the index behind them.

@@ -1,5 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { render, screen } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -7,9 +6,15 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { server } from "@/test/setup";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
 import type { UpdateInfo, UpdateCrewMember, UpdateRun } from "@/lib/types";
-import { UpdatesSettingsCard, updatesStatusLine } from "./updates-settings-card";
+import { updatesStatus, updatesStatusLine, useUpdatesStatus } from "./updates-settings-card";
 
-// The one row Settings keeps for the whole update subject. Three cards used to stand here.
+// What the Updates row on the Settings index says. The row itself is drawn by routes/settings.tsx
+// (see settings.test.tsx); this file pins the words and where they come from.
+
+function Probe() {
+  const status = useUpdatesStatus();
+  return <p data-testid="status" data-available={String(status.available)}>{status.line}</p>;
+}
 
 function info(over: Partial<UpdateInfo> = {}): UpdateInfo {
   return {
@@ -58,7 +63,7 @@ function renderRow(update: UpdateInfo | undefined, over: Partial<HomeData> = {})
         path: "/",
         loader: () => homeData(update, over),
         children: [
-          { path: "settings", element: <UpdatesSettingsCard /> },
+          { path: "settings", element: <Probe /> },
           { path: "settings/updates", element: <div data-testid="updates" /> },
         ],
       },
@@ -71,19 +76,6 @@ function renderRow(update: UpdateInfo | undefined, over: Partial<HomeData> = {})
 
 beforeEach(() => {
   server.use(http.get("/api/update/check", () => HttpResponse.json({ ...info(), preflight: null })));
-});
-
-describe("updates settings row", () => {
-  it("is one row with a title, a status line and a chevron, and it opens the page", async () => {
-    const user = userEvent.setup();
-    const router = renderRow(info());
-    const row = await screen.findByRole("button", { name: /Updates/ });
-    expect(screen.getByText("Updates")).toBeInTheDocument();
-    // The chevron is the affordance the crew row does not have — this row hides a whole page.
-    expect(row.querySelector("svg.lucide-chevron-right")).not.toBeNull();
-    await user.click(row);
-    await waitFor(() => expect(router.state.location.pathname).toBe("/settings/updates"));
-  });
 });
 
 describe("updates row status line", () => {
@@ -111,7 +103,7 @@ describe("updates row status line", () => {
   });
 
   it("otherwise it says up to date — including on a bridge that reports nothing", () => {
-    expect(updatesStatusLine({ update: info(), running: false, ...behindNone })).toBe("Up to date");
+    expect(updatesStatusLine({ update: info(), running: false, ...behindNone })).toBe("Up to date · 1.3.0");
     expect(updatesStatusLine({ update: undefined, running: false, ...behindNone })).toBe("Up to date");
   });
 
@@ -137,12 +129,22 @@ describe("updates row status line", () => {
     renderRow(info({ releaseAvailable: true, latest: "1.4.0" }), { error: true });
     expect(await screen.findByText("Unknown, can’t reach Collie")).toBeInTheDocument();
     expect(screen.queryByText("1.4.0 available")).not.toBeInTheDocument();
-    expect(screen.queryByText("Up to date")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Up to date/)).not.toBeInTheDocument();
   });
 
   it("a failed census read costs the row nothing — it falls back to the snapshot", async () => {
     server.use(http.get("/api/update/check", () => HttpResponse.error()));
     renderRow(info({ releaseAvailable: true, latest: "1.4.0" }));
     expect(await screen.findByText("1.4.0 available")).toBeInTheDocument();
+  });
+
+  it("only an available release is flagged for the dot", () => {
+    const base = { running: false, behind: 0 };
+    expect(updatesStatus({ update: info({ releaseAvailable: true, latest: "1.4.0" }), ...base }).available).toBe(true);
+    expect(updatesStatus({ update: info(), ...base }).available).toBe(false);
+    expect(updatesStatus({ update: info({ bridgeStale: true, releaseAvailable: true, latest: "1.4.1" }), ...base }).available).toBe(false);
+    expect(updatesStatus({ update: info({ releaseAvailable: true, latest: "1.4.0" }), running: true, behind: 0 }).available).toBe(false);
+    expect(updatesStatus({ update: info({ releaseAvailable: true, latest: "1.4.0" }), running: false, behind: 2 }).available).toBe(false);
+    expect(updatesStatus({ update: info({ releaseAvailable: true, latest: "1.4.0" }), ...base, unknown: true }).available).toBe(false);
   });
 });
