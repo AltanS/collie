@@ -6,6 +6,7 @@ import type { JsonObject } from "../bridge/json.ts";
 import {
   asCost,
   asPercent,
+  customClaudeConfigDir,
   USAGE_SCHEMA_VERSION,
   type UsageLimit,
   type UsageRecord,
@@ -202,7 +203,11 @@ const WINDOW_KEYS: readonly (readonly [string, UsageWindow])[] = [
  * The numbers in a statusLine document, as the record the bridge reads, plus the session they belong
  * to. Null when there is no session id or no number at all.
  */
-export function usageFromStatusLine(payload: JsonObject, now: number): { session: string; record: UsageRecord } | null {
+export function usageFromStatusLine(
+  payload: JsonObject,
+  now: number,
+  configDir?: string,
+): { session: string; record: UsageRecord } | null {
   const session = asJsonString(payload.session_id);
   if (session === undefined || !SESSION_ID.test(session)) return null;
   const record: UsageRecord = { schemaVersion: USAGE_SCHEMA_VERSION, harness: BEACON_HARNESS, at: now };
@@ -222,6 +227,7 @@ export function usageFromStatusLine(payload: JsonObject, now: number): { session
   }
   if (limits.length > 0) record.limits = limits;
   if (record.context === undefined && record.limits === undefined && record.cost === undefined) return null;
+  if (configDir !== undefined) record.configDir = configDir;
   return { session, record };
 }
 
@@ -244,7 +250,8 @@ function takeReading(deps: StatusLineDeps, input: string): void {
     if (readEnvMarkers(deps.ctx.env).length === 0) return;
     const payload = parseJsonObject(input);
     if (payload === undefined) return;
-    const usage = usageFromStatusLine(payload, (deps.now ?? Date.now)());
+    const configDir = customClaudeConfigDir(deps.ctx.env, deps.ctx.home);
+    const usage = usageFromStatusLine(payload, (deps.now ?? Date.now)(), configDir);
     if (usage === null) return;
     for (const stateDir of edgeStateDirs(deps)) {
       try {

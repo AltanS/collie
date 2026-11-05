@@ -63,6 +63,22 @@ describe("the beacon side of the merge", () => {
   test("starts a file when there is none", () => {
     expect(mergeBeacon(null, "claude", NOW, { window: 200_000 })).toEqual({ schemaVersion: 1, harness: "claude", at: NOW, window: 200_000 });
   });
+
+  test("preserves configDir across beacon and statusLine merges and treats a new configDir as a change", () => {
+    const existing = record({ context: 15, window: 200_000 });
+    const withDir = mergeBeacon(existing, "claude", NOW, { context: 15, configDir: "/profiles/work" });
+    expect(withDir).toEqual({ ...existing, context: 15, configDir: "/profiles/work", at: NOW });
+    // Unchanged once configDir matches.
+    expect(mergeBeacon(withDir, "claude", NOW, { context: 15, configDir: "/profiles/work" })).toBeNull();
+    // Subsequent beacon or statusLine without configDir keeps the existing configDir.
+    expect(mergeBeacon(withDir, "claude", NOW, { context: 20 })?.configDir).toBe("/profiles/work");
+    expect(mergeStatusLine(withDir, record({ at: NOW, context: 30 }), NOW).configDir).toBe("/profiles/work");
+    expect(mergeStatusLine(existing, record({ at: NOW, context: 30, configDir: "/profiles/work" }), NOW).configDir).toBe("/profiles/work");
+    // Switching a session from one custom configDir to another drops the old account's running limits.
+    const withLimits = record({ context: 15, window: 200_000, configDir: "/profiles/a", limits: [FIVE_HOUR] });
+    expect(mergeBeacon(withLimits, "claude", NOW, { context: 20, configDir: "/profiles/b" })?.limits).toBeUndefined();
+    expect(mergeStatusLine(withLimits, record({ at: NOW, context: 20, configDir: "/profiles/b" }), NOW).limits).toBeUndefined();
+  });
 });
 
 describe("the statusLine side of the merge", () => {

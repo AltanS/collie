@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 
-import { basename, join } from "node:path";
+import { createHash } from "node:crypto";
+import { basename, join, resolve as resolvePath } from "node:path";
 
 import type { JsonObject, JsonValue } from "./json.ts";
 import { USAGE_WINDOWS } from "./usage.ts";
@@ -12,6 +13,8 @@ import {
   BACKOFF,
   claudeAccountSource,
   claudeCredentialsPath,
+  claudeKeychainService,
+  CLAUDE_KEYCHAIN_SERVICE,
   claudeTokenFrom,
   CLAUDE_USAGE_URL,
   codexAccountSource,
@@ -22,6 +25,7 @@ import {
   hasOpencodeGoEntry,
   isTurnEnd,
   limitedWait,
+  MAX_CUSTOM_CONFIG_DIRS,
   opencodeAccountSource,
   opencodeGoKeyFrom,
   parseAccountUsage,
@@ -211,18 +215,50 @@ describe("the Claude login", () => {
   });
 
   it("asks the Keychain on macOS only, and only when the file is absent", async () => {
-    let asked = 0;
-    const keychain = async (): Promise<string | null> => {
-      asked += 1;
+    const services: Array<string | undefined> = [];
+    const keychain = async (svc?: string): Promise<string | null> => {
+      services.push(svc);
       return `${login()}\n`;
     };
     expect(await readClaudeLogin(seams({ platform: "darwin", keychain }))).toEqual({ ok: true, token: TOKEN });
-    expect(asked).toBe(1);
+    expect(services).toEqual([CLAUDE_KEYCHAIN_SERVICE]);
     expect(await readClaudeLogin(seams({ platform: "linux", keychain }))).toEqual({ ok: false, reason: "missing" });
-    expect(asked).toBe(1);
+    expect(services.length).toBe(1);
     expect((await readClaudeLogin(seams({ platform: "darwin", keychain, files: { [path]: { mode: 0o600, text: login() } } }))).ok).toBe(true);
-    expect(asked).toBe(1);
+    expect(services.length).toBe(1);
     expect(await readClaudeLogin(seams({ platform: "darwin", keychain: async () => null }))).toEqual({ ok: false, reason: "missing" });
+  });
+
+  it("derives the macOS Keychain service name from CLAUDE_CONFIG_DIR when non-default", async () => {
+    const customDir = "/profiles/work";
+    const expectedHash = createHash("sha256").update(resolvePath(customDir)).digest("hex").slice(0, 8);
+    expect(claudeKeychainService()).toBe(CLAUDE_KEYCHAIN_SERVICE);
+    expect(claudeKeychainService("   ")).toBe(CLAUDE_KEYCHAIN_SERVICE);
+    expect(claudeKeychainService(` ${customDir} `)).toBe(`${CLAUDE_KEYCHAIN_SERVICE}-${expectedHash}`);
+    expect(claudeKeychainService(`${customDir}/`)).toBe(`${CLAUDE_KEYCHAIN_SERVICE}-${expectedHash}`);
+
+    const services: Array<string | undefined> = [];
+    const keychain = async (svc?: string): Promise<string | null> => {
+      services.push(svc);
+      return `${login({ accessToken: "sk-ant-oat01-custom" })}\n`;
+    };
+    expect(await readClaudeLogin(seams({ platform: "darwin", keychain }), customDir)).toEqual({
+      ok: true,
+      token: "sk-ant-oat01-custom",
+    });
+    expect(await readClaudeLogin(seams({ platform: "darwin", env: { CLAUDE_CONFIG_DIR: `${customDir}/` }, keychain }))).toEqual({
+      ok: true,
+      token: "sk-ant-oat01-custom",
+    });
+    expect(await readClaudeLogin(seams({ platform: "darwin", env: { CLAUDE_CONFIG_DIR: `${join(HOME, ".claude")}/` }, keychain }))).toEqual({
+      ok: true,
+      token: "sk-ant-oat01-custom",
+    });
+    expect(services).toEqual([
+      `${CLAUDE_KEYCHAIN_SERVICE}-${expectedHash}`,
+      `${CLAUDE_KEYCHAIN_SERVICE}-${expectedHash}`,
+      CLAUDE_KEYCHAIN_SERVICE,
+    ]);
   });
 
   it("builds the one ask with the bearer header and the beta header", () => {
@@ -608,6 +644,78 @@ describe("AccountWindows", () => {
     expect(logins).toBe(0);
     expect(fake.calls).toEqual([]);
     expect(windows.limits("claude")).toBeUndefined();
+  });
+
+  it("isolates custom configDir slots, never falls back to default, and bounds custom slots to MAX_CUSTOM_CONFIG_DIRS", async () => {
+    const dirA = "/profiles/a";
+    const dirB = "/profiles/b";
+    const dirMissing = "/profiles/missing";
+    const slotEntries = Array.from({ length: MAX_CUSTOM_CONFIG_DIRS + 1 }, (_v, idx) => [
+      join(`/profiles/slot-${String(idx + 1)}`, ".credentials.json"),
+      { mode: 0o600, text: login({ accessToken: `sk-ant-oat01-slot-${String(idx + 1)}` }) },
+    ] as const);
+    const files: Parameters<typeof fileSeams>[0] = {
+      [join(HOME, ".claude", ".credentials.json")]: { mode: 0o600, text: login({ accessToken: "sk-ant-oat01-default" }) },
+      [join(dirA, ".credentials.json")]: { mode: 0o600, text: login({ accessToken: "sk-ant-oat01-dirA" }) },
+      [join(dirB, ".credentials.json")]: { mode: 0o600, text: login({ accessToken: "sk-ant-oat01-dirB" }) },
+      ...Object.fromEntries(slotEntries),
+    };
+    const clock = { now: NOW };
+    const seenTokens: string[] = [];
+    const fetch: AccountFetch = async (_url, init) => {
+      const auth = init.headers.Authorization ?? "";
+      seenTokens.push(auth);
+      const used = auth.endsWith("default") ? 10 : auth.endsWith("dirA") ? 25 : auth.endsWith("dirB") ? 75 : 50;
+      return { status: 200, text: async () => flatBody({ utilization: used, resets_at: RESET_5H }, null) };
+    };
+    const windows = new AccountWindows({
+      enabled: true,
+      sources: [claudeAccountSource({ ...fileSeams(files), now: () => clock.now })],
+      fetch,
+      now: () => clock.now,
+      userAgent: "collie/1.24.0",
+    });
+    windows.observe([pane("claude")], "main");
+    await windows.settled();
+    expect(windows.limits("claude")).toEqual([{ window: "5h", used: 10, resetsAt: Date.parse(RESET_5H) }]);
+
+    // First call registers dirA and triggers a background ask; before it settles, it returns undefined (never default's 10%).
+    expect(windows.limits("claude", dirA)).toBeUndefined();
+    expect(windows.limits("claude", dirB)).toBeUndefined();
+    expect(windows.limits("claude", dirMissing)).toBeUndefined();
+    await windows.settled();
+    expect(windows.limits("claude", dirA)).toEqual([{ window: "5h", used: 25, resetsAt: Date.parse(RESET_5H) }]);
+    expect(windows.limits("claude", dirB)).toEqual([{ window: "5h", used: 75, resetsAt: Date.parse(RESET_5H) }]);
+    // Missing login stays undefined and never falls back to default's 10%.
+    expect(windows.limits("claude", dirMissing)).toBeUndefined();
+
+    // Poke refreshes active custom dirs after POKE_EVERY_MS, and closed custom dirs stop polling.
+    windows.observeConfigDirs("claude", new Set([dirA]), "main");
+    const countBeforePoke = seenTokens.length;
+    clock.now += POKE_EVERY_MS;
+    windows.poke("claude");
+    await windows.settled();
+    expect(seenTokens.slice(countBeforePoke).toSorted()).toEqual(["Bearer sk-ant-oat01-default", "Bearer sk-ant-oat01-dirA"]);
+
+    // Clearing active custom dirs for the scope stops polling them on subsequent pokes.
+    windows.observeConfigDirs("claude", new Set(), "main");
+    const countAfterClose = seenTokens.length;
+    clock.now += POKE_EVERY_MS;
+    windows.poke("claude");
+    await windows.settled();
+    expect(seenTokens.slice(countAfterClose)).toEqual(["Bearer sk-ant-oat01-default"]);
+
+    // Advance past dirMissing's 1-minute missing-login backoff so all idle custom slots are evictable.
+    clock.now += BACKOFF.none;
+    for (let i = 1; i <= MAX_CUSTOM_CONFIG_DIRS + 1; i++) {
+      windows.limits("claude", `/profiles/slot-${String(i)}`);
+      await windows.settled();
+    }
+    expect(windows.limits("claude", `/profiles/slot-${String(MAX_CUSTOM_CONFIG_DIRS + 1)}`)).toEqual([
+      { window: "5h", used: 50, resetsAt: Date.parse(RESET_5H) },
+    ]);
+    // dirA was evicted when the cap was exceeded, so asking for it again starts fresh (undefined before settled).
+    expect(windows.limits("claude", dirA)).toBeUndefined();
   });
 });
 

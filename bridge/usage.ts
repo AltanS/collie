@@ -28,7 +28,9 @@
 //
 // ── WHAT THE BRIDGE TRUSTS ────────────────────────────────────────────────────────────────────────
 //
-// Numbers only. The record carries no text the phone draws: the window labels are the bridge's own
+// Numbers only, plus an optional absolute `configDir` that scopes which local Claude credential
+// directory `AccountWindows` polls for that session (`configDir` is never sent in `usageAt`). The
+// record carries no text the phone draws: the window labels are the bridge's own
 // (`5h`, `7d`), a percentage is clamped to 0 to 100, and anything else in the file is ignored. A file
 // that does not parse, is too large or is from a newer schema is ABSENT, and an absent reading draws
 // nothing. A window whose `resetsAt` has passed is dropped, as Claude Code drops it: the number
@@ -39,7 +41,7 @@
 
 import { createHash } from "node:crypto";
 import { readdir, readFile, stat, unlink } from "node:fs/promises";
-import { join } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 
 import { asJsonNumber, asJsonObject, asJsonString, parseJsonObject } from "../web/src/lib/json.ts";
 import type { JsonValue } from "./json.ts";
@@ -110,10 +112,40 @@ export interface UsageRecord extends PaneUsage {
    * start named no model, and then the transcript reading writes no context.
    */
   window?: number;
+  /**
+   * The non-default `CLAUDE_CONFIG_DIR` this session runs under, as its hooks or statusLine reported.
+   * A note for the bridge to align account windows and statusLine limits per account; {@link usageAt}
+   * never puts it on the wire.
+   */
+  configDir?: string;
 }
 
 /** The largest window a record may name. A bound on a strange file, not a model's window. */
 const WINDOW_MAX = 100_000_000;
+
+function hasControlChar(text: string): boolean {
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i);
+    if (code < 0x20 || code === 0x7f) return true;
+  }
+  return false;
+}
+
+/**
+ * The resolved `CLAUDE_CONFIG_DIR` when it names a valid non-default absolute directory, or undefined
+ * when unset, relative, malformed, or pointing at the default `~/.claude`.
+ */
+export function customClaudeConfigDir(
+  env: Readonly<Record<string, string | undefined>>,
+  home: string,
+): string | undefined {
+  const rawInput = env.CLAUDE_CONFIG_DIR ?? "";
+  if (hasControlChar(rawInput)) return undefined;
+  const raw = rawInput.trim();
+  if (raw === "" || raw.length > 4096 || !isAbsolute(raw)) return undefined;
+  const normalized = resolve(raw);
+  return normalized === resolve(join(home, ".claude")) ? undefined : normalized;
+}
 
 /** `${stateDir}/usage`. */
 export function usageDir(stateDir: string): string {
@@ -168,6 +200,10 @@ export function parseUsageRecord(text: string): UsageRecord | null {
   if (cost !== undefined) record.cost = cost;
   const size = asJsonNumber(root.window);
   if (size !== undefined && Number.isInteger(size) && size > 0 && size <= WINDOW_MAX) record.window = size;
+  const dir = asJsonString(root.configDir);
+  if (dir !== undefined && dir.length <= 4096 && !hasControlChar(dir) && isAbsolute(dir)) {
+    record.configDir = resolve(dir);
+  }
   const rows = Array.isArray(root.limits) ? root.limits.map(asJsonObject) : [];
   const limits: UsageLimit[] = [];
   for (const window of USAGE_WINDOWS) {
@@ -241,7 +277,9 @@ export const diskUsageFiles: UsageFiles = {
  * undefined when there is no fresh reading.
  */
 export interface AccountLimits {
-  limits(harness: string): UsageLimit[] | undefined;
+  limits(harness: string, configDir?: string): UsageLimit[] | undefined;
+  /** Note which custom `configDir`s have live panes in `scope`, so closed profiles stop polling. */
+  observeConfigDirs?(harness: string, configDirs: ReadonlySet<string>, scope?: string): void;
 }
 
 /**
@@ -313,6 +351,12 @@ export class UsageTracker {
         this.held.set(session, { mtime, record: text === null ? null : parseUsageRecord(text) });
       }),
     );
+    const claudeDirs = new Set<string>();
+    for (const session of sessions) {
+      const record = this.held.get(session)?.record;
+      if (record?.harness === "claude" && record.configDir !== undefined) claudeDirs.add(record.configDir);
+    }
+    this.account?.observeConfigDirs?.("claude", claudeDirs, scope);
     await this.prune();
   }
 
@@ -343,13 +387,14 @@ export class UsageTracker {
     if (journalContext !== undefined) overlay.context = journalContext;
     const journalCost = record?.cost === undefined ? this.journalCost(pane) : undefined;
     if (journalCost !== undefined) overlay.cost = journalCost;
-    const account = harness === undefined || harness === "" ? undefined : this.account?.limits(harness);
+    const configDir = record?.configDir;
+    const account = harness === undefined || harness === "" ? undefined : this.account?.limits(harness, configDir);
     if (account !== undefined && account.length > 0) {
       const base: UsageRecord = record ?? { schemaVersion: USAGE_SCHEMA_VERSION, harness: harness ?? "", at: now };
       return usageAt({ ...base, ...overlay, limits: account }, now);
     }
     if (record === null) return overlay.context === undefined && overlay.cost === undefined ? undefined : overlay;
-    const held = record.limits === undefined ? record : { ...record, limits: this.newestLimits(record.harness, now) };
+    const held = record.limits === undefined ? record : { ...record, limits: this.newestLimits(record.harness, now, configDir) };
     return usageAt({ ...held, ...overlay }, now);
   }
 
@@ -374,11 +419,11 @@ export class UsageTracker {
     return this.journal.cost(key);
   }
 
-  /** Per window, the limit from the newest held record of `harness` that carries it unexpired. */
-  private newestLimits(harness: string, now: number): UsageLimit[] {
+  /** Per window, the limit from the newest held record of `harness` and `configDir` that carries it unexpired. */
+  private newestLimits(harness: string, now: number, configDir?: string): UsageLimit[] {
     const newest = new Map<UsageWindow, { at: number; limit: UsageLimit }>();
     for (const { record } of this.held.values()) {
-      if (record === null || record.harness !== harness) continue;
+      if (record === null || record.harness !== harness || record.configDir !== configDir) continue;
       for (const limit of record.limits ?? []) {
         if (limit.resetsAt !== undefined && limit.resetsAt <= now) continue;
         const best = newest.get(limit.window);

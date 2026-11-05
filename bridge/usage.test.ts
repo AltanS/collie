@@ -1,10 +1,11 @@
 import { describe, expect, it } from "bun:test";
 
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 
 import type { JsonObject } from "./json.ts";
 import type { AgentView } from "./types.ts";
 import {
+  customClaudeConfigDir,
   parseUsageRecord,
   USAGE_FILE_MAX_BYTES,
   USAGE_MAX_AGE_MS,
@@ -70,6 +71,34 @@ describe("the window note", () => {
     const parsed = parseUsageRecord(record({ context: 4, window: 200_000 }));
     expect(usageAt(parsed!, NOW)).toEqual({ context: 4 });
     expect(usageAt(parseUsageRecord(record({ window: 200_000 }))!, NOW)).toBeUndefined();
+  });
+});
+
+describe("the configDir note", () => {
+  const home = "/home/pat";
+
+  it("customClaudeConfigDir returns resolved path only for a valid non-default absolute path", () => {
+    expect(customClaudeConfigDir({}, home)).toBeUndefined();
+    expect(customClaudeConfigDir({ CLAUDE_CONFIG_DIR: "   " }, home)).toBeUndefined();
+    expect(customClaudeConfigDir({ CLAUDE_CONFIG_DIR: "relative/dir" }, home)).toBeUndefined();
+    expect(customClaudeConfigDir({ CLAUDE_CONFIG_DIR: `${home}/.claude` }, home)).toBeUndefined();
+    expect(customClaudeConfigDir({ CLAUDE_CONFIG_DIR: `${home}/.claude/` }, home)).toBeUndefined();
+    expect(customClaudeConfigDir({ CLAUDE_CONFIG_DIR: `${home}/other/../.claude` }, home)).toBeUndefined();
+    expect(customClaudeConfigDir({ CLAUDE_CONFIG_DIR: "/profiles/work\u0000" }, home)).toBeUndefined();
+    expect(customClaudeConfigDir({ CLAUDE_CONFIG_DIR: "/profiles/work\n" }, home)).toBeUndefined();
+    expect(customClaudeConfigDir({ CLAUDE_CONFIG_DIR: `/${"a".repeat(4096)}` }, home)).toBeUndefined();
+    expect(customClaudeConfigDir({ CLAUDE_CONFIG_DIR: "  /profiles/work/  " }, home)).toBe(resolve("/profiles/work"));
+  });
+
+  it("round-trips through parseUsageRecord and never leaks into usageAt wire output", () => {
+    const dir = resolve("/profiles/work");
+    const parsed = parseUsageRecord(record({ context: 12, configDir: "/profiles/work/" }));
+    expect(parsed).toEqual({ schemaVersion: 1, harness: "claude", at: NOW, context: 12, configDir: dir });
+    expect(usageAt(parsed!, NOW)).toEqual({ context: 12 });
+    expect(usageAt(parseUsageRecord(record({ configDir: dir }))!, NOW)).toBeUndefined();
+    for (const bad of ["", "relative/path", "/bad\u0000dir", "/bad\x1fdir", "/bad\x7fdir", `/${"a".repeat(4096)}`, 42, null]) {
+      expect(parseUsageRecord(record({ context: 12, configDir: bad }))?.configDir).toBeUndefined();
+    }
   });
 });
 
@@ -253,6 +282,42 @@ describe("UsageTracker with the account windows (ADR 0118)", () => {
   it("drops an account window whose reset has passed", async () => {
     const tracker = new UsageTracker(dir, memoryFiles(new Map()), () => NOW + 90_000, account({ claude: ACCOUNT }));
     expect(tracker.get(claudePane(null))).toEqual({ limits: ACCOUNT.slice(1) });
+  });
+
+  it("isolates account windows and statusLine fallback limits per configDir", async () => {
+    const dirA = resolve("/profiles/a");
+    const dirB = resolve("/profiles/b");
+    const limitsDefault: UsageLimit[] = [{ window: "5h", used: 11, resetsAt: NOW + 60_000 }];
+    const limitsA: UsageLimit[] = [{ window: "5h", used: 44, resetsAt: NOW + 60_000 }];
+    const entries = new Map<string, [number, string]>([
+      [file("def"), [NOW, record({ at: NOW, context: 10, limits: [{ window: "5h", used: 15 }] })]],
+      [file("sa1"), [NOW, record({ at: NOW - 1000, context: 20, configDir: dirA, limits: [{ window: "5h", used: 25 }, { window: "7d", used: 35 }] })]],
+      [file("sa2"), [NOW, record({ at: NOW, context: 30, configDir: dirA, limits: [{ window: "5h", used: 55 }] })]],
+      [file("sb1"), [NOW, record({ at: NOW + 1000, context: 40, configDir: dirB, limits: [{ window: "5h", used: 85 }] })]],
+    ]);
+    const byAccount = {
+      limits: (harness: string, configDir?: string) => {
+        if (harness !== "claude") return undefined;
+        if (configDir === undefined) return limitsDefault;
+        if (configDir === dirA) return limitsA;
+        return undefined;
+      },
+    };
+    const tracker = new UsageTracker(dir, memoryFiles(entries), () => NOW, byAccount);
+    await tracker.refresh([claudePane("def"), claudePane("sa1"), claudePane("sa2"), claudePane("sb1")]);
+    // Default session gets default account windows; dirA sessions get dirA account windows.
+    expect(tracker.get(claudePane("def"))).toEqual({ context: 10, limits: limitsDefault });
+    expect(tracker.get(claudePane("sa1"))).toEqual({ context: 20, limits: limitsA });
+    // dirB has no account window reading yet; it falls back only to dirB's own statusLine limits, never default's or dirA's.
+    expect(tracker.get(claudePane("sb1"))).toEqual({ context: 40, limits: [{ window: "5h", used: 85 }] });
+
+    // Without account windows at all, statusLine limits stay strictly within each configDir.
+    const statusOnly = new UsageTracker(dir, memoryFiles(entries), () => NOW);
+    await statusOnly.refresh([claudePane("def"), claudePane("sa1"), claudePane("sa2"), claudePane("sb1")]);
+    expect(statusOnly.get(claudePane("def"))).toEqual({ context: 10, limits: [{ window: "5h", used: 15 }] });
+    expect(statusOnly.get(claudePane("sa1"))).toEqual({ context: 20, limits: [{ window: "5h", used: 55 }, { window: "7d", used: 35 }] });
+    expect(statusOnly.get(claudePane("sa2"))).toEqual({ context: 30, limits: [{ window: "5h", used: 55 }, { window: "7d", used: 35 }] });
+    expect(statusOnly.get(claudePane("sb1"))).toEqual({ context: 40, limits: [{ window: "5h", used: 85 }] });
   });
 });
 
