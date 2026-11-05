@@ -610,7 +610,7 @@ describe("AgentChat — read-only device", () => {
     expect(screen.queryByText(/spare-phone/)).toBeNull();
     const box = screen.getByPlaceholderText(/read-only, not authorised/i);
     expect(box).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Send" })).toHaveAttribute("aria-disabled", "true");
     // The terminal mirror still renders — reading is always allowed.
     expect(screen.getByText("recent pane output")).toBeInTheDocument();
   });
@@ -668,7 +668,7 @@ describe("AgentChat — a stale saved copy", () => {
     renderChat({ stale: true, lastSeenAt: SAVED_AT, error: true });
     await user.type(screen.getByPlaceholderText(/type a reply/i), "hello");
     // Spec 11 names why: the send button says what it waits for, and stays off.
-    expect(screen.getByRole("button", { name: "Reconnect to send" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Reconnect to send" })).toHaveAttribute("aria-disabled", "true");
     expect(screen.queryByRole("button", { name: "Send" })).toBeNull();
   });
 
@@ -2013,7 +2013,7 @@ describe("AgentChat — a pane on a host the lead can't reach", () => {
     // Disabled, so the user can't even get text in — and Send is off with it. The point of asserting
     // the network too is that nothing routes around the disabled state.
     expect(box).toBeDisabled();
-    expect(screen.getByLabelText("Send")).toBeDisabled();
+    expect(screen.getByLabelText("Send")).toHaveAttribute("aria-disabled", "true");
     await new Promise((r) => setTimeout(r, 0));
     expect(calls).toEqual([]);
   });

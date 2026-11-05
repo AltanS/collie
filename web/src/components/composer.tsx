@@ -1025,6 +1025,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // M69: the Steer row of that menu. Only while the turn reads running, only where the bridge says the
   // profile has a steer key, and never for a reply in message mode (a walky message always queues).
   const steerRow = canSteer === true && shownSurface.turn === "running" && walky.aim === null;
+  // The Send button when it cannot act: it stays focusable and under the finger instead of `disabled`.
+  const sendInert = locked || sending || ((starting || offline) && !direct.active);
   const sendHold = useLongPress(canMessage ? () => setSendMenu(true) : undefined);
 
   // ── THE VOICE TAKEOVER (design 3.3) ───────────────────────────────────────────────────────────
@@ -3276,9 +3278,27 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               data-slot="composer-primary"
               size="icon"
               {...sendHold}
-              className={cn(TOOLBAR_TAP_TARGET, "size-9 shrink-0 select-none rounded-full [-webkit-touch-callout:none]")}
-              onClick={direct.active ? () => direct.deactivate() : () => onSendClick()}
-              disabled={locked || sending || ((starting || offline) && !direct.active)}
+              // Mouse down, not pointer down: cancelling `pointerdown` makes iPhone WebKit drop the click that
+              // follows (see the belt's clear control in actions-row.tsx), and the press must not move focus
+              // off the field or the first tap only lowers the keyboard.
+              onMouseDown={(e) => e.preventDefault()}
+              className={cn(
+                TOOLBAR_TAP_TARGET,
+                "size-9 shrink-0 select-none rounded-full [-webkit-touch-callout:none]",
+                sendInert && "opacity-50",
+              )}
+              // INERT, NOT `disabled`. A disabled button has `pointer-events: none` (ui/button.tsx), so a tap on
+              // a busy Send fell through to the box and blurred the field. `aria-disabled` keeps the button under
+              // the finger, and the click is dropped here. `canMessage` (above) already holds the hold handlers
+              // off in every inert state, so a long press cannot open the menu either.
+              aria-disabled={sendInert ? true : undefined}
+              onClick={
+                sendInert
+                  ? undefined
+                  : direct.active
+                    ? () => direct.deactivate()
+                    : () => onSendClick()
+              }
               title={offline && !direct.active ? translate("composer.send.reconnect") : undefined}
               aria-label={
                 direct.active
