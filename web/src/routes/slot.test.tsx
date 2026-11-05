@@ -3,17 +3,29 @@ import { createMemoryRouter, Outlet, RouterProvider, useLocation, type RouteObje
 
 import { useSlotMemory } from "@/hooks/use-slot-memory";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
-import { enterSlot } from "@/lib/slots";
+import { enterSlot, rememberSlotPane, slotSpace } from "@/lib/slots";
+import type { SnapshotResponse } from "@/lib/types";
+import { fixtureAgents, fixtureShellPanes, fixtureSnapshot } from "@/test/handlers";
 
 import { RootLayout } from "./root";
 import { SlotRoute } from "./slot";
+
+const { fetchSnapshot } = vi.hoisted(() => ({ fetchSnapshot: vi.fn() }));
+vi.mock("@/lib/api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api")>()),
+  fetchSnapshot,
+}));
 
 // The route and the hook against a real (memory) router, on the window's own storages. A tab is one
 // mount; a browser restart is `sessionStorage.clear()` with localStorage left as it is. The rules of
 // what counts as a pane and as a slot number are pinned in lib/slots.test.ts.
 
+/** Every address a page of the test layout has drawn, in order. */
+const drawn: string[] = [];
+
 function Page() {
   const location = useLocation();
+  drawn.push(`${location.pathname}${location.search}`);
   return <output>{`${location.pathname}${location.search}`}</output>;
 }
 
@@ -74,6 +86,9 @@ async function whereSlotLeads(slot: string) {
 beforeEach(() => {
   window.sessionStorage.clear();
   window.localStorage.clear();
+  drawn.length = 0;
+  fetchSnapshot.mockReset();
+  fetchSnapshot.mockRejectedValue(new Error("this case has no snapshot"));
 });
 afterEach(() => {
   window.sessionStorage.clear();
@@ -252,6 +267,203 @@ describe("@oracle:requirement @req:SLOT-10 a tab in one slot that opens another"
   });
 });
 
+// A pane id is unique only within one bridge process, and a slot outlives that process: a stored pane
+// id can name another project's pane now. The stored workspace name tells them apart.
+describe("@oracle:requirement @req:SLOT-11 a stored pane whose id may have been reused", () => {
+  const PATH = "/pane/w3%3Ap1";
+  const ADDRESS = `${PATH}?s=project-x`;
+  const PANE_ID = "w3:p1";
+  const SCOPED_HOME = "/?s=project-x";
+
+  function store(slot: string, address: string, space?: string) {
+    const at = address.indexOf("?");
+    enterSlot(slot);
+    rememberSlotPane(at === -1 ? address : address.slice(0, at), at === -1 ? "" : address.slice(at), undefined, undefined, space);
+    restartBrowser();
+  }
+
+  function snapshotWith(paneId: string, workspaceLabel: string): SnapshotResponse {
+    return {
+      ...fixtureSnapshot,
+      agents: [{ ...fixtureAgents[0]!, paneId, workspaceLabel }],
+      shellPanes: [],
+    };
+  }
+
+  function shellSnapshotWith(paneId: string, workspaceLabel: string): SnapshotResponse {
+    return {
+      ...fixtureSnapshot,
+      agents: [],
+      shellPanes: [{ ...fixtureShellPanes[0]!, paneId, workspaceLabel }],
+    };
+  }
+
+  function expectNeverOnPane() {
+    expect(drawn.filter((address) => address.startsWith("/pane/"))).toEqual([]);
+  }
+
+  it("a) the pane is in the same workspace: lands on the pane address", async () => {
+    store("3", ADDRESS, "A");
+    fetchSnapshot.mockResolvedValue(snapshotWith(PANE_ID, "A"));
+    const tab = mountTab(["/slot/3"]);
+    await settled(tab, ADDRESS);
+  });
+
+  it("a) the same for a shell pane", async () => {
+    store("3", ADDRESS, "A");
+    fetchSnapshot.mockResolvedValue(shellSnapshotWith(PANE_ID, "A"));
+    const tab = mountTab(["/slot/3"]);
+    await settled(tab, ADDRESS);
+  });
+
+  it("a) the wait adds no step of history: back goes to the page before the slot", async () => {
+    store("3", ADDRESS, "A");
+    fetchSnapshot.mockResolvedValue(snapshotWith(PANE_ID, "A"));
+    const tab = mountTab(["/settings", "/slot/3"]);
+    await settled(tab, ADDRESS);
+    await tab.back();
+    await settled(tab, "/settings");
+  });
+
+  it("b) the pane is in another workspace: lands on home of that scope, not on the pane", async () => {
+    store("3", ADDRESS, "A");
+    fetchSnapshot.mockResolvedValue(snapshotWith(PANE_ID, "B"));
+    const tab = mountTab(["/slot/3"]);
+    await settled(tab, SCOPED_HOME);
+    expectNeverOnPane();
+  });
+
+  it("b) the same for a shell pane", async () => {
+    store("3", ADDRESS, "A");
+    fetchSnapshot.mockResolvedValue(shellSnapshotWith(PANE_ID, "B"));
+    const tab = mountTab(["/slot/3"]);
+    await settled(tab, SCOPED_HOME);
+    expectNeverOnPane();
+  });
+
+  it("b) home of an address with no query is the plain home", async () => {
+    store("3", PATH, "A");
+    fetchSnapshot.mockResolvedValue(snapshotWith(PANE_ID, "B"));
+    const tab = mountTab(["/slot/3"]);
+    await settled(tab, "/");
+    expectNeverOnPane();
+  });
+
+  it("b) home keeps the machine and the session of the stored address", async () => {
+    store("3", `${PATH}?h=peer&s=project-x`, "A");
+    fetchSnapshot.mockResolvedValue(snapshotWith(PANE_ID, "B"));
+    const tab = mountTab(["/slot/3"]);
+    await settled(tab, "/?h=peer&s=project-x");
+    expectNeverOnPane();
+  });
+
+  it("b) never on the wrong pane for a moment: nothing leaves /slot/n before the answer", async () => {
+    store("3", ADDRESS, "A");
+    let answer: (snapshot: SnapshotResponse) => void = () => undefined;
+    fetchSnapshot.mockReturnValue(
+      new Promise<SnapshotResponse>((resolve) => {
+        answer = resolve;
+      }),
+    );
+    const tab = mountTab(["/settings", "/slot/3"]);
+    const visited: string[] = [];
+    tab.router.subscribe((state) => visited.push(`${state.location.pathname}${state.location.search}`));
+    await waitFor(() => expect(fetchSnapshot).toHaveBeenCalled());
+    expect(tab.at()).toBe("/slot/3");
+    expectNeverOnPane();
+
+    await act(async () => answer(snapshotWith(PANE_ID, "B")));
+    await settled(tab, SCOPED_HOME);
+    expectNeverOnPane();
+    expect(visited.filter((address) => address.startsWith("/pane/"))).toEqual([]);
+    await tab.back();
+    await settled(tab, "/settings");
+  });
+
+  it("b) the tab still belongs to the slot: the next pane it shows is stored", async () => {
+    store("3", ADDRESS, "A");
+    fetchSnapshot.mockResolvedValue(snapshotWith(PANE_ID, "B"));
+    const tab = mountTab(["/slot/3"]);
+    await settled(tab, SCOPED_HOME);
+    await tab.go("/pane/next?s=project-x");
+    tab.unmount();
+    restartBrowser();
+    fetchSnapshot.mockClear();
+    expect(await whereSlotLeads("3")).toBe("/pane/next?s=project-x");
+    expect(fetchSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("a restored pane keeps its name: the id reused before the next restart is still caught", async () => {
+    store("3", ADDRESS, "A");
+    fetchSnapshot.mockResolvedValue(snapshotWith(PANE_ID, "A"));
+    const first = mountTab(["/slot/3"]);
+    await settled(first, ADDRESS);
+    first.unmount();
+    restartBrowser();
+    drawn.length = 0;
+    fetchSnapshot.mockResolvedValue(snapshotWith(PANE_ID, "B"));
+    const second = mountTab(["/slot/3"]);
+    await settled(second, SCOPED_HOME);
+    expectNeverOnPane();
+  });
+
+  it("c) the snapshot lacks the pane: lands on the pane address", async () => {
+    store("3", ADDRESS, "A");
+    fetchSnapshot.mockResolvedValue(snapshotWith("w9:p9", "A"));
+    const tab = mountTab(["/slot/3"]);
+    await settled(tab, ADDRESS);
+  });
+
+  it("d) the snapshot fails: lands on the pane address", async () => {
+    store("3", ADDRESS, "A");
+    fetchSnapshot.mockRejectedValue(new Error("bridge is down"));
+    const tab = mountTab(["/slot/3"]);
+    await settled(tab, ADDRESS);
+  });
+
+  it("e) a pane stored with no name: lands on the pane address without asking for a snapshot", async () => {
+    store("3", ADDRESS);
+    const tab = mountTab(["/slot/3"]);
+    await settled(tab, ADDRESS);
+    expect(fetchSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("e) a slot never used and an invalid slot ask for no snapshot", async () => {
+    const unused = mountTab(["/slot/3"]);
+    await settled(unused, "/");
+    unused.unmount();
+    const invalid = mountTab(["/slot/abc"]);
+    await settled(invalid, "/");
+    expect(fetchSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("f) the snapshot is asked with the scope of the stored address", async () => {
+    store("3", ADDRESS, "A");
+    fetchSnapshot.mockResolvedValue(snapshotWith(PANE_ID, "A"));
+    const tab = mountTab(["/slot/3"]);
+    await settled(tab, ADDRESS);
+    expect(fetchSnapshot.mock.calls[0]?.[0]).toMatchObject({ session: "project-x" });
+  });
+
+  it("f) not with the scope of /slot/n", async () => {
+    store("3", ADDRESS, "A");
+    fetchSnapshot.mockResolvedValue(snapshotWith(PANE_ID, "A"));
+    const tab = mountTab(["/slot/3?s=other&h=elsewhere"]);
+    await settled(tab, ADDRESS);
+    const scope: unknown = fetchSnapshot.mock.calls[0]?.[0];
+    expect(scope).toMatchObject({ session: "project-x" });
+    expect(scope).not.toMatchObject({ host: "elsewhere" });
+  });
+
+  it("f) the machine of the stored address goes with it", async () => {
+    store("3", `${PATH}?h=peer&s=project-x`, "A");
+    fetchSnapshot.mockResolvedValue(snapshotWith(PANE_ID, "A"));
+    const tab = mountTab(["/slot/3"]);
+    await settled(tab, `${PATH}?h=peer&s=project-x`);
+    expect(fetchSnapshot.mock.calls[0]?.[0]).toMatchObject({ host: "peer", session: "project-x" });
+  });
+});
+
 // The two wirings a small test layout cannot see: the feature is dead without either one.
 describe("the application's own wiring", () => {
   function emptyHome(): HomeData {
@@ -293,6 +505,106 @@ describe("the application's own wiring", () => {
     await waitFor(() => {
       window.sessionStorage.clear();
       expect(enterSlot("7")).toBe("/pane/via-root?s=project");
+    });
+  });
+
+  describe("@oracle:requirement @req:SLOT-11 the root layout gives the pane's workspace name", () => {
+    const PATH = "/pane/w1%3Ap1";
+    const ADDRESS = `${PATH}?s=project`;
+    const holding = (workspaceLabel: string): Partial<HomeData> => ({
+      agents: [{ ...fixtureAgents[0]!, paneId: "w1:p1", workspaceLabel }],
+      error: false,
+    });
+
+    function mountRoot(initial: string, first: Partial<HomeData>) {
+      enterSlot("7");
+      let data: HomeData = { ...emptyHome(), ...first };
+      const router = createMemoryRouter(
+        [
+          {
+            id: ROOT_ROUTE_ID,
+            path: "/",
+            loader: () => data,
+            element: <RootLayout />,
+            children: [{ path: "pane/:id", element: <Page /> }],
+          },
+        ],
+        { initialEntries: [initial] },
+      );
+      render(<RouterProvider router={router} />);
+      return {
+        router,
+        async answer(next: Partial<HomeData>) {
+          data = { ...emptyHome(), ...next };
+          await act(async () => {
+            router.revalidate();
+          });
+          await waitFor(() => expect(router.state.revalidation).toBe("idle"));
+        },
+      };
+    }
+
+    /** The address has reached the slot, so what the name says now is what the hook decided. */
+    async function addressStored(address: string) {
+      await waitFor(() => expect(enterSlot("7")).toBe(address));
+    }
+
+    it("stores the name when the root data holds the pane among the agents", async () => {
+      mountRoot(ADDRESS, holding("A"));
+      await waitFor(() => expect(slotSpace("7")).toBe("A"));
+    });
+
+    it("stores the name when the root data holds the pane among the shell panes", async () => {
+      mountRoot(ADDRESS, {
+        agents: [],
+        shellPanes: [{ ...fixtureShellPanes[0]!, paneId: "w1:p1", workspaceLabel: "S" }],
+        error: false,
+      });
+      await waitFor(() => expect(slotSpace("7")).toBe("S"));
+    });
+
+    it("stores no name from data that has an error", async () => {
+      mountRoot(ADDRESS, { ...holding("A"), error: true });
+      await addressStored(ADDRESS);
+      expect(slotSpace("7")).toBeUndefined();
+    });
+
+    it("stores no name when the data does not hold the pane", async () => {
+      mountRoot(ADDRESS, { agents: [{ ...fixtureAgents[0]!, paneId: "w9:p9", workspaceLabel: "Z" }], error: false });
+      await addressStored(ADDRESS);
+      expect(slotSpace("7")).toBeUndefined();
+    });
+
+    it("stores the name when the data comes to hold the pane later", async () => {
+      const root = mountRoot(ADDRESS, { error: false });
+      await addressStored(ADDRESS);
+      expect(slotSpace("7")).toBeUndefined();
+      await root.answer(holding("A"));
+      await waitFor(() => expect(slotSpace("7")).toBe("A"));
+    });
+
+    it("keeps the name when later data no longer holds the pane or has an error", async () => {
+      const root = mountRoot(ADDRESS, holding("A"));
+      await waitFor(() => expect(slotSpace("7")).toBe("A"));
+      await root.answer({ error: false });
+      expect(slotSpace("7")).toBe("A");
+      await root.answer({ ...holding("Z"), error: true });
+      expect(slotSpace("7")).toBe("A");
+    });
+
+    it("follows the name when the pane moves to another workspace", async () => {
+      const root = mountRoot(ADDRESS, holding("A"));
+      await waitFor(() => expect(slotSpace("7")).toBe("A"));
+      await root.answer(holding("B"));
+      await waitFor(() => expect(slotSpace("7")).toBe("B"));
+    });
+
+    it("drops the name on a move to a pane the data does not hold", async () => {
+      const root = mountRoot(ADDRESS, holding("A"));
+      await waitFor(() => expect(slotSpace("7")).toBe("A"));
+      await act(() => root.router.navigate("/pane/elsewhere"));
+      await addressStored("/pane/elsewhere");
+      expect(slotSpace("7")).toBeUndefined();
     });
   });
 
