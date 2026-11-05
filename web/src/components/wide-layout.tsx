@@ -280,8 +280,10 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
   };
   // A pane closed from its sidebar row. Another pane only revalidates. The route's own pane must not
   // leave the route on a pane that is gone: the focus moves to the next column, then to any pane of
-  // the space, and only a space with nothing left goes up to Home.
-  const closedRow = (closed: AgentView) => {
+  // the space, and only a space with nothing left goes up to Home. The answer can arrive after the
+  // operator has moved on, so it runs against the render that is current then, through this ref.
+  const closedRow = useRef<(closed: AgentView) => void>(() => undefined);
+  closedRow.current = (closed: AgentView) => {
     const key = columnKeyOf(closed, places);
     if (key !== routeKey) return revalidate();
     const next = removeColumn(strip, key);
@@ -724,7 +726,7 @@ export function WideLayout({ widthClass, paneId, scope, agent, focused, fold = "
         savedCopy={root.error}
         onRenamed={revalidate}
         onClosed={() => {
-          if (menuPane) closedRow(menuPane);
+          if (menuPane) closedRow.current(menuPane);
         }}
         herd={herd}
         leading={
