@@ -167,7 +167,7 @@ async function rects(page: Page) {
 
 test("the takeover opens, records, transcribes and closes without moving anything", async ({ page }) => {
   // The takeover is measured on the field composer with a 1px rule. The default theme's box composer
-  // puts OK 2px off the mic's centre (a finding for the box layout, not pinned here).
+  // has its own case below.
   await wearPlainLook(page);
   await page.goto("/pane/w1:p1");
   const mic = page.getByRole("button", { name: en["composer.mic.recordAria"] });
@@ -221,6 +221,24 @@ test("the takeover opens, records, transcribes and closes without moving anythin
   await expect(page.getByRole("textbox", { name: en["composer.placeholder.reply"] })).toHaveValue(TRANSCRIPT);
   await expect(region).toHaveCount(0);
   expect(await rects(page)).toEqual(before);
+});
+
+// THE BOX COMPOSER (the default theme Collie). OK is drawn in a row that copies the composer's box, so
+// it stands on the microphone it replaces: the same centre, to the half pixel, at rest and open.
+test("in the box composer the OK button stands on the microphone's centre", async ({ page }) => {
+  await page.goto("/pane/w1:p1");
+  await expect(page.locator('[data-slot="composer-box"]')).toHaveAttribute("data-layout", "box");
+  const mic = page.getByRole("button", { name: en["composer.mic.recordAria"] });
+  await expect(mic).toBeVisible();
+  const micBox = (await mic.boundingBox())!;
+
+  await mic.click();
+  const ok = page.getByRole("button", { name: en["composer.voice.okAria"] });
+  await expect(ok).toBeEnabled();
+  const okBox = (await ok.boundingBox())!;
+  expect(Math.abs(okBox.x + okBox.width / 2 - (micBox.x + micBox.width / 2))).toBeLessThanOrEqual(0.5);
+  expect(Math.abs(okBox.y + okBox.height / 2 - (micBox.y + micBox.height / 2))).toBeLessThanOrEqual(0.5);
+  expect(Math.abs(okBox.width - micBox.width)).toBeLessThanOrEqual(0.5);
 });
 
 test("two seconds of quiet after speech finishes the clip by itself; quiet alone never does", async ({ page }) => {
