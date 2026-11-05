@@ -122,19 +122,19 @@ export function Round({
     <div data-round={id}>
       {/* Sticky under the page's own header: --pg-top is that header's height (set in app.tsx). */}
       <div className="sticky top-[var(--pg-top,0px)] z-20 -mx-4 border-b border-rule bg-background/95 px-4 py-2 backdrop-blur lg:top-0 lg:mx-0 lg:px-0">
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <div className="pg-scroll-row items-center gap-x-4">
           {cases.length > 0 && <Segmented name="Case" value={caseValue} options={cases} onChange={setCaseValue} />}
           <Segmented name="Zoom" value={zoom} options={ZOOMS} onChange={setZoom} />
           <Button type="button" size="sm" variant="outline" className="h-7 px-2 text-[11px]" onClick={() => setReplay((n) => n + 1)}>
             Replay
           </Button>
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
             <span className="text-[11px] text-muted-foreground">Flip</span>
             <Segmented name="Flip" value={flip ? "on" : "off"} options={FLIP} onChange={(next) => setFlip(next === "on")} />
           </div>
         </div>
         {flip && (
-          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
+          <div className="mt-2 flex flex-col gap-2">
             <NumberChips label="A" options={options} value={a} onPick={(n) => { setA(n); setShowB(false); }} />
             <NumberChips label="B" options={options} value={b} onPick={(n) => { setB(n); setShowB(true); }} />
           </div>

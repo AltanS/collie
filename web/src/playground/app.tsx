@@ -89,6 +89,7 @@ export const SECTIONS: readonly SectionEntry[] = [
   { def: { id: "composer-box", title: "Composer box" }, load: () => import("./sections/composer-box").then((m) => ({ default: m.ComposerBoxSection })) },
   { def: { id: "dashboard-top", title: "Dashboard top" }, load: () => import("./sections/dashboard-top").then((m) => ({ default: m.DashboardTopSection })) },
   { def: { id: "usage-row", title: "Usage row" }, load: () => import("./sections/usage-row").then((m) => ({ default: m.UsageRowSection })) },
+  { def: { id: "update-signal", title: "Update signal" }, load: () => import("./sections/update-signal").then((m) => ({ default: m.UpdateSignalSection })) },
   { def: { id: "report", title: "Report a problem" }, load: () => import("./sections/report").then((m) => ({ default: m.ReportSection })) },
 ];
 
@@ -256,16 +257,12 @@ function TopBar({ sections, activeId, onSelect, clock, onClock, phoneWidth, onPh
   }, []);
   return (
     <header ref={header} className="sticky top-0 z-30 -mx-4 -mt-4 border-b border-border bg-background/95 px-4 py-2 backdrop-blur lg:hidden">
-      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 pb-2">
-        <div>
-          <h1 className="text-sm font-semibold tracking-tight">Collie — states playground</h1>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">
-            Dev-only page. Not in the production bundle.
-          </p>
-        </div>
+      {/* One line each, scrolled sideways, so the sticky header stays short on a phone. */}
+      <h1 className="pb-1.5 text-sm font-semibold tracking-tight">Collie — states playground</h1>
+      <div className="pg-scroll-row pb-2">
         <TabBar orientation="horizontal" sections={sections} activeId={activeId} onSelect={onSelect} />
       </div>
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 pb-2">
+      <div className="pg-scroll-row items-center gap-x-4 pb-1">
         <Controls clock={clock} onClock={onClock} phoneWidth={phoneWidth} onPhoneWidth={onPhoneWidth} />
       </div>
     </header>
@@ -328,7 +325,7 @@ function TabBar({
       role="tablist"
       aria-label="Sections"
       aria-orientation={orientation}
-      className={cn("flex gap-1", orientation === "vertical" ? "flex-col" : "flex-wrap")}
+      className={cn("flex gap-1", orientation === "vertical" ? "flex-col" : "flex-nowrap")}
     >
       {sections.map((s, index) => (
         <button
@@ -345,7 +342,7 @@ function TabBar({
           onClick={() => onSelect(s.id)}
           onKeyDown={(event) => onKeyDown(event, index)}
           className={cn(
-            "rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors",
+            "shrink-0 whitespace-nowrap rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors",
             orientation === "vertical" && "text-left",
             s.id === activeId
               ? "bg-foreground text-background"
@@ -473,8 +470,8 @@ function Field({
     );
   }
   return (
-    <div className="flex items-center gap-2">
-      <span className="text-[11px] text-muted-foreground">{label}</span>
+    <div className="flex shrink-0 items-center gap-2">
+      <span className="whitespace-nowrap text-[11px] text-muted-foreground">{label}</span>
       {children}
     </div>
   );

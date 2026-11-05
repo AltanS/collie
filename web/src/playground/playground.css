@@ -148,3 +148,69 @@
     scroll-snap-align: start;
   }
 }
+
+/* ── Update signal: the mark's own beads (sections/update-signal) ────────────────────────────────────
+   The beads are the Collie mark's own (components/collie-mark.tsx, generated, not edited): each is a
+   `g.cm-b.cm-bN`, N 0 to 7, in a `g.cm-far` and a `g.cm-near` copy. Its colour sits in a `fill`
+   attribute, so a CSS `fill` beats it. The knock-out circle behind each near bead has a different fill
+   (the paper colour) and is not matched, so the ring around a bead stays as it is. A bead is recoloured
+   by setting `--lit` on it; with no `--lit` the rules fall back to the mark's own fill. */
+.upd-beads .cm-b [fill*="collie-ink"] {
+  fill: var(--lit, var(--collie-ink, currentColor));
+}
+.upd-beads .cm-b [fill="var(--cm-a1)"] {
+  fill: var(--lit, var(--cm-a1));
+}
+.upd-beads .cm-b [fill="var(--cm-a2)"] {
+  fill: var(--lit, var(--cm-a2));
+}
+
+/* Update ready: three of the biggest round beads, in the colour the update band already uses
+   (`ui/notice.tsx` maps the band's `caution` tone to `--status-working`). Machine busy: three
+   others, in `--status-blocked`. Never the same bead. */
+.upd-ready .cm-b0,
+.upd-ready .cm-b2,
+.upd-ready .cm-b3 {
+  --lit: var(--status-working);
+}
+.upd-busy .cm-b4,
+.upd-busy .cm-b5,
+.upd-busy .cm-b6 {
+  --lit: var(--status-blocked);
+}
+
+/* While a signal waits the orbit turns slowly: 10s a lap (rest is 48s, loading 1.8s). The mark sets
+   the duration inline, so only an !important author rule can beat it. Its own reduced-motion rule
+   still stops every bead, and the colours stay. */
+.upd-slow [data-slot="collie-mark"] svg,
+.upd-slow [data-slot="mark-key"] svg {
+  --cm-turn: 10s !important;
+}
+
+/* The lines the mark's tap brings into view: a wash that fades in about a second. */
+@keyframes upd-flash {
+  from {
+    background: color-mix(in oklab, var(--status-working) 28%, transparent);
+  }
+  to {
+    background: transparent;
+  }
+}
+.upd-flash {
+  animation: upd-flash 1.1s ease-out;
+}
+
+/* One line that scrolls sideways instead of wrapping: the narrow page header's tab list and
+   controls, and a round's control bar. Its direct children keep their size. */
+.pg-scroll-row {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.pg-scroll-row::-webkit-scrollbar {
+  display: none;
+}
+.pg-scroll-row > * {
+  flex-shrink: 0;
+}

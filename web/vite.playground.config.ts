@@ -18,13 +18,14 @@ const OUT = resolve(WEB, "dist-playground");
 // SAFETY: web/package.json is this repo's own manifest, and its `version` is a string (scripts/check-version.sh).
 const pkgVersion = (JSON.parse(readFileSync(resolve(WEB, "package.json"), "utf8")) as { version: string }).version;
 
-// src/lib/build.ts reads this define. The playground never shows a real build stamp.
+// src/lib/build.ts reads this define. A plain version, no prerelease tag: the header then draws no
+// prerelease strip, the same as a release build of the app. The playground never shows a real stamp.
 const BUILD_INFO = {
-  version: `${pkgVersion}-playground`,
+  version: pkgVersion,
   sha: "playground",
   time: new Date().toISOString(),
-  id: `${pkgVersion}-playground`,
-  channel: "dev",
+  id: `${pkgVersion}+playground`,
+  channel: "release",
 };
 
 /** Drop what the page never loads from the copied `public/` folder, and leave an index.html that
