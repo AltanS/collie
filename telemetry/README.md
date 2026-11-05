@@ -1,8 +1,8 @@
 # The install-count receiver
 
 This folder holds the contract of the daily ping a Collie bridge sends (M86). The receiver runs on
-the colliepwa.dev app server and keeps one row per bridge per day in Postgres, with no IP address.
-Its source is in the collie-website repository, under `src/lib/ping/`.
+the colliepwa.dev server and keeps one row per bridge per day in Postgres, with no IP address.
+This contract is the public record of the ping.
 
 ## What it accepts
 

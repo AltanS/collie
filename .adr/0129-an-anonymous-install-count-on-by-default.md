@@ -13,7 +13,7 @@
   install from a fetch) · `bridge/telemetry.ts` · `bridge/index.ts` · `bridge/config-schema.ts` ·
   `cli/doctor.ts` (`telemetryFindings`) · `web/src/components/telemetry-settings-card.tsx` ·
   `web/src/components/telemetry-notice.tsx` · `docs/security.md` → "What leaves your machine" ·
-  `telemetry/README.md` (the contract) · `collie-website` `src/lib/ping/` (the receiver)
+  `telemetry/README.md` (the contract)
 
 ## Context
 
@@ -74,10 +74,9 @@ reverses ADR 0034 openly, and the notice says so in plain words in the CHANGELOG
    off, which switch decided, when the first ping may go and how to turn it off. A headless machine
    has no phone, and this line is its notice. A service reads `COLLIE_TELEMETRY` from its own
    `.env`, not from a shell profile.
-8. **The receiver is Collie's own.** A small receiver on the colliepwa.dev app server with one Postgres table, at
-   `https://ping.colliepwa.dev/v1/ping`, with its source public in the `collie-website` repository
-   under `src/lib/ping/` and the contract in `telemetry/README.md`. It is built to store no IP
-   address. The ping has one fixed user agent, `collie-ping`.
+8. **The receiver is Collie's own.** A small receiver on the colliepwa.dev server with one Postgres table, at
+   `https://ping.colliepwa.dev/v1/ping`. The contract of the ping is `telemetry/README.md` in this
+   repository. It is built to store no IP address. The ping has one fixed user agent, `collie-ping`.
 9. **The update check, Whistle, Walky talky and Report a problem are unchanged.** They send no
    install data. ADR 0034's paragraph on the update check stands.
 
