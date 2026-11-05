@@ -165,6 +165,14 @@ describe("theme-init.js, run", () => {
     expect(seen.properties).toHaveLength(THEME_TOKENS.length);
   });
 
+  it("paints the default's grain through index.css alone: the script sets nothing for collie or for a blob-less device", () => {
+    expect(runInit({ "collie:design:v1": JSON.stringify({ theme: "collie" }) }).properties).toEqual([]);
+    expect(runInit({}).properties).toEqual([]);
+    const sheet = readFileSync(resolve(import.meta.dirname, "index.css"), "utf8");
+    const grain = wordDeclarations("ground", "grain")[0]?.[1] ?? "";
+    expect(sheet).toContain(`--ground-image: ${grain};`);
+  });
+
   it("paints a stored collie-new as the default: no attribute and no property", () => {
     const seen = runInit({ "collie:design:v1": JSON.stringify({ font: "atkinson", theme: "collie-new" }) });
     expect(seen).toEqual({ classes: ["font-atkinson"], attributes: [], properties: [] });

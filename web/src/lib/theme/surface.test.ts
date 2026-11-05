@@ -180,7 +180,7 @@ describe("the shape tokens", () => {
       density: "default",
       weight: "bold",
       border: "default",
-      ground: "flat",
+      ground: "grain",
       chrome: "band",
       rows: "rules",
       icons: "default",

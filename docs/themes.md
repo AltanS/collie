@@ -16,7 +16,7 @@ light on the left and dark on the right.
 - **Collie** is the default. It is black and white like the dog mark, with warm neutral greys, the black ink
   of the open tab and the open pane, square corners, thin lines, flat edges and bold labels. The text is
   stronger and the lines are firmer than in a plain grey look, and a grey band stands behind the header and
-  the bars. The open tab is a folder tab, and the composer opens like a chat box. The terminal draws a
+  the bars. A faint crossed grain (the `ground` word `grain`) is drawn behind the page. The open tab is a folder tab, and the composer opens like a chat box. The terminal draws a
   high-contrast palette. Picking it takes every other theme back off.
 
   ![The Collie theme on the Dashboard, light and dark.](images/themes/collie-home.png)
@@ -41,7 +41,7 @@ light on the left and dark on the right.
   ![The Harbour theme on the Dashboard, light and dark.](images/themes/harbour-home.png)
 
 The table lists every word each theme uses. The first word of each list is the word a theme gets when its file
-names none: `sharp`, `flat`, `default`, `bold`, `default`, `flat`, `band`, `rules`, `default`, `sentence`,
+names none: `sharp`, `flat`, `default`, `bold`, `default`, `grain`, `band`, `rules`, `default`, `sentence`,
 `screen`, `plain` and `field`. That is what the Collie theme draws, except for `tabs` and `composer`, which the
 Collie theme sets to `folder` and `box`. The words are explained under [Shape](#shape), [Look](#look) and
 [Terminal palette](#terminal-palette).
@@ -55,7 +55,7 @@ Collie theme sets to `folder` and `box`. The words are explained under [Shape](#
 | Density | `default` | `default` | `roomy` | `default` |
 | Weight | `bold` | `bold` | `default` | `default` |
 | Border | `default` | `strong` | `default` | `default` |
-| Ground | `flat` | `flat` | `gradient` | `grain` |
+| Ground | `grain` | `flat` | `gradient` | `grain` |
 | Chrome | `band` | `band` | `page` | `page` |
 | Rows | `rules` | `rules` | `cards` | `rules` |
 | Icons | `default` | `heavy` | `default` | `thin` |
@@ -311,9 +311,9 @@ of closed words.
 
 | Key | Word | What it does |
 | --- | --- | --- |
-| `ground` | `flat` | The page is one colour. The default. |
+| `ground` | `grain` | Two sets of fine diagonal lines of `background` mixed with 4% of `foreground`. The default, so Collie draws a faint crossed grain behind the page. |
+| | `flat` | The page is one colour. |
 | | `gradient` | The page runs from `background` at the top to `background` mixed with 12% of `primary` at the foot. |
-| | `grain` | Two sets of fine diagonal lines of `background` mixed with 4% of `foreground`. |
 | `chrome` | `band` | The header, the tab bar and the bottom bar are filled with `secondary` and edged with `border`. The default. |
 | | `page` | They are the page colour with a rule. |
 | `rows` | `rules` | A list is one framed group with a line between rows. The default. |

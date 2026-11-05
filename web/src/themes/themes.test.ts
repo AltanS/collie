@@ -97,6 +97,7 @@ describe("the theme collie equals index.css", () => {
     for (const [property, value] of fullSurfaceDeclarations(SURFACE_DEFAULTS)) {
       expect(root.get(property) ?? themeBlock("@theme {").get(property) ?? tailwind(property), property).toBe(value);
     }
+    expect(collie.surface?.ground).toBe("grain");
     expect(collie.surface?.tabs).toBe("folder");
     expect(collie.surface?.composer).toBe("box");
     expect(collie.fonts?.display).toBe("aldrich");
@@ -466,8 +467,11 @@ describe("every default word of spec 17 is the stylesheet's CSS", () => {
     }
   });
 
-  it("ground: flat is no image, and the page colour moved from body to html unchanged", () => {
-    expect(new Map(defaultOf("ground")).get("--ground-image")).toBe("none");
+  it("ground: the default is the crossed grain of 4 percent foreground, and the page colour sits on html under it", () => {
+    const image = new Map(defaultOf("ground")).get("--ground-image") ?? "";
+    expect(image).toContain("repeating-linear-gradient(45deg, color-mix(in oklab, var(--background) 96%, var(--foreground)) 0 1px, transparent 1px 4px)");
+    expect(image).toContain("repeating-linear-gradient(-45deg,");
+    expect(new Map(wordDeclarations("ground", "flat")).get("--ground-image")).toBe("none");
     const html = /\n {2}html \{([\s\S]*?)\n {2}\}/.exec(bare)?.[1] ?? "";
     expect(html).toContain("background-color: var(--background);");
     expect(html).toContain("background-image: var(--ground-image);");

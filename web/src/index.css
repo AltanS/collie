@@ -241,7 +241,7 @@
   --edge-accent: inset 2px 0 0 0;
   --edge-shadow: 0 0 #0000;
   /* THE SEVEN MORE A THEME MAY PICK (M57 spec 17, lib/theme/surface.ts). Each is the value the app
-     drew before, so the Collie theme sets none of them and looks the same:
+     draws by default, so the Collie theme sets none of them and looks the same:
        ground  `--ground-image`, painted on `html` over the page colour (the html rule below);
        chrome  `--band-ground` and `--band-rule`, the fill and edge of the header, the tab bar and the
                bottom bar (`bg-band-ground`, `border-band-rule`), today the page colour and --rule;
@@ -257,7 +257,7 @@
      The mirror's own ink and ground are NOT declared here: lib/ansi.ts and components/mirror-space.ts
      read `var(--mirror-ink, #fafafa)` and `var(--mirror-ground, #0a0a0a)`, so only a theme's `ansi`
      block sets them. src/themes/themes.test.ts holds every default word equal to these. */
-  --ground-image: none;
+  --ground-image: repeating-linear-gradient(45deg, color-mix(in oklab, var(--background) 96%, var(--foreground)) 0 1px, transparent 1px 4px), repeating-linear-gradient(-45deg, color-mix(in oklab, var(--background) 96%, var(--foreground)) 0 1px, transparent 1px 4px);
   --band-ground: var(--secondary);
   --band-rule: var(--border);
   --row-gap: 0px;
@@ -1266,8 +1266,8 @@
     -webkit-tap-highlight-color: transparent;
     /* THE PAGE IS PAINTED HERE, not on body (M57 spec 17). The root's background is the canvas, so
        this is the colour every gap and every overscroll shows, as body's used to be. A theme's
-       `ground` word lays `--ground-image` over it: `none` for Collie, so the pixels are the ones
-       body drew. `min-height: 100%` makes a gradient span at least the viewport. No
+       `ground` word lays `--ground-image` over it: Collie's own word is `grain`, a faint crossed
+       grain of 4 percent of the foreground; `flat` is `none`. `min-height: 100%` makes a gradient span at least the viewport. No
        `background-attachment: fixed`: mobile WebKit ignores it and Android Chrome repaints the
        whole ground on every scroll frame. The browser-chrome colour is the flat top edge of the
        ground (use-theme.ts), which is where every gradient starts. */

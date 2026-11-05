@@ -428,6 +428,18 @@ describe("contrastReport", () => {
       "destructive text on card",
       "status-blocked text on card",
       "rule on background",
+      // A theme that names no `ground` word has the stylesheet's grain, so its far end is measured too.
+      "foreground on the grain ground",
+      "muted-foreground on the grain ground",
+      "status-blocked chip on the grain ground",
+      "status-working chip on the grain ground",
+      "status-done chip on the grain ground",
+      "status-idle chip on the grain ground",
+      "status-unknown chip on the grain ground",
+      "status-info chip on the grain ground",
+      "destructive text on the grain ground",
+      "status-blocked text on the grain ground",
+      "rule on the grain ground",
       // A theme that names no `chrome` word has the stylesheet's band, so the band is measured too.
       "foreground on the band",
       "muted-foreground on the band",
@@ -721,8 +733,8 @@ describe("the ground and the band in the contrast report", () => {
     expect(mixOklab("oklch(0 0 0)", "oklch(1 0 0)", 50)).toBe(toSrgbHex("oklch(0.5 0 0)"));
   });
 
-  it("adds no check for a flat ground, so the report is the one it was (the band is the default chrome)", () => {
-    const plain = contrastReport(collie, collie).map((f) => f.check);
+  it("adds no check for a flat ground, so the report is Collie's without the grain's (the band is the default chrome)", () => {
+    const plain = contrastReport(collie, collie).map((f) => f.check).filter((check) => !check.endsWith("the grain ground"));
     const flat = contrastReport({ ...collie, version: 2, surface: { ground: "flat", chrome: "band" } }, collie).map((f) => f.check);
     expect(flat).toEqual(plain);
   });

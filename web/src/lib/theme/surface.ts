@@ -184,14 +184,14 @@ export const SURFACE = {
     strong: [["--surface-border-width", "2px"]],
   },
   ground: {
-    flat: [["--ground-image", "none"]],
-    gradient: [["--ground-image", `linear-gradient(to bottom, var(--background), ${groundMix(GROUND_GRADIENT_END)})`]],
     grain: [
       [
         "--ground-image",
         `repeating-linear-gradient(45deg, ${GRAIN_LINES}), repeating-linear-gradient(-45deg, ${GRAIN_LINES})`,
       ],
     ],
+    flat: [["--ground-image", "none"]],
+    gradient: [["--ground-image", `linear-gradient(to bottom, var(--background), ${groundMix(GROUND_GRADIENT_END)})`]],
   },
   chrome: {
     band: [
@@ -273,7 +273,9 @@ export interface Surface {
 
 /**
  * The word each token has when a file does not name one: the look of the stylesheet, which is the
- * look of the theme `collie` (flat shadows, bold weight, a band for the chrome, sentence labels).
+ * look of the theme `collie` (flat shadows, bold weight, a band for the chrome, sentence labels, a faint
+ * crossed grain behind the page). A theme that names no `ground` therefore gets the grain, as one that
+ * leaves out a colour gets Collie's.
  * The three words the app reads itself keep their plain words: a theme that names no `tabs` or
  * `composer` word gets the plain tab and the field composer, and the theme `collie` names `folder`
  * and `box` in its file.
@@ -284,7 +286,7 @@ export const SURFACE_DEFAULTS = {
   density: "default",
   weight: "bold",
   border: "default",
-  ground: "flat",
+  ground: "grain",
   chrome: "band",
   rows: "rules",
   icons: "default",
