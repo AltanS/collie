@@ -8,10 +8,9 @@
 // Per device, like lib/strips-collapsed.ts: never written to a bridge. A duplicated tab copies its
 // sessionStorage and so shares the slot; the tab that moves last wins.
 
-import { asJsonString, parseJsonObject, type JsonObject } from "./json";
-
 const TAB_SLOT_KEY = "collie.slot.tab";
-const PANES_KEY = "collie:slots:v1";
+/** One key per slot: tabs see each other's writes late, so a shared map would lose a slot when two move at once. */
+const PANE_KEY_PREFIX = "collie:slot:v1:";
 const SLOT_NUMBER = /^[1-9][0-9]?$/;
 /** A pane page and nothing under it, with its query: `?s=` is what names the project. */
 const PANE_PAGE = /^\/pane\/[^/?#]+(?:\?[^#]*)?$/;
@@ -35,15 +34,6 @@ function deviceStorage(): SlotStorage | undefined {
   }
 }
 
-/** The stored map, or an empty one when the entry is missing, unreadable or not a map. */
-function readPanes(local: SlotStorage | undefined): JsonObject {
-  try {
-    return parseJsonObject(local?.getItem(PANES_KEY) ?? "") ?? {};
-  } catch {
-    return {};
-  }
-}
-
 /**
  * Where a tab opening `/slot/<raw>` goes: the slot's last pane, or home. A valid number also makes
  * this tab that slot's; an invalid one changes nothing.
@@ -59,8 +49,12 @@ export function enterSlot(
   } catch {
     // The tab stays out of the slot: it can still open the slot's pane, and writes nothing.
   }
-  const stored = asJsonString(readPanes(local)[raw]);
-  return stored !== undefined && PANE_PAGE.test(stored) ? stored : HOME;
+  try {
+    const stored = local?.getItem(`${PANE_KEY_PREFIX}${raw}`);
+    return stored !== null && stored !== undefined && PANE_PAGE.test(stored) ? stored : HOME;
+  } catch {
+    return HOME;
+  }
 }
 
 /** Write the address down for this tab's slot, when the tab has one and the address is a pane page. */
@@ -75,7 +69,7 @@ export function rememberSlotPane(
   try {
     const slot = session?.getItem(TAB_SLOT_KEY);
     if (slot === null || slot === undefined) return;
-    local?.setItem(PANES_KEY, JSON.stringify({ ...readPanes(local), [slot]: address }));
+    local?.setItem(`${PANE_KEY_PREFIX}${slot}`, address);
   } catch {
     // Quota or private mode: the slot keeps its previous pane.
   }
