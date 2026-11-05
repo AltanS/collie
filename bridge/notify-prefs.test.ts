@@ -24,7 +24,7 @@ afterAll(async () => {
 
 describe("coerceNotifyPrefs", () => {
   test("fills missing / non-boolean keys from defaults", () => {
-    const defaults = { blocked: true, done: false, updates: true, cache: false, machines: true };
+    const defaults = { blocked: true, done: false, individual: false, updates: true, cache: false, machines: true };
     expect(coerceNotifyPrefs(undefined)).toEqual(defaults);
     expect(coerceNotifyPrefs(null)).toEqual(defaults);
     expect(coerceNotifyPrefs({})).toEqual(defaults);
@@ -62,12 +62,12 @@ describe("NotifyPrefsStore", () => {
     const cfg = await tempCfg();
     const store = new NotifyPrefsStore(cfg);
     const updated = await store.set({ done: true, updates: false, cache: true, machines: false });
-    expect(updated).toEqual({ blocked: true, done: true, updates: false, cache: true, machines: false });
+    expect(updated).toEqual({ blocked: true, done: true, individual: false, updates: false, cache: true, machines: false });
 
     // Round-trips through disk: a fresh store reloads the same values (survives a restart).
     const reloaded = new NotifyPrefsStore(cfg);
     await reloaded.load();
-    expect(reloaded.current()).toEqual({ blocked: true, done: true, updates: false, cache: true, machines: false });
+    expect(reloaded.current()).toEqual({ blocked: true, done: true, individual: false, updates: false, cache: true, machines: false });
   });
 
   test("current() returns a copy — callers can't mutate the store's state", async () => {
@@ -98,7 +98,7 @@ describe("NotifyPrefsStore", () => {
     await writeFile(join(cfg.stateDir, "notify-prefs.json"), JSON.stringify({ blocked: false }));
     const store = new NotifyPrefsStore(cfg);
     await store.load();
-    expect(store.current()).toEqual({ blocked: false, done: false, updates: true, cache: false, machines: true });
+    expect(store.current()).toEqual({ blocked: false, done: false, individual: false, updates: true, cache: false, machines: true });
   });
 
   test("load tolerates a missing file (keeps defaults)", async () => {

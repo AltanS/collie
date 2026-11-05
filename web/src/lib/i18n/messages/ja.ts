@@ -153,6 +153,8 @@ export const ja: Dictionary = {
   "settings.notify.blocked.hint": "エージェントが入力を待機しているとき",
   "settings.notify.done.label": "完了",
   "settings.notify.done.hint": "エージェントがタスクを完了したとき",
+  "settings.notify.individual.label": "One notification per agent",
+  "settings.notify.individual.hint": "Each agent that needs you gets its own notification. Off: one summary per machine.",
   "settings.notify.updates.label": "アップデート",
   "settings.notify.updates.hint": "新しい Collie のリリースが存在するとき",
   "settings.notify.machines.label": "マシンの負荷が高いまま",

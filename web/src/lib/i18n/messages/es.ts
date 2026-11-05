@@ -154,6 +154,8 @@ export const es: Dictionary = {
   "settings.notify.blocked.hint": "un agente espera intervención del usuario",
   "settings.notify.done.label": "Finalizado",
   "settings.notify.done.hint": "un agente completa su tarea",
+  "settings.notify.individual.label": "One notification per agent",
+  "settings.notify.individual.hint": "Each agent that needs you gets its own notification. Off: one summary per machine.",
   "settings.notify.updates.label": "Actualizaciones",
   "settings.notify.updates.hint": "hay una nueva versión de Collie disponible",
   "settings.notify.machines.label": "La carga de una máquina sigue alta",

@@ -156,6 +156,8 @@ export const ko: Dictionary = {
   "settings.notify.blocked.hint": "에이전트가 사용자 입력을 대기 중일 때",
   "settings.notify.done.label": "작업 완료",
   "settings.notify.done.hint": "에이전트 작업이 끝났을 때",
+  "settings.notify.individual.label": "One notification per agent",
+  "settings.notify.individual.hint": "Each agent that needs you gets its own notification. Off: one summary per machine.",
   "settings.notify.updates.label": "앱 업데이트",
   "settings.notify.updates.hint": "새로운 Collie 버전이 릴리스되었을 때",
   "settings.notify.machines.label": "머신 부하가 계속 높음",

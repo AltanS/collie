@@ -133,6 +133,8 @@ export const tr: Dictionary = {
   "settings.notify.blocked.hint": "bir ajan sizi bekliyor",
   "settings.notify.done.label": "Tamamlandı",
   "settings.notify.done.hint": "bir ajan görevini tamamladı",
+  "settings.notify.individual.label": "One notification per agent",
+  "settings.notify.individual.hint": "Each agent that needs you gets its own notification. Off: one summary per machine.",
   "settings.notify.updates.label": "Uygulama güncellemeleri",
   "settings.notify.updates.hint": "yeni bir Collie sürümü mevcut",
   "settings.notify.machines.label": "Makine yükü yüksek kalıyor",

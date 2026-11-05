@@ -176,6 +176,8 @@ export const en = {
   "settings.notify.blocked.hint": "an agent is waiting on you",
   "settings.notify.done.label": "Finished",
   "settings.notify.done.hint": "an agent completes its task",
+  "settings.notify.individual.label": "One notification per agent",
+  "settings.notify.individual.hint": "Each agent that needs you gets its own notification. Off: one summary per machine.",
   "settings.notify.updates.label": "App updates",
   "settings.notify.updates.hint": "a new Collie version is available",
   "settings.notify.machines.label": "Machine load stays high",

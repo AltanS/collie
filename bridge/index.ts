@@ -1656,8 +1656,12 @@ const makeSession: SessionFactory = (name, endpoint, isPrimary) => {
   const sink = makeNotifySink(push, herdPushGate(crew.mode, snooze), herdTagFor(isPrimary, name), {
     session: isPrimary ? undefined : name,
   });
-  const notifications = new NotificationCoordinator(clock, sink, cfg.notifyDelayMs, (status) =>
-    notifyPrefs.isNotifiable(status),
+  const notifications = new NotificationCoordinator(
+    clock,
+    sink,
+    cfg.notifyDelayMs,
+    (status) => notifyPrefs.isNotifiable(status),
+    () => notifyPrefs.current().individual,
   );
   // A pane whose adapter raises asks as data (ADR 0100) does not push on its way into `blocked`: the
   // ask guard decides, once per ask, after each poll. Every other pane, and every other transition,
@@ -2118,6 +2122,7 @@ const peerNotifier =
         mute: snooze,
         delayMs: cfg.notifyDelayMs,
         isNotifiable: (status) => notifyPrefs.isNotifiable(status),
+        individual: () => notifyPrefs.current().individual,
         asks: askPush,
       })
     : undefined;

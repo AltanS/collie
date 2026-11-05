@@ -133,6 +133,8 @@ export const fr: Dictionary = {
   "settings.notify.blocked.hint": "un agent vous attend",
   "settings.notify.done.label": "Terminé",
   "settings.notify.done.hint": "un agent a fini sa tâche",
+  "settings.notify.individual.label": "One notification per agent",
+  "settings.notify.individual.hint": "Each agent that needs you gets its own notification. Off: one summary per machine.",
   "settings.notify.updates.label": "Mises à jour de l'application",
   "settings.notify.updates.hint": "une nouvelle version de Collie est disponible",
   "settings.notify.machines.label": "La charge de la machine reste élevée",
