@@ -13,7 +13,7 @@
   install from a fetch) · `bridge/telemetry.ts` · `bridge/index.ts` · `bridge/config-schema.ts` ·
   `cli/doctor.ts` (`telemetryFindings`) · `web/src/components/telemetry-settings-card.tsx` ·
   `web/src/components/telemetry-notice.tsx` · `docs/security.md` → "What leaves your machine" ·
-  `telemetry/` (the receiver)
+  `telemetry/README.md` (the contract)
 
 ## Context
 
@@ -38,12 +38,15 @@ default, and any one of four switches turns it off.** Until 1.26.x Collie sent n
 reverses ADR 0034 openly, and the notice says so in plain words in the CHANGELOG, the README,
 `docs/security.md` and a one-time card on the phone.
 
-1. **The ping carries eight fields and nothing else.** `v` (the schema, `1`), `id` (a random
+1. **The ping carries nine fields and nothing else.** `v` (the schema, `1`), `id` (a random
    128-bit install ID made on this machine, 32 hex characters), `day` (the UTC date), `version`
    (without the build tail), `os`, `arch`, `install` (`binary`, `linked-clone`, `detached-checkout`,
-   `packaged` or `unknown`) and `line` (`stable` or `edge`). No host name, no path, no user name, no
+   `packaged` or `unknown`) `line` (`stable` or `edge`) and `role` (`solo`, `lead` or `member`: whether this bridge runs alone,
+   leads a crew or is a member; a peer that is not the lead is a `member`, and the role is read at ping
+   time; added 2026-11-05 so the count can tell setups from machines, with `v` still `1` because the
+   receiver had not run in production). No host name, no path, no user name, no
    harness or multiplexer name, no pane, no count of anything, no content. A test pins the key set,
-   so a ninth field breaks a test on purpose.
+   so a tenth field breaks a test on purpose.
 2. **One request a day, at most.** The first ping waits 24 hours after the first start of a build
    that has the feature, so a person has a day to read the notice and say no. After that, at most
    one per UTC day. The day is written before the request goes out. A failed send is dropped, never
@@ -71,9 +74,9 @@ reverses ADR 0034 openly, and the notice says so in plain words in the CHANGELOG
    off, which switch decided, when the first ping may go and how to turn it off. A headless machine
    has no phone, and this line is its notice. A service reads `COLLIE_TELEMETRY` from its own
    `.env`, not from a shell profile.
-8. **The receiver is Collie's own.** A Cloudflare Worker with one D1 table, at
-   `https://ping.colliepwa.dev/v1/ping`, with its source public in `telemetry/`. It is built to store no IP
-   address. The ping has one fixed user agent, `collie-ping`.
+8. **The receiver is Collie's own.** A small receiver on the colliepwa.dev server with one Postgres table, at
+   `https://ping.colliepwa.dev/v1/ping`. The contract of the ping is `telemetry/README.md` in this
+   repository. It is built to store no IP address. The ping has one fixed user agent, `collie-ping`.
 9. **The update check, Whistle, Walky talky and Report a problem are unchanged.** They send no
    install data. ADR 0034's paragraph on the update check stands.
 
@@ -81,7 +84,7 @@ reverses ADR 0034 openly, and the notice says so in plain words in the CHANGELOG
 
 ADR 0034 held three things, and this ADR drops all three.
 
-- **"Collects nothing", by default and by policy.** From 1.27.0 it collects the eight fields above.
+- **"Collects nothing", by default and by policy.** From 1.27.0 it collects the nine fields above.
 - **"Opt-in is the ceiling."** The count is opt-out. The ceiling bound the mechanism as well as the
   default, and an opt-out is above it.
 - **"Removing this promise is worth a major version on its own."** The count ships in 1.27.0, a
@@ -94,8 +97,8 @@ says "No telemetry". ADR 0034 is marked superseded and its body is not edited.
 
 ## Consequences
 
-- **Reach is a count.** Active bridges per version, OS, architecture, install kind and release line,
-  from a SQL query against D1. No dashboard is built for it.
+- **Reach is a count.** Active bridges per version, OS, architecture, install kind, release line and crew role,
+  from a SQL query against the Postgres table. No dashboard is built for it.
 - **The count is a floor.** A bridge behind a firewall, a bridge with a switch off, and a
   bridge that runs less than a day send nothing. The opt-out share is an estimate, not a
   measurement.
@@ -107,7 +110,7 @@ says "No telemetry". ADR 0034 is marked superseded and its body is not edited.
   moment the count is off. It cannot be tied to a person by anything Collie sends. The receiver's
   log is the one place an address could appear, and the receiver is built to keep none.
 - **Usage analytics, crash reports and feature counts stay out.** This ADR opens one narrow count,
-  not the road ADR 0034 closed. A ninth field, or a second kind of message, needs its own ADR.
+  not the road ADR 0034 closed. A tenth field, or a second kind of message, needs its own ADR.
 - **Any new field, or a second kind of message, needs a new ADR and the same visible notice again.
   Review in six months (May 2027): publish what the count changed.**
 - **Revisiting.** If the receiver cannot be run without keeping addresses, or the count stops

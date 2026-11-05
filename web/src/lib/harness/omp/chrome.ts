@@ -19,6 +19,7 @@
 // input untouched when the shape doesn't fully match. Pure; no pane access, no network.
 
 import type { StyledLine } from "../../blocks";
+import { readIsUnstyled } from "../../surface/frame";
 import { approvalOwnsKeyboard } from "./approval";
 import {
   BRIDGE_PROMPT_TAIL_LINES,
@@ -389,7 +390,8 @@ export function extractInputDraft(lines: StyledLine[]): string | null {
   if (box === null) return null;
   const texts = lines.map((l) => rstrip(lineText(l)));
 
-  if (box.firstDraftRow === box.bottom && composerPlaceholder(lines[box.bottom]!)) return null;
+  if (box.firstDraftRow === box.bottom && box.draftEnd === box.bottom + 1 &&
+      composerPlaceholder(lines[box.bottom]!, readIsUnstyled(lines))) return null;
   const parts: string[] = [];
   for (let i = box.firstDraftRow; i < box.bottom; i++) {
     parts.push(composerContText(texts[i]!)!.trim());

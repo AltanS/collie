@@ -1,6 +1,6 @@
 import { panePlace, soleTabName, type NameableP } from "./pane-name.ts";
 import { pushTitle, type PushTitleCode, type PushTitleDetail } from "./push-titles.ts";
-import type { PushMessage } from "./push.ts";
+import { paneTopic, type PushMessage } from "./push.ts";
 import type { AgentStatus, AgentView, AskPushText } from "./types.ts";
 
 // A notification shouldn't be fire-and-forget. This coordinator gives every blocked/done alert a
@@ -14,6 +14,9 @@ import type { AgentStatus, AgentView, AskPushText } from "./types.ts";
 //     Each change re-renders that single summary; when the last one resolves, we clear it.
 //   • Retract — clearing an agent at the PC (or its pane closing) updates or removes the summary, so
 //     handled work never lingers on your lock screen.
+//   • Individual — with the `individual` preference on, none of the coalescing happens: each alert is
+//     its own notification, in a slot of its own, and a resolve closes that one slot. The debounce and
+//     the retraction rules stay; only the shape of what is shown changes.
 //
 // Pure and clock-injected so `bun test` drives it without real timers: the bridge passes
 // setTimeout/clearTimeout (see server.ts); tests pass a fake clock they fire on demand.
@@ -53,6 +56,10 @@ export interface NotifySink {
   render(summary: HerdSummary): void;
   /** Close the herd notification — nothing is outstanding any more. */
   clear(): void;
+  /** Render (or replace) one pane's own notification: the "one notification per agent" shape. */
+  renderPane(paneId: string, summary: HerdSummary): void;
+  /** Close one pane's own notification. */
+  clearPane(paneId: string): void;
 }
 
 /** Just the transport the sink needs — "deliver this message to the devices". */
@@ -97,29 +104,61 @@ export function makeNotifySink(
   ident: NotifyIdentity = {},
 ): NotifySink {
   const { session: sessionName, host } = ident;
+  const toMessage = (s: HerdSummary, tag: string): PushMessage => {
+    const body = host === undefined ? s.body : `${host} · ${s.body}`;
+    const msg: PushMessage = {
+      title: s.title,
+      body,
+      tag,
+      paneId: s.paneId,
+      renotify: s.renotify,
+      badge: s.badge,
+    };
+    if (s.titleCode !== undefined) msg.titleCode = s.titleCode;
+    if (s.titleDetail !== undefined) msg.titleDetail = s.titleDetail;
+    if (sessionName !== undefined) msg.session = sessionName;
+    if (host !== undefined) msg.host = host;
+    return msg;
+  };
   return {
     render: (s) => {
       if (mute.isMuted()) return;
-      const body = host === undefined ? s.body : `${host} · ${s.body}`;
-      const msg: PushMessage = {
-        title: s.title,
-        body,
-        tag: herdTag,
-        paneId: s.paneId,
-        renotify: s.renotify,
-        badge: s.badge,
-      };
-      if (s.titleCode !== undefined) msg.titleCode = s.titleCode;
-      if (s.titleDetail !== undefined) msg.titleDetail = s.titleDetail;
-      if (sessionName !== undefined) msg.session = sessionName;
-      if (host !== undefined) msg.host = host;
-      void push.send(msg);
+      void push.send(toMessage(s, herdTag));
     },
     clear: () => {
       if (mute.isMuted()) return;
       void push.send({ type: "clear", tag: herdTag });
     },
+    renderPane: (paneId, s) => {
+      if (mute.isMuted()) return;
+      const tag = paneTag(herdTag, paneId);
+      void push.send({ ...toMessage(s, tag), topic: paneTopic(tag) });
+    },
+    clearPane: (paneId) => {
+      if (mute.isMuted()) return;
+      void push.send(paneClear(herdTag, paneId));
+    },
   };
+}
+
+/**
+ * The notification tag of one pane's own notification: its session's slot tag and the pane id. Pure +
+ * exported so the snooze route can close the same slots the sink opened.
+ */
+export function paneTag(herdTag: string, paneId: string): string {
+  return `${herdTag}:${paneId}`;
+}
+
+/** The `clear` for one pane's own notification. It rides the pane's topic, so a queued alert and its
+ *  retraction replace each other on an offline phone. */
+function paneClear(herdTag: string, paneId: string): PushMessage {
+  const tag = paneTag(herdTag, paneId);
+  return { type: "clear", tag, topic: paneTopic(tag) };
+}
+
+/** One `clear` per pane, for the snooze route: it closes what is on screen without the sink's mute gate. */
+export function paneClears(herdTag: string, paneIds: Iterable<string>): PushMessage[] {
+  return [...paneIds].map((paneId) => paneClear(herdTag, paneId));
 }
 
 // ── A PUSH NAMES A PANE BY THE OPERATOR'S LABEL, NEVER BY THE PROGRAM'S TITLE ─────────────────────
@@ -212,6 +251,8 @@ export class NotificationCoordinator<H = unknown> {
   private readonly pending = new Map<string, { handle: H; status: NotifiableStatus }>();
   /** paneId → alert that has fired and is reflected in the current summary (insertion-ordered). */
   private readonly outstanding = new Map<string, Alert>();
+  /** Which shape is on the lock screen right now, so a switch of the preference can move it over. */
+  private individualShown: boolean;
 
   constructor(
     private readonly clock: NotifyClock<H>,
@@ -220,7 +261,11 @@ export class NotificationCoordinator<H = unknown> {
     // Whether a transition into a status should notify, read live from the prefs store so a runtime
     // change is honoured. A disabled kind behaves exactly like a non-notifiable status (idle/working).
     private readonly isNotifiable: (status: AgentStatus) => boolean,
-  ) {}
+    // Whether each alert is its own notification, read live like `isNotifiable`. Absent: the summary.
+    private readonly individual: () => boolean = () => false,
+  ) {
+    this.individualShown = individual();
+  }
 
   /**
    * Wire to `StateEngine.onTransition`. `cause` is `"ask"` when the ask guard raised the push
@@ -259,7 +304,7 @@ export class NotificationCoordinator<H = unknown> {
     const handle = this.clock.schedule(() => {
       this.pending.delete(id);
       this.outstanding.set(id, alert);
-      this.emit(true);
+      this.emitAlert(id, true);
     }, this.delayMs);
     this.pending.set(id, { handle, status: alert.status });
   }
@@ -276,19 +321,41 @@ export class NotificationCoordinator<H = unknown> {
    * store is updated (see the /api/notifications/prefs route).
    */
   applyPrefs(): void {
+    // First move what is on screen to the shape the preference asks for, so the retractions below
+    // close alerts in the shape they are shown in.
+    this.followIndividualPref();
     // Drop pending timers for a now-disabled kind — nothing was shown yet, so no re-emit is needed.
     for (const [id, p] of this.pending) {
       if (!this.isNotifiable(p.status)) this.cancelPending(id);
     }
     // Retract delivered alerts of a now-disabled kind; re-emit the shrunk summary once if any went.
-    let removed = false;
+    const removed: string[] = [];
     for (const [id, a] of this.outstanding) {
       if (!this.isNotifiable(a.status)) {
         this.outstanding.delete(id);
-        removed = true;
+        removed.push(id);
       }
     }
-    if (removed) this.emit(false);
+    this.retract(removed);
+  }
+
+  /**
+   * Move what is on screen to the shape the preference now asks for, silently: the alerts were
+   * already announced, so a change of shape is not a new one. Switching on closes the summary and
+   * opens one notification per outstanding pane; switching off closes those and opens the summary.
+   */
+  private followIndividualPref(): void {
+    const now = this.individual();
+    if (now === this.individualShown) return;
+    this.individualShown = now;
+    if (this.outstanding.size === 0) return;
+    if (!now) {
+      for (const id of this.outstanding.keys()) this.sink.clearPane(id);
+      this.emit(false);
+      return;
+    }
+    this.sink.clear();
+    for (const id of this.outstanding.keys()) this.emitAlert(id, false);
   }
 
   /**
@@ -298,16 +365,16 @@ export class NotificationCoordinator<H = unknown> {
    * blocked alert stays: only an answer clears it. A pane without both timestamps is left alone.
    */
   retractSeen(panes: Iterable<SeenStamps>): void {
-    let removed = false;
+    const removed: string[] = [];
     for (const { paneId, lastActiveAt, lastSeenAt } of panes) {
       if (lastActiveAt === undefined || lastSeenAt === undefined || lastSeenAt < lastActiveAt) continue;
       if (this.pending.get(paneId)?.status === "done") this.cancelPending(paneId);
       if (this.outstanding.get(paneId)?.status === "done") {
         this.outstanding.delete(paneId);
-        removed = true;
+        removed.push(paneId);
       }
     }
-    if (removed) this.emit(false);
+    this.retract(removed);
   }
 
   /**
@@ -317,14 +384,44 @@ export class NotificationCoordinator<H = unknown> {
    */
   clearAll(): void {
     for (const id of this.pending.keys()) this.cancelPending(id);
-    const had = this.outstanding.size > 0;
+    const gone = [...this.outstanding.keys()];
     this.outstanding.clear();
-    if (had) this.sink.clear();
+    if (gone.length === 0) return;
+    if (this.individual()) {
+      for (const id of gone) this.sink.clearPane(id);
+      return;
+    }
+    this.sink.clear();
+  }
+
+  /** The panes with an alert on screen, for the snooze route's clear of what is shown. */
+  outstandingPaneIds(): string[] {
+    return [...this.outstanding.keys()];
   }
 
   private resolve(id: string): void {
     this.cancelPending(id);
-    if (this.outstanding.delete(id)) this.emit(false);
+    if (this.outstanding.delete(id)) this.retract([id]);
+  }
+
+  /** Take already-removed alerts off the screen: each one's own notification, or the shrunk summary. */
+  private retract(removed: readonly string[]): void {
+    if (removed.length === 0) return;
+    if (!this.individual()) {
+      this.emit(false);
+      return;
+    }
+    for (const id of removed) this.sink.clearPane(id);
+  }
+
+  /** Show one alert: its own notification when the preference is on, else the summary it joined. */
+  private emitAlert(id: string, renotify: boolean): void {
+    const alert = this.outstanding.get(id);
+    if (alert === undefined || !this.individual()) {
+      this.emit(renotify);
+      return;
+    }
+    this.sink.renderPane(id, this.single(id, alert, renotify));
   }
 
   /** Re-render the single herd summary from whatever's outstanding (or clear it when empty). */
@@ -340,31 +437,7 @@ export class NotificationCoordinator<H = unknown> {
     const entries = [...this.outstanding.entries()];
     if (entries.length === 1) {
       const [paneId, a] = entries[0]!;
-      // One outstanding agent → deep-link straight to its pane on tap.
-      // An ask's push is GENERIC by rule: the pane's push name and nothing of the ask, because the
-      // ask's title and its tool line are the program's words and can carry a path or a command.
-      //
-      // The program MAY choose the words (`askText`, already cleaned and cut). Its title goes after the pane's
-      // push name, so the push still says where it comes from, and carries no code: those words are not
-      // Collie's to translate. Its line replaces the place as the body. Either part alone is used alone.
-      const title: Pick<HerdSummary, "title" | "titleCode" | "titleDetail"> =
-        a.ask !== true
-          ? pushTitle(a.status === "blocked" ? "agent.blocked" : "agent.done", { agent: a.agent })
-          : a.askText?.title !== undefined
-            ? { title: `${a.label}: ${a.askText.title}` }
-            : pushTitle("ask.permission", { pane: a.label });
-      return {
-        ...title,
-        // The PLACE, and nothing else. A push says the same two things the screens say — what it is
-        // called (the title, above) and where it sits — so the notification and the dashboard row it
-        // deep-links to read alike. The cwd is deliberately gone: a full absolute path on a lock
-        // screen is the least readable fact Collie has, and the space and tab are what locate the
-        // work.
-        body: a.ask === true && a.askText?.line !== undefined ? a.askText.line : a.place,
-        paneId,
-        renotify,
-        badge: 1,
-      };
+      return this.single(paneId, a, renotify);
     }
     const alerts = entries.map(([, a]) => a);
     const n = alerts.length;
@@ -372,6 +445,35 @@ export class NotificationCoordinator<H = unknown> {
     const allDone = alerts.every((a) => a.status === "done");
     const code = allBlocked ? "herd.blocked" : allDone ? "herd.done" : "herd.mixed";
     return { ...pushTitle(code, { count: n }), body: digestLabels(alerts).join(", "), renotify, badge: n };
+  }
+
+  /** What one agent's alert says on its own: the summary of one, and the whole of an individual one. */
+  private single(paneId: string, a: Alert, renotify: boolean): HerdSummary {
+    // One agent → deep-link straight to its pane on tap.
+    // An ask's push is GENERIC by rule: the pane's push name and nothing of the ask, because the
+    // ask's title and its tool line are the program's words and can carry a path or a command.
+    //
+    // The program MAY choose the words (`askText`, already cleaned and cut). Its title goes after the pane's
+    // push name, so the push still says where it comes from, and carries no code: those words are not
+    // Collie's to translate. Its line replaces the place as the body. Either part alone is used alone.
+    const title: Pick<HerdSummary, "title" | "titleCode" | "titleDetail"> =
+      a.ask !== true
+        ? pushTitle(a.status === "blocked" ? "agent.blocked" : "agent.done", { agent: a.agent })
+        : a.askText?.title !== undefined
+          ? { title: `${a.label}: ${a.askText.title}` }
+          : pushTitle("ask.permission", { pane: a.label });
+    return {
+      ...title,
+      // The PLACE, and nothing else. A push says the same two things the screens say — what it is
+      // called (the title, above) and where it sits — so the notification and the dashboard row it
+      // deep-links to read alike. The cwd is deliberately gone: a full absolute path on a lock
+      // screen is the least readable fact Collie has, and the space and tab are what locate the
+      // work.
+      body: a.ask === true && a.askText?.line !== undefined ? a.askText.line : a.place,
+      paneId,
+      renotify,
+      badge: 1,
+    };
   }
 
   private cancelPending(id: string): void {

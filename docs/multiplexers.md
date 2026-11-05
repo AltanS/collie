@@ -279,8 +279,8 @@ What looks different on the core:
   Collie finds their log from the pane's folder. A fresh pi or Oh My Pi pane shows an empty Chat until
   the agent's first reply, because pi writes its log only then. An older log in the same folder is not
   shown for a pane whose program started after it, and `pi --resume` keeps its Chat.
-- **A send takes a few seconds longer.** The core holds a key for about three seconds after Collie
-  types text. Collie waits for it, and a send to an agent takes about six seconds.
+- **Text and submit stay separate.** Collie checks the input box before submitting. Multiline
+  insertion and Oh My Pi's follow-up key use direct input, without the core's named-key quiet wait.
 - **The last viewer sets the width.** The terminal has the width of the last window that looked at it.
   herdr-app on a phone makes Claude narrow, and the phone then shows it narrow too. When no window
   looks at the terminal, it goes back to 200 columns.

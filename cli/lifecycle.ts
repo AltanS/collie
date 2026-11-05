@@ -1302,7 +1302,18 @@ export async function cmdExecBridge(deps: LifecycleDeps): Promise<number> {
   const spec = serviceSpec(deps.ctx, resolveTailscaleHosts(deps), deps.host);
   const env = { ...stringEnv(deps.ctx.env), ...bridgeEnvironment(spec) };
   for (const [k, v] of Object.entries(env)) process.env[k] = v;
-  await import("../bridge/index.ts");
+  try {
+    await import("../bridge/index.ts");
+  } catch (err) {
+    // The one place in the CLI that exits the process itself, against the rule in cli/program.ts
+    // that nothing may `process.exit()` (the exit code is `run`'s return value). For `_exec-bridge`
+    // the bridge IS the process. By the time a startup error reaches this catch the bridge has
+    // already opened its hold and walky sockets and started its poll loop and timers, so returning
+    // EXIT.FAIL would only set an exit code on a process that never ends: a dead bridge held alive,
+    // and a supervisor that restarts only an exit would never start it again (issue 699).
+    deps.io.err(`error: ${err instanceof Error ? err.message : String(err)}`);
+    process.exit(EXIT.FAIL);
+  }
   return EXIT.OK;
 }
 

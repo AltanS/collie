@@ -137,6 +137,8 @@ export type AsMessage = { readonly menu: true; readonly tap: TapLog; readonly id
  */
 export async function sendAsMessage(page: Page, recorder: TapRecorder, body: string, log: TapLog[]): Promise<AsMessage> {
   await page.getByRole("textbox").last().fill(body);
+  // The box composer opens on the first character; the field one has no `data-box`, so this is no failure.
+  await page.locator('[data-box="open"]').first().waitFor({ state: "attached", timeout: 1000 }).catch(() => undefined);
   const send = page.getByRole("button", { name: message("composer.send.sendAria"), exact: true });
   log.push(await hold(page, send, "hold Send"));
   const row = page.getByRole("button", { name: message("walky.composer.sendAsMessage"), exact: true });

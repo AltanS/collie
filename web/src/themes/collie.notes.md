@@ -1,11 +1,19 @@
-# Collie New: palette notes
+# Collie: palette notes
 
-The reasoning behind `collie-new.json` (JSON has no comments). Collie New is Collie, bolder and
-easier to read. It is still black and white like the dog mark, with neutral greys, but every
-pair that carries text or an edge is held well above what `collie` measures, the face is Atkinson
-Hyperlegible Next. The shape stays Collie's: square corners, 1px lines, row rules and the
-default spacing (Altan, 2026-11-04: soft corners, 2px lines and roomy steps were too much). The review that started it is `experiments/theme-readability-2026-11-03/FINDINGS.md`
-(findings 4 and 6 to 10 are the ones a theme can fix). `collie` itself draws as before; its file gained only the default pair of `tab-active`, its own ink.
+The reasoning behind `collie.json` (JSON has no comments). Since 2026-11-05 this is the default
+look, the one the stylesheet draws: it was the theme "Collie New", which replaced the first Collie
+look under the same name. Numbers marked "the old default" are the first Collie look, measured the
+same way, kept here so the reason for each move stays readable. It is still black and white like the
+dog mark, with neutral greys, but every pair that carries text or an edge is held well above what the
+old default measured, and the face is Atkinson Hyperlegible Next. The shape is square corners, 1px
+lines, row rules and the default spacing (Altan, 2026-11-04: soft corners, 2px lines and roomy steps
+were too much). The review that started it is
+`experiments/theme-readability-2026-11-03/FINDINGS.md` (findings 4 and 6 to 10 are the ones a theme
+can fix).
+
+The file and the stylesheet say the same thing twice: `index.css` holds the `:root` tokens and shape
+declarations the page paints, and `themes.test.ts` holds this file equal to them, token for token.
+Change both together.
 
 Measured with `contrastReport` from `lib/theme/schema.ts` (plain sRGB alpha, the pessimistic side of
 the browser's mix) and the same arithmetic for the rows the gate does not cover: chips on the band,
@@ -16,7 +24,7 @@ the light-mode inversion. The report passes all 62 checks in both halves.
 
 - One neutral key for both halves: chroma 0 on inks, at most 0.004 at hue 80 (a warm hint, no blue
   cast) on every surface. Nothing here reads as tinted.
-- Light `background` is oklch(0.955 0.003 80) (#f1f0ee). `collie` is 0.97; that leaves a white card
+- Light `background` is oklch(0.955 0.003 80) (#f1f0ee). The old default is 0.97; that leaves a white card
   1.09 above the page, which the review called too close. At 0.955 the card, pure white, stands
   1.14 above it. `chrome`, `secondary` and `muted` sit a step below the page at 0.915 (#e4e3e0,
   1.13 below the page), `accent` at 0.885 for the pressed state, so rest, hover and active stay three
@@ -24,11 +32,11 @@ the light-mode inversion. The report passes all 62 checks in both halves.
 - Dark `background` is oklch(0.17 0.003 80) (#100f0e), `card` 0.235 (1.15 above), `secondary`,
   `muted` and the band 0.28 (1.32 above the page), `accent` 0.32. `chrome` follows the band.
 - Inks: light `foreground` oklch(0.14 0 0), dark oklch(0.985 0 0). The page is further from white
-  than `collie`'s, so text on the page is 17.48 (light) against `collie`'s 18.16, and on a card
+  than the old default's, so text on the page is 17.48 (light) against the old default's 18.16, and on a card
   19.91 against 19.80. Dark is 18.35 on the page against 18.97, and 15.96 on a card against 17.2.
   All far over AAA; the card is where text sits.
 - `muted-foreground` is oklch(0.40 0.004 80) light and oklch(0.80 0.004 80) dark: 8.12 and 10.22 on
-  the page (`collie` 6.04 and 7.66), and 7.21 and 7.76 on the band, so quiet text is AAA on every
+  the page (the old default 6.04 and 7.66), and 7.21 and 7.76 on the band, so quiet text is AAA on every
   surface it can stand on. The review's finding 4 (the composer belt at 3.98) and finding 7 (the faded
   muted ink) start from this value.
 - The band is `chrome: band`, which paints the header and the two bars with `secondary` and a
@@ -37,59 +45,55 @@ the light-mode inversion. The report passes all 62 checks in both halves.
 ## Lines and focus
 
 - `border` is opaque grey, not white at an alpha, so the number is the paint. Light oklch(0.82 0.004
-  80): 1.74 on a card (`collie` 1.26). Dark oklch(0.42 0.003 80): 1.97 on a card (`collie` 1.42).
+  80): 1.74 on a card (the old default 1.26). Dark oklch(0.42 0.003 80): 1.97 on a card (the old default 1.42).
 - `input` is the edge of a field, held at 3:1 (WCAG 1.4.11). Light oklch(0.64 0.004 80): 3.36 on a
-  card, 2.95 on the page. Dark oklch(0.58 0.003 80): 3.88 on a card, 4.47 on the page. `collie` is
+  card, 2.95 on the page. Dark oklch(0.58 0.003 80): 3.88 on a card, 4.47 on the page. The old default is
   1.26 and 1.58.
 - `rule` is stronger than `border` in both halves: light 2.18 on the page against 1.53, dark 3.49
-  against 2.27. It is the line that matters (a divider, a dashed ring); `collie`'s is 1.33 and 2.06.
-- Lines are 1px, as in `collie`; the edge comes from the 1.74 grey, not from width. Cards read as
+  against 2.27. It is the line that matters (a divider, a dashed ring); the old default's is 1.33 and 2.06.
+- Lines are 1px, as in the old default; the edge comes from the 1.74 grey, not from width. Cards read as
   cards without a shadow, so the theme draws none.
 - `ring` is oklch(0.5 0 0) light (5.28 on the page) and oklch(0.76 0 0) dark (8.93).
-- `pane-active` is the brand violet (see below), no longer the `:root` sky blue. The file is version 3.
+- `pane-active` is the theme's ink (see below), not the sky blue the old default drew. The file is version 3.
 
 ## The one accent
 
 - `primary` is neutral: light oklch(0.2 0 0) under oklch(0.985 0 0) (17.34), dark oklch(0.96 0 0)
   under the page colour (17.10). It is the dog's black and white. The only colour on a surface is
-  `control-on`, a pale sky tint as in `collie` (light oklch(0.88 0.06 235), its ink 8.70; dark
+  `control-on`, a pale sky tint as in the old default (light oklch(0.88 0.06 235), its ink 8.70; dark
   oklch(0.34 0.06 240), its ink 9.21).
 - `destructive` stays red. Light oklch(0.5 0.21 27) under near-white (6.30 for the filled button),
   5.77 as text on the page, 6.57 on a card, 5.12 on the band. Dark oklch(0.72 0.19 22) under the
-  page colour (6.83), 5.94 on a card, 5.19 on the band. `collie`'s dark filled button is near white on
+  page colour (6.83), 5.94 on a card, 5.19 on the band. The old default's dark filled button is near white on
   light red (2.77, the one known failure of its own report); this one does not carry it.
 
-## The brand violet and the folder tab
+## The folder tab, in ink
 
-Two optional tokens (schema version 3) carry the one colour the theme adds beside `control-on`: the
-violet of the Collie brand mark, hue 295. `tab-active` is the 3px top edge of the open tab and the
-ring of the open pane under `tabs: folder`; `pane-active` is the frame of the active pane column on a
-large screen. Both hold the same value in each half, so the two places that mark "you are here" agree.
+Two optional tokens (schema version 3) mark "you are here". Both are the theme's own ink, the same
+value as `foreground` in each half: violet was tried first (2026-11-05) and Altan found it did not
+suit a black and white theme. `tab-active` is the 2px top edge of the open tab and the ring of the
+open pane under `tabs: folder`; `pane-active` is the frame of the active pane column on a large screen.
 
-| token                  | light                 | dark                  |
-| ---------------------- | --------------------- | --------------------- |
-| `tab-active`, `pane-active` | oklch(0.50 0.19 295) | oklch(0.76 0.15 295)  |
-| on `background` (floor 3) | 5.76               | 8.45                  |
-| on `chrome`, the tab row  | 5.11               | 6.41                  |
-| on the open pane's fill   | 4.71               | 7.06                  |
+| token                       | light           | dark             |
+| --------------------------- | --------------- | ---------------- |
+| `tab-active`, `pane-active` | oklch(0.14 0 0) | oklch(0.985 0 0) |
 
-- The open pane's fill is the page with 14 percent of the violet laid in (oklab), oklch(0.8913 0.0245
-  298.46) light and oklch(0.2526 0.0189 299.48) dark. `foreground` on it is 14.30 and 15.34, so the
-  pane name stays far over AAA; the ring on it is 4.71 and 7.06, over the 3 a shape needs.
-- The other panes are `secondary` cells in `muted-foreground`: 7.21 light, 7.76 dark, the same pair
-  the band already measures. The violet ring on `secondary` is 5.11 and 6.41.
-- `rule` (the line under the tab row and on each side of the open tab) is 2.18 and 3.49 on the page,
-  1.94 and 2.65 on the chrome ground the row stands on.
-- Light violet is deep and saturated (0.50, 0.19) so the 3px edge reads against the near-white page;
-  dark is lighter and softer (0.76, 0.15) so it stays a violet and not a glare on the dark page.
+- On `background` they measure what `foreground` measures there, far over the 3 a shape needs.
+- The open pane's fill is the page with 14 percent of the ink laid in (oklab), a grey step; the pane
+  name in `foreground` and the ink ring both stay over their floors.
+- The other panes are `secondary` cells in `muted-foreground`: 7.21 light, 7.76 dark.
+- `rule` (the line under the tab row and on each side of the open tab) is 2.18 and 3.49 on the page.
+- The tab row keeps 6px of its ground above the tabs, so the open tab rises out of the row and does
+  not touch the header's line. Tabs carry 12px of padding on each side under `folder`.
+
 - `tabs: folder` and `composer: box` are surface words that set no CSS (`zoom` is the other): the app
   reads them (`lib/tab-look.ts`, `lib/composer-layout.ts`). They reach no pair the report measures,
-  so the 58 checks that existed before are unchanged and the four new ones are the two violet pairs.
+  so the checks that existed before are unchanged; the new ones are the two ink pairs.
 
 ## Status
 
-`collie`'s hues (blocked 25, working 72, done 152, idle and unknown 250, info 230). Light inks are 0.01
-to 0.04 darker than `collie`'s (blocked 0.43, working 0.43, done 0.41, idle 0.42, unknown 0.38, info
+The old default's hues (blocked 25, working 72, done 152, idle and unknown 250, info 230). Light inks are 0.01
+to 0.04 darker than the old default's (blocked 0.43, working 0.43, done 0.41, idle 0.42, unknown 0.38, info
 0.42), dark inks 0.01 to 0.1 lighter or less saturated where the band needs it (blocked
 oklch(0.8 0.15 24)). Chip = ink over the ink at /15 over the ground.
 
@@ -104,44 +108,43 @@ oklch(0.8 0.15 24)). Chip = ink over the ink at /15 over the ground.
 
 - Tightest cells: light info on the band (4.79), dark unknown on the band (4.91). Darken the light
   inks and lighten the dark ones if either moves; never the reverse.
-- Blocked and done are far apart in oklab, as in `collie` (floor 0.15).
-- Idle and unknown keep `collie`'s pair rule: same hue, chroma 0.02 to 0.03, unknown below idle.
+- Blocked and done are far apart in oklab, as in the old default (floor 0.15).
+- Idle and unknown keep the old default's pair rule: same hue, chroma 0.02 to 0.03, unknown below idle.
 
 ## Syntax and hosts
 
-The hues are `collie`'s (keyword 350, string 250, constant 55, property 200, entity 300, comment
+The hues are the old default's (keyword 350, string 250, constant 55, property 200, entity 300, comment
 neutral; hosts 221, 41, 302, 132, 352, 185, 262, 325, 241, 280). Only the lightness moved.
 
-- Light syntax inks sit at 0.43 to 0.46 (`collie` 0.45 to 0.5). On a card 7.11 to 8.13, on the page
+- Light syntax inks sit at 0.43 to 0.46 (the old default 0.45 to 0.5). On a card 7.11 to 8.13, on the page
   6.24 to 7.14, on the band 5.54 to 6.34, on a row tinted by done or blocked at /12 (over a card or
   the page) at least 4.97. Lowest cell: the comment ink, oklch(0.46 0.004 80), on a row tinted over
   the page (4.97).
-- Light hosts sit at 0.45 (`collie` 0.46), 7.06 to 8.38 on a card, lowest 4.94 (host 5 on a tinted row over the page).
+- Light hosts sit at 0.45 (the old default 0.46), 7.06 to 8.38 on a card, lowest 4.94 (host 5 on a tinted row over the page).
 - Dark syntax inks sit at 0.78 to 0.82, 7.19 to 9.91 on a card, lowest 5.73 (comment on an added row).
-- Dark hosts keep `collie`'s lightness except two: host 2 (purple) moved from 0.714 to 0.74 and
+- Dark hosts keep the old default's lightness except two: host 2 (purple) moved from 0.714 to 0.74 and
   host 9 (indigo) from 0.673 to 0.70 with less chroma, so each clears 4.5 on the band and on a tinted
   row. 5.83 to 10.85 on a card, lowest 4.64 (host 9 on a deleted row).
 
 ## Face and shape
 
 Atkinson Hyperlegible Next for the text (key `atkinson`, real weights 400 to 700, so `bold` is drawn
-and not synthesised). Aldrich stays as the display face: h1, h2 and the brand line keep the voice of
-the default. Aldrich has one weight and is 13 percent wider than the system face (review finding 10),
+and not synthesised). Aldrich stays as the display face: h1, h2 and the brand line keep the voice they always had. Aldrich has one weight and is 13 percent wider than the system face (review finding 10),
 which is why it leaves the rows and the meta text.
 
 | token   | word     | why                                                                         |
 | ------- | -------- | --------------------------------------------------------------------------- |
-| radius  | sharp    | Collie's square corners; a marked row keeps its left bar.                      |
+| radius  | sharp    | Square corners; a marked row keeps its left bar.                      |
 | shadow  | flat     | No shadow. The 1px line carries the edge, so nothing looks soft.            |
-| density | default  | Collie's 0.25rem step; roomy put too much space at the edges.                |
+| density | default  | The 0.25rem step; roomy put too much space at the edges.                |
 | weight  | bold     | Medium is 600 and semibold 700, which Atkinson draws for real.                |
 | border  | default  | A 1px edge in a 1.74 grey; 2px read as too thick.                            |
 | ground  | flat     | The page stays one plain colour; no texture under the text.                   |
 | chrome  | band     | Header and bars on `secondary`, with a `border` edge: a step from the page.   |
-| rows    | rules    | Collie's lines between rows; cards drew a card inside each settings card.    |
+| rows    | rules    | Lines between rows; cards drew a card inside each settings card.    |
 | icons   | default  | A stroke of 2 (the table has thin, default and heavy; heavy would be loud).   |
 | labels  | sentence | No small capitals and no tracking; section labels read as words.              |
-| tabs    | folder   | The open tab is a folder tab joined to the pane row; violet 3px edge.         |
+| tabs    | folder   | The open tab is a folder tab joined to the pane row; a 2px ink edge.          |
 | composer | box     | The composer is a box (the layout is built apart from this file).             |
 
 Every word exists in `surface.ts`. Nothing was approximated.
@@ -153,7 +156,7 @@ widths with an imported theme that names the largest word of every token, and th
 
 ## The mirror
 
-The terminal palette is dark-space, gate-checked, and based on `collie`'s own slots with the review's
+The terminal palette is dark-space, gate-checked, and based on the old default's own slots with the review's
 fixes (findings 1, 2, 12). The ground is `#100f0d`, computed back from the light page: turned over by
 `invert(1) hue-rotate(180deg)` (ADR 0002, `mirror-space.ts`) it is `#f1f0ee`, the light `background`
 itself (1.00), so the mirror's ground ends where the page begins in light, as in Harbour. In dark it
@@ -161,7 +164,7 @@ is 1.00 below the page `#100f0e`. Ink `#f2f1ef` is 16.97 on the ground and 16.94
 ground.
 
 Every slot is measured twice: in dark space on `#100f0d`, and after the light-mode turn on `#f1f0ee`
-(floor in the gate is 3, the target here 4.5). `collie`'s slots 1 to 14 turned over measure 2.0 to
+(floor in the gate is 3, the target here 4.5). The old default's slots 1 to 14 turned over measure 2.0 to
 4.3.
 
 | slot | colour    | dark  | light (turned over) | note                                |
@@ -184,7 +187,7 @@ Every slot is measured twice: in dark space on `#100f0d`, and after the light-mo
 | 15   | `#ffffff` | 19.16 | 18.44               | bright set                          |
 
 - Red. The review proved that a saturated red cannot clear 4.5 in both spaces (`#e5484d` is 4.89 in
-  dark and 2.31 turned over; `collie`'s `#cd3131` and `#f14c4c` are 2.05 and 2.51). The cost of passing
+  dark and 2.31 turned over; the old default's `#cd3131` and `#f14c4c` are 2.05 and 2.51). The cost of passing
   is chroma. Slot 1 is oklch(0.73 0.12 22), a coral red: 7.63 and 4.57. Slot 9 is a lighter coral,
   10.25 and 6.91. If a stronger red is wanted, `#e5484d` is the review's choice and gives up
   2.2 points in light. Truecolor from an agent is not re-themed by any slot, so the structural fix

@@ -90,7 +90,8 @@ test("the Collie look fetches only its own face, and draws every default", async
   onlyPhone(testInfo);
   const context = await browser.newContext({ baseURL: testInfo.project.use.baseURL, serviceWorkers: "block" });
   const { page, fonts } = await openWith(context, undefined, "/");
-  expect(fonts.filter((f) => !f.startsWith("ui-aldrich") && !f.startsWith("nerd"))).toEqual([]);
+  // The UI face is Atkinson since 2026-11-06 and the display face (titles) is Aldrich: two files, no more.
+  expect(fonts.filter((f) => !f.startsWith("ui-atkinson") && !f.startsWith("ui-aldrich") && !f.startsWith("nerd"))).toEqual([]);
   const seen = await page.evaluate(() => {
     const view = window;
     const style = (el: Element | null | undefined) => (el === null || el === undefined ? undefined : view.getComputedStyle(el));
@@ -107,19 +108,20 @@ test("the Collie look fetches only its own face, and draws every default", async
       tracking: style(document.querySelector(".label-caps"))?.letterSpacing,
     };
   });
+  // The default look: the faint crossed grain behind the page (two 45deg hatch gradients, d2279ff88), a band
+  // behind the header (--secondary), labels as typed, no tracking.
+  expect(seen.ground).toMatch(/^repeating-linear-gradient\(45deg,.*\), repeating-linear-gradient\(-45deg,/u);
   expect(seen).toEqual({
-    ground: "none",
-    header: seen.page,
+    ground: seen.ground,
+    header: await resolved(page, "var(--secondary)"),
     page: seen.page,
     rowGap: "0px",
     rowEdge: "0px",
     rowShadow: "none",
     stroke: "2px",
-    label: "uppercase",
-    tracking: seen.tracking,
+    label: "none",
+    tracking: "normal",
   });
-  // tracking-wide at the label's own size: 0.025em of 11px.
-  expect(Number.parseFloat(seen.tracking ?? "0")).toBeCloseTo(0.275, 2);
   await context.close();
 });
 
@@ -128,7 +130,8 @@ test("a theme naming all seven paints each one, and its display face costs exact
   const context = await browser.newContext({ baseURL: testInfo.project.use.baseURL, serviceWorkers: "block" });
   const { page, fonts } = await openWith(context, ALL, "/");
   expect(fonts.filter((f) => f.startsWith("ui-geist"))).toHaveLength(1);
-  expect(fonts.filter((f) => !f.startsWith("ui-aldrich") && !f.startsWith("nerd") && !f.startsWith("ui-geist"))).toEqual([]);
+  // ui-atkinson is index.html's preload of the default face, fetched whatever the device chose.
+  expect(fonts.filter((f) => !f.startsWith("ui-atkinson") && !f.startsWith("ui-aldrich") && !f.startsWith("nerd") && !f.startsWith("ui-geist"))).toEqual([]);
 
   const secondary = await resolved(page, "var(--secondary)");
   const seen = await page.evaluate(() => {

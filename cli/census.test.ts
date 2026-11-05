@@ -227,13 +227,22 @@ describe("sessions", () => {
     });
   });
 
-  test("the read carries the local credential and never a Tailscale header", async () => {
+  test("the read carries the local credential and sends no Tailscale header when no trusted user is set", async () => {
     const r = rig({ [SECRET_FILE]: `${SECRET}\n` }, { "/api/snapshot": snapshot() });
     await gatherCensus(r.deps, { running: true, crew: "solo" });
     expect(r.seen).toHaveLength(1);
     expect(r.seen[0]!.url).toBe("http://127.0.0.1:8788/api/snapshot");
     expect(r.seen[0]!.headers.authorization).toBe(`Bearer ${SECRET}`);
     expect(Object.keys(r.seen[0]!.headers).map((k) => k.toLowerCase())).not.toContain("tailscale-user-login");
+  });
+
+  test("a configured trusted user rides on the read as the Tailscale login (#701)", async () => {
+    const r = rig({ [SECRET_FILE]: `${SECRET}\n` }, { "/api/snapshot": snapshot() });
+    const deps = { ...r.deps, ctx: context({ COLLIE_CREW_TIMEOUT_MS: "60000", COLLIE_TRUSTED_USER: "me@example.com" }, { stateDir: STATE, port: 8788 }) };
+    const { sessions } = await gatherCensus(deps, { running: true, crew: "solo" });
+    expect(sessions.read).toBe("ok");
+    expect(r.seen[0]!.headers["tailscale-user-login"]).toBe("me@example.com");
+    expect(r.seen[0]!.headers.authorization).toBe(`Bearer ${SECRET}`);
   });
 
   test("with no bridge running nothing is dialled and the block says so", async () => {

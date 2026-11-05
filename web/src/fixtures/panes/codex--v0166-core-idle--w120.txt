@@ -1,0 +1,16 @@
+
+
+• I’ll run the command now.
+
+• Ran sleep 8; ls
+  └ README.md
+
+• DONE
+
+  Worked for 11s • 5:16 PM
+
+
+› Ask Codex to do anything
+
+  GPT-6.1-Sol low · /var/home/alice/.cache/collie-lab/codex-lab/project · Run sleep and list files
+  ← for agents · ? for shortcuts

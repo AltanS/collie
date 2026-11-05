@@ -11,7 +11,8 @@ import {
   ASK_EVERY_MS,
   BACKOFF,
   claudeAccountSource,
-  claudeCredentialsPath,
+  claudeKeychainService,
+  CLAUDE_KEYCHAIN_SERVICE,
   claudeTokenFrom,
   CLAUDE_USAGE_URL,
   codexAccountSource,
@@ -22,6 +23,7 @@ import {
   hasOpencodeGoEntry,
   isTurnEnd,
   limitedWait,
+  MAX_CUSTOM_CONFIG_DIRS,
   opencodeAccountSource,
   opencodeGoKeyFrom,
   parseAccountUsage,
@@ -174,7 +176,6 @@ describe("the Claude login", () => {
 
   it("follows CLAUDE_CONFIG_DIR", async () => {
     const profile = join("/profiles", "work", ".credentials.json");
-    expect(claudeCredentialsPath({ CLAUDE_CONFIG_DIR: "/profiles/work" }, HOME)).toBe(profile);
     const read = await readClaudeLogin(seams({ env: { CLAUDE_CONFIG_DIR: "/profiles/work" }, files: { [profile]: { mode: 0o600, text: login() } } }));
     expect(read.ok).toBe(true);
   });
@@ -211,18 +212,74 @@ describe("the Claude login", () => {
   });
 
   it("asks the Keychain on macOS only, and only when the file is absent", async () => {
-    let asked = 0;
-    const keychain = async (): Promise<string | null> => {
-      asked += 1;
+    const services: Array<string | undefined> = [];
+    const keychain = async (svc?: string): Promise<string | null> => {
+      services.push(svc);
       return `${login()}\n`;
     };
     expect(await readClaudeLogin(seams({ platform: "darwin", keychain }))).toEqual({ ok: true, token: TOKEN });
-    expect(asked).toBe(1);
+    expect(services).toEqual([CLAUDE_KEYCHAIN_SERVICE]);
     expect(await readClaudeLogin(seams({ platform: "linux", keychain }))).toEqual({ ok: false, reason: "missing" });
-    expect(asked).toBe(1);
+    expect(services.length).toBe(1);
     expect((await readClaudeLogin(seams({ platform: "darwin", keychain, files: { [path]: { mode: 0o600, text: login() } } }))).ok).toBe(true);
-    expect(asked).toBe(1);
+    expect(services.length).toBe(1);
     expect(await readClaudeLogin(seams({ platform: "darwin", keychain: async () => null }))).toEqual({ ok: false, reason: "missing" });
+  });
+
+  it("derives the macOS Keychain service name from CLAUDE_CONFIG_DIR when non-default", async () => {
+    const customDir = "/profiles/work";
+    // sha256("/profiles/work").slice(0, 8) === "2ea9e238"
+    const expectedHash = "2ea9e238";
+    expect(claudeKeychainService()).toBe(CLAUDE_KEYCHAIN_SERVICE);
+    expect(claudeKeychainService("   ")).toBe(CLAUDE_KEYCHAIN_SERVICE);
+    expect(claudeKeychainService(customDir)).toBe(`${CLAUDE_KEYCHAIN_SERVICE}-${expectedHash}`);
+    // Claude Code hashes the string as set, with no trim and no path clean-up: a trailing slash is another item
+    // (sha256("/profiles/work/").slice(0, 8) === "75564947", sha256("/profiles/café" as NFC UTF-8) === "4bee4e79").
+    const slashed = claudeKeychainService(`${customDir}/`);
+    expect(slashed).toBe(`${CLAUDE_KEYCHAIN_SERVICE}-75564947`);
+    expect(slashed).not.toBe(claudeKeychainService(customDir));
+    expect(claudeKeychainService(` ${customDir} `)).not.toBe(claudeKeychainService(customDir));
+    // NFC first: an NFD "é" (e + U+0301) names the same item as its NFC form.
+    const nfc = "/profiles/caf\u00e9";
+    const nfd = "/profiles/cafe\u0301";
+    expect(nfd).not.toBe(nfc);
+    expect(claudeKeychainService(nfd)).toBe(claudeKeychainService(nfc));
+    expect(claudeKeychainService(nfc)).toBe(`${CLAUDE_KEYCHAIN_SERVICE}-4bee4e79`);
+
+    const services: Array<string | undefined> = [];
+    const keychain = async (svc?: string): Promise<string | null> => {
+      services.push(svc);
+      return `${login({ accessToken: "sk-ant-oat01-custom" })}\n`;
+    };
+    expect(await readClaudeLogin(seams({ platform: "darwin", keychain }), customDir)).toEqual({
+      ok: true,
+      token: "sk-ant-oat01-custom",
+    });
+    expect(await readClaudeLogin(seams({ platform: "darwin", env: { CLAUDE_CONFIG_DIR: customDir }, keychain }))).toEqual({
+      ok: true,
+      token: "sk-ant-oat01-custom",
+    });
+    expect(await readClaudeLogin(seams({ platform: "darwin", keychain }), join(HOME, ".claude"))).toEqual({
+      ok: true,
+      token: "sk-ant-oat01-custom",
+    });
+    expect(services).toEqual([
+      `${CLAUDE_KEYCHAIN_SERVICE}-${expectedHash}`,
+      `${CLAUDE_KEYCHAIN_SERVICE}-${expectedHash}`,
+      CLAUDE_KEYCHAIN_SERVICE,
+    ]);
+  });
+
+  it("hands a session's raw config dir to the Keychain name, whatever its spelling", async () => {
+    const services: Array<string | undefined> = [];
+    const keychain = async (svc?: string): Promise<string | null> => {
+      services.push(svc);
+      return null;
+    };
+    const source = claudeAccountSource(seams({ platform: "darwin", keychain }), "/profiles/work/");
+    if (source.kind !== "http") throw new Error("claude is an http source");
+    await source.login();
+    expect(services).toEqual([`${CLAUDE_KEYCHAIN_SERVICE}-75564947`]);
   });
 
   it("builds the one ask with the bearer header and the beta header", () => {
@@ -609,6 +666,91 @@ describe("AccountWindows", () => {
     expect(fake.calls).toEqual([]);
     expect(windows.limits("claude")).toBeUndefined();
   });
+
+  it("isolates custom configDir slots, never falls back to default, and bounds custom slots to MAX_CUSTOM_CONFIG_DIRS", async () => {
+    const dirA = "/profiles/a";
+    const dirB = "/profiles/b";
+    const dirMissing = "/profiles/missing";
+    const slotEntries = Array.from({ length: MAX_CUSTOM_CONFIG_DIRS + 1 }, (_v, idx) => [
+      join(`/profiles/slot-${String(idx + 1)}`, ".credentials.json"),
+      { mode: 0o600, text: login({ accessToken: `sk-ant-oat01-slot-${String(idx + 1)}` }) },
+    ] as const);
+    const files: Parameters<typeof fileSeams>[0] = {
+      [join(HOME, ".claude", ".credentials.json")]: { mode: 0o600, text: login({ accessToken: "sk-ant-oat01-default" }) },
+      [join(dirA, ".credentials.json")]: { mode: 0o600, text: login({ accessToken: "sk-ant-oat01-dirA" }) },
+      [join(dirB, ".credentials.json")]: { mode: 0o600, text: login({ accessToken: "sk-ant-oat01-dirB" }) },
+      ...Object.fromEntries(slotEntries),
+    };
+    const clock = { now: NOW };
+    const seenTokens: string[] = [];
+    const fetch: AccountFetch = async (_url, init) => {
+      const auth = init.headers.Authorization ?? "";
+      seenTokens.push(auth);
+      const used = auth.endsWith("default") ? 10 : auth.endsWith("dirA") ? 25 : auth.endsWith("dirB") ? 75 : 50;
+      return { status: 200, text: async () => flatBody({ utilization: used, resets_at: RESET_5H }, null) };
+    };
+    const windows = new AccountWindows({
+      enabled: true,
+      sources: [claudeAccountSource({ ...fileSeams(files), now: () => clock.now })],
+      fetch,
+      now: () => clock.now,
+      userAgent: "collie/1.24.0",
+    });
+    windows.observe([pane("claude")], "main");
+    await windows.settled();
+    expect(windows.limits("claude")).toEqual([{ window: "5h", used: 10, resetsAt: Date.parse(RESET_5H) }]);
+
+    // First call registers dirA and triggers a background ask; before it settles, it returns undefined (never default's 10%).
+    expect(windows.limits("claude", dirA)).toBeUndefined();
+    expect(windows.limits("claude", dirB)).toBeUndefined();
+    expect(windows.limits("claude", dirMissing)).toBeUndefined();
+    await windows.settled();
+    expect(windows.limits("claude", dirA)).toEqual([{ window: "5h", used: 25, resetsAt: Date.parse(RESET_5H) }]);
+    expect(windows.limits("claude", dirB)).toEqual([{ window: "5h", used: 75, resetsAt: Date.parse(RESET_5H) }]);
+    // Missing login stays undefined and never falls back to default's 10%.
+    expect(windows.limits("claude", dirMissing)).toBeUndefined();
+
+    // Poke refreshes active custom dirs after POKE_EVERY_MS, and closed custom dirs stop polling.
+    windows.observeConfigDirs("claude", new Set([dirA]), "main");
+    const countBeforePoke = seenTokens.length;
+    clock.now += POKE_EVERY_MS;
+    windows.poke("claude");
+    await windows.settled();
+    expect(seenTokens.slice(countBeforePoke).toSorted()).toEqual(["Bearer sk-ant-oat01-default", "Bearer sk-ant-oat01-dirA"]);
+
+    // Clearing active custom dirs for the scope stops polling them on subsequent pokes.
+    windows.observeConfigDirs("claude", new Set(), "main");
+    const countAfterClose = seenTokens.length;
+    clock.now += POKE_EVERY_MS;
+    windows.poke("claude");
+    await windows.settled();
+    expect(seenTokens.slice(countAfterClose)).toEqual(["Bearer sk-ant-oat01-default"]);
+
+    // Advance past dirMissing's 1-minute missing-login backoff so all idle custom slots are evictable.
+    clock.now += BACKOFF.none;
+    for (let i = 1; i <= MAX_CUSTOM_CONFIG_DIRS + 1; i++) {
+      windows.limits("claude", `/profiles/slot-${String(i)}`);
+      await windows.settled();
+    }
+    expect(windows.limits("claude", `/profiles/slot-${String(MAX_CUSTOM_CONFIG_DIRS + 1)}`)).toEqual([
+      { window: "5h", used: 50, resetsAt: Date.parse(RESET_5H) },
+    ]);
+    // dirA was evicted when the cap was exceeded, so asking for it again starts fresh (undefined before settled).
+    expect(windows.limits("claude", dirA)).toBeUndefined();
+
+    // Even when the bridge process itself has CLAUDE_CONFIG_DIR set in env, a default-dir session (configDir undefined)
+    // reads ~/.claude rather than the bridge's own CLAUDE_CONFIG_DIR.
+    const bridgeWindows = new AccountWindows({
+      enabled: true,
+      sources: [claudeAccountSource({ ...fileSeams(files), env: { CLAUDE_CONFIG_DIR: dirA }, now: () => clock.now })],
+      fetch,
+      now: () => clock.now,
+      userAgent: "collie/1.24.0",
+    });
+    bridgeWindows.observe([pane("claude")], "main");
+    await bridgeWindows.settled();
+    expect(bridgeWindows.limits("claude")).toEqual([{ window: "5h", used: 10, resetsAt: Date.parse(RESET_5H) }]);
+  });
 });
 
 describe("isTurnEnd", () => {
@@ -637,7 +779,7 @@ describe("the doctor line", () => {
 
   it("follows CLAUDE_CONFIG_DIR and CODEX_HOME, and names the Keychain on a Mac", () => {
     expect(line(undefined, { CLAUDE_CONFIG_DIR: "/profiles/work", CODEX_HOME: "/c" })).toBe(
-      `claude: on (reads ${join("/profiles/work", ".credentials.json")}, asks api.anthropic.com); codex: on (reads ${join("/c", "sessions")}); ${UNVERIFIED_OFF}`,
+      `claude: on (reads ~/.claude/.credentials.json, plus the login under CLAUDE_CONFIG_DIR for each session that sets it, asks api.anthropic.com); codex: on (reads ${join("/c", "sessions")}); ${UNVERIFIED_OFF}`,
     );
     expect(line(undefined, {}, "darwin")).toContain("claude: on (reads ~/.claude/.credentials.json or the Keychain, asks api.anthropic.com)");
   });

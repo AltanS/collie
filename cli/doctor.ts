@@ -56,7 +56,7 @@ import {
   telemetryState,
 } from "../bridge/telemetry.ts";
 import { asJsonBoolean, asJsonObject, asJsonString, parseJson } from "../web/src/lib/json.ts";
-import { readOwnSnapshot } from "./snapshot-read.ts";
+import { identityHeader, readOwnSnapshot } from "./snapshot-read.ts";
 import { collieVersionBare, type CliContext } from "./context.ts";
 import { CrewOpsStore } from "../bridge/crew/ops-store.ts";
 import { crewDelta, deltaLines } from "./crew-delta.ts";
@@ -1264,29 +1264,6 @@ async function ownSnapshot(deps: DoctorDeps): Promise<SnapshotRead> {
   // The configured login (issue #238, below) rides beside the bridge's local read credential, which
   // `readOwnSnapshot` adds itself: reads need a pairing token now (ADR 0086) and this process holds none.
   return readOwnSnapshot(deps, { extraHeaders: identityHeader(deps) });
-}
-
-/**
- * The identity this verb shows its own bridge, or nothing when none is configured (issue #238).
- *
- * `checkAccess` (bridge/server.ts) fails closed on a request with no `Tailscale-User-Login` while
- * `tailscale serve` is in front, because an absent header is not evidence of a local caller: a TAGGED
- * node arrives without one too. So this verb could not read its own snapshot, and reported a healthy
- * bridge as one that had not answered.
- *
- * Sending the configured login GRANTS NOTHING THAT WAS NOT ALREADY THERE. The login is an identity,
- * not a secret, and the bridge already accepts the header from any caller that reaches its port —
- * `curl -H 'Tailscale-User-Login: …' http://127.0.0.1:<port>/api/snapshot` answers 200 today, which is
- * how the reporter demonstrated the bug. The alternative, a loopback exemption, is the one thing that
- * must NOT be done: `tailscale serve` dials the bridge from loopback itself, so every tailnet request
- * would take it.
- *
- * With no login configured the header is omitted rather than invented: the bridge is then either open
- * to the tailnet (it warns about that itself at boot) or it refuses, and a refusal reads as a refusal.
- */
-function identityHeader(deps: Pick<DoctorDeps, "ctx">): Record<string, string> | undefined {
-  const login = deps.ctx.env.COLLIE_TRUSTED_USER ?? "";
-  return login === "" ? undefined : { "Tailscale-User-Login": login };
 }
 
 /** A thunk that runs at most once: the first caller pays, every later one shares the same promise. */

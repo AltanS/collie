@@ -395,6 +395,13 @@ function field(o: JsonObject | undefined, key: string): string | undefined {
   return typeof v === "string" && v.trim() !== "" ? v : undefined;
 }
 
+/** The info `endNotice` hands `settle`: a status, and an exit code only when it is a number. */
+function endInfo(status: string, exitCode: JsonValue | undefined): JsonObject {
+  const info: JsonObject = { status };
+  if (typeof exitCode === "number") info.exitCode = exitCode;
+  return info;
+}
+
 /** The `id` of each question a call's input names, keyed by the question's text. */
 function questionIdsOf(input: JsonValue | undefined): Map<string, string> {
   const ids = new Map<string, string>();
@@ -560,6 +567,9 @@ const PI_KNOWN: KnownTypes = {
 
 /** The statuses Gentle Shell and Oh My Pi write when a subagent or a background job has ended. */
 const FINAL_WORK_STATUS: ReadonlySet<string> = new Set(["completed", "failed", "cancelled", "exited", "stopped"]);
+
+/** A `job_list` line for a job that has ended: `job-2 · monitor stopped · label · …`, or `exited 1`. */
+const JOB_LIST_LINE = /^(job-[A-Za-z0-9_-]+) · (?:monitor )?(stopped|failed|exited(?: \S+)?) · /;
 
 /** The statuses an Oh My Pi `task` start writes for a subagent that has not ended yet. */
 const OMP_RUNNING_STATUS: ReadonlySet<string> = new Set(["pending", "running"]);
@@ -748,6 +758,44 @@ export function createPiReducer(): RowReducer {
     changed.add(card.uuid);
   }
 
+  /**
+   * Gentle Shell sends no notice for a job the agent stopped with `job_stop`, so the stop result is
+   * the only record: its `details.gentleJobs` names the job and its final status. Any gentle tool
+   * result that carries a final `gentleJobs` status ends the card it names. A card that has already
+   * ended keeps its real end time: `settle` would overwrite `endedAt`, so only an ongoing card moves.
+   */
+  function settleGentleJob(details: JsonValue | undefined, ts: string, changed: Set<string>): void {
+    const info = detailsOf(details, "gentleJobs");
+    const status = field(info, "status");
+    const id = field(info, "jobId");
+    if (info === undefined || id === undefined || status === undefined || !FINAL_WORK_STATUS.has(status)) return;
+    settleOngoing(workCards.get(id), endInfo(status, info.exitCode), ts, changed);
+  }
+
+  /** `settle`, but only for a card still ongoing, so a later look never moves a real end time. */
+  function settleOngoing(card: PendingTool | undefined, info: JsonObject, ts: string, changed: Set<string>): void {
+    const call = card?.part.call;
+    if ((call?.kind !== "execute" && call?.kind !== "task") || call.ongoing !== true) return;
+    settle(card, info, ts, changed);
+  }
+
+  /**
+   * A `job_list` result has one line per job, `id · status · label · duration · path`, and its
+   * details hold only a count, so the lines are read as text. Each job it lists as ended settles its
+   * card, which covers a job whose exit notice was lost. The end time is the list's `ts`, later than
+   * the real end; that is acceptable for a job that has no other record.
+   */
+  function settleJobList(text: string, ts: string, changed: Set<string>): void {
+    for (const line of text.split("\n")) {
+      const m = JOB_LIST_LINE.exec(line);
+      if (m === null) continue;
+      const [, id = "", word = ""] = m;
+      const [status = "", code] = word.split(" ");
+      const exitCode = code !== undefined && /^-?\d+$/.test(code) ? Number(code) : undefined;
+      settleOngoing(workCards.get(id), endInfo(status, exitCode), ts, changed);
+    }
+  }
+
   // ── THE BRANCH CHAIN ────────────────────────────────────────────────────────
   // pi keeps every branch in ONE append-only log. Every row names its parent, and the session's
   // CURRENT branch is the path from the newest row back to a root. A row whose parent is not the row
@@ -856,6 +904,9 @@ export function createPiReducer(): RowReducer {
       const target = pendingTools.get(id);
       const resultText = stripAnsi(textBlocks(m.content));
       const isError = m.isError === true;
+      // Gentle Shell's `job_stop` (and any gentle result with a final job status) ends the job it names.
+      settleGentleJob(m.details, ts, changed);
+      if (m.toolName === "job_list" && detailsOf(m.details, "gentleJobs")?.jobId === undefined) settleJobList(resultText, ts, changed);
       const image = extractImage(m.content);
       if (target?.foldInto) {
         // A call that drew no part of its own: its result lands on the card it folds into.

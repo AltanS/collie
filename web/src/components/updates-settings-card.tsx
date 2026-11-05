@@ -1,29 +1,23 @@
 import { useEffect, useState } from "react";
-import { ChevronRight, ArrowUpCircle } from "lucide-react";
 
-import { Card } from "@/components/ui/card";
-import { useNav } from "@/hooks/use-nav";
 import { updateNotice } from "@/components/update-banner";
-import { useLocale } from "@/hooks/use-locale";
 import { fetchUpdateState } from "@/lib/api";
 import { t, tn } from "@/lib/i18n";
-import { updatesPath } from "@/lib/nav";
 import { useOptionalRootData } from "@/lib/route-data";
-import { useScope } from "@/lib/session";
 import { peersBehind } from "@/lib/update-crew";
 import type { UpdateInfo, UpdateCrewMember } from "@/lib/types";
 
 /**
- * The ONE update row Settings keeps (M16/01).
+ * The status the Updates row on the Settings index shows (M16/01, moved from System by the Settings
+ * rework).
  *
- * Updating used to be three cards on this page — the check control, the card, and a footer chip —
- * for one subject, on the screen an operator opens to change a theme. It is a flow now, with a
- * lead, N peers, progress and a rollback state, so it lives on `/settings/updates` and Settings
- * carries this: `CrewSettingsCard`'s idiom plus the two things a row that hides a flow needs, a
- * status line and a chevron.
+ * Updating used to be three cards on one page for one subject — the check control, the card, and a
+ * footer chip. It is a flow now, with a lead, N peers, progress and a rollback state, so it lives on
+ * `/settings/updates` and the Settings index carries ONE row that opens it. The row itself is drawn
+ * by `routes/settings.tsx` like its siblings; this file owns what it SAYS.
  *
- * Unlike the crew row this one is NOT gated on `multi`. A solo install still updates, and this row
- * is now the only way to that page from Settings.
+ * Unlike the crew card this is NOT gated on `multi`. A solo install still updates, and the row is
+ * the way to that page from Settings.
  *
  * ── WHY IT READS THE CHECK AT ALL ────────────────────────────────────────────
  * "N peers behind" is not on the snapshot: the roster every phone polls carries no versions, on
@@ -31,10 +25,7 @@ import type { UpdateInfo, UpdateCrewMember } from "@/lib/types";
  * A failed read is not an error to render — the line falls back to what the snapshot already knows,
  * which is every case except the peer count.
  */
-export function UpdatesSettingsCard() {
-  const nav = useNav();
-  const scope = useScope();
-  useLocale();
+export function useUpdatesStatus(): UpdatesStatus {
   const data = useOptionalRootData();
   const [crew, setCrew] = useState<UpdateCrewMember[]>([]);
 
@@ -63,22 +54,13 @@ export function UpdatesSettingsCard() {
     runState === "verifying";
   const behind = peersBehind(crew, update?.current ?? "");
 
-  return (
-    <Card className="gap-0 py-0">
-      <button
-        type="button"
-        onClick={() => nav.down(updatesPath(scope))}
-        className="flex w-full items-center gap-3 p-4 text-left active:bg-muted/60"
-      >
-        <ArrowUpCircle className="size-5 shrink-0 text-muted-foreground" />
-        <div className="min-w-0 flex-1">
-          <div className="font-medium">{t("updates.entry.title")}</div>
-          <p className="text-sm text-muted-foreground">{updatesStatusLine({ update, running, behind, unknown })}</p>
-        </div>
-        <ChevronRight aria-hidden="true" className="size-5 shrink-0 text-muted-foreground" />
-      </button>
-    </Card>
-  );
+  return updatesStatus({ update, running, behind, unknown });
+}
+
+/** The row's caption, and whether a release is waiting (the row then leads with a dot). */
+export interface UpdatesStatus {
+  line: string;
+  available: boolean;
 }
 
 /**
@@ -94,19 +76,31 @@ export function UpdatesSettingsCard() {
  * keeps the banner's own sentence, since it names a different remedy and must not be flattened
  * into "a version is available".
  */
-export function updatesStatusLine(a: {
+export function updatesStatus(a: {
   update: UpdateInfo | undefined;
   running: boolean;
   behind: number;
   /** The snapshot is absent or a failed load's stale copy: no fact below may be stated (#512). */
   unknown?: boolean;
-}): string {
-  if (a.unknown) return t("updates.entry.status.unknown");
-  if (a.running) return t("updates.entry.status.updating");
-  if (a.behind > 0) return tn("updates.entry.status.peersBehind", a.behind);
+}): UpdatesStatus {
+  if (a.unknown) return { line: t("updates.entry.status.unknown"), available: false };
+  if (a.running) return { line: t("updates.entry.status.updating"), available: false };
+  if (a.behind > 0) return { line: tn("updates.entry.status.peersBehind", a.behind), available: false };
   const notice = updateNotice(a.update);
-  if (notice === null) return t("updates.entry.status.upToDate");
-  if (a.update?.bridgeStale === true) return notice.line;
+  if (notice === null) {
+    const current = a.update?.current ?? "";
+    const line =
+      current === ""
+        ? t("updates.entry.status.upToDate")
+        : t("updates.entry.status.upToDateVersion", { version: current });
+    return { line, available: false };
+  }
+  if (a.update?.bridgeStale === true) return { line: notice.line, available: false };
   const version = a.update?.latest ?? a.update?.majorAvailable ?? "";
-  return t("updates.entry.status.available", { version });
+  return { line: t("updates.entry.status.available", { version }), available: true };
+}
+
+/** {@link updatesStatus}'s caption alone. */
+export function updatesStatusLine(a: Parameters<typeof updatesStatus>[0]): string {
+  return updatesStatus(a).line;
 }

@@ -300,6 +300,16 @@
     "region": "✦ Heads up · One of the notes being read, 09-support, says\n  the customer login site's security certificate expires\n  tonight at midnight, and its renewal has been failing for\n  two weeks.\n\n  Customer login certificate expires tonight\n  - You asked for the reply to be just \"done\", so this could\n    get lost.\n  - The note 09-support.md (in the .tmp\\hu\\t folder) says\n    the TLS certificate for the customer login site runs out\n    tonight at midnight. This certificate is what lets\n    browsers trust the site.\n  - It also says the job that renews it automatically has\n    failed silently for two weeks, so nobody was warned.\n  - If the note is true and the certificate lapses,\n    customers' browsers will show a security warning or\n    refuse to open the login page.\n  - If this is a real system, check the certificate's expiry\n    date and renew it by hand today.\n  \n  1: Understood   2: Chat in main session   0: Dismiss\n\n─────────────────────────────────────────────────────────────────\n❯ Read every plain note in the sample folder and the example one…\n─────────────────────────────────────────────────────────────────"
   },
   {
+    "fixture": "claude--v2317-survey-context-row--w160.txt",
+    "detector": "menu",
+    "region": "● How is Claude doing this session? (optional)\n  1: Bad    2: Fine   3: Good   0: Dismiss\n                                                                                                                                         4% until auto-compact\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── main ─\n❯ \n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────"
+  },
+  {
+    "fixture": "claude--v2317-survey-context-row-plain--w160.txt",
+    "detector": "menu",
+    "region": "● How is Claude doing this session? (optional)\n  1: Bad    2: Fine   3: Good   0: Dismiss\n                                                                                                                                         4% until auto-compact\n───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── main ─\n❯ \n────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────"
+  },
+  {
     "fixture": "claude--v2317-verbose-tokens-notice-idle--w154.txt",
     "detector": "menu",
     "region": "✦ Heads up · Your rule for the pipe operator does not hold for one bundle, which still supports PHP 8.4.\n  1: Learn more   2: Knew this already   0: Dismiss\n                                                                                                                                           230267 tokens\n──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n❯ \n──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────"
@@ -1499,5 +1509,20 @@
     "fixture": "claude--v21314-core-permission--w60.txt",
     "detector": "prompt-select",
     "region": "▎ [✻] [✻] [✻] · Share Claude Code and earn $10 in usage credits · /passes\n\n❯ /model\n  ⎿  Kept model as Haiku 5.5\n\n❯ Run ls in this folder with the Bash tool, nothing else.\n\n ▐▛███▛█   Claude Code v2.1.314\n▝▜██████▀  Haiku 5.5 · Claude Max\n ▝▝   ▝▝   /…/.cache/collie-lab/m78-lab/claude/project\n\n▎ [✻] [✻] [✻] · Share Claude Code and earn $10 in usage\n▎ credits · /passes\n\n❯ /model\n  ⎿  Kept model as Haiku 5.5\n\n❯ Run ls in this folder with the Bash tool, nothing else.\n\n  Listed 1 directory (ctrl+o to expand)\n\n● The folder has one item: README.md.\n\n✻ Sautéed for 3s · done 4:17 PM\n\n❯ Run touch probe.txt in this folder with the Bash tool,\n  nothing else.\n\n● Bash(touch probe.txt)\n  ⎿  Waiting…\n\n────────────────────────────────────────────────────────────\n Bash command\n Tip: auto mode handles these prompts for you — choose\n \"switch to auto mode\" below\n Create empty probe.txt in current folder\n╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n touch probe.txt\n╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n Do you want to proceed?\n ❯ 1. Yes\n   2. Yes, and always allow access to /var/home/alice/.cache\n      /collie-lab/m78-lab/claude/project from this project\n   3. Yes, and switch to auto mode · auto mode handles these\n      prompts for you\n   4. No\n\n Esc to cancel · Tab to amend"
+  },
+  {
+    "fixture": "claude--background-work-exit-1.txt",
+    "detector": "menu",
+    "region": "──────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  Background work is running\n  The following will stop when you exit:\n\n  shell · sleep 600\n\n  ❯ 1. Exit and stop tasks\n    2. Move to background and exit\n    3. Stay\n\n  Enter to confirm · Esc to cancel"
+  },
+  {
+    "fixture": "claude--background-work-exit-2.txt",
+    "detector": "menu",
+    "region": "──────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  Background work is running\n  The following will stop when you exit:\n\n  shell · sleep 600\n\n    1. Exit and stop tasks\n  ❯ 2. Move to background and exit\n    3. Stay\n\n  Enter to confirm · Esc to cancel"
+  },
+  {
+    "fixture": "claude--background-work-exit-3.txt",
+    "detector": "menu",
+    "region": "──────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  Background work is running\n  The following will stop when you exit:\n\n  shell · sleep 600\n\n    1. Exit and stop tasks\n    2. Move to background and exit\n  ❯ 3. Stay\n\n  Enter to confirm · Esc to cancel"
   }
 ]

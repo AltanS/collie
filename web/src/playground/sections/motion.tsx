@@ -3,7 +3,7 @@
 // shows every END STATE somewhere else; this tab shows the transitions between them and the
 // primitives DESIGN.md §11 names, in isolation. See ../app.tsx's header for the page's own two
 // rules (mount REAL components with REAL props; drive a module store through its own mutators).
-// This file follows both, and every card still carries its own "reach it for real" line.
+// This file follows both, with short card labels.
 //
 // DEV-ONLY, unreachable from the app entry: see ../app.tsx and web/playground.html.
 

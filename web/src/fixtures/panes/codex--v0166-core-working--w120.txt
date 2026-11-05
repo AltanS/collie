@@ -1,0 +1,17 @@
+• HOTEL
+
+  Worked for 1s • 5:13 PM
+
+
+› Run the shell command 'sleep 8; ls', then reply with the word DONE.
+
+
+• I’ll run the command now.
+
+• Working (7s • esc to interrupt) · 1 background terminal running · /ps to view · /stop to close
+
+
+› Ask Codex to do anything
+
+  GPT-6.1-Sol low · /var/home/alice/.cache/collie-lab/codex-lab/project · Run sleep and list files
+  ← for agents · ? for shortcuts

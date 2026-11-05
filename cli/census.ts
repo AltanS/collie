@@ -7,7 +7,7 @@ import type { CliContext } from "./context.ts";
 import { memberStatusOf, probeMemberReach } from "./crew.ts";
 import { groupMembersByHost } from "./host-groups.ts";
 import { pairedRegistryOf } from "./pairing.ts";
-import { readOwnSnapshot } from "./snapshot-read.ts";
+import { identityHeader, readOwnSnapshot } from "./snapshot-read.ts";
 import type { Files } from "./sys.ts";
 
 // The census `collie status` prints under its head (M76 spec 01): which machines are in the crew, which
@@ -17,7 +17,7 @@ import type { Files } from "./sys.ts";
 // Every read here is a READ. The members come from the same `hello` and `snapshot` dials `collie crew
 // status` makes (`probeMemberReach`), and not from its printing: that verb also stamps first contact and converges the
 // anchor record, and a status line must write nothing. The sessions come from this bridge's own
-// `/api/snapshot` on the local read credential (`cli/snapshot-read.ts`), never a Tailscale header.
+// `/api/snapshot` on the local read credential plus the configured login (`cli/snapshot-read.ts`, `identityHeader`).
 
 /** A device list longer than this prints its count only; five names fit a line, forty do not. */
 export const DEVICE_NAMES_LIMIT = 5;
@@ -132,7 +132,7 @@ const NOT_READ: Omit<CensusSessions, "read" | "refusedWith"> = { total: null, by
 async function gatherSessions(deps: CensusDeps, running: boolean): Promise<CensusSessions> {
   // No bridge, no read: the answer is known, and a dial at a closed port is a wasted budget.
   if (!running) return { read: "bridge-not-running", refusedWith: null, ...NOT_READ };
-  const read = await readOwnSnapshot(deps, { budgetMs: SESSIONS_BUDGET_MS });
+  const read = await readOwnSnapshot(deps, { budgetMs: SESSIONS_BUDGET_MS, extraHeaders: identityHeader(deps) });
   if (read.kind === "silent") return { read: "unreadable", refusedWith: null, ...NOT_READ };
   if (read.kind === "refused") return { read: "refused", refusedWith: read.status, ...NOT_READ };
   const counts = countSessions(read.text);

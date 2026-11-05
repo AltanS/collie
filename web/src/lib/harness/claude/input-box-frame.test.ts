@@ -103,6 +103,9 @@ describe("parity with the old walk on the real corpus", () => {
     "claude--v2312-weekly-limit-row--w120.txt",
     // Claude Code 2.1.317 with verbose on: the token-count row under a Heads up notice, an empty box beneath (PR 668).
     "claude--v2317-verbose-tokens-notice-idle--w154.txt",
+    // Claude Code 2.1.317: the rating survey over the right-aligned `N% until auto-compact` row (issue 705), styled and plain.
+    "claude--v2317-survey-context-row--w160.txt",
+    "claude--v2317-survey-context-row-plain--w160.txt",
     // Claude Code 2.1.317 with the next-steps plugin: a ghost suggestion in the box, the cursor on its first letter (discussion 659).
     "claude--v2317-next-steps-suggestions-empty-box--w100.txt",
     "claude--v2317-next-steps-suggestions-one-line-draft--w100.txt",

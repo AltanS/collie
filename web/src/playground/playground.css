@@ -109,3 +109,109 @@
    shipped face, and this file, loaded after it, declares none. A second copy here would win over
    index.css's stand-ins, which carry a Latin-only `unicode-range` the old copies never had. A new
    audition gets its @font-face pair here again until it ships. */
+
+/* ── A design round (round.tsx) ──────────────────────────────────────────────────────────────────
+   The options sit side by side, all one size. Under 640px the row scrolls sideways and snaps, each
+   frame about 85% of the width, its number in view. In Flip the options are stacked in one cell and
+   only the chosen one is visible. Both rules sit on `.pg-grid` too (the test counts a round's
+   options as cards), so they name it again to win over its grid. */
+.pg-round-row.pg-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  align-items: flex-start;
+}
+.pg-round-row > * {
+  flex: none;
+  width: 390px;
+  max-width: 100%;
+}
+.pg-round-flip.pg-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 390px);
+}
+.pg-round-flip > * {
+  grid-area: 1 / 1;
+}
+@media (max-width: 639.98px) {
+  .pg-round-row.pg-grid {
+    flex-wrap: nowrap;
+    gap: 0.75rem;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    margin-inline: -1rem;
+    padding-inline: 1rem;
+    scroll-padding-inline: 1rem;
+  }
+  .pg-round-row > * {
+    width: 85%;
+    scroll-snap-align: start;
+  }
+}
+
+/* ── Update signal: the mark's own beads (sections/update-signal) ────────────────────────────────────
+   The beads are the Collie mark's own (components/collie-mark.tsx, generated, not edited): each is a
+   `g.cm-b.cm-bN`, N 0 to 7, in a `g.cm-far` and a `g.cm-near` copy. Its colour sits in a `fill`
+   attribute, so a CSS `fill` beats it. The knock-out circle behind each near bead has a different fill
+   (the paper colour) and is not matched, so the ring around a bead stays as it is. A bead is recoloured
+   by setting `--lit` on it; with no `--lit` the rules fall back to the mark's own fill. */
+.upd-beads .cm-b [fill*="collie-ink"] {
+  fill: var(--lit, var(--collie-ink, currentColor));
+}
+.upd-beads .cm-b [fill="var(--cm-a1)"] {
+  fill: var(--lit, var(--cm-a1));
+}
+.upd-beads .cm-b [fill="var(--cm-a2)"] {
+  fill: var(--lit, var(--cm-a2));
+}
+
+/* Update ready: three of the biggest round beads, in the colour the update band already uses
+   (`ui/notice.tsx` maps the band's `caution` tone to `--status-working`). Machine busy: three
+   others, in `--status-blocked`. Never the same bead. Spread around the ring, not in a block: in ring
+   order the beads run b0 b3 b7 b2 b1 b4 b5 b6, so yellow (b0 b2 b5) and red (b3 b1 b6) alternate. */
+.upd-ready .cm-b0,
+.upd-ready .cm-b2,
+.upd-ready .cm-b5 {
+  --lit: var(--status-working);
+}
+.upd-busy .cm-b1,
+.upd-busy .cm-b3,
+.upd-busy .cm-b6 {
+  --lit: var(--status-blocked);
+}
+
+/* While a signal waits the orbit turns slowly: 10s a lap (rest is 48s, loading 1.8s). The mark sets
+   the duration inline, so only an !important author rule can beat it. Its own reduced-motion rule
+   still stops every bead, and the colours stay. */
+.upd-slow [data-slot="collie-mark"] svg,
+.upd-slow [data-slot="mark-key"] svg {
+  --cm-turn: 10s !important;
+}
+
+/* The lines the mark's tap brings into view: a wash that fades in about a second. */
+@keyframes upd-flash {
+  from {
+    background: color-mix(in oklab, var(--status-working) 28%, transparent);
+  }
+  to {
+    background: transparent;
+  }
+}
+.upd-flash {
+  animation: upd-flash 1.1s ease-out;
+}
+
+/* One line that scrolls sideways instead of wrapping: the narrow page header's tab list and
+   controls, and a round's control bar. Its direct children keep their size. */
+.pg-scroll-row {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.pg-scroll-row::-webkit-scrollbar {
+  display: none;
+}
+.pg-scroll-row > * {
+  flex-shrink: 0;
+}

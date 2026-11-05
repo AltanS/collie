@@ -4141,6 +4141,40 @@ describe("real screens from the fixture corpus", () => {
     expect(pane.transcript.at(-1)).toBe("> 4");
   });
 
+  // 2026-11-05, Claude Code 2.1.317 (issue 705): Claude's right-aligned context field, `N% until
+  // auto-compact`, sits on the row under the survey's keys. All ten sends on that box were refused
+  // `unconfirmed` or `stale_surface` (modal unreadable, the single-key cue on the key row).
+  const CONTEXT_ROW = `${" ".repeat(100)}4% until auto-compact`;
+
+  test("on the rating survey over the context row: a sentence goes on one tap, a digit takes the notice path", async () => {
+    for (const between of [[CONTEXT_ROW], ["", CONTEXT_ROW], [`${" ".repeat(100)}27% until auto`]]) {
+      const { pane, send } = rig();
+      pane.over = [...SURVEY_ROWS, ...between];
+      const answer = await send("ok merge the five, running the crew update now");
+      expect(answer.receipt, JSON.stringify(between)).toMatchObject({ outcome: "sent" });
+      expect(answer.cause).toBeUndefined();
+      expect(pane.transcript.at(-1)).toBe("> ok merge the five, running the crew update now");
+    }
+    const { pane, send } = rig();
+    pane.over = [...SURVEY_ROWS, CONTEXT_ROW];
+    const first = await send("2");
+    expect(first.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
+    expect(first.cause).toBe("notice_key");
+    expect(first.offers).toEqual(["commit", "keys"]);
+  });
+
+  for (const name of ["claude--v2317-survey-context-row--w160.txt", "claude--v2317-survey-context-row-plain--w160.txt"]) {
+    test(`the capture ${name} reads free with the survey over the context row, and a digit is refused to the notice path`, async () => {
+      const captured = rig({ pane: still(fixture(name)) });
+      const prepared = await captured.protocol.handle({ id: "fixture-survey-ctx", text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: "claude" });
+      expect(prepared.surface).toMatchObject({ turn: "idle", modal: "none", composer: "empty" });
+      const digit = await captured.send("2");
+      expect(digit.receipt).toMatchObject({ outcome: "refused", reason: "unconfirmed", keys: [] });
+      expect(digit.cause).toBe("notice_key");
+      expect(captured.pane.calls).toEqual([]);
+    });
+  }
+
   test("the field screen's capture reads free with the survey over the titled box, and a digit is refused to the notice path", async () => {
     const captured = rig({ pane: still(fixture("claude--v2303-titled-edge-survey--w160.txt")) });
     const prepared = await captured.protocol.handle({ id: "fixture-survey-1", text: "", mode: "prepare" }, { session: "main", paneId: "%1", harness: "claude" });
@@ -5356,7 +5390,7 @@ describe("the held send (M56 spec 15)", () => {
     });
   });
 
-  test("a held send never goes into a box that answers the agent's question (idle.answerPrompt); a person's send still may", async () => {
+  test("a held send never goes into a box that answers the agent's question (idle.answerPrompt); a person's send from the phone still may", async () => {
     const capture = (name: string): string => readFileSync(join(import.meta.dir, `../../web/src/fixtures/panes/${name}`), "utf8");
     const clock = { now: 1_000_000 };
     const holds = new HoldStore(join(dir, "held"), () => clock.now);
@@ -5370,10 +5404,14 @@ describe("the held send (M56 spec 15)", () => {
     expect(released?.receipt).toMatchObject({ requestId: "held-answer-01", outcome: "held" });
     expect(holds.get("held-answer-01")?.state).toBe("held");
     expect(r.pane.calls).toEqual([]);
-    // The person, looking at the question, may answer it from the phone: that send is typed.
+    // A send that is no person's own (a walky talky message, a hook, the CLI) waits too (#704).
     const direct = rig({ harness: "hermes", version: "0.22.2" });
     direct.pane.fixed = capture("hermes--clarify-other.txt");
-    const answer = await direct.send("CockroachDB");
+    const other = await direct.send("CockroachDB");
+    expect(other.receipt).toMatchObject({ outcome: "refused", reason: "not_free" });
+    expect(direct.pane.calls).toEqual([]);
+    // The person, looking at the question, may answer it from the phone: that send is typed.
+    const answer = await direct.send("CockroachDB", { fromPhone: true });
     expect(answer.receipt?.reason).not.toBe("not_free");
     expect(direct.pane.calls.length).toBeGreaterThan(0);
   });

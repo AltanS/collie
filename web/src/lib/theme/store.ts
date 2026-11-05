@@ -5,7 +5,7 @@
 // THREE KINDS OF THEME, ONE RULE EACH.
 //   * `collie`, the app's own look, is the stylesheet as it stands. Applying it writes NOTHING: no
 //     attribute, no inline property. That is what keeps the pixels of the current look unchanged.
-//   * A shipped theme (nightwatch, daylight, harbour, collie-new) is a generated block in `themes.css`. Applying
+//   * A shipped theme (nightwatch, daylight, harbour) is a generated block in `themes.css`. Applying
 //     it sets `data-theme="<id>"` on <html> and nothing else.
 //   * An imported theme lives in the library (localStorage, validated) and is applied as inline
 //     custom properties on <html>, one per token, each a `light-dark()` pair, plus the declarations
@@ -46,7 +46,7 @@ import {
   toSrgbHex,
   type Theme,
 } from "./schema";
-import { VERSION_TWO_PROPERTIES, resolveSurface, versionTwoDeclarations } from "./surface";
+import { VERSION_TWO_PROPERTIES, omittedGroundDeclarations, resolveSurface, versionTwoDeclarations } from "./surface";
 
 /** The library's storage key. `public/theme-init.js` reads the same string; `theme-init.test.ts` holds them equal. */
 export const LIBRARY_STORAGE_KEY = "collie:themes:v1";
@@ -298,6 +298,8 @@ export function applyTheme(theme: Theme, source: ThemeSource): void {
   // The property names come from surface.ts; the file only picked the words, the face and the
   // palette's colours, which the parser has checked.
   for (const [property, value] of versionTwoDeclarations(checked)) root.style.setProperty(property, value);
+  // index.css paints Collie's grain on :root, so a theme that names no ground says `flat` itself.
+  for (const [property, value] of omittedGroundDeclarations(checked.surface)) root.style.setProperty(property, value);
   setMetaColours(metaOf(checked));
 }
 

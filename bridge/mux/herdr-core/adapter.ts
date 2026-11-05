@@ -160,7 +160,7 @@ export const OLDER_NOTE_BLOCKED = "On the Herdr core, Load older waits until the
 export const OLDER_NOTE_READING = "The Herdr core is still reading the older rows of this pane. Try Load older again in a moment.";
 
 /**
- * The least time between a text write to a pane and a raw Enter, Backspace or Tab right after it.
+ * The least time between a text write to a pane and a raw control key (Enter, Backspace, Tab, Ctrl+J or Ctrl+Q) right after it.
  *
  * Since PR 637 these three keys go to the core as raw bytes (`\r`, `\x7f`, `\t`), so the core's key
  * hold no longer spaces them. Codex reads text and `\r` that arrive together as a paste and inserts a
@@ -168,7 +168,8 @@ export const OLDER_NOTE_READING = "The Herdr core is still reading the older row
  * 2026-11-01). Collie's Send Protocol reads the screen between its writes, but a read can pass at once
  * when the app has not drained its input, and a stalled receiver drains the pty in one chunk. This
  * floor keeps the gap in the adapter, whatever the caller does. It applies to every raw key on the
- * core, for every harness, and to no other adapter.
+ * core, for every harness, and to no other adapter. The gap now also applies to the raw LF (Ctrl+J) and
+ * DC1 (Ctrl+Q) bytes that carry a newline and Oh My Pi's submit.
  *
  * Only a key whose pane's last write was TEXT waits: the paste-burst is text and a key in one chunk
  * (text and `\r`, a probe character and `\x7f`). Two raw keys in a row need no gap. A clear of a
@@ -417,10 +418,10 @@ export class HerdrCoreMux implements MuxAdapter {
   }
 
   /**
-   * One raw write to a pane. A raw Enter, Backspace or Tab right after a text write to the same pane
-   * first waits until {@link RAW_KEY_GAP_MS} have passed since that write; a key after another key goes
-   * at once. Text is never paced and never shares a write with a key (every call here carries either
-   * the text or the one key).
+   * A raw Enter, Backspace, Tab, Ctrl+J or Ctrl+Q right after a text write to the same pane first waits
+   * until {@link RAW_KEY_GAP_MS} has passed since that write. A raw key after another key goes at once.
+   * Text is never paced and never shares a write with a key (every call here carries either the text
+   * or the one key).
    */
   private async writeRaw(paneId: string, text: string): Promise<void> {
     const key = isRawKeyText(text);

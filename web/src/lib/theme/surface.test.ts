@@ -173,18 +173,18 @@ describe("the shape tokens", () => {
     expect(surfaceWords(token)[0]).toBe(SURFACE_DEFAULTS[token]);
   });
 
-  it("names today's look as the default of every token", () => {
+  it("names the stylesheet's look as the default of every token, and the plain words for the two the app reads", () => {
     expect(SURFACE_DEFAULTS).toEqual({
       radius: "sharp",
-      shadow: "default",
+      shadow: "flat",
       density: "default",
-      weight: "default",
+      weight: "bold",
       border: "default",
       ground: "flat",
-      chrome: "page",
+      chrome: "band",
       rows: "rules",
       icons: "default",
-      labels: "caps",
+      labels: "sentence",
       zoom: "screen",
       tabs: "plain",
       composer: "field",

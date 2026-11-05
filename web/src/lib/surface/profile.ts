@@ -329,6 +329,14 @@ export interface FrameTrailer {
   readonly pad?: string;
   /** How many padding rows at most. */
   readonly maxPad: number;
+  /**
+   * True when the trailer row is the box's own key hint: the keys that submit and cancel this box,
+   * drawn inside it (OMP's answer editor prints `⏎ or Ctrl+Q submit  ⎋ cancel` there). No modal cue
+   * reads that row or its padding ({@link Frame.hint}), so the box's own hint never reads as a dialog's
+   * footer. The row pattern is what makes it safe: name it only for a pattern that matches the hint
+   * the harness draws for this box and no other row. Optional.
+   */
+  readonly hint?: true;
 }
 
 /** One shape of the input box: its anchors, bounds and the fields of its walk (`idle.frame`). */
@@ -425,6 +433,28 @@ export interface FrameLayout {
    * layout without it grows with its draft, so the box always shows the whole text.
    */
   readonly scroll?: FrameScroll;
+  /**
+   * This shape of the box answers a question the agent asked: it opens in the composer's place while a
+   * question waits (OMP's answer editor for `Other (type your own)` and `n note`), and what is sent there
+   * is the answer. A person's send from the phone may type into it, with the usual probe, check and
+   * submit; a held send, a walky talky message and every other caller wait for the question to close
+   * (the Send Protocol's `ANSWER_BOX`), and so does a command, which the box would take as the answer.
+   * The frame carries it ({@link Frame.answers}). Optional.
+   */
+  readonly answers?: true;
+  /**
+   * The keys that send a text from this shape of the box, when they are not `keys.submit`: the key its
+   * own hint names. Pressed on every path a send into this box takes, since a box that answers a
+   * question has no turn to queue behind. Never Escape. Optional: without it the box takes the
+   * profile's keys.
+   */
+  readonly submit?: readonly string[];
+  /**
+   * A line break typed into this shape of the box submits it (OMP's answer editor takes a raw line feed
+   * as Enter): a text of more than one line is refused `multiline` before any key, never split into
+   * an answer and a stray message. Optional.
+   */
+  readonly newlineSubmits?: true;
 }
 
 /**
@@ -1328,11 +1358,30 @@ function parseTrailer(value: JsonValue): FrameTrailer {
   const node = object(value, "idle.frame.trailer");
   const row = pattern(field(node, "row", "idle.frame.trailer"), "idle.frame.trailer.row").source;
   const maxPad = node.maxPad === undefined ? 0 : whole(node.maxPad, "idle.frame.trailer.maxPad", 0);
+  if (node.hint !== undefined && node.hint !== true) fail("idle.frame.trailer.hint", "must be true when named");
+  const hint = node.hint === true ? { hint: true as const } : {};
   if (node.pad === undefined) {
     if (maxPad > 0) fail("idle.frame.trailer.maxPad", "needs a pad pattern");
-    return { row, maxPad };
+    return { row, maxPad, ...hint };
   }
-  return { row, pad: pattern(node.pad, "idle.frame.trailer.pad").source, maxPad };
+  return { row, pad: pattern(node.pad, "idle.frame.trailer.pad").source, maxPad, ...hint };
+}
+
+/** The fields of a box that answers a question, as {@link parseAnswerBox} gathers them. */
+type AnswerBoxFields = { answers?: true; submit?: readonly string[]; newlineSubmits?: true };
+
+/** `idle.frame.answers`, `submit` and `newlineSubmits`: what a box that answers a question takes ({@link FrameLayout.answers}). */
+function parseAnswerBox(frameNode: JsonObject): AnswerBoxFields {
+  for (const key of ["answers", "newlineSubmits"] as const) {
+    if (frameNode[key] !== undefined && frameNode[key] !== true) fail(`idle.frame.${key}`, "must be true when named");
+  }
+  const submit = frameNode.submit === undefined ? undefined : textList(frameNode.submit, "idle.frame.submit", 1);
+  if (submit?.some((key) => /^(?:esc|escape)$/iu.test(key)) === true) fail("idle.frame.submit", "must not name Escape");
+  const box: AnswerBoxFields = {};
+  if (frameNode.answers === true) box.answers = true;
+  if (submit !== undefined) box.submit = submit;
+  if (frameNode.newlineSubmits === true) box.newlineSubmits = true;
+  return box;
 }
 
 /** `idle.frame.scroll`: which rows a scrolled box keeps in view, and its height then. */
@@ -1360,7 +1409,8 @@ function parseFrame(frameNode: JsonObject): FrameLayout {
   const withIndent = frameNode.draftIndent === undefined ? withWidgets : { ...withWidgets, draftIndent: whole(frameNode.draftIndent, "idle.frame.draftIndent", 1) };
   if (frameNode.draftLines !== undefined && frameNode.draftLines !== true && frameNode.draftLines !== false) fail("idle.frame.draftLines", "must be true or false");
   const withLines = frameNode.draftLines === true ? { ...withIndent, draftLines: true } : withIndent;
-  const base = frameNode.scroll === undefined ? withLines : { ...withLines, scroll: parseScroll(frameNode.scroll, maxDraftRows) };
+  const scrolled = frameNode.scroll === undefined ? withLines : { ...withLines, scroll: parseScroll(frameNode.scroll, maxDraftRows) };
+  const base = { ...scrolled, ...parseAnswerBox(frameNode) };
   if (walk === "edges") {
     for (const key of ["rows", "trailer", "continuation", "ownPrompt", "maxWidgetRows"] as const) {
       if (frameNode[key] !== undefined) fail(`idle.frame.${key}`, "belongs to the interior walk");

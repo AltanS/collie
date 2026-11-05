@@ -102,19 +102,29 @@ describe("Composer layout=box", () => {
     expect(document.querySelector('[data-slot="composer-mic-draft"]')).toBeNull();
   });
 
-  it("opens on focus: the field takes the full width on its own row and the buttons drop under it", async () => {
+  it("stays one row when the empty box is focused: the caret alone takes no room", async () => {
     const user = userEvent.setup();
     renderComposer({ layout: "box" });
     const box = await readyBox();
     await user.click(field());
+    expect(field()).toHaveFocus();
+    expect(box).toHaveAttribute("data-box", "rest");
+    expect(field().className).toMatch(/row-start-1/);
+    expect(primary()).toHaveAccessibleName(/record a voice message/i);
+  });
+
+  it("opens on the first character: the field takes the full width and the buttons drop under it", async () => {
+    const user = userEvent.setup();
+    renderComposer({ layout: "box" });
+    const box = await readyBox();
+    await user.click(field());
+    await user.type(field(), "a");
     expect(box).toHaveAttribute("data-box", "open");
     expect(field().className).toMatch(/col-span-full/);
     expect(field().className).toMatch(/row-start-2/);
     for (const el of [screen.getByRole("button", { name: /attach file/i }), primary()]) {
       expect(el.className).toMatch(/row-start-3/);
     }
-    // Still empty: the microphone is still the main button.
-    expect(primary()).toHaveAccessibleName(/record a voice message/i);
   });
 
   it("makes Send the main button and the microphone a ghost once there is text", async () => {
@@ -127,23 +137,30 @@ describe("Composer layout=box", () => {
     expect(primary()).toHaveAccessibleName("Send");
     const ghost = document.querySelector<HTMLElement>('[data-slot="composer-mic-draft"]')!;
     expect(ghost).toHaveAccessibleName(/record a voice message/i);
-    expect(ghost.className).toMatch(/text-muted-foreground/);
-    // The ghost mic sits left of Send in the button row.
+    // A small filled circle, not the main button (Altan, 2026-11-05: bare icons looked loose).
+    expect(ghost.className).toMatch(/bg-secondary/);
+    expect(ghost.className).not.toMatch(/bg-primary/);
+    // The bottom row reads Attach, the small mic, Send: all three at the right, the field's own
+    // space growing before them.
+    const attach = screen.getByRole("button", { name: /attach file/i });
+    expect(attach.className).toMatch(/col-start-2/);
     expect(ghost.className).toMatch(/col-start-3/);
     expect(primary().className).toMatch(/col-start-4/);
   });
 
-  it("closes on blur while empty, and keeps the field element", async () => {
+  it("closes when the draft is emptied with the focus still in the field, and keeps the same field", async () => {
     const user = userEvent.setup();
     renderComposer({ layout: "box" });
     const box = await readyBox();
     const before = field();
     await user.click(before);
+    await user.type(before, "hello");
     expect(box).toHaveAttribute("data-box", "open");
-    act(() => before.blur());
+    await user.clear(before);
     expect(box).toHaveAttribute("data-box", "rest");
-    // The same element: it was never remounted, so a caret and a draft would have survived.
+    // The same element and still focused: a caret and a draft would have survived both changes.
     expect(field()).toBe(before);
+    expect(before).toHaveFocus();
   });
 
   it("stays open on blur while it holds text, and the draft is kept across the shapes", async () => {
@@ -169,22 +186,87 @@ describe("Composer layout=box", () => {
     expect(document.querySelector("ul")!.className).toMatch(/row-start-1/);
   });
 
-  it("opens when a tap lands on the box itself, not on a control", async () => {
+  it("focuses the field when a tap lands on the box itself, not on a control", async () => {
     const user = userEvent.setup();
     renderComposer({ layout: "box" });
     const box = await readyBox();
     await user.click(box);
     expect(field()).toHaveFocus();
-    expect(box).toHaveAttribute("data-box", "open");
   });
 
-  it("mirrors for the left hand: Send on the outer left, Attach at the right", async () => {
+  it("rests as [field][Attach][main] and opens to a field of its own text, with no minimum height", async () => {
+    const user = userEvent.setup();
+    renderComposer({ layout: "box" });
+    await readyBox();
+    const attach = screen.getByRole("button", { name: /attach file/i });
+    // At rest Attach stands beside the main button, at the right, and the field takes the first cell.
+    expect(field().className).toMatch(/col-start-1/);
+    expect(attach.className).toMatch(/col-start-2/);
+    expect(primary().className).toMatch(/col-start-3/);
+    await user.type(field(), "a");
+    // Open, the field is as tall as its text: nothing reserves three lines.
+    expect(field().className).not.toMatch(/min-h-/);
+    expect(attach.className).toMatch(/col-start-2/);
+  });
+
+  it("gives the circles 6px of air from the border and from each other", async () => {
+    renderComposer({ layout: "box" });
+    const box = await readyBox();
+    expect(box.className).toMatch(/\bp-1\.5\b/);
+    expect(box.className).toMatch(/gap-x-1\.5/);
+  });
+
+  it("mirrors for the left hand: Send on the outer left, Attach beside it, the field after them", async () => {
     const user = userEvent.setup();
     renderComposer({ layout: "box", hand: "left" });
     await readyBox();
+    const attach = screen.getByRole("button", { name: /attach file/i });
     expect(primary().className).toMatch(/col-start-1/);
-    expect(screen.getByRole("button", { name: /attach file/i }).className).toMatch(/col-start-3/);
-    await user.click(field());
-    expect(screen.getByRole("button", { name: /attach file/i }).className).toMatch(/col-start-4/);
+    expect(attach.className).toMatch(/col-start-2/);
+    expect(field().className).toMatch(/col-start-3/);
+    await user.type(field(), "a");
+    expect(primary().className).toMatch(/col-start-1/);
+    expect(attach.className).toMatch(/col-start-3/);
+  });
+
+  describe("the change of shape is played", () => {
+    const animate = vi.fn(() => ({ cancel: vi.fn() }));
+    beforeEach(() => {
+      animate.mockClear();
+      Object.defineProperty(HTMLElement.prototype, "animate", { value: animate, configurable: true, writable: true });
+    });
+    afterEach(() => {
+      Reflect.deleteProperty(HTMLElement.prototype, "animate");
+      vi.unstubAllGlobals();
+    });
+
+    it("animates the buttons that appear when the box opens", async () => {
+      const user = userEvent.setup();
+      renderComposer({ layout: "box" });
+      await readyBox();
+      await user.click(field());
+      expect(animate).not.toHaveBeenCalled();
+      await user.type(field(), "a");
+      // The ghost microphone is new in the open shape and fades in (jsdom measures every rect as
+      // zero, so no move is played; the geometry is covered in hooks/use-flip.test.ts).
+      expect(animate).toHaveBeenCalled();
+    });
+
+    it("plays nothing under prefers-reduced-motion", async () => {
+      vi.stubGlobal("matchMedia", (query: string) => ({ matches: query.includes("reduce"), media: query, addEventListener() {}, removeEventListener() {} }));
+      const user = userEvent.setup();
+      renderComposer({ layout: "box" });
+      await readyBox();
+      await user.type(field(), "a");
+      expect(animate).not.toHaveBeenCalled();
+    });
+
+    it("plays nothing in the field layout", async () => {
+      const user = userEvent.setup();
+      renderComposer();
+      await readyBox();
+      await user.type(field(), "a");
+      expect(animate).not.toHaveBeenCalled();
+    });
   });
 });

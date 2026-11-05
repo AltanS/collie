@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useRevalidator } from "react-router";
-import { ChevronDown, ChevronUp, Columns2, PanelLeftClose, PanelLeftOpen, Plus, Replace, TerminalSquare } from "lucide-react";
+import { ChevronDown, ChevronUp, Columns2, PanelLeftClose, PanelLeftOpen, Plus, Replace } from "lucide-react";
 
 import { ActionRow } from "@/components/action-sheet-rows";
-import { AgentIcon } from "@/components/agent-icon";
 import { ThreadSidebar } from "@/components/agent-sidebar";
 import { SettingsGear, useHeaderDock } from "@/components/app-header";
 import { useHostHealth } from "@/components/crew-provider";
@@ -12,6 +11,7 @@ import { StatusDot } from "@/components/status-badge";
 import { TabStrip } from "@/components/tab-strip";
 import { ColumnControls, ColumnHeader, PaneColumnBody, columnFrame } from "@/components/strip-column";
 import { Button } from "@/components/ui/button";
+import { PaneGlyph } from "@/components/ui/pane-glyph";
 import { BottomSheet } from "@/components/ui/sheet";
 import { Wordmark } from "@/components/wordmark";
 import { openForCount, useDashPrefs } from "@/hooks/use-dash-prefs";
@@ -834,10 +834,6 @@ function SidebarList({ agent, paneId, scope, onSelect }: { agent: AgentView | un
   );
 }
 
-function PaneGlyph({ pane, className = "size-7" }: { pane: AgentView; className?: string }) {
-  return pane.kind === "shell" ? <TerminalSquare className={cn(className, "text-muted-foreground")} aria-hidden /> : <AgentIcon agent={pane.agent} className={className} />;
-}
-
 /** The closed sidebar: each space's panes as icons with their status marks, in the sidebar's order. */
 function Rail({ spaces, hereKey, onSelect }: { spaces: readonly WorkspaceGroup[]; hereKey: string | null; onSelect: (pane: AgentView) => void }) {
   return (
@@ -863,10 +859,7 @@ function Rail({ spaces, hereKey, onSelect }: { spaces: readonly WorkspaceGroup[]
                   here ? "border-ring bg-accent" : "border-transparent",
                 )}
               >
-                <span className="relative inline-flex">
-                  <PaneGlyph pane={p} />
-                  <StatusDot status={shownStatus(p)} backed surface="bg-card" className="absolute -bottom-1 -right-1" />
-                </span>
+                <PaneGlyph pane={p} markOn="bg-card" />
               </button>
             );
           })}
