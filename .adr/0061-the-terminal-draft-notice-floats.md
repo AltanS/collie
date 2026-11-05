@@ -106,3 +106,25 @@ the draft notice, which holds no space, over a reserved strip or a smaller in-fl
 **What would reopen this:** an open list that clips at the top of the mirror on a short screen, or a
 third card wanting the same slot. Then the column needs a height budget of its own rather than a
 `vh` cap per card.
+
+## Addendum - 2026-11-01: the bodies end above the floating cards
+
+Status is unchanged: **Accepted**. Nothing above this line is rewritten. This addendum takes back the
+price both consequences named: a floating card no longer covers rows the reader cannot reach.
+
+**The covered tail could not be read.** Scrolled to the bottom, the last line of a reply sat under the
+draft notice, and the only way to read it was the x, which also hides the notice. The cards still
+float and still move nothing in the footer: not the dock, not the belt, not the field.
+
+1. **The pane view measures the slot.** `useFloatingClear` reads the slot's height while a card is in
+   it, and 0 while it is empty, and follows it as cards come, go and grow.
+2. **Both bodies end that much lower.** `ChatMessageList` takes the height as `clearBottom` and ends the
+   list with a spacer that tall, so a reader at the tail sees the last line just above the cards. The
+   list keeps following the tail, so when a card comes the text rises above it, and when it goes the
+   text comes back down. "Jump to latest" moves up by the same height and sits above the cards.
+
+**Consequences.**
+
+- **The text under the cards moves when a card comes or goes**, and when the draft notice grows from
+  one line to two. The footer still does not, which is what this ADR is about.
+- **A reader scrolled away from the tail is not moved.** The spacer only changes where the list ends.
