@@ -1,0 +1,40 @@
+[38;5;174m ▐[48;5;16m▛███▛█[39m[49m   [1mClaude[0m [1mCode[0m [38;5;246mv2.1.306[39m
+[38;5;174m▝▜[48;5;16m█████[49m█▀[39m  [38;5;246mModel[39m [38;5;246mname[39m [38;5;246m·[39m [38;5;246mPlan[39m [38;5;246mname[39m
+[38;5;174m ▝▝[39m   [38;5;174m▝▝[39m   [38;5;246m/home/demo/sandbox/menu-lab[39m
+
+
+[38;5;246m[48;5;237m❯ [38;5;231mUse the Bash tool with run_in_background true to run: sleep 600. Then just reply OK.[39m
+
+[38;5;114m[49m●[39m [1mBash[0m(sleep 600)
+[38;5;246m  ⎿  Running in the background (↓ to manage)[39m
+
+[38;5;231m●[39m OK
+
+[38;5;246m✻[39m [38;5;246mWorked · 1 shell still running[39m
+
+[38;5;246m[48;5;237m❯ [38;5;231m/exit[39m
+
+[38;5;153m[49m──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[39m  [1m[38;5;153mBackground work is running[0m
+  [38;5;246mThe following will stop when you exit:[39m
+
+  [1mshell[0m[38;5;246m · sleep 600[39m
+
+  [38;5;153m❯[39m [38;5;246m1. [38;5;153mExit and stop tasks[39m
+    [38;5;246m2. [39mMove to background and exit
+    [38;5;246m3.[39m Stay
+
+  [38;5;246mEnter[39m [38;5;246mto[39m [38;5;246mconfirm[39m [38;5;246m·[39m [38;5;246mEsc[39m [38;5;246mto[39m [38;5;246mcancel[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
