@@ -30,6 +30,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Fixed
 
+- **A bridge that cannot open its port exits, so the service restarts it.** When the listen fails at boot, for example because the tailnet address is not up yet, the bridge now logs the address, port and error and exits, and launchd or systemd starts it again a few seconds later; before it stayed alive with no listener and the phone showed the machine offline for hours. Thanks @unclemicdo for the report (#699).
 - **One tap on Send sends on iPhone with the keyboard up.** The press no longer moves focus off the field, and a Send that is busy stays under the finger instead of letting the tap fall through to the box, so the keyboard stays up and the message goes out on the first tap. Thanks @JDFS404 for the diagnosis (#691).
 - **A blockquote in Chat keeps its bullets, code and tables.** A quote's body is now parsed as blocks, so a quoted pull request body or a log with a shell snippet reads as it was written; the code stays upright, and quotes nest up to four deep. Thanks @KyongSik-Yoon (#684).
 - **pi and Oh My Pi transcripts are found when the home directory is reached through a symlink.** On hosts such as Bazzite or Kinoite (`/home` links to `/var/home`), Collie now matches the pane's folder by its real path as well, so Chat and History open. Two sessions in one folder are still refused. Thanks @wipash (#683).
