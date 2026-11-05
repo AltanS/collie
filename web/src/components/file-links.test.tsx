@@ -365,7 +365,7 @@ describe("the image sheet of a file links provider", () => {
   const imageOpener: FileLinkOpener = ({ path }) => ({
     href: `/files?path=${path}`,
     onOpen: () => {},
-    image: { paneId: "w1:p1", scope: {}, rel: path },
+    image: { paneId: "w1:p1", scope: {}, root: "/home/you/webapp", rel: path },
   });
   const pngBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
   const servePng = () =>
@@ -422,5 +422,93 @@ describe("the image sheet of a file links provider", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
     rerender(ui(imageOpener));
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("closes the open sheet when the same provider switches to another pane, and opens it again on the first", async () => {
+    servePng();
+    const grabbed: Grabbed = { current: null };
+    const paneOpener = (paneId: string): FileLinkOpener => {
+      const opener: FileLinkOpener = ({ path }) => ({
+        href: `/files?path=${path}`,
+        onOpen: () => {},
+        image: { paneId, scope: {}, root: "/home/you/webapp", rel: path },
+      });
+      opener.paneKey = `\0\0${paneId}\0/home/you/webapp`;
+      return opener;
+    };
+    const ui = (value: FileLinkOpener | null) => (
+      <FileLinksProvider value={value}>
+        <Grab into={grabbed} />
+      </FileLinksProvider>
+    );
+    const { rerender } = render(ui(paneOpener("w1:p1")));
+    const stale = grabbed.current!({ path: "shots/home.png" })!;
+    act(() => stale.onOpen());
+    await waitFor(() => expect(screen.getByRole("img", { name: "home.png" })).toBeInTheDocument());
+
+    // A fresh opener of the same pane keeps the sheet.
+    rerender(ui(paneOpener("w1:p1")));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+    // Another pane, without going through null, closes it, and it does not return with the first pane.
+    rerender(ui(paneOpener("w1:p2")));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    rerender(ui(paneOpener("w1:p1")));
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    // A target taken from an earlier opener still opens the sheet on the pane it belongs to.
+    act(() => stale.onOpen());
+    await waitFor(() => expect(screen.getByRole("img", { name: "home.png" })).toBeInTheDocument());
+  });
+
+  it("works end to end with usePaneFileLinks: stale target, pane switch, and null opener", async () => {
+    servePng();
+    server.use(
+      http.get("/api/launchers", () => HttpResponse.json({ launchers: [], home: "/home/you" })),
+      http.post("/api/pane/:id/files/exist", async ({ request }) => {
+        const body = parseJsonObject(await request.text());
+        return HttpResponse.json({ exists: Array.isArray(body?.paths) ? body.paths : [] });
+      }),
+    );
+    const grabbed: Grabbed = { current: null };
+    function Harness({ active, second }: { active: typeof pane | undefined; second: boolean }) {
+      const opener = usePaneFileLinks({
+        paneId: active?.paneId ?? "w1:p1",
+        pane: active,
+        panes: active ? [active] : [],
+        workspaces,
+      });
+      return (
+        <FileLinksProvider value={opener}>
+          <Grab into={grabbed} />
+          <MarkdownText text={second ? "see `shots/first.png` and `shots/second.png`" : "see `shots/first.png`"} />
+        </FileLinksProvider>
+      );
+    }
+    const ui = (active: typeof pane | undefined, second: boolean) => (
+      <MemoryRouter>
+        <Harness active={active} second={second} />
+      </MemoryRouter>
+    );
+    const { rerender } = render(ui(pane, false));
+    await waitFor(() => expect(grabbed.current?.({ path: "shots/first.png" }) ?? null).not.toBeNull());
+    const stale = grabbed.current!({ path: "shots/first.png" })!;
+    // A second existence batch yields a new opener instance; the earlier target still works.
+    rerender(ui(pane, true));
+    await waitFor(() => expect(screen.getByText("shots/second.png").closest("a")).not.toBeNull());
+    act(() => stale.onOpen());
+    await waitFor(() => expect(screen.getByRole("img", { name: "first.png" })).toBeInTheDocument());
+
+    rerender(ui(other, true));
+    expect(screen.queryByRole("img", { name: "first.png" })).toBeNull();
+
+    rerender(ui(pane, true));
+    act(() => stale.onOpen());
+    await waitFor(() => expect(screen.getByRole("img", { name: "first.png" })).toBeInTheDocument());
+    rerender(ui(undefined, true));
+    expect(screen.queryByRole("img", { name: "first.png" })).toBeNull();
+    rerender(ui(pane, true));
+    await settle();
+    expect(screen.queryByRole("img", { name: "first.png" })).toBeNull();
   });
 });

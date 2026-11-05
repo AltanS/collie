@@ -48,13 +48,21 @@ export interface FileLinkTarget {
 }
 
 /** Where a printed path leads, or null when it leads nowhere Files can open. */
-export type FileLinkOpener = (found: PrintedPath) => FileLinkTarget | null;
+export type FileLinkOpener = ((found: PrintedPath) => FileLinkTarget | null) & {
+  /** Names the pane, scope and root the opener belongs to, so a switch to another pane closes an open image sheet. */
+  paneKey?: string;
+};
+
+function paneImageKey(paneId: string, scope: Scope, root: string): string {
+  return `${scope.host ?? ""}\0${scope.session ?? ""}\0${paneId}\0${root}`;
+}
 
 const FileLinkContext = createContext<FileLinkOpener | null>(null);
 
 export interface PaneImageTarget {
   paneId: string;
   scope: Scope;
+  root: string;
   rel: string;
 }
 
@@ -68,17 +76,22 @@ export function FileLinksProvider({ value, children }: { value: FileLinkOpener |
   // that sets it, so the tap reaches this state through the context and no other way.
   const [target, setTarget] = useState<PaneImageTarget | null>(null);
   // No opener, no sheet: a target set before the opener went away must not come back with the next one.
-  if (value === null && target !== null) setTarget(null);
+  // The same goes for a target that belongs to another pane than the opener's.
+  const paneKey = value?.paneKey;
+  const foreign = target !== null && paneKey !== undefined && paneImageKey(target.paneId, target.scope, target.root) !== paneKey;
+  if (target !== null && (value === null || foreign)) setTarget(null);
   const closeSheet = useCallback(() => setTarget(null), []);
   const opener = useMemo<FileLinkOpener | null>(() => {
     if (value === null) return null;
-    return (found) => {
+    const wrapped: FileLinkOpener = (found) => {
       const link = value(found);
       if (link === null || link.image === undefined) return link;
       const image = link.image;
       return { href: link.href, onOpen: () => setTarget(image) };
     };
-  }, [value]);
+    if (paneKey !== undefined) wrapped.paneKey = paneKey;
+    return wrapped;
+  }, [value, paneKey]);
   return (
     <FileLinkContext.Provider value={opener}>
       {children}
@@ -357,7 +370,7 @@ export function usePaneFileLinks({
     const at: Scope = {};
     if (host !== undefined) at.host = host;
     if (session !== undefined) at.session = session;
-    return ({ path, line }) => {
+    const opener: FileLinkOpener = ({ path, line }) => {
       const rel = resolveFilePathLink({ path, root, cwd, home });
       if (rel === null) return null;
       if (existence === null) return null;
@@ -368,7 +381,9 @@ export function usePaneFileLinks({
       const href = filesPath(paneId, at, line === undefined ? { path: rel } : { path: rel, line });
       const onOpen = () => nav.down(href, { viaLink: true });
       if (line !== undefined || !isRasterImagePath(rel)) return { href, onOpen };
-      return { href, onOpen, image: { paneId, scope: at, rel } };
+      return { href, onOpen, image: { paneId, scope: at, root, rel } };
     };
+    opener.paneKey = paneImageKey(paneId, at, root);
+    return opener;
   }, [root, cwd, home, paneId, host, session, nav, existence]);
 }
