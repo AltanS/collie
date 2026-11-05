@@ -33,7 +33,6 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ### Changed
 
-
 - **The install ping says whether the bridge runs alone, leads a crew or is a member.** One more word in the daily ping, so the count can tell setups from machines; nothing else is added.
 - **Updates is the first row in Settings.** The row shows whether you are up to date or which version waits, and the gear on the home screen carries a dot when an update is available. System now holds devices, crew and connection.
 - **The install count switch sits on its own page.** System shows one row with its state, and the switch with its explanation opens from there.
