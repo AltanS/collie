@@ -2,7 +2,13 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { CardDock, hasDialogCard } from "@/components/card-dock";
+import { parseAnsi } from "@/lib/ansi";
+import { splitLines } from "@/lib/blocks";
+import { buildBlocks } from "@/lib/harness";
 import { claudeBuildBlocks } from "@/lib/harness/claude";
 import { fixtureRows } from "@/test/surface-corpus";
 
@@ -100,5 +106,35 @@ describe("CardDock: the dock shrinks before the chat does", () => {
     expect(dock().className).toMatch(/max-h-\[55dvh\]/);
     rerender(<CardDock blocks={blocks} composing />);
     expect(dock().className).toMatch(/max-h-\[40dvh\]/);
+  });
+});
+
+// The trouble signal (M86 spec 05): the unread-dialog card tells the bridge once per card instance,
+// for each pane and dialog it shows. A poll that re-renders the same dialog is not a new signal.
+describe("the unread-dialog card signals once per instance", () => {
+  const screenText = readFileSync(join(import.meta.dirname, "..", "fixtures", "panes", "claude-lab--menu-status-screen--w82.txt"), "utf8");
+  const unreadBlocks = () => buildBlocks(splitLines(parseAnsi(screenText)), { agent: "claude" });
+
+  it("calls onUnreadDialogShown once across re-renders, again for another pane, and again for a new instance", () => {
+    const blocks = unreadBlocks();
+    expect(blocks.some((block) => block.kind === "unread-dialog")).toBe(true);
+    const shown = vi.fn();
+    const { rerender, unmount } = render(<CardDock blocks={blocks} paneId="w1:p1" onUnreadDialogShown={shown} />);
+    expect(shown).toHaveBeenCalledTimes(1);
+    expect(shown.mock.calls[0]?.[0]).toMatchObject({ agent: "claude" });
+    // The next poll builds the blocks again from the same screen: the same dialog, no new signal.
+    rerender(<CardDock blocks={unreadBlocks()} paneId="w1:p1" onUnreadDialogShown={shown} />);
+    rerender(<CardDock blocks={unreadBlocks()} paneId="w1:p1" onUnreadDialogShown={shown} />);
+    expect(shown).toHaveBeenCalledTimes(1);
+    // Another pane reusing the instance is a new card for it.
+    rerender(<CardDock blocks={unreadBlocks()} paneId="w1:p2" onUnreadDialogShown={shown} />);
+    expect(shown).toHaveBeenCalledTimes(2);
+    unmount();
+    render(<CardDock blocks={unreadBlocks()} paneId="w1:p1" onUnreadDialogShown={shown} />);
+    expect(shown).toHaveBeenCalledTimes(3);
+  });
+
+  it("calls nothing without the handler", () => {
+    expect(() => render(<CardDock blocks={unreadBlocks()} paneId="w1:p1" />)).not.toThrow();
   });
 });

@@ -14,10 +14,12 @@
 
 import { useSyncExternalStore } from "react";
 
+import { getReportContext, getSendReceipts, postTroubleSignal } from "../api";
 import { asJsonNumber, asJsonObject, asJsonString, parseJson, type JsonValue } from "../json";
-import { SEND_OUTCOMES, SEND_REASONS, type SendOutcome, type SendReason } from "../surface/send";
+import { SEND_OUTCOMES, SEND_REASONS, type SendOutcome, type SendReason, type SendReceiptRow } from "../surface/send";
 import type { DetectorVerdict, UnreadDialogModel } from "../harness/unread-dialog-model";
-import type { Scope } from "../scope";
+import { isLead, type Scope } from "../scope";
+import { harnessOf, reportedSends, troubleSignal, type TroubleKind } from "./signal";
 import { closeOffer, NO_TROUBLE, noteSettled, offersReport, type SettledSend, type Trouble } from "./trouble";
 
 const EPISODES_KEY = "collie:report-episodes:v1";
@@ -52,15 +54,19 @@ export function troubleOf(key: string): Trouble {
 
 /**
  * One settled send on a pane. Returns the streak after it. When this send made the streak reach the
- * threshold, the episode goes into the on-device log.
+ * threshold, the episode goes into the on-device log, and the bridge hears one trouble signal for the
+ * streak (M86 spec 05): this is the one moment a streak offers its card.
  */
-export function noteSend(key: string, paneId: string, send: SettledSend, now: number = send.at): Trouble {
+export function noteSend(key: string, paneId: string, send: SettledSend, now: number = send.at, scope?: Scope): Trouble {
   const before = troubleOf(key);
   const after = noteSettled(before, send);
   if (after === before) return before;
   if (after === NO_TROUBLE) streaks.delete(key);
   else streaks.set(key, after);
-  if (after.offered && !before.offered) logEpisode({ at: send.at, paneId, sends: after.sends.map(({ requestId, outcome, reason }) => ({ requestId, outcome, reason })) }, now);
+  if (after.offered && !before.offered) {
+    logEpisode({ at: send.at, paneId, sends: after.sends.map(({ requestId, outcome, reason }) => ({ requestId, outcome, reason })) }, now);
+    void signalTrouble({ kind: "send", paneId, scope, requestIds: after.sends.map((counted) => counted.requestId) });
+  }
   emit();
   return after;
 }
@@ -195,4 +201,36 @@ export function useReportTarget(): ReportTarget | null {
 /** The streak's request ids on a pane, for the card's Report. */
 export function streakIds(key: string): string[] {
   return troubleOf(key).sends.map((send) => send.requestId);
+}
+
+// ── The trouble signal (M86 spec 05) ─────────────────────────────────────────
+
+/**
+ * Tell the bridge a trouble card showed. Reads the same facts the report sheet reads, cleans them to
+ * {@link troubleSignal} and posts them once. Never throws and never retries. A crew member's pane has
+ * no report context on the lead (the lead refuses it), so its signal carries the card's agent and an
+ * `other` multiplexer, the same facts its report would have.
+ */
+export async function signalTrouble(a: {
+  readonly kind: TroubleKind;
+  readonly paneId: string;
+  readonly scope?: Scope | undefined;
+  /** The streak's request ids, for a Send not landing card. */
+  readonly requestIds?: readonly string[] | undefined;
+  /** The unread-dialog card's agent. */
+  readonly agent?: string | undefined;
+}): Promise<void> {
+  try {
+    const [context, rows] = await Promise.all([
+      isLead(a.scope) ? getReportContext(a.paneId, false, a.scope).catch(() => null) : Promise.resolve(null),
+      getSendReceipts(a.paneId, a.scope).catch((): SendReceiptRow[] => []),
+    ]);
+    const dialog = a.agent === undefined ? undefined : { agent: a.agent };
+    const facts = harnessOf({ sends: reportedSends(rows, a.requestIds), context, dialog });
+    const signal = troubleSignal({ kind: a.kind, harness: facts.harness, version: facts.version, mux: context?.mux });
+    if (signal === null) return;
+    await postTroubleSignal(signal);
+  } catch {
+    // Dropped: a count is never worth a retry.
+  }
 }

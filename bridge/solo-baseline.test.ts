@@ -929,6 +929,9 @@ describe("solo zero-tax — routes", () => {
       // The anonymous install ping's state and the phone's switch (M86 spec 01) — solo, no crew
       // sibling: each machine is one install, and a member is switched by its own env or config.
       "/api/telemetry",
+      // The trouble tally (M86 spec 05): the phone's one count when a trouble card showed. Solo for the
+      // same reason: the bridge the phone talks to counts it under its own install.
+      "/api/telemetry/trouble",
       // Starting an update from the phone (M15/05) — a SOLO route that legitimately extends this
       // list, named here rather than exempted. Write-gated through the same closure a send rides,
       // and it registers no crew sibling: a peer is levelled from the lead's terminal
@@ -1297,8 +1300,8 @@ const STATE_DIR_ENTRIES = [
   // COLLIE_SURFACE_SHADOW=1) the first time it reads an agent pane or settles a send.
   "surface",
   // The anonymous install ping's record (M86 spec 01): the random install ID, the first start, the
-  // last day sent and the phone's switch. A NEW file; the ID is deleted the moment the ping is off,
-  // and an older build ignores the file.
+  // last day sent, the phone's switch and the trouble tally (M86 spec 05). A NEW file; the ID and the
+  // tally are deleted the moment the ping is off, and an older build ignores the file.
   "telemetry.json",
   // The detached updater's own stdout and stderr (#283), with the run before it kept beside it as
   // `update-runner.log.1`. Absent until the first update started from the phone: the bridge opens it

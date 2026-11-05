@@ -85,7 +85,9 @@ import {
   withHsts,
   arrivedOverHttps,
   chatBodyForMux,
+  telemetryTroubleRoute,
 } from "./server.ts";
+import { createTelemetry, readTelemetryRecord, telemetryPath, type TroubleSignal } from "./telemetry.ts";
 import {
   createPairLimiter,
   pairSourceKey,
@@ -3857,6 +3859,85 @@ describe("the update write gate — POST api/update rides the pane path's own ga
     // Only the timer sends: the route never reaches the network.
     expect(handler).not.toContain("fetch(");
     expect(handler).not.toContain("tick(");
+  });
+
+  test("api/telemetry/trouble: write-gated, no request id, no audit line, the body parsed by telemetryTroubleRoute (M86 spec 05)", () => {
+    const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
+    const at = src.indexOf('if (pathname === "/api/telemetry/trouble" && req.method === "POST")');
+    expect(at).toBeGreaterThan(0);
+    const handler = src.slice(at, src.indexOf("\n      }\n", at));
+    expect(handler).toContain('const denied = browserGate("write");');
+    expect(handler).toContain("return telemetryTroubleRoute(opts.telemetry, body);");
+    // A count, not a command: no request id, nothing in the audit log, and never a ping from here.
+    expect(handler).not.toContain("requestId");
+    expect(handler).not.toContain("audit.record");
+    expect(handler).not.toContain("fetch(");
+    expect(handler).not.toContain("tick(");
+  });
+
+  describe("telemetryTroubleRoute (M86 spec 05)", () => {
+    const SIGNAL: TroubleSignal = { kind: "send", harness: "claude", version: "2.1.316", mux: "herdr" };
+    const telemetryIn = (stateDir: string, env: Record<string, string> = {}) =>
+      createTelemetry({
+        stateDir,
+        env,
+        origin: "env",
+        version: "1.27.0+fd5a796587",
+        installKind: "binary",
+        line: () => "stable",
+        crewMode: () => "solo",
+        now: () => Date.UTC(2026, 10, 6, 12),
+        fetch: async () => new Response("ok"),
+        os: "linux",
+        arch: "x64",
+        newId: () => "1".repeat(32),
+      });
+
+    test("a good body is a 204 and counts one", async () => {
+      const dir = await mkdtemp(join(tmpdir(), "collie-trouble-route-"));
+      try {
+        const ping = telemetryIn(dir);
+        expect(telemetryTroubleRoute(ping, { ...SIGNAL }).status).toBe(204);
+        expect(telemetryTroubleRoute(ping, { ...SIGNAL }).status).toBe(204);
+        expect(readTelemetryRecord(dir).trouble).toEqual([{ ...SIGNAL, count: 2 }]);
+        expect(ping.view().next?.trouble).toEqual([{ ...SIGNAL, count: 2 }]);
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    });
+
+    test("a bad body is a 400 telemetry.trouble_invalid and stores nothing", async () => {
+      const dir = await mkdtemp(join(tmpdir(), "collie-trouble-route-"));
+      try {
+        const ping = telemetryIn(dir);
+        for (const body of [undefined, "send", { ...SIGNAL, paneId: "w1:p1" }, { ...SIGNAL, kind: "crash" }]) {
+          const res = telemetryTroubleRoute(ping, body);
+          expect(res.status).toBe(400);
+          expect(await res.text()).toBe("telemetry.trouble_invalid");
+        }
+        expect(readTelemetryRecord(dir).trouble).toEqual([]);
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    });
+
+    test("telemetry off: a 204, and the signal writes nothing", async () => {
+      const dir = await mkdtemp(join(tmpdir(), "collie-trouble-route-"));
+      try {
+        const ping = telemetryIn(dir, { DO_NOT_TRACK: "1" });
+        ping.observe();
+        const before = readFileSync(telemetryPath(dir), "utf8");
+        expect(telemetryTroubleRoute(ping, { ...SIGNAL }).status).toBe(204);
+        expect(readFileSync(telemetryPath(dir), "utf8")).toBe(before);
+        expect(readTelemetryRecord(dir).trouble).toEqual([]);
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    });
+
+    test("no telemetry seam is a 503", () => {
+      expect(telemetryTroubleRoute(undefined, { ...SIGNAL }).status).toBe(503);
+    });
   });
 
   test("update check GET: an unknown latest triggers a bounded on-demand poll before answering", () => {

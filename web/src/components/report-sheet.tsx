@@ -30,6 +30,7 @@ import { canCopyText, copyText } from "@/lib/clipboard";
 import { t, tn } from "@/lib/i18n";
 import { probeStandalone } from "@/lib/nav-entry";
 import { fitLink, hasTyped, reportFields, reportText, searchLink, type ClientFacts, type ReportContext, type ReportInput } from "@/lib/report/body";
+import { reportedSends } from "@/lib/report/signal";
 import { closeReport, readEpisodes, useReportTarget, type DialogTrouble, type Episode, type ReportTarget } from "@/lib/report/store";
 import { getServerBuild } from "@/lib/server-build";
 import { setStatus } from "@/lib/status";
@@ -42,12 +43,8 @@ export function ReportSheetHost() {
   return <ReportSheet target={target} onClose={closeReport} />;
 }
 
-/** The sends a report lists: the streak's own when the card named them and the bridge still has them, else the pane's recent ones. */
-export function reportedSends(rows: readonly SendReceiptRow[], requestIds: readonly string[] | undefined): SendReceiptRow[] {
-  if (requestIds === undefined || requestIds.length === 0) return [...rows];
-  const named = rows.filter((row) => requestIds.includes(row.requestId));
-  return named.length > 0 ? named : [...rows];
-}
+// The sends a report lists live beside the trouble signal (lib/report/signal.ts), which reads the same ones.
+export { reportedSends };
 
 /** What the phone knows about itself, for a report from the unread-dialog card. Read once per open. */
 export function readClientFacts(): ClientFacts {

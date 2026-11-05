@@ -26,6 +26,7 @@ Running a crew? Update the lead first; members follow on their own. Details:
 ### Changed
 
 - **The voice takeover shows live when the first audio arrives.** It no longer shows live when the recorder is asked to start (#709).
+- **The install count also says when a trouble card showed.** When the phone shows "Cannot read a dialog" or "Send not landing", the bridge counts it, and the next daily ping carries how often, with the agent program's name and version and the multiplexer, never what was said or shown. No new request and no new switch: every off switch of the install count drops it too. The ping's schema is now `v: 2` (`telemetry/README.md`).
 
 ## [1.27.0] - 2026-11-06
 

@@ -45,6 +45,7 @@
 import { asJsonObject, asJsonString, parseJson, type JsonObject } from "../json";
 import type { ReportContext, ReportDoctorRow } from "./context";
 import type { SendReceiptRow, SendStep } from "../surface/send";
+import { harnessOf } from "./signal";
 import type { DialogTrouble, Episode } from "./store";
 
 export type { ReportContext } from "./context";
@@ -117,27 +118,6 @@ function failed(row: SendReceiptRow): boolean {
 
 function endWord(row: Pick<SendReceiptRow, "outcome" | "reason">): string {
   return row.reason === undefined ? row.outcome : `${row.outcome}/${row.reason}`;
-}
-
-function harnessWord(harness: string | null | undefined): string {
-  if (harness === null || harness === undefined) return "no pane";
-  return harness === "" ? "shell" : harness;
-}
-
-/** Which agent a report is about, and its version. */
-interface HarnessFacts {
-  readonly harness: string;
-  readonly version: string | null;
-}
-
-/**
- * The newest receipt names the harness and its version; the context names the pane's agent when none
- * does, and the unread-dialog card's adapter when the context did not answer.
- */
-function harnessOf(input: ReportInput): HarnessFacts {
-  const newest = input.sends[0];
-  if (newest !== undefined) return { harness: harnessWord(newest.harness), version: newest.version };
-  return { harness: harnessWord(input.context?.harness ?? input.dialog?.agent), version: null };
 }
 
 /**
