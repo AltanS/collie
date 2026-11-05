@@ -23,9 +23,11 @@ Running a crew? Update the lead first; members follow on their own. Details:
 
 ## [Unreleased]
 
+## [1.26.4] - 2026-11-05
+
 ### Fixed
 
-- **One tap on Send sends on iPhone with the keyboard up.** The press no longer moves focus off the field, and a Send that is busy stays under the finger instead of letting the tap fall through to the box, so the keyboard stays up and the message goes out on the first tap. Thanks @JDFS404 for the diagnosis (#691).
+- **One tap on Send sends on iPhone with the keyboard up.** The press no longer moves focus off the field, and a Send that is busy stays under the finger instead of letting the tap fall through to the box, so the keyboard stays up and the message goes out on the first tap. Thanks @JDFS404 for the diagnosis (#691). ([2c002b4dc](https://github.com/AltanS/collie/commit/2c002b4dc))
 
 ## [1.26.3] - 2026-11-05
 
