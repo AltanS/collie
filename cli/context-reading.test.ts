@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 
 import { parseUsageRecord, usageFileName } from "../bridge/usage.ts";
 import { takeContextReading, takeSessionStart } from "./context-reading.ts";
@@ -23,7 +23,7 @@ describe("context-reading configDir tracking", () => {
       schemaVersion: 1,
       harness: "claude",
       at: NOW,
-      configDir: resolve("/profiles/work"),
+      configDir: join("/profiles", "work"),
     });
 
     const defaultFiles = fakeFiles({});
@@ -57,7 +57,7 @@ describe("context-reading configDir tracking", () => {
       at: NOW,
       window: 200_000,
       context: 25,
-      configDir: resolve(customRoot),
+      configDir: join("/profiles", "work"),
     });
 
     // Even when no model window is known yet, a custom CLAUDE_CONFIG_DIR is recorded on the turn.
@@ -74,7 +74,7 @@ describe("context-reading configDir tracking", () => {
       schemaVersion: 1,
       harness: "claude",
       at: NOW,
-      configDir: resolve(customRoot),
+      configDir: join("/profiles", "work"),
     });
   });
 });

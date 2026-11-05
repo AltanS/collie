@@ -42,7 +42,7 @@ import { execFile } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { lstat, open, readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 
 import { asJsonNumber, asJsonObject, asJsonString, parseJsonObject } from "../web/src/lib/json.ts";
 import {
@@ -87,13 +87,13 @@ export const MAX_CUSTOM_CONFIG_DIRS = 16;
 
 /**
  * The macOS Keychain service name Claude Code uses for `configDir`: `"Claude Code-credentials"` for the
- * default `~/.claude`, or suffixed with the first 8 hex chars of `sha256(resolve(configDir.trim()))`
+ * default `~/.claude`, or suffixed with the first 8 hex chars of `sha256(join(configDir.trim(), "."))`
  * when `CLAUDE_CONFIG_DIR` is set.
  */
 export function claudeKeychainService(configDir?: string): string {
   const trimmed = configDir?.trim() ?? "";
   if (trimmed === "") return CLAUDE_KEYCHAIN_SERVICE;
-  const suffix = createHash("sha256").update(resolve(trimmed)).digest("hex").slice(0, 8);
+  const suffix = createHash("sha256").update(join(trimmed, ".")).digest("hex").slice(0, 8);
   return `${CLAUDE_KEYCHAIN_SERVICE}-${suffix}`;
 }
 
@@ -440,10 +440,10 @@ export async function readLoginFile(
  */
 export async function readClaudeLogin(seams: CredentialSeams, configDir?: string): Promise<CredentialRead> {
   const raw = (configDir ?? seams.env.CLAUDE_CONFIG_DIR ?? "").trim();
-  const defaultDir = resolve(seams.home, ".claude");
-  const resolved = raw === "" ? defaultDir : resolve(raw);
-  const explicitDir = resolved === defaultDir ? undefined : resolved;
-  const file = await readLoginFile(seams, join(resolved, ".credentials.json"));
+  const defaultDir = join(seams.home, ".claude");
+  const normalized = raw === "" ? defaultDir : join(raw, ".");
+  const explicitDir = normalized === defaultDir ? undefined : normalized;
+  const file = await readLoginFile(seams, join(normalized, ".credentials.json"));
   if (file.ok) return claudeTokenFrom(file.text, seams.now());
   if (file.reason !== "missing" || seams.platform !== "darwin") return file;
   const text = await seams.keychain(claudeKeychainService(explicitDir));
@@ -642,7 +642,7 @@ export type AccountSource = HttpAccountSource | LocalAccountSource;
 
 export function claudeAccountSource(seams: CredentialSeams, configDir?: string): AccountSource {
   const raw = (configDir ?? seams.env.CLAUDE_CONFIG_DIR ?? "").trim();
-  const resolvedDir = raw === "" ? resolve(seams.home, ".claude") : resolve(raw);
+  const resolvedDir = raw === "" ? join(seams.home, ".claude") : join(raw, ".");
   return {
     kind: "http",
     harness: "claude",
@@ -906,10 +906,10 @@ export class AccountWindows {
   }
 
   private resolveKey(harness: string, configDir: string, factory: (dir: string) => AccountSource): string | undefined {
-    const resolved = resolve(configDir);
+    const normalized = join(configDir, ".");
     const base = this.sources.get(harness);
-    if (base?.kind === "http" && base.configDir !== undefined && base.configDir === resolved) return harness;
-    return this.ensureCustomKey(harness, resolved, factory);
+    if (base?.kind === "http" && base.configDir !== undefined && base.configDir === normalized) return harness;
+    return this.ensureCustomKey(harness, normalized, factory);
   }
 
   private ensureCustomKey(harness: string, configDir: string, factory: (dir: string) => AccountSource): string | undefined {

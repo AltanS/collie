@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname, join } from "node:path";
 
 import type { JsonObject } from "./json.ts";
 import type { AgentView } from "./types.ts";
@@ -87,11 +87,11 @@ describe("the configDir note", () => {
     expect(customClaudeConfigDir({ CLAUDE_CONFIG_DIR: "/profiles/work\u0000" }, home)).toBeUndefined();
     expect(customClaudeConfigDir({ CLAUDE_CONFIG_DIR: "/profiles/work\n" }, home)).toBeUndefined();
     expect(customClaudeConfigDir({ CLAUDE_CONFIG_DIR: `/${"a".repeat(4096)}` }, home)).toBeUndefined();
-    expect(customClaudeConfigDir({ CLAUDE_CONFIG_DIR: "  /profiles/work/  " }, home)).toBe(resolve("/profiles/work"));
+    expect(customClaudeConfigDir({ CLAUDE_CONFIG_DIR: "  /profiles/work/  " }, home)).toBe(join("/profiles", "work"));
   });
 
   it("round-trips through parseUsageRecord and never leaks into usageAt wire output", () => {
-    const dir = resolve("/profiles/work");
+    const dir = join("/profiles", "work");
     const parsed = parseUsageRecord(record({ context: 12, configDir: "/profiles/work/" }));
     expect(parsed).toEqual({ schemaVersion: 1, harness: "claude", at: NOW, context: 12, configDir: dir });
     expect(usageAt(parsed!, NOW)).toEqual({ context: 12 });
@@ -285,8 +285,8 @@ describe("UsageTracker with the account windows (ADR 0118)", () => {
   });
 
   it("isolates account windows and statusLine fallback limits per configDir", async () => {
-    const dirA = resolve("/profiles/a");
-    const dirB = resolve("/profiles/b");
+    const dirA = join("/profiles", "a");
+    const dirB = join("/profiles", "b");
     const limitsDefault: UsageLimit[] = [{ window: "5h", used: 11, resetsAt: NOW + 60_000 }];
     const limitsA: UsageLimit[] = [{ window: "5h", used: 44, resetsAt: NOW + 60_000 }];
     const entries = new Map<string, [number, string]>([

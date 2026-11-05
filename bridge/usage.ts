@@ -41,7 +41,7 @@
 
 import { createHash } from "node:crypto";
 import { readdir, readFile, stat, unlink } from "node:fs/promises";
-import { isAbsolute, join, resolve } from "node:path";
+import { isAbsolute, join } from "node:path";
 
 import { asJsonNumber, asJsonObject, asJsonString, parseJsonObject } from "../web/src/lib/json.ts";
 import type { JsonValue } from "./json.ts";
@@ -143,8 +143,8 @@ export function customClaudeConfigDir(
   if (hasControlChar(rawInput)) return undefined;
   const raw = rawInput.trim();
   if (raw === "" || raw.length > 4096 || !isAbsolute(raw)) return undefined;
-  const normalized = resolve(raw);
-  return normalized === resolve(join(home, ".claude")) ? undefined : normalized;
+  const normalized = join(raw, ".");
+  return normalized === join(home, ".claude") ? undefined : normalized;
 }
 
 /** `${stateDir}/usage`. */
@@ -202,7 +202,7 @@ export function parseUsageRecord(text: string): UsageRecord | null {
   if (size !== undefined && Number.isInteger(size) && size > 0 && size <= WINDOW_MAX) record.window = size;
   const dir = asJsonString(root.configDir);
   if (dir !== undefined && dir.length <= 4096 && !hasControlChar(dir) && isAbsolute(dir)) {
-    record.configDir = resolve(dir);
+    record.configDir = join(dir, ".");
   }
   const rows = Array.isArray(root.limits) ? root.limits.map(asJsonObject) : [];
   const limits: UsageLimit[] = [];

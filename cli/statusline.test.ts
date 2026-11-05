@@ -183,8 +183,9 @@ describe("usageFromStatusLine", () => {
   });
 
   test("what it writes is what the bridge reads", () => {
-    const usage = usageFromStatusLine(payload(), NOW, "/profiles/work");
-    expect(usage?.record.configDir).toBe("/profiles/work");
+    const customDir = join("/profiles", "work");
+    const usage = usageFromStatusLine(payload(), NOW, customDir);
+    expect(usage?.record.configDir).toBe(customDir);
     expect(parseUsageRecord(JSON.stringify(usage?.record))).toEqual(usage!.record);
   });
 });
@@ -221,7 +222,7 @@ describe("collie beacon statusline", () => {
 
     const custom = deps({ env: { ...TMUX, CLAUDE_CONFIG_DIR: "/profiles/work" }, stdin });
     expect(await cmdBeaconStatusline(custom.d, [token])).toBe(0);
-    expect(parseUsageRecord(custom.files.entries.get(usagePath)?.text ?? "")?.configDir).toBe("/profiles/work");
+    expect(parseUsageRecord(custom.files.entries.get(usagePath)?.text ?? "")?.configDir).toBe(join("/profiles", "work"));
   });
 
   test("merges into a file the beacon wrote: the window it noted and the context stay unless this reading has its own", async () => {

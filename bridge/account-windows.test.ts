@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 
 import { createHash } from "node:crypto";
-import { basename, join, resolve as resolvePath } from "node:path";
+import { basename, join } from "node:path";
 
 import type { JsonObject, JsonValue } from "./json.ts";
 import { USAGE_WINDOWS } from "./usage.ts";
@@ -231,7 +231,7 @@ describe("the Claude login", () => {
 
   it("derives the macOS Keychain service name from CLAUDE_CONFIG_DIR when non-default", async () => {
     const customDir = "/profiles/work";
-    const expectedHash = createHash("sha256").update(resolvePath(customDir)).digest("hex").slice(0, 8);
+    const expectedHash = createHash("sha256").update(join(customDir, ".")).digest("hex").slice(0, 8);
     expect(claudeKeychainService()).toBe(CLAUDE_KEYCHAIN_SERVICE);
     expect(claudeKeychainService("   ")).toBe(CLAUDE_KEYCHAIN_SERVICE);
     expect(claudeKeychainService(` ${customDir} `)).toBe(`${CLAUDE_KEYCHAIN_SERVICE}-${expectedHash}`);
