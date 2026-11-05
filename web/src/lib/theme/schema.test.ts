@@ -721,8 +721,8 @@ describe("the ground and the band in the contrast report", () => {
     expect(mixOklab("oklch(0 0 0)", "oklch(1 0 0)", 50)).toBe(toSrgbHex("oklch(0.5 0 0)"));
   });
 
-  it("adds no check for a flat ground, so the report is the one it was (the band is the default chrome)", () => {
-    const plain = contrastReport(collie, collie).map((f) => f.check);
+  it("adds no check for a flat ground, so the report is Collie's without the grain's (the band is the default chrome)", () => {
+    const plain = contrastReport(collie, collie).map((f) => f.check).filter((check) => !check.endsWith("the grain ground"));
     const flat = contrastReport({ ...collie, version: 2, surface: { ground: "flat", chrome: "band" } }, collie).map((f) => f.check);
     expect(flat).toEqual(plain);
   });

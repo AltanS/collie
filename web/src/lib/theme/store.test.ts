@@ -7,8 +7,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { MetaColours } from "@/hooks/use-theme";
 import { parseJsonObject } from "@/lib/json";
 
-import { THEME_TOKENS, fillHalves, isOptionalThemeToken, parseTheme, toSrgbHex, type Theme } from "./schema";
-import { ANSI_PROPERTIES, VERSION_TWO_PROPERTIES, SURFACE_PROPERTIES } from "./surface";
+import { THEME_TOKENS, contrastReport, fillHalves, isOptionalThemeToken, parseTheme, toSrgbHex, type Theme } from "./schema";
+import { ANSI_PROPERTIES, VERSION_TWO_PROPERTIES, SURFACE_PROPERTIES, wordDeclarations } from "./surface";
 
 // The store keeps module-scope state (the design store, the library, the metas), so each case
 // imports a fresh graph over a storage it seeded itself.
@@ -348,9 +348,14 @@ describe("applyTheme checks the theme again", () => {
     store.addImported(theme);
     store.setActiveTheme("markup");
     expect(inline()).toHaveLength(43);
-    expect(root().style.length).toBe(43);
+    expect(root().style.length).toBe(44); // the 43 colour tokens and the flat ground
     for (let i = 0; i < root().style.length; i += 1) {
       const name = root().style.item(i);
+      // The flat ground the theme says for itself is the one non-colour property, from a closed table.
+      if (name === "--ground-image") {
+        expect(root().style.getPropertyValue(name)).toBe("none");
+        continue;
+      }
       expect(THEME_TOKENS.map((t) => `--${t}`)).toContain(name);
       expect(root().style.getPropertyValue(name)).toMatch(/^light-dark\([#a-z0-9 ./()%-]+, [#a-z0-9 ./()%-]+\)$/);
     }
@@ -397,19 +402,54 @@ describe("the shape words of an imported theme (schema version 2)", () => {
     const { store } = await boot();
     store.addImported(midnight("shaped", { version: 2, surface: { radius: "soft", density: "roomy" } }));
     store.setActiveTheme("shaped");
-    expect(surfaceSet()).toEqual(["--radius-sm", "--radius-md", "--radius-lg", "--radius-xl", "--edge-accent", "--edge-shadow", "--spacing"]);
+    expect(surfaceSet()).toEqual(["--radius-sm", "--radius-md", "--radius-lg", "--radius-xl", "--edge-accent", "--edge-shadow", "--spacing", "--ground-image"]);
     expect(root().style.getPropertyValue("--edge-accent")).toBe("inset 0 0 0 2px");
     expect(root().style.getPropertyValue("--edge-shadow")).toBe("0 1px 3px 0 rgb(0 0 0 / 0.1)");
     expect(root().style.getPropertyValue("--radius-md")).toBe("6px");
     expect(root().style.getPropertyValue("--spacing")).toBe("0.28rem");
   });
 
-  it("sets no shape property for a theme without a surface block", async () => {
+  it("sets no shape property but a flat ground for a theme without a surface block", async () => {
     const { store } = await boot();
     store.addImported(midnight());
     store.setActiveTheme("midnight");
     expect(inline()).toHaveLength(THEME_TOKENS.length);
-    expect(surfaceSet()).toEqual([]);
+    expect(surfaceSet()).toEqual(["--ground-image"]);
+    expect(root().style.getPropertyValue("--ground-image")).toBe("none");
+  });
+
+  // index.css paints Collie's grain on :root. `collie` sets nothing and so shows it; an imported theme
+  // that names no ground says `flat` itself; going back to `collie` takes that inline `none` off in the
+  // same tick, so the grain returns with no frame in between.
+  it("keeps an imported theme with no ground flat, and gives collie its grain back in the same tick", async () => {
+    const stylesheet = readFileSync(resolve(web, "src/index.css"), "utf8");
+    const { store } = await boot();
+    store.addImported(midnight("plain"));
+    store.addImported(midnight("shaped", { version: 2, surface: { radius: "soft" } }));
+    store.addImported(midnight("woven", { version: 2, surface: { ground: "grain" } }));
+    expect(stylesheet).toContain(`--ground-image: ${wordDeclarations("ground", "grain")[0]?.[1]};`);
+    const ground = () => root().style.getPropertyValue("--ground-image");
+
+    store.initTheme();
+    expect(ground()).toBe("");
+    for (const id of ["plain", "shaped"]) {
+      store.setActiveTheme(id);
+      expect(ground(), id).toBe("none");
+      store.setActiveTheme("collie");
+      expect(ground(), `back from ${id}`).toBe("");
+      expect(root().getAttribute("style") ?? "").toBe("");
+    }
+    store.setActiveTheme("woven");
+    expect(ground()).toBe(wordDeclarations("ground", "grain")[0]?.[1]);
+  });
+
+  it("measures no grain for an imported theme with no ground, and the grain for collie", async () => {
+    const collieFile = parseTheme(readFileSync(resolve(web, "src/themes/collie.json"), "utf8"), { maxBytes: 1_000_000, allowReservedId: true });
+    expect(collieFile.ok && collieFile.theme.surface?.ground).toBe("grain");
+    const plain = contrastReport(midnight("plain"), collie()).map((f) => f.check);
+    expect(plain.some((check) => check.includes("grain ground"))).toBe(false);
+    const own = collieFile.ok ? contrastReport(collieFile.theme, collie()).map((f) => f.check) : [];
+    expect(own).toContain("foreground on the grain ground");
   });
 
   it("takes every shape property off on the way back to collie or to another theme", async () => {
@@ -432,7 +472,7 @@ describe("the shape words of an imported theme (schema version 2)", () => {
     expect(surfaceSet()).toEqual([...SURFACE_PROPERTIES]);
     expect(versionTwoSet()).toEqual([...VERSION_TWO_PROPERTIES]);
     store.setActiveTheme("plain");
-    expect(versionTwoSet()).toEqual([]);
+    expect(versionTwoSet()).toEqual(["--ground-image"]);
     store.setActiveTheme("shaped");
     store.setActiveTheme("collie");
     expect(root().getAttribute("style") ?? "").toBe("");
@@ -499,7 +539,8 @@ describe("the seven more tokens on an imported theme", () => {
     expect(root().style.getPropertyValue("--ansi-4")).toBe("#2472c8");
     store.addImported(midnight());
     store.setActiveTheme("midnight");
-    expect(VERSION_TWO_PROPERTIES.filter((p) => root().style.getPropertyValue(p) !== "")).toEqual([]);
+    // Only the flat ground: a theme that names none must not inherit :root's grain.
+    expect(VERSION_TWO_PROPERTIES.filter((p) => root().style.getPropertyValue(p) !== "")).toEqual(["--ground-image"]);
   });
 
   it("applies nothing for a stored palette that fails the gate", async () => {

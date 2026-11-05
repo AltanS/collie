@@ -83,6 +83,10 @@
       }
       var s = t.surface && typeof t.surface === "object" ? t.surface : {};
       for (var n = 0; n < SURFACE.length; n++) for (var w = 0; w < SURFACE[n][1].length; w++) if (s[SURFACE[n][0]] === SURFACE[n][1][w][0]) set(SURFACE[n][1][w][1]);
+      // :root carries Collie's grain, so an imported theme that names no ground says flat itself.
+      var named = false, flat = [];
+      for (var g = 0; g < SURFACE.length; g++) if (SURFACE[g][0] === "ground") for (var h = 0; h < SURFACE[g][1].length; h++) { named = named || s.ground === SURFACE[g][1][h][0]; if (SURFACE[g][1][h][0] === "flat") flat = SURFACE[g][1][h][1]; }
+      if (!named) set(flat);
       var f = t.fonts && typeof t.fonts === "object" ? t.fonts : {};
       for (var m = 0; m < DISPLAY.length; m++) if (f.display === DISPLAY[m][0]) set(DISPLAY[m][1]);
       var a = t.ansi && typeof t.ansi === "object" ? t.ansi : {}, all = true;
