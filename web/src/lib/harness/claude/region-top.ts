@@ -8,6 +8,7 @@
 //   * The MODAL EDGE. Claude Code 2.1.27x and later open every slash-command modal with a row of
 //     U+2594 (`▔`) across the pane, often with a label spliced in near its right end:
 //       `▔▔▔…▔ ● high · /effort ▔`, `▔▔▔ You've used 89% of your weekly limit · … ▔`.
+//     A notice longer than the box takes the whole row and leaves only a trailing `▔` (MODAL_EDGE).
 //     The labelled form is not a horizontal rule (isHorizontalRule wants rule glyphs only), and a tall
 //     modal (`/hooks`, `/config`) puts it 37 rows or more above its footer, past the window. On a live
 //     2.1.283 screen with no other rule in reach, both grammars declined and the phone showed the
@@ -33,9 +34,17 @@ export const REGION_SCAN_WINDOW = 30;
  *  locator also uses (MAX_TAIL_LINES in chrome.ts). The `/hooks` list puts its edge 37 rows up. */
 export const MODAL_EDGE_WINDOW = 60;
 
-// A modal edge: `▔` from column 0, optionally one label spliced in, closed by `▔` again. Nothing
-// else: an indented row, or a row that does not end in the glyph, is prose that happens to hold it.
-const MODAL_EDGE = /^▔+(?:\s+\S.*?\s+▔+)?$/u;
+// A modal edge, in two shapes.
+//   * `▔` from column 0, optionally one label spliced in, closed by `▔` again.
+//   * A NOTICE ROW that runs edge to edge: text, then whitespace, then `▔` at the very end, with no `▔`
+//     (and maybe a space) at the start. Claude Code 2.1.318 fills the whole edge with the weekly-limit
+//     notice when it is longer than the box: ` You've used 80% of your weekly limit · resets … · /usage-credits
+//     to keep using Claude Code ▔`, one trailing glyph and nothing before the text. The first form needs the
+//     glyph at column 0, so the picker read as no dialog for the seconds the notice stayed.
+// The notice form takes one to three closing glyphs: a longer run after prose is a bar, not a notice.
+// Nothing else: a row that does not end in the glyph, or holds it only in the middle, is prose. The
+// full-width test in isModalEdge keeps a short text row that ends in ` ▔` from passing as an edge.
+const MODAL_EDGE = /^(?:▔+(?:\s+\S.*?\s+▔+)?|\s*\S.*?\s+▔{1,3})$/u;
 
 // The shortest edge worth the name, in display cells. The same floor as a bare input-box border
 // (BARE_BORDER_MIN in markers.ts). Every real edge in the corpus spans the pane, 40 cells or more.

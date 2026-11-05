@@ -3713,6 +3713,18 @@ were replaced with neutral text. The bytes from the dialog's rule to the end are
 | `claude--background-work-exit-2.txt` | `❯` on `2. Move to background and exit` | menu, same identity, new signature |
 | `claude--background-work-exit-3.txt` | `❯` on `3. Stay` | menu, same identity, new signature |
 
+## Claude Code 2.1.318 `/model` picker under the usage notice (captured 2026-11-06)
+
+`/model` in a disposable 120-column, 40-row pane in the first seconds of a session, read from the live
+dev lane (8788) while the picker showed the unread-dialog card. The weekly-limit notice fills the
+picker's top edge row from end to end, and only one `▔` is left at its far right (119 columns, one
+leading space). It stays for 1.5 to 5 s and goes away. Privacy: nothing private was on screen; the
+folder is a lab folder.
+
+| Fixture | State | Reads as |
+| --- | --- | --- |
+| `claude--v2318-model-picker-usage-notice-edge--w120.txt` | `/model` menu, `❯` on `2. Opus 5.5 ✔`, ten rows, effort row, the notice row as the edge | menu, the signature starts under the notice row |
+
 ## Codex 0.166.0 on herdr-core (captured 2026-11-05, hc 0.1.14, the Codex report of 2026-11-05)
 
 A Codex user on Collie 1.26.1 saw the unread-dialog card after every send. These are the screens that
