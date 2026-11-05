@@ -54,7 +54,8 @@ test("an imported theme is on the page before the bundle runs", async ({ page })
     };
   });
   expect(seen.background).toContain("#123456");
-  expect(seen.inline).toBe(43);
+  // 44: the 43 before, plus the inline `--ground-image: none` an imported theme that names no ground gets (d0f225b95).
+  expect(seen.inline).toBe(44);
   // The theme leaves the optional token out, so index.css's pair holds and nothing is set inline.
   expect(seen.paneActive).toBe("");
   expect(seen.attribute).toBeNull();
@@ -178,7 +179,7 @@ test("a stored theme with a hostile value paints nothing from that token", async
   expect(seen.foreground).toContain("#abcdef");
 });
 
-test("setting 43 properties before paint costs well under 5 ms", async ({ page }, testInfo) => {
+test("setting 44 properties before paint costs well under 5 ms", async ({ page }, testInfo) => {
   await seed(page);
   await page.route("**/assets/*.js", (route) => route.abort());
   await page.goto("/");
@@ -211,7 +212,8 @@ test("the running app keeps the theme and moves the browser-chrome colour with i
     )
     .toEqual(["#e4e3e0", "#123456"]);
   const inline = await page.evaluate(() => document.documentElement.style.length);
-  expect(inline).toBe(43);
+  // 44: 43 plus the inline `--ground-image: none` of a theme that names no ground (d0f225b95).
+  expect(inline).toBe(44);
 });
 
 // UNDER A MOUNT (ADR 0052). theme-init.js holds no path, so it should not care, but the shell has to
@@ -233,6 +235,7 @@ test.describe("under /collie/", () => {
     }));
     expect(seen.script).toBe("/collie/theme-init.js");
     expect(seen.background).toContain("#123456");
-    expect(seen.inline).toBe(43);
+    // 44: the 43 before, plus the inline `--ground-image: none` an imported theme that names no ground gets (d0f225b95).
+  expect(seen.inline).toBe(44);
   });
 });
