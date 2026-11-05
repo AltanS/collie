@@ -12,6 +12,20 @@ import type { JsonValue } from "@/lib/json";
 // Mock the race guard at AgentChat's seam so the frozen-revision tests can observe exactly what
 // `detectedRevision` the tap handler passes (the guard's own behaviour is covered in
 // prompt-select-block.test.tsx). The other tests in this file never reach it.
+// This file's cases were written for the plain tab row and the field composer, the words a theme gets
+// when it names none. The default theme Collie names `folder` and `box`, so the active theme is pinned
+// to the plain words here; the folder and box looks have their own cases (tab-strip, pane-strip,
+// composer, themes).
+vi.mock("@/lib/theme/store", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/lib/theme/store")>();
+  return {
+    ...original,
+    useActiveTheme: () => {
+      const active = original.useActiveTheme();
+      return { ...active, theme: { ...active.theme, surface: { ...active.theme.surface, tabs: "plain", composer: "field" } } };
+    },
+  };
+});
 vi.mock("@/lib/prompt-action", () => ({
   submitPromptOption: vi.fn(),
 }));

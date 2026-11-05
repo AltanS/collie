@@ -21,9 +21,10 @@ const LIBRARY_KEY = "collie:themes:v1";
 function collie(): Theme {
   const parsed = parseTheme(COLLIE_RAW, { maxBytes: 64 * 1024, allowReservedId: true });
   if (!parsed.ok) throw new Error("collie.json no longer parses");
-  // The fixtures are version 1 copies of collie's 43 required tokens; the optional ones (version 3) are left out.
+  // The fixtures are version 1 copies of collie's 43 required tokens; the optional ones (version 3), the surface and the palette are left out.
   const strip = (half: Theme["light"]) => Object.fromEntries(Object.entries(half ?? {}).filter(([token]) => !isOptionalThemeToken(token)));
-  return { ...parsed.theme, version: 1, light: strip(parsed.theme.light), dark: strip(parsed.theme.dark) };
+  const { surface: _surface, ansi: _ansi, ...rest } = parsed.theme;
+  return { ...rest, version: 1, fonts: { ui: "aldrich" }, light: strip(parsed.theme.light), dark: strip(parsed.theme.dark) };
 }
 
 /** A complete imported theme: collie's tokens, another id, and a dark ground of #123456. */
@@ -40,7 +41,7 @@ function midnight(id = "midnight", extra: Partial<Theme> = {}): Theme {
   };
 }
 
-/** Collie's own index.css palette on its own ground: a palette that passes the gate. */
+/** The first Collie look's palette on its own ground: a palette that passes the gate. */
 const PALETTE = {
   "0": "#000000", "1": "#cd3131", "2": "#0dbc79", "3": "#e5e510", "4": "#2472c8", "5": "#bc3fbc",
   "6": "#11a8cd", "7": "#e5e5e5", "8": "#666666", "9": "#f14c4c", "10": "#23d18b", "11": "#f5f543",
@@ -60,8 +61,8 @@ async function boot(opts: { design?: string; library?: string } = {}) {
   document.documentElement.removeAttribute("data-theme");
   document.documentElement.className = "";
   document.head.innerHTML =
-    '<meta name="theme-color" content="#f5f5f5" media="(prefers-color-scheme: light)">' +
-    '<meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)">';
+    '<meta name="theme-color" content="#e4e3e0" media="(prefers-color-scheme: light)">' +
+    '<meta name="theme-color" content="#2a2927" media="(prefers-color-scheme: dark)">';
   vi.resetModules();
   const store = await import("./store");
   const design = await import("@/lib/design");
@@ -86,7 +87,7 @@ describe("the default theme", () => {
     expect(root().hasAttribute("data-theme")).toBe(false);
     expect(root().getAttribute("style")).toBeNull();
     expect(inline()).toEqual([]);
-    expect(metas()).toEqual(["#f5f5f5", "#0a0a0a"]);
+    expect(metas()).toEqual(["#e4e3e0", "#2a2927"]);
     expect(store.activeThemeId()).toBe("collie");
   });
 
@@ -98,7 +99,7 @@ describe("the default theme", () => {
     store.setActiveTheme("collie");
     expect(root().hasAttribute("data-theme")).toBe(false);
     expect(root().getAttribute("style") ?? "").toBe("");
-    expect(metas()).toEqual(["#f5f5f5", "#0a0a0a"]);
+    expect(metas()).toEqual(["#e4e3e0", "#2a2927"]);
   });
 
   it("stores no theme field for collie", async () => {
@@ -144,10 +145,11 @@ describe("an imported theme", () => {
     const { store, theme } = await boot();
     store.addImported(midnight());
     store.setActiveTheme("midnight");
-    expect(theme.metaColours()).toEqual({ light: toSrgbHex(collie().light?.background ?? ""), dark: "#123456" });
-    expect(metas()).toEqual([theme.metaColours().light, "#123456"]);
+    // midnight names no `chrome` word, so it has the stylesheet's band, and the metas follow `secondary`.
+    expect(theme.metaColours()).toEqual({ light: toSrgbHex(collie().light?.secondary ?? ""), dark: toSrgbHex(collie().dark?.secondary ?? "") });
+    expect(metas()).toEqual([theme.metaColours().light, theme.metaColours().dark]);
     store.setActiveTheme("collie");
-    expect(theme.metaColours()).toEqual({ light: "#f5f5f5", dark: "#0a0a0a" });
+    expect(theme.metaColours()).toEqual({ light: "#e4e3e0", dark: "#2a2927" });
   });
 
   it("writes its bundled face into design.font once, and keeps the font alone afterwards", async () => {
@@ -212,7 +214,7 @@ describe("removal", () => {
     expect(store.activeThemeId()).toBe("collie");
     expect(design.designPrefs().theme).toBeUndefined();
     expect(inline()).toEqual([]);
-    expect(metas()).toEqual(["#f5f5f5", "#0a0a0a"]);
+    expect(metas()).toEqual(["#e4e3e0", "#2a2927"]);
     expect(store.library()).toEqual([]);
     expect(localStorage.getItem(LIBRARY_KEY)).toBeNull();
   });
@@ -329,7 +331,7 @@ describe("applyTheme checks the theme again", () => {
     store.setActiveTheme("midnight");
     store.applyTheme({ ...midnight(), dark: { background: "#12345" } }, "imported");
     expect(inline()).toEqual([]);
-    expect(metas()).toEqual(["#f5f5f5", "#0a0a0a"]);
+    expect(metas()).toEqual(["#e4e3e0", "#2a2927"]);
   });
 
   it("refuses an imported theme that wears a shipped id", async () => {

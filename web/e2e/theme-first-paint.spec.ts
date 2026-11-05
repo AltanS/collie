@@ -23,7 +23,7 @@ const theme = {
   id: "midnight",
   name: "Midnight",
   light: collieHalves.light,
-  dark: { ...collieHalves.dark, background: "#123456" },
+  dark: { ...collieHalves.dark, background: "#123456", secondary: "#123456" },
 };
 
 async function seed(page: import("@playwright/test").Page) {
@@ -107,6 +107,22 @@ test("a device on the default theme gets no attribute and no inline property", a
   expect(seen).toEqual({ style: null, attribute: null });
 });
 
+test("a device that stored the retired collie-new paints the default on the first frame", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("collie:design:v1", JSON.stringify({ font: "atkinson", theme: "collie-new" })));
+  await page.route("**/assets/*.js", (route) => route.abort());
+  await page.goto("/");
+  const seen = await page.evaluate(() => ({
+    style: document.documentElement.getAttribute("style"),
+    attribute: document.documentElement.getAttribute("data-theme"),
+    band: getComputedStyle(document.documentElement).getPropertyValue("--band-ground"),
+    secondary: getComputedStyle(document.documentElement).getPropertyValue("--secondary"),
+  }));
+  // The stylesheet alone paints the band: --band-ground resolves to --secondary, under the dark scheme here.
+  expect(seen).toMatchObject({ style: null, attribute: null });
+  expect(seen.band).toBe(seen.secondary);
+  expect(seen.band).toContain(".003 80");
+});
+
 test("a stored theme with a hostile value paints nothing from that token", async ({ page }) => {
   const hostile = { ...theme, dark: { ...theme.dark, background: "url(https://x.test/a.png)", foreground: "#abcdef" } };
   await page.addInitScript(
@@ -160,7 +176,7 @@ test("the running app keeps the theme and moves the browser-chrome colour with i
         [...document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')].map((m) => m.content),
       ),
     )
-    .toEqual(["#f5f5f5", "#123456"]);
+    .toEqual(["#e4e3e0", "#123456"]);
   const inline = await page.evaluate(() => document.documentElement.style.length);
   expect(inline).toBe(43);
 });

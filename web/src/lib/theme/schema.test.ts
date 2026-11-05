@@ -53,7 +53,7 @@ describe("the token list", () => {
     expect(THEME_TOKENS).not.toContain("popover");
     expect(THEME_TOKENS).not.toContain("radius");
     expect(THEME_VERSION).toBe(3);
-    expect(SHIPPED_THEME_IDS).toEqual(["collie", "nightwatch", "daylight", "harbour", "collie-new"]);
+    expect(SHIPPED_THEME_IDS).toEqual(["collie", "nightwatch", "daylight", "harbour"]);
   });
 });
 
@@ -428,6 +428,10 @@ describe("contrastReport", () => {
       "destructive text on card",
       "status-blocked text on card",
       "rule on background",
+      // A theme that names no `chrome` word has the stylesheet's band, so the band is measured too.
+      "foreground on the band",
+      "muted-foreground on the band",
+      "status-blocked on the band",
       "status-blocked apart from status-done",
     ]);
     expect(findings.filter((f) => f.half === "dark")).toHaveLength(checks.length);
@@ -447,6 +451,7 @@ describe("contrastReport", () => {
         background: "#ffffff",
         card: "#ffffff",
         primary: "#ffffff",
+        secondary: "#eeeeee",
         destructive: "#b00000",
         "destructive-foreground": "#ffffff",
         rule: "#bbbbbb",
@@ -716,9 +721,9 @@ describe("the ground and the band in the contrast report", () => {
     expect(mixOklab("oklch(0 0 0)", "oklch(1 0 0)", 50)).toBe(toSrgbHex("oklch(0.5 0 0)"));
   });
 
-  it("adds no check for a flat ground under page chrome, so the report is the one it was", () => {
+  it("adds no check for a flat ground, so the report is the one it was (the band is the default chrome)", () => {
     const plain = contrastReport(collie, collie).map((f) => f.check);
-    const flat = contrastReport({ ...collie, version: 2, surface: { ground: "flat", chrome: "page" } }, collie).map((f) => f.check);
+    const flat = contrastReport({ ...collie, version: 2, surface: { ground: "flat", chrome: "band" } }, collie).map((f) => f.check);
     expect(flat).toEqual(plain);
   });
 
