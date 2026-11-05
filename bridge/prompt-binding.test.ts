@@ -213,6 +213,8 @@ const SAME_DIALOG: string[][] = [
     "claude-lab--ask-wizard-review-v2296--w40.txt",
   ],
   ["claude-lab--menu-config-panel-named-v2296--w40.txt", "claude-lab--menu-config-panel-v2296--w40.txt"],
+  // The survey over the context row (issue 705), once with its styling and once as herdr-core's plain text.
+  ["claude--v2317-survey-context-row--w160.txt", "claude--v2317-survey-context-row-plain--w160.txt"],
 ];
 
 describe("client/bridge binding contract", () => {

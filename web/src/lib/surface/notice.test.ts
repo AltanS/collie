@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { fixtureRows } from "../../test/surface-corpus";
-import { findInputFrame, plainRows, rowText } from "./frame";
+import { findInputFrame, plainRows, readIsUnstyled, rowText } from "./frame";
 import { readAboveNotice } from "./notice";
 import { requireProfile } from "./profile";
 
@@ -120,6 +120,33 @@ describe("readAboveNotice", () => {
         { key: "3", label: "Good" },
         { key: "0", label: "Dismiss" },
       ]);
+    }
+  });
+
+  // 2026-11-05, Claude Code 2.1.317 (issue 705): Claude right-aligns its context field, `N% until
+  // auto-compact`, on the row between the survey's keys and the box. Every send under the survey was
+  // refused `unconfirmed`, then `stale_surface`. The capture is rebuilt from the issue's row shapes and
+  // the 2.1.303 survey screen, once with its styling and once as the plain text herdr-core hands out.
+  const CONTEXT_FIELD_FIXTURES = ["claude--v2317-survey-context-row--w160.txt", "claude--v2317-survey-context-row-plain--w160.txt"];
+
+  it("reads the survey over the right-aligned context row, styled and unstyled", () => {
+    for (const name of CONTEXT_FIELD_FIXTURES) {
+      const rows = fixtureRows(name);
+      expect(readIsUnstyled(rows), name).toBe(name.includes("-plain--"));
+      const notice = noticeOf(rows);
+      expect(notice?.text, name).toBe("How is Claude doing this session? (optional)");
+      expect(notice?.keys.map((k) => k.key), name).toEqual(["1", "2", "3", "0"]);
+      expect(notice?.end, name).toBe(findInputFrame(rows, IDLE)!.top - 1);
+    }
+  });
+
+  it("reads the survey over the context row at any percent, clipped or not, and with a blank row between", () => {
+    for (const field of ["4% until auto-compact", "100% until auto-compact", "27% until auto", "27% until auto-comp…"]) {
+      const row = `${" ".repeat(100)}${field}`;
+      for (const between of [[row], ["", row], [row, ""]]) {
+        const notice = noticeOf(screen([...SURVEY, ...between]));
+        expect(notice?.keys.map((k) => k.key), JSON.stringify(between)).toEqual(["1", "2", "3", "0"]);
+      }
     }
   });
 
@@ -309,7 +336,19 @@ describe("a row the profile names between the notice and the box (idle.noticeGap
   // Claude Code with `verbose` on right-aligns the session's token count, unformatted, above the box
   // (2.1.317 at 154 columns, 2026-11-03).
   const VERBOSE_TOKENS = `${" ".repeat(139)}230267 tokens`;
-  for (const line of [USAGE, "  You've used 100% of your weekly limit", "  You've used 5% of your 5-hour limit · resets 3pm", VERBOSE_TOKENS, "  950 tokens"]) {
+  // Claude Code 2.1.317 right-aligns its context field on the same row (issue 705, 2026-11-05).
+  const CONTEXT_FIELD = `${" ".repeat(137)}4% until auto-compact`;
+  for (const line of [
+    USAGE,
+    "  You've used 100% of your weekly limit",
+    "  You've used 5% of your 5-hour limit · resets 3pm",
+    VERBOSE_TOKENS,
+    "  950 tokens",
+    CONTEXT_FIELD,
+    "  100% until auto-compact",
+    "  27% until auto",
+    "  27% until auto-comp…",
+  ]) {
     it(`the claude profile's gap matches ${JSON.stringify(line)}`, () => {
       expect(gapMatches(line)).toBe(true);
     });
@@ -324,6 +363,11 @@ describe("a row the profile names between the notice and the box (idle.noticeGap
     "  230.3k tokens",
     "  ↓ 1.7k tokens",
     "  230267 tokens · run the build",
+    "4% until auto-compact",
+    "  ● 4% until auto-compact",
+    "  4% until auto-compact · run the build",
+    "  4% until the build",
+    "  until auto-compact",
   ]) {
     it(`the claude profile's gap does not match ${JSON.stringify(line)}`, () => {
       expect(gapMatches(line)).toBe(false);

@@ -1,0 +1,11 @@
+● Lorem ipsum dolor sit amet, the build is green and the branch is ready.
+
+✻ Brewed for 38s · done 9:12 AM
+
+● How is Claude doing this session? (optional)
+  1: Bad    2: Fine   3: Good   0: Dismiss
+                                                                                                                                         4% until auto-compact
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── main ─
+❯ 
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ auto mode on (shift+tab to cycle)
