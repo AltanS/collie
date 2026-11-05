@@ -1390,6 +1390,7 @@ export const ko: Dictionary = {
   "connection.stale.messageTemplate": "{reason}. {detail}",
   "connection.session.title": "세션",
   "connection.session.aria": "세션: {name}. 세션 전환",
+  "connection.session.moveAria": "{name} 이동",
   "connection.session.primary": "기본",
   "connection.session.unreachable": "접근 불가",
   "connection.session.ariaIn": "세션 위치: {name}",

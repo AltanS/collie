@@ -1293,6 +1293,7 @@ export const tr: Dictionary = {
   "connection.stale.messageTemplate": "{reason}. {detail}",
   "connection.session.title": "Oturumlar",
   "connection.session.aria": "Oturum: {name}. Oturumu değiştir",
+  "connection.session.moveAria": "{name} taşı",
   "connection.session.primary": "birincil",
   "connection.session.unreachable": "erişilemez",
   "connection.session.ariaIn": "Bulunulan oturum: {name}",
