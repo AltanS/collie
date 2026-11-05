@@ -1479,9 +1479,10 @@ describe("parsePiTranscript — Gentle Shell's tools", () => {
       call(id: string, callId: string, name: string, args: Record<string, JsonValue>) {
         add(id, { type: "message", message: { role: "assistant", content: [{ type: "toolCall", id: callId, name, arguments: args }] } });
       },
-      result(id: string, callId: string, name: string, text: string, details: JsonValue, isError = false) {
+      result(id: string, callId: string, name: string, text: string, details: JsonValue, isError = false, at?: string) {
         const message = { role: "toolResult", toolCallId: callId, toolName: name, content: [{ type: "text", text }], details };
-        add(id, { type: "message", message: isError ? { ...message, isError: true } : message });
+        const body = { type: "message", message: isError ? { ...message, isError: true } : message };
+        add(id, at === undefined ? body : { ...body, timestamp: at });
       },
       /** `at` stamps the row with its own time, over the session's one. */
       notice(id: string, customType: string, content: string, details: JsonValue, at?: string) {
@@ -1709,6 +1710,75 @@ describe("parsePiTranscript — Gentle Shell's tools", () => {
       endedAt: Date.parse(ENDED_AT),
     });
     expect(tools(s.rows)[0]?.part.result?.isError).toBeUndefined();
+  });
+
+  // Issue 697: gentle-pi sends no notice for a job the agent stopped, so the `job_stop` result ends it.
+  const started = (s: ReturnType<typeof session>, jobId = "job-1") => {
+    s.call("a1", "c1", "bash_background", { command: "bun test", label: "suite" });
+    s.result("r1", "c1", "bash_background", `Started background job ${jobId} ("suite").`, job(jobId, "command", "running", null));
+  };
+  const stopCall = (s: ReturnType<typeof session>, text: string, details: JsonValue, at = ENDED_AT) => {
+    s.call("a2", "c2", "job_stop", { job_id: "job-1" });
+    s.result("r2", "c2", "job_stop", text, details, false, at);
+  };
+
+  test("a `job_stop` result ends the job it names, with no exit code and no error", () => {
+    const s = session();
+    started(s);
+    stopCall(s, 'Stopped job-1 ("suite").', job("job-1", "job", "stopped", null));
+    const card = tools(s.rows)[0]?.part;
+    expect(card?.call).toEqual({
+      kind: "execute",
+      command: "bun test",
+      description: "suite",
+      background: true,
+      jobId: "job-1",
+      startedAt: STARTED,
+      endedAt: Date.parse(ENDED_AT),
+    });
+    expect(card?.result?.isError).toBeUndefined();
+  });
+
+  test("a `job_stop` after the exit notice keeps the notice's end time", () => {
+    const s = session();
+    started(s);
+    s.notice("n1", "gentle-jobs.notice", 'Background job job-1 ("suite") exited with code 0 after 3s.', job("job-1", "command", "exited", 0), ENDED_AT);
+    stopCall(s, 'job-1 ("suite") was already exited with code 0.', job("job-1", "job", "exited", 0), "2026-09-30T12:09:00.000Z");
+    expect(tools(s.rows)[0]?.part.call).toMatchObject({ endedAt: Date.parse(ENDED_AT), exitCode: 0 });
+  });
+
+  test("a `job_stop` result for another job, or one that still says running, leaves the card running", () => {
+    const s = session();
+    started(s);
+    stopCall(s, 'Stopped job-2 ("other").', job("job-2", "job", "stopped", null));
+    expect(tools(s.rows)[0]?.part.call).toMatchObject({ ongoing: true });
+    s.call("a3", "c3", "job_stop", { job_id: "job-1" });
+    s.result("r3", "c3", "job_stop", "Still running.", job("job-1", "job", "running", null), false, ENDED_AT);
+    expect(tools(s.rows)[0]?.part.call).toMatchObject({ ongoing: true });
+  });
+
+  test("a `job_list` result settles the jobs it lists as ended and leaves a running one", () => {
+    const s = session();
+    started(s);
+    s.call("a1b", "c1b", "bash_background", { command: "bun dev", label: "dev" });
+    s.result("r1b", "c1b", "bash_background", 'Started background job job-2 ("dev").', job("job-2", "command", "running", null));
+    s.call("a2", "c2", "job_list", {});
+    s.result("r2", "c2", "job_list", "job-1 · stopped · suite · 1m 24s · /tmp/j.log\njob-2 · running · dev · 2m · /tmp/d.log", { gentleJobs: { count: 2 } }, false, ENDED_AT);
+    const [one, two] = tools(s.rows).filter((t) => t.part.call?.kind === "execute").map((t) => t.part);
+    expect(one?.call).toMatchObject({ jobId: "job-1", endedAt: Date.parse(ENDED_AT) });
+    expect(one?.call).not.toHaveProperty("ongoing");
+    expect(two?.call).toMatchObject({ jobId: "job-2", ongoing: true });
+  });
+
+  test("a `job_list` line `exited 1` gives the exit code and the error flag", () => {
+    const s = session();
+    started(s);
+    s.call("a2", "c2", "job_list", {});
+    s.result("r2", "c2", "job_list", "job-1 · exited 1 · suite · 3s · /tmp/j.log", { gentleJobs: { count: 1 } }, false, ENDED_AT);
+    const card = tools(s.rows)[0]?.part;
+    expect(card?.call).toMatchObject({ exitCode: 1, endedAt: Date.parse(ENDED_AT) });
+    expect(card?.call).not.toHaveProperty("ongoing");
+    expect(card?.result?.isError).toBe(true);
   });
 });
 
