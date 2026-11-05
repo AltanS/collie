@@ -299,7 +299,36 @@ test.describe("with a mouse on the owner's laptop", () => {
     await expectSheetScrolls(page);
     await dragToUnseenPlace(page, mouse(page));
   });
+
+  test("@oracle:requirement @req:SES-11 a mouse carries the bottom row up from a scrolled sheet, held just below the title, and the row lands first", async ({ page }) => {
+    await installSessions(page);
+    await page.goto("/");
+    await openSheet(page);
+    await carryBottomRowToTop(page, mouse(page));
+  });
 });
+
+/**
+ * The owner's case end to end: the sheet scrolled down to the bottom row, that row carried up and held
+ * just below the title row. That is the highest place the operator can see, so the hand stops there,
+ * and the sheet must scroll back to its top by itself.
+ */
+async function carryBottomRowToTop(page: Page, pointer: Pointer) {
+  const bottomRow = NAMES.at(-1);
+  if (bottomRow === undefined) throw new Error("no sessions");
+  await grip(page, bottomRow).scrollIntoViewIfNeeded();
+  expect((await measureSheet(page)).scrollTop).toBeGreaterThan(0);
+
+  const from = await gripCentre(page, bottomRow);
+  const title = await boxOf(sheet(page).locator('[data-slot="sheet-title-row"]'));
+  await pointer.press(from.x, from.y);
+  await walk(page, pointer, from, { x: from.x, y: title.y + title.height + 12 });
+  await expect.poll(async () => (await measureSheet(page)).scrollTop, { timeout: 15_000 }).toBe(0);
+  await pointer.release();
+
+  await expectOrder(page, withTop([bottomRow]));
+  await expectStillOnSheet(page);
+}
 
 /**
  * The first row carried to the bottom edge and held still there. The hand does not move, so only the
@@ -425,5 +454,12 @@ test.describe("with a finger on the phone", () => {
     await openSheet(page);
     await expectSheetScrolls(page);
     await dragToUnseenPlace(page, await finger(page));
+  });
+
+  test("@oracle:requirement @req:SES-11 a finger carries the bottom row up from a scrolled sheet, held just below the title, and the row lands first", async ({ page }) => {
+    await installSessions(page);
+    await page.goto("/");
+    await openSheet(page);
+    await carryBottomRowToTop(page, await finger(page));
   });
 });

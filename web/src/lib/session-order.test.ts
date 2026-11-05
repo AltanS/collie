@@ -104,12 +104,35 @@ describe("@oracle:requirement @req:SES-2 a move puts the session where the opera
   });
 
   // A session can pass through a listing without being there. Its place waits for it, as a pin does
-  // (pins.ts, "absence never prunes"): stored after the moved list, ahead of any session with no place.
-  it("a move while a session is absent keeps that session's place for its return", () => {
-    const local = fakeStorage();
-    moveSession(["a", "b", "c", "d"], 3, 0, undefined, local);
-    moveSession(read(["a", "c", "d"], undefined, local), 2, 0, undefined, local);
-    expect(read(["x", "a", "b", "c", "d"], undefined, local)).toEqual(["c", "d", "a", "b", "x"]);
+  // (pins.ts, "absence never prunes"): right after the name it followed, first if it followed none.
+  describe("a move while a session is absent keeps that session's place for its return", () => {
+    const FIVE = ["a", "b", "c", "d", "e"];
+
+    /** A store that really holds a, b, c, d, e: a real move, because the given order differs. */
+    function storedFive(): FakeStorage {
+      const local = fakeStorage();
+      moveSession(["b", "a", "c", "d", "e"], 1, 0, undefined, local);
+      expect(read(FIVE, undefined, local)).toEqual(FIVE);
+      return local;
+    }
+
+    it("an absent name stays right after the one it followed", () => {
+      const local = storedFive();
+      moveSession(["a", "c", "d", "e"], 3, 0, undefined, local);
+      expect(read(FIVE, undefined, local)).toEqual(["e", "a", "b", "c", "d"]);
+    });
+
+    it("an absent first name stays first", () => {
+      const local = storedFive();
+      moveSession(["b", "c", "d", "e"], 3, 0, undefined, local);
+      expect(read(FIVE, undefined, local)).toEqual(["a", "e", "b", "c", "d"]);
+    });
+
+    it("two absent neighbours stay together", () => {
+      const local = storedFive();
+      moveSession(["a", "d", "e"], 2, 0, undefined, local);
+      expect(read(FIVE, undefined, local)).toEqual(["e", "a", "b", "c", "d"]);
+    });
   });
 
   describe("the owner's case: 30 sessions, two of the working ones at the very bottom", () => {

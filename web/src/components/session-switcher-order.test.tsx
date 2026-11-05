@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useEffect, useState } from "react";
 import { createMemoryRouter, RouterProvider } from "react-router";
 
 import { forgetSessionOrder, moveSession, orderSessions } from "@/lib/session-order";
@@ -28,7 +29,8 @@ const PRIMARY = session("default", { isPrimary: true });
 const DEMO = session("collie-demo");
 const WEB = session("web-app");
 const DOWN = session("crashed", { reachable: false, agents: 0 });
-const NAMES = [PRIMARY, DEMO, WEB, DOWN].map((s) => s.name);
+const DOCS = session("docs-site");
+const NAMES = [PRIMARY, DEMO, WEB, DOWN, DOCS].map((s) => s.name);
 
 function renderSwitcher(sessions: SessionSummary[], host?: string) {
   const router = createMemoryRouter(
@@ -45,6 +47,22 @@ function renderSwitcher(sessions: SessionSummary[], host?: string) {
 }
 
 const at = (router: ReturnType<typeof renderSwitcher>) => router.state.location.pathname + router.state.location.search;
+
+/** The switcher as the home screen drives it: `poll` hands it a new list, the way a snapshot does. */
+function renderPolled(initial: SessionSummary[]) {
+  const latest = { set: (_next: SessionSummary[]): void => undefined };
+  function Polled() {
+    const [sessions, setSessions] = useState(initial);
+    useEffect(() => {
+      latest.set = setSessions;
+    }, []);
+    return <SessionSwitcher sessions={sessions} scope={{ host: undefined, session: undefined }} viewAll={false} />;
+  }
+  render(<RouterProvider router={createMemoryRouter([{ path: "/", element: <Polled /> }])} />);
+  return (next: SessionSummary[]) => {
+    act(() => latest.set(next));
+  };
+}
 
 async function openSheet() {
   await userEvent.click(screen.getByRole("button", { name: /switch session/i }));
@@ -105,27 +123,74 @@ function layOutRows() {
 
 const frame = () => new Promise((resolve) => setTimeout(resolve, 20));
 
-/** A press on a session's grip, a walk in steps, and a release, `toRow` counted among the sessions. */
-async function dragGrip(name: string, toRow: number, pointerType: "mouse" | "touch" = "mouse") {
-  const target = grip(name);
-  const from = drawnOrder().indexOf(name);
-  // The list's row 0 is the All row, so a session's row sits one lower. A drop lands in the half of
-  // the row that lies ahead of the move, the half that means "this place" under any drop rule.
-  const startY = ROW_TOP + (from + 1) * ROW_HEIGHT + ROW_HEIGHT / 2;
-  const endY = ROW_TOP + (toRow + 1) * ROW_HEIGHT + (toRow < from ? ROW_HEIGHT / 4 : (ROW_HEIGHT * 3) / 4);
-  const point = { pointerId: 7, pointerType, isPrimary: true, clientX: 370 };
+interface Touchdown {
+  readonly pointerId: number;
+  readonly pointerType: "mouse" | "touch";
+}
 
-  fireEvent.pointerDown(target, { ...point, button: 0, buttons: 1, clientY: startY });
+const MOUSE: Touchdown = { pointerId: 7, pointerType: "mouse" };
+
+const eventAt = ({ pointerId, pointerType }: Touchdown, clientY: number) => ({
+  pointerId,
+  pointerType,
+  isPrimary: true,
+  clientX: 370,
+  clientY,
+});
+
+/** A y inside a session's row. The list's row 0 is the All row, so a session's row sits one lower. */
+const rowY = (row: number, part = 0.5) => ROW_TOP + (row + 1) * ROW_HEIGHT + ROW_HEIGHT * part;
+
+function press(target: Element, pointer: Touchdown, y: number) {
+  fireEvent.pointerDown(target, { ...eventAt(pointer, y), button: 0, buttons: 1 });
+}
+
+async function walk(target: Element, pointer: Touchdown, fromY: number, toY: number) {
   for (let step = 1; step <= 6; step += 1) {
     await act(async () => {
-      fireEvent.pointerMove(target, { ...point, button: -1, buttons: 1, clientY: startY + ((endY - startY) * step) / 6 });
+      fireEvent.pointerMove(target, { ...eventAt(pointer, fromY + ((toY - fromY) * step) / 6), button: -1, buttons: 1 });
       await frame();
     });
   }
+}
+
+async function lift(target: Element, pointer: Touchdown, y: number) {
   await act(async () => {
-    fireEvent.pointerUp(target, { ...point, button: 0, buttons: 0, clientY: endY });
+    fireEvent.pointerUp(target, { ...eventAt(pointer, y), button: 0, buttons: 0 });
     await frame();
   });
+}
+
+/**
+ * A press on a session's grip, a walk in steps, and a release, `toRow` counted among the sessions. A
+ * drop lands in the half of the row that lies ahead of the move, the half that means "this place"
+ * under any drop rule.
+ */
+async function dragGrip(name: string, toRow: number, pointer: Touchdown = MOUSE) {
+  const target = grip(name);
+  const from = drawnOrder().indexOf(name);
+  const startY = rowY(from);
+  const endY = rowY(toRow, toRow < from ? 0.25 : 0.75);
+  press(target, pointer, startY);
+  await walk(target, pointer, startY, endY);
+  await lift(target, pointer, endY);
+}
+
+/** Each session row's whole markup: any mark a drag left on a row, a dim included, shows here. */
+const rowMarkup = () =>
+  new Map(
+    listRows()
+      .slice(1)
+      .map((row) => [NAMES.find((name) => row.textContent?.includes(name)), row.outerHTML]),
+  );
+
+/** A drag on web-app that has started and has not ended, then Escape, then the sheet open again. */
+async function escapeMidDragAndReopen() {
+  press(grip("web-app"), MOUSE, rowY(2));
+  await walk(grip("web-app"), MOUSE, rowY(2), rowY(1));
+  fireEvent.keyDown(window, { key: "Escape" });
+  expect(screen.queryByRole("dialog")).toBeNull();
+  await openSheet();
 }
 
 beforeEach(() => {
@@ -224,7 +289,7 @@ describe("@oracle:requirement @req:SES-5 the sheet draws the operator's order", 
       renderSwitcher([PRIMARY, DEMO, WEB]);
       await openSheet();
 
-      await dragGrip("default", 2, "touch");
+      await dragGrip("default", 2, { pointerId: 7, pointerType: "touch" });
 
       await waitFor(() => expect(drawnOrder()).toEqual(["collie-demo", "web-app", "default"]));
     } finally {
@@ -246,6 +311,93 @@ describe("@oracle:requirement @req:SES-5 the sheet draws the operator's order", 
     } finally {
       restore();
     }
+  });
+});
+
+// Target tests from the review: a drag does not always end with its own release.
+describe("@oracle:requirement @req:SES-5 a drag that is interrupted leaves the sheet working", () => {
+  const FOUR = [PRIMARY, DEMO, WEB, DOCS];
+  let restore: () => void = () => undefined;
+
+  beforeEach(() => {
+    restore = layOutRows();
+  });
+
+  afterEach(() => {
+    restore();
+  });
+
+  it("Escape during a drag: after a reopen a full drag on another grip moves that row, and no row stays marked", async () => {
+    renderPolled([PRIMARY, DEMO, WEB]);
+    await openSheet();
+    const before = rowMarkup();
+
+    await escapeMidDragAndReopen();
+    expect(rowMarkup()).toEqual(before);
+
+    await dragGrip("collie-demo", 0, { pointerId: 8, pointerType: "mouse" });
+
+    await waitFor(() => expect(drawnOrder()).toEqual(["collie-demo", "default", "web-app"]));
+    expect(rowMarkup()).toEqual(before);
+  });
+
+  it("Escape during a drag: the same pointer moving and lifting on another grip, with no new press, changes nothing", async () => {
+    renderPolled([PRIMARY, DEMO, WEB]);
+    await openSheet();
+    const before = rowMarkup();
+
+    await escapeMidDragAndReopen();
+    const other = grip("collie-demo");
+    await walk(other, MOUSE, rowY(1), rowY(0, 0.25));
+    await lift(other, MOUSE, rowY(0, 0.25));
+
+    expect(drawnOrder()).toEqual(["default", "collie-demo", "web-app"]);
+    expect(rowMarkup()).toEqual(before);
+    expect(orderSessions([PRIMARY, DEMO, WEB], undefined).map((s) => s.name)).toEqual(["default", "collie-demo", "web-app"]);
+  });
+
+  it("a poll removes the dragged session mid-drag: a later drag works", async () => {
+    const poll = renderPolled(FOUR);
+    await openSheet();
+
+    press(grip("web-app"), MOUSE, rowY(2));
+    await walk(grip("web-app"), MOUSE, rowY(2), rowY(1));
+    poll([PRIMARY, DEMO, DOCS]);
+    await lift(document.body, MOUSE, rowY(1));
+
+    await dragGrip("docs-site", 0, { pointerId: 8, pointerType: "mouse" });
+
+    await waitFor(() => expect(drawnOrder()).toEqual(["docs-site", "default", "collie-demo"]));
+  });
+
+  it("a poll drops to one reachable session mid-drag, the trigger goes, and on the way back the grips work", async () => {
+    const poll = renderPolled(FOUR);
+    await openSheet();
+
+    press(grip("web-app"), MOUSE, rowY(2));
+    await walk(grip("web-app"), MOUSE, rowY(2), rowY(1));
+    poll([PRIMARY]);
+    expect(screen.queryByRole("button", { name: /switch session/i })).toBeNull();
+    await lift(document.body, MOUSE, rowY(1));
+    poll(FOUR);
+    if (screen.queryByRole("dialog") === null) await openSheet();
+
+    await dragGrip("docs-site", 0, { pointerId: 8, pointerType: "mouse" });
+
+    await waitFor(() => expect(drawnOrder()).toEqual(["docs-site", "default", "collie-demo", "web-app"]));
+  });
+
+  it("a poll removes a session above the dragged row mid-drag: the row that was pressed moves, not the one at its old index", async () => {
+    const poll = renderPolled(FOUR);
+    await openSheet();
+
+    press(grip("web-app"), MOUSE, rowY(2));
+    await walk(grip("web-app"), MOUSE, rowY(2), rowY(2, 0));
+    poll([PRIMARY, WEB, DOCS]);
+    await walk(grip("web-app"), MOUSE, rowY(2, 0), rowY(0, 0.25));
+    await lift(grip("web-app"), MOUSE, rowY(0, 0.25));
+
+    await waitFor(() => expect(drawnOrder()).toEqual(["web-app", "default", "docs-site"]));
   });
 });
 
