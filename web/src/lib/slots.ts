@@ -8,6 +8,8 @@
 // Per device, like lib/strips-collapsed.ts: never written to a bridge. A duplicated tab copies its
 // sessionStorage and so shares the slot; the tab that moves last wins.
 
+import { asJsonString, parseJsonObject, type JsonObject } from "./json";
+
 const TAB_SLOT_KEY = "collie.slot.tab";
 const PANES_KEY = "collie:slots:v1";
 const SLOT_NUMBER = /^[1-9][0-9]?$/;
@@ -34,12 +36,9 @@ function deviceStorage(): SlotStorage | undefined {
 }
 
 /** The stored map, or an empty one when the entry is missing, unreadable or not a map. */
-function readPanes(local: SlotStorage | undefined): Record<string, unknown> {
+function readPanes(local: SlotStorage | undefined): JsonObject {
   try {
-    const parsed: unknown = JSON.parse(local?.getItem(PANES_KEY) ?? "{}");
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return {};
-    // SAFETY: checked just above to be a plain object; each value is checked where it is used.
-    return parsed as Record<string, unknown>;
+    return parseJsonObject(local?.getItem(PANES_KEY) ?? "") ?? {};
   } catch {
     return {};
   }
@@ -60,8 +59,8 @@ export function enterSlot(
   } catch {
     // The tab stays out of the slot: it can still open the slot's pane, and writes nothing.
   }
-  const stored = readPanes(local)[raw];
-  return typeof stored === "string" && PANE_PAGE.test(stored) ? stored : HOME;
+  const stored = asJsonString(readPanes(local)[raw]);
+  return stored !== undefined && PANE_PAGE.test(stored) ? stored : HOME;
 }
 
 /** Write the address down for this tab's slot, when the tab has one and the address is a pane page. */
