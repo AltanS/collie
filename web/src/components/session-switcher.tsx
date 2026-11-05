@@ -38,10 +38,14 @@ export function SessionSwitcher({ sessions, scope, viewAll }: SessionSwitcherPro
   // Read on every draw, and a move draws: the order lives in this device's storage (lib/session-order.ts).
   const [, drawMove] = useState(0);
   const ordered = orderSessions(sessions, scope.host);
-  const { drag, gripProps } = useGripDrag(list, (from, to) => {
-    moveSession(ordered.map((s) => s.name), from, to, scope.host);
+  const names = ordered.map((s) => s.name);
+  const { drag, gripProps } = useGripDrag(list, (name, to) => {
+    const from = names.indexOf(name);
+    if (from < 0 || from === to) return;
+    moveSession(names, from, to, scope.host);
     drawMove((moves) => moves + 1);
   });
+  const dragFrom = drag === null ? -1 : names.indexOf(drag.key);
 
   const reachableCount = sessions.filter((s) => s.reachable).length;
   const onNonPrimary = current !== undefined;
@@ -146,13 +150,13 @@ export function SessionSwitcher({ sessions, scope, viewAll }: SessionSwitcherPro
               return (
                 <li
                   key={s.name}
-                  {...{ [DRAG_ROW]: true }}
+                  {...{ [DRAG_ROW]: s.name }}
                   className={cn(
                     "flex items-stretch rounded-lg",
-                    drag?.from === index && "opacity-50",
+                    dragFrom === index && "opacity-50",
                     // Where a release puts the row: the line on the side it comes in from.
-                    drag !== null && drag.to === index && drag.from > index && "shadow-[0_-2px_0_var(--primary)]",
-                    drag !== null && drag.to === index && drag.from < index && "shadow-[0_2px_0_var(--primary)]",
+                    drag?.to === index && dragFrom > index && "shadow-[0_-2px_0_var(--primary)]",
+                    drag?.to === index && dragFrom < index && dragFrom >= 0 && "shadow-[0_2px_0_var(--primary)]",
                   )}
                 >
                   <button
@@ -221,7 +225,7 @@ export function SessionSwitcher({ sessions, scope, viewAll }: SessionSwitcherPro
                   <button
                     type="button"
                     aria-label={t("connection.session.moveAria", { name: shown })}
-                    {...gripProps(index)}
+                    {...gripProps(s.name)}
                     className="flex w-11 shrink-0 cursor-grab touch-none select-none items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent active:cursor-grabbing"
                   >
                     <GripVertical className="size-4" />

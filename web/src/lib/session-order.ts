@@ -54,11 +54,14 @@ export function moveSession(
   host: string | undefined,
   local: OrderStorage | undefined = deviceStorage(),
 ): void {
-  const moved = names.toSpliced(from, 1).toSpliced(to, 0, ...names.slice(from, from + 1));
+  const order = names.toSpliced(from, 1).toSpliced(to, 0, ...names.slice(from, from + 1));
   const all = readAll(local);
-  const absent = namesIn(all, host).filter((name) => !names.includes(name));
+  // An absent session stays right after the name it followed, so it comes back to its place.
+  namesIn(all, host).forEach((name, place, stored) => {
+    if (!names.includes(name)) order.splice(place === 0 ? 0 : order.indexOf(stored[place - 1]!) + 1, 0, name);
+  });
   try {
-    local?.setItem(STORAGE_KEY, JSON.stringify({ ...all, [host ?? LOCAL_MACHINE]: [...moved, ...absent] }));
+    local?.setItem(STORAGE_KEY, JSON.stringify({ ...all, [host ?? LOCAL_MACHINE]: order }));
   } catch {
     // Quota or locked-down storage: the sheet keeps the order it has.
   }

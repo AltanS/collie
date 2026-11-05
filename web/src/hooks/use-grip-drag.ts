@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent, type RefObject } from "react";
 
-/** A press on a grip that has become a move: where the row was, and where a release would put it. */
+/** A press on a grip: the row it holds, and where a release would put it once the pointer has moved. */
 export interface GripDrag {
-  from: number;
-  to: number;
+  key: string;
+  to: number | null;
 }
 
 interface LiveDrag {
   pointerId: number;
-  from: number;
+  key: string;
+  grip: Element;
   pressY: number;
   y: number;
   /** Set once the pointer leaves the press by more than SLOP: a press that stays there moves nothing. */
@@ -22,7 +23,7 @@ const EDGE = 56;
 const SLOP = 4;
 const MAX_STEP = 14;
 
-/** Marks the rows that can move and be moved between. */
+/** Holds the row's key, on each row that can move and be moved between. */
 export const DRAG_ROW = "data-drag-row";
 
 /** The nearest ancestor that scrolls: a sheet's dialog role and its scroll sit on different elements. */
@@ -33,37 +34,36 @@ function scrollerOf(element: Element): Element | null {
   return null;
 }
 
-function dragRows(list: HTMLElement): HTMLElement[] {
-  return [...list.querySelectorAll<HTMLElement>(`[${DRAG_ROW}]`)];
-}
-
 /** The place a release at `y` gives the row: one past each other row whose middle lies above `y`. */
-function placeAt(list: HTMLElement, { from, y, travelled }: LiveDrag): number {
-  if (!travelled) return from;
-  return dragRows(list).filter((row, index) => {
-    if (index === from) return false;
+function placeAt(list: HTMLElement, { key, y }: LiveDrag): number {
+  return [...list.querySelectorAll(`[${DRAG_ROW}]`)].filter((row) => {
+    if (row.getAttribute(DRAG_ROW) === key) return false;
     const rect = row.getBoundingClientRect();
     return rect.top + rect.height / 2 < y;
   }).length;
 }
 
 /**
- * Scrolls the sheet while the pointer is in an edge's band. A press inside a band does not count until
- * it moves further that way: the last row in view starts there, and carrying it up must not scroll down.
+ * Scrolls the sheet while the pointer is in an edge's band. The top band starts under the sheet's sticky
+ * title, where the rows are seen. A press inside a band does not count until it moves further that way:
+ * the last row in view starts there, and carrying it up must not scroll down.
  */
 function scrollAtEdge(scroller: Element, drag: LiveDrag): void {
   const { top, bottom } = scroller.getBoundingClientRect();
+  const title = scroller.querySelector('[data-slot="sheet-title-row"]')?.getBoundingClientRect().bottom ?? top;
   const below = drag.y - Math.max(bottom - EDGE, drag.pressY + SLOP);
-  const above = Math.min(top + EDGE, drag.pressY - SLOP) - drag.y;
+  const above = Math.min(title + EDGE, drag.pressY - SLOP) - drag.y;
   if (below > 0) scroller.scrollTop += Math.ceil((Math.min(below, EDGE) / EDGE) * MAX_STEP);
   else if (above > 0) scroller.scrollTop -= Math.ceil((Math.min(above, EDGE) / EDGE) * MAX_STEP);
 }
 
 /**
  * Drag a row of `list` by its grip, with a mouse or a finger. The rows stay where they are until the
- * release: moving the grip's node in the document would end its pointer capture.
+ * release: moving the grip's node in the document would end its pointer capture. A drag lives only
+ * while its grip is in the document: Escape, or a poll that drops the row, take the grip with no
+ * release to come.
  */
-export function useGripDrag(list: RefObject<HTMLElement | null>, onMove: (from: number, to: number) => void) {
+export function useGripDrag(list: RefObject<HTMLElement | null>, onMove: (key: string, to: number) => void) {
   const [drag, setDrag] = useState<GripDrag | null>(null);
   const live = useRef<LiveDrag | null>(null);
 
@@ -76,49 +76,67 @@ export function useGripDrag(list: RefObject<HTMLElement | null>, onMove: (from: 
 
   const place = useCallback((current: LiveDrag) => {
     const element = list.current;
-    if (element === null) return;
+    if (element === null || !current.travelled) return;
     const to = placeAt(element, current);
-    setDrag((was) => (was?.to === to ? was : { from: current.from, to }));
+    setDrag((was) => (was?.to === to ? was : { key: current.key, to }));
   }, [list]);
 
   const tick = useCallback(() => {
     const current = live.current;
     const element = list.current;
-    if (current === null || element === null) return;
+    if (current === null) return;
+    if (element === null || !current.grip.isConnected) {
+      stop();
+      return;
+    }
     const scroller = scrollerOf(element);
     if (scroller !== null) scrollAtEdge(scroller, current);
     place(current);
     current.frame = requestAnimationFrame(tick);
-  }, [list, place]);
+  }, [list, place, stop]);
 
-  const gripProps = (from: number) => ({
+  const liveFor = (event: PointerEvent<HTMLElement>) => {
+    const current = live.current;
+    return current?.pointerId === event.pointerId && current.grip === event.currentTarget ? current : null;
+  };
+
+  const gripProps = (key: string) => ({
     // A sheet takes a pull from its top as a close, and this same finger is carrying a row.
     "data-sheet-no-drag": true,
     onPointerDown: (event: PointerEvent<HTMLElement>) => {
-      if (live.current !== null || event.button !== 0) return;
+      if (event.button !== 0) return;
+      stop();
       event.currentTarget.setPointerCapture?.(event.pointerId);
       const pressY = event.clientY;
-      live.current = { pointerId: event.pointerId, from, pressY, y: pressY, travelled: false, frame: requestAnimationFrame(tick) };
-      setDrag({ from, to: from });
+      live.current = {
+        pointerId: event.pointerId,
+        key,
+        grip: event.currentTarget,
+        pressY,
+        y: pressY,
+        travelled: false,
+        frame: requestAnimationFrame(tick),
+      };
+      setDrag({ key, to: null });
     },
     onPointerMove: (event: PointerEvent<HTMLElement>) => {
-      const current = live.current;
-      if (current?.pointerId !== event.pointerId) return;
+      const current = liveFor(event);
+      if (current === null) return;
       current.y = event.clientY;
       current.travelled ||= Math.abs(current.y - current.pressY) > SLOP;
       place(current);
     },
     onPointerUp: (event: PointerEvent<HTMLElement>) => {
-      const current = live.current;
+      const current = liveFor(event);
       const element = list.current;
-      if (current?.pointerId !== event.pointerId) return;
+      if (current === null) return;
       current.y = event.clientY;
-      const to = element === null ? current.from : placeAt(element, current);
+      const to = element !== null && current.travelled ? placeAt(element, current) : null;
       stop();
-      if (to !== current.from) onMove(current.from, to);
+      if (to !== null) onMove(current.key, to);
     },
     onPointerCancel: (event: PointerEvent<HTMLElement>) => {
-      if (live.current?.pointerId === event.pointerId) stop();
+      if (liveFor(event) !== null) stop();
     },
   });
 
