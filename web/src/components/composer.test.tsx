@@ -566,7 +566,7 @@ describe("Composer: the Surface table (M56 spec 06)", () => {
     renderComposerWithStatus({ surface: UNREACHABLE, unreachableNote: "workshop is not answering the lead" });
     const box = screen.getByPlaceholderText("workshop is not answering the lead");
     expect(box).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Send" })).toHaveAttribute("aria-disabled", "true");
   });
 
   it("composer unreachable with no note says the box cannot be reached", () => {
@@ -588,7 +588,7 @@ describe("Composer: the Surface table (M56 spec 06)", () => {
     const box = screen.getByPlaceholderText(/type a reply/i);
     await user.type(box, "later");
     expect(box).toHaveValue("later");
-    expect(screen.getByRole("button", { name: "Reconnect to send" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Reconnect to send" })).toHaveAttribute("aria-disabled", "true");
     expect(recordedSends()).toEqual([]);
   });
 });
@@ -2257,6 +2257,93 @@ describe("Composer — no draft preview while its own send is in flight", () => 
   });
 });
 
+// Issue 691: on an iPhone with the keyboard up, the first tap on Send only dropped the keyboard. The
+// press moved focus off the field, and a busy (disabled) Send let the tap fall through to the box.
+describe("Composer — one tap on Send keeps the keyboard up (issue 691)", () => {
+  function holdSend() {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const posts: string[] = [];
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/keys$/, async () => HttpResponse.json({ ok: true })),
+      http.post<never, { id: string; text: string }>("/api/send", async ({ request }) => {
+        const body = await request.json();
+        posts.push(body.text);
+        await gate;
+        return HttpResponse.json(sendAnswer(body.id, "sent"));
+      }),
+    );
+    return { release, posts };
+  }
+
+  it("refuses the focus move of a mouse down on Send", async () => {
+    const user = userEvent.setup();
+    renderComposer();
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    await user.type(box, "hello");
+    const down = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
+    screen.getByRole("button", { name: "Send" }).dispatchEvent(down);
+    expect(down.defaultPrevented).toBe(true);
+  });
+
+  it("does not cancel pointer down on Send, which would drop the click on iPhone WebKit", async () => {
+    const user = userEvent.setup();
+    renderComposer();
+    await user.type(screen.getByPlaceholderText(/type a reply/i), "hello");
+    const down = new MouseEvent("pointerdown", { bubbles: true, cancelable: true });
+    screen.getByRole("button", { name: "Send" }).dispatchEvent(down);
+    expect(down.defaultPrevented).toBe(false);
+  });
+
+  it("keeps a busy Send under the finger: a tap sends nothing more and the field keeps focus", async () => {
+    const user = userEvent.setup();
+    const { release, posts } = holdSend();
+    renderComposer();
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    await user.type(box, "hello");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(posts).toEqual(["hello"]));
+    const send = screen.getByRole("button", { name: "Send" });
+    await waitFor(() => expect(send).toHaveAttribute("aria-disabled", "true"));
+    expect(send).not.toBeDisabled();
+    expect(send).toHaveClass("opacity-50");
+    box.focus();
+    await user.type(box, "more");
+    await user.click(send);
+    expect(posts).toEqual(["hello"]);
+    expect(box).toHaveFocus();
+    release();
+    await waitFor(() => expect(send).not.toHaveAttribute("aria-disabled"));
+  });
+
+  it("does not open the hold menu from a long press on a busy Send", async () => {
+    const user = userEvent.setup();
+    const { release, posts } = holdSend();
+    renderComposer();
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    await user.type(box, "hello");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(posts).toEqual(["hello"]));
+    const send = screen.getByRole("button", { name: "Send" });
+    await waitFor(() => expect(send).toHaveAttribute("aria-disabled", "true"));
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      fireEvent.pointerDown(send, { button: 0, clientX: 5, clientY: 5 });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(700);
+      });
+      fireEvent.contextMenu(send);
+      fireEvent.pointerUp(send);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(screen.queryByRole("button", { name: "Send as message" })).toBeNull();
+    release();
+  });
+});
+
 // The no-service-worker self-updater must never reload over unsent work. The composer holds a reload
 // (lib/reload-guard) while its phone-owned input has REAL text or an upload is in flight — but a
 // terminal draft alone is SAFE (it lives on the "❯" line and its preview re-derives after a reload),
@@ -3391,7 +3478,7 @@ describe("Composer — the composer is one box", () => {
     expect(box.className).toMatch(/(?:^|\s)bg-muted\/40(?=\s|$)/);
     expect(box.className).not.toMatch(/(?:^|\s)bg-background(?=\s|$)/);
     expect(attach()).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Send" })).toHaveAttribute("aria-disabled", "true");
   });
 });
 
@@ -4206,7 +4293,7 @@ describe("Composer — a draft that holds masked text", () => {
   it("does not block Send", () => {
     renderComposerWithStatus();
     fireEvent.change(screen.getByPlaceholderText(/type a reply/i), { target: { value: "ghp_••••••••" } });
-    expect(screen.getByRole("button", { name: "Send" })).not.toBeDisabled();
+    expect(screen.getByRole("button", { name: "Send" })).not.toHaveAttribute("aria-disabled");
   });
 });
 
@@ -5043,7 +5130,7 @@ describe("outcome at the thumb", () => {
     const user = userEvent.setup();
     renderState("offline");
     await user.type(screen.getByRole("textbox"), "later");
-    expect(screen.getByRole("button", { name: "Reconnect to send" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Reconnect to send" })).toHaveAttribute("aria-disabled", "true");
     expect(screen.getByRole("textbox")).toHaveValue("later");
     expect(recordedSends()).toEqual([]);
     expect(header()).toBe("");
@@ -5645,7 +5732,7 @@ describe("Composer — known launch startup send-lock", () => {
     expect(box).not.toBeDisabled();
     await user.type(box, "keep this draft");
     expect(screen.getByText("Starting…")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^Send$/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /^Send$/ })).toHaveAttribute("aria-disabled", "true");
     fireEvent.keyDown(box, { key: "Enter", ctrlKey: true });
     await user.click(screen.getByRole("button", { name: "Quick" }));
     await user.click(screen.getByRole("button", { name: "continue" }));

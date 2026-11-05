@@ -363,7 +363,7 @@ describe("Composer — hands-free", () => {
     act(() => recorder.finish());
     await waitFor(() => expect(screen.getByRole("textbox")).toHaveValue("wait for the first screen"));
     expect(sent).not.toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: /^Send$/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /^Send$/ })).toHaveAttribute("aria-disabled", "true");
   });
 
   it("routes the transcript through the Send Protocol when the draft is empty", async () => {

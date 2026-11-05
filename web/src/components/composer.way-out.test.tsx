@@ -251,7 +251,7 @@ describe("the way out", () => {
     const user = userEvent.setup();
     const { onToggle } = mount("unreachable");
     expect(screen.getByPlaceholderText("workshop is not answering")).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Send" })).toHaveAttribute("aria-disabled", "true");
     await wayOutIs(user, onToggle, "sends");
   });
 
@@ -276,7 +276,7 @@ describe("the way out", () => {
     const { onToggle } = mount("offline");
     const box = screen.getByPlaceholderText("Type a reply…");
     await user.type(box, "when it comes back");
-    expect(screen.getByRole("button", { name: "Reconnect to send" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Reconnect to send" })).toHaveAttribute("aria-disabled", "true");
     expect(box).toHaveValue("when it comes back");
     expect(recordedSends()).toEqual([]);
     await wayOutIs(user, onToggle, "waits");
