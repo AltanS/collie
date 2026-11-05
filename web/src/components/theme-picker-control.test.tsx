@@ -6,7 +6,6 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { THEME_TOKENS, isOptionalThemeToken, parseTheme, type Theme } from "@/lib/theme/schema";
-import { wordDeclarations } from "@/lib/theme/surface";
 
 // The Theme card. The store keeps module-scope state (design prefs, the library), so each case
 // imports a fresh graph over a storage it seeded itself. Only `collie` ships on the branch that
@@ -319,7 +318,7 @@ describe("ThemePickerControl", () => {
         "density: roomy",
         "weight: bold",
         "border: default",
-        "ground: grain",
+        "ground: flat",
         "chrome: band",
         "rows: rules",
         "icons: default",
@@ -389,8 +388,7 @@ describe("ThemePickerControl", () => {
       const dialog = await screen.findByRole("dialog", { name: "Import this theme?" });
       expect(within(dialog).queryByTestId("theme-ansi-strip")).toBeNull();
       const dark = within(dialog).getByTestId("theme-page-sample-dark");
-      // A file that names no ground gets the default word, Collie's crossed grain.
-      expect(dark.style.getPropertyValue("--ground-image")).toBe(wordDeclarations("ground", "grain")[0]?.[1]);
+      expect(dark.style.getPropertyValue("--ground-image")).toBe("none");
       expect(dark.style.getPropertyValue("--font-display")).toBe("var(--font-sans)");
     });
 

@@ -90,11 +90,14 @@ describe("the theme collie equals index.css", () => {
   it("names the shape words, the display face and the palette that index.css declares", () => {
     const root = rootDeclarations();
     for (const token of SURFACE_TOKENS) {
-      if (APP_READ_WORDS.has(token)) continue;
+      if (APP_READ_WORDS.has(token) || token === "ground") continue;
       expect(collie.surface?.[token], token).toBe(SURFACE_DEFAULTS[token]);
     }
+    // The ground is the one painted word the file names beyond the default: index.css carries Collie's
+    // grain on :root, while a theme that names no ground is flat (the store and theme-init.js say so).
+    expect(SURFACE_DEFAULTS.ground).toBe("flat");
     // Where the page reads a property from: :root, else the @theme block (radius), else Tailwind's own theme (spacing).
-    for (const [property, value] of fullSurfaceDeclarations(SURFACE_DEFAULTS)) {
+    for (const [property, value] of fullSurfaceDeclarations({ ...SURFACE_DEFAULTS, ground: "grain" })) {
       expect(root.get(property) ?? themeBlock("@theme {").get(property) ?? tailwind(property), property).toBe(value);
     }
     expect(collie.surface?.ground).toBe("grain");
@@ -302,7 +305,10 @@ describe("themes.css", () => {
     const block = result.css.slice(result.css.indexOf(':root[data-theme="zz"] {'));
     expect(block).toContain("  --background: light-dark(oklch(0.955 0.003 80), #000000);\n");
     expect(block).toContain("  --border: light-dark(oklch(0.82 0.004 80), oklch(0.42 0.003 80));\n");
-    expect(block.match(/^ {2}--/gm)).toHaveLength(THEME_TOKENS.length);
+    // The colour tokens, and `--ground-image: none`: :root carries Collie's grain, so a shipped theme
+    // that names no ground says flat itself.
+    expect(block).toContain("  --ground-image: none;\n");
+    expect(block.match(/^ {2}--/gm)).toHaveLength(THEME_TOKENS.length + 1);
   });
 
   it("refuses a file named after another id, and a bad file, with every reason", () => {
@@ -453,7 +459,8 @@ describe("every default word of spec 17 is the stylesheet's CSS", () => {
   const inline = themeBlock("@theme inline {");
   const bare = css.replaceAll(/\/\*[\s\S]*?\*\//g, "");
   const DEFAULTS = {
-    ground: wordDeclarations("ground", SURFACE_DEFAULTS.ground),
+    // :root is Collie's own look, so its ground is the word the file `collie.json` names.
+    ground: wordDeclarations("ground", "grain"),
     chrome: wordDeclarations("chrome", SURFACE_DEFAULTS.chrome),
     rows: wordDeclarations("rows", SURFACE_DEFAULTS.rows),
     icons: wordDeclarations("icons", SURFACE_DEFAULTS.icons),
@@ -467,7 +474,7 @@ describe("every default word of spec 17 is the stylesheet's CSS", () => {
     }
   });
 
-  it("ground: the default is the crossed grain of 4 percent foreground, and the page colour sits on html under it", () => {
+  it("ground: :root is the crossed grain of 4 percent foreground, and the page colour sits on html under it", () => {
     const image = new Map(defaultOf("ground")).get("--ground-image") ?? "";
     expect(image).toContain("repeating-linear-gradient(45deg, color-mix(in oklab, var(--background) 96%, var(--foreground)) 0 1px, transparent 1px 4px)");
     expect(image).toContain("repeating-linear-gradient(-45deg,");

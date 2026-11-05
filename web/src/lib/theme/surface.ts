@@ -184,14 +184,14 @@ export const SURFACE = {
     strong: [["--surface-border-width", "2px"]],
   },
   ground: {
+    flat: [["--ground-image", "none"]],
+    gradient: [["--ground-image", `linear-gradient(to bottom, var(--background), ${groundMix(GROUND_GRADIENT_END)})`]],
     grain: [
       [
         "--ground-image",
         `repeating-linear-gradient(45deg, ${GRAIN_LINES}), repeating-linear-gradient(-45deg, ${GRAIN_LINES})`,
       ],
     ],
-    flat: [["--ground-image", "none"]],
-    gradient: [["--ground-image", `linear-gradient(to bottom, var(--background), ${groundMix(GROUND_GRADIENT_END)})`]],
   },
   chrome: {
     band: [
@@ -273,12 +273,13 @@ export interface Surface {
 
 /**
  * The word each token has when a file does not name one: the look of the stylesheet, which is the
- * look of the theme `collie` (flat shadows, bold weight, a band for the chrome, sentence labels, a faint
- * crossed grain behind the page). A theme that names no `ground` therefore gets the grain, as one that
- * leaves out a colour gets Collie's.
+ * look of the theme `collie` (flat shadows, bold weight, a band for the chrome, sentence labels).
  * The three words the app reads itself keep their plain words: a theme that names no `tabs` or
  * `composer` word gets the plain tab and the field composer, and the theme `collie` names `folder`
- * and `box` in its file.
+ * and `box` in its file. The `ground` is the same kind of exception: a theme that names none gets
+ * `flat`, and only `collie` names `grain`. index.css carries that grain on `:root` for the default
+ * theme, so every other theme that draws without a `data-theme` block (an imported one) must set
+ * `flat` itself: {@link omittedGroundDeclarations}.
  */
 export const SURFACE_DEFAULTS = {
   radius: "sharp",
@@ -286,7 +287,7 @@ export const SURFACE_DEFAULTS = {
   density: "default",
   weight: "bold",
   border: "default",
-  ground: "grain",
+  ground: "flat",
   chrome: "band",
   rows: "rules",
   icons: "default",
@@ -453,6 +454,15 @@ export function versionTwoDeclarations(theme: VersionTwoParts): Declaration[] {
     ...(display !== undefined && isShippedFont(display) ? displayDeclarations(display) : []),
     ...ansiDeclarations(theme.ansi),
   ];
+}
+
+/**
+ * The ground of a theme that names none. index.css paints Collie's grain on `:root`, so a theme that
+ * leaves `ground` out has to say `flat` itself, or it would inherit the grain. Empty when the theme
+ * names a ground word (those declarations come from {@link versionTwoDeclarations}).
+ */
+export function omittedGroundDeclarations(surface: Surface | undefined): readonly Declaration[] {
+  return surface?.ground === undefined ? wordDeclarations("ground", SURFACE_DEFAULTS.ground) : [];
 }
 
 /** Every property {@link versionTwoDeclarations} can set, each once. The store removes these when it takes a theme off. */

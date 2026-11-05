@@ -428,18 +428,6 @@ describe("contrastReport", () => {
       "destructive text on card",
       "status-blocked text on card",
       "rule on background",
-      // A theme that names no `ground` word has the stylesheet's grain, so its far end is measured too.
-      "foreground on the grain ground",
-      "muted-foreground on the grain ground",
-      "status-blocked chip on the grain ground",
-      "status-working chip on the grain ground",
-      "status-done chip on the grain ground",
-      "status-idle chip on the grain ground",
-      "status-unknown chip on the grain ground",
-      "status-info chip on the grain ground",
-      "destructive text on the grain ground",
-      "status-blocked text on the grain ground",
-      "rule on the grain ground",
       // A theme that names no `chrome` word has the stylesheet's band, so the band is measured too.
       "foreground on the band",
       "muted-foreground on the band",

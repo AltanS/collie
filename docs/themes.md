@@ -41,9 +41,9 @@ light on the left and dark on the right.
   ![The Harbour theme on the Dashboard, light and dark.](images/themes/harbour-home.png)
 
 The table lists every word each theme uses. The first word of each list is the word a theme gets when its file
-names none: `sharp`, `flat`, `default`, `bold`, `default`, `grain`, `band`, `rules`, `default`, `sentence`,
-`screen`, `plain` and `field`. That is what the Collie theme draws, except for `tabs` and `composer`, which the
-Collie theme sets to `folder` and `box`. The words are explained under [Shape](#shape), [Look](#look) and
+names none: `sharp`, `flat`, `default`, `bold`, `default`, `flat`, `band`, `rules`, `default`, `sentence`,
+`screen`, `plain` and `field`. That is what the Collie theme draws, except for `ground`, `tabs` and `composer`,
+which the Collie theme sets to `grain`, `folder` and `box`. The words are explained under [Shape](#shape), [Look](#look) and
 [Terminal palette](#terminal-palette).
 
 | | Collie | Nightwatch | Daylight | Harbour |
@@ -311,9 +311,9 @@ of closed words.
 
 | Key | Word | What it does |
 | --- | --- | --- |
-| `ground` | `grain` | Two sets of fine diagonal lines of `background` mixed with 4% of `foreground`. The default, so Collie draws a faint crossed grain behind the page. |
-| | `flat` | The page is one colour. |
+| `ground` | `flat` | The page is one colour. The default for a theme that names none. |
 | | `gradient` | The page runs from `background` at the top to `background` mixed with 12% of `primary` at the foot. |
+| | `grain` | Two sets of fine diagonal lines of `background` mixed with 4% of `foreground`. Collie names it, so the default theme draws a faint crossed grain behind the page. |
 | `chrome` | `band` | The header, the tab bar and the bottom bar are filled with `secondary` and edged with `border`. The default. |
 | | `page` | They are the page colour with a rule. |
 | `rows` | `rules` | A list is one framed group with a line between rows. The default. |
