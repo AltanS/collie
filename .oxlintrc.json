@@ -105,15 +105,6 @@
       }
     },
     {
-      // The install-count receiver (M86/04): `telemetry/worker.ts` is the public I/O boundary for the ping body. Its `typeof` checks sit inside the two type guards that decode the parsed JSON (`isString`, `isRecord`) and nowhere else; a schema library would be a dependency the Worker does not have.
-      "files": [
-        "**/telemetry/worker.ts"
-      ],
-      "rules": {
-        "anti-slop/no-runtime-typeof": "off"
-      }
-    },
-    {
       // Journal adapters read third-party agent session logs off disk — untyped JSONL written by Claude/Codex/pi/opencode. `typeof` is how an unvalidated on-disk record is narrowed before it becomes a domain value.
       "files": [
         "**/bridge/journal/**/*.ts"

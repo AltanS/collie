@@ -528,7 +528,7 @@ ways. This reverses the earlier promise that Collie collects nothing
 
 ### What the ping holds
 
-The ping is one small JSON message. It holds these eight fields and nothing else:
+The ping is one small JSON message. It holds these nine fields and nothing else:
 
 | Field | What it holds |
 | --- | --- |
@@ -540,11 +540,12 @@ The ping is one small JSON message. It holds these eight fields and nothing else
 | `arch` | The CPU type, such as `x64` or `arm64`. |
 | `install` | How Collie was installed: `binary`, `linked-clone`, `detached-checkout`, `packaged` or `unknown`. |
 | `line` | The release line you follow: `stable` or `edge`. |
+| `role` | Whether this bridge runs alone, leads a crew or is a member: `solo`, `lead` or `member`. It says nothing about which crew, and it holds no crew ID or machine name. |
 
 An example, exactly as it is sent:
 
 ```json
-{"v":1,"id":"3f9c2a71d04b58e6a1c7b09e42d8f356","day":"2026-11-27","version":"1.27.0","os":"linux","arch":"x64","install":"binary","line":"stable"}
+{"v":1,"id":"3f9c2a71d04b58e6a1c7b09e42d8f356","day":"2026-11-27","version":"1.27.0","os":"linux","arch":"x64","install":"binary","line":"stable","role":"solo"}
 ```
 
 The ping holds no host name, no user name, no folder or path, no pane, no agent or multiplexer name,
@@ -562,10 +563,11 @@ machine that runs two instances sends two.
   whether the count is on, which setting decided, when the first ping may go and how to turn it
   off. A machine with no phone gets its notice there.
 - The ping goes to `https://ping.colliepwa.dev/v1/ping` (host `ping.colliepwa.dev`, port 443), a
-  Cloudflare Worker with one database table. Name this host in a firewall allow list, or block it.
+  small receiver on the colliepwa.dev app server, with one database table. Name this host in a firewall allow list, or block it.
   Collie works the same either way, and a blocked ping is dropped like any failed one. The source of
-  the receiver is public, in the `telemetry/` folder of the repository.
-- Collie stores no IP address. Cloudflare, which runs the receiver, sees the address in transit as
+  the receiver is public, in the `collie-website` repository under `src/lib/ping/`. The
+  contract of the ping is in the `telemetry/` folder of this repository.
+- Collie stores no IP address. The server that runs the receiver sees the address in transit as
   every host does.
 - The receiver keeps one row for each ID and day and prunes rows older than 400 days. Rows deleted
   or pruned can survive up to 30 days in the database's own point-in-time backups.

@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { Environment } from "./config-source.ts";
+import type { CrewMode } from "./types.ts";
 import {
   buildPing,
   createTelemetry,
@@ -15,6 +16,7 @@ import {
   FIRST_PING_DELAY_MS,
   parseTelemetryRecord,
   parseTelemetryRequest,
+  pingRole,
   pingVersion,
   PING_TIMEOUT_MS,
   PING_USER_AGENT,
@@ -204,10 +206,23 @@ describe("resolveTelemetryUrl: the override rules", () => {
 });
 
 describe("buildPing", () => {
-  const ping = buildPing({ id: "a".repeat(32), day: "2026-11-04", version: "1.26.0", os: "linux", arch: "x64", installKind: "binary", line: "stable" });
+  const ping = buildPing({ id: "a".repeat(32), day: "2026-11-04", version: "1.26.0", os: "linux", arch: "x64", installKind: "binary", line: "stable", role: "solo" });
 
-  test("the key set is exactly v, id, day, version, os, arch, install, line", () => {
-    expect(Object.keys(ping)).toEqual(["v", "id", "day", "version", "os", "arch", "install", "line"]);
+  test("the key set is exactly v, id, day, version, os, arch, install, line, role", () => {
+    expect(Object.keys(ping)).toEqual(["v", "id", "day", "version", "os", "arch", "install", "line", "role"]);
+  });
+
+  test("each role value is carried as given", () => {
+    for (const role of ["solo", "lead", "member"] as const) {
+      const built = buildPing({ id: "a".repeat(32), day: "2026-11-04", version: "1.26.0", os: "linux", arch: "x64", installKind: "binary", line: "stable", role });
+      expect(built.role).toBe(role);
+    }
+  });
+
+  test("pingRole: solo is solo, lead is lead, and a peer (a member or a non-lead deputy) is a member", () => {
+    expect(pingRole("solo")).toBe("solo");
+    expect(pingRole("lead")).toBe("lead");
+    expect(pingRole("peer")).toBe("member");
   });
 
   test("the values are the ones given, and the schema is 1", () => {
@@ -220,6 +235,7 @@ describe("buildPing", () => {
       arch: "x64",
       install: "binary",
       line: "stable",
+      role: "solo",
     });
   });
 
@@ -292,6 +308,7 @@ interface Sent {
 }
 
 function rig(over: { env?: Environment; origin?: TelemetryOrigin; version?: string; fail?: boolean; start?: number } = {}) {
+  let crewMode: CrewMode = "solo";
   const stateDir = mkdtempSync(join(tmpdir(), "collie-telemetry-"));
   dirs.push(stateDir);
   const clock = { now: over.start ?? Date.UTC(2026, 10, 3, 12, 0, 0) };
@@ -311,6 +328,7 @@ function rig(over: { env?: Environment; origin?: TelemetryOrigin; version?: stri
     version: over.version ?? RELEASE,
     installKind: "binary",
     line: () => "stable",
+    crewMode: () => crewMode,
     now: () => clock.now,
     fetch: fakeFetch,
     os: "linux",
@@ -319,7 +337,10 @@ function rig(over: { env?: Environment; origin?: TelemetryOrigin; version?: stri
     warn: (line) => warnings.push(line),
     log: (line) => logs.push(line),
   });
-  return { stateDir, clock, sent, telemetry, warnings, logs };
+  const setCrewMode = (mode: CrewMode): void => {
+    crewMode = mode;
+  };
+  return { stateDir, clock, setCrewMode, sent, telemetry, warnings, logs };
 }
 
 describe("createTelemetry", () => {
@@ -347,6 +368,22 @@ describe("createTelemetry", () => {
     expect(days[0]).not.toBe(days[1]);
   });
 
+  test("the role is read at ping time: a mode that changes between pings changes the role", async () => {
+    const r = rig();
+    r.telemetry.observe();
+    r.clock.now += FIRST_PING_DELAY_MS;
+    await r.telemetry.tick();
+    r.setCrewMode("lead");
+    r.clock.now += FIRST_PING_DELAY_MS;
+    await r.telemetry.tick();
+    r.setCrewMode("peer");
+    expect(r.telemetry.view().next?.role).toBe("member");
+    r.clock.now += FIRST_PING_DELAY_MS;
+    await r.telemetry.tick();
+    const roles = r.sent.map((s) => JSON.parse(String(s.init.body)).role);
+    expect(roles).toEqual(["solo", "lead", "member"]);
+  });
+
   test("the request: POST, JSON, the fixed user agent, the default URL, exactly the ping", async () => {
     const r = rig();
     r.telemetry.observe();
@@ -365,6 +402,7 @@ describe("createTelemetry", () => {
       arch: "x64",
       install: "binary",
       line: "stable",
+      role: "solo",
     });
     expect(call?.init.signal).toBeDefined();
   });
@@ -409,6 +447,7 @@ describe("createTelemetry", () => {
       version: RELEASE,
       installKind: "binary",
       line: () => "stable",
+      crewMode: () => "solo",
       now: () => r.clock.now,
       fetch: async () => {
         seen.push(readTelemetryRecord(r.stateDir).lastSentDay);
@@ -457,6 +496,7 @@ describe("createTelemetry", () => {
       arch: "x64",
       install: "binary",
       line: "stable",
+      role: "solo",
     });
   });
 
@@ -616,6 +656,7 @@ describe("the send is hardened (M86 spec 01)", () => {
         version: RELEASE,
         installKind: "binary",
         line: () => "stable",
+        crewMode: () => "solo",
         now: () => now,
         fetch: (url, init) => fetch(url, init),
         os: "linux",
@@ -630,6 +671,7 @@ describe("the send is hardened (M86 spec 01)", () => {
         version: RELEASE,
         installKind: "binary",
         line: () => "stable",
+        crewMode: () => "solo",
         now: () => now + FIRST_PING_DELAY_MS,
         fetch: (url, init) => fetch(url, init),
         os: "linux",
@@ -662,7 +704,7 @@ describe("the send is hardened (M86 spec 01)", () => {
     const hostile = new Response(body, { status: 200, headers: { "set-cookie": "a=b", location: "http://evil.example/" } });
     let now = Date.UTC(2026, 10, 3, 12, 0, 0);
     const t = createTelemetry({
-      stateDir, env: {}, origin: "env", version: RELEASE, installKind: "binary", line: () => "stable",
+      stateDir, env: {}, origin: "env", version: RELEASE, installKind: "binary", line: () => "stable", crewMode: () => "solo",
       now: () => now, fetch: async () => hostile, os: "linux", arch: "x64",
     });
     t.observe();

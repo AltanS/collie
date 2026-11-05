@@ -1266,6 +1266,8 @@ const telemetry = createTelemetry({
   version: crewVersion,
   installKind: installKind,
   line: () => readUpdateLineSync(cfg.stateDir).line,
+  // Read at ping time. A peer (a member, or a deputy that is not the lead) is a member in the ping.
+  crewMode: () => crew.mode,
   now: Date.now,
   fetch: (url, init) => fetch(url, init),
   os: HOST.platform,

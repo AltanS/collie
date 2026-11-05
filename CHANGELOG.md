@@ -31,6 +31,10 @@ Running a crew? Update the lead first; members follow on their own. Details:
 - **The composer can open like a chat box.** A theme may set the new surface word `composer` to `box`. The reply box then rests as one slim row: the field's single line, then Attach (a plus on a filled circle) beside the microphone, which is the main button. It opens on the first character, an attachment or Type mode, not on a tap: it grows upward over about 200 ms, the field takes the full width on top at the height of its own text, and the buttons glide to a row of their own at the right inside the box, so they never narrow the text. With something to send, the row reads Attach, a small microphone circle and Send, which is the main button. Emptying the draft closes it again; with reduced motion on, the change is instant. The belt above does not move, every send, draft and speech behaviour is unchanged, and `field` stays the default. Collie New uses `box`.
 - **A printed image opens in a sheet on the pane.** When a tool prints the path of a picture in the workspace, a tap shows it in a sheet over the Chat instead of leaving the pane. Thanks @GGGODLIN (#692).
 
+### Changed
+
+- **The install ping says whether the bridge runs alone, leads a crew or is a member.** One more word in the daily ping, so the count can tell setups from machines; nothing else is added.
+
 ### Fixed
 
 - **A stopped background job leaves the Jobs mark.** A pi job the agent ended with `job_stop` now moves to the ended list at once, with no exit code, and a later `job_list` settles a job whose exit notice was lost (#697).

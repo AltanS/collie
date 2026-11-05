@@ -8,13 +8,15 @@ import { settingByEnv } from "./config-schema.ts";
 import { sourceOf, type ConfigFileLayer, type Environment } from "./config-source.ts";
 import { UPDATE_MIRROR_ENV } from "./update.ts";
 import { diskWriter, type ReleaseLine, type UpdateLineWriter } from "./update-line.ts";
+import type { CrewMode } from "./types.ts";
 import { developmentBase } from "./version.ts";
 import { isRequestId } from "./worktree-receipts.ts";
 
 // ── THE ANONYMOUS INSTALL PING (M86 spec 01) ────────────────────────────────────────────────────
 //
 // Once a day, at most, a bridge tells Collie's own endpoint that one install exists: a random ID,
-// the UTC day, the version, the OS, the CPU, the install kind and the release line. Nothing else.
+// the UTC day, the version, the OS, the CPU, the install kind, the release line and the crew role
+// (alone, leading a crew, or a member). Nothing else.
 // No harness or mux name, no pane, no host name, no path, no count of anything. The ID is made on
 // this machine, lives in `telemetry.json` in the state folder and is deleted the moment the ping is
 // off for any reason.
@@ -254,7 +256,18 @@ export type TelemetryPing = {
   readonly arch: string;
   readonly install: InstallKind["kind"];
   readonly line: ReleaseLine;
+  readonly role: PingRole;
 };
+
+/** Whether this bridge runs alone, leads a crew or is a member. The count tells setups from machines. */
+export type PingRole = "solo" | "lead" | "member";
+
+/** The crew mode as the ping names it: a peer (a member, or a deputy that is not the lead) is a `member`. */
+export function pingRole(mode: CrewMode): PingRole {
+  if (mode === "solo") return "solo";
+  if (mode === "lead") return "lead";
+  return "member";
+}
 
 export function buildPing(a: {
   readonly id: string;
@@ -264,6 +277,7 @@ export function buildPing(a: {
   readonly arch: string;
   readonly installKind: InstallKind["kind"];
   readonly line: ReleaseLine;
+  readonly role: PingRole;
 }): TelemetryPing {
   return {
     v: PING_SCHEMA,
@@ -274,6 +288,7 @@ export function buildPing(a: {
     arch: a.arch,
     install: a.installKind,
     line: a.line,
+    role: a.role,
   };
 }
 
@@ -409,6 +424,8 @@ export interface TelemetryDeps {
   readonly installKind: InstallKind["kind"];
   /** The release line now, read at the moment of use. */
   readonly line: () => ReleaseLine;
+  /** The crew mode now, read at the moment of a ping (never cached at boot). */
+  readonly crewMode: () => CrewMode;
   readonly now: () => number;
   readonly fetch: PingFetch;
   readonly os: string;
@@ -477,6 +494,7 @@ export function createTelemetry(deps: TelemetryDeps): Telemetry {
       arch: deps.arch,
       installKind: deps.installKind,
       line: deps.line(),
+      role: pingRole(deps.crewMode()),
     });
   };
 
