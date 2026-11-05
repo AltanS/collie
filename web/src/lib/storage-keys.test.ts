@@ -48,6 +48,7 @@ const KEYS = new Map<string, KeyFate>([
   ["collie:push-endpoint", { area: "local", prefix: false, fate: "wiped", why: "names this phone's push endpoint" }],
   // Cleared with the token (lib/pairing.ts `clearDeviceToken`): it caps the store at this pairing's expiry.
   ["collie:pairing-expires", { area: "local", prefix: false, fate: "wiped", why: "the ended pairing's expiry" }],
+  ["collie:slot:v1:", { area: "local", prefix: true, fate: "wiped", why: "the last pane address and workspace name of each browser tile" }],
   // Written first by the wipe and removed last; present only while a wipe is unfinished (lib/wipe.ts).
   ["collie:wipe-pending", { area: "local", prefix: false, fate: "wiped", why: "a wipe's resume mark" }],
   // ── Kept: how this phone likes to look and behave, never what a session said ──
@@ -89,6 +90,7 @@ const KEYS = new Map<string, KeyFate>([
   ["collie:update-mode:v1", { area: "session", prefix: false, fate: "kept", why: "update screen state" }],
   ["collie:auto-reloaded-for=", { area: "session", prefix: true, fate: "kept", why: "reload guard, a build id" }],
   ["collie:pwa:guardReload:v1", { area: "session", prefix: false, fate: "kept", why: "reload guard" }],
+  ["collie.slot.tab", { area: "session", prefix: false, fate: "kept", why: "navigation state, one slot number" }],
   ["collie:preload-reload", { area: "session", prefix: false, fate: "kept", why: "reload guard, a timestamp" }],
   ["collie.nav.booted", { area: "session", prefix: false, fate: "kept", why: "navigation state" }],
   ["collie.nav.seeded", { area: "session", prefix: false, fate: "kept", why: "navigation state, an app path" }],
